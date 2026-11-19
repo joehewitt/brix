@@ -1,0 +1,540 @@
+(import /core/markup)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /gui/box)
+(import /gui/events)
+(import /gui/label)
+(import /gui/primitives)
+(import /gui/tree-box)
+(import /gui/window)
+(import /test)
+(import /ui/input)
+(import /ui/selection)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "GUI TreeBox Virtual"))
+  (call (. cases run) tree-box-virtual-tests)
+  (= cases (call (. cases then) "GUI TreeBox Row Height" tree-box-row-height-tests))
+  (= cases (call (. cases then) "GUI TreeBox Drag Rows" tree-box-drag-tests))
+  (= cases (call (. cases then) "GUI TreeBox Drag Into" tree-box-drag-into-tests))
+  (= cases (call (. cases then) "GUI TreeBox Drag Selection" tree-box-drag-selection-tests))
+  (= cases (call (. cases then) "GUI TreeBox Ancestor Drag" tree-box-ancestor-drag-tests))
+  (= cases (call (. cases then) "GUI TreeBox Ancestor Focus" tree-box-ancestor-focus-tests))
+  (return cases)
+)
+
+(fn-do _ tree-box-row-height-tests _
+  (param t TestCase)
+  (let window (call open-drag-tree))
+  (let tree (. window tree))
+  (= t (call (. t expect) "rows start at the theme's height" 24 (. (!! (call (. tree row-for-key) "guide")) bounds y)))
+  (= t (call (. t expect) "paging starts from the theme's height" 16 (. tree page-row-step)))
+  (= (. tree row-height) 30)
+  (call settle window)
+  (call (. window window-clock finish-all))
+  (= t (call (. t expect) "a styled row height restacks the rows" 60 (. (!! (call (. tree row-for-key) "deep")) bounds y)))
+  (= t (call (. t expect) "a styled row height sizes the rows" 30 (. (!! (call (. tree row-for-key) "deep")) bounds height)))
+  (= t (call (. t expect) "paging follows the styled height" 13 (. tree page-row-step)))
+  (blank)
+  (call pull window (call Point 60 195) (call Point 30 94))
+  (= t
+    (call (. t check)
+      (block
+        (arg "the row itself follows the pointer")
+        (arg (?? (?. (. (!! (call (. tree row-for-key) "readme")) material-parent) is-carried) false))
+      )
+    )
+  )
+  (= t
+    (call (. t expect)
+      (block
+        (arg "the carried row keeps the styled height")
+        (arg 30)
+        (arg (. (!! (call (. tree row-for-key) "readme")) bounds height))
+      )
+    )
+  )
+  (= t (call (. t expect) "the pointer picks a gap by the styled height" 3 (?? (. tree drop-gap) 99)))
+  (= t (call (. t expect) "rows below the gap move down a styled row" 120 (. (!! (call (. tree row-for-key) "api")) bounds y)))
+  (let mark (call find-mark window))
+  (= t (call (. t expect) "the mark sits at the styled gap" 90 (?? (. (?. mark bounds) y) -1)))
+  (= t (call (. t expect) "the mark takes the styled height" 30 (?? (. (?. mark bounds) height) -1)))
+  (= t (call (. t expect) "the mark ends where the styled gap ends" 120 (?? (. (?. mark bounds) bottom) -1)))
+  (call release window (call Point 30 94))
+  (call (. window close))
+  (return t)
+)
+
+(fn-do _ tree-box-drag-tests _
+  (param t TestCase)
+  (let window (call open-drag-tree))
+  (let tree (. window tree))
+  (blank)
+  (call pull window (call Point 60 156) (call Point 30 75))
+  (= t (call (. t expect) "a gap opens where the row would land" 3 (?? (. tree drop-gap) 99)))
+  (= t (call (. t expect) "the pointer's reach picks the depth" 1 (. tree drop-depth)))
+  (= t (call (. t expect) "rows below the gap move down" 96 (. (!! (call (. tree row-for-key) "api")) bounds y)))
+  (= t (call (. t expect) "rows above the gap stay" 48 (. (!! (call (. tree row-for-key) "deep")) bounds y)))
+  (let mark (call find-mark window))
+  (= t (call (. t expect) "the mark fills the gap" 72 (. (!! mark) bounds y)))
+  (= t (call (. t expect) "the mark ends where the gap ends" 96 (. (!! mark) bounds bottom)))
+  (blank)
+  (call slide window (call Point 60 80))
+  (= t (call (. t expect) "the gap holds still under the pointer" 3 (?? (. tree drop-gap) 99)))
+  (= t (call (. t expect) "reaching right goes deeper" 2 (. tree drop-depth)))
+  (call slide window (call Point 30 80))
+  (= t (call (. t expect) "reaching left comes back out" 1 (. tree drop-depth)))
+  (blank)
+  (call slide window (call Point 30 130))
+  (= t (call (. t expect) "the gap follows the pointer" 4 (?? (. tree drop-gap) 99)))
+  (call release window (call Point 30 130))
+  (= t (call (. t expect) "releasing reports the drop" "readme>docs@2" (. window story)))
+  (return t)
+)
+
+(fn-do _ tree-box-drag-into-tests _
+  (param t TestCase)
+  (let window (call open-drag-tree))
+  (let tree (. window tree))
+  (call (. tree collapse-key) "src")
+  (call settle window)
+  (blank)
+  (call pull window (call Point 60 84) (call Point 60 112))
+  (= t (call (. t expect) "a gap opens below a closed folder" 4 (?? (. tree drop-gap) 99)))
+  (= t (call (. t expect) "reaching over a closed folder aims into it" 1 (. tree drop-depth)))
+  (= t (call (. t expect) "the folder that would take the drop is named" "src" (?? (. tree drop-key) "")))
+  (call slide window (call Point 20 88))
+  (= t (call (. t expect) "reaching left lands beside the folder" 0 (. tree drop-depth)))
+  (= t (call (. t check) "no folder is named beside it" (== (. tree drop-key) null)))
+  (call slide window (call Point 60 112))
+  (= t (call (. t expect) "reaching right aims into the folder again" "src" (?? (. tree drop-key) "")))
+  (call release window (call Point 60 112))
+  (= t (call (. t expect) "a drop into a folder names no index" "api>src@in" (. window story)))
+  (call (. tree expand-key) "src")
+  (call settle window)
+  (blank)
+  (= (. window refuses) "guide")
+  (call pull window (call Point 60 156) (call Point 60 75))
+  (= t (call (. t expect) "a refused parent leaves the gap" 3 (?? (. tree drop-gap) 99)))
+  (= t (call (. t expect) "a refused parent gives way to the next depth" 1 (. tree drop-depth)))
+  (= t (call (. t expect) "the parent that takes the drop is named" "docs" (?? (. tree drop-key) "")))
+  (call release window (call Point 60 75))
+  (= t (call (. t expect) "the drop lands in the parent that took it" "api>src@in readme>docs@1" (. window story)))
+  (return t)
+)
+
+(fn-do _ tree-box-drag-selection-tests _
+  (param t TestCase)
+  (let window (call open-drag-tree))
+  (call click window (call Point 60 84) 1)
+  (call command-click window (call Point 60 132))
+  (blank)
+  (call (. window dispatch-pointer-event) (call PointerDownEvent (call PointerEventData (call Point 60 84))))
+  (call settle window)
+  (call slide window (call Point 60 160))
+  (call release window (call Point 60 160))
+  (= t (call (. t expect) "the drop carries every chosen item" "api+main>root@3" (. window story)))
+  (return t)
+)
+
+(fn-do _ tree-box-virtual-tests _
+  (param t TestCase)
+  (<> LargeTreeWindow (id: window))
+  (blank)
+  (= (. window focus-adapter) (call GUIFocusAdapter))
+  (call (. window open))
+  (call settle window)
+  (call (. window tree request-focus))
+  (call settle window)
+  (let tree (. window tree))
+  (blank)
+  (call press window (. Key end))
+  (= t (call (. t check) "End reveals the last entry" (!= (call (. tree row-for-key) "n4999") null)))
+  (return t)
+)
+
+(fn-do _ command-click _
+  (param window Window)
+  (param point Point)
+  (let data
+    (call PointerEventData
+      (block
+        (arg point)
+        (arg 0)
+        (arg (. PointerDeviceKind mouse))
+        (arg (call PointerModifiers false false false true))
+      )
+    )
+  )
+  (call (. window dispatch-pointer-event) (call PointerDownEvent data))
+  (call (. window dispatch-pointer-event) (call PointerUpEvent data))
+  (call settle window)
+)
+
+(fn-do _ tree-box-ancestor-drag-tests _
+  (param t TestCase)
+  (let window (call open-scrolled-tree))
+  (call (. window scroller scroll-to) (call Point 0 120))
+  (call settle window)
+  (call pull window (call Point 60 42) (call Point 60 200))
+  (= t (call (. t expect) "starting a drag leaves the enclosing box where it was" 120 (. window scroller scroll-y)))
+  (call release window (call Point 60 200))
+  (return t)
+)
+
+(fn-do _ tree-box-ancestor-focus-tests _
+  (param t TestCase)
+  (let window (call open-scrolled-tree))
+  (let tree (. window tree))
+  (let scroller (. window scroller))
+  (call press window (. Key tab))
+  (= t (call (. t expect) "focus leaves a visible cursor row where it is" 0 (. scroller scroll-y)))
+  (call press window (. Key end))
+  (= t (call (. t check) "the last row is in view" (call row-in-view scroller (call (. tree row-for-key) "n199"))))
+  (call (. tree clear-focus))
+  (call (. scroller scroll-to) (call Point 0 0))
+  (call settle window)
+  (call press window (. Key tab))
+  (= t (call (. t check) "focus reveals the cursor row" (call row-in-view scroller (call (. tree row-for-key) "n199"))))
+  (return t)
+)
+
+(fn-do _ open-scrolled-tree _
+  (<> ScrolledTreeWindow (id: window))
+  (blank)
+  (= (. window focus-adapter) (call GUIFocusAdapter))
+  (call (. window open))
+  (call settle window)
+  (return window)
+)
+
+(fn-expr _ row-in-view Bool
+  (param scroller Box)
+  (param row (? Box))
+  (case? (not row)
+    false
+  )
+  (default
+    (and (>= (. shown top) (. view top)) (<= (. shown bottom) (. view bottom)))
+  )
+  (where
+    (lazy shown (call (. row presentation-rect) (. row bounds)))
+    (lazy view (. scroller content-bounds))
+  )
+)
+
+(fn-do _ open-drag-tree _
+  (<> DragTreeWindow (id: window))
+  (blank)
+  (= (. window focus-adapter) (call GUIFocusAdapter))
+  (call (. window open))
+  (call settle window)
+  (return window)
+)
+
+(fn-do _ pull _
+  (param window Window)
+  (param origin Point)
+  (param point Point)
+  (call (. window dispatch-pointer-event) (call PointerDownEvent (call PointerEventData origin)))
+  (call settle window)
+  (call slide window point)
+)
+
+(fn-do _ slide _
+  (param window Window)
+  (param point Point)
+  (call (. window dispatch-pointer-event) (call PointerDragEvent (call PointerEventData point)))
+  (call settle window)
+)
+
+(fn-do _ release _
+  (param window Window)
+  (param point Point)
+  (call (. window dispatch-pointer-event) (call PointerUpEvent (call PointerEventData point)))
+  (call settle window)
+)
+
+(fn-do _ find-mark (? TreeBoxDropMark)
+  (param node GuiNode)
+  (for (in child (. node children))
+    (return-if (as child TreeBoxDropMark) (if (is child TreeBoxDropMark)))
+    (let found (call find-mark child))
+    (return-if found (if found))
+  )
+  (return null)
+)
+
+(fn-do _ detach-node _
+  (param parent TreeNode)
+  (param node TreeNode)
+  (let children (. parent children))
+  (return-if (if (not children)))
+  (for (in index (..< 0 (. children length)))
+    (if (== (. ([] children index) id) (. node id))
+      (call (. children remove) index)
+      (return)
+    )
+  )
+  (for (in child children)
+    (call detach-node child node)
+  )
+)
+
+(fn-do _ settle _
+  (param window Window)
+  (let root (. window markup-batch-root))
+  (if root
+    (call (. root markup-batch-queue checkpoint))
+  )
+  (call (. window layout))
+  (if root
+    (call (. root markup-batch-queue checkpoint))
+  )
+  (call (. window layout))
+)
+
+(fn-do _ press _
+  (param window Window)
+  (param key Key)
+  (call (. window dispatch-key-press) (call KeyPressEvent key))
+  (call settle window)
+)
+
+(fn-do _ click _
+  (param window Window)
+  (param point Point)
+  (param count U32)
+  (call (. window dispatch-pointer-event)
+    (block
+      (arg (call PointerDownEvent (call PointerEventData point) (. PointerButton primary) count))
+    )
+  )
+  (call (. window dispatch-pointer-event) (call PointerUpEvent (call PointerEventData point)))
+  (call settle window)
+)
+
+(fn-expr _ demo-list _
+  (param ... nodes (list TreeNode))
+  nodes
+)
+
+(type + TreeNode
+  (prop + id String)
+  (prop + text String)
+  (prop + children (? (list TreeNode)))
+  (fn-do + This _
+    (param id _)
+    (param text _)
+    (param children (? (list TreeNode)) (= null))
+  )
+)
+
+(type + TreeModel
+  (prop + root TreeNode)
+  (fn-do + This _
+    (lazy root
+      (call TreeNode
+        (block
+          (arg "root")
+          (arg "Root")
+          (arg
+            (call demo-list
+              (block
+                (arg
+                  (call TreeNode
+                    (block
+                      (arg "docs")
+                      (arg "Docs")
+                      (arg
+                        (call demo-list
+                          (block
+                            (arg
+                              (call TreeNode
+                                (block
+                                  (arg "guide")
+                                  (arg "Guide")
+                                  (arg
+                                    (call demo-list
+                                      (block
+                                        (arg (call TreeNode "deep" "Deep Notes.md"))
+                                      )
+                                    )
+                                  )
+                                )
+                              )
+                            )
+                            (arg (call TreeNode "api" "API.md"))
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+                (arg
+                  (call TreeNode
+                    (block
+                      (arg "src")
+                      (arg "Source")
+                      (arg
+                        (call demo-list
+                          (block
+                            (arg (call TreeNode "main" "main.yumi"))
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+                (arg (call TreeNode "readme" "README.md"))
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(type + ScrolledTreeWindow (is Window)
+  (prop + model _ (= (call TreeModel)))
+  (fn-do + This _
+    (= (. model root children) (call large-tree-leaves 200))
+  )
+  (content
+    (<> This
+      (= size (tuple 320 400))
+      (blank)
+      (<> Box (id: scroller) (• absolute) (• cover .parent) (• flex-col)
+        (= overflow-y (. ScrollOverflow auto))
+        (blank)
+        (<> Box (• h 30))
+        (<> (of TreeBox TreeNode) (id: tree)
+          (= root-node (. model root))
+          (= load-children tree-node-children)
+          (= key-builder tree-node-key)
+          (= can-drag (=> (node) (== (. node children) null)))
+          (= drag-items (=> (node) (list node)))
+          (= can-drop (=> (drop) (!= (. drop parent children) null)))
+          (blank)
+          (<> Label (slot: row) (param: row)
+            (= text (?? (?. (. row #item) text) ""))
+          )
+        )
+        (<> Box (• h 30))
+      )
+    )
+  )
+  (fn-do + ensure-native _)
+  (fn-do + render Bool
+    (return false)
+  )
+)
+
+(type + DragTreeWindow (is Window)
+  (prop + model _ (= (call TreeModel)))
+  (prop + refuses _ (= ""))
+  (prop + log (list String))
+  (prop + story _ (=> (call (. " " join) (in each log))))
+  (content
+    (<> This
+      (= size (tuple 320 400))
+      (blank)
+      (<> (of TreeBox TreeNode) (id: tree) (• absolute) (• cover .parent)
+        (= root-node (. model root))
+        (= load-children tree-node-children)
+        (= key-builder tree-node-key)
+        (= auto-expand tree-node-is-folder)
+        (= selection-mode (. SelectionMode multiple))
+        (= can-drag (=> (node) (!= (. node id) "docs")))
+        (= can-drop (=> (drop) (call takes drop)))
+        (blank)
+        (<> Label (slot: row) (param: row)
+          (= text (?? (?. (. row #item) text) ""))
+        )
+      )
+    )
+  )
+  (subscribe-for (on event (. tree dropped))
+    (let names (call (. "+" join) (in (. each id) (. event items))))
+    (let index (. event index))
+    (let place "in")
+    (if (!= index null)
+      (= place (str index))
+    )
+    (+= log (str names ">" (. event parent id) "@" place))
+    (for (in node (. event items))
+      (call detach-node (. model root) node)
+    )
+    (let offset Index (?? (. event index) (. (!! (. event parent children)) length)))
+    (for (in node (. event items))
+      (call (. (!! (. event parent children)) insert) node offset)
+      (+= offset 1)
+    )
+    (call (. tree reload))
+  )
+  (fn-expr + takes _
+    (param drop (of TreeBoxDrop TreeNode))
+    (case? (== (. drop parent id) refuses)
+      false
+    )
+    (default
+      (!= (. drop parent children) null)
+    )
+  )
+  (fn-do + ensure-native _)
+  (fn-do + render Bool
+    (return false)
+  )
+)
+
+(type + LargeTreeWindow (is Window)
+  (prop + model _ (= (call TreeModel)))
+  (fn-do + This _
+    (= (. model root children) (call large-tree-leaves 5000))
+  )
+  (content
+    (<> This
+      (= size (tuple 320 400))
+      (blank)
+      (<> (of TreeBox TreeNode) (id: tree) (• absolute) (• cover .parent)
+        (= root-node (. model root))
+        (= load-children tree-node-children)
+        (= key-builder tree-node-key)
+        (blank)
+        (<> Label (slot: row) (param: row)
+          (= text (?? (?. (. row #item) text) ""))
+        )
+      )
+    )
+  )
+  (fn-do + ensure-native _)
+  (fn-do + render Bool
+    (return false)
+  )
+)
+
+(fn-expr _ large-tree-leaves (list TreeNode)
+  (param count Size)
+  (spread (in (call TreeNode (str "n" each) (str "Node " each)) (..< 0 count)))
+)
+
+(fn-expr _ tree-node-children _
+  (param node TreeNode)
+  (. node children)
+)
+
+(fn-expr _ tree-node-is-folder _
+  (param node TreeNode)
+  (!= (. node children) null)
+)
+
+(fn-expr _ tree-node-key _
+  (param node TreeNode)
+  (. node id)
+)

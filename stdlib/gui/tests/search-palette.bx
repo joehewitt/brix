@@ -1,0 +1,148 @@
+(import /data/fuzzy)
+(import /graphics/primitives)
+(import /gui/box)
+(import /gui/events)
+(import /gui/label)
+(import /gui/placement)
+(import /gui/popup)
+(import /gui/primitives)
+(import /gui/search-palette)
+(import /gui/shorthands)
+(import /gui/styles)
+(import /gui/theme)
+(import /gui/virtual)
+(import /gui/window)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Palette Styles"))
+  (call (. cases run) style-tests)
+  (return cases)
+)
+
+(fn-do _ style-tests _
+  (param t TestCase)
+  (let window (call open-palette-window))
+  (let palette (. window palette))
+  (call (. palette show))
+  (call settle window)
+  (call (. t expect) "the theme sets the panel width" 520 (. palette bounds width))
+  (call (. t expect) "the theme sets the panel height" 360 (. palette bounds height))
+  (call (. t expect) "the theme centers the panel" 60 (. palette bounds x))
+  (call (. t expect) "the theme places the panel below the top" 56 (. palette bounds y))
+  (call (. t expect) "the theme sets the row height" 25 (call row-height palette 0))
+  (call (. t expect) "rows stack by the themed height" 25 (- (call row-top palette 1) (call row-top palette 0)))
+  (call (. palette dismiss))
+  (call settle window)
+  (blank)
+  (let berries (. window berries))
+  (call (. berries show))
+  (call settle window)
+  (call (. t expect) "a theme rule resizes a palette" 300 (. berries bounds width))
+  (call (. t expect) "a theme rule moves a palette" 20 (. berries bounds y))
+  (call (. t expect) "a theme rule sets a palette's row height" 40 (call row-height berries 0))
+  (call (. t expect) "rows stack by the rule's height" 40 (- (call row-top berries 1) (call row-top berries 0)))
+  (= (. berries row-height) 30)
+  (call settle window)
+  (call (. t expect) "a new row height resizes the rows" 30 (call row-height berries 0))
+  (call (. t expect) "a new row height restacks the rows" 30 (- (call row-top berries 1) (call row-top berries 0)))
+  (call (. window close))
+  (return t)
+)
+
+(type _ Fruit
+  (prop + name String)
+  (fn-do + This _
+    (param name _)
+  )
+)
+
+(fn-expr _ fruits (list Fruit)
+  (param names (list String))
+  (in (call Fruit each) names)
+)
+
+(fn-expr _ (of row-height Item) Length
+  (param palette (of Palette Item))
+  (param index Size)
+  (?? (. (?. (?. (call (. palette row-at-index) index) material-parent) bounds) height) 0)
+)
+
+(fn-expr _ (of row-top Item) Length
+  (param palette (of Palette Item))
+  (param index Size)
+  (?? (. (?. (?. (call (. palette row-at-index) index) material-parent) bounds) y) 0)
+)
+
+(type _ BerryPalette (is (of Palette Fruit))
+  (prop + stock (list Fruit) (= (call fruits (list "Blackberry" "Blueberry" "Cranberry" "Raspberry"))))
+  (prop + results _ (= (call fuzzy-ranked stock #query (=> (fruit) (. fruit name)))))
+  (content
+    (<> This
+      (<> Label (slot: row) (param: row)
+        (= text (str "berry " (?? (?. (. row #item) name) "")))
+        (= align-y (. Alignment center))
+      )
+    )
+  )
+)
+
+(style PaletteTestTheme
+  (using GUIDefaultTheme)
+  (using GUIPopupStyle)
+  (using GUIVirtualRowStyle)
+  (rule BerryPalette (• w 278) (• h 178)
+    (= placement (call CenteredPlacement 20))
+    (= row-height 40)
+  )
+)
+
+(fn-do _ open-palette-window _
+  (let window (call PaletteTestWindow))
+  (call (. window open))
+  (call settle window)
+  (return window)
+)
+
+(fn-do _ settle _
+  (param window Window)
+  (let root (. window markup-batch-root))
+  (if root
+    (call (. root markup-batch-queue checkpoint))
+  )
+  (call (. window layout))
+  (if root
+    (call (. root markup-batch-queue checkpoint))
+  )
+  (call (. window layout))
+)
+
+(type _ PaletteTestWindow (is Window)
+  (using PaletteTestTheme)
+  (content
+    (<> This
+      (= size (call Dimensions 640 480))
+      (blank)
+      (<> (of Palette Fruit) (id: palette)
+        (= results (call fruits (list "Apple" "Apricot")))
+        (blank)
+        (<> Label (slot: row) (param: row)
+          (= text (?? (?. (. row #item) name) ""))
+          (= align-y (. Alignment center))
+        )
+      )
+      (blank)
+      (<> BerryPalette (id: berries))
+    )
+  )
+  (fn-do + ensure-native _)
+  (fn-expr + render _
+    true
+  )
+  (fn-do + schedule-render _)
+)

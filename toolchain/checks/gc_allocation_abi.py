@@ -8,17 +8,17 @@ from common import ROOT, Failure
 
 PROBE = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'gc-allocation-abi-probe.cpp')
 COMPILER_SOURCES = {
-    'stdlib/lang/emit/runtime.yumi': {
+    'stdlib/lang/emit/runtime.bx': {
         'gc-allocation-buffer-version': 'version',
         'gc-control-phase-mask': 'controlPhaseMask',
     },
-    'stdlib/lang/emit/layouts.yumi': {
+    'stdlib/lang/emit/layouts.bx': {
         'compiler-buffer-count': 'compilerBufferCount',
         'site-key-size': 'siteKeySize',
         'thread-cache-compiler-buffers-offset': 'threadCacheCompilerBuffersOffset',
         'runtime-buffer-size': 'runtimeSize',
     },
-    'stdlib/lang/backend/gc-write-barrier-lowering.yumi': {
+    'stdlib/lang/backend/gc-write-barrier-lowering.bx': {
         'cursor-offset': 'cursorOffset',
         'limit-offset': 'limitOffset',
         'slot-size-offset': 'runtimeSlotSizeOffset',
@@ -27,7 +27,7 @@ COMPILER_SOURCES = {
         'sweep-generation-shift': 'controlSweepGenerationShift',
     },
 }
-CONSTANT_PATTERN = re.compile(r'^[_+] ([a-z][a-z0-9-]*) [A-Z]\w*(?: = (0x[0-9a-fA-F]+|\d+))?$', re.M)
+CONSTANT_PATTERN = re.compile(r'^\(prop [_+] ([a-z][a-z0-9-]*) [A-Z]\w*(?: \(= (0x[0-9a-fA-F]+|\d+)\))?\)$', re.M)
 
 
 def check(config):

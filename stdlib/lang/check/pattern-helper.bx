@@ -1,0 +1,339 @@
+(import ./facts)
+(import ./instances)
+(import ./type-store)
+(import ./types)
+(import /lang/ast/ast)
+(import /lang/ast/ast-children)
+(import /lang/ast/ast-nodes)
+(import /lang/ast/operator)
+
+(type + PatternHelper
+  ; What a helper given a stream match with `with` can do, as the reference finds it: among the
+  ; helper's type and the interfaces that type declares or delegates, each with the interfaces
+  ; those derive from, in that order, the ones of each capability of `core/parsing`. A helper
+  ; that rolls back, observes literals, stores collectors, marks the records a pipe matches, or
+  ; is a materialization root with a materializer is active; a match given any other reports it.
+  ; A `problem` is what the reference reports at the helper. The `storage` is the backing its
+  ; collector storages agree on, or `invalid-type` where they name more than one or one that is
+  ; not concrete, which the reference reports where the helper keeps a collector. The `boundary`
+  ; is the interface whose `begin-pattern-record` a pipe calls before it matches each record.
+  (blank)
+  (prop + participant TypeId)
+  (prop + rollback TypeId (= no-type))
+  (prop + observer TypeId (= no-type))
+  (prop + root TypeId (= no-type))
+  (prop + storages (list TypeId))
+  (prop + storage TypeId (= no-type))
+  (prop + boundary TypeId (= no-type))
+  (prop + captures (list TypeId))
+  (prop + values (list TypeId))
+  (prop + problem (? String))
+  (fn-do + This _
+    (param participant TypeId)
+  )
+  (fn-expr + is-active Bool :get
+    (or (!= rollback no-type) (!= observer no-type) (!= (. storages length) 0) (!= boundary no-type) rooted)
+    (where
+      (lazy rooted (and (!= root no-type) (or (!= (. captures length) 0) (!= (. values length) 0))))
+    )
+  )
+)
+
+(fn-do + pattern-helper PatternHelper
+  (param types Types)
+  (param participant TypeId)
+  ; The capabilities of a helper of a type, as the reference resolves them once for a match.
+  (let helper (call PatternHelper participant))
+  (let candidates (list TypeId))
+  (call add-candidate candidates participant)
+  (call add-interfaces types candidates participant)
+  (let rollbacks (list TypeId))
+  (let roots (list TypeId))
+  (let observers (list TypeId))
+  (for (in candidate candidates)
+    (let ref (call class-ref types candidate))
+    (if (call is-capability ref (. types pattern-rollback-decl))
+      (+= rollbacks candidate)
+      (else-if (call is-capability ref (. types pattern-root-decl))
+        (+= roots candidate)
+      )
+      (else-if (call is-capability ref (. types pattern-capture-materializer-decl))
+        (+= (. helper captures) candidate)
+      )
+      (else-if (call is-capability ref (. types pattern-value-materializer-decl))
+        (+= (. helper values) candidate)
+      )
+      (else-if (call is-capability ref (. types pattern-literal-observer-decl))
+        (+= observers candidate)
+      )
+      (else-if (call is-capability ref (. types pattern-collector-storage-decl))
+        (+= (. helper storages) candidate)
+      )
+      (else-if (call is-capability ref (. types pattern-record-boundary-decl))
+        (= (. helper boundary) candidate)
+      )
+    )
+  )
+  (if (> (. rollbacks length) 1)
+    (= (. helper problem) "Pattern helper has ambiguous PatternRollback capabilities")
+    (return helper)
+  )
+  (if (> (. roots length) 1)
+    (= (. helper problem) "Pattern helper has ambiguous PatternMaterializationRoot capabilities")
+    (return helper)
+  )
+  (if (> (. observers length) 1)
+    (= (. helper problem) "Pattern helper has ambiguous PatternLiteralObserver capabilities")
+    (return helper)
+  )
+  (for (in storage (. helper storages))
+    (let backing (call first-type-arg types storage))
+    (if (== (. helper storage) no-type)
+      (= (. helper storage) backing)
+      (else-if (!= (. helper storage) backing)
+        (= (. helper storage) invalid-type)
+      )
+    )
+  )
+  (if (and (!= (. helper storage) no-type) (!= (. helper storage) invalid-type) (not concrete))
+    (= (. helper storage) invalid-type)
+  )
+  (lazy concrete (call is-concrete types (. helper storage)))
+  (= (. helper rollback) (if-expr (!= (. rollbacks length) 0) ([] rollbacks 0) no-type))
+  (= (. helper root) (if-expr (!= (. roots length) 0) ([] roots 0) no-type))
+  (= (. helper observer) (if-expr (!= (. observers length) 0) ([] observers 0) no-type))
+  (let mark (call first-type-arg types (. helper rollback)))
+  (if (and (!= mark no-type) (not (call is-concrete types mark)))
+    (= (. helper problem) "Rollback participant must implement PatternRollback with a concrete Mark type")
+    (return helper)
+  )
+  (let primary (call first-type-arg types (. helper root)))
+  (if (and (!= primary no-type) (not (call is-concrete types primary)))
+    (= (. helper problem) "PatternMaterializationRoot must have a concrete Primary type")
+    (return helper)
+  )
+  (for (in materializers (list (. helper captures) (. helper values)))
+    (for (in materializer materializers)
+      (if (not (call is-concrete types materializer))
+        (= (. helper problem) "Pattern materializer types must be concrete")
+        (return helper)
+      )
+    )
+  )
+  (return helper)
+)
+
+(fn-do + spanning-helper PatternHelper
+  (param helper PatternHelper)
+  ; What a helper does for a rule called for the text it matched, as the reference compiles such a
+  ; rule under a helper that observes literal words: it rolls back, observes literal words and
+  ; keeps collectors as it does, but makes no value.
+  (let spanning (call PatternHelper (. helper participant)))
+  (= (. spanning rollback) (. helper rollback))
+  (= (. spanning observer) (. helper observer))
+  (= (. spanning storages) (. helper storages))
+  (= (. spanning storage) (. helper storage))
+  (= (. spanning problem) (. helper problem))
+  (return spanning)
+)
+
+(fn-do + is-scanned Bool
+  (param syntax AST)
+  (param id SyntaxId)
+  ; Whether the reference scans a part repeated with `*` or `+` by testing each item: one item
+  ; in a range, any item, a text of one character, or alternatives of those.
+  (match? ([] (. syntax nodes) id)
+    (case (call .node-stream-string row)
+      (return (== (. row text codepoints size) 1))
+    )
+    (case .node-stream-any
+      (return true)
+    )
+    (case .node-stream-char-range
+      (return true)
+    )
+    (case (call .node-stream-or row)
+      (return (and (call is-scanned syntax (. row left)) (call is-scanned syntax (. row right))))
+    )
+    (case (call .node-stream-transform row)
+      (return (and (!= (. row pattern) 0) (call (. syntax lazies-only) (. row right)) (call is-scanned syntax (. row pattern))))
+    )
+  )
+  (return false)
+)
+
+(fn-do + observes-literals Bool
+  (param syntax AST)
+  (param facts Facts)
+  (param instance InstanceId)
+  (param id SyntaxId)
+  ; Whether the reference runs a part of a grammar of an instance under a helper that
+  ; observes literal words, as it runs one that holds text matched as written, a call of a rule or
+  ; of a pattern given to the rule, an arm with no pattern, which matches the empty text, or an arm
+  ; marked to roll back. Text among alternatives the reference tests as one item, or that a repeat
+  ; scans, is no such part.
+  (match? ([] (. syntax nodes) id)
+    (case .node-stream-string
+      (return true)
+    )
+    (case .node-stream-call
+      (return true)
+    )
+    (case .node-stream-equality
+      (return (== (call (. facts plan-of) instance id) .plan-pattern-call))
+    )
+    (case (call .node-stream-transform row)
+      (return
+        (scope (or (. row rollback) (== (. row pattern) 0) observed)
+          (lazy observed (call observes-literals syntax facts instance (. row pattern)))
+        )
+      )
+    )
+    (case (call .node-stream-panic row)
+      (return (call observes-literals syntax facts instance (. row pattern)))
+    )
+    (case (call .node-stream-capture row)
+      (return (call observes-literals syntax facts instance (. row pattern)))
+    )
+    (case (call .node-stream-and row)
+      (return
+        (scope (or (call observes-literals syntax facts instance (. row left)) right-observes)
+          (lazy right-observes (call observes-literals syntax facts instance (. row right)))
+        )
+      )
+    )
+    (case (call .node-stream-or row)
+      (return
+        (scope (and (not (call is-scanned syntax id)) (or left-option right-option))
+          (lazy left-option (call observes-literals syntax facts instance (. row left)))
+          (lazy right-option (call observes-literals syntax facts instance (. row right)))
+        )
+      )
+    )
+    (case (call .node-stream-unary row)
+      (if (and (or (== (. row op) .zero-or-more-op) (== (. row op) .one-or-more-op)) scanned)
+        (return false)
+      )
+      (lazy scanned (call is-scanned syntax (. row operand)))
+      (return (call observes-literals syntax facts instance (. row operand)))
+    )
+    (case (call .node-stream-length row)
+      (return (call observes-literals syntax facts instance (. row operand)))
+    )
+  )
+  (return false)
+)
+
+(fn-expr + can-roll-back Bool
+  (param types Types)
+  (param participant TypeId)
+  ; Whether a helper of a type can roll back.
+  (!= (. (call pattern-helper types participant) rollback) no-type)
+)
+
+(fn-expr + helper-mark-type TypeId
+  (param types Types)
+  (param participant TypeId)
+  ; The type of the rollback marks a helper of a type gives, or none where it cannot roll back.
+  (call first-type-arg types (. (call pattern-helper types participant) rollback))
+)
+
+(fn-do + ambient-position U32
+  (param types Types)
+  (param instances Instances)
+  (param instance InstanceId)
+  ; The argument of an instance of a rule that is the helper of the rule's pattern, as the
+  ; reference finds one whatever helper a pattern calls the rule under: the only argument after
+  ; the stream whose type rolls back, is a materialization root and materializes captures or
+  ; values. None where no argument does, or more than one.
+  (let found U32 (. U32 max))
+  (for (in position (..< 1 (. ([] (. instances signatures) instance) args count)))
+    (if (call provides-materialization types (call (. instances argument-type) instance position))
+      (if (!= found (. U32 max))
+        (return (. U32 max))
+      )
+      (= found position)
+    )
+  )
+  (return found)
+)
+
+(fn-do _ provides-materialization Bool
+  (param types Types)
+  (param type TypeId)
+  (let kind (call (. types intrinsic-of) type))
+  (if (and (!= kind .class) (!= kind .interface))
+    (return false)
+  )
+  (let candidates (list TypeId))
+  (call add-candidate candidates type)
+  (call add-interfaces types candidates type)
+  (let rolls false)
+  (let roots false)
+  (let makes false)
+  (for (in candidate candidates)
+    (let ref (call class-ref types candidate))
+    (= rolls (or rolls (call is-capability ref (. types pattern-rollback-decl))))
+    (= roots (or roots (call is-capability ref (. types pattern-root-decl))))
+    (= makes
+      (scope (or makes (call is-capability ref (. types pattern-capture-materializer-decl)) value-maker)
+        (lazy value-maker (call is-capability ref (. types pattern-value-materializer-decl)))
+      )
+    )
+  )
+  (return (and rolls roots makes))
+)
+
+(fn-do _ add-candidate _
+  (param candidates (list TypeId))
+  (param type TypeId)
+  (if (== (call (. candidates find) type) null)
+    (+= candidates type)
+  )
+)
+
+(fn-do _ add-interfaces _
+  (param types Types)
+  (param candidates (list TypeId))
+  (param type TypeId)
+  ; Adds the interfaces a type declares, each followed by those it derives from, as the reference
+  ; lists them. An interface itself comes first.
+  (let kind (call (. types intrinsic-of) type))
+  (if (== kind .interface)
+    (call add-candidate candidates type)
+  )
+  (if (and (!= kind .class) (!= kind .interface))
+    (return)
+  )
+  (for (in interface (call (. types interfaces-of) type))
+    (call add-interfaces types candidates interface)
+  )
+)
+
+(fn-expr _ is-capability Bool
+  (param ref DeclRef)
+  (param decl DeclRef)
+  (and (== (. ref module) (. decl module)) (== (. ref decl) (. decl decl)))
+)
+
+(fn-do + first-type-arg TypeId
+  (param types Types)
+  (param type TypeId)
+  (if (== type no-type)
+    (return no-type)
+  )
+  (match? ([] (. types rows) type)
+    (case (call .type-class row)
+      (if (!= (. row args count) 0)
+        (return (call (. types child-type) (. row args) 0))
+      )
+    )
+  )
+  (return no-type)
+)
+
+(fn-expr _ is-concrete Bool
+  (param types Types)
+  (param type TypeId)
+  (not (call (. types is-generic) type))
+)

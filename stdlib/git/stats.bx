@@ -1,0 +1,182 @@
+(import ./command)
+(import ./log)
+(import ./reader)
+(import ./status)
+(import ./untracked)
+(import /os/process)
+(import /stream/aggregate)
+(blank)
+(prop _ git-stats-sentinel _ (= "--END--\n"))
+
+(type + GitLineCount (is Tuple)
+  (prop + path String)
+  (prop + additions I64)
+  (prop + deletions I64)
+  (prop + is-binary Bool)
+  (prop + old-path (? String) (= null))
+  (prop + status String (= "M"))
+)
+
+(type + GitLineCounts (is Tuple)
+  (prop + files (list GitLineCount))
+  (prop + additions I64)
+  (prop + deletions I64)
+)
+
+(fn-expr + git-line-counts _
+  (param files (list GitLineCount))
+  (call GitLineCounts files additions deletions)
+  (where
+    (lazy additions
+      (block
+        (spread files)
+        (pipe *> (. each additions))
+        (pipe |> sum)
+      )
+    )
+    (lazy deletions
+      (block
+        (spread files)
+        (pipe *> (. each deletions))
+        (pipe |> sum)
+      )
+    )
+  )
+)
+
+(fn-do + git-worktree-line-counts _ (?! Error)
+  (param directory String)
+  (param status GitStatus)
+  (param since String)
+  (let base (if-expr (> (. since length) 0) since git-empty-tree))
+  (let index (use (call GitUntrackedIndex directory status)))
+  (let output
+    (call git-output
+      (block
+        (arg directory)
+        (arg (list "diff" "--raw" "--numstat" "-z" "-M" "--end-of-options" base "--"))
+        (arg null)
+        (arg (. index path))
+      )
+    )
+  )
+  (return (call git-parse-line-counts output))
+)
+
+(fn-expr + git-parse-line-counts _
+  (param bytes ([] Byte))
+  (call git-count-fields (call git-fields bytes))
+)
+
+(fn-do _ git-count-fields _
+  (param fields (list String))
+  (let statuses (call (of Map String String)))
+  (let counts (call (of List GitLineCount)))
+  (let index Index 0)
+  (while (< index (. fields length))
+    (let field ([] fields index))
+    (+= index 1)
+    (if (call (. field starts-with) ":")
+      (let header (call (of List String) (call (. field split) " ")))
+      (let status (if-expr (and (== (. header length) 5) (> (. ([] header 4) length) 0)) ([] ([] header 4) (..< 0 1)) "M"))
+      (let paths Index (if-expr (or (== status "R") (== status "C")) 2 1))
+      (if (<= (+ index paths) (. fields length))
+        (= ([] statuses ([] fields (- (+ index paths) 1))) status)
+      )
+      (+= index paths)
+      (else
+        (let count (call git-parse-line-count field))
+        (if (and (!= count null) (== (. count path length) 0) (< (+ index 1) (. fields length)))
+          (+= counts (call git-renamed-count count ([] fields index) ([] fields (+ index 1))))
+          (+= index 2)
+          (else-if (!= count null)
+            (+= counts count)
+          )
+        )
+      )
+    )
+  )
+  (let files
+    (call (of List GitLineCount)
+      (block
+        (spread counts)
+        (pipe *>
+          (call GitLineCount
+            (block
+              (arg (. each path))
+              (arg (. each additions))
+              (arg (. each deletions))
+              (arg (. each is-binary))
+              (arg (. each old-path))
+              (arg (?? ([] statuses (. each path)) "M"))
+            )
+          )
+        )
+      )
+    )
+  )
+  (return (call git-line-counts files))
+)
+
+(fn-expr + git-parse-line-count _
+  (param field String)
+  (case? (== first null)
+    null
+  )
+  (case? (== second null)
+    null
+  )
+  (case? (== added "-")
+    (call GitLineCount path 0 0 true)
+  )
+  (default
+    (call GitLineCount path (as added I64) (as deleted I64) false)
+  )
+  (where
+    (lazy first (call (. field find) "\t"))
+    (lazy second (call (. field find) "\t" (+ first 1)))
+    (lazy added ([] field (..< 0 first)))
+    (lazy deleted ([] field (..< (+ first 1) second)))
+    (lazy path ([] field (... (+ second 1))))
+  )
+)
+
+(fn-expr _ git-renamed-count _
+  (param count GitLineCount)
+  (param old-path String)
+  (param path String)
+  (call GitLineCount path (. count additions) (. count deletions) (. count is-binary) old-path)
+)
+
+(type + GitStatsReader
+  (prop + process Process)
+  (blank)
+  (prop _ reader GitReader)
+  (prop _ sentinel _ (= (call byte-view git-stats-sentinel)))
+  (fn-do + This _ (?! Error)
+    (param directory String)
+    (lazy process
+      (call git-process
+        (block
+          (arg directory)
+          (arg (list "diff-tree" "--stdin" "-r" "--raw" "--numstat" "-z" "-M" "--root"))
+        )
+      )
+    )
+    (lazy reader (call GitReader process))
+  )
+  (fn-do + read _ (?! Error)
+    (param commit GitCommit)
+    (let line (if-expr (> (. commit parents length) 0) (str (. commit id) " " (. commit first-parent)) (. commit id)))
+    (call (. process write) (str line "\n" git-stats-sentinel))
+    (let fields (call (of List String)))
+    (while (not (call (. reader consume) sentinel))
+      (+= fields (call (. reader require-text) 0))
+    )
+    (return (call git-count-fields fields))
+  )
+  (fn-do + close _
+    (call (. process close))
+    (call (. process wait) null)
+  )
+)

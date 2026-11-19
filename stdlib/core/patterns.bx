@@ -1,0 +1,94 @@
+(import ./array-builder)
+(import ./parsing)
+
+(fn-expr + alpha _ (over: Char)
+  (~ (chars "a-zA-Z"))
+)
+
+(fn-expr + alphanumeric _ (over: Char)
+  (~ (chars "a-zA-Z0-9"))
+)
+
+(fn-expr + numeric _ (over: Char)
+  (~ (chars "0-9"))
+)
+
+(fn-expr + cr _ (over: Char)
+  (~ "\r")
+)
+
+(fn-expr + lf _ (over: Char)
+  (~ "\n")
+)
+
+(fn-expr + nl _ (over: Char)
+  (~ (| "\r\n" "\r" "\n"))
+)
+
+(fn-expr + ws _ (over: Char)
+  (~ (| " " "\t"))
+)
+
+(fn-expr + wsnl _ (over: Char)
+  (~ (| " " "\t" "\r\n" "\r" "\n"))
+)
+
+(fn-expr + (of num Num) _ (over: Byte)
+  (~ (: bytes ({} . (. Num size)))
+    (!! (call (of (. (call (of Array Byte) bytes) read) Num) 0))
+  )
+)
+
+(fn-expr + (of num Num) _ (over: Char)
+  (~ "0"
+    (call Num it)
+  )
+  (~ (seq (chars "1-9") (* (chars "0-9")))
+    (call Num it)
+  )
+  (~ (seq (& (\{} (< (. Num min) 0))) "-" (seq (| "0" (chars "1-9")) (* (chars "0-9"))))
+    (call Num it)
+  )
+)
+
+(fn-expr + (of dec Num) _ (over: Char)
+  (~ (seq (? "-") "." (+ (chars "0-9")))
+    (call Num it)
+  )
+  (~ (seq (? "-") (+ (chars "0-9")) (? (seq "." (* (chars "0-9")))))
+    (call Num it)
+  )
+)
+
+(fn-expr + parse-decimal (? F64)
+  (param text String)
+  (match? text
+    (~ (seq (* \ws) (? (seq "+" (& (chars "0-9.")))) (: value (of \dec F64)) (* \ws) (! .))
+      value
+    )
+  )
+)
+
+(fn-expr + (of hex T) _ (over: Char)
+  (~ ({} (chars "a-fA-F0-9") 1 size)
+    (as (call Hex it) T)
+  )
+  (where
+    (lazy size (* (. T size) 2))
+  )
+)
+
+(fn-expr + (of delimited Result) _ (over: Char)
+  (param delimiter _)
+  (param pattern (of PatternFunc Char Result))
+  (~ (seq (: ...items \item) (* (seq / $delimiter / (: ...items \item))))
+    items
+  )
+  (where
+    (lazy item Result
+      (pattern
+        (~ $pattern)
+      )
+    )
+  )
+)

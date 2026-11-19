@@ -1,0 +1,29 @@
+(import /JaCore/tests.h)
+(import /BxCore/BxCore.h)
+(import /BxGC/BxGC.h)
+(blank)
+
+(main
+  (let running
+    (do-new
+      (inline (call run-ffi-panic))
+      (on-failure failure
+        (call C:brixCollect)
+        (print "ffi-panic-cleanup-ok")
+      )
+    )
+  )
+  (call (. running wait))
+)
+
+(type + TestCallback (is (c-fn-type I32 (param n I32))))
+
+(fn-do + run-ffi-panic _
+  (call C:ctestCallback (as panic-callback TestCallback))
+  (throw (call Panic "FFI callback did not panic"))
+)
+
+(fn-expr + panic-callback I32
+  (param n I32)
+  (throw (call Panic (str "callback panic " n)))
+)

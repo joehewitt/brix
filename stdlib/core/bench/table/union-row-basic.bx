@@ -1,0 +1,60 @@
+; benchmark.meta description: Scans inline-only Table union rows through tag-aware narrowing.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core/table)
+(blank)
+
+(main
+  (let row-count (as 32768 Size))
+  (let pass-count (as 256 Size))
+  (let rows
+    (call (of Table Value) row-count
+      (:with
+        (=> (index) :do
+          (block
+            (if (== (% index 2) 0)
+              (return (call (. Value even) index (+ (* index 3) 1)))
+            )
+            (return (call (. Value odd) index (+ (* index 5) 2)))
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in pass (..< 0 pass-count))
+    (for (in row rows)
+      (+= checksum
+        (match row
+          (case (call .even even)
+            (+ (. even value) pass)
+          )
+          (case (call .odd odd)
+            (+ (. odd value) pass)
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (print (str "bench-result table/union-row-basic checksum=" checksum))
+)
+
+(type + Base (is Tuple)
+  (prop + id Size)
+)
+
+(type + Even (is Base)
+  (prop + value Size @hot)
+)
+
+(type + Odd (is Base)
+  (prop + value Size @hot)
+)
+
+(type + Value (is Union)
+  (variant even Even)
+  (variant odd Odd)
+)

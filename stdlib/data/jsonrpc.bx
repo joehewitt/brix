@@ -1,0 +1,254 @@
+(import /data/json)
+
+(type + JSONRPCID (is Union)
+  (variant Int)
+  (variant String)
+)
+
+(type + JSONRPCErrorCode (is Int)
+  (variant parse-error (= -32700))
+  (variant invalid-request (= -32600))
+  (variant method-not-found (= -32601))
+  (variant invalid-params (= -32602))
+  (variant internal-error (= -32603))
+)
+
+(type + JSONRPCError (is Error)
+  (prop + code JSONRPCErrorCode)
+  (prop + data JSON)
+  (fn-do + This _
+    (param code JSONRPCErrorCode)
+    (param text String)
+    (param data JSON (= null))
+    (= message text)
+  )
+  (fn-expr + json (map String JSON) :get
+    (call (of Map String JSON)
+      (block
+        (:code (as code Int))
+        (:message message)
+        (:data? (only-if data (if (not (is data Null)))))
+      )
+    )
+  )
+)
+
+(type + JSONRPCRequest (is Tuple)
+  (prop + id JSONRPCID)
+  (prop + method String)
+  (prop + params JSON)
+  (fn-expr + response JSONRPCResponse
+    (param result JSON)
+    (call JSONRPCResponse id (call .result result))
+  )
+  (fn-expr + error-response JSONRPCResponse
+    (param error JSONRPCError)
+    (call JSONRPCResponse id (call .error error))
+  )
+  (fn-expr + json (map String JSON) :get
+    (call (of Map String JSON)
+      (block
+        (:jsonrpc "2.0")
+        (:id (call json-rpc-id-json id))
+        (:method method)
+        (:params? (only-if params (if (not (is params Null)))))
+      )
+    )
+  )
+  (fn-to-expr + String
+    (call to-json json)
+  )
+)
+
+(type + JSONRPCNotification (is Tuple)
+  (prop + method String)
+  (prop + params JSON)
+  (fn-expr + json (map String JSON) :get
+    (call (of Map String JSON)
+      (block
+        (:jsonrpc "2.0")
+        (:method method)
+        (:params? (only-if params (if (not (is params Null)))))
+      )
+    )
+  )
+  (fn-to-expr + String
+    (call to-json json)
+  )
+)
+
+(type + JSONRPCOutcome (is Union)
+  (variant result (tuple (: value JSON)))
+  (variant error (tuple (: error JSONRPCError)))
+)
+
+(type + JSONRPCResponse (is Tuple)
+  (prop + id (? JSONRPCID))
+  (prop + outcome JSONRPCOutcome)
+  (fn-expr + json (map String JSON) :get
+    (match outcome
+      (case (call .result value)
+        (call (of Map String JSON)
+          (block
+            (:jsonrpc "2.0")
+            (:id? (only-if (call json-rpc-id-json id) (if id)))
+            (:result value)
+          )
+        )
+      )
+      (case (call .error error)
+        (call (of Map String JSON)
+          (block
+            (:jsonrpc "2.0")
+            (:id? (only-if (call json-rpc-id-json id) (if id)))
+            (:error (. error json))
+          )
+        )
+      )
+    )
+  )
+  (fn-to-expr + String
+    (call to-json json)
+  )
+)
+
+(type + JSONRPCMessage (is Union)
+  (variant JSONRPCRequest)
+  (variant JSONRPCNotification)
+  (variant JSONRPCResponse)
+)
+
+(fn-expr + parse-json-rpc JSONRPCMessage (?! JSONRPCError)
+  (param text String)
+  (call json-rpc-message json)
+  (where
+    (lazy json
+      (call parse-json text
+        (block
+          (on-error Error
+            (throw (call JSONRPCError .parse-error "Parse error"))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-do + json-rpc-message JSONRPCMessage (?! JSONRPCError)
+  (param json JSON)
+  (param requires-version _ (= true))
+  (let fields
+    (match json
+      (case (: object (map String JSON))
+        object
+      )
+      (throw (call invalid-json-rpc "A JSON-RPC message must be an object"))
+    )
+  )
+  (throw (call invalid-json-rpc "A JSON-RPC message must have \"jsonrpc\": \"2.0\"") (if (and requires-version (not (is fields (list (= "jsonrpc" "2.0") ...))))))
+  (return-if (call json-rpc-response fields) (if (not (has fields "method"))))
+  (blank)
+  (let method
+    (match ([] fields "method")
+      (case (: name String)
+        name
+      )
+      (throw (call invalid-json-rpc "\"method\" must be a string"))
+    )
+  )
+  (let params (?? ([] fields "params") (as null JSON)))
+  (throw (call invalid-json-rpc "\"params\" must be an array or an object") (if (not (or (is params Null) (is params (list JSON)) (is params (map String JSON))))))
+  (return-if (call JSONRPCNotification method params) (if (not (has fields "id"))))
+  (blank)
+  (let id
+    (match ([] fields "id")
+      (case (: number Int)
+        (as number JSONRPCID)
+      )
+      (case (: text String)
+        (as text JSONRPCID)
+      )
+      (throw (call invalid-json-rpc "A request \"id\" must be a string or an integer"))
+    )
+  )
+  (return (call JSONRPCRequest id method params))
+)
+
+(fn-do _ json-rpc-response JSONRPCResponse (?! JSONRPCError)
+  (param fields (map String JSON))
+  (let has-result (has fields "result"))
+  (let has-error (has fields "error"))
+  (throw (call invalid-json-rpc "A JSON-RPC message must have a \"method\", a \"result\" or an \"error\"") (if (and (not has-result) (not has-error))))
+  (throw (call invalid-json-rpc "A response must not have both \"result\" and \"error\"") (if (and has-result has-error)))
+  (blank)
+  (let id (? JSONRPCID))
+  (if (has fields "id")
+    (= id
+      (match (!! ([] fields "id"))
+        (case (: number Int)
+          (as number JSONRPCID)
+        )
+        (case (: text String)
+          (as text JSONRPCID)
+        )
+        (case Null
+          null
+        )
+        (throw (call invalid-json-rpc "A response \"id\" must be a string, an integer or null"))
+      )
+    )
+  )
+  (return-if (call JSONRPCResponse id (call .result (!! ([] fields "result")))) (if has-result))
+  (return (call JSONRPCResponse id (call .error (call json-rpc-error (!! ([] fields "error"))))))
+)
+
+(fn-expr _ json-rpc-error JSONRPCError (?! JSONRPCError)
+  (param json JSON)
+  (call JSONRPCError (as code JSONRPCErrorCode) text (?? ([] fields "data") (as null JSON)))
+  (where
+    (lazy fields
+      (match json
+        (case (: object (map String JSON))
+          object
+        )
+        (throw (call invalid-json-rpc "\"error\" must be an object"))
+      )
+    )
+    (lazy code
+      (match ([] fields "code")
+        (case (: number Int)
+          number
+        )
+        (throw (call invalid-json-rpc "\"error.code\" must be an integer"))
+      )
+    )
+    (lazy text
+      (match ([] fields "message")
+        (case (: value String)
+          value
+        )
+        (throw (call invalid-json-rpc "\"error.message\" must be a string"))
+      )
+    )
+  )
+)
+
+(fn-expr _ invalid-json-rpc JSONRPCError
+  (param text String)
+  (call JSONRPCError .invalid-request text)
+)
+
+(fn-expr _ json-rpc-id-json JSON
+  (param id (? JSONRPCID))
+  (match id
+    (case (: number Int)
+      number
+    )
+    (case (: text String)
+      text
+    )
+    (default
+      (as null JSON)
+    )
+  )
+)

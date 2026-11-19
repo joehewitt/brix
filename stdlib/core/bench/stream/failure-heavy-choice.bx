@@ -1,0 +1,54 @@
+; benchmark.meta description: Stresses choices with frequent failed alternatives.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+
+(main
+  (let rows
+    (match (call failure-heavy-choice-source)
+      (~ \failure-heavy-choice-document)
+      (throw (call Panic "failure-heavy-choice did not parse"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in row rows)
+    (+= checksum row)
+  )
+  (blank)
+  (print (str "bench-result stream/failure-heavy-choice checksum=" checksum))
+)
+
+(fn-expr + failure-heavy-choice-document _ (over: Char)
+  (~ (: rows (+ \failure-heavy-row))
+    rows
+  )
+  (where
+    (lazy failure-heavy-row Size
+      (pattern
+        (~ (seq "record:" (: name \failure-heavy-name) ":payload:" (: body (* (seq (! ":missing") .))) ":missing\n")
+          (+ (. name length) (. body length))
+        )
+        (~ (seq "record:" (: name \failure-heavy-name) ":payload:" (: body (* (seq (! ":value=") .))) ":value=" (: value \failure-heavy-digits) "\n")
+          (+ (* (. name length) 11) (. body length) (. value length))
+        )
+      )
+    )
+    (blank)
+    (lazy failure-heavy-name String
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_-"))))
+      )
+    )
+    (blank)
+    (lazy failure-heavy-digits String
+      (pattern
+        (~ (+ (chars "0-9")))
+      )
+    )
+  )
+)
+
+(fn-expr _ failure-heavy-choice-source _
+  (call (. "" join) (in (str "record:item-" each ":payload:" (* "abcdef-" 8) ":value=" (* each 19) "\n") (..< 0 120)))
+)

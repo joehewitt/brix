@@ -1,9 +1,5 @@
 # Expression unary
 
-```yumi
-!foo
-```
-
 ```brix
 (main
   (not foo)
@@ -14,10 +10,6 @@
 <UnaryExpression operator="!">
     <Id name="foo"/>
 </UnaryExpression>
-```
-
-```yumi
-!!foo
 ```
 
 ```brix
@@ -34,21 +26,6 @@
 </UnaryExpression>
 ```
 
-```yumi
-! foo
-```
-
-```output
-Exception: Syntax error
-<no file:2>
-    ! foo
-     ^
-```
-
-```yumi
--foo
-```
-
 ```brix
 (main
   (- foo)
@@ -59,20 +36,6 @@ Exception: Syntax error
 <UnaryExpression operator="-neg">
     <Id name="foo"/>
 </UnaryExpression>
-```
-
-```yumi
-- foo
-```
-
-```output
-<Argument>
-    <Id name="foo"/>
-</Argument>
-```
-
-```yumi
-<-foo
 ```
 
 ```brix
@@ -87,10 +50,6 @@ Exception: Syntax error
 </UnaryExpression>
 ```
 
-```yumi
-foo!
-```
-
 ```brix
 (main
   (!! foo)
@@ -103,10 +62,6 @@ foo!
 </UnaryExpression>
 ```
 
-```yumi
-foo?.bar
-```
-
 ```brix
 (main
   (?. foo bar)
@@ -117,15 +72,4 @@ foo?.bar
 <Get name="bar" optional="true">
     <Id name="foo"/>
 </Get>
-```
-
-```yumi
-foo??
-```
-
-```output
-Exception: Syntax error
-<no file:2>
-    foo??
-        ^
 ```

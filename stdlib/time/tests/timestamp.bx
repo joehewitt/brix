@@ -1,0 +1,49 @@
+(import /test)
+(import /time/datetime)
+(import /time/timestamp)
+(import /time/zone)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Timestamp Zone Offsets"))
+  (call (. cases run) zone-offset-tests)
+  (= cases (call (. cases then) "Timestamp Local Zone" local-zone-tests))
+  (return cases)
+)
+
+(fn-do + zone-offset-tests TestCase
+  (param t TestCase)
+  (call (. t expect) "UTC has a zero offset" "2015-09-16T01:00:00+00:00" (call iso 0))
+  (call (. t expect) "minutes east are kept" "2015-09-16T01:00:00+05:45" (call iso 20700))
+  (call (. t expect) "minutes west are kept" "2015-09-16T01:00:00-03:30" (call iso -12600))
+  (call (. t expect) "RFC 2822 offsets have no colon" "Wed, 16 Sep 2015 01:00:00 +0545" (call rfc 20700))
+  (return t)
+)
+
+(fn-do + local-zone-tests TestCase
+  (param t TestCase)
+  (let summer String (as (call wall-clock 5) ISO8601))
+  (call (. t expect) "a summer date keeps its wall clock" "2020-06-16T14:30:00" ([] summer (..< 0 19)))
+  (let winter String (as (call wall-clock 11) ISO8601))
+  (call (. t expect) "a winter date keeps its wall clock" "2020-12-16T14:30:00" ([] winter (..< 0 19)))
+  (return t)
+)
+
+(fn-expr _ wall-clock _
+  (param month Int)
+  (+ (call (. (call (. (call (. (call Year 2020) month) month) day) 16) year) 2020) 2.30pm)
+)
+
+(fn-expr _ iso _
+  (param offset Int)
+  (as (call DateTime 1442365200 (call TimeZone "Test" offset)) ISO8601)
+)
+
+(fn-expr _ rfc _
+  (param offset Int)
+  (as (call DateTime 1442365200 (call TimeZone "Test" offset)) RFC2822)
+)

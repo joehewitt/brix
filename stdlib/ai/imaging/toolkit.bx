@@ -1,0 +1,1246 @@
+(import ./sheets)
+(import /ai/access)
+(import /ai/images)
+(import /ai/media)
+(import /ai/model)
+(import /ai/tasks)
+(import /data/json)
+(import /math)
+(import /stream/aggregate)
+(import /time/duration)
+(blank)
+(prop + ai-image-default _ (= "default"))
+(prop + ai-image-unstyled _ (= "none"))
+(blank)
+(prop _ ai-image-round-limit Size (= 6))
+(prop _ ai-image-quick-limit Size (= 16))
+(prop _ ai-image-full-limit Size (= 4))
+(prop _ ai-image-key-patience Duration (= 10minutes))
+(prop _ ai-stash-note _ (= "You can't see attached images unless you call view_image with an ID. To build on one with generate_image, pass its ID in images; you don't need to view it first."))
+(prop _ ai-image-shapes _ (= (list ai-image-default "auto" "square" "landscape" "portrait")))
+(prop _ ai-image-backgrounds _ (= (list "auto" "transparent" "opaque")))
+(blank)
+(type-line _ AIEnlarged (is (tuple (: draft String) (: image AIImage) (: style (? AIImageStyle)))))
+(type-line _ AIDraftOrigin (is (tuple (: prompt String) (: direction (? String)) (: sources (list String)) (: ratio AIAspectRatio) (: backdrop (? AIImageBackground)) (: style (? AIImageStyle)))))
+
+(type + AIImageToolkit
+  (implements AIToolkit)
+  (prop + painter AIProvider)
+  (prop + images AIImageStore)
+  (prop + image-model String)
+  (prop + aspect-ratio AIAspectRatio)
+  (prop + quality AIQuality)
+  (prop + background (? AIImageBackground))
+  (prop + brief (? String))
+  (prop + levels (list AIImageLevel))
+  (prop + defaults (? AIImageDefaults))
+  (prop + access (? AIAccess))
+  (fn-do + This _
+    (param painter _)
+    (param images _)
+    (param image-model _)
+    (param aspect-ratio _ (= (. AIAspectRatio automatic)))
+    (param quality _ (= (. AIQuality automatic)))
+    (param background (? AIImageBackground) (= null))
+    (param brief (? String) (= null))
+  )
+  (fn-do + tools (list AITool)
+    (let listed (call (of List AITool)))
+    (+= listed (call ai-image-tool levels (!= defaults null)))
+    (+= listed (call ai-full-size-tool))
+    (+= listed (call ai-view-tool))
+    (return listed)
+  )
+  (fn-expr + context (? String)
+    (param request AIRequest)
+    (call note)
+  )
+  (fn-expr + prompt (list AIMessage)
+    (param messages (list AIMessage))
+    (case-each (in message messages)
+      (if-expr (== (. message role) (. AIMessageRole user)) (call ai-stashed-attachments message images) message)
+    )
+  )
+  (fn-do + run AIToolkitResult (?! Error)
+    (param request AIRequest)
+    (param call AIToolCallPart)
+    (if (== (. call tool-name) ai-view-tool-name)
+      (let id (call ai-argument (. call arguments) "image"))
+      (throw (call AIError (. AIErrorKind invalid-request) (str ai-view-tool-name " needs the ID of an image")) (if (not id)))
+      (let shown
+        (call (of Map String JSON)
+          (block
+            (:image id)
+          )
+        )
+      )
+      (return (call AIToolkitResult shown (:images (call (of List AIImage) (list (call (. images input) id))))))
+    )
+    (if (== (. call tool-name) ai-full-size-tool-name)
+      (let made (call enlarge request call))
+      (let output
+        (call (of Map String JSON)
+          (block
+            (:image (?? (call (. images id) (. made image)) ""))
+            (:replaces (. made draft))
+          )
+        )
+      )
+      (let style (. made style))
+      (if style
+        (= ([] output "style") (call ai-style-json style))
+      )
+      (return (call AIToolkitResult output (:shown (call (of List AIImage) (list (. made image))))))
+    )
+    (let drawing (call draw request call))
+    (return (call AIToolkitResult (call ai-drawing-output drawing images) (:shown (. drawing images))))
+  )
+  (fn-do + note (? String)
+    (let chosen defaults)
+    (return-if null (if (not chosen)))
+    (let parts (call (of List String)))
+    (let shape (call (. chosen default-shape)))
+    (if (and shape (== aspect-ratio (. AIAspectRatio automatic)))
+      (+= parts (str "shape " (call ai-shape-name shape)))
+    )
+    (let level (call (. chosen default-level)))
+    (if (and level levels)
+      (+= parts (str "quality " level))
+    )
+    (return-if null (if (not parts)))
+    (return (str "<image-settings>\nThe user's settings for new images: " (call (. ", " join) parts) ". Pass default for shape and quality to follow them, and another value only when the user asks for something different.\n</image-settings>"))
+  )
+  (fn-do _ draw AIDrawing (?! Error)
+    (param request AIRequest)
+    (param call AIToolCallPart)
+    (throw (call AIError (. AIErrorKind invalid-request) (str "There is no tool named " (. call tool-name))) (if (!= (. call tool-name) ai-image-tool-name)))
+    (call ai-image-unlock access)
+    (let fields
+      (match (. call arguments)
+        (case (: fields (map String JSON))
+          fields
+        )
+        (throw (call AIError (. AIErrorKind invalid-request) (str ai-image-tool-name " arguments must be an object")))
+      )
+    )
+    (let prompt
+      (match ([] fields "prompt")
+        (case (: prompt String)
+          prompt
+        )
+        (throw (call AIError (. AIErrorKind invalid-request) (str ai-image-tool-name " needs a prompt")))
+      )
+    )
+    (blank)
+    (let sources (call (of List AIImage)))
+    (let ids (call (of List String)))
+    (let listed
+      (match? ([] fields "images")
+        (case (list JSON))
+      )
+    )
+    (for (in value (?? listed (call (of List JSON))))
+      (let id
+        (match value
+          (case (: id String)
+            id
+          )
+          (throw (call AIError (. AIErrorKind invalid-request) "Image IDs must be strings"))
+        )
+      )
+      (+= sources (call (. images input) id))
+      (+= ids id)
+    )
+    (let wants-quick (call ai-image-flag ([] fields "quick")))
+    (let count (call ai-image-count ([] fields "count") wants-quick))
+    (let directions (call ai-image-directions ([] fields "directions")))
+    (let ratio
+      (scope (if-expr (!= aspect-ratio (. AIAspectRatio automatic)) aspect-ratio chosen-shape)
+        (lazy chosen-shape (call ai-chosen-shape ([] fields "shape") (> (. sources length) 0) defaults))
+      )
+    )
+    (let backdrop (?? background (call ai-image-backdrop ([] fields "background"))))
+    (let level (call ai-image-level levels ([] fields "quality") defaults))
+    (let style (call chosen-style request fields ids))
+    (let written (call ai-written-prompt prompt style brief))
+    (if (and wants-quick (> count 1))
+      (let sheet (call quick written sources count directions ratio backdrop level))
+      (= (. sheet style) style)
+      (return sheet)
+    )
+    (blank)
+    (let requests (call (of List AIRequest)))
+    (for (in index (..< 0 count))
+      (+= requests
+        (call paint-request
+          (block
+            (arg (call ai-image-direction written directions index))
+            (arg sources)
+            (arg ratio)
+            (arg backdrop)
+            (arg level)
+          )
+        )
+      )
+    )
+    (let painted (call ai-paint-all painter requests))
+    (let drawing (call AIDrawing (call (of List AIImage)) (call (of List String)) false (:style style)))
+    (for (in result painted)
+      (let image (. result image))
+      (if image
+        (+= (. drawing images) (call (. images save) image))
+        (else
+          (+= (. drawing failures) (?? (. result failure) "The image service returned no image"))
+        )
+      )
+    )
+    (throw (call AIError (. AIErrorKind invalid-response) ([] (. drawing failures) 0)) (if (not (. drawing images))))
+    (return drawing)
+  )
+  (fn-do _ enlarge AIEnlarged (?! Error)
+    (param request AIRequest)
+    (param call AIToolCallPart)
+    (call ai-image-unlock access)
+    (let draft (call ai-argument (. call arguments) "image"))
+    (throw (call AIError (. AIErrorKind invalid-request) (str ai-full-size-tool-name " needs the ID of a draft")) (if (not draft)))
+    (let origin (call ai-draft-origin (. request messages) draft))
+    (throw (call AIError (. AIErrorKind invalid-request) (str draft " is not a quick draft")) (if (not origin)))
+    (let references (call (of List AIImage)))
+    (+= references (call (. images input) draft))
+    (for (in id (. origin sources))
+      (+= references (call (. images input) id))
+    )
+    (let written (call ai-written-prompt (. origin prompt) (. origin style) brief))
+    (let ratio (if-expr (!= aspect-ratio (. AIAspectRatio automatic)) aspect-ratio (. origin ratio)))
+    (let level (call ai-image-level levels null defaults))
+    (let made
+      (call ai-paint
+        (block
+          (arg painter)
+          (arg
+            (call paint-request
+              (block
+                (arg (call ai-full-size-prompt written (. origin direction) (> (. origin sources length) 0)))
+                (arg references)
+                (arg ratio)
+                (arg (?? background (. origin backdrop)))
+                (arg level)
+              )
+            )
+          )
+        )
+      )
+    )
+    (return (call AIEnlarged draft (call (. images save) made) (. origin style)))
+  )
+  (fn-do _ quick AIDrawing (?! Error)
+    (param prompt String)
+    (param sources (list AIImage))
+    (param count Size)
+    (param directions (list String))
+    (param ratio AIAspectRatio)
+    (param backdrop (? AIImageBackground))
+    (param level (? AIImageLevel))
+    (let is-clear (== backdrop (. AIImageBackground transparent)))
+    (let sheet (call ai-sheet count (call ai-shape-aspect ratio)))
+    (let references (call (of List AIImage)))
+    (+= references (call ai-sheet-template sheet (:is-clear is-clear)))
+    (++= references sources)
+    (let request
+      (call paint-request
+        (block
+          (arg (call ai-variations-prompt sheet prompt directions (> (. sources length) 0) is-clear))
+          (arg references)
+          (arg (. sheet aspect-ratio))
+          (arg (if-expr is-clear (. AIImageBackground transparent) (. AIImageBackground opaque)))
+          (arg level)
+        )
+      )
+    )
+    (let painted (use (call ai-decode-painted (call ai-paint painter request))))
+    (let drawing
+      (call AIDrawing
+        (block
+          (arg (call (of List AIImage)))
+          (arg (call (of List String)))
+          (arg true)
+          (arg (if-expr (== ratio (. AIAspectRatio automatic)) (. AIAspectRatio square) ratio))
+        )
+      )
+    )
+    (for (in slice (call ai-sheet-slices sheet painted is-clear))
+      (+= (. drawing images) (call (. images save) slice))
+    )
+    (return drawing)
+  )
+  (fn-do _ paint-request AIRequest
+    (param prompt String)
+    (param references (list AIImage))
+    (param ratio AIAspectRatio)
+    (param backdrop (? AIImageBackground))
+    (param level (? AIImageLevel))
+    (let options (call AIImageOptions))
+    (= (. options prompt) prompt)
+    (= (. options aspect-ratio) ratio)
+    (= (. options quality) (?? (?. level quality) quality))
+    (= (. options background) backdrop)
+    (++= (. options reference-images) references)
+    (let request (call AIRequest (?? (?. level model) image-model)))
+    (= (. request image-output) options)
+    (return request)
+  )
+  (fn-do _ chosen-style (? AIImageStyle) (?! AIError)
+    (param request AIRequest)
+    (param fields (map String JSON))
+    (param sources (list String))
+    (let chosen defaults)
+    (return-if null (if (not chosen)))
+    (let named (call ai-image-text ([] fields "style")))
+    (return-if (call (. chosen default-style) request sources) (if (or (not (. named length)) (== named ai-image-default))))
+    (return-if null (if (== named ai-image-unstyled)))
+    (let saved (call (. chosen saved-style) named))
+    (return-if saved (if saved))
+    (let look (call ai-image-text ([] fields "style_description")))
+    (throw (call AIError (. AIErrorKind invalid-request) (str "There is no saved style with ID " named ". For a look that isn't saved, give its name in style and describe it in style_description.")) (if (not (. look length))))
+    (return (call AIImageStyle named look))
+  )
+)
+
+(type + AIImagingProvider (is AIProvider)
+  (prop + chat AIProvider)
+  (prop + kit (? AIImageToolkit))
+  (prop + toolkits _ (= (call (of List AIToolkit))))
+  (fn-do + This _
+    (param chat _)
+    (param kit _)
+    (call super)
+  )
+  (fn-do + stream (stream AIEvent)
+    (param request AIRequest)
+    (let drawing kit)
+    (let said (call (of List AIMessagePart)))
+    (let round Size 0)
+    (while true
+      (+= round 1)
+      (let history (call (of List AIMessage) (. request messages)))
+      (+= history (call AIMessage (. AIMessageRole assistant) said))
+      (let transcript (if-expr drawing (call ai-image-transcript history (. drawing images)) history))
+      (for (in each toolkits)
+        (= transcript (call (. each prompt) transcript))
+      )
+      (let noted (call (?. drawing note)))
+      (let told (call ai-toolkits-context toolkits request))
+      (let context (if-expr (and noted told) (str noted "\n\n" told) (?? noted told)))
+      (let turn (call AIRequest (. request model) (call ai-toolkit-messages transcript context)))
+      (if drawing
+        (++= (. turn tools) (call (. drawing tools)))
+      )
+      (for (in each toolkits)
+        (++= (. turn tools) (call (. each tools)))
+      )
+      (if (>= round ai-image-round-limit)
+        (= (. turn tool-choice) (. AIToolChoice none))
+      )
+      (blank)
+      (let done (? AIDoneEvent))
+      (let calls (call (of List AIToolCallPart)))
+      (for (in event (call (. chat stream) turn))
+        (if (= (| (: finished AIDoneEvent)) event)
+          (= done finished)
+          (else
+            (if (= (| (: ended AIPartEndEvent)) event)
+              (+= said (. ended part))
+              (if (= (| (: call AIToolCallPart)) (. ended part))
+                (+= calls call)
+              )
+            )
+            (yield event)
+          )
+        )
+      )
+      (blank)
+      (throw (call AIError (. AIErrorKind invalid-response) "The chat stream ended without a done event") (if (not done)))
+      (if (not calls)
+        (yield done)
+        (return)
+      )
+      (blank)
+      (for (in call calls)
+        (for (in event (call answer request call))
+          (+= said (. event part))
+          (yield event)
+        )
+      )
+    )
+  )
+  (fn-do _ answer (stream AIPartEndEvent)
+    (param request AIRequest)
+    (param call AIToolCallPart)
+    (let drawing kit)
+    (let owner (?? (call ai-toolkit-for toolkits (. call tool-name)) (only-if (call ai-toolkit-for (call (of List AIToolkit) (list drawing)) (. call tool-name)) (if drawing))))
+    (if (not owner)
+      (yield (call AIPartEndEvent (call ai-toolkit-failure call (str "There is no tool named " (. call tool-name)))))
+      (return)
+    )
+    (let ran (catch (call (. owner run) request call)))
+    (throw (call AIError (. AIErrorKind cancellation) "The tool call was canceled") (if (. (call Task) is-canceled)))
+    (if (= (| (: failure Error)) ran)
+      (yield (call AIPartEndEvent (call ai-toolkit-failure call (. failure message))))
+      (return)
+    )
+    (yield-all (call ai-toolkit-parts call (as ran AIToolkitResult)))
+  )
+)
+
+(type + AIImageLevel (is Tuple)
+  (prop + name String)
+  (prop + model String)
+  (prop + quality AIQuality)
+)
+
+(type + AIImageStyle (is Tuple)
+  (prop + name String)
+  (prop + prompt String)
+  (prop + id (? String) (= null))
+)
+
+(type + AIImageDefaults (is Interface)
+  (fn-do + default-shape (? AIAspectRatio))
+  (fn-do + default-level (? String))
+  (fn-do + default-style (? AIImageStyle)
+    (param request AIRequest)
+    (param sources (list String))
+  )
+  (fn-do + saved-style (? AIImageStyle)
+    (param id String)
+  )
+)
+
+(type + AIDrawing
+  (prop + images (list AIImage))
+  (prop + failures (list String))
+  (prop + is-quick Bool)
+  (prop + shape AIAspectRatio)
+  (prop + style (? AIImageStyle))
+  (fn-do + This _
+    (param images _)
+    (param failures _)
+    (param is-quick _)
+    (param shape _ (= (. AIAspectRatio automatic)))
+    (param style _ (= null))
+  )
+)
+
+(fn-do + ai-image-unlock _ (?! AIError)
+  (param access (? AIAccess))
+  (let needed access)
+  (return-if (if (or (not needed) (. needed is-granted))))
+  (throw (call AIError (. AIErrorKind cancellation) (str "No image was made, because the user did not provide an " (. needed name) " API key.")) (if (not (call (. needed ask) (str "Generating images needs an " (. needed name) " API key.") ai-image-key-patience))))
+)
+
+(fn-expr + ai-image-level (? AIImageLevel)
+  (param levels (list AIImageLevel))
+  (param value (? JSON))
+  (param defaults (? AIImageDefaults))
+  (case? (not levels)
+    null
+  )
+  (default
+    (?? (call ai-named-level levels asked) (call ai-named-level levels (call (?. defaults default-level))) ([] levels 0))
+  )
+  (where
+    (lazy asked
+      (match? value
+        (case (: text String)
+          text
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + ai-shape-name String
+  (param shape AIAspectRatio)
+  (match shape
+    (case (. AIAspectRatio square)
+      "square"
+    )
+    (case (. AIAspectRatio landscape)
+      "landscape"
+    )
+    (case (. AIAspectRatio portrait)
+      "portrait"
+    )
+    (case (. AIAspectRatio automatic)
+      "auto"
+    )
+  )
+)
+
+(fn-do + ai-image-tool AITool
+  (param levels (list AIImageLevel) (= (call (of List AIImageLevel))))
+  (param has-styles _ (= false))
+  (let properties (call ai-image-properties))
+  (let required (call ai-image-required))
+  (if levels
+    (= ([] properties "quality") (call ai-image-quality-schema levels))
+    (+= required "quality")
+  )
+  (if has-styles
+    (= ([] properties "style")
+      (call (of Map String JSON)
+        (block
+          (:type "string")
+          (:description (str "The look of these images, which the app adds to prompt and remembers with them. " ai-image-default " follows the app: the style the user attached to their message, or else the style of the images you change. " ai-image-unstyled " draws them with no style. Otherwise pass the ID of a saved style, or a short name for a look the user asks for that isn't saved, described in style_description."))
+        )
+      )
+    )
+    (= ([] properties "style_description")
+      (call (of Map String JSON)
+        (block
+          (:type (call (of List JSON) (in each (list "string" "null"))))
+          (:description "When style names a look that isn't saved, the look alone in one to three sentences: medium, technique, palette, lighting, texture, line, and mood. Otherwise null.")
+        )
+      )
+    )
+    (+= required "style")
+    (+= required "style_description")
+  )
+  (let parameters
+    (call (of Map String JSON)
+      (block
+        (:type "object")
+        (:properties properties)
+        (:required required)
+        (entry "additionalProperties" false)
+      )
+    )
+  )
+  (return (call AITool ai-image-tool-name (call ai-image-tool-description) parameters))
+)
+
+(fn-expr + ai-image-quality-schema JSON
+  (param levels (list AIImageLevel))
+  (call (of Map String JSON)
+    (block
+      (:type "string")
+      (:enum names)
+      (:description "How much care, time, and cost go into the images, from the cheapest to the best. default follows the user's setting; use another value only when the user asks for a different quality.")
+    )
+  )
+  (where
+    (lazy names (call (of List JSON) (in each (++ (list ai-image-default) (call (of List String) (in (. each name) levels))))))
+  )
+)
+
+(fn-expr + ai-reply-schema JSON
+  (call (of Map String JSON)
+    (block
+      (:type "string")
+      (:description "A short, natural sentence to the user about what you are making, as a collaborator would say it. The user sees it while they wait.")
+    )
+  )
+)
+
+(fn-expr + ai-full-size-tool _
+  (call AITool ai-full-size-tool-name description parameters)
+  (where
+    (lazy description
+      (paragraph
+        "Redraws a quick draft from generate_image at full size and full detail, from the draft and the prompt it was made with. The full-size image replaces the draft in its stack. It takes a while, so the user sees reply while they wait."
+      )
+    )
+    (lazy parameters
+      (call (of Map String JSON)
+        (block
+          (:type "object")
+          (:properties
+            (call (of Map String JSON)
+              (block
+                (:reply (call ai-reply-schema))
+                (:image
+                  (call (of Map String JSON)
+                    (block
+                      (:type "string")
+                      (:description "The ID of the quick draft to make full size")
+                    )
+                  )
+                )
+              )
+            )
+          )
+          (:required (call (of List JSON) (in each (list ai-reply-argument "image"))))
+          (entry "additionalProperties" false)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + ai-view-tool AITool
+  (call AITool ai-view-tool-name description parameters)
+  (where
+    (lazy description "Shows you an image by its ID, such as one the user attached or one generate_image made. You don't need to see an image to pass its ID to generate_image.")
+    (lazy parameters
+      (call (of Map String JSON)
+        (block
+          (:type "object")
+          (:properties
+            (call (of Map String JSON)
+              (block
+                (:image
+                  (call (of Map String JSON)
+                    (block
+                      (:type "string")
+                      (:description "The ID of the image to look at")
+                    )
+                  )
+                )
+              )
+            )
+          )
+          (:required (call (of List JSON) (list (as "image" JSON))))
+          (entry "additionalProperties" false)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + ai-full-size-prompt _
+  (param prompt String)
+  (param direction (? String))
+  (param has-sources Bool)
+  (paragraph
+    (str "The first image is a small, rough draft. Redraw it as a finished, full-size image with full detail, keeping its subject, composition, colors, and style." sources)
+    (blank)
+    "The draft was made from this prompt:"
+    (str prompt note)
+  )
+  (where
+    (lazy sources (if-expr has-sources " The other images are the images the draft was made from." ""))
+    (lazy note (if-expr direction (str "\n\nThis variation: " direction) ""))
+  )
+)
+
+(fn-do + ai-draft-origin (? AIDraftOrigin)
+  (param messages (list AIMessage))
+  (param id String)
+  (let calls (call (of Map String AIToolCallPart)))
+  (for (in message messages)
+    (for (in part (. message parts))
+      (if (= (| (: call AIToolCallPart)) part)
+        (= ([] calls (. call call-id)) call)
+        (else-if (= (| (: result AIToolResultPart)) part)
+          (let index (call ai-draft-index (. result output) id))
+          (let call ([] calls (. result call-id)))
+          (if (and (!= index null) call)
+            (return (call ai-draft-call-origin call index (. result output)))
+          )
+        )
+      )
+    )
+  )
+  (return null)
+)
+
+(fn-expr + ai-variations-prompt _
+  (param sheet AISheet)
+  (param prompt String)
+  (param directions (list String))
+  (param has-sources Bool)
+  (param is-clear Bool)
+  (paragraph
+    (str "The first image is a blank sheet with a " grid " of cells outlined by light blue guides. Draw a separate picture inside each of the " count " outlined cells, " fill ", so the sheet holds " count " variations of this:")
+    (blank)
+    (str prompt)
+    (str sources cells)
+    (str "Make each variation clearly different from the others. Keep the light blue guides where they are, " between ", and draw nothing outside the cells. Draw no text, labels, or numbers unless a picture itself calls for them.")
+  )
+  (where
+    (lazy grid (. sheet grid-name))
+    (lazy count (. sheet count))
+    (lazy fill (if-expr is-clear "each centered in its cell with a clear margin inside the guides, on a fully transparent background" "filling each cell edge to edge"))
+    (lazy between (if-expr is-clear "leave everything around the pictures fully transparent, with no white or tinted fill, haze, glow, or shadow behind them" "keep the space between the cells plain white"))
+    (lazy sources (if-expr has-sources "\nThe other images are the images to work from.\n" ""))
+    (lazy cells (if-expr directions (str "\nHow each cell differs:\n" (call (. "\n" join) (in (call ai-variation-line sheet directions each) (..< 0 (call min (. directions length) (. sheet count))))) "\n") ""))
+  )
+)
+
+(fn-expr + ai-output-style (? AIImageStyle)
+  (param output JSON)
+  (case? (not fields)
+    null
+  )
+  (case? (not style)
+    null
+  )
+  (case? (or (not (. name length)) (not (. description length)))
+    null
+  )
+  (default
+    (call AIImageStyle name description (only-if id (if (. id length))))
+  )
+  (where
+    (lazy fields
+      (match? output
+        (case (map String JSON))
+      )
+    )
+    (lazy style
+      (match? ([] fields "style")
+        (case (map String JSON))
+      )
+    )
+    (lazy name (call ai-image-text ([] style "name")))
+    (lazy description (call ai-image-text ([] style "description")))
+    (lazy id (call ai-image-text ([] style "id")))
+  )
+)
+
+(fn-do + ai-recorded-style (? AIImageStyle)
+  (param messages (list AIMessage))
+  (param id String)
+  (for (in message messages)
+    (for (in part (. message parts))
+      (if (= (| (: result AIToolResultPart)) part)
+        (if (call ai-output-has-image (. result output) id)
+          (return (call ai-output-style (. result output)))
+        )
+      )
+    )
+  )
+  (return null)
+)
+
+(fn-expr + ai-image-prompt (? String)
+  (param call (? AIToolCallPart))
+  (param index Index)
+  (case? (or (not call) (!= (. call tool-name) ai-image-tool-name))
+    null
+  )
+  (case? (not fields)
+    null
+  )
+  (case? (not prompt)
+    null
+  )
+  (default
+    (call ai-image-direction prompt (call ai-image-directions ([] fields "directions")) index)
+  )
+  (where
+    (lazy fields
+      (match? (. call arguments)
+        (case (map String JSON))
+      )
+    )
+    (lazy prompt
+      (match? ([] fields "prompt")
+        (case String)
+      )
+    )
+  )
+)
+
+(fn-expr _ ai-written-prompt String
+  (param prompt String)
+  (param style (? AIImageStyle))
+  (param brief (? String))
+  (str prompt styled briefed)
+  (where
+    (lazy styled (if-expr style (str "\n\nStyle: " (. style prompt)) ""))
+    (lazy briefed (if-expr brief (str "\n\n" brief) ""))
+  )
+)
+
+(fn-do _ ai-named-level (? AIImageLevel)
+  (param levels (list AIImageLevel))
+  (param name (? String))
+  (return-if null (if (not name)))
+  (for (in level levels)
+    (return-if level (if (== (. level name) name)))
+  )
+  (return null)
+)
+
+(fn-expr _ ai-chosen-shape AIAspectRatio
+  (param value (? JSON))
+  (param is-edit Bool)
+  (param defaults (? AIImageDefaults))
+  (case? (and named (!= named ai-image-default))
+    (call ai-image-shape value)
+  )
+  (case? is-edit
+    (. AIAspectRatio automatic)
+  )
+  (default
+    (?? (call (?. defaults default-shape)) (. AIAspectRatio automatic))
+  )
+  (where
+    (lazy named
+      (match? value
+        (case (: text String)
+          text
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ ai-image-tool-description _
+  (paragraph
+    "Creates images and shows them to the user. You cannot see the images it creates. Each result gives the new images' IDs, and images the user attaches are listed with their IDs instead of shown to you. To change an earlier or attached image or build on it, pass its ID in images and describe the change in prompt. Set count above 1 to offer the user variations to choose from. Making images takes a while, so the user sees reply while they wait."
+  )
+)
+
+(fn-expr _ ai-image-properties (map String JSON)
+  (call (of Map String JSON)
+    (block
+      (:reply (call ai-reply-schema))
+      (:prompt
+        (call (of Map String JSON)
+          (block
+            (:type "string")
+            (:description "What the image should show, or how to change the given images")
+          )
+        )
+      )
+      (:images
+        (call (of Map String JSON)
+          (block
+            (:type "array")
+            (:items
+              (call (of Map String JSON)
+                (block
+                  (:type "string")
+                )
+              )
+            )
+            (:description "IDs of earlier or attached images to edit or draw from, or an empty list")
+          )
+        )
+      )
+      (:count
+        (call (of Map String JSON)
+          (block
+            (:type "integer")
+            (:description (str "How many variations to make, or 1 for a single image. Up to " ai-image-quick-limit " when quick, else up to " ai-image-full-limit "."))
+          )
+        )
+      )
+      (:quick
+        (call (of Map String JSON)
+          (block
+            (:type "boolean")
+            (:description "Draw every variation as a small draft on one sheet in a single request: much cheaper and faster, at lower resolution. The user can ask for any draft at full size later. Use it for many variations or rough options to choose from; leave it false for a few finished images.")
+          )
+        )
+      )
+      (:directions
+        (call (of Map String JSON)
+          (block
+            (:type "array")
+            (:items
+              (call (of Map String JSON)
+                (block
+                  (:type "string")
+                )
+              )
+            )
+            (:description "One short note per variation on how it differs, such as “at dusk” or “seen from above”, or an empty list to let them vary freely")
+          )
+        )
+      )
+      (:shape
+        (call (of Map String JSON)
+          (block
+            (:type "string")
+            (:enum (call (of List JSON) (in each ai-image-shapes)))
+            (:description "The image's shape. default follows the user's setting for new images and keeps the shape of images you change; use another value only when the user asks for one. auto lets the image model decide.")
+          )
+        )
+      )
+      (:background
+        (call (of Map String JSON)
+          (block
+            (:type "string")
+            (:enum (call (of List JSON) (in each ai-image-backgrounds)))
+            (:description "transparent for artwork meant to sit on other things, such as logos, icons, stickers, and cutouts, and when changing a transparent image; opaque for a full scene; auto lets the image model decide. Only transparent makes a real transparent background; asking for one in prompt alone gets a painted checkerboard.")
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ ai-image-required (list JSON)
+  (item ai-reply-argument)
+  (item "prompt")
+  (item "images")
+  (item "count")
+  (item "quick")
+  (item "directions")
+  (item "shape")
+  (item "background")
+)
+
+(fn-do _ ai-draft-index (? Index)
+  (param output JSON)
+  (param id String)
+  (let fields
+    (match? output
+      (case (map String JSON))
+    )
+  )
+  (return-if null (if (or (not fields) (not (call ai-image-flag ([] fields "quick"))))))
+  (let listed
+    (match? ([] fields "images")
+      (case (list JSON))
+    )
+  )
+  (let found (?? listed (call (of List JSON))))
+  (for (in index (..< 0 (. found length)))
+    (if (= (| (: each String)) ([] found index))
+      (return-if index (if (== each id)))
+    )
+  )
+  (return null)
+)
+
+(fn-do _ ai-draft-call-origin (? AIDraftOrigin)
+  (param call AIToolCallPart)
+  (param index Index)
+  (param output JSON)
+  (let fields
+    (match? (. call arguments)
+      (case (map String JSON))
+    )
+  )
+  (return-if null (if (not fields)))
+  (let prompt
+    (match? ([] fields "prompt")
+      (case String)
+    )
+  )
+  (return-if null (if (not prompt)))
+  (let directions (call ai-image-directions ([] fields "directions")))
+  (let sources (call (of List String)))
+  (let listed
+    (match? ([] fields "images")
+      (case (list JSON))
+    )
+  )
+  (for (in value (?? listed (call (of List JSON))))
+    (if (= (| (: source String)) value)
+      (+= sources source)
+    )
+  )
+  (let made
+    (match? output
+      (case (map String JSON))
+    )
+  )
+  (let shape (call ai-image-shape (?? (?[] made "shape") ([] fields "shape"))))
+  (return
+    (call AIDraftOrigin
+      (block
+        (arg prompt)
+        (arg (only-if ([] directions index) (if (< index (. directions length)))))
+        (arg sources)
+        (arg (if-expr (== shape (. AIAspectRatio automatic)) (. AIAspectRatio square) shape))
+        (arg (call ai-image-backdrop ([] fields "background")))
+        (arg (call ai-output-style output))
+      )
+    )
+  )
+)
+
+(fn-expr _ ai-variation-line String
+  (param sheet AISheet)
+  (param directions (list String))
+  (param index Index)
+  (str "- " (call (. sheet cell-name) index) ": " ([] directions index))
+)
+
+(fn-expr _ ai-image-direction String
+  (param prompt String)
+  (param directions (list String))
+  (param index Index)
+  (if-expr (< index (. directions length)) (str prompt "\n\nThis variation: " ([] directions index)) prompt)
+)
+
+(fn-do _ ai-drawing-output JSON
+  (param drawing AIDrawing)
+  (param images AIImageStore)
+  (let ids (call (of List JSON) (in (?? (call (. images id) each) "") (. drawing images))))
+  (let output (call (of Map String JSON)))
+  (if (and (== (. ids length) 1) (not (. drawing failures)))
+    (= ([] output "image") ([] ids 0))
+    (else
+      (= ([] output "images") ids)
+      (= ([] output "quick") (. drawing is-quick))
+      (if (. drawing is-quick)
+        (= ([] output "shape") (call ai-shape-name (. drawing shape)))
+      )
+      (if (. drawing failures)
+        (= ([] output "failed") ([] (. drawing failures) 0))
+      )
+    )
+  )
+  (let style (. drawing style))
+  (if style
+    (= ([] output "style") (call ai-style-json style))
+  )
+  (return output)
+)
+
+(fn-expr _ ai-style-json JSON
+  (param style AIImageStyle)
+  (call (of Map String JSON)
+    (block
+      (:name (. style name))
+      (:description (. style prompt))
+      (:id? (. style id))
+    )
+  )
+)
+
+(fn-do _ ai-output-has-image Bool
+  (param output JSON)
+  (param id String)
+  (let fields
+    (match? output
+      (case (map String JSON))
+    )
+  )
+  (return-if false (if (not fields)))
+  (return-if true (if (== (call ai-image-text ([] fields "image")) id)))
+  (let listed
+    (match? ([] fields "images")
+      (case (list JSON))
+    )
+  )
+  (return (call some (?? listed (call (of List JSON))) (:where (== (call ai-image-text each) id))))
+)
+
+(fn-expr _ ai-image-text String
+  (param value (? JSON))
+  (match value
+    (case (: text String)
+      (call (. text trim))
+    )
+    (default
+      ""
+    )
+  )
+)
+
+(fn-expr _ ai-image-count Size
+  (param value (? JSON))
+  (param is-quick Bool)
+  (if-expr (or (== wanted null) (< wanted 1)) 1 (call min (as wanted Size) limit))
+  (where
+    (lazy limit (if-expr is-quick ai-image-quick-limit ai-image-full-limit))
+    (lazy wanted
+      (match? value
+        (case (: whole Int)
+          (as whole F64)
+        )
+        (case (: fraction Float)
+          (as fraction F64)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ ai-image-flag Bool
+  (param value (? JSON))
+  (match value
+    (case (: flag Bool)
+      flag
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-do _ ai-image-directions (list String)
+  (param value (? JSON))
+  (let directions (call (of List String)))
+  (let listed
+    (match? value
+      (case (list JSON))
+    )
+  )
+  (for (in item (?? listed (call (of List JSON))))
+    (if (= (| (: note String)) item)
+      (if (. (call (. note trim)) length)
+        (+= directions (call (. note trim)))
+      )
+    )
+  )
+  (return directions)
+)
+
+(fn-expr _ ai-image-backdrop (? AIImageBackground)
+  (param value (? JSON))
+  (match? name
+    (case= "transparent"
+      (. AIImageBackground transparent)
+    )
+    (case= "opaque"
+      (. AIImageBackground opaque)
+    )
+  )
+  (where
+    (lazy name
+      (match? value
+        (case (: text String)
+          text
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ ai-image-shape AIAspectRatio
+  (param value (? JSON))
+  (match name
+    (case= "square"
+      (. AIAspectRatio square)
+    )
+    (case= "landscape"
+      (. AIAspectRatio landscape)
+    )
+    (case= "portrait"
+      (. AIAspectRatio portrait)
+    )
+    (default
+      (. AIAspectRatio automatic)
+    )
+  )
+  (where
+    (lazy name
+      (match? value
+        (case (: text String)
+          text
+        )
+      )
+    )
+  )
+)
+
+(fn-do _ ai-image-transcript (list AIMessage)
+  (param messages (list AIMessage))
+  (param images AIImageStore)
+  (let transcript (call (of List AIMessage)))
+  (for (in message messages)
+    (if (== (. message role) (. AIMessageRole assistant))
+      (call ai-split-image-reply transcript (. message parts) images)
+      (else-if (== (. message role) (. AIMessageRole user))
+        (+= transcript (call ai-stashed-attachments message images))
+      )
+      (else
+        (+= transcript message)
+      )
+    )
+  )
+  (return transcript)
+)
+
+(fn-do _ ai-stashed-attachments AIMessage
+  (param message AIMessage)
+  (param images AIImageStore)
+  (let ids (call (of List String)))
+  (let parts (call (of List AIMessagePart)))
+  (let is-pruned false)
+  (for (in part (. message parts))
+    (if (= (| (: attached AIImagePart)) part)
+      (let id (call (. images id) (. attached image)))
+      (if (call (. images is-gone) (. attached image))
+        (= is-pruned true)
+        (else-if id
+          (+= ids id)
+        )
+        (else
+          (+= parts part)
+        )
+      )
+      (else
+        (+= parts part)
+      )
+    )
+  )
+  (return-if message (if (and (not (. ids length)) (not is-pruned))))
+  (if (. ids length)
+    (+= parts
+      (call AITextPart
+        (block
+          (arg "attached-image-ids")
+          (arg (str "\n\nAttached image IDs: " (call (. ", " join) ids) ". " ai-stash-note))
+        )
+      )
+    )
+  )
+  (if is-pruned
+    (+= parts (call AITextPart "deleted-images" "\n\nAn image attached here has since been deleted."))
+  )
+  (return (call AIMessage (. message role) parts (. message name)))
+)
+
+(fn-do _ ai-split-image-reply _
+  (param transcript (list AIMessage))
+  (param parts (list AIMessagePart))
+  (param images AIImageStore)
+  (let said (call (of List AIMessagePart)))
+  (let seen (call (of List AIMessagePart)))
+  (for (in part parts)
+    (if (= (| (: result AIToolResultPart)) part)
+      (if said
+        (call ai-show-tool-images transcript seen)
+        (+= transcript (call AIMessage (. AIMessageRole assistant) said))
+        (= said (call (of List AIMessagePart)))
+      )
+      (let answered (call (of List AIMessagePart)))
+      (+= answered result)
+      (+= transcript (call AIMessage (. AIMessageRole tool) answered))
+      (for (in index (..< 0 (. result images length)))
+        (let image ([] (. result images) index))
+        (if (not (call (. images is-gone) image))
+          (+= seen (call AIImagePart (str (. result id) ":image-" index) (call (. images located) image)))
+        )
+      )
+      (else-if (= (| (: call AIToolCallPart)) part)
+        (if (call ai-has-tool-result parts (. call call-id))
+          (+= said call)
+        )
+      )
+      (else-if (is-not part AIImagePart)
+        (+= said part)
+      )
+    )
+  )
+  (call ai-show-tool-images transcript seen)
+  (if said
+    (+= transcript (call AIMessage (. AIMessageRole assistant) said))
+  )
+)
+
+(fn-do _ ai-show-tool-images _
+  (param transcript (list AIMessage))
+  (param seen (list AIMessagePart))
+  (return-if (if (not seen)))
+  (let parts (call (of List AIMessagePart)))
+  (+= parts (call AITextPart "tool-images" "Images returned by the tools above:"))
+  (++= parts seen)
+  (+= transcript (call AIMessage (. AIMessageRole user) parts))
+  (call (. seen clear))
+)
+
+(fn-expr _ ai-has-tool-result _
+  (param parts (list AIMessagePart))
+  (param call-id String)
+  (call some parts (:where (and (is each AIToolResultPart) (== (. (as each AIToolResultPart) call-id) call-id))))
+)

@@ -1,0 +1,1139 @@
+(import /ai/media)
+(import /ai/model)
+(import /ai/tool-tasks)
+(import /data/json)
+(import /os/file)
+(import /os/path)
+(blank)
+(prop + claude-provider-id _ (= "claude-code"))
+(prop _ claude-session-part _ (= "session"))
+
+(type + ClaudePoint (is Tuple)
+  (prop + session String)
+  (prop + entry (? String) (= null))
+)
+
+(type + ClaudeMark (is Tuple)
+  (prop + point ClaudePoint)
+  (prop + parent (? ClaudePoint) (= null))
+  (prop + basis (? String) (= null))
+  (prop + message (? String) (= null))
+  (prop + blocks Size (= 0))
+)
+
+(type + ClaudeResume (is Tuple)
+  (prop + point (? ClaudePoint) (= null))
+  (prop + forks _ (= false))
+  (prop + merges (? (list ClaudeMark)) (= null))
+)
+
+(type + ClaudeDecoder
+  (prop + permission-mode (? String))
+  (prop + parent (? ClaudePoint))
+  (prop + basis (? String))
+  (prop + session-id (? String))
+  (blank)
+  (prop _ message-id _ (= ""))
+  (prop _ begun Size)
+  (prop _ streaming (? Size))
+  (prop _ completed-id _ (= ""))
+  (prop _ completed Size)
+  (prop _ failure (? AIErrorKind))
+  (prop _ model _ (= ""))
+  (prop _ entry (? String))
+  (prop _ compactions Size)
+  (prop _ shows-updates _ (= false))
+  (fn-do + decode (stream AIEvent) (?! AIError)
+    (param line JSON)
+    (let root (call json-object line))
+    (return-if (if (or (not root) (call json-string ([] root "parent_tool_use_id")))))
+    (blank)
+    (match? root
+      (case (list (= "type" "stream_event") (= "event" (: event (map String JSON))))
+        (yield-all (call decode-stream event (call json-string ([] root "thinking_display"))))
+      )
+      (case (list (= "type" "assistant") (= "error" (: error String)))
+        (= failure (call claude-error-kind error))
+      )
+      (case (list (= "type" "assistant") (= "message" (: message (map String JSON))))
+        (yield-all (call decode-message message))
+        (yield-all (call decode-entry root))
+      )
+      (case (list (= "type" "user") (= "message" (map "content" (: blocks (list JSON)))))
+        (yield-all (call decode-results blocks))
+        (yield-all (call decode-entry root))
+      )
+      (case (list (= "type" "system") (= "subtype" "init") (= "session_id" (: id String)) (= "model" (: model String)))
+        (call check-permission-mode model (call json-string ([] root "permissionMode")))
+        (yield-all (call decode-session id model))
+      )
+      (case (list (= "type" "system") (= "subtype" "compact_boundary"))
+        (yield-all (call decode-compaction root))
+      )
+      (case (map "type" "result")
+        (yield-all (call decode-structured root))
+        (yield (call decode-result root))
+      )
+    )
+  )
+  (fn-do + resume-turn _
+    (= parent null)
+    (= basis null)
+  )
+  (fn-do + resume-mark _
+    (param part AIMessagePart)
+    (let mark (call claude-part-mark part))
+    (return-if (if (not mark)))
+    (let fields (call json-object (. (as part AIExtensionPart) data)))
+    (= session-id (. mark point session))
+    (= entry (. mark point entry))
+    (= parent (. mark parent))
+    (= basis (. mark basis))
+    (= model (?? (call json-string (?[] fields "model")) ""))
+    (= completed-id (?? (. mark message) ""))
+    (= completed (. mark blocks))
+  )
+  (fn-do _ check-permission-mode _ (?! AIError)
+    (param model String)
+    (param granted (? String))
+    (let wanted permission-mode)
+    (return-if (if (or (== wanted null) (== granted null) (== wanted granted))))
+    (let reason (str "Claude Code would not use permission mode \"" wanted "\" with " model))
+    (throw (call AIError (. AIErrorKind invalid-request) (str reason "; it started in \"" granted "\"")))
+  )
+  (fn-do _ decode-session (stream AIEvent)
+    (param id String)
+    (param model String)
+    (return-if (if session-id))
+    (= session-id id)
+    (= (. this model) model)
+    (let part (call session-part id))
+    (yield (call AIPartBeginEvent part))
+    (yield (call AIPartEndEvent part))
+  )
+  (fn-do _ decode-entry (stream AIEvent)
+    (param root (map String JSON))
+    (let uuid (call json-string ([] root "uuid")))
+    (let id session-id)
+    (return-if (if (or (not uuid) (not id))))
+    (= entry uuid)
+    (yield (call AIPartEndEvent (call session-part id)))
+  )
+  (fn-do _ decode-compaction (stream AIEvent)
+    (param root (map String JSON))
+    (+= compactions 1)
+    (let id (str ai-compaction-part ":" compactions))
+    (let part
+      (call AIExtensionPart
+        (block
+          (arg id)
+          (arg claude-provider-id)
+          (arg ai-compaction-part)
+          (arg (?? ([] root "compact_metadata") (as null JSON)))
+        )
+      )
+    )
+    (yield (call AIPartBeginEvent part))
+    (yield (call AIPartEndEvent part))
+  )
+  (fn-expr _ session-part _
+    (param id String)
+    (call AIExtensionPart claude-session-part claude-provider-id claude-session-part data)
+    (where
+      (lazy data
+        (call claude-mark-data
+          (block
+            (arg
+              (call ClaudeMark
+                (block
+                  (arg (call ClaudePoint id entry))
+                  (arg parent)
+                  (arg basis)
+                  (arg (only-if completed-id (if (. completed-id length))))
+                  (arg completed)
+                )
+              )
+            )
+            (arg model)
+          )
+        )
+      )
+    )
+  )
+  (fn-do _ decode-stream (stream AIEvent)
+    (param event (map String JSON))
+    (param display (? String))
+    (match? event
+      (case (list (= "type" "message_start") (= "message" (map "id" (: id String))))
+        (= message-id id)
+        (= shows-updates (== display "updates"))
+        (= begun 0)
+        (= streaming null)
+      )
+      (case (list (= "type" "content_block_start") (= "index" (: index Int)) (= "content_block" (: block (map String JSON))))
+        (let position (as index Size))
+        (let part (call claude-begun-part (call claude-part-id message-id position) block shows-updates))
+        (= streaming (only-if position (if part)))
+        (if part
+          (= begun (+ position 1))
+          (yield (call AIPartBeginEvent part))
+        )
+      )
+      (case (list (= "type" "content_block_delta") (= "index" (: index Int)) (= "delta" (: delta (map String JSON))))
+        (let position (as index Size))
+        (let change (call claude-content-delta delta))
+        (if (and change (== streaming position))
+          (yield (call AIPartDeltaEvent (call claude-part-id message-id position) change))
+        )
+      )
+    )
+  )
+  (fn-do _ decode-message (stream AIEvent)
+    (param message (map String JSON))
+    (let id (?? (call json-string ([] message "id")) ""))
+    (if (!= id completed-id)
+      (= completed-id id)
+      (= completed 0)
+    )
+    (let index completed)
+    (+= completed 1)
+    (blank)
+    (let block
+      (match? message
+        (case (map "content" (list (: block (map String JSON)) ...))
+          block
+        )
+      )
+    )
+    (return-if (if (not block)))
+    (let part (call claude-completed-part (call claude-part-id id index) block shows-updates))
+    (return-if (if (not part)))
+    (if (or (!= id message-id) (>= index begun))
+      (yield (call AIPartBeginEvent part))
+    )
+    (yield (call AIPartEndEvent part))
+  )
+  (fn-do _ decode-results (stream AIEvent)
+    (param blocks (list JSON))
+    (for (in block blocks)
+      (let part (call claude-result-part block))
+      (if part
+        (yield (call AIPartBeginEvent part))
+        (yield (call AIPartEndEvent part))
+      )
+    )
+  )
+  (fn-do _ decode-structured (stream AIEvent)
+    (param root (map String JSON))
+    (let output ([] root "structured_output"))
+    (return-if (if (or (== output null) (call json-flag ([] root "is_error")))))
+    (let part (call AITextPart "structured-output" (call to-json output)))
+    (yield (call AIPartBeginEvent part))
+    (yield (call AIPartEndEvent part))
+  )
+  (fn-do _ decode-result AIEvent (?! AIError)
+    (param root (map String JSON))
+    (let kind failure)
+    (= failure null)
+    (let usage (call claude-usage (call json-object ([] root "usage"))))
+    (if (not (call json-flag ([] root "is_error")))
+      (return (call AIDoneEvent (call claude-finish-reason (?? (call json-string ([] root "stop_reason")) "")) usage))
+    )
+    (if (call (. (?? (call json-string ([] root "terminal_reason")) "") starts-with) "aborted")
+      (return (call AIDoneEvent (. AIFinishReason cancellation) usage))
+    )
+    (blank)
+    (let status (call json-int ([] root "api_error_status")))
+    (throw (call AIError (?? kind (call claude-status-kind status)) (call claude-failure-message root kind) status))
+  )
+)
+
+(fn-expr + claude-account AIAccount
+  (param output (? JSON))
+  (case? (not (call json-flag (?[] fields "loggedIn")))
+    (call AIAccount (. AIAccountStatus signed-out))
+  )
+  (default
+    (call AIAccount
+      (block
+        (:status (. AIAccountStatus signed-in))
+        (:billing (call claude-billing (call json-string (?[] fields "authMethod"))))
+        (:email (call json-string (?[] fields "email")))
+        (:plan (call json-string (?[] fields "subscriptionType")))
+        (:organization (call json-string (?[] fields "orgName")))
+      )
+    )
+  )
+  (where
+    (lazy fields (call json-object output))
+  )
+)
+
+(fn-expr _ claude-billing AIAccountBilling
+  (param method (? String))
+  (match method
+    (case= null
+      (. AIAccountBilling unknown)
+    )
+    (case= "claude.ai"
+      (. AIAccountBilling subscription)
+    )
+    (default
+      (. AIAccountBilling api)
+    )
+  )
+)
+
+(type + ClaudeMCPServer (is Tuple)
+  (prop + name String)
+  (prop + url (? String))
+  (prop + tools (list String))
+  (fn-expr + json (map String JSON) :get
+    (case? url
+      (call (of Map String JSON)
+        (block
+          (:type "http")
+          (:url url)
+        )
+      )
+    )
+    (default
+      (call (of Map String JSON)
+        (block
+          (:type "sdk")
+          (:name name)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + claude-arguments (list String)
+  (param request AIRequest)
+  (param tools (? (list String)) (= null))
+  (param is-safe-mode _ (= false))
+  (param allowed-tools (? (list String)) (= null))
+  (param permission-mode (? String) (= null))
+  (param resume (? ClaudeResume) (= null))
+  (param is-persistent _ (= true))
+  (param effort (? String) (= null))
+  (param mcp-servers (list ClaudeMCPServer) (= (call (of List ClaudeMCPServer))))
+  (param thinking-display (? String) (= null))
+  (item "--print")
+  (item "--input-format")
+  (item "stream-json")
+  (item "--output-format")
+  (item "stream-json")
+  (item "--verbose")
+  (item "--include-partial-messages")
+  (item? (only-if "--safe-mode" (if is-safe-mode)))
+  (item? (only-if "--no-session-persistence" (if (not is-persistent))))
+  (spread (call claude-flag "--model" (only-if (. request model) (if (. request model length)))))
+  (spread (call claude-flag "--effort" effort))
+  (spread (call claude-flag "--thinking-display" thinking-display))
+  (spread (call claude-flag "--append-system-prompt" (call claude-instructions request)))
+  (spread (call claude-flag "--json-schema" schema))
+  (spread (call claude-flag "--tools" offered))
+  (spread (call claude-flag "--allowedTools" approved))
+  (spread (call claude-flag "--permission-mode" permission-mode))
+  (spread (call claude-flag "--mcp-config" (only-if (call claude-mcp-config mcp-servers) (if (. mcp-servers length)))))
+  (spread (call claude-flag "--resume" (?. point session)))
+  (spread (call claude-flag "--resume-session-at" (?. point entry)))
+  (item? (only-if "--fork-session" (if (and point (. plan forks)))))
+  (item "--permission-prompts")
+  (item "none")
+  (pipe |> List)
+  (where
+    (lazy schema (only-if (call to-json (. request response-schema)) (if (. request response-schema))))
+    (lazy offered (only-if (call (. "," join) tools) (if tools)))
+    (lazy approved (only-if (call (. "," join) permitted) (if (. permitted length))))
+    (lazy permitted (list String)
+      (block
+        (spread? allowed-tools)
+        (spread (call claude-mcp-tools mcp-servers))
+      )
+    )
+    (lazy plan (?? resume (call claude-resume request)))
+    (lazy point (. plan point))
+  )
+)
+
+(fn-expr + claude-resume ClaudeResume
+  (param request AIRequest)
+  (case? (not (. marks length))
+    (call ClaudeResume)
+  )
+  (case? (call claude-marks-chain marks)
+    (call ClaudeResume (. ([] marks (- (. marks length) 1)) point) (. request forks))
+  )
+  (default
+    (call ClaudeResume null false marks)
+  )
+  (where
+    (lazy marks (call claude-marks (. request messages)))
+  )
+)
+
+(fn-do + claude-marks (list ClaudeMark)
+  (param messages (list AIMessage))
+  (let marks (call (of List ClaudeMark)))
+  (for (in message messages)
+    (for (in part (. message parts))
+      (let mark (call claude-part-mark part))
+      (if mark
+        (+= marks mark)
+      )
+    )
+  )
+  (return marks)
+)
+
+(fn-do + claude-marks-chain Bool
+  (param marks (list ClaudeMark))
+  (let index (- (. marks length) 1))
+  (while (> index 0)
+    (let mark ([] marks index))
+    (return-if true (if (and (. mark basis) (== (. mark basis) (call claude-marks-basis ([] marks (..< 0 index)))))))
+    (let parent (?? (. mark parent) (call ClaudePoint (. mark point session))))
+    (return-if false (if (not (call claude-same-point parent (. ([] marks (- index 1)) point)))))
+    (-= index 1)
+  )
+  (return true)
+)
+
+(fn-expr + claude-marks-basis String
+  (param marks (list ClaudeMark))
+  (str (call hash-for points))
+  (where
+    (lazy points (call (. "|" join) (in (str (. each point session) "@" (?? (. each point entry) "")) marks)))
+  )
+)
+
+(fn-expr + claude-same-point _
+  (param first ClaudePoint)
+  (param second ClaudePoint)
+  (and same-session (or (== (. first entry) null) (== (. second entry) null) (== (. first entry) (. second entry))))
+  (where
+    (lazy same-session (== (. first session) (. second session)))
+  )
+)
+
+(fn-expr + claude-mark-data JSON
+  (param mark ClaudeMark)
+  (param model String)
+  (call (of Map String JSON)
+    (block
+      (entry "session_id" (. mark point session))
+      (:model model)
+      (:entry? (. mark point entry))
+      (entry? "message_id" (. mark message))
+      (:blocks? blocks)
+      (:parent? (call claude-parent-data mark))
+    )
+  )
+  (where
+    (lazy blocks (only-if (as (. mark blocks) Int) (if (. mark message))))
+  )
+)
+
+(fn-expr _ claude-parent-data (? JSON)
+  (param mark ClaudeMark)
+  (case? (== (. mark parent) null)
+    null
+  )
+  (default
+    (call (of Map String JSON)
+      (block
+        (entry "session_id" (. mark parent session))
+        (:entry? (. mark parent entry))
+        (:basis? (. mark basis))
+      )
+    )
+  )
+)
+
+(fn-expr + claude-instructions (? String)
+  (param request AIRequest)
+  (only-if text (if (. text length)))
+  (where
+    (lazy text (call (. "\n\n" join) (in (call ai-parts-text (. each parts)) (. request messages) (when (call claude-instructs each)))))
+  )
+)
+
+(fn-do + claude-session-id (? String)
+  (param messages (list AIMessage))
+  (let found (? String))
+  (for (in message messages)
+    (for (in part (. message parts))
+      (= found (?? (call claude-part-session part) found))
+    )
+  )
+  (return found)
+)
+
+(fn-do + claude-prompt JSON (?! AIError)
+  (param request AIRequest)
+  (throw (call AIError (. AIErrorKind invalid-request) "Claude Code runs its own tools") (if (. request tools length)))
+  (blank)
+  (let prompts (call (of List String)))
+  (let images (call (of List AIImage)))
+  (for (in message (. request messages))
+    (if (call claude-instructs message)
+      (continue)
+    )
+    (if (== (. message role) (. AIMessageRole user))
+      (call claude-prompt-images message images)
+      (let text (call ai-parts-text (. message parts)))
+      (if (. text length)
+        (+= prompts text)
+      )
+      (else-if (call claude-session-id (list message))
+        (= prompts (call (of List String)))
+        (= images (call (of List AIImage)))
+      )
+      (else
+        (throw (call AIError (. AIErrorKind invalid-request) "Claude Code can only continue its own replies"))
+      )
+    )
+  )
+  (blank)
+  (throw (call AIError (. AIErrorKind invalid-request) "Claude Code needs a prompt") (if (and (not (. prompts length)) (not (. images length)))))
+  (let text (call (. "\n\n" join) prompts))
+  (return-if text (if (not (. images length))))
+  (let content (call (of List JSON)))
+  (for (in image images)
+    (+= content (call claude-image-block image))
+  )
+  (if (. text length)
+    (+= content (call claude-text-block text))
+  )
+  (return content)
+)
+
+(fn-expr + claude-initialize-line _
+  (param request-id String)
+  (param hosted (list String) (= (call (of List String))))
+  (call claude-control-request request-id request)
+  (where
+    (lazy request
+      (call (of Map String JSON)
+        (block
+          (:subtype "initialize")
+          (:hooks (as null JSON))
+          (entry? "sdkMcpServers" (only-if (call (of List JSON) (in (as each JSON) hosted)) (if hosted)))
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + claude-interrupt-line _
+  (param request-id String)
+  (param cancels-queued _ (= false))
+  (call claude-control-request request-id request)
+  (where
+    (lazy request
+      (call (of Map String JSON)
+        (block
+          (:subtype "interrupt")
+          (entry? "cancel_queued" (only-if true (if cancels-queued)))
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + claude-stop-task-line _
+  (param request-id String)
+  (param task-id String)
+  (call claude-control-request request-id request)
+  (where
+    (lazy request
+      (call (of Map String JSON)
+        (block
+          (:subtype "stop_task")
+          (entry "task_id" task-id)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + claude-task-output-line _
+  (param request-id String)
+  (param task-id String)
+  (call claude-control-request request-id request)
+  (where
+    (lazy request
+      (call (of Map String JSON)
+        (block
+          (:subtype "get_task_output")
+          (entry "task_id" task-id)
+        )
+      )
+    )
+  )
+)
+
+(type + ClaudeMCPMessage (is Tuple)
+  (prop + request-id String)
+  (prop + server String)
+  (prop + message JSON)
+)
+
+(fn-expr + claude-mcp-message (? ClaudeMCPMessage)
+  (param line JSON)
+  (match? (call json-object line)
+    (case (list (= "type" "control_request") (= "request_id" (: id String)) (= "request" (list (= "subtype" "mcp_message") (= "server_name" (: server String)) (= "message" message))))
+      (call ClaudeMCPMessage id server message)
+    )
+  )
+)
+
+(fn-expr + claude-mcp-reply-line _
+  (param request-id String)
+  (param reply JSON)
+  (call to-json root)
+  (where
+    (lazy answered
+      (call (of Map String JSON)
+        (block
+          (entry "mcp_response" reply)
+        )
+      )
+    )
+    (lazy response
+      (call (of Map String JSON)
+        (block
+          (:subtype "success")
+          (entry "request_id" request-id)
+          (:response answered)
+        )
+      )
+    )
+    (lazy root
+      (call (of Map String JSON)
+        (block
+          (:type "control_response")
+          (:response response)
+        )
+      )
+    )
+  )
+)
+
+(type + ClaudeAnswer (is Tuple)
+  (prop + request-id String)
+  (prop + response (? JSON))
+)
+
+(fn-expr + claude-answer (? ClaudeAnswer)
+  (param line JSON)
+  (match? (call json-object line)
+    (case (list (= "type" "control_response") (= "response" (list (= "subtype" "success") (= "request_id" (: id String)) (= "response" response))))
+      (call ClaudeAnswer id response)
+    )
+    (case (list (= "type" "control_response") (= "response" (map "request_id" (: id String))))
+      (call ClaudeAnswer id null)
+    )
+  )
+)
+
+(fn-expr + claude-task-output-text (? String)
+  (param response (? JSON))
+  (call json-string (?[] (call json-object response) "output"))
+)
+
+(type + ClaudeTaskEvent (is Union)
+  (variant started (tuple (: id String) (: call-id (? String)) (: kind String) (: title String) (: is-backgrounded Bool)))
+  (variant progressed (tuple (: id String) (: summary (? String))))
+  (variant updated (tuple (: id String) (: status (? String)) (: is-backgrounded (? Bool))))
+  (variant notified (tuple (: id String) (: status String) (: output-path (? String)) (: summary (? String))))
+)
+
+(fn-expr + claude-task-event (? ClaudeTaskEvent)
+  (param line JSON)
+  (match? root
+    (case= null
+      null
+    )
+    (case (list (= "type" "system") (= "subtype" "task_started") (= "task_id" (: id String)))
+      (call (. ClaudeTaskEvent started) id call kind title is-backgrounded)
+      (blank)
+      (lazy call (call json-string ([] root "tool_use_id")))
+      (lazy kind (?? (call json-string ([] root "task_type")) ""))
+      (lazy title (?? (call json-string ([] root "description")) ""))
+      (lazy is-backgrounded (?? (call json-bool ([] root "is_backgrounded")) true))
+    )
+    (case (list (= "type" "system") (= "subtype" "task_progress") (= "task_id" (: id String)))
+      (call (. ClaudeTaskEvent progressed) id (call json-string ([] root "summary")))
+    )
+    (case (list (= "type" "system") (= "subtype" "task_notification") (= "task_id" (: id String)))
+      (call (. ClaudeTaskEvent notified) id status path (call json-string ([] root "summary")))
+      (blank)
+      (lazy status (?? (call json-string ([] root "status")) "completed"))
+      (lazy path (only-if (call json-string ([] root "output_file")) (if (!= (call json-string ([] root "output_file")) ""))))
+    )
+    (case (list (= "type" "system") (= "subtype" "task_updated") (= "task_id" (: id String)) (= "patch" (: patch (map String JSON))))
+      (call (. ClaudeTaskEvent updated)
+        (block
+          (arg id)
+          (arg (call json-string ([] patch "status")))
+          (arg (call json-bool ([] patch "is_backgrounded")))
+        )
+      )
+    )
+  )
+  (where
+    (lazy root (call json-object line))
+  )
+)
+
+(fn-expr + claude-task-status (? AIToolTaskStatus)
+  (param status (? String))
+  (match? status
+    (case= "completed"
+      (. AIToolTaskStatus completed)
+    )
+    (case= "failed"
+      (. AIToolTaskStatus failed)
+    )
+    (case= "stopped"
+      (. AIToolTaskStatus stopped)
+    )
+    (case= "killed"
+      (. AIToolTaskStatus stopped)
+    )
+  )
+)
+
+(fn-expr + claude-is-result _
+  (param line JSON)
+  (and (== (call json-string (?[] root "type")) "result") (not (call json-string (?[] root "parent_tool_use_id"))))
+  (where
+    (lazy root (call json-object line))
+  )
+)
+
+(fn-expr + claude-is-requesting _
+  (param line JSON)
+  (and (== (call json-string (?[] root "type")) "system") (== (call json-string (?[] root "subtype")) "status") (== (call json-string (?[] root "status")) "requesting") (not (call json-string (?[] root "parent_tool_use_id"))))
+  (where
+    (lazy root (call json-object line))
+  )
+)
+
+(fn-expr + claude-queued-turns Size
+  (param line JSON)
+  (?? (call json-size (?[] (call json-object line) "queued_turn_count")) 0)
+)
+
+(fn-expr + claude-user-line _
+  (param prompt JSON)
+  (param priority (? String) (= null))
+  (call to-json root)
+  (where
+    (lazy root
+      (call (of Map String JSON)
+        (block
+          (:type "user")
+          (:message
+            (call (of Map String JSON)
+              (block
+                (:role "user")
+                (:content prompt)
+              )
+            )
+          )
+          (entry "parent_tool_use_id" (as null JSON))
+          (entry "session_id" "default")
+          (:priority? priority)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ claude-instructs _
+  (param message AIMessage)
+  (or (== (. message role) (. AIMessageRole system)) (== (. message role) (. AIMessageRole developer)))
+)
+
+(fn-do _ claude-prompt-images _ (?! AIError)
+  (param message AIMessage)
+  (param images (list AIImage))
+  (for (in part (. message parts))
+    (if (= (| (: image AIImagePart)) part)
+      (+= images (. image image))
+      (else
+        (throw (call AIError (. AIErrorKind invalid-request) "Claude Code prompts hold only text and images") (if (is-not part AITextPart)))
+      )
+    )
+  )
+)
+
+(fn-expr _ claude-text-block JSON
+  (param text String)
+  (call (of Map String JSON)
+    (block
+      (:type "text")
+      (:text text)
+    )
+  )
+)
+
+(fn-do _ claude-image-block JSON (?! AIError)
+  (param image AIImage)
+  (let file (. image file))
+  (let source (call (of Map String JSON)))
+  (if (= (| (: remote AIURLSource)) (. file source))
+    (= ([] source "type") "url")
+    (= ([] source "url") (. remote url))
+    (else
+      (= ([] source "type") "base64")
+      (= ([] source "media_type") (. file mime-type))
+      (= ([] source "data") (str (call claude-image-data file)))
+    )
+  )
+  (return
+    (call (of Map String JSON)
+      (block
+        (:type "image")
+        (:source source)
+      )
+    )
+  )
+)
+
+(fn-do + claude-image-data Base64 (?! AIError)
+  (param file AIFile)
+  (match? (. file source)
+    (case (: encoded AIBase64Source)
+      (return (. encoded data))
+    )
+    (case (: held AIBytesSource)
+      (return (as (. held data) Base64))
+    )
+    (case (: stored AIPathSource)
+      (let bytes
+        (call read-file-bytes (call Path (. stored path) 0)
+          (block
+            (on-error (: failure Error)
+              (throw (call AIError (. AIErrorKind invalid-request) (str "Unable to read image " (. stored path) ": " failure)))
+            )
+          )
+        )
+      )
+      (return (as bytes Base64))
+    )
+  )
+  (throw (call AIError (. AIErrorKind invalid-request) "Claude Code cannot read this image"))
+)
+
+(fn-expr + claude-part-session (? String)
+  (param part AIMessagePart)
+  (. (?. (call claude-part-mark part) point) session)
+)
+
+(fn-do + claude-part-mark (? ClaudeMark)
+  (param part AIMessagePart)
+  (return-if (if (is-not part AIExtensionPart)))
+  (let extension (as part AIExtensionPart))
+  (return-if (if (or (!= (. extension provider-id) claude-provider-id) (!= (. extension part-type) claude-session-part))))
+  (let fields (call json-object (. extension data)))
+  (let id (call json-string (?[] fields "session_id")))
+  (return-if (if (or (not fields) (not id))))
+  (let point (call ClaudePoint id (call json-string ([] fields "entry"))))
+  (let message (call json-string ([] fields "message_id")))
+  (let blocks (?? (call json-int ([] fields "blocks")) 0))
+  (let parent (call json-object ([] fields "parent")))
+  (let parent-id (call json-string (?[] parent "session_id")))
+  (return-if (call ClaudeMark point null null message blocks) (if (or (not parent) (not parent-id))))
+  (let origin (call ClaudePoint parent-id (call json-string ([] parent "entry"))))
+  (return (call ClaudeMark point origin (call json-string ([] parent "basis")) message blocks))
+)
+
+(fn-expr _ claude-control-request _
+  (param request-id String)
+  (param request (map String JSON))
+  (call to-json root)
+  (where
+    (lazy root
+      (call (of Map String JSON)
+        (block
+          (:type "control_request")
+          (entry "request_id" request-id)
+          (:request request)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ claude-mcp-config String
+  (param servers (list ClaudeMCPServer))
+  (call to-json config)
+  (where
+    (lazy config
+      (call (of Map String JSON)
+        (block
+          (entry "mcpServers" (call (of Map String JSON) (in (tuple (. each name) (. each json)) servers)))
+        )
+      )
+    )
+  )
+)
+
+(fn-do _ claude-mcp-tools (stream String)
+  (param servers (list ClaudeMCPServer))
+  (for (in server servers)
+    (for (in tool (. server tools))
+      (yield (str "mcp__" (. server name) "__" tool))
+    )
+  )
+)
+
+(fn-do _ claude-flag (stream String)
+  (param name String)
+  (param value (? String))
+  (if (!= value null)
+    (yield name)
+    (yield value)
+  )
+)
+
+(fn-expr _ claude-part-id _
+  (param message-id String)
+  (param index Size)
+  (str message-id ":" index)
+)
+
+(fn-expr _ claude-begun-part (? AIMessagePart)
+  (param id String)
+  (param block (map String JSON))
+  (param is-update Bool)
+  (match? block
+    (case (map "type" "text")
+      (call AITextPart id "")
+    )
+    (case (map "type" "thinking")
+      (call AIReasoningPart id "" (:is-update is-update))
+    )
+    (case (list (= "type" "tool_use") (= "id" (: call-id String)) (= "name" (: name String)))
+      (call AIToolCallPart id call-id name null)
+    )
+  )
+)
+
+(fn-expr _ claude-completed-part (? AIMessagePart)
+  (param id String)
+  (param block (map String JSON))
+  (param is-update Bool)
+  (match? block
+    (case (list (= "type" "text") (= "text" (: text String)))
+      (call AITextPart id text)
+    )
+    (case (list (= "type" "thinking") (= "thinking" (: text String)))
+      (call AIReasoningPart id text null ([] block "signature") is-update)
+    )
+    (case (list (= "type" "tool_use") (= "id" (: call-id String)) (= "name" (: name String)) (= "input" input))
+      (call AIToolCallPart id call-id name input)
+    )
+  )
+)
+
+(fn-expr _ claude-content-delta (? AIContentDelta)
+  (param delta (map String JSON))
+  (match? delta
+    (case (list (= "type" "text_delta") (= "text" (all (: text String) ({} (> (. it length) 0)))))
+      (call AITextDelta text)
+    )
+    (case (list (= "type" "thinking_delta") (= "thinking" (all (: text String) ({} (> (. it length) 0)))))
+      (call AIReasoningDelta text)
+    )
+    (case (list (= "type" "input_json_delta") (= "partial_json" (all (: text String) ({} (> (. it length) 0)))))
+      (call AIToolArgumentsDelta text)
+    )
+  )
+)
+
+(fn-expr _ claude-result-part (? AIMessagePart)
+  (param block JSON)
+  (match? block
+    (case (list (= "type" "tool_result") (= "tool_use_id" (: call-id String)) (= "content" content))
+      (call AIToolResultPart (str call-id ":result") call-id content (call claude-result-text content) is-error)
+    )
+  )
+  (where
+    (lazy is-error (call json-flag ([] (as block (map String JSON)) "is_error")))
+  )
+)
+
+(fn-expr _ claude-result-text (? String)
+  (param content JSON)
+  (match? content
+    (case (: text String)
+      text
+    )
+    (case (: blocks (list JSON))
+      (call (. "" join) (in (?? (call claude-block-text each) "") blocks))
+    )
+  )
+)
+
+(fn-expr _ claude-block-text (? String)
+  (param block JSON)
+  (match? block
+    (case (list (= "type" "text") (= "text" (: text String)))
+      text
+    )
+  )
+)
+
+(fn-expr _ claude-finish-reason AIFinishReason
+  (param reason String)
+  (match reason
+    (case= "end_turn"
+      (. AIFinishReason stop)
+    )
+    (case= "stop_sequence"
+      (. AIFinishReason stop)
+    )
+    (case= "max_tokens"
+      (. AIFinishReason length)
+    )
+    (case= "refusal"
+      (. AIFinishReason content-filter)
+    )
+    (default
+      (call AIProviderFinishReason claude-provider-id reason)
+    )
+  )
+)
+
+(fn-expr _ claude-error-kind _
+  (param error String)
+  (match error
+    (case= "authentication_failed"
+      (. AIErrorKind authentication)
+    )
+    (case= "rate_limit"
+      (. AIErrorKind rate-limit)
+    )
+    (case= "invalid_request"
+      (. AIErrorKind invalid-request)
+    )
+    (case= "server_error"
+      (. AIErrorKind server)
+    )
+    (default
+      (. AIErrorKind unknown)
+    )
+  )
+)
+
+(fn-expr _ claude-status-kind _
+  (param status (? Int))
+  (case? (or (== status 401) (== status 403))
+    (. AIErrorKind authentication)
+  )
+  (case? (== status 429)
+    (. AIErrorKind rate-limit)
+  )
+  (case? (and (!= status null) (>= status 500))
+    (. AIErrorKind server)
+  )
+  (default
+    (. AIErrorKind unknown)
+  )
+)
+
+(fn-expr _ claude-failure-message _
+  (param root (map String JSON))
+  (param kind (? AIErrorKind))
+  (case? (== kind (. AIErrorKind authentication))
+    "Claude Code is not signed in. Run \"claude auth login\" in a terminal, then try again."
+  )
+  (default
+    (call claude-result-message root)
+  )
+)
+
+(fn-expr _ claude-result-message _
+  (param root (map String JSON))
+  (?? (call json-string ([] root "result")) first-error "Claude Code did not finish the turn")
+  (where
+    (lazy first-error
+      (match? root
+        (case (map "errors" (list (: error String) ...))
+          error
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ claude-usage _
+  (param value (? (map String JSON)))
+  (case? (not value)
+    (call AIUsage)
+  )
+  (default
+    (call AIUsage
+      (block
+        (:input-tokens (+ (?? fresh 0) (?? created 0) (?? read 0)))
+        (:output-tokens (call json-size ([] value "output_tokens")))
+        (:cache-creation-tokens created)
+        (:cache-read-tokens read)
+        (:reasoning-tokens reasoning)
+      )
+    )
+  )
+  (where
+    (lazy fresh (call json-size ([] value "input_tokens")))
+    (lazy created (call json-size ([] value "cache_creation_input_tokens")))
+    (lazy read (call json-size ([] value "cache_read_input_tokens")))
+    (lazy details (call json-object ([] value "output_tokens_details")))
+    (lazy reasoning (only-if (call json-size ([] details "thinking_tokens")) (if details)))
+  )
+)
+
+(fn-expr _ json-string _
+  (param value (? JSON))
+  (match? value
+    (case String)
+  )
+)
+
+(fn-expr _ json-object _
+  (param value (? JSON))
+  (match? value
+    (case (map String JSON))
+  )
+)
+
+(fn-expr _ json-int (? Int)
+  (param value (? JSON))
+  (match? value
+    (case Int)
+  )
+)
+
+(fn-expr _ json-size (? Size)
+  (param value (? JSON))
+  (match? value
+    (case (all Int ({} (>= it 0))))
+  )
+)
+
+(fn-expr _ json-flag _
+  (param value (? JSON))
+  (?? (call json-bool value) false)
+)
+
+(fn-expr _ json-bool _
+  (param value (? JSON))
+  (match? value
+    (case Bool)
+  )
+)

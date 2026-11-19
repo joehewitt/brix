@@ -1,0 +1,47 @@
+; benchmark.meta description: Parses a deterministic JSON/SSE-style payload.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: gc-runtime,stream,compile-timing
+(blank)
+(import /BxCore/BxCore.h)
+(import /data/json)
+(import /data/stream)
+(import /net/sse)
+(blank)
+
+(main
+  (let source (call (of DataStream Byte) (call (of Array Byte) (call sse-source))))
+  (let checksum (as 0 Size))
+  (let index (as 1 Size))
+  (blank)
+  (for (in event (call server-sent-events source))
+    (if (== (. event data) "[DONE]")
+      (break)
+    )
+    (blank)
+    (let root (as (call JSON (. event data)) (map String JSON)))
+    (let choices (as (!! ([] root "choices")) (list JSON)))
+    (let first (as ([] choices 0) (map String JSON)))
+    (let delta (as (!! ([] first "delta")) (map String JSON)))
+    (blank)
+    (+= checksum (* (. (call to-json root) length) index))
+    (+= checksum (. (call to-json (!! ([] delta "content"))) length))
+    (+= index 1)
+  )
+  (blank)
+  (call C:brixBenchCollect)
+  (blank)
+  (print (str "bench-result data/json-sse checksum=" checksum))
+)
+
+(fn-expr _ sse-source _
+  (++ (call (. "" join) (in (str (call sse-event each) "\n\n") (..< 0 64))) "data: [DONE]\n\n")
+)
+
+(fn-expr _ sse-event _
+  (param index Int)
+  (paragraph
+    "event: message"
+    (str "id: evt-" index)
+    (str "data: {\"id\":\"chatcmpl-fixed-" index "\",\"object\":\"chat.completion.chunk\",\"created\":1700000000,\"model\":\"bench-model\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"chunk-" index " alpha beta\"},\"finish_reason\":null}],\"usage\":null}")
+  )
+)

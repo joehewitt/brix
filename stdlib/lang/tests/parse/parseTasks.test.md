@@ -1,10 +1,5 @@
 # Tasks
 
-```yumi
-do new @priority
-    work()
-```
-
 ```brix
 (main
   (do-new @priority
@@ -21,11 +16,6 @@ do new @priority
         </CallExpression>
     </Block>
 </DoTask>
-```
-
-```yumi
-do new @normal
-    work()
 ```
 
 ```brix
@@ -46,11 +36,6 @@ do new @normal
 </DoTask>
 ```
 
-```yumi
-do new thread @priority
-    work()
-```
-
 ```brix
 (main
   (do-new-thread @priority
@@ -67,11 +52,6 @@ do new thread @priority
         </CallExpression>
     </Block>
 </DoTask>
-```
-
-```yumi
-do new @large-stack
-    work()
 ```
 
 ```brix
@@ -92,11 +72,6 @@ do new @large-stack
 </DoTask>
 ```
 
-```yumi
-do new thread @priority @large-stack
-    work()
-```
-
 ```brix
 (main
   (do-new-thread @priority @large-stack
@@ -115,11 +90,6 @@ do new thread @priority @large-stack
 </DoTask>
 ```
 
-```yumi
-do new @detached
-    work()
-```
-
 ```brix
 (main
   (do-new @detached
@@ -136,22 +106,6 @@ do new @detached
         </CallExpression>
     </Block>
 </DoTask>
-```
-
-```yumi crash
-do new @large-stack @heap
-    work()
-```
-
-```output
-Exception: Unsupported do task annotation 'heap'
-<no file:2>
-    do new @large-stack @heap
-    ^^^^^^^^^^^^^^^^^^^^^^^^
-```
-
-```yumi
-do new thread(work)
 ```
 
 ```brix
@@ -173,11 +127,6 @@ do new thread(work)
 </DoTask>
 ```
 
-```yumi
-do (worker) new @priority
-    work()
-```
-
 ```brix
 (main
   (do-new (worker: worker) @priority
@@ -197,13 +146,6 @@ do (worker) new @priority
         </CallExpression>
     </Block>
 </DoTask>
-```
-
-```yumi
-do new
-    serve(connection)
-catch failure Panic
-    log(failure)
 ```
 
 ```brix
@@ -244,12 +186,6 @@ catch failure Panic
 </DoTask>
 ```
 
-```yumi
-do new serve(connection)
-catch failure OutOfBoundsError
-    log(failure)
-```
-
 ```brix
 (main
   (do-new
@@ -284,14 +220,6 @@ catch failure OutOfBoundsError
         </Block>
     </Catch>
 </DoTask>
-```
-
-```yumi
-do (worker) new thread
-    serve(connection)
-
-catch failure
-    log(failure)
 ```
 
 ```brix
@@ -334,13 +262,6 @@ catch failure
 </DoTask>
 ```
 
-```yumi
-do new
-    serve(connection)
-    catch error
-        log(error)
-```
-
 ```brix
 (main
   (do-new
@@ -378,14 +299,6 @@ do new
         </CatchBlock>
     </Block>
 </DoTask>
-```
-
-```yumi
-. drain = do new @priority
-    work()
-catch failure
-    report(failure)
-drain.wait()
 ```
 
 ```brix
@@ -433,10 +346,6 @@ drain.wait()
         <Id name="drain"/>
     </Get>
 </CallExpression>
-```
-
-```yumi
-. pooled = do (worker) new step()
 ```
 
 ```brix

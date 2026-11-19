@@ -1,0 +1,902 @@
+(import ./http-server)
+(import ./probes)
+(import ./socket)
+(import ./sse)
+(import ./url)
+(import /core/tokenstream)
+(import /data)
+(import /data/json)
+(import /data/stream)
+(import /stream/aggregate)
+(import /stream/filter)
+(blank)
+(prop _ http-transfer-size Size (= 4096))
+(prop _ http-line-limit Size (= 4096))
+
+(type + HTTPMethod (is Union)
+  (variant get)
+  (variant head)
+  (variant post)
+  (variant put)
+  (variant patch)
+  (variant delete)
+  (variant options)
+  (variant other (tuple (: name String)))
+  (fn-to-expr + String
+    (match this
+      (case .get
+        "GET"
+      )
+      (case .head
+        "HEAD"
+      )
+      (case .post
+        "POST"
+      )
+      (case .put
+        "PUT"
+      )
+      (case .patch
+        "PATCH"
+      )
+      (case .delete
+        "DELETE"
+      )
+      (case .options
+        "OPTIONS"
+      )
+      (case (call .other name)
+        name
+      )
+    )
+  )
+)
+
+(type + HTTPStatus (is I32)
+  (variant switching-protocols (= 101))
+  (variant ok (= 200))
+  (variant created (= 201))
+  (variant accepted (= 202))
+  (variant no-content (= 204))
+  (variant moved-permanently (= 301))
+  (variant found (= 302))
+  (variant see-other (= 303))
+  (variant not-modified (= 304))
+  (variant temporary-redirect (= 307))
+  (variant permanent-redirect (= 308))
+  (variant bad-request (= 400))
+  (variant unauthorized (= 401))
+  (variant forbidden (= 403))
+  (variant not-found (= 404))
+  (variant method-not-allowed (= 405))
+  (variant not-acceptable (= 406))
+  (variant request-timeout (= 408))
+  (variant conflict (= 409))
+  (variant gone (= 410))
+  (variant length-required (= 411))
+  (variant content-too-large (= 413))
+  (variant uri-too-long (= 414))
+  (variant unsupported-media-type (= 415))
+  (variant unprocessable-content (= 422))
+  (variant upgrade-required (= 426))
+  (variant too-many-requests (= 429))
+  (variant request-header-fields-too-large (= 431))
+  (variant internal-server-error (= 500))
+  (variant not-implemented (= 501))
+  (variant bad-gateway (= 502))
+  (variant service-unavailable (= 503))
+  (variant gateway-timeout (= 504))
+  (variant http-version-not-supported (= 505))
+  (fn-expr + reason _ :get
+    (match this
+      (case= .switching-protocols
+        "Switching Protocols"
+      )
+      (case= .ok
+        "OK"
+      )
+      (case= .created
+        "Created"
+      )
+      (case= .accepted
+        "Accepted"
+      )
+      (case= .no-content
+        "No Content"
+      )
+      (case= .moved-permanently
+        "Moved Permanently"
+      )
+      (case= .found
+        "Found"
+      )
+      (case= .see-other
+        "See Other"
+      )
+      (case= .not-modified
+        "Not Modified"
+      )
+      (case= .temporary-redirect
+        "Temporary Redirect"
+      )
+      (case= .permanent-redirect
+        "Permanent Redirect"
+      )
+      (case= .bad-request
+        "Bad Request"
+      )
+      (case= .unauthorized
+        "Unauthorized"
+      )
+      (case= .forbidden
+        "Forbidden"
+      )
+      (case= .not-found
+        "Not Found"
+      )
+      (case= .method-not-allowed
+        "Method Not Allowed"
+      )
+      (case= .not-acceptable
+        "Not Acceptable"
+      )
+      (case= .request-timeout
+        "Request Timeout"
+      )
+      (case= .conflict
+        "Conflict"
+      )
+      (case= .gone
+        "Gone"
+      )
+      (case= .length-required
+        "Length Required"
+      )
+      (case= .content-too-large
+        "Content Too Large"
+      )
+      (case= .uri-too-long
+        "URI Too Long"
+      )
+      (case= .unsupported-media-type
+        "Unsupported Media Type"
+      )
+      (case= .unprocessable-content
+        "Unprocessable Content"
+      )
+      (case= .upgrade-required
+        "Upgrade Required"
+      )
+      (case= .too-many-requests
+        "Too Many Requests"
+      )
+      (case= .request-header-fields-too-large
+        "Request Header Fields Too Large"
+      )
+      (case= .internal-server-error
+        "Internal Server Error"
+      )
+      (case= .not-implemented
+        "Not Implemented"
+      )
+      (case= .bad-gateway
+        "Bad Gateway"
+      )
+      (case= .service-unavailable
+        "Service Unavailable"
+      )
+      (case= .gateway-timeout
+        "Gateway Timeout"
+      )
+      (case= .http-version-not-supported
+        "HTTP Version Not Supported"
+      )
+      (default
+        ""
+      )
+    )
+  )
+  (fn-expr + has-body _ :get
+    (and (not (and (>= this 100) (< this 200))) (!= this (. HTTPStatus no-content)) (!= this (. HTTPStatus not-modified)))
+  )
+)
+
+(type + HTTPHeader (is (tuple (: name String) (: value String)))
+  (fn-expr + This _ (over: Char)
+    (~ (seq (: name (+ (seq (! (| ":" \nl)) .))) ":" / (: value (* (seq (! \nl) .))))
+      (call This name (call (. value trim)))
+    )
+  )
+  (fn-to-expr + String
+    (str name ": " value)
+  )
+)
+
+(type + HTTPBody (is Union)
+  (variant Null)
+  (variant String)
+  (variant ([] Byte))
+  (variant (of ReadableData Byte))
+  (variant (of Iterable ServerSentEvent))
+)
+
+(type + HTTPRequest
+  (prop + method HTTPMethod)
+  (prop + target String)
+  (prop + headers (list HTTPHeader))
+  (prop + body HTTPBody)
+  (prop + version _ (= "HTTP/1.1"))
+  (prop + url (? URL))
+  (prop + route (? Route))
+  (prop + params (map String String))
+  (fn-do + This _
+    (param method HTTPMethod)
+    (param url URL)
+    (param headers (list HTTPHeader) (= (call (of List HTTPHeader))))
+    (param body HTTPBody (= null))
+    (lazy target (call http-target url))
+  )
+  (fn-do + This _
+    (param method HTTPMethod)
+    (param target String)
+    (param headers (list HTTPHeader))
+    (param body HTTPBody)
+    (param version String)
+  )
+  (fn-expr + start-line _ :get
+    (str method " " target " " version)
+  )
+  (fn-expr + path _ :get
+    (case? (call (. target find) "?")
+      ([] target (..< 0 (!! it)))
+    )
+    (default
+      target
+    )
+  )
+  (fn-expr + query (? String) :get
+    (case? (call (. target find) "?")
+      ([] target (... (+ (!! it) 1)))
+    )
+  )
+  (fn-expr + paths (list String) :get
+    (spread (in each (call (. path split) "/") (when (> (. each length) 0))))
+  )
+  (fn-do + text String :get
+    (return (call http-body-text body))
+  )
+  (fn-do + reader (of ReadableData Byte) :get
+    (return (call http-body-reader body))
+  )
+  (fn-expr + header (? String)
+    (param name String)
+    (call http-header headers name)
+  )
+)
+
+(type + HTTPResponse
+  (implements Closable)
+  (prop + status HTTPStatus)
+  (prop + headers (list HTTPHeader))
+  (prop + body HTTPBody)
+  (prop + version _ (= "HTTP/1.1"))
+  (fn-do + This _
+    (param status HTTPStatus (= (. HTTPStatus ok)))
+    (param body HTTPBody (= null))
+    (param headers (list HTTPHeader) (= (call (of List HTTPHeader))))
+  )
+  (fn-do + This _
+    (param status HTTPStatus)
+    (param body HTTPBody)
+    (param headers (list HTTPHeader))
+    (param version String)
+  )
+  (fn-from-expr + (: status HTTPStatus)
+    (call This status)
+  )
+  (fn-from-expr + (: text String)
+    (call This (. HTTPStatus ok) text)
+  )
+  (fn-from-expr + (: data ([] Byte))
+    (call This (. HTTPStatus ok) data)
+  )
+  (fn-from-expr + (: events (of Iterable ServerSentEvent))
+    (call This (. HTTPStatus ok) events)
+  )
+  (fn-from-expr + (: json JSON)
+    (call This (. HTTPStatus ok) (call to-json json) headers)
+    (where
+      (lazy headers (list HTTPHeader)
+        (block
+          (item (tuple "Content-Type" "application/json"))
+        )
+      )
+    )
+  )
+  (fn-do + close _ (?! Error)
+    (match? body
+      (case (: reader HTTPBodyReader)
+        (call (. reader close))
+      )
+    )
+  )
+  (fn-expr + start-line _ :get
+    (str version " " status " " (. status reason))
+  )
+  (fn-do + text String :get
+    (return (call http-body-text body))
+  )
+  (fn-do + reader (of ReadableData Byte) :get
+    (return (call http-body-reader body))
+  )
+  (fn-expr + header (? String)
+    (param name String)
+    (call http-header headers name)
+  )
+)
+
+(type + HTTPStatusLine (is (tuple (: version String) (: status HTTPStatus) (: reason String)))
+  (fn-expr + This _ (over: Char)
+    (~ (seq (: version (+ (seq (! " ") .))) // (: status HTTPStatus) / (: reason (* (seq (! \nl) .))))
+      (call This version status reason)
+    )
+  )
+)
+
+(type + HTTPRequestLine (is (tuple (: method HTTPMethod) (: target String) (: version String)))
+  (fn-expr + This _ (over: Char)
+    (~ (seq (: method (+ (seq (! " ") .))) // (: target (+ (seq (! " ") .))) // (: version (+ (seq (! \nl) .))))
+      (call This (call http-method method) target version)
+    )
+  )
+)
+
+(type + HTTPFraming (is Union)
+  (variant length (tuple (: size Size)))
+  (variant chunked)
+  (variant until-close)
+)
+
+(type + HTTPBodyReader
+  (implements (of ReadableData Byte))
+  (implements Closable)
+  (prop + framing HTTPFraming)
+  (blank)
+  (prop _ stream (of ChunkedTokenStream Byte))
+  (prop _ owner (? Closable))
+  (prop _ limit Size)
+  (prop _ consumed Size)
+  (prop _ remaining Size)
+  (prop _ needs-chunk-end _ (= false))
+  (prop _ is-done _ (= false))
+  (prop _ is-closed _ (= false))
+  (fn-do + This _
+    (param stream (of ChunkedTokenStream Byte))
+    (param framing HTTPFraming)
+    (param owner (? Closable) (= null))
+    (param limit _ (= (. Size max)))
+    (match? framing
+      (case (call .length size)
+        (= remaining size)
+        (= is-done (== size 0))
+      )
+    )
+  )
+  (fn-do + close _ (?! Error)
+    (= is-closed true)
+    (call (?. owner close))
+  )
+  (fn-expr + is-complete _ :get
+    is-done
+  )
+  (fn-expr + is-encoded _ :get
+    false
+  )
+  (fn-do + read Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (return-if 0 (if (or is-done is-closed (== size 0))))
+    (blank)
+    (let count (call read-framed size buffer))
+    (probe-log (: this network.http.response.body.chunk) (items: "" count (call network-preview buffer count) (call network-is-truncated count)))
+    (if is-done
+      (probe-log (: this network.http.response.end) (items: 0))
+    )
+    (return count)
+  )
+  (fn-do + drain _
+    (let buffer ([] Byte http-transfer-size))
+    (while (not is-done)
+      (if (== (call read-framed (. buffer size) buffer) 0)
+        (break)
+      )
+    )
+  )
+  (fn-do _ read-framed Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (match framing
+      (case .until-close
+        (let count (call (. stream read) size buffer (:should-read-once true)))
+        (throw (. stream failure) (if (and (== count 0) (. stream failure))))
+        (throw (call SizeLimitError "HTTP body too large") (if (> count (- limit consumed))))
+        (+= consumed count)
+        (= is-done (== count 0))
+        (return count)
+      )
+      (case (call .length total)
+        (throw (call SizeLimitError "HTTP body too large") (if (> total limit)))
+        (let wanted (if-expr (< remaining size) remaining size))
+        (let count (call (. stream read) wanted buffer (:should-read-once true)))
+        (throw (?? (. stream failure) (call IOError "Incomplete HTTP body")) (if (== count 0)))
+        (-= remaining count)
+        (= is-done (== remaining 0))
+        (return count)
+      )
+      (case .chunked
+        (if (and (== remaining 0) (not (call next-chunk)))
+          (return 0)
+        )
+        (let wanted (if-expr (< remaining size) remaining size))
+        (let count (call (. stream read) wanted buffer (:should-read-once true)))
+        (throw (?? (. stream failure) (call IOError "Incomplete HTTP chunk")) (if (== count 0)))
+        (-= remaining count)
+        (return count)
+      )
+    )
+  )
+  (fn-do _ next-chunk Bool
+    (if needs-chunk-end
+      (call (. stream read) "\r\n" (:limit http-line-limit))
+      (= needs-chunk-end false)
+    )
+    (blank)
+    (let line (?? (call (. stream read) "\r\n" (:limit http-line-limit)) ""))
+    (let chunk-size (call parse-chunk-size (call chunk-size-text line)))
+    (if (== chunk-size 0)
+      (call skip-trailers)
+      (= is-done true)
+      (return false)
+    )
+    (blank)
+    (throw (call SizeLimitError "HTTP body too large") (if (> chunk-size (- limit consumed))))
+    (+= consumed chunk-size)
+    (= remaining chunk-size)
+    (= needs-chunk-end true)
+    (return true)
+  )
+  (fn-do _ skip-trailers _
+    (while true
+      (let line (?? (call (. stream read) "\r\n" (:limit http-line-limit)) ""))
+      (return-if (if (== (. line length) 0)))
+      (throw (call SizeLimitError "HTTP trailers too large") (if (> (. line length) (- limit consumed))))
+      (+= consumed (. line length))
+    )
+  )
+)
+
+(fn-do + http-send HTTPResponse (?! Error)
+  (param request HTTPRequest)
+  (let url (. request url))
+  (throw (call Error "HTTP request has no URL") (if (not url)))
+  (let socket (call (of Socket Byte) (. url host) (. url port) (call (. url is-secure))))
+  (let is-sent false)
+  (finally
+    (if (not is-sent)
+      (call (. socket close))
+    )
+  )
+  (blank)
+  (let outgoing-headers (call http-request-headers request))
+  (probe-log (: request network.http.request.start) (items: "" (str (. request method)) (str url) (. url host) (. url port) (. request target)))
+  (probe-log (: request network.http.request.headers) (items: request-headers)
+    (block
+      (lazy request-headers (call (. "\n" join) (in (str each) outgoing-headers)))
+    )
+  )
+  (probe-log (: request network.http.request.body) (items: content-type size (call network-preview preview) (call network-is-truncated size))
+    (block
+      (lazy content-type (?? (call http-header outgoing-headers "Content-Type") ""))
+      (lazy size (?? (call http-body-size (. request body)) 0))
+      (lazy preview (if-expr (is (. request body) String) (as (. request body) String) ""))
+    )
+  )
+  (blank)
+  (call write-http-message socket (. request start-line) outgoing-headers (. request body))
+  (probe-log (: request network.http.request.sent) (items: (?? (call http-body-size (. request body)) 0)))
+  (blank)
+  (let stream (call (of ChunkedTokenStream Byte) socket))
+  (let response (call read-http-response stream socket (== (. request method) (. HTTPMethod head))))
+  (= is-sent true)
+  (blank)
+  (probe-log (: request network.http.response.start) (items: (. response version) (. response status) ""))
+  (probe-log (: request network.http.response.headers) (items: response-headers)
+    (block
+      (lazy response-headers (call (. "\n" join) (in (str each) (. response headers))))
+    )
+  )
+  (blank)
+  (return response)
+)
+
+(fn-do + http-fetch HTTPResponse (?! Error)
+  (param request HTTPRequest)
+  (let response (use (call http-send request)))
+  (let data (call http-body-bytes (. response body)))
+  (return (call HTTPResponse (. response status) data (. response headers) (. response version)))
+)
+
+(fn-expr + http-get HTTPResponse (?! Error)
+  (param url URL)
+  (param headers (list HTTPHeader) (= (call (of List HTTPHeader))))
+  (call http-fetch (call HTTPRequest (. HTTPMethod get) url headers))
+)
+
+(fn-expr + http-post HTTPResponse (?! Error)
+  (param url URL)
+  (param body HTTPBody)
+  (param headers (list HTTPHeader) (= (call (of List HTTPHeader))))
+  (call http-fetch (call HTTPRequest (. HTTPMethod post) url headers body))
+)
+
+(fn-do + read-http-response HTTPResponse (?! Error)
+  (param stream (of ChunkedTokenStream Byte))
+  (param owner (? Closable) (= null))
+  (param is-head-request _ (= false))
+  (let text (call (. stream read) "\r\n\r\n"))
+  (throw (call IOError "No HTTP response") (if (not text)))
+  (let head
+    (match text
+      (~ HTTPResponseHead)
+      (throw (call SyntaxError "Invalid HTTP response"))
+    )
+  )
+  (blank)
+  (let framing (call http-response-framing (. head line status) (. head headers) is-head-request))
+  (let reader (call HTTPBodyReader stream framing owner))
+  (return (call HTTPResponse (. head line status) reader (. head headers) (. head line version)))
+)
+
+(fn-do + read-http-request (? HTTPRequest) (?! Error)
+  (param stream (of ChunkedTokenStream Byte))
+  (param head-limit _ (= (. Size max)))
+  (param body-limit _ (= (. Size max)))
+  (let text (call (. stream read) "\r\n\r\n" (:limit head-limit)))
+  (return-if null (if (not text)))
+  (let head
+    (match text
+      (~ HTTPRequestHead)
+      (throw (call SyntaxError "Invalid HTTP request"))
+    )
+  )
+  (blank)
+  (let framing (call http-request-framing (. head headers)))
+  (let reader (call HTTPBodyReader stream framing null body-limit))
+  (return (call HTTPRequest (. head line method) (. head line target) (. head headers) reader (. head line version)))
+)
+
+(fn-do + write-http-message _ (?! Error)
+  (param output WritableData)
+  (param start-line String)
+  (param headers (list HTTPHeader))
+  (param body HTTPBody)
+  (<- output (call http-head-text start-line headers))
+  (blank)
+  (let is-chunked (call http-is-chunked headers))
+  (match? body
+    (case (: text String)
+      (<- output text)
+    )
+    (case (: data ([] Byte))
+      (<- output data)
+    )
+    (case (: source (of ReadableData Byte))
+      (let buffer ([] Byte http-transfer-size))
+      (while true
+        (let count (call (. source read) (. buffer size) buffer))
+        (if (== count 0)
+          (break)
+        )
+        (call write-http-chunk output buffer count is-chunked)
+      )
+      (if is-chunked
+        (<- output "0\r\n\r\n")
+      )
+    )
+    (case (: events (of Iterable ServerSentEvent))
+      (for (in event events)
+        (let data (call byte-view (str event)))
+        (call write-http-chunk output data (. data size) is-chunked)
+      )
+      (if is-chunked
+        (<- output "0\r\n\r\n")
+      )
+    )
+  )
+)
+
+(fn-expr + http-header (? String)
+  (param headers (list HTTPHeader))
+  (param name String)
+  (?. header value)
+  (where
+    (lazy header
+      (call first (in each headers (when (== (. each name lowercased) target)))
+        (block
+          (lazy target (. name lowercased))
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + http-method HTTPMethod
+  (param name String)
+  (match name
+    (case "GET"
+      (. HTTPMethod get)
+    )
+    (case "HEAD"
+      (. HTTPMethod head)
+    )
+    (case "POST"
+      (. HTTPMethod post)
+    )
+    (case "PUT"
+      (. HTTPMethod put)
+    )
+    (case "PATCH"
+      (. HTTPMethod patch)
+    )
+    (case "DELETE"
+      (. HTTPMethod delete)
+    )
+    (case "OPTIONS"
+      (. HTTPMethod options)
+    )
+    (default
+      (call (. HTTPMethod other) name)
+    )
+  )
+)
+
+(fn-expr + http-body-size (? Size)
+  (param body HTTPBody)
+  (match? body
+    (case Null
+      0
+    )
+    (case (: text String)
+      (. text size)
+    )
+    (case (: data ([] Byte))
+      (. data size)
+    )
+  )
+)
+
+(fn-do + http-body-bytes ([] Byte) (?! Error)
+  (param body HTTPBody)
+  (return
+    (match body
+      (case Null
+        ([] Byte 0)
+      )
+      (case (: text String)
+        (call (of Array Byte) text)
+      )
+      (case (: data ([] Byte))
+        data
+      )
+      (case (: source (of ReadableData Byte))
+        (as source ([] Byte))
+      )
+      (case (: events (of Iterable ServerSentEvent))
+        (call (of Array Byte) (call (. "" join) (in (str each) events)))
+      )
+    )
+  )
+)
+
+(fn-do + http-body-reader (of ReadableData Byte) (?! Error)
+  (param body HTTPBody)
+  (return
+    (match body
+      (case (: source (of ReadableData Byte))
+        source
+      )
+      (default
+        (call (of DataStream Byte) (call http-body-bytes body))
+      )
+    )
+  )
+)
+
+(fn-do + http-body-text String (?! Error)
+  (param body HTTPBody)
+  (return
+    (match body
+      (case (: text String)
+        text
+      )
+      (default
+        (call (. (call http-body-bytes body) slice-string))
+      )
+    )
+  )
+)
+
+(type _ HTTPResponseHead (is (tuple (: line HTTPStatusLine) (: headers (list HTTPHeader))))
+  (fn-expr + This _ (over: Char)
+    (~ (seq (: line HTTPStatusLine) \nl (: headers (call \delimited (~ \nl) (~ HTTPHeader))))
+      (call This line headers)
+    )
+    (~ (: line HTTPStatusLine)
+      (call This line (call (of List HTTPHeader)))
+    )
+  )
+)
+
+(type _ HTTPRequestHead (is (tuple (: line HTTPRequestLine) (: headers (list HTTPHeader))))
+  (fn-expr + This _ (over: Char)
+    (~ (seq (: line HTTPRequestLine) \nl (: headers (call \delimited (~ \nl) (~ HTTPHeader))))
+      (call This line headers)
+    )
+    (~ (: line HTTPRequestLine)
+      (call This line (call (of List HTTPHeader)))
+    )
+  )
+)
+
+(fn-expr _ http-head-text _
+  (param start-line String)
+  (param headers (list HTTPHeader))
+  (call (. "\r\n" join) lines)
+  (where
+    (lazy lines
+      (block
+        (item start-line)
+        (spread (in (str each) headers))
+        (item "")
+        (item "")
+      )
+    )
+  )
+)
+
+(fn-expr _ http-target _
+  (param url URL)
+  (str "/" paths searcher)
+  (where
+    (lazy paths (call (. "/" join) (. url paths)))
+    (lazy searcher (if-expr (. url search) (str "?" (. url search)) ""))
+  )
+)
+
+(fn-expr _ http-request-headers (list HTTPHeader)
+  (param request HTTPRequest)
+  (spread (. request headers))
+  (item? (only-if (tuple "Content-Length" (str size)) (if (and has-body (!= size null)))))
+  (item? (only-if (tuple "Transfer-Encoding" "chunked") (if (and has-body (== size null)))))
+  (item (tuple "Connection" "close"))
+  (item (tuple "User-Agent" "Brix HTTP"))
+  (item (tuple "Accept-Language" "en"))
+  (item (tuple "Host" (?? (?. (. request url) host) "")))
+  (pipe |> (call distinct (:where (. each name lowercased))))
+  (pipe |> List)
+  (where
+    (lazy size (call http-body-size (. request body)))
+    (lazy has-body (is-not (. request body) Null))
+  )
+)
+
+(fn-expr _ http-response-framing HTTPFraming
+  (param status HTTPStatus)
+  (param headers (list HTTPHeader))
+  (param is-head-request Bool)
+  (case? (or is-head-request (not (. status has-body)))
+    (call (. HTTPFraming length) 0)
+  )
+  (case? (call http-is-chunked headers)
+    (. HTTPFraming chunked)
+  )
+  (case? (call http-header headers "Content-Length")
+    (call (. HTTPFraming length) (as (!! it) Size))
+  )
+  (default
+    (. HTTPFraming until-close)
+  )
+)
+
+(fn-expr _ http-request-framing HTTPFraming (?! Error)
+  (param headers (list HTTPHeader))
+  (before
+    (throw (call SyntaxError "A request may not have both Transfer-Encoding and Content-Length") (if (and transfer (> (. lengths length) 0))))
+    (throw (call SyntaxError "A request may not have more than one Content-Length") (if (> (. lengths length) 1)))
+    (throw (call SyntaxError (str "Unsupported Transfer-Encoding: " transfer)) (if (and transfer (!= (. (call (. transfer trim)) lowercased) "chunked"))))
+  )
+  (case? transfer
+    (. HTTPFraming chunked)
+  )
+  (case? (== (. lengths length) 0)
+    (call (. HTTPFraming length) 0)
+  )
+  (default
+    (call (. HTTPFraming length) (call http-content-length ([] lengths 0)))
+  )
+  (where
+    (lazy transfer (call http-header headers "Transfer-Encoding"))
+    (lazy lengths
+      (call (of List String)
+        (block
+          (spread (in (. each value) headers (when (== (. each name lowercased) "content-length"))))
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ http-content-length Size (?! Error)
+  (param text String)
+  (match (call (. text trim))
+    (~ (seq ({} (chars "0-9") 1 18) (! .))
+      (as it Size)
+    )
+    (throw (call SyntaxError (str "Invalid Content-Length: " text)))
+  )
+)
+
+(fn-expr _ http-is-chunked _
+  (param headers (list HTTPHeader))
+  (if-expr (call (. (?. transfer lowercased) find) "chunked") true false)
+  (where
+    (lazy transfer (call http-header headers "Transfer-Encoding"))
+  )
+)
+
+(fn-do _ write-http-chunk _
+  (param output WritableData)
+  (param data (of ImmutableArray Byte))
+  (param size Size)
+  (param is-chunked Bool)
+  (if is-chunked
+    (<- output (str (call chunk-size-digits size) "\r\n"))
+  )
+  (let offset Size 0)
+  (while (< offset size)
+    (let count (call (. output write) (+ data offset) (- size offset)))
+    (throw (call IOError "HTTP body write made no progress") (if (<= count 0)))
+    (+= offset count)
+  )
+  (if is-chunked
+    (<- output "\r\n")
+  )
+)
+
+(fn-do _ chunk-size-digits String
+  (param size Size)
+  (let digits ([] (as size Hex) (... 2)))
+  (let start Index 0)
+  (while (and (< start (- (. digits length) 1)) (== ([] digits start) '0'))
+    (+= start 1)
+  )
+  (return ([] digits (... start)))
+)
+
+(fn-expr _ chunk-size-text _
+  (param line String)
+  (case? (call (. line find) ";")
+    (call (. ([] line (..< 0 (!! it))) trim))
+  )
+  (default
+    (call (. line trim))
+  )
+)
+
+(fn-expr _ parse-chunk-size _
+  (param text String)
+  (match text
+    (~ (of \hex U32))
+    (throw (call SyntaxError "Invalid chunk size"))
+  )
+)

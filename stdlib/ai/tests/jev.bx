@@ -1,0 +1,53 @@
+(import /ai)
+(import /ai/jev/jev)
+(import /net/http)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Jev Response Decoding"))
+  (call (. cases run) jev-response-tests)
+  (return cases)
+)
+
+(fn-do + jev-response-tests _
+  (param t TestCase)
+  (let jev (call Jev "test"))
+  (let response-text
+    (paragraph
+      "{\"model\":\"jev-1.13.0\",\"answers\":{\"urgent\":{\"type\":\"noul\",\"noul\":1},\"department\":{\"type\":\"choice\",\"choice\":\"billing\",\"probabilities\":{\"billing\":0.88,\"technical\":0.12},\"confidence\":0.81},\"frustration\":{\"type\":\"score\",\"score\":1.05,\"legend\":{\"0\":\"Calm\",\"1\":\"Frustrated\",\"2\":\"Very angry\"},\"probabilities\":{\"0\":0,\"1\":0.95,\"2\":0.05},\"confidence\":0.92}},\"usage\":{\"input_tokens\":304,\"output_tokens\":18}}"
+    )
+  )
+  (let wire-response (call HTTPResponse (. HTTPStatus ok) response-text))
+  (let decoded (catch (call (. jev decode) wire-response)))
+  (call (. t check) "valid response decoded" (is decoded JevResponse))
+  (if (is-not decoded JevResponse)
+    (return t)
+  )
+  (let response (as decoded JevResponse))
+  (blank)
+  (call (. t expect) "model" "jev-1.13.0" (. response model))
+  (call (. t check) "Noul variant" (is ([] (. response answers) "urgent") JevNoulAnswer))
+  (call (. t expect)
+    (block
+      (arg "integer probability normalized")
+      (arg 1.0)
+      (arg (. (as ([] (. response answers) "urgent") JevNoulAnswer) yes-probability))
+    )
+  )
+  (call (. t check) "Choice variant" (is ([] (. response answers) "department") JevChoiceAnswer))
+  (let choice (as ([] (. response answers) "department") JevChoiceAnswer))
+  (call (. t expect) "Choice selection" "billing" (. choice choice))
+  (call (. t expect) "Choice probability" 0.88 (!! ([] (. choice probabilities) "billing")))
+  (call (. t check) "Score variant" (is ([] (. response answers) "frustration") JevScoreAnswer))
+  (let score (as ([] (. response answers) "frustration") JevScoreAnswer))
+  (call (. t expect) "weighted score" 1.05 (. score score))
+  (call (. t expect) "Score legend" "Very angry" (!! ([] (. score legend) "2")))
+  (call (. t expect) "input usage" 304 (!! (. response usage input-tokens)))
+  (call (. t expect) "output usage" 18 (!! (. response usage output-tokens)))
+  (return t)
+)

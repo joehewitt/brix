@@ -1,18 +1,19 @@
 # Collections
 
-```yumi
-notify-collection-demo(side-effect())
+```brix
+(main
+  (call notify-collection-demo (call side-effect))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do notify-collection-demo
-    - text String
+(fn-do + notify-collection-demo _
+  (param text String)
+  (print text)
+)
 
--- text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do side-effect String
--- "arg"
-= "called"
+(fn-do + side-effect String
+  (print "arg")
+  (return "called")
+)
 ```
 
 ```output
@@ -20,69 +21,76 @@ arg
 called
 ```
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items = List'String(["a"])
-. calls = 0
-
-<Box box
-    for item in #items
-        <TextBox = item
-
-do @feature-collection-observers
-    calls = 1
--- calls
+(main
+  (let items (call (of List String) (list "a")))
+  (let calls 0)
+  (blank)
+  (<> Box (id: box)
+    (for (in item #items)
+      (<> TextBox (value: item))
+    )
+  )
+  (blank)
+  (do @feature-collection-observers
+    (= calls 1)
+  )
+  (print calls)
+)
 ```
 
 ```output
 1
 ```
 
-```yumi
-/core
-/core/collection
-/core/tests/support/markup-fixtures
+```brix
+(import /core)
+(import /core/collection)
+(import /core/tests/support/markup-fixtures)
+(blank)
+(prop _ warmed _ (= (call warm-list-mutation)))
+(blank)
 
-_ warmed = warm-list-mutation()
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items))
+      (<> TextBox (value: item))
+    )
+  )
+  (blank)
+  (let recorder (call Recorder))
+  (call observe-collection (. demo items) (. recorder record))
+  (++= (. demo items) (call (of List String) (list "a" "b" "c")))
+  (call (. demo items insert) (call (of List String) (list "x" "y")) 1)
+  (= ([] (. demo items) 0) "z")
+  (call (. demo items replace) 0 "r")
+  (call (. demo items remove) 2 2)
+  (for (in mutation (. recorder seen))
+    (print mutation)
+  )
+  (call unobserve-collection (. demo items) (. recorder record))
+)
 
-<Demo demo
-    for item in demo.#items
-        <TextBox = item
+(type + Recorder
+  (prop + seen (list String))
+  (fn-do + record Void
+    (param mutation CollectionMutation)
+    (+= seen (str (. mutation kind) ":" (. mutation index) ":" (. mutation from-index) ":" (. mutation to-index) ":" (. mutation count)))
+  )
+)
 
-. recorder = Recorder()
-observe-collection(demo.items, recorder.record)
-demo.items ++= List'String(["a", "b", "c"])
-demo.items.insert(List'String(["x", "y"]), 1)
-demo.items[0] = "z"
-demo.items.replace(0, "r")
-demo.items.remove(2, 2)
-for mutation in recorder.seen
-    -- mutation
-unobserve-collection(demo.items, recorder.record)
+(fn-do + warm-list-mutation Size
+  (let items (call (of List String)))
+  (+= items "warm")
+  (return (. items length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Recorder
-
-+ seen [String]
-
-────────────────────
-+ do record Void
-    - mutation CollectionMutation
-
-seen += "${mutation.kind}:${mutation.index}:${mutation.from-index}:${mutation.to-index}:${mutation.count}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do warm-list-mutation Size
-
-. items = List'String()
-items += "warm"
-= items.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [String]
+(type + Demo (is Box)
+  (prop + items (list String))
+)
 ```
 
 ```output
@@ -93,113 +101,107 @@ replace:0:0:0:1
 remove:2:0:0:2
 ```
 
-```yumi
-/core
-/core/collection
-/core/tests/support/markup-fixtures
+```brix
+(import /core)
+(import /core/collection)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items
-        <TextBox = item
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items))
+      (<> TextBox (value: item))
+    )
+  )
+  (blank)
+  (let recorder (call Recorder))
+  (call observe-collection (. demo items) (. recorder record))
+  (call (. demo items clear))
+  (for (in mutation (. recorder seen))
+    (print mutation)
+  )
+  (call unobserve-collection (. demo items) (. recorder record))
+)
 
-. recorder = Recorder()
-observe-collection(demo.items, recorder.record)
-demo.items.clear()
-for mutation in recorder.seen
-    -- mutation
-unobserve-collection(demo.items, recorder.record)
+(type + Recorder
+  (prop + seen (list String))
+  (fn-do + record Void
+    (param mutation CollectionMutation)
+    (+= seen (str (. mutation kind) ":" (. mutation index) ":" (. mutation from-index) ":" (. mutation to-index) ":" (. mutation count)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Recorder
-
-+ seen [String]
-
-────────────────────
-+ do record Void
-    - mutation CollectionMutation
-
-seen += "${mutation.kind}:${mutation.index}:${mutation.from-index}:${mutation.to-index}:${mutation.count}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [String]
-
-────────────────────
-+ This
-
-items = List'String(["a", "b", "c"])
+(type + Demo (is Box)
+  (prop + items (list String))
+  (fn-do + This _
+    (= items (call (of List String) (list "a" "b" "c")))
+  )
+)
 ```
 
 ```output
 remove:0:0:0:3
 ```
 
-```yumi
-/core
-/core/collection
-/core/tests/support/markup-fixtures
+```brix
+(import /core)
+(import /core/collection)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items
-        <TextBox = item
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items))
+      (<> TextBox (value: item))
+    )
+  )
+  (blank)
+  (let recorder (call Recorder (. demo items)))
+  (call observe-collection (. demo items) (!! (. recorder first-observer)))
+  (call observe-collection (. demo items) (!! (. recorder second-observer)))
+  (call observe-collection (. demo items) (!! (. recorder third-observer)))
+  (+= (. demo items) "c")
+  (+= (. demo items) "d")
+  (for (in call (. recorder seen))
+    (print call)
+  )
+  (call unobserve-collection (. demo items) (!! (. recorder second-observer)))
+  (call unobserve-collection (. demo items) (!! (. recorder third-observer)))
+)
 
-. recorder = Recorder(demo.items)
-observe-collection(demo.items, recorder.first-observer!)
-observe-collection(demo.items, recorder.second-observer!)
-observe-collection(demo.items, recorder.third-observer!)
-demo.items += "c"
-demo.items += "d"
-for call in recorder.seen
-    -- call
-unobserve-collection(demo.items, recorder.second-observer!)
-unobserve-collection(demo.items, recorder.third-observer!)
+(type + Recorder
+  (prop + items (list String))
+  (prop + seen (list String))
+  (prop _ first-observer (? CollectionObserver))
+  (prop _ second-observer (? CollectionObserver))
+  (prop _ third-observer (? CollectionObserver))
+  (fn-do + This _
+    (param items (list String))
+    (= first-observer (as (. this first) CollectionObserver))
+    (= second-observer (as (. this second) CollectionObserver))
+    (= third-observer (as (. this third) CollectionObserver))
+  )
+  (fn-do + first Void
+    (param mutation CollectionMutation)
+    (+= seen "first")
+    (call unobserve-collection items (!! first-observer))
+  )
+  (fn-do + second Void
+    (param mutation CollectionMutation)
+    (+= seen "second")
+  )
+  (fn-do + third Void
+    (param mutation CollectionMutation)
+    (+= seen "third")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Recorder
-
-+ items [String]
-+ seen [String]
-_ first-observer CollectionObserver?
-_ second-observer CollectionObserver?
-_ third-observer CollectionObserver?
-
-────────────────────
-+ This
-    - items [String]
-
-first-observer = this.first as CollectionObserver
-second-observer = this.second as CollectionObserver
-third-observer = this.third as CollectionObserver
-
-────────────────────
-+ do first Void
-    - mutation CollectionMutation
-
-seen += "first"
-unobserve-collection(items, first-observer!)
-
-────────────────────
-+ do second Void
-    - mutation CollectionMutation
-
-seen += "second"
-
-────────────────────
-+ do third Void
-    - mutation CollectionMutation
-
-seen += "third"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [String]
-
-────────────────────
-+ This
-
-items = List'String(["a", "b"])
+(type + Demo (is Box)
+  (prop + items (list String))
+  (fn-do + This _
+    (= items (call (of List String) (list "a" "b")))
+  )
+)
 ```
 
 ```output
@@ -210,84 +212,77 @@ second
 third
 ```
 
-```yumi
-/core
-/core/collection
-/core/tests/support/markup-fixtures
+```brix
+(import /core)
+(import /core/collection)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items
-        <TextBox = item
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items))
+      (<> TextBox (value: item))
+    )
+  )
+  (blank)
+  (let recorder (call Recorder (. demo items)))
+  (call observe-collection (. demo items) (!! (. recorder first-observer)))
+  (call observe-collection (. demo items) (!! (. recorder second-observer)))
+  (call observe-collection (. demo items) (!! (. recorder third-observer)))
+  (+= (. demo items) "c")
+  (+= (. demo items) "d")
+  (for (in call (. recorder seen))
+    (print call)
+  )
+  (call unobserve-collection (. demo items) (!! (. recorder first-observer)))
+  (call unobserve-collection (. demo items) (!! (. recorder third-observer)))
+  (call unobserve-collection (. demo items) (!! (. recorder fourth-observer)))
+)
 
-. recorder = Recorder(demo.items)
-observe-collection(demo.items, recorder.first-observer!)
-observe-collection(demo.items, recorder.second-observer!)
-observe-collection(demo.items, recorder.third-observer!)
-demo.items += "c"
-demo.items += "d"
-for call in recorder.seen
-    -- call
-unobserve-collection(demo.items, recorder.first-observer!)
-unobserve-collection(demo.items, recorder.third-observer!)
-unobserve-collection(demo.items, recorder.fourth-observer!)
+(type + Recorder
+  (prop + items (list String))
+  (prop + seen (list String))
+  (prop + did-mutate _ (= false))
+  (prop _ first-observer (? CollectionObserver))
+  (prop _ second-observer (? CollectionObserver))
+  (prop _ third-observer (? CollectionObserver))
+  (prop _ fourth-observer (? CollectionObserver))
+  (fn-do + This _
+    (param items (list String))
+    (= first-observer (as (. this first) CollectionObserver))
+    (= second-observer (as (. this second) CollectionObserver))
+    (= third-observer (as (. this third) CollectionObserver))
+    (= fourth-observer (as (. this fourth) CollectionObserver))
+  )
+  (fn-do + first Void
+    (param mutation CollectionMutation)
+    (+= seen "first")
+    (if (not did-mutate)
+      (= did-mutate true)
+      (call unobserve-collection items (!! second-observer))
+      (call observe-collection items (!! fourth-observer))
+    )
+  )
+  (fn-do + second Void
+    (param mutation CollectionMutation)
+    (+= seen "second")
+  )
+  (fn-do + third Void
+    (param mutation CollectionMutation)
+    (+= seen "third")
+  )
+  (fn-do + fourth Void
+    (param mutation CollectionMutation)
+    (+= seen "fourth")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Recorder
-
-+ items [String]
-+ seen [String]
-+ did-mutate = false
-_ first-observer CollectionObserver?
-_ second-observer CollectionObserver?
-_ third-observer CollectionObserver?
-_ fourth-observer CollectionObserver?
-
-────────────────────
-+ This
-    - items [String]
-
-first-observer = this.first as CollectionObserver
-second-observer = this.second as CollectionObserver
-third-observer = this.third as CollectionObserver
-fourth-observer = this.fourth as CollectionObserver
-
-────────────────────
-+ do first Void
-    - mutation CollectionMutation
-
-seen += "first"
-if !did-mutate
-    did-mutate = true
-    unobserve-collection(items, second-observer!)
-    observe-collection(items, fourth-observer!)
-
-────────────────────
-+ do second Void
-    - mutation CollectionMutation
-
-seen += "second"
-
-────────────────────
-+ do third Void
-    - mutation CollectionMutation
-
-seen += "third"
-
-────────────────────
-+ do fourth Void
-    - mutation CollectionMutation
-
-seen += "fourth"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [String]
-
-────────────────────
-+ This
-
-items = List'String(["a", "b"])
+(type + Demo (is Box)
+  (prop + items (list String))
+  (fn-do + This _
+    (= items (call (of List String) (list "a" "b")))
+  )
+)
 ```
 
 ```output
@@ -298,84 +293,77 @@ third
 fourth
 ```
 
-```yumi
-/core
-/core/collection
-/core/tests/support/markup-fixtures
+```brix
+(import /core)
+(import /core/collection)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items
-        <TextBox = item
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items))
+      (<> TextBox (value: item))
+    )
+  )
+  (blank)
+  (let recorder (call Recorder (. demo items)))
+  (call observe-collection (. demo items) (!! (. recorder first-observer)))
+  (call observe-collection (. demo items) (!! (. recorder second-observer)))
+  (call observe-collection (. demo items) (!! (. recorder third-observer)))
+  (+= (. demo items) "c")
+  (+= (. demo items) "d")
+  (for (in call (. recorder seen))
+    (print call)
+  )
+  (call unobserve-collection (. demo items) (!! (. recorder first-observer)))
+  (call unobserve-collection (. demo items) (!! (. recorder second-observer)))
+  (call unobserve-collection (. demo items) (!! (. recorder fourth-observer)))
+)
 
-. recorder = Recorder(demo.items)
-observe-collection(demo.items, recorder.first-observer!)
-observe-collection(demo.items, recorder.second-observer!)
-observe-collection(demo.items, recorder.third-observer!)
-demo.items += "c"
-demo.items += "d"
-for call in recorder.seen
-    -- call
-unobserve-collection(demo.items, recorder.first-observer!)
-unobserve-collection(demo.items, recorder.second-observer!)
-unobserve-collection(demo.items, recorder.fourth-observer!)
+(type + Recorder
+  (prop + items (list String))
+  (prop + seen (list String))
+  (prop + did-mutate _ (= false))
+  (prop _ first-observer (? CollectionObserver))
+  (prop _ second-observer (? CollectionObserver))
+  (prop _ third-observer (? CollectionObserver))
+  (prop _ fourth-observer (? CollectionObserver))
+  (fn-do + This _
+    (param items (list String))
+    (= first-observer (as (. this first) CollectionObserver))
+    (= second-observer (as (. this second) CollectionObserver))
+    (= third-observer (as (. this third) CollectionObserver))
+    (= fourth-observer (as (. this fourth) CollectionObserver))
+  )
+  (fn-do + first Void
+    (param mutation CollectionMutation)
+    (+= seen "first")
+    (if (not did-mutate)
+      (= did-mutate true)
+      (call unobserve-collection items (!! third-observer))
+      (call observe-collection items (!! fourth-observer))
+    )
+  )
+  (fn-do + second Void
+    (param mutation CollectionMutation)
+    (+= seen "second")
+  )
+  (fn-do + third Void
+    (param mutation CollectionMutation)
+    (+= seen "third")
+  )
+  (fn-do + fourth Void
+    (param mutation CollectionMutation)
+    (+= seen "fourth")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Recorder
-
-+ items [String]
-+ seen [String]
-+ did-mutate = false
-_ first-observer CollectionObserver?
-_ second-observer CollectionObserver?
-_ third-observer CollectionObserver?
-_ fourth-observer CollectionObserver?
-
-────────────────────
-+ This
-    - items [String]
-
-first-observer = this.first as CollectionObserver
-second-observer = this.second as CollectionObserver
-third-observer = this.third as CollectionObserver
-fourth-observer = this.fourth as CollectionObserver
-
-────────────────────
-+ do first Void
-    - mutation CollectionMutation
-
-seen += "first"
-if !did-mutate
-    did-mutate = true
-    unobserve-collection(items, third-observer!)
-    observe-collection(items, fourth-observer!)
-
-────────────────────
-+ do second Void
-    - mutation CollectionMutation
-
-seen += "second"
-
-────────────────────
-+ do third Void
-    - mutation CollectionMutation
-
-seen += "third"
-
-────────────────────
-+ do fourth Void
-    - mutation CollectionMutation
-
-seen += "fourth"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [String]
-
-────────────────────
-+ This
-
-items = List'String(["a", "b"])
+(type + Demo (is Box)
+  (prop + items (list String))
+  (fn-do + This _
+    (= items (call (of List String) (list "a" "b")))
+  )
+)
 ```
 
 ```output
@@ -388,32 +376,38 @@ fourth
 
 ### Collection observer active count cools when the observed collection is collected.
 
-```yumi
-/core
-/core/collection
-/BxGC/BxGC.h
+```brix
+(import /core)
+(import /core/collection)
+(import /BxGC/BxGC.h)
+(blank)
 
-C:brixGCCollect()
-do C:brixGCDrainCleanups()
-. observer-lane = C:brixGCCollectionObserversSidePayloadLane()
-. payloads-before = C:brixGCObjectSidePayloadCount(observer-lane)
-make-observed-list()
--- C:brixCollectionObserverActiveCount()
--- C:brixGCObjectSidePayloadCount(observer-lane) - payloads-before
-C:brixGCCollect()
-do C:brixGCDrainCleanups()
--- C:brixCollectionObserverActiveCount()
--- C:brixGCObjectSidePayloadCount(observer-lane) - payloads-before
+(main
+  (call C:brixGCCollect)
+  (do
+    (inline (call C:brixGCDrainCleanups))
+  )
+  (let observer-lane (call C:brixGCCollectionObserversSidePayloadLane))
+  (let payloads-before (call C:brixGCObjectSidePayloadCount observer-lane))
+  (call make-observed-list)
+  (print (call C:brixCollectionObserverActiveCount))
+  (print (- (call C:brixGCObjectSidePayloadCount observer-lane) payloads-before))
+  (call C:brixGCCollect)
+  (do
+    (inline (call C:brixGCDrainCleanups))
+  )
+  (print (call C:brixCollectionObserverActiveCount))
+  (print (- (call C:brixGCObjectSidePayloadCount observer-lane) payloads-before))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make-observed-list Void
+(fn-do + make-observed-list Void
+  (let items (call (of List String) (list "a")))
+  (call observe-collection items ignore-mutation)
+)
 
-. items = List'String(["a"])
-observe-collection(items, ignore-mutation)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do ignore-mutation
-    - mutation CollectionMutation
+(fn-do + ignore-mutation _
+  (param mutation CollectionMutation)
+)
 ```
 
 ```output
@@ -425,55 +419,58 @@ observe-collection(items, ignore-mutation)
 
 ### ArrayBuilder detaches finished storage, supports rollback, and leaves ImmutableArray immutable.
 
-```yumi
-/core
-/core/array-builder
+```brix
+(import /core)
+(import /core/array-builder)
+(blank)
 
--- ImmutableArray'I64().length
-. array = Array'I64([5i64, 6i64])
-. array-view = array.immutable
--- array-view[0]
-array[0] = 7i64
--- array-view[0]
-. builder = ArrayBuilder'I64()
-builder.reserve(8)
-builder.append(1)
-builder.append-all(List'I64([2, 2]))
-. mark = builder.mark
-builder.append(3)
--- builder.length
-builder.rewind(mark)
-. sequence = builder.finish-immutable()
--- sequence.length
--- sequence[0]
--- sequence[Position.last]
--- sequence[1 .. < 3]
--- sequence has 2
--- sequence == sequence[0 .. < sequence.length]
-
-builder.append(9)
--- sequence
--- builder.finish-immutable()
--- builder.finish-immutable().length
-
-. words = ArrayBuilder'String()
-words.append("kept")
-. words-mark = words.mark
-words.append("discarded")
-words.rewind(words-mark)
--- words.finish-immutable()
-words.append("cleared")
-words.clear()
--- words.finish-immutable().length
-
-. mutable [I64] = sequence
-mutable += 4
--- sequence
--- mutable
-. pair-builder = ArrayBuilder'(KeyValuePair'String'I64)()
-pair-builder.append(KeyValuePair("answer", 42i64))
-. mapped = pair-builder.finish-immutable() as [String = I64]
--- mapped["answer"]
+(main
+  (print (. (call (of ImmutableArray I64)) length))
+  (let array (call (of Array I64) (list 5i64 6i64)))
+  (let array-view (. array immutable))
+  (print ([] array-view 0))
+  (= ([] array 0) 7i64)
+  (print ([] array-view 0))
+  (let builder (call (of ArrayBuilder I64)))
+  (call (. builder reserve) 8)
+  (call (. builder append) 1)
+  (call (. builder append-all) (call (of List I64) (list 2 2)))
+  (let mark (. builder mark))
+  (call (. builder append) 3)
+  (print (. builder length))
+  (call (. builder rewind) mark)
+  (let sequence (call (. builder finish-immutable)))
+  (print (. sequence length))
+  (print ([] sequence 0))
+  (print ([] sequence (. Position last)))
+  (print ([] sequence (..< 1 3)))
+  (print (has sequence 2))
+  (print (== sequence ([] sequence (..< 0 (. sequence length)))))
+  (blank)
+  (call (. builder append) 9)
+  (print sequence)
+  (print (call (. builder finish-immutable)))
+  (print (. (call (. builder finish-immutable)) length))
+  (blank)
+  (let words (call (of ArrayBuilder String)))
+  (call (. words append) "kept")
+  (let words-mark (. words mark))
+  (call (. words append) "discarded")
+  (call (. words rewind) words-mark)
+  (print (call (. words finish-immutable)))
+  (call (. words append) "cleared")
+  (call (. words clear))
+  (print (. (call (. words finish-immutable)) length))
+  (blank)
+  (let mutable (list I64) sequence)
+  (+= mutable 4)
+  (print sequence)
+  (print mutable)
+  (let pair-builder (call (of ArrayBuilder (of KeyValuePair String I64))))
+  (call (. pair-builder append) (call KeyValuePair "answer" 42i64))
+  (let mapped (as (call (. pair-builder finish-immutable)) (map String I64)))
+  (print ([] mapped "answer"))
+)
 ```
 
 ```output
@@ -499,33 +496,36 @@ kept
 
 ### ArrayBuilder canonicalizes empty finishes and finish-compacted detaches exact logical content.
 
-```yumi
-/core
-/core/arena
-/core/array-builder
+```brix
+(import /core)
+(import /core/arena)
+(import /core/array-builder)
+(blank)
 
-. builder = ArrayBuilder'String()
-builder.reserve(64)
-builder.append("alpha")
-builder.append("beta")
-. compacted = builder.finish-immutable-compacted()
-builder.append("reused")
-. reused = builder.finish-immutable-compacted()
-. empty-builder = ArrayBuilder'String()
-empty-builder.reserve(64)
-. empty = empty-builder.finish-immutable()
-. arena = Arena()
-. arena-builder = ArrayBuilder'U32(arena)
-arena-builder.reserve(32)
-arena-builder.append(7u32)
-. arena-compacted = arena-builder.finish-immutable-compacted()
--- compacted
--- reused
--- compacted
--- empty.length
--- empty-builder.finish-immutable-compacted().length
--- arena-compacted
-arena.release()
+(main
+  (let builder (call (of ArrayBuilder String)))
+  (call (. builder reserve) 64)
+  (call (. builder append) "alpha")
+  (call (. builder append) "beta")
+  (let compacted (call (. builder finish-immutable-compacted)))
+  (call (. builder append) "reused")
+  (let reused (call (. builder finish-immutable-compacted)))
+  (let empty-builder (call (of ArrayBuilder String)))
+  (call (. empty-builder reserve) 64)
+  (let empty (call (. empty-builder finish-immutable)))
+  (let arena (call Arena))
+  (let arena-builder (call (of ArrayBuilder U32) arena))
+  (call (. arena-builder reserve) 32)
+  (call (. arena-builder append) 7u32)
+  (let arena-compacted (call (. arena-builder finish-immutable-compacted)))
+  (print compacted)
+  (print reused)
+  (print compacted)
+  (print (. empty length))
+  (print (. (call (. empty-builder finish-immutable-compacted)) length))
+  (print arena-compacted)
+  (call (. arena release))
+)
 ```
 
 ```output
@@ -539,26 +539,29 @@ alpha, beta
 
 ### ArrayBuilder uses its provider's Array backing and finished views survive builder reuse.
 
-```yumi
-/core
-/core/arena
-/core/array-builder
+```brix
+(import /core)
+(import /core/arena)
+(import /core/array-builder)
+(blank)
 
-. arena = Arena()
-. builder = ArrayBuilder'U32(arena)
-builder.append(10u32)
-builder.append(20u32)
-. first = builder.finish-immutable()
-builder.append(30u32)
-. second = builder.finish-immutable()
-. default-builder = ArrayBuilder'U32()
-default-builder.append(10u32)
-default-builder.append(20u32)
--- first
--- second
--- first[1]
--- first == default-builder.finish-immutable()
-arena.release()
+(main
+  (let arena (call Arena))
+  (let builder (call (of ArrayBuilder U32) arena))
+  (call (. builder append) 10u32)
+  (call (. builder append) 20u32)
+  (let first (call (. builder finish-immutable)))
+  (call (. builder append) 30u32)
+  (let second (call (. builder finish-immutable)))
+  (let default-builder (call (of ArrayBuilder U32)))
+  (call (. default-builder append) 10u32)
+  (call (. default-builder append) 20u32)
+  (print first)
+  (print second)
+  (print ([] first 1))
+  (print (== first (call (. default-builder finish-immutable))))
+  (call (. arena release))
+)
 ```
 
 ```output
@@ -568,40 +571,42 @@ arena.release()
 true
 ```
 
-```yumi
-/core/arena
-/core/array-builder
-/BxGC/BxGC.h
+```brix
+(import /core/arena)
+(import /core/array-builder)
+(import /BxGC/BxGC.h)
+(blank)
 
-. arena = Arena()
-. builder = ArrayBuilder'ArenaNode(arena)
-for index in 0 .. < 8
-    builder.append(ArenaNode(index))
-    churn-managed-nodes(index)
-    C:brixGCCollect()
--- builder[7].value
-. nodes = builder.finish-immutable()
-churn-managed-nodes(100)
-C:brixGCCollect()
--- nodes[0].value, nodes[7].value
-arena.release()
+(main
+  (let arena (call Arena))
+  (let builder (call (of ArrayBuilder ArenaNode) arena))
+  (for (in index (..< 0 8))
+    (call (. builder append) (call ArenaNode index))
+    (call churn-managed-nodes index)
+    (call C:brixGCCollect)
+  )
+  (print (. ([] builder 7) value))
+  (let nodes (call (. builder finish-immutable)))
+  (call churn-managed-nodes 100)
+  (call C:brixGCCollect)
+  (print (tuple (. ([] nodes 0) value) (. ([] nodes 7) value)))
+  (call (. arena release))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ArenaNode
+(type + ArenaNode
+  (prop + value Size)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value Size
-
-────────────────────
-+ This
-    - value
-
-━━━━━━━━━━━━━━━━━━━━
-+ do churn-managed-nodes
-    - seed Size
-
-. garbage [ArenaNode]
-for offset in 0 .. < 256
-    garbage += ArenaNode(seed + offset)
+(fn-do + churn-managed-nodes _
+  (param seed Size)
+  (let garbage (list ArenaNode))
+  (for (in offset (..< 0 256))
+    (+= garbage (call ArenaNode (+ seed offset)))
+  )
+)
 ```
 
 ```output
@@ -611,30 +616,30 @@ for offset in 0 .. < 256
 
 ### GC-backed ImmutableArray storage traces pointerful elements after the builder is gone.
 
-```yumi
-/core/array-builder
-/BxGC/BxGC.h
+```brix
+(import /core/array-builder)
+(import /BxGC/BxGC.h)
+(blank)
 
-. items = make-sequence-gc-items()
-C:brixGCCollect()
--- items.length
--- items[0].value
+(main
+  (let items (call make-sequence-gc-items))
+  (call C:brixGCCollect)
+  (print (. items length))
+  (print (. ([] items 0) value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ SequenceGCItem
+(type + SequenceGCItem
+  (prop + value String)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value String
-
-────────────────────
-+ This
-    - value
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make-sequence-gc-items ImmutableArray'SequenceGCItem
-
-. builder = ArrayBuilder'SequenceGCItem()
-builder.append(SequenceGCItem("kept"))
-= builder.finish-immutable()
+(fn-do + make-sequence-gc-items (of ImmutableArray SequenceGCItem)
+  (let builder (call (of ArrayBuilder SequenceGCItem)))
+  (call (. builder append) (call SequenceGCItem "kept"))
+  (return (call (. builder finish-immutable)))
+)
 ```
 
 ```output
@@ -644,46 +649,47 @@ kept
 
 ### Managed objects and their collections do not retain or release Arena identities.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. first = Arena()
-. second = Arena()
-. first-pointer = first.allocate'U32(1)
-first-pointer[0] = 30u32
-. second-pointer = second.allocate'U32(1)
-second-pointer[0] = 40u32
-. holder = ArenaCollectionHolder(List'Arena([first, second]), [first-pointer, second-pointer])
+(main
+  (let first (call Arena))
+  (let second (call Arena))
+  (let first-pointer (call (of (. first allocate) U32) 1))
+  (= ([] first-pointer 0) 30u32)
+  (let second-pointer (call (of (. second allocate) U32) 1))
+  (= ([] second-pointer 0) 40u32)
+  (let holder (call ArenaCollectionHolder (call (of List Arena) (list first second)) (list first-pointer second-pointer)))
+  (blank)
+  (call (. holder arenas clear))
+  (call (. holder pointers clear))
+  (print ([] first-pointer 0))
+  (print ([] second-pointer 0))
+  (blank)
+  (+= (. holder arenas) first)
+  (+= (. holder pointers) first-pointer)
+  (= ([] (. holder arenas) 0) second)
+  (= ([] (. holder pointers) 0) second-pointer)
+  (let first-next (call (of (. first allocate) U32) 1))
+  (= ([] first-next 0) 31u32)
+  (print ([] first-next 0))
+  (let second-next (call (of (. second allocate) U32) 1))
+  (= ([] second-next 0) 41u32)
+  (print ([] second-next 0))
+  (blank)
+  (call (. first release))
+  (call (. second release))
+)
 
-holder.arenas.clear()
-holder.pointers.clear()
--- first-pointer[0]
--- second-pointer[0]
-
-holder.arenas += first
-holder.pointers += first-pointer
-holder.arenas[0] = second
-holder.pointers[0] = second-pointer
-. first-next = first.allocate'U32(1)
-first-next[0] = 31u32
--- first-next[0]
-. second-next = second.allocate'U32(1)
-second-next[0] = 41u32
--- second-next[0]
-
-first.release()
-second.release()
-
-━━━━━━━━━━━━━━━━━━━━
-+ ArenaCollectionHolder
-
-+ arenas [Arena]
-+ pointers [CPointer'U32]
-
-────────────────────
-+ This
-    - arenas
-    - pointers
+(type + ArenaCollectionHolder
+  (prop + arenas (list Arena))
+  (prop + pointers (list (of CPointer U32)))
+  (fn-do + This _
+    (param arenas _)
+    (param pointers _)
+  )
+)
 ```
 
 ```output
@@ -695,30 +701,36 @@ second.release()
 
 ### Explicit collection observer detach deactivates once before later owner reclamation.
 
-```yumi
-/core
-/core/collection
-/BxGC/BxGC.h
+```brix
+(import /core)
+(import /core/collection)
+(import /BxGC/BxGC.h)
+(blank)
 
-C:brixGCCollect()
-do C:brixGCDrainCleanups()
-. active-before = C:brixCollectionObserverActiveCount()
-make-explicitly-detached-list()
--- C:brixCollectionObserverActiveCount() - active-before
-C:brixGCCollect()
-do C:brixGCDrainCleanups()
--- C:brixCollectionObserverActiveCount() - active-before
+(main
+  (call C:brixGCCollect)
+  (do
+    (inline (call C:brixGCDrainCleanups))
+  )
+  (let active-before (call C:brixCollectionObserverActiveCount))
+  (call make-explicitly-detached-list)
+  (print (- (call C:brixCollectionObserverActiveCount) active-before))
+  (call C:brixGCCollect)
+  (do
+    (inline (call C:brixGCDrainCleanups))
+  )
+  (print (- (call C:brixCollectionObserverActiveCount) active-before))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make-explicitly-detached-list Void
+(fn-do + make-explicitly-detached-list Void
+  (let items (call (of List String) (list "a")))
+  (call observe-collection items ignore-mutation)
+  (call unobserve-collection items ignore-mutation)
+)
 
-. items = List'String(["a"])
-observe-collection(items, ignore-mutation)
-unobserve-collection(items, ignore-mutation)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do ignore-mutation
-    - mutation CollectionMutation
+(fn-do + ignore-mutation _
+  (param mutation CollectionMutation)
+)
 ```
 
 ```output
@@ -728,45 +740,49 @@ unobserve-collection(items, ignore-mutation)
 
 ### Arena ArrayBuilder storage checkpoints restore prior buffers without retaining speculative storage.
 
-```yumi
-/core/arena
-/core/array-builder
+```brix
+(import /core/arena)
+(import /core/array-builder)
+(blank)
 
-. arena = Arena(8192)
-do finally arena.release()
-. builder = ArrayBuilder'String(arena)
-. alias = builder
-builder.append(arena.copy-string("kept"))
-. arena-mark = arena.mark
-. checkpoint = builder.storage-checkpoint(arena, arena-mark)
-builder.reserve(64)
-builder.append(arena.copy-string("discarded"))
-builder.validate-storage-restore(checkpoint, arena, arena-mark)
-arena.rewind(arena-mark)
-builder.restore-storage(checkpoint, arena, arena-mark)
-builder.append(arena.copy-string("regrown"))
-. shared-length = alias.length
-. shared-first = alias[0]
-. length-after-index = builder.length
-. restored = builder.finish-immutable()
--- "$shared-length/$shared-first/$length-after-index/${restored.length}/${restored[0]}/${restored[1]}"
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let builder (call (of ArrayBuilder String) arena))
+  (let alias builder)
+  (call (. builder append) (call (. arena copy-string) "kept"))
+  (let arena-mark (. arena mark))
+  (let checkpoint (call (. builder storage-checkpoint) arena arena-mark))
+  (call (. builder reserve) 64)
+  (call (. builder append) (call (. arena copy-string) "discarded"))
+  (call (. builder validate-storage-restore) checkpoint arena arena-mark)
+  (call (. arena rewind) arena-mark)
+  (call (. builder restore-storage) checkpoint arena arena-mark)
+  (call (. builder append) (call (. arena copy-string) "regrown"))
+  (let shared-length (. alias length))
+  (let shared-first ([] alias 0))
+  (let length-after-index (. builder length))
+  (let restored (call (. builder finish-immutable)))
+  (print (str shared-length "/" shared-first "/" length-after-index "/" (. restored length) "/" ([] restored 0) "/" ([] restored 1)))
+  (blank)
+  (let empty (call (of ArrayBuilder String) arena))
+  (let empty-mark (. arena mark))
+  (let empty-checkpoint (call (. empty storage-checkpoint) arena empty-mark))
+  (let wrapped-checkpoint (? RestoreCheckpoint) (call RestoreCheckpoint empty-mark empty-checkpoint))
+  (call (. empty append) (call (. arena copy-string) "discarded"))
+  (call (. empty validate-storage-restore) (. (!! wrapped-checkpoint) side) arena (. (!! wrapped-checkpoint) arena))
+  (call (. arena rewind) (. (!! wrapped-checkpoint) arena))
+  (call (. empty restore-storage) (. (!! wrapped-checkpoint) side) arena (. (!! wrapped-checkpoint) arena))
+  (call (. empty append) (call (. arena copy-string) "regrown"))
+  (print (str (. empty length) "/" ([] empty 0)))
+)
 
-. empty = ArrayBuilder'String(arena)
-. empty-mark = arena.mark
-. empty-checkpoint = empty.storage-checkpoint(arena, empty-mark)
-. wrapped-checkpoint RestoreCheckpoint? = RestoreCheckpoint(empty-mark, empty-checkpoint)
-empty.append(arena.copy-string("discarded"))
-empty.validate-storage-restore(wrapped-checkpoint!.side, arena, wrapped-checkpoint!.arena)
-arena.rewind(wrapped-checkpoint!.arena)
-empty.restore-storage(wrapped-checkpoint!.side, arena, wrapped-checkpoint!.arena)
-empty.append(arena.copy-string("regrown"))
--- "${empty.length}/${empty[0]}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ RestoreCheckpoint is Tuple
-
-+ arena ArenaMark
-+ side ArrayBuilderStorageCheckpoint'String'ArenaBacking
+(type + RestoreCheckpoint (is Tuple)
+  (prop + arena ArenaMark)
+  (prop + side (of ArrayBuilderStorageCheckpoint String ArenaBacking))
+)
 ```
 
 ```output
@@ -776,41 +792,49 @@ empty.append(arena.copy-string("regrown"))
 
 ### ArrayBuilder checkpoint validation rejects foreign and destructively mutated builders before Arena rewind.
 
-```yumi
-/core/arena
-/core/array-builder
+```brix
+(import /core/arena)
+(import /core/array-builder)
+(blank)
 
-. arena = Arena(8192)
-do finally arena.release()
-. first = ArrayBuilder'U32(arena)
-. second = ArrayBuilder'U32(arena)
-first.append(1u32)
-second.append(2u32)
-. arena-mark = arena.mark
-. checkpoint = first.storage-checkpoint(arena, arena-mark)
-. retained = arena.allocate'U64(1)
-retained[0] = 77u64
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let first (call (of ArrayBuilder U32) arena))
+  (let second (call (of ArrayBuilder U32) arena))
+  (call (. first append) 1u32)
+  (call (. second append) 2u32)
+  (let arena-mark (. arena mark))
+  (let checkpoint (call (. first storage-checkpoint) arena arena-mark))
+  (let retained (call (of (. arena allocate) U64) 1))
+  (= ([] retained 0) 77u64)
+  (blank)
+  (call show-rejected-storage-restore second checkpoint arena arena-mark)
+  (call (. first clear))
+  (call show-rejected-storage-restore first checkpoint arena arena-mark)
+  (call (. first append) 3u32)
+  (let first-values (call (. first finish-immutable)))
+  (let second-values (call (. second finish-immutable)))
+  (print (str ([] first-values 0) "/" ([] second-values 0) "/" ([] retained 0)))
+)
 
-show-rejected-storage-restore(second, checkpoint, arena, arena-mark)
-first.clear()
-show-rejected-storage-restore(first, checkpoint, arena, arena-mark)
-first.append(3u32)
-. first-values = first.finish-immutable()
-. second-values = second.finish-immutable()
--- "${first-values[0]}/${second-values[0]}/${retained[0]}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-rejected-storage-restore
-    - builder ArrayBuilder'U32'ArenaBacking
-    - checkpoint ArrayBuilderStorageCheckpoint'U32'ArenaBacking
-    - arena Arena
-    - mark ArenaMark
-
-. attempt = do new
-    builder.validate-storage-restore(checkpoint, arena, mark)
-catch failure
-    -- failure
-attempt.wait()
+(fn-do + show-rejected-storage-restore _
+  (param builder (of ArrayBuilder U32 ArenaBacking))
+  (param checkpoint (of ArrayBuilderStorageCheckpoint U32 ArenaBacking))
+  (param arena Arena)
+  (param mark ArenaMark)
+  (let attempt
+    (do-new
+      (call (. builder validate-storage-restore) checkpoint arena mark)
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -819,57 +843,65 @@ ArrayBuilder storage checkpoint is stale or belongs to another builder
 3/2/77
 ```
 
-```yumi
-/core/array-builder
+```brix
+(import /core/array-builder)
+(blank)
 
-. builder = ArrayBuilder'I32()
-builder.reserve(8)
-builder.append(1)
-builder.append(2)
-. mutable = builder.finish-mutable()
--- builder.length
-. immutable = mutable.immutable
-. readable Indexable'I32 = mutable
--- readable is ImmutableArray'I32
--- readable is Array'I32
-. read-only Indexable'I32 = immutable
--- read-only is ImmutableArray'I32
--- read-only is Array'I32
-. recovered = readable as Array'I32
--- recovered[1]
-reject-immutable(readable)
--- readable[1]
-mutable[0] = 9
--- immutable[0]
--- immutable[1 .. < 2][0]
-builder.append(3)
-. detached = builder.finish-immutable()
--- builder.length
--- detached[0]
--- mutable[0]
-builder.append(4)
-. compacted = builder.finish-mutable-compacted()
-compacted[0] = 5
--- compacted[0]
--- builder.length
--- builder.finish-mutable().length
-. total = 0
-for item in immutable
-    total += item
-for item in mutable
-    total += item
--- total
+(main
+  (let builder (call (of ArrayBuilder I32)))
+  (call (. builder reserve) 8)
+  (call (. builder append) 1)
+  (call (. builder append) 2)
+  (let mutable (call (. builder finish-mutable)))
+  (print (. builder length))
+  (let immutable (. mutable immutable))
+  (let readable (of Indexable I32) mutable)
+  (print (is readable (of ImmutableArray I32)))
+  (print (is readable (of Array I32)))
+  (let read-only (of Indexable I32) immutable)
+  (print (is read-only (of ImmutableArray I32)))
+  (print (is read-only (of Array I32)))
+  (let recovered (as readable (of Array I32)))
+  (print ([] recovered 1))
+  (call reject-immutable readable)
+  (print ([] readable 1))
+  (= ([] mutable 0) 9)
+  (print ([] immutable 0))
+  (print ([] ([] immutable (..< 1 2)) 0))
+  (call (. builder append) 3)
+  (let detached (call (. builder finish-immutable)))
+  (print (. builder length))
+  (print ([] detached 0))
+  (print ([] mutable 0))
+  (call (. builder append) 4)
+  (let compacted (call (. builder finish-mutable-compacted)))
+  (= ([] compacted 0) 5)
+  (print ([] compacted 0))
+  (print (. builder length))
+  (print (. (call (. builder finish-mutable)) length))
+  (let total 0)
+  (for (in item immutable)
+    (+= total item)
+  )
+  (for (in item mutable)
+    (+= total item)
+  )
+  (print total)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do reject-immutable
-    - values Indexable'I32
-
-. attempt = do new
-    . wrong = values as ImmutableArray'I32
-    -- wrong.length
-catch failure
-    -- failure != null
-attempt.wait()
+(fn-do + reject-immutable _
+  (param values (of Indexable I32))
+  (let attempt
+    (do-new
+      (let wrong (as values (of ImmutableArray I32)))
+      (print (. wrong length))
+      (on-failure failure
+        (print (!= failure null))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -892,38 +924,41 @@ true
 22
 ```
 
-```yumi
-/core/arena
-/core/array-builder
-/BxGC/BxGC.h
+```brix
+(import /core/arena)
+(import /core/array-builder)
+(import /BxGC/BxGC.h)
+(blank)
 
-. arena = Arena(8192)
-do finally arena.release()
-. boxes = ArrayBuilder'Box(arena)
-. pairs = ArrayBuilder'Pair(arena)
-for index in 0 .. < 80
-    boxes.append(Box("box $index"))
-    pairs.append(Pair(Box("pair $index"), Box("tail $index")))
-    C:brixGCCollect()
--- boxes[0].text
--- boxes[79].text
--- pairs[0].left.text, pairs[79].right.text
--- boxes.length, pairs.length
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let boxes (call (of ArrayBuilder Box) arena))
+  (let pairs (call (of ArrayBuilder Pair) arena))
+  (for (in index (..< 0 80))
+    (call (. boxes append) (call Box (str "box " index)))
+    (call (. pairs append) (call Pair (call Box (str "pair " index)) (call Box (str "tail " index))))
+    (call C:brixGCCollect)
+  )
+  (print (. ([] boxes 0) text))
+  (print (. ([] boxes 79) text))
+  (print (tuple (. ([] pairs 0) left text) (. ([] pairs 79) right text)))
+  (print (tuple (. boxes length) (. pairs length)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Tuple
-
-+ left Box
-+ right Box
+(type + Pair (is Tuple)
+  (prop + left Box)
+  (prop + right Box)
+)
 ```
 
 ```output
@@ -935,23 +970,24 @@ box 79
 
 ### Tracked reads of a list follow its mutations as well as its replacement
 
-```yumi
-. bag = Bag()
-. count = 0
-count = bag.#items.size
--- count, bag.size
-bag.items += "c"
--- count, bag.size
-bag.items = List'String(["x"])
--- count, bag.size
-bag.items += "y"
--- count, bag.size
+```brix
+(main
+  (let bag (call Bag))
+  (let count 0)
+  (= count (. bag #items size))
+  (print (tuple count (. bag size)))
+  (+= (. bag items) "c")
+  (print (tuple count (. bag size)))
+  (= (. bag items) (call (of List String) (list "x")))
+  (print (tuple count (. bag size)))
+  (+= (. bag items) "y")
+  (print (tuple count (. bag size)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bag
-
-+ items = List'String(["a", "b"])
-+ size = (#items).size
+(type + Bag
+  (prop + items _ (= (call (of List String) (list "a" "b"))))
+  (prop + size _ (= (. #items size)))
+)
 ```
 
 ```output
@@ -963,31 +999,32 @@ bag.items += "y"
 
 ### An observer attached directly sees list mutations though nothing reads the list tracked
 
-```yumi
-/core
-/core/collection
+```brix
+(import /core)
+(import /core/collection)
+(blank)
 
-. items = List'String()
-. recorder = Recorder()
-observe-collection(items, recorder.record)
-items += "a"
-items.insert("b", 0)
-items[1] = "c"
-items.remove(0)
-for mutation in recorder.seen
-    -- mutation
-unobserve-collection(items, recorder.record)
+(main
+  (let items (call (of List String)))
+  (let recorder (call Recorder))
+  (call observe-collection items (. recorder record))
+  (+= items "a")
+  (call (. items insert) "b" 0)
+  (= ([] items 1) "c")
+  (call (. items remove) 0)
+  (for (in mutation (. recorder seen))
+    (print mutation)
+  )
+  (call unobserve-collection items (. recorder record))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Recorder
-
-+ seen [String]
-
-────────────────────
-+ do record Void
-    - mutation CollectionMutation
-
-seen += "${mutation.kind}:${mutation.index}:${mutation.count}"
+(type + Recorder
+  (prop + seen (list String))
+  (fn-do + record Void
+    (param mutation CollectionMutation)
+    (+= seen (str (. mutation kind) ":" (. mutation index) ":" (. mutation count)))
+  )
+)
 ```
 
 ```output
@@ -999,36 +1036,36 @@ remove:0:1
 
 ### Removing a map's entry and rewinding an ArrayBuilder make no value of the type they hold, which a field may give none of.
 
-```yumi
-/core/arena
-/core/array-builder
-/core/table
+```brix
+(import /core/arena)
+(import /core/array-builder)
+(import /core/table)
+(blank)
 
-. arena = Arena()
-. held [String = Holder]
-held["a"] = Holder(Table'Point(arena).finish())
-held["b"] = Holder(Table'Point(arena).finish())
--= held["a"]
--- "${held.length} ${held["a"] == null} ${held["b"]!.points.length}"
-. built = ArrayBuilder'Holder()
-built.append(held["b"]!)
-built.clear()
-built.append(held["b"]!)
--- built.length
+(main
+  (let arena (call Arena))
+  (let held (map String Holder))
+  (= ([] held "a") (call Holder (call (. (call (of Table Point) arena) finish))))
+  (= ([] held "b") (call Holder (call (. (call (of Table Point) arena) finish))))
+  (-= ([] held "a"))
+  (print (str (. held length) " " (== ([] held "a") null) " " (. (!! ([] held "b")) points length)))
+  (let built (call (of ArrayBuilder Holder)))
+  (call (. built append) (!! ([] held "b")))
+  (call (. built clear))
+  (call (. built append) (!! ([] held "b")))
+  (print (. built length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(type + Point (is Struct)
+  (prop + x I32)
+)
 
-+ x I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ points ImmutableTable'Point
-
-────────────────────
-+ This
-    - points
+(type + Holder
+  (prop + points (of ImmutableTable Point))
+  (fn-do + This _
+    (param points _)
+  )
+)
 ```
 
 ```output

@@ -1,9 +1,5 @@
 # Catch
 
-```yumi
-?! 42
-```
-
 ```brix
 (main
   (throw 42)
@@ -14,10 +10,6 @@
 <Assert>
     <Integer value="42"/>
 </Assert>
-```
-
-```yumi
-catch read-file(path)
 ```
 
 ```brix
@@ -37,10 +29,6 @@ catch read-file(path)
 </CatchBlock>
 ```
 
-```yumi
-catch? read-file(path)
-```
-
 ```brix
 (main
   (catch? (call read-file path))
@@ -56,11 +44,6 @@ catch? read-file(path)
         </Argument>
     </CallExpression>
 </CatchOptional>
-```
-
-```yumi
-?! AppError("bad")
-    catch err IOError <- root TypeError
 ```
 
 ```brix
@@ -90,12 +73,6 @@ catch? read-file(path)
         </TypeCapture>
     </Catch>
 </CatchBlock>
-```
-
-```yumi
-. config = read-config()
-    catch FileNotFound
-        default-config()
 ```
 
 ```brix
@@ -131,14 +108,6 @@ catch? read-file(path)
         </Catch>
     </CatchBlock>
 </Declaration>
-```
-
-```yumi
-read-config()
-    catch FileNotFound
-        default-config()
-    catch PermissionDenied
-        permission-default()
 ```
 
 ```brix
@@ -180,12 +149,6 @@ read-config()
 </CatchBlock>
 ```
 
-```yumi
-catch read-config()
-    catch FileNotFound
-        default-config()
-```
-
 ```brix
 (main
   (scope (catch (call read-config))
@@ -210,12 +173,6 @@ catch read-config()
         </Block>
     </Catch>
 </CatchBlock>
-```
-
-```yumi
-read-config()
-    catch err FileNotFound
-        default-config(err)
 ```
 
 ```brix
@@ -252,10 +209,6 @@ read-config()
 </CatchBlock>
 ```
 
-```yumi
-catch? set-mode(1) • to false
-```
-
 ```brix
 (main
   (catch? (call set-mode 1 (:to false)))
@@ -274,10 +227,6 @@ catch? set-mode(1) • to false
         </Argument>
     </CallExpression>
 </CatchOptional>
-```
-
-```yumi
-catch? foo + bar
 ```
 
 ```brix

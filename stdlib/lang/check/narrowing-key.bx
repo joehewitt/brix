@@ -1,0 +1,57 @@
+(import ./binding)
+(import /lang/ast/decl)
+(import /lang/ast/module)
+(blank)
+(type-line + NarrowingKey (is U64))
+(blank)
+(prop _ evaluated-key-base NarrowingKey (= 4611686018427387904u64))
+(prop _ member-key-base NarrowingKey (= 9223372036854775808u64))
+(prop _ path-key-base NarrowingKey (= 13835058055282163712u64))
+
+(fn-expr + slot-key NarrowingKey
+  (param slot SlotId)
+  (as slot NarrowingKey)
+)
+
+(fn-expr + evaluated-key NarrowingKey
+  (param slot SlotId)
+  ; The key under which the flow knows that a lazy local kept behind a flag has its value: every
+  ; way here passed a read of it.
+  (+ evaluated-key-base (as slot NarrowingKey))
+)
+
+(fn-expr + member-key NarrowingKey
+  (param module ModuleId)
+  (param decl DeclId)
+  (+ member-key-base (/lshift/ (as module NarrowingKey) 32) (as decl NarrowingKey))
+)
+
+(fn-expr + path-key-at NarrowingKey
+  (param index U32)
+  (+ path-key-base (as index NarrowingKey))
+)
+
+(fn-expr + is-evaluated-key Bool
+  (param key NarrowingKey)
+  (and (>= key evaluated-key-base) (< key member-key-base))
+)
+
+(fn-expr + is-member-key Bool
+  (param key NarrowingKey)
+  (>= key member-key-base)
+)
+
+(fn-expr + is-path-key Bool
+  (param key NarrowingKey)
+  (>= key path-key-base)
+)
+
+(fn-expr + path-index U32
+  (param key NarrowingKey)
+  (as (- key path-key-base) U32)
+)
+
+(fn-expr + key-slot SlotId
+  (param key NarrowingKey)
+  (if-expr (< key evaluated-key-base) (as key SlotId) no-slot)
+)

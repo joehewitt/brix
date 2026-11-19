@@ -1,0 +1,154 @@
+; benchmark.meta description: Strokes self-overlapping closed paths that need round pen repair patches.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /graphics/stroke)
+(import /math)
+(blank)
+
+(main
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 72))
+    (let source (call overlap-stroke-source pass))
+    (let stroked
+      (call stroke
+        (block
+          (arg source)
+          (arg (+ 18.0 (% pass 10)))
+          (arg .center)
+          (arg .round-join-type)
+          (arg .butt)
+          (arg 5)
+          (arg 0)
+        )
+      )
+    )
+    (+= checksum (+ (. source count) (call path-score stroked)))
+  )
+  (blank)
+  (print (str "bench-result graphics/stroke-overlap-paths checksum=" checksum))
+)
+
+(fn-expr _ overlap-stroke-source _
+  (param seed Int)
+  (case? (== kind 0)
+    (call pretzel-loop center (+ 64 (as (% seed 5) Float)))
+  )
+  (case? (== kind 1)
+    (call petal-loop center (+ 70 (as (% seed 6) Float)))
+  )
+  (default
+    (call rosette-loop center (+ 62 (as (% seed 7) Float)) (+ 20 (as (% seed 4) Float)) 9 -18deg)
+  )
+  (where
+    (lazy center (call Point (+ 120 (as (% seed 7) Float)) (+ 100 (as (% seed 5) Float))))
+    (lazy kind (% seed 3))
+  )
+)
+
+(fn-do _ pretzel-loop _
+  (param center Point)
+  (param radius Length)
+  (let path (call Path))
+  (let first true)
+  (for (in t (..< 0.0 (* π 2.0) (by: 0.11)))
+    (let point
+      (call Point
+        (block
+          (arg (+ (. center x) (* (call sin (+ (* t 3.0) 0.35)) radius)))
+          (arg (+ (. center y) (* (call sin (* t 4.0)) radius 0.72)))
+        )
+      )
+    )
+    (if first
+      (call (. path move-to) point)
+      (= first false)
+      (else
+        (call (. path line-to) point)
+      )
+    )
+  )
+  (blank)
+  (call (. path close))
+  (return path)
+)
+
+(fn-do _ petal-loop _
+  (param center Point)
+  (param radius Length)
+  (let path (call Path))
+  (call (. path move-to) (+ center (tuple 0 (* (- radius) 0.9))))
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* radius 1.25) (* (- radius) 0.72))))
+      (arg (+ center (tuple (* radius 0.35) (* radius 0.28))))
+      (arg (+ center (tuple (* radius 0.78) (* radius 0.72))))
+    )
+  )
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* radius 0.18) (* radius 1.08))))
+      (arg (+ center (tuple (* (- radius) 0.4) (* radius 0.34))))
+      (arg (+ center (tuple (* (- radius) 0.82) (* radius 0.66))))
+    )
+  )
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* (- radius) 1.22) (* radius 0.08))))
+      (arg (+ center (tuple (* (- radius) 0.55) (* (- radius) 0.72))))
+      (arg (+ center (tuple 0 (* (- radius) 0.9))))
+    )
+  )
+  (call (. path close))
+  (return path)
+)
+
+(fn-do _ rosette-loop _
+  (param center Point)
+  (param outer-radius Length)
+  (param inner-radius Length)
+  (param lobes Int)
+  (param rotation Radians)
+  (let path (call Path))
+  (let count (* lobes 2))
+  (let step (/ (* π 2) count))
+  (for (in i (..< 0 count))
+    (let a1 (+ rotation (* step i)))
+    (let a2 (+ rotation (* step (+ i 1))))
+    (let r1 (if-expr (== (% i 2) 0) outer-radius inner-radius))
+    (let r2 (if-expr (== (% (+ i 1) 2) 0) outer-radius inner-radius))
+    (let bulge (* outer-radius (+ 0.52 (* (as (% i 3) Float) 0.08))))
+    (let p1 (call (. center translate-at-angle) a1 r1))
+    (let p2 (call (. center translate-at-angle) a2 r2))
+    (let h1 (call (. center translate-at-angle) (+ a1 (* step 0.42)) (+ r1 bulge)))
+    (let h2 (call (. center translate-at-angle) (- a2 (* step 0.42)) (+ r2 bulge)))
+    (blank)
+    (if (== i 0)
+      (call (. path move-to) p1)
+    )
+    (blank)
+    (call (. path cubic-curve-to) h1 h2 p2)
+  )
+  (blank)
+  (call (. path close))
+  (return path)
+)
+
+(fn-expr _ path-score Size
+  (param path Path)
+  (case? (not (. path count))
+    0
+  )
+  (default
+    (+ (. path count) (call numeric-check (. path last-point x)) (call numeric-check (. path last-point y)))
+  )
+)
+
+(fn-expr _ numeric-check Size
+  (param value Coord)
+  (% (as (call abs (* value 1000)) Size) 1000003)
+)

@@ -1,21 +1,11 @@
 # Functions
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ func
-```
-
 ```brix
 (fn-expr + func _)
 ```
 
 ```output
 <Function names="func" access="public-access"/>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ static func Int
 ```
 
 ```brix
@@ -28,11 +18,6 @@
 </Function>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ static do release
-```
-
 ```brix
 (fn-do + release _ :static)
 ```
@@ -41,11 +26,6 @@
 <Function names="release" access="public-access" imperative="true" static="true">
     <Block/>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ do func
 ```
 
 ```brix
@@ -59,13 +39,6 @@
 ```
 
 ## Declared Errors
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ do func
-
-= 1
-```
 
 ```brix
 (fn-do + func _
@@ -81,49 +54,6 @@
         </Return>
     </Block>
 </Function>
-```
-
-```yumi crash
-━━━━━━━━━━━━━━━━━━━━
-+ do This ~ Char
-
-~ "a"
-```
-
-```output
-Exception: Grammar functions do not support do
-<no file:2>
-    ━━━━━━━━━━━━━━━━━━━━
-    ^^^^^^^^^^^^^^^^^^^
-```
-
-```yumi
-≤
-+ Thing
-
-━━━━━━━━━━━━━━━━━━━━
-+ do This
-
-━━━━━━━━━━━━━━━━━━━━
-+ do get name String
-
-= "thing"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do name = value String
-
--- value
-
-━━━━━━━━━━━━━━━━━━━━
-+ do to String
-
-= name
-
-━━━━━━━━━━━━━━━━━━━━
-+ do from value String
-
-= Thing()
-≥
 ```
 
 ```brix
@@ -192,11 +122,6 @@ Exception: Grammar functions do not support do
 </Class>
 ```
 
-```yumi
-+ name String => do
-    = "ok"
-```
-
 ```brix
 (prop + name String
   (=> :do
@@ -218,11 +143,6 @@ Exception: Grammar functions do not support do
 </Function>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ read-file String ?! IOError
-```
-
 ```brix
 (fn-expr + read-file String (?! IOError))
 ```
@@ -234,11 +154,6 @@ Exception: Grammar functions do not support do
         <TypeId name="IOError"/>
     </errors>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ read-file String ?! IOError ?! TypeError
 ```
 
 ```brix
@@ -255,11 +170,6 @@ Exception: Grammar functions do not support do
 </Function>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ read-file String
-```
-
 ```brix
 (fn-expr + read-file String)
 ```
@@ -270,11 +180,6 @@ Exception: Grammar functions do not support do
 </Function>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ read-file String without safepoints
-```
-
 ```brix
 (fn-expr + read-file String (without safepoints))
 ```
@@ -283,11 +188,6 @@ Exception: Grammar functions do not support do
 <Function names="read-file" access="public-access" effects="no-safepoint">
     <TypeId name="String"/>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ scan-zone U64 without gc
 ```
 
 ```brix
@@ -302,18 +202,6 @@ Exception: Grammar functions do not support do
 
 ### A restriction is written in a without section, not as an annotation.
 
-```yumi crash
-━━━━━━━━━━━━━━━━━━━━
-+ scan-zone U64 @no-gc
-```
-
-```output
-Exception: Write 'without gc' in place of '@no-gc'
-<no file:3>
-    + scan-zone U64 @no-gc
-                   ^^^^^^
-```
-
 ```brix
 (fn-expr + scan-zone U64 @no-heap)
 ```
@@ -325,24 +213,12 @@ Exception: Write 'without heap' in place of '@no-heap'
                              ^^^^^^^
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-_ func
-```
-
 ```brix
 (fn-expr _ func _)
 ```
 
 ```output
 <Function names="func" access="private-access"/>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ func
-
-body
 ```
 
 ```brix
@@ -357,18 +233,6 @@ body
         <Id name="body"/>
     </Block>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ func
-
-body
-
-━━━━━━━━━━━━━━━━━━━━
-+ func2
-
-body
 ```
 
 ```brix
@@ -396,13 +260,6 @@ body
 
 ## Arguments
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ func
-
-body
-```
-
 ```brix
 (fn-expr + func _
   body
@@ -417,13 +274,6 @@ body
 </Function>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ func
-
-body
-```
-
 ```brix
 (fn-expr + func _
   body
@@ -436,13 +286,6 @@ body
         <Id name="body"/>
     </Block>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ func Func
-
-body
 ```
 
 ```brix
@@ -458,13 +301,6 @@ body
         <Id name="body"/>
     </Block>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ prop = value
-
-body
 ```
 
 ```brix
@@ -484,13 +320,6 @@ body
         <Id name="body"/>
     </Block>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ prop = value Type
-
-body
 ```
 
 ```brix
@@ -513,13 +342,6 @@ body
 </Function>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ -this
-
-body
-```
-
 ```brix
 (fn-expr + (prefix - this) _
   body
@@ -534,13 +356,6 @@ body
 </Function>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ !this
-
-body
-```
-
 ```brix
 (fn-expr + (prefix ! this) _
   body
@@ -553,13 +368,6 @@ body
         <Id name="body"/>
     </Block>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ this + foo
-
-body
 ```
 
 ```brix
@@ -579,13 +387,6 @@ body
         <Id name="body"/>
     </Block>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ this + foo Type
-
-body
 ```
 
 ```brix
@@ -608,13 +409,6 @@ body
 </Function>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ this += foo Type
-
-body
-```
-
 ```brix
 (fn-expr + (infix this += (param foo Type)) _
   body
@@ -635,13 +429,6 @@ body
 </Function>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ this[a]
-
-body
-```
-
 ```brix
 (fn-expr + (index-get this (param a _)) _
   body
@@ -659,13 +446,6 @@ body
         <Id name="body"/>
     </Block>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ this[a] = b
-
-body
 ```
 
 ```brix
@@ -692,13 +472,6 @@ body
 </Function>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ foo.bar
-
-body
-```
-
 ```brix
 (fn-expr + foo.bar _
   body
@@ -714,14 +487,6 @@ body
 ```
 
 ## Arguments
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ func
-    - a
-
-body
-```
 
 ```brix
 (fn-expr + func _
@@ -741,15 +506,6 @@ body
         <Id name="body"/>
     </Block>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ func
-    - a
-    - b
-
-body
 ```
 
 ```brix
@@ -778,14 +534,6 @@ body
 </Function>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ func
-    - a Int
-
-body
-```
-
 ```brix
 (fn-expr + func _
   (param a Int)
@@ -807,14 +555,6 @@ body
 </Function>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ func
-    - Int
-
-body
-```
-
 ```brix
 (fn-expr + func _
   (param _ Int)
@@ -831,14 +571,6 @@ body
         <Id name="body"/>
     </Block>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ func
-    - a Int = 42
-
-body
 ```
 
 ```brix
@@ -863,14 +595,6 @@ body
 </Function>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ func
-    - foo [Foo]
-
-body
-```
-
 ```brix
 (fn-expr + func _
   (param foo (list Foo))
@@ -893,15 +617,6 @@ body
         <Id name="body"/>
     </Block>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ func
-    - cb () Int
-        - Arg
-
-body
 ```
 
 ```brix
@@ -930,14 +645,6 @@ body
 </Function>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ func'Name
-    - foo
-
-body
-```
-
 ```brix
 (fn-expr + (of func Name) _
   (param foo _)
@@ -960,13 +667,6 @@ body
 ```
 
 ## Match Functions
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ foo ~ Foo
-
-body
-```
 
 ```brix
 (fn-expr + foo _ (over: Foo)
@@ -997,13 +697,6 @@ body
         <Id name="body"/>
     </Block>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ foo'Bar ~ Foo
-
-body
 ```
 
 ```brix
@@ -1040,12 +733,6 @@ body
 
 ## Type Constraints
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ foo'T
-    - T is Bar
-```
-
 ```brix
 (fn-expr + (of foo T) _
   (constraint is T Bar)
@@ -1060,12 +747,6 @@ body
         <TypeId name="Bar"/>
     </TypeConstraint>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ foo'T
-    - T is! Bar
 ```
 
 ```brix
@@ -1084,12 +765,6 @@ body
 </Function>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ foo'T
-    - T is~ Bar
-```
-
 ```brix
 (fn-expr + (of foo T) _
   (constraint is~ T Bar)
@@ -1104,14 +779,6 @@ body
         <TypeId name="Bar"/>
     </TypeConstraint>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-for foo in bar
-and foo in bar
-
-x()
 ```
 
 ```brix
@@ -1145,13 +812,6 @@ x()
 </Subscriber>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-on bar
-
-x()
-```
-
 ```brix
 (subscribe (on bar)
   (call x)
@@ -1171,13 +831,6 @@ x()
         </Block>
     </For>
 </Subscriber>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ do foo'T
-    - A = 42
-    - B = Item as T
 ```
 
 ```brix
@@ -1207,12 +860,6 @@ x()
 
 ## Variadic arguments
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    ... foo [Int]
-```
-
 ```brix
 (fn-expr + foo _
   (param ... foo (list Int))
@@ -1231,119 +878,6 @@ x()
         </TypeCapture>
     </ArgumentDecl>
 </Function>
-```
-
-```yumi crash
-━━━━━━━━━━━━━━━━━━━━
-+ unused Int
-
-1
-
-────────────────────
-+ second Int
-
-2
-```
-
-```output
-Exception: A thin-divider function cannot be declared inside another function. Use a thick divider (━) for a module-level function.
-<no file:7>
-    ────────────────────
-    ^
-```
-
-```yumi crash
-━━━━━━━━━━━━━━━━━━━━
-_ do unused
-
--- 1
-
-
-────────────────────
-_ do second
-
--- 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ later Int
-
-3
-```
-
-```output
-Exception: A thin-divider function cannot be declared inside another function. Use a thick divider (━) for a module-level function.
-<no file:8>
-    ────────────────────
-    ^
-```
-
-```yumi crash
-━━━━━━━━━━━━━━━━━━━━
-+ unused'T T
-    - value T
-
-value
-
-────────────────────
-_ second Int
-
-2
-```
-
-```output
-Exception: A thin-divider function cannot be declared inside another function. Use a thick divider (━) for a module-level function.
-<no file:8>
-    ────────────────────
-    ^
-```
-
-```yumi crash
-━━━━━━━━━━━━━━━━━━━━
-_ unused Int
-
-1
-
-────────────────────
-+ second Int
-
-2
-
-────────────────────
-_ third Int
-
-3
-```
-
-```output
-Exception: A thin-divider function cannot be declared inside another function. Use a thick divider (━) for a module-level function.
-<no file:7>
-    ────────────────────
-    ^
-```
-
-```yumi crash
-━━━━━━━━━━━━━━━━━━━━
-+ green = Color("#9CC56B")
-+ shade = Color("#86B35A")
-```
-
-```output
-Exception: A divider made this line a function header, and a function body cannot start on its header line. Declare values before the first divider, or leave a blank line after a thick divider (━).
-<no file:3>
-    + green = Color("#9CC56B")
-                   ^^^^^^^^^^
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ first Int
-
-1
-
-━━━━━━━━━━━━━━━━━━━━
-_ second Int
-
-2
 ```
 
 ```brix
@@ -1371,11 +905,6 @@ _ second Int
 </Function>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ func Int @inline without gc
-```
-
 ```brix
 (fn-expr + func Int @inline (without gc))
 ```
@@ -1388,11 +917,6 @@ _ second Int
 
 ### A live function keeps state across the runs of the live value that calls it.
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ func Int @live
-```
-
 ```brix
 (fn-expr + func Int @live)
 ```
@@ -1401,13 +925,6 @@ _ second Int
 <Function names="func" access="public-access" live="true">
     <TypeId name="Int"/>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ get value @inline
-
-7
 ```
 
 ```brix
@@ -1422,13 +939,6 @@ _ second Int
         <Integer value="7"/>
     </Block>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ do get value Int @inline without gc
-
-= 7
 ```
 
 ```brix
@@ -1446,13 +956,6 @@ _ second Int
         </Return>
     </Block>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ do get size Int ?! TypeError
-
-= 7
 ```
 
 ```brix
@@ -1475,28 +978,6 @@ _ second Int
 </Function>
 ```
 
-```yumi crash
-━━━━━━━━━━━━━━━━━━━━
-+ get value @rollback
-```
-
-```output
-Exception: @rollback is only supported on grammar functions
-<no file:2>
-    ━━━━━━━━━━━━━━━━━━━━
-    ^^^^^^^^^^^^^^^^^^^
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ extend Value
-
-────────────────────
-+ to Int @inline without gc
-
-7
-```
-
 ```brix
 (extend + Value
   (fn-to-expr + Int @inline (without gc)
@@ -1515,23 +996,6 @@ Exception: @rollback is only supported on grammar functions
         </Block>
     </Converter>
 </Extension>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-
-1
-
-━━━━━━━━━━━━━━━━━━━━
-on bar
-
-x()
-
-━━━━━━━━━━━━━━━━━━━━
-in baz
-
-y()
 ```
 
 ```brix
@@ -1580,18 +1044,6 @@ y()
 </Subscriber>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-on bar
-
-f()
-
-━━━━━━━━━━━━━━━━━━━━
-for foo in bar
-
-g(foo)
-```
-
 ```brix
 (subscribe (on bar)
   (call f)
@@ -1636,14 +1088,6 @@ g(foo)
 ```
 
 ### A function's header takes a without section after its annotations, and a do function's a with section that binds for its whole body.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ do func Int ?! Error @inline without heap, suspend with depth = 2, request = depth
-    - value Int
-
-= value
-```
 
 ```brix
 (fn-do + func Int (?! Error) @inline (without heap suspend) (with depth 2) (with request depth)

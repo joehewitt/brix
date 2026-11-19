@@ -1,0 +1,521 @@
+(import ./tool)
+(import /core/channel)
+(import /data/json)
+(import /data/jsonrpc)
+(import /net/http)
+(import /net/http-server)
+(import /net/sse)
+(import /os/file)
+(import /stream/aggregate)
+(import /stream/filter)
+(import /time/duration)
+(blank)
+(prop + mcp-protocol-version _ (= "2026-07-28"))
+(blank)
+(prop _ mcp-handshake-versions (list String) (= (list "2025-11-25" "2025-06-18")))
+(blank)
+(prop _ mcp-header-mismatch _ (= (as -32020 JSONRPCErrorCode)))
+(prop _ mcp-unsupported-version _ (= (as -32022 JSONRPCErrorCode)))
+(prop _ mcp-meta-version _ (= "io.modelcontextprotocol/protocolVersion"))
+(prop _ mcp-meta-capabilities _ (= "io.modelcontextprotocol/clientCapabilities"))
+
+(type + MCPService
+  (fn-do + call-tool MCPToolResult (?! Error)
+    (param call MCPToolCall)
+    (let tool (. call tool))
+    (throw (call JSONRPCError .invalid-params (str "Unknown tool: " (. call name))) (if (not tool)))
+    (let handler (. tool call))
+    (throw (call JSONRPCError .internal-error (str "Tool " (. call name) " has no call")) (if (not handler)))
+    (return (call handler call))
+  )
+)
+
+(type + MCPEndpoint (is Route)
+  (prop + name _ (= "brix"))
+  (prop + version _ (= "0.1.0"))
+  (prop + instructions (? String))
+  (prop + service _ (= (call MCPService)))
+  (prop + tools (list MCPTool))
+  (prop + allowed-origins (list String))
+  (prop + cache-ttl Milliseconds (= 0ms))
+  (fn-do + This _
+    (param path String)
+    (= post (. this respond-mcp))
+  )
+  (fn-do + (infix this += (param tool MCPTool)) _
+    (+= tools tool)
+    (return tool)
+  )
+  (fn-expr + tool (? MCPTool)
+    (param name String)
+    (call first (in each tools (when (== (. each name) name))))
+  )
+  (fn-do _ respond-mcp HTTPResponse (?! Error)
+    (param request HTTPRequest)
+    (return
+      (call receive request
+        (block
+          (on-error (: failure MCPProtocolError)
+            (call mcp-http-response (. failure status) (call JSONRPCResponse (. failure id) (call .error failure)))
+          )
+        )
+      )
+    )
+  )
+  (fn-do _ receive HTTPResponse (?! Error)
+    (param request HTTPRequest)
+    (throw (call MCPProtocolError (. HTTPStatus forbidden) .invalid-request "Origin not allowed") (if (not (call is-allowed-origin (call (. request header) "Origin")))))
+    (blank)
+    (let message
+      (call parse-json-rpc (. request text)
+        (block
+          (on-error (: error JSONRPCError)
+            (throw (call MCPProtocolError (. HTTPStatus bad-request) (. error code) (. error message)))
+          )
+        )
+      )
+    )
+    (blank)
+    (return
+      (match message
+        (case (: rpc JSONRPCRequest)
+          (call respond-request request rpc)
+        )
+        (case JSONRPCNotification
+          (call HTTPResponse (. HTTPStatus accepted))
+        )
+        (throw (call MCPProtocolError (. HTTPStatus bad-request) .invalid-request "Clients must not send responses"))
+      )
+    )
+  )
+  (fn-do _ respond-request HTTPResponse (?! Error)
+    (param request HTTPRequest)
+    (param rpc JSONRPCRequest)
+    (call check-request request rpc)
+    (if (and (== (. rpc method) "tools/call") (has (call mcp-meta rpc) "progressToken"))
+      (return (call HTTPResponse (call call-events rpc (. request headers))))
+    )
+    (return (call mcp-http-response (. HTTPStatus ok) (call dispatch rpc (. request headers) null)))
+  )
+  (fn-do _ check-request _ (?! MCPProtocolError)
+    (param request HTTPRequest)
+    (param rpc JSONRPCRequest)
+    (let id (. rpc id))
+    (if (call is-handshake rpc)
+      (call check-handshake request rpc)
+      (return)
+    )
+    (blank)
+    (let meta (call mcp-meta rpc))
+    (let body-version
+      (match ([] meta mcp-meta-version)
+        (case (: text String)
+          text
+        )
+        (throw (call MCPProtocolError (. HTTPStatus bad-request) .invalid-params (str "Missing _meta \"" mcp-meta-version "\"") id))
+      )
+    )
+    (throw (call MCPProtocolError (. HTTPStatus bad-request) .invalid-params (str "Missing _meta \"" mcp-meta-capabilities "\"") id) (if (not (has meta mcp-meta-capabilities))))
+    (blank)
+    (let header-version (call (. request header) "MCP-Protocol-Version"))
+    (throw (call header-mismatch "Missing MCP-Protocol-Version header" id) (if (not header-version)))
+    (throw (call header-mismatch (str "MCP-Protocol-Version header '" header-version "' does not match body '" body-version "'") id) (if (!= header-version body-version)))
+    (throw (call unsupported-version body-version (list mcp-protocol-version) id) (if (!= body-version mcp-protocol-version)))
+    (blank)
+    (let header-method (call (. request header) "Mcp-Method"))
+    (throw (call header-mismatch "Missing Mcp-Method header" id) (if (not header-method)))
+    (throw (call header-mismatch (str "Mcp-Method header '" header-method "' does not match body '" (. rpc method) "'") id) (if (!= header-method (. rpc method))))
+    (blank)
+    (if (== (. rpc method) "tools/call")
+      (let header-name (call (. request header) "Mcp-Name"))
+      (throw (call header-mismatch "Missing Mcp-Name header" id) (if (not header-name)))
+      (let decoded
+        (call mcp-header-value header-name
+          (block
+            (on-error SyntaxError
+              (throw (call header-mismatch "Mcp-Name header is not valid Base64" id))
+            )
+          )
+        )
+      )
+      (let body-name
+        (match ([] (call mcp-params rpc) "name")
+          (case (: text String)
+            text
+          )
+          (default
+            ""
+          )
+        )
+      )
+      (throw (call header-mismatch (str "Mcp-Name header '" decoded "' does not match body '" body-name "'") id) (if (!= decoded body-name)))
+    )
+    (blank)
+    (throw (call MCPProtocolError (. HTTPStatus not-found) .method-not-found (str "Method not found: " (. rpc method)) id) (if (not (call is-mcp-method (. rpc method)))))
+  )
+  (fn-do _ check-handshake _ (?! MCPProtocolError)
+    (param request HTTPRequest)
+    (param rpc JSONRPCRequest)
+    (let version (call (. request header) "MCP-Protocol-Version"))
+    (if (and version (not (has mcp-handshake-versions version)))
+      (throw (call unsupported-version version mcp-handshake-versions (. rpc id)))
+    )
+    (throw (call MCPProtocolError (. HTTPStatus not-found) .method-not-found (str "Method not found: " (. rpc method)) (. rpc id)) (if (not (call is-handshake-method (. rpc method)))))
+  )
+  (fn-do _ call-events (stream ServerSentEvent)
+    (param rpc JSONRPCRequest)
+    (param headers (list HTTPHeader))
+    (let updates (of SyncBufferedChannel JSONRPCMessage))
+    (let runner (call MCPCallRunner))
+    (let is-answered false)
+    (finally
+      (call (. updates close))
+      (if (not is-answered)
+        (call (?. (. runner task) cancel))
+      )
+    )
+    (blank)
+    (= (. runner task)
+      (do-new
+        (inline (call run-call rpc headers updates runner))
+        (on-failure failure
+          (<- stderr (str "MCP call " (. rpc method) " failed: " failure "\n"))
+        )
+      )
+    )
+    (for (in message updates)
+      (= is-answered (is message JSONRPCResponse))
+      (yield (call ServerSentEvent (str message)))
+    )
+  )
+  (fn-do _ run-call _
+    (param rpc JSONRPCRequest)
+    (param headers (list HTTPHeader))
+    (param updates (of SyncBufferedChannel JSONRPCMessage))
+    (param runner MCPCallRunner)
+    (finally
+      (let failure (. (call Task) failure))
+      (if (and failure (not (. (call Task) is-canceled)) (not (. (call Task) is-terminating)))
+        (<- updates (call (. rpc error-response) (call JSONRPCError .internal-error (str failure))))
+      )
+      (call (. updates close))
+    )
+    (return-if (if (. updates is-closed)))
+    (blank)
+    (<- updates (call dispatch rpc headers updates))
+  )
+  (fn-do _ dispatch JSONRPCResponse
+    (param rpc JSONRPCRequest)
+    (param headers (list HTTPHeader))
+    (param updates (? (of SyncBufferedChannel JSONRPCMessage)))
+    (let outcome (catch (call method-result rpc headers updates)))
+    (return
+      (match outcome
+        (case (: fields (map String JSON))
+          (call (. rpc response) fields)
+        )
+        (case (: error JSONRPCError)
+          (call (. rpc error-response) error)
+        )
+      )
+    )
+  )
+  (fn-do _ method-result (map String JSON) (?! JSONRPCError)
+    (param rpc JSONRPCRequest)
+    (param headers (list HTTPHeader))
+    (param updates (? (of SyncBufferedChannel JSONRPCMessage)))
+    (return
+      (match (. rpc method)
+        (case "initialize"
+          (call initialize-result rpc)
+        )
+        (case "ping"
+          (call (of Map String JSON))
+        )
+        (case "server/discover"
+          (call discover-result)
+        )
+        (case "tools/list"
+          (call tools-list-result)
+        )
+        (case "tools/call"
+          (call tools-call-result rpc headers updates)
+        )
+        (throw (call JSONRPCError .method-not-found (str "Method not found: " (. rpc method))))
+      )
+    )
+  )
+  (fn-expr _ initialize-result (map String JSON)
+    (param rpc JSONRPCRequest)
+    (call (of Map String JSON)
+      (block
+        (entry "protocolVersion" (if-expr (has mcp-handshake-versions requested) requested ([] mcp-handshake-versions 0)))
+        (:capabilities capabilities)
+        (entry "serverInfo" info)
+        (:instructions? instructions)
+      )
+    )
+    (where
+      (lazy requested (call initialize-version rpc))
+      (lazy capabilities
+        (call (of Map String JSON)
+          (block
+            (:tools (call (of Map String JSON)))
+          )
+        )
+      )
+      (lazy info
+        (call (of Map String JSON)
+          (block
+            (:name name)
+            (:version version)
+          )
+        )
+      )
+    )
+  )
+  (fn-expr _ discover-result (map String JSON)
+    (call cacheable fields)
+    (where
+      (lazy versions (list JSON)
+        (block
+          (item mcp-protocol-version)
+        )
+      )
+      (lazy capabilities
+        (call (of Map String JSON)
+          (block
+            (:tools (call (of Map String JSON)))
+          )
+        )
+      )
+      (lazy fields
+        (call (of Map String JSON)
+          (block
+            (entry "supportedVersions" versions)
+            (:capabilities capabilities)
+            (:instructions? instructions)
+          )
+        )
+      )
+    )
+  )
+  (fn-expr _ tools-list-result (map String JSON)
+    (call cacheable fields)
+    (where
+      (lazy fields
+        (call (of Map String JSON)
+          (block
+            (:tools (in (. each json) tools))
+          )
+        )
+      )
+    )
+  )
+  (fn-do _ tools-call-result (map String JSON) (?! JSONRPCError)
+    (param rpc JSONRPCRequest)
+    (param headers (list HTTPHeader))
+    (param updates (? (of SyncBufferedChannel JSONRPCMessage)))
+    (let params (call mcp-params rpc))
+    (let name
+      (match ([] params "name")
+        (case (: text String)
+          text
+        )
+        (throw (call JSONRPCError .invalid-params "tools/call needs a string \"name\""))
+      )
+    )
+    (throw (call JSONRPCError .invalid-params "\"arguments\" must be an object") (if (and (has params "arguments") (not (is (!! ([] params "arguments")) (map String JSON))))))
+    (blank)
+    (let progress-token (as ([] (call mcp-meta rpc) "progressToken") JSON))
+    (let call
+      (call MCPToolCall
+        (block
+          (arg rpc)
+          (arg headers)
+          (arg name)
+          (arg (call json-object ([] params "arguments")))
+          (arg progress-token)
+          (arg (call tool name))
+          (arg updates)
+        )
+      )
+    )
+    (let result
+      (call (. service call-tool) call
+        (block
+          (on-error (: error JSONRPCError)
+            (throw error)
+          )
+          (on-error (: error Error)
+            (call MCPToolResult (. error message) true)
+          )
+        )
+      )
+    )
+    (return (call complete (. result json)))
+  )
+  (fn-do _ cacheable (map String JSON)
+    (param fields (map String JSON))
+    (= ([] fields "ttlMs") (as cache-ttl Int))
+    (= ([] fields "cacheScope") "public")
+    (return (call complete fields))
+  )
+  (fn-do _ complete (map String JSON)
+    (param fields (map String JSON))
+    (let info
+      (call (of Map String JSON)
+        (block
+          (:name name)
+          (:version version)
+        )
+      )
+    )
+    (let meta
+      (call (of Map String JSON)
+        (block
+          (entry "io.modelcontextprotocol/serverInfo" info)
+        )
+      )
+    )
+    (= ([] fields "resultType") "complete")
+    (= ([] fields "_meta") meta)
+    (return fields)
+  )
+  (fn-expr _ is-allowed-origin Bool
+    (param origin (? String))
+    (or (not origin) (has allowed-origins origin) (call is-loopback-origin origin))
+  )
+)
+
+(type _ MCPCallRunner
+  (prop + task (? Task))
+)
+
+(type _ MCPProtocolError (is JSONRPCError)
+  (prop + status HTTPStatus)
+  (prop + id (? JSONRPCID))
+  (fn-do + This _
+    (param status HTTPStatus)
+    (param code JSONRPCErrorCode)
+    (param text String)
+    (param id (? JSONRPCID) (= null))
+    (param data JSON (= null))
+    (= message text)
+  )
+)
+
+(fn-expr _ header-mismatch MCPProtocolError
+  (param text String)
+  (param id (? JSONRPCID))
+  (call MCPProtocolError (. HTTPStatus bad-request) mcp-header-mismatch (str "Header mismatch: " text) id)
+)
+
+(fn-expr _ unsupported-version MCPProtocolError
+  (param requested String)
+  (param supported (list String))
+  (param id (? JSONRPCID))
+  (call MCPProtocolError
+    (block
+      (arg (. HTTPStatus bad-request))
+      (arg mcp-unsupported-version)
+      (arg "Unsupported protocol version")
+      (arg id)
+      (arg data)
+    )
+  )
+  (where
+    (lazy data
+      (call (of Map String JSON)
+        (block
+          (:supported (call (of List JSON) (in (as each JSON) supported)))
+          (:requested requested)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ initialize-version String
+  (param rpc JSONRPCRequest)
+  (match ([] (call mcp-params rpc) "protocolVersion")
+    (case (: text String)
+      text
+    )
+    (default
+      ""
+    )
+  )
+)
+
+(fn-expr _ is-mcp-method _
+  (param method String)
+  (or (== method "server/discover") (== method "tools/list") (== method "tools/call"))
+)
+
+(fn-expr _ is-handshake _
+  (param rpc JSONRPCRequest)
+  (not (has (call mcp-meta rpc) mcp-meta-version))
+)
+
+(fn-expr _ is-handshake-method _
+  (param method String)
+  (or (== method "initialize") (== method "ping") (== method "tools/list") (== method "tools/call"))
+)
+
+(fn-expr _ mcp-params (map String JSON)
+  (param rpc JSONRPCRequest)
+  (call json-object (. rpc params))
+)
+
+(fn-expr _ mcp-meta (map String JSON)
+  (param rpc JSONRPCRequest)
+  (call json-object ([] (call mcp-params rpc) "_meta"))
+)
+
+(fn-expr _ json-object (map String JSON)
+  (param value (? JSON))
+  (match value
+    (case (: fields (map String JSON))
+      fields
+    )
+    (default
+      (call (of Map String JSON))
+    )
+  )
+)
+
+(fn-expr _ mcp-header-value String (?! SyntaxError)
+  (param value String)
+  (case? (not (and (call (. value starts-with) "=?base64?") (call (. value ends-with) "?=")))
+    value
+  )
+  (default
+    (call (. (call decode-base64 ([] value (..< 9 (- (. value length) 2)))) slice-string))
+  )
+)
+
+(fn-expr _ is-loopback-origin _
+  (param origin String)
+  (match origin
+    (~ (seq (| "http://" "https://") (| "localhost" "127.0.0.1" "[::1]") (? (seq ":" (+ (chars "0-9")))))
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-expr _ mcp-http-response HTTPResponse
+  (param status HTTPStatus)
+  (param response JSONRPCResponse)
+  (call HTTPResponse status (str response) headers)
+  (where
+    (lazy headers (list HTTPHeader)
+      (block
+        (item (tuple "Content-Type" "application/json"))
+      )
+    )
+  )
+)

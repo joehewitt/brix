@@ -1,73 +1,61 @@
 # Descriptor names
 
-```yumi
-./lib/shapes
+```brix
+(import ./lib/shapes)
+(blank)
 
-. bases = [Base()]
--- bases[0].a()
+(main
+  (let bases (list (call Base)))
+  (print (call (. ([] bases 0) a)))
+  (blank)
+  (let list (list (call Sub1) (call Sub2)))
+  (print (call (. ([] list 0) a)))
+  (print (call (. ([] list 1) a)))
+  (blank)
+  (print (call shape-sides))
+)
 
-. list = [Sub1(), Sub2()]
--- list[0].a()
--- list[1].a()
+(type + Base
+  (fn-expr + a _
+    0
+  )
+)
 
--- shape-sides()
+(type + Base2 (is Base)
+  (fn-expr + a _
+    1
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Sub1 (is Base2)
+  (fn-expr + a _
+    2
+  )
+)
 
-────────────────────
-+ a
-
-0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base2 is Base
-
-────────────────────
-+ a
-
-1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub1 is Base2
-
-────────────────────
-+ a
-
-2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub2 is Base2
-
-────────────────────
-+ a
-
-3
+(type + Sub2 (is Base2)
+  (fn-expr + a _
+    3
+  )
+)
 ```
 
-```yumi file=lib/shapes.yumi
+```brix file=lib/shapes.bx
+(type + Base (is Interface)
+  (fn-expr + sides Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Interface
+(type + Square
+  (implements Base)
+  (fn-expr + sides _
+    4
+  )
+)
 
-────────────────────
-+ sides Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Square
-    is Base
-
-────────────────────
-+ sides
-
-4
-
-━━━━━━━━━━━━━━━━━━━━
-+ do shape-sides Int
-
-. shape = Square() as Base
-= shape.sides()
-
+(fn-do + shape-sides Int
+  (let shape (as (call Square) Base))
+  (return (call (. shape sides)))
+)
 ```
 
 ```output

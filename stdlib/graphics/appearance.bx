@@ -1,0 +1,234 @@
+(import ./canvas)
+(import ./color)
+(import ./path)
+(import ./primitives)
+(import ./style)
+(import /math)
+(import /stream/aggregate)
+(import /units)
+(blank)
+(prop + vector-stroke-miter-limit Length (= 10))
+
+(type + VectorAppearance (is Tuple)
+  (prop + fill Fill (= (. Fill none)))
+  (prop + stroke Stroke (= (. Stroke none)))
+  (prop + stroke-width Length (= 1))
+  (prop + stroke-alignment StrokeAlignment (= (. StrokeAlignment center)))
+  (prop + stroke-cap LineCap (= (. LineCap butt)))
+  (prop + stroke-join LineJoin (= (. LineJoin miter)))
+  (prop + fill-rule FillRule (= (. FillRule nonzero)))
+  (fn-expr + over VectorAppearance
+    (param own-fill Fill)
+    (param own-stroke Stroke)
+    (param own-stroke-width (? Length))
+    (param own-stroke-alignment (? StrokeAlignment))
+    (param own-stroke-cap (? LineCap))
+    (param own-stroke-join (? LineJoin))
+    (param own-fill-rule (? FillRule))
+    (call VectorAppearance
+      (block
+        (arg resolved-fill)
+        (arg resolved-stroke)
+        (arg (?? own-stroke-width stroke-width))
+        (arg (?? own-stroke-alignment stroke-alignment))
+        (arg (?? own-stroke-cap stroke-cap))
+        (arg (?? own-stroke-join stroke-join))
+        (arg (?? own-fill-rule fill-rule))
+      )
+    )
+    (where
+      (lazy resolved-stroke (if-expr (== own-stroke (. Stroke inherit)) stroke own-stroke))
+      (lazy resolved-fill
+        (match own-fill
+          (case= (. Fill inherit)
+            fill
+          )
+          (case= (. Fill stroke)
+            (call fill-color-paint (. resolved-stroke top-color))
+          )
+          (default
+            own-fill
+          )
+        )
+      )
+    )
+  )
+  (fn-expr + is-simple _ :get
+    (and simple-fill simple-stroke)
+    (where
+      (lazy simple-fill (or (== fill (. Fill none)) (is fill RGBA)))
+      (lazy simple-stroke (or (== stroke (. Stroke none)) centered-color-stroke))
+      (lazy centered-color-stroke (and (is stroke RGBA) (== stroke-alignment (. StrokeAlignment center))))
+    )
+  )
+  (fn-expr + has-ink _ :get
+    (or (!= fill (. Fill none)) (!= stroke (. Stroke none)))
+  )
+  (fn-expr + paints-fill Bool :get
+    (call some (. fill layers) (:where (. each painted-color)))
+  )
+  (fn-do + stroke-extent Length :get
+    (let result Length 0)
+    (for (in layer resolved-stroke-layers)
+      (if (. layer visible)
+        (= result (call max result (call stroke-layer-extent layer)))
+      )
+    )
+    (return result)
+  )
+  (fn-do + resolved-stroke-layers (list StrokeLayer) :get
+    (let result (list StrokeLayer))
+    (for (in layer (. stroke layers))
+      (+= result
+        (call StrokeLayer
+          (block
+            (arg (. layer color))
+            (arg (?? (. layer width) stroke-width))
+            (arg (?? (. layer alignment) stroke-alignment))
+            (arg (?? (. layer join) stroke-join))
+            (arg (?? (. layer cap) stroke-cap))
+            (arg (. layer visible))
+          )
+        )
+      )
+    )
+    (return result)
+  )
+)
+
+(fn-expr + stroke-layer-extent Length
+  (param layer StrokeLayer)
+  (match (. layer alignment)
+    (case= (. StrokeAlignment inside)
+      0
+    )
+    (case= (. StrokeAlignment outside)
+      width
+    )
+    (default
+      (/ width 2)
+    )
+  )
+  (where
+    (lazy width (?? (. layer width) 1))
+  )
+)
+
+(fn-expr + vector-paint-is-compact Bool
+  (param fill Fill)
+  (param stroke Stroke)
+  (param alignment (? StrokeAlignment))
+  (and (not (is fill FillStack)) (not (is stroke StrokeStack)) centered)
+  (where
+    (lazy centered (or (not alignment) (== alignment (. StrokeAlignment center))))
+  )
+)
+
+(fn-expr + canvas-vector-appearance VectorAppearance
+  (param canvas Canvas)
+  (call VectorAppearance
+    (block
+      (arg (call fill-color-paint (. canvas fill-color)))
+      (arg (call stroke-color-paint (. canvas stroke-color)))
+      (arg (. canvas stroke-width))
+      (arg (. StrokeAlignment center))
+      (arg (. canvas stroke-cap))
+      (arg (. canvas stroke-join))
+      (arg (. FillRule nonzero))
+    )
+  )
+)
+
+(fn-expr + fill-color-paint Fill
+  (param color (? RGBA))
+  (if-expr color color (. Fill none))
+)
+
+(fn-expr + stroke-color-paint Stroke
+  (param color (? RGBA))
+  (if-expr color color (. Stroke none))
+)
+
+(fn-do + paint-appearance _
+  (param canvas Canvas)
+  (param paths (list Path))
+  (param appearance VectorAppearance)
+  (= (. canvas stroke-cap) (. appearance stroke-cap))
+  (= (. canvas stroke-join) (. appearance stroke-join))
+  (if (. appearance is-simple)
+    (= (. canvas fill-color) (call simple-color (. appearance fill)))
+    (= (. canvas stroke-color) (call simple-color (. appearance stroke)))
+    (= (. canvas stroke-width) (. appearance stroke-width))
+    (for (in path paths)
+      (call (. path outline) canvas (. appearance fill-rule))
+    )
+    (return)
+  )
+  (= (. canvas stroke-color) null)
+  (for (in layer (. appearance fill layers))
+    (let color (. layer painted-color))
+    (if color
+      (= (. canvas fill-color) color)
+      (for (in path paths)
+        (call (. path outline) canvas (. appearance fill-rule))
+      )
+    )
+  )
+  (= (. canvas fill-color) null)
+  (for (in layer (. appearance stroke layers))
+    (call paint-stroke-layer canvas paths appearance layer)
+  )
+  (= (. canvas fill-color) null)
+  (= (. canvas stroke-color) null)
+)
+
+(fn-do _ paint-stroke-layer _
+  (param canvas Canvas)
+  (param paths (list Path))
+  (param appearance VectorAppearance)
+  (param layer StrokeLayer)
+  (let color (. layer painted-color))
+  (let width (?? (. layer width) (. appearance stroke-width)))
+  (return-if (if (or (not color) (<= width 0))))
+  (let alignment (?? (. layer alignment) (. appearance stroke-alignment)))
+  (= (. canvas stroke-color) color)
+  (= (. canvas stroke-join) (?? (. layer join) (. appearance stroke-join)))
+  (= (. canvas stroke-cap) (?? (. layer cap) (. appearance stroke-cap)))
+  (for (in path paths)
+    (call paint-aligned-stroke canvas path (. appearance fill-rule) alignment width)
+  )
+)
+
+(fn-do + paint-aligned-stroke _
+  (param canvas Canvas)
+  (param path Path)
+  (param fill-rule FillRule)
+  (param alignment StrokeAlignment)
+  (param width Length)
+  (= (. canvas fill-color) null)
+  (if (== alignment (. StrokeAlignment center))
+    (= (. canvas stroke-width) width)
+    (call (. path outline) canvas fill-rule)
+    (return)
+  )
+  (= (. canvas stroke-width) (* width 2))
+  (do-use (. canvas saved-state)
+    (if (== alignment (. StrokeAlignment inside))
+      (call (. path clip) canvas fill-rule)
+      (else
+        (call (. path clip-outside) canvas (call (. path bounding-box inflate) (+ (* width vector-stroke-miter-limit) 1)))
+      )
+    )
+    (call (. path outline) canvas fill-rule)
+  )
+)
+
+(fn-expr _ simple-color (? RGBA)
+  (param paint Fill)
+  (only-if (as paint RGBA) (if (is paint RGBA)))
+)
+
+(fn-expr _ simple-color (? RGBA)
+  (param paint Stroke)
+  (only-if (as paint RGBA) (if (is paint RGBA)))
+)

@@ -1,0 +1,611 @@
+(import ./cursor-image)
+(import /graphics/outline)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /math)
+(import /time/duration)
+(import /units)
+(blank)
+(prop + gui-scroll-indicator-linger _ (= 800ms))
+(prop + gui-scroll-hover-hold _ (= 300ms))
+(blank)
+(type-line + AxisQuery (is (tuple (: mode AxisMeasureMode) (: min Length) (: available (? Length)) (: max (? Length)))))
+(type-line + MeasureQuery (is (tuple (: inline AxisQuery) (: block AxisQuery))))
+(type-line + PositionPin (is (tuple (: source AnchorPoint) (: target AnchorPoint))))
+
+(type + Display (is Union)
+  (variant visible)
+  (variant invisible)
+  (variant hidden)
+)
+
+(type + EnterSpace (is Union)
+  (variant claim)
+  (variant expand)
+)
+
+(type + LeaveSpace (is Union)
+  (variant keep)
+  (variant collapse)
+  (variant release)
+)
+
+(type + ResizeContent (is Union)
+  (variant reveal)
+  (variant reflow)
+  (variant scale)
+)
+
+(type + MatchContent (is Union)
+  (variant replace)
+  (variant crossfade)
+)
+
+(type + StackMotion (is Union)
+  (variant free)
+  (variant coupled)
+)
+
+(type + ScrollAnchor (is Union)
+  (variant none)
+  (variant end)
+)
+
+(type + AxisMeasureMode (is Union)
+  (variant min-content)
+  (variant max-content)
+  (variant fit)
+  (variant exact)
+)
+
+(type + LayoutParticipation (is Tuple)
+  (prop + contributes-to-measure _ (= true))
+  (prop + arranged-by-parent-layout _ (= true))
+  (prop + arranged-after-parent-layout _ (= false))
+)
+
+(type + Anchor (is Union)
+  (variant parent)
+  (variant screen)
+  (variant style-target)
+)
+
+(type + AnchorPoint (is Union)
+  (variant start)
+  (variant center)
+  (variant end)
+  (fn-expr + fraction Ratio :get
+    (match this
+      (case (. AnchorPoint center)
+        0.5%%
+      )
+      (case (. AnchorPoint end)
+        1%%
+      )
+      (default
+        0%%
+      )
+    )
+  )
+)
+
+(type + Alignment (is Union)
+  (variant start)
+  (variant center)
+  (variant end)
+  (variant stretch)
+  (variant first-baseline)
+  (fn-expr + fraction Ratio :get
+    (match this
+      (case (. Alignment center)
+        0.5%%
+      )
+      (case (. Alignment end)
+        1%%
+      )
+      (default
+        0%%
+      )
+    )
+  )
+)
+
+(type + Justify (is Union)
+  (variant start)
+  (variant center)
+  (variant end)
+  (variant space-between)
+  (variant space-around)
+  (variant space-evenly)
+)
+
+(type + Orientation (is Union)
+  (variant horizontal)
+  (variant vertical)
+)
+
+(type + ScrollAlignment (is Union)
+  (variant nearest)
+  (variant start)
+  (variant center)
+  (variant end)
+)
+
+(type + Direction (is Union)
+  (variant up)
+  (variant down)
+  (variant left)
+  (variant right)
+  (fn-to-expr + String
+    (match this
+      (case (. Direction up)
+        "up"
+      )
+      (case (. Direction down)
+        "down"
+      )
+      (case (. Direction left)
+        "left"
+      )
+      (case (. Direction right)
+        "right"
+      )
+      (default
+        ""
+      )
+    )
+  )
+)
+
+(type + ControlSize (is Union)
+  (variant small)
+  (variant regular)
+  (variant large)
+)
+
+(type + SizeSpec (is Union)
+  (variant auto)
+  (variant coord Length)
+  (variant percent Percent)
+)
+
+(type + CursorStyle (is Union)
+  (variant automatic)
+  (variant arrow)
+  (variant pointing-hand)
+  (variant text)
+  (variant crosshair)
+  (variant move)
+  (variant open-hand)
+  (variant closed-hand)
+  (variant not-allowed)
+  (variant resize-horizontal)
+  (variant resize-vertical)
+  (variant hidden)
+  (variant resize-nwse)
+  (variant resize-nesw)
+  (variant rotate)
+  (variant custom CursorImage)
+)
+
+(fn-expr + cursor-style-native-value _
+  (param style CursorStyle)
+  (match style
+    (case (. CursorStyle automatic)
+      0u32
+    )
+    (case (. CursorStyle arrow)
+      1u32
+    )
+    (case (. CursorStyle pointing-hand)
+      2u32
+    )
+    (case (. CursorStyle text)
+      3u32
+    )
+    (case (. CursorStyle crosshair)
+      4u32
+    )
+    (case (. CursorStyle move)
+      5u32
+    )
+    (case (. CursorStyle open-hand)
+      6u32
+    )
+    (case (. CursorStyle closed-hand)
+      7u32
+    )
+    (case (. CursorStyle not-allowed)
+      8u32
+    )
+    (case (. CursorStyle resize-horizontal)
+      9u32
+    )
+    (case (. CursorStyle resize-vertical)
+      10u32
+    )
+    (case (. CursorStyle hidden)
+      11u32
+    )
+    (case (. CursorStyle resize-nwse)
+      12u32
+    )
+    (case (. CursorStyle resize-nesw)
+      13u32
+    )
+    (case (. CursorStyle rotate)
+      14u32
+    )
+    (case (. CursorStyle custom)
+      15u32
+    )
+    (default
+      0u32
+    )
+  )
+)
+
+(fn-expr + cursor-style-native-image Pointer
+  (param style CursorStyle)
+  (match style
+    (case (call (. CursorStyle custom) image)
+      (. image native)
+    )
+    (default
+      (call Pointer)
+    )
+  )
+)
+
+(type + WindowMaterial (is U32)
+  (variant titlebar (= 0))
+  (variant selection (= 1))
+  (variant menu (= 2))
+  (variant popover (= 3))
+  (variant sidebar (= 4))
+  (variant header (= 5))
+  (variant sheet (= 6))
+  (variant window-background (= 7))
+  (variant hud (= 8))
+  (variant full-screen (= 9))
+  (variant tooltip (= 10))
+  (variant content-background (= 11))
+  (variant under-window-background (= 12))
+  (variant under-page-background (= 13))
+)
+
+(type + WindowAppearance (is U32)
+  (variant system (= 0))
+  (variant light (= 1))
+  (variant dark (= 2))
+)
+
+(type + GUISystemColor (is U32)
+  (variant accent (= 1))
+  (variant selection (= 2))
+  (variant unemphasized-selection (= 3))
+)
+
+(type + WindowKind (is U32)
+  (variant standard (= 0))
+  (variant panel (= 1))
+)
+
+(type + MeasureResult (is Tuple)
+  (prop + content-size Dimensions)
+  (prop + border-size Dimensions)
+  (prop + outer-size Dimensions)
+)
+
+(type + ImageFit (is Union)
+  (variant contain)
+  (variant cover)
+  (variant fill)
+  (variant none)
+  (variant scale-down)
+)
+
+(type + ImageRepeat (is Union)
+  (variant none)
+  (variant x)
+  (variant y)
+  (variant both)
+)
+
+(type + PositionOffset (is Union)
+  (variant coord Length)
+  (variant percent Percent)
+  (variant anchor-start)
+  (variant anchor-center)
+  (variant anchor-end)
+  (variant pin PositionPin)
+)
+
+(type + ScrollOverflow (is Union)
+  (variant visible)
+  (variant clip)
+  (variant auto)
+  (variant scroll)
+)
+
+(type + OverscrollBehavior (is Union)
+  (variant auto)
+  (variant contain)
+  (variant none)
+)
+
+(type + ScrollIndicatorVisibility (is Union)
+  (variant auto)
+  (variant always)
+  (variant hidden)
+)
+
+(type + ScrollIndicatorGutter (is Union)
+  (variant overlay)
+  (variant stable)
+)
+
+(type + ScrollCause (is Union)
+  (variant wheel)
+  (variant trackpad)
+  (variant momentum)
+  (variant programmatic)
+  (variant ensure-visible)
+  (variant focus)
+  (variant indicator)
+  (variant layout-clamp)
+  (fn-expr + is-direct Bool :get
+    (or (== this .wheel) (== this .trackpad) (== this .momentum) (== this .indicator))
+  )
+)
+
+(type + ScrollDirection (is Union)
+  (variant up)
+  (variant down)
+  (variant left)
+  (variant right)
+)
+
+(type + ScrollConsumption (is Tuple)
+  (prop + requested Point)
+  (prop + actual Point)
+  (prop + remainder Point)
+)
+
+(type + ScrollAxisConsumption (is Tuple)
+  (prop + requested Length)
+  (prop + actual Length)
+  (prop + remainder Length)
+)
+
+(type + ScrollAxisSnapshot (is Tuple)
+  (prop + position Length)
+  (prop + minimum Length)
+  (prop + maximum Length)
+  (prop + viewport Length)
+  (prop + content Length)
+  (prop + is-enabled Bool)
+)
+
+(type + ScrollIndicatorMetrics (is Tuple)
+  (prop + thumb-start Length)
+  (prop + thumb-length Length)
+)
+
+(fn-expr + gui-scroll-consume-axis _
+  (param position Length)
+  (param minimum Length)
+  (param maximum Length)
+  (param delta Length)
+  (call ScrollAxisConsumption delta actual (- delta actual))
+  (where
+    (lazy next (call min maximum (call max minimum (+ position delta))))
+    (lazy actual (- next position))
+  )
+)
+
+(fn-expr + gui-scroll-reveal-axis _
+  (param position Length)
+  (param minimum Length)
+  (param maximum Length)
+  (param viewport-start Length)
+  (param viewport-length Length)
+  (param interval-start Length)
+  (param interval-length Length)
+  (param leading-margin Length)
+  (param trailing-margin Length)
+  (param alignment ScrollAlignment)
+  (call min maximum (call max minimum requested))
+  (where
+    (lazy safe-viewport (call gui-safe-span viewport-length))
+    (lazy safe-interval (call gui-safe-span interval-length))
+    (lazy leading (- interval-start viewport-start leading-margin))
+    (lazy trailing (+ (- (+ interval-start safe-interval) viewport-start safe-viewport) trailing-margin))
+    (lazy requested
+      (match alignment
+        (case (. ScrollAlignment start)
+          leading
+        )
+        (case (. ScrollAlignment center)
+          (- (+ interval-start (/ safe-interval 2)) viewport-start (/ safe-viewport 2))
+        )
+        (case (. ScrollAlignment end)
+          trailing
+        )
+        (default
+          (call gui-scroll-nearest-position position leading trailing oversized)
+        )
+      )
+    )
+    (lazy oversized (> (+ safe-interval leading-margin trailing-margin) safe-viewport))
+  )
+)
+
+(fn-expr _ gui-scroll-nearest-position Length
+  (param position Length)
+  (param leading Length)
+  (param trailing Length)
+  (param oversized Bool)
+  (case? (and oversized (<= position leading))
+    leading
+  )
+  (case? (and oversized (>= position trailing))
+    trailing
+  )
+  (case? oversized
+    position
+  )
+  (case? (> position leading)
+    leading
+  )
+  (case? (< position trailing)
+    trailing
+  )
+  (default
+    position
+  )
+)
+
+(fn-expr + gui-scroll-indicator-outline _
+  (param bounds Rect)
+  (call Outline bounds (/ (call min (. bounds width) (. bounds height)) 2))
+)
+
+(fn-expr + gui-scroll-indicator-metrics _
+  (param position Length)
+  (param minimum Length)
+  (param maximum Length)
+  (param viewport Length)
+  (param content Length)
+  (param track-length Length)
+  (param minimum-thumb-length Length)
+  (case? (or (<= content 0) (<= maximum minimum))
+    (call ScrollIndicatorMetrics 0 safe-track)
+  )
+  (default
+    (call ScrollIndicatorMetrics (* travel progress) thumb-length)
+  )
+  (where
+    (lazy safe-track (call gui-safe-span track-length))
+    (lazy fraction (call min 1 (/ (call gui-safe-span viewport) content)))
+    (lazy thumb-length (call min safe-track (call max minimum-thumb-length (* safe-track fraction))))
+    (lazy travel (- safe-track thumb-length))
+    (lazy progress (call min 1 (call max 0 (/ (- position minimum) (- maximum minimum)))))
+  )
+)
+
+(fn-expr + fit-axis-query _
+  (param available (? Length) (= null))
+  (call AxisQuery (. AxisMeasureMode fit) 0 available null)
+)
+
+(fn-expr + exact-axis-query _
+  (param size Length)
+  (call AxisQuery (. AxisMeasureMode exact) safe-size safe-size safe-size)
+  (where
+    (lazy safe-size (call gui-safe-span size))
+  )
+)
+
+(fn-expr + measure-fit-query _
+  (param inline (? Length) (= null))
+  (param block (? Length) (= null))
+  (call MeasureQuery (call fit-axis-query inline) (call fit-axis-query block))
+)
+
+(fn-expr + zero-measure-result _
+  (call MeasureResult zero zero zero)
+  (where
+    (lazy zero (call Dimensions 0 0))
+  )
+)
+
+(fn-expr + position-pin PositionOffset
+  (param source AnchorPoint)
+  (param target AnchorPoint)
+  (call (. PositionOffset pin) (call PositionPin source target))
+)
+
+(fn-expr + gui-safe-span _
+  (param value Length)
+  (if-expr (call is-finite value) (call max 0 value) 0)
+)
+
+(fn-expr + image-fit-rect Rect
+  (param natural Dimensions)
+  (param bounds Rect)
+  (param fit ImageFit)
+  (param align-x AnchorPoint)
+  (param align-y AnchorPoint)
+  (call Rect
+    (block
+      (arg (+ (. bounds x) (* (- (. bounds width) (. size width)) (. align-x fraction))))
+      (arg (+ (. bounds y) (* (- (. bounds height) (. size height)) (. align-y fraction))))
+      (arg (. size width))
+      (arg (. size height))
+    )
+  )
+  (where
+    (lazy size (call image-fit-size natural bounds fit))
+  )
+)
+
+(fn-expr + image-fit-size Dimensions
+  (param natural Dimensions)
+  (param bounds Rect)
+  (param fit ImageFit)
+  (case? (or (<= (. natural width) 0) (<= (. natural height) 0))
+    (call Dimensions (. bounds width) (. bounds height))
+  )
+  (default
+    (match fit
+      (case (. ImageFit fill)
+        (call Dimensions (. bounds width) (. bounds height))
+      )
+      (case (. ImageFit none)
+        natural
+      )
+      (case (. ImageFit cover)
+        (call Dimensions (* (. natural width) cover) (* (. natural height) cover))
+      )
+      (case (. ImageFit scale-down)
+        (call Dimensions (* (. natural width) (call min 1 contain)) (* (. natural height) (call min 1 contain)))
+      )
+      (default
+        (call Dimensions (* (. natural width) contain) (* (. natural height) contain))
+      )
+    )
+  )
+  (where
+    (lazy scale-x (/ (. bounds width) (. natural width)))
+    (lazy scale-y (/ (. bounds height) (. natural height)))
+    (lazy contain (call min scale-x scale-y))
+    (lazy cover (call max scale-x scale-y))
+  )
+)
+
+(fn-expr + image-repeat-rect Rect
+  (param bounds Rect)
+  (param tile Rect)
+  (param repeat ImageRepeat)
+  (match repeat
+    (case (. ImageRepeat x)
+      (call Rect (. bounds x) top (. bounds width) (call max 0 (- bottom top)))
+    )
+    (case (. ImageRepeat y)
+      (call Rect left (. bounds y) (call max 0 (- right left)) (. bounds height))
+    )
+    (case (. ImageRepeat both)
+      bounds
+    )
+    (default
+      (call Rect left top (call max 0 (- right left)) (call max 0 (- bottom top)))
+    )
+  )
+  (where
+    (lazy left (call max (. bounds x) (. tile x)))
+    (lazy top (call max (. bounds y) (. tile y)))
+    (lazy right (call min (. bounds right) (. tile right)))
+    (lazy bottom (call min (. bounds bottom) (. tile bottom)))
+  )
+)

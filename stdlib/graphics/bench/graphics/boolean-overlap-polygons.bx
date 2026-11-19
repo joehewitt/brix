@@ -1,0 +1,141 @@
+; benchmark.meta description: Combines overlapping line-heavy closed paths with boolean operations.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/boolean)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /graphics/shapes)
+(import /math)
+(blank)
+
+(main
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 160))
+    (let a (call polygon-source-a pass))
+    (let b (call polygon-source-b pass))
+    (for (in operation (..< 0 4))
+      (let result (call boolean-operation operation a b))
+      (+= checksum (+ (call path-score result) pass operation))
+    )
+  )
+  (blank)
+  (print (str "bench-result graphics/boolean-overlap-polygons checksum=" checksum))
+)
+
+(fn-do _ polygon-source-a _
+  (param pass Int)
+  (let f (as pass Float))
+  (let kind (% pass 5))
+  (if (== kind 0)
+    (return (call rectangle (call Rect (+ 20 (% f 9)) 24 96 76)))
+    (else-if (== kind 1)
+      (return (call diamond (tuple (+ 82 (% f 5)) 78) 58))
+    )
+    (else-if (== kind 2)
+      (let path (call rectangle (call Rect 32 30 102 74)))
+      (call (. path rotate) (+ -12deg (* f 0.06deg)) (call Point 82 68))
+      (return path)
+    )
+    (else-if (== kind 3)
+      (let path (call polygon 6 104 (call Point 86 78)))
+      (call (. path rotate) (+ 12deg (* f 0.04deg)) (call Point 86 78))
+      (return path)
+    )
+  )
+  (blank)
+  (return (call compound-boxes f))
+)
+
+(fn-do _ polygon-source-b _
+  (param pass Int)
+  (let f (as pass Float))
+  (let kind (% pass 5))
+  (if (== kind 0)
+    (return (call rectangle (call Rect (+ 72 (% f 7)) 46 92 72)))
+    (else-if (== kind 1)
+      (return (call diamond (tuple (+ 113 (% f 6)) 78) 58))
+    )
+    (else-if (== kind 2)
+      (let path (call polygon 5 100 (call Point 106 76)))
+      (call (. path rotate) (- 18deg (* f 0.05deg)) (call Point 106 76))
+      (return path)
+    )
+    (else-if (== kind 3)
+      (let path (call rectangle (call Rect 58 40 108 62)))
+      (call (. path rotate) -8deg (call Point 112 71))
+      (return path)
+    )
+  )
+  (blank)
+  (return (call rectangle (call Rect 66 (+ 42 (% f 5)) 94 54)))
+)
+
+(fn-expr _ boolean-operation _
+  (param operation _)
+  (param a Path)
+  (param b Path)
+  (case? (== operation 0)
+    (call union a b)
+  )
+  (case? (== operation 1)
+    (call intersect a b)
+  )
+  (case? (== operation 2)
+    (call subtract a b)
+  )
+  (default
+    (call clip a b)
+  )
+)
+
+(fn-do _ diamond _
+  (param center Point)
+  (param radius Length)
+  (let path (call Path))
+  (call (. path move-to) (+ center (tuple 0 (- radius))))
+  (call (. path line-to) (+ center (tuple radius 0)))
+  (call (. path line-to) (+ center (tuple 0 radius)))
+  (call (. path line-to) (+ center (tuple (- radius) 0)))
+  (call (. path close))
+  (return path)
+)
+
+(fn-do _ compound-boxes _
+  (param frame Float)
+  (let path (call rectangle (call Rect (+ 24 (% frame 4)) 30 42 42)))
+  (call (. path add-path) (call rectangle (call Rect 102 70 42 42)))
+  (return path)
+)
+
+(fn-expr _ path-score _
+  (param path (? Path))
+  (case? path
+    (call solid-path-score path)
+  )
+  (default
+    0
+  )
+)
+
+(fn-expr _ solid-path-score Size
+  (param path Path)
+  (case? (not (. path count))
+    0
+  )
+  (default
+    (+ box-score (call numeric-check (. path last-point x)) (call numeric-check (. path last-point y)))
+  )
+  (where
+    (lazy bounds (. path bounding-box))
+    (lazy box-score (+ origin-score (call numeric-check (. bounds width)) (call numeric-check (. bounds height))))
+    (lazy origin-score (+ (. path count) (call numeric-check (. bounds x)) (call numeric-check (. bounds y))))
+  )
+)
+
+(fn-expr _ numeric-check Size
+  (param value Coord)
+  (% (as (call abs (* value 1000)) Size) 1000003)
+)

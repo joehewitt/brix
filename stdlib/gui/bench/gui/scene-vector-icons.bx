@@ -1,0 +1,140 @@
+; benchmark.meta description: Replays 1,632 retained 24pt Lucide icons in four shapes through a 2x CoreGraphics DisplayScene for 120 full-damage frames.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core/markup)
+(import /graphics/canvas)
+(import /graphics/color)
+(import /graphics/primitives)
+(import /gui/box)
+(import /gui/icons/lucide/activity)
+(import /gui/icons/lucide/airplay)
+(import /gui/icons/lucide/alarm-clock)
+(import /gui/icons/lucide/album)
+(import /gui/layout)
+(import /gui/primitives)
+(import /gui/scene)
+(import /gui/vector-image)
+(blank)
+
+(main
+  (let root (call BenchRoot))
+  (call markup-mount-root root root)
+  (for (in row-index (..< 0 34))
+    (let row (call BenchRow))
+    (call markup-append root row)
+    (for (in column (..< 0 48))
+      (match (% (+ row-index column) 4)
+        (case= 0
+          (call markup-append row (call ActivityIcon))
+        )
+        (case= 1
+          (call markup-append row (call AirplayIcon))
+        )
+        (case= 2
+          (call markup-append row (call AlbumIcon))
+        )
+        (default
+          (call markup-append row (call AlarmIcon))
+        )
+      )
+    )
+  )
+  (call (. root markup-batch-queue checkpoint))
+  (call (. root layout) (call Rect 0 0 1180 820))
+  (blank)
+  (let surface (call RasterCanvas 1180 820 2 white))
+  (let scene (call DisplayScene 2 white))
+  (let items Size)
+  (do-use surface
+    (call (. scene build) root)
+    (call (. scene commit))
+    (call (. scene frame) surface)
+    (for (in frame (..< 0 120))
+      (call (. scene add-damage) (. root bounds))
+      (call (. scene frame) surface)
+      (+= items (. scene items-drawn))
+      (call (. scene reset-frame-counters))
+    )
+  )
+  (blank)
+  (call (. scene close))
+  (call (. root close))
+  (call markup-release root)
+  (print (str "bench-result gui/scene-vector-icons checksum=" items))
+)
+
+(type + BenchRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (blank)
+  (rule This
+    (= layout flow-col)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+)
+
+(type + BenchRow (is Box)
+  (rule This
+    (= layout flow-row)
+  )
+)
+
+(type + ActivityIcon (is LucideActivity)
+  (rule This
+    (= min-width (call (. SizeSpec coord) 24))
+    (= max-width (call (. SizeSpec coord) 24))
+    (= min-height (call (. SizeSpec coord) 24))
+    (= max-height (call (. SizeSpec coord) 24))
+  )
+  (content
+    (<> This
+      (= stroke "#334155")
+    )
+  )
+)
+
+(type + AirplayIcon (is LucideAirplay)
+  (rule This
+    (= min-width (call (. SizeSpec coord) 24))
+    (= max-width (call (. SizeSpec coord) 24))
+    (= min-height (call (. SizeSpec coord) 24))
+    (= max-height (call (. SizeSpec coord) 24))
+  )
+  (content
+    (<> This
+      (= stroke "#2563eb")
+    )
+  )
+)
+
+(type + AlbumIcon (is LucideAlbum)
+  (rule This
+    (= min-width (call (. SizeSpec coord) 24))
+    (= max-width (call (. SizeSpec coord) 24))
+    (= min-height (call (. SizeSpec coord) 24))
+    (= max-height (call (. SizeSpec coord) 24))
+  )
+  (content
+    (<> This
+      (= stroke "#334155")
+    )
+  )
+)
+
+(type + AlarmIcon (is LucideAlarmClock)
+  (rule This
+    (= min-width (call (. SizeSpec coord) 24))
+    (= max-width (call (. SizeSpec coord) 24))
+    (= min-height (call (. SizeSpec coord) 24))
+    (= max-height (call (. SizeSpec coord) 24))
+  )
+  (content
+    (<> This
+      (= stroke "#b91c1c")
+    )
+  )
+)

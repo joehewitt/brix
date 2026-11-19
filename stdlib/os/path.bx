@@ -1,0 +1,675 @@
+(import ./cfile)
+(import ./env)
+(import ./file)
+(import /BxCore/BxCore.h)
+(import /BxCore/BxSystem.h)
+(import /BxEvents/BxEvents.h)
+(import /dirent.h)
+(import /stdio.h)
+(import /string.h)
+(import /sys/stat.h)
+(import /time/clock)
+(import /time/datetime)
+(import /time/zone)
+(import /unistd.h)
+(blank)
+(prop + separator _ (= "/"))
+
+(type + Path (is Tuple)
+  (implements Hashable)
+  (prop + mode _ (=> (. stat mode)))
+  (prop + exists _
+    (=>
+      (scope (== error 0)
+        (lazy error (call C:brixStat normalized &result))
+        (lazy result FileStat)
+      )
+    )
+  )
+  (prop + is-dir _
+    (=> :do
+      (block
+        (let result FileStat)
+        (let error (call C:brixStat normalized &result))
+        (return (and (== error 0) (== (/and/ (. result mode) (as C:S_IFMT U32)) C:S_IFDIR)))
+      )
+    )
+  )
+  (prop + is-file _
+    (=> :do
+      (block
+        (let result FileStat)
+        (let error (call C:brixStat normalized &result))
+        (return (and (== error 0) (== (/and/ (. result mode) (as C:S_IFMT U32)) C:S_IFREG)))
+      )
+    )
+  )
+  (prop + is-link _
+    (=> :do
+      (block
+        (let result FileStat)
+        (let error (call C:brixLinkStat normalized &result))
+        (return (and (== error 0) (== (/and/ (. result mode) (as C:S_IFMT U32)) C:S_IFLNK)))
+      )
+    )
+  )
+  (prop + created _ (=> (call DateTime (+ (. stat btime s) (. local offset)))))
+  (prop + modified _ (=> (call DateTime (+ (. stat mtime s) (. local offset)))))
+  (prop + accessed _ (=> (call DateTime (+ (. stat atime s) (. local offset)))))
+  (prop + size FileSize (=> (. stat size)))
+  (prop + changed _ (=> (call change-stream event-write)))
+  (prop + extended _ (=> (call change-stream event-delete)))
+  (prop + renamed _ (=> (call change-stream event-rename)))
+  (prop + deleted _ (=> (call change-stream event-delete)))
+  (prop + revoked _ (=> (call change-stream event-revoke)))
+  (prop + changed-attributes _ (=> (call change-stream event-attrib)))
+  (prop + changed-links _ (=> (call change-stream event-link)))
+  (blank)
+  (prop _ path String)
+  (fn-do + This _
+    (param path String)
+    (param noop _)
+  )
+  (fn-expr + This _ (over: Char)
+    (~ (seq (? "/") (+ (seq \file-word "/")) (? \file-word))
+      (call This it)
+    )
+    (where
+      (lazy file-word
+        (pattern
+          (~ (+ \file-char))
+        )
+      )
+      (blank)
+      (lazy file-char
+        (pattern
+          (~ (chars "a-zA-Z0-9."))
+        )
+      )
+    )
+  )
+  (fn-from-expr + (: str String)
+    (call This str 0)
+  )
+  (fn-to-expr + String
+    path
+  )
+  (fn-to-expr + (of Iterable Path)
+    contents
+  )
+  (fn-expr + hash Hash :get
+    (call hash-for path)
+  )
+  (fn-expr + name String :get
+    (case? last-slash
+      ([] path (... (+ last-slash 1)))
+    )
+    (default
+      path
+    )
+    (where
+      (lazy last-slash (call (. path find-reverse) separator))
+    )
+  )
+  (fn-expr + base-name String :get
+    (case? (and last-dot (> last-dot 0))
+      ([] name (... _ last-dot))
+    )
+    (default
+      name
+    )
+    (where
+      (lazy last-dot (call (. name find-reverse) "."))
+    )
+  )
+  (fn-expr + extension String :get
+    (case? (and last-dot (> last-dot 0))
+      ([] name (... (+ last-dot 1)))
+    )
+    (default
+      ""
+    )
+    (where
+      (lazy last-dot (call (. name find-reverse) "."))
+    )
+  )
+  (fn-expr + dir _ :get
+    (case? last-slash
+      (call Path ([] path (..< 0 last-slash)))
+    )
+    (default
+      (call Path "")
+    )
+    (where
+      (lazy last-slash (call (. path find-reverse) separator))
+    )
+  )
+  (fn-expr + parent (? Path) :get
+    (case? (or (== last-slash null) (== path separator))
+      null
+    )
+    (case? (== last-slash 0)
+      (call Path separator 0)
+    )
+    (default
+      (call Path ([] path (..< 0 last-slash)) 0)
+    )
+    (where
+      (lazy last-slash (call (. path find-reverse) separator))
+    )
+  )
+  (fn-expr + home-abbreviated String :get
+    (case? (and home (or (== path home) (call (. path starts-with) (str home separator))))
+      (str "~" ([] path (... (. home length))))
+    )
+    (default
+      path
+    )
+    (where
+      (lazy home (call env "HOME"))
+    )
+  )
+  (fn-expr + head Path :get
+    (case? (== first-slash -1)
+      path
+    )
+    (case? (and (== first-slash 0) (== second-slash -1))
+      ([] path (... 1))
+    )
+    (case? (== first-slash 0)
+      ([] path (..< 1 second-slash))
+    )
+    (default
+      ([] path (..< 0 first-slash))
+    )
+    (where
+      (lazy first-slash (?? (call (. path find) separator) -1))
+      (lazy second-slash (?? (call (. path find) separator (+ first-slash 1)) -1))
+    )
+  )
+  (fn-expr + tail Path :get
+    (case? (== first-slash -1)
+      ""
+    )
+    (case? (== first-slash 0)
+      ([] path (... (+ second-slash 1)))
+    )
+    (default
+      ([] path (... (+ first-slash 1)))
+    )
+    (where
+      (lazy first-slash (?? (call (. path find) separator) -1))
+      (lazy second-slash (?? (call (. path find) separator (+ first-slash 1)) -1))
+    )
+  )
+  (fn-expr + ext String :get
+    (case? (and last-dot (> last-dot 0))
+      ([] file-name (... (+ last-dot 1)))
+    )
+    (default
+      ""
+    )
+    (where
+      (lazy file-name name)
+      (lazy last-dot (call (. file-name find-reverse) "."))
+    )
+  )
+  (fn-expr + original Path :get
+    (case? is-link
+      (call (. buf slice-string) (..< 0 link-size))
+    )
+    (default
+      path
+    )
+    (where
+      ;  ?! current-file-error()
+      ;      if it == -1
+      (blank)
+      (lazy buf ([] Byte 4096))
+      (lazy link-size (call C:readlink path buf (. buf size)))
+    )
+  )
+  (fn-do + normalized String :get
+    (let parts (list String))
+    (for (in part (call (. absolute split) "/"))
+      (if (or (== part "") (== part "."))
+        (continue)
+      )
+      (if (== part "..")
+        (if parts
+          (call (. parts pop))
+        )
+        (continue)
+      )
+      (+= parts part)
+    )
+    (return (str "/" (call (. "/" join) parts)))
+    (blank)
+    (lazy absolute (if-expr (== ([] path 0) '/') path (str (call C:getcwd ([] Char 4096) 4096) "/" path)))
+  )
+  (fn-do + resolved Path :get
+    (let buf ([] Byte 4096))
+    (let found (call C:realpath normalized buf))
+    (throw (call current-file-error) (if (not found)))
+    (return (call Path (call (. buf slice-string) (..< 0 (call C:strlen buf))) 0))
+  )
+  (fn-do + entries (stream PathEntry) :get
+    (let d
+      (call C:opendir path
+        (block
+          (throw (call current-file-error) (if (not it)))
+        )
+      )
+    )
+    (finally
+      (inline (call C:closedir d))
+    )
+    (blank)
+    (let buf ([] Byte 4096))
+    (let info BxDirEntry)
+    (while (call C:brixReadDirEntry d buf &info)
+      (yield (call PathEntry (call (. buf slice-string) (..< 0 (. info name-length))) (as (. info kind) PathKind) (. info inode)))
+    )
+  )
+  (fn-do + contents (stream Path) :get
+    (for (in entry entries)
+      (yield (/ this (. entry name)))
+    )
+  )
+  (fn-expr + stat _ :get
+    (before
+      (throw (call current-file-error) (if error))
+    )
+    ([] buf 0)
+    (where
+      (lazy buf ([] FileStat 1))
+      (lazy error (call C:brixStat path buf))
+    )
+  )
+  (fn-expr + components (list String) :get
+    (call (of List String)
+      (block
+        (spread (call (. path split) separator))
+        (pipe ?> (> (. each length) 0))
+      )
+    )
+  )
+  (fn-expr _ lstat _ :get
+    (before
+      (throw (call current-file-error) (if error))
+    )
+    ([] buf 0)
+    (where
+      (lazy buf ([] FileStat 1))
+      (lazy error (call C:brixLinkStat path buf))
+    )
+  )
+  (fn-expr + (infix this / (param subpath Path)) _
+    (case? (not path)
+      subpath
+    )
+    (case? (== path separator)
+      (str path subpath)
+    )
+    (default
+      (str path separator subpath)
+    )
+  )
+  (fn-expr + (prefix ! this) _
+    (not path)
+  )
+  (fn-expr + split _
+    (call (. path split) separator)
+  )
+  (fn-expr + relative-to (? Path)
+    (param base Path)
+    (case? (== path (str base))
+      (call Path "" 0)
+    )
+    (case? (call (. path starts-with) prefix)
+      (call Path ([] path (... (. prefix length))) 0)
+    )
+    (default
+      null
+    )
+    (where
+      (lazy prefix (if-expr (call (. (str base) ends-with) separator) (str base) (str base separator)))
+    )
+  )
+  (fn-expr + find _
+    (param pattern String)
+    (param is-recursive _ (= false))
+    (call (. abs-pattern match) is-recursive)
+    (where
+      (lazy abs-pattern (/ this pattern))
+    )
+  )
+  (fn-do + match (stream Path)
+    (param is-recursive _ (= false))
+    (let buf ([] Glob 1))
+    (let err
+      (call C:brixGlob path buf
+        (block
+          (throw (call Error "Invalid pattern") (if it))
+        )
+      )
+    )
+    (finally
+      (inline (call C:brixGlobFree buf))
+    )
+    (blank)
+    (let match ([] buf 0))
+    (for (in i (..< 0 (. match count)))
+      (yield (call Path (as ([] (. match paths) i) String)))
+    )
+  )
+  (fn-do + rename _
+    (param new-name String)
+    (let new-path (/ dir new-name))
+    (call move new-path)
+    (return new-path)
+  )
+  (fn-do + move _
+    (param new-path Path)
+    (let status (call C:rename (as path String) (as new-path String)))
+    (call handle-file-error status)
+  )
+  (fn-do + move-exclusive _
+    (param new-path Path)
+    (let status (call C:brixRenameExclusive (as path String) (as new-path String)))
+    (call handle-file-error status)
+  )
+  (fn-do + copy _
+    (param new-path Path)
+    (let source stat)
+    (let target FileStat)
+    (return-if (if (and (== (call C:brixStat (as new-path String) &target) 0) (== (. target dev) (. source dev)) (== (. target ino) (. source ino)))))
+    (let this-file (use (call (of File Byte) path)))
+    (let flags (/or/ (. FileFlags create-mode) (. FileFlags write-mode) (. FileFlags truncate-mode)))
+    (let new-file (use (call (of File Byte) new-path flags (as (. source mode) FilePermissions))))
+    (blank)
+    (<-* new-file (as this-file (stream Array)))
+  )
+  (fn-do + clone _
+    (param new-path Path)
+    (let status (call C:brixCloneFile path (as new-path String)))
+    (call handle-file-error status)
+  )
+  (fn-do + delete _
+    (let status (call C:remove path))
+    (call handle-file-error status)
+  )
+  (fn-do + hard-link _
+    (param link-path Path)
+    (let status (call C:link path (as link-path String)))
+    (call handle-file-error status)
+  )
+  (fn-do + soft-link _
+    (param link-path Path)
+    (let status (call C:symlink path (as link-path String)))
+    (call handle-file-error status)
+  )
+  (fn-do + change-mode _
+    (param mode FilePermissions)
+    (let status (call C:chmod path mode))
+    (call handle-file-error status)
+  )
+  (fn-expr + readable _
+    (call File this (. FileFlags read-mode))
+  )
+  (fn-expr + writable _
+    (call File this (/or/ (. FileFlags write-mode) (. FileFlags create-mode)))
+  )
+  (fn-expr + rewritable _
+    (call File this (/or/ (. FileFlags write-mode) (. FileFlags create-mode) (. FileFlags truncate-mode)))
+  )
+  (fn-do + make-directory _
+    (param name _ (= ""))
+    (param mode FilePermissions (= 0))
+    (let actual-path (if-expr name (/ this name) this))
+    (let above (?? (. actual-path parent) (call Path "." 0)))
+    (let actual-mode (if-expr mode mode (as (. above mode) FilePermissions)))
+    (let status (call C:mkdir (as actual-path String) actual-mode))
+    (call handle-file-error status)
+  )
+  (fn-do + make-directories _ (?! Error)
+    (param mode FilePermissions (= 0))
+    (return-if (if is-dir))
+    (let above parent)
+    (if above
+      (call (. above make-directories) mode)
+    )
+    (call make-directory "" mode
+      (block
+        (on-error (: failure Error)
+          (throw failure (if (not is-dir)))
+        )
+      )
+    )
+  )
+  (fn-expr + watch _
+    (param is-recursive _ (= false))
+    (call PathWatchStream normalized is-recursive)
+  )
+  (fn-expr _ change-stream _
+    (param change-type _)
+    (call FileChangeStream this change-type)
+  )
+)
+
+(type + PathKind (is U8)
+  (variant unknown (= 0))
+  (variant pipe (= 1))
+  (variant character-device (= 2))
+  (variant directory (= 4))
+  (variant block-device (= 6))
+  (variant file (= 8))
+  (variant link (= 10))
+  (variant socket (= 12))
+)
+
+(type + PathEntry (is Tuple)
+  (prop + name String)
+  (prop + kind PathKind)
+  (prop + inode U64)
+)
+
+(type + PathWatchFlags (is U64)
+  (variant none (= 0))
+  (variant must-scan-subdirectories (= 0x00000001))
+  (variant user-dropped (= 0x00000002))
+  (variant kernel-dropped (= 0x00000004))
+  (variant event-ids-wrapped (= 0x00000008))
+  (variant history-done (= 0x00000010))
+  (variant root-changed (= 0x00000020))
+  (variant mounted (= 0x00000040))
+  (variant unmounted (= 0x00000080))
+  (variant created (= 0x00000100))
+  (variant removed (= 0x00000200))
+  (variant inode-metadata-modified (= 0x00000400))
+  (variant renamed (= 0x00000800))
+  (variant modified (= 0x00001000))
+  (variant finder-info-modified (= 0x00002000))
+  (variant owner-changed (= 0x00004000))
+  (variant extended-attributes-modified (= 0x00008000))
+  (variant is-file (= 0x00010000))
+  (variant is-directory (= 0x00020000))
+  (variant is-symbolic-link (= 0x00040000))
+  (variant own-event (= 0x00080000))
+  (variant is-hard-link (= 0x00100000))
+  (variant is-last-hard-link (= 0x00200000))
+  (variant cloned (= 0x00400000))
+  (fn-expr + must-rescan Bool :get
+    (call contains (. PathWatchFlags must-scan-subdirectories))
+  )
+  (fn-expr + contains _
+    (param flag PathWatchFlags)
+    (!= (/and/ this flag) 0)
+  )
+)
+
+(type + PathWatchEvent (is Tuple)
+  (prop + root Path)
+  (prop + path Path)
+  (prop + flags PathWatchFlags)
+  (prop + must-rescan Bool)
+  (prop + is-recursive Bool)
+  (fn-do + This _
+    (param root Path)
+    (param path Path)
+    (param flags PathWatchFlags)
+    (param is-recursive Bool)
+    (lazy must-rescan (. flags must-rescan))
+  )
+)
+
+(type + PathWatchHandler (is (fn-type Void (param event PathWatchEvent))))
+
+(type + PathWatchListener
+  (implements Closable)
+  (prop + source (of Broadcastable PathWatchEvent))
+  (prop + handler PathWatchHandler)
+  (blank)
+  (prop _ subscription (? (of Subscription PathWatchEvent)))
+  (fn-do + This _
+    (param source _)
+    (param handler _)
+  )
+  (fn-do + close _
+    (let made subscription)
+    (= subscription null)
+    (if made
+      (catch? (call (. source unsubscribe) made))
+    )
+  )
+  (fn-do + listen _ (?! Error)
+    (let made (call (of Subscription PathWatchEvent) (. this dispatch)))
+    (= subscription made)
+    (call (. source subscribe) made)
+  )
+  (fn-do _ dispatch _
+    (param event PathWatchEvent)
+    (param from (of Broadcastable PathWatchEvent))
+    (call handler event)
+  )
+)
+
+(fn-do + listen-for-changes PathWatchListener (?! Error)
+  (param source (of Broadcastable PathWatchEvent))
+  (param handler PathWatchHandler)
+  (let listener (call PathWatchListener source handler))
+  (call (. listener listen))
+  (return listener)
+)
+
+(fn-do + temporary-directory _ (?! Error)
+  (param prefix String (= "brix"))
+  (param parent (? String) (= null))
+  (let root (?? parent (call env "TMPDIR") "/tmp"))
+  (let folder (if-expr (call (. root ends-with) "/") ([] root (..< 0 (- (. root length) 1))) root))
+  (let template (call byte-view (str folder "/" prefix ".XXXXXX")))
+  (let buffer ([] Byte (+ (. template length) 1)))
+  (= ([] buffer (..< 0 (. template length))) template)
+  (= ([] buffer (. template length)) 0)
+  (throw (call current-file-error) (if (not (call C:mkdtemp buffer))))
+  (return (call Path (call (. buffer slice-string) (..< 0 (. template length))) 0))
+)
+
+(fn-do + executable-path Path (?! Error)
+  (let buffer ([] Byte 4096))
+  (throw (call Error (str "This program's path is longer than " (. buffer size) " bytes")) (if (!= (call C:brixExecutablePath buffer (. buffer size)) 0)))
+  (return (. (call Path (call (. buffer slice-string) (..< 0 (call C:strlen buffer))) 0) resolved))
+)
+
+(type _ BxDirEntry (is Tuple)
+  (prop + inode U64)
+  (prop + name-length U32)
+  (prop + kind U32)
+)
+
+(type _ BxPathWatchNativeEvent (is Tuple)
+  (prop + path (of CPointer Char8))
+  (prop + flags U64)
+)
+
+(type _ PathWatchStream
+  (implements (of Usable Void))
+  (implements Closable)
+  (prop + root Path)
+  (prop + is-recursive Bool)
+  (blank)
+  (prop _ watcher Pointer)
+  (prop _ lock Semaphore)
+  (blank)
+  (delegate (of Broadcastable PathWatchEvent))
+  (prop _ channel _ (:= (call (of AsyncOnDemandChannel PathWatchEvent) this)))
+  (fn-do + This _
+    (param root Path)
+    (param is-recursive Bool)
+  )
+  (fn-do + begin-using _
+    (= watcher (call C:brixPathWatchCreate (as root String) is-recursive))
+    (throw (call Error (str "Unable to watch path " root)) (if (not watcher)))
+    (blank)
+    (let active-watcher watcher)
+    (do-new
+      (while true
+        (if (call C:brixSuspendActiveTaskUntilPathWatchEvent active-watcher (. lock native-pointer))
+          (break)
+        )
+        (blank)
+        (let native-event BxPathWatchNativeEvent)
+        (while (call C:brixPathWatchNextEvent active-watcher &native-event)
+          (let event-path (call Path (. native-event path)))
+          (let event-flags (as (. native-event flags) PathWatchFlags))
+          (<- channel (call PathWatchEvent root event-path event-flags is-recursive))
+        )
+      )
+      (blank)
+      (call C:brixPathWatchRelease active-watcher)
+      (if (== watcher active-watcher)
+        (= watcher (call Pointer))
+      )
+    )
+  )
+  (fn-do + end-using _
+    (if watcher
+      (call C:brixCancelPathWatchEventListener watcher (. lock native-pointer))
+    )
+  )
+  (fn-do + close _
+    (call (. channel close))
+  )
+)
+
+(type _ FileChangeStream
+  (implements (of Usable Void))
+  (prop + file File)
+  (prop + path Path)
+  (prop + change-type Int)
+  (blank)
+  (prop _ lock Semaphore)
+  (blank)
+  (delegate (of Broadcastable Path))
+  (prop _ channel _ (:= (call (of AsyncOnDemandChannel Path) this)))
+  (fn-do + This _
+    (param path Path)
+    (param change-type Int)
+    (lazy file (call File path (. FileFlags event-only-mode)))
+  )
+  (fn-do + begin-using _
+    (do-new
+      (while true
+        (if (call C:brixSuspendActiveTaskUntilFileChange file change-type (. lock native-pointer))
+          (break)
+        )
+        (blank)
+        (<- channel path)
+      )
+    )
+  )
+  (fn-do + end-using _
+    (call C:brixCancelFileChangeEventListener file change-type (. lock native-pointer))
+    (call (. file close))
+  )
+)

@@ -1,0 +1,416 @@
+(import /data/markdown)
+(import /os/file)
+(import /os/path)
+(import /stream/filter)
+(import /stream/sort)
+(blank)
+(type-line _ MarkdownSiteTarget (is (tuple (: path String) (: fragment (? String)))))
+
+(type + MarkdownSiteDocument (is Tuple)
+  (prop + source-name String)
+  (prop + path Path)
+  (prop + id String)
+  (prop + title String)
+  (prop + source String)
+  (prop + markdown Markdown)
+)
+
+(type + MarkdownSite (is Tuple)
+  (prop + root Path)
+  (prop + entry-name String)
+  (prop + documents (list MarkdownSiteDocument))
+)
+
+(type + MarkdownSiteDocumentId (is (fn-type String (param source-name String))))
+
+(type + MarkdownSiteFencedCodeRenderer (is (fn-type String (?! Error) (param document MarkdownSiteDocument) (param code MDFencedCode))))
+
+(type + MarkdownSiteInlineCodeRenderer (is (fn-type String (?! Error) (param document MarkdownSiteDocument) (param code MDInlineCode))))
+
+(type + MarkdownSiteLinkRenderer (is (fn-type MarkdownHTMLLink (?! Error) (param document MarkdownSiteDocument) (param url String))))
+
+(fn-do + load-markdown-site MarkdownSite
+  (param root Path)
+  (param entry-name _ (= "README.md"))
+  (param document-id MarkdownSiteDocumentId (= markdown-site-document-id))
+  (param unlisted (list String) (= (list)))
+  (let available (list String)
+    (case-each (in name (call markdown-source-names root) (when (not (call (. unlisted find) name))))
+      name
+    )
+  )
+  (let entry-path (/ root entry-name))
+  (throw (call Error (str "Markdown site entry does not exist: " entry-path)) (if (not (. entry-path is-file))))
+  (let entry-source (call read-file-text entry-path))
+  (let entry-markdown (call Markdown entry-source))
+  (let ordered (list entry-name))
+  (for (in target (call markdown-document-links entry-markdown entry-name))
+    (if (not (call (. ordered find) target))
+      (+= ordered target)
+    )
+  )
+  (let omitted (list String)
+    (case-each (in name available (when (not (call (. ordered find) name))))
+      name
+    )
+  )
+  (let missing (list String)
+    (case-each (in name ordered (when (not (call (. available find) name))))
+      name
+    )
+  )
+  (let mismatch (str "Markdown site index mismatch. Omitted: " (call site-name-list omitted) "."))
+  (+= mismatch (str " Missing: " (call site-name-list missing) "."))
+  (throw (call Error mismatch) (if (or (> (. omitted length) 0) (> (. missing length) 0))))
+  (blank)
+  (let documents (list MarkdownSiteDocument))
+  (let ids (call (of Map String Bool)))
+  (for (in source-name ordered)
+    (let path (/ root source-name))
+    (let source String)
+    (case? (== source-name entry-name)
+      (= source entry-source)
+    )
+    (default
+      (= source (call read-file-text path))
+    )
+    (let markdown (if-expr (== source-name entry-name) entry-markdown (call Markdown source)))
+    (let id (call document-id source-name))
+    (throw (call Error (str "Duplicate Markdown document id " id)) (if ([] ids id)))
+    (= ([] ids id) true)
+    (+= documents
+      (call MarkdownSiteDocument
+        (block
+          (arg source-name)
+          (arg path)
+          (arg id)
+          (arg (call markdown-document-title markdown source-name))
+          (arg source)
+          (arg markdown)
+        )
+      )
+    )
+  )
+  (return (call MarkdownSite root entry-name documents))
+)
+
+(fn-do + render-markdown-site-document String
+  (param site MarkdownSite)
+  (param document MarkdownSiteDocument)
+  (param fenced-code-renderer (? MarkdownSiteFencedCodeRenderer) (= null))
+  (param link-renderer (? MarkdownSiteLinkRenderer) (= null))
+  (param inline-code-renderer (? MarkdownSiteInlineCodeRenderer) (= null))
+  (let fenced (? MarkdownFencedCodeRenderer) null)
+  (if fenced-code-renderer
+    (= fenced (=> (code) (call fenced-code-renderer document code)))
+  )
+  (let inline (? MarkdownInlineCodeRenderer) null)
+  (if inline-code-renderer
+    (= inline (=> (code) (call inline-code-renderer document code)))
+  )
+  (return
+    (call markdown-to-html
+      (block
+        (arg (. document markdown))
+        (arg fenced)
+        (arg (=> (heading default-id) (call markdown-site-heading-id document default-id)))
+        (arg (=> (link) (call render-markdown-site-link site document link link-renderer)))
+        (arg inline)
+      )
+    )
+  )
+)
+
+(fn-do + markdown-site-link MarkdownHTMLLink
+  (param site MarkdownSite)
+  (param document MarkdownSiteDocument)
+  (param url String)
+  (return-if (call MarkdownHTMLLink url "") (if (call markdown-site-external-target url)))
+  (blank)
+  (let target (call markdown-site-target url))
+  (let source-name (. document source-name))
+  (if (. target path)
+    (= source-name (call markdown-site-relative-name (. document source-name) (. target path)))
+  )
+  (let target-document (call markdown-site-document site source-name))
+  (if (not target-document)
+    (throw (call Error (str (. document source-name) ": Unknown Markdown site link " url)) (if (or (call (. target path ends-with) ".md") (call (. target path starts-with) "../"))))
+    (return (call MarkdownHTMLLink url ""))
+  )
+  (blank)
+  (let anchor (. target-document id))
+  (if (. target fragment)
+    (+= anchor (str "--" (. target fragment)))
+  )
+  (return (call MarkdownHTMLLink (str "#" anchor) ""))
+)
+
+(fn-do + markdown-site-document (? MarkdownSiteDocument)
+  (param site MarkdownSite)
+  (param source-name String)
+  (for (in document (. site documents))
+    (if (== (. document source-name) source-name)
+      (return document)
+    )
+  )
+)
+
+(fn-expr + markdown-site-document-id String
+  (param source-name String)
+  (match (. stem lowercased)
+    (~ (seq (* (seq (! (chars "a-z0-9")) .)) (* (seq (: ...words (+ (chars "a-z0-9"))) (* (seq (! (chars "a-z0-9")) .)))) (! .))
+      (?? (call (. "-" join) words) "document")
+    )
+    (default
+      "document"
+    )
+  )
+  (where
+    (lazy stem ([] source-name (... _ (- (. source-name length) 3))))
+  )
+)
+
+(fn-expr _ markdown-site-heading-id String
+  (param document MarkdownSiteDocument)
+  (param default-id String)
+  (str (. document id) "--" default-id)
+)
+
+(fn-expr _ render-markdown-site-link MarkdownHTMLLink
+  (param site MarkdownSite)
+  (param document MarkdownSiteDocument)
+  (param link MDLink)
+  (param link-renderer (? MarkdownSiteLinkRenderer))
+  (case? link-renderer
+    (call link-renderer document (. link url))
+  )
+  (default
+    (call markdown-site-link site document (. link url))
+  )
+)
+
+(fn-do _ markdown-source-names (list String) (?! Error)
+  (param root Path)
+  (param prefix _ (= ""))
+  (let names (list String))
+  (let paths (list String) (call sort (in (str each) (. root contents))))
+  (for (in path-text paths)
+    (let path (call Path path-text))
+    (let name (str prefix (. path name)))
+    (if (. path is-dir)
+      (++= names (call markdown-source-names path (str name "/")))
+      (else-if (and (. path is-file) (== (. path ext) "md"))
+        (+= names name)
+      )
+    )
+  )
+  (return names)
+)
+
+(fn-do _ markdown-document-links (list String)
+  (param markdown Markdown)
+  (param entry-name String)
+  (let links (list String))
+  (call collect-markdown-links markdown links)
+  (return links)
+  (pipe *> (call markdown-site-target each))
+  (pipe ?> (call (. each path ends-with) ".md"))
+  (pipe *> (call markdown-site-relative-name entry-name (. each path)))
+  (pipe |> distinct)
+  (pipe |> List)
+)
+
+(fn-do _ collect-markdown-links _
+  (param node Markdown)
+  (param links (list String))
+  (match? node
+    (case MDDocument
+      (for (in child (. it content))
+        (call collect-markdown-links child links)
+      )
+    )
+    (case MDParagraph
+      (for (in child (. it content))
+        (call collect-markdown-links child links)
+      )
+    )
+    (case MDHeader
+      (for (in child (. it content))
+        (call collect-markdown-links child links)
+      )
+    )
+    (case MDLink
+      (+= links (. it url))
+      (for (in child (. it content))
+        (call collect-markdown-links child links)
+      )
+    )
+    (case MDImage
+      (for (in child (. it content))
+        (call collect-markdown-links child links)
+      )
+    )
+    (case MDStrong
+      (for (in child (. it content))
+        (call collect-markdown-links child links)
+      )
+    )
+    (case MDEm
+      (for (in child (. it content))
+        (call collect-markdown-links child links)
+      )
+    )
+    (case MDBlockQuote
+      (for (in child (. it content))
+        (call collect-markdown-links child links)
+      )
+    )
+    (case MDList
+      (for (in child (. it children))
+        (call collect-markdown-links child links)
+      )
+    )
+    (case MDListItem
+      (for (in child (. it content))
+        (call collect-markdown-links child links)
+      )
+      (for (in child (. it blocks))
+        (call collect-markdown-links child links)
+      )
+    )
+    (case MDTable
+      (call collect-markdown-links (. it header) links)
+      (for (in row (. it rows))
+        (call collect-markdown-links row links)
+      )
+    )
+    (case MDTableRow
+      (for (in cell (. it cells))
+        (call collect-markdown-links cell links)
+      )
+    )
+    (case MDTableCell
+      (for (in child (. it content))
+        (call collect-markdown-links child links)
+      )
+    )
+  )
+)
+
+(fn-do _ markdown-document-title String
+  (param markdown Markdown)
+  (param source-name String)
+  (for (in block (call markdown-document-blocks markdown))
+    (match? block
+      (case MDHeader
+        (if (== (. it level) 1)
+          (return (call markdown-visible-text (. it content)))
+        )
+      )
+    )
+  )
+  (throw (call Error (str "Markdown document is missing an H1: " source-name)))
+)
+
+(fn-expr _ markdown-document-blocks (list Markdown)
+  (param markdown Markdown)
+  (match markdown
+    (case MDDocument
+      (. it content)
+    )
+    (default
+      (list markdown)
+    )
+  )
+)
+
+(fn-expr _ markdown-visible-text String
+  (param nodes (list Markdown))
+  (call (. "" join) (in (call markdown-visible-node-text each) nodes))
+)
+
+(fn-expr _ markdown-visible-node-text String
+  (param node Markdown)
+  (match node
+    (case MDText
+      (. it text)
+    )
+    (case MDInlineCode
+      (. it code)
+    )
+    (case MDStrong
+      (call markdown-visible-text (. it content))
+    )
+    (case MDEm
+      (call markdown-visible-text (. it content))
+    )
+    (case MDLink
+      (call markdown-visible-text (. it content))
+    )
+    (case MDImage
+      (call markdown-visible-text (. it content))
+    )
+    (default
+      ""
+    )
+  )
+)
+
+(fn-expr _ markdown-site-target MarkdownSiteTarget
+  (param target String)
+  (case? (not hash)
+    (call MarkdownSiteTarget target null)
+  )
+  (default
+    (call MarkdownSiteTarget path ([] target (... (+ hash 1))))
+  )
+  (where
+    (lazy hash (call (. target find) "#"))
+    (lazy path (if-expr (> hash 0) ([] target (... _ hash)) ""))
+  )
+)
+
+(fn-expr _ markdown-site-external-target Bool
+  (param target String)
+  (case? (call (. target starts-with) "//")
+    true
+  )
+  (case? (not colon)
+    false
+  )
+  (default
+    (or (not slash) (< colon slash))
+  )
+  (where
+    (lazy colon (call (. target find) ":"))
+    (lazy slash (call (. target find) "/"))
+  )
+)
+
+(fn-do _ markdown-site-relative-name String
+  (param source-name String)
+  (param target String)
+  (let parts (list String))
+  (let slash (call (. source-name find-reverse) "/"))
+  (if slash
+    (= parts (call (. ([] source-name (... _ slash)) split) "/"))
+  )
+  (for (in part (call (. target split) "/"))
+    (if (or (not part) (== part "."))
+      (continue)
+    )
+    (if (== part "..")
+      (throw (call Error (str "Markdown link leaves the source root: " target)) (if (== (. parts length) 0)))
+      (call (. parts pop))
+      (else
+        (+= parts part)
+      )
+    )
+  )
+  (return (call (. "/" join) parts))
+)
+
+(fn-expr _ site-name-list String
+  (param names (list String))
+  (if-expr (> (. names length) 0) (call (. ", " join) names) "none")
+)

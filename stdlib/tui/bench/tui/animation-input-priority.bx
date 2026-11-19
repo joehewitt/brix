@@ -1,0 +1,26 @@
+; benchmark.meta description: Requests immediate repaints while the TUI animation loop is waiting for its next frame.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: tui,timing
+(blank)
+(import /time/duration)
+(import /time/timer)
+(blank)
+
+(main
+  (let ready (call (of SyncBufferedChannel Bool)))
+  (let loop (call AnimationLoop (as 100ms Nanoseconds) (=> () :do (<- ready true))))
+  (call (. loop request-now))
+  (<- ready)
+  (let frames 0)
+  (for (in _ (..< 0 8))
+    (call (. loop request-next))
+    (call (. 20ms wait))
+    (probe-group + tui.bench.input-step)
+    (call (. loop request-now))
+    (<- ready)
+    (probe-group - tui.bench.input-step)
+    (+= frames 1)
+  )
+  (call (. loop cancel))
+  (print (str "bench-result tui/animation-input-priority checksum=" frames))
+)

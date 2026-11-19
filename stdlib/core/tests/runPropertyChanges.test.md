@@ -1,31 +1,29 @@
 # Property changes
 
-```yumi
-./base
+```brix
+(import ./base)
+(blank)
 
-. value = Derived()
--- value.result
-value.input = 7
--- value.result
+(main
+  (let value (call Derived))
+  (print (. value result))
+  (= (. value input) 7)
+  (print (. value result))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
+(type + Derived (is Base))
 ```
 
-```yumi file=base.yumi
+```brix file=base.bx
+(type + Base
+  (prop + input _ (= 2))
+  (prop + result _ (= (call transform #input)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-+ input = 2
-+ result = transform(#input)
-
-━━━━━━━━━━━━━━━━━━━━
-_ transform
-    - value Int
-
-value * 3
-
+(fn-expr _ transform _
+  (param value Int)
+  (* value 3)
+)
 ```
 
 ```output
@@ -33,21 +31,22 @@ value * 3
 21
 ```
 
-```yumi
-. f = Foo()
--- f.foo
+```brix
+(main
+  (let f (call Foo))
+  (print (. f foo))
+  (blank)
+  (= (. f bar) 50)
+  (print (. f foo))
+  (blank)
+  (= (. f bar) 25)
+  (print (. f foo))
+)
 
-f.bar = 50
--- f.foo
-
-f.bar = 25
--- f.foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ foo = #bar * 2
-+ bar = 42
+(type + Foo
+  (prop + foo _ (= (* #bar 2)))
+  (prop + bar _ (= 42))
+)
 ```
 
 ```output
@@ -56,93 +55,92 @@ f.bar = 25
 50
 ```
 
-```yumi crash
-. thing = Thing()
-. name = thing.#name
--- name
+```brix crash
+(main
+  (let thing (call Thing))
+  (let name (. thing #name))
+  (print name)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ prefix = ""
-
-────────────────────
-+ get name
-
-"bob" + prefix
+(type + Thing
+  (prop + prefix _ (= ""))
+  (fn-expr + name _ :get
+    (+ "bob" prefix)
+  )
+)
 ```
 
 ```output
 Exception: Tracked getters are not supported; track concrete state instead
-<no file:3>
-    . name = thing.#name
-             ^^^^^^^^^^^
+<no file:4>
+      (let name (. thing #name))
+                ^^^^^^^^^^^^^^^
 ```
 
 ### A tracked read in a lazy property's value is reported, as the value is worked out once.
 
-```yumi crash
-. f = Foo()
--- f.later
+```brix crash
+(main
+  (let f (call Foo))
+  (print (. f later))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ a = 1
-+ later := #a * 3
+(type + Foo
+  (prop + a _ (= 1))
+  (prop + later _ (:= (* #a 3)))
+)
 ```
 
 ```output
 Exception: A lazy property is worked out once, when it is first read, so it cannot follow "#a"; write "=" in place of ":=" to keep it live, or read "a" without "#"
 <no file:9>
-    + later := #a * 3
-               ^^
+      (prop + later _ (:= (* #a 3)))
+                             ^^
 ```
 
 ### A tracked read of each item of a pipeline that a call in a derived value works out is followed: the value runs again as an item changes and as items are added and removed, and no longer for an item removed.
 
-```yumi
-. b = Box()
--- b.waiting
-b.items[0].is-pending = false
--- b.waiting
-. added = Item()
-b.items += added
--- b.waiting
-added.is-pending = false
--- b.waiting
-. removed = b.items[1]
-b.items.remove(1)
--- b.waiting
-removed.is-pending = false
--- b.waiting
+```brix
+(main
+  (let b (call Box))
+  (print (. b waiting))
+  (= (. ([] (. b items) 0) is-pending) false)
+  (print (. b waiting))
+  (let added (call Item))
+  (+= (. b items) added)
+  (print (. b waiting))
+  (= (. added is-pending) false)
+  (print (. b waiting))
+  (let removed ([] (. b items) 1))
+  (call (. b items remove) 1)
+  (print (. b waiting))
+  (= (. removed is-pending) false)
+  (print (. b waiting))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item
+(type + Item
+  (prop + is-pending _ (= true))
+)
 
-+ is-pending = true
+(type + Box
+  (prop + items _ (= (list (call Item) (call Item) (call Item))))
+  (prop + waiting _ (= (call noted (call tally (in each #items (when (. each #is-pending)))))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(fn-do + noted Int
+  (param n Int)
+  (print (str "ran " n))
+  (return n)
+)
 
-+ items = [Item(), Item(), Item()]
-+ waiting = noted(tally(each in #items when each.#is-pending))
-
-━━━━━━━━━━━━━━━━━━━━
-+ do noted Int
-    - n Int
-
--- "ran $n"
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tally'T
-    - stream <T>
-
-. total = 0
-for item in stream
-    total += 1
-= total
+(fn-do + (of tally T) _
+  (param stream (stream T))
+  (let total 0)
+  (for (in item stream)
+    (+= total 1)
+  )
+  (return total)
+)
 ```
 
 ```output
@@ -161,54 +159,51 @@ ran 1
 
 ### The items a pipeline reads in the value of an object made while another value runs are followed by that object's value alone: the other value runs again only for what it reads itself.
 
-```yumi
-. o = Outer()
--- o.made.waiting
-o.made.items[0].is-pending = false
--- o.made.waiting
-o.flag = true
--- o.made.waiting
+```brix
+(main
+  (let o (call Outer))
+  (print (. o made waiting))
+  (= (. ([] (. o made items) 0) is-pending) false)
+  (print (. o made waiting))
+  (= (. o flag) true)
+  (print (. o made waiting))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item
+(type + Item
+  (prop + is-pending _ (= true))
+)
 
-+ is-pending = true
+(type + Box
+  (prop + items _ (= (list (call Item) (call Item))))
+  (prop + waiting _ (= (call noted "box" (call tally (in each #items (when (. each #is-pending)))))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Outer
+  (prop + flag _ (= false))
+  (prop + made _ (= (call built #flag)))
+)
 
-+ items = [Item(), Item()]
-+ waiting = noted("box", tally(each in #items when each.#is-pending))
+(fn-do + built Box
+  (param flag Bool)
+  (print (str "outer ran " flag))
+  (return (call Box))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Outer
+(fn-do + noted Int
+  (param what String)
+  (param n Int)
+  (print (str what " ran " n))
+  (return n)
+)
 
-+ flag = false
-+ made = built(#flag)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do built Box
-    - flag Bool
-
--- "outer ran $flag"
-= Box()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do noted Int
-    - what String
-    - n Int
-
--- "$what ran $n"
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tally'T
-    - stream <T>
-
-. total = 0
-for item in stream
-    total += 1
-= total
+(fn-do + (of tally T) _
+  (param stream (stream T))
+  (let total 0)
+  (for (in item stream)
+    (+= total 1)
+  )
+  (return total)
+)
 ```
 
 ```output
@@ -224,33 +219,33 @@ box ran 2
 
 ### A tracked read of a list for each item of a pipeline follows the changes made to each list in place.
 
-```yumi
-. b = Box()
--- b.filled
-b.groups[1].members += 3
--- b.filled
-b.groups[1].members.clear()
--- b.filled
+```brix
+(main
+  (let b (call Box))
+  (print (. b filled))
+  (+= (. ([] (. b groups) 1) members) 3)
+  (print (. b filled))
+  (call (. ([] (. b groups) 1) members clear))
+  (print (. b filled))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Group
+(type + Group
+  (prop + members _ (= (call (of List Int))))
+)
 
-+ members = List'Int()
+(type + Box
+  (prop + groups _ (= (list (call Group) (call Group))))
+  (prop + filled _ (= (call tally (in each #groups (when (> (. each #members length) 0))))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ groups = [Group(), Group()]
-+ filled = tally(each in #groups when each.#members.length > 0)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tally'T
-    - stream <T>
-
-. total = 0
-for item in stream
-    total += 1
-= total
+(fn-do + (of tally T) _
+  (param stream (stream T))
+  (let total 0)
+  (for (in item stream)
+    (+= total 1)
+  )
+  (return total)
+)
 ```
 
 ```output
@@ -261,37 +256,35 @@ for item in stream
 
 ### A rule that works out a pipeline follows a tracked read of each item, running as the count of them changes.
 
-```yumi
-. b = Box()
-b.items[0].is-pending = false
-b.items[1].is-pending = false
-b.items[0].is-pending = true
+```brix
+(main
+  (let b (call Box))
+  (= (. ([] (. b items) 0) is-pending) false)
+  (= (. ([] (. b items) 1) is-pending) false)
+  (= (. ([] (. b items) 0) is-pending) true)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item
+(type + Item
+  (prop + is-pending _ (= true))
+)
 
-+ is-pending = true
+(type + Box
+  (prop + items _ (= (list (call Item) (call Item))))
+  (whenever-rule (call tally (in each #items (when (. each #is-pending))))
+    (print (str "waiting " waiting))
+    (blank)
+    (lazy waiting (call tally (in each items (when (. each is-pending)))))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ items = [Item(), Item()]
-
-────────────────────
-whenever tally(each in #items when each.#is-pending)
-
--- "waiting $waiting"
-
-.. waiting = tally(each in items when each.is-pending)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tally'T
-    - stream <T>
-
-. total = 0
-for item in stream
-    total += 1
-= total
+(fn-do + (of tally T) _
+  (param stream (stream T))
+  (let total 0)
+  (for (in item stream)
+    (+= total 1)
+  )
+  (return total)
+)
 ```
 
 ```output
@@ -302,89 +295,87 @@ waiting 1
 
 ### A tracked read of each item of a pipeline that is the whole value is reported: the pipeline is worked out after the value, where nothing follows it.
 
-```yumi crash
-. b = Box()
--- b.waiting
+```brix crash
+(main
+  (let b (call Box))
+  (print (. b waiting))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item
+(type + Item
+  (prop + is-pending _ (= true))
+)
 
-+ is-pending = true
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ items = [Item()]
-+ waiting = (each in #items when each.#is-pending)
+(type + Box
+  (prop + items _ (= (list (call Item))))
+  (prop + waiting _ (= (in each #items (when (. each #is-pending)))))
+)
 ```
 
 ```output
 Exception: "#is-pending" is read for each item of a pipeline, which is followed only where the pipeline is given to a call in a live value, as in count(each in #items when each.#is-done); write "is-pending" to read it plainly
-<no file:14>
-    + waiting = (each in #items when each.#is-pending)
-                                     ^^^^^^^^^^^^^^^^
+<no file:13>
+      (prop + waiting _ (= (in each #items (when (. each #is-pending)))))
+                                                 ^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A pipeline given to a function that hands it back, as a generator does, is followed where what it hands back is given to a function that works it through in the same value: the reads happen in that call. One whose loop works it through follows it directly.
 
-```yumi
-. b = Bag()
--- "${b.latest} ${b.counted}"
-b.items[1].n = 7
--- "${b.latest} ${b.counted}"
-b.items[0].n = 0
--- "${b.latest} ${b.counted}"
+```brix
+(main
+  (let b (call Bag))
+  (print (str (. b latest) " " (. b counted)))
+  (= (. ([] (. b items) 1) n) 7)
+  (print (str (. b latest) " " (. b counted)))
+  (= (. ([] (. b items) 0) n) 0)
+  (print (str (. b latest) " " (. b counted)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bag
+(type + Bag
+  (prop + items _ (= (list (call Item) (call Item))))
+  (prop + latest _ (= (?? (call last-of (call pass (in (. each n) #items (when (> (. each #n) 1))))) 0)))
+  (prop + counted _ (= (call tally (call later (in each #items (when (> (. each #n) 1)))))))
+)
 
-+ items = [Item(), Item()]
-+ latest = last-of(pass(each.n in #items when each.#n > 1)) ?? 0
-+ counted = tally(later(each in #items when each.#n > 1))
+(type + Item
+  (prop + n _ (= 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item
+(fn-do + (of tally T) _
+  (param stream (stream T))
+  (let total 0)
+  (for (in item stream)
+    (+= total 1)
+  )
+  (return total)
+)
 
-+ n = 2
+(fn-do + (of last-of T) (? T)
+  (param stream (stream T))
+  (let found (? T))
+  (for (in item stream)
+    (= found item)
+  )
+  (return found)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tally'T
-    - stream <T>
+(fn-do + (of pass T) _
+  (param stream (stream T))
+  (for (in item stream)
+    (yield item)
+  )
+)
 
-. total = 0
-for item in stream
-    total += 1
-= total
+(fn-do + (of later T) _
+  (param stream (stream T))
+  (return stream)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do last-of'T T?
-    - stream <T>
-
-. found T?
-for item in stream
-    found = item
-= found
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pass'T
-    - stream <T>
-
-for item in stream
-    <= item
-
-━━━━━━━━━━━━━━━━━━━━
-+ do later'T
-    - stream <T>
-
-= stream
-
-━━━━━━━━━━━━━━━━━━━━
-+ do hold
-    - sink [Generator'Int]
-    - stream Generator'Int
-
-sink += stream
-= 0
+(fn-do + hold _
+  (param sink (list (of Generator Int)))
+  (param stream (of Generator Int))
+  (+= sink stream)
+  (return 0)
+)
 ```
 
 ```output
@@ -395,195 +386,196 @@ sink += stream
 
 ### A pipeline given to a function that keeps it, rather than working it through as it is called, is reported where it reads an item with "#".
 
-```yumi crash
-. b = Bag()
--- b.kept
+```brix crash
+(main
+  (let b (call Bag))
+  (print (. b kept))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bag
+(type + Bag
+  (prop + items _ (= (list (call Item) (call Item))))
+  (prop + sink (list (of Generator Int)))
+  (prop + kept _ (= (call hold sink (in (. each n) #items (when (> (. each #n) 1))))))
+)
 
-+ items = [Item(), Item()]
-+ sink [Generator'Int]
-+ kept = hold(sink, each.n in #items when each.#n > 1)
+(type + Item
+  (prop + n _ (= 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item
+(fn-do + (of tally T) _
+  (param stream (stream T))
+  (let total 0)
+  (for (in item stream)
+    (+= total 1)
+  )
+  (return total)
+)
 
-+ n = 2
+(fn-do + (of last-of T) (? T)
+  (param stream (stream T))
+  (let found (? T))
+  (for (in item stream)
+    (= found item)
+  )
+  (return found)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tally'T
-    - stream <T>
+(fn-do + (of pass T) _
+  (param stream (stream T))
+  (for (in item stream)
+    (yield item)
+  )
+)
 
-. total = 0
-for item in stream
-    total += 1
-= total
+(fn-do + (of later T) _
+  (param stream (stream T))
+  (return stream)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do last-of'T T?
-    - stream <T>
-
-. found T?
-for item in stream
-    found = item
-= found
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pass'T
-    - stream <T>
-
-for item in stream
-    <= item
-
-━━━━━━━━━━━━━━━━━━━━
-+ do later'T
-    - stream <T>
-
-= stream
-
-━━━━━━━━━━━━━━━━━━━━
-+ do hold
-    - sink [Generator'Int]
-    - stream Generator'Int
-
-sink += stream
-= 0
+(fn-do + hold _
+  (param sink (list (of Generator Int)))
+  (param stream (of Generator Int))
+  (+= sink stream)
+  (return 0)
+)
 ```
 
 ```output
 Exception: "#n" is read for each item of a pipeline that "hold" keeps rather than working through as it is called, so the read would not be followed; give the pipeline to a function that works it through, as count does, or write "n" to read it plainly
 <no file:10>
-    + kept = hold(sink, each.n in #items when each.#n > 1)
-                                              ^^^^^^^
+      (prop + kept _ (= (call hold sink (in (. each n) #items (when (> (. each #n) 1))))))
+                                                                       ^^^^^^^^^^^
 ```
 
 ### A pipeline that a function hands back is reported where nothing in the value works through what it hands back. A pipeline with no "#" read may be given to any function.
 
-```yumi crash
-. b = Bag()
--- b.kept
+```brix crash
+(main
+  (let b (call Bag))
+  (print (. b kept))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bag
+(type + Bag
+  (prop + items _ (= (list (call Item) (call Item))))
+  (prop + sink (list (of Generator Int)))
+  (prop + plain _ (= (call hold sink (in (. each n) items (when (> (. each n) 1))))))
+  (prop + kept _ (= (call later (in (. each n) #items (when (> (. each #n) 1))))))
+)
 
-+ items = [Item(), Item()]
-+ sink [Generator'Int]
-+ plain = hold(sink, each.n in items when each.n > 1)
-+ kept = later(each.n in #items when each.#n > 1)
+(type + Item
+  (prop + n _ (= 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item
+(fn-do + (of tally T) _
+  (param stream (stream T))
+  (let total 0)
+  (for (in item stream)
+    (+= total 1)
+  )
+  (return total)
+)
 
-+ n = 2
+(fn-do + (of last-of T) (? T)
+  (param stream (stream T))
+  (let found (? T))
+  (for (in item stream)
+    (= found item)
+  )
+  (return found)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tally'T
-    - stream <T>
+(fn-do + (of pass T) _
+  (param stream (stream T))
+  (for (in item stream)
+    (yield item)
+  )
+)
 
-. total = 0
-for item in stream
-    total += 1
-= total
+(fn-do + (of later T) _
+  (param stream (stream T))
+  (return stream)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do last-of'T T?
-    - stream <T>
-
-. found T?
-for item in stream
-    found = item
-= found
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pass'T
-    - stream <T>
-
-for item in stream
-    <= item
-
-━━━━━━━━━━━━━━━━━━━━
-+ do later'T
-    - stream <T>
-
-= stream
-
-━━━━━━━━━━━━━━━━━━━━
-+ do hold
-    - sink [Generator'Int]
-    - stream Generator'Int
-
-sink += stream
-= 0
+(fn-do + hold _
+  (param sink (list (of Generator Int)))
+  (param stream (of Generator Int))
+  (+= sink stream)
+  (return 0)
+)
 ```
 
 ```output
 Exception: "#n" is read for each item of a pipeline that "later" hands back without working it through, and nothing works through what it hands back as the value is made; give that to a function that works it through, as count does, or write "n" to read it plainly
 <no file:11>
-    + kept = later(each.n in #items when each.#n > 1)
-                                         ^^^^^^^
+      (prop + kept _ (= (call later (in (. each n) #items (when (> (. each #n) 1))))))
+                                                                   ^^^^^^^^^^^
 ```
 
 ### A pipeline given to a method, or by name, or piped with "|>", is followed by the parameter it fills, wherever that parameter is in the list.
 
-```yumi
-. b = Bag()
--- "${b.by-method} ${b.by-default} ${b.by-pipe} ${b.by-named}"
-b.items[0].n = 0
--- "${b.by-method} ${b.by-default} ${b.by-pipe} ${b.by-named}"
+```brix
+(main
+  (let b (call Bag))
+  (print (str (. b by-method) " " (. b by-default) " " (. b by-pipe) " " (. b by-named)))
+  (= (. ([] (. b items) 0) n) 0)
+  (print (str (. b by-method) " " (. b by-default) " " (. b by-pipe) " " (. b by-named)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bag
+(type + Bag
+  (prop + items _ (= (list (call Item) (call Item))))
+  (prop + counter _ (= (call Counter)))
+  (prop + by-method _ (= (call (. counter tally) 10 (in (. each n) #items (when (> (. each #n) 1))))))
+  (prop + by-default _ (= (call scaled 0 (in (. each n) #items (when (> (. each #n) 1))))))
+  (prop + by-pipe _ (= (|> (in (. each n) #items (when (> (. each #n) 1))) (call piped 100))))
+  (prop + by-named _
+    (=
+      (call scaled 0
+        (block
+          (:scale 3)
+          (:stream (in (. each n) #items (when (> (. each #n) 1))))
+        )
+      )
+    )
+  )
+)
 
-+ items = [Item(), Item()]
-+ counter = Counter()
-+ by-method = counter.tally(10, each.n in #items when each.#n > 1)
-+ by-default = scaled(0, each.n in #items when each.#n > 1)
-+ by-pipe = (each.n in #items when each.#n > 1) |> piped(100)
-+ by-named = scaled(0)
-    • scale 3
-    • stream each.n in #items when each.#n > 1
+(type + Item
+  (prop + n _ (= 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item
+(type + Counter
+  (prop + base _ (= 1))
+  (fn-do + tally Int
+    (param scale Int)
+    (param stream (of Generator Int))
+    (let total base)
+    (for (in item stream)
+      (+= total scale)
+    )
+    (return total)
+  )
+)
 
-+ n = 2
+(fn-do + scaled Int
+  (param base Int)
+  (param stream (of Generator Int))
+  (param scale Int (= 2))
+  (let total base)
+  (for (in item stream)
+    (+= total scale)
+  )
+  (return total)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
-
-+ base = 1
-
-────────────────────
-+ do tally Int
-    - scale Int
-    - stream Generator'Int
-
-. total = base
-for item in stream
-    total += scale
-= total
-
-━━━━━━━━━━━━━━━━━━━━
-+ do scaled Int
-    - base Int
-    - stream Generator'Int
-    - scale Int = 2
-
-. total = base
-for item in stream
-    total += scale
-= total
-
-━━━━━━━━━━━━━━━━━━━━
-+ do piped Int
-    - scale Int
-    - stream Generator'Int
-
-. total = 0
-for item in stream
-    total += scale
-= total
+(fn-do + piped Int
+  (param scale Int)
+  (param stream (of Generator Int))
+  (let total 0)
+  (for (in item stream)
+    (+= total scale)
+  )
+  (return total)
+)
 ```
 
 ```output
@@ -591,32 +583,31 @@ for item in stream
 11 2 100 3
 ```
 
-```yumi
-. foo = Foo()
--- foo.foo
+```brix
+(main
+  (let foo (call Foo))
+  (print (. foo foo))
+  (blank)
+  (= (. foo bar count) 2)
+  (blank)
+  (print (. foo foo))
+  (blank)
+  (= (. foo bar) (call Bar 5))
+  (blank)
+  (print (. foo foo))
+)
 
-foo.bar.count = 2
+(type + Foo
+  (prop + foo _ (= (* (. bar #count) 10)))
+  (prop + bar _ (= (call Bar 1)))
+)
 
--- foo.foo
-
-foo.bar = Bar(5)
-
--- foo.foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ foo = bar.#count * 10
-+ bar = Bar(1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-+ count = 1
-
-────────────────────
-+ This
-    - count
+(type + Bar
+  (prop + count _ (= 1))
+  (fn-do + This _
+    (param count _)
+  )
+)
 ```
 
 ```output
@@ -625,30 +616,35 @@ foo.bar = Bar(5)
 50
 ```
 
-```yumi
-+ bb = Bar(1)
+```brix
+(prop + bb _ (= (call Bar 1)))
+(blank)
 
-. foo = Foo()
--- foo.foo
-bb.count = 2
--- foo.foo
-bb.count = 3
--- foo.foo
+(main
+  (let foo (call Foo))
+  (print (. foo foo))
+  (= (. bb count) 2)
+  (print (. foo foo))
+  (= (. bb count) 3)
+  (print (. foo foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + foo _
+    (=
+      (scope (* (. bar #count) 10)
+        (lazy bar bb)
+      )
+    )
+  )
+)
 
-+ foo = bar.#count * 10
-    .. bar = bb
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-+ count = 1
-
-────────────────────
-+ This
-    - count
+(type + Bar
+  (prop + count _ (= 1))
+  (fn-do + This _
+    (param count _)
+  )
+)
 ```
 
 ```output
@@ -659,34 +655,31 @@ bb.count = 3
 
 ### Cross-class tracked setter dispatch is finalized after later reader compilation
 
-```yumi
-. writer = Writer()
-writer.set(1)
-. reader = Reader(writer)
--- reader.mirror
-writer.set(2)
--- reader.mirror
+```brix
+(main
+  (let writer (call Writer))
+  (call (. writer set) 1)
+  (let reader (call Reader writer))
+  (print (. reader mirror))
+  (call (. writer set) 2)
+  (print (. reader mirror))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Writer
+(type + Writer
+  (prop + value _ (= 0))
+  (fn-do + set _
+    (param next Int)
+    (= value next)
+  )
+)
 
-+ value = 0
-
-────────────────────
-+ do set
-    - next Int
-
-value = next
-
-━━━━━━━━━━━━━━━━━━━━
-+ Reader
-
-+ writer Writer
-+ mirror = writer.#value * 10
-
-────────────────────
-+ This
-    - writer
+(type + Reader
+  (prop + writer Writer)
+  (prop + mirror _ (= (* (. writer #value) 10)))
+  (fn-do + This _
+    (param writer _)
+  )
+)
 ```
 
 ```output
@@ -694,63 +687,68 @@ value = next
 20
 ```
 
-```yumi crash
-+ bar = 42
+```brix crash
+(prop + bar _ (= 42))
+(blank)
 
-. foo = Foo()
+(main
+  (let foo (call Foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ foo = #bar * 2
+(type + Foo
+  (prop + foo _ (= (* #bar 2)))
+)
 ```
 
 ```output
 Exception: Untrackable name
-<no file:9>
-    + foo = #bar * 2
-            ^^^^
+<no file:10>
+      (prop + foo _ (= (* #bar 2)))
+                          ^^^^
 ```
 
-```yumi
-. foo = Foo()
--- foo.foo
+```brix
+(main
+  (let foo (call Foo))
+  (print (. foo foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ foo =
-    . bar = 42
-    #bar * 2
+(type + Foo
+  (prop + foo _
+    (=
+      (block
+        (let bar 42)
+        (* #bar 2)
+      )
+    )
+  )
+)
 ```
 
 ```output
 84
 ```
 
-```yumi
-. foo = Foo()
-foo.bar = 10
-foo.bar = 5
-foo.bar = 5
-foo.bar = 10
-foo.bar = 10
-foo.bar = 5
+```brix
+(main
+  (let foo (call Foo))
+  (= (. foo bar) 10)
+  (= (. foo bar) 5)
+  (= (. foo bar) 5)
+  (= (. foo bar) 10)
+  (= (. foo bar) 10)
+  (= (. foo bar) 5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar = 0
-
-────────────────────
-when #bar < 10
-
--- "lesser"
-
-────────────────────
-when #bar >= 10
-
--- "greater"
+(type + Foo
+  (prop + bar _ (= 0))
+  (when-rule (< #bar 10)
+    (print "lesser")
+  )
+  (when-rule (>= #bar 10)
+    (print "greater")
+  )
+)
 ```
 
 ```output
@@ -763,24 +761,23 @@ lesser
 
 ### whenever observes every value change without an initial fire
 
-```yumi
-. foo = Foo()
-foo.bar = 1
-foo.bar = 2
-foo.bar = 2
-foo.bar = 0
-foo.bar = 0
-foo.bar = 3
+```brix
+(main
+  (let foo (call Foo))
+  (= (. foo bar) 1)
+  (= (. foo bar) 2)
+  (= (. foo bar) 2)
+  (= (. foo bar) 0)
+  (= (. foo bar) 0)
+  (= (. foo bar) 3)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar = 0
-
-────────────────────
-whenever #bar
-
--- "bar $bar"
+(type + Foo
+  (prop + bar _ (= 0))
+  (whenever-rule #bar
+    (print (str "bar " bar))
+  )
+)
 ```
 
 ```output
@@ -792,61 +789,50 @@ bar 3
 
 ### whenever over an interface-typed property fires when the value switches concrete type
 
-```yumi
-. holder = ShapeHolder()
-. round = RoundShape(1)
-. square = SquareShape(2)
-holder.shape = round
-holder.shape = square
-holder.shape = square
-holder.shape = round
-holder.shape = null
+```brix
+(main
+  (let holder (call ShapeHolder))
+  (let round (call RoundShape 1))
+  (let square (call SquareShape 2))
+  (= (. holder shape) round)
+  (= (. holder shape) square)
+  (= (. holder shape) square)
+  (= (. holder shape) round)
+  (= (. holder shape) null)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ShapeKind is Interface
+(type + ShapeKind (is Interface)
+  (fn-expr + label String :get)
+)
 
-────────────────────
-+ get label String
+(type + RoundShape
+  (implements ShapeKind)
+  (prop + size I64)
+  (fn-do + This _
+    (param size _)
+  )
+  (fn-expr + label String :get
+    (str "round " size)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RoundShape
-    is ShapeKind
+(type + SquareShape
+  (implements ShapeKind)
+  (prop + size I64)
+  (fn-do + This _
+    (param size _)
+  )
+  (fn-expr + label String :get
+    (str "square " size)
+  )
+)
 
-+ size I64
-
-────────────────────
-+ This
-    - size
-
-────────────────────
-+ get label String
-
-"round $size"
-
-━━━━━━━━━━━━━━━━━━━━
-+ SquareShape
-    is ShapeKind
-
-+ size I64
-
-────────────────────
-+ This
-    - size
-
-────────────────────
-+ get label String
-
-"square $size"
-
-━━━━━━━━━━━━━━━━━━━━
-+ ShapeHolder
-
-+ shape ShapeKind?
-
-────────────────────
-whenever #shape
-
--- shape?.label ?? "none"
+(type + ShapeHolder
+  (prop + shape (? ShapeKind))
+  (whenever-rule #shape
+    (print (?? (?. shape label) "none"))
+  )
+)
 ```
 
 ```output
@@ -858,71 +844,68 @@ none
 
 ### whenever over a list of interface values fires when an element switches concrete type, and equality elsewhere still refuses
 
-```yumi
-. holder = ShapeList()
-holder.shapes = shapes-of(RoundShape(1))
-holder.shapes = shapes-of(SquareShape(2))
-holder.shapes = shapes-of(SquareShape(2))
-holder.shapes = shapes-of(SquareShape(3))
-holder.shapes = shapes-of(RoundShape(3))
-mismatch(RoundShape(1), SquareShape(1))
+```brix
+(main
+  (let holder (call ShapeList))
+  (= (. holder shapes) (call shapes-of (call RoundShape 1)))
+  (= (. holder shapes) (call shapes-of (call SquareShape 2)))
+  (= (. holder shapes) (call shapes-of (call SquareShape 2)))
+  (= (. holder shapes) (call shapes-of (call SquareShape 3)))
+  (= (. holder shapes) (call shapes-of (call RoundShape 3)))
+  (call mismatch (call RoundShape 1) (call SquareShape 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ShapeKind is Interface
+(type + ShapeKind (is Interface)
+  (fn-expr + label String :get)
+)
 
-────────────────────
-+ get label String
+(type + RoundShape (is (tuple (: size I64)))
+  (implements ShapeKind)
+  (fn-expr + label String :get
+    (str "round " size)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RoundShape is (size I64)
-    is ShapeKind
+(type + SquareShape (is (tuple (: size I64)))
+  (implements ShapeKind)
+  (fn-expr + label String :get
+    (str "square " size)
+  )
+)
 
-────────────────────
-+ get label String
+(fn-do + shapes-of (list ShapeKind)
+  (param shape ShapeKind)
+  (let shapes (list ShapeKind))
+  (+= shapes shape)
+  (return shapes)
+)
 
-"round $size"
+(fn-do + mismatch _
+  (param left ShapeKind)
+  (param right ShapeKind)
+  (let attempt
+    (do-new
+      (print (== left right))
+      (on-failure failure
+        (let failure (? Panic) failure)
+        (if failure
+          (print (str failure))
+        )
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ SquareShape is (size I64)
-    is ShapeKind
-
-────────────────────
-+ get label String
-
-"square $size"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do shapes-of [ShapeKind]
-    - shape ShapeKind
-
-. shapes [ShapeKind]
-shapes += shape
-= shapes
-
-━━━━━━━━━━━━━━━━━━━━
-+ do mismatch
-    - left ShapeKind
-    - right ShapeKind
-
-. attempt = do new
-    -- left == right
-catch failure
-    . failure Panic? = failure
-    if failure
-        -- "$failure"
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ ShapeList
-
-+ shapes [ShapeKind]
-
-────────────────────
-whenever #shapes
-
--- shapes[0].label
-if shapes[0].label == "round 3"
-    mismatch(RoundShape(1), SquareShape(1))
+(type + ShapeList
+  (prop + shapes (list ShapeKind))
+  (whenever-rule #shapes
+    (print (. ([] shapes 0) label))
+    (if (== (. ([] shapes 0) label) "round 3")
+      (call mismatch (call RoundShape 1) (call SquareShape 1))
+    )
+  )
+)
 ```
 
 ```output
@@ -936,55 +919,46 @@ Unsupported interface equality: concrete types differ
 
 ### whenever over a value that holds an interface value fires when the held value switches concrete type
 
-```yumi
-. holder = FrameHolder()
-holder.frame = Frame(RoundShape(1), 1)
-holder.frame = Frame(SquareShape(2), 1)
-holder.frame = Frame(SquareShape(2), 1)
-holder.frame = Frame(RoundShape(2), 1)
+```brix
+(main
+  (let holder (call FrameHolder))
+  (= (. holder frame) (call Frame (call RoundShape 1) 1))
+  (= (. holder frame) (call Frame (call SquareShape 2) 1))
+  (= (. holder frame) (call Frame (call SquareShape 2) 1))
+  (= (. holder frame) (call Frame (call RoundShape 2) 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ShapeKind is Interface
+(type + ShapeKind (is Interface)
+  (fn-expr + label String :get)
+)
 
-────────────────────
-+ get label String
+(type + RoundShape (is (tuple (: size I64)))
+  (implements ShapeKind)
+  (fn-expr + label String :get
+    (str "round " size)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RoundShape is (size I64)
-    is ShapeKind
+(type + SquareShape (is (tuple (: size I64)))
+  (implements ShapeKind)
+  (fn-expr + label String :get
+    (str "square " size)
+  )
+)
 
-────────────────────
-+ get label String
+(type + Frame (is (tuple (: inner ShapeKind) (: marker I64)))
+  (implements ShapeKind)
+  (fn-expr + label String :get
+    (str "framed " (. inner label))
+  )
+)
 
-"round $size"
-
-━━━━━━━━━━━━━━━━━━━━
-+ SquareShape is (size I64)
-    is ShapeKind
-
-────────────────────
-+ get label String
-
-"square $size"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Frame is (inner ShapeKind, marker I64)
-    is ShapeKind
-
-────────────────────
-+ get label String
-
-"framed ${inner.label}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ FrameHolder
-
-+ frame ShapeKind?
-
-────────────────────
-whenever #frame
-
--- frame?.label ?? "none"
+(type + FrameHolder
+  (prop + frame (? ShapeKind))
+  (whenever-rule #frame
+    (print (?? (?. frame label) "none"))
+  )
+)
 ```
 
 ```output
@@ -995,53 +969,51 @@ framed round 2
 
 ### whenever value triggers require a tracked read
 
-```yumi crash
-. foo = Foo()
-foo.bar = 1
+```brix crash
+(main
+  (let foo (call Foo))
+  (= (. foo bar) 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar = 0
-
-────────────────────
-whenever bar
-
--- "bar $bar"
+(type + Foo
+  (prop + bar _ (= 0))
+  (whenever-rule bar
+    (print (str "bar " bar))
+  )
+)
 ```
 
 ```output
 Exception: whenever value triggers must read at least one tracked property (like #bar)
-<no file:11>
-    whenever bar
-             ^^^
+<no file:9>
+      (whenever-rule bar
+                     ^^^
 ```
 
 ## Dependencies
 
 ### Same-value primitive property stores keep the value but do not dispatch to live subscribers
 
-```yumi
-. foo = Foo()
--- foo.value
-foo.value = 0
--- foo.value
-foo.value = 1
--- foo.value
-foo.value = 1
--- foo.value
+```brix
+(main
+  (let foo (call Foo))
+  (print (. foo value))
+  (= (. foo value) 0)
+  (print (. foo value))
+  (= (. foo value) 1)
+  (print (. foo value))
+  (= (. foo value) 1)
+  (print (. foo value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ value = 0
-
-. changed < value
-
-────────────────────
-+ do changed
-
--- "changed", value
+(type + Foo
+  (prop + value _ (= 0))
+  (blank)
+  (depends changed value)
+  (fn-do + changed _
+    (print (tuple "changed" value))
+  )
+)
 ```
 
 ```output
@@ -1054,23 +1026,22 @@ foo.value = 1
 
 ### Primitive store gates compare floating-point bits rather than IEEE equality
 
-```yumi
-. foo = Foo()
-foo.value = 0.0
-foo.value = -0.0
-foo.value = -0.0
+```brix
+(main
+  (let foo (call Foo))
+  (= (. foo value) 0.0)
+  (= (. foo value) -0.0)
+  (= (. foo value) -0.0)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ value = 0.0
-
-. changed < value
-
-────────────────────
-+ do changed
-
--- "changed"
+(type + Foo
+  (prop + value _ (= 0.0))
+  (blank)
+  (depends changed value)
+  (fn-do + changed _
+    (print "changed")
+  )
+)
 ```
 
 ```output
@@ -1079,41 +1050,37 @@ changed
 
 ### Property stores compare references by identity, not content equality
 
-```yumi
-. first = Thing("same")
-. second = Thing("same")
-. holder = Holder(first)
-holder.thing = first
--- holder.thing.name
-holder.thing = second
--- holder.thing.name
-holder.thing = second
--- holder.thing.name
+```brix
+(main
+  (let first (call Thing "same"))
+  (let second (call Thing "same"))
+  (let holder (call Holder first))
+  (= (. holder thing) first)
+  (print (. holder thing name))
+  (= (. holder thing) second)
+  (print (. holder thing name))
+  (= (. holder thing) second)
+  (print (. holder thing name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + name String)
+  (fn-do + This _
+    (param name _)
+  )
+)
 
-+ name String
-
-────────────────────
-+ This
-    - name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ thing Thing
-
-. changed < thing
-
-────────────────────
-+ This
-    - thing
-
-────────────────────
-+ do changed
-
--- "changed", thing.name
+(type + Holder
+  (prop + thing Thing)
+  (blank)
+  (depends changed thing)
+  (fn-do + This _
+    (param thing _)
+  )
+  (fn-do + changed _
+    (print (tuple "changed" (. thing name)))
+  )
+)
 ```
 
 ```output
@@ -1125,24 +1092,25 @@ same
 
 ### Same-value primitive stores preserve tracked module-local memoization
 
-```yumi
-.. value = 1
-.. generation = 0
-.. observed = IntSnapshot(#value, generation)
+```brix
+(main
+  (lazy value 1)
+  (lazy generation 0)
+  (lazy observed (call IntSnapshot #value generation))
+  (blank)
+  (print (. observed generation))
+  (= generation 1)
+  (= value 1)
+  (print (. observed generation))
+  (= generation 2)
+  (= value 2)
+  (print (. observed generation))
+  (= generation 3)
+  (= value 2)
+  (print (. observed generation))
+)
 
--- observed.generation
-generation = 1
-value = 1
--- observed.generation
-generation = 2
-value = 2
--- observed.generation
-generation = 3
-value = 2
--- observed.generation
-
-━━━━━━━━━━━━━━━━━━━━
-_ IntSnapshot is (value Int, generation Int)
+(type _ IntSnapshot (is (tuple (: value Int) (: generation Int))))
 ```
 
 ```output
@@ -1154,35 +1122,34 @@ _ IntSnapshot is (value Int, generation Int)
 
 ### Tracked module-local reference stores use identity rather than content equality
 
-```yumi
-.. first = Thing("same")
-.. second = Thing("same")
-.. value = first
-.. generation = 0
-.. observed = ThingSnapshot(#value, generation)
+```brix
+(main
+  (lazy first (call Thing "same"))
+  (lazy second (call Thing "same"))
+  (lazy value first)
+  (lazy generation 0)
+  (lazy observed (call ThingSnapshot #value generation))
+  (blank)
+  (print (. observed generation))
+  (= generation 1)
+  (= value first)
+  (print (. observed generation))
+  (= generation 2)
+  (= value second)
+  (print (. observed generation))
+  (= generation 3)
+  (= value second)
+  (print (. observed generation))
+)
 
--- observed.generation
-generation = 1
-value = first
--- observed.generation
-generation = 2
-value = second
--- observed.generation
-generation = 3
-value = second
--- observed.generation
+(type + Thing
+  (prop + name String)
+  (fn-do + This _
+    (param name _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ name String
-
-────────────────────
-+ This
-    - name
-
-━━━━━━━━━━━━━━━━━━━━
-_ ThingSnapshot is (value Thing, generation Int)
+(type _ ThingSnapshot (is (tuple (: value Thing) (: generation Int))))
 ```
 
 ```output
@@ -1192,24 +1159,23 @@ _ ThingSnapshot is (value Thing, generation Int)
 2
 ```
 
-```yumi
-. foo = Foo()
--- foo.x
-foo.x = 1
-foo.x = 2
-foo.x = 3
+```brix
+(main
+  (let foo (call Foo))
+  (print (. foo x))
+  (= (. foo x) 1)
+  (= (. foo x) 2)
+  (= (. foo x) 3)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ x = 0
-
-. bar < x
-
-────────────────────
-+ do bar
-
--- "bar", x
+(type + Foo
+  (prop + x _ (= 0))
+  (blank)
+  (depends bar x)
+  (fn-do + bar _
+    (print (tuple "bar" x))
+  )
+)
 ```
 
 ```output
@@ -1219,47 +1185,45 @@ foo.x = 3
 (bar, 3)
 ```
 
-```yumi crash
-. foo = Foo()
+```brix crash
+(main
+  (let foo (call Foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ x = 0
-
-. bar < x
-
-────────────────────
-+ do bar
-    - nd
-
--- "bar", x
+(type + Foo
+  (prop + x _ (= 0))
+  (blank)
+  (depends bar x)
+  (fn-do + bar _
+    (param nd _)
+    (print (tuple "bar" x))
+  )
+)
 ```
 
 ```output
 Exception: A dependency calls "bar" with nothing, but it takes "nd"; give "nd" a default, or name a method that takes nothing
 <no file:9>
-    . bar < x
-      ^^^
+      (depends bar x)
+               ^^^
 ```
 
-```yumi
-. foo = Foo()
--- foo.x
-foo.x = 1
+```brix
+(main
+  (let foo (call Foo))
+  (print (. foo x))
+  (= (. foo x) 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ x = 0
-
-. bar < x
-
-────────────────────
-+ do bar
-    - n = 0
-
--- "bar", x, n
+(type + Foo
+  (prop + x _ (= 0))
+  (blank)
+  (depends bar x)
+  (fn-do + bar _
+    (param n _ (= 0))
+    (print (tuple "bar" x n))
+  )
+)
 ```
 
 ```output
@@ -1267,27 +1231,25 @@ foo.x = 1
 (bar, 1, 0)
 ```
 
-```yumi
-. foo = Bar()
--- foo.x
-foo.x = 1
-foo.x = 2
-foo.x = 3
+```brix
+(main
+  (let foo (call Bar))
+  (print (. foo x))
+  (= (. foo x) 1)
+  (= (. foo x) 2)
+  (= (. foo x) 3)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + x _ (= 0))
+  (blank)
+  (depends bar x)
+  (fn-do + bar _
+    (print (tuple "bar" x))
+  )
+)
 
-+ x = 0
-
-. bar < x
-
-────────────────────
-+ do bar
-
--- "bar", x
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
+(type + Bar (is Foo))
 ```
 
 ```output
@@ -1297,53 +1259,55 @@ foo.x = 3
 (bar, 3)
 ```
 
-```yumi crash
-. foo = Foo()
+```brix crash
+(main
+  (let foo (call Foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-. bar < x
-
-────────────────────
-+ do bar
-
--- "bar", x
+(type + Foo
+  (depends bar x)
+  (fn-do + bar _
+    (print (tuple "bar" x))
+  )
+)
 ```
 
 ```output
 Exception: Property "x" does not exist
 <no file:7>
-    . bar < x
-    ^^^^^^^^^
+      (depends bar x)
+      ^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-. foo = Foo()
+```brix crash
+(main
+  (let foo (call Foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ x = 0
-
-. bar < x
+(type + Foo
+  (prop + x _ (= 0))
+  (blank)
+  (depends bar x)
+)
 ```
 
 ```output
 Exception: Function "bar" does not exist
 <no file:9>
-    . bar < x
-    ^^^^^^^^^
+      (depends bar x)
+      ^^^^^^^^^^^^^^^
 ```
 
-```yumi
-.. foo = #bar
-.. bar = 1
--- foo
-bar = 2
--- foo
-bar = 3
--- foo
+```brix
+(main
+  (lazy foo #bar)
+  (lazy bar 1)
+  (print foo)
+  (= bar 2)
+  (print foo)
+  (= bar 3)
+  (print foo)
+)
 ```
 
 ```output
@@ -1352,21 +1316,22 @@ bar = 3
 3
 ```
 
-```yumi
-.. foo = Thing()
-.. bar = Thing()
+```brix
+(main
+  (lazy foo (call Thing))
+  (lazy bar (call Thing))
+  (blank)
+  (= (. foo name) (. bar #name))
+  (print (. foo name))
+  (= (. bar name) "tom")
+  (print (. foo name))
+  (= (. bar name) "fred")
+  (print (. foo name))
+)
 
-foo.name = bar.#name
--- foo.name
-bar.name = "tom"
--- foo.name
-bar.name = "fred"
--- foo.name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ name = "bob"
+(type + Thing
+  (prop + name _ (= "bob"))
+)
 ```
 
 ```output
@@ -1375,31 +1340,29 @@ tom
 fred
 ```
 
-```yumi
-.. foo = Thing()
-.. bar = Thing()
+```brix
+(main
+  (lazy foo (call Thing))
+  (lazy bar (call Thing))
+  (blank)
+  (= (. foo name) (. bar #name))
+  (print (. foo echo))
+  (= (. bar name) "tom")
+  (print (. foo echo))
+  (= (. bar name) "fred")
+  (print (. foo echo))
+)
 
-foo.name = bar.#name
--- foo.echo
-bar.name = "tom"
--- foo.echo
-bar.name = "fred"
--- foo.echo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ name = "bob"
-+ echo = ""
-
-────────────────────
-
-echo = #name
-
-────────────────────
-+ do this += child Foo
-
-content = child
+(type + Thing
+  (prop + name _ (= "bob"))
+  (prop + echo _ (= ""))
+  (content
+    (= echo #name)
+  )
+  (fn-do + (infix this += (param child Foo)) _
+    (= content child)
+  )
+)
 ```
 
 ```output
@@ -1417,65 +1380,75 @@ Removing one dependency, adding another, and replacing the owner have exact memb
 
 Runtime names retain a String-equality fallback without colliding with compiler ids.
 
-```yumi
-/core/tracker
+```brix
+(import /core/tracker)
+(blank)
 
-. owner-a = DependencyIdentityOwner()
-. owner-b = DependencyIdentityOwner()
-. first-subscribers [PropertySubscriber]
-. second-subscribers [PropertySubscriber]
-. third-subscribers [PropertySubscriber]
-. previous [Tracker] = List'Tracker()
-. next [Tracker] = List'Tracker()
+(main
+  (let owner-a (call DependencyIdentityOwner))
+  (let owner-b (call DependencyIdentityOwner))
+  (let first-subscribers (list PropertySubscriber))
+  (let second-subscribers (list PropertySubscriber))
+  (let third-subscribers (list PropertySubscriber))
+  (let previous (list Tracker) (call (of List Tracker)))
+  (let next (list Tracker) (call (of List Tracker)))
+  (blank)
+  (let first (call track-property-dependency previous next "first" 1 first-subscribers (as owner-a Pointer)))
+  (let repeated (call track-property-dependency previous next "renamed-first" 1 first-subscribers (as owner-a Pointer)))
+  (if (or (!= (as first Pointer) (as repeated Pointer)) (!= (. next length) 1))
+    (throw (call Panic "canonical property identity did not deduplicate a repeated read"))
+  )
+  (blank)
+  (let second (call track-property-dependency previous next "second" 2 second-subscribers (as owner-a Pointer)))
+  (= previous next)
+  (= next (call (of List Tracker)))
+  (blank)
+  (let reordered-second (call track-property-dependency previous next "second" 2 second-subscribers (as owner-a Pointer)))
+  (let reordered-first (call track-property-dependency previous next "first" 1 first-subscribers (as owner-a Pointer)))
+  (if (or (!= (as reordered-second Pointer) (as second Pointer)) (!= (as reordered-first Pointer) (as first Pointer)))
+    (throw (call Panic "reordered dependencies lost their canonical trackers"))
+  )
+  (if (or (!= (. next length) 2) (!= (as ([] next 0) Pointer) (as second Pointer)) (!= (as ([] next 1) Pointer) (as first Pointer)))
+    (throw (call Panic "reordered dependency set did not preserve observation order"))
+  )
+  (blank)
+  (= previous next)
+  (= next (call (of List Tracker)))
+  (blank)
+  (let retained-first (call track-property-dependency previous next "first" 1 first-subscribers (as owner-a Pointer)))
+  (let added-third (call track-property-dependency previous next "third" 3 third-subscribers (as owner-a Pointer)))
+  (if (or (!= (. next length) 2) (!= (as retained-first Pointer) (as first Pointer)))
+    (throw (call Panic "added/removed dependency set did not retain its unchanged membership"))
+  )
+  (if (or (== (as added-third Pointer) (as first Pointer)) (== (as added-third Pointer) (as second Pointer)))
+    (throw (call Panic "new dependency reused an unrelated tracker"))
+  )
+  (blank)
+  (= previous next)
+  (= next (call (of List Tracker)))
+  (let replaced-owner (call track-property-dependency previous next "first" 1 first-subscribers (as owner-b Pointer)))
+  (if (or (== (as replaced-owner Pointer) (as retained-first Pointer)) (!= (. next length) 1))
+    (throw (call Panic "replaced dependency owner retained the old owner's tracker"))
+  )
+  (blank)
+  (= previous (call (of List Tracker)))
+  (= next (call (of List Tracker)))
+  (let dynamic-first (call track-property-dependency previous next "dynamic" first-subscribers (as owner-a Pointer)))
+  (= previous next)
+  (= next (call (of List Tracker)))
+  (let dynamic-reused (call track-property-dependency previous next "dynamic" first-subscribers (as owner-a Pointer)))
+  (let dynamic-other (call track-property-dependency previous next "other" first-subscribers (as owner-a Pointer)))
+  (if (or (!= (as dynamic-reused Pointer) (as dynamic-first Pointer)) (!= (. next length) 2))
+    (throw (call Panic "dynamic property-name fallback did not preserve exact membership"))
+  )
+  (if (== (as dynamic-other Pointer) (as dynamic-first Pointer))
+    (throw (call Panic "different dynamic property names shared one tracker"))
+  )
+  (blank)
+  (print "property-dependency-identity-ok")
+)
 
-. first = track-property-dependency(previous, next, "first", 1, first-subscribers, owner-a as Pointer)
-. repeated = track-property-dependency(previous, next, "renamed-first", 1, first-subscribers, owner-a as Pointer)
-if first as Pointer != repeated as Pointer || next.length != 1
-    ?! Panic("canonical property identity did not deduplicate a repeated read")
-
-. second = track-property-dependency(previous, next, "second", 2, second-subscribers, owner-a as Pointer)
-previous = next
-next = List'Tracker()
-
-. reordered-second = track-property-dependency(previous, next, "second", 2, second-subscribers, owner-a as Pointer)
-. reordered-first = track-property-dependency(previous, next, "first", 1, first-subscribers, owner-a as Pointer)
-if reordered-second as Pointer != second as Pointer || reordered-first as Pointer != first as Pointer
-    ?! Panic("reordered dependencies lost their canonical trackers")
-if next.length != 2 || next[0] as Pointer != second as Pointer || next[1] as Pointer != first as Pointer
-    ?! Panic("reordered dependency set did not preserve observation order")
-
-previous = next
-next = List'Tracker()
-
-. retained-first = track-property-dependency(previous, next, "first", 1, first-subscribers, owner-a as Pointer)
-. added-third = track-property-dependency(previous, next, "third", 3, third-subscribers, owner-a as Pointer)
-if next.length != 2 || retained-first as Pointer != first as Pointer
-    ?! Panic("added/removed dependency set did not retain its unchanged membership")
-if added-third as Pointer == first as Pointer || added-third as Pointer == second as Pointer
-    ?! Panic("new dependency reused an unrelated tracker")
-
-previous = next
-next = List'Tracker()
-. replaced-owner = track-property-dependency(previous, next, "first", 1, first-subscribers, owner-b as Pointer)
-if replaced-owner as Pointer == retained-first as Pointer || next.length != 1
-    ?! Panic("replaced dependency owner retained the old owner's tracker")
-
-previous = List'Tracker()
-next = List'Tracker()
-. dynamic-first = track-property-dependency(previous, next, "dynamic", first-subscribers, owner-a as Pointer)
-previous = next
-next = List'Tracker()
-. dynamic-reused = track-property-dependency(previous, next, "dynamic", first-subscribers, owner-a as Pointer)
-. dynamic-other = track-property-dependency(previous, next, "other", first-subscribers, owner-a as Pointer)
-if dynamic-reused as Pointer != dynamic-first as Pointer || next.length != 2
-    ?! Panic("dynamic property-name fallback did not preserve exact membership")
-if dynamic-other as Pointer == dynamic-first as Pointer
-    ?! Panic("different dynamic property names shared one tracker")
-
--- "property-dependency-identity-ok"
-
-━━━━━━━━━━━━━━━━━━━━
-+ DependencyIdentityOwner
+(type + DependencyIdentityOwner)
 ```
 
 ```output
@@ -1484,39 +1457,48 @@ property-dependency-identity-ok
 
 ### Live actions compare heterogeneous tracker implementations by identity.
 
-```yumi
-/core/tracker
+```brix
+(import /core/tracker)
+(blank)
 
-. owner = TrackerRefreshOwner()
-. trackers [Tracker] = List'Tracker()
-trackers += FirstRefreshTracker() as Tracker
-. callback SubscriberCallback = => do
-    do owner.value
-. action = LiveAction(trackers, callback)
-action()
-action.close()
--- "heterogeneous-tracker-refresh-ok"
+(main
+  (let owner (call TrackerRefreshOwner))
+  (let trackers (list Tracker) (call (of List Tracker)))
+  (+= trackers (as (call FirstRefreshTracker) Tracker))
+  (let callback SubscriberCallback
+    (=> () :do
+      (block
+        (do
+          (inline (. owner value))
+        )
+      )
+    )
+  )
+  (let action (call LiveAction trackers callback))
+  (call action)
+  (call (. action close))
+  (print "heterogeneous-tracker-refresh-ok")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ FirstRefreshTracker
-    is Tracker
+(type + FirstRefreshTracker
+  (implements Tracker)
+  (fn-do + attach _
+    (param action LiveAction)
+    (do
+      (inline action)
+    )
+  )
+  (fn-do + detach _
+    (param action LiveAction)
+    (do
+      (inline action)
+    )
+  )
+)
 
-────────────────────
-+ do attach
-    - action LiveAction
-
-do action
-
-────────────────────
-+ do detach
-    - action LiveAction
-
-do action
-
-━━━━━━━━━━━━━━━━━━━━
-+ TrackerRefreshOwner
-
-+ value = 0
+(type + TrackerRefreshOwner
+  (prop + value _ (= 0))
+)
 ```
 
 ```output
@@ -1525,98 +1507,103 @@ heterogeneous-tracker-refresh-ok
 
 ### Property subscriptions retain live actions weakly and release their side-payload lane with the observed object.
 
-```yumi
-/BxGC/BxGC.h
+```brix
+(import /BxGC/BxGC.h)
+(blank)
+(prop + property-change-observer-reclaimed _ (= false))
+(blank)
 
-+ property-change-observer-reclaimed = false
+(main
+  (let foo (call Foo))
+  (if (call C:brixGCHasObjectSidePayload (as foo Pointer) 0)
+    (print "has")
+  )
+  (call C:brixGCClearObjectSidePayload (as foo Pointer) 0)
+  (if (not (call C:brixGCHasObjectSidePayload (as foo Pointer) 0))
+    (print "cleared")
+  )
+  (blank)
+  (call C:brixCollect)
+  (do
+    (inline (call C:brixGCDrainCleanups))
+  )
+  (let payloads-before (call C:brixGCObjectSidePayloadCount 0))
+  (blank)
+  (print (call exercise-weak-property-subscription))
+  (blank)
+  (for (in cycle (..< 0 3))
+    (call C:brixCollect)
+    (do
+      (inline (call C:brixGCDrainCleanups))
+    )
+  )
+  (blank)
+  (print (- (call C:brixGCObjectSidePayloadCount 0) payloads-before))
+)
 
-. foo = Foo()
-if C:brixGCHasObjectSidePayload(foo as Pointer, 0)
-    -- "has"
-C:brixGCClearObjectSidePayload(foo as Pointer, 0)
-if !C:brixGCHasObjectSidePayload(foo as Pointer, 0)
-    -- "cleared"
+(type + Foo
+  (prop + bar _ (= 1))
+  (prop + doubled _ (= (* #bar 2)))
+)
 
-C:brixCollect()
-do C:brixGCDrainCleanups()
-. payloads-before = C:brixGCObjectSidePayloadCount(0)
+(fn-do + exercise-weak-property-subscription String
+  (let source (call WeakPropertySource))
+  (let live (call WeakPropertyObserver source))
+  (call make-dead-property-observer source)
+  (blank)
+  (call C:brixCollect)
+  (do
+    (inline (call C:brixGCDrainCleanups))
+  )
+  (if (not property-change-observer-reclaimed)
+    (return "dead-observer-retained")
+  )
+  (blank)
+  (= (. source value) 9)
+  (if (!= (. live mirror) 18)
+    (return "live-observer-not-updated")
+  )
+  (blank)
+  (return "weak-property-subscription-ok")
+)
 
--- exercise-weak-property-subscription()
+(fn-do + make-dead-property-observer _
+  (param source WeakPropertySource)
+  (let observer (call WeakPropertyObserver source))
+  (throw (call Panic "Unable to register dead property observer cleanup") (if (not (call C:brixGCRegisterCleanup (as observer Pointer) (as context Pointer) callback))))
+  (lazy callback (as property-observer-did-reclaim PropertyCleanupCallback))
+  (lazy context (call PropertyCleanupContext))
+  (do
+    (inline (. observer mirror))
+  )
+  (call (. observer close))
+)
 
-for cycle in 0 .. < 3
-    C:brixCollect()
-    do C:brixGCDrainCleanups()
+(type + PropertyCleanupContext)
 
--- C:brixGCObjectSidePayloadCount(0) - payloads-before
+(type + PropertyCleanupCallback (is (c-fn-type Size (param context Pointer))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(fn-do + property-observer-did-reclaim Size
+  (param context Pointer)
+  (do
+    (inline context)
+  )
+  (= property-change-observer-reclaimed true)
+  (return 1)
+)
 
-+ bar = 1
-+ doubled = #bar * 2
+(type + WeakPropertySource
+  (prop + value _ (= 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do exercise-weak-property-subscription String
-
-. source = WeakPropertySource()
-. live = WeakPropertyObserver(source)
-make-dead-property-observer(source)
-
-C:brixCollect()
-do C:brixGCDrainCleanups()
-if !property-change-observer-reclaimed
-    = "dead-observer-retained"
-
-source.value = 9
-if live.mirror != 18
-    = "live-observer-not-updated"
-
-= "weak-property-subscription-ok"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make-dead-property-observer
-    - source WeakPropertySource
-
-. observer = WeakPropertyObserver(source)
-?! Panic("Unable to register dead property observer cleanup")
-    if !C:brixGCRegisterCleanup(observer as Pointer, context as Pointer, callback)
-.. callback = property-observer-did-reclaim as PropertyCleanupCallback
-.. context = PropertyCleanupContext()
-do observer.mirror
-observer.close()
-
-━━━━━━━━━━━━━━━━━━━━
-+ PropertyCleanupContext
-
-━━━━━━━━━━━━━━━━━━━━
-+ PropertyCleanupCallback is (*C) Size
-    - context Pointer
-
-━━━━━━━━━━━━━━━━━━━━
-+ do property-observer-did-reclaim Size
-    - context Pointer
-
-do context
-property-change-observer-reclaimed = true
-= 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ WeakPropertySource
-
-+ value = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ WeakPropertyObserver
-
-+ source WeakPropertySource
-+ mirror = source.#value * 2
-
-────────────────────
-+ This
-    - source
-
-────────────────────
-+ do close
+(type + WeakPropertyObserver
+  (prop + source WeakPropertySource)
+  (prop + mirror _ (= (* (. source #value) 2)))
+  (fn-do + This _
+    (param source _)
+  )
+  (fn-do + close _)
+)
 ```
 
 ```output
@@ -1626,38 +1613,36 @@ weak-property-subscription-ok
 0
 ```
 
-```yumi
-. source = Source()
-source.next = 10
-source.refresh()
+```brix
+(main
+  (let source (call Source))
+  (= (. source next) 10)
+  (call (. source refresh))
+  (blank)
+  (let observer (call Observer))
+  (= (. observer source) source)
+  (print (str "0:" (. observer text)))
+  (blank)
+  (= (. source next) 20)
+  (call (. source refresh))
+  (print (str "1:" (. observer text)))
+  (blank)
+  (= (. source value) 30)
+  (print (str "2:" (. observer text)))
+)
 
-. observer = Observer()
-observer.source = source
--- "0:${observer.text}"
+(type + Source
+  (prop + value _ (= 0))
+  (prop + next _ (= 0))
+  (fn-do + refresh _
+    (= value next)
+  )
+)
 
-source.next = 20
-source.refresh()
--- "1:${observer.text}"
-
-source.value = 30
--- "2:${observer.text}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Source
-
-+ value = 0
-+ next = 0
-
-────────────────────
-+ do refresh
-
-value = next
-
-━━━━━━━━━━━━━━━━━━━━
-+ Observer
-
-+ source Source?
-+ text = "${source?.#value ?? 0}"
+(type + Observer
+  (prop + source (? Source))
+  (prop + text _ (= (str (?? (?. source #value) 0))))
+)
 ```
 
 ```output
@@ -1666,48 +1651,46 @@ value = next
 2:30
 ```
 
-```yumi
-. leaf = NestedOptionalLeaf()
-. middle = NestedOptionalMiddle()
-. root = NestedOptionalRoot()
-. observer = NestedOptionalObserver()
--- observer.value
+```brix
+(main
+  (let leaf (call NestedOptionalLeaf))
+  (let middle (call NestedOptionalMiddle))
+  (let root (call NestedOptionalRoot))
+  (let observer (call NestedOptionalObserver))
+  (print (. observer value))
+  (blank)
+  (= (. observer root) root)
+  (print (. observer value))
+  (blank)
+  (= (. root middle) middle)
+  (print (. observer value))
+  (blank)
+  (= (. middle leaf) leaf)
+  (print (. observer value))
+  (blank)
+  (= (. leaf value) 7)
+  (print (. observer value))
+  (blank)
+  (= (. middle leaf) null)
+  (print (. observer value))
+)
 
-observer.root = root
--- observer.value
+(type + NestedOptionalLeaf
+  (prop + value _ (= 1))
+)
 
-root.middle = middle
--- observer.value
+(type + NestedOptionalMiddle
+  (prop + leaf (? NestedOptionalLeaf))
+)
 
-middle.leaf = leaf
--- observer.value
+(type + NestedOptionalRoot
+  (prop + middle (? NestedOptionalMiddle))
+)
 
-leaf.value = 7
--- observer.value
-
-middle.leaf = null
--- observer.value
-
-━━━━━━━━━━━━━━━━━━━━
-+ NestedOptionalLeaf
-
-+ value = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ NestedOptionalMiddle
-
-+ leaf NestedOptionalLeaf?
-
-━━━━━━━━━━━━━━━━━━━━
-+ NestedOptionalRoot
-
-+ middle NestedOptionalMiddle?
-
-━━━━━━━━━━━━━━━━━━━━
-+ NestedOptionalObserver
-
-+ root NestedOptionalRoot?
-+ value = #root?.#middle?.#leaf?.#value ?? 0
+(type + NestedOptionalObserver
+  (prop + root (? NestedOptionalRoot))
+  (prop + value _ (= (?? (?. (?. (?. #root #middle) #leaf) #value) 0)))
+)
 ```
 
 ```output
@@ -1721,32 +1704,36 @@ middle.leaf = null
 
 ## Stream changes
 
-```yumi
-.. a = ##[1, 2, 3]
-. started = a
-yield-once()
--- a
+```brix
+(main
+  (lazy a (## (list 1 2 3)))
+  (let started a)
+  (call yield-once)
+  (print a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
-
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 ```
 
 ```output
 3
 ```
 
-```yumi
-.. foo = 42
-. stream = <#foo>
--- stream
--- <- stream
-foo = 52
--- <- stream
+```brix
+(main
+  (lazy foo 42)
+  (let stream (stream #foo))
+  (print stream)
+  (print (<- stream))
+  (= foo 52)
+  (print (<- stream))
+)
 ```
 
 ```output
@@ -1755,27 +1742,31 @@ foo = 52
 52
 ```
 
-```yumi
-.. foo = 10
-. stream = <#foo>
--- stream
+```brix
+(main
+  (lazy foo 10)
+  (let stream (stream #foo))
+  (print stream)
+  (blank)
+  (do-new
+    (for (in item stream)
+      (print item)
+    )
+  )
+  (blank)
+  (call yield-once)
+  (= foo 11)
+  (= foo 12)
+  (call (. stream close))
+)
 
-do new
-    for item in stream
-        -- item
-
-yield-once()
-foo = 11
-foo = 12
-stream.close()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
-
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 ```
 
 ```output
@@ -1812,389 +1803,405 @@ through the non-marking registry.
 
 Owner and action dying in the same cycle removes the entry without a surviving scalar handle.
 
-```yumi
-/BxGC/BxGC.h
-/BxGC/BxGCTest.h
-/core/tracker
+```brix
+(import /BxGC/BxGC.h)
+(import /BxGC/BxGCTest.h)
+(import /core/tracker)
+(blank)
 
-C:brixGCSetHeapGoal(1073741824)
-C:brixGCInit()
-C:brixCollect()
-. baseline = C:brixGCTestOwnerWeakRegistrationCount()
+(main
+  (call C:brixGCSetHeapGoal 1073741824)
+  (call C:brixGCInit)
+  (call C:brixCollect)
+  (let baseline (call C:brixGCTestOwnerWeakRegistrationCount))
+  (blank)
+  (let live-owner (call OwnerWeakProbe 1))
+  (let dead-action-handle (call owner-weak-register-dead-action live-owner))
+  (call C:brixCollect)
+  (if (call C:brixGCOwnerWeakLoad dead-action-handle)
+    (throw (call Panic "dead action survived owner-weak collection"))
+  )
+  (if (!= (call C:brixGCTestOwnerWeakRegistrationCount) (+ baseline 1))
+    (throw (call Panic "cleared owner-weak entry count mismatch"))
+  )
+  (if (!= (. live-owner value) 1)
+    (throw (call Panic "live owner did not survive collection"))
+  )
+  (if (not (call C:brixGCReleaseOwnerWeak dead-action-handle))
+    (throw (call Panic "unable to release cleared owner-weak entry"))
+  )
+  (if (!= (call C:brixGCTestOwnerWeakRegistrationCount) baseline)
+    (throw (call Panic "cleared owner-weak entry survived release"))
+  )
+  (blank)
+  (let live-action (call LiveAction owner-weak-empty-trackers))
+  (let dead-owner-handle (call owner-weak-register-dead-owner live-action))
+  (call C:brixCollect)
+  (if (call C:brixGCOwnerWeakLoad dead-owner-handle)
+    (throw (call Panic "owner-reclaimed scalar handle remained loadable"))
+  )
+  (if (!= (call C:brixGCTestOwnerWeakRegistrationCount) baseline)
+    (throw (call Panic "owner-reclaimed scalar handle remained registered"))
+  )
+  (do
+    (inline (. live-action is-closed))
+  )
+  (blank)
+  (let detach-owner (call OwnerWeakProbe 2))
+  (let detach-subscribers (list PropertySubscriber))
+  (let detach-tracker (call PropertyTracker "value" detach-subscribers))
+  (= (. detach-tracker owner) (as detach-owner Pointer))
+  (let detach-action (call LiveAction owner-weak-empty-trackers))
+  (call (. detach-tracker attach) detach-action)
+  (if (!= (call C:brixGCTestOwnerWeakRegistrationCount) (+ baseline 1))
+    (throw (call Panic "property tracker attach did not register one scalar handle"))
+  )
+  (call (. detach-tracker detach) detach-action)
+  (if (!= (call C:brixGCTestOwnerWeakRegistrationCount) baseline)
+    (throw (call Panic "explicit property tracker detach leaked its scalar handle"))
+  )
+  (call (. detach-tracker detach) detach-action)
+  (let detach-active (call owner-weak-active-subscriber-count detach-subscribers))
+  (if (or (!= (call C:brixGCTestOwnerWeakRegistrationCount) baseline) detach-active)
+    (throw (call Panic "repeated property tracker detach changed the registry"))
+  )
+  (blank)
+  (let shared-owner (call OwnerWeakProbe 9))
+  (let shared-subscribers (list PropertySubscriber))
+  (let shared-tracker (call PropertyTracker "value" shared-subscribers))
+  (= (. shared-tracker owner) (as shared-owner Pointer))
+  (let shared-first-action (call LiveAction owner-weak-empty-trackers))
+  (let shared-second-action (call LiveAction owner-weak-empty-trackers))
+  (call (. shared-tracker attach) shared-first-action)
+  (call (. shared-tracker attach) shared-second-action)
+  (let shared-active (call owner-weak-active-subscriber-count shared-subscribers))
+  (if (or (!= (call C:brixGCTestOwnerWeakRegistrationCount) (+ baseline 2)) (!= shared-active 2))
+    (throw (call Panic "shared property tracker did not register both actions"))
+  )
+  (call (. shared-tracker detach) shared-first-action)
+  (= shared-active (call owner-weak-active-subscriber-count shared-subscribers))
+  (if (or (!= (call C:brixGCTestOwnerWeakRegistrationCount) (+ baseline 1)) (!= shared-active 1))
+    (throw (call Panic "shared property tracker detached the wrong action"))
+  )
+  (call (. shared-tracker detach) shared-second-action)
+  (= shared-active (call owner-weak-active-subscriber-count shared-subscribers))
+  (if (or (!= (call C:brixGCTestOwnerWeakRegistrationCount) baseline) shared-active)
+    (throw (call Panic "shared property tracker leaked its final action"))
+  )
+  (blank)
+  (let prune-owner (call OwnerWeakProbe 3))
+  (let prune-subscribers (list PropertySubscriber))
+  (let pruned-tracker (call owner-weak-attach-dead-action prune-owner prune-subscribers))
+  (let prune-live-tracker (call PropertyTracker "value" prune-subscribers))
+  (= (. prune-live-tracker owner) (as prune-owner Pointer))
+  (let prune-live-action (call LiveAction owner-weak-empty-trackers))
+  (call (. prune-live-tracker attach) prune-live-action)
+  (call C:brixCollect)
+  (if (!= (call C:brixGCTestOwnerWeakRegistrationCount) (+ baseline 2))
+    (throw (call Panic "dead action was removed before the prune fixture"))
+  )
+  (call (. prune-live-tracker detach) prune-live-action)
+  (let prune-active (call owner-weak-active-subscriber-count prune-subscribers))
+  (if (or (!= (call C:brixGCTestOwnerWeakRegistrationCount) (+ baseline 1)) (!= prune-active 1))
+    (throw (call Panic "property tracker detach reaped an unrelated cleared action"))
+  )
+  (call property-dispatch prune-subscribers "value")
+  (= prune-active (call owner-weak-active-subscriber-count prune-subscribers))
+  (if (or (!= (call C:brixGCTestOwnerWeakRegistrationCount) baseline) prune-active)
+    (throw (call Panic "first property dispatch did not prune the cleared scalar handle"))
+  )
+  (call (. pruned-tracker detach) prune-live-action)
+  (= prune-active (call owner-weak-active-subscriber-count prune-subscribers))
+  (if (or (!= (call C:brixGCTestOwnerWeakRegistrationCount) baseline) prune-active)
+    (throw (call Panic "detach after dispatch prune changed the empty registry"))
+  )
+  (call property-dispatch prune-subscribers "value")
+  (= prune-active (call owner-weak-active-subscriber-count prune-subscribers))
+  (if (or (!= (call C:brixGCTestOwnerWeakRegistrationCount) baseline) prune-active)
+    (throw (call Panic "repeated property dispatch changed the empty registry"))
+  )
+  (blank)
+  (let reentrant-owner (call OwnerWeakProbe 8))
+  (let reentrant-subscribers (list PropertySubscriber))
+  (let reentrant-probe (call OwnerWeakDispatchProbe))
+  (let reentrant-first-tracker (call PropertyTracker "value" reentrant-subscribers))
+  (= (. reentrant-first-tracker owner) (as reentrant-owner Pointer))
+  (let reentrant-later-tracker (call PropertyTracker "value" reentrant-subscribers))
+  (= (. reentrant-later-tracker owner) (as reentrant-owner Pointer))
+  (let reentrant-first-action (call LiveAction (. reentrant-probe detach-later)))
+  (let reentrant-later-action (call LiveAction (. reentrant-probe run-later)))
+  (= (. reentrant-probe later-tracker) reentrant-later-tracker)
+  (= (. reentrant-probe later-action) reentrant-later-action)
+  (call (. reentrant-first-tracker attach) reentrant-first-action)
+  (call (. reentrant-later-tracker attach) reentrant-later-action)
+  (call property-dispatch reentrant-subscribers "value")
+  (if (!= (. reentrant-probe later-runs) 1)
+    (throw (call Panic "a subscriber queued for a change did not run once"))
+  )
+  (let reentrant-active (call owner-weak-active-subscriber-count reentrant-subscribers))
+  (if (or (!= (call C:brixGCTestOwnerWeakRegistrationCount) (+ baseline 1)) (!= reentrant-active 1))
+    (throw (call Panic "reentrant dispatch left the wrong scalar subscriptions"))
+  )
+  (call (. reentrant-first-tracker detach) reentrant-first-action)
+  (= reentrant-active (call owner-weak-active-subscriber-count reentrant-subscribers))
+  (if (or (!= (call C:brixGCTestOwnerWeakRegistrationCount) baseline) reentrant-active)
+    (throw (call Panic "reentrant dispatch fixture leaked a scalar subscription"))
+  )
+  (blank)
+  (let add-owner (call OwnerWeakProbe 10))
+  (let add-subscribers (list PropertySubscriber))
+  (let add-probe (call OwnerWeakDispatchProbe))
+  (let add-first-tracker (call PropertyTracker "value" add-subscribers))
+  (= (. add-first-tracker owner) (as add-owner Pointer))
+  (let add-existing-tracker (call PropertyTracker "value" add-subscribers))
+  (= (. add-existing-tracker owner) (as add-owner Pointer))
+  (let add-late-tracker (call PropertyTracker "value" add-subscribers))
+  (= (. add-late-tracker owner) (as add-owner Pointer))
+  (let add-first-action (call LiveAction (. add-probe attach-late)))
+  (let add-existing-action (call LiveAction (. add-probe run-existing)))
+  (let add-late-action (call LiveAction (. add-probe run-added)))
+  (= (. add-probe later-tracker) add-late-tracker)
+  (= (. add-probe later-action) add-late-action)
+  (call (. add-first-tracker attach) add-first-action)
+  (call (. add-existing-tracker attach) add-existing-action)
+  (call property-dispatch add-subscribers "value")
+  (if (!= (. add-probe order) "fe")
+    (throw (call Panic "subscriber added during dispatch ran in the starting generation"))
+  )
+  (call property-dispatch add-subscribers "value")
+  (if (!= (. add-probe order) "fefel")
+    (throw (call Panic "next-generation subscriber order was not deterministic"))
+  )
+  (call (. add-first-tracker detach) add-first-action)
+  (call (. add-existing-tracker detach) add-existing-action)
+  (call (. add-late-tracker detach) add-late-action)
+  (blank)
+  (let self-owner (call OwnerWeakProbe 11))
+  (let self-subscribers (list PropertySubscriber))
+  (let self-probe (call OwnerWeakDispatchProbe))
+  (let self-tracker (call PropertyTracker "value" self-subscribers))
+  (= (. self-tracker owner) (as self-owner Pointer))
+  (let self-action (call LiveAction (. self-probe remove-self)))
+  (= (. self-probe self-tracker) self-tracker)
+  (= (. self-probe self-action) self-action)
+  (call (. self-tracker attach) self-action)
+  (call property-dispatch self-subscribers "value")
+  (call property-dispatch self-subscribers "value")
+  (if (!= (. self-probe self-runs) 1)
+    (throw (call Panic "self-removing subscriber ran after detaching itself"))
+  )
+  (blank)
+  (let nested-owner (call OwnerWeakProbe 12))
+  (let nested-subscribers (list PropertySubscriber))
+  (let nested-probe (call OwnerWeakDispatchProbe))
+  (let nested-first-tracker (call PropertyTracker "value" nested-subscribers))
+  (= (. nested-first-tracker owner) (as nested-owner Pointer))
+  (let nested-second-tracker (call PropertyTracker "value" nested-subscribers))
+  (= (. nested-second-tracker owner) (as nested-owner Pointer))
+  (let nested-first-action (call LiveAction (. nested-probe run-nested-first)))
+  (let nested-second-action (call LiveAction (. nested-probe run-nested-second)))
+  (= (. nested-probe nested-subscribers) nested-subscribers)
+  (call (. nested-first-tracker attach) nested-first-action)
+  (call (. nested-second-tracker attach) nested-second-action)
+  (call property-dispatch nested-subscribers "value")
+  (if (!= (. nested-probe order) "fsf")
+    (throw (call Panic "nested property dispatch corrupted subscriber order"))
+  )
+  (call (. nested-first-tracker detach) nested-first-action)
+  (call (. nested-second-tracker detach) nested-second-action)
+  (blank)
+  (let mark-owner (call OwnerWeakProbe 4))
+  (let mark-target (? OwnerWeakProbe) (call OwnerWeakProbe 5))
+  (let mark-target-pointer (as (!! mark-target) Pointer))
+  (let mark-handle (call C:brixGCRegisterOwnerWeak (as mark-owner Pointer) mark-target-pointer))
+  (call C:brixCollect)
+  (= mark-target null)
+  (call C:brixGCStartConcurrentMark)
+  (let loaded-target (call C:brixGCOwnerWeakLoad mark-handle))
+  (if (or (!= loaded-target mark-target-pointer) (not (call C:brixGCTestObjectMarked mark-target-pointer)))
+    (throw (call Panic "mark-phase owner-weak load did not shade its target"))
+  )
+  (if (!= (. mark-owner value) 4)
+    (throw (call Panic "mark-phase owner did not survive collection"))
+  )
+  (call C:brixGCFinishConcurrentMark)
+  (call C:brixGCFinishAutomaticCycle)
+  (if (not (call C:brixGCReleaseOwnerWeak mark-handle))
+    (throw (call Panic "unable to release mark-phase owner-weak handle"))
+  )
+  (if (!= (call C:brixGCTestOwnerWeakRegistrationCount) baseline)
+    (throw (call Panic "mark-phase owner-weak handle survived release"))
+  )
+  (blank)
+  (let same-cycle-handle (call owner-weak-register-dead-pair))
+  (call C:brixCollect)
+  (if (call C:brixGCOwnerWeakLoad same-cycle-handle)
+    (throw (call Panic "same-cycle owner/action handle remained loadable"))
+  )
+  (if (!= (call C:brixGCTestOwnerWeakRegistrationCount) baseline)
+    (throw (call Panic "same-cycle owner/action handle remained registered"))
+  )
+  (blank)
+  (print "owner-weak-property-ok")
+)
 
-. live-owner = OwnerWeakProbe(1)
-. dead-action-handle = owner-weak-register-dead-action(live-owner)
-C:brixCollect()
-if C:brixGCOwnerWeakLoad(dead-action-handle)
-    ?! Panic("dead action survived owner-weak collection")
-if C:brixGCTestOwnerWeakRegistrationCount() != baseline + 1
-    ?! Panic("cleared owner-weak entry count mismatch")
-if live-owner.value != 1
-    ?! Panic("live owner did not survive collection")
-if !C:brixGCReleaseOwnerWeak(dead-action-handle)
-    ?! Panic("unable to release cleared owner-weak entry")
-if C:brixGCTestOwnerWeakRegistrationCount() != baseline
-    ?! Panic("cleared owner-weak entry survived release")
+(type + OwnerWeakProbe
+  (prop + value U64)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-. live-action = LiveAction(owner-weak-empty-trackers)
-. dead-owner-handle = owner-weak-register-dead-owner(live-action)
-C:brixCollect()
-if C:brixGCOwnerWeakLoad(dead-owner-handle)
-    ?! Panic("owner-reclaimed scalar handle remained loadable")
-if C:brixGCTestOwnerWeakRegistrationCount() != baseline
-    ?! Panic("owner-reclaimed scalar handle remained registered")
-do live-action.is-closed
+(fn-do + owner-weak-empty-trackers (list Tracker)
+  (return (call (of List Tracker)))
+)
 
-. detach-owner = OwnerWeakProbe(2)
-. detach-subscribers [PropertySubscriber]
-. detach-tracker = PropertyTracker("value", detach-subscribers)
-detach-tracker.owner = detach-owner as Pointer
-. detach-action = LiveAction(owner-weak-empty-trackers)
-detach-tracker.attach(detach-action)
-if C:brixGCTestOwnerWeakRegistrationCount() != baseline + 1
-    ?! Panic("property tracker attach did not register one scalar handle")
-detach-tracker.detach(detach-action)
-if C:brixGCTestOwnerWeakRegistrationCount() != baseline
-    ?! Panic("explicit property tracker detach leaked its scalar handle")
-detach-tracker.detach(detach-action)
-. detach-active = owner-weak-active-subscriber-count(detach-subscribers)
-if C:brixGCTestOwnerWeakRegistrationCount() != baseline || detach-active
-    ?! Panic("repeated property tracker detach changed the registry")
+(fn-do + owner-weak-register-dead-action U64
+  (param owner OwnerWeakProbe)
+  (let action (call LiveAction owner-weak-empty-trackers))
+  (return (call C:brixGCRegisterOwnerWeak (as owner Pointer) (as action Pointer)))
+)
 
-. shared-owner = OwnerWeakProbe(9)
-. shared-subscribers [PropertySubscriber]
-. shared-tracker = PropertyTracker("value", shared-subscribers)
-shared-tracker.owner = shared-owner as Pointer
-. shared-first-action = LiveAction(owner-weak-empty-trackers)
-. shared-second-action = LiveAction(owner-weak-empty-trackers)
-shared-tracker.attach(shared-first-action)
-shared-tracker.attach(shared-second-action)
-. shared-active = owner-weak-active-subscriber-count(shared-subscribers)
-if C:brixGCTestOwnerWeakRegistrationCount() != baseline + 2 || shared-active != 2
-    ?! Panic("shared property tracker did not register both actions")
-shared-tracker.detach(shared-first-action)
-shared-active = owner-weak-active-subscriber-count(shared-subscribers)
-if C:brixGCTestOwnerWeakRegistrationCount() != baseline + 1 || shared-active != 1
-    ?! Panic("shared property tracker detached the wrong action")
-shared-tracker.detach(shared-second-action)
-shared-active = owner-weak-active-subscriber-count(shared-subscribers)
-if C:brixGCTestOwnerWeakRegistrationCount() != baseline || shared-active
-    ?! Panic("shared property tracker leaked its final action")
+(fn-do + owner-weak-register-dead-owner U64
+  (param action LiveAction)
+  (let owner (call OwnerWeakProbe 6))
+  (return (call C:brixGCRegisterOwnerWeak (as owner Pointer) (as action Pointer)))
+)
 
-. prune-owner = OwnerWeakProbe(3)
-. prune-subscribers [PropertySubscriber]
-. pruned-tracker = owner-weak-attach-dead-action(prune-owner, prune-subscribers)
-. prune-live-tracker = PropertyTracker("value", prune-subscribers)
-prune-live-tracker.owner = prune-owner as Pointer
-. prune-live-action = LiveAction(owner-weak-empty-trackers)
-prune-live-tracker.attach(prune-live-action)
-C:brixCollect()
-if C:brixGCTestOwnerWeakRegistrationCount() != baseline + 2
-    ?! Panic("dead action was removed before the prune fixture")
-prune-live-tracker.detach(prune-live-action)
-. prune-active = owner-weak-active-subscriber-count(prune-subscribers)
-if C:brixGCTestOwnerWeakRegistrationCount() != baseline + 1 || prune-active != 1
-    ?! Panic("property tracker detach reaped an unrelated cleared action")
-property-dispatch(prune-subscribers, "value")
-prune-active = owner-weak-active-subscriber-count(prune-subscribers)
-if C:brixGCTestOwnerWeakRegistrationCount() != baseline || prune-active
-    ?! Panic("first property dispatch did not prune the cleared scalar handle")
-pruned-tracker.detach(prune-live-action)
-prune-active = owner-weak-active-subscriber-count(prune-subscribers)
-if C:brixGCTestOwnerWeakRegistrationCount() != baseline || prune-active
-    ?! Panic("detach after dispatch prune changed the empty registry")
-property-dispatch(prune-subscribers, "value")
-prune-active = owner-weak-active-subscriber-count(prune-subscribers)
-if C:brixGCTestOwnerWeakRegistrationCount() != baseline || prune-active
-    ?! Panic("repeated property dispatch changed the empty registry")
+(fn-do + owner-weak-attach-dead-action PropertyTracker
+  (param owner OwnerWeakProbe)
+  (param subscribers (list PropertySubscriber))
+  (let tracker (call PropertyTracker "value" subscribers))
+  (= (. tracker owner) (as owner Pointer))
+  (let action (call LiveAction owner-weak-empty-trackers))
+  (call (. tracker attach) action)
+  (return tracker)
+)
 
-. reentrant-owner = OwnerWeakProbe(8)
-. reentrant-subscribers [PropertySubscriber]
-. reentrant-probe = OwnerWeakDispatchProbe()
-. reentrant-first-tracker = PropertyTracker("value", reentrant-subscribers)
-reentrant-first-tracker.owner = reentrant-owner as Pointer
-. reentrant-later-tracker = PropertyTracker("value", reentrant-subscribers)
-reentrant-later-tracker.owner = reentrant-owner as Pointer
-. reentrant-first-action = LiveAction(reentrant-probe.detach-later)
-. reentrant-later-action = LiveAction(reentrant-probe.run-later)
-reentrant-probe.later-tracker = reentrant-later-tracker
-reentrant-probe.later-action = reentrant-later-action
-reentrant-first-tracker.attach(reentrant-first-action)
-reentrant-later-tracker.attach(reentrant-later-action)
-property-dispatch(reentrant-subscribers, "value")
-if reentrant-probe.later-runs != 1
-    ?! Panic("a subscriber queued for a change did not run once")
-. reentrant-active = owner-weak-active-subscriber-count(reentrant-subscribers)
-if C:brixGCTestOwnerWeakRegistrationCount() != baseline + 1 || reentrant-active != 1
-    ?! Panic("reentrant dispatch left the wrong scalar subscriptions")
-reentrant-first-tracker.detach(reentrant-first-action)
-reentrant-active = owner-weak-active-subscriber-count(reentrant-subscribers)
-if C:brixGCTestOwnerWeakRegistrationCount() != baseline || reentrant-active
-    ?! Panic("reentrant dispatch fixture leaked a scalar subscription")
+(type + OwnerWeakDispatchProbe
+  (prop + later-tracker (? PropertyTracker))
+  (prop + later-action (? LiveAction))
+  (prop + later-runs Size (= 0))
+  (prop + self-tracker (? PropertyTracker))
+  (prop + self-action (? LiveAction))
+  (prop + self-runs Size (= 0))
+  (prop + nested-subscribers (? (list PropertySubscriber)))
+  (prop + is-nested _ (= false))
+  (prop + order _ (= ""))
+  (fn-do + detach-later (list Tracker)
+    (if (and later-tracker later-action)
+      (call (. later-tracker detach) later-action)
+    )
+    (return (call (of List Tracker)))
+  )
+  (fn-do + run-later (list Tracker)
+    (+= later-runs 1)
+    (return (call (of List Tracker)))
+  )
+  (fn-do + attach-late _
+    (+= order "f")
+    (if (and later-tracker later-action (== order "f"))
+      (call (. later-tracker attach) later-action)
+    )
+  )
+  (fn-do + run-existing _
+    (+= order "e")
+  )
+  (fn-do + run-added _
+    (+= order "l")
+  )
+  (fn-do + remove-self _
+    (+= self-runs 1)
+    (if (and self-tracker self-action)
+      (call (. self-tracker detach) self-action)
+    )
+  )
+  (fn-do + run-nested-first _
+    (+= order "f")
+    (if (and (not is-nested) nested-subscribers)
+      (= is-nested true)
+      (call property-dispatch nested-subscribers "value")
+    )
+  )
+  (fn-do + run-nested-second _
+    (+= order "s")
+  )
+)
 
-. add-owner = OwnerWeakProbe(10)
-. add-subscribers [PropertySubscriber]
-. add-probe = OwnerWeakDispatchProbe()
-. add-first-tracker = PropertyTracker("value", add-subscribers)
-add-first-tracker.owner = add-owner as Pointer
-. add-existing-tracker = PropertyTracker("value", add-subscribers)
-add-existing-tracker.owner = add-owner as Pointer
-. add-late-tracker = PropertyTracker("value", add-subscribers)
-add-late-tracker.owner = add-owner as Pointer
-. add-first-action = LiveAction(add-probe.attach-late)
-. add-existing-action = LiveAction(add-probe.run-existing)
-. add-late-action = LiveAction(add-probe.run-added)
-add-probe.later-tracker = add-late-tracker
-add-probe.later-action = add-late-action
-add-first-tracker.attach(add-first-action)
-add-existing-tracker.attach(add-existing-action)
-property-dispatch(add-subscribers, "value")
-if add-probe.order != "fe"
-    ?! Panic("subscriber added during dispatch ran in the starting generation")
-property-dispatch(add-subscribers, "value")
-if add-probe.order != "fefel"
-    ?! Panic("next-generation subscriber order was not deterministic")
-add-first-tracker.detach(add-first-action)
-add-existing-tracker.detach(add-existing-action)
-add-late-tracker.detach(add-late-action)
+(fn-do + owner-weak-register-dead-pair U64
+  (let owner (call OwnerWeakProbe 7))
+  (let action (call LiveAction owner-weak-empty-trackers))
+  (return (call C:brixGCRegisterOwnerWeak (as owner Pointer) (as action Pointer)))
+)
 
-. self-owner = OwnerWeakProbe(11)
-. self-subscribers [PropertySubscriber]
-. self-probe = OwnerWeakDispatchProbe()
-. self-tracker = PropertyTracker("value", self-subscribers)
-self-tracker.owner = self-owner as Pointer
-. self-action = LiveAction(self-probe.remove-self)
-self-probe.self-tracker = self-tracker
-self-probe.self-action = self-action
-self-tracker.attach(self-action)
-property-dispatch(self-subscribers, "value")
-property-dispatch(self-subscribers, "value")
-if self-probe.self-runs != 1
-    ?! Panic("self-removing subscriber ran after detaching itself")
-
-. nested-owner = OwnerWeakProbe(12)
-. nested-subscribers [PropertySubscriber]
-. nested-probe = OwnerWeakDispatchProbe()
-. nested-first-tracker = PropertyTracker("value", nested-subscribers)
-nested-first-tracker.owner = nested-owner as Pointer
-. nested-second-tracker = PropertyTracker("value", nested-subscribers)
-nested-second-tracker.owner = nested-owner as Pointer
-. nested-first-action = LiveAction(nested-probe.run-nested-first)
-. nested-second-action = LiveAction(nested-probe.run-nested-second)
-nested-probe.nested-subscribers = nested-subscribers
-nested-first-tracker.attach(nested-first-action)
-nested-second-tracker.attach(nested-second-action)
-property-dispatch(nested-subscribers, "value")
-if nested-probe.order != "fsf"
-    ?! Panic("nested property dispatch corrupted subscriber order")
-nested-first-tracker.detach(nested-first-action)
-nested-second-tracker.detach(nested-second-action)
-
-. mark-owner = OwnerWeakProbe(4)
-. mark-target OwnerWeakProbe? = OwnerWeakProbe(5)
-. mark-target-pointer = mark-target! as Pointer
-. mark-handle = C:brixGCRegisterOwnerWeak(mark-owner as Pointer, mark-target-pointer)
-C:brixCollect()
-mark-target = null
-C:brixGCStartConcurrentMark()
-. loaded-target = C:brixGCOwnerWeakLoad(mark-handle)
-if loaded-target != mark-target-pointer || !C:brixGCTestObjectMarked(mark-target-pointer)
-    ?! Panic("mark-phase owner-weak load did not shade its target")
-if mark-owner.value != 4
-    ?! Panic("mark-phase owner did not survive collection")
-C:brixGCFinishConcurrentMark()
-C:brixGCFinishAutomaticCycle()
-if !C:brixGCReleaseOwnerWeak(mark-handle)
-    ?! Panic("unable to release mark-phase owner-weak handle")
-if C:brixGCTestOwnerWeakRegistrationCount() != baseline
-    ?! Panic("mark-phase owner-weak handle survived release")
-
-. same-cycle-handle = owner-weak-register-dead-pair()
-C:brixCollect()
-if C:brixGCOwnerWeakLoad(same-cycle-handle)
-    ?! Panic("same-cycle owner/action handle remained loadable")
-if C:brixGCTestOwnerWeakRegistrationCount() != baseline
-    ?! Panic("same-cycle owner/action handle remained registered")
-
--- "owner-weak-property-ok"
-
-━━━━━━━━━━━━━━━━━━━━
-+ OwnerWeakProbe
-
-+ value U64
-
-────────────────────
-+ This
-    - value
-
-━━━━━━━━━━━━━━━━━━━━
-+ do owner-weak-empty-trackers [Tracker]
-
-= List'Tracker()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do owner-weak-register-dead-action U64
-    - owner OwnerWeakProbe
-
-. action = LiveAction(owner-weak-empty-trackers)
-= C:brixGCRegisterOwnerWeak(owner as Pointer, action as Pointer)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do owner-weak-register-dead-owner U64
-    - action LiveAction
-
-. owner = OwnerWeakProbe(6)
-= C:brixGCRegisterOwnerWeak(owner as Pointer, action as Pointer)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do owner-weak-attach-dead-action PropertyTracker
-    - owner OwnerWeakProbe
-    - subscribers [PropertySubscriber]
-
-. tracker = PropertyTracker("value", subscribers)
-tracker.owner = owner as Pointer
-. action = LiveAction(owner-weak-empty-trackers)
-tracker.attach(action)
-= tracker
-
-━━━━━━━━━━━━━━━━━━━━
-+ OwnerWeakDispatchProbe
-
-+ later-tracker PropertyTracker?
-+ later-action LiveAction?
-+ later-runs Size = 0
-+ self-tracker PropertyTracker?
-+ self-action LiveAction?
-+ self-runs Size = 0
-+ nested-subscribers [PropertySubscriber]?
-+ is-nested = false
-+ order = ""
-
-────────────────────
-+ do detach-later [Tracker]
-
-if later-tracker && later-action
-    later-tracker.detach(later-action)
-= List'Tracker()
-
-────────────────────
-+ do run-later [Tracker]
-
-later-runs += 1
-= List'Tracker()
-
-────────────────────
-+ do attach-late
-
-order += "f"
-if later-tracker && later-action && order == "f"
-    later-tracker.attach(later-action)
-
-────────────────────
-+ do run-existing
-
-order += "e"
-
-────────────────────
-+ do run-added
-
-order += "l"
-
-────────────────────
-+ do remove-self
-
-self-runs += 1
-if self-tracker && self-action
-    self-tracker.detach(self-action)
-
-────────────────────
-+ do run-nested-first
-
-order += "f"
-if !is-nested && nested-subscribers
-    is-nested = true
-    property-dispatch(nested-subscribers, "value")
-
-────────────────────
-+ do run-nested-second
-
-order += "s"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do owner-weak-register-dead-pair U64
-
-. owner = OwnerWeakProbe(7)
-. action = LiveAction(owner-weak-empty-trackers)
-= C:brixGCRegisterOwnerWeak(owner as Pointer, action as Pointer)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do owner-weak-active-subscriber-count Size
-    - subscribers [PropertySubscriber]
-
-. count Size = 0
-for subscriber in subscribers
-    if subscriber.slot && subscriber.handle
-        count += 1
-= count
+(fn-do + owner-weak-active-subscriber-count Size
+  (param subscribers (list PropertySubscriber))
+  (let count Size 0)
+  (for (in subscriber subscribers)
+    (if (and (. subscriber slot) (. subscriber handle))
+      (+= count 1)
+    )
+  )
+  (return count)
+)
 ```
 
 ```output
 owner-weak-property-ok
 ```
 
-```yumi crash
-/BxGC/BxGC.h
-/core/tracker
+```brix crash
+(import /BxGC/BxGC.h)
+(import /core/tracker)
+(blank)
 
-C:brixGCSetHeapGoal(1073741824)
-C:brixGCInit()
-. subscribers [PropertySubscriber]
-. action = LiveAction(owner-weak-attach-guard-empty-trackers)
-. tracker = PropertyTracker("value", subscribers)
-tracker.owner = action as Pointer
-tracker.attach(action)
-tracker.attach(action)
+(main
+  (call C:brixGCSetHeapGoal 1073741824)
+  (call C:brixGCInit)
+  (let subscribers (list PropertySubscriber))
+  (let action (call LiveAction owner-weak-attach-guard-empty-trackers))
+  (let tracker (call PropertyTracker "value" subscribers))
+  (= (. tracker owner) (as action Pointer))
+  (call (. tracker attach) action)
+  (call (. tracker attach) action)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do owner-weak-attach-guard-empty-trackers [Tracker]
-
-= List'Tracker()
+(fn-do + owner-weak-attach-guard-empty-trackers (list Tracker)
+  (return (call (of List Tracker)))
+)
 ```
 
 ### Derived properties and property handlers follow writes to the object's own properties, and stop when the object closes
 
-```yumi
-. f = Foo()
--- f.double
-f.bar = 50
--- f.double
--- f.label
-f.bar = 25
--- f.double
--- f.label
--- f.changes
-f.close()
-f.bar = 7
--- f.double
--- f.changes
+```brix
+(main
+  (let f (call Foo))
+  (print (. f double))
+  (= (. f bar) 50)
+  (print (. f double))
+  (print (. f label))
+  (= (. f bar) 25)
+  (print (. f double))
+  (print (. f label))
+  (print (. f changes))
+  (call (. f close))
+  (= (. f bar) 7)
+  (print (. f double))
+  (print (. f changes))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar = 42
-+ double = #bar * 2
-+ label = "bar is ${#bar} and double is ${#double}"
-+ changes = 0
-
-. bar-changed < bar
-
-────────────────────
-+ do bar-changed
-
-changes += 1
-
-────────────────────
-+ do close
+(type + Foo
+  (prop + bar _ (= 42))
+  (prop + double _ (= (* #bar 2)))
+  (prop + label _ (= (str "bar is " #bar " and double is " #double)))
+  (prop + changes _ (= 0))
+  (blank)
+  (depends bar-changed bar)
+  (fn-do + bar-changed _
+    (+= changes 1)
+  )
+  (fn-do + close _)
+)
 ```
 
 ```output
@@ -2210,30 +2217,30 @@ bar is 25 and double is 50
 
 ### A derived property declared after the property that reads it still follows its own dependencies, whether the earlier property reads it tracked or untracked
 
-```yumi
-. tracked = Tracked()
--- "${tracked.double} ${tracked.label}"
-tracked.bar = 5
--- "${tracked.double} ${tracked.label}"
+```brix
+(main
+  (let tracked (call Tracked))
+  (print (str (. tracked double) " " (. tracked label)))
+  (= (. tracked bar) 5)
+  (print (str (. tracked double) " " (. tracked label)))
+  (blank)
+  (let plain (call Plain))
+  (print (str (. plain double) " " (. plain label)))
+  (= (. plain bar) 5)
+  (print (str (. plain double) " " (. plain label)))
+)
 
-. plain = Plain()
--- "${plain.double} ${plain.label}"
-plain.bar = 5
--- "${plain.double} ${plain.label}"
+(type + Tracked
+  (prop + bar _ (= 1))
+  (prop + label _ (= (str "double is " #double)))
+  (prop + double _ (= (* #bar 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tracked
-
-+ bar = 1
-+ label = "double is ${#double}"
-+ double = #bar * 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Plain
-
-+ bar = 1
-+ label = "double is $double"
-+ double = #bar * 2
+(type + Plain
+  (prop + bar _ (= 1))
+  (prop + label _ (= (str "double is " double)))
+  (prop + double _ (= (* #bar 2)))
+)
 ```
 
 ```output
@@ -2245,23 +2252,23 @@ plain.bar = 5
 
 ### A subclass default for an inherited property can read the subclass's own derived properties, and both keep following their dependencies
 
-```yumi
-. item = Scaled()
--- "${item.double} ${item.total}"
-item.bar = 5
--- "${item.double} ${item.total}"
+```brix
+(main
+  (let item (call Scaled))
+  (print (str (. item double) " " (. item total)))
+  (= (. item bar) 5)
+  (print (str (. item double) " " (. item total)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Totalled
+(type + Totalled
+  (prop + total _ (= 0))
+)
 
-+ total = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Scaled is Totalled
-
-+ bar = 1
-+ double = #bar * 2
-+ total = #double + 1
+(type + Scaled (is Totalled)
+  (prop + bar _ (= 1))
+  (prop + double _ (= (* #bar 2)))
+  (prop + total _ (= (+ #double 1)))
+)
 ```
 
 ```output
@@ -2271,48 +2278,44 @@ item.bar = 5
 
 ### A handler of a property reads the derived properties it feeds already updated, on every write, and a derived property no rule reads is evaluated again only when read
 
-```yumi
-. foo = Foo()
-. watcher = Watcher(foo)
--- "${watcher.seen} ${"|".join(foo.log)}"
+```brix
+(main
+  (let foo (call Foo))
+  (let watcher (call Watcher foo))
+  (print (str (. watcher seen) " " (call (. "|" join) (. foo log))))
+  (blank)
+  (= (. foo bar) 5)
+  (print (str (. watcher seen) " " (call (. "|" join) (. foo log))))
+  (blank)
+  (= (. foo bar) 7)
+  (print (str (. watcher seen) " " (call (. "|" join) (. foo log))))
+)
 
-foo.bar = 5
--- "${watcher.seen} ${"|".join(foo.log)}"
+(type + Foo
+  (prop + log (list String) (= (call (of List String))))
+  (prop + bar _ (= 42))
+  (prop + double _ (= (* #bar 2)))
+  (blank)
+  (depends bar-changed bar)
+  (fn-do + bar-changed _
+    (+= log (str "bar:" bar "/" double))
+  )
+)
 
-foo.bar = 7
--- "${watcher.seen} ${"|".join(foo.log)}"
+(type + Watcher
+  (prop + source Foo)
+  (prop + seen _ (= (call noted source (+ (. source #bar) (. source #double)))))
+  (fn-do + This _
+    (param source _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ log [String] = List'String()
-+ bar = 42
-+ double = #bar * 2
-
-. bar-changed < bar
-
-────────────────────
-+ do bar-changed
-
-log += "bar:$bar/$double"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Watcher
-
-+ source Foo
-+ seen = noted(source, source.#bar + source.#double)
-
-────────────────────
-+ This
-    - source
-
-━━━━━━━━━━━━━━━━━━━━
-+ do noted Int
-    - foo Foo
-    - sum Int
-
-foo.log += "seen:$sum"
-= sum
+(fn-do + noted Int
+  (param foo Foo)
+  (param sum Int)
+  (+= (. foo log) (str "seen:" sum))
+  (return sum)
+)
 ```
 
 ```output
@@ -2323,43 +2326,41 @@ foo.log += "seen:$sum"
 
 ### A lazy property another initializer reads during construction is constructed once: the object keeps the instance its other properties saw, tracked reads through it follow that instance, and a lazy property nothing reads stays unevaluated
 
-```yumi
-. panel = Panel()
--- "$made ${panel.title}"
-panel.session.current = "one"
--- "$made ${panel.title} ${panel.first as Pointer == panel.session as Pointer}"
-panel.session.current = "two"
--- "$made ${panel.title}"
+```brix
+(main
+  (let panel (call Panel))
+  (print (str made " " (. panel title)))
+  (= (. panel session current) "one")
+  (print (str made " " (. panel title) " " (== (as (. panel first) Pointer) (as (. panel session) Pointer))))
+  (= (. panel session current) "two")
+  (print (str made " " (. panel title)))
+  (blank)
+  (let idle (call Idle))
+  (print (str made))
+  (= (. idle session current) "used")
+  (print (str made " " (. idle session current)))
+)
 
-. idle = Idle()
--- "$made"
-idle.session.current = "used"
--- "$made ${idle.session.current}"
+(blank)
+(prop + made _ (= 0))
 
-+ made = 0
+(type + Session
+  (prop + current _ (= "none"))
+  (fn-do + This _
+    (+= made 1)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Session
+(type + Panel
+  (prop + session _ (:= (call Session)))
+  (prop + first Session (= session))
+  (prop + title _ (= (. session #current)))
+)
 
-+ current = "none"
-
-────────────────────
-+ This
-
-made += 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel
-
-+ session := Session()
-+ first Session = session
-+ title = session.#current
-
-━━━━━━━━━━━━━━━━━━━━
-+ Idle
-
-+ session := Session()
-+ title = "idle"
+(type + Idle
+  (prop + session _ (:= (call Session)))
+  (prop + title _ (= "idle"))
+)
 ```
 
 ```output
@@ -2372,60 +2373,55 @@ made += 1
 
 ### A lazy property read under a condition, or by another lazy property, is still one instance
 
-```yumi
-. shown = Panel(true)
-shown.session.current = "one"
--- "$made ${shown.title}"
+```brix
+(main
+  (let shown (call Panel true))
+  (= (. shown session current) "one")
+  (print (str made " " (. shown title)))
+  (blank)
+  (let quiet (call Panel false))
+  (print (str (. quiet title)))
+  (= (. quiet session current) "two")
+  (let count made)
+  (= (. quiet uses) true)
+  (print (str (. quiet title) " " (== made count)))
+  (blank)
+  (let chain (call Chain))
+  (= (. chain inner current) "three")
+  (print (str (. chain seen) " " (== (as (. chain outer inner) Pointer) (as (. chain inner) Pointer))))
+)
 
-. quiet = Panel(false)
--- "${quiet.title}"
-quiet.session.current = "two"
-. count = made
-quiet.uses = true
--- "${quiet.title} ${made == count}"
+(blank)
+(prop + made _ (= 0))
 
-. chain = Chain()
-chain.inner.current = "three"
--- "${chain.seen} ${chain.outer.inner as Pointer == chain.inner as Pointer}"
+(type + Session
+  (prop + current _ (= "none"))
+  (fn-do + This _
+    (+= made 1)
+  )
+)
 
-+ made = 0
+(type + Wrapper
+  (prop + inner Session)
+  (fn-do + This _
+    (param inner _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Session
+(type + Panel
+  (prop + uses Bool)
+  (prop + session _ (:= (call Session)))
+  (prop + title _ (= (if-expr #uses (. session #current) "off")))
+  (fn-do + This _
+    (param uses _)
+  )
+)
 
-+ current = "none"
-
-────────────────────
-+ This
-
-made += 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wrapper
-
-+ inner Session
-
-────────────────────
-+ This
-    - inner
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel
-
-+ uses Bool
-+ session := Session()
-+ title = if #uses then session.#current else "off"
-
-────────────────────
-+ This
-    - uses
-
-━━━━━━━━━━━━━━━━━━━━
-+ Chain
-
-+ inner := Session()
-+ outer := Wrapper(inner)
-+ seen = outer.inner.#current
+(type + Chain
+  (prop + inner _ (:= (call Session)))
+  (prop + outer _ (:= (call Wrapper inner)))
+  (prop + seen _ (= (. outer inner #current)))
+)
 ```
 
 ```output
@@ -2435,25 +2431,24 @@ two true
 three true
 ```
 
-```yumi
-.. name = "bob"
-. foo = Foo()
+```brix
+(main
+  (lazy name "bob")
+  (let foo (call Foo))
+  (blank)
+  (= (. foo title) #name)
+  (print (. foo title))
+  (= name "tom")
+  (print (. foo title))
+  (call (. foo close))
+  (= name "fred")
+  (print (. foo title))
+)
 
-foo.title = #name
--- foo.title
-name = "tom"
--- foo.title
-foo.close()
-name = "fred"
--- foo.title
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ title = ""
-
-────────────────────
-+ do close
+(type + Foo
+  (prop + title _ (= ""))
+  (fn-do + close _)
+)
 ```
 
 ```output
@@ -2464,28 +2459,25 @@ tom
 
 ### a when rule stores to a property of its object
 
-```yumi
-. counter = Counter()
-counter.bump(3)
-counter.bump(4)
--- "count ${counter.count} seen ${counter.seen}"
+```brix
+(main
+  (let counter (call Counter))
+  (call (. counter bump) 3)
+  (call (. counter bump) 4)
+  (print (str "count " (. counter count) " seen " (. counter seen)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
-
-+ count = 0
-+ seen = 0
-
-────────────────────
-when #count > 5
-
-seen += 1
-
-────────────────────
-+ do bump
-    - value Int
-
-count += value
+(type + Counter
+  (prop + count _ (= 0))
+  (prop + seen _ (= 0))
+  (when-rule (> #count 5)
+    (+= seen 1)
+  )
+  (fn-do + bump _
+    (param value Int)
+    (+= count value)
+  )
+)
 ```
 
 ```output
@@ -2494,20 +2486,21 @@ count 7 seen 1
 
 ### A tracked optional local set to nothing and back gives again what reads it.
 
-```yumi
-.. value Int? = 3
-. holder = Holder()
-holder.text = "v=${#value}"
--- holder.text
-value = null
--- holder.text
-value = 7
--- holder.text
+```brix
+(main
+  (lazy value (? Int) 3)
+  (let holder (call Holder))
+  (= (. holder text) (str "v=" #value))
+  (print (. holder text))
+  (= value null)
+  (print (. holder text))
+  (= value 7)
+  (print (. holder text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ text = ""
+(type + Holder
+  (prop + text _ (= ""))
+)
 ```
 
 ```output
@@ -2518,25 +2511,24 @@ v=7
 
 ### A return in the body of a `whenever` rule of a class leaves only the body, and the rule runs again on the next change.
 
-```yumi
-. foo = Foo()
-foo.bar = "x"
-foo.bar = null
-foo.bar = "y"
--- foo.count
+```brix
+(main
+  (let foo (call Foo))
+  (= (. foo bar) "x")
+  (= (. foo bar) null)
+  (= (. foo bar) "y")
+  (print (. foo count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar String? = null
-+ count = 0
-
-────────────────────
-whenever #bar
-
-=? if bar == null
-count += 1
--- "changed ${bar ?? "-"}"
+(type + Foo
+  (prop + bar (? String) (= null))
+  (prop + count _ (= 0))
+  (whenever-rule #bar
+    (return-if (if (== bar null)))
+    (+= count 1)
+    (print (str "changed " (?? bar "-")))
+  )
+)
 ```
 
 ```output
@@ -2547,26 +2539,25 @@ changed y
 
 ### A return in the body of a `when` rule of a class leaves only the body.
 
-```yumi
-. foo = Foo()
-foo.bar = 3
-foo.bar = 12
-foo.bar = 1
-foo.bar = 20
--- foo.count
+```brix
+(main
+  (let foo (call Foo))
+  (= (. foo bar) 3)
+  (= (. foo bar) 12)
+  (= (. foo bar) 1)
+  (= (. foo bar) 20)
+  (print (. foo count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar = 0
-+ count = 0
-
-────────────────────
-when #bar >= 10
-
-=? if bar > 15
-count += 1
--- "greater $bar"
+(type + Foo
+  (prop + bar _ (= 0))
+  (prop + count _ (= 0))
+  (when-rule (>= #bar 10)
+    (return-if (if (> bar 15)))
+    (+= count 1)
+    (print (str "greater " bar))
+  )
+)
 ```
 
 ```output
@@ -2576,32 +2567,30 @@ greater 12
 
 ### A `whenever` rule of a base class on a property a class below gives a live value runs each time that value changes.
 
-```yumi
-. sub = Sub()
--- sub.runs
-sub.message = "a"
--- sub.runs
-sub.message = "b"
--- sub.runs
-sub.message = "c"
--- sub.runs
+```brix
+(main
+  (let sub (call Sub))
+  (print (. sub runs))
+  (= (. sub message) "a")
+  (print (. sub runs))
+  (= (. sub message) "b")
+  (print (. sub runs))
+  (= (. sub message) "c")
+  (print (. sub runs))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + text String (= ""))
+  (prop + runs _ (= 0))
+  (whenever-rule #text
+    (+= runs 1)
+  )
+)
 
-+ text String = ""
-+ runs = 0
-
-────────────────────
-whenever #text
-
-runs += 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub is Base
-
-+ message = "start"
-+ text = "${#message}!"
+(type + Sub (is Base)
+  (prop + message _ (= "start"))
+  (prop + text _ (= (str #message "!")))
+)
 ```
 
 ```output
@@ -2613,36 +2602,32 @@ runs += 1
 
 ### A `whenever` rule of a class on a property it gives a new value runs where the property is stored through the class above that declares it.
 
-```yumi
-. sub = Sub()
-. base Base = sub
--- sub.runs
-base.text = "a"
--- sub.runs
-base.set("b")
--- sub.runs
+```brix
+(main
+  (let sub (call Sub))
+  (let base Base sub)
+  (print (. sub runs))
+  (= (. base text) "a")
+  (print (. sub runs))
+  (call (. base set) "b")
+  (print (. sub runs))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + text String (= ""))
+  (fn-do + set _
+    (param value String)
+    (= text value)
+  )
+)
 
-+ text String = ""
-
-────────────────────
-+ do set
-    - value String
-
-text = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub is Base
-
-+ text = "init"
-+ runs = 0
-
-────────────────────
-whenever #text
-
-runs += 1
+(type + Sub (is Base)
+  (prop + text _ (= "init"))
+  (prop + runs _ (= 0))
+  (whenever-rule #text
+    (+= runs 1)
+  )
+)
 ```
 
 ```output
@@ -2653,45 +2638,43 @@ runs += 1
 
 ### A store to a property a later read tracks, inside a test of another property, where nothing after it reads what the test found.
 
-```yumi
-. panel = Panel()
-panel.reveal(1)
-panel.reveal(2)
--- panel.describe()
+```brix
+(main
+  (let panel (call Panel))
+  (call (. panel reveal) 1)
+  (call (. panel reveal) 2)
+  (print (call (. panel describe)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Step
+(type + Step
+  (prop + id U64)
+  (prop + is-revealed _ (= false))
+  (prop + is-shown _ (= #is-revealed))
+  (fn-do + This _
+    (param id _)
+  )
+)
 
-+ id U64
-+ is-revealed = false
-+ is-shown = #is-revealed
-
-────────────────────
-+ This
-    - id
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel
-
-_ revealed Step?
-_ steps = [Step(1), Step(2)]
-
-────────────────────
-+ do reveal
-    - id U64
-
-if revealed
-    revealed.is-revealed = false
-revealed = null
-for step in steps
-    if step.id == id
-        step.is-revealed = true
-        revealed = step
-
-────────────────────
-+ describe String
-
-"${steps[0].is-revealed} ${steps[1].is-revealed}"
+(type + Panel
+  (prop _ revealed (? Step))
+  (prop _ steps _ (= (list (call Step 1) (call Step 2))))
+  (fn-do + reveal _
+    (param id U64)
+    (if revealed
+      (= (. revealed is-revealed) false)
+    )
+    (= revealed null)
+    (for (in step steps)
+      (if (== (. step id) id)
+        (= (. step is-revealed) true)
+        (= revealed step)
+      )
+    )
+  )
+  (fn-expr + describe String
+    (str (. ([] steps 0) is-revealed) " " (. ([] steps 1) is-revealed))
+  )
+)
 ```
 
 ```output
@@ -2700,38 +2683,35 @@ false true
 
 ### A `close` that returns a value closes the live actions the object owns as it returns, at each return.
 
-```yumi
-. source = Source()
-. view = View(source)
-source.count = 2
--- view.doubled
--- view.close()
-source.count = 5
--- view.doubled
--- view.close()
+```brix
+(main
+  (let source (call Source))
+  (let view (call View source))
+  (= (. source count) 2)
+  (print (. view doubled))
+  (print (call (. view close)))
+  (= (. source count) 5)
+  (print (. view doubled))
+  (print (call (. view close)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Source
+(type + Source
+  (prop + count _ (= 1))
+)
 
-+ count = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ View
-
-+ source Source
-+ doubled = #source.#count * 2
-+ closings = 0
-
-────────────────────
-+ This
-    - source
-
-────────────────────
-+ do close Bool
-
-closings += 1
-=? false if closings > 1
-= true
+(type + View
+  (prop + source Source)
+  (prop + doubled _ (= (* (. #source #count) 2)))
+  (prop + closings _ (= 0))
+  (fn-do + This _
+    (param source _)
+  )
+  (fn-do + close Bool
+    (+= closings 1)
+    (return-if false (if (> closings 1)))
+    (return true)
+  )
+)
 ```
 
 ```output
@@ -2743,40 +2723,40 @@ false
 
 ### A `whenever` rule whose body loops runs again on each change of what it reads.
 
-```yumi
-. bar = Bar()
-bar.preview = Preview(["a", "b"], ["b", "c"])
--- bar.seen
-bar.preview = Preview(["x"], ["y"])
--- bar.seen
+```brix
+(main
+  (let bar (call Bar))
+  (= (. bar preview) (call Preview (list "a" "b") (list "b" "c")))
+  (print (. bar seen))
+  (= (. bar preview) (call Preview (list "x") (list "y")))
+  (print (. bar seen))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Preview
+(type + Preview
+  (prop + active (list String))
+  (prop + empty (list String))
+  (fn-do + This _
+    (param active _)
+    (param empty _)
+  )
+)
 
-+ active [String]
-+ empty [String]
-
-────────────────────
-+ This
-    - active
-    - empty
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-+ preview Preview? = null
-+ seen = ""
-
-────────────────────
-whenever #preview
-
-. current = preview
-if current
-    . open = List'String(current.active)
-    for key in current.empty
-        if !(open has key)
-            open += key
-    seen = ",".join(open)
+(type + Bar
+  (prop + preview (? Preview) (= null))
+  (prop + seen _ (= ""))
+  (whenever-rule #preview
+    (let current preview)
+    (if current
+      (let open (call (of List String) (. current active)))
+      (for (in key (. current empty))
+        (if (not (has open key))
+          (+= open key)
+        )
+      )
+      (= seen (call (. "," join) open))
+    )
+  )
+)
 ```
 
 ```output
@@ -2786,24 +2766,24 @@ x,y
 
 ### A `when` rule whose body loops runs it first as the object is made, and again on each change.
 
-```yumi
-. bar = Bar()
--- bar.seen
-bar.on = false
-bar.on = true
--- bar.seen
+```brix
+(main
+  (let bar (call Bar))
+  (print (. bar seen))
+  (= (. bar on) false)
+  (= (. bar on) true)
+  (print (. bar seen))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-+ on = true
-+ seen = 0
-
-────────────────────
-when #on
-
-for step in 0 .. < 3
-    seen += step
+(type + Bar
+  (prop + on _ (= true))
+  (prop + seen _ (= 0))
+  (when-rule #on
+    (for (in step (..< 0 3))
+      (+= seen step)
+    )
+  )
+)
 ```
 
 ```output
@@ -2813,25 +2793,26 @@ for step in 0 .. < 3
 
 ### A tracked value that reads a later property on some paths alone gives that property its value there, and both values follow what they read.
 
-```yumi
-. thing = Thing()
--- thing.shows
-thing.flag = false
--- thing.shows
-thing.ready = false
-thing.flag = true
--- thing.shows
-thing.ready = true
--- thing.shows
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing shows))
+  (= (. thing flag) false)
+  (print (. thing shows))
+  (= (. thing ready) false)
+  (= (. thing flag) true)
+  (print (. thing shows))
+  (= (. thing ready) true)
+  (print (. thing shows))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ ready = true
-+ shows = #ready && #hovered
-+ flag = true
-
-_ hovered = #flag
+(type + Thing
+  (prop + ready _ (= true))
+  (prop + shows _ (= (and #ready #hovered)))
+  (prop + flag _ (= true))
+  (blank)
+  (prop _ hovered _ (= #flag))
+)
 ```
 
 ```output
@@ -2843,32 +2824,38 @@ true
 
 ### An error a tracked value raises as it is evaluated again goes to unhandled-error, and the property keeps the value it had.
 
-```yumi
-unhandled-error = :: error => do
-    -- "handled ${error.message}"
+```brix
+(main
+  (= unhandled-error
+    (=> (error) :do
+      (block
+        (print (str "handled " (. error message)))
+      )
+    )
+  )
+  (blank)
+  (let thing (call Thing))
+  (print (. thing ok))
+  (= (. thing n) 3)
+  (print (. thing ok))
+  (= (. thing n) 9)
+  (print (. thing ok))
+  (= (. thing n) 4)
+  (print (. thing ok))
+)
 
-. thing = Thing()
--- thing.ok
-thing.n = 3
--- thing.ok
-thing.n = 9
--- thing.ok
-thing.n = 4
--- thing.ok
+(type + Thing
+  (prop + n I64 (= 0))
+  (prop + ok _ (= (and (> #n 0) (call check #n))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ n I64 = 0
-+ ok = #n > 0 && check(#n)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do check Bool
-    - n I64
-
-if n > 5
-    ?! Error("too big $n")
-= n != 3
+(fn-do _ check Bool
+  (param n I64)
+  (if (> n 5)
+    (throw (call Error (str "too big " n)))
+  )
+  (return (!= n 3))
+)
 ```
 
 ```output
@@ -2881,65 +2868,60 @@ true
 
 ### A narrowed read stored after a store to a watched property stores what the narrowed read holds.
 
-```yumi
-. doc = Doc()
-. watcher = Watcher(doc)
-. closed [Closed]
-closed += Closed(1, Jump(4, "x"))
-closed += Closed(2, null)
-reopen(closed, doc)
--- doc.jump?.text ?? "none"
-reopen(closed, doc)
--- doc.jump?.text ?? "none"
--- watcher.seen
+```brix
+(main
+  (let doc (call Doc))
+  (let watcher (call Watcher doc))
+  (let closed (list Closed))
+  (+= closed (call Closed 1 (call Jump 4 "x")))
+  (+= closed (call Closed 2 null))
+  (call reopen closed doc)
+  (print (?? (?. (. doc jump) text) "none"))
+  (call reopen closed doc)
+  (print (?? (?. (. doc jump) text) "none"))
+  (print (. watcher seen))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do reopen
-    - closed [Closed]
-    - doc Doc
+(fn-do _ reopen _
+  (param closed (list Closed))
+  (param doc Doc)
+  (while (> (. closed length) 0)
+    (let entry (call (. closed pop)))
+    (if (> (. entry index) 0)
+      (if (. entry jump)
+        (= (. doc wants) true)
+        (= (. doc jump) (. entry jump))
+      )
+      (return)
+    )
+  )
+)
 
-while closed.length > 0
-    . entry = closed.pop()
-    if entry.index > 0
-        if entry.jump
-            doc.wants = true
-            doc.jump = entry.jump
-        =
+(type _ Closed (is (tuple (: index Int) (: jump (? Jump)))))
 
-━━━━━━━━━━━━━━━━━━━━
-_ Closed is (index Int, jump Jump?)
+(type + Jump (is Tuple)
+  (prop + line Size)
+  (prop + text String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Jump is Tuple
+(type + Doc
+  (prop + wants _ (= false))
+  (prop + jump (? Jump))
+)
 
-+ line Size
-+ text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Doc
-
-+ wants = false
-+ jump Jump?
-
-━━━━━━━━━━━━━━━━━━━━
-+ Watcher
-
-+ doc Doc
-+ seen = 0
-
-────────────────────
-+ This
-    - doc
-
-────────────────────
-whenever doc.#jump
-
-seen += 1
-
-────────────────────
-whenever doc.#wants
-
-seen += 10
+(type + Watcher
+  (prop + doc Doc)
+  (prop + seen _ (= 0))
+  (fn-do + This _
+    (param doc _)
+  )
+  (whenever-rule (. doc #jump)
+    (+= seen 1)
+  )
+  (whenever-rule (. doc #wants)
+    (+= seen 10)
+  )
+)
 ```
 
 ```output
@@ -2950,37 +2932,36 @@ x
 
 ### A narrowed read stored after a store to a property its function tracked before stores what the narrowed read holds.
 
-```yumi
-. doc = Doc()
-reopen(Closed(1, Jump(4, "x")), doc)
--- doc.jump?.text ?? "none"
--- doc.wants
+```brix
+(main
+  (let doc (call Doc))
+  (call reopen (call Closed 1 (call Jump 4 "x")) doc)
+  (print (?? (?. (. doc jump) text) "none"))
+  (print (. doc wants))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do reopen
-    - entry Closed
-    - doc Doc
+(fn-do _ reopen _
+  (param entry Closed)
+  (param doc Doc)
+  (let wanted (. doc wants))
+  (if (. entry jump)
+    (= (. doc wants) (not wanted))
+    (= (. doc jump) (. entry jump))
+  )
+)
 
-. wanted = doc.wants
-if entry.jump
-    doc.wants = !wanted
-    doc.jump = entry.jump
+(type _ Closed (is (tuple (: index Int) (: jump (? Jump)))))
 
-━━━━━━━━━━━━━━━━━━━━
-_ Closed is (index Int, jump Jump?)
+(type + Jump (is Tuple)
+  (prop + line Size)
+  (prop + text String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Jump is Tuple
-
-+ line Size
-+ text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Doc
-
-+ wants = false
-+ is-wanting = #wants
-+ jump Jump?
+(type + Doc
+  (prop + wants _ (= false))
+  (prop + is-wanting _ (= #wants))
+  (prop + jump (? Jump))
+)
 ```
 
 ```output
@@ -2990,29 +2971,28 @@ true
 
 ### A property a test found to hold a value, forced after a store to a property a value tracks, is what it holds.
 
-```yumi
-. holder = Holder()
-holder.options = Options()
-holder.run()
+```brix
+(main
+  (let holder (call Holder))
+  (= (. holder options) (call Options))
+  (call (. holder run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Options
+(type + Options
+  (prop + name _ (= "x"))
+)
 
-+ name = "x"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ options Options?
-+ flag = false
-+ shown = "${#flag}"
-
-────────────────────
-+ do run
-
-if options
-    flag = true
-    -- options!.name
+(type + Holder
+  (prop + options (? Options))
+  (prop + flag _ (= false))
+  (prop + shown _ (= (str #flag)))
+  (fn-do + run _
+    (if options
+      (= flag true)
+      (print (. (!! options) name))
+    )
+  )
+)
 ```
 
 ```output
@@ -3021,99 +3001,94 @@ x
 
 ### A store to a tracked property runs the rules that track it before the next statement, so a property a test found to hold a value is tested again where it is forced after the store.
 
-```yumi crash
-. holder = Holder()
-holder.options = Options()
-holder.run()
+```brix crash
+(main
+  (let holder (call Holder))
+  (= (. holder options) (call Options))
+  (call (. holder run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Options
+(type + Options
+  (prop + name _ (= "x"))
+)
 
-+ name = "x"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ options Options?
-+ flag = false
-
-────────────────────
-+ do run
-
-if options
-    flag = true
-    -- options!.name
-
-────────────────────
-whenever #flag
-
-options = null
+(type + Holder
+  (prop + options (? Options))
+  (prop + flag _ (= false))
+  (fn-do + run _
+    (if options
+      (= flag true)
+      (print (. (!! options) name))
+    )
+  )
+  (whenever-rule #flag
+    (= options null)
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: Optional'[Object __source__:Options] is null
-<no file:22>
+<no file:18>
 
 Task 1
 
 Stack trace:
-  0  __source__:Holder:run no file:22:8
-  1  __source__:main no file:4:1
+  0  __source__:Holder:run no file:18:17
+  1  __source__:main no file:5:3
   2  __source__:init.__source__ no file
   3  __source__:brix.main no file
 ```
 
 ### A store to a tracked property ends what is known of every property, so a property a test found to hold a value is optional again after it.
 
-```yumi crash
-. holder = Holder()
-holder.options = Options()
-holder.run()
+```brix crash
+(main
+  (let holder (call Holder))
+  (= (. holder options) (call Options))
+  (call (. holder run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Options
+(type + Options
+  (prop + name _ (= "x"))
+)
 
-+ name = "x"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ options Options?
-+ flag = false
-+ shown = "${#flag}"
-
-────────────────────
-+ do run
-
-if options
-    flag = true
-    -- options.name
+(type + Holder
+  (prop + options (? Options))
+  (prop + flag _ (= false))
+  (prop + shown _ (= (str #flag)))
+  (fn-do + run _
+    (if options
+      (= flag true)
+      (print (. options name))
+    )
+  )
+)
 ```
 
 ```output
-Exception: Property "name" is read from Options?, which may be null; unwrap it first with ! or ?.
-<no file:23>
-        -- options.name
-           ^^^^^^^^^^^^
+Exception: Property "name" is read from Options?, which may be null; unwrap it first with "(!! …)" or "(?. …)"
+<no file:19>
+          (print (. options name))
+                 ^^^^^^^^^^^^^^^^
 ```
 
 ### A `when` rule of a class runs its body as the object is made and on every change while its test holds.
 
-```yumi
-. meter = Meter()
-meter.level = 5
-meter.level = 0
-meter.level = 7
+```brix
+(main
+  (let meter (call Meter))
+  (= (. meter level) 5)
+  (= (. meter level) 0)
+  (= (. meter level) 7)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Meter
-
-+ level = 2
-
-────────────────────
-when #level > 0
-
--- "level $level"
+(type + Meter
+  (prop + level _ (= 2))
+  (when-rule (> #level 0)
+    (print (str "level " level))
+  )
+)
 ```
 
 ```output
@@ -3124,17 +3099,21 @@ level 7
 
 ### A tracked lazy local is evaluated, and starts watching what it read, at whichever of its reads runs first, even where a read written before it does not run.
 
-```yumi
-.. foo = #bar * 10
-.. bar = 1
-. flag = true
-if !flag
-    -- "branch one $foo"
-if flag
-    -- "branch two $foo"
--- "plain $foo"
-bar = 2
--- "after change $foo"
+```brix
+(main
+  (lazy foo (* #bar 10))
+  (lazy bar 1)
+  (let flag true)
+  (if (not flag)
+    (print (str "branch one " foo))
+  )
+  (if flag
+    (print (str "branch two " foo))
+  )
+  (print (str "plain " foo))
+  (= bar 2)
+  (print (str "after change " foo))
+)
 ```
 
 ```output
@@ -3145,33 +3124,28 @@ after change 20
 
 ### A `when` rule that leaves early on its first run, as the object is made, leaves only its body.
 
-```yumi
-. foo = Foo()
--- "made ${foo.name}"
-foo.bar = 5
-foo.bar = 7
+```brix
+(main
+  (let foo (call Foo))
+  (print (str "made " (. foo name)))
+  (= (. foo bar) 5)
+  (= (. foo bar) 7)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar = 0
-+ name = "none"
-
-────────────────────
-+ This
-
-name = "foo"
-
-────────────────────
-when #bar < 6
-
-=? if bar == 0
--- "lesser ${bar}"
-
-────────────────────
-when #bar > 6
-
--- "greater ${bar}"
+(type + Foo
+  (prop + bar _ (= 0))
+  (prop + name _ (= "none"))
+  (fn-do + This _
+    (= name "foo")
+  )
+  (when-rule (< #bar 6)
+    (return-if (if (== bar 0)))
+    (print (str "lesser " bar))
+  )
+  (when-rule (> #bar 6)
+    (print (str "greater " bar))
+  )
+)
 ```
 
 ```output
@@ -3182,38 +3156,35 @@ greater 7
 
 ### A rule whose nested function reads the object and a local the rule declares, where the constructor runs it first and where what it tests changes.
 
-```yumi
-. holder = Holder()
--- ", ".join(holder.first)
--- ", ".join(holder.later)
-holder.context = "b"
--- ", ".join(holder.first)
--- ", ".join(holder.later)
-holder.hidden = "z"
-holder.context = "c"
--- ", ".join(holder.first)
--- ", ".join(holder.later)
+```brix
+(main
+  (let holder (call Holder))
+  (print (call (. ", " join) (. holder first)))
+  (print (call (. ", " join) (. holder later)))
+  (= (. holder context) "b")
+  (print (call (. ", " join) (. holder first)))
+  (print (call (. ", " join) (. holder later)))
+  (= (. holder hidden) "z")
+  (= (. holder context) "c")
+  (print (call (. ", " join) (. holder first)))
+  (print (call (. ", " join) (. holder later)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ context = "a"
-+ hidden = "x"
-+ first = List'String()
-+ later = List'String("none")
-_ names = List'String("x", "y", "z")
-
-────────────────────
-when #context != ""
-
-. suffix = context
-first = List'String("$each$suffix" in names when each != hidden)
-
-────────────────────
-whenever #context
-
-. suffix = context
-later = List'String("$each$suffix" in names when each != hidden)
+(type + Holder
+  (prop + context _ (= "a"))
+  (prop + hidden _ (= "x"))
+  (prop + first _ (= (call (of List String))))
+  (prop + later _ (= (call (of List String) "none")))
+  (prop _ names _ (= (call (of List String) "x" "y" "z")))
+  (when-rule (!= #context "")
+    (let suffix context)
+    (= first (call (of List String) (in (str each suffix) names (when (!= each hidden)))))
+  )
+  (whenever-rule #context
+    (let suffix context)
+    (= later (call (of List String) (in (str each suffix) names (when (!= each hidden)))))
+  )
+)
 ```
 
 ```output
@@ -3227,23 +3198,22 @@ xc, yc
 
 ### A derived property that reads another one never shows a rule a mix of old and new values.
 
-```yumi
-. f = Foo()
-f.a = 2
--- "|".join(f.seen)
+```brix
+(main
+  (let f (call Foo))
+  (= (. f a) 2)
+  (print (call (. "|" join) (. f seen)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ a = 1
-+ total = #a + #b
-+ b = #a * 10
-+ seen [String] = List'String()
-
-────────────────────
-whenever #total
-
-seen += "total:$total"
+(type + Foo
+  (prop + a _ (= 1))
+  (prop + total _ (= (+ #a #b)))
+  (prop + b _ (= (* #a 10)))
+  (prop + seen (list String) (= (call (of List String))))
+  (whenever-rule #total
+    (+= seen (str "total:" total))
+  )
+)
 ```
 
 ```output
@@ -3252,28 +3222,28 @@ total:22
 
 ### A derived property nothing subscribes to is evaluated again only when read after changes, once, from fresh values.
 
-```yumi
-. f = Foo()
--- f.d
-f.a = 2
-f.a = 3
--- f.d
+```brix
+(main
+  (let f (call Foo))
+  (print (. f d))
+  (= (. f a) 2)
+  (= (. f a) 3)
+  (print (. f d))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + a _ (= 1))
+  (prop + b _ (= (* #a 10)))
+  (prop + c _ (= (* #a 100)))
+  (prop + d _ (= (call summed #b #c)))
+)
 
-+ a = 1
-+ b = #a * 10
-+ c = #a * 100
-+ d = summed(#b, #c)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do summed Int
-    - left Int
-    - right Int
-
--- "run $left $right"
-= left + right
+(fn-do + summed Int
+  (param left Int)
+  (param right Int)
+  (print (str "run " left " " right))
+  (return (+ left right))
+)
 ```
 
 ```output
@@ -3285,23 +3255,23 @@ run 30 300
 
 ### A class may give a property of its base a value that reads tracked state, read through the base.
 
-```yumi
-. s = Sub()
-. b Base = s
--- b.x
-s.y = 5
--- b.x
+```brix
+(main
+  (let s (call Sub))
+  (let b Base s)
+  (print (. b x))
+  (= (. s y) 5)
+  (print (. b x))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + x _ (= 1))
+)
 
-+ x = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub is Base
-
-+ y = 2
-+ x = #y * 10
+(type + Sub (is Base)
+  (prop + y _ (= 2))
+  (prop + x _ (= (* #y 10)))
+)
 ```
 
 ```output
@@ -3311,19 +3281,20 @@ s.y = 5
 
 ### A value written to a derived property stays until what it reads changes.
 
-```yumi
-. f = Foo()
--- f.total
-f.total = 99
--- f.total
-f.a = 3
--- f.total
+```brix
+(main
+  (let f (call Foo))
+  (print (. f total))
+  (= (. f total) 99)
+  (print (. f total))
+  (= (. f a) 3)
+  (print (. f total))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ a = 1
-+ total = #a * 10
+(type + Foo
+  (prop + a _ (= 1))
+  (prop + total _ (= (* #a 10)))
+)
 ```
 
 ```output
@@ -3334,20 +3305,21 @@ f.a = 3
 
 ### A stream of a derived value gives nothing when the value is evaluated again to the same value.
 
-```yumi
-. f = Foo()
-. values = <f.#positive>
--- <- values
-f.a = 2
-f.a = -1
--- <- values
-values.close()
+```brix
+(main
+  (let f (call Foo))
+  (let values (stream (. f #positive)))
+  (print (<- values))
+  (= (. f a) 2)
+  (= (. f a) -1)
+  (print (<- values))
+  (call (. values close))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ a = 1
-+ positive = #a > 0
+(type + Foo
+  (prop + a _ (= 1))
+  (prop + positive _ (= (> #a 0)))
+)
 ```
 
 ```output
@@ -3357,35 +3329,35 @@ false
 
 ### A derived value that makes another one it reads stale before it subscribes still sees later changes.
 
-```yumi
-. f = Foo()
--- f.d
-f.on = true
--- f.d
-f.src.a = 7
--- f.d
+```brix
+(main
+  (let f (call Foo))
+  (print (. f d))
+  (= (. f on) true)
+  (print (. f d))
+  (= (. f src a) 7)
+  (print (. f d))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Source
+(type + Source
+  (prop + a _ (= 1))
+)
 
-+ a = 1
+(type + Foo
+  (prop + src _ (= (call Source)))
+  (prop + on _ (= false))
+  (prop + total _ (= (* (. src #a) 10)))
+  (prop + d _ (= (if-expr #on (call bumped src #total) 0)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ src = Source()
-+ on = false
-+ total = src.#a * 10
-+ d = if #on then bumped(src, #total) else 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bumped Int
-    - source Source
-    - value Int
-
-if source.a == 1
-    source.a = 5
-= value
+(fn-do + bumped Int
+  (param source Source)
+  (param value Int)
+  (if (== (. source a) 1)
+    (= (. source a) 5)
+  )
+  (return value)
+)
 ```
 
 ```output
@@ -3396,25 +3368,24 @@ if source.a == 1
 
 ### A rule that reads a list and a derived value of it sees them agree when the list changes.
 
-```yumi
-. f = Foo()
-f.on = true
--- f.m
-f.items += 7
--- "|".join(f.seen)
+```brix
+(main
+  (let f (call Foo))
+  (= (. f on) true)
+  (print (. f m))
+  (+= (. f items) 7)
+  (print (call (. "|" join) (. f seen)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ items = List'Int()
-+ on = false
-+ m = if #on then #items.length else 0
-+ seen [String] = List'String()
-
-────────────────────
-whenever "${#items.length}:${#m}"
-
-seen += "${items.length}:$m"
+(type + Foo
+  (prop + items _ (= (call (of List Int))))
+  (prop + on _ (= false))
+  (prop + m _ (= (if-expr #on (. #items length) 0)))
+  (prop + seen (list String) (= (call (of List String))))
+  (whenever-rule (str (. #items length) ":" #m)
+    (+= seen (str (. items length) ":" m))
+  )
+)
 ```
 
 ```output
@@ -3424,67 +3395,58 @@ seen += "${items.length}:$m"
 
 ### A derived property that settles a stale derived value it reads, and comes out the same, still runs its rules when what it reads changes again.
 
-```yumi
-. source = Source()
-. middle = Middle(source)
-. f = Foo(middle, "a")
-source.pick("b")
-source.pick("c")
-source.pick("a")
+```brix
+(main
+  (let source (call Source))
+  (let middle (call Middle source))
+  (let f (call Foo middle "a"))
+  (call (. source pick) "b")
+  (call (. source pick) "c")
+  (call (. source pick) "a")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Source
+(type + Source
+  (prop + revision U64)
+  (prop _ picked _ (= "a"))
+  (fn-do + pick _
+    (param id String)
+    (= picked id)
+    (+= revision 1)
+  )
+  (fn-do + current String
+    (return picked)
+  )
+)
 
-+ revision U64
-_ picked = "a"
+(type + Middle
+  (prop + source Source)
+  (prop + revision _ (= (. #source #revision)))
+  (fn-do + This _
+    (param source _)
+  )
+)
 
-────────────────────
-+ do pick
-    - id String
+(type + Foo
+  (prop + middle Middle)
+  (prop + id String)
+  (prop + is-picked _ (= (== (call revised (call (. middle source current)) (. middle #revision)) #id)))
+  (fn-do + This _
+    (param middle _)
+    (param id _)
+  )
+  (whenever-rule #is-picked
+    (print (str id " picked " is-picked))
+  )
+)
 
-picked = id
-revision += 1
-
-────────────────────
-+ do current String
-
-= picked
-
-━━━━━━━━━━━━━━━━━━━━
-+ Middle
-
-+ source Source
-+ revision = #source.#revision
-
-────────────────────
-+ This
-    - source
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ middle Middle
-+ id String
-+ is-picked = revised(middle.source.current(), middle.#revision) == #id
-
-────────────────────
-+ This
-    - middle
-    - id
-
-────────────────────
-whenever #is-picked
-
--- "$id picked $is-picked"
-
-━━━━━━━━━━━━━━━━━━━━
-_ revised String
-    - value String
-    - revision U64
-
-value
-
-.. ignored = revision
+(fn-expr _ revised String
+  (param value String)
+  (param revision U64)
+  value
+  (where
+    (lazy ignored revision)
+  )
+)
 ```
 
 ```output
@@ -3494,146 +3456,144 @@ a picked true
 
 ### A dependency on a getter is rejected, as a getter is never stored to run it.
 
-```yumi crash
-. foo = Foo()
+```brix crash
+(main
+  (let foo (call Foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ a = 1
-+ twice => a * 2
-
-. shown < twice
-
-────────────────────
-+ do shown
-
--- "shown"
+(type + Foo
+  (prop + a _ (= 1))
+  (prop + twice _ (=> (* a 2)))
+  (blank)
+  (depends shown twice)
+  (fn-do + shown _
+    (print "shown")
+  )
+)
 ```
 
 ```output
 Exception: "twice" is a getter, which is never stored, so a dependency on it never runs; depend on the properties it reads
 <no file:10>
-    . shown < twice
-              ^^^^^
+      (depends shown twice)
+                     ^^^^^
 ```
 
 ### A method called with "#" before its name is rejected, as only a stored property is tracked.
 
-```yumi crash
-. c = Counter()
-. h = Holder()
-h.text = "${c.#size()}"
+```brix crash
+(main
+  (let c (call Counter))
+  (let h (call Holder))
+  (= (. h text) (str (call (. c #size))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
+(type + Holder
+  (prop + text _ (= ""))
+)
 
-+ text = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
-
-+ count = 1
-
-────────────────────
-+ size Int
-
-count
+(type + Counter
+  (prop + count _ (= 1))
+  (fn-expr + size Int
+    count
+  )
+)
 ```
 
 ```output
 Exception: "size" is a method, so "#" before it tracks nothing; track the properties it reads instead
-<no file:4>
-    h.text = "${c.#size()}"
-                ^
+<no file:5>
+      (= (. h text) (str (call (. c #size))))
+                               ^^^^^^^^^^^
 ```
 
 ### A rule that returns a value with "=" is rejected, as a rule gives none.
 
-```yumi crash
-. f = Foo()
-f.a = 1
+```brix crash
+(main
+  (let f (call Foo))
+  (= (. f a) 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ a = 0
-
-────────────────────
-whenever #a
-
-= 5
+(type + Foo
+  (prop + a _ (= 0))
+  (whenever-rule #a
+    (return 5)
+  )
+)
 ```
 
 ```output
 Exception: A rule gives no value, so its body cannot return one with "="; end it early with "= alone"
-<no file:13>
-    = 5
-    ^^^
+<no file:10>
+        (return 5)
+        ^^^^^^^^^^
 ```
 
 ### A tracked read of a struct's field is rejected, as a struct's values are copied.
 
-```yumi crash
-. h = Holder()
--- h.sum
+```brix crash
+(main
+  (let h (call Holder))
+  (print (. h sum))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(type + Point (is Struct)
+  (prop + x Int)
+  (prop + y Int)
+)
 
-+ x Int
-+ y Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ p = Point(1, 2)
-+ sum = p.#x + 1
+(type + Holder
+  (prop + p _ (= (call Point 1 2)))
+  (prop + sum _ (= (+ (. p #x) 1)))
+)
 ```
 
 ```output
 Exception: "#x" reads a field of Point, whose values are copied, so it cannot be tracked; track a property of a class
-<no file:15>
-    + sum = p.#x + 1
-            ^^^^
+<no file:14>
+      (prop + sum _ (= (+ (. p #x) 1)))
+                          ^^^^^^^^
 ```
 
 ### A tracked read of "this" is rejected, as only a property is tracked.
 
-```yumi crash
-. c = Counter()
--- c.mirror
+```brix crash
+(main
+  (let c (call Counter))
+  (print (. c mirror))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
-
-+ count = 1
-+ mirror = "${#this}"
+(type + Counter
+  (prop + count _ (= 1))
+  (prop + mirror _ (= (str #this)))
+)
 ```
 
 ```output
 Exception: "#this" tracks nothing, as only a property is tracked; track the properties the value reads, as in "#count"
 <no file:9>
-    + mirror = "${#this}"
-                  ^^^^^
+      (prop + mirror _ (= (str #this)))
+                               ^^^^^
 ```
 
 ### A function written where a local is declared stores to it, and what reads the local tracked follows.
 
-```yumi
-. count = 0
-. holder = Holder()
-holder.text = "count ${#count}"
-. bump = => do count += 1
-bump()
--- holder.text
-bump()
--- holder.text
+```brix
+(main
+  (let count 0)
+  (let holder (call Holder))
+  (= (. holder text) (str "count " #count))
+  (let bump (=> () :do (+= count 1)))
+  (call bump)
+  (print (. holder text))
+  (call bump)
+  (print (. holder text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ text = ""
+(type + Holder
+  (prop + text _ (= ""))
+)
 ```
 
 ```output
@@ -3643,20 +3603,26 @@ count 2
 
 ### A function written in another, written where a local is declared, stores to the local.
 
-```yumi
-. word = "a"
-. holder = Holder()
-holder.text = "word ${#word}"
-. outer = => do
-    . inner = => do word = "b"
-    inner()
-outer()
--- holder.text
+```brix
+(main
+  (let word "a")
+  (let holder (call Holder))
+  (= (. holder text) (str "word " #word))
+  (let outer
+    (=> () :do
+      (block
+        (let inner (=> () :do (= word "b")))
+        (call inner)
+      )
+    )
+  )
+  (call outer)
+  (print (. holder text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ text = ""
+(type + Holder
+  (prop + text _ (= ""))
+)
 ```
 
 ```output
@@ -3665,20 +3631,21 @@ word b
 
 ### A function written before the read that tracks a local stores to it before the read and after.
 
-```yumi
-. count = 0
-. bump = => do count += 1
-bump()
-. holder = Holder()
-holder.text = "count ${#count}"
--- holder.text
-bump()
--- holder.text
+```brix
+(main
+  (let count 0)
+  (let bump (=> () :do (+= count 1)))
+  (call bump)
+  (let holder (call Holder))
+  (= (. holder text) (str "count " #count))
+  (print (. holder text))
+  (call bump)
+  (print (. holder text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ text = ""
+(type + Holder
+  (prop + text _ (= ""))
+)
 ```
 
 ```output

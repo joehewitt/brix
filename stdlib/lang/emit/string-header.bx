@@ -1,0 +1,29 @@
+(import /lang/backend/mir)
+(blank)
+(prop _ ascii-flag U32 (= 1))
+(prop _ valid-utf8-flag U32 (= 2))
+
+(type + StringHeader (is Tuple)
+  ; What the header of a String says of its bytes, as `BxString.h` lays it out. The length in
+  ; bytes is that of the span.
+  (blank)
+  (prop + character-length U32)
+  (prop + flags U32)
+)
+
+(fn-do + measure-string StringHeader
+  (param bytes ByteSpan)
+  ; The header of UTF-8 bytes, from one pass over them.
+  (let characters U32)
+  (let flags (/or/ valid-utf8-flag ascii-flag))
+  (for (in index (..< 0 (. bytes length)))
+    (let byte ([] (. bytes data) index))
+    (if (>= byte 128)
+      (= flags valid-utf8-flag)
+    )
+    (if (or (< byte 128) (>= byte 192))
+      (+= characters 1)
+    )
+  )
+  (return (call StringHeader characters flags))
+)

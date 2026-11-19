@@ -1,0 +1,28 @@
+; benchmark.meta description: Passes values between two tasks over unbuffered channels on one scheduler queue.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core/channel)
+(import /core/task)
+(blank)
+
+(main
+  (let rounds 1000000)
+  (let requests (of SyncChannel Int))
+  (let replies (of SyncChannel Int))
+  (blank)
+  (do-new
+    (for (in value requests)
+      (<- replies (+ value 1))
+    )
+  )
+  (blank)
+  (let checksum 0)
+  (for (in round (..< 0 rounds))
+    (<- requests round)
+    (= checksum (% (+ checksum (!! (<- replies))) 1000003))
+  )
+  (call (. requests close))
+  (blank)
+  (print (str "bench-result allocation/channel-handoff checksum=" checksum))
+)

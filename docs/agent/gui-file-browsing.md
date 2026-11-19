@@ -7,15 +7,15 @@ it with `/gui/file-browsing`; `/gui` does not re-export it.
 
 | Concern | Where | Notes |
 | --- | --- | --- |
-| Model | `file-tree.yumi` | `FileTree`, `FileNode`, `FileNameFilter`, `file-order` |
-| Tree view | `file-tree-box.yumi` | `FileTreeBox`, a `TreeBox` of the model |
-| Column view | `file-column-tree.yumi` | `FileColumnTree`, a `ColumnTree` with a detail pane |
-| Palette | `file-palette.yumi` | `FilePalette`, a `Palette` that browses one folder at a time |
-| Find in files | `file-text-palette.yumi` | `FileTextPalette`, a `Palette` of the lines under `folder` that match its query, found by `FileTextSearch` |
-| Shared behavior | `file-view.yumi` | `FileView`: rename, create, trash, move, context menu, shortcuts |
-| Coordination | `file-session.yumi` | `FileSession`: the current item and the events views publish |
-| Rows and icons | `file-row.yumi`, `file-icon.yumi` | `FileRow`, `FileRenameInput`, `FileIcon`, `FileGlyph` |
-| Detail pane | `file-info.yumi` | `FileInfoPane`, the column view's detail |
+| Model | `file-tree.bx` | `FileTree`, `FileNode`, `FileNameFilter`, `file-order` |
+| Tree view | `file-tree-box.bx` | `FileTreeBox`, a `TreeBox` of the model |
+| Column view | `file-column-tree.bx` | `FileColumnTree`, a `ColumnTree` with a detail pane |
+| Palette | `file-palette.bx` | `FilePalette`, a `Palette` that browses one folder at a time |
+| Find in files | `file-text-palette.bx` | `FileTextPalette`, a `Palette` of the lines under `folder` that match its query, found by `FileTextSearch` |
+| Shared behavior | `file-view.bx` | `FileView`: rename, create, trash, move, context menu, shortcuts |
+| Coordination | `file-session.bx` | `FileSession`: the current item and the events views publish |
+| Rows and icons | `file-row.bx`, `file-icon.bx` | `FileRow`, `FileRenameInput`, `FileIcon`, `FileGlyph` |
+| Detail pane | `file-info.bx` | `FileInfoPane`, the column view's detail |
 
 ## The model is passed in
 

@@ -1,0 +1,31 @@
+; benchmark.meta description: Repeated fill-and-clear of 64 scalar entries in GC and arena Maps reserved for 256.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator
+(blank)
+(import /core)
+(import /core/arena)
+(blank)
+
+(main
+  (let checksum 0u64)
+  (let map (call (of Map U64 U64) 256))
+  (for (in round (..< 0 10000))
+    (for (in index (..< 0 64))
+      (= ([] map (as index U64)) (as (+ index round) U64))
+    )
+    (+= checksum (!! ([] map 7u64)))
+    (call (. map clear))
+  )
+  (let arena (call Arena))
+  (let arena-map (call (of Map U64 U64) arena 256))
+  (for (in round (..< 0 10000))
+    (for (in index (..< 0 64))
+      (= ([] arena-map (as index U64)) (as (+ index round) U64))
+    )
+    (+= checksum (!! ([] arena-map 7u64)))
+    (call (. arena-map clear))
+  )
+  (call (. arena release))
+  (blank)
+  (print (str "bench-result map/clear-refill-scalar checksum=" checksum))
+)

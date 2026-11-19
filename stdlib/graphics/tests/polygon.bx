@@ -1,0 +1,44 @@
+(import /graphics/point)
+(import /graphics/polygon)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-expr + tests TestRender
+  (header (call test "Polygon Winding"))
+  (tuple 1 (call (. (call square-polygon) get-winding-at) (tuple 5 5)))
+  (tuple 0 (call (. (call square-polygon) get-winding-at) (tuple 15 5)))
+  (tuple 1 (call (. (call square-polygon) get-winding-at) (tuple 0 5)))
+  (tuple 1 (call (. (call concave-polygon) get-winding-at) (call (. (call concave-polygon) get-point-inside) (tuple 0 0))))
+  (header (call test "Polygon Tessellation"))
+  (tuple 1 (. (call (. (call square-polygon) tessellate)) length))
+  (tuple 1 (. (call (. (call bowtie-polygon) tessellate)) length))
+  (tuple 2 (. (call (. (call figure-eight-polygon) tessellate)) length))
+)
+
+(fn-expr + square-polygon _
+  (call Polygon (list (call Point 0 0) (call Point 10 0) (call Point 10 10) (call Point 0 10)) true)
+)
+
+(fn-expr + concave-polygon _
+  (call Polygon (list (call Point 0 0) (call Point 10 0) (call Point 5 5) (call Point 10 10) (call Point 0 10)) true)
+)
+
+(fn-expr + bowtie-polygon _
+  (call Polygon (list (call Point 0 0) (call Point 10 10) (call Point 0 10) (call Point 10 0)) true)
+)
+
+(fn-do + figure-eight-polygon Polygon
+  (let points (list Point))
+  (+= points (call Point 0 0))
+  (+= points (call Point 10 10))
+  (+= points (call Point 0 20))
+  (+= points (call Point 10 30))
+  (+= points (call Point 20 20))
+  (+= points (call Point 10 10))
+  (+= points (call Point 20 0))
+  (return (call Polygon points true))
+)

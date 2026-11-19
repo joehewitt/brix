@@ -1,0 +1,65 @@
+(import /BxCore/BxCore.h)
+(import /math)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-expr + tests TestRender
+  (header (call test "Min Max"))
+  (tuple "first>second>1" (call min-trace))
+  (tuple "first>second>2" (call max-trace))
+  (header (call test "F64 Intrinsic Semantics"))
+  (tuple (- (call C:getInfinity)) (/ 1.0 (call sqrt -0.0)))
+  (tuple (call C:getInfinity) (/ 1.0 (call abs -0.0)))
+  (blank)
+  (tuple (- (call C:getInfinity)) (/ 1.0 (call min -0.0 0.0)))
+  (tuple (call C:getInfinity) (/ 1.0 (call min 0.0 -0.0)))
+  (tuple (- (call C:getInfinity)) (/ 1.0 (call max -0.0 0.0)))
+  (tuple (call C:getInfinity) (/ 1.0 (call max 0.0 -0.0)))
+  (blank)
+  (tuple true (!= (call min (call nan) 42.0) (call min (call nan) 42.0)))
+  (tuple 42.0 (call min 42.0 (call nan)))
+  (tuple true (!= (call max (call nan) 42.0) (call max (call nan) 42.0)))
+  (tuple 42.0 (call max 42.0 (call nan)))
+  (header (call test "Power Of Two"))
+  (tuple 0u8 (call power-of-2 0u8))
+  (tuple 1u8 (call power-of-2 1u8))
+  (tuple 4u8 (call power-of-2 3u8))
+  (tuple 4u8 (call power-of-2 4u8))
+  (tuple 128u8 (call power-of-2 128u8))
+  (tuple 0u8 (call power-of-2 129u8))
+  (blank)
+  (tuple 9223372036854775808u64 (call power-of-2 9223372036854775808))
+  (tuple 0u64 (call power-of-2 9223372036854775809))
+)
+
+(fn-expr _ nan _
+  (- (call C:getInfinity) (call C:getInfinity))
+)
+
+(fn-do _ min-trace String
+  (let trace (call ArgumentTrace))
+  (let value (call min (call (. trace first)) (call (. trace second))))
+  (return (str (. trace text) value))
+)
+
+(fn-do _ max-trace String
+  (let trace (call ArgumentTrace))
+  (let value (call max (call (. trace first)) (call (. trace second))))
+  (return (str (. trace text) value))
+)
+
+(type _ ArgumentTrace
+  (prop + text _ (:= ""))
+  (fn-do + first F64
+    (+= text "first>")
+    (return 1.0)
+  )
+  (fn-do + second F64
+    (+= text "second>")
+    (return 2.0)
+  )
+)

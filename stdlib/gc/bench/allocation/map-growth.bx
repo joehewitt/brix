@@ -1,0 +1,24 @@
+; benchmark.meta description: Inserts and retrieves 80,000 mixed-width keys to expose Map growth.
+; benchmark.meta timing: not-recommended
+; benchmark.meta profiles: allocator
+(blank)
+(import /core)
+(blank)
+
+(main
+  (let count 80000)
+  (let map (call (of Map U64 U64)))
+  (blank)
+  (for (in i (..< 0 count))
+    (let key (+ (as i U64) (* (as (% i 17) U64) 4294967296)))
+    (= ([] map key) (as i U64))
+  )
+  (blank)
+  (let checksum (as (. map length) U64))
+  (for (in i (..< 0 count))
+    (let key (+ (as i U64) (* (as (% i 17) U64) 4294967296)))
+    (+= checksum (!! ([] map key)))
+  )
+  (blank)
+  (print (str "bench-result allocation/map-growth checksum=" checksum))
+)

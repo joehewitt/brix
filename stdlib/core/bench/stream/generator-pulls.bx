@@ -1,0 +1,23 @@
+; benchmark.meta description: Pulls 1 MB of bytes one at a time from a generator source.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: allocator,compile-timing
+(blank)
+(import /core/tokenstream)
+(blank)
+
+(main
+  (let stream (call (of ChunkedTokenStream Byte) (call generator-pulls-source 1048576)))
+  (let checksum (as 0 Size))
+  (while (. stream has-more)
+    (+= checksum (as (!! (<- stream)) Size))
+  )
+  (blank)
+  (print (str "bench-result stream/generator-pulls checksum=" checksum))
+)
+
+(fn-do _ generator-pulls-source (of Generator Byte)
+  (param count Size)
+  (for (in index (..< 0 count))
+    (yield (if-expr (== (% index 64) 63) 10u8 (as (+ 97 (% index 26)) U8)))
+  )
+)

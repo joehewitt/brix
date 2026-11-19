@@ -1,10 +1,5 @@
 # Classes
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-```
-
 ```brix
 (type + Foo)
 ```
@@ -13,40 +8,12 @@
 <Class name="Foo" access="public-access"/>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-_ Foo
-```
-
 ```brix
 (type _ Foo)
 ```
 
 ```output
 <Class name="Foo" access="private-access"/>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Class1
-
-────────────────────
-+ func1
-
-body
-
-────────────────────
-+ func2
-
-body
-
-━━━━━━━━━━━━━━━━━━━━
-+ Class2
-
-────────────────────
-+ func1
-
-body
 ```
 
 ```brix
@@ -88,16 +55,6 @@ body
 </Class>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Class1
-
-────────────────────
-+ This ~ Foo
-
-body
-```
-
 ```brix
 (type + Class1
   (fn-expr + This _ (over: Foo)
@@ -135,11 +92,6 @@ body
 
 ## Inheritance
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Class1 is Foo
-```
-
 ```brix
 (type + Class1 (is Foo))
 ```
@@ -150,22 +102,6 @@ body
         <TypeId name="Foo"/>
     </Implements>
 </Class>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Class1
-    is Foo
-
-────────────────────
-+ func
-
-body
-
-────────────────────
-+ func
-
-body
 ```
 
 ```brix
@@ -198,16 +134,6 @@ body
 </Class>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Headered'Item
-    - Item is Printable
-
-    is Proto
-
-    using Helpers
-```
-
 ```brix
 (type + (of Headered Item)
   (constraint is Item Printable)
@@ -233,11 +159,6 @@ body
 </Class>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-_ Part is facet of Owner
-```
-
 ```brix
 (type _ Part (facet-of Owner))
 ```
@@ -248,13 +169,6 @@ _ Part is facet of Owner
         <TypeId name="Owner"/>
     </FacetOf>
 </Class>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-    sees BoxMeasure
-    sees BoxFocus
 ```
 
 ```brix
@@ -280,13 +194,6 @@ _ Part is facet of Owner
 
 ## Members
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Class1
-
-+ foo Foo
-```
-
 ```brix
 (type + Class1
   (prop + foo Foo)
@@ -304,13 +211,6 @@ _ Part is facet of Owner
 </Class>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Class1
-
-_ foo Foo
-```
-
 ```brix
 (type + Class1
   (prop _ foo Foo)
@@ -326,24 +226,6 @@ _ foo Foo
         </TypeCapture>
     </Property>
 </Class>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Class1
-
-^ foo Foo
-
-────────────────────
-^ This
-    - start Foo
-
-foo = start
-
-────────────────────
-^ do step
-
-foo.step()
 ```
 
 ```brix
@@ -393,13 +275,6 @@ foo.step()
 </Class>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Class1
-
-+ bar Bar = 1
-```
-
 ```brix
 (type + Class1
   (prop + bar Bar (= 1))
@@ -418,11 +293,6 @@ foo.step()
 </Class>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Class1'Foo
-```
-
 ```brix
 (type + (of Class1 Foo))
 ```
@@ -434,14 +304,6 @@ foo.step()
 ```
 
 ## Converters
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Class1
-
-────────────────────
-+ from foo Foo
-```
 
 ```brix
 (type + Class1
@@ -458,18 +320,6 @@ foo.step()
         </TypeCapture>
     </Fromverter>
 </Class>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Class1
-
-────────────────────
-+ to Foo
-
-────────────────────
-+ to Foo
-    - A = 42
 ```
 
 ```brix
@@ -498,22 +348,12 @@ foo.step()
 
 ## Aliases
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Class1 (alias)
-```
-
 ```brix
 (type + Class1 (alias alias))
 ```
 
 ```output
 <Class name="Class1" access="public-access" aliases="alias"/>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Class1 (Alias)
 ```
 
 ```brix
@@ -524,26 +364,12 @@ foo.step()
 <Class name="Class1" access="public-access" aliases="Alias"/>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Class1 (a, b)
-```
-
 ```brix
 (type + Class1 (alias a b))
 ```
 
 ```output
 <Class name="Class1" access="public-access" aliases="a, b"/>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar = baz
-+ bar := baz
-+ bar => baz
 ```
 
 ```brix
@@ -574,14 +400,6 @@ foo.step()
 </Class>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-. bar < baz
-. bar < a, b, c
-```
-
 ```brix
 (type + Foo
   (depends bar baz)
@@ -604,10 +422,6 @@ foo.step()
 </Class>
 ```
 
-```yumi
-+ Foo is Bar || Baz
-```
-
 ```brix
 (type-line + Foo (is Bar Baz))
 ```
@@ -622,12 +436,6 @@ foo.step()
         <TypeId name="Baz"/>
     </Or>
 </Class>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T
-    - T = Char
 ```
 
 ```brix
@@ -646,10 +454,6 @@ foo.step()
 </Class>
 ```
 
-```yumi
-+ 1bar = 2 %% 3foo
-```
-
 ```brix
 (unit + 1bar (%% 2 3foo))
 ```
@@ -665,13 +469,6 @@ foo.step()
 ```
 
 ### Property annotations parse with the same pre-name decoration form as globals.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ @inherited color Color = white
-```
 
 ```brix
 (type + TextStyle (is Style)
@@ -695,13 +492,6 @@ foo.step()
 ```
 
 ### A style property's name may be keyed with a dot, as motion keys are.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ DialStyle is Style
-
-+ motion.fade Motion? = null
-```
 
 ```brix
 (type + DialStyle (is Style)
@@ -729,32 +519,6 @@ foo.step()
 
 ### The removed `. x is y` style flag annotation form no longer parses.
 
-```yumi crash
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ color Color = white
-
-. color is inherited
-```
-
-```output
-Exception: Syntax error
-<no file:7>
-    . color is inherited
-            ^
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Example
-
-+ event submitted SubmitEvent
-+ event requested RequestEvent
-+ event messages Token keyed by MessageId
-_ event internal-reset ResetEvent
-```
-
 ```brix
 (type + Example
   (event + submitted SubmitEvent)
@@ -773,10 +537,6 @@ _ event internal-reset ResetEvent
 </Class>
 ```
 
-```yumi
-+ false = Bool(0)
-```
-
 ```brix
 (prop + false _ (= (call Bool 0)))
 ```
@@ -793,23 +553,6 @@ _ event internal-reset ResetEvent
         </Argument>
     </CallExpression>
 </Property>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ A
-
-────────────────────
-+ This ~ Char
-
-~ "/"? (\file-word "/")+ \file-word?
-    This(it)
-
-.. file-word ~
-    ~ \file-char+
-
-.. file-char ~
-    ~ [a-zA-Z0-9.]
 ```
 
 ```brix

@@ -1,0 +1,45 @@
+(fn-expr + csv-file _ (over: Char)
+  (~ (seq (: header \record) \nl (: recs \records) (? \nl))
+    (tuple header recs)
+  )
+  (where
+    (lazy records
+      (pattern
+        (~ (: recs (call \delimited (~ \nl) (~ \record)))
+          recs
+        )
+      )
+    )
+    (lazy record
+      (pattern
+        (~ (: fields (call \delimited "," (~ \field)))
+          fields
+        )
+      )
+    )
+    (lazy field
+      (pattern
+        (~ (seq "\"" (: c \parts) "\"")
+          c
+        )
+        (~ (+ (seq (! (| "," "\n")) .)))
+      )
+    )
+    (lazy parts String
+      (pattern
+        (~ (seq (: head \character) (: tail \parts))
+          (+ head tail)
+        )
+        (~ \character)
+      )
+    )
+    (lazy character
+      (pattern
+        (~ "\\\""
+          "\""
+        )
+        (~ (seq (! "\"") .))
+      )
+    )
+  )
+)

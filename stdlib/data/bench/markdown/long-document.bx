@@ -1,0 +1,42 @@
+; benchmark.meta description: Processes a long synthetic Markdown document.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /data/markdown)
+(blank)
+
+(main
+  (let source (call long-markdown-document))
+  (let checksum (as 0 Size))
+  (for (in i (..< 0 18))
+    (let rendered (call markdown-to-html (call Markdown source)))
+    (+= checksum (* (. rendered length) (+ i 1)))
+    (+= checksum (. source length))
+  )
+  (blank)
+  (print (str "bench-result markdown/long-document checksum=" checksum))
+)
+
+(fn-expr _ long-markdown-document _
+  (++ "# Deterministic Transcript\n\n" (* (call markdown-section) 80))
+)
+
+(fn-expr _ markdown-section _
+  (paragraph
+    "## Assistant Message"
+    (blank)
+    "This synthetic transcript paragraph mixes **strong text**, *emphasis*, `inline code`, and [a stable link](https://example.com/static/path). It mentions identifiers_like_this, numeric values 12345 and 67890, and a short sentence that wraps in rich text layouts."
+    (blank)
+    "* First bullet with [reference](https://example.com/ref)"
+    "    * Nested detail with `code`"
+    "    * Another nested detail with **bold**"
+    "* Second bullet with *italic* text"
+    (blank)
+    "> A stable blockquote keeps quoted rendering pressure in the document."
+    (blank)
+    "```"
+    "let answer = 42"
+    "print(answer)"
+    "```"
+  )
+)

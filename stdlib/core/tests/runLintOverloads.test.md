@@ -1,31 +1,32 @@
 # Lint overloads
 
-```yumi
-./one
-./two
+```brix
+(import ./one)
+(import ./two)
+(blank)
 
--- pick(10)
--- pick(10, 20)
-. partial = pick(...)
--- partial(10)
--- partial(10, 20)
+(main
+  (print (call pick 10))
+  (print (call pick 10 20))
+  (let partial (call pick ...))
+  (print (call partial 10))
+  (print (call partial 10 20))
+)
 ```
 
-```yumi file=one.yumi
-━━━━━━━━━━━━━━━━━━━━
-+ pick
-    - value Int
-
-1
+```brix file=one.bx
+(fn-expr + pick _
+  (param value Int)
+  1
+)
 ```
 
-```yumi file=two.yumi
-━━━━━━━━━━━━━━━━━━━━
-+ pick
-    - value Int
-    - other Int
-
-2
+```brix file=two.bx
+(fn-expr + pick _
+  (param value Int)
+  (param other Int)
+  2
+)
 ```
 
 ```output
@@ -35,32 +36,33 @@
 2
 ```
 
-```yumi
-./two
-./one
+```brix
+(import ./two)
+(import ./one)
+(blank)
 
--- pick(10)
--- pick(10, 20)
-. partial = pick(...)
--- partial(10)
--- partial(10, 20)
+(main
+  (print (call pick 10))
+  (print (call pick 10 20))
+  (let partial (call pick ...))
+  (print (call partial 10))
+  (print (call partial 10 20))
+)
 ```
 
-```yumi file=one.yumi
-━━━━━━━━━━━━━━━━━━━━
-+ pick
-    - value Int
-
-1
+```brix file=one.bx
+(fn-expr + pick _
+  (param value Int)
+  1
+)
 ```
 
-```yumi file=two.yumi
-━━━━━━━━━━━━━━━━━━━━
-+ pick
-    - value Int
-    - other Int
-
-2
+```brix file=two.bx
+(fn-expr + pick _
+  (param value Int)
+  (param other Int)
+  2
+)
 ```
 
 ```output

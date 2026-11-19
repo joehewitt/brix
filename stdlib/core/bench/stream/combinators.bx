@@ -1,0 +1,103 @@
+; benchmark.meta description: Runs composed grammar helpers.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+
+(main
+  (let checksum (as 0 Size))
+  (for (in source (call expressions))
+    (+= checksum (call expression-score source))
+  )
+  (blank)
+  (print (str "bench-result stream/combinators checksum=" checksum))
+)
+
+(fn-do + expression-score _
+  (param source String)
+  (let terms
+    (match source
+      (~ \combinator-expr)
+      (throw (call Panic "expression did not parse"))
+    )
+  )
+  (blank)
+  (let total (as 0 Size))
+  (let index (as 1 Size))
+  (for (in term terms)
+    (+= total (* (. term length) index))
+    (+= index 1)
+  )
+  (blank)
+  (return total)
+)
+
+(fn-expr + combinator-expr _ (over: Char)
+  (~ \expr)
+  (where
+    (lazy expr
+      (pattern
+        (~ (seq \s (: items (call \delimited (~ (seq \s (| "+" "-" "*") \s)) (~ \term))) \s)
+          items
+        )
+      )
+    )
+    (blank)
+    (lazy term
+      (pattern
+        (~ (seq (: left \identifier) "(" (: args (call \delimited (~ (seq \s "," \s)) (~ \argument))) ")" "." (: mid \identifier) "." (: right \identifier))
+          (++ left ":" (str (. args length)) "." mid "." right)
+        )
+        (~ (seq (: left \identifier) "(" (: args (call \delimited (~ (seq \s "," \s)) (~ \argument))) ")" "." (: suffix \identifier))
+          (++ left ":" (str (. args length)) "." suffix)
+        )
+        (~ (seq (: left \identifier) "(" (: args (call \delimited (~ (seq \s "," \s)) (~ \argument))) ")")
+          (++ left ":" (str (. args length)))
+        )
+        (~ (seq (: left \identifier) "." (: mid \identifier) "." (: right \identifier))
+          (++ left "." mid "." right)
+        )
+        (~ (seq (: left \identifier) "." (: right \identifier))
+          (++ left "." right)
+        )
+        (~ \identifier)
+      )
+    )
+    (blank)
+    (lazy argument
+      (pattern
+        (~ \number)
+        (~ \identifier)
+        (~ (seq "\"" (: text (* (seq (! "\"") .))) "\"")
+          text
+        )
+      )
+    )
+    (blank)
+    (lazy identifier
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_"))))
+      )
+    )
+    (blank)
+    (lazy number
+      (pattern
+        (~ (+ (chars "0-9")))
+      )
+    )
+    (blank)
+    (lazy s
+      (pattern
+        (~ (* (| " " "\n" "\t")))
+      )
+    )
+  )
+)
+
+(fn-do _ expressions _
+  (let expressions (list String))
+  (+= expressions "alpha(1, beta, \"two\").tail + gamma_3 - delta(99)")
+  (+= expressions "root.child.leaf * parse(item_42, 7) + fold(left, right)")
+  (+= expressions "call(one,two,three).again.final - x + y + zed(12345)")
+  (blank)
+  (return expressions)
+)

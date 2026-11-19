@@ -1,0 +1,219 @@
+; benchmark.meta description: Keeps optional, nested-optional, generic-choice, and lookahead stream lowering additive.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+
+(main
+  (let optional-checksum
+    (match (call optional-scaling-source)
+      (~ \optional-scaling)
+      (throw (call Panic "optional scaling pattern did not parse"))
+    )
+  )
+  (let nested-checksum
+    (match (call nested-scaling-source)
+      (~ \nested-scaling)
+      (throw (call Panic "nested scaling pattern did not parse"))
+    )
+  )
+  (let choice-checksum
+    (match (call choice-scaling-source)
+      (~ \choice-scaling)
+      (throw (call Panic "choice scaling pattern did not parse"))
+    )
+  )
+  (let lookahead-zero
+    (match (call lookahead-scaling-source)
+      (~ \lookahead-scaling-zero)
+      (throw (call Panic "zero-guard lookahead scaling pattern did not parse"))
+    )
+  )
+  (let lookahead-one
+    (match (call lookahead-scaling-source)
+      (~ \lookahead-scaling-one)
+      (throw (call Panic "one-guard lookahead scaling pattern did not parse"))
+    )
+  )
+  (let lookahead-two
+    (match (call lookahead-scaling-source)
+      (~ \lookahead-scaling-two)
+      (throw (call Panic "two-guard lookahead scaling pattern did not parse"))
+    )
+  )
+  (let lookahead-three
+    (match (call lookahead-scaling-source)
+      (~ \lookahead-scaling-three)
+      (throw (call Panic "three-guard lookahead scaling pattern did not parse"))
+    )
+  )
+  (let lookahead-four
+    (match (call lookahead-scaling-source)
+      (~ \lookahead-scaling-four)
+      (throw (call Panic "four-guard lookahead scaling pattern did not parse"))
+    )
+  )
+  (let lookahead-five
+    (match (call lookahead-scaling-source)
+      (~ \lookahead-scaling-five)
+      (throw (call Panic "five-guard lookahead scaling pattern did not parse"))
+    )
+  )
+  (let lookahead-six
+    (match (call lookahead-scaling-source)
+      (~ \lookahead-scaling-six)
+      (throw (call Panic "six-guard lookahead scaling pattern did not parse"))
+    )
+  )
+  (let lookahead-low (+ lookahead-zero lookahead-one lookahead-two lookahead-three))
+  (let lookahead-high (+ lookahead-four lookahead-five lookahead-six))
+  (let checksum (+ optional-checksum nested-checksum choice-checksum lookahead-low lookahead-high))
+  (blank)
+  (print (str "bench-result compiler-shape/stream-join-scaling checksum=" checksum))
+)
+
+(fn-expr _ optional-scaling _ (over: Char)
+  (~ (seq "x" (: a (? \z)) (: b (? \z)) (: c (? \z)) (: d (? \z)) (: e (? \z)) (: f (? \z)) (: g (? \z)) (: h (? \z)) ";")
+    (call optional-total a b c d e f g h)
+  )
+)
+
+(fn-expr _ nested-scaling _ (over: Char)
+  (~ (seq "x" (? (seq (: a \z) (? \n))) (? (seq (: b \z) (? \n))) (? (seq (: c \z) (? \n))) (? (seq (: d \z) (? \n))) ";")
+    (+ (?? (?. a length) 0) (?? (?. b length) 0) (?? (?. c length) 0) (?? (?. d length) 0))
+  )
+)
+
+(fn-expr _ choice-scaling _ (over: Char)
+  (~ (seq "x" (| \a \b \c \d \e \f \g \h) (: p \z) (: q \z) (: r \z) (: s \z) (: t \z) (: u \z) (: v \z) (: w \z) ";")
+    (+ (. p length) (. q length) (. r length) (. s length) (. t length) (. u length) (. v length) (. w length))
+  )
+  (where
+    (lazy a String
+      (pattern
+        (~ (seq "1" ","))
+      )
+    )
+    (blank)
+    (lazy b String
+      (pattern
+        (~ (seq "2" ","))
+      )
+    )
+    (blank)
+    (lazy c String
+      (pattern
+        (~ (seq "3" ","))
+      )
+    )
+    (blank)
+    (lazy d String
+      (pattern
+        (~ (seq "4" ","))
+      )
+    )
+    (blank)
+    (lazy e String
+      (pattern
+        (~ (seq "5" ","))
+      )
+    )
+    (blank)
+    (lazy f String
+      (pattern
+        (~ (seq "6" ","))
+      )
+    )
+    (blank)
+    (lazy g String
+      (pattern
+        (~ (seq "7" ","))
+      )
+    )
+    (blank)
+    (lazy h String
+      (pattern
+        (~ (seq "8" ","))
+      )
+    )
+  )
+)
+
+(fn-expr _ lookahead-scaling-zero _ (over: Char)
+  (~ (seq (: a \z) (: b \z) (: c \z) (: d \z) (: e \z) (: f \z) (: g \z) (: h \z) ";")
+    (call optional-total a b c d e f g h)
+  )
+)
+
+(fn-expr _ lookahead-scaling-one _ (over: Char)
+  (~ (seq (! "0") (: a \z) (: b \z) (: c \z) (: d \z) (: e \z) (: f \z) (: g \z) (: h \z) ";")
+    (call optional-total a b c d e f g h)
+  )
+)
+
+(fn-expr _ lookahead-scaling-two _ (over: Char)
+  (~ (seq (! "0") (! "1") (: a \z) (: b \z) (: c \z) (: d \z) (: e \z) (: f \z) (: g \z) (: h \z) ";")
+    (call optional-total a b c d e f g h)
+  )
+)
+
+(fn-expr _ lookahead-scaling-three _ (over: Char)
+  (~ (seq (! "0") (! "1") (! "2") (: a \z) (: b \z) (: c \z) (: d \z) (: e \z) (: f \z) (: g \z) (: h \z) ";")
+    (call optional-total a b c d e f g h)
+  )
+)
+
+(fn-expr _ lookahead-scaling-four _ (over: Char)
+  (~ (seq (! "0") (! "1") (! "2") (! "3") (: a \z) (: b \z) (: c \z) (: d \z) (: e \z) (: f \z) (: g \z) (: h \z) ";")
+    (call optional-total a b c d e f g h)
+  )
+)
+
+(fn-expr _ lookahead-scaling-five _ (over: Char)
+  (~ (seq (! "0") (! "1") (! "2") (! "3") (! "4") (: a \z) (: b \z) (: c \z) (: d \z) (: e \z) (: f \z) (: g \z) (: h \z) ";")
+    (call optional-total a b c d e f g h)
+  )
+)
+
+(fn-expr _ lookahead-scaling-six _ (over: Char)
+  (~ (seq (! "0") (! "1") (! "2") (! "3") (! "4") (! "5") (: a \z) (: b \z) (: c \z) (: d \z) (: e \z) (: f \z) (: g \z) (: h \z) ";")
+    (call optional-total a b c d e f g h)
+  )
+)
+
+(fn-expr _ z _ (over: Char)
+  (~ (seq (+ (chars "a-z")) ","))
+)
+
+(fn-expr _ n _ (over: Char)
+  (~ (seq (+ (chars "0-9")) ","))
+)
+
+(fn-do _ optional-total Size
+  (param a (? String))
+  (param b (? String))
+  (param c (? String))
+  (param d (? String))
+  (param e (? String))
+  (param f (? String))
+  (param g (? String))
+  (param h (? String))
+  (let first (+ (?? (?. a length) 0) (?? (?. b length) 0) (?? (?. c length) 0) (?? (?. d length) 0)))
+  (let second (+ (?? (?. e length) 0) (?? (?. f length) 0) (?? (?. g length) 0) (?? (?. h length) 0)))
+  (return (+ first second))
+)
+
+(fn-expr _ optional-scaling-source _
+  "xab,ab,ab,ab,ab,ab,ab,ab,;"
+)
+
+(fn-expr _ nested-scaling-source _
+  "xab,12,ab,12,ab,12,ab,12,;"
+)
+
+(fn-expr _ choice-scaling-source _
+  "x1,ab,ab,ab,ab,ab,ab,ab,ab,;"
+)
+
+(fn-expr _ lookahead-scaling-source _
+  "ab,ab,ab,ab,ab,ab,ab,ab,;"
+)

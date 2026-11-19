@@ -1,0 +1,392 @@
+(import ./box)
+(import ./layout)
+(import ./primitives)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /math)
+(import /units)
+(blank)
+(prop + absolute _ (= (call AbsolutePosition)))
+(prop + sticky _ (= (call StickyPosition)))
+(prop + overhang _ (= (call OverhangPosition)))
+(blank)
+(prop _ gui-sticky-anchors _ (= (call (of List StickyAnchor))))
+(blank)
+(type-line _ PositionAxis (is (tuple (: start Length) (: span Length))))
+(type-line _ PositionAxisPin (is (tuple (: source Ratio) (: target Ratio))))
+
+(type + Position
+  (fn-expr + participates-in-layout _
+    (param parent Box)
+    (param child Box)
+    (. (call participation parent child) contributes-to-measure)
+  )
+  (fn-expr + participation _
+    (param parent Box)
+    (param child Box)
+    (call LayoutParticipation)
+  )
+  (fn-expr + flow-measure MeasureResult
+    (param child Box)
+    (param query MeasureQuery)
+    (call (. child measure) query)
+  )
+  (fn-do + arrange _
+    (param parent Box)
+    (param child Box)
+  )
+  (fn-do + settle _
+    (param parent Box)
+    (param child Box)
+  )
+)
+
+(type + LayoutPosition (is Position))
+
+(type + OverhangPosition (is Position)
+  (fn-expr + flow-measure MeasureResult
+    (param child Box)
+    (param query MeasureQuery)
+    (if-expr (> (. natural outer-size height) (. resting outer-size height)) resting natural)
+    (where
+      (lazy natural (call (. child measure) query))
+      (lazy block (. query block))
+      (lazy resting
+        (call (. child measure)
+          (block
+            (arg
+              (call MeasureQuery
+                (block
+                  (arg (. query inline))
+                  (arg (call AxisQuery (. AxisMeasureMode min-content) (. block min) (. block available) (. block max)))
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  (fn-do + settle _
+    (param parent Box)
+    (param child Box)
+    (let outer (. child outer-bounds))
+    (let natural (. (call (. child measure) (call (. parent child-layout-query))) outer-size height))
+    (let extra (- natural (. outer height)))
+    (return-if (if (<= extra 0)))
+    (let lift (* extra (?? (?. (. child $align-y) fraction) 0%%)))
+    (call (. child arrange-outer-bounds) (call Rect (. outer x) (- (. outer y) lift) (. outer width) (+ (. outer height) extra)))
+  )
+)
+
+(type + StickyPosition (is Position)
+  (fn-do + settle _
+    (param parent Box)
+    (param child Box)
+    (let anchor (call gui-sticky-anchor child))
+    (call (. anchor note-flow))
+    (call (. anchor stick))
+  )
+)
+
+(type + StickyAnchor
+  (implements ClipWatcher)
+  (prop + box Box)
+  (prop + flow Rect)
+  (prop + stuck Rect)
+  (blank)
+  (prop _ host (? WindowHost))
+  (fn-do + This _
+    (param box _)
+    (= flow (. box bounds))
+    (= stuck (. box bounds))
+  )
+  (fn-do + note-flow _
+    (if (!= (. box bounds) stuck)
+      (= flow (. box bounds))
+    )
+  )
+  (fn-do + stick _
+    (let current (. box window-host))
+    (if (!= (as current (? Pointer)) (as host (? Pointer)))
+      (call (?. host unwatch-clip) this)
+      (= host current)
+      (call (?. current watch-clip) this)
+    )
+    (return-if (if (not current)))
+    (call (. box arrange-bounds) (call gui-sticky-rect box flow))
+    (= stuck (. box bounds))
+    (call (. box set-scroll-pinned) (!= stuck flow))
+  )
+  (fn-do + release _
+    (call (?. host unwatch-clip) this)
+    (= host null)
+    (call gui-sticky-forget this)
+    (call (. box set-scroll-pinned) false)
+    (if (and (== (. box bounds) stuck) (!= stuck flow))
+      (call (. box arrange-bounds) flow)
+    )
+  )
+  (fn-do + clip-changed _
+    (param scrolled (? Box))
+    (if (or (!= (as (. box window) (? Pointer)) (as host (? Pointer))) (not (is (. box $position) StickyPosition)))
+      (call release)
+      (return)
+    )
+    (return-if (if (and scrolled (not (call gui-box-contains scrolled box)))))
+    (call note-flow)
+    (call stick)
+  )
+)
+
+(fn-do _ gui-sticky-anchor _
+  (param box Box)
+  (for (in anchor gui-sticky-anchors)
+    (return-if anchor (if (== (as (. anchor box) Pointer) (as box Pointer))))
+  )
+  (let made (call StickyAnchor box))
+  (+= gui-sticky-anchors made)
+  (return made)
+)
+
+(fn-do _ gui-sticky-forget _
+  (param anchor StickyAnchor)
+  (for (in index (..< 0 (. gui-sticky-anchors length)))
+    (if (== (as ([] gui-sticky-anchors index) Pointer) (as anchor Pointer))
+      (call (. gui-sticky-anchors remove) index)
+      (return)
+    )
+  )
+)
+
+(fn-do _ gui-box-contains _
+  (param ancestor Box)
+  (param box Box)
+  (let cursor (. box material-parent))
+  (while cursor
+    (let current cursor)
+    (return-if true (if (== (as current Pointer) (as ancestor Pointer))))
+    (= cursor (. current material-parent))
+  )
+  (return false)
+)
+
+(fn-do _ gui-sticky-container _
+  (param box Box)
+  (let cursor (. box material-parent))
+  (while cursor
+    (let ancestor cursor)
+    (return-if (if (. ancestor is-presentation-layer)))
+    (if (not (. ancestor is-markup-shadow))
+      (return-if ancestor (if (call (. ancestor is-scroll-axis-enabled) (. Orientation vertical))))
+      (return-if ancestor (if (call (. ancestor is-scroll-axis-enabled) (. Orientation horizontal))))
+    )
+    (= cursor (. ancestor material-parent))
+  )
+)
+
+(fn-do _ gui-sticky-rect _
+  (param box Box)
+  (param flow Rect)
+  (let container (call gui-sticky-container box))
+  (let parent (. box layout-parent))
+  (return-if flow (if (or (not container) (not parent))))
+  (let viewport (. container content-bounds))
+  (let scroll (. container scroll-position))
+  (let scrolls-parent (== (as parent Pointer) (as container Pointer)))
+  (let limit (if-expr scrolls-parent (. container scroll-content-bounds) (. parent content-bounds)))
+  (let x (. flow x))
+  (let y (. flow y))
+  (let left (. box $left))
+  (if left
+    (let pinned (+ (. viewport x) (. scroll x) (?? (call gui-position-offset-edge left) 0)))
+    (= x (call max (. flow x) (call min pinned (- (+ (. limit x) (. limit width)) (. flow width)))))
+  )
+  (let top (. box $top))
+  (if top
+    (let pinned (+ (. viewport y) (. scroll y) (?? (call gui-position-offset-edge top) 0)))
+    (= y (call max (. flow y) (call min pinned (- (+ (. limit y) (. limit height)) (. flow height)))))
+  )
+  (return (call Rect x y (. flow width) (. flow height)))
+)
+
+(fn-do + gui-sticky-clamp-scroll _
+  (param box Box)
+  (return-if (if (not (is (. box $position) StickyPosition))))
+  (let container (call gui-sticky-container box))
+  (return-if (if (not container)))
+  (let flow (call gui-sticky-flow box))
+  (let viewport (. container content-bounds))
+  (let x (. container scroll-x))
+  (let y (. container scroll-y))
+  (let left (. box $left))
+  (if left
+    (= x (call min x (call max 0 (- (. flow x) (. viewport x) (?? (call gui-position-offset-edge left) 0)))))
+  )
+  (let top (. box $top))
+  (if top
+    (= y (call min y (call max 0 (- (. flow y) (. viewport y) (?? (call gui-position-offset-edge top) 0)))))
+  )
+  (call (. container scroll-to) (call Point x y))
+)
+
+(fn-do _ gui-sticky-flow _
+  (param box Box)
+  (for (in anchor gui-sticky-anchors)
+    (return-if (. anchor flow) (if (== (as (. anchor box) Pointer) (as box Pointer))))
+  )
+  (return (. box bounds))
+)
+
+(type + AbsolutePosition (is Position)
+  (fn-expr + participation _
+    (param parent Box)
+    (param child Box)
+    (call LayoutParticipation false false true)
+  )
+  (fn-do + arrange _
+    (param parent Box)
+    (param child Box)
+    (let anchor (call (. child anchor-bounds) parent))
+    (let inline-available (call absolute-available (. anchor width) (. child $left) (. child $right)))
+    (let block-available (call absolute-available (. anchor height) (. child $top) (. child $bottom)))
+    (let intrinsic (. (call (. child measure) (call measure-fit-query inline-available block-available)) outer-size))
+    (let inline (call absolute-axis (. anchor x) (. anchor width) (. intrinsic width) (. child $left) (. child $right)))
+    (let block (call absolute-axis (. anchor y) (. anchor height) (. intrinsic height) (. child $top) (. child $bottom)))
+    (if (and (. child $align-x) (!= (. child $align-x) (. Alignment stretch)))
+      (= inline
+        (call absolute-axis-align
+          (block
+            (arg (. anchor x))
+            (arg (. anchor width))
+            (arg (. intrinsic width))
+            (arg (!! (. child $align-x)))
+            (arg (. child $left))
+            (arg (. child $right))
+          )
+        )
+      )
+    )
+    (if (and (. child $align-y) (!= (. child $align-y) (. Alignment stretch)))
+      (= block
+        (call absolute-axis-align
+          (block
+            (arg (. anchor y))
+            (arg (. anchor height))
+            (arg (. intrinsic height))
+            (arg (!! (. child $align-y)))
+            (arg (. child $top))
+            (arg (. child $bottom))
+          )
+        )
+      )
+    )
+    (call (. child arrange-outer-bounds) (call Rect (. inline start) (. block start) (. inline span) (. block span)))
+  )
+)
+
+(fn-expr _ absolute-available Length
+  (param span Length)
+  (param near (? PositionOffset))
+  (param far (? PositionOffset))
+  (case? (and near-edge far-edge)
+    (call gui-safe-span (- span near-edge far-edge))
+  )
+  (default
+    (call gui-safe-span span)
+  )
+  (where
+    (lazy near-edge (call gui-position-offset-edge near))
+    (lazy far-edge (call gui-position-offset-edge far))
+  )
+)
+
+(fn-expr _ absolute-axis _
+  (param start Length)
+  (param span Length)
+  (param intrinsic Length)
+  (param near (? PositionOffset))
+  (param far (? PositionOffset))
+  (case? near-pin
+    (call absolute-axis-pin start span intrinsic near-pin)
+  )
+  (case? far-pin
+    (call absolute-axis-pin start span intrinsic far-pin)
+  )
+  (case? (and near far near-edge far-edge)
+    (call PositionAxis (+ start near-edge) (call gui-safe-span (- span near-edge far-edge)))
+  )
+  (case? (and near near-edge)
+    (call PositionAxis (+ start near-edge) intrinsic)
+  )
+  (case? (and far far-edge)
+    (call PositionAxis (- (+ start span) far-edge intrinsic) intrinsic)
+  )
+  (default
+    (call PositionAxis start intrinsic)
+  )
+  (where
+    (lazy near-pin (call gui-position-offset-pin near))
+    (lazy far-pin (call gui-position-offset-pin far))
+    (lazy near-edge (call gui-position-offset-edge near))
+    (lazy far-edge (call gui-position-offset-edge far))
+  )
+)
+
+(fn-expr _ absolute-axis-pin _
+  (param start Length)
+  (param span Length)
+  (param intrinsic Length)
+  (param pin PositionAxisPin)
+  (call PositionAxis (- (+ start (* (. pin target) span)) (* (. pin source) intrinsic)) intrinsic)
+)
+
+(fn-expr _ absolute-axis-align _
+  (param start Length)
+  (param span Length)
+  (param intrinsic Length)
+  (param align Alignment)
+  (param near (? PositionOffset))
+  (param far (? PositionOffset))
+  (call PositionAxis (- (+ target offset) source) intrinsic)
+  (where
+    (lazy target (+ start (* (. align fraction) span)))
+    (lazy source (* (. align fraction) intrinsic))
+    (lazy offset (?? (call gui-position-offset-edge near) (- (?? (call gui-position-offset-edge far) 0))))
+  )
+)
+
+(fn-expr _ gui-position-offset-edge _
+  (param offset (? PositionOffset))
+  (match? offset
+    (case (call (. PositionOffset coord) n)
+      (if-expr (call is-finite n) n 0)
+    )
+  )
+)
+
+(fn-expr _ gui-position-offset-pin _
+  (param offset (? PositionOffset))
+  (match? offset
+    (case (. PositionOffset anchor-start)
+      (call PositionAxisPin 0%% 0%%)
+    )
+    (case (. PositionOffset anchor-center)
+      (call PositionAxisPin 0.5%% 0.5%%)
+    )
+    (case (. PositionOffset anchor-end)
+      (call PositionAxisPin 1%% 1%%)
+    )
+    (case (call (. PositionOffset percent) percent)
+      (call PositionAxisPin percent percent)
+    )
+    (case (call (. PositionOffset pin) pin)
+      (call PositionAxisPin
+        (block
+          (arg (. pin source fraction))
+          (arg (. pin target fraction))
+        )
+      )
+    )
+  )
+)

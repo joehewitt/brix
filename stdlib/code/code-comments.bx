@@ -1,0 +1,62 @@
+(import /math)
+
+(fn-do + code-toggled-comments (list String)
+  (param lines (list String))
+  (param marker String)
+  (let bare (call (. marker trim)))
+  (let filled (call (of List String) (in each lines (when (> (. (call (. each trim)) size) 0)))))
+  (let counted (if-expr (> (. filled length) 0) filled lines))
+  (let uncomments (> (. filled length) 0))
+  (for (in line counted)
+    (if (not (call (. ([] line (... (call code-indent-size line))) starts-with) bare))
+      (= uncomments false)
+    )
+  )
+  (if uncomments
+    (return (call (of List String) (in (call code-uncommented-line each bare) lines)))
+  )
+  (let column (call code-indent-size ([] counted 0)))
+  (for (in line counted)
+    (= column (call min column (call code-indent-size line)))
+  )
+  (return (call (of List String) (in (call code-commented-line each marker column (== (. filled length) 0)) lines)))
+)
+
+(fn-do + code-indent-size Size
+  (param line String)
+  (let count Size 0)
+  (for (in char line)
+    (if (and (!= char (char " ")) (!= char (char "\t")))
+      (break)
+    )
+    (+= count 1)
+  )
+  (return count)
+)
+
+(fn-expr _ code-commented-line String
+  (param line String)
+  (param marker String)
+  (param column Size)
+  (param includes-blank Bool)
+  (if-expr (and (not includes-blank) (== (. (call (. line trim)) size) 0)) line marked)
+  (where
+    (lazy marked (str ([] line (..< 0 column)) marker ([] line (... column))))
+  )
+)
+
+(fn-expr _ code-uncommented-line String
+  (param line String)
+  (param bare String)
+  (case? (not (call (. rest starts-with) bare))
+    line
+  )
+  (default
+    (str ([] line (..< 0 indent)) (if-expr (call (. kept starts-with) " ") ([] kept (... 1)) kept))
+  )
+  (where
+    (lazy indent (call code-indent-size line))
+    (lazy rest ([] line (... indent)))
+    (lazy kept ([] rest (... (. bare size))))
+  )
+)

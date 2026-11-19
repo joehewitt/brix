@@ -1,0 +1,167 @@
+(import ./box)
+(import ./canvas)
+(import ./colors)
+(import ./events)
+(import ./layout)
+(import ./markup)
+(import ./primitives)
+(import /core/function)
+(import /core/markup)
+(import /stream/aggregate)
+(import /ui/command)
+(import /ui/input)
+(import /ui/key-assignment)
+(import /ui/key-combo)
+
+(type + Shortcut (is Box)
+  (implements KeyAssignment)
+  (prop + title _ (= ""))
+  (prop + key KeyCombo (= (call KeyCombo)))
+  (prop + action (? Doer))
+  (prop + command (? Command))
+  (prop + stable-key _ (= ""))
+  (prop + enabled _ (= true))
+  (prop + when (? (of Getter Bool)))
+  (prop + show-in-status _ (= true))
+  (prop + allow-while-input _ (= false))
+  (prop + allow-while-modal _ (= false))
+  (prop + priority _ (= 0))
+  (prop + is-markup-shadow _ (=> true))
+  (prop + mapping-default _ (:= (call KeyMappingDefault)))
+  (prop + display-title _ (=> (?? (?. command title) title)))
+  (prop + status-label _ (=> (call shortcut-status-label key display-title)))
+  (fn-do + This _
+    (param title _ (= ""))
+  )
+  (fn-expr + is-active Bool
+    (case? (or (not is-effectively-enabled) (not enabled))
+      false
+    )
+    (case? (and predicate (not (call predicate)))
+      false
+    )
+    (case? target
+      (. target is-available)
+    )
+    (default
+      true
+    )
+    (where
+      (lazy predicate when)
+      (lazy target command)
+    )
+  )
+  (fn-expr + is-routable Bool
+    (param focused (? Box))
+    (param modal (? Box))
+    (and (call is-active) (call key-assignment-routable this input-owned outside-modal))
+    (where
+      (lazy input-owned (and (== (?. focused $focus-mode) (. FocusMode input)) (call (. key is-printable-input))))
+      (lazy outside-modal (and (!= modal null) (not (call key-scope-contains modal this))))
+    )
+  )
+  (fn-do + set-binding-key _
+    (param next KeyCombo)
+    (= key next)
+  )
+  (fn-do + set-binding-enabled _
+    (param next Bool)
+    (= enabled next)
+  )
+  (fn-expr + matches Bool
+    (param event KeyPressEvent)
+    (call (. key matches) event)
+  )
+  (fn-expr + matches Bool
+    (param event KeyInputEvent)
+    (call (. key matches) event)
+  )
+  (fn-do + invoke _
+    (let target command)
+    (if target
+      (call (. target run))
+      (return)
+    )
+    (let callback action)
+    (if callback
+      (call callback
+        (block
+          (on-error (: error Error)
+            (call unhandled-error error)
+          )
+        )
+      )
+    )
+  )
+)
+
+(extend + KeyCombo
+  (fn-expr + matches Bool
+    (param event KeyPressEvent)
+    (call matches-key (. event key) "" (. event modifiers))
+  )
+  (fn-expr + matches Bool
+    (param event KeyInputEvent)
+    (call matches-key input-key (str (. event char)) (. event modifiers))
+    (where
+      (lazy input-key (if-expr (== (. event char) (char " ")) (. Key space) (call (. Key unknown) (as (. event char) U32))))
+    )
+  )
+)
+
+(fn-expr + active-window-shortcuts (list Shortcut)
+  (param registered-shortcuts (list Shortcut))
+  (param focused (? Box))
+  (param modal (? Box))
+  (case-each (in shortcut active (when (call (. shortcut is-routable) focused modal))))
+  (where
+    (lazy active (call active-key-assignments registered-shortcuts focused modal))
+  )
+)
+
+(fn-do + dispatch-shortcut-key-press Bool
+  (param shortcuts (list Shortcut))
+  (param event KeyPressEvent)
+  (for (in shortcut shortcuts)
+    (if (call (. shortcut matches) event)
+      (call (. shortcut invoke))
+      (call (. event cancel))
+      (return true)
+    )
+  )
+  (return false)
+)
+
+(fn-do + dispatch-shortcut-key-input Bool
+  (param shortcuts (list Shortcut))
+  (param event KeyInputEvent)
+  (for (in shortcut shortcuts)
+    (if (call (. shortcut matches) event)
+      (call (. shortcut invoke))
+      (call (. event cancel))
+      (return true)
+    )
+  )
+  (return false)
+)
+
+(fn-expr + shortcut-status-summary String
+  (param shortcuts (list Shortcut))
+  (match (. shortcuts length)
+    (case= 0
+      "No shortcuts"
+    )
+    (default
+      (call (. " | " join) (in (. each status-label) shortcuts))
+    )
+  )
+)
+
+(fn-expr _ shortcut-status-label String
+  (param key KeyCombo)
+  (param title String)
+  (if-expr label (str label " " title) title)
+  (where
+    (lazy label (. key display-label))
+  )
+)

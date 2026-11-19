@@ -1,0 +1,50 @@
+(import /graphics/graphic)
+(import /graphics/primitives)
+(import /graphics/vector-group)
+
+(type + VectorImageGenerator (is (fn-type VectorGroup (param bounds Rect))))
+
+(type + GeneratedVectorImage (is VectorGroup)
+  (prop + generator (? VectorImageGenerator))
+  (prop _ generated-output (? VectorGroup))
+  (prop _ generated-stamp (? GraphicsCacheStamp))
+  (blank)
+  (depends invalidate-generation generator)
+  (fn-do + This _)
+  (fn-do + This _
+    (param generator _)
+  )
+  (fn-do + invalidate-generation _
+    (if generated-output
+      (call remove-group generated-output)
+    )
+    (= generated-output null)
+    (= generated-stamp null)
+    (call graphic-invalidate graphic-change-geometry)
+  )
+  (fn-do + update _
+    (param bounds Rect)
+    (call ensure-generated bounds)
+    (call (. super update) bounds)
+  )
+  (fn-do + prepare-paint _
+    (param bounds Rect)
+    (call ensure-generated bounds)
+  )
+  (fn-do _ ensure-generated _
+    (param bounds Rect)
+    (return-if (if (and generated-output (call (. stamp reuses) effective-cache-policy generated-stamp))))
+    (lazy stamp (call GraphicsCacheStamp revision bounds frame))
+    (let output (call VectorGroup))
+    (if generator
+      (= output (call generator bounds))
+    )
+    (if generated-output
+      (call remove-group generated-output)
+    )
+    (+= this output)
+    (call checkpoint)
+    (= generated-output output)
+    (= generated-stamp (call GraphicsCacheStamp revision bounds frame))
+  )
+)

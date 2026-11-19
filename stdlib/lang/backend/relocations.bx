@@ -1,0 +1,54 @@
+(import ./mir)
+
+(type + RelocationKind (is U32)
+  ; What an object relocation patches: the target of a `bl` or `b`, the page of an `adrp`, the low
+  ; 12 bits of a page offset in an `add` or in a load or store of each access size, or a 64-bit
+  ; address in data.
+  (blank)
+  (variant call26-relocation (= 0))
+  (variant jump26-relocation (= 1))
+  (variant page21-relocation (= 2))
+  (variant add-pageoff12-relocation (= 3))
+  (variant load-store8-pageoff12-relocation (= 4))
+  (variant load-store16-pageoff12-relocation (= 5))
+  (variant load-store32-pageoff12-relocation (= 6))
+  (variant load-store64-pageoff12-relocation (= 7))
+  (variant load-store128-pageoff12-relocation (= 8))
+  (variant unsigned-relocation (= 9))
+)
+
+(type + Relocation (is Tuple)
+  (prop + offset U32)
+  (prop + symbol StringId)
+  (prop + kind RelocationKind)
+)
+
+(fn-expr + load-store-pageoff12-relocation RelocationKind
+  (param size U32)
+  (before
+    ; The page offset relocation of a load or store of `size` bytes.
+    (throw (call Panic (str "No page offset relocation for a " size "-byte access")) (if (and (!= size 1) (!= size 2) (!= size 4) (!= size 8) (!= size 16))))
+  )
+  (match size
+    (case= 1
+      .load-store8-pageoff12-relocation
+    )
+    (case= 2
+      .load-store16-pageoff12-relocation
+    )
+    (case= 4
+      .load-store32-pageoff12-relocation
+    )
+    (case= 8
+      .load-store64-pageoff12-relocation
+    )
+    (default
+      .load-store128-pageoff12-relocation
+    )
+  )
+)
+
+(fn-expr + is-branch26-relocation Bool
+  (param kind RelocationKind)
+  (or (== kind .call26-relocation) (== kind .jump26-relocation))
+)

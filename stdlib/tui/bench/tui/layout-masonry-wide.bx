@@ -1,0 +1,57 @@
+; benchmark.meta description: Measures a wide vertical Masonry layout with many varied-height children.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: tui,compile-timing
+(blank)
+(import /tui/box)
+(import /tui/layout)
+(import /tui/primitives)
+(blank)
+
+(main
+  (<> BenchMasonryWideRoot (id: root)
+    (for (in index (..< 0 640))
+      (<> BenchMasonryWideCard
+        (= card-height (call bench-masonry-wide-height index))
+      )
+    )
+  )
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (= (. root bounds) (call Rect 0 0 120 40))
+  (blank)
+  (let checksum Size 0)
+  (for (in frame (..< 0 64))
+    (call (. root update-layout))
+    (+= checksum (+ (. root inner-height) (. root inner-width) frame))
+  )
+  (blank)
+  (print (str "bench-result tui/layout-masonry-wide checksum=" checksum))
+)
+
+(type + BenchMasonryWideRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (blank)
+  (rule This
+    (= layout masonry-col)
+    (= masonry-column-count 8)
+    (= masonry-column-gap 1)
+    (= masonry-row-gap 1)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
+
+(type + BenchMasonryWideCard (is Box)
+  (prop + card-height Coord (= 1))
+  (fn-expr + measured-content-size PSize
+    (param query MeasureQuery)
+    (call PSize 12 card-height)
+  )
+)
+
+(fn-expr + bench-masonry-wide-height Coord
+  (param index Int)
+  (+ 1 (call Coord (% (+ (* index 7) (/ index 3)) 6)))
+)

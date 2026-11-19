@@ -1,0 +1,63 @@
+(import ./colors)
+(import ./events)
+(import ./form)
+(import ./primitives)
+(import ./styles)
+(import ./text)
+(import ./theme)
+(import /ui/input)
+
+(type + Button (is Label)
+  (subscribe-for (on event key-press)
+    (if (== (. event key) (. Key enter))
+      (call activate)
+      (call (. event cancel))
+    )
+  )
+  (subscribe-for (on event key-input)
+    (if (== (. event char) (char " "))
+      (call activate)
+      (call (. event cancel))
+    )
+  )
+  (fn-do + activate _
+    (if is-effectively-enabled
+      (<- click (call ClickEvent))
+    )
+  )
+)
+
+(style-extend TUIDefaultTheme
+  (using BoxPaint)
+  (using TextPaint)
+  (rule Button
+    (= color (call AnsiColor 255))
+    (= background-color (call AnsiColor 8))
+    (blank)
+    (when-style #is-focused
+      (= color (call AnsiColor 11))
+    )
+    (when-style #is-hovered
+      (= color (call AnsiColor 255))
+      (= background-color (call AnsiColor 244))
+    )
+    (when-style #is-pressed
+      (= color (call AnsiColor 255))
+      (= background-color (call AnsiColor 237))
+    )
+    (when-style (not #is-effectively-enabled)
+      (= color (call AnsiColor 8))
+      (= background-color (call AnsiColor 0))
+    )
+  )
+  (blank)
+  (rule OkButton
+    (= background-color (call AnsiColor 9))
+  )
+)
+
+(type + OkButton (is Button)
+  (subscribe-for (on event click (when is-effectively-enabled))
+    (call (?. (of ancestor Form) submit))
+  )
+)

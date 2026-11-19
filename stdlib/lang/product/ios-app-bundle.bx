@@ -1,0 +1,104 @@
+(import ./bundle-files)
+(import ./ios-device)
+(import /lang/emit/products)
+(import /lang/target)
+(import /os/path)
+
+(fn-do + write-ios-app-bundle Path (?! Error)
+  (param product AppProduct)
+  (param executable Path)
+  (param target Target)
+  ; Writes the flat app bundle an iOS device or simulator installs: the executable and its
+  ; Info.plist at the bundle's root. A simulator's bundle is signed ad hoc; a device's embeds the
+  ; provisioning profile it is signed with.
+  (let bundle (/ (. executable dir) (str (. product name) ".app")))
+  (throw (call Error (str "-o " executable " is where the app bundle goes; give the executable another name")) (if (== (as bundle String) (as executable String))))
+  (let info (/ bundle "Info.plist"))
+  (let inner (/ bundle (. product name)))
+  (let signature (/ bundle "_CodeSignature"))
+  (let profile (/ bundle "embedded.mobileprovision"))
+  (let kept (list String) (list (as info String) (as inner String) (as signature String) (as (/ signature "CodeResources") String)))
+  (if (is (. target runner) .device)
+    (+= kept (as profile String))
+  )
+  (call make-directories bundle)
+  (call prune bundle kept)
+  (call write-if-changed info (call info-plist product target))
+  (if (. inner exists)
+    (call (. inner delete))
+  )
+  (call (. executable clone) inner)
+  (if (is (. target runner) .device)
+    (call sign-for-device bundle (. product id) (call device-work-path executable))
+    (else
+      (call sign bundle)
+    )
+  )
+  (return bundle)
+)
+
+(fn-expr + device-work-path Path
+  (param executable Path)
+  (call Path (str executable ".device"))
+)
+
+(fn-expr _ info-plist _
+  (param product AppProduct)
+  (param target Target)
+  (paragraph
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+    "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">"
+    "<plist version=\"1.0\">"
+    "<dict>"
+    "    <key>CFBundleExecutable</key>"
+    (str "    " (call plist-string (. product name)))
+    "    <key>CFBundleIdentifier</key>"
+    (str "    " (call plist-string (. product id)))
+    "    <key>CFBundleInfoDictionaryVersion</key>"
+    "    <string>6.0</string>"
+    "    <key>CFBundleName</key>"
+    (str "    " (call plist-string (. product name)))
+    "    <key>CFBundlePackageType</key>"
+    "    <string>APPL</string>"
+    "    <key>CFBundleShortVersionString</key>"
+    (str "    " (call plist-string (?? (. product version) "1.0")))
+    "    <key>CFBundleSupportedPlatforms</key>"
+    "    <array>"
+    (str "        <string>" (call supported-platform target) "</string>")
+    "    </array>"
+    "    <key>CFBundleVersion</key>"
+    (str "    " (call plist-string (?? (. product version) "1.0")))
+    "    <key>LSRequiresIPhoneOS</key>"
+    "    <true/>"
+    "    <key>MinimumOSVersion</key>"
+    (str "    <string>" (call os-version-text (. target minimum-os-version)) "</string>")
+    "    <key>UIDeviceFamily</key>"
+    "    <array>"
+    "        <integer>1</integer>"
+    "        <integer>2</integer>"
+    "    </array>"
+    "    <key>UILaunchScreen</key>"
+    "    <dict/>"
+    "    <key>UIRequiresFullScreen</key>"
+    "    <true/>"
+    "    <key>UIStatusBarHidden</key>"
+    "    <true/>"
+    "    <key>UISupportedInterfaceOrientations</key>"
+    "    <array>"
+    "        <string>UIInterfaceOrientationLandscapeLeft</string>"
+    "        <string>UIInterfaceOrientationLandscapeRight</string>"
+    "    </array>"
+    "</dict>"
+    "</plist>"
+  )
+)
+
+(fn-expr _ os-version-text String
+  (param version U32)
+  (str (/zrshift/ version 16) "." (/and/ (/zrshift/ version 8) 0xff))
+)
+
+(fn-expr _ supported-platform String
+  (param target Target)
+  (if-expr (is (. target runner) .device) "iPhoneOS" "iPhoneSimulator")
+)

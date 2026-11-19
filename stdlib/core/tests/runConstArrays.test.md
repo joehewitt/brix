@@ -2,21 +2,38 @@
 
 ### ConstArray values can be declared as global constants and indexed by position.
 
-```yumi
-+ values = ConstArray'U16
-    - 0
-    - 8
-    - 16
+```brix
+(prop + values _
+  (=
+    (call (of ConstArray U16)
+      (block
+        (arg 0)
+        (arg 8)
+        (arg 16)
+      )
+    )
+  )
+)
+(blank)
+(prop + flags _
+  (=
+    (call (of ConstArray U8)
+      (block
+        (arg 3)
+        (arg 5)
+      )
+    )
+  )
+)
+(blank)
 
-+ flags = ConstArray'U8
-    - 3
-    - 5
-
--- values[0]
--- values[1]
--- values[2]
--- flags[0]
--- flags[1]
+(main
+  (print ([] values 0))
+  (print ([] values 1))
+  (print ([] values 2))
+  (print ([] flags 0))
+  (print ([] flags 1))
+)
 ```
 
 ```output
@@ -29,15 +46,25 @@
 
 ### ConstArray values keep their own type identity and are read-only.
 
-```yumi
-+ values = ConstArray'U8
-    - 65
-    - 66
+```brix
+(prop + values _
+  (=
+    (call (of ConstArray U8)
+      (block
+        (arg 65)
+        (arg 66)
+      )
+    )
+  )
+)
+(blank)
 
--- type-of values
--- (type-of values).read-only
--- values[0]
--- values[1]
+(main
+  (print (type-of values))
+  (print (. (type-of values) read-only))
+  (print ([] values 0))
+  (print ([] values 1))
+)
 ```
 
 ```output
@@ -49,13 +76,15 @@ true
 
 ### Inline constructor arguments produce a ConstArray too.
 
-```yumi
-. values = ConstArray'U16(3, 5, 8)
-
--- type-of values
--- values[0]
--- values[1]
--- values[2]
+```brix
+(main
+  (let values (call (of ConstArray U16) 3 5 8))
+  (blank)
+  (print (type-of values))
+  (print ([] values 0))
+  (print ([] values 1))
+  (print ([] values 2))
+)
 ```
 
 ```output
@@ -67,17 +96,27 @@ true
 
 ### Numeric items are cast to the declared item type before emission.
 
-```yumi
-+ bytes = ConstArray'U8
-    - 258 as U8
-    - -1 as U8
+```brix
+(prop + bytes _
+  (=
+    (call (of ConstArray U8)
+      (block
+        (arg (as 258 U8))
+        (arg (as -1 U8))
+      )
+    )
+  )
+)
+(blank)
+(prop + shorts _ (= (call (of ConstArray U16) (as 65537 U16) (as -1 U16))))
+(blank)
 
-+ shorts = ConstArray'U16(65537 as U16, -1 as U16)
-
--- bytes[0]
--- bytes[1]
--- shorts[0]
--- shorts[1]
+(main
+  (print ([] bytes 0))
+  (print ([] bytes 1))
+  (print ([] shorts 0))
+  (print ([] shorts 1))
+)
 ```
 
 ```output
@@ -89,13 +128,23 @@ true
 
 ### ConstArray values support pointer-sized items such as strings.
 
-```yumi
-+ words = ConstArray'String
-    - "alpha"
-    - "beta"
+```brix
+(prop + words _
+  (=
+    (call (of ConstArray String)
+      (block
+        (arg "alpha")
+        (arg "beta")
+      )
+    )
+  )
+)
+(blank)
 
--- words[0]
--- words[1]
+(main
+  (print ([] words 0))
+  (print ([] words 1))
+)
 ```
 
 ```output
@@ -105,14 +154,17 @@ beta
 
 ### Multiple ConstArrays in one program get independent storage.
 
-```yumi
-+ left = ConstArray'U8(1, 2)
-+ right = ConstArray'U8(10, 20)
+```brix
+(prop + left _ (= (call (of ConstArray U8) 1 2)))
+(prop + right _ (= (call (of ConstArray U8) 10 20)))
+(blank)
 
--- left[0]
--- left[1]
--- right[0]
--- right[1]
+(main
+  (print ([] left 0))
+  (print ([] left 1))
+  (print ([] right 0))
+  (print ([] right 1))
+)
 ```
 
 ```output
@@ -124,16 +176,18 @@ beta
 
 ### Functions can accept ConstArrays without converting them to mutable pointers.
 
-```yumi
-+ values = ConstArray'U8(4, 5)
+```brix
+(prop + values _ (= (call (of ConstArray U8) 4 5)))
+(blank)
 
--- first(values)
+(main
+  (print (call first values))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ first
-    - data ConstArray'U8
-
-data[0]
+(fn-expr + first _
+  (param data (of ConstArray U8))
+  ([] data 0)
+)
 ```
 
 ```output
@@ -142,107 +196,128 @@ data[0]
 
 ### ConstArray values are read-only through a global binding.
 
-```yumi compile-error
-+ values = ConstArray'U8(1, 2)
+```brix compile-error
+(prop + values _ (= (call (of ConstArray U8) 1 2)))
+(blank)
 
-values[0] = 9
+(main
+  (= ([] values 0) 9)
+)
 ```
 
 ```output
 Exception: ConstArray values are read-only
-<no file:4>
-    values[0] = 9
-    ^^^^^^^^^
+<no file:6>
+      (= ([] values 0) 9)
+         ^^^^^^^^^^^^^
 ```
 
 ### ConstArray values are read-only through a local binding.
 
-```yumi compile-error
-. values = ConstArray'U8(1, 2)
-
-values[0] = 9
+```brix compile-error
+(main
+  (let values (call (of ConstArray U8) 1 2))
+  (blank)
+  (= ([] values 0) 9)
+)
 ```
 
 ```output
 Exception: ConstArray values are read-only
-<no file:4>
-    values[0] = 9
-    ^^^^^^^^^
+<no file:5>
+      (= ([] values 0) 9)
+         ^^^^^^^^^^^^^
 ```
 
 ### Incremental assignment is also rejected.
 
-```yumi compile-error
-. values = ConstArray'U8(1, 2)
-
-values[0] += 1
+```brix compile-error
+(main
+  (let values (call (of ConstArray U8) 1 2))
+  (blank)
+  (+= ([] values 0) 1)
+)
 ```
 
 ```output
 Exception: ConstArray values are read-only
-<no file:4>
-    values[0] += 1
-    ^^^^^^^^^
+<no file:5>
+      (+= ([] values 0) 1)
+          ^^^^^^^^^^^^^
 ```
 
 ### ConstArray values cannot be cast to mutable C pointers.
 
-```yumi compile-error
-+ values = ConstArray'U8(1, 2)
+```brix compile-error
+(prop + values _ (= (call (of ConstArray U8) 1 2)))
+(blank)
 
-. pointer = values as CPointer'U8
+(main
+  (let pointer (as values (of CPointer U8)))
+)
 ```
 
 ```output
 Exception: ConstArray'U8 cannot be cast to CPointer'U8; there is no conversion between them
-<no file:4>
-    . pointer = values as CPointer'U8
-                ^^^^^^^^^^^^^^^^^^^^^
+<no file:6>
+      (let pointer (as values (of CPointer U8)))
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### ConstArray literals require exactly one item type.
 
-```yumi compile-error
--- ConstArray()
+```brix compile-error
+(main
+  (print (call ConstArray))
+)
 ```
 
 ```output
 Exception: ConstArray requires one item type
-<no file:2>
-    -- ConstArray()
-       ^^^^^^^^^^^^
+<no file:3>
+      (print (call ConstArray))
+             ^^^^^^^^^^^^^^^^^
 ```
 
 ### ConstArray items must be positional values.
 
-```yumi compile-error
--- ConstArray'U8
-    • first 1
+```brix compile-error
+(main
+  (print
+    (call (of ConstArray U8)
+      (block
+        (:first 1)
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Illegal ConstArray item
-<no file:3>
-        • first 1
-        ^^^^^^^^^
+<no file:6>
+            (:first 1)
+            ^^^^^^^^^^
 ```
 
 ### ConstArray items must have a constant representation.
 
-```yumi compile-error
-+ values = ConstArray'U8(value())
+```brix compile-error
+(prop + values _ (= (call (of ConstArray U8) (call value))))
+(blank)
 
--- values[0]
+(main
+  (print ([] values 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ value U8
-
-42
+(fn-expr + value U8
+  42
+)
 ```
 
 ```output
 Exception: ConstArray item must be constant
 <no file:2>
-    + values = ConstArray'U8(value())
-                             ^^^^^^^
+    (prop + values _ (= (call (of ConstArray U8) (call value))))
+                                                 ^^^^^^^^^^^^
 ```

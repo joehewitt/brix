@@ -1,0 +1,111 @@
+(import ./box)
+(import ./colors)
+(import ./layout)
+(import ./primitives)
+(import ./text)
+(import /time/duration)
+(import /time/timer)
+
+(type + Spinner (is Box)
+  (prop + frames _ (= (. SpinnerFrames braille)))
+  (prop + interval _ (= 120ms))
+  (prop + colorful _ (= true))
+  (blank)
+  (prop _ ticker _ (= (call Timer interval)))
+  (content
+    (<> This (• flex-col)
+      (if #colorful
+        (<> Label
+          (= text (call spinner-frame-character #frames (call spinner-animation-frame (## ticker) #interval)))
+          (= color (call spinner-frame-color (call spinner-animation-frame (## ticker) #interval)))
+        )
+        (else
+          (<> Label
+            (= text (call spinner-frame-character #frames (call spinner-animation-frame (## ticker) #interval)))
+          )
+        )
+      )
+    )
+  )
+  (fn-do + close _
+    (call (. super close))
+    (call (. ticker end-using))
+  )
+)
+
+(type + SpinnerFrames (is Union)
+  (variant braille)
+  (variant dots)
+  (variant circle)
+  (variant arc)
+  (variant quadrant)
+  (variant arrows)
+)
+
+(fn-expr + spinner-animation-frame Size
+  (param elapsed Microseconds)
+  (param interval Microseconds)
+  (case? (<= interval 0)
+    0
+  )
+  (default
+    (as (/ elapsed interval) Size)
+  )
+)
+
+(fn-expr _ spinner-frame-character String
+  (param frames SpinnerFrames)
+  (param index Size)
+  (as ([] set (% index (. set length))) String)
+  (where
+    (lazy set (call spinner-frame-set frames))
+  )
+)
+
+(fn-expr _ spinner-frame-set String
+  (param frames SpinnerFrames)
+  (match frames
+    (case (. SpinnerFrames dots)
+      "⠁⠂⠄⡀⢀⠠⠐⠈"
+    )
+    (case (. SpinnerFrames circle)
+      "◐◓◑◒"
+    )
+    (case (. SpinnerFrames arc)
+      "◜◠◝◞◡◟"
+    )
+    (case (. SpinnerFrames quadrant)
+      "▖▘▝▗"
+    )
+    (case (. SpinnerFrames arrows)
+      "←↖↑↗→↘↓↙"
+    )
+    (default
+      "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    )
+  )
+)
+
+(fn-expr _ spinner-frame-color AnsiColor
+  (param index Size)
+  (match (% index 6)
+    (case 0
+      salmon
+    )
+    (case 1
+      orange
+    )
+    (case 2
+      gold
+    )
+    (case 3
+      chartreuse
+    )
+    (case 4
+      sky
+    )
+    (default
+      pink
+    )
+  )
+)

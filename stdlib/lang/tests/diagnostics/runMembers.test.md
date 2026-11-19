@@ -4,364 +4,375 @@ Errors about members, cases and overrides name the type, the member, the declara
 
 ### a property declared twice
 
-```yumi crash
--- Thing().a
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+```brix crash
+(main
+  (print (. (call Thing) a))
+)
 
-+ a = 1
-+ a = 2
+(type + Thing
+  (prop + a _ (= 1))
+  (prop + a _ (= 2))
+)
 ```
 
 ```output
-Exception: Thing declares "a" twice (first on line 6); remove one of them, or rename it
-<no file:7>
-    + a = 2
-    ^^^^^^^
+Exception: Thing declares "a" twice (first on line 7); remove one of them, or rename it
+<no file:8>
+      (prop + a _ (= 2))
+      ^^^^^^^^^^^^^^^^^^
 ```
 
 ### an override that states a type
 
-```yumi crash
-. base Source = Narrow()
--- base.value
-━━━━━━━━━━━━━━━━━━━━
-+ Source
+```brix crash
+(main
+  (let base Source (call Narrow))
+  (print (. base value))
+)
 
-────────────────────
-+ get value I32
+(type + Source
+  (fn-expr + value I32 :get
+    1
+  )
+)
 
-1
-━━━━━━━━━━━━━━━━━━━━
-+ Narrow is Source
-
-────────────────────
-+ get value I32
-
-7
+(type + Narrow (is Source)
+  (fn-expr + value I32 :get
+    7
+  )
+)
 ```
 
 ```output
 Exception: "value" is inherited from Source, so it keeps the type it has there and cannot state its own; remove "I32"
-<no file:15>
-    + get value I32
-    ^^^^^^^^^^^^^^
+<no file:14>
+      (fn-expr + value I32 :get
+      ^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### an arrow override that states a type, reported on its own line
 
-```yumi crash
-. base Source = Narrow()
--- base.value
-━━━━━━━━━━━━━━━━━━━━
-+ Source
+```brix crash
+(main
+  (let base Source (call Narrow))
+  (print (. base value))
+)
 
-+ value I32 => 1
-━━━━━━━━━━━━━━━━━━━━
-+ Narrow is Source
+(type + Source
+  (prop + value I32 (=> 1))
+)
 
-+ value I32 => 7
-+ other => 2
+(type + Narrow (is Source)
+  (prop + value I32 (=> 7))
+  (prop + other _ (=> 2))
+)
 ```
 
 ```output
 Exception: "value" is inherited from Source, so it keeps the type it has there and cannot state its own; remove "I32"
-<no file:11>
-    + value I32 => 7
-    ^^^^^^^^^^^^^^^^
+<no file:12>
+      (prop + value I32 (=> 7))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### an override stored differently from the property it overrides
 
-```yumi crash
-. base = Thing() as Base
--- base.a
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+```brix crash
+(main
+  (let base (as (call Thing) Base))
+  (print (. base a))
+)
 
-+ a = "Base"
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Base
+(type + Base
+  (prop + a _ (= "Base"))
+)
 
-+ a := "Thing"
+(type + Thing (is Base)
+  (prop + a _ (:= "Thing"))
+)
 ```
 
 ```output
 Exception: "a" is inherited from Base, which declares it with "=", so declare it with "=" here too, not with ":="
-<no file:11>
-    + a := "Thing"
-    ^^^^^^^^^^^^^^
+<no file:12>
+      (prop + a _ (:= "Thing"))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### a misspelled case of an enum
 
-```yumi crash
-. kind = Kind.thrid
-━━━━━━━━━━━━━━━━━━━━
-+ Kind is U32
+```brix crash
+(main
+  (let kind (. Kind thrid))
+)
 
-| first = 0
-| third = 1
+(type + Kind (is U32)
+  (variant first (= 0))
+  (variant third (= 1))
+)
 ```
 
 ```output
 Exception: Kind has no case "thrid"; did you mean "third"?
-<no file:2>
-    . kind = Kind.thrid
-             ^^^^^^^^^^
+<no file:3>
+      (let kind (. Kind thrid))
+                ^^^^^^^^^^^^^^
 ```
 
 ### a misspelled case named by its symbol alone
 
-```yumi crash
-. kind Kind = .thrid
-━━━━━━━━━━━━━━━━━━━━
-+ Kind is U32
+```brix crash
+(main
+  (let kind Kind .thrid)
+)
 
-| first = 0
-| third = 1
+(type + Kind (is U32)
+  (variant first (= 0))
+  (variant third (= 1))
+)
 ```
 
 ```output
 Exception: Case ".thrid" not found; did you mean ".third"?
-<no file:2>
-    . kind Kind = .thrid
-                  ^^^^^^
+<no file:3>
+      (let kind Kind .thrid)
+                     ^^^^^^
 ```
 
 ### a case named alone whose type is in a module this one does not import
 
-```yumi crash
-./lib/rows
+```brix crash
+(import ./lib/rows)
+(blank)
 
-. kind = .second
--- kind as U32
+(main
+  (let kind .second)
+  (print (as kind U32))
+)
 ```
 
-```yumi file=lib/rows.yumi
+```brix file=lib/rows.bx
+(import ./kinds)
 
-./kinds
-
-━━━━━━━━━━━━━━━━━━━━
-+ first-kind Kind
-
-Kind.first
-
+(fn-expr + first-kind Kind
+  (. Kind first)
+)
 ```
 
-```yumi file=lib/kinds.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Kind is U32
-
-| first = 0
-| second = 1
-
+```brix file=lib/kinds.bx
+(type + Kind (is U32)
+  (variant first (= 0))
+  (variant second (= 1))
+)
 ```
 
 ```output
 Exception: Case ".second" belongs to Kind, which this module does not import, so the case cannot be named alone; write "Kind.second" and add the import ./lib/kinds
-<no file:4>
-    . kind = .second
-             ^^^^^^^
+<no file:6>
+      (let kind .second)
+                ^^^^^^^
 ```
 
 ### optional chaining on a value that is never null
 
-```yumi crash
-. thing = Thing()
-thing?.show()
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+```brix crash
+(main
+  (let thing (call Thing))
+  (call (?. thing show))
+)
 
-────────────────────
-+ do show
-
--- "shown"
+(type + Thing
+  (fn-do + show _
+    (print "shown")
+  )
+)
 ```
 
 ```output
-Exception: "thing" is Thing, which is never null, so it needs no "?"; write "thing.show()"
-<no file:3>
-    thing?.show()
-    ^^^^^^^^^^^^^
+Exception: "thing" is Thing, which is never null, so it needs no "?"; write "(call (. thing show))"
+<no file:4>
+      (call (?. thing show))
+      ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### a member two extensions declare
 
-```yumi crash
-/core/table
+```brix crash
+(import /core/table)
+(blank)
 
-. rows = Table'Node(1)
-rows[0] = Node.literal(1)
--- rows[0].conflict()
-━━━━━━━━━━━━━━━━━━━━
-+ Literal is Tuple
+(main
+  (let rows (call (of Table Node) 1))
+  (= ([] rows 0) (call (. Node literal) 1))
+  (print (call (. ([] rows 0) conflict)))
+)
 
-+ value U32
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
+(type + Literal (is Tuple)
+  (prop + value U32)
+)
 
-| literal Literal
-━━━━━━━━━━━━━━━━━━━━
-+ extend Node
+(type + Node (is Union)
+  (variant literal Literal)
+)
 
-────────────────────
-+ conflict String
+(extend + Node
+  (fn-expr + conflict String
+    "logical"
+  )
+)
 
-"logical"
-━━━━━━━━━━━━━━━━━━━━
-+ extend TableRow'Node
-
-────────────────────
-+ conflict String
-
-"physical"
+(extend + (of TableRow Node)
+  (fn-expr + conflict String
+    "physical"
+  )
+)
 ```
 
 ```output
 Exception: More than one extension declares "conflict" for TableRow'Node, so the call is ambiguous; remove or rename all but one of them
-<no file:6>
-    -- rows[0].conflict()
-       ^^^^^^^^^^^^^^^^^^
+<no file:8>
+      (print (call (. ([] rows 0) conflict)))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### an interface getter without a body that a class does not implement
 
-```yumi crash
-. source Source = Lines()
--- source.revision
-━━━━━━━━━━━━━━━━━━━━
-+ Source is Interface
+```brix crash
+(main
+  (let source Source (call Lines))
+  (print (. source revision))
+)
 
-────────────────────
-+ get revision U64
-━━━━━━━━━━━━━━━━━━━━
-+ Lines
-    is Source
+(type + Source (is Interface)
+  (fn-expr + revision U64 :get)
+)
+
+(type + Lines
+  (implements Source)
+)
 ```
 
 ```output
 Exception: Lines does not implement "revision", which Source declares without a body; declare "revision" in Lines
-<no file:10>
-    + Lines
-    ^^^^^^
+<no file:11>
+    (type + Lines
+    ^^^^^^^^^^^^
 Interface:
 <no file:8>
-    + get revision U64
+      (fn-expr + revision U64 :get)
 ```
 
 ### a constructor's ".." initializer that calls a method of the object
 
-```yumi crash
--- Steps().first
-━━━━━━━━━━━━━━━━━━━━
-+ Steps
+```brix crash
+(main
+  (print (. (call Steps) first))
+)
 
-+ first String
-
-────────────────────
-+ This
-
-.. first = add-step("Check")
-
-────────────────────
-+ do add-step String
-    - title String
-
-= "step $title"
+(type + Steps
+  (prop + first String)
+  (fn-do + This _
+    (lazy first (call add-step "Check"))
+  )
+  (fn-do + add-step String
+    (param title String)
+    (return (str "step " title))
+  )
+)
 ```
 
 ```output
 Exception: A ".." initializer runs before the object exists, so it cannot call "add-step", a method of Steps; compute the value from the constructor's parameters, or assign it in the constructor's body
-<no file:11>
-    .. first = add-step("Check")
-               ^^^^^^^^^^^^^^^^^
+<no file:9>
+        (lazy first (call add-step "Check"))
+                    ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### a property's value that calls a method of the object
 
-```yumi crash
--- Steps().first
-━━━━━━━━━━━━━━━━━━━━
-+ Steps
+```brix crash
+(main
+  (print (. (call Steps) first))
+)
 
-+ first = add-step("Check")
-
-────────────────────
-+ do add-step String
-    - title String
-
-= "step $title"
+(type + Steps
+  (prop + first _ (= (call add-step "Check")))
+  (fn-do + add-step String
+    (param title String)
+    (return (str "step " title))
+  )
+)
 ```
 
 ```output
 Exception: A property's value is computed before the object exists, so it cannot call "add-step", a method of Steps; declare the property without a value and assign it in a constructor's body
-<no file:6>
-    + first = add-step("Check")
-              ^^^^^^^^^^^^^^^^^
+<no file:7>
+      (prop + first _ (= (call add-step "Check")))
+                         ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### a live markup loop under a host that makes no region for it
 
-```yumi compile-error
-<Shelf shelf
-    for title in shelf.#titles
-        <Book = title
+```brix compile-error
+(main
+  (<> Shelf (id: shelf)
+    (for (in title (. shelf #titles))
+      (<> Book (value: title))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Book
-    is MarkupParent'Book
+(type + Book
+  (implements (of MarkupParent Book))
+  (prop + title String)
+  (fn-do + This _
+    (param title _)
+  )
+)
 
-+ title String
-
-────────────────────
-+ This
-    - title
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shelf
-    is MarkupParent'Book
-
-+ titles [String]
+(type + Shelf
+  (implements (of MarkupParent Book))
+  (prop + titles (list String))
+)
 ```
 
 ```output
 Exception: Markup loop host Shelf must declare markup-make-region, or extend MarkupNode
-<no file:3>
-        for title in shelf.#titles
-           ^^^^^^^^^^^^^^^^^^^^^^
+<no file:4>
+        (for (in title (. shelf #titles))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### a live markup branch under a host that makes no region for it
 
-```yumi compile-error
-<Shelf shelf
-    if #open
-        <Book = "Dune"
+```brix compile-error
+(main
+  (<> Shelf (id: shelf)
+    (if #open
+      (<> Book (value: "Dune"))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Book
-    is MarkupParent'Book
+(type + Book
+  (implements (of MarkupParent Book))
+  (prop + title String)
+  (fn-do + This _
+    (param title _)
+  )
+)
 
-+ title String
-
-────────────────────
-+ This
-    - title
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shelf
-    is MarkupParent'Book
-
-+ open = true
+(type + Shelf
+  (implements (of MarkupParent Book))
+  (prop + open _ (= true))
+)
 ```
 
 ```output
 Exception: Markup branch host Shelf must declare markup-make-region, or extend MarkupNode
-<no file:3>
-        if #open
-        ^^^^^^^
+<no file:4>
+        (if #open
+        ^^^^^^^^
 ```
 
 ### in Brix, a member read from a value that may be null names the unwrap in Brix

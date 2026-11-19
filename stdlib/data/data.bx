@@ -1,0 +1,88 @@
+(import /core/tokenstream)
+
+(type + WritableData (is Interface)
+  (implements (of Writable String))
+  (implements (of Writable ([] Byte)))
+  (fn-do + (infix this <- (param str String)) _
+    (call write str)
+  )
+  (fn-do + (infix this <- (param data ([] Byte))) _
+    (call write data (. data size))
+  )
+  (fn-do + (infix this <- (param data ''Value)) _
+    (call write data)
+  )
+  (fn-expr + write Size (?! Error)
+    (param buffer (of ImmutableArray Byte))
+    (param size Size)
+  )
+  (fn-do + (of write Num) _
+    (param data Num)
+    (param endian _ (= .big))
+    (constraint is Num Number)
+    (let buf ([] Byte (. Num size)))
+    (call (of (. buf write) Num) data 0 endian)
+    (return (call write buf (. Num size)))
+  )
+  (fn-do + write _
+    (param str String)
+    (let data (call byte-view str))
+    (let remaining (. str size))
+    (while remaining
+      (let wrote (call write data remaining))
+      (throw (call IOError "Unable to write: the destination accepted no bytes") (if (<= wrote 0)))
+      (-= remaining wrote)
+      (+= data wrote)
+    )
+  )
+  (fn-do + (of write Item) _
+    (param data (of Array Item))
+    (call write (as data ([] Byte)))
+  )
+  (fn-do + write _
+    (param data ([] Byte))
+    (let remaining (. data size))
+    (while remaining
+      (let wrote (call write data remaining))
+      (throw (call IOError "Unable to write: the destination accepted no bytes") (if (<= wrote 0)))
+      (-= remaining wrote)
+      (+= data wrote)
+    )
+  )
+)
+
+(type + (of ReadableData Token) (is Interface)
+  ;  - Token is Byte | Char
+  (implements (of Decodable Token))
+  (implements ByteReadable)
+  (fn-to-expr + String
+    (call (. (call (. (call (of ChunkedTokenStream Token) this) read)) slice-string))
+  )
+  (fn-to-expr + ([] Byte)
+    (call (. (call (of ChunkedTokenStream Token) this) read))
+  )
+  (fn-to-expr + (of Iterable String)
+    (call (. (call (of ChunkedTokenStream Token) this) split) "\n")
+  )
+  (fn-to-do + (of Iterable ([] Token))
+    (let stream (call (of ChunkedTokenStream Token) this))
+    (while true
+      (let buf ([] Token 1024))
+      (let size (call (. stream read) buf))
+      (if size
+        (yield ([] buf (..< 0 size)))
+        (else
+          (break)
+        )
+      )
+    )
+  )
+  (fn-to-expr + (of Iterable ''Item)
+    (call (of ChunkedTokenStream Item) (as this ByteReadable))
+  )
+  (fn-expr + (of read Num) Num
+    (param endian _ (= .big))
+    (constraint is Num Number)
+    (call (of (. (call (of ChunkedTokenStream Token) this) read) Num) endian)
+  )
+)

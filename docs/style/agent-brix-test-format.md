@@ -140,7 +140,7 @@ the fence's highlighting, so any word works for a file that is not Yumi:
 -- foo()
 ```
 
-```yumi file=lib/foo/foo.yumi
+```yumi file=lib/foo/foo.bx
 ━━━━━━━━━━━━━━━━━━━━
 + foo
 
@@ -199,7 +199,7 @@ case that holds line 340, and `test:core:stdlib/core/tests/runArrays.test.md:12`
 naming its suite.
 
 To run a case's program by itself, copy its program into `case.yumi`, or `case.bx` for a `brix`
-fence, write each extra file to its path beside it, and run it with `brix case.yumi -o case`. Its
+fence, write each extra file to its path beside it, and run it with `brix case.bx -o case`. Its
 stdout should match the `output` fence.
 
 ## Editing Tests

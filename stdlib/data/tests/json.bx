@@ -1,0 +1,61 @@
+(import /data/csv)
+(import /data/json)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-expr + tests TestRender
+  (header (call test "Decode Scalars"))
+  (tuple "true" (as (call JSON "true") String))
+  (tuple "1000" (as (call JSON "1e3") String))
+  (header (call test "Decode Strings"))
+  (tuple "" (as (call JSON "\"\"") String))
+  (tuple "\t\n" (as (call JSON "\"\\t\\n\"") String))
+  (tuple "a\"b\\c/d" (as (call JSON "\"a\\\"b\\\\c\\/d\"") String))
+  (tuple "\x08\x0c\r" (as (call JSON "\"\\b\\f\\r\"") String))
+  (tuple "éab" (as (call JSON "\"\\u00e9ab\"") String))
+  (tuple "a🙂b" (as (call JSON "\"a\\uD83D\\uDE42b\"") String))
+  (tuple "�" (as (call JSON "\"\\ud83d\"") String))
+  (tuple "�x" (as (call JSON "\"\\ude42x\"") String))
+  (tuple "�A" (as (call JSON "\"\\ud83d\\u0041\"") String))
+  (tuple false (call parses "\"\\u41\""))
+  (tuple false (call parses "\"\\u00g1\""))
+  (header (call test "Encode Values"))
+  (tuple "\"a\\u0001b\"" (call to-json "a\x01b"))
+  (header (call test "Encode Parsed Values"))
+  (tuple (call encoded-complex-json-expected) (call encoded-complex-json))
+  (tuple "[]" (call to-json (call JSON "[]")))
+  (tuple "{}" (call to-json (call JSON "{}")))
+  (header (call test "CSV File Grammar"))
+  (tuple "(a, b, 1, 2, 3, 4, ba,\"by, x)" (as (call parsed-csv) String))
+)
+
+(fn-expr + encoded-complex-json-expected _
+  (++ "[null, 1, [2, 3.5], \"foo\\tA\", {\"yy\": [1, 2, 3], " tail)
+  (where
+    (lazy tail "\"xx\": 999.999}]")
+  )
+)
+
+(fn-expr + parses Bool
+  (param text String)
+  (!= parsed null)
+  (where
+    (lazy parsed
+      (match? text
+        (~ \json-text)
+      )
+    )
+  )
+)
+
+(fn-expr + encoded-complex-json _
+  (call to-json (call JSON " [null, 1, [2, 3.5], \"foo\\t\\u0041\",\n    {\"xx\": 999.999, \"yy\": [1, 2, 3]}]"))
+)
+
+(fn-expr + parsed-csv _
+  (~ \csv-file (of: "a,b\n1,2\n3,4,\"ba,\\\"by\",x"))
+)

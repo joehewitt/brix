@@ -1,0 +1,564 @@
+(import /core/arena)
+(import /core/table)
+(import /lang/ast/ast-nodes)
+(import /lang/ast/module)
+(import /lang/ast/operator)
+(import /lang/backend/mir)
+(import /lang/check/types)
+(import /lang/emit/layouts)
+(import /lang/emit/program-tables)
+(import /lang/emit/string-header)
+(import /string.h)
+(blank)
+(type-line + ValueId (is U32))
+(type-line + IRBlockId (is U32))
+(type-line + ConstantId (is U32))
+(type-line + LocalId (is U32))
+(type-line + Operand (is U32))
+(blank)
+(prop + no-block IRBlockId (= (. U32 max)))
+(blank)
+(prop _ operand-kind-shift U32 (= 28))
+(prop _ operand-payload-mask U32 (= 0x0fffffff))
+(blank)
+(prop + may-panic-dependency U32 (= 1))
+(prop + generator-dependency U32 (= 2))
+(blank)
+(prop + callee-kind-mask U32 (= 0xff))
+(prop + checked-call-flag U32 (= 0x100))
+(prop + stack-map-call-flag U32 (= 0x200))
+(prop + managed-store-flag U32 (= 0x80000000))
+
+(type + OperandKind (is U32)
+  (variant operand-void (= 0))
+  (variant operand-value (= 1))
+  (variant operand-number (= 2))
+  (variant operand-constant (= 4))
+  (variant operand-symbol (= 5))
+  (variant operand-argument (= 6))
+  (variant operand-environment (= 7))
+  (variant operand-panic-signal (= 8))
+  (variant operand-block (= 9))
+  (variant operand-result (= 10))
+  (variant operand-descriptor (= 11))
+  (variant operand-buffer-descriptor (= 12))
+)
+
+(type + IROp (is U32)
+  (variant op-call-void (= 0))
+  (variant op-return (= 1))
+  (variant op-call (= 2))
+  (variant op-jump (= 3))
+  (variant op-branch (= 4))
+  (variant op-phi (= 5))
+  (variant op-arithmetic (= 6))
+  (variant op-bitwise (= 7))
+  (variant op-num-cast (= 8))
+  (variant op-load (= 9))
+  (variant op-store (= 10))
+  (variant op-address (= 11))
+  (variant op-frame (= 12))
+  (variant op-copy (= 13))
+  (variant op-zero (= 14))
+  (variant op-load-task-panic (= 15))
+  (variant op-load-panic-signal (= 16))
+  (variant op-negate (= 17))
+  (variant op-bitwise-not (= 18))
+  (variant op-compare (= 19))
+  (variant op-load-local (= 20))
+  (variant op-store-local (= 21))
+  (variant op-count-leading-zeros (= 22))
+  (variant op-local-address (= 23))
+  (variant op-load-task-word (= 24))
+  (variant op-float-math (= 25))
+  (variant op-switch (= 26))
+  (variant op-yield (= 27))
+  (variant op-inlined-name (= 28))
+  (variant op-load-acquire (= 29))
+  (variant op-store-release (= 30))
+)
+
+(type + ArithmeticOp (is U32)
+  (variant arithmetic-add (= 0))
+  (variant arithmetic-subtract (= 1))
+  (variant arithmetic-multiply (= 2))
+  (variant arithmetic-divide (= 3))
+  (variant arithmetic-remainder (= 4))
+)
+
+(type + FloatMath (is U32)
+  (variant float-sqrt (= 0))
+  (variant float-abs (= 1))
+  (variant float-min (= 2))
+  (variant float-max (= 3))
+)
+
+(type + BitwiseOp (is U32)
+  (variant bitwise-and (= 0))
+  (variant bitwise-or (= 1))
+  (variant bitwise-xor (= 2))
+  (variant bitwise-shift-left (= 3))
+  (variant bitwise-shift-right (= 4))
+  (variant bitwise-shift-right-zero (= 5))
+)
+
+(type + ComparePredicate (is U32)
+  (variant compare-equal (= 0))
+  (variant compare-not-equal (= 1))
+  (variant compare-less (= 2))
+  (variant compare-less-equal (= 3))
+  (variant compare-greater (= 4))
+  (variant compare-greater-equal (= 5))
+)
+
+(type + ReturnKind (is U32)
+  (variant return-normal (= 0))
+  (variant return-panic (= 1))
+  (variant return-error (= 2))
+)
+
+(type + CalleeKind (is U32)
+  (variant callee-function (= 0))
+  (variant callee-runtime (= 1))
+  (variant callee-c (= 2))
+  (variant callee-value (= 3))
+)
+
+(type + IRConstantKind (is U32)
+  (variant constant-string (= 0))
+)
+
+(type + IRInstruction (is Struct)
+  ; A row of a function's body; its index is the id of the value it makes. `layout` is the
+  ; layout of that value: a scalar's machine kind, or a struct, whose value is its address.
+  ; `type` is the sealed type the value has in the source, when it has one. `aux` is the op's
+  ; own parameter:
+  ; - a call: the kind of its callee, whether a panic target is its last operand, and whether
+  ;   the call records the stack of its caller for the collector;
+  ; - arithmetic, bitwise: the operator;
+  ; - compare: the predicate. The operands' layout says how they are compared;
+  ; - load, address: the byte offset from the base;
+  ; - store: the byte offset, and whether the store takes a write barrier;
+  ; - copy, zero, frame: the layout copied, cleared or reserved, with the barrier flag;
+  ; - load-local, store-local, local-address: the local read, written, or whose address it is;
+  ; - load-task-word: the byte offset in the task's context of the word read;
+  ; - float-math: the function of floats it computes;
+  ; - return: whether it returns a panic.
+  ; `line` and `column` count from one, and are zero for a row no source stands behind. `module`
+  ; is the module whose file holds that source, where it is not the function's.
+  (blank)
+  (prop + op IROp)
+  (prop + block IRBlockId)
+  (prop + layout LayoutId)
+  (prop + type TypeId)
+  (prop + syntax SyntaxId)
+  (prop + line U32)
+  (prop + column U32)
+  (prop + operands Span)
+  (prop + aux U32)
+  (prop + module ModuleId (= (. U32 max)))
+)
+
+(type + IRBlock (is Struct)
+  ; A contiguous range of instructions that ends in a terminator. A block is reserved when the
+  ; shape that jumps to it begins, and its range starts when its turn comes.
+  (blank)
+  (prop + instructions Span)
+)
+
+(type + IRLocal (is Struct)
+  ; A cell of the function's frame that holds one value and is read and written whole: a local
+  ; the source declares, or one the compiler keeps. `layout` is how its value is held.
+  ; `address-taken` says something has the cell's address, so its value must stay in memory.
+  ; `filled` says a call given its address fills it, as a rule's function fills where it ended.
+  (blank)
+  (prop + layout LayoutId)
+  (prop + address-taken Bool)
+  (prop + filled Bool)
+)
+
+(type + IRConstant (is Struct)
+  ; Data a function's code addresses. A string holds its bytes with the length in characters
+  ; and the flags its header carries.
+  (blank)
+  (prop + kind IRConstantKind)
+  (prop + bytes ByteSpan)
+  (prop + character-length U32)
+  (prop + flags U32)
+)
+
+(type + IRNumber (is Struct)
+  ; A number the code uses, with the machine kind it is held in. A float's bits are those of
+  ; its kind: 32 of them for the narrower one.
+  (blank)
+  (prop + kind MachineKind)
+  (prop + bits U64)
+)
+
+(type + IRDependency (is Struct)
+  ; Something outside the function its code relies on: a function it calls, with what the call
+  ; assumed of it.
+  (blank)
+  (prop + kind CalleeKind)
+  (prop + symbol U32)
+  (prop + flags U32)
+)
+
+(type + IRStream (is Struct)
+  (prop + made Operand)
+  (prop + begin ValueId)
+  (prop + read ValueId)
+  (prop + ends IdList)
+  (prop + head IRBlockId (= no-block))
+  (prop + polled IRBlockId (= no-block))
+  (prop + done IRBlockId (= no-block))
+)
+
+(type + IRNote (is Struct)
+  (prop + row ValueId)
+  (prop + target FunctionId)
+  (prop + site-module ModuleId)
+  (prop + site-syntax SyntaxId)
+  (prop + chain IdList)
+)
+
+(fn-expr + make-operand Operand @inline
+  (param kind OperandKind)
+  (param payload U32)
+  (/or/ (/lshift/ (as kind U32) operand-kind-shift) (/and/ payload operand-payload-mask))
+)
+
+(fn-expr + operand-kind OperandKind @inline
+  (param operand Operand)
+  (as (/zrshift/ operand operand-kind-shift) OperandKind)
+)
+
+(fn-expr + operand-payload U32 @inline
+  (param operand Operand)
+  (/and/ operand operand-payload-mask)
+)
+
+(type + IRFunction
+  ; One function's IR: append-only tables in the arena of the worker emitting it, reset for each
+  ; function. `order` lists the blocks as they started, `arguments` holds the layout of each
+  ; argument, `locals` the cells of its frame, and `returns` the layout of the value the function
+  ; returns. `signals` says the function writes the panic signal on every return. `made-calls`
+  ; lists the rows after which TypeScript calls a function it generates, where this IR makes in
+  ; place what that function makes.
+  (blank)
+  (prop + function FunctionId (= no-function))
+  (prop + instructions (of Table IRInstruction))
+  (prop + blocks (of Table IRBlock))
+  (prop + order IdList)
+  (prop + current IRBlockId (= 0))
+  (prop + arguments IdList)
+  (prop + locals (of Table IRLocal))
+  (prop + returns LayoutId)
+  (prop + signals Bool)
+  (prop + operands IdList)
+  (prop + constants (of Table IRConstant))
+  (prop + numbers (of Table IRNumber))
+  (prop + dependencies (of Table IRDependency))
+  (prop + made-calls IdList)
+  (prop + streams (of Table IRStream))
+  (prop + notes (of Table IRNote))
+  (prop _ depended IdMap)
+  (prop _ arena Arena)
+  (fn-do + This _
+    (param arena Arena)
+    (lazy instructions (call (of Table IRInstruction) arena 16))
+    (lazy blocks (call (of Table IRBlock) arena 4))
+    (lazy locals (call (of Table IRLocal) arena 4))
+    (lazy constants (call (of Table IRConstant) arena 4))
+    (lazy numbers (call (of Table IRNumber) arena 4))
+    (lazy dependencies (call (of Table IRDependency) arena 4))
+    (lazy streams (call (of Table IRStream) arena 4))
+    (lazy notes (call (of Table IRNote) arena 2))
+  )
+  (fn-do + reset _
+    (param emitted FunctionId)
+    ; Starts a function's IR over, after the arena was reset.
+    (= function emitted)
+    (= instructions (call (of Table IRInstruction) arena 16))
+    (= blocks (call (of Table IRBlock) arena 4))
+    (= order (call IdList))
+    (= current 0)
+    (= arguments (call IdList))
+    (= locals (call (of Table IRLocal) arena 4))
+    (= returns void-layout)
+    (= signals false)
+    (= operands (call IdList))
+    (= constants (call (of Table IRConstant) arena 4))
+    (= numbers (call (of Table IRNumber) arena 4))
+    (= dependencies (call (of Table IRDependency) arena 4))
+    (= made-calls (call IdList))
+    (= streams (call (of Table IRStream) arena 4))
+    (= notes (call (of Table IRNote) arena 2))
+    (= depended (call IdMap))
+  )
+  (fn-do + note-made-call _
+    ; Notes that TypeScript calls a function it generates after the last row so far.
+    (if (!= (. instructions length) 0)
+      (= made-calls (call (. made-calls appended) arena (as (- (. instructions length) 1) U32)))
+    )
+  )
+  (fn-do + reserve-block IRBlockId
+    ; A block to jump to, before its rows exist.
+    (let id IRBlockId (as (. blocks length) IRBlockId))
+    (call (. blocks append) (call IRBlock (call Span)))
+    (return id)
+  )
+  (fn-do + start-block _
+    (param block IRBlockId)
+    ; Begins a reserved block's rows. The blocks of a function are walked in the order they
+    ; start.
+    (= (. ([] blocks block) instructions) (call Span (as (. instructions length) U32) 0))
+    (= order (call (. order appended) arena block))
+    (= current block)
+  )
+  (fn-expr + dominates Bool
+    (param dominator IRBlockId)
+    (param target IRBlockId)
+    ; Whether every way the blocks started so far lead from the function's first block to a block
+    ; passes through another, as TypeScript asks of its own blocks. A block dominates itself.
+    (or (== dominator target) (and (call reaches target no-block) (not (call reaches target dominator))))
+  )
+  (fn-do _ reaches Bool
+    (param target IRBlockId)
+    (param excluded IRBlockId)
+    ; Whether a block is reached from the function's first block by the jumps, the branches and
+    ; the landing pads of the blocks started so far, passing through no excluded block.
+    (if (== (. order length) 0)
+      (return false)
+    )
+    (let seen (list Bool))
+    (for (in position (..< 0 (. blocks length)))
+      (+= seen false)
+    )
+    (let pending (list IRBlockId))
+    (+= pending ([] order 0))
+    (while (!= (. pending length) 0)
+      (let block ([] pending (- (. pending length) 1)))
+      (call (. pending pop))
+      (if (or (== block excluded) ([] seen block))
+        (continue)
+      )
+      (if (== block target)
+        (return true)
+      )
+      (= ([] seen block) true)
+      (let rows (. ([] blocks block) instructions))
+      (for (in id (..< (. rows start) (. rows end)))
+        (if (!= (. ([] instructions id) op) .op-phi)
+          (let span (. ([] instructions id) operands))
+          (for (in position (..< (. span start) (. span end)))
+            (let operand ([] operands position))
+            (if (== (call operand-kind operand) .operand-block)
+              (+= pending (call operand-payload operand))
+            )
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + add-argument _
+    (param layout LayoutId)
+    ; Declares the function's next argument, in the order callers pass them.
+    (= arguments (call (. arguments appended) arena layout))
+  )
+  (fn-do + end-stream _
+    (param stream U32)
+    (param row ValueId)
+    (= (. ([] streams stream) ends) (call (. ([] streams stream) ends appended) arena row))
+  )
+  (fn-do + note _
+    (param row ValueId)
+    (param target FunctionId)
+    (param site-module ModuleId)
+    (param site-syntax SyntaxId)
+    (param chain IdList (= (call IdList)))
+    (call (. notes append) (call IRNote row target site-module site-syntax chain))
+  )
+  (fn-do + extended IdList
+    (param chain IdList)
+    (param function FunctionId)
+    (return (call (. chain appended) arena function))
+  )
+  (fn-do + add-local LocalId
+    (param layout LayoutId)
+    (param address-taken Bool (= false))
+    (param filled Bool (= false))
+    ; Declares a cell of the function's frame.
+    (let id LocalId (as (. locals length) LocalId))
+    (call (. locals append) (call IRLocal layout address-taken filled))
+    (return id)
+  )
+  (fn-do + operand-layout LayoutId
+    (param operand Operand)
+    ; The layout of the value an operand stands for.
+    (let payload (call operand-payload operand))
+    (match (call operand-kind operand)
+      (case= .operand-value
+        (return (. ([] instructions payload) layout))
+      )
+      (case= .operand-argument
+        (return ([] arguments payload))
+      )
+      (case= .operand-number
+        (return (. ([] numbers payload) kind))
+      )
+      (case= .operand-constant
+        (return managed-layout)
+      )
+      (case= .operand-void
+        (return void-layout)
+      )
+      (default
+        (return pointer-layout)
+      )
+    )
+    (return void-layout)
+  )
+  (fn-do + add-number U32
+    (param kind MachineKind)
+    (param bits U64)
+    (let id U32 (as (. numbers length) U32))
+    (call (. numbers append) (call IRNumber kind bits))
+    (return id)
+  )
+  (fn-do + add-float U32
+    (param kind MachineKind)
+    (param value F64)
+    ; A float of one of the two widths, kept as its bits. The narrower one is rounded first.
+    (if (== kind .machine-f32)
+      (let narrow (call (of (. arena allocate) F32) 1))
+      (= ([] narrow 0) (as value F32))
+      (return (call add-number kind ([] (as narrow (of CPointer U32)) 0)))
+    )
+    (let wide (call (of (. arena allocate) F64) 1))
+    (= ([] wide 0) value)
+    (return (call add-number kind ([] (as wide (of CPointer U64)) 0)))
+  )
+  (fn-do + add-operand _
+    (param operand Operand)
+    (= operands (call (. operands appended) arena operand))
+  )
+  (fn-do + append ValueId
+    (param row IRInstruction)
+    ; Appends a row to the block being built, which is the one that started last.
+    (let id ValueId (as (. instructions length) ValueId))
+    (call (. instructions append) row)
+    (let start (. ([] blocks current) instructions start))
+    (= (. ([] blocks current) instructions) (call Span start (- (+ id 1) start)))
+    (return id)
+  )
+  (fn-do + add-string ConstantId
+    (param text String)
+    (let id ConstantId (as (. constants length) ConstantId))
+    (let length (. text size))
+    (let bytes (call ByteSpan (call (. arena allocate-raw) (if-expr (!= length 0) length 1)) length))
+    (call C:memcpy (. bytes data) (as text (of CPointer Byte)) length)
+    (let header (call measure-string bytes))
+    (call (. constants append) (call IRConstant .constant-string bytes (. header character-length) (. header flags)))
+    (return id)
+  )
+  (fn-do + adopt-constant _
+    (param constant IRConstant)
+    ; Appends a constant another function's code addresses, with its bytes copied here.
+    (let length (. constant bytes length))
+    (let bytes (call ByteSpan (call (. arena allocate-raw) (if-expr (!= length 0) length 1)) length))
+    (call C:memcpy (. bytes data) (. constant bytes data) length)
+    (call (. constants append) (call IRConstant (. constant kind) bytes (. constant character-length) (. constant flags)))
+  )
+  (fn-do + depend _
+    (param kind CalleeKind)
+    (param symbol U32)
+    (param flags U32)
+    ; Lists something the function relies on, once for each kind it is relied on as. `depended`
+    ; holds the kinds each symbol is listed under, so a function of many callees does not read
+    ; its list again for each call.
+    (let listed (call (. depended get) symbol))
+    (let bit (/lshift/ 1u32 (as kind U32)))
+    (if (and (!= listed no-id) (!= (/and/ listed bit) 0))
+      (return)
+    )
+    (= depended (call (. depended inserted) arena symbol (if-expr (== listed no-id) bit (/or/ listed bit))))
+    (call (. dependencies append) (call IRDependency kind symbol flags))
+  )
+)
+
+(fn-expr + arithmetic-of U32
+  (param op Operator)
+  (match op
+    (case= .add-op
+      (. ArithmeticOp arithmetic-add)
+    )
+    (case= .subtract-op
+      (. ArithmeticOp arithmetic-subtract)
+    )
+    (case= .multiply-op
+      (. ArithmeticOp arithmetic-multiply)
+    )
+    (case= .divide-op
+      (. ArithmeticOp arithmetic-divide)
+    )
+    (case= .mod-op
+      (. ArithmeticOp arithmetic-remainder)
+    )
+    (default
+      (. U32 max)
+    )
+  )
+)
+
+(fn-expr + bitwise-of U32
+  (param op Operator)
+  (match op
+    (case= .bitwise-and-op
+      (. BitwiseOp bitwise-and)
+    )
+    (case= .bitwise-or-op
+      (. BitwiseOp bitwise-or)
+    )
+    (case= .bitwise-xor-op
+      (. BitwiseOp bitwise-xor)
+    )
+    (case= .bitwise-lshift-op
+      (. BitwiseOp bitwise-shift-left)
+    )
+    (case= .bitwise-rshift-op
+      (. BitwiseOp bitwise-shift-right)
+    )
+    (case= .bitwise-zrshift-op
+      (. BitwiseOp bitwise-shift-right-zero)
+    )
+    (default
+      (. U32 max)
+    )
+  )
+)
+
+(fn-expr + predicate-of ComparePredicate
+  (param op Operator)
+  (match op
+    (case= .not-equals-op
+      .compare-not-equal
+    )
+    (case= .less-than-op
+      .compare-less
+    )
+    (case= .less-than-equals-op
+      .compare-less-equal
+    )
+    (case= .greater-than-op
+      .compare-greater
+    )
+    (case= .greater-than-equals-op
+      .compare-greater-equal
+    )
+    (default
+      .compare-equal
+    )
+  )
+)

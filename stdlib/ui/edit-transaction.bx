@@ -1,0 +1,143 @@
+(import ./command-log)
+(import ./command-parameters)
+(import /graphics/snapshottable)
+(import /time/duration)
+(import /time/timer)
+
+(type + (of EditTransaction Step State)
+  (prop + document (of Snapshottable State))
+  (prop + log (? (of CommandLog Step)))
+  (prop + title _ (= ""))
+  (prop + running _ (= false))
+  (prop + serial Size (= 0))
+  (prop + work Duration (= 0ns))
+  (blank)
+  (prop _ start (? State))
+  (prop _ step (? Step))
+  (fn-do + This _
+    (param document _)
+  )
+  (fn-expr + live _ :get
+    step
+  )
+  (fn-expr + before _ :get
+    start
+  )
+  (fn-do + begin _
+    (param label String)
+    (param recording (of CommandLog Step))
+    (= log recording)
+    (call clear)
+    (return-if (if running))
+    (+= serial 1)
+    (= title label)
+    (= work 0ns)
+    (let snapshot start)
+    (if snapshot
+      (call (. document snapshot-into) snapshot)
+      (else
+        (= start (call (. document snapshot)))
+      )
+    )
+    (= running true)
+  )
+  (fn-do + record _
+    (param recorded Step)
+    (= step recorded)
+  )
+  (fn-do + apply _ (?! Error)
+    (param applied Step)
+    (call record applied)
+    (let started (call monotonic-time-nanoseconds))
+    (call (. applied execute))
+    (= work (as (- (call monotonic-time-nanoseconds) started) Nanoseconds))
+    (call changed)
+  )
+  (fn-do + replay _
+    (param restores _ (= true))
+    (let snapshot start)
+    (let active step)
+    (return-if (if (or (not snapshot) (not active))))
+    (if restores
+      (call (. document restore) snapshot)
+      (call restored)
+    )
+    (let started (call monotonic-time-nanoseconds))
+    (call (. active execute)
+      (block
+        (on-error (: error Error)
+          (call unhandled-error error)
+        )
+      )
+    )
+    (= work (as (- (call monotonic-time-nanoseconds) started) Nanoseconds))
+    (call changed)
+  )
+  (fn-do + restore-start _
+    (let snapshot start)
+    (if snapshot
+      (call (. document restore) snapshot)
+      (call restored)
+    )
+  )
+  (fn-do + update _
+    (param key String)
+    (param value CommandParameterValue)
+    (return-if (if (not (. key length))))
+    (let replacement (call (?. step replacing) key value))
+    (if replacement
+      (= step replacement)
+    )
+  )
+  (fn-do + return-to _
+    (param earlier Step)
+    (if step
+      (= step earlier)
+    )
+  )
+  (fn-do + run _
+    (return-if (if (not running)))
+    (= running false)
+    (let recorded (call take))
+    (let active log)
+    (if (or (not recorded) (not active))
+      (call revert)
+      (throw (call Panic "An edit must record a step before it runs"))
+    )
+    (call (. active record) recorded work)
+    (call ran recorded)
+  )
+  (fn-do + cancel _
+    (return-if (if (not running)))
+    (= running false)
+    (call take)
+    (call revert)
+  )
+  (fn-do + discard _
+    (= running false)
+    (call take)
+  )
+  (fn-do + release _
+    (let snapshot start)
+    (if snapshot
+      (call (. snapshot release))
+    )
+    (= start null)
+  )
+  (fn-do + clear _
+    (= step null)
+  )
+  (fn-do + revert _
+    (call restore-start)
+  )
+  (fn-do + restored _)
+  (fn-do + changed _)
+  (fn-do + ran _
+    (param recorded Step)
+  )
+  (fn-do _ take _
+    (let recorded step)
+    (call clear)
+    (return recorded)
+  )
+)

@@ -1,0 +1,47 @@
+; benchmark.meta description: Mixed Map operations with fully colliding scalar keys at 16 and 1,024 entries.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core)
+(blank)
+
+(main
+  (let checksum (call exercise-collisions 16 500))
+  (+= checksum (call exercise-collisions 1024 4))
+  (blank)
+  (print (str "bench-result map/mixed-colliding-scalar checksum=" checksum))
+)
+
+(fn-do _ exercise-collisions U64
+  (param count Size)
+  (param repetitions Size)
+  (let checksum 0u64)
+  (for (in repetition (..< 0 repetitions))
+    (let map (call (of Map CollisionKey U64)))
+    (for (in index (..< 0 count))
+      (= ([] map (call CollisionKey (as index U64))) (as index U64))
+    )
+    (for (in index (..< 0 count))
+      (+= checksum (!! ([] map (call CollisionKey (as index U64)))))
+    )
+    (for (in index (..< 0 count (by: 2)))
+      (-= ([] map (call CollisionKey (as index U64))))
+    )
+    (for (in index (..< 0 count (by: 2)))
+      (= ([] map (call CollisionKey (as index U64))) (as (+ index 1) U64))
+    )
+    (+= checksum (as (. map length) U64))
+  )
+  (return checksum)
+)
+
+(type + CollisionKey (is Struct)
+  (implements Hashable)
+  (prop + identity U64)
+  (fn-expr + (infix this == (param other CollisionKey)) _
+    (== identity (. other identity))
+  )
+  (fn-expr + hash Hash :get
+    0u32
+  )
+)

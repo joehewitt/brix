@@ -1,0 +1,160 @@
+; benchmark.meta description: Toggles descendant query targets under a deep synthetic markup tree.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: markup-runtime,compile-timing
+(blank)
+(import /BxGC/BxGC.h)
+(import /core/markup)
+(import /core/style)
+(import /gc/gc)
+(import /tui/box)
+(import /tui/layout)
+(import /tui/primitives)
+(import /tui/text)
+(blank)
+(type-line + DescendantQueryTarget (is Label))
+(blank)
+
+(main
+  (let step-count Size 120)
+  (let markup-attachment-lane (call C:brixGCMarkupAttachmentsSidePayloadLane))
+  (call C:brixCollect)
+  (do
+    (inline (call drain-reclaim-cleanups))
+  )
+  (let opening-markup-attachments (call C:brixGCObjectSidePayloadCount markup-attachment-lane))
+  (do
+    (inline opening-markup-attachments)
+  )
+  (blank)
+  (let root (call DescendantQueryRoot))
+  (do
+    (inline root)
+  )
+  (blank)
+  (call markup-mount-root root root)
+  (call (. root markup-batch-queue checkpoint))
+  (let settled-markup-attachments (call C:brixGCObjectSidePayloadCount markup-attachment-lane))
+  (do
+    (inline settled-markup-attachments)
+  )
+  (let settled-markup-hosts (call descendant-query-host-count root))
+  (throw (call Panic "markup/descendant-query-toggle initial attachment tree is inconsistent") (if (!= settled-markup-attachments (+ opening-markup-attachments settled-markup-hosts))))
+  (blank)
+  (let checksum Size 0)
+  (for (in step (..< 0 step-count))
+    (= (. root mode) step)
+    (call (. root markup-batch-queue checkpoint))
+    (probe-count markup.bench.steps)
+    (+= checksum (+ (call (. root target-count)) step))
+  )
+  (blank)
+  (call C:brixCollect)
+  (do
+    (inline (call drain-reclaim-cleanups))
+  )
+  (call C:brixCollect)
+  (do
+    (inline (call drain-reclaim-cleanups))
+  )
+  (let final-markup-attachments (call C:brixGCObjectSidePayloadCount markup-attachment-lane))
+  (let final-markup-hosts (call descendant-query-host-count root))
+  (let minimum-final-markup-attachments (+ opening-markup-attachments final-markup-hosts))
+  (let maximum-final-markup-attachments (+ minimum-final-markup-attachments 1))
+  (let final-below-minimum (< final-markup-attachments minimum-final-markup-attachments))
+  (let final-above-maximum (> final-markup-attachments maximum-final-markup-attachments))
+  (throw (call Panic "markup/descendant-query-toggle retained reclaimed attachment owners") (if (or final-below-minimum final-above-maximum)))
+  (throw (call Panic "markup/descendant-query-toggle lost its live attachment tree") (if (<= final-markup-attachments opening-markup-attachments)))
+  (blank)
+  (print (str "bench-result markup/descendant-query-toggle checksum=" checksum))
+)
+
+(type + DescendantQueryRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + mode Size (= 0))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (blank)
+  (prop _ targets (of Descendants DescendantQueryTarget))
+  (content
+    (<> This
+      (for (in branch (..< 0 12))
+        (<> Box
+          (if (== (% branch 3) 0)
+            (<> Box
+              (<> Box
+                (if (call descendant-query-target-active #mode branch)
+                  (<> DescendantQueryTarget
+                    (= text (str "target-" branch))
+                  )
+                  (else
+                    (<> Label
+                      (= text (str "plain-" branch))
+                    )
+                  )
+                )
+              )
+            )
+            (else-if (== (% branch 3) 1)
+              (<> Box
+                (<> Box
+                  (<> Box
+                    (if (call descendant-query-target-active #mode (* branch 5))
+                      (<> DescendantQueryTarget
+                        (= text (str "target-" (* branch 5)))
+                      )
+                      (else
+                        (<> Label
+                          (= text (str "plain-" (* branch 5)))
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+            (else
+              (for (in leaf (..< 0 3))
+                (<> Box
+                  (<> Box
+                    (if (call descendant-query-target-active #mode (+ (* branch 7) leaf))
+                      (<> DescendantQueryTarget
+                        (= text (str "target-" (+ (* branch 7) leaf)))
+                      )
+                      (else
+                        (<> Label
+                          (= text (str "plain-" (+ (* branch 7) leaf)))
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+  (fn-expr + target-count Size
+    (. targets length)
+  )
+)
+
+(fn-expr _ descendant-query-target-active Bool
+  (param mode Size)
+  (param seed Size)
+  (< (% (+ mode (* seed 7)) 11) 5)
+)
+
+(fn-do _ descendant-query-host-count Size
+  (param root MarkupElement)
+  (let count Size 1)
+  (let cursor (call markup-query-first-descendant-host root))
+  (while cursor
+    (+= count 1)
+    (= cursor (call markup-query-next-descendant-host root cursor))
+  )
+  (return count)
+)

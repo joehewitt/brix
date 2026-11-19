@@ -1,0 +1,229 @@
+(import ./model)
+(import /data/json)
+(blank)
+(prop + ai-question-tool-name _ (= "ask_next_step"))
+(prop _ ai-question-choice-limit Size (= 2))
+(prop _ ai-question-shown _ (= "The question will appear under your reply. Now write your closing message: your full answer, without mentioning the question or its choices."))
+
+(type + AIQuestionChoice (is Tuple)
+  (prop + label String)
+  (prop + detail (? String))
+)
+
+(type + AIQuestion (is Tuple)
+  (prop + text String)
+  (prop + context (? String))
+  (prop + choices (list AIQuestionChoice))
+)
+
+(type + AIQuestionToolkit
+  (implements AIToolkit)
+  (fn-expr + tools (list AITool)
+    (call (of List AITool) (list (call ai-question-tool)))
+  )
+  (fn-expr + context (? String)
+    (param request AIRequest)
+    (call ai-question-note)
+  )
+  (fn-expr + run AIToolkitResult (?! Error)
+    (param request AIRequest)
+    (param call AIToolCallPart)
+    (before
+      (throw (call AIError (. AIErrorKind invalid-request) (str "There is no tool named " (. call tool-name))) (if (not (call ai-is-question-call call))))
+      (throw (call AIError (. AIErrorKind invalid-request) (str ai-question-tool-name " needs a question and at least one choice with a label")) (if (not (call ai-question call))))
+    )
+    (call AIToolkitResult ai-question-shown)
+  )
+)
+
+(fn-expr + ai-is-question-call Bool
+  (param call AIToolCallPart)
+  (== (. call tool-name) ai-question-tool-name)
+)
+
+(fn-do + ai-question (? AIQuestion)
+  (param call AIToolCallPart)
+  (return-if null (if (not (call ai-is-question-call call))))
+  (let fields
+    (match? (. call arguments)
+      (case (map String JSON))
+    )
+  )
+  (return-if null (if (not fields)))
+  (let text (call ai-question-text ([] fields "question")))
+  (return-if null (if (not text)))
+  (let listed
+    (match? ([] fields "choices")
+      (case (list JSON))
+    )
+  )
+  (let choices (call (of List AIQuestionChoice)))
+  (for (in value (?? listed (call (of List JSON))))
+    (let choice
+      (match? value
+        (case (map String JSON))
+      )
+    )
+    (let label (call ai-question-text (?[] choice "label")))
+    (if (and label (< (. choices length) ai-question-choice-limit))
+      (+= choices (call AIQuestionChoice label (call ai-question-text (?[] choice "detail"))))
+    )
+  )
+  (return-if null (if (not choices)))
+  (return (call AIQuestion text (call ai-question-text ([] fields "context")) choices))
+)
+
+(fn-do + ai-reply-question (? AIQuestion)
+  (param parts (list AIMessagePart))
+  (let index (. parts length))
+  (while (> index 0)
+    (-= index 1)
+    (if (= (| (: call AIToolCallPart)) ([] parts index))
+      (let found (call ai-question call))
+      (return-if found (if found))
+    )
+  )
+  (return null)
+)
+
+(fn-do + ai-reply-asks Bool
+  (param parts (list AIMessagePart))
+  (return-if true (if (call ai-reply-question parts)))
+  (let index (. parts length))
+  (while (> index 0)
+    (-= index 1)
+    (if (= (| (: part AITextPart)) ([] parts index))
+      (let closing (call ai-closing-text (. part text)))
+      (return-if (call (. closing ends-with) "?") (if (> (. closing length) 0)))
+    )
+  )
+  (return false)
+)
+
+(fn-do _ ai-closing-text String
+  (param text String)
+  (let closing (call (. text trim)))
+  (while (or (call (. closing ends-with) "*") (call (. closing ends-with) "_"))
+    (= closing (call (. ([] closing (..< 0 (- (. closing length) 1))) trim)))
+  )
+  (return closing)
+)
+
+(fn-expr _ ai-question-text (? String)
+  (param value (? JSON))
+  (match? value
+    (case (all (: text String) ({} (> (. (call (. it trim)) length) 0)))
+      (call (. text trim))
+    )
+  )
+)
+
+(fn-expr _ ai-question-tool AITool
+  (call AITool ai-question-tool-name (call ai-question-description) parameters)
+  (where
+    (lazy parameters
+      (call (of Map String JSON)
+        (block
+          (:type "object")
+          (:properties
+            (call (of Map String JSON)
+              (block
+                (:question
+                  (call (of Map String JSON)
+                    (block
+                      (:type "string")
+                      (:description "The one decision, in at most 100 characters: never two decisions joined by “and”, and no reason, recommendation, or list of the choices")
+                    )
+                  )
+                )
+                (:context
+                  (call (of Map String JSON)
+                    (block
+                      (:type "string")
+                      (:description "One or two sentences the person needs in order to decide, or an empty string when the question stands on its own")
+                    )
+                  )
+                )
+                (:choices
+                  (call (of Map String JSON)
+                    (block
+                      (:type "array")
+                      (:description "One or two answers, your recommendation first. Add a second only when it is a realistic alternative the person might pick instead, not a menu of everything you mentioned.")
+                      (:items (call ai-question-choice-schema))
+                    )
+                  )
+                )
+              )
+            )
+          )
+          (:required (call ai-question-required))
+          (entry "additionalProperties" false)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ ai-question-choice-schema JSON
+  (call (of Map String JSON)
+    (block
+      (:type "object")
+      (:properties
+        (call (of Map String JSON)
+          (block
+            (:label
+              (call (of Map String JSON)
+                (block
+                  (:type "string")
+                  (:description "The answer in the person's own words, one to three words, such as “Yes, fix it” or “Not now”. Choosing it sends these words to you as their reply.")
+                )
+              )
+            )
+            (:detail
+              (call (of Map String JSON)
+                (block
+                  (:type "string")
+                  (:description "What choosing it leads to, in one short line, or an empty string")
+                )
+              )
+            )
+          )
+        )
+      )
+      (:required (call ai-question-choice-required))
+      (entry "additionalProperties" false)
+    )
+  )
+)
+
+(fn-expr _ ai-question-required (list JSON)
+  (item "question")
+  (item "context")
+  (item "choices")
+)
+
+(fn-expr _ ai-question-choice-required (list JSON)
+  (item "label")
+  (item "detail")
+)
+
+(fn-expr _ ai-question-description _
+  (paragraph
+    "Shows the person one question about what happens next, as choices under your reply."
+    "Call it once, when your work for the turn is done and before your closing message, only when the next move is the person's call: a choice between approaches, a go-ahead for a next step you recommend, or an approval."
+    "Most turns need none. Do not ask about work that belongs to the task; do it."
+    "Do not offer speculative extras, and do not repeat an offer the person passed over unless what it acts on has changed."
+    "It does not wait for an answer: the person's choice arrives as their next message."
+    "After calling it, write your closing message: your full answer, as the last thing in the turn. Never write that answer before the call, and do not mention the question or repeat its choices."
+  )
+)
+
+(fn-expr _ ai-question-note _
+  (paragraph
+    "<next-step>"
+    (str "When this turn leaves the person a decision that is theirs to make, such as a choice between approaches, a go-ahead for a next step you recommend, or an approval, ask it with the " ai-question-tool-name " tool rather than in your reply, loading the tool first if it is deferred.")
+    "Most turns leave none. Don't ask about work that belongs to the task; do it. Don't offer speculative extras, and don't repeat an offer the person passed over."
+    "Call it once your work is done and before your closing message, then write your full answer as the last thing in the turn, without mentioning the question."
+    "</next-step>"
+  )
+)

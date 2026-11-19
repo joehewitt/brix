@@ -1,0 +1,221 @@
+(import ./box)
+(import ./layout)
+(import ./primitives)
+(import /math)
+(import /units)
+(blank)
+(prop + absolute _ (= (call AbsolutePosition)))
+(blank)
+(type-line + LayoutPosition (is Position))
+(type-line + PositionAxis (is (tuple (: start Coord) (: span Coord))))
+(type-line + PositionAxisPin (is (tuple (: source Ratio) (: target Ratio))))
+
+(type + Position
+  (fn-expr + participates-in-layout _
+    (param parent Box)
+    (param child Box)
+    (. (call participation parent child) contributes-to-measure)
+  )
+  (fn-expr + participation _
+    (param parent Box)
+    (param child Box)
+    (call LayoutParticipation)
+  )
+  (fn-do + arrange _
+    (param parent Box)
+    (param child Box)
+  )
+)
+
+(type + AbsolutePosition (is Position)
+  (fn-expr + participates-in-layout _
+    (param parent Box)
+    (param child Box)
+    (. (call participation parent child) contributes-to-measure)
+  )
+  (fn-expr + participation _
+    (param parent Box)
+    (param child Box)
+    (call LayoutParticipation false false true)
+  )
+  (fn-do + arrange _
+    (param parent Box)
+    (param child Box)
+    (let content (call (. child anchor-bounds) parent))
+    (let intrinsic (. child outer-intrinsic-size))
+    (let inline (call absolute-axis (. content x) (. content width) (. intrinsic width) (. child $left) (. child $right)))
+    (let block (call absolute-axis (. content y) (. content height) (. intrinsic height) (. child $top) (. child $bottom)))
+    (if (. child $align-x)
+      (= inline
+        (call absolute-axis-align
+          (block
+            (arg (. content x))
+            (arg (. content width))
+            (arg (. intrinsic width))
+            (arg (!! (. child $align-x)))
+            (arg (. child $left))
+            (arg (. child $right))
+          )
+        )
+      )
+    )
+    (if (. child $align-y)
+      (= block
+        (call absolute-axis-align
+          (block
+            (arg (. content y))
+            (arg (. content height))
+            (arg (. intrinsic height))
+            (arg (!! (. child $align-y)))
+            (arg (. child $top))
+            (arg (. child $bottom))
+          )
+        )
+      )
+    )
+    (call (. child arrange-outer-bounds) (call Rect (. inline start) (. block start) (. inline span) (. block span)))
+  )
+)
+
+(fn-expr _ absolute-axis _
+  (param start Coord)
+  (param span Coord)
+  (param intrinsic Coord)
+  (param near (? PositionOffset))
+  (param far (? PositionOffset))
+  (case? near-pin
+    (call absolute-axis-pin start span intrinsic near-pin)
+  )
+  (case? far-pin
+    (call absolute-axis-pin start span intrinsic far-pin)
+  )
+  (case? (and near far near-edge far-edge)
+    (call PositionAxis (+ start near-edge) (call max 0 (- span near-edge far-edge)))
+  )
+  (case? (and near near-edge)
+    (call PositionAxis (+ start near-edge) intrinsic)
+  )
+  (case? (and far far-edge)
+    (call PositionAxis (- (+ start span) far-edge intrinsic) intrinsic)
+  )
+  (default
+    (call PositionAxis start intrinsic)
+  )
+  (where
+    (lazy near-pin (call position-offset-pin near))
+    (lazy far-pin (call position-offset-pin far))
+    (lazy near-edge (call position-offset-edge near))
+    (lazy far-edge (call position-offset-edge far))
+  )
+)
+
+(fn-expr _ absolute-axis-pin _
+  (param start Coord)
+  (param span Coord)
+  (param intrinsic Coord)
+  (param pin PositionAxisPin)
+  (call PositionAxis (as (- (+ start (call round (* (. pin target) span))) (call round (* (. pin source) intrinsic))) Coord) intrinsic)
+)
+
+(fn-do _ absolute-axis-align _
+  (param start Coord)
+  (param span Coord)
+  (param intrinsic Coord)
+  (param align AnchorPoint)
+  (param near (? PositionOffset))
+  (param far (? PositionOffset))
+  (let target (+ start (call round (* (call anchor-point-ratio align) span))))
+  (let source (call round (* (call anchor-point-ratio align) intrinsic)))
+  (let offset Coord 0)
+  (let near-edge (call position-offset-edge near))
+  (let far-edge (call position-offset-edge far))
+  (if near-edge
+    (= offset near-edge)
+    (else-if far-edge
+      (= offset (- far-edge))
+    )
+  )
+  (blank)
+  (return (call PositionAxis (as (- (+ target offset) source) Coord) intrinsic))
+)
+
+(fn-do _ position-offset-edge _
+  (param offset (? PositionOffset))
+  (return-if (if (not offset)))
+  (blank)
+  (let edge (? Coord) null)
+  (let ignored
+    (match offset
+      (case (call (. PositionOffset coord) n)
+        (= edge n)
+      )
+      (case (call (. PositionOffset percent) percent)
+        (= edge null)
+      )
+      (case (. PositionOffset anchor-start)
+        (= edge null)
+      )
+      (case (. PositionOffset anchor-center)
+        (= edge null)
+      )
+      (case (. PositionOffset anchor-end)
+        (= edge null)
+      )
+      (case (call (. PositionOffset pin) pin)
+        (= edge null)
+      )
+    )
+  )
+  (blank)
+  (return edge)
+)
+
+(fn-do _ position-offset-pin _
+  (param offset (? PositionOffset))
+  (return-if (if (not offset)))
+  (blank)
+  (let pin-result (? PositionAxisPin) null)
+  (let ignored
+    (match offset
+      (case (call (. PositionOffset coord) n)
+        (= pin-result null)
+      )
+      (case (. PositionOffset anchor-start)
+        (= pin-result (call PositionAxisPin 0%% 0%%))
+      )
+      (case (. PositionOffset anchor-center)
+        (= pin-result (call PositionAxisPin 0.5%% 0.5%%))
+      )
+      (case (. PositionOffset anchor-end)
+        (= pin-result (call PositionAxisPin 1%% 1%%))
+      )
+      (case (call (. PositionOffset percent) percent)
+        (= pin-result (call PositionAxisPin ratio ratio))
+        (lazy ratio (as percent Ratio))
+      )
+      (case (call (. PositionOffset pin) pin)
+        (= pin-result (call PositionAxisPin (call anchor-point-ratio (. pin source)) (call anchor-point-ratio (. pin target))))
+      )
+    )
+  )
+  (blank)
+  (return pin-result)
+)
+
+(fn-expr _ anchor-point-ratio _
+  (param point AnchorPoint)
+  (match point
+    (case (. AnchorPoint start)
+      0%%
+    )
+    (case (. AnchorPoint center)
+      0.5%%
+    )
+    (case (. AnchorPoint end)
+      1%%
+    )
+    (default
+      0%%
+    )
+  )
+)

@@ -1,0 +1,74 @@
+(prop + task-suspending-names (list String) (= (list "brixSuspendTask" "brixWaitForSemaphore" "brixPostSemaphore" "brixLockMutex" "brixGCSafepoint" "brixTaskSafepoint" "brixGCLeaveFFI" "brixClaimLazyGlobal")))
+(blank)
+(prop + task-suspending-prefix _ (= "brixSuspendActiveTask"))
+(blank)
+(prop + task-yielding-names (list String) (= (list "brixWaitForTask" "brixTaskEndingWait" "brixCancelTask" "brixResumeTaskNow")))
+(blank)
+(prop + termination-leaving-names (list String) (= (list "brixLockMutex" "brixSuspendTask")))
+(blank)
+(prop + allocating-names (list String) (= (list "brixAllocObject" "brixAllocObjectDescribed" "brixAllocBuffer" "brixAllocBufferDescribed" "brixResizeBuffer" "brixResizeBufferDescribed" "brixGCAllocObject" "brixGCAllocObjectDescribed" "brixGCAllocBuffer" "brixGCAllocBufferDescribed" "brixGCResizeBuffer" "brixGCResizeBufferDescribed" "brixGCResizeBufferCopy" "brixAllocObjectWithSiteKey" "brixGCAllocationBufferRefill" "brixGCCompilerAllocationBufferRefill" "brixGCTestAllocBatch" "brixParseRegionPromote" "brixParseRegionPromoteValue" "brixTakePanic" "brixArrayViewCreate" "brixCharToString" "brixDoubleToFixedString" "brixDoubleToString" "brixFloatToString" "brixIntToString" "brixLonglongToString" "brixStringAdopt" "brixStringConcat" "brixStringCreate" "brixStringCreateASCII" "brixStringCreateValidated" "brixStringDecompose" "brixStringNormalize" "brixStringRepeat" "brixStringSlice" "brixStringSliceUtf8" "brixStringFromUtf8Codepoint" "brixStringFromUtf8Codepoints" "brixStringToLowercase" "brixStringToUppercase" "brixStringToUtf8Codepoints" "brixToHex" "brixUintToString" "brixUlonglongToString")))
+(blank)
+(prop + plain-polling-names (list String) (= (list "brixPrint" "brixPrintUnhandledError" "brixReportUnhandledError" "brixReportUnhandledPanic" "brixReportFatalPanic" "brixStartTask" "brixStartOwnedTask" "brixCancelOwnedTasks" "brixCancelOwnedTasksTo" "brixForkTask" "brixForkMainTask" "brixTerminate" "brixTerminateActiveTask" "brixSaveArgs" "brixGCValidateAllocationABI" "brixGetProcessExitCode" "exit" "brixInterruptRequestedFlags" "brixGCEnterFFI" "brixGCEnterZone" "brixGCLeaveZone" "brixArrayCopySlice" "brixArrayCopySliceDescribed" "brixArrayViewsReplace" "brixArrayViewsInvalidate" "brixArenaReserveDescribed" "brixGCObjectSidePayload" "brixGCClearObjectSidePayload" "brixBatchStartIndex" "brixBatchEndIndex" "brixBatchTestStart" "brixBatchTestFinish" "brixActiveTaskQueueActivity" "brixReleaseLazyGlobal" "brixAbandonLazyGlobal" "brixProbeTracing" "brixCollect" "brixGCCollect" "brixGCScavenge" "brixGCStartConcurrentMark" "brixGCFinishConcurrentMark" "brixGCFrameBudget" "brixGCOwnerWeakLoad" "brixGCRegisterOwnerWeak" "brixGCReleaseOwnerWeak" "brixGCAddRoot" "brixGCRegisterCleanup" "brixGCCancelCleanup" "brixCollectionObserverActivate" "brixCollectionObserverDeactivate" "brixGCPublishObjectSidePayload" "brixGCPublishCleanupObjectSidePayload" "brixBenchTemporaryRootShim" "brixStringMeasureDisplayWidth")))
+(blank)
+(prop + code-running-names (list String) (= (list "brixRunEventLoop" "brixGCDrainCleanups")))
+
+(fn-expr + suspends-task Bool
+  (param name String)
+  (or (call (. name starts-with) task-suspending-prefix) (!= (call (. task-suspending-names find) name) null))
+)
+
+(fn-expr + leaves-termination Bool
+  (param name String)
+  ; Whether a C function suspends the task but leaves a termination to what follows, so the call is
+  ; not followed by the check that ends a terminated task. `brixLockMutex` takes a lock: a waiter is
+  ; woken only to take it, and a task ended there would hold it before its `use` keeps it, to give it
+  ; back. `brixSuspendTask` answers whether the task is cancelled, as a termination makes it, and
+  ; its caller checks the answer, doing its own work first, such as leaving a queue.
+  (!= (call (. termination-leaving-names find) name) null)
+)
+
+(fn-expr + allocates Bool
+  (param name String)
+  (!= (call (. allocating-names find) name) null)
+)
+
+(fn-expr + is-claimed Bool
+  (param name String)
+  ; Whether a C function is classified: one that suspends the task or yields to a task, one that
+  ; allocates from the collector, one that runs code that may do either, or one that polls and does
+  ; neither.
+  (or (call suspends-task name) (call yields-to-task name) (call allocates name) is-plain-polling (call runs-code name))
+  (where
+    (lazy is-plain-polling (!= (call (. plain-polling-names find) name) null))
+  )
+)
+
+(fn-expr + runs-code Bool
+  (param name String)
+  (!= (call (. code-running-names find) name) null)
+)
+
+(fn-expr + yields-to-task Bool
+  (param name String)
+  ; Whether a C function lets another task run before it returns: one that waits for a task to end,
+  ; or one that cancels or resumes a task and yields to it. It suspends the task, but is called as
+  ; its declaration says, as one that may block, and not as one that suspends it.
+  (!= (call (. task-yielding-names find) name) null)
+)
+
+(fn-expr + may-suspend Bool
+  (param name String)
+  (param polls Bool)
+  ; Whether a C function may suspend the task where a restriction forbids it: one that suspends it
+  ; or yields to a task does. Any other that polls the collector can, so one that polls and is not
+  ; classified is taken to.
+  (or (call suspends-task name) (call yields-to-task name) (call runs-code name) (and polls (not (call is-claimed name))))
+)
+
+(fn-expr + may-allocate Bool
+  (param name String)
+  (param polls Bool)
+  ; Whether a C function may allocate from the collector where a restriction forbids it. Only a
+  ; function that polls the collector can, so one that polls and is not classified is taken to.
+  (or (call allocates name) (call runs-code name) (and polls (not (call is-claimed name))))
+)

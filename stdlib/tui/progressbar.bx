@@ -1,0 +1,141 @@
+(import ./box)
+(import ./colors)
+(import ./layout)
+(import ./painter)
+(import ./primitives)
+(import ./styles)
+(import ./text)
+(import ./theme)
+(import /math)
+(import /time/duration)
+(import /time/timer)
+
+(style-extend TUIDefaultTheme
+  (using BoxPaint)
+  (using TextPaint)
+  (rule ProgressBar
+    (rule progress-fill
+      (= background-color (call AnsiColor 48))
+      (= color (call AnsiColor 255))
+    )
+    (blank)
+    (rule progress-empty
+      (= background-color (call AnsiColor 237))
+      (= color (call AnsiColor 8))
+    )
+  )
+)
+
+(type + ProgressBar (is Box)
+  (prop + value _ (= 0))
+  (prop + total (? Int) (= 100))
+  (prop + label _ (= ""))
+  (prop + bar-prefix _ (= "["))
+  (prop + bar-suffix _ (= "]"))
+  (prop + show-percent _ (= true))
+  (prop + interval _ (= 120ms))
+  (prop + fill-character _ (= ""))
+  (prop + empty-character _ (= ""))
+  (prop + progress _ (= (call progress-position #value #total #elapsed #interval)))
+  (blank)
+  (prop _ ticker _ (= (call Timer interval)))
+  (prop _ elapsed Microseconds)
+  (content
+    (<> This (• h 1) (• flex-row)
+      (<> Label
+        (= text (if-expr #label (str #label " ") ""))
+      )
+      (blank)
+      (<> Label
+        (= text #bar-prefix)
+      )
+      (blank)
+      (+<> Box (id: track) (• flex 1) (• flex-row)
+        (<> ProgressBarSegment (• progress-fill)
+          (= character #fill-character)
+          (= flex (as (call round (* #progress 100)) Flex))
+        )
+        (<> ProgressBarSegment (• progress-empty)
+          (= character #empty-character)
+          (= flex (as (- 100 (call round (* #progress 100))) Flex))
+        )
+      )
+      (blank)
+      (<> Label
+        (= text #bar-suffix)
+      )
+      (blank)
+      (<> Label
+        (= text (call progress-percent #value #total #show-percent))
+      )
+    )
+  )
+  (subscribe-for (on tick ticker (whenever (<= (?? #total 0) 0)))
+    (= elapsed tick)
+  )
+  (fn-do + close _
+    (call (. super close))
+    (call (. ticker end-using))
+  )
+)
+
+(fn-expr _ progress-position Float
+  (param value Int)
+  (param total (? Int))
+  (param elapsed Microseconds)
+  (param interval Microseconds)
+  (case? (and total (> total 0))
+    (call progress-fraction value total)
+  )
+  (case? (<= interval 0)
+    0
+  )
+  (default
+    (/ (% (* (as (/ elapsed interval) Int) 7) 101) 100.0)
+  )
+)
+
+(fn-expr _ progress-fraction Float
+  (param value Int)
+  (param total Int)
+  (/ (as (call min total (call max 0 value)) Float) total)
+)
+
+(fn-expr _ progress-percent String
+  (param value Int)
+  (param total (? Int))
+  (param visible Bool)
+  (case? (or (not visible) (not total) (<= total 0))
+    ""
+  )
+  (default
+    (str (* " " (call max 1 (- 4 (. text length)))) text "%")
+  )
+  (where
+    (lazy text (as (as (call round (* (call progress-fraction value total) 100)) Int) String))
+  )
+)
+
+(type + ProgressBarSegment (is Box)
+  (prop + character _ (= ""))
+  (content
+    (<> This (• h 1) (• flex-row)
+      (<> Label
+        (= text (call progress-repeat-character #character))
+      )
+    )
+  )
+  (fn-expr + measured-content-size PSize
+    (param query MeasureQuery)
+    (call PSize 0 1)
+  )
+  (fn-expr + progress-repeat-character String
+    (param character String)
+    (case? (== character "")
+      ""
+    )
+    (default
+      (* character 256)
+    )
+  )
+)

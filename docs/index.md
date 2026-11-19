@@ -37,7 +37,7 @@ print?". They are kept short to test one thing each, so take their constructs, n
   program is a `yumi` or `brix` fence, and the `output` or `stderr` fences after it hold what it
   prints. Words on the program fence, such as `compile-error`, change what is expected.
 - Some cases import helpers from [`stdlib/core/tests/support`](../stdlib/core/tests/support).
-- To try a case, copy its program into a file and run it with `brix case.yumi -o case`.
+- To try a case, copy its program into a file and run it with `brix case.bx -o case`.
 
 ## Example Programs
 
@@ -72,7 +72,7 @@ To try one from your project, run `brix <toolchain root>/examples/tui/timer.bx -
 ## The Standard Library
 
 [`stdlib`](../stdlib) is the standard library's source. A module's import path is its path under
-`stdlib` without `.yumi`, so `/os/path` is `stdlib/os/path.yumi`. Declarations marked `+` are
+`stdlib` without `.yumi`, so `/os/path` is `stdlib/os/path.bx`. Declarations marked `+` are
 public. The library has few comments, so read a declaration's signature and body to learn what it
 does.
 
@@ -105,7 +105,7 @@ does.
 
 ## Checking, Testing And Debugging
 
-- `brix x.yumi` checks a program, and `brix x.yumi -o x` builds and runs it. `brix --help` lists
+- `brix x.bx` checks a program, and `brix x.bx -o x` builds and runs it. `brix --help` lists
   the rest.
 - [Probes](style/agent-brix-probes.md): writing probes, and using them with `brix probes` to debug
   and profile. Use probes in place of prints.

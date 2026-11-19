@@ -1,9 +1,5 @@
 # Iterator
 
-```yumi
-result2 in (result1 in input)
-```
-
 ```brix
 (main
   (in result2 (in result1 input))
@@ -22,10 +18,6 @@ result2 in (result1 in input)
     </In>
     <Id name="result2"/>
 </Iterator>
-```
-
-```yumi
-result in input while a when b
 ```
 
 ```brix
@@ -49,11 +41,6 @@ result in input while a when b
 </Iterator>
 ```
 
-```yumi
-in b
-    c
-```
-
 ```brix
 (main
   (iterate (in b)
@@ -71,12 +58,6 @@ in b
     </In>
     <Id name="c"/>
 </Iterator>
-```
-
-```yumi
-in b
-and c
-    d
 ```
 
 ```brix
@@ -103,11 +84,6 @@ and c
 </Iterator>
 ```
 
-```yumi
-in b when d
-    c
-```
-
 ```brix
 (main
   (iterate (in b (when d))
@@ -128,13 +104,6 @@ in b when d
     </In>
     <Id name="c"/>
 </Iterator>
-```
-
-```yumi
-in b when a
-    c
-or in g
-    f
 ```
 
 ```brix
@@ -172,10 +141,6 @@ or in g
 
 ## each autoclosure
 
-```yumi
-each in foo
-```
-
 ```brix
 (main
   (in each foo)
@@ -189,10 +154,6 @@ each in foo
     </In>
     <Id name="each"/>
 </Iterator>
-```
-
-```yumi
-result *> binding in input
 ```
 
 ```brix
@@ -213,10 +174,6 @@ result *> binding in input
 </Iterator>
 ```
 
-```yumi
-each in foo when each
-```
-
 ```brix
 (main
   (in each foo (when each))
@@ -233,10 +190,6 @@ each in foo when each
     </In>
     <Id name="each"/>
 </Iterator>
-```
-
-```yumi
-a = each in foo
 ```
 
 ```brix
@@ -257,10 +210,6 @@ a = each in foo
 </AssignmentExpression>
 ```
 
-```yumi
-foo • of each in foo
-```
-
 ```brix
 (main
   (call foo (:of (in each foo)))
@@ -279,10 +228,6 @@ foo • of each in foo
         </Iterator>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-foo • of each in foo when bar
 ```
 
 ```brix
@@ -306,11 +251,6 @@ foo • of each in foo when bar
         </Iterator>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-<* binding in input when clause
-    result
 ```
 
 ```brix

@@ -1,0 +1,26 @@
+(prop _ network-preview-limit _ (= 4096))
+
+(fn-expr + network-preview _
+  (param text String)
+  (call (. text truncate) network-preview-limit)
+)
+
+(fn-expr + network-preview _
+  (param data ([] Byte))
+  (param size Size)
+  (case? (> amount 0)
+    (call (. ([] data (..< 0 amount)) slice-string))
+  )
+  (default
+    ""
+  )
+  (where
+    (lazy available (if-expr (< (. data size) size) (. data size) size))
+    (lazy amount (if-expr (< available network-preview-limit) available network-preview-limit))
+  )
+)
+
+(fn-expr + network-is-truncated _
+  (param byte-length Size)
+  (> byte-length network-preview-limit)
+)

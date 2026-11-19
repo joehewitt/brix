@@ -1,0 +1,30 @@
+(import ./clock)
+(import ./ctime)
+(import ./duration)
+(import /BxCore/BxTime.h)
+(blank)
+(prop + utc _ (= (call TimeZone "UTC" 0)))
+(prop _ kept-local (? TimeZone) @thread)
+
+(type + TimeZone (is (tuple (: name String) (: offset CSeconds)))
+  (fn-expr + now _ :get
+    (+ (call get-utc-time) offset)
+  )
+  (fn-expr + convert _
+    (param since-epoch CSeconds)
+    (param other TimeZone)
+    (+ since-epoch (- (. other offset) offset))
+  )
+)
+
+(fn-expr + local TimeZone :get
+  (call local-time-zone)
+)
+
+(fn-do + local-time-zone TimeZone (door time)
+  (let kept kept-local)
+  (return-if kept (if kept))
+  (let zone (call TimeZone (call C:brixGetTimeZone) (call C:brixGetTimeZoneOffset)))
+  (= kept-local zone)
+  (return zone)
+)

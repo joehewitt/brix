@@ -1,0 +1,580 @@
+(import ./path)
+(import /BxCore/BxCore.h)
+(import /BxCore/BxSystem.h)
+(import /BxEvents/BxEvents.h)
+(import /BxGC/BxGC.h)
+(import /data)
+(import /errno.h)
+(import /fcntl.h)
+(import /gc/gc)
+(import /math)
+(import /sys/stat.h)
+(import /time/deadline)
+(import /unistd.h)
+(blank)
+(prop + user-read-perm FilePermissions (= 256))
+(prop + user-write-perm FilePermissions (= 128))
+(prop + user-exec-perm FilePermissions (= 64))
+(prop + group-read-perm FilePermissions (= 32))
+(prop + group-write-perm FilePermissions (= 16))
+(prop + group-exec-perm FilePermissions (= 8))
+(prop + other-read-perm FilePermissions (= 4))
+(prop + other-write-perm FilePermissions (= 2))
+(prop + other-exec-perm FilePermissions (= 1))
+(prop + user-rwx-perm _ (= (/or/ user-read-perm user-write-perm user-exec-perm)))
+(prop + group-rwx-perm _ (= (/or/ group-read-perm group-write-perm group-exec-perm)))
+(prop + other-rwx-perm _ (= (/or/ other-read-perm other-write-perm other-exec-perm)))
+(prop + all-rwx-perm _ (= (/or/ user-rwx-perm group-rwx-perm other-rwx-perm)))
+(prop + user-rw-perm _ (= (/or/ user-read-perm user-write-perm)))
+(prop + group-rw-perm _ (= (/or/ group-read-perm group-write-perm)))
+(prop + other-rw-perm _ (= (/or/ other-read-perm other-write-perm)))
+(prop + all-rw-perm _ (= (/or/ user-rw-perm group-rw-perm other-rw-perm)))
+(prop + stdin _ (:= (call File 0 true false)))
+(prop + stdout _ (:= (call File 1 true false)))
+(prop + stderr _ (:= (call File 2 true false)))
+(prop + console _ (:= stdout))
+(blank)
+(type-line + FileOffset (is Long))
+(type-line + FileSize (is Long))
+
+(fn-do _ reclaim-file-descriptor _
+  (param fd I32)
+  (call C:brixReleaseEventDescriptor fd)
+  (call C:brixGCQueueFileDescriptorCleanup fd)
+)
+
+(type + (of File Token)
+  (constraint = Token Char)
+  (implements Closable)
+  (implements (of ReadableData Token))
+  (implements WritableData)
+  (prop + fd I32 (= -1))
+  (prop _ cleanup (? CleanupHandle))
+  (fn-do + This _ (?! IOError)
+    (param path String)
+    (param mode _ (= (. FileFlags read-mode)))
+    (param perms _ (= all-rw-perm))
+    (throw (call IOError (str "Unable to open file " path)) (if (<= fd 0)))
+    (blank)
+    (return (call This fd true))
+    (blank)
+    (lazy fd (call C:brixopen path mode perms))
+  )
+  (fn-do + This _ (?! IOError)
+    (param path Path)
+    (param mode _ (= (. FileFlags read-mode)))
+    (param perms _ (= all-rw-perm))
+    (return (call This (as path String) mode perms))
+  )
+  (fn-do + This _
+    (param paths (list String))
+    (param mode _ (= (. FileFlags read-mode)))
+    (param perms _ (= all-rw-perm))
+    (for (in path paths)
+      (let fd (call C:brixopen path mode perms))
+      (if (>= fd 0)
+        (return (call This fd true))
+      )
+    )
+  )
+  (fn-do + This _
+    (param fd I32)
+    (param is-non-blocking _ (= true))
+    (param cleanup-on-reclaim _ (= true))
+    (= (. this fd) fd)
+    (if cleanup-on-reclaim
+      (= cleanup (call on-reclaim this fd reclaim-file-descriptor))
+    )
+    ; flags[non-block-mode] = is-non-blocking
+    (call set-flag (. FileFlags non-block-mode) is-non-blocking)
+  )
+  (fn-to-expr + I32
+    fd
+  )
+  (fn-expr + all-flags FileFlags :get
+    (as (call C:brixfcntl fd C:F_GETFL 0) FileFlags)
+  )
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (call close)
+  )
+  (fn-do + close _
+    (return-if (if (< fd 0)))
+    (blank)
+    (let descriptor fd)
+    (= fd -1)
+    (let maybe-cleanup cleanup)
+    (if maybe-cleanup
+      (do
+        (inline (call (. maybe-cleanup cancel)))
+      )
+      (= cleanup null)
+    )
+    (blank)
+    (call C:brixReleaseEventDescriptor descriptor)
+    (call C:close descriptor
+      (block
+        (throw (call IOError "Unable to close file") (if it))
+      )
+    )
+  )
+  (fn-do + read Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (if (== size 0)
+      (return 0)
+    )
+    (blank)
+    (while 1
+      (let read-size (call C:read fd buffer size))
+      (if (>= read-size 0)
+        (return read-size)
+      )
+      (blank)
+      (let err (call C:brixGetErrNo))
+      (if (== err C:EBADF)
+        ; occurs when file was closed while waiting for read
+        (return)
+        (else-if (== err C:EWOULDBLOCK)
+          (call wait-until-readable fd)
+        )
+        (else-if (!= err C:EINTR)
+          (throw (call IOError "Unable to read file"))
+        )
+      )
+    )
+  )
+  (fn-do + read-available (? Size) (?! IOError)
+    (param size Size)
+    (param buffer ([] Byte))
+    (return-if 0 (if (== size 0)))
+    (while 1
+      (let read-size (call C:read fd buffer size))
+      (return-if read-size (if (>= read-size 0)))
+      (let err (call C:brixGetErrNo))
+      (return-if 0 (if (== err C:EBADF)))
+      (return-if null (if (== err C:EWOULDBLOCK)))
+      (throw (call IOError "Unable to read file") (if (!= err C:EINTR)))
+    )
+  )
+  (fn-do + read Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (param offset Index)
+    (if (== size 0)
+      (return 0)
+    )
+    (blank)
+    (while 1
+      (let read-size (call C:pread fd buffer size offset))
+      (if (>= read-size 0)
+        (return read-size)
+      )
+      (blank)
+      (let err (call C:brixGetErrNo))
+      (if (== err C:EBADF)
+        ; occurs when file was closed while waiting for read
+        (return)
+        (else-if (== err C:EWOULDBLOCK)
+          (call wait-until-readable fd)
+        )
+        (else-if (!= err C:EINTR)
+          (throw (call IOError "Unable to read file"))
+        )
+      )
+    )
+  )
+  (fn-to-do + String
+    (let (tuple buffer length) (call remaining-bytes))
+    (return (call (. buffer slice-string) (..< 0 length)))
+  )
+  (fn-to-do + ([] Byte)
+    (let (tuple buffer length) (call remaining-bytes))
+    (return ([] buffer (..< 0 length)))
+  )
+  (fn-do _ remaining-bytes (tuple ([] Byte) Size)
+    (let position (call C:lseek fd 0 1))
+    (let end-position (call C:lseek fd 0 2))
+    (let capacity Size 65536)
+    (if (and (>= position 0) (>= end-position position))
+      (call C:lseek fd position 0)
+      (let span (- end-position position))
+      (= capacity (+ span 1))
+    )
+    (let buffer ([] Byte capacity))
+    (let length Size)
+    (while true
+      (if (== length (. buffer size))
+        (= buffer (call (. buffer resize) (* (. buffer size) 2)))
+      )
+      (let count
+        (call read (- (. buffer size) length) ([] buffer (... length))
+          (block
+            (on-error (: failure IOError)
+              (throw (call Panic (as failure String)))
+            )
+          )
+        )
+      )
+      (if (== count 0)
+        (break)
+      )
+      (+= length count)
+    )
+    (return (tuple buffer length))
+  )
+  (fn-do + write Size
+    (param buffer (of ImmutableArray Byte))
+    (param size Size)
+    (let total-size size)
+    (while 1
+      (let wrote-size (call C:write fd buffer size))
+      (if (== wrote-size size)
+        (return total-size)
+      )
+      (blank)
+      (if (and (>= wrote-size 0) (< wrote-size size))
+        (call wait-until-writable fd)
+        (blank)
+        (= buffer (+ buffer wrote-size))
+        (= size (- size wrote-size))
+        (else-if (== (call C:brixGetErrNo) C:EWOULDBLOCK)
+          (call wait-until-writable fd)
+        )
+        (else-if (!= (call C:brixGetErrNo) C:EINTR)
+          (throw (call IOError (str "Unable to write file " fd)))
+        )
+      )
+    )
+  )
+  (fn-do + write Size
+    (param buffer (of ImmutableArray Byte))
+    (param size Size)
+    (param offset Index)
+    (let total-size size)
+    (while 1
+      (let wrote-size (call C:pwrite fd buffer size offset))
+      (if (== wrote-size size)
+        (return total-size)
+      )
+      (blank)
+      (if (and (>= wrote-size 0) (< wrote-size size))
+        (call wait-until-writable fd)
+        (blank)
+        (= buffer (+ buffer wrote-size))
+        (= size (- size wrote-size))
+        (+= offset wrote-size)
+        (else-if (== (call C:brixGetErrNo) C:EWOULDBLOCK)
+          (call wait-until-writable fd)
+        )
+        (else-if (!= (call C:brixGetErrNo) C:EINTR)
+          (throw (call IOError (str "Unable to write file " fd)))
+        )
+      )
+    )
+  )
+  ; + flags[flag FileFlags]
+  (fn-expr + has-flag _
+    (param flag FileFlags)
+    (/and/ all-flags flag)
+  )
+  ; + flags[flag FileFlags] = truth Bool
+  (fn-do + set-flag _
+    (param flag FileFlags)
+    (param truth Bool)
+    (let flags-now all-flags)
+    (if truth
+      (if (not (/and/ flags-now flag))
+        (call C:brixfcntl fd C:F_SETFL (/or/ flags-now flag))
+      )
+      (else
+        (if (/and/ all-flags flag)
+          (call C:brixfcntl fd C:F_SETFL (/and/ flags-now (as (call not flag) FileFlags)))
+        )
+      )
+    )
+  )
+  (fn-expr + tail _
+    (call FileTail this)
+  )
+  (fn-expr + tell FileOffset
+    (call C:lseek fd 0 1)
+  )
+  (fn-expr + seek _
+    (param offset FileOffset)
+    (call C:lseek fd offset 0)
+  )
+  (fn-expr + seek-by _
+    (param offset FileOffset)
+    (call C:lseek fd offset 1)
+  )
+  (fn-expr + seek-end _
+    (param offset FileOffset (= 0))
+    (call C:lseek fd offset 2)
+  )
+  (fn-expr + truncate _
+    (param size FileOffset (= 0))
+    (call C:ftruncate fd size)
+  )
+  (fn-expr + flush _
+    (call C:fsync fd)
+  )
+)
+
+(type + FileFlags (is I32)
+  (variant read-mode (= C:O_RDONLY))
+  (variant write-mode (= C:O_WRONLY))
+  (variant read-write-mode (= C:O_RDWR))
+  (variant non-block-mode (= C:O_NONBLOCK))
+  (variant append-mode (= C:O_APPEND))
+  (variant create-mode (= C:O_CREAT))
+  (variant truncate-mode (= C:O_TRUNC))
+  (variant exclusive-mode (= C:O_EXCL))
+  (variant event-only-mode (= C:BX_O_EVTONLY))
+  (variant no-ctty-mode (= C:O_NOCTTY))
+  (fn-expr + (infix this + (param flag _)) _
+    (/or/ this flag)
+  )
+)
+
+(type + FilePermissions (is I32)
+  (fn-expr + (infix this + (param permission _)) _
+    (/or/ this permission)
+  )
+)
+
+(type + (of FileTail Token)
+  (constraint = Token Char)
+  (implements Closable)
+  (implements (of ReadableData Token))
+  (prop _ file (of File Token))
+  (fn-do + This _
+    (param fd I32)
+    (param is-non-blocking _ (= true))
+    (param cleanup-on-reclaim _ (= true))
+    ; Raw descriptor construction adopts reclaim ownership by default, matching File(fd).
+    ; Use file.tail() to share an existing File owner, or pass cleanup-on-reclaim = false to borrow.
+    (= file (call (of File Token) fd is-non-blocking cleanup-on-reclaim))
+  )
+  (fn-do _ This _
+    (param file (of File Token))
+  )
+  (fn-expr + fd I32 :get
+    (. file fd)
+  )
+  (fn-to-expr + I32
+    fd
+  )
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (call close)
+  )
+  (fn-do + close _
+    (call (. file close))
+  )
+  (fn-do + read Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (if (== size 0)
+      (return 0)
+    )
+    (blank)
+    (while 1
+      (let read-size (call C:read fd buffer size))
+      (if (> read-size 0)
+        ;  -- "READ $read-size of $size from $fd"
+        (return read-size)
+      )
+      ;  else
+      ;      -- "CAN'T READ $read-size"
+      (blank)
+      (let err (call C:brixGetErrNo))
+      ;  -- "GOT ERR $err"
+      (if (== err C:EBADF)
+        ; occurs when file was closed while waiting for read
+        (return)
+        (else-if (and (!= err C:EWOULDBLOCK) (!= err C:ENOTTY) (!= err 0))
+          (throw (call IOError "Unable to read file"))
+        )
+      )
+      (blank)
+      (call wait-until-readable fd)
+      (blank)
+      ;  -- "resuming..."
+    )
+  )
+)
+
+(fn-expr + file-size-text String
+  (param size FileSize)
+  (case? (<= size 0)
+    "Zero bytes"
+  )
+  (case? (== size 1)
+    "1 byte"
+  )
+  (case? (< size 1000)
+    (str size " bytes")
+  )
+  (case? (< size 1000000)
+    (call file-size-scaled-text size 1000 "KB")
+  )
+  (case? (< size 1000000000)
+    (call file-size-scaled-text size 1000000 "MB")
+  )
+  (default
+    (call file-size-scaled-text size 1000000000 "GB")
+  )
+)
+
+(fn-expr _ file-size-scaled-text String
+  (param size FileSize)
+  (param unit FileSize)
+  (param suffix String)
+  (case? (or (>= whole 100) (== tenth 0))
+    (str whole " " suffix)
+  )
+  (default
+    (str whole "." tenth " " suffix)
+  )
+  (where
+    (lazy whole (/ size unit))
+    (lazy tenth (/ (* (% size unit) 10) unit))
+  )
+)
+
+(fn-do + handle-file-error _
+  (param error _)
+  (if error
+    (throw (call current-file-error))
+  )
+)
+
+(fn-expr + current-file-error _
+  (call Error (call file-error-message (call C:brixGetErrNo)))
+)
+
+(fn-expr _ file-error-message _
+  (param err Int)
+  (match err
+    (case= C:EACCES
+      "Access denied"
+    )
+    (case= C:EEXIST
+      "File already exists"
+    )
+    (case= C:ELOOP
+      "Loop in symbolic links"
+    )
+    (case= C:EMLINK
+      "Link max exceeded"
+    )
+    (case= C:ENOENT
+      "Invalid path"
+    )
+    (case= C:ENOSPC
+      "Out of space"
+    )
+    (case= C:ENOTDIR
+      "Not a directoruy"
+    )
+    (case= C:ENAMETOOLONG
+      "Name too long"
+    )
+    (default
+      "Error"
+    )
+  )
+)
+
+(fn-do + read-file-text _ (?! Error)
+  (param path Path)
+  (let file (use (call File path)))
+  (let text (as file String))
+  (return text)
+)
+
+(fn-do + read-file-bytes ([] Byte) (?! Error)
+  (param path Path)
+  (let file (use (call File path)))
+  (let bytes ([] Byte) file)
+  (return bytes)
+)
+
+(fn-do + write-file-atomically _ (?! Error)
+  (param path Path)
+  (param text String)
+  (param perms (? FilePermissions) (= null))
+  (let temporary (call Path (str path "." (. (call Task) id) ".saving") 0))
+  (finally
+    (if (. temporary exists)
+      (catch (call (. temporary delete)))
+    )
+  )
+  (let exact (?? perms (call kept-perms path)))
+  (let mode (+ (. FileFlags write-mode) (. FileFlags create-mode) (. FileFlags truncate-mode)))
+  (let file (call File temporary mode (?? exact all-rw-perm)))
+  (do-use file
+    (if exact
+      (throw (call Error (str "Unable to set permissions of " path)) (if (call C:fchmod (. file fd) exact)))
+    )
+    (call (. file write) text)
+    (throw (call Error (str "Unable to flush " path)) (if (call (. file flush))))
+  )
+  (call (. temporary move) path)
+)
+
+(fn-do _ kept-perms (? FilePermissions)
+  (param path Path)
+  (let mode (catch? (. path mode)))
+  (return-if null (if (== mode null)))
+  (return (/and/ (as mode FilePermissions) all-rwx-perm))
+)
+
+(fn-do + wait-until-readable _ (?! TimeoutError)
+  (param fd I32)
+  (call check-wait (as (call C:brixSuspendActiveTaskUntilReadable fd 0) WaitResult))
+)
+
+(fn-do + wait-until-readable _ (?! TimeoutError)
+  (param fd I32)
+  (param deadline (? Deadline))
+  (if deadline
+    (call check-wait (as (call wait-for-handle fd false deadline) WaitResult))
+    (else
+      (call wait-until-readable fd)
+    )
+  )
+)
+
+(fn-do + wait-until-writable _ (?! TimeoutError)
+  (param fd I32)
+  (call check-wait (as (call C:brixSuspendActiveTaskUntilWritable fd 0) WaitResult))
+)
+
+(fn-do + wait-until-writable _ (?! TimeoutError)
+  (param fd I32)
+  (param deadline (? Deadline))
+  (if deadline
+    (call check-wait (as (call wait-for-handle fd true deadline) WaitResult))
+    (else
+      (call wait-until-writable fd)
+    )
+  )
+)
+
+(fn-do _ check-wait _ (?! TimeoutError)
+  (param result WaitResult)
+  (call check-task-cancelation (== result (. WaitResult canceled)))
+  (throw (call TimeoutError) (if (== result (. WaitResult timed-out))))
+)
+
+(type _ WaitResult (is U32)
+  (variant ready (= 0))
+  (variant canceled (= 1))
+  (variant timed-out (= 2))
+)

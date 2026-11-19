@@ -1,0 +1,39 @@
+(import /core/markup)
+(import /math/motion)
+(blank)
+(prop + gui-instant-cause _ (= (call MotionScope instant false)))
+(prop + gui-still-cause _ (= (call MotionScope instant true)))
+
+(type + MotionScope (is MarkupCause)
+  (implements (of Usable Void))
+  (prop + motion Motion)
+  (prop + is-still Bool)
+  (blank)
+  (prop _ outer (? MarkupCause))
+  (fn-do + This _
+    (param motion _)
+    (param is-still _)
+  )
+  (fn-do + begin-using _
+    (= outer (call swap-markup-cause this))
+  )
+  (fn-do + end-using _
+    (call swap-markup-cause (?? outer markup-cause-write))
+    (= outer null)
+  )
+)
+
+(fn-expr + motion MotionScope
+  (param motion Motion)
+  (call MotionScope motion false)
+)
+
+(fn-expr + scope-motion (? Motion)
+  (param cause MarkupCause)
+  (only-if (. (as cause MotionScope) motion) (if (is cause MotionScope)))
+)
+
+(fn-expr + scope-stills Bool
+  (param cause MarkupCause)
+  (and (is cause MotionScope) (. (as cause MotionScope) is-still))
+)

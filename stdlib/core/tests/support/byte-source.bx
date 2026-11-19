@@ -1,0 +1,33 @@
+(import /BxCore/BxCore.h)
+(import /core/array)
+(import /core/tokenstream)
+
+(type + (of TestByteSource Value)
+  (implements ByteReadable)
+  (implements (of Decodable Value))
+  (prop + data ([] Value))
+  (prop + cursor Size (= 0))
+  (prop + is-encoded Bool (= false))
+  (prop + chunk-limit Size (= (. Size max)))
+  (fn-do + This _
+    (param data ([] Value))
+  )
+  (fn-do + rewind _
+    (= cursor 0)
+  )
+  (fn-do + read Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (let available (- (. data byte-size) cursor))
+    (let requested (if-expr (< size chunk-limit) size chunk-limit))
+    (let count (if-expr (< requested available) requested available))
+    (let bytes (as (. data data) (of CPointer Byte)))
+    (if count
+      (do
+        (inline (call C:brixArrayCopySlice buffer (+ bytes cursor) count))
+      )
+    )
+    (+= cursor count)
+    (return count)
+  )
+)

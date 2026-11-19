@@ -1,0 +1,410 @@
+(import ./color)
+(import ./image)
+(import ./shader)
+(blank)
+(prop _ shader-layouts _ (:= (call (of Map String ShaderLayout))))
+
+(type + FrameTime (is Tuple))
+
+(type + ShaderDeclaration
+  (prop + frame-rate (? F64) (= 30))
+  (fn-expr + metal _
+    (paragraph)
+  )
+  (fn-expr + entry-input String :get
+    ""
+  )
+  (fn-expr + entry-result String :get
+    ""
+  )
+  (fn-expr + leading-args Size :get
+    0
+  )
+  (fn-expr + entry-size String :get
+    "layer.size"
+  )
+)
+
+(type + FillShader (is ShaderDeclaration)
+  (fn-expr + entry-input _ :get
+    "float2 size"
+  )
+  (fn-expr + entry-size _ :get
+    "size"
+  )
+  (fn-expr + entry-result _ :get
+    "return fill(position, size, values);"
+  )
+  (fn-to-do + ShaderFill
+    (let layout (call shader-layout this))
+    (return
+      (call ShaderFill
+        (block
+          (arg (. layout shader))
+          (arg (call packed-args this layout))
+          (arg (. layout is-live))
+          (arg frame-rate)
+          (arg 0)
+          (arg (. layout arg-kinds))
+        )
+      )
+    )
+  )
+)
+
+(type + LayerShader (is ShaderDeclaration)
+  (fn-expr + entry-input _ :get
+    "ShaderLayer layer"
+  )
+  (fn-expr + entry-result _ :get
+    "return ::filter(position, layer, values);"
+  )
+  (fn-to-do + ShaderFilter
+    (let layout (call shader-layout this))
+    (let args (call packed-args this layout))
+    (return (call ShaderFilter (. layout shader) args (call (of List Image)) (. layout is-live) frame-rate 0 (. layout arg-kinds)))
+  )
+)
+
+(type + MaskShader (is ShaderDeclaration)
+  (fn-expr + entry-input _ :get
+    "ShaderLayer layer"
+  )
+  (fn-expr + entry-result _ :get
+    "float4 color = layer.sample(position);\n    return float4(color.rgb, color.a * saturate(mask(position, layer.size, values)));"
+  )
+  (fn-to-do + ShaderMask
+    (let layout (call shader-layout this))
+    (let args (call packed-args this layout))
+    (return
+      (call ShaderMask
+        (block
+          (arg
+            (call ShaderFilter
+              (block
+                (arg (. layout shader))
+                (arg args)
+                (arg (call (of List Image)))
+                (arg (. layout is-live))
+                (arg frame-rate)
+                (arg 0)
+                (arg (. layout arg-kinds))
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(type + BackdropShader (is ShaderDeclaration)
+  (fn-expr + entry-input _ :get
+    "ShaderLayer layer"
+  )
+  (fn-expr + entry-result _ :get
+    "return backdrop(position, layer, values);"
+  )
+  (fn-to-do + ShaderBackdrop
+    (let layout (call shader-layout this))
+    (let args (call packed-args this layout))
+    (return
+      (call ShaderBackdrop
+        (block
+          (arg
+            (call ShaderFilter
+              (block
+                (arg (. layout shader))
+                (arg args)
+                (arg (call (of List Image)))
+                (arg (. layout is-live))
+                (arg frame-rate)
+                (arg 0)
+                (arg (. layout arg-kinds))
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(type + TransitionShader (is ShaderDeclaration)
+  (fn-expr + leading-args _ :get
+    1
+  )
+  (fn-expr + entry-input _ :get
+    "ShaderLayer layer"
+  )
+  (fn-expr + entry-result _ :get
+    "return transition(position, args.image(0u), layer, saturate(args[0u]), values);"
+  )
+  (fn-to-do + ShaderTransition
+    (let layout (call shader-layout this))
+    (let args (call packed-args this layout))
+    (return
+      (call ShaderTransition
+        (block
+          (arg
+            (call ShaderFilter
+              (block
+                (arg (. layout shader))
+                (arg args)
+                (arg (call (of List Image)))
+                (arg (. layout is-live))
+                (arg frame-rate)
+                (arg 0)
+                (arg (. layout arg-kinds))
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(type _ ShaderLayout (is Tuple)
+  (prop + shader Shader)
+  (prop + fields (list ShaderField))
+  (prop + arg-kinds (list ShaderArgKind))
+  (prop + is-live Bool)
+)
+
+(type _ ShaderField (is Tuple)
+  (prop + parts (list ShaderPart))
+)
+
+(type _ ShaderPart (is Tuple)
+  (prop + offset Size)
+  (prop + kind ShaderScalar)
+  (prop + size Size)
+)
+
+(type _ ShaderScalar (is U8)
+  (variant real)
+  (variant whole)
+  (variant natural)
+  (variant flag)
+)
+
+(fn-do _ packed-args (list F64)
+  (param declaration ShaderDeclaration)
+  (param layout ShaderLayout)
+  (let base (as declaration Pointer))
+  (let args (call (of List F64)))
+  (for (in field (. layout fields))
+    (for (in part (. field parts))
+      (+= args (call read-shader-scalar (+ base (. part offset)) (. part kind) (. part size)))
+    )
+  )
+  (return args)
+)
+
+(fn-do _ shader-layout ShaderLayout
+  (param declaration ShaderDeclaration)
+  (let type (type-of declaration))
+  (let key (. type concrete-key))
+  (return-if (!! ([] shader-layouts key)) (if (call (. shader-layouts has) key)))
+  (let name (call metal-identifier (. type concrete-name)))
+  (let fields (call (of List ShaderField)))
+  (let arg-kinds (call (of List ShaderArgKind)))
+  (let members (call (of List String)))
+  (let loads (call (of List String)))
+  (let is-live false)
+  (let slot (. declaration leading-args))
+  (let properties (. type properties))
+  (for (in index (..< (. ShaderDeclaration properties length) (. properties length)))
+    (let property ([] properties index))
+    (let member (call metal-identifier (. property name)))
+    (if (== (. property type-key) (. FrameTime key))
+      (+= members (str "    float " member ";"))
+      (+= loads (str "    values." member " = args.time;"))
+      (= is-live true)
+      (else-if (== (. property type-key) (. FrameCycle key))
+        (let span (str member "Span"))
+        (+= members (str "    float " member ";"))
+        (+= loads (str "    float " span " = max(args[" slot "u] + args[" (+ slot 2) "u] * " (. declaration entry-size) ".x, 0.000001);"))
+        (+= loads (str "    values." member " = min(fmod(max(args.time, 0.0), " span " + args[" (+ slot 1) "u]) / " span ", 1.0);"))
+        (+= fields (call ShaderField (call shader-parts (. property properties) (. property offset) (. property name))))
+        (++= arg-kinds (call (of List ShaderArgKind) (in (. ShaderArgKind cycle) (..< 0 3))))
+        (+= slot 3)
+        (= is-live true)
+      )
+      (else-if (== (. property type-key) (. RGBA key))
+        (+= members (str "    float4 " member ";"))
+        (+= loads (str "    values." member " = args.color(" slot "u);"))
+        (+= fields (call ShaderField (call shader-parts (. property properties) (. property offset) (. property name))))
+        (++= arg-kinds (call (of List ShaderArgKind) (in (. ShaderArgKind color) (..< 0 4))))
+        (+= slot 4)
+      )
+      (else-if (. property is-aggregate)
+        (let parts (call shader-parts (. property properties) (. property offset) (. property name)))
+        (throw (call Panic (str "Shader parameter " (. property name) " has " (. parts length) " numbers; at most 4 fit a vector")) (if (or (< (. parts length) 1) (> (. parts length) 4))))
+        (let width (if-expr (== (. parts length) 1) "" (str (. parts length))))
+        (+= members (str "    float" width " " member ";"))
+        (let items (call (of List String)))
+        (for (in part-index (..< 0 (. parts length)))
+          (+= items (str "args[" (+ slot part-index) "u]"))
+        )
+        (+= loads (str "    values." member " = float" width "(" (call (. ", " join) items) ");"))
+        (+= fields (call ShaderField parts))
+        (++= arg-kinds (call (of List ShaderArgKind) (in (call arg-kind each) parts)))
+        (+= slot (. parts length))
+      )
+      (else
+        (let parts (call shader-parts-of property 0))
+        (let (tuple metal-type load) (call scalar-load (. ([] parts 0) kind) (str "args[" slot "u]")))
+        (+= members (str "    " metal-type " " member ";"))
+        (+= loads (str "    values." member " = " load ";"))
+        (+= fields (call ShaderField parts))
+        (+= arg-kinds (call arg-kind ([] parts 0)))
+        (+= slot 1)
+      )
+    )
+  )
+  (let source (call shader-source name members loads declaration))
+  (let layout (call ShaderLayout (call Shader source) fields arg-kinds is-live))
+  (= ([] shader-layouts key) layout)
+  (return layout)
+)
+
+(fn-do _ shader-parts (list ShaderPart)
+  (param properties PropertyList)
+  (param offset Size)
+  (param name String)
+  (let parts (call (of List ShaderPart)))
+  (for (in property properties)
+    (++= parts (call shader-parts-of property offset))
+    (throw (call Panic (str "Shader parameter " name " holds " (. property name) ", which is not a number")) (if (. property is-aggregate)))
+  )
+  (return parts)
+)
+
+(fn-expr _ shader-parts-of (list ShaderPart)
+  (param property PropertyInfo)
+  (param offset Size)
+  (before
+    (throw (call Panic (str "Shader parameter " (. property name) " has type " (. property type-name) ", which a shader cannot take")) (if (not kind)))
+  )
+  (list (call ShaderPart (+ offset (. property offset)) kind (. property size)))
+  (where
+    (lazy kind (? ShaderScalar)
+      (block
+        (case? (only-if .real (if (. property is-float))))
+        (case? (only-if .whole (if (. property is-signed))))
+        (case? (only-if .natural (if (. property is-unsigned))))
+        (case? (only-if .flag (if (. property is-boolean))))
+        (default
+          (inline null)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ arg-kind ShaderArgKind
+  (param part ShaderPart)
+  (if-expr (== (. part kind) .real) (. ShaderArgKind number) (. ShaderArgKind fixed))
+)
+
+(fn-expr _ scalar-load (tuple String String)
+  (param kind ShaderScalar)
+  (param value String)
+  (match kind
+    (case= .whole
+      (tuple "int" (str "int(" value ")"))
+    )
+    (case= .natural
+      (tuple "uint" (str "uint(" value ")"))
+    )
+    (case= .flag
+      (tuple "bool" (str value " != 0.0"))
+    )
+    (default
+      (tuple "float" value)
+    )
+  )
+)
+
+(fn-expr _ read-shader-scalar F64
+  (param address Pointer)
+  (param kind ShaderScalar)
+  (param size Size)
+  (match kind
+    (case= .real
+      (if-expr (== size 4) (as ([] (as address (of CPointer F32)) 0) F64) ([] (as address (of CPointer F64)) 0))
+    )
+    (case= .flag
+      (if-expr (!= ([] (as address (of CPointer U8)) 0) 0) 1.0 0.0)
+    )
+    (case= .whole
+      (match size
+        (case= 1
+          (as ([] (as address (of CPointer I8)) 0) F64)
+        )
+        (case= 2
+          (as ([] (as address (of CPointer I16)) 0) F64)
+        )
+        (case= 4
+          (as ([] (as address (of CPointer I32)) 0) F64)
+        )
+        (default
+          (as ([] (as address (of CPointer I64)) 0) F64)
+        )
+      )
+    )
+    (default
+      (match size
+        (case= 1
+          (as ([] (as address (of CPointer U8)) 0) F64)
+        )
+        (case= 2
+          (as ([] (as address (of CPointer U16)) 0) F64)
+        )
+        (case= 4
+          (as ([] (as address (of CPointer U32)) 0) F64)
+        )
+        (default
+          (as ([] (as address (of CPointer U64)) 0) F64)
+        )
+      )
+    )
+  )
+)
+
+(fn-do _ metal-identifier String
+  (param name String)
+  (let identifier (call (of List String)))
+  (for (in char name)
+    (let keeps
+      (scope (or is-letter (and (>= char '0') (<= char '9')))
+        (lazy is-letter (or (and (>= char 'a') (<= char 'z')) (and (>= char 'A') (<= char 'Z'))))
+      )
+    )
+    (+= identifier (if-expr keeps (str char) "_"))
+  )
+  (return (call (. "" join) identifier))
+)
+
+(fn-expr _ shader-source _
+  (param name String)
+  (param members (list String))
+  (param loads (list String))
+  (param declaration ShaderDeclaration)
+  (paragraph
+    (str "struct " name "Args {")
+    (str member-lines "};")
+    "#line 1"
+    (str (call (. declaration metal)))
+    (str "float4 shade(float2 position, " (. declaration entry-input) ", ShaderArgs args) {")
+    (str "    " name "Args values;")
+    (str load-lines "    " (. declaration entry-result))
+    "}"
+  )
+  (where
+    (lazy member-lines (call (. "" join) (in (str each "\n") members)))
+    (lazy load-lines (call (. "" join) (in (str each "\n") loads)))
+  )
+)

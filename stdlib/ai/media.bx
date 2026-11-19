@@ -1,0 +1,157 @@
+(import /time/duration)
+(import /time/timestamp)
+(import /units)
+(blank)
+(prop + ai-format-jpeg _ (= "image/jpeg"))
+(prop + ai-format-png _ (= "image/png"))
+(prop + ai-format-gif _ (= "image/gif"))
+(prop + ai-format-webp _ (= "image/webp"))
+(prop + ai-format-mp4 _ (= "video/mp4"))
+(prop + ai-format-wav _ (= "audio/wav"))
+(prop + ai-format-mp3 _ (= "audio/mpeg"))
+
+(type + AIFileSource (is Union)
+  (variant AIPathSource)
+  (variant AIURLSource)
+  (variant AIBase64Source)
+  (variant AIBytesSource)
+  (variant AIProviderFileSource)
+)
+
+(type + AIPathSource
+  (prop + path String)
+  (fn-do + This _
+    (param path _)
+  )
+)
+
+(type + AIURLSource
+  (prop + url String)
+  (fn-do + This _
+    (param url _)
+  )
+)
+
+(type + AIBase64Source
+  (prop + data Base64)
+  (fn-do + This _
+    (param data _)
+  )
+)
+
+(type + AIBytesSource
+  (prop + data ([] Byte))
+  (fn-do + This _
+    (param data _)
+  )
+)
+
+(type + AIProviderFileSource (is (tuple (: provider-id String) (: file-id String))))
+
+(type + AIFile
+  (prop + source AIFileSource)
+  (prop + mime-type String)
+  (prop + filename (? String))
+  (prop + expiration-time (? Timestamp))
+  (fn-do + This _
+    (param source _)
+    (param mime-type _)
+    (param filename (? String) (= null))
+    (param expiration-time (? Timestamp) (= null))
+  )
+)
+
+(type + AIImage
+  (prop + file AIFile)
+  (prop + width Size)
+  (prop + height Size)
+  (prop + source-id (? String))
+  (fn-do + This _
+    (param file _)
+    (param width _ (= 0))
+    (param height _ (= 0))
+    (param source-id (? String) (= null))
+  )
+)
+
+(type + AIAudio
+  (prop + file AIFile)
+  (prop + duration (? Duration))
+  (prop + transcript (? String))
+  (prop + source-id (? String))
+  (prop + provider-output-id (? String))
+  (fn-do + This _
+    (param file _)
+    (param duration (? Duration) (= null))
+    (param transcript (? String) (= null))
+    (param source-id (? String) (= null))
+    (param provider-output-id (? String) (= null))
+  )
+)
+
+(type + AIVideo
+  (prop + file AIFile)
+  (prop + width Size)
+  (prop + height Size)
+  (prop + duration Duration)
+  (prop + source-id (? String))
+  (prop + progress (? Percent))
+  (fn-do + This _
+    (param file _)
+    (param width _ (= 0))
+    (param height _ (= 0))
+    (param duration _ (= 0s))
+    (param source-id (? String) (= null))
+    (param progress (? Percent) (= null))
+  )
+)
+
+(type + AIAspectRatio (is Union)
+  (variant automatic)
+  (variant portrait)
+  (variant landscape)
+  (variant square)
+)
+
+(type + AIQuality (is Union)
+  (variant automatic)
+  (variant low)
+  (variant medium)
+  (variant high)
+  (variant extra-high)
+  (variant ultra)
+)
+
+(type + AIImageBackground (is Union)
+  (variant transparent)
+  (variant opaque)
+)
+
+(type + AIImageOptions
+  (prop + prompt (? String))
+  (prop + width (? Size))
+  (prop + height (? Size))
+  (prop + aspect-ratio AIAspectRatio (= (. AIAspectRatio automatic)))
+  (prop + quality AIQuality (= (. AIQuality automatic)))
+  (prop + format (? String))
+  (prop + background (? AIImageBackground))
+  (prop + reference-image (? AIImage))
+  (prop + reference-images (list AIImage))
+)
+
+(type + AIAudioOptions
+  (prop + voice (? String))
+  (prop + format (? String))
+)
+
+(type + AIVideoOptions
+  (prop + prompt (? String))
+  (prop + width (? Size))
+  (prop + height (? Size))
+  (prop + aspect-ratio AIAspectRatio (= (. AIAspectRatio automatic)))
+  (prop + duration (? Duration))
+  (prop + format (? String))
+  (prop + first-frame (? AIImage))
+  (prop + last-frame (? AIImage))
+  (prop + reference-frames (list AIImage) (= (call (of List AIImage))))
+)

@@ -1,0 +1,3278 @@
+(import ./ast)
+(import ./ast-children)
+(import ./ast-nodes)
+(import ./decl)
+(import ./facets)
+(import ./module)
+(import ./operator)
+(import ./program)
+(import ./row-range)
+(import ./state-machines)
+(import ./viability)
+(import /core/arena)
+(import /core/scratch)
+(import /lang/target)
+(import /stream/aggregate)
+(import /stream/sort)
+
+(type + IntegerLiteral (is Tuple)
+  (prop + value U64)
+  (prop + negative Bool)
+  (prop + overflow Bool)
+)
+
+(fn-do + parse-integer-literal IntegerLiteral
+  (param text String)
+  (let negative (and (!= (. text length) 0) (== ([] text 0) '-')))
+  (let start (if-expr negative 1 0))
+  (let base 10u64)
+  (if (and (>= (. text length) (+ start 2)) (== ([] text start) '0'))
+    (let marker ([] text (+ start 1)))
+    (if (or (== marker 'x') (== marker 'X'))
+      (= base 16)
+      (+= start 2)
+      (else-if (or (== marker 'b') (== marker 'B'))
+        (= base 2)
+        (+= start 2)
+      )
+      (else-if (or (== marker 'o') (== marker 'O'))
+        (= base 8)
+        (+= start 2)
+      )
+    )
+  )
+  (let value 0u64)
+  (let overflow false)
+  (for (in index (..< start (. text length)))
+    (let char ([] text index))
+    (if (== char '_')
+      (continue)
+    )
+    (let digit 0u64)
+    (if (and (>= char '0') (<= char '9'))
+      (= digit (- char '0'))
+      (else-if (and (>= char 'a') (<= char 'f'))
+        (= digit (+ (as (- char 'a') U64) 10))
+      )
+      (else-if (and (>= char 'A') (<= char 'F'))
+        (= digit (+ (as (- char 'A') U64) 10))
+      )
+      (else
+        (break)
+      )
+    )
+    (if (> value (/ (- (. U64 max) digit) base))
+      (= overflow true)
+      (else
+        (= value (+ (* value base) digit))
+      )
+    )
+  )
+  (return (call IntegerLiteral value negative overflow))
+)
+
+(extend + AST
+  (fn-expr + binds-line Bool
+    (param line SyntaxId)
+    (match ([] nodes line)
+      (case (call .node-assign row)
+        (== (. row op) .bind-op)
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-do + binding-line SyntaxId
+    (param body SyntaxId)
+    (for (in node (.. (call subtree-start body) body))
+      (if (call binds-line node)
+        (return node)
+      )
+    )
+    (return 0)
+  )
+  (fn-do + is-inherit Bool
+    (param value SyntaxId)
+    ; Whether a style value is the keyword `inherit`.
+    (match? ([] nodes value)
+      (case (call .node-identifier row)
+        (return (== (. row name text) "inherit"))
+      )
+    )
+    (return false)
+  )
+  (fn-do + leaves-early Bool
+    (param body SyntaxId)
+    ; Whether the body of a constructor leaves before its end by a return of its own, apart
+    ; from those of the functions written in it.
+    (if (== body 0)
+      (return false)
+    )
+    (let skip-from SyntaxId 0)
+    (let skip-to SyntaxId 0)
+    (let node body)
+    (while (> node (call subtree-start body))
+      (-= node 1)
+      (match? ([] nodes node)
+        (case .node-function-syntax
+          (if (not (and (>= node skip-from) (< node skip-to)))
+            (= skip-from (call subtree-start node))
+            (= skip-to node)
+          )
+        )
+        (case .node-return
+          (if (not (and (>= node skip-from) (< node skip-to)))
+            (return true)
+          )
+        )
+        (case .node-return-if-true
+          (if (not (and (>= node skip-from) (< node skip-to)))
+            (return true)
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-expr + is-empty-block Bool
+    (param id SyntaxId)
+    (match ([] nodes id)
+      (case (call .node-block row)
+        (== (. row body count) 0)
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-do + yields-itself Bool
+    (param declaration CheckedDecl)
+    ; Whether a function's own statements yield, outside the functions nested in it.
+    (let start (. declaration subtree start))
+    (let position (. declaration syntax))
+    (while (> position start)
+      (-= position 1)
+      (match? ([] nodes position)
+        (case .node-yield
+          (return true)
+        )
+        (case .node-function-syntax
+          (= position (call subtree-start position))
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + identifier-atom (? Atom)
+    (param id SyntaxId)
+    ; The name an identifier writes, or none for any other node.
+    (match? ([] nodes id)
+      (case (call .node-identifier row)
+        (return (. row name))
+      )
+    )
+    (return null)
+  )
+  (fn-expr + is-empty-list Bool
+    (param syntax SyntaxId)
+    ; Whether an expression is a list written with no items, which takes the type of the
+    ; parameter it is the default of and has no type anywhere else.
+    (match ([] nodes syntax)
+      (case (call .node-list-syntax row)
+        (== (. row items count) 0)
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-do + offset-of SyntaxId
+    (param expr SyntaxId)
+    ; The first number with no unit a side of an equality adds to or takes from a number in a unit
+    ; other than zero, which is no ratio, or none. Zero in a unit adds nothing, as in
+    ; `(1 / 3) + 0foo`, which writes a third of foo.
+    (match? ([] nodes expr)
+      (case (call .node-binary-expression row)
+        (let inner (call offset-of (. row lhs)))
+        (if (!= inner 0)
+          (return inner)
+        )
+        (let right (call offset-of (. row rhs)))
+        (if (!= right 0)
+          (return right)
+        )
+        (if (and (!= (. row op) .add-op) (!= (. row op) .subtract-op))
+          (return 0)
+        )
+        (let left-unit (call has-unit (. row lhs)))
+        (let right-unit (call has-unit (. row rhs)))
+        (if (and left-unit (not right-unit) (not (call zero-amount (. row lhs))))
+          (return (. row rhs))
+        )
+        (if (and right-unit (not left-unit) (not (call zero-amount (. row rhs))))
+          (return (. row lhs))
+        )
+      )
+    )
+    (return 0)
+  )
+  (fn-expr + has-unit Bool
+    (param expr SyntaxId)
+    ; Whether a side of an equality writes a number in a unit.
+    (match ([] nodes expr)
+      (case (call .node-integer-syntax row)
+        (!= (. row unit) null)
+      )
+      (case (call .node-float-syntax row)
+        (!= (. row unit) null)
+      )
+      (case (call .node-binary-expression row)
+        (or (call has-unit (. row lhs)) (call has-unit (. row rhs)))
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + zero-amount Bool
+    (param expr SyntaxId)
+    ; Whether a side of an equality is a number written as zero.
+    (match ([] nodes expr)
+      (case (call .node-integer-syntax row)
+        (== (as (. row value) F64) 0.0)
+      )
+      (case (call .node-float-syntax row)
+        (== (as (. row value) F64) 0.0)
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-do + unevaluated-operation SyntaxId
+    (param expr SyntaxId)
+    ; The first operation of a side of an equality that gives no number, its operands before it and
+    ; the left before the right, as the reference evaluates them, or none.
+    (match? ([] nodes expr)
+      (case (call .node-binary-expression row)
+        (let left (call unevaluated-operation (. row lhs)))
+        (if (!= left 0)
+          (return left)
+        )
+        (let right (call unevaluated-operation (. row rhs)))
+        (if (!= right 0)
+          (return right)
+        )
+        (if (not (call is-constant-arithmetic (. row op)))
+          (return expr)
+        )
+      )
+    )
+    (return 0)
+  )
+  (fn-do + first-unexpressed SyntaxId
+    (param body SyntaxId)
+    (param statements Bool)
+    ; The first node of a body, in the order the reference visits them, that a function written as
+    ; one expression may not hold: an explicit return or, with `statements`, an immediate
+    ; declaration, a loop or a yield outside a `do` block. Neither is looked for in the functions,
+    ; tasks and deferred blocks written in the body.
+    (let found SyntaxId 0)
+    (let floor (call subtree-start body))
+    (let node (+ body 1))
+    (while (> node floor)
+      (-= node 1)
+      (match? ([] nodes node)
+        (case .node-function-syntax
+          (= node (call subtree-start node))
+        )
+        (case .node-do-task-block
+          (= node (call subtree-start node))
+        )
+        (case .node-do-finally-block
+          (= node (call subtree-start node))
+        )
+        (case .node-do-block
+          (if statements
+            (= node (call subtree-start node))
+          )
+        )
+        (case .node-return
+          (if (not statements)
+            (= found node)
+          )
+        )
+        (case .node-return-if-true
+          (if (not statements)
+            (= found node)
+          )
+        )
+        (case (call .node-declare row)
+          (if (and statements (not (. row is-lazy)))
+            (= found node)
+          )
+        )
+        (case .node-for-block
+          (if statements
+            (= found node)
+          )
+        )
+        (case .node-while-block
+          (if statements
+            (= found node)
+          )
+        )
+        (case .node-yield
+          (if statements
+            (= found node)
+          )
+        )
+      )
+    )
+    (return found)
+  )
+  (fn-expr + requires-do-text String
+    (param statement SyntaxId)
+    (match ([] nodes statement)
+      (case (call .node-declare row)
+        (if-expr (. row is-lazy) "Lazy before the value requires do" "Immediate declaration requires do")
+      )
+      (case .node-yield
+        "Yield requires do"
+      )
+      (case .node-assign
+        "Assignment requires do"
+      )
+      (case .node-if-block
+        "If statement requires do"
+      )
+      (case .node-call-expression
+        "Call before the value requires do"
+      )
+      (default
+        "Loop requires do"
+      )
+    )
+  )
+  (fn-expr + is-trailing-row Bool
+    (param statement SyntaxId)
+    (match ([] nodes statement)
+      (case (call .node-declare row)
+        (. row is-lazy)
+      )
+      (case (call .node-pipeline-expression row)
+        (== (. row left) 0)
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-do + same-syntaxes Bool
+    (param left (of RowRange SyntaxId))
+    (param right (of RowRange SyntaxId))
+    (if (!= (. left count) (. right count))
+      (return false)
+    )
+    (for (in offset (..< 0 (. left count)))
+      (if (not (call same-syntax ([] children (+ (. left start) offset)) ([] children (+ (. right start) offset))))
+        (return false)
+      )
+    )
+    (return true)
+  )
+  (fn-do + same-syntax Bool
+    (param left SyntaxId)
+    (param right SyntaxId)
+    ; Whether two types are written the same way. A way of writing a type this does not know is
+    ; never the same as another.
+    (if (or (== left 0) (== right 0))
+      (return (== left right))
+    )
+    (match? ([] nodes left)
+      (case (call .node-type-identifier mine)
+        (match? ([] nodes right)
+          (case (call .node-type-identifier theirs)
+            (return (and (== (. mine name) (. theirs name)) (== (. mine is-declare) (. theirs is-declare))))
+          )
+        )
+      )
+      (case (call .node-type-arguments mine)
+        (match? ([] nodes right)
+          (case (call .node-type-arguments theirs)
+            (return (and (call same-syntax (. mine base) (. theirs base)) (call same-syntaxes (. mine args) (. theirs args))))
+          )
+        )
+      )
+      (case (call .node-type-optional mine)
+        (match? ([] nodes right)
+          (case (call .node-type-optional theirs)
+            (return (call same-syntaxes (. mine field-types) (. theirs field-types)))
+          )
+        )
+      )
+      (case (call .node-type-tuple mine)
+        (match? ([] nodes right)
+          (case (call .node-type-tuple theirs)
+            (return (call same-syntaxes (. mine field-types) (. theirs field-types)))
+          )
+        )
+      )
+      (case (call .node-type-capture mine)
+        (match? ([] nodes right)
+          (case (call .node-type-capture theirs)
+            (return (and (call same-syntax (. mine id) (. theirs id)) (call same-syntax (. mine type) (. theirs type))))
+          )
+        )
+      )
+      (case (call .node-identifier mine)
+        (match? ([] nodes right)
+          (case (call .node-identifier theirs)
+            (return (== (. mine name) (. theirs name)))
+          )
+        )
+      )
+      (case (call .node-param-constraint mine)
+        (match? ([] nodes right)
+          (case (call .node-param-constraint theirs)
+            (return (and (call same-syntax (. mine left) (. theirs left)) (call same-syntax (. mine right) (. theirs right))))
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-expr + is-brix Bool
+    ; Whether the source is written in Brix, as a `.bx` file is.
+    (call (. source-path ends-with) brix-extension)
+  )
+  (fn-do + kept-row SyntaxId
+    (param body (of RowRange SyntaxId))
+    (let position (. body count))
+    (while (> position 0)
+      (-= position 1)
+      (let row ([] children (+ (. body start) position)))
+      (return-if row (if (not (call is-lazy-declare row))))
+    )
+    (return 0)
+  )
+  (fn-do + final-print SyntaxId
+    (param body SyntaxId)
+    (match? ([] nodes body)
+      (case (call .node-block row)
+        (let kept (call kept-row (. row body)))
+        (return (if-expr (and (!= kept 0) (is ([] nodes kept) .node-print)) kept 0))
+      )
+    )
+    (return (if-expr (is ([] nodes body) .node-print) body 0))
+  )
+  (fn-expr + is-finally Bool
+    (param statement SyntaxId)
+    ; A finally block runs as its enclosing block ends, after every other statement of it.
+    (match ([] nodes statement)
+      (case .node-do-finally-block
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + is-lazy-declare Bool
+    (param statement SyntaxId)
+    (match ([] nodes statement)
+      (case (call .node-declare row)
+        (. row is-lazy)
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + is-conditional-value Bool
+    (param expr SyntaxId)
+    ; Whether an expression is a value chosen by a condition, `x if c` or `if c then x else y`, or
+    ; one with a fallback.
+    (match ([] nodes expr)
+      (case (call .node-binary-expression row)
+        (or (== (. row op) .if-op) (== (. row op) .coalesce-op) (== (. row op) .else-op))
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + calls-symbol Bool
+    (param expr SyntaxId)
+    ; Whether an expression calls a case by its symbol alone, which the type expected of it names.
+    (match ([] nodes expr)
+      (case (call .node-call-expression row)
+        (!= (call symbol-of (. row callable)) null)
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-do + first-named SyntaxId
+    (param pattern SyntaxId)
+    ; The name a declaration declares, or the first of those it declares together: they are
+    ; typed together, so what is known of the first is known of each.
+    (match? ([] nodes pattern)
+      (case (call .node-type-capture row)
+        (return (. row id))
+      )
+      (case (call .node-tuple-syntax row)
+        (if (!= (. row items count) 0)
+          (return (call first-named ([] children (. row items start))))
+        )
+      )
+      (case (call .node-type-tuple row)
+        (if (!= (. row field-types count) 0)
+          (return (call first-named ([] children (. row field-types start))))
+        )
+      )
+    )
+    (return pattern)
+  )
+  (fn-do + place-syntax SyntaxId
+    (param value SyntaxId)
+    (param position U32)
+    (param count Size)
+    ; What a pattern of items declares a place with: the item at that place where it is declared
+    ; with a tuple written with as many items, or else the value.
+    (match? ([] nodes value)
+      (case (call .node-tuple-syntax row)
+        (if (== (. row items count) count)
+          (let offset 0u32)
+          (for (in item ([] children (. row items)))
+            (return-if item (if (== offset position)))
+            (+= offset 1)
+          )
+        )
+      )
+    )
+    (return value)
+  )
+  (fn-expr + machine-or-value SyntaxId
+    (param pattern SyntaxId)
+    (param value SyntaxId)
+    ; What a declaration's value is checked as: the state machine it is, where it declares one
+    ; name, or the value.
+    (if-expr (!= (call declared-local pattern) 0) (call declared-value value) value)
+  )
+  (fn-expr + pattern-identifier SyntaxId
+    (param pattern SyntaxId)
+    (match ([] nodes pattern)
+      (case (call .node-type-capture row)
+        (. row id)
+      )
+      (default
+        pattern
+      )
+    )
+  )
+  (fn-expr + force-operand SyntaxId
+    (param syntax SyntaxId)
+    (match ([] nodes syntax)
+      (case (call .node-unary-expression row)
+        (. row operand)
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-expr + returned-expr SyntaxId
+    (param statement SyntaxId)
+    (match ([] nodes statement)
+      (case (call .node-return row)
+        (. row expr)
+      )
+      (case (call .node-return-if-true row)
+        (. row expr)
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-expr + yielded-syntax SyntaxId
+    (param site SyntaxId)
+    ; What a yield written as a statement gives, so an integer it gives with no suffix converts to the
+    ; items as that integer does; any other site is its own value.
+    (match ([] nodes site)
+      (case (call .node-yield row)
+        (. row expr)
+      )
+      (default
+        site
+      )
+    )
+  )
+  (fn-expr + is-integer-literal Bool
+    (param expr SyntaxId)
+    (match ([] nodes expr)
+      (case .node-integer-syntax
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + is-match-syntax Bool
+    (param expr SyntaxId)
+    (match ([] nodes expr)
+      (case .node-match-expression
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + arms-value SyntaxId
+    (param expr SyntaxId)
+    ; The value a declaration gives where it is written alone in a block of its own, as arms are.
+    (match ([] nodes expr)
+      (case (call .node-block row)
+        (if-expr (== (. row body count) 1) ([] children (. row body start)) expr)
+      )
+      (default
+        expr
+      )
+    )
+  )
+  (fn-expr + is-arms-syntax Bool
+    (param expr SyntaxId)
+    (match ([] nodes expr)
+      (case .node-match-expression
+        true
+      )
+      (case .node-structure-match
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + is-quasi-syntax Bool
+    (param expr SyntaxId)
+    ; Whether a statement gives no value though it is typed as an expression: an assignment, a line
+    ; of markup that declares a property, a print, or a `do` block.
+    (match ([] nodes expr)
+      (case .node-assign
+        true
+      )
+      (case .node-property-syntax
+        true
+      )
+      (case .node-print
+        true
+      )
+      (case .node-do-block
+        true
+      )
+      (case .node-do-finally-block
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + is-string-syntax Bool
+    (param expr SyntaxId)
+    (match ([] nodes expr)
+      (case .node-string-syntax
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + return-site SyntaxId
+    (param expr SyntaxId)
+    (match ([] nodes expr)
+      (case (call .node-match-expression row)
+        (. row body)
+      )
+      (default
+        expr
+      )
+    )
+  )
+  (fn-do + is-direct-statement Bool
+    (param body SyntaxId)
+    (param id SyntaxId)
+    (if (== body id)
+      (return true)
+    )
+    (match? ([] nodes body)
+      (case (call .node-block row)
+        (for (in statement ([] children (. row body)))
+          (if (== statement id)
+            (return true)
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-expr + tested SyntaxId
+    (param condition SyntaxId)
+    ; The match a condition is, where `if` or `while` is written with a pattern: its arm runs
+    ; the body, so what the body assigns is assigned under the condition. No node for any other
+    ; condition.
+    (match ([] nodes condition)
+      (case (call .node-match-expression row)
+        (if-expr (and (!= (. row subject) 0) (not (. row is-optional)) (not (. row is-block))) condition 0)
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-expr + is-plain-name Bool
+    (param pattern SyntaxId)
+    ; Whether what a declaration declares is one name, with no type and no pattern.
+    (match ([] nodes pattern)
+      (case .node-identifier
+        true
+      )
+      (case (call .node-type-capture row)
+        (== (. row type) 0)
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-do + in-body-loop Bool
+    (param node SyntaxId)
+    (param body SyntaxId)
+    ; Whether a node is written in the body of a `for` within a body, which runs it each turn.
+    (for (in around (..< (+ node 1) body))
+      (if (and (<= (call subtree-start around) node) (is ([] nodes around) .node-for-block))
+        (return true)
+      )
+    )
+    (return false)
+  )
+  (fn-do + in-attribute Bool
+    (param node SyntaxId)
+    (param body SyntaxId)
+    ; Whether a node is written in a line of a block that assigns.
+    (match? ([] nodes body)
+      (case (call .node-block row)
+        (for (in statement ([] children (. row body)))
+          (if (and (is ([] nodes statement) .node-assign) after-start (< node statement))
+            (return true)
+          )
+          (lazy after-start (<= (call subtree-start statement) node))
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + tests-plainly Bool
+    (param pattern SyntaxId)
+    ; Whether a pattern tests with no expression of its own that reads what it binds.
+    (if (== pattern 0)
+      (return true)
+    )
+    (for (in node (.. (call subtree-start pattern) pattern))
+      (if (is ([] nodes node) .node-type-predicate)
+        (return false)
+      )
+    )
+    (return true)
+  )
+  (fn-do + in-operator-value Bool
+    (param id SyntaxId)
+    ; Whether a node is in the value of an assignment written with an operator other than `=`, and
+    ; in no function written there.
+    (for (in node (..< (+ id 1) (as (. nodes length) SyntaxId)))
+      (if (> (call subtree-start node) id)
+        (continue)
+      )
+      (match? ([] nodes node)
+        (case (call .node-assign row)
+          (return (and (!= (. row op) .eq-op) (<= (call subtree-start (. row rhs)) id) (<= id (. row rhs))))
+        )
+        (case .node-declare
+          (return false)
+        )
+        (case .node-function-syntax
+          (return false)
+        )
+        (case .node-markup
+          (return false)
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + has-handlers Bool
+    (param task SyntaxId)
+    (match? ([] nodes task)
+      (case (call .node-do-task-block row)
+        (return (!= (. row catchers count) 0))
+      )
+    )
+    (return false)
+  )
+  (fn-expr + both-targets-text String
+    ; The error of a task forked onto a worker and onto the pool's threads both.
+    (str "A task runs on a worker or on the pool's threads, not both; write " forms)
+    (where
+      (lazy forms (if-expr (call (. source-path ends-with) ".bx") brix-forms rows-forms))
+      (lazy brix-forms "\"(do-new (worker: w) …)\" or \"(do-new-thread …)\"")
+      (lazy rows-forms "\"do (w) new\" or \"do new thread\"")
+    )
+  )
+  (fn-expr + optional-chain-expr SyntaxId
+    (param id SyntaxId)
+    (match ([] nodes id)
+      (case (call .node-optional-chain row)
+        (. row expr)
+      )
+      (default
+        0u32
+      )
+    )
+  )
+  (fn-expr + handled-type SyntaxId
+    (param pattern SyntaxId)
+    ; The type a handler's pattern names, or none for one that names only the panic.
+    (match ([] nodes pattern)
+      (case (call .node-type-capture row)
+        (. row type)
+      )
+      (case .node-type-identifier
+        pattern
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-do + never-reads Bool
+    (param id SyntaxId)
+    ; Whether a grammar matches without ever reading an item: one made only of lookaheads.
+    (match? ([] nodes id)
+      (case (call .node-stream-match row)
+        (return (call never-reads (. row pattern)))
+      )
+      (case (call .node-stream-unary row)
+        (return (or (== (. row op) .positive-lookahead-op) (== (. row op) .negative-lookahead-op)))
+      )
+      (case (call .node-stream-and row)
+        (return (and (call never-reads (. row left)) (call never-reads (. row right))))
+      )
+      (case (call .node-stream-or row)
+        (return (and (call never-reads (. row left)) (call never-reads (. row right))))
+      )
+      (case (call .node-stream-capture row)
+        (return (call never-reads (. row pattern)))
+      )
+      (case (call .node-stream-transform row)
+        (return (and (!= (. row pattern) 0) (call never-reads (. row pattern))))
+      )
+    )
+    (return false)
+  )
+  (fn-do + clause-expr SyntaxId
+    (param clause SyntaxId)
+    ; The value a clause tests.
+    (match? ([] nodes clause)
+      (case (call .node-clause row)
+        (return (. row expr))
+      )
+    )
+    (return 0)
+  )
+  (fn-expr + symbol-of (? Atom)
+    (param expr SyntaxId)
+    (match? ([] nodes expr)
+      (case (call .node-symbol row)
+        (. row name)
+      )
+    )
+  )
+  (fn-expr + argument-symbol (? Atom)
+    (param expr SyntaxId)
+    ; The case an argument names by its symbol alone, bare or called with the case's values: the
+    ; parameter it fills names the union.
+    (match? ([] nodes expr)
+      (case (call .node-symbol row)
+        (. row name)
+      )
+      (case (call .node-call-expression row)
+        (call symbol-of (. row callable))
+      )
+    )
+  )
+  (fn-expr + other-side SyntaxId
+    (param expr SyntaxId)
+    (match ([] nodes expr)
+      (case (call .node-binary-expression row)
+        (. row rhs)
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-do + reads-once Bool
+    (param id SyntaxId)
+    ; Whether a node is the operand of a `<-` written before it, which reads one item.
+    (match? ([] nodes (call holder-of id))
+      (case (call .node-unary-expression row)
+        (return (and (== (. row op) .read-op) (== (. row operand) id)))
+      )
+    )
+    (return false)
+  )
+  (fn-do + stable-key Bool
+    (param key SyntaxId)
+    ; Whether a key names what lasts as long as the address it makes, as the reference decides:
+    ; a name, a number, a text or a case written alone, a name read from one, or a tuple of them.
+    (match? ([] nodes key)
+      (case .node-identifier
+        (return true)
+      )
+      (case .node-integer-syntax
+        (return true)
+      )
+      (case .node-string-syntax
+        (return true)
+      )
+      (case .node-anonymous-case
+        (return true)
+      )
+      (case (call .node-get-expression get)
+        (return (call stable-key (. get object)))
+      )
+      (case (call .node-tuple-syntax row)
+        (for (in item ([] children (. row items)))
+          (if (not (call stable-key item))
+            (return false)
+          )
+        )
+        (return true)
+      )
+    )
+    (return false)
+  )
+  (fn-do + index-key SyntaxId
+    (param index SyntaxId)
+    ; The key an index is written with.
+    (match? ([] nodes index)
+      (case (call .node-index-expression row)
+        (return (. row index))
+      )
+    )
+    (return 0)
+  )
+  (fn-do + index-object SyntaxId
+    (param index SyntaxId)
+    ; What an index is read from.
+    (match? ([] nodes index)
+      (case (call .node-index-expression row)
+        (return (. row object))
+      )
+    )
+    (return 0)
+  )
+  (fn-expr + lazy-value SyntaxId
+    (param declaration SyntaxId)
+    ; The value a lazy local is declared with.
+    (match ([] nodes declaration)
+      (case (call .node-declare row)
+        (. row right)
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-expr + is-typed Bool
+    (param pattern SyntaxId)
+    (match ([] nodes pattern)
+      (case (call .node-type-capture row)
+        (!= (. row type) 0)
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + coalesces-condition Bool
+    (param id SyntaxId)
+    (param left SyntaxId)
+    ; Whether `??` takes the other side of a value written `value if condition`, as its left side
+    ; or as the last of the sides before it in one chain, which shares the chain's place.
+    (match ([] nodes left)
+      (case (call .node-binary-expression row)
+        (case? (== (. row op) .if-op)
+          true
+        )
+        (case? (and (== (. row op) .coalesce-op) (== ([] (. nodes loc) left) ([] (. nodes loc) id)))
+          (call is-if-syntax (. row rhs))
+        )
+        (default
+          false
+        )
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + is-if-syntax Bool
+    (param expr SyntaxId)
+    (match ([] nodes expr)
+      (case (call .node-binary-expression row)
+        (== (. row op) .if-op)
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + is-choice-syntax Bool
+    (param expr SyntaxId)
+    ; Whether an expression is `if condition then value else other`.
+    (match ([] nodes expr)
+      (case (call .node-binary-expression row)
+        (and (== (. row op) .else-op) (call is-if-syntax (. row lhs)))
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + escaped-subject SyntaxId
+    (param value SyntaxId)
+    (match ([] nodes value)
+      (case (call .node-cast-expression row)
+        (call escaped-subject (. row lhs))
+      )
+      (case (call .node-unary-expression row)
+        (if-expr (== (. row op) .optional-force-op) (call escaped-subject (. row operand)) 0)
+      )
+      (default
+        value
+      )
+    )
+  )
+  (fn-expr + matched-subject SyntaxId
+    (param matching SyntaxId)
+    ; The subject of a match, or none.
+    (match ([] nodes matching)
+      (case (call .node-match-expression row)
+        (. row subject)
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-do + bound-attribute SyntaxId
+    (param anchor SyntaxId)
+    (let holder (call holder-of anchor))
+    (match? ([] nodes holder)
+      (case (call .node-assign row)
+        (if (and (== (. row op) .bind-op) (== (. row lhs) anchor) (!= (call attribute-element holder) 0))
+          (return holder)
+        )
+      )
+    )
+    (return 0)
+  )
+  (fn-do + when-lines (list SyntaxId)
+    (param branch SyntaxId)
+    ; The lines of the body of a `when` of a style rule, in the order written: the one line of a
+    ; `when` written on one, or those of its block.
+    (let lines (list SyntaxId))
+    (match? ([] nodes branch)
+      (case (call .node-style-when row)
+        (match ([] nodes (. row body))
+          (case (call .node-block block)
+            (for (in line ([] children (. block body)))
+              (+= lines line)
+            )
+          )
+          (default
+            (+= lines (. row body))
+          )
+        )
+      )
+    )
+    (return lines)
+  )
+  (fn-do + falls-back Bool
+    (param row ASTSlotOutlet)
+    (match? ([] nodes (. row body))
+      (case (call .node-block block)
+        (for (in statement ([] children (. block body)))
+          (if (not (is ([] nodes statement) .node-assign))
+            (return true)
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-expr + tests-row Bool
+    (param clause SyntaxId)
+    (match ([] nodes clause)
+      (case (call .node-clause row)
+        (== (. row op) .when-clause)
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-do + assigning-line SyntaxId
+    (param body SyntaxId)
+    ; The first line of a block that assigns, or none.
+    (match? ([] nodes body)
+      (case (call .node-block row)
+        (for (in statement ([] children (. row body)))
+          (if (is ([] nodes statement) .node-assign)
+            (return statement)
+          )
+        )
+      )
+    )
+    (return 0)
+  )
+  (fn-expr + assigns Bool
+    (param expr SyntaxId)
+    ; An arrow body that is an assignment gives the value assigned.
+    (match ([] nodes expr)
+      (case .node-assign
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + holds-struct Bool
+    (param object-syntax SyntaxId)
+    ; Whether a struct whose field is assigned is held where the change stays: not one a cast or
+    ; a call gives.
+    (match ([] nodes object-syntax)
+      (case .node-cast-expression
+        false
+      )
+      (case .node-call-expression
+        false
+      )
+      (default
+        true
+      )
+    )
+  )
+  (fn-expr + holds-text Bool
+    (param object-syntax SyntaxId)
+    ; Whether a text whose item is assigned is held where the new text is stored: not a literal, a
+    ; text joined from parts, or one a cast or a call gives.
+    (match ([] nodes object-syntax)
+      (case .node-string-syntax
+        false
+      )
+      (case .node-binary-expression
+        false
+      )
+      (case .node-cast-expression
+        false
+      )
+      (case .node-call-expression
+        false
+      )
+      (default
+        true
+      )
+    )
+  )
+  (fn-expr + is-identifier-syntax Bool
+    (param expr SyntaxId)
+    (match ([] nodes expr)
+      (case .node-identifier
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + writes-type Bool
+    (param pattern SyntaxId)
+    ; Whether a declaration's pattern writes the type of what it declares.
+    (match ([] nodes pattern)
+      (case (call .node-type-capture row)
+        (!= (. row type) 0)
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + written-part SyntaxId
+    (param rhs SyntaxId)
+    (param position U32)
+    ; The item written at a position of a tuple written as a value, or none.
+    (match ([] nodes rhs)
+      (case (call .node-tuple-syntax row)
+        (if-expr (< position (. row items count)) ([] children (+ (. row items start) position)) 0)
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-expr + names-super Bool
+    (param callable SyntaxId)
+    (match ([] nodes callable)
+      (case (call .node-identifier row)
+        (== (. row name text) "super")
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + feed-site SyntaxId
+    (param id SyntaxId)
+    (param consumer SyntaxId)
+    (match ([] nodes id)
+      (case (call .node-feed-expression row)
+        (if-expr (!= (. row next) 0) (. row next) (if-expr (!= consumer 0) consumer id))
+      )
+      (default
+        id
+      )
+    )
+  )
+  (fn-do + consumer-of SyntaxId
+    (param id SyntaxId)
+    ; The pipeline whose left operand is the feed list, if one consumes it.
+    (let total (. nodes length))
+    (for (in candidate (..< (+ id 1) total))
+      (match? ([] nodes candidate)
+        (case (call .node-pipeline-expression row)
+          (if (== (. row left) id)
+            (return (as candidate SyntaxId))
+          )
+        )
+      )
+    )
+    (return 0)
+  )
+  (fn-do + is-piped-row Bool
+    (param body (of RowRange SyntaxId))
+    (param statement SyntaxId)
+    (for (in position (..< 0 (- (. body count) 1)))
+      (if (== ([] children (+ (. body start) position)) statement)
+        (match? ([] nodes ([] children (+ (. body start) position 1)))
+          (case (call .node-pipeline-expression row)
+            (return (== (. row left) 0))
+          )
+        )
+        (return false)
+      )
+    )
+    (return false)
+  )
+  (fn-do + pipeline-of SyntaxId
+    (param id SyntaxId)
+    (for (in node (..< (+ id 1) (as (. nodes length) SyntaxId)))
+      (if (> (call subtree-start node) id)
+        (continue)
+      )
+      (match? ([] nodes node)
+        (case (call .node-iterator-expression row)
+          (match? ([] nodes (. row loop))
+            (case (call .node-loop-syntax loop)
+              (if (or (> (call subtree-start (. loop container)) id) (> id (. loop container)))
+                (return node)
+              )
+            )
+          )
+        )
+      )
+    )
+    (return 0)
+  )
+  (fn-expr + source-site SyntaxId
+    (param left SyntaxId)
+    (param id SyntaxId)
+    ; The reference converts a pipeline's left value where that value was produced: at the left
+    ; operand, which for a feed list is where its shifted first feed lands.
+    (match ([] nodes left)
+      (case .node-feed-expression
+        (call feed-site left id)
+      )
+      (default
+        left
+      )
+    )
+  )
+  (fn-do + written-feeds SyntaxId
+    (param expr SyntaxId)
+    (let feeds expr)
+    (match? ([] nodes feeds)
+      (case (call .node-argument row)
+        (= feeds (if-expr (. row name) 0 (. row expr)))
+      )
+    )
+    (match? ([] nodes feeds)
+      (case (call .node-block row)
+        (= feeds (if-expr (== (. row body count) 1) ([] children (. row body start)) 0))
+      )
+    )
+    (return-if feeds (if (and (!= feeds 0) (is ([] nodes feeds) .node-feed-expression))))
+    (return 0)
+  )
+  (fn-do + declaring-type-names (list SyntaxId)
+    (let found (list SyntaxId))
+    (for (in id (..< 1u32 (. nodes length)))
+      (match? ([] nodes id)
+        (case (call .node-type-identifier row)
+          (if (. row is-declare)
+            (+= found (as id SyntaxId))
+          )
+        )
+      )
+    )
+    (return found)
+  )
+  (fn-do + evaluated-surely Bool
+    (param value SyntaxId)
+    (param node SyntaxId)
+    ; Whether a node of a value is evaluated whenever the value is: each node around it that tests
+    ; something holds it in the part evaluated before the test, the left side of `&&`, `||` or
+    ; `??`, or the object an optional read or index reads from.
+    (for (in around (..< (+ node 1) (+ value 1)))
+      (if (or (> (call subtree-start around) node) (call tests-nothing around))
+        (continue)
+      )
+      (let first
+        (match ([] nodes around)
+          (case (call .node-binary-expression row)
+            (if-expr (!= (. row op) .if-op) (. row lhs) 0)
+          )
+          (case (call .node-get-expression row)
+            (. row object)
+          )
+          (case (call .node-index-expression row)
+            (. row object)
+          )
+          (default
+            0
+          )
+        )
+      )
+      (if (or (== first 0) (< node (call subtree-start first)) (> node first))
+        (return false)
+      )
+    )
+    (return true)
+  )
+  (fn-expr + tests-nothing Bool
+    (param node SyntaxId)
+    ; Whether a node of a value evaluates all it holds whenever it is evaluated: a name, a literal,
+    ; a call, a block, which evaluates its lines in order, a read or an operator that tests
+    ; nothing.
+    (match ([] nodes node)
+      (case .node-integer-syntax
+        true
+      )
+      (case .node-block
+        true
+      )
+      (case .node-float-syntax
+        true
+      )
+      (case .node-string-syntax
+        true
+      )
+      (case .node-identifier
+        true
+      )
+      (case .node-call-expression
+        true
+      )
+      (case .node-argument
+        true
+      )
+      (case (call .node-get-expression row)
+        (not (. row is-optional))
+      )
+      (case (call .node-index-expression row)
+        (not (. row is-optional))
+      )
+      (case .node-tuple-syntax
+        true
+      )
+      (case .node-unary-expression
+        true
+      )
+      (case .node-cast-expression
+        true
+      )
+      (case .node-type-identifier
+        true
+      )
+      (case .node-type-arguments
+        true
+      )
+      (case (call .node-binary-expression row)
+        (and no-short-circuit (!= (. row op) .if-op) (!= (. row op) .else-op))
+        (blank)
+        (lazy no-short-circuit (and (!= (. row op) .and-op) (!= (. row op) .or-op) (!= (. row op) .coalesce-op)))
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-do + arrival-clause Bool
+    (param clause SyntaxId)
+    ; Whether a loop on an event asks with its first clause, `when arrival` or `when bubbling`,
+    ; for only the events that arrive at the object or for those that bubble too.
+    (match? ([] nodes clause)
+      (case (call .node-clause row)
+        (if (is (. row op) .when-clause)
+          (match? ([] nodes (. row expr))
+            (case (call .node-identifier name)
+              (return (or (== (. name name text) "arrival") (== (. name name text) "bubbling")))
+            )
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + clause-delivery U32
+    (param clause SyntaxId)
+    ; Which publications a loop on an event hears where its only clause says so: 1 for
+    ; `when arrival`, 2 for `when bubbling`, and else 0.
+    (match? ([] nodes clause)
+      (case (call .node-clause row)
+        (if (and (is (. row op) .when-clause) (== (. row next) 0))
+          (match? ([] nodes (. row expr))
+            (case (call .node-identifier name)
+              (if (== (. name name text) "arrival")
+                (return 1)
+              )
+              (if (== (. name name text) "bubbling")
+                (return 2)
+              )
+            )
+          )
+        )
+      )
+    )
+    (return 0)
+  )
+  (fn-do + ends-subscription Bool
+    (param clause SyntaxId)
+    ; Whether a loop's clauses include a `while` or an `until`, which end a subscription.
+    (let current clause)
+    (while (!= current 0)
+      (let next SyntaxId 0)
+      (match? ([] nodes current)
+        (case (call .node-clause row)
+          (if (or (== (. row op) .while-clause) (== (. row op) .until-clause))
+            (return true)
+          )
+          (= next (. row next))
+        )
+      )
+      (= current next)
+    )
+    (return false)
+  )
+  (fn-do + gives-closure Bool
+    (param function SyntaxId)
+    ; Whether a function written as a value is the whole value of an attribute of a markup element.
+    (let holder (call holder-of function))
+    (match? ([] nodes holder)
+      (case (call .node-assign row)
+        (return (and (== (. row rhs) function) (!= (call attribute-element holder) 0)))
+      )
+    )
+    (return false)
+  )
+  (fn-do + has-whenever Bool
+    (param clause SyntaxId)
+    ; Whether a loop's clauses include a `whenever`.
+    (let current clause)
+    (while (!= current 0)
+      (let next SyntaxId 0)
+      (match? ([] nodes current)
+        (case (call .node-clause row)
+          (if (== (. row op) .whenever-clause)
+            (return true)
+          )
+          (= next (. row next))
+        )
+      )
+      (= current next)
+    )
+    (return false)
+  )
+  (fn-do + in-arm-body Bool
+    (param region SyntaxId)
+    (param id SyntaxId)
+    ; Whether a node is written in the body of an arm of a markup branch or match region.
+    (for (in arm (call region-arms region))
+      (let body (call region-arm-body arm))
+      (if (and (<= (call subtree-start body) id) (<= id body))
+        (return true)
+      )
+    )
+    (return false)
+  )
+  (fn-do + in-container Bool
+    (param region SyntaxId)
+    (param id SyntaxId)
+    ; Whether a node is written in the container of a markup loop region.
+    (match? ([] nodes region)
+      (case (call .node-for-block row)
+        (match? ([] nodes (. row loop))
+          (case (call .node-loop-syntax loop)
+            (return
+              (scope (and (!= (. loop container) 0) after-start (<= id (. loop container)))
+                (lazy after-start (<= (call subtree-start (. loop container)) id))
+              )
+            )
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + in-key Bool
+    (param region SyntaxId)
+    (param id SyntaxId)
+    ; Whether a node is written in the `keyed by` clause of a markup loop region.
+    (match? ([] nodes region)
+      (case (call .node-for-block row)
+        (let clause (call keyed-clause (. row loop)))
+        (return (and (!= clause 0) (<= (call subtree-start clause) id) (<= id clause)))
+      )
+    )
+    (return false)
+  )
+  (fn-do + is-live-rule Bool
+    (param syntax SyntaxId)
+    ; Whether a rule a class writes runs as a live action of the object: a `when` or `whenever`
+    ; rule.
+    (match? ([] nodes syntax)
+      (case .node-when-rule-syntax
+        (return true)
+      )
+      (case .node-whenever-rule-syntax
+        (return true)
+      )
+    )
+    (return false)
+  )
+  (fn-do + is-subscriber-loop Bool
+    (param loop SyntaxId)
+    ; Whether the header of a loop reads a stream: `for x on s`.
+    (match? ([] nodes loop)
+      (case (call .node-loop-syntax row)
+        (return (. row is-subscriber))
+      )
+    )
+    (return false)
+  )
+  (fn-do + tracked-read (? Atom)
+    (param id SyntaxId)
+    ; The name of a property or a local that an expression reads tracked, written `#name`, where
+    ; it reads one.
+    (for (in node (..< (call subtree-start id) (+ id 1)))
+      (match? ([] nodes node)
+        (case (call .node-identifier row)
+          (if (. row is-tracked)
+            (return (. row name))
+          )
+        )
+        (case (call .node-get-expression row)
+          (if (. row is-tracked)
+            (return (. row name))
+          )
+        )
+      )
+    )
+    (return null)
+  )
+  (fn-do + tracks-reads Bool
+    (param value SyntaxId)
+    ; Whether a value reads a name or a member that it tracks.
+    (for (in node (.. (call subtree-start value) value))
+      (match? ([] nodes node)
+        (case (call .node-identifier row)
+          (if (. row is-tracked)
+            (return true)
+          )
+        )
+        (case (call .node-get-expression row)
+          (if (. row is-tracked)
+            (return true)
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + block-names _
+    (param root SyntaxId)
+    (param blocked (list Atom))
+    ; Notes each name written under a node as changed.
+    (for (in node (..< (call subtree-start root) (+ root 1)))
+      (match? ([] nodes node)
+        (case (call .node-identifier row)
+          (+= blocked (. row name))
+        )
+      )
+    )
+  )
+  (fn-expr + counts-from-zero Bool
+    (param container SyntaxId)
+    (match ([] nodes container)
+      (case (call .node-range-expression range)
+        (and (== (. range op) .range-to-op) (== (. range increment) 0) (call is-zero-literal (. range left)))
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + has-arms Bool
+    (param pattern SyntaxId)
+    (match ([] nodes pattern)
+      (case .node-type-or
+        true
+      )
+      (case .node-type-transform
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + is-simple-loop-pattern Bool
+    (param pattern SyntaxId)
+    (case? (== pattern 0)
+      true
+    )
+    (default
+      (match ([] nodes pattern)
+        (case .node-identifier
+          true
+        )
+        (case (call .node-type-capture capture)
+          (== (. capture type) 0)
+        )
+        (default
+          false
+        )
+      )
+    )
+  )
+  (fn-expr + is-zero-literal Bool
+    (param syntax SyntaxId)
+    (match ([] nodes syntax)
+      (case (call .node-integer-syntax literal)
+        (and (== (. literal value) "0") (not (. literal unit)))
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + names-whole Bool
+    (param pattern SyntaxId)
+    ; Whether a pattern of a loop is its item whole under a name, or is not written.
+    (case? (== pattern 0)
+      true
+    )
+    (default
+      (match ([] nodes pattern)
+        (case .node-identifier
+          true
+        )
+        (case (call .node-type-capture capture)
+          (== (. capture type) 0)
+        )
+        (default
+          false
+        )
+      )
+    )
+  )
+  (fn-do + next-clause SyntaxId
+    (param clause SyntaxId)
+    ; The clause written after a clause, or none.
+    (match? ([] nodes clause)
+      (case (call .node-clause row)
+        (return (. row next))
+      )
+    )
+    (return 0)
+  )
+  (fn-do + branched Bool
+    (param content SyntaxId)
+    (param element SyntaxId)
+    (param outlets _ (= false))
+    ; Whether an element of a class's markup is written in an `if` or a `match` of it, or with
+    ; `outlets` in the default content of a slot, and in no function or loop of it.
+    (let found false)
+    (for (in node (..< (+ element 1) content))
+      (if (<= (call subtree-start node) element)
+        (match? ([] nodes node)
+          (case .node-function-syntax
+            (return false)
+          )
+          (case .node-for-block
+            (return false)
+          )
+          (case .node-if-block
+            (= found true)
+          )
+          (case .node-match-expression
+            (= found true)
+          )
+          (case .node-slot-outlet
+            (= found (or found outlets))
+          )
+        )
+      )
+    )
+    (return found)
+  )
+  (fn-do + branches-element Bool
+    (param content SyntaxId)
+    (param name Atom)
+    ; Whether a class's markup gives an element of a name in an `if` or a `match` of it, outside
+    ; its functions and loops.
+    (for (in node (..< (call subtree-start content) content))
+      (match? ([] nodes node)
+        (case (call .node-markup element)
+          (match? ([] nodes (. element id))
+            (case (call .node-identifier id)
+              (if (and (== (. id name) name) (call (. this branched) content node))
+                (return true)
+              )
+            )
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + enclosed-element Bool
+    (param element SyntaxId)
+    (param content SyntaxId)
+    ; Whether a markup element of a class's markup is written in a function or a loop there.
+    (for (in node (..< (+ element 1) content))
+      (if (<= (call subtree-start node) element)
+        (match? ([] nodes node)
+          (case .node-function-syntax
+            (return true)
+          )
+          (case .node-for-block
+            (return true)
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + ends-returning Bool
+    (param body SyntaxId)
+    ; Whether the last line of a block returns or raises a panic or an error with no condition.
+    (match? ([] nodes body)
+      (case (call .node-block block)
+        (if (== (. block body count) 0)
+          (return false)
+        )
+        (match? ([] nodes ([] children (- (+ (. block body start) (. block body count)) 1)))
+          (case .node-return
+            (return true)
+          )
+          (case (call .node-assertion-syntax row)
+            (return (== (. row condition) 0))
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + has-attributes Bool
+    (param body SyntaxId)
+    ; Whether the body of a markup element writes an attribute: a line that assigns.
+    (match? ([] nodes body)
+      (case (call .node-block row)
+        (for (in statement ([] children (. row body)))
+          (if (is ([] nodes statement) .node-assign)
+            (return true)
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + holds-markup Bool
+    (param rule SyntaxId)
+    ; Whether a style rule is a `• This` with a line of its body that is not the rule's own.
+    (match? ([] nodes rule)
+      (case (call .node-rule-syntax row)
+        (if (or (!= (. row name text) "This") (== (. row body) 0))
+          (return false)
+        )
+        (match? ([] nodes (. row body))
+          (case (call .node-block block)
+            (for (in statement ([] children (. block body)))
+              (if (not (call rule-part statement))
+                (return true)
+              )
+            )
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + inner-outlet Bool
+    (param content SyntaxId)
+    (param outlet SyntaxId)
+    ; Whether a slot outlet of the markup written in a class is no slot's: one a line forwards, or one
+    ; in the body of another, which is content the other mounts where it is given none.
+    (for (in node (..< (call subtree-start content) content))
+      (match? ([] nodes node)
+        (case (call .node-markup-slot-forward row)
+          (if (== (. row outlet) outlet)
+            (return true)
+          )
+        )
+        (case (call .node-slot-outlet row)
+          (if (and (!= node outlet) (!= (. row body) 0) in-body)
+            (return true)
+          )
+          (lazy in-body (and (<= (call subtree-start (. row body)) outlet) (<= outlet (. row body))))
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + is-control-line Bool
+    (param line SyntaxId)
+    ; Whether a line of markup content is an `if`, a `match`, or a loop that is no loop on a stream,
+    ; as the reference's `isMarkupControlFlow` finds it.
+    (match? ([] nodes line)
+      (case .node-if-block
+        (return true)
+      )
+      (case .node-match-expression
+        (return true)
+      )
+      (case (call .node-for-block row)
+        (return (not (call is-subscriber-loop (. row loop))))
+      )
+      (case (call .node-iterator-expression row)
+        (return (not (call is-subscriber-loop (. row loop))))
+      )
+    )
+    (return false)
+  )
+  (fn-do + is-markup-trigger Bool
+    (param syntax SyntaxId)
+    ; Whether a rule a class writes is a `whenever` rule on the markup an object is in.
+    (match? ([] nodes syntax)
+      (case (call .node-whenever-rule-syntax rule)
+        (return (!= (. rule kind text) "value"))
+      )
+    )
+    (return false)
+  )
+  (fn-expr + row-loop SyntaxId
+    (param body SyntaxId)
+    (match ([] nodes (call holder-of body))
+      (case (call .node-for-block row)
+        (. row loop)
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-do + arm-value SyntaxId
+    (param body SyntaxId)
+    ; The node that gives the body of an arm its value: the body, or of a block the last statement
+    ; that runs where it stands, or none where there is none.
+    (match? ([] nodes body)
+      (case (call .node-block block)
+        (let last SyntaxId 0)
+        (for (in statement ([] children (. block body)))
+          (match? ([] nodes statement)
+            (case (call .node-declare row)
+              (if (. row is-lazy)
+                (continue)
+              )
+            )
+          )
+          (if (and (not (call is-declaration-syntax this statement)) (not (call is-comment-syntax this statement)))
+            (= last statement)
+          )
+        )
+        (return last)
+      )
+    )
+    (return body)
+  )
+  (fn-expr + is-alternative Bool
+    (param pattern SyntaxId)
+    (match ([] nodes pattern)
+      (case .node-type-or
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + key-expr SyntaxId
+    (param key SyntaxId)
+    ; A map pattern's key is an equality on a literal or a `$name`: the expression it compares to.
+    (match ([] nodes key)
+      (case (call .node-type-equality row)
+        (. row expr)
+      )
+      (default
+        key
+      )
+    )
+  )
+  (fn-expr + pattern-is-else Bool
+    (param pattern SyntaxId)
+    (case? (== pattern 0)
+      true
+    )
+    (default
+      (match ([] nodes pattern)
+        (case .node-type-wildcard
+          true
+        )
+        (default
+          false
+        )
+      )
+    )
+  )
+  (fn-expr + predicate-expr SyntaxId
+    (param pattern SyntaxId)
+    (case? (== pattern 0)
+      0
+    )
+    (default
+      (match ([] nodes pattern)
+        (case (call .node-type-predicate row)
+          (. row expr)
+        )
+        (default
+          0
+        )
+      )
+    )
+  )
+  (fn-do + subject-property (? Atom)
+    (param subject SyntaxId)
+    ; The name of the property a subject reads from an object, or none.
+    (match? ([] nodes subject)
+      (case (call .node-get-expression row)
+        (return (. row name))
+      )
+    )
+    (return null)
+  )
+  (fn-do + gives-nothing Bool
+    (param source StateSource)
+    ; Whether a source of a case's payload gives no value, as the reference finds none there: a
+    ; case one of whose names neither its trigger, if it has one, nor its owner's trigger captures.
+    (if (not (is ([] nodes (. source node)) .node-state-case))
+      (return false)
+    )
+    (let trigger (call state-trigger (. source node)))
+    (let captures (list Atom))
+    (if (!= trigger 0)
+      (call pattern-names (call trigger-pattern trigger) captures)
+    )
+    (if (!= (. source owner) 0)
+      (call pattern-names (call trigger-pattern (call state-trigger (. source owner))) captures)
+    )
+    (for (in target ([] children (call state-targets (. source node))))
+      (match? ([] nodes target)
+        (case (call .node-identifier named)
+          (if (== (call (. captures find) (. named name)) null)
+            (return true)
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + names-root Bool
+    (param machine SyntaxId)
+    (param roots (list Atom))
+    ; Whether a machine has a case at its root of one of some names.
+    (for (in item (call state-items (call state-body machine)))
+      (if (and (is ([] nodes item) .node-state-case) (!= (call (. roots find) (!! (call state-name item))) null))
+        (return true)
+      )
+    )
+    (return false)
+  )
+  (fn-do + action-value SyntaxId
+    (param action SyntaxId)
+    ; What an action gives: its last statement where it is a block.
+    (match? ([] nodes action)
+      (case (call .node-block block)
+        (if (!= (. block body count) 0)
+          (return ([] children (- (+ (. block body start) (. block body count)) 1)))
+        )
+      )
+    )
+    (return action)
+  )
+  (fn-expr + acts Bool
+    (param arm SyntaxId)
+    (match ([] nodes arm)
+      (case (call .node-stream-transform row)
+        (!= (. row right) 0)
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + char-bound Bool
+    (param id SyntaxId)
+    ; Whether a bound of a range of characters is a character written, as the reference requires: a
+    ; character literal, whose unit is `(char)`, or a number with no unit or `Char`'s suffix.
+    (match ([] nodes id)
+      (case (call .node-integer-syntax row)
+        (or (not (. row unit)) (== (. row unit text) "(char)") (== (. row unit text) "c"))
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-do + computed-counts Bool
+    (param id SyntaxId)
+    ; Whether a grammar holds a count of a part whose bounds are not numbers written.
+    (for (in node (..< (call subtree-start id) (+ id 1)))
+      (match? ([] nodes node)
+        (case (call .node-stream-length row)
+          (if (or (not (call count-bound (. row min))) (and (!= (. row max) 0) (not (call count-bound (. row max)))))
+            (return true)
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-expr + count-bound Bool
+    (param id SyntaxId)
+    ; Whether a bound of a count is a number written.
+    (match ([] nodes id)
+      (case (call .node-integer-syntax row)
+        (not (. row unit))
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-do + first-capture SyntaxId
+    (param id SyntaxId)
+    ; The first name a part of a pattern captures, or none.
+    (for (in node (..< (call subtree-start id) (+ id 1)))
+      (if (is ([] nodes node) .node-stream-capture)
+        (return node)
+      )
+    )
+    (return 0)
+  )
+  (fn-do + forwarded-read SyntaxId
+    (param body SyntaxId)
+    ; The name an action's expression is, where it is one name alone, as the reference finds a
+    ; capture an action forwards. None for any other expression.
+    (let inner body)
+    (match? ([] nodes body)
+      (case (call .node-block block)
+        (if (!= (. block body count) 1)
+          (return 0)
+        )
+        (= inner ([] children (. block body start)))
+      )
+    )
+    (return (if-expr (is ([] nodes inner) .node-identifier) inner 0))
+  )
+  (fn-do + guards Bool
+    (param operand SyntaxId)
+    ; Whether a lookahead looks at a test that does not read the item, as `&\{ size <= limit }` does:
+    ; a guard, which tests its condition alone and needs no item, so it passes at the end of the
+    ; input where the condition holds, and a record is given without waiting for one more item.
+    (match? ([] nodes operand)
+      (case (call .node-stream-predicate row)
+        (return (not (call mentions (. row predicate) "it")))
+      )
+    )
+    (return false)
+  )
+  (fn-do + holds-count Bool
+    (param id SyntaxId)
+    ; Whether a part of a grammar counts a part, whose text the reference gives empty over
+    ; items that are no characters.
+    (for (in node (..< (call subtree-start id) (+ id 1)))
+      (if (is ([] nodes node) .node-stream-length)
+        (return true)
+      )
+    )
+    (return false)
+  )
+  (fn-do + holds-rollback Bool
+    (param pattern SyntaxId)
+    ; Whether a pattern has a part marked to roll back.
+    (for (in node (..< (call subtree-start pattern) (+ pattern 1)))
+      (match? ([] nodes node)
+        (case (call .node-stream-transform row)
+          (if (. row rollback)
+            (return true)
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + in-inner-action Bool
+    (param node SyntaxId)
+    (param id SyntaxId)
+    ; Whether a node lies in the action of an arm of a grammar written within an expression.
+    (for (in outer (..< (+ node 1) id))
+      (match? ([] nodes outer)
+        (case (call .node-stream-transform row)
+          (if (and (!= (. row right) 0) (<= (call subtree-start (. row right)) node) (<= node (. row right)))
+            (return true)
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + literal-arm Bool
+    (param id SyntaxId)
+    ; Whether an arm's pattern is one literal, whose text the reference gives as a constant.
+    (match? ([] nodes id)
+      (case .node-stream-string
+        (return true)
+      )
+      (case (call .node-stream-transform row)
+        (return (and (!= (. row pattern) 0) (is ([] nodes (. row pattern)) .node-stream-string)))
+      )
+    )
+    (return false)
+  )
+  (fn-do + local-rule-pattern SyntaxId
+    (param rule SyntaxId)
+    ; The pattern of a local rule, by its declaration.
+    (match? ([] nodes rule)
+      (case (call .node-declare declaration)
+        (match? ([] nodes (. declaration right))
+          (case (call .node-stream-match row)
+            (return (. row pattern))
+          )
+        )
+      )
+    )
+    (return 0)
+  )
+  (fn-do + mentions Bool
+    (param id SyntaxId)
+    (param name String)
+    ; Whether a name is read anywhere in an expression, as the reference finds what an action
+    ; refers to. An `it` read in the action of an arm written within the expression is that arm's
+    ; own.
+    (if (== id 0)
+      (return false)
+    )
+    (for (in node (..< (call subtree-start id) (+ id 1)))
+      (match? ([] nodes node)
+        (case (call .node-identifier row)
+          (if (and (== (. row name text) name) (or (!= name "it") (not (call in-inner-action node id))))
+            (return true)
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + optional-operand SyntaxId
+    (param id SyntaxId)
+    ; The part an optional part of a grammar holds, or none for any other part.
+    (match? ([] nodes id)
+      (case (call .node-stream-unary row)
+        (if (== (. row op) .zero-or-one-op)
+          (return (. row operand))
+        )
+      )
+    )
+    (return 0)
+  )
+  (fn-do + rule-pattern SyntaxId
+    (param rule SyntaxId)
+    ; The pattern of a local rule's declaration.
+    (match? ([] nodes rule)
+      (case (call .node-declare declaration)
+        (match? ([] nodes (. declaration right))
+          (case (call .node-stream-match row)
+            (return (. row pattern))
+          )
+        )
+      )
+    )
+    (return 0)
+  )
+  (fn-do + trivial-action Bool
+    (param body SyntaxId)
+    ; Whether an action is a name, a number or text written alone, which the reference keeps
+    ; inline.
+    (let single body)
+    (match? ([] nodes body)
+      (case (call .node-block row)
+        (if (!= (. row body count) 1)
+          (return false)
+        )
+        (= single ([] children (. row body start)))
+      )
+    )
+    (match? ([] nodes single)
+      (case .node-identifier
+        (return true)
+      )
+      (case .node-integer-syntax
+        (return true)
+      )
+      (case .node-float-syntax
+        (return true)
+      )
+      (case .node-string-syntax
+        (return true)
+      )
+    )
+    (return false)
+  )
+  (fn-do + applies-rules Bool
+    (param syntax SyntaxId)
+    ; Whether a style rule applies rules, after its name or in the body of a `when`.
+    (match? ([] nodes syntax)
+      (case (call .node-rule-syntax row)
+        (if (!= (. row style-rule-applications count) 0)
+          (return true)
+        )
+        (for (in branch (call (. this rule-whens) (. row body)))
+          (if (!= (. (call (. this when-applications) branch) length) 0)
+            (return true)
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + holds-rules Bool
+    (param rule SyntaxId)
+    ; Whether a style rule applies rules after its name or holds rules written in it, in its body or
+    ; in that of one of its `when`s.
+    (match? ([] nodes rule)
+      (case (call .node-rule-syntax declared)
+        (if (!= (. declared style-rule-applications count) 0)
+          (return true)
+        )
+        (let body (. declared body))
+        (match? ([] nodes body)
+          (case (call .node-block block)
+            (for (in statement ([] children (. block body)))
+              (if (is ([] nodes statement) .node-rule-syntax)
+                (return true)
+              )
+            )
+          )
+        )
+        (for (in branch (call (. this rule-whens) body))
+          (for (in line (call when-lines branch))
+            (if (is ([] nodes line) .node-rule-syntax)
+              (return true)
+            )
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + in-application Bool
+    (param element SyntaxId)
+    (param id SyntaxId)
+    ; Whether a node is written in what a rule a markup element applies after `•` is given.
+    (match? ([] nodes element)
+      (case (call .node-markup row)
+        (for (in application ([] children (. row style-rule-applications)))
+          (if (and (<= (call subtree-start application) id) (<= id application))
+            (return true)
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + in-applied-value Bool
+    (param id SyntaxId)
+    (for (in node (..< (+ id 1) (as (. nodes length) SyntaxId)))
+      (if (and (<= (call subtree-start node) id) (is ([] nodes node) .node-style-rule-application))
+        (return true)
+      )
+    )
+    (return false)
+  )
+  (fn-do + in-gated Bool
+    (param node SyntaxId)
+    (param conditions (list SyntaxId))
+    ; Whether a node is written in one of the conditions given.
+    (for (in condition conditions)
+      (if (and (<= (call subtree-start condition) node) (<= node condition))
+        (return true)
+      )
+    )
+    (return false)
+  )
+  (fn-do + reads-tracked Bool
+    (param value SyntaxId)
+    ; Whether a value reads something tracked.
+    (for (in node (.. (call subtree-start value) value))
+      (match? ([] nodes node)
+        (case (call .node-identifier row)
+          (if (. row is-tracked)
+            (return true)
+          )
+        )
+        (case (call .node-get-expression row)
+          (if (. row is-tracked)
+            (return true)
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + roots-values Bool
+    (param application SyntaxId)
+    ; Whether an application written after `•` is written on the root `<This` of a class's markup,
+    ; whose values an instance of their own types (`check-root-values`).
+    (match? ([] nodes (call holder-of application))
+      (case (call .node-markup row)
+        (return (call names-this (. row type-id)))
+      )
+    )
+    (return false)
+  )
+  (fn-do + rule-argument-type SyntaxId
+    (param argument SyntaxId)
+    ; The type written for a value a style rule takes, or the pattern that takes it where it is
+    ; written with none.
+    (let pattern argument)
+    (match? ([] nodes argument)
+      (case (call .node-argument-decl row)
+        (= pattern (. row pattern))
+      )
+    )
+    (match? ([] nodes pattern)
+      (case (call .node-type-capture capture)
+        (return (. capture type))
+      )
+    )
+    (return pattern)
+  )
+  (fn-expr + rule-body SyntaxId
+    (param syntax SyntaxId)
+    (match ([] nodes syntax)
+      (case (call .node-rule-syntax row)
+        (. row body)
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-do + rule-content (list SyntaxId)
+    (param body SyntaxId)
+    ; The lines of the body of a style rule that generate content, in the order written: markup
+    ; elements that bind a slot.
+    (let lines (list SyntaxId))
+    (match? ([] nodes body)
+      (case (call .node-block block)
+        (for (in line ([] children (. block body)))
+          (if (call (. this generates) line)
+            (+= lines line)
+          )
+        )
+      )
+    )
+    (return lines)
+  )
+  (fn-expr + rule-takes U32
+    (param syntax SyntaxId)
+    (match ([] nodes syntax)
+      (case (call .node-rule-syntax row)
+        (. row args count)
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-expr + rule-takes-nothing Bool
+    (param syntax SyntaxId)
+    (match ([] nodes syntax)
+      (case (call .node-rule-syntax row)
+        (== (. row args count) 0)
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-do + rule-whens (list SyntaxId)
+    (param body SyntaxId)
+    ; The `when`s of the body of a style rule, in the order written.
+    (let whens (list SyntaxId))
+    (if (== body 0)
+      (return whens)
+    )
+    (match? ([] nodes body)
+      (case (call .node-block block)
+        (for (in statement ([] children (. block body)))
+          (if (is ([] nodes statement) .node-style-when)
+            (+= whens statement)
+          )
+        )
+      )
+    )
+    (return whens)
+  )
+  (fn-expr + when-applications (list SyntaxId)
+    (param branch SyntaxId)
+    ; The rules the body of a `when` of a style rule applies, in the order written.
+    (in each (call when-lines branch) (when (is ([] nodes each) .node-style-rule-application)))
+  )
+  (fn-expr + when-content (list SyntaxId)
+    (param branch SyntaxId)
+    ; The lines of the body of a `when` of a style rule that generate content, in the order written.
+    (in each (call when-lines branch) (when (call (. this generates) each)))
+  )
+  (fn-expr + argument-type-syntax SyntaxId
+    (param argument SyntaxId)
+    ; The type written for a value a style rule takes, `name Type`, or none.
+    (match ([] nodes argument)
+      (case (call .node-argument-decl row)
+        (match ([] nodes (. row pattern))
+          (case (call .node-type-capture capture)
+            (. capture type)
+          )
+          (default
+            0
+          )
+        )
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-expr + generates Bool
+    (param line SyntaxId)
+    ; Whether a line of a style rule generates content: a markup element that binds a slot.
+    (match ([] nodes line)
+      (case (call .node-markup row)
+        (!= (. row slot-binding) 0)
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + is-bare-value Bool
+    (param statement SyntaxId)
+    (match ([] nodes statement)
+      (case .node-identifier
+        true
+      )
+      (case .node-integer-syntax
+        true
+      )
+      (case .node-float-syntax
+        true
+      )
+      (case .node-string-syntax
+        true
+      )
+      (case .node-get-expression
+        true
+      )
+      (case .node-index-expression
+        true
+      )
+      (case .node-list-syntax
+        true
+      )
+      (case .node-tuple-syntax
+        true
+      )
+      (case .node-range-expression
+        true
+      )
+      (case .node-cast-expression
+        true
+      )
+      (case (call .node-binary-expression row)
+        (or (call is-arithmetic (. row op)) (call is-comparison (. row op)) (has valued-ops (. row op)))
+      )
+      (case (call .node-unary-expression row)
+        (or (== (. row op) .not-op) (== (. row op) .negative-op) (== (. row op) .bitwise-not-op))
+      )
+      (default
+        false
+      )
+    )
+    (where
+      (lazy valued-ops (list (. Operator concat-op) (. Operator concat-string-op) (. Operator and-op) (. Operator or-op) (. Operator is-op) (. Operator is-not-op) (. Operator is-exactly-op) (. Operator is-not-exactly-op) (. Operator is-similar-op) (. Operator is-not-similar-op) (. Operator is-in-op) (. Operator not-in-op) (. Operator has-op) (. Operator has-not-op)))
+    )
+  )
+  (fn-expr + is-number Bool
+    (param value SyntaxId)
+    (match ([] nodes value)
+      (case .node-integer-syntax
+        true
+      )
+      (case .node-float-syntax
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + is-string-literal Bool
+    (param value SyntaxId)
+    (match ([] nodes value)
+      (case .node-string-syntax
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + member-name (? Atom)
+    (param lhs SyntaxId)
+    ; The name an assignment gives a property by: after an object, or alone.
+    (match? ([] nodes lhs)
+      (case (call .node-get-expression row)
+        (. row name)
+      )
+      (case (call .node-identifier row)
+        (. row name)
+      )
+    )
+  )
+  (fn-expr + is-named Bool
+    (param argument SyntaxId)
+    ; Whether an argument is written with the name of the parameter it is for.
+    (match ([] nodes argument)
+      (case (call .node-argument named)
+        (!= (. named name) null)
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + next-feed SyntaxId
+    (param feed SyntaxId)
+    (match ([] nodes feed)
+      (case (call .node-feed-expression row)
+        (. row next)
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-do + retest-site SyntaxId
+    (param clause SyntaxId)
+    ; Where the reference places the loop whose `whenever` clause a function tests again: the
+    ; section of a class the loop is, or else the loop's header.
+    (let loop (call clause-loop clause))
+    (for (in node (..< (+ loop 1) (as (. nodes length) SyntaxId)))
+      (if (<= (call subtree-start node) loop)
+        (match ([] nodes node)
+          (case (call .node-for-block block)
+            (if (!= (. block loop) loop)
+              (return loop)
+            )
+          )
+          (case .node-subscriber-syntax
+            (return node)
+          )
+          (default
+            (return loop)
+          )
+        )
+      )
+    )
+    (return loop)
+  )
+  (fn-expr + gives-items Bool
+    (param loop SyntaxId)
+    (param body SyntaxId)
+    (and (== body 0) (not (is ([] nodes loop) .node-loop-syntax)))
+  )
+  (fn-expr + step-pattern SyntaxId
+    (param loop SyntaxId)
+    ; The grammar a loop's header is written as, out of the match that holds it where one
+    ; does.
+    (match ([] nodes loop)
+      (case (call .node-loop-syntax row)
+        (match ([] nodes (. row pattern))
+          (case (call .node-stream-match written)
+            (. written pattern)
+          )
+          (default
+            (. row pattern)
+          )
+        )
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-expr + region-container SyntaxId
+    (param id SyntaxId)
+    ; The container of the one header of a markup loop region's `for`.
+    (match ([] nodes id)
+      (case (call .node-for-block row)
+        (match ([] nodes (. row loop))
+          (case (call .node-loop-syntax loop)
+            (. loop container)
+          )
+          (default
+            0
+          )
+        )
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-expr + region-site SyntaxId
+    (param id SyntaxId)
+    ; Where the markup branch region a line may be is written: a slot outlet's parameter, or the line.
+    (match ([] nodes id)
+      (case (call .node-slot-outlet row)
+        (if-expr (!= (. row slot-parameter) 0) (. row slot-parameter) id)
+      )
+      (default
+        id
+      )
+    )
+  )
+  (fn-expr + arm-test SyntaxId
+    (param arm SyntaxId)
+    (match ([] nodes arm)
+      (case (call .node-type-transform row)
+        (if-expr (or (== (. row pattern) 0) (is ([] nodes (. row pattern)) .node-type-wildcard)) 0 (. row pattern))
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-expr + case-inner SyntaxId
+    (param pattern SyntaxId)
+    (match ([] nodes pattern)
+      (case (call .node-type-case row)
+        (. row value)
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-expr + equality-expr SyntaxId
+    (param pattern SyntaxId)
+    (match ([] nodes pattern)
+      (case (call .node-type-equality row)
+        (. row expr)
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-do + first-item SyntaxId
+    (param pattern SyntaxId)
+    (match? ([] nodes pattern)
+      (case (call .node-type-list row)
+        (if (!= (. row patterns count) 0)
+          (let item ([] children (. row patterns start)))
+          (if (not (is ([] nodes item) .node-type-remainder))
+            (return item)
+          )
+        )
+      )
+    )
+    (return 0)
+  )
+  (fn-expr + has-name Bool
+    (param remainder SyntaxId)
+    ; Whether the rest of a pattern of a list has a name.
+    (match ([] nodes remainder)
+      (case (call .node-type-remainder row)
+        (!= (. row name) 0)
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + is-block Bool
+    (param body SyntaxId)
+    (match ([] nodes body)
+      (case .node-block
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + key-of SyntaxId
+    (param key SyntaxId)
+    ; The expression a key of a map pattern is compared to: what is written, or the name read.
+    (match ([] nodes key)
+      (case (call .node-type-equality row)
+        (. row expr)
+      )
+      (default
+        key
+      )
+    )
+  )
+  (fn-expr + names-type Bool
+    (param pattern SyntaxId)
+    ; Whether a pattern is a type named and no more.
+    (match ([] nodes pattern)
+      (case .node-type-identifier
+        true
+      )
+      (case .node-type-arguments
+        true
+      )
+      (case .node-type-optional
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + pattern-case-name (? Atom)
+    (param pattern SyntaxId)
+    ; The name of the case a pattern names.
+    (match? ([] nodes pattern)
+      (case (call .node-type-case row)
+        (. row name)
+      )
+      (case (call .node-symbol row)
+        (. row name)
+      )
+    )
+  )
+  (fn-expr + transform-body SyntaxId
+    (param arm SyntaxId)
+    (match ([] nodes arm)
+      (case (call .node-type-transform row)
+        (. row expr)
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-do + trigger-match SyntaxId
+    (param trigger SyntaxId)
+    ; The pattern a trigger matches what it tests with, inside its structure match, or none.
+    (let pattern (call trigger-pattern trigger))
+    (match? ([] nodes pattern)
+      (case (call .node-structure-match row)
+        (return (. row pattern))
+      )
+    )
+    (return pattern)
+  )
+  (fn-expr + literal-bound Bool
+    (param id SyntaxId)
+    ; Whether a bound of a count is a number written.
+    (match ([] nodes id)
+      (case (call .node-integer-syntax row)
+        (not (. row unit))
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-do + optional-part Bool
+    (param id SyntaxId)
+    ; Whether a part of a grammar is an optional part.
+    (match? ([] nodes id)
+      (case (call .node-stream-unary row)
+        (return (== (. row op) .zero-or-one-op))
+      )
+    )
+    (return false)
+  )
+  (fn-expr + argument-value SyntaxId
+    (param argument SyntaxId)
+    ; The expression of an argument written: what follows its name, when it has one.
+    (match ([] nodes argument)
+      (case (call .node-argument named)
+        (. named expr)
+      )
+      (default
+        argument
+      )
+    )
+  )
+  (fn-do + catchers-bind Bool
+    (param catchers (of RowRange SyntaxId))
+    ; Whether a catcher declares a name for the error it names, or for one in its chain.
+    (for (in catcher ([] children catchers))
+      (match? ([] nodes catcher)
+        (case (call .node-catcher row)
+          (if (call is-capture (. row type))
+            (return true)
+          )
+          (for (in pattern ([] children (. row previous)))
+            (if (call is-capture pattern)
+              (return true)
+            )
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-expr + chained-subject SyntaxId
+    (param expr SyntaxId)
+    ; What `use?` uses: the expression its optional chain holds, or none where it is written
+    ; without one.
+    (match ([] nodes expr)
+      (case (call .node-optional-chain row)
+        (. row expr)
+      )
+      (default
+        0u32
+      )
+    )
+  )
+  (fn-expr + field-names (of RowRange SyntaxId)
+    (param pattern SyntaxId)
+    ; The names a pattern writes for the fields of a tuple, where it is one that takes the tuple
+    ; apart: the pattern of a loop, or a tuple of names within another. None for any other.
+    (case? (== pattern 0)
+      (call (of RowRange SyntaxId))
+    )
+    (default
+      (match ([] nodes pattern)
+        (case (call .node-type-tuple row)
+          (. row field-types)
+        )
+        (case (call .node-tuple-syntax row)
+          (. row items)
+        )
+        (default
+          (call (of RowRange SyntaxId))
+        )
+      )
+    )
+  )
+  (fn-do + has-pattern-arm Bool
+    (param id SyntaxId)
+    ; Whether a markup branch region has an arm written with a pattern, `if | x = v`.
+    (let arm id)
+    (while (!= arm 0)
+      (if (!= (call pattern-arm arm) 0)
+        (return true)
+      )
+      (let next SyntaxId 0)
+      (match? ([] nodes arm)
+        (case (call .node-if-block row)
+          (= next (. row next))
+        )
+      )
+      (= arm next)
+    )
+    (return false)
+  )
+  (fn-expr + is-assertion Bool
+    (param statement SyntaxId)
+    (match ([] nodes statement)
+      (case .node-assertion-syntax
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + is-capture Bool
+    (param pattern SyntaxId)
+    (match ([] nodes pattern)
+      (case .node-type-capture
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-do + is-chained Bool
+    (param expr SyntaxId)
+    ; Whether an expression is written after the `?` of a statement that runs only where an
+    ; optional holds a value.
+    (if (== expr 0)
+      (return false)
+    )
+    (match? ([] nodes expr)
+      (case .node-optional-chain
+        (return true)
+      )
+    )
+    (return false)
+  )
+  (fn-do + is-logic Bool
+    (param id SyntaxId)
+    ; Whether an expression is `&&` or `||`.
+    (match? ([] nodes id)
+      (case (call .node-binary-expression row)
+        (return (or (== (. row op) .and-op) (== (. row op) .or-op)))
+      )
+    )
+    (return false)
+  )
+  (fn-expr + is-probe Bool
+    (param id SyntaxId)
+    (match ([] nodes id)
+      (case .node-probe
+        true
+      )
+      (case .node-probe-scope
+        true
+      )
+      (case .node-probe-statement
+        true
+      )
+      (case .node-probe-counter
+        true
+      )
+      (case .node-probe-group
+        true
+      )
+      (case .node-probe-assign
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-do + item-site SyntaxId
+    (param written (of RowRange SyntaxId))
+    (param chain SyntaxId)
+    (param position U32)
+    (return-if ([] children (+ (. written start) position)) (if (== chain 0)))
+    (let feed chain)
+    (for (in _ (..< 0 position))
+      (= feed (call next-feed feed))
+    )
+    (return
+      (match ([] nodes feed)
+        (case (call .node-feed-expression row)
+          (. row item)
+        )
+        (default
+          feed
+        )
+      )
+    )
+  )
+  (fn-expr + matched-name SyntaxId
+    (param pattern SyntaxId)
+    ; The pattern of a comprehension's loop as the binder declares it: the one a match written
+    ; there holds, which names the item where it is a name alone.
+    (case? (== pattern 0)
+      0
+    )
+    (default
+      (match ([] nodes pattern)
+        (case (call .node-structure-match row)
+          (. row pattern)
+        )
+        (default
+          pattern
+        )
+      )
+    )
+  )
+  (fn-do + observes Bool
+    (param id SyntaxId)
+    ; Whether the reference takes a part of a pattern as one of its own: not a part that only
+    ; declares lazy locals around another, nor an arm that raises.
+    (match? ([] nodes id)
+      (case (call .node-stream-transform row)
+        (return (or (== (. row pattern) 0) (not (call lazies-only (. row right)))))
+      )
+      (case .node-stream-panic
+        (return false)
+      )
+    )
+    (return true)
+  )
+  (fn-expr + probe-value SyntaxId
+    (param item SyntaxId)
+    ; The value a probe writes for an item written in it: the one a snapshot or a preview is of.
+    (match ([] nodes item)
+      (case (call .node-probe-snapshot row)
+        (. row content)
+      )
+      (case (call .node-probe-preview row)
+        (. row content)
+      )
+      (default
+        item
+      )
+    )
+  )
+  (fn-expr + matches-named Bool
+    (param pattern SyntaxId)
+    ; Whether a pattern is a type named with how near a value must be to it (`Int~`): it is
+    ; planned for the value it is given, as the type named alone is.
+    (match ([] nodes pattern)
+      (case (call .node-type-match row)
+        (call names-type (. row type))
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + identifier-name (? Atom)
+    (param id SyntaxId)
+    (match? ([] nodes id)
+      (case (call .node-identifier row)
+        (. row name)
+      )
+      (case (call .node-ref-identifier row)
+        (. row name)
+      )
+    )
+  )
+  (fn-expr + filled-name (? Atom)
+    (param line SyntaxId)
+    (match ([] nodes line)
+      (case (call .node-markup row)
+        (call identifier-name (. row slot-binding))
+      )
+      (case (call .node-markup-slot-forward row)
+        (call identifier-name (. row slot-binding))
+      )
+      (default
+        null
+      )
+    )
+  )
+  (fn-do + reads-slot-scope Bool
+    (param id SyntaxId)
+    (let object SyntaxId 0)
+    (match? ([] nodes id)
+      (case (call .node-get-expression row)
+        (= object (. row object))
+      )
+    )
+    (return-if false (if (== object 0)))
+    (let scope (call identifier-name object))
+    (return-if false (if (not scope)))
+    (for (in node (..< (+ id 1) (as (. nodes length) SyntaxId)))
+      (if (<= (call subtree-start node) id)
+        (match? ([] nodes node)
+          (case (call .node-markup row)
+            (match? ([] nodes (. row slot-parameter))
+              (case (call .node-markup-slot-parameter written)
+                (return-if true (if (== (call identifier-name (. written name)) scope)))
+              )
+            )
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + takes-all (? String)
+    (param pattern SyntaxId)
+    (if (== pattern 0)
+      (return "??")
+    )
+    (match? ([] nodes pattern)
+      (case .node-type-wildcard
+        (return "| _")
+      )
+      (case (call .node-type-capture row)
+        (let name (call identifier-name (. row id)))
+        (if (and (== (. row type) 0) name)
+          (return (str "| " (. name text)))
+        )
+      )
+    )
+    (return null)
+  )
+  (fn-expr + name-text String
+    (param id SyntaxId)
+    (if-expr name (. name text) "")
+    (where
+      (lazy name (call identifier-name id))
+    )
+  )
+  (fn-expr + uncovered-text String
+    (param read SyntaxId)
+    ; The error for an action that reads a name some way its pattern passes doesn't capture.
+    (str "Capture " (call name-text read) " holds no value on some ways this arm matches; capture it in every alternative")
+  )
+  (fn-expr + bound U64
+    (param id SyntaxId)
+    ; The code point a bound of a range of characters is written as.
+    (match ([] nodes id)
+      (case (call .node-integer-syntax row)
+        (. (call parse-integer-literal (. row value)) value)
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-do + negative-literal Bool
+    (param id SyntaxId)
+    ; Whether a node is a negative number written in source.
+    (match? ([] nodes id)
+      (case (call .node-integer-syntax row)
+        (return (. (call parse-integer-literal (. row value)) negative))
+      )
+      (case (call .node-unary-expression row)
+        (if (== (. row op) .negative-op)
+          (match? ([] nodes (. row operand))
+            (case .node-integer-syntax
+              (return true)
+            )
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + chosen-line SyntaxId
+    (param control SyntaxId)
+    (param name Atom)
+    (for (in arm (call region-arms control))
+      (match? ([] nodes (call region-arm-body arm))
+        (case (call .node-block block)
+          (for (in line ([] children (. block body)))
+            (match? ([] nodes line)
+              (case (call .node-markup row)
+                (if (== (call identifier-name (. row slot-binding)) name)
+                  (return line)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (return 0)
+  )
+  (fn-do + fills-name Bool
+    (param control SyntaxId)
+    (param name Atom)
+    (return-if false (if (not (call holds-fills control))))
+    (return (!= (call chosen-line control name) 0))
+  )
+  (fn-expr + is-written-zero Bool
+    (param id SyntaxId)
+    (match ([] nodes id)
+      (case (call .node-integer-syntax row)
+        (and (not (. row unit)) (== (. (call parse-integer-literal (. row value)) value) 0))
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + switch-number U64
+    (param expr SyntaxId)
+    (match ([] nodes expr)
+      (case (call .node-integer-syntax row)
+        (. (call parse-integer-literal (. row value)) value)
+      )
+      (default
+        (. U64 max)
+      )
+    )
+  )
+  (fn-expr + stream-bound U64
+    (param id SyntaxId)
+    ; The number a bound of a pattern's range or count is written as.
+    (match ([] nodes id)
+      (case (call .node-integer-syntax row)
+        (. (call parse-integer-literal (. row value)) value)
+      )
+      (default
+        0
+      )
+    )
+  )
+)

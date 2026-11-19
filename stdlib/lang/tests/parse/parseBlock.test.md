@@ -1,11 +1,5 @@
 # Block
 
-```yumi
-a
-b
-c
-```
-
 ```brix
 (main
   a
@@ -18,13 +12,6 @@ c
 <Id name="a"/>
 <Id name="b"/>
 <Id name="c"/>
-```
-
-```yumi
-do
-    a()
-
-    b()
 ```
 
 ```brix
@@ -50,11 +37,6 @@ do
 </Do>
 ```
 
-```yumi
-do without safepoints
-    a()
-```
-
 ```brix
 (main
   (do (without safepoints)
@@ -73,11 +55,6 @@ do without safepoints
 </Do>
 ```
 
-```yumi
-do without safepoints
-    a()
-```
-
 ```brix
 (main
   (do (without safepoints)
@@ -94,12 +71,6 @@ do without safepoints
         </CallExpression>
     </Block>
 </Do>
-```
-
-```yumi
-do
-    ` Comment
-    a()
 ```
 
 ```brix
@@ -119,13 +90,6 @@ do
         </CallExpression>
     </Block>
 </Do>
-```
-
-```yumi
-do
-    foo()
-    bar()
-baz()
 ```
 
 ```brix
@@ -154,11 +118,6 @@ baz()
 </CallExpression>
 ```
 
-```yumi
-|? y
-    x
-```
-
 ```brix
 (main
   (case? y
@@ -178,12 +137,6 @@ baz()
         </Block>
     </TypeTransform>
 </StructureMatch>
-```
-
-```yumi
-do
-    do use Thing()
-        -- "using"
 ```
 
 ```brix
@@ -213,11 +166,6 @@ do
 </Do>
 ```
 
-```yumi
-do
-    . a = use Thing()
-```
-
 ```brix
 (main
   (do
@@ -241,13 +189,6 @@ do
         </Declaration>
     </Block>
 </Do>
-```
-
-```yumi
-+ @stack request Int
-
-do with request = 42
-    -- request
 ```
 
 ```brix
@@ -276,11 +217,6 @@ do with request = 42
         </Print>
     </Block>
 </StackLocalBinding>
-```
-
-```yumi
-. term = use Thing()
-    bar
 ```
 
 ```brix
@@ -313,23 +249,6 @@ do with request = 42
         </CallExpression>
     </Use>
 </Declaration>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ " text
-    - arg
-
-foo
-
-bar
-
-baz
-
-
-
-━━━━━━━━━━━━━━━━━━━━
-+ other
 ```
 
 ```brix
@@ -365,13 +284,6 @@ baz"/>
 <Function names="other" access="public-access"/>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ " text
-
-s01(alpha,123) s02[left:right] s03{one|two|three} s04<word-456>
-```
-
 ```brix
 (fn-expr + text _
   (paragraph
@@ -386,17 +298,6 @@ s01(alpha,123) s02[left:right] s03{one|two|three} s04<word-456>
         <String text="s01(alpha,123) s02[left:right] s03{one|two|three} s04<word-456>"/>
     </Block>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ " text
-
-a ≥ b ≤ c \≥ d
-ends ≥
-
-━━━━━━━━━━━━━━━━━━━━
-+ other
 ```
 
 ```brix
@@ -418,17 +319,6 @@ ends ≥"/>
     </Block>
 </Function>
 <Function names="other" access="public-access"/>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ " text
-    - arg
-
-$arg
-
-━━━━━━━━━━━━━━━━━━━━
-+ other
 ```
 
 ```brix
@@ -459,14 +349,6 @@ $arg
 <Function names="other" access="public-access"/>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ " text
-    - arg
-
-$arg ≥ ${"≥"}
-```
-
 ```brix
 (fn-expr + text _
   (param arg _)
@@ -495,15 +377,6 @@ $arg ≥ ${"≥"}
 </Function>
 ```
 
-````yumi
-━━━━━━━━━━━━━━━━━━━━
-+ " text
-
-first
-`kept`
-```
-````
-
 ```brix
 (fn-expr + text _
   (paragraph
@@ -523,14 +396,6 @@ first
     </Block>
 </Function>
 ````
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ " text
-    - arg
-
-Foo $bar baz
-```
 
 ```brix
 (fn-expr + text _
@@ -561,14 +426,6 @@ Foo $bar baz
 ```
 
 ### An embed after text may begin with a number or a string.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ " text
-    - arg
-
-Foo ${1} bar ${"x".length} baz
-```
 
 ```brix
 (fn-expr + text _
@@ -604,22 +461,6 @@ Foo ${1} bar ${"x".length} baz
         </BinaryExpression>
     </Block>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ " text String
-    - content String
-
-$prefix $content
-
-════════════════════
-.. prefix = "hi"
-
-━━━━━━━━━━━━━━━━━━━━
-+ other String
-
-"ok"
 ```
 
 ```brix
@@ -669,18 +510,6 @@ $prefix $content
         <String text="ok"/>
     </Block>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-_ " tree-box-row-text String
-    - content String
-    - suffix String
-
-$prefix $content $suffix
-
-════════════════════
-.. prefix = "hi"
 ```
 
 ```brix
@@ -735,13 +564,6 @@ $prefix $content $suffix
 </Function>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ " text String
-
-Hello $name
-```
-
 ```brix
 (fn-expr + text String
   (paragraph
@@ -763,16 +585,6 @@ Hello $name
 ```
 
 ### Make sure indented text doesn't trigger the code indentation parser
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ " text
-    - arg
-
-foo
-    bar
-        baz
-```
 
 ```brix
 (fn-expr + text _
@@ -801,16 +613,6 @@ foo
 ```
 
 ### Parses a blank line between argument lines.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ do work
-    - a Int
-
-    - b Int = 1
-
-. r = a + b
-```
 
 ```brix
 (fn-do + work _
@@ -848,18 +650,6 @@ foo
         </Declaration>
     </Block>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-_ summary
-    - reason Int
-
-match reason
-    |= 1
-        "one"
-    ??
-        "other"
 ```
 
 ```brix
@@ -909,45 +699,6 @@ match reason
 </Function>
 ```
 
-```yumi crash
-━━━━━━━━━━━━━━━━━━━━
-+ summary
-    - reason Int
-    = match reason
-
-|= 1
-    "one"
-```
-
-```output
-Exception: Syntax error
-<no file:5>
-        = match reason
-          ^
-```
-
-```yumi crash
-━━━━━━━━━━━━━━━━━━━━
-+ summary
-    - reason Int
-    = match? reason
-
-|= 1
-    "one"
-```
-
-```output
-Exception: Syntax error
-<no file:5>
-        = match? reason
-          ^
-```
-
-```yumi
-do for x in xs
-    x()
-```
-
 ```brix
 (main
   (do
@@ -978,34 +729,7 @@ do for x in xs
 </Do>
 ```
 
-### A `do` takes no `match` on its row, as a match on a row of its own in a body of steps runs its arms as steps.
-
-```yumi crash
-do match n
-    |= 1
-        step()
-```
-
-```output
-Exception: Syntax error
-<no file:2>
-    do match n
-             ^
-```
-
 ### A do block's with section binds stack values in turn, the first outermost; its without section keeps the block from what it names.
-
-```yumi
-+ @stack request Int
-+ @stack depth Int
-
-do with request = 42, depth = 2
-    -- request
-do @feature-collection-observers without gc with depth = 3
-    -- depth
-do without cancel
-    -- depth
-```
 
 ```brix
 (prop + request Int @stack)
@@ -1074,16 +798,6 @@ do without cancel
 
 ### A text block keeps blank rows between lines and the spaces past the block's margin, and lines that look like comments or dividers are text.
 
-```yumi
-. greeting = "
-    Hello $name,
-
-      indented ` text
-    ━━━━━━━━━━━━━━━━━━━━
-
-. after = 1
-```
-
 ```brix
 (main
   (let greeting
@@ -1124,19 +838,6 @@ do without cancel
 ```
 
 ### A text block may end an argument row, an item row or the right side of an operator. One with no rows below it is empty.
-
-```yumi
-show
-    - "
-        one
-    - 2
-. items = List'String
-    * "
-        x
-. joined = "a: " ++ "
-    b
-. empty = "
-```
 
 ```brix
 (main
@@ -1219,12 +920,6 @@ show
 
 ### A row that ends in a quote that opens a text takes the rows indented below it as the lines of a text. A line may hold quotes, unescaped, and end in one.
 
-```yumi
-. greeting = "
-    say "hi" to $name "
-    and \"escaped\"
-```
-
 ```brix
 (main
   (let greeting
@@ -1253,11 +948,6 @@ and "escaped""/>
 ```
 
 ### A row that ends in the quote that closes a text, as `" "` does, keeps the rows indented below it as code.
-
-```yumi
-. label = mark ++ " "
-    .. mark = "Bo"
-```
 
 ```brix
 (main
@@ -1296,14 +986,6 @@ and "escaped""/>
 ```
 
 ### A function whose access mark is followed by a quote, as in `+ " text`, has a text body.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ " text
-    - name String
-
-Hello, "$name".
-```
 
 ```brix
 (fn-expr + text _

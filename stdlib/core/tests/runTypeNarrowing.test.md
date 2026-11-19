@@ -7,12 +7,15 @@ and union narrowing cases are active; future smart-cast behavior remains marked 
 
 ### Optional locals narrow to their payload type in a truthy branch.
 
-```yumi
-. value Int? = 41
-if value
-    -- value + 1
-    -- type-of value
--- type-of value
+```brix
+(main
+  (let value (? Int) 41)
+  (if value
+    (print (+ value 1))
+    (print (type-of value))
+  )
+  (print (type-of value))
+)
 ```
 
 ```output
@@ -23,38 +26,40 @@ if value
 
 ### Optional parameters narrow to their payload type.
 
-```yumi
--- describe(Color(10, 20, 30))
--- describe(null)
--- describe-guard(Color(40, 50, 60))
--- describe-guard(null)
+```brix
+(main
+  (print (call describe (call Color 10 20 30)))
+  (print (call describe null))
+  (print (call describe-guard (call Color 40 50 60)))
+  (print (call describe-guard null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do describe
-    - color Color?
+(fn-do + describe _
+  (param color (? Color))
+  (if color
+    (return (str (. color red) "," (. color green) "," (. color blue)))
+    (else
+      (return "none")
+    )
+  )
+)
 
-if color
-    = "${color.red},${color.green},${color.blue}"
-else
-    = "none"
-
-━━━━━━━━━━━━━━━━━━━━
-+ describe-guard
-    - color Color?
-
-|? color
-    describe-present(color)
-??
+(fn-expr + describe-guard _
+  (param color (? Color))
+  (case? color
+    (call describe-present color)
+  )
+  (default
     "none"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe-present String
-    - color Color
+(fn-expr + describe-present String
+  (param color Color)
+  (str (. color red) "," (. color green) "," (. color blue))
+)
 
-"${color.red},${color.green},${color.blue}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Color is (red Int, green Int, blue Int)
+(type + Color (is (tuple (: red Int) (: green Int) (: blue Int))))
 ```
 
 ```output
@@ -66,18 +71,20 @@ none
 
 ### Guard returns narrow the remainder of the function.
 
-```yumi
--- add-one(41)
--- add-one(null)
+```brix
+(main
+  (print (call add-one 41))
+  (print (call add-one null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do add-one
-    - value Int?
-
-if !value
-    = 0
-
-= value + 1
+(fn-do + add-one _
+  (param value (? Int))
+  (if (not value)
+    (return 0)
+  )
+  (blank)
+  (return (+ value 1))
+)
 ```
 
 ```output
@@ -87,17 +94,17 @@ if !value
 
 ### Panic assertions narrow the fallthrough path.
 
-```yumi
--- guarded-name("Brix")
+```brix
+(main
+  (print (call guarded-name "Brix"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do guarded-name String?
-    - name String?
-
-?! Panic("missing")
-    if !name
-
-= name
+(fn-do + guarded-name (? String)
+  (param name (? String))
+  (throw (call Panic "missing") (if (not name)))
+  (blank)
+  (return name)
+)
 ```
 
 ```output
@@ -106,93 +113,73 @@ Brix
 
 ### Implicit self properties share flow facts with explicit property paths.
 
-```yumi
-. holder = NarrowingHolder("present")
-holder.after-assert()
-holder.after-early-return()
-holder.after-returning-branch()
-holder.after-explicit-guard()
-holder.explicit-read-after-implicit-guard()
-holder.after-other-assignment()
-holder.after-same-assignment()
-holder.value = "present"
-holder.after-mutating-call()
-holder.shadowed-local()
+```brix
+(main
+  (let holder (call NarrowingHolder "present"))
+  (call (. holder after-assert))
+  (call (. holder after-early-return))
+  (call (. holder after-returning-branch))
+  (call (. holder after-explicit-guard))
+  (call (. holder explicit-read-after-implicit-guard))
+  (call (. holder after-other-assignment))
+  (call (. holder after-same-assignment))
+  (= (. holder value) "present")
+  (call (. holder after-mutating-call))
+  (call (. holder shadowed-local))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ NarrowingHolder
-
-+ value String?
-+ other Int
-
-────────────────────
-+ This
-    - value
-
-────────────────────
-+ do after-assert
-
-?! Panic("missing")
-    if !value
--- type-of value
-
-────────────────────
-+ do after-early-return
-
-=? if !value
--- type-of value
-
-────────────────────
-+ do after-returning-branch
-
-if !value
-    =
--- type-of value
-
-────────────────────
-+ do after-explicit-guard
-
-=? if !this.value
--- type-of value
-
-────────────────────
-+ do explicit-read-after-implicit-guard
-
-=? if !value
--- type-of this.value
-
-────────────────────
-+ do after-other-assignment
-
-=? if !value
-other = 1
--- type-of value
-
-────────────────────
-+ do after-same-assignment
-
-=? if !value
-value = null
--- type-of value
-
-────────────────────
-+ do after-mutating-call
-
-=? if !value
-clear()
--- type-of value
-
-────────────────────
-+ do clear
-
-value = null
-
-────────────────────
-+ do shadowed-local
-
-. value String? = "local"
-=? if !value
--- type-of value
+(type + NarrowingHolder
+  (prop + value (? String))
+  (prop + other Int)
+  (fn-do + This _
+    (param value _)
+  )
+  (fn-do + after-assert _
+    (throw (call Panic "missing") (if (not value)))
+    (print (type-of value))
+  )
+  (fn-do + after-early-return _
+    (return-if (if (not value)))
+    (print (type-of value))
+  )
+  (fn-do + after-returning-branch _
+    (if (not value)
+      (return)
+    )
+    (print (type-of value))
+  )
+  (fn-do + after-explicit-guard _
+    (return-if (if (not (. this value))))
+    (print (type-of value))
+  )
+  (fn-do + explicit-read-after-implicit-guard _
+    (return-if (if (not value)))
+    (print (type-of (. this value)))
+  )
+  (fn-do + after-other-assignment _
+    (return-if (if (not value)))
+    (= other 1)
+    (print (type-of value))
+  )
+  (fn-do + after-same-assignment _
+    (return-if (if (not value)))
+    (= value null)
+    (print (type-of value))
+  )
+  (fn-do + after-mutating-call _
+    (return-if (if (not value)))
+    (call clear)
+    (print (type-of value))
+  )
+  (fn-do + clear _
+    (= value null)
+  )
+  (fn-do + shadowed-local _
+    (let value (? String) "local")
+    (return-if (if (not value)))
+    (print (type-of value))
+  )
+)
 ```
 
 ```output
@@ -209,28 +196,27 @@ value = null
 
 ### A property that takes the type of its value narrows as one written with its type.
 
-```yumi
-. holder = InferredHolder()
-holder.check()
+```brix
+(main
+  (let holder (call InferredHolder))
+  (call (. holder check))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do found String?
-    - wanted Bool
+(fn-do + found (? String)
+  (param wanted Bool)
+  (return (only-if "present" (if wanted)))
+)
 
-= "present" if wanted
-
-━━━━━━━━━━━━━━━━━━━━
-+ InferredHolder
-
-+ value = found(true)
-
-────────────────────
-+ do check
-
-=? if !value
--- type-of value
-if value && value.length > 0
-    -- type-of value
+(type + InferredHolder
+  (prop + value _ (= (call found true)))
+  (fn-do + check _
+    (return-if (if (not value)))
+    (print (type-of value))
+    (if (and value (> (. value length) 0))
+      (print (type-of value))
+    )
+  )
+)
 ```
 
 ```output
@@ -240,74 +226,72 @@ if value && value.length > 0
 
 ### Optional chaining sees the payload type of a narrowed implicit self property.
 
-```yumi crash
-. holder = ImplicitChainHolder()
-holder.check()
+```brix crash
+(main
+  (let holder (call ImplicitChainHolder))
+  (call (. holder check))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ImplicitChainHolder
-
-+ value String? = "present"
-
-────────────────────
-+ do check
-
-=? if !value
--- value?.length
+(type + ImplicitChainHolder
+  (prop + value (? String) (= "present"))
+  (fn-do + check _
+    (return-if (if (not value)))
+    (print (?. value length))
+  )
+)
 ```
 
 ```output
-Exception: "value" is String, which is never null, so it needs no "?"; write "value.length"
-<no file:14>
-    -- value?.length
-       ^^^^^^^^^^^^^
+Exception: "value" is String, which is never null, so it needs no "?"; write "(. value length)"
+<no file:11>
+        (print (?. value length))
+               ^^^^^^^^^^^^^^^^^
 ```
 
 ### A test of an implicit self property narrows no property of a class in another module.
 
-```yumi
-./lib/inherited
+```brix
+(import ./lib/inherited)
+(blank)
 
-. child = InheritingChild()
-child.total()
-child.caught = Caught()
-child.total()
+(main
+  (let child (call InheritingChild))
+  (call (. child total))
+  (= (. child caught) (call Caught))
+  (call (. child total))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Caught
+(type + Caught)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InheritingChild is InheritedBase
-
-+ caught Caught?
-
-────────────────────
-+ do total
-
-if caught != null
-    -- p0 + p1 + p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9 + p10 + p11 + p12 + p13 + p14 + p15
+(type + InheritingChild (is InheritedBase)
+  (prop + caught (? Caught))
+  (fn-do + total _
+    (if (!= caught null)
+      (print (+ p0 p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 p11 p12 p13 p14 p15))
+    )
+  )
+)
 ```
 
-```yumi file=lib/inherited.yumi
-━━━━━━━━━━━━━━━━━━━━
-+ InheritedBase
-
-+ p0 = 0
-+ p1 = 1
-+ p2 = 2
-+ p3 = 3
-+ p4 = 4
-+ p5 = 5
-+ p6 = 6
-+ p7 = 7
-+ p8 = 8
-+ p9 = 9
-+ p10 = 10
-+ p11 = 11
-+ p12 = 12
-+ p13 = 13
-+ p14 = 14
-+ p15 = 15
+```brix file=lib/inherited.bx
+(type + InheritedBase
+  (prop + p0 _ (= 0))
+  (prop + p1 _ (= 1))
+  (prop + p2 _ (= 2))
+  (prop + p3 _ (= 3))
+  (prop + p4 _ (= 4))
+  (prop + p5 _ (= 5))
+  (prop + p6 _ (= 6))
+  (prop + p7 _ (= 7))
+  (prop + p8 _ (= 8))
+  (prop + p9 _ (= 9))
+  (prop + p10 _ (= 10))
+  (prop + p11 _ (= 11))
+  (prop + p12 _ (= 12))
+  (prop + p13 _ (= 13))
+  (prop + p14 _ (= 14))
+  (prop + p15 _ (= 15))
+)
 ```
 
 ```output
@@ -316,13 +300,15 @@ if caught != null
 
 ### The right side of && sees facts introduced by the left side.
 
-```yumi
-. color Color? = Color(255, 128, 64)
-if color && color.red > 200
-    -- color.green
+```brix
+(main
+  (let color (? Color) (call Color 255 128 64))
+  (if (and color (> (. color red) 200))
+    (print (. color green))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Color is (red Int, green Int, blue Int)
+(type + Color (is (tuple (: red Int) (: green Int) (: blue Int))))
 ```
 
 ```output
@@ -331,24 +317,26 @@ if color && color.red > 200
 
 ### Stable optional path subjects narrow to their payload type.
 
-```yumi
-. box Box? = Box()
-if box && box.child
-    -- box.child.hello
+```brix
+(main
+  (let box (? Box) (call Box))
+  (if (and box (. box child))
+    (print (. box child hello))
+  )
+  (blank)
+  (if (and box (. box child))
+    (let child (. box child))
+    (print (. child hello))
+  )
+)
 
-if box && box.child
-    . child = box.child
-    -- child.hello
+(type + Box
+  (prop + child (? Child) (= (call Child)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ child Child? = Child()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child
-
-+ hello = "hi"
+(type + Child
+  (prop + hello _ (= "hi"))
+)
 ```
 
 ```output
@@ -358,28 +346,32 @@ hi
 
 ### Optional-chain receivers keep their optional wrapper after path narrowing.
 
-```yumi
-. anchor Node? = Node()
-. previous = Node()
-anchor!.previous = previous
-. child = Node()
+```brix
+(main
+  (let anchor (? Node) (call Node))
+  (let previous (call Node))
+  (= (. (!! anchor) previous) previous)
+  (let child (call Node))
+  (blank)
+  (if anchor
+    (let target anchor)
+    (= (. child previous) (. target previous))
+    (= (. child next) target)
+    (if (. target previous)
+      (= (. target previous next) child)
+    )
+    (= (. target previous) child)
+  )
+  (blank)
+  (if (. previous next)
+    (print "linked")
+  )
+)
 
-if anchor
-    . target = anchor
-    child.previous = target.previous
-    child.next = target
-    if target.previous
-        target.previous.next = child
-    target.previous = child
-
-if previous.next
-    -- "linked"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node
-
-+ previous Node?
-+ next Node?
+(type + Node
+  (prop + previous (? Node))
+  (prop + next (? Node))
+)
 ```
 
 ```output
@@ -388,10 +380,13 @@ linked
 
 ### The right side of || sees the negated facts from the left side when it evaluates.
 
-```yumi
-. value Int? = 5
-if !value || value > 3
-    -- "pass"
+```brix
+(main
+  (let value (? Int) 5)
+  (if (or (not value) (> value 3))
+    (print "pass")
+  )
+)
 ```
 
 ```output
@@ -400,22 +395,22 @@ pass
 
 ### The right side of || can use a narrowed optional with payload-specific truthiness.
 
-```yumi
--- check(null)
--- check("")
--- check("body")
+```brix
+(main
+  (print (call check null))
+  (print (call check ""))
+  (print (call check "body"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do check
-    - head String?
+(fn-do + check _
+  (param head (? String))
+  (return (if-expr (or (not head) (call empty-string head)) "empty" "body"))
+)
 
-= if !head || empty-string(head) then "empty" else "body"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do empty-string
-    - value String
-
-= !value
+(fn-do + empty-string _
+  (param value String)
+  (return (not value))
+)
 ```
 
 ```output
@@ -426,13 +421,17 @@ body
 
 ### Negated optional checks narrow the else branch.
 
-```yumi
-. name String? = "Brix"
-if !name
-    -- "missing"
-else
-    -- name.length
-    -- type-of name
+```brix
+(main
+  (let name (? String) "Brix")
+  (if (not name)
+    (print "missing")
+    (else
+      (print (. name length))
+      (print (type-of name))
+    )
+  )
+)
 ```
 
 ```output
@@ -442,9 +441,11 @@ else
 
 ### Conditional expressions should narrow the result expression.
 
-```yumi
-. value Int? = 41
--- if value then value + 1 else 0
+```brix
+(main
+  (let value (? Int) 41)
+  (print (if-expr value (+ value 1) 0))
+)
 ```
 
 ```output
@@ -453,19 +454,31 @@ else
 
 ### Lazy Bool dependencies used as conditional feed guards should not be projected.
 
-```yumi
--- ", ".join
-    ** headers("body")
--- ", ".join
-    ** headers(null)
+```brix
+(main
+  (print
+    (call (. ", " join)
+      (block
+        (spread (call headers "body"))
+      )
+    )
+  )
+  (print
+    (call (. ", " join)
+      (block
+        (spread (call headers null))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ headers
-    - body String?
-
-*? "json" if has-body
-
-.. has-body = if body then true else false
+(fn-expr + headers _
+  (param body (? String))
+  (item? (only-if "json" (if has-body)))
+  (where
+    (lazy has-body (if-expr body true false))
+  )
+)
 ```
 
 ```output
@@ -474,30 +487,38 @@ json
 
 ### Assignment to a narrowed optional name updates the original.
 
-```yumi
-. value Int? = 41
-if value
-    value = 10
-    -- value + 1
-
--- value ?? 0
-. total Int? = 1
-. other Int? = 2
-if other && total
-    total = total + other
--- total ?? 0
-. missing Int?
-if missing
-    missing = 0
-else if total
-    total = total * 10
-else
-    total = null
--- total ?? 0
-. cleared Int? = 5
-if cleared
-    cleared = null
--- cleared ?? 0
+```brix
+(main
+  (let value (? Int) 41)
+  (if value
+    (= value 10)
+    (print (+ value 1))
+  )
+  (blank)
+  (print (?? value 0))
+  (let total (? Int) 1)
+  (let other (? Int) 2)
+  (if (and other total)
+    (= total (+ total other))
+  )
+  (print (?? total 0))
+  (let missing (? Int))
+  (if missing
+    (= missing 0)
+    (else-if total
+      (= total (* total 10))
+    )
+    (else
+      (= total null)
+    )
+  )
+  (print (?? total 0))
+  (let cleared (? Int) 5)
+  (if cleared
+    (= cleared null)
+  )
+  (print (?? cleared 0))
+)
 ```
 
 ```output
@@ -510,32 +531,39 @@ if cleared
 
 ### Branch assignments to narrowed locals carry across loop iterations.
 
-```yumi
-. values [Int?]
-values += 5
-values += null
-values += 7
-. total Int?
-for value in values
-    if value && total
-        total = total + value
-    else if value
-        total = value
--- total ?? 0
-. items [Pair?]
-items += Pair(1, 2)
-items += Pair(3, 4)
-. merged Pair?
-for item in items
-    if item && merged
-        merged = Pair(merged.x + item.x, merged.y + item.y)
-    else
-        merged = item
--- merged!.x
--- merged!.y
+```brix
+(main
+  (let values (list (? Int)))
+  (+= values 5)
+  (+= values null)
+  (+= values 7)
+  (let total (? Int))
+  (for (in value values)
+    (if (and value total)
+      (= total (+ total value))
+      (else-if value
+        (= total value)
+      )
+    )
+  )
+  (print (?? total 0))
+  (let items (list (? Pair)))
+  (+= items (call Pair 1 2))
+  (+= items (call Pair 3 4))
+  (let merged (? Pair))
+  (for (in item items)
+    (if (and item merged)
+      (= merged (call Pair (+ (. merged x) (. item x)) (+ (. merged y) (. item y))))
+      (else
+        (= merged item)
+      )
+    )
+  )
+  (print (. (!! merged) x))
+  (print (. (!! merged) y))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (x Int, y Int)
+(type + Pair (is (tuple (: x Int) (: y Int))))
 ```
 
 ```output
@@ -546,20 +574,26 @@ for item in items
 
 ### The original optional can be reassigned and re-narrowed after a narrowed scope.
 
-```yumi
-. value Int? = 1
-if value
-    -- value + 1
-
-value = null
-if value
-    -- "unexpected"
-else
-    -- "missing"
-
-value = 40
-if value
-    -- value + 2
+```brix
+(main
+  (let value (? Int) 1)
+  (if value
+    (print (+ value 1))
+  )
+  (blank)
+  (= value null)
+  (if value
+    (print "unexpected")
+    (else
+      (print "missing")
+    )
+  )
+  (blank)
+  (= value 40)
+  (if value
+    (print (+ value 2))
+  )
+)
 ```
 
 ```output
@@ -570,11 +604,14 @@ missing
 
 ### Reassignment to a payload-compatible value can be narrowed by a later test.
 
-```yumi
-. value Int? = null
-value = 40
-if value
-    -- value + 2
+```brix
+(main
+  (let value (? Int) null)
+  (= value 40)
+  (if value
+    (print (+ value 2))
+  )
+)
 ```
 
 ```output
@@ -583,12 +620,15 @@ if value
 
 ### While conditions narrow inside the loop body.
 
-```yumi
-. value Int? = 1
-. once = true
-while value && once
-    -- value + 1
-    once = false
+```brix
+(main
+  (let value (? Int) 1)
+  (let once true)
+  (while (and value once)
+    (print (+ value 1))
+    (= once false)
+  )
+)
 ```
 
 ```output
@@ -597,16 +637,18 @@ while value && once
 
 ### Assignment to a while condition local updates the loop carrier, not the narrowed shadow.
 
-```yumi
-. value Link? = Link()
-while value
-    value = value.next
--- "done"
+```brix
+(main
+  (let value (? Link) (call Link))
+  (while value
+    (= value (. value next))
+  )
+  (print "done")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Link
-
-+ next Link?
+(type + Link
+  (prop + next (? Link))
+)
 ```
 
 ```output
@@ -615,9 +657,12 @@ done
 
 ### Clause conditions can narrow loop body values.
 
-```yumi
-for value in [Optional'Int(1), Optional'Int(), Optional'Int(3)] when value
-    -- value + 1
+```brix
+(main
+  (for (in value (list (call (of Optional Int) 1) (call (of Optional Int)) (call (of Optional Int) 3)) (when value))
+    (print (+ value 1))
+  )
+)
 ```
 
 ```output
@@ -627,18 +672,21 @@ for value in [Optional'Int(1), Optional'Int(), Optional'Int(3)] when value
 
 ### Optional payload narrowing composes with union case narrowing.
 
-```yumi
-. event Event? = Event.click(10, 20)
-if event
-    if event is .click
-        -- event.x
-        -- event.y
+```brix
+(main
+  (let event (? Event) (call (. Event click) 10 20))
+  (if event
+    (if (is event .click)
+      (print (. event x))
+      (print (. event y))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Event is Union
-
-| click(x Int, y Int)
-| key(String)
+(type + Event (is Union)
+  (variant click (tuple (: x Int) (: y Int)))
+  (variant key (tuple String))
+)
 ```
 
 ```output
@@ -648,16 +696,18 @@ if event
 
 ### Optional payload and union case narrowing compose inside one && condition.
 
-```yumi
-. event Event? = Event.click(10, 20)
-if event && event is .click && event.x > 5
-    -- event.y
+```brix
+(main
+  (let event (? Event) (call (. Event click) 10 20))
+  (if (and event (is event .click) (> (. event x) 5))
+    (print (. event y))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Event is Union
-
-| click(x Int, y Int)
-| key(String)
+(type + Event (is Union)
+  (variant click (tuple (: x Int) (: y Int)))
+  (variant key (tuple String))
+)
 ```
 
 ```output
@@ -666,31 +716,38 @@ if event && event is .click && event.x > 5
 
 ### A union a closure captures and tests is read there as the case the test found.
 
-```yumi
-probe(Spot.edge(2))
-probe(Spot.cell("a"))
+```brix
+(main
+  (call probe (call (. Spot edge) 2))
+  (call probe (call (. Spot cell) "a"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do probe
-    - spot Spot
+(fn-do + probe _
+  (param spot Spot)
+  (call run
+    (:edit
+      (=> () :do
+        (block
+          (if (is spot .edge)
+            (print (+ spot 1))
+          )
+          (let open (and (is spot .edge) (> spot 0)))
+          (print open)
+        )
+      )
+    )
+  )
+)
 
-run • edit => do
-    if spot is .edge
-        -- spot + 1
-    . open = spot is .edge && spot > 0
-    -- open
+(fn-do + run _
+  (param edit (fn-type Void))
+  (call edit)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
-    - edit () Void
-
-edit()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Spot is Union
-
-| edge(side Int)
-| cell(name String)
+(type + Spot (is Union)
+  (variant edge (tuple (: side Int)))
+  (variant cell (tuple (: name String)))
+)
 ```
 
 ```output
@@ -701,17 +758,19 @@ false
 
 ### Anonymous unions narrow by payload type.
 
-```yumi
-. value Choice = 41
-if value is Int
-    -- value + 1
-    -- type-of value
+```brix
+(main
+  (let value Choice 41)
+  (if (is value Int)
+    (print (+ value 1))
+    (print (type-of value))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| Int
-| String
+(type + Choice (is Union)
+  (variant Int)
+  (variant String)
+)
 ```
 
 ```output
@@ -721,19 +780,22 @@ if value is Int
 
 ### Else-if chains carry the negative facts from earlier branches.
 
-```yumi
-. value Choice = "hello"
-if value is Int
-    -- value + 1
-else if value is String
-    -- value.length
-    -- type-of value
+```brix
+(main
+  (let value Choice "hello")
+  (if (is value Int)
+    (print (+ value 1))
+    (else-if (is value String)
+      (print (. value length))
+      (print (type-of value))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| Int
-| String
+(type + Choice (is Union)
+  (variant Int)
+  (variant String)
+)
 ```
 
 ```output
@@ -743,17 +805,19 @@ else if value is String
 
 ### is-not narrows the true branch by subtracting the rejected type.
 
-```yumi
-. value Choice = "hello"
-if value is not Int
-    -- value.length
-    -- type-of value
+```brix
+(main
+  (let value Choice "hello")
+  (if (is-not value Int)
+    (print (. value length))
+    (print (type-of value))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| Int
-| String
+(type + Choice (is Union)
+  (variant Int)
+  (variant String)
+)
 ```
 
 ```output
@@ -763,24 +827,25 @@ if value is not Int
 
 ### Guard-style is-not checks narrow the remainder.
 
-```yumi
--- length-or-zero("hello")
--- length-or-zero(42)
+```brix
+(main
+  (print (call length-or-zero "hello"))
+  (print (call length-or-zero 42))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do length-or-zero
-    - value Choice
+(fn-do + length-or-zero _
+  (param value Choice)
+  (if (is-not value String)
+    (return 0)
+  )
+  (blank)
+  (return (. value length))
+)
 
-if value is not String
-    = 0
-
-= value.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| Int
-| String
+(type + Choice (is Union)
+  (variant Int)
+  (variant String)
+)
 ```
 
 ```output
@@ -790,16 +855,18 @@ if value is not String
 
 ### The right side of && sees union narrowing facts.
 
-```yumi
-. value Choice = "hello"
-if value is String && value.length == 5
-    -- value
+```brix
+(main
+  (let value Choice "hello")
+  (if (and (is value String) (== (. value length) 5))
+    (print value)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| Int
-| String
+(type + Choice (is Union)
+  (variant Int)
+  (variant String)
+)
 ```
 
 ```output
@@ -808,16 +875,18 @@ hello
 
 ### The right side of || sees the negated union fact from the left side.
 
-```yumi
-. value Choice = 41
-if value is not Int || value > 40
-    -- "pass"
+```brix
+(main
+  (let value Choice 41)
+  (if (or (is-not value Int) (> value 40))
+    (print "pass")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| Int
-| String
+(type + Choice (is Union)
+  (variant Int)
+  (variant String)
+)
 ```
 
 ```output
@@ -826,18 +895,20 @@ pass
 
 ### Narrowing does not leak out of an ordinary branch.
 
-```yumi
-. value Choice = 41
-if value is Int
-    -- value + 1
+```brix
+(main
+  (let value Choice 41)
+  (if (is value Int)
+    (print (+ value 1))
+  )
+  (blank)
+  (print (type-of value))
+)
 
--- type-of value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| Int
-| String
+(type + Choice (is Union)
+  (variant Int)
+  (variant String)
+)
 ```
 
 ```output
@@ -847,18 +918,21 @@ if value is Int
 
 ### Nested scopes inherit active narrowing facts.
 
-```yumi
-. value Choice = "hello"
-if value is String
-    do
-        -- value.length
-        -- type-of value
+```brix
+(main
+  (let value Choice "hello")
+  (if (is value String)
+    (do
+      (print (. value length))
+      (print (type-of value))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| Int
-| String
+(type + Choice (is Union)
+  (variant Int)
+  (variant String)
+)
 ```
 
 ```output
@@ -868,26 +942,31 @@ if value is String
 
 ### Assignment to a narrowed union name updates the original and narrows to the assigned case.
 
-```yumi
-. value Choice = "hello"
-if value is String
-    -- value.length
-    value = "cat"
-    -- value.length
-if value is String
-    -- value
-. other Choice = "hello"
-if other is String
-    other = 7
-    -- other + 1
-if other is Int
-    -- other + 2
+```brix
+(main
+  (let value Choice "hello")
+  (if (is value String)
+    (print (. value length))
+    (= value "cat")
+    (print (. value length))
+  )
+  (if (is value String)
+    (print value)
+  )
+  (let other Choice "hello")
+  (if (is other String)
+    (= other 7)
+    (print (+ other 1))
+  )
+  (if (is other Int)
+    (print (+ other 2))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| Int
-| String
+(type + Choice (is Union)
+  (variant Int)
+  (variant String)
+)
 ```
 
 ```output
@@ -900,21 +979,22 @@ cat
 
 ### Assigning a case value to a union local narrows later reads, and union members stay reachable.
 
-```yumi
-. value Choice = 5
-value = "cat"
--- value.length
--- value.type
--- value.case
-value = 9
--- value + 1
--- value.type
+```brix
+(main
+  (let value Choice 5)
+  (= value "cat")
+  (print (. value length))
+  (print (. value type))
+  (print (. value case))
+  (= value 9)
+  (print (+ value 1))
+  (print (. value type))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| Int
-| String
+(type + Choice (is Union)
+  (variant Int)
+  (variant String)
+)
 ```
 
 ```output
@@ -927,46 +1007,55 @@ Class:core/number:I64
 
 ### Narrowing carries into a loop when every back edge keeps it, and re-checks see the current value.
 
-```yumi
-. value Int? = 1
-if value
-    for step in [1, 2]
-        -- value + step
-        value = value + 10
-. count Int? = 3
-if count
-    while count && count > 0
-        -- count
-        count = count - 1 if count > 1
-. choice Choice = "hi"
-if choice is String
-    for step in [1, 2]
-        if choice is String
-            -- choice.length
-        else
-            -- "int"
-        choice = 4
--- guarded(3)
--- guarded(null)
+```brix
+(main
+  (let value (? Int) 1)
+  (if value
+    (for (in step (list 1 2))
+      (print (+ value step))
+      (= value (+ value 10))
+    )
+  )
+  (let count (? Int) 3)
+  (if count
+    (while (and count (> count 0))
+      (print count)
+      (= count (only-if (- count 1) (if (> count 1))))
+    )
+  )
+  (let choice Choice "hi")
+  (if (is choice String)
+    (for (in step (list 1 2))
+      (if (is choice String)
+        (print (. choice length))
+        (else
+          (print "int")
+        )
+      )
+      (= choice 4)
+    )
+  )
+  (print (call guarded 3))
+  (print (call guarded null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
+(type + Choice (is Union)
+  (variant Int)
+  (variant String)
+)
 
-| Int
-| String
-
-━━━━━━━━━━━━━━━━━━━━
-+ do guarded Int
-    - start Int?
-
-. value = start
-=? 0 if !value
-. count = 0
-while count < 2
-    count += 1
-    =? -1 if !value
-    value = null
-= count
+(fn-do + guarded Int
+  (param start (? Int))
+  (let value start)
+  (return-if 0 (if (not value)))
+  (let count 0)
+  (while (< count 2)
+    (+= count 1)
+    (return-if -1 (if (not value)))
+    (= value null)
+  )
+  (return count)
+)
 ```
 
 ```output
@@ -983,34 +1072,40 @@ int
 
 ### Using carried narrowing in a loop whose back edge breaks it is an error.
 
-```yumi crash
-. value Int? = 1
-if value
-    for step in [1, 2]
-        -- value + 1
-        value = null
+```brix crash
+(main
+  (let value (? Int) 1)
+  (if value
+    (for (in step (list 1 2))
+      (print (+ value 1))
+      (= value null)
+    )
+  )
+)
 ```
 
 ```output
 Exception: Narrowing of 'value' is used in the loop but does not hold when the loop repeats
-<no file:4>
-        for step in [1, 2]
-           ^^^^^^^^^^^^^^
+<no file:5>
+        (for (in step (list 1 2))
+        ^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Named union cases narrow to their payload value.
 
-```yumi
-. result Result = Result.success(41)
-if result is .success
-    -- result + 1
-    -- type-of result
+```brix
+(main
+  (let result Result (call (. Result success) 41))
+  (if (is result .success)
+    (print (+ result 1))
+    (print (type-of result))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Result is Union
-
-| success Int
-| failure String
+(type + Result (is Union)
+  (variant success Int)
+  (variant failure String)
+)
 ```
 
 ```output
@@ -1020,16 +1115,18 @@ if result is .success
 
 ### Named union case narrowing distinguishes duplicate payload types.
 
-```yumi
-. value Foo = Foo.b(41)
-if value is .b
-    -- value + 1
+```brix
+(main
+  (let value Foo (call (. Foo b) 41))
+  (if (is value .b)
+    (print (+ value 1))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| a Int
-| b Int
+(type + Foo (is Union)
+  (variant a Int)
+  (variant b Int)
+)
 ```
 
 ```output
@@ -1038,18 +1135,20 @@ if value is .b
 
 ### Named tuple payload cases narrow to the tuple payload with named fields.
 
-```yumi
-. event Event = Event.click(10, 20)
-if event is .click
-    -- event.x
-    -- event.y
-    -- type-of event
+```brix
+(main
+  (let event Event (call (. Event click) 10 20))
+  (if (is event .click)
+    (print (. event x))
+    (print (. event y))
+    (print (type-of event))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Event is Union
-
-| click(x Int, y Int)
-| key(String)
+(type + Event (is Union)
+  (variant click (tuple (: x Int) (: y Int)))
+  (variant key (tuple String))
+)
 ```
 
 ```output
@@ -1060,18 +1159,21 @@ if event is .click
 
 ### Exact named-case checks can flow into else-if cases.
 
-```yumi
-. event Event = Event.key("K")
-if event is .click
-    -- event.x
-else if event is .key
-    -- event
+```brix
+(main
+  (let event Event (call (. Event key) "K"))
+  (if (is event .click)
+    (print (. event x))
+    (else-if (is event .key)
+      (print event)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Event is Union
-
-| click(x Int, y Int)
-| key(String)
+(type + Event (is Union)
+  (variant click (tuple (: x Int) (: y Int)))
+  (variant key (tuple String))
+)
 ```
 
 ```output
@@ -1080,24 +1182,24 @@ K
 
 ### Structure-pattern captures keep the projected type.
 
-```yumi
-. value = Foo()
-if | projected Bar~ = value
-    -- type-of projected
-    -- projected.name
+```brix
+(main
+  (let value (call Foo))
+  (if (= (| (: projected (similar Bar))) value)
+    (print (type-of projected))
+    (print (. projected name))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (fn-to-expr + Bar
+    (call Bar)
+  )
+)
 
-────────────────────
-+ to Bar
-
-Bar()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-+ name = "bar"
+(type + Bar
+  (prop + name _ (= "bar"))
+)
 ```
 
 ```output
@@ -1107,26 +1209,30 @@ bar
 
 ### Match-expression pattern captures keep the projected type.
 
-```yumi
-. value = Foo()
--- match value
-    | projected Bar~
-        "${type-of projected}: ${projected.name}"
-    ??
+```brix
+(main
+  (let value (call Foo))
+  (print
+    (match value
+      (case (: projected (similar Bar))
+        (str (type-of projected) ": " (. projected name))
+      )
+      (default
         "miss"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (fn-to-expr + Bar
+    (call Bar)
+  )
+)
 
-────────────────────
-+ to Bar
-
-Bar()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-+ name = "bar"
+(type + Bar
+  (prop + name _ (= "bar"))
+)
 ```
 
 ```output
@@ -1135,11 +1241,14 @@ Bar()
 
 ### Optional pattern captures unwrap and project to the captured payload type.
 
-```yumi
-. value Int? = 41
-if | projected Float~ = value
-    -- projected + 1.5
-    -- type-of projected
+```brix
+(main
+  (let value (? Int) 41)
+  (if (= (| (: projected (similar Float))) value)
+    (print (+ projected 1.5))
+    (print (type-of projected))
+  )
+)
 ```
 
 ```output
@@ -1149,18 +1258,20 @@ if | projected Float~ = value
 
 ### Captures from named union patterns expose typed payload fields in the body.
 
-```yumi
-. submission Authorization = Authorization.valid("joe@example.com", "secret")
-if | .valid(email, password) = submission
-    -- email
-    -- password.length
+```brix
+(main
+  (let submission Authorization (call (. Authorization valid) "joe@example.com" "secret"))
+  (if (= (| (call .valid email password)) submission)
+    (print email)
+    (print (. password length))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Authorization is Union
-
-| invalid-password
-| invalid-email
-| valid(email String, password String)
+(type + Authorization (is Union)
+  (variant invalid-password)
+  (variant invalid-email)
+  (variant valid (tuple (: email String) (: password String)))
+)
 ```
 
 ```output
@@ -1170,70 +1281,75 @@ joe@example.com
 
 ### Guards narrow locals the block assigns without copying them, so updates persist across iterations.
 
-```yumi
--- guard-loop(1)
--- guard-loop(null)
--- guard-union()
--- case-chain()
--- case-match()
+```brix
+(main
+  (print (call guard-loop 1))
+  (print (call guard-loop null))
+  (print (call guard-union))
+  (print (call case-chain))
+  (print (call case-match))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
+(type + Choice (is Union)
+  (variant Int)
+  (variant String)
+)
 
-| Int
-| String
+(type + Event (is Union)
+  (variant click (tuple (: x Int) (: y Int)))
+  (variant key (tuple String))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Event is Union
+(fn-do + guard-loop Int
+  (param start (? Int))
+  (let total start)
+  (for (in step (list 1 2 3))
+    (return-if -1 (if (not total)))
+    (= total (+ total step))
+  )
+  (return (?? total 0))
+)
 
-| click(x Int, y Int)
-| key(String)
+(fn-do + guard-union Int
+  (let value Choice "hi")
+  (let count 0)
+  (for (in step (list 1 2 3))
+    (return-if -1 (if (is value Int)))
+    (+= count (. value length))
+    (= value "hello")
+  )
+  (return count)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do guard-loop Int
-    - start Int?
+(fn-do + case-chain String
+  (let event Event (call (. Event key) "K"))
+  (let out "")
+  (if (is event .click)
+    (= out "click")
+    (else-if (is event .key)
+      (= out "key")
+    )
+  )
+  (= event (call (. Event click) 1 2))
+  (return out)
+)
 
-. total = start
-for step in [1, 2, 3]
-    =? -1 if !total
-    total = total + step
-= total ?? 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do guard-union Int
-
-. value Choice = "hi"
-. count = 0
-for step in [1, 2, 3]
-    =? -1 if value is Int
-    count += value.length
-    value = "hello"
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ do case-chain String
-
-. event Event = Event.key("K")
-. out = ""
-if event is .click
-    out = "click"
-else if event is .key
-    out = "key"
-event = Event.click(1, 2)
-= out
-
-━━━━━━━━━━━━━━━━━━━━
-+ do case-match String
-
-. event Event = Event.key("K")
-=? "click" if event is .click
-. out = match event
-    | .click(click)
+(fn-do + case-match String
+  (let event Event (call (. Event key) "K"))
+  (return-if "click" (if (is event .click)))
+  (let out
+    (match event
+      (case (call .click click)
         "click"
-    | .key(key)
+      )
+      (case (call .key key)
         key
-event = Event.click(1, 2)
-= out
+      )
+    )
+  )
+  (= event (call (. Event click) 1 2))
+  (return out)
+)
 ```
 
 ```output
@@ -1246,27 +1362,31 @@ K
 
 ### A presence check reads only the checked local unnarrowed, not locals its lazy initializer reads.
 
-```yumi
--- first-x(true, Pair(3, 4))
--- first-x(false, Pair(3, 4))
--- first-x(true, null)
+```brix
+(main
+  (print (call first-x true (call Pair 3 4)))
+  (print (call first-x false (call Pair 3 4)))
+  (print (call first-x true null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (x Int, y Int)
+(type + Pair (is (tuple (: x Int) (: y Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ first-x Int
-    - use Bool
-    - pair Pair?
-
-|? !pair
+(fn-expr + first-x Int
+  (param use Bool)
+  (param pair (? Pair))
+  (case? (not pair)
     0
-|? !picked
+  )
+  (case? (not picked)
     -1
-??
+  )
+  (default
     picked
-
-.. picked = pair.x if use
+  )
+  (where
+    (lazy picked (only-if (. pair x) (if use)))
+  )
+)
 ```
 
 ```output
@@ -1277,59 +1397,73 @@ K
 
 ### Carried narrowing does not survive past a loop that can break after breaking it.
 
-```yumi crash
-. x Int? = 5
-if x
-    for i in [1, 2]
-        if i == 1
-            x = null
-            break
-    -- x + 1
+```brix crash
+(main
+  (let x (? Int) 5)
+  (if x
+    (for (in i (list 1 2))
+      (if (== i 1)
+        (= x null)
+        (break)
+      )
+    )
+    (print (+ x 1))
+  )
+)
 ```
 
 ```output
 Exception: Operator "+" is not defined for I64? and I64
-<no file:8>
-        -- x + 1
-           ^^^^^
+<no file:11>
+        (print (+ x 1))
+               ^^^^^^^
 ```
 
 ### Match on a union narrowed by an earlier guard still sees the union case.
 
-```yumi
--- case-of(Event.key("K"))
--- case-of(Event.click(1, 2))
--- optional-case-of(Event.key("J"))
--- optional-case-of(null)
+```brix
+(main
+  (print (call case-of (call (. Event key) "K")))
+  (print (call case-of (call (. Event click) 1 2)))
+  (print (call optional-case-of (call (. Event key) "J")))
+  (print (call optional-case-of null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Event is Union
+(type + Event (is Union)
+  (variant click (tuple (: x Int) (: y Int)))
+  (variant key (tuple String))
+)
 
-| click(x Int, y Int)
-| key(String)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do case-of String
-    - event Event
-
-=? "click" if event is .click
-= match event
-    | .click(click)
+(fn-do + case-of String
+  (param event Event)
+  (return-if "click" (if (is event .click)))
+  (return
+    (match event
+      (case (call .click click)
         "click"
-    | .key(key)
+      )
+      (case (call .key key)
         key
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do optional-case-of String
-    - event Event?
-
-=? "none" if !event
-=? "click" if event is .click
-= match event
-    | .click(click)
+(fn-do + optional-case-of String
+  (param event (? Event))
+  (return-if "none" (if (not event)))
+  (return-if "click" (if (is event .click)))
+  (return
+    (match event
+      (case (call .click click)
         "click"
-    | .key(key)
+      )
+      (case (call .key key)
         key
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1341,96 +1475,92 @@ none
 
 ### Comparing a union with == or != against a payload-free case narrows like is.
 
-```yumi
-. color Paint = Swatch("abc")
-. none Paint = Paint.none
--- chain-hex(color)
--- chain-hex(Paint.inherit)
--- chain-hex(none)
--- both-not(color)
--- both-not(none)
--- reversed(color)
--- reversed(none)
--- symbol-else(color)
--- symbol-else(Paint.inherit)
--- valued(Shade.light)
--- valued(Swatch("def"))
+```brix
+(main
+  (let color Paint (call Swatch "abc"))
+  (let none Paint (. Paint none))
+  (print (call chain-hex color))
+  (print (call chain-hex (. Paint inherit)))
+  (print (call chain-hex none))
+  (print (call both-not color))
+  (print (call both-not none))
+  (print (call reversed color))
+  (print (call reversed none))
+  (print (call symbol-else color))
+  (print (call symbol-else (. Paint inherit)))
+  (print (call valued (. Shade light)))
+  (print (call valued (call Swatch "def")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Swatch
+(type + Swatch
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+  (fn-to-expr + String
+    (str "swatch(" text ")")
+  )
+  (fn-to-expr + Hex
+    (str "#" text)
+  )
+)
 
-+ text String
+(type + Paint (is Union)
+  (variant inherit)
+  (variant none)
+  (variant Swatch)
+)
 
-────────────────────
-+ This
-    - text
+(type + Shade (is Union)
+  (variant light (= 1))
+  (variant dark (= 2))
+  (variant Swatch)
+)
 
-────────────────────
-+ to String
-
-"swatch($text)"
-
-────────────────────
-+ to Hex
-
-"#$text"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Paint is Union
-
-| inherit
-| none
-| Swatch
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shade is Union
-
-| light = 1
-| dark = 2
-| Swatch
-
-━━━━━━━━━━━━━━━━━━━━
-+ chain-hex String
-    - paint Paint
-
-|? paint == Paint.inherit
+(fn-expr + chain-hex String
+  (param paint Paint)
+  (case? (== paint (. Paint inherit))
     "inherit"
-|? paint == Paint.none
+  )
+  (case? (== paint (. Paint none))
     "none"
-??
-    paint as Hex
+  )
+  (default
+    (as paint Hex)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do both-not String
-    - paint Paint
+(fn-do + both-not String
+  (param paint Paint)
+  (if (and (!= paint (. Paint inherit)) (!= paint (. Paint none)))
+    (return (. paint text))
+  )
+  (return "named")
+)
 
-if paint != Paint.inherit && paint != Paint.none
-    = paint.text
-= "named"
+(fn-do + reversed String
+  (param paint Paint)
+  (return-if "plain" (if (or (== (. Paint inherit) paint) (== (. Paint none) paint))))
+  (return (. paint text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do reversed String
-    - paint Paint
+(fn-do + symbol-else String
+  (param paint Paint)
+  (if (or (== paint .inherit) (== paint .none))
+    (return "named")
+    (else
+      (return (. paint text))
+    )
+  )
+)
 
-=? "plain" if Paint.inherit == paint || Paint.none == paint
-= paint.text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do symbol-else String
-    - paint Paint
-
-if paint == .inherit || paint == .none
-    = "named"
-else
-    = paint.text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do valued String
-    - shade Shade
-
-if shade == Shade.light
-    = "light"
-= "${type-of shade}"
+(fn-do + valued String
+  (param shade Shade)
+  (if (== shade (. Shade light))
+    (return "light")
+  )
+  (return (str (type-of shade)))
+)
 ```
 
 ```output
@@ -1449,52 +1579,60 @@ light
 
 ### Narrowing carried across a loop survives nested loops and breaks that keep it.
 
-```yumi
--- nested-for()
--- nested-while()
--- kept-break()
+```brix
+(main
+  (print (call nested-for))
+  (print (call nested-while))
+  (print (call kept-break))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do nested-for Int
+(fn-do + nested-for Int
+  (let x (? Int) 3)
+  (let total 0)
+  (if x
+    (for (in i (..< 0 2))
+      (+= total x)
+      (for (in j (..< 0 2))
+        (= x (+ x 1))
+      )
+    )
+  )
+  (return total)
+)
 
-. x Int? = 3
-. total = 0
-if x
-    for i in 0 .. < 2
-        total += x
-        for j in 0 .. < 2
-            x = x + 1
-= total
+(fn-do + nested-while Int
+  (let x (? Int) 3)
+  (let total 0)
+  (let n 0)
+  (if x
+    (while (< n 2)
+      (+= n 1)
+      (+= total x)
+      (let m 0)
+      (while (< m 2)
+        (+= m 1)
+        (= x (+ x 1))
+      )
+    )
+  )
+  (return total)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do nested-while Int
-
-. x Int? = 3
-. total = 0
-. n = 0
-if x
-    while n < 2
-        n += 1
-        total += x
-        . m = 0
-        while m < 2
-            m += 1
-            x = x + 1
-= total
-
-━━━━━━━━━━━━━━━━━━━━
-+ do kept-break Int
-
-. x Int? = 3
-. n = 0
-if x
-    while n < 3
-        n += 1
-        if n == 2
-            x = 9
-            break
-    = x + 1
-= 0
+(fn-do + kept-break Int
+  (let x (? Int) 3)
+  (let n 0)
+  (if x
+    (while (< n 3)
+      (+= n 1)
+      (if (== n 2)
+        (= x 9)
+        (break)
+      )
+    )
+    (return (+ x 1))
+  )
+  (return 0)
+)
 ```
 
 ```output
@@ -1505,82 +1643,84 @@ if x
 
 ### A break that clears the value ends the narrowing after the loop.
 
-```yumi crash
--- run()
+```brix crash
+(main
+  (print (call run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int
-
-. x Int? = 3
-. n = 0
-if x
-    while n < 3
-        n += 1
-        if n == 2
-            x = null
-            break
-    = x + 1
-= 0
+(fn-do + run Int
+  (let x (? Int) 3)
+  (let n 0)
+  (if x
+    (while (< n 3)
+      (+= n 1)
+      (if (== n 2)
+        (= x null)
+        (break)
+      )
+    )
+    (return (+ x 1))
+  )
+  (return 0)
+)
 ```
 
 ```output
 Exception: Operator "+" is not defined for I64? and I64
-<no file:15>
-        = x + 1
-          ^^^^^
+<no file:17>
+        (return (+ x 1))
+                ^^^^^^^
 ```
 
 ### A type test that can never match skips its branch, as match skips impossible cases.
 
-```yumi
-. box = NarrowingBox()
-box.run(bump)
-box.run(bump-or-fail)
-box.run(bump-and-return)
--- box.count
--- box.copied
--- box.failures
+```brix
+(main
+  (let box (call NarrowingBox))
+  (call (. box run) bump)
+  (call (. box run) bump-or-fail)
+  (call (. box run) bump-and-return)
+  (print (. box count))
+  (print (. box copied))
+  (print (. box failures))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ NarrowingFailure is Error
+(type + NarrowingFailure (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do bump
-    - box NarrowingBox
+(fn-do + bump _
+  (param box NarrowingBox)
+  (+= (. box count) 1)
+)
 
-box.count += 1
+(fn-do + bump-or-fail _ (?! NarrowingFailure)
+  (param box NarrowingBox)
+  (+= (. box count) 1)
+  (if (== (. box count) 2)
+    (throw (call NarrowingFailure "second"))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do bump-or-fail ?! NarrowingFailure
-    - box NarrowingBox
+(fn-do + bump-and-return NarrowingBox
+  (param box NarrowingBox)
+  (+= (. box count) 1)
+  (return box)
+)
 
-box.count += 1
-if box.count == 2
-    ?! NarrowingFailure("second")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bump-and-return NarrowingBox
-    - box NarrowingBox
-
-box.count += 1
-= box
-
-━━━━━━━━━━━━━━━━━━━━
-+ NarrowingBox
-
-+ count = 0
-+ copied = 0
-+ failures = 0
-
-────────────────────
-+ do run
-    - body
-
-. result = catch body(this)
-if result is Error
-    failures += 1
-else if result is NarrowingBox
-    copied = result.count
+(type + NarrowingBox
+  (prop + count _ (= 0))
+  (prop + copied _ (= 0))
+  (prop + failures _ (= 0))
+  (fn-do + run _
+    (param body _)
+    (let result (catch (call body this)))
+    (if (is result Error)
+      (+= failures 1)
+      (else-if (is result NarrowingBox)
+        (= copied (. result count))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1591,27 +1731,27 @@ else if result is NarrowingBox
 
 ### A type test that can never match short-circuits the rest of an && condition.
 
-```yumi
--- describe-count(12345)
--- describe-count(NarrowingCounter(5))
--- describe-count(NarrowingCounter(2))
+```brix
+(main
+  (print (call describe-count 12345))
+  (print (call describe-count (call NarrowingCounter 5)))
+  (print (call describe-count (call NarrowingCounter 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do describe-count String
-    - value
+(fn-do + describe-count String
+  (param value _)
+  (if (and (is value NarrowingCounter) (> (. value count) 3))
+    (return "many")
+  )
+  (return "other")
+)
 
-if value is NarrowingCounter && value.count > 3
-    = "many"
-= "other"
-
-━━━━━━━━━━━━━━━━━━━━
-+ NarrowingCounter
-
-+ count = 0
-
-────────────────────
-+ This
-    - count
+(type + NarrowingCounter
+  (prop + count _ (= 0))
+  (fn-do + This _
+    (param count _)
+  )
+)
 ```
 
 ```output
@@ -1622,32 +1762,32 @@ other
 
 ### A property of a struct that a test found to hold a value is read as what it holds, as an index too.
 
-```yumi
--- run(4)
--- run(9)
+```brix
+(main
+  (print (call run 4))
+  (print (call run 9))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int
-    - at Index
+(fn-do + run Int
+  (param at Index)
+  (let probe (call find at))
+  (let slots (call (of Array Int) 8))
+  (if (. probe found)
+    (= ([] slots (. probe found)) 7)
+    (return (+ ([] slots 4) 1))
+  )
+  (return 0)
+)
 
-. probe = find(at)
-. slots = Array'Int(8)
-if probe.found
-    slots[probe.found] = 7
-    = slots[4] + 1
-= 0
+(fn-expr + find Probe
+  (param at Index)
+  (call Probe (only-if at (if (< at 8))) 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ find Probe
-    - at Index
-
-Probe(at if at < 8, 2)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Probe is Struct
-
-+ found Index?
-+ slot Index
+(type + Probe (is Struct)
+  (prop + found (? Index))
+  (prop + slot Index)
+)
 ```
 
 ```output
@@ -1657,16 +1797,18 @@ Probe(at if at < 8, 2)
 
 ### An optional local known to hold a value still holds one after an operator that assigns nothing
 
-```yumi
-. list = find()
-if list
-    list += 3
-    -- list.size
+```brix
+(main
+  (let list (call find))
+  (if list
+    (+= list 3)
+    (print (. list size))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do find [Int]?
-
-= [1, 2]
+(fn-do + find (? (list Int))
+  (return (list 1 2))
+)
 ```
 
 ```output
@@ -1675,52 +1817,57 @@ if list
 
 ### is and is not between a union and the types and cases it may hold
 
-```yumi
--- kind(.count(1))
--- kind(.wide(2.5))
--- kind(.named("n"))
--- kind(.empty)
--- test(.count(1))
--- test(.empty)
-. s Shape? = Shape.empty
--- s is .empty
--- s is .count
-. t Shape?
--- t is .empty
--- t is not .empty
+```brix
+(main
+  (print (call kind (call .count 1)))
+  (print (call kind (call .wide 2.5)))
+  (print (call kind (call .named "n")))
+  (print (call kind .empty))
+  (print (call test (call .count 1)))
+  (print (call test .empty))
+  (let s (? Shape) (. Shape empty))
+  (print (is s .empty))
+  (print (is s .count))
+  (let t (? Shape))
+  (print (is t .empty))
+  (print (is-not t .empty))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do kind String
-    - shape Shape
+(fn-do + kind String
+  (param shape Shape)
+  (let text "")
+  (if (is shape Int)
+    (++= text "int ")
+  )
+  (if (is shape Float)
+    (++= text "float ")
+  )
+  (if (is shape String)
+    (++= text "string ")
+  )
+  (if (is-not shape Int)
+    (++= text "not-int ")
+  )
+  (if (is shape .empty)
+    (++= text "empty ")
+  )
+  (if (is-not shape .named)
+    (++= text "not-named ")
+  )
+  (return text)
+)
 
-. text = ""
-if shape is Int
-    text ++= "int "
-if shape is Float
-    text ++= "float "
-if shape is String
-    text ++= "string "
-if shape is not Int
-    text ++= "not-int "
-if shape is .empty
-    text ++= "empty "
-if shape is not .named
-    text ++= "not-named "
-= text
+(fn-expr + test Bool
+  (param shape Shape)
+  (or (is shape .count) (is shape .wide))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ test Bool
-    - shape Shape
-
-shape is .count || shape is .wide
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
-
-| count Int
-| wide Float
-| named String
-| empty
+(type + Shape (is Union)
+  (variant count Int)
+  (variant wide Float)
+  (variant named String)
+  (variant empty)
+)
 ```
 
 ```output
@@ -1738,37 +1885,39 @@ true
 
 ### A union read as the case an is test found
 
-```yumi
--- grow(.count(1))
--- grow(.named("n"))
--- size(.count(5))
--- size(.named("abc"))
--- size(.empty)
+```brix
+(main
+  (print (call grow (call .count 1)))
+  (print (call grow (call .named "n")))
+  (print (call size (call .count 5)))
+  (print (call size (call .named "abc")))
+  (print (call size .empty))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do grow String
-    - shape Shape
+(fn-do + grow String
+  (param shape Shape)
+  (if (is shape Int)
+    (return (str "int " (+ shape 1)))
+  )
+  (if (and (is shape String) (== (. shape length) 1))
+    (return (str "one " shape))
+  )
+  (return "other")
+)
 
-if shape is Int
-    = "int ${shape + 1}"
-if shape is String && shape.length == 1
-    = "one $shape"
-= "other"
+(fn-do + size Int
+  (param shape Shape)
+  (if (is-not shape String)
+    (return -1)
+  )
+  (return (. shape length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do size Int
-    - shape Shape
-
-if shape is not String
-    = -1
-= shape.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
-
-| count Int
-| named String
-| empty
+(type + Shape (is Union)
+  (variant count Int)
+  (variant named String)
+  (variant empty)
+)
 ```
 
 ```output
@@ -1781,67 +1930,84 @@ one n
 
 ### A union known to hold one case is tested and matched as the union
 
-```yumi
--- trace(.click(1, 2))
--- trace(.key("K"))
--- trace(.idle)
--- again(.key("Q"))
--- again(.click(3, 4))
--- pair(.left(1))
--- pair(.right("r"))
+```brix
+(main
+  (print (call trace (call .click 1 2)))
+  (print (call trace (call .key "K")))
+  (print (call trace .idle))
+  (print (call again (call .key "Q")))
+  (print (call again (call .click 3 4)))
+  (print (call pair (call .left 1)))
+  (print (call pair (call .right "r")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do trace String
-    - event Event
+(fn-do + trace String
+  (param event Event)
+  (if (is event .click)
+    (return (str "click " (. event x)))
+    (else-if (is event .key)
+      (return (str "key " event))
+    )
+  )
+  (return "idle")
+)
 
-if event is .click
-    = "click ${event.x}"
-else if event is .key
-    = "key $event"
-= "idle"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do again String
-    - event Event
-
-if event is not .click
-    if event is .idle
-        = "idle"
-    = match event
-        | .key(text)
-            "key $text"
-        ??
-            "none"
-= match event
-    | .click(x, y)
-        "click $x $y"
-    ??
+(fn-do + again String
+  (param event Event)
+  (if (is-not event .click)
+    (if (is event .idle)
+      (return "idle")
+    )
+    (return
+      (match event
+        (case (call .key text)
+          (str "key " text)
+        )
+        (default
+          "none"
+        )
+      )
+    )
+  )
+  (return
+    (match event
+      (case (call .click x y)
+        (str "click " x " " y)
+      )
+      (default
         "none"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pair String
-    - side Side
+(fn-do + pair String
+  (param side Side)
+  (if (is side .left)
+    (return (str "left " (+ side 1)))
+  )
+  (return
+    (match side
+      (case Int
+        (str "int " it)
+      )
+      (case String
+        (str "text " it)
+      )
+    )
+  )
+)
 
-if side is .left
-    = "left ${side + 1}"
-= match side
-    | Int
-        "int $it"
-    | String
-        "text $it"
+(type + Side (is Union)
+  (variant left Int)
+  (variant right String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Side is Union
-
-| left Int
-| right String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Event is Union
-
-| click(x Int, y Int)
-| key(String)
-| idle
+(type + Event (is Union)
+  (variant click (tuple (: x Int) (: y Int)))
+  (variant key (tuple String))
+  (variant idle)
+)
 ```
 
 ```output
@@ -1856,56 +2022,62 @@ text r
 
 ### An optional of a union known to hold a value and one case is read as that case, in arguments and locals.
 
-```yumi
--- show(null)
--- show(Event.click(1, 2))
--- show(Event.key("k"))
--- both(Event.click(3, 4), Event.key("z"))
--- both(null, Event.click(5, 6))
-. event Event? = Event.key("q")
-if event && event is .key
-    -- event
-event = again(Event.click(7, 8))
-if event
-    if event is .click
-        -- event.x + event.y
-        event = null
-        -- event == null
+```brix
+(main
+  (print (call show null))
+  (print (call show (call (. Event click) 1 2)))
+  (print (call show (call (. Event key) "k")))
+  (print (call both (call (. Event click) 3 4) (call (. Event key) "z")))
+  (print (call both null (call (. Event click) 5 6)))
+  (let event (? Event) (call (. Event key) "q"))
+  (if (and event (is event .key))
+    (print event)
+  )
+  (= event (call again (call (. Event click) 7 8)))
+  (if event
+    (if (is event .click)
+      (print (+ (. event x) (. event y)))
+      (= event null)
+      (print (== event null))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do again Event?
-    - event Event?
+(fn-do + again (? Event)
+  (param event (? Event))
+  (return event)
+)
 
-= event
+(fn-do + show String
+  (param event (? Event))
+  (if (and event (is event .click))
+    (return (str "click " (. event x) "," (. event y)))
+  )
+  (if (not event)
+    (return "none")
+  )
+  (if (is event .key)
+    (return (str "key " event))
+  )
+  (return "other")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show String
-    - event Event?
+(fn-do + both String
+  (param first (? Event))
+  (param second (? Event))
+  (if (and first second (is first .click) (is second .key))
+    (return (str (. first x) " " second))
+  )
+  (if (and second (is second .click))
+    (return (str "second " (. second y) " " (== first null)))
+  )
+  (return "neither")
+)
 
-if event && event is .click
-    = "click ${event.x},${event.y}"
-if !event
-    = "none"
-if event is .key
-    = "key $event"
-= "other"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do both String
-    - first Event?
-    - second Event?
-
-if first && second && first is .click && second is .key
-    = "${first.x} $second"
-if second && second is .click
-    = "second ${second.y} ${first == null}"
-= "neither"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Event is Union
-
-| click(x Int, y Int)
-| key(String)
+(type + Event (is Union)
+  (variant click (tuple (: x Int) (: y Int)))
+  (variant key (tuple String))
+)
 ```
 
 ```output
@@ -1921,54 +2093,56 @@ true
 
 ### A type test that can never hold leaves the operand it guards and the branch it guards out
 
-```yumi
--- describe(12345)
--- describe(Counter(5))
--- describe(Counter(2))
--- either(7)
--- either(Counter(1))
--- either(Counter(8))
--- nested(3)
--- nested(1)
--- nested(Counter(9))
--- nested("text")
+```brix
+(main
+  (print (call describe 12345))
+  (print (call describe (call Counter 5)))
+  (print (call describe (call Counter 2)))
+  (print (call either 7))
+  (print (call either (call Counter 1)))
+  (print (call either (call Counter 8)))
+  (print (call nested 3))
+  (print (call nested 1))
+  (print (call nested (call Counter 9)))
+  (print (call nested "text"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do describe String
-    - value
+(fn-do + describe String
+  (param value _)
+  (if (and (is value Counter) (> (. value count) 3))
+    (return "many")
+  )
+  (return "other")
+)
 
-if value is Counter && value.count > 3
-    = "many"
-= "other"
+(fn-do + either String
+  (param value _)
+  (if (or (is-not value Counter) (> (. value count) 3))
+    (return "not few")
+  )
+  (return "few")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do either String
-    - value
+(fn-do + nested String
+  (param value _)
+  (if (is value Counter)
+    (if (> (. value count) 3)
+      (return "many")
+    )
+    (return "few")
+    (else-if (and (is value Int) (> value 2))
+      (return "int")
+    )
+  )
+  (return "other")
+)
 
-if value is not Counter || value.count > 3
-    = "not few"
-= "few"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do nested String
-    - value
-
-if value is Counter
-    if value.count > 3
-        = "many"
-    = "few"
-else if value is Int && value > 2
-    = "int"
-= "other"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
-
-+ count = 0
-
-────────────────────
-+ This
-    - count
+(type + Counter
+  (prop + count _ (= 0))
+  (fn-do + This _
+    (param count _)
+  )
+)
 ```
 
 ```output
@@ -1986,49 +2160,54 @@ other
 
 ### A union local that an if assigns one case and whose condition leaves the same case otherwise is that case after it
 
-```yumi
-. value Choice = "hello"
-if value is String
-    value = 7
--- value + 1
-. other Choice = 5
-if other is String
-    other = 9
--- other + 1
-. third Choice = "x"
-if third is Int
-    third = "was int"
--- third.length
--- settle("four")
--- settle(10)
--- text-of(3)
--- text-of("kept")
+```brix
+(main
+  (let value Choice "hello")
+  (if (is value String)
+    (= value 7)
+  )
+  (print (+ value 1))
+  (let other Choice 5)
+  (if (is other String)
+    (= other 9)
+  )
+  (print (+ other 1))
+  (let third Choice "x")
+  (if (is third Int)
+    (= third "was int")
+  )
+  (print (. third length))
+  (print (call settle "four"))
+  (print (call settle 10))
+  (print (call text-of 3))
+  (print (call text-of "kept"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
+(type + Choice (is Union)
+  (variant Int)
+  (variant String)
+)
 
-| Int
-| String
+(fn-do + settle Int
+  (param given Choice)
+  (let choice given)
+  (if (is choice String)
+    (= choice (. choice length))
+  )
+  (if (is choice Int)
+    (return (+ choice 1))
+  )
+  (return -1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do settle Int
-    - given Choice
-
-. choice = given
-if choice is String
-    choice = choice.length
-if choice is Int
-    = choice + 1
-= -1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do text-of String
-    - given Choice
-
-. choice = given
-if choice is Int
-    choice = "number"
-= "${choice}!"
+(fn-do + text-of String
+  (param given Choice)
+  (let choice given)
+  (if (is choice Int)
+    (= choice "number")
+  )
+  (return (str choice "!"))
+)
 ```
 
 ```output
@@ -2043,75 +2222,63 @@ kept!
 
 ### What a test found of a property ends at a print, a loop and a call, and holds past an assertion with a condition, a branch that leaves and an assignment to a local.
 
-```yumi
-. holder = Holder()
-holder.after-print()
-holder.after-loop()
-holder.after-call()
-holder.after-assertion(1)
-holder.after-leaving(1)
-holder.after-local(2)
+```brix
+(main
+  (let holder (call Holder))
+  (call (. holder after-print))
+  (call (. holder after-loop))
+  (call (. holder after-call))
+  (call (. holder after-assertion) 1)
+  (call (. holder after-leaving) 1)
+  (call (. holder after-local) 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ value Int? = 0
-+ count Int = 0
-
-────────────────────
-+ do after-print
-
-=? if !value
--- "print"
--- type-of value
-
-────────────────────
-+ do after-loop
-
-=? if !value
-for at-turn in 0 .. < 2
-    . next = at-turn + 1
--- type-of value
-
-────────────────────
-+ do after-call
-
-=? if !value
-touch()
--- type-of value
-
-────────────────────
-+ do after-assertion
-    - given Int
-
-=? if !value
-?! Panic("negative")
-    if given < 0
--- type-of value
-
-────────────────────
-+ do after-leaving
-    - given Int
-
-=? if !value
-if given < 0
-    touch()
-    =
--- type-of value
-
-────────────────────
-+ do after-local
-    - given Int
-
-=? if !value
-. sum = given + 1
-sum = sum * 2
--- type-of value
-
-────────────────────
-+ do touch
-
-count += 1
+(type + Holder
+  (prop + value (? Int) (= 0))
+  (prop + count Int (= 0))
+  (fn-do + after-print _
+    (return-if (if (not value)))
+    (print "print")
+    (print (type-of value))
+  )
+  (fn-do + after-loop _
+    (return-if (if (not value)))
+    (for (in at-turn (..< 0 2))
+      (let next (+ at-turn 1))
+    )
+    (print (type-of value))
+  )
+  (fn-do + after-call _
+    (return-if (if (not value)))
+    (call touch)
+    (print (type-of value))
+  )
+  (fn-do + after-assertion _
+    (param given Int)
+    (return-if (if (not value)))
+    (throw (call Panic "negative") (if (< given 0)))
+    (print (type-of value))
+  )
+  (fn-do + after-leaving _
+    (param given Int)
+    (return-if (if (not value)))
+    (if (< given 0)
+      (call touch)
+      (return)
+    )
+    (print (type-of value))
+  )
+  (fn-do + after-local _
+    (param given Int)
+    (return-if (if (not value)))
+    (let sum (+ given 1))
+    (= sum (* sum 2))
+    (print (type-of value))
+  )
+  (fn-do + touch _
+    (+= count 1)
+  )
+)
 ```
 
 ```output
@@ -2126,90 +2293,76 @@ print
 
 ### What a test found of a property is read as what it holds until something ends it.
 
-```yumi
-. holder = Holder()
-holder.after-print()
-holder.after-loop()
-holder.after-call()
-holder.after-assertion(1)
-holder.after-leaving(1)
-holder.after-local(2)
-holder.after-store()
+```brix
+(main
+  (let holder (call Holder))
+  (call (. holder after-print))
+  (call (. holder after-loop))
+  (call (. holder after-call))
+  (call (. holder after-assertion) 1)
+  (call (. holder after-leaving) 1)
+  (call (. holder after-local) 2)
+  (call (. holder after-store))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ value Int? = 0
-+ count Int = 0
-
-────────────────────
-+ do after-print
-
-=? if !value
--- "print"
-. read = value ?? 9
--- read
-
-────────────────────
-+ do after-loop
-
-=? if !value
-for at-turn in 0 .. < 2
-    . next = at-turn + 1
-. read = value ?? 9
--- read
-
-────────────────────
-+ do after-call
-
-=? if !value
-touch()
-. read = value ?? 9
--- read
-
-────────────────────
-+ do after-assertion
-    - given Int
-
-=? if !value
-?! Panic("negative")
-    if given < 0
-. read = value ?? 9
--- read
-
-────────────────────
-+ do after-leaving
-    - given Int
-
-=? if !value
-if given < 0
-    touch()
-    =
-. read = value ?? 9
--- read
-
-────────────────────
-+ do after-local
-    - given Int
-
-=? if !value
-. sum = given + 1
-sum = sum * 2
-. read = value ?? 9
--- read
-
-────────────────────
-+ do after-store
-
-=? if !value
-count = 1
-. read = value ?? 9
--- read
-
-────────────────────
-+ do touch
-
-count += 1
+(type + Holder
+  (prop + value (? Int) (= 0))
+  (prop + count Int (= 0))
+  (fn-do + after-print _
+    (return-if (if (not value)))
+    (print "print")
+    (let read (?? value 9))
+    (print read)
+  )
+  (fn-do + after-loop _
+    (return-if (if (not value)))
+    (for (in at-turn (..< 0 2))
+      (let next (+ at-turn 1))
+    )
+    (let read (?? value 9))
+    (print read)
+  )
+  (fn-do + after-call _
+    (return-if (if (not value)))
+    (call touch)
+    (let read (?? value 9))
+    (print read)
+  )
+  (fn-do + after-assertion _
+    (param given Int)
+    (return-if (if (not value)))
+    (throw (call Panic "negative") (if (< given 0)))
+    (let read (?? value 9))
+    (print read)
+  )
+  (fn-do + after-leaving _
+    (param given Int)
+    (return-if (if (not value)))
+    (if (< given 0)
+      (call touch)
+      (return)
+    )
+    (let read (?? value 9))
+    (print read)
+  )
+  (fn-do + after-local _
+    (param given Int)
+    (return-if (if (not value)))
+    (let sum (+ given 1))
+    (= sum (* sum 2))
+    (let read (?? value 9))
+    (print read)
+  )
+  (fn-do + after-store _
+    (return-if (if (not value)))
+    (= count 1)
+    (let read (?? value 9))
+    (print read)
+  )
+  (fn-do + touch _
+    (+= count 1)
+  )
+)
 ```
 
 ```output
@@ -2225,20 +2378,24 @@ print
 
 ### What a test found of a field of a tuple read through a local holds past a loop, a print and a call.
 
-```yumi
-. holder = Holder([1, 2])
-if holder.items
-    for item in holder.items
-        -- item
-    for item in holder.items
-        -- item
-    -- ",".join("$each" in holder.items)
-    -- ",".join("$each" in holder.items)
+```brix
+(main
+  (let holder (call Holder (list 1 2)))
+  (if (. holder items)
+    (for (in item (. holder items))
+      (print item)
+    )
+    (for (in item (. holder items))
+      (print item)
+    )
+    (print (call (. "," join) (in (str each) (. holder items))))
+    (print (call (. "," join) (in (str each) (. holder items))))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Tuple
-
-+ items [Int]? = null
+(type + Holder (is Tuple)
+  (prop + items (? (list Int)) (= null))
+)
 ```
 
 ```output
@@ -2252,37 +2409,37 @@ if holder.items
 
 ### A field of a tuple read through a local that a test found to hold one case of a union is read as what the case holds, past a call too.
 
-```yumi
-. shaped = Shaped(Shape.circle(2.0), Event.click(3, 4))
-if shaped.shape is .circle
-    touch()
-    -- shaped.shape + 1.0
-if shaped.event is .click
-    touch()
-    -- shaped.event.x + shaped.event.y
+```brix
+(main
+  (let shaped (call Shaped (call (. Shape circle) 2.0) (call (. Event click) 3 4)))
+  (if (is (. shaped shape) .circle)
+    (call touch)
+    (print (+ (. shaped shape) 1.0))
+  )
+  (if (is (. shaped event) .click)
+    (call touch)
+    (print (+ (. shaped event x) (. shaped event y)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do touch
+(fn-do + touch _
+  (print "touch")
+)
 
--- "touch"
+(type + Shaped (is Tuple)
+  (prop + shape Shape)
+  (prop + event Event)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shaped is Tuple
+(type + Shape (is Union)
+  (variant circle (tuple (: radius Float)))
+  (variant square (tuple (: side Float)))
+)
 
-+ shape Shape
-+ event Event
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
-
-| circle(radius Float)
-| square(side Float)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Event is Union
-
-| click(x Int, y Int)
-| key(String)
+(type + Event (is Union)
+  (variant click (tuple (: x Int) (: y Int)))
+  (variant key (tuple String))
+)
 ```
 
 ```output
@@ -2294,54 +2451,45 @@ touch
 
 ### An assignment to a property leaves it as it is declared, and one to another property named alone leaves it as the test found it.
 
-```yumi
-. holder = Holder()
-holder.after-other-property()
-holder.after-adding()
-holder.after-own()
-holder.after-receiver()
-holder.after-null()
+```brix
+(main
+  (let holder (call Holder))
+  (call (. holder after-other-property))
+  (call (. holder after-adding))
+  (call (. holder after-own))
+  (call (. holder after-receiver))
+  (call (. holder after-null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ value Int? = 0
-+ count Int = 0
-
-────────────────────
-+ do after-other-property
-
-=? if !value
-count = 1
--- type-of value
-
-────────────────────
-+ do after-adding
-
-=? if !value
-count += 1
--- type-of value
-
-────────────────────
-+ do after-own
-
-=? if !value
-value = 4
--- type-of value
-
-────────────────────
-+ do after-null
-
-=? if !value
-value = null
--- type-of value
-
-────────────────────
-+ do after-receiver
-
-=? if !value
-this.value = 4
--- type-of value
+(type + Holder
+  (prop + value (? Int) (= 0))
+  (prop + count Int (= 0))
+  (fn-do + after-other-property _
+    (return-if (if (not value)))
+    (= count 1)
+    (print (type-of value))
+  )
+  (fn-do + after-adding _
+    (return-if (if (not value)))
+    (+= count 1)
+    (print (type-of value))
+  )
+  (fn-do + after-own _
+    (return-if (if (not value)))
+    (= value 4)
+    (print (type-of value))
+  )
+  (fn-do + after-null _
+    (return-if (if (not value)))
+    (= value null)
+    (print (type-of value))
+  )
+  (fn-do + after-receiver _
+    (return-if (if (not value)))
+    (= (. this value) 4)
+    (print (type-of value))
+  )
+)
 ```
 
 ```output
@@ -2354,17 +2502,24 @@ this.value = 4
 
 ### A local that a closure assigns keeps what is known of it until a call.
 
-```yumi
-. value Int?
-value = 7
-. clear = => do
-    value = null
--- type-of value
-. noop = => 1
-noop()
--- value ?? 0
-clear()
--- value ?? 0
+```brix
+(main
+  (let value (? Int))
+  (= value 7)
+  (let clear
+    (=> () :do
+      (block
+        (= value null)
+      )
+    )
+  )
+  (print (type-of value))
+  (let noop (=> () 1))
+  (call noop)
+  (print (?? value 0))
+  (call clear)
+  (print (?? value 0))
+)
 ```
 
 ```output
@@ -2375,20 +2530,27 @@ clear()
 
 ### A call of a closure that assigns a narrowed local ends what a test found.
 
-```yumi
-. value Int?
-value = maybe()
-. clear = => do
-    value = null
-if value
-    -- value + 1
-    clear()
-    -- value ?? -1
+```brix
+(main
+  (let value (? Int))
+  (= value (call maybe))
+  (let clear
+    (=> () :do
+      (block
+        (= value null)
+      )
+    )
+  )
+  (if value
+    (print (+ value 1))
+    (call clear)
+    (print (?? value -1))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do maybe Int?
-
-= 7
+(fn-do + maybe (? Int)
+  (return 7)
+)
 ```
 
 ```output
@@ -2398,14 +2560,22 @@ if value
 
 ### A closure that assigns another local leaves a narrowed one as it was.
 
-```yumi
-. count = 5
-. held Int? = count
-. grow = => do
-    count += 1
-if held
-    grow()
-    -- held + count
+```brix
+(main
+  (let count 5)
+  (let held (? Int) count)
+  (let grow
+    (=> () :do
+      (block
+        (+= count 1)
+      )
+    )
+  )
+  (if held
+    (call grow)
+    (print (+ held count))
+  )
+)
 ```
 
 ```output
@@ -2414,16 +2584,18 @@ if held
 
 ### `is~` of a list and a list of another item answers whether the value converts.
 
-```yumi
--- [1,2,3] is~ List'Float
--- [1,2,3] is~ List'Int
--- [1,2,3] is~ List'String
--- [1.5] is~ List'Int
-. list = [1, 2, 3]
--- list is~ List'Float
--- list is~ List'Int
--- 1 is~ Float
--- 1 is~ Int
+```brix
+(main
+  (print (is~ (list 1 2 3) (of List Float)))
+  (print (is~ (list 1 2 3) (of List Int)))
+  (print (is~ (list 1 2 3) (of List String)))
+  (print (is~ (list 1.5) (of List Int)))
+  (let list (list 1 2 3))
+  (print (is~ list (of List Float)))
+  (print (is~ list (of List Int)))
+  (print (is~ 1 Float))
+  (print (is~ 1 Int))
+)
 ```
 
 ```output
@@ -2439,30 +2611,29 @@ true
 
 ### `is`, `is!` and `is~` between classes derived from one another and between lists.
 
-```yumi
-. a A = B()
--- a is B
--- a is C
--- a is A
-. b = B()
--- b is A
--- b is B
--- b is! A
--- b is! B
-. list = [1, 2]
--- list is List'Int
--- list is! List'Float
--- list is~ List'Float
--- list is List'A
+```brix
+(main
+  (let a A (call B))
+  (print (is a B))
+  (print (is a C))
+  (print (is a A))
+  (let b (call B))
+  (print (is b A))
+  (print (is b B))
+  (print (is! b A))
+  (print (is! b B))
+  (let list (list 1 2))
+  (print (is list (of List Int)))
+  (print (is! list (of List Float)))
+  (print (is~ list (of List Float)))
+  (print (is list (of List A)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ A
+(type + A)
 
-━━━━━━━━━━━━━━━━━━━━
-+ B is A
+(type + B (is A))
 
-━━━━━━━━━━━━━━━━━━━━
-+ C is A
+(type + C (is A))
 ```
 
 ```output
@@ -2481,23 +2652,27 @@ false
 
 ### `is!` and a pattern written `Animal!` test the class of the object, not the type a local is declared with: an object of a class derived from the declared one is not exactly of it.
 
-```yumi
-. pets [Animal] = [Animal(), Dog()]
-for pet in pets
-    -- "${pet is! Animal} ${pet is! Dog}"
-    match pet
-        | Animal!
-            -- "exactly an animal"
-        ??
-            -- "derived"
-. maybe Animal? = Dog()
--- maybe is! Animal
+```brix
+(main
+  (let pets (list Animal) (list (call Animal) (call Dog)))
+  (for (in pet pets)
+    (print (str (is! pet Animal) " " (is! pet Dog)))
+    (match pet
+      (case (exact Animal)
+        (print "exactly an animal")
+      )
+      (default
+        (print "derived")
+      )
+    )
+  )
+  (let maybe (? Animal) (call Dog))
+  (print (is! maybe Animal))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Animal
+(type + Animal)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Dog is Animal
+(type + Dog (is Animal))
 ```
 
 ```output
@@ -2510,32 +2685,29 @@ false
 
 ### What a call ended of a property stays ended after a test of another property.
 
-```yumi
-. holder = Holder()
-holder.retest()
+```brix
+(main
+  (let holder (call Holder))
+  (call (. holder retest))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ first Int? = 0
-+ second Int? = 1
-+ count Int = 0
-
-────────────────────
-+ do retest
-
-=? if !first
-touch()
-=? if !second
-. second-type = type-of second
-. first-type = type-of first
--- second-type
--- first-type
-
-────────────────────
-+ do touch
-
-count += 1
+(type + Holder
+  (prop + first (? Int) (= 0))
+  (prop + second (? Int) (= 1))
+  (prop + count Int (= 0))
+  (fn-do + retest _
+    (return-if (if (not first)))
+    (call touch)
+    (return-if (if (not second)))
+    (let second-type (type-of second))
+    (let first-type (type-of first))
+    (print second-type)
+    (print first-type)
+  )
+  (fn-do + touch _
+    (+= count 1)
+  )
+)
 ```
 
 ```output
@@ -2545,40 +2717,37 @@ count += 1
 
 ### A property tested before a method call on it stays narrowed for the receiver when an argument calls a function
 
-```yumi
-. holder = Holder()
--- holder.depth()
-holder.node = Node()
--- holder.depth()
+```brix
+(main
+  (let holder (call Holder))
+  (print (call (. holder depth)))
+  (= (. holder node) (call Node))
+  (print (call (. holder depth)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node
+(type + Node
+  (prop + n Int (= 4))
+  (fn-expr + plus Int
+    (param k Int)
+    (+ n k)
+  )
+)
 
-+ n Int = 4
+(type + Holder
+  (prop + node (? Node))
+  (fn-expr + depth Int
+    (case? node
+      (call (. node plus) (call seven))
+    )
+    (default
+      0
+    )
+  )
+)
 
-────────────────────
-+ plus Int
-    - k Int
-
-n + k
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ node Node?
-
-────────────────────
-+ depth Int
-
-|? node
-    node.plus(seven())
-??
-    0
-
-━━━━━━━━━━━━━━━━━━━━
-+ seven Int
-
-7
+(fn-expr + seven Int
+  7
+)
 ```
 
 ```output
@@ -2588,29 +2757,27 @@ n + k
 
 ### A property stored in a local is no longer narrowed by the test before the store
 
-```yumi
-. holder = Holder()
-holder.node = Node()
-holder.show()
+```brix
+(main
+  (let holder (call Holder))
+  (= (. holder node) (call Node))
+  (call (. holder show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node
+(type + Node
+  (prop + n Int (= 4))
+)
 
-+ n Int = 4
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ node Node?
-
-────────────────────
-+ do show
-
-=? if !node
--- type-of node
-. kept = node
--- type-of node
--- type-of kept
+(type + Holder
+  (prop + node (? Node))
+  (fn-do + show _
+    (return-if (if (not node)))
+    (print (type-of node))
+    (let kept node)
+    (print (type-of node))
+    (print (type-of kept))
+  )
+)
 ```
 
 ```output
@@ -2621,32 +2788,30 @@ holder.show()
 
 ### A property known to hold a value keeps it in an assignment that adds to a property of it.
 
-```yumi
-. r = Recorder()
-r.chunk = Chunk()
-r.push()
--- r.chunk!.items.length
+```brix
+(main
+  (let r (call Recorder))
+  (= (. r chunk) (call Chunk))
+  (call (. r push))
+  (print (. (!! (. r chunk)) items length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Chunk
+(type + Chunk
+  (prop + items (list I32))
+)
 
-+ items [I32]
+(type + Recorder
+  (prop + chunk (? Chunk))
+  (fn-do + push _
+    (if chunk
+      (+= (. chunk items) (call next))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Recorder
-
-+ chunk Chunk?
-
-────────────────────
-+ do push
-
-if chunk
-    chunk.items += next()
-
-━━━━━━━━━━━━━━━━━━━━
-+ next I32
-
-3
+(fn-expr + next I32
+  3
+)
 ```
 
 ```output
@@ -2655,33 +2820,36 @@ if chunk
 
 ### A local an `if` leaves present through a match whose other arms return is present after it.
 
-```yumi
--- read(null, 4) ?? 0
--- read(Box(7), 4) ?? 0
--- read(null, 0) ?? 0
+```brix
+(main
+  (print (?? (call read null 4) 0))
+  (print (?? (call read (call Box 7) 4) 0))
+  (print (?? (call read null 0) 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read U32?
-    - given Box?
-    - size U32 = 0
+(fn-do + read (? U32)
+  (param given (? Box))
+  (param size U32 (= 0))
+  (let value given)
+  (if (not value)
+    (match size
+      (case= 0
+        (return null)
+      )
+      (default
+        (= value (call Box size))
+      )
+    )
+  )
+  (return (. value size))
+)
 
-. value = given
-if !value
-    match size
-        |= 0
-            = null
-        ??
-            value = Box(size)
-= value.size
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ size U32
-
-────────────────────
-+ This
-    - size U32
+(type + Box
+  (prop + size U32)
+  (fn-do + This _
+    (param size U32)
+  )
+)
 ```
 
 ```output
@@ -2692,25 +2860,23 @@ if !value
 
 ### Reading a field of a tuple by a constant index keeps what a test found of a property.
 
-```yumi
--- Snap(7).find((1, 7))
--- Snap(7).find((1, 3))
--- Snap(null).find((1, 7))
+```brix
+(main
+  (print (call (. (call Snap 7) find) (tuple 1 7)))
+  (print (call (. (call Snap 7) find) (tuple 1 3)))
+  (print (call (. (call Snap null) find) (tuple 1 7)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Snap
-
-_ primary-id U64?
-
-────────────────────
-+ This
-    - primary-id
-
-────────────────────
-+ find String
-    - pair (Index, U64)
-
-if primary-id && pair[1] == primary-id then "found ${pair[0]}" else "none"
+(type + Snap
+  (prop _ primary-id (? U64))
+  (fn-do + This _
+    (param primary-id _)
+  )
+  (fn-expr + find String
+    (param pair (tuple Index U64))
+    (if-expr (and primary-id (== ([] pair 1) primary-id)) (str "found " ([] pair 0)) "none")
+  )
+)
 ```
 
 ```output
@@ -2721,22 +2887,21 @@ none
 
 ### Arithmetic between the test of a property and its read keeps what the test found: dividing calls nothing.
 
-```yumi
-. doc = Doc()
--- doc.fill()
+```brix
+(main
+  (let doc (call Doc))
+  (print (call (. doc fill)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Doc
-
-_ name String? = "abcdef"
-_ buffer U32[] = U32[6]
-
-────────────────────
-+ do fill Size
-
-=? 0 if !name
-. capacity = buffer.size / 3
-= capacity + name.length
+(type + Doc
+  (prop _ name (? String) (= "abcdef"))
+  (prop _ buffer ([] U32) (= ([] U32 6)))
+  (fn-do + fill Size
+    (return-if 0 (if (not name)))
+    (let capacity (/ (. buffer size) 3))
+    (return (+ capacity (. name length)))
+  )
+)
 ```
 
 ```output
@@ -2745,33 +2910,33 @@ _ buffer U32[] = U32[6]
 
 ### `is` with a base of a case's class narrows a union to that case: inside the test, a caught error reads as its case, which casts up to the base.
 
-```yumi
-for text in ["good", "bad"]
-    . read = catch parse(text)
-    if read is Error
-        -- "error: ${(read as Error).message}"
-    else
-        -- "value: ${(read as Doc).name}"
+```brix
+(main
+  (for (in text (list "good" "bad"))
+    (let read (catch (call parse text)))
+    (if (is read Error)
+      (print (str "error: " (. (as read Error) message)))
+      (else
+        (print (str "value: " (. (as read Doc) name)))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Doc
+(type + Doc
+  (prop + name String)
+  (fn-do + This _
+    (param name _)
+  )
+)
 
-+ name String
+(type + ParseError (is Error))
 
-────────────────────
-+ This
-    - name
-
-━━━━━━━━━━━━━━━━━━━━
-+ ParseError is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ do parse Doc ?! ParseError
-    - text String
-
-?! ParseError("cannot read $text")
-    if text == "bad"
-= Doc(text)
+(fn-do + parse Doc (?! ParseError)
+  (param text String)
+  (throw (call ParseError (str "cannot read " text)) (if (== text "bad")))
+  (return (call Doc text))
+)
 ```
 
 ```output
@@ -2781,40 +2946,38 @@ error: cannot read bad
 
 ### A test for a class derived from the class of a union's case leaves the case on its false edge, since a value of the case may be of another class.
 
-```yumi
--- describe(0)
--- describe(1)
--- describe(2)
+```brix
+(main
+  (print (call describe 0))
+  (print (call describe 1))
+  (print (call describe 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Special is Error
+(type + Special (is Error)
+  (fn-do + This _
+    (param text String)
+    (= message text)
+  )
+)
 
-────────────────────
-+ This
-    - text String
+(fn-do _ pick I64 (?! Error)
+  (param n I64)
+  (throw (call Special "special") (if (== n 1)))
+  (throw (call Error "plain") (if (== n 2)))
+  (return (+ n 10))
+)
 
-message = text
-
-━━━━━━━━━━━━━━━━━━━━
-_ do pick I64 ?! Error
-    - n I64
-
-?! Special("special")
-    if n == 1
-?! Error("plain")
-    if n == 2
-= n + 10
-
-━━━━━━━━━━━━━━━━━━━━
-_ do describe String
-    - n I64
-
-. result = catch pick(n)
-if result is Special
-    = "special ${(result as Special).message}"
-if result is Error
-    = "error ${(result as Error).message}"
-= "value ${result as I64}"
+(fn-do _ describe String
+  (param n I64)
+  (let result (catch (call pick n)))
+  (if (is result Special)
+    (return (str "special " (. (as result Special) message)))
+  )
+  (if (is result Error)
+    (return (str "error " (. (as result Error) message)))
+  )
+  (return (str "value " (as result I64)))
+)
 ```
 
 ```output
@@ -2825,33 +2988,29 @@ error plain
 
 ### A property a conditional tests again after a call holds a value in the branch that finds one, though the call ended what an earlier test found of it.
 
-```yumi
-. holder = Holder()
-holder.name = "four"
--- holder.measure()
-holder.name = null
--- holder.measure()
+```brix
+(main
+  (let holder (call Holder))
+  (= (. holder name) "four")
+  (print (call (. holder measure)))
+  (= (. holder name) null)
+  (print (call (. holder measure)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
+(type + Holder
+  (prop + name (? String))
+  (fn-do + This _)
+  (fn-do + measure Size
+    (return-if 0 (if (not name)))
+    (let count (call twice 1))
+    (return (if-expr name (+ (. name length) count) 1))
+  )
+)
 
-+ name String?
-
-────────────────────
-+ This
-
-────────────────────
-+ do measure Size
-
-=? 0 if !name
-. count = twice(1)
-= if name then name.length + count else 1
-
-━━━━━━━━━━━━━━━━━━━━
-_ twice Size
-    - value Size
-
-value * 2
+(fn-expr _ twice Size
+  (param value Size)
+  (* value 2)
+)
 ```
 
 ```output
@@ -2861,29 +3020,27 @@ value * 2
 
 ### A test of a value for a case of a union named alone calls nothing, so what a test found of a property holds past it.
 
-```yumi
-Holder().run(Shape.circle(1.0))
+```brix
+(main
+  (call (. (call Holder) run) (call (. Shape circle) 1.0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
+(type + Holder
+  (prop + value (? Int) (= 0))
+  (fn-do + run _
+    (param shape Shape)
+    (return-if (if (not value)))
+    (let round (is shape .circle))
+    (let kind (type-of value))
+    (print kind)
+    (print round)
+  )
+)
 
-+ value Int? = 0
-
-────────────────────
-+ do run
-    - shape Shape
-
-=? if !value
-. round = shape is .circle
-. kind = type-of value
--- kind
--- round
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
-
-| circle(radius Float)
-| square(side Float)
+(type + Shape (is Union)
+  (variant circle (tuple (: radius Float)))
+  (variant square (tuple (: side Float)))
+)
 ```
 
 ```output
@@ -2893,27 +3050,25 @@ true
 
 ### A float `min` or `max` of the math module is answered in place, with no call, so what a test found of a property holds past it.
 
-```yumi
-/math
+```brix
+(import /math)
+(blank)
 
-. holder = Holder()
-holder.maximum = 2.0
--- holder.bounded(5.0)
--- holder.bounded(1.0)
+(main
+  (let holder (call Holder))
+  (= (. holder maximum) 2.0)
+  (print (call (. holder bounded) 5.0))
+  (print (call (. holder bounded) 1.0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ maximum F64?
-
-────────────────────
-+ This
-
-────────────────────
-+ do bounded F64
-    - candidate F64
-
-= if maximum then max(min(candidate, 9.0), maximum) else candidate
+(type + Holder
+  (prop + maximum (? F64))
+  (fn-do + This _)
+  (fn-do + bounded F64
+    (param candidate F64)
+    (return (if-expr maximum (call max (call min candidate 9.0) maximum) candidate))
+  )
+)
 ```
 
 ```output
@@ -2923,39 +3078,37 @@ holder.maximum = 2.0
 
 ### A row of a table read at an index is read in place, with no call, so what a test found of a property holds past it.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. holder = Holder()
-holder.name = "four"
--- holder.measure(0)
--- holder.measure(1)
-holder.name = null
--- holder.measure(0)
+(main
+  (let holder (call Holder))
+  (= (. holder name) "four")
+  (print (call (. holder measure) 0))
+  (print (call (. holder measure) 1))
+  (= (. holder name) null)
+  (print (call (. holder measure) 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 
-+ x I32
-+ y I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ name String?
-+ points Table'Point = Table'Point(2) • with Point(each as I32, 0)
-
-────────────────────
-+ This
-
-────────────────────
-+ do measure Size
-    - at Size
-
-=? 0 if !name
-if points[at].x == 0
-    = name.length
-= 1
+(type + Holder
+  (prop + name (? String))
+  (prop + points (of Table Point) (= (call (of Table Point) 2 (:with (call Point (as each I32) 0)))))
+  (fn-do + This _)
+  (fn-do + measure Size
+    (param at Size)
+    (return-if 0 (if (not name)))
+    (if (== (. ([] points at) x) 0)
+      (return (. name length))
+    )
+    (return 1)
+  )
+)
 ```
 
 ```output
@@ -2966,29 +3119,26 @@ if points[at].x == 0
 
 ### A force of an optional the flow does not know to hold a value may panic, which ends what is known of properties; a property read after it is forced again.
 
-```yumi
-. holder = Holder()
-holder.name = "four"
-holder.other = "ab"
--- holder.measure()
-holder.name = null
--- holder.measure()
+```brix
+(main
+  (let holder (call Holder))
+  (= (. holder name) "four")
+  (= (. holder other) "ab")
+  (print (call (. holder measure)))
+  (= (. holder name) null)
+  (print (call (. holder measure)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ name String?
-+ other String?
-
-────────────────────
-+ This
-
-────────────────────
-+ do measure Size
-
-=? 0 if !name
-. given = other!
-= name!.length + given.length
+(type + Holder
+  (prop + name (? String))
+  (prop + other (? String))
+  (fn-do + This _)
+  (fn-do + measure Size
+    (return-if 0 (if (not name)))
+    (let given (!! other))
+    (return (+ (. (!! name) length) (. given length)))
+  )
+)
 ```
 
 ```output
@@ -2998,27 +3148,24 @@ holder.name = null
 
 ### A local declared with the type its value already has is taken as it is, with no test that may panic, so what a test found of a property holds past it.
 
-```yumi
-. holder = Holder()
-holder.name = "four"
--- holder.measure()
-holder.name = null
--- holder.measure()
+```brix
+(main
+  (let holder (call Holder))
+  (= (. holder name) "four")
+  (print (call (. holder measure)))
+  (= (. holder name) null)
+  (print (call (. holder measure)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ name String?
-
-────────────────────
-+ This
-
-────────────────────
-+ do measure I64
-
-=? 0 if !name
-. extra I64 = 2i64
-= (name.length as I64) + extra
+(type + Holder
+  (prop + name (? String))
+  (fn-do + This _)
+  (fn-do + measure I64
+    (return-if 0 (if (not name)))
+    (let extra I64 2i64)
+    (return (+ (as (. name length) I64) extra))
+  )
+)
 ```
 
 ```output
@@ -3028,50 +3175,47 @@ holder.name = null
 
 ### A read of a lazy property calls for its value, which ends what a test found of a property.
 
-```yumi crash
-. holder = Holder()
-holder.name = "four"
--- holder.measure()
+```brix crash
+(main
+  (let holder (call Holder))
+  (= (. holder name) "four")
+  (print (call (. holder measure)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Helper
+(type + Helper
+  (prop + count Size (= 2))
+  (fn-do + This _)
+)
 
-+ count Size = 2
-
-────────────────────
-+ This
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ name String?
-_ helper := Helper()
-
-────────────────────
-+ This
-
-────────────────────
-+ do measure Size
-
-=? 0 if !name
-. found = helper.count
-= name.length + found
+(type + Holder
+  (prop + name (? String))
+  (prop _ helper _ (:= (call Helper)))
+  (fn-do + This _)
+  (fn-do + measure Size
+    (return-if 0 (if (not name)))
+    (let found (. helper count))
+    (return (+ (. name length) found))
+  )
+)
 ```
 
 ```output
-Exception: Property "length" is read from String?, which may be null; unwrap it first with ! or ?.
-<no file:28>
-    = name.length + found
-      ^^^^^^^^^^^
+Exception: Property "length" is read from String?, which may be null; unwrap it first with "(!! …)" or "(?. …)"
+<no file:20>
+        (return (+ (. name length) found))
+                   ^^^^^^^^^^^^^^^
 ```
 
 ### A condition reads an array's items by integer index, not as fields of a tuple.
 
-```yumi
-. values = U64[4]
-values[2] = 5
-if values[0] || values[2]
-    -- values[2]
+```brix
+(main
+  (let values ([] U64 4))
+  (= ([] values 2) 5)
+  (if (or ([] values 0) ([] values 2))
+    (print ([] values 2))
+  )
+)
 ```
 
 ```output
@@ -3080,45 +3224,42 @@ if values[0] || values[2]
 
 ### A map-filter stage reads its item as the union case its condition narrowed it to.
 
-```yumi
-. parts = List'Part()
-parts += Leaf("a")
-parts += Twig(2)
-parts += Leaf("b")
-for leaf in leaves(parts)
-    -- leaf.name
+```brix
+(main
+  (let parts (call (of List Part)))
+  (+= parts (call Leaf "a"))
+  (+= parts (call Twig 2))
+  (+= parts (call Leaf "b"))
+  (for (in leaf (call leaves parts))
+    (print (. leaf name))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
+(type + Leaf
+  (prop + name String)
+  (fn-do + This _
+    (param name _)
+  )
+)
 
-+ name String
+(type + Twig
+  (prop + size Int)
+  (fn-do + This _
+    (param size _)
+  )
+)
 
-────────────────────
-+ This
-    - name
+(type + Part (is Union)
+  (variant Leaf)
+  (variant Twig)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Twig
-
-+ size Int
-
-────────────────────
-+ This
-    - size
-
-━━━━━━━━━━━━━━━━━━━━
-+ Part is Union
-
-| Leaf
-| Twig
-
-━━━━━━━━━━━━━━━━━━━━
-+ leaves [Leaf]
-    - parts [Part]
-
-** parts
-?*> each as Leaf if each is Leaf
-|> List
+(fn-expr + leaves (list Leaf)
+  (param parts (list Part))
+  (spread parts)
+  (pipe ?*> (only-if (as each Leaf) (if (is each Leaf))))
+  (pipe |> List)
+)
 ```
 
 ```output
@@ -3128,32 +3269,28 @@ b
 
 ### A property written without a type is narrowed by a test as one with its type is.
 
-```yumi
-. holder = Holder()
--- holder.has-paths()
--- holder.has-tracked-paths()
+```brix
+(main
+  (let holder (call Holder))
+  (print (call (. holder has-paths)))
+  (print (call (. holder has-tracked-paths)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Change
+(type + Change
+  (prop + paths _ (= 2))
+)
 
-+ paths = 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ source Change? = Change()
-+ change = source
-+ tracked = #source
-
-────────────────────
-+ do has-paths Bool
-
-= change && change.paths > 0
-
-────────────────────
-+ do has-tracked-paths Bool
-
-= tracked && tracked.paths > 0
+(type + Holder
+  (prop + source (? Change) (= (call Change)))
+  (prop + change _ (= source))
+  (prop + tracked _ (= #source))
+  (fn-do + has-paths Bool
+    (return (and change (> (. change paths) 0)))
+  )
+  (fn-do + has-tracked-paths Bool
+    (return (and tracked (> (. tracked paths) 0)))
+  )
+)
 ```
 
 ```output
@@ -3163,29 +3300,31 @@ true
 
 ### A narrowed optional compared with null, alone and as the condition of a value
 
-```yumi
--- described("a/b")
--- described("ab")
--- tail("a/b")
--- tail("ab")
+```brix
+(main
+  (print (call described "a/b"))
+  (print (call described "ab"))
+  (print (call tail "a/b"))
+  (print (call tail "ab"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do described String
-    - path String
+(fn-do + described String
+  (param path String)
+  (let slash (call (. path find) "/"))
+  (if (!= slash null)
+    (return (str (!= slash null) " " (== slash null) " " (!= null slash)))
+  )
+  (return (str (!= slash null) " " (== slash null)))
+)
 
-. slash = path.find("/")
-if slash != null
-    = "${slash != null} ${slash == null} ${null != slash}"
-= "${slash != null} ${slash == null}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ tail String
-    - path String
-
-if slash != null && name.length > 0 then name else "none"
-
-.. slash = path.find("/")
-.. name = if slash != null then path[slash + 1 ...] else path
+(fn-expr + tail String
+  (param path String)
+  (if-expr (and (!= slash null) (> (. name length) 0)) name "none")
+  (where
+    (lazy slash (call (. path find) "/"))
+    (lazy name (if-expr (!= slash null) ([] path (... (+ slash 1))) path))
+  )
+)
 ```
 
 ```output
@@ -3197,36 +3336,33 @@ none
 
 ### A property tested after `value if` tests another property, read again after a call
 
-```yumi
-. holder = Holder()
--- holder.moved()
-holder.drag = Kind.shape
--- holder.moved()
+```brix
+(main
+  (let holder (call Holder))
+  (print (call (. holder moved)))
+  (= (. holder drag) (. Kind shape))
+  (print (call (. holder moved)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Kind is Union
+(type + Kind (is Union)
+  (variant shape)
+  (variant move)
+)
 
-| shape
-| move
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ count Int?
-+ drag = Kind.move
-
-────────────────────
-+ do placed Int
-
-= 1
-
-────────────────────
-+ do moved String
-
-. counted = count + 1 if count
-if drag == Kind.shape
-    = "shape ${placed()} ${counted ?? 0}"
-= "move ${drag == Kind.move} ${counted ?? 0}"
+(type + Holder
+  (prop + count (? Int))
+  (prop + drag _ (= (. Kind move)))
+  (fn-do + placed Int
+    (return 1)
+  )
+  (fn-do + moved String
+    (let counted (only-if (+ count 1) (if count)))
+    (if (== drag (. Kind shape))
+      (return (str "shape " (call placed) " " (?? counted 0)))
+    )
+    (return (str "move " (== drag (. Kind move)) " " (?? counted 0)))
+  )
+)
 ```
 
 ```output
@@ -3236,29 +3372,27 @@ shape 1 0
 
 ### A narrowed optional property that holds a callable object is called as the object it holds.
 
-```yumi
-. holder = Holder()
-holder.action = Action()
-holder.fire()
+```brix
+(main
+  (let holder (call Holder))
+  (= (. holder action) (call Action))
+  (call (. holder fire))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Action
+(type + Action
+  (fn-do + this _
+    (print "fired")
+  )
+)
 
-────────────────────
-+ do this
-
--- "fired"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ action Action?
-
-────────────────────
-+ do fire
-
-if action
-    action()
+(type + Holder
+  (prop + action (? Action))
+  (fn-do + fire _
+    (if action
+      (call action)
+    )
+  )
+)
 ```
 
 ```output
@@ -3267,10 +3401,12 @@ fired
 
 ### An optional local assigned a lambda holds a function until it is assigned again.
 
-```yumi
-. action Getter'Int?
-action = => 7
--- action()
+```brix
+(main
+  (let action (? (of Getter Int)))
+  (= action (=> () 7))
+  (print (call action))
+)
 ```
 
 ```output
@@ -3279,24 +3415,25 @@ action = => 7
 
 ### A guard whose body calls a function marked `@no-return` leaves, so what it tested is narrowed after it.
 
-```yumi
-. name = lookup("a")
-if !name
-    stop("no name")
--- name.length
+```brix
+(main
+  (let name (call lookup "a"))
+  (if (not name)
+    (call stop "no name")
+  )
+  (print (. name length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do lookup String?
-    - key String
+(fn-do + lookup (? String)
+  (param key String)
+  (return-if "Ada" (if (== key "a")))
+  (return null)
+)
 
-=? "Ada" if key == "a"
-= null
-
-━━━━━━━━━━━━━━━━━━━━
-+ do stop @no-return
-    - reason String
-
-?! Error(reason)
+(fn-do + stop _ @no-return
+  (param reason String)
+  (throw (call Error reason))
+)
 ```
 
 ```output
@@ -3305,21 +3442,21 @@ if !name
 
 ### A getter always returns, so it cannot be marked `@no-return`.
 
-```yumi compile-error
--- Box().size
+```brix compile-error
+(main
+  (print (. (call Box) size))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-────────────────────
-+ get size Int @no-return
-
-1
+(type + Box
+  (fn-expr + size Int :get @no-return
+    1
+  )
+)
 ```
 
 ```output
 Exception: @no-return is not supported on getters
 <no file:7>
-    ────────────────────
-    ^^^^^^^^^^^^^^^^^^^
+      (fn-expr + size Int :get @no-return
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```

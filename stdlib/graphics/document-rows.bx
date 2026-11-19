@@ -1,0 +1,385 @@
+(import ./boolean)
+(import ./color)
+(import ./matrix)
+(import ./path)
+(import ./point)
+(import ./primitives)
+(import ./stroke)
+(blank)
+(prop + vector-document-locked U8 (= 1))
+(prop + vector-document-hidden U8 (= 2))
+(prop + vector-document-guide U8 (= 4))
+(prop + vector-document-has-pivot U8 (= 8))
+(blank)
+(prop + vector-document-authored-opacity U8 (= 1))
+(prop + vector-document-authored-visible U8 (= 2))
+(prop + vector-document-authored-transform U8 (= 4))
+(prop + vector-document-authored-effects U8 (= 8))
+(blank)
+(prop + vector-document-authored-fill U8 (= 1))
+(prop + vector-document-authored-stroke U8 (= 2))
+(prop + vector-document-authored-stroke-width U8 (= 4))
+(prop + vector-document-authored-stroke-alignment U8 (= 8))
+(prop + vector-document-authored-stroke-cap U8 (= 16))
+(prop + vector-document-authored-stroke-join U8 (= 32))
+(prop + vector-document-authored-fill-rule U8 (= 64))
+
+(type + VectorDocumentNodeKind (is U8)
+  (variant free-node (= 0))
+  (variant group-node (= 1))
+  (variant network-node (= 2))
+  (variant image-node (= 3))
+)
+
+(type + VectorDocumentGroupKind (is U8)
+  (variant plain-group (= 0))
+  (variant script-group (= 1))
+  (variant embed-group (= 2))
+)
+
+(type + VectorDocumentFillKind (is U8)
+  (variant fill-inherit (= 0))
+  (variant fill-none (= 1))
+  (variant fill-from-stroke (= 2))
+  (variant fill-color (= 3))
+  (variant fill-stack (= 4))
+)
+
+(type + VectorDocumentStrokeKind (is U8)
+  (variant stroke-inherit (= 0))
+  (variant stroke-none (= 1))
+  (variant stroke-color (= 2))
+  (variant stroke-stack (= 3))
+)
+
+(type + VectorDocumentEffectKind (is U8)
+  (variant boolean-effect (= 0))
+  (variant offset-effect (= 1))
+  (variant stroke-effect (= 2))
+)
+
+(type + VectorDocumentValueKind (is U8)
+  (variant number-value (= 0))
+  (variant point-value (= 1))
+  (variant color-value (= 2))
+  (variant text-value (= 3))
+  (variant node-value (= 4))
+  (variant nodes-value (= 5))
+  (variant node-item (= 6))
+  (variant values-value (= 7))
+)
+
+(type + VectorDocumentExtent (is Struct)
+  (prop + start U32)
+  (prop + count U32)
+  (prop + capacity U32)
+)
+
+(type + VectorDocumentNode (is Struct)
+  (prop + id U64)
+  (prop + stamp U64)
+  (prop + geometry-stamp U64)
+  (prop + paint-stamp U64)
+  (prop + effects-stamp U64)
+  (prop + kind VectorDocumentNodeKind)
+  (prop + group-kind VectorDocumentGroupKind)
+  (prop + flags U8)
+  (prop + composite-authored U8)
+  (prop + parent U32)
+  (prop + first-child U32)
+  (prop + last-child U32)
+  (prop + prev-sibling U32)
+  (prop + next-sibling U32)
+  (prop + name Atom)
+  (prop + image Atom)
+  (prop + opacity F64)
+  (prop + transform Matrix)
+  (prop + rotation F64)
+  (prop + pivot Point)
+  (prop + view-box Rect)
+  (prop + geometry-bounds Rect)
+  (prop + bounds-stale Bool)
+  (prop + network-pending Bool)
+  (prop + effects VectorDocumentExtent)
+  (prop + effect-output U32)
+  (prop + paint-authored U8)
+  (prop + fill-kind VectorDocumentFillKind)
+  (prop + stroke-kind VectorDocumentStrokeKind)
+  (prop + fill-color RGBA)
+  (prop + stroke-color RGBA)
+  (prop + fill-layers VectorDocumentExtent)
+  (prop + stroke-layers VectorDocumentExtent)
+  (prop + stroke-width F64)
+  (prop + has-stroke-width Bool)
+  (prop + stroke-alignment U8)
+  (prop + stroke-cap U8)
+  (prop + stroke-join U8)
+  (prop + fill-rule U8)
+  (prop + vertices VectorDocumentExtent)
+  (prop + segments VectorDocumentExtent)
+  (prop + pairs VectorDocumentExtent)
+  (prop + regions VectorDocumentExtent)
+  (prop + next-vertex U64)
+  (prop + next-segment U64)
+  (prop + settings VectorDocumentExtent)
+  (prop + variables VectorDocumentExtent)
+  (prop + values-stamp U64)
+)
+
+(type + VectorDocumentVertex (is Struct)
+  (prop + id U64)
+  (prop + position Point)
+)
+
+(type + VectorDocumentSegment (is Struct)
+  (prop + id U64)
+  (prop + start U64)
+  (prop + end U64)
+  (prop + tangent-start Point)
+  (prop + tangent-end Point)
+  (prop + source U64)
+  (prop + source-start F64)
+  (prop + source-end F64)
+)
+
+(type + VectorDocumentPair (is Struct)
+  (prop + first-segment U64)
+  (prop + first-at-end Bool)
+  (prop + second-segment U64)
+  (prop + second-at-end Bool)
+  (prop + mirror-length Bool)
+)
+
+(type + VectorDocumentRegionFill (is Struct)
+  (prop + region U64)
+  (prop + has-fill Bool)
+  (prop + fill RGBA)
+  (prop + conflict Bool)
+)
+
+(type + VectorDocumentFillLayer (is Struct)
+  (prop + color RGBA)
+  (prop + visible Bool)
+)
+
+(type + VectorDocumentStrokeLayer (is Struct)
+  (prop + color RGBA)
+  (prop + visible Bool)
+  (prop + width F64)
+  (prop + has-width Bool)
+  (prop + alignment U8)
+  (prop + join U8)
+  (prop + cap U8)
+)
+
+(type + VectorDocumentEffect (is Struct)
+  (prop + kind VectorDocumentEffectKind)
+  (prop + enabled Bool)
+  (prop + mode BooleanEffectMode)
+  (prop + distance F64)
+  (prop + join-type U8)
+  (prop + miter-limit F64)
+  (prop + cap U8)
+)
+
+(type + VectorDocumentValueRow (is Struct)
+  (prop + key Atom)
+  (prop + kind VectorDocumentValueKind)
+  (prop + x F64)
+  (prop + y F64)
+  (prop + color RGBA)
+  (prop + text Atom)
+  (prop + id U64)
+  (prop + count U32)
+)
+
+(type + VectorDocumentEffectOutput (is Struct)
+  (prop + owner U32)
+  (prop + input-key U64)
+  (prop + paths VectorDocumentExtent)
+)
+
+(type + VectorDocumentOutputPath (is Struct)
+  (prop + verbs VectorDocumentExtent)
+  (prop + coords VectorDocumentExtent)
+  (prop + closed Bool)
+)
+
+(type + VectorDocumentPathVerb (is Struct)
+  (prop + verb PathVerb)
+)
+
+(type + VectorDocumentPathCoord (is Struct)
+  (prop + value F64)
+)
+
+(type + VectorDocumentIdSlot (is Struct)
+  (prop + id U64)
+  (prop + row U32)
+)
+
+(type + VectorDocumentChunk (is Struct)
+  (prop + summary U64)
+)
+
+(fn-expr + vector-document-optional-alignment _
+  (param value (? StrokeAlignment))
+  (match value
+    (case= null
+      0u8
+    )
+    (case= (. StrokeAlignment center)
+      1u8
+    )
+    (case= (. StrokeAlignment inside)
+      2u8
+    )
+    (default
+      3u8
+    )
+  )
+)
+
+(fn-expr + vector-document-alignment _
+  (param value U8)
+  (match? value
+    (case= 1
+      (. StrokeAlignment center)
+    )
+    (case= 2
+      (. StrokeAlignment inside)
+    )
+    (case= 3
+      (. StrokeAlignment outside)
+    )
+  )
+)
+
+(fn-expr + vector-document-optional-cap _
+  (param value (? LineCap))
+  (match value
+    (case= null
+      0u8
+    )
+    (case= (. LineCap butt)
+      1u8
+    )
+    (case= (. LineCap round)
+      2u8
+    )
+    (default
+      3u8
+    )
+  )
+)
+
+(fn-expr + vector-document-cap _
+  (param value U8)
+  (match? value
+    (case= 1
+      (. LineCap butt)
+    )
+    (case= 2
+      (. LineCap round)
+    )
+    (case= 3
+      (. LineCap square)
+    )
+  )
+)
+
+(fn-expr + vector-document-optional-join _
+  (param value (? LineJoin))
+  (match value
+    (case= null
+      0u8
+    )
+    (case= (. LineJoin miter)
+      1u8
+    )
+    (case= (. LineJoin round)
+      2u8
+    )
+    (default
+      3u8
+    )
+  )
+)
+
+(fn-expr + vector-document-join _
+  (param value U8)
+  (match? value
+    (case= 1
+      (. LineJoin miter)
+    )
+    (case= 2
+      (. LineJoin round)
+    )
+    (case= 3
+      (. LineJoin bevel)
+    )
+  )
+)
+
+(fn-expr + vector-document-optional-fill-rule _
+  (param value (? FillRule))
+  (match value
+    (case= null
+      0u8
+    )
+    (case= (. FillRule nonzero)
+      1u8
+    )
+    (default
+      2u8
+    )
+  )
+)
+
+(fn-expr + vector-document-fill-rule _
+  (param value U8)
+  (match? value
+    (case= 1
+      (. FillRule nonzero)
+    )
+    (case= 2
+      (. FillRule even-odd)
+    )
+  )
+)
+
+(fn-expr + vector-document-join-type-code _
+  (param value JoinType)
+  (match value
+    (case= (. JoinType bevel-join-type)
+      0u8
+    )
+    (case= (. JoinType square-join-type)
+      1u8
+    )
+    (case= (. JoinType miter-join-type)
+      2u8
+    )
+    (default
+      3u8
+    )
+  )
+)
+
+(fn-expr + vector-document-join-type _
+  (param value U8)
+  (match value
+    (case= 0
+      (. JoinType bevel-join-type)
+    )
+    (case= 1
+      (. JoinType square-join-type)
+    )
+    (case= 2
+      (. JoinType miter-join-type)
+    )
+    (default
+      (. JoinType round-join-type)
+    )
+  )
+)

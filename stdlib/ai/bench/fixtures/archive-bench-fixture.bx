@@ -1,0 +1,208 @@
+(import /ai)
+(import /data/json)
+(import /os/path)
+
+(fn-do + run-archive-bench-open Size (?! Error)
+  (param name String)
+  (param turns Size)
+  (param draws Bool)
+  (param rounds Size)
+  (let directory (call archive-bench-directory name))
+  (finally
+    (inline (call clean-archive-bench-directory directory))
+  )
+  (let chat (call archive-bench-chat "chat-1" turns draws))
+  (call archive-bench-save (call AIChatDatabase directory) chat)
+  (let checksum Size 0)
+  (for (in round (..< 0 rounds))
+    (let archive (call AIChatDatabase directory))
+    (+= checksum (. (call (. archive load-index) null) length))
+    (+= checksum (call archive-bench-checksum (call (. archive load) (. chat id))))
+  )
+  (return checksum)
+)
+
+(fn-do + run-archive-bench-save Size (?! Error)
+  (param name String)
+  (param turns Size)
+  (param draws Bool)
+  (let directory (call archive-bench-directory name))
+  (finally
+    (inline (call clean-archive-bench-directory directory))
+  )
+  (let archive (call AIChatDatabase directory))
+  (let chat (call AIChat "chat-1"))
+  (for (in turn (..< 0 turns))
+    (= chat (call append-chat-message chat "root" (call archive-bench-prompt chat turn)))
+    (call archive-bench-save archive chat)
+    (= chat (call append-chat-message chat "root" (call archive-bench-reply chat turn draws)))
+    (call archive-bench-save archive chat)
+  )
+  (return (call archive-bench-checksum (call (. (call AIChatDatabase directory) load) (. chat id))))
+)
+
+(fn-do _ archive-bench-save _ (?! Error)
+  (param archive AIChatDatabase)
+  (param chat AIChat)
+  (call (. archive save) chat "echo" (:is-listed true))
+)
+
+(fn-do _ archive-bench-checksum Size
+  (param chat AIChat)
+  (let total Size 0)
+  (for (in branch (. chat branches))
+    (for (in message (. branch messages))
+      (+= total (+ (. message parts length) (. message id length)))
+    )
+  )
+  (return total)
+)
+
+(fn-do _ archive-bench-chat AIChat (?! AIError)
+  (param id String)
+  (param turns Size)
+  (param draws Bool)
+  (let chat (call AIChat id))
+  (for (in turn (..< 0 turns))
+    (= chat (call append-chat-message chat "root" (call archive-bench-prompt chat turn)))
+    (= chat (call append-chat-message chat "root" (call archive-bench-reply chat turn draws)))
+  )
+  (return chat)
+)
+
+(fn-expr _ archive-bench-prompt AIChatMessage
+  (param chat AIChat)
+  (param turn Size)
+  (call AIChatMessage
+    (block
+      (arg (call chat-message-id chat (+ (* turn 2) 1)))
+      (arg (. AIMessageRole user))
+      (arg (str "Please look at step " turn " of the plan and fix whatever still fails."))
+      (arg "2026-08-21T00:00:00Z")
+    )
+  )
+)
+
+(fn-do _ archive-bench-reply AIChatMessage
+  (param chat AIChat)
+  (param turn Size)
+  (param draws Bool)
+  (let parts (call (of List AIMessagePart)))
+  (let steps Size (if-expr draws 9 40))
+  (for (in step (..< 0 steps))
+    (let key (str turn "-" step))
+    (if (!= (% step 3) 2)
+      (+= parts
+        (call AIReasoningPart
+          (block
+            (arg (str "reasoning-" key))
+            (arg (str "Checking step " step " before running it."))
+            (arg null)
+            (arg (as (call archive-bench-signature key) JSON))
+          )
+        )
+      )
+    )
+    (+= parts (call AIToolCallPart (str "call-" key) (str "toolu-" key) "Bash" (call archive-bench-arguments key)))
+    (+= parts (call archive-bench-result key draws (== step 0)))
+    (if (== (% step 5) 0)
+      (+= parts
+        (call AITextPart
+          (block
+            (arg (str "text-" key))
+            (arg (str "Step " step " passes now; the remaining failure is in the parser."))
+          )
+        )
+      )
+    )
+  )
+  (return
+    (call AIChatMessage
+      (block
+        (arg (call chat-message-id chat (+ (* turn 2) 2)))
+        (arg (. AIMessageRole assistant))
+        (arg parts)
+        (arg "2026-08-21T00:00:00Z")
+        (arg "claude-opus-5-5")
+        (arg null)
+        (arg (. AIFinishReason stop))
+      )
+    )
+  )
+)
+
+(fn-expr _ archive-bench-signature String
+  (param key String)
+  (++ (str "EqQBCkgIBxABGAIqQ" key) (* "Zm9yIHRoZSBiZW5jaCBzaWduYXR1cmUgYmxvY2sgb2YgYmFzZTY0IHRleHQgaGVyZQ" 40))
+)
+
+(fn-expr _ archive-bench-arguments JSON
+  (param key String)
+  (call (of Map String JSON)
+    (block
+      (:command (* (str "cd /Users/me/Code/project && bin/run test --selector file:tests/step-" key ".test --verbose --no-cache") 3))
+      (:description (str "Run the failing test for step " key))
+    )
+  )
+)
+
+(fn-do _ archive-bench-result AIToolResultPart
+  (param key String)
+  (param draws Bool)
+  (param has-image Bool)
+  (let text (* (str "src/parser/step-" key ".yumi:12: expected an expression after the arrow, found a newline\n") 16))
+  (return-if (call AIToolResultPart (str "result-" key) (str "toolu-" key) text text) (if (not draws)))
+  (let items (call (of List JSON)))
+  (if has-image
+    (+= items (call archive-bench-image key))
+  )
+  (+= items (call archive-bench-text-item text))
+  (return (call AIToolResultPart (str "result-" key) (str "toolu-" key) items text))
+)
+
+(fn-expr _ archive-bench-text-item JSON
+  (param text String)
+  (call (of Map String JSON)
+    (block
+      (:type "text")
+      (:text text)
+    )
+  )
+)
+
+(fn-expr _ archive-bench-image JSON
+  (param key String)
+  (call (of Map String JSON)
+    (block
+      (:type "image")
+      (:source source)
+    )
+  )
+  (where
+    (lazy source
+      (call (of Map String JSON)
+        (block
+          (:type "base64")
+          (entry "media_type" "image/png")
+          (:data (++ (str "iVBORw0KGgoAAAANSUhEUgAA" key) (* "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVphYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ejAxMjM0NTY3ODkrLw" 2000)))
+        )
+      )
+    )
+  )
+)
+
+(fn-do _ archive-bench-directory Path
+  (param name String)
+  (let directory (call Path (str "/tmp/ai-archive-bench-" name "-" (. (call Task) id)) 0))
+  (call clean-archive-bench-directory directory)
+  (return directory)
+)
+
+(fn-do _ clean-archive-bench-directory _
+  (param directory Path)
+  (return-if (if (not (. directory exists))))
+  (for (in child (. directory contents))
+    (call (. child delete))
+  )
+  (call (. directory delete))
+)

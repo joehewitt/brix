@@ -1,0 +1,44 @@
+; benchmark.meta description: Calls a door that wraps a C function in a hot loop, in a program that binds the door's effect elsewhere: each call outside the binding reads the effect's slot in the task's memory first.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /stdlib.h)
+(blank)
+
+(main
+  (let pass-count (as 200000000 I64))
+  (let checksum (as 0 I64))
+  (blank)
+  (+= checksum (call sum-magnitudes pass-count))
+  (do-with bench-world (call Fixed)
+    (+= checksum (call sum-magnitudes 1))
+  )
+  (blank)
+  (print (str "bench-result effects/door-bound-elsewhere checksum=" checksum))
+)
+
+(effect + bench-world
+  (claim C:labs)
+)
+
+(fn-do _ magnitude I64 (door bench-world)
+  (param n I64)
+  (return (call C:labs n))
+)
+
+(type _ Fixed
+  (fn-do + magnitude I64
+    (param n I64)
+    (return 1)
+  )
+)
+
+(fn-do _ sum-magnitudes I64
+  (param passes I64)
+  (let checksum (as 0 I64))
+  (let half (/ passes 2))
+  (for (in index (..< 0 passes))
+    (+= checksum (call magnitude (- index half)))
+  )
+  (return checksum)
+)

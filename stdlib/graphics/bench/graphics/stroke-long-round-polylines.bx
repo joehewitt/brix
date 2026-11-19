@@ -1,0 +1,71 @@
+; benchmark.meta description: Strokes long closed round polylines to expose overlap-scan cost.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /graphics/stroke)
+(import /math)
+(blank)
+
+(main
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 40))
+    (let source (call round-ring-polyline pass (+ 180 (% pass 17))))
+    (let stroked
+      (call stroke
+        (block
+          (arg source)
+          (arg (+ 6.0 (% pass 5)))
+          (arg .center)
+          (arg .round-join-type)
+          (arg .butt)
+          (arg 5)
+          (arg 0)
+        )
+      )
+    )
+    (+= checksum (+ (. source count) (call path-score stroked)))
+  )
+  (blank)
+  (print (str "bench-result graphics/stroke-long-round-polylines checksum=" checksum))
+)
+
+(fn-do _ round-ring-polyline _
+  (param seed Int)
+  (param count Int)
+  (let center (call Point 120 100))
+  (let radius (+ 68 (as (% seed 9) Float)))
+  (let path (call Path))
+  (for (in i (..< 0 count))
+    (let t (* (/ (as i Float) (as count Float)) π 2))
+    (let wobble (+ 1 (* (call sin (+ (* t 5) (* (as seed Float) 0.07))) 0.06)))
+    (let point (call Point (+ (. center x) (* (call cos t) radius wobble)) (+ (. center y) (* (call sin t) radius 0.72 wobble))))
+    (if (== i 0)
+      (call (. path move-to) point)
+      (else
+        (call (. path line-to) point)
+      )
+    )
+  )
+  (blank)
+  (call (. path close))
+  (return path)
+)
+
+(fn-expr _ path-score Size
+  (param path Path)
+  (case? (not (. path count))
+    0
+  )
+  (default
+    (+ (. path count) (call numeric-check (. path last-point x)) (call numeric-check (. path last-point y)))
+  )
+)
+
+(fn-expr _ numeric-check Size
+  (param value Coord)
+  (% (as (call abs (* value 1000)) Size) 1000003)
+)

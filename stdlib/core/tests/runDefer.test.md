@@ -1,18 +1,21 @@
 # Defer
 
-```yumi
-foo()
+```brix
+(main
+  (call foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-
-do finally
-    -- "goodbye"
-
-do finally
-    -- "ok"
-
--- "hello"
+(fn-do + foo _
+  (finally
+    (print "goodbye")
+  )
+  (blank)
+  (finally
+    (print "ok")
+  )
+  (blank)
+  (print "hello")
+)
 ```
 
 ```output
@@ -21,16 +24,19 @@ ok
 goodbye
 ```
 
-```yumi
-foo()
+```brix
+(main
+  (call foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-
-if (true)
-    do finally
-        -- "goodbye"
--- "hello"
+(fn-do + foo _
+  (if true
+    (finally
+      (print "goodbye")
+    )
+  )
+  (print "hello")
+)
 ```
 
 ```output
@@ -38,45 +44,41 @@ goodbye
 hello
 ```
 
-```yumi
-foo()
+```brix
+(main
+  (call foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + num _ (= 0))
+  (fn-do + This _
+    (param n _)
+    (= num n)
+    (print (str "hello " num))
+  )
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (print (str "goodbye " num))
+  )
+)
 
-+ num = 0
+(fn-do + show _
+  (param b _)
+  (param c _)
+  (print "show")
+  (return 1)
+)
 
-────────────────────
-+ This
-    - n
-
-num = n
--- "hello $num"
-
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
--- "goodbye $num"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - b
-    - c
-
--- "show"
-= 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-
-show(b, c)
-    .. b = use Thing(1)
-    .. c = use Thing(2)
+(fn-do + foo _
+  (call show b c
+    (block
+      (lazy b (use (call Thing 1)))
+      (lazy c (use (call Thing 2)))
+    )
+  )
+)
 ```
 
 ```output
@@ -87,25 +89,24 @@ goodbye 2
 goodbye 1
 ```
 
-```yumi
--- "hi"
-do use Thing()
-    -- "using"
--- "used"
+```brix
+(main
+  (print "hi")
+  (do-use (call Thing)
+    (print "using")
+  )
+  (print "used")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ do begin-using
-
--- "begin"
-= this
-
-────────────────────
-+ do end-using
-
--- "end"
+(type + Thing
+  (fn-do + begin-using _
+    (print "begin")
+    (return this)
+  )
+  (fn-do + end-using _
+    (print "end")
+  )
+)
 ```
 
 ```output
@@ -116,34 +117,42 @@ end
 used
 ```
 
-```yumi crash
-foo()
+```brix crash
+(main
+  (call foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-
-b
-    .. b = use Thing()
+(fn-expr + foo _
+  (scope b
+    (lazy b (use (call Thing)))
+  )
+)
 ```
 
 ```output
 Exception: Thing cannot be used, as it has no "begin-using" and is not Closable; declare "begin-using" and "end-using", or implement Closable
-<no file:11>
-        .. b = use Thing()
-               ^^^^^^^^^^^
+<no file:10>
+        (lazy b (use (call Thing)))
+                ^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-. attempt = do new
-    do finally
-        -- "ok"
-    ?! Panic("bad")
-catch failure
-    -- failure
-attempt.wait()
+```brix
+(main
+  (let attempt
+    (do-new
+      (finally
+        (print "ok")
+      )
+      (throw (call Panic "bad"))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -151,30 +160,37 @@ ok
 bad
 ```
 
-```yumi
-. attempt = do new
-    do finally
-        -- "main"
-    foo()
-catch failure
-    -- failure
-attempt.wait()
--- "done"
+```brix
+(main
+  (let attempt
+    (do-new
+      (finally
+        (print "main")
+      )
+      (call foo)
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+  (print "done")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
+(fn-do + foo _
+  (finally
+    (print "foo")
+  )
+  (blank)
+  (call bar)
+)
 
-do finally
-    -- "foo"
-
-bar()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bar
-
-do finally
-    -- "bar"
-?! Panic("bad")
+(fn-do + bar _
+  (finally
+    (print "bar")
+  )
+  (throw (call Panic "bad"))
+)
 ```
 
 ```output
@@ -187,50 +203,57 @@ done
 
 ### A value with no begin-using that is not Closable cannot be used.
 
-```yumi crash
-foo()
+```brix crash
+(main
+  (call foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (fn-do + end-using _
+    (throw (call Panic 42))
+  )
+)
 
-────────────────────
-+ do end-using
-
-?! Panic(42)
-
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-
-b
-    .. b = use Thing()
+(fn-expr + foo _
+  (scope b
+    (lazy b (use (call Thing)))
+  )
+)
 ```
 
 ```output
 Exception: Thing cannot be used, as it has no "begin-using" and is not Closable; declare "begin-using" and "end-using", or implement Closable
-<no file:16>
-        .. b = use Thing()
-               ^^^^^^^^^^^
+<no file:14>
+        (lazy b (use (call Thing)))
+                ^^^^^^^^^^^^^^^^^^
 ```
 
 ### A panic from a call in do finally is seen by earlier cleanup
 
-```yumi
-. attempt = do new
-    do finally
-        -- "first cleanup sees ${Task().failure}"
+```brix
+(main
+  (let attempt
+    (do-new
+      (finally
+        (print (str "first cleanup sees " (. (call Task) failure)))
+      )
+      (blank)
+      (finally
+        (print "before cleanup call")
+        (call foo)
+        (print "after cleanup call")
+      )
+      (on-failure _
+        (print)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-    do finally
-        -- "before cleanup call"
-        foo()
-        -- "after cleanup call"
-catch
-    --
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-
-?! Panic("cleanup call")
+(fn-do + foo _
+  (throw (call Panic "cleanup call"))
+)
 ```
 
 ```output
@@ -240,18 +263,26 @@ first cleanup sees cleanup call
 
 ### Direct panic in do finally is seen by earlier cleanup
 
-```yumi
-. attempt = do new
-    do finally
-        -- "first cleanup sees ${Task().failure}"
-
-    do finally
-        -- "before direct cleanup panic"
-        ?! Panic("direct cleanup")
-        -- "after direct cleanup panic"
-catch
-    --
-attempt.wait()
+```brix
+(main
+  (let attempt
+    (do-new
+      (finally
+        (print (str "first cleanup sees " (. (call Task) failure)))
+      )
+      (blank)
+      (finally
+        (print "before direct cleanup panic")
+        (throw (call Panic "direct cleanup"))
+        (print "after direct cleanup panic")
+      )
+      (on-failure _
+        (print)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -261,19 +292,28 @@ first cleanup sees direct cleanup
 
 ### Nested panic in do finally is seen by earlier cleanup
 
-```yumi
-. attempt = do new
-    do finally
-        -- "first cleanup sees ${Task().failure}"
-
-    do finally
-        if true
-            -- "inside cleanup branch"
-            ?! Panic("nested cleanup")
-        -- "after nested cleanup"
-catch
-    --
-attempt.wait()
+```brix
+(main
+  (let attempt
+    (do-new
+      (finally
+        (print (str "first cleanup sees " (. (call Task) failure)))
+      )
+      (blank)
+      (finally
+        (if true
+          (print "inside cleanup branch")
+          (throw (call Panic "nested cleanup"))
+        )
+        (print "after nested cleanup")
+      )
+      (on-failure _
+        (print)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -283,20 +323,28 @@ first cleanup sees nested cleanup
 
 ### Cleanup panic replaces the active panic
 
-```yumi
-. attempt = do new
-    do finally
-        -- "first cleanup sees ${Task().failure}"
-
-    do finally
-        -- "cleanup panic"
-        ?! Panic("cleanup")
-        -- "after cleanup panic"
-
-    ?! Panic("original")
-catch
-    --
-attempt.wait()
+```brix
+(main
+  (let attempt
+    (do-new
+      (finally
+        (print (str "first cleanup sees " (. (call Task) failure)))
+      )
+      (blank)
+      (finally
+        (print "cleanup panic")
+        (throw (call Panic "cleanup"))
+        (print "after cleanup panic")
+      )
+      (blank)
+      (throw (call Panic "original"))
+      (on-failure _
+        (print)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -306,21 +354,30 @@ first cleanup sees cleanup
 
 ### Remaining finalizers run after a cleanup panic
 
-```yumi
-. attempt = do new
-    do finally
-        -- "first cleanup sees ${Task().failure}"
-
-    do finally
-        -- "older cleanup"
-
-    do finally
-        -- "newer cleanup"
-        ?! Panic("newer")
-        -- "after newer cleanup"
-catch
-    --
-attempt.wait()
+```brix
+(main
+  (let attempt
+    (do-new
+      (finally
+        (print (str "first cleanup sees " (. (call Task) failure)))
+      )
+      (blank)
+      (finally
+        (print "older cleanup")
+      )
+      (blank)
+      (finally
+        (print "newer cleanup")
+        (throw (call Panic "newer"))
+        (print "after newer cleanup")
+      )
+      (on-failure _
+        (print)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -331,49 +388,60 @@ first cleanup sees newer
 
 ### Illegal to return in do finally
 
-```yumi crash
-do finally
-    = 1
+```brix crash
+(main
+  (finally
+    (return 1)
+  )
+)
 ```
 
 ```output
 Exception: Illegal deferred statement
-<no file:3>
-        = 1
-        ^^^
+<no file:4>
+        (return 1)
+        ^^^^^^^^^^
 ```
 
 ### A cleanup cannot break or continue the loop around it, though a loop inside it can.
 
-```yumi compile-error
-for i in 0 .. < 2
-    do finally
-        for j in 0 .. < 3
-            if j == 1
-                break
-        continue
+```brix compile-error
+(main
+  (for (in i (..< 0 2))
+    (finally
+      (for (in j (..< 0 3))
+        (if (== j 1)
+          (break)
+        )
+      )
+      (continue)
+    )
+  )
+)
 ```
 
 ```output
 Exception: A cleanup cannot "continue" the loop around it, as it runs however its block is left; write "continue" in the loop's body
-<no file:7>
-            continue
-            ^^^^^^^^
+<no file:10>
+          (continue)
+          ^^^^^^^^^^
 ```
 
 ### Defer with early return
 
-```yumi
--- foo()
+```brix
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-
-do finally
-    -- "bye"
--- "hi"
-= 1
--- "again"
+(fn-do + foo _
+  (finally
+    (print "bye")
+  )
+  (print "hi")
+  (return 1)
+  (print "again")
+)
 ```
 
 ```output
@@ -384,21 +452,24 @@ bye
 
 ### Defer with early return in nested scope
 
-```yumi
--- foo(2)
--- foo(0)
+```brix
+(main
+  (print (call foo 2))
+  (print (call foo 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - a
-
-do finally
-    -- "bye"
-
--- "hi"
-if a > 1
-    = 1
--- "again"
+(fn-do + foo _
+  (param a _)
+  (finally
+    (print "bye")
+  )
+  (blank)
+  (print "hi")
+  (if (> a 1)
+    (return 1)
+  )
+  (print "again")
+)
 ```
 
 ```output
@@ -411,57 +482,48 @@ bye
 unknown
 ```
 
-```yumi
-. foo = use Foo()
-. ticks = TickSource()
+```brix
+(main
+  (let foo (use (call Foo)))
+  (let ticks (call TickSource))
+  (blank)
+  (for (on t ticks)
+    (break)
+    ; This break is causing do finally cleanup here, which leads to a crash
+  )
+  (blank)
+  (print "bye")
+)
 
-for t on ticks
-    break
-    ` This break is causing do finally cleanup here, which leads to a crash
+(type + Foo
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (print "end")
+  )
+)
 
--- "bye"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
--- "end"
-
-━━━━━━━━━━━━━━━━━━━━
-+ TickSource
-    is Broadcastable'Int
-
-────────────────────
-+ get is-closed Bool
-
-false
-
-────────────────────
-+ do subscribe ?! Error
-    - subscriber Subscriber'Int
-
-subscriber(1, this)
-
-────────────────────
-+ do unsubscribe ?! Error
-    - subscriber Subscriber'Int
-
-────────────────────
-+ do subscribe ?! Error
-    - subscriber Subscribable'Int
-
-subscriber(1, this)
-
-────────────────────
-+ do unsubscribe ?! Error
-    - subscriber Subscribable'Int
+(type + TickSource
+  (implements (of Broadcastable Int))
+  (fn-expr + is-closed Bool :get
+    false
+  )
+  (fn-do + subscribe _ (?! Error)
+    (param subscriber (of Subscriber Int))
+    (call subscriber 1 this)
+  )
+  (fn-do + unsubscribe _ (?! Error)
+    (param subscriber (of Subscriber Int))
+  )
+  (fn-do + subscribe _ (?! Error)
+    (param subscriber (of Subscribable Int))
+    (call subscriber 1 this)
+  )
+  (fn-do + unsubscribe _ (?! Error)
+    (param subscriber (of Subscribable Int))
+  )
+)
 ```
 
 ```output
@@ -471,57 +533,65 @@ end
 
 ### Can't refer to names declared after the do finally, even though it may be executed after the name is declared
 
-```yumi crash
-do finally
-    -- y
-foo(0)
-. y = 9
+```brix crash
+(main
+  (finally
+    (print y)
+  )
+  (call foo 0)
+  (let y 9)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - n
-
-if n
-    ?! Panic()
+(fn-do + foo _
+  (param n _)
+  (if n
+    (throw (call Panic))
+  )
+)
 ```
 
 ```output
 Exception: Name "y" not found
-<no file:3>
-        -- y
-           ^
+<no file:4>
+        (print y)
+               ^
 ```
 
 ### A later do finally sees the names declared before it, though a statement before it may leave
 
-```yumi
-do finally
-    -- "first"
-. x = 1
-foo(0)
-. y = 9
-do finally
-    -- "second $y"
-show()
--- "end $x"
+```brix
+(main
+  (finally
+    (print "first")
+  )
+  (let x 1)
+  (call foo 0)
+  (let y 9)
+  (finally
+    (print (str "second " y))
+  )
+  (call show)
+  (print (str "end " x))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - n
+(fn-do + foo _
+  (param n _)
+  (if n
+    (throw (call Panic))
+  )
+)
 
-if n
-    ?! Panic()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-
-do finally
-    -- "inner first"
-foo(0)
-. z = 3
-do finally
-    -- "inner second $z"
-foo(0)
+(fn-do + show _
+  (finally
+    (print "inner first")
+  )
+  (call foo 0)
+  (let z 3)
+  (finally
+    (print (str "inner second " z))
+  )
+  (call foo 0)
+)
 ```
 
 ```output
@@ -534,28 +604,30 @@ first
 
 ### use bounded by lazy function in nested expression context
 
-```yumi
--- "before"
-. a =
-    foo.a
-    .. foo = use Foo()
--- "after"
+```brix
+(main
+  (print "before")
+  (let a
+    (block
+      (. foo a)
+      (lazy foo (use (call Foo)))
+    )
+  )
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ a = 1
-
-────────────────────
-+ begin-using
-
--- "begin"
-this
-
-────────────────────
-+ do end-using
-
--- "end"
+(type + Foo
+  (prop + a _ (= 1))
+  (fn-expr + begin-using _
+    (before
+      (print "begin")
+    )
+    this
+  )
+  (fn-do + end-using _
+    (print "end")
+  )
+)
 ```
 
 ```output
@@ -565,21 +637,23 @@ end
 after
 ```
 
-```yumi
-/core/arena
-/BxCore/BxCore.h
+```brix
+(import /core/arena)
+(import /BxCore/BxCore.h)
+(blank)
 
-. reserved-before = C:brixArenaRuntimeActiveBytes()
-. alias = owned-arena()
--- alias.state == 2
--- C:brixArenaRuntimeActiveBytes() == reserved-before
+(main
+  (let reserved-before (call C:brixArenaRuntimeActiveBytes))
+  (let alias (call owned-arena))
+  (print (== (. alias state) 2))
+  (print (== (call C:brixArenaRuntimeActiveBytes) reserved-before))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do owned-arena
-
-. arena = use Arena()
-arena.allocate'Byte(8192)
-= arena
+(fn-do + owned-arena _
+  (let arena (use (call Arena)))
+  (call (of (. arena allocate) Byte) 8192)
+  (return arena)
+)
 ```
 
 ```output
@@ -587,24 +661,26 @@ true
 true
 ```
 
-```yumi
-/core/arena
-/BxCore/BxCore.h
+```brix
+(import /core/arena)
+(import /BxCore/BxCore.h)
+(blank)
 
-. reserved-before = C:brixArenaRuntimeActiveBytes()
-. arena = Arena()
-. error = catch fail-with-arena(arena)
--- error is Error
--- arena.state == 2
--- C:brixArenaRuntimeActiveBytes() == reserved-before
+(main
+  (let reserved-before (call C:brixArenaRuntimeActiveBytes))
+  (let arena (call Arena))
+  (let error (catch (call fail-with-arena arena)))
+  (print (is error Error))
+  (print (== (. arena state) 2))
+  (print (== (call C:brixArenaRuntimeActiveBytes) reserved-before))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fail-with-arena
-    - arena Arena
-
-use arena
-arena.allocate'Byte(8192)
-?! Error("expected")
+(fn-do + fail-with-arena _
+  (param arena Arena)
+  (use arena)
+  (call (of (. arena allocate) Byte) 8192)
+  (throw (call Error "expected"))
+)
 ```
 
 ```output
@@ -613,21 +689,28 @@ true
 true
 ```
 
-```yumi
-/core/arena
-/BxCore/BxCore.h
+```brix
+(import /core/arena)
+(import /BxCore/BxCore.h)
+(blank)
 
-. reserved-before = C:brixArenaRuntimeActiveBytes()
-. arena = Arena()
-. attempt = do new
-    use arena
-    arena.allocate'Byte(8192)
-    ?! Panic("arena panic")
-catch failure
-    -- failure
-    -- arena.state == 2
-    -- C:brixArenaRuntimeActiveBytes() == reserved-before
-attempt.wait()
+(main
+  (let reserved-before (call C:brixArenaRuntimeActiveBytes))
+  (let arena (call Arena))
+  (let attempt
+    (do-new
+      (use arena)
+      (call (of (. arena allocate) Byte) 8192)
+      (throw (call Panic "arena panic"))
+      (on-failure failure
+        (print failure)
+        (print (== (. arena state) 2))
+        (print (== (call C:brixArenaRuntimeActiveBytes) reserved-before))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -636,15 +719,19 @@ true
 true
 ```
 
-```yumi
-/core/arena
-/BxCore/BxCore.h
+```brix
+(import /core/arena)
+(import /BxCore/BxCore.h)
+(blank)
 
-. reserved-before = C:brixArenaRuntimeReservedBytes()
-do
-    use Arena(8192)
-    -- C:brixArenaRuntimeReservedBytes() > reserved-before
--- C:brixArenaRuntimeReservedBytes() == reserved-before
+(main
+  (let reserved-before (call C:brixArenaRuntimeReservedBytes))
+  (do
+    (use (call Arena 8192))
+    (print (> (call C:brixArenaRuntimeReservedBytes) reserved-before))
+  )
+  (print (== (call C:brixArenaRuntimeReservedBytes) reserved-before))
+)
 ```
 
 ```output
@@ -654,38 +741,32 @@ true
 
 ### Each instantiation of a generic function gets its own use cleanup.
 
-```yumi
-show(1)
-show(2.5)
+```brix
+(main
+  (call show 1)
+  (call show 2.5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + num _ (= 0))
+  (fn-do + This _
+    (param n _)
+    (= num n)
+    (print (str "hello " num))
+  )
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (print (str "goodbye " num))
+  )
+)
 
-+ num = 0
-
-────────────────────
-+ This
-    - n
-
-num = n
--- "hello $num"
-
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
--- "goodbye $num"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show'T
-    - value T
-
-. thing = use Thing(1)
--- "show $value"
+(fn-do + (of show T) _
+  (param value T)
+  (let thing (use (call Thing 1)))
+  (print (str "show " value))
+)
 ```
 
 ```output
@@ -699,26 +780,26 @@ goodbye 1
 
 ### A later iteration that skips a use does not end the earlier iteration's value again.
 
-```yumi
-for i in 0 .. < 3
-    -- i == 0 && foo.a == 1
-    .. foo = use Foo()
+```brix
+(main
+  (for (in i (..< 0 3))
+    (print (and (== i 0) (== (. foo a) 1)))
+    (lazy foo (use (call Foo)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ a = 1
-
-────────────────────
-+ begin-using
-
--- "begin"
-this
-
-────────────────────
-+ do end-using
-
--- "end"
+(type + Foo
+  (prop + a _ (= 1))
+  (fn-expr + begin-using _
+    (before
+      (print "begin")
+    )
+    this
+  )
+  (fn-do + end-using _
+    (print "end")
+  )
+)
 ```
 
 ```output
@@ -731,46 +812,55 @@ false
 
 ### A panic in cleanup on a normal exit unwinds to the caller after the remaining cleanup runs.
 
-```yumi
-guard(=> do finish(false))
-guard(=> do finish(true))
-guard(=> do nested())
+```brix
+(main
+  (call guard (=> () :do (call finish false)))
+  (call guard (=> () :do (call finish true)))
+  (call guard (=> () :do (call nested)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do guard
-    - body
+(fn-do + guard _
+  (param body _)
+  (let attempt
+    (do-new
+      (call body)
+      (print "returned")
+      (on-failure failure
+        (print (str "caught " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. attempt = do new
-    body()
-    -- "returned"
-catch failure
-    -- "caught $failure"
-attempt.wait()
+(fn-do + finish _
+  (param fail Bool)
+  (finally
+    (print "older")
+  )
+  (blank)
+  (finally
+    (print "newer")
+    (if fail
+      (throw (call Panic "newer"))
+    )
+  )
+  (blank)
+  (print "body")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do finish
-    - fail Bool
-
-do finally
-    -- "older"
-
-do finally
-    -- "newer"
-    if fail
-        ?! Panic("newer")
-
--- "body"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do nested
-
-do finally
-    -- "outer cleanup"
-do
-    do finally
-        ?! Panic("block")
-    -- "in block"
--- "after block"
+(fn-do + nested _
+  (finally
+    (print "outer cleanup")
+  )
+  (do
+    (finally
+      (throw (call Panic "block"))
+    )
+    (print "in block")
+  )
+  (print "after block")
+)
 ```
 
 ```output
@@ -789,52 +879,43 @@ caught block
 
 ### A use in a method that a subclass also reaches through super compiles in each copy of the method.
 
-```yumi
-. base = Opener()
-base.open()
-. child = ChildOpener()
-child.label = "child"
-child.open()
+```brix
+(main
+  (let base (call Opener))
+  (call (. base open))
+  (let child (call ChildOpener))
+  (= (. child label) "child")
+  (call (. child open))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Frame
+(type + Frame
+  (prop + owner Opener)
+  (fn-do + This _
+    (param owner _)
+  )
+  (fn-do + begin-using _
+    (print (str "begin " (. owner label)))
+    (return this)
+  )
+  (fn-do + end-using _
+    (print (str "end " (. owner label)))
+  )
+)
 
-+ owner Opener
+(type + Opener
+  (prop + label _ (= "base"))
+  (fn-do + open _
+    (let frame (use (call Frame this)))
+    (print (str "open " (. frame owner label)))
+  )
+)
 
-────────────────────
-+ This
-    - owner
-
-────────────────────
-+ do begin-using
-
--- "begin ${owner.label}"
-= this
-
-────────────────────
-+ do end-using
-
--- "end ${owner.label}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Opener
-
-+ label = "base"
-
-────────────────────
-+ do open
-
-. frame = use Frame(this)
--- "open ${frame.owner.label}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ ChildOpener is Opener
-
-────────────────────
-+ do open
-
--- "child first"
-super.open()
+(type + ChildOpener (is Opener)
+  (fn-do + open _
+    (print "child first")
+    (call (. super open))
+  )
+)
 ```
 
 ```output
@@ -849,36 +930,34 @@ end child
 
 ### A use in a loop's body ends at each turn, and where continue or break leaves it.
 
-```yumi
-for i in 0 .. < 4
-    . t = use Thing(i)
-    if i == 1
-        continue
-    if i == 3
-        break
-    -- "body $i"
--- "done"
+```brix
+(main
+  (for (in i (..< 0 4))
+    (let t (use (call Thing i)))
+    (if (== i 1)
+      (continue)
+    )
+    (if (== i 3)
+      (break)
+    )
+    (print (str "body " i))
+  )
+  (print "done")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ n = 0
-
-────────────────────
-+ This
-    - n
-
--- "hello $n"
-
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
--- "bye $n"
+(type + Thing
+  (prop + n _ (= 0))
+  (fn-do + This _
+    (param n _)
+    (print (str "hello " n))
+  )
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (print (str "bye " n))
+  )
+)
 ```
 
 ```output
@@ -897,35 +976,31 @@ done
 
 ### A use in a nested block ends where the block ends.
 
-```yumi
-. a = 1
-if a == 1
-    . t = use Thing(1)
-    -- "in if"
--- "after if"
-. t2 = use Thing(2)
--- "end"
+```brix
+(main
+  (let a 1)
+  (if (== a 1)
+    (let t (use (call Thing 1)))
+    (print "in if")
+  )
+  (print "after if")
+  (let t2 (use (call Thing 2)))
+  (print "end")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ n = 0
-
-────────────────────
-+ This
-    - n
-
--- "hello $n"
-
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
--- "bye $n"
+(type + Thing
+  (prop + n _ (= 0))
+  (fn-do + This _
+    (param n _)
+    (print (str "hello " n))
+  )
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (print (str "bye " n))
+  )
+)
 ```
 
 ```output
@@ -940,40 +1015,35 @@ bye 2
 
 ### A return ends the uses open, newest first.
 
-```yumi
--- f(true)
--- f(false)
+```brix
+(main
+  (print (call f true))
+  (print (call f false))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do f Int
-    - early Bool
+(fn-do + f Int
+  (param early Bool)
+  (let t (use (call Thing 5)))
+  (if early
+    (return 1)
+  )
+  (let u (use (call Thing 6)))
+  (return 2)
+)
 
-. t = use Thing(5)
-if early
-    = 1
-. u = use Thing(6)
-= 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ n = 0
-
-────────────────────
-+ This
-    - n
-
--- "hello $n"
-
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
--- "bye $n"
+(type + Thing
+  (prop + n _ (= 0))
+  (fn-do + This _
+    (param n _)
+    (print (str "hello " n))
+  )
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (print (str "bye " n))
+  )
+)
 ```
 
 ```output
@@ -989,34 +1059,30 @@ bye 5
 
 ### A lazy local whose value is a use ends with the block of the read that evaluates it.
 
-```yumi
--- "start"
--- t.n
-if true
-    -- "inner ${t.n}"
--- "end"
-.. t = use Thing(8)
+```brix
+(main
+  (print "start")
+  (print (. t n))
+  (if true
+    (print (str "inner " (. t n)))
+  )
+  (print "end")
+  (lazy t (use (call Thing 8)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ n = 0
-
-────────────────────
-+ This
-    - n
-
--- "hello $n"
-
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
--- "bye $n"
+(type + Thing
+  (prop + n _ (= 0))
+  (fn-do + This _
+    (param n _)
+    (print (str "hello " n))
+  )
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (print (str "bye " n))
+  )
+)
 ```
 
 ```output
@@ -1030,29 +1096,34 @@ bye 8
 
 ### A panic raised by end-using is seen by a do finally opened before the use.
 
-```yumi
-. attempt = do new
-    do finally
-        -- "cleanup sees ${Task().failure}"
-    . t = use Bad()
-catch
-    --
-attempt.wait()
+```brix
+(main
+  (let attempt
+    (do-new
+      (finally
+        (print (str "cleanup sees " (. (call Task) failure)))
+      )
+      (let t (use (call Bad)))
+      (on-failure _
+        (print)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bad
-
-────────────────────
-+ begin-using
-
--- "begin"
-this
-
-────────────────────
-+ do end-using
-
--- "end"
-?! Panic("end failed")
+(type + Bad
+  (fn-expr + begin-using _
+    (before
+      (print "begin")
+    )
+    this
+  )
+  (fn-do + end-using _
+    (print "end")
+    (throw (call Panic "end failed"))
+  )
+)
 ```
 
 ```output
@@ -1063,35 +1134,33 @@ cleanup sees end failed
 
 ### A do use in a loop's body ends at each turn, and where continue leaves it.
 
-```yumi
-. items = [1, 2, 3]
-for i in items
-    do use Thing(i)
-        if i == 2
-            continue
-        -- "item $i"
--- "done"
+```brix
+(main
+  (let items (list 1 2 3))
+  (for (in i items)
+    (do-use (call Thing i)
+      (if (== i 2)
+        (continue)
+      )
+      (print (str "item " i))
+    )
+  )
+  (print "done")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ n = 0
-
-────────────────────
-+ This
-    - n
-
--- "hello $n"
-
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
--- "bye $n"
+(type + Thing
+  (prop + n _ (= 0))
+  (fn-do + This _
+    (param n _)
+    (print (str "hello " n))
+  )
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (print (str "bye " n))
+  )
+)
 ```
 
 ```output
@@ -1108,42 +1177,35 @@ done
 
 ### An error that leaves a function ends the uses open.
 
-```yumi
-. r = catch work()
--- r
+```brix
+(main
+  (let r (catch (call work)))
+  (print r)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do work Int ?! Error
+(fn-do + work Int (?! Error)
+  (let t (use (call Thing 2)))
+  (let n (call fail))
+  (return n)
+)
 
-. t = use Thing(2)
-. n = fail()
-= n
+(fn-do + fail Int (?! Error)
+  (throw (call Error "failed"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fail Int ?! Error
-
-?! Error("failed")
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ n = 0
-
-────────────────────
-+ This
-    - n
-
--- "hello $n"
-
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
--- "bye $n"
+(type + Thing
+  (prop + n _ (= 0))
+  (fn-do + This _
+    (param n _)
+    (print (str "hello " n))
+  )
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (print (str "bye " n))
+  )
+)
 ```
 
 ```output
@@ -1154,39 +1216,40 @@ failed
 
 ### An arm of a match given as a value is a block of its own: the uses and `do finally` it opens end where it does, newest first.
 
-```yumi
-. k = 1
-. v = match k
-    |= 1
-        . t = use Thing(1)
-        do finally
-            -- "arm done"
-        t.n + u.n
-        .. u = use Thing(2)
-    ??
+```brix
+(main
+  (let k 1)
+  (let v
+    (match k
+      (case= 1
+        (let t (use (call Thing 1)))
+        (finally
+          (print "arm done")
+        )
+        (+ (. t n) (. u n))
+        (lazy u (use (call Thing 2)))
+      )
+      (default
         0
--- "v $v"
+      )
+    )
+  )
+  (print (str "v " v))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ n = 0
-
-────────────────────
-+ This
-    - n
-
--- "hello $n"
-
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
--- "bye $n"
+(type + Thing
+  (prop + n _ (= 0))
+  (fn-do + This _
+    (param n _)
+    (print (str "hello " n))
+  )
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (print (str "bye " n))
+  )
+)
 ```
 
 ```output
@@ -1200,38 +1263,39 @@ v 3
 
 ### An arm given as a value ends the use it opens each time it runs.
 
-```yumi
-for k in 0 .. < 3
-    . v = match k
-        |= 1
-            . t = use Thing(k)
-            t.n * 10
-        ??
-            u.n
-            .. u = use Thing(k + 5)
-    -- "v $v"
--- "done"
+```brix
+(main
+  (for (in k (..< 0 3))
+    (let v
+      (match k
+        (case= 1
+          (let t (use (call Thing k)))
+          (* (. t n) 10)
+        )
+        (default
+          (. u n)
+          (lazy u (use (call Thing (+ k 5))))
+        )
+      )
+    )
+    (print (str "v " v))
+  )
+  (print "done")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ n = 0
-
-────────────────────
-+ This
-    - n
-
--- "hello $n"
-
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
--- "bye $n"
+(type + Thing
+  (prop + n _ (= 0))
+  (fn-do + This _
+    (param n _)
+    (print (str "hello " n))
+  )
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (print (str "bye " n))
+  )
+)
 ```
 
 ```output
@@ -1249,193 +1313,191 @@ done
 
 ### A panic leaving main where a `do finally` is open is headed by the first check made since it opened.
 
-```yumi crash
-. a = Nested(Leaf(1) as View, 1) as View
-. b = Nested(Other() as View, 1) as View
--- maybe(1)
-do finally
-    -- "fin"
--- "go"
--- a == b
+```brix crash
+(main
+  (let a (as (call Nested (as (call Leaf 1) View) 1) View))
+  (let b (as (call Nested (as (call Other) View) 1) View))
+  (print (call maybe 1))
+  (finally
+    (print "fin")
+  )
+  (print "go")
+  (print (== a b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do maybe Int
-    - k Int
+(fn-do + maybe Int
+  (param k Int)
+  (if (== k 0)
+    (throw (call Panic "zero"))
+  )
+  (return k)
+)
 
-if k == 0
-    ?! Panic("zero")
-= k
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + Leaf (is (tuple (: value I32)))
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is (value I32)
-    is View
+(type + Other
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Other
-    is View
-
-━━━━━━━━━━━━━━━━━━━━
-+ Nested is (inner View, marker I32)
-    is View
+(type + Nested (is (tuple (: inner View) (: marker I32)))
+  (implements View)
+)
 ```
 
 ```stderr
 Unhandled panic: Unsupported interface equality: concrete types differ
-<no file:8>
+<no file:10>
 
 Task 1
 
 Stack trace:
   0  __source__:InterfaceEquality:Class:__source__:Nested:Class:__source__:View no file
-  1  __source__:main no file:8:4
+  1  __source__:main no file:10:10
   2  __source__:init.__source__ no file
   3  __source__:brix.main no file
 ```
 
 ### A panic leaving main after a block whose cleanups have run is headed by the first check made after the block.
 
-```yumi crash
-. a = Nested(Leaf(1) as View, 1) as View
-. b = Nested(Other() as View, 1) as View
-do
-    do finally
-        -- "inner fin"
-    -- maybe(2)
--- "after"
--- a == b
+```brix crash
+(main
+  (let a (as (call Nested (as (call Leaf 1) View) 1) View))
+  (let b (as (call Nested (as (call Other) View) 1) View))
+  (do
+    (finally
+      (print "inner fin")
+    )
+    (print (call maybe 2))
+  )
+  (print "after")
+  (print (== a b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do maybe Int
-    - k Int
+(fn-do + maybe Int
+  (param k Int)
+  (if (== k 0)
+    (throw (call Panic "zero"))
+  )
+  (return k)
+)
 
-if k == 0
-    ?! Panic("zero")
-= k
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + Leaf (is (tuple (: value I32)))
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is (value I32)
-    is View
+(type + Other
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Other
-    is View
-
-━━━━━━━━━━━━━━━━━━━━
-+ Nested is (inner View, marker I32)
-    is View
+(type + Nested (is (tuple (: inner View) (: marker I32)))
+  (implements View)
+)
 ```
 
 ```stderr
 Unhandled panic: Unsupported interface equality: concrete types differ
-<no file:9>
+<no file:12>
 
 Task 1
 
 Stack trace:
   0  __source__:InterfaceEquality:Class:__source__:Nested:Class:__source__:View no file
-  1  __source__:main no file:9:4
+  1  __source__:main no file:12:10
   2  __source__:init.__source__ no file
   3  __source__:brix.main no file
 ```
 
 ### A panic leaving main where a `use` is open is headed by the `use`, whose `begin-using` is the first check made with it open.
 
-```yumi crash
-. a = Nested(Leaf(1) as View, 1) as View
-. b = Nested(Other() as View, 1) as View
-. t = use Res(1)
--- "go"
--- a == b
+```brix crash
+(main
+  (let a (as (call Nested (as (call Leaf 1) View) 1) View))
+  (let b (as (call Nested (as (call Other) View) 1) View))
+  (let t (use (call Res 1)))
+  (print "go")
+  (print (== a b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is (value I32)
-    is View
+(type + Leaf (is (tuple (: value I32)))
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Other
-    is View
+(type + Other
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Nested is (inner View, marker I32)
-    is View
+(type + Nested (is (tuple (: inner View) (: marker I32)))
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Res
-
-+ n = 0
-
-────────────────────
-+ This
-    - n
-
-────────────────────
-+ begin-using
-
--- "begin $n"
-this
-
-────────────────────
-+ do end-using
-
--- "end $n"
-if n >= 100
-    ?! Panic("end panic $n")
+(type + Res
+  (prop + n _ (= 0))
+  (fn-do + This _
+    (param n _)
+  )
+  (fn-expr + begin-using _
+    (before
+      (print (str "begin " n))
+    )
+    this
+  )
+  (fn-do + end-using _
+    (print (str "end " n))
+    (if (>= n 100)
+      (throw (call Panic (str "end panic " n)))
+    )
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: Unsupported interface equality: concrete types differ
-<no file:4>
+<no file:5>
 
 Task 1
 
 Stack trace:
   0  __source__:InterfaceEquality:Class:__source__:Nested:Class:__source__:View no file
-  1  __source__:main no file:6:4
+  1  __source__:main no file:7:10
   2  __source__:init.__source__ no file
   3  __source__:brix.main no file
 ```
 
 ### A side of a conditional or of `??` is no block of its own: a use read there ends where the block around it does.
 
-```yumi
-. o Int? = null
-. v = (if o == null then t.n else 0)
--- "v $v"
-. w = o ?? u.n
--- "w $w"
--- "end"
-.. t = use Thing(5)
-.. u = use Thing(6)
+```brix
+(main
+  (let o (? Int) null)
+  (let v (if-expr (== o null) (. t n) 0))
+  (print (str "v " v))
+  (let w (?? o (. u n)))
+  (print (str "w " w))
+  (print "end")
+  (lazy t (use (call Thing 5)))
+  (lazy u (use (call Thing 6)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ n = 0
-
-────────────────────
-+ This
-    - n
-
--- "hello $n"
-
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
--- "bye $n"
+(type + Thing
+  (prop + n _ (= 0))
+  (fn-do + This _
+    (param n _)
+    (print (str "hello " n))
+  )
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (print (str "bye " n))
+  )
+)
 ```
 
 ```output
@@ -1450,37 +1512,40 @@ bye 5
 
 ### A panic a cleanup raises where a block of main ends, with no check made before, is reported with no source.
 
-```yumi crash
-. a = Nested(Leaf(1) as View, 1) as View
-. b = Nested(Other() as View, 1) as View
-do
-    do finally
-        -- a == b
-    -- "in"
--- "after"
+```brix crash
+(main
+  (let a (as (call Nested (as (call Leaf 1) View) 1) View))
+  (let b (as (call Nested (as (call Other) View) 1) View))
+  (do
+    (finally
+      (print (== a b))
+    )
+    (print "in")
+  )
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do maybe Int
-    - k Int
+(fn-do + maybe Int
+  (param k Int)
+  (if (== k 0)
+    (throw (call Panic "zero"))
+  )
+  (return k)
+)
 
-if k == 0
-    ?! Panic("zero")
-= k
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + Leaf (is (tuple (: value I32)))
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is (value I32)
-    is View
+(type + Other
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Other
-    is View
-
-━━━━━━━━━━━━━━━━━━━━
-+ Nested is (inner View, marker I32)
-    is View
+(type + Nested (is (tuple (: inner View) (: marker I32)))
+  (implements View)
+)
 ```
 
 ```stderr
@@ -1491,44 +1556,47 @@ Task 1
 
 Stack trace:
   0  __source__:InterfaceEquality:Class:__source__:Nested:Class:__source__:View no file
-  1  __source__:main no file:6:12
+  1  __source__:main no file:7:14
   2  __source__:init.__source__ no file
   3  __source__:brix.main no file
 ```
 
 ### The landing pad a cleanup's panic makes where its block ends keeps no source a later check would give it.
 
-```yumi crash
-. a = Nested(Leaf(1) as View, 1) as View
-. b = Nested(Other() as View, 1) as View
-do
-    do finally
-        -- a == b
-    -- "in"
--- maybe(1)
+```brix crash
+(main
+  (let a (as (call Nested (as (call Leaf 1) View) 1) View))
+  (let b (as (call Nested (as (call Other) View) 1) View))
+  (do
+    (finally
+      (print (== a b))
+    )
+    (print "in")
+  )
+  (print (call maybe 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do maybe Int
-    - k Int
+(fn-do + maybe Int
+  (param k Int)
+  (if (== k 0)
+    (throw (call Panic "zero"))
+  )
+  (return k)
+)
 
-if k == 0
-    ?! Panic("zero")
-= k
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + Leaf (is (tuple (: value I32)))
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is (value I32)
-    is View
+(type + Other
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Other
-    is View
-
-━━━━━━━━━━━━━━━━━━━━
-+ Nested is (inner View, marker I32)
-    is View
+(type + Nested (is (tuple (: inner View) (: marker I32)))
+  (implements View)
+)
 ```
 
 ```stderr
@@ -1539,25 +1607,33 @@ Task 1
 
 Stack trace:
   0  __source__:InterfaceEquality:Class:__source__:Nested:Class:__source__:View no file
-  1  __source__:main no file:6:12
+  1  __source__:main no file:7:14
   2  __source__:init.__source__ no file
   3  __source__:brix.main no file
 ```
 
 ### Cleanup that allocates runs to completion while a panic unwinds
 
-```yumi
-. attempt = do new
-    do finally
-        . parts = List'String()
-        for index in 0 .. < 3
-            parts += "part $index"
-        -- "cleanup ${parts.length} ${parts[2]}"
-
-    ?! Panic("original")
-catch failure
-    -- "caught $failure"
-attempt.wait()
+```brix
+(main
+  (let attempt
+    (do-new
+      (finally
+        (let parts (call (of List String)))
+        (for (in index (..< 0 3))
+          (+= parts (str "part " index))
+        )
+        (print (str "cleanup " (. parts length) " " ([] parts 2)))
+      )
+      (blank)
+      (throw (call Panic "original"))
+      (on-failure failure
+        (print (str "caught " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -1567,32 +1643,39 @@ caught original
 
 ### Cleanup in a caller still runs to completion after a callee's cleanup allocated
 
-```yumi
-. attempt = do new
-    do finally
-        -- "outer ${label(2)}"
+```brix
+(main
+  (let attempt
+    (do-new
+      (finally
+        (print (str "outer " (call label 2)))
+      )
+      (blank)
+      (call work)
+      (on-failure failure
+        (print (str "caught " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-    work()
-catch failure
-    -- "caught $failure"
-attempt.wait()
+(fn-do + work _
+  (finally
+    (print (str "inner " (call label 1)))
+  )
+  (blank)
+  (throw (call Panic "original"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do work
-
-do finally
-    -- "inner ${label(1)}"
-
-?! Panic("original")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do label String
-    - count Int
-
-. names = List'String()
-for index in 0 .. < count
-    names += "step $index"
-= "${names.length}:${names[count - 1]}"
+(fn-do + label String
+  (param count Int)
+  (let names (call (of List String)))
+  (for (in index (..< 0 count))
+    (+= names (str "step " index))
+  )
+  (return (str (. names length) ":" ([] names (- count 1))))
+)
 ```
 
 ```output
@@ -1603,88 +1686,103 @@ caught original
 
 ### A loop over a stream in a cleanup runs the stream to its end: where the loop ends, where it breaks, where the body panicked, and where the function returns early.
 
-```yumi
-plain()
-broken()
-inbody()
-outside()
-twice()
--- "done"
+```brix
+(main
+  (call plain)
+  (call broken)
+  (call inbody)
+  (call outside)
+  (call twice)
+  (print "done")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do numbers
-    - tag String
+(fn-do + numbers _
+  (param tag String)
+  (finally
+    (print (str "end " tag))
+  )
+  (yield 1)
+  (yield 2)
+  (yield 3)
+)
 
-do finally
-    -- "end $tag"
-<= 1
-<= 2
-<= 3
+(fn-do + plain _
+  (finally
+    (print "cleanup")
+    (for (in each (call numbers "a"))
+      (print (str "each " each))
+    )
+    (print "after")
+  )
+  (print "body")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do plain
+(fn-do + broken _
+  (finally
+    (for (in each (call numbers "b"))
+      (if (== each 2)
+        (break)
+      )
+      (print (str "each " each))
+    )
+    (print "after")
+  )
+  (print "body")
+)
 
-do finally
-    -- "cleanup"
-    for each in numbers("a")
-        -- "each ${each}"
-    -- "after"
--- "body"
+(fn-do + inbody _
+  (let attempt
+    (do-new
+      (call thrower)
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do broken
+(fn-do + thrower _
+  (finally
+    (for (in each (call numbers "d"))
+      (print (str "each " each))
+    )
+    (print "after")
+  )
+  (throw (call Panic "first"))
+)
 
-do finally
-    for each in numbers("b")
-        if each == 2
-            break
-        -- "each ${each}"
-    -- "after"
--- "body"
+(fn-do + outside _
+  (let attempt
+    (do-new
+      (for (in each (call numbers "e"))
+        (throw (call Panic "boom") (if (== each 2)))
+        (print (str "each " each))
+      )
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do inbody
-
-. attempt = do new
-    thrower()
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do thrower
-
-do finally
-    for each in numbers("d")
-        -- "each ${each}"
-    -- "after"
-?! Panic("first")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do outside
-
-. attempt = do new
-    for each in numbers("e")
-        ?! Panic("boom")
-            if each == 2
-        -- "each ${each}"
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do twice
-    - n = 2
-
-do finally
-    for a in numbers("f")
-        for b in numbers("g")
-            -- "pair $a $b"
-    -- "after"
-if n == 2
-    -- "early"
-    =
--- "late"
+(fn-do + twice _
+  (param n _ (= 2))
+  (finally
+    (for (in a (call numbers "f"))
+      (for (in b (call numbers "g"))
+        (print (str "pair " a " " b))
+      )
+    )
+    (print "after")
+  )
+  (if (== n 2)
+    (print "early")
+    (return)
+  )
+  (print "late")
+)
 ```
 
 ```output
@@ -1728,60 +1826,52 @@ done
 
 ### A value returned through a use or a do finally is converted to the type the function returns before the cleanups run.
 
-```yumi
--- "use ${with-use()}"
--- "early ${with-early(true)}"
--- "expression ${with-expression()}"
--- "finally ${with-finally()}"
+```brix
+(main
+  (print (str "use " (call with-use)))
+  (print (str "early " (call with-early true)))
+  (print (str "expression " (call with-expression)))
+  (print (str "finally " (call with-finally)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Resource
+(type + Resource
+  (prop + open _ (= false))
+  (fn-do + begin-using _
+    (= open true)
+    (return this)
+  )
+  (fn-do + end-using _
+    (= open false)
+  )
+  (fn-to-expr + I64
+    (if-expr open 42 0)
+  )
+)
 
-+ open = false
+(fn-do + with-use I64
+  (let input (use (call Resource)))
+  (return input)
+)
 
-────────────────────
-+ do begin-using
+(fn-do + with-early I64
+  (param early Bool)
+  (let input (use (call Resource)))
+  (return-if input (if early))
+  (return 0)
+)
 
-open = true
-= this
+(fn-expr + with-expression I64
+  (use (call Resource))
+)
 
-────────────────────
-+ do end-using
-
-open = false
-
-────────────────────
-+ to I64
-
-if open then 42 else 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do with-use I64
-
-. input = use Resource()
-= input
-
-━━━━━━━━━━━━━━━━━━━━
-+ do with-early I64
-    - early Bool
-
-. input = use Resource()
-=? input if early
-= 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ with-expression I64
-
-use Resource()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do with-finally I64
-
-. input = Resource()
-input.open = true
-do finally
-    input.open = false
-= input
+(fn-do + with-finally I64
+  (let input (call Resource))
+  (= (. input open) true)
+  (finally
+    (= (. input open) false)
+  )
+  (return input)
+)
 ```
 
 ```output
@@ -1793,39 +1883,38 @@ finally 42
 
 ### A returned call that may raise is converted before the cleanups run, and an error it raises is returned once they have run.
 
-```yumi
--- "value ${catch f(false)}"
--- "error ${catch f(true)}"
+```brix
+(main
+  (print (str "value " (catch (call f false))))
+  (print (str "error " (catch (call f true))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Resource
+(type + Resource
+  (prop + open _ (= false))
+  (fn-to-expr + I64
+    (if-expr open 42 0)
+  )
+)
 
-+ open = false
+(fn-do + make Resource (?! Error)
+  (param r Resource)
+  (param fails Bool)
+  (if fails
+    (throw (call Error "failed"))
+  )
+  (return r)
+)
 
-────────────────────
-+ to I64
-
-if open then 42 else 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Resource ?! Error
-    - r Resource
-    - fails Bool
-
-if fails
-    ?! Error("failed")
-= r
-
-━━━━━━━━━━━━━━━━━━━━
-+ do f I64 ?! Error
-    - fails Bool
-
-. r = Resource()
-r.open = true
-do finally
-    r.open = false
-    -- "cleanup"
-= make(r, fails)
+(fn-do + f I64 (?! Error)
+  (param fails Bool)
+  (let r (call Resource))
+  (= (. r open) true)
+  (finally
+    (= (. r open) false)
+    (print "cleanup")
+  )
+  (return (call make r fails))
+)
 ```
 
 ```output
@@ -1837,38 +1926,37 @@ error failed
 
 ### A panic raised converting a returned value runs the cleanups once, after the conversion.
 
-```yumi
-. attempt = do new
-    -- f()
-catch failure
-    -- "caught $failure"
-attempt.wait()
+```brix
+(main
+  (let attempt
+    (do-new
+      (print (call f))
+      (on-failure failure
+        (print (str "caught " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Broken
+(type + Broken
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (print "end")
+  )
+  (fn-to-do + I64
+    (print "converting")
+    (throw (call Panic "conversion failed"))
+    (return 0)
+  )
+)
 
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
--- "end"
-
-────────────────────
-+ do to I64
-
--- "converting"
-?! Panic("conversion failed")
-= 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do f I64
-
-. t = use Broken()
-= t
+(fn-do + f I64
+  (let t (use (call Broken)))
+  (return t)
+)
 ```
 
 ```output
@@ -1879,26 +1967,23 @@ caught conversion failed
 
 ### A closure written as one expression ends the use it opens as it returns.
 
-```yumi
-. make = => use Resource()
--- make().open
+```brix
+(main
+  (let make (=> () (use (call Resource))))
+  (print (. (call make) open))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Resource
-
-+ open = false
-
-────────────────────
-+ do begin-using
-
-open = true
-= this
-
-────────────────────
-+ do end-using
-
-open = false
--- "end-using"
+(type + Resource
+  (prop + open _ (= false))
+  (fn-do + begin-using _
+    (= open true)
+    (return this)
+  )
+  (fn-do + end-using _
+    (= open false)
+    (print "end-using")
+  )
+)
 ```
 
 ```output
@@ -1908,51 +1993,47 @@ false
 
 ### A constructor's do finally runs where its body ends, where an error leaves it, and in a constructor that super runs.
 
-```yumi
-. holder = Holder(false)
--- holder.value
-. failed = catch? Holder(true)
--- if failed then "made" else "not made"
-. child = Child()
--- child.value
+```brix
+(main
+  (let holder (call Holder false))
+  (print (. holder value))
+  (let failed (catch? (call Holder true)))
+  (print (if-expr failed "made" "not made"))
+  (let child (call Child))
+  (print (. child value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
+(type + Holder
+  (prop + value _ (= 0))
+  (fn-do + This _ (?! IOError)
+    (param fails Bool)
+    (finally
+      (print (str "cleanup " fails))
+    )
+    (throw (call IOError "failed") (if fails))
+    (= value 1)
+  )
+)
 
-+ value = 0
+(type + Base
+  (prop + value _ (= 0))
+  (fn-do + This _
+    (finally
+      (print "base cleanup")
+    )
+    (= value 2)
+  )
+)
 
-────────────────────
-+ This ?! IOError
-    - fails Bool
-
-do finally
-    -- "cleanup $fails"
-?! IOError("failed")
-    if fails
-value = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-+ value = 0
-
-────────────────────
-+ This
-
-do finally
-    -- "base cleanup"
-value = 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ This
-
-super()
-do finally
-    -- "child cleanup"
-value += 1
+(type + Child (is Base)
+  (fn-do + This _
+    (call super)
+    (finally
+      (print "child cleanup")
+    )
+    (+= value 1)
+  )
+)
 ```
 
 ```output
@@ -1967,18 +2048,18 @@ child cleanup
 
 ### A value that is only Closable is closed where a use of it ends.
 
-```yumi
-. thing = use Thing()
--- "body"
+```brix
+(main
+  (let thing (use (call Thing)))
+  (print "body")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Closable
-
-────────────────────
-+ do close
-
--- "closed"
+(type + Thing
+  (implements Closable)
+  (fn-do + close _
+    (print "closed")
+  )
+)
 ```
 
 ```output
@@ -1988,19 +2069,20 @@ closed
 
 ### A block that uses a value that is only Closable closes it where the block is left.
 
-```yumi
-do use Thing()
-    -- "body"
--- "after"
+```brix
+(main
+  (do-use (call Thing)
+    (print "body")
+  )
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Closable
-
-────────────────────
-+ do close
-
--- "closed"
+(type + Thing
+  (implements Closable)
+  (fn-do + close _
+    (print "closed")
+  )
+)
 ```
 
 ```output
@@ -2011,44 +2093,39 @@ after
 
 ### An error raised where a use ends, by end-using or by close, leaves the function as one a cleanup raises does.
 
-```yumi
--- catch closed()
--- catch ended()
+```brix
+(main
+  (print (catch (call closed)))
+  (print (catch (call ended)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shut
-    is Closable
+(type + Shut
+  (implements Closable)
+  (fn-do + close _
+    (throw (call IOError "close failed"))
+  )
+)
 
-────────────────────
-+ do close
+(type + Ended
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (throw (call IOError "end failed"))
+  )
+)
 
-?! IOError("close failed")
+(fn-do + closed Int
+  (let shut (use (call Shut)))
+  (return 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Ended
-
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
-?! IOError("end failed")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do closed Int
-
-. shut = use Shut()
-= 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do ended Int
-
-do use Ended()
-    -- "body"
-= 2
+(fn-do + ended Int
+  (do-use (call Ended)
+    (print "body")
+  )
+  (return 2)
+)
 ```
 
 ```output
@@ -2059,30 +2136,25 @@ end failed
 
 ### A use of a value that has begin-using as well as close ends it with end-using.
 
-```yumi
-. thing = use Thing()
--- thing.name
+```brix
+(main
+  (let thing (use (call Thing)))
+  (print (. thing name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Closable
-
-+ name = "thing"
-
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
--- "ended"
-
-────────────────────
-+ do close
-
--- "closed"
+(type + Thing
+  (implements Closable)
+  (prop + name _ (= "thing"))
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (print "ended")
+  )
+  (fn-do + close _
+    (print "closed")
+  )
+)
 ```
 
 ```output
@@ -2092,31 +2164,31 @@ ended
 
 ### A use of an optional value that is only Closable closes it when it holds one.
 
-```yumi
--- "start"
-do
-    . thing = use? make(true)
-    -- thing?.name ?? "none"
-do
-    . other = use? make(false)
-    -- other?.name ?? "none"
+```brix
+(main
+  (print "start")
+  (do
+    (let thing (use? (call make true)))
+    (print (?? (?. thing name) "none"))
+  )
+  (do
+    (let other (use? (call make false)))
+    (print (?? (?. other name) "none"))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ make Thing?
-    - present Bool
+(fn-expr _ make (? Thing)
+  (param present Bool)
+  (if-expr present (call Thing) null)
+)
 
-if present then Thing() else null
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Closable
-
-+ name = "thing"
-
-────────────────────
-+ do close
-
--- "closed"
+(type + Thing
+  (implements Closable)
+  (prop + name _ (= "thing"))
+  (fn-do + close _
+    (print "closed")
+  )
+)
 ```
 
 ```output

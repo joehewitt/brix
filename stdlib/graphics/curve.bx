@@ -1,0 +1,120 @@
+(import ./curve-kernels)
+(import ./point)
+(import ./primitives)
+(import ./utils)
+(import /math)
+
+(type + Curve (is Tuple)
+  (prop + anchor1 Point)
+  (prop + handle-out Point)
+  (prop + handle-in Point)
+  (prop + anchor2 Point)
+  (prop + type SegmentType (= .segment-type-cubic))
+  (fn-expr + is-line-like _ :get
+    (call line-like-scalars
+      (block
+        (arg (. anchor1 x))
+        (arg (. anchor1 y))
+        (arg (. handle-out x))
+        (arg (. handle-out y))
+        (arg (. handle-in x))
+        (arg (. handle-in y))
+        (arg (. anchor2 x))
+        (arg (. anchor2 y))
+      )
+    )
+  )
+  (fn-expr + (infix this == (param other Curve)) _
+    (and a b c d)
+    (where
+      (lazy a (== anchor1 (. other anchor1)))
+      (lazy b (== handle-out (. other handle-out)))
+      (lazy c (== handle-in (. other handle-in)))
+      (lazy d (== anchor2 (. other anchor2)))
+    )
+  )
+  (fn-expr + equals-reverse _
+    (param other Curve)
+    (and a b c d)
+    (where
+      (lazy a (== anchor1 (. other anchor2)))
+      (lazy b (== handle-out (. other handle-in)))
+      (lazy c (== handle-in (. other handle-out)))
+      (lazy d (== anchor2 (. other anchor1)))
+    )
+  )
+  (fn-expr + get-parameter _
+    (param point Point)
+    (call cubic-parameter-at-point
+      (block
+        (arg (. point x))
+        (arg (. point y))
+        (arg (. anchor1 x))
+        (arg (. anchor1 y))
+        (arg (. handle-out x))
+        (arg (. handle-out y))
+        (arg (. handle-in x))
+        (arg (. handle-in y))
+        (arg (. anchor2 x))
+        (arg (. anchor2 y))
+        (arg tolerance)
+      )
+    )
+  )
+  (fn-expr + split-at-range Curve
+    (param t1 PointOnCurve)
+    (param t2 PointOnCurve)
+    (call curve-from-scalars range)
+    (where
+      (lazy range
+        (call curve-range-scalars
+          (block
+            (arg type)
+            (arg (. anchor1 x))
+            (arg (. anchor1 y))
+            (arg (. handle-out x))
+            (arg (. handle-out y))
+            (arg (. handle-in x))
+            (arg (. handle-in y))
+            (arg (. anchor2 x))
+            (arg (. anchor2 y))
+            (arg t1)
+            (arg t2)
+          )
+        )
+      )
+      (blank)
+      ; CREDIT: Paper.js
+    )
+  )
+  (fn-expr + subdivide _
+    (param t _)
+    (scope (tuple (call curve-from-scalars (. split left)) (call curve-from-scalars (. split right)))
+      (lazy split
+        (call cubic-subdivide-scalars
+          (block
+            (arg (. anchor1 x))
+            (arg (. anchor1 y))
+            (arg (. handle-out x))
+            (arg (. handle-out y))
+            (arg (. handle-in x))
+            (arg (. handle-in y))
+            (arg (. anchor2 x))
+            (arg (. anchor2 y))
+            (arg t)
+          )
+        )
+      )
+    )
+  )
+  (fn-expr _ curve-from-scalars Curve
+    (param scalars CurveRangeScalars)
+    (call Curve anchor1 handle-out handle-in anchor2 (. scalars type))
+    (where
+      (lazy anchor1 (call Point (. scalars x1) (. scalars y1)))
+      (lazy handle-out (call Point (. scalars hox) (. scalars hoy)))
+      (lazy handle-in (call Point (. scalars hix) (. scalars hiy)))
+      (lazy anchor2 (call Point (. scalars x2) (. scalars y2)))
+    )
+  )
+)

@@ -1,9 +1,5 @@
 # Expression binary
 
-```yumi
-foo + bar
-```
-
 ```brix
 (main
   (+ foo bar)
@@ -15,10 +11,6 @@ foo + bar
     <Id name="foo"/>
     <Id name="bar"/>
 </BinaryExpression>
-```
-
-```yumi
-foo - bar
 ```
 
 ```brix
@@ -34,10 +26,6 @@ foo - bar
 </BinaryExpression>
 ```
 
-```yumi
-foo * bar
-```
-
 ```brix
 (main
   (* foo bar)
@@ -49,10 +37,6 @@ foo * bar
     <Id name="foo"/>
     <Id name="bar"/>
 </BinaryExpression>
-```
-
-```yumi
-foo / bar
 ```
 
 ```brix
@@ -68,10 +52,6 @@ foo / bar
 </BinaryExpression>
 ```
 
-```yumi
-foo % bar
-```
-
 ```brix
 (main
   (% foo bar)
@@ -83,10 +63,6 @@ foo % bar
     <Id name="foo"/>
     <Id name="bar"/>
 </BinaryExpression>
-```
-
-```yumi
-foo + bar * 2
 ```
 
 ```brix
@@ -103,10 +79,6 @@ foo + bar * 2
         <Integer value="2"/>
     </BinaryExpression>
 </BinaryExpression>
-```
-
-```yumi
-foo /bar/ baz
 ```
 
 ```brix
@@ -127,10 +99,6 @@ foo /bar/ baz
 </CallExpression>
 ```
 
-```yumi
-foo //bar// baz
-```
-
 ```brix
 (main
   (//bar// foo baz)
@@ -149,10 +117,6 @@ foo //bar// baz
 </CallExpression>
 ```
 
-```yumi
-foo ///x/// baz
-```
-
 ```brix
 (main
   (///x/// foo baz)
@@ -169,10 +133,6 @@ foo ///x/// baz
         <Id name="baz"/>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-a ///x/// b /y/ c
 ```
 
 ```brix
@@ -201,10 +161,6 @@ a ///x/// b /y/ c
 </CallExpression>
 ```
 
-```yumi
-a /x/ b ///y/// c
-```
-
 ```brix
 (main
   (///y/// (/x/ a b) c)
@@ -231,10 +187,6 @@ a /x/ b ///y/// c
 </CallExpression>
 ```
 
-```yumi
-a == b
-```
-
 ```brix
 (main
   (== a b)
@@ -246,10 +198,6 @@ a == b
     <Id name="a"/>
     <Id name="b"/>
 </BinaryExpression>
-```
-
-```yumi
-a != b
 ```
 
 ```brix
@@ -265,10 +213,6 @@ a != b
 </BinaryExpression>
 ```
 
-```yumi
-a > b
-```
-
 ```brix
 (main
   (> a b)
@@ -280,10 +224,6 @@ a > b
     <Id name="a"/>
     <Id name="b"/>
 </BinaryExpression>
-```
-
-```yumi
-a < b
 ```
 
 ```brix
@@ -299,10 +239,6 @@ a < b
 </BinaryExpression>
 ```
 
-```yumi
-a >= b
-```
-
 ```brix
 (main
   (>= a b)
@@ -314,10 +250,6 @@ a >= b
     <Id name="a"/>
     <Id name="b"/>
 </BinaryExpression>
-```
-
-```yumi
-a <= b
 ```
 
 ```brix
@@ -333,10 +265,6 @@ a <= b
 </BinaryExpression>
 ```
 
-```yumi
-a && b
-```
-
 ```brix
 (main
   (and a b)
@@ -350,10 +278,6 @@ a && b
 </BinaryExpression>
 ```
 
-```yumi
-a || b
-```
-
 ```brix
 (main
   (or a b)
@@ -365,10 +289,6 @@ a || b
     <Id name="a"/>
     <Id name="b"/>
 </BinaryExpression>
-```
-
-```yumi
-a && b || c && d
 ```
 
 ```brix
@@ -390,10 +310,6 @@ a && b || c && d
 </BinaryExpression>
 ```
 
-```yumi
-foo is in bar
-```
-
 ```brix
 (main
   (is-in foo bar)
@@ -405,10 +321,6 @@ foo is in bar
     <Id name="foo"/>
     <Id name="bar"/>
 </BinaryExpression>
-```
-
-```yumi
-foo not in bar
 ```
 
 ```brix
@@ -424,10 +336,6 @@ foo not in bar
 </BinaryExpression>
 ```
 
-```yumi
-foo has bar
-```
-
 ```brix
 (main
   (has foo bar)
@@ -439,10 +347,6 @@ foo has bar
     <Id name="foo"/>
     <Id name="bar"/>
 </BinaryExpression>
-```
-
-```yumi
-foo has not bar
 ```
 
 ```brix
@@ -458,10 +362,6 @@ foo has not bar
 </BinaryExpression>
 ```
 
-```yumi
-foo as Foo
-```
-
 ```brix
 (main
   (as foo Foo)
@@ -473,10 +373,6 @@ foo as Foo
     <Id name="foo"/>
     <TypeId name="Foo"/>
 </CastExpression>
-```
-
-```yumi
-foo as Foo as Bar as Baz
 ```
 
 ```brix
@@ -498,10 +394,6 @@ foo as Foo as Bar as Baz
 </CastExpression>
 ```
 
-```yumi
-foo is Bar
-```
-
 ```brix
 (main
   (is foo Bar)
@@ -513,10 +405,6 @@ foo is Bar
     <Id name="foo"/>
     <TypeId name="Bar"/>
 </BinaryExpression>
-```
-
-```yumi
-i > 0 && i == 0
 ```
 
 ```brix
@@ -538,10 +426,6 @@ i > 0 && i == 0
 </BinaryExpression>
 ```
 
-```yumi
-10 > i > 0
-```
-
 ```brix
 (main
   (> 10 i 0)
@@ -561,10 +445,6 @@ i > 0 && i == 0
         <Integer value="0"/>
     </BinaryExpression>
 </BinaryExpression>
-```
-
-```yumi
-9 > i >= j > 0
 ```
 
 ```brix

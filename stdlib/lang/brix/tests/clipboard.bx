@@ -1,0 +1,324 @@
+(import /code/structure/document)
+(import /code/structure/session)
+(import /lang/brix/brix)
+(import /lang/brix/convert)
+(import /test)
+(blank)
+(prop _ thick _ (= "━━━━━━━━━━━━━━━━━━━━"))
+(prop _ thin _ (= "────────────────────"))
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Brix Block Copy"))
+  (call (. cases run) copy-tests)
+  (= cases (call (. cases then) "Brix Block Paste" paste-tests))
+  (= cases (call (. cases then) "Brix Block Round Trip" round-trip-tests))
+  (return cases)
+)
+
+(fn-do + copy-tests TestCase
+  (param t TestCase)
+  (call (. t expect)
+    (block
+      (arg "a copy from a header starts with the rule above it")
+      (arg (str thick "\n+ total Int\n    - n Int\n\nif n > 0\n    . m = n\nn + 1\n"))
+      (arg (=> () (call copied "+ total Int" 0 "n + 1" 1000)))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "a copy up to the next header leaves out that header's rule")
+      (arg (str thick "\n+ total Int\n    - n Int\n\nif n > 0\n    . m = n\nn + 1\n\n"))
+      (arg (=> () (call copied "+ total Int" 0 "+ Greeter" 0)))
+    )
+  )
+  (call (. t expect) "a copy from mid-line is the text selected" "n > 0\n    . m = n" (=> () (call copied "if n > 0" 3 ". m = n" 1000)))
+  (return t)
+)
+
+(fn-do + paste-tests TestCase (?! Error)
+  (param t TestCase)
+  (let total (call total-block))
+  (let greeter (call greeter-block))
+  (let greeting (call greeting-block))
+  (let last (call last-block))
+  (call (. t expect)
+    (block
+      (arg "a block pasted on the last row goes after the last block")
+      (arg (call written-as (list total greeter greeting last total)))
+      (arg (=> () (call pasted-at-end total)))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "a block pasted at a header goes above it")
+      (arg (call written-as (list total greeter greeting total last)))
+      (arg (=> () (call pasted "+ last Int" 0 total)))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "a block pasted mid-line on a header goes above it")
+      (arg (call written-as (list total greeter greeting total last)))
+      (arg (=> () (call pasted "+ last Int" 3 total)))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "a block pasted at the start of a parameter goes above its function")
+      (arg (call written-as (list total total greeter greeting last)))
+      (arg (=> () (call pasted "- n Int" 0 total)))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "a block pasted mid-line on a parameter goes above its function")
+      (arg (call written-as (list total total greeter greeting last)))
+      (arg (=> () (call pasted "- n Int" 7 total)))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "a block pasted mid-line on the last line of a body goes after it")
+      (arg (call written-as (list total total greeter greeting last)))
+      (arg (=> () (call pasted "n + 1" 2 total)))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "a block pasted on a type's add button goes after the type")
+      (arg (call written-as (list total greeter total greeting last)))
+      (arg (=> () (call pasted-on-add total)))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "a function pasted at a method's header goes after its type")
+      (arg (call written-as (list total greeter total greeting last)))
+      (arg (=> () (call pasted "+ hello String" 0 total)))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "a function pasted mid-line on a field goes after its type")
+      (arg (call written-as (list total greeter total greeting last)))
+      (arg (=> () (call pasted "+ name String" 4 total)))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "blank lines before a block do not change where it goes")
+      (arg (call written-as (list total greeter greeting greeter last)))
+      (arg (=> () (call pasted "+ last Int" 3 (++ "\n\n" greeter))))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "a block pasted over part of a line starts a line of its own")
+      (arg (call written-as (list (call split-line) greeter greeting last)))
+      (arg (=> () (call replaced "n + 1" 2 "n + 1" 3 total)))
+    )
+  )
+  (return t)
+)
+
+(fn-do + round-trip-tests TestCase (?! Error)
+  (param t TestCase)
+  (let source (call written-as (call blocks)))
+  (call (. t expect) "a cut block pasted back restores the document" source (=> () (call cut-back "+ Greeter" "+ \" greeting")))
+  (call (. t expect) "a copy to the next header pasted over itself" source (=> () (call pasted-over "+ total Int" 0 "+ Greeter" 0)))
+  (call (. t expect) "a copy to a block's end pasted over itself" source (=> () (call pasted-over "+ total Int" 0 "n + 1" 1000)))
+  (call (. t expect) "a copy into a body pasted over itself" source (=> () (call pasted-over "+ total Int" 0 "if n > 0" 1000)))
+  (call (. t expect) "a copy that starts at a line's end pasted over itself" source (=> () (call pasted-over "n + 1" 1000 "\"hi\"" 1000)))
+  (call (. t expect) "Select All pasted into an empty document" source (=> () (call pasted-into-empty)))
+  (return t)
+)
+
+(fn-expr _ opened SourceSession (?! Error)
+  (param source String)
+  (call SourceSession (call source-document-read (call BrixLanguage) (call brix-convert source)))
+)
+
+(fn-expr _ blocks (list String)
+  (call (of List String) (call total-block) (call greeter-block) (call greeting-block) (call last-block))
+)
+
+(fn-do _ written-as String (?! Error)
+  (param parts (list String))
+  (let session (call opened (call (. "\n\n" join) parts)))
+  (return (call written session))
+)
+
+(fn-do _ written String
+  (param session SourceSession)
+  (call (. session commit))
+  (return (call (. (call (. session document written)) text trim)))
+)
+
+(fn-do _ row-of Size
+  (param session SourceSession)
+  (param content String)
+  (for (in index (..< 0 (. session document row-count)))
+    (return-if index (if (== (. (call (. session row-at) index) content) content)))
+  )
+  (throw (call Panic (str "No row reads " content)))
+)
+
+(fn-do _ selected SourceSession (?! Error)
+  (param first String)
+  (param start Size)
+  (param last String)
+  (param end Size)
+  (let session (call opened (call (. "\n\n" join) (call blocks))))
+  (call (. session place) (call row-of session first) start)
+  (call (. session place) (call row-of session last) end true)
+  (return session)
+)
+
+(fn-expr _ copied String (?! Error)
+  (param first String)
+  (param start Size)
+  (param last String)
+  (param end Size)
+  (call (. (call selected first start last end) clipboard-text))
+)
+
+(fn-do _ pasted String (?! Error)
+  (param row String)
+  (param column Size)
+  (param text String)
+  (let session (call opened (call (. "\n\n" join) (call blocks))))
+  (call (. session place) (call row-of session row) column)
+  (call (. session paste) text)
+  (return (call written session))
+)
+
+(fn-do _ pasted-at-end String (?! Error)
+  (param text String)
+  (let session (call opened (call (. "\n\n" join) (call blocks))))
+  (call (. session place) (- (. session document row-count) 1) 0)
+  (call (. session paste) text)
+  (return (call written session))
+)
+
+(fn-do _ pasted-on-add String (?! Error)
+  (param text String)
+  (let session (call opened (call (. "\n\n" join) (call blocks))))
+  (for (in index (..< 0 (. session document row-count)))
+    (if (. (call (. session row-at) index) is-open-end)
+      (call (. session place) index 0)
+      (call (. session paste) text)
+      (return (call written session))
+    )
+  )
+  (throw (call Panic "No add button"))
+)
+
+(fn-do _ replaced String (?! Error)
+  (param first String)
+  (param start Size)
+  (param last String)
+  (param end Size)
+  (param text String)
+  (let session (call selected first start last end))
+  (call (. session paste) text)
+  (return (call written session))
+)
+
+(fn-do _ pasted-over String (?! Error)
+  (param first String)
+  (param start Size)
+  (param last String)
+  (param end Size)
+  (let session (call selected first start last end))
+  (call (. session paste) (call (. session clipboard-text)))
+  (return (call written session))
+)
+
+(fn-do _ cut-back String (?! Error)
+  (param first String)
+  (param last String)
+  (let session (call selected first 0 last 0))
+  (let text (call (. session clipboard-text)))
+  (call (. session delete-selection))
+  (call (. session paste) text)
+  (return (call written session))
+)
+
+(fn-do _ pasted-into-empty String (?! Error)
+  (let copy (call opened (call (. "\n\n" join) (call blocks))))
+  (call (. copy select-all))
+  (let session (call SourceSession (call brix-document-read "")))
+  (call (. session place) 0 0)
+  (call (. session paste) (call (. copy clipboard-text)))
+  (return (call written session))
+)
+
+(fn-expr _ total-block _
+  (paragraph
+    (str thick)
+    "+ total Int"
+    "    - n Int"
+    (blank)
+    "if n > 0"
+    "    . m = n"
+    "n + 1"
+  )
+)
+
+(fn-expr _ greeter-block _
+  (paragraph
+    (str thick)
+    "+ Greeter"
+    (blank)
+    "+ name String"
+    (blank)
+    (str thin)
+    "+ hello String"
+    (blank)
+    "\"hi\""
+  )
+)
+
+(fn-expr _ greeting-block _
+  (paragraph
+    (str thick)
+    "+ \" greeting"
+    (blank)
+    "Hello"
+  )
+)
+
+(fn-expr _ last-block _
+  (paragraph
+    (str thick)
+    "+ last Int"
+    (blank)
+    "2"
+  )
+)
+
+(fn-expr _ split-line _
+  (paragraph
+    (str thick)
+    "+ total Int"
+    "    - n Int"
+    (blank)
+    "if n > 0"
+    "    . m = n"
+    "n"
+    (blank)
+    (str thick)
+    "+ total Int"
+    "    - n Int"
+    (blank)
+    "if n > 0"
+    "    . m = n"
+    "n + 1"
+    "1"
+  )
+)

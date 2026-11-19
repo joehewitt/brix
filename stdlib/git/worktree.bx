@@ -1,0 +1,46 @@
+(import ./command)
+
+(fn-do + git-add-worktree _ (?! Error)
+  (param directory String)
+  (param path String)
+  (param branch String)
+  (param base String)
+  (let added
+    (call git-output
+      (block
+        (arg directory)
+        (arg (list "worktree" "add" "--quiet" "-b" branch "--end-of-options" path base))
+      )
+    )
+  )
+)
+
+(fn-do + git-prune-worktrees _ (?! Error)
+  (param directory String)
+  (let pruned (call git-output directory (list "worktree" "prune" "--expire" "now")))
+)
+
+(fn-do + git-delete-branch _ (?! Error)
+  (param directory String)
+  (param branch String)
+  (let deleted (call git-output directory (list "branch" "-D" "--end-of-options" branch)))
+)
+
+(fn-do + git-has-ref Bool (?! Error)
+  (param directory String)
+  (param ref String)
+  (let found (catch (call git-output directory (list "show-ref" "--verify" "--quiet" ref))))
+  (if (is found Error)
+    (let failure (as found Error))
+    (return-if false (if (and (is failure GitError) (== (. (as failure GitError) status) 1))))
+    (throw failure)
+  )
+  (return true)
+)
+
+(fn-do + git-is-branch-name Bool (?! Error)
+  (param directory String)
+  (param name String)
+  (let checked (catch (call git-output directory (list "check-ref-format" "--branch" name))))
+  (return (not (is checked Error)))
+)

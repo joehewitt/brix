@@ -1,34 +1,41 @@
 # Scopes
 
-```yumi crash
-. a I32 = 1
-. a I32 = 2
+```brix crash
+(main
+  (let a I32 1)
+  (let a I32 2)
+)
 ```
 
 ```output
-Exception: "a" is already declared on line 2 in this scope; to change its value, assign it without the ".", as in "a = value", or choose another name
-<no file:3>
-    . a I32 = 2
-      ^^^^^
+Exception: "a" is already declared on line 3 in this scope; to change its value, assign it without the ".", as in "a = value", or choose another name
+<no file:4>
+      (let a I32 2)
+           ^^^^^
 ```
 
-```yumi crash
-a() = 1
+```brix crash
+(main
+  (= (call a) 1)
+)
 ```
 
 ```output
 Exception: Illegal assignment
-<no file:2>
-    a() = 1
-    ^^^^^^^
+<no file:3>
+      (= (call a) 1)
+      ^^^^^^^^^^^^^^
 ```
 
-```yumi
-. a I32 = 1
-do
-    . a Float = 2.0
-    -- a
--- a
+```brix
+(main
+  (let a I32 1)
+  (do
+    (let a Float 2.0)
+    (print a)
+  )
+  (print a)
+)
 ```
 
 ```output
@@ -36,67 +43,79 @@ do
 1
 ```
 
-```yumi
-. a I32 = 1
-do
-    -- a
-    . a Float = 2.0
+```brix
+(main
+  (let a I32 1)
+  (do
+    (print a)
+    (let a Float 2.0)
+  )
+)
 ```
 
 ```output
 1
 ```
 
-```yumi
-. a I32 = 1
-do
-    . a Float = a
-    -- a
+```brix
+(main
+  (let a I32 1)
+  (do
+    (let a Float a)
+    (print a)
+  )
+)
 ```
 
 ```output
 1
 ```
 
-```yumi crash
-do
-    . a Float = 2.0
--- a
+```brix crash
+(main
+  (do
+    (let a Float 2.0)
+  )
+  (print a)
+)
 ```
 
 ```output
 Exception: Name "a" not found
-<no file:4>
-    -- a
-       ^
+<no file:6>
+      (print a)
+             ^
 ```
 
-```yumi
-. a = 2
-do
-    a = 4
--- a
+```brix
+(main
+  (let a 2)
+  (do
+    (= a 4)
+  )
+  (print a)
+)
 ```
 
 ```output
 4
 ```
 
-```yumi
-. thing = Thing()
+```brix
+(main
+  (let thing (call Thing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 10
-
-────────────────────
-+ This
-
-do
-    . a = 1
-    -- a
--- a
+(type + Thing
+  (prop + a _ (= 10))
+  (fn-do + This _
+    (do
+      (let a 1)
+      (print a)
+    )
+    (print a)
+  )
+)
 ```
 
 ```output
@@ -104,11 +123,13 @@ do
 10
 ```
 
-```yumi
-. foo Int, bar String, baz Float
--- foo
--- bar
--- baz
+```brix
+(main
+  (let (tuple (: foo Int) (: bar String) (: baz Float)))
+  (print foo)
+  (print bar)
+  (print baz)
+)
 ```
 
 ```output
@@ -117,11 +138,13 @@ do
 0
 ```
 
-```yumi
-.. foo Int, bar String, baz Float = (1, "hi", 2)
--- foo
--- bar
--- baz
+```brix
+(main
+  (lazy (tuple (: foo Int) (: bar String) (: baz Float)) (tuple 1 "hi" 2))
+  (print foo)
+  (print bar)
+  (print baz)
+)
 ```
 
 ```output
@@ -130,50 +153,66 @@ hi
 2
 ```
 
-```yumi crash
-. foo Int, bar String, baz Float = (1, "hi")
+```brix crash
+(main
+  (let (tuple (: foo Int) (: bar String) (: baz Float)) (tuple 1 "hi"))
+)
 ```
 
 ```output
 Exception: Pattern has no possible matches
-<no file:2>
-    . foo Int, bar String, baz Float = (1, "hi")
-      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:3>
+      (let (tuple (: foo Int) (: bar String) (: baz Float)) (tuple 1 "hi"))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-.. foo Int = 1
--- foo
-```
-
-```output
-1
-```
-
-```yumi
-.. foo = bar
-    .. bar = 1
--- foo
+```brix
+(main
+  (lazy foo Int 1)
+  (print foo)
+)
 ```
 
 ```output
 1
 ```
 
-```yumi
---
-    |? false
+```brix
+(main
+  (lazy foo
+    (scope bar
+      (lazy bar 1)
+    )
+  )
+  (print foo)
+)
+```
+
+```output
+1
+```
+
+```brix
+(main
+  (print
+    (block
+      (case? false
         a
-    ?? a
+      )
+      (default
+        (inline a)
+      )
+    )
+  )
+  (blank)
+  (lazy a (call noisy 10))
+)
 
-.. a = noisy(10)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do noisy Int
-    - n Int
-
--- n
-= n
+(fn-do + noisy Int
+  (param n Int)
+  (print n)
+  (return n)
+)
 ```
 
 ```output
@@ -183,54 +222,59 @@ Exception: Pattern has no possible matches
 
 ### A name nothing declares cannot be assigned.
 
-```yumi crash
-a = 1
+```brix crash
+(main
+  (= a 1)
+)
 ```
 
 ```output
-Exception: Variable "a" is not declared; declare it with ". a = 1"
-<no file:2>
-    a = 1
-    ^^^^^
+Exception: Variable "a" is not declared; declare it with "(let a 1)"
+<no file:3>
+      (= a 1)
+      ^^^^^^^
 ```
 
 ### A name a function declares cannot be assigned.
 
-```yumi crash
-helper = 5
+```brix crash
+(main
+  (= helper 5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ helper U32
-
-3
+(fn-expr + helper U32
+  3
+)
 ```
 
 ```output
 Exception: Function "helper" cannot be assigned
-<no file:2>
-    helper = 5
-    ^^^^^^^^^^
+<no file:3>
+      (= helper 5)
+      ^^^^^^^^^^^^
 ```
 
 ### A local takes its type from its value, or the type written for it, which the value converts to.
 
-```yumi
-. a = 5
-. b I64 = 5
-. c Float = 1
-. d F32 = 1
-. e I64 = 5u8
-. f U8 = 7
-. g = "text"
-. h = true
--- a
--- b
--- c
--- d
--- e
--- f
--- g
--- h
+```brix
+(main
+  (let a 5)
+  (let b I64 5)
+  (let c Float 1)
+  (let d F32 1)
+  (let e I64 5u8)
+  (let f U8 7)
+  (let g "text")
+  (let h true)
+  (print a)
+  (print b)
+  (print c)
+  (print d)
+  (print e)
+  (print f)
+  (print g)
+  (print h)
+)
 ```
 
 ```output
@@ -246,20 +290,22 @@ true
 
 ### A local declared with no value has the zero of its type, and one statement declares several.
 
-```yumi
-. x I32
-. f Float
-. b Bool
-. s String
-. m I32, n Float
--- x
--- f
--- b
--- s ++ "!"
-m = 2
-n = m
--- m
--- n
+```brix
+(main
+  (let x I32)
+  (let f Float)
+  (let b Bool)
+  (let s String)
+  (let (tuple (: m I32) (: n Float)))
+  (print x)
+  (print f)
+  (print b)
+  (print (++ s "!"))
+  (= m 2)
+  (= n m)
+  (print m)
+  (print n)
+)
 ```
 
 ```output
@@ -273,14 +319,17 @@ false
 
 ### A local declared in a loop is declared anew on each pass.
 
-```yumi
-for i in 0 .. < 3
-    . z Int
-    . s String
-    z += i
-    s ++= "k"
-    -- z
-    -- s
+```brix
+(main
+  (for (in i (..< 0 3))
+    (let z Int)
+    (let s String)
+    (+= z i)
+    (++= s "k")
+    (print z)
+    (print s)
+  )
+)
 ```
 
 ```output
@@ -294,20 +343,25 @@ k
 
 ### A local hides another of its name in a scope within, and the outer one is read until it is declared.
 
-```yumi
-. a I32 = 1
-do
-    . a Float = a
-    a += 0.5
-    -- a
--- a
-do
-    a = 2
-    do
-        . a = 3
-        -- a
-    -- a
--- a
+```brix
+(main
+  (let a I32 1)
+  (do
+    (let a Float a)
+    (+= a 0.5)
+    (print a)
+  )
+  (print a)
+  (do
+    (= a 2)
+    (do
+      (let a 3)
+      (print a)
+    )
+    (print a)
+  )
+  (print a)
+)
 ```
 
 ```output
@@ -320,13 +374,16 @@ do
 
 ### A local declared in a branch is not the one declared after it.
 
-```yumi
-. x = 1
-if x
-    . y = "in"
-    -- y
-. y = 2.5
--- y
+```brix
+(main
+  (let x 1)
+  (if x
+    (let y "in")
+    (print y)
+  )
+  (let y 2.5)
+  (print y)
+)
 ```
 
 ```output
@@ -336,22 +393,24 @@ in
 
 ### Assignment converts the value to the local's type.
 
-```yumi
-. x I64 = 5
-x = 6i32
--- x
-. f = 1.5
-f = 2
--- f
-. n = 3
-n = 2i64
--- n
-. u U8 = 5
-u = 200
--- u
-. b = true
-b = 1 > 2
--- b
+```brix
+(main
+  (let x I64 5)
+  (= x 6i32)
+  (print x)
+  (let f 1.5)
+  (= f 2)
+  (print f)
+  (let n 3)
+  (= n 2i64)
+  (print n)
+  (let u U8 5)
+  (= u 200)
+  (print u)
+  (let b true)
+  (= b (> 1 2))
+  (print b)
+)
 ```
 
 ```output
@@ -364,27 +423,32 @@ false
 
 ### A value cannot stand alone as a step.
 
-```yumi crash
-. x = 1
-x + 1
--- x
+```brix crash
+(main
+  (let x 1)
+  (+ x 1)
+  (print x)
+)
 ```
 
 ```output
-Exception: A value cannot stand alone as a step; use it, or remove it
-<no file:3>
-    x + 1
-    ^^^^^
+Exception: (+ …) cannot be a `row` of (main …), which takes Step. This body runs steps, and each row is a step: a statement form, a `call`, markup, or a value that `pipe` stages after it work on. To return a value, write `(return value)`. If the body is only a value, write `fn-expr`, or remove `:do` from a closure.
+<no file:4>
+      (+ x 1)
+      ^
 ```
 
 ### A local may have a name that JavaScript objects inherit.
 
-```yumi
-. total = 0
-for index in 0 .. < 3
-    . constructor = index * 2
-    total += constructor
--- total
+```brix
+(main
+  (let total 0)
+  (for (in index (..< 0 3))
+    (let constructor (* index 2))
+    (+= total constructor)
+  )
+  (print total)
+)
 ```
 
 ```output
@@ -393,20 +457,21 @@ for index in 0 .. < 3
 
 ### Past a test that finds an optional local holds a value, a local may be declared again.
 
-```yumi
-run(3)
-run(0)
+```brix
+(main
+  (call run 3)
+  (call run 0)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
-    - limit U64
-
-. kept = limit + 1
--- "early $kept"
-. path = limit if limit > 1
-=? if !path
-. kept = "late ${path}"
--- kept
+(fn-do + run _
+  (param limit U64)
+  (let kept (+ limit 1))
+  (print (str "early " kept))
+  (let path (only-if limit (if (> limit 1))))
+  (return-if (if (not path)))
+  (let kept (str "late " path))
+  (print kept)
+)
 ```
 
 ```output
@@ -417,18 +482,21 @@ early 1
 
 ### Inside the body of a test that finds an optional local holds a value, a local is declared once.
 
-```yumi crash
-. path U64? = 3
-if path
-    . kept = path! + 1
-    -- kept
-    . kept = path! + 2
-    -- kept
+```brix crash
+(main
+  (let path (? U64) 3)
+  (if path
+    (let kept (+ (!! path) 1))
+    (print kept)
+    (let kept (+ (!! path) 2))
+    (print kept)
+  )
+)
 ```
 
 ```output
-Exception: "kept" is already declared on line 4 in this scope; to change its value, assign it without the ".", as in "kept = value", or choose another name
-<no file:6>
-        . kept = path! + 2
-          ^^^^
+Exception: "kept" is already declared on line 5 in this scope; to change its value, assign it without the ".", as in "kept = value", or choose another name
+<no file:7>
+        (let kept (+ (!! path) 2))
+             ^^^^
 ```

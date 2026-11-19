@@ -1,9 +1,5 @@
 # Assert
 
-```yumi
-?! error
-```
-
 ```brix
 (main
   (throw error)
@@ -14,11 +10,6 @@
 <Assert>
     <Id name="error"/>
 </Assert>
-```
-
-```yumi
-?! error
-    if condition
 ```
 
 ```brix
@@ -34,10 +25,6 @@
     </TypePredicate>
     <Id name="error"/>
 </Assert>
-```
-
-```yumi
-?! failure! if failure
 ```
 
 ```brix

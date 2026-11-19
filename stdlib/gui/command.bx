@@ -1,0 +1,82 @@
+(import ./box)
+(import /ui/command)
+(import /ui/command-log)
+
+(type + CommandNode (is Box)
+  (implements Command)
+  (prop + title _ (= ""))
+  (prop + description _ (= ""))
+  (prop + enabled _ (= true))
+  (prop + discoverable _ (= true))
+  (prop + is-on _ (= false))
+  (prop + running _ (= false))
+  (prop + stable-key _ (= ""))
+  (prop + unavailable-reason _ (= ""))
+  (prop + id _ (=> (as this Command)))
+  (prop + is-markup-shadow _ (=> true))
+  (fn-expr + is-available _ :get
+    (and enabled is-effectively-enabled)
+  )
+  (fn-expr + identity _ :get
+    this
+  )
+  (fn-expr + is-discoverable _ :get
+    discoverable
+  )
+  (fn-do + run _)
+)
+
+(type + CommandActionNode (is CommandNode)
+  (fn-do + run _
+    (return-if (if (or (not enabled) running)))
+    (= running true)
+    (finally
+      (inline (= running false))
+    )
+    (call execute)
+  )
+  (fn-do + execute _
+    (throw (call Panic "Command action must implement execute"))
+  )
+)
+
+(type + ActionCommand (is CommandActionNode)
+  (prop + action (? Doer))
+  (fn-do + execute _
+    (let callback action)
+    (if callback
+      (call callback
+        (block
+          (on-error (: error Error)
+            (call unhandled-error error)
+          )
+        )
+      )
+    )
+  )
+)
+
+(type + CommandScope (is Box)
+  (prop + is-markup-shadow _ (=> true))
+)
+
+(type + (of InvocationCommand Args) (is CommandActionNode)
+  (prop + command (? (of ParameterizedCommand Args)))
+  (prop + log (? InvocationLog))
+  (fn-expr + is-discoverable _ :get
+    (and discoverable (!= (?. command defaults) null))
+  )
+  (fn-do + execute _
+    (let active log)
+    (let source command)
+    (return-if (if (or (not active) (not source))))
+    (let args (. source defaults))
+    (return-if (if (not args)))
+    (let result (catch (call (. active perform) source (!! args))))
+    (match? result
+      (case (: error Error)
+        (call unhandled-error error)
+      )
+    )
+  )
+)

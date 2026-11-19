@@ -1,0 +1,233 @@
+(import ./canvas)
+(import ./color)
+(import ./point)
+(import ./primitives)
+(import ./shader)
+(import /BxGraphics/BxGraphics.h)
+(import /os/path)
+
+(type + Image
+  (prop + scale F64)
+  (prop + pixel-width I32)
+  (prop + pixel-height I32)
+  (prop + revision U64)
+  (blank)
+  (prop _ surface RasterCanvas)
+  (prop _ references U32 (= 1))
+  (fn-do + This _
+    (param surface RasterCanvas)
+    (param scale _ (= 1))
+    (= pixel-width (. surface pixel-width))
+    (= pixel-height (. surface pixel-height))
+  )
+  (fn-expr + canvas RasterCanvas :get
+    (before
+      (throw (call Panic "Image canvas used after its final release") (if (== references 0)))
+    )
+    surface
+  )
+  (fn-do + invalidate _
+    (+= revision 1)
+  )
+  (fn-do + render _
+    (param shader Shader)
+    (param args (list F64) (= (call (of List F64))))
+    (param images (list Image) (= (call (of List Image))))
+    (param rect (? Rect) (= null))
+    (throw (call Panic "Image rendered after its final release") (if (== references 0)))
+    (let region (?? rect (call Rect 0 0 (. size width) (. size height))))
+    (let natives (call (of List Pointer)))
+    (let scales (call (of List F64)))
+    (for (in image images)
+      (+= natives (. image canvas native))
+      (+= scales (. image scale))
+    )
+    (let did-render
+      (call C:brixGraphicsCanvasRender
+        (block
+          (arg (. surface native))
+          (arg scale)
+          (arg (. region x))
+          (arg (. region y))
+          (arg (. region width))
+          (arg (. region height))
+          (arg (. shader id))
+          (arg (. args buffer-pointer))
+          (arg (. args length))
+          (arg (. natives buffer-pointer))
+          (arg (. scales buffer-pointer))
+          (arg (. natives length))
+        )
+      )
+    )
+    (throw (call Panic "Shader could not render into image") (if (not did-render)))
+    (call invalidate)
+  )
+  (fn-expr + size _ :get
+    (call Dimensions (/ pixel-width scale) (/ pixel-height scale))
+  )
+  (fn-expr + byte-count Size :get
+    (* (as pixel-width Size) (as pixel-height Size) (as (. surface bytes-per-pixel) Size))
+  )
+  (fn-expr + color-space _ :get
+    (. surface color-space)
+  )
+  (fn-expr + pixel-format _ :get
+    (. surface pixel-format)
+  )
+  (fn-expr + is-released _ :get
+    (== references 0)
+  )
+  (fn-do + retain _
+    (throw (call Panic "Image retained after its final release") (if (== references 0)))
+    (+= references 1)
+  )
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (call release)
+  )
+  (fn-do + release _
+    (throw (call Panic "Image released more often than retained") (if (== references 0)))
+    (-= references 1)
+    (if (== references 0)
+      (call (. surface close))
+    )
+  )
+  (fn-do + draw _
+    (param destination Canvas)
+    (param rect Rect)
+    (param sampling _ (= (. ImageSampling smooth)))
+    (return-if (if (== references 0)))
+    (call (. destination draw-image) surface rect false sampling)
+  )
+  (fn-do + fill _
+    (param destination Canvas)
+    (param rect Rect)
+    (param tile Rect)
+    (param sampling _ (= (. ImageSampling smooth)))
+    (return-if (if (== references 0)))
+    (call (. destination fill-image) surface rect tile sampling)
+  )
+  (fn-expr + opaque-bounds (? Rect)
+    (param minimum-alpha I32 (= 0))
+    (case? (== references 0)
+      null
+    )
+    (case? (not found)
+      null
+    )
+    (default
+      (call Rect (/ (. found x) scale) (/ (. found y) scale) (/ (. found width) scale) (/ (. found height) scale))
+    )
+    (where
+      (lazy found (call (. surface opaque-pixel-bounds) minimum-alpha))
+    )
+  )
+  (fn-expr + pixel-color RGBA
+    (param x I32)
+    (param y I32)
+    (call (. surface pixel-color) (call Point (+ x 0.5) (+ y 0.5)))
+  )
+)
+
+(fn-do + load-image Image (?! IOError)
+  (param path Path)
+  (param max-pixel-size I32 (= 0))
+  (param color-space (? ColorSpace) (= null))
+  (param pixel-format _ (= (. PixelFormat rgba8)))
+  (let location (str path))
+  (let space (if-expr color-space (as color-space I32) -1))
+  (let done (call (of Semaphore Pointer)))
+  (do-new-thread
+    (call (. done post) (call C:brixGraphicsImageDecodeFile location max-pixel-size space pixel-format false))
+  )
+  (let native Pointer)
+  (do (without cancel)
+    (= native (?? (call (. done await)) (call Pointer)))
+  )
+  (throw (call IOError (str "Unable to decode image " path)) (if (== native (call Pointer))))
+  (return (call Image (call RasterCanvas native) (call image-scale-for-name (. path base-name))))
+)
+
+(fn-do + load-thumbnail Image (?! IOError)
+  (param path Path)
+  (param max-pixel-size I32)
+  (let location (str path))
+  (let done (call (of Semaphore Pointer)))
+  (do-new-thread
+    (call (. done post) (call C:brixGraphicsImageDecodeFile location max-pixel-size -1 0 true))
+  )
+  (let native Pointer)
+  (do (without cancel)
+    (= native (?? (call (. done await)) (call Pointer)))
+  )
+  (throw (call IOError (str "Unable to decode thumbnail " path)) (if (== native (call Pointer))))
+  (return (call Image (call RasterCanvas native) 1))
+)
+
+(fn-do + decode-image Image (?! IOError)
+  (param bytes ([] Byte))
+  (param scale F64 (= 1))
+  (param max-pixel-size I32 (= 0))
+  (param color-space (? ColorSpace) (= null))
+  (param pixel-format _ (= (. PixelFormat rgba8)))
+  (let space (if-expr color-space (as color-space I32) -1))
+  (let done (call (of Semaphore Pointer)))
+  (do-new-thread
+    (call (. done post)
+      (block
+        (arg
+          (call C:brixGraphicsImageDecodeData
+            (block
+              (arg (. bytes data))
+              (arg (. bytes size))
+              (arg max-pixel-size)
+              (arg space)
+              (arg pixel-format)
+              (arg false)
+            )
+          )
+        )
+      )
+    )
+  )
+  (let native Pointer)
+  (do (without cancel)
+    (= native (?? (call (. done await)) (call Pointer)))
+  )
+  (throw (call IOError "Unable to decode image") (if (== native (call Pointer))))
+  (return (call Image (call RasterCanvas native) scale))
+)
+
+(type + ImageMeasure (is Tuple)
+  (prop + pixel-width F64)
+  (prop + pixel-height F64)
+  (prop + dpi-x F64)
+  (prop + dpi-y F64)
+  (fn-expr + size _ :get
+    (call Dimensions (/ (* pixel-width 72) dpi-x) (/ (* pixel-height 72) dpi-y))
+  )
+)
+
+(fn-do + measure-image ImageMeasure (?! IOError)
+  (param bytes ([] Byte))
+  (let measures ([] F64 4))
+  (let found (call C:brixGraphicsImageMeasureData (. bytes data) (. bytes size) measures))
+  (throw (call IOError "Unable to read the size of an image") (if (not found)))
+  (return (call ImageMeasure ([] measures 0) ([] measures 1) ([] measures 2) ([] measures 3)))
+)
+
+(fn-expr + image-scale-for-name F64
+  (param base-name String)
+  (case? (call (. base-name ends-with) "@3x")
+    3
+  )
+  (case? (call (. base-name ends-with) "@2x")
+    2
+  )
+  (default
+    1
+  )
+)

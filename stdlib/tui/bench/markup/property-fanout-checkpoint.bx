@@ -1,0 +1,75 @@
+; benchmark.meta description: Fans one selected-index property out to many tracked declarations before checkpoint.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: markup-runtime,compile-timing
+(blank)
+(import /core/markup)
+(import /core/style)
+(import /tui/box)
+(import /tui/layout)
+(import /tui/primitives)
+(import /tui/text)
+(blank)
+
+(main
+  (let row-count Size 640)
+  (let step-count Size 180)
+  (blank)
+  (<> PropertyFanoutRoot (id: root))
+  (blank)
+  (= (. root row-indexes) (call make-indexes row-count))
+  (call markup-mount-root root root)
+  (call (. root markup-batch-queue checkpoint))
+  (blank)
+  (let checksum Size 0)
+  (for (in step (..< 0 step-count))
+    (= (. root selected-index) (% (* step 37) row-count))
+    (= (. root status-prefix) (str "selected-" step))
+    (call (. root markup-batch-queue checkpoint))
+    (probe-count markup.bench.steps)
+    (+= checksum (+ (. root selected-index) (. root status-text length) step))
+  )
+  (blank)
+  (print (str "bench-result markup/property-fanout-checkpoint checksum=" checksum))
+)
+
+(type + PropertyFanoutRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + row-indexes (list SyntheticIndex))
+  (prop + selected-index Size (= 0))
+  (prop + status-prefix _ (= "selected-0"))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (prop + status-text _ (=> (str status-prefix ":" selected-index)))
+  (content
+    (<> This
+      (for (in row #row-indexes (keyed-by (. row value)))
+        (<> Label
+          (= text (call fanout-row-text (. row value) #selected-index #status-prefix))
+        )
+      )
+    )
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
+
+(type + SyntheticIndex (is Tuple)
+  (prop + value Size)
+)
+
+(fn-expr _ fanout-row-text String
+  (param index Size)
+  (param selected-index Size)
+  (param status-prefix String)
+  (case? (== index selected-index)
+    (str status-prefix " [" index "]")
+  )
+  (default
+    (str status-prefix " " index)
+  )
+)
+
+(fn-expr _ make-indexes (list SyntheticIndex)
+  (param count Size)
+  (in (call SyntheticIndex each) (..< 0 count))
+)

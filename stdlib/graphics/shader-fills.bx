@@ -1,0 +1,30 @@
+(import ./color)
+(import ./primitives)
+(import ./shader)
+(import ./shader-declarations)
+
+(type + Shimmer (is FillShader)
+  (prop + color RGBA)
+  (prop + highlight RGBA)
+  (prop + band Length)
+  (prop + sweep FrameCycle)
+  (fn-do + This _
+    (param color _)
+    (param highlight _)
+    (param band _ (= 60))
+    (param speed F64 (= 240))
+    (param rest F64 (= 2))
+    (= sweep (call FrameCycle (/ (* band 2) speed) rest (/ 1 speed)))
+  )
+  (fn-expr + metal _
+    (paragraph
+      "float4 fill(float2 position, float2 size, ShimmerArgs args) {"
+      "    float band = max(args.band, 1.0);"
+      "    float travel = size.x + band * 2.0;"
+      "    float center = args.sweep * args.sweep * args.sweep * travel - band;"
+      "    float glow = 1.0 - smoothstep(0.0, band, abs(position.x - center));"
+      "    return mix(args.color, args.highlight, glow * glow);"
+      "}"
+    )
+  )
+)

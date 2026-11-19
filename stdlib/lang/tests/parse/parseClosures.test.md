@@ -1,9 +1,5 @@
 # Closures
 
-```yumi
-=> do f(1)
-```
-
 ```brix
 (main
   (=> () :do (call f 1))
@@ -19,10 +15,6 @@
         </Argument>
     </CallExpression>
 </Function>
-```
-
-```yumi
-:: item => do f(item)
 ```
 
 ```brix
@@ -47,10 +39,6 @@
 </Function>
 ```
 
-```yumi
-(=> result)
-```
-
 ```brix
 (main
   (=> () result)
@@ -61,10 +49,6 @@
 <Function names="(closure)" access="private-access">
     <Id name="result"/>
 </Function>
-```
-
-```yumi
-(:: binding => result)
 ```
 
 ```brix
@@ -84,10 +68,6 @@
 </Function>
 ```
 
-```yumi
-=> result
-```
-
 ```brix
 (main
   (=> () result)
@@ -98,10 +78,6 @@
 <Function names="(closure)" access="private-access">
     <Id name="result"/>
 </Function>
-```
-
-```yumi
-:: a => result
 ```
 
 ```brix
@@ -119,10 +95,6 @@
     </ArgumentDecl>
     <Id name="result"/>
 </Function>
-```
-
-```yumi
-:: a, b => result
 ```
 
 ```brix
@@ -145,11 +117,6 @@
     </ArgumentDecl>
     <Id name="result"/>
 </Function>
-```
-
-```yumi
-:: a =>
-    b
 ```
 
 ```brix
@@ -175,10 +142,6 @@
 </Function>
 ```
 
-```yumi
-:: a => b
-```
-
 ```brix
 (main
   (=> (a) b)
@@ -194,11 +157,6 @@
     </ArgumentDecl>
     <Id name="b"/>
 </Function>
-```
-
-```yumi
-:: a, b =>
-    c
 ```
 
 ```brix
@@ -227,11 +185,6 @@
         <Id name="c"/>
     </Block>
 </Function>
-```
-
-```yumi
-:: a Int, b Float =>
-    c
 ```
 
 ```brix
@@ -264,10 +217,6 @@
 </Function>
 ```
 
-```yumi
-=> a
-```
-
 ```brix
 (main
   (=> () a)
@@ -278,10 +227,6 @@
 <Function names="(closure)" access="private-access">
     <Id name="a"/>
 </Function>
-```
-
-```yumi
-foo • where each * 2
 ```
 
 ```brix
@@ -309,10 +254,6 @@ foo • where each * 2
 </CallExpression>
 ```
 
-```yumi
-foo • of (xs *> each * 2)
-```
-
 ```brix
 (main
   (call foo (:of (*> xs (* each 2))))
@@ -334,10 +275,6 @@ foo • of (xs *> each * 2)
 </CallExpression>
 ```
 
-```yumi
-foo • where => a
-```
-
 ```brix
 (main
   (call foo (:where (=> () a)))
@@ -353,10 +290,6 @@ foo • where => a
         </Function>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-foo • where :: a => a
 ```
 
 ```brix
@@ -379,10 +312,6 @@ foo • where :: a => a
         </Function>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-:: ... foo [Int] => foo
 ```
 
 ```brix

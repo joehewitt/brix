@@ -1,0 +1,34 @@
+; benchmark.meta description: Calls a door that wraps a C function in a hot loop, in a program that never binds the door's effect: it should cost what the direct C call does.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /stdlib.h)
+(blank)
+
+(main
+  (let pass-count (as 200000000 I64))
+  (let checksum (as 0 I64))
+  (blank)
+  (+= checksum (call sum-magnitudes pass-count))
+  (blank)
+  (print (str "bench-result effects/door-call checksum=" checksum))
+)
+
+(effect + bench-world
+  (claim C:labs)
+)
+
+(fn-do _ magnitude I64 (door bench-world)
+  (param n I64)
+  (return (call C:labs n))
+)
+
+(fn-do _ sum-magnitudes I64
+  (param passes I64)
+  (let checksum (as 0 I64))
+  (let half (/ passes 2))
+  (for (in index (..< 0 passes))
+    (+= checksum (call magnitude (- index half)))
+  )
+  (return checksum)
+)

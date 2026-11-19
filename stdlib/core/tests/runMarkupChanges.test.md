@@ -1,28 +1,30 @@
 # Markup changes
 
-```yumi
-<Foo a
-    <Foo b
-        name = "B"
-    <Foo c
-        name = b.#name
+```brix
+(main
+  (<> Foo (id: a)
+    (<> Foo (id: b)
+      (= name "B")
+    )
+    (<> Foo (id: c)
+      (= name (. b #name))
+    )
+  )
+  (blank)
+  (print (. c name))
+  (= (. b name) "BB")
+  (print (. c name))
+  (= (. b name) "BBB")
+  (print (. c name))
+)
 
--- c.name
-b.name = "BB"
--- c.name
-b.name = "BBB"
--- c.name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ name String
-+ contents Foo?
-
-────────────────────
-+ do this += child Foo
-
-contents = child
+(type + Foo
+  (prop + name String)
+  (prop + contents (? Foo))
+  (fn-do + (infix this += (param child Foo)) _
+    (= contents child)
+  )
+)
 ```
 
 ```output
@@ -31,47 +33,42 @@ BB
 BBB
 ```
 
-```yumi
-.. binder = Binder(Foo("bob"))
-<Foo foo = "root"
-    binder.#thing
+```brix
+(main
+  (lazy binder (call Binder (call Foo "bob")))
+  (<> Foo (id: foo) (value: "root")
+    (. binder #thing)
+  )
+  (blank)
+  (print (?. (. foo content) name))
+  (= (. binder thing) (call Foo "tom"))
+  (print (?. (. foo content) name))
+  (= (. binder thing) (call Foo "fred"))
+  (print (?. (. foo content) name))
+)
 
--- foo.content?.name
-binder.thing = Foo("tom")
--- foo.content?.name
-binder.thing = Foo("fred")
--- foo.content?.name
+(type + Foo
+  (prop + name String)
+  (prop + content (? Foo))
+  (fn-do + This _
+    (param name _)
+  )
+  (fn-do + replace _
+    (param child Foo)
+    (param replacement Foo)
+    (= content replacement)
+  )
+  (fn-do + (infix this += (param child Foo)) _
+    (= content child)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ name String
-+ content Foo?
-
-────────────────────
-+ This
-    - name
-
-────────────────────
-+ do replace
-    - child Foo
-    - replacement Foo
-
-content = replacement
-
-────────────────────
-+ do this += child Foo
-
-content = child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Binder
-
-+ thing Foo
-
-────────────────────
-+ This
-    - thing
+(type + Binder
+  (prop + thing Foo)
+  (fn-do + This _
+    (param thing _)
+  )
+)
 ```
 
 ```output
@@ -80,22 +77,24 @@ tom
 fred
 ```
 
-```yumi
-.. some-name = "bob"
+```brix
+(main
+  (lazy some-name "bob")
+  (blank)
+  (<> Foo (id: a)
+    (= name #some-name)
+  )
+  (blank)
+  (print (. a name))
+  (= some-name "tom")
+  (print (. a name))
+  (= some-name "fred")
+  (print (. a name))
+)
 
-<Foo a
-    name = #some-name
-
--- a.name
-some-name = "tom"
--- a.name
-some-name = "fred"
--- a.name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ name String
+(type + Foo
+  (prop + name String)
+)
 ```
 
 ```output
@@ -104,30 +103,31 @@ tom
 fred
 ```
 
-```yumi
-.. some-name = a.#name
+```brix
+(main
+  (lazy some-name (. a #name))
+  (blank)
+  (<> Foo (id: a)
+    (= name "bob")
+    (<> Foo
+      (= name #some-name)
+    )
+  )
+  (blank)
+  (print some-name)
+  (print (?. (. a contents) name))
+  (= (. a name) "tom")
+  (print some-name)
+  (print (?. (. a contents) name))
+)
 
-<Foo a
-    name = "bob"
-    <Foo
-        name = #some-name
-
--- some-name
--- a.contents?.name
-a.name = "tom"
--- some-name
--- a.contents?.name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ name String
-+ contents Foo?
-
-────────────────────
-+ do this += child Foo
-
-contents = child
+(type + Foo
+  (prop + name String)
+  (prop + contents (? Foo))
+  (fn-do + (infix this += (param child Foo)) _
+    (= contents child)
+  )
+)
 ```
 
 ```output
@@ -137,30 +137,33 @@ tom
 tom
 ```
 
-```yumi
-.. some-name = a.#name
+```brix
+(main
+  (lazy some-name (. a #name))
+  (blank)
+  (<> Foo (id: a)
+    (= name "bob")
+  )
+  (let b
+    (<> Foo
+      (= name #some-name)
+    )
+  )
+  (blank)
+  (print some-name)
+  (print (. b name))
+  (= (. a name) "tom")
+  (print some-name)
+  (print (. b name))
+)
 
-<Foo a
-    name = "bob"
-. b = <Foo
-    name = #some-name
-
--- some-name
--- b.name
-a.name = "tom"
--- some-name
--- b.name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ name String
-+ contents Foo?
-
-────────────────────
-+ do this += child Foo
-
-contents = child
+(type + Foo
+  (prop + name String)
+  (prop + contents (? Foo))
+  (fn-do + (infix this += (param child Foo)) _
+    (= contents child)
+  )
+)
 ```
 
 ```output
@@ -170,21 +173,21 @@ tom
 tom
 ```
 
-```yumi
-<Thing thing
+```brix
+(main
+  (<> Thing (id: thing))
+  (blank)
+  (print (. thing name))
+  (= (. thing prefix) " sr.")
+  (print (. thing name))
+)
 
--- thing.name
-thing.prefix = " sr."
--- thing.name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ prefix = ""
-
-────────────────────
-
-+ name = "bob" + #prefix
+(type + Thing
+  (prop + prefix _ (= ""))
+  (content
+    (prop + name _ (= (+ "bob" #prefix)))
+  )
+)
 ```
 
 ```output
@@ -192,25 +195,25 @@ bob
 bob sr.
 ```
 
-```yumi
-.. some-name = "bob"
+```brix
+(main
+  (lazy some-name "bob")
+  (blank)
+  (<> Foo (id: foo) (value: #some-name))
+  (blank)
+  (print (. foo name))
+  (= some-name "tom")
+  (print (. foo name))
+  (= some-name "fred")
+  (print (. foo name))
+)
 
-<Foo foo = #some-name
-
--- foo.name
-some-name = "tom"
--- foo.name
-some-name = "fred"
--- foo.name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ name String
-
-────────────────────
-+ This
-    - name
+(type + Foo
+  (prop + name String)
+  (fn-do + This _
+    (param name _)
+  )
+)
 ```
 
 ```output
@@ -219,43 +222,44 @@ tom
 fred
 ```
 
-```yumi crash
-.. some-name = "bob"
+```brix crash
+(main
+  (lazy some-name "bob")
+  (blank)
+  (<> Foo (id: foo) (value: #some-name))
+)
 
-<Foo foo = #some-name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ This
-    - value String
+(type + Foo
+  (fn-do + This _
+    (param value String)
+  )
+)
 ```
 
 ```output
 Exception: Tracked markup constructor argument must match a property
-<no file:4>
-    <Foo foo = #some-name
-               ^^^^^^^^^^
+<no file:5>
+      (<> Foo (id: foo) (value: #some-name))
+                                ^^^^^^^^^^
 ```
 
-```yumi
-<Thing thing
+```brix
+(main
+  (<> Thing (id: thing))
+  (blank)
+  (lazy name (. thing #name))
+  (blank)
+  (print name)
+  (= (. thing prefix) " sr.")
+  (print name)
+)
 
-.. name = thing.#name
-
--- name
-thing.prefix = " sr."
--- name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ prefix = ""
-
-────────────────────
-
-+ name = "bob" + #prefix
+(type + Thing
+  (prop + prefix _ (= ""))
+  (content
+    (prop + name _ (= (+ "bob" #prefix)))
+  )
+)
 ```
 
 ```output
@@ -265,55 +269,56 @@ bob sr.
 
 ### A tracked read of a list follows changes made to the list in place.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. demo = Demo()
--- demo.label()
-demo.items += "a"
--- demo.label()
-demo.items += "b"
--- demo.label()
-demo.items[0] = "z"
--- demo.label()
-demo.items.remove(0)
--- demo.label()
-. old = demo.items
-demo.items = List'String()
--- demo.label()
-old += "stale"
--- demo.label()
-demo.items += "c"
--- demo.label()
+(main
+  (let demo (call Demo))
+  (print (call (. demo label)))
+  (+= (. demo items) "a")
+  (print (call (. demo label)))
+  (+= (. demo items) "b")
+  (print (call (. demo label)))
+  (= ([] (. demo items) 0) "z")
+  (print (call (. demo label)))
+  (call (. demo items remove) 0)
+  (print (call (. demo label)))
+  (let old (. demo items))
+  (= (. demo items) (call (of List String)))
+  (print (call (. demo label)))
+  (+= old "stale")
+  (print (call (. demo label)))
+  (+= (. demo items) "c")
+  (print (call (. demo label)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [String] = List'String()
-
-────────────────────
-
-<This
-    <TextBox = "${#items.length} ${",".join(#items)}"
-    if #items.length > 1
-        <TextBox = "many"
-
-────────────────────
-+ do label String
-
-. texts [String]
-collect(this, texts)
-= "${texts.length}:${"|".join(texts)}"
-
-────────────────────
-+ do collect
-    - node Box
-    - texts [String]
-
-for child in node.children
-    if child is TextBox
-        texts += (child as TextBox).text
-    collect(child, texts)
+(type + Demo (is Box)
+  (prop + items (list String) (= (call (of List String))))
+  (content
+    (<> This
+      (<> TextBox (value: (str (. #items length) " " (call (. "," join) #items))))
+      (if (> (. #items length) 1)
+        (<> TextBox (value: "many"))
+      )
+    )
+  )
+  (fn-do + label String
+    (let texts (list String))
+    (call collect this texts)
+    (return (str (. texts length) ":" (call (. "|" join) texts)))
+  )
+  (fn-do + collect _
+    (param node Box)
+    (param texts (list String))
+    (for (in child (. node children))
+      (if (is child TextBox)
+        (+= texts (. (as child TextBox) text))
+      )
+      (call collect child texts)
+    )
+  )
+)
 ```
 
 ```output
@@ -329,58 +334,55 @@ for child in node.children
 
 ### A tracked read of a list through another object follows the list.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. model = Model()
-. demo = Demo(model)
--- demo.label()
-model.items += "a"
--- demo.label()
-model.items += "b"
--- demo.label()
+(main
+  (let model (call Model))
+  (let demo (call Demo model))
+  (print (call (. demo label)))
+  (+= (. model items) "a")
+  (print (call (. demo label)))
+  (+= (. model items) "b")
+  (print (call (. demo label)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Model
+(type + Model
+  (prop + items (list String) (= (call (of List String))))
+)
 
-+ items [String] = List'String()
+(type + Demo (is Box)
+  (prop + model Model)
+  (fn-do + This _
+    (param model _)
+  )
+  (content
+    (<> This
+      (<> TextBox (value: (call count-label (. model #items))))
+    )
+  )
+  (fn-do + label String
+    (let texts (list String))
+    (call collect this texts)
+    (return (str (. texts length) ":" (call (. "|" join) texts)))
+  )
+  (fn-do + collect _
+    (param node Box)
+    (param texts (list String))
+    (for (in child (. node children))
+      (if (is child TextBox)
+        (+= texts (. (as child TextBox) text))
+      )
+      (call collect child texts)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ model Model
-
-────────────────────
-+ This
-    - model
-
-────────────────────
-
-<This
-    <TextBox = count-label(model.#items)
-
-────────────────────
-+ do label String
-
-. texts [String]
-collect(this, texts)
-= "${texts.length}:${"|".join(texts)}"
-
-────────────────────
-+ do collect
-    - node Box
-    - texts [String]
-
-for child in node.children
-    if child is TextBox
-        texts += (child as TextBox).text
-    collect(child, texts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ count-label
-    - items [String]
-
-"${items.length} items"
+(fn-expr + count-label _
+  (param items (list String))
+  (str (. items length) " items")
+)
 ```
 
 ```output
@@ -391,52 +393,53 @@ for child in node.children
 
 ### A markup loop over a tracked list still adds rows without rebuilding the others.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. demo = Demo()
-demo.items += "a"
-demo.items += "b"
-demo.items += "c"
--- demo.label()
--- built
+(main
+  (let demo (call Demo))
+  (+= (. demo items) "a")
+  (+= (. demo items) "b")
+  (+= (. demo items) "c")
+  (print (call (. demo label)))
+  (print built)
+)
 
-+ built = 0
+(blank)
+(prop + built _ (= 0))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
+(type + Demo (is Box)
+  (prop + items (list String) (= (call (of List String))))
+  (content
+    (<> This
+      (for (in item #items)
+        (<> TextBox (value: (call stamp item)))
+      )
+    )
+  )
+  (fn-do + label String
+    (let texts (list String))
+    (call collect this texts)
+    (return (str (. texts length) ":" (call (. "|" join) texts)))
+  )
+  (fn-do + collect _
+    (param node Box)
+    (param texts (list String))
+    (for (in child (. node children))
+      (if (is child TextBox)
+        (+= texts (. (as child TextBox) text))
+      )
+      (call collect child texts)
+    )
+  )
+)
 
-+ items [String] = List'String()
-
-────────────────────
-
-<This
-    for item in #items
-        <TextBox = stamp(item)
-
-────────────────────
-+ do label String
-
-. texts [String]
-collect(this, texts)
-= "${texts.length}:${"|".join(texts)}"
-
-────────────────────
-+ do collect
-    - node Box
-    - texts [String]
-
-for child in node.children
-    if child is TextBox
-        texts += (child as TextBox).text
-    collect(child, texts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do stamp String
-    - text String
-
-built += 1
-= text
+(fn-do + stamp String
+  (param text String)
+  (+= built 1)
+  (return text)
+)
 ```
 
 ```output
@@ -446,44 +449,44 @@ built += 1
 
 ### A tracked read of an optional list follows the list once it has one.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. demo = Demo()
--- demo.label()
-demo.items = List'String()
--- demo.label()
-demo.items! += "a"
--- demo.label()
-demo.items = null
--- demo.label()
+(main
+  (let demo (call Demo))
+  (print (call (. demo label)))
+  (= (. demo items) (call (of List String)))
+  (print (call (. demo label)))
+  (+= (!! (. demo items)) "a")
+  (print (call (. demo label)))
+  (= (. demo items) null)
+  (print (call (. demo label)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [String]?
-
-────────────────────
-
-<This
-    <TextBox = "${#items?.length ?? 9}"
-
-────────────────────
-+ do label String
-
-. texts [String]
-collect(this, texts)
-= "${texts.length}:${"|".join(texts)}"
-
-────────────────────
-+ do collect
-    - node Box
-    - texts [String]
-
-for child in node.children
-    if child is TextBox
-        texts += (child as TextBox).text
-    collect(child, texts)
+(type + Demo (is Box)
+  (prop + items (? (list String)))
+  (content
+    (<> This
+      (<> TextBox (value: (str (?? (?. #items length) 9))))
+    )
+  )
+  (fn-do + label String
+    (let texts (list String))
+    (call collect this texts)
+    (return (str (. texts length) ":" (call (. "|" join) texts)))
+  )
+  (fn-do + collect _
+    (param node Box)
+    (param texts (list String))
+    (for (in child (. node children))
+      (if (is child TextBox)
+        (+= texts (. (as child TextBox) text))
+      )
+      (call collect child texts)
+    )
+  )
+)
 ```
 
 ```output
@@ -493,28 +496,29 @@ for child in node.children
 1:9
 ```
 
-```yumi
-.. name = "bob"
-<Foo first
-    title = #name
-<Foo second
-    title = #name
+```brix
+(main
+  (lazy name "bob")
+  (<> Foo (id: first)
+    (= title #name)
+  )
+  (<> Foo (id: second)
+    (= title #name)
+  )
+  (blank)
+  (print (str (. first title) "/" (. second title)))
+  (call (. first close))
+  (= name "tom")
+  (print (str (. first title) "/" (. second title)))
+  (call (. second close))
+  (= name "fred")
+  (print (str (. first title) "/" (. second title)))
+)
 
--- "${first.title}/${second.title}"
-first.close()
-name = "tom"
--- "${first.title}/${second.title}"
-second.close()
-name = "fred"
--- "${first.title}/${second.title}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ title String
-
-────────────────────
-+ do close
+(type + Foo
+  (prop + title String)
+  (fn-do + close _)
+)
 ```
 
 ```output
@@ -523,52 +527,48 @@ bob/tom
 bob/tom
 ```
 
-```yumi
-.. name = "bob"
-<Foo outgoing
-    title = #name
+```brix
+(main
+  (lazy name "bob")
+  (<> Foo (id: outgoing)
+    (= title #name)
+  )
+  (blank)
+  (lazy binder (call Binder outgoing))
+  (<> Foo (id: holder)
+    (. binder #thing)
+  )
+  (blank)
+  (print (str (. outgoing title) "/" (?. (. holder content) title)))
+  (= name "tom")
+  (print (str (. outgoing title) "/" (?. (. holder content) title)))
+  (= (. binder thing) (call Foo "fred"))
+  (= name "sam")
+  (print (str (. outgoing title) "/" (?. (. holder content) title)))
+)
 
-.. binder = Binder(outgoing)
-<Foo holder
-    binder.#thing
+(type + Foo
+  (prop + title _ (= ""))
+  (prop + content (? Foo))
+  (fn-do + This _
+    (param title _ (= ""))
+  )
+  (fn-do + replace _
+    (param child Foo)
+    (param replacement Foo)
+    (= content replacement)
+  )
+  (fn-do + (infix this += (param child Foo)) _
+    (= content child)
+  )
+)
 
--- "${outgoing.title}/${holder.content?.title}"
-name = "tom"
--- "${outgoing.title}/${holder.content?.title}"
-binder.thing = Foo("fred")
-name = "sam"
--- "${outgoing.title}/${holder.content?.title}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ title = ""
-+ content Foo?
-
-────────────────────
-+ This
-    - title = ""
-
-────────────────────
-+ do replace
-    - child Foo
-    - replacement Foo
-
-content = replacement
-
-────────────────────
-+ do this += child Foo
-
-content = child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Binder
-
-+ thing Foo
-
-────────────────────
-+ This
-    - thing
+(type + Binder
+  (prop + thing Foo)
+  (fn-do + This _
+    (param thing _)
+  )
+)
 ```
 
 ```output
@@ -577,51 +577,53 @@ tom/tom
 tom/fred
 ```
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-.. name = "bob"
-<Titled outgoing
-    title = #name
-    <Titled nested
-        title = #name
+(main
+  (lazy name "bob")
+  (<> Titled (id: outgoing)
+    (= title #name)
+    (<> Titled (id: nested)
+      (= title #name)
+    )
+  )
+  (blank)
+  (lazy binder (call Binder outgoing))
+  (<> Box (id: holder)
+    (. binder #thing)
+  )
+  (blank)
+  (print (str (. outgoing title) "/" (. nested title) "/" (call shown holder)))
+  (= name "tom")
+  (print (str (. outgoing title) "/" (. nested title) "/" (call shown holder)))
+  (= (. binder thing) (call Titled "fred"))
+  (= name "sam")
+  (print (str (. outgoing title) "/" (. nested title) "/" (call shown holder)))
+)
 
-.. binder = Binder(outgoing)
-<Box holder
-    binder.#thing
+(type + Titled (is Box)
+  (prop + title _ (= ""))
+  (fn-do + This _
+    (param title _ (= ""))
+  )
+)
 
--- "${outgoing.title}/${nested.title}/${shown(holder)}"
-name = "tom"
--- "${outgoing.title}/${nested.title}/${shown(holder)}"
-binder.thing = Titled("fred")
-name = "sam"
--- "${outgoing.title}/${nested.title}/${shown(holder)}"
+(type + Binder
+  (prop + thing Titled)
+  (fn-do + This _
+    (param thing _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Titled is Box
-
-+ title = ""
-
-────────────────────
-+ This
-    - title = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ Binder
-
-+ thing Titled
-
-────────────────────
-+ This
-    - thing
-
-━━━━━━━━━━━━━━━━━━━━
-+ do shown String
-    - holder Box
-
-for child in holder.children
-    = (child as Titled).title
-= "none"
+(fn-do + shown String
+  (param holder Box)
+  (for (in child (. holder children))
+    (return (. (as child Titled) title))
+  )
+  (return "none")
+)
 ```
 
 ```output
@@ -632,37 +634,43 @@ tom/tom/fred
 
 ### An error an attribute's value raises as the attribute is given again goes to unhandled-error, and the element keeps the value it had.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-unhandled-error = :: error => do
-    -- "handled ${error.message}"
+(main
+  (= unhandled-error
+    (=> (error) :do
+      (block
+        (print (str "handled " (. error message)))
+      )
+    )
+  )
+  (blank)
+  (let panel (call Panel))
+  (print (. (as (!! (. panel %first-child)) Label) text))
+  (= (. panel value) "abcd")
+  (print (. (as (!! (. panel %first-child)) Label) text))
+  (= (. panel value) "x")
+  (print (. (as (!! (. panel %first-child)) Label) text))
+)
 
-. panel = Panel()
--- (panel.%first-child! as Label).text
-panel.value = "abcd"
--- (panel.%first-child! as Label).text
-panel.value = "x"
--- (panel.%first-child! as Label).text
+(fn-do + parse Int
+  (param text String)
+  (throw (call SyntaxError "bad") (if (== text "x")))
+  (return (. text length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do parse Int
-    - text String
-
-?! SyntaxError("bad")
-    if text == "x"
-= text.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ value = "ab"
-
-────────────────────
-
-<This
-    <Label
-        text = "${parse(#value)}"
+(type + Panel (is Box)
+  (prop + value _ (= "ab"))
+  (content
+    (<> This
+      (<> Label
+        (= text (str (call parse #value)))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -674,45 +682,41 @@ handled bad
 
 ### A line of a root `<This` that gives content and reads something tracked gives it again as what it read changes.
 
-```yumi
-<Holder holder
-    name = "a"
+```brix
+(main
+  (<> Holder (id: holder)
+    (= name "a")
+  )
+  (blank)
+  (print (?. (. holder content) name))
+  (= (. holder name) "b")
+  (print (?. (. holder content) name))
+)
 
--- holder.content?.name
-holder.name = "b"
--- holder.content?.name
+(type + Holder
+  (prop + name String)
+  (prop + content (? Item))
+  (content
+    (<> This
+      (call Item #name)
+    )
+  )
+  (fn-do + replace _
+    (param child Item)
+    (param replacement Item)
+    (= content replacement)
+  )
+  (fn-do + (infix this += (param child Item)) _
+    (= content child)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ name String
-+ content Item?
-
-────────────────────
-
-<This
-    Item(#name)
-
-────────────────────
-+ do replace
-    - child Item
-    - replacement Item
-
-content = replacement
-
-────────────────────
-+ do this += child Item
-
-content = child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item
-
-+ name String
-
-────────────────────
-+ This
-    - name
+(type + Item
+  (prop + name String)
+  (fn-do + This _
+    (param name _)
+  )
+)
 ```
 
 ```output
@@ -722,45 +726,41 @@ b
 
 ### A line of a root `<This` that is a tracked name alone gives what the name holds as content, and gives it again as that changes.
 
-```yumi
-<Holder holder
-    item = Item("a")
+```brix
+(main
+  (<> Holder (id: holder)
+    (= item (call Item "a"))
+  )
+  (blank)
+  (print (?. (. holder content) name))
+  (= (. holder item) (call Item "b"))
+  (print (?. (. holder content) name))
+)
 
--- holder.content?.name
-holder.item = Item("b")
--- holder.content?.name
+(type + Holder
+  (prop + item Item)
+  (prop + content (? Item))
+  (content
+    (<> This
+      #item
+    )
+  )
+  (fn-do + replace _
+    (param child Item)
+    (param replacement Item)
+    (= content replacement)
+  )
+  (fn-do + (infix this += (param child Item)) _
+    (= content child)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ item Item
-+ content Item?
-
-────────────────────
-
-<This
-    #item
-
-────────────────────
-+ do replace
-    - child Item
-    - replacement Item
-
-content = replacement
-
-────────────────────
-+ do this += child Item
-
-content = child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item
-
-+ name String
-
-────────────────────
-+ This
-    - name
+(type + Item
+  (prop + name String)
+  (fn-do + This _
+    (param name _)
+  )
+)
 ```
 
 ```output

@@ -1,0 +1,119 @@
+(import ./arena)
+(import ./array)
+(import ./number)
+(import ./parsing)
+(import ./string)
+
+(type + PatternScratch
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements PatternRecordBoundary)
+  ; Stores the collectors of a stream match in an Arena. Before each record a `~>` pipe matches, the
+  ; Arena is rewound to where it was when the helper was made, so each record's values must own
+  ; their storage.
+  (blank)
+  (prop _ arena Arena)
+  (prop _ start ArenaMark)
+  (fn-do + This _
+    (param source Arena)
+    (lazy arena source)
+    (lazy start (. source mark))
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + begin-pattern-record _
+    (call (. arena rewind) start)
+  )
+)
+
+(type + PatternTextMemo
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  ; Makes the Strings a stream match captures, giving back the String it made last for the same
+  ; short text where a table of them by hash still holds it. Text of bytes is read as the words
+  ; `short-words` gives, which both hash it and compare it.
+  (blank)
+  (prop _ hashes (of Array U32))
+  (prop _ texts (of Array String))
+  (prop _ mask U32)
+  (fn-do + This _
+    (lazy hashes (call (of Array U32) 256))
+    (lazy texts (call (of Array String) 256))
+    (= mask 255)
+  )
+  (fn-do + This _
+    (param length Size)
+    ; A table sized for input of a length, or none for input under 1 KB.
+    (lazy hashes (call (of Array U32) (call memo-slots length)))
+    (lazy texts (call (of Array String) (. hashes length)))
+    (= mask (if-expr (== (. hashes length) 0) 0 (as (- (. hashes length) 1) U32)))
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (return-if "" (if (== start end)))
+    (return-if (call (. source slice-string) (..< start end)) (if (or (== mask 0) (> (- end start) 24))))
+    (if (== Token Byte)
+      (return (call remembered (as source ([] Byte)) start end))
+    )
+    (let data (. source data))
+    (let hash 2166136261u32)
+    (let index start)
+    (while (< index end)
+      (= hash (* (/xor/ hash (as ([] data index) U32)) 16777619u32))
+      (+= index 1)
+    )
+    (= hash (/or/ hash 1u32))
+    (let slot (as (/and/ hash mask) Index))
+    (return-if ([] texts slot) (if (and (== ([] hashes slot) hash) (== (call (of CaptureSpan Token) source start end) ([] texts slot)))))
+    (let made (call (. source slice-string) (..< start end)))
+    (= ([] hashes slot) hash)
+    (= ([] texts slot) made)
+    (return made)
+  )
+  (fn-do _ remembered String
+    (param source ([] Byte))
+    (param start Index)
+    (param end Index)
+    (let length (- end start))
+    (let words (call short-words (+ (. source data) start) length))
+    (let mixed (* (/xor/ (. words first) (as length U64)) 0x9E3779B97F4A7C15))
+    (= mixed (* (/xor/ mixed (/zrshift/ mixed 29) (. words second)) 0xBF58476D1CE4E5B9))
+    (= mixed (* (/xor/ mixed (/zrshift/ mixed 32) (. words third)) 0x94D049BB133111EB))
+    (let hash (/or/ (as (/xor/ mixed (/zrshift/ mixed 32)) U32) 1))
+    (let slot (as (/and/ hash mask) Index))
+    (let kept ([] (. texts data) slot))
+    (return-if kept (if (and (== ([] (. hashes data) slot) hash) (== (. kept size) length) (== (call short-words kept length) words))))
+    (let made (call (. source slice-string) (..< start end)))
+    (= ([] hashes slot) hash)
+    (= ([] texts slot) made)
+    (return made)
+  )
+)
+
+(fn-do _ memo-slots Size
+  (param length Size)
+  (return-if 0 (if (< length 1024)))
+  (let slots Size 64)
+  (while (and (< slots 4096) (< (* slots 16) length))
+    (*= slots 2)
+  )
+  (return slots)
+)
+
+(fn-expr _ short-words (tuple (: first U64) (: second U64) (: third U64)) @inline
+  (param at (of CPointer Byte))
+  (param length Size)
+  ; From 1 to 24 bytes as three words that between them read each byte, so two texts as long as
+  ; each other hold the same bytes where their words are the same.
+  (case? (>= length 8)
+    (tuple ([] (as at (of CPointer U64)) 0) (if-expr (> length 16) ([] (as (+ at 8) (of CPointer U64)) 0) 0u64) ([] (as (+ at (- length 8)) (of CPointer U64)) 0))
+  )
+  (case? (>= length 4)
+    (tuple (/or/ (as ([] (as at (of CPointer U32)) 0) U64) (/lshift/ (as ([] (as (+ at (- length 4)) (of CPointer U32)) 0) U64) 32)) 0u64 0u64)
+  )
+  (default
+    (tuple (/or/ (as ([] at 0) U64) (/lshift/ (as ([] at (/ length 2)) U64) 8) (/lshift/ (as ([] at (- length 1)) U64) 16)) 0u64 0u64)
+  )
+)

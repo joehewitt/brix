@@ -1,0 +1,301 @@
+(import ./rule-context)
+(import ./source)
+(import /lang/ast/ast)
+(import /lang/ast/ast-children)
+(import /lang/ast/ast-nodes)
+(import /lang/ast/operator)
+(import /lang/ast/row-range)
+(import /stream/aggregate)
+
+(fn-do + lint-quantifiers _
+  (param source LintSource)
+  (param tree AST)
+  (param context RuleContext)
+  (let imported (if-expr (. source is-brix) "(import /stream/aggregate)" "/stream/aggregate"))
+  (let imports (call some (. source lines) (:where (== (call (. each trim)) imported))))
+  (let definitions (call quantifier-definitions tree))
+  (let attached (call attached-nodes tree))
+  (for (in id (..< 1u32 (. tree nodes length)))
+    (if (not ([] attached id))
+      (continue)
+    )
+    (match? ([] (. tree nodes) id)
+      (case (call .node-block row)
+        (call report-search-loops source tree row imports context)
+      )
+      (case (call .node-unary-expression row)
+        (let quantifier (call negated-quantifier tree row))
+        (if (and (!= (. quantifier length) 0) (not (call is-inside-any tree definitions (as id SyntaxId))))
+          (let loc (. ([] (. tree nodes loc) id) begin))
+          (call (. context report) (call negated-message quantifier) (+ (. loc line) 1) (+ (. loc column) 1))
+        )
+      )
+    )
+  )
+)
+
+(fn-do _ report-search-loops _
+  (param source LintSource)
+  (param tree AST)
+  (param block ASTBlock)
+  (param imports Bool)
+  (param context RuleContext)
+  (for (in position (..< 0 (. block body count)))
+    (let statement ([] (. tree children) (+ (. block body start) position)))
+    (let following (+ position 1))
+    (let next
+      (scope (if-expr has-following ([] (. tree children) (+ (. block body start) following)) 0u32)
+        (lazy has-following (< following (. block body count)))
+      )
+    )
+    (let found (call search-result tree statement next))
+    (if (== (. found length) 0)
+      (continue)
+    )
+    (let status (if-expr (and imports (call is-simple-loop tree statement)) "actionable" "review"))
+    (let line (. ([] (. tree nodes loc) statement) begin line))
+    (call (. context report) (call search-message found) (+ line 1) (call indent-column source line) status)
+  )
+)
+
+(fn-expr + search-result String
+  (param tree AST)
+  (param statement SyntaxId)
+  (param next SyntaxId)
+  (case? (or (not row) (call is-subscriber-loop tree (. row loop)))
+    ""
+  )
+  (case? (and (!= (. found length) 0) (!= (. returned length) 0) (!= returned found))
+    found
+  )
+  (default
+    ""
+  )
+  (where
+    (lazy row
+      (match? ([] (. tree nodes) statement)
+        (case (call .node-for-block loop)
+          loop
+        )
+      )
+    )
+    (lazy exit
+      (match ([] (. tree nodes) (. row body))
+        (case (call .node-block body)
+          (if-expr (== (. body body count) 1) ([] (. tree children) (. body body start)) 0u32)
+        )
+        (default
+          0u32
+        )
+      )
+    )
+    (lazy found (call exit-literal tree exit))
+    (lazy returned (call return-literal tree next))
+  )
+)
+
+(fn-expr + is-subscriber-loop Bool
+  (param tree AST)
+  (param id SyntaxId)
+  (match ([] (. tree nodes) id)
+    (case (call .node-loop-syntax row)
+      (. row is-subscriber)
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-expr + exit-literal String
+  (param tree AST)
+  (param id SyntaxId)
+  (match ([] (. tree nodes) id)
+    (case (call .node-return-if-true row)
+      (if-expr (!= (. row condition) 0) (call boolean-literal tree (. row expr)) "")
+    )
+    (default
+      ""
+    )
+  )
+)
+
+(fn-expr + return-literal String
+  (param tree AST)
+  (param id SyntaxId)
+  (match ([] (. tree nodes) id)
+    (case (call .node-return row)
+      (call boolean-literal tree (. row expr))
+    )
+    (default
+      ""
+    )
+  )
+)
+
+(fn-expr + boolean-literal String
+  (param tree AST)
+  (param id SyntaxId)
+  (case? (call is-named tree id "true")
+    "true"
+  )
+  (case? (call is-named tree id "false")
+    "false"
+  )
+  (default
+    ""
+  )
+)
+
+(fn-do + is-simple-loop Bool
+  (param tree AST)
+  (param statement SyntaxId)
+  (match? ([] (. tree nodes) statement)
+    (case (call .node-for-block row)
+      (match? ([] (. tree nodes) (. row loop))
+        (case (call .node-loop-syntax loop)
+          (if (or (== (. loop container) 0) (!= (. loop clause) 0) (!= (. loop next) 0) (. loop is-match))
+            (return false)
+          )
+          (match? ([] (. tree nodes) (. loop pattern))
+            (case (call .node-type-capture capture)
+              (return (and (== (. capture type) 0) (is ([] (. tree nodes) (. capture id)) .node-identifier)))
+            )
+          )
+        )
+      )
+    )
+  )
+  (return false)
+)
+
+(fn-do + indent-column U32
+  (param source LintSource)
+  (param line U32)
+  (let column 1u32)
+  (for (in char ([] (. source lines) line))
+    (if (and (!= char (char " ")) (!= char (char "\t")))
+      (break)
+    )
+    (+= column 1)
+  )
+  (return column)
+)
+
+(fn-expr + search-message String
+  (param found String)
+  (case? (== found "true")
+    "Replace this search loop and the `= false` after it with `some(…) • where …`."
+  )
+  (default
+    (str all-head " " all-tail)
+  )
+  (where
+    (lazy all-head "Replace this search loop and the `= true` after it with")
+    (lazy all-tail "`all(…) • where …`, negating the condition.")
+  )
+)
+
+(fn-do + quantifier-definitions (list SyntaxId)
+  (param tree AST)
+  (let found (list SyntaxId))
+  (for (in id (..< 1u32 (. tree nodes length)))
+    (match? ([] (. tree nodes) id)
+      (case (call .node-function-syntax row)
+        (for (in position (..< 0 (. row names count)))
+          (let name (. ([] (. tree atoms) (+ (. row names start) position)) text))
+          (if (or (== name "some") (== name "all"))
+            (+= found (as id SyntaxId))
+          )
+        )
+      )
+    )
+  )
+  (return found)
+)
+
+(fn-expr + is-inside-any Bool
+  (param tree AST)
+  (param holders (list SyntaxId))
+  (param id SyntaxId)
+  (call some holders (:where (and (<= (call (. tree subtree-start) each) id) (<= id each))))
+)
+
+(fn-do + negated-quantifier String
+  (param tree AST)
+  (param row ASTUnaryExpression)
+  (let call
+    (match? ([] (. tree nodes) (. row operand))
+      (case (call .node-call-expression found)
+        found
+      )
+    )
+  )
+  (if (or (!= (. row op) .not-op) (not call))
+    (return "")
+  )
+  (let quantifier (call identifier-text tree (. call callable)))
+  (if (and (!= quantifier "some") (!= quantifier "all"))
+    (return "")
+  )
+  (for (in operand ([] (. tree children) (. call operands)))
+    (match? ([] (. tree nodes) operand)
+      (case (call .node-argument argument)
+        (if (== (?? (?. (. argument name) text) "") "where")
+          (return (if-expr (call negates tree (call where-predicate tree (. argument expr))) quantifier ""))
+        )
+      )
+    )
+  )
+  (return "")
+)
+
+(fn-expr + identifier-text String
+  (param tree AST)
+  (param id SyntaxId)
+  (match ([] (. tree nodes) id)
+    (case (call .node-identifier row)
+      (. row name text)
+    )
+    (default
+      ""
+    )
+  )
+)
+
+(fn-expr + where-predicate SyntaxId
+  (param tree AST)
+  (param id SyntaxId)
+  (match ([] (. tree nodes) id)
+    (case (call .node-function-syntax row)
+      (call single-statement tree (. row body))
+    )
+    (default
+      0
+    )
+  )
+)
+
+(fn-expr + negates Bool
+  (param tree AST)
+  (param id SyntaxId)
+  (match ([] (. tree nodes) id)
+    (case (call .node-unary-expression row)
+      (and (== (. row op) .not-op) (!= (. row operand) 0))
+    )
+    (case (call .node-binary-expression row)
+      (== (. row op) .not-equals-op)
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-expr + negated-message String
+  (param quantifier String)
+  (str "Write `" opposite "(…) • where p` instead of `!(" quantifier "(…) • where !p)`.")
+  (where
+    (lazy opposite (if-expr (== quantifier "some") "all" "some"))
+  )
+)

@@ -1,0 +1,28 @@
+; benchmark.meta description: Parses the compiler's command-line module with two benchmark-selected parse workers.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: gc-runtime,compile-timing,parser-queue
+(blank)
+(import /lang/compiler)
+(import /os/env)
+(blank)
+
+(main
+  (let brix BrixCompiler)
+  (= (. brix parse-worker-count) 2)
+  (blank)
+  (let paths (call env "BRIXPATH"))
+  (if paths
+    (++= (. brix search-paths) (call (. paths split) ":"))
+  )
+  (blank)
+  (let source-path (call (. brix path-to-module) "/../apps/compiler/brix-cli"))
+  (throw (call Panic "Unable to resolve /../apps/compiler/brix-cli") (if (not source-path)))
+  (blank)
+  (let program (use (call (. brix source-to-syntax) (as source-path String) "__source__")))
+  (let checksum (. program modules length))
+  (if (== checksum 0)
+    (throw (call Panic "The parser did not parse any modules"))
+  )
+  (blank)
+  (print (str "bench-result parser/compiler-source-2 checksum=" checksum))
+)

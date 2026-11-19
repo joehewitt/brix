@@ -1,0 +1,48 @@
+(import ./matrix)
+(import ./path)
+(import ./point)
+(import ./primitives)
+(import /stream/aggregate)
+
+(type + PathSet
+  (prop + paths (list Path))
+  (fn-do + This _)
+  (fn-do + This _
+    (param source (list Path))
+    (for (in path source)
+      (+= paths path)
+    )
+  )
+  (fn-do + This _
+    (param source Path)
+    (+= paths source)
+  )
+  (fn-expr + bounding-box _ :get
+    (call paths-bounding-box paths)
+  )
+  (fn-do + apply-transform _
+    (param matrix Matrix)
+    (for (in path paths)
+      (call (. path transform) matrix)
+    )
+  )
+  (fn-do + translate _
+    (param offset Point)
+    (call apply-transform (call matrix-from-translation offset))
+  )
+  (fn-do + scale _
+    (param before Rect)
+    (param after Rect)
+    (for (in path paths)
+      (call (. path scale) before after)
+    )
+  )
+)
+
+(fn-expr + paths-bounding-box Rect
+  (param paths (list Path))
+  (call reduce drawn (:using (=> (union box) (+ union box))))
+  (where
+    (lazy drawn (*> (?> paths (> (. each count) 0)) (. each bounding-box)))
+  )
+)

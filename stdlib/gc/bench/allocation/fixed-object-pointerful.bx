@@ -1,0 +1,26 @@
+; benchmark.meta description: Allocates fixed-size objects containing a managed pointer.
+; benchmark.meta timing: not-recommended
+; benchmark.meta profiles: gc-runtime,allocator
+(blank)
+
+(main
+  (let iterations 50000)
+  (let checksum (as 0 Size))
+  (for (in i (..< 0 iterations))
+    (let node (call PointerBox i (call Pointer)))
+    (+= checksum (. node value))
+  )
+  (blank)
+  (print (str "bench-result allocation/fixed-object-pointerful checksum=" checksum))
+)
+
+(type + PointerBox
+  (prop + value _ (= 0))
+  (prop + reference Pointer)
+  (fn-do + This _
+    (param v _)
+    (param r Pointer)
+    (= value v)
+    (= reference r)
+  )
+)

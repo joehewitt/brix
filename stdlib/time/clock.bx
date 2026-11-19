@@ -1,0 +1,75 @@
+(import ./ctime)
+(import ./duration)
+(import /BxCore/BxTime.h)
+
+(effect + time
+  (claim C:clock_gettime)
+  (claim C:nanosleep)
+  (claim C:brixGetUTCTime)
+  (claim C:brixGetTimeZone)
+  (claim C:brixGetTimeZoneOffset)
+  (claim C:brixMonotonicTimeNanoseconds)
+  (claim C:brixSuspendActiveTaskUntilTime)
+  (claim C:brixSuspendActiveTaskUntilAbsoluteTime)
+  (claim C:brixCancelTimerEventListener)
+)
+
+(type + ClockTime (is Tuple)
+  (prop + s CSeconds)
+  (prop + ns CNanoseconds)
+  (fn-expr + (infix this == (param other ClockTime)) _
+    (and (== s (. other s)) (== ns (. other ns)))
+  )
+  (fn-expr + (infix this > (param other ClockTime)) _
+    (or (> s (. other s)) (and (== s (. other s)) (> ns (. other ns))))
+  )
+  (fn-expr + (infix this < (param other ClockTime)) _
+    (or (< s (. other s)) (and (== s (. other s)) (< ns (. other ns))))
+  )
+  (fn-expr + (infix this - (param other ClockTime)) _
+    (+ ds dns)
+    (where
+      (lazy ds Milliseconds (- s (. other s)))
+      (lazy dns Milliseconds (- ns (. other ns)))
+    )
+  )
+  (fn-expr + (of elapsed Unit) _
+    (call (of (. (call clock) diff) Unit) this)
+  )
+  (fn-expr + (of diff Unit) _
+    (param other ClockTime)
+    (+ ds dns)
+    (where
+      (lazy ds (as (- s (. other s)) Unit))
+      (lazy dns (as (- ns (. other ns)) Unit))
+    )
+  )
+)
+
+(fn-expr + clock _
+  (call ClockTime (. ts sec) (. ts nsec))
+  (where
+    (lazy ts (call get-clock-time))
+  )
+)
+
+(fn-expr + get-clock-time CTimeSpec (?! Error) (door time)
+  (before
+    (throw (call Error (str "Unable to retrieve clock (" err ")")) (if (!= err 0)))
+  )
+  time-spec
+  (where
+    (lazy tsbuf ([] CTimeSpec 1))
+    (lazy err (call C:clock_gettime C:CLOCK_REALTIME tsbuf))
+    (lazy time-spec ([] tsbuf 0))
+  )
+)
+
+(fn-do + (of measure T) _
+  (param fn T)
+  (let c (call clock))
+  (let result (call fn))
+  (let d (- (call clock) c))
+  (print (str "MEASURED " d))
+  (return result)
+)

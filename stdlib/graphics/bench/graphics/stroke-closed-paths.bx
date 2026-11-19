@@ -1,0 +1,92 @@
+; benchmark.meta description: Strokes ordinary closed shapes with bevel, miter, and round joins.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /graphics/shapes)
+(import /graphics/stroke)
+(import /math)
+(blank)
+
+(main
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 180))
+    (let source (call closed-stroke-source pass))
+    (let stroked
+      (call stroke
+        (block
+          (arg source)
+          (arg (+ 4.0 (% pass 8)))
+          (arg .center)
+          (arg (call stroke-join pass))
+          (arg .butt)
+          (arg 5)
+          (arg 0)
+        )
+      )
+    )
+    (+= checksum (+ (. source count) (call path-score stroked)))
+  )
+  (blank)
+  (print (str "bench-result graphics/stroke-closed-paths checksum=" checksum))
+)
+
+(fn-do _ closed-stroke-source _
+  (param seed Int)
+  (let base (as seed Float))
+  (let center (call Point (+ 90 (% base 11)) (+ 80 (% base 7))))
+  (let kind (% seed 4))
+  (if (== kind 0)
+    (return (call circle center (+ 34 (% base 13))))
+    (else-if (== kind 1)
+      (return (call rectangle (call Rect (- (. center x) 34) (- (. center y) 26) (+ 68 (% base 9)) (+ 52 (% base 7)))))
+    )
+    (else-if (== kind 2)
+      (let path (call polygon 5 (+ 82 (% base 11)) center))
+      (call (. path rotate) 11deg center)
+      (return path)
+    )
+  )
+  (blank)
+  (let path (call Path))
+  (call (. path move-to) (+ center (tuple -44 -8)))
+  (call (. path cubic-curve-to) (+ center (tuple -28 -58)) (+ center (tuple 40 -48)) (+ center (tuple 46 -4)))
+  (call (. path cubic-curve-to) (+ center (tuple 54 44)) (+ center (tuple -32 56)) (+ center (tuple -46 8)))
+  (call (. path cubic-curve-to) (+ center (tuple -60 -12)) (+ center (tuple -52 -26)) (+ center (tuple -44 -8)))
+  (call (. path close))
+  (return path)
+)
+
+(fn-expr _ stroke-join _
+  (param seed Int)
+  (case? (== kind 0)
+    .bevel-join-type
+  )
+  (case? (== kind 1)
+    .miter-join-type
+  )
+  (default
+    .round-join-type
+  )
+  (where
+    (lazy kind (% seed 3))
+  )
+)
+
+(fn-expr _ path-score Size
+  (param path Path)
+  (case? (not (. path count))
+    0
+  )
+  (default
+    (+ (. path count) (call numeric-check (. path last-point x)) (call numeric-check (. path last-point y)))
+  )
+)
+
+(fn-expr _ numeric-check Size
+  (param value Coord)
+  (% (as (call abs (* value 1000)) Size) 1000003)
+)

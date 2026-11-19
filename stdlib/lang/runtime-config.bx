@@ -1,0 +1,131 @@
+(import /data/json)
+(import /lang/constants)
+(import /lang/target)
+(import /os/file)
+(import /os/path)
+(import /os/process)
+
+(fn-do + runtime-config JSON (?! Error)
+  ; The project's runtime build config.
+  (return (call JSON (call read-file-text (call runtime-config-path))))
+)
+
+(fn-expr + runtime-config-path Path
+  (/ toolchain-root toolchain-config-name)
+)
+
+(fn-expr + target-config JSON (?! Error)
+  (param config JSON)
+  (param target Target)
+  ; A target's entry in the runtime build config.
+  (call config-member (call config-member config "targets") (. target name))
+)
+
+(fn-expr + target-build-path Path (?! Error)
+  (param target Target)
+  (param entry JSON)
+  ; Where a target's runtime is built: the build root for the host, and the directory its entry
+  ; names under the build root for any other target.
+  (case? (== (. target name) (. (call host-target) name))
+    brix-build-path
+  )
+  (default
+    (/ brix-build-path (call config-string entry "buildDirectory"))
+  )
+)
+
+(fn-do + build-runtime _ (?! Error)
+  (param target Target)
+  (param build-path Path)
+  ; Builds a target's runtime when it is stale, with the toolchain's runtime builder, along with
+  ; the dependencies its entry names. A toolchain without the builder has its runtimes built.
+  (let builder (/ toolchain-root "toolchain" "runtime.py"))
+  (return-if (if (not (. builder is-file))))
+  (let process
+    (call Process
+      (block
+        (arg (as builder String))
+        (arg (list "build" "--build" (as build-path String) "--target" (. target name)))
+      )
+    )
+  )
+  (let status (?? (call (. process wait) null) 1))
+  (call (. process close))
+  (throw (call Error (str "Building the " (. target name) " runtime failed with status " status)) (if (!= status 0)))
+)
+
+(fn-expr + runtime-file Path
+  (param path String)
+  (param build-path Path)
+  (case? (call (. path starts-with) "/")
+    (call Path path)
+  )
+  (case? (call (. path starts-with) "build/")
+    (/ build-path ([] path (... 6)))
+  )
+  (default
+    (/ toolchain-root path)
+  )
+)
+
+(fn-do + config-member JSON (?! Error)
+  (param object JSON)
+  (param name String)
+  (if (is object (map String JSON))
+    (let found ([] (as object (map String JSON)) name))
+    (if found
+      (return found)
+    )
+  )
+  (throw (call Error (str "The runtime build config does not define " name)))
+)
+
+(fn-expr + config-string String (?! Error)
+  (param object JSON)
+  (param name String)
+  (before
+    (throw (call Error (str "The runtime build config's " name " is not a string")) (if (is-not value String)))
+  )
+  value
+  (where
+    (lazy value (call config-member object name))
+  )
+)
+
+(fn-expr + config-optional-string (? String) (?! Error)
+  (param object JSON)
+  (param name String)
+  (before
+    ; The value of an optional string member, or null when the object has none.
+    (throw (call Error (str "The runtime build config's " name " is not a string")) (if (and found (is-not found String))))
+  )
+  (case? (not found)
+    null
+  )
+  (default
+    (as found String)
+  )
+  (where
+    (lazy found (only-if ([] (as object (map String JSON)) name) (if (is object (map String JSON)))))
+  )
+)
+
+(fn-do + config-strings (list String)
+  (param object JSON)
+  (param name String)
+  ; The strings of an optional list member.
+  (let items (list String))
+  (if (is-not object (map String JSON))
+    (return items)
+  )
+  (let found ([] (as object (map String JSON)) name))
+  (if (or (not found) (is-not found (list JSON)))
+    (return items)
+  )
+  (for (in value (as found (list JSON)))
+    (if (is value String)
+      (+= items value)
+    )
+  )
+  (return items)
+)

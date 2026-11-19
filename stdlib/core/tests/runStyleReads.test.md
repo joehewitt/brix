@@ -2,61 +2,61 @@
 
 ### $property reads resolve statically against the visible style vocabulary and compile to the declared value type: bare $name reads the current node and object.$name reads an explicit subject. Reads never settle: values read before settling are the style's initial values.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Label
-        ink = 9
-        bold = true
-        scale = 2.5
-        margin = 3
+(main
+  (<> BatchDemo (id: demo)
+    (<> Label
+      (= ink 9)
+      (= bold true)
+      (= scale 2.5)
+      (= margin 3)
+    )
+  )
+  (blank)
+  (let label (!! (. demo %first-child)))
+  (print (call (. demo read-styles) label))
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call (. demo read-styles) label))
+)
 
-. label = demo.%first-child!
--- demo.read-styles(label)
-demo.markup-batch-queue.checkpoint()
--- demo.read-styles(label)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using TextStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+  (fn-do + read-styles String
+    (param label Box)
+    (let own $ink)
+    (let child-ink (. label $ink))
+    (let child-bold (. label $bold))
+    (let child-scale (. label $scale))
+    (let child-margin (. label $margin))
+    (return (str "own=" own " ink=" child-ink " bold=" child-bold " scale=" child-scale " margin=" child-margin))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using TextStyle
+(type + TextStyle (is Style)
+  (prop + ink I64 @inherited (= 7))
+  (prop + bold Bool (= false))
+  (prop + scale F64 (= 1.5))
+  (prop + margin I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+  (style-domains bold (domain paint))
+  (style-domains scale (domain layout))
+  (style-domains margin (domain layout))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-────────────────────
-+ do read-styles String
-    - label Box
-
-. own = $ink
-. child-ink = label.$ink
-. child-bold = label.$bold
-. child-scale = label.$scale
-. child-margin = label.$margin
-= "own=$own ink=$child-ink bold=$child-bold scale=$child-scale margin=$child-margin"
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ @inherited ink I64 = 7
-+ bold Bool = false
-+ scale F64 = 1.5
-+ margin I64 = 0
-
-. ink -> paint
-. bold -> paint
-. scale -> layout
-. margin -> layout
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
+(type + Label (is Box)
+  (using TextStyle)
+)
 ```
 
 ```output
@@ -66,31 +66,30 @@ own=7 ink=9 bold=true scale=2.5 margin=3
 
 ### Bare style reads can be the root of an ordinary member chain.
 
-```yumi
-/core/style
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. demo = ChainDemo()
--- demo.read-chain()
+(main
+  (let demo (call ChainDemo))
+  (print (call (. demo read-chain)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ChainMetric is Tuple
+(type + ChainMetric (is Tuple)
+  (prop + amount I64)
+)
 
-+ amount I64
+(type + ChainStyle (is Style)
+  (prop + metric ChainMetric (= (call ChainMetric 41)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ChainStyle is Style
-
-+ metric ChainMetric = ChainMetric(41)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ChainDemo is Box
-    using ChainStyle
-
-────────────────────
-+ read-chain I64
-
-$metric.amount
+(type + ChainDemo (is Box)
+  (using ChainStyle)
+  (fn-expr + read-chain I64
+    (. $metric amount)
+  )
+)
 ```
 
 ```output
@@ -99,52 +98,51 @@ $metric.amount
 
 ### Style reads are legal anywhere: free functions and ordinary methods read settled computed values directly through subject.$property without any annotation.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Label
-        ink = 9
+(main
+  (<> BatchDemo (id: demo)
+    (<> Label
+      (= ink 9)
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (let label (as (!! (. demo %first-child)) Label))
+  (print (str "free=" (call read-ink-anywhere label)))
+  (print (str "method=" (call (. demo plain-read) label)))
+  (print (str "top=" (. label $ink)))
+)
 
-demo.markup-batch-queue.checkpoint()
-. label = demo.%first-child! as Label
--- "free=${read-ink-anywhere(label)}"
--- "method=${demo.plain-read(label)}"
--- "top=${label.$ink}"
+(fn-expr + read-ink-anywhere I64
+  (param label Label)
+  (. label $ink)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ read-ink-anywhere I64
-    - label Label
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using TextStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+  (fn-expr + plain-read I64
+    (param label Label)
+    (. label $ink)
+  )
+)
 
-label.$ink
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using TextStyle
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-────────────────────
-+ plain-read I64
-    - label Label
-
-label.$ink
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
+(type + Label (is Box)
+  (using TextStyle)
+)
 ```
 
 ```output
@@ -155,41 +153,43 @@ top=9
 
 ### Optional chaining on style reads returns the computed value for a present subject and null for a missing subject, matching ordinary member and structural markup chains.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Label
-        ink = 14
+(main
+  (<> BatchDemo (id: demo)
+    (<> Label
+      (= ink 14)
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (let maybe-label (? Label) (as (!! (. demo %first-child)) Label))
+  (let missing (? Label) null)
+  (print (str "present=" (?? (?. maybe-label $ink) -1)))
+  (print (str "missing=" (?? (?. missing $ink) -1)))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using TextStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-. maybe-label Label? = demo.%first-child! as Label
-. missing Label? = null
--- "present=${maybe-label?.$ink ?? -1}"
--- "missing=${missing?.$ink ?? -1}"
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using TextStyle
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
+(type + Label (is Box)
+  (using TextStyle)
+)
 ```
 
 ```output
@@ -199,42 +199,44 @@ missing=-1
 
 ### Style reads are total: authored values are contextual to the mounted tree, so an object that leaves it reads the property's registered initial value instead of its settled value.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Label
-        ink = 42
+(main
+  (<> BatchDemo (id: demo)
+    (<> Label
+      (= ink 42)
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (let label (as (!! (. demo %first-child)) Label))
+  (print (. label $ink))
+  (blank)
+  (call markup-remove demo label)
+  (print (. label $ink))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using TextStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-. label = demo.%first-child! as Label
--- label.$ink
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+)
 
-markup-remove(demo, label)
--- label.$ink
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using TextStyle
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
+(type + Label (is Box)
+  (using TextStyle)
+)
 ```
 
 ```output
@@ -244,51 +246,51 @@ markup-remove(demo, label)
 
 ### Styles register at the head of their defining module's init: module-level code in an importing module can mount, settle, and read styled nodes during its own initialization, before main runs, and sees authored values and unauthored defaults.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
-./theme
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(import ./theme)
+(blank)
 
-<InitDemo demo
-    <Label
-        ink = 12
+(main
+  (<> InitDemo (id: demo)
+    (<> Label
+      (= ink 12)
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (let label (as (!! (. demo %first-child)) Label))
+  (let ink (. label $ink))
+  (let tone (. label $tone))
+  (print (str "init-read ink=" ink " tone=" tone))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + InitDemo (is Box)
+  (implements MarkupRootElement)
+  (using TextStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-. label = demo.%first-child! as Label
-. ink = label.$ink
-. tone = label.$tone
--- "init-read ink=$ink tone=$tone"
-
-━━━━━━━━━━━━━━━━━━━━
-+ InitDemo is Box
-    is MarkupRootElement
-    using TextStyle
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
+(type + Label (is Box)
+  (using TextStyle)
+)
 ```
 
-```yumi file=theme.yumi
+```brix file=theme.bx
+(import /core/style)
 
-/core/style
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ @inherited ink I64 = 7
-+ tone I64 = 3
-
-. ink -> paint
-
+(type + TextStyle (is Style)
+  (prop + ink I64 @inherited (= 7))
+  (prop + tone I64 (= 3))
+  (blank)
+  (style-domains ink (domain paint))
+)
 ```
 
 ```output
@@ -297,49 +299,52 @@ init-read ink=12 tone=3
 
 ### An interface can declare the style vocabularies its values expose. Style reads and imperative writes on interface values resolve through the interface's usings.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items [Tinted] = List'Tinted()
-items += Swatch()
-items += Chip()
-. level = 5
-for item in items
-    item.tint = level
-    level += 1
-for item in items
-    -- "tint=${item.$tint} authored=${style-has-authored-property(item, "TintStyle", "tint")}"
--- "fresh=${tint-of(Chip())}"
+(main
+  (let items (list Tinted) (call (of List Tinted)))
+  (+= items (call Swatch))
+  (+= items (call Chip))
+  (let level 5)
+  (for (in item items)
+    (= (. item tint) level)
+    (+= level 1)
+  )
+  (for (in item items)
+    (print (str "tint=" (. item $tint) " authored=" (call style-has-authored-property item "TintStyle" "tint")))
+  )
+  (print (str "fresh=" (call tint-of (call Chip))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ tint-of I64
-    - item Tinted
+(fn-expr + tint-of I64
+  (param item Tinted)
+  (. item $tint)
+)
 
-item.$tint
+(type + TintStyle (is Style)
+  (prop + tint I64 (= 1))
+  (blank)
+  (style-domains tint (domain paint))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + Tinted (is Interface)
+  (implements MarkupElement)
+  (using TintStyle)
+)
 
-+ tint I64 = 1
+(type + Swatch (is Box)
+  (implements Tinted)
+  (using TintStyle)
+)
 
-. tint -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tinted is Interface
-    is MarkupElement
-    using TintStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ Swatch is Box
-    is Tinted
-    using TintStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ Chip is Box
-    is Tinted
-    using TintStyle
+(type + Chip (is Box)
+  (implements Tinted)
+  (using TintStyle)
+)
 ```
 
 ```output
@@ -350,71 +355,75 @@ fresh=1
 
 ### Implementing an interface that declares a style vocabulary requires using that style.
 
-```yumi crash
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. item Tinted = Plain()
--- item.$tint
+(main
+  (let item Tinted (call Plain))
+  (print (. item $tint))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + TintStyle (is Style)
+  (prop + tint I64 (= 1))
+)
 
-+ tint I64 = 1
+(type + Tinted (is Interface)
+  (implements MarkupElement)
+  (using TintStyle)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tinted is Interface
-    is MarkupElement
-    using TintStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ Plain is Box
-    is Tinted
+(type + Plain (is Box)
+  (implements Tinted)
+)
 ```
 
 ```output
 Exception: Plain must use TintStyle to implement Tinted
-<no file:20>
-    + Plain is Box
-    ^^^^^^^^^^^^^
+<no file:21>
+    (type + Plain (is Box)
+    ^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A character style value set from a name is kept in its slot as a number and read back as the character.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. chosen = 'y'
+(main
+  (let chosen 'y')
+  (blank)
+  (<> BatchDemo (id: demo)
+    (<> Label
+      (= mark chosen)
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. (as (!! (. demo %first-child)) Label) $mark))
+)
 
-<BatchDemo demo
-    <Label
-        mark = chosen
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using MarkStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-demo.markup-batch-queue.checkpoint()
--- (demo.%first-child! as Label).$mark
+(type + MarkStyle (is Style)
+  (prop + mark Char (= 'a'))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using MarkStyle
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkStyle is Style
-
-+ mark Char = 'a'
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using MarkStyle
+(type + Label (is Box)
+  (using MarkStyle)
+)
 ```
 
 ```output
@@ -423,42 +432,41 @@ y
 
 ### A style that only an object the program never makes uses is not registered, so its initial values are never evaluated.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. label = Label()
--- "made"
+(main
+  (let label (call Label))
+  (print "made")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InkStyle is Style
+(type + InkStyle (is Style)
+  (prop + ink I64 (= 7))
+)
 
-+ ink I64 = 7
+(type + ToneStyle (is Style)
+  (prop + tone I64 (= (call boom)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ToneStyle is Style
+(fn-do + boom I64
+  (throw (call Panic "boom"))
+  (return 3)
+)
 
-+ tone I64 = boom()
+(type + Label (is Box)
+  (using InkStyle)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do boom I64
+(type + Badge (is Box)
+  (using ToneStyle)
+)
 
-?! Panic("boom")
-= 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using InkStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ Badge is Box
-    using ToneStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ badge := Badge()
+(type + Holder
+  (prop + badge _ (:= (call Badge)))
+)
 ```
 
 ```output
@@ -467,43 +475,42 @@ made
 
 ### A name a method assigns that nothing declares is the property of a style the object uses, which the assignment declares for the object.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    <Label label
+(main
+  (<> Demo (id: demo)
+    (<> Label (id: label))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (call (. label paint))
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot label))
+)
 
-demo.markup-batch-queue.checkpoint()
-label.paint()
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(label)
+(type + Demo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-    is MarkupRootElement
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
-
-────────────────────
-+ do paint
-
-ink = 12
+(type + Label (is Box)
+  (using TextStyle)
+  (fn-do + paint _
+    (= ink 12)
+  )
+)
 ```
 
 ```output
@@ -512,22 +519,24 @@ node TextStyle seg=owned gen=1 mask=1 ink=12
 
 ### A style read with no object reads this, so a script, which has none, sees no style property.
 
-```yumi crash
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
--- $ink
+(main
+  (print $ink)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+)
 ```
 
 ```output
 Exception: Style property "ink" not found
-<no file:6>
-    -- $ink
-       ^^^^
+<no file:8>
+      (print $ink)
+             ^^^^
 ```

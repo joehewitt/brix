@@ -1,0 +1,378 @@
+(import /data/json)
+(import /stream/aggregate)
+
+(type + LintTextEdit (is Tuple)
+  (prop + start Index)
+  (prop + end Index)
+  (prop + replacement String)
+  (prop + expected-text String)
+)
+
+(type + LintFix
+  (prop + kind String)
+  (prop + title String)
+  (prop + edits (list LintTextEdit))
+  (fn-do + This _
+    (param kind String)
+    (param title String)
+    (param edits (list LintTextEdit))
+  )
+)
+
+(type + LintDiagnostic
+  (prop + path String)
+  (prop + rule-id String)
+  (prop + status String)
+  (prop + message String)
+  (prop + line U32)
+  (prop + column U32)
+  (prop + fix (? LintFix))
+  (fn-do + This _
+    (param path String)
+    (param rule-id String)
+    (param status String)
+    (param message String)
+    (param line U32)
+    (param column U32)
+    (param fix (? LintFix) (= null))
+  )
+)
+
+(type + LintRule
+  (prop + id String)
+  (prop + description String)
+  (prop + phase String)
+  (prop + recommended Bool)
+  (prop + fixable (? String))
+  (prop + default-options (map String JSON))
+  (fn-do + This _
+    (param id String)
+    (param description String)
+    (param phase String)
+    (param default-options (map String JSON))
+    (param recommended Bool (= true))
+    (param fixable (? String) (= null))
+  )
+)
+
+(fn-expr + rule-catalog (list LintRule)
+  (item
+    (call LintRule
+      (block
+        (:id "syntax/parse-error")
+        (:description "Report sources that do not parse, and in Brix each form the catalog rejects; other rules skip them.")
+        (:phase "ast")
+        (:default-options (call no-options))
+        (:fixable "safe")
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "complexity/cyclomatic")
+        (:description "Keep function cyclomatic complexity within a configured maximum.")
+        (:phase "ast")
+        (:default-options (call max-options 15))
+        (:recommended false)
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "layout/line-length")
+        (:description "Keep ordinary Yumi lines and the rows of Brix sources short; divider, comment, and template text lines are exempt.")
+        (:phase "text")
+        (:default-options (call max-options 100))
+        (:fixable "safe")
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "layout/divider-length")
+        (:description "Use 20-character dividers in Yumi; labeled comments have 10 dashes on each side.")
+        (:phase "text")
+        (:default-options (call no-options))
+        (:fixable "safe")
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "layout/depth")
+        (:description "Keep the rows of Brix sources from nesting too deep.")
+        (:phase "text")
+        (:default-options (call max-options 5))
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "layout/format")
+        (:description "Apply fix-only formatting: Yumi layout and dividers, or Brix layout, and declaration order.")
+        (:phase "text")
+        (:default-options (call format-options))
+        (:fixable "safe")
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "imports/sort")
+        (:description "Sort contiguous module import groups alphabetically.")
+        (:phase "declaration")
+        (:default-options (call no-options))
+        (:fixable "safe")
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "names/import-conflicts")
+        (:description "Report imported visibility overlap and possible overload competition.")
+        (:phase "declaration")
+        (:default-options (call no-options))
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "names/local-shadows-import")
+        (:description "Report local/imported visibility overlap and possible overload competition.")
+        (:phase "declaration")
+        (:default-options (call no-options))
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "names/type-param-shadows-type")
+        (:description "Disallow local type parameters that shadow module-level or imported types.")
+        (:phase "declaration")
+        (:default-options (call no-options))
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "names/case-owner-conflict")
+        (:description "Report bare cases that overloads resolve by visibility order.")
+        (:phase "semantic")
+        (:default-options (call no-options))
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "events/no-effectful-payload")
+        (:description "Keep lazily evaluated event payload expressions free of side effects.")
+        (:phase "semantic")
+        (:default-options (call no-options))
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "style/no-unused-catch-optional")
+        (:description "Use catch instead of catch? when the optional result is discarded.")
+        (:phase "ast")
+        (:default-options (call no-options))
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "style/no-nested-match-assertions")
+        (:description "Lift assertion-only match and table fallbacks into direct raise arms.")
+        (:phase "ast")
+        (:default-options (call no-options))
+        (:fixable "safe")
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "style/prefer-map-literal")
+        (:description "Construct populated maps with map literal syntax.")
+        (:phase "ast")
+        (:default-options (call no-options))
+        (:fixable "safe")
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "style/prefer-optional-match")
+        (:description "Prefer optional matches over terminal null defaults.")
+        (:phase "ast")
+        (:default-options (call no-options))
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "style/prefer-expression-function")
+        (:description "Prefer expression functions for value-selecting bodies.")
+        (:phase "ast")
+        (:default-options (call no-options))
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "style/no-redundant-null-fallback")
+        (:description "Prefer a conditional value to a choice whose other side is null.")
+        (:phase "ast")
+        (:default-options (call no-options))
+        (:fixable "safe")
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "style/prefer-decision-table")
+        (:description "Prefer one match or table over a chain of value-returning early exits.")
+        (:phase "ast")
+        (:default-options (call no-options))
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "style/prefer-quantifier")
+        (:description "Prefer `some of` and `all of` over search loops and negated quantifiers.")
+        (:phase "ast")
+        (:default-options (call no-options))
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "style/prefer-text-template")
+        (:description "Prefer text bodies for functions that build text.")
+        (:phase "ast")
+        (:default-options (call no-options))
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "style/no-redundant-context-cast")
+        (:description "Disallow casts where an explicit surrounding type already provides context.")
+        (:phase "semantic")
+        (:default-options (call no-options))
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "style/no-redundant-literal-suffix")
+        (:description "Omit a number's type suffix where its place already gives it that type.")
+        (:phase "semantic")
+        (:default-options (call no-options))
+        (:fixable "safe")
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "style/no-redundant-default-initializer")
+        (:description "Omit explicit initializers that reproduce the declared type default.")
+        (:phase "semantic")
+        (:default-options (call no-options))
+        (:fixable "safe")
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "style/prefer-constructor-initializer")
+        (:description "Prefer `..` over constructor assignments that discard a built default.")
+        (:phase "semantic")
+        (:default-options (call no-options))
+        (:fixable "safe")
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "style/prefer-shorthand")
+        (:description "Review visible style shorthands that directly forward a property assignment.")
+        (:phase "declaration")
+        (:default-options (call no-options))
+      )
+    )
+  )
+  (item
+    (call LintRule
+      (block
+        (:id "tui/prefer-shortcut-node")
+        (:description "Review command handlers that could use a declarative <Shortcut>.")
+        (:phase "ast")
+        (:default-options (call no-options))
+      )
+    )
+  )
+)
+
+(fn-expr + find-rule (? LintRule)
+  (param catalog (list LintRule))
+  (param id String)
+  catalog
+  (pipe ?> (== (. each id) id))
+  (pipe |> first)
+)
+
+(fn-expr + no-options (map String JSON)
+  (call (of Map String JSON))
+)
+
+(fn-expr + max-options (map String JSON)
+  (param max Int)
+  (call (of Map String JSON)
+    (block
+      (:max max)
+    )
+  )
+)
+
+(fn-expr + format-options (map String JSON)
+  (call (of Map String JSON)
+    (block
+      (:lengths
+        (call (of Map String JSON)
+          (block
+            (entry "━" 20)
+            (entry "─" 20)
+            (entry "═" 20)
+          )
+        )
+      )
+    )
+  )
+)

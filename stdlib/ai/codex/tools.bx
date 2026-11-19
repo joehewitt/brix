@@ -1,0 +1,243 @@
+(import ./wire)
+(import /ai/model)
+(import /ai/tasks)
+(import /data/json)
+(import /os/path)
+(import /stream/aggregate)
+
+(fn-expr + codex-tool-title (? String)
+  (param call AIToolCallPart)
+  (match (. call tool-name)
+    (case= codex-command-tool
+      (call codex-first-line (call codex-command arguments))
+    )
+    (case= codex-patch-tool
+      (call codex-patch-title arguments)
+    )
+    (case= codex-image-tool
+      (str "View " (?? (call codex-file-name (call ai-argument arguments "path")) "an image"))
+    )
+    (case= codex-agent-tool
+      (call codex-agent-title (call ai-argument arguments "action"))
+    )
+    (default
+      (call codex-mcp-title (. call tool-name))
+    )
+  )
+  (where
+    (lazy arguments (. call arguments))
+  )
+)
+
+(fn-expr + codex-tool-kind AIToolKind
+  (param call AIToolCallPart)
+  (match (. call tool-name)
+    (case= codex-command-tool
+      (call codex-command-kind (. call arguments))
+    )
+    (case= codex-patch-tool
+      (if-expr (call codex-patch-adds (. call arguments)) (. AIToolKind write) (. AIToolKind edit))
+    )
+    (case= codex-image-tool
+      (. AIToolKind read)
+    )
+    (case= codex-agent-tool
+      (. AIToolKind agent)
+    )
+    (default
+      (. AIToolKind other)
+    )
+  )
+)
+
+(fn-expr + codex-tool-input (? String)
+  (param call AIToolCallPart)
+  (match? (. call tool-name)
+    (case= codex-command-tool
+      (?? (call codex-read-path arguments) (call codex-command arguments))
+    )
+    (case= codex-patch-tool
+      (call codex-patch-path arguments)
+    )
+    (case= codex-image-tool
+      (call ai-argument arguments "path")
+    )
+    (case= codex-agent-tool
+      (call ai-argument arguments "prompt")
+    )
+  )
+  (where
+    (lazy arguments (. call arguments))
+  )
+)
+
+(fn-expr _ codex-command (? String)
+  (param arguments JSON)
+  (only-if (call codex-unwrapped command) (if command))
+  (where
+    (lazy command (call ai-argument arguments "command"))
+  )
+)
+
+(fn-expr _ codex-unwrapped String
+  (param command String)
+  (case? (or (== start null) (not (call (. command ends-with) "'")) (!= (call (. ([] command (..< 0 start)) find) " ") null))
+    command
+  )
+  (default
+    ([] command (..< (+ open 1) (- (. command length) 1)))
+  )
+  (where
+    (lazy start (?? (call (. command find) " -lc '") (call (. command find) " -c '")))
+    (lazy open (?? (call (. command find) "'" start) start))
+  )
+)
+
+(fn-do _ codex-command-kind AIToolKind
+  (param arguments JSON)
+  (let actions (call codex-actions arguments))
+  (let first (only-if (call codex-action-kind ([] actions 0)) (if (. actions length))))
+  (for (in action actions)
+    (return-if (. AIToolKind command) (if (!= (call codex-action-kind action) first)))
+  )
+  (return (?? first (. AIToolKind command)))
+)
+
+(fn-expr _ codex-action-kind (? AIToolKind)
+  (param action JSON)
+  (match? action
+    (case (map "type" "read")
+      (. AIToolKind read)
+    )
+    (case (map "type" "listFiles")
+      (. AIToolKind search)
+    )
+    (case (map "type" "search")
+      (. AIToolKind search)
+    )
+  )
+)
+
+(fn-do _ codex-read-path (? String)
+  (param arguments JSON)
+  (let actions (call codex-actions arguments))
+  (return-if null (if (!= (. actions length) 1)))
+  (return
+    (match? ([] actions 0)
+      (case (list (= "type" "read") (= "path" (: path String)))
+        path
+      )
+    )
+  )
+)
+
+(fn-expr _ codex-actions (list JSON)
+  (param arguments JSON)
+  (match arguments
+    (case (map "actions" (: actions (list JSON)))
+      actions
+    )
+    (default
+      (call (of List JSON))
+    )
+  )
+)
+
+(fn-expr _ codex-changes (list JSON)
+  (param arguments JSON)
+  (match arguments
+    (case (map "changes" (: changes (list JSON)))
+      changes
+    )
+    (default
+      (call (of List JSON))
+    )
+  )
+)
+
+(fn-expr _ codex-patch-adds Bool
+  (param arguments JSON)
+  (and (> (. changes length) 0) adds)
+  (where
+    (lazy changes (call codex-changes arguments))
+    (lazy adds (call all changes (:where (is each (list (= "kind" (map "type" "add")) ...)))))
+  )
+)
+
+(fn-expr _ codex-patch-path (? String)
+  (param arguments JSON)
+  (match? (call codex-changes arguments)
+    (case (list (list (= "path" (: path String)) ...))
+      path
+    )
+  )
+)
+
+(fn-expr _ codex-patch-title String
+  (param arguments JSON)
+  (case? (> count 1)
+    (str "Edit " count " files")
+  )
+  (case? (call codex-patch-adds arguments)
+    (str "Write " (?? name "a file"))
+  )
+  (default
+    (str "Edit " (?? name "a file"))
+  )
+  (where
+    (lazy count (. (call codex-changes arguments) length))
+    (lazy name (call codex-file-name (call codex-patch-path arguments)))
+  )
+)
+
+(fn-expr _ codex-agent-title String
+  (param action (? String))
+  (match action
+    (case= "spawnAgent"
+      "Start an agent"
+    )
+    (case= "wait"
+      "Wait for agents"
+    )
+    (case= "sendInput"
+      "Message an agent"
+    )
+    (case= "closeAgent"
+      "Close an agent"
+    )
+    (default
+      "Work with agents"
+    )
+  )
+)
+
+(fn-expr _ codex-file-name (? String)
+  (param path (? String))
+  (only-if (. (call Path path 0) name) (if path))
+)
+
+(fn-expr _ codex-first-line (? String)
+  (param text (? String))
+  (case? (== text null)
+    null
+  )
+  (case? (!= (call (. text find) "\n") null)
+    (str (call (. ([] text (..< 0 (!! (call (. text find) "\n")))) trim)) " …")
+  )
+  (default
+    (call (. text trim))
+  )
+)
+
+(fn-expr _ codex-mcp-title String
+  (param name String)
+  (case? (and (>= (. parts length) 3) (== ([] parts 0) "mcp"))
+    (str ([] parts 1) ": " ([] parts 2))
+  )
+  (default
+    name
+  )
+  (where
+    (lazy parts (call List (call (. name split) "__")))
+  )
+)

@@ -1,13 +1,20 @@
 # Match exhaustiveness
 
-```yumi
-. result = match true
-    |= true
+```brix
+(main
+  (let result
+    (match true
+      (case= true
         1
-    |= false
+      )
+      (case= false
         0
--- type-of result
--- result + 1
+      )
+    )
+  )
+  (print (type-of result))
+  (print (+ result 1))
+)
 ```
 
 ```output
@@ -15,147 +22,161 @@
 2
 ```
 
-```yumi crash
-match true
-    |= true
-        -- "true"
+```brix crash
+(main
+  (match true
+    (case= true
+      (print "true")
+    )
+  )
+)
 ```
 
 ```output
-Exception: This match on Bool does not handle false; add "|= false", or "??" for the rest
-<no file:3>
-        |= true
-        ^^^^^^
+Exception: This match on Bool does not handle false; add "(case= false …)", or "(default …)" for the rest
+<no file:4>
+        (case= true
+        ^^^^^^^^^^
 ```
 
 ### Held Results require every Error channel.
 
-```yumi crash
-. result = match catch load(0)
-    | config Config
-        config.value
-    | err FileNotFound
+```brix crash
+(main
+  (let result
+    (match (catch (call load 0))
+      (case (: config Config)
+        (. config value)
+      )
+      (case (: err FileNotFound)
         "not found"
--- result
+      )
+    )
+  )
+  (print result)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Config
+(type + Config
+  (prop + value String)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value String
+(type + FileNotFound (is Error))
 
-────────────────────
-+ This
-    - value
+(type + PermissionDenied (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ FileNotFound is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ PermissionDenied is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ do load Config ?! FileNotFound ?! PermissionDenied
-    - outcome Int
-
-if outcome == 1
-    ?! FileNotFound("missing")
-if outcome == 2
-    ?! PermissionDenied("denied")
-= Config("loaded")
+(fn-do + load Config (?! FileNotFound) (?! PermissionDenied)
+  (param outcome Int)
+  (if (== outcome 1)
+    (throw (call FileNotFound "missing"))
+  )
+  (if (== outcome 2)
+    (throw (call PermissionDenied "denied"))
+  )
+  (return (call Config "loaded"))
+)
 ```
 
 ```output
-Exception: This match on Result does not handle PermissionDenied; add a case for it, or "??" for the rest
-<no file:3>
-        | config Config
-        ^^^^^^^^^^^^^^
+Exception: This match on Result does not handle PermissionDenied; add a case for it, or "(default …)" for the rest
+<no file:5>
+          (case (: config Config)
+          ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Held Results require their success channel.
 
-```yumi crash
-. result = match catch load(1)
-    | err FileNotFound
+```brix crash
+(main
+  (let result
+    (match (catch (call load 1))
+      (case (: err FileNotFound)
         "not found"
-    | err PermissionDenied
+      )
+      (case (: err PermissionDenied)
         "denied"
--- result
+      )
+    )
+  )
+  (print result)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Config
+(type + Config
+  (prop + value String)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value String
+(type + FileNotFound (is Error))
 
-────────────────────
-+ This
-    - value
+(type + PermissionDenied (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ FileNotFound is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ PermissionDenied is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ do load Config ?! FileNotFound ?! PermissionDenied
-    - outcome Int
-
-if outcome == 1
-    ?! FileNotFound("missing")
-if outcome == 2
-    ?! PermissionDenied("denied")
-= Config("loaded")
+(fn-do + load Config (?! FileNotFound) (?! PermissionDenied)
+  (param outcome Int)
+  (if (== outcome 1)
+    (throw (call FileNotFound "missing"))
+  )
+  (if (== outcome 2)
+    (throw (call PermissionDenied "denied"))
+  )
+  (return (call Config "loaded"))
+)
 ```
 
 ```output
-Exception: This match on Result does not handle Config; add a case for it, or "??" for the rest
-<no file:3>
-        | err FileNotFound
-        ^^^^^^^^^^^^^^^^^
+Exception: This match on Result does not handle Config; add a case for it, or "(default …)" for the rest
+<no file:5>
+          (case (: err FileNotFound)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Exhaustive held Results evaluate only the selected success or Error arm.
 
-```yumi
--- inspect(0)
--- inspect(2)
+```brix
+(main
+  (print (call inspect 0))
+  (print (call inspect 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Config
+(type + Config
+  (prop + value String)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value String
+(type + FileNotFound (is Error))
 
-────────────────────
-+ This
-    - value
+(type + PermissionDenied (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ FileNotFound is Error
+(fn-do + load Config (?! FileNotFound) (?! PermissionDenied)
+  (param outcome Int)
+  (if (== outcome 1)
+    (throw (call FileNotFound "missing"))
+  )
+  (if (== outcome 2)
+    (throw (call PermissionDenied "denied"))
+  )
+  (return (call Config "loaded"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ PermissionDenied is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ do load Config ?! FileNotFound ?! PermissionDenied
-    - outcome Int
-
-if outcome == 1
-    ?! FileNotFound("missing")
-if outcome == 2
-    ?! PermissionDenied("denied")
-= Config("loaded")
-
-━━━━━━━━━━━━━━━━━━━━
-+ inspect String
-    - outcome Int
-
-match catch load(outcome)
-    | config Config
-        config.value
-    | err FileNotFound
-        "not found"
-    | err PermissionDenied
-        "permission denied"
+(fn-expr + inspect String
+  (param outcome Int)
+  (match (catch (call load outcome))
+    (case (: config Config)
+      (. config value)
+    )
+    (case (: err FileNotFound)
+      "not found"
+    )
+    (case (: err PermissionDenied)
+      "permission denied"
+    )
+  )
+)
 ```
 
 ```output
@@ -165,45 +186,49 @@ permission denied
 
 ### A typed arm that propagates its Error still covers that Result channel.
 
-```yumi
--- catch inspect(1)
+```brix
+(main
+  (print (catch (call inspect 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Config
+(type + Config
+  (prop + value String)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value String
+(type + FileNotFound (is Error))
 
-────────────────────
-+ This
-    - value
+(type + PermissionDenied (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ FileNotFound is Error
+(fn-do + load Config (?! FileNotFound) (?! PermissionDenied)
+  (param outcome Int)
+  (if (== outcome 1)
+    (throw (call FileNotFound "missing"))
+  )
+  (if (== outcome 2)
+    (throw (call PermissionDenied "denied"))
+  )
+  (return (call Config "loaded"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ PermissionDenied is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ do load Config ?! FileNotFound ?! PermissionDenied
-    - outcome Int
-
-if outcome == 1
-    ?! FileNotFound("missing")
-if outcome == 2
-    ?! PermissionDenied("denied")
-= Config("loaded")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do inspect String ?! FileNotFound
-    - outcome Int
-
-= match catch load(outcome)
-    | config Config
-        config.value
-    | err FileNotFound
-        ?! err
-    | err PermissionDenied
+(fn-do + inspect String (?! FileNotFound)
+  (param outcome Int)
+  (return
+    (match (catch (call load outcome))
+      (case (: config Config)
+        (. config value)
+      )
+      (case (: err FileNotFound)
+        (throw err)
+      )
+      (case (: err PermissionDenied)
         "permission denied"
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -212,88 +237,97 @@ missing
 
 ### Predicate-only arms still check the held Result domain.
 
-```yumi crash
-. result = match catch load()
-    |? false
+```brix crash
+(main
+  (let result
+    (match (catch (call load))
+      (case? false
         "never"
--- result
+      )
+    )
+  )
+  (print result)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Config
+(type + Config)
 
-━━━━━━━━━━━━━━━━━━━━
-+ FileNotFound is Error
+(type + FileNotFound (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ PermissionDenied is Error
+(type + PermissionDenied (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do load Config ?! FileNotFound ?! PermissionDenied
-
-= Config()
+(fn-do + load Config (?! FileNotFound) (?! PermissionDenied)
+  (return (call Config))
+)
 ```
 
 ```output
-Exception: This match on Result does not handle Config, FileNotFound and PermissionDenied; add a case for each, or "??" for the rest
-<no file:3>
-        |? false
-        ^^^^^^^
+Exception: This match on Result does not handle Config, FileNotFound and PermissionDenied; add a case for each, or "(default …)" for the rest
+<no file:5>
+          (case? false
+          ^^^^^^^^^^^
 ```
 
 ### Error supertypes, unconditional remainders, and optional matches retain their coverage rules.
 
-```yumi
--- inspect-with-supertype(2)
--- inspect-with-remainder(1)
-. partial = match? catch load(2)
-    | config Config
-        config.value
--- partial ?? "none"
+```brix
+(main
+  (print (call inspect-with-supertype 2))
+  (print (call inspect-with-remainder 1))
+  (let partial
+    (match? (catch (call load 2))
+      (case (: config Config)
+        (. config value)
+      )
+    )
+  )
+  (print (?? partial "none"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Config
+(type + Config
+  (prop + value String)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value String
+(type + FileNotFound (is Error))
 
-────────────────────
-+ This
-    - value
+(type + PermissionDenied (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ FileNotFound is Error
+(fn-do + load Config (?! FileNotFound) (?! PermissionDenied)
+  (param outcome Int)
+  (if (== outcome 1)
+    (throw (call FileNotFound "missing"))
+  )
+  (if (== outcome 2)
+    (throw (call PermissionDenied "denied"))
+  )
+  (return (call Config "loaded"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ PermissionDenied is Error
+(fn-expr + inspect-with-supertype String
+  (param outcome Int)
+  (match (catch (call load outcome))
+    (case (: config Config)
+      (. config value)
+    )
+    (case Error
+      "error"
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do load Config ?! FileNotFound ?! PermissionDenied
-    - outcome Int
-
-if outcome == 1
-    ?! FileNotFound("missing")
-if outcome == 2
-    ?! PermissionDenied("denied")
-= Config("loaded")
-
-━━━━━━━━━━━━━━━━━━━━
-+ inspect-with-supertype String
-    - outcome Int
-
-match catch load(outcome)
-    | config Config
-        config.value
-    | Error
-        "error"
-
-━━━━━━━━━━━━━━━━━━━━
-+ inspect-with-remainder String
-    - outcome Int
-
-match catch load(outcome)
-    | config Config
-        config.value
-    ??
-        "remainder"
+(fn-expr + inspect-with-remainder String
+  (param outcome Int)
+  (match (catch (call load outcome))
+    (case (: config Config)
+      (. config value)
+    )
+    (default
+      "remainder"
+    )
+  )
+)
 ```
 
 ```output
@@ -304,47 +338,48 @@ none
 
 ### A Result success union remains one channel, but its alternatives can be covered together.
 
-```yumi
--- inspect-choice(false)
--- inspect-choice(true)
+```brix
+(main
+  (print (call inspect-choice false))
+  (print (call inspect-choice true))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Config
+(type + Config
+  (prop + value String)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value String
+(type + Choice (is Union)
+  (variant Config)
+  (variant String)
+)
 
-────────────────────
-+ This
-    - value
+(type + PermissionDenied (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
+(fn-do + load-choice Choice (?! PermissionDenied)
+  (param as-text Bool)
+  (if as-text
+    (return "text")
+  )
+  (return (call Config "config"))
+)
 
-| Config
-| String
-
-━━━━━━━━━━━━━━━━━━━━
-+ PermissionDenied is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ do load-choice Choice ?! PermissionDenied
-    - as-text Bool
-
-if as-text
-    = "text"
-= Config("config")
-
-━━━━━━━━━━━━━━━━━━━━
-+ inspect-choice String
-    - as-text Bool
-
-match catch load-choice(as-text)
-    | config Config
-        config.value
-    | text String
-        text
-    | err PermissionDenied
-        "denied"
+(fn-expr + inspect-choice String
+  (param as-text Bool)
+  (match (catch (call load-choice as-text))
+    (case (: config Config)
+      (. config value)
+    )
+    (case (: text String)
+      text
+    )
+    (case (: err PermissionDenied)
+      "denied"
+    )
+  )
+)
 ```
 
 ```output
@@ -354,68 +389,83 @@ text
 
 ### One alternative does not cover an entire union-valued success channel.
 
-```yumi crash
-. result = match catch load-choice()
-    | config Config
-        config.value
-    | err PermissionDenied
+```brix crash
+(main
+  (let result
+    (match (catch (call load-choice))
+      (case (: config Config)
+        (. config value)
+      )
+      (case (: err PermissionDenied)
         "denied"
--- result
+      )
+    )
+  )
+  (print result)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Config
+(type + Config
+  (prop + value String)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value String
+(type + Choice (is Union)
+  (variant Config)
+  (variant String)
+)
 
-────────────────────
-+ This
-    - value
+(type + PermissionDenied (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| Config
-| String
-
-━━━━━━━━━━━━━━━━━━━━
-+ PermissionDenied is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ do load-choice Choice ?! PermissionDenied
-
-= Config("config")
+(fn-do + load-choice Choice (?! PermissionDenied)
+  (return (call Config "config"))
+)
 ```
 
 ```output
-Exception: This match on Result does not handle Choice; add a case for it, or "??" for the rest
-<no file:3>
-        | config Config
-        ^^^^^^^^^^^^^^
+Exception: This match on Result does not handle Choice; add a case for it, or "(default …)" for the rest
+<no file:5>
+          (case (: config Config)
+          ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-. result = match true
-    |= true
+```brix crash
+(main
+  (let result
+    (match true
+      (case= true
         1
--- result
+      )
+    )
+  )
+  (print result)
+)
 ```
 
 ```output
-Exception: This match on Bool does not handle false; add "|= false", or "??" for the rest
-<no file:3>
-        |= true
-        ^^^^^^
+Exception: This match on Bool does not handle false; add "(case= false …)", or "(default …)" for the rest
+<no file:5>
+          (case= true
+          ^^^^^^^^^^
 ```
 
-```yumi
-. value Int? = 41
-. result = match value
-    | n Int
-        n + 1
-    |= null
+```brix
+(main
+  (let value (? Int) 41)
+  (let result
+    (match value
+      (case (: n Int)
+        (+ n 1)
+      )
+      (case= null
         0
--- type-of result
--- result + 1
+      )
+    )
+  )
+  (print (type-of result))
+  (print (+ result 1))
+)
 ```
 
 ```output
@@ -423,65 +473,90 @@ Exception: This match on Bool does not handle false; add "|= false", or "??" for
 43
 ```
 
-```yumi
-. value Int?
-. result = match value
-    | n Int
-        n + 1
-    |= null
+```brix
+(main
+  (let value (? Int))
+  (let result
+    (match value
+      (case (: n Int)
+        (+ n 1)
+      )
+      (case= null
         0
--- result
+      )
+    )
+  )
+  (print result)
+)
 ```
 
 ```output
 0
 ```
 
-```yumi crash
-. value Int? = 41
-. result = match value
-    | n Int
-        n + 1
--- result
+```brix crash
+(main
+  (let value (? Int) 41)
+  (let result
+    (match value
+      (case (: n Int)
+        (+ n 1)
+      )
+    )
+  )
+  (print result)
+)
 ```
 
 ```output
-Exception: This match on I64? does not handle null; add "|= null", or "??" for the rest
-<no file:4>
-        | n Int
-        ^^^^^^
+Exception: This match on I64? does not handle null; add "(case= null …)", or "(default …)" for the rest
+<no file:6>
+          (case (: n Int)
+          ^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-. value Int?
-. result = match value
-    |= null
+```brix crash
+(main
+  (let value (? Int))
+  (let result
+    (match value
+      (case= null
         0
--- result
+      )
+    )
+  )
+  (print result)
+)
 ```
 
 ```output
-Exception: This match on I64? handles only null; add a case for a present value, as in "| value I64", or "??" for the rest
-<no file:4>
-        |= null
-        ^^^^^^
+Exception: This match on I64? handles only null; add a case for a present value, as in "(case (: value I64) …)", or "(default …)" for the rest
+<no file:6>
+          (case= null
+          ^^^^^^^^^^
 ```
 
-```yumi
-. value = Result.good(41)
-. result = match value
-    | .good(n)
-        n + 1
-    | .bad
+```brix
+(main
+  (let value (call (. Result good) 41))
+  (let result
+    (match value
+      (case (call .good n)
+        (+ n 1)
+      )
+      (case .bad
         0
--- type-of result
--- result + 1
+      )
+    )
+  )
+  (print (type-of result))
+  (print (+ result 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Result is Union
-
-| good(n Int)
-| bad
+(type + Result (is Union)
+  (variant good (tuple (: n Int)))
+  (variant bad)
+)
 ```
 
 ```output
@@ -489,60 +564,87 @@ Exception: This match on I64? handles only null; add a case for a present value,
 43
 ```
 
-```yumi crash
-. value = Result.good(41)
-. result = match value
-    | .good(n)
-        n + 1
--- result
+```brix crash
+(main
+  (let value (call (. Result good) 41))
+  (let result
+    (match value
+      (case (call .good n)
+        (+ n 1)
+      )
+    )
+  )
+  (print result)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Result is Union
-
-| good(n Int)
-| bad
+(type + Result (is Union)
+  (variant good (tuple (: n Int)))
+  (variant bad)
+)
 ```
 
 ```output
-Exception: This match on Result does not handle .bad; add a case for it, or "??" for the rest
-<no file:4>
-        | .good(n)
-        ^^^^^^^^^
+Exception: This match on Result does not handle .bad; add a case for it, or "(default …)" for the rest
+<no file:6>
+          (case (call .good n)
+          ^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-. values = List
-    * Result.good(1)
-    * Result.bad
-    ?*> match? each
-        | .good(n)
-            n
--- values
+```brix
+(main
+  (let values
+    (call List
+      (block
+        (item (call (. Result good) 1))
+        (item (. Result bad))
+        (pipe ?*>
+          (match? each
+            (case (call .good n)
+              n
+            )
+          )
+        )
+      )
+    )
+  )
+  (print values)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Result is Union
-
-| good(n Int)
-| bad
+(type + Result (is Union)
+  (variant good (tuple (: n Int)))
+  (variant bad)
+)
 ```
 
 ```output
 1
 ```
 
-```yumi
-. event = match true
-    |= true
-        ..ok(41)
-    ??
+```brix
+(main
+  (let event
+    (match true
+      (case= true
+        (call ..ok 41)
+      )
+      (default
         ..failed
-. result = match event
-    | .ok(n)
-        n + 1
-    | .failed
+      )
+    )
+  )
+  (let result
+    (match event
+      (case (call .ok n)
+        (+ n 1)
+      )
+      (case .failed
         0
--- type-of result
--- result + 1
+      )
+    )
+  )
+  (print (type-of result))
+  (print (+ result 1))
+)
 ```
 
 ```output
@@ -550,21 +652,27 @@ Exception: This match on Result does not handle .bad; add a case for it, or "??"
 43
 ```
 
-```yumi
-. value Choice = 41
-. result = match value
-    | Int
+```brix
+(main
+  (let value Choice 41)
+  (let result
+    (match value
+      (case Int
         1
-    | String
+      )
+      (case String
         2
--- type-of result
--- result + 1
+      )
+    )
+  )
+  (print (type-of result))
+  (print (+ result 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| Int
-| String
+(type + Choice (is Union)
+  (variant Int)
+  (variant String)
+)
 ```
 
 ```output
@@ -572,21 +680,27 @@ Exception: This match on Result does not handle .bad; add a case for it, or "??"
 2
 ```
 
-```yumi
-. value Mode = Mode.beta
-. result = match value
-    |= Mode.alpha
+```brix
+(main
+  (let value Mode (. Mode beta))
+  (let result
+    (match value
+      (case= (. Mode alpha)
         1
-    |= Mode.beta
+      )
+      (case= (. Mode beta)
         2
--- type-of result
--- result + 1
+      )
+    )
+  )
+  (print (type-of result))
+  (print (+ result 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Mode is Int
-
-| alpha
-| beta
+(type + Mode (is Int)
+  (variant alpha)
+  (variant beta)
+)
 ```
 
 ```output
@@ -594,13 +708,19 @@ Exception: This match on Result does not handle .bad; add a case for it, or "??"
 3
 ```
 
-```yumi
-. value = "x"
-. result = match value
-    |= "x"
+```brix
+(main
+  (let value "x")
+  (let result
+    (match value
+      (case= "x"
         1
--- type-of result
--- result + 1
+      )
+    )
+  )
+  (print (type-of result))
+  (print (+ result 1))
+)
 ```
 
 ```output
@@ -608,13 +728,19 @@ Exception: This match on Result does not handle .bad; add a case for it, or "??"
 2
 ```
 
-```yumi
-. value = "x"
-. result = match? value
-    |= "x"
+```brix
+(main
+  (let value "x")
+  (let result
+    (match? value
+      (case= "x"
         1
--- type-of result
--- result ?? 0
+      )
+    )
+  )
+  (print (type-of result))
+  (print (?? result 0))
+)
 ```
 
 ```output
@@ -622,12 +748,18 @@ Exception: This match on Result does not handle .bad; add a case for it, or "??"
 1
 ```
 
-```yumi
-. result = match? true
-    |= true
+```brix
+(main
+  (let result
+    (match? true
+      (case= true
         1
--- type-of result
--- result ?? 0
+      )
+    )
+  )
+  (print (type-of result))
+  (print (?? result 0))
+)
 ```
 
 ```output
@@ -635,14 +767,21 @@ Exception: This match on Result does not handle .bad; add a case for it, or "??"
 1
 ```
 
-```yumi
-. result = match true
-    |= true
+```brix
+(main
+  (let result
+    (match true
+      (case= true
         1
-    ??
+      )
+      (default
         0
--- type-of result
--- result + 1
+      )
+    )
+  )
+  (print (type-of result))
+  (print (+ result 1))
+)
 ```
 
 ```output
@@ -652,33 +791,39 @@ Exception: This match on Result does not handle .bad; add a case for it, or "??"
 
 ### List shape patterns nest inside union case patterns.
 
-```yumi
--- describe(Tree.branch("let", [Tree.leaf("total"), Tree.leaf("Int")]))
--- describe(Tree.branch("set", [Tree.leaf("total")]))
--- describe(Tree.branch("run", List'Tree()))
--- describe(Tree.leaf("total"))
+```brix
+(main
+  (print (call describe (call (. Tree branch) "let" (list (call (. Tree leaf) "total") (call (. Tree leaf) "Int")))))
+  (print (call describe (call (. Tree branch) "set" (list (call (. Tree leaf) "total")))))
+  (print (call describe (call (. Tree branch) "run" (call (of List Tree)))))
+  (print (call describe (call (. Tree leaf) "total")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tree is Union
+(type + Tree (is Union)
+  (variant leaf String)
+  (variant branch (tuple (: name String) (: items (list Tree))))
+)
 
-| leaf String
-| branch(name String, items [Tree])
-
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - tree Tree
-
-match tree
-    | .branch("let", [.leaf(name), ...rest])
-        "let $name with ${rest.length} more"
-    | .branch(name, [only])
-        "$name with one item"
-    | .branch(name, [])
-        "$name alone"
-    | .leaf(text)
-        "leaf $text"
-    ??
-        "other"
+(fn-expr + describe String
+  (param tree Tree)
+  (match tree
+    (case (call .branch "let" (list (call .leaf name) ...rest))
+      (str "let " name " with " (. rest length) " more")
+    )
+    (case (call .branch name (list only))
+      (str name " with one item")
+    )
+    (case (call .branch name (list))
+      (str name " alone")
+    )
+    (case (call .leaf text)
+      (str "leaf " text)
+    )
+    (default
+      "other"
+    )
+  )
+)
 ```
 
 ```output
@@ -690,25 +835,28 @@ leaf total
 
 ### A remainder-only list pattern covers its union case.
 
-```yumi
--- count(Tree.branch("let", [Tree.leaf("total"), Tree.leaf("Int")]))
--- count(Tree.leaf("total"))
+```brix
+(main
+  (print (call count (call (. Tree branch) "let" (list (call (. Tree leaf) "total") (call (. Tree leaf) "Int")))))
+  (print (call count (call (. Tree leaf) "total")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tree is Union
+(type + Tree (is Union)
+  (variant leaf String)
+  (variant branch (tuple (: name String) (: items (list Tree))))
+)
 
-| leaf String
-| branch(name String, items [Tree])
-
-━━━━━━━━━━━━━━━━━━━━
-+ count Size
-    - tree Tree
-
-match tree
-    | .branch(_, [...items])
-        items.length
-    | .leaf(_)
-        0
+(fn-expr + count Size
+  (param tree Tree)
+  (match tree
+    (case (call .branch _ (list ...items))
+      (. items length)
+    )
+    (case (call .leaf _)
+      0
+    )
+  )
+)
 ```
 
 ```output
@@ -718,74 +866,76 @@ match tree
 
 ### A list shape pattern with required items does not cover its union case.
 
-```yumi crash
--- count(Tree.branch("let", [Tree.leaf("total")]))
+```brix crash
+(main
+  (print (call count (call (. Tree branch) "let" (list (call (. Tree leaf) "total")))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tree is Union
+(type + Tree (is Union)
+  (variant leaf String)
+  (variant branch (tuple (: name String) (: items (list Tree))))
+)
 
-| leaf String
-| branch(name String, items [Tree])
-
-━━━━━━━━━━━━━━━━━━━━
-+ count Size
-    - tree Tree
-
-match tree
-    | .branch(_, [first, ...])
-        1
-    | .leaf(_)
-        0
+(fn-expr + count Size
+  (param tree Tree)
+  (match tree
+    (case (call .branch _ (list first ...))
+      1
+    )
+    (case (call .leaf _)
+      0
+    )
+  )
+)
 ```
 
 ```output
-Exception: This match on Tree does not handle .branch; add a case for it, or "??" for the rest
-<no file:15>
-        | .branch(_, [first, ...])
-        ^^^^^^^^^^^^^^^^^^^^^^^^^
+Exception: This match on Tree does not handle .branch; add a case for it, or "(default …)" for the rest
+<no file:14>
+        (case (call .branch _ (list first ...))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### An interface pattern checks coverage of a Null case without compiling its converter.
 
-```yumi
-. text Body = "x"
--- bar-of(text)
-. empty Body = null
--- bar-of(empty)
-. other Body = Other()
--- bar-of(other)
+```brix
+(main
+  (let text Body "x")
+  (print (call bar-of text))
+  (let empty Body null)
+  (print (call bar-of empty))
+  (let other Body (call Other))
+  (print (call bar-of other))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + bar Int :get)
+)
 
-────────────────────
-+ get bar Int
+(type + Other
+  (implements Proto)
+  (fn-expr + bar _ :get
+    7
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Other
-    is Proto
+(type + Body (is Union)
+  (variant Null)
+  (variant String)
+  (variant Proto)
+)
 
-────────────────────
-+ get bar
-
-7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Body is Union
-
-| Null
-| String
-| Proto
-
-━━━━━━━━━━━━━━━━━━━━
-+ bar-of Int
-    - body Body
-
-match body
-    | proto Proto
-        proto.bar
-    ??
-        0
+(fn-expr + bar-of Int
+  (param body Body)
+  (match body
+    (case (: proto Proto)
+      (. proto bar)
+    )
+    (default
+      0
+    )
+  )
+)
 ```
 
 ```output
@@ -796,28 +946,30 @@ match body
 
 ### A type written in brackets in an arm of a match on a result covers the list the result holds.
 
-```yumi
--- chosen(2)
--- chosen(0)
+```brix
+(main
+  (print (call chosen 2))
+  (print (call chosen 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do chosen String
-    - id U64
+(fn-do + chosen String
+  (param id U64)
+  (let result (catch (call copies-of id)))
+  (match result
+    (case (: error Error)
+      (return "error")
+    )
+    (case (: found (list U64))
+      (return (str "found " (. found length)))
+    )
+  )
+)
 
-. result = catch copies-of(id)
-match result
-    | error Error
-        = "error"
-    | found [U64]
-        = "found ${found.length}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do copies-of [U64] ?! Error
-    - id U64
-
-?! Error("none")
-    if id == 0
-= List'U64(id, id, id)
+(fn-do + copies-of (list U64) (?! Error)
+  (param id U64)
+  (throw (call Error "none") (if (== id 0)))
+  (return (call (of List U64) id id id))
+)
 ```
 
 ```output
@@ -827,29 +979,33 @@ error
 
 ### Arms of a case that holds a list take the case together when one takes some count of items and a rest and others take each smaller count.
 
-```yumi
-. empty [Int]
--- count(.many(empty))
--- count(.many([5, 6]))
--- count(.none)
+```brix
+(main
+  (let empty (list Int))
+  (print (call count (call .many empty)))
+  (print (call count (call .many (list 5 6))))
+  (print (call count .none))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ count Int
-    - bag Bag
+(fn-expr + count Int
+  (param bag Bag)
+  (match bag
+    (case .none
+      0
+    )
+    (case (call .many (list))
+      -1
+    )
+    (case (call .many (list first ...rest))
+      (+ first (. rest length))
+    )
+  )
+)
 
-match bag
-    | .none
-        0
-    | .many([])
-        -1
-    | .many([first, ...rest])
-        first + rest.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bag is Union
-
-| none
-| many [Int]
+(type + Bag (is Union)
+  (variant none)
+  (variant many (list Int))
+)
 ```
 
 ```output
@@ -860,70 +1016,85 @@ match bag
 
 ### Arms of a list that leave out a count of items do not take the case.
 
-```yumi crash
--- count(.many([1]))
+```brix crash
+(main
+  (print (call count (call .many (list 1))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ count Int
-    - bag Bag
+(fn-expr + count Int
+  (param bag Bag)
+  (match bag
+    (case .none
+      0
+    )
+    (case (call .many (list))
+      -1
+    )
+    (case (call .many (list first second ...rest))
+      first
+    )
+  )
+)
 
-match bag
-    | .none
-        0
-    | .many([])
-        -1
-    | .many([first, second, ...rest])
-        first
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bag is Union
-
-| none
-| many [Int]
+(type + Bag (is Union)
+  (variant none)
+  (variant many (list Int))
+)
 ```
 
 ```output
-Exception: This match on Bag does not handle .many; add a case for it, or "??" for the rest
+Exception: This match on Bag does not handle .many; add a case for it, or "(default …)" for the rest
 <no file:9>
-        | .none
-        ^^^^^^
+        (case .none
+        ^^^^^^^^^^
 ```
 
 ### `true` and `false` in a pattern are literals, so they match an equal value, as `|= true` does.
 
-```yumi
-. flag = false
-. result = match flag
-    | true
+```brix
+(main
+  (let flag false)
+  (let result
+    (match flag
+      (case true
         "yes"
-    | false
+      )
+      (case false
         "no"
--- result
--- classify(false, true)
--- classify(true, false)
--- classify(true, true)
--- named(3)
+      )
+    )
+  )
+  (print result)
+  (print (call classify false true))
+  (print (call classify true false))
+  (print (call classify true true))
+  (print (call named 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ classify String
-    - valid Bool
-    - many Bool
+(fn-expr _ classify String
+  (param valid Bool)
+  (param many Bool)
+  (match (tuple valid many)
+    (case (tuple false _)
+      "invalid"
+    )
+    (case (tuple _ false)
+      "few"
+    )
+    (default
+      "many"
+    )
+  )
+)
 
-match valid, many
-    | false, _
-        "invalid"
-    | _, false
-        "few"
-    ??
-        "many"
-
-━━━━━━━━━━━━━━━━━━━━
-_ named String
-    - true-count Int
-
-match true-count
-    | falsey
-        "n=$falsey"
+(fn-expr _ named String
+  (param true-count Int)
+  (match true-count
+    (case falsey
+      (str "n=" falsey)
+    )
+  )
+)
 ```
 
 ```output
@@ -934,15 +1105,19 @@ many
 n=3
 ```
 
-```yumi crash
-match true
-    | true
-        -- "true"
+```brix crash
+(main
+  (match true
+    (case true
+      (print "true")
+    )
+  )
+)
 ```
 
 ```output
-Exception: This match on Bool does not handle false; add "|= false", or "??" for the rest
-<no file:3>
-        | true
-        ^^^^^
+Exception: This match on Bool does not handle false; add "(case= false …)", or "(default …)" for the rest
+<no file:4>
+        (case true
+        ^^^^^^^^^
 ```

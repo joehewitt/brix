@@ -1,92 +1,86 @@
 # Interfaces
 
-```yumi
-. thing = Thing()
-foo(thing)
+```brix
+(main
+  (let thing (call Thing))
+  (call foo thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + bar Int)
+)
 
-────────────────────
-+ bar Int
+(type + Thing
+  (implements Proto)
+  (fn-expr + bar _
+    42
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-────────────────────
-+ bar
-
-42
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - p Proto
-
--- p.bar()
+(fn-do + foo _
+  (param p Proto)
+  (print (call (. p bar)))
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-. thing = Thing()
-foo(thing)
+```brix
+(main
+  (let thing (call Thing))
+  (call foo thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + bar Int :get)
+)
 
-────────────────────
-+ get bar Int
+(type + Thing
+  (implements Proto)
+  (fn-expr + bar _ :get
+    42
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-────────────────────
-+ get bar
-
-42
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - p Proto
-
--- p.bar
+(fn-do + foo _
+  (param p Proto)
+  (print (. p bar))
+)
 ```
 
 ```output
 42
 ```
 
-```yumi crash
--- Proto()
+```brix crash
+(main
+  (print (call Proto))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ bar Int
+(type + Proto (is Interface)
+  (fn-expr + bar Int)
+)
 ```
 
 ```output
 Exception: Proto is an interface, so it has no constructor; construct a class that is Proto
-<no file:2>
-    -- Proto()
-       ^^^^^
+<no file:3>
+      (print (call Proto))
+                   ^^^^^
 ```
 
-```yumi
--- Proto()
+```brix
+(main
+  (print (call Proto))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ This
-
-= 42
+(type + Proto (is Interface)
+  (fn-do + This _
+    (return 42)
+  )
+)
 ```
 
 ```output
@@ -95,37 +89,32 @@ Exception: Proto is an interface, so it has no constructor; construct a class th
 
 ### Default function implementation
 
-```yumi
-. thing = Thing()
-foo(thing)
+```brix
+(main
+  (let thing (call Thing))
+  (call foo thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-do + bar _
+    (print this)
+    (call foo)
+    (return 42)
+  )
+  (fn-expr + foo _)
+)
 
-────────────────────
-+ do bar
+(type + Thing
+  (implements Proto)
+  (fn-do + foo _
+    (print "yes")
+  )
+)
 
--- this
-foo()
-= 42
-
-────────────────────
-+ foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-────────────────────
-+ do foo
-
--- "yes"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - p Proto
-
--- p.bar()
+(fn-do + foo _
+  (param p Proto)
+  (print (call (. p bar)))
+)
 ```
 
 ```output
@@ -134,36 +123,32 @@ yes
 42
 ```
 
-```yumi
-. thing = Thing()
-thing.foo()
-thing.bar()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing foo))
+  (call (. thing bar))
+  (blank)
+  (let proto (as thing Proto))
+  (call (. proto foo))
+  (call (. proto bar))
+)
 
-. proto = thing as Proto
-proto.foo()
-proto.bar()
+(type + Proto (is Interface)
+  (fn-do + foo _
+    (print (str "proto foo " this))
+  )
+  (fn-do + bar _
+    (print (str "proto bar " this))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ do foo
-
--- "proto foo $this"
-
-────────────────────
-+ do bar
-
--- "proto bar $this"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-────────────────────
-+ do bar
-
--- "thing bar $this"
+(type + Thing
+  (implements Proto)
+  (fn-do + bar _
+    (print (str "thing bar " this))
+  )
+)
 ```
 
 ```output
@@ -173,35 +158,32 @@ proto foo [Interface __source__:Proto]
 thing bar [Object __source__:Thing]
 ```
 
-```yumi
-. thing = Thing'Float'Int()
-foo(thing)
-bar(thing)
+```brix
+(main
+  (let thing (call (of Thing Float Int)))
+  (call foo thing)
+  (call bar thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T
+(type + (of Foo T))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar'T is Interface
+(type + (of Bar T) (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T1'T2 is Foo'T2
-    is Bar'T1
+(type + (of Thing T1 T2) (is (of Foo T2))
+  (implements (of Bar T1))
+  (prop + a T1 (= 10))
+  (prop + b T2 (= 10))
+)
 
-+ a T1 = 10
-+ b T2 = 10
+(fn-do + (of foo T) _
+  (param p (of Foo T))
+  (print (call T))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo'T
-    - p Foo'T
-
--- T()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bar'T
-    - p Bar'T
-
--- T()
+(fn-do + (of bar T) _
+  (param p (of Bar T))
+  (print (call T))
+)
 ```
 
 ```output
@@ -209,79 +191,76 @@ bar(thing)
 0
 ```
 
-```yumi
-. genny = gen()
-foo(genny)
+```brix
+(main
+  (let genny (call gen))
+  (call foo genny)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen
+(fn-do + gen _
+  (yield 1)
+  (yield 2)
+)
 
-<= 1
-<= 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo'T
-    - g <T>
-
--- T()
+(fn-do + (of foo T) _
+  (param g (stream T))
+  (print (call T))
+)
 ```
 
 ```output
 0
 ```
 
-```yumi
-. thing = Thing()
-foo(thing)
+```brix
+(main
+  (let thing (call Thing))
+  (call foo thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-do + bar _
+    (print this)
+  )
+)
 
-────────────────────
-+ do bar
+(type + Thing
+  (implements Proto)
+  (fn-do + bar _
+    (print this)
+  )
+)
 
--- this
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-────────────────────
-+ do bar
-
--- this
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - proto Proto
-
-proto.bar()
+(fn-do + foo _
+  (param proto Proto)
+  (call (. proto bar))
+)
 ```
 
 ```output
 [Object __source__:Thing]
 ```
 
-```yumi
-. thing = Thing'Int()
-. stream = thing as <Int>
-foo(thing)
+```brix
+(main
+  (let thing (call (of Thing Int)))
+  (let stream (as thing (stream Int)))
+  (call foo thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T
+(type + (of Thing T)
+  (fn-to-do + (of Iterable T)
+    (yield 1)
+    (yield 2)
+  )
+)
 
-────────────────────
-+ do to Iterable'T
-
-<= 1
-<= 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo'T
-    - stream <T>
-
-for n in stream
-    -- n
+(fn-do + (of foo T) _
+  (param stream (stream T))
+  (for (in n stream)
+    (print n)
+  )
+)
 ```
 
 ```output
@@ -291,38 +270,33 @@ for n in stream
 
 ## Different types implementing interfaces
 
-```yumi
-. thing = Thing()
-. proto = thing as Proto
--- type-of proto
-proto.foo()
-proto.foo(1)
-proto.foo(1.5)
+```brix
+(main
+  (let thing (call Thing))
+  (let proto (as thing Proto))
+  (print (type-of proto))
+  (call (. proto foo))
+  (call (. proto foo) 1)
+  (call (. proto foo) 1.5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + foo _)
+  (fn-expr + foo _
+    (param n _)
+  )
+)
 
-────────────────────
-+ foo
-
-────────────────────
-+ foo
-    - n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-────────────────────
-+ do foo
-
--- this
-
-────────────────────
-+ do foo
-    - n
-
--- n
+(type + Thing
+  (implements Proto)
+  (fn-do + foo _
+    (print this)
+  )
+  (fn-do + foo _
+    (param n _)
+    (print n)
+  )
+)
 ```
 
 ```output
@@ -332,38 +306,33 @@ proto.foo(1.5)
 1.5
 ```
 
-```yumi
-. thing = Thing(42)
-. proto = thing as Proto
--- type-of proto
-proto.foo()
-proto.foo(1)
-proto.foo(1.5)
+```brix
+(main
+  (let thing (call Thing 42))
+  (let proto (as thing Proto))
+  (print (type-of proto))
+  (call (. proto foo))
+  (call (. proto foo) 1)
+  (call (. proto foo) 1.5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + foo _)
+  (fn-expr + foo _
+    (param n _)
+  )
+)
 
-────────────────────
-+ foo
-
-────────────────────
-+ foo
-    - n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is I32
-    is Proto
-
-────────────────────
-+ do foo
-
--- this
-
-────────────────────
-+ do foo
-    - n
-
--- n
+(type + Thing (is I32)
+  (implements Proto)
+  (fn-do + foo _
+    (print this)
+  )
+  (fn-do + foo _
+    (param n _)
+    (print n)
+  )
+)
 ```
 
 ```output
@@ -373,57 +342,52 @@ proto.foo(1.5)
 1.5
 ```
 
-```yumi
--- get-proto(gen())
+```brix
+(main
+  (print (call get-proto (call gen)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen
+(fn-do + gen _
+  (yield 1)
+)
 
-<= 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ get-proto <Int>
-    - thing
-
-thing
+(fn-expr + get-proto (stream Int)
+  (param thing _)
+  thing
+)
 ```
 
 ```output
 [Interface core/stream:Iterable'core/number:I64]
 ```
 
-```yumi
-. thing = Thing(3.5)
-. proto = thing as Proto
--- type-of proto
-proto.foo()
-proto.foo(1)
-proto.foo(1.5)
+```brix
+(main
+  (let thing (call Thing 3.5))
+  (let proto (as thing Proto))
+  (print (type-of proto))
+  (call (. proto foo))
+  (call (. proto foo) 1)
+  (call (. proto foo) 1.5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + foo _)
+  (fn-expr + foo _
+    (param n _)
+  )
+)
 
-────────────────────
-+ foo
-
-────────────────────
-+ foo
-    - n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is F64
-    is Proto
-
-────────────────────
-+ do foo
-
--- this
-
-────────────────────
-+ do foo
-    - n
-
--- n
+(type + Thing (is F64)
+  (implements Proto)
+  (fn-do + foo _
+    (print this)
+  )
+  (fn-do + foo _
+    (param n _)
+    (print n)
+  )
+)
 ```
 
 ```output
@@ -433,45 +397,38 @@ proto.foo(1.5)
 1.5
 ```
 
-```yumi
-. fn = :: a => a * 3
+```brix
+(main
+  (let fn (=> (a) (* a 3)))
+  (blank)
+  (let thing (as fn Thing))
+  (let proto (as thing Proto))
+  (print (type-of proto))
+  (call (. proto foo))
+  (call (. proto foo) 1)
+  (call (. proto foo) 1.5)
+)
 
-. thing = fn as Thing
-. proto = thing as Proto
--- type-of proto
-proto.foo()
-proto.foo(1)
-proto.foo(1.5)
+(type + Proto (is Interface)
+  (fn-expr + foo _)
+  (fn-expr + foo _
+    (param n _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + ThingFn (is (fn-type I32 (param a Int))))
 
-────────────────────
-+ foo
-
-────────────────────
-+ foo
-    - n
-
-━━━━━━━━━━━━━━━━━━━━
-+ ThingFn is () I32
-    - a Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is ThingFn
-    is Proto
-
-────────────────────
-+ do foo
-
--- this
--- this(3)
-
-────────────────────
-+ do foo
-    - n
-
--- n
+(type + Thing (is ThingFn)
+  (implements Proto)
+  (fn-do + foo _
+    (print this)
+    (print (call this 3))
+  )
+  (fn-do + foo _
+    (param n _)
+    (print n)
+  )
+)
 ```
 
 ```output
@@ -482,37 +439,33 @@ proto.foo(1.5)
 1.5
 ```
 
-```yumi
-. thing = Thing(1, 2)
-. proto = thing as Proto
--- type-of proto
-proto.foo()
-proto.foo(1)
-proto.foo(1.5)
+```brix
+(main
+  (let thing (call Thing 1 2))
+  (let proto (as thing Proto))
+  (print (type-of proto))
+  (call (. proto foo))
+  (call (. proto foo) 1)
+  (call (. proto foo) 1.5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + foo _)
+  (fn-expr + foo _
+    (param n _)
+  )
+)
 
-────────────────────
-+ foo
-
-────────────────────
-+ foo
-    - n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is (a Int, b Float)
-    is Proto
-
-────────────────────
-+ do foo
-
--- this
-
-────────────────────
-+ do foo
-    - n
--- n
+(type + Thing (is (tuple (: a Int) (: b Float)))
+  (implements Proto)
+  (fn-do + foo _
+    (print this)
+  )
+  (fn-do + foo _
+    (param n _)
+    (print n)
+  )
+)
 ```
 
 ```output
@@ -524,31 +477,29 @@ proto.foo(1.5)
 
 ## Interface inheritance
 
-```yumi
-. p1 = Thing() as Proto1
-p1.foo()
+```brix
+(main
+  (let p1 (as (call Thing) Proto1))
+  (call (. p1 foo))
+  (blank)
+  (let p2 (as (call Thing) Proto2))
+  (call (. p2 foo))
+)
 
-. p2 = Thing() as Proto2
-p2.foo()
+(type + Proto1 (is Interface)
+  (fn-expr + foo _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto1 is Interface
+(type + Proto2 (is Interface)
+  (implements Proto1)
+)
 
-────────────────────
-+ foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto2 is Interface
-    is Proto1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto2
-
-────────────────────
-+ do foo
-
--- 42
+(type + Thing
+  (implements Proto2)
+  (fn-do + foo _
+    (print 42)
+  )
+)
 ```
 
 ```output
@@ -558,47 +509,41 @@ p2.foo()
 
 ### Cast base interface to sub interface, call through sub and then through base
 
-```yumi
-. foobar = Thing() as Foobar
-foobar.foo()
-foobar.bar()
+```brix
+(main
+  (let foobar (as (call Thing) Foobar))
+  (call (. foobar foo))
+  (call (. foobar bar))
+  (blank)
+  (let bar (as foobar Bar))
+  (call (. bar bar))
+  (blank)
+  (let foo (as foobar Foo))
+  (call (. foo foo))
+)
 
-. bar = foobar as Bar
-bar.bar()
+(type + Foo (is Interface)
+  (fn-expr + foo _)
+)
 
-. foo = foobar as Foo
-foo.foo()
+(type + Bar (is Interface)
+  (fn-expr + bar _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foobar (is Interface)
+  (implements Foo)
+  (implements Bar)
+)
 
-────────────────────
-+ foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Interface
-
-────────────────────
-+ bar
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foobar is Interface
-    is Foo
-    is Bar
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foobar
-
-────────────────────
-+ do foo
-
--- "foo"
-
-────────────────────
-+ do bar
-
--- "bar"
+(type + Thing
+  (implements Foobar)
+  (fn-do + foo _
+    (print "foo")
+  )
+  (fn-do + bar _
+    (print "bar")
+  )
+)
 ```
 
 ```output
@@ -610,47 +555,41 @@ foo
 
 ### Cast base interface to sub interface, call through base and then through sub
 
-```yumi
-. foobar = Thing() as Foobar
-. bar = foobar as Bar
-bar.bar()
+```brix
+(main
+  (let foobar (as (call Thing) Foobar))
+  (let bar (as foobar Bar))
+  (call (. bar bar))
+  (blank)
+  (let foo (as foobar Foo))
+  (call (. foo foo))
+  (blank)
+  (call (. foobar foo))
+  (call (. foobar bar))
+)
 
-. foo = foobar as Foo
-foo.foo()
+(type + Foo (is Interface)
+  (fn-expr + foo _)
+)
 
-foobar.foo()
-foobar.bar()
+(type + Bar (is Interface)
+  (fn-expr + bar _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foobar (is Interface)
+  (implements Foo)
+  (implements Bar)
+)
 
-────────────────────
-+ foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Interface
-
-────────────────────
-+ bar
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foobar is Interface
-    is Foo
-    is Bar
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foobar
-
-────────────────────
-+ do foo
-
--- "foo"
-
-────────────────────
-+ do bar
-
--- "bar"
+(type + Thing
+  (implements Foobar)
+  (fn-do + foo _
+    (print "foo")
+  )
+  (fn-do + bar _
+    (print "bar")
+  )
+)
 ```
 
 ```output
@@ -662,44 +601,38 @@ bar
 
 ### Cast to sub interface, call through sub
 
-```yumi
-. thing = Thing()
-. bar = thing as Bar
-bar.bar()
+```brix
+(main
+  (let thing (call Thing))
+  (let bar (as thing Bar))
+  (call (. bar bar))
+  (blank)
+  (let foo (as thing Foo))
+  (call (. foo foo))
+)
 
-. foo = thing as Foo
-foo.foo()
+(type + Foo (is Interface)
+  (fn-expr + foo _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Bar (is Interface)
+  (fn-expr + bar _)
+)
 
-────────────────────
-+ foo
+(type + Foobar (is Interface)
+  (implements Foo)
+  (implements Bar)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Interface
-
-────────────────────
-+ bar
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foobar is Interface
-    is Foo
-    is Bar
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foobar
-
-────────────────────
-+ do foo
-
--- "foo"
-
-────────────────────
-+ do bar
-
--- "bar"
+(type + Thing
+  (implements Foobar)
+  (fn-do + foo _
+    (print "foo")
+  )
+  (fn-do + bar _
+    (print "bar")
+  )
+)
 ```
 
 ```output
@@ -707,66 +640,56 @@ bar
 foo
 ```
 
-```yumi
-. thing = Thing()
+```brix
+(main
+  (let thing (call Thing))
+  (blank)
+  (let foobar (as thing Foobar))
+  (call (. foobar a))
+  (blank)
+  (let a (as thing A))
+  (call (. a a))
+  (blank)
+  (let foo (as foobar Foo))
+  (call (. foo a))
+  (blank)
+  (= a (as foobar A))
+  (call (. a a))
+  (blank)
+  (= a (as foo A))
+  (call (. a a))
+)
 
-. foobar = thing as Foobar
-foobar.a()
+(type + A (is Interface)
+  (fn-expr + a _)
+)
 
-. a = thing as A
-a.a()
+(type + Foo (is Interface)
+  (implements A)
+  (fn-expr + foo _)
+)
 
-. foo = foobar as Foo
-foo.a()
+(type + Bar (is Interface)
+  (fn-expr + bar _)
+)
 
-a = foobar as A
-a.a()
+(type + Foobar (is Interface)
+  (implements Foo)
+  (implements Bar)
+)
 
-a = foo as A
-a.a()
-
-━━━━━━━━━━━━━━━━━━━━
-+ A is Interface
-
-────────────────────
-+ a
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
-    is A
-
-────────────────────
-+ foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Interface
-
-────────────────────
-+ bar
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foobar is Interface
-    is Foo
-    is Bar
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foobar
-
-────────────────────
-+ do a
-
--- "a"
-
-────────────────────
-+ do foo
-
--- "foo"
-
-────────────────────
-+ do bar
-
--- "bar"
+(type + Thing
+  (implements Foobar)
+  (fn-do + a _
+    (print "a")
+  )
+  (fn-do + foo _
+    (print "foo")
+  )
+  (fn-do + bar _
+    (print "bar")
+  )
+)
 ```
 
 ```output
@@ -779,107 +702,96 @@ a
 
 ### Illegal to cast interface to another interface that inherits from it
 
-```yumi crash
-. p1 = Thing() as Proto1
--- p1 as Proto2
+```brix crash
+(main
+  (let p1 (as (call Thing) Proto1))
+  (print (as p1 Proto2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto1 is Interface
+(type + Proto1 (is Interface)
+  (fn-expr + foo _)
+)
 
-────────────────────
-+ foo
+(type + Proto2 (is Interface)
+  (implements Proto1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto2 is Interface
-    is Proto1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto2
-
-────────────────────
-+ do foo
-
--- 42
+(type + Thing
+  (implements Proto2)
+  (fn-do + foo _
+    (print 42)
+  )
+)
 ```
 
 ```output
 Exception: Proto1 cannot be cast to Proto2; there is no conversion between them
-<no file:3>
-    -- p1 as Proto2
-       ^^^^^^^^^^^^
+<no file:4>
+      (print (as p1 Proto2))
+             ^^^^^^^^^^^^^^
 ```
 
 ## Class inheritance with interfaces
 
-```yumi
-. bar = Bar()
-. foo = bar as Foo
-. p = foo as Proto
-p.foo()
+```brix
+(main
+  (let bar (call Bar))
+  (let foo (as bar Foo))
+  (let p (as foo Proto))
+  (call (. p foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + foo _)
+)
 
-────────────────────
-+ foo
+(type + Foo
+  (implements Proto)
+  (fn-do + foo _
+    (print "Foo")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-    is Proto
-
-────────────────────
-+ do foo
-
--- "Foo"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-────────────────────
-+ do foo
-
--- "Bar"
+(type + Bar (is Foo)
+  (fn-do + foo _
+    (print "Bar")
+  )
+)
 ```
 
 ```output
 Bar
 ```
 
-```yumi
-. direct Base = Middle()
-. inherited Base = Leaf()
-. plain Base = Base()
-print("direct marker ${direct is Marker} named ${direct is Named}")
-print("inherited marker ${inherited is Marker} named ${inherited is Named}")
-print("plain marker ${plain is Marker} named ${plain is Named}")
+```brix
+(main
+  (let direct Base (call Middle))
+  (let inherited Base (call Leaf))
+  (let plain Base (call Base))
+  (call print (str "direct marker " (is direct Marker) " named " (is direct Named)))
+  (call print (str "inherited marker " (is inherited Marker) " named " (is inherited Named)))
+  (call print (str "plain marker " (is plain Marker) " named " (is plain Named)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Marker is Interface
+(type + Marker (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named is Interface
+(type + Named (is Interface)
+  (fn-expr + label String :get)
+)
 
-────────────────────
-+ get label String
+(type + Base
+  (prop + size _ (= 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Middle (is Base)
+  (implements Marker)
+  (implements Named)
+  (fn-expr + label String :get
+    "middle"
+  )
+)
 
-+ size = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Middle is Base
-    is Marker
-    is Named
-
-────────────────────
-+ get label String
-
-"middle"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is Middle
+(type + Leaf (is Middle))
 ```
 
 ```output
@@ -888,38 +800,33 @@ inherited marker true named true
 plain marker false named false
 ```
 
-```yumi
-. inherited Base = Leaf()
-. named = inherited as Named
-print(named.describe())
+```brix
+(main
+  (let inherited Base (call Leaf))
+  (let named (as inherited Named))
+  (call print (call (. named describe)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named is Interface
+(type + Named (is Interface)
+  (fn-expr + describe String)
+)
 
-────────────────────
-+ describe String
+(type + Base
+  (prop + size _ (= 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Middle (is Base)
+  (implements Named)
+  (fn-expr + describe String
+    "middle"
+  )
+)
 
-+ size = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Middle is Base
-    is Named
-
-────────────────────
-+ describe String
-
-"middle"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is Middle
-
-────────────────────
-+ describe String
-
-"leaf"
+(type + Leaf (is Middle)
+  (fn-expr + describe String
+    "leaf"
+  )
+)
 ```
 
 ```output
@@ -928,23 +835,23 @@ leaf
 
 ## Converters
 
-```yumi
-. thing = Thing()
-. proto = thing as Proto
--- proto as Float
--- thing as Float
+```brix
+(main
+  (let thing (call Thing))
+  (let proto (as thing Proto))
+  (print (as proto Float))
+  (print (as thing Float))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-to-expr + Float
+    10.5
+  )
+)
 
-────────────────────
-+ to Float
-
-10.5
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
+(type + Thing
+  (implements Proto)
+)
 ```
 
 ```output
@@ -952,59 +859,51 @@ leaf
 10.5
 ```
 
-```yumi
-. thing = Thing() as Proto
--- thing
+```brix
+(main
+  (let thing (as (call Thing) Proto))
+  (print thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + foo I32)
+  (fn-to-expr + String
+    (as (call foo) String)
+  )
+)
 
-────────────────────
-+ foo I32
-
-────────────────────
-+ to String
-
-foo() as String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-────────────────────
-+ foo
-
-42
+(type + Thing
+  (implements Proto)
+  (fn-expr + foo _
+    42
+  )
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-. thing = Thing() as Proto
--- " ".join(thing)
+```brix
+(main
+  (let thing (as (call Thing) Proto))
+  (print (call (. " " join) thing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + foo String)
+  (fn-to-do + (of Iterable String)
+    (yield "hey")
+    (yield (call foo))
+  )
+)
 
-────────────────────
-+ foo String
-
-────────────────────
-+ do to Iterable'String
-
-<= "hey"
-<= foo()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-────────────────────
-+ foo
-
-"you"
+(type + Thing
+  (implements Proto)
+  (fn-expr + foo _
+    "you"
+  )
+)
 ```
 
 ```output
@@ -1013,26 +912,26 @@ hey you
 
 ### Make sure base class interfaces are checked when trying to convert to iterator
 
-```yumi
-. thing = Foo()
-for i in thing
-    -- i
+```brix
+(main
+  (let thing (call Foo))
+  (for (in i thing)
+    (print i)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-    is Iterable'I32
+(type + Bar
+  (implements (of Iterable I32))
+  (prop + i I32 (= 0))
+  (fn-do + (prefix <- this) _
+    (if (< i 2)
+      (+= i 1)
+      (return i)
+    )
+  )
+)
 
-+ i I32 = 0
-
-────────────────────
-+ do <- this
-
-if i < 2
-    i += 1
-    = i
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Bar
+(type + Foo (is Bar))
 ```
 
 ```output
@@ -1042,62 +941,56 @@ if i < 2
 
 ### Make sure base class converters are checked when trying to convert to iterator
 
-```yumi
-. thing = Foo()
-for i in thing
-    -- i
+```brix
+(main
+  (let thing (call Foo))
+  (for (in i thing)
+    (print i)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
+(type + Bar
+  (fn-to-do + (of Iterable I32)
+    (yield 42)
+  )
+)
 
-────────────────────
-+ do to Iterable'I32
-
-<= 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Bar
+(type + Foo (is Bar))
 ```
 
 ```output
 42
 ```
 
-```yumi
-. p = Thing() as Proto
-p.act()
+```brix
+(main
+  (let p (as (call Thing) Proto))
+  (call (. p act))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (fn-do + foo _
+    (print "Foo")
+  )
+)
 
-────────────────────
-+ do foo
+(type + Bar (is Foo)
+  (fn-do + foo _
+    (print "Bar")
+  )
+)
 
--- "Foo"
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-────────────────────
-+ do foo
-
--- "Bar"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ act
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-────────────────────
-+ do act
-
-. bar = Bar()
-bar.foo()
+(type + Thing
+  (implements Proto)
+  (fn-do + act _
+    (let bar (call Bar))
+    (call (. bar foo))
+  )
+)
 ```
 
 ```output
@@ -1108,37 +1001,32 @@ Bar
 
 ### Delegate as eager property
 
-```yumi
-. thing = Thing()
-thing.test()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing test))
+  (blank)
+  (let proto (as thing Proto))
+  (call (. proto act))
+)
 
-. proto = thing as Proto
-proto.act()
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Foo
+  (fn-do + act _
+    (print "called act")
+  )
+)
 
-────────────────────
-+ act
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do act
-
--- "called act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
-
-────────────────────
-+ do test
-
-foo.act()
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+  (fn-do + test _
+    (call (. foo act))
+  )
+)
 ```
 
 ```output
@@ -1148,34 +1036,29 @@ called act
 
 ### Call delegate without object
 
-```yumi
-. thing = Thing()
-thing.test()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing test))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-────────────────────
-+ act
+(type + Foo
+  (fn-do + act _
+    (print "called act")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do act
-
--- "called act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
-
-────────────────────
-+ do test
-
-act()
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+  (fn-do + test _
+    (call act)
+  )
+)
 ```
 
 ```output
@@ -1184,32 +1067,29 @@ called act
 
 ### Delegate as lazy property
 
-```yumi
-. thing = Thing()
-thing.act()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing act))
+  (blank)
+  (let proto (as thing Proto))
+  (call (. proto act))
+)
 
-. proto = thing as Proto
-proto.act()
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Foo
+  (fn-do + act _
+    (print "called act")
+  )
+)
 
-────────────────────
-+ act
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do act
-
--- "called act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo := Foo()
+(type + Thing
+  (delegate Proto)
+  (prop + foo _ (:= (call Foo)))
+)
 ```
 
 ```output
@@ -1219,35 +1099,31 @@ called act
 
 ### Delegate as getter
 
-```yumi
-. thing = Thing()
-thing.act()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing act))
+  (blank)
+  (let proto (as thing Proto))
+  (call (. proto act))
+)
 
-. proto = thing as Proto
-proto.act()
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Foo
+  (fn-do + act _
+    (print "called act")
+  )
+)
 
-────────────────────
-+ act
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do act
-
--- "called act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-────────────────────
-+ get foo
-
-Foo()
+(type + Thing
+  (delegate Proto)
+  (fn-expr + foo _ :get
+    (call Foo)
+  )
+)
 ```
 
 ```output
@@ -1257,39 +1133,35 @@ called act
 
 ### Delegate of delegate
 
-```yumi
-. thing = Thing()
-thing.act()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing act))
+  (blank)
+  (let proto (as thing Proto))
+  (call (. proto act))
+)
 
-. proto = thing as Proto
-proto.act()
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Foo
+  (implements Proto)
+  (fn-do + act _
+    (print "called act")
+  )
+)
 
-────────────────────
-+ act
+(type + Bar
+  (delegate Proto)
+  (prop + foo _ (= (call Foo)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-    is Proto
-
-────────────────────
-+ do act
-
--- "called act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-as Proto for
-+ foo = Foo()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ bar = Bar()
+(type + Thing
+  (delegate Proto)
+  (prop + bar _ (= (call Bar)))
+)
 ```
 
 ```output
@@ -1299,42 +1171,37 @@ called act
 
 ### Delegate of delegate in base class
 
-```yumi
-. thing = Thing()
-thing.act()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing act))
+  (blank)
+  (let proto (as thing Proto))
+  (call (. proto act))
+)
 
-. proto = thing as Proto
-proto.act()
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Foo
+  (implements Proto)
+  (fn-do + act _
+    (print "called act")
+  )
+)
 
-────────────────────
-+ act
+(type + Bar
+  (delegate Proto)
+  (prop + foo _ (= (call Foo)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-    is Proto
+(type + Base
+  (delegate Proto)
+  (prop + bar _ (= (call Bar)))
+)
 
-────────────────────
-+ do act
-
--- "called act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-as Proto for
-+ foo = Foo()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-as Proto for
-+ bar = Bar()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Base
+(type + Thing (is Base))
 ```
 
 ```output
@@ -1344,38 +1211,33 @@ called act
 
 ### Delegate in tuple
 
-```yumi
-. thing = Thing()
-thing.act()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing act))
+  (blank)
+  (let proto (as thing Proto))
+  (call (. proto act))
+)
 
-. proto = thing as Proto
-proto.act()
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Foo
+  (prop + a _ (= 0))
+  (fn-do + This _
+    (param a _)
+  )
+  (fn-do + act _
+    (print (str "called act " a))
+  )
+)
 
-────────────────────
-+ act
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ a = 0
-
-────────────────────
-+ This
-    - a
-
-────────────────────
-+ do act
-
--- "called act $a"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
-
-as Proto for
-+ foo = Foo(2)
+(type + Thing (is Tuple)
+  (delegate Proto)
+  (prop + foo _ (= (call Foo 2)))
+)
 ```
 
 ```output
@@ -1385,36 +1247,34 @@ called act 2
 
 ### Delegate in binding
 
-```yumi
-. thing = Thing()
-. binding = thing.act(...)
-binding(42)
+```brix
+(main
+  (let thing (call Thing))
+  (let binding (call (. thing act) ...))
+  (call binding 42)
+  (blank)
+  (let proto (as thing Proto))
+  (let binding2 (call (. proto act) ...))
+  (call binding2 24)
+)
 
-. proto = thing as Proto
-. binding2 = proto.act(...)
-binding2(24)
+(type + Proto (is Interface)
+  (fn-expr + act _
+    (param x Int)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Foo
+  (fn-do + act _
+    (param x Int)
+    (print (str "called act " x))
+  )
+)
 
-────────────────────
-+ act
-    - x Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do act
-    - x Int
-
--- "called act $x"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
-
-as Proto for
-+ foo Foo
+(type + Thing (is Tuple)
+  (delegate Proto)
+  (prop + foo Foo)
+)
 ```
 
 ```output
@@ -1422,59 +1282,53 @@ called act 42
 called act 24
 ```
 
-```yumi crash
-. p Proto
+```brix crash
+(main
+  (let p Proto)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface))
 ```
 
 ```output
 Exception: "p" is declared Proto with no value, but Proto is an interface, so there is nothing to construct; give it a value, as in ". p Proto = value", or declare it "Proto?" to start as null
-<no file:2>
-    . p Proto
-        ^^^^^
+<no file:3>
+      (let p Proto)
+             ^^^^^
 ```
 
-```yumi
-. sink = Sink()
-sink <- "hello"
-. writable = sink as Writable'String
-writable <- "world"
+```brix
+(main
+  (let sink (call Sink))
+  (<- sink "hello")
+  (let writable (as sink (of Writable String)))
+  (<- writable "world")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Writable'Message is Interface
+(type + (of Writable Message) (is Interface)
+  (fn-expr + (infix this <- (param item Message)) _)
+)
 
-────────────────────
-+ this <- item Message
+(type + Wrapped (is (tuple (: text String)))
+  (fn-from-expr + (: other String)
+    (call Wrapped other)
+  )
+  (fn-to-expr + String
+    text
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wrapped is (text String)
+(type + (of Channel Message)
+  (implements (of Writable Message))
+  (fn-do + (infix this <- (param item Message)) _
+    (print item)
+  )
+)
 
-────────────────────
-+ from other String
-
-Wrapped(other)
-
-────────────────────
-+ to String
-
-text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Channel'Message
-    is Writable'Message
-
-────────────────────
-+ do this <- item Message
-
--- item
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sink
-
-as Writable'String for
-_ channel = Channel'Wrapped()
+(type + Sink
+  (delegate (of Writable String))
+  (prop _ channel _ (= (call (of Channel Wrapped))))
+)
 ```
 
 ```output
@@ -1482,38 +1336,33 @@ hello
 world
 ```
 
-```yumi
-. thing = Thing()
-thing.act()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing act))
+  (blank)
+  (let proto (as thing Proto))
+  (call (. proto act))
+)
 
-. proto = thing as Proto
-proto.act()
+(type + Proto (is Interface)
+  (fn-expr + ping _)
+  (fn-do + act _
+    (call ping)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Foo
+  (implements Proto)
+  (fn-do + ping _
+    (print "foo ping")
+  )
+)
 
-────────────────────
-+ ping
-
-────────────────────
-+ do act
-
-ping()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-    is Proto
-
-────────────────────
-+ do ping
-
--- "foo ping"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-_ foo = Foo()
+(type + Thing
+  (delegate Proto)
+  (prop _ foo _ (= (call Foo)))
+)
 ```
 
 ```output
@@ -1521,48 +1370,41 @@ foo ping
 foo ping
 ```
 
-```yumi
-. thing = Thing()
+```brix
+(main
+  (let thing (call Thing))
+  (blank)
+  (let child (as thing Child))
+  (call (. child base))
+  (call (. child child))
+  (blank)
+  (let base (as thing Base))
+  (call (. base base))
+)
 
-. child = thing as Child
-child.base()
-child.child()
+(type + Base (is Interface)
+  (fn-expr + base _)
+)
 
-. base = thing as Base
-base.base()
+(type + Child (is Interface)
+  (implements Base)
+  (fn-expr + child _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Interface
+(type + Foo
+  (implements Child)
+  (fn-do + base _
+    (print "base")
+  )
+  (fn-do + child _
+    (print "child")
+  )
+)
 
-────────────────────
-+ base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Interface
-    is Base
-
-────────────────────
-+ child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-    is Child
-
-────────────────────
-+ do base
-
--- "base"
-
-────────────────────
-+ do child
-
--- "child"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Child for
-_ foo = Foo()
+(type + Thing
+  (delegate Child)
+  (prop _ foo _ (= (call Foo)))
+)
 ```
 
 ```output
@@ -1571,116 +1413,118 @@ child
 base
 ```
 
-```yumi crash
--- Proto()
+```brix crash
+(main
+  (print (call Proto))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ This
-
--- this
-42
+(type + Proto (is Interface)
+  (fn-do + This _
+    (print this)
+    42
+  )
+)
 ```
 
 ```output
 Exception: Required self not defined
-<no file:10>
-    -- this
-       ^^^^
+<no file:8>
+        (print this)
+               ^^^^
 ```
 
-```yumi crash
--- Proto()
+```brix crash
+(main
+  (print (call Proto))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ This
+(type + Proto (is Interface)
+  (fn-do + This _)
+)
 ```
 
 ```output
 Exception: Type can not be constructed
-<no file:8>
-    + This
-    ^^^^^
+<no file:7>
+      (fn-do + This _)
+      ^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-. thing = Thing()
-. thing1 = thing as Proto
-. thing1b = thing as Proto
-. thing2 = Thing() as Proto
-. ding1 = Ding() as Proto
--- thing1 == thing1
--- thing1 == thing1b
--- thing1 == thing2
--- thing1 != thing1b
--- thing1 != thing2
+```brix
+(main
+  (let thing (call Thing))
+  (let thing1 (as thing Proto))
+  (let thing1b (as thing Proto))
+  (let thing2 (as (call Thing) Proto))
+  (let ding1 (as (call Ding) Proto))
+  (print (== thing1 thing1))
+  (print (== thing1 thing1b))
+  (print (== thing1 thing2))
+  (print (!= thing1 thing1b))
+  (print (!= thing1 thing2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
+(type + Thing
+  (implements Proto)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Ding
-    is Proto
-```
-
-```output
-true
-true
-false
-false
-true
-```
-
-```yumi
-. thing = Thing("bob", "roberts")
-. thing1 = thing as Proto
-. thing1b = thing as Proto
-. thing2 = Thing("joe", "blow") as Proto
-. thing3 = Thing("bob", "roberts") as Proto
--- thing1 == thing1
--- thing1 == thing1b
--- thing1 == thing2
--- thing1 == thing3
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is (first String, last String)
-    is Proto
+(type + Ding
+  (implements Proto)
+)
 ```
 
 ```output
 true
 true
 false
+false
 true
 ```
 
-```yumi
-. thing = Thing()
-thing.action()
+```brix
+(main
+  (let thing (call Thing "bob" "roberts"))
+  (let thing1 (as thing Proto))
+  (let thing1b (as thing Proto))
+  (let thing2 (as (call Thing "joe" "blow") Proto))
+  (let thing3 (as (call Thing "bob" "roberts") Proto))
+  (print (== thing1 thing1))
+  (print (== thing1 thing1b))
+  (print (== thing1 thing2))
+  (print (== thing1 thing3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
+(type + Proto (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Thing (is (tuple (: first String) (: last String)))
+  (implements Proto)
+)
+```
 
-────────────────────
-+ do action
+```output
+true
+true
+false
+true
+```
 
--- "hello $this"
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing action))
+)
+
+(type + Thing
+  (implements Proto)
+)
+
+(type + Proto (is Interface)
+  (fn-do + action _
+    (print (str "hello " this))
+  )
+)
 ```
 
 ```output
@@ -1689,25 +1533,24 @@ hello [Interface __source__:Proto]
 
 ### Delegate through stream shorthand resolves to the property interface
 
-```yumi
-. thing = Thing()
-. stream = thing as <String>
--- type-of stream
+```brix
+(main
+  (let thing (call Thing))
+  (let stream (as thing (stream String)))
+  (print (type-of stream))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Producer
-    is Iterable'String
+(type + Producer
+  (implements (of Iterable String))
+  (fn-expr + (prefix <- this) (? String)
+    null
+  )
+)
 
-────────────────────
-+ <- this String?
-
-null
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as <String> for
-_ producer = Producer()
+(type + Thing
+  (delegate (stream String))
+  (prop _ producer _ (= (call Producer)))
+)
 ```
 
 ```output
@@ -1716,38 +1559,35 @@ _ producer = Producer()
 
 ### Self-referential generic interface conformance (Node as TreeHost'Node) compiles without recursing infinitely during type creation, and constrained generic entry points dispatch the host's concretely typed hook statically.
 
-```yumi
-. parent = Node()
-. child = Node()
-tree-append(parent, child)
--- parent.count
+```brix
+(main
+  (let parent (call Node))
+  (let child (call Node))
+  (call tree-append parent child)
+  (print (. parent count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TreeHost'Child is Interface
+(type + (of TreeHost Child) (is Interface)
+  (fn-expr + attach-child _
+    (param child Child)
+  )
+)
 
-────────────────────
-+ attach-child
-    - child Child
+(type + Node
+  (implements (of TreeHost Node))
+  (prop + count _ (= 0))
+  (fn-do + attach-child _
+    (param child Node)
+    (+= count 1)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node
-    is TreeHost'Node
-
-+ count = 0
-
-────────────────────
-+ do attach-child
-    - child Node
-
-count += 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tree-append'Host'Child
-    - parent Host
-    - child Child
-    - Host is TreeHost'Child
-
-parent.attach-child(child)
+(fn-do + (of tree-append Host Child) _
+  (param parent Host)
+  (param child Child)
+  (constraint is Host (of TreeHost Child))
+  (call (. parent attach-child) child)
+)
 ```
 
 ```output
@@ -1756,111 +1596,104 @@ parent.attach-child(child)
 
 ### A generic method body can pass an outer type parameter through two interface values without trying to infer that already-identical parameter in an empty call-match scope.
 
-```yumi
-. region = GenericRegion'I64(NumberDomain(42), NumberLayout())
-region.refresh()
+```brix
+(main
+  (let region (call (of GenericRegion I64) (call NumberDomain 42) (call NumberLayout)))
+  (call (. region refresh))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ GenericDomain'T is Interface
+(type + (of GenericDomain T) (is Interface)
+  (fn-expr + value T :get)
+)
 
-────────────────────
-+ get value T
+(type + (of GenericLayout T) (is Interface)
+  (fn-do + fill _
+    (param domain (of GenericDomain T))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ GenericLayout'T is Interface
+(type + NumberDomain
+  (implements (of GenericDomain I64))
+  (prop + value I64)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-────────────────────
-+ do fill
-    - domain GenericDomain'T
+(type + NumberLayout
+  (implements (of GenericLayout I64))
+  (fn-do + fill _
+    (param domain (of GenericDomain I64))
+    (print (. domain value))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ NumberDomain
-    is GenericDomain'I64
-
-+ value I64
-
-────────────────────
-+ This
-    - value
-
-━━━━━━━━━━━━━━━━━━━━
-+ NumberLayout
-    is GenericLayout'I64
-
-────────────────────
-+ do fill
-    - domain GenericDomain'I64
-
--- domain.value
-
-━━━━━━━━━━━━━━━━━━━━
-+ GenericRegion'T
-
-+ domain GenericDomain'T
-+ layout GenericLayout'T
-
-────────────────────
-+ This
-    - domain
-    - layout
-
-────────────────────
-+ do refresh
-
-layout.fill(domain)
+(type + (of GenericRegion T)
+  (prop + domain (of GenericDomain T))
+  (prop + layout (of GenericLayout T))
+  (fn-do + This _
+    (param domain _)
+    (param layout _)
+  )
+  (fn-do + refresh _
+    (call (. layout fill) domain)
+  )
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-/core/atom-pool
+```brix
+(import /core/atom-pool)
+(blank)
 
-. atoms = AtomPool()
-do finally
-    atoms.release()
+(main
+  (let atoms (call AtomPool))
+  (finally
+    (call (. atoms release))
+  )
+  (blank)
+  (call (of check View) (as 42 Integer) (as 42 Integer))
+  (call (of check View) (as 42 Integer) (as 43 Integer))
+  (call (of check (of Indexable Char)) "hello" (++ "he" "llo"))
+  (call (of check (of Indexable Char)) "hello" "world")
+  (call (of check (of Indexable I32)) (list 1 2 3) (list 1 2 3))
+  (call (of check (of Indexable I32)) (list 1 2 3) (list 1 2 4))
+  (call (of check View) (call AtomPair (call (. atoms store) "one") 0) (call AtomPair (call (. atoms store) "one") 0))
+  (call (of check View) (call AtomPair (call (. atoms store) "one") 0) (call AtomPair (call (. atoms store) "two") 0))
+  (call (of check View) (as 0.0 Real) (as -0.0 Real))
+  (let nan (/ 0.0f64 0.0f64))
+  (call (of check View) (as nan Real) (as nan Real))
+  (let boxed-nan (as (as nan Real) View))
+  (print (== boxed-nan boxed-nan))
+  (print (!= boxed-nan boxed-nan))
+)
 
-check'View(42 as Integer, 42 as Integer)
-check'View(42 as Integer, 43 as Integer)
-check'(Indexable'Char)("hello", "he" ++ "llo")
-check'(Indexable'Char)("hello", "world")
-check'(Indexable'I32)([1, 2, 3], [1, 2, 3])
-check'(Indexable'I32)([1, 2, 3], [1, 2, 4])
-check'View(AtomPair(atoms.store("one"), 0), AtomPair(atoms.store("one"), 0))
-check'View(AtomPair(atoms.store("one"), 0), AtomPair(atoms.store("two"), 0))
-check'View(0.0 as Real, -0.0 as Real)
-. nan = 0.0f64 / 0.0f64
-check'View(nan as Real, nan as Real)
-. boxed-nan = (nan as Real) as View
--- boxed-nan == boxed-nan
--- boxed-nan != boxed-nan
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + Integer (is I32)
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Integer is I32
-    is View
+(type + Real (is F64)
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Real is F64
-    is View
+(type + AtomPair (is (tuple (: value Atom) (: index I32)))
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AtomPair is (value Atom, index I32)
-    is View
-
-━━━━━━━━━━━━━━━━━━━━
-+ do check'Face'T
-    - left T
-    - right T
-
-. boxed-left = left as Face
-. boxed-right = right as Face
--- left == right
--- boxed-left == boxed-right
--- boxed-left != boxed-right
+(fn-do + (of check Face T) _
+  (param left T)
+  (param right T)
+  (let boxed-left (as left Face))
+  (let boxed-right (as right Face))
+  (print (== left right))
+  (print (== boxed-left boxed-right))
+  (print (!= boxed-left boxed-right))
+)
 ```
 
 ```output
@@ -1898,59 +1731,66 @@ false
 true
 ```
 
-```yumi
-. pair = Packet'I32(7, 9)
-. same = Packet'I32(7, 9)
-. different = Packet'I32(7, 10)
-. child = pair as Child
-. parent = same as View
--- child == parent
--- parent == child
--- child != parent
--- child == (different as View)
-. adapted = child as View
--- (type-of adapted).concrete-name
--- adapted == parent
-. nested = Nested(child, 1) as View
-. nested-same = Nested(parent, 1) as View
-. nested-different = Nested(different as View, 1) as View
--- nested == nested-same
--- nested != nested-same
--- nested == nested-different
-unsupported(pair as View, Packet'I64(7i64, 9i64) as View, false)
-unsupported(pair as View, Packet'I64(7i64, 9i64) as View, true)
+```brix
+(main
+  (let pair (call (of Packet I32) 7 9))
+  (let same (call (of Packet I32) 7 9))
+  (let different (call (of Packet I32) 7 10))
+  (let child (as pair Child))
+  (let parent (as same View))
+  (print (== child parent))
+  (print (== parent child))
+  (print (!= child parent))
+  (print (== child (as different View)))
+  (let adapted (as child View))
+  (print (. (type-of adapted) concrete-name))
+  (print (== adapted parent))
+  (let nested (as (call Nested child 1) View))
+  (let nested-same (as (call Nested parent 1) View))
+  (let nested-different (as (call Nested (as different View) 1) View))
+  (print (== nested nested-same))
+  (print (!= nested nested-same))
+  (print (== nested nested-different))
+  (call unsupported (as pair View) (as (call (of Packet I64) 7i64 9i64) View) false)
+  (call unsupported (as pair View) (as (call (of Packet I64) 7i64 9i64) View) true)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Interface
-    is View
+(type + Child (is Interface)
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Packet'T is (first T, second T)
-    is Child
+(type + (of Packet T) (is (tuple (: first T) (: second T)))
+  (implements Child)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Nested is (inner View, marker I32)
-    is View
+(type + Nested (is (tuple (: inner View) (: marker I32)))
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do unsupported
-    - left View
-    - right View
-    - unequal Bool
-
-. attempt = do new
-    if unequal
-        -- left != right
-    else
-        -- left == right
-catch failure
-    . failure Panic? = failure
-    if failure
-        -- "$failure"
-attempt.wait()
+(fn-do + unsupported _
+  (param left View)
+  (param right View)
+  (param unequal Bool)
+  (let attempt
+    (do-new
+      (if unequal
+        (print (!= left right))
+        (else
+          (print (== left right))
+        )
+      )
+      (on-failure failure
+        (let failure (? Panic) failure)
+        (if failure
+          (print (str failure))
+        )
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -1967,69 +1807,73 @@ Unsupported interface equality: concrete types differ
 Unsupported interface equality: concrete types differ
 ```
 
-```yumi
-. state = Counts()
-. value = Measured(state, 7)
-. boxed = value as View
--- value == value
--- boxed == boxed
--- boxed != boxed
--- state.comparisons
-state.comparisons = 0
--- make-value(state) == make-value(state)
--- state.operands
--- state.comparisons
-panic-equality(boxed, state, false)
-panic-equality(boxed, state, true)
--- state.comparisons
+```brix
+(main
+  (let state (call Counts))
+  (let value (call Measured state 7))
+  (let boxed (as value View))
+  (print (== value value))
+  (print (== boxed boxed))
+  (print (!= boxed boxed))
+  (print (. state comparisons))
+  (= (. state comparisons) 0)
+  (print (== (call make-value state) (call make-value state)))
+  (print (. state operands))
+  (print (. state comparisons))
+  (call panic-equality boxed state false)
+  (call panic-equality boxed state true)
+  (print (. state comparisons))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counts
+(type + Counts
+  (prop + operands _ (= 0))
+  (prop + comparisons _ (= 0))
+  (prop + should-panic _ (= false))
+)
 
-+ operands = 0
-+ comparisons = 0
-+ should-panic = false
+(type + Measured (is (tuple (: state Counts) (: value I32)))
+  (implements View)
+  (fn-do + (infix this == (param other Measured)) _
+    (+= (. state comparisons) 1)
+    (let allocated (str value ":" (. other value)))
+    (if (. state should-panic)
+      (throw (call Panic (str "comparison panic " allocated)))
+    )
+    (return (!= value (. other value)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Measured is (state Counts, value I32)
-    is View
+(fn-do + make-value View
+  (param state Counts)
+  (+= (. state operands) 1)
+  (return (call Measured state 7))
+)
 
-────────────────────
-+ do this == other Measured
-
-state.comparisons += 1
-. allocated = "$value:${other.value}"
-if state.should-panic
-    ?! Panic("comparison panic $allocated")
-= value != other.value
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make-value View
-    - state Counts
-
-state.operands += 1
-= Measured(state, 7)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do panic-equality
-    - value View
-    - state Counts
-    - unequal Bool
-
-. attempt = do new
-    state.should-panic = true
-    if unequal
-        -- value != value
-    else
-        -- value == value
-catch failure
-    . failure Panic? = failure
-    if failure
-        -- "$failure"
-attempt.wait()
+(fn-do + panic-equality _
+  (param value View)
+  (param state Counts)
+  (param unequal Bool)
+  (let attempt
+    (do-new
+      (= (. state should-panic) true)
+      (if unequal
+        (print (!= value value))
+        (else
+          (print (== value value))
+        )
+      )
+      (on-failure failure
+        (let failure (? Panic) failure)
+        (if failure
+          (print (str failure))
+        )
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -2045,28 +1889,28 @@ comparison panic 7:7
 3
 ```
 
-```yumi
-. pair = Pair("first", "second") as View
-. nested = Nested(pair, 1) as View
--- equal(nested, nested)
+```brix
+(main
+  (let pair (as (call Pair "first" "second") View))
+  (let nested (as (call Nested pair 1) View))
+  (print (call equal nested nested))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (first String, second String)
-    is View
+(type + Pair (is (tuple (: first String) (: second String)))
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Nested is (inner View, marker I32)
-    is View
+(type + Nested (is (tuple (: inner View) (: marker I32)))
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do equal
-    - left View
-    - right View
-
-= left == right
+(fn-do + equal _
+  (param left View)
+  (param right View)
+  (return (== left right))
+)
 ```
 
 ```output
@@ -2075,44 +1919,37 @@ true
 
 ### A public field satisfies an interface property that requires a setter.
 
-```yumi
-. nodes [Node]
-nodes += Leaf()
-nodes += Branch()
-for node in nodes
-    node.id = node.id + 10
-    -- node.id
+```brix
+(main
+  (let nodes (list Node))
+  (+= nodes (call Leaf))
+  (+= nodes (call Branch))
+  (for (in node nodes)
+    (= (. node id) (+ (. node id) 10))
+    (print (. node id))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Interface
+(type + Node (is Interface)
+  (fn-expr + id Size :get)
+  (fn-do + id _ :set (param value Size))
+)
 
-────────────────────
-+ get id Size
+(type + Leaf
+  (implements Node)
+  (prop + id Size (= 1))
+)
 
-────────────────────
-+ do id = value Size
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Node
-
-+ id Size = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Branch
-    is Node
-
-_ stored Size = 2
-
-────────────────────
-+ get id
-
-stored
-
-────────────────────
-+ do id = value Size
-
-stored = value
+(type + Branch
+  (implements Node)
+  (prop _ stored Size (= 2))
+  (fn-expr + id _ :get
+    stored
+  )
+  (fn-do + id _ :set (param value Size)
+    (= stored value)
+  )
+)
 ```
 
 ```output
@@ -2122,71 +1959,67 @@ stored = value
 
 ### Interface values test, match, and cast against implementing classes and their subclasses.
 
-```yumi
-. nodes [Node]
-nodes += Leaf()
-nodes += Twig()
-nodes += Branch(3)
-nodes += Stone()
-for node in nodes
-    -- describe(node)
--- (nodes[2] as Branch).kids
--- nodes[1] is Leaf
--- nodes[3] is Leaf
+```brix
+(main
+  (let nodes (list Node))
+  (+= nodes (call Leaf))
+  (+= nodes (call Twig))
+  (+= nodes (call Branch 3))
+  (+= nodes (call Stone))
+  (for (in node nodes)
+    (print (call describe node))
+  )
+  (print (. (as ([] nodes 2) Branch) kids))
+  (print (is ([] nodes 1) Leaf))
+  (print (is ([] nodes 3) Leaf))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - node Node
+(fn-expr + describe String
+  (param node Node)
+  (match node
+    (case (: leaf Leaf)
+      (str "leaf " (. leaf name))
+    )
+    (case (: branch Branch)
+      (str "branch " (. branch kids))
+    )
+    (default
+      "other"
+    )
+  )
+)
 
-match node
-    | leaf Leaf
-        "leaf ${leaf.name}"
-    | branch Branch
-        "branch ${branch.kids}"
-    ??
-        "other"
+(type + Node (is Interface)
+  (fn-expr + weight Int :get)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Interface
+(type + Leaf
+  (implements Node)
+  (prop + weight _ (= 1))
+  (fn-expr + name _ :get
+    "leaf"
+  )
+)
 
-────────────────────
-+ get weight Int
+(type + Twig (is Leaf)
+  (fn-expr + name _ :get
+    "twig"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Node
+(type + Branch
+  (implements Node)
+  (prop + kids Int)
+  (prop + weight _ (= 2))
+  (fn-do + This _
+    (param kids _)
+  )
+)
 
-+ weight = 1
-
-────────────────────
-+ get name
-
-"leaf"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Twig is Leaf
-
-────────────────────
-+ get name
-
-"twig"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Branch
-    is Node
-
-+ kids Int
-+ weight = 2
-
-────────────────────
-+ This
-    - kids
-
-━━━━━━━━━━━━━━━━━━━━
-+ Stone is Tuple
-    is Node
-
-+ weight = 3
+(type + Stone (is Tuple)
+  (implements Node)
+  (prop + weight _ (= 3))
+)
 ```
 
 ```output
@@ -2201,40 +2034,35 @@ false
 
 ### A covariant getter satisfies an interface getter that returns a wider interface.
 
-```yumi
-. child = Child()
-. holder Holder = child
--- holder.owner == null
-child.link = Parent()
--- (holder.owner!).tag
+```brix
+(main
+  (let child (call Child))
+  (let holder Holder child)
+  (print (== (. holder owner) null))
+  (= (. child link) (call Parent))
+  (print (. (!! (. holder owner)) tag))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Owner is Interface
+(type + Owner (is Interface)
+  (fn-expr + tag String :get)
+)
 
-────────────────────
-+ get tag String
+(type + Holder (is Interface)
+  (fn-expr + owner (? Owner) :get)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Interface
+(type + Parent
+  (implements Owner)
+  (fn-expr + tag _ :get
+    "parent"
+  )
+)
 
-────────────────────
-+ get owner Owner?
-
-━━━━━━━━━━━━━━━━━━━━
-+ Parent
-    is Owner
-
-────────────────────
-+ get tag
-
-"parent"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child
-    is Holder
-
-+ link Parent?
-+ owner => link
+(type + Child
+  (implements Holder)
+  (prop + link (? Parent))
+  (prop + owner _ (=> link))
+)
 ```
 
 ```output
@@ -2244,82 +2072,81 @@ parent
 
 ### Argument dispatch does not implicitly narrow an interface value to an implementing class.
 
-```yumi crash
-. named Named = Leaf()
--- describe(named as Leaf)
--- describe(named)
+```brix crash
+(main
+  (let named Named (call Leaf))
+  (print (call describe (as named Leaf)))
+  (print (call describe named))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named is Interface
+(type + Named (is Interface)
+  (fn-expr + label String :get)
+)
 
-────────────────────
-+ get label String
+(type + Leaf
+  (implements Named)
+  (prop + label _ (= "leaf"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Named
-
-+ label = "leaf"
-
-━━━━━━━━━━━━━━━━━━━━
-+ describe
-    - leaf Leaf
-
-leaf.label
+(fn-expr + describe _
+  (param leaf Leaf)
+  (. leaf label)
+)
 ```
 
 ```output
 Exception: No function "describe" accepts (Named); it is declared as "describe(leaf Leaf)"
-<no file:4>
-    -- describe(named)
-       ^^^^^^^^^^^^^^^
+<no file:5>
+      (print (call describe named))
+             ^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Joining an interface with an implementing class keeps the interface type.
 
-```yumi
-for i in 0 .. < 4
-    -- pick(i)?.label ?? "none"
-. named Named = Leaf()
-. missing Leaf? = null
--- (missing ?? named).label
+```brix
+(main
+  (for (in i (..< 0 4))
+    (print (?? (?. (call pick i) label) "none"))
+  )
+  (let named Named (call Leaf))
+  (let missing (? Leaf) null)
+  (print (. (?? missing named) label))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named is Interface
+(type + Named (is Interface)
+  (fn-expr + label String :get)
+)
 
-────────────────────
-+ get label String
+(type + Leaf
+  (implements Named)
+  (prop + label _ (= "leaf"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Named
+(type + Twig
+  (implements Named)
+  (prop + label _ (= "twig"))
+)
 
-+ label = "leaf"
+(type + Stem
+  (implements Named)
+  (prop + label _ (= "stem"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Twig
-    is Named
-
-+ label = "twig"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Stem
-    is Named
-
-+ label = "stem"
-
-━━━━━━━━━━━━━━━━━━━━
-+ pick Named?
-    - index Int
-
-|? index == 0
-    Leaf()
-|? index == 1
-    Twig()
-|? index == 2
-    Stem()
-??
+(fn-expr + pick (? Named)
+  (param index Int)
+  (case? (== index 0)
+    (call Leaf)
+  )
+  (case? (== index 1)
+    (call Twig)
+  )
+  (case? (== index 2)
+    (call Stem)
+  )
+  (default
     null
+  )
+)
 ```
 
 ```output
@@ -2332,31 +2159,28 @@ leaf
 
 ### An inherited public field satisfies an interface setter on a subclass.
 
-```yumi
-. nodes [Node]
-nodes += Leaf()
-nodes += Twig()
-for node in nodes
-    node.id = node.id + 10
-    -- node.id
+```brix
+(main
+  (let nodes (list Node))
+  (+= nodes (call Leaf))
+  (+= nodes (call Twig))
+  (for (in node nodes)
+    (= (. node id) (+ (. node id) 10))
+    (print (. node id))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Interface
+(type + Node (is Interface)
+  (fn-expr + id Size :get)
+  (fn-do + id _ :set (param value Size))
+)
 
-────────────────────
-+ get id Size
+(type + Leaf
+  (implements Node)
+  (prop + id Size (= 1))
+)
 
-────────────────────
-+ do id = value Size
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Node
-
-+ id Size = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Twig is Leaf
+(type + Twig (is Leaf))
 ```
 
 ```output
@@ -2366,86 +2190,82 @@ for node in nodes
 
 ### A recursive list getter yields class values as interface values.
 
-```yumi
-. inner = Group("inner")
-inner.add-leaf(Leaf("b"))
-. root = Group("root")
-root.add-leaf(Leaf("a"))
-root.add-group(inner)
-for node in root.descendants
-    -- node.label
-for node in root.nodes
-    -- node.label
+```brix
+(main
+  (let inner (call Group "inner"))
+  (call (. inner add-leaf) (call Leaf "b"))
+  (let root (call Group "root"))
+  (call (. root add-leaf) (call Leaf "a"))
+  (call (. root add-group) inner)
+  (for (in node (. root descendants))
+    (print (. node label))
+  )
+  (for (in node (. root nodes))
+    (print (. node label))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named is Interface
+(type + Named (is Interface)
+  (fn-expr + label String :get)
+)
 
-────────────────────
-+ get label String
+(type + Leaf
+  (implements Named)
+  (prop + label String)
+  (fn-do + This _
+    (param label _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Named
+(type + Item
+  (prop + leaf (? Leaf))
+  (prop + group (? Group))
+)
 
-+ label String
-
-────────────────────
-+ This
-    - label
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item
-
-+ leaf Leaf?
-+ group Group?
-
-━━━━━━━━━━━━━━━━━━━━
-+ Group
-    is Named
-
-+ label String
-_ items [Item] = List'Item()
-
-────────────────────
-+ This
-    - label
-
-────────────────────
-+ do add-leaf
-    - leaf Leaf
-
-. item = Item()
-item.leaf = leaf
-items += item
-
-────────────────────
-+ do add-group
-    - group Group
-
-. item = Item()
-item.group = group
-items += item
-
-────────────────────
-+ do get nodes [Named]
-
-for item in items
-    if item.leaf
-        <= item.leaf
-    else if item.group
-        <= item.group
-
-────────────────────
-+ do get descendants [Named]
-
-for item in items
-    if item.leaf
-        <= item.leaf
-    else if item.group
-        . group = item.group
-        <= group
-        for node in group.descendants
-            <= node
+(type + Group
+  (implements Named)
+  (prop + label String)
+  (prop _ items (list Item) (= (call (of List Item))))
+  (fn-do + This _
+    (param label _)
+  )
+  (fn-do + add-leaf _
+    (param leaf Leaf)
+    (let item (call Item))
+    (= (. item leaf) leaf)
+    (+= items item)
+  )
+  (fn-do + add-group _
+    (param group Group)
+    (let item (call Item))
+    (= (. item group) group)
+    (+= items item)
+  )
+  (fn-do + nodes (list Named) :get
+    (for (in item items)
+      (if (. item leaf)
+        (yield (. item leaf))
+        (else-if (. item group)
+          (yield (. item group))
+        )
+      )
+    )
+  )
+  (fn-do + descendants (list Named) :get
+    (for (in item items)
+      (if (. item leaf)
+        (yield (. item leaf))
+        (else-if (. item group)
+          (let group (. item group))
+          (yield group)
+          (for (in node (. group descendants))
+            (yield node)
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2458,69 +2278,81 @@ inner
 
 ### Feed pipelines over interface-typed lists map, filter, test, and pick items.
 
-```yumi
-. nodes [Named] = List'Named()
-nodes += Leaf("a")
-nodes += Twig("b")
-nodes += Leaf("c")
-. found =
-    ** ["a", "x", "c"]
-    ?*> find(nodes, each)
-    |> List
--- found.length
-. labels =
-    ** nodes
-    *> each.label
-    |> List
--- labels[2]
-. twigs =
-    ** nodes
-    ?> each is Twig
-    *> each as Twig
-    |> List
--- twigs[0].label
-. matches =
-    ** nodes
-    ?> each.label == "c"
-    |> List
--- matches[0].label
-. twig-list =
-    ** nodes
-    ?> each is Twig
-    |> List
--- twig-list.length
+```brix
+(main
+  (let nodes (list Named) (call (of List Named)))
+  (+= nodes (call Leaf "a"))
+  (+= nodes (call Twig "b"))
+  (+= nodes (call Leaf "c"))
+  (let found
+    (block
+      (spread (list "a" "x" "c"))
+      (pipe ?*> (call find nodes each))
+      (pipe |> List)
+    )
+  )
+  (print (. found length))
+  (let labels
+    (block
+      (spread nodes)
+      (pipe *> (. each label))
+      (pipe |> List)
+    )
+  )
+  (print ([] labels 2))
+  (let twigs
+    (block
+      (spread nodes)
+      (pipe ?> (is each Twig))
+      (pipe *> (as each Twig))
+      (pipe |> List)
+    )
+  )
+  (print (. ([] twigs 0) label))
+  (let matches
+    (block
+      (spread nodes)
+      (pipe ?> (== (. each label) "c"))
+      (pipe |> List)
+    )
+  )
+  (print (. ([] matches 0) label))
+  (let twig-list
+    (block
+      (spread nodes)
+      (pipe ?> (is each Twig))
+      (pipe |> List)
+    )
+  )
+  (print (. twig-list length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do find Named?
-    - nodes [Named]
-    - label String
+(fn-do + find (? Named)
+  (param nodes (list Named))
+  (param label String)
+  (for (in node nodes)
+    (return-if node (if (== (. node label) label)))
+  )
+  (return null)
+)
 
-for node in nodes
-    =? node if node.label == label
-= null
+(type + Named (is Interface)
+  (fn-expr + label String :get)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named is Interface
+(type + Leaf
+  (implements Named)
+  (prop + label String)
+  (fn-do + This _
+    (param label _)
+  )
+)
 
-────────────────────
-+ get label String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Named
-
-+ label String
-
-────────────────────
-+ This
-    - label
-
-━━━━━━━━━━━━━━━━━━━━
-+ Twig is Leaf
-
-────────────────────
-+ This
-    - label
+(type + Twig (is Leaf)
+  (fn-do + This _
+    (param label _)
+  )
+)
 ```
 
 ```output
@@ -2533,31 +2365,32 @@ c
 
 ### A single map stage over an interface-typed list compiles.
 
-```yumi
-. nodes [Named] = List'Named()
-nodes += Leaf("a")
-nodes += Leaf("c")
-. kept =
-    ** nodes
-    *> each.label
-    |> List
--- kept[1]
+```brix
+(main
+  (let nodes (list Named) (call (of List Named)))
+  (+= nodes (call Leaf "a"))
+  (+= nodes (call Leaf "c"))
+  (let kept
+    (block
+      (spread nodes)
+      (pipe *> (. each label))
+      (pipe |> List)
+    )
+  )
+  (print ([] kept 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named is Interface
+(type + Named (is Interface)
+  (fn-expr + label String :get)
+)
 
-────────────────────
-+ get label String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Named
-
-+ label String
-
-────────────────────
-+ This
-    - label
+(type + Leaf
+  (implements Named)
+  (prop + label String)
+  (fn-do + This _
+    (param label _)
+  )
+)
 ```
 
 ```output
@@ -2566,303 +2399,286 @@ c
 
 ### A panic in a method called through a value of an interface: the trace has the method, then the frame that takes the object out of the value, placed where the method is declared.
 
-```yumi crash
-. thing = Thing()
-foo(thing)
+```brix crash
+(main
+  (let thing (call Thing))
+  (call foo thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + bar Int
+    (param n Int)
+  )
+)
 
-────────────────────
-+ bar Int
-    - n Int
+(type + Thing
+  (implements Proto)
+  (fn-do + bar _
+    (param n Int)
+    (throw (call Panic (str "bar " n)) (if (> n 3)))
+    (return n)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-────────────────────
-+ do bar
-    - n Int
-
-?! Panic("bar $n")
-    if n > 3
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - p Proto
-
--- p.bar(1)
--- p.bar(5)
+(fn-do + foo _
+  (param p Proto)
+  (print (call (. p bar) 1))
+  (print (call (. p bar) 5))
+)
 ```
 
 ```stderr
 Unhandled panic: bar 5
-<no file:20>
+<no file:17>
 
 Task 1
 
 Stack trace:
-  0  __source__:Thing:bar no file:20:1
-  1  __source__:bar(wrapped) no file:17:1
-  2  __source__:foo no file:29:4
-  3  __source__:main no file:3:1
+  0  __source__:Thing:bar no file:17:5
+  1  __source__:bar(wrapped) no file:15:3
+  2  __source__:foo no file:25:10
+  3  __source__:main no file:4:3
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
 ### A panic in a function an interface declares with a body, called through a value: no frame stands between it and its caller.
 
-```yumi crash
-. thing = Thing()
-foo(thing)
+```brix crash
+(main
+  (let thing (call Thing))
+  (call foo thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-do + bar Int
+    (param n Int)
+    (throw (call Panic (str "default bar " n)) (if (> n 3)))
+    (return n)
+  )
+)
 
-────────────────────
-+ do bar Int
-    - n Int
+(type + Thing
+  (implements Proto)
+)
 
-?! Panic("default bar $n")
-    if n > 3
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - p Proto
-
--- p.bar(2)
--- p.bar(6)
+(fn-do + foo _
+  (param p Proto)
+  (print (call (. p bar) 2))
+  (print (call (. p bar) 6))
+)
 ```
 
 ```stderr
 Unhandled panic: default bar 6
-<no file:12>
+<no file:10>
 
 Task 1
 
 Stack trace:
-  0  __source__:Proto:bar no file:12:1
-  1  __source__:foo no file:25:4
-  2  __source__:main no file:3:1
+  0  __source__:Proto:bar no file:10:5
+  1  __source__:foo no file:22:10
+  2  __source__:main no file:4:3
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### A panic in a function of an interface, run for a class that implements one derived from it: the trace has the function, the class's own frame for it, and the frame of the value.
 
-```yumi crash
-. thing = Thing()
-. pair = thing as Foobar
--- pair.show(2)
--- pair.show(7)
+```brix crash
+(main
+  (let thing (call Thing))
+  (let pair (as thing Foobar))
+  (print (call (. pair show) 2))
+  (print (call (. pair show) 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + show Int
+    (param n Int)
+    (throw (call Panic (str "show " n)) (if (> n 3)))
+    (return n)
+  )
+)
 
-────────────────────
-+ do show Int
-    - n Int
+(type + Foobar (is Interface)
+  (implements Foo)
+)
 
-?! Panic("show $n")
-    if n > 3
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foobar is Interface
-    is Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foobar
+(type + Thing
+  (implements Foobar)
+)
 ```
 
 ```stderr
 Unhandled panic: show 7
-<no file:14>
+<no file:12>
 
 Task 1
 
 Stack trace:
-  0  __source__:Foo:show no file:14:1
-  1  __source__:show no file:11:1
-  2  __source__:show(wrapped) no file:11:1
-  3  __source__:main no file:5:4
+  0  __source__:Foo:show no file:12:5
+  1  __source__:show no file:10:3
+  2  __source__:show(wrapped) no file:10:3
+  3  __source__:main no file:6:10
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
 ### A panic in a function of an interface called on an object whose class declares none: the trace has the function as the interface's and as the class's.
 
-```yumi crash
-. thing = Thing()
--- thing.show(1)
--- thing.show(8)
+```brix crash
+(main
+  (let thing (call Thing))
+  (print (call (. thing show) 1))
+  (print (call (. thing show) 8))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + show Int
+    (param n Int)
+    (throw (call Panic (str "show " n)) (if (> n 3)))
+    (return n)
+  )
+)
 
-────────────────────
-+ do show Int
-    - n Int
-
-?! Panic("show $n")
-    if n > 3
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foo
+(type + Thing
+  (implements Foo)
+)
 ```
 
 ```stderr
 Unhandled panic: show 8
-<no file:13>
+<no file:11>
 
 Task 1
 
 Stack trace:
-  0  __source__:Foo:show no file:13:1
-  1  __source__:show no file:10:1
-  2  __source__:main no file:4:4
+  0  __source__:Foo:show no file:11:5
+  1  __source__:show no file:9:3
+  2  __source__:main no file:5:10
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### A panic in a method of a number type, called through a value of an interface a function was given.
 
-```yumi crash
-. count Proto = Count(9)
-foo(count)
+```brix crash
+(main
+  (let count Proto (call Count 9))
+  (call foo count)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + checked Int
+    (param n Int)
+  )
+)
 
-────────────────────
-+ checked Int
-    - n Int
+(type + Count (is I32)
+  (implements Proto)
+  (fn-do + checked _
+    (param n Int)
+    (throw (call Panic (str "by " n)) (if (< n 2)))
+    (return n)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Count is I32
-    is Proto
-
-────────────────────
-+ do checked
-    - n Int
-
-?! Panic("by $n")
-    if n < 2
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - p Proto
-
--- p.checked(1)
+(fn-do + foo _
+  (param p Proto)
+  (print (call (. p checked) 1))
+)
 ```
 
 ```stderr
 Unhandled panic: by 1
-<no file:20>
+<no file:17>
 
 Task 1
 
 Stack trace:
-  0  __source__:Count:checked no file:20:1
-  1  __source__:checked(wrapped) no file:17:1
-  2  __source__:foo no file:28:4
-  3  __source__:main no file:3:1
+  0  __source__:Count:checked no file:17:5
+  1  __source__:checked(wrapped) no file:15:3
+  2  __source__:foo no file:24:10
+  3  __source__:main no file:4:3
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
 ### A panic in a method of a tuple type, called through a value of an interface a function was given.
 
-```yumi crash
-. count Proto = Count(1, 2)
-foo(count)
+```brix crash
+(main
+  (let count Proto (call Count 1 2))
+  (call foo count)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + checked Int
+    (param n Int)
+  )
+)
 
-────────────────────
-+ checked Int
-    - n Int
+(type + Count (is (tuple (: a Int) (: b Int)))
+  (implements Proto)
+  (fn-do + checked _
+    (param n Int)
+    (throw (call Panic (str "by " n)) (if (< n 2)))
+    (return n)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Count is (a Int, b Int)
-    is Proto
-
-────────────────────
-+ do checked
-    - n Int
-
-?! Panic("by $n")
-    if n < 2
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - p Proto
-
--- p.checked(1)
+(fn-do + foo _
+  (param p Proto)
+  (print (call (. p checked) 1))
+)
 ```
 
 ```stderr
 Unhandled panic: by 1
-<no file:20>
+<no file:17>
 
 Task 1
 
 Stack trace:
-  0  __source__:Count:checked no file:20:1
-  1  __source__:checked(wrapped) no file:17:1
-  2  __source__:foo no file:28:4
-  3  __source__:main no file:3:1
+  0  __source__:Count:checked no file:17:5
+  1  __source__:checked(wrapped) no file:15:3
+  2  __source__:foo no file:24:10
+  3  __source__:main no file:4:3
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
 ### A function of an interface run through a value of one derived from it has the declaring interface as its receiver.
 
-```yumi
-. thing = Thing()
-. pair = thing as Foobar
-pair.show()
-pair.tell()
-. one = pair as Foo
-one.show()
+```brix
+(main
+  (let thing (call Thing))
+  (let pair (as thing Foobar))
+  (call (. pair show))
+  (call (. pair tell))
+  (let one (as pair Foo))
+  (call (. one show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + show _
+    (print (str "show " this))
+    (call tell)
+  )
+  (fn-expr + tell _)
+)
 
-────────────────────
-+ do show
+(type + Foobar (is Interface)
+  (implements Foo)
+)
 
--- "show $this"
-tell()
-
-────────────────────
-+ tell
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foobar is Interface
-    is Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foobar
-
-────────────────────
-+ do tell
-
--- "tell $this"
+(type + Thing
+  (implements Foobar)
+  (fn-do + tell _
+    (print (str "tell " this))
+  )
+)
 ```
 
 ```output
@@ -2875,30 +2691,26 @@ tell [Object __source__:Thing]
 
 ### A function of an interface called on an object has the interface as its receiver, and calls the class's own function.
 
-```yumi
-. thing = Thing()
-thing.show()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-do + show _
+    (print (str "show " this))
+    (call tell)
+  )
+  (fn-expr + tell _)
+)
 
-────────────────────
-+ do show
-
--- "show $this"
-tell()
-
-────────────────────
-+ tell
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-────────────────────
-+ do tell
-
--- "tell $this"
+(type + Thing
+  (implements Proto)
+  (fn-do + tell _
+    (print (str "tell " this))
+  )
+)
 ```
 
 ```output
@@ -2908,109 +2720,88 @@ tell [Object __source__:Thing]
 
 ### Whole numbers, a float, a tuple and a text held as values of an interface.
 
-```yumi
-. count = Count(42) as Proto
-count.show()
--- count.twice(2)
-. real = Real(3.5) as Proto
-real.show()
--- real.twice(2)
-. pair = Pair(1, 2.5) as Proto
-pair.show()
--- pair.twice(3)
-. label = Label("hi") as Proto
-label.show()
--- label.twice(1)
-. small = Small(200) as Proto
-small.show()
-. minus = Count(-7) as Proto
-minus.show()
--- minus.twice(3)
+```brix
+(main
+  (let count (as (call Count 42) Proto))
+  (call (. count show))
+  (print (call (. count twice) 2))
+  (let real (as (call Real 3.5) Proto))
+  (call (. real show))
+  (print (call (. real twice) 2))
+  (let pair (as (call Pair 1 2.5) Proto))
+  (call (. pair show))
+  (print (call (. pair twice) 3))
+  (let label (as (call Label "hi") Proto))
+  (call (. label show))
+  (print (call (. label twice) 1))
+  (let small (as (call Small 200) Proto))
+  (call (. small show))
+  (let minus (as (call Count -7) Proto))
+  (call (. minus show))
+  (print (call (. minus twice) 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + show _)
+  (fn-expr + twice Int
+    (param n Int)
+  )
+)
 
-────────────────────
-+ show
+(type + Count (is I32)
+  (implements Proto)
+  (fn-do + show _
+    (print (str "count " this))
+  )
+  (fn-expr + twice _
+    (param n Int)
+    (* this n)
+  )
+)
 
-────────────────────
-+ twice Int
-    - n Int
+(type + Small (is U8)
+  (implements Proto)
+  (fn-do + show _
+    (print (str "small " this))
+  )
+  (fn-expr + twice _
+    (param n Int)
+    n
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Count is I32
-    is Proto
+(type + Real (is F64)
+  (implements Proto)
+  (fn-do + show _
+    (print (str "real " this))
+  )
+  (fn-expr + twice _
+    (param n Int)
+    (* n 2)
+  )
+)
 
-────────────────────
-+ do show
+(type + Label (is String)
+  (implements Proto)
+  (fn-do + show _
+    (print (str "label " this))
+  )
+  (fn-expr + twice _
+    (param n Int)
+    (+ n 100)
+  )
+)
 
--- "count $this"
-
-────────────────────
-+ twice
-    - n Int
-
-this * n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Small is U8
-    is Proto
-
-────────────────────
-+ do show
-
--- "small $this"
-
-────────────────────
-+ twice
-    - n Int
-
-n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Real is F64
-    is Proto
-
-────────────────────
-+ do show
-
--- "real $this"
-
-────────────────────
-+ twice
-    - n Int
-
-n * 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is String
-    is Proto
-
-────────────────────
-+ do show
-
--- "label $this"
-
-────────────────────
-+ twice
-    - n Int
-
-n + 100
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (a Int, b Float)
-    is Proto
-
-────────────────────
-+ do show
-
--- "pair $a $b"
-
-────────────────────
-+ twice
-    - n Int
-
-a * n
+(type + Pair (is (tuple (: a Int) (: b Float)))
+  (implements Proto)
+  (fn-do + show _
+    (print (str "pair " a " " b))
+  )
+  (fn-expr + twice _
+    (param n Int)
+    (* a n)
+  )
+)
 ```
 
 ```output
@@ -3029,61 +2820,49 @@ count -7
 
 ### A getter and a setter of an interface answered by a stored property and by functions, and the type of what a value holds.
 
-```yumi
-. leaf = Leaf()
-. node Node = leaf
-node.id = node.id + 10
--- node.id
--- leaf.id
-node.name = "pear"
--- leaf.name
-. branch Node = Branch()
-branch.id = 7
--- branch.id
--- (type-of node).concrete-name
--- (type-of branch).concrete-name
--- (type-of node).name
--- type-of node
+```brix
+(main
+  (let leaf (call Leaf))
+  (let node Node leaf)
+  (= (. node id) (+ (. node id) 10))
+  (print (. node id))
+  (print (. leaf id))
+  (= (. node name) "pear")
+  (print (. leaf name))
+  (let branch Node (call Branch))
+  (= (. branch id) 7)
+  (print (. branch id))
+  (print (. (type-of node) concrete-name))
+  (print (. (type-of branch) concrete-name))
+  (print (. (type-of node) name))
+  (print (type-of node))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Interface
+(type + Node (is Interface)
+  (fn-expr + id Size :get)
+  (fn-do + id _ :set (param value Size))
+  (fn-do + name _ :set (param value String))
+)
 
-────────────────────
-+ get id Size
+(type + Leaf
+  (implements Node)
+  (prop + id Size (= 1))
+  (prop + name _ (= "apple"))
+)
 
-────────────────────
-+ do id = value Size
-
-────────────────────
-+ do name = value String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Node
-
-+ id Size = 1
-+ name = "apple"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Branch
-    is Node
-
-_ stored Size = 2
-
-────────────────────
-+ get id
-
-stored
-
-────────────────────
-+ do id = value Size
-
-stored = value * 2
-
-────────────────────
-+ do name = value String
-
--- "named $value"
+(type + Branch
+  (implements Node)
+  (prop _ stored Size (= 2))
+  (fn-expr + id _ :get
+    stored
+  )
+  (fn-do + id _ :set (param value Size)
+    (= stored (* value 2))
+  )
+  (fn-do + name _ :set (param value String)
+    (print (str "named " value))
+  )
+)
 ```
 
 ```output
@@ -3099,42 +2878,38 @@ Node
 
 ### A function of an interface with untyped arguments, called through a value with several types.
 
-```yumi
-. proto Proto = Thing()
-proto.foo(1)
-proto.foo(1.5)
-proto.foo("text")
-proto.pair(1, "one")
-proto.pair(2.5, 3)
+```brix
+(main
+  (let proto Proto (call Thing))
+  (call (. proto foo) 1)
+  (call (. proto foo) 1.5)
+  (call (. proto foo) "text")
+  (call (. proto pair) 1 "one")
+  (call (. proto pair) 2.5 3)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + foo _
+    (param n _)
+  )
+  (fn-expr + pair _
+    (param a _)
+    (param b _)
+  )
+)
 
-────────────────────
-+ foo
-    - n
-
-────────────────────
-+ pair
-    - a
-    - b
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-────────────────────
-+ do foo
-    - n
-
--- n
-
-────────────────────
-+ do pair
-    - a
-    - b
-
--- "$a and $b"
+(type + Thing
+  (implements Proto)
+  (fn-do + foo _
+    (param n _)
+    (print n)
+  )
+  (fn-do + pair _
+    (param a _)
+    (param b _)
+    (print (str a " and " b))
+  )
+)
 ```
 
 ```output
@@ -3147,56 +2922,48 @@ text
 
 ### A value of an interface cast to the class it holds and to a class that one is derived from.
 
-```yumi
-. a Node = Leaf()
-. b Node = Twig()
-. c Node = Branch(3)
--- (c as Branch).kids
--- (a as Leaf).name
--- (b as Leaf).name
--- (b as Twig).name
+```brix
+(main
+  (let a Node (call Leaf))
+  (let b Node (call Twig))
+  (let c Node (call Branch 3))
+  (print (. (as c Branch) kids))
+  (print (. (as a Leaf) name))
+  (print (. (as b Leaf) name))
+  (print (. (as b Twig) name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Interface
+(type + Node (is Interface)
+  (fn-expr + weight Int :get)
+)
 
-────────────────────
-+ get weight Int
+(type + Leaf
+  (implements Node)
+  (prop + weight _ (= 1))
+  (fn-expr + name _ :get
+    "leaf"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Node
+(type + Twig (is Leaf)
+  (fn-expr + name _ :get
+    "twig"
+  )
+)
 
-+ weight = 1
+(type + Branch
+  (implements Node)
+  (prop + kids Int)
+  (prop + weight _ (= 2))
+  (fn-do + This _
+    (param kids _)
+  )
+)
 
-────────────────────
-+ get name
-
-"leaf"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Twig is Leaf
-
-────────────────────
-+ get name
-
-"twig"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Branch
-    is Node
-
-+ kids Int
-+ weight = 2
-
-────────────────────
-+ This
-    - kids
-
-━━━━━━━━━━━━━━━━━━━━
-+ Stone is Tuple
-    is Node
-
-+ weight = 3
+(type + Stone (is Tuple)
+  (implements Node)
+  (prop + weight _ (= 3))
+)
 ```
 
 ```output
@@ -3208,61 +2975,53 @@ twig
 
 ### A value of an interface tested with is against the classes it may hold.
 
-```yumi
-. a Node = Leaf()
-. b Node = Twig()
-. c Node = Branch(3)
-. d Node = Stone()
--- a is Leaf
--- b is Leaf
--- c is Leaf
--- d is Leaf
--- a is Twig
--- b is Twig
--- c is Branch
--- d is Branch
+```brix
+(main
+  (let a Node (call Leaf))
+  (let b Node (call Twig))
+  (let c Node (call Branch 3))
+  (let d Node (call Stone))
+  (print (is a Leaf))
+  (print (is b Leaf))
+  (print (is c Leaf))
+  (print (is d Leaf))
+  (print (is a Twig))
+  (print (is b Twig))
+  (print (is c Branch))
+  (print (is d Branch))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Interface
+(type + Node (is Interface)
+  (fn-expr + weight Int :get)
+)
 
-────────────────────
-+ get weight Int
+(type + Leaf
+  (implements Node)
+  (prop + weight _ (= 1))
+  (fn-expr + name _ :get
+    "leaf"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Node
+(type + Twig (is Leaf)
+  (fn-expr + name _ :get
+    "twig"
+  )
+)
 
-+ weight = 1
+(type + Branch
+  (implements Node)
+  (prop + kids Int)
+  (prop + weight _ (= 2))
+  (fn-do + This _
+    (param kids _)
+  )
+)
 
-────────────────────
-+ get name
-
-"leaf"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Twig is Leaf
-
-────────────────────
-+ get name
-
-"twig"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Branch
-    is Node
-
-+ kids Int
-+ weight = 2
-
-────────────────────
-+ This
-    - kids
-
-━━━━━━━━━━━━━━━━━━━━
-+ Stone is Tuple
-    is Node
-
-+ weight = 3
+(type + Stone (is Tuple)
+  (implements Node)
+  (prop + weight _ (= 3))
+)
 ```
 
 ```output
@@ -3278,69 +3037,64 @@ false
 
 ### A match on a value of an interface by the classes it may hold.
 
-```yumi
-. a Node = Leaf()
-. b Node = Twig()
-. c Node = Branch(3)
-. d Node = Stone()
--- describe(a)
--- describe(b)
--- describe(c)
--- describe(d)
+```brix
+(main
+  (let a Node (call Leaf))
+  (let b Node (call Twig))
+  (let c Node (call Branch 3))
+  (let d Node (call Stone))
+  (print (call describe a))
+  (print (call describe b))
+  (print (call describe c))
+  (print (call describe d))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - node Node
+(fn-expr + describe String
+  (param node Node)
+  (match node
+    (case (: leaf Leaf)
+      (str "leaf " (. leaf name))
+    )
+    (case (: branch Branch)
+      (str "branch " (. branch kids))
+    )
+    (default
+      "other"
+    )
+  )
+)
 
-match node
-    | leaf Leaf
-        "leaf ${leaf.name}"
-    | branch Branch
-        "branch ${branch.kids}"
-    ??
-        "other"
+(type + Node (is Interface)
+  (fn-expr + weight Int :get)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Interface
+(type + Leaf
+  (implements Node)
+  (prop + weight _ (= 1))
+  (fn-expr + name _ :get
+    "leaf"
+  )
+)
 
-────────────────────
-+ get weight Int
+(type + Twig (is Leaf)
+  (fn-expr + name _ :get
+    "twig"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Node
+(type + Branch
+  (implements Node)
+  (prop + kids Int)
+  (prop + weight _ (= 2))
+  (fn-do + This _
+    (param kids _)
+  )
+)
 
-+ weight = 1
-
-────────────────────
-+ get name
-
-"leaf"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Twig is Leaf
-
-────────────────────
-+ get name
-
-"twig"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Branch
-    is Node
-
-+ kids Int
-+ weight = 2
-
-────────────────────
-+ This
-    - kids
-
-━━━━━━━━━━━━━━━━━━━━
-+ Stone is Tuple
-    is Node
-
-+ weight = 3
+(type + Stone (is Tuple)
+  (implements Node)
+  (prop + weight _ (= 3))
+)
 ```
 
 ```output
@@ -3352,55 +3106,47 @@ other
 
 ### A value of an interface tested as a tuple type and cast to it.
 
-```yumi
-. a Node = Leaf()
-. d Node = Stone()
--- d is Stone
--- a is Stone
-. s = d as Stone
--- s.weight
+```brix
+(main
+  (let a Node (call Leaf))
+  (let d Node (call Stone))
+  (print (is d Stone))
+  (print (is a Stone))
+  (let s (as d Stone))
+  (print (. s weight))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Interface
+(type + Node (is Interface)
+  (fn-expr + weight Int :get)
+)
 
-────────────────────
-+ get weight Int
+(type + Leaf
+  (implements Node)
+  (prop + weight _ (= 1))
+  (fn-expr + name _ :get
+    "leaf"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Node
+(type + Twig (is Leaf)
+  (fn-expr + name _ :get
+    "twig"
+  )
+)
 
-+ weight = 1
+(type + Branch
+  (implements Node)
+  (prop + kids Int)
+  (prop + weight _ (= 2))
+  (fn-do + This _
+    (param kids _)
+  )
+)
 
-────────────────────
-+ get name
-
-"leaf"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Twig is Leaf
-
-────────────────────
-+ get name
-
-"twig"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Branch
-    is Node
-
-+ kids Int
-+ weight = 2
-
-────────────────────
-+ This
-    - kids
-
-━━━━━━━━━━━━━━━━━━━━
-+ Stone is Tuple
-    is Node
-
-+ weight = 3
+(type + Stone (is Tuple)
+  (implements Node)
+  (prop + weight _ (= 3))
+)
 ```
 
 ```output
@@ -3411,55 +3157,49 @@ false
 
 ### A value of an interface cast to a class it does not hold panics.
 
-```yumi
-do new
-    . a Node = Leaf()
-    . c = a as Branch
-    -- c.kids
-catch failure
-    -- failure
+```brix
+(main
+  (do-new
+    (let a Node (call Leaf))
+    (let c (as a Branch))
+    (print (. c kids))
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Interface
+(type + Node (is Interface)
+  (fn-expr + weight Int :get)
+)
 
-────────────────────
-+ get weight Int
+(type + Leaf
+  (implements Node)
+  (prop + weight _ (= 1))
+  (fn-expr + name _ :get
+    "leaf"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Node
+(type + Twig (is Leaf)
+  (fn-expr + name _ :get
+    "twig"
+  )
+)
 
-+ weight = 1
+(type + Branch
+  (implements Node)
+  (prop + kids Int)
+  (prop + weight _ (= 2))
+  (fn-do + This _
+    (param kids _)
+  )
+)
 
-────────────────────
-+ get name
-
-"leaf"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Twig is Leaf
-
-────────────────────
-+ get name
-
-"twig"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Branch
-    is Node
-
-+ kids Int
-+ weight = 2
-
-────────────────────
-+ This
-    - kids
-
-━━━━━━━━━━━━━━━━━━━━
-+ Stone is Tuple
-    is Node
-
-+ weight = 3
+(type + Stone (is Tuple)
+  (implements Node)
+  (prop + weight _ (= 3))
+)
 ```
 
 ```output
@@ -3468,55 +3208,49 @@ Invalid cast to [Object __source__:Branch]
 
 ### A tuple held as a value of an interface, cast to a class, panics.
 
-```yumi
-do new
-    . d Node = Stone()
-    . c = d as Branch
-    -- c.kids
-catch failure
-    -- failure
+```brix
+(main
+  (do-new
+    (let d Node (call Stone))
+    (let c (as d Branch))
+    (print (. c kids))
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Interface
+(type + Node (is Interface)
+  (fn-expr + weight Int :get)
+)
 
-────────────────────
-+ get weight Int
+(type + Leaf
+  (implements Node)
+  (prop + weight _ (= 1))
+  (fn-expr + name _ :get
+    "leaf"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Node
+(type + Twig (is Leaf)
+  (fn-expr + name _ :get
+    "twig"
+  )
+)
 
-+ weight = 1
+(type + Branch
+  (implements Node)
+  (prop + kids Int)
+  (prop + weight _ (= 2))
+  (fn-do + This _
+    (param kids _)
+  )
+)
 
-────────────────────
-+ get name
-
-"leaf"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Twig is Leaf
-
-────────────────────
-+ get name
-
-"twig"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Branch
-    is Node
-
-+ kids Int
-+ weight = 2
-
-────────────────────
-+ This
-    - kids
-
-━━━━━━━━━━━━━━━━━━━━
-+ Stone is Tuple
-    is Node
-
-+ weight = 3
+(type + Stone (is Tuple)
+  (implements Node)
+  (prop + weight _ (= 3))
+)
 ```
 
 ```output
@@ -3525,55 +3259,49 @@ Invalid cast to [Object __source__:Branch]
 
 ### An object held as a value of an interface, cast to a tuple type, panics.
 
-```yumi
-do new
-    . a Node = Leaf()
-    . s = a as Stone
-    -- s.weight
-catch failure
-    -- failure
+```brix
+(main
+  (do-new
+    (let a Node (call Leaf))
+    (let s (as a Stone))
+    (print (. s weight))
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Interface
+(type + Node (is Interface)
+  (fn-expr + weight Int :get)
+)
 
-────────────────────
-+ get weight Int
+(type + Leaf
+  (implements Node)
+  (prop + weight _ (= 1))
+  (fn-expr + name _ :get
+    "leaf"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Node
+(type + Twig (is Leaf)
+  (fn-expr + name _ :get
+    "twig"
+  )
+)
 
-+ weight = 1
+(type + Branch
+  (implements Node)
+  (prop + kids Int)
+  (prop + weight _ (= 2))
+  (fn-do + This _
+    (param kids _)
+  )
+)
 
-────────────────────
-+ get name
-
-"leaf"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Twig is Leaf
-
-────────────────────
-+ get name
-
-"twig"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Branch
-    is Node
-
-+ kids Int
-+ weight = 2
-
-────────────────────
-+ This
-    - kids
-
-━━━━━━━━━━━━━━━━━━━━
-+ Stone is Tuple
-    is Node
-
-+ weight = 3
+(type + Stone (is Tuple)
+  (implements Node)
+  (prop + weight _ (= 3))
+)
 ```
 
 ```output
@@ -3582,68 +3310,62 @@ Invalid cast to Stone
 
 ### An optional of an interface given objects, a tuple and null.
 
-```yumi
-. a Node? = pick(0)
-. b Node? = pick(1)
-. c Node? = pick(2)
--- a?.weight ?? 0
--- b?.weight ?? 0
--- c?.weight ?? 0
-. w = Stone() as Node?
--- w?.weight ?? 0
+```brix
+(main
+  (let a (? Node) (call pick 0))
+  (let b (? Node) (call pick 1))
+  (let c (? Node) (call pick 2))
+  (print (?? (?. a weight) 0))
+  (print (?? (?. b weight) 0))
+  (print (?? (?. c weight) 0))
+  (let w (as (call Stone) (? Node)))
+  (print (?? (?. w weight) 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pick Node?
-    - index Int
-
-|? index == 0
-    Leaf()
-|? index == 1
-    Branch(4)
-??
+(fn-expr + pick (? Node)
+  (param index Int)
+  (case? (== index 0)
+    (call Leaf)
+  )
+  (case? (== index 1)
+    (call Branch 4)
+  )
+  (default
     null
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Interface
+(type + Node (is Interface)
+  (fn-expr + weight Int :get)
+)
 
-────────────────────
-+ get weight Int
+(type + Leaf
+  (implements Node)
+  (prop + weight _ (= 1))
+  (fn-expr + name _ :get
+    "leaf"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Node
+(type + Twig (is Leaf)
+  (fn-expr + name _ :get
+    "twig"
+  )
+)
 
-+ weight = 1
+(type + Branch
+  (implements Node)
+  (prop + kids Int)
+  (prop + weight _ (= 2))
+  (fn-do + This _
+    (param kids _)
+  )
+)
 
-────────────────────
-+ get name
-
-"leaf"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Twig is Leaf
-
-────────────────────
-+ get name
-
-"twig"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Branch
-    is Node
-
-+ kids Int
-+ weight = 2
-
-────────────────────
-+ This
-    - kids
-
-━━━━━━━━━━━━━━━━━━━━
-+ Stone is Tuple
-    is Node
-
-+ weight = 3
+(type + Stone (is Tuple)
+  (implements Node)
+  (prop + weight _ (= 3))
+)
 ```
 
 ```output
@@ -3655,80 +3377,68 @@ Invalid cast to Stone
 
 ### A tuple derived from another and a struct held as values of an interface: a test names the exact type, and a cast gives a copy.
 
-```yumi
-. a Node = Leaf()
-. d Node = Stone()
-. p Node = Pebble()
-. q Node = Rock(4, 5)
--- d.weight, p.weight, q.weight
--- p is Stone
--- p is Pebble
--- d is Pebble
--- q is Rock
--- a is Rock
-. r = q as Rock
--- r.x, r.y, r.weight
-r.x = 9
--- r.x, (q as Rock).x
+```brix
+(main
+  (let a Node (call Leaf))
+  (let d Node (call Stone))
+  (let p Node (call Pebble))
+  (let q Node (call Rock 4 5))
+  (print (tuple (. d weight) (. p weight) (. q weight)))
+  (print (is p Stone))
+  (print (is p Pebble))
+  (print (is d Pebble))
+  (print (is q Rock))
+  (print (is a Rock))
+  (let r (as q Rock))
+  (print (tuple (. r x) (. r y) (. r weight)))
+  (= (. r x) 9)
+  (print (tuple (. r x) (. (as q Rock) x)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pebble is Stone
+(type + Pebble (is Stone)
+  (prop + extra _ (= 4))
+)
 
-+ extra = 4
+(type + Rock (is Struct)
+  (implements Node)
+  (prop + x Int)
+  (prop + y Int)
+  (fn-expr + weight Int :get
+    (+ x y)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Rock is Struct
-    is Node
+(type + Node (is Interface)
+  (fn-expr + weight Int :get)
+)
 
-+ x Int
-+ y Int
+(type + Leaf
+  (implements Node)
+  (prop + weight _ (= 1))
+  (fn-expr + name _ :get
+    "leaf"
+  )
+)
 
-────────────────────
-+ get weight Int
+(type + Twig (is Leaf)
+  (fn-expr + name _ :get
+    "twig"
+  )
+)
 
-x + y
+(type + Branch
+  (implements Node)
+  (prop + kids Int)
+  (prop + weight _ (= 2))
+  (fn-do + This _
+    (param kids _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Interface
-
-────────────────────
-+ get weight Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Node
-
-+ weight = 1
-
-────────────────────
-+ get name
-
-"leaf"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Twig is Leaf
-
-────────────────────
-+ get name
-
-"twig"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Branch
-    is Node
-
-+ kids Int
-+ weight = 2
-
-────────────────────
-+ This
-    - kids
-
-━━━━━━━━━━━━━━━━━━━━
-+ Stone is Tuple
-    is Node
-
-+ weight = 3
+(type + Stone (is Tuple)
+  (implements Node)
+  (prop + weight _ (= 3))
+)
 ```
 
 ```output
@@ -3744,69 +3454,63 @@ false
 
 ### Objects and a tuple tested as an interface they implement.
 
-```yumi
-. leaf = Leaf()
-. stone = Stone()
-. twig = Twig()
--- leaf is Node
--- stone is Node
--- twig is Node
--- 5 is Node
--- name(leaf)
--- name(stone)
--- name(twig)
+```brix
+(main
+  (let leaf (call Leaf))
+  (let stone (call Stone))
+  (let twig (call Twig))
+  (print (is leaf Node))
+  (print (is stone Node))
+  (print (is twig Node))
+  (print (is 5 Node))
+  (print (call name leaf))
+  (print (call name stone))
+  (print (call name twig))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ name String
-    - thing
+(fn-expr + name String
+  (param thing _)
+  (match thing
+    (case (: node Node)
+      (str "node " (. node weight))
+    )
+    (default
+      "other"
+    )
+  )
+)
 
-match thing
-    | node Node
-        "node ${node.weight}"
-    ??
-        "other"
+(type + Node (is Interface)
+  (fn-expr + weight Int :get)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Interface
+(type + Leaf
+  (implements Node)
+  (prop + weight _ (= 1))
+  (fn-expr + name _ :get
+    "leaf"
+  )
+)
 
-────────────────────
-+ get weight Int
+(type + Twig (is Leaf)
+  (fn-expr + name _ :get
+    "twig"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Node
+(type + Branch
+  (implements Node)
+  (prop + kids Int)
+  (prop + weight _ (= 2))
+  (fn-do + This _
+    (param kids _)
+  )
+)
 
-+ weight = 1
-
-────────────────────
-+ get name
-
-"leaf"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Twig is Leaf
-
-────────────────────
-+ get name
-
-"twig"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Branch
-    is Node
-
-+ kids Int
-+ weight = 2
-
-────────────────────
-+ This
-    - kids
-
-━━━━━━━━━━━━━━━━━━━━
-+ Stone is Tuple
-    is Node
-
-+ weight = 3
+(type + Stone (is Tuple)
+  (implements Node)
+  (prop + weight _ (= 3))
+)
 ```
 
 ```output
@@ -3821,75 +3525,74 @@ node 1
 
 ### Tests of a value of an interface in if, is not and match?.
 
-```yumi
-. a Node = Leaf()
-. b Node = Twig()
-. c Node = Branch(3)
-. d Node = Stone()
--- tell(a), tell(b), tell(c), tell(d)
-. e Node? = b
-if e is Leaf
-    -- "is leaf"
-match e
-    | twig Twig
-        -- twig.name
-    ??
-        -- "no"
+```brix
+(main
+  (let a Node (call Leaf))
+  (let b Node (call Twig))
+  (let c Node (call Branch 3))
+  (let d Node (call Stone))
+  (print (tuple (call tell a) (call tell b) (call tell c) (call tell d)))
+  (let e (? Node) b)
+  (if (is e Leaf)
+    (print "is leaf")
+  )
+  (match e
+    (case (: twig Twig)
+      (print (. twig name))
+    )
+    (default
+      (print "no")
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tell String
-    - node Node
+(fn-do + tell String
+  (param node Node)
+  (if (is node Twig)
+    (return "twig")
+  )
+  (if (is-not node Leaf)
+    (return "not leaf")
+  )
+  (match? node
+    (case (: leaf Leaf)
+      (return (. leaf name))
+    )
+  )
+  (return "none")
+)
 
-if node is Twig
-    = "twig"
-if node is not Leaf
-    = "not leaf"
-match? node
-    | leaf Leaf
-        = leaf.name
-= "none"
+(type + Node (is Interface)
+  (fn-expr + weight Int :get)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Interface
+(type + Leaf
+  (implements Node)
+  (prop + weight _ (= 1))
+  (fn-expr + name _ :get
+    "leaf"
+  )
+)
 
-────────────────────
-+ get weight Int
+(type + Twig (is Leaf)
+  (fn-expr + name _ :get
+    "twig"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Node
+(type + Branch
+  (implements Node)
+  (prop + kids Int)
+  (prop + weight _ (= 2))
+  (fn-do + This _
+    (param kids _)
+  )
+)
 
-+ weight = 1
-
-────────────────────
-+ get name
-
-"leaf"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Twig is Leaf
-
-────────────────────
-+ get name
-
-"twig"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Branch
-    is Node
-
-+ kids Int
-+ weight = 2
-
-────────────────────
-+ This
-    - kids
-
-━━━━━━━━━━━━━━━━━━━━
-+ Stone is Tuple
-    is Node
-
-+ weight = 3
+(type + Stone (is Tuple)
+  (implements Node)
+  (prop + weight _ (= 3))
+)
 ```
 
 ```output
@@ -3900,48 +3603,40 @@ twig
 
 ### An object held as a base class converts to an interface with the table of its own class.
 
-```yumi
-. base Base = Child()
-. shape Shape = base
--- shape.name()
-. plain Shape = Base()
--- plain.name()
-. grand Base = Grand()
-. third Shape = grand
--- third.name()
--- third.sides
--- shape.sides
+```brix
+(main
+  (let base Base (call Child))
+  (let shape Shape base)
+  (print (call (. shape name)))
+  (let plain Shape (call Base))
+  (print (call (. plain name)))
+  (let grand Base (call Grand))
+  (let third Shape grand)
+  (print (call (. third name)))
+  (print (. third sides))
+  (print (. shape sides))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Interface
+(type + Shape (is Interface)
+  (fn-expr + name String)
+  (fn-expr + sides Int :get)
+)
 
-────────────────────
-+ name String
+(type + Base
+  (implements Shape)
+  (prop + sides _ (= 3))
+  (fn-expr + name _
+    "base"
+  )
+)
 
-────────────────────
-+ get sides Int
+(type + Child (is Base)
+  (fn-expr + name _
+    "child"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-    is Shape
-
-+ sides = 3
-
-────────────────────
-+ name
-
-"base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ name
-
-"child"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Grand is Child
+(type + Grand (is Child))
 ```
 
 ```output
@@ -3954,61 +3649,50 @@ child
 
 ### A value of an interface derived from two others, given where each is asked for.
 
-```yumi
-. whole Both = Thing()
--- whole.first()
--- whole.second()
--- whole.third()
-. one First = whole
--- one.first()
-. two Second = whole
--- two.second()
-tell(whole)
+```brix
+(main
+  (let whole Both (call Thing))
+  (print (call (. whole first)))
+  (print (call (. whole second)))
+  (print (call (. whole third)))
+  (let one First whole)
+  (print (call (. one first)))
+  (let two Second whole)
+  (print (call (. two second)))
+  (call tell whole)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ First is Interface
+(type + First (is Interface)
+  (fn-expr + first String)
+)
 
-────────────────────
-+ first String
+(type + Second (is Interface)
+  (fn-expr + second String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Second is Interface
+(type + Both (is Interface)
+  (implements First)
+  (implements Second)
+  (fn-expr + third String)
+)
 
-────────────────────
-+ second String
+(type + Thing
+  (implements Both)
+  (fn-expr + first _
+    "first"
+  )
+  (fn-expr + second _
+    "second"
+  )
+  (fn-expr + third _
+    "third"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Both is Interface
-    is First
-    is Second
-
-────────────────────
-+ third String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Both
-
-────────────────────
-+ first
-
-"first"
-
-────────────────────
-+ second
-
-"second"
-
-────────────────────
-+ third
-
-"third"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tell
-    - second Second
-
--- "told ${second.second()}"
+(fn-do + tell _
+  (param second Second)
+  (print (str "told " (call (. second second))))
+)
 ```
 
 ```output
@@ -4022,70 +3706,67 @@ told second
 
 ### Values of an interface kept in a property, a tuple and an optional, and returned.
 
-```yumi
-. holder = Holder(Dog())
--- holder.pet.sound()
-holder.pet = Cat()
--- holder.pet.sound()
--- pick(true).sound(), pick(false).sound()
-. pair = (Dog() as Pet, Cat() as Pet)
--- pair[0].sound(), pair[1].sound()
--- find(0)?.sound() ?? "silence"
--- find(1)?.sound() ?? "silence"
--- find(2)?.sound() ?? "silence"
+```brix
+(main
+  (let holder (call Holder (call Dog)))
+  (print (call (. holder pet sound)))
+  (= (. holder pet) (call Cat))
+  (print (call (. holder pet sound)))
+  (print (tuple (call (. (call pick true) sound)) (call (. (call pick false) sound))))
+  (let pair (tuple (as (call Dog) Pet) (as (call Cat) Pet)))
+  (print (tuple (call (. ([] pair 0) sound)) (call (. ([] pair 1) sound))))
+  (print (?? (call (?. (call find 0) sound)) "silence"))
+  (print (?? (call (?. (call find 1) sound)) "silence"))
+  (print (?? (call (?. (call find 2) sound)) "silence"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pet is Interface
+(type + Pet (is Interface)
+  (fn-expr + sound String)
+)
 
-────────────────────
-+ sound String
+(type + Dog
+  (implements Pet)
+  (fn-expr + sound _
+    "woof"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Dog
-    is Pet
+(type + Cat
+  (implements Pet)
+  (fn-expr + sound _
+    "meow"
+  )
+)
 
-────────────────────
-+ sound
+(type + Holder
+  (prop + pet Pet)
+  (fn-do + This _
+    (param pet _)
+  )
+)
 
-"woof"
+(fn-expr + pick Pet
+  (param dog Bool)
+  (case? dog
+    (call Dog)
+  )
+  (default
+    (call Cat)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Cat
-    is Pet
-
-────────────────────
-+ sound
-
-"meow"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ pet Pet
-
-────────────────────
-+ This
-    - pet
-
-━━━━━━━━━━━━━━━━━━━━
-+ pick Pet
-    - dog Bool
-
-|? dog
-    Dog()
-??
-    Cat()
-
-━━━━━━━━━━━━━━━━━━━━
-+ find Pet?
-    - which Int
-
-|? which == 1
-    Dog()
-|? which == 2
-    Cat()
-??
+(fn-expr + find (? Pet)
+  (param which Int)
+  (case? (== which 1)
+    (call Dog)
+  )
+  (case? (== which 2)
+    (call Cat)
+  )
+  (default
     null
+  )
+)
 ```
 
 ```output
@@ -4100,65 +3781,61 @@ meow
 
 ### Boxed values of an interface survive collection while a list alone holds them.
 
-```yumi
-. kept [Shape]
-. i = 0
-while i < 200
-    kept += Pair(i, 0.5)
-    kept += Label("label $i")
-    kept += Count(i)
-    churn(i)
-    i += 1
-. sum = 0
-i = 0
-while i < kept.length
-    sum += kept[i].weight()
-    i += 1
--- sum
--- kept[4].weight(), kept[301].weight(), kept[599].weight()
+```brix
+(main
+  (let kept (list Shape))
+  (let i 0)
+  (while (< i 200)
+    (+= kept (call Pair i 0.5))
+    (+= kept (call Label (str "label " i)))
+    (+= kept (call Count i))
+    (call churn i)
+    (+= i 1)
+  )
+  (let sum 0)
+  (= i 0)
+  (while (< i (. kept length))
+    (+= sum (call (. ([] kept i) weight)))
+    (+= i 1)
+  )
+  (print sum)
+  (print (tuple (call (. ([] kept 4) weight)) (call (. ([] kept 301) weight)) (call (. ([] kept 599) weight))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Interface
+(type + Shape (is Interface)
+  (fn-expr + weight Int)
+)
 
-────────────────────
-+ weight Int
+(type + Pair (is (tuple (: a Int) (: b Float)))
+  (implements Shape)
+  (fn-expr + weight _
+    a
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (a Int, b Float)
-    is Shape
+(type + Label (is String)
+  (implements Shape)
+  (fn-expr + weight _
+    (as size Int)
+  )
+)
 
-────────────────────
-+ weight
+(type + Count (is I32)
+  (implements Shape)
+  (fn-expr + weight _
+    (* this 2)
+  )
+)
 
-a
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is String
-    is Shape
-
-────────────────────
-+ weight
-
-size as Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Count is I32
-    is Shape
-
-────────────────────
-+ weight
-
-this * 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do churn
-    - n Int
-
-. junk [String]
-. j = 0
-while j < 50
-    junk += "junk $n $j"
-    j += 1
+(fn-do + churn _
+  (param n Int)
+  (let junk (list String))
+  (let j 0)
+  (while (< j 50)
+    (+= junk (str "junk " n " " j))
+    (+= j 1)
+  )
+)
 ```
 
 ```output
@@ -4168,63 +3845,50 @@ while j < 50
 
 ### A function an interface declares with a body calls a getter and a function that each class answers.
 
-```yumi
-. square Shape = Square(3)
-. circle Shape = Circle(2)
--- square.describe()
--- circle.describe()
--- Square(4).describe()
+```brix
+(main
+  (let square Shape (call Square 3))
+  (let circle Shape (call Circle 2))
+  (print (call (. square describe)))
+  (print (call (. circle describe)))
+  (print (call (. (call Square 4) describe)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Interface
+(type + Shape (is Interface)
+  (fn-expr + area Int)
+  (fn-expr + name String :get)
+  (fn-expr + describe String
+    (scope (str name " of " area)
+      (lazy area (call (. this area)))
+    )
+  )
+)
 
-────────────────────
-+ area Int
+(type + Square
+  (implements Shape)
+  (prop + side Int)
+  (prop + name _ (= "square"))
+  (fn-do + This _
+    (param side _)
+  )
+  (fn-expr + area _
+    (* side side)
+  )
+)
 
-────────────────────
-+ get name String
-
-────────────────────
-+ describe String
-
-"$name of $area"
-    .. area = this.area()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Square
-    is Shape
-
-+ side Int
-+ name = "square"
-
-────────────────────
-+ This
-    - side
-
-────────────────────
-+ area
-
-side * side
-
-━━━━━━━━━━━━━━━━━━━━
-+ Circle
-    is Shape
-
-+ radius Int
-
-────────────────────
-+ This
-    - radius
-
-────────────────────
-+ area
-
-radius * radius * 3
-
-────────────────────
-+ get name
-
-"circle"
+(type + Circle
+  (implements Shape)
+  (prop + radius Int)
+  (fn-do + This _
+    (param radius _)
+  )
+  (fn-expr + area _
+    (* radius radius 3)
+  )
+  (fn-expr + name _ :get
+    "circle"
+  )
+)
 ```
 
 ```output
@@ -4235,61 +3899,48 @@ square of 16
 
 ### A method that changes its receiver, called through a value of an interface: an object is changed, and a struct the value holds is not.
 
-```yumi
-. counter = Counter(1)
-. step Stepper = counter
-step.bump()
-step.bump()
--- step.value()
--- counter.n
-. boxed Stepper = Tally(5)
-boxed.bump()
--- boxed.value()
+```brix
+(main
+  (let counter (call Counter 1))
+  (let step Stepper counter)
+  (call (. step bump))
+  (call (. step bump))
+  (print (call (. step value)))
+  (print (. counter n))
+  (let boxed Stepper (call Tally 5))
+  (call (. boxed bump))
+  (print (call (. boxed value)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Stepper is Interface
+(type + Stepper (is Interface)
+  (fn-expr + bump _)
+  (fn-expr + value Int)
+)
 
-────────────────────
-+ bump
+(type + Counter
+  (implements Stepper)
+  (prop + n Int)
+  (fn-do + This _
+    (param n _)
+  )
+  (fn-do + bump _
+    (+= n 1)
+  )
+  (fn-expr + value _
+    n
+  )
+)
 
-────────────────────
-+ value Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
-    is Stepper
-
-+ n Int
-
-────────────────────
-+ This
-    - n
-
-────────────────────
-+ do bump
-
-n += 1
-
-────────────────────
-+ value
-
-n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tally is Struct
-    is Stepper
-
-+ n Int
-
-────────────────────
-+ do bump
-
-n += 1
-
-────────────────────
-+ value
-
-n
+(type + Tally (is Struct)
+  (implements Stepper)
+  (prop + n Int)
+  (fn-do + bump _
+    (+= n 1)
+  )
+  (fn-expr + value _
+    n
+  )
+)
 ```
 
 ```output
@@ -4300,44 +3951,38 @@ n
 
 ### An interface with a type parameter, implemented for two types.
 
-```yumi
-. box Box'Int = IntBox(4)
--- box.item
--- box.doubled()
-. words Box'String = WordBox("hey")
--- words.item
--- words.doubled()
+```brix
+(main
+  (let box (of Box Int) (call IntBox 4))
+  (print (. box item))
+  (print (call (. box doubled)))
+  (let words (of Box String) (call WordBox "hey"))
+  (print (. words item))
+  (print (call (. words doubled)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box'T is Interface
+(type + (of Box T) (is Interface)
+  (fn-expr + item T :get)
+  (fn-expr + doubled T
+    (+ item item)
+  )
+)
 
-────────────────────
-+ get item T
+(type + IntBox
+  (implements (of Box Int))
+  (prop + item Int)
+  (fn-do + This _
+    (param item _)
+  )
+)
 
-────────────────────
-+ doubled T
-
-item + item
-
-━━━━━━━━━━━━━━━━━━━━
-+ IntBox
-    is Box'Int
-
-+ item Int
-
-────────────────────
-+ This
-    - item
-
-━━━━━━━━━━━━━━━━━━━━
-+ WordBox
-    is Box'String
-
-+ item String
-
-────────────────────
-+ This
-    - item
+(type + WordBox
+  (implements (of Box String))
+  (prop + item String)
+  (fn-do + This _
+    (param item _)
+  )
+)
 ```
 
 ```output
@@ -4349,62 +3994,50 @@ heyhey
 
 ### A tree of values of an interface, each node of a class of its own.
 
-```yumi
-. tree Node = Branch(Leaf(2), Branch(Leaf(3), Leaf(4)))
--- tree.weight()
--- tree.depth()
-. leaf Node = Leaf(9)
--- leaf.weight(), leaf.depth()
+```brix
+(main
+  (let tree Node (call Branch (call Leaf 2) (call Branch (call Leaf 3) (call Leaf 4))))
+  (print (call (. tree weight)))
+  (print (call (. tree depth)))
+  (let leaf Node (call Leaf 9))
+  (print (tuple (call (. leaf weight)) (call (. leaf depth))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Interface
+(type + Node (is Interface)
+  (fn-expr + weight Int)
+  (fn-expr + depth Int
+    1
+  )
+)
 
-────────────────────
-+ weight Int
+(type + Leaf
+  (implements Node)
+  (prop + n Int)
+  (fn-do + This _
+    (param n _)
+  )
+  (fn-expr + weight _
+    n
+  )
+)
 
-────────────────────
-+ depth Int
-
-1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
-    is Node
-
-+ n Int
-
-────────────────────
-+ This
-    - n
-
-────────────────────
-+ weight
-
-n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Branch
-    is Node
-
-+ left Node
-+ right Node
-
-────────────────────
-+ This
-    - left
-    - right
-
-────────────────────
-+ weight
-
-left.weight() + right.weight()
-
-────────────────────
-+ do depth
-
-. a = left.depth()
-. b = right.depth()
-= (if a > b then a else b) + 1
+(type + Branch
+  (implements Node)
+  (prop + left Node)
+  (prop + right Node)
+  (fn-do + This _
+    (param left _)
+    (param right _)
+  )
+  (fn-expr + weight _
+    (+ (call (. left weight)) (call (. right weight)))
+  )
+  (fn-do + depth _
+    (let a (call (. left depth)))
+    (let b (call (. right depth)))
+    (return (+ (if-expr (> a b) a b) 1))
+  )
+)
 ```
 
 ```output
@@ -4415,51 +4048,45 @@ left.weight() + right.weight()
 
 ### A value of an interface captured by a closure, assigned after, and kept in a struct.
 
-```yumi
-. pet Pet = Dog()
-. speak = => pet.sound()
--- speak()
-pet = Cat()
--- speak()
--- call(speak)
-. held = Held(pet, 3)
--- held.pet.sound(), held.count
+```brix
+(main
+  (let pet Pet (call Dog))
+  (let speak (=> () (call (. pet sound))))
+  (print (call speak))
+  (= pet (call Cat))
+  (print (call speak))
+  (print (call call speak))
+  (let held (call Held pet 3))
+  (print (tuple (call (. held pet sound)) (. held count)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pet is Interface
+(type + Pet (is Interface)
+  (fn-expr + sound String)
+)
 
-────────────────────
-+ sound String
+(type + Dog
+  (implements Pet)
+  (fn-expr + sound _
+    "woof"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Dog
-    is Pet
+(type + Cat
+  (implements Pet)
+  (fn-expr + sound _
+    "meow"
+  )
+)
 
-────────────────────
-+ sound
+(type + Held (is Struct)
+  (prop + pet Pet)
+  (prop + count Int)
+)
 
-"woof"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Cat
-    is Pet
-
-────────────────────
-+ sound
-
-"meow"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Held is Struct
-
-+ pet Pet
-+ count Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ do call String
-    - fn () String
-
-= fn()
+(fn-do + call String
+  (param fn (fn-type String))
+  (return (call fn))
+)
 ```
 
 ```output
@@ -4471,53 +4098,46 @@ meow
 
 ### A class that implements two interfaces has a table for each.
 
-```yumi
-. thing = Thing()
-. a A = thing
-. b B = thing
--- a.name(), b.name()
--- (type-of a).concrete-name, (type-of b).concrete-name
--- a is Thing, b is Thing
--- (b as Thing).name()
-show(thing)
-show(Other())
+```brix
+(main
+  (let thing (call Thing))
+  (let a A thing)
+  (let b B thing)
+  (print (tuple (call (. a name)) (call (. b name))))
+  (print (tuple (. (type-of a) concrete-name) (. (type-of b) concrete-name)))
+  (print (tuple (is a Thing) (is b Thing)))
+  (print (call (. (as b Thing) name)))
+  (call show thing)
+  (call show (call Other))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ A is Interface
+(type + A (is Interface)
+  (fn-expr + name String)
+)
 
-────────────────────
-+ name String
+(type + B (is Interface)
+  (fn-expr + name String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ B is Interface
+(type + Thing
+  (implements A)
+  (implements B)
+  (fn-expr + name _
+    "thing"
+  )
+)
 
-────────────────────
-+ name String
+(type + Other
+  (implements A)
+  (fn-expr + name _
+    "other"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is A
-    is B
-
-────────────────────
-+ name
-
-"thing"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Other
-    is A
-
-────────────────────
-+ name
-
-"other"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - a A
-
--- "show ${a.name()}"
+(fn-do + show _
+  (param a A)
+  (print (str "show " (call (. a name))))
+)
 ```
 
 ```output
@@ -4531,22 +4151,22 @@ show other
 
 ### A function an interface declares with a body that cannot panic, called through a value.
 
-```yumi
-. p Proto = Thing()
--- p.name()
--- "after"
+```brix
+(main
+  (let p Proto (call Thing))
+  (print (call (. p name)))
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + name String
+    "proto name"
+  )
+)
 
-────────────────────
-+ name String
-
-"proto name"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
+(type + Thing
+  (implements Proto)
+)
 ```
 
 ```output
@@ -4556,21 +4176,21 @@ after
 
 ### A function an interface declares with a body, run through a value that holds a number, has the number as its receiver.
 
-```yumi
-. n Proto = Num(3)
-n.show()
+```brix
+(main
+  (let n Proto (call Num 3))
+  (call (. n show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-do + show _
+    (print (str "show " this))
+  )
+)
 
-────────────────────
-+ do show
-
--- "show $this"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Num is I32
-    is Proto
+(type + Num (is I32)
+  (implements Proto)
+)
 ```
 
 ```output
@@ -4579,25 +4199,25 @@ show 3
 
 ### A function an interface declares with a body, run on a number and on a tuple, has each as its receiver.
 
-```yumi
-Num(4).show()
-Tup(1, 2).show()
+```brix
+(main
+  (call (. (call Num 4) show))
+  (call (. (call Tup 1 2) show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-do + show _
+    (print (str "show " this))
+  )
+)
 
-────────────────────
-+ do show
+(type + Num (is I32)
+  (implements Proto)
+)
 
--- "show $this"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Num is I32
-    is Proto
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tup is (a Int, b Int)
-    is Proto
+(type + Tup (is (tuple (: a Int) (: b Int)))
+  (implements Proto)
+)
 ```
 
 ```output
@@ -4607,120 +4227,111 @@ show (1, 2)
 
 ### A panic in a function an interface declares with a body, run through a value that holds a number.
 
-```yumi crash
-. n Proto = Num(3)
-run(n)
+```brix crash
+(main
+  (let n Proto (call Num 3))
+  (call run n)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
-    - p Proto
+(fn-do + run _
+  (param p Proto)
+  (print (call (. p show) 1))
+  (print (call (. p show) 9))
+)
 
--- p.show(1)
--- p.show(9)
+(type + Proto (is Interface)
+  (fn-do + show Int
+    (param n Int)
+    (throw (call Panic (str "show " n)) (if (> n 3)))
+    (return n)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ do show Int
-    - n Int
-
-?! Panic("show $n")
-    if n > 3
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Num is I32
-    is Proto
+(type + Num (is I32)
+  (implements Proto)
+)
 ```
 
 ```stderr
 Unhandled panic: show 9
-<no file:19>
+<no file:16>
 
 Task 1
 
 Stack trace:
-  0  __source__:Proto:show no file:19:1
-  1  __source__:show(wrapped) no file:16:1
-  2  __source__:run no file:10:4
-  3  __source__:main no file:3:1
+  0  __source__:Proto:show no file:16:5
+  1  __source__:show(wrapped) no file:14:3
+  2  __source__:run no file:10:10
+  3  __source__:main no file:4:3
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
 ### A panic in a function an interface declares with a body, run on a tuple.
 
-```yumi crash
-. n = Tup(3, 4)
--- n.show(1)
--- n.show(9)
+```brix crash
+(main
+  (let n (call Tup 3 4))
+  (print (call (. n show) 1))
+  (print (call (. n show) 9))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-do + show Int
+    (param n Int)
+    (throw (call Panic (str "show " n)) (if (> n 3)))
+    (return n)
+  )
+)
 
-────────────────────
-+ do show Int
-    - n Int
-
-?! Panic("show $n")
-    if n > 3
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tup is (a Int, b Int)
-    is Proto
+(type + Tup (is (tuple (: a Int) (: b Int)))
+  (implements Proto)
+)
 ```
 
 ```stderr
 Unhandled panic: show 9
-<no file:13>
+<no file:11>
 
 Task 1
 
 Stack trace:
-  0  __source__:Proto:show no file:13:1
-  1  __source__:main no file:4:4
+  0  __source__:Proto:show no file:11:5
+  1  __source__:main no file:5:10
   2  __source__:init.__source__ no file
   3  __source__:brix.main no file
 ```
 
 ### A function of a delegate that changes it, called on the class and through a value: both change the one object.
 
-```yumi
-. thing = Thing()
-thing.bump()
-thing.bump()
--- thing.count
-. proto Proto = thing
-proto.bump()
--- proto.count
--- thing.foo.count
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing bump))
+  (call (. thing bump))
+  (print (. thing count))
+  (let proto Proto thing)
+  (call (. proto bump))
+  (print (. proto count))
+  (print (. thing foo count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + bump _)
+  (fn-expr + count Int :get)
+)
 
-────────────────────
-+ bump
+(type + Foo
+  (prop + count _ (= 0))
+  (fn-do + bump _
+    (+= count 1)
+  )
+)
 
-────────────────────
-+ get count Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ count = 0
-
-────────────────────
-+ do bump
-
-count += 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+)
 ```
 
 ```output
@@ -4731,43 +4342,39 @@ as Proto for
 
 ### A function of a delegate with untyped arguments, called with whole numbers and a float, and a getter the interface declares with a body.
 
-```yumi
-. thing = Thing()
--- thing.total(1, 2)
--- thing.total(1.5, 2)
-. proto Proto = thing
--- proto.total(3, 4)
--- thing.name
--- proto.name
+```brix
+(main
+  (let thing (call Thing))
+  (print (call (. thing total) 1 2))
+  (print (call (. thing total) 1.5 2))
+  (let proto Proto thing)
+  (print (call (. proto total) 3 4))
+  (print (. thing name))
+  (print (. proto name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + total Int
+    (param a Int)
+    (param b Int)
+  )
+  (fn-expr + name String :get
+    "proto"
+  )
+)
 
-────────────────────
-+ total Int
-    - a Int
-    - b Int
+(type + Foo
+  (fn-expr + total _
+    (param a _)
+    (param b _)
+    (+ a b)
+  )
+)
 
-────────────────────
-+ get name String
-
-"proto"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ total
-    - a
-    - b
-
-a + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+)
 ```
 
 ```output
@@ -4780,61 +4387,50 @@ proto
 
 ### A class that delegates two interfaces to two properties.
 
-```yumi
-. thing = Thing()
-thing.act()
-thing.other()
-. proto Proto = thing
-proto.act()
-. second Second = thing
-second.other()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing act))
+  (call (. thing other))
+  (let proto Proto thing)
+  (call (. proto act))
+  (let second Second thing)
+  (call (. second other))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-────────────────────
-+ act
+(type + Second (is Interface)
+  (fn-expr + other _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Second is Interface
+(type + Foo
+  (fn-do + act _
+    (print "foo act")
+  )
+  (fn-do + other _
+    (print "foo other")
+  )
+)
 
-────────────────────
-+ other
+(type + Bar
+  (fn-do + act _
+    (print "bar act")
+  )
+  (fn-do + other _
+    (print "bar other")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do act
-
--- "foo act"
-
-────────────────────
-+ do other
-
--- "foo other"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-────────────────────
-+ do act
-
--- "bar act"
-
-────────────────────
-+ do other
-
--- "bar other"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
-
-as Second for
-+ bar Bar
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+  (blank)
+  (delegate Second)
+  (prop + bar Bar)
+)
 ```
 
 ```output
@@ -4846,45 +4442,38 @@ bar other
 
 ### A function an interface declares with a body runs for the delegate where the class declares none, on the class and through a value, and calls the delegate's own.
 
-```yumi
-. thing = Thing()
-thing.act()
-. proto Proto = thing
-proto.act()
-proto.rest()
-thing.rest()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing act))
+  (let proto Proto thing)
+  (call (. proto act))
+  (call (. proto rest))
+  (call (. thing rest))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+  (fn-do + rest _
+    (print "proto rest")
+    (call act)
+  )
+)
 
-────────────────────
-+ act
+(type + Foo
+  (implements Proto)
+  (fn-do + act _
+    (print "foo act")
+  )
+)
 
-────────────────────
-+ do rest
-
--- "proto rest"
-act()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-    is Proto
-
-────────────────────
-+ do act
-
--- "foo act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
-
-────────────────────
-+ do act
-
--- "thing act"
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+  (fn-do + act _
+    (print "thing act")
+  )
+)
 ```
 
 ```output
@@ -4898,53 +4487,44 @@ foo act
 
 ### A class derived from one that delegates declares a function of the interface itself; the rest stay the delegate's.
 
-```yumi
-. thing = Derived()
-thing.act()
-thing.more()
-. proto Proto = thing
-proto.act()
-proto.more()
-. base Thing = thing
-base.act()
-. seen Proto = base
-seen.more()
+```brix
+(main
+  (let thing (call Derived))
+  (call (. thing act))
+  (call (. thing more))
+  (let proto Proto thing)
+  (call (. proto act))
+  (call (. proto more))
+  (let base Thing thing)
+  (call (. base act))
+  (let seen Proto base)
+  (call (. seen more))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+  (fn-expr + more _)
+)
 
-────────────────────
-+ act
+(type + Foo
+  (fn-do + act _
+    (print "foo act")
+  )
+  (fn-do + more _
+    (print "foo more")
+  )
+)
 
-────────────────────
-+ more
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do act
-
--- "foo act"
-
-────────────────────
-+ do more
-
--- "foo more"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Thing
-
-────────────────────
-+ do more
-
--- "derived more"
+(type + Derived (is Thing)
+  (fn-do + more _
+    (print "derived more")
+  )
+)
 ```
 
 ```output
@@ -4958,47 +4538,40 @@ derived more
 
 ### A class that delegates an interface is seen as the interface that one is derived from.
 
-```yumi
-. thing = Thing()
-. proto Proto = thing
-proto.act()
-proto.root()
-. root Root = thing
-root.root()
-. up Root = proto
-up.root()
+```brix
+(main
+  (let thing (call Thing))
+  (let proto Proto thing)
+  (call (. proto act))
+  (call (. proto root))
+  (let root Root thing)
+  (call (. root root))
+  (let up Root proto)
+  (call (. up root))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Root is Interface
+(type + Root (is Interface)
+  (fn-expr + root _)
+)
 
-────────────────────
-+ root
+(type + Proto (is Interface)
+  (implements Root)
+  (fn-expr + act _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-    is Root
+(type + Foo
+  (fn-do + act _
+    (print "foo act")
+  )
+  (fn-do + root _
+    (print "foo root")
+  )
+)
 
-────────────────────
-+ act
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do act
-
--- "foo act"
-
-────────────────────
-+ do root
-
--- "foo root"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+)
 ```
 
 ```output
@@ -5010,41 +4583,37 @@ foo root
 
 ### A function of a delegate that raises, caught on the class and through a value, and left to end the program.
 
-```yumi crash
-. thing = Thing()
-. proto Proto = thing
--- catch proto.check(1)
--- catch proto.check(-1)
--- catch thing.check(2)
--- catch thing.check(-2)
--- proto.check(-3)
+```brix crash
+(main
+  (let thing (call Thing))
+  (let proto Proto thing)
+  (print (catch (call (. proto check) 1)))
+  (print (catch (call (. proto check) -1)))
+  (print (catch (call (. thing check) 2)))
+  (print (catch (call (. thing check) -2)))
+  (print (call (. proto check) -3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + check Int (?! Problem)
+    (param x Int)
+  )
+)
 
-────────────────────
-+ check Int ?! Problem
-    - x Int
+(type + Problem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Problem is Error
+(type + Foo
+  (fn-do + check Int (?! Problem)
+    (param x Int)
+    (throw (call Problem "negative") (if (< x 0)))
+    (return (* x 2))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do check Int ?! Problem
-    - x Int
-
-?! Problem("negative")
-    if x < 0
-= x * 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+)
 ```
 
 ```output
@@ -5056,35 +4625,32 @@ negative
 
 ### A value that holds a class that delegates is tested and cast as the class, and is no value of the delegate's class.
 
-```yumi
-. thing = Thing()
-. proto Proto = thing
--- proto is Thing
--- proto is Foo
-. back = proto as Thing
-back.act()
--- (type-of proto).concrete-name
--- (type-of proto).name
+```brix
+(main
+  (let thing (call Thing))
+  (let proto Proto thing)
+  (print (is proto Thing))
+  (print (is proto Foo))
+  (let back (as proto Thing))
+  (call (. back act))
+  (print (. (type-of proto) concrete-name))
+  (print (. (type-of proto) name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-────────────────────
-+ act
+(type + Foo
+  (fn-do + act _
+    (print "foo act")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do act
-
--- "foo act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+)
 ```
 
 ```output
@@ -5097,45 +4663,41 @@ Proto
 
 ### Values of an interface in a list, an optional and an argument, some holding a class that delegates.
 
-```yumi
-. thing = Thing()
-. foo Proto = Foo()
-. other Proto = thing
-. list [Proto] = [other, foo, other]
-for item in list
-    item.act()
-. maybe Proto? = thing
-maybe?.act()
-show(thing)
+```brix
+(main
+  (let thing (call Thing))
+  (let foo Proto (call Foo))
+  (let other Proto thing)
+  (let list (list Proto) (list other foo other))
+  (for (in item list)
+    (call (. item act))
+  )
+  (let maybe (? Proto) thing)
+  (call (?. maybe act))
+  (call show thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - proto Proto
+(fn-do + show _
+  (param proto Proto)
+  (call (. proto act))
+)
 
-proto.act()
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Foo
+  (implements Proto)
+  (prop + name _ (= "foo"))
+  (fn-do + act _
+    (print (str name " act"))
+  )
+)
 
-────────────────────
-+ act
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-    is Proto
-
-+ name = "foo"
-
-────────────────────
-+ do act
-
--- "$name act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+)
 ```
 
 ```output
@@ -5148,41 +4710,37 @@ foo act
 
 ### A property a class delegates to is assigned again: calls on the class and through a value made before reach the new object.
 
-```yumi
-. thing = Thing()
-thing.act()
-thing.foo = Foo()
-thing.foo.tag = "second"
-thing.act()
-. proto Proto = thing
-proto.act()
-. third = Foo()
-third.tag = "third"
-thing.foo = third
-proto.act()
-thing.act()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing act))
+  (= (. thing foo) (call Foo))
+  (= (. thing foo tag) "second")
+  (call (. thing act))
+  (let proto Proto thing)
+  (call (. proto act))
+  (let third (call Foo))
+  (= (. third tag) "third")
+  (= (. thing foo) third)
+  (call (. proto act))
+  (call (. thing act))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-────────────────────
-+ act
+(type + Foo
+  (prop + tag _ (= "first"))
+  (fn-do + act _
+    (print (str tag " act"))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ tag = "first"
-
-────────────────────
-+ do act
-
--- "$tag act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo = Foo()
+(type + Thing
+  (delegate Proto)
+  (prop + foo _ (= (call Foo)))
+)
 ```
 
 ```output
@@ -5195,41 +4753,35 @@ third act
 
 ### A class that delegates declares a getter of the interface itself, and a function with a body the delegate runs reads the delegate's.
 
-```yumi
-. thing = Thing()
--- thing.label
--- thing.describe()
-. proto Proto = thing
--- proto.label
--- proto.describe()
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing label))
+  (print (call (. thing describe)))
+  (let proto Proto thing)
+  (print (. proto label))
+  (print (call (. proto describe)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + label String :get)
+  (fn-expr + describe String
+    (str "<" label ">")
+  )
+)
 
-────────────────────
-+ get label String
+(type + Foo
+  (implements Proto)
+  (prop + label _ (= "foo"))
+)
 
-────────────────────
-+ describe String
-
-"<$label>"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-    is Proto
-
-+ label = "foo"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
-
-────────────────────
-+ get label String
-
-"thing"
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+  (fn-expr + label String :get
+    "thing"
+  )
+)
 ```
 
 ```output
@@ -5241,38 +4793,33 @@ thing
 
 ### A function an interface declares with a body reads a getter of the delegate it runs for.
 
-```yumi
-. thing = Thing()
--- thing.describe()
-. proto Proto = thing
--- proto.describe()
--- proto.label
+```brix
+(main
+  (let thing (call Thing))
+  (print (call (. thing describe)))
+  (let proto Proto thing)
+  (print (call (. proto describe)))
+  (print (. proto label))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + label String :get)
+  (fn-expr + describe String
+    (str "<" label ">")
+  )
+)
 
-────────────────────
-+ get label String
+(type + Foo
+  (implements Proto)
+  (fn-expr + label String :get
+    "foo"
+  )
+)
 
-────────────────────
-+ describe String
-
-"<$label>"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-    is Proto
-
-────────────────────
-+ get label String
-
-"foo"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+)
 ```
 
 ```output
@@ -5283,36 +4830,32 @@ foo
 
 ### A function of a delegate reads the delegate's own property, called on the class and through a value.
 
-```yumi
-. thing = Thing()
--- thing.size()
-. proto Proto = thing
--- proto.size()
+```brix
+(main
+  (let thing (call Thing))
+  (print (call (. thing size)))
+  (let proto Proto thing)
+  (print (call (. proto size)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + size String)
+)
 
-────────────────────
-+ size String
+(type + Foo
+  (implements Proto)
+  (prop + label _ (= "foo"))
+  (fn-expr + size String
+    label
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-    is Proto
-
-+ label = "foo"
-
-────────────────────
-+ size String
-
-label
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
-
-+ label = "thing"
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+  (blank)
+  (prop + label _ (= "thing"))
+)
 ```
 
 ```output
@@ -5322,465 +4865,449 @@ foo
 
 ### A function an interface declares with a body panics, run through a value made from a value of an interface derived from it: the stack trace has the function as the class runs it and the function of the table.
 
-```yumi crash
-. thing = Thing()
-. pair = thing as Foobar
-. one = pair as Foo
-one.show()
+```brix crash
+(main
+  (let thing (call Thing))
+  (let pair (as thing Foobar))
+  (let one (as pair Foo))
+  (call (. one show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + show _
+    (print "show")
+    (let items (list 1 2 3))
+    (print ([] items 5))
+  )
+)
 
-────────────────────
-+ do show
+(type + Foobar (is Interface)
+  (implements Foo)
+)
 
--- "show"
-. items = [1, 2, 3]
--- items[5]
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foobar is Interface
-    is Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foobar
+(type + Thing
+  (implements Foobar)
+)
 ```
 
 ```stderr
 Unhandled panic: List index 5 out of range
-<core/list.yumi>
+<core/list.bx>
 
 Task 1
 
 Stack trace:
-  0  core/list:List:absent core/list.yumi
-  1  __source__:Foo:show no file:15:4
-  2  __source__:show no file:11:1
-  3  __source__:show(wrapped) no file:11:1
-  4  __source__:main no file:5:1
+  0  core/list:List:absent core/list.bx
+  1  __source__:Foo:show no file:13:12
+  2  __source__:show no file:10:3
+  3  __source__:show(wrapped) no file:10:3
+  4  __source__:main no file:6:3
   5  __source__:init.__source__ no file
   6  __source__:brix.main no file
 ```
 
 ### A function an interface declares with a body calls one the class declares, which panics, through a value made from a value of a derived interface.
 
-```yumi crash
-. thing = Thing()
-. pair = thing as Foobar
-. one = pair as Foo
-one.show()
+```brix crash
+(main
+  (let thing (call Thing))
+  (let pair (as thing Foobar))
+  (let one (as pair Foo))
+  (call (. one show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + show _
+    (print "show")
+    (call tell)
+  )
+  (fn-expr + tell _)
+)
 
-────────────────────
-+ do show
+(type + Foobar (is Interface)
+  (implements Foo)
+)
 
--- "show"
-tell()
-
-────────────────────
-+ tell
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foobar is Interface
-    is Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foobar
-
-────────────────────
-+ do tell
-
--- "tell"
-. items = [1, 2, 3]
--- items[5]
+(type + Thing
+  (implements Foobar)
+  (fn-do + tell _
+    (print "tell")
+    (let items (list 1 2 3))
+    (print ([] items 5))
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: List index 5 out of range
-<core/list.yumi>
+<core/list.bx>
 
 Task 1
 
 Stack trace:
-  0  core/list:List:absent core/list.yumi
-  1  __source__:Thing:tell no file:32:4
-  2  __source__:tell(wrapped) no file:28:1
-  3  __source__:Foo:show no file:14:1
-  4  __source__:show no file:11:1
-  5  __source__:show(wrapped) no file:11:1
-  6  __source__:main no file:5:1
+  0  core/list:List:absent core/list.bx
+  1  __source__:Thing:tell no file:26:12
+  2  __source__:tell(wrapped) no file:23:3
+  3  __source__:Foo:show no file:12:5
+  4  __source__:show no file:10:3
+  5  __source__:show(wrapped) no file:10:3
+  6  __source__:main no file:6:3
   7  __source__:init.__source__ no file
   8  __source__:brix.main no file
 ```
 
 ### A function an interface declares with a body panics through a value of an interface two interfaces derive from in turn.
 
-```yumi crash
-. thing = Thing()
-. baz = thing as Baz
-. bar = baz as Bar
-. foo = bar as Foo
-foo.show()
+```brix crash
+(main
+  (let thing (call Thing))
+  (let baz (as thing Baz))
+  (let bar (as baz Bar))
+  (let foo (as bar Foo))
+  (call (. foo show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + show _
+    (print "show")
+    (let items (list 1 2 3))
+    (print ([] items 5))
+  )
+)
 
-────────────────────
-+ do show
+(type + Bar (is Interface)
+  (implements Foo)
+)
 
--- "show"
-. items = [1, 2, 3]
--- items[5]
+(type + Baz (is Interface)
+  (implements Bar)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Interface
-    is Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Baz is Interface
-    is Bar
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Baz
+(type + Thing
+  (implements Baz)
+)
 ```
 
 ```stderr
 Unhandled panic: List index 5 out of range
-<core/list.yumi>
+<core/list.bx>
 
 Task 1
 
 Stack trace:
-  0  core/list:List:absent core/list.yumi
-  1  __source__:Foo:show no file:16:4
-  2  __source__:show no file:12:1
-  3  __source__:show(wrapped) no file:12:1
-  4  __source__:main no file:6:1
+  0  core/list:List:absent core/list.bx
+  1  __source__:Foo:show no file:14:12
+  2  __source__:show no file:11:3
+  3  __source__:show(wrapped) no file:11:3
+  4  __source__:main no file:7:3
   5  __source__:init.__source__ no file
   6  __source__:brix.main no file
 ```
 
 ### A getter an interface declares with a body panics, read through a value: the stack trace has the getter and the function of the table.
 
-```yumi crash
-. thing = Thing()
-. one = thing as Foo
--- one.name
+```brix crash
+(main
+  (let thing (call Thing))
+  (let one (as thing Foo))
+  (print (. one name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + name String :get
+    (let items (list 1 2 3))
+    (print ([] items 5))
+    (return "foo")
+  )
+)
 
-────────────────────
-+ do get name String
+(type + Foobar (is Interface)
+  (implements Foo)
+)
 
-. items = [1, 2, 3]
--- items[5]
-= "foo"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foobar is Interface
-    is Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foobar
+(type + Thing
+  (implements Foobar)
+)
 ```
 
 ```stderr
 Unhandled panic: List index 5 out of range
-<core/list.yumi>
+<core/list.bx>
 
 Task 1
 
 Stack trace:
-  0  core/list:List:absent core/list.yumi
-  1  __source__:Foo:name no file:13:4
-  2  __source__:name(wrapped) no file:10:1
-  3  __source__:main no file:4:4
+  0  core/list:List:absent core/list.bx
+  1  __source__:Foo:name no file:11:12
+  2  __source__:name(wrapped) no file:9:3
+  3  __source__:main no file:5:10
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
 ### A getter an interface declares with a body panics, read on an object: the stack trace has the getter alone.
 
-```yumi crash
-. thing = Thing()
--- thing.name
+```brix crash
+(main
+  (let thing (call Thing))
+  (print (. thing name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + name String :get
+    (let items (list 1 2 3))
+    (print ([] items 5))
+    (return "foo")
+  )
+)
 
-────────────────────
-+ do get name String
+(type + Foobar (is Interface)
+  (implements Foo)
+)
 
-. items = [1, 2, 3]
--- items[5]
-= "foo"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foobar is Interface
-    is Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foobar
+(type + Thing
+  (implements Foobar)
+)
 ```
 
 ```stderr
 Unhandled panic: List index 5 out of range
-<core/list.yumi>
+<core/list.bx>
 
 Task 1
 
 Stack trace:
-  0  core/list:List:absent core/list.yumi
-  1  __source__:Foo:name no file:12:4
-  2  __source__:main no file:3:4
+  0  core/list:List:absent core/list.bx
+  1  __source__:Foo:name no file:10:12
+  2  __source__:main no file:4:10
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### A getter an interface declares with a body panics, read through a value of an interface derived from it.
 
-```yumi crash
-. thing = Thing()
-. pair = thing as Foobar
--- pair.name
+```brix crash
+(main
+  (let thing (call Thing))
+  (let pair (as thing Foobar))
+  (print (. pair name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + name String :get
+    (let items (list 1 2 3))
+    (print ([] items 5))
+    (return "foo")
+  )
+)
 
-────────────────────
-+ do get name String
+(type + Foobar (is Interface)
+  (implements Foo)
+)
 
-. items = [1, 2, 3]
--- items[5]
-= "foo"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foobar is Interface
-    is Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foobar
+(type + Thing
+  (implements Foobar)
+)
 ```
 
 ```stderr
 Unhandled panic: List index 5 out of range
-<core/list.yumi>
+<core/list.bx>
 
 Task 1
 
 Stack trace:
-  0  core/list:List:absent core/list.yumi
-  1  __source__:Foo:name no file:13:4
-  2  __source__:name(wrapped) no file:10:1
-  3  __source__:main no file:4:4
+  0  core/list:List:absent core/list.bx
+  1  __source__:Foo:name no file:11:12
+  2  __source__:name(wrapped) no file:9:3
+  3  __source__:main no file:5:10
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
 ### A setter an interface declares with a body panics, assigned through a value.
 
-```yumi crash
-. thing = Thing()
-. one = thing as Foo
-one.name = "a"
+```brix crash
+(main
+  (let thing (call Thing))
+  (let one (as thing Foo))
+  (= (. one name) "a")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + name _ :set (param value String)
+    (let items (list 1 2 3))
+    (print ([] items 5))
+    (print value)
+  )
+)
 
-────────────────────
-+ do name = value String
+(type + Foobar (is Interface)
+  (implements Foo)
+)
 
-. items = [1, 2, 3]
--- items[5]
--- value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foobar is Interface
-    is Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foobar
+(type + Thing
+  (implements Foobar)
+)
 ```
 
 ```stderr
 Unhandled panic: List index 5 out of range
-<core/list.yumi>
+<core/list.bx>
 
 Task 1
 
 Stack trace:
-  0  core/list:List:absent core/list.yumi
-  1  __source__:Foo:name no file:13:4
-  2  __source__:name(wrapped) no file:10:1
-  3  __source__:main no file:4:1
+  0  core/list:List:absent core/list.bx
+  1  __source__:Foo:name no file:11:12
+  2  __source__:name(wrapped) no file:9:3
+  3  __source__:main no file:5:6
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
 ### A function an interface declares with a body, run through a value of a base interface for an object of a derived class, calls the derived class's function, which panics.
 
-```yumi crash
-. thing = Derived()
-. pair = thing as Foobar
-. one = pair as Foo
-one.show()
-pair.show()
-. base Base = thing
-. other = base as Foobar
-. last = other as Foo
-last.show()
+```brix crash
+(main
+  (let thing (call Derived))
+  (let pair (as thing Foobar))
+  (let one (as pair Foo))
+  (call (. one show))
+  (call (. pair show))
+  (let base Base thing)
+  (let other (as base Foobar))
+  (let last (as other Foo))
+  (call (. last show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + show _
+    (print (str "show " this))
+    (call tell)
+  )
+  (fn-expr + tell _)
+)
 
-────────────────────
-+ do show
+(type + Foobar (is Interface)
+  (implements Foo)
+)
 
--- "show $this"
-tell()
+(type + Base
+  (implements Foobar)
+  (fn-do + tell _
+    (print "base tell")
+  )
+)
 
-────────────────────
-+ tell
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foobar is Interface
-    is Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-    is Foobar
-
-────────────────────
-+ do tell
-
--- "base tell"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-────────────────────
-+ do tell
-
--- "derived tell"
-. items = [1, 2, 3]
--- items[5]
+(type + Derived (is Base)
+  (fn-do + tell _
+    (print "derived tell")
+    (let items (list 1 2 3))
+    (print ([] items 5))
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: List index 5 out of range
-<core/list.yumi>
+<core/list.bx>
 
 Task 1
 
 Stack trace:
-  0  core/list:List:absent core/list.yumi
-  1  __source__:Derived:tell no file:45:4
-  2  __source__:tell(wrapped) no file:41:1
-  3  __source__:Foo:show no file:19:1
-  4  __source__:show no file:16:1
-  5  __source__:show(wrapped) no file:16:1
-  6  __source__:main no file:5:1
+  0  core/list:List:absent core/list.bx
+  1  __source__:Derived:tell no file:37:12
+  2  __source__:tell(wrapped) no file:34:3
+  3  __source__:Foo:show no file:17:5
+  4  __source__:show no file:15:3
+  5  __source__:show(wrapped) no file:15:3
+  6  __source__:main no file:6:3
   7  __source__:init.__source__ no file
   8  __source__:brix.main no file
 ```
 
 ### A value of a base interface made by two ways from one object runs the interface's function by either, and the second call panics.
 
-```yumi crash
-. thing = Thing()
-. baz = thing as Baz
-. bar = thing as Bar
-. foo = baz as Foo
-. also = bar as Foo
-foo.show()
-also.show()
+```brix crash
+(main
+  (let thing (call Thing))
+  (let baz (as thing Baz))
+  (let bar (as thing Bar))
+  (let foo (as baz Foo))
+  (let also (as bar Foo))
+  (call (. foo show))
+  (call (. also show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + show _
+    (print "show")
+    (call tell)
+  )
+  (fn-expr + tell _)
+)
 
-────────────────────
-+ do show
+(type + Bar (is Interface)
+  (implements Foo)
+)
 
--- "show"
-tell()
+(type + Baz (is Interface)
+  (implements Bar)
+)
 
-────────────────────
-+ tell
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Interface
-    is Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Baz is Interface
-    is Bar
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Baz
-
-+ count = 0
-
-────────────────────
-+ do tell
-
-count += 1
--- "tell $count"
-if count == 2
-    . items = [1, 2, 3]
-    -- items[5]
+(type + Thing
+  (implements Baz)
+  (prop + count _ (= 0))
+  (fn-do + tell _
+    (+= count 1)
+    (print (str "tell " count))
+    (if (== count 2)
+      (let items (list 1 2 3))
+      (print ([] items 5))
+    )
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: List index 5 out of range
-<core/list.yumi>
+<core/list.bx>
 
 Task 1
 
 Stack trace:
-  0  core/list:List:absent core/list.yumi
-  1  __source__:Thing:tell no file:43:8
-  2  __source__:tell(wrapped) no file:37:1
-  3  __source__:Foo:show no file:17:1
-  4  __source__:show no file:14:1
-  5  __source__:show(wrapped) no file:14:1
-  6  __source__:main no file:8:1
+  0  core/list:List:absent core/list.bx
+  1  __source__:Thing:tell no file:36:14
+  2  __source__:tell(wrapped) no file:31:3
+  3  __source__:Foo:show no file:15:5
+  4  __source__:show no file:13:3
+  5  __source__:show(wrapped) no file:13:3
+  6  __source__:main no file:9:3
   7  __source__:init.__source__ no file
   8  __source__:brix.main no file
 ```
 
 ### A getter an interface declares with a body, read on an object, has the object as its receiver.
 
-```yumi
-. thing = Thing()
--- thing.label
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing label))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + label String :get
+    (return (str "label of " this))
+  )
+  (fn-do + label _ :set (param value String)
+    (print (str "label = " value " of " this))
+  )
+)
 
-────────────────────
-+ do get label String
-
-= "label of $this"
-
-────────────────────
-+ do label = value String
-
--- "label = $value of $this"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foo
+(type + Thing
+  (implements Foo)
+)
 ```
 
 ```output
@@ -5789,28 +5316,26 @@ label of [Object __source__:Thing]
 
 ### A getter and a setter an interface declares with bodies, used through a value, have the object as their receiver.
 
-```yumi
-. thing = Thing()
-. one = thing as Foo
--- one.label
-one.label = "set"
+```brix
+(main
+  (let thing (call Thing))
+  (let one (as thing Foo))
+  (print (. one label))
+  (= (. one label) "set")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + label String :get
+    (return (str "label of " this))
+  )
+  (fn-do + label _ :set (param value String)
+    (print (str "label = " value " of " this))
+  )
+)
 
-────────────────────
-+ do get label String
-
-= "label of $this"
-
-────────────────────
-+ do label = value String
-
--- "label = $value of $this"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foo
+(type + Thing
+  (implements Foo)
+)
 ```
 
 ```output
@@ -5820,27 +5345,25 @@ label = set of [Object __source__:Thing]
 
 ### A getter an interface declares with a body calls a function the interface declares with a body, whose receiver is the interface.
 
-```yumi
-. thing = Thing()
-. one = thing as Foo
--- one.label
+```brix
+(main
+  (let thing (call Thing))
+  (let one (as thing Foo))
+  (print (. one label))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + label String :get
+    (return (call describe))
+  )
+  (fn-do + describe String
+    (return (str "described " this))
+  )
+)
 
-────────────────────
-+ do get label String
-
-= describe()
-
-────────────────────
-+ do describe String
-
-= "described $this"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foo
+(type + Thing
+  (implements Foo)
+)
 ```
 
 ```output
@@ -5849,32 +5372,32 @@ described [Interface __source__:Foo]
 
 ### A function with an argument and an answer that an interface declares with a body, run through a value of the interface and through one made from a derived interface.
 
-```yumi crash
-. thing = Thing()
-. direct = thing as Foo
-. pair = thing as Foobar
-. one = pair as Foo
--- one.show(1)
--- direct.show(2)
+```brix crash
+(main
+  (let thing (call Thing))
+  (let direct (as thing Foo))
+  (let pair (as thing Foobar))
+  (let one (as pair Foo))
+  (print (call (. one show) 1))
+  (print (call (. direct show) 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + show Int
+    (param n Int)
+    (print (str "show " n))
+    (let items (list 1 2 3))
+    (return ([] items (+ n 1)))
+  )
+)
 
-────────────────────
-+ do show Int
-    - n Int
+(type + Foobar (is Interface)
+  (implements Foo)
+)
 
--- "show $n"
-. items = [1, 2, 3]
-= items[n + 1]
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foobar is Interface
-    is Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foobar
+(type + Thing
+  (implements Foobar)
+)
 ```
 
 ```output
@@ -5885,31 +5408,31 @@ show 2
 
 ### A function with an untyped argument that an interface declares with a body, called with three types through a value made from a derived interface.
 
-```yumi
-. thing = Thing()
-. pair = thing as Foobar
-. one = pair as Foo
--- one.pick(1)
--- one.pick("a")
--- one.pick(2.5)
+```brix
+(main
+  (let thing (call Thing))
+  (let pair (as thing Foobar))
+  (let one (as pair Foo))
+  (print (call (. one pick) 1))
+  (print (call (. one pick) "a"))
+  (print (call (. one pick) 2.5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + pick _
+    (param value _)
+    (print (str "pick " value))
+    (return value)
+  )
+)
 
-────────────────────
-+ do pick
-    - value
+(type + Foobar (is Interface)
+  (implements Foo)
+)
 
--- "pick $value"
-= value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foobar is Interface
-    is Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foobar
+(type + Thing
+  (implements Foobar)
+)
 ```
 
 ```output
@@ -5923,43 +5446,39 @@ pick 2.5
 
 ### Getters and a setter an interface declares with bodies, used through a value of the interface and through one made from a derived interface.
 
-```yumi
-. thing = Thing()
-. pair = thing as Foobar
-. one = pair as Foo
--- one.label
-one.label = "set"
--- one.count
-. direct = thing as Foo
--- direct.label
-direct.label = "again"
+```brix
+(main
+  (let thing (call Thing))
+  (let pair (as thing Foobar))
+  (let one (as pair Foo))
+  (print (. one label))
+  (= (. one label) "set")
+  (print (. one count))
+  (let direct (as thing Foo))
+  (print (. direct label))
+  (= (. direct label) "again")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + label String :get
+    (return (str "label of " this))
+  )
+  (fn-do + label _ :set (param value String)
+    (print (str "label = " value))
+  )
+  (fn-do + count Int :get
+    (let items (list 1 2 3))
+    (return ([] items 2))
+  )
+)
 
-────────────────────
-+ do get label String
+(type + Foobar (is Interface)
+  (implements Foo)
+)
 
-= "label of $this"
-
-────────────────────
-+ do label = value String
-
--- "label = $value"
-
-────────────────────
-+ do get count Int
-
-. items = [1, 2, 3]
-= items[2]
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foobar is Interface
-    is Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foobar
+(type + Thing
+  (implements Foobar)
+)
 ```
 
 ```output
@@ -5972,30 +5491,32 @@ label = again
 
 ### A function that yields, declared by an interface with a body, read through a value made from a derived interface.
 
-```yumi
-. thing = Thing()
-. pair = thing as Foobar
-. one = pair as Foo
-for n in one.count-up(3)
-    -- n
+```brix
+(main
+  (let thing (call Thing))
+  (let pair (as thing Foobar))
+  (let one (as pair Foo))
+  (for (in n (call (. one count-up) 3))
+    (print n)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + count-up _
+    (param limit Int)
+    (for (in n (..< 0 limit))
+      (yield n)
+    )
+  )
+)
 
-────────────────────
-+ do count-up
-    - limit Int
+(type + Foobar (is Interface)
+  (implements Foo)
+)
 
-for n in 0 .. < limit
-    <= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foobar is Interface
-    is Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foobar
+(type + Thing
+  (implements Foobar)
+)
 ```
 
 ```output
@@ -6006,28 +5527,28 @@ for n in 0 .. < limit
 
 ### A function that answers an optional, declared by an interface with a body, called through a value made from a derived interface.
 
-```yumi
-. thing = Thing()
-. pair = thing as Foobar
-. one = pair as Foo
--- (one.show() ?? "none")
+```brix
+(main
+  (let thing (call Thing))
+  (let pair (as thing Foobar))
+  (let one (as pair Foo))
+  (print (?? (call (. one show)) "none"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + show (? String)
+    (print "show")
+    (return null)
+  )
+)
 
-────────────────────
-+ do show String?
+(type + Foobar (is Interface)
+  (implements Foo)
+)
 
--- "show"
-= null
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foobar is Interface
-    is Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foobar
+(type + Thing
+  (implements Foobar)
+)
 ```
 
 ```output
@@ -6037,53 +5558,46 @@ none
 
 ### Values of a derived interface in a list, each seen as the base interface: one class takes the interface's function and the other declares its own.
 
-```yumi crash
-. things [Foobar] = [Thing(), Other()]
-for thing in things
-    . one = thing as Foo
-    one.show()
+```brix crash
+(main
+  (let things (list Foobar) (list (call Thing) (call Other)))
+  (for (in thing things)
+    (let one (as thing Foo))
+    (call (. one show))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-do + show _
+    (print (str "show " this))
+    (call tell)
+  )
+  (fn-expr + tell _)
+)
 
-────────────────────
-+ do show
+(type + Foobar (is Interface)
+  (implements Foo)
+)
 
--- "show $this"
-tell()
+(type + Thing
+  (implements Foobar)
+  (fn-do + tell _
+    (print "thing tell")
+  )
+)
 
-────────────────────
-+ tell
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foobar is Interface
-    is Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foobar
-
-────────────────────
-+ do tell
-
--- "thing tell"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Other
-    is Foobar
-
-────────────────────
-+ do show
-
--- "other show"
-tell()
-
-────────────────────
-+ do tell
-
--- "other tell"
-. items = [1, 2, 3]
--- items[5]
+(type + Other
+  (implements Foobar)
+  (fn-do + show _
+    (print "other show")
+    (call tell)
+  )
+  (fn-do + tell _
+    (print "other tell")
+    (let items (list 1 2 3))
+    (print ([] items 5))
+  )
+)
 ```
 
 ```output
@@ -6095,63 +5609,55 @@ other tell
 
 ### Functions of a value of an interface, one bound with an argument and one the interface declares with a body, are made values of a function type in a loop over two classes.
 
-```yumi
-. things [Proto]
-things += Foo()
-things += Baz()
-for thing in things
-    . held = thing.bar(3, ...)
-    . fn = held as Taker
-    -- fn(4)
-    -- run(thing.twice)
+```brix
+(main
+  (let things (list Proto))
+  (+= things (call Foo))
+  (+= things (call Baz))
+  (for (in thing things)
+    (let held (call (. thing bar) 3 ...))
+    (let fn (as held Taker))
+    (print (call fn 4))
+    (print (call run (. thing twice)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Taker is () Int
-    - a Int
+(type + Taker (is (fn-type Int (param a Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ run
-    - fn Taker
+(fn-expr + run _
+  (param fn Taker)
+  (+ (call fn 2) 1)
+)
 
-fn(2) + 1
+(type + Proto (is Interface)
+  (fn-expr + bar Int
+    (param a Int)
+    (param b Int)
+  )
+  (fn-expr + twice Int
+    (param a Int)
+    (* (call bar a a) 2)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Foo
+  (implements Proto)
+  (prop + c _ (= 10))
+  (fn-expr + bar _
+    (param a _)
+    (param b _)
+    (+ a b c)
+  )
+)
 
-────────────────────
-+ bar Int
-    - a Int
-    - b Int
-
-────────────────────
-+ twice Int
-    - a Int
-
-bar(a, a) * 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-    is Proto
-
-+ c = 10
-
-────────────────────
-+ bar
-    - a
-    - b
-
-a + b + c
-
-━━━━━━━━━━━━━━━━━━━━
-+ Baz
-    is Proto
-
-────────────────────
-+ bar
-    - a
-    - b
-
-a * b
+(type + Baz
+  (implements Proto)
+  (fn-expr + bar _
+    (param a _)
+    (param b _)
+    (* a b)
+  )
+)
 ```
 
 ```output
@@ -6163,54 +5669,46 @@ a * b
 
 ### A function of a value of an interface bound with an argument, and one the interface declares with a body, are cast to a function type that gives and takes other numbers.
 
-```yumi
-. foo = Foo() as Proto
-. fn = foo.bar(1, ...) as Wide
--- fn(2.9)
-. tw = foo.twice as Wide
--- tw(1.5)
+```brix
+(main
+  (let foo (as (call Foo) Proto))
+  (let fn (as (call (. foo bar) 1 ...) Wide))
+  (print (call fn 2.9))
+  (let tw (as (. foo twice) Wide))
+  (print (call tw 1.5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is () Float
-    - a Float
+(type + Wide (is (fn-type Float (param a Float))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + bar Int
+    (param a Int)
+    (param b Int)
+  )
+  (fn-expr + twice Int
+    (param a Int)
+    (* (call bar a a) 2)
+  )
+)
 
-────────────────────
-+ bar Int
-    - a Int
-    - b Int
+(type + Foo
+  (implements Proto)
+  (prop + c _ (= 10))
+  (fn-expr + bar _
+    (param a _)
+    (param b _)
+    (+ a b c)
+  )
+)
 
-────────────────────
-+ twice Int
-    - a Int
-
-bar(a, a) * 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-    is Proto
-
-+ c = 10
-
-────────────────────
-+ bar
-    - a
-    - b
-
-a + b + c
-
-━━━━━━━━━━━━━━━━━━━━
-+ Baz
-    is Proto
-
-────────────────────
-+ bar
-    - a
-    - b
-
-a * b
+(type + Baz
+  (implements Proto)
+  (fn-expr + bar _
+    (param a _)
+    (param b _)
+    (* a b)
+  )
+)
 ```
 
 ```output
@@ -6220,149 +5718,133 @@ a * b
 
 ### A function of a value of an interface, bound with an argument and called as a value of a function type, panics in the class: the stack trace has the class's function, the function of the table and the function made for the value.
 
-```yumi crash
-. foo = Picker() as Picks
-. fn = foo.pick(1, ...) as Taker
--- fn(1)
--- fn(7)
+```brix crash
+(main
+  (let foo (as (call Picker) Picks))
+  (let fn (as (call (. foo pick) 1 ...) Taker))
+  (print (call fn 1))
+  (print (call fn 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Taker is () Int
-    - a Int
+(type + Taker (is (fn-type Int (param a Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Picks is Interface
+(type + Picks (is Interface)
+  (fn-expr + pick Int
+    (param a Int)
+    (param b Int)
+  )
+)
 
-────────────────────
-+ pick Int
-    - a Int
-    - b Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Picker
-    is Picks
-
-+ items = [1, 2, 3]
-
-────────────────────
-+ pick
-    - a
-    - b
-
-items[a + b]
+(type + Picker
+  (implements Picks)
+  (prop + items _ (= (list 1 2 3)))
+  (fn-expr + pick _
+    (param a _)
+    (param b _)
+    ([] items (+ a b))
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: List index 8 out of range
-<core/list.yumi>
+<core/list.bx>
 
 Task 1
 
 Stack trace:
-  0  core/list:List:absent core/list.yumi
-  1  __source__:Picker:pick no file:30:1
-  2  __source__:pick(wrapped) no file:26:1
-  3  __source__:pickCasting no file:3:8
-  4  __source__:main no file:5:4
+  0  core/list:List:absent core/list.bx
+  1  __source__:Picker:pick no file:24:5
+  2  __source__:pick(wrapped) no file:21:3
+  3  __source__:pickCasting no file:4:11
+  4  __source__:main no file:6:10
   5  __source__:init.__source__ no file
   6  __source__:brix.main no file
 ```
 
 ### A function an interface declares with a body, given as a function of a value where a function type is taken, calls one of the class that panics.
 
-```yumi crash
-. foo = Picker() as Picks
--- run(foo.pick)
--- run(foo.both)
+```brix crash
+(main
+  (let foo (as (call Picker) Picks))
+  (print (call run (. foo pick)))
+  (print (call run (. foo both)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Taker is () Int
-    - a Int
+(type + Taker (is (fn-type Int (param a Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Picks is Interface
+(type + Picks (is Interface)
+  (fn-expr + pick Int
+    (param a Int)
+  )
+  (fn-expr + both Int
+    (param a Int)
+    (+ (call pick a) (call pick (+ a 1)))
+  )
+)
 
-────────────────────
-+ pick Int
-    - a Int
+(type + Picker
+  (implements Picks)
+  (prop + items _ (= (list 1 2 3)))
+  (fn-expr + pick _
+    (param a _)
+    ([] items a)
+  )
+)
 
-────────────────────
-+ both Int
-    - a Int
-
-pick(a) + pick(a + 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Picker
-    is Picks
-
-+ items = [1, 2, 3]
-
-────────────────────
-+ pick
-    - a
-
-items[a]
-
-━━━━━━━━━━━━━━━━━━━━
-+ run
-    - fn Taker
-
-fn(0) + fn(2)
+(fn-expr + run _
+  (param fn Taker)
+  (+ (call fn 0) (call fn 2))
+)
 ```
 
 ```stderr
 Unhandled panic: List index 3 out of range
-<core/list.yumi>
+<core/list.bx>
 
 Task 1
 
 Stack trace:
-  0  core/list:List:absent core/list.yumi
-  1  __source__:Picker:pick no file:33:1
-  2  __source__:pick(wrapped) no file:30:1
-  3  __source__:Picks:both no file:21:11
-  4  __source__:bothCasting no file:4:8
-  5  __source__:run no file:39:9
-  6  __source__:main no file:4:4
+  0  core/list:List:absent core/list.bx
+  1  __source__:Picker:pick no file:25:5
+  2  __source__:pick(wrapped) no file:23:3
+  3  __source__:Picks:both no file:16:22
+  4  __source__:bothCasting no file:5:20
+  5  __source__:run no file:31:18
+  6  __source__:main no file:5:10
   7  __source__:init.__source__ no file
   8  __source__:brix.main no file
 ```
 
 ### A property a class answers an interface through holds an object of a class derived from the property's: a function called through a value of the interface is the derived class's.
 
-```yumi
-. thing = Thing()
-. proto Proto = thing
-proto.act()
+```brix
+(main
+  (let thing (call Thing))
+  (let proto Proto thing)
+  (call (. proto act))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-────────────────────
-+ act
+(type + FooBase
+  (fn-do + act _
+    (print "foobase act")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ FooBase
+(type + Foo (is FooBase)
+  (fn-do + act _
+    (print "foo act")
+  )
+)
 
-────────────────────
-+ do act
-
--- "foobase act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is FooBase
-
-────────────────────
-+ do act
-
--- "foo act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo FooBase = Foo()
+(type + Thing
+  (delegate Proto)
+  (prop + foo FooBase (= (call Foo)))
+)
 ```
 
 ```output
@@ -6371,58 +5853,48 @@ foo act
 
 ### A property a class answers an interface through is assigned an object of a derived class: functions called on the object and through a value are the derived class's.
 
-```yumi
-. thing = Thing()
-thing.foo = SubFoo()
-thing.act()
-. proto Proto = thing
-proto.act()
--- proto.size(2)
--- thing.size(2)
+```brix
+(main
+  (let thing (call Thing))
+  (= (. thing foo) (call SubFoo))
+  (call (. thing act))
+  (let proto Proto thing)
+  (call (. proto act))
+  (print (call (. proto size) 2))
+  (print (call (. thing size) 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+  (fn-expr + size Int
+    (param n Int)
+  )
+)
 
-────────────────────
-+ act
+(type + Foo
+  (fn-do + act _
+    (print "foo act")
+  )
+  (fn-expr + size Int
+    (param n Int)
+    n
+  )
+)
 
-────────────────────
-+ size Int
-    - n Int
+(type + SubFoo (is Foo)
+  (fn-do + act _
+    (print "subfoo act")
+  )
+  (fn-expr + size Int
+    (param n Int)
+    (* n 100)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do act
-
--- "foo act"
-
-────────────────────
-+ size Int
-    - n Int
-
-n
-
-━━━━━━━━━━━━━━━━━━━━
-+ SubFoo is Foo
-
-────────────────────
-+ do act
-
--- "subfoo act"
-
-────────────────────
-+ size Int
-    - n Int
-
-n * 100
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+)
 ```
 
 ```output
@@ -6434,39 +5906,34 @@ subfoo act
 
 ### A lazy property a class answers an interface through makes an object of a derived class, whose function a value of the interface calls.
 
-```yumi
-. thing = Thing()
-thing.act()
-. proto Proto = thing
-proto.act()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing act))
+  (let proto Proto thing)
+  (call (. proto act))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-────────────────────
-+ act
+(type + Foo
+  (fn-do + act _
+    (print "foo act")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + SubFoo (is Foo)
+  (fn-do + act _
+    (print "subfoo act")
+  )
+)
 
-────────────────────
-+ do act
-
--- "foo act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ SubFoo is Foo
-
-────────────────────
-+ do act
-
--- "subfoo act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo := SubFoo()
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo (:= (call SubFoo)))
+)
 ```
 
 ```output
@@ -6476,39 +5943,34 @@ subfoo act
 
 ### A field of a tuple that answers an interface holds an object of a derived class, whose function a value of the interface calls.
 
-```yumi
-. thing = Thing(SubFoo())
-thing.act()
-. proto Proto = thing
-proto.act()
+```brix
+(main
+  (let thing (call Thing (call SubFoo)))
+  (call (. thing act))
+  (let proto Proto thing)
+  (call (. proto act))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-────────────────────
-+ act
+(type + Foo
+  (fn-do + act _
+    (print "foo act")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + SubFoo (is Foo)
+  (fn-do + act _
+    (print "subfoo act")
+  )
+)
 
-────────────────────
-+ do act
-
--- "foo act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ SubFoo is Foo
-
-────────────────────
-+ do act
-
--- "subfoo act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
-
-as Proto for
-+ foo Foo
+(type + Thing (is Tuple)
+  (delegate Proto)
+  (prop + foo Foo)
+)
 ```
 
 ```output
@@ -6518,46 +5980,40 @@ subfoo act
 
 ### A class answers an interface through a property whose class answers it through another, which holds an object of a derived class.
 
-```yumi
-. thing = Thing()
-thing.act()
-. proto Proto = thing
-proto.act()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing act))
+  (let proto Proto thing)
+  (call (. proto act))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-────────────────────
-+ act
+(type + Foo
+  (implements Proto)
+  (fn-do + act _
+    (print "foo act")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-    is Proto
+(type + SubFoo (is Foo)
+  (fn-do + act _
+    (print "subfoo act")
+  )
+)
 
-────────────────────
-+ do act
+(type + Bar
+  (delegate Proto)
+  (prop + foo Foo (= (call SubFoo)))
+)
 
--- "foo act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ SubFoo is Foo
-
-────────────────────
-+ do act
-
--- "subfoo act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-as Proto for
-+ foo Foo = SubFoo()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ bar = Bar()
+(type + Thing
+  (delegate Proto)
+  (prop + bar _ (= (call Bar)))
+)
 ```
 
 ```output
@@ -6567,52 +6023,43 @@ subfoo act
 
 ### A function an interface declares with a body is declared again by a class derived from the class of the property that answers: a value of the interface calls the derived class's.
 
-```yumi
-. thing = Thing()
-thing.foo = SubFoo()
-. proto Proto = thing
-proto.rest()
-thing.rest()
+```brix
+(main
+  (let thing (call Thing))
+  (= (. thing foo) (call SubFoo))
+  (let proto Proto thing)
+  (call (. proto rest))
+  (call (. thing rest))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+  (fn-do + rest _
+    (print "proto rest")
+    (call act)
+  )
+)
 
-────────────────────
-+ act
+(type + Foo
+  (implements Proto)
+  (fn-do + act _
+    (print "foo act")
+  )
+)
 
-────────────────────
-+ do rest
+(type + SubFoo (is Foo)
+  (fn-do + act _
+    (print "subfoo act")
+  )
+  (fn-do + rest _
+    (print "subfoo rest")
+  )
+)
 
--- "proto rest"
-act()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-    is Proto
-
-────────────────────
-+ do act
-
--- "foo act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ SubFoo is Foo
-
-────────────────────
-+ do act
-
--- "subfoo act"
-
-────────────────────
-+ do rest
-
--- "subfoo rest"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+)
 ```
 
 ```output
@@ -6622,49 +6069,43 @@ subfoo rest
 
 ### A function of a value of an interface that a property answers is cast to a function type and bound: each calls the function of the derived class the property holds.
 
-```yumi
-. thing = Thing()
-thing.foo = SubFoo()
-. proto Proto = thing
-. f = proto.size as Wide
--- f(2.5)
-. g = proto.size(...)
--- g(3)
+```brix
+(main
+  (let thing (call Thing))
+  (= (. thing foo) (call SubFoo))
+  (let proto Proto thing)
+  (let f (as (. proto size) Wide))
+  (print (call f 2.5))
+  (let g (call (. proto size) ...))
+  (print (call g 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is () Float
-    - n Float
+(type + Wide (is (fn-type Float (param n Float))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + size Int
+    (param n Int)
+  )
+)
 
-────────────────────
-+ size Int
-    - n Int
+(type + Foo
+  (fn-expr + size Int
+    (param n Int)
+    n
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + SubFoo (is Foo)
+  (fn-expr + size Int
+    (param n Int)
+    (* n 100)
+  )
+)
 
-────────────────────
-+ size Int
-    - n Int
-
-n
-
-━━━━━━━━━━━━━━━━━━━━
-+ SubFoo is Foo
-
-────────────────────
-+ size Int
-    - n Int
-
-n * 100
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+)
 ```
 
 ```output
@@ -6674,59 +6115,50 @@ as Proto for
 
 ### Functions with arguments and a getter answered through a property, before and after it is assigned an object of a derived class.
 
-```yumi
-. thing = Thing()
-. proto Proto = thing
--- proto.total(1, 2)
-thing.foo = Sub()
--- proto.total(1, 2)
--- thing.total(1, 2)
--- proto.name
--- thing.name
+```brix
+(main
+  (let thing (call Thing))
+  (let proto Proto thing)
+  (print (call (. proto total) 1 2))
+  (= (. thing foo) (call Sub))
+  (print (call (. proto total) 1 2))
+  (print (call (. thing total) 1 2))
+  (print (. proto name))
+  (print (. thing name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + total Int
+    (param a Int)
+    (param b Int)
+  )
+  (fn-expr + name String :get)
+)
 
-────────────────────
-+ total Int
-    - a Int
-    - b Int
+(type + Foo
+  (prop + name _ (= "foo"))
+  (fn-expr + total Int
+    (param a Int)
+    (param b Int)
+    (+ a b)
+  )
+)
 
-────────────────────
-+ get name String
+(type + Sub (is Foo)
+  (fn-do + This _
+    (= name "sub")
+  )
+  (fn-expr + total Int
+    (param a Int)
+    (param b Int)
+    (* a b 100)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ name = "foo"
-
-────────────────────
-+ total Int
-    - a Int
-    - b Int
-
-a + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub is Foo
-
-────────────────────
-+ This
-
-name = "sub"
-
-────────────────────
-+ total Int
-    - a Int
-    - b Int
-
-a * b * 100
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+)
 ```
 
 ```output
@@ -6739,114 +6171,102 @@ sub
 
 ### A function of a derived class the property that answers holds panics, called through a value of the interface: the stack trace names it.
 
-```yumi crash
-. thing = Thing()
-. proto Proto = thing
--- proto.pick(1)
-thing.foo = SubFoo()
--- proto.pick(1)
--- proto.pick(7)
+```brix crash
+(main
+  (let thing (call Thing))
+  (let proto Proto thing)
+  (print (call (. proto pick) 1))
+  (= (. thing foo) (call SubFoo))
+  (print (call (. proto pick) 1))
+  (print (call (. proto pick) 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + pick Int
+    (param n Int)
+  )
+)
 
-────────────────────
-+ pick Int
-    - n Int
+(type + Foo
+  (fn-do + pick Int
+    (param n Int)
+    (return n)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + SubFoo (is Foo)
+  (fn-do + pick Int
+    (param n Int)
+    (let items (list 10 20 30))
+    (return ([] items n))
+  )
+)
 
-────────────────────
-+ do pick Int
-    - n Int
-
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ SubFoo is Foo
-
-────────────────────
-+ do pick Int
-    - n Int
-
-. items = [10, 20, 30]
-= items[n]
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+)
 ```
 
 ```stderr
 Unhandled panic: List index 7 out of range
-<core/list.yumi>
+<core/list.bx>
 
 Task 1
 
 Stack trace:
-  0  core/list:List:absent core/list.yumi
-  1  __source__:SubFoo:pick no file:33:3
-  2  __source__:pick(wrapped) no file:20:1
-  3  __source__:main no file:7:4
+  0  core/list:List:absent core/list.bx
+  1  __source__:SubFoo:pick no file:28:13
+  2  __source__:pick(wrapped) no file:18:3
+  3  __source__:main no file:8:10
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
 ### A property that answers an interface is of a class that answers it through its own property; each is assigned an object of a derived class in turn.
 
-```yumi
-. outer = Outer()
-. proto Proto = outer
-proto.act()
-outer.thing.foo = SubFoo()
-proto.act()
-outer.thing = SubThing()
-proto.act()
+```brix
+(main
+  (let outer (call Outer))
+  (let proto Proto outer)
+  (call (. proto act))
+  (= (. outer thing foo) (call SubFoo))
+  (call (. proto act))
+  (= (. outer thing) (call SubThing))
+  (call (. proto act))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-────────────────────
-+ act
+(type + Foo
+  (fn-do + act _
+    (print "foo act")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + SubFoo (is Foo)
+  (fn-do + act _
+    (print "subfoo act")
+  )
+)
 
-────────────────────
-+ do act
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+)
 
--- "foo act"
+(type + SubThing (is Thing)
+  (fn-do + act _
+    (print "subthing act")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ SubFoo is Foo
-
-────────────────────
-+ do act
-
--- "subfoo act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ SubThing is Thing
-
-────────────────────
-+ do act
-
--- "subthing act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Outer
-
-as Proto for
-+ thing Thing
+(type + Outer
+  (delegate Proto)
+  (prop + thing Thing)
+)
 ```
 
 ```output
@@ -6857,58 +6277,53 @@ foo act
 
 ### A function answered through a property returns an object, and the derived class the property holds returns one of a derived class.
 
-```yumi
-. thing = Thing()
-thing.foo = SubFoo()
-. proto Proto = thing
-. made = proto.make(2)
--- made.label
-. list = [proto, proto]
-for item in list
-    -- item.make(3).label
+```brix
+(main
+  (let thing (call Thing))
+  (= (. thing foo) (call SubFoo))
+  (let proto Proto thing)
+  (let made (call (. proto make) 2))
+  (print (. made label))
+  (let list (list proto proto))
+  (for (in item list)
+    (print (. (call (. item make) 3) label))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + make Named
+    (param n Int)
+  )
+)
 
-────────────────────
-+ make Named
-    - n Int
+(type + Named
+  (prop + label _ (= "named"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named
+(type + Special (is Named))
 
-+ label = "named"
+(type + Foo
+  (fn-do + make Named
+    (param n Int)
+    (let named (call Named))
+    (= (. named label) (str "foo " n))
+    (return named)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Special is Named
+(type + SubFoo (is Foo)
+  (fn-do + make Named
+    (param n Int)
+    (let special (call Special))
+    (= (. special label) (str "subfoo " n))
+    (return special)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do make Named
-    - n Int
-
-. named = Named()
-named.label = "foo $n"
-= named
-
-━━━━━━━━━━━━━━━━━━━━
-+ SubFoo is Foo
-
-────────────────────
-+ do make Named
-    - n Int
-
-. special = Special()
-special.label = "subfoo $n"
-= special
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+)
 ```
 
 ```output
@@ -6919,62 +6334,52 @@ subfoo 3
 
 ### A list of values of an interface made of objects whose property holds the class or one derived from it, with functions that take arguments.
 
-```yumi
-. boxes [Proto] = [Thing(Foo()), Thing(SubFoo()), Thing(Foo())]
-for box in boxes
-    box.act()
-    -- box.total(2, 3)
+```brix
+(main
+  (let boxes (list Proto) (list (call Thing (call Foo)) (call Thing (call SubFoo)) (call Thing (call Foo))))
+  (for (in box boxes)
+    (call (. box act))
+    (print (call (. box total) 2 3))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+  (fn-expr + total Int
+    (param a Int)
+    (param b Int)
+  )
+)
 
-────────────────────
-+ act
+(type + Foo
+  (fn-do + act _
+    (print "foo act")
+  )
+  (fn-expr + total Int
+    (param a Int)
+    (param b Int)
+    (+ a b)
+  )
+)
 
-────────────────────
-+ total Int
-    - a Int
-    - b Int
+(type + SubFoo (is Foo)
+  (fn-do + act _
+    (print "subfoo act")
+  )
+  (fn-expr + total Int
+    (param a Int)
+    (param b Int)
+    (* a b)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do act
-
--- "foo act"
-
-────────────────────
-+ total Int
-    - a Int
-    - b Int
-
-a + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ SubFoo is Foo
-
-────────────────────
-+ do act
-
--- "subfoo act"
-
-────────────────────
-+ total Int
-    - a Int
-    - b Int
-
-a * b
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
-
-────────────────────
-+ This
-    - foo
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+  (fn-do + This _
+    (param foo _)
+  )
+)
 ```
 
 ```output
@@ -6988,32 +6393,28 @@ foo act
 
 ### A function the class of the property that answers inherits from its base class, called on the object that delegates.
 
-```yumi
-. thing = Thing()
-thing.act()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing act))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-────────────────────
-+ act
+(type + FooBase
+  (fn-do + act _
+    (print (str "foobase act of " this))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ FooBase
+(type + Foo (is FooBase))
 
-────────────────────
-+ do act
-
--- "foobase act of $this"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is FooBase
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+)
 ```
 
 ```output
@@ -7022,41 +6423,34 @@ foobase act of [Object __source__:FooBase]
 
 ### A stored property and a getter the class of the property that answers inherits from its base class, read on the object and through a value.
 
-```yumi
-. thing = Thing()
--- thing.size
--- thing.name
-. proto Proto = thing
--- proto.size
--- proto.name
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing size))
+  (print (. thing name))
+  (let proto Proto thing)
+  (print (. proto size))
+  (print (. proto name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + size Int :get)
+  (fn-expr + name String :get)
+)
 
-────────────────────
-+ get size Int
+(type + FooBase
+  (prop + size _ (= 4))
+  (fn-expr + name String :get
+    "base name"
+  )
+)
 
-────────────────────
-+ get name String
+(type + Foo (is FooBase))
 
-━━━━━━━━━━━━━━━━━━━━
-+ FooBase
-
-+ size = 4
-
-────────────────────
-+ get name String
-
-"base name"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is FooBase
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+)
 ```
 
 ```output
@@ -7068,35 +6462,31 @@ base name
 
 ### The base class of the property that answers declares the interface and the function, called on the object and through a value.
 
-```yumi
-. thing = Thing()
-thing.act()
-. proto Proto = thing
-proto.act()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing act))
+  (let proto Proto thing)
+  (call (. proto act))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-────────────────────
-+ act
+(type + FooBase
+  (implements Proto)
+  (fn-do + act _
+    (print (str "foobase act of " this))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ FooBase
-    is Proto
+(type + Foo (is FooBase))
 
-────────────────────
-+ do act
-
--- "foobase act of $this"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is FooBase
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+)
 ```
 
 ```output
@@ -7106,49 +6496,40 @@ foobase act of [Object __source__:FooBase]
 
 ### The class of the property that answers inherits one function of the interface and declares another, on the object and through a value.
 
-```yumi
-. thing = Thing()
-thing.act()
-thing.more()
-. proto Proto = thing
-proto.act()
-proto.more()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing act))
+  (call (. thing more))
+  (let proto Proto thing)
+  (call (. proto act))
+  (call (. proto more))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+  (fn-expr + more _)
+)
 
-────────────────────
-+ act
+(type + FooBase
+  (fn-do + act _
+    (print (str "foobase act of " this))
+  )
+  (fn-do + more _
+    (print "foobase more")
+  )
+)
 
-────────────────────
-+ more
+(type + Foo (is FooBase)
+  (fn-do + more _
+    (print "foo more")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ FooBase
-
-────────────────────
-+ do act
-
--- "foobase act of $this"
-
-────────────────────
-+ do more
-
--- "foobase more"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is FooBase
-
-────────────────────
-+ do more
-
--- "foo more"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+)
 ```
 
 ```output
@@ -7160,46 +6541,40 @@ foo more
 
 ### A function declared two classes above the class of the property that answers, which is assigned an object of a derived class and then one of its own.
 
-```yumi
-. thing = Thing()
-thing.foo = Low()
-. proto Proto = thing
-proto.act()
-thing.act()
-thing.foo = Mid()
-proto.act()
-thing.act()
+```brix
+(main
+  (let thing (call Thing))
+  (= (. thing foo) (call Low))
+  (let proto Proto thing)
+  (call (. proto act))
+  (call (. thing act))
+  (= (. thing foo) (call Mid))
+  (call (. proto act))
+  (call (. thing act))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-────────────────────
-+ act
+(type + Top
+  (fn-do + act _
+    (print "top act")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Top
+(type + Mid (is Top))
 
-────────────────────
-+ do act
+(type + Low (is Mid)
+  (fn-do + act _
+    (print "low act")
+  )
+)
 
--- "top act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mid is Top
-
-━━━━━━━━━━━━━━━━━━━━
-+ Low is Mid
-
-────────────────────
-+ do act
-
--- "low act"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Mid
+(type + Thing
+  (delegate Proto)
+  (prop + foo Mid)
+)
 ```
 
 ```output
@@ -7211,32 +6586,29 @@ top act
 
 ### Delegated function takes a number of another type than the interface gives
 
-```yumi
-. sink = Sink()
-sink <- 1
-. writable = sink as Writable'I32
-writable <- 2
+```brix
+(main
+  (let sink (call Sink))
+  (<- sink 1)
+  (let writable (as sink (of Writable I32)))
+  (<- writable 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Sink
+(type + Sink
+  (delegate (of Writable I32))
+  (prop _ channel _ (= (call (of Channel Float))))
+)
 
-as Writable'I32 for
-_ channel = Channel'Float()
+(type + (of Writable Message) (is Interface)
+  (fn-expr + (infix this <- (param item Message)) _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Writable'Message is Interface
-
-────────────────────
-+ this <- item Message
-
-━━━━━━━━━━━━━━━━━━━━
-+ Channel'Message
-    is Writable'Message
-
-────────────────────
-+ do this <- item Message
-
--- item
+(type + (of Channel Message)
+  (implements (of Writable Message))
+  (fn-do + (infix this <- (param item Message)) _
+    (print item)
+  )
+)
 ```
 
 ```output
@@ -7246,45 +6618,38 @@ _ channel = Channel'Float()
 
 ### Writes chained through a delegate give the receiver written
 
-```yumi
-. sink = Sink()
-sink <- "a" <- "b"
-. writable = sink as Writable'String
-writable <- "c" <- "d"
+```brix
+(main
+  (let sink (call Sink))
+  (<- sink "a" "b")
+  (let writable (as sink (of Writable String)))
+  (<- writable "c" "d")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wrapped is (text String)
+(type + Wrapped (is (tuple (: text String)))
+  (fn-from-expr + (: other String)
+    (call Wrapped other)
+  )
+  (fn-to-expr + String
+    (str "<" text ">")
+  )
+)
 
-────────────────────
-+ from other String
+(type + Sink
+  (delegate (of Writable String))
+  (prop _ channel _ (= (call (of Channel Wrapped))))
+)
 
-Wrapped(other)
+(type + (of Writable Message) (is Interface)
+  (fn-expr + (infix this <- (param item Message)) _)
+)
 
-────────────────────
-+ to String
-
-"<$text>"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sink
-
-as Writable'String for
-_ channel = Channel'Wrapped()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Writable'Message is Interface
-
-────────────────────
-+ this <- item Message
-
-━━━━━━━━━━━━━━━━━━━━
-+ Channel'Message
-    is Writable'Message
-
-────────────────────
-+ do this <- item Message
-
--- item
+(type + (of Channel Message)
+  (implements (of Writable Message))
+  (fn-do + (infix this <- (param item Message)) _
+    (print item)
+  )
+)
 ```
 
 ```output
@@ -7296,60 +6661,58 @@ _ channel = Channel'Wrapped()
 
 ### Function that returns an optional of a class answers an optional of an interface
 
-```yumi
-. child = Child()
-. holder Holder = child
--- holder.find(1) == null
-. found = holder.find(2)
-if found
-    -- found.tag
--- describe(holder, 2)
--- describe(holder, 1)
+```brix
+(main
+  (let child (call Child))
+  (let holder Holder child)
+  (print (== (call (. holder find) 1) null))
+  (let found (call (. holder find) 2))
+  (if found
+    (print (. found tag))
+  )
+  (print (call describe holder 2))
+  (print (call describe holder 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Owner is Interface
+(type + Owner (is Interface)
+  (fn-expr + tag String :get)
+)
 
-────────────────────
-+ get tag String
+(type + Holder (is Interface)
+  (fn-expr + find (? Owner)
+    (param key Int)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Interface
+(type + Parent
+  (implements Owner)
+  (fn-expr + tag _ :get
+    "parent"
+  )
+)
 
-────────────────────
-+ find Owner?
-    - key Int
+(type + Child
+  (implements Holder)
+  (fn-expr + find (? Parent)
+    (param key Int)
+    (case? (== key 2)
+      (call Parent)
+    )
+    (default
+      null
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Parent
-    is Owner
-
-────────────────────
-+ get tag
-
-"parent"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child
-    is Holder
-
-────────────────────
-+ find Parent?
-    - key Int
-
-|? key == 2
-    Parent()
-??
-    null
-
-━━━━━━━━━━━━━━━━━━━━
-+ do describe String
-    - holder Holder
-    - key Int
-
-. found = holder.find(key)
-if found
-    = found.tag
-= "none"
+(fn-do + describe String
+  (param holder Holder)
+  (param key Int)
+  (let found (call (. holder find) key))
+  (if found
+    (return (. found tag))
+  )
+  (return "none")
+)
 ```
 
 ```output
@@ -7361,46 +6724,46 @@ none
 
 ### Optional of a tuple made an optional of an interface
 
-```yumi
-. point Point? = Point(1, 2)
-. shown Shown? = point
-if shown
-    -- shown.text
-. none Point? = null
-. empty Shown? = none
--- empty == null
-. list [Shown?] = [point, none]
-for item in list
-    if item
-        -- item.text
-    else
-        -- "nothing"
--- first(point)
--- first(none)
+```brix
+(main
+  (let point (? Point) (call Point 1 2))
+  (let shown (? Shown) point)
+  (if shown
+    (print (. shown text))
+  )
+  (let none (? Point) null)
+  (let empty (? Shown) none)
+  (print (== empty null))
+  (let list (list (? Shown)) (list point none))
+  (for (in item list)
+    (if item
+      (print (. item text))
+      (else
+        (print "nothing")
+      )
+    )
+  )
+  (print (call first point))
+  (print (call first none))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shown is Interface
+(type + Shown (is Interface)
+  (fn-expr + text String :get)
+)
 
-────────────────────
-+ get text String
+(type + Point (is Tuple)
+  (implements Shown)
+  (prop + x Int)
+  (prop + y Int)
+  (fn-expr + text _ :get
+    (str x "," y)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Tuple
-    is Shown
-
-+ x Int
-+ y Int
-
-────────────────────
-+ get text
-
-"$x,$y"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do first String
-    - shown Shown?
-
-= if shown then shown.text else "none"
+(fn-do + first String
+  (param shown (? Shown))
+  (return (if-expr shown (. shown text) "none"))
+)
 ```
 
 ```output
@@ -7414,38 +6777,36 @@ none
 
 ### Optional of a class made an optional of an interface
 
-```yumi
-. parent Parent? = Parent()
-. owner Owner? = parent
--- (owner!).tag
-. none Parent? = null
-. empty Owner? = none
--- empty == null
--- show(parent)
--- show(none)
+```brix
+(main
+  (let parent (? Parent) (call Parent))
+  (let owner (? Owner) parent)
+  (print (. (!! owner) tag))
+  (let none (? Parent) null)
+  (let empty (? Owner) none)
+  (print (== empty null))
+  (print (call show parent))
+  (print (call show none))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Owner is Interface
+(type + Owner (is Interface)
+  (fn-expr + tag String :get)
+)
 
-────────────────────
-+ get tag String
+(type + Parent
+  (implements Owner)
+  (fn-expr + tag _ :get
+    "parent"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Parent
-    is Owner
-
-────────────────────
-+ get tag
-
-"parent"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show String
-    - owner Owner?
-
-if owner
-    = owner.tag
-= "none"
+(fn-do + show String
+  (param owner (? Owner))
+  (if owner
+    (return (. owner tag))
+  )
+  (return "none")
+)
 ```
 
 ```output
@@ -7457,157 +6818,138 @@ none
 
 ### Stack trace through a delegated function of an interface
 
-```yumi crash
-. sink = Sink()
-sink <- "hello"
-. writable = sink as Writable'String
-writable <- "world"
-writable <- ""
--- "never"
+```brix crash
+(main
+  (let sink (call Sink))
+  (<- sink "hello")
+  (let writable (as sink (of Writable String)))
+  (<- writable "world")
+  (<- writable "")
+  (print "never")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Sink
+(type + Sink
+  (delegate (of Writable String))
+  (prop _ channel _ (= (call (of Channel String))))
+)
 
-as Writable'String for
-_ channel = Channel'String()
+(type + (of Writable Message) (is Interface)
+  (fn-expr + (infix this <- (param item Message)) _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Writable'Message is Interface
-
-────────────────────
-+ this <- item Message
-
-━━━━━━━━━━━━━━━━━━━━
-+ Channel'Message
-    is Writable'Message
-
-────────────────────
-+ do this <- item Message
-
-?! Panic("empty item")
-    if "$item" == ""
--- item
+(type + (of Channel Message)
+  (implements (of Writable Message))
+  (fn-do + (infix this <- (param item Message)) _
+    (throw (call Panic "empty item") (if (== (str item) "")))
+    (print item)
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: empty item
-<no file:28>
+<no file:23>
 
 Task 1
 
 Stack trace:
-  0  __source__:Channel:<-write no file:28:1
-  1  __source__:<-write(wrapped) no file:26:1
-  2  __source__:main no file:6:1
+  0  __source__:Channel:<-write no file:23:5
+  1  __source__:<-write(wrapped) no file:22:3
+  2  __source__:main no file:7:3
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### Stack trace through a delegated function that converts its argument
 
-```yumi crash
-. sink = Sink()
-sink <- "hello"
-. writable = sink as Writable'String
-writable <- "world"
-writable <- ""
--- "never"
+```brix crash
+(main
+  (let sink (call Sink))
+  (<- sink "hello")
+  (let writable (as sink (of Writable String)))
+  (<- writable "world")
+  (<- writable "")
+  (print "never")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wrapped is (text String)
+(type + Wrapped (is (tuple (: text String)))
+  (fn-from-expr + (: other String)
+    (call Wrapped other)
+  )
+  (fn-to-expr + String
+    text
+  )
+)
 
-────────────────────
-+ from other String
+(type + Sink
+  (delegate (of Writable String))
+  (prop _ channel _ (= (call (of Channel Wrapped))))
+)
 
-Wrapped(other)
+(type + (of Writable Message) (is Interface)
+  (fn-expr + (infix this <- (param item Message)) _)
+)
 
-────────────────────
-+ to String
-
-text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sink
-
-as Writable'String for
-_ channel = Channel'Wrapped()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Writable'Message is Interface
-
-────────────────────
-+ this <- item Message
-
-━━━━━━━━━━━━━━━━━━━━
-+ Channel'Message
-    is Writable'Message
-
-────────────────────
-+ do this <- item Message
-
-?! Panic("empty item")
-    if "$item" == ""
--- item
+(type + (of Channel Message)
+  (implements (of Writable Message))
+  (fn-do + (infix this <- (param item Message)) _
+    (throw (call Panic "empty item") (if (== (str item) "")))
+    (print item)
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: empty item
-<no file:41>
+<no file:32>
 
 Task 1
 
 Stack trace:
-  0  __source__:Channel:<-write no file:41:1
-  1  __source__:<-write(wrapped) no file:32:1
-  2  __source__:main no file:6:1
+  0  __source__:Channel:<-write no file:32:5
+  1  __source__:<-write(wrapped) no file:26:3
+  2  __source__:main no file:7:3
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### Delegate that a getter answers is read at each call
 
-```yumi
-. thing = Thing()
--- thing.act(1)
--- thing.act(2)
-. proto = thing as Proto
--- proto.act(3)
--- proto.act(4)
+```brix
+(main
+  (let thing (call Thing))
+  (print (call (. thing act) 1))
+  (print (call (. thing act) 2))
+  (let proto (as thing Proto))
+  (print (call (. proto act) 3))
+  (print (call (. proto act) 4))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (delegate Proto)
+  (fn-do + foo Foo :get
+    (print "made foo")
+    (return (call Foo))
+  )
+)
 
-as Proto for
+(type + Proto (is Interface)
+  (fn-expr + act String
+    (param x Int)
+  )
+)
 
-────────────────────
-+ do get foo Foo
-
--- "made foo"
-= Foo()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ act String
-    - x Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ label String
-
-────────────────────
-+ This
-    - given String = "foo"
-
-.. label = given
-
-────────────────────
-+ do act String
-    - x Int
-
-= "$label $x"
+(type + Foo
+  (prop + label String)
+  (fn-do + This _
+    (param given String (= "foo"))
+    (lazy label given)
+  )
+  (fn-do + act String
+    (param x Int)
+    (return (str label " " x))
+  )
+)
 ```
 
 ```output
@@ -7623,115 +6965,100 @@ foo 4
 
 ### Stack trace of a panic in a getter that answers a delegate
 
-```yumi crash
-. thing = Thing()
--- thing.act(1)
-. proto = thing as Proto
--- proto.act(2)
-thing.broken = true
--- proto.act(3)
--- "never"
+```brix crash
+(main
+  (let thing (call Thing))
+  (print (call (. thing act) 1))
+  (let proto (as thing Proto))
+  (print (call (. proto act) 2))
+  (= (. thing broken) true)
+  (print (call (. proto act) 3))
+  (print "never")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + broken _ (= false))
+  (blank)
+  (delegate Proto)
+  (fn-do + foo Foo :get
+    (throw (call Panic "no foo") (if broken))
+    (return (call Foo))
+  )
+)
 
-+ broken = false
+(type + Proto (is Interface)
+  (fn-expr + act String
+    (param x Int)
+  )
+)
 
-as Proto for
-
-────────────────────
-+ do get foo Foo
-
-?! Panic("no foo")
-    if broken
-= Foo()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ act String
-    - x Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ label = "foo"
-
-────────────────────
-+ do act String
-    - x Int
-
-= "$label $x"
+(type + Foo
+  (prop + label _ (= "foo"))
+  (fn-do + act String
+    (param x Int)
+    (return (str label " " x))
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: no foo
-<no file:20>
+<no file:17>
 
 Task 1
 
 Stack trace:
-  0  __source__:Thing:foo no file:20:1
-  1  __source__:act(wrapped) no file:37:1
-  2  __source__:main no file:7:4
+  0  __source__:Thing:foo no file:17:5
+  1  __source__:act(wrapped) no file:30:3
+  2  __source__:main no file:8:10
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### Delegate that a getter answers is the derived class's
 
-```yumi
-. thing Thing = Loud()
--- thing.act(1)
-. proto = thing as Proto
--- proto.act(2)
-. plain = Thing()
--- plain.act(3)
-. other = plain as Proto
--- other.act(4)
+```brix
+(main
+  (let thing Thing (call Loud))
+  (print (call (. thing act) 1))
+  (let proto (as thing Proto))
+  (print (call (. proto act) 2))
+  (let plain (call Thing))
+  (print (call (. plain act) 3))
+  (let other (as plain Proto))
+  (print (call (. other act) 4))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (delegate Proto)
+  (fn-expr + foo Foo :get
+    (call Foo)
+  )
+)
 
-as Proto for
+(type + Loud (is Thing)
+  (fn-expr + foo _ :get
+    (call Foo "loud")
+  )
+)
 
-────────────────────
-+ get foo Foo
+(type + Proto (is Interface)
+  (fn-expr + act String
+    (param x Int)
+  )
+)
 
-Foo()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Loud is Thing
-
-────────────────────
-+ get foo
-
-Foo("loud")
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ act String
-    - x Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ label String
-
-────────────────────
-+ This
-    - given String = "foo"
-
-.. label = given
-
-────────────────────
-+ do act String
-    - x Int
-
-= "$label $x"
+(type + Foo
+  (prop + label String)
+  (fn-do + This _
+    (param given String (= "foo"))
+    (lazy label given)
+  )
+  (fn-do + act String
+    (param x Int)
+    (return (str label " " x))
+  )
+)
 ```
 
 ```output
@@ -7743,52 +7070,44 @@ foo 4
 
 ### Delegate of a delegate that a getter answers
 
-```yumi
-. outer = Outer()
--- outer.act(1)
-. proto = outer as Proto
--- proto.act(2)
+```brix
+(main
+  (let outer (call Outer))
+  (print (call (. outer act) 1))
+  (let proto (as outer Proto))
+  (print (call (. proto act) 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Outer
+(type + Outer
+  (delegate Proto)
+  (fn-do + inner Inner :get
+    (print "made inner")
+    (return (call Inner))
+  )
+)
 
-as Proto for
+(type + Inner
+  (delegate Proto)
+  (prop + foo _ (= (call Foo "inner")))
+)
 
-────────────────────
-+ do get inner Inner
+(type + Proto (is Interface)
+  (fn-expr + act String
+    (param x Int)
+  )
+)
 
--- "made inner"
-= Inner()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Inner
-
-as Proto for
-+ foo = Foo("inner")
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ act String
-    - x Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ label String
-
-────────────────────
-+ This
-    - given String = "foo"
-
-.. label = given
-
-────────────────────
-+ do act String
-    - x Int
-
-= "$label $x"
+(type + Foo
+  (prop + label String)
+  (fn-do + This _
+    (param given String (= "foo"))
+    (lazy label given)
+  )
+  (fn-do + act String
+    (param x Int)
+    (return (str label " " x))
+  )
+)
 ```
 
 ```output
@@ -7800,49 +7119,44 @@ inner 2
 
 ### Tuple that delegates to a field with no value written
 
-```yumi
-. thing = Thing()
--- thing.foo.act(1)
-. other = Thing(Foo("given"))
--- other.act(2)
--- thing.act(3)
--- thing.count
-. binding = other.act(...)
--- binding(4)
-. proto = other as Proto
-. second = proto.act(...)
--- second(5)
+```brix
+(main
+  (let thing (call Thing))
+  (print (call (. thing foo act) 1))
+  (let other (call Thing (call Foo "given")))
+  (print (call (. other act) 2))
+  (print (call (. thing act) 3))
+  (print (. thing count))
+  (let binding (call (. other act) ...))
+  (print (call binding 4))
+  (let proto (as other Proto))
+  (let second (call (. proto act) ...))
+  (print (call second 5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
+(type + Thing (is Tuple)
+  (delegate Proto)
+  (prop + foo Foo)
+  (prop + count Int (= 7))
+)
 
-as Proto for
-+ foo Foo
-+ count Int = 7
+(type + Proto (is Interface)
+  (fn-expr + act String
+    (param x Int)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ act String
-    - x Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ label String
-
-────────────────────
-+ This
-    - given String = "foo"
-
-.. label = given
-
-────────────────────
-+ do act String
-    - x Int
-
-= "$label $x"
+(type + Foo
+  (prop + label String)
+  (fn-do + This _
+    (param given String (= "foo"))
+    (lazy label given)
+  )
+  (fn-do + act String
+    (param x Int)
+    (return (str label " " x))
+  )
+)
 ```
 
 ```output
@@ -7856,43 +7170,38 @@ given 5
 
 ### Binding of a function a delegate answers reads the delegate when called
 
-```yumi
-. thing = Thing()
-. binding = thing.act(...)
--- binding(1)
-thing.foo.label = "changed"
--- binding(2)
--- thing.act(3)
+```brix
+(main
+  (let thing (call Thing))
+  (let binding (call (. thing act) ...))
+  (print (call binding 1))
+  (= (. thing foo label) "changed")
+  (print (call binding 2))
+  (print (call (. thing act) 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (delegate Proto)
+  (prop + foo _ (= (call Foo)))
+)
 
-as Proto for
-+ foo = Foo()
+(type + Proto (is Interface)
+  (fn-expr + act String
+    (param x Int)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ act String
-    - x Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ label String
-
-────────────────────
-+ This
-    - given String = "foo"
-
-.. label = given
-
-────────────────────
-+ do act String
-    - x Int
-
-= "$label $x"
+(type + Foo
+  (prop + label String)
+  (fn-do + This _
+    (param given String (= "foo"))
+    (lazy label given)
+  )
+  (fn-do + act String
+    (param x Int)
+    (return (str label " " x))
+  )
+)
 ```
 
 ```output
@@ -7903,20 +7212,21 @@ changed 3
 
 ### == of two values of an interface compares a class by identity, and != negates it.
 
-```yumi
-. thing = Thing()
-. a = thing as Proto
-. b = Thing() as Proto
--- a == a
--- a == b
--- a != b
+```brix
+(main
+  (let thing (call Thing))
+  (let a (as thing Proto))
+  (let b (as (call Thing) Proto))
+  (print (== a a))
+  (print (== a b))
+  (print (!= a b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
+(type + Thing
+  (implements Proto)
+)
 ```
 
 ```output
@@ -7927,104 +7237,104 @@ true
 
 ### A panic in a type's own == passes through the equality function a witness table holds, which a trace names with no file.
 
-```yumi crash
-. m = Measured(7) as View
-. n = Measured(7) as View
--- m == n
-panicky(m, n)
+```brix crash
+(main
+  (let m (as (call Measured 7) View))
+  (let n (as (call Measured 7) View))
+  (print (== m n))
+  (call panicky m n)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Measured is (value I32)
-    is View
+(type + Measured (is (tuple (: value I32)))
+  (implements View)
+  (fn-do + (infix this == (param other Measured)) _
+    (if (== value 7)
+      (throw (call Panic "boom"))
+    )
+    (return (== value (. other value)))
+  )
+)
 
-────────────────────
-+ do this == other Measured
-
-if value == 7
-    ?! Panic("boom")
-= value == other.value
-
-━━━━━━━━━━━━━━━━━━━━
-+ do panicky
-    - left View
-    - right View
-
--- left == right
+(fn-do + panicky _
+  (param left View)
+  (param right View)
+  (print (== left right))
+)
 ```
 
 ```stderr
 Unhandled panic: boom
-<no file:18>
+<no file:15>
 
 Task 1
 
 Stack trace:
-  0  __source__:Measured:== no file:18:5
+  0  __source__:Measured:== no file:15:7
   1  __source__:InterfaceEquality:Class:__source__:Measured:Class:__source__:View no file
-  2  __source__:main no file:4:4
+  2  __source__:main no file:5:10
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### == of two values of an interface whose types differ panics where nothing compares for change.
 
-```yumi crash
-. a = Packet'I32(1, 2) as View
-. b = Packet'I64(1i64, 2i64) as View
--- "before"
-check(a, b)
+```brix crash
+(main
+  (let a (as (call (of Packet I32) 1 2) View))
+  (let b (as (call (of Packet I64) 1i64 2i64) View))
+  (print "before")
+  (call check a b)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Packet'T is (first T, second T)
-    is View
+(type + (of Packet T) (is (tuple (: first T) (: second T)))
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do check
-    - left View
-    - right View
-
--- left == right
+(fn-do + check _
+  (param left View)
+  (param right View)
+  (print (== left right))
+)
 ```
 
 ```stderr
 Unhandled panic: Unsupported interface equality: concrete types differ
-<no file:19>
+<no file:18>
 
 Task 1
 
 Stack trace:
-  0  __source__:check no file:19:4
-  1  __source__:main no file:5:1
+  0  __source__:check no file:18:10
+  1  __source__:main no file:6:3
   2  __source__:init.__source__ no file
   3  __source__:brix.main no file
 ```
 
 ### Optionals of an interface are equal when both are empty or both hold equal values.
 
-```yumi
-. a View? = Packet(1, 2) as View
-. b View? = null
-. c View? = Packet(1, 2) as View
--- a == b
--- a == c
--- b == b
--- a != c
-. d = Packet(1, 2) as View
--- d == a
--- a == d
+```brix
+(main
+  (let a (? View) (as (call Packet 1 2) View))
+  (let b (? View) null)
+  (let c (? View) (as (call Packet 1 2) View))
+  (print (== a b))
+  (print (== a c))
+  (print (== b b))
+  (print (!= a c))
+  (let d (as (call Packet 1 2) View))
+  (print (== d a))
+  (print (== a d))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Packet is (first I32, second I32)
-    is View
+(type + Packet (is (tuple (: first I32) (: second I32)))
+  (implements View)
+)
 ```
 
 ```output
@@ -8038,127 +7348,125 @@ true
 
 ### The equality function of a generic tuple names its type's parameters.
 
-```yumi crash
-. a = Packet'I32(7, 1) as View
-. b = Packet'I32(7, 1) as View
--- a == b
+```brix crash
+(main
+  (let a (as (call (of Packet I32) 7 1) View))
+  (let b (as (call (of Packet I32) 7 1) View))
+  (print (== a b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Packet'T is (first T, second T)
-    is View
-
-────────────────────
-+ do this == other Packet'T
-
-?! Panic("generic boom")
+(type + (of Packet T) (is (tuple (: first T) (: second T)))
+  (implements View)
+  (fn-do + (infix this == (param other (of Packet T))) _
+    (throw (call Panic "generic boom"))
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: generic boom
-<no file:16>
+<no file:13>
 
 Task 1
 
 Stack trace:
-  0  __source__:Packet:== no file:16:1
+  0  __source__:Packet:== no file:13:5
   1  __source__:InterfaceEquality:Class:__source__:Packet(Class:core/number:I32):Class:__source__:View no file
-  2  __source__:main no file:4:4
+  2  __source__:main no file:5:10
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### A field of an interface is compared through its own equality function.
 
-```yumi crash
-. inner = Measured(7) as View
-. a = Nested(inner, 1) as View
-. b = Nested(Measured(7) as View, 1) as View
--- a == b
+```brix crash
+(main
+  (let inner (as (call Measured 7) View))
+  (let a (as (call Nested inner 1) View))
+  (let b (as (call Nested (as (call Measured 7) View) 1) View))
+  (print (== a b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Measured is (value I32)
-    is View
+(type + Measured (is (tuple (: value I32)))
+  (implements View)
+  (fn-do + (infix this == (param other Measured)) _
+    (throw (call Panic "inner boom"))
+  )
+)
 
-────────────────────
-+ do this == other Measured
-
-?! Panic("inner boom")
-
-━━━━━━━━━━━━━━━━━━━━
-+ Nested is (inner View, marker I32)
-    is View
+(type + Nested (is (tuple (: inner View) (: marker I32)))
+  (implements View)
+)
 ```
 
 ```stderr
 Unhandled panic: inner boom
-<no file:17>
+<no file:14>
 
 Task 1
 
 Stack trace:
-  0  __source__:Measured:== no file:17:1
+  0  __source__:Measured:== no file:14:5
   1  __source__:InterfaceEquality:Class:__source__:Measured:Class:__source__:View no file
   2  __source__:InterfaceEquality:Class:__source__:Nested:Class:__source__:View no file
-  3  __source__:main no file:5:4
+  3  __source__:main no file:6:10
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
 ### A class compared with a value of an interface is unequal; the other way around it panics.
 
-```yumi crash
-. a = Thing() as View
-. t = Thing()
--- t == a
--- a == t
+```brix crash
+(main
+  (let a (as (call Thing) View))
+  (let t (call Thing))
+  (print (== t a))
+  (print (== a t))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is View
+(type + Thing
+  (implements View)
+)
 ```
 
 ```stderr
 Unhandled panic: Unsupported interface equality with Thing
-<no file:5>
+<no file:6>
 
 Task 1
 
 Stack trace:
-  0  __source__:main no file:5:4
+  0  __source__:main no file:6:10
   1  __source__:init.__source__ no file
   2  __source__:brix.main no file
 ```
 
 ### A number class's own == decides equality through an interface.
 
-```yumi
-. a = Counter(1) as View
-. b = Counter(2) as View
--- a == b
--- a != b
--- a == (Counter(1) as View)
+```brix
+(main
+  (let a (as (call Counter 1) View))
+  (let b (as (call Counter 2) View))
+  (print (== a b))
+  (print (!= a b))
+  (print (== a (as (call Counter 1) View)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter is I32
-    is View
-
-────────────────────
-+ do this == other Counter
-
--- "compare"
-= (this as I32) == (other as I32)
+(type + Counter (is I32)
+  (implements View)
+  (fn-do + (infix this == (param other Counter)) _
+    (print "compare")
+    (return (== (as this I32) (as other I32)))
+  )
+)
 ```
 
 ```output
@@ -8172,23 +7480,24 @@ true
 
 ### A tuple holding a value of an interface compares that field by its type's equality.
 
-```yumi
-. a = Pair(1, Label("x") as View) as View
-. b = Pair(1, Label("x") as View) as View
-. c = Pair(1, Label("y") as View) as View
--- a == b
--- a == c
+```brix
+(main
+  (let a (as (call Pair 1 (as (call Label "x") View)) View))
+  (let b (as (call Pair 1 (as (call Label "x") View)) View))
+  (let c (as (call Pair 1 (as (call Label "y") View)) View))
+  (print (== a b))
+  (print (== a c))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Label is (text String)
-    is View
+(type + Label (is (tuple (: text String)))
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (count I32, inner View)
-    is View
+(type + Pair (is (tuple (: count I32) (: inner View)))
+  (implements View)
+)
 ```
 
 ```output
@@ -8198,47 +7507,49 @@ false
 
 ### An interface compared with another type as the right side of a short circuit panics where it is compared.
 
-```yumi crash
-. a = Leaf(1) as View
-. n = 2
-. r = n < 1 || a == n
--- r
+```brix crash
+(main
+  (let a (as (call Leaf 1) View))
+  (let n 2)
+  (let r (or (< n 1) (== a n)))
+  (print r)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is (value I32)
-    is View
+(type + Leaf (is (tuple (: value I32)))
+  (implements View)
+)
 ```
 
 ```stderr
 Unhandled panic: Unsupported interface equality with I64
-<no file:4>
+<no file:5>
 
 Task 1
 
 Stack trace:
-  0  __source__:main no file:4:16
+  0  __source__:main no file:5:22
   1  __source__:init.__source__ no file
   2  __source__:brix.main no file
 ```
 
 ### Values of an interface whose type is a function type are equal when they are one object.
 
-```yumi
-. g = nums()
-. a = g as Iterable'Int
-. b = g as Iterable'Int
--- a == b
--- a == (nums() as Iterable'Int)
--- ([1, 2] as Iterable'Int) == ([1, 2] as Iterable'Int)
+```brix
+(main
+  (let g (call nums))
+  (let a (as g (of Iterable Int)))
+  (let b (as g (of Iterable Int)))
+  (print (== a b))
+  (print (== a (as (call nums) (of Iterable Int))))
+  (print (== (as (list 1 2) (of Iterable Int)) (as (list 1 2) (of Iterable Int))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do nums
-
-<= 1
-<= 2
+(fn-do + nums _
+  (yield 1)
+  (yield 2)
+)
 ```
 
 ```output
@@ -8249,111 +7560,111 @@ false
 
 ### A panic inside an equality function is headed by the line of the comparison.
 
-```yumi crash
-. a = Nested(Leaf(1) as View, 1) as View
-. b = Nested(Thing() as View, 1) as View
--- "go"
--- a == b
+```brix crash
+(main
+  (let a (as (call Nested (as (call Leaf 1) View) 1) View))
+  (let b (as (call Nested (as (call Thing) View) 1) View))
+  (print "go")
+  (print (== a b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is (value I32)
-    is View
+(type + Leaf (is (tuple (: value I32)))
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is View
+(type + Thing
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Nested is (inner View, marker I32)
-    is View
+(type + Nested (is (tuple (: inner View) (: marker I32)))
+  (implements View)
+)
 ```
 
 ```stderr
 Unhandled panic: Unsupported interface equality: concrete types differ
-<no file:5>
+<no file:6>
 
 Task 1
 
 Stack trace:
   0  __source__:InterfaceEquality:Class:__source__:Nested:Class:__source__:View no file
-  1  __source__:main no file:5:4
+  1  __source__:main no file:6:10
   2  __source__:init.__source__ no file
   3  __source__:brix.main no file
 ```
 
 ### A closure is named Closure by type-of and by the panic of an interface compared with it.
 
-```yumi crash
-. a = Leaf(1) as View
-. g = :: n Int => n + 1
--- "${type-of g}"
--- a == g
+```brix crash
+(main
+  (let a (as (call Leaf 1) View))
+  (let g (=> ((: n Int)) (+ n 1)))
+  (print (str (type-of g)))
+  (print (== a g))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is (value I32)
-    is View
+(type + Leaf (is (tuple (: value I32)))
+  (implements View)
+)
 ```
 
 ```stderr
 Unhandled panic: Unsupported interface equality with Closure
-<no file:5>
+<no file:6>
 
 Task 1
 
 Stack trace:
-  0  __source__:main no file:5:4
+  0  __source__:main no file:6:10
   1  __source__:init.__source__ no file
   2  __source__:brix.main no file
 ```
 
 ### Both operands of == on interface values stay alive while a user == allocates and collects.
 
-```yumi
-/BxGC/BxGC.h
+```brix
+(import /BxGC/BxGC.h)
+(blank)
 
-. left = Pair(GCNode(17), GCNode(29)) as View
-. same = Pair(GCNode(17), GCNode(29)) as View
-. different = Pair(GCNode(17), GCNode(30)) as View
--- left == same
--- left != same
--- left == different
--- left != different
+(main
+  (let left (as (call Pair (call GCNode 17) (call GCNode 29)) View))
+  (let same (as (call Pair (call GCNode 17) (call GCNode 29)) View))
+  (let different (as (call Pair (call GCNode 17) (call GCNode 30)) View))
+  (print (== left same))
+  (print (!= left same))
+  (print (== left different))
+  (print (!= left different))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (left GCNode, right GCNode)
-    is View
+(type + Pair (is (tuple (: left GCNode) (: right GCNode)))
+  (implements View)
+  (fn-do + (infix this == (param other Pair)) _
+    (let scratch (list GCNode))
+    (for (in index (..< 0 32))
+      (+= scratch (call GCNode index))
+    )
+    (call C:brixCollect)
+    (let valid (and (call C:brixGCVerifyObject (as left Pointer)) (call C:brixGCVerifyObject (as right Pointer))))
+    (= valid (and valid (call C:brixGCVerifyObject (as (. other left) Pointer))))
+    (= valid (and valid (call C:brixGCVerifyObject (as (. other right) Pointer))))
+    (return (and valid (== (. left value) (. other left value)) (== (. right value) (. other right value))))
+  )
+)
 
-────────────────────
-+ do this == other Pair
-
-. scratch [GCNode]
-for index in 0 .. < 32
-    scratch += GCNode(index)
-C:brixCollect()
-. valid = C:brixGCVerifyObject(left as Pointer) && C:brixGCVerifyObject(right as Pointer)
-valid = valid && C:brixGCVerifyObject(other.left as Pointer)
-valid = valid && C:brixGCVerifyObject(other.right as Pointer)
-= valid && left.value == other.left.value && right.value == other.right.value
-
-━━━━━━━━━━━━━━━━━━━━
-+ GCNode
-
-+ value = 0
-
-────────────────────
-+ This
-    - v Int
-
-value = v
+(type + GCNode
+  (prop + value _ (= 0))
+  (fn-do + This _
+    (param v Int)
+    (= value v)
+  )
+)
 ```
 
 ```output
@@ -8365,45 +7676,38 @@ true
 
 ### An interface's function written with a type parameter of its own is checked only for the calls that name it.
 
-```yumi
-. box = Tally()
-send(box)
--- box.total
+```brix
+(main
+  (let box (call Tally))
+  (call send box)
+  (print (. box total))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do send
-    - sink Sink
+(fn-do + send _
+  (param sink Sink)
+  (<- sink 2.5)
+)
 
-sink <- 2.5
+(type + Sink (is Interface)
+  (fn-do + (infix this <- (param count Int)) _
+    (call put count)
+  )
+  (fn-do + (infix this <- (param value ''Value)) _
+    (call put 1)
+  )
+  (fn-expr + put _ (?! Error)
+    (param count Size)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Sink is Interface
-
-────────────────────
-+ do this <- count Int
-
-put(count)
-
-────────────────────
-+ do this <- value ''Value
-
-put(1)
-
-────────────────────
-+ put ?! Error
-    - count Size
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tally
-    is Sink
-
-+ total Size = 0
-
-────────────────────
-+ do put
-    - count Size
-
-total += count
+(type + Tally
+  (implements Sink)
+  (prop + total Size (= 0))
+  (fn-do + put _
+    (param count Size)
+    (+= total count)
+  )
+)
 ```
 
 ```output
@@ -8412,44 +7716,45 @@ total += count
 
 ### A function that answers an interface's with feeds gives a generator, which a call through the interface collects into the list the interface's function answers.
 
-```yumi
-. maker Shows'Record = Maker()
-for part in maker.parts(Record("box"))
-    match part
-        | .text(text)
-            -- "text ${text}"
-        | .count(count)
-            -- "count ${count}"
+```brix
+(main
+  (let maker (of Shows Record) (call Maker))
+  (for (in part (call (. maker parts) (call Record "box")))
+    (match part
+      (case (call .text text)
+        (print (str "text " text))
+      )
+      (case (call .count count)
+        (print (str "count " count))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Part is Union
+(type + Part (is Union)
+  (variant text String)
+  (variant count I32)
+)
 
-| text String
-| count I32
+(type + Record (is Tuple)
+  (prop + name String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Record is Tuple
+(type + (of Shows Item) (is Interface)
+  (fn-do + parts (list Part)
+    (param item Item)
+  )
+)
 
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shows'Item is Interface
-
-────────────────────
-+ do parts [Part]
-    - item Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ Maker is Tuple
-    is Shows'Record
-
-────────────────────
-+ parts
-    - record Record
-
-* Part.text("Add ")
-* Part.text(record.name)
-* Part.count(2)
+(type + Maker (is Tuple)
+  (implements (of Shows Record))
+  (fn-expr + parts _
+    (param record Record)
+    (item (call (. Part text) "Add "))
+    (item (call (. Part text) (. record name)))
+    (item (call (. Part count) 2))
+  )
+)
 ```
 
 ```output
@@ -8460,39 +7765,39 @@ count 2
 
 ### What a type's function answers is made the case of the union the interface's function answers, for a call through the interface.
 
-```yumi
-. maker Shows = Maker("box")
-match maker.value()
-    | .text(text)
-        -- "text ${text}"
-    | .names(names)
-        -- "names ${names.length} ${names[0]}"
-    | .count(count)
-        -- "count ${count}"
+```brix
+(main
+  (let maker Shows (call Maker "box"))
+  (match (call (. maker value))
+    (case (call .text text)
+      (print (str "text " text))
+    )
+    (case (call .names names)
+      (print (str "names " (. names length) " " ([] names 0)))
+    )
+    (case (call .count count)
+      (print (str "count " count))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
+(type + Value (is Union)
+  (variant text String)
+  (variant names (list String))
+  (variant count I32)
+)
 
-| text String
-| names [String]
-| count I32
+(type + Shows (is Interface)
+  (fn-do + value Value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shows is Interface
-
-────────────────────
-+ do value Value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Maker is Tuple
-    is Shows
-
-+ name String
-
-────────────────────
-+ value
-
-[name, "two"]
+(type + Maker (is Tuple)
+  (implements Shows)
+  (prop + name String)
+  (fn-expr + value _
+    (list name "two")
+  )
+)
 ```
 
 ```output
@@ -8501,45 +7806,45 @@ names 2 box
 
 ### A type's function that raises the errors the interface's function raises answers a value of another type, converted for a call through the interface, and its error passes through as it is.
 
-```yumi
-for name in ["box", ""]
-    . maker Shows = Maker(name)
-    match catch? maker.value() ?? Value.text("failed")
-        | .text(text)
-            -- "text ${text}"
-        | .names(names)
-            -- "names ${names.length} ${names[0]}"
+```brix
+(main
+  (for (in name (list "box" ""))
+    (let maker Shows (call Maker name))
+    (match (?? (catch? (call (. maker value))) (call (. Value text) "failed"))
+      (case (call .text text)
+        (print (str "text " text))
+      )
+      (case (call .names names)
+        (print (str "names " (. names length) " " ([] names 0)))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
+(type + Value (is Union)
+  (variant text String)
+  (variant names (list String))
+)
 
-| text String
-| names [String]
+(type + Shows (is Interface)
+  (fn-do + value Value (?! Error))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shows is Interface
+(type + Maker (is Tuple)
+  (implements Shows)
+  (prop + name String)
+  (fn-expr + value _
+    (list (call checked name) "two")
+  )
+)
 
-────────────────────
-+ do value Value ?! Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ Maker is Tuple
-    is Shows
-
-+ name String
-
-────────────────────
-+ value
-
-[checked(name), "two"]
-
-━━━━━━━━━━━━━━━━━━━━
-+ do checked String ?! Error
-    - name String
-
-if name.length == 0
-    ?! Error("empty")
-= name
+(fn-do + checked String (?! Error)
+  (param name String)
+  (if (== (. name length) 0)
+    (throw (call Error "empty"))
+  )
+  (return name)
+)
 ```
 
 ```output
@@ -8549,46 +7854,39 @@ text failed
 
 ### Two values of an interface are equal where they hold one type whose fields are, an optional field among them compared by the `==` its type declares.
 
-```yumi
-. one Shows = Stored(Record(Spot(1, 2), 3))
-. two Shows = Stored(Record(Spot(1, 2), 3))
-. three Shows = Stored(Record(null, 3))
--- one == two
--- one == three
+```brix
+(main
+  (let one Shows (call Stored (call Record (call Spot 1 2) 3)))
+  (let two Shows (call Stored (call Record (call Spot 1 2) 3)))
+  (let three Shows (call Stored (call Record null 3)))
+  (print (== one two))
+  (print (== one three))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Spot is Tuple
+(type + Spot (is Tuple)
+  (prop + x I32)
+  (prop + y I32)
+  (fn-expr + (infix this == (param other Spot)) _
+    (and (== x (. other x)) (== y (. other y)))
+  )
+)
 
-+ x I32
-+ y I32
+(type + Record (is Tuple)
+  (prop + pivot (? Spot))
+  (prop + size I32)
+)
 
-────────────────────
-+ this == other Spot
+(type + Shows (is Interface)
+  (fn-expr + size I32 :get)
+)
 
-x == other.x && y == other.y
-
-━━━━━━━━━━━━━━━━━━━━
-+ Record is Tuple
-
-+ pivot Spot?
-+ size I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shows is Interface
-
-────────────────────
-+ get size I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Stored is Tuple
-    is Shows
-
-+ record Record
-
-────────────────────
-+ get size I32
-
-record.size
+(type + Stored (is Tuple)
+  (implements Shows)
+  (prop + record Record)
+  (fn-expr + size I32 :get
+    (. record size)
+  )
+)
 ```
 
 ```output
@@ -8598,58 +7896,51 @@ false
 
 ### A method that takes more arguments than the interface's, each with a default, implements it, and its defaults are evaluated at each call.
 
-```yumi
-. w = Worker()
-run(w)
-run(w)
+```brix
+(main
+  (let w (call Worker))
+  (call run w)
+  (call run w)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
-    - d Doer
+(fn-do + run _
+  (param d Doer)
+  (print (str "got " (call (. d act) 3)))
+  (print (str "pure " (call (. d pure) 4)))
+)
 
--- "got ${d.act(3)}"
--- "pure ${d.pure(4)}"
+(type + Doer (is Interface)
+  (fn-do + act Int
+    (param n Int)
+  )
+  (fn-expr + pure Int
+    (param n Int)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Doer is Interface
+(type + Worker
+  (implements Doer)
+  (prop + count _ (= 0))
+  (fn-do + act Int
+    (param n Int)
+    (param scale _ (= 10))
+    (param extra _ (= (call next)))
+    (param flag _ (= false))
+    (+= count 1)
+    (print (str "act n=" n " scale=" scale " extra=" extra " flag=" flag " count=" count))
+    (return (+ (* n scale) extra))
+  )
+  (fn-expr + pure Int
+    (param n Int)
+    (param plus (? Int) (= null))
+    (+ n (?? plus 100))
+  )
+)
 
-────────────────────
-+ do act Int
-    - n Int
-
-────────────────────
-+ pure Int
-    - n Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Worker
-    is Doer
-
-+ count = 0
-
-────────────────────
-+ do act Int
-    - n Int
-    - scale = 10
-    - extra = next()
-    - flag = false
-
-count += 1
--- "act n=$n scale=$scale extra=$extra flag=$flag count=$count"
-= n * scale + extra
-
-────────────────────
-+ pure Int
-    - n Int
-    - plus Int? = null
-
-n + (plus ?? 100)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do next Int
-
--- "next"
-= 7
+(fn-do + next Int
+  (print "next")
+  (return 7)
+)
 ```
 
 ```output
@@ -8665,38 +7956,36 @@ pure 104
 
 ### A loop over a class that delegates two iterables reads the last, converting its items.
 
-```yumi
-. inbox = Inbox()
-inbox.feed()
-for message in inbox
-    -- message
--- "done"
+```brix
+(main
+  (let inbox (call Inbox))
+  (call (. inbox feed))
+  (for (in message inbox)
+    (print message)
+  )
+  (print "done")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Inbox
+(type + Inbox
+  (delegate (of Iterable Int))
+  (prop _ counts (channel Int))
+  (delegate (of Iterable Float))
+  (prop _ notes (channel Note))
+  (fn-do + feed _
+    (do-new
+      (<- notes (call Note 1))
+      (<- notes (call Note 2))
+      (call (. notes close))
+    )
+  )
+)
 
-as Iterable'Int for
-_ counts Int<>
-as Iterable'Float for
-_ notes Note<>
-
-────────────────────
-+ do feed
-
-do new
-    notes <- Note(1)
-    notes <- Note(2)
-    notes.close()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Note is Tuple
-
-+ value Int
-
-────────────────────
-+ to Float
-
-value * 1.5
+(type + Note (is Tuple)
+  (prop + value Int)
+  (fn-to-expr + Float
+    (* value 1.5)
+  )
+)
 ```
 
 ```output
@@ -8707,81 +7996,79 @@ done
 
 ### A class that leaves out a getter its interface declares without a body and with a result does not compile.
 
-```yumi crash
-. source Source = Lines()
--- source.revision
+```brix crash
+(main
+  (let source Source (call Lines))
+  (print (. source revision))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Source is Interface
+(type + Source (is Interface)
+  (fn-expr + revision U64 :get)
+)
 
-────────────────────
-+ get revision U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Lines
-    is Source
+(type + Lines
+  (implements Source)
+)
 ```
 
 ```output
 Exception: Lines does not implement "revision", which Source declares without a body; declare "revision" in Lines
-<no file:12>
-    + Lines
-    ^^^^^^
+<no file:11>
+    (type + Lines
+    ^^^^^^^^^^^^
 Interface:
-<no file:9>
-    + get revision U64
+<no file:8>
+      (fn-expr + revision U64 :get)
 ```
 
 ### A class that leaves out a function its interface declares without a body and with a result does not compile once a value of it is made a value of the interface, though nothing calls the function.
 
-```yumi compile-error
-. shape Shape = Blob()
--- "made"
+```brix compile-error
+(main
+  (let shape Shape (call Blob))
+  (print "made")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Interface
+(type + Shape (is Interface)
+  (fn-expr + area Float)
+)
 
-────────────────────
-+ area Float
-
-━━━━━━━━━━━━━━━━━━━━
-+ Blob
-    is Shape
+(type + Blob
+  (implements Shape)
+)
 ```
 
 ```output
 Exception: Blob does not implement "area", which Shape declares without a body; declare "area" in Blob
-<no file:12>
-    + Blob
-    ^^^^^
+<no file:11>
+    (type + Blob
+    ^^^^^^^^^^^
 Interface:
-<no file:9>
-    + area Float
+<no file:8>
+      (fn-expr + area Float)
 ```
 
 ### A class may leave a function its interface requires to the classes derived from it, as long as no value known by the class alone is made a value of the interface.
 
-```yumi
-. shape Shape = Square()
--- shape.area()
+```brix
+(main
+  (let shape Shape (call Square))
+  (print (call (. shape area)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Interface
+(type + Shape (is Interface)
+  (fn-expr + area Float)
+)
 
-────────────────────
-+ area Float
+(type + Base
+  (implements Shape)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-    is Shape
-
-━━━━━━━━━━━━━━━━━━━━
-+ Square is Base
-
-────────────────────
-+ area Float
-
-4.0
+(type + Square (is Base)
+  (fn-expr + area Float
+    4.0
+  )
+)
 ```
 
 ```output
@@ -8790,133 +8077,125 @@ Interface:
 
 ### An interface stores nothing, so a property it declares is an error that names the getter to declare instead, one that each type that is the interface answers.
 
-```yumi compile-error
-. shape Shape = Square()
--- shape.name
+```brix compile-error
+(main
+  (let shape Shape (call Square))
+  (print (. shape name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Interface
+(type + Shape (is Interface)
+  (prop + name String)
+)
 
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Square
-    is Shape
-
-+ name = "square"
+(type + Square
+  (implements Shape)
+  (prop + name _ (= "square"))
+)
 ```
 
 ```output
 Exception: Shape is an interface, so it cannot store "name"; declare a getter for the types that are Shape to answer, as in "+ get name String"
 <no file:8>
-    + name String
-    ^^^^^^^^^^^^^
+      (prop + name String)
+      ^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### An interface stores nothing, so a property it declares with a value is an error that names the getter to declare, which gives the value to each type that is the interface and has no other.
 
-```yumi compile-error
-. shape Shape = Square()
--- shape.name
+```brix compile-error
+(main
+  (let shape Shape (call Square))
+  (print (. shape name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Interface
+(type + Shape (is Interface)
+  (prop + name _ (= "shape"))
+)
 
-+ name = "shape"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Square
-    is Shape
+(type + Square
+  (implements Shape)
+)
 ```
 
 ```output
 Exception: Shape is an interface, so it cannot store "name"; declare a getter that gives the value, with "=>" in place of "="
 <no file:8>
-    + name = "shape"
-    ^^^^^^^^^^^^^^^^
+      (prop + name _ (= "shape"))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### An interface cannot hold a state machine, which keeps its cases.
 
-```yumi compile-error
-. t = Door()
--- t.phase
+```brix compile-error
+(main
+  (let t (call Door))
+  (print (. t phase))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Gate is Interface
+(type + Gate (is Interface)
+  (prop + phase _
+    (machine
+      (state closed)
+    )
+  )
+)
 
-────────────────────
-+ phase ~>
-
-~> closed
-
-━━━━━━━━━━━━━━━━━━━━
-+ Door
-    is Gate
+(type + Door
+  (implements Gate)
+)
 ```
 
 ```output
 Exception: Gate is an interface, so it cannot hold a state machine; declare the machine in the classes that are Gate
-<no file:11>
-    ~> closed
-    ^^^^^^^^^
+<no file:10>
+          (state closed)
+          ^^^^^^^^^^^^^^
 ```
 
-```yumi
-. sub = SubHolder(Named("sub"))
--- sub.target.name()
-. box = HolderBox(Named("box"))
--- box.held.target.name()
+```brix
+(main
+  (let sub (call SubHolder (call Named "sub")))
+  (print (call (. sub target name)))
+  (let box (call HolderBox (call Named "box")))
+  (print (call (. box held target name)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Naming is Interface
+(type + Naming (is Interface)
+  (fn-expr + name String)
+)
 
-────────────────────
-+ name String
+(type + Named
+  (implements Naming)
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+  (fn-expr + name _
+    text
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named
-    is Naming
+(type + Holder
+  (prop + target Naming)
+  (fn-do + This _
+    (param target _)
+  )
+)
 
-+ text String
+(type + SubHolder (is Holder)
+  (fn-do + This _
+    (param named Named)
+    (call super named)
+  )
+)
 
-────────────────────
-+ This
-    - text
-
-────────────────────
-+ name
-
-text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ target Naming
-
-────────────────────
-+ This
-    - target
-
-━━━━━━━━━━━━━━━━━━━━
-+ SubHolder is Holder
-
-────────────────────
-+ This
-    - named Named
-
-super(named)
-
-━━━━━━━━━━━━━━━━━━━━
-+ HolderBox
-
-+ held Holder
-
-────────────────────
-+ This
-    - named Named
-
-held = Holder(named)
+(type + HolderBox
+  (prop + held Holder)
+  (fn-do + This _
+    (param named Named)
+    (= held (call Holder named))
+  )
+)
 ```
 
 ```output
@@ -8926,49 +8205,51 @@ box
 
 ### An interface a class declares must name a type
 
-```yumi compile-error
-. thing = Thing()
--- thing.name
+```brix compile-error
+(main
+  (let thing (call Thing))
+  (print (. thing name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is NoSuchInterface
-
-+ name = "thing"
+(type + Thing
+  (implements NoSuchInterface)
+  (prop + name _ (= "thing"))
+)
 ```
 
 ```output
 Exception: Type "NoSuchInterface" not found
-<no file:7>
-        is NoSuchInterface
-           ^^^^^^^^^^^^^^^
+<no file:8>
+      (implements NoSuchInterface)
+                  ^^^^^^^^^^^^^^^
 ```
 
 ### A class matched against an interface no class implements compiles, and the arm is never taken.
 
-```yumi
-. node = Node()
-. found = node.find'Opener()
--- if found then "found" else "none"
--- node is Opener
+```brix
+(main
+  (let node (call Node))
+  (let found (call (of (. node find) Opener)))
+  (print (if-expr found "found" "none"))
+  (print (is node Opener))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Opener is Interface
+(type + Opener (is Interface)
+  (fn-do + open _)
+)
 
-────────────────────
-+ do open
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node
-
-────────────────────
-+ do find'Target
-
-. items [Node] = [this]
-for item in items
-    match? item
-        | target Target
-            = target
+(type + Node
+  (fn-do + (of find Target) _
+    (let items (list Node) (list this))
+    (for (in item items)
+      (match? item
+        (case (: target Target)
+          (return target)
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -8978,34 +8259,32 @@ false
 
 ### A stored property answers an interface getter that returns an optional of the property's type, and a class that leaves the getter to its default answers null.
 
-```yumi
-. plain Shape = Plain()
-. owned Shape = Owned()
--- plain.revision == null
--- owned.revision!.value
+```brix
+(main
+  (let plain Shape (call Plain))
+  (let owned Shape (call Owned))
+  (print (== (. plain revision) null))
+  (print (. (!! (. owned revision)) value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Rev
+(type + Rev
+  (prop + value Int (= 7))
+)
 
-+ value Int = 7
+(type + Shape (is Interface)
+  (fn-expr + revision (? Rev) :get
+    null
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Interface
+(type + Plain
+  (implements Shape)
+)
 
-────────────────────
-+ get revision Rev?
-
-null
-
-━━━━━━━━━━━━━━━━━━━━
-+ Plain
-    is Shape
-
-━━━━━━━━━━━━━━━━━━━━
-+ Owned
-    is Shape
-
-+ revision := Rev()
+(type + Owned
+  (implements Shape)
+  (prop + revision _ (:= (call Rev)))
+)
 ```
 
 ```output
@@ -9015,81 +8294,79 @@ true
 
 ### A step function an interface declares with a result and no steps has no body, so a class made the interface must declare it.
 
-```yumi compile-error
-. walker Walker = Thing()
--- walker.step()
+```brix compile-error
+(main
+  (let walker Walker (call Thing))
+  (print (call (. walker step)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Walker is Interface
+(type + Walker (is Interface)
+  (fn-do + step Int)
+)
 
-────────────────────
-+ do step Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Walker
+(type + Thing
+  (implements Walker)
+)
 ```
 
 ```output
 Exception: Thing does not implement "step", which Walker declares without a body; declare "step" in Thing
-<no file:12>
-    + Thing
-    ^^^^^^
+<no file:11>
+    (type + Thing
+    ^^^^^^^^^^^^
 Interface:
-<no file:9>
-    + do step Int
+<no file:8>
+      (fn-do + step Int)
 ```
 
 ### A missing operator an interface declares is named as the interface writes it.
 
-```yumi compile-error
-. source Source = Thing()
--- "made"
+```brix compile-error
+(main
+  (let source Source (call Thing))
+  (print "made")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Source is Interface
+(type + Source (is Interface)
+  (fn-expr + (prefix <- this) (? Int))
+)
 
-────────────────────
-+ <- this Int?
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Source
+(type + Thing
+  (implements Source)
+)
 ```
 
 ```output
 Exception: Thing does not implement "<- this", which Source declares without a body; declare "<- this" in Thing
-<no file:12>
-    + Thing
-    ^^^^^^
+<no file:11>
+    (type + Thing
+    ^^^^^^^^^^^^
 Interface:
-<no file:9>
-    + <- this Int?
+<no file:8>
+      (fn-expr + (prefix <- this) (? Int))
 ```
 
 ### An assignment to a property of a class that leaves an interface's getter and setter to their defaults calls the default setter.
 
-```yumi
-. holder = Holder()
-holder.label = "a"
--- holder.label
+```brix
+(main
+  (let holder (call Holder))
+  (= (. holder label) "a")
+  (print (. holder label))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Host is Interface
+(type + Host (is Interface)
+  (fn-expr + label String :get
+    "default"
+  )
+  (fn-do + label _ :set (param value String)
+    (print (str "set " value))
+  )
+)
 
-────────────────────
-+ get label String
-
-"default"
-
-────────────────────
-+ do label = value String
-
--- "set $value"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-    is Host
+(type + Holder
+  (implements Host)
+)
 ```
 
 ```output
@@ -9099,33 +8376,30 @@ default
 
 ### A property a subclass stores in place of the default getter and setter of an interface its base class declares answers for them through a value of the base class.
 
-```yumi
-. base Base = Child()
--- base.label
-base.label = "stored"
--- base.label
+```brix
+(main
+  (let base Base (call Child))
+  (print (. base label))
+  (= (. base label) "stored")
+  (print (. base label))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Host is Interface
+(type + Host (is Interface)
+  (fn-expr + label String :get
+    "default"
+  )
+  (fn-do + label _ :set (param value String)
+    (print (str "default " value))
+  )
+)
 
-────────────────────
-+ get label String
+(type + Base
+  (implements Host)
+)
 
-"default"
-
-────────────────────
-+ do label = value String
-
--- "default $value"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-    is Host
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-+ label = "child"
+(type + Child (is Base)
+  (prop + label _ (= "child"))
+)
 ```
 
 ```output

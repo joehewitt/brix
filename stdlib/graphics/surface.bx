@@ -1,0 +1,45 @@
+(import ./canvas)
+(import /BxGraphics/BxGraphics.h)
+
+(type + SharedSurface
+  (implements Closable)
+  (prop + native Pointer)
+  (fn-do + This _ (?! IOError)
+    (param pixel-width I32)
+    (param pixel-height I32)
+    (let created (call C:brixGraphicsSurfaceCreate pixel-width pixel-height))
+    (throw (call IOError (str "Unable to create a " pixel-width " by " pixel-height " surface")) (if (not created)))
+    (return (call This created))
+  )
+  (fn-do + This _
+    (param native _)
+  )
+  (fn-expr + pixel-width I32 :get
+    (call C:brixGraphicsSurfaceGetPixelWidth native)
+  )
+  (fn-expr + pixel-height I32 :get
+    (call C:brixGraphicsSurfaceGetPixelHeight native)
+  )
+  (fn-do + make-port U32
+    (return-if 0 (if (not native)))
+    (return (call C:brixGraphicsSurfaceCreateMachPort native))
+  )
+  (fn-do + canvas (? RasterCanvas)
+    (param scale F64)
+    (let graphics (call C:brixGraphicsCanvasCreateWithSurface native scale))
+    (return-if null (if (not graphics)))
+    (return (call RasterCanvas graphics))
+  )
+  (fn-do + close _
+    (return-if (if (not native)))
+    (call C:brixGraphicsSurfaceRelease native)
+    (= native (call Pointer))
+  )
+)
+
+(fn-do + shared-surface-from-port (? SharedSurface)
+  (param port U32)
+  (let found (call C:brixGraphicsSurfaceLookUpMachPort port))
+  (return-if null (if (not found)))
+  (return (call SharedSurface found))
+)

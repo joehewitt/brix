@@ -1,0 +1,85 @@
+(import ./path)
+(import /stream/aggregate)
+
+(type + VectorEffect
+  (prop + enabled Bool (= true))
+  (fn-expr + (infix this == (param other VectorEffect)) _
+    (call equals other)
+  )
+  (fn-expr + equals Bool
+    (param other VectorEffect)
+    (== (as this Pointer) (as other Pointer))
+  )
+  (fn-expr + combines-geometry Bool :get
+    false
+  )
+  (fn-expr + apply (list Path)
+    (param source (list Path))
+    source
+  )
+  (fn-expr + copy VectorEffect
+    (call VectorEffect)
+  )
+  (fn-do + with-enabled VectorEffect
+    (param value Bool)
+    (let result (call copy))
+    (= (. result enabled) value)
+    (return result)
+  )
+)
+
+(type + VectorEffects
+  (prop _ vector-effects (list VectorEffect))
+  (fn-do + This _)
+  (fn-do + This _
+    (param effects (list VectorEffect))
+    (for (in effect effects)
+      (+= vector-effects effect)
+    )
+  )
+  (fn-do + items (list VectorEffect) :get
+    (for (in effect vector-effects)
+      (yield effect)
+    )
+  )
+  (fn-expr + length _ :get
+    (. vector-effects length)
+  )
+  (fn-expr + (infix this == (param other VectorEffects)) _
+    (== vector-effects (. other vector-effects))
+  )
+  (fn-expr + combines-geometry Bool :get
+    (call some vector-effects (:where (and (. each enabled) (. each combines-geometry))))
+  )
+  (fn-expr + has-enabled Bool :get
+    (call some vector-effects (:where (. each enabled)))
+  )
+  (fn-do + apply (list Path)
+    (param source (list Path))
+    (let result source)
+    (for (in effect vector-effects)
+      (if (. effect enabled)
+        (= result (call (. effect apply) result))
+      )
+    )
+    (return result)
+  )
+  (fn-do + copy VectorEffects
+    (let result (list VectorEffect))
+    (for (in effect vector-effects)
+      (+= result (call (. effect with-enabled) (. effect enabled)))
+    )
+    (return (call VectorEffects result))
+  )
+  (fn-do + followed-by VectorEffects
+    (param outer VectorEffects)
+    (let result (list VectorEffect))
+    (for (in effect vector-effects)
+      (+= result effect)
+    )
+    (for (in effect (. outer items))
+      (+= result effect)
+    )
+    (return (call VectorEffects result))
+  )
+)

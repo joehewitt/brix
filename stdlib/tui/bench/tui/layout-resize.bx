@@ -1,0 +1,63 @@
+; benchmark.meta description: Measures repeated terminal-style resize layout updates.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: tui,compile-timing
+(blank)
+(import /core/markup)
+(import /tui/box)
+(import /tui/layout)
+(import /tui/primitives)
+(import /tui/text)
+(blank)
+
+(main
+  (let root (call BenchResizeRoot))
+  (call markup-mount-root root root)
+  (blank)
+  (for (in row-index (..< 0 24))
+    (let row (call BenchResizeRow))
+    (call markup-append root row)
+    (for (in cell-index (..< 0 12))
+      (let cell (call BenchResizeCell))
+      (call markup-append row cell)
+      (call markup-append cell (call Label (str "r" row-index "-c" cell-index)))
+    )
+  )
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (blank)
+  (let checksum Size 0)
+  (for (in frame (..< 0 96))
+    (= (. root bounds) (call Rect 0 0 (+ 80 (* (call Coord (% frame 8)) 5)) (+ 24 (call Coord (% frame 5)))))
+    (call (. root invalidate-layout))
+    (call (. root update-layout))
+    (+= checksum (+ (. root inner-height) (. root inner-width) frame))
+  )
+  (blank)
+  (print (str "bench-result tui/layout-resize checksum=" checksum))
+)
+
+(type + BenchResizeRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (blank)
+  (rule This
+    (= layout flex-col)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
+
+(type + BenchResizeRow (is Box)
+  (rule This
+    (= layout flex-row)
+    (= flex 1)
+  )
+)
+
+(type + BenchResizeCell (is Box)
+  (rule This
+    (= layout flow-col)
+    (= flex 1)
+  )
+)

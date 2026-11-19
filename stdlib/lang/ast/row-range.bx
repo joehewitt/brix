@@ -1,0 +1,49 @@
+(import /core/arena)
+(import /core/scratch)
+(import /core/table)
+
+(type + (of RowRange ''Row) (is Tuple)
+  ; A contiguous run of rows in one pool, as the first row's index and the row count. The type
+  ; parameter names the row type, so a range over the slot table reads as one and is never
+  ; applied to the scope table by mistake. An empty range has no rows and no sentinel: every pool
+  ; view slices it directly and yields nothing.
+  (blank)
+  (prop + start U32)
+  (prop + count U32)
+  (fn-expr + end U32 :get @inline
+    (+ start count)
+  )
+  (fn-expr + is-empty Bool :get @inline
+    (== count 0)
+  )
+)
+
+(extend + (of ImmutableArray ''Item ''Backing)
+  (fn-expr + (index-get this (param range (of RowRange Item))) This @inline
+    ([] this (..< (. range start) (. range end)))
+  )
+)
+
+(extend + (of Array ''Item ''Backing)
+  (fn-expr + (index-get this (param range (of RowRange Item))) This @inline
+    ([] this (..< (. range start) (. range end)))
+  )
+)
+
+(extend + (of Scratch ''Item)
+  (fn-expr + (index-get this (param range (of RowRange Item))) (of ImmutableArray Item ArenaBacking) @inline
+    (call span (. range start) (. range count))
+  )
+)
+
+(extend + (of Table ''Row)
+  (fn-expr + (index-get this (param range (of RowRange Row))) (of TableSpan Row) @inline
+    ([] this (..< (. range start) (. range end)))
+  )
+)
+
+(extend + (of ImmutableTable ''Row)
+  (fn-expr + (index-get this (param range (of RowRange Row))) (of ImmutableTableSpan Row) @inline
+    ([] this (..< (. range start) (. range end)))
+  )
+)

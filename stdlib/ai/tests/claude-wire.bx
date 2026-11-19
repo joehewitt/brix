@@ -1,0 +1,515 @@
+(import /ai)
+(import /ai/claude/wire)
+(import /data/json)
+(import /data/jsonl)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Claude Wire Text Turn"))
+  (call (. cases run) text-turn-tests)
+  (= cases (call (. cases then) "Claude Wire Tool Use" tool-use-tests))
+  (= cases (call (. cases then) "Claude Wire Unstreamed And Ignored Lines" passive-line-tests))
+  (= cases (call (. cases then) "Claude Wire Turn Failures" failure-tests))
+  (= cases (call (. cases then) "Claude Wire Arguments" argument-tests))
+  (= cases (call (. cases then) "Claude Wire Prompts" prompt-tests))
+  (return cases)
+)
+
+(fn-do _ text-turn-tests TestCase
+  (param t TestCase)
+  (call (. t expect)
+    (block
+      (arg "a streamed turn becomes part events")
+      (arg (call (. (call text-turn-events) trim)))
+      (arg (call summaries (call text-turn-lines)))
+    )
+  )
+  (return t)
+)
+
+(fn-do _ tool-use-tests TestCase
+  (param t TestCase)
+  (call (. t expect) "a tool call streams its arguments" (call (. (call tool-use-events) trim)) (call summaries (call tool-use-lines)))
+  (call (. t expect)
+    (block
+      (arg "tool results keep their outcome")
+      (arg (call (. (call tool-result-events) trim)))
+      (arg (call summaries (call tool-result-lines)))
+    )
+  )
+  (return t)
+)
+
+(fn-do _ passive-line-tests TestCase
+  (param t TestCase)
+  (call (. t expect)
+    (block
+      (arg "an unstreamed message is whole")
+      (arg (call (. (call unstreamed-events) trim)))
+      (arg (call summaries (call unstreamed-lines)))
+    )
+  )
+  (call (. t expect) "unknown and subagent lines are skipped" "" (call summaries (call ignored-lines)))
+  (call (. t expect)
+    (block
+      (arg "a block of an unknown kind is skipped with its deltas")
+      (arg (call (. (call unknown-block-events) trim)))
+      (arg (call summaries (call unknown-block-lines)))
+    )
+  )
+  (return t)
+)
+
+(fn-do _ failure-tests TestCase
+  (param t TestCase)
+  (let logged-out (catch (call summaries (call logged-out-lines))))
+  (call (. t check) "a logged-out turn fails" (is logged-out AIError))
+  (if (is logged-out AIError)
+    (let error (as logged-out AIError))
+    (call (. t expect) "the failure is an authentication error" (. AIErrorKind authentication) (. error kind))
+    (call (. t expect)
+      (block
+        (arg "the failure keeps the service message")
+        (arg "Claude Code is not signed in. Run \"claude auth login\" in a terminal, then try again.")
+        (arg (. error service-message))
+      )
+    )
+  )
+  (blank)
+  (let strict (call ClaudeDecoder))
+  (= (. strict permission-mode) "auto")
+  (call (. t expect)
+    (block
+      (arg "a granted permission mode starts the turn")
+      (arg "begin:session:22222222:fast | end:session:22222222:fast")
+      (arg (call (. " | " join) (call decode-all strict (call permission-line "auto"))))
+    )
+  )
+  (let refused (catch (call decode-all strict (call permission-line "default"))))
+  (call (. t check) "a refused permission mode fails the turn" (is refused AIError))
+  (if (is refused AIError)
+    (call (. t expect)
+      (block
+        (arg "the failure names the mode and the model")
+        (arg "Claude Code would not use permission mode \"auto\" with fast; it started in \"default\"")
+        (arg (. (as refused AIError) service-message))
+      )
+    )
+  )
+  (blank)
+  (let overloaded (catch (call summaries (call overloaded-lines))))
+  (call (. t check) "an API failure fails the turn" (is overloaded AIError))
+  (if (is overloaded AIError)
+    (let error (as overloaded AIError))
+    (call (. t expect) "the status selects the error kind" (. AIErrorKind server) (. error kind))
+    (call (. t expect) "the status is kept" 529 (!! (. error http-status)))
+  )
+  (blank)
+  (let unexplained (catch (call summaries (call unexplained-lines))))
+  (call (. t check) "a failure without a message fails the turn" (is unexplained AIError))
+  (if (is unexplained AIError)
+    (let error (as unexplained AIError))
+    (call (. t expect) "an unexplained failure is unknown" (. AIErrorKind unknown) (. error kind))
+    (call (. t expect) "the first reported error is the message" "tool crashed" (. error service-message))
+  )
+  (blank)
+  (call (. t expect)
+    (block
+      (arg "an interrupted turn is cancelled")
+      (arg "done:cancellation:0:0:0")
+      (arg (call summaries (call interrupted-lines)))
+    )
+  )
+  (blank)
+  (let decoder (call ClaudeDecoder))
+  (let first (catch (call decode-all decoder (call logged-out-lines))))
+  (call (. t check) "the first turn fails" (is first AIError))
+  (call (. t expect)
+    (block
+      (arg "a later turn is unaffected")
+      (arg "done:stop:3:1:0")
+      (arg (call (. "\n" join) (call decode-all decoder (call recovered-lines))))
+    )
+  )
+  (return t)
+)
+
+(fn-do _ argument-tests TestCase
+  (param t TestCase)
+  (let plain
+    (paragraph
+      "--print|--input-format|stream-json|--output-format|stream-json|--verbose|--include-partial-messages"
+    )
+  )
+  (let bare (call AIRequest "" (list (call AIMessage (. AIMessageRole user) "hi"))))
+  (blank)
+  (let messages (call (of List AIMessage)))
+  (+= messages (call AIMessage (. AIMessageRole system) "Be brief"))
+  (+= messages (call AIMessage (. AIMessageRole developer) "Answer in French"))
+  (+= messages (call AIMessage (. AIMessageRole user) "hi"))
+  (let reply (call session-reply "11111111-1111-4111-8111-111111111111"))
+  (+= messages (call AIMessage (. AIMessageRole assistant) reply))
+  (+= messages (call AIMessage (. AIMessageRole user) "again"))
+  (let expected
+    (paragraph
+      (str plain "|--safe-mode|--model|haiku|--append-system-prompt|Be brief")
+      (blank)
+      "Answer in French|--tools|Read,Grep|--resume|11111111-1111-4111-8111-111111111111|--permission-prompts|none"
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "a request becomes flags")
+      (arg expected)
+      (arg (call (. "|" join) (call claude-arguments (call AIRequest "haiku" messages) (list "Read" "Grep") true)))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "an empty tool list disables tools")
+      (arg (str plain "|--tools||--permission-prompts|none"))
+      (arg (call (. "|" join) (call claude-arguments bare (call (of List String)))))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "an empty approval list adds nothing")
+      (arg (str plain "|--permission-prompts|none"))
+      (arg (call (. "|" join) (call claude-arguments bare null false (call (of List String)))))
+    )
+  )
+  (return t)
+)
+
+(fn-do _ prompt-tests TestCase
+  (param t TestCase)
+  (let messages (call (of List AIMessage)))
+  (+= messages (call AIMessage (. AIMessageRole system) "Be brief"))
+  (+= messages (call AIMessage (. AIMessageRole user) "one"))
+  (call (. t expect) "a new chat sends its prompt" (as "one" JSON) (call claude-prompt (call AIRequest "" messages)))
+  (blank)
+  (+= messages (call AIMessage (. AIMessageRole assistant) (call session-reply "first")))
+  (+= messages (call AIMessage (. AIMessageRole user) "two"))
+  (+= messages (call AIMessage (. AIMessageRole user) "three"))
+  (call (. t expect)
+    (block
+      (arg "only what the session has not seen is sent")
+      (arg (as "two\n\nthree" JSON))
+      (arg (call claude-prompt (call AIRequest "" messages)))
+    )
+  )
+  (+= messages (call AIMessage (. AIMessageRole assistant) (call session-reply "second")))
+  (+= messages (call AIMessage (. AIMessageRole user) "four"))
+  (call (. t expect) "the latest session is resumed" "second" (?? (call claude-session-id messages) ""))
+  (call (. t expect)
+    (block
+      (arg "the prompt follows the latest session")
+      (arg (as "four" JSON))
+      (arg (call claude-prompt (call AIRequest "" messages)))
+    )
+  )
+  (blank)
+  (+= messages (call AIMessage (. AIMessageRole assistant) "written elsewhere"))
+  (+= messages (call AIMessage (. AIMessageRole user) "five"))
+  (let foreign (catch (call claude-prompt (call AIRequest "" messages))))
+  (call (. t check) "another provider's reply cannot be continued" (is foreign AIError))
+  (return t)
+)
+
+(fn-do _ session-reply (list AIMessagePart)
+  (param id String)
+  (let parts (call (of List AIMessagePart)))
+  (+= parts (call AIExtensionPart "session" claude-provider-id "session" data))
+  (+= parts (call AITextPart "text" "reply"))
+  (return parts)
+  (blank)
+  (lazy data
+    (call (of Map String JSON)
+      (block
+        (entry "session_id" id)
+      )
+    )
+  )
+)
+
+(fn-expr _ summaries String (?! AIError) (?! JSONLineError)
+  (param text String)
+  (call (. "\n" join) (call decode-all (call ClaudeDecoder) text))
+)
+
+(fn-do _ decode-all (list String) (?! AIError) (?! JSONLineError)
+  (param decoder ClaudeDecoder)
+  (param text String)
+  (let seen (call (of List String)))
+  (for (in line (~> text \json-line))
+    (for (in event (call (. decoder decode) line))
+      (+= seen (call summary event))
+    )
+  )
+  (return seen)
+)
+
+(fn-expr _ summary _
+  (param event AIEvent)
+  (match event
+    (case (: begin AIPartBeginEvent)
+      (str "begin:" (call part-summary (. begin part)))
+    )
+    (case (: delta AIPartDeltaEvent)
+      (str "delta:" (. delta part-id) ":" (call delta-text (. delta delta)))
+    )
+    (case (: end AIPartEndEvent)
+      (str "end:" (call part-summary (. end part)))
+    )
+    (case (: done AIDoneEvent)
+      (str "done:" (call finish-summary (. done finish-reason)) ":" (call usage-summary (!! (. done usage))))
+    )
+    (default
+      "other"
+    )
+  )
+)
+
+(fn-expr _ part-summary _
+  (param part AIMessagePart)
+  (match part
+    (case (: text AITextPart)
+      (str "text:" (. text id) ":" (. text text))
+    )
+    (case (: reasoning AIReasoningPart)
+      (str "reasoning:" (. reasoning id) ":" (. reasoning text))
+    )
+    (case (: call AIToolCallPart)
+      (str "call:" (. call id) ":" (. call call-id) ":" (. call tool-name) ":" (call to-json (. call arguments)))
+    )
+    (case (: result AIToolResultPart)
+      (str "result:" (. result id) ":" output ":" (if-expr (. result is-error) "failed" "ok"))
+      (lazy output (?? (. result text-output) "none"))
+    )
+    (case (: extension AIExtensionPart)
+      (str (. extension part-type) ":" (call session-summary (. extension data)))
+    )
+    (default
+      "other"
+    )
+  )
+)
+
+(fn-expr _ session-summary _
+  (param data JSON)
+  (str (as ([] fields "session_id") String) ":" (as ([] fields "model") String))
+  (where
+    (lazy fields (as data (map String JSON)))
+  )
+)
+
+(fn-expr _ delta-text _
+  (param delta AIContentDelta)
+  (match delta
+    (case (: text AITextDelta)
+      (. text text)
+    )
+    (case (: reasoning AIReasoningDelta)
+      (. reasoning text)
+    )
+    (case (: arguments AIToolArgumentsDelta)
+      (. arguments text)
+    )
+    (default
+      "other"
+    )
+  )
+)
+
+(fn-expr _ finish-summary _
+  (param reason AIFinishReason)
+  (match reason
+    (case ({} (== it (. AIFinishReason stop)))
+      "stop"
+    )
+    (case ({} (== it (. AIFinishReason cancellation)))
+      "cancellation"
+    )
+    (default
+      "other"
+    )
+  )
+)
+
+(fn-expr _ usage-summary _
+  (param usage AIUsage)
+  (str (?? (. usage input-tokens) 0) ":" (?? (. usage output-tokens) 0) ":" (?? (. usage reasoning-tokens) 0))
+)
+
+(fn-expr _ text-turn-lines _
+  (paragraph
+    "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"brix-1\",\"response\":{\"commands\":[],\"pid\":1}}}"
+    "{\"type\":\"system\",\"subtype\":\"init\",\"cwd\":\"/work\",\"session_id\":\"11111111-1111-4111-8111-111111111111\",\"tools\":[\"Read\"],\"model\":\"claude-haiku-4-5-20251001\",\"permissionMode\":\"default\",\"apiKeySource\":\"none\"}"
+    "{\"type\":\"system\",\"subtype\":\"status\",\"status\":\"requesting\"}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"message_start\",\"message\":{\"model\":\"claude-haiku-4-5-20251001\",\"id\":\"msg_01\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}},\"parent_tool_use_id\":null,\"ttft_ms\":900}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}},\"parent_tool_use_id\":null,\"thinking_display\":\"updates\"}"
+    "{\"type\":\"system\",\"subtype\":\"thinking_tokens\",\"estimated_tokens\":50,\"estimated_tokens_delta\":50}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"\",\"estimated_tokens\":null}},\"parent_tool_use_id\":null}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"c2ln\"}},\"parent_tool_use_id\":null}"
+    "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_01\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"c2ln\"}],\"stop_reason\":null},\"parent_tool_use_id\":null}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_stop\",\"index\":0},\"parent_tool_use_id\":null}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}},\"parent_tool_use_id\":null}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"po\"}},\"parent_tool_use_id\":null}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"ng\"}},\"parent_tool_use_id\":null}"
+    "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_01\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"pong\"}],\"stop_reason\":null},\"parent_tool_use_id\":null}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_stop\",\"index\":1},\"parent_tool_use_id\":null}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":10,\"output_tokens\":50}},\"parent_tool_use_id\":null}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"message_stop\"},\"parent_tool_use_id\":null}"
+    "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"allowed\",\"resetsAt\":1791325800,\"rateLimitType\":\"five_hour\"}}"
+    "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"pong\",\"stop_reason\":\"end_turn\",\"total_cost_usd\":0.25,\"usage\":{\"input_tokens\":10,\"cache_creation_input_tokens\":4313,\"cache_read_input_tokens\":14818,\"output_tokens\":50,\"output_tokens_details\":{\"thinking_tokens\":12}},\"terminal_reason\":\"completed\",\"num_turns\":1}"
+  )
+)
+
+(fn-expr _ text-turn-events _
+  (paragraph
+    "begin:session:11111111-1111-4111-8111-111111111111:claude-haiku-4-5-20251001"
+    "end:session:11111111-1111-4111-8111-111111111111:claude-haiku-4-5-20251001"
+    "begin:reasoning:msg_01:0:"
+    "end:reasoning:msg_01:0:"
+    "begin:text:msg_01:1:"
+    "delta:msg_01:1:po"
+    "delta:msg_01:1:ng"
+    "end:text:msg_01:1:pong"
+    "done:stop:19141:50:12"
+  )
+)
+
+(fn-expr _ tool-use-lines _
+  (paragraph
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"message_start\",\"message\":{\"id\":\"msg_02\",\"role\":\"assistant\",\"content\":[]}},\"parent_tool_use_id\":null}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01\",\"name\":\"Bash\",\"input\":{},\"caller\":{\"type\":\"direct\"}}},\"parent_tool_use_id\":null}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\"}},\"parent_tool_use_id\":null}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"command\\\": \\\"touch\"}},\"parent_tool_use_id\":null}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\" probe.txt\\\"}\"}},\"parent_tool_use_id\":null}"
+    "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_02\",\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_01\",\"name\":\"Bash\",\"input\":{\"command\":\"touch probe.txt\"},\"caller\":{\"type\":\"direct\"}}]},\"parent_tool_use_id\":null,\"wire_tool_inputs\":[]}"
+    "{\"type\":\"control_request\",\"request_id\":\"req-1\",\"request\":{\"subtype\":\"can_use_tool\",\"tool_name\":\"Bash\",\"display_name\":\"Bash\",\"input\":{\"command\":\"touch probe.txt\"},\"description\":\"Create a file\",\"permission_suggestions\":[{\"type\":\"addRules\",\"behavior\":\"allow\"}],\"blocked_path\":\"/work/probe.txt\",\"tool_use_id\":\"toolu_01\"}}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_stop\",\"index\":0},\"parent_tool_use_id\":null}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}},\"parent_tool_use_id\":null}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"message_stop\"},\"parent_tool_use_id\":null}"
+    "{\"type\":\"control_request\",\"request_id\":\"req-2\",\"request\":{\"subtype\":\"hook_callback\",\"callback_id\":\"hook-1\"}}"
+  )
+)
+
+(fn-expr _ tool-use-events _
+  (paragraph
+    "begin:call:msg_02:0:toolu_01:Bash:null"
+    "delta:msg_02:0:{\"command\": \"touch"
+    "delta:msg_02:0: probe.txt\"}"
+    "end:call:msg_02:0:toolu_01:Bash:{\"command\": \"touch probe.txt\"}"
+  )
+)
+
+(fn-expr _ tool-result-lines _
+  (paragraph
+    "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"tool_use_id\":\"toolu_01\",\"type\":\"tool_result\",\"content\":\"(Bash completed with no output)\",\"is_error\":false}]},\"parent_tool_use_id\":null,\"tool_use_result\":{\"stdout\":\"\",\"stderr\":\"\",\"interrupted\":false}}"
+    "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"content\":\"The user declined this command.\",\"is_error\":true,\"tool_use_id\":\"toolu_02\"}]},\"parent_tool_use_id\":null,\"tool_use_result\":\"Error: The user declined this command.\"}"
+    "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"tool_use_id\":\"toolu_03\",\"type\":\"tool_result\",\"content\":[{\"type\":\"text\",\"text\":\"one\"},{\"type\":\"image\",\"source\":{}},{\"type\":\"text\",\"text\":\" two\"}]}]},\"parent_tool_use_id\":null}"
+    "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"[Request interrupted by user]\"}]},\"parent_tool_use_id\":null}"
+  )
+)
+
+(fn-expr _ tool-result-events _
+  (paragraph
+    "begin:result:toolu_01:result:(Bash completed with no output):ok"
+    "end:result:toolu_01:result:(Bash completed with no output):ok"
+    "begin:result:toolu_02:result:The user declined this command.:failed"
+    "end:result:toolu_02:result:The user declined this command.:failed"
+    "begin:result:toolu_03:result:one two:ok"
+    "end:result:toolu_03:result:one two:ok"
+  )
+)
+
+(fn-expr _ unstreamed-lines _
+  (paragraph
+    "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_03\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"whole\"}]},\"parent_tool_use_id\":null}"
+    "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_03\",\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_04\",\"name\":\"Read\",\"input\":{\"file_path\":\"a.txt\"}}]},\"parent_tool_use_id\":null}"
+  )
+)
+
+(fn-expr _ unstreamed-events _
+  (paragraph
+    "begin:text:msg_03:0:whole"
+    "end:text:msg_03:0:whole"
+    "begin:call:msg_03:1:toolu_04:Read:{\"file_path\": \"a.txt\"}"
+    "end:call:msg_03:1:toolu_04:Read:{\"file_path\": \"a.txt\"}"
+  )
+)
+
+(fn-expr _ permission-line _
+  (param mode String)
+  (str "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"22222222\",\"model\":\"fast\",\"permissionMode\":\"" mode "\"}")
+)
+
+(fn-expr _ unknown-block-lines _
+  (paragraph
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"message_start\",\"message\":{\"id\":\"msg_09\"}},\"parent_tool_use_id\":null}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"server_tool_use\",\"id\":\"srv_1\",\"name\":\"web_search\"}},\"parent_tool_use_id\":null}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"query\\\":\"}},\"parent_tool_use_id\":null}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}},\"parent_tool_use_id\":null}"
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}},\"parent_tool_use_id\":null}"
+  )
+)
+
+(fn-expr _ unknown-block-events _
+  (paragraph
+    "begin:text:msg_09:1:"
+    "delta:msg_09:1:ok"
+  )
+)
+
+(fn-expr _ ignored-lines _
+  (paragraph
+    "{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"inner\"}},\"parent_tool_use_id\":\"toolu_09\"}"
+    "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_04\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"inner\"}]},\"parent_tool_use_id\":\"toolu_09\"}"
+    "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"tool_use_id\":\"toolu_10\",\"type\":\"tool_result\",\"content\":\"inner\"}]},\"parent_tool_use_id\":\"toolu_09\"}"
+    "{\"type\":\"system\",\"subtype\":\"status\",\"status\":null,\"permissionMode\":\"plan\"}"
+    "{\"type\":\"control_response\",\"response\":{\"subtype\":\"error\",\"request_id\":\"brix-9\",\"error\":\"Unsupported control request subtype: no_such_request\"}}"
+    "{\"type\":\"mystery\",\"payload\":[1,2,3]}"
+    "{\"untyped\":true}"
+    "42"
+  )
+)
+
+(fn-expr _ logged-out-lines _
+  (paragraph
+    "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"22222222-2222-4222-8222-222222222222\",\"model\":\"claude-haiku-4-5-20251001\"}"
+    "{\"type\":\"assistant\",\"message\":{\"id\":\"33333333\",\"model\":\"<synthetic>\",\"role\":\"assistant\",\"stop_reason\":\"stop_sequence\",\"content\":[{\"type\":\"text\",\"text\":\"Not logged in · Please run /login\"}]},\"parent_tool_use_id\":null,\"error\":\"authentication_failed\",\"is_api_error_message\":true}"
+    "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"result\":\"Not logged in · Please run /login\",\"stop_reason\":\"stop_sequence\",\"api_error_status\":null,\"total_cost_usd\":0,\"terminal_reason\":\"api_error\"}"
+  )
+)
+
+(fn-expr _ overloaded-lines _
+  (paragraph
+    "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"result\":\"API Error: Overloaded\",\"api_error_status\":529,\"total_cost_usd\":0,\"terminal_reason\":\"api_error\"}"
+  )
+)
+
+(fn-expr _ unexplained-lines _
+  (paragraph
+    "{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":true,\"errors\":[\"tool crashed\",\"second\"],\"total_cost_usd\":0,\"terminal_reason\":\"tool_error\"}"
+  )
+)
+
+(fn-expr _ interrupted-lines _
+  (paragraph
+    "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"brix-2\",\"response\":{\"still_queued\":[]}}}"
+    "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"[Request interrupted by user]\"}]},\"parent_tool_use_id\":null}"
+    "{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":true,\"stop_reason\":null,\"total_cost_usd\":0,\"errors\":[\"[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=null\"],\"terminal_reason\":\"aborted_streaming\",\"num_turns\":2}"
+  )
+)
+
+(fn-expr _ recovered-lines _
+  (paragraph
+    "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"ok\",\"stop_reason\":\"end_turn\",\"total_cost_usd\":0,\"usage\":{\"input_tokens\":3,\"output_tokens\":1},\"terminal_reason\":\"completed\"}"
+  )
+)

@@ -11,10 +11,10 @@ visibility, the values a file holds, the order in which files start, and how a p
   each other freely. A path names the file without its extension, so `(import ./lib.bx)`{.brix} is
   a missing module. When `both.bx` and `both.yumi` sit side by side, `./both` is `both.bx`.
 - **Folder modules.** A folder is not a module, but it can hold one: a file with the folder's own
-  name. `/tui` is the file `tui/tui.yumi` under the standard library. When a folder has such a file
+  name. `/tui` is the file `tui/tui.bx` under the standard library. When a folder has such a file
   and a file of the same name sits beside the folder, the one inside the folder is the module. A
   folder with neither is a missing module, so `(import /os)`{.brix} fails, while
-  `(import /os/path)`{.brix} finds `os/path.yumi`.
+  `(import /os/path)`{.brix} finds `os/path.bx`.
 - **Platform modules.** A file named with a platform after a dot, as in `input.macos.bx`, is part
   of that platform's builds only. Importing it for another platform imports nothing. Any other
   suffix is an error, except in a file family. Platforms lists the platforms and the families of
@@ -26,7 +26,7 @@ visibility, the values a file holds, the order in which files start, and how a p
     `box.touch.ios.bx` does, which makes the file part of that platform's builds only.
   - **Only the family imports them.** The base and the family's other files may import a
     family's files. Elsewhere it is an error: `Module "./lib/box.scroll" belongs to the file
-    family of box.yumi, so only that family can import it`. Code outside imports the base, which
+    family of box.bx, so only that family can import it`. Code outside imports the base, which
     imports the files of its family.
   - **Ordinary modules.** A family's files may declare anything a module may. A class's facets are
     declared in its family; see Types.
@@ -161,7 +161,7 @@ passes its public names on to every file that imports this one.
   names of all three.
 - **Whole modules.** An export takes one module path. There is no way to pass on one name.
 - **Libraries.** A library made of several files gathers them in its folder module. `/tui` is
-  `tui/tui.yumi`, which exports the modules of the terminal library, so one import gives all of
+  `tui/tui.bx`, which exports the modules of the terminal library, so one import gives all of
   them. `/units` exports `./distance`, so importing `/units` gives the distance units too, while
   importing `/units/distance` gives only those.
 

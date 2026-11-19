@@ -1,0 +1,1070 @@
+(import ./type-store)
+(import ./types)
+(import /core/scratch)
+(import /lang/ast/ast)
+(import /lang/ast/ast-children)
+(import /lang/ast/ast-nodes)
+(import /lang/ast/decl)
+(import /lang/ast/module)
+(import /lang/ast/program)
+(import /lang/ast/row-range)
+
+(fn-expr + type-text String
+  (param types Types)
+  (param id TypeId)
+  (call (. ([] (. types rows) id) text) types)
+  (where
+    (lazy program (. types program))
+  )
+)
+
+(fn-do + type-short-name String
+  (param types Types)
+  (param id TypeId)
+  ; A type by the name of its class and the names of its arguments. An array on the collected
+  ; heap is named without its backing. A union whose cases are named and that no declaration names,
+  ; as a state machine's is, is named by its cases (`named-union-name`).
+  (let program (. types program))
+  (if (or (== id no-type) (== id invalid-type))
+    (return "?")
+  )
+  (let text (call type-text types id))
+  (match? ([] (. types rows) id)
+    (case (call .type-named-union row)
+      (= text (call named-union-name types (. row cases) (. row names) (!= (. row made-at) 0)))
+    )
+    (case (call .type-class row)
+      (= text (call class-name program (. row module) (. row decl)))
+      (let count (. row args count))
+      (if (and (== count 2) (call is-default-backing types row))
+        (= count 1)
+      )
+      (for (in position (..< 0 count))
+        (+= text (++ "'" (call type-short-name types (call (. types child-type) (. row args) position))))
+      )
+    )
+  )
+  (return text)
+)
+
+(fn-do _ named-union-name String
+  (param types Types)
+  (param cases (of RowRange TypeId))
+  (param names (of RowRange Atom))
+  (param machine Bool)
+  ; A union whose cases are named by its cases, each with what it holds, as a state machine's is
+  ; written: `state machine (.closed | .open(String))`.
+  (let parts (list String))
+  (for (in offset (..< 0 (. cases count)))
+    (let payload (call (. types child-type) cases offset))
+    (let held (if-expr (== payload (. types void-type)) "" (str "(" (call type-short-name types payload) ")")))
+    (+= parts (str "." (. (call (. types child-name) names offset) text) held))
+  )
+  (let list (call (. " | " join) parts))
+  (return (if-expr machine (str "state machine (" list ")") (str "(" list ")")))
+)
+
+(fn-do + unanswered-text String
+  (param types Types)
+  (param value TypeId)
+  (param interface TypeId)
+  (param name Atom)
+  ; The error of a type that answers no function an interface declares without a body and with
+  ; a result, which the type must answer, in the type or in the facet of it that names the interface.
+  ; An operator is named as its declaration writes it.
+  (let shown (call type-short-name types value))
+  (let member (call written-member-name (. name text)))
+  (let wanted (call type-short-name types interface))
+  (let place (?? (call naming-facet types value wanted) shown))
+  (return (str shown " does not implement \"" member "\", which " wanted " declares without a body; declare \"" member "\" in " place))
+)
+
+(fn-do _ naming-facet (? String)
+  (param types Types)
+  (param value TypeId)
+  (param wanted String)
+  ; The name of a facet of a type or of a class above it that names an interface by a name.
+  (let program (. types program))
+  (let facets (. program facets))
+  (let current value)
+  (while (and (!= current no-type) (!= (. facets count) 0))
+    (let ref (call class-ref types current))
+    (let (tuple start end) (call (. facets class-range) (. ref module) (. ref decl)))
+    (for (in position (..< start end))
+      (let facet ([] (. facets class-facets) position))
+      (let target ([] (. program modules) ([] (. facets modules) facet)))
+      (match? ([] (. target decls) ([] (. facets decls) facet))
+        (case (call .decl-extension row)
+          (for (in syntax ([] (. target syntax-pool) (. row interfaces)))
+            (return-if (?. (. row facet) text) (if (== (?. (call (. types type-syntax-name) (. target tree) syntax) text) wanted)))
+          )
+        )
+      )
+    )
+    (= current (?? (call (. types base-of) current) no-type))
+  )
+  (return null)
+)
+
+(fn-expr _ written-member-name String
+  (param name String)
+  (case? (== name "<-read")
+    "<- this"
+  )
+  (case? (== name "<-write")
+    "this <- item"
+  )
+  (case? (== name "-neg")
+    "-this"
+  )
+  (default
+    name
+  )
+)
+
+(fn-do + type-runtime-name String
+  (param types Types)
+  (param id TypeId)
+  ; The name a type answers with in a running program: a class by its name and the names of
+  ; its arguments, a parameter by its name, a closure as `Closure`, a tuple that has no name
+  ; of its own as `Tuple`, and a union that has none, or a value that may be an error, as
+  ; `Union`. An array on the collected heap is named without its backing.
+  (if (or (== id no-type) (== id invalid-type))
+    (return "?")
+  )
+  (match? ([] (. types rows) id)
+    (case (call .type-class row)
+      (let text (call class-name (. types program) (. row module) (. row decl)))
+      (let count (. row args count))
+      (if (and (== count 2) (call is-default-backing types row))
+        (= count 1)
+      )
+      (for (in position (..< 0 count))
+        (+= text (++ "'" (call type-runtime-name types (call (. types child-type) (. row args) position))))
+      )
+      (return text)
+    )
+    (case (call .type-variable row)
+      (return (. row name text))
+    )
+    (case .type-closure
+      (return "Closure")
+    )
+    (case .type-tuple
+      (return "Tuple")
+    )
+    (case .type-union
+      (return "Union")
+    )
+    (case .type-result
+      (return "Union")
+    )
+  )
+  (return (call type-text types id))
+)
+
+(fn-expr + type-runtime-key String
+  (param types Types)
+  (param id TypeId)
+  ; The key a type answers with in a running program: its key, in which every optional is
+  ; keyed as the struct that holds it, a value and a flag.
+  (call optionals-as-structs (call type-key types id))
+)
+
+(fn-do _ optionals-as-structs String
+  (param key String)
+  (let opening "Class:core:Optional(")
+  (let found (call (. key find) opening))
+  (if (== found null)
+    (return key)
+  )
+  (let head Index found)
+  (let start Index (+ head (as (. opening length) Index)))
+  (let depth 1)
+  (let end Index start)
+  (let position Index 0)
+  (for (in char key)
+    (if (and (>= position start) (!= depth 0))
+      (if (== char (char "("))
+        (+= depth 1)
+        (else-if (== char (char ")"))
+          (-= depth 1)
+          (if (== depth 0)
+            (= end position)
+          )
+        )
+      )
+    )
+    (+= position 1)
+  )
+  (let inner (call optionals-as-structs ([] key (..< start end))))
+  (let rest (call optionals-as-structs ([] key (... (+ end 1)))))
+  (return (++ ([] key (... _ head)) "Struct:optional(" inner ", Class:core/number:I8)" rest))
+)
+
+(fn-do + type-display String
+  (param types Types)
+  (param id TypeId)
+  ; A type as a diagnostic names it: a class of objects or an interface in brackets under its
+  ; module, a tuple-like type or a named union by its own name, a tuple with no name by its
+  ; fields, each under its name when it has one, and anything else by its key. A class that
+  ; is a pointer is named as the pointer it is.
+  (let program (. types program))
+  (if (or (== id no-type) (== id invalid-type))
+    (return "?")
+  )
+  (let completion (call (. types completion-of) id))
+  (let kind (. completion intrinsic))
+  (match? ([] (. types rows) id)
+    (case (call .type-named-union row)
+      (return (call named-union-name types (. row cases) (. row names) (!= (. row made-at) 0)))
+    )
+    (case (call .type-class row)
+      (if (== kind .optional)
+        (return (str "Optional:(" (call type-display types (call (. types child-type) (. row args) 0)) ")"))
+      )
+      (if (== kind .union)
+        (return (call class-name program (. row module) (. row decl)))
+      )
+      (if (== kind .function)
+        (return (str "[Function " (call type-short-name types id) "]"))
+      )
+      (if (== kind .cpointer)
+        (if (call (. types const-array-decl refers-to) (. row module) (. row decl))
+          (return (str "ConstArray'" (call type-display types (call (. types child-type) (. row args) 0))))
+        )
+        (let base (call (. types base-of) id))
+        (if base
+          (return (call type-display types base))
+        )
+        (if (== (. row args count) 1)
+          (return (str (call type-display types (call (. types child-type) (. row args) 0)) "*"))
+        )
+      )
+      (let named (call qualified-name program (. row module) (. row decl)))
+      (if (call intrinsic-is-tuple-like kind)
+        (= named (call class-name program (. row module) (. row decl)))
+      )
+      (let text (++ named (call display-arguments types row)))
+      (if (== kind .interface)
+        (return (str "[Interface " text "]"))
+      )
+      (if (call intrinsic-is-class kind)
+        (return (str "[Object " text "]"))
+      )
+      (return text)
+    )
+    (case (call .type-tuple row)
+      (let fields "")
+      (for (in offset (..< 0 (. row fields count)))
+        (if offset
+          (+= fields ", ")
+        )
+        (let name (. (call (. types child-name) (. row names) offset) text))
+        (if (!= name (str offset))
+          (+= fields (str name ": "))
+        )
+        (+= fields (call type-display types (call (. types child-type) (. row fields) offset)))
+      )
+      (return (str "Tuple:(" fields ")"))
+    )
+    (case (call .type-closure row)
+      (let written (. ([] (. program modules) (. row module)) name))
+      (return (str "[Closure " written ":" (call closure-name program (. row module) (. row decl)) "]"))
+    )
+    (case (call .type-binding row)
+      (return (str "[Binding " (call binding-name types row) "]"))
+    )
+  )
+  (return (call type-key types id))
+)
+
+(fn-do + type-source String
+  (param types Types)
+  (param id TypeId)
+  (if (or (== id no-type) (== id invalid-type))
+    (return "?")
+  )
+  (let settled (== (. ([] (. types completions) id) completion) .completion-done))
+  (let optional (and settled (== (. (call (. types completion-of) id) intrinsic) .optional)))
+  (match? ([] (. types rows) id)
+    (case (call .type-named-union row)
+      (return (call named-union-name types (. row cases) (. row names) (!= (. row made-at) 0)))
+    )
+    (case (call .type-class row)
+      (if optional
+        (return (str (call type-source types (call (. types child-type) (. row args) 0)) "?"))
+      )
+      (if (and (call (. types list-decl refers-to) (. row module) (. row decl)) (!= (. row args count) 0))
+        (return (str "[" (call type-source types (call (. types child-type) (. row args) 0)) "]"))
+      )
+      (if (and (call (. types map-decl refers-to) (. row module) (. row decl)) (> (. row args count) 1))
+        (return
+          (scope (str "[" (call type-source types (call (. types child-type) (. row args) 0)) " = " value-text "]")
+            (lazy value-text (call type-source types (call (. types child-type) (. row args) 1)))
+          )
+        )
+      )
+      (let text (call class-name (. types program) (. row module) (. row decl)))
+      (let count (. row args count))
+      (if (and (== count 2) (call is-default-backing types row))
+        (= count 1)
+      )
+      (for (in position (..< 0 count))
+        (+= text (++ "'" (call type-source types (call (. types child-type) (. row args) position))))
+      )
+      (return text)
+    )
+    (case (call .type-tuple row)
+      (let fields (list String))
+      (for (in position (..< 0 (. row fields count)))
+        (+= fields (call type-source types (call (. types child-type) (. row fields) position)))
+      )
+      (return (str "(" (call (. ", " join) fields) ")"))
+    )
+    (case (call .type-union row)
+      (let cases (list String))
+      (for (in position (..< 0 (. row cases count)))
+        (+= cases (call type-source types (call (. types child-type) (. row cases) position)))
+      )
+      (return (call (. " | " join) cases))
+    )
+    (case (call .type-variable row)
+      (return (. row name text))
+    )
+    (case .type-closure
+      (return "closure")
+    )
+    (case (call .type-binding row)
+      (let name (call binding-name types row))
+      (return (if-expr (!= (. name length) 0) (str "function " name) "function"))
+    )
+  )
+  (return (call type-display types id))
+)
+
+(fn-do + type-brix String
+  (param types Types)
+  (param id TypeId)
+  ; A type as Brix writes it, for a fix-it in a `.bx` file to give: an optional as `(? T)`, a
+  ; list as `(list T)`, a map as `(map K V)`, an array as `([] T)`, a tuple as `(tuple A B)` and
+  ; any other type with arguments as `(of Name A B)`. A type written with no form is written as
+  ; `type-source` writes it.
+  (if (or (== id no-type) (== id invalid-type))
+    (return "?")
+  )
+  (let settled (== (. ([] (. types completions) id) completion) .completion-done))
+  (let optional (and settled (== (. (call (. types completion-of) id) intrinsic) .optional)))
+  (match? ([] (. types rows) id)
+    (case (call .type-class row)
+      (if optional
+        (return (str "(? " (call type-brix types (call (. types child-type) (. row args) 0)) ")"))
+      )
+      (let count (if-expr (and (== (. row args count) 2) (call is-default-backing types row)) 1 (. row args count)))
+      (return-if (call type-source types id) (if (== count 0)))
+      (let first (call type-brix types (call (. types child-type) (. row args) 0)))
+      (if (call (. types list-decl refers-to) (. row module) (. row decl))
+        (return (str "(list " first ")"))
+      )
+      (if (and (call (. types map-decl refers-to) (. row module) (. row decl)) (> count 1))
+        (return (str "(map " first " " (call type-brix types (call (. types child-type) (. row args) 1)) ")"))
+      )
+      (if (and (call (. types array-decl refers-to) (. row module) (. row decl)) (== count 1))
+        (return (str "([] " first ")"))
+      )
+      (let text (str "(of " (call class-name (. types program) (. row module) (. row decl))))
+      (for (in position (..< 0 count))
+        (+= text (++ " " (call type-brix types (call (. types child-type) (. row args) position))))
+      )
+      (return (++ text ")"))
+    )
+    (case (call .type-tuple row)
+      (let fields (list String))
+      (for (in position (..< 0 (. row fields count)))
+        (+= fields (call type-brix types (call (. types child-type) (. row fields) position)))
+      )
+      (return (str "(tuple " (call (. " " join) fields) ")"))
+    )
+  )
+  (return (call type-source types id))
+)
+
+(fn-do + string-cast-text (? String)
+  (param types Types)
+  (param id TypeId)
+  ; The text a value becomes where its type has no converter to String, for the types that have
+  ; one here: nothing is the name a diagnostic gives it, as is a binding or a value of a
+  ; function type, a pointer is that name in brackets, and an object is the name of the class
+  ; it is held as, or of the interface.
+  (let kind (. (call (. types completion-of) id) intrinsic))
+  (if (or (== kind .void) (== kind .binding) (== kind .function))
+    (return (call type-display types id))
+  )
+  (if (== kind .cpointer)
+    (return (str "[CPointer " (call type-display types id) "]"))
+  )
+  (if (or (== kind .class) (== kind .interface))
+    (match? ([] (. types rows) id)
+      (case .type-class
+        (return (call type-display types id))
+      )
+    )
+  )
+  (return null)
+)
+
+(fn-expr _ display-arguments String
+  (param types Types)
+  (param row ClassType)
+  ; An array on the collected heap is named without its backing.
+  (call (. "" join) (in (str "'" (call type-display types (call (. types child-type) (. row args) each))) (..< 0 count)))
+  (where
+    (lazy count (if-expr (and (== (. row args count) 2) (call is-default-backing types row)) 1 (. row args count)))
+  )
+)
+
+(fn-expr _ is-default-backing Bool
+  (param types Types)
+  (param row ClassType)
+  (and (call (. types array-decl refers-to) (. row module) (. row decl)) gc-backed)
+  (where
+    (lazy gc-backed (== (call (. types child-type) (. row args) 1) (. types gc-backing-type)))
+  )
+)
+
+(fn-do _ binding-name String
+  (param types Types)
+  (param row BindingType)
+  ; A binding is named for what it calls: the type a constructor makes, by the name it has in
+  ; a running program, the function, or a nested function as a stack trace names it. One of a
+  ; value of a function type has no name.
+  (let program (. types program))
+  (if (and (== (. row form) .bound-constructor) (!= (. row object) no-type))
+    (return (call type-runtime-name types (. row object)))
+  )
+  (if (== (. row form) .bound-closure)
+    (match? ([] (. types rows) (. row object))
+      (case (call .type-closure nested)
+        (return (call closure-name program (. nested module) (. nested decl)))
+      )
+    )
+    (return "")
+  )
+  (match? ([] (. ([] (. program modules) (. row module)) decls) (. row decl))
+    (case (call .decl-function fn)
+      (if (. fn name)
+        (return (. fn name text))
+      )
+    )
+  )
+  (return "")
+)
+
+(fn-do + closure-name String
+  (param program Program)
+  (param module ModuleId)
+  (param decl DeclId)
+  (param property (? Atom) (= null))
+  ; A closure is named for the variable whose declaration or assignment it is written in,
+  ; within the function that writes it, as the declarations note it. The function generated for
+  ; a comprehension or a loop on a stream is named for the container of its loop, as is the one
+  ; for a stream piped through a pattern for the stream, and the one for the right side of a
+  ; pipe has one name, as has the one that runs a live statement again: `assignment`, `var` for
+  ; a declaration, or `prop-` and the property's name for an attribute of a markup element, and
+  ; for an argument of one given by position, the property its parameter names, `property`.
+  ; The one that tests a `whenever` clause again is `whenever`, and the one that tests the
+  ; condition a style rule is applied under again `style-gate`. One that builds an arm of a
+  ; markup branch region is `markup-branch-arm`, or of a match region `markup-match-arm`, and the
+  ; one that selects its arm again `markup-branch`. What is written on the left of a pipe is
+  ; written by the function the pipe is in.
+  (let owner ([] (. program modules) module))
+  (let tree (. owner tree))
+  (let named 0u32)
+  (match? ([] (. owner decls) decl)
+    (case (call .decl-function fn)
+      (if (== (. fn kind) .pipeline-decl)
+        (return "(pipeline)")
+      )
+      (if (== (. fn kind) .live-decl)
+        (if (!= (call (. tree argument-element) (. fn syntax)) 0)
+          (return (if-expr property (str "prop-" (. property text)) "prop"))
+        )
+        (if (!= (call (. tree attribute-element) (. fn syntax)) 0)
+          (match? ([] (. tree nodes) (. fn syntax))
+            (case (call .node-assign row)
+              (match? ([] (. tree nodes) (. row lhs))
+                (case (call .node-identifier target)
+                  (return (str "prop-" (. target name text)))
+                )
+              )
+            )
+          )
+        )
+        (return (if-expr (is ([] (. tree nodes) (. fn syntax)) .node-declare) "var" "assignment"))
+      )
+      (if (== (. fn kind) .whenever-decl)
+        (return "whenever")
+      )
+      (if (== (. fn kind) .gate-decl)
+        (return "style-gate")
+      )
+      (if (== (. fn kind) .branch-arm-decl)
+        (return (if-expr (!= (call (. tree body-arm) (. fn syntax)) 0) "markup-match-arm" "markup-branch-arm"))
+      )
+      (if (== (. fn kind) .branch-decl)
+        (return "markup-branch")
+      )
+      (if (== (. fn kind) .row-decl)
+        (return "collection-row")
+      )
+      (if (== (. fn kind) .source-decl)
+        (return "collection-source")
+      )
+      (if (== (. fn kind) .key-decl)
+        (return "collection-key")
+      )
+      (if (== (. fn kind) .slot-decl)
+        (return "markup-slot")
+      )
+      (if (== (. fn kind) .binder-decl)
+        (return "markup-id-binder")
+      )
+      (if (== (. fn kind) .subscriber-decl)
+        (match? ([] (. tree nodes) (. fn syntax))
+          (case (call .node-for-block row)
+            (match? ([] (. tree nodes) (. row loop))
+              (case (call .node-loop-syntax loop)
+                (return (str "on " (call description-of tree (. loop container))))
+              )
+            )
+          )
+          (case (call .node-iterator-expression row)
+            (match? ([] (. tree nodes) (. row loop))
+              (case (call .node-loop-syntax loop)
+                (return (str "on " (call description-of tree (. loop container))))
+              )
+            )
+          )
+        )
+      )
+      (if (== (. fn kind) .iterator-decl)
+        (match? ([] (. tree nodes) (. fn syntax))
+          (case (call .node-iterator-expression row)
+            (match? ([] (. tree nodes) (. row loop))
+              (case (call .node-loop-syntax loop)
+                (return (str "on " (call description-of tree (. loop container))))
+              )
+            )
+          )
+          (case (call .node-pipeline-expression row)
+            (return (str "on " (call description-of tree (. row left))))
+          )
+          (case (call .node-binary-expression row)
+            (return (str "on " (call description-of tree (. row lhs))))
+          )
+        )
+      )
+      (= named (. fn named-by))
+    )
+  )
+  (if (== named 0)
+    (return "anon")
+  )
+  (match? ([] (. tree nodes) named)
+    (case (call .node-declare row)
+      (return (call declared-name tree (. row left)))
+    )
+    (case (call .node-assign row)
+      (return (call target-name tree (. row lhs)))
+    )
+  )
+  (return "anon")
+)
+
+(fn-do + description-of String
+  (param tree AST)
+  (param id SyntaxId)
+  ; How the reference describes an expression in the name of a function generated for it: a
+  ; name as it is written, a property after what it is read from, and anything else as a
+  ; node.
+  (match? ([] (. tree nodes) id)
+    (case (call .node-identifier row)
+      (return (. row name text))
+    )
+    (case (call .node-ref-identifier row)
+      (return (. row name text))
+    )
+    (case (call .node-symbol row)
+      (return (. row name text))
+    )
+    (case (call .node-c-identifier row)
+      (return (. row name text))
+    )
+    (case (call .node-get-expression row)
+      (return (str (call description-of tree (. row object)) "." (. row name text)))
+    )
+    (case (call .node-style-read-expression row)
+      (return (str "\$\$" (. row name text)))
+    )
+    (case (call .node-style-property-expression row)
+      (let component (. row component))
+      (return (if-expr component (str (. row name text) "." (. component text)) (. row name text)))
+    )
+    (case (call .node-markup-read-expression row)
+      (return (str "%" (. row name text)))
+    )
+  )
+  (return "node")
+)
+
+(fn-do _ declared-name String
+  (param tree AST)
+  (param left SyntaxId)
+  ; A declaration of several locals together names a closure for the last of them.
+  (match? ([] (. tree nodes) left)
+    (case (call .node-tuple-syntax row)
+      (if (!= (. row items count) 0)
+        (return (call declared-name tree ([] (. tree children) (- (+ (. row items start) (. row items count)) 1))))
+      )
+    )
+    (case (call .node-type-tuple row)
+      (if (!= (. row field-types count) 0)
+        (return (call declared-name tree ([] (. tree children) (- (+ (. row field-types start) (. row field-types count)) 1))))
+      )
+    )
+  )
+  (return (call target-name tree left))
+)
+
+(fn-do _ target-name String
+  (param tree AST)
+  (param target SyntaxId)
+  (match? ([] (. tree nodes) target)
+    (case (call .node-identifier row)
+      (return (. row name text))
+    )
+    (case (call .node-type-capture row)
+      (return (call target-name tree (. row id)))
+    )
+  )
+  (return "anon")
+)
+
+(fn-expr + type-key String
+  (param types Types)
+  (param id TypeId)
+  (match ([] (. types rows) id)
+    (case (call .type-class row)
+      (call class-key types (. row module) (. row decl) (. row args))
+    )
+    (case (call .type-variable row)
+      (str "Variable::" (. row name text))
+    )
+    (case (call .type-inference row)
+      (str "Variable::(T" (. row ordinal) ")")
+    )
+    (case (call .type-tuple row)
+      (str "Tuple:(" (call field-keys types (. row fields) (. row names)) ")")
+    )
+    (case (call .type-struct row)
+      (str "StructType:(" (call field-keys types (. row fields) (. row names)) ")")
+    )
+    (case (call .type-union row)
+      (str "Union:(" (call joined-keys types (. row cases) " | ") ")")
+    )
+    (case (call .type-named-union row)
+      (call named-union-key types (. row owner) (. row cases) (. row names))
+    )
+    (case .type-function
+      (call function-key types id)
+    )
+    (case (call .type-result row)
+      (call result-key types (. row value) (. row errors))
+    )
+    (case (call .type-associated row)
+      (call associated-key types (. row module) (. row decl) (. row owner) (. row name) (. row args))
+    )
+    (case .type-binding
+      "Binding"
+    )
+    (case (call .type-closure row)
+      (call closure-key program (. row module) (. row decl))
+    )
+    (default
+      (call type-text types id)
+    )
+  )
+  (where
+    (lazy program (. types program))
+  )
+)
+
+(fn-expr + ratio-text String
+  (param ratio UnitRatio)
+  (str multiplier "/" divisor)
+  (where
+    (lazy multiplier (as (+ (* (. ratio multiplier) 1000000.0) 0.5) I64))
+    (lazy divisor (as (+ (* (. ratio divisor) 1000000.0) 0.5) I64))
+  )
+)
+
+(fn-do + order-errors _
+  (param types Types)
+  (param mark ScratchMark)
+  ; Puts the errors above the mark in the order of their keys and drops repeats. TypeScript keeps
+  ; an error set in this order, and it does not depend on which error typing reached first.
+  (let items (. types scratch types))
+  (let total (. items length))
+  (if (< (- total mark) 2)
+    (return)
+  )
+  (let keys (list String))
+  (for (in position (..< mark total))
+    (+= keys (call type-key types ([] items position)))
+  )
+  (for (in position (..< (+ mark 1) total))
+    (let value ([] items position))
+    (let key ([] keys (- position mark)))
+    (let slot position)
+    (while (and (> slot mark) (> ([] keys (- slot 1 mark)) key))
+      (= ([] items slot) ([] items (- slot 1)))
+      (= ([] keys (- slot mark)) ([] keys (- slot 1 mark)))
+      (-= slot 1)
+    )
+    (= ([] items slot) value)
+    (= ([] keys (- slot mark)) key)
+  )
+  (let write mark)
+  (for (in read (..< mark total))
+    (if (or (== write mark) (!= ([] items (- write 1)) ([] items read)))
+      (= ([] items write) ([] items read))
+      (+= write 1)
+    )
+  )
+  (call (. items rewind) write)
+)
+
+(fn-do + result-type TypeId
+  (param types Types)
+  (param value TypeId)
+  (param mark ScratchMark)
+  ; The type of a value that can come with any of the errors above the mark.
+  (call order-errors types mark)
+  (return (call (. types intern-ordered-result) value mark))
+)
+
+(fn-expr + closure-key String
+  (param program Program)
+  (param module ModuleId)
+  (param decl DeclId)
+  (match ([] (. ([] (. program modules) module) decls) decl)
+    (case (call .decl-function row)
+      (scope (str "Closure@" (- (. loc begin line) shift) ":" (. loc begin column))
+        (lazy loc ([] (. ([] (. program modules) module) tree nodes loc) (. row syntax)))
+        (lazy shift (if-expr is-shifted 1 0))
+        (lazy is-shifted (or (== (. row kind) (. DeclKind iterator-decl)) (== (. row kind) (. DeclKind pipeline-decl))))
+      )
+    )
+    (default
+      "Closure@?"
+    )
+  )
+)
+
+(fn-expr + class-name String
+  (param program Program)
+  (param module ModuleId)
+  (param decl DeclId)
+  (match ([] (. ([] (. program modules) module) decls) decl)
+    (case (call .decl-class row)
+      (. row name text)
+    )
+    (case (call .decl-extension row)
+      (if-expr (. row facet) (. row facet text) "<class?>")
+    )
+    (default
+      "<class?>"
+    )
+  )
+)
+
+(fn-expr + qualified-name String
+  (param program Program)
+  (param module ModuleId)
+  (param decl DeclId)
+  (str module-name ":" shown)
+  (where
+    (lazy module-name (. ([] (. program modules) module) name))
+    (lazy shown (call class-name program module decl))
+  )
+)
+
+(fn-expr _ class-key String
+  (param types Types)
+  (param module ModuleId)
+  (param decl DeclId)
+  (param args (of RowRange TypeId))
+  (case? (== (. args count) 0)
+    nominal
+  )
+  (case? (== nominal "Class:core:ConstArray")
+    (str "ConstArray:" list)
+  )
+  (default
+    (str nominal "(" list ")")
+  )
+  (where
+    (lazy nominal (str "Class:" (call qualified-name program module decl)))
+    (lazy list (call joined-keys types args ", "))
+    (blank)
+    (lazy program (. types program))
+  )
+)
+
+(fn-do _ function-key String
+  (param types Types)
+  (param id TypeId)
+  (let program (. types program))
+  (match? ([] (. types rows) id)
+    (case (call .type-function row)
+      (let head (if-expr (. row is-c) "CFunction:" (call qualified-name program (. row module) (. row decl))))
+      (let arg-list (call joined-keys types (. row args) ", "))
+      (let ret (call type-key types (. row return-type)))
+      (let tail "")
+      (if (!= (. row errors count) 0)
+        (= tail (str " ?! " (call joined-keys types (. row errors) " | ")))
+      )
+      (return (str head "(" arg-list ") => " ret tail))
+    )
+  )
+  (return "<function?>")
+)
+
+(fn-expr _ named-union-key String
+  (param types Types)
+  (param owner Atom)
+  (param cases (of RowRange TypeId))
+  (param names (of RowRange Atom))
+  (str "AnonymousNamedUnion:(" (. owner text) " | " case-list ")")
+  (where
+    (lazy case-list (call case-keys types cases names))
+    (blank)
+    (lazy program (. types program))
+  )
+)
+
+(fn-expr _ result-key String
+  (param types Types)
+  (param value TypeId)
+  (param errors (of RowRange TypeId))
+  (str "Union:(" value-key " | " error-list ")")
+  (where
+    (lazy value-key (call type-key types value))
+    (lazy error-list (call joined-keys types errors " | "))
+    (blank)
+    (lazy program (. types program))
+  )
+)
+
+(fn-expr _ associated-key String
+  (param types Types)
+  (param module ModuleId)
+  (param decl DeclId)
+  (param owner TypeId)
+  (param name Atom)
+  (param args (of RowRange TypeId))
+  (str "associated:" owner-key "." declaring ":" (. name text) "'" arg-list)
+  (where
+    (lazy owner-key (call type-key types owner))
+    (lazy declaring (call qualified-name program module decl))
+    (lazy arg-list (call joined-keys types args "'"))
+    (blank)
+    (lazy program (. types program))
+  )
+)
+
+(fn-expr _ field-keys String
+  (param types Types)
+  (param fields (of RowRange TypeId))
+  (param names (of RowRange Atom))
+  (call (. ", " join) keys)
+  (where
+    (lazy keys
+      (case-each (in offset (..< 0 (. fields count)))
+        (str "(" (. (call (. types child-name) names offset) text) ":" (call type-key types (call (. types child-type) fields offset)) ")")
+      )
+    )
+    (lazy program (. types program))
+  )
+)
+
+(fn-expr _ case-keys String
+  (param types Types)
+  (param cases (of RowRange TypeId))
+  (param names (of RowRange Atom))
+  (call (. " | " join) keys)
+  (where
+    (lazy keys
+      (case-each (in offset (..< 0 (. cases count)))
+        (str (. (call (. types child-name) names offset) text) ":" (call payload-key types (call (. types child-type) cases offset)))
+      )
+    )
+    (lazy program (. types program))
+  )
+)
+
+(fn-expr _ payload-key String
+  (param types Types)
+  (param payload TypeId)
+  (if-expr (== payload (. types void-type)) "" (call type-key types payload))
+)
+
+(fn-expr _ joined-keys String
+  (param types Types)
+  (param range (of RowRange TypeId))
+  (param separator String)
+  (call (. separator join) (in (call type-key types (call (. types child-type) range each)) (..< 0 (. range count))))
+  (where
+    (lazy program (. types program))
+  )
+)
+
+(extend + InvalidType
+  (fn-expr + text String
+    (param types Types)
+    "<invalid>"
+  )
+)
+
+(extend + ClassType
+  (fn-expr + text String
+    (param types Types)
+    (case? (== (. args count) 0)
+      shown
+    )
+    (default
+      (scope (str shown "'" list)
+        (lazy list (call range-text types args))
+      )
+    )
+    (where
+      (lazy shown (call class-name program module decl))
+      (blank)
+      (lazy program (. types program))
+    )
+  )
+)
+
+(extend + VariableType
+  (fn-expr + text String
+    (param types Types)
+    (str "'" (. name text))
+  )
+)
+
+(extend + ClosureType
+  (fn-expr + text String
+    (param types Types)
+    (call closure-key program module decl)
+    (where
+      (lazy program (. types program))
+    )
+  )
+)
+
+(extend + BindingType
+  (fn-expr + text String
+    (param types Types)
+    "Binding"
+  )
+)
+
+(extend + InferenceType
+  (fn-expr + text String
+    (param types Types)
+    (str "'?" ordinal)
+  )
+)
+
+(extend + TupleType
+  (fn-expr + text String
+    (param types Types)
+    (str "(" (call range-text types fields) ")")
+    (where
+      (lazy program (. types program))
+    )
+  )
+)
+
+(extend + StructType
+  (fn-expr + text String
+    (param types Types)
+    (str "struct(" (call range-text types fields) ")")
+    (where
+      (lazy program (. types program))
+    )
+  )
+)
+
+(extend + UnionType
+  (fn-expr + text String
+    (param types Types)
+    (str "union(" (call range-text types cases) ")")
+    (where
+      (lazy program (. types program))
+    )
+  )
+)
+
+(extend + NamedUnionType
+  (fn-expr + text String
+    (param types Types)
+    (str (. owner text) "(" (call range-text types cases) ")")
+    (where
+      (lazy program (. types program))
+    )
+  )
+)
+
+(extend + FunctionType
+  (fn-expr + text String
+    (param types Types)
+    (str label "(" arg-list ") " ret)
+    (where
+      (lazy label (if-expr is-c "cfn" "fn"))
+      (lazy arg-list (call range-text types args))
+      (lazy ret (call (. ([] (. types rows) return-type) text) types))
+      (blank)
+      (lazy program (. types program))
+    )
+  )
+)
+
+(extend + ResultType
+  (fn-expr + text String
+    (param types Types)
+    (str (call (. ([] (. types rows) value) text) types) " ?! " (call range-text types errors))
+    (where
+      (lazy program (. types program))
+    )
+  )
+)
+
+(extend + AssociatedType
+  (fn-expr + text String
+    (param types Types)
+    (str (call (. ([] (. types rows) owner) text) types) "." (. name text))
+    (where
+      (lazy program (. types program))
+    )
+  )
+)
+
+(fn-expr _ range-text String
+  (param types Types)
+  (param range (of RowRange TypeId))
+  (call (. ", " join) (in (call (. ([] (. types rows) (call (. types child-type) range each)) text) types) (..< 0 (. range count))))
+  (where
+    (lazy program (. types program))
+  )
+)

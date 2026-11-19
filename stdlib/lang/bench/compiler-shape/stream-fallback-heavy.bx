@@ -1,0 +1,23 @@
+; benchmark.meta description: Compiles grammars that exercise fallback-heavy lowering paths.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+
+(main
+  (let expected "alpha")
+  (let repeat-count 3)
+  (let checksum
+    (match (call stream-fallback-heavy-source)
+      (~ (: rows (+ (seq $expected "-" (+ (chars "b")) ({} "o" repeat-count) ";" "\n")))
+        (* (. rows length) 43)
+      )
+      (throw (call Panic "stream-fallback-heavy did not parse"))
+    )
+  )
+  (blank)
+  (print (str "bench-result compiler-shape/stream-fallback-heavy checksum=" checksum))
+)
+
+(fn-expr _ stream-fallback-heavy-source _
+  (call (. "" join) (in (str "alpha-" (* "b" (+ (% each 9) 1)) "ooo;\n") (..< 0 120)))
+)

@@ -1,0 +1,63 @@
+; benchmark.meta description: Scans a generated Brix-shaped S-expression document into a token tape and reads locations along it.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core/arena)
+(import /data/sexp)
+(blank)
+
+(main
+  (let checksum (catch (call sexp-tape-run)))
+  (match checksum
+    (case (: error Error)
+      (print (str "data/sexp-tape failed: " (. error message)))
+    )
+    (case (: value Size)
+      (print (str "bench-result data/sexp-tape checksum=" value))
+    )
+  )
+)
+
+(fn-do _ sexp-tape-run Size (?! Error)
+  (let source (call sexp-tape-source 4000))
+  (let arena (call Arena))
+  (let checksum Size 0)
+  (for (in iteration (..< 0 40))
+    (let tape (call sexp-tape source arena (== (% iteration 2) 0)))
+    (+= checksum (+ (. tape length) (. tape line-count)))
+    (let index Index 0)
+    (while (< index (. tape length))
+      (+= checksum (as (. (call (. tape location) (call (. tape start) index)) column) Size))
+      (= index (call (. tape after) index))
+    )
+    (call (. arena reset))
+  )
+  (call (. arena release))
+  (return checksum)
+)
+
+(fn-expr _ sexp-tape-source String
+  (param count Size)
+  (call (. "" join) (in (call sexp-tape-unit each) (..< 0 count)))
+)
+
+(fn-expr _ sexp-tape-unit _
+  (param index Size)
+  (paragraph
+    (str "(fn + work-" index " Int :do")
+    "  (param first Int)"
+    (str "  (param second Int (= " index "))")
+    (str "  (let total (+ first (* second " index ")))")
+    (str "  ; keep the total under " index)
+    (str "  (while (< total " index ")")
+    "    (+= total 1)"
+    "    (if (> total 10)"
+    "      (return total)"
+    "    )"
+    "  )"
+    "  (call (. names append) (str \"work \" total \" µs\") (:at 0))"
+    "  (blank)"
+    "  (return (?? (only-if total (if (!= total 0))) \"none\\n\"))"
+    (str ")" (str "\n"))
+  )
+)

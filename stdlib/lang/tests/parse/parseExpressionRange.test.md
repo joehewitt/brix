@@ -1,9 +1,5 @@
 # Expression range
 
-```yumi
-foo .. < bar
-```
-
 ```brix
 (main
   (..< foo bar)
@@ -15,10 +11,6 @@ foo .. < bar
     <Id name="foo"/>
     <Id name="bar"/>
 </RangeExpression>
-```
-
-```yumi
-foo .. bar
 ```
 
 ```brix
@@ -34,10 +26,6 @@ foo .. bar
 </RangeExpression>
 ```
 
-```yumi
-foo .. < bar by baz
-```
-
 ```brix
 (main
   (..< foo bar (by: baz))
@@ -50,10 +38,6 @@ foo .. < bar by baz
     <Id name="bar"/>
     <Id name="baz"/>
 </RangeExpression>
-```
-
-```yumi
-call • from foo .. < bar by baz
 ```
 
 ```brix
@@ -75,10 +59,6 @@ call • from foo .. < bar by baz
 </CallExpression>
 ```
 
-```yumi
-0 ...
-```
-
 ```brix
 (main
   (... 0)
@@ -92,10 +72,6 @@ call • from foo .. < bar by baz
         <TypeId name="Position"/>
     </Get>
 </RangeExpression>
-```
-
-```yumi
-... 0
 ```
 
 ```brix

@@ -1,23 +1,31 @@
 # Stack locals
 
-```yumi
-+ @stack current = 10
+```brix
+(prop + current _ @stack (= 10))
+(blank)
 
--- current
+(main
+  (print current)
+)
 ```
 
 ```output
 10
 ```
 
-```yumi
-+ @stack current Int
+```brix
+(prop + current Int @stack)
+(blank)
 
-do with current = 10
-    -- current
-    do with current = 20
-        -- current
-    -- current
+(main
+  (do-with current 10
+    (print current)
+    (do-with current 20
+      (print current)
+    )
+    (print current)
+  )
+)
 ```
 
 ```output
@@ -26,66 +34,82 @@ do with current = 10
 10
 ```
 
-```yumi
-+ @stack current Int
+```brix
+(prop + current Int @stack)
+(blank)
 
-do with current = 42
-    -- read-current()
+(main
+  (do-with current 42
+    (print (call read-current))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ read-current Int
-
-current
+(fn-expr + read-current Int
+  current
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-+ @stack current Int
+```brix
+(prop + current Int @stack)
+(blank)
 
-. read Getter'Int?
-do with current = 31
-    . captured = => current
-    read = captured as Getter'Int
-
--- (read)()
+(main
+  (let read (? (of Getter Int)))
+  (do-with current 31
+    (let captured (=> () current))
+    (= read (as captured (of Getter Int)))
+  )
+  (blank)
+  (print (call read))
+)
 ```
 
 ```output
 31
 ```
 
-```yumi
-+ @stack current Int
+```brix
+(prop + current Int @stack)
+(blank)
 
-. results SyncChannel'Int
-do with current = 77
-    do new
-        results <- current
-
--- <- results
+(main
+  (let results (of SyncChannel Int))
+  (do-with current 77
+    (do-new
+      (<- results current)
+    )
+  )
+  (blank)
+  (print (<- results))
+)
 ```
 
 ```output
 77
 ```
 
-```yumi
-+ @stack current Int
+```brix
+(prop + current Int @stack)
+(blank)
 
-. results SyncChannel'Int
-do with current = 88
-    do new
-        results <- read-current()
+(main
+  (let results (of SyncChannel Int))
+  (do-with current 88
+    (do-new
+      (<- results (call read-current))
+    )
+  )
+  (blank)
+  (print (<- results))
+)
 
--- <- results
-
-━━━━━━━━━━━━━━━━━━━━
-+ read-current Int
-
-current
+(fn-expr + read-current Int
+  current
+)
 ```
 
 ```output
@@ -94,25 +118,27 @@ current
 
 ### A stack-local struct is bound and read inside and outside the binding, and by a function.
 
-```yumi
-+ @stack where = Spot(1, "home")
+```brix
+(prop + where _ @stack (= (call Spot 1 "home")))
+(blank)
 
--- where.x, where.label
-do with where = Spot(2, "away")
-    -- where.x, where.label
-    show()
-show()
+(main
+  (print (tuple (. where x) (. where label)))
+  (do-with where (call Spot 2 "away")
+    (print (tuple (. where x) (. where label)))
+    (call show)
+  )
+  (call show)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Spot is Struct
+(type + Spot (is Struct)
+  (prop + x Int)
+  (prop + label String)
+)
 
-+ x Int
-+ label String
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-
--- "show", where.x, where.label
+(fn-do + show _
+  (print (tuple "show" (. where x) (. where label)))
+)
 ```
 
 ```output
@@ -124,20 +150,25 @@ show()
 
 ### A binding in a loop is put back at each turn, and where the turn continues.
 
-```yumi
-+ @stack depth = 0
+```brix
+(prop + depth _ @stack (= 0))
+(blank)
 
-for i in 0 .. < 3
-    do with depth = i * 10
-        if i == 1
-            continue
-        -- "in", depth, peek()
-    -- "out", depth, peek()
+(main
+  (for (in i (..< 0 3))
+    (do-with depth (* i 10)
+      (if (== i 1)
+        (continue)
+      )
+      (print (tuple "in" depth (call peek)))
+    )
+    (print (tuple "out" depth (call peek)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do peek Int
-
-= depth
+(fn-do + peek Int
+  (return depth)
+)
 ```
 
 ```output
@@ -149,20 +180,24 @@ for i in 0 .. < 3
 
 ### A recursive function binds the stack-local from its own read of it, and returns from inside the binding.
 
-```yumi
-+ @stack depth = 1
+```brix
+(prop + depth _ @stack (= 1))
+(blank)
 
--- find(3)
--- depth
+(main
+  (print (call find 3))
+  (print depth)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do find Int
-    - n Int
-
-do with depth = depth + n
-    if n == 0
-        = depth
-    = find(n - 1)
+(fn-do + find Int
+  (param n Int)
+  (do-with depth (+ depth n)
+    (if (== n 0)
+      (return depth)
+    )
+    (return (call find (- n 1)))
+  )
+)
 ```
 
 ```output
@@ -172,22 +207,26 @@ do with depth = depth + n
 
 ### A spawned task reads the stack-local it captured, binds its own, and calls a reader inside and outside that binding.
 
-```yumi
-+ @stack depth = 1
+```brix
+(prop + depth _ @stack (= 1))
+(blank)
 
-. done = Semaphore()
-do new
-    -- "task", depth
-    do with depth = 7
-        -- "inner", depth, peek()
-    -- "after", depth, peek()
-    done.post()
-done.wait()
+(main
+  (let done (call Semaphore))
+  (do-new
+    (print (tuple "task" depth))
+    (do-with depth 7
+      (print (tuple "inner" depth (call peek)))
+    )
+    (print (tuple "after" depth (call peek)))
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do peek Int
-
-= depth
+(fn-do + peek Int
+  (return depth)
+)
 ```
 
 ```output
@@ -198,26 +237,31 @@ done.wait()
 
 ### Lambdas made under different bindings hold the state each was made under, read directly and through a function, inside and outside a later binding.
 
-```yumi
-+ @stack current = 5
+```brix
+(prop + current _ @stack (= 5))
+(blank)
 
-. a Getter'Int?
-. b Getter'Int?
-do with current = 1
-    a = => current
-do with current = 2
-    b = => read()
--- (a)()
--- (b)()
-do with current = 3
-    -- (a)()
-    -- (b)()
--- current
+(main
+  (let a (? (of Getter Int)))
+  (let b (? (of Getter Int)))
+  (do-with current 1
+    (= a (=> () current))
+  )
+  (do-with current 2
+    (= b (=> () (call read)))
+  )
+  (print (call a))
+  (print (call b))
+  (do-with current 3
+    (print (call a))
+    (print (call b))
+  )
+  (print current)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ read Int
-
-current + 100
+(fn-expr + read Int
+  (+ current 100)
+)
 ```
 
 ```output
@@ -230,20 +274,23 @@ current + 100
 
 ### A lambda made under a binding in a function holds that binding after the function returns.
 
-```yumi
-+ @stack current Int
+```brix
+(prop + current Int @stack)
+(blank)
 
-. f = make(7)
--- f()
+(main
+  (let f (call make 7))
+  (print (call f))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Getter'Int
-    - n Int
-
-. made Getter'Int?
-do with current = n
-    made = => current + 1
-= made
+(fn-do + make (of Getter Int)
+  (param n Int)
+  (let made (? (of Getter Int)))
+  (do-with current n
+    (= made (=> () (+ current 1)))
+  )
+  (return made)
+)
 ```
 
 ```output
@@ -252,16 +299,21 @@ do with current = n
 
 ### A spawned task's body makes a lambda that reads the stack-local the task captured.
 
-```yumi
-+ @stack current = 5
+```brix
+(prop + current _ @stack (= 5))
+(blank)
 
-. done = Semaphore()
-do with current = 70
-    do new
-        . f = => current + 1
-        -- f()
-        done.post()
-done.wait()
+(main
+  (let done (call Semaphore))
+  (do-with current 70
+    (do-new
+      (let f (=> () (+ current 1)))
+      (print (call f))
+      (call (. done post))
+    )
+  )
+  (call (. done wait))
+)
 ```
 
 ```output
@@ -270,16 +322,22 @@ done.wait()
 
 ### A task spawned from a spawned task's body reads the stack-local the outer body never reads.
 
-```yumi
-+ @stack current = 5
+```brix
+(prop + current _ @stack (= 5))
+(blank)
 
-. done = Semaphore()
-do with current = 71
-    do new
-        do new
-            -- "inner", current
-            done.post()
-done.wait()
+(main
+  (let done (call Semaphore))
+  (do-with current 71
+    (do-new
+      (do-new
+        (print (tuple "inner" current))
+        (call (. done post))
+      )
+    )
+  )
+  (call (. done wait))
+)
 ```
 
 ```output
@@ -288,21 +346,26 @@ done.wait()
 
 ### A task spawned from a spawned task's body calls a reader of the stack-local.
 
-```yumi
-+ @stack current = 5
+```brix
+(prop + current _ @stack (= 5))
+(blank)
 
-. done = Semaphore()
-do with current = 72
-    do new
-        do new
-            -- "inner", read()
-            done.post()
-done.wait()
+(main
+  (let done (call Semaphore))
+  (do-with current 72
+    (do-new
+      (do-new
+        (print (tuple "inner" (call read)))
+        (call (. done post))
+      )
+    )
+  )
+  (call (. done wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ read Int
-
-current
+(fn-expr + read Int
+  current
+)
 ```
 
 ```output
@@ -311,25 +374,28 @@ current
 
 ### A lambda calls a function that reads the stack-local through another, outside any binding.
 
-```yumi
-+ @stack current = 5
+```brix
+(prop + current _ @stack (= 5))
+(blank)
 
-. made Getter'Int?
-do with current = 90
-    made = => outer()
--- (made)()
-do with current = 91
-    -- (made)()
+(main
+  (let made (? (of Getter Int)))
+  (do-with current 90
+    (= made (=> () (call outer)))
+  )
+  (print (call made))
+  (do-with current 91
+    (print (call made))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ outer Int
+(fn-expr + outer Int
+  (* (call inner) 2)
+)
 
-inner() * 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ inner Int
-
-current
+(fn-expr + inner Int
+  current
+)
 ```
 
 ```output
@@ -339,19 +405,29 @@ current
 
 ### A lambda spawns a task that reads the stack-local the lambda holds.
 
-```yumi
-+ @stack current = 5
+```brix
+(prop + current _ @stack (= 5))
+(blank)
 
-. done = Semaphore()
-. made Getter'Int?
-do with current = 30
-    made = => do
-        do new
-            -- "task", current
-            done.post()
-        = current
--- (made)()
-done.wait()
+(main
+  (let done (call Semaphore))
+  (let made (? (of Getter Int)))
+  (do-with current 30
+    (= made
+      (=> () :do
+        (block
+          (do-new
+            (print (tuple "task" current))
+            (call (. done post))
+          )
+          (return current)
+        )
+      )
+    )
+  )
+  (print (call made))
+  (call (. done wait))
+)
 ```
 
 ```output
@@ -361,42 +437,44 @@ done.wait()
 
 ### A spawned task's slot set for a call that panics is put back as it was before the call.
 
-```yumi
-+ @stack depth = 1
+```brix
+(prop + depth _ @stack (= 1))
+(blank)
 
-. results SyncChannel'String
-. o Base = Derived()
-do with depth = 7
-    do new
-        do finally
-            . p = Task().failure
-            results <- "after ${p != null} ${o.read()}"
-        boom()
-    catch
-        --
--- <- results
+(main
+  (let results (of SyncChannel String))
+  (let o Base (call Derived))
+  (do-with depth 7
+    (do-new
+      (finally
+        (let p (. (call Task) failure))
+        (<- results (str "after " (!= p null) " " (call (. o read))))
+      )
+      (call boom)
+      (on-failure _
+        (print)
+      )
+    )
+  )
+  (print (<- results))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do boom
+(fn-do + boom _
+  (print (str "boom sees " depth))
+  (throw (call Panic "x"))
+)
 
--- "boom sees ${depth}"
-?! Panic("x")
+(type + Base
+  (fn-do + read String
+    (return (str "base " depth))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-────────────────────
-+ do read String
-
-= "base ${depth}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-────────────────────
-+ do read String
-
-= "derived ${depth}"
+(type + Derived (is Base)
+  (fn-do + read String
+    (return (str "derived " depth))
+  )
+)
 ```
 
 ```output
@@ -406,17 +484,28 @@ after true derived 1
 
 ### A lambda that yields reads the state it holds, not the binding open where it is iterated.
 
-```yumi
-+ @stack cur = 5
+```brix
+(prop + cur _ @stack (= 5))
+(blank)
 
-. gen = => do
-    <= cur
-    <= cur + 1
-for v in gen()
-    -- v
-do with cur = 6
-    for v in gen()
-        -- v
+(main
+  (let gen
+    (=> () :do
+      (block
+        (yield cur)
+        (yield (+ cur 1))
+      )
+    )
+  )
+  (for (in v (call gen))
+    (print v)
+  )
+  (do-with cur 6
+    (for (in v (call gen))
+      (print v)
+    )
+  )
+)
 ```
 
 ```output
@@ -428,24 +517,38 @@ do with cur = 6
 
 ### A lambda called from a lambda made inside a do with is given nothing: it reads what it holds.
 
-```yumi
-+ @stack depth = 1
+```brix
+(prop + depth _ @stack (= 1))
+(blank)
 
-. inner = => do
-    for v in gen()
-        -- "gen $v"
-inner()
-. outer Doer?
-do with depth = 3
-    outer = => do
-        -- "outer $depth"
-        inner()
-(outer)()
+(main
+  (let inner
+    (=> () :do
+      (block
+        (for (in v (call gen))
+          (print (str "gen " v))
+        )
+      )
+    )
+  )
+  (call inner)
+  (let outer (? Doer))
+  (do-with depth 3
+    (= outer
+      (=> () :do
+        (block
+          (print (str "outer " depth))
+          (call inner)
+        )
+      )
+    )
+  )
+  (call outer)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen <Int>
-
-<= depth
+(fn-do + gen (stream Int)
+  (yield depth)
+)
 ```
 
 ```output
@@ -456,16 +559,21 @@ gen 1
 
 ### Lambdas that hold stack state made in a while loop whose turn has no environment of its own.
 
-```yumi
-+ @stack cur = 5
+```brix
+(prop + cur _ @stack (= 5))
+(blank)
 
-. fs [Getter'Int] = List'(Getter'Int)()
-. i = 0
-while i < 2
-    fs += => cur
-    i += 1
-for f in fs
-    -- f()
+(main
+  (let fs (list (of Getter Int)) (call (of List (of Getter Int))))
+  (let i 0)
+  (while (< i 2)
+    (+= fs (=> () cur))
+    (+= i 1)
+  )
+  (for (in f fs)
+    (print (call f))
+  )
+)
 ```
 
 ```output
@@ -475,26 +583,30 @@ for f in fs
 
 ### A comprehension holds stack state as it was where it was made, which a function it calls reads, wherever it runs.
 
-```yumi
-+ @stack current Int
+```brix
+(prop + current Int @stack)
+(blank)
 
-. made = make()
-do with current = 5
-    for text in made
-        -- text
-    -- ", ".join(label(each) in [1, 2])
+(main
+  (let made (call make))
+  (do-with current 5
+    (for (in text made)
+      (print text)
+    )
+    (print (call (. ", " join) (in (call label each) (list 1 2))))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Iterable'String
+(fn-do + make (of Iterable String)
+  (do-with current 3
+    (return (in (call label each) (list 1 2)))
+  )
+)
 
-do with current = 3
-    = (label(each) in [1, 2])
-
-━━━━━━━━━━━━━━━━━━━━
-+ label String
-    - n Int
-
-"${n * current}"
+(fn-expr + label String
+  (param n Int)
+  (str (* n current))
+)
 ```
 
 ```output
@@ -505,24 +617,29 @@ do with current = 3
 
 ### A with section binds stack values in turn, the first outermost, on a do block or on the header of a do function, where it binds for the whole body.
 
-```yumi
-+ @stack scope = "none"
-+ @stack depth Int = 0
+```brix
+(prop + scope _ @stack (= "none"))
+(prop + depth Int @stack (= 0))
+(blank)
 
-do with scope = "one", depth = 1
-    report()
-do without gc with depth = 2
-    . doubled = 2 * 2
-scoped()
-report()
+(main
+  (do (with scope "one") (with depth 1)
+    (call report)
+  )
+  (do (without gc) (with depth 2)
+    (let doubled (* 2 2))
+  )
+  (call scoped)
+  (call report)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do report
--- "$scope $depth"
+(fn-do + report _
+  (print (str scope " " depth))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do scoped with scope = "header", depth = depth + 5
-report()
+(fn-do + scoped _ (with scope "header") (with depth (+ depth 5))
+  (call report)
+)
 ```
 
 ```output
@@ -531,45 +648,52 @@ header 5
 none 0
 ```
 
-```yumi compile-error
-+ @stack depth Int = 0
+```brix compile-error
+(prop + depth Int @stack (= 0))
+(blank)
 
--- deeper()
+(main
+  (print (call deeper))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ deeper Int with depth = 1
-depth
+(fn-expr + deeper Int (with depth 1)
+  depth
+)
 ```
 
 ```output
 Exception: A 'with' section needs a do function
-<no file:7>
-    + deeper Int with depth = 1
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:9>
+    (fn-expr + deeper Int (with depth 1)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A global nothing binds with do with holds its first value everywhere. Where that value is a literal it is a constant, read where the task's memory is not: in a block without gc.
 
-```yumi
-+ @stack level = 7
-+ @stack label = "plain"
+```brix
+(prop + level _ @stack (= 7))
+(prop + label _ @stack (= "plain"))
+(blank)
 
-. done SyncChannel'Int
-do new
-    done <- level * 2
--- <- done
-. reader = => level + 1
--- reader()
-do without gc
-    . doubled = level * 2
--- add(3)
--- ", ".join("${each + level} $label" in [1, 2])
+(main
+  (let done (of SyncChannel Int))
+  (do-new
+    (<- done (* level 2))
+  )
+  (print (<- done))
+  (let reader (=> () (+ level 1)))
+  (print (call reader))
+  (do (without gc)
+    (let doubled (* level 2))
+  )
+  (print (call add 3))
+  (print (call (. ", " join) (in (str (+ each level) " " label) (list 1 2))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do add Int without heap
-    - n Int
-
-= n + level
+(fn-do + add Int (without heap)
+  (param n Int)
+  (return (+ n level))
+)
 ```
 
 ```output

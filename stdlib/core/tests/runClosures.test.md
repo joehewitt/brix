@@ -1,28 +1,44 @@
 # Closures
 
-```yumi
-. a = =>
-    42
--- a()
+```brix
+(main
+  (let a
+    (=> ()
+      (block
+        42
+      )
+    )
+  )
+  (print (call a))
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-. a = => do
-    -- "hello"
-a()
+```brix
+(main
+  (let a
+    (=> () :do
+      (block
+        (print "hello")
+      )
+    )
+  )
+  (call a)
+)
 ```
 
 ```output
 hello
 ```
 
-```yumi
-. a = :: x => 42
--- a(1)
+```brix
+(main
+  (let a (=> (x) 42))
+  (print (call a 1))
+)
 ```
 
 ```output
@@ -31,11 +47,18 @@ hello
 
 ### Different instances of closure with different generic argument types
 
-```yumi
-. a = :: b => do
-    -- "hello $b"
-a(24)
-a(24.5)
+```brix
+(main
+  (let a
+    (=> (b) :do
+      (block
+        (print (str "hello " b))
+      )
+    )
+  )
+  (call a 24)
+  (call a 24.5)
+)
 ```
 
 ```output
@@ -45,17 +68,18 @@ hello 24.5
 
 ### Call closure passed in as argument
 
-```yumi
-. a = :: b => b
--- foo(a, 24)
--- foo(a, 24.5)
+```brix
+(main
+  (let a (=> (b) b))
+  (print (call foo a 24))
+  (print (call foo a 24.5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - fn
-    - n
-
-fn(n)
+(fn-expr + foo _
+  (param fn _)
+  (param n _)
+  (call fn n)
+)
 ```
 
 ```output
@@ -63,22 +87,24 @@ fn(n)
 24.5
 ```
 
-```yumi
-. n = 42
-. a = :: b => b * n * k
+```brix
+(main
+  (let n 42)
+  (let a (=> (b) (* b n k)))
+  (blank)
+  (print (call foo a 2))
+  (= n 100)
+  (print (call foo a 4))
+)
 
--- foo(a, 2)
-n = 100
--- foo(a, 4)
+(blank)
+(prop _ k _ (= 10))
 
-_ k = 10
-
-━━━━━━━━━━━━━━━━━━━━
-_ foo
-    - fn
-    - n
-
-fn(n)
+(fn-expr _ foo _
+  (param fn _)
+  (param n _)
+  (call fn n)
+)
 ```
 
 ```output
@@ -86,13 +112,20 @@ fn(n)
 4000
 ```
 
-```yumi
-. n = 42
-. a = :: b =>
-    bn
-    .. bn = b * n
-
--- a(2)
+```brix
+(main
+  (let n 42)
+  (let a
+    (=> (b)
+      (block
+        bn
+        (lazy bn (* b n))
+      )
+    )
+  )
+  (blank)
+  (print (call a 2))
+)
 ```
 
 ```output
@@ -101,14 +134,16 @@ fn(n)
 
 ### Multiple closures
 
-```yumi
-. n = 42
-. d = 2
-. a = :: b => b * n
-. a2 = :: b => b * n * d
-
--- a(2)
--- a2(2)
+```brix
+(main
+  (let n 42)
+  (let d 2)
+  (let a (=> (b) (* b n)))
+  (let a2 (=> (b) (* b n d)))
+  (blank)
+  (print (call a 2))
+  (print (call a2 2))
+)
 ```
 
 ```output
@@ -118,13 +153,20 @@ fn(n)
 
 ### Modify closure
 
-```yumi
-. n = 42
-. mutate = :: b => do
-    n *= b
-
-mutate(2)
--- n
+```brix
+(main
+  (let n 42)
+  (let mutate
+    (=> (b) :do
+      (block
+        (*= n b)
+      )
+    )
+  )
+  (blank)
+  (call mutate 2)
+  (print n)
+)
 ```
 
 ```output
@@ -133,14 +175,21 @@ mutate(2)
 
 ### Multiple closures, one modifies, then the other can see modification
 
-```yumi
-. n = 42
-. mutate = :: b => do
-    n *= b
-. ref = :: b => n * b
-
-mutate(2)
--- ref(2)
+```brix
+(main
+  (let n 42)
+  (let mutate
+    (=> (b) :do
+      (block
+        (*= n b)
+      )
+    )
+  )
+  (let ref (=> (b) (* n b)))
+  (blank)
+  (call mutate 2)
+  (print (call ref 2))
+)
 ```
 
 ```output
@@ -149,13 +198,20 @@ mutate(2)
 
 ### Assign to variable declared after closure
 
-```yumi
-. mutate = => do
-    n = 2
-. n = 42
-
-mutate()
--- n
+```brix
+(main
+  (let mutate
+    (=> () :do
+      (block
+        (= n 2)
+      )
+    )
+  )
+  (let n 42)
+  (blank)
+  (call mutate)
+  (print n)
+)
 ```
 
 ```output
@@ -164,14 +220,24 @@ mutate()
 
 ### Nested closure
 
-```yumi
-. n = 42
-. a = :: b =>
-    =>
-        n * b
-
-. f = a(2)
--- f()
+```brix
+(main
+  (let n 42)
+  (let a
+    (=> (b)
+      (block
+        (=> ()
+          (block
+            (* n b)
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (let f (call a 2))
+  (print (call f))
+)
 ```
 
 ```output
@@ -180,16 +246,29 @@ mutate()
 
 ### Doubly nested closure
 
-```yumi
-. n = 42
-. a = =>
-    =>
-        =>
-            n
-
-. f = a()
-. b = f()
--- b()
+```brix
+(main
+  (let n 42)
+  (let a
+    (=> ()
+      (block
+        (=> ()
+          (block
+            (=> ()
+              (block
+                n
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (let f (call a))
+  (let b (call f))
+  (print (call b))
+)
 ```
 
 ```output
@@ -198,14 +277,24 @@ mutate()
 
 ### Nested closure capturing lazy variable
 
-```yumi
-. n = 42
-. a = =>
-    :: b =>
-        n * b * c
-    .. c = 2
-
--- a()(2)
+```brix
+(main
+  (let n 42)
+  (let a
+    (=> ()
+      (block
+        (=> (b)
+          (block
+            (* n b c)
+          )
+        )
+        (lazy c 2)
+      )
+    )
+  )
+  (blank)
+  (print (call (call a) 2))
+)
 ```
 
 ```output
@@ -214,16 +303,26 @@ mutate()
 
 ### Nested closure mutating lazy variable
 
-```yumi
-. a = =>
-    :: b => do
-        c += b
-        = c
-    .. c = 0
-
-. f = a()
--- f(2)
--- f(3)
+```brix
+(main
+  (let a
+    (=> ()
+      (block
+        (=> (b) :do
+          (block
+            (+= c b)
+            (return c)
+          )
+        )
+        (lazy c 0)
+      )
+    )
+  )
+  (blank)
+  (let f (call a))
+  (print (call f 2))
+  (print (call f 3))
+)
 ```
 
 ```output
@@ -233,14 +332,26 @@ mutate()
 
 ### Closures at same level reference each other
 
-```yumi
-. n = 42
-. x = =>
-    n
-. a = =>
-    x()
-
--- a()
+```brix
+(main
+  (let n 42)
+  (let x
+    (=> ()
+      (block
+        n
+      )
+    )
+  )
+  (let a
+    (=> ()
+      (block
+        (call x)
+      )
+    )
+  )
+  (blank)
+  (print (call a))
+)
 ```
 
 ```output
@@ -249,29 +360,52 @@ mutate()
 
 ### Nested closure mutation
 
-```yumi
-. n = 42
-. a = =>
-    :: b => do
-        n *= b
-
-a()(2)
--- n
+```brix
+(main
+  (let n 42)
+  (let a
+    (=> ()
+      (block
+        (=> (b) :do
+          (block
+            (*= n b)
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (call (call a) 2)
+  (print n)
+)
 ```
 
 ```output
 84
 ```
 
-```yumi
-. n = 42
-. a = =>
-    =>
-        :: b => do
-            n *= b
-
-a()()(2)
--- n
+```brix
+(main
+  (let n 42)
+  (let a
+    (=> ()
+      (block
+        (=> ()
+          (block
+            (=> (b) :do
+              (block
+                (*= n b)
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (call (call (call a)) 2)
+  (print n)
+)
 ```
 
 ```output
@@ -280,24 +414,25 @@ a()()(2)
 
 ### Closure in method binds to 'this'
 
-```yumi
-. thing = Thing()
-. get-self = thing.get-self
--- get-self().a
+```brix
+(main
+  (let thing (call Thing))
+  (let get-self (. thing get-self))
+  (print (. (call get-self) a))
+  (blank)
+  (let get-a (. thing get-a))
+  (print (call get-a))
+  (= (. thing a) 10)
+  (print (call get-a))
+  (print (. (call get-self) a))
+)
 
-. get-a = thing.get-a
--- get-a()
-thing.a = 10
--- get-a()
--- get-self().a
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 5
-
-+ get-self Getter'This := => this
-+ get-a Getter'Int := => a
+(type + Thing
+  (prop + a _ (= 5))
+  (blank)
+  (prop + get-self (of Getter This) (:= (=> () this)))
+  (prop + get-a (of Getter Int) (:= (=> () a)))
+)
 ```
 
 ```output
@@ -309,41 +444,49 @@ thing.a = 10
 
 ### Illegal closure in property
 
-```yumi crash
-. thing = Thing()
-. get-self = thing.get-self
--- get-self()
+```brix crash
+(main
+  (let thing (call Thing))
+  (let get-self (. thing get-self))
+  (print (call get-self))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ get-self = cb as Getter'This
-    .. cb = => this
+(type + Thing
+  (prop + get-self _
+    (=
+      (scope (as cb (of Getter This))
+        (lazy cb (=> () this))
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Illegal to reference 'this' in eager properties or properties referenced by them
-<no file:10>
-        .. cb = => this
-                   ^^^^
+<no file:12>
+            (lazy cb (=> () this))
+                            ^^^^
 ```
 
 ### Refer to property in closure within method
 
-```yumi
-. thing = Thing()
--- thing.get-self()()
+```brix
+(main
+  (let thing (call Thing))
+  (print (call (call (. thing get-self))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 5
-
-────────────────────
-+ get-self
-
-=>
-    a
+(type + Thing
+  (prop + a _ (= 5))
+  (fn-expr + get-self _
+    (=> ()
+      (block
+        a
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -352,204 +495,218 @@ Exception: Illegal to reference 'this' in eager properties or properties referen
 
 ## Closures in methods
 
-```yumi
-. thing = Thing()
-. s = thing.foo()
--- s()(42)
+```brix
+(main
+  (let thing (call Thing))
+  (let s (call (. thing foo)))
+  (print (call (call s) 42))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ foo
-
-=>
-    bar
-
-────────────────────
-+ bar
-    - n I32
-
-"bar $n"
-```
-
-```output
-bar 42
-```
-
-```yumi
-. thing = Thing()
-. s = thing.foo()
--- s()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ baz = 42
-
-────────────────────
-+ foo
-
-=>
-    baz
-```
-
-```output
-42
-```
-
-```yumi
-. thing = Thing()
-. s = thing.foo()
--- s()(42)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ foo
-
-=>
-    baz
-
-────────────────────
-+ baz
-    - n I32
-
-"baz $n"
-```
-
-```output
-baz 42
-```
-
-```yumi crash
-. thing = Thing()
-. s = thing.foo()
--- s()(42)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ foo
-
-=>
-    bar
-```
-
-```output
-Exception: Name "bar" not found
-<no file:13>
+(type + Thing
+  (fn-expr + foo _
+    (=> ()
+      (block
         bar
-        ^^^
-```
-
-## Closures in methods of non-classes
-
-```yumi
-. thing = Thing()
-. s = thing.foo()
--- s()(42)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is I32
-
-────────────────────
-+ foo
-
-=>
-    bar
-
-────────────────────
-+ bar
-    - n I32
-
-"bar $n"
+      )
+    )
+  )
+  (fn-expr + bar _
+    (param n I32)
+    (str "bar " n)
+  )
+)
 ```
 
 ```output
 bar 42
 ```
 
-```yumi
-. thing = Thing()
-. s = thing.foo()
--- s()
+```brix
+(main
+  (let thing (call Thing))
+  (let s (call (. thing foo)))
+  (print (call s))
+)
 
-+ baz = 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is I32
-
-────────────────────
-+ foo
-
-=> baz
+(type + Thing
+  (prop + baz _ (= 42))
+  (fn-expr + foo _
+    (=> ()
+      (block
+        baz
+      )
+    )
+  )
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-. thing = Thing()
-. s = thing.foo()
--- s()(42)
+```brix
+(main
+  (let thing (call Thing))
+  (let s (call (. thing foo)))
+  (print (call (call s) 42))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is I32
-
-────────────────────
-+ foo
-
-=> baz
-
-────────────────────
-+ baz
-    - n I32
-
-"baz $n"
+(type + Thing
+  (fn-expr + foo _
+    (=> ()
+      (block
+        baz
+      )
+    )
+  )
+  (fn-expr + baz _
+    (param n I32)
+    (str "baz " n)
+  )
+)
 ```
 
 ```output
 baz 42
 ```
 
-```yumi crash
-. thing = Thing()
-. s = thing.foo()
--- s()(42)
+```brix crash
+(main
+  (let thing (call Thing))
+  (let s (call (. thing foo)))
+  (print (call (call s) 42))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is I32
-
-────────────────────
-+ foo
-
-=> bar
+(type + Thing
+  (fn-expr + foo _
+    (=> ()
+      (block
+        bar
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Name "bar" not found
 <no file:12>
-    => bar
-       ^^^
+            bar
+            ^^^
+```
+
+## Closures in methods of non-classes
+
+```brix
+(main
+  (let thing (call Thing))
+  (let s (call (. thing foo)))
+  (print (call (call s) 42))
+)
+
+(type + Thing (is I32)
+  (fn-expr + foo _
+    (=> ()
+      (block
+        bar
+      )
+    )
+  )
+  (fn-expr + bar _
+    (param n I32)
+    (str "bar " n)
+  )
+)
+```
+
+```output
+bar 42
+```
+
+```brix
+(main
+  (let thing (call Thing))
+  (let s (call (. thing foo)))
+  (print (call s))
+)
+
+(blank)
+(prop + baz _ (= 42))
+
+(type + Thing (is I32)
+  (fn-expr + foo _
+    (=> () baz)
+  )
+)
+```
+
+```output
+42
+```
+
+```brix
+(main
+  (let thing (call Thing))
+  (let s (call (. thing foo)))
+  (print (call (call s) 42))
+)
+
+(type + Thing (is I32)
+  (fn-expr + foo _
+    (=> () baz)
+  )
+  (fn-expr + baz _
+    (param n I32)
+    (str "baz " n)
+  )
+)
+```
+
+```output
+baz 42
+```
+
+```brix crash
+(main
+  (let thing (call Thing))
+  (let s (call (. thing foo)))
+  (print (call (call s) 42))
+)
+
+(type + Thing (is I32)
+  (fn-expr + foo _
+    (=> () bar)
+  )
+)
+```
+
+```output
+Exception: Name "bar" not found
+<no file:10>
+        (=> () bar)
+               ^^^
 ```
 
 ## Closures in generators
 
-```yumi
-. gen = foo(1.5)
-for f in gen
-    f()
+```brix
+(main
+  (let gen (call foo 1.5))
+  (for (in f gen)
+    (call f)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - n
-
-<= => do
-    -- n
+(fn-do + foo _
+  (param n _)
+  (yield
+    (=> () :do
+      (block
+        (print n)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -558,166 +715,168 @@ for f in gen
 
 ## Casting closures to function types
 
-```yumi
-. a = => 42
-. foo = a as Foo
--- foo()
+```brix
+(main
+  (let a (=> () 42))
+  (let foo (as a Foo))
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Int
+(type + Foo (is (fn-type Int)))
 ```
 
 ```output
 42
 ```
 
-```yumi
-. a = :: n => 42 + n
-. foo = a as Foo
--- foo(1)
+```brix
+(main
+  (let a (=> (n) (+ 42 n)))
+  (let foo (as a Foo))
+  (print (call foo 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Int
-    - n Int
+(type + Foo (is (fn-type Int (param n Int))))
 ```
 
 ```output
 43
 ```
 
-```yumi
-. a = :: n Float => 42.5 + n
-. foo = a as Foo
--- foo(1)
+```brix
+(main
+  (let a (=> ((: n Float)) (+ 42.5 n)))
+  (let foo (as a Foo))
+  (print (call foo 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Int
-    - n Int
+(type + Foo (is (fn-type Int (param n Int))))
 ```
 
 ```output
 43
 ```
 
-```yumi
-. a = :: n Int => 42 + n
--- call1(a)
+```brix
+(main
+  (let a (=> ((: n Int)) (+ 42 n)))
+  (print (call call1 a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Fooi is () Int
-    - n Int
+(type + Fooi (is (fn-type Int (param n Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foof is () Int
-    - n I32
+(type + Foof (is (fn-type Int (param n I32))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ call1
-    - fn Fooi
+(fn-expr + call1 _
+  (param fn Fooi)
+  (call call2 fn)
+)
 
-call2(fn)
-
-━━━━━━━━━━━━━━━━━━━━
-+ call2
-    - fn Foof
-
-fn(10)
+(fn-expr + call2 _
+  (param fn Foof)
+  (call fn 10)
+)
 ```
 
 ```output
 52
 ```
 
-```yumi
-. a = :: n Int => 42 + n
-. f1 = a as Fooi
-. f2 = f1 as Foof
--- f2(10)
+```brix
+(main
+  (let a (=> ((: n Int)) (+ 42 n)))
+  (let f1 (as a Fooi))
+  (let f2 (as f1 Foof))
+  (print (call f2 10))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (fn-from-expr + (: other Int)
+    (call Thing)
+  )
+  (fn-to-expr + Int
+    5
+  )
+)
 
-────────────────────
-+ from other Int
+(type + Fooi (is (fn-type Int (param n Int))))
 
-Thing()
-
-────────────────────
-+ to Int
-
-5
-
-━━━━━━━━━━━━━━━━━━━━
-+ Fooi is () Int
-    - n Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foof is () Float
-    - n Thing
+(type + Foof (is (fn-type Float (param n Thing))))
 ```
 
 ```output
 47
 ```
 
-```yumi crash
-. a = :: n => 42 + n
-. foo = a as Foo
--- foo(1, 2)
+```brix crash
+(main
+  (let a (=> (n) (+ 42 n)))
+  (let foo (as a Foo))
+  (print (call foo 1 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Int
-    - n Int
+(type + Foo (is (fn-type Int (param n Int))))
 ```
 
 ```output
 Exception: Wrong number of arguments
-<no file:4>
-    -- foo(1, 2)
-       ^^^^^^^^^
+<no file:5>
+      (print (call foo 1 2))
+             ^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-. a = :: n => 42 + n
-. foo = a as Foo
--- foo(1, 2)
+```brix crash
+(main
+  (let a (=> (n) (+ 42 n)))
+  (let foo (as a Foo))
+  (print (call foo 1 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Int
-    - n Int
+(type + Foo (is (fn-type Int (param n Int))))
 ```
 
 ```output
 Exception: Wrong number of arguments
-<no file:4>
-    -- foo(1, 2)
-       ^^^^^^^^^
+<no file:5>
+      (print (call foo 1 2))
+             ^^^^^^^^^^^^^^
 ```
 
-```yumi
-. a = => do
-    -- "hi"
+```brix
+(main
+  (let a
+    (=> () :do
+      (block
+        (print "hi")
+      )
+    )
+  )
+  (blank)
+  (let foo (as a Foo))
+  (call foo)
+)
 
-. foo = a as Foo
-foo()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Void
+(type + Foo (is (fn-type Void)))
 ```
 
 ```output
 hi
 ```
 
-```yumi
-. a = :: n => do
-    -- n
-. foo = a as Foo
-foo(42)
+```brix
+(main
+  (let a
+    (=> (n) :do
+      (block
+        (print n)
+      )
+    )
+  )
+  (let foo (as a Foo))
+  (call foo 42)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Void
-    - n Int
+(type + Foo (is (fn-type Void (param n Int))))
 ```
 
 ```output
@@ -726,13 +885,14 @@ foo(42)
 
 ### Cast to function with different return type
 
-```yumi
-. a = => 42
-. foo = a as Foo
--- foo()
+```brix
+(main
+  (let a (=> () 42))
+  (let foo (as a Foo))
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Float
+(type + Foo (is (fn-type Float)))
 ```
 
 ```output
@@ -741,25 +901,23 @@ foo(42)
 
 ### Cast to function with return type with compatible converter
 
-```yumi
-. a = => 42
-. foo = a as Foo
--- foo().num
+```brix
+(main
+  (let a (=> () 42))
+  (let foo (as a Foo))
+  (print (. (call foo) num))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + num _ (= 0))
+  (fn-from-do + (: n Int)
+    (let t (call Thing))
+    (= (. t num) n)
+    (return t)
+  )
+)
 
-+ num = 0
-
-────────────────────
-+ do from n Int
-
-. t = Thing()
-t.num = n
-= t
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Thing
+(type + Foo (is (fn-type Thing)))
 ```
 
 ```output
@@ -768,88 +926,103 @@ t.num = n
 
 ### Cast to function with different arguments
 
-```yumi crash
-. a = :: n =>
-    -- n
-. foo = a as Foo
-foo()
+```brix crash
+(main
+  (let a
+    (=> (n)
+      (block
+        (print n)
+      )
+    )
+  )
+  (let foo (as a Foo))
+  (call foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Void
+(type + Foo (is (fn-type Void)))
 ```
 
 ```output
 Exception: closure cannot be cast to Foo; there is no conversion between them
-<no file:4>
-    . foo = a as Foo
-            ^^^^^^^^
+<no file:10>
+      (let foo (as a Foo))
+               ^^^^^^^^^^
 ```
 
 ### Cast function with no return type to function with return type
 
-```yumi crash
-. a = => do
-    -- "hi"
+```brix crash
+(main
+  (let a
+    (=> () :do
+      (block
+        (print "hi")
+      )
+    )
+  )
+  (blank)
+  (let foo (as a Foo))
+  (print (call foo))
+)
 
-. foo = a as Foo
--- foo()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Int
+(type + Foo (is (fn-type Int)))
 ```
 
 ```output
 Exception: Void cannot be cast to I64; there is no conversion between them
-<no file:5>
-    . foo = a as Foo
-            ^^^^^^^^
+<no file:11>
+      (let foo (as a Foo))
+               ^^^^^^^^^^
 ```
 
 ### Cast to function with incompatible return type
 
-```yumi crash
-. a = => 42
-. foo = a as Foo
--- foo()
+```brix crash
+(main
+  (let a (=> () 42))
+  (let foo (as a Foo))
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Thing
+(type + Foo (is (fn-type Thing)))
 ```
 
 ```output
 Exception: I64 cannot be cast to Thing; there is no conversion between them
-<no file:3>
-    . foo = a as Foo
-            ^^^^^^^^
+<no file:4>
+      (let foo (as a Foo))
+               ^^^^^^^^^^
 ```
 
 ### Closure within interface function
 
-```yumi
-. thing = Thing() as Foo
--- thing
-thing.foo()
+```brix
+(main
+  (let thing (as (call Thing) Foo))
+  (print thing)
+  (call (. thing foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
+(type + Foo (is Interface)
+  (fn-expr + foo _)
+)
 
-────────────────────
-+ foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Foo
-
-────────────────────
-+ do foo
-
-. x = 42
-. a = => do
-    -- x
-a()
+(type + Thing
+  (implements Foo)
+  (fn-do + foo _
+    (let x 42)
+    (let a
+      (=> () :do
+        (block
+          (print x)
+        )
+      )
+    )
+    (call a)
+  )
+)
 ```
 
 ```output
@@ -859,22 +1032,22 @@ a()
 
 ### Crashes because we don't correctly rewrite closure inside of a generator It crashes accessing foo because this was loaded from closure field 2 but was written to field 0
 
-```yumi
-. thing = Thing()
-for a in thing.action()
-    -- a
+```brix
+(main
+  (let thing (call Thing))
+  (for (in a (call (. thing action)))
+    (print a)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ foo = 42
-
-────────────────────
-+ do action
-
-. getter = => foo
--- getter()
-<= 1
+(type + Thing
+  (prop + foo _ (= 42))
+  (fn-do + action _
+    (let getter (=> () foo))
+    (print (call getter))
+    (yield 1)
+  )
+)
 ```
 
 ```output
@@ -884,17 +1057,17 @@ for a in thing.action()
 
 ### A generic function whose parameter is an inline function type infers its type argument from the closure.
 
-```yumi
--- apply(4, :: n => n + 1)
--- apply(4, :: n => "n = $n")
+```brix
+(main
+  (print (call apply 4 (=> (n) (+ n 1))))
+  (print (call apply 4 (=> (n) (str "n = " n))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ apply'Result
-    - n Int
-    - func () Result
-        - value Int
-
-func(n)
+(fn-expr + (of apply Result) _
+  (param n Int)
+  (param func (fn-type Result (param value Int)))
+  (call func n)
+)
 ```
 
 ```output
@@ -904,15 +1077,22 @@ n = 4
 
 ### A local is one cell for the function that declares it and the closure that captures it.
 
-```yumi
-. total = 0
-. add = :: amount => do
-    total += amount
-    = total
--- add(2)
-total += 10
--- add(3)
--- total
+```brix
+(main
+  (let total 0)
+  (let add
+    (=> (amount) :do
+      (block
+        (+= total amount)
+        (return total)
+      )
+    )
+  )
+  (print (call add 2))
+  (+= total 10)
+  (print (call add 3))
+  (print total)
+)
 ```
 
 ```output
@@ -923,21 +1103,38 @@ total += 10
 
 ### Two closures share a local, and a closure in a closure reaches it two environments out.
 
-```yumi
-. count = 0
-. bump = => do
-    count += 1
-. read = => count
-bump()
-bump()
--- read()
-. outer = :: step => do
-    . inner = :: times => do
-        count += step * times
-        = count
-    = inner(2) + inner(3)
--- outer(10)
--- count
+```brix
+(main
+  (let count 0)
+  (let bump
+    (=> () :do
+      (block
+        (+= count 1)
+      )
+    )
+  )
+  (let read (=> () count))
+  (call bump)
+  (call bump)
+  (print (call read))
+  (let outer
+    (=> (step) :do
+      (block
+        (let inner
+          (=> (times) :do
+            (block
+              (+= count (* step times))
+              (return count)
+            )
+          )
+        )
+        (return (+ (call inner 2) (call inner 3)))
+      )
+    )
+  )
+  (print (call outer 10))
+  (print count)
+)
 ```
 
 ```output
@@ -948,23 +1145,29 @@ bump()
 
 ### Each run of a function has its own environment, which outlives the run.
 
-```yumi
-. first = counter(10)
-. second = counter(100)
--- first(1)
--- first(2)
--- second(5)
--- first(3)
+```brix
+(main
+  (let first (call counter 10))
+  (let second (call counter 100))
+  (print (call first 1))
+  (print (call first 2))
+  (print (call second 5))
+  (print (call first 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do counter
-    - start Int
-
-. held = start
-. step = :: amount => do
-    held += amount
-    = held
-= step
+(fn-do + counter _
+  (param start Int)
+  (let held start)
+  (let step
+    (=> (amount) :do
+      (block
+        (+= held amount)
+        (return held)
+      )
+    )
+  )
+  (return step)
+)
 ```
 
 ```output
@@ -976,16 +1179,23 @@ bump()
 
 ### A closure whose value is a closure, called after the closure that wrote it has returned.
 
-```yumi
-. scale = 3
-. make = :: base =>
-    :: amount => amount * scale + base
-. plus-one = make(1)
-. plus-ten = make(10)
--- plus-one(2)
-scale = 4
--- plus-one(2)
--- plus-ten(2)
+```brix
+(main
+  (let scale 3)
+  (let make
+    (=> (base)
+      (block
+        (=> (amount) (+ (* amount scale) base))
+      )
+    )
+  )
+  (let plus-one (call make 1))
+  (let plus-ten (call make 10))
+  (print (call plus-one 2))
+  (= scale 4)
+  (print (call plus-one 2))
+  (print (call plus-ten 2))
+)
 ```
 
 ```output
@@ -996,30 +1206,34 @@ scale = 4
 
 ### A closure written in a method reads and assigns the properties of the object it was made on.
 
-```yumi
-. first = Tally()
-. second = Tally()
-. add = first.adder()
-. other = second.adder()
--- add(2)
--- add(3)
--- other(10)
-first.total = 100
--- add(1)
--- second.total
+```brix
+(main
+  (let first (call Tally))
+  (let second (call Tally))
+  (let add (call (. first adder)))
+  (let other (call (. second adder)))
+  (print (call add 2))
+  (print (call add 3))
+  (print (call other 10))
+  (= (. first total) 100)
+  (print (call add 1))
+  (print (. second total))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tally
-
-+ total = 0
-
-────────────────────
-+ do adder
-
-. add = :: amount => do
-    total += amount
-    = total
-= add
+(type + Tally
+  (prop + total _ (= 0))
+  (fn-do + adder _
+    (let add
+      (=> (amount) :do
+        (block
+          (+= total amount)
+          (return total)
+        )
+      )
+    )
+    (return add)
+  )
+)
 ```
 
 ```output
@@ -1032,32 +1246,38 @@ first.total = 100
 
 ### A text and an object that a closure captures survive the collector.
 
-```yumi
-. label = "start"
-. box = Box()
-. note = :: text => do
-    label = "$label/$text"
-    box.count += 1
-note("a")
-churn()
-note("b")
-churn()
--- label
--- box.count
+```brix
+(main
+  (let label "start")
+  (let box (call Box))
+  (let note
+    (=> (text) :do
+      (block
+        (= label (str label "/" text))
+        (+= (. box count) 1)
+      )
+    )
+  )
+  (call note "a")
+  (call churn)
+  (call note "b")
+  (call churn)
+  (print label)
+  (print (. box count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + count _ (= 0))
+)
 
-+ count = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do churn
-
-. kept = ""
-. turn = 0
-while turn < 20000
-    kept = "text $turn"
-    turn += 1
+(fn-do + churn _
+  (let kept "")
+  (let turn 0)
+  (while (< turn 20000)
+    (= kept (str "text " turn))
+    (+= turn 1)
+  )
+)
 ```
 
 ```output
@@ -1067,34 +1287,29 @@ start/a/b
 
 ### A closure written as the value of a method reads a property and calls a method.
 
-```yumi
-. thing = Thing()
-. read = thing.reader()
--- read()
-thing.size = 7
--- read()
--- thing.twice()()
+```brix
+(main
+  (let thing (call Thing))
+  (let read (call (. thing reader)))
+  (print (call read))
+  (= (. thing size) 7)
+  (print (call read))
+  (print (call (call (. thing twice))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ size = 2
-
-────────────────────
-+ reader
-
-=> size * 10
-
-────────────────────
-+ twice
-
-=> double(size)
-
-────────────────────
-+ double Int
-    - amount Int
-
-amount * 2
+(type + Thing
+  (prop + size _ (= 2))
+  (fn-expr + reader _
+    (=> () (* size 10))
+  )
+  (fn-expr + twice _
+    (=> () (call double size))
+  )
+  (fn-expr + double Int
+    (param amount Int)
+    (* amount 2)
+  )
+)
 ```
 
 ```output
@@ -1105,38 +1320,32 @@ amount * 2
 
 ### A method read by its name inside a closure binds the object, and is called outside its class.
 
-```yumi
-. thing = Thing()
-. s = thing.held()
-. bound = s()
--- bound(42)
+```brix
+(main
+  (let thing (call Thing))
+  (let s (call (. thing held)))
+  (let bound (call s))
+  (print (call bound 42))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ do foo
-
-. getter = => bar
-. bound = getter()
-= bound(42)
-
-────────────────────
-+ do direct
-
-. bound = bar
-= bound(42)
-
-────────────────────
-+ held
-
-=> bar
-
-────────────────────
-+ bar
-    - n I32
-
-"bar $n"
+(type + Thing
+  (fn-do + foo _
+    (let getter (=> () bar))
+    (let bound (call getter))
+    (return (call bound 42))
+  )
+  (fn-do + direct _
+    (let bound bar)
+    (return (call bound 42))
+  )
+  (fn-expr + held _
+    (=> () bar)
+  )
+  (fn-expr + bar _
+    (param n I32)
+    (str "bar " n)
+  )
+)
 ```
 
 ```output
@@ -1145,33 +1354,29 @@ bar 42
 
 ### Nested functions in the members of a number type read the number.
 
-```yumi
-. m = Meters(5)
-. add = m.adder(10)
--- add(1)
--- add(2)
-. twice = m.twice()
--- twice()
+```brix
+(main
+  (let m (call Meters 5))
+  (let add (call (. m adder) 10))
+  (print (call add 1))
+  (print (call add 2))
+  (let twice (call (. m twice)))
+  (print (call twice))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Meters is I32
-
-────────────────────
-+ adder
-    - base I32
-
-:: n I32 => (this as I32) + base + n
-
-────────────────────
-+ twice
-
-=> scaled(2)
-
-────────────────────
-+ scaled I32
-    - by I32
-
-(this as I32) * by
+(type + Meters (is I32)
+  (fn-expr + adder _
+    (param base I32)
+    (=> ((: n I32)) (+ (as this I32) base n))
+  )
+  (fn-expr + twice _
+    (=> () (call scaled 2))
+  )
+  (fn-expr + scaled I32
+    (param by I32)
+    (* (as this I32) by)
+  )
+)
 ```
 
 ```output
@@ -1182,28 +1387,25 @@ bar 42
 
 ### A nested function in a member of an enum calls a member on the case.
 
-```yumi
-. c = Color.green
-. name = c.namer()
--- name(1)
-. other = Color.red.namer()
--- other(2)
+```brix
+(main
+  (let c (. Color green))
+  (let name (call (. c namer)))
+  (print (call name 1))
+  (let other (call (. Color red namer)))
+  (print (call other 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Color is U8
-
-| red
-| green
-
-────────────────────
-+ namer
-
-:: n Int => n + code()
-
-────────────────────
-+ code Int
-
-if this == Color.red then 10 else 20
+(type + Color (is U8)
+  (variant red)
+  (variant green)
+  (fn-expr + namer _
+    (=> ((: n Int)) (+ n (call code)))
+  )
+  (fn-expr + code Int
+    (if-expr (== this (. Color red)) 10 20)
+  )
+)
 ```
 
 ```output
@@ -1213,18 +1415,18 @@ if this == Color.red then 10 else 20
 
 ### A nested function in one, in a member of a number type.
 
-```yumi
-. m = Meters(5)
-. far = m.later()
--- far()()
+```brix
+(main
+  (let m (call Meters 5))
+  (let far (call (. m later)))
+  (print (call (call far)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Meters is I32
-
-────────────────────
-+ later
-
-=> => (this as I32) + 1
+(type + Meters (is I32)
+  (fn-expr + later _
+    (=> () (=> () (+ (as this I32) 1)))
+  )
+)
 ```
 
 ```output
@@ -1233,19 +1435,19 @@ if this == Color.red then 10 else 20
 
 ### A nested function in a member of a type that is a text.
 
-```yumi
-. w = Word("hey")
-. shout = w.shouter()
--- shout(2)
--- shout(1)
+```brix
+(main
+  (let w (call Word "hey"))
+  (let shout (call (. w shouter)))
+  (print (call shout 2))
+  (print (call shout 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Word is String
-
-────────────────────
-+ shouter
-
-:: n Int => if n > 1 then "${this as String}!" else "${this as String}"
+(type + Word (is String)
+  (fn-expr + shouter _
+    (=> ((: n Int)) (if-expr (> n 1) (str (as this String) "!") (str (as this String))))
+  )
+)
 ```
 
 ```output
@@ -1255,15 +1457,15 @@ hey
 
 ### A closure that states its argument's type is made a value of a function type that gives it a number of another type and takes another from it.
 
-```yumi
-. a = :: n Int => 42 + n
-. f = a as Foof
--- f(10.7)
--- f(-3.2)
+```brix
+(main
+  (let a (=> ((: n Int)) (+ 42 n)))
+  (let f (as a Foof))
+  (print (call f 10.7))
+  (print (call f -3.2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foof is () Float
-    - n Float
+(type + Foof (is (fn-type Float (param n Float))))
 ```
 
 ```output
@@ -1273,18 +1475,17 @@ hey
 
 ### A closure of two typed arguments that captures a local is made a value of a function type whose arguments and answer are of other types.
 
-```yumi
-. k = 3
-. a = :: x Int, y Float => x * k + y
-. f = a as Mix
--- f(2.9, 4)
-k = 5
--- f(2.9, 4)
+```brix
+(main
+  (let k 3)
+  (let a (=> ((: x Int) (: y Float)) (+ (* x k) y)))
+  (let f (as a Mix))
+  (print (call f 2.9 4))
+  (= k 5)
+  (print (call f 2.9 4))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Mix is () Int
-    - x Float
-    - y Int
+(type + Mix (is (fn-type Int (param x Float) (param y Int))))
 ```
 
 ```output
@@ -1294,23 +1495,21 @@ k = 5
 
 ### A closure's answer is made a number from a truth, and a truth from a number, by the function type it is given to.
 
-```yumi
-. a = :: n Int => n > 2
-. f = a as Num
--- f(3.5)
--- f(1.5)
-. b = :: n Int => n - 3
-. g = b as Truth
--- g(3)
--- g(4)
+```brix
+(main
+  (let a (=> ((: n Int)) (> n 2)))
+  (let f (as a Num))
+  (print (call f 3.5))
+  (print (call f 1.5))
+  (let b (=> ((: n Int)) (- n 3)))
+  (let g (as b Truth))
+  (print (call g 3))
+  (print (call g 4))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Num is () Int
-    - n Float
+(type + Num (is (fn-type Int (param n Float))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Truth is () Bool
-    - n Int
+(type + Truth (is (fn-type Bool (param n Int))))
 ```
 
 ```output
@@ -1322,21 +1521,19 @@ true
 
 ### A closure's answer is made an optional, and a narrower number, by the function type it is given to.
 
-```yumi
-. a = :: n Int => n + 1
-. f = a as Opt
--- f(3) ?? -1
-. g = a as Small
--- g(300)
--- g(127)
+```brix
+(main
+  (let a (=> ((: n Int)) (+ n 1)))
+  (let f (as a Opt))
+  (print (?? (call f 3) -1))
+  (let g (as a Small))
+  (print (call g 300))
+  (print (call g 127))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Opt is () Int?
-    - n Int
+(type + Opt (is (fn-type (? Int) (param n Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Small is () I8
-    - n I16
+(type + Small (is (fn-type I8 (param n I16))))
 ```
 
 ```output
@@ -1347,24 +1544,24 @@ true
 
 ### A function, a closure with no type stated and a closure with one are added to a list of a function type and called in turn.
 
-```yumi
-. fns [Whole]
-fns += half
-fns += :: n => n * 3
-. third = :: n Float => n / 3
-fns += third
-for fn in fns
-    -- fn(9)
+```brix
+(main
+  (let fns (list Whole))
+  (+= fns half)
+  (+= fns (=> (n) (* n 3)))
+  (let third (=> ((: n Float)) (/ n 3)))
+  (+= fns third)
+  (for (in fn fns)
+    (print (call fn 9))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Whole is () Float
-    - n I32
+(type + Whole (is (fn-type Float (param n I32))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ half
-    - n Float
-
-n / 2
+(fn-expr + half _
+  (param n Float)
+  (/ n 2)
+)
 ```
 
 ```output
@@ -1375,27 +1572,25 @@ n / 2
 
 ### A closure with a typed argument is given to a function, written where it is given, and returned as a value of a function type.
 
-```yumi
-. a = :: n Int => n + 0.5
--- run(a)
--- run(:: n Int => n * 2.0)
--- keep(a)(4)
+```brix
+(main
+  (let a (=> ((: n Int)) (+ n 0.5)))
+  (print (call run a))
+  (print (call run (=> ((: n Int)) (* n 2.0))))
+  (print (call (call keep a) 4))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Half is () Float
-    - n I32
+(type + Half (is (fn-type Float (param n I32))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ run
-    - fn Half
+(fn-expr + run _
+  (param fn Half)
+  (call fn 2)
+)
 
-fn(2)
-
-━━━━━━━━━━━━━━━━━━━━
-+ keep Half
-    - fn Half
-
-fn
+(fn-expr + keep Half
+  (param fn Half)
+  fn
+)
 ```
 
 ```output
@@ -1406,20 +1601,19 @@ fn
 
 ### Closures written where a function takes a function type state other types for their argument, or none.
 
-```yumi
--- run(:: n Int => n + 0.5)
--- run(:: n Float => n * 2)
--- run(:: n => n * 1.5)
+```brix
+(main
+  (print (call run (=> ((: n Int)) (+ n 0.5))))
+  (print (call run (=> ((: n Float)) (* n 2))))
+  (print (call run (=> (n) (* n 1.5))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Half is () Float
-    - n I32
+(type + Half (is (fn-type Float (param n I32))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ run
-    - fn Half
-
-fn(3)
+(fn-expr + run _
+  (param fn Half)
+  (call fn 3)
+)
 ```
 
 ```output
@@ -1430,70 +1624,55 @@ fn(3)
 
 ### Closures that take a value of an interface and an object of a base class are given to function types that give an object of the class and of one derived from it.
 
-```yumi
-. a = :: label Label => label.label()
-. f = a as Taker
--- f(Thing("one"))
-. b = :: base Base => base.kind()
--- run(b)
-. c = :: thing Thing => thing
-. g = c as Shown
--- g(Thing("two")).label()
+```brix
+(main
+  (let a (=> ((: label Label)) (call (. label label))))
+  (let f (as a Taker))
+  (print (call f (call Thing "one")))
+  (let b (=> ((: base Base)) (call (. base kind))))
+  (print (call run b))
+  (let c (=> ((: thing Thing)) thing))
+  (let g (as c Shown))
+  (print (call (. (call g (call Thing "two")) label)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Taker is () String
-    - thing Thing
+(type + Taker (is (fn-type String (param thing Thing))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shown is () Label
-    - thing Thing
+(type + Shown (is (fn-type Label (param thing Thing))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Lower is () String
-    - derived Derived
+(type + Lower (is (fn-type String (param derived Derived))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Interface
+(type + Label (is Interface)
+  (fn-expr + label String)
+)
 
-────────────────────
-+ label String
+(type + Thing
+  (implements Label)
+  (prop + name _ (= ""))
+  (fn-do + This _
+    (param name _)
+  )
+  (fn-expr + label String
+    (str "thing " name)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Label
+(type + Base
+  (fn-expr + kind String
+    "base"
+  )
+)
 
-+ name = ""
+(type + Derived (is Base)
+  (fn-expr + kind String
+    "derived"
+  )
+)
 
-────────────────────
-+ This
-    - name
-
-────────────────────
-+ label String
-
-"thing $name"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-────────────────────
-+ kind String
-
-"base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-────────────────────
-+ kind String
-
-"derived"
-
-━━━━━━━━━━━━━━━━━━━━
-+ run
-    - fn Lower
-
-fn(Derived())
+(fn-expr + run _
+  (param fn Lower)
+  (call fn (call Derived))
+)
 ```
 
 ```output
@@ -1504,84 +1683,83 @@ thing two
 
 ### A closure with a typed argument, written where a function takes a function type, panics.
 
-```yumi crash
-. shown = run • fn :: n Int => do
-    . items = [1, 2, 3]
-    = items[n]
--- shown
+```brix crash
+(main
+  (let shown
+    (call run
+      (:fn
+        (=> ((: n Int)) :do
+          (block
+            (let items (list 1 2 3))
+            (return ([] items n))
+          )
+        )
+      )
+    )
+  )
+  (print shown)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pick is () Int
-    - n I32
+(type + Pick (is (fn-type Int (param n I32))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ run
-    - fn Pick
-
-fn(1) + fn(9)
+(fn-expr + run _
+  (param fn Pick)
+  (+ (call fn 1) (call fn 9))
+)
 ```
 
 ```stderr
 Unhandled panic: List index 9 out of range
-<core/list.yumi>
+<core/list.bx>
 
 Task 1
 
 Stack trace:
-  0  core/list:List:absent core/list.yumi
-  1  __source__:shown no file:4:7
-  2  __source__:shownCasting no file:2:14
-  3  __source__:run no file:15:9
-  4  __source__:main no file:2:11
+  0  core/list:List:absent core/list.bx
+  1  __source__:shown no file:9:21
+  2  __source__:shownCasting no file:5:7
+  3  __source__:run no file:22:18
+  4  __source__:main no file:4:5
   5  __source__:init.__source__ no file
   6  __source__:brix.main no file
 ```
 
 ### A closure and a function that take an object are given where a function type gives a number the object's class is made from.
 
-```yumi
-. a = :: thing Thing => thing.n
-. f = a as Taker
--- f(4)
--- run(show)
+```brix
+(main
+  (let a (=> ((: thing Thing)) (. thing n)))
+  (let f (as a Taker))
+  (print (call f 4))
+  (print (call run show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Taker is () Int
-    - n Int
+(type + Taker (is (fn-type Int (param n Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ show
-    - thing Thing
+(fn-expr + show _
+  (param thing Thing)
+  (+ (. thing n) 2)
+)
 
-thing.n + 2
+(fn-expr + run _
+  (param fn Taker)
+  (call fn 7)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ run
-    - fn Taker
-
-fn(7)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ n = 0
-
-────────────────────
-+ do from n Int
-
-. made = Thing()
-made.n = n * 10
-= made
-
-────────────────────
-+ to Int
-
-n + 1
-
-────────────────────
-+ !this
-
-n == 0
+(type + Thing
+  (prop + n _ (= 0))
+  (fn-from-do + (: n Int)
+    (let made (call Thing))
+    (= (. made n) (* n 10))
+    (return made)
+  )
+  (fn-to-expr + Int
+    (+ n 1)
+  )
+  (fn-expr + (prefix ! this) _
+    (== n 0)
+  )
+)
 ```
 
 ```output
@@ -1591,21 +1769,19 @@ n == 0
 
 ### A closure that takes a text is given a number by a function type, and one that answers a number is cast to a type that answers text.
 
-```yumi
-. a = :: text String => text.length
-. f = a as Count
--- f(42)
-. b = :: n Int => n
-. g = b as Text
--- g(7)
+```brix
+(main
+  (let a (=> ((: text String)) (. text length)))
+  (let f (as a Count))
+  (print (call f 42))
+  (let b (=> ((: n Int)) n))
+  (let g (as b Text))
+  (print (call g 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Count is () Int
-    - n Int
+(type + Count (is (fn-type Int (param n Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Text is () String
-    - n Int
+(type + Text (is (fn-type String (param n Int))))
 ```
 
 ```output
@@ -1615,14 +1791,14 @@ n == 0
 
 ### A closure that takes a number is cast to a function type that gives it text.
 
-```yumi
-. a = :: n Int => n + 1
-. f = a as Texty
--- f("0")
+```brix
+(main
+  (let a (=> ((: n Int)) (+ n 1)))
+  (let f (as a Texty))
+  (print (call f "0"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Texty is () Int
-    - n String
+(type + Texty (is (fn-type Int (param n String))))
 ```
 
 ```output
@@ -1631,87 +1807,88 @@ n == 0
 
 ### A closure with a typed argument panics, called as a value of a function type that gives it another number: the stack trace has the closure and the function made for the value.
 
-```yumi crash
-. items = [1, 2, 3]
-. picker = :: n Int => items[n]
-. f = picker as Pick
--- f(1.9)
--- f(7.5)
+```brix crash
+(main
+  (let items (list 1 2 3))
+  (let picker (=> ((: n Int)) ([] items n)))
+  (let f (as picker Pick))
+  (print (call f 1.9))
+  (print (call f 7.5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pick is () Float
-    - n Float
+(type + Pick (is (fn-type Float (param n Float))))
 ```
 
 ```stderr
 Unhandled panic: List index 7 out of range
-<core/list.yumi>
+<core/list.bx>
 
 Task 1
 
 Stack trace:
-  0  core/list:List:absent core/list.yumi
-  1  __source__:picker no file:3:24
-  2  __source__:pickerCasting no file:4:7
-  3  __source__:main no file:6:4
+  0  core/list:List:absent core/list.bx
+  1  __source__:picker no file:4:31
+  2  __source__:pickerCasting no file:5:10
+  3  __source__:main no file:7:10
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
 ### A closure with a typed argument added to a list of a function type panics, called in a loop.
 
-```yumi crash
-. chosen [Pick]
-. items = [1, 2, 3]
-chosen += :: n Int => items[n]
-for fn in chosen
-    -- fn(0)
-    -- fn(5)
+```brix crash
+(main
+  (let chosen (list Pick))
+  (let items (list 1 2 3))
+  (+= chosen (=> ((: n Int)) ([] items n)))
+  (for (in fn chosen)
+    (print (call fn 0))
+    (print (call fn 5))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pick is () Int
-    - n I32
+(type + Pick (is (fn-type Int (param n I32))))
 ```
 
 ```stderr
 Unhandled panic: List index 5 out of range
-<core/list.yumi>
+<core/list.bx>
 
 Task 1
 
 Stack trace:
-  0  core/list:List:absent core/list.yumi
-  1  __source__:chosen no file:4:23
-  2  __source__:chosenCasting no file:5:11
-  3  __source__:main no file:7:8
+  0  core/list:List:absent core/list.bx
+  1  __source__:chosen no file:5:30
+  2  __source__:chosenCasting no file:6:14
+  3  __source__:main no file:8:12
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
 ### A value of a function type is printed as the name of its type
 
-```yumi
-. gen = numbers(3)
--- gen
--- "made $gen"
-. words = texts()
--- words
-. adder Mapper'Int'Int = :: value => value + 1
--- adder
-. getter Getter'String = => "x"
--- getter
--- "held $getter"
+```brix
+(main
+  (let gen (call numbers 3))
+  (print gen)
+  (print (str "made " gen))
+  (let words (call texts))
+  (print words)
+  (let adder (of Mapper Int Int) (=> (value) (+ value 1)))
+  (print adder)
+  (let getter (of Getter String) (=> () "x"))
+  (print getter)
+  (print (str "held " getter))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do numbers
-    - a Int
+(fn-do + numbers _
+  (param a Int)
+  (yield a)
+)
 
-<= a
-
-━━━━━━━━━━━━━━━━━━━━
-+ do texts Generator'String
-
-<= "t"
+(fn-do + texts (of Generator String)
+  (yield "t")
+)
 ```
 
 ```output
@@ -1725,25 +1902,26 @@ held [Function Getter'String]
 
 ### Nested functions in the values of two lazy properties read the object they were made for.
 
-```yumi
-. t = Thing()
-. f = t.get-a
-. g = t.get-b
--- f()
--- g()
-t.a = 3
--- f() + g()
-. h = :: n Int => n * 2
--- h(4)
+```brix
+(main
+  (let t (call Thing))
+  (let f (. t get-a))
+  (let g (. t get-b))
+  (print (call f))
+  (print (call g))
+  (= (. t a) 3)
+  (print (+ (call f) (call g)))
+  (let h (=> ((: n Int)) (* n 2)))
+  (print (call h 4))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 5
-+ b = 7
-
-+ get-a Getter'Int := => a
-+ get-b Getter'Int := => b + a
+(type + Thing
+  (prop + a _ (= 5))
+  (prop + b _ (= 7))
+  (blank)
+  (prop + get-a (of Getter Int) (:= (=> () a)))
+  (prop + get-b (of Getter Int) (:= (=> () (+ b a))))
+)
 ```
 
 ```output
@@ -1755,22 +1933,22 @@ t.a = 3
 
 ### A nested function in a lazy property's value, inherited by a subclass.
 
-```yumi
-. s = Sub()
-. f = s.get-a
--- f()
-s.a = 9
--- f()
+```brix
+(main
+  (let s (call Sub))
+  (let f (. s get-a))
+  (print (call f))
+  (= (. s a) 9)
+  (print (call f))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + a _ (= 1))
+  (blank)
+  (prop + get-a (of Getter Int) (:= (=> () (* a 10))))
+)
 
-+ a = 1
-
-+ get-a Getter'Int := => a * 10
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub is Base
+(type + Sub (is Base))
 ```
 
 ```output
@@ -1780,24 +1958,24 @@ s.a = 9
 
 ### A nested function in a lazy property's value of a generic class.
 
-```yumi
-. b = Box'Int(4)
-. r = b.reader
--- r()
-. s = Box'String("x")
-. q = s.reader
--- q()
+```brix
+(main
+  (let b (call (of Box Int) 4))
+  (let r (. b reader))
+  (print (call r))
+  (let s (call (of Box String) "x"))
+  (let q (. s reader))
+  (print (call q))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box'T
-
-+ value T
-
-+ reader Getter'T := => value
-
-────────────────────
-+ This
-    - value T
+(type + (of Box T)
+  (prop + value T)
+  (blank)
+  (prop + reader (of Getter T) (:= (=> () value)))
+  (fn-do + This _
+    (param value T)
+  )
+)
 ```
 
 ```output
@@ -1807,27 +1985,27 @@ x
 
 ### A lazy property whose value holds a closure reads its fields by their bare names.
 
-```yumi
-. t = Thing()
--- t.total
--- t.total
-. u = Thing()
-u.n = 10
--- u.total
+```brix
+(main
+  (let t (call Thing))
+  (print (. t total))
+  (print (. t total))
+  (let u (call Thing))
+  (= (. u n) 10)
+  (print (. u total))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + k _ (= 3))
+  (prop + n _ (= 4))
+  (blank)
+  (prop + total Int (:= (+ n (call apply (=> () k)))))
+)
 
-+ k = 3
-+ n = 4
-
-+ total Int := n + apply(=> k)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do apply Int
-    - f Getter'Int
-
-= f()
+(fn-do + apply Int
+  (param f (of Getter Int))
+  (return (call f))
+)
 ```
 
 ```output
@@ -1838,34 +2016,56 @@ u.n = 10
 
 ### Closures made in a loop read the names match patterns bind in the turn they are made in.
 
-```yumi
-. items = [Item.num(1), Item.word("ab"), Item.pair((3, "c"))]
-. fs = List'Doer()
-. total = 0
-for item in items
-    match item
-        | .num(n)
-            fs += => do
-                total += n
-                -- "num $n"
-        | .word(w)
-            fs += => do
-                total += w.length
-                -- "word $w"
-        | .pair((a, b))
-            fs += => do
-                total += a
-                -- "pair $a $b"
-for f in fs
-    f()
--- total
+```brix
+(main
+  (let items (list (call (. Item num) 1) (call (. Item word) "ab") (call (. Item pair) (tuple 3 "c"))))
+  (let fs (call (of List Doer)))
+  (let total 0)
+  (for (in item items)
+    (match item
+      (case (call .num n)
+        (+= fs
+          (=> () :do
+            (block
+              (+= total n)
+              (print (str "num " n))
+            )
+          )
+        )
+      )
+      (case (call .word w)
+        (+= fs
+          (=> () :do
+            (block
+              (+= total (. w length))
+              (print (str "word " w))
+            )
+          )
+        )
+      )
+      (case (call .pair a b)
+        (+= fs
+          (=> () :do
+            (block
+              (+= total a)
+              (print (str "pair " a " " b))
+            )
+          )
+        )
+      )
+    )
+  )
+  (for (in f fs)
+    (call f)
+  )
+  (print total)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| num Int
-| word String
-| pair (Int, String)
+(type + Item (is Union)
+  (variant num Int)
+  (variant word String)
+  (variant pair (tuple Int String))
+)
 ```
 
 ```output
@@ -1877,22 +2077,22 @@ pair 3 c
 
 ### A closure picks a function-typed overload over one whose parameter is a bare type variable.
 
-```yumi
--- pick(=> 1 + 1)
--- pick(3)
--- pick("s")
+```brix
+(main
+  (print (call pick (=> () (+ 1 1))))
+  (print (call pick 3))
+  (print (call pick "s"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pick'T
-    - value T
+(fn-expr + (of pick T) _
+  (param value T)
+  "eager"
+)
 
-"eager"
-
-━━━━━━━━━━━━━━━━━━━━
-+ pick'T
-    - value Getter'T
-
-"lazy ${value()}"
+(fn-expr + (of pick T) _
+  (param value (of Getter T))
+  (str "lazy " (call value))
+)
 ```
 
 ```output
@@ -1903,62 +2103,61 @@ eager
 
 ### A lazy expectation runs its closure and catches the error it raises.
 
-```yumi
-. t = Checks()
-t.expect("infallible", 2, => 1 + 1)
-t.expect("fallible", 2, => half(4))
-t.expect("failing", 2, => half(3))
-t.expect("eager", 2, 2)
--- "${t.passed} passed, ${t.failed} failed, ${t.caught} caught"
+```brix
+(main
+  (let t (call Checks))
+  (call (. t expect) "infallible" 2 (=> () (+ 1 1)))
+  (call (. t expect) "fallible" 2 (=> () (call half 4)))
+  (call (. t expect) "failing" 2 (=> () (call half 3)))
+  (call (. t expect) "eager" 2 2)
+  (print (str (. t passed) " passed, " (. t failed) " failed, " (. t caught) " caught"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Checks
+(type + Checks
+  (prop + passed _ (= 0))
+  (prop + failed _ (= 0))
+  (prop + caught _ (= 0))
+  (fn-do + (of expect Expecting Actual) _
+    (param label String)
+    (param expected Expecting)
+    (param actual Actual)
+    (print (str "Assertion " label " is eager"))
+    (+= passed 1)
+    (blank)
+    (return this)
+  )
+  (fn-do + (of expect Expecting Actual) _
+    (param label String)
+    (param expected Expecting)
+    (param actual (of Getter Actual))
+    (let fn actual)
+    (let actual-result (catch? (as (call fn) Expecting)))
+    (if actual-result
+      (if (== actual-result expected)
+        (+= passed 1)
+        (else
+          (+= failed 1)
+        )
+      )
+      (else
+        (print (str "Assertion " label " caught"))
+        (+= caught 1)
+      )
+    )
+    (blank)
+    (return this)
+  )
+)
 
-+ passed = 0
-+ failed = 0
-+ caught = 0
+(type + OddNumber (is Error))
 
-────────────────────
-+ do expect'Expecting'Actual
-    - label String
-    - expected Expecting
-    - actual Actual
-
--- "Assertion $label is eager"
-passed += 1
-
-= this
-
-────────────────────
-+ do expect'Expecting'Actual
-    - label String
-    - expected Expecting
-    - actual Getter'Actual
-
-. fn = actual
-. actual-result = catch? (fn() as Expecting)
-if actual-result
-    if actual-result == expected
-        passed += 1
-    else
-        failed += 1
-else
-    -- "Assertion $label caught"
-    caught += 1
-
-= this
-
-━━━━━━━━━━━━━━━━━━━━
-+ OddNumber is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ half Int ?! OddNumber
-    - value Int
-
-?! OddNumber("odd")
-    if value % 2 != 0
-
-value / 2
+(fn-expr + half Int (?! OddNumber)
+  (param value Int)
+  (before
+    (throw (call OddNumber "odd") (if (!= (% value 2) 0)))
+  )
+  (/ value 2)
+)
 ```
 
 ```output
@@ -1969,31 +2168,27 @@ Assertion eager is eager
 
 ### A nested function in a method of a generic class names the class's type parameter.
 
-```yumi
-. b = Holder'Int(5)
--- b.listed().length
--- b.cast()
+```brix
+(main
+  (let b (call (of Holder Int) 5))
+  (print (. (call (. b listed)) length))
+  (print (call (. b cast)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder'T
-
-+ value T
-
-────────────────────
-+ This
-    - value
-
-────────────────────
-+ do listed [T]
-
-. g = => List'T([value, value])
-= g()
-
-────────────────────
-+ do cast T
-
-. f = => value as T
-= f()
+(type + (of Holder T)
+  (prop + value T)
+  (fn-do + This _
+    (param value _)
+  )
+  (fn-do + listed (list T)
+    (let g (=> () (call (of List T) (list value value))))
+    (return (call g))
+  )
+  (fn-do + cast T
+    (let f (=> () (as value T)))
+    (return (call f))
+  )
+)
 ```
 
 ```output
@@ -2003,25 +2198,25 @@ Assertion eager is eager
 
 ### A lambda whose body is optional where its function type answers a value unwraps the body's value with `!`.
 
-```yumi
--- ordered(3, 1)
--- compared(1, 3) • using :: a, b => (if a < b then .lesser else .greater if a > b)!
+```brix
+(main
+  (print (call ordered 3 1))
+  (print (call compared 1 3 (:using (=> (a b) (!! (if-expr (< a b) .lesser (only-if .greater (if (> a b)))))))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do ordered Comparison
-    - left Int
-    - right Int
+(fn-do _ ordered Comparison
+  (param left Int)
+  (param right Int)
+  (let maybe (? Comparison) .greater)
+  (return (call compared left right (:using (=> (a b) (!! maybe)))))
+)
 
-. maybe Comparison? = .greater
-= compared(left, right) • using :: a, b => maybe!
-
-━━━━━━━━━━━━━━━━━━━━
-_ compared Comparison
-    - left Int
-    - right Int
-    - using Comparer'Int
-
-using(left, right)
+(fn-expr _ compared Comparison
+  (param left Int)
+  (param right Int)
+  (param using (of Comparer Int))
+  (call using left right)
+)
 ```
 
 ```output
@@ -2031,67 +2226,62 @@ lesser
 
 ### The unwrap of a lambda's optional result panics where the body holds no value.
 
-```yumi crash
--- compared(1, 1) • using :: a, b => (.greater if a > b)!
+```brix crash
+(main
+  (print (call compared 1 1 (:using (=> (a b) (!! (only-if .greater (if (> a b))))))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ compared Comparison
-    - left Int
-    - right Int
-    - using Comparer'Int
-
-using(left, right)
+(fn-expr _ compared Comparison
+  (param left Int)
+  (param right Int)
+  (param using (of Comparer Int))
+  (call using left right)
+)
 ```
 
 ```stderr
 Unhandled panic: Optional'Comparison is null
-<no file:2>
+<no file:3>
 
 Task 1
 
 Stack trace:
-  0  __source__:anon no file:2:38
-  1  __source__:anonCasting no file:2:18
-  2  __source__:compared no file:10:1
-  3  __source__:main no file:2:4
+  0  __source__:anon no file:3:47
+  1  __source__:anonCasting no file:3:29
+  2  __source__:compared no file:10:3
+  3  __source__:main no file:3:10
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
 ### A constructor argument named as an optional property of a function type takes a lambda and a method.
 
-```yumi
-. counter = Counter()
--- Holder(counter.next).run()
--- Holder(=> 7).run()
+```brix
+(main
+  (let counter (call Counter))
+  (print (call (. (call Holder (. counter next)) run)))
+  (print (call (. (call Holder (=> () 7)) run)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Maker is () Int
+(type + Maker (is (fn-type Int)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
+(type + Counter
+  (prop + count _ (= 0))
+  (fn-do + next Int
+    (+= count 1)
+    (return (* count 10))
+  )
+)
 
-+ count = 0
-
-────────────────────
-+ do next Int
-
-count += 1
-= count * 10
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ maker Maker?
-
-────────────────────
-+ This
-    - maker
-
-────────────────────
-+ do run Int
-
-= if maker then maker() else 0
+(type + Holder
+  (prop + maker (? Maker))
+  (fn-do + This _
+    (param maker _)
+  )
+  (fn-do + run Int
+    (return (if-expr maker (call maker) 0))
+  )
+)
 ```
 
 ```output
@@ -2101,38 +2291,33 @@ count += 1
 
 ### A closure that raises an error its function type declares binds the type's return to what it gives.
 
-```yumi
-. got = first(:: n => half(n))
--- got + 1
-. listed = gather(:: n => half(n))
--- listed[0] + 1
+```brix
+(main
+  (let got (call first (=> (n) (call half n))))
+  (print (+ got 1))
+  (let listed (call gather (=> (n) (call half n))))
+  (print (+ ([] listed 0) 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Odd is Error
+(type + Odd (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do half Int ?! Odd
-    - n Int
+(fn-do + half Int (?! Odd)
+  (param n Int)
+  (throw (call Odd "odd") (if (== (% n 2) 1)))
+  (return (/ n 2))
+)
 
-?! Odd("odd")
-    if n % 2 == 1
-= n / 2
+(fn-do + (of first Item) Item (?! Odd)
+  (param decode (fn-type Item (?! Odd) (param n Int)))
+  (return (call decode 4))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do first'Item Item ?! Odd
-    - decode () Item ?! Odd
-        - n Int
-
-= decode(4)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do gather'Item [Item] ?! Odd
-    - decode () Item ?! Odd
-        - n Int
-
-. found [Item]
-found += decode(6)
-= found
+(fn-do + (of gather Item) (list Item) (?! Odd)
+  (param decode (fn-type Item (?! Odd) (param n Int)))
+  (let found (list Item))
+  (+= found (call decode 6))
+  (return found)
+)
 ```
 
 ```output
@@ -2142,26 +2327,36 @@ found += decode(6)
 
 ### An index assignment whose setter answers the new value stores it in a captured local or argument, from a closure or task that captures it or from the function that declares it.
 
-```yumi
-/core/bitmap
+```brix
+(import /core/bitmap)
+(blank)
 
-. bits = Bitmap'U8()
-. read = => bits[1]
-. change = => do
-    bits[2] = true
-change()
-bits[1] = true
--- "${read()} ${bits[2]}"
-flip(Bitmap'U8())
+(main
+  (let bits (call (of Bitmap U8)))
+  (let read (=> () ([] bits 1)))
+  (let change
+    (=> () :do
+      (block
+        (= ([] bits 2) true)
+      )
+    )
+  )
+  (call change)
+  (= ([] bits 1) true)
+  (print (str (call read) " " ([] bits 2)))
+  (call flip (call (of Bitmap U8)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do flip
-    - bits Bitmap'U8
-
-. run = do new
-    bits[3] = true
-    -- bits[3]
-run.wait()
+(fn-do + flip _
+  (param bits (of Bitmap U8))
+  (let run
+    (do-new
+      (= ([] bits 3) true)
+      (print ([] bits 3))
+    )
+  )
+  (call (. run wait))
+)
 ```
 
 ```output

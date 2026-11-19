@@ -1,94 +1,106 @@
 # Stream match
 
-```yumi crash
--- ~ "foo"
+```brix crash
+(main
+  (print (~ "foo"))
+)
 ```
 
 ```output
 Exception: Pattern has nothing to match
-<no file:2>
-    -- ~ "foo"
-       ^^^^^^^
+<no file:3>
+      (print (~ "foo"))
+             ^^^^^^^^^
 ```
 
 ### A pattern rule declared where no stream reaches it has nothing to match, used or not.
 
-```yumi crash
--- parse("12")
+```brix crash
+(main
+  (print (call parse "12"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ parse String
-    - text String
-
-text
-
-.. num Int ~
-    ~ [0-9]+
+(fn-expr + parse String
+  (param text String)
+  text
+  (where
+    (lazy num Int
+      (pattern
+        (~ (+ (chars "0-9")))
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Pattern has nothing to match
 <no file:10>
-    .. num Int ~
-       ^^^
+        (lazy num Int
+              ^^^
 ```
 
 ### A typed match helper materializes a faithful source capture at the declared Primary boundary.
 
-```yumi
-. helper = CaptureHelper()
-. result = match "alpha!"
-    with helper
-    ~ \retained-word
-    ?! Panic("typed helper match failed")
-
-    .. retained-word String ~
-        ~ text [a-z]+ "!"
+```brix
+(main
+  (let helper (call CaptureHelper))
+  (let result
+    (match "alpha!"
+      (with helper)
+      (~ \retained-word)
+      (throw (call Panic "typed helper match failed"))
+      (blank)
+      (lazy retained-word String
+        (pattern
+          (~ (seq (: text (+ (chars "a-z"))) "!")
             text
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (let module-result
+    (match "beta!"
+      (with helper)
+      (~ \module-materialized-word)
+      (throw (call Panic "module typed helper match failed"))
+    )
+  )
+  (blank)
+  (print result)
+  (print module-result)
+  (print (. helper materializations))
+)
 
-. module-result = match "beta!"
-    with helper
-    ~ \module-materialized-word
-    ?! Panic("module typed helper match failed")
-
--- result
--- module-result
--- helper.materializations
-
-━━━━━━━━━━━━━━━━━━━━
-+ module-materialized-word ~ Char String
-
-~ text [a-z]+ "!"
+(fn-expr + module-materialized-word String (over: Char)
+  (~ (seq (: text (+ (chars "a-z"))) "!")
     text
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CaptureHelper
-    is PatternMaterializationRoot'String
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternRollback'Size
-
-+ materializations Size
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-materializations += 1
-= source.slice-string(start .. < end)
-
-────────────────────
-+ mark Size
-
-materializations + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-materializations = mark - 1
+(type + CaptureHelper
+  (implements (of PatternMaterializationRoot String))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternRollback Size))
+  (prop + materializations Size)
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= materializations 1)
+    (return (call (. source slice-string) (..< start end)))
+  )
+  (fn-expr + mark Size
+    (+ materializations 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (= materializations (- mark 1))
+  )
+)
 ```
 
 ```output
@@ -99,59 +111,61 @@ beta
 
 ### Faithful captures are materialized elementwise through Optional and ImmutableArray containers.
 
-```yumi
-. helper = ContainerCaptureMaterializer()
-. result = match "a|b,c!"
-    with helper
-    ~ (optional-word [a-z])? "|" (words [a-z] ","?)+ "!"
-        MaterializedCaptures(optional-word, words)
-    ?! Panic("capture materializer match failed")
+```brix
+(main
+  (let helper (call ContainerCaptureMaterializer))
+  (let result
+    (match "a|b,c!"
+      (with helper)
+      (~ (seq (? (: optional-word (chars "a-z"))) "|" (+ (seq (: words (chars "a-z")) (? ","))) "!")
+        (call MaterializedCaptures optional-word words)
+      )
+      (throw (call Panic "capture materializer match failed"))
+    )
+  )
+  (blank)
+  (print (?? (. result optional-word) "missing"))
+  (print (call (. "," join) (. result words)))
+  (print (. helper materializations))
+  (blank)
+  (let missing
+    (match "|d!"
+      (with helper)
+      (~ (seq (: optional-word (? (chars "a-z"))) "|" (+ (seq (: words (chars "a-z")) (? ","))) "!")
+        (call MaterializedCaptures optional-word words)
+      )
+      (throw (call Panic "wrapped optional capture materializer match failed"))
+    )
+  )
+  (blank)
+  (print (?? (. missing optional-word) "missing"))
+  (print (call (. "," join) (. missing words)))
+  (print (. helper materializations))
+)
 
--- result.optional-word ?? "missing"
--- ",".join(result.words)
--- helper.materializations
+(type + MaterializedCaptures (is (tuple (: optional-word (? String)) (: words (of ImmutableArray String)))))
 
-. missing = match "|d!"
-    with helper
-    ~ optional-word ([a-z])? "|" (words [a-z] ","?)+ "!"
-        MaterializedCaptures(optional-word, words)
-    ?! Panic("wrapped optional capture materializer match failed")
-
--- missing.optional-word ?? "missing"
--- ",".join(missing.words)
--- helper.materializations
-
-━━━━━━━━━━━━━━━━━━━━
-+ MaterializedCaptures is (optional-word String?, words ImmutableArray'String)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ContainerCaptureMaterializer
-    is PatternMaterializationRoot'MaterializedCaptures
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternRollback'Size
-
-+ materializations Size
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-materializations += 1
-= source.slice-string(start .. < end)
-
-────────────────────
-+ mark Size
-
-materializations + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-materializations = mark - 1
+(type + ContainerCaptureMaterializer
+  (implements (of PatternMaterializationRoot MaterializedCaptures))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternRollback Size))
+  (prop + materializations Size)
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= materializations 1)
+    (return (call (. source slice-string) (..< start end)))
+  )
+  (fn-expr + mark Size
+    (+ materializations 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (= materializations (- mark 1))
+  )
+)
 ```
 
 ```output
@@ -165,56 +179,61 @@ d
 
 ### Semantic captures are materialized elementwise through Optional and ImmutableArray containers.
 
-```yumi
-. helper = ContainerValueMaterializer()
-. result = match "7:1,2,3!"
-    with helper
-    ~ (optional-value \semantic-value)? ":" (values \semantic-value ","?)+ "!"
-        MaterializedValues(optional-value!, values)
-    ?! Panic("value materializer match failed")
-
-    .. semantic-value I32 ~
-        ~ "1"
+```brix
+(main
+  (let helper (call ContainerValueMaterializer))
+  (let result
+    (match "7:1,2,3!"
+      (with helper)
+      (~ (seq (? (: optional-value \semantic-value)) ":" (+ (seq (: values \semantic-value) (? ","))) "!")
+        (call MaterializedValues (!! optional-value) values)
+      )
+      (throw (call Panic "value materializer match failed"))
+      (blank)
+      (lazy semantic-value I32
+        (pattern
+          (~ "1"
             1i32
-        ~ "2"
+          )
+          (~ "2"
             2i32
-        ~ "3"
+          )
+          (~ "3"
             3i32
-        ~ "7"
+          )
+          (~ "7"
             7i32
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (print (. result optional-value))
+  (print (call (. "," join) (. result values)))
+  (print (. helper materializations))
+)
 
--- result.optional-value
--- ",".join(result.values)
--- helper.materializations
+(type + MaterializedValues (is (tuple (: optional-value String) (: values (of ImmutableArray String)))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ MaterializedValues is (optional-value String, values ImmutableArray'String)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ContainerValueMaterializer
-    is PatternMaterializationRoot'MaterializedValues
-    is PatternValueMaterializer'I32'String
-    is PatternRollback'Size
-
-+ materializations Size
-
-────────────────────
-+ do materialize-value String
-    - input I32
-
-materializations += 1
-= input as String
-
-────────────────────
-+ mark Size
-
-materializations + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-materializations = mark - 1
+(type + ContainerValueMaterializer
+  (implements (of PatternMaterializationRoot MaterializedValues))
+  (implements (of PatternValueMaterializer I32 String))
+  (implements (of PatternRollback Size))
+  (prop + materializations Size)
+  (fn-do + materialize-value String
+    (param input I32)
+    (+= materializations 1)
+    (return (as input String))
+  )
+  (fn-expr + mark Size
+    (+ materializations 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (= materializations (- mark 1))
+  )
+)
 ```
 
 ```output
@@ -225,51 +244,58 @@ materializations = mark - 1
 
 ### Under a helper that makes values of another type, a capture keeps its own type where an action uses it as that type; the helper makes it only where it is wanted as the type it makes.
 
-```yumi
-. helper = Converter()
--- match "7"
-    with helper
-    ~ v \seven
-        v + 1
-    ?? 0i32
--- match "7"
-    with helper
-    ~ v \seven
-        "got $v"
-    ?? "none"
--- helper.materializations
+```brix
+(main
+  (let helper (call Converter))
+  (print
+    (match "7"
+      (with helper)
+      (~ (: v \seven)
+        (+ v 1)
+      )
+      (default
+        (inline 0i32)
+      )
+    )
+  )
+  (print
+    (match "7"
+      (with helper)
+      (~ (: v \seven)
+        (str "got " v)
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+  (print (. helper materializations))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ seven ~ Char I32
-
-~ "7"
+(fn-expr + seven I32 (over: Char)
+  (~ "7"
     7i32
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Converter
-    is PatternMaterializationRoot'String
-    is PatternValueMaterializer'I32'String
-    is PatternRollback'Size
-
-+ materializations Size
-
-────────────────────
-+ do materialize-value String
-    - input I32
-
-materializations += 1
-= "<" + (input as String) + ">"
-
-────────────────────
-+ mark Size
-
-materializations + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-materializations = mark - 1
+(type + Converter
+  (implements (of PatternMaterializationRoot String))
+  (implements (of PatternValueMaterializer I32 String))
+  (implements (of PatternRollback Size))
+  (prop + materializations Size)
+  (fn-do + materialize-value String
+    (param input I32)
+    (+= materializations 1)
+    (return (+ "<" (as input String) ">"))
+  )
+  (fn-expr + mark Size
+    (+ materializations 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (= materializations (- mark 1))
+  )
+)
 ```
 
 ```output
@@ -280,52 +306,54 @@ got 7
 
 ### An explicitly produced CaptureSpan is semantic data and bypasses source-capture materialization.
 
-```yumi
-. helper = ExplicitSpanMaterializer()
-. result = match "alpha!".codepoints
-    with helper
-    ~ span \explicit-span "!"
-        ExplicitSpanResult(span)
-    ?! Panic("explicit span match failed")
+```brix
+(main
+  (let helper (call ExplicitSpanMaterializer))
+  (let result
+    (match (. "alpha!" codepoints)
+      (with helper)
+      (~ (seq (: span \explicit-span) "!")
+        (call ExplicitSpanResult span)
+      )
+      (throw (call Panic "explicit span match failed"))
+      (blank)
+      (lazy explicit-span (of CaptureSpan Char)
+        (pattern
+          (~ (+ (chars "a-z"))
+            (call (of CaptureSpan Char) (. "kept" codepoints) 0 4)
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (print result)
+  (print (. helper materializations))
+)
 
-    .. explicit-span CaptureSpan'Char ~
-        ~ [a-z]+
-            CaptureSpan'Char("kept".codepoints, 0, 4)
+(type + ExplicitSpanResult (is (tuple (: span String))))
 
--- result
--- helper.materializations
-
-━━━━━━━━━━━━━━━━━━━━
-+ ExplicitSpanResult is (span String)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ExplicitSpanMaterializer
-    is PatternMaterializationRoot'ExplicitSpanResult
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternRollback'Size
-
-+ materializations Size
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-materializations += 1
-= source.slice-string(start .. < end)
-
-────────────────────
-+ mark Size
-
-materializations + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-materializations = mark - 1
+(type + ExplicitSpanMaterializer
+  (implements (of PatternMaterializationRoot ExplicitSpanResult))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternRollback Size))
+  (prop + materializations Size)
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= materializations 1)
+    (return (call (. source slice-string) (..< start end)))
+  )
+  (fn-expr + mark Size
+    (+ materializations 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (= materializations (- mark 1))
+  )
+)
 ```
 
 ```output
@@ -335,27 +363,33 @@ materializations = mark - 1
 
 ### A materializing helper without PatternRollback materializes without rolling back.
 
-```yumi
-. helper = PlainMaterializer()
--- match "alpha!"
-    with helper
-    ~ text [a-z]+ "!"
+```brix
+(main
+  (let helper (call PlainMaterializer))
+  (print
+    (match "alpha!"
+      (with helper)
+      (~ (seq (: text (+ (chars "a-z"))) "!")
         text
-    ?? "none"
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ PlainMaterializer
-    is PatternMaterializationRoot'String
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-= "<" ++ source.slice-string(start .. < end) ++ ">"
+(type + PlainMaterializer
+  (implements (of PatternMaterializationRoot String))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (return (++ "<" (call (. source slice-string) (..< start end)) ">"))
+  )
+)
 ```
 
 ```output
@@ -364,120 +398,137 @@ materializations = mark - 1
 
 ### Overlapping valid materializer instantiations are rejected instead of chosen by declaration order.
 
-```yumi crash
-. helper = AmbiguousMaterializer()
--- match "alpha!".codepoints
-    with helper
-    ~ text [a-z]+ "!"
+```brix crash
+(main
+  (let helper (call AmbiguousMaterializer))
+  (print
+    (match (. "alpha!" codepoints)
+      (with helper)
+      (~ (seq (: text (+ (chars "a-z"))) "!")
         text
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AmbiguousMaterializer
-    is PatternMaterializationRoot'String
-    is PatternCaptureMaterializer'Number'String
-    is PatternCaptureMaterializer'U64'String
-    is PatternRollback'Size
-
-────────────────────
-+ materialize-capture String
-    - source U64[]
-    - start Index
-    - end Index
-
-"wide"
-
-────────────────────
-+ materialize-capture String
-    - source Number[]
-    - start Index
-    - end Index
-
-"number"
-
-────────────────────
-+ mark Size
-
-1
-
-────────────────────
-+ do rewind
-    - mark Size
+(type + AmbiguousMaterializer
+  (implements (of PatternMaterializationRoot String))
+  (implements (of PatternCaptureMaterializer Number String))
+  (implements (of PatternCaptureMaterializer U64 String))
+  (implements (of PatternRollback Size))
+  (fn-expr + materialize-capture String
+    (param source ([] U64))
+    (param start Index)
+    (param end Index)
+    "wide"
+  )
+  (fn-expr + materialize-capture String
+    (param source ([] Number))
+    (param start Index)
+    (param end Index)
+    "number"
+  )
+  (fn-expr + mark Size
+    1
+  )
+  (fn-do + rewind _
+    (param mark Size)
+  )
+)
 ```
 
 ```output
 Exception: Pattern helper has ambiguous PatternCaptureMaterializer capabilities for input Char, output String: PatternCaptureMaterializer'Number'String, PatternCaptureMaterializer'U64'String
-<no file:5>
-        ~ text [a-z]+ "!"
-        ^^^^^^^^^^^^^^^^
+<no file:7>
+          (~ (seq (: text (+ (chars "a-z"))) "!")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### An unprefixed helper and an explicit rule marker protect a non-Primary side effect.
 
-```yumi
-. journal = ExplicitRollbackJournal()
-. result = match "go!"
-    with journal
-    ~ \explicit-candidate "?"
+```brix
+(main
+  (let journal (call ExplicitRollbackJournal))
+  (let result
+    (match "go!"
+      (with journal)
+      (~ (seq \explicit-candidate "?")
         1
-    ~ \explicit-candidate "!"
+      )
+      (~ (seq \explicit-candidate "!")
         2
-    ?? 0
-
-    .. explicit-candidate I32 ~ @rollback
-        ~ "go"
-            journal.increment()
-. after-local = journal.count
-
-. module-result = match "go!"
-    with journal
-    ~ \module-explicit-candidate(journal) "?"
+      )
+      (default
+        (inline 0)
+      )
+      (blank)
+      (lazy explicit-candidate I32
+        (pattern
+          @rollback
+          (~ "go"
+            (call (. journal increment))
+          )
+        )
+      )
+    )
+  )
+  (let after-local (. journal count))
+  (blank)
+  (let module-result
+    (match "go!"
+      (with journal)
+      (~ (seq (call \module-explicit-candidate journal) "?")
         1
-    ~ \module-explicit-candidate(journal) "!"
+      )
+      (~ (seq (call \module-explicit-candidate journal) "!")
         2
-    ?? 0
-. after-module = journal.count
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+  (let after-module (. journal count))
+  (blank)
+  (let action-result
+    (match "x"
+      (with journal)
+      (~ "x" @rollback
+        (call (. journal increment))
+      )
+    )
+  )
+  (blank)
+  (print result)
+  (print module-result)
+  (print action-result)
+  (print after-local)
+  (print after-module)
+  (print (. journal count))
+)
 
-. action-result = match "x"
-    with journal
-    ~ "x" @rollback
-        journal.increment()
+(fn-expr + module-explicit-candidate _ (over: Char) @rollback
+  (param journal ExplicitRollbackJournal)
+  (~ "go"
+    (call (. journal increment))
+  )
+)
 
--- result
--- module-result
--- action-result
--- after-local
--- after-module
--- journal.count
-
-━━━━━━━━━━━━━━━━━━━━
-+ module-explicit-candidate ~ Char @rollback
-    - journal ExplicitRollbackJournal
-
-~ "go"
-    journal.increment()
-
-━━━━━━━━━━━━━━━━━━━━
-+ ExplicitRollbackJournal
-    is PatternRollback'Size
-
-+ count Size
-
-────────────────────
-+ mark Size
-
-count + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-count = mark - 1
-
-────────────────────
-+ do increment I32
-
-count += 1
-= 7
+(type + ExplicitRollbackJournal
+  (implements (of PatternRollback Size))
+  (prop + count Size)
+  (fn-expr + mark Size
+    (+ count 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (= count (- mark 1))
+  )
+  (fn-do + increment I32
+    (+= count 1)
+    (return 7)
+  )
+)
 ```
 
 ```output
@@ -491,60 +542,73 @@ count += 1
 
 ### An explicit action marker diagnoses a missing helper before lowering rollback paths.
 
-```yumi crash
--- match "x"
-    ~ "x" @rollback
+```brix crash
+(main
+  (print
+    (match "x"
+      (~ "x" @rollback
         1
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Pattern @rollback requires a with helper
-<no file:3>
-        ~ "x" @rollback
-        ^^^^^^^^^^^^^^
+<no file:5>
+          (~ "x" @rollback
+          ^^^^^^^^^^^^^^^
 ```
 
 ### A participating match rewinds a successful nested rule when its caller arm fails, then retains only the winning arm's mutation.
 
-```yumi
-. journal = ParseJournal()
-. result = match "go!"
-    with journal
-    ~ \candidate "?"
+```brix
+(main
+  (let journal (call ParseJournal))
+  (let result
+    (match "go!"
+      (with journal)
+      (~ (seq \candidate "?")
         1
-    ~ \candidate "!"
+      )
+      (~ (seq \candidate "!")
         2
-    ?? 0
+      )
+      (default
+        (inline 0)
+      )
+      (blank)
+      (lazy candidate I32
+        (pattern
+          @rollback
+          (~ "go"
+            (call (. journal increment))
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (print result)
+  (print (. journal count))
+)
 
-    .. candidate I32 ~ @rollback
-        ~ "go"
-            journal.increment()
-
--- result
--- journal.count
-
-━━━━━━━━━━━━━━━━━━━━
-+ ParseJournal
-    is PatternRollback'Size
-
-+ count Size
-
-────────────────────
-+ mark Size
-
-count + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-count = mark - 1
-
-────────────────────
-+ do increment I32
-
-count += 1
-= 7
+(type + ParseJournal
+  (implements (of PatternRollback Size))
+  (prop + count Size)
+  (fn-expr + mark Size
+    (+ count 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (= count (- mark 1))
+  )
+  (fn-do + increment I32
+    (+= count 1)
+    (return 7)
+  )
+)
 ```
 
 ```output
@@ -554,51 +618,57 @@ count += 1
 
 ### Direct module-pattern helpers expose ordinary source arguments while inferring nested-rule transform result types under rollback.
 
-```yumi
-. journal = ParseJournal()
-. result = match "go!"
-    with journal
-    ~ \owned-candidate(journal, 40)
-        journal.count + 40
-    ?? 0
+```brix
+(main
+  (let journal (call ParseJournal))
+  (let result
+    (match "go!"
+      (with journal)
+      (~ (call \owned-candidate journal 40)
+        (+ (. journal count) 40)
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+  (blank)
+  (print result)
+  (print (. journal count))
+)
 
--- result
--- journal.count
-
-━━━━━━━━━━━━━━━━━━━━
-+ owned-candidate ~ Char @rollback
-    - journal ParseJournal
-    - offset I32
-
-~ \candidate "!"
+(fn-expr + owned-candidate _ (over: Char) @rollback
+  (param journal ParseJournal)
+  (param offset I32)
+  (~ (seq \candidate "!")
     it
+  )
+  (where
+    (lazy candidate
+      (pattern
+        (~ "go"
+          (+ (call (. journal increment)) offset)
+        )
+      )
+    )
+  )
+)
 
-.. candidate ~
-    ~ "go"
-        journal.increment() + offset
-
-━━━━━━━━━━━━━━━━━━━━
-+ ParseJournal
-    is PatternRollback'Size
-
-+ count Size
-
-────────────────────
-+ mark Size
-
-count + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-count = mark - 1
-
-────────────────────
-+ do increment I32
-
-count += 1
-= 1
+(type + ParseJournal
+  (implements (of PatternRollback Size))
+  (prop + count Size)
+  (fn-expr + mark Size
+    (+ count 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (= count (- mark 1))
+  )
+  (fn-do + increment I32
+    (+= count 1)
+    (return 1)
+  )
+)
 ```
 
 ```output
@@ -608,142 +678,198 @@ count += 1
 
 ### Rollback follows optional, repetition, lookahead, root failure, nested matches, and chunked-source retries while preserving successful mutations.
 
-```yumi
-/core/patterns
-/core/tokenstream
+```brix
+(import /core/patterns)
+(import /core/tokenstream)
+(blank)
 
-. optional-journal = ParseJournal()
--- match "a"
-    with optional-journal
-    ~ (\touch-empty(optional-journal) "x")? "a"
-        optional-journal.count
-    ?? 99
-
-. repeat-journal = ParseJournal()
--- match "aaab"
-    with repeat-journal
-    ~ (\touch-empty(repeat-journal) "a")* "b"
-        repeat-journal.count
-    ?? 99
-
-. minimum-journal = ParseJournal()
--- match "a"
-    with minimum-journal
-    ~ (\touch-empty(minimum-journal) "a"){2}
-        minimum-journal.count
-    ?? minimum-journal.count
-
-. positive-journal = ParseJournal()
--- match "a"
-    with positive-journal
-    ~ &(\touch-empty(positive-journal) "a") "a"
-        positive-journal.count
-    ?? 99
-
-. negative-journal = ParseJournal()
--- match "a"
-    with negative-journal
-    ~ !(\touch-empty(negative-journal) "a") "a"
+(main
+  (let optional-journal (call ParseJournal))
+  (print
+    (match "a"
+      (with optional-journal)
+      (~ (seq (? (seq (call \touch-empty optional-journal) "x")) "a")
+        (. optional-journal count)
+      )
+      (default
+        (inline 99)
+      )
+    )
+  )
+  (blank)
+  (let repeat-journal (call ParseJournal))
+  (print
+    (match "aaab"
+      (with repeat-journal)
+      (~ (seq (* (seq (call \touch-empty repeat-journal) "a")) "b")
+        (. repeat-journal count)
+      )
+      (default
+        (inline 99)
+      )
+    )
+  )
+  (blank)
+  (let minimum-journal (call ParseJournal))
+  (print
+    (match "a"
+      (with minimum-journal)
+      (~ ({} (seq (call \touch-empty minimum-journal) "a") 2)
+        (. minimum-journal count)
+      )
+      (default
+        (inline (. minimum-journal count))
+      )
+    )
+  )
+  (blank)
+  (let positive-journal (call ParseJournal))
+  (print
+    (match "a"
+      (with positive-journal)
+      (~ (seq (& (seq (call \touch-empty positive-journal) "a")) "a")
+        (. positive-journal count)
+      )
+      (default
+        (inline 99)
+      )
+    )
+  )
+  (blank)
+  (let negative-journal (call ParseJournal))
+  (print
+    (match "a"
+      (with negative-journal)
+      (~ (seq (! (seq (call \touch-empty negative-journal) "a")) "a")
         99
-    ~ "a"
-        negative-journal.count
-    ?? 98
-
-. failure-journal = ParseJournal()
--- match "a"
-    with failure-journal
-    ~ \touch-empty(failure-journal) "x"
+      )
+      (~ "a"
+        (. negative-journal count)
+      )
+      (default
+        (inline 98)
+      )
+    )
+  )
+  (blank)
+  (let failure-journal (call ParseJournal))
+  (print
+    (match "a"
+      (with failure-journal)
+      (~ (seq (call \touch-empty failure-journal) "x")
         99
-    ?? failure-journal.count
-
-. nested-journal = ParseJournal()
--- match "a!"
-    with nested-journal
-    ~ \nested-action(nested-journal) "?"
+      )
+      (default
+        (inline (. failure-journal count))
+      )
+    )
+  )
+  (blank)
+  (let nested-journal (call ParseJournal))
+  (print
+    (match "a!"
+      (with nested-journal)
+      (~ (seq (call \nested-action nested-journal) "?")
         99
-    ~ \nested-action(nested-journal) "!"
-        nested-journal.count
-    ?? 98
+      )
+      (~ (seq (call \nested-action nested-journal) "!")
+        (. nested-journal count)
+      )
+      (default
+        (inline 98)
+      )
+    )
+  )
+)
 
-+ combinator-journal = ParseJournal()
--- match "a,b!"
-    with combinator-journal
-    ~ \delimited(",", ~ \touch-word(combinator-journal)) "?"
+(blank)
+(prop + combinator-journal _ (= (call ParseJournal)))
+
+(main
+  (print
+    (match "a,b!"
+      (with combinator-journal)
+      (~ (seq (call \delimited "," (~ (call \touch-word combinator-journal))) "?")
         99
-    ~ \delimited(",", ~ \touch-word(combinator-journal)) "!"
-        combinator-journal.count
-    ?? 98
+      )
+      (~ (seq (call \delimited "," (~ (call \touch-word combinator-journal))) "!")
+        (. combinator-journal count)
+      )
+      (default
+        (inline 98)
+      )
+    )
+  )
+  (blank)
+  (let refill-journal (call ParseJournal))
+  (let refill-tail (* "x" 70))
+  (let refill-source (++ "p" refill-tail "!"))
+  (let refill-stream (call (of ChunkedTokenStream Char) (. refill-source codepoints)))
+  (print
+    (match refill-stream
+      (with refill-journal)
+      (~ (seq (call \touch-prefix refill-journal) $refill-tail "!")
+        (. refill-journal count)
+      )
+      (throw (call Panic "refill pattern did not parse"))
+    )
+  )
+)
 
-. refill-journal = ParseJournal()
-. refill-tail = "x" * 70
-. refill-source = "p" ++ refill-tail ++ "!"
-. refill-stream = ChunkedTokenStream'Char(refill-source.codepoints)
--- match refill-stream
-    with refill-journal
-    ~ \touch-prefix(refill-journal) $refill-tail "!"
-        refill-journal.count
-    ?! Panic("refill pattern did not parse")
+(type + ParseJournal
+  (implements (of PatternRollback Size))
+  (prop + count Size)
+  (fn-expr + mark Size
+    (+ count 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (= count (- mark 1))
+  )
+  (fn-do + increment I32
+    (+= count 1)
+    (return 7)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ParseJournal
-    is PatternRollback'Size
+(fn-expr + touch-empty _ (over: Char) @rollback
+  (param journal ParseJournal)
+  (~ ""
+    (call (. journal increment))
+  )
+)
 
-+ count Size
+(fn-expr + touch-prefix _ (over: Char) @rollback
+  (param journal ParseJournal)
+  (~ "p"
+    (call (. journal increment))
+  )
+)
 
-────────────────────
-+ mark Size
+(fn-expr + touch-word _ (over: Char) @rollback
+  (param journal ParseJournal)
+  (~ (+ (chars "a-z"))
+    (call (. journal increment))
+  )
+)
 
-count + 1
+(fn-expr + nested-action _ (over: Char) @rollback
+  (param journal ParseJournal)
+  (~ "a"
+    (call inner-touch journal)
+  )
+)
 
-────────────────────
-+ do rewind
-    - mark Size
-
-count = mark - 1
-
-────────────────────
-+ do increment I32
-
-count += 1
-= 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ touch-empty ~ Char @rollback
-    - journal ParseJournal
-
-~ ""
-    journal.increment()
-
-━━━━━━━━━━━━━━━━━━━━
-+ touch-prefix ~ Char @rollback
-    - journal ParseJournal
-
-~ "p"
-    journal.increment()
-
-━━━━━━━━━━━━━━━━━━━━
-+ touch-word ~ Char @rollback
-    - journal ParseJournal
-
-~ [a-z]+
-    journal.increment()
-
-━━━━━━━━━━━━━━━━━━━━
-+ nested-action ~ Char @rollback
-    - journal ParseJournal
-
-~ "a"
-    inner-touch(journal)
-
-━━━━━━━━━━━━━━━━━━━━
-+ inner-touch I32
-    - journal ParseJournal
-
-match "z"
-    with journal
-    ~ \touch-empty(journal) "z"
-        journal.count as I32
-    ?! Panic("inner pattern did not parse")
+(fn-expr + inner-touch I32
+  (param journal ParseJournal)
+  (match "z"
+    (with journal)
+    (~ (seq (call \touch-empty journal) "z")
+      (as (. journal count) I32)
+    )
+    (throw (call Panic "inner pattern did not parse"))
+  )
+)
 ```
 
 ```output
@@ -760,45 +886,53 @@ match "z"
 
 ### A local rule of several arms marked to roll back rewinds each arm's effect when its caller's arm fails, as a module rule does.
 
-```yumi
-. journal = Journal()
-. found = match "go!"
-    with journal
-    ~ \word "?"
+```brix
+(main
+  (let journal (call Journal))
+  (let found
+    (match "go!"
+      (with journal)
+      (~ (seq \word "?")
         1
-    ~ \word "!"
+      )
+      (~ (seq \word "!")
         2
-    ?? 0
+      )
+      (default
+        (inline 0)
+      )
+      (blank)
+      (lazy word I32
+        (pattern
+          @rollback
+          (~ "x"
+            (call (. journal increment))
+          )
+          (~ "go"
+            (call (. journal increment))
+          )
+        )
+      )
+    )
+  )
+  (print (str found " count " (. journal count)))
+)
 
-    .. word I32 ~ @rollback
-        ~ "x"
-            journal.increment()
-        ~ "go"
-            journal.increment()
--- "${found} count ${journal.count}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Journal
-    is PatternRollback'Size
-
-+ count Size
-
-────────────────────
-+ mark Size
-
-count + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-count = mark - 1
-
-────────────────────
-+ do increment I32
-
-count += 1
-= 7
+(type + Journal
+  (implements (of PatternRollback Size))
+  (prop + count Size)
+  (fn-expr + mark Size
+    (+ count 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (= count (- mark 1))
+  )
+  (fn-do + increment I32
+    (+= count 1)
+    (return 7)
+  )
+)
 ```
 
 ```output
@@ -807,85 +941,108 @@ count += 1
 
 ### A match helper that implements no pattern capability is an error.
 
-```yumi crash
--- match "a"
-    with 1
-    ~ "a"
+```brix crash
+(main
+  (print
+    (match "a"
+      (with 1)
+      (~ "a")
+    )
+  )
+)
 ```
 
 ```output
 Exception: Pattern helper implements no pattern capability
-<no file:3>
-        with 1
-             ^
+<no file:5>
+          (with 1)
+                ^
 ```
 
 ### A match helper clause outside a stream match is an error.
 
-```yumi crash
-. n = 5
-with n
--- "after"
+```brix crash
+(main
+  (let n 5)
+  (with n)
+  (print "after")
+)
 ```
 
 ```output
 Exception: with helper must be the first clause of a stream match
-<no file:3>
-    with n
-    ^^^^^^
+<no file:4>
+      (with n)
+      ^^^^^^^^
 ```
 
 ### A static pattern argument crosses a recursive module combinator with one active frame. Failure restores that frame, and a retained result remains stable across a later match.
 
-```yumi
-/core/array-builder
+```brix
+(import /core/array-builder)
+(blank)
+(import /core/patterns)
+(blank)
 
-/core/patterns
-
-. retained = parse-words("alpha, beta!")
-. failed = match "alpha,beta?"
-    ~ items \delimited(",", ~ [a-z]+) "!"
+(main
+  (let retained (call parse-words "alpha, beta!"))
+  (let failed
+    (match "alpha,beta?"
+      (~ (seq (: items (call \delimited "," (~ (+ (chars "a-z"))))) "!")
         items
-    ?? failed-words()
-. trailing = parse-words-before-trailing("alpha,beta,!")
-. later = parse-words("gamma!")
+      )
+      (default
+        (inline (call failed-words))
+      )
+    )
+  )
+  (let trailing (call parse-words-before-trailing "alpha,beta,!"))
+  (let later (call parse-words "gamma!"))
+  (blank)
+  (print retained)
+  (print failed)
+  (print trailing)
+  (print later)
+  (print retained)
+)
 
--- retained
--- failed
--- trailing
--- later
--- retained
+(fn-expr + parse-words (of ImmutableArray String)
+  (param source String)
+  (match source
+    (~ (seq (: items (call \delimited "," (~ \word))) "!")
+      items
+    )
+    (throw (call Panic "word list did not parse"))
+    (blank)
+    (lazy word String
+      (pattern
+        (~ (+ (chars "a-z")))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ parse-words ImmutableArray'String
-    - source String
+(fn-do _ failed-words (of ImmutableArray String)
+  (let builder (call (of ArrayBuilder String)))
+  (call (. builder append) "failed")
+  (return (call (. builder finish-immutable)))
+)
 
-match source
-    ~ items \delimited(",", ~ \word) "!"
-        items
-    ?! Panic("word list did not parse")
-
-    .. word String ~
-        ~ [a-z]+
-
-━━━━━━━━━━━━━━━━━━━━
-_ do failed-words ImmutableArray'String
-
-. builder = ArrayBuilder'String()
-builder.append("failed")
-= builder.finish-immutable()
-
-━━━━━━━━━━━━━━━━━━━━
-+ parse-words-before-trailing ImmutableArray'String
-    - source String
-
-match source
-    ~ items \delimited(",", ~ \word) ",!"
-        items
-    ?! Panic("word list with trailing delimiter did not parse")
-
-    .. word String ~
-        ~ [a-z]+
+(fn-expr + parse-words-before-trailing (of ImmutableArray String)
+  (param source String)
+  (match source
+    (~ (seq (: items (call \delimited "," (~ \word))) ",!")
+      items
+    )
+    (throw (call Panic "word list with trailing delimiter did not parse"))
+    (blank)
+    (lazy word String
+      (pattern
+        (~ (+ (chars "a-z")))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -896,73 +1053,106 @@ gamma
 alpha, beta
 ```
 
-```yumi crash
--- each ~ "foo"
+```brix crash
+(main
+  (print (select each (~ "foo")))
+)
 ```
 
 ```output
 Exception: Pattern has nothing to match
-<no file:2>
-    -- each ~ "foo"
-       ^^^^^^^^^^^^
+<no file:3>
+      (print (select each (~ "foo")))
+             ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Failure due to extra trailing characters
 
-```yumi
-. attempt = do new
-    -- match "foo."
-        ~ "foo"
-        ?! Panic("Extra characters")
-catch failure
-    -- "error: $failure"
-attempt.wait()
+```brix
+(main
+  (let attempt
+    (do-new
+      (print
+        (match "foo."
+          (~ "foo")
+          (throw (call Panic "Extra characters"))
+        )
+      )
+      (on-failure failure
+        (print (str "error: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
 error: Extra characters
 ```
 
-```yumi
--- match "1"
-    ~ [a-z]
+```brix
+(main
+  (print
+    (match "1"
+      (~ (chars "a-z"))
+    )
+  )
+)
 ```
 
 ```output
 unknown
 ```
 
-```yumi
--- match "c"
-    ~ [a-z]
+```brix
+(main
+  (print
+    (match "c"
+      (~ (chars "a-z"))
+    )
+  )
+)
 ```
 
 ```output
 c
 ```
 
-```yumi
--- ~ "foo" = "foo"
+```brix
+(main
+  (print (~ "foo" (of: "foo")))
+)
 ```
 
 ```output
 foo
 ```
 
-```yumi
--- match "foo"
-    it * 2 ~ "foo"
+```brix
+(main
+  (print
+    (match "foo"
+      (select (* it 2) (~ "foo"))
+    )
+  )
+)
 ```
 
 ```output
 foofoo
 ```
 
-```yumi
--- ~ "foo" = "foo"
--- ~ "foo" = "foo"
-    it * 2
--- it * 3 ~ "foo" = "foo"
+```brix
+(main
+  (print (~ "foo" (of: "foo")))
+  (print
+    (~ "foo" (of: "foo")
+      (* it 2)
+    )
+  )
+  (print (= (select (* it 3) (~ "foo")) "foo"))
+)
 ```
 
 ```output
@@ -971,11 +1161,20 @@ foofoo
 foofoofoo
 ```
 
-```yumi
--- ",".join(~ "foo" in "foofoofoo")
--- ",".join • stream ~ "foo" in "foofoofoo"
-    it * 2
--- ",".join(it * 3 ~ "foo" in "foofoofoo")
+```brix
+(main
+  (print (call (. "," join) (in (~ "foo") "foofoofoo")))
+  (print
+    (call (. "," join)
+      (:stream
+        (~ "foo" (in: "foofoofoo")
+          (* it 2)
+        )
+      )
+    )
+  )
+  (print (call (. "," join) (in (select (* it 3) (~ "foo")) "foofoofoo")))
+)
 ```
 
 ```output
@@ -984,27 +1183,33 @@ foofoo,foofoo,foofoo
 foofoofoo,foofoofoo,foofoofoo
 ```
 
-```yumi
--- ~ "foo"* = "foofoofoo"
+```brix
+(main
+  (print (~ (* "foo") (of: "foofoofoo")))
+)
 ```
 
 ```output
 foofoofoo
 ```
 
-```yumi
--- ~ "f" "o"{3} = "fooo"
+```brix
+(main
+  (print (~ (seq "f" ({} "o" 3)) (of: "fooo")))
+)
 ```
 
 ```output
 fooo
 ```
 
-```yumi
--- ~ "f" "o"{3,5} = "fooo"
--- ~ "f" "o"{3,5} = "foooo"
--- ~ "f" "o"{3,5} = "fooooo"
--- ~ "f" "o"{3,5} = "fooooo"
+```brix
+(main
+  (print (~ (seq "f" ({} "o" 3 5)) (of: "fooo")))
+  (print (~ (seq "f" ({} "o" 3 5)) (of: "foooo")))
+  (print (~ (seq "f" ({} "o" 3 5)) (of: "fooooo")))
+  (print (~ (seq "f" ({} "o" 3 5)) (of: "fooooo")))
+)
 ```
 
 ```output
@@ -1014,144 +1219,228 @@ fooooo
 fooooo
 ```
 
-```yumi
--- match "fooo"
-    ~ "f" "o"{len}
-
-    .. len = 3
+```brix
+(main
+  (print
+    (match "fooo"
+      (~ (seq "f" ({} "o" len)))
+      (blank)
+      (lazy len 3)
+    )
+  )
+)
 ```
 
 ```output
 fooo
 ```
 
-```yumi
-. len = 3
--- match "fooo"
-    ~ "f" "o"{len}
+```brix
+(main
+  (let len 3)
+  (print
+    (match "fooo"
+      (~ (seq "f" ({} "o" len)))
+    )
+  )
+)
 ```
 
 ```output
 fooo
 ```
 
-```yumi
--- match "foo"
-    ~ "foo"
+```brix
+(main
+  (print
+    (match "foo"
+      (~ "foo"
         42
+      )
+    )
+  )
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
--- match "foo"
-    ~ x "foo"
+```brix
+(main
+  (print
+    (match "foo"
+      (~ (: x "foo")
         x
+      )
+    )
+  )
+)
 ```
 
 ```output
 foo
 ```
 
-```yumi
--- match "foo.com"
-    ~ [a-z]* ".com"
+```brix
+(main
+  (print
+    (match "foo.com"
+      (~ (seq (* (chars "a-z")) ".com"))
+    )
+  )
+)
 ```
 
 ```output
 foo.com
 ```
 
-```yumi
--- match ".com"
-    ~ [a-z]* ".com"
+```brix
+(main
+  (print
+    (match ".com"
+      (~ (seq (* (chars "a-z")) ".com"))
+    )
+  )
+)
 ```
 
 ```output
 .com
 ```
 
-```yumi
--- match "foo.com"
-    ~ domain [a-z]* ".com": domain
+```brix
+(main
+  (print
+    (match "foo.com"
+      (~ (seq (: domain (* (chars "a-z"))) ".com")
+        (inline domain)
+      )
+    )
+  )
+)
 ```
 
 ```output
 foo
 ```
 
-```yumi
--- match "foo.com"
-    ~ [a-z]+ ".com"
+```brix
+(main
+  (print
+    (match "foo.com"
+      (~ (seq (+ (chars "a-z")) ".com"))
+    )
+  )
+)
 ```
 
 ```output
 foo.com
 ```
 
-```yumi
--- match ".com"
-    ~ [a-z]+ ".com"
+```brix
+(main
+  (print
+    (match ".com"
+      (~ (seq (+ (chars "a-z")) ".com"))
+    )
+  )
+)
 ```
 
 ```output
 unknown
 ```
 
-```yumi
--- match "foo.com"
-    ~ domain [a-z]+ ".com"
+```brix
+(main
+  (print
+    (match "foo.com"
+      (~ (seq (: domain (+ (chars "a-z"))) ".com")
         domain
+      )
+    )
+  )
+)
 ```
 
 ```output
 foo
 ```
 
-```yumi
--- match "foo1.com"
-    ~ [a-z]+ "1"? ".com"
+```brix
+(main
+  (print
+    (match "foo1.com"
+      (~ (seq (+ (chars "a-z")) (? "1") ".com"))
+    )
+  )
+)
 ```
 
 ```output
 foo1.com
 ```
 
-```yumi
--- match "a1b2|c3"
-    ~ [a-z0-9|]+
+```brix
+(main
+  (print
+    (match "a1b2|c3"
+      (~ (+ (chars "a-z0-9|")))
+    )
+  )
+)
 ```
 
 ```output
 a1b2|c3
 ```
 
-```yumi
--- match ".b"
-    ~ "." "a" | "b" | "c"
+```brix
+(main
+  (print
+    (match ".b"
+      (~ (seq "." (| "a" "b" "c")))
+    )
+  )
+)
 ```
 
 ```output
 .b
 ```
 
-```yumi
--- match "foo.net"
-    ~ domain [a-z]+ "." tld ("com" | "net" | "org")?
-        "domain: $domain, tld: $tld"
+```brix
+(main
+  (print
+    (match "foo.net"
+      (~ (seq (: domain (+ (chars "a-z"))) "." (: tld (? (| "com" "net" "org"))))
+        (str "domain: " domain ", tld: " tld)
+      )
+    )
+  )
+)
 ```
 
 ```output
 domain: foo, tld: net
 ```
 
-```yumi
--- match "foo.com"
-    ~ [a-z]+ !"." . "com"
--- match "foo-com"
-    ~ [a-z]+ !"." . "com"
+```brix
+(main
+  (print
+    (match "foo.com"
+      (~ (seq (+ (chars "a-z")) (! ".") . "com"))
+    )
+  )
+  (print
+    (match "foo-com"
+      (~ (seq (+ (chars "a-z")) (! ".") . "com"))
+    )
+  )
+)
 ```
 
 ```output
@@ -1159,78 +1448,144 @@ unknown
 foo-com
 ```
 
-```yumi
--- match "crapola"
-    ~ "foo.com"
+```brix
+(main
+  (print
+    (match "crapola"
+      (~ "foo.com"
         43
-    ~ "poop"
+      )
+      (~ "poop"
         42.5
-    ~ "crapola"
+      )
+      (~ "crapola"
         41
+      )
+    )
+  )
+)
 ```
 
 ```output
 41
 ```
 
-```yumi
--- match "foo.com"
-    ~ d \domain ".com"
+```brix
+(main
+  (print
+    (match "foo.com"
+      (~ (seq (: d \domain) ".com")
         d
-
-    .. domain ~
-        ~ [a-z]+
+      )
+      (blank)
+      (lazy domain
+        (pattern
+          (~ (+ (chars "a-z")))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 foo
 ```
 
-```yumi
--- match "f"
-    ~ \domain
-
-    .. domain ~
-        ~ \letter
-
-    .. letter ~
-        ~ [a-z]
+```brix
+(main
+  (print
+    (match "f"
+      (~ \domain)
+      (blank)
+      (lazy domain
+        (pattern
+          (~ \letter)
+        )
+      )
+      (blank)
+      (lazy letter
+        (pattern
+          (~ (chars "a-z")
             42
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
--- match "http://me:pw@foo.com:42?pp#xx"
-    ~ sc \scheme ":" hs \has-slashes au \auth? ho \host s \search? h \hash?
-        (sc, hs, au, ho, s, h)
-
-    .. scheme ~
-        ~ ([a-z] | "+" | "-" | ".")+
-    .. has-slashes ~
-        ~ "/"*
-            it.length > 0
-    .. auth ~
-        ~ user [a-z]+ ":" pass [a-z]+ "@"
-            (user, pass)
-    .. host ~
-        ~ ad \address ":" p \port
-            (ad, p)
-        ~ ad \address
-            (ad, 0)
-    .. address ~
-        ~ [a-z.]+
-    .. port ~
-        ~ [0-9]+
-            it as Int
-    .. search ~
-        ~ "?" q (!"#" .)+
+```brix
+(main
+  (print
+    (match "http://me:pw@foo.com:42?pp#xx"
+      (~ (seq (: sc \scheme) ":" (: hs \has-slashes) (: au (? \auth)) (: ho \host) (: s (? \search)) (: h (? \hash)))
+        (tuple sc hs au ho s h)
+      )
+      (blank)
+      (lazy scheme
+        (pattern
+          (~ (+ (| (chars "a-z") "+" "-" ".")))
+        )
+      )
+      (lazy has-slashes
+        (pattern
+          (~ (* "/")
+            (> (. it length) 0)
+          )
+        )
+      )
+      (lazy auth
+        (pattern
+          (~ (seq (: user (+ (chars "a-z"))) ":" (: pass (+ (chars "a-z"))) "@")
+            (tuple user pass)
+          )
+        )
+      )
+      (lazy host
+        (pattern
+          (~ (seq (: ad \address) ":" (: p \port))
+            (tuple ad p)
+          )
+          (~ (: ad \address)
+            (tuple ad 0)
+          )
+        )
+      )
+      (lazy address
+        (pattern
+          (~ (+ (chars "a-z.")))
+        )
+      )
+      (lazy port
+        (pattern
+          (~ (+ (chars "0-9"))
+            (as it Int)
+          )
+        )
+      )
+      (lazy search
+        (pattern
+          (~ (seq "?" (: q (+ (seq (! "#") .))))
             q
-    .. hash ~
-        ~ "#" h .+
+          )
+        )
+      )
+      (lazy hash
+        (pattern
+          (~ (seq "#" (: h (+ .)))
             h
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1239,21 +1594,37 @@ foo
 
 ### Right tail recursion
 
-```yumi
--- match "a,bob, fred , tom"
-    ~ \items
-
-    .. items [String] ~
-        ~ head \item \delimiter tail \items
-            head ++ tail
-        ~ \item
-
-    .. item ~
-        ~ [a-z]+
-            [it + "_"]
-
-    .. delimiter ~
-        ~ " "* "," " "*
+```brix
+(main
+  (print
+    (match "a,bob, fred , tom"
+      (~ \items)
+      (blank)
+      (lazy items (list String)
+        (pattern
+          (~ (seq (: head \item) \delimiter (: tail \items))
+            (++ head tail)
+          )
+          (~ \item)
+        )
+      )
+      (blank)
+      (lazy item
+        (pattern
+          (~ (+ (chars "a-z"))
+            (list (+ it "_"))
+          )
+        )
+      )
+      (blank)
+      (lazy delimiter
+        (pattern
+          (~ (seq (* " ") "," (* " ")))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1262,302 +1633,401 @@ a_, bob_, fred_, tom_
 
 ### A grammar reads its items in a source; one written on a stream a subscription is given is an error.
 
-```yumi compile-error
-. events Int<>
-. pairs = ~ a . b . on events
-    a + b
+```brix compile-error
+(main
+  (let events (channel Int))
+  (let pairs
+    (~ (seq (: a .) (: b .)) (on: events)
+      (+ a b)
+    )
+  )
+)
 ```
 
 ```output
 Exception: A grammar matches items it reads with "in", not items a subscription with "on" is given; write "in" in place of "on"
-<no file:3>
-    . pairs = ~ a . b . on events
-              ^^^^^^^^^^^^^^^^^^
+<no file:5>
+        (~ (seq (: a .) (: b .)) (on: events)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### The local rules of a match cannot call one another in a cycle, which those of a rule a module declares can.
 
-```yumi compile-error
--- match "aaaa"
-    ~ n \even
+```brix compile-error
+(main
+  (print
+    (match "aaaa"
+      (~ (: n \even)
         n
-    ?? 0
-
-    .. even Int ~
-        ~ "a" n \odd
-            n + 1
-        ~ ""
+      )
+      (default
+        (inline 0)
+      )
+      (blank)
+      (lazy even Int
+        (pattern
+          (~ (seq "a" (: n \odd))
+            (+ n 1)
+          )
+          (~ ""
             0
-
-    .. odd Int ~
-        ~ "a" n \even
-            n + 1
+          )
+        )
+      )
+      (blank)
+      (lazy odd Int
+        (pattern
+          (~ (seq "a" (: n \even))
+            (+ n 1)
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: The local rules of a match cannot call one another in a cycle; declare them below a rule the module declares, whose local rules can
-<no file:14>
-            ~ "a" n \even
-                    ^^^^^
+<no file:25>
+              (~ (seq "a" (: n \even))
+                               ^^^^^
 ```
 
 ### No capture is named it, which names what an arm matched.
 
-```yumi compile-error
--- match "ab"
-    ~ it "a" "b"
+```brix compile-error
+(main
+  (print
+    (match "ab"
+      (~ (seq (: it "a") "b")
         it
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: A capture cannot be named "it", which names what the arm matched; choose another name
-<no file:3>
-        ~ it "a" "b"
-          ^^
+<no file:5>
+          (~ (seq (: it "a") "b")
+                     ^^
 ```
 
 ### A rule that calls itself before it reads anything, directly or through a rule it calls first, is an error.
 
-```yumi compile-error
--- match "1+1"
-    ~ \sum
-    ?? "none"
-
-    .. sum String ~
-        ~ \term "+" "1"
-        ~ "1"
-
-    .. term String ~
-        ~ " "* \sum
+```brix compile-error
+(main
+  (print
+    (match "1+1"
+      (~ \sum)
+      (default
+        (inline "none")
+      )
+      (blank)
+      (lazy sum String
+        (pattern
+          (~ (seq \term "+" "1"))
+          (~ "1")
+        )
+      )
+      (blank)
+      (lazy term String
+        (pattern
+          (~ (seq (* " ") \sum))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: "sum" calls itself before reading any input, so it never ends; read input before this call, or write the repetition with "*"
-<no file:11>
-            ~ " "* \sum
-                   ^^^^
+<no file:19>
+              (~ (seq (* " ") \sum))
+                              ^^^^
 ```
 
 ### A rule a module declares that calls itself before it reads anything is an error.
 
-```yumi compile-error
--- match "1+1"
-    ~ \sum
-    ?? "none"
+```brix compile-error
+(main
+  (print
+    (match "1+1"
+      (~ \sum)
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ sum ~ Char String
-
-~ \sum "+" "1"
-~ "1"
+(fn-expr + sum String (over: Char)
+  (~ (seq \sum "+" "1"))
+  (~ "1")
+)
 ```
 
 ```output
 Exception: "sum" calls itself before reading any input, so it never ends; read input before this call, or write the repetition with "*"
-<no file:9>
-    ~ \sum "+" "1"
-      ^^^^
+<no file:14>
+      (~ (seq \sum "+" "1"))
+              ^^^^
 ```
 
-```yumi
--- match "http://me:pw@foo.com:42"
-    ~ "http://" auth Auth? ho Host
-        (ho, auth)
+```brix
+(main
+  (print
+    (match "http://me:pw@foo.com:42"
+      (~ (seq "http://" (: auth (? Auth)) (: ho Host))
+        (tuple ho auth)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Host is Tuple
+(type + Host (is Tuple)
+  (prop + address String)
+  (prop + port Int)
+  (fn-expr + This _ (over: Char)
+    (~ (seq (: ad \address) ":" (: p \port))
+      (call This ad p)
+    )
+    (~ (: ad \address)
+      (call This ad 0)
+    )
+    (where
+      (lazy address
+        (pattern
+          (~ (+ (chars "a-z.")))
+        )
+      )
+      (lazy port
+        (pattern
+          (~ (+ (chars "0-9"))
+            (as it Int)
+          )
+        )
+      )
+    )
+  )
+)
 
-+ address String
-+ port Int
-
-────────────────────
-+ This ~ Char
-
-~ ad \address ":" p \port
-    This(ad, p)
-~ ad \address
-    This(ad, 0)
-
-.. address ~
-    ~ [a-z.]+
-.. port ~
-    ~ [0-9]+
-        it as Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Auth is Tuple
-
-+ user String
-+ pass String
-
-────────────────────
-+ This ~ Char
-
-~ user [a-z]+ ":" pass [a-z]+ "@"
-    This(user, pass)
+(type + Auth (is Tuple)
+  (prop + user String)
+  (prop + pass String)
+  (fn-expr + This _ (over: Char)
+    (~ (seq (: user (+ (chars "a-z"))) ":" (: pass (+ (chars "a-z"))) "@")
+      (call This user pass)
+    )
+  )
+)
 ```
 
 ```output
 ((foo.com, 42), (me, pw))
 ```
 
-```yumi
--- ~ URLHost = "foo.bAr.com:42"
+```brix
+(main
+  (print (~ URLHost (of: "foo.bAr.com:42")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ URLHost is (address String, port Int)
+(type + URLHost (is (tuple (: address String) (: port Int)))
+  (fn-expr + This _ (over: Char)
+    (~ \host)
+    (where
+      (lazy host
+        (pattern
+          (~ (seq (: addr \address) ":" (: p \port))
+            (call This addr p)
+          )
+          (~ \address
+            (call This it 0)
+          )
+        )
+      )
+      (lazy address String
+        (pattern
+          (~ (seq \name "." \address))
+          (~ \name)
+        )
+      )
+      (lazy name
+        (pattern
+          (~ (seq Alpha (* AlphaNumeric)))
+        )
+      )
+      (lazy port Int
+        (pattern
+          (~ (+ (chars "0-9")))
+        )
+      )
+    )
+  )
+)
 
-────────────────────
-+ This ~ Char
+(type + Alpha (is String)
+  (fn-expr + This _ (over: Char)
+    (~ (chars "a-zA-Z"))
+  )
+)
 
-~ \host
+(type + AlphaNumeric (is String)
+  (fn-expr + This _ (over: Char)
+    (~ (chars "a-zA-Z0-9"))
+  )
+)
 
-.. host ~
-    ~ addr \address ":" p \port
-        This(addr, p)
-    ~ \address
-        This(it, 0)
-.. address String ~
-    ~ \name "." \address
-    ~ \name
-.. name ~
-    ~ Alpha AlphaNumeric*
-.. port Int ~
-    ~ [0-9]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ Alpha is String
-
-────────────────────
-+ This ~ Char
-
-~ [a-zA-Z]
-
-━━━━━━━━━━━━━━━━━━━━
-+ AlphaNumeric is String
-
-────────────────────
-+ This ~ Char
-
-~ [a-zA-Z0-9]
-
-━━━━━━━━━━━━━━━━━━━━
-+ Numeric is Int
-
-────────────────────
-+ This ~ Char
-
-~ [0-9]
+(type + Numeric (is Int)
+  (fn-expr + This _ (over: Char)
+    (~ (chars "0-9"))
+  )
+)
 ```
 
 ```output
 (foo.bAr.com, 42)
 ```
 
-```yumi
--- ~ URLHost = "foo"
+```brix
+(main
+  (print (~ URLHost (of: "foo")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ URLHost is String
-
-────────────────────
-+ This ~ Char
-
-~ \address
-
-.. address ~
-    ~ \name
-
-.. name ~
-    ~ [a-z]+
+(type + URLHost (is String)
+  (fn-expr + This _ (over: Char)
+    (~ \address)
+    (where
+      (lazy address
+        (pattern
+          (~ \name)
+        )
+      )
+      (blank)
+      (lazy name
+        (pattern
+          (~ (+ (chars "a-z")))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 foo
 ```
 
-```yumi
--- match "foo"
-    ~ Foo
+```brix
+(main
+  (print
+    (match "foo"
+      (~ Foo)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ This ~ Char
-
-~ "foo"
-    42
+(type + Foo
+  (fn-expr + This _ (over: Char)
+    (~ "foo"
+      42
+    )
+  )
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
--- match "foo"
-    ~ \foo()
+```brix
+(main
+  (print
+    (match "foo"
+      (~ (call \foo))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo ~ Char
-
-~ "foo"
+(fn-expr + foo _ (over: Char)
+  (~ "foo"
     42
+  )
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
--- match "foo"
-    ~ \foo(42)
+```brix
+(main
+  (print
+    (match "foo"
+      (~ (call \foo 42))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo ~ Char
-    - n
-
-~ "foo"
+(fn-expr + foo _ (over: Char)
+  (param n _)
+  (~ "foo"
     n
+  )
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
--- match "fooooo"
-    ~ "f" \letter(~ "o", 5)
+```brix
+(main
+  (print
+    (match "fooooo"
+      (~ (seq "f" (call \letter (~ "o") 5)))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ letter ~ Char
-    - letter
-    - n
-
-~ $letter{n}
+(fn-expr + letter _ (over: Char)
+  (param letter _)
+  (param n _)
+  (~ ({} $letter n))
+)
 ```
 
 ```output
 o, o, o, o, o
 ```
 
-```yumi
--- ~ \hex'Char8 = "41"
--- ~ \hex'U8 = "FF"
--- ~ \hex'U16 = "FFFF"
--- ~ \hex'U32 = "FFFFFFFF"
+```brix
+(main
+  (print (~ (of \hex Char8) (of: "41")))
+  (print (~ (of \hex U8) (of: "FF")))
+  (print (~ (of \hex U16) (of: "FFFF")))
+  (print (~ (of \hex U32) (of: "FFFFFFFF")))
+  (blank)
+  (print
+    (match "414243"
+      (~ (seq (: a (of \hex Char8)) (: b (of \hex Char8)) (: c (of \hex Char8)))
+        (str a " " b " " c)
+      )
+    )
+  )
+)
 
--- match "414243"
-    ~ a \hex'Char8 b \hex'Char8 c \hex'Char8
-        "$a $b $c"
-
-━━━━━━━━━━━━━━━━━━━━
-+ hex'T ~ Char
-
-~ [a-fA-F0-9]{size}
-    Hex(it) as T
-
-.. size = T.size * 2
+(fn-expr + (of hex T) _ (over: Char)
+  (~ ({} (chars "a-fA-F0-9") size)
+    (as (call Hex it) T)
+  )
+  (where
+    (lazy size (* (. T size) 2))
+  )
+)
 ```
 
 ```output
@@ -1568,61 +2038,85 @@ A
 A B C
 ```
 
-```yumi
--- match "foo=bar%20baz&doo=joby&x="
-    ~ \delim("&", ~ URLPair)
+```brix
+(main
+  (print
+    (match "foo=bar%20baz&doo=joby&x="
+      (~ (call \delim "&" (~ URLPair)))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ URLPair is (key String, value String)
+(type + URLPair (is (tuple (: key String) (: value String)))
+  (fn-expr + This _ (over: Char)
+    (~ (seq (: key \parts) "=" (: value (? \parts)))
+      (call This key (?? value ""))
+    )
+    (where
+      (lazy parts String
+        (pattern
+          (~ (seq (: head \part) (: tail \parts))
+            (+ head tail)
+          )
+          (~ \part)
+        )
+      )
+      (blank)
+      (lazy part
+        (pattern
+          (~ (seq "%" (: hx (of \hex Char8)))
+            (as hx String)
+          )
+          (~ "\\%"
+            "%"
+          )
+          (~ (chars "a-zA-z0-9"))
+        )
+      )
+    )
+  )
+)
 
-────────────────────
-+ This ~ Char
-
-~ key \parts "=" value \parts?
-    This(key, value ?? "")
-
-.. parts String ~
-    ~ head \part tail \parts
-        head + tail
-    ~ \part
-
-.. part ~
-    ~ "%" hx \hex'Char8
-        hx as String
-    ~ "\\%"
-        "%"
-    ~ [a-zA-z0-9]
-
-━━━━━━━━━━━━━━━━━━━━
-+ delim'Result ~ Char
-    - delimiter
-    - pattern PatternFunc'Char'Result
-
-~ \items
-
-.. items [Result] ~
-    ~ head \item $delimiter tail \items
-        head ++ tail
-    ~ \item
-
-.. item [Result] ~
-    ~ item $pattern
-        [item]
+(fn-expr + (of delim Result) _ (over: Char)
+  (param delimiter _)
+  (param pattern (of PatternFunc Char Result))
+  (~ \items)
+  (where
+    (lazy items (list Result)
+      (pattern
+        (~ (seq (: head \item) $delimiter (: tail \items))
+          (++ head tail)
+        )
+        (~ \item)
+      )
+    )
+    (blank)
+    (lazy item (list Result)
+      (pattern
+        (~ (: item $pattern)
+          (list item)
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 (foo, bar baz), (doo, joby), (x, )
 ```
 
-```yumi
-. foo = "food"
--- ~ $foo = "foo"
-
-foo = "foo"
--- ~ $foo = "foo"
-
-foo = "fog"
--- ~ $foo = "food"
+```brix
+(main
+  (let foo "food")
+  (print (~ $foo (of: "foo")))
+  (blank)
+  (= foo "foo")
+  (print (~ $foo (of: "foo")))
+  (blank)
+  (= foo "fog")
+  (print (~ $foo (of: "food")))
+)
 ```
 
 ```output
@@ -1631,279 +2125,365 @@ foo
 unknown
 ```
 
-```yumi
--- match "al ,bob, fred"
-    ~ \delim'String(~ " "* "," " "*, ~ [a-z]+)
+```brix
+(main
+  (print
+    (match "al ,bob, fred"
+      (~ (call (of \delim String) (~ (seq (* " ") "," (* " "))) (~ (+ (chars "a-z")))))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ delim'Result ~ Char
-    - delimiter
-    - pattern
-
-~ \items
-
-.. items [Result] ~
-    ~ head \item $delimiter tail \items
-        head ++ tail
-    ~ \item
-
-.. item ~
-    ~ ii \pattern
-        [ii]
+(fn-expr + (of delim Result) _ (over: Char)
+  (param delimiter _)
+  (param pattern _)
+  (~ \items)
+  (where
+    (lazy items (list Result)
+      (pattern
+        (~ (seq (: head \item) $delimiter (: tail \items))
+          (++ head tail)
+        )
+        (~ \item)
+      )
+    )
+    (blank)
+    (lazy item
+      (pattern
+        (~ (: ii \pattern)
+          (list ii)
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 al, bob, fred
 ```
 
-```yumi
-. text = "foo"
--- match "foo"
-    ~ \item
-
-    .. item ~
-        ~ $text
+```brix
+(main
+  (let text "foo")
+  (print
+    (match "foo"
+      (~ \item)
+      (blank)
+      (lazy item
+        (pattern
+          (~ $text)
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 foo
 ```
 
-```yumi
--- match "foo"
-    ~ \foo("foo")
+```brix
+(main
+  (print
+    (match "foo"
+      (~ (call \foo "foo"))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo ~ Char
-    - text
-
-~ \item
-
-.. item ~
-    ~ $text
+(fn-expr + foo _ (over: Char)
+  (param text _)
+  (~ \item)
+  (where
+    (lazy item
+      (pattern
+        (~ $text)
+      )
+    )
+  )
+)
 ```
 
 ```output
 foo
 ```
 
-```yumi
--- match "abc"
-    ~ (!("," | ";") .)+
+```brix
+(main
+  (print
+    (match "abc"
+      (~ (+ (seq (! (| "," ";")) .)))
+    )
+  )
+)
 ```
 
 ```output
 abc
 ```
 
-```yumi
--- match "x"
-    ~ value \optional-record?
-        optional-record-value(value)
+```brix
+(main
+  (print
+    (match "x"
+      (~ (: value (? \optional-record))
+        (call optional-record-value value)
+      )
+      (blank)
+      (lazy optional-record OptionalRecord
+        (pattern
+          (~ "x"
+            (call OptionalRecord 7)
+          )
+        )
+      )
+    )
+  )
+)
 
-    .. optional-record OptionalRecord ~
-        ~ "x"
-            OptionalRecord(7)
+(type + OptionalRecord (is Tuple)
+  (prop + value I32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ OptionalRecord is Tuple
-
-+ value I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ optional-record-value I32
-    - value OptionalRecord?
-
-value?.value ?? 0
+(fn-expr + optional-record-value I32
+  (param value (? OptionalRecord))
+  (?? (?. value value) 0)
+)
 ```
 
 ```output
 7
 ```
 
-```yumi
-/core/atom-pool
-/core/arena
+```brix
+(import /core/atom-pool)
+(import /core/arena)
+(blank)
 
-. output = Arena()
-. helper = AtomPatternHelper(output)
-. direct = match "alpha!"
-    with helper
-    ~ \atom-word
-    ?! Panic("direct atom failed")
-
-    .. atom-word Atom ~
-        ~ word [a-z]+ "!"
+(main
+  (let output (call Arena))
+  (let helper (call AtomPatternHelper output))
+  (let direct
+    (match "alpha!"
+      (with helper)
+      (~ \atom-word)
+      (throw (call Panic "direct atom failed"))
+      (blank)
+      (lazy atom-word Atom
+        (pattern
+          (~ (seq (: word (+ (chars "a-z"))) "!")
             word
-. duplicate = match "alpha!"
-    with helper
-    ~ \atom-word
-    ?! Panic("duplicate atom failed")
-
-    .. atom-word Atom ~
-        ~ word [a-z]+ "!"
+          )
+        )
+      )
+    )
+  )
+  (let duplicate
+    (match "alpha!"
+      (with helper)
+      (~ \atom-word)
+      (throw (call Panic "duplicate atom failed"))
+      (blank)
+      (lazy atom-word Atom
+        (pattern
+          (~ (seq (: word (+ (chars "a-z"))) "!")
             word
-. transformed = match "alpha!"
-    with helper
-    ~ \atom-word
-    ?! Panic("transformed atom failed")
-
-    .. atom-word Atom ~
-        ~ word [a-z]+ "!"
-            word + "-x"
-. optional = match "beta!"
-    with helper
-    ~ \maybe-atom
-    ?! Panic("optional atom failed")
-
-    .. maybe-atom Atom? ~
-        ~ (word [a-z]+)? "!"
+          )
+        )
+      )
+    )
+  )
+  (let transformed
+    (match "alpha!"
+      (with helper)
+      (~ \atom-word)
+      (throw (call Panic "transformed atom failed"))
+      (blank)
+      (lazy atom-word Atom
+        (pattern
+          (~ (seq (: word (+ (chars "a-z"))) "!")
+            (+ word "-x")
+          )
+        )
+      )
+    )
+  )
+  (let optional
+    (match "beta!"
+      (with helper)
+      (~ \maybe-atom)
+      (throw (call Panic "optional atom failed"))
+      (blank)
+      (lazy maybe-atom (? Atom)
+        (pattern
+          (~ (seq (? (: word (+ (chars "a-z")))) "!")
             word
-. missing = match "!"
-    with helper
-    ~ \maybe-atom
-    ?! Panic("missing atom failed")
-
-    .. maybe-atom Atom? ~
-        ~ (word [a-z]+)? "!"
+          )
+        )
+      )
+    )
+  )
+  (let missing
+    (match "!"
+      (with helper)
+      (~ \maybe-atom)
+      (throw (call Panic "missing atom failed"))
+      (blank)
+      (lazy maybe-atom (? Atom)
+        (pattern
+          (~ (seq (? (: word (+ (chars "a-z")))) "!")
             word
-. words = match "a,b,a!"
-    with helper
-    ~ \many-atoms
-    ?! Panic("atom sequence failed")
-
-    .. many-atoms ImmutableArray'Atom ~
-        ~ (words [a-z] ","?)+ "!"
+          )
+        )
+      )
+    )
+  )
+  (let words
+    (match "a,b,a!"
+      (with helper)
+      (~ \many-atoms)
+      (throw (call Panic "atom sequence failed"))
+      (blank)
+      (lazy many-atoms (of ImmutableArray Atom)
+        (pattern
+          (~ (seq (+ (seq (: words (chars "a-z")) (? ","))) "!")
             words
-. rolled-back = match "gamma!"
-    with helper
-    ~ \rollback-atom
-    ?! Panic("atom rollback failed")
-
-    .. rollback-atom Atom ~
-        ~ failed \failed-atom "?"
+          )
+        )
+      )
+    )
+  )
+  (let rolled-back
+    (match "gamma!"
+      (with helper)
+      (~ \rollback-atom)
+      (throw (call Panic "atom rollback failed"))
+      (blank)
+      (lazy rollback-atom Atom
+        (pattern
+          (~ (seq (: failed \failed-atom) "?")
             failed
-        ~ winner \winner-atom "!"
+          )
+          (~ (seq (: winner \winner-atom) "!")
             winner
+          )
+        )
+      )
+      (blank)
+      (lazy failed-atom Atom
+        (pattern
+          (~ (: word (+ (chars "a-z")))
+            (+ word "-failed")
+          )
+        )
+      )
+      (blank)
+      (lazy winner-atom Atom
+        (pattern
+          (~ (: word (+ (chars "a-z")))
+            (+ word "-winner")
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (print (. direct text))
+  (print (== direct duplicate))
+  (print (. transformed text))
+  (print (. (!! optional) text))
+  (print (== missing null))
+  (print (. ([] words 0) text))
+  (print (. ([] words 1) text))
+  (print (. ([] words 2) text))
+  (print (. rolled-back text))
+  (print (. ([] (. helper pool) 5) text))
+  (print (. helper pool length))
+  (print (. helper string-capture-count))
+  (print (. helper string-value-count))
+  (print (. helper atom-capture-count))
+  (print (. helper atom-value-count))
+  (print (. helper mark-count))
+  (call (. helper pool release))
+  (call (. output release))
+)
 
-    .. failed-atom Atom ~
-        ~ word [a-z]+
-            word + "-failed"
+(type + AtomPatternHelper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements (of PatternMaterializationRoot String))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternValueMaterializer String String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + pool AtomPool)
+  (prop + string-capture-count Size)
+  (prop + string-value-count Size)
+  (prop + atom-capture-count Size)
+  (prop + atom-value-count Size)
+  (prop + mark-count Size)
+  (blank)
+  (delegate (of PatternCaptureMaterializer Char Atom) (of PatternCaptureMaterializer Byte Atom))
+  (delegate (of PatternValueMaterializer String Atom))
+  (prop _ atom-materializer _ (:= (call AtomAtomPatternMaterializer this)))
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+    (= pool (call AtomPool))
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= string-capture-count 1)
+    (return (call (. arena copy-span) source start end))
+  )
+  (fn-do + materialize-value String
+    (param input String)
+    (+= string-value-count 1)
+    (return (call (. arena copy-string) input))
+  )
+  (fn-expr + mark Size
+    (before
+      (do
+        (+= mark-count 1)
+      )
+    )
+    (+ (. arena mark value) 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (call (. arena rewind) (call ArenaMark (- mark 1)))
+  )
+)
 
-    .. winner-atom Atom ~
-        ~ word [a-z]+
-            word + "-winner"
-
--- direct.text
--- direct == duplicate
--- transformed.text
--- optional!.text
--- missing == null
--- words[0].text
--- words[1].text
--- words[2].text
--- rolled-back.text
--- helper.pool[5].text
--- helper.pool.length
--- helper.string-capture-count
--- helper.string-value-count
--- helper.atom-capture-count
--- helper.atom-value-count
--- helper.mark-count
-helper.pool.release()
-output.release()
-
-━━━━━━━━━━━━━━━━━━━━
-+ AtomPatternHelper
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'String
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternValueMaterializer'String'String
-    is PatternRollback'Size
-
-+ arena Arena
-+ pool AtomPool
-+ string-capture-count Size
-+ string-value-count Size
-+ atom-capture-count Size
-+ atom-value-count Size
-+ mark-count Size
-
-as PatternCaptureMaterializer'Char'Atom, PatternCaptureMaterializer'Byte'Atom for
-as PatternValueMaterializer'String'Atom for
-_ atom-materializer := AtomAtomPatternMaterializer(this)
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-pool = AtomPool()
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-string-capture-count += 1
-= arena.copy-span(source, start, end)
-
-────────────────────
-+ do materialize-value String
-    - input String
-
-string-value-count += 1
-= arena.copy-string(input)
-
-────────────────────
-+ mark Size
-
-do
-    mark-count += 1
-arena.mark.value + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-arena.rewind(ArenaMark(mark - 1))
-
-━━━━━━━━━━━━━━━━━━━━
-_ AtomAtomPatternMaterializer is Tuple
-    is PatternCaptureMaterializer'Char'Atom
-    is PatternCaptureMaterializer'Byte'Atom
-    is PatternValueMaterializer'String'Atom
-
-_ helper AtomPatternHelper
-
-────────────────────
-+ This
-    - source AtomPatternHelper
-
-helper = source
-
-────────────────────
-+ do materialize-capture'Token Atom
-    - source Token[]
-    - start Index
-    - end Index
-
-helper.atom-capture-count += 1
-= helper.pool.store(source, start, end)
-
-────────────────────
-+ do materialize-value Atom
-    - input String
-
-helper.atom-value-count += 1
-= helper.pool.store(input)
+(type _ AtomAtomPatternMaterializer (is Tuple)
+  (implements (of PatternCaptureMaterializer Char Atom))
+  (implements (of PatternCaptureMaterializer Byte Atom))
+  (implements (of PatternValueMaterializer String Atom))
+  (prop _ helper AtomPatternHelper)
+  (fn-do + This _
+    (param source AtomPatternHelper)
+    (= helper source)
+  )
+  (fn-do + (of materialize-capture Token) Atom
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= (. helper atom-capture-count) 1)
+    (return (call (. helper pool store) source start end))
+  )
+  (fn-do + materialize-value Atom
+    (param input String)
+    (+= (. helper atom-value-count) 1)
+    (return (call (. helper pool store) input))
+  )
+)
 ```
 
 ```output
@@ -1927,53 +2507,58 @@ gamma-failed
 
 ### A type named as a part of a pattern runs its stream constructor under the match's helper.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-. helper = CollectorCounter(arena)
-. found = match "[1,2,3]"
-    with helper
-    ~ digits Digits
+(main
+  (let arena (call Arena))
+  (let helper (call CollectorCounter arena))
+  (let found
+    (match "[1,2,3]"
+      (with helper)
+      (~ (: digits Digits)
         digits
-    ?! Panic("no digits")
--- found.items
--- helper.asked > 0
-arena.release()
+      )
+      (throw (call Panic "no digits"))
+    )
+  )
+  (print (. found items))
+  (print (> (. helper asked) 0))
+  (call (. arena release))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Digits is Tuple
+(type + Digits (is Tuple)
+  (prop + items (list Int))
+  (fn-expr + This _ (over: Char)
+    (~ (seq "[" (: items (call \delimited (~ ",") (~ \digit))) "]")
+      (call This items)
+    )
+    (where
+      (lazy digit Int
+        (pattern
+          (~ (chars "0-9")
+            (as it Int)
+          )
+        )
+      )
+    )
+  )
+)
 
-+ items [Int]
-
-────────────────────
-+ This ~ Char
-
-~ "[" items \delimited(~ ",", ~ \digit) "]"
-    This(items)
-
-.. digit Int ~
-    ~ [0-9]
-        it as Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ CollectorCounter
-    is PatternCollectorStorage'ArenaBacking
-
-+ arena Arena
-+ asked Size
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-
-────────────────────
-+ do get pattern-collector-context Arena
-
-asked += 1
-= arena
+(type + CollectorCounter
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (prop + arena Arena)
+  (prop + asked Size)
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+  )
+  (fn-do + pattern-collector-context Arena :get
+    (+= asked 1)
+    (return arena)
+  )
+)
 ```
 
 ```output
@@ -1983,43 +2568,48 @@ true
 
 ### A local rule a pattern given to a rule calls under a helper makes the type it states from the text it matched where the helper has no materializer for that type.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-. helper = Storage(arena)
-. value = match "[1.5,2.5]"
-    with helper
-    ~ \numbers
-    ?! Panic("no numbers")
--- value
-arena.release()
+(main
+  (let arena (call Arena))
+  (let helper (call Storage arena))
+  (let value
+    (match "[1.5,2.5]"
+      (with helper)
+      (~ \numbers)
+      (throw (call Panic "no numbers"))
+    )
+  )
+  (print value)
+  (call (. arena release))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ numbers ~ Char [Float]
-
-~ "[" items \delimited(~ ",", ~ \float) "]"
+(fn-expr + numbers (list Float) (over: Char)
+  (~ (seq "[" (: items (call \delimited (~ ",") (~ \float))) "]")
     items
+  )
+  (where
+    (lazy float Float
+      (pattern
+        (~ (seq (+ (chars "0-9")) "." (+ (chars "0-9"))))
+      )
+    )
+  )
+)
 
-.. float Float ~
-    ~ [0-9]+ "." [0-9]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ Storage
-    is PatternCollectorStorage'ArenaBacking
-
-+ arena Arena
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
+(type + Storage
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (prop + arena Arena)
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+)
 ```
 
 ```output
@@ -2028,14 +2618,23 @@ arena
 
 ### A local rule of a match that runs an action, given alone as a pattern to a rule, runs in the function made of the pattern.
 
-```yumi
--- match "1,2"
-    ~ \delimited(~ ",", ~ \digit)
-    ?! Panic("no digits")
-
-    .. digit Int ~
-        ~ [0-9]
-            Int(it) * 10
+```brix
+(main
+  (print
+    (match "1,2"
+      (~ (call \delimited (~ ",") (~ \digit)))
+      (throw (call Panic "no digits"))
+      (blank)
+      (lazy digit Int
+        (pattern
+          (~ (chars "0-9")
+            (* (call Int it) 10)
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2044,27 +2643,45 @@ arena
 
 ### Reference variable captured earlier in pattern
 
-```yumi
--- match "5ooooo"
-    ~ len \length o "o"{len}
+```brix
+(main
+  (print
+    (match "5ooooo"
+      (~ (seq (: len \length) (: o ({} "o" len)))
         o
-
-    .. length ~
-        ~ d [0-9]+
-            d as Int
+      )
+      (blank)
+      (lazy length
+        (pattern
+          (~ (: d (+ (chars "0-9")))
+            (as d Int)
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 ooooo
 ```
 
-```yumi
-. x = match "foo"
-    ~ "bar"
+```brix
+(main
+  (let x
+    (match "foo"
+      (~ "bar"
         42
-    ?? 41
--- type-of x
--- x
+      )
+      (default
+        (inline 41)
+      )
+    )
+  )
+  (print (type-of x))
+  (print x)
+)
 ```
 
 ```output
@@ -2072,21 +2689,24 @@ ooooo
 41
 ```
 
-```yumi
-. x = parse("bar")
--- type-of x
--- x
+```brix
+(main
+  (let x (call parse "bar"))
+  (print (type-of x))
+  (print x)
+  (blank)
+  (print (catch (call parse "foo")))
+)
 
--- catch parse("foo")
-
-━━━━━━━━━━━━━━━━━━━━
-+ parse
-    - text
-
-match text
-    ~ "bar"
-        42
-    ?! SyntaxError("No bar")
+(fn-expr + parse _
+  (param text _)
+  (match text
+    (~ "bar"
+      42
+    )
+    (throw (call SyntaxError "No bar"))
+  )
+)
 ```
 
 ```output
@@ -2095,11 +2715,13 @@ match text
 No bar
 ```
 
-```yumi
--- ~ \num'I16 = "0"
--- ~ \num'I16 = "-0"
--- ~ \num'I16 = "-5"
--- ~ \num'I16 = "05"
+```brix
+(main
+  (print (~ (of \num I16) (of: "0")))
+  (print (~ (of \num I16) (of: "-0")))
+  (print (~ (of \num I16) (of: "-5")))
+  (print (~ (of \num I16) (of: "05")))
+)
 ```
 
 ```output
@@ -2111,21 +2733,26 @@ unknown
 
 ### An unsigned number has no minus sign to read, so a number written with one does not match it.
 
-```yumi
--- ~ \num'U16 = "7"
--- ~ \num'U16 = "-7"
--- ~ \num'U16 = "-0"
--- unsigned("-3")
--- unsigned("12")
+```brix
+(main
+  (print (~ (of \num U16) (of: "7")))
+  (print (~ (of \num U16) (of: "-7")))
+  (print (~ (of \num U16) (of: "-0")))
+  (print (call unsigned "-3"))
+  (print (call unsigned "12"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ unsigned String
-    - text String
-
-match text
-    ~ parsed U64
-        "$parsed"
-    ?? "rejected"
+(fn-expr _ unsigned String
+  (param text String)
+  (match text
+    (~ (: parsed U64)
+      (str parsed)
+    )
+    (default
+      (inline "rejected")
+    )
+  )
+)
 ```
 
 ```output
@@ -2136,13 +2763,15 @@ rejected
 12
 ```
 
-```yumi
--- ~ \dec'Float = "0"
--- ~ \dec'Float = "-0"
--- ~ \dec'Float = ".5"
--- ~ \dec'Float = "-.5"
--- ~ \dec'Float = "0.5"
--- ~ \dec'Float = "-0.5"
+```brix
+(main
+  (print (~ (of \dec Float) (of: "0")))
+  (print (~ (of \dec Float) (of: "-0")))
+  (print (~ (of \dec Float) (of: ".5")))
+  (print (~ (of \dec Float) (of: "-.5")))
+  (print (~ (of \dec Float) (of: "0.5")))
+  (print (~ (of \dec Float) (of: "-0.5")))
+)
 ```
 
 ```output
@@ -2154,21 +2783,22 @@ rejected
 -0.5
 ```
 
-```yumi
--- ~ Float = "-0.5"
--- ~ I8 = "-5"
--- ~ I8 = "5"
--- ~ I8 = "257"
--- ~ Foo = "2"
+```brix
+(main
+  (print (~ Float (of: "-0.5")))
+  (print (~ I8 (of: "-5")))
+  (print (~ I8 (of: "5")))
+  (print (~ I8 (of: "257")))
+  (print (~ Foo (of: "2")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is U8
-
-────────────────────
-+ This ~ Char
-
-~ [0-9]
-    42
+(type + Foo (is U8)
+  (fn-expr + This _ (over: Char)
+    (~ (chars "0-9")
+      42
+    )
+  )
+)
 ```
 
 ```output
@@ -2179,10 +2809,12 @@ rejected
 42
 ```
 
-```yumi
--- ~ "foo" / "bar" / "baz" =  "foo barbaz"
--- ~ "foo" / "bar" // "baz" = "foo barbaz"
--- ~ "foo" / "bar" = "foo   bar"
+```brix
+(main
+  (print (~ (seq "foo" / "bar" / "baz") (of: "foo barbaz")))
+  (print (~ (seq "foo" / "bar" // "baz") (of: "foo barbaz")))
+  (print (~ (seq "foo" / "bar") (of: "foo   bar")))
+)
 ```
 
 ```output
@@ -2191,9 +2823,11 @@ unknown
 foo   bar
 ```
 
-```yumi
--- ~ \hex'U32 = "F"
--- v ~ v \hex'U16 "F" = "FFFFF"
+```brix
+(main
+  (print (~ (of \hex U32) (of: "F")))
+  (print (= (select v (~ (seq (: v (of \hex U16)) "F"))) "FFFFF"))
+)
 ```
 
 ```output
@@ -2201,9 +2835,14 @@ foo   bar
 65535
 ```
 
-```yumi
--- match "A"
-    ~ !\nl .
+```brix
+(main
+  (print
+    (match "A"
+      (~ (seq (! \nl) .))
+    )
+  )
+)
 ```
 
 ```output
@@ -2214,10 +2853,16 @@ A
 
 ### Captures inside optional group should bind to an optional value
 
-```yumi
--- match "foob"
-    ~ "foo" (bar "bar")?
+```brix
+(main
+  (print
+    (match "foob"
+      (~ (seq "foo" (? (: bar "bar")))
         bar
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2226,10 +2871,16 @@ unknown
 
 ### Captures inside repeat group should bind to a list
 
-```yumi
--- match "foobarbar"
-    ~ "foo" (bar "bar")*
+```brix
+(main
+  (print
+    (match "foobarbar"
+      (~ (seq "foo" (* (: bar "bar")))
         bar
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2238,50 +2889,56 @@ bar, bar
 
 ## Pattern functions as normal functions
 
-```yumi crash
--- ~ \foo = "foo"
+```brix crash
+(main
+  (print (~ \foo (of: "foo")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-
-42
+(fn-expr + foo _
+  42
+)
 ```
 
 ```output
 Exception: "foo" is a function, not a rule; call it outside the pattern
-<no file:2>
-    -- ~ \foo = "foo"
-         ^^^^
+<no file:3>
+      (print (~ \foo (of: "foo")))
+                ^^^^
 ```
 
-```yumi
--- ~ \foo = "foo"
+```brix
+(main
+  (print (~ \foo (of: "foo")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo ~ Char
-
-~ "foo"
+(fn-expr + foo _ (over: Char)
+  (~ "foo"
     42
+  )
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
--- ~ \foo(5) = "foo"
--- ~ \foo(5) = "bar"
--- ~ \foo(1) = "foo"
--- ~ \foo(1) = "bar"
+```brix
+(main
+  (print (~ (call \foo 5) (of: "foo")))
+  (print (~ (call \foo 5) (of: "bar")))
+  (print (~ (call \foo 1) (of: "foo")))
+  (print (~ (call \foo 1) (of: "bar")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo ~ Char
-    - n
-
-|? 3 > n
-    ~ "foo"
-??
-    ~ "bar"
+(fn-expr + foo _ (over: Char)
+  (param n _)
+  (case? (> 3 n)
+    (~ "foo")
+  )
+  (default
+    (~ "bar")
+  )
+)
 ```
 
 ```output
@@ -2291,13 +2948,21 @@ foo
 unknown
 ```
 
-```yumi
-. aa, bb = match "foo bar"
-    ~ f [a-z]+ // b [a-z]+
-        (f, b)
-    ?? ("x", "x")
--- aa
--- bb
+```brix
+(main
+  (let (tuple aa bb)
+    (match "foo bar"
+      (~ (seq (: f (+ (chars "a-z"))) // (: b (+ (chars "a-z"))))
+        (tuple f b)
+      )
+      (default
+        (inline (tuple "x" "x"))
+      )
+    )
+  )
+  (print aa)
+  (print bb)
+)
 ```
 
 ```output
@@ -2305,19 +2970,24 @@ foo
 bar
 ```
 
-```yumi
-/core/tests/support/byte-source
+```brix
+(import /core/tests/support/byte-source)
+(blank)
 
-. stream = TestByteSource(Array'Char("foo"))
--- ~ "foo" = stream
+(main
+  (let stream (call TestByteSource (call (of Array Char) "foo")))
+  (print (~ "foo" (of: stream)))
+)
 ```
 
 ```output
 foo
 ```
 
-```yumi
--- "\n".join(~ "f" [o]+ in "fofooooofoo")
+```brix
+(main
+  (print (call (. "\n" join) (in (~ (seq "f" (+ (chars "o")))) "fofooooofoo")))
+)
 ```
 
 ```output
@@ -2326,14 +2996,24 @@ fooooo
 foo
 ```
 
-```yumi
-. m = in "fogooooofoo"
-    ~ "f" [o]+
-        10.5
-    ~ "g" [o]+
-        20
-for x in m
-    -- x
+```brix
+(main
+  (let m
+    (iterate (in "fogooooofoo")
+      (block
+        (~ (seq "f" (+ (chars "o")))
+          10.5
+        )
+        (~ (seq "g" (+ (chars "o")))
+          20
+        )
+      )
+    )
+  )
+  (for (in x m)
+    (print x)
+  )
+)
 ```
 
 ```output
@@ -2342,14 +3022,24 @@ for x in m
 10.5
 ```
 
-```yumi
-. m = in "fogooooofoo"
-    ~ "f" [o]+
-        10.5
-    ~ "g" [o]+
-        20
-for x in m
-    -- x
+```brix
+(main
+  (let m
+    (iterate (in "fogooooofoo")
+      (block
+        (~ (seq "f" (+ (chars "o")))
+          10.5
+        )
+        (~ (seq "g" (+ (chars "o")))
+          20
+        )
+      )
+    )
+  )
+  (for (in x m)
+    (print x)
+  )
+)
 ```
 
 ```output
@@ -2358,19 +3048,28 @@ for x in m
 10.5
 ```
 
-```yumi
-. m = in "fogooooofoo"
-    ~ \foo
-for x in m
-    -- x
+```brix
+(main
+  (let m
+    (iterate (in "fogooooofoo")
+      (block
+        (~ \foo)
+      )
+    )
+  )
+  (for (in x m)
+    (print x)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo ~ Char
-
-~ "f" [o]+
+(fn-expr + foo _ (over: Char)
+  (~ (seq "f" (+ (chars "o")))
     10.5
-~ "g" [o]+
+  )
+  (~ (seq "g" (+ (chars "o")))
     20
+  )
+)
 ```
 
 ```output
@@ -2379,9 +3078,12 @@ for x in m
 10.5
 ```
 
-```yumi
-for ~ "f" a "o"+ in "fofoofoooofo"
-    -- each
+```brix
+(main
+  (for (in (~ (seq "f" (: a (+ "o")))) "fofoofoooofo")
+    (print each)
+  )
+)
 ```
 
 ```output
@@ -2391,9 +3093,12 @@ foooo
 fo
 ```
 
-```yumi
-for ~ "f" a "o"+ in "fofoofoooofo"
-    -- a
+```brix
+(main
+  (for (in (~ (seq "f" (: a (+ "o")))) "fofoofoooofo")
+    (print a)
+  )
+)
 ```
 
 ```output
@@ -2403,10 +3108,14 @@ oooo
 o
 ```
 
-```yumi
-for ~ "f" a "o"+ in "fofoofoooofo"
-and i in 0 .. < 3
-    -- i, a
+```brix
+(main
+  (for (in (~ (seq "f" (: a (+ "o")))) "fofoofoooofo")
+    (and-for (in i (..< 0 3))
+      (print (tuple i a))
+    )
+  )
+)
 ```
 
 ```output
@@ -2415,16 +3124,27 @@ and i in 0 .. < 3
 (2, oooo)
 ```
 
-```yumi
--- match "f"
-    ~ c "x"
+```brix
+(main
+  (print
+    (match "f"
+      (~ (: c "x")
         1
-    ~ c \char
+      )
+      (~ (: c \char)
         c
-
-    .. char ~
-        ~ c [a-z]
+      )
+      (blank)
+      (lazy char
+        (pattern
+          (~ (: c (chars "a-z"))
             2
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2433,16 +3153,21 @@ and i in 0 .. < 3
 
 ### Span-backed captures convert through ordinary constructor argument dispatch.
 
-```yumi
-. result CapturedText = match "alpha!"
-    ~ text [a-z]+ "!"
-        CapturedText(text)
-    ?! Panic("constructor capture did not parse")
+```brix
+(main
+  (let result CapturedText
+    (match "alpha!"
+      (~ (seq (: text (+ (chars "a-z"))) "!")
+        (call CapturedText text)
+      )
+      (throw (call Panic "constructor capture did not parse"))
+    )
+  )
+  (blank)
+  (print result)
+)
 
--- result
-
-━━━━━━━━━━━━━━━━━━━━
-+ CapturedText is (text String)
+(type + CapturedText (is (tuple (: text String))))
 ```
 
 ```output
@@ -2451,16 +3176,30 @@ and i in 0 .. < 3
 
 ### Capture-span equality can be the transform result without changing its Bool return mode.
 
-```yumi
--- match "alpha!"
-    ~ text [a-z]+ "!"
-        text == "alpha"
-    ?? false
-
--- match "alpha:alpha!"
-    ~ left [a-z]+ ":" right [a-z]+ "!"
-        left == right
-    ?? false
+```brix
+(main
+  (print
+    (match "alpha!"
+      (~ (seq (: text (+ (chars "a-z"))) "!")
+        (== text "alpha")
+      )
+      (default
+        (inline false)
+      )
+    )
+  )
+  (blank)
+  (print
+    (match "alpha:alpha!"
+      (~ (seq (: left (+ (chars "a-z"))) ":" (: right (+ (chars "a-z"))) "!")
+        (== left right)
+      )
+      (default
+        (inline false)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2470,59 +3209,98 @@ true
 
 ### Source-equivalent choice joins preserve span results without changing other choice result types.
 
-```yumi
--- match "alpha!"
-    ~ text \choice-text "!"
-        text.length
-    ?? 0
-
--- match "42!"
-    ~ text \choice-text "!"
-        text == "42"
-    ?? false
-
--- match "nested!"
-    ~ text \outer-choice-text "!"
-        text.length
-    ?? 0
-
--- match "sized!"
-    ~ text \sized-choice-text(5) "!"
-        text.length
-    ?? 0
-
--- match "((x))!"
-    ~ text \recursive-source-text "!"
-        text.length
-    ?? 0
-
-    .. recursive-source-text String ~
-        ~ [a-z]
-        ~ "(" \recursive-source-text ")"
-
--- match "x"
-    ~ "x"
+```brix
+(main
+  (print
+    (match "alpha!"
+      (~ (seq (: text \choice-text) "!")
+        (. text length)
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+  (blank)
+  (print
+    (match "42!"
+      (~ (seq (: text \choice-text) "!")
+        (== text "42")
+      )
+      (default
+        (inline false)
+      )
+    )
+  )
+  (blank)
+  (print
+    (match "nested!"
+      (~ (seq (: text \outer-choice-text) "!")
+        (. text length)
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+  (blank)
+  (print
+    (match "sized!"
+      (~ (seq (: text (call \sized-choice-text 5)) "!")
+        (. text length)
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+  (blank)
+  (print
+    (match "((x))!"
+      (~ (seq (: text \recursive-source-text) "!")
+        (. text length)
+      )
+      (default
+        (inline 0)
+      )
+      (blank)
+      (lazy recursive-source-text String
+        (pattern
+          (~ (chars "a-z"))
+          (~ (seq "(" \recursive-source-text ")"))
+        )
+      )
+    )
+  )
+  (blank)
+  (print
+    (match "x"
+      (~ "x"
         7
-    ~ "y"
+      )
+      (~ "y"
         false
-    ?? 0
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ choice-text ~ Char
+(fn-expr + choice-text _ (over: Char)
+  (~ (+ (chars "a-z")))
+  (~ (+ (chars "0-9")))
+)
 
-~ [a-z]+
-~ [0-9]+
+(fn-expr + outer-choice-text _ (over: Char)
+  (~ \choice-text)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ outer-choice-text ~ Char
-
-~ \choice-text
-
-━━━━━━━━━━━━━━━━━━━━
-+ sized-choice-text ~ Char
-    - count Size
-
-~ [a-z]{count}
+(fn-expr + sized-choice-text _ (over: Char)
+  (param count Size)
+  (~ ({} (chars "a-z") count))
+)
 ```
 
 ```output
@@ -2536,29 +3314,41 @@ true
 
 ### A capture may have the name of the rule it calls, and a later call of that rule still calls it.
 
-```yumi
--- parse("ab=cd")
+```brix
+(main
+  (print (call parse "ab=cd"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ parse String
-    - text String
+(fn-expr + parse String
+  (param text String)
+  (match text
+    (~ \assignments
+      it
+    )
+    (default
+      (inline "none")
+    )
+  )
+)
 
-match text
-    ~ \assignments
-        it
-    ?? "none"
-
-━━━━━━━━━━━━━━━━━━━━
-+ assignments ~ Char String
-
-~ \assignment
-
-.. word String ~
-    ~ [a-z]+
-
-.. assignment String ~
-    ~ word \word "=" value \word
-        "$word:$value"
+(fn-expr + assignments String (over: Char)
+  (~ \assignment)
+  (where
+    (lazy word String
+      (pattern
+        (~ (+ (chars "a-z")))
+      )
+    )
+    (blank)
+    (lazy assignment String
+      (pattern
+        (~ (seq (: word \word) "=" (: value \word))
+          (str word ":" value)
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2567,40 +3357,51 @@ ab:cd
 
 ### An action gives a rule its type where it reads an optional field through an optional capture, as `?.` of an optional field is that field's own optional.
 
-```yumi
--- parse("!x:7")
--- parse("!:7")
+```brix
+(main
+  (print (call parse "!x:7"))
+  (print (call parse "!:7"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Selector is (object Int?, key String)
+(type + Selector (is (tuple (: object (? Int)) (: key String))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ parse Int
-    - text String
+(fn-expr + parse Int
+  (param text String)
+  (match text
+    (~ \lines
+      it
+    )
+    (default
+      (inline -1)
+    )
+  )
+)
 
-match text
-    ~ \lines
-        it
-    ?? -1
+(fn-expr + lines Int (over: Char)
+  (~ \line)
+  (where
+    (lazy line
+      (pattern
+        (~ (seq "!" (: selector (? \key-selector)) ":" (chars "0-9"))
+          (call or-zero (?. selector object))
+        )
+      )
+    )
+    (blank)
+    (lazy key-selector Selector
+      (pattern
+        (~ (chars "a-z")
+          (call Selector 5 "k")
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ lines ~ Char Int
-
-~ \line
-
-.. line ~
-    ~ "!" selector \key-selector? ":" [0-9]
-        or-zero(selector?.object)
-
-.. key-selector Selector ~
-    ~ [a-z]
-        Selector(5, "k")
-
-━━━━━━━━━━━━━━━━━━━━
-_ or-zero Int
-    - value Int?
-
-if value then value else 0
+(fn-expr _ or-zero Int
+  (param value (? Int))
+  (if-expr value value 0)
+)
 ```
 
 ```output
@@ -2610,27 +3411,47 @@ if value then value else 0
 
 ### Repeated capture names use spans when every occurrence is source-equivalent, and otherwise retain their original concrete String type without changing eligibility during type inference.
 
-```yumi
--- match "alpha!"
-    ~ (text [a-z]+ | text [0-9]+) "!"
-        text.length
-    ?? 0
+```brix
+(main
+  (print
+    (match "alpha!"
+      (~ (seq (| (: text (+ (chars "a-z"))) (: text (+ (chars "0-9")))) "!")
+        (. text length)
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+  (blank)
+  (print
+    (match "42!"
+      (~ (seq (| (: text (+ (chars "a-z"))) (: text (+ (chars "0-9")))) "!")
+        (== text "42")
+      )
+      (default
+        (inline false)
+      )
+    )
+  )
+  (blank)
+  (print
+    (match "alpha!"
+      (~ (seq (| (: text (+ (chars "0-9"))) (: text \transformed-conflict-text)) "!")
+        (== text "alpha")
+      )
+      (default
+        (inline false)
+      )
+    )
+  )
+)
 
--- match "42!"
-    ~ (text [a-z]+ | text [0-9]+) "!"
-        text == "42"
-    ?? false
-
--- match "alpha!"
-    ~ (text [0-9]+ | text \transformed-conflict-text) "!"
-        text == "alpha"
-    ?? false
-
-━━━━━━━━━━━━━━━━━━━━
-+ transformed-conflict-text ~ Char
-
-~ [a-z]+
+(fn-expr + transformed-conflict-text _ (over: Char)
+  (~ (+ (chars "a-z"))
     it
+  )
+)
 ```
 
 ```output
@@ -2641,25 +3462,43 @@ true
 
 ### A transform that does not reference `it` must not need the whole-match value.
 
-```yumi
--- match "alpha!"
-    ~ [a-z]+ "!"
+```brix
+(main
+  (print
+    (match "alpha!"
+      (~ (seq (+ (chars "a-z")) "!")
         7
-    ?? 0
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 ```
 
 ```output
 7
 ```
 
-```yumi
--- match "ooo"
-    ~ ohs \o+
+```brix
+(main
+  (print
+    (match "ooo"
+      (~ (: ohs (+ \o))
         ohs
-
-    .. o ~
-        ~ "o"
+      )
+      (blank)
+      (lazy o
+        (pattern
+          (~ "o"
             42
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2668,10 +3507,16 @@ true
 
 ## Optional subcaptures
 
-```yumi
--- match "foo/bar"
-    ~ "foo" ("/" bar "bar")?
+```brix
+(main
+  (print
+    (match "foo/bar"
+      (~ (seq "foo" (? (seq "/" (: bar "bar"))))
         bar
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2680,18 +3525,21 @@ bar
 
 ### Joined optional exits must preserve the path-specific Some/None capture.
 
-```yumi
--- parse-optional-capture("foo/bar")
--- parse-optional-capture("foo")
+```brix
+(main
+  (print (call parse-optional-capture "foo/bar"))
+  (print (call parse-optional-capture "foo"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ parse-optional-capture
-    - source String
-
-match source
-    ~ "foo" ("/" bar "bar")?
-        bar ?? "missing"
-    ?! Panic("optional capture did not parse")
+(fn-expr + parse-optional-capture _
+  (param source String)
+  (match source
+    (~ (seq "foo" (? (seq "/" (: bar "bar"))))
+      (?? bar "missing")
+    )
+    (throw (call Panic "optional capture did not parse"))
+  )
+)
 ```
 
 ```output
@@ -2699,17 +3547,27 @@ bar
 missing
 ```
 
-```yumi
-. result = match "foo/bar"
-    ~ "foo" ("/" bar \poop)?
+```brix
+(main
+  (let result
+    (match "foo/bar"
+      (~ (seq "foo" (? (seq "/" (: bar \poop))))
         bar
-
-    .. poop ~
-        ~ "bar"
+      )
+      (blank)
+      (lazy poop
+        (pattern
+          (~ "bar"
             42
-
--- type-of result
--- result
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (print (type-of result))
+  (print result)
+)
 ```
 
 ```output
@@ -2719,77 +3577,128 @@ missing
 
 ### Fails due to lazy variable issues
 
-```yumi
--- match "foo bar"
-    ~ "foo" (// bar "bar")?
+```brix
+(main
+  (print
+    (match "foo bar"
+      (~ (seq "foo" (? (seq // (: bar "bar"))))
         bar
+      )
+    )
+  )
+)
 ```
 
 ```output
 bar
 ```
 
-```yumi
--- match "2"
-    ~ num "2" exp "e"? u "u"?
+```brix
+(main
+  (print
+    (match "2"
+      (~ (seq (: num "2") (: exp (? "e")) (: u (? "u")))
         exp
+      )
+    )
+  )
+)
 ```
 
 ```output
 unknown
 ```
 
-```yumi
--- match "foo bar bez"
-    ~ foo "foo" bar \bars? baz \bars? .*
-        bar, baz
-
-    .. bars ~
-        ~ " bar"
+```brix
+(main
+  (print
+    (match "foo bar bez"
+      (~ (seq (: foo "foo") (: bar (? \bars)) (: baz (? \bars)) (* .))
+        (tuple bar baz)
+      )
+      (blank)
+      (lazy bars
+        (pattern
+          (~ " bar")
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 ( bar, unknown)
 ```
 
-```yumi
--- match "foaoaoa"
-    ~ "f" ("o" a "a")*
-        " ".join(a)
+```brix
+(main
+  (print
+    (match "foaoaoa"
+      (~ (seq "f" (* (seq "o" (: a "a"))))
+        (call (. " " join) a)
+      )
+    )
+  )
+)
 ```
 
 ```output
 a a a
 ```
 
-```yumi
--- match "foaoaoa"
-    ~ "f" ("o" a "a")+
-        " ".join(a)
+```brix
+(main
+  (print
+    (match "foaoaoa"
+      (~ (seq "f" (+ (seq "o" (: a "a"))))
+        (call (. " " join) a)
+      )
+    )
+  )
+)
 ```
 
 ```output
 a a a
 ```
 
-```yumi
--- match "df *f * * *f * *"
-    ~ "d" ("f" (" " asterisks "*")*)*
-        `type-of asterisks
-        " ".join((merge(each) in asterisks))
-            .. merge = :: x => "/".join(x)
+```brix
+(main
+  (print
+    (match "df *f * * *f * *"
+      (~ (seq "d" (* (seq "f" (* (seq " " (: asterisks "*"))))))
+        ; type-of asterisks
+        (call (. " " join) (in (call merge each) asterisks)
+          (block
+            (lazy merge (=> (x) (call (. "/" join) x)))
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 * */*/* */*
 ```
 
-```yumi
--- match "df *f * * *f * *"
-    ~ "d" ("f" (" " asterisks "*")+)+
-        `type-of asterisks
-        " ".join((merge(each) in asterisks))
-            .. merge = :: x => "/".join(x)
+```brix
+(main
+  (print
+    (match "df *f * * *f * *"
+      (~ (seq "d" (+ (seq "f" (+ (seq " " (: asterisks "*"))))))
+        ; type-of asterisks
+        (call (. " " join) (in (call merge each) asterisks)
+          (block
+            (lazy merge (=> (x) (call (. "/" join) x)))
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2798,12 +3707,16 @@ a a a
 
 ## Imperative conditional matches
 
-```yumi
-if ~ "f" o "o"{3} = "fooo"
-    -- "pass $o"
-    -- "ok"
-else
-    -- "fail"
+```brix
+(main
+  (if (= (~ (seq "f" (: o ({} "o" 3)))) "fooo")
+    (print (str "pass " o))
+    (print "ok")
+    (else
+      (print "fail")
+    )
+  )
+)
 ```
 
 ```output
@@ -2811,23 +3724,30 @@ pass ooo
 ok
 ```
 
-```yumi
-if ~ "f" o "o"{8} = "foooo"
-    -- "pass $o"
-    -- "ok"
-else
-    -- "fail"
+```brix
+(main
+  (if (= (~ (seq "f" (: o ({} "o" 8)))) "foooo")
+    (print (str "pass " o))
+    (print "ok")
+    (else
+      (print "fail")
+    )
+  )
+)
 ```
 
 ```output
 fail
 ```
 
-```yumi
-. x = 4
-while ~ "f" o "o"{x} .* = "foooo"
-    -- "pass $o"
-    x -= 1
+```brix
+(main
+  (let x 4)
+  (while (= (~ (seq "f" (: o ({} "o" x)) (* .))) "foooo")
+    (print (str "pass " o))
+    (-= x 1)
+  )
+)
 ```
 
 ```output
@@ -2840,14 +3760,23 @@ pass
 
 ## Location tracking
 
-```yumi
-match "xfoo\nxxfooo\nfo\n"
-    ~ ("x"* \foo \nl)+
-
-    .. foo ~
-        ~ "f" "o"+
-            do -- location
-            ""
+```brix
+(main
+  (match "xfoo\nxxfooo\nfo\n"
+    (~ (+ (seq (* "x") \foo \nl)))
+    (blank)
+    (lazy foo
+      (pattern
+        (~ (seq "f" (+ "o"))
+          (do
+            (inline (print location))
+          )
+          ""
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2858,11 +3787,17 @@ match "xfoo\nxxfooo\nfo\n"
 
 ## Object streams
 
-```yumi
-. nums = [1, 2, 3, 4]
--- match nums
-    ~ (odd \{it % 2} even \{it % 2 == 0})+
-        odd, even
+```brix
+(main
+  (let nums (list 1 2 3 4))
+  (print
+    (match nums
+      (~ (+ (seq (: odd (\{} (% it 2))) (: even (\{} (== (% it 2) 0)))))
+        (tuple odd even)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2871,15 +3806,27 @@ match "xfoo\nxxfooo\nfo\n"
 
 ### Any-item patterns match object items, not only characters.
 
-```yumi
-. words [String] = ["-o", "a", "b"]
--- match words
-    ~ . rest .*
-        rest.length
--- match words
-    ~ . . . !.
+```brix
+(main
+  (let words (list String) (list "-o" "a" "b"))
+  (print
+    (match words
+      (~ (seq . (: rest (* .)))
+        (. rest length)
+      )
+    )
+  )
+  (print
+    (match words
+      (~ (seq . . . (! .))
         "three"
-    ?? "not three"
+      )
+      (default
+        (inline "not three")
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2889,51 +3836,81 @@ three
 
 ### A capture over items that aren't characters is read only for its length or an item.
 
-```yumi compile-error
-. numbers [Int] = [1, 2, 3]
--- match numbers
-    ~ . rest .*
-        "$rest"
-    ?? "none"
+```brix compile-error
+(main
+  (let numbers (list Int) (list 1 2 3))
+  (print
+    (match numbers
+      (~ (seq . (: rest (* .)))
+        (str rest)
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: A capture over items that aren't characters can only be read for its length or an item
-<no file:5>
-            "$rest"
-              ^^^^
+<no file:7>
+            (str rest)
+                 ^^^^
 ```
 
 ### Character classes need character or integer items.
 
-```yumi compile-error
-. words [String] = ["a"]
--- match words
-    ~ [a-z]
+```brix compile-error
+(main
+  (let words (list String) (list "a"))
+  (print
+    (match words
+      (~ (chars "a-z")
         "letter"
-    ?? "none"
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Character patterns can only match character or integer items
-<no file:4>
-        ~ [a-z]
-        ^^^^^^
+<no file:6>
+          (~ (chars "a-z")
+          ^^^^^^^^^^^^^^^
 ```
 
 ### Text and character classes test integer items against their code points.
 
-```yumi
-. bytes = Array'Byte("GET /x")
--- match bytes
-    ~ "GET " rest .*
-        rest.length
-    ?? 0
-. points [Int] = [104, 105, 33]
--- match points
-    ~ word [a-z]+ "!"
-        word.length
-    ?? 0
+```brix
+(main
+  (let bytes (call (of Array Byte) "GET /x"))
+  (print
+    (match bytes
+      (~ (seq "GET " (: rest (* .)))
+        (. rest length)
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+  (let points (list Int) (list 104 105 33))
+  (print
+    (match points
+      (~ (seq (: word (+ (chars "a-z"))) "!")
+        (. word length)
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2943,270 +3920,303 @@ Exception: Character patterns can only match character or integer items
 
 ### Characters in a pattern over bytes are ASCII.
 
-```yumi compile-error
--- match Array'Byte("é")
-    ~ "é"
+```brix compile-error
+(main
+  (print
+    (match (call (of Array Byte) "é")
+      (~ "é"
         "found"
-    ?? "none"
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Characters in a pattern over bytes must be ASCII; match other bytes by number
-<no file:3>
-        ~ "é"
-          ^^^
+<no file:5>
+          (~ "é"
+             ^^^
 ```
 
 ### Text needs character or integer items.
 
-```yumi compile-error
-. words [String] = ["-o", "a"]
--- match words
-    ~ "-o" .
+```brix compile-error
+(main
+  (let words (list String) (list "-o" "a"))
+  (print
+    (match words
+      (~ (seq "-o" .)
         "flag"
-    ?? "none"
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Text in a pattern can only match character or integer items
-<no file:4>
-        ~ "-o" .
-          ^^^^
+<no file:6>
+          (~ (seq "-o" .)
+                  ^^^^
 ```
 
-```yumi
-. events Event<>
-do new
-    events <- ClickEvent()
-    events <- ClickEvent()
-    events <- KeyEvent()
-    events.close()
-
--- match events
-    ~ click ClickEvent* key KeyEvent
+```brix
+(main
+  (let events (channel Event))
+  (do-new
+    (<- events (call ClickEvent))
+    (<- events (call ClickEvent))
+    (<- events (call KeyEvent))
+    (call (. events close))
+  )
+  (blank)
+  (print
+    (match events
+      (~ (seq (: click (* ClickEvent)) (: key KeyEvent))
         click
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Event
+(type + Event)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ClickEvent is Event
+(type + ClickEvent (is Event))
 
-━━━━━━━━━━━━━━━━━━━━
-+ KeyEvent is Event
+(type + KeyEvent (is Event))
 ```
 
 ```output
 [Object __source__:ClickEvent], [Object __source__:ClickEvent]
 ```
 
-```yumi
-/core/tests/support/byte-source
+```brix
+(import /core/tests/support/byte-source)
+(blank)
 
-. stream-data = Byte[5]
-. stream-size Size = 0
-stream-data.write(4u32, stream-size)
-stream-size += 4
-stream-data[stream-size] = 2u8
-stream-size += 1
-. stream = TestByteSource(stream-data[0 .. < stream-size])
-
--- ~ a U32 b U8 = stream
-    a, b
+(main
+  (let stream-data ([] Byte 5))
+  (let stream-size Size 0)
+  (call (. stream-data write) 4u32 stream-size)
+  (+= stream-size 4)
+  (= ([] stream-data stream-size) 2u8)
+  (+= stream-size 1)
+  (let stream (call TestByteSource ([] stream-data (..< 0 stream-size))))
+  (blank)
+  (print
+    (~ (seq (: a U32) (: b U8)) (of: stream)
+      (tuple a b)
+    )
+  )
+)
 ```
 
 ```output
 (4, 2)
 ```
 
-```yumi
-/core/tests/support/byte-source
+```brix
+(import /core/tests/support/byte-source)
+(blank)
 
-. stream-data = Byte[8]
-. stream-size Size = 0
-stream-data.write(4u32, stream-size)
-stream-size += 4
-stream-data[stream-size] = 1u8
-stream-size += 1
-stream-data[stream-size] = 2u8
-stream-size += 1
-stream-data[stream-size] = 3u8
-stream-size += 1
-stream-data[stream-size] = 4u8
-stream-size += 1
-. stream = TestByteSource(stream-data[0 .. < stream-size])
-
--- ~ a U32 b U8{a} = stream
-    b[0], b[1], b[2], b[3]
+(main
+  (let stream-data ([] Byte 8))
+  (let stream-size Size 0)
+  (call (. stream-data write) 4u32 stream-size)
+  (+= stream-size 4)
+  (= ([] stream-data stream-size) 1u8)
+  (+= stream-size 1)
+  (= ([] stream-data stream-size) 2u8)
+  (+= stream-size 1)
+  (= ([] stream-data stream-size) 3u8)
+  (+= stream-size 1)
+  (= ([] stream-data stream-size) 4u8)
+  (+= stream-size 1)
+  (let stream (call TestByteSource ([] stream-data (..< 0 stream-size))))
+  (blank)
+  (print
+    (~ (seq (: a U32) (: b ({} U8 a))) (of: stream)
+      (tuple ([] b 0) ([] b 1) ([] b 2) ([] b 3))
+    )
+  )
+)
 ```
 
 ```output
 (1, 2, 3, 4)
 ```
 
-```yumi
-/core/tests/support/byte-source
+```brix
+(import /core/tests/support/byte-source)
+(blank)
 
-. stream-data = Byte[8]
-. stream-size Size = 0
-stream-data.write(4u32, stream-size)
-stream-size += 4
-stream-data[stream-size] = 1u8
-stream-size += 1
-stream-data[stream-size] = 2u8
-stream-size += 1
-stream-data[stream-size] = 3u8
-stream-size += 1
-stream-data[stream-size] = 4u8
-stream-size += 1
-. stream = TestByteSource(stream-data[0 .. < stream-size])
-
--- ~ a U32 b U8+ = stream
-    b
+(main
+  (let stream-data ([] Byte 8))
+  (let stream-size Size 0)
+  (call (. stream-data write) 4u32 stream-size)
+  (+= stream-size 4)
+  (= ([] stream-data stream-size) 1u8)
+  (+= stream-size 1)
+  (= ([] stream-data stream-size) 2u8)
+  (+= stream-size 1)
+  (= ([] stream-data stream-size) 3u8)
+  (+= stream-size 1)
+  (= ([] stream-data stream-size) 4u8)
+  (+= stream-size 1)
+  (let stream (call TestByteSource ([] stream-data (..< 0 stream-size))))
+  (blank)
+  (print
+    (~ (seq (: a U32) (: b (+ U8))) (of: stream)
+      b
+    )
+  )
+)
 ```
 
 ```output
 1, 2, 3, 4
 ```
 
-```yumi
-/core/tests/support/byte-source
-/core/tokenstream
+```brix
+(import /core/tests/support/byte-source)
+(import /core/tokenstream)
+(blank)
 
-. short-data = Byte[3]
-. short-size Size = 0
-short-data[short-size] = 2u8
-short-size += 1
-short-data[short-size] = 40u8
-short-size += 1
-short-data[short-size] = 41u8
-short-size += 1
-. short = TestByteSource(short-data[0 .. < short-size])
-. short-stream = ChunkedTokenStream'Byte(short)
+(main
+  (let short-data ([] Byte 3))
+  (let short-size Size 0)
+  (= ([] short-data short-size) 2u8)
+  (+= short-size 1)
+  (= ([] short-data short-size) 40u8)
+  (+= short-size 1)
+  (= ([] short-data short-size) 41u8)
+  (+= short-size 1)
+  (let short (call TestByteSource ([] short-data (..< 0 short-size))))
+  (let short-stream (call (of ChunkedTokenStream Byte) short))
+  (blank)
+  (let wide16-data ([] Byte 6))
+  (let wide16-size Size 0)
+  (= ([] wide16-data wide16-size) 126u8)
+  (+= wide16-size 1)
+  (= ([] wide16-data wide16-size) 0u8)
+  (+= wide16-size 1)
+  (= ([] wide16-data wide16-size) 3u8)
+  (+= wide16-size 1)
+  (= ([] wide16-data wide16-size) 5u8)
+  (+= wide16-size 1)
+  (= ([] wide16-data wide16-size) 6u8)
+  (+= wide16-size 1)
+  (= ([] wide16-data wide16-size) 7u8)
+  (+= wide16-size 1)
+  (let wide16 (call TestByteSource ([] wide16-data (..< 0 wide16-size))))
+  (let wide16-stream (call (of ChunkedTokenStream Byte) wide16))
+  (blank)
+  (let wide64-data ([] Byte 13))
+  (let wide64-size Size 0)
+  (= ([] wide64-data wide64-size) 127u8)
+  (+= wide64-size 1)
+  (= ([] wide64-data wide64-size) 0u8)
+  (+= wide64-size 1)
+  (= ([] wide64-data wide64-size) 0u8)
+  (+= wide64-size 1)
+  (= ([] wide64-data wide64-size) 0u8)
+  (+= wide64-size 1)
+  (= ([] wide64-data wide64-size) 0u8)
+  (+= wide64-size 1)
+  (= ([] wide64-data wide64-size) 0u8)
+  (+= wide64-size 1)
+  (= ([] wide64-data wide64-size) 0u8)
+  (+= wide64-size 1)
+  (= ([] wide64-data wide64-size) 0u8)
+  (+= wide64-size 1)
+  (= ([] wide64-data wide64-size) 4u8)
+  (+= wide64-size 1)
+  (= ([] wide64-data wide64-size) 8u8)
+  (+= wide64-size 1)
+  (= ([] wide64-data wide64-size) 9u8)
+  (+= wide64-size 1)
+  (= ([] wide64-data wide64-size) 10u8)
+  (+= wide64-size 1)
+  (= ([] wide64-data wide64-size) 11u8)
+  (+= wide64-size 1)
+  (let wide64 (call TestByteSource ([] wide64-data (..< 0 wide64-size))))
+  (let wide64-stream (call (of ChunkedTokenStream Byte) wide64))
+  (blank)
+  (print (~ ShortPacket (of: short-stream)))
+  (print (~ Wide16Packet (of: wide16-stream)))
+  (print (~ Wide64Packet (of: wide64-stream)))
+)
 
-. wide16-data = Byte[6]
-. wide16-size Size = 0
-wide16-data[wide16-size] = 126u8
-wide16-size += 1
-wide16-data[wide16-size] = 0u8
-wide16-size += 1
-wide16-data[wide16-size] = 3u8
-wide16-size += 1
-wide16-data[wide16-size] = 5u8
-wide16-size += 1
-wide16-data[wide16-size] = 6u8
-wide16-size += 1
-wide16-data[wide16-size] = 7u8
-wide16-size += 1
-. wide16 = TestByteSource(wide16-data[0 .. < wide16-size])
-. wide16-stream = ChunkedTokenStream'Byte(wide16)
+(type + ShortPacket (is Tuple)
+  (prop + len U64)
+  (prop + skipped Size)
+  (prop + size Size)
+  (prop + first Byte)
+  (prop + last Byte)
+  (fn-expr + This _ (over: Byte)
+    (~ (seq (: len U8) (: empty ({} U8 0)) (: payload ({} Byte len)))
+      (call This (as len U64) (. empty length) (. payload length) ([] payload 0) ([] payload (- (. payload length) 1)))
+    )
+  )
+)
 
-. wide64-data = Byte[13]
-. wide64-size Size = 0
-wide64-data[wide64-size] = 127u8
-wide64-size += 1
-wide64-data[wide64-size] = 0u8
-wide64-size += 1
-wide64-data[wide64-size] = 0u8
-wide64-size += 1
-wide64-data[wide64-size] = 0u8
-wide64-size += 1
-wide64-data[wide64-size] = 0u8
-wide64-size += 1
-wide64-data[wide64-size] = 0u8
-wide64-size += 1
-wide64-data[wide64-size] = 0u8
-wide64-size += 1
-wide64-data[wide64-size] = 0u8
-wide64-size += 1
-wide64-data[wide64-size] = 4u8
-wide64-size += 1
-wide64-data[wide64-size] = 8u8
-wide64-size += 1
-wide64-data[wide64-size] = 9u8
-wide64-size += 1
-wide64-data[wide64-size] = 10u8
-wide64-size += 1
-wide64-data[wide64-size] = 11u8
-wide64-size += 1
-. wide64 = TestByteSource(wide64-data[0 .. < wide64-size])
-. wide64-stream = ChunkedTokenStream'Byte(wide64)
+(type + Wide16Packet (is Tuple)
+  (prop + marker U8)
+  (prop + len U64)
+  (prop + size Size)
+  (prop + first Byte)
+  (prop + last Byte)
+  (fn-expr + This _ (over: Byte)
+    (~ (seq (: marker \read-u8) (: len \read-u16) (: payload ({} Byte (as len U64))))
+      (call This marker (as len U64) (. payload length) ([] payload 0) ([] payload (- (. payload length) 1)))
+    )
+  )
+)
 
--- ~ ShortPacket = short-stream
--- ~ Wide16Packet = wide16-stream
--- ~ Wide64Packet = wide64-stream
+(type + Wide64Packet (is Tuple)
+  (prop + marker U8)
+  (prop + len U64)
+  (prop + size Size)
+  (prop + first Byte)
+  (prop + last Byte)
+  (fn-expr + This _ (over: Byte)
+    (~ (seq (: marker \read-u8) (: len \read-u64) (: payload ({} Byte len)))
+      (call This marker len (. payload length) ([] payload 0) ([] payload (- (. payload length) 1)))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ShortPacket is Tuple
+(fn-do + (of read-u8 Item) U8
+  (param stream (of TokenStream Byte))
+  (let buf ([] Byte 1))
+  (call (. stream read) 1 buf)
+  (return ([] buf 0))
+)
 
-+ len U64
-+ skipped Size
-+ size Size
-+ first Byte
-+ last Byte
+(fn-do + (of read-u16 Item) U16
+  (param stream (of TokenStream Byte))
+  (let buf ([] Byte 2))
+  (call (. stream read) 2 buf)
+  (return (/or/ (/lshift/ (as ([] buf 0) U16) 8) (as ([] buf 1) U16)))
+)
 
-────────────────────
-+ This ~ Byte
-
-~ len U8 empty U8{0} payload Byte{len}
-    This(len as U64, empty.length, payload.length, payload[0], payload[payload.length - 1])
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide16Packet is Tuple
-
-+ marker U8
-+ len U64
-+ size Size
-+ first Byte
-+ last Byte
-
-────────────────────
-+ This ~ Byte
-
-~ marker \read-u8 len \read-u16 payload Byte{len as U64}
-    This(marker, len as U64, payload.length, payload[0], payload[payload.length - 1])
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide64Packet is Tuple
-
-+ marker U8
-+ len U64
-+ size Size
-+ first Byte
-+ last Byte
-
-────────────────────
-+ This ~ Byte
-
-~ marker \read-u8 len \read-u64 payload Byte{len}
-    This(marker, len, payload.length, payload[0], payload[payload.length - 1])
-
-━━━━━━━━━━━━━━━━━━━━
-+ do read-u8'Item U8
-    - stream TokenStream'Byte
-
-. buf = Byte[1]
-stream.read(1, buf)
-= buf[0]
-
-━━━━━━━━━━━━━━━━━━━━
-+ do read-u16'Item U16
-    - stream TokenStream'Byte
-
-. buf = Byte[2]
-stream.read(2, buf)
-= ((buf[0] as U16) /lshift/ 8) /or/ (buf[1] as U16)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do read-u64'Item U64
-    - stream TokenStream'Byte
-
-. value = 0 as U64
-. buf = Byte[8]
-stream.read(8, buf)
-for byte in buf
-    value = (value /lshift/ 8) /or/ (byte as U64)
-= value
+(fn-do + (of read-u64 Item) U64
+  (param stream (of TokenStream Byte))
+  (let value (as 0 U64))
+  (let buf ([] Byte 8))
+  (call (. stream read) 8 buf)
+  (for (in byte buf)
+    (= value (/or/ (/lshift/ value 8) (as byte U64)))
+  )
+  (return value)
+)
 ```
 
 ```output
@@ -3215,126 +4225,135 @@ for byte in buf
 (127, 4, 4, 8, 11)
 ```
 
-```yumi
-/core/tests/support/byte-source
+```brix
+(import /core/tests/support/byte-source)
+(blank)
 
-. masked-data = Byte[11]
-. masked-size Size = 0
-masked-data[masked-size] = 1u8
-masked-size += 1
-masked-data[masked-size] = 5u8
-masked-size += 1
-masked-data[masked-size] = 10u8
-masked-size += 1
-masked-data[masked-size] = 20u8
-masked-size += 1
-masked-data[masked-size] = 30u8
-masked-size += 1
-masked-data[masked-size] = 40u8
-masked-size += 1
-masked-data[masked-size] = 11u8
-masked-size += 1
-masked-data[masked-size] = 22u8
-masked-size += 1
-masked-data[masked-size] = 29u8
-masked-size += 1
-masked-data[masked-size] = 44u8
-masked-size += 1
-masked-data[masked-size] = 15u8
-masked-size += 1
-. masked = TestByteSource(masked-data[0 .. < masked-size])
+(main
+  (let masked-data ([] Byte 11))
+  (let masked-size Size 0)
+  (= ([] masked-data masked-size) 1u8)
+  (+= masked-size 1)
+  (= ([] masked-data masked-size) 5u8)
+  (+= masked-size 1)
+  (= ([] masked-data masked-size) 10u8)
+  (+= masked-size 1)
+  (= ([] masked-data masked-size) 20u8)
+  (+= masked-size 1)
+  (= ([] masked-data masked-size) 30u8)
+  (+= masked-size 1)
+  (= ([] masked-data masked-size) 40u8)
+  (+= masked-size 1)
+  (= ([] masked-data masked-size) 11u8)
+  (+= masked-size 1)
+  (= ([] masked-data masked-size) 22u8)
+  (+= masked-size 1)
+  (= ([] masked-data masked-size) 29u8)
+  (+= masked-size 1)
+  (= ([] masked-data masked-size) 44u8)
+  (+= masked-size 1)
+  (= ([] masked-data masked-size) 15u8)
+  (+= masked-size 1)
+  (let masked (call TestByteSource ([] masked-data (..< 0 masked-size))))
+  (blank)
+  (let plain-data ([] Byte 5))
+  (let plain-size Size 0)
+  (= ([] plain-data plain-size) 0u8)
+  (+= plain-size 1)
+  (= ([] plain-data plain-size) 3u8)
+  (+= plain-size 1)
+  (= ([] plain-data plain-size) 8u8)
+  (+= plain-size 1)
+  (= ([] plain-data plain-size) 9u8)
+  (+= plain-size 1)
+  (= ([] plain-data plain-size) 10u8)
+  (+= plain-size 1)
+  (let plain (call TestByteSource ([] plain-data (..< 0 plain-size))))
+  (blank)
+  (let empty-data ([] Byte 7))
+  (let empty-size Size 0)
+  (= ([] empty-data empty-size) 1u8)
+  (+= empty-size 1)
+  (= ([] empty-data empty-size) 0u8)
+  (+= empty-size 1)
+  (= ([] empty-data empty-size) 10u8)
+  (+= empty-size 1)
+  (= ([] empty-data empty-size) 20u8)
+  (+= empty-size 1)
+  (= ([] empty-data empty-size) 30u8)
+  (+= empty-size 1)
+  (= ([] empty-data empty-size) 40u8)
+  (+= empty-size 1)
+  (= ([] empty-data empty-size) 99u8)
+  (+= empty-size 1)
+  (let empty (call TestByteSource ([] empty-data (..< 0 empty-size))))
+  (blank)
+  (print (call decode-keyed masked))
+  (print (call decode-keyed plain))
+  (print (call decode-empty empty))
+)
 
-. plain-data = Byte[5]
-. plain-size Size = 0
-plain-data[plain-size] = 0u8
-plain-size += 1
-plain-data[plain-size] = 3u8
-plain-size += 1
-plain-data[plain-size] = 8u8
-plain-size += 1
-plain-data[plain-size] = 9u8
-plain-size += 1
-plain-data[plain-size] = 10u8
-plain-size += 1
-. plain = TestByteSource(plain-data[0 .. < plain-size])
+(fn-expr + decode-keyed _
+  (param stream _)
+  (match stream
+    (~ (seq (: keyed U8) (: len U8) (: key ({} Byte (if-expr keyed 4 0))) (: payload ({} Byte len)))
+      (case? (and keyed len)
+        (call decoded-checksum key payload)
+      )
+      (case? len
+        (call checksum payload)
+      )
+      (default
+        0
+      )
+    )
+    (throw (call Panic "keyed packet did not parse"))
+  )
+)
 
-. empty-data = Byte[7]
-. empty-size Size = 0
-empty-data[empty-size] = 1u8
-empty-size += 1
-empty-data[empty-size] = 0u8
-empty-size += 1
-empty-data[empty-size] = 10u8
-empty-size += 1
-empty-data[empty-size] = 20u8
-empty-size += 1
-empty-data[empty-size] = 30u8
-empty-size += 1
-empty-data[empty-size] = 40u8
-empty-size += 1
-empty-data[empty-size] = 99u8
-empty-size += 1
-. empty = TestByteSource(empty-data[0 .. < empty-size])
+(fn-expr + decode-empty _
+  (param stream _)
+  (match stream
+    (~ (seq (: keyed U8) (: len U8) (: key ({} Byte (if-expr keyed 4 0))) (: payload ({} Byte len)) (: tail U8))
+      (case? len
+        (call decoded-checksum key payload)
+      )
+      (default
+        (as tail Int)
+      )
+    )
+    (throw (call Panic "empty packet did not parse"))
+  )
+)
 
--- decode-keyed(masked)
--- decode-keyed(plain)
--- decode-empty(empty)
+(fn-do + checksum _
+  (param data (stream Byte))
+  (let total 0)
+  (for (in byte data)
+    (+= total (as byte Int))
+  )
+  (blank)
+  (return total)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ decode-keyed
-    - stream
+(fn-expr + decode-byte _
+  (param key (of ImmutableArray Byte))
+  (param byte Byte)
+  (param index Size)
+  (/xor/ byte ([] key (% index 4)))
+)
 
-match stream
-    ~ keyed U8 len U8 key Byte{if keyed then 4 else 0} payload Byte{len}
-        |? keyed && len
-            decoded-checksum(key, payload)
-        |? len
-            checksum(payload)
-        ??
-            0
-    ?! Panic("keyed packet did not parse")
-
-━━━━━━━━━━━━━━━━━━━━
-+ decode-empty
-    - stream
-
-match stream
-    ~ keyed U8 len U8 key Byte{if keyed then 4 else 0} payload Byte{len} tail U8
-        |? len
-            decoded-checksum(key, payload)
-        ??
-            tail as Int
-    ?! Panic("empty packet did not parse")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do checksum
-    - data <Byte>
-
-. total = 0
-for byte in data
-    total += byte as Int
-
-= total
-
-━━━━━━━━━━━━━━━━━━━━
-+ decode-byte
-    - key ImmutableArray'Byte
-    - byte Byte
-    - index Size
-
-byte /xor/ key[index % 4]
-
-━━━━━━━━━━━━━━━━━━━━
-+ do decoded-checksum
-    - key ImmutableArray'Byte
-    - payload ImmutableArray'Byte
-
-. total = 0
-. index Size = 0
-for byte in payload
-    total += decode-byte(key, byte, index) as Int
-    index += 1
-= total
+(fn-do + decoded-checksum _
+  (param key (of ImmutableArray Byte))
+  (param payload (of ImmutableArray Byte))
+  (let total 0)
+  (let index Size 0)
+  (for (in byte payload)
+    (+= total (as (call decode-byte key byte index) Int))
+    (+= index 1)
+  )
+  (return total)
+)
 ```
 
 ```output
@@ -3345,37 +4364,53 @@ for byte in payload
 
 ### Acyclic local Byte rules can share one frame without returning views into its reusable buffer.
 
-```yumi
-/core/tests/support/byte-source
+```brix
+(import /core/tests/support/byte-source)
+(blank)
 
-. stream-data = Byte[4]
-. stream-size Size = 0
-stream-data[stream-size] = 1u8
-stream-size += 1
-stream-data[stream-size] = 2u8
-stream-size += 1
-stream-data[stream-size] = 3u8
-stream-size += 1
-stream-data[stream-size] = 4u8
-stream-size += 1
-. stream = TestByteSource(stream-data[0 .. < stream-size])
-
--- match stream
-    ~ a \item b \item
-        (a[0], a[1], b[0], b[1])
-
-    .. item ImmutableArray'Byte ~
-        ~ Byte{2}
+(main
+  (let stream-data ([] Byte 4))
+  (let stream-size Size 0)
+  (= ([] stream-data stream-size) 1u8)
+  (+= stream-size 1)
+  (= ([] stream-data stream-size) 2u8)
+  (+= stream-size 1)
+  (= ([] stream-data stream-size) 3u8)
+  (+= stream-size 1)
+  (= ([] stream-data stream-size) 4u8)
+  (+= stream-size 1)
+  (let stream (call TestByteSource ([] stream-data (..< 0 stream-size))))
+  (blank)
+  (print
+    (match stream
+      (~ (seq (: a \item) (: b \item))
+        (tuple ([] a 0) ([] a 1) ([] b 0) ([] b 1))
+      )
+      (blank)
+      (lazy item (of ImmutableArray Byte)
+        (pattern
+          (~ ({} Byte 2))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 (1, 2, 3, 4)
 ```
 
-```yumi
--- match "ooo"
-    ~ "o"{x}
-        .. x = 3
+```brix
+(main
+  (print
+    (match "ooo"
+      (~ ({} "o" x)
+        (lazy x 3)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3384,27 +4419,38 @@ ooo
 
 ### Fails due to lazy variable issues
 
-```yumi
--- match "foooo"
-    ~ f "f" "o"{x}
-        .. x = 3 + f.length
+```brix
+(main
+  (print
+    (match "foooo"
+      (~ (seq (: f "f") ({} "o" x))
+        (lazy x (+ 3 (. f length)))
+      )
+    )
+  )
+)
 ```
 
 ```output
 foooo
 ```
 
-```yumi
--- match "foooo"
-    ~ f "f"+ o \foo(x)
+```brix
+(main
+  (print
+    (match "foooo"
+      (~ (seq (: f (+ "f")) (: o (call \foo x)))
         o
-        .. x = 3 + f.length
+        (lazy x (+ 3 (. f length)))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo ~ Char
-    - x
-
-~ "o"{x}
+(fn-expr + foo _ (over: Char)
+  (param x _)
+  (~ ({} "o" x))
+)
 ```
 
 ```output
@@ -3413,16 +4459,19 @@ oooo
 
 ### A count written inline may compare and add what the match reads, a rule's parameters among them, since each gives the same number every time the count is read.
 
-```yumi
-for size in Array'Byte([3u8, 7u8, 8u8, 9u8, 2u8, 5u8]) ~> \kept(4)
-    -- size
+```brix
+(main
+  (for (in size (~> (call (of Array Byte) (list 3u8 7u8 8u8 9u8 2u8 5u8)) (call \kept 4)))
+    (print size)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ kept ~ Byte Size
-    - limit Size
-
-~ size U8 data Byte{if size <= (limit as U8) then size - 1 else 0}
-    data.size
+(fn-expr + kept Size (over: Byte)
+  (param limit Size)
+  (~ (seq (: size U8) (: data ({} Byte (if-expr (<= size (as limit U8)) (- size 1) 0))))
+    (. data size)
+  )
+)
 ```
 
 ```output
@@ -3433,42 +4482,57 @@ for size in Array'Byte([3u8, 7u8, 8u8, 9u8, 2u8, 5u8]) ~> \kept(4)
 
 ### A count that may give another number each time it is read is an error that says to name it.
 
-```yumi compile-error
--- match Array'Byte([2u8, 7u8])
-    ~ size U8 data Byte{half(size)}
-        data.size
+```brix compile-error
+(main
+  (print
+    (match (call (of Array Byte) (list 2u8 7u8))
+      (~ (seq (: size U8) (: data ({} Byte (call half size))))
+        (. data size)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ half U8
-    - n U8
-
-n / 2
+(fn-expr + half U8
+  (param n U8)
+  (/ n 2)
+)
 ```
 
 ```output
 Exception: A count in a pattern is read each time the part repeats, and this one may change between reads; compute it in a lazy local with ".." and count by its name
-<no file:3>
-        ~ size U8 data Byte{half(size)}
-                            ^^^^^^^^^^
+<no file:5>
+          (~ (seq (: size U8) (: data ({} Byte (call half size))))
+                                               ^^^^^^^^^^^^^^^^
 ```
 
 ## Type inference
 
-```yumi
--- match "fo"
-    ~ f \eff d \doop(f /or/ 1)
+```brix
+(main
+  (print
+    (match "fo"
+      (~ (seq (: f \eff) (: d (call \doop (/or/ f 1))))
         d
-
-    .. eff ~
-        ~ "f"
+      )
+      (blank)
+      (lazy eff
+        (pattern
+          (~ "f"
             1
+          )
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ doop ~ Char
-    - x
-
-~ o "o"
-    x * 2
+(fn-expr + doop _ (over: Char)
+  (param x _)
+  (~ (: o "o")
+    (* x 2)
+  )
+)
 ```
 
 ```output
@@ -3477,36 +4541,59 @@ Exception: A count in a pattern is read each time the part repeats, and this one
 
 ### Verifies that type inference works on return type of a function
 
-```yumi
--- match "03aaa"
-    ~ size \hex'U8 chunk .{size}
+```brix
+(main
+  (print
+    (match "03aaa"
+      (~ (seq (: size (of \hex U8)) (: chunk ({} . size)))
         chunk
+      )
+    )
+  )
+)
 ```
 
 ```output
 aaa
 ```
 
-```yumi
--- match "foo"
-    ~ f "f" o \os
+```brix
+(main
+  (print
+    (match "foo"
+      (~ (seq (: f "f") (: o \os))
         o
-
-        .. os ~
-            |? f == "f"
-                ~ "o"+
-            ??
-                ~ "u"
+        (blank)
+        (lazy os
+          (pattern
+            (case? (== f "f")
+              (~ (+ "o"))
+            )
+            (default
+              (~ "u")
+            )
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 oo
 ```
 
-```yumi
--- match "foaoaoa"
-    ~ a ("f" "oa"+)?
+```brix
+(main
+  (print
+    (match "foaoaoa"
+      (~ (: a (? (seq "f" (+ "oa"))))
         a
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3515,29 +4602,31 @@ foaoaoa
 
 ### A GC-free region can read and write scalar stream state while its collection remains live.
 
-```yumi
-/core/tokenstream
-/BxCore/BxCore.h
-/BxGC/BxGC.h
+```brix
+(import /core/tokenstream)
+(import /BxCore/BxCore.h)
+(import /BxGC/BxGC.h)
+(blank)
 
-. bytes = Byte[4]
-bytes[0] = 1u8
-bytes[1] = 2u8
-bytes[2] = 3u8
-bytes[3] = 4u8
-. stream = IndexableTokenStream'Byte(bytes)
+(main
+  (let bytes ([] Byte 4))
+  (= ([] bytes 0) 1u8)
+  (= ([] bytes 1) 2u8)
+  (= ([] bytes 2) 3u8)
+  (= ([] bytes 3) 4u8)
+  (let stream (call (of IndexableTokenStream Byte) bytes))
+  (blank)
+  (print (call zone-token-checksum stream))
+)
 
--- zone-token-checksum(stream)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do zone-token-checksum Size without gc
-    - stream IndexableTokenStream'Byte
-
-stream.cursor = 1
-. cursor-snapshot = stream.length + stream.cursor
-C:brixCollect()
-stream.cursor += 2
-= cursor-snapshot + stream.cursor
+(fn-do + zone-token-checksum Size (without gc)
+  (param stream (of IndexableTokenStream Byte))
+  (= (. stream cursor) 1)
+  (let cursor-snapshot (+ (. stream length) (. stream cursor)))
+  (call C:brixCollect)
+  (+= (. stream cursor) 2)
+  (return (+ cursor-snapshot (. stream cursor)))
+)
 ```
 
 ```output
@@ -3546,46 +4635,69 @@ stream.cursor += 2
 
 ### String, iterable, and byte streams preserve the same buffered-lookahead result.
 
-```yumi
-/core/tests/support/byte-source
-/core/tokenstream
+```brix
+(import /core/tests/support/byte-source)
+(import /core/tokenstream)
+(blank)
 
-. source = "rec:abc:1\nrec:" ++ ("x" * 70) ++ ":22\nrec:tiny:333\n"
-. array-rows = match source
-    ~ \buffered-document
-    ?! Panic("array buffered parse failed")
+(main
+  (let source (++ "rec:abc:1\nrec:" (* "x" 70) ":22\nrec:tiny:333\n"))
+  (let array-rows
+    (match source
+      (~ \buffered-document)
+      (throw (call Panic "array buffered parse failed"))
+    )
+  )
+  (blank)
+  (let iterable (call (of ChunkedTokenStream Char) (. source codepoints)))
+  (let iterable-rows
+    (match iterable
+      (~ \buffered-document)
+      (throw (call Panic "iterable buffered parse failed"))
+    )
+  )
+  (blank)
+  (let data (call (of TestByteSource Char) (. source codepoints)))
+  (call (. data rewind))
+  (let byte-stream (call (of ChunkedTokenStream Char) data))
+  (let byte-rows
+    (match byte-stream
+      (~ \buffered-document)
+      (throw (call Panic "byte buffered parse failed"))
+    )
+  )
+  (blank)
+  (print (+ ([] array-rows 0) ([] array-rows 1) ([] array-rows 2)))
+  (print (+ ([] iterable-rows 0) ([] iterable-rows 1) ([] iterable-rows 2)))
+  (print (+ ([] byte-rows 0) ([] byte-rows 1) ([] byte-rows 2)))
+)
 
-. iterable = ChunkedTokenStream'Char(source.codepoints)
-. iterable-rows = match iterable
-    ~ \buffered-document
-    ?! Panic("iterable buffered parse failed")
-
-. data = TestByteSource'Char(source.codepoints)
-data.rewind()
-. byte-stream = ChunkedTokenStream'Char(data)
-. byte-rows = match byte-stream
-    ~ \buffered-document
-    ?! Panic("byte buffered parse failed")
-
--- array-rows[0] + array-rows[1] + array-rows[2]
--- iterable-rows[0] + iterable-rows[1] + iterable-rows[2]
--- byte-rows[0] + byte-rows[1] + byte-rows[2]
-
-━━━━━━━━━━━━━━━━━━━━
-+ buffered-document ~ Char
-
-~ rows \buffered-row+
+(fn-expr + buffered-document _ (over: Char)
+  (~ (: rows (+ \buffered-row))
     rows
-
-.. buffered-row Size ~
-    ~ &("rec:" (!"\n" .)* "\n") "rec:" name \buffered-word ":" value \buffered-digits "\n"
-        name.length * 29 + value.length
-
-.. buffered-word String ~
-    ~ [a-zA-Z_] [a-zA-Z0-9_]*
-
-.. buffered-digits String ~
-    ~ [0-9]+
+  )
+  (where
+    (lazy buffered-row Size
+      (pattern
+        (~ (seq (& (seq "rec:" (* (seq (! "\n") .)) "\n")) "rec:" (: name \buffered-word) ":" (: value \buffered-digits) "\n")
+          (+ (* (. name length) 29) (. value length))
+        )
+      )
+    )
+    (blank)
+    (lazy buffered-word String
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_"))))
+      )
+    )
+    (blank)
+    (lazy buffered-digits String
+      (pattern
+        (~ (+ (chars "0-9")))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3596,62 +4708,86 @@ data.rewind()
 
 ### Compile-time literals compare against canonical source windows without changing mismatch, Unicode, EOF, nested-backtracking, or generic-indexable behavior.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. samples [String]
-samples += "abcdef"
-samples += "xbcdef"
-samples += "axcdef"
-samples += "abxdef"
-samples += "abcxef"
-samples += "abcdxf"
-samples += "abcdex"
-samples += "abcde"
-samples += "abcdefx"
-
-for source in samples
-    -- match source
-        ~ "abcdef"
-            "hit"
-        ?? "miss"
-
--- ~ "" = ""
--- ~ "café 東京 😀" = "café 東京 😀"
-
--- match "abcdeg"
-    ~ "abcdef"
+(main
+  (let samples (list String))
+  (+= samples "abcdef")
+  (+= samples "xbcdef")
+  (+= samples "axcdef")
+  (+= samples "abxdef")
+  (+= samples "abcxef")
+  (+= samples "abcdxf")
+  (+= samples "abcdex")
+  (+= samples "abcde")
+  (+= samples "abcdefx")
+  (blank)
+  (for (in source samples)
+    (print
+      (match source
+        (~ "abcdef"
+          "hit"
+        )
+        (default
+          (inline "miss")
+        )
+      )
+    )
+  )
+  (blank)
+  (print (~ "" (of: "")))
+  (print (~ "café 東京 😀" (of: "café 東京 😀")))
+  (blank)
+  (print
+    (match "abcdeg"
+      (~ "abcdef"
         "wrong"
-    ~ "abcdeg"
+      )
+      (~ "abcdeg"
         "restored"
-    ?? "miss"
-
-. generic = IndexableTokenStream'Char("abcdeg".codepoints)
--- generic.match-literal(Array'Char("abcdef"))
--- generic.cursor
--- generic.match-literal(Array'Char("abcdeg"))
--- generic.cursor
-
-. generic2 = IndexableTokenStream'Char("abcdeg".codepoints)
--- match generic2
-    ~ "abcdef"
+      )
+      (default
+        (inline "miss")
+      )
+    )
+  )
+  (blank)
+  (let generic (call (of IndexableTokenStream Char) (. "abcdeg" codepoints)))
+  (print (call (. generic match-literal) (call (of Array Char) "abcdef")))
+  (print (. generic cursor))
+  (print (call (. generic match-literal) (call (of Array Char) "abcdeg")))
+  (print (. generic cursor))
+  (blank)
+  (let generic2 (call (of IndexableTokenStream Char) (. "abcdeg" codepoints)))
+  (print
+    (match generic2
+      (~ "abcdef"
         "wrong"
-    ~ "abcdeg"
+      )
+      (~ "abcdeg"
         "generic restored"
-    ?? "miss"
-
-. byte-source = Array'Byte([1u8, 2u8, 3u8, 4u8])
-. byte-literal = Array'Byte([1u8, 2u8, 3u8])
-. byte-stream = ArrayTokenStream'Byte(byte-source)
--- byte-stream.match-literal(byte-literal)
--- byte-stream.cursor
-
-. mismatch-source = Array'Byte([1u8, 9u8, 3u8, 4u8])
-. mismatch-stream = ArrayTokenStream'Byte(mismatch-source)
--- mismatch-stream.match-literal(byte-literal)
--- mismatch-stream.cursor
--- mismatch-stream.cursor-extent
--- mismatch-stream.error-location.column
+      )
+      (default
+        (inline "miss")
+      )
+    )
+  )
+  (blank)
+  (let byte-source (call (of Array Byte) (list 1u8 2u8 3u8 4u8)))
+  (let byte-literal (call (of Array Byte) (list 1u8 2u8 3u8)))
+  (let byte-stream (call (of ArrayTokenStream Byte) byte-source))
+  (print (call (. byte-stream match-literal) byte-literal))
+  (print (. byte-stream cursor))
+  (blank)
+  (let mismatch-source (call (of Array Byte) (list 1u8 9u8 3u8 4u8)))
+  (let mismatch-stream (call (of ArrayTokenStream Byte) mismatch-source))
+  (print (call (. mismatch-stream match-literal) byte-literal))
+  (print (. mismatch-stream cursor))
+  (print (. mismatch-stream cursor-extent))
+  (print (. mismatch-stream error-location column))
+)
 ```
 
 ```output
@@ -3682,24 +4818,36 @@ false
 
 ### Stable non-String token streams keep raw repeated captures as spans until array escape.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. bytes = Byte[3]
-bytes[0] = 1u8
-bytes[1] = 2u8
-bytes[2] = 3u8
-. captured = match IndexableTokenStream'Byte(bytes)
-    ~ payload \payload-bytes
+(main
+  (let bytes ([] Byte 3))
+  (= ([] bytes 0) 1u8)
+  (= ([] bytes 1) 2u8)
+  (= ([] bytes 2) 3u8)
+  (let captured
+    (match (call (of IndexableTokenStream Byte) bytes)
+      (~ (: payload \payload-bytes)
         payload
-    ?? ImmutableArray'Byte()
-
-    .. payload-bytes ImmutableArray'Byte ~
-        ~ Byte{3}
-
--- captured.length
--- captured[0]
--- captured[2]
+      )
+      (default
+        (inline (call (of ImmutableArray Byte)))
+      )
+      (blank)
+      (lazy payload-bytes (of ImmutableArray Byte)
+        (pattern
+          (~ ({} Byte 3))
+        )
+      )
+    )
+  )
+  (blank)
+  (print (. captured length))
+  (print ([] captured 0))
+  (print ([] captured 2))
+)
 ```
 
 ```output
@@ -3710,20 +4858,28 @@ bytes[2] = 3u8
 
 ### Repeated source-backed captures materialize their public String list only on escape.
 
-```yumi
-/core/array-builder
+```brix
+(import /core/array-builder)
+(blank)
 
-. repeated = match "a,b,c!"
-    ~ (part [a-z] ","?)+ "!"
+(main
+  (let repeated
+    (match "a,b,c!"
+      (~ (seq (+ (seq (: part (chars "a-z")) (? ","))) "!")
         part
-    ?? empty-string-sequence()
+      )
+      (default
+        (inline (call empty-string-sequence))
+      )
+    )
+  )
+  (blank)
+  (print repeated)
+)
 
--- repeated
-
-━━━━━━━━━━━━━━━━━━━━
-_ do empty-string-sequence ImmutableArray'String
-
-= ArrayBuilder'String().finish-immutable()
+(fn-do _ empty-string-sequence (of ImmutableArray String)
+  (return (call (. (call (of ArrayBuilder String)) finish-immutable)))
+)
 ```
 
 ```output
@@ -3732,19 +4888,26 @@ a, b, c
 
 ### A direct String capture materializes only when it crosses a String call boundary.
 
-```yumi
-. result = match "capture!"
-    ~ text [a-z]+ "!"
-        echo-text(text)
-    ?? "miss"
+```brix
+(main
+  (let result
+    (match "capture!"
+      (~ (seq (: text (+ (chars "a-z"))) "!")
+        (call echo-text text)
+      )
+      (default
+        (inline "miss")
+      )
+    )
+  )
+  (blank)
+  (print result)
+)
 
--- result
-
-━━━━━━━━━━━━━━━━━━━━
-+ echo-text String
-    - text String
-
-text
+(fn-expr + echo-text String
+  (param text String)
+  text
+)
 ```
 
 ```output
@@ -3753,33 +4916,34 @@ capture
 
 ### Capture spans preserve empty, ASCII, multibyte, equality, array, and source-lifetime semantics.
 
-```yumi
-. source = "café 東京 😀".codepoints
-. empty = CaptureSpan'Char(source, 0, 0)
-. latin = CaptureSpan'Char(source, 0, 4)
-. city = CaptureSpan'Char(source, 5, 7)
-. same-latin = CaptureSpan'Char("café".codepoints, 0, 4)
-. latin-text = "$latin"
-. city-array Char[] = city
-. retained = retained-capture-text()
-. retained-text = "$retained"
+```brix
+(main
+  (let source (. "café 東京 😀" codepoints))
+  (let empty (call (of CaptureSpan Char) source 0 0))
+  (let latin (call (of CaptureSpan Char) source 0 4))
+  (let city (call (of CaptureSpan Char) source 5 7))
+  (let same-latin (call (of CaptureSpan Char) (. "café" codepoints) 0 4))
+  (let latin-text (str latin))
+  (let city-array ([] Char) city)
+  (let retained (call retained-capture-text))
+  (let retained-text (str retained))
+  (blank)
+  (print (. empty length))
+  (print (. latin length))
+  (print (== latin "café"))
+  (print (== latin same-latin))
+  (print (. city-array length))
+  (print ([] city-array 0))
+  (print ([] city-array 1))
+  (print latin-text)
+  (print (. retained length))
+  (print retained-text)
+)
 
--- empty.length
--- latin.length
--- latin == "café"
--- latin == same-latin
--- city-array.length
--- city-array[0]
--- city-array[1]
--- latin-text
--- retained.length
--- retained-text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do retained-capture-text CaptureSpan'Char
-
-. local-source = "lifetime-✓".codepoints
-= CaptureSpan'Char(local-source, 0, local-source.length)
+(fn-do + retained-capture-text (of CaptureSpan Char)
+  (let local-source (. "lifetime-✓" codepoints))
+  (return (call (of CaptureSpan Char) local-source 0 (. local-source length)))
+)
 ```
 
 ```output
@@ -3797,24 +4961,32 @@ lifetime-✓
 
 ### Eligible capture operations keep their public length, equality, hash, and numeric semantics.
 
-```yumi
-/core/map
+```brix
+(import /core/map)
+(blank)
 
-. result = match "12345!"
-    ~ digits [0-9]+ "!"
-        capture-operation-summary(digits.length, digits == "12345", hash-for(digits), I32(digits))
-    ?? "miss"
+(main
+  (let result
+    (match "12345!"
+      (~ (seq (: digits (+ (chars "0-9"))) "!")
+        (call capture-operation-summary (. digits length) (== digits "12345") (call hash-for digits) (call I32 digits))
+      )
+      (default
+        (inline "miss")
+      )
+    )
+  )
+  (blank)
+  (print result)
+)
 
--- result
-
-━━━━━━━━━━━━━━━━━━━━
-+ capture-operation-summary String
-    - length Size
-    - equal Bool
-    - hash Hash
-    - number I32
-
-"$length $equal ${hash == hash-for("12345")} $number"
+(fn-expr + capture-operation-summary String
+  (param length Size)
+  (param equal Bool)
+  (param hash Hash)
+  (param number I32)
+  (str length " " equal " " (== hash (call hash-for "12345")) " " number)
+)
 ```
 
 ```output
@@ -3823,28 +4995,49 @@ lifetime-✓
 
 ### Stable and noncanonical sources agree for empty, failed, backtracked, and multibyte captures.
 
-```yumi
-. stable-empty = match "!"
-    ~ text [a-z]* "!"
-        text.length
-    ?? 99
-
-. stable-backtrack = match "café!"
-    ~ text [a-z]+ "?"
+```brix
+(main
+  (let stable-empty
+    (match "!"
+      (~ (seq (: text (* (chars "a-z"))) "!")
+        (. text length)
+      )
+      (default
+        (inline 99)
+      )
+    )
+  )
+  (blank)
+  (let stable-backtrack
+    (match "café!"
+      (~ (seq (: text (+ (chars "a-z"))) "?")
         false
-    ~ text [a-zé]+ "!"
-        text == "café"
-    ?? false
-
-. generic = IndexableTokenStream'Char("東京!".codepoints)
-. generic-result = match generic
-    ~ text [東京]+ "!"
-        text.length
-    ?? 99
-
--- stable-empty
--- stable-backtrack
--- generic-result
+      )
+      (~ (seq (: text (+ (chars "a-zé"))) "!")
+        (== text "café")
+      )
+      (default
+        (inline false)
+      )
+    )
+  )
+  (blank)
+  (let generic (call (of IndexableTokenStream Char) (. "東京!" codepoints)))
+  (let generic-result
+    (match generic
+      (~ (seq (: text (+ (chars "東京"))) "!")
+        (. text length)
+      )
+      (default
+        (inline 99)
+      )
+    )
+  )
+  (blank)
+  (print stable-empty)
+  (print stable-backtrack)
+  (print generic-result)
+)
 ```
 
 ```output
@@ -3855,68 +5048,77 @@ true
 
 ### The direct cursor ABI preserves results and failed-probe extent across stream sources.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. array-hit = ArrayTokenStream'Char("before".codepoints)
-. iterable-hit = ChunkedTokenStream'Char("before".codepoints)
-. array-miss = ArrayTokenStream'Char("zzzzzzzz".codepoints)
-. iterable-miss = ChunkedTokenStream'Char("zzzzzzzz".codepoints)
-. array-backtrack = ArrayTokenStream'Char("before!".codepoints)
-. iterable-backtrack = ChunkedTokenStream'Char("before!".codepoints)
+(main
+  (let array-hit (call (of ArrayTokenStream Char) (. "before" codepoints)))
+  (let iterable-hit (call (of ChunkedTokenStream Char) (. "before" codepoints)))
+  (let array-miss (call (of ArrayTokenStream Char) (. "zzzzzzzz" codepoints)))
+  (let iterable-miss (call (of ChunkedTokenStream Char) (. "zzzzzzzz" codepoints)))
+  (let array-backtrack (call (of ArrayTokenStream Char) (. "before!" codepoints)))
+  (let iterable-backtrack (call (of ChunkedTokenStream Char) (. "before!" codepoints)))
+  (blank)
+  (print (call pilot-result array-hit))
+  (print (call pilot-result iterable-hit))
+  (print (call pilot-result array-miss))
+  (print (call pilot-result iterable-miss))
+  (print (call pilot-backtrack array-backtrack))
+  (print (call pilot-backtrack iterable-backtrack))
+  (print (. array-miss cursor-extent))
+  (print (. iterable-miss cursor-extent))
+)
 
--- pilot-result(array-hit)
--- pilot-result(iterable-hit)
--- pilot-result(array-miss)
--- pilot-result(iterable-miss)
--- pilot-backtrack(array-backtrack)
--- pilot-backtrack(iterable-backtrack)
--- array-miss.cursor-extent
--- iterable-miss.cursor-extent
+(fn-expr + pilot-result String
+  (param stream (of TokenStream Char))
+  (match stream
+    (~ (: value \pilot-word)
+      value
+    )
+    (default
+      (inline "miss")
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pilot-result String
-    - stream TokenStream'Char
+(fn-expr + pilot-word _ (over: Char)
+  (~ "about")
+  (~ "after")
+  (~ "and")
+  (~ "at")
+  (~ "before")
+  (~ "between")
+  (~ "both")
+  (~ "by")
+  (~ "during")
+  (~ "despite")
+  (~ "except")
+  (~ "every")
+  (~ "from")
+  (~ "into")
+  (~ "like")
+  (~ "near")
+  (~ "of")
+  (~ "onto")
+  (~ "or")
+  (~ "over")
+)
 
-match stream
-    ~ value \pilot-word
-        value
-    ?? "miss"
-
-━━━━━━━━━━━━━━━━━━━━
-+ pilot-word ~ Char
-
-~ "about"
-~ "after"
-~ "and"
-~ "at"
-~ "before"
-~ "between"
-~ "both"
-~ "by"
-~ "during"
-~ "despite"
-~ "except"
-~ "every"
-~ "from"
-~ "into"
-~ "like"
-~ "near"
-~ "of"
-~ "onto"
-~ "or"
-~ "over"
-
-━━━━━━━━━━━━━━━━━━━━
-+ pilot-backtrack String
-    - stream TokenStream'Char
-
-match stream
-    ~ value \pilot-word "?"
-        "wrong"
-    ~ value \pilot-word "!"
-        value
-    ?? "miss"
+(fn-expr + pilot-backtrack String
+  (param stream (of TokenStream Char))
+  (match stream
+    (~ (seq (: value \pilot-word) "?")
+      "wrong"
+    )
+    (~ (seq (: value \pilot-word) "!")
+      value
+    )
+    (default
+      (inline "miss")
+    )
+  )
+)
 ```
 
 ```output
@@ -3932,27 +5134,33 @@ before
 
 ### Chunked stream matching refills beyond the first buffer without putback or eager tracking.
 
-```yumi
-/core/tests/support/byte-source
-/core/tokenstream
+```brix
+(import /core/tests/support/byte-source)
+(import /core/tokenstream)
+(blank)
 
-. source = ("a" * 2500) ++ "!"
-. iterable = ChunkedTokenStream'Char(source.codepoints)
-. data = TestByteSource'Char(source.codepoints)
-data.rewind()
-. bytes = ChunkedTokenStream'Char(data)
+(main
+  (let source (++ (* "a" 2500) "!"))
+  (let iterable (call (of ChunkedTokenStream Char) (. source codepoints)))
+  (let data (call (of TestByteSource Char) (. source codepoints)))
+  (call (. data rewind))
+  (let bytes (call (of ChunkedTokenStream Char) data))
+  (blank)
+  (print (call long-a-run iterable))
+  (print (call long-a-run bytes))
+)
 
--- long-a-run(iterable)
--- long-a-run(bytes)
-
-━━━━━━━━━━━━━━━━━━━━
-+ long-a-run Size
-    - stream TokenStream'Char
-
-match stream
-    ~ text [a]+ "!"
-        text.length
-    ?? 0
+(fn-expr + long-a-run Size
+  (param stream (of TokenStream Char))
+  (match stream
+    (~ (seq (: text (+ (chars "a"))) "!")
+      (. text length)
+    )
+    (default
+      (inline 0)
+    )
+  )
+)
 ```
 
 ```output
@@ -3962,42 +5170,60 @@ match stream
 
 ### Chunked repeated rules retain a temporary iterable source across refills.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. stream = ChunkedTokenStream'Char(refill-source().codepoints)
-. rows = match stream
-    ~ \refill-document
-    ?! Panic("chunked iterable refill parse failed")
+(main
+  (let stream (call (of ChunkedTokenStream Char) (. (call refill-source) codepoints)))
+  (let rows
+    (match stream
+      (~ \refill-document)
+      (throw (call Panic "chunked iterable refill parse failed"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in row rows)
+    (+= checksum row)
+  )
+  (print checksum)
+)
 
-. checksum = 0 as Size
-for row in rows
-    checksum += row
--- checksum
-
-━━━━━━━━━━━━━━━━━━━━
-+ refill-document ~ Char
-
-~ rows \refill-row+
+(fn-expr + refill-document _ (over: Char)
+  (~ (: rows (+ \refill-row))
     rows
+  )
+  (where
+    (lazy refill-row Size
+      (pattern
+        (~ (seq "src:" (: name \refill-word) ":" (: value \refill-digits) "\n")
+          (+ (* (. name length) 37) (. value length))
+        )
+      )
+    )
+    (blank)
+    (lazy refill-word String
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_"))))
+      )
+    )
+    (blank)
+    (lazy refill-digits String
+      (pattern
+        (~ (+ (chars "0-9")))
+      )
+    )
+  )
+)
 
-.. refill-row Size ~
-    ~ "src:" name \refill-word ":" value \refill-digits "\n"
-        name.length * 37 + value.length
-
-.. refill-word String ~
-    ~ [a-zA-Z_] [a-zA-Z0-9_]*
-
-.. refill-digits String ~
-    ~ [0-9]+
-
-━━━━━━━━━━━━━━━━━━━━
-_ do refill-source
-
-. result = ""
-for index in 0 .. < 180
-    result += "src:name_$index:${index * 47}\n"
-= result
+(fn-do _ refill-source _
+  (let result "")
+  (for (in index (..< 0 180))
+    (+= result (str "src:name_" index ":" (* index 47) "\n"))
+  )
+  (return result)
+)
 ```
 
 ```output
@@ -4006,51 +5232,64 @@ for index in 0 .. < 180
 
 ### Chunked repeated byte rules survive a large-capacity source across refills.
 
-```yumi
-/core/tests/support/byte-source
-/core/tokenstream
-/BxGC/BxGC.h
+```brix
+(import /core/tests/support/byte-source)
+(import /core/tokenstream)
+(import /BxGC/BxGC.h)
+(blank)
 
-. bytes-data = Byte[60000]
-. bytes-size Size = 0
-for row in 0 .. < 220
-    . length = ((row % 17) + 3) as U8
-    bytes-data[bytes-size] = ((160 + row % 7) as Byte)
-    bytes-size += 1
-    bytes-data[bytes-size] = length
-    bytes-size += 1
-    for offset in 0 .. < length
-        bytes-data[bytes-size] = (((row * 13 + offset * 7) % 256) as Byte)
-        bytes-size += 1
-. bytes = TestByteSource(bytes-data[0 .. < bytes-size])
+(main
+  (let bytes-data ([] Byte 60000))
+  (let bytes-size Size 0)
+  (for (in row (..< 0 220))
+    (let length (as (+ (% row 17) 3) U8))
+    (= ([] bytes-data bytes-size) (as (+ 160 (% row 7)) Byte))
+    (+= bytes-size 1)
+    (= ([] bytes-data bytes-size) length)
+    (+= bytes-size 1)
+    (for (in offset (..< 0 length))
+      (= ([] bytes-data bytes-size) (as (% (+ (* row 13) (* offset 7)) 256) Byte))
+      (+= bytes-size 1)
+    )
+  )
+  (let bytes (call TestByteSource ([] bytes-data (..< 0 bytes-size))))
+  (blank)
+  (let stream (call (of ChunkedTokenStream Byte) bytes))
+  (let rows
+    (match stream
+      (~ \refill-byte-document)
+      (throw (call Panic "chunked byte refill parse failed"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in row rows)
+    (+= checksum row)
+  )
+  (print checksum)
+)
 
-. stream = ChunkedTokenStream'Byte(bytes)
-. rows = match stream
-    ~ \refill-byte-document
-    ?! Panic("chunked byte refill parse failed")
-
-. checksum = 0 as Size
-for row in rows
-    checksum += row
--- checksum
-
-━━━━━━━━━━━━━━━━━━━━
-+ refill-byte-document ~ Byte
-
-~ rows \refill-byte-row+
+(fn-expr + refill-byte-document _ (over: Byte)
+  (~ (: rows (+ \refill-byte-row))
     rows
+  )
+  (where
+    (lazy refill-byte-row Size
+      (pattern
+        (~ (seq (: magic U8) (: length U8) (: payload ({} Byte length)))
+          (call refill-byte-row-result magic payload)
+        )
+      )
+    )
+  )
+)
 
-.. refill-byte-row Size ~
-    ~ magic U8 length U8 payload Byte{length}
-        refill-byte-row-result(magic, payload)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do refill-byte-row-result Size
-    - magic U8
-    - payload ImmutableArray'Byte
-
-C:brixCollect()
-= (magic as Size) * 17 + payload.length
+(fn-do _ refill-byte-row-result Size
+  (param magic U8)
+  (param payload (of ImmutableArray Byte))
+  (call C:brixCollect)
+  (return (+ (* (as magic Size) 17) (. payload length)))
+)
 ```
 
 ```output
@@ -4059,17 +5298,27 @@ C:brixCollect()
 
 ### A chunked error arm waits for refill, then fires after the source is truly exhausted.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. attempt = do new
-    . stream = ChunkedTokenStream'Char(("a" * 1100).codepoints)
-    -- match stream
-        ~ [a]+ "!"
-        ?! Panic("missing chunked terminator")
-catch failure
-    -- "error: $failure"
-attempt.wait()
+(main
+  (let attempt
+    (do-new
+      (let stream (call (of ChunkedTokenStream Char) (. (* "a" 1100) codepoints)))
+      (print
+        (match stream
+          (~ (seq (+ (chars "a")) "!"))
+          (throw (call Panic "missing chunked terminator"))
+        )
+      )
+      (on-failure failure
+        (print (str "error: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -4078,28 +5327,40 @@ error: missing chunked terminator
 
 ### An optional semantic rule preserves its ImmutableArray value instead of substituting source text.
 
-```yumi
-/core/array-builder
+```brix
+(import /core/array-builder)
+(blank)
 
-. values = match "a"
-    ~ items \optional-sequence-items?
-        items ?? ImmutableArray'I32()
-    ?? ImmutableArray'I32()
+(main
+  (let values
+    (match "a"
+      (~ (: items (? \optional-sequence-items))
+        (?? items (call (of ImmutableArray I32)))
+      )
+      (default
+        (inline (call (of ImmutableArray I32)))
+      )
+      (blank)
+      (lazy optional-sequence-items (of ImmutableArray I32)
+        (pattern
+          (~ "a"
+            (call single-integer-sequence 7)
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (print (. values length))
+  (print ([] values 0))
+)
 
-    .. optional-sequence-items ImmutableArray'I32 ~
-        ~ "a"
-            single-integer-sequence(7)
-
--- values.length
--- values[0]
-
-━━━━━━━━━━━━━━━━━━━━
-_ do single-integer-sequence ImmutableArray'I32
-    - value I32
-
-. builder = ArrayBuilder'I32()
-builder.append(value)
-= builder.finish-immutable()
+(fn-do _ single-integer-sequence (of ImmutableArray I32)
+  (param value I32)
+  (let builder (call (of ArrayBuilder I32)))
+  (call (. builder append) value)
+  (return (call (. builder finish-immutable)))
+)
 ```
 
 ```output
@@ -4109,12 +5370,20 @@ builder.append(value)
 
 ### Accumulating captures preserve source order and duplicates.
 
-```yumi
-. flat = match "aba!"
-    ~ (...items [a-z])+ "!"
+```brix
+(main
+  (let flat
+    (match "aba!"
+      (~ (seq (+ (: ...items (chars "a-z"))) "!")
         items
-    ?? ImmutableArray'String()
--- flat
+      )
+      (default
+        (inline (call (of ImmutableArray String)))
+      )
+    )
+  )
+  (print flat)
+)
 ```
 
 ```output
@@ -4123,12 +5392,20 @@ a, b, a
 
 ### Zero successful contributions produce an empty ImmutableArray.
 
-```yumi
-. empty = match "!"
-    ~ (...items [a-z])* "!"
+```brix
+(main
+  (let empty
+    (match "!"
+      (~ (seq (* (: ...items (chars "a-z"))) "!")
         items
-    ?? ImmutableArray'String()
--- empty.length
+      )
+      (default
+        (inline (call (of ImmutableArray String)))
+      )
+    )
+  )
+  (print (. empty length))
+)
 ```
 
 ```output
@@ -4137,12 +5414,20 @@ a, b, a
 
 ### Failed ordered-choice arms rewind accumulated managed values before trying the next arm.
 
-```yumi
-. choice = match "ab"
-    ~ ((...items "a" "x") | (...items "a" ...items "b"))
+```brix
+(main
+  (let choice
+    (match "ab"
+      (~ (| (seq (: ...items "a") "x") (seq (: ...items "a") (: ...items "b")))
         items
-    ?? ImmutableArray'String()
--- choice
+      )
+      (default
+        (inline (call (of ImmutableArray String)))
+      )
+    )
+  )
+  (print choice)
+)
 ```
 
 ```output
@@ -4151,17 +5436,31 @@ a, b
 
 ### Optional and repetition failures restore collector lengths before later matches append.
 
-```yumi
-. optional = match "a"
-    ~ ((...items "a" "x")? ...items "a")
+```brix
+(main
+  (let optional
+    (match "a"
+      (~ (seq (? (seq (: ...items "a") "x")) (: ...items "a"))
         items
-    ?? ImmutableArray'String()
-. repeated = match "aaab"
-    ~ ((...items "a" "x")* ...items "a" ...items "a" ...items "a" "b")
+      )
+      (default
+        (inline (call (of ImmutableArray String)))
+      )
+    )
+  )
+  (let repeated
+    (match "aaab"
+      (~ (seq (* (seq (: ...items "a") "x")) (: ...items "a") (: ...items "a") (: ...items "a") "b")
         items
-    ?? ImmutableArray'String()
--- optional
--- repeated
+      )
+      (default
+        (inline (call (of ImmutableArray String)))
+      )
+    )
+  )
+  (print optional)
+  (print repeated)
+)
 ```
 
 ```output
@@ -4171,17 +5470,31 @@ a, a, a
 
 ### Positive and negative lookahead never leak speculative contributions.
 
-```yumi
-. positive = match "a"
-    ~ &(...items "a") ...items "a"
+```brix
+(main
+  (let positive
+    (match "a"
+      (~ (seq (& (: ...items "a")) (: ...items "a"))
         items
-    ?? ImmutableArray'String()
-. negative = match "a"
-    ~ ((!(...items "a") "x") | ...items "a")
+      )
+      (default
+        (inline (call (of ImmutableArray String)))
+      )
+    )
+  )
+  (let negative
+    (match "a"
+      (~ (| (seq (! (: ...items "a")) "x") (: ...items "a"))
         items
-    ?? ImmutableArray'String()
--- positive
--- negative
+      )
+      (default
+        (inline (call (of ImmutableArray String)))
+      )
+    )
+  )
+  (print positive)
+  (print negative)
+)
 ```
 
 ```output
@@ -4191,70 +5504,136 @@ a
 
 ### Joined lookahead failures preserve polarity, cursor state, nested outcomes, and refills.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. positive-success = match "a"
-    ~ &"a" value "a"
+(main
+  (let positive-success
+    (match "a"
+      (~ (seq (& "a") (: value "a"))
         value
-    ?? "failed"
-. positive-mismatch = match "b"
-    ~ &"a" "b"
+      )
+      (default
+        (inline "failed")
+      )
+    )
+  )
+  (let positive-mismatch
+    (match "b"
+      (~ (seq (& "a") "b")
         "wrong"
-    ~ value "b"
+      )
+      (~ (: value "b")
         value
-    ?? "failed"
-. positive-eof = match ""
-    ~ &"a" ""
+      )
+      (default
+        (inline "failed")
+      )
+    )
+  )
+  (let positive-eof
+    (match ""
+      (~ (seq (& "a") "")
         "wrong"
-    ~ ""
+      )
+      (~ ""
         "eof"
-    ?? "failed"
-. negative-success = match "a"
-    ~ !"a" "a"
+      )
+      (default
+        (inline "failed")
+      )
+    )
+  )
+  (let negative-success
+    (match "a"
+      (~ (seq (! "a") "a")
         "wrong"
-    ~ value "a"
+      )
+      (~ (: value "a")
         value
-    ?? "failed"
-. negative-mismatch = match "b"
-    ~ !"a" value "b"
+      )
+      (default
+        (inline "failed")
+      )
+    )
+  )
+  (let negative-mismatch
+    (match "b"
+      (~ (seq (! "a") (: value "b"))
         value
-    ?? "failed"
-. negative-eof = match ""
-    ~ !"a" ""
+      )
+      (default
+        (inline "failed")
+      )
+    )
+  )
+  (let negative-eof
+    (match ""
+      (~ (seq (! "a") "")
         "eof"
-    ?? "failed"
-. nested-choice = match "b"
-    ~ !("a" | &(!"c" "c")) value "b"
+      )
+      (default
+        (inline "failed")
+      )
+    )
+  )
+  (let nested-choice
+    (match "b"
+      (~ (seq (! (| "a" (& (seq (! "c") "c")))) (: value "b"))
         value
-    ?? "failed"
-. chained = match "abcdefgh!"
-    ~ !"0" !"1" !"2" !"3" !"4" !"5" value "abcdefgh!"
-        value.length
-    ?? 0
-
-. refill-tail = "x" * 70
-. refill-stream = ChunkedTokenStream'Char((refill-tail ++ "!").codepoints)
-. refill-mismatch = match refill-stream
-    ~ !($refill-tail "?") $refill-tail "!"
+      )
+      (default
+        (inline "failed")
+      )
+    )
+  )
+  (let chained
+    (match "abcdefgh!"
+      (~ (seq (! "0") (! "1") (! "2") (! "3") (! "4") (! "5") (: value "abcdefgh!"))
+        (. value length)
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+  (blank)
+  (let refill-tail (* "x" 70))
+  (let refill-stream (call (of ChunkedTokenStream Char) (. (++ refill-tail "!") codepoints)))
+  (let refill-mismatch
+    (match refill-stream
+      (~ (seq (! (seq $refill-tail "?")) $refill-tail "!")
         1
-    ?? 0
-. eof-stream = ChunkedTokenStream'Char(refill-tail.codepoints)
-. refill-eof = match eof-stream
-    ~ !($refill-tail "?") $refill-tail
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+  (let eof-stream (call (of ChunkedTokenStream Char) (. refill-tail codepoints)))
+  (let refill-eof
+    (match eof-stream
+      (~ (seq (! (seq $refill-tail "?")) $refill-tail)
         1
-    ?? 0
-
--- positive-success
--- positive-mismatch
--- positive-eof
--- negative-success
--- negative-mismatch
--- negative-eof
--- nested-choice
--- chained
--- refill-mismatch
--- refill-eof
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+  (blank)
+  (print positive-success)
+  (print positive-mismatch)
+  (print positive-eof)
+  (print negative-success)
+  (print negative-mismatch)
+  (print negative-eof)
+  (print nested-choice)
+  (print chained)
+  (print refill-mismatch)
+  (print refill-eof)
+)
 ```
 
 ```output
@@ -4272,12 +5651,20 @@ b
 
 ### Multiple named accumulators retain independent types, order, and duplicate values.
 
-```yumi
-. split = match "a1b2a3"
-    ~ (...letters [a-z] ...digits [0-9])+
-        "$letters|$digits"
-    ?? "failed"
--- split
+```brix
+(main
+  (let split
+    (match "a1b2a3"
+      (~ (+ (seq (: ...letters (chars "a-z")) (: ...digits (chars "0-9"))))
+        (str letters "|" digits)
+      )
+      (default
+        (inline "failed")
+      )
+    )
+  )
+  (print split)
+)
 ```
 
 ```output
@@ -4286,18 +5673,26 @@ a, b, a|1, 2, 3
 
 ### An ordinary call owns a fresh same-named accumulator in its nested rule.
 
-```yumi
-. nested = match "axb"
-    ~ ...items "a" inner \inner-items ...items "b"
-        "$items|$inner"
-    ?? "failed"
--- nested
+```brix
+(main
+  (let nested
+    (match "axb"
+      (~ (seq (: ...items "a") (: inner \inner-items) (: ...items "b"))
+        (str items "|" inner)
+      )
+      (default
+        (inline "failed")
+      )
+    )
+  )
+  (print nested)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ inner-items ~ Char
-
-~ ...items "x"
+(fn-expr + inner-items _ (over: Char)
+  (~ (: ...items "x")
     items
+  )
+)
 ```
 
 ```output
@@ -4306,18 +5701,26 @@ a, b|x
 
 ### Named collector forwarding borrows the caller accumulator without finishing it.
 
-```yumi
-. forwarded = match "za"
-    ~ ...outer "z" \append-one(into values: outer)
+```brix
+(main
+  (let forwarded
+    (match "za"
+      (~ (seq (: ...outer "z") (call \append-one (into values outer)))
         outer
-    ?? ImmutableArray'String()
--- forwarded
+      )
+      (default
+        (inline (call (of ImmutableArray String)))
+      )
+    )
+  )
+  (print forwarded)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ append-one ~ Char
-
-~ ...values "a"
+(fn-expr + append-one _ (over: Char)
+  (~ (: ...values "a")
     values
+  )
+)
 ```
 
 ```output
@@ -4326,23 +5729,37 @@ z, a
 
 ### Multiple collector mappings and a partial mapping update only the selected caller owners.
 
-```yumi
-. multiple = match "a1b2"
-    ~ (...outer-letters "z")* (...outer-digits "9")* \letter-digit(into letters: outer-letters, into digits: outer-digits)+
-        "$outer-letters|$outer-digits"
-    ?? "failed"
-. partial = match "a1b2"
-    ~ (...outer-letters "z")* \letter-digit(into letters: outer-letters)+
+```brix
+(main
+  (let multiple
+    (match "a1b2"
+      (~ (seq (* (: ...outer-letters "z")) (* (: ...outer-digits "9")) (+ (call \letter-digit (into letters outer-letters) (into digits outer-digits))))
+        (str outer-letters "|" outer-digits)
+      )
+      (default
+        (inline "failed")
+      )
+    )
+  )
+  (let partial
+    (match "a1b2"
+      (~ (seq (* (: ...outer-letters "z")) (+ (call \letter-digit (into letters outer-letters))))
         outer-letters
-    ?? ImmutableArray'String()
--- multiple
--- partial
+      )
+      (default
+        (inline (call (of ImmutableArray String)))
+      )
+    )
+  )
+  (print multiple)
+  (print partial)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ letter-digit ~ Char String
-
-~ ...letters [a-z] ...digits [0-9]
+(fn-expr + letter-digit String (over: Char)
+  (~ (seq (: ...letters (chars "a-z")) (: ...digits (chars "0-9")))
     it
+  )
+)
 ```
 
 ```output
@@ -4352,18 +5769,26 @@ a, b
 
 ### Explicit collector forwarding keeps one borrowed accumulator alive across recursive calls.
 
-```yumi
-. recursive = match "a,a,a"
-    ~ values \recursive-items
+```brix
+(main
+  (let recursive
+    (match "a,a,a"
+      (~ (: values \recursive-items)
         values
-    ?? ""
--- recursive
+      )
+      (default
+        (inline "")
+      )
+    )
+  )
+  (print recursive)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ recursive-items ~ Char String
-
-~ ...values [a-z] ("," \recursive-items(into values))?
-    "$values"
+(fn-expr + recursive-items String (over: Char)
+  (~ (seq (: ...values (chars "a-z")) (? (seq "," (call \recursive-items (into values)))))
+    (str values)
+  )
+)
 ```
 
 ```output
@@ -4372,49 +5797,75 @@ a, a, a
 
 ### A transformed repeated Char capture implicitly converts to its rule's declared String result.
 
-```yumi
--- match "abc"
-    ~ text \text
+```brix
+(main
+  (print
+    (match "abc"
+      (~ (: text \text)
         text
-
-    .. text String ~
-        ~ chars \character+
+      )
+      (blank)
+      (lazy text String
+        (pattern
+          (~ (: chars (+ \character))
             chars
-
-    .. character ~
-        ~ !(\reserved-character | "\n") .
-
-    .. reserved-character ~
-        ~ "*" | "[" | "]" | "!" | "`"
+          )
+        )
+      )
+      (blank)
+      (lazy character
+        (pattern
+          (~ (seq (! (| \reserved-character "\n")) .))
+        )
+      )
+      (blank)
+      (lazy reserved-character
+        (pattern
+          (~ (| "*" "[" "]" "!" "`"))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 abc
 ```
 
-```yumi
-/core/arena
-/core/tokenstream
-/BxCore/BxCore.h
+```brix
+(import /core/arena)
+(import /core/tokenstream)
+(import /BxCore/BxCore.h)
+(blank)
 
-. arena = Arena()
-do finally
-    arena.release()
-. source = Array'Char(arena.allocate'Char(3), 3)
-source[0] = 'a'
-source[1] = 'b'
-source[2] = 'c'
-. stream = ArrayTokenStream'Char(source)
-. view-source, view-cursor, view-length, view-extent = stream.pattern-view!
--- view-source.data == source.data
--- stream.buffer.data == source.data
--- view-length == source.size
-source[1] = 'z'
-C:brixCollect()
--- match stream
-    ~ "azc"
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (let source (call (of Array Char) (call (of (. arena allocate) Char) 3) 3))
+  (= ([] source 0) 'a')
+  (= ([] source 1) 'b')
+  (= ([] source 2) 'c')
+  (let stream (call (of ArrayTokenStream Char) source))
+  (let (tuple view-source view-cursor view-length view-extent) (!! (. stream pattern-view)))
+  (print (== (. view-source data) (. source data)))
+  (print (== (. stream buffer data) (. source data)))
+  (print (== view-length (. source size)))
+  (= ([] source 1) 'z')
+  (call C:brixCollect)
+  (print
+    (match stream
+      (~ "azc"
         true
-    ?? false
+      )
+      (default
+        (inline false)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -4424,126 +5875,148 @@ true
 true
 ```
 
-```yumi
-/BxCore/BxCore.h
-/core/arena
+```brix
+(import /BxCore/BxCore.h)
+(import /core/arena)
+(blank)
 
-. scratch = use Arena()
-. helper = CaptureScratch(scratch)
-. source = ""
-for index in 0 .. < 2048
-    source += "a"
-source += "!"
-. accumulated = match source
-    with helper
-    ~ \scratch-accumulated
-    ?! Panic("Scratch accumulator failed")
--- accumulated.length
--- accumulated[2047]
--- scratch.active-bytes > 0
-scratch.reset()
-. repeated = match source
-    with helper
-    ~ values \scratch-one+ "!"
+(main
+  (let scratch (use (call Arena)))
+  (let helper (call CaptureScratch scratch))
+  (let source "")
+  (for (in index (..< 0 2048))
+    (+= source "a")
+  )
+  (+= source "!")
+  (let accumulated
+    (match source
+      (with helper)
+      (~ \scratch-accumulated)
+      (throw (call Panic "Scratch accumulator failed"))
+    )
+  )
+  (print (. accumulated length))
+  (print ([] accumulated 2047))
+  (print (> (. scratch active-bytes) 0))
+  (call (. scratch reset))
+  (let repeated
+    (match source
+      (with helper)
+      (~ (seq (: values (+ \scratch-one)) "!")
         values
-    ?! Panic("Scratch repetition failed")
--- repeated.length
--- repeated[2047]
--- scratch.active-bytes > 0
-scratch.reset()
-. nested = match "aa;aaa;!"
-    with helper
-    ~ (values \scratch-one+ ";")+ "!"
+      )
+      (throw (call Panic "Scratch repetition failed"))
+    )
+  )
+  (print (. repeated length))
+  (print ([] repeated 2047))
+  (print (> (. scratch active-bytes) 0))
+  (call (. scratch reset))
+  (let nested
+    (match "aa;aaa;!"
+      (with helper)
+      (~ (seq (+ (seq (: values (+ \scratch-one)) ";")) "!")
         values
-    ?! Panic("Nested scratch repetition failed")
--- nested.length
--- nested[0].length
--- nested[1].length
--- scratch.active-bytes > 0
-scratch.reset()
-. text = match "λ😀λ!"
-    with helper
-    ~ \scratch-text
-    ?! Panic("Scratch text failed")
--- scratch.active-bytes > 0
-scratch.reset()
--- text
-. objects = match "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!"
-    with helper
-    ~ values \scratch-object+ "!"
+      )
+      (throw (call Panic "Nested scratch repetition failed"))
+    )
+  )
+  (print (. nested length))
+  (print (. ([] nested 0) length))
+  (print (. ([] nested 1) length))
+  (print (> (. scratch active-bytes) 0))
+  (call (. scratch reset))
+  (let text
+    (match "λ😀λ!"
+      (with helper)
+      (~ \scratch-text)
+      (throw (call Panic "Scratch text failed"))
+    )
+  )
+  (print (> (. scratch active-bytes) 0))
+  (call (. scratch reset))
+  (print text)
+  (let objects
+    (match "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!"
+      (with helper)
+      (~ (seq (: values (+ \scratch-object)) "!")
         values
-    ?! Panic("Managed scratch capture failed")
-C:brixCollect()
--- objects.length
--- objects[31].value
--- scratch.active-bytes > 0
-scratch.reset()
-. strings = match "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!"
-    with helper
-    ~ (...values \scratch-heap-string)+ "!"
+      )
+      (throw (call Panic "Managed scratch capture failed"))
+    )
+  )
+  (call C:brixCollect)
+  (print (. objects length))
+  (print (. ([] objects 31) value))
+  (print (> (. scratch active-bytes) 0))
+  (call (. scratch reset))
+  (let strings
+    (match "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!"
+      (with helper)
+      (~ (seq (+ (: ...values \scratch-heap-string)) "!")
         values
-    ?! Panic("Heap string capture failed")
--- strings.length
-C:brixCollect()
--- strings[31]
--- scratch.active-bytes > 0
-scratch.reset()
--- scratch.active-bytes
+      )
+      (throw (call Panic "Heap string capture failed"))
+    )
+  )
+  (print (. strings length))
+  (call C:brixCollect)
+  (print ([] strings 31))
+  (print (> (. scratch active-bytes) 0))
+  (call (. scratch reset))
+  (print (. scratch active-bytes))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CaptureScratch
-    is PatternCollectorStorage'ArenaBacking
+(type + CaptureScratch
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (prop + pattern-collector-context Arena)
+  (fn-do + This _
+    (param pattern-collector-context _)
+  )
+)
 
-+ pattern-collector-context Arena
-
-────────────────────
-+ This
-    - pattern-collector-context
-
-━━━━━━━━━━━━━━━━━━━━
-+ scratch-accumulated ~ Char ImmutableArray'Int
-
-~ (...values \scratch-one)? (\scratch-failed(into values) | ...values \scratch-one)* "!"
+(fn-expr + scratch-accumulated (of ImmutableArray Int) (over: Char)
+  (~ (seq (? (: ...values \scratch-one)) (* (| (call \scratch-failed (into values)) (: ...values \scratch-one))) "!")
     values
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ scratch-failed ~ Char ImmutableArray'Int
-
-~ ...values \scratch-one "x"
+(fn-expr + scratch-failed (of ImmutableArray Int) (over: Char)
+  (~ (seq (: ...values \scratch-one) "x")
     values
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ scratch-one ~ Char Int
-
-~ "a"
+(fn-expr + scratch-one Int (over: Char)
+  (~ "a"
     1
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ scratch-text ~ Char String
+(fn-expr + scratch-text String (over: Char)
+  (~ (seq (+ (| (: ...values "λ") (: ...values "😀"))) "!")
+    (str values)
+  )
+)
 
-~ (...values "λ" | ...values "😀")+ "!"
-    "$values"
+(fn-expr + scratch-object CaptureObject (over: Char)
+  (~ "a"
+    (call CaptureObject 7)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ scratch-object ~ Char CaptureObject
+(fn-expr + scratch-heap-string String (over: Char)
+  (~ (: text "a")
+    (str "heap-" text)
+  )
+)
 
-~ "a"
-    CaptureObject(7)
-
-━━━━━━━━━━━━━━━━━━━━
-+ scratch-heap-string ~ Char String
-
-~ text "a"
-    "heap-$text"
-
-━━━━━━━━━━━━━━━━━━━━
-+ CaptureObject
-
-+ value Int
-
-────────────────────
-+ This
-    - value
+(type + CaptureObject
+  (prop + value Int)
+  (fn-do + This _
+    (param value _)
+  )
+)
 ```
 
 ```output
@@ -4568,95 +6041,116 @@ true
 0
 ```
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-check-dynamic("abcdef", "abcdef", true, 6, 6)
-check-dynamic("xbcdef", "abcdef", false, 0, 1)
-check-dynamic("abcdex", "abcdef", false, 0, 6)
-check-dynamic("x", "abcdef", false, 0, 1)
-check-dynamic("", "abcdef", false, 0, 0)
-check-dynamic("", "", true, 0, 0)
-check-dynamic("abc", "", true, 0, 0)
-check-dynamic("é東京😀", "é東京😀", true, 4, 4)
-check-dynamic("é京東😀", "é東京😀", false, 0, 2)
-check-dynamic("é東京x", "é東京😀", false, 0, 4)
-check-dynamic("é東", "é東京😀", false, 0, 2)
-check-dynamic("é東京😀" * 512, "é東京😀" * 512, true, 2048, 2048)
-check-dynamic("é東京😀" * 512, "é東京😀" * 511 ++ "é東京x", false, 0, 2048)
-for literal in ["alpha", "beta", "😀", "", "alpha"]
-    check-dynamic(literal, literal, true, literal.length, literal.length)
--- "dynamic extents ok"
+(main
+  (call check-dynamic "abcdef" "abcdef" true 6 6)
+  (call check-dynamic "xbcdef" "abcdef" false 0 1)
+  (call check-dynamic "abcdex" "abcdef" false 0 6)
+  (call check-dynamic "x" "abcdef" false 0 1)
+  (call check-dynamic "" "abcdef" false 0 0)
+  (call check-dynamic "" "" true 0 0)
+  (call check-dynamic "abc" "" true 0 0)
+  (call check-dynamic "é東京😀" "é東京😀" true 4 4)
+  (call check-dynamic "é京東😀" "é東京😀" false 0 2)
+  (call check-dynamic "é東京x" "é東京😀" false 0 4)
+  (call check-dynamic "é東" "é東京😀" false 0 2)
+  (call check-dynamic (* "é東京😀" 512) (* "é東京😀" 512) true 2048 2048)
+  (call check-dynamic (* "é東京😀" 512) (++ (* "é東京😀" 511) "é東京x") false 0 2048)
+  (for (in literal (list "alpha" "beta" "😀" "" "alpha"))
+    (call check-dynamic literal literal true (. literal length) (. literal length))
+  )
+  (print "dynamic extents ok")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do check-dynamic
-    - source String
-    - literal String
-    - expected Bool
-    - cursor Index
-    - extent Index
-
-. stream = ArrayTokenStream'Char(source.codepoints)
-. result = match stream
-    ~ value $literal
+(fn-do + check-dynamic _
+  (param source String)
+  (param literal String)
+  (param expected Bool)
+  (param cursor Index)
+  (param extent Index)
+  (let stream (call (of ArrayTokenStream Char) (. source codepoints)))
+  (let result
+    (match stream
+      (~ (: value $literal)
         value
-?! Panic("Dynamic result changed")
-    if result.has-value != expected
-if result
-    ?! Panic("Dynamic capture changed")
-        if result != literal
-?! Panic("Dynamic cursor changed")
-    if stream.cursor != cursor
-?! Panic("Dynamic extent changed: $source / $literal / ${stream.cursor-extent} / $extent")
-    if stream.cursor-extent != extent
+      )
+    )
+  )
+  (throw (call Panic "Dynamic result changed") (if (!= (. result has-value) expected)))
+  (if result
+    (throw (call Panic "Dynamic capture changed") (if (!= result literal)))
+  )
+  (throw (call Panic "Dynamic cursor changed") (if (!= (. stream cursor) cursor)))
+  (throw (call Panic (str "Dynamic extent changed: " source " / " literal " / " (. stream cursor-extent) " / " extent)) (if (!= (. stream cursor-extent) extent)))
+)
 ```
 
 ```output
 dynamic extents ok
 ```
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. journal = LiteralJournal()
--- match "é東京😀!"
-    ~ \runtime-literal(journal.next) "?"
+(main
+  (let journal (call LiteralJournal))
+  (print
+    (match "é東京😀!"
+      (~ (seq (call \runtime-literal (. journal next)) "?")
         "wrong"
-    ~ &\runtime-literal(journal.next) value \runtime-literal(journal.next) "!"
+      )
+      (~ (seq (& (call \runtime-literal (. journal next))) (: value (call \runtime-literal (. journal next))) "!")
         value
-    ?? "miss"
--- journal.calls
-. long = "é東京😀" * 512
-. chunked = ChunkedTokenStream'Char((long ++ "!").codepoints)
--- match chunked
-    ~ !($long "?") value $long "!"
-        value == long
-    ?? false
-. generic = IndexableTokenStream'Char("é東京😀".codepoints)
-. wrong = "é京東😀"
--- match generic
-    ~ $wrong
+      )
+      (default
+        (inline "miss")
+      )
+    )
+  )
+  (print (. journal calls))
+  (let long (* "é東京😀" 512))
+  (let chunked (call (of ChunkedTokenStream Char) (. (++ long "!") codepoints)))
+  (print
+    (match chunked
+      (~ (seq (! (seq $long "?")) (: value $long) "!")
+        (== value long)
+      )
+      (default
+        (inline false)
+      )
+    )
+  )
+  (let generic (call (of IndexableTokenStream Char) (. "é東京😀" codepoints)))
+  (let wrong "é京東😀")
+  (print
+    (match generic
+      (~ $wrong
         "wrong"
-    ~ value \runtime-literal(journal.next)
+      )
+      (~ (: value (call \runtime-literal (. journal next)))
         value
--- journal.calls
+      )
+    )
+  )
+  (print (. journal calls))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ runtime-literal ~ Char
-    - literal String
+(fn-expr + runtime-literal _ (over: Char)
+  (param literal String)
+  (~ $literal)
+)
 
-~ $literal
-
-━━━━━━━━━━━━━━━━━━━━
-+ LiteralJournal
-
-+ calls Size
-
-────────────────────
-+ do get next
-
-calls += 1
-= "é東京😀"
+(type + LiteralJournal
+  (prop + calls Size)
+  (fn-do + next _ :get
+    (+= calls 1)
+    (return "é東京😀")
+  )
+)
 ```
 
 ```output
@@ -4667,31 +6161,44 @@ true
 4
 ```
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. bytes = Byte[4]
-bytes[0] = 97u8
-bytes[1] = 255u8
-bytes[2] = 0u8
-bytes[3] = 0u8
-. literal = (bytes.data as CPointer'Char8) as String
-for source in ["", "x", "aa"]
-    match-invalid(source, literal)
+(main
+  (let bytes ([] Byte 4))
+  (= ([] bytes 0) 97u8)
+  (= ([] bytes 1) 255u8)
+  (= ([] bytes 2) 0u8)
+  (= ([] bytes 3) 0u8)
+  (let literal (as (as (. bytes data) (of CPointer Char8)) String))
+  (for (in source (list "" "x" "aa"))
+    (call match-invalid source literal)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do match-invalid
-    - source String
-    - literal String
-
-. attempt = do new
-    -- match source
-        ~ $literal
+(fn-do + match-invalid _
+  (param source String)
+  (param literal String)
+  (let attempt
+    (do-new
+      (print
+        (match source
+          (~ $literal
             "wrong"
-        ?? "miss"
-catch failure
-    -- failure
-attempt.wait()
+          )
+          (default
+            (inline "miss")
+          )
+        )
+      )
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -4700,23 +6207,32 @@ Unable to read UTF8 content
 Unable to read UTF8 content
 ```
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. stream = ArrayTokenStream'Char("é東京😀".codepoints)
-for literal in ["é京東😀", "é東京x", "é東京😀"]
-    stream.cursor = 0
-    -- gc-free-literal(stream, literal)
+(main
+  (let stream (call (of ArrayTokenStream Char) (. "é東京😀" codepoints)))
+  (for (in literal (list "é京東😀" "é東京x" "é東京😀"))
+    (= (. stream cursor) 0)
+    (print (call gc-free-literal stream literal))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gc-free-literal Bool without gc
-    - stream ArrayTokenStream'Char
-    - literal String
-
-= match stream
-    ~ $literal
+(fn-do + gc-free-literal Bool (without gc)
+  (param stream (of ArrayTokenStream Char))
+  (param literal String)
+  (return
+    (match stream
+      (~ $literal
         true
-    ?? false
+      )
+      (default
+        (inline false)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -4725,189 +6241,217 @@ false
 true
 ```
 
-```yumi
-/core/arena
-/core/tokenstream
+```brix
+(import /core/arena)
+(import /core/tokenstream)
+(blank)
 
-. arena = Arena()
-. helper = SourceOwner(arena)
-. stream = ArrayTokenStream'Char("éabc😀!".codepoints)
-. checksum Size
-for i in 0 .. < 1
-    stream.cursor = 0
-    checksum += source-result(stream, helper).length
-    stream.cursor = 0
-    checksum += it-result(stream, helper).length
-    stream.cursor = 0
-    checksum += atom-result(stream, helper).text.length
-    arena.reset()
+(main
+  (let arena (call Arena))
+  (let helper (call SourceOwner arena))
+  (let stream (call (of ArrayTokenStream Char) (. "éabc😀!" codepoints)))
+  (let checksum Size)
+  (for (in i (..< 0 1))
+    (= (. stream cursor) 0)
+    (+= checksum (. (call source-result stream helper) length))
+    (= (. stream cursor) 0)
+    (+= checksum (. (call it-result stream helper) length))
+    (= (. stream cursor) 0)
+    (+= checksum (. (call atom-result stream helper) text length))
+    (call (. arena reset))
+  )
+  (blank)
+  (= (. stream cursor) 0)
+  (let optional (call optional-result stream helper))
+  (= (. stream cursor) 0)
+  (let borrowed (call helper-result stream helper "!"))
+  (print (. (!! optional) text))
+  (print borrowed)
+  (= (. stream cursor) 0)
+  (print (call length-result stream helper))
+  (= (. stream cursor) (. stream length))
+  (print (== (call optional-result stream helper) null))
+  (call (. arena release))
+  (print (str "bench-result parser/implicit-results checksum=" checksum))
+)
 
-stream.cursor = 0
-. optional = optional-result(stream, helper)
-stream.cursor = 0
-. borrowed = helper-result(stream, helper, "!")
--- optional!.text
--- borrowed
-stream.cursor = 0
--- length-result(stream, helper)
-stream.cursor = stream.length
--- optional-result(stream, helper) == null
-arena.release()
--- "bench-result parser/implicit-results checksum=$checksum"
+(fn-do + source-result String (without gc)
+  (param stream (of TokenStream Char))
+  (param helper SourceOwner)
+  (return
+    (match stream
+      (with helper)
+      (~ \source-word)
+      (default
+        (inline "")
+      )
+      (blank)
+      (lazy source-word String
+        (pattern
+          (~ (seq . (+ (chars "a-z")) . "!"))
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do source-result String without gc
-    - stream TokenStream'Char
-    - helper SourceOwner
-
-= match stream
-    with helper
-    ~ \source-word
-    ?? ""
-
-    .. source-word String ~
-        ~ . [a-z]+ . "!"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do it-result String without gc
-    - stream TokenStream'Char
-    - helper SourceOwner
-
-= match stream
-    with helper
-    ~ \source-word
-    ?? ""
-
-    .. source-word String ~
-        ~ . [a-z]+ . "!"
+(fn-do + it-result String (without gc)
+  (param stream (of TokenStream Char))
+  (param helper SourceOwner)
+  (return
+    (match stream
+      (with helper)
+      (~ \source-word)
+      (default
+        (inline "")
+      )
+      (blank)
+      (lazy source-word String
+        (pattern
+          (~ (seq . (+ (chars "a-z")) . "!")
             it
+          )
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do atom-result Atom without gc
-    - stream TokenStream'Char
-    - helper SourceOwner
+(fn-do + atom-result Atom (without gc)
+  (param stream (of TokenStream Char))
+  (param helper SourceOwner)
+  (return
+    (match stream
+      (with helper)
+      (~ \source-word)
+      (default
+        (inline (as "" Atom))
+      )
+      (blank)
+      (lazy source-word Atom
+        (pattern
+          (~ (seq . (+ (chars "a-z")) . "!"))
+        )
+      )
+    )
+  )
+)
 
-= match stream
-    with helper
-    ~ \source-word
-    ?? "" as Atom
+(fn-do + optional-result (? Atom)
+  (param stream (of TokenStream Char))
+  (param helper SourceOwner)
+  (return
+    (match stream
+      (with helper)
+      (~ \source-word)
+      (default
+        (inline null)
+      )
+      (blank)
+      (lazy source-word (? Atom)
+        (pattern
+          (~ (seq . (+ (chars "a-z")) . "!"))
+        )
+      )
+    )
+  )
+)
 
-    .. source-word Atom ~
-        ~ . [a-z]+ . "!"
+(fn-do + helper-result String
+  (param stream (of TokenStream Char))
+  (param helper SourceOwner)
+  (param suffix String)
+  (return
+    (match stream
+      (with helper)
+      (~ (call \source-forward (~ (seq . (+ (chars "a-z")) . $suffix))))
+      (default
+        (inline "")
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do optional-result Atom?
-    - stream TokenStream'Char
-    - helper SourceOwner
+(fn-expr + source-forward String (over: Char)
+  (param pattern _)
+  (~ \pattern)
+)
 
-= match stream
-    with helper
-    ~ \source-word
-    ?? null
+(fn-do + length-result Size
+  (param stream (of TokenStream Char))
+  (param helper SourceOwner)
+  (return
+    (match stream
+      (with helper)
+      (~ \source-size)
+      (default
+        (inline 0)
+      )
+      (blank)
+      (lazy source-size Size
+        (pattern
+          (~ (seq . (+ (chars "a-z")) . "!")
+            (. it length)
+          )
+        )
+      )
+    )
+  )
+)
 
-    .. source-word Atom? ~
-        ~ . [a-z]+ . "!"
+(type + SourceOwner
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternValueMaterializer String String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (blank)
+  (delegate (of PatternCaptureMaterializer Char Atom) (of PatternCaptureMaterializer Byte Atom))
+  (delegate (of PatternValueMaterializer String Atom))
+  (prop _ atoms SourceAtoms)
+  (fn-do + This _
+    (param arena Arena)
+    (= atoms (call SourceAtoms arena))
+  )
+  (fn-expr + (of materialize-capture Token) String (without gc)
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (call (. arena copy-span) source start end)
+  )
+  (fn-expr + materialize-value String (without gc)
+    (param source String)
+    (call (. arena copy-string) source)
+  )
+  (fn-expr + mark Size (without gc)
+    (throw (call Panic "Unexpected source materialization mark"))
+  )
+  (fn-do + rewind _ (without gc)
+    (param mark Size)
+    (throw (call Panic "Unexpected source materialization rewind"))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do helper-result String
-    - stream TokenStream'Char
-    - helper SourceOwner
-    - suffix String
-= match stream
-    with helper
-    ~ \source-forward(~ . [a-z]+ . $suffix)
-    ?? ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ source-forward ~ Char String
-    - pattern
-
-~ \pattern
-
-━━━━━━━━━━━━━━━━━━━━
-+ do length-result Size
-    - stream TokenStream'Char
-    - helper SourceOwner
-
-= match stream
-    with helper
-    ~ \source-size
-    ?? 0
-
-    .. source-size Size ~
-        ~ . [a-z]+ . "!"
-            it.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ SourceOwner
-    is PatternMaterializationRoot'U32
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternValueMaterializer'String'String
-    is PatternRollback'Size
-
-+ arena Arena
-
-as PatternCaptureMaterializer'Char'Atom, PatternCaptureMaterializer'Byte'Atom for
-as PatternValueMaterializer'String'Atom for
-_ atoms SourceAtoms
-
-────────────────────
-+ This
-    - arena Arena
-
-atoms = SourceAtoms(arena)
-
-────────────────────
-+ materialize-capture'Token String without gc
-    - source Token[]
-    - start Index
-    - end Index
-
-arena.copy-span(source, start, end)
-
-────────────────────
-+ materialize-value String without gc
-    - source String
-
-arena.copy-string(source)
-
-────────────────────
-+ mark Size without gc
-
-?! Panic("Unexpected source materialization mark")
-
-────────────────────
-+ do rewind without gc
-    - mark Size
-
-?! Panic("Unexpected source materialization rewind")
-
-━━━━━━━━━━━━━━━━━━━━
-_ SourceAtoms is Tuple
-    is PatternCaptureMaterializer'Char'Atom
-    is PatternCaptureMaterializer'Byte'Atom
-    is PatternValueMaterializer'String'Atom
-
-_ arena Arena
-
-────────────────────
-+ This
-    - arena Arena
-
-────────────────────
-+ materialize-capture'Token Atom without gc
-    - source Token[]
-    - start Index
-    - end Index
-
-arena.copy-span(source, start, end) as Atom
-
-────────────────────
-+ materialize-value Atom without gc
-    - source String
-
-arena.copy-string(source) as Atom
+(type _ SourceAtoms (is Tuple)
+  (implements (of PatternCaptureMaterializer Char Atom))
+  (implements (of PatternCaptureMaterializer Byte Atom))
+  (implements (of PatternValueMaterializer String Atom))
+  (prop _ arena Arena)
+  (fn-do + This _
+    (param arena Arena)
+  )
+  (fn-expr + (of materialize-capture Token) Atom (without gc)
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (as (call (. arena copy-span) source start end) Atom)
+  )
+  (fn-expr + materialize-value Atom (without gc)
+    (param source String)
+    (as (call (. arena copy-string) source) Atom)
+  )
+)
 ```
 
 ```output
@@ -4918,157 +6462,184 @@ true
 bench-result parser/implicit-results checksum=18
 ```
 
-```yumi
-/core/arena
-/core/tokenstream
-/BxGC/BxGC.h
+```brix
+(import /core/arena)
+(import /core/tokenstream)
+(import /BxGC/BxGC.h)
+(blank)
 
-. scratch = Arena()
-. arena = Arena()
-. helper = SourceOwner(arena)
-. source = Array'Char(scratch.allocate'Char(6), 6)
-. input = "éabc😀!".codepoints
-for i in 0 .. < input.length
-    source[i] = input[i]
-. stream = ArrayTokenStream'Char(source)
-. text = match stream
-    with helper
-    ~ . [a-z]+ . "!"
+(main
+  (let scratch (call Arena))
+  (let arena (call Arena))
+  (let helper (call SourceOwner arena))
+  (let source (call (of Array Char) (call (of (. scratch allocate) Char) 6) 6))
+  (let input (. "éabc😀!" codepoints))
+  (for (in i (..< 0 (. input length)))
+    (= ([] source i) ([] input i))
+  )
+  (let stream (call (of ArrayTokenStream Char) source))
+  (let text
+    (match stream
+      (with helper)
+      (~ (seq . (+ (chars "a-z")) . "!")
         it
-    ?! Panic("source it failed")
-stream.cursor = 0
-. atom = match stream
-    with helper
-    ~ \atom-word
-    ?! Panic("atom it failed")
-
-    .. atom-word Atom ~
-        ~ . [a-z]+ . "!"
+      )
+      (throw (call Panic "source it failed"))
+    )
+  )
+  (= (. stream cursor) 0)
+  (let atom
+    (match stream
+      (with helper)
+      (~ \atom-word)
+      (throw (call Panic "atom it failed"))
+      (blank)
+      (lazy atom-word Atom
+        (pattern
+          (~ (seq . (+ (chars "a-z")) . "!")
             it
-stream.cursor = 0
-. optional = match stream
-    with helper
-    ~ \optional-word
-    ?! Panic("optional source failed")
-
-    .. optional-word Atom? ~
-        ~ . [a-z]+ . "!"
+          )
+        )
+      )
+    )
+  )
+  (= (. stream cursor) 0)
+  (let optional
+    (match stream
+      (with helper)
+      (~ \optional-word)
+      (throw (call Panic "optional source failed"))
+      (blank)
+      (lazy optional-word (? Atom)
+        (pattern
+          (~ (seq . (+ (chars "a-z")) . "!")
             it
-stream.cursor = 0
-. nested = match stream
-    with helper
-    ~ !("x" | "y") \nested-word
-    ?! Panic("nested source failed")
-
-    .. nested-word Atom ~
-        ~ \source-word "?"
-        ~ \source-word
-
-    .. source-word Atom ~
-        ~ . [a-z]+ . "!"
-
-. empty = match ""
-    with helper
-    ~ [a-z]*
+          )
+        )
+      )
+    )
+  )
+  (= (. stream cursor) 0)
+  (let nested
+    (match stream
+      (with helper)
+      (~ (seq (! (| "x" "y")) \nested-word))
+      (throw (call Panic "nested source failed"))
+      (blank)
+      (lazy nested-word Atom
+        (pattern
+          (~ (seq \source-word "?"))
+          (~ \source-word)
+        )
+      )
+      (blank)
+      (lazy source-word Atom
+        (pattern
+          (~ (seq . (+ (chars "a-z")) . "!"))
+        )
+      )
+    )
+  )
+  (blank)
+  (let empty
+    (match ""
+      (with helper)
+      (~ (* (chars "a-z"))
         it
-    ?! Panic("empty source failed")
-. transformed = match "ab!"
-    with helper
-    ~ [a-z]+ "!"
-        it + "-changed"
-    ?! Panic("transformed source failed")
+      )
+      (throw (call Panic "empty source failed"))
+    )
+  )
+  (let transformed
+    (match "ab!"
+      (with helper)
+      (~ (seq (+ (chars "a-z")) "!")
+        (+ it "-changed")
+      )
+      (throw (call Panic "transformed source failed"))
+    )
+  )
+  (blank)
+  (call (. scratch reset))
+  (for (in i (..< 0 20))
+    (let later
+      (match "later!"
+        (with helper)
+        (~ (seq (+ (chars "a-z")) "!")
+          it
+        )
+      )
+    )
+    (call C:brixGCCollect)
+  )
+  (blank)
+  (print text)
+  (print (. atom text))
+  (print (. (!! optional) text))
+  (print (. nested text))
+  (print (. empty length))
+  (print transformed)
+  (print (call (. arena owns) (as (. (as text Atom) address) Pointer)))
+  (print (call (. arena owns) (as (. atom address) Pointer)))
+  (print (call (. arena owns) (as (. (!! optional) address) Pointer)))
+  (print (call (. arena owns) (as (. nested address) Pointer)))
+  (call (. scratch release))
+  (call (. arena release))
+)
 
-scratch.reset()
-for i in 0 .. < 20
-    . later = match "later!"
-        with helper
-        ~ [a-z]+ "!"
-            it
-    C:brixGCCollect()
+(type + SourceOwner
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternValueMaterializer String String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (blank)
+  (delegate (of PatternCaptureMaterializer Char Atom) (of PatternCaptureMaterializer Byte Atom))
+  (delegate (of PatternValueMaterializer String Atom))
+  (prop _ atoms SourceAtoms)
+  (fn-do + This _
+    (param arena Arena)
+    (= atoms (call SourceAtoms arena))
+  )
+  (fn-expr + (of materialize-capture Token) String (without gc)
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (call (. arena copy-span) source start end)
+  )
+  (fn-expr + materialize-value String (without gc)
+    (param source String)
+    (call (. arena copy-string) source)
+  )
+  (fn-expr + mark Size (without gc)
+    (throw (call Panic "Unexpected source materialization mark"))
+  )
+  (fn-do + rewind _ (without gc)
+    (param mark Size)
+    (throw (call Panic "Unexpected source materialization rewind"))
+  )
+)
 
--- text
--- atom.text
--- optional!.text
--- nested.text
--- empty.length
--- transformed
--- arena.owns((text as Atom).address as Pointer)
--- arena.owns(atom.address as Pointer)
--- arena.owns(optional!.address as Pointer)
--- arena.owns(nested.address as Pointer)
-scratch.release()
-arena.release()
-
-━━━━━━━━━━━━━━━━━━━━
-+ SourceOwner
-    is PatternMaterializationRoot'U32
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternValueMaterializer'String'String
-    is PatternRollback'Size
-
-+ arena Arena
-
-as PatternCaptureMaterializer'Char'Atom, PatternCaptureMaterializer'Byte'Atom for
-as PatternValueMaterializer'String'Atom for
-_ atoms SourceAtoms
-
-────────────────────
-+ This
-    - arena Arena
-
-atoms = SourceAtoms(arena)
-
-────────────────────
-+ materialize-capture'Token String without gc
-    - source Token[]
-    - start Index
-    - end Index
-
-arena.copy-span(source, start, end)
-
-────────────────────
-+ materialize-value String without gc
-    - source String
-
-arena.copy-string(source)
-
-────────────────────
-+ mark Size without gc
-
-?! Panic("Unexpected source materialization mark")
-
-────────────────────
-+ do rewind without gc
-    - mark Size
-
-?! Panic("Unexpected source materialization rewind")
-
-━━━━━━━━━━━━━━━━━━━━
-_ SourceAtoms is Tuple
-    is PatternCaptureMaterializer'Char'Atom
-    is PatternCaptureMaterializer'Byte'Atom
-    is PatternValueMaterializer'String'Atom
-
-_ arena Arena
-
-────────────────────
-+ This
-    - arena Arena
-
-────────────────────
-+ materialize-capture'Token Atom without gc
-    - source Token[]
-    - start Index
-    - end Index
-
-arena.copy-span(source, start, end) as Atom
-
-────────────────────
-+ materialize-value Atom without gc
-    - source String
-
-arena.copy-string(source) as Atom
+(type _ SourceAtoms (is Tuple)
+  (implements (of PatternCaptureMaterializer Char Atom))
+  (implements (of PatternCaptureMaterializer Byte Atom))
+  (implements (of PatternValueMaterializer String Atom))
+  (prop _ arena Arena)
+  (fn-do + This _
+    (param arena Arena)
+  )
+  (fn-expr + (of materialize-capture Token) Atom (without gc)
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (as (call (. arena copy-span) source start end) Atom)
+  )
+  (fn-expr + materialize-value Atom (without gc)
+    (param source String)
+    (as (call (. arena copy-string) source) Atom)
+  )
+)
 ```
 
 ```output
@@ -5084,69 +6655,84 @@ true
 true
 ```
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-. helper = SourceOnlyOwner(arena)
--- source-only-length("éabc😀!", helper)
--- source-only-length("bad", helper)
--- source-only-helper("éabc😀!", helper)
-arena.release()
+(main
+  (let arena (call Arena))
+  (let helper (call SourceOnlyOwner arena))
+  (print (call source-only-length "éabc😀!" helper))
+  (print (call source-only-length "bad" helper))
+  (print (call source-only-helper "éabc😀!" helper))
+  (call (. arena release))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do source-only-length Size
-    - source String
-    - helper SourceOnlyOwner
+(fn-do + source-only-length Size
+  (param source String)
+  (param helper SourceOnlyOwner)
+  (return
+    (match source
+      (with helper)
+      (~ \source-length)
+      (default
+        (inline 0)
+      )
+      (blank)
+      (lazy source-length Size
+        (pattern
+          (~ (seq . (+ (chars "a-z")) . "!")
+            (. it length)
+          )
+        )
+      )
+    )
+  )
+)
 
-= match source
-    with helper
-    ~ \source-length
-    ?? 0
+(fn-do + source-only-helper Size
+  (param source String)
+  (param helper SourceOnlyOwner)
+  (return
+    (match source
+      (with helper)
+      (~ (call \source-only-measure (~ (seq . (+ (chars "a-z")) . "!"))))
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 
-    .. source-length Size ~
-        ~ . [a-z]+ . "!"
-            it.length
+(fn-expr + source-only-measure Size (over: Char)
+  (param pattern (of PatternFunc Char String))
+  (~ \local-value
+    (. it length)
+  )
+  (where
+    (lazy local-value String
+      (pattern
+        (~ $pattern)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do source-only-helper Size
-    - source String
-    - helper SourceOnlyOwner
-
-= match source
-    with helper
-    ~ \source-only-measure(~ . [a-z]+ . "!")
-    ?? 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ source-only-measure ~ Char Size
-    - pattern PatternFunc'Char'String
-
-~ \local-value
-    it.length
-
-.. local-value String ~
-    ~ $pattern
-
-━━━━━━━━━━━━━━━━━━━━
-+ SourceOnlyOwner
-    is PatternMaterializationRoot'U32
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-
-+ arena Arena
-
-────────────────────
-+ This
-    - arena Arena
-
-────────────────────
-+ materialize-capture'Token String without gc
-    - source Token[]
-    - start Index
-    - end Index
-
-arena.copy-span(source, start, end)
+(type + SourceOnlyOwner
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (prop + arena Arena)
+  (fn-do + This _
+    (param arena Arena)
+  )
+  (fn-expr + (of materialize-capture Token) String (without gc)
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (call (. arena copy-span) source start end)
+  )
+)
 ```
 
 ```output
@@ -5155,75 +6741,90 @@ arena.copy-span(source, start, end)
 6
 ```
 
-```yumi
--- match "ab"
-    ~ \collector-scope
+```brix
+(main
+  (print
+    (match "ab"
+      (~ \collector-scope)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ collector-scope ~ Char String
-
-~ ...items "a" child \borrowed(into items)
-    "$items|$child"
-
-.. borrowed String ~
-    ~ (...items "z")* child \owned
-        child
-
-.. owned String ~
-    ~ ...items "b"
-        "$items"
+(fn-expr + collector-scope String (over: Char)
+  (~ (seq (: ...items "a") (: child (call \borrowed (into items))))
+    (str items "|" child)
+  )
+  (where
+    (lazy borrowed String
+      (pattern
+        (~ (seq (* (: ...items "z")) (: child \owned))
+          child
+        )
+      )
+    )
+    (blank)
+    (lazy owned String
+      (pattern
+        (~ (: ...items "b")
+          (str items)
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 a|b
 ```
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. source = SingleChunkSource()
-. stream = ChunkedTokenStream'Char(source)
-. events = ~ \single-char in stream
--- <- events
--- source.read-count
-. choice-source = SingleChunkSource()
-. choice-stream = ChunkedTokenStream'Char(choice-source)
-. choices = ~ \single-choice in choice-stream
--- <- choices
--- choice-source.read-count
+(main
+  (let source (call SingleChunkSource))
+  (let stream (call (of ChunkedTokenStream Char) source))
+  (let events (~ \single-char (in: stream)))
+  (print (<- events))
+  (print (. source read-count))
+  (let choice-source (call SingleChunkSource))
+  (let choice-stream (call (of ChunkedTokenStream Char) choice-source))
+  (let choices (~ \single-choice (in: choice-stream)))
+  (print (<- choices))
+  (print (. choice-source read-count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ single-choice ~ Char Char
+(fn-expr + single-choice Char (over: Char)
+  (~ "\x1b[200~"
+    (as 0 Char)
+  )
+  (~ "a"
+    (as 97 Char)
+  )
+)
 
-~ "\x1b[200~"
-    0 as Char
-~ "a"
-    97 as Char
+(fn-expr + single-char Char (over: Char)
+  (~ "\x1b[200~"
+    (as 0 Char)
+  )
+  (~ (: c .)
+    ([] c 0)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ single-char ~ Char Char
-
-~ "\x1b[200~"
-    0 as Char
-~ c .
-    c[0]
-
-━━━━━━━━━━━━━━━━━━━━
-+ SingleChunkSource
-    is ByteReadable
-
-+ read-count Size
-
-────────────────────
-+ do read Size
-    - size Size
-    - buffer Byte[]
-
-?! Panic("A complete match must not read another chunk")
-    if read-count
-read-count += 1
-buffer[0] = 97u8
-= 1
+(type + SingleChunkSource
+  (implements ByteReadable)
+  (prop + read-count Size)
+  (fn-do + read Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (throw (call Panic "A complete match must not read another chunk") (if read-count))
+    (+= read-count 1)
+    (= ([] buffer 0) 97u8)
+    (return 1)
+  )
+)
 ```
 
 ```output
@@ -5233,34 +6834,34 @@ a
 1
 ```
 
-```yumi
-. source = LetterSource()
-for letter in ~ \next-letter in source
-    -- letter
+```brix
+(main
+  (let source (call LetterSource))
+  (for (in letter (in (~ \next-letter) source))
+    (print letter)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ next-letter ~ Char Char
+(fn-expr + next-letter Char (over: Char)
+  (~ (: c .)
+    ([] c 0)
+  )
+)
 
-~ c .
-    c[0]
-
-━━━━━━━━━━━━━━━━━━━━
-+ LetterSource
-    is ByteReadable
-    is Decodable'Char
-
-+ letters = Array'Byte("ab")
-+ cursor Size
-
-────────────────────
-+ do read Size
-    - size Size
-    - buffer Byte[]
-
-=? 0 if cursor >= letters.size
-buffer[0] = letters[cursor]
-cursor += 1
-= 1
+(type + LetterSource
+  (implements ByteReadable)
+  (implements (of Decodable Char))
+  (prop + letters _ (= (call (of Array Byte) "ab")))
+  (prop + cursor Size)
+  (fn-do + read Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (return-if 0 (if (>= cursor (. letters size))))
+    (= ([] buffer 0) ([] letters cursor))
+    (+= cursor 1)
+    (return 1)
+  )
+)
 ```
 
 ```output
@@ -5268,32 +6869,33 @@ a
 b
 ```
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. stream = ObservableTokenStream("aabb".codepoints)
-. records = stream ~> \pair
--- stream.cursor
--- <- records
--- stream.cursor
--- <- records
--- stream.cursor
+(main
+  (let stream (call ObservableTokenStream (. "aabb" codepoints)))
+  (let records (~> stream \pair))
+  (print (. stream cursor))
+  (print (<- records))
+  (print (. stream cursor))
+  (print (<- records))
+  (print (. stream cursor))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ObservableTokenStream is IndexableTokenStream'Char
-    is Iterable'Char
+(type + ObservableTokenStream (is (of IndexableTokenStream Char))
+  (implements (of Iterable Char))
+  (fn-do + This _
+    (param buffer ([] Char))
+    (call super buffer)
+  )
+)
 
-────────────────────
-+ This
-    - buffer Char[]
-
-super(buffer)
-
-━━━━━━━━━━━━━━━━━━━━
-+ pair ~ Char String
-
-~ left . right .
-    "$left$right"
+(fn-expr + pair String (over: Char)
+  (~ (seq (: left .) (: right .))
+    (str left right)
+  )
+)
 ```
 
 ```output
@@ -5304,52 +6906,60 @@ bb
 4
 ```
 
-```yumi
-. records = "aabbxccaadd" ~> \pair
--- ",".join(records)
+```brix
+(main
+  (let records (~> "aabbxccaadd" \pair))
+  (print (call (. "," join) records))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pair ~ Char String
-
-~ left [abcd] right [abcd]
-    "$left$right"
+(fn-expr + pair String (over: Char)
+  (~ (seq (: left (chars "abcd")) (: right (chars "abcd")))
+    (str left right)
+  )
+)
 ```
 
 ```output
 aa,bb
 ```
 
-```yumi
-. destination = List'String()
-"aabb" ~> \pair *-> destination
--- ",".join(destination)
+```brix
+(main
+  (let destination (call (of List String)))
+  (*-> (~> "aabb" \pair) destination)
+  (print (call (. "," join) destination))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pair ~ Char String
-
-~ left . right .
-    "$left$right"
+(fn-expr + pair String (over: Char)
+  (~ (seq (: left .) (: right .))
+    (str left right)
+  )
+)
 ```
 
 ```output
 aa,bb
 ```
 
-```yumi
-/data/stream
+```brix
+(import /data/stream)
+(blank)
 
-. source = DataStream'Char("one\ntwo\n".codepoints)
-source
-~> line (.)+ \nl?
+(main
+  (let source (call (of DataStream Char) (. "one\ntwo\n" codepoints)))
+  source
+  (pipe ~> (seq (: line (+ .)) (? \nl))
     line
-|> print-stream-lines
+  )
+  (pipe |> print-stream-lines)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do print-stream-lines'Item
-    - items <Item>
-
-for item in items
-    -- item
+(fn-do + (of print-stream-lines Item) _
+  (param items (stream Item))
+  (for (in item items)
+    (print item)
+  )
+)
 ```
 
 ```output
@@ -5357,22 +6967,31 @@ one
 two
 ```
 
-```yumi
-/os/process
-/core/parsing
+```brix
+(import /os/process)
+(import /core/parsing)
+(blank)
 
-use Process("printf")
-    - "one\ntwo\n"
-~> line (.)+ \nl?
+(main
+  (use
+    (call Process "printf"
+      (block
+        (arg "one\ntwo\n")
+      )
+    )
+  )
+  (pipe ~> (seq (: line (+ .)) (? \nl))
     line
-|> print-process-lines
+  )
+  (pipe |> print-process-lines)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do print-process-lines'Item
-    - items <Item>
-
-for item in items
-    -- item
+(fn-do + (of print-process-lines Item) _
+  (param items (stream Item))
+  (for (in item items)
+    (print item)
+  )
+)
 ```
 
 ```output
@@ -5380,18 +6999,21 @@ one
 two
 ```
 
-```yumi
-** "ab"
-~> pair (.)+
+```brix
+(main
+  (spread "ab")
+  (pipe ~> (: pair (+ .))
     pair
-|> print-generator-pairs
+  )
+  (pipe |> print-generator-pairs)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do print-generator-pairs'Item
-    - items <Item>
-
-for item in items
-    -- item
+(fn-do + (of print-generator-pairs Item) _
+  (param items (stream Item))
+  (for (in item items)
+    (print item)
+  )
+)
 ```
 
 ```output
@@ -5400,10 +7022,13 @@ ab
 
 ### A pipe or a loop over a pattern that ends in an optional part and runs no expression gives the text each match read.
 
-```yumi
--- List("ab cd" ~> [a-z]+ " "?)
-for w in ~ [a-z]+ " "? in "ab cd"
-    -- "<$w>"
+```brix
+(main
+  (print (call List (~> "ab cd" (seq (+ (chars "a-z")) (? " ")))))
+  (for (in w (in (~ (seq (+ (chars "a-z")) (? " "))) "ab cd"))
+    (print (str "<" w ">"))
+  )
+)
 ```
 
 ```output
@@ -5414,55 +7039,62 @@ ab , cd
 
 ### A pipe over a pattern whose matches give an optional value is an error.
 
-```yumi compile-error
--- List("ab cd" ~> \word)
+```brix compile-error
+(main
+  (print (call List (~> "ab cd" \word)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ word ~ Char
-
-~ [a-z]+ " "?
+(fn-expr + word _ (over: Char)
+  (~ (seq (+ (chars "a-z")) (? " ")))
+)
 ```
 
 ```output
 Exception: Grammar pipeline can't give an optional value; add an action that gives one
-<no file:2>
-    -- List("ab cd" ~> \word)
-                   ^^^^^^^^^
+<no file:3>
+      (print (call List (~> "ab cd" \word)))
+                                    ^^^^^
 ```
 
-```yumi crash
--- List("abc") ~> ""
+```brix crash
+(main
+  (print (~> (call List "abc") ""))
+)
 ```
 
 ```output
 Exception: Grammar pipeline must consume input
-<no file:2>
-    -- List("abc") ~> ""
-                  ^^^^^^
+<no file:3>
+      (print (~> (call List "abc") ""))
+                                   ^^
 ```
 
 ### A pipe over a pattern that only looks ahead is an error, as it never reads.
 
-```yumi crash
--- List("ab" ~> &"a")
+```brix crash
+(main
+  (print (call List (~> "ab" (& "a"))))
+)
 ```
 
 ```output
 Exception: Grammar pipeline must consume input
-<no file:2>
-    -- List("ab" ~> &"a")
-                ^^^^^^^^
+<no file:3>
+      (print (call List (~> "ab" (& "a"))))
+                                 ^^^^^^^
 ```
 
-```yumi crash
--- "started"
--- <- ("abc" ~> \empty)
+```brix crash
+(main
+  (print "started")
+  (print (<- (~> "abc" \empty)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ empty ~ Char String
-
-~ ""
+(fn-expr + empty String (over: Char)
+  (~ ""
     "empty"
+  )
+)
 ```
 
 ```output
@@ -5471,29 +7103,36 @@ started
 
 ### A loop over the matches of a pattern ends where the stream has no more, and panics where a match did not move the stream on. A pattern that can match nothing is an error, as in a pipe.
 
-```yumi
-words("xy zz")
-words("xy zz!")
+```brix
+(main
+  (call words "xy zz")
+  (call words "xy zz!")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do words
-    - text String
+(fn-do + words _
+  (param text String)
+  (let attempt
+    (do-new
+      (let found "")
+      (finally
+        (print found)
+      )
+      (for (in w (in (~ \word) text))
+        (+= found (str "[" w "]"))
+      )
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. attempt = do new
-    . found = ""
-    do finally
-        -- found
-    for w in ~ \word in text
-        found += "[$w]"
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ word ~ Char String
-
-~ [a-z]* " "?
+(fn-expr + word String (over: Char)
+  (~ (seq (* (chars "a-z")) (? " "))
     it
+  )
+)
 ```
 
 ```output
@@ -5502,123 +7141,157 @@ attempt.wait()
 Grammar loop made no input progress
 ```
 
-```yumi compile-error
-for w in ~ "a"* in "aab"
-    -- w
+```brix compile-error
+(main
+  (for (in w (in (~ (* "a")) "aab"))
+    (print w)
+  )
+)
 ```
 
 ```output
 Exception: Grammar loop must consume input
-<no file:2>
-    for w in ~ "a"* in "aab"
-               ^^^^
+<no file:3>
+      (for (in w (in (~ (* "a")) "aab"))
+                        ^^^^^^^
 ```
 
-```yumi
-** Bytes()
-~> Byte
+```brix
+(main
+  (spread (call Bytes))
+  (pipe ~> Byte
     it
-|> print-all
+  )
+  (pipe |> print-all)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bytes
-
-────────────────────
-+ do to Iterable'Byte
-
-<= 65u8
+(type + Bytes
+  (fn-to-do + (of Iterable Byte)
+    (yield 65u8)
+  )
+)
 ```
 
 ```output
 65
 ```
 
-```yumi
-** Values()
-~> \integer
-|> print-all
+```brix
+(main
+  (spread (call Values))
+  (pipe ~> \integer)
+  (pipe |> print-all)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Values
+(type + Values
+  (fn-to-do + (of Iterable Char)
+    (yield 'x')
+  )
+  (fn-to-do + (of Iterable I32)
+    (yield 7)
+  )
+)
 
-────────────────────
-+ do to Iterable'Char
-
-<= 'x'
-
-────────────────────
-+ do to Iterable'I32
-
-<= 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ integer ~ I32
-
-~ I32
+(fn-expr + integer _ (over: I32)
+  (~ I32)
+)
 ```
 
 ```output
 7
 ```
 
-```yumi crash
--- match "ab"
-    ~ ...items "a" items "b"
+```brix crash
+(main
+  (print
+    (match "ab"
+      (~ (seq (: ...items "a") (: items "b"))
         items
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Capture items mixes ordinary and accumulating capture modes
-<no file:3>
-        ~ ...items "a" items "b"
-                       ^^^^^^^^^
+<no file:5>
+          (~ (seq (: ...items "a") (: items "b"))
+                                   ^^^^^^^^^^^^^
 ```
 
-```yumi crash
--- match "a1"
-    ~ ...items \text ...items \number
+```brix crash
+(main
+  (print
+    (match "a1"
+      (~ (seq (: ...items \text) (: ...items \number))
         items
-
-    .. text String ~
-        ~ "a"
+      )
+      (blank)
+      (lazy text String
+        (pattern
+          (~ "a"
             it
-
-    .. number I32 ~
-        ~ "1"
+          )
+        )
+      )
+      (blank)
+      (lazy number I32
+        (pattern
+          (~ "1"
             1
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Accumulating capture items has incompatible contribution types String and I32
-<no file:3>
-        ~ ...items \text ...items \number
-                         ^^^^^^^^^^^^^^^^
+<no file:5>
+          (~ (seq (: ...items \text) (: ...items \number))
+                                     ^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A pattern action infers its type from a qualified union case construction.
 
-```yumi
-. parts = match ["alpha", "beta"]
-    ~ words \word*
+```brix
+(main
+  (let parts
+    (match (list "alpha" "beta")
+      (~ (: words (* \word))
         words
-    ?! Panic("words failed")
+      )
+      (throw (call Panic "words failed"))
+      (blank)
+      (lazy word
+        (pattern
+          (~ (: text String)
+            (call (. Part word) text)
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (for (in part parts)
+    (match part
+      (case (call (. Part word) text)
+        (print text)
+      )
+      (case (. Part other)
+        (print "other")
+      )
+    )
+  )
+)
 
-    .. word ~
-        ~ text String
-            Part.word(text)
-
-for part in parts
-    match part
-        | Part.word(text)
-            -- text
-        | Part.other
-            -- "other"
-
-━━━━━━━━━━━━━━━━━━━━
-_ Part is Union
-
-| word(text String)
-| other
+(type _ Part (is Union)
+  (variant word (tuple (: text String)))
+  (variant other)
+)
 ```
 
 ```output
@@ -5628,84 +7301,131 @@ beta
 
 ### A text-valued repeat yields the matched source, whether its item is an inline group, a rule call, a rule with an inner capture, or a counted or empty run
 
-```yumi
--- "1 [${capture-group("héllo 😀 wörld\nrest")}]"
--- "2 [${result-repeat("a\\|b `c|d` e|f")}]"
--- "3 [${wrapped("<one><two><three>!")}]"
--- "4 [${counted("aaaaab")}]"
--- "5 [${nested("ab cd  ef!")}]"
--- "6 [${empty-run("!!")}]"
+```brix
+(main
+  (print (str "1 [" (call capture-group "héllo 😀 wörld\nrest") "]"))
+  (print (str "2 [" (call result-repeat "a\\|b `c|d` e|f") "]"))
+  (print (str "3 [" (call wrapped "<one><two><three>!") "]"))
+  (print (str "4 [" (call counted "aaaaab") "]"))
+  (print (str "5 [" (call nested "ab cd  ef!") "]"))
+  (print (str "6 [" (call empty-run "!!") "]"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do capture-group String
-    - text String
+(fn-do + capture-group String
+  (param text String)
+  (return
+    (match text
+      (~ (seq (: line (* (seq (! "\n") .))) "\n" (* .))
+        (str line "|")
+      )
+      (default
+        (inline "<none>")
+      )
+    )
+  )
+)
 
-= match text
-    ~ line (!"\n" .)* "\n" .*
-        "$line|"
-    ?? "<none>"
+(fn-do + result-repeat String
+  (param text String)
+  (return
+    (match text
+      (~ (seq (: first \cell) "|" (: rest (* .)))
+        (str first "|" rest)
+      )
+      (default
+        (inline "<none>")
+      )
+      (blank)
+      (lazy cell String
+        (pattern
+          (~ (* \cell-part))
+        )
+      )
+      (blank)
+      (lazy cell-part
+        (pattern
+          (~ "\\|")
+          (~ (seq "`" (* (seq (! "`") (! "\n") .)) "`"))
+          (~ (seq (! (| "|" "\n")) .))
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do result-repeat String
-    - text String
-
-= match text
-    ~ first \cell "|" rest .*
-        "$first|$rest"
-    ?? "<none>"
-
-    .. cell String ~
-        ~ \cell-part*
-
-    .. cell-part ~
-        ~ "\\|"
-        ~ "`" (!"`" !"\n" .)* "`"
-        ~ !("|" | "\n") .
-
-━━━━━━━━━━━━━━━━━━━━
-+ do wrapped String
-    - text String
-
-= match text
-    ~ all \tags "!"
+(fn-do + wrapped String
+  (param text String)
+  (return
+    (match text
+      (~ (seq (: all \tags) "!")
         all
-    ?? "<none>"
+      )
+      (default
+        (inline "<none>")
+      )
+      (blank)
+      (lazy tags
+        (pattern
+          (~ (+ \tag))
+        )
+      )
+      (blank)
+      (lazy tag
+        (pattern
+          (~ (seq "<" (: inner \word) ">"))
+        )
+      )
+      (blank)
+      (lazy word
+        (pattern
+          (~ (+ (chars "a-z")))
+        )
+      )
+    )
+  )
+)
 
-    .. tags ~
-        ~ \tag+
+(fn-do + counted String
+  (param text String)
+  (return
+    (match text
+      (~ (seq (: head ({} "a" 2 3)) (: tail (* "a")) "b")
+        (str head "|" tail)
+      )
+      (default
+        (inline "<none>")
+      )
+    )
+  )
+)
 
-    .. tag ~
-        ~ "<" inner \word ">"
-
-    .. word ~
-        ~ [a-z]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ do counted String
-    - text String
-
-= match text
-    ~ head "a"{2, 3} tail "a"* "b"
-        "$head|$tail"
-    ?? "<none>"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do nested String
-    - text String
-
-= match text
-    ~ words ([a-z]+ " "*)+ "!"
+(fn-do + nested String
+  (param text String)
+  (return
+    (match text
+      (~ (seq (: words (+ (seq (+ (chars "a-z")) (* " ")))) "!")
         words
-    ?? "<none>"
+      )
+      (default
+        (inline "<none>")
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do empty-run String
-    - text String
-
-= match text
-    ~ letters [a-z]* marks "!"+
-        "$letters|$marks"
-    ?? "<none>"
+(fn-do + empty-run String
+  (param text String)
+  (return
+    (match text
+      (~ (seq (: letters (* (chars "a-z"))) (: marks (+ "!")))
+        (str letters "|" marks)
+      )
+      (default
+        (inline "<none>")
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -5719,28 +7439,29 @@ beta
 
 ### A pattern pipeline ends when its source is exhausted, so a rule's error arm reports only input that is present and unmatched.
 
-```yumi
--- catch? read-pairs("aabb") ?? "error"
--- catch? read-pairs("aabbx") ?? "error"
+```brix
+(main
+  (print (?? (catch? (call read-pairs "aabb")) "error"))
+  (print (?? (catch? (call read-pairs "aabbx")) "error"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ PairError is Error
+(type + PairError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read-pairs String ?! PairError
-    - text String
+(fn-do + read-pairs String (?! PairError)
+  (param text String)
+  (let seen (call (of List String)))
+  (for (in pair (~> text \pair))
+    (+= seen pair)
+  )
+  (return (call (. "," join) seen))
+)
 
-. seen = List'String()
-for pair in text ~> \pair
-    seen += pair
-= ",".join(seen)
-
-━━━━━━━━━━━━━━━━━━━━
-+ pair ~ Char String ?! PairError
-
-~ left [ab] right [ab]
-    "$left$right"
-?! PairError("unpaired")
+(fn-expr + pair String (over: Char) (?! PairError)
+  (~ (seq (: left (chars "ab")) (: right (chars "ab")))
+    (str left right)
+  )
+  (throw (call PairError "unpaired"))
+)
 ```
 
 ```output
@@ -5750,59 +7471,60 @@ error
 
 ### A called rule's error arm waits for input that has not arrived yet, and reports once the source is complete.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
--- catch? read-records(StagedSource("ab", ";cd;")) ?? "error"
--- catch? read-records(StagedSource("ab;", "cd")) ?? "error"
+(main
+  (print (?? (catch? (call read-records (call StagedSource "ab" ";cd;"))) "error"))
+  (print (?? (catch? (call read-records (call StagedSource "ab;" "cd"))) "error"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RecordError is Error
+(type + RecordError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read-records String ?! RecordError
-    - source StagedSource
+(fn-do + read-records String (?! RecordError)
+  (param source StagedSource)
+  (let seen (call (of List String)))
+  (for (in name (~> (call (of ChunkedTokenStream Char) source) \record))
+    (+= seen name)
+  )
+  (return (call (. "," join) seen))
+)
 
-. seen = List'String()
-for name in ChunkedTokenStream'Char(source) ~> \record
-    seen += name
-= ",".join(seen)
-
-━━━━━━━━━━━━━━━━━━━━
-+ record ~ Char String ?! RecordError
-
-~ name [a-z]+ ";"
+(fn-expr + record String (over: Char) (?! RecordError)
+  (~ (seq (: name (+ (chars "a-z"))) ";")
     name
-?! RecordError("unterminated")
+  )
+  (throw (call RecordError "unterminated"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ StagedSource
-    is ByteReadable
-
-+ first String
-+ second String
-+ read-count Size
-
-────────────────────
-+ This
-    - first
-    - second
-
-────────────────────
-+ do read Size
-    - size Size
-    - buffer Byte[]
-
-. stage = ""
-if read-count == 0
-    stage = first
-else if read-count == 1
-    stage = second
-read-count += 1
-. bytes = stage as Byte[]
-if bytes.size
-    buffer[0 .. < bytes.size] = bytes
-= bytes.size
+(type + StagedSource
+  (implements ByteReadable)
+  (prop + first String)
+  (prop + second String)
+  (prop + read-count Size)
+  (fn-do + This _
+    (param first _)
+    (param second _)
+  )
+  (fn-do + read Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (let stage "")
+    (if (== read-count 0)
+      (= stage first)
+      (else-if (== read-count 1)
+        (= stage second)
+      )
+    )
+    (+= read-count 1)
+    (let bytes (as stage ([] Byte)))
+    (if (. bytes size)
+      (= ([] buffer (..< 0 (. bytes size))) bytes)
+    )
+    (return (. bytes size))
+  )
+)
 ```
 
 ```output
@@ -5812,65 +7534,65 @@ error
 
 ### A byte source is asked for more at a time while a record stays unfinished, and a record is whole however little each read returns.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. eager = CountingSource(("a" * 5000 ++ ";bb;") as Byte[], 100000)
--- read-lengths(eager)
--- request-sizes(eager)
-. slow = CountingSource(("日本語" * 1000 ++ ";bb;") as Byte[], 7)
--- read-lengths(slow)
+(main
+  (let eager (call CountingSource (as (++ (* "a" 5000) ";bb;") ([] Byte)) 100000))
+  (print (call read-lengths eager))
+  (print (call request-sizes eager))
+  (let slow (call CountingSource (as (++ (* "日本語" 1000) ";bb;") ([] Byte)) 7))
+  (print (call read-lengths slow))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read-lengths String
-    - source CountingSource
+(fn-do + read-lengths String
+  (param source CountingSource)
+  (let seen (call (of List String)))
+  (for (in name (~> (call (of ChunkedTokenStream Char) source) \record))
+    (+= seen (str (. name length)))
+  )
+  (return (call (. "," join) seen))
+)
 
-. seen = List'String()
-for name in ChunkedTokenStream'Char(source) ~> \record
-    seen += "${name.length}"
-= ",".join(seen)
+(fn-expr + request-sizes String
+  (param source CountingSource)
+  (call (. "," join) sizes)
+  (where
+    (lazy sizes (in (str each) (. source requests)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ request-sizes String
-    - source CountingSource
-
-",".join(sizes)
-
-.. sizes = "$each" in source.requests
-
-━━━━━━━━━━━━━━━━━━━━
-+ record ~ Char String
-
-~ name (!";" .)+ ";"
+(fn-expr + record String (over: Char)
+  (~ (seq (: name (+ (seq (! ";") .))) ";")
     name
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CountingSource
-    is ByteReadable
-
-+ data Byte[]
-+ limit Size
-+ cursor Index
-+ requests = List'Size()
-
-────────────────────
-+ This
-    - data
-    - limit
-
-────────────────────
-+ do read Size
-    - size Size
-    - buffer Byte[]
-
-requests += size
-. remaining = data.size - cursor
-. wanted = if size < limit then size else limit
-. amount = if remaining < wanted then remaining else wanted
-if amount
-    buffer[0 .. < amount] = data[cursor .. < cursor + amount]
-    cursor += amount
-= amount
+(type + CountingSource
+  (implements ByteReadable)
+  (prop + data ([] Byte))
+  (prop + limit Size)
+  (prop + cursor Index)
+  (prop + requests _ (= (call (of List Size))))
+  (fn-do + This _
+    (param data _)
+    (param limit _)
+  )
+  (fn-do + read Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (+= requests size)
+    (let remaining (- (. data size) cursor))
+    (let wanted (if-expr (< size limit) size limit))
+    (let amount (if-expr (< remaining wanted) remaining wanted))
+    (if amount
+      (= ([] buffer (..< 0 amount)) ([] data (..< cursor (+ cursor amount))))
+      (+= cursor amount)
+    )
+    (return amount)
+  )
+)
 ```
 
 ```output
@@ -5881,75 +7603,77 @@ if amount
 
 ### A chunked stream asked to release delivered input keeps a bounded buffer, loses nothing unread, and still counts lines and columns from the start of the source.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
--- released-lines()
--- released-fields()
+(main
+  (print (call released-lines))
+  (print (call released-fields))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do released-lines String
+(fn-do + released-lines String
+  (let lines (call (of List String)))
+  (for (in index (..< 0 20000))
+    (+= lines (str "line-" index "\n"))
+  )
+  (let text (call (. "" join) lines))
+  (let stream (call (of ChunkedTokenStream Char) (call TextSource (as text ([] Byte)))))
+  (let total Size 0)
+  (let largest Size 0)
+  (for (in name (~> stream \line))
+    (+= total (. name length))
+    (call (. stream pattern-release))
+    (if (> (. stream buffer size) largest)
+      (= largest (. stream buffer size))
+    )
+  )
+  (let location (. stream location))
+  (return (str total " " largest " " (. location line) ":" (. location column)))
+)
 
-. lines = List'String()
-for index in 0 .. < 20000
-    lines += "line-$index\n"
-. text = "".join(lines)
-. stream = ChunkedTokenStream'Char(TextSource(text as Byte[]))
-. total Size = 0
-. largest Size = 0
-for name in stream ~> \line
-    total += name.length
-    stream.pattern-release()
-    if stream.buffer.size > largest
-        largest = stream.buffer.size
-. location = stream.location
-= "$total $largest ${location.line}:${location.column}"
+(fn-do + released-fields String
+  (let stream (call (of ChunkedTokenStream Char) (call TextSource (as (* "ab;" 30000) ([] Byte)))))
+  (let count Size 0)
+  (for (in name (~> stream \field))
+    (+= count 1)
+    (call (. stream pattern-release))
+  )
+  (let location (. stream location))
+  (return (str count " " (. location line) ":" (. location column)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do released-fields String
-
-. stream = ChunkedTokenStream'Char(TextSource(("ab;" * 30000) as Byte[]))
-. count Size = 0
-for name in stream ~> \field
-    count += 1
-    stream.pattern-release()
-. location = stream.location
-= "$count ${location.line}:${location.column}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ line ~ Char String
-
-~ name (!"\n" .)+ "\n"
+(fn-expr + line String (over: Char)
+  (~ (seq (: name (+ (seq (! "\n") .))) "\n")
     name
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ field ~ Char String
-
-~ name [a-z]+ ";"
+(fn-expr + field String (over: Char)
+  (~ (seq (: name (+ (chars "a-z"))) ";")
     name
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TextSource
-    is ByteReadable
-
-+ data Byte[]
-+ cursor Index
-
-────────────────────
-+ This
-    - data
-
-────────────────────
-+ do read Size
-    - size Size
-    - buffer Byte[]
-
-. remaining = data.size - cursor
-. amount = if remaining < size then remaining else size
-if amount
-    buffer[0 .. < amount] = data[cursor .. < cursor + amount]
-    cursor += amount
-= amount
+(type + TextSource
+  (implements ByteReadable)
+  (prop + data ([] Byte))
+  (prop + cursor Index)
+  (fn-do + This _
+    (param data _)
+  )
+  (fn-do + read Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (let remaining (- (. data size) cursor))
+    (let amount (if-expr (< remaining size) remaining size))
+    (if amount
+      (= ([] buffer (..< 0 amount)) ([] data (..< cursor (+ cursor amount))))
+      (+= cursor amount)
+    )
+    (return amount)
+  )
+)
 ```
 
 ```output
@@ -5959,41 +7683,47 @@ if amount
 
 ### A pipeline over a caller's chunked stream releases delivered input that no mark holds.
 
-```yumi
-/core/tests/support/byte-source
-/core/tokenstream
+```brix
+(import /core/tests/support/byte-source)
+(import /core/tokenstream)
+(blank)
 
--- piped-lines(20000, false)
--- piped-lines(80000, false)
--- piped-lines(20000, true)
+(main
+  (print (call piped-lines 20000 false))
+  (print (call piped-lines 80000 false))
+  (print (call piped-lines 20000 true))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do piped-lines String
-    - count Size
-    - marked Bool
+(fn-do + piped-lines String
+  (param count Size)
+  (param marked Bool)
+  (let lines (call (of List String)))
+  (for (in index (..< 0 count))
+    (+= lines (str "line-" index "\n"))
+  )
+  (let source (call TestByteSource (as (call (. "" join) lines) ([] Byte))))
+  (= (. source is-encoded) true)
+  (let stream (call (of ChunkedTokenStream Char) source))
+  (let start (? StreamMark) (if-expr marked (call (. stream mark)) null))
+  (let largest Size 0)
+  (for (in name (~> stream \line))
+    (if (> (. stream buffer size) largest)
+      (= largest (. stream buffer size))
+    )
+  )
+  (let location (. stream location))
+  (if start
+    (call (. stream rewind) start)
+    (return (str (> largest 65536) " " (call (. (call (. stream read) 4) slice-string))))
+  )
+  (return (str largest " " (. location line) ":" (. location column)))
+)
 
-. lines = List'String()
-for index in 0 .. < count
-    lines += "line-$index\n"
-. source = TestByteSource("".join(lines) as Byte[])
-source.is-encoded = true
-. stream = ChunkedTokenStream'Char(source)
-. start StreamMark? = if marked then stream.mark() else null
-. largest Size = 0
-for name in stream ~> \line
-    if stream.buffer.size > largest
-        largest = stream.buffer.size
-. location = stream.location
-if start
-    stream.rewind(start)
-    = "${largest > 65536} ${stream.read(4).slice-string()}"
-= "$largest ${location.line}:${location.column}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ line ~ Char String
-
-~ name (!"\n" .)+ "\n"
+(fn-expr + line String (over: Char)
+  (~ (seq (: name (+ (seq (! "\n") .))) "\n")
     name
+  )
+)
 ```
 
 ```output
@@ -6004,27 +7734,31 @@ true line
 
 ### A pipeline over tokens that are not characters releases delivered input too.
 
-```yumi
-. words = List'String()
-for index in 0 .. < 3000
-    words += "w$index"
-. count Size = 0
-for pair in word-source(words) ~> \word-pair
-    count += 1
--- count
+```brix
+(main
+  (let words (call (of List String)))
+  (for (in index (..< 0 3000))
+    (+= words (str "w" index))
+  )
+  (let count Size 0)
+  (for (in pair (~> (call word-source words) \word-pair))
+    (+= count 1)
+  )
+  (print count)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do word-source Iterable'String
-    - words [String]
+(fn-do + word-source (of Iterable String)
+  (param words (list String))
+  (for (in word words)
+    (yield word)
+  )
+)
 
-for word in words
-    <= word
-
-━━━━━━━━━━━━━━━━━━━━
-+ word-pair ~ String String
-
-~ left . right .
-    "$left $right"
+(fn-expr + word-pair String (over: String)
+  (~ (seq (: left .) (: right .))
+    (str left " " right)
+  )
+)
 ```
 
 ```output
@@ -6033,78 +7767,81 @@ for word in words
 
 ### Pulls, bulk reads and delimiter reads release consumed input unless a mark is held.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
--- direct-reads()
--- marked-reads()
--- split-line-end()
+(main
+  (print (call direct-reads))
+  (print (call marked-reads))
+  (print (call split-line-end))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do direct-reads String
+(fn-do + direct-reads String
+  (let stream (call (of ChunkedTokenStream Byte) (call TextSource (as (* "abcdefghij\n" 30000) ([] Byte)))))
+  (let block ([] Byte 3))
+  (let good true)
+  (let largest Size 0)
+  (for (in record (..< 0 30000))
+    (let pulled (!! (<- stream)))
+    (let read (call (. stream read) 3 block))
+    (let head (call (. stream read) "g"))
+    (let tail (call (. stream read) "\n"))
+    (if (or (!= pulled 97u8) (!= read 3) (!= (call (. block slice-string) (..< 0 3)) "bcd") (!= head "ef") (!= tail "hij"))
+      (= good false)
+    )
+    (if (and (== record 20000) (!= (. stream location line) 20001))
+      (= good false)
+    )
+    (if (> (. stream buffer size) largest)
+      (= largest (. stream buffer size))
+    )
+  )
+  (let location (. stream location))
+  (return (str good " " largest " " (. location line) ":" (. location column)))
+)
 
-. stream = ChunkedTokenStream'Byte(TextSource(("abcdefghij\n" * 30000) as Byte[]))
-. block = Byte[3]
-. good = true
-. largest Size = 0
-for record in 0 .. < 30000
-    . pulled = (<- stream)!
-    . read = stream.read(3, block)
-    . head = stream.read("g")
-    . tail = stream.read("\n")
-    if pulled != 97u8 || read != 3 || block.slice-string(0 .. < 3) != "bcd" || head != "ef" || tail != "hij"
-        good = false
-    if record == 20000 && stream.location.line != 20001
-        good = false
-    if stream.buffer.size > largest
-        largest = stream.buffer.size
-. location = stream.location
-= "$good $largest ${location.line}:${location.column}"
+(fn-do + marked-reads String
+  (let stream (call (of ChunkedTokenStream Byte) (call TextSource (as (* "abcdefghij\n" 30000) ([] Byte)))))
+  (<- stream)
+  (let mark (call (. stream mark)))
+  (let count Size 0)
+  (while (call (. stream read) "\n")
+    (+= count 1)
+  )
+  (call (. stream rewind) mark)
+  (let location (. stream location))
+  (return (str count " " (== (!! (<- stream)) 98u8) " " (. location line) ":" (. location column)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do marked-reads String
+(fn-do + split-line-end String
+  (let stream (call (of ChunkedTokenStream Byte) (call TextSource (as (+ (* "a" 1023) "\r\nb") ([] Byte)))))
+  (for (in index (..< 0 1026))
+    (<- stream)
+  )
+  (let location (. stream location))
+  (return (str (. location line) ":" (. location column)))
+)
 
-. stream = ChunkedTokenStream'Byte(TextSource(("abcdefghij\n" * 30000) as Byte[]))
-<- stream
-. mark = stream.mark()
-. count Size = 0
-while stream.read("\n")
-    count += 1
-stream.rewind(mark)
-. location = stream.location
-= "$count ${(<- stream)! == 98u8} ${location.line}:${location.column}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do split-line-end String
-
-. stream = ChunkedTokenStream'Byte(TextSource((("a" * 1023) + "\r\nb") as Byte[]))
-for index in 0 .. < 1026
-    <- stream
-. location = stream.location
-= "${location.line}:${location.column}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextSource
-    is ByteReadable
-
-+ data Byte[]
-+ cursor Index
-
-────────────────────
-+ This
-    - data
-
-────────────────────
-+ do read Size
-    - size Size
-    - buffer Byte[]
-
-. remaining = data.size - cursor
-. amount = if remaining < size then remaining else size
-if amount
-    buffer[0 .. < amount] = data[cursor .. < cursor + amount]
-    cursor += amount
-= amount
+(type + TextSource
+  (implements ByteReadable)
+  (prop + data ([] Byte))
+  (prop + cursor Index)
+  (fn-do + This _
+    (param data _)
+  )
+  (fn-do + read Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (let remaining (- (. data size) cursor))
+    (let amount (if-expr (< remaining size) remaining size))
+    (if amount
+      (= ([] buffer (..< 0 amount)) ([] data (..< cursor (+ cursor amount))))
+      (+= cursor amount)
+    )
+    (return amount)
+  )
+)
 ```
 
 ```output
@@ -6115,45 +7852,51 @@ true 65536 30000:0
 
 ### A captured sequence is its whole matched text, whichever kinds of repetition it contains.
 
-```yumi
--- captured("c:d83d")
--- captured("t:d83d;")
--- captured("o:ab12")
--- captured("o:xyz")
--- captured("a:ab12")
--- captured("a:")
+```brix
+(main
+  (print (call captured "c:d83d"))
+  (print (call captured "t:d83d;"))
+  (print (call captured "o:ab12"))
+  (print (call captured "o:xyz"))
+  (print (call captured "a:ab12"))
+  (print (call captured "a:"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do captured String
-    - text String
+(fn-do + captured String
+  (param text String)
+  (return
+    (match text
+      (~ (| \counted \terminated \choice \absent))
+      (default
+        (inline "unmatched")
+      )
+    )
+  )
+)
 
-= match text
-    ~ \counted | \terminated | \choice | \absent
-    ?? "unmatched"
+(fn-expr + counted String (over: Char)
+  (~ (seq "c:" (: digits (seq (chars "dD") (chars "89abAB") ({} (chars "0-9a-fA-F") 2))))
+    (str "counted " digits)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ counted ~ Char String
+(fn-expr + terminated String (over: Char)
+  (~ (seq "t:" (: digits (seq (chars "dD") ({} (chars "0-9a-fA-F") 3))) ";")
+    (str "terminated " digits " " (. digits length))
+  )
+)
 
-~ "c:" digits ([dD] [89abAB] [0-9a-fA-F]{2})
-    "counted $digits"
+(fn-expr + choice String (over: Char)
+  (~ (seq "o:" (: text (| (seq ({} (chars "a-f") 2) ({} (chars "0-9") 2)) ({} (chars "x-z") 3))))
+    (str "choice " text)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ terminated ~ Char String
-
-~ "t:" digits ([dD] [0-9a-fA-F]{3}) ";"
-    "terminated $digits ${digits.length}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ choice ~ Char String
-
-~ "o:" text (([a-f]{2} [0-9]{2}) | [x-z]{3})
-    "choice $text"
-
-━━━━━━━━━━━━━━━━━━━━
-+ absent ~ Char String
-
-~ "a:" text ([a-f]{2} [0-9]{2})?
-    "absent ${text ?? "none"}"
+(fn-expr + absent String (over: Char)
+  (~ (seq "a:" (: text (? (seq ({} (chars "a-f") 2) ({} (chars "0-9") 2)))))
+    (str "absent " (?? text "none"))
+  )
+)
 ```
 
 ```output
@@ -6167,195 +7910,250 @@ absent none
 
 ### Named text rules keep their match results when callers discard them or read only span lengths.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-for source in ["héllo 42 wörld", "abc", "7 é", "héllo!", "'abc'", "12ab"]
-    -- "${measured(source)} ${discarded(source)} ${mixed(source)} ${deferred(source)}"
-    -- "${backtracked(source)} ${quoted(source)} ${nested(source)} ${module-measured(source)}"
+(main
+  (for (in source (list "héllo 42 wörld" "abc" "7 é" "héllo!" "'abc'" "12ab"))
+    (print (str (call measured source) " " (call discarded source) " " (call mixed source) " " (call deferred source)))
+    (print (str (call backtracked source) " " (call quoted source) " " (call nested source) " " (call module-measured source)))
+  )
+  (blank)
+  (let slow (call SlowSource (as (++ (* "日本語" 300) ";bb;é;") ([] Byte)) 7))
+  (print (call record-lengths (call (of ChunkedTokenStream Char) slow)))
+)
 
-. slow = SlowSource(("日本語" * 300 ++ ";bb;é;") as Byte[], 7)
--- record-lengths(ChunkedTokenStream'Char(slow))
+(fn-do + measured Size
+  (param source String)
+  (return
+    (match source
+      (~ (seq (? \digits) (: first \word) (? \space) (: second (? \word)))
+        (+ (* (. first length) 10) (?? (?. second length) 0))
+      )
+      (default
+        (inline 0)
+      )
+      (blank)
+      (lazy digits String
+        (pattern
+          (~ (seq (+ (chars "0-9")) (? " ")))
+        )
+      )
+      (blank)
+      (lazy word String
+        (pattern
+          (~ (+ (chars "a-zé-ö")))
+        )
+      )
+      (blank)
+      (lazy space
+        (pattern
+          (~ (+ (| " " (chars "0-9"))))
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do measured Size
-    - source String
-
-= match source
-    ~ \digits? first \word \space? second \word?
-        first.length * 10 + (second?.length ?? 0)
-    ?? 0
-
-    .. digits String ~
-        ~ [0-9]+ " "?
-
-    .. word String ~
-        ~ [a-zé-ö]+
-
-    .. space ~
-        ~ (" " | [0-9])+
-
-━━━━━━━━━━━━━━━━━━━━
-+ do discarded Size
-    - source String
-
-= match source
-    ~ \module-word
+(fn-do + discarded Size
+  (param source String)
+  (return
+    (match source
+      (~ \module-word
         2
-    ~ \module-number
+      )
+      (~ \module-number
         3
-    ~ \module-space
+      )
+      (~ \module-space
         5
-    ?? 0
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do mixed String
-    - source String
+(fn-do + mixed String
+  (param source String)
+  (return
+    (match source
+      (~ (seq (: word \module-word) \module-space (: number \module-number))
+        (str word ":" (. word length) "#" (. number length))
+      )
+      (~ (: word \module-word)
+        (str "<" (. word length) ">")
+      )
+      (default
+        (inline "miss")
+      )
+    )
+  )
+)
 
-= match source
-    ~ word \module-word \module-space number \module-number
-        "$word:${word.length}#${number.length}"
-    ~ word \module-word
-        "<${word.length}>"
-    ?? "miss"
+(fn-do + deferred Size
+  (param source String)
+  (return
+    (match source
+      (~ (seq (: word \module-word) (: rest (* .)))
+        (+ doubled (. rest length))
+        (lazy doubled (* (. word length) 2))
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do deferred Size
-    - source String
+(fn-do + backtracked String
+  (param source String)
+  (return
+    (match source
+      (~ (seq (: word \module-word) "!")
+        (str "bang " (. word length))
+      )
+      (~ (seq (: word \module-word) " ")
+        (str "gap " (+ (. word length) 100))
+      )
+      (~ (: word \module-word)
+        (str "plain " word)
+      )
+      (default
+        (inline "miss")
+      )
+    )
+  )
+)
 
-= match source
-    ~ word \module-word rest .*
-        doubled + rest.length
-        .. doubled = word.length * 2
-    ?? 0
+(fn-do + quoted Size
+  (param source String)
+  (return
+    (match source
+      (~ (seq (: quote \module-quote) (: body \module-word) $quote)
+        (+ (. body length) (* (. quote length) 100))
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do backtracked String
-    - source String
+(fn-do + nested Size
+  (param source String)
+  (return
+    (match source
+      (~ (: outer \prefixed-word)
+        (. outer length)
+      )
+      (default
+        (inline 0)
+      )
+      (blank)
+      (lazy prefixed-word String
+        (pattern
+          (~ (seq (? \module-number) \module-word))
+        )
+      )
+    )
+  )
+)
 
-= match source
-    ~ word \module-word "!"
-        "bang ${word.length}"
-    ~ word \module-word " "
-        "gap ${word.length + 100}"
-    ~ word \module-word
-        "plain $word"
-    ?? "miss"
+(fn-do + module-measured Size
+  (param source String)
+  (let total (as 0 Size))
+  (let tokens
+    (match source
+      (~ \measured-document)
+      (default
+        (inline (call (of ImmutableArray Size)))
+      )
+    )
+  )
+  (for (in token tokens)
+    (+= total token)
+  )
+  (return total)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do quoted Size
-    - source String
+(fn-do + record-lengths String
+  (param stream (of ChunkedTokenStream Char))
+  (let seen (call (of List String)))
+  (for (in length (~> stream \record-length))
+    (+= seen (str length))
+  )
+  (return (call (. "," join) seen))
+)
 
-= match source
-    ~ quote \module-quote body \module-word $quote
-        body.length + quote.length * 100
-    ?? 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do nested Size
-    - source String
-
-= match source
-    ~ outer \prefixed-word
-        outer.length
-    ?? 0
-
-    .. prefixed-word String ~
-        ~ \module-number? \module-word
-
-━━━━━━━━━━━━━━━━━━━━
-+ do module-measured Size
-    - source String
-
-. total = 0 as Size
-. tokens = match source
-    ~ \measured-document
-    ?? ImmutableArray'Size()
-for token in tokens
-    total += token
-= total
-
-━━━━━━━━━━━━━━━━━━━━
-+ do record-lengths String
-    - stream ChunkedTokenStream'Char
-
-. seen = List'String()
-for length in stream ~> \record-length
-    seen += "$length"
-= ",".join(seen)
-
-━━━━━━━━━━━━━━━━━━━━
-+ measured-document ~ Char
-
-~ tokens \measured-token+
+(fn-expr + measured-document _ (over: Char)
+  (~ (: tokens (+ \measured-token))
     tokens
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ measured-token ~ Char Size
-
-~ word \module-word
-    word.length * 2
-~ number \module-number
-    number.length * 3
-~ \module-space
+(fn-expr + measured-token Size (over: Char)
+  (~ (: word \module-word)
+    (* (. word length) 2)
+  )
+  (~ (: number \module-number)
+    (* (. number length) 3)
+  )
+  (~ \module-space
     100
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ record-length ~ Char Size
+(fn-expr + record-length Size (over: Char)
+  (~ (seq (: name \record-name) ";")
+    (. name length)
+  )
+)
 
-~ name \record-name ";"
-    name.length
+(fn-expr + record-name String (over: Char)
+  (~ (+ (seq (! ";") .)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ record-name ~ Char String
+(fn-expr + module-word String (over: Char)
+  (~ (+ (chars "a-zé-ö")))
+)
 
-~ (!";" .)+
+(fn-expr + module-number String (over: Char)
+  (~ (+ (chars "0-9")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ module-word ~ Char String
+(fn-expr + module-quote String (over: Char)
+  (~ (| "'" "\""))
+)
 
-~ [a-zé-ö]+
+(fn-expr + module-space _ (over: Char)
+  (~ (+ " "))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ module-number ~ Char String
-
-~ [0-9]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ module-quote ~ Char String
-
-~ "'" | "\""
-
-━━━━━━━━━━━━━━━━━━━━
-+ module-space ~ Char
-
-~ " "+
-
-━━━━━━━━━━━━━━━━━━━━
-+ SlowSource
-    is ByteReadable
-
-+ data Byte[]
-+ limit Size
-+ cursor Index
-
-────────────────────
-+ This
-    - data
-    - limit
-
-────────────────────
-+ do read Size
-    - size Size
-    - buffer Byte[]
-
-. remaining = data.size - cursor
-. wanted = if size < limit then size else limit
-. amount = if remaining < wanted then remaining else wanted
-if amount
-    buffer[0 .. < amount] = data[cursor .. < cursor + amount]
-    cursor += amount
-= amount
+(type + SlowSource
+  (implements ByteReadable)
+  (prop + data ([] Byte))
+  (prop + limit Size)
+  (prop + cursor Index)
+  (fn-do + This _
+    (param data _)
+    (param limit _)
+  )
+  (fn-do + read Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (let remaining (- (. data size) cursor))
+    (let wanted (if-expr (< size limit) size limit))
+    (let amount (if-expr (< remaining wanted) remaining wanted))
+    (if amount
+      (= ([] buffer (..< 0 amount)) ([] data (..< cursor (+ cursor amount))))
+      (+= cursor amount)
+    )
+    (return amount)
+  )
+)
 ```
 
 ```output
@@ -6376,192 +8174,224 @@ miss 0 4 10
 
 ### Discarded and length-only named text results never reach the participant materializer, and retained text outlives its source.
 
-```yumi
-/core/arena
-/core/tokenstream
-/BxGC/BxGC.h
+```brix
+(import /core/arena)
+(import /core/tokenstream)
+(import /BxGC/BxGC.h)
+(blank)
 
-. scratch = Arena()
-. arena = Arena()
-. owner = CountingOwner(arena)
-. input = "héllo 42!".codepoints
-. source = Array'Char(scratch.allocate'Char(input.length), input.length)
-for i in 0 .. < input.length
-    source[i] = input[i]
-. stream = ArrayTokenStream'Char(source)
+(main
+  (let scratch (call Arena))
+  (let arena (call Arena))
+  (let owner (call CountingOwner arena))
+  (let input (. "héllo 42!" codepoints))
+  (let source (call (of Array Char) (call (of (. scratch allocate) Char) (. input length)) (. input length)))
+  (for (in i (..< 0 (. input length)))
+    (= ([] source i) ([] input i))
+  )
+  (let stream (call (of ArrayTokenStream Char) source))
+  (blank)
+  (print (call discarded stream owner))
+  (print (. owner materialized))
+  (= (. stream cursor) 0)
+  (print (call measured stream owner))
+  (print (. owner materialized))
+  (= (. stream cursor) 0)
+  (print (call deferred stream owner))
+  (print (. owner materialized))
+  (= (. stream cursor) 0)
+  (print (call retried stream owner))
+  (print (. owner materialized))
+  (= (. stream cursor) 0)
+  (let kept (call kept stream owner))
+  (print (. owner materialized))
+  (= (. stream cursor) 0)
+  (let forwarded (call forwarded stream owner))
+  (print (. owner materialized))
+  (= (. stream cursor) 0)
+  (let unowned (call unowned stream))
+  (print (. owner materialized))
+  (blank)
+  (call (. scratch reset))
+  (for (in i (..< 0 20))
+    (let later
+      (match "later 7!"
+        (with owner)
+        (~ (seq (: word \counted-word) \counted-space (: number \counted-number) "!")
+          (str word "/" (. number length))
+        )
+        (throw (call Panic "later match failed"))
+      )
+    )
+    (call C:brixGCCollect)
+  )
+  (blank)
+  (print kept)
+  (print forwarded)
+  (print unowned)
+  (print (call (. arena owns) (as (. (as kept Atom) address) Pointer)))
+  (print (call (. arena owns) (as (. (as forwarded Atom) address) Pointer)))
+  (call (. scratch release))
+  (call (. arena release))
+)
 
--- discarded(stream, owner)
--- owner.materialized
-stream.cursor = 0
--- measured(stream, owner)
--- owner.materialized
-stream.cursor = 0
--- deferred(stream, owner)
--- owner.materialized
-stream.cursor = 0
--- retried(stream, owner)
--- owner.materialized
-stream.cursor = 0
-. kept = kept(stream, owner)
--- owner.materialized
-stream.cursor = 0
-. forwarded = forwarded(stream, owner)
--- owner.materialized
-stream.cursor = 0
-. unowned = unowned(stream)
--- owner.materialized
-
-scratch.reset()
-for i in 0 .. < 20
-    . later = match "later 7!"
-        with owner
-        ~ word \counted-word \counted-space number \counted-number "!"
-            "$word/${number.length}"
-        ?! Panic("later match failed")
-    C:brixGCCollect()
-
--- kept
--- forwarded
--- unowned
--- arena.owns((kept as Atom).address as Pointer)
--- arena.owns((forwarded as Atom).address as Pointer)
-scratch.release()
-arena.release()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do discarded Size
-    - stream TokenStream'Char
-    - owner CountingOwner
-
-= match stream
-    with owner
-    ~ \counted-word
+(fn-do + discarded Size
+  (param stream (of TokenStream Char))
+  (param owner CountingOwner)
+  (return
+    (match stream
+      (with owner)
+      (~ \counted-word
         7
-    ?? 0
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do measured Size
-    - stream TokenStream'Char
-    - owner CountingOwner
+(fn-do + measured Size
+  (param stream (of TokenStream Char))
+  (param owner CountingOwner)
+  (return
+    (match stream
+      (with owner)
+      (~ (seq (: word \counted-word) \counted-space (: number \counted-number) "!")
+        (+ (* (. word length) 10) (. number length))
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 
-= match stream
-    with owner
-    ~ word \counted-word \counted-space number \counted-number "!"
-        word.length * 10 + number.length
-    ?? 0
+(fn-do + deferred Size
+  (param stream (of TokenStream Char))
+  (param owner CountingOwner)
+  (return
+    (match stream
+      (with owner)
+      (~ (seq (: word \counted-word) \counted-space (: number \counted-number) "!")
+        (+ weight (. number length))
+        (lazy weight (* (. word length) 10))
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do deferred Size
-    - stream TokenStream'Char
-    - owner CountingOwner
+(fn-do + retried Size
+  (param stream (of TokenStream Char))
+  (param owner CountingOwner)
+  (return
+    (match stream
+      (with owner)
+      (~ (seq (: word \counted-word) \counted-space (: number \counted-number) "?")
+        (. word length)
+      )
+      (~ (seq (: word \counted-word) \counted-space (: number \counted-number) "!")
+        (+ (* (. word length) 100) (. number length))
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 
-= match stream
-    with owner
-    ~ word \counted-word \counted-space number \counted-number "!"
-        weight + number.length
-        .. weight = word.length * 10
-    ?? 0
+(fn-do + kept String
+  (param stream (of TokenStream Char))
+  (param owner CountingOwner)
+  (return
+    (match stream
+      (with owner)
+      (~ (seq (: word \counted-word) \counted-space (: number \counted-number) "!")
+        (str word "/" (. number length))
+      )
+      (default
+        (inline "")
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do retried Size
-    - stream TokenStream'Char
-    - owner CountingOwner
-
-= match stream
-    with owner
-    ~ word \counted-word \counted-space number \counted-number "?"
-        word.length
-    ~ word \counted-word \counted-space number \counted-number "!"
-        word.length * 100 + number.length
-    ?? 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do kept String
-    - stream TokenStream'Char
-    - owner CountingOwner
-
-= match stream
-    with owner
-    ~ word \counted-word \counted-space number \counted-number "!"
-        "$word/${number.length}"
-    ?? ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ do forwarded String
-    - stream TokenStream'Char
-    - owner CountingOwner
-
-= match stream
-    with owner
-    ~ word \counted-word \counted-space \counted-number "!"
+(fn-do + forwarded String
+  (param stream (of TokenStream Char))
+  (param owner CountingOwner)
+  (return
+    (match stream
+      (with owner)
+      (~ (seq (: word \counted-word) \counted-space \counted-number "!")
         word
-    ?? ""
+      )
+      (default
+        (inline "")
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do unowned String
-    - stream TokenStream'Char
+(fn-do + unowned String
+  (param stream (of TokenStream Char))
+  (return
+    (match stream
+      (~ (seq (: word \counted-word) \counted-space (: number \counted-number) "!")
+        (str word "/" (. number length))
+      )
+      (default
+        (inline "")
+      )
+    )
+  )
+)
 
-= match stream
-    ~ word \counted-word \counted-space number \counted-number "!"
-        "$word/${number.length}"
-    ?? ""
+(fn-expr + counted-word String (over: Char)
+  (~ (+ (chars "a-zé-ö")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ counted-word ~ Char String
+(fn-expr + counted-number String (over: Char)
+  (~ (+ (chars "0-9")))
+)
 
-~ [a-zé-ö]+
+(fn-expr + counted-space _ (over: Char)
+  (~ (+ " "))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ counted-number ~ Char String
-
-~ [0-9]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ counted-space ~ Char
-
-~ " "+
-
-━━━━━━━━━━━━━━━━━━━━
-+ CountingOwner
-    is PatternMaterializationRoot'U32
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternValueMaterializer'String'String
-    is PatternRollback'Size
-
-+ arena Arena
-+ materialized Size
-
-────────────────────
-+ This
-    - arena Arena
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-materialized += 1
-= arena.copy-span(source, start, end)
-
-────────────────────
-+ do materialize-value String
-    - source String
-
-materialized += 1
-= arena.copy-string(source)
-
-────────────────────
-+ mark Size
-
-?! Panic("Unexpected source materialization mark")
-
-────────────────────
-+ do rewind
-    - mark Size
-
-?! Panic("Unexpected source materialization rewind")
+(type + CountingOwner
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternValueMaterializer String String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + materialized Size)
+  (fn-do + This _
+    (param arena Arena)
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= materialized 1)
+    (return (call (. arena copy-span) source start end))
+  )
+  (fn-do + materialize-value String
+    (param source String)
+    (+= materialized 1)
+    (return (call (. arena copy-string) source))
+  )
+  (fn-expr + mark Size
+    (throw (call Panic "Unexpected source materialization mark"))
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (throw (call Panic "Unexpected source materialization rewind"))
+  )
+)
 ```
 
 ```output
@@ -6585,129 +8415,134 @@ true
 
 ### An action that reads only numbers of `it`, an optional name read only through `?.`, and a name captured over alternatives that end with a sequence never reach the participant materializer.
 
-```yumi
-/core/arena
-/core/tokenstream
+```brix
+(import /core/arena)
+(import /core/tokenstream)
+(blank)
 
-. scratch = Arena()
-. arena = Arena()
-. owner = CountingOwner(arena)
-. stream = text-stream(scratch, "héllo 42!")
-. short = text-stream(scratch, "héllo !")
+(main
+  (let scratch (call Arena))
+  (let arena (call Arena))
+  (let owner (call CountingOwner arena))
+  (let stream (call text-stream scratch "héllo 42!"))
+  (let short (call text-stream scratch "héllo !"))
+  (blank)
+  (print (call it-measured stream owner))
+  (print (. owner materialized))
+  (= (. stream cursor) 0)
+  (print (call optional-measured stream owner))
+  (print (. owner materialized))
+  (print (call optional-measured short owner))
+  (print (. owner materialized))
+  (= (. stream cursor) 0)
+  (print (call choice-measured stream owner))
+  (print (. owner materialized))
+  (call (. scratch release))
+  (call (. arena release))
+)
 
--- it-measured(stream, owner)
--- owner.materialized
-stream.cursor = 0
--- optional-measured(stream, owner)
--- owner.materialized
--- optional-measured(short, owner)
--- owner.materialized
-stream.cursor = 0
--- choice-measured(stream, owner)
--- owner.materialized
-scratch.release()
-arena.release()
+(fn-do + text-stream (of ArrayTokenStream Char)
+  (param scratch Arena)
+  (param text String)
+  (let input (. text codepoints))
+  (let source (call (of Array Char) (call (of (. scratch allocate) Char) (. input length)) (. input length)))
+  (for (in i (..< 0 (. input length)))
+    (= ([] source i) ([] input i))
+  )
+  (return (call (of ArrayTokenStream Char) source))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do text-stream ArrayTokenStream'Char
-    - scratch Arena
-    - text String
+(fn-do + it-measured Size
+  (param stream (of TokenStream Char))
+  (param owner CountingOwner)
+  (return
+    (match stream
+      (with owner)
+      (~ \counted-word
+        (* (. it length) 2)
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 
-. input = text.codepoints
-. source = Array'Char(scratch.allocate'Char(input.length), input.length)
-for i in 0 .. < input.length
-    source[i] = input[i]
-= ArrayTokenStream'Char(source)
+(fn-do + optional-measured Size
+  (param stream (of TokenStream Char))
+  (param owner CountingOwner)
+  (return
+    (match stream
+      (with owner)
+      (~ (seq (: word \counted-word) \counted-space (: number (? \counted-number)) "!")
+        (+ (* (. word length) 10) (?? (?. number length) 0))
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do it-measured Size
-    - stream TokenStream'Char
-    - owner CountingOwner
+(fn-do + choice-measured Size
+  (param stream (of TokenStream Char))
+  (param owner CountingOwner)
+  (return
+    (match stream
+      (with owner)
+      (~ (seq (: token (| \counted-number (seq \counted-word \counted-space \counted-number))) (: rest (* .)))
+        (+ (* (. token length) 10) (. rest length))
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 
-= match stream
-    with owner
-    ~ \counted-word
-        it.length * 2
-    ?? 0
+(fn-expr + counted-word String (over: Char)
+  (~ (+ (chars "a-zé-ö")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do optional-measured Size
-    - stream TokenStream'Char
-    - owner CountingOwner
+(fn-expr + counted-number String (over: Char)
+  (~ (+ (chars "0-9")))
+)
 
-= match stream
-    with owner
-    ~ word \counted-word \counted-space number \counted-number? "!"
-        word.length * 10 + (number?.length ?? 0)
-    ?? 0
+(fn-expr + counted-space _ (over: Char)
+  (~ (+ " "))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do choice-measured Size
-    - stream TokenStream'Char
-    - owner CountingOwner
-
-= match stream
-    with owner
-    ~ token (\counted-number | (\counted-word \counted-space \counted-number)) rest .*
-        token.length * 10 + rest.length
-    ?? 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ counted-word ~ Char String
-
-~ [a-zé-ö]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ counted-number ~ Char String
-
-~ [0-9]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ counted-space ~ Char
-
-~ " "+
-
-━━━━━━━━━━━━━━━━━━━━
-+ CountingOwner
-    is PatternMaterializationRoot'U32
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternValueMaterializer'String'String
-    is PatternRollback'Size
-
-+ arena Arena
-+ materialized Size
-
-────────────────────
-+ This
-    - arena Arena
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-materialized += 1
-= arena.copy-span(source, start, end)
-
-────────────────────
-+ do materialize-value String
-    - source String
-
-materialized += 1
-= arena.copy-string(source)
-
-────────────────────
-+ mark Size
-
-?! Panic("Unexpected source materialization mark")
-
-────────────────────
-+ do rewind
-    - mark Size
-
-?! Panic("Unexpected source materialization rewind")
+(type + CountingOwner
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternValueMaterializer String String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + materialized Size)
+  (fn-do + This _
+    (param arena Arena)
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= materialized 1)
+    (return (call (. arena copy-span) source start end))
+  )
+  (fn-do + materialize-value String
+    (param source String)
+    (+= materialized 1)
+    (return (call (. arena copy-string) source))
+  )
+  (fn-expr + mark Size
+    (throw (call Panic "Unexpected source materialization mark"))
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (throw (call Panic "Unexpected source materialization rewind"))
+  )
+)
 ```
 
 ```output
@@ -6723,55 +8558,60 @@ materialized += 1
 
 ### Length-only captures of named text rules leave rollback of a failed alternative intact.
 
-```yumi
-. journal = ParseJournal()
-. result = match "héllo 42!"
-    with journal
-    ~ word \journal-word " " \journal-count "?"
-        word.length
-    ~ word \journal-word " " \journal-count "!"
-        word.length + 10
-    ?? 0
+```brix
+(main
+  (let journal (call ParseJournal))
+  (let result
+    (match "héllo 42!"
+      (with journal)
+      (~ (seq (: word \journal-word) " " \journal-count "?")
+        (. word length)
+      )
+      (~ (seq (: word \journal-word) " " \journal-count "!")
+        (+ (. word length) 10)
+      )
+      (default
+        (inline 0)
+      )
+      (blank)
+      (lazy journal-count I32
+        (pattern
+          @rollback
+          (~ (: digits \journal-digits)
+            (+ (call (. journal increment)) (as (. digits length) I32))
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (print result)
+  (print (. journal count))
+)
 
-    .. journal-count I32 ~ @rollback
-        ~ digits \journal-digits
-            journal.increment() + (digits.length as I32)
+(fn-expr + journal-word String (over: Char)
+  (~ (+ (chars "a-zé-ö")))
+)
 
--- result
--- journal.count
+(fn-expr + journal-digits String (over: Char)
+  (~ (+ (chars "0-9")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ journal-word ~ Char String
-
-~ [a-zé-ö]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ journal-digits ~ Char String
-
-~ [0-9]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ ParseJournal
-    is PatternRollback'Size
-
-+ count Size
-
-────────────────────
-+ mark Size
-
-count + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-count = mark - 1
-
-────────────────────
-+ do increment I32
-
-count += 1
-= 7
+(type + ParseJournal
+  (implements (of PatternRollback Size))
+  (prop + count Size)
+  (fn-expr + mark Size
+    (+ count 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (= count (- mark 1))
+  )
+  (fn-do + increment I32
+    (+= count 1)
+    (return 7)
+  )
+)
 ```
 
 ```output
@@ -6779,48 +8619,48 @@ count += 1
 1
 ```
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. source = StagedSource(["ab;", "c", "d;e", ";"])
-. records = ChunkedTokenStream'Char(source) ~> \record
--- <- records
--- source.read-count
--- <- records
--- source.read-count
--- <- records
--- source.read-count
--- (<- records) == null
+(main
+  (let source (call StagedSource (list "ab;" "c" "d;e" ";")))
+  (let records (~> (call (of ChunkedTokenStream Char) source) \record))
+  (print (<- records))
+  (print (. source read-count))
+  (print (<- records))
+  (print (. source read-count))
+  (print (<- records))
+  (print (. source read-count))
+  (print (== (<- records) null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ record ~ Char String
-
-~ name [a-z]+ ";"
+(fn-expr + record String (over: Char)
+  (~ (seq (: name (+ (chars "a-z"))) ";")
     name
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ StagedSource
-    is ByteReadable
-
-+ stages [String]
-+ read-count Size
-
-────────────────────
-+ This
-    - stages
-
-────────────────────
-+ do read Size
-    - size Size
-    - buffer Byte[]
-
-. index = read-count
-read-count += 1
-if index >= stages.length
-    = 0
-. bytes = stages[index] as Byte[]
-buffer[0 .. < bytes.size] = bytes
-= bytes.size
+(type + StagedSource
+  (implements ByteReadable)
+  (prop + stages (list String))
+  (prop + read-count Size)
+  (fn-do + This _
+    (param stages _)
+  )
+  (fn-do + read Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (let index read-count)
+    (+= read-count 1)
+    (if (>= index (. stages length))
+      (return 0)
+    )
+    (let bytes (as ([] stages index) ([] Byte)))
+    (= ([] buffer (..< 0 (. bytes size))) bytes)
+    (return (. bytes size))
+  )
+)
 ```
 
 ```output
@@ -6833,98 +8673,122 @@ e
 true
 ```
 
-```yumi crash
--- match "a"
-    ~ (...outer "z")* \callee(into missing: outer)
+```brix crash
+(main
+  (print
+    (match "a"
+      (~ (seq (* (: ...outer "z")) (call \callee (into missing outer)))
         outer
-
-    .. callee ImmutableArray'String ~
-        ~ ...values "a"
+      )
+      (blank)
+      (lazy callee (of ImmutableArray String)
+        (pattern
+          (~ (: ...values "a")
             values
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Pattern callee has no accumulating capture missing
-<no file:3>
-        ~ (...outer "z")* \callee(into missing: outer)
-                                  ^^^^^^^^^^^^^^^^^^^
+<no file:5>
+          (~ (seq (* (: ...outer "z")) (call \callee (into missing outer)))
+                                                     ^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
--- match "a"
-    ~ \callee(into values: outer)
-
-    .. callee ImmutableArray'String ~
-        ~ ...values "a"
+```brix crash
+(main
+  (print
+    (match "a"
+      (~ (call \callee (into values outer)))
+      (blank)
+      (lazy callee (of ImmutableArray String)
+        (pattern
+          (~ (: ...values "a")
             values
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Collector mapping target outer is not an active accumulating capture
-<no file:3>
-        ~ \callee(into values: outer)
-                  ^^^^^^^^^^^^^^^^^^
+<no file:5>
+          (~ (call \callee (into values outer)))
+                           ^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-. result = match "x"
-    ~ \mixed
-?! Panic("mixed choice failed")
-    if !result
+```brix
+(main
+  (let result
+    (match "x"
+      (~ \mixed)
+    )
+  )
+  (throw (call Panic "mixed choice failed") (if (not result)))
+  (blank)
+  (print (str result))
+)
 
--- "$result"
-
-━━━━━━━━━━━━━━━━━━━━
-+ mixed ~ Char
-
-~ "x"
+(fn-expr + mixed _ (over: Char)
+  (~ "x"
     "value"
-~ .
+  )
+  (~ .)
+)
 ```
 
 ```output
 value
 ```
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. text = "ab;" * 30000
-. stream = ChunkedTokenStream'Char(TextSource(text as Byte[]))
-. count Size = 0
-for name in stream ~> \field
-    count += 1
--- count
--- stream.buffer.size < text.size
+(main
+  (let text (* "ab;" 30000))
+  (let stream (call (of ChunkedTokenStream Char) (call TextSource (as text ([] Byte)))))
+  (let count Size 0)
+  (for (in name (~> stream \field))
+    (+= count 1)
+  )
+  (print count)
+  (print (< (. stream buffer size) (. text size)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ field ~ Char String
-
-~ name [a-z]+ ";"
+(fn-expr + field String (over: Char)
+  (~ (seq (: name (+ (chars "a-z"))) ";")
     name
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TextSource
-    is ByteReadable
-
-+ data Byte[]
-+ cursor Index
-
-────────────────────
-+ This
-    - data
-
-────────────────────
-+ do read Size
-    - size Size
-    - buffer Byte[]
-
-. remaining = data.size - cursor
-. amount = if remaining < size then remaining else size
-if amount
-    buffer[0 .. < amount] = data[cursor .. < cursor + amount]
-    cursor += amount
-= amount
+(type + TextSource
+  (implements ByteReadable)
+  (prop + data ([] Byte))
+  (prop + cursor Index)
+  (fn-do + This _
+    (param data _)
+  )
+  (fn-do + read Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (let remaining (- (. data size) cursor))
+    (let amount (if-expr (< remaining size) remaining size))
+    (if amount
+      (= ([] buffer (..< 0 amount)) ([] data (..< cursor (+ cursor amount))))
+      (+= cursor amount)
+    )
+    (return amount)
+  )
+)
 ```
 
 ```output
@@ -6932,55 +8796,62 @@ if amount
 true
 ```
 
-```yumi
-/core/arena
-/core/tokenstream
+```brix
+(import /core/arena)
+(import /core/tokenstream)
+(blank)
 
-. arena = Arena()
-. helper = SourceOnlyOwner(arena)
-. stream = ArrayTokenStream'Char("éabc😀!".codepoints)
--- source-only-helper(stream, helper)
-arena.release()
+(main
+  (let arena (call Arena))
+  (let helper (call SourceOnlyOwner arena))
+  (let stream (call (of ArrayTokenStream Char) (. "éabc😀!" codepoints)))
+  (print (call source-only-helper stream helper))
+  (call (. arena release))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do source-only-helper Size without gc
-    - stream TokenStream'Char
-    - helper SourceOnlyOwner
+(fn-do + source-only-helper Size (without gc)
+  (param stream (of TokenStream Char))
+  (param helper SourceOnlyOwner)
+  (return
+    (match stream
+      (with helper)
+      (~ (call \source-only-measure (~ (seq . (+ (chars "a-z")) . "!"))))
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 
-= match stream
-    with helper
-    ~ \source-only-measure(~ . [a-z]+ . "!")
-    ?? 0
+(fn-expr + source-only-measure Size (over: Char)
+  (param pattern (of PatternFunc Char String))
+  (~ \local-value
+    (. it length)
+  )
+  (where
+    (lazy local-value String
+      (pattern
+        (~ $pattern)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ source-only-measure ~ Char Size
-    - pattern PatternFunc'Char'String
-
-~ \local-value
-    it.length
-
-.. local-value String ~
-    ~ $pattern
-
-━━━━━━━━━━━━━━━━━━━━
-+ SourceOnlyOwner
-    is PatternMaterializationRoot'U32
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-
-+ arena Arena
-
-────────────────────
-+ This
-    - arena Arena
-
-────────────────────
-+ materialize-capture'Token String without gc
-    - source Token[]
-    - start Index
-    - end Index
-
-arena.copy-span(source, start, end)
+(type + SourceOnlyOwner
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (prop + arena Arena)
+  (fn-do + This _
+    (param arena Arena)
+  )
+  (fn-expr + (of materialize-capture Token) String (without gc)
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (call (. arena copy-span) source start end)
+  )
+)
 ```
 
 ```output
@@ -6989,19 +8860,35 @@ arena.copy-span(source, start, end)
 
 ### Each arm of a match on text must match all of it. An arm that leaves text over fails, and the next arm is tried.
 
-```yumi
--- match "ab"
-    ~ "a"
-    ~ "ab"
--- match "ab"
-    ~ "a"
+```brix
+(main
+  (print
+    (match "ab"
+      (~ "a")
+      (~ "ab")
+    )
+  )
+  (print
+    (match "ab"
+      (~ "a"
         1
-    ~ "ab"
+      )
+      (~ "ab"
         2
--- match "abc"
-    ~ "a"
+      )
+    )
+  )
+  (print
+    (match "abc"
+      (~ "a"
         "a"
-    ?? "none"
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -7010,18 +8897,25 @@ ab
 none
 ```
 
-```yumi
--- counted("abc")
--- counted("a")
+```brix
+(main
+  (print (call counted "abc"))
+  (print (call counted "a"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do counted Size
-    - source String
-
-= match source
-    ~ "a"
+(fn-do + counted Size
+  (param source String)
+  (return
+    (match source
+      (~ "a"
         5
-    ?? 0
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -7029,59 +8923,65 @@ none
 5
 ```
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-. helper = Owner(arena)
--- measure("abc", helper)
--- helper.count
-arena.release()
+(main
+  (let arena (call Arena))
+  (let helper (call Owner arena))
+  (print (call measure "abc" helper))
+  (print (. helper count))
+  (call (. arena release))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do measure Size
-    - source String
-    - helper Owner
+(fn-do + measure Size
+  (param source String)
+  (param helper Owner)
+  (return
+    (match source
+      (with helper)
+      (~ \outer)
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 
-= match source
-    with helper
-    ~ \outer
-    ?? 0
+(fn-expr + outer Size (over: Char)
+  (~ \inner
+    (. it length)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ outer ~ Char Size
+(fn-expr + inner String (over: Char)
+  (~ (+ (chars "a-z"))
+    (+ it "!")
+  )
+)
 
-~ \inner
-    it.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ inner ~ Char String
-
-~ [a-z]+
-    it + "!"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Owner
-    is PatternMaterializationRoot'U32
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-
-+ arena Arena
-+ count I32
-
-────────────────────
-+ This
-    - arena Arena
-
-────────────────────
-+ materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-do
-    count += 1
-arena.copy-span(source, start, end)
+(type + Owner
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (prop + arena Arena)
+  (prop + count I32)
+  (fn-do + This _
+    (param arena Arena)
+  )
+  (fn-expr + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (before
+      (do
+        (+= count 1)
+      )
+    )
+    (call (. arena copy-span) source start end)
+  )
+)
 ```
 
 ```output
@@ -7089,33 +8989,39 @@ arena.copy-span(source, start, end)
 1
 ```
 
-```yumi
-. h = H()
--- match "abc"
-    with h
-    ~ \word
-    ?? "none"
+```brix
+(main
+  (let h (call H))
+  (print
+    (match "abc"
+      (with h)
+      (~ \word)
+      (default
+        (inline "none")
+      )
+      (blank)
+      (lazy word String
+        (pattern
+          (~ (+ (chars "a-z")))
+        )
+      )
+    )
+  )
+)
 
-    .. word String ~
-        ~ [a-z]+
-
-
-━━━━━━━━━━━━━━━━━━━━
-+ H
-    is PatternMaterializationRoot'String
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-
-+ count Size
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
--- "  mc $start $end"
-= source.slice-string(start .. < end) + "*"
+(type + H
+  (implements (of PatternMaterializationRoot String))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (prop + count Size)
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (print (str "  mc " start " " end))
+    (return (+ (call (. source slice-string) (..< start end)) "*"))
+  )
+)
 ```
 
 ```output
@@ -7123,58 +9029,63 @@ arena.copy-span(source, start, end)
 abc*
 ```
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-. helper = Owner(arena)
--- run("abc!", helper)
--- helper.count
+(main
+  (let arena (call Arena))
+  (let helper (call Owner arena))
+  (print (call run "abc!" helper))
+  (print (. helper count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run Size
-    - source String
-    - helper Owner
+(fn-do + run Size
+  (param source String)
+  (param helper Owner)
+  (return
+    (match (. source codepoints)
+      (with helper)
+      (~ (call \measure (~ \word)))
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 
-= match source.codepoints
-    with helper
-    ~ \measure(~ \word)
-    ?? 0
+(fn-expr + word String (over: Char)
+  (~ (+ (chars "a-z")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ word ~ Char String
+(fn-expr + measure Size (over: Char)
+  (param pattern (of PatternFunc Char String))
+  (~ (seq $pattern "!")
+    (. it length)
+  )
+)
 
-~ [a-z]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ measure ~ Char Size
-    - pattern PatternFunc'Char'String
-
-~ $pattern "!"
-    it.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ Owner
-    is PatternMaterializationRoot'U32
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-
-+ arena Arena
-+ count I32
-
-────────────────────
-+ This
-    - arena Arena
-
-────────────────────
-+ materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-do
-    count += 1
-arena.copy-span(source, start, end)
+(type + Owner
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (prop + arena Arena)
+  (prop + count I32)
+  (fn-do + This _
+    (param arena Arena)
+  )
+  (fn-expr + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (before
+      (do
+        (+= count 1)
+      )
+    )
+    (call (. arena copy-span) source start end)
+  )
+)
 ```
 
 ```output
@@ -7184,54 +9095,53 @@ arena.copy-span(source, start, end)
 
 ### A pattern given to a rule and matched as `$pattern` gives what the pattern gives, as `\pattern` does, when it is all of the rule's arm under a helper that makes text.
 
-```yumi
-. helper = Owner()
--- match "ab"
-    with helper
-    ~ \wrap(~ \loud)
-    ?? "none"
--- helper.count
+```brix
+(main
+  (let helper (call Owner))
+  (print
+    (match "ab"
+      (with helper)
+      (~ (call \wrap (~ \loud)))
+      (default
+        (inline "none")
+      )
+    )
+  )
+  (print (. helper count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ wrap ~ Char String
-    - pattern PatternFunc'Char'String
+(fn-expr + wrap String (over: Char)
+  (param pattern (of PatternFunc Char String))
+  (~ $pattern)
+)
 
-~ $pattern
-
-━━━━━━━━━━━━━━━━━━━━
-+ loud ~ Char String
-
-~ [a-z]+
+(fn-expr + loud String (over: Char)
+  (~ (+ (chars "a-z"))
     "LOUD"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Owner
-    is PatternMaterializationRoot'U32
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternRollback'Int
-
-+ count = 0
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-count += 1
-= "<" + source.slice-string(start .. < end) + ">"
-
-────────────────────
-+ mark Int
-
-count
-
-────────────────────
-+ do rewind
-    - mark Int
-
-count = mark
+(type + Owner
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternRollback Int))
+  (prop + count _ (= 0))
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= count 1)
+    (return (+ "<" (call (. source slice-string) (..< start end)) ">"))
+  )
+  (fn-expr + mark Int
+    count
+  )
+  (fn-do + rewind _
+    (param mark Int)
+    (= count mark)
+  )
+)
 ```
 
 ```output
@@ -7239,25 +9149,45 @@ LOUD
 0
 ```
 
-```yumi
--- match "aa"
-    ~ (\r "a"){2}
+```brix
+(main
+  (print
+    (match "aa"
+      (~ ({} (seq \r "a") 2)
         1
-    ?? 0
--- match "a"
-    ~ (\r "a"){2}
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+  (print
+    (match "a"
+      (~ ({} (seq \r "a") 2)
         1
-    ?? 0
--- match "aab"
-    ~ (\r "a"){1,2} "b"
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+  (print
+    (match "aab"
+      (~ (seq ({} (seq \r "a") 1 2) "b")
         3
-    ?? 0
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ r ~ Char I32
-
-~ ""
+(fn-expr + r I32 (over: Char)
+  (~ ""
     7
+  )
+)
 ```
 
 ```output
@@ -7266,102 +9196,124 @@ LOUD
 3
 ```
 
-```yumi
--- g(4)
+```brix
+(main
+  (print (call g 4))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ g I32
-    - n Size
-
-match "z"
-    ~ "z"
-        n as I32
-    ?! Panic("x")
+(fn-expr + g I32
+  (param n Size)
+  (match "z"
+    (~ "z"
+      (as n I32)
+    )
+    (throw (call Panic "x"))
+  )
+)
 ```
 
 ```output
 4
 ```
 
-```yumi crash
--- run("abc!")
+```brix crash
+(main
+  (print (call run "abc!"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run Size
-    - source String
+(fn-do + run Size
+  (param source String)
+  (return
+    (match source
+      (~ (call \outer (~ (+ (chars "a-z")))))
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 
-= match source
-    ~ \outer(~ [a-z]+)
-    ?? 0
+(fn-expr + outer Size (over: Char)
+  (param pattern (of PatternFunc Char String))
+  (~ (call \measure pattern))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ outer ~ Char Size
-    - pattern PatternFunc'Char'String
-
-~ \measure(pattern)
-
-━━━━━━━━━━━━━━━━━━━━
-+ measure ~ Char Size
-    - pattern PatternFunc'Char'String
-
-~ $pattern "!"
-    it.length
+(fn-expr + measure Size (over: Char)
+  (param pattern (of PatternFunc Char String))
+  (~ (seq $pattern "!")
+    (. it length)
+  )
+)
 ```
 
 ```output
 Exception: Name "pattern" not found
-<no file:16>
-    ~ \measure(pattern)
-               ^^^^^^^
+<no file:20>
+      (~ (call \measure pattern))
+                        ^^^^^^^
 ```
 
-```yumi crash
--- run("abc!")
+```brix crash
+(main
+  (print (call run "abc!"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run Size
-    - source String
+(fn-do + run Size
+  (param source String)
+  (return
+    (match source
+      (~ (call \measure (~ (+ (chars "a-z")))))
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 
-= match source
-    ~ \measure(~ [a-z]+)
-    ?? 0
+(fn-do + keep Size
+  (param p (of PatternFunc Char String))
+  (return 5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do keep Size
-    - p PatternFunc'Char'String
-
-= 5
-
-━━━━━━━━━━━━━━━━━━━━
-+ measure ~ Char Size
-    - pattern PatternFunc'Char'String
-
-~ $pattern "!"
-    it.length + keep(pattern)
+(fn-expr + measure Size (over: Char)
+  (param pattern (of PatternFunc Char String))
+  (~ (seq $pattern "!")
+    (+ (. it length) (call keep pattern))
+  )
+)
 ```
 
 ```output
 Exception: Unable to compile pattern action: Name not found
-<no file:22>
-    ~ $pattern "!"
-    ^^^^^^^^^^^^^
+<no file:25>
+      (~ (seq $pattern "!")
+      ^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A match's local rule that captures a name and runs an action can be given to a rule as a pattern.
 
-```yumi
--- match "[x]"
-    ~ \bracketed(~ \shout)
-    .. shout ~
-        ~ letter [a-z]
-            letter + "!"
+```brix
+(main
+  (print
+    (match "[x]"
+      (~ (call \bracketed (~ \shout)))
+      (lazy shout
+        (pattern
+          (~ (: letter (chars "a-z"))
+            (+ letter "!")
+          )
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ bracketed ~ Char String
-    - inner PatternFunc'Char'String
-
-~ "[" value $inner "]"
+(fn-expr + bracketed String (over: Char)
+  (param inner (of PatternFunc Char String))
+  (~ (seq "[" (: value $inner) "]")
     value
+  )
+)
 ```
 
 ```output
@@ -7370,117 +9322,127 @@ x!
 
 ### A pattern given to a rule as an argument can't capture names.
 
-```yumi compile-error
--- match "[x]"
-    ~ \bracketed(~ letter [a-z])
+```brix compile-error
+(main
+  (print
+    (match "[x]"
+      (~ (call \bracketed (~ (: letter (chars "a-z")))))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ bracketed ~ Char String
-    - inner PatternFunc'Char'String
-
-~ "[" value $inner "]"
+(fn-expr + bracketed String (over: Char)
+  (param inner (of PatternFunc Char String))
+  (~ (seq "[" (: value $inner) "]")
     value
+  )
+)
 ```
 
 ```output
 Exception: A pattern given as an argument can't capture names
-<no file:3>
-        ~ \bracketed(~ letter [a-z])
-                       ^^^^^^^^^^^^
+<no file:5>
+          (~ (call \bracketed (~ (: letter (chars "a-z")))))
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-. words = match "ab,c,de!"
-    ~ (\letter | \digit)* (\letter | ",")* "!"
+```brix
+(main
+  (let words
+    (match "ab,c,de!"
+      (~ (seq (* (| \letter \digit)) (* (| \letter ",")) "!")
         "done"
-    ?? "none"
--- words
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+  (print words)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ letter ~ Char Int
-
-~ [a-z]
+(fn-expr + letter Int (over: Char)
+  (~ (chars "a-z")
     1
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ digit ~ Char String
-
-~ [0-9]
+(fn-expr + digit String (over: Char)
+  (~ (chars "0-9")
     it
+  )
+)
 ```
 
 ```output
 done
 ```
 
-```yumi
-. helper = Helper()
-. word = match "alpha!"
-    with helper
-    ~ \tagged
-    ?! Panic("failed")
-
-    .. tagged Tag ~
-        ~ text [a-z]+ "!"
+```brix
+(main
+  (let helper (call Helper))
+  (let word
+    (match "alpha!"
+      (with helper)
+      (~ \tagged)
+      (throw (call Panic "failed"))
+      (blank)
+      (lazy tagged Tag
+        (pattern
+          (~ (seq (: text (+ (chars "a-z"))) "!")
             text
--- word.size
--- helper.count
+          )
+        )
+      )
+    )
+  )
+  (print (. word size))
+  (print (. helper count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tag is Tuple
+(type + Tag (is Tuple)
+  (prop + size Size)
+)
 
-+ size Size
+(type + Helper
+  (implements (of PatternMaterializationRoot String))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternRollback Size))
+  (prop + count Size)
+  (blank)
+  (delegate (of PatternCaptureMaterializer Char Tag) (of PatternCaptureMaterializer Byte Tag))
+  (prop _ tags _ (:= (call Tags this)))
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (return "?")
+  )
+  (fn-expr + mark Size
+    1
+  )
+  (fn-do + rewind _
+    (param mark Size)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Helper
-    is PatternMaterializationRoot'String
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternRollback'Size
-
-+ count Size
-
-as PatternCaptureMaterializer'Char'Tag, PatternCaptureMaterializer'Byte'Tag for
-_ tags := Tags(this)
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-= "?"
-
-────────────────────
-+ mark Size
-
-1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-━━━━━━━━━━━━━━━━━━━━
-_ Tags is Tuple
-    is PatternCaptureMaterializer'Char'Tag
-    is PatternCaptureMaterializer'Byte'Tag
-
-_ helper Helper
-
-────────────────────
-+ This
-    - source Helper
-
-helper = source
-
-────────────────────
-+ do materialize-capture'Token Tag
-    - source Token[]
-    - start Index
-    - end Index
-
-helper.count += 1
-= Tag(end - start)
+(type _ Tags (is Tuple)
+  (implements (of PatternCaptureMaterializer Char Tag))
+  (implements (of PatternCaptureMaterializer Byte Tag))
+  (prop _ helper Helper)
+  (fn-do + This _
+    (param source Helper)
+    (= helper source)
+  )
+  (fn-do + (of materialize-capture Token) Tag
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= (. helper count) 1)
+    (return (call Tag (- end start)))
+  )
+)
 ```
 
 ```output
@@ -7488,125 +9450,135 @@ helper.count += 1
 1
 ```
 
-```yumi crash
-. helper = Helper()
-. word = match "alpha!"
-    with helper
-    ~ \suffixed
-    ?! Panic("failed")
+```brix crash
+(main
+  (let helper (call Helper))
+  (let word
+    (match "alpha!"
+      (with helper)
+      (~ \suffixed)
+      (throw (call Panic "failed"))
+      (blank)
+      (lazy suffixed String
+        (pattern
+          (~ (seq (: text (+ (chars "a-z"))) "!")
+            (+ (call checked text) "-x")
+          )
+        )
+      )
+    )
+  )
+  (print word)
+)
 
-    .. suffixed String ~
-        ~ text [a-z]+ "!"
-            checked(text) + "-x"
--- word
+(fn-do + checked String
+  (param text String)
+  (if (== text "alpha")
+    (throw (call Panic (str "checked " text)))
+  )
+  (return text)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do checked String
-    - text String
-
-if text == "alpha"
-    ?! Panic("checked $text")
-= text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Helper
-    is PatternMaterializationRoot'String
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternValueMaterializer'String'String
-    is PatternRollback'Size
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-= "alpha"
-
-────────────────────
-+ do materialize-value String
-    - input String
-
-= input
-
-────────────────────
-+ mark Size
-
-1
-
-────────────────────
-+ do rewind
-    - mark Size
+(type + Helper
+  (implements (of PatternMaterializationRoot String))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternValueMaterializer String String))
+  (implements (of PatternRollback Size))
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (return "alpha")
+  )
+  (fn-do + materialize-value String
+    (param input String)
+    (return input)
+  )
+  (fn-expr + mark Size
+    1
+  )
+  (fn-do + rewind _
+    (param mark Size)
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: checked alpha
-<no file:18>
+<no file:25>
 
 Task 1
 
 Stack trace:
-  0  __source__:checked no file:18:5
-  1  __source__:main no file:10:13
+  0  __source__:checked no file:25:5
+  1  __source__:main no file:13:16
   2  __source__:init.__source__ no file
   3  __source__:brix.main no file
 ```
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. output = Arena()
-. helper = Helper(output)
-. words = match "a,b,c!"
-    with helper
-    ~ (values [a-z] ","?)+ "!"
+(main
+  (let output (call Arena))
+  (let helper (call Helper output))
+  (let words
+    (match "a,b,c!"
+      (with helper)
+      (~ (seq (+ (seq (: values (chars "a-z")) (? ","))) "!")
         values
-    ?! Panic("failed")
--- words.length
--- words[2]
--- helper.reads
--- output.active-bytes > 0
-. counted = match "aaa!"
-    with helper
-    ~ \ones
-    ?! Panic("failed")
--- counted.length
--- helper.reads
--- output.active-bytes > 0
-output.release()
+      )
+      (throw (call Panic "failed"))
+    )
+  )
+  (print (. words length))
+  (print ([] words 2))
+  (print (. helper reads))
+  (print (> (. output active-bytes) 0))
+  (let counted
+    (match "aaa!"
+      (with helper)
+      (~ \ones)
+      (throw (call Panic "failed"))
+    )
+  )
+  (print (. counted length))
+  (print (. helper reads))
+  (print (> (. output active-bytes) 0))
+  (call (. output release))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ones ~ Char ImmutableArray'Int
-
-~ (n \one)+ "!"
+(fn-expr + ones (of ImmutableArray Int) (over: Char)
+  (~ (seq (+ (: n \one)) "!")
     n
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ one ~ Char Int
-
-~ "a"
+(fn-expr + one Int (over: Char)
+  (~ "a"
     1
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Helper
-    is PatternCollectorStorage'ArenaBacking
-
-+ arena Arena
-+ reads Size
-
-────────────────────
-+ get pattern-collector-context Arena
-
-do
-    reads += 1
-arena
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
+(type + Helper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (prop + arena Arena)
+  (prop + reads Size)
+  (fn-expr + pattern-collector-context Arena :get
+    (before
+      (do
+        (+= reads 1)
+      )
+    )
+    arena
+  )
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+  )
+)
 ```
 
 ```output
@@ -7619,43 +9591,51 @@ true
 true
 ```
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-. helper = Helper(arena)
-. words = match "a,b,c!"
-    with helper
-    ~ \letters
-    ?! Panic("failed")
-
-    .. letters ImmutableArray'String ~
-        ~ (letter [a-z] ","?)+ "!"
+(main
+  (let arena (call Arena))
+  (let helper (call Helper arena))
+  (let words
+    (match "a,b,c!"
+      (with helper)
+      (~ \letters)
+      (throw (call Panic "failed"))
+      (blank)
+      (lazy letters (of ImmutableArray String)
+        (pattern
+          (~ (seq (+ (seq (: letter (chars "a-z")) (? ","))) "!")
             letter
--- words[2]
--- helper.reads
--- arena.active-bytes > 0
-arena.release()
+          )
+        )
+      )
+    )
+  )
+  (print ([] words 2))
+  (print (. helper reads))
+  (print (> (. arena active-bytes) 0))
+  (call (. arena release))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Helper
-    is PatternCollectorStorage'ArenaBacking
-
-+ arena Arena
-+ reads Size
-
-────────────────────
-+ get pattern-collector-context Arena
-
-do
-    reads += 1
-arena
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
+(type + Helper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (prop + arena Arena)
+  (prop + reads Size)
+  (fn-expr + pattern-collector-context Arena :get
+    (before
+      (do
+        (+= reads 1)
+      )
+    )
+    arena
+  )
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+  )
+)
 ```
 
 ```output
@@ -7664,45 +9644,47 @@ c
 true
 ```
 
-```yumi
-/core/arena
-/core/patterns
+```brix
+(import /core/arena)
+(import /core/patterns)
+(blank)
 
-. arena = Arena()
-. helper = Helper(arena)
-. words = match "ab,c,de!"
-    with helper
-    ~ items \delimited(",", ~ \word(1)) "!"
+(main
+  (let arena (call Arena))
+  (let helper (call Helper arena))
+  (let words
+    (match "ab,c,de!"
+      (with helper)
+      (~ (seq (: items (call \delimited "," (~ (call \word 1)))) "!")
         items
-    ?! Panic("failed")
--- words.length
--- words[2]
--- arena.active-bytes > 0
-arena.release()
+      )
+      (throw (call Panic "failed"))
+    )
+  )
+  (print (. words length))
+  (print ([] words 2))
+  (print (> (. arena active-bytes) 0))
+  (call (. arena release))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ word ~ Char String
-    - n Int
-
-~ [a-z]+
+(fn-expr + word String (over: Char)
+  (param n Int)
+  (~ (+ (chars "a-z"))
     it
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Helper
-    is PatternCollectorStorage'ArenaBacking
-
-+ arena Arena
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
+(type + Helper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (prop + arena Arena)
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+  )
+)
 ```
 
 ```output
@@ -7711,24 +9693,40 @@ de
 true
 ```
 
-```yumi
-. total = match "ab"
-    ~ x \first y \second
-        x + y
-    ?? 9
-
-    .. first Int ~
-        ~ "a"
-            twice + 1
-
-            .. twice = 2 * 2
-
-    .. second Int ~
-        ~ "b"
-            twice + 2
-
-            .. twice = 3 * 2
--- total
+```brix
+(main
+  (let total
+    (match "ab"
+      (~ (seq (: x \first) (: y \second))
+        (+ x y)
+      )
+      (default
+        (inline 9)
+      )
+      (blank)
+      (lazy first Int
+        (pattern
+          (~ "a"
+            (+ twice 1)
+            (blank)
+            (lazy twice (* 2 2))
+          )
+        )
+      )
+      (blank)
+      (lazy second Int
+        (pattern
+          (~ "b"
+            (+ twice 2)
+            (blank)
+            (lazy twice (* 3 2))
+          )
+        )
+      )
+    )
+  )
+  (print total)
+)
 ```
 
 ```output
@@ -7737,28 +9735,46 @@ true
 
 ### A rule that states a CaptureSpan gives the span each arm matched, whatever its action gives.
 
-```yumi
-. acted = match "ab!".codepoints
-    ~ span \word "!"
+```brix
+(main
+  (let acted
+    (match (. "ab!" codepoints)
+      (~ (seq (: span \word) "!")
         span
-    ?! Panic("no")
-
-    .. word CaptureSpan'Char ~
-        ~ [a-z]+
-            CaptureSpan'Char("kept".codepoints, 0, 4)
-        ~ [0-9]+
--- acted
-
-. bare = match "12!".codepoints
-    ~ span \word "!"
+      )
+      (throw (call Panic "no"))
+      (blank)
+      (lazy word (of CaptureSpan Char)
+        (pattern
+          (~ (+ (chars "a-z"))
+            (call (of CaptureSpan Char) (. "kept" codepoints) 0 4)
+          )
+          (~ (+ (chars "0-9")))
+        )
+      )
+    )
+  )
+  (print acted)
+  (blank)
+  (let bare
+    (match (. "12!" codepoints)
+      (~ (seq (: span \word) "!")
         span
-    ?! Panic("no")
-
-    .. word CaptureSpan'Char ~
-        ~ [a-z]+
-            CaptureSpan'Char("kept".codepoints, 0, 4)
-        ~ [0-9]+
--- bare
+      )
+      (throw (call Panic "no"))
+      (blank)
+      (lazy word (of CaptureSpan Char)
+        (pattern
+          (~ (+ (chars "a-z"))
+            (call (of CaptureSpan Char) (. "kept" codepoints) 0 4)
+          )
+          (~ (+ (chars "0-9")))
+        )
+      )
+    )
+  )
+  (print bare)
+)
 ```
 
 ```output
@@ -7768,15 +9784,24 @@ ab
 
 ### A name captured over a rule that states a CaptureSpan reads as text in an action.
 
-```yumi
-. shown = match "xalpha!".codepoints
-    ~ "x" span \word "!"
-        "${span.codepoints.length}/${span.length}/$span"
-    ?! Panic("no")
-
-    .. word CaptureSpan'Char ~
-        ~ [a-z]+
--- shown
+```brix
+(main
+  (let shown
+    (match (. "xalpha!" codepoints)
+      (~ (seq "x" (: span \word) "!")
+        (str (. span codepoints length) "/" (. span length) "/" span)
+      )
+      (throw (call Panic "no"))
+      (blank)
+      (lazy word (of CaptureSpan Char)
+        (pattern
+          (~ (+ (chars "a-z")))
+        )
+      )
+    )
+  )
+  (print shown)
+)
 ```
 
 ```output
@@ -7785,89 +9810,126 @@ ab
 
 ### A name an action gives only to functions that take its CaptureSpan, or reads for its length, reaches them as the span, and no text is made for it.
 
-```yumi
--- match "x42!".codepoints
-    ~ "x" digits [0-9]+ "!"
-        offsets(digits)
-    ?? "none"
--- match "x42!".codepoints
-    ~ "x" [0-9]+ "!"
-        offsets(it)
-    ?? "none"
--- match "x42!".codepoints
-    ~ "x" digits \run "!"
-        offsets(digits)
-    ?? "none"
+```brix
+(main
+  (print
+    (match (. "x42!" codepoints)
+      (~ (seq "x" (: digits (+ (chars "0-9"))) "!")
+        (call offsets digits)
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+  (print
+    (match (. "x42!" codepoints)
+      (~ (seq "x" (+ (chars "0-9")) "!")
+        (call offsets it)
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+  (print
+    (match (. "x42!" codepoints)
+      (~ (seq "x" (: digits \run) "!")
+        (call offsets digits)
+      )
+      (default
+        (inline "none")
+      )
+      (blank)
+      (lazy run (of CaptureSpan Char)
+        (pattern
+          (~ (+ (chars "0-9")))
+        )
+      )
+    )
+  )
+  (print
+    (match (. "x42!" codepoints)
+      (~ (seq "x" (: digits (+ (chars "0-9"))) "!")
+        (call either digits)
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+  (print
+    (match (. "x42!" codepoints)
+      (~ (seq "x" (: digits (+ (chars "0-9"))) "!")
+        (str (. digits length) ":" (call offsets digits))
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+  (print
+    (match (. "x42!" codepoints)
+      (~ (seq "x" (: digits (+ (chars "0-9"))) "!")
+        (str digits "/" (call either digits))
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+  (blank)
+  (let helper (call CountingMaterializer))
+  (print
+    (match (. "x42!" codepoints)
+      (with helper)
+      (~ (seq "x" (: digits (+ (chars "0-9"))) "!")
+        (call offsets digits)
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+  (print (. helper materializations))
+)
 
-    .. run CaptureSpan'Char ~
-        ~ [0-9]+
--- match "x42!".codepoints
-    ~ "x" digits [0-9]+ "!"
-        either(digits)
-    ?? "none"
--- match "x42!".codepoints
-    ~ "x" digits [0-9]+ "!"
-        "${digits.length}:${offsets(digits)}"
-    ?? "none"
--- match "x42!".codepoints
-    ~ "x" digits [0-9]+ "!"
-        "$digits/${either(digits)}"
-    ?? "none"
+(fn-expr + offsets String
+  (param span (of CaptureSpan Char))
+  (str (. span start) "-" (. span end))
+)
 
-. helper = CountingMaterializer()
--- match "x42!".codepoints
-    with helper
-    ~ "x" digits [0-9]+ "!"
-        offsets(digits)
-    ?? "none"
--- helper.materializations
+(fn-expr + either String
+  (param text String)
+  (str "text " text)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ offsets String
-    - span CaptureSpan'Char
+(fn-expr + either String
+  (param span (of CaptureSpan Char))
+  (str "span " (call offsets span))
+)
 
-"${span.start}-${span.end}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ either String
-    - text String
-
-"text $text"
-
-━━━━━━━━━━━━━━━━━━━━
-+ either String
-    - span CaptureSpan'Char
-
-"span ${offsets(span)}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ CountingMaterializer
-    is PatternMaterializationRoot'String
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternRollback'Size
-
-+ materializations Size
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-materializations += 1
-= source.slice-string(start .. < end)
-
-────────────────────
-+ mark Size
-
-materializations + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-materializations = mark - 1
+(type + CountingMaterializer
+  (implements (of PatternMaterializationRoot String))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternRollback Size))
+  (prop + materializations Size)
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= materializations 1)
+    (return (call (. source slice-string) (..< start end)))
+  )
+  (fn-expr + mark Size
+    (+ materializations 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (= materializations (- mark 1))
+  )
+)
 ```
 
 ```output
@@ -7883,20 +9945,29 @@ span 1-3
 
 ### A pattern given to a rule gives its values though nothing in it can panic.
 
-```yumi
-/core/patterns
+```brix
+(import /core/patterns)
+(blank)
 
-. made = match "a,b!"
-    ~ numbers \delimited(",", ~ \number-word) "!"
+(main
+  (let made
+    (match "a,b!"
+      (~ (seq (: numbers (call \delimited "," (~ \number-word))) "!")
         numbers
-    ?? [0 as I32]
--- made
+      )
+      (default
+        (inline (list (as 0 I32)))
+      )
+    )
+  )
+  (print made)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ number-word ~ Char
-
-~ [a-z]+
-    7 as I32
+(fn-expr + number-word _ (over: Char)
+  (~ (+ (chars "a-z"))
+    (as 7 I32)
+  )
+)
 ```
 
 ```output
@@ -7905,25 +9976,30 @@ span 1-3
 
 ### A pattern given to a rule reads an argument of the function it is written in.
 
-```yumi
--- ends-with("alpha!", "!")
--- ends-with("alpha?", "!")
--- ends-with("beta?", "?")
+```brix
+(main
+  (print (call ends-with "alpha!" "!"))
+  (print (call ends-with "alpha?" "!"))
+  (print (call ends-with "beta?" "?"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do ends-with String
-    - text String
-    - suffix String
+(fn-do + ends-with String
+  (param text String)
+  (param suffix String)
+  (return
+    (match text
+      (~ (call \forward (~ (seq (+ (chars "a-z")) $suffix))))
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 
-= match text
-    ~ \forward(~ [a-z]+ $suffix)
-    ?? "none"
-
-━━━━━━━━━━━━━━━━━━━━
-+ forward ~ Char String
-    - pattern
-
-~ \pattern
+(fn-expr + forward String (over: Char)
+  (param pattern _)
+  (~ \pattern)
+)
 ```
 
 ```output
@@ -7934,92 +10010,108 @@ beta?
 
 ### A pattern given to a rule calls a local rule of the rule it is written in, under the rule's own helper.
 
-```yumi
-/core/arena
-/core/patterns
+```brix
+(import /core/arena)
+(import /core/patterns)
+(blank)
 
-. notes = NoteHelper(Arena())
--- match "a,(b,c)"
-    with notes
-    ~ parsed \noted(notes)
-        notes.texts[parsed - 1]
-    ?? "no match"
--- match "a,"
-    with notes
-    ~ parsed \noted(notes)
-        notes.texts[parsed - 1]
-    ?? "no match"
--- notes.texts
--- notes.marks
+(main
+  (let notes (call NoteHelper (call Arena)))
+  (print
+    (match "a,(b,c)"
+      (with notes)
+      (~ (: parsed (call \noted notes))
+        ([] (. notes texts) (- parsed 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print
+    (match "a,"
+      (with notes)
+      (~ (: parsed (call \noted notes))
+        ([] (. notes texts) (- parsed 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (. notes texts))
+  (print (. notes marks))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ noted ~ Char
-    - tree NoteHelper
-
-~ v \list
+(fn-expr + noted _ (over: Char)
+  (param tree NoteHelper)
+  (~ (: v \list)
     v
+  )
+  (where
+    (lazy list U32
+      (pattern
+        (~ (: values (call \delimited "," (~ \element)))
+          (call (. tree note) (str (. values length)))
+        )
+      )
+    )
+    (blank)
+    (lazy element U32
+      (pattern
+        (~ (chars "a-z")
+          (call (. tree note) it)
+        )
+        (~ (seq "(" (: inner \list) ")")
+          inner
+        )
+      )
+    )
+  )
+)
 
-.. list U32 ~
-    ~ values \delimited(",", ~ \element)
-        tree.note("${values.length}")
-
-.. element U32 ~
-    ~ [a-z]
-        tree.note(it)
-    ~ "(" inner \list ")"
-        inner
-
-━━━━━━━━━━━━━━━━━━━━
-+ NoteHelper
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'U32
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternRollback'Size
-
-+ arena Arena
-+ texts [String]
-+ marks Size
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-
-────────────────────
-+ do note U32
-    - text String
-
-texts += text
-= texts.length as U32
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-= source.slice-string(start .. < end)
-
-────────────────────
-+ mark Size
-
-do
-    marks += 1
-texts.length + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-while texts.length > mark - 1
-    texts.pop()
+(type + NoteHelper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + texts (list String))
+  (prop + marks Size)
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+  )
+  (fn-do + note U32
+    (param text String)
+    (+= texts text)
+    (return (as (. texts length) U32))
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (return (call (. source slice-string) (..< start end)))
+  )
+  (fn-expr + mark Size
+    (before
+      (do
+        (+= marks 1)
+      )
+    )
+    (+ (. texts length) 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (while (> (. texts length) (- mark 1))
+      (call (. texts pop))
+    )
+  )
+)
 ```
 
 ```output
@@ -8031,33 +10123,58 @@ a, b, c, 2, 2, a, 1
 
 ### A pattern given to a rule calls a local rule of the rule it is written in, which calls itself.
 
-```yumi
-/core/patterns
+```brix
+(import /core/patterns)
+(blank)
 
--- match "(a,(b,c))"
-    ~ total \nested
+(main
+  (print
+    (match "(a,(b,c))"
+      (~ (: total \nested)
         total
-    ?? 0
--- match "(a,b"
-    ~ total \nested
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+  (print
+    (match "(a,b"
+      (~ (: total \nested)
         total
-    ?? 0
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ nested ~ Char
-
-~ v \group
+(fn-expr + nested _ (over: Char)
+  (~ (: v \group)
     v
-
-.. group Size ~
-    ~ "(" values \delimited(",", ~ \element) ")"
-        values[0] + values.length
-
-.. element Size ~
-    ~ [a-z]
-        1
-    ~ inner \group
-        inner + 10
+  )
+  (where
+    (lazy group Size
+      (pattern
+        (~ (seq "(" (: values (call \delimited "," (~ \element))) ")")
+          (+ ([] values 0) (. values length))
+        )
+      )
+    )
+    (blank)
+    (lazy element Size
+      (pattern
+        (~ (chars "a-z")
+          1
+        )
+        (~ (: inner \group)
+          (+ inner 10)
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -8067,120 +10184,150 @@ a, b, c, 2, 2, a, 1
 
 ### A helper makes the text of an optional part a name captures where the part passes, read or not, and again where an action reads the name.
 
-```yumi
-/core/arena
-/core/patterns
+```brix
+(import /core/arena)
+(import /core/patterns)
+(blank)
 
-. helper = CountingHelper(Arena())
--- match "12ab"
-    with helper
-    ~ v \unread(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- helper.made
--- match "12ab"
-    with helper
-    ~ v \read(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- helper.made
--- match "12"
-    with helper
-    ~ v \read(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- helper.made
--- match "12ab"
-    with helper
-    ~ v \ended(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- helper.made
+(main
+  (let helper (call CountingHelper (call Arena)))
+  (print
+    (match "12ab"
+      (with helper)
+      (~ (: v (call \unread helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (. helper made))
+  (print
+    (match "12ab"
+      (with helper)
+      (~ (: v (call \read helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (. helper made))
+  (print
+    (match "12"
+      (with helper)
+      (~ (: v (call \read helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (. helper made))
+  (print
+    (match "12ab"
+      (with helper)
+      (~ (: v (call \ended helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (. helper made))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ unread ~ Char
-    - tree CountingHelper
-
-~ v \unread-number
+(fn-expr + unread _ (over: Char)
+  (param tree CountingHelper)
+  (~ (: v \unread-number)
     v
+  )
+  (where
+    (lazy unread-number U32
+      (pattern
+        (~ (seq (+ (chars "0-9")) (: u (? (+ (chars "a-z")))))
+          (call (. tree note) "number")
+        )
+      )
+    )
+  )
+)
 
-.. unread-number U32 ~
-    ~ [0-9]+ u ([a-z]+)?
-        tree.note("number")
-
-━━━━━━━━━━━━━━━━━━━━
-+ read ~ Char
-    - tree CountingHelper
-
-~ v \read-number
+(fn-expr + read _ (over: Char)
+  (param tree CountingHelper)
+  (~ (: v \read-number)
     v
+  )
+  (where
+    (lazy read-number U32
+      (pattern
+        (~ (seq (+ (chars "0-9")) (: u (? (+ (chars "a-z")))))
+          (call (. tree note) (?? u "none"))
+        )
+      )
+    )
+  )
+)
 
-.. read-number U32 ~
-    ~ [0-9]+ u ([a-z]+)?
-        tree.note(u ?? "none")
-
-━━━━━━━━━━━━━━━━━━━━
-+ ended ~ Char
-    - tree CountingHelper
-
-~ v \ended-number
+(fn-expr + ended _ (over: Char)
+  (param tree CountingHelper)
+  (~ (: v \ended-number)
     v
+  )
+  (where
+    (lazy ended-number U32
+      (pattern
+        (~ (seq (+ (chars "0-9")) (: u (? (+ (chars "a-z")))) "!")
+          (call (. tree note) "ended")
+        )
+        (~ (seq (+ (chars "0-9")) (+ (chars "a-z")))
+          (call (. tree note) "open")
+        )
+      )
+    )
+  )
+)
 
-.. ended-number U32 ~
-    ~ [0-9]+ u ([a-z]+)? "!"
-        tree.note("ended")
-    ~ [0-9]+ [a-z]+
-        tree.note("open")
-
-━━━━━━━━━━━━━━━━━━━━
-+ CountingHelper
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'U32
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternRollback'Size
-
-+ arena Arena
-+ made Size
-+ notes [String]
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-
-────────────────────
-+ do note U32
-    - text String
-
-notes += text
-= notes.length as U32
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-made += 1
-= source.slice-string(start .. < end)
-
-────────────────────
-+ mark Size
-
-arena.mark.value + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-arena.rewind(ArenaMark(mark - 1))
+(type + CountingHelper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + made Size)
+  (prop + notes (list String))
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+  )
+  (fn-do + note U32
+    (param text String)
+    (+= notes text)
+    (return (as (. notes length) U32))
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= made 1)
+    (return (call (. source slice-string) (..< start end)))
+  )
+  (fn-expr + mark Size
+    (+ (. arena mark value) 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (call (. arena rewind) (call ArenaMark (- mark 1)))
+  )
+)
 ```
 
 ```output
@@ -8196,141 +10343,187 @@ open
 
 ### A helper makes the text of a captured call of a rule where the call passes when no action of the pattern makes a value through it, but for a name captured once outside optional parts and repeats.
 
-```yumi
-/core/arena
-/core/patterns
+```brix
+(import /core/arena)
+(import /core/patterns)
+(blank)
 
-. helper = CountingHelper(Arena())
--- match "12-ab-cd"
-    with helper
-    ~ v \repeated(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- helper.made
--- match "12-ab"
-    with helper
-    ~ v \optional(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- helper.made
--- match "12ab"
-    with helper
-    ~ v \single(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- helper.made
--- match "12-ab-cd"
-    with helper
-    ~ v \joined(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- helper.made
+(main
+  (let helper (call CountingHelper (call Arena)))
+  (print
+    (match "12-ab-cd"
+      (with helper)
+      (~ (: v (call \repeated helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (. helper made))
+  (print
+    (match "12-ab"
+      (with helper)
+      (~ (: v (call \optional helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (. helper made))
+  (print
+    (match "12ab"
+      (with helper)
+      (~ (: v (call \single helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (. helper made))
+  (print
+    (match "12-ab-cd"
+      (with helper)
+      (~ (: v (call \joined helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (. helper made))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ repeated ~ Char
-    - tree CountingHelper
-
-~ v \repeated-number
+(fn-expr + repeated _ (over: Char)
+  (param tree CountingHelper)
+  (~ (: v \repeated-number)
     v
+  )
+  (where
+    (lazy repeated-number U32
+      (pattern
+        (~ (seq (+ (chars "0-9")) (* (seq "-" (: u \repeated-word))))
+          (call (. tree note) "repeated")
+        )
+      )
+    )
+    (blank)
+    (lazy repeated-word
+      (pattern
+        (~ (+ (chars "a-z")))
+      )
+    )
+  )
+)
 
-.. repeated-number U32 ~
-    ~ [0-9]+ ("-" u \repeated-word)*
-        tree.note("repeated")
-
-.. repeated-word ~
-    ~ [a-z]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ optional ~ Char
-    - tree CountingHelper
-
-~ v \optional-number
+(fn-expr + optional _ (over: Char)
+  (param tree CountingHelper)
+  (~ (: v \optional-number)
     v
+  )
+  (where
+    (lazy optional-number U32
+      (pattern
+        (~ (seq (+ (chars "0-9")) (? (seq "-" (: u \optional-word))))
+          (call (. tree note) "optional")
+        )
+      )
+    )
+    (blank)
+    (lazy optional-word
+      (pattern
+        (~ (+ (chars "a-z")))
+      )
+    )
+  )
+)
 
-.. optional-number U32 ~
-    ~ [0-9]+ ("-" u \optional-word)?
-        tree.note("optional")
-
-.. optional-word ~
-    ~ [a-z]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ single ~ Char
-    - tree CountingHelper
-
-~ v \single-number
+(fn-expr + single _ (over: Char)
+  (param tree CountingHelper)
+  (~ (: v \single-number)
     v
+  )
+  (where
+    (lazy single-number U32
+      (pattern
+        (~ (seq (+ (chars "0-9")) (: u \single-word))
+          (call (. tree note) "single")
+        )
+      )
+    )
+    (blank)
+    (lazy single-word
+      (pattern
+        (~ (+ (chars "a-z")))
+      )
+    )
+  )
+)
 
-.. single-number U32 ~
-    ~ [0-9]+ u \single-word
-        tree.note("single")
-
-.. single-word ~
-    ~ [a-z]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ joined ~ Char
-    - tree CountingHelper
-
-~ v \joined-number
+(fn-expr + joined _ (over: Char)
+  (param tree CountingHelper)
+  (~ (: v \joined-number)
     v
+  )
+  (where
+    (lazy joined-number U32
+      (pattern
+        (~ (seq (+ (chars "0-9")) (* (seq "-" (: u \joined-word))))
+          (call (. tree note) (call (. ", " join) u))
+        )
+      )
+    )
+    (blank)
+    (lazy joined-word
+      (pattern
+        (~ (+ (chars "a-z")))
+      )
+    )
+  )
+)
 
-.. joined-number U32 ~
-    ~ [0-9]+ ("-" u \joined-word)*
-        tree.note(", ".join(u))
-
-.. joined-word ~
-    ~ [a-z]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ CountingHelper
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'U32
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternRollback'Size
-
-+ arena Arena
-+ made Size
-+ notes [String]
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-
-────────────────────
-+ do note U32
-    - text String
-
-notes += text
-= notes.length as U32
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-made += 1
-= source.slice-string(start .. < end)
-
-────────────────────
-+ mark Size
-
-arena.mark.value + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-arena.rewind(ArenaMark(mark - 1))
+(type + CountingHelper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + made Size)
+  (prop + notes (list String))
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+  )
+  (fn-do + note U32
+    (param text String)
+    (+= notes text)
+    (return (as (. notes length) U32))
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= made 1)
+    (return (call (. source slice-string) (..< start end)))
+  )
+  (fn-expr + mark Size
+    (+ (. arena mark value) 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (call (. arena rewind) (call ArenaMark (- mark 1)))
+  )
+)
 ```
 
 ```output
@@ -8346,104 +10539,117 @@ ab, cd
 
 ### A helper makes a name an argument of a rule call reads before the call, whether or not the call then passes, and again where an action reads the name.
 
-```yumi
-/core/arena
-/core/patterns
+```brix
+(import /core/arena)
+(import /core/patterns)
+(blank)
 
-. helper = CountingHelper(Arena())
--- match "12ab"
-    with helper
-    ~ v \tagging(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- helper.made
--- match "12ab"
-    with helper
-    ~ v \retried(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- helper.made
+(main
+  (let helper (call CountingHelper (call Arena)))
+  (print
+    (match "12ab"
+      (with helper)
+      (~ (: v (call \tagging helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (. helper made))
+  (print
+    (match "12ab"
+      (with helper)
+      (~ (: v (call \retried helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (. helper made))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ tagging ~ Char
-    - tree CountingHelper
-
-~ v \tagging-number
+(fn-expr + tagging _ (over: Char)
+  (param tree CountingHelper)
+  (~ (: v \tagging-number)
     v
+  )
+  (where
+    (lazy tagging-number U32
+      (pattern
+        (~ (seq (: n (+ (chars "0-9"))) (: v (call \tagged n)))
+          (call (. tree note) (str v "/" n))
+        )
+      )
+    )
+  )
+)
 
-.. tagging-number U32 ~
-    ~ n [0-9]+ v \tagged(n)
-        tree.note("$v/$n")
-
-━━━━━━━━━━━━━━━━━━━━
-+ retried ~ Char
-    - tree CountingHelper
-
-~ v \retried-number
+(fn-expr + retried _ (over: Char)
+  (param tree CountingHelper)
+  (~ (: v \retried-number)
     v
+  )
+  (where
+    (lazy retried-number U32
+      (pattern
+        (~ (seq (: n (+ (chars "0-9"))) (call \tagged n) "!")
+          (call (. tree note) "ended")
+        )
+        (~ (seq (: n (+ (chars "0-9"))) (+ (chars "a-z")))
+          (call (. tree note) (str "open/" n))
+        )
+      )
+    )
+  )
+)
 
-.. retried-number U32 ~
-    ~ n [0-9]+ \tagged(n) "!"
-        tree.note("ended")
-    ~ n [0-9]+ [a-z]+
-        tree.note("open/$n")
+(fn-expr + tagged String (over: Char)
+  (param tag String)
+  (~ (+ (chars "a-z"))
+    (str tag ":" it)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ tagged ~ Char String
-    - tag String
-
-~ [a-z]+
-    "$tag:$it"
-
-━━━━━━━━━━━━━━━━━━━━
-+ CountingHelper
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'U32
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternRollback'Size
-
-+ arena Arena
-+ made Size
-+ notes [String]
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-
-────────────────────
-+ do note U32
-    - text String
-
-notes += text
-= notes.length as U32
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-made += 1
-= source.slice-string(start .. < end)
-
-────────────────────
-+ mark Size
-
-arena.mark.value + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-arena.rewind(ArenaMark(mark - 1))
+(type + CountingHelper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + made Size)
+  (prop + notes (list String))
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+  )
+  (fn-do + note U32
+    (param text String)
+    (+= notes text)
+    (return (as (. notes length) U32))
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= made 1)
+    (return (call (. source slice-string) (..< start end)))
+  )
+  (fn-expr + mark Size
+    (+ (. arena mark value) 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (call (. arena rewind) (call ArenaMark (- mark 1)))
+  )
+)
 ```
 
 ```output
@@ -8455,188 +10661,245 @@ open/12
 
 ### A name captured over a call of a rule that states another type than text, in a repeat, in an optional part or over an optional call, is made by the helper where an action reads it; the optional call makes it where it passes too, and a call no action reads makes it where nothing in the pattern makes a value.
 
-```yumi
-/core/atom-pool
-/core/arena
-/core/patterns
+```brix
+(import /core/atom-pool)
+(import /core/arena)
+(import /core/patterns)
+(blank)
 
-. helper = AtomHelper(Arena())
--- match "ab/c/def"
-    with helper
-    ~ v \path(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- "${helper.texts} ${helper.atoms}"
--- match "ab"
-    with helper
-    ~ v \path(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- "${helper.texts} ${helper.atoms}"
--- match "12ab"
-    with helper
-    ~ v \measure(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- "${helper.texts} ${helper.atoms}"
--- match "12"
-    with helper
-    ~ v \measure(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- "${helper.texts} ${helper.atoms}"
--- match "12-ab"
-    with helper
-    ~ v \suffixed(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- "${helper.texts} ${helper.atoms}"
--- match "12ab"
-    with helper
-    ~ v \unread(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- "${helper.texts} ${helper.atoms}"
+(main
+  (let helper (call AtomHelper (call Arena)))
+  (print
+    (match "ab/c/def"
+      (with helper)
+      (~ (: v (call \path helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (str (. helper texts) " " (. helper atoms)))
+  (print
+    (match "ab"
+      (with helper)
+      (~ (: v (call \path helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (str (. helper texts) " " (. helper atoms)))
+  (print
+    (match "12ab"
+      (with helper)
+      (~ (: v (call \measure helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (str (. helper texts) " " (. helper atoms)))
+  (print
+    (match "12"
+      (with helper)
+      (~ (: v (call \measure helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (str (. helper texts) " " (. helper atoms)))
+  (print
+    (match "12-ab"
+      (with helper)
+      (~ (: v (call \suffixed helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (str (. helper texts) " " (. helper atoms)))
+  (print
+    (match "12ab"
+      (with helper)
+      (~ (: v (call \unread helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (str (. helper texts) " " (. helper atoms)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ path ~ Char
-    - tree AtomHelper
-
-~ v \path-names
+(fn-expr + path _ (over: Char)
+  (param tree AtomHelper)
+  (~ (: v \path-names)
     v
+  )
+  (where
+    (lazy path-names U32
+      (pattern
+        (~ (seq (: head \path-name) (* (seq "/" (: tail \path-name))))
+          (call (. tree note) (str (. head text) " " (. tail length) " " (if-expr (. tail length) (. ([] tail (- (. tail length) 1)) text) "-")))
+        )
+      )
+    )
+    (blank)
+    (lazy path-name Atom
+      (pattern
+        (~ (+ (chars "a-z")))
+      )
+    )
+  )
+)
 
-.. path-names U32 ~
-    ~ head \path-name ("/" tail \path-name)*
-        tree.note("${head.text} ${tail.length} ${if tail.length then tail[tail.length - 1].text else "-"}")
-
-.. path-name Atom ~
-    ~ [a-z]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ measure ~ Char
-    - tree AtomHelper
-
-~ v \measure-number
+(fn-expr + measure _ (over: Char)
+  (param tree AtomHelper)
+  (~ (: v \measure-number)
     v
+  )
+  (where
+    (lazy measure-number U32
+      (pattern
+        (~ (seq (: n (+ (chars "0-9"))) (: u (? \measure-unit)))
+          (case? u
+            (call (. tree note) (str (. u text) "/" n))
+          )
+          (default
+            (call (. tree note) (str "none/" n))
+          )
+        )
+      )
+    )
+    (blank)
+    (lazy measure-unit Atom
+      (pattern
+        (~ (+ (chars "a-z")))
+      )
+    )
+  )
+)
 
-.. measure-number U32 ~
-    ~ n [0-9]+ u \measure-unit?
-        |? u
-            tree.note("${u.text}/$n")
-        ??
-            tree.note("none/$n")
-
-.. measure-unit Atom ~
-    ~ [a-z]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ suffixed ~ Char
-    - tree AtomHelper
-
-~ v \suffixed-number
+(fn-expr + suffixed _ (over: Char)
+  (param tree AtomHelper)
+  (~ (: v \suffixed-number)
     v
+  )
+  (where
+    (lazy suffixed-number U32
+      (pattern
+        (~ (seq (: n (+ (chars "0-9"))) (? (seq "-" (: u \suffixed-unit))))
+          (case? u
+            (call (. tree note) (str (. u text) "/" n))
+          )
+          (default
+            (call (. tree note) (str "none/" n))
+          )
+        )
+      )
+    )
+    (blank)
+    (lazy suffixed-unit Atom
+      (pattern
+        (~ (+ (chars "a-z")))
+      )
+    )
+  )
+)
 
-.. suffixed-number U32 ~
-    ~ n [0-9]+ ("-" u \suffixed-unit)?
-        |? u
-            tree.note("${u.text}/$n")
-        ??
-            tree.note("none/$n")
-
-.. suffixed-unit Atom ~
-    ~ [a-z]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ unread ~ Char
-    - tree AtomHelper
-
-~ v \unread-number
+(fn-expr + unread _ (over: Char)
+  (param tree AtomHelper)
+  (~ (: v \unread-number)
     v
+  )
+  (where
+    (lazy unread-number U32
+      (pattern
+        (~ (seq (+ (chars "0-9")) (: u \unread-unit))
+          (call (. tree note) "unread")
+        )
+      )
+    )
+    (blank)
+    (lazy unread-unit Atom
+      (pattern
+        (~ (+ (chars "a-z")))
+      )
+    )
+  )
+)
 
-.. unread-number U32 ~
-    ~ [0-9]+ u \unread-unit
-        tree.note("unread")
+(type + AtomHelper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + pool AtomPool)
+  (prop + texts Size)
+  (prop + atoms Size)
+  (prop + notes (list String))
+  (blank)
+  (delegate (of PatternCaptureMaterializer Char Atom) (of PatternCaptureMaterializer Byte Atom))
+  (prop _ atom-maker _ (:= (call AtomMaker this)))
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+    (= pool (call AtomPool))
+  )
+  (fn-do + note U32
+    (param text String)
+    (+= notes text)
+    (return (as (. notes length) U32))
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= texts 1)
+    (return (call (. arena copy-span) source start end))
+  )
+  (fn-expr + mark Size
+    (+ (. arena mark value) 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (call (. arena rewind) (call ArenaMark (- mark 1)))
+  )
+)
 
-.. unread-unit Atom ~
-    ~ [a-z]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ AtomHelper
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'U32
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternRollback'Size
-
-+ arena Arena
-+ pool AtomPool
-+ texts Size
-+ atoms Size
-+ notes [String]
-
-as PatternCaptureMaterializer'Char'Atom, PatternCaptureMaterializer'Byte'Atom for
-_ atom-maker := AtomMaker(this)
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-pool = AtomPool()
-
-────────────────────
-+ do note U32
-    - text String
-
-notes += text
-= notes.length as U32
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-texts += 1
-= arena.copy-span(source, start, end)
-
-────────────────────
-+ mark Size
-
-arena.mark.value + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-arena.rewind(ArenaMark(mark - 1))
-
-━━━━━━━━━━━━━━━━━━━━
-_ AtomMaker is Tuple
-    is PatternCaptureMaterializer'Char'Atom
-    is PatternCaptureMaterializer'Byte'Atom
-
-_ helper AtomHelper
-
-────────────────────
-+ This
-    - source AtomHelper
-
-helper = source
-
-────────────────────
-+ do materialize-capture'Token Atom
-    - source Token[]
-    - start Index
-    - end Index
-
-helper.atoms += 1
-= helper.pool.store(source, start, end)
+(type _ AtomMaker (is Tuple)
+  (implements (of PatternCaptureMaterializer Char Atom))
+  (implements (of PatternCaptureMaterializer Byte Atom))
+  (prop _ helper AtomHelper)
+  (fn-do + This _
+    (param source AtomHelper)
+    (= helper source)
+  )
+  (fn-do + (of materialize-capture Token) Atom
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= (. helper atoms) 1)
+    (return (call (. helper pool store) source start end))
+  )
+)
 ```
 
 ```output
@@ -8656,45 +10919,103 @@ unread
 
 ### An action whose pattern is an optional part reads `it` as the text the part matched, or nothing where its operand did not pass.
 
-```yumi
--- match "!"
-    ~ "!"?
-        it ?? "none"
-    ?? "no match"
--- match ""
-    ~ "!"?
-        it ?? "none"
-    ?? "no match"
--- match "abc"
-    ~ ([a-z]*)?
-        "<${it ?? "none"}>"
-    ?? "no match"
--- match ""
-    ~ ([a-z]*)?
-        "<${it ?? "none"}>"
-    ?? "no match"
--- match "abc"
-    ~ ([a-z]+)?
-        "<${it ?? "none"}>"
-    ?? "no match"
--- match ""
-    ~ ([a-z]+)?
-        "<${it ?? "none"}>"
-    ?? "no match"
--- match "!"
-    ~ flag \bang
-        if flag then "yes" else "no"
-    ?? "no match"
-    .. bang Bool ~
-        ~ "!"?
-            !!it
--- match ""
-    ~ flag \bang
-        if flag then "yes" else "no"
-    ?? "no match"
-    .. bang Bool ~
-        ~ "!"?
-            !!it
+```brix
+(main
+  (print
+    (match "!"
+      (~ (? "!")
+        (?? it "none")
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print
+    (match ""
+      (~ (? "!")
+        (?? it "none")
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print
+    (match "abc"
+      (~ (? (* (chars "a-z")))
+        (str "<" (?? it "none") ">")
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print
+    (match ""
+      (~ (? (* (chars "a-z")))
+        (str "<" (?? it "none") ">")
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print
+    (match "abc"
+      (~ (? (+ (chars "a-z")))
+        (str "<" (?? it "none") ">")
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print
+    (match ""
+      (~ (? (+ (chars "a-z")))
+        (str "<" (?? it "none") ">")
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print
+    (match "!"
+      (~ (: flag \bang)
+        (if-expr flag "yes" "no")
+      )
+      (default
+        (inline "no match")
+      )
+      (lazy bang Bool
+        (pattern
+          (~ (? "!")
+            (not (not it))
+          )
+        )
+      )
+    )
+  )
+  (print
+    (match ""
+      (~ (: flag \bang)
+        (if-expr flag "yes" "no")
+      )
+      (default
+        (inline "no match")
+      )
+      (lazy bang Bool
+        (pattern
+          (~ (? "!")
+            (not (not it))
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -8710,147 +11031,199 @@ no
 
 ### A helper makes the text an optional part gives as `it` where the part passes, but not the text of one literal, which it makes only where an action reads a name that captured it.
 
-```yumi
-/core/arena
-/core/patterns
+```brix
+(import /core/arena)
+(import /core/patterns)
+(blank)
 
-. helper = CountingHelper(Arena())
--- match "ab"
-    with helper
-    ~ v \letters(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- helper.made
--- match ""
-    with helper
-    ~ v \letters(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- helper.made
--- match "!"
-    with helper
-    ~ v \bang(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- helper.made
--- match ""
-    with helper
-    ~ v \bang(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- helper.made
--- match "12!"
-    with helper
-    ~ v \unread(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- helper.made
--- match "12!"
-    with helper
-    ~ v \read(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- helper.made
--- match "12"
-    with helper
-    ~ v \read(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- helper.made
+(main
+  (let helper (call CountingHelper (call Arena)))
+  (print
+    (match "ab"
+      (with helper)
+      (~ (: v (call \letters helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (. helper made))
+  (print
+    (match ""
+      (with helper)
+      (~ (: v (call \letters helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (. helper made))
+  (print
+    (match "!"
+      (with helper)
+      (~ (: v (call \bang helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (. helper made))
+  (print
+    (match ""
+      (with helper)
+      (~ (: v (call \bang helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (. helper made))
+  (print
+    (match "12!"
+      (with helper)
+      (~ (: v (call \unread helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (. helper made))
+  (print
+    (match "12!"
+      (with helper)
+      (~ (: v (call \read helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (. helper made))
+  (print
+    (match "12"
+      (with helper)
+      (~ (: v (call \read helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (. helper made))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ letters ~ Char
-    - tree CountingHelper
-
-~ v \letters-inner
+(fn-expr + letters _ (over: Char)
+  (param tree CountingHelper)
+  (~ (: v \letters-inner)
     v
+  )
+  (where
+    (lazy letters-inner U32
+      (pattern
+        (~ (? (+ (chars "a-z")))
+          (call (. tree note) (?? it "none"))
+        )
+      )
+    )
+  )
+)
 
-.. letters-inner U32 ~
-    ~ ([a-z]+)?
-        tree.note(it ?? "none")
-
-━━━━━━━━━━━━━━━━━━━━
-+ bang ~ Char
-    - tree CountingHelper
-
-~ v \bang-inner
+(fn-expr + bang _ (over: Char)
+  (param tree CountingHelper)
+  (~ (: v \bang-inner)
     v
+  )
+  (where
+    (lazy bang-inner U32
+      (pattern
+        (~ (? "!")
+          (call (. tree note) (?? it "none"))
+        )
+      )
+    )
+  )
+)
 
-.. bang-inner U32 ~
-    ~ "!"?
-        tree.note(it ?? "none")
-
-━━━━━━━━━━━━━━━━━━━━
-+ unread ~ Char
-    - tree CountingHelper
-
-~ v \unread-inner
+(fn-expr + unread _ (over: Char)
+  (param tree CountingHelper)
+  (~ (: v \unread-inner)
     v
+  )
+  (where
+    (lazy unread-inner U32
+      (pattern
+        (~ (seq (+ (chars "0-9")) (: u (? "!")))
+          (call (. tree note) "unread")
+        )
+      )
+    )
+  )
+)
 
-.. unread-inner U32 ~
-    ~ [0-9]+ u "!"?
-        tree.note("unread")
-
-━━━━━━━━━━━━━━━━━━━━
-+ read ~ Char
-    - tree CountingHelper
-
-~ v \read-inner
+(fn-expr + read _ (over: Char)
+  (param tree CountingHelper)
+  (~ (: v \read-inner)
     v
+  )
+  (where
+    (lazy read-inner U32
+      (pattern
+        (~ (seq (+ (chars "0-9")) (: u (? "!")))
+          (call (. tree note) (?? u "none"))
+        )
+      )
+    )
+  )
+)
 
-.. read-inner U32 ~
-    ~ [0-9]+ u "!"?
-        tree.note(u ?? "none")
-
-━━━━━━━━━━━━━━━━━━━━
-+ CountingHelper
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'U32
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternRollback'Size
-
-+ arena Arena
-+ made Size
-+ notes [String]
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-
-────────────────────
-+ do note U32
-    - text String
-
-notes += text
-= notes.length as U32
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-made += 1
-= source.slice-string(start .. < end)
-
-────────────────────
-+ mark Size
-
-arena.mark.value + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-arena.rewind(ArenaMark(mark - 1))
+(type + CountingHelper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + made Size)
+  (prop + notes (list String))
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+  )
+  (fn-do + note U32
+    (param text String)
+    (+= notes text)
+    (return (as (. notes length) U32))
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= made 1)
+    (return (call (. source slice-string) (..< start end)))
+  )
+  (fn-expr + mark Size
+    (+ (. arena mark value) 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (call (. arena rewind) (call ArenaMark (- mark 1)))
+  )
+)
 ```
 
 ```output
@@ -8872,85 +11245,86 @@ none
 
 ### A rule that states a type only the helper makes of what its arm gives is typed for the helper a pattern calls it under, and not as it is without one.
 
-```yumi
-/core/atom-pool
-/core/arena
-/core/patterns
+```brix
+(import /core/atom-pool)
+(import /core/arena)
+(import /core/patterns)
+(blank)
 
-. helper = NamingHelper(Arena())
--- match "12ab"
-    with helper
-    ~ v \labelled(helper)
-        helper.notes[v - 1]
-    ?? "no match"
--- helper.named
+(main
+  (let helper (call NamingHelper (call Arena)))
+  (print
+    (match "12ab"
+      (with helper)
+      (~ (: v (call \labelled helper))
+        ([] (. helper notes) (- v 1))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print (. helper named))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ labelled ~ Char
-    - tree NamingHelper
-
-~ v \labelled-number
+(fn-expr + labelled _ (over: Char)
+  (param tree NamingHelper)
+  (~ (: v \labelled-number)
     v
+  )
+  (where
+    (lazy labelled-number U32
+      (pattern
+        (~ (seq (+ (chars "0-9")) (+ (chars "a-z")) (: name (call \label true)))
+          (call (. tree note) (. name text))
+        )
+      )
+    )
+  )
+)
 
-.. labelled-number U32 ~
-    ~ [0-9]+ [a-z]+ name \label(true)
-        tree.note(name.text)
+(fn-expr + label Atom (over: Char)
+  (param flag Bool)
+  (~ ""
+    (if-expr flag "yes" "no")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ label ~ Char Atom
-    - flag Bool
-
-~ ""
-    if flag then "yes" else "no"
-
-━━━━━━━━━━━━━━━━━━━━
-+ NamingHelper
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'U32
-    is PatternValueMaterializer'String'Atom
-    is PatternRollback'Size
-
-+ arena Arena
-+ pool AtomPool
-+ named Size
-+ notes [String]
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-pool = AtomPool()
-
-────────────────────
-+ do note U32
-    - text String
-
-notes += text
-= notes.length as U32
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ do materialize-value Atom
-    - input String
-
-named += 1
-= pool.store(input)
-
-────────────────────
-+ mark Size
-
-arena.mark.value + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-arena.rewind(ArenaMark(mark - 1))
+(type + NamingHelper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternValueMaterializer String Atom))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + pool AtomPool)
+  (prop + named Size)
+  (prop + notes (list String))
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+    (= pool (call AtomPool))
+  )
+  (fn-do + note U32
+    (param text String)
+    (+= notes text)
+    (return (as (. notes length) U32))
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + materialize-value Atom
+    (param input String)
+    (+= named 1)
+    (return (call (. pool store) input))
+  )
+  (fn-expr + mark Size
+    (+ (. arena mark value) 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (call (. arena rewind) (call ArenaMark (- mark 1)))
+  )
+)
 ```
 
 ```output
@@ -8960,55 +11334,91 @@ yes
 
 ### A name the arms of a rule capture holds in each arm the type its part there gives it.
 
-```yumi
--- describe("#123")
--- describe("@abc")
--- describe("?")
--- describe("?x")
--- describe("%")
--- match "@abc"
-    ~ v \entry
+```brix
+(main
+  (print (call describe "#123"))
+  (print (call describe "@abc"))
+  (print (call describe "?"))
+  (print (call describe "?x"))
+  (print (call describe "%"))
+  (print
+    (match "@abc"
+      (~ (: v \entry)
         v
-    ?? "no match"
--- match "?"
-    ~ v \entry
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+  (print
+    (match "?"
+      (~ (: v \entry)
         v
-    ?? "no match"
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do describe String
-    - text String
-
-= match text
-    ~ v \local-entry
+(fn-do + describe String
+  (param text String)
+  (return
+    (match text
+      (~ (: v \local-entry)
         v
-    ?? "no match"
+      )
+      (default
+        (inline "no match")
+      )
+      (blank)
+      (lazy local-entry String
+        (pattern
+          (~ (seq "#" (: value \local-number))
+            (str "number " (+ value 1))
+          )
+          (~ (seq "@" (: value (+ (chars "a-z"))))
+            (str "word " value)
+          )
+          (~ (seq "?" (: value (? (+ (chars "a-z")))))
+            (str "maybe " (?? value "nothing"))
+          )
+        )
+      )
+      (blank)
+      (lazy local-number I32
+        (pattern
+          (~ (: digits (+ (chars "0-9")))
+            (as (. digits length) I32)
+          )
+        )
+      )
+    )
+  )
+)
 
-    .. local-entry String ~
-        ~ "#" value \local-number
-            "number ${value + 1}"
-        ~ "@" value [a-z]+
-            "word $value"
-        ~ "?" value ([a-z]+)?
-            "maybe ${value ?? "nothing"}"
-
-    .. local-number I32 ~
-        ~ digits [0-9]+
-            digits.length as I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ entry ~ Char String
-
-~ "#" value \number
-    "number ${value + 1}"
-~ "@" value [a-z]+
-    "word $value"
-~ "?" value ([a-z]+)?
-    "maybe ${value ?? "nothing"}"
-
-.. number I32 ~
-    ~ digits [0-9]+
-        digits.length as I32
+(fn-expr + entry String (over: Char)
+  (~ (seq "#" (: value \number))
+    (str "number " (+ value 1))
+  )
+  (~ (seq "@" (: value (+ (chars "a-z"))))
+    (str "word " value)
+  )
+  (~ (seq "?" (: value (? (+ (chars "a-z")))))
+    (str "maybe " (?? value "nothing"))
+  )
+  (where
+    (lazy number I32
+      (pattern
+        (~ (: digits (+ (chars "0-9")))
+          (as (. digits length) I32)
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -9023,152 +11433,188 @@ maybe nothing
 
 ### A rule or a match whose arms give characters, some read from the text their names captured, gives characters, and its helper makes the names the actions read but not the text they give again.
 
-```yumi
-/core/arena
-/core/patterns
+```brix
+(import /core/arena)
+(import /core/patterns)
+(blank)
 
-. helper = TextHelper(Arena())
-for text in ["\\n", "\\0", "\\q", "z"]
-    -- decode(helper, text)
-    -- decode-ruled(helper, text)
-    -- decode-plainly(helper, text)
-    -- "${helper.made} ${helper.valued}"
+(main
+  (let helper (call TextHelper (call Arena)))
+  (for (in text (list "\\n" "\\0" "\\q" "z"))
+    (print (call decode helper text))
+    (print (call decode-ruled helper text))
+    (print (call decode-plainly helper text))
+    (print (str (. helper made) " " (. helper valued)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do decode String
-    - helper TextHelper
-    - text String
+(fn-do + decode String
+  (param helper TextHelper)
+  (param text String)
+  (return
+    (match text
+      (with helper)
+      (~ (: v \escape)
+        (str "got " (as v U32))
+      )
+      (default
+        (inline "no match")
+      )
+      (blank)
+      (lazy escape Char
+        (pattern
+          (~ "\\0"
+            (as 0 Char)
+          )
+          (~ (seq "\\" (: c \single))
+            ([] (call unescape c) 0)
+          )
+          (~ (seq "\\" (: c \other))
+            ([] c 0)
+          )
+        )
+      )
+      (blank)
+      (lazy single
+        (pattern
+          (~ (chars "nt"))
+        )
+      )
+      (blank)
+      (lazy other
+        (pattern
+          (~ (seq (! \single) .))
+        )
+      )
+    )
+  )
+)
 
-= match text
-    with helper
-    ~ v \escape
-        "got ${v as U32}"
-    ?? "no match"
+(fn-do + decode-ruled String
+  (param helper TextHelper)
+  (param text String)
+  (return
+    (match text
+      (with helper)
+      (~ (: v \ruled-escape)
+        (str "got " (as v U32))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+)
 
-    .. escape Char ~
-        ~ "\\0"
-            0 as Char
-        ~ "\\" c \single
-            unescape(c)[0]
-        ~ "\\" c \other
-            c[0]
+(fn-do + decode-plainly String
+  (param helper TextHelper)
+  (param text String)
+  (let found
+    (match text
+      (with helper)
+      (~ "\\0"
+        (as 0 Char)
+      )
+      (~ (seq "\\" (: c \plain-single))
+        ([] (call unescape c) 0)
+      )
+      (~ (seq "\\" (: c \plain-other))
+        ([] c 0)
+      )
+      (blank)
+      (lazy plain-single
+        (pattern
+          (~ (chars "nt"))
+        )
+      )
+      (blank)
+      (lazy plain-other
+        (pattern
+          (~ (seq (! \plain-single) .))
+        )
+      )
+    )
+  )
+  (return (if-expr found (str "got " (as found U32)) "no match"))
+)
 
-    .. single ~
-        ~ [nt]
+(fn-expr + ruled-escape Char (over: Char)
+  (~ "\\0"
+    (as 0 Char)
+  )
+  (~ (seq "\\" (: c \ruled-single))
+    ([] (call unescape c) 0)
+  )
+  (~ (seq "\\" (: c \ruled-other))
+    ([] c 0)
+  )
+  (where
+    (lazy ruled-single
+      (pattern
+        (~ (chars "nt"))
+      )
+    )
+    (blank)
+    (lazy ruled-other
+      (pattern
+        (~ (seq (! \ruled-single) .))
+      )
+    )
+  )
+)
 
-    .. other ~
-        ~ !(\single) .
+(fn-expr + unescape _
+  (param c _)
+  (match c
+    (case= "t"
+      "\t"
+    )
+    (case= "n"
+      "\n"
+    )
+    (default
+      ""
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do decode-ruled String
-    - helper TextHelper
-    - text String
-
-= match text
-    with helper
-    ~ v \ruled-escape
-        "got ${v as U32}"
-    ?? "no match"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do decode-plainly String
-    - helper TextHelper
-    - text String
-
-. found = match text
-    with helper
-    ~ "\\0"
-        0 as Char
-    ~ "\\" c \plain-single
-        unescape(c)[0]
-    ~ "\\" c \plain-other
-        c[0]
-
-    .. plain-single ~
-        ~ [nt]
-
-    .. plain-other ~
-        ~ !(\plain-single) .
-= if found then "got ${found as U32}" else "no match"
-
-━━━━━━━━━━━━━━━━━━━━
-+ ruled-escape ~ Char Char
-
-~ "\\0"
-    0 as Char
-~ "\\" c \ruled-single
-    unescape(c)[0]
-~ "\\" c \ruled-other
-    c[0]
-
-.. ruled-single ~
-    ~ [nt]
-
-.. ruled-other ~
-    ~ !(\ruled-single) .
-
-━━━━━━━━━━━━━━━━━━━━
-+ unescape
-    - c
-
-match c
-    |= "t"
-        "\t"
-    |= "n"
-        "\n"
-    ??
-        ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextHelper
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'U32
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternValueMaterializer'String'String
-    is PatternRollback'Size
-
-+ arena Arena
-+ made Size
-+ valued Size
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-made += 1
-= source.slice-string(start .. < end)
-
-────────────────────
-+ do materialize-value String
-    - input String
-
-valued += 1
-= input
-
-────────────────────
-+ mark Size
-
-arena.mark.value + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-arena.rewind(ArenaMark(mark - 1))
+(type + TextHelper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternValueMaterializer String String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + made Size)
+  (prop + valued Size)
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= made 1)
+    (return (call (. source slice-string) (..< start end)))
+  )
+  (fn-do + materialize-value String
+    (param input String)
+    (+= valued 1)
+    (return input)
+  )
+  (fn-expr + mark Size
+    (+ (. arena mark value) 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (call (. arena rewind) (call ArenaMark (- mark 1)))
+  )
+)
 ```
 
 ```output
@@ -9192,141 +11638,155 @@ no match
 
 ### An optional value an action gives under a helper, where the arms give an optional too, is made again by the helper only where it holds a value.
 
-```yumi
-/core/arena
-/core/patterns
+```brix
+(import /core/arena)
+(import /core/patterns)
+(blank)
 
-. helper = TextHelper(Arena())
-for text in ["ab", "7", "?"]
-    -- called(helper, text)
-    -- read(helper, text)
-    -- local(helper, text)
-    -- joined(helper, text)
-    -- "${helper.made} ${helper.valued}"
+(main
+  (let helper (call TextHelper (call Arena)))
+  (for (in text (list "ab" "7" "?"))
+    (print (call called helper text))
+    (print (call read helper text))
+    (print (call local helper text))
+    (print (call joined helper text))
+    (print (str (. helper made) " " (. helper valued)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do called Int
-    - helper TextHelper
-    - text String
-
-. found = match text
-    with helper
-    ~ [a-z]+ \maybe-name(true)
+(fn-do + called Int
+  (param helper TextHelper)
+  (param text String)
+  (let found
+    (match text
+      (with helper)
+      (~ (seq (+ (chars "a-z")) (call \maybe-name true))
         1
-    ~ [0-9]+ \maybe-name(false)
+      )
+      (~ (seq (+ (chars "0-9")) (call \maybe-name false))
         3
-= found ?? 0
+      )
+    )
+  )
+  (return (?? found 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read Int
-    - helper TextHelper
-    - text String
+(fn-do + read Int
+  (param helper TextHelper)
+  (param text String)
+  (let found
+    (match text
+      (with helper)
+      (~ (seq (+ (chars "a-z")) (: v (call \maybe-name true)))
+        (if-expr (== v null) 1 2)
+      )
+      (~ (seq (+ (chars "0-9")) (: v (call \maybe-name false)))
+        (if-expr (== v null) 3 4)
+      )
+    )
+  )
+  (return (?? found 0))
+)
 
-. found = match text
-    with helper
-    ~ [a-z]+ v \maybe-name(true)
-        if v == null then 1 else 2
-    ~ [0-9]+ v \maybe-name(false)
-        if v == null then 3 else 4
-= found ?? 0
+(fn-do + local Int
+  (param helper TextHelper)
+  (param text String)
+  (let found
+    (match text
+      (with helper)
+      (~ (: v \stated)
+        (if-expr (== v null) 1 2)
+      )
+      (blank)
+      (lazy stated (? String)
+        (pattern
+          (~ (+ (chars "a-z"))
+            (call pick true)
+          )
+          (~ (+ (chars "0-9"))
+            (call pick false)
+          )
+        )
+      )
+    )
+  )
+  (return (?? found 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do local Int
-    - helper TextHelper
-    - text String
+(fn-do + joined Int
+  (param helper TextHelper)
+  (param text String)
+  (let found
+    (match text
+      (with helper)
+      (~ (: v \unstated)
+        (if-expr (== v null) 1 2)
+      )
+      (blank)
+      (lazy unstated
+        (pattern
+          (~ (+ (chars "a-z"))
+            (call pick true)
+          )
+          (~ (+ (chars "0-9"))
+            (call pick false)
+          )
+        )
+      )
+    )
+  )
+  (return (?? found 0))
+)
 
-. found = match text
-    with helper
-    ~ v \stated
-        if v == null then 1 else 2
+(fn-expr + maybe-name (? String) (over: Char)
+  (param named Bool)
+  (~ ""
+    (call pick named)
+  )
+)
 
-    .. stated String? ~
-        ~ [a-z]+
-            pick(true)
-        ~ [0-9]+
-            pick(false)
-= found ?? 0
+(fn-do + pick (? String)
+  (param named Bool)
+  (return (only-if "name" (if named)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do joined Int
-    - helper TextHelper
-    - text String
-
-. found = match text
-    with helper
-    ~ v \unstated
-        if v == null then 1 else 2
-
-    .. unstated ~
-        ~ [a-z]+
-            pick(true)
-        ~ [0-9]+
-            pick(false)
-= found ?? 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ maybe-name ~ Char String?
-    - named Bool
-
-~ ""
-    pick(named)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pick String?
-    - named Bool
-
-= "name" if named
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextHelper
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'U32
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternValueMaterializer'String'String
-    is PatternRollback'Size
-
-+ arena Arena
-+ made Size
-+ valued Size
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-made += 1
-= source.slice-string(start .. < end)
-
-────────────────────
-+ do materialize-value String
-    - input String
-
-valued += 1
-= input
-
-────────────────────
-+ mark Size
-
-arena.mark.value + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-arena.rewind(ArenaMark(mark - 1))
+(type + TextHelper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternValueMaterializer String String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + made Size)
+  (prop + valued Size)
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= made 1)
+    (return (call (. source slice-string) (..< start end)))
+  )
+  (fn-do + materialize-value String
+    (param input String)
+    (+= valued 1)
+    (return input)
+  )
+  (fn-expr + mark Size
+    (+ (. arena mark value) 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (call (. arena rewind) (call ArenaMark (- mark 1)))
+  )
+)
 ```
 
 ```output
@@ -9349,26 +11809,36 @@ arena.rewind(ArenaMark(mark - 1))
 
 ### A name that holds what an optional call of a rule gave is read as what it holds where a test narrowed it.
 
-```yumi
--- decode("ab")
--- decode("7")
--- decode("7b")
--- decode("?")
+```brix
+(main
+  (print (call decode "ab"))
+  (print (call decode "7"))
+  (print (call decode "7b"))
+  (print (call decode "?"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do decode String
-    - text String
-
-. found = match text
-    ~ [a-z] v \maybe?
-        if v == null then "null" else "${v + 1}"
-    ~ [0-9] v \maybe?
-        if v == null then "null" else "${v + 2}"
-
-    .. maybe U32 ~
-        ~ "b" | "c"
+(fn-do + decode String
+  (param text String)
+  (let found
+    (match text
+      (~ (seq (chars "a-z") (: v (? \maybe)))
+        (if-expr (== v null) "null" (str (+ v 1)))
+      )
+      (~ (seq (chars "0-9") (: v (? \maybe)))
+        (if-expr (== v null) "null" (str (+ v 2)))
+      )
+      (blank)
+      (lazy maybe U32
+        (pattern
+          (~ (| "b" "c")
             5
-= found ?? "none"
+          )
+        )
+      )
+    )
+  )
+  (return (?? found "none"))
+)
 ```
 
 ```output
@@ -9380,84 +11850,79 @@ none
 
 ### A rule that states an optional of a type only the helper makes of what its arm gives has it made only where the arm gives a value.
 
-```yumi
-/core/atom-pool
-/core/arena
-/core/patterns
+```brix
+(import /core/atom-pool)
+(import /core/arena)
+(import /core/patterns)
+(blank)
 
-. helper = NamingHelper(Arena())
-for text in ["ab", "7", "?"]
-    -- decode(helper, text)
-    -- helper.named
+(main
+  (let helper (call NamingHelper (call Arena)))
+  (for (in text (list "ab" "7" "?"))
+    (print (call decode helper text))
+    (print (. helper named))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do decode String
-    - helper NamingHelper
-    - text String
+(fn-do + decode String
+  (param helper NamingHelper)
+  (param text String)
+  (let found
+    (match text
+      (with helper)
+      (~ (seq (+ (chars "a-z")) (: v (call \maybe-name true)))
+        (if-expr (== v null) "null" (. v text))
+      )
+      (~ (seq (+ (chars "0-9")) (: v (call \maybe-name false)))
+        (if-expr (== v null) "null" (. v text))
+      )
+    )
+  )
+  (return (?? found "none"))
+)
 
-. found = match text
-    with helper
-    ~ [a-z]+ v \maybe-name(true)
-        if v == null then "null" else v.text
-    ~ [0-9]+ v \maybe-name(false)
-        if v == null then "null" else v.text
-= found ?? "none"
+(fn-expr + maybe-name (? Atom) (over: Char)
+  (param named Bool)
+  (~ ""
+    (only-if "name" (if named))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ maybe-name ~ Char Atom?
-    - named Bool
-
-~ ""
-    "name" if named
-
-━━━━━━━━━━━━━━━━━━━━
-+ NamingHelper
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'U32
-    is PatternValueMaterializer'String'Atom
-    is PatternRollback'Size
-
-+ arena Arena
-+ pool AtomPool
-+ named Size
-+ notes [String]
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-pool = AtomPool()
-
-────────────────────
-+ do note U32
-    - text String
-
-notes += text
-= notes.length as U32
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ do materialize-value Atom
-    - input String
-
-named += 1
-= pool.store(input)
-
-────────────────────
-+ mark Size
-
-arena.mark.value + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-arena.rewind(ArenaMark(mark - 1))
+(type + NamingHelper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternValueMaterializer String Atom))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + pool AtomPool)
+  (prop + named Size)
+  (prop + notes (list String))
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+    (= pool (call AtomPool))
+  )
+  (fn-do + note U32
+    (param text String)
+    (+= notes text)
+    (return (as (. notes length) U32))
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + materialize-value Atom
+    (param input String)
+    (+= named 1)
+    (return (call (. pool store) input))
+  )
+  (fn-expr + mark Size
+    (+ (. arena mark value) 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (call (. arena rewind) (call ArenaMark (- mark 1)))
+  )
+)
 ```
 
 ```output
@@ -9471,72 +11936,124 @@ none
 
 ### Alternatives that each call a rule that gives a value of one type give the name that captures them the value of the one that passed: alone, in a repeat and in an optional part.
 
-```yumi
-for text in ["'a", "'b", "'c", "'d", "x"]
-    -- one(text)
-for text in ["ab", "cab", "", "abd"]
-    -- many(text)
-for text in ["a.", ".", "c.", "d."]
-    -- maybe(text)
+```brix
+(main
+  (for (in text (list "'a" "'b" "'c" "'d" "x"))
+    (print (call one text))
+  )
+  (for (in text (list "ab" "cab" "" "abd"))
+    (print (call many text))
+  )
+  (for (in text (list "a." "." "c." "d."))
+    (print (call maybe text))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do one String
-    - text String
-
-= match text
-    ~ "'" tt (\first | \second | \third)
-        "got ${tt + 1}"
-    ?? "no match"
-
-    .. first U32 ~
-        ~ "a"
+(fn-do + one String
+  (param text String)
+  (return
+    (match text
+      (~ (seq "'" (: tt (| \first \second \third)))
+        (str "got " (+ tt 1))
+      )
+      (default
+        (inline "no match")
+      )
+      (blank)
+      (lazy first U32
+        (pattern
+          (~ "a"
             10
-
-    .. second U32 ~
-        ~ "b"
+          )
+        )
+      )
+      (blank)
+      (lazy second U32
+        (pattern
+          (~ "b"
             20
-
-    .. third U32 ~
-        ~ "c"
+          )
+        )
+      )
+      (blank)
+      (lazy third U32
+        (pattern
+          (~ "c"
             30
+          )
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do many String
-    - text String
-
-= match text
-    ~ items (\m-first | \m-second | \m-third)*
-        "got ${items.length} ${items}"
-    ?? "no match"
-
-    .. m-first U32 ~
-        ~ "a"
+(fn-do + many String
+  (param text String)
+  (return
+    (match text
+      (~ (: items (* (| \m-first \m-second \m-third)))
+        (str "got " (. items length) " " items)
+      )
+      (default
+        (inline "no match")
+      )
+      (blank)
+      (lazy m-first U32
+        (pattern
+          (~ "a"
             10
-
-    .. m-second U32 ~
-        ~ "b"
+          )
+        )
+      )
+      (blank)
+      (lazy m-second U32
+        (pattern
+          (~ "b"
             20
-
-    .. m-third U32 ~
-        ~ "c"
+          )
+        )
+      )
+      (blank)
+      (lazy m-third U32
+        (pattern
+          (~ "c"
             30
+          )
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do maybe String
-    - text String
-
-= match text
-    ~ tt (\o-first | \o-second)? "."
-        "got ${tt ?? 0}"
-    ?? "no match"
-
-    .. o-first U32 ~
-        ~ "a"
+(fn-do + maybe String
+  (param text String)
+  (return
+    (match text
+      (~ (seq (: tt (? (| \o-first \o-second))) ".")
+        (str "got " (?? tt 0))
+      )
+      (default
+        (inline "no match")
+      )
+      (blank)
+      (lazy o-first U32
+        (pattern
+          (~ "a"
             10
-
-    .. o-second U32 ~
-        ~ "c"
+          )
+        )
+      )
+      (blank)
+      (lazy o-second U32
+        (pattern
+          (~ "c"
             30
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -9557,87 +12074,128 @@ no match
 
 ### A repeat or a count of a call of a rule that gives an optional value gives a list of what each pass gave, nothing where a pass gave none.
 
-```yumi
-for text in ["a1b", "11", "", "ab", "a-"]
-    -- lines(text)
-    -- starred(text)
-    -- counted(text)
-    -- texts(text)
+```brix
+(main
+  (for (in text (list "a1b" "11" "" "ab" "a-"))
+    (print (call lines text))
+    (print (call starred text))
+    (print (call counted text))
+    (print (call texts text))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do lines String
-    - text String
+(fn-do + lines String
+  (param text String)
+  (return
+    (match text
+      (~ (: items (+ \mline))
+        (str "got " (. items length) ": " (call show items))
+      )
+      (default
+        (inline "no match")
+      )
+    )
+  )
+)
 
-= match text
-    ~ items \mline+
-        "got ${items.length}: ${show(items)}"
-    ?? "no match"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do starred String
-    - text String
-
-= match text
-    ~ items \s-line* rest .*
-        "got ${items.length}: ${show(items)} then $rest"
-    ?? "no match"
-
-    .. s-line U32? ~
-        ~ [0-9]
+(fn-do + starred String
+  (param text String)
+  (return
+    (match text
+      (~ (seq (: items (* \s-line)) (: rest (* .)))
+        (str "got " (. items length) ": " (call show items) " then " rest)
+      )
+      (default
+        (inline "no match")
+      )
+      (blank)
+      (lazy s-line (? U32)
+        (pattern
+          (~ (chars "0-9")
             null
-        ~ "a"
+          )
+          (~ "a"
             10
+          )
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do counted String
-    - text String
-
-= match text
-    ~ items \c-line{2} rest .*
-        "got ${items.length}: ${show(items)} then $rest"
-    ?? "no match"
-
-    .. c-line U32? ~
-        ~ [0-9]
+(fn-do + counted String
+  (param text String)
+  (return
+    (match text
+      (~ (seq (: items ({} \c-line 2)) (: rest (* .)))
+        (str "got " (. items length) ": " (call show items) " then " rest)
+      )
+      (default
+        (inline "no match")
+      )
+      (blank)
+      (lazy c-line (? U32)
+        (pattern
+          (~ (chars "0-9")
             null
-        ~ "a"
+          )
+          (~ "a"
             10
+          )
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do texts String
-    - text String
-
-= match text
-    ~ items \t-line+
-        "got ${items.length}: ${show(items)}"
-    ?? "no match"
-
-    .. t-line String? ~
-        ~ [0-9]
+(fn-do + texts String
+  (param text String)
+  (return
+    (match text
+      (~ (: items (+ \t-line))
+        (str "got " (. items length) ": " (call show items))
+      )
+      (default
+        (inline "no match")
+      )
+      (blank)
+      (lazy t-line (? String)
+        (pattern
+          (~ (chars "0-9")
             null
-        ~ "a"
+          )
+          (~ "a"
             "ten"
-        ~ "b"
+          )
+          (~ "b"
             "twenty"
+          )
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ mline ~ Char U32?
-
-~ [0-9]
+(fn-expr + mline (? U32) (over: Char)
+  (~ (chars "0-9")
     null
-~ "a"
+  )
+  (~ "a"
     10
-~ "b"
+  )
+  (~ "b"
     20
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show String
-    - items
-
-. parts [String]
-for item in items
-    parts += if item == null then "none" else "${item}"
-= ", ".join(parts)
+(fn-do + show String
+  (param items _)
+  (let parts (list String))
+  (for (in item items)
+    (+= parts (if-expr (== item null) "none" (str item)))
+  )
+  (return (call (. ", " join) parts))
+)
 ```
 
 ```output
@@ -9665,162 +12223,156 @@ no match
 
 ### A list an action gives under a helper, where its rule states a list of a type the helper makes of the action's items, is made again item by item.
 
-```yumi
-/core/atom-pool
-/core/arena
-/core/patterns
+```brix
+(import /core/atom-pool)
+(import /core/arena)
+(import /core/patterns)
+(blank)
 
-. helper = AtomPatternHelper(Arena())
-for text in ["This", "a.b", "?"]
-    -- match text
-        with helper
-        ~ parsed \grammar(helper)
-            helper.notes[parsed - 1]
-        ?? "no match"
-    -- "counts ${helper.string-capture-count} ${helper.string-value-count} ${helper.atom-capture-count} ${helper.atom-value-count}"
+(main
+  (let helper (call AtomPatternHelper (call Arena)))
+  (for (in text (list "This" "a.b" "?"))
+    (print
+      (match text
+        (with helper)
+        (~ (: parsed (call \grammar helper))
+          ([] (. helper notes) (- parsed 1))
+        )
+        (default
+          (inline "no match")
+        )
+      )
+    )
+    (print (str "counts " (. helper string-capture-count) " " (. helper string-value-count) " " (. helper atom-capture-count) " " (. helper atom-value-count)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ grammar ~ Char
-    - tree AtomPatternHelper
+(fn-expr + grammar _ (over: Char)
+  (param tree AtomPatternHelper)
+  (~ (: names \left)
+    (call (. tree note) (call show names))
+  )
+  (where
+    (lazy left (of ImmutableArray Atom)
+      (pattern
+        (~ (: value "This")
+          (call single value)
+        )
+        (~ (seq (: first (chars "a-z")) "." (: second (chars "a-z")))
+          (call pair first second)
+        )
+      )
+    )
+  )
+)
 
-~ names \left
-    tree.note(show(names))
+(fn-do + (of single Item) (of ImmutableArray Item)
+  (param item Item)
+  (let items (call (of Array Item) 1))
+  (= ([] items 0) item)
+  (return (. items immutable))
+)
 
-.. left ImmutableArray'Atom ~
-    ~ value "This"
-        single(value)
-    ~ first [a-z] "." second [a-z]
-        pair(first, second)
+(fn-do + (of pair Item) (of ImmutableArray Item)
+  (param first Item)
+  (param second Item)
+  (let items (call (of Array Item) 2))
+  (= ([] items 0) first)
+  (= ([] items 1) second)
+  (return (. items immutable))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do single'Item ImmutableArray'Item
-    - item Item
+(fn-do + show String
+  (param names (of ImmutableArray Atom))
+  (let parts (list String))
+  (for (in name names)
+    (+= parts (. name text))
+  )
+  (return (call (. ", " join) parts))
+)
 
-. items = Array'Item(1)
-items[0] = item
-= items.immutable
+(type + NodeId (is U32))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pair'Item ImmutableArray'Item
-    - first Item
-    - second Item
+(type + AtomPatternHelper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements (of PatternMaterializationRoot NodeId))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternValueMaterializer String String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + pool AtomPool)
+  (prop + string-capture-count Size)
+  (prop + string-value-count Size)
+  (prop + atom-capture-count Size)
+  (prop + atom-value-count Size)
+  (prop + mark-count Size)
+  (prop + notes (list String))
+  (blank)
+  (delegate (of PatternCaptureMaterializer Char Atom) (of PatternCaptureMaterializer Byte Atom))
+  (delegate (of PatternValueMaterializer String Atom))
+  (prop _ atom-materializer _ (:= (call AtomAtomPatternMaterializer this)))
+  (fn-do + note NodeId
+    (param text String)
+    (+= notes text)
+    (return (as (. notes length) NodeId))
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+    (= pool (call AtomPool))
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= string-capture-count 1)
+    (return (call (. arena copy-span) source start end))
+  )
+  (fn-do + materialize-value String
+    (param input String)
+    (+= string-value-count 1)
+    (return (call (. arena copy-string) input))
+  )
+  (fn-expr + mark Size
+    (before
+      (do
+        (+= mark-count 1)
+      )
+    )
+    (+ (. arena mark value) 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (call (. arena rewind) (call ArenaMark (- mark 1)))
+  )
+)
 
-. items = Array'Item(2)
-items[0] = first
-items[1] = second
-= items.immutable
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show String
-    - names ImmutableArray'Atom
-
-. parts [String]
-for name in names
-    parts += name.text
-= ", ".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ NodeId is U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ AtomPatternHelper
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'NodeId
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternValueMaterializer'String'String
-    is PatternRollback'Size
-
-+ arena Arena
-+ pool AtomPool
-+ string-capture-count Size
-+ string-value-count Size
-+ atom-capture-count Size
-+ atom-value-count Size
-+ mark-count Size
-+ notes [String]
-
-as PatternCaptureMaterializer'Char'Atom, PatternCaptureMaterializer'Byte'Atom for
-as PatternValueMaterializer'String'Atom for
-_ atom-materializer := AtomAtomPatternMaterializer(this)
-
-────────────────────
-+ do note NodeId
-    - text String
-
-notes += text
-= notes.length as NodeId
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-pool = AtomPool()
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-string-capture-count += 1
-= arena.copy-span(source, start, end)
-
-────────────────────
-+ do materialize-value String
-    - input String
-
-string-value-count += 1
-= arena.copy-string(input)
-
-────────────────────
-+ mark Size
-
-do
-    mark-count += 1
-arena.mark.value + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-arena.rewind(ArenaMark(mark - 1))
-
-━━━━━━━━━━━━━━━━━━━━
-_ AtomAtomPatternMaterializer is Tuple
-    is PatternCaptureMaterializer'Char'Atom
-    is PatternCaptureMaterializer'Byte'Atom
-    is PatternValueMaterializer'String'Atom
-
-_ helper AtomPatternHelper
-
-────────────────────
-+ This
-    - source AtomPatternHelper
-
-helper = source
-
-────────────────────
-+ do materialize-capture'Token Atom
-    - source Token[]
-    - start Index
-    - end Index
-
-helper.atom-capture-count += 1
-= helper.pool.store(source, start, end)
-
-────────────────────
-+ do materialize-value Atom
-    - input String
-
-helper.atom-value-count += 1
-= helper.pool.store(input)
+(type _ AtomAtomPatternMaterializer (is Tuple)
+  (implements (of PatternCaptureMaterializer Char Atom))
+  (implements (of PatternCaptureMaterializer Byte Atom))
+  (implements (of PatternValueMaterializer String Atom))
+  (prop _ helper AtomPatternHelper)
+  (fn-do + This _
+    (param source AtomPatternHelper)
+    (= helper source)
+  )
+  (fn-do + (of materialize-capture Token) Atom
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= (. helper atom-capture-count) 1)
+    (return (call (. helper pool store) source start end))
+  )
+  (fn-do + materialize-value Atom
+    (param input String)
+    (+= (. helper atom-value-count) 1)
+    (return (call (. helper pool store) input))
+  )
+)
 ```
 
 ```output
@@ -9834,50 +12386,85 @@ counts 3 3 0 3
 
 ### A name the arms of a rule capture may hold a list a rule gave in one arm and an optional one in another.
 
-```yumi
-for text in ["#ab.x", "#.x", "#ab.", "@ab.x", "@.x", "@ab.", "?"]
-    -- describe(text)
-    -- match text
-        ~ v \entry
-            v
-        ?? "no match"
+```brix
+(main
+  (for (in text (list "#ab.x" "#.x" "#ab." "@ab.x" "@.x" "@ab." "?"))
+    (print (call describe text))
+    (print
+      (match text
+        (~ (: v \entry)
+          v
+        )
+        (default
+          (inline "no match")
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do describe String
-    - text String
-
-= match text
-    ~ v \local-entry
+(fn-do + describe String
+  (param text String)
+  (return
+    (match text
+      (~ (: v \local-entry)
         v
-    ?? "no match"
-
-    .. local-entry String ~
-        ~ "#" rules \local-letters? "." body \local-word
-            "first ${if rules then rules.length else 0} $body"
-        ~ "@" rules \local-letters "." body \local-word?
-            "second ${rules.length} ${body ?? "nothing"}"
-
-    .. local-letters ImmutableArray'String ~
-        ~ (letter [a-z])+
+      )
+      (default
+        (inline "no match")
+      )
+      (blank)
+      (lazy local-entry String
+        (pattern
+          (~ (seq "#" (: rules (? \local-letters)) "." (: body \local-word))
+            (str "first " (if-expr rules (. rules length) 0) " " body)
+          )
+          (~ (seq "@" (: rules \local-letters) "." (: body (? \local-word)))
+            (str "second " (. rules length) " " (?? body "nothing"))
+          )
+        )
+      )
+      (blank)
+      (lazy local-letters (of ImmutableArray String)
+        (pattern
+          (~ (+ (: letter (chars "a-z")))
             letter
+          )
+        )
+      )
+      (blank)
+      (lazy local-word String
+        (pattern
+          (~ (+ (chars "a-z")))
+        )
+      )
+    )
+  )
+)
 
-    .. local-word String ~
-        ~ [a-z]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ entry ~ Char String
-
-~ "#" rules \letters? "." body \word
-    "first ${if rules then rules.length else 0} $body"
-~ "@" rules \letters "." body \word?
-    "second ${rules.length} ${body ?? "nothing"}"
-
-.. letters ImmutableArray'String ~
-    ~ (found [a-z])+
-        found
-
-.. word String ~
-    ~ [a-z]+
+(fn-expr + entry String (over: Char)
+  (~ (seq "#" (: rules (? \letters)) "." (: body \word))
+    (str "first " (if-expr rules (. rules length) 0) " " body)
+  )
+  (~ (seq "@" (: rules \letters) "." (: body (? \word)))
+    (str "second " (. rules length) " " (?? body "nothing"))
+  )
+  (where
+    (lazy letters (of ImmutableArray String)
+      (pattern
+        (~ (+ (: found (chars "a-z")))
+          found
+        )
+      )
+    )
+    (blank)
+    (lazy word String
+      (pattern
+        (~ (+ (chars "a-z")))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -9899,132 +12486,126 @@ no match
 
 ### A rule given a pattern that gives text, under a helper that makes text again, has the list it accumulates made again item by item where its action reads it, the list it gives made again, and so the list where the rule calling it reads it.
 
-```yumi
-/core/atom-pool
-/core/arena
-/core/patterns
+```brix
+(import /core/atom-pool)
+(import /core/arena)
+(import /core/patterns)
+(blank)
 
-. helper = AtomPatternHelper(Arena())
-for text in ["ab.c.d", "x", "?"]
-    -- match text
-        with helper
-        ~ parsed \grammar(helper)
-            helper.notes[parsed - 1]
-        ?? "no match"
-    -- "counts ${helper.string-capture-count} ${helper.string-value-count} ${helper.atom-capture-count} ${helper.atom-value-count}"
+(main
+  (let helper (call AtomPatternHelper (call Arena)))
+  (for (in text (list "ab.c.d" "x" "?"))
+    (print
+      (match text
+        (with helper)
+        (~ (: parsed (call \grammar helper))
+          ([] (. helper notes) (- parsed 1))
+        )
+        (default
+          (inline "no match")
+        )
+      )
+    )
+    (print (str "counts " (. helper string-capture-count) " " (. helper string-value-count) " " (. helper atom-capture-count) " " (. helper atom-value-count)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ grammar ~ Char
-    - tree AtomPatternHelper
+(fn-expr + grammar _ (over: Char)
+  (param tree AtomPatternHelper)
+  (~ (: parts (call \delimited "." (~ \raw-name)))
+    (call (. tree note) (call (. "." join) parts))
+  )
+  (where
+    (lazy raw-name
+      (pattern
+        (~ (seq (chars "a-z") (* (chars "-a-z0-9"))))
+      )
+    )
+  )
+)
 
-~ parts \delimited(".", ~ \raw-name)
-    tree.note(".".join(parts))
+(type + NodeId (is U32))
 
-.. raw-name ~
-    ~ [a-z] [-a-z0-9]*
+(type + AtomPatternHelper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements (of PatternMaterializationRoot NodeId))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternValueMaterializer String String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + pool AtomPool)
+  (prop + string-capture-count Size)
+  (prop + string-value-count Size)
+  (prop + atom-capture-count Size)
+  (prop + atom-value-count Size)
+  (prop + mark-count Size)
+  (prop + notes (list String))
+  (blank)
+  (delegate (of PatternCaptureMaterializer Char Atom) (of PatternCaptureMaterializer Byte Atom))
+  (delegate (of PatternValueMaterializer String Atom))
+  (prop _ atom-materializer _ (:= (call AtomAtomPatternMaterializer this)))
+  (fn-do + note NodeId
+    (param text String)
+    (+= notes text)
+    (return (as (. notes length) NodeId))
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+    (= pool (call AtomPool))
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= string-capture-count 1)
+    (return (call (. arena copy-span) source start end))
+  )
+  (fn-do + materialize-value String
+    (param input String)
+    (+= string-value-count 1)
+    (return (call (. arena copy-string) input))
+  )
+  (fn-expr + mark Size
+    (before
+      (do
+        (+= mark-count 1)
+      )
+    )
+    (+ (. arena mark value) 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (call (. arena rewind) (call ArenaMark (- mark 1)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ NodeId is U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ AtomPatternHelper
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'NodeId
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternValueMaterializer'String'String
-    is PatternRollback'Size
-
-+ arena Arena
-+ pool AtomPool
-+ string-capture-count Size
-+ string-value-count Size
-+ atom-capture-count Size
-+ atom-value-count Size
-+ mark-count Size
-+ notes [String]
-
-as PatternCaptureMaterializer'Char'Atom, PatternCaptureMaterializer'Byte'Atom for
-as PatternValueMaterializer'String'Atom for
-_ atom-materializer := AtomAtomPatternMaterializer(this)
-
-────────────────────
-+ do note NodeId
-    - text String
-
-notes += text
-= notes.length as NodeId
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-pool = AtomPool()
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-string-capture-count += 1
-= arena.copy-span(source, start, end)
-
-────────────────────
-+ do materialize-value String
-    - input String
-
-string-value-count += 1
-= arena.copy-string(input)
-
-────────────────────
-+ mark Size
-
-do
-    mark-count += 1
-arena.mark.value + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-arena.rewind(ArenaMark(mark - 1))
-
-━━━━━━━━━━━━━━━━━━━━
-_ AtomAtomPatternMaterializer is Tuple
-    is PatternCaptureMaterializer'Char'Atom
-    is PatternCaptureMaterializer'Byte'Atom
-    is PatternValueMaterializer'String'Atom
-
-_ helper AtomPatternHelper
-
-────────────────────
-+ This
-    - source AtomPatternHelper
-
-helper = source
-
-────────────────────
-+ do materialize-capture'Token Atom
-    - source Token[]
-    - start Index
-    - end Index
-
-helper.atom-capture-count += 1
-= helper.pool.store(source, start, end)
-
-────────────────────
-+ do materialize-value Atom
-    - input String
-
-helper.atom-value-count += 1
-= helper.pool.store(input)
+(type _ AtomAtomPatternMaterializer (is Tuple)
+  (implements (of PatternCaptureMaterializer Char Atom))
+  (implements (of PatternCaptureMaterializer Byte Atom))
+  (implements (of PatternValueMaterializer String Atom))
+  (prop _ helper AtomPatternHelper)
+  (fn-do + This _
+    (param source AtomPatternHelper)
+    (= helper source)
+  )
+  (fn-do + (of materialize-capture Token) Atom
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= (. helper atom-capture-count) 1)
+    (return (call (. helper pool store) source start end))
+  )
+  (fn-do + materialize-value Atom
+    (param input String)
+    (+= (. helper atom-value-count) 1)
+    (return (call (. helper pool store) input))
+  )
+)
 ```
 
 ```output
@@ -10038,145 +12619,143 @@ counts 4 15 0 0
 
 ### A pattern given to a rule that is a call of a local rule alone, where the local rule states a type the helper makes of its text, gives what the helper makes.
 
-```yumi
-/core/atom-pool
-/core/arena
-/core/patterns
+```brix
+(import /core/atom-pool)
+(import /core/arena)
+(import /core/patterns)
+(blank)
 
-. helper = AtomPatternHelper(Arena())
-for text in ["ab.c.d", "x", "?"]
-    -- match text
-        with helper
-        ~ parsed \grammar(helper)
-            helper.notes[parsed - 1]
-        ?? "no match"
-    -- "counts ${helper.string-capture-count} ${helper.string-value-count} ${helper.atom-capture-count} ${helper.atom-value-count}"
+(main
+  (let helper (call AtomPatternHelper (call Arena)))
+  (for (in text (list "ab.c.d" "x" "?"))
+    (print
+      (match text
+        (with helper)
+        (~ (: parsed (call \grammar helper))
+          ([] (. helper notes) (- parsed 1))
+        )
+        (default
+          (inline "no match")
+        )
+      )
+    )
+    (print (str "counts " (. helper string-capture-count) " " (. helper string-value-count) " " (. helper atom-capture-count) " " (. helper atom-value-count)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ grammar ~ Char
-    - tree AtomPatternHelper
+(fn-expr + grammar _ (over: Char)
+  (param tree AtomPatternHelper)
+  (~ (: names \left)
+    (call (. tree note) (call show names))
+  )
+  (where
+    (lazy left (of ImmutableArray Atom)
+      (pattern
+        (~ (: names (call \delimited "." (~ \name)))
+          names
+        )
+      )
+    )
+    (blank)
+    (lazy name Atom
+      (pattern
+        (~ (seq (chars "a-z") (* (chars "-a-z0-9"))))
+      )
+    )
+  )
+)
 
-~ names \left
-    tree.note(show(names))
+(fn-do + show String
+  (param names (of ImmutableArray Atom))
+  (let parts (list String))
+  (for (in name names)
+    (+= parts (. name text))
+  )
+  (return (call (. "+" join) parts))
+)
 
-.. left ImmutableArray'Atom ~
-    ~ names \delimited(".", ~ \name)
-        names
+(type + NodeId (is U32))
 
-.. name Atom ~
-    ~ [a-z] [-a-z0-9]*
+(type + AtomPatternHelper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements (of PatternMaterializationRoot NodeId))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternValueMaterializer String String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + pool AtomPool)
+  (prop + string-capture-count Size)
+  (prop + string-value-count Size)
+  (prop + atom-capture-count Size)
+  (prop + atom-value-count Size)
+  (prop + mark-count Size)
+  (prop + notes (list String))
+  (blank)
+  (delegate (of PatternCaptureMaterializer Char Atom) (of PatternCaptureMaterializer Byte Atom))
+  (delegate (of PatternValueMaterializer String Atom))
+  (prop _ atom-materializer _ (:= (call AtomAtomPatternMaterializer this)))
+  (fn-do + note NodeId
+    (param text String)
+    (+= notes text)
+    (return (as (. notes length) NodeId))
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+    (= pool (call AtomPool))
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= string-capture-count 1)
+    (return (call (. arena copy-span) source start end))
+  )
+  (fn-do + materialize-value String
+    (param input String)
+    (+= string-value-count 1)
+    (return (call (. arena copy-string) input))
+  )
+  (fn-expr + mark Size
+    (before
+      (do
+        (+= mark-count 1)
+      )
+    )
+    (+ (. arena mark value) 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (call (. arena rewind) (call ArenaMark (- mark 1)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show String
-    - names ImmutableArray'Atom
-
-. parts [String]
-for name in names
-    parts += name.text
-= "+".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ NodeId is U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ AtomPatternHelper
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'NodeId
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternValueMaterializer'String'String
-    is PatternRollback'Size
-
-+ arena Arena
-+ pool AtomPool
-+ string-capture-count Size
-+ string-value-count Size
-+ atom-capture-count Size
-+ atom-value-count Size
-+ mark-count Size
-+ notes [String]
-
-as PatternCaptureMaterializer'Char'Atom, PatternCaptureMaterializer'Byte'Atom for
-as PatternValueMaterializer'String'Atom for
-_ atom-materializer := AtomAtomPatternMaterializer(this)
-
-────────────────────
-+ do note NodeId
-    - text String
-
-notes += text
-= notes.length as NodeId
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-pool = AtomPool()
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-string-capture-count += 1
-= arena.copy-span(source, start, end)
-
-────────────────────
-+ do materialize-value String
-    - input String
-
-string-value-count += 1
-= arena.copy-string(input)
-
-────────────────────
-+ mark Size
-
-do
-    mark-count += 1
-arena.mark.value + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-arena.rewind(ArenaMark(mark - 1))
-
-━━━━━━━━━━━━━━━━━━━━
-_ AtomAtomPatternMaterializer is Tuple
-    is PatternCaptureMaterializer'Char'Atom
-    is PatternCaptureMaterializer'Byte'Atom
-    is PatternValueMaterializer'String'Atom
-
-_ helper AtomPatternHelper
-
-────────────────────
-+ This
-    - source AtomPatternHelper
-
-helper = source
-
-────────────────────
-+ do materialize-capture'Token Atom
-    - source Token[]
-    - start Index
-    - end Index
-
-helper.atom-capture-count += 1
-= helper.pool.store(source, start, end)
-
-────────────────────
-+ do materialize-value Atom
-    - input String
-
-helper.atom-value-count += 1
-= helper.pool.store(input)
+(type _ AtomAtomPatternMaterializer (is Tuple)
+  (implements (of PatternCaptureMaterializer Char Atom))
+  (implements (of PatternCaptureMaterializer Byte Atom))
+  (implements (of PatternValueMaterializer String Atom))
+  (prop _ helper AtomPatternHelper)
+  (fn-do + This _
+    (param source AtomPatternHelper)
+    (= helper source)
+  )
+  (fn-do + (of materialize-capture Token) Atom
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= (. helper atom-capture-count) 1)
+    (return (call (. helper pool store) source start end))
+  )
+  (fn-do + materialize-value Atom
+    (param input String)
+    (+= (. helper atom-value-count) 1)
+    (return (call (. helper pool store) input))
+  )
+)
 ```
 
 ```output
@@ -10190,137 +12769,135 @@ counts 0 3 4 0
 
 ### An arm that is a call alone of a rule that states a type the helper makes of its text gives what the helper makes, beside an arm that makes the type itself.
 
-```yumi
-/core/atom-pool
-/core/arena
-/core/patterns
+```brix
+(import /core/atom-pool)
+(import /core/arena)
+(import /core/patterns)
+(blank)
 
-. helper = AtomPatternHelper(Arena())
-for text in ["ab", "x", "42", "?"]
-    -- match text
-        with helper
-        ~ parsed \grammar(helper)
-            helper.notes[parsed - 1]
-        ?? "no match"
-    -- "counts ${helper.string-capture-count} ${helper.string-value-count} ${helper.atom-capture-count} ${helper.atom-value-count}"
+(main
+  (let helper (call AtomPatternHelper (call Arena)))
+  (for (in text (list "ab" "x" "42" "?"))
+    (print
+      (match text
+        (with helper)
+        (~ (: parsed (call \grammar helper))
+          ([] (. helper notes) (- parsed 1))
+        )
+        (default
+          (inline "no match")
+        )
+      )
+    )
+    (print (str "counts " (. helper string-capture-count) " " (. helper string-value-count) " " (. helper atom-capture-count) " " (. helper atom-value-count)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ grammar ~ Char NodeId
-    - tree AtomPatternHelper
+(fn-expr + grammar NodeId (over: Char)
+  (param tree AtomPatternHelper)
+  (~ (: n \item)
+    (call (. tree note) (. n text))
+  )
+  (where
+    (lazy item Atom
+      (pattern
+        (~ \name)
+        (~ (: v (+ (chars "0-9")))
+          (call (. tree pool store) v)
+        )
+      )
+    )
+    (blank)
+    (lazy name Atom
+      (pattern
+        (~ (+ (chars "a-z")))
+      )
+    )
+  )
+)
 
-~ n \item
-    tree.note(n.text)
+(type + NodeId (is U32))
 
-.. item Atom ~
-    ~ \name
-    ~ v [0-9]+
-        tree.pool.store(v)
+(type + AtomPatternHelper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements (of PatternMaterializationRoot NodeId))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternValueMaterializer String String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + pool AtomPool)
+  (prop + string-capture-count Size)
+  (prop + string-value-count Size)
+  (prop + atom-capture-count Size)
+  (prop + atom-value-count Size)
+  (prop + mark-count Size)
+  (prop + notes (list String))
+  (blank)
+  (delegate (of PatternCaptureMaterializer Char Atom) (of PatternCaptureMaterializer Byte Atom))
+  (delegate (of PatternValueMaterializer String Atom))
+  (prop _ atom-materializer _ (:= (call AtomAtomPatternMaterializer this)))
+  (fn-do + note NodeId
+    (param text String)
+    (+= notes text)
+    (return (as (. notes length) NodeId))
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+    (= pool (call AtomPool))
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= string-capture-count 1)
+    (return (call (. arena copy-span) source start end))
+  )
+  (fn-do + materialize-value String
+    (param input String)
+    (+= string-value-count 1)
+    (return (call (. arena copy-string) input))
+  )
+  (fn-expr + mark Size
+    (before
+      (do
+        (+= mark-count 1)
+      )
+    )
+    (+ (. arena mark value) 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (call (. arena rewind) (call ArenaMark (- mark 1)))
+  )
+)
 
-.. name Atom ~
-    ~ [a-z]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ NodeId is U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ AtomPatternHelper
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'NodeId
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternValueMaterializer'String'String
-    is PatternRollback'Size
-
-+ arena Arena
-+ pool AtomPool
-+ string-capture-count Size
-+ string-value-count Size
-+ atom-capture-count Size
-+ atom-value-count Size
-+ mark-count Size
-+ notes [String]
-
-as PatternCaptureMaterializer'Char'Atom, PatternCaptureMaterializer'Byte'Atom for
-as PatternValueMaterializer'String'Atom for
-_ atom-materializer := AtomAtomPatternMaterializer(this)
-
-────────────────────
-+ do note NodeId
-    - text String
-
-notes += text
-= notes.length as NodeId
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-pool = AtomPool()
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-string-capture-count += 1
-= arena.copy-span(source, start, end)
-
-────────────────────
-+ do materialize-value String
-    - input String
-
-string-value-count += 1
-= arena.copy-string(input)
-
-────────────────────
-+ mark Size
-
-do
-    mark-count += 1
-arena.mark.value + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-arena.rewind(ArenaMark(mark - 1))
-
-━━━━━━━━━━━━━━━━━━━━
-_ AtomAtomPatternMaterializer is Tuple
-    is PatternCaptureMaterializer'Char'Atom
-    is PatternCaptureMaterializer'Byte'Atom
-    is PatternValueMaterializer'String'Atom
-
-_ helper AtomPatternHelper
-
-────────────────────
-+ This
-    - source AtomPatternHelper
-
-helper = source
-
-────────────────────
-+ do materialize-capture'Token Atom
-    - source Token[]
-    - start Index
-    - end Index
-
-helper.atom-capture-count += 1
-= helper.pool.store(source, start, end)
-
-────────────────────
-+ do materialize-value Atom
-    - input String
-
-helper.atom-value-count += 1
-= helper.pool.store(input)
+(type _ AtomAtomPatternMaterializer (is Tuple)
+  (implements (of PatternCaptureMaterializer Char Atom))
+  (implements (of PatternCaptureMaterializer Byte Atom))
+  (implements (of PatternValueMaterializer String Atom))
+  (prop _ helper AtomPatternHelper)
+  (fn-do + This _
+    (param source AtomPatternHelper)
+    (= helper source)
+  )
+  (fn-do + (of materialize-capture Token) Atom
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= (. helper atom-capture-count) 1)
+    (return (call (. helper pool store) source start end))
+  )
+  (fn-do + materialize-value Atom
+    (param input String)
+    (+= (. helper atom-value-count) 1)
+    (return (call (. helper pool store) input))
+  )
+)
 ```
 
 ```output
@@ -10336,154 +12913,152 @@ counts 1 4 2 0
 
 ### A rule's value of a declared union type is read as it is under a helper whose value materializers take text: a union is made again only by a materializer that takes that union.
 
-```yumi
-/core/atom-pool
-/core/arena
-/core/patterns
+```brix
+(import /core/atom-pool)
+(import /core/arena)
+(import /core/patterns)
+(blank)
 
-. helper = AtomPatternHelper(Arena())
-for text in ["ab", "42", "ab42x", "?"]
-    -- match text
-        with helper
-        ~ parsed \grammar(helper)
-            helper.notes[parsed - 1]
-        ?? "no match"
-    -- "counts ${helper.string-capture-count} ${helper.string-value-count} ${helper.atom-capture-count} ${helper.atom-value-count}"
+(main
+  (let helper (call AtomPatternHelper (call Arena)))
+  (for (in text (list "ab" "42" "ab42x" "?"))
+    (print
+      (match text
+        (with helper)
+        (~ (: parsed (call \grammar helper))
+          ([] (. helper notes) (- parsed 1))
+        )
+        (default
+          (inline "no match")
+        )
+      )
+    )
+    (print (str "counts " (. helper string-capture-count) " " (. helper string-value-count) " " (. helper atom-capture-count) " " (. helper atom-value-count)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ grammar ~ Char NodeId
-    - tree AtomPatternHelper
+(fn-expr + grammar NodeId (over: Char)
+  (param tree AtomPatternHelper)
+  (~ (: pieces (+ \piece))
+    (call (. tree note) (call describe pieces))
+  )
+  (where
+    (lazy piece Piece
+      (pattern
+        (~ (: digits (+ (chars "0-9")))
+          (call (. Piece number) (. digits length))
+        )
+        (~ (: word (+ (chars "a-z")))
+          (call (. Piece word) word)
+        )
+      )
+    )
+  )
+)
 
-~ pieces \piece+
-    tree.note(describe(pieces))
+(type + Piece (is Union)
+  (variant number (tuple (: count Size)))
+  (variant word (tuple (: text String)))
+)
 
-.. piece Piece ~
-    ~ digits [0-9]+
-        Piece.number(digits.length)
-    ~ word [a-z]+
-        Piece.word(word)
+(fn-do + describe String
+  (param pieces (of ImmutableArray Piece))
+  (let shown "")
+  (for (in piece pieces)
+    (match piece
+      (case (call .number count)
+        (= shown (str shown "#" count))
+      )
+      (case (call .word text)
+        (= shown (str shown "<" text ">"))
+      )
+    )
+  )
+  (return shown)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Piece is Union
+(type + NodeId (is U32))
 
-| number(count Size)
-| word(text String)
+(type + AtomPatternHelper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements (of PatternMaterializationRoot NodeId))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternValueMaterializer String String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + pool AtomPool)
+  (prop + string-capture-count Size)
+  (prop + string-value-count Size)
+  (prop + atom-capture-count Size)
+  (prop + atom-value-count Size)
+  (prop + mark-count Size)
+  (prop + notes (list String))
+  (blank)
+  (delegate (of PatternCaptureMaterializer Char Atom) (of PatternCaptureMaterializer Byte Atom))
+  (delegate (of PatternValueMaterializer String Atom))
+  (prop _ atom-materializer _ (:= (call AtomAtomPatternMaterializer this)))
+  (fn-do + note NodeId
+    (param text String)
+    (+= notes text)
+    (return (as (. notes length) NodeId))
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+    (= pool (call AtomPool))
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= string-capture-count 1)
+    (return (call (. arena copy-span) source start end))
+  )
+  (fn-do + materialize-value String
+    (param input String)
+    (+= string-value-count 1)
+    (return (call (. arena copy-string) input))
+  )
+  (fn-expr + mark Size
+    (before
+      (do
+        (+= mark-count 1)
+      )
+    )
+    (+ (. arena mark value) 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (call (. arena rewind) (call ArenaMark (- mark 1)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do describe String
-    - pieces ImmutableArray'Piece
-
-. shown = ""
-for piece in pieces
-    match piece
-        | .number(count)
-            shown = "$shown#$count"
-        | .word(text)
-            shown = "$shown<$text>"
-= shown
-
-━━━━━━━━━━━━━━━━━━━━
-+ NodeId is U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ AtomPatternHelper
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'NodeId
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternValueMaterializer'String'String
-    is PatternRollback'Size
-
-+ arena Arena
-+ pool AtomPool
-+ string-capture-count Size
-+ string-value-count Size
-+ atom-capture-count Size
-+ atom-value-count Size
-+ mark-count Size
-+ notes [String]
-
-as PatternCaptureMaterializer'Char'Atom, PatternCaptureMaterializer'Byte'Atom for
-as PatternValueMaterializer'String'Atom for
-_ atom-materializer := AtomAtomPatternMaterializer(this)
-
-────────────────────
-+ do note NodeId
-    - text String
-
-notes += text
-= notes.length as NodeId
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-pool = AtomPool()
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-string-capture-count += 1
-= arena.copy-span(source, start, end)
-
-────────────────────
-+ do materialize-value String
-    - input String
-
-string-value-count += 1
-= arena.copy-string(input)
-
-────────────────────
-+ mark Size
-
-do
-    mark-count += 1
-arena.mark.value + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-arena.rewind(ArenaMark(mark - 1))
-
-━━━━━━━━━━━━━━━━━━━━
-_ AtomAtomPatternMaterializer is Tuple
-    is PatternCaptureMaterializer'Char'Atom
-    is PatternCaptureMaterializer'Byte'Atom
-    is PatternValueMaterializer'String'Atom
-
-_ helper AtomPatternHelper
-
-────────────────────
-+ This
-    - source AtomPatternHelper
-
-helper = source
-
-────────────────────
-+ do materialize-capture'Token Atom
-    - source Token[]
-    - start Index
-    - end Index
-
-helper.atom-capture-count += 1
-= helper.pool.store(source, start, end)
-
-────────────────────
-+ do materialize-value Atom
-    - input String
-
-helper.atom-value-count += 1
-= helper.pool.store(input)
+(type _ AtomAtomPatternMaterializer (is Tuple)
+  (implements (of PatternCaptureMaterializer Char Atom))
+  (implements (of PatternCaptureMaterializer Byte Atom))
+  (implements (of PatternValueMaterializer String Atom))
+  (prop _ helper AtomPatternHelper)
+  (fn-do + This _
+    (param source AtomPatternHelper)
+    (= helper source)
+  )
+  (fn-do + (of materialize-capture Token) Atom
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= (. helper atom-capture-count) 1)
+    (return (call (. helper pool store) source start end))
+  )
+  (fn-do + materialize-value Atom
+    (param input String)
+    (+= (. helper atom-value-count) 1)
+    (return (call (. helper pool store) input))
+  )
+)
 ```
 
 ```output
@@ -10499,15 +13074,26 @@ counts 3 4 0 0
 
 ### A lazy local declared under an action's value may share its name with a name another arm captures.
 
-```yumi
-for text in ["•a", "(b", "?"]
-    -- match text
-        ~ "•" expr [a-z]
-            "got $expr"
-        ~ "(" key [a-z]
-            "made $expr"
-                .. expr = "<$key>"
-        ?? "none"
+```brix
+(main
+  (for (in text (list "•a" "(b" "?"))
+    (print
+      (match text
+        (~ (seq "•" (: expr (chars "a-z")))
+          (str "got " expr)
+        )
+        (~ (seq "(" (: key (chars "a-z")))
+          (scope (str "made " expr)
+            (lazy expr (str "<" key ">"))
+          )
+        )
+        (default
+          (inline "none")
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -10518,32 +13104,53 @@ none
 
 ### In a rule that states text, an arm with no expression that is a sequence of parts gives the text it matched, whatever its last part gives.
 
-```yumi
-for text in ["•12", "12!", "#7", "x", "12"]
-    -- match text
-        ~ parsed \grammar
-            "got $parsed"
-        ?? "no match"
+```brix
+(main
+  (for (in text (list "•12" "12!" "#7" "x" "12"))
+    (print
+      (match text
+        (~ (: parsed \grammar)
+          (str "got " parsed)
+        )
+        (default
+          (inline "no match")
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ grammar ~ Char String
-
-~ s \single
-    "single <$s>"
-~ s \several
-    "several <$s>"
-
-.. single String ~
-    ~ "•" \number
-
-.. several String ~
-    ~ \number "!"
-    ~ "#" n \number
-    ~ "x"
-
-.. number U32 ~
-    ~ digits [0-9]+
-        digits.length as U32
+(fn-expr + grammar String (over: Char)
+  (~ (: s \single)
+    (str "single <" s ">")
+  )
+  (~ (: s \several)
+    (str "several <" s ">")
+  )
+  (where
+    (lazy single String
+      (pattern
+        (~ (seq "•" \number))
+      )
+    )
+    (blank)
+    (lazy several String
+      (pattern
+        (~ (seq \number "!"))
+        (~ (seq "#" (: n \number)))
+        (~ "x")
+      )
+    )
+    (blank)
+    (lazy number U32
+      (pattern
+        (~ (: digits (+ (chars "0-9")))
+          (as (. digits length) U32)
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -10556,147 +13163,153 @@ no match
 
 ### Under a helper, an arm with no expression that is a sequence of parts gives the text it matched, made as the type its rule gives, though its last part calls a rule that gives a value of that type.
 
-```yumi
-/core/atom-pool
-/core/arena
-/core/patterns
+```brix
+(import /core/atom-pool)
+(import /core/arena)
+(import /core/patterns)
+(blank)
 
-. helper = AtomPatternHelper(Arena())
-for text in ["•ab", "•xab", "?ab", "! xab", "ab"]
-    -- match text
-        with helper
-        ~ parsed \grammar(helper)
-            helper.notes[parsed - 1]
-        ?? "no match"
-    -- "counts ${helper.string-capture-count} ${helper.string-value-count} ${helper.atom-capture-count} ${helper.atom-value-count}"
+(main
+  (let helper (call AtomPatternHelper (call Arena)))
+  (for (in text (list "•ab" "•xab" "?ab" "! xab" "ab"))
+    (print
+      (match text
+        (with helper)
+        (~ (: parsed (call \grammar helper))
+          ([] (. helper notes) (- parsed 1))
+        )
+        (default
+          (inline "no match")
+        )
+      )
+    )
+    (print (str "counts " (. helper string-capture-count) " " (. helper string-value-count) " " (. helper atom-capture-count) " " (. helper atom-value-count)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ grammar ~ Char NodeId
-    - tree AtomPatternHelper
+(fn-expr + grammar NodeId (over: Char)
+  (param tree AtomPatternHelper)
+  (~ (: s \stated)
+    (call (. tree note) (str "stated " (. s text)))
+  )
+  (~ (: s \unstated)
+    (call (. tree note) (str "unstated " (. s text)))
+  )
+  (~ (: s \texted)
+    (call (. tree note) (str "texted " s))
+  )
+  (where
+    (lazy stated Atom
+      (pattern
+        (~ (seq "•" \name))
+      )
+    )
+    (blank)
+    (lazy unstated
+      (pattern
+        (~ (seq "?" \name))
+      )
+    )
+    (blank)
+    (lazy texted String
+      (pattern
+        (~ (seq "!" // \name))
+      )
+    )
+    (blank)
+    (lazy name Atom
+      (pattern
+        (~ (seq "x" (: rest (+ (chars "a-z"))))
+          (call (. tree pool store) rest)
+        )
+        (~ (+ (chars "a-z")))
+      )
+    )
+  )
+)
 
-~ s \stated
-    tree.note("stated ${s.text}")
-~ s \unstated
-    tree.note("unstated ${s.text}")
-~ s \texted
-    tree.note("texted $s")
+(type + NodeId (is U32))
 
-.. stated Atom ~
-    ~ "•" \name
+(type + AtomPatternHelper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements (of PatternMaterializationRoot NodeId))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternValueMaterializer String String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + pool AtomPool)
+  (prop + string-capture-count Size)
+  (prop + string-value-count Size)
+  (prop + atom-capture-count Size)
+  (prop + atom-value-count Size)
+  (prop + mark-count Size)
+  (prop + notes (list String))
+  (blank)
+  (delegate (of PatternCaptureMaterializer Char Atom) (of PatternCaptureMaterializer Byte Atom))
+  (delegate (of PatternValueMaterializer String Atom))
+  (prop _ atom-materializer _ (:= (call AtomAtomPatternMaterializer this)))
+  (fn-do + note NodeId
+    (param text String)
+    (+= notes text)
+    (return (as (. notes length) NodeId))
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+    (= pool (call AtomPool))
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= string-capture-count 1)
+    (return (call (. arena copy-span) source start end))
+  )
+  (fn-do + materialize-value String
+    (param input String)
+    (+= string-value-count 1)
+    (return (call (. arena copy-string) input))
+  )
+  (fn-expr + mark Size
+    (before
+      (do
+        (+= mark-count 1)
+      )
+    )
+    (+ (. arena mark value) 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (call (. arena rewind) (call ArenaMark (- mark 1)))
+  )
+)
 
-.. unstated ~
-    ~ "?" \name
-
-.. texted String ~
-    ~ "!" // \name
-
-.. name Atom ~
-    ~ "x" rest [a-z]+
-        tree.pool.store(rest)
-    ~ [a-z]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ NodeId is U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ AtomPatternHelper
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'NodeId
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternValueMaterializer'String'String
-    is PatternRollback'Size
-
-+ arena Arena
-+ pool AtomPool
-+ string-capture-count Size
-+ string-value-count Size
-+ atom-capture-count Size
-+ atom-value-count Size
-+ mark-count Size
-+ notes [String]
-
-as PatternCaptureMaterializer'Char'Atom, PatternCaptureMaterializer'Byte'Atom for
-as PatternValueMaterializer'String'Atom for
-_ atom-materializer := AtomAtomPatternMaterializer(this)
-
-────────────────────
-+ do note NodeId
-    - text String
-
-notes += text
-= notes.length as NodeId
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-pool = AtomPool()
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-string-capture-count += 1
-= arena.copy-span(source, start, end)
-
-────────────────────
-+ do materialize-value String
-    - input String
-
-string-value-count += 1
-= arena.copy-string(input)
-
-────────────────────
-+ mark Size
-
-do
-    mark-count += 1
-arena.mark.value + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-arena.rewind(ArenaMark(mark - 1))
-
-━━━━━━━━━━━━━━━━━━━━
-_ AtomAtomPatternMaterializer is Tuple
-    is PatternCaptureMaterializer'Char'Atom
-    is PatternCaptureMaterializer'Byte'Atom
-    is PatternValueMaterializer'String'Atom
-
-_ helper AtomPatternHelper
-
-────────────────────
-+ This
-    - source AtomPatternHelper
-
-helper = source
-
-────────────────────
-+ do materialize-capture'Token Atom
-    - source Token[]
-    - start Index
-    - end Index
-
-helper.atom-capture-count += 1
-= helper.pool.store(source, start, end)
-
-────────────────────
-+ do materialize-value Atom
-    - input String
-
-helper.atom-value-count += 1
-= helper.pool.store(input)
+(type _ AtomAtomPatternMaterializer (is Tuple)
+  (implements (of PatternCaptureMaterializer Char Atom))
+  (implements (of PatternCaptureMaterializer Byte Atom))
+  (implements (of PatternValueMaterializer String Atom))
+  (prop _ helper AtomPatternHelper)
+  (fn-do + This _
+    (param source AtomPatternHelper)
+    (= helper source)
+  )
+  (fn-do + (of materialize-capture Token) Atom
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= (. helper atom-capture-count) 1)
+    (return (call (. helper pool store) source start end))
+  )
+  (fn-do + materialize-value Atom
+    (param input String)
+    (+= (. helper atom-value-count) 1)
+    (return (call (. helper pool store) input))
+  )
+)
 ```
 
 ```output
@@ -10714,130 +13327,117 @@ counts 3 6 5 0
 
 ### A match's arm with no expression that is a sequence of parts gives the text it matched under a helper that makes the type its last part gives, as a rule's does.
 
-```yumi
-/core/atom-pool
-/core/arena
-/core/patterns
+```brix
+(import /core/atom-pool)
+(import /core/arena)
+(import /core/patterns)
+(blank)
 
-. helper = AtomPatternHelper(Arena())
-for text in ["•ab", "•xab"]
-    . found = match text
-        with helper
-        ~ "•" \name(helper)
-        ?! Panic("none")
-    -- found.text
-    -- "counts ${helper.string-capture-count} ${helper.string-value-count} ${helper.atom-capture-count} ${helper.atom-value-count}"
+(main
+  (let helper (call AtomPatternHelper (call Arena)))
+  (for (in text (list "•ab" "•xab"))
+    (let found
+      (match text
+        (with helper)
+        (~ (seq "•" (call \name helper)))
+        (throw (call Panic "none"))
+      )
+    )
+    (print (. found text))
+    (print (str "counts " (. helper string-capture-count) " " (. helper string-value-count) " " (. helper atom-capture-count) " " (. helper atom-value-count)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ name ~ Char Atom
-    - tree AtomPatternHelper
+(fn-expr + name Atom (over: Char)
+  (param tree AtomPatternHelper)
+  (~ (seq "x" (: rest (+ (chars "a-z"))))
+    (call (. tree pool store) rest)
+  )
+  (~ (+ (chars "a-z")))
+)
 
-~ "x" rest [a-z]+
-    tree.pool.store(rest)
-~ [a-z]+
+(type + NodeId (is U32))
 
-━━━━━━━━━━━━━━━━━━━━
-+ NodeId is U32
+(type + AtomPatternHelper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements (of PatternMaterializationRoot NodeId))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternValueMaterializer String String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + pool AtomPool)
+  (prop + string-capture-count Size)
+  (prop + string-value-count Size)
+  (prop + atom-capture-count Size)
+  (prop + atom-value-count Size)
+  (prop + mark-count Size)
+  (prop + notes (list String))
+  (blank)
+  (delegate (of PatternCaptureMaterializer Char Atom) (of PatternCaptureMaterializer Byte Atom))
+  (delegate (of PatternValueMaterializer String Atom))
+  (prop _ atom-materializer _ (:= (call AtomAtomPatternMaterializer this)))
+  (fn-do + note NodeId
+    (param text String)
+    (+= notes text)
+    (return (as (. notes length) NodeId))
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+    (= pool (call AtomPool))
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= string-capture-count 1)
+    (return (call (. arena copy-span) source start end))
+  )
+  (fn-do + materialize-value String
+    (param input String)
+    (+= string-value-count 1)
+    (return (call (. arena copy-string) input))
+  )
+  (fn-expr + mark Size
+    (before
+      (do
+        (+= mark-count 1)
+      )
+    )
+    (+ (. arena mark value) 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (call (. arena rewind) (call ArenaMark (- mark 1)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AtomPatternHelper
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'NodeId
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternValueMaterializer'String'String
-    is PatternRollback'Size
-
-+ arena Arena
-+ pool AtomPool
-+ string-capture-count Size
-+ string-value-count Size
-+ atom-capture-count Size
-+ atom-value-count Size
-+ mark-count Size
-+ notes [String]
-
-as PatternCaptureMaterializer'Char'Atom, PatternCaptureMaterializer'Byte'Atom for
-as PatternValueMaterializer'String'Atom for
-_ atom-materializer := AtomAtomPatternMaterializer(this)
-
-────────────────────
-+ do note NodeId
-    - text String
-
-notes += text
-= notes.length as NodeId
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-pool = AtomPool()
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-string-capture-count += 1
-= arena.copy-span(source, start, end)
-
-────────────────────
-+ do materialize-value String
-    - input String
-
-string-value-count += 1
-= arena.copy-string(input)
-
-────────────────────
-+ mark Size
-
-do
-    mark-count += 1
-arena.mark.value + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-arena.rewind(ArenaMark(mark - 1))
-
-━━━━━━━━━━━━━━━━━━━━
-_ AtomAtomPatternMaterializer is Tuple
-    is PatternCaptureMaterializer'Char'Atom
-    is PatternCaptureMaterializer'Byte'Atom
-    is PatternValueMaterializer'String'Atom
-
-_ helper AtomPatternHelper
-
-────────────────────
-+ This
-    - source AtomPatternHelper
-
-helper = source
-
-────────────────────
-+ do materialize-capture'Token Atom
-    - source Token[]
-    - start Index
-    - end Index
-
-helper.atom-capture-count += 1
-= helper.pool.store(source, start, end)
-
-────────────────────
-+ do materialize-value Atom
-    - input String
-
-helper.atom-value-count += 1
-= helper.pool.store(input)
+(type _ AtomAtomPatternMaterializer (is Tuple)
+  (implements (of PatternCaptureMaterializer Char Atom))
+  (implements (of PatternCaptureMaterializer Byte Atom))
+  (implements (of PatternValueMaterializer String Atom))
+  (prop _ helper AtomPatternHelper)
+  (fn-do + This _
+    (param source AtomPatternHelper)
+    (= helper source)
+  )
+  (fn-do + (of materialize-capture Token) Atom
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= (. helper atom-capture-count) 1)
+    (return (call (. helper pool store) source start end))
+  )
+  (fn-do + materialize-value Atom
+    (param input String)
+    (+= (. helper atom-value-count) 1)
+    (return (call (. helper pool store) input))
+  )
+)
 ```
 
 ```output
@@ -10849,144 +13449,148 @@ counts 1 0 3 0
 
 ### One name captures the text of a rule in one arm of a rule and what a rule gives in another, under a helper that makes each.
 
-```yumi
-/core/atom-pool
-/core/arena
-/core/patterns
+```brix
+(import /core/atom-pool)
+(import /core/arena)
+(import /core/patterns)
+(blank)
 
-. helper = AtomPatternHelper(Arena())
-for text in ["ab!", "12", "ab", "?"]
-    -- match text
-        with helper
-        ~ parsed \grammar(helper)
-            helper.notes[parsed - 1]
-        ?? "no match"
-    -- "counts ${helper.string-capture-count} ${helper.string-value-count} ${helper.atom-capture-count} ${helper.atom-value-count}"
+(main
+  (let helper (call AtomPatternHelper (call Arena)))
+  (for (in text (list "ab!" "12" "ab" "?"))
+    (print
+      (match text
+        (with helper)
+        (~ (: parsed (call \grammar helper))
+          ([] (. helper notes) (- parsed 1))
+        )
+        (default
+          (inline "no match")
+        )
+      )
+    )
+    (print (str "counts " (. helper string-capture-count) " " (. helper string-value-count) " " (. helper atom-capture-count) " " (. helper atom-value-count)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ grammar ~ Char NodeId
-    - tree AtomPatternHelper
+(fn-expr + grammar NodeId (over: Char)
+  (param tree AtomPatternHelper)
+  (~ (seq (: p \part) (? "!"))
+    (call (. tree note) p)
+  )
+  (where
+    (lazy part String
+      (pattern
+        (~ (seq (: text \raw) (& "!"))
+          (str "raw " text)
+        )
+        (~ (: text \cooked)
+          (str "cooked " text)
+        )
+      )
+    )
+    (blank)
+    (lazy raw String
+      (pattern
+        (~ (+ (chars "a-z")))
+      )
+    )
+    (blank)
+    (lazy cooked String
+      (pattern
+        (~ (: chars (+ (chars "0-9")))
+          (str "<" chars ">")
+        )
+        (~ (+ (chars "a-z"))
+          "letters"
+        )
+      )
+    )
+  )
+)
 
-~ p \part "!"?
-    tree.note(p)
+(type + NodeId (is U32))
 
-.. part String ~
-    ~ text \raw &"!"
-        "raw $text"
-    ~ text \cooked
-        "cooked $text"
+(type + AtomPatternHelper
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (implements (of PatternMaterializationRoot NodeId))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternValueMaterializer String String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (prop + pool AtomPool)
+  (prop + string-capture-count Size)
+  (prop + string-value-count Size)
+  (prop + atom-capture-count Size)
+  (prop + atom-value-count Size)
+  (prop + mark-count Size)
+  (prop + notes (list String))
+  (blank)
+  (delegate (of PatternCaptureMaterializer Char Atom) (of PatternCaptureMaterializer Byte Atom))
+  (delegate (of PatternValueMaterializer String Atom))
+  (prop _ atom-materializer _ (:= (call AtomAtomPatternMaterializer this)))
+  (fn-do + note NodeId
+    (param text String)
+    (+= notes text)
+    (return (as (. notes length) NodeId))
+  )
+  (fn-expr + pattern-collector-context Arena :get
+    arena
+  )
+  (fn-do + This _
+    (param source Arena)
+    (= arena source)
+    (= pool (call AtomPool))
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= string-capture-count 1)
+    (return (call (. arena copy-span) source start end))
+  )
+  (fn-do + materialize-value String
+    (param input String)
+    (+= string-value-count 1)
+    (return (call (. arena copy-string) input))
+  )
+  (fn-expr + mark Size
+    (before
+      (do
+        (+= mark-count 1)
+      )
+    )
+    (+ (. arena mark value) 1)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (call (. arena rewind) (call ArenaMark (- mark 1)))
+  )
+)
 
-.. raw String ~
-    ~ [a-z]+
-
-.. cooked String ~
-    ~ chars [0-9]+
-        "<$chars>"
-    ~ [a-z]+
-        "letters"
-
-━━━━━━━━━━━━━━━━━━━━
-+ NodeId is U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ AtomPatternHelper
-    is PatternCollectorStorage'ArenaBacking
-    is PatternMaterializationRoot'NodeId
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternValueMaterializer'String'String
-    is PatternRollback'Size
-
-+ arena Arena
-+ pool AtomPool
-+ string-capture-count Size
-+ string-value-count Size
-+ atom-capture-count Size
-+ atom-value-count Size
-+ mark-count Size
-+ notes [String]
-
-as PatternCaptureMaterializer'Char'Atom, PatternCaptureMaterializer'Byte'Atom for
-as PatternValueMaterializer'String'Atom for
-_ atom-materializer := AtomAtomPatternMaterializer(this)
-
-────────────────────
-+ do note NodeId
-    - text String
-
-notes += text
-= notes.length as NodeId
-
-────────────────────
-+ get pattern-collector-context Arena
-
-arena
-
-────────────────────
-+ This
-    - source Arena
-
-arena = source
-pool = AtomPool()
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-string-capture-count += 1
-= arena.copy-span(source, start, end)
-
-────────────────────
-+ do materialize-value String
-    - input String
-
-string-value-count += 1
-= arena.copy-string(input)
-
-────────────────────
-+ mark Size
-
-do
-    mark-count += 1
-arena.mark.value + 1
-
-────────────────────
-+ do rewind
-    - mark Size
-
-arena.rewind(ArenaMark(mark - 1))
-
-━━━━━━━━━━━━━━━━━━━━
-_ AtomAtomPatternMaterializer is Tuple
-    is PatternCaptureMaterializer'Char'Atom
-    is PatternCaptureMaterializer'Byte'Atom
-    is PatternValueMaterializer'String'Atom
-
-_ helper AtomPatternHelper
-
-────────────────────
-+ This
-    - source AtomPatternHelper
-
-helper = source
-
-────────────────────
-+ do materialize-capture'Token Atom
-    - source Token[]
-    - start Index
-    - end Index
-
-helper.atom-capture-count += 1
-= helper.pool.store(source, start, end)
-
-────────────────────
-+ do materialize-value Atom
-    - input String
-
-helper.atom-value-count += 1
-= helper.pool.store(input)
+(type _ AtomAtomPatternMaterializer (is Tuple)
+  (implements (of PatternCaptureMaterializer Char Atom))
+  (implements (of PatternCaptureMaterializer Byte Atom))
+  (implements (of PatternValueMaterializer String Atom))
+  (prop _ helper AtomPatternHelper)
+  (fn-do + This _
+    (param source AtomPatternHelper)
+    (= helper source)
+  )
+  (fn-do + (of materialize-capture Token) Atom
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= (. helper atom-capture-count) 1)
+    (return (call (. helper pool store) source start end))
+  )
+  (fn-do + materialize-value Atom
+    (param input String)
+    (+= (. helper atom-value-count) 1)
+    (return (call (. helper pool store) input))
+  )
+)
 ```
 
 ```output
@@ -11002,20 +13606,30 @@ counts 2 14 0 0
 
 ### Alternatives of one arm capture a name as text and as what a rule gave.
 
-```yumi
-for input in ["alpha!", "42!", "beta42!", "!"]
-    -- match input
-        ~ (text \changed | text [0-9]+ | text "") "!"
-            "<${text}>"
-        ~ text \changed tail [0-9]+ "!"
-            "$text+$tail"
-        ?? "none"
+```brix
+(main
+  (for (in input (list "alpha!" "42!" "beta42!" "!"))
+    (print
+      (match input
+        (~ (seq (| (: text \changed) (: text (+ (chars "0-9"))) (: text "")) "!")
+          (str "<" text ">")
+        )
+        (~ (seq (: text \changed) (: tail (+ (chars "0-9"))) "!")
+          (str text "+" tail)
+        )
+        (default
+          (inline "none")
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ changed ~ Char
-
-~ [a-z]+
-    it ++ "?"
+(fn-expr + changed _ (over: Char)
+  (~ (+ (chars "a-z"))
+    (++ it "?")
+  )
+)
 ```
 
 ```output
@@ -11027,24 +13641,30 @@ beta?+42
 
 ### An action that may panic runs in a rule that states an error it does not raise.
 
-```yumi
-for input in ["12", "9", "x"]
-    -- catch parse(input)
+```brix
+(main
+  (for (in input (list "12" "9" "x"))
+    (print (catch (call parse input)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ parse Int
-    - text String
+(fn-expr + parse Int
+  (param text String)
+  (match text
+    (~ \count
+      it
+    )
+    (default
+      (inline 0)
+    )
+  )
+)
 
-match text
-    ~ \count
-        it
-    ?? 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ count ~ Char ?! SyntaxError
-
-~ digits [0-9]+
-    (digits.codepoints[0] as Int) + digits.length
+(fn-expr + count _ (over: Char) (?! SyntaxError)
+  (~ (: digits (+ (chars "0-9")))
+    (+ (as ([] (. digits codepoints) 0) Int) (. digits length))
+  )
+)
 ```
 
 ```output
@@ -11055,36 +13675,40 @@ match text
 
 ### An action that may panic raises an error the rule states.
 
-```yumi
-for input in ["12", "9", "x"]
-    -- catch parse(input)
+```brix
+(main
+  (for (in input (list "12" "9" "x"))
+    (print (catch (call parse input)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ parse Int
-    - text String
+(fn-expr + parse Int
+  (param text String)
+  (match text
+    (~ \count
+      it
+    )
+    (default
+      (inline 0)
+    )
+  )
+)
 
-match text
-    ~ \count
-        it
-    ?? 0
+(fn-expr + count _ (over: Char) (?! SyntaxError)
+  (~ (: digits (+ (chars "0-9")))
+    (+ (call check ([] (. digits codepoints) 0)) (. digits length))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ count ~ Char ?! SyntaxError
+(fn-expr + check Int (?! SyntaxError)
+  (param char Char)
+  (if-expr (!= char '9') (as char Int) (call reject "Nine"))
+)
 
-~ digits [0-9]+
-    check(digits.codepoints[0]) + digits.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ check Int ?! SyntaxError
-    - char Char
-
-if char != '9' then (char as Int) else reject("Nine")
-
-━━━━━━━━━━━━━━━━━━━━
-+ reject Int ?! SyntaxError
-    - message String
-
-?! SyntaxError(message)
+(fn-expr + reject Int (?! SyntaxError)
+  (param message String)
+  (throw (call SyntaxError message))
+)
 ```
 
 ```output
@@ -11095,71 +13719,83 @@ Nine
 
 ### An arm's action gives the arm's value, so a raise as the action is an error that names where to raise instead.
 
-```yumi compile-error
--- catch "x" ~> \letter
+```brix compile-error
+(main
+  (print (catch (~> "x" \letter)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ letter ~ Char String ?! SyntaxError
-
-~ [a-z]
-    ?! SyntaxError("letter")
+(fn-expr + letter String (over: Char) (?! SyntaxError)
+  (~ (chars "a-z")
+    (throw (call SyntaxError "letter"))
+  )
+)
 ```
 
 ```output
 Exception: An arm's action gives the arm's value, so it cannot be a raise; call a function that raises it, or write "?! error" as the rule's last arm, which raises where no arm before it matches
 <no file:8>
-        ?! SyntaxError("letter")
-        ^^^^^^^^^^^^^^^^^^^^^^^^
+        (throw (call SyntaxError "letter"))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A rule another pattern calls may raise only where its body is `~` arms: one of a `?!` arm alone is an error that says so.
 
-```yumi compile-error
--- catch "x" ~> \letter
+```brix compile-error
+(main
+  (print (catch (~> "x" \letter)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ letter ~ Char String ?! SyntaxError
-
-~ [a-z] \refused
+(fn-expr + letter String (over: Char) (?! SyntaxError)
+  (~ (seq (chars "a-z") \refused)
     "letter"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ refused ~ Char String ?! SyntaxError
-
-?! SyntaxError("refused")
+(fn-expr + refused String (over: Char) (?! SyntaxError)
+  (throw (call SyntaxError "refused"))
+)
 ```
 
 ```output
 Exception: "refused" raises, and a rule a pattern calls may raise only where its body is "~" arms, the last of which may be "?!"; give it a "~" arm before its "?!" arm with any "|?" condition in its pattern, or raise from a function an action calls
 <no file:7>
-    ~ [a-z] \refused
-            ^^^^^^^^
+      (~ (seq (chars "a-z") \refused)
+                            ^^^^^^^^
 ```
 
 ### A pattern given to a rule calls a local rule of a rule that states an error it does not raise.
 
-```yumi
--- catch parse("ab,cd")
--- catch parse("ab,?")
--- catch parse("ab;")
+```brix
+(main
+  (print (catch (call parse "ab,cd")))
+  (print (catch (call parse "ab,?")))
+  (print (catch (call parse "ab;")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ parse
-    - text String
+(fn-expr + parse _
+  (param text String)
+  (match text
+    (~ \names
+      (. it length)
+    )
+    (default
+      (inline 0)
+    )
+  )
+)
 
-match text
-    ~ \names
-        it.length
-    ?? 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ names ~ Char ?! SyntaxError
-
-~ \delimited(",", ~ \word)
-
-.. word String ~
-    ~ [a-z]+
-        it
+(fn-expr + names _ (over: Char) (?! SyntaxError)
+  (~ (call \delimited "," (~ \word)))
+  (where
+    (lazy word String
+      (pattern
+        (~ (+ (chars "a-z"))
+          it
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -11170,42 +13806,55 @@ match text
 
 ### An error raised under a pattern given to a rule passes through the rule to the one that states it.
 
-```yumi
--- catch parse("ab,cd")
--- catch parse("ab,(?)")
--- catch parse("ab,?")
--- catch parse("ab;")
+```brix
+(main
+  (print (catch (call parse "ab,cd")))
+  (print (catch (call parse "ab,(?)")))
+  (print (catch (call parse "ab,?")))
+  (print (catch (call parse "ab;")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ parse
-    - text String
+(fn-expr + parse _
+  (param text String)
+  (match text
+    (~ \names
+      (. it length)
+    )
+    (default
+      (inline 0)
+    )
+  )
+)
 
-match text
-    ~ \names
-        it.length
-    ?? 0
+(fn-expr + names _ (over: Char) (?! SyntaxError)
+  (~ (call \delimited "," (~ \word)))
+  (where
+    (lazy word String
+      (pattern
+        (~ (seq "(" (: inner \word) ")")
+          inner
+        )
+        (~ \leaf)
+      )
+    )
+    (blank)
+    (lazy leaf String
+      (pattern
+        (~ (+ (chars "a-z"))
+          it
+        )
+        (~ "?"
+          (call reject "No word")
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ names ~ Char ?! SyntaxError
-
-~ \delimited(",", ~ \word)
-
-.. word String ~
-    ~ "(" inner \word ")"
-        inner
-    ~ \leaf
-
-.. leaf String ~
-    ~ [a-z]+
-        it
-    ~ "?"
-        reject("No word")
-
-━━━━━━━━━━━━━━━━━━━━
-+ reject String ?! SyntaxError
-    - message String
-
-?! SyntaxError(message)
+(fn-expr + reject String (?! SyntaxError)
+  (param message String)
+  (throw (call SyntaxError message))
+)
 ```
 
 ```output
@@ -11217,36 +13866,45 @@ No word
 
 ### An error raised under a pattern given to a rule, by a local rule that calls no rule of its own, passes through the rule to the one that states it.
 
-```yumi
--- catch parse("ab,cd")
--- catch parse("ab,?")
--- catch parse("ab;")
+```brix
+(main
+  (print (catch (call parse "ab,cd")))
+  (print (catch (call parse "ab,?")))
+  (print (catch (call parse "ab;")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ parse
-    - text String
+(fn-expr + parse _
+  (param text String)
+  (match text
+    (~ \names
+      (. it length)
+    )
+    (default
+      (inline 0)
+    )
+  )
+)
 
-match text
-    ~ \names
-        it.length
-    ?? 0
+(fn-expr + names _ (over: Char) (?! SyntaxError)
+  (~ (call \delimited "," (~ \word)))
+  (where
+    (lazy word String
+      (pattern
+        (~ (+ (chars "a-z"))
+          it
+        )
+        (~ "?"
+          (call reject "No word")
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ names ~ Char ?! SyntaxError
-
-~ \delimited(",", ~ \word)
-
-.. word String ~
-    ~ [a-z]+
-        it
-    ~ "?"
-        reject("No word")
-
-━━━━━━━━━━━━━━━━━━━━
-+ reject String ?! SyntaxError
-    - message String
-
-?! SyntaxError(message)
+(fn-expr + reject String (?! SyntaxError)
+  (param message String)
+  (throw (call SyntaxError message))
+)
 ```
 
 ```output
@@ -11257,48 +13915,68 @@ No word
 
 ### An action that may panic binds a name another local rule of its rule captures.
 
-```yumi
--- parse("ab(7)")
--- parse("ab()")
--- parse("ab")
+```brix
+(main
+  (print (call parse "ab(7)"))
+  (print (call parse "ab()"))
+  (print (call parse "ab"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Part is Union
+(type + Part (is Union)
+  (variant many (tuple (: args (list String))))
+  (variant lone)
+)
 
-| many(args [String])
-| lone
+(fn-expr + parse String
+  (param text String)
+  (match text
+    (~ \call)
+    (default
+      (inline "none")
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ parse String
-    - text String
-
-match text
-    ~ \call
-    ?? "none"
-
-━━━━━━━━━━━━━━━━━━━━
-+ call ~ Char String
-
-~ head \head tail \tail
-    "$head $tail"
-
-.. head String ~
-    ~ args [a-z]+ "("
-        args
-
-.. tail U32 ~
-    ~ part \part ")"
-        match part
-            | .many(args)
-                args[0].length as U32
-            ??
-                0
-
-.. part Part ~
-    ~ [0-9]+
-        .many([it])
-    ~ ""
-        .lone
+(fn-expr + call String (over: Char)
+  (~ (seq (: head \head) (: tail \tail))
+    (str head " " tail)
+  )
+  (where
+    (lazy head String
+      (pattern
+        (~ (seq (: args (+ (chars "a-z"))) "(")
+          args
+        )
+      )
+    )
+    (blank)
+    (lazy tail U32
+      (pattern
+        (~ (seq (: part \part) ")")
+          (match part
+            (case (call .many args)
+              (as (. ([] args 0) length) U32)
+            )
+            (default
+              0
+            )
+          )
+        )
+      )
+    )
+    (blank)
+    (lazy part Part
+      (pattern
+        (~ (+ (chars "0-9"))
+          (call .many (list it))
+        )
+        (~ ""
+          .lone
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -11309,17 +13987,23 @@ none
 
 ### A returned match whose last arm gives null is absent where no arm before it passes.
 
-```yumi
--- word("ab") ?? "none"
--- word("12") ?? "none"
+```brix
+(main
+  (print (?? (call word "ab") "none"))
+  (print (?? (call word "12") "none"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do word String?
-    - text String
-
-= match text
-    ~ [a-z]+
-    ?? null
+(fn-do + word (? String)
+  (param text String)
+  (return
+    (match text
+      (~ (+ (chars "a-z")))
+      (default
+        (inline null)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -11329,24 +14013,29 @@ none
 
 ### A pattern run on an array of characters gives the locations of the lines it spans.
 
-```yumi
--- run("ab\ncd".codepoints)
+```brix
+(main
+  (print (call run (. "ab\ncd" codepoints)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run String
-    - chars Char[]
-
-. found = match chars
-    ~ v \word
+(fn-do + run String
+  (param chars ([] Char))
+  (let found
+    (match chars
+      (~ (: v \word)
         v
-    ?! Panic("no match")
-= found
+      )
+      (throw (call Panic "no match"))
+    )
+  )
+  (return found)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ word ~ Char
-
-~ "ab" "\n" "cd"
-    "${location.begin.line}:${location.end.line}:${location.end.column}"
+(fn-expr + word _ (over: Char)
+  (~ (seq "ab" "\n" "cd")
+    (str (. location begin line) ":" (. location end line) ":" (. location end column))
+  )
+)
 ```
 
 ```output
@@ -11355,32 +14044,45 @@ none
 
 ### A list pattern of named rules, one testing each item with a closure and one taking the rest, splits a list where they match.
 
-```yumi
-. l = ["x", "y", "--", "z"]
-. parts = split(l)
--- "parts ${parts.length}"
-for p in parts
-    -- p
+```brix
+(main
+  (let l (list "x" "y" "--" "z"))
+  (let parts (call split l))
+  (print (str "parts " (. parts length)))
+  (for (in p parts)
+    (print p)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ split [String] ?! Error
-    - arguments [String]
-
-match arguments
-    ~ parts \part* operands \operands
-        ** parts
-        ** operands
-    ?! Error("Invalid")
-
-    .. part String ~
-        ~ text \{it != "--"}
-            text
-
-    .. operands [String] ~
-        ~ \{it == "--"} values String*
-            each in values
-        ~ !.
-            List'String()
+(fn-expr _ split (list String) (?! Error)
+  (param arguments (list String))
+  (match arguments
+    (~ (seq (: parts (* \part)) (: operands \operands))
+      (spread parts)
+      (spread operands)
+    )
+    (throw (call Error "Invalid"))
+    (blank)
+    (lazy part String
+      (pattern
+        (~ (: text (\{} (!= it "--")))
+          text
+        )
+      )
+    )
+    (blank)
+    (lazy operands (list String)
+      (pattern
+        (~ (seq (\{} (== it "--")) (: values (* String)))
+          (in each values)
+        )
+        (~ (! .)
+          (call (of List String))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -11392,54 +14094,48 @@ z
 
 ### A pipe that reads a spread of a `use` uses the object in its generator, which ends the use where the generator ends.
 
-```yumi
-** use Letters("abcd")
-~> pair . .
+```brix
+(main
+  (spread (use (call Letters "abcd")))
+  (pipe ~> (seq (: pair .) .)
     pair
-|> show
--- "after"
+  )
+  (pipe |> show)
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show'Item
-    - items <Item>
+(fn-do + (of show Item) _
+  (param items (stream Item))
+  (for (in item items)
+    (print (str "item " item))
+  )
+)
 
-for item in items
-    -- "item $item"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Letters
-    is Usable'Letters
-    is CursorIterable'Char'Size
-
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-────────────────────
-+ do begin-using Letters
-
--- "begin"
-= this
-
-────────────────────
-+ do end-using
-
--- "end"
-
-────────────────────
-+ get initial-iterator-state Size
-
-0
-
-────────────────────
-+ do next-iterator (Size, Char?)
-    - state Size
-
-if state < text.length
-    = (state + 1, text[state])
-= (state, null)
+(type + Letters
+  (implements (of Usable Letters))
+  (implements (of CursorIterable Char Size))
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+  (fn-do + begin-using Letters
+    (print "begin")
+    (return this)
+  )
+  (fn-do + end-using _
+    (print "end")
+  )
+  (fn-expr + initial-iterator-state Size :get
+    0
+  )
+  (fn-do + next-iterator (tuple Size (? Char))
+    (param state Size)
+    (if (< state (. text length))
+      (return (tuple (+ state 1) ([] text state)))
+    )
+    (return (tuple state null))
+  )
+)
 ```
 
 ```output
@@ -11452,41 +14148,50 @@ after
 
 ### A test of an item over characters sees the character as `it` and gives it. A lookahead of a test that reads only what the rule was given is a guard, which tests its condition alone and needs no character, so it passes over empty text.
 
-```yumi
--- shape("ab", true)
--- shape("ab", false)
--- shape("", true)
--- first("abc")
--- first("xbc")
+```brix
+(main
+  (print (call shape "ab" true))
+  (print (call shape "ab" false))
+  (print (call shape "" true))
+  (print (call first "abc"))
+  (print (call first "xbc"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ shape String
-    - text String
-    - flag Bool
+(fn-expr _ shape String
+  (param text String)
+  (param flag Bool)
+  (match text
+    (~ (: words (call \grammar text flag))
+      words
+    )
+    (default
+      (inline "none")
+    )
+  )
+)
 
-match text
-    ~ words \grammar(text, flag)
-        words
-    ?? "none"
-
-━━━━━━━━━━━━━━━━━━━━
-_ grammar ~ Char String
-    - source String
-    - flag Bool
-
-~ &\{ flag } .* !.
+(fn-expr _ grammar String (over: Char)
+  (param source String)
+  (param flag Bool)
+  (~ (seq (& (\{} flag)) (* .) (! .))
     "flagged"
-~ .* !.
+  )
+  (~ (seq (* .) (! .))
     "plain"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ first String
-    - text String
-
-match text
-    ~ head \{ it == 'a' } rest .*
-        "$head then $rest"
-    ?? "no a"
+(fn-expr _ first String
+  (param text String)
+  (match text
+    (~ (seq (: head (\{} (== it 'a'))) (: rest (* .)))
+      (str head " then " rest)
+    )
+    (default
+      (inline "no a")
+    )
+  )
+)
 ```
 
 ```output
@@ -11499,53 +14204,72 @@ no a
 
 ### A guard, a lookahead of a test that reads no item, needs no input of its own: a record that ends in a part that takes nothing is given as soon as its last item is read, a guard passes at the end of the input, a negative guard passes where its condition does not hold, and a lookahead of a test that reads `it` still needs the item.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-for size in ChunkedTokenStream'Byte(Trickle(Array'Byte([0u8, 0u8, 2u8, 7u8, 8u8]))) ~> \guarded(4)
-    -- "record $size"
--- match Array'Byte([0u8])
-    ~ size U8 &\{ size <= 4 } data Byte{size}
-        "kept ${data.size}"
-    ?? "refused"
--- match Array'Byte([9u8])
-    ~ size U8 !\{ size <= 4 }
+(main
+  (for (in size (~> (call (of ChunkedTokenStream Byte) (call Trickle (call (of Array Byte) (list 0u8 0u8 2u8 7u8 8u8)))) (call \guarded 4)))
+    (print (str "record " size))
+  )
+  (print
+    (match (call (of Array Byte) (list 0u8))
+      (~ (seq (: size U8) (& (\{} (<= size 4))) (: data ({} Byte size)))
+        (str "kept " (. data size))
+      )
+      (default
+        (inline "refused")
+      )
+    )
+  )
+  (print
+    (match (call (of Array Byte) (list 9u8))
+      (~ (seq (: size U8) (! (\{} (<= size 4))))
         "too big"
-    ?? "fits"
--- match Array'Byte([3u8])
-    ~ size U8 &\{ it == 5 }
+      )
+      (default
+        (inline "fits")
+      )
+    )
+  )
+  (print
+    (match (call (of Array Byte) (list 3u8))
+      (~ (seq (: size U8) (& (\{} (== it 5))))
         "next is 5"
-    ?? "no next"
+      )
+      (default
+        (inline "no next")
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ guarded ~ Byte Size
-    - limit Size
+(fn-expr + guarded Size (over: Byte)
+  (param limit Size)
+  (~ (seq (: size U8) (& (\{} (<= size limit))) (: data ({} Byte size)))
+    (. data size)
+  )
+)
 
-~ size U8 &\{ size <= limit } data Byte{size}
-    data.size
-
-━━━━━━━━━━━━━━━━━━━━
-+ Trickle
-    is ByteReadable
-
-+ data Byte[]
-+ cursor Index
-
-────────────────────
-+ This
-    - data
-
-────────────────────
-+ do read Size
-    - size Size
-    - buffer Byte[]
-
-if cursor >= data.size || size == 0
-    = 0
--- "read ${data[cursor]}"
-buffer[0] = data[cursor]
-cursor += 1
-= 1
+(type + Trickle
+  (implements ByteReadable)
+  (prop + data ([] Byte))
+  (prop + cursor Index)
+  (fn-do + This _
+    (param data _)
+  )
+  (fn-do + read Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (if (or (>= cursor (. data size)) (== size 0))
+      (return 0)
+    )
+    (print (str "read " ([] data cursor)))
+    (= ([] buffer 0) ([] data cursor))
+    (+= cursor 1)
+    (return 1)
+  )
+)
 ```
 
 ```output
@@ -11564,46 +14288,45 @@ no next
 
 ### A rule's own failure raises its error, not a rule it called that passed: a guard in the called rule passes at the end of the input, so the data that is missing there raises the caller's.
 
-```yumi
--- catch total(Array'Byte([1u8]))
--- catch total(Array'Byte([9u8, 1u8]))
+```brix
+(main
+  (print (catch (call total (call (of Array Byte) (list 1u8)))))
+  (print (catch (call total (call (of Array Byte) (list 9u8 1u8)))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do total Size ?! Oops
-    - bytes Byte[]
+(fn-do + total Size (?! Oops)
+  (param bytes ([] Byte))
+  (let sum Size 0)
+  (for (in size (~> bytes (call \record 4)))
+    (+= sum size)
+  )
+  (return sum)
+)
 
-. sum Size = 0
-for size in bytes ~> \record(4)
-    sum += size
-= sum
+(type + Oops (is Error)
+  (prop + code Int)
+  (fn-do + This _
+    (param code _)
+    (= message (str "oops " code))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Oops is Error
+(fn-expr + record Size (over: Byte) (?! Oops)
+  (param limit Size)
+  (~ (seq (: size U8) (call \limited size limit) (: data ({} Byte size)))
+    (. data size)
+  )
+  (throw (call Oops 1002))
+)
 
-+ code Int
-
-────────────────────
-+ This
-    - code
-
-message = "oops $code"
-
-━━━━━━━━━━━━━━━━━━━━
-+ record ~ Byte Size ?! Oops
-    - limit Size
-
-~ size U8 \limited(size, limit) data Byte{size}
-    data.size
-?! Oops(1002)
-
-━━━━━━━━━━━━━━━━━━━━
-+ limited ~ Byte Bool ?! Oops
-    - size Size
-    - limit Size
-
-~ &\{ size <= limit }
+(fn-expr + limited Bool (over: Byte) (?! Oops)
+  (param size Size)
+  (param limit Size)
+  (~ (& (\{} (<= size limit)))
     true
-?! Oops(1009)
+  )
+  (throw (call Oops 1009))
+)
 ```
 
 ```output
@@ -11613,37 +14336,51 @@ oops 1009
 
 ### A rule that states no type and ends in an optional part gives the text it matched.
 
-```yumi
--- kind("[abc]")
--- kind("[abc")
--- kind("abc")
--- matched("[abc]")
--- matched("[abc")
--- matched("abc")
+```brix
+(main
+  (print (call kind "[abc]"))
+  (print (call kind "[abc"))
+  (print (call kind "abc"))
+  (print (call matched "[abc]"))
+  (print (call matched "[abc"))
+  (print (call matched "abc"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ kind String
-    - text String
+(fn-expr _ kind String
+  (param text String)
+  (match text
+    (~ (seq \klass (! .))
+      "class"
+    )
+    (default
+      (inline "other")
+    )
+    (blank)
+    (lazy klass
+      (pattern
+        (~ (seq "[" (* (seq (! "]") .)) (? "]")))
+      )
+    )
+  )
+)
 
-match text
-    ~ \klass !.
-        "class"
-    ?? "other"
-
-    .. klass ~
-        ~ "[" (!"]" .)* "]"?
-
-━━━━━━━━━━━━━━━━━━━━
-_ matched String
-    - text String
-
-match text
-    ~ k \klass !.
-        k ?? "none"
-    ?? "other"
-
-    .. klass ~
-        ~ "[" (!"]" .)* "]"?
+(fn-expr _ matched String
+  (param text String)
+  (match text
+    (~ (seq (: k \klass) (! .))
+      (?? k "none")
+    )
+    (default
+      (inline "other")
+    )
+    (blank)
+    (lazy klass
+      (pattern
+        (~ (seq "[" (* (seq (! "]") .)) (? "]")))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -11657,35 +14394,41 @@ other
 
 ### An arm of a returned match that gives an optional makes the function's value optional, as a value it gives directly does.
 
-```yumi
--- direct("ab")
--- direct("a")
--- matched("ab")
--- matched("a")
--- matched("x")
+```brix
+(main
+  (print (call direct "ab"))
+  (print (call direct "a"))
+  (print (call matched "ab"))
+  (print (call matched "a"))
+  (print (call matched "x"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ direct String?
-    - text String
+(fn-expr _ direct (? String)
+  (param text String)
+  (call pick text)
+)
 
-pick(text)
+(fn-expr _ matched (? String)
+  (param text String)
+  (match text
+    (~ (seq "a" (* .))
+      (call pick text)
+    )
+    (default
+      (inline "other")
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ matched String?
-    - text String
-
-match text
-    ~ "a" .*
-        pick(text)
-    ?? "other"
-
-━━━━━━━━━━━━━━━━━━━━
-_ pick String?
-    - text String
-
-|? text.length > 1
+(fn-expr _ pick (? String)
+  (param text String)
+  (case? (> (. text length) 1)
     text
-?? null
+  )
+  (default
+    (inline null)
+  )
+)
 ```
 
 ```output
@@ -11698,59 +14441,91 @@ other
 
 ### Arms that state no type give their text, also where an arm ends in an optional call of such a rule.
 
-```yumi
--- kind(".5")
--- kind(".5e3")
--- kind("e3")
--- kind("x")
--- whole("1.5")
--- whole("1.5e3")
--- whole("1e3")
--- whole("1")
+```brix
+(main
+  (print (call kind ".5"))
+  (print (call kind ".5e3"))
+  (print (call kind "e3"))
+  (print (call kind "x"))
+  (print (call whole "1.5"))
+  (print (call whole "1.5e3"))
+  (print (call whole "1e3"))
+  (print (call whole "1"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ kind String
-    - text String
+(fn-expr _ kind String
+  (param text String)
+  (match text
+    (~ (seq (: t \tail) (! .))
+      (?? t "none")
+    )
+    (default
+      (inline "other")
+    )
+    (blank)
+    (lazy tail
+      (pattern
+        (~ (seq \frac (? \expo)))
+        (~ \expo)
+      )
+    )
+    (blank)
+    (lazy frac
+      (pattern
+        (~ (seq "." (* (chars "0-9"))))
+      )
+    )
+    (blank)
+    (lazy expo
+      (pattern
+        (~ (seq "e" (+ (chars "0-9"))))
+      )
+    )
+  )
+)
 
-match text
-    ~ t \tail !.
-        t ?? "none"
-    ?? "other"
-
-    .. tail ~
-        ~ \frac \expo?
-        ~ \expo
-
-    .. frac ~
-        ~ "." [0-9]*
-
-    .. expo ~
-        ~ "e" [0-9]+
-
-━━━━━━━━━━━━━━━━━━━━
-_ whole String
-    - text String
-
-match text
-    ~ n \number !.
-        n
-    ?? "other"
-
-    .. number String ~
-        ~ [0-9]+ \tail? \unit?
-
-    .. unit ~
-        ~ "px"
-
-    .. tail ~
-        ~ \frac \expo?
-        ~ \expo
-
-    .. frac ~
-        ~ "." [0-9]*
-
-    .. expo ~
-        ~ "e" [0-9]+
+(fn-expr _ whole String
+  (param text String)
+  (match text
+    (~ (seq (: n \number) (! .))
+      n
+    )
+    (default
+      (inline "other")
+    )
+    (blank)
+    (lazy number String
+      (pattern
+        (~ (seq (+ (chars "0-9")) (? \tail) (? \unit)))
+      )
+    )
+    (blank)
+    (lazy unit
+      (pattern
+        (~ "px")
+      )
+    )
+    (blank)
+    (lazy tail
+      (pattern
+        (~ (seq \frac (? \expo)))
+        (~ \expo)
+      )
+    )
+    (blank)
+    (lazy frac
+      (pattern
+        (~ (seq "." (* (chars "0-9"))))
+      )
+    )
+    (blank)
+    (lazy expo
+      (pattern
+        (~ (seq "e" (+ (chars "0-9"))))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -11766,66 +14541,99 @@ other
 
 ### The value of a lone call of a rule whose arms state no type is what the arms give.
 
-```yumi
--- kind(".5")
--- kind(".5e3")
--- kind("e3")
--- lone("[a")
--- lone("[a]")
--- mixed(".5")
--- mixed(".5e3")
--- mixed("e3")
+```brix
+(main
+  (print (call kind ".5"))
+  (print (call kind ".5e3"))
+  (print (call kind "e3"))
+  (print (call lone "[a"))
+  (print (call lone "[a]"))
+  (print (call mixed ".5"))
+  (print (call mixed ".5e3"))
+  (print (call mixed "e3"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ kind String
-    - text String
+(fn-expr _ kind String
+  (param text String)
+  (match text
+    (~ (seq \tail (! .))
+      (?? it "none")
+    )
+    (default
+      (inline "other")
+    )
+    (blank)
+    (lazy tail
+      (pattern
+        (~ (seq \frac (? \expo)))
+        (~ \expo)
+      )
+    )
+    (blank)
+    (lazy frac
+      (pattern
+        (~ (seq "." (* (chars "0-9"))))
+      )
+    )
+    (blank)
+    (lazy expo
+      (pattern
+        (~ (seq "e" (+ (chars "0-9"))))
+      )
+    )
+  )
+)
 
-match text
-    ~ \tail !.
-        it ?? "none"
-    ?? "other"
+(fn-expr _ lone String
+  (param text String)
+  (match text
+    (~ (seq \klass (! .))
+      (?? it "none")
+    )
+    (default
+      (inline "other")
+    )
+    (blank)
+    (lazy klass
+      (pattern
+        (~ (seq "[" (* (seq (! "]") .)) (? "]")))
+      )
+    )
+  )
+)
 
-    .. tail ~
-        ~ \frac \expo?
-        ~ \expo
-
-    .. frac ~
-        ~ "." [0-9]*
-
-    .. expo ~
-        ~ "e" [0-9]+
-
-━━━━━━━━━━━━━━━━━━━━
-_ lone String
-    - text String
-
-match text
-    ~ \klass !.
-        it ?? "none"
-    ?? "other"
-
-    .. klass ~
-        ~ "[" (!"]" .)* "]"?
-
-━━━━━━━━━━━━━━━━━━━━
-_ mixed String
-    - text String
-
-match text
-    ~ t \tail !.
-        t ?? "none"
-    ?? "other"
-
-    .. tail ~
-        ~ \frac \expo?
-        ~ \expo
-
-    .. frac ~
-        ~ "." [0-9]*
-
-    .. expo String ~
-        ~ "e" [0-9]+
-            "E"
+(fn-expr _ mixed String
+  (param text String)
+  (match text
+    (~ (seq (: t \tail) (! .))
+      (?? t "none")
+    )
+    (default
+      (inline "other")
+    )
+    (blank)
+    (lazy tail
+      (pattern
+        (~ (seq \frac (? \expo)))
+        (~ \expo)
+      )
+    )
+    (blank)
+    (lazy frac
+      (pattern
+        (~ (seq "." (* (chars "0-9"))))
+      )
+    )
+    (blank)
+    (lazy expo String
+      (pattern
+        (~ (seq "e" (+ (chars "0-9")))
+          "E"
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -11841,48 +14649,75 @@ E
 
 ### A rule of one arm that states no type gives its text where its parts give text, and the value of its last part where that part gives a value.
 
-```yumi
--- spans(".5")
--- spans(".5e3")
--- valued(".5")
--- valued(".5e3")
+```brix
+(main
+  (print (call spans ".5"))
+  (print (call spans ".5e3"))
+  (print (call valued ".5"))
+  (print (call valued ".5e3"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ spans String
-    - text String
+(fn-expr _ spans String
+  (param text String)
+  (match text
+    (~ (seq (: t \tail) (! .))
+      (?? t "none")
+    )
+    (default
+      (inline "other")
+    )
+    (blank)
+    (lazy tail
+      (pattern
+        (~ (seq \frac (? \expo)))
+      )
+    )
+    (blank)
+    (lazy frac
+      (pattern
+        (~ (seq "." (* (chars "0-9"))))
+      )
+    )
+    (blank)
+    (lazy expo
+      (pattern
+        (~ (seq "e" (+ (chars "0-9"))))
+      )
+    )
+  )
+)
 
-match text
-    ~ t \tail !.
-        t ?? "none"
-    ?? "other"
-
-    .. tail ~
-        ~ \frac \expo?
-
-    .. frac ~
-        ~ "." [0-9]*
-
-    .. expo ~
-        ~ "e" [0-9]+
-
-━━━━━━━━━━━━━━━━━━━━
-_ valued String
-    - text String
-
-match text
-    ~ t \tail !.
-        t ?? "none"
-    ?? "other"
-
-    .. tail ~
-        ~ \frac \expo?
-
-    .. frac ~
-        ~ "." [0-9]*
-
-    .. expo String ~
-        ~ "e" [0-9]+
-            "E"
+(fn-expr _ valued String
+  (param text String)
+  (match text
+    (~ (seq (: t \tail) (! .))
+      (?? t "none")
+    )
+    (default
+      (inline "other")
+    )
+    (blank)
+    (lazy tail
+      (pattern
+        (~ (seq \frac (? \expo)))
+      )
+    )
+    (blank)
+    (lazy frac
+      (pattern
+        (~ (seq "." (* (chars "0-9"))))
+      )
+    )
+    (blank)
+    (lazy expo String
+      (pattern
+        (~ (seq "e" (+ (chars "0-9")))
+          "E"
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -11894,32 +14729,33 @@ E
 
 ### The text of a sequence of items that are no characters is what `slice-string` makes of them.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. bytes [Byte]
-bytes += 104u8
-bytes += 105u8
-bytes += 33u8
-bytes += 63u8
-. stream = ChunkedTokenStream'Byte(bytes as Iterable'Byte)
-for pair in ~ Pair in stream
-    -- pair.text
+(main
+  (let bytes (list Byte))
+  (+= bytes 104u8)
+  (+= bytes 105u8)
+  (+= bytes 33u8)
+  (+= bytes 63u8)
+  (let stream (call (of ChunkedTokenStream Byte) (as bytes (of Iterable Byte))))
+  (for (in pair (in (~ Pair) stream))
+    (print (. pair text))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair
-
-+ text String
-
-────────────────────
-+ This
-    - text
-
-────────────────────
-+ This ~ Byte
-
-~ U8 U8
-    This(it)
+(type + Pair
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+  (fn-expr + This _ (over: Byte)
+    (~ (seq U8 U8)
+      (call This it)
+    )
+  )
+)
 ```
 
 ```output
@@ -11929,43 +14765,51 @@ hi
 
 ### A number type named as a pattern over byte items reads as many bytes as the number holds, the first the highest.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. bytes [Byte]
-bytes += 2u8
-bytes += 5u8
-bytes += 1u8
-bytes += 7u8
-bytes += 9u8
-. stream = ChunkedTokenStream'Byte(bytes as Iterable'Byte)
-for head in ~ Head in stream
-    -- "${head.kind} ${head.size}"
+(main
+  (let bytes (list Byte))
+  (+= bytes 2u8)
+  (+= bytes 5u8)
+  (+= bytes 1u8)
+  (+= bytes 7u8)
+  (+= bytes 9u8)
+  (let stream (call (of ChunkedTokenStream Byte) (as bytes (of Iterable Byte))))
+  (for (in head (in (~ Head) stream))
+    (print (str (. head kind) " " (. head size)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Head
-
-+ kind U8
-+ size U64
-
-────────────────────
-+ This
-    - kind
-    - size
-
-────────────────────
-+ This ~ Byte
-
-~ k U8 n \length
-    This(k, n)
-
-    .. length ~
-        |? k == 1
-            ~ U16
-                it as U64
-        ??
-            ~ U8
-                it as U64
+(type + Head
+  (prop + kind U8)
+  (prop + size U64)
+  (fn-do + This _
+    (param kind _)
+    (param size _)
+  )
+  (fn-expr + This _ (over: Byte)
+    (~ (seq (: k U8) (: n \length))
+      (call This k n)
+      (blank)
+      (lazy length
+        (pattern
+          (case? (== k 1)
+            (~ U16
+              (as it U64)
+            )
+          )
+          (default
+            (~ U8
+              (as it U64)
+            )
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -11975,43 +14819,43 @@ for head in ~ Head in stream
 
 ### A function an action makes reads a name its pattern captured.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. bytes [Byte]
-bytes += 3u8
-bytes += 5u8
-bytes += 6u8
-bytes += 7u8
-bytes += 1u8
-bytes += 9u8
-. stream = ChunkedTokenStream'Byte(bytes as Iterable'Byte)
-for item in ~ Item in stream
-    -- item.doubled
+(main
+  (let bytes (list Byte))
+  (+= bytes 3u8)
+  (+= bytes 5u8)
+  (+= bytes 6u8)
+  (+= bytes 7u8)
+  (+= bytes 1u8)
+  (+= bytes 9u8)
+  (let stream (call (of ChunkedTokenStream Byte) (as bytes (of Iterable Byte))))
+  (for (in item (in (~ Item) stream))
+    (print (. item doubled))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item
+(type + Item
+  (prop + doubled (list Int))
+  (fn-do + This _
+    (param doubled _)
+  )
+  (fn-expr + This _ (over: Byte)
+    (~ (seq (: k U8) (: data ({} Byte k)))
+      (call This doubled)
+      (blank)
+      (lazy doubled (call (of Array Int) (as k Size) (:with (=> (index) (call twice ([] data index) k)))))
+    )
+  )
+)
 
-+ doubled [Int]
-
-────────────────────
-+ This
-    - doubled
-
-────────────────────
-+ This ~ Byte
-
-~ k U8 data Byte{k}
-    This(doubled)
-
-    .. doubled = Array'Int(k as Size) • with :: index => twice(data[index], k)
-
-━━━━━━━━━━━━━━━━━━━━
-_ twice Int
-    - byte Byte
-    - k U8
-
-(byte as Int) * 2 + (k as Int)
+(fn-expr _ twice Int
+  (param byte Byte)
+  (param k U8)
+  (+ (* (as byte Int) 2) (as k Int))
+)
 ```
 
 ```output
@@ -12021,53 +14865,58 @@ _ twice Int
 
 ### Over items that are not characters, a name a `.` captures holds the item, a count of `.` gives the items it took, and a `.` matches any item.
 
-```yumi
-. numbers = List'Int()
-numbers += -5
-numbers += 5000000
-numbers += 7
-numbers += 8
-for sum in number-source(numbers) ~> \sum-pair
-    -- sum
-for pair in number-source(numbers) ~> \two
-    -- pair
-. words = List'String()
-words += "a"
-words += "b"
-for joined in word-source(words) ~> \word-pair
-    -- joined
+```brix
+(main
+  (let numbers (call (of List Int)))
+  (+= numbers -5)
+  (+= numbers 5000000)
+  (+= numbers 7)
+  (+= numbers 8)
+  (for (in sum (~> (call number-source numbers) \sum-pair))
+    (print sum)
+  )
+  (for (in pair (~> (call number-source numbers) \two))
+    (print pair)
+  )
+  (let words (call (of List String)))
+  (+= words "a")
+  (+= words "b")
+  (for (in joined (~> (call word-source words) \word-pair))
+    (print joined)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do number-source Iterable'Int
-    - numbers [Int]
+(fn-do + number-source (of Iterable Int)
+  (param numbers (list Int))
+  (for (in n numbers)
+    (yield n)
+  )
+)
 
-for n in numbers
-    <= n
+(fn-do + word-source (of Iterable String)
+  (param words (list String))
+  (for (in word words)
+    (yield word)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do word-source Iterable'String
-    - words [String]
+(fn-expr + sum-pair Int (over: Int)
+  (~ (seq (: left .) (: right .))
+    (+ left right)
+  )
+)
 
-for word in words
-    <= word
+(fn-expr + two String (over: Int)
+  (~ (: pair ({} . 2))
+    (str (. pair length) " " ([] pair 0) " " ([] pair 1))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ sum-pair ~ Int Int
-
-~ left . right .
-    left + right
-
-━━━━━━━━━━━━━━━━━━━━
-+ two ~ Int String
-
-~ pair .{2}
-    "${pair.length} ${pair[0]} ${pair[1]}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ word-pair ~ String String
-
-~ left . right .
-    "$left$right"
+(fn-expr + word-pair String (over: String)
+  (~ (seq (: left .) (: right .))
+    (str left right)
+  )
+)
 ```
 
 ```output
@@ -12080,25 +14929,40 @@ ab
 
 ### `it` in a local rule's arm names that arm's match, so the enclosing rule does not read its own bytes as text.
 
-```yumi
--- match [130u8, 1u8, 2u8]
-    ~ f \frame
+```brix
+(main
+  (print
+    (match (list 130u8 1u8 2u8)
+      (~ (: f \frame)
         f
-    ?? 99u64
+      )
+      (default
+        (inline 99u64)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ frame ~ Byte U64
-
-~ a U8 n \size
+(fn-expr + frame U64 (over: Byte)
+  (~ (seq (: a U8) (: n \size))
     n
-
-    .. size ~
-        |? a == 130
-            ~ U16
-                it as U64
-        ??
-            ~ U8
-                7u64
+    (blank)
+    (lazy size
+      (pattern
+        (case? (== a 130)
+          (~ U16
+            (as it U64)
+          )
+        )
+        (default
+          (~ U8
+            7u64
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -12107,179 +14971,246 @@ ab
 
 ### A record that arrives one byte at a time continues where it stopped as each read arrives: every part of a pattern reads only the input it needs, an action runs once, and a record is given before any input after it is read.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
--- match trickle("hello world")
-    ~ "hello" " " word [a-z]+
+(main
+  (print
+    (match (call trickle "hello world")
+      (~ (seq "hello" " " (: word (+ (chars "a-z"))))
         word
-    ?? "no literal"
--- match trickle("12345;")
-    ~ digits [0-9]{3} rest [0-9]* ";"
-        "$digits $rest"
-    ?? "no count"
--- match trickle("abc")
-    ~ &"ab" word [a-z]+
-        "ahead $word"
-    ?? "no lookahead"
--- match trickle("acd")
-    ~ !"ab" word [a-z]+
-        "not ahead $word"
-    ?? "no negative lookahead"
--- match trickle("x")
-    ~ "x" !.
+      )
+      (default
+        (inline "no literal")
+      )
+    )
+  )
+  (print
+    (match (call trickle "12345;")
+      (~ (seq (: digits ({} (chars "0-9") 3)) (: rest (* (chars "0-9"))) ";")
+        (str digits " " rest)
+      )
+      (default
+        (inline "no count")
+      )
+    )
+  )
+  (print
+    (match (call trickle "abc")
+      (~ (seq (& "ab") (: word (+ (chars "a-z"))))
+        (str "ahead " word)
+      )
+      (default
+        (inline "no lookahead")
+      )
+    )
+  )
+  (print
+    (match (call trickle "acd")
+      (~ (seq (! "ab") (: word (+ (chars "a-z"))))
+        (str "not ahead " word)
+      )
+      (default
+        (inline "no negative lookahead")
+      )
+    )
+  )
+  (print
+    (match (call trickle "x")
+      (~ (seq "x" (! .))
         "ended"
-    ?? "not ended"
--- match trickle("xy")
-    ~ "x" !.
+      )
+      (default
+        (inline "not ended")
+      )
+    )
+  )
+  (print
+    (match (call trickle "xy")
+      (~ (seq "x" (! .))
         "ended"
-    ?? "not ended"
--- match trickle("abce")
-    ~ word ("abcd" | "abce")
-        "chose $word"
-    ?? "no choice"
--- match trickle("key=value")
-    ~ key \word "=" value \word
-        "$key $value"
-    ?? "no call"
--- match trickle("a" * 3000 ++ ";")
-    ~ run [a]+ ";"
-        "${run.length}"
-    ?? "no run"
--- match ChunkedTokenStream'Byte(Trickle(Array'Byte(3000)))
-    ~ data Byte{3000}
-        "${data.size}"
-    ?? "no bytes"
--- match ChunkedTokenStream'Byte(Trickle(Array'Byte([1u8, 0u8, 2u8])))
-    ~ small U8 wide U16
-        "$small $wide"
-    ?? "no numbers"
-. tally = Tally()
-for word in trickle("one two three ") ~> \counted(tally)
-    -- word
--- tally.count
-. names = Trickle("ab;cd;" as Byte[])
-for name in ChunkedTokenStream'Char(names) ~> \named
-    -- "$name after ${names.cursor} bytes"
-. frames = Trickle(Array'Byte([5u8, 0u8, 7u8]))
-for frame in ~ Frame in ChunkedTokenStream'Byte(frames)
-    -- "frame ${frame.size} after ${frames.cursor} bytes"
-. failure = catch entries-of("ab;\ncd")
-if failure is EntryError
-    -- "error at ${(failure as EntryError).line}:${(failure as EntryError).column}"
+      )
+      (default
+        (inline "not ended")
+      )
+    )
+  )
+  (print
+    (match (call trickle "abce")
+      (~ (: word (| "abcd" "abce"))
+        (str "chose " word)
+      )
+      (default
+        (inline "no choice")
+      )
+    )
+  )
+  (print
+    (match (call trickle "key=value")
+      (~ (seq (: key \word) "=" (: value \word))
+        (str key " " value)
+      )
+      (default
+        (inline "no call")
+      )
+    )
+  )
+  (print
+    (match (call trickle (++ (* "a" 3000) ";"))
+      (~ (seq (: run (+ (chars "a"))) ";")
+        (str (. run length))
+      )
+      (default
+        (inline "no run")
+      )
+    )
+  )
+  (print
+    (match (call (of ChunkedTokenStream Byte) (call Trickle (call (of Array Byte) 3000)))
+      (~ (: data ({} Byte 3000))
+        (str (. data size))
+      )
+      (default
+        (inline "no bytes")
+      )
+    )
+  )
+  (print
+    (match (call (of ChunkedTokenStream Byte) (call Trickle (call (of Array Byte) (list 1u8 0u8 2u8))))
+      (~ (seq (: small U8) (: wide U16))
+        (str small " " wide)
+      )
+      (default
+        (inline "no numbers")
+      )
+    )
+  )
+  (let tally (call Tally))
+  (for (in word (~> (call trickle "one two three ") (call \counted tally)))
+    (print word)
+  )
+  (print (. tally count))
+  (let names (call Trickle (as "ab;cd;" ([] Byte))))
+  (for (in name (~> (call (of ChunkedTokenStream Char) names) \named))
+    (print (str name " after " (. names cursor) " bytes"))
+  )
+  (let frames (call Trickle (call (of Array Byte) (list 5u8 0u8 7u8))))
+  (for (in frame (in (~ Frame) (call (of ChunkedTokenStream Byte) frames)))
+    (print (str "frame " (. frame size) " after " (. frames cursor) " bytes"))
+  )
+  (let failure (catch (call entries-of "ab;\ncd")))
+  (if (is failure EntryError)
+    (print (str "error at " (. (as failure EntryError) line) ":" (. (as failure EntryError) column)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ word ~ Char String
+(fn-expr + word String (over: Char)
+  (~ (+ (chars "a-z")))
+)
 
-~ [a-z]+
-
-━━━━━━━━━━━━━━━━━━━━
-+ counted ~ Char String
-    - tally Tally
-
-~ word \tracked(tally) " "
+(fn-expr + counted String (over: Char)
+  (param tally Tally)
+  (~ (seq (: word (call \tracked tally)) " ")
     word
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ tracked ~ Char String
-    - tally Tally
+(fn-expr + tracked String (over: Char)
+  (param tally Tally)
+  (~ (: word (+ (chars "a-z")))
+    (call (. tally add) word)
+  )
+)
 
-~ word [a-z]+
-    tally.add(word)
-
-━━━━━━━━━━━━━━━━━━━━
-+ named ~ Char String
-
-~ name [a-z]+ ";"
+(fn-expr + named String (over: Char)
+  (~ (seq (: name (+ (chars "a-z"))) ";")
     name
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ entry ~ Char String ?! EntryError
-
-~ name [a-z]+ ";" "\n"?
+(fn-expr + entry String (over: Char) (?! EntryError)
+  (~ (seq (: name (+ (chars "a-z"))) ";" (? "\n"))
     name
-?! EntryError(location.line + 1, location.column + 1)
+  )
+  (throw (call EntryError (+ (. location line) 1) (+ (. location column) 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do entries-of Size ?! EntryError
-    - text String
+(fn-do + entries-of Size (?! EntryError)
+  (param text String)
+  (let count Size)
+  (for (in name (~> (call trickle text) \entry))
+    (+= count 1)
+  )
+  (return count)
+)
 
-. count Size
-for name in trickle(text) ~> \entry
-    count += 1
-= count
+(type + EntryError (is Error)
+  (prop + line Size)
+  (prop + column Size)
+  (fn-do + This _
+    (param line _)
+    (param column _)
+    (= message (str "Entry error at line " line))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ EntryError is Error
+(fn-do + trickle (of ChunkedTokenStream Char)
+  (param text String)
+  (return (call (of ChunkedTokenStream Char) (call Trickle (as text ([] Byte)))))
+)
 
-+ line Size
-+ column Size
+(type + Tally
+  (prop + count Size)
+  (fn-do + add String
+    (param word String)
+    (+= count 1)
+    (return word)
+  )
+)
 
-────────────────────
-+ This
-    - line
-    - column
+(type + Frame (is Tuple)
+  (prop + size U64)
+  (fn-expr + This _ (over: Byte)
+    (~ (seq (: head U8) (: size \measure))
+      (call This size)
+      (blank)
+      (lazy measure
+        (pattern
+          (case? (!= head 0u8)
+            (~ ({} U8 0)
+              (as head U64)
+            )
+          )
+          (default
+            (~ ({} U8 1)
+              0u64
+            )
+          )
+        )
+      )
+    )
+  )
+)
 
-message = "Entry error at line $line"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do trickle ChunkedTokenStream'Char
-    - text String
-
-= ChunkedTokenStream'Char(Trickle(text as Byte[]))
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tally
-
-+ count Size
-
-────────────────────
-+ do add String
-    - word String
-
-count += 1
-= word
-
-━━━━━━━━━━━━━━━━━━━━
-+ Frame is Tuple
-
-+ size U64
-
-────────────────────
-+ This ~ Byte
-
-~ head U8 size \measure
-    This(size)
-
-    .. measure ~
-        |? head != 0u8
-            ~ U8{0}
-                head as U64
-        ??
-            ~ U8{1}
-                0u64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Trickle
-    is ByteReadable
-
-+ data Byte[]
-+ cursor Index
-
-────────────────────
-+ This
-    - data
-
-────────────────────
-+ do read Size
-    - size Size
-    - buffer Byte[]
-
-if cursor >= data.size || size == 0
-    = 0
-buffer[0] = data[cursor]
-cursor += 1
-= 1
+(type + Trickle
+  (implements ByteReadable)
+  (prop + data ([] Byte))
+  (prop + cursor Index)
+  (fn-do + This _
+    (param data _)
+  )
+  (fn-do + read Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (if (or (>= cursor (. data size)) (== size 0))
+      (return 0)
+    )
+    (= ([] buffer 0) ([] data cursor))
+    (+= cursor 1)
+    (return 1)
+  )
+)
 ```
 
 ```output
@@ -12307,64 +15238,62 @@ error at 2:3
 
 ### A stream piped through a pattern takes a helper with `with`, evaluated once as the pipe starts to read: every record the pipe matches runs under that one helper, in either form of the pipe.
 
-```yumi
-/core/patterns
-/core/tokenstream
+```brix
+(import /core/patterns)
+(import /core/tokenstream)
+(blank)
 
-. words = "ab cd ef" ~> \word with made()
--- "piped"
-for word in words
-    -- word
-
-. tagger = Tagger()
-. destination = List'String()
-"gh ij"
-~> text [a-z]+ " "? with tagger
+(main
+  (let words (~> "ab cd ef" \word (with (call made))))
+  (print "piped")
+  (for (in word words)
+    (print word)
+  )
+  (blank)
+  (let tagger (call Tagger))
+  (let destination (call (of List String)))
+  "gh ij"
+  (pipe ~> (seq (: text (+ (chars "a-z"))) (? " "))
+    (with tagger)
     text
-*-> destination
--- ",".join(destination)
--- tagger.count
+  )
+  (pipe *-> destination)
+  (print (call (. "," join) destination))
+  (print (. tagger count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do made Tagger
+(fn-do + made Tagger
+  (print "made")
+  (return (call Tagger))
+)
 
--- "made"
-= Tagger()
-
-━━━━━━━━━━━━━━━━━━━━
-+ word ~ Char
-
-~ text [a-z]+ " "?
+(fn-expr + word _ (over: Char)
+  (~ (seq (: text (+ (chars "a-z"))) (? " "))
     text
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tagger
-    is PatternMaterializationRoot'String
-    is PatternCaptureMaterializer'Char'String
-    is PatternCaptureMaterializer'Byte'String
-    is PatternRollback'Size
-
-+ count Size
-
-────────────────────
-+ mark Size
-
-count
-
-────────────────────
-+ do rewind
-    - mark Size
-
-count = mark
-
-────────────────────
-+ do materialize-capture'Token String
-    - source Token[]
-    - start Index
-    - end Index
-
-count += 1
-= "<${count}>"
+(type + Tagger
+  (implements (of PatternMaterializationRoot String))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternCaptureMaterializer Byte String))
+  (implements (of PatternRollback Size))
+  (prop + count Size)
+  (fn-expr + mark Size
+    count
+  )
+  (fn-do + rewind _
+    (param mark Size)
+    (= count mark)
+  )
+  (fn-do + (of materialize-capture Token) String
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (+= count 1)
+    (return (str "<" count ">"))
+  )
+)
 ```
 
 ```output
@@ -12379,37 +15308,43 @@ made
 
 ### A pipe whose helper is a PatternRecordBoundary asks it to begin each record where the stream has more, before it matches the record and after the record before has been delivered. A match given the same helper never asks.
 
-```yumi
-. counter = Counter()
-for word in "ab cd ef" ~> \word with counter
-    -- word
--- counter.count
--- match "gh"
-    with counter
-    ~ \word
-    ?? "none"
--- counter.count
-for word in "" ~> \word with counter
-    -- word
--- counter.count
+```brix
+(main
+  (let counter (call Counter))
+  (for (in word (~> "ab cd ef" \word (with counter)))
+    (print word)
+  )
+  (print (. counter count))
+  (print
+    (match "gh"
+      (with counter)
+      (~ \word)
+      (default
+        (inline "none")
+      )
+    )
+  )
+  (print (. counter count))
+  (for (in word (~> "" \word (with counter)))
+    (print word)
+  )
+  (print (. counter count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ word ~ Char
-
-~ text [a-z]+ " "?
+(fn-expr + word _ (over: Char)
+  (~ (seq (: text (+ (chars "a-z"))) (? " "))
     text
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
-    is PatternRecordBoundary
-
-+ count Size
-
-────────────────────
-+ do begin-pattern-record
-
-count += 1
--- "record $count"
+(type + Counter
+  (implements PatternRecordBoundary)
+  (prop + count Size)
+  (fn-do + begin-pattern-record _
+    (+= count 1)
+    (print (str "record " count))
+  )
+)
 ```
 
 ```output
@@ -12427,38 +15362,35 @@ gh
 
 ### A pipe whose helper delegates PatternRecordBoundary to a property asks what the property holds to begin each record.
 
-```yumi
-for word in "ab cd" ~> \word with Delegating()
-    -- word
+```brix
+(main
+  (for (in word (~> "ab cd" \word (with (call Delegating))))
+    (print word)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ word ~ Char
-
-~ text [a-z]+ " "?
+(fn-expr + word _ (over: Char)
+  (~ (seq (: text (+ (chars "a-z"))) (? " "))
     text
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Delegating
+(type + Delegating
+  (delegate PatternRecordBoundary)
+  (prop _ counter Counter)
+  (fn-do + This _
+    (lazy counter (call Counter))
+  )
+)
 
-as PatternRecordBoundary for
-_ counter Counter
-
-────────────────────
-+ This
-
-.. counter = Counter()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
-    is PatternRecordBoundary
-
-+ count Size
-
-────────────────────
-+ do begin-pattern-record
-
-count += 1
--- "record $count"
+(type + Counter
+  (implements PatternRecordBoundary)
+  (prop + count Size)
+  (fn-do + begin-pattern-record _
+    (+= count 1)
+    (print (str "record " count))
+  )
+)
 ```
 
 ```output
@@ -12470,47 +15402,61 @@ cd
 
 ### A stream piped through a pattern reports what fails in its pattern where it fails.
 
-```yumi crash
-for word in "ab" ~> text [a-z]+ \nope
-    -- word
+```brix crash
+(main
+  (for (in word (~> "ab" (seq (: text (+ (chars "a-z"))) \nope)))
+    (print word)
+  )
+)
 ```
 
 ```output
 Exception: Rule "nope" not found
-<no file:2>
-    for word in "ab" ~> text [a-z]+ \nope
-                                    ^^^^^
+<no file:3>
+      (for (in word (~> "ab" (seq (: text (+ (chars "a-z"))) \nope)))
+                                                             ^^^^^
 ```
 
 ### A match over a list of values gives each item pattern the item itself: a tuple as a whole, and a union by its case.
 
-```yumi
-. points = [Pt(1, 2), Pt(3, 4)]
--- match points
-    ~ \{show(it)} \{it.y == 4}
+```brix
+(main
+  (let points (list (call Pt 1 2) (call Pt 3 4)))
+  (print
+    (match points
+      (~ (seq (\{} (call show it)) (\{} (== (. it y) 4)))
         "points"
-    ?? "fail"
-. tokens = [Tok.word("let"), Tok.num(5)]
--- match tokens
-    ~ \{it is .word} \{it is .num}
+      )
+      (default
+        (inline "fail")
+      )
+    )
+  )
+  (let tokens (list (call (. Tok word) "let") (call (. Tok num) 5)))
+  (print
+    (match tokens
+      (~ (seq (\{} (is it .word)) (\{} (is it .num)))
         "tokens"
-    ?? "fail"
+      )
+      (default
+        (inline "fail")
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show Bool
-    - p Pt
+(fn-do + show Bool
+  (param p Pt)
+  (print (str "item " p))
+  (return (== (. p x) 1))
+)
 
--- "item $p"
-= p.x == 1
+(type + Pt (is (tuple (: x Int) (: y Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pt is (x Int, y Int)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tok is Union
-
-| word(String)
-| num(Int)
+(type + Tok (is Union)
+  (variant word (tuple String))
+  (variant num (tuple Int))
+)
 ```
 
 ```output
@@ -12521,36 +15467,41 @@ tokens
 
 ### Over items of a union, a case named by its symbol matches one item that holds the case and gives what the case holds, or the item where it holds nothing, and a type the union has as a case matches one item that holds it and gives what it holds.
 
-```yumi
-. events List'Event = [.press, Event.move(40), Event.move(95), .release, .press, .release, .typed("hi"), Spot(3, 4), .release]
-for gesture in events ~> \gesture
-    -- gesture
+```brix
+(main
+  (let events (of List Event) (list .press (call (. Event move) 40) (call (. Event move) 95) .release .press .release (call .typed "hi") (call Spot 3 4) .release))
+  (for (in gesture (~> events \gesture))
+    (print gesture)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ gesture ~ Event String
-
-~ .press xs .move+ .release
-    "drag ${xs.length}, last at ${xs[xs.length - 1]}"
-~ .press .release
+(fn-expr + gesture String (over: Event)
+  (~ (seq .press (: xs (+ .move)) .release)
+    (str "drag " (. xs length) ", last at " ([] xs (- (. xs length) 1)))
+  )
+  (~ (seq .press .release)
     "tap"
-~ text .typed
-    "typed $text"
-~ spot Spot
-    "spot ${spot.x + spot.y}"
-~ event (.press | .release)
-    "lone $event"
+  )
+  (~ (: text .typed)
+    (str "typed " text)
+  )
+  (~ (: spot Spot)
+    (str "spot " (+ (. spot x) (. spot y)))
+  )
+  (~ (: event (| .press .release))
+    (str "lone " event)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Event is Union
+(type + Event (is Union)
+  (variant press)
+  (variant release)
+  (variant move (tuple Int))
+  (variant typed (tuple String))
+  (variant Spot)
+)
 
-| press
-| release
-| move(Int)
-| typed(String)
-| Spot
-
-━━━━━━━━━━━━━━━━━━━━
-+ Spot is (x Int, y Int)
+(type + Spot (is (tuple (: x Int) (: y Int))))
 ```
 
 ```output
@@ -12563,30 +15514,34 @@ lone release
 
 ### A value pattern may name a local of the rule that is declared after the arm using it.
 
-```yumi
--- match "\t"
-    ~ p Pressed
-        p.key as Int
+```brix
+(main
+  (print
+    (match "\t"
+      (~ (: p Pressed)
+        (as (. p key) Int)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ KeyCode is Char
+(type + KeyCode (is Char)
+  (variant tab (= 9))
+  (variant return (= 13))
+)
 
-| tab = 9
-| return = 13
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pressed is Tuple
-
-+ key Char
-
-────────────────────
-+ This ~ Char
-
-~ c ($tab-key | $return-key)
-    This(c)
-
-.. tab-key = KeyCode.tab
-.. return-key = KeyCode.return
+(type + Pressed (is Tuple)
+  (prop + key Char)
+  (fn-expr + This _ (over: Char)
+    (~ (: c (| $tab-key $return-key))
+      (call This c)
+    )
+    (where
+      (lazy tab-key (. KeyCode tab))
+      (lazy return-key (. KeyCode return))
+    )
+  )
+)
 ```
 
 ```output
@@ -12595,39 +15550,48 @@ lone release
 
 ### Alternatives that each test an item give the value of the one that passed, however many there are.
 
-```yumi
--- match "\r"
-    ~ p Pressed
-        p.key as Int
--- match "\n"
-    ~ p Pressed
-        p.key as Int
+```brix
+(main
+  (print
+    (match "\r"
+      (~ (: p Pressed)
+        (as (. p key) Int)
+      )
+    )
+  )
+  (print
+    (match "\n"
+      (~ (: p Pressed)
+        (as (. p key) Int)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ KeyCode is Char
+(type + KeyCode (is Char)
+  (variant tab (= 9))
+  (variant return (= 13))
+  (variant feed (= 10))
+  (variant back (= 127))
+)
 
-| tab = 9
-| return = 13
-| feed = 10
-| back = 127
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pressed is Tuple
-
-+ key Char
-
-────────────────────
-+ This ~ Char
-
-~ c ($tab-key | $return-key | $back-key)
-    This(c)
-~ c (($tab-key | $return-key) | ($feed-key | $back-key))
-    This(c)
-
-.. tab-key = KeyCode.tab
-.. return-key = KeyCode.return
-.. feed-key = KeyCode.feed
-.. back-key = KeyCode.back
+(type + Pressed (is Tuple)
+  (prop + key Char)
+  (fn-expr + This _ (over: Char)
+    (~ (: c (| $tab-key $return-key $back-key))
+      (call This c)
+    )
+    (~ (: c (| (| $tab-key $return-key) (| $feed-key $back-key)))
+      (call This c)
+    )
+    (where
+      (lazy tab-key (. KeyCode tab))
+      (lazy return-key (. KeyCode return))
+      (lazy feed-key (. KeyCode feed))
+      (lazy back-key (. KeyCode back))
+    )
+  )
+)
 ```
 
 ```output
@@ -12637,25 +15601,31 @@ lone release
 
 ### A value pattern may name a constant of the item type, which is compared with one item.
 
-```yumi
--- classify("\x7f")
--- classify("\t")
--- classify("a")
+```brix
+(main
+  (print (call classify "\x7f"))
+  (print (call classify "\t"))
+  (print (call classify "a"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ classify String
-    - text String
-
-match text
-    ~ c ($tab | $del)
-        "control"
-    ~ c .
-        "other"
-    ??
-        "none"
-
-.. tab Char = '\t'
-.. del Char = '\x7f'
+(fn-expr _ classify String
+  (param text String)
+  (match text
+    (~ (: c (| $tab $del))
+      "control"
+    )
+    (~ (: c .)
+      "other"
+    )
+    (default
+      "none"
+    )
+  )
+  (where
+    (lazy tab Char (char "\t"))
+    (lazy del Char (char "\x7f"))
+  )
+)
 ```
 
 ```output
@@ -12666,51 +15636,51 @@ other
 
 ### A helper that observes literal words is told of each lowercase word a literal matches, and is rewound to where a part began when the part fails, and when a lookahead passes.
 
-```yumi
-. watcher = Watcher()
--- match "let it-be Now ab"
-    with watcher
-    ~ "let" " " "go"
+```brix
+(main
+  (let watcher (call Watcher))
+  (print
+    (match "let it-be Now ab"
+      (with watcher)
+      (~ (seq "let" " " "go")
         "go"
-    ~ &"l" "let" " "+ \words " " ("a" | "b")+
+      )
+      (~ (seq (& "l") "let" (+ " ") \words " " (+ (| "a" "b")))
         "words"
-    ?? "none"
--- " ".join(watcher.seen)
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+  (print (call (. " " join) (. watcher seen)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ words ~ Char String
+(fn-expr + words String (over: Char)
+  (~ (seq "it-be Now" (! "!")))
+  (~ "it")
+)
 
-~ "it-be Now" !"!"
-~ "it"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Watcher
-    is PatternLiteralObserver
-    is PatternRollback'Size
-
-+ seen [String]
-
-────────────────────
-+ mark Size
-
-seen.length
-
-────────────────────
-+ do rewind
-    - mark Size
-
-────────────────────
-+ do record-pattern-literal
-    - start Index
-    - end Index
-
-seen += "+${start}..${end}"
-
-────────────────────
-+ do rewind-pattern-literals
-    - cursor Index
-
-seen += "<${cursor}"
+(type + Watcher
+  (implements PatternLiteralObserver)
+  (implements (of PatternRollback Size))
+  (prop + seen (list String))
+  (fn-expr + mark Size
+    (. seen length)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+  )
+  (fn-do + record-pattern-literal _
+    (param start Index)
+    (param end Index)
+    (+= seen (str "+" start ".." end))
+  )
+  (fn-do + rewind-pattern-literals _
+    (param cursor Index)
+    (+= seen (str "<" cursor))
+  )
+)
 ```
 
 ```output
@@ -12720,55 +15690,60 @@ words
 
 ### Under a helper that observes literal words, a rule that matches no literal runs without the helper, so nothing that fails within it rewinds the helper.
 
-```yumi
-. watcher = Watcher()
--- match "ab  cd"
-    with watcher
-    ~ \letters \gap \letters \gap? "x"?
+```brix
+(main
+  (let watcher (call Watcher))
+  (print
+    (match "ab  cd"
+      (with watcher)
+      (~ (seq \letters \gap \letters (? \gap) (? "x"))
         "found"
-    ?? "none"
+      )
+      (default
+        (inline "none")
+      )
+      (blank)
+      (lazy gap
+        (pattern
+          (~ (seq \sp \sp))
+          (~ \sp)
+        )
+      )
+      (blank)
+      (lazy sp
+        (pattern
+          (~ (| " " "\t"))
+        )
+      )
+    )
+  )
+  (print (call (. " " join) (. watcher seen)))
+)
 
-    .. gap ~
-        ~ \sp \sp
-        ~ \sp
+(fn-expr + letters String (over: Char)
+  (~ (seq (chars "a-z") (chars "a-z")))
+)
 
-    .. sp ~
-        ~ " " | "\t"
--- " ".join(watcher.seen)
-
-━━━━━━━━━━━━━━━━━━━━
-+ letters ~ Char String
-
-~ [a-z] [a-z]
-
-━━━━━━━━━━━━━━━━━━━━
-+ Watcher
-    is PatternLiteralObserver
-    is PatternRollback'Size
-
-+ seen [String]
-
-────────────────────
-+ mark Size
-
-seen.length
-
-────────────────────
-+ do rewind
-    - mark Size
-
-────────────────────
-+ do record-pattern-literal
-    - start Index
-    - end Index
-
-seen += "+${start}..${end}"
-
-────────────────────
-+ do rewind-pattern-literals
-    - cursor Index
-
-seen += "<${cursor}"
+(type + Watcher
+  (implements PatternLiteralObserver)
+  (implements (of PatternRollback Size))
+  (prop + seen (list String))
+  (fn-expr + mark Size
+    (. seen length)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+  )
+  (fn-do + record-pattern-literal _
+    (param start Index)
+    (param end Index)
+    (+= seen (str "+" start ".." end))
+  )
+  (fn-do + rewind-pattern-literals _
+    (param cursor Index)
+    (+= seen (str "<" cursor))
+  )
+)
 ```
 
 ```output
@@ -12778,55 +15753,61 @@ found
 
 ### A local rule of a rule typed for a helper that observes literal words may call itself, and runs under the helper each time.
 
-```yumi
-. watcher = Watcher()
--- match "((a)b)"
-    with watcher
-    ~ v \nest-all
+```brix
+(main
+  (let watcher (call Watcher))
+  (print
+    (match "((a)b)"
+      (with watcher)
+      (~ (: v \nest-all)
         v
-    ?? "none"
--- " ".join(watcher.seen)
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+  (print (call (. " " join) (. watcher seen)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ nest-all ~ Char String
-
-~ v \inner
+(fn-expr + nest-all String (over: Char)
+  (~ (: v \inner)
     v
+  )
+  (where
+    (lazy inner String
+      (pattern
+        (~ (seq "(" (: v \inner) (? "b") ")")
+          (str "[" v "]")
+        )
+        (~ "a"
+          "a"
+        )
+      )
+    )
+  )
+)
 
-.. inner String ~
-    ~ "(" v \inner "b"? ")"
-        "[${v}]"
-    ~ "a"
-        "a"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Watcher
-    is PatternLiteralObserver
-    is PatternRollback'Size
-
-+ seen [String]
-
-────────────────────
-+ mark Size
-
-seen.length
-
-────────────────────
-+ do rewind
-    - mark Size
-
-────────────────────
-+ do record-pattern-literal
-    - start Index
-    - end Index
-
-seen += "+${start}..${end}"
-
-────────────────────
-+ do rewind-pattern-literals
-    - cursor Index
-
-seen += "<${cursor}"
+(type + Watcher
+  (implements PatternLiteralObserver)
+  (implements (of PatternRollback Size))
+  (prop + seen (list String))
+  (fn-expr + mark Size
+    (. seen length)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+  )
+  (fn-do + record-pattern-literal _
+    (param start Index)
+    (param end Index)
+    (+= seen (str "+" start ".." end))
+  )
+  (fn-do + rewind-pattern-literals _
+    (param cursor Index)
+    (+= seen (str "<" cursor))
+  )
+)
 ```
 
 ```output
@@ -12836,37 +15817,42 @@ seen += "<${cursor}"
 
 ### A helper may delegate `PatternCollectorStorage` to a property, and the repeats of a match keep their items in the storage that property gives.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-. outer = Outer(Inner(arena))
--- match "a,bc,d"
-    with outer
-    ~ ...items [a-z]+ ("," ...items [a-z]+)*
-        ";".join(items)
-    ?? "none"
+(main
+  (let arena (call Arena))
+  (let outer (call Outer (call Inner arena)))
+  (print
+    (match "a,bc,d"
+      (with outer)
+      (~ (seq (: ...items (+ (chars "a-z"))) (* (seq "," (: ...items (+ (chars "a-z"))))))
+        (call (. ";" join) items)
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Inner
-    is PatternCollectorStorage'ArenaBacking
+(type + Inner
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (prop + pattern-collector-context Arena)
+  (fn-do + This _
+    (param pattern-collector-context _)
+  )
+)
 
-+ pattern-collector-context Arena
-
-────────────────────
-+ This
-    - pattern-collector-context
-
-━━━━━━━━━━━━━━━━━━━━
-+ Outer
-    is PatternCollectorStorage'ArenaBacking
-
-as PatternCollectorStorage'ArenaBacking for
-_ inner Inner
-
-────────────────────
-+ This
-    - inner
+(type + Outer
+  (implements (of PatternCollectorStorage ArenaBacking))
+  (delegate (of PatternCollectorStorage ArenaBacking))
+  (prop _ inner Inner)
+  (fn-do + This _
+    (param inner _)
+  )
+)
 ```
 
 ```output
@@ -12875,63 +15861,68 @@ a;bc;d
 
 ### Under a helper that observes literal words, a rule matched for its text, as in a lookahead, takes the text of each rule it calls, whatever type that rule states.
 
-```yumi
-. watcher = Watcher()
--- match "for x"
-    with watcher
-    ~ !\keyword [a-z]+
+```brix
+(main
+  (let watcher (call Watcher))
+  (print
+    (match "for x"
+      (with watcher)
+      (~ (seq (! \keyword) (+ (chars "a-z")))
         "name"
-    ~ p \preposition " " [a-z]
-        "preposition ${p}"
-    ?? "none"
+      )
+      (~ (seq (: p \preposition) " " (chars "a-z"))
+        (str "preposition " p)
+      )
+      (default
+        (inline "none")
+      )
+      (blank)
+      (lazy preposition Int
+        (pattern
+          (~ "for")
+          (~ "with")
+        )
+      )
+      (blank)
+      (lazy keyword
+        (pattern
+          (~ "if")
+          (~ \preposition)
+        )
+      )
+    )
+  )
+  (print (call (. " " join) (. watcher seen)))
+)
 
-    .. preposition Int ~
-        ~ "for"
-        ~ "with"
-
-    .. keyword ~
-        ~ "if"
-        ~ \preposition
--- " ".join(watcher.seen)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Watcher
-    is PatternLiteralObserver
-    is PatternRollback'Size
-    is PatternCaptureMaterializer'Char'Int
-    is PatternCaptureMaterializer'Byte'Int
-
-+ seen [String]
-
-────────────────────
-+ mark Size
-
-seen.length
-
-────────────────────
-+ do rewind
-    - mark Size
-
-────────────────────
-+ do record-pattern-literal
-    - start Index
-    - end Index
-
-seen += "+${start}..${end}"
-
-────────────────────
-+ do rewind-pattern-literals
-    - cursor Index
-
-seen += "<${cursor}"
-
-────────────────────
-+ do materialize-capture'Token Int
-    - source Token[]
-    - start Index
-    - end Index
-
-= (end - start) as Int
+(type + Watcher
+  (implements PatternLiteralObserver)
+  (implements (of PatternRollback Size))
+  (implements (of PatternCaptureMaterializer Char Int))
+  (implements (of PatternCaptureMaterializer Byte Int))
+  (prop + seen (list String))
+  (fn-expr + mark Size
+    (. seen length)
+  )
+  (fn-do + rewind _
+    (param mark Size)
+  )
+  (fn-do + record-pattern-literal _
+    (param start Index)
+    (param end Index)
+    (+= seen (str "+" start ".." end))
+  )
+  (fn-do + rewind-pattern-literals _
+    (param cursor Index)
+    (+= seen (str "<" cursor))
+  )
+  (fn-do + (of materialize-capture Token) Int
+    (param source ([] Token))
+    (param start Index)
+    (param end Index)
+    (return (as (- end start) Int))
+  )
+)
 ```
 
 ```output
@@ -12939,51 +15930,50 @@ preposition 3
 +0..3 <0 <0 <0 <0 +0..3
 ```
 
-```yumi
-./lib/token
+```brix
+(import ./lib/token)
+(blank)
 
-for token in ~ Token in "ab"
-    -- token.name
-for word in ~ Word in "ab"
-    -- word.text
+(main
+  (for (in token (in (~ Token) "ab"))
+    (print (. token name))
+  )
+  (for (in word (in (~ Word) "ab"))
+    (print (. word text))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Word
-
-+ text String
-
-────────────────────
-+ This
-    - text
-
-────────────────────
-+ This ~ Char
-
-~ "a"
-    Word("word a")
-~ "b"
-    Word("word b")
+(type + Word
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+  (fn-expr + This _ (over: Char)
+    (~ "a"
+      (call Word "word a")
+    )
+    (~ "b"
+      (call Word "word b")
+    )
+  )
+)
 ```
 
-```yumi file=lib/token.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Token
-
-+ name String
-
-────────────────────
-+ This
-    - name
-
-────────────────────
-+ This ~ Char
-
-~ "a"
-    Token("token a")
-~ "b"
-    Token("token b")
-
+```brix file=lib/token.bx
+(type + Token
+  (prop + name String)
+  (fn-do + This _
+    (param name _)
+  )
+  (fn-expr + This _ (over: Char)
+    (~ "a"
+      (call Token "token a")
+    )
+    (~ "b"
+      (call Token "token b")
+    )
+  )
+)
 ```
 
 ```output
@@ -12995,28 +15985,30 @@ word b
 
 ### An arm with no action gives the text it matched as the type its rule states.
 
-```yumi
-for value in "2.5" ~> \decimal
-    -- value * 2
-for value in "7" ~> \digit
-    -- value
-for value in "z" ~> \letter
-    -- value
+```brix
+(main
+  (for (in value (~> "2.5" \decimal))
+    (print (* value 2))
+  )
+  (for (in value (~> "7" \digit))
+    (print value)
+  )
+  (for (in value (~> "z" \letter))
+    (print value)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ decimal ~ Char F64
+(fn-expr + decimal F64 (over: Char)
+  (~ (seq (+ (chars "0-9")) "." (+ (chars "0-9"))))
+)
 
-~ [0-9]+ "." [0-9]+
+(fn-expr + digit I32 (over: Char)
+  (~ (chars "0-9"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ digit ~ Char I32
-
-~ [0-9]
-
-━━━━━━━━━━━━━━━━━━━━
-+ letter ~ Char Char
-
-~ [a-z]
+(fn-expr + letter Char (over: Char)
+  (~ (chars "a-z"))
+)
 ```
 
 ```output
@@ -13027,153 +16019,178 @@ z
 
 ### An action that gives text is not read as the number its rule states.
 
-```yumi compile-error
-for value in "7" ~> \digit
-    -- value
+```brix compile-error
+(main
+  (for (in value (~> "7" \digit))
+    (print value)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ digit ~ Char I32
-
-~ [0-9]
+(fn-expr + digit I32 (over: Char)
+  (~ (chars "0-9")
     it
+  )
+)
 ```
 
 ```output
 Exception: Expected I32 here, but this is String, and there is no conversion between them
-<no file:8>
-    ~ [0-9]
-    ^^^^^^
+<no file:9>
+      (~ (chars "0-9")
+      ^^^^^^^^^^^^^^^
 ```
 
 ### An action converts to the type its rule states only as a value converts unasked, not as one written with "as" does: a case of a union is not read as the integer a local rule states.
 
-```yumi compile-error
-for value in "x" ~> \count
-    -- value
+```brix compile-error
+(main
+  (for (in value (~> "x" \count))
+    (print value)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Part is Union
+(type + Part (is Union)
+  (variant digits (tuple (: length Int)))
+  (variant other)
+)
 
-| digits(length Int)
-| other
-
-━━━━━━━━━━━━━━━━━━━━
-+ count ~ Char Int
-
-~ n \letters
+(fn-expr + count Int (over: Char)
+  (~ (: n \letters)
     n
-
-.. letters Int ~
-    ~ [0-9]+
-        it.length
-    ~ [a-z]+
-        Part.other
+  )
+  (where
+    (lazy letters Int
+      (pattern
+        (~ (+ (chars "0-9"))
+          (. it length)
+        )
+        (~ (+ (chars "a-z"))
+          (. Part other)
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
-Exception: Expected I64 here, but this is Part, which is not always I64; match it with "| name I64", or write "as I64"
-<no file:20>
-        ~ [a-z]+
-        ^^^^^^^
+Exception: Expected I64 here, but this is Part, which is not always I64; match it with "(case (: name I64) …)", or write "(as … I64)"
+<no file:23>
+            (~ (+ (chars "a-z"))
+            ^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A stream constructor's own class constructed with values it does not take is reported by its name, with the constructors a call can make.
 
-```yumi crash
--- match "a=b"
-    ~ packet Packet
+```brix crash
+(main
+  (print
+    (match "a=b"
+      (~ (: packet Packet)
         packet
-    ?! Panic("none")
+      )
+      (throw (call Panic "none"))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Packet is (key String, value String)
-
-────────────────────
-+ This ~ Char
-
-~ key [a-z]+ "=" value \word?
-    This(key, value)
-
-.. word String ~
-    ~ [a-z]+
+(type + Packet (is (tuple (: key String) (: value String)))
+  (fn-expr + This _ (over: Char)
+    (~ (seq (: key (+ (chars "a-z"))) "=" (: value (? \word)))
+      (call This key value)
+    )
+    (where
+      (lazy word String
+        (pattern
+          (~ (+ (chars "a-z")))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: No constructor of Packet accepts (String, String?); its declared constructors are "Packet(key String, value String)"
-<no file:14>
-        This(key, value)
-        ^^^^
+<no file:16>
+          (call This key value)
+                ^^^^
 ```
 
 ### An action reads the capture types its own arm binds, not another arm's capture of the same name.
 
-```yumi
-for event in ~ Events in "ax12;3yzx4w"
-    -- (event is Pair) || (event is Single)
+```brix
+(main
+  (for (in event (in (~ Events) "ax12;3yzx4w"))
+    (print (or (is event Pair) (is event Single)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Events is Union
+(type + Events (is Union)
+  (variant Pair)
+  (variant Single)
+  (variant Other)
+  (fn-expr + This Events (over: Char)
+    (~ "a"
+      (call Single 1)
+    )
+    (~ (seq "x" (: code I32) ";" (: modifiers I32) "y")
+      (call pair code modifiers)
+    )
+    (~ "z"
+      (call Other)
+    )
+    (~ (seq "x" (: code (? \number)) (: modifiers (? \suffix)) "w")
+      (call single (?? code 1) (?? modifiers 1))
+    )
+    (where
+      (lazy number I32
+        (pattern
+          (~ (: value I32)
+            value
+          )
+        )
+      )
+      (lazy suffix I32
+        (pattern
+          (~ (seq ";" (: value I32))
+            value
+          )
+        )
+      )
+    )
+  )
+)
 
-| Pair
-| Single
-| Other
+(fn-expr _ pair Events
+  (param code I32)
+  (param modifiers I32)
+  (as (call Pair (+ code modifiers)) Events)
+)
 
-────────────────────
-+ This ~ Char Events
+(fn-expr _ single Events
+  (param code I32)
+  (param modifiers I32)
+  (as (call Single (+ code modifiers)) Events)
+)
 
-~ "a"
-    Single(1)
-~ "x" code I32 ";" modifiers I32 "y"
-    pair(code, modifiers)
-~ "z"
-    Other()
-~ "x" code \number? modifiers \suffix? "w"
-    single(code ?? 1, modifiers ?? 1)
+(type + Base)
 
-.. number I32 ~
-    ~ value I32
-        value
-.. suffix I32 ~
-    ~ ";" value I32
-        value
+(type + Pair (is Base)
+  (prop + total I32)
+  (fn-do + This _
+    (param total _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ pair Events
-    - code I32
-    - modifiers I32
+(type + Single (is Base)
+  (prop + total I32)
+  (fn-do + This _
+    (param total _)
+  )
+)
 
-(Pair(code + modifiers)) as Events
-
-━━━━━━━━━━━━━━━━━━━━
-_ single Events
-    - code I32
-    - modifiers I32
-
-(Single(code + modifiers)) as Events
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Base
-
-+ total I32
-
-────────────────────
-+ This
-    - total
-
-━━━━━━━━━━━━━━━━━━━━
-+ Single is Base
-
-+ total I32
-
-────────────────────
-+ This
-    - total
-
-━━━━━━━━━━━━━━━━━━━━
-+ Other is Base
+(type + Other (is Base))
 ```
 
 ```output
@@ -13185,21 +16202,33 @@ true
 
 ### A rule a pattern calls is never a name a match captures, though the call is in a match of its own, as a pattern given to a rule is, and in the body of the rule the name captures.
 
-```yumi
--- match "[a,a]"
-    ~ \list
-    ?? "none"
+```brix
+(main
+  (print
+    (match "[a,a]"
+      (~ \list)
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ list ~ Char String
-
-~ value \value
+(fn-expr + list String (over: Char)
+  (~ (: value \value)
     value
-
-.. value String ~
-    ~ "[" items \delimited(~ ",", ~ \value)? "]"
-        "list"
-    ~ "a"
+  )
+  (where
+    (lazy value String
+      (pattern
+        (~ (seq "[" (: items (? (call \delimited (~ ",") (~ \value)))) "]")
+          "list"
+        )
+        (~ "a")
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -13208,22 +16237,28 @@ list
 
 ### A name captured over a sequence holds the text it matched, though the sequence ends with an optional part.
 
-```yumi
--- match "12.5"
-    ~ \number
-    ?? "none"
+```brix
+(main
+  (print
+    (match "12.5"
+      (~ \number)
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ number ~ Char String
+(fn-expr + number String (over: Char)
+  (~ (: digits (seq (+ (chars "0-9")) (? (seq "." (+ (chars "0-9"))))))
+    (call take digits)
+  )
+)
 
-~ digits ([0-9]+ ("." [0-9]+)?)
-    take(digits)
-
-━━━━━━━━━━━━━━━━━━━━
-+ take String
-    - text String
-
-text
+(fn-expr + take String
+  (param text String)
+  text
+)
 ```
 
 ```output
@@ -13232,225 +16267,306 @@ text
 
 ### An action can't read a name that an alternative it may pass doesn't capture.
 
-```yumi compile-error
--- match "bb"
-    ~ (x "a" | "b") "b"
-        "x $x"
-    ?? "none"
+```brix compile-error
+(main
+  (print
+    (match "bb"
+      (~ (seq (| (: x "a") "b") "b")
+        (str "x " x)
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Capture x holds no value on some ways this arm matches; capture it in every alternative
-<no file:4>
-            "x $x"
-                ^
+<no file:6>
+            (str "x " x)
+                      ^
 ```
 
 ### A name can't be captured twice on one way through a pattern.
 
-```yumi compile-error
--- match "ab"
-    ~ x "a" x "b"
+```brix compile-error
+(main
+  (print
+    (match "ab"
+      (~ (seq (: x "a") (: x "b"))
         x
-    ?? "none"
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Capture x is captured twice on one way through the pattern
-<no file:3>
-        ~ x "a" x "b"
-                ^^^^^
+<no file:5>
+          (~ (seq (: x "a") (: x "b"))
+                            ^^^^^^^^^
 ```
 
 ### A name captured in alternatives holds one type.
 
-```yumi compile-error
--- match "a1"
-    ~ (x "a" | x \digit) .
+```brix compile-error
+(main
+  (print
+    (match "a1"
+      (~ (seq (| (: x "a") (: x \digit)) .)
         "x"
-    ?? "none"
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ digit ~ Char Int
-
-~ [0-9]
-    Int(it)
+(fn-expr + digit Int (over: Char)
+  (~ (chars "0-9")
+    (call Int it)
+  )
+)
 ```
 
 ```output
 Exception: Capture x holds String in one alternative and I64 in another
-<no file:3>
-        ~ (x "a" | x \digit) .
-                   ^^^^^^^^
+<no file:5>
+          (~ (seq (| (: x "a") (: x \digit)) .)
+                               ^^^^^^^^^^^^
 ```
 
 ### Alternatives under a capture give values of one type.
 
-```yumi compile-error
--- match "a1"
-    ~ x ("a" | \digit) .
+```brix compile-error
+(main
+  (print
+    (match "a1"
+      (~ (seq (: x (| "a" \digit)) .)
         "x"
-    ?? "none"
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ digit ~ Char Int
-
-~ [0-9]
-    Int(it)
+(fn-expr + digit Int (over: Char)
+  (~ (chars "0-9")
+    (call Int it)
+  )
+)
 ```
 
 ```output
 Exception: Alternatives give String and I64; give each a value of one type
-<no file:3>
-        ~ x ("a" | \digit) .
-             ^^^^^^^^^^^^
+<no file:5>
+          (~ (seq (: x (| "a" \digit)) .)
+                       ^^^^^^^^^^^^^^
 ```
 
 ### An arm with no pattern has no `it`.
 
-```yumi compile-error
--- match "ab"
-    ~ "x"
+```brix compile-error
+(main
+  (print
+    (match "ab"
+      (~ "x"
         "x"
-    ?? it.length
+      )
+      (default
+        (inline (. it length))
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: An arm with no pattern has no "it"; read the subject by its name
-<no file:5>
-        ?? it.length
-        ^^^^^^^^^^^^
+<no file:8>
+          (default
+          ^^^^^^^
 ```
 
 ### A match's arms are all values or all patterns.
 
-```yumi compile-error
--- match "ab"
-    | "ab"
+```brix compile-error
+(main
+  (print
+    (match "ab"
+      (case "ab"
         "same"
-    ~ "a" .
+      )
+      (~ (seq "a" .)
         "pattern"
-    ?? "none"
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: This pattern has no stream to read; outside a rule, write it in a match whose arms are all ~ patterns
-<no file:5>
-        ~ "a" .
-        ^^^^^^
+<no file:8>
+          (~ (seq "a" .)
+          ^^^^^^^^^^^^^
 ```
 
 ### A rule can't be a method.
 
-```yumi compile-error
--- Words().first("ab")
+```brix compile-error
+(main
+  (print (call (. (call Words) first) "ab"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Words
-
-────────────────────
-+ first String
-    - text String
-
-match text
-    ~ \word
-    ?? "none"
-
-────────────────────
-+ word ~ Char String
-
-~ [a-z]+
+(type + Words
+  (fn-expr + first String
+    (param text String)
+    (match text
+      (~ \word)
+      (default
+        (inline "none")
+      )
+    )
+  )
+  (fn-expr + word String (over: Char)
+    (~ (+ (chars "a-z")))
+  )
+)
 ```
 
 ```output
 Exception: A rule can't be a method; declare it at module level
 <no file:16>
-    + word ~ Char String
-    ^^^^^^^^^^^^^^^^^^^
+      (fn-expr + word String (over: Char)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A local rule takes no arguments.
 
-```yumi compile-error
--- match "aaaaa"
-    ~ \run(5)
-    ?? "none"
-    .. run ~
-        ~ "a"+
+```brix compile-error
+(main
+  (print
+    (match "aaaaa"
+      (~ (call \run 5))
+      (default
+        (inline "none")
+      )
+      (lazy run
+        (pattern
+          (~ (+ "a"))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: A local rule takes no arguments or types; declare it at module level to give it some
-<no file:3>
-        ~ \run(5)
-          ^^^^^^^
+<no file:5>
+          (~ (call \run 5))
+             ^^^^^^^^^^^^^
 ```
 
 ### A rule over another type of items says what it was asked to match.
 
-```yumi compile-error
-. numbers [Int] = [1, 2]
--- match numbers
-    ~ \word
-    ?? "none"
+```brix compile-error
+(main
+  (let numbers (list Int) (list 1 2))
+  (print
+    (match numbers
+      (~ \word)
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ word ~ Char String
-
-~ [a-z]+
+(fn-expr + word String (over: Char)
+  (~ (+ (chars "a-z")))
+)
 ```
 
 ```output
 Exception: No rule "word" matches I64 items with these arguments
-<no file:4>
-        ~ \word
-          ^^^^^
+<no file:6>
+          (~ \word)
+             ^^^^^
 ```
 
 ### A rule called as a function says that it is a rule.
 
-```yumi compile-error
--- word("ab")
+```brix compile-error
+(main
+  (print (call word "ab"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ word ~ Char String
-
-~ [a-z]+
+(fn-expr + word String (over: Char)
+  (~ (+ (chars "a-z")))
+)
 ```
 
 ```output
 Exception: "word" is a rule, which matches a stream; use it in a pattern, as in ~ \word
-<no file:2>
-    -- word("ab")
-       ^^^^^^^^^^
+<no file:3>
+      (print (call word "ab"))
+             ^^^^^^^^^^^^^^^^
 ```
 
 ### A match runs a pattern only over a value it can iterate.
 
-```yumi compile-error
--- match 5
-    ~ .
-    ?? "none"
+```brix compile-error
+(main
+  (print
+    (match 5
+      (~ .)
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Can't convert to iterable
-<no file:3>
-        ~ .
-        ^^^
+<no file:5>
+          (~ .)
+          ^^^^^
 ```
 
 ### A type a pattern names must exist.
 
-```yumi compile-error
--- match "ab"
-    ~ Nope
-    ?? "none"
+```brix compile-error
+(main
+  (print
+    (match "ab"
+      (~ Nope)
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Type "Nope" not found
-<no file:3>
-        ~ Nope
-          ^^^^
+<no file:5>
+          (~ Nope)
+             ^^^^
 ```

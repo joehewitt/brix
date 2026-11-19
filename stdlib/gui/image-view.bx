@@ -1,0 +1,96 @@
+(import ./box)
+(import ./primitives)
+(import /core/style)
+(import /graphics/canvas)
+(import /graphics/image)
+(import /graphics/primitives)
+
+(type + GUIImageStyle (is Style)
+  (prop + image-fit _ (= (. ImageFit contain)))
+  (prop + image-align-x _ (= (. AnchorPoint center)))
+  (prop + image-align-y _ (= (. AnchorPoint center)))
+  (prop + image-sampling _ (= (. ImageSampling smooth)))
+  (blank)
+  (style-domains image-fit (domain paint))
+  (style-domains image-align-x (domain paint))
+  (style-domains image-align-y (domain paint))
+  (style-domains image-sampling (domain paint))
+)
+
+(type + ImageView (is Box)
+  (using GUIImageStyle)
+  (prop + image (? Image))
+  (blank)
+  (prop _ held (? Image))
+  (prop _ image-revision _ (= (?? (?. #image #revision) 0)))
+  (blank)
+  (depends image-changed image)
+  (depends invalidate-paint image-revision)
+  (fn-do + This _
+    (param image (? Image) (= null))
+    (call hold image)
+  )
+  (fn-expr + image-rect (? Rect) :get
+    (case? image
+      (call image-fit-rect (. (!! image) size) content-bounds $image-fit $image-align-x $image-align-y)
+    )
+    (default
+      null
+    )
+  )
+  (fn-do _ image-changed _
+    (call hold image)
+    (call invalidate-content-size)
+    (call invalidate-paint)
+  )
+  (fn-do _ hold _
+    (param current (? Image))
+    (return-if (if (== current held)))
+    (call (?. current retain))
+    (call (?. held release))
+    (= held current)
+  )
+  (fn-do + close _
+    (call hold null)
+    (call (. super close))
+  )
+  (fn-do + paint-self _
+    (param canvas Canvas)
+    (let current held)
+    (return-if (if (or (not current) (. current is-released))))
+    (let content content-bounds)
+    (return-if (if (or (<= (. content width) 0) (<= (. content height) 0))))
+    (let rect (call image-fit-rect (. current size) content $image-fit $image-align-x $image-align-y))
+    (do-use (. canvas saved-state)
+      (call (. canvas clip) content)
+      (call (. current draw) (:destination canvas)
+        (block
+          (arg rect)
+          (arg $image-sampling)
+        )
+      )
+    )
+  )
+  (fn-expr + measured-content-size _
+    (param query MeasureQuery)
+    (case? (or (<= (. natural width) 0) (<= (. natural height) 0))
+      natural
+    )
+    (case? width-only
+      (call Dimensions width (/ (* (. natural height) width) (. natural width)))
+    )
+    (case? height-only
+      (call Dimensions (/ (* (. natural width) height) (. natural height)) height)
+    )
+    (default
+      natural
+    )
+    (where
+      (lazy natural (?? (?. image size) (call Dimensions 0 0)))
+      (lazy width (call constrained-axis-size (. natural width) (. query inline) $min-width $max-width))
+      (lazy height (call constrained-axis-size (. natural height) (. query block) $min-height $max-height))
+      (lazy width-only (and (!= width (. natural width)) (== height (. natural height))))
+      (lazy height-only (and (!= height (. natural height)) (== width (. natural width))))
+    )
+  )
+)

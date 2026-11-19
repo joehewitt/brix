@@ -1,0 +1,45 @@
+; benchmark.meta description: Exercises simple named stream captures over repeated rows.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+
+(main
+  (let rows
+    (match (call capture-spans-simple-source)
+      (~ \capture-spans-simple-document)
+      (throw (call Panic "capture-spans-simple did not parse"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in row rows)
+    (+= checksum row)
+  )
+  (blank)
+  (print (str "bench-result stream/capture-spans-simple checksum=" checksum))
+)
+
+(fn-expr + capture-spans-simple-document _ (over: Char)
+  (~ (: rows (+ \capture-spans-simple-row))
+    rows
+  )
+  (where
+    (lazy capture-spans-simple-row Size
+      (pattern
+        (~ (seq "id=" (: id \capture-spans-word) ";value=" (: value \capture-spans-word) ";kind=" (: kind \capture-spans-word) "\n")
+          (+ (* (. id length) 7) (* (. value length) 11) (. kind length))
+        )
+      )
+    )
+    (blank)
+    (lazy capture-spans-word String
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_-"))))
+      )
+    )
+  )
+)
+
+(fn-expr _ capture-spans-simple-source _
+  (call (. "" join) (in (str "id=item-" each ";value=value_" (% each 23) ";kind=kind_" (% each 5) "\n") (..< 0 150)))
+)

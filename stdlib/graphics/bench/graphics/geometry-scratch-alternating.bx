@@ -1,0 +1,101 @@
+; benchmark.meta description: Reuses boolean scratch across 10,000 alternating small and large geometry queries.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: gc-runtime,compile-timing
+(blank)
+(import /graphics/boolean)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /math)
+(blank)
+
+(main
+  (let a (call Path))
+  (let b (call Path))
+  (let result (call Path))
+  (let workspace (call BooleanWorkspace))
+  (blank)
+  ; Warm both alternating shapes, including every operation kind.
+  (for (in warmup (..< 0 2))
+    (call reset-alternating-curves a b warmup)
+    (for (in operation (..< 0 4))
+      (call boolean-operation-reusing operation result workspace a b)
+    )
+  )
+  (blank)
+  (let warm-growth (. workspace growth-count))
+  (let warm-bytes (. workspace retained-bytes))
+  (let result-checksum (as 0 Size))
+  (for (in frame (..< 0 10000))
+    (call reset-alternating-curves a b frame)
+    (blank)
+    (let operation (% frame 4))
+    (let maybe-result (call boolean-operation-reusing operation result workspace a b))
+    (+= result-checksum (+ (call path-score maybe-result) frame operation))
+  )
+  (blank)
+  (throw (call Panic "geometry scratch grew after maximum-capacity warmup") (if (!= (. workspace growth-count) warm-growth)))
+  (throw (call Panic "geometry scratch retained capacity drifted after warmup") (if (!= (. workspace retained-bytes) warm-bytes)))
+  (throw (call Panic "geometry scratch alternating result checksum changed") (if (!= result-checksum 4049122500)))
+  (blank)
+  (print (str "bench-result graphics/geometry-scratch-alternating checksum=" result-checksum))
+)
+
+(fn-do _ reset-alternating-curves _
+  (param a Path)
+  (param b Path)
+  (param frame Int)
+  (let large (== (% frame 2) 1))
+  (let radius-a (if-expr large 60.0 18))
+  (let radius-b (if-expr large 52.0 16))
+  (call (. a clear))
+  (call (. b clear))
+  (call (. a append-circle) (tuple 84 82) radius-a)
+  (call (. b append-ellipse) (tuple 108 82) (call Dimensions radius-b (* radius-b 0.72)))
+  (call (. b rotate) -18deg (call Point 108 82))
+)
+
+(fn-do _ boolean-operation-reusing _
+  (param operation _)
+  (param out Path)
+  (param workspace BooleanWorkspace)
+  (param a Path)
+  (param b Path)
+  (if (== operation 0)
+    (return (call boolean-union-reusing out workspace a b))
+    (else-if (== operation 1)
+      (return (call boolean-intersect-reusing out workspace a b))
+    )
+    (else-if (== operation 2)
+      (return (call boolean-subtract-reusing out workspace a b))
+    )
+  )
+  (return (call boolean-clip-reusing out workspace a b))
+)
+
+(fn-expr _ path-score _
+  (param path (? Path))
+  (case? path
+    (call solid-path-score path)
+  )
+  (default
+    0
+  )
+)
+
+(fn-do _ solid-path-score Size
+  (param path Path)
+  (if (not (. path count))
+    (return 0)
+  )
+  (let bounds (. path bounding-box))
+  (let score (+ (. path count) (call numeric-check (. bounds x)) (call numeric-check (. bounds y))))
+  (+= score (+ (call numeric-check (. bounds width)) (call numeric-check (. bounds height))))
+  (+= score (+ (call numeric-check (. path last-point x)) (call numeric-check (. path last-point y))))
+  (return score)
+)
+
+(fn-expr _ numeric-check Size
+  (param value Coord)
+  (% (as (call abs (* value 1000)) Size) 1000003)
+)

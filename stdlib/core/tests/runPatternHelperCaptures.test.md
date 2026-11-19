@@ -1,51 +1,74 @@
 # Pattern helper captures
 
-```yumi
-. masked = match Array'Byte([1u8, 129u8, 97u8, 98u8, 99u8, 100u8])
-    ~ packet Packet
+```brix
+(main
+  (let masked
+    (match (call (of Array Byte) (list 1u8 129u8 97u8 98u8 99u8 100u8))
+      (~ (: packet Packet)
         packet
-    ?! Panic("Expected masked packet")
--- masked.value
--- masked.mask-length
-. unmasked = match Array'Byte("\x01\x01")
-    ~ packet Packet
+      )
+      (throw (call Panic "Expected masked packet"))
+    )
+  )
+  (print (. masked value))
+  (print (. masked mask-length))
+  (let unmasked
+    (match (call (of Array Byte) "\x01\x01")
+      (~ (: packet Packet)
         packet
-    ?! Panic("Expected unmasked packet")
--- unmasked.value
--- unmasked.mask-length
-. longer = match Array'Byte("\x01\x03")
-    ~ packet Packet
+      )
+      (throw (call Panic "Expected unmasked packet"))
+    )
+  )
+  (print (. unmasked value))
+  (print (. unmasked mask-length))
+  (let longer
+    (match (call (of Array Byte) "\x01\x03")
+      (~ (: packet Packet)
         packet
-    ?! Panic("Expected longer packet")
--- longer.value
--- longer.mask-length
+      )
+      (throw (call Panic "Expected longer packet"))
+    )
+  )
+  (print (. longer value))
+  (print (. longer mask-length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Packet is Tuple
-
-+ is-masked = true
-+ value U64
-+ mask-length Size
-
-────────────────────
-+ This ~ Byte
-
-~ b1 U8 b2 U8 len \length msk \mask
-    This(true, len, msk.length)
-
-    .. is-masked = b2 /zrshift/ 7u8
-    .. length8 = decoded-length
-    .. decoded-length = b2 /and/ 127u8
-    .. length ~
-        ~ value \raw-length
+(type + Packet (is Tuple)
+  (prop + is-masked _ (= true))
+  (prop + value U64)
+  (prop + mask-length Size)
+  (fn-expr + This _ (over: Byte)
+    (~ (seq (: b1 U8) (: b2 U8) (: len \length) (: msk \mask))
+      (call This true len (. msk length))
+      (blank)
+      (lazy is-masked (/zrshift/ b2 7u8))
+      (lazy length8 decoded-length)
+      (lazy decoded-length (/and/ b2 127u8))
+      (lazy length
+        (pattern
+          (~ (: value \raw-length)
             value
-
-    .. raw-length ~
-        ~ U8{0}
-            length8 as U64
-
-    .. mask ~
-        ~ Byte{if is-masked then 4 else 0}
+          )
+        )
+      )
+      (blank)
+      (lazy raw-length
+        (pattern
+          (~ ({} U8 0)
+            (as length8 U64)
+          )
+        )
+      )
+      (blank)
+      (lazy mask
+        (pattern
+          (~ ({} Byte (if-expr is-masked 4 0)))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -57,87 +80,115 @@
 0
 ```
 
-```yumi
-. parsed = match Array'Byte("\x01\x03")
-    ~ packet Packet
+```brix
+(main
+  (let parsed
+    (match (call (of Array Byte) "\x01\x03")
+      (~ (: packet Packet)
         packet
-    ?! Panic("Expected packet")
--- parsed.value
+      )
+      (throw (call Panic "Expected packet"))
+    )
+  )
+  (print (. parsed value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Packet is Tuple
-
-+ value U64
-
-────────────────────
-+ This ~ Byte
-
-~ b2 U8 len \length
-    This(len)
-
-    .. length ~
-        ~ b2 U8
-            b2 as U64
+(type + Packet (is Tuple)
+  (prop + value U64)
+  (fn-expr + This _ (over: Byte)
+    (~ (seq (: b2 U8) (: len \length))
+      (call This len)
+      (blank)
+      (lazy length
+        (pattern
+          (~ (: b2 U8)
+            (as b2 U64)
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 3
 ```
 
-```yumi
-. parsed = match Array'Byte("\x01")
-    ~ packet Packet
+```brix
+(main
+  (let parsed
+    (match (call (of Array Byte) "\x01")
+      (~ (: packet Packet)
         packet
-    ?! Panic("Expected packet")
--- parsed.value
+      )
+      (throw (call Panic "Expected packet"))
+    )
+  )
+  (print (. parsed value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Packet is Tuple
-
-+ value U64
-
-────────────────────
-+ This ~ Byte
-
-~ b2 U8 len \length
-    This(len)
-
-    .. length ~
-        ~ U8{0}
-            b2 as U64
-
-            .. b2 = 5u8
+(type + Packet (is Tuple)
+  (prop + value U64)
+  (fn-expr + This _ (over: Byte)
+    (~ (seq (: b2 U8) (: len \length))
+      (call This len)
+      (blank)
+      (lazy length
+        (pattern
+          (~ ({} U8 0)
+            (as b2 U64)
+            (blank)
+            (lazy b2 5u8)
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 5
 ```
 
-```yumi
-. parsed = match Array'Byte("\x01\x03")
-    ~ packet Packet
+```brix
+(main
+  (let parsed
+    (match (call (of Array Byte) "\x01\x03")
+      (~ (: packet Packet)
         packet
-    ?! Panic("Expected packet")
--- parsed.value
+      )
+      (throw (call Panic "Expected packet"))
+    )
+  )
+  (print (. parsed value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Packet is Tuple
-
-+ value U64
-
-────────────────────
-+ This ~ Byte
-
-~ ignored U8 len \length
-    This(len)
-
-    .. length ~
-        ~ b2 U8 value \inner
+(type + Packet (is Tuple)
+  (prop + value U64)
+  (fn-expr + This _ (over: Byte)
+    (~ (seq (: ignored U8) (: len \length))
+      (call This len)
+      (blank)
+      (lazy length
+        (pattern
+          (~ (seq (: b2 U8) (: value \inner))
             value
-
-            .. inner ~
-                ~ U8{0}
-                    b2 as U64
+            (blank)
+            (lazy inner
+              (pattern
+                (~ ({} U8 0)
+                  (as b2 U64)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output

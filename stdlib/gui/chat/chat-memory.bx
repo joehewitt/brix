@@ -1,0 +1,80 @@
+(import /ai)
+(import /graphics/primitives)
+
+(type + ChatScrollMark (is Tuple)
+  (prop + message-id String)
+  (prop + offset Length)
+  (prop + is-at-end Bool)
+)
+
+(type + ChatDraft (is Tuple)
+  (prop + text String)
+  (prop + images (list AIImage))
+  (fn-expr + is-empty _ :get
+    (and (not (. (call (. text trim)) length)) (not (. images length)))
+  )
+)
+
+(type + ChatBranchDraft (is Tuple)
+  (prop + branch-id String)
+  (prop + text String)
+  (prop + images (list AIImage))
+)
+
+(type + ChatToolState
+  (prop + is-open _ (= false))
+)
+
+(type + ChatPromptState
+  (prop + is-expanded _ (= false))
+)
+
+(type + ChatViewMemory
+  (event + drafted ChatBranchDraft)
+  (blank)
+  (prop _ prompts _ (= (call (of Map String ChatPromptState))))
+  (prop _ tools _ (= (call (of Map String ChatToolState))))
+  (prop _ scrolls _ (= (call (of Map String ChatScrollMark))))
+  (prop _ drafts _ (= (call (of Map String ChatDraft))))
+  (fn-do + prompt-for ChatPromptState
+    (param id String)
+    (let found ([] prompts id))
+    (return-if found (if found))
+    (let made (call ChatPromptState))
+    (= ([] prompts id) made)
+    (return made)
+  )
+  (fn-do + tool-for ChatToolState
+    (param key String)
+    (let found ([] tools key))
+    (return-if found (if found))
+    (let made (call ChatToolState))
+    (= ([] tools key) made)
+    (return made)
+  )
+  (fn-expr + scroll-for (? ChatScrollMark)
+    (param branch-id String)
+    ([] scrolls branch-id)
+  )
+  (fn-do + keep-scroll _
+    (param branch-id String)
+    (param mark ChatScrollMark)
+    (= ([] scrolls branch-id) mark)
+  )
+  (fn-expr + draft-for ChatDraft
+    (param branch-id String)
+    (?? ([] drafts branch-id) (call ChatDraft ""))
+  )
+  (fn-do + keep-draft _
+    (param branch-id String)
+    (param draft ChatDraft)
+    (return-if (if (== (call draft-for branch-id) draft)))
+    (if (or (> (. draft text length) 0) (> (. draft images length) 0))
+      (= ([] drafts branch-id) draft)
+      (else
+        (-= ([] drafts branch-id))
+      )
+    )
+    (<- drafted (call ChatBranchDraft branch-id (. draft text) (. draft images)))
+  )
+)

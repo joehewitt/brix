@@ -1,18 +1,20 @@
 # Globals
 
-```yumi
-+ a = 42
+```brix
+(prop + a _ (= 42))
+(blank)
 
- -- a
-a = 99
-foo()
- -- a
+(main
+  (print a)
+  (= a 99)
+  (call foo)
+  (print a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-
--- a
-a = 88
+(fn-do + foo _
+  (print a)
+  (= a 88)
+)
 ```
 
 ```output
@@ -23,16 +25,17 @@ a = 88
 
 ### Constructor in global variable
 
-```yumi
--- foo
+```brix
+(main
+  (print foo)
+)
 
-+ foo = Foo()
+(blank)
+(prop + foo _ (= (call Foo)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ This
+(type + Foo
+  (fn-do + This _)
+)
 ```
 
 ```output
@@ -41,13 +44,15 @@ a = 88
 
 ### Constructor as default value of global
 
-```yumi
--- foo
+```brix
+(main
+  (print foo)
+)
 
-+ foo Foo
+(blank)
+(prop + foo Foo)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo)
 ```
 
 ```output
@@ -56,18 +61,19 @@ a = 88
 
 ### Cast in global assignment
 
-```yumi
--- foo
+```brix
+(main
+  (print foo)
+)
 
-+ foo F64 = Foo()
+(blank)
+(prop + foo F64 (= (call Foo)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ to F64
-
-99.9f
+(type + Foo
+  (fn-to-expr + F64
+    99.9f
+  )
+)
 ```
 
 ```output
@@ -76,13 +82,15 @@ a = 88
 
 ### Tuple in global assignment
 
-```yumi
--- foo
+```brix
+(main
+  (print foo)
+)
 
-+ foo Foo
+(blank)
+(prop + foo Foo)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is (a Int, b Int)
+(type + Foo (is (tuple (: a Int) (: b Int))))
 ```
 
 ```output
@@ -91,15 +99,17 @@ a = 88
 
 ### Tuple with optional in global assignment
 
-```yumi
--- foo
--- bar
+```brix
+(main
+  (print foo)
+  (print bar)
+)
 
-+ foo = Foo(0, "hi")
-+ bar = Foo(0, "hi", 9)
+(blank)
+(prop + foo _ (= (call Foo 0 "hi")))
+(prop + bar _ (= (call Foo 0 "hi" 9)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is (a Int, b String, c I32?)
+(type + Foo (is (tuple (: a Int) (: b String) (: c (? I32)))))
 ```
 
 ```output
@@ -109,12 +119,15 @@ a = 88
 
 ### Optional in global assignment
 
-```yumi
--- foo
--- bar
+```brix
+(main
+  (print foo)
+  (print bar)
+)
 
-+ foo I32?
-+ bar I32? = 1
+(blank)
+(prop + foo (? I32))
+(prop + bar (? I32) (= 1))
 ```
 
 ```output
@@ -124,20 +137,26 @@ unknown
 
 ### TypeInfo in global assignment
 
-```yumi
--- foo
+```brix
+(main
+  (print foo)
+)
 
-+ foo = type-of 42
+(blank)
+(prop + foo _ (= (type-of 42)))
 ```
 
 ```output
 [TypeInfo I64]
 ```
 
-```yumi
--- foo
+```brix
+(main
+  (print foo)
+)
 
-+ foo = I32[3]
+(blank)
+(prop + foo _ (= ([] I32 3)))
 ```
 
 ```output
@@ -146,66 +165,79 @@ I32[3]
 
 ### Circular reference between global and argument default
 
-```yumi crash
--- foo
--- bar()
+```brix crash
+(main
+  (print foo)
+  (print (call bar))
+)
 
-+ foo = bar()
+(blank)
+(prop + foo _ (= (call bar)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ bar
-    - f = foo
-
-f
+(fn-expr + bar _
+  (param f _ (= foo))
+  f
+)
 ```
 
 ```output
 Exception: "foo" depends on its own value, directly or through the values it reads; break the cycle
-<no file:5>
-    + foo = bar()
-    ^^^^^^^^^^^^^
+<no file:8>
+    (prop + foo _ (= (call bar)))
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Assign to global variable before it is referenced
 
-```yumi
-foo = "boo"
--- foo
+```brix
+(main
+  (= foo "boo")
+  (print foo)
+)
 
-+ foo = "foobar"
+(blank)
+(prop + foo _ (= "foobar"))
 ```
 
 ```output
 boo
 ```
 
-```yumi
-+ foo := goober()
+```brix
+(prop + foo _ (:= (call goober)))
+(blank)
 
--- "hi"
+(main
+  (print "hi")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ goober
-
--- "goober"
-42
+(fn-expr + goober _
+  (before
+    (print "goober")
+  )
+  42
+)
 ```
 
 ```output
 hi
 ```
 
-```yumi
-+ foo := goober()
+```brix
+(prop + foo _ (:= (call goober)))
+(blank)
 
--- "hi"
--- foo
+(main
+  (print "hi")
+  (print foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ goober
-
--- "goober"
-42
+(fn-expr + goober _
+  (before
+    (print "goober")
+  )
+  42
+)
 ```
 
 ```output
@@ -216,21 +248,23 @@ goober
 
 ### Eager globals initialize in declaration order before main, including globals nothing reads.
 
-```yumi
--- "main starts"
--- second
--- first
+```brix
+(main
+  (print "main starts")
+  (print second)
+  (print first)
+)
 
-+ first = noisy("first")
-+ second = noisy("second")
-+ unused = noisy("unused")
+(blank)
+(prop + first _ (= (call noisy "first")))
+(prop + second _ (= (call noisy "second")))
+(prop + unused _ (= (call noisy "unused")))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do noisy String
-    - name String
-
--- "initializing $name"
-= name
+(fn-do + noisy String
+  (param name String)
+  (print (str "initializing " name))
+  (return name)
+)
 ```
 
 ```output
@@ -244,21 +278,23 @@ first
 
 ### Lazy globals initialize on their first read and never when nothing reads them.
 
-```yumi
--- "main starts"
--- second
--- first
+```brix
+(main
+  (print "main starts")
+  (print second)
+  (print first)
+)
 
-+ first := noisy("first")
-+ second := noisy("second")
-+ unused := noisy("unused")
+(blank)
+(prop + first _ (:= (call noisy "first")))
+(prop + second _ (:= (call noisy "second")))
+(prop + unused _ (:= (call noisy "unused")))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do noisy String
-    - name String
-
--- "initializing $name"
-= name
+(fn-do + noisy String
+  (param name String)
+  (print (str "initializing " name))
+  (return name)
+)
 ```
 
 ```output
@@ -271,18 +307,20 @@ first
 
 ### Writing a lazy global before its first read skips its initializer.
 
-```yumi
-a = 5
--- a
+```brix
+(main
+  (= a 5)
+  (print a)
+)
 
-+ a := noisy(1)
+(blank)
+(prop + a _ (:= (call noisy 1)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do noisy Int
-    - n Int
-
--- "initializing"
-= n
+(fn-do + noisy Int
+  (param n Int)
+  (print "initializing")
+  (return n)
+)
 ```
 
 ```output
@@ -291,145 +329,148 @@ a = 5
 
 ### An initializer that directly reads a later eager global is a compile error.
 
-```yumi crash
--- a
+```brix crash
+(main
+  (print a)
+)
 
-+ a = b.length
-+ b = noisy("b")
+(blank)
+(prop + a _ (= (. b length)))
+(prop + b _ (= (call noisy "b")))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do noisy String
-    - name String
-
-= name
+(fn-do + noisy String
+  (param name String)
+  (return name)
+)
 ```
 
 ```output
 Exception: Global 'b' is read before it is initialized
-<no file:4>
-    + a = b.length
-          ^
+<no file:7>
+    (prop + a _ (= (. b length)))
+                      ^
 ```
 
 ### A read that reaches an uninitialized eager global through a virtual call panics.
 
-```yumi crash
--- a
+```brix crash
+(main
+  (print a)
+)
 
-+ reader Reader = BReader()
-+ a = reader.read()
-+ b = noisy("b")
+(blank)
+(prop + reader Reader (= (call BReader)))
+(prop + a _ (= (call (. reader read))))
+(prop + b _ (= (call noisy "b")))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Reader
+(type + Reader
+  (fn-expr + read String
+    "base"
+  )
+)
 
-────────────────────
-+ read String
+(type + BReader (is Reader)
+  (fn-expr + read String
+    (str "saw " b)
+  )
+)
 
-"base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ BReader is Reader
-
-────────────────────
-+ read String
-
-"saw $b"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do noisy String
-    - name String
-
-= name
+(fn-do + noisy String
+  (param name String)
+  (return name)
+)
 ```
 
 ```stderr
 Unhandled panic: Global 'b' is read before it is initialized
-<no file:22>
+<no file:19>
 
 Task 1
 
 Stack trace:
-  0  __source__:BReader:read no file:22:7
-  1  __source__:init.__source__.globals no file:5:7
+  0  __source__:BReader:read no file:19:17
+  1  __source__:init.__source__.globals no file:8:16
   2  __source__:brix.main no file
 ```
 
 ### A read that reaches an uninitialized eager global through a function call panics.
 
-```yumi crash
--- first
+```brix crash
+(main
+  (print first)
+)
 
-+ first = read-name()
-+ name = noisy("world")
+(blank)
+(prop + first _ (= (call read-name)))
+(prop + name _ (= (call noisy "world")))
 
-━━━━━━━━━━━━━━━━━━━━
-+ read-name String
+(fn-expr + read-name String
+  name
+)
 
-name
-
-━━━━━━━━━━━━━━━━━━━━
-+ do noisy String
-    - name String
-
-= name
+(fn-do + noisy String
+  (param name String)
+  (return name)
+)
 ```
 
 ```stderr
 Unhandled panic: Global 'name' is read before it is initialized
-<no file:10>
+<no file:11>
 
 Task 1
 
 Stack trace:
-  0  __source__:read-name no file:10:1
-  1  __source__:init.__source__.globals no file:4:11
+  0  __source__:read-name no file:11:3
+  1  __source__:init.__source__.globals no file:7:20
   2  __source__:brix.main no file
 ```
 
 ### A panic inside a global initializer is reported.
 
-```yumi crash
--- z
+```brix crash
+(main
+  (print z)
+)
 
-+ z = boom()
+(blank)
+(prop + z _ (= (call boom)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do boom Int
-
-?! Panic("boom")
-= 1
+(fn-do + boom Int
+  (throw (call Panic "boom"))
+  (return 1)
+)
 ```
 
 ```stderr
 Unhandled panic: boom
-<no file:9>
+<no file:10>
 
 Task 1
 
 Stack trace:
-  0  __source__:boom no file:9:1
-  1  __source__:init.__source__.globals no file:4:7
+  0  __source__:boom no file:10:3
+  1  __source__:init.__source__.globals no file:7:16
   2  __source__:brix.main no file
 ```
 
 ### A default that runs code is evaluated by each call that leaves its argument out, and not by a call that gives it.
 
-```yumi
--- "main"
--- bar(5)
+```brix
+(main
+  (print "main")
+  (print (call bar 5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Int
+(fn-do + make Int
+  (print "made")
+  (return 7)
+)
 
--- "made"
-= 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ bar Int
-    - f Int = make()
-
-f
+(fn-expr + bar Int
+  (param f Int (= (call make)))
+  f
+)
 ```
 
 ```output
@@ -439,36 +480,34 @@ main
 
 ### Defaults that run code are evaluated again by each call that leaves their arguments out, where the call is made.
 
-```yumi
--- "main"
--- outer()
--- outer()
--- last()
+```brix
+(main
+  (print "main")
+  (print (call outer))
+  (print (call outer))
+  (print (call last))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Int
-    - n Int
+(fn-do + make Int
+  (param n Int)
+  (print (str "made " n))
+  (return n)
+)
 
--- "made $n"
-= n
+(fn-expr + outer Int
+  (param f Int (= (call make 1)))
+  (+ f (call inner))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ outer Int
-    - f Int = make(1)
+(fn-expr + inner Int
+  (param f Int (= (call make 2)))
+  f
+)
 
-f + inner()
-
-━━━━━━━━━━━━━━━━━━━━
-+ inner Int
-    - f Int = make(2)
-
-f
-
-━━━━━━━━━━━━━━━━━━━━
-+ last Int
-    - f Int = make(3)
-
-f
+(fn-expr + last Int
+  (param f Int (= (call make 3)))
+  f
+)
 ```
 
 ```output
@@ -485,30 +524,30 @@ made 3
 
 ### A default of a method reads a global as each call that leaves its argument out is made.
 
-```yumi
--- "main"
--- Foo().get()
--- Foo().get(1)
-base = 100
--- Foo().get()
+```brix
+(main
+  (print "main")
+  (print (call (. (call Foo) get)))
+  (print (call (. (call Foo) get) 1))
+  (= base 100)
+  (print (call (. (call Foo) get)))
+)
 
-+ base = 10
+(blank)
+(prop + base _ (= 10))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do twice Int
-    - n Int
+(fn-do + twice Int
+  (param n Int)
+  (print "twice")
+  (return (* n 2))
+)
 
--- "twice"
-= n * 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ get Int
-    - n Int = twice(base)
-
-n
+(type + Foo
+  (fn-expr + get Int
+    (param n Int (= (call twice base)))
+    n
+  )
+)
 ```
 
 ```output
@@ -522,23 +561,24 @@ twice
 
 ### An assigning operator reads the global it assigns, and panics when the global has no value yet.
 
-```yumi crash
--- "main"
--- count
+```brix crash
+(main
+  (print "main")
+  (print count)
+)
 
-+ first = bump()
-+ count = start()
+(blank)
+(prop + first _ (= (call bump)))
+(prop + count _ (= (call start)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do start Int
+(fn-do + start Int
+  (return 10)
+)
 
-= 10
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bump Int
-
-count += 1
-= 0
+(fn-do + bump Int
+  (+= count 1)
+  (return 0)
+)
 ```
 
 ```stderr
@@ -548,32 +588,33 @@ Unhandled panic: Global 'count' is read before it is initialized
 Task 1
 
 Stack trace:
-  0  __source__:bump no file:16:1
-  1  __source__:init.__source__.globals no file:5:11
+  0  __source__:bump no file:16:7
+  1  __source__:init.__source__.globals no file:8:20
   2  __source__:brix.main no file
 ```
 
 ### A global assigned before its value is evaluated takes its value afterwards.
 
-```yumi
--- "main"
--- count
--- first
+```brix
+(main
+  (print "main")
+  (print count)
+  (print first)
+)
 
-+ first = set()
-+ count = start()
+(blank)
+(prop + first _ (= (call set)))
+(prop + count _ (= (call start)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do start Int
+(fn-do + start Int
+  (print "start")
+  (return 10)
+)
 
--- "start"
-= 10
-
-━━━━━━━━━━━━━━━━━━━━
-+ do set Int
-
-count = 5
-= 1
+(fn-do + set Int
+  (= count 5)
+  (return 1)
+)
 ```
 
 ```output
@@ -585,51 +626,55 @@ main
 
 ### A lazy global whose value panics: the trace names the global's function under the read.
 
-```yumi crash
--- "main"
--- a
+```brix crash
+(main
+  (print "main")
+  (print a)
+)
 
-+ a := fail()
+(blank)
+(prop + a _ (:= (call fail)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fail Int
-
--- "fail"
-?! Panic("broken")
-= 1
+(fn-do + fail Int
+  (print "fail")
+  (throw (call Panic "broken"))
+  (return 1)
+)
 ```
 
 ```stderr
 Unhandled panic: broken
-<no file:11>
+<no file:12>
 
 Task 1
 
 Stack trace:
-  0  __source__:fail no file:11:1
-  1  __source__:init.__source__.global.a no file:5:8
-  2  __source__:main no file:3:4
+  0  __source__:fail no file:12:3
+  1  __source__:init.__source__.global.a no file:8:17
+  2  __source__:main no file:4:10
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### A lazy global with a declared type converts its value, and an assigning operator evaluates it first.
 
-```yumi
--- "main"
--- a
-a += 2
--- a
--- b
+```brix
+(main
+  (print "main")
+  (print a)
+  (+= a 2)
+  (print a)
+  (print b)
+)
 
-+ a Float := one()
-+ b := a * 2
+(blank)
+(prop + a Float (:= (call one)))
+(prop + b _ (:= (* a 2)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do one I32
-
--- "one"
-= 1
+(fn-do + one I32
+  (print "one")
+  (return 1)
+)
 ```
 
 ```output
@@ -642,18 +687,19 @@ one
 
 ### A global nothing reads is still given its value as the module starts.
 
-```yumi
--- "main"
+```brix
+(main
+  (print "main")
+)
 
-+ unused = Foo()
+(blank)
+(prop + unused _ (= (call Foo)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ This
-
--- "constructed"
+(type + Foo
+  (fn-do + This _
+    (print "constructed")
+  )
+)
 ```
 
 ```output
@@ -663,25 +709,26 @@ main
 
 ### A lazy global read by a function is evaluated once, and not at all once it is assigned.
 
-```yumi
--- "main"
-show()
-show()
-total = 9
-show()
+```brix
+(main
+  (print "main")
+  (call show)
+  (call show)
+  (= total 9)
+  (call show)
+)
 
-+ total := compute()
+(blank)
+(prop + total _ (:= (call compute)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do compute Int
+(fn-do + compute Int
+  (print "compute")
+  (return 3)
+)
 
--- "compute"
-= 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-
--- total
+(fn-do + show _
+  (print total)
+)
 ```
 
 ```output
@@ -694,23 +741,24 @@ compute
 
 ### A global whose value is built from a call is read and assigned by the module and by a function.
 
-```yumi
--- greeting
--- shout()
-greeting ++= "!"
--- greeting
+```brix
+(main
+  (print greeting)
+  (print (call shout))
+  (++= greeting "!")
+  (print greeting)
+)
 
-+ greeting = "hello " ++ name()
+(blank)
+(prop + greeting _ (= (++ "hello " (call name))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ name String
+(fn-expr + name String
+  "world"
+)
 
-"world"
-
-━━━━━━━━━━━━━━━━━━━━
-+ shout String
-
-greeting ++ "?"
+(fn-expr + shout String
+  (++ greeting "?")
+)
 ```
 
 ```output
@@ -721,18 +769,20 @@ hello world!
 
 ### A lazy global assigned before it is read is never evaluated.
 
-```yumi
-a = 5
--- a
+```brix
+(main
+  (= a 5)
+  (print a)
+)
 
-+ a := noisy(1)
+(blank)
+(prop + a _ (:= (call noisy 1)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do noisy Int
-    - n Int
-
--- "initializing"
-= n
+(fn-do + noisy Int
+  (param n Int)
+  (print "initializing")
+  (return n)
+)
 ```
 
 ```output
@@ -741,60 +791,54 @@ a = 5
 
 ### A struct or a tuple held in a global is passed to a function and is the receiver of a member.
 
-```yumi
--- sum(at)
--- at.total()
--- "$at"
-. copy = at
-at = Point(7, 8)
--- sum(at)
--- copy.x
--- first(pair)
--- sum(later)
--- inside()
+```brix
+(main
+  (print (call sum at))
+  (print (call (. at total)))
+  (print (str at))
+  (let copy at)
+  (= at (call Point 7 8))
+  (print (call sum at))
+  (print (. copy x))
+  (print (call first pair))
+  (print (call sum later))
+  (print (call inside))
+)
 
-+ at = Point(1, 2)
-+ pair = Pair(3, 4)
-+ later := Point(5, 6)
+(blank)
+(prop + at _ (= (call Point 1 2)))
+(prop + pair _ (= (call Pair 3 4)))
+(prop + later _ (:= (call Point 5 6)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do inside Int
+(fn-do + inside Int
+  (return (+ (call (. at total)) (call sum at)))
+)
 
-= at.total() + sum(at)
+(fn-expr + sum Int
+  (param p Point)
+  (+ (. p x) (. p y))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ sum Int
-    - p Point
+(fn-expr + first Int
+  (param p Pair)
+  (. p a)
+)
 
-p.x + p.y
+(type + Pair (is Tuple)
+  (prop + a Int)
+  (prop + b Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ first Int
-    - p Pair
-
-p.a
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Tuple
-
-+ a Int
-+ b Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x Int
-+ y Int
-
-────────────────────
-+ total Int
-
-x + y
-
-────────────────────
-+ to String
-
-"P($x,$y)"
+(type + Point (is Struct)
+  (prop + x Int)
+  (prop + y Int)
+  (fn-expr + total Int
+    (+ x y)
+  )
+  (fn-to-expr + String
+    (str "P(" x "," y ")")
+  )
+)
 ```
 
 ```output
@@ -810,33 +854,31 @@ P(1,2)
 
 ### A default that runs code and gives a struct is read by the call that leaves it out.
 
-```yumi
--- at().x
--- sum()
--- sum(Point(1, 1))
+```brix
+(main
+  (print (. (call at) x))
+  (print (call sum))
+  (print (call sum (call Point 1 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ at Point
-    - p Point = make()
+(fn-expr + at Point
+  (param p Point (= (call make)))
+  p
+)
 
-p
+(fn-expr + sum Int
+  (param p Point (= (call make)))
+  (+ (. p x) (. p y))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ sum Int
-    - p Point = make()
+(fn-do + make Point
+  (return (call Point 3 4))
+)
 
-p.x + p.y
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Point
-
-= Point(3, 4)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x Int
-+ y Int
+(type + Point (is Struct)
+  (prop + x Int)
+  (prop + y Int)
+)
 ```
 
 ```output
@@ -847,92 +889,96 @@ p.x + p.y
 
 ### The value of a class's property that reads a global with no value yet panics.
 
-```yumi crash
--- "main"
--- first.n
+```brix crash
+(main
+  (print "main")
+  (print (. first n))
+)
 
-+ first = Thing()
-+ second = say(2)
+(blank)
+(prop + first _ (= (call Thing)))
+(prop + second _ (= (call say 2)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + n _ (= (+ second 1)))
+)
 
-+ n = second + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do say Int
-    - v Int
-
--- "say $v"
-= v
+(fn-do + say Int
+  (param v Int)
+  (print (str "say " v))
+  (return v)
+)
 ```
 
 ```stderr
 Unhandled panic: Global 'second' is read before it is initialized
-<no file:11>
+<no file:12>
 
 Task 1
 
 Stack trace:
-  0  __source__:Thing:Thing no file:11:7
-  1  __source__:init.__source__.globals no file:5:11
+  0  __source__:Thing:Thing no file:12:21
+  1  __source__:init.__source__.globals no file:8:20
   2  __source__:brix.main no file
 ```
 
 ### The value of a lazy global that reads a global with no value yet panics.
 
-```yumi crash
--- "main"
--- first
--- later
+```brix crash
+(main
+  (print "main")
+  (print first)
+  (print later)
+)
 
-+ later := second * 2
-+ first = later + 1
-+ second = say(2)
+(blank)
+(prop + later _ (:= (* second 2)))
+(prop + first _ (= (+ later 1)))
+(prop + second _ (= (call say 2)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do say Int
-    - v Int
-
--- "say $v"
-= v
+(fn-do + say Int
+  (param v Int)
+  (print (str "say " v))
+  (return v)
+)
 ```
 
 ```stderr
 Unhandled panic: Global 'second' is read before it is initialized
-<no file:6>
+<no file:9>
 
 Task 1
 
 Stack trace:
-  0  __source__:init.__source__.global.later no file:6:12
-  1  __source__:init.__source__.globals no file:7:11
+  0  __source__:init.__source__.global.later no file:9:24
+  1  __source__:init.__source__.globals no file:10:23
   2  __source__:brix.main no file
 ```
 
 ### The value of a class's property reads a global that has its value.
 
-```yumi
--- "main"
--- first.n
--- Thing().m
+```brix
+(main
+  (print "main")
+  (print (. first n))
+  (print (. (call Thing) m))
+)
 
-+ second = say(2)
-+ first = Thing()
-+ later := second * 2
+(blank)
+(prop + second _ (= (call say 2)))
+(prop + first _ (= (call Thing)))
+(prop + later _ (:= (* second 2)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + n _ (= (+ second 1)))
+  (prop + m _ (= (+ later n)))
+)
 
-+ n = second + 1
-+ m = later + n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do say Int
-    - v Int
-
--- "say $v"
-= v
+(fn-do + say Int
+  (param v Int)
+  (print (str "say " v))
+  (return v)
+)
 ```
 
 ```output
@@ -944,94 +990,95 @@ main
 
 ### A default that panics, in its own function, called by the call that leaves its argument out.
 
-```yumi crash
--- "main"
--- bar(1)
--- bar()
+```brix crash
+(main
+  (print "main")
+  (print (call bar 1))
+  (print (call bar))
+)
 
-+ g = one()
+(blank)
+(prop + g _ (= (call one)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do one Int
+(fn-do + one Int
+  (return 1)
+)
 
-= 1
+(fn-expr + bar Int
+  (param f Int (= (call boom)))
+  f
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ bar Int
-    - f Int = boom()
-
-f
-
-━━━━━━━━━━━━━━━━━━━━
-+ do boom Int
-
--- "boom"
-?! Panic("default mid")
-= 2
+(fn-do + boom Int
+  (print "boom")
+  (throw (call Panic "default mid"))
+  (return 2)
+)
 ```
 
 ```stderr
 Unhandled panic: default mid
-<no file:23>
+<no file:22>
 
 Task 1
 
 Stack trace:
-  0  __source__:boom no file:23:1
-  1  __source__:f-default no file:15:15
-  2  __source__:main no file:4:4
+  0  __source__:boom no file:22:3
+  1  __source__:f-default no file:16:19
+  2  __source__:main no file:5:10
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### The value of a global cannot name a local of the module's statements.
 
-```yumi crash
-. statement-local = 3
--- g
+```brix crash
+(main
+  (let statement-local 3)
+  (print g)
+)
 
-+ g = statement-local + 1
+(blank)
+(prop + g _ (= (+ statement-local 1)))
 ```
 
 ```output
 Exception: Name "statement-local" not found
-<no file:5>
-    + g = statement-local + 1
-          ^^^^^^^^^^^^^^^
+<no file:8>
+    (prop + g _ (= (+ statement-local 1)))
+                      ^^^^^^^^^^^^^^^
 ```
 
 ### A global of a function type holds a function written as its value, and is assigned another.
 
-```yumi
-+ handler Handler := shout
-+ fallback Handler = murmur
+```brix
+(prop + handler Handler (:= shout))
+(prop + fallback Handler (= murmur))
+(blank)
 
-handler("one")
-fallback("two")
-handler = whisper
-handler("three")
+(main
+  (call handler "one")
+  (call fallback "two")
+  (= handler whisper)
+  (call handler "three")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Handler is () Void
-    - text String
+(type + Handler (is (fn-type Void (param text String))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do shout
-    - text String
+(fn-do + shout _
+  (param text String)
+  (print (str text "!"))
+)
 
--- "$text!"
+(fn-do + murmur _
+  (param text String)
+  (print (str "(" text ")"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do murmur
-    - text String
-
--- "($text)"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do whisper
-    - text String
-
--- "...$text"
+(fn-do + whisper _
+  (param text String)
+  (print (str "..." text))
+)
 ```
 
 ```output
@@ -1042,40 +1089,38 @@ one!
 
 ### Globals initialized from case constants of the same module read the constants' values.
 
-```yumi
--- "${shade.name} ${shade.number}"
--- level
--- picked
+```brix
+(main
+  (print (str (. shade name) " " (. shade number)))
+  (print level)
+  (print picked)
+)
 
-+ shade = Color.blue
-+ level = Level.high
-+ picked = brightest()
+(blank)
+(prop + shade _ (= (. Color blue)))
+(prop + level _ (= (. Level high)))
+(prop + picked _ (= (call brightest)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ brightest Color
+(fn-expr + brightest Color
+  (. Color green)
+)
 
-Color.green
+(type + Color (is Tuple)
+  (variant red (= (tuple 0 "red")))
+  (variant green (= (tuple 1 "green")))
+  (variant blue (= (tuple 2 "blue")))
+  (blank)
+  (prop + number Int)
+  (prop + name String)
+  (fn-to-expr + String
+    name
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Color is Tuple
-
-| red = (0, "red")
-| green = (1, "green")
-| blue = (2, "blue")
-
-+ number Int
-+ name String
-
-────────────────────
-+ to String
-
-name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Level is Int
-
-| low = 1
-| high = 7
+(type + Level (is Int)
+  (variant low (= 1))
+  (variant high (= 7))
+)
 ```
 
 ```output
@@ -1086,38 +1131,37 @@ green
 
 ### Functions called by a global initializer see their constant argument defaults.
 
-```yumi
--- sized
--- named
--- chosen
+```brix
+(main
+  (print sized)
+  (print named)
+  (print chosen)
+)
 
-+ sized = grow()
-+ named = label()
-+ chosen = pick()
+(blank)
+(prop + sized _ (= (call grow)))
+(prop + named _ (= (call label)))
+(prop + chosen _ (= (call pick)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ grow Int
-    - size = 10
+(fn-expr + grow Int
+  (param size _ (= 10))
+  (+ size 1)
+)
 
-size + 1
+(fn-expr + label String
+  (param text _ (= "ten"))
+  (str "got " text)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ label String
-    - text = "ten"
+(fn-expr + pick Level
+  (param level _ (= (. Level high)))
+  level
+)
 
-"got $text"
-
-━━━━━━━━━━━━━━━━━━━━
-+ pick Level
-    - level = Level.high
-
-level
-
-━━━━━━━━━━━━━━━━━━━━
-+ Level is Int
-
-| low = 1
-| high = 7
+(type + Level (is Int)
+  (variant low (= 1))
+  (variant high (= 7))
+)
 ```
 
 ```output
@@ -1128,53 +1172,60 @@ got ten
 
 ### An error that leaves the value of a lazy global, which its first read evaluates, is reported, and the program stops.
 
-```yumi crash
-_ value := thrower(1)
-_ other := thrower(0)
+```brix crash
+(prop _ value _ (:= (call thrower 1)))
+(prop _ other _ (:= (call thrower 0)))
+(blank)
 
--- "start"
--- value
--- "middle"
--- other
--- "end"
+(main
+  (print "start")
+  (print value)
+  (print "middle")
+  (print other)
+  (print "end")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do thrower I64 ?! Error
-    - n I64
-
-if n == 0
-    ?! Error("bad")
-= n * 10
+(fn-do + thrower I64 (?! Error)
+  (param n I64)
+  (if (== n 0)
+    (throw (call Error "bad"))
+  )
+  (return (* n 10))
+)
 ```
 
 ```stderr
 Unhandled error: bad
-<no file:16>
+<no file:17>
 
 Task 1
 
 Stack trace:
-  0  __source__:thrower no file:16:5
-  1  __source__:init.__source__.global.other no file:3:12
-  2  __source__:main no file:8:4
+  0  __source__:thrower no file:17:5
+  1  __source__:init.__source__.global.other no file:3:21
+  2  __source__:main no file:10:10
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### A module that runs no code of its own gives a global no code reads its value as the program starts, though converting the items its feeds yield to a list may panic.
 
-```yumi
-./lib/items
+```brix
+(import ./lib/items)
+(blank)
 
--- "ok"
+(main
+  (print "ok")
+)
 ```
 
-```yumi file=lib/items.yumi
-
-_ items List'Int
-    * 1
-    * 2
-
+```brix file=lib/items.bx
+(prop _ items (of List Int)
+  (block
+    (item 1)
+    (item 2)
+  )
+)
 ```
 
 ```output
@@ -1183,23 +1234,23 @@ ok
 
 ### A lazy global of a module that runs no code of its own takes its value from another lazy global of the module.
 
-```yumi
-./lib/names
+```brix
+(import ./lib/names)
+(blank)
 
--- full
+(main
+  (print full)
+)
 ```
 
-```yumi file=lib/names.yumi
+```brix file=lib/names.bx
+(prop + first _ (:= (call pick)))
+(prop + full _ (:= (?? first "none")))
 
-+ first := pick()
-+ full := first ?? "none"
-
-━━━━━━━━━━━━━━━━━━━━
-_ do pick String?
-
--- "pick"
-= "first"
-
+(fn-do _ pick (? String)
+  (print "pick")
+  (return "first")
+)
 ```
 
 ```output
@@ -1209,54 +1260,48 @@ first
 
 ### A module's getter is called where its name is read alone, and its setter where its name is assigned, in the module, in a method, and in a module that imports it.
 
-```yumi
-./lib/sizes
+```brix
+(import ./lib/sizes)
+(blank)
 
--- greeting
-. read = greeting
--- read.length
-name = "a"
-size = 3
--- size
-Box().go()
+(main
+  (print greeting)
+  (let read greeting)
+  (print (. read length))
+  (= name "a")
+  (= size 3)
+  (print size)
+  (call (. (call Box) go))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ get greeting String
+(fn-expr + greeting String :get
+  "hi"
+)
 
-"hi"
+(fn-expr + name String :get
+  "name"
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ get name String
+(fn-do + name _ :set (param value String)
+  (print (str "name = " value))
+)
 
-"name"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do name = value String
-
--- "name = $value"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-────────────────────
-+ do go
-
--- name
-name = "b"
+(type + Box
+  (fn-do + go _
+    (print name)
+    (= name "b")
+  )
+)
 ```
 
-```yumi file=lib/sizes.yumi
+```brix file=lib/sizes.bx
+(fn-expr + size F64 :get
+  2.5
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ get size F64
-
-2.5
-
-━━━━━━━━━━━━━━━━━━━━
-+ do size = value F64
-
--- "size = $value"
-
+(fn-do + size _ :set (param value F64)
+  (print (str "size = " value))
+)
 ```
 
 ```output
@@ -1271,46 +1316,41 @@ name = b
 
 ### An assigning operator on a module's getter and setter reads the value through the getter and stores the new one through the setter, in the module and in a module that imports it.
 
-```yumi
-./lib/sizes
+```brix
+(import ./lib/sizes)
+(blank)
 
-count += 2
-size *= 2
-title ++= "!"
+(main
+  (+= count 2)
+  (*= size 2)
+  (++= title "!")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ get count Int
+(fn-expr + count Int :get
+  1
+)
 
-1
+(fn-do + count _ :set (param value Int)
+  (print (str "count = " value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do count = value Int
+(fn-expr + title String :get
+  "hi"
+)
 
--- "count = $value"
-
-━━━━━━━━━━━━━━━━━━━━
-+ get title String
-
-"hi"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do title = value String
-
--- "title = $value"
+(fn-do + title _ :set (param value String)
+  (print (str "title = " value))
+)
 ```
 
-```yumi file=lib/sizes.yumi
+```brix file=lib/sizes.bx
+(fn-expr + size F64 :get
+  2.5
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ get size F64
-
-2.5
-
-━━━━━━━━━━━━━━━━━━━━
-+ do size = value F64
-
--- "size = $value"
-
+(fn-do + size _ :set (param value F64)
+  (print (str "size = " value))
+)
 ```
 
 ```output

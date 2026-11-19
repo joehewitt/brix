@@ -1,0 +1,27 @@
+(import /os/cli)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Command line"))
+  (call (. cases run) command-line-tests)
+  (return cases)
+)
+
+(fn-do + command-line-tests TestCase
+  (param t TestCase)
+  (let argv (list "brix" "-c" "-- \"a b\"" "--compile" "my-file.yumi" "--out=x" "-" "--" "-v"))
+  (let line (call RawCommandLine argv (list "c" "o")))
+  (call (. t expect) "value option keeps its argument verbatim" "-- \"a b\"" (?? ([] (. line options) "c") ""))
+  (call (. t expect) "equals option" "x" (?? ([] (. line options) "out") ""))
+  (call (. t expect) "flags" "compile" (call (. ", " join) (. line flags)))
+  (call (. t expect) "positional arguments" "my-file.yumi, -, -v" (call (. ", " join) (. line args)))
+  (blank)
+  (let missing (catch (call RawCommandLine (list "brix" "-o") (list "o"))))
+  (call (. t check) "value option needs a value" (is missing Error))
+  (return t)
+)

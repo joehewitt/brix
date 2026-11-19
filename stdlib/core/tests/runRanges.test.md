@@ -1,11 +1,13 @@
 # Ranges
 
-```yumi
-. range = 0 .. < 1
--- range.start
--- range.end
--- range.increment
--- range.is-through
+```brix
+(main
+  (let range (..< 0 1))
+  (print (. range start))
+  (print (. range end))
+  (print (. range increment))
+  (print (. range is-through))
+)
 ```
 
 ```output
@@ -15,12 +17,14 @@
 false
 ```
 
-```yumi
-. range = 0 .. < 1 by 0.25
--- range.start
--- range.end
--- range.increment
--- range.is-through
+```brix
+(main
+  (let range (..< 0 1 (by: 0.25)))
+  (print (. range start))
+  (print (. range end))
+  (print (. range increment))
+  (print (. range is-through))
+)
 ```
 
 ```output
@@ -30,12 +34,14 @@ false
 false
 ```
 
-```yumi
-. range = 0 .. 1
--- range.start
--- range.end
--- range.increment
--- range.is-through
+```brix
+(main
+  (let range (.. 0 1))
+  (print (. range start))
+  (print (. range end))
+  (print (. range increment))
+  (print (. range is-through))
+)
 ```
 
 ```output
@@ -45,9 +51,12 @@ false
 true
 ```
 
-```yumi
-for i in 0 .. < 3
-    -- i
+```brix
+(main
+  (for (in i (..< 0 3))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -56,9 +65,12 @@ for i in 0 .. < 3
 2
 ```
 
-```yumi
-for i in 0 .. 3
-    -- i
+```brix
+(main
+  (for (in i (.. 0 3))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -68,9 +80,12 @@ for i in 0 .. 3
 3
 ```
 
-```yumi
-for i in 3 .. < 0
-    -- i
+```brix
+(main
+  (for (in i (..< 3 0))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -79,9 +94,12 @@ for i in 3 .. < 0
 1
 ```
 
-```yumi
-for i in 3 .. 0
-    -- i
+```brix
+(main
+  (for (in i (.. 3 0))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -91,9 +109,12 @@ for i in 3 .. 0
 0
 ```
 
-```yumi
-for i in 126i8 .. 127i8
-    -- i
+```brix
+(main
+  (for (in i (.. 126i8 127i8))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -101,9 +122,12 @@ for i in 126i8 .. 127i8
 127
 ```
 
-```yumi
-for i in -127i8 .. -128i8
-    -- i
+```brix
+(main
+  (for (in i (.. -127i8 -128i8))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -111,18 +135,28 @@ for i in -127i8 .. -128i8
 -128
 ```
 
-```yumi
--- ", ".join
-    ** 1 .. < 5
+```brix
+(main
+  (print
+    (call (. ", " join)
+      (block
+        (spread (..< 1 5))
+      )
+    )
+  )
+)
 ```
 
 ```output
 1, 2, 3, 4
 ```
 
-```yumi
-for i in 0 .. < 1 by 0.25
-    -- i
+```brix
+(main
+  (for (in i (..< 0 1 (by: 0.25)))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -132,9 +166,12 @@ for i in 0 .. < 1 by 0.25
 0.75
 ```
 
-```yumi
-for i in 0 .. 1 by 0.25
-    -- i
+```brix
+(main
+  (for (in i (.. 0 1 (by: 0.25)))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -145,9 +182,12 @@ for i in 0 .. 1 by 0.25
 1
 ```
 
-```yumi
-for i in 1 .. 0 by 0.25
-    -- i
+```brix
+(main
+  (for (in i (.. 1 0 (by: 0.25)))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -160,13 +200,17 @@ for i in 1 .. 0 by 0.25
 
 ### A range runs from its start toward its end, so a step written with a sign counts by its size.
 
-```yumi
-for n in 10 .. 0 by -5
-    -- n
-. rising = 0 .. 10 by -5
--- rising.length
-for x in 1.0 .. 0.0 by -0.5
-    -- x
+```brix
+(main
+  (for (in n (.. 10 0 (by: -5)))
+    (print n)
+  )
+  (let rising (.. 0 10 (by: -5)))
+  (print (. rising length))
+  (for (in x (.. 1.0 0.0 (by: -0.5)))
+    (print x)
+  )
+)
 ```
 
 ```output
@@ -181,10 +225,13 @@ for x in 1.0 .. 0.0 by -0.5
 
 ## Forward conversion
 
-```yumi
-. range = 3 .. < 0
-for i in range.forward()
-    -- i
+```brix
+(main
+  (let range (..< 3 0))
+  (for (in i (call (. range forward)))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -193,10 +240,13 @@ for i in range.forward()
 3
 ```
 
-```yumi
-. range = 3 .. 0
-for i in range.forward()
-    -- i
+```brix
+(main
+  (let range (.. 3 0))
+  (for (in i (call (. range forward)))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -206,10 +256,13 @@ for i in range.forward()
 3
 ```
 
-```yumi
-. range = 1 .. 0 by 0.25
-for i in range.forward()
-    -- i
+```brix
+(main
+  (let range (.. 1 0 (by: 0.25)))
+  (for (in i (call (. range forward)))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -220,10 +273,13 @@ for i in range.forward()
 1
 ```
 
-```yumi
-. range = 1 .. < 0 by 0.25
-for i in range.forward()
-    -- i
+```brix
+(main
+  (let range (..< 1 0 (by: 0.25)))
+  (for (in i (call (. range forward)))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -233,10 +289,13 @@ for i in range.forward()
 1
 ```
 
-```yumi
-. iter = (0 .. < 3) as <Int>
-for a in iter
-    -- a
+```brix
+(main
+  (let iter (as (..< 0 3) (stream Int)))
+  (for (in a iter)
+    (print a)
+  )
+)
 ```
 
 ```output
@@ -247,10 +306,13 @@ for a in iter
 
 ## Relative positions
 
-```yumi
-. range = Position.first .. < Position.end
-for i in range.normalize(0 .. < 3)
-    -- i
+```brix
+(main
+  (let range (..< (. Position first) (. Position end)))
+  (for (in i (call (. range normalize) (..< 0 3)))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -259,10 +321,13 @@ for i in range.normalize(0 .. < 3)
 2
 ```
 
-```yumi
-. range = Position.first .. < Position.last
-for i in range.normalize(0 .. < 3)
-    -- i
+```brix
+(main
+  (let range (..< (. Position first) (. Position last)))
+  (for (in i (call (. range normalize) (..< 0 3)))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -270,22 +335,13 @@ for i in range.normalize(0 .. < 3)
 1
 ```
 
-```yumi
-. range = Position.first .. Position.last
-for i in range.normalize(0 .. < 3)
-    -- i
-```
-
-```output
-0
-1
-2
-```
-
-```yumi
-. range = Position.first .. < Position.end
-for i in range.normalize(0 .. < 3)
-    -- i
+```brix
+(main
+  (let range (.. (. Position first) (. Position last)))
+  (for (in i (call (. range normalize) (..< 0 3)))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -294,10 +350,28 @@ for i in range.normalize(0 .. < 3)
 2
 ```
 
-```yumi
-. range = Position.first .. Position.end
-for i in range.normalize(0 .. < 3)
-    -- i
+```brix
+(main
+  (let range (..< (. Position first) (. Position end)))
+  (for (in i (call (. range normalize) (..< 0 3)))
+    (print i)
+  )
+)
+```
+
+```output
+0
+1
+2
+```
+
+```brix
+(main
+  (let range (.. (. Position first) (. Position end)))
+  (for (in i (call (. range normalize) (..< 0 3)))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -307,10 +381,13 @@ for i in range.normalize(0 .. < 3)
 3
 ```
 
-```yumi
-. range = Position.first .. Position.end by 2
-for i in range.normalize(0 .. < 5)
-    -- i
+```brix
+(main
+  (let range (.. (. Position first) (. Position end) (by: 2)))
+  (for (in i (call (. range normalize) (..< 0 5)))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -319,11 +396,14 @@ for i in range.normalize(0 .. < 5)
 4
 ```
 
-```yumi
-. base = 0 .. < 1 by 0.25
-. range = Position.end .. Position.first
-for i in range.normalize(base)
-    -- i
+```brix
+(main
+  (let base (..< 0 1 (by: 0.25)))
+  (let range (.. (. Position end) (. Position first)))
+  (for (in i (call (. range normalize) base))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -334,11 +414,14 @@ for i in range.normalize(base)
 0
 ```
 
-```yumi
-. base = 0 .. < 1 by 0.25
-. range = Position.end .. < Position.first
-for i in range.normalize(base)
-    -- i
+```brix
+(main
+  (let base (..< 0 1 (by: 0.25)))
+  (let range (..< (. Position end) (. Position first)))
+  (for (in i (call (. range normalize) base))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -348,11 +431,14 @@ for i in range.normalize(base)
 1
 ```
 
-```yumi
-. base = 0 .. < 1 by 0.25
-. range = Position.first .. Position.middle
-for i in range.normalize(base)
-    -- base[i]
+```brix
+(main
+  (let base (..< 0 1 (by: 0.25)))
+  (let range (.. (. Position first) (. Position middle)))
+  (for (in i (call (. range normalize) base))
+    (print ([] base i))
+  )
+)
 ```
 
 ```output
@@ -361,23 +447,25 @@ for i in range.normalize(base)
 0.5
 ```
 
-```yumi
--- (0 .. < 17 by 80).length
--- List(0 .. < 17 by 80)
--- (0 .. < 17 by 8).length
--- List(0 .. < 17 by 8)
--- List(17 .. < 0 by 8)
--- (0 .. < 16 by 8).length
--- List(0 .. < 16 by 8)
--- List(0 .. 16 by 8)
--- List(0 .. 17 by 8)
--- (0 .. < 0 by 8).length
--- List(0 .. 0 by 8)
--- (0u64 .. U64.max - 1 by U64.max).length
--- List(0.0 .. < 1.125 by 0.5)
--- List(0.0 .. 1.125 by 0.5)
--- List(0.0 .. 1.0 by 0.5)
--- List(1.125 .. < 0.0 by 0.5)
+```brix
+(main
+  (print (. (..< 0 17 (by: 80)) length))
+  (print (call List (..< 0 17 (by: 80))))
+  (print (. (..< 0 17 (by: 8)) length))
+  (print (call List (..< 0 17 (by: 8))))
+  (print (call List (..< 17 0 (by: 8))))
+  (print (. (..< 0 16 (by: 8)) length))
+  (print (call List (..< 0 16 (by: 8))))
+  (print (call List (.. 0 16 (by: 8))))
+  (print (call List (.. 0 17 (by: 8))))
+  (print (. (..< 0 0 (by: 8)) length))
+  (print (call List (.. 0 0 (by: 8))))
+  (print (. (.. 0u64 (- (. U64 max) 1) (by: (. U64 max))) length))
+  (print (call List (..< 0.0 1.125 (by: 0.5))))
+  (print (call List (.. 0.0 1.125 (by: 0.5))))
+  (print (call List (.. 0.0 1.0 (by: 0.5))))
+  (print (call List (..< 1.125 0.0 (by: 0.5))))
+)
 ```
 
 ```output
@@ -401,50 +489,65 @@ for i in range.normalize(base)
 
 ### The item of a loop over a range cannot be assigned.
 
-```yumi crash
-for i in 0 .. < 3
-    i = 5
+```brix crash
+(main
+  (for (in i (..< 0 3))
+    (= i 5)
+  )
+)
 ```
 
 ```output
 Exception: Illegal to update const variables
-<no file:3>
-        i = 5
-        ^^^^^
+<no file:4>
+        (= i 5)
+        ^^^^^^^
 ```
 
 ### The item of a loop over a range cannot be assigned by an operator.
 
-```yumi crash
-for i in 0 .. < 3
-    i += 5
+```brix crash
+(main
+  (for (in i (..< 0 3))
+    (+= i 5)
+  )
+)
 ```
 
 ```output
 Exception: Illegal to update const variables
-<no file:3>
-        i += 5
-        ^^^^^^
+<no file:4>
+        (+= i 5)
+        ^^^^^^^^
 ```
 
 ### A range loop counts up or down, by the order of its ends. `..` takes its end and `.. <` stops before it.
 
-```yumi
-for i in 0 .. 3
-    -- i
-for i in 3 .. 0
-    -- i
-for i in 0 .. < 3
-    -- i
-for i in 3 .. < 0
-    -- i
-for i in 5 .. 5
-    -- i
-for i in 5 .. < 5
-    -- i
-for i in -2 .. 1
-    -- i
--- "end"
+```brix
+(main
+  (for (in i (.. 0 3))
+    (print i)
+  )
+  (for (in i (.. 3 0))
+    (print i)
+  )
+  (for (in i (..< 0 3))
+    (print i)
+  )
+  (for (in i (..< 3 0))
+    (print i)
+  )
+  (for (in i (.. 5 5))
+    (print i)
+  )
+  (for (in i (..< 5 5))
+    (print i)
+  )
+  (for (in i (.. -2 1))
+    (print i)
+  )
+  (print "end")
+)
 ```
 
 ```output
@@ -472,21 +575,30 @@ end
 
 ### A range that ends at the edge of its type does not wrap.
 
-```yumi
-for i in 126i8 .. 127i8
-    -- i
-for i in -127i8 .. -128i8
-    -- i
-for i in 254u8 .. 255u8
-    -- i
-for i in 1u8 .. 0u8
-    -- i
-for i in 2147483646 .. 2147483647
-    -- i
-for i in 18446744073709551614u64 .. 18446744073709551615u64
-    -- i
-for i in 1u64 .. 0u64
-    -- i
+```brix
+(main
+  (for (in i (.. 126i8 127i8))
+    (print i)
+  )
+  (for (in i (.. -127i8 -128i8))
+    (print i)
+  )
+  (for (in i (.. 254u8 255u8))
+    (print i)
+  )
+  (for (in i (.. 1u8 0u8))
+    (print i)
+  )
+  (for (in i (.. 2147483646 2147483647))
+    (print i)
+  )
+  (for (in i (.. 18446744073709551614u64 18446744073709551615u64))
+    (print i)
+  )
+  (for (in i (.. 1u64 0u64))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -508,21 +620,28 @@ for i in 1u64 .. 0u64
 
 ### The ends of a range are evaluated once, in the type both promote to.
 
-```yumi
-. n = 3
-for i in 0 .. < n
-    n = 10
-    -- i
--- n
-for i in 0u8 .. < 2
-    -- i
-for j in 5000000000 .. < 5000000002
-    -- j
-for k in 1i8 .. 2u8
-    -- k
-. a = 2
-for i in a * 2 .. a * 3
-    -- i
+```brix
+(main
+  (let n 3)
+  (for (in i (..< 0 n))
+    (= n 10)
+    (print i)
+  )
+  (print n)
+  (for (in i (..< 0u8 2))
+    (print i)
+  )
+  (for (in j (..< 5000000000 5000000002))
+    (print j)
+  )
+  (for (in k (.. 1i8 2u8))
+    (print k)
+  )
+  (let a 2)
+  (for (in i (.. (* a 2) (* a 3)))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -543,16 +662,20 @@ for i in a * 2 .. a * 3
 
 ### A range that starts at a written 0 and ends at an integer is of the type of its end.
 
-```yumi
-. n = 3000000000u32
-. passes = 0
-for i in 0 .. < n
-    -- i
-    passes += 1
-    if passes == 3
-        break
-. span = 0 .. < n
--- span.end
+```brix
+(main
+  (let n 3000000000u32)
+  (let passes 0)
+  (for (in i (..< 0 n))
+    (print i)
+    (+= passes 1)
+    (if (== passes 3)
+      (break)
+    )
+  )
+  (let span (..< 0 n))
+  (print (. span end))
+)
 ```
 
 ```output
@@ -564,16 +687,22 @@ for i in 0 .. < n
 
 ### The clauses of a range loop: `when` skips a pass, and `while` and `until` end the loop.
 
-```yumi
-for i in 0 .. < 10 when i % 3 == 0
-    -- i
-for i in 0 .. 5 while i < 2
-    -- i
-for i in 0 .. 5 until i == 3
-    -- i
-for i in 0 .. 3 when i < 3
-    -- i
--- "end"
+```brix
+(main
+  (for (in i (..< 0 10) (when (== (% i 3) 0)))
+    (print i)
+  )
+  (for (in i (.. 0 5) (while (< i 2)))
+    (print i)
+  )
+  (for (in i (.. 0 5) (until (== i 3)))
+    (print i)
+  )
+  (for (in i (.. 0 3) (when (< i 3)))
+    (print i)
+  )
+  (print "end")
+)
 ```
 
 ```output
@@ -594,19 +723,27 @@ end
 
 ### `continue` goes to the next item, also at an end the range takes, and `break` leaves the nearest loop.
 
-```yumi
-for i in 0 .. 3
-    if i == 3
-        continue
-    -- i
-for i in 0 .. < 3
-    for j in 0 .. < 3
-        if j == 2
-            break
-        if i == 1
-            continue
-        -- i * 10 + j
--- "end"
+```brix
+(main
+  (for (in i (.. 0 3))
+    (if (== i 3)
+      (continue)
+    )
+    (print i)
+  )
+  (for (in i (..< 0 3))
+    (for (in j (..< 0 3))
+      (if (== j 2)
+        (break)
+      )
+      (if (== i 1)
+        (continue)
+      )
+      (print (+ (* i 10) j))
+    )
+  )
+  (print "end")
+)
 ```
 
 ```output
@@ -622,14 +759,18 @@ end
 
 ### The item of a range loop hides a local of its name, and is a number of the range's type.
 
-```yumi
-. i = 9
-for i in 0 .. < 2
-    -- i
--- i
-for i in 100i8 .. 101i8
-    . t = i + 100
-    -- t
+```brix
+(main
+  (let i 9)
+  (for (in i (..< 0 2))
+    (print i)
+  )
+  (print i)
+  (for (in i (.. 100i8 101i8))
+    (let t (+ i 100))
+    (print t)
+  )
+)
 ```
 
 ```output
@@ -642,43 +783,43 @@ for i in 100i8 .. 101i8
 
 ### Ranges written as values: their ends, step and length, with a step written and counted down.
 
-```yumi
-. len = 5
-. span = 0 .. < len
--- span.start
--- span.end
--- span.increment
--- span.is-through
--- span.length
-show(1 .. 3)
-show(note(4) .. < note(9))
-. wide = 2u64 .. 10u64
--- wide.length
-. real = 0.5 .. 2.5
--- real.start
--- real.increment
-. back = 9 .. 3
--- back.length
--- back[1]
-. stepped = 0 .. 10 by 5
--- stepped.increment
--- stepped.length
+```brix
+(main
+  (let len 5)
+  (let span (..< 0 len))
+  (print (. span start))
+  (print (. span end))
+  (print (. span increment))
+  (print (. span is-through))
+  (print (. span length))
+  (call show (.. 1 3))
+  (call show (..< (call note 4) (call note 9)))
+  (let wide (.. 2u64 10u64))
+  (print (. wide length))
+  (let real (.. 0.5 2.5))
+  (print (. real start))
+  (print (. real increment))
+  (let back (.. 9 3))
+  (print (. back length))
+  (print ([] back 1))
+  (let stepped (.. 0 10 (by: 5)))
+  (print (. stepped increment))
+  (print (. stepped length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do note Int
-    - n Int
+(fn-do + note Int
+  (param n Int)
+  (print (str "note " n))
+  (return n)
+)
 
--- "note $n"
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - range Range'Int
-
--- range.start
--- range.end
--- range.is-through
--- range.length
+(fn-do + show _
+  (param range (of Range Int))
+  (print (. range start))
+  (print (. range end))
+  (print (. range is-through))
+  (print (. range length))
+)
 ```
 
 ```output
@@ -708,40 +849,40 @@ false
 
 ### A range kept in a property, passed, indexed and counted down.
 
-```yumi
-. holder = Holder(2 .. 6)
--- holder.span.start, holder.span.end, holder.span.is-through
--- holder.span.length
-holder.span = 1 .. < 4
--- holder.span.length
-. down = 5 .. < 1
--- down.start, down.end, down.length
--- down[0], down[3]
-. stepped = 10 .. 0 by 5
--- stepped.length, stepped[1]
-. bytes = 1u8 .. 3u8
--- bytes.length
--- total(0 .. 4)
+```brix
+(main
+  (let holder (call Holder (.. 2 6)))
+  (print (tuple (. holder span start) (. holder span end) (. holder span is-through)))
+  (print (. holder span length))
+  (= (. holder span) (..< 1 4))
+  (print (. holder span length))
+  (let down (..< 5 1))
+  (print (tuple (. down start) (. down end) (. down length)))
+  (print (tuple ([] down 0) ([] down 3)))
+  (let stepped (.. 10 0 (by: 5)))
+  (print (tuple (. stepped length) ([] stepped 1)))
+  (let bytes (.. 1u8 3u8))
+  (print (. bytes length))
+  (print (call total (.. 0 4)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
+(type + Holder
+  (prop + span (of Range Int))
+  (fn-do + This _
+    (param span _)
+  )
+)
 
-+ span Range'Int
-
-────────────────────
-+ This
-    - span
-
-━━━━━━━━━━━━━━━━━━━━
-+ do total Int
-    - range Range'Int
-
-. sum = 0
-. i = 0
-while i < range.length
-    sum += range[i]
-    i += 1
-= sum
+(fn-do + total Int
+  (param range (of Range Int))
+  (let sum 0)
+  (let i 0)
+  (while (< i (. range length))
+    (+= sum ([] range i))
+    (+= i 1)
+  )
+  (return sum)
+)
 ```
 
 ```output
@@ -757,10 +898,13 @@ while i < range.length
 
 ### A loop over a range held in a local.
 
-```yumi
-. range = 0 .. < 3
-for i in range
-    -- i
+```brix
+(main
+  (let range (..< 0 3))
+  (for (in i range)
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -771,22 +915,26 @@ for i in range
 
 ### A range held in a local: given to a function that takes a stream, converted to a stream, and looped over.
 
-```yumi
-. range = 1 .. 4
--- total(range)
-for n in range as <Int>
-    -- n
-for n in range
-    -- n
+```brix
+(main
+  (let range (.. 1 4))
+  (print (call total range))
+  (for (in n (as range (stream Int)))
+    (print n)
+  )
+  (for (in n range)
+    (print n)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do total'T T
-    - items <T>
-
-. sum T
-for item in items
-    sum += item
-= sum
+(fn-do + (of total T) T
+  (param items (stream T))
+  (let sum T)
+  (for (in item items)
+    (+= sum item)
+  )
+  (return sum)
+)
 ```
 
 ```output
@@ -803,13 +951,17 @@ for item in items
 
 ### Ranges with a side left open are made numbers for a container.
 
-```yumi
-. range = ... 3
-for i in range.normalize(0 .. < 5)
-    -- i
-. open = 2 ...
-for i in open.normalize(0 .. < 5)
-    -- i
+```brix
+(main
+  (let range (... _ 3))
+  (for (in i (call (. range normalize) (..< 0 5)))
+    (print i)
+  )
+  (let open (... 2))
+  (for (in i (call (. open normalize) (..< 0 5)))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -823,21 +975,22 @@ for i in open.normalize(0 .. < 5)
 
 ### Ranges of positions, written and with a side left open, are given to a function and slice a list.
 
-```yumi
-. head = ... 2
-show(head)
-. tail = 1 ...
-show(tail)
-show(Position.first .. Position.last)
-show(Position.last .. Position.first)
-show(Position.middle .. < Position.end)
+```brix
+(main
+  (let head (... _ 2))
+  (call show head)
+  (let tail (... 1))
+  (call show tail)
+  (call show (.. (. Position first) (. Position last)))
+  (call show (.. (. Position last) (. Position first)))
+  (call show (..< (. Position middle) (. Position end)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - range Range'Position
-
-. items = ["a", "b", "c", "d"]
--- ", ".join(items[range])
+(fn-do + show _
+  (param range (of Range Position))
+  (let items (list "a" "b" "c" "d"))
+  (print (call (. ", " join) ([] items range)))
+)
 ```
 
 ```output
@@ -848,19 +1001,20 @@ a, b, c, d
 c, d
 ```
 
-```yumi
-. text = "hello world"
-. count = 5
-. spot = Position()
--- text[... count]
--- text[spot.column ...]
--- [1, 2, 3, 4][... 2]
--- [1, 2, 3, 4][2 ...]
+```brix
+(main
+  (let text "hello world")
+  (let count 5)
+  (let spot (call Position))
+  (print ([] text (... _ count)))
+  (print ([] text (... (. spot column))))
+  (print ([] (list 1 2 3 4) (... _ 2)))
+  (print ([] (list 1 2 3 4) (... 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Position
-
-+ column Int = 6
+(type + Position
+  (prop + column Int (= 6))
+)
 ```
 
 ```output
@@ -872,13 +1026,15 @@ world
 
 ### A range made forward holds the same items from the lowest up, whatever its step and direction.
 
-```yumi
--- List((0 .. 10 by 3).forward())
--- List((0 .. < 10 by 3).forward())
--- List((10 .. 0 by 3).forward())
--- List((10 .. < 0 by 3).forward())
--- List((0.0 .. 1.0 by 0.25).forward())
--- List((2 .. < 2).forward())
+```brix
+(main
+  (print (call List (call (. (.. 0 10 (by: 3)) forward))))
+  (print (call List (call (. (..< 0 10 (by: 3)) forward))))
+  (print (call List (call (. (.. 10 0 (by: 3)) forward))))
+  (print (call List (call (. (..< 10 0 (by: 3)) forward))))
+  (print (call List (call (. (.. 0.0 1.0 (by: 0.25)) forward))))
+  (print (call List (call (. (..< 2 2) forward))))
+)
 ```
 
 ```output
@@ -891,13 +1047,15 @@ world
 
 ### A range made forward keeps its items when its highest is the item type's maximum.
 
-```yumi
--- List((253u8 .. 255u8).forward())
--- List((255u8 .. 253u8).forward())
--- List((255u8 .. 255u8).forward())
--- List((250u8 .. 255u8 by 3).forward())
--- List((127i8 .. 123i8 by 2).forward())
--- List(((Int.max - 2) .. Int.max).forward())
+```brix
+(main
+  (print (call List (call (. (.. 253u8 255u8) forward))))
+  (print (call List (call (. (.. 255u8 253u8) forward))))
+  (print (call List (call (. (.. 255u8 255u8) forward))))
+  (print (call List (call (. (.. 250u8 255u8 (by: 3)) forward))))
+  (print (call List (call (. (.. 127i8 123i8 (by: 2)) forward))))
+  (print (call List (call (. (.. (- (. Int max) 2) (. Int max)) forward))))
+)
 ```
 
 ```output
@@ -911,38 +1069,46 @@ world
 
 ### An index into a range is one of its items or out of range, and a slice by index holds the items at those places.
 
-```yumi
-. r = 0 .. 10 by 3
--- r[3]
--- List(r[1 .. < 3])
--- List(r[0 .. 3 by 2])
--- List((0 .. 10)[2 .. < 4])
--- List((10 .. 0 by 2)[1 .. 3])
--- List((0.0 .. 1.0 by 0.25)[1 .. < 3])
-try-index(r, 4)
-try-index(r, -1)
-try-slice(r)
+```brix
+(main
+  (let r (.. 0 10 (by: 3)))
+  (print ([] r 3))
+  (print (call List ([] r (..< 1 3))))
+  (print (call List ([] r (.. 0 3 (by: 2)))))
+  (print (call List ([] (.. 0 10) (..< 2 4))))
+  (print (call List ([] (.. 10 0 (by: 2)) (.. 1 3))))
+  (print (call List ([] (.. 0.0 1.0 (by: 0.25)) (..< 1 3))))
+  (call try-index r 4)
+  (call try-index r -1)
+  (call try-slice r)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do try-index
-    - r Range'Int
-    - i Index
+(fn-do + try-index _
+  (param r (of Range Int))
+  (param i Index)
+  (let attempt
+    (do-new
+      (print ([] r i))
+      (on-failure failure
+        (print (str "index: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. attempt = do new
-    -- r[i]
-catch failure
-    -- "index: $failure"
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do try-slice
-    - r Range'Int
-
-. attempt = do new
-    -- List(r[2 .. < 5])
-catch failure
-    -- "slice: $failure"
-attempt.wait()
+(fn-do + try-slice _
+  (param r (of Range Int))
+  (let attempt
+    (do-new
+      (print (call List ([] r (..< 2 5))))
+      (on-failure failure
+        (print (str "slice: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -959,29 +1125,38 @@ slice: Range out of bounds (4 / 4)
 
 ### A range that steps by zero panics where its items are counted.
 
-```yumi
-try-list()
-try-loop()
+```brix
+(main
+  (call try-list)
+  (call try-loop)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do try-list
+(fn-do + try-list _
+  (let attempt
+    (do-new
+      (let r (.. 0 5 (by: 0)))
+      (print (call List r))
+      (on-failure failure
+        (print (str "list: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. attempt = do new
-    . r = 0 .. 5 by 0
-    -- List(r)
-catch failure
-    -- "list: $failure"
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do try-loop
-
-. attempt = do new
-    for i in 0 .. 5 by 0
-        -- i
-catch failure
-    -- "loop: $failure"
-attempt.wait()
+(fn-do + try-loop _
+  (let attempt
+    (do-new
+      (for (in i (.. 0 5 (by: 0)))
+        (print i)
+      )
+      (on-failure failure
+        (print (str "loop: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -991,11 +1166,13 @@ loop: A range cannot step by 0
 
 ### reversed yields a range's items last to first and nothing for an empty range.
 
-```yumi
--- List'Int((0 .. < 0).reversed()).length
--- ", ".join((5 .. 5).reversed())
--- ", ".join((1 .. 4).reversed())
--- ", ".join((4 .. 1).reversed())
+```brix
+(main
+  (print (. (call (of List Int) (call (. (..< 0 0) reversed))) length))
+  (print (call (. ", " join) (call (. (.. 5 5) reversed))))
+  (print (call (. ", " join) (call (. (.. 1 4) reversed))))
+  (print (call (. ", " join) (call (. (.. 4 1) reversed))))
+)
 ```
 
 ```output
@@ -1004,4 +1181,3 @@ loop: A range cannot step by 0
 4, 3, 2, 1
 1, 2, 3, 4
 ```
-

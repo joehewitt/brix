@@ -4,12 +4,6 @@ State machines
 
 ### Parses a declaration-bound state machine with an initial case and an event transition.
 
-```yumi
-+ auth ~>
-    ~> idle
-    ~> authenticating on submitted
-```
-
 ```brix
 (prop + auth _
   (machine
@@ -36,13 +30,6 @@ State machines
 ```
 
 ### Parses target tuple payloads as state-case target expressions, not dotted union references.
-
-```yumi
-+ auth ~>
-    ~> idle
-    ~> authenticating(email, password)
-    ~> authenticated(token)
-```
 
 ```brix
 (prop + auth _
@@ -76,40 +63,7 @@ State machines
 </Property>
 ```
 
-### Parses a top-level anonymous state machine as its own state machine node.
-
-```yumi
-~> idle
-~> authenticating(email, password)
-~> authenticated(token)
-```
-
-```output
-<StateMachine>
-    <StateCase name="idle"/>
-    <StateCase name="authenticating">
-        <target>
-            <Id name="email"/>
-            <Id name="password"/>
-        </target>
-    </StateCase>
-    <StateCase name="authenticated">
-        <target>
-            <Id name="token"/>
-        </target>
-    </StateCase>
-</StateMachine>
-```
-
 ### Parses nested state cases as children of the owning state case.
-
-```yumi
-+ checkout ~>
-    ~> editing
-    ~> submitted
-        ~> validating
-        ~> charging
-```
 
 ```brix
 (prop + checkout _
@@ -139,15 +93,6 @@ State machines
 ```
 
 ### Parses then continuations as lexical continuations, not child cases.
-
-```yumi
-+ auth ~>
-    ~> authenticating for .valid(e, p) on login-submitted
-        then authenticated(token) for .authentic(token) on auth-result
-        then rejected for .incorrect-password on auth-result
-
-        .. auth-result = authenticate(e, p)
-```
 
 ```brix
 (prop + auth _
@@ -228,16 +173,6 @@ State machines
 
 ### Parses fallbacks attached to the nearest preceding transition decision group.
 
-```yumi
-+ auth ~>
-    ~> editing
-    ~> authenticating for .valid(e, p) on login-submitted
-        then authenticated for .authentic on auth-result
-        ?? editing
-
-    ?? editing
-```
-
 ```brix
 (prop + auth _
   (machine
@@ -292,12 +227,6 @@ State machines
 
 ### Parses guarded event transitions in both allowed orders.
 
-```yumi
-+ auth ~>
-    ~> authenticated when each is .authentic on login-authenticated
-    ~> invalid-email on submitted when !email-box.text
-```
-
 ```brix
 (prop + auth _
   (machine
@@ -337,11 +266,6 @@ State machines
 ```
 
 ### Parses for-pattern transitions with a separate when guard.
-
-```yumi
-+ auth ~>
-    ~> authenticating(email, password) for .valid(email, password) on login-submitted when remember-me.checked
-```
 
 ```brix
 (prop + auth _
@@ -387,11 +311,6 @@ State machines
 
 ### Parses when without on as a stream-valued trigger expression.
 
-```yumi
-+ auth ~>
-    ~> authenticated when authenticated
-```
-
 ```brix
 (prop + auth _
   (machine
@@ -416,13 +335,6 @@ State machines
 ```
 
 ### Parses whenever as a trigger whose value the machine follows, read in a closure of its own.
-
-```yumi
-+ flow ~>
-    ~> idle
-    ~> watching
-        then idle whenever #feed
-```
 
 ```brix
 (prop + flow _
@@ -457,12 +369,6 @@ State machines
 
 ### Parses immediate boolean if transitions.
 
-```yumi
-+ auth ~>
-    ~> authenticated if session-token
-    ~> editing if !session-token
-```
-
 ```brix
 (prop + auth _
   (machine
@@ -495,11 +401,6 @@ State machines
 ```
 
 ### Parses immediate structure-match if transitions and exposes captures to the target tuple.
-
-```yumi
-+ auth ~>
-    ~> authenticating(e, p) if | .valid(e, p) = login-state
-```
 
 ```brix
 (prop + auth _
@@ -544,11 +445,6 @@ State machines
 
 ### Parses stream expressions after on without inventing a separate stream-expression grammar.
 
-```yumi
-+ auth ~>
-    ~> editing on email-box.key-input /or/ password-box.key-input
-```
-
 ```brix
 (prop + auth _
   (machine
@@ -580,19 +476,6 @@ State machines
 ```
 
 ### Parses scoped state declarations and actions as ordinary state-owned body items.
-
-```yumi
-+ auth ~>
-    ~> authenticating on login-validated
-        do
-            spinner.start()
-
-        do finally
-            spinner.stop()
-
-        .. auth-result = authenticate(email-box.text, password-box.text)
-        then authenticated when auth-result
-```
 
 ```brix
 (prop + auth _
@@ -671,16 +554,6 @@ State machines
 
 ### Parses local multiline lazy stream declarations under a state case.
 
-```yumi
-+ auth ~>
-    ~> rejected when rejected
-        .. inauthentic
-            login-authenticated
-            ?> each is! .authentic
-
-        then editing on email-box.key-input /or/ password-box.key-input
-```
-
 ```brix
 (prop + auth _
   (machine
@@ -741,21 +614,6 @@ State machines
 
 ### Parses independent nested named state machines under a state case.
 
-```yumi
-+ app ~>
-    ~> ready
-        + auth ~>
-            ~> editing
-            ~> authenticating
-            ~> authenticated
-
-        + network ~>
-            ~> online
-            ~> offline
-
-    ~> closed
-```
-
 ```brix
 (prop + app _
   (machine
@@ -813,24 +671,7 @@ State machines
 </Property>
 ```
 
-### Rejects then at top level because continuations must be owned by a source state.
-
-```yumi crash
-then authenticated on auth-result
-```
-
-```output
-Exception: State continuation has no owning state
-<no file:2>
-    then authenticated on auth-result
-    ^^^^
-```
-
 ### Parses a standalone fallback as a structure match, not as a state fallback.
-
-```yumi
-?? editing
-```
 
 ```brix
 (main
@@ -848,34 +689,7 @@ Exception: State continuation has no owning state
 </StructureMatch>
 ```
 
-### Rejects duplicate fallbacks in one decision group.
-
-```yumi crash
-+ auth ~>
-    ~> authenticating on submitted
-    ?? editing
-    ?? rejected
-```
-
-```output
-Exception: Multiple fallbacks in one state transition group
-<no file:5>
-        ?? rejected
-        ^^^^^^^^^^^
-```
-
 ### Parses a class state machine declared like a function after a thin divider.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Widget
-
-────────────────────
-+ phase ~>
-
-~> idle
-~> active on advance
-```
 
 ```brix
 (type + Widget
@@ -908,14 +722,6 @@ Exception: Multiple fallbacks in one state transition group
 
 ### Parses a module state machine declared like a function after a thick divider.
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ light ~>
-
-~> off
-~> on when switched
-```
-
 ```brix
 (prop + light _
   (machine
@@ -941,47 +747,7 @@ Exception: Multiple fallbacks in one state transition group
 </Property>
 ```
 
-### Rejects a state machine declaration without ~> after its name.
-
-```yumi crash
-+ auth
-    ~> idle
-```
-
-```output
-Exception: A state machine declaration needs ~> after its name
-<no file:2>
-    + auth
-    ^^^^^
-```
-
-### Rejects a class state machine whose cases are indented under a property.
-
-```yumi crash
-━━━━━━━━━━━━━━━━━━━━
-+ Widget
-
-+ phase ~>
-    ~> idle
-```
-
-```output
-Exception: A class state machine follows a thin divider, with its cases at column zero
-<no file:5>
-    + phase ~>
-    ^^^^^^^^^
-```
-
 ### Parses local immediate declaration-bound state machines.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ do build
-
-. flow ~>
-    ~> idle
-    ~> ready if true
-```
 
 ```brix
 (fn-do + build _
@@ -1016,15 +782,6 @@ Exception: A class state machine follows a thin divider, with its cases at colum
 
 ### Parses local lazy declaration-bound state machines.
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ build
-
-.. flow ~>
-    ~> idle
-    ~> ready if enabled
-```
-
 ```brix
 (fn-expr + build _
   (lazy flow
@@ -1058,15 +815,6 @@ Exception: A class state machine follows a thin divider, with its cases at colum
 
 ### Parses anonymous state machines in class content sections.
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Panel
-
-────────────────────
-~> idle
-~> active on activate
-```
-
 ```brix
 (type + Panel
   (content
@@ -1094,20 +842,6 @@ Exception: A class state machine follows a thin divider, with its cases at colum
 ```
 
 ### Parses nested named state machines inside class-owned state cases.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Session
-
-────────────────────
-+ app ~>
-
-~> closed
-~> ready
-    + auth ~>
-        ~> editing
-        ~> authenticated on login
-```
 
 ```brix
 (type + Session
@@ -1156,17 +890,6 @@ Exception: A class state machine follows a thin divider, with its cases at colum
 ```
 
 ### Parses a state machine written as a section of a class as a property of the class.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Panel
-
-────────────────────
-+ phase ~>
-
-~> idle
-~> active on go
-```
 
 ```brix
 (type + Panel

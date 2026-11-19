@@ -12,7 +12,7 @@ position that would leave the titlebar off every display centers the window inst
 resizing the native window updates `position`, so applications can persist it alongside `size`.
 
 `Window.state-key` does that persistence. When the window's `App` has a `state` (an `AppState`
-from `stdlib/ui/app-state.yumi`), a window with a `state-key` restores its saved position, size and
+from `stdlib/ui/app-state.bx`), a window with a `state-key` restores its saved position, size and
 zoom on open and saves them whenever they change, in the section `window:<state-key>`. `AppState` keeps
 one versioned JSON file per app under `~/Library/Application Support/<app id>/`, saves after a
 short debounce, and flushes when the app closes. Apps store their own sections with `read` and

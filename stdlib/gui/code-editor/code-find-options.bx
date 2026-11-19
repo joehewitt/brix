@@ -1,0 +1,51 @@
+(import /data/json)
+(import /ui/app-state)
+(blank)
+(prop _ find-options-key _ (= "find"))
+(prop _ find-options-version _ (= 1))
+
+(type + FindOptions
+  (prop + matches-case _ (= false))
+  (prop + matches-word _ (= false))
+  (prop + is-regex _ (= false))
+  (prop + revision U64)
+  (blank)
+  (prop _ state (? AppState))
+  (fn-do + restore _
+    (param store AppState)
+    (= state store)
+    (let saved (call (. store read) find-options-key find-options-version))
+    (return-if (if (not saved)))
+    (let fields (catch? (call (. (call JSONReader find-options-key saved) object))))
+    (return-if (if (not fields)))
+    (= matches-case (?? (catch? (call (. ([] fields "case") bool))) false))
+    (= matches-word (?? (catch? (call (. ([] fields "word") bool))) false))
+    (= is-regex (?? (catch? (call (. ([] fields "regex") bool))) false))
+    (+= revision 1)
+  )
+  (fn-do + toggle-case _
+    (= matches-case (not matches-case))
+    (call changed)
+  )
+  (fn-do + toggle-word _
+    (= matches-word (not matches-word))
+    (call changed)
+  )
+  (fn-do + toggle-regex _
+    (= is-regex (not is-regex))
+    (call changed)
+  )
+  (fn-do _ changed _
+    (+= revision 1)
+    (let fields
+      (call (of Map String JSON)
+        (block
+          (entry "case" matches-case)
+          (entry "word" matches-word)
+          (entry "regex" is-regex)
+        )
+      )
+    )
+    (call (?. state write) find-options-key find-options-version fields)
+  )
+)

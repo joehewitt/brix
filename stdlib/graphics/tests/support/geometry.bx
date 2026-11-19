@@ -1,0 +1,320 @@
+(import /graphics/intersection)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /graphics/shapes)
+(import /math)
+(import /units)
+
+(fn-expr + near Bool
+  (param expected _)
+  (param actual _)
+  (param epsilon _ (= 0.00001))
+  (< (call abs (- actual expected)) epsilon)
+)
+
+(fn-expr + near-point Bool
+  (param expected Point)
+  (param actual Point)
+  (param epsilon _ (= 0.00001))
+  (and x-ok y-ok)
+  (where
+    (lazy x-ok (call near (. expected x) (. actual x) epsilon))
+    (lazy y-ok (call near (. expected y) (. actual y) epsilon))
+  )
+)
+
+(fn-expr + near-rect Bool
+  (param expected Rect)
+  (param actual Rect)
+  (param epsilon _ (= 0.00001))
+  (and origin-ok size-ok)
+  (where
+    (lazy origin-ok (and x-ok y-ok))
+    (lazy x-ok (call near (. expected x) (. actual x) epsilon))
+    (lazy y-ok (call near (. expected y) (. actual y) epsilon))
+    (lazy size-ok (and width-ok height-ok))
+    (lazy width-ok (call near (. expected width) (. actual width) epsilon))
+    (lazy height-ok (call near (. expected height) (. actual height) epsilon))
+  )
+)
+
+(fn-expr + path-summary _
+  (param path Path)
+  (paragraph
+    (str "count=" (. path count) "; closed=" (. path is-closed) "; first=" first "; last=" last "; bbox=" bbox "; types=" types)
+  )
+  (where
+    (lazy first (if-expr (. path count) (as (. path first-point) String) "none"))
+    (lazy last (if-expr (. path count) (as (. path last-point) String) "none"))
+    (lazy bbox (if-expr (> (. path count) 1) (as (. path bounding-box) String) "none"))
+    (lazy types (call path-segment-types path))
+  )
+)
+
+(fn-expr + optional-path-summary _
+  (param path (? Path))
+  (case? path
+    (call path-summary path)
+  )
+  (default
+    "none"
+  )
+)
+
+(fn-expr + optional-path-near-bbox Bool
+  (param rect Rect)
+  (param path (? Path))
+  (param epsilon _ (= 0.00001))
+  (case? (and path (>= (. path count) 2))
+    (call near-rect rect (. path bounding-box) epsilon)
+  )
+  (default
+    false
+  )
+)
+
+(fn-expr + optional-path-contains _
+  (param point Point)
+  (param path (? Path))
+  (case? (and path (>= (. path count) 2))
+    (call (. path contains) point)
+  )
+  (default
+    false
+  )
+)
+
+(fn-do + path-segment-types _
+  (param path Path)
+  (let types (list String))
+  (let reader (. path command-reader))
+  (while (call (. reader next))
+    (+= types (str (. reader verb)))
+  )
+  (return (call (. "," join) types))
+)
+
+(fn-expr + path-area Length
+  (param path Path)
+  (call abs (call path-signed-area path))
+)
+
+(fn-do + path-signed-area Length
+  (param path Path)
+  (let area Length)
+  (if (< (. path curve-count) 1)
+    (return area)
+  )
+  (blank)
+  (let reader (. path curve-reader))
+  (while (call (. reader next))
+    (+= area (- (* (. reader x1) (. reader y2)) (* (. reader x2) (. reader y1))))
+  )
+  (blank)
+  (return (/ area 2))
+)
+
+(fn-do + near-intersections Bool
+  (param intersections (list CurveIntersection))
+  (param t1s (list PointOnCurve))
+  (param t2s (list PointOnCurve))
+  (param epsilon _ (= 0.00001))
+  (return-if (if (not count-ok)))
+  (blank)
+  (lazy count-ok (and (== (. intersections length) (. t1s length)) (== (. intersections length) (. t2s length))))
+  (blank)
+  (for (in i (..< 0 (. intersections length)))
+    (let intr ([] intersections i))
+    (let t1-ok (call near ([] t1s i) (. intr t1) epsilon))
+    (let t2-ok (call near ([] t2s i) (. intr t2) epsilon))
+    (return-if (if (not t1-ok)))
+    (return-if (if (not t2-ok)))
+  )
+  (blank)
+  (return true)
+)
+
+(fn-expr + tilted-line-shape Path
+  (param center Point)
+  (param radius Length)
+  (call line (+ center (tuple (* (- radius) 0.82) (* (- radius) 0.22))) (+ center (tuple (* radius 0.82) (* radius 0.22))))
+)
+
+(fn-do + zigzag-shape Path
+  (param center Point)
+  (param radius Length)
+  (let path (call Path))
+  (call (. path move-to) (+ center (tuple (* (- radius) 0.82) (* (- radius) 0.45))))
+  (call (. path line-to) (+ center (tuple (* (- radius) 0.42) (* radius 0.36))))
+  (call (. path line-to) (+ center (tuple (* (- radius) 0.05) (* (- radius) 0.24))))
+  (call (. path line-to) (+ center (tuple (* radius 0.34) (* radius 0.48))))
+  (call (. path line-to) (+ center (tuple (* radius 0.82) (* (- radius) 0.34))))
+  (return path)
+)
+
+(fn-expr + spiral-shape Path
+  (param center Point)
+  (param radius Length)
+  (call bounded-spiral center (* radius 0.95) 3.4 72 -45deg)
+)
+
+(fn-do _ bounded-spiral Path
+  (param center Point)
+  (param radius Length)
+  (param coils Float)
+  (param steps Int)
+  (param rotation Radians)
+  (let path (call Path))
+  (for (in i (..< 0 steps))
+    (let t (/ (as i Float) (as (- steps 1) Float)))
+    (let angle (+ rotation (* t coils π 2)))
+    (let point (call (. center translate-at-angle) angle (* radius t)))
+    (if (== i 0)
+      (call (. path move-to) point)
+      (else
+        (call (. path line-to) point)
+      )
+    )
+  )
+  (blank)
+  (return path)
+)
+
+(fn-do + open-wave-shape Path
+  (param center Point)
+  (param radius Length)
+  (let path (call Path))
+  (call (. path move-to) (+ center (tuple (* (- radius) 0.9) (* radius 0.15))))
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* (- radius) 0.68) (* (- radius) 0.85))))
+      (arg (+ center (tuple (* (- radius) 0.32) (* radius 0.95))))
+      (arg (+ center (tuple (* (- radius) 0.06) (* radius 0.02))))
+    )
+  )
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* radius 0.26) (* (- radius) 1.0))))
+      (arg (+ center (tuple (* radius 0.62) (* radius 0.82))))
+      (arg (+ center (tuple (* radius 0.9) (* (- radius) 0.2))))
+    )
+  )
+  (return path)
+)
+
+(fn-do + hairpin-shape Path
+  (param center Point)
+  (param radius Length)
+  (let path (call Path))
+  (call (. path move-to) (+ center (tuple (* (- radius) 0.86) (* (- radius) 0.55))))
+  (call (. path line-to) (+ center (tuple (* radius 0.2) (* (- radius) 0.55))))
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* radius 0.88) (* (- radius) 0.55))))
+      (arg (+ center (tuple (* radius 0.88) (* radius 0.52))))
+      (arg (+ center (tuple (* radius 0.2) (* radius 0.52))))
+    )
+  )
+  (call (. path line-to) (+ center (tuple (* (- radius) 0.86) (* radius 0.52))))
+  (return path)
+)
+
+(fn-do + cusp-sweep-shape Path
+  (param center Point)
+  (param radius Length)
+  (let path (call Path))
+  (call (. path move-to) (+ center (tuple (* (- radius) 0.8) (* radius 0.42))))
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* (- radius) 0.2) (* (- radius) 0.95))))
+      (arg (+ center (tuple (* radius 0.16) (* (- radius) 0.95))))
+      (arg (+ center (tuple (* (- radius) 0.04) (* radius 0.05))))
+    )
+  )
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* (- radius) 0.2) (* radius 0.85))))
+      (arg (+ center (tuple (* radius 0.72) (* radius 0.62))))
+      (arg (+ center (tuple (* radius 0.84) (* (- radius) 0.46))))
+    )
+  )
+  (return path)
+)
+
+(fn-do + tilted-rect-shape Path
+  (param center Point)
+  (param radius Length)
+  (let path
+    (call rectangle
+      (block
+        (arg
+          (call Rect
+            (block
+              (arg (- (. center x) (* radius 0.72)))
+              (arg (- (. center y) (* radius 0.5)))
+              (arg (* radius 1.44))
+              (arg radius)
+            )
+          )
+        )
+      )
+    )
+  )
+  (call (. path rotate) -9deg center)
+  (return path)
+)
+
+(fn-do + triangle-shape Path
+  (param center Point)
+  (param radius Length)
+  (let path (call polygon 3 (* radius 1.82) center))
+  (call (. path rotate) 18deg center)
+  (return path)
+)
+
+(fn-do + pentagon-shape Path
+  (param center Point)
+  (param radius Length)
+  (let path (call polygon 5 (* radius 1.78) center))
+  (call (. path rotate) -12deg center)
+  (return path)
+)
+
+(fn-expr + rosette-shape Path
+  (param center Point)
+  (param radius Length)
+  (call lobed-rosette center (* radius 0.92) (* radius 0.28) 9 -18deg)
+)
+
+(fn-do _ lobed-rosette Path
+  (param center Point)
+  (param outer-radius Length)
+  (param inner-radius Length)
+  (param lobes Int)
+  (param rotation Radians)
+  (let path (call Path))
+  (let count (* lobes 2))
+  (let step (/ (* π 2) count))
+  (blank)
+  (for (in i (..< 0 count))
+    (let a1 (+ rotation (* step i)))
+    (let a2 (+ rotation (* step (+ i 1))))
+    (let r1 (if-expr (== (% i 2) 0) outer-radius inner-radius))
+    (let r2 (if-expr (== (% (+ i 1) 2) 0) outer-radius inner-radius))
+    (let bulge (* outer-radius (+ 0.52 (* (as (% i 3) Float) 0.08))))
+    (let p1 (call (. center translate-at-angle) a1 r1))
+    (let p2 (call (. center translate-at-angle) a2 r2))
+    (let h1 (call (. center translate-at-angle) (+ a1 (* step 0.42)) (+ r1 bulge)))
+    (let h2 (call (. center translate-at-angle) (- a2 (* step 0.42)) (+ r2 bulge)))
+    (blank)
+    (if (== i 0)
+      (call (. path move-to) p1)
+    )
+    (blank)
+    (call (. path cubic-curve-to) h1 h2 p2)
+  )
+  (blank)
+  (call (. path close))
+  (return path)
+)

@@ -1,0 +1,953 @@
+(import /BxGraphics/BxGraphics.h)
+(import /graphics/color)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /math)
+(blank)
+(prop _ text-layout-live Size (= 0))
+(prop _ text-layout-high-water Size (= 0))
+(prop _ text-layout-created Size (= 0))
+(prop _ text-layout-released Size (= 0))
+(blank)
+(type-line + TextLayoutRequestPanic (is Panic))
+
+(type + FontWeight (is Union)
+  (variant ultra-light)
+  (variant thin)
+  (variant light)
+  (variant regular)
+  (variant medium)
+  (variant semibold)
+  (variant bold)
+  (variant heavy)
+  (variant black)
+  (fn-expr + trait F64 :get
+    (match this
+      (case (. FontWeight ultra-light)
+        -0.8
+      )
+      (case (. FontWeight thin)
+        -0.6
+      )
+      (case (. FontWeight light)
+        -0.4
+      )
+      (case (. FontWeight medium)
+        0.23
+      )
+      (case (. FontWeight semibold)
+        0.3
+      )
+      (case (. FontWeight bold)
+        0.4
+      )
+      (case (. FontWeight heavy)
+        0.56
+      )
+      (case (. FontWeight black)
+        0.62
+      )
+      (default
+        0.0
+      )
+    )
+  )
+  (fn-expr + css-weight Int :get
+    (match this
+      (case (. FontWeight ultra-light)
+        100
+      )
+      (case (. FontWeight thin)
+        200
+      )
+      (case (. FontWeight light)
+        300
+      )
+      (case (. FontWeight medium)
+        500
+      )
+      (case (. FontWeight semibold)
+        600
+      )
+      (case (. FontWeight bold)
+        700
+      )
+      (case (. FontWeight heavy)
+        800
+      )
+      (case (. FontWeight black)
+        900
+      )
+      (default
+        400
+      )
+    )
+  )
+)
+
+(type + TextAlignment (is Union)
+  (variant left)
+  (variant center)
+  (variant right)
+)
+
+(type + TextOverflow (is Union)
+  (variant clip)
+  (variant truncate-tail)
+  (variant truncate-head)
+)
+
+(type + TextWrap (is Union)
+  (variant no-wrap)
+  (variant word)
+)
+
+(type + TextWrapSizing (is Union)
+  (variant available)
+  (variant tight)
+)
+
+(type + FontSlant (is Union)
+  (variant upright)
+  (variant italic)
+)
+
+(type + Font (is Tuple)
+  (prop + family String)
+  (prop + size Length)
+  (prop + weight FontWeight (= (. FontWeight regular)))
+  (prop + slant FontSlant (= (. FontSlant upright)))
+)
+
+(type + TextObjectMetrics (is Tuple)
+  (prop + width Length)
+  (prop + ascent Length)
+  (prop + descent Length)
+)
+
+(type + TextSegment (is Tuple)
+  (prop + tag Int)
+  (prop + text String)
+  (prop + font Font)
+  (prop + color (? RGBA) (= null))
+  (prop + object (? TextObjectMetrics) (= null))
+  (prop + join-before _ (= false))
+  (prop + join-after _ (= false))
+)
+
+(type + TextFragment (is Tuple)
+  (prop + tag Int)
+  (prop + line Index)
+  (prop + x Length)
+  (prop + width Length)
+  (prop + ascent Length)
+  (prop + descent Length)
+)
+
+(type + TextLayoutRequest (is Tuple)
+  (prop + text String)
+  (prop + font Font)
+  (prop + maximum-width (? Length))
+  (prop + overflow TextOverflow)
+  (prop + wrap TextWrap)
+  (prop + line-spacing Length)
+  (prop + maximum-height (? Length))
+  (fn-do + This _
+    (param text String)
+    (param font Font)
+    (param maximum-width (? Length) (= null))
+    (param overflow TextOverflow (= (. TextOverflow truncate-tail)))
+    (param wrap TextWrap (= (. TextWrap no-wrap)))
+    (param line-spacing Length (= 0))
+    (param maximum-height (? Length) (= null))
+  )
+)
+
+(type + TextLineSnapshot (is Tuple)
+  (prop + typographic-bounds Rect)
+  (prop + ink-bounds Rect)
+  (prop + baseline Length)
+  (prop + ascent Length)
+  (prop + descent Length)
+  (prop + leading Length)
+)
+
+(type + TextLayoutSnapshot (is Tuple)
+  (prop + size Dimensions)
+  (prop + natural-width Length)
+  (prop + constrained-width Length)
+  (prop + line-count Int)
+  (prop + first-baseline Length)
+  (prop + last-baseline Length)
+  (prop + is-truncated Bool)
+  (prop + lines (list TextLineSnapshot))
+  (fn-expr + normalized String :get
+    (paragraph
+      (str "size=(" (call text-scalar (. size width)) "," (call text-scalar (. size height)) ");natural-width=" (call text-scalar natural-width) ";constrained-width=" (call text-scalar constrained-width) ";line-count=" line-count ";first-baseline=" (call text-scalar first-baseline) ";last-baseline=" (call text-scalar last-baseline) ";is-truncated=" is-truncated ";lines=[" (call (. "," join) (in (call normalized-text-line each) lines)) "]")
+    )
+  )
+)
+
+(type + TextLayout
+  (implements Closable)
+  (prop + request TextLayoutRequest)
+  (prop + line-spacing _ (=> (. request line-spacing)))
+  (prop + width _ (=> (. shaped size width)))
+  (prop + height _ (=> (?? (?. simple-line height) (. shaped size height))))
+  (prop + natural-width _ (=> (. shaped natural-width)))
+  (prop + constrained-width _ (=> (. shaped constrained-width)))
+  (prop + line-count _ (=> (if-expr simple-line 1 (. shaped line-count))))
+  (prop + ascent _ (=> (?? (?. simple-line ascent) (. ([] (. snapshot lines) 0) ascent))))
+  (prop + descent _ (=> (?? (?. simple-line descent) (. ([] (. snapshot lines) 0) descent))))
+  (prop + leading _ (=> (?? (?. simple-line leading) (. ([] (. snapshot lines) 0) leading))))
+  (prop + baseline _ (=> (?? (?. simple-line ascent) (. shaped first-baseline))))
+  (prop + is-truncated _ (=> (if-expr (and simple-line (not may-truncate)) false (. shaped is-truncated))))
+  (prop + is-simple _ (=> (!= simple-line null)))
+  (prop + is-shaped _ (=> (!= snapshot-value null)))
+  (blank)
+  (prop _ native-value (? Pointer))
+  (prop _ simple-line (? TextSimpleLine))
+  (prop _ is-closed _ (= false))
+  (prop _ snapshot-value (? TextLayoutSnapshot))
+  (prop _ fragments-value (? (list TextFragment)))
+  (prop _ objects (list TextLayoutObject))
+  (fn-do + This _
+    (param source TextLayoutRequest)
+    (throw (call TextLayoutRequestPanic "Text maximum width and height must be finite and nonnegative") (if (not (call text-layout-request-is-valid source))))
+    (blank)
+    (= request source)
+    (let metrics ([] F64 4))
+    (let simple
+      (call C:brixGraphicsTextLayoutSimpleMetrics
+        (block
+          (arg (. source text))
+          (arg (. source font family))
+          (arg (. source font size))
+          (arg (. source font weight trait))
+          (arg (== (. source font slant) (. FontSlant italic)))
+          (arg (!= (. source maximum-width) null))
+          (arg (call text-truncation (. source overflow)))
+          (arg (== (. source wrap) (. TextWrap word)))
+          (arg metrics)
+        )
+      )
+    )
+    (probe-count graphics.text.fonts-created (as (call C:brixGraphicsTextLayoutGetLastFontCreateMissCount) U64))
+    (if simple
+      (= simple-line (call TextSimpleLine ([] metrics 0) ([] metrics 1) ([] metrics 2) ([] metrics 3)))
+      (probe-count graphics.text.simple-layouts)
+      (else
+        (call shape)
+      )
+    )
+  )
+  (fn-do + This _
+    (param segments (list TextSegment))
+    (param font Font)
+    (param maximum-width (? Length) (= null))
+    (param overflow TextOverflow (= (. TextOverflow clip)))
+    (param wrap TextWrap (= (. TextWrap word)))
+    (param spacing Length (= 0))
+    (param maximum-height (? Length) (= null))
+    (= request
+      (call TextLayoutRequest
+        (block
+          (arg (call (. "" join) (in (. each text) segments)))
+          (arg font)
+          (arg maximum-width)
+          (arg overflow)
+          (arg wrap)
+          (arg spacing)
+          (arg maximum-height)
+        )
+      )
+    )
+    (throw (call TextLayoutRequestPanic "Text maximum width and height must be finite and nonnegative") (if (not (call text-layout-request-is-valid request))))
+    (blank)
+    (let builder
+      (call C:brixGraphicsStyledTextCreate
+        (block
+          (arg (. font family))
+          (arg (. font size))
+          (arg (. font weight trait))
+          (arg (== (. font slant) (. FontSlant italic)))
+        )
+      )
+    )
+    (throw (call TextLayoutRequestPanic "Unable to create styled text") (if (not builder)))
+    (let offset Size 0)
+    (for (in segment segments)
+      (call append-native-segment builder segment)
+      (if (!= (. segment object) null)
+        (+= objects (call TextLayoutObject offset (call text-object-units segment) (. segment join-before)))
+      )
+      (+= offset (. segment text size))
+    )
+    (let created
+      (call C:brixGraphicsStyledTextLayoutCreate
+        (block
+          (arg builder)
+          (arg (!= maximum-width null))
+          (arg (?? maximum-width 0))
+          (arg (!= maximum-height null))
+          (arg (?? maximum-height 0))
+          (arg (call text-truncation overflow))
+          (arg (== wrap (. TextWrap word)))
+          (arg line-spacing)
+        )
+      )
+    )
+    (call C:brixGraphicsStyledTextRelease builder)
+    (probe-count graphics.text.fonts-created (as (call C:brixGraphicsTextLayoutGetLastFontCreateMissCount) U64))
+    (throw (call TextLayoutRequestPanic "Unable to create text layout") (if (not created)))
+    (= native-value created)
+    (call adopt-native)
+  )
+  (fn-do + This _
+    (param text String)
+    (param font Font)
+    (param maximum-width (? Length) (= null))
+    (param overflow TextOverflow (= (. TextOverflow truncate-tail)))
+    (param wrap TextWrap (= (. TextWrap no-wrap)))
+    (param line-spacing Length (= 0))
+    (param maximum-height (? Length) (= null))
+    (return (call This (call TextLayoutRequest text font maximum-width overflow wrap line-spacing maximum-height)))
+  )
+  (fn-do + close _
+    (= is-closed true)
+    (call release-native)
+  )
+  (fn-do + native (? Pointer) :get
+    (return-if native-value (if (or native-value is-closed)))
+    (call shape)
+    (return native-value)
+  )
+  (fn-do + fragments (list TextFragment) :get
+    (let cached fragments-value)
+    (return-if cached (if cached))
+    (let handle native)
+    (let loaded (if-expr handle (call native-text-layout-fragments handle) (call (of List TextFragment))))
+    (= fragments-value loaded)
+    (return loaded)
+  )
+  (fn-do + snapshot TextLayoutSnapshot :get
+    (probe-count graphics.text.metric-queries)
+    (let head shaped)
+    (return-if head (if (or (> (. head lines length) 0) (== (. head line-count) 0))))
+    (let loaded
+      (call TextLayoutSnapshot
+        (block
+          (arg (. head size))
+          (arg (. head natural-width))
+          (arg (. head constrained-width))
+          (arg (. head line-count))
+          (arg (. head first-baseline))
+          (arg (. head last-baseline))
+          (arg (. head is-truncated))
+          (arg (call native-text-layout-lines (!! native) (. head line-count)))
+        )
+      )
+    )
+    (= snapshot-value loaded)
+    (return loaded)
+  )
+  (fn-expr _ may-truncate Bool :get
+    (and bounded-overflow (== (. request wrap) (. TextWrap no-wrap)))
+    (where
+      (lazy bounded-overflow (and (!= (. request maximum-width) null) (!= (. request overflow) (. TextOverflow clip))))
+    )
+  )
+  (fn-do _ shaped TextLayoutSnapshot :get
+    (let head snapshot-value)
+    (return-if head (if head))
+    (call shape)
+    (if is-closed
+      (call release-native)
+    )
+    (return (!! snapshot-value))
+  )
+  (fn-do + to-path Path
+    (throw (call TextLayoutRequestPanic "Cannot extract a path from a closed text layout") (if is-closed))
+    (blank)
+    (let handle native)
+    (let count (call C:brixGraphicsTextLayoutGetPathCommandCount handle))
+    (let path (call Path))
+    (return-if path (if (== count 0)))
+    (blank)
+    (let verbs ([] U8 count))
+    (let coordinates ([] F64 (* count 6)))
+    (call C:brixGraphicsTextLayoutGetPathCommands handle verbs coordinates count)
+    (call (. path reserve) count (* count 6))
+    (for (in index (..< 0 count))
+      (let offset (* index 6))
+      (match ([] verbs index)
+        (case= C:BxGraphicsTextPathMove
+          (call (. path move-to) ([] coordinates offset) ([] coordinates (+ offset 1)))
+        )
+        (case= C:BxGraphicsTextPathLine
+          (call (. path line-to) ([] coordinates offset) ([] coordinates (+ offset 1)))
+        )
+        (case= C:BxGraphicsTextPathQuadratic
+          (call (. path quadratic-curve-to)
+            (block
+              (arg ([] coordinates offset))
+              (arg ([] coordinates (+ offset 1)))
+              (arg ([] coordinates (+ offset 2)))
+              (arg ([] coordinates (+ offset 3)))
+            )
+          )
+        )
+        (case= C:BxGraphicsTextPathCubic
+          (call (. path cubic-curve-to)
+            (block
+              (arg (call Point ([] coordinates offset) ([] coordinates (+ offset 1))))
+              (arg (call Point ([] coordinates (+ offset 2)) ([] coordinates (+ offset 3))))
+              (arg (call Point ([] coordinates (+ offset 4)) ([] coordinates (+ offset 5))))
+            )
+          )
+        )
+        (case= C:BxGraphicsTextPathClose
+          (call (. path close))
+        )
+      )
+    )
+    (return path)
+  )
+  (fn-expr + line-offset Length
+    (param line Index)
+    (param width Length)
+    (param alignment TextAlignment)
+    (match alignment
+      (case .center
+        (/ (- width line-width) 2)
+      )
+      (case .right
+        (- width line-width)
+      )
+      (default
+        0
+      )
+    )
+    (where
+      (lazy line-width (. ([] (. snapshot lines) line) typographic-bounds width))
+    )
+  )
+  (fn-expr + offset-at Size
+    (param point Point)
+    (if-expr (not handle) 0 (call text-offset (call C:brixGraphicsTextLayoutGetIndexAtPoint handle (. point x) (. point y))))
+    (where
+      (lazy handle native)
+    )
+  )
+  (fn-expr + line-at Index
+    (param offset Size)
+    (if-expr (not handle) 0 (as (call C:brixGraphicsTextLayoutGetLineForIndex handle native-offset) Index))
+    (where
+      (lazy handle native)
+      (lazy native-offset (call native-index offset))
+    )
+  )
+  (fn-expr + line-start-offset Size
+    (param line Index)
+    (if-expr (not handle) 0 (call text-offset (call C:brixGraphicsTextLayoutGetLineStart handle line)))
+    (where
+      (lazy handle native)
+    )
+  )
+  (fn-expr + line-end-offset Size
+    (param line Index)
+    (if-expr (not handle) 0 (call text-offset (call C:brixGraphicsTextLayoutGetLineEnd handle line)))
+    (where
+      (lazy handle native)
+    )
+  )
+  (fn-do + caret-rect Rect
+    (param offset Size)
+    (let handle native)
+    (return-if (call Rect 0 0 0 0) (if (not handle)))
+    (let index (call native-index offset))
+    (let line (as (call C:brixGraphicsTextLayoutGetLineForIndex handle index) Index))
+    (let bounds (. ([] (. snapshot lines) line) typographic-bounds))
+    (return (call Rect (call C:brixGraphicsTextLayoutGetXForIndex handle index) (. bounds y) 0 (. bounds height)))
+  )
+  (fn-do _ shape _
+    (let maximum-width (?? (. request maximum-width) 0))
+    (let created
+      (call C:brixGraphicsTextLayoutCreate
+        (block
+          (arg (. request text))
+          (arg (. request font family))
+          (arg (. request font size))
+          (arg (. request font weight trait))
+          (arg (== (. request font slant) (. FontSlant italic)))
+          (arg (!= (. request maximum-width) null))
+          (arg maximum-width)
+          (arg (!= (. request maximum-height) null))
+          (arg (?? (. request maximum-height) 0))
+          (arg (call text-truncation (. request overflow)))
+          (arg (== (. request wrap) (. TextWrap word)))
+          (arg (. request line-spacing))
+        )
+      )
+    )
+    (probe-count graphics.text.fonts-created (as (call C:brixGraphicsTextLayoutGetLastFontCreateMissCount) U64))
+    (throw (call TextLayoutRequestPanic "Unable to create text layout") (if (not created)))
+    (= native-value created)
+    (call adopt-native)
+  )
+  (fn-do _ adopt-native _
+    (let head (call native-text-layout-head (!! native-value)))
+    (= snapshot-value head)
+    (+= text-layout-live 1)
+    (+= text-layout-created 1)
+    (probe-count graphics.text.layouts-created)
+    (if (. head is-truncated)
+      (probe-count graphics.text.truncated-layouts)
+      (else
+        (probe-count graphics.text.natural-layouts)
+      )
+    )
+    (if (> text-layout-live text-layout-high-water)
+      (probe-count graphics.text.layouts-high-water (as (- text-layout-live text-layout-high-water) U64))
+      (= text-layout-high-water text-layout-live)
+    )
+  )
+  (fn-do _ native-index I64
+    (param offset Size)
+    (let bytes (call byte-view (. request text)))
+    (let end (call min offset (. bytes size)))
+    (let units Size 0)
+    (let index Size 0)
+    (let next Index 0)
+    (while true
+      (if (and (< next (. objects length)) (<= (. ([] objects next) offset) index) counts-object)
+        (+= units (. ([] objects next) units))
+        (+= next 1)
+        (else-if (< index end)
+          (let width (call text-utf8-width ([] bytes index)))
+          (+= units (if-expr (== width 4) 2 1))
+          (+= index width)
+        )
+        (else
+          (break)
+        )
+      )
+      (lazy counts-object (or (< index end) (. ([] objects next) is-trailing)))
+    )
+    (return units)
+  )
+  (fn-do _ text-offset Size
+    (param units Size)
+    (let bytes (call byte-view (. request text)))
+    (let seen Size 0)
+    (let index Size 0)
+    (let next Index 0)
+    (while (< seen units)
+      (if (and (< next (. objects length)) (<= (. ([] objects next) offset) index))
+        (+= seen (. ([] objects next) units))
+        (+= next 1)
+        (else-if (< index (. bytes size))
+          (let width (call text-utf8-width ([] bytes index)))
+          (+= seen (if-expr (== width 4) 2 1))
+          (+= index width)
+        )
+        (else
+          (break)
+        )
+      )
+    )
+    (return index)
+  )
+  (fn-do _ release-native _
+    (let handle native-value)
+    (return-if (if (not handle)))
+    (call C:brixGraphicsTextLayoutRelease handle)
+    (= native-value null)
+    (-= text-layout-live 1)
+    (+= text-layout-released 1)
+    (probe-count graphics.text.layouts-released)
+  )
+)
+
+(type + TextLayoutBuilder (is (fn-type TextLayout (param maximum-width (? Length)))))
+
+(type + TightTextLayout (is Tuple)
+  (prop + layout TextLayout)
+  (prop + width Length)
+  (prop + cap (? Length))
+  (fn-expr + serves _
+    (param maximum-width (? Length))
+    (case? (== maximum-width null)
+      (== cap null)
+    )
+    (default
+      (call tight-text-width-serves width maximum-width cap)
+    )
+  )
+)
+
+(type + FontRegistrationError (is Error)
+  (fn-to-expr + String
+    (?? message "Unable to register font")
+  )
+)
+
+(type + FontRegistration
+  (implements Closable)
+  (prop + family String)
+  (blank)
+  (prop _ native (? Pointer))
+  (fn-do + This _ (?! FontRegistrationError)
+    (param path String)
+    (let candidate (call C:brixGraphicsFontRegister path))
+    (throw (call FontRegistrationError (str "Unable to register font '" path "'")) (if (not (call C:brixGraphicsFontRegistrationIsValid candidate))))
+    (= native candidate)
+    (= family (call C:brixGraphicsFontRegistrationGetFamily candidate))
+  )
+  (fn-do + close _
+    (if native
+      (call C:brixGraphicsFontRegistrationRelease native)
+      (= native null)
+    )
+  )
+)
+
+(type + FontCatalog
+  (fn-expr + register FontRegistration (?! FontRegistrationError)
+    (param path String)
+    (call FontRegistration path)
+  )
+)
+
+(fn-expr + system-font Font
+  (param size Length (= 13))
+  (param weight FontWeight (= (. FontWeight regular)))
+  (call Font "" size weight)
+)
+
+(fn-expr + text-layout-request-is-valid Bool
+  (param request TextLayoutRequest)
+  (and (call text-span-is-valid (. request maximum-width)) (call text-span-is-valid (. request maximum-height)))
+)
+
+(fn-expr + text-path Path
+  (param text String)
+  (param font Font (= (call system-font)))
+  (call (. layout to-path)
+    (block
+      (lazy layout (use (call TextLayout text font)))
+    )
+  )
+)
+
+(fn-expr + tight-text-width-serves _
+  (param selected Length)
+  (param width Length)
+  (param cap (? Length))
+  (and (<= selected (+ width 0.01)) (or (== cap null) (<= width (+ cap 0.01))))
+)
+
+(fn-do + tight-text-layout TightTextLayout
+  (param build TextLayoutBuilder)
+  (param precision Length)
+  (param snap (of Mapper Length Length))
+  (param maximum-width (? Length))
+  (if (== maximum-width null)
+    (let unbounded (call build null))
+    (return (call TightTextLayout unbounded (call snap (. unbounded natural-width)) null))
+  )
+  (blank)
+  (let cap (call text-safe-span maximum-width))
+  (let winner (call narrowest-text-layout build cap precision))
+  (let width (if-expr (or (== cap 0) (> (. winner width) cap)) cap (. winner width)))
+  (let stable-width (call snap width))
+  (if (and (<= stable-width cap) (!= stable-width width))
+    (let stable (call build stable-width))
+    (if (call same-text-lines stable winner)
+      (call (. winner close))
+      (= winner stable)
+      (= width stable-width)
+      (else
+        (call (. stable close))
+      )
+    )
+  )
+  (return (call TightTextLayout winner width cap))
+)
+
+(fn-expr + text-layout-live-count Size
+  text-layout-live
+)
+
+(fn-expr + text-layout-high-water-count Size
+  text-layout-high-water
+)
+
+(fn-expr + text-layout-created-count Size
+  text-layout-created
+)
+
+(fn-expr + text-layout-released-count Size
+  text-layout-released
+)
+
+(fn-expr + text-font-created-count Size
+  (call C:brixGraphicsTextFontCreatedCount)
+)
+
+(type _ TextSimpleLine (is Tuple)
+  (prop + ascent Length)
+  (prop + descent Length)
+  (prop + leading Length)
+  (prop + height Length)
+)
+
+(type _ TextLayoutObject (is Tuple)
+  (prop + offset Size)
+  (prop + units Size)
+  (prop + is-trailing Bool)
+)
+
+(fn-expr _ text-truncation _
+  (param overflow TextOverflow)
+  (match overflow
+    (case .truncate-tail
+      1
+    )
+    (case .truncate-head
+      2
+    )
+    (default
+      0
+    )
+  )
+)
+
+(fn-expr _ text-span-is-valid _
+  (param span (? Length))
+  (case? (!= span null)
+    (and (call is-finite span) (>= span 0))
+  )
+  (default
+    true
+  )
+)
+
+(fn-expr _ text-object-units Size
+  (param segment TextSegment)
+  (+ 1 (if-expr (. segment join-before) 1 0) (if-expr (. segment join-after) 1 0))
+)
+
+(fn-expr _ text-utf8-width Size
+  (param lead Byte)
+  (case? (>= lead 0xF0)
+    4
+  )
+  (case? (>= lead 0xE0)
+    3
+  )
+  (case? (>= lead 0xC0)
+    2
+  )
+  (default
+    1
+  )
+)
+
+(fn-do _ narrowest-text-layout _
+  (param build TextLayoutBuilder)
+  (param cap Length)
+  (param precision Length)
+  (let winner (call build cap))
+  (return-if winner (if (or (== cap 0) (> (. winner width) cap) (== (. winner line-count) 1))))
+  (let lower 0.0)
+  (let upper cap)
+  (while (> (- upper lower) precision)
+    (let midpoint (/ (+ lower upper) 2))
+    (if (or (== midpoint lower) (== midpoint upper))
+      (break)
+    )
+    (let candidate (call build midpoint))
+    (if (call same-text-lines candidate winner)
+      (call (. winner close))
+      (= winner candidate)
+      (= upper midpoint)
+      (else
+        (call (. candidate close))
+        (= lower midpoint)
+      )
+    )
+  )
+  (blank)
+  (let derived-width (. winner width))
+  (if (and (> derived-width 0) (< derived-width (?? (. winner request maximum-width) cap)))
+    (let derived (call build derived-width))
+    (if (call same-text-lines derived winner)
+      (call (. winner close))
+      (= winner derived)
+      (else
+        (call (. derived close))
+      )
+    )
+  )
+  (return winner)
+)
+
+(fn-expr _ same-text-lines _
+  (param candidate TextLayout)
+  (param target TextLayout)
+  (and (== (. candidate line-count) (. target line-count)) (== (. candidate height) (. target height)))
+)
+
+(fn-expr _ text-safe-span _
+  (param value Length)
+  (if-expr (call is-finite value) (call max 0 value) 0)
+)
+
+(fn-do _ native-text-layout-head TextLayoutSnapshot
+  (param native Pointer)
+  (let width (call C:brixGraphicsTextLayoutGetWidth native))
+  (let height (call C:brixGraphicsTextLayoutGetHeight native))
+  (let line-count (call C:brixGraphicsTextLayoutGetLineCount native))
+  (let lines (list TextLineSnapshot))
+  (return
+    (call TextLayoutSnapshot
+      (block
+        (arg (call Dimensions width height))
+        (arg (call C:brixGraphicsTextLayoutGetNaturalWidth native))
+        (arg (call C:brixGraphicsTextLayoutGetConstrainedWidth native))
+        (arg line-count)
+        (arg (call C:brixGraphicsTextLayoutGetBaseline native))
+        (arg (call C:brixGraphicsTextLayoutGetLastBaseline native))
+        (arg (call C:brixGraphicsTextLayoutIsTruncated native))
+        (arg lines)
+      )
+    )
+  )
+)
+
+(fn-do _ append-native-segment _
+  (param builder Pointer)
+  (param segment TextSegment)
+  (match (. segment object)
+    (case TextObjectMetrics
+      (call C:brixGraphicsStyledTextAppendObject
+        (block
+          (arg builder)
+          (arg (. it width))
+          (arg (. it ascent))
+          (arg (. it descent))
+          (arg (. segment tag))
+          (arg (. segment join-before))
+          (arg (. segment join-after))
+        )
+      )
+    )
+    (default
+      (let color (?? (. segment color) transparent))
+      (call C:brixGraphicsStyledTextAppendText
+        (block
+          (arg builder)
+          (arg (. segment text))
+          (arg (. segment font family))
+          (arg (. segment font size))
+          (arg (. segment font weight trait))
+          (arg (== (. segment font slant) (. FontSlant italic)))
+          (arg (!= (. segment color) null))
+          (arg (. color red))
+          (arg (. color green))
+          (arg (. color blue))
+          (arg (. color alpha))
+          (arg (. segment tag))
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ native-text-layout-fragments _
+  (param native Pointer)
+  (spread (..< 0 (call C:brixGraphicsTextLayoutGetFragmentCount native)))
+  (pipe *>
+    (call TextFragment
+      (block
+        (arg (call C:brixGraphicsTextLayoutGetFragmentTag native each))
+        (arg (call C:brixGraphicsTextLayoutGetFragmentLine native each))
+        (arg (call C:brixGraphicsTextLayoutGetFragmentX native each))
+        (arg (call C:brixGraphicsTextLayoutGetFragmentWidth native each))
+        (arg (call C:brixGraphicsTextLayoutGetFragmentAscent native each))
+        (arg (call C:brixGraphicsTextLayoutGetFragmentDescent native each))
+      )
+    )
+  )
+  (pipe |> List)
+)
+
+(fn-expr _ native-text-layout-lines _
+  (param native Pointer)
+  (param line-count Int)
+  (spread (..< 0 line-count))
+  (pipe *>
+    (call TextLineSnapshot
+      (block
+        (arg typographic)
+        (arg ink)
+        (arg (call C:brixGraphicsTextLayoutGetLineBaseline native index))
+        (arg (call C:brixGraphicsTextLayoutGetLineAscent native index))
+        (arg (call C:brixGraphicsTextLayoutGetLineDescent native index))
+        (arg (call C:brixGraphicsTextLayoutGetLineLeading native index))
+        (lazy index each)
+        (lazy typographic
+          (call Rect
+            (block
+              (arg (call C:brixGraphicsTextLayoutGetLineTypographicX native index))
+              (arg (call C:brixGraphicsTextLayoutGetLineTypographicY native index))
+              (arg (call C:brixGraphicsTextLayoutGetLineWidth native index))
+              (arg (call C:brixGraphicsTextLayoutGetLineHeight native index))
+            )
+          )
+        )
+        (lazy ink
+          (call Rect
+            (block
+              (arg (call C:brixGraphicsTextLayoutGetLineInkX native index))
+              (arg (call C:brixGraphicsTextLayoutGetLineInkY native index))
+              (arg (call C:brixGraphicsTextLayoutGetLineInkWidth native index))
+              (arg (call C:brixGraphicsTextLayoutGetLineInkHeight native index))
+            )
+          )
+        )
+      )
+    )
+  )
+  (pipe |> List)
+)
+
+(fn-expr _ normalized-text-line _
+  (param line TextLineSnapshot)
+  (paragraph
+    (str "typographic-bounds=(" (call text-rect (. line typographic-bounds)) "),ink-bounds=(" (call text-rect (. line ink-bounds)) "),baseline=" (call text-scalar (. line baseline)) ",ascent=" (call text-scalar (. line ascent)) ",descent=" (call text-scalar (. line descent)) ",leading=" (call text-scalar (. line leading)))
+  )
+)
+
+(fn-expr _ text-rect _
+  (param rect Rect)
+  (paragraph
+    (str (call text-scalar (. rect x)) "," (call text-scalar (. rect y)) "," (call text-scalar (. rect width)) "," (call text-scalar (. rect height)))
+  )
+)
+
+(fn-do _ text-scalar String
+  (param value Float)
+  (let scaled (as (call round (* value 1000)) I64))
+  (let sign (if-expr (< scaled 0) "-" ""))
+  (let magnitude (if-expr (< scaled 0) (- scaled) scaled))
+  (let whole (/ magnitude 1000))
+  (let fraction (% magnitude 1000))
+  (let fraction-text (str fraction))
+  (while (< (. fraction-text length) 3)
+    (= fraction-text (str "0" fraction-text))
+  )
+  (return (str sign whole "." fraction-text))
+)

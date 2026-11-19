@@ -1,0 +1,24 @@
+; benchmark.meta description: Repeats ASCII and mixed Unicode display-width lookups.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core)
+(blank)
+
+(main
+  (let ascii (call DisplayText "terminal"))
+  (let mixed (call DisplayText "a界é📁"))
+  (let checksum Size 0)
+  (for (in index (..< 0 10000000))
+    (+= checksum (call (. ascii width-at) (% index (. ascii codepoint-count))))
+    (+= checksum (call (. mixed width-at) (% index (. mixed codepoint-count))))
+    (if (. ascii is-single-cell)
+      (+= checksum 1)
+    )
+    (if (. mixed is-single-cell)
+      (+= checksum 1)
+    )
+  )
+  (blank)
+  (print (str "bench-result string/display-width-lookups checksum=" checksum))
+)

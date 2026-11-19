@@ -1,0 +1,66 @@
+(import ./box)
+(import ./primitives)
+(import /graphics/primitives)
+(import /math)
+(import /units)
+
+(type + AnimationTimeline
+  (prop + amount (? F64))
+  (prop + start Length (= 0))
+  (prop + end Length (= 0))
+  (prop + axis _ (= (. Orientation vertical)))
+  (prop + source (? Box))
+  (fn-do + This _
+    (param amount (? F64))
+    (param start Length (= 0))
+    (param end Length (= 0))
+    (param axis _ (= (. Orientation vertical)))
+    (param source (? Box) (= null))
+  )
+  (fn-expr + follows-scrolling Bool :get
+    (== amount null)
+  )
+  (fn-do + scroller (? Box)
+    (param owner Box)
+    (return-if source (if source))
+    (let cursor (. owner material-parent))
+    (while cursor
+      (let box cursor)
+      (return-if box (if (and (not (. box is-markup-shadow)) (call (. box is-scroll-axis-enabled) axis))))
+      (= cursor (. box material-parent))
+    )
+    (return null)
+  )
+  (fn-expr + progress F64
+    (param owner Box)
+    (case? (!= fixed null)
+      (call clamp fixed 0.0 1.0)
+    )
+    (case? (not box)
+      0
+    )
+    (case? (<= end start)
+      (if-expr (>= offset end) 1.0 0.0)
+    )
+    (default
+      (call clamp (/ (- offset start) (- end start)) 0.0 1.0)
+    )
+    (where
+      (lazy fixed amount)
+      (lazy box (call scroller owner))
+      (lazy offset (if-expr (== axis (. Orientation vertical)) (. box scroll-y) (. box scroll-x)))
+    )
+  )
+)
+
+(fn-expr + scroll-timeline AnimationTimeline
+  (param range (of Range Length))
+  (param source (? Box) (= null))
+  (param axis _ (= (. Orientation vertical)))
+  (call AnimationTimeline null (. range start) (. range end) axis source)
+)
+
+(fn-expr + progress-timeline AnimationTimeline
+  (param amount F64)
+  (call AnimationTimeline amount)
+)

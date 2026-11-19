@@ -1,15 +1,18 @@
 # Array streams
 
-```yumi
-/core/array-builder
-. mutable = Array((1 .. 3) *> (each * 2))
-. immutable = ImmutableArray((1 .. 3) *> (each * 3), 20)
--- type-of mutable
--- type-of immutable
--- ", ".join(mutable)
--- ", ".join(immutable)
-. empty = Array((1 .. 3) ?> false, 100)
--- empty.length, empty.data.address
+```brix
+(import /core/array-builder)
+
+(main
+  (let mutable (call Array (*> (.. 1 3) (* each 2))))
+  (let immutable (call ImmutableArray (*> (.. 1 3) (* each 3)) 20))
+  (print (type-of mutable))
+  (print (type-of immutable))
+  (print (call (. ", " join) mutable))
+  (print (call (. ", " join) immutable))
+  (let empty (call Array (?> (.. 1 3) false) 100))
+  (print (tuple (. empty length) (. empty data address)))
+)
 ```
 
 ```output
@@ -20,23 +23,27 @@
 (0, 0)
 ```
 
-```yumi
-/core/array-builder
-/core/arena
-. arena = Arena()
-do finally
-    arena.release()
-. initial-bytes = arena.active-bytes
-. empty = Array(arena, (1 .. 3) ?> false, 100)
-. frozen = ImmutableArray(arena, (1 .. 3) ?> false, 100)
--- empty.length, empty.data.address, frozen.length
--- arena.active-bytes == initial-bytes
-. mutable = Array(arena, (1 .. 3) *> (each * 2))
-. immutable = ImmutableArray(arena, (1 .. 3) *> (each * 3), 20)
--- type-of mutable
--- type-of immutable
--- ", ".join(mutable)
--- ", ".join(immutable)
+```brix
+(import /core/array-builder)
+(import /core/arena)
+
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (let initial-bytes (. arena active-bytes))
+  (let empty (call Array arena (?> (.. 1 3) false) 100))
+  (let frozen (call ImmutableArray arena (?> (.. 1 3) false) 100))
+  (print (tuple (. empty length) (. empty data address) (. frozen length)))
+  (print (== (. arena active-bytes) initial-bytes))
+  (let mutable (call Array arena (*> (.. 1 3) (* each 2))))
+  (let immutable (call ImmutableArray arena (*> (.. 1 3) (* each 3)) 20))
+  (print (type-of mutable))
+  (print (type-of immutable))
+  (print (call (. ", " join) mutable))
+  (print (call (. ", " join) immutable))
+)
 ```
 
 ```output
@@ -48,23 +55,28 @@ true
 3, 6, 9
 ```
 
-```yumi
-/core/array-builder
-. values = Array((1 .. < 1) *> each, Size.max)
-. frozen = ImmutableArray((1 .. < 1) *> each, Size.max)
--- values.length, values.data.address, frozen.length
-for item in values
-    -- "unexpected"
-for item in frozen
-    -- "unexpected"
--- values[0 .. < 0].length, frozen[0 .. < 0].length
--- values.copy().length
--- values.immutable.length
--- (values as Array'Byte).length
-. grown = values.resize(2)
-grown[0] = 7
-grown[1] = 9
--- ", ".join(grown)
+```brix
+(import /core/array-builder)
+
+(main
+  (let values (call Array (*> (..< 1 1) each) (. Size max)))
+  (let frozen (call ImmutableArray (*> (..< 1 1) each) (. Size max)))
+  (print (tuple (. values length) (. values data address) (. frozen length)))
+  (for (in item values)
+    (print "unexpected")
+  )
+  (for (in item frozen)
+    (print "unexpected")
+  )
+  (print (tuple (. ([] values (..< 0 0)) length) (. ([] frozen (..< 0 0)) length)))
+  (print (. (call (. values copy)) length))
+  (print (. values immutable length))
+  (print (. (as values (of Array Byte)) length))
+  (let grown (call (. values resize) 2))
+  (= ([] grown 0) 7)
+  (= ([] grown 1) 9)
+  (print (call (. ", " join) grown))
+)
 ```
 
 ```output
@@ -76,27 +88,33 @@ grown[1] = 9
 7, 9
 ```
 
-```yumi
-/core/array-builder
-/core/arena
-. arena = Arena()
-do finally
-    arena.release()
-. values = Array(arena, (1 .. < 1) *> each, Size.max)
-. frozen = ImmutableArray(arena, (1 .. < 1) *> each, Size.max)
--- values.length, values.data.address, frozen.length
-for item in values
-    -- "unexpected"
-for item in frozen
-    -- "unexpected"
--- values[0 .. < 0].length, frozen[0 .. < 0].length
--- values.copy(arena).length
--- values.immutable.length
--- (values as Array'Byte'ArenaBacking).length
-. grown = values.resize(2, arena)
-grown[0] = 7
-grown[1] = 9
--- ", ".join(grown)
+```brix
+(import /core/array-builder)
+(import /core/arena)
+
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (let values (call Array arena (*> (..< 1 1) each) (. Size max)))
+  (let frozen (call ImmutableArray arena (*> (..< 1 1) each) (. Size max)))
+  (print (tuple (. values length) (. values data address) (. frozen length)))
+  (for (in item values)
+    (print "unexpected")
+  )
+  (for (in item frozen)
+    (print "unexpected")
+  )
+  (print (tuple (. ([] values (..< 0 0)) length) (. ([] frozen (..< 0 0)) length)))
+  (print (. (call (. values copy) arena) length))
+  (print (. values immutable length))
+  (print (. (as values (of Array Byte ArenaBacking)) length))
+  (let grown (call (. values resize) 2 arena))
+  (= ([] grown 0) 7)
+  (= ([] grown 1) 9)
+  (print (call (. ", " join) grown))
+)
 ```
 
 ```output
@@ -108,26 +126,32 @@ grown[1] = 9
 7, 9
 ```
 
-```yumi
-/core/array-builder
-for capacity in [0, 1, 65, 256]
-    . mutable = Array(source(), capacity as Size)
-    . frozen = ImmutableArray(source(), capacity as Size)
-    -- mutable.length, frozen.length
-    . total = 0
-    for item in mutable
-        total += item
-    for item in frozen
-        total += item
-    -- total, mutable[64], frozen[64]
-. singleton = Array((7 .. 7) *> each)
--- singleton.length, singleton[0]
+```brix
+(import /core/array-builder)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do source @inline
+(main
+  (for (in capacity (list 0 1 65 256))
+    (let mutable (call Array (call source) (as capacity Size)))
+    (let frozen (call ImmutableArray (call source) (as capacity Size)))
+    (print (tuple (. mutable length) (. frozen length)))
+    (let total 0)
+    (for (in item mutable)
+      (+= total item)
+    )
+    (for (in item frozen)
+      (+= total item)
+    )
+    (print (tuple total ([] mutable 64) ([] frozen 64)))
+  )
+  (let singleton (call Array (*> (.. 7 7) each)))
+  (print (tuple (. singleton length) ([] singleton 0)))
+)
 
-for i in 0 .. < 65
-    <= i
+(fn-do + source _ @inline
+  (for (in i (..< 0 65))
+    (yield i)
+  )
+)
 ```
 
 ```output
@@ -142,30 +166,37 @@ for i in 0 .. < 65
 (1, 7)
 ```
 
-```yumi
-/core/array-builder
-/core/arena
-. arena = Arena()
-do finally
-    arena.release()
-for capacity in [0, 1, 65, 256]
-    . mutable = Array(arena, source(), capacity as Size)
-    . frozen = ImmutableArray(arena, source(), capacity as Size)
-    -- mutable.length, frozen.length
-    . total = 0
-    for item in mutable
-        total += item
-    for item in frozen
-        total += item
-    -- total, mutable[64], frozen[64]
-. singleton = Array(arena, (7 .. 7) *> each)
--- singleton.length, singleton[0]
+```brix
+(import /core/array-builder)
+(import /core/arena)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do source @inline
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (for (in capacity (list 0 1 65 256))
+    (let mutable (call Array arena (call source) (as capacity Size)))
+    (let frozen (call ImmutableArray arena (call source) (as capacity Size)))
+    (print (tuple (. mutable length) (. frozen length)))
+    (let total 0)
+    (for (in item mutable)
+      (+= total item)
+    )
+    (for (in item frozen)
+      (+= total item)
+    )
+    (print (tuple total ([] mutable 64) ([] frozen 64)))
+  )
+  (let singleton (call Array arena (*> (.. 7 7) each)))
+  (print (tuple (. singleton length) ([] singleton 0)))
+)
 
-for i in 0 .. < 65
-    <= i
+(fn-do + source _ @inline
+  (for (in i (..< 0 65))
+    (yield i)
+  )
+)
 ```
 
 ```output
@@ -180,22 +211,26 @@ for i in 0 .. < 65
 (1, 7)
 ```
 
-```yumi
-/core/array-builder
-/BxGC/BxGC.h
-/core/arena
-. arena = Arena()
-do finally
-    arena.release()
-. allocated = C:brixGCAllocatedObjectCount()
-. a = Array((1 .. < 1) *> each, Size.max)
-. b = ImmutableArray((1 .. 3) ?> false, Size.max)
-. c = Array(arena, (1 .. < 1) *> each, Size.max)
-. d = ImmutableArray(arena, (1 .. 3) ?> false, Size.max)
-. delta = C:brixGCAllocatedObjectCount() - allocated
--- delta
--- arena.active-bytes, arena.system-block-allocation-count
--- a.length, b.length, c.length, d.length
+```brix
+(import /core/array-builder)
+(import /BxGC/BxGC.h)
+(import /core/arena)
+
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (let allocated (call C:brixGCAllocatedObjectCount))
+  (let a (call Array (*> (..< 1 1) each) (. Size max)))
+  (let b (call ImmutableArray (?> (.. 1 3) false) (. Size max)))
+  (let c (call Array arena (*> (..< 1 1) each) (. Size max)))
+  (let d (call ImmutableArray arena (?> (.. 1 3) false) (. Size max)))
+  (let delta (- (call C:brixGCAllocatedObjectCount) allocated))
+  (print delta)
+  (print (tuple (. arena active-bytes) (. arena system-block-allocation-count)))
+  (print (tuple (. a length) (. b length) (. c length) (. d length)))
+)
 ```
 
 ```output
@@ -204,28 +239,38 @@ do finally
 (0, 0, 0, 0)
 ```
 
-```yumi
-/core/array-builder
-. mutable =
-    ** source()
-    *> each * 2
-    ?> each > 2
-    |> Array
-. frozen =
-    ** source()
-    * 5
-    |> ImmutableArray
--- ", ".join(mutable)
--- ", ".join(frozen)
+```brix
+(import /core/array-builder)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do source @inline
+(main
+  (let mutable
+    (block
+      (spread (call source))
+      (pipe *> (* each 2))
+      (pipe ?> (> each 2))
+      (pipe |> Array)
+    )
+  )
+  (let frozen
+    (block
+      (spread (call source))
+      (item 5)
+      (pipe |> ImmutableArray)
+    )
+  )
+  (print (call (. ", " join) mutable))
+  (print (call (. ", " join) frozen))
+)
 
-do finally
-    -- "closed"
-for i in 1 .. 3
-    -- "yield $i"
-    <= i
+(fn-do + source _ @inline
+  (finally
+    (print "closed")
+  )
+  (for (in i (.. 1 3))
+    (print (str "yield " i))
+    (yield i)
+  )
+)
 ```
 
 ```output
@@ -241,33 +286,35 @@ closed
 1, 2, 3, 5
 ```
 
-```yumi
-/core/array-builder
-/BxGC/BxGC.h
-. first = ArrayStreamBox("first")
-. second = ArrayStreamBox("second")
-. mutable = Array(source(first, second), 256)
-. frozen = ImmutableArray(source(first, second), 256)
-C:brixGCCollect()
-mutable[0].text = "changed"
--- frozen[0].text, first.text
--- mutable[1].text, frozen[1].text
+```brix
+(import /core/array-builder)
+(import /BxGC/BxGC.h)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ArrayStreamBox
-+ text String
-────────────────────
-+ This
-    - text
+(main
+  (let first (call ArrayStreamBox "first"))
+  (let second (call ArrayStreamBox "second"))
+  (let mutable (call Array (call source first second) 256))
+  (let frozen (call ImmutableArray (call source first second) 256))
+  (call C:brixGCCollect)
+  (= (. ([] mutable 0) text) "changed")
+  (print (tuple (. ([] frozen 0) text) (. first text)))
+  (print (tuple (. ([] mutable 1) text) (. ([] frozen 1) text)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do source @inline
-    - first ArrayStreamBox
-    - second ArrayStreamBox
+(type + ArrayStreamBox
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-<= first
-C:brixGCCollect()
-<= second
+(fn-do + source _ @inline
+  (param first ArrayStreamBox)
+  (param second ArrayStreamBox)
+  (yield first)
+  (call C:brixGCCollect)
+  (yield second)
+)
 ```
 
 ```output
@@ -275,37 +322,40 @@ C:brixGCCollect()
 (second, second)
 ```
 
-```yumi
-/core/array-builder
-/BxGC/BxGC.h
-/core/arena
-. arena = Arena()
-do finally
-    arena.release()
-. first = ArrayStreamBox("first")
-. second = ArrayStreamBox("second")
-. mutable = Array(arena, source(first, second), 256)
-. frozen = ImmutableArray(arena, source(first, second), 256)
-C:brixGCCollect()
-mutable[0].text = "changed"
--- frozen[0].text, first.text
--- mutable[1].text, frozen[1].text
+```brix
+(import /core/array-builder)
+(import /BxGC/BxGC.h)
+(import /core/arena)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ArrayStreamBox
-+ text String
-────────────────────
-+ This
-    - text
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (let first (call ArrayStreamBox "first"))
+  (let second (call ArrayStreamBox "second"))
+  (let mutable (call Array arena (call source first second) 256))
+  (let frozen (call ImmutableArray arena (call source first second) 256))
+  (call C:brixGCCollect)
+  (= (. ([] mutable 0) text) "changed")
+  (print (tuple (. ([] frozen 0) text) (. first text)))
+  (print (tuple (. ([] mutable 1) text) (. ([] frozen 1) text)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do source @inline
-    - first ArrayStreamBox
-    - second ArrayStreamBox
+(type + ArrayStreamBox
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-<= first
-C:brixGCCollect()
-<= second
+(fn-do + source _ @inline
+  (param first ArrayStreamBox)
+  (param second ArrayStreamBox)
+  (yield first)
+  (call C:brixGCCollect)
+  (yield second)
+)
 ```
 
 ```output
@@ -313,29 +363,30 @@ C:brixGCCollect()
 (second, second)
 ```
 
-```yumi
-/core/array-builder
-. result = catch collect()
--- result is ArrayStreamFailure
+```brix
+(import /core/array-builder)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ArrayStreamFailure is Error
+(main
+  (let result (catch (call collect)))
+  (print (is result ArrayStreamFailure))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do collect Int ?! ArrayStreamFailure
+(type + ArrayStreamFailure (is Error))
 
-. values = Array(source())
-= values.length as Int
+(fn-do + collect Int (?! ArrayStreamFailure)
+  (let values (call Array (call source)))
+  (return (as (. values length) Int))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do source <Int> ?! ArrayStreamFailure @inline
-
-do finally
-    -- "closed"
-<= 1
--- "fail"
-?! ArrayStreamFailure("failed")
-<= 2
+(fn-do + source (stream Int) (?! ArrayStreamFailure) @inline
+  (finally
+    (print "closed")
+  )
+  (yield 1)
+  (print "fail")
+  (throw (call ArrayStreamFailure "failed"))
+  (yield 2)
+)
 ```
 
 ```output
@@ -344,29 +395,30 @@ closed
 true
 ```
 
-```yumi
-/core/array-builder
-. result = catch collect()
--- result is ArrayStreamFailure
+```brix
+(import /core/array-builder)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ArrayStreamFailure is Error
+(main
+  (let result (catch (call collect)))
+  (print (is result ArrayStreamFailure))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do collect Int ?! ArrayStreamFailure
+(type + ArrayStreamFailure (is Error))
 
-. values = ImmutableArray(source())
-= values.length as Int
+(fn-do + collect Int (?! ArrayStreamFailure)
+  (let values (call ImmutableArray (call source)))
+  (return (as (. values length) Int))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do source <Int> ?! ArrayStreamFailure @inline
-
-do finally
-    -- "closed"
-<= 1
--- "fail"
-?! ArrayStreamFailure("failed")
-<= 2
+(fn-do + source (stream Int) (?! ArrayStreamFailure) @inline
+  (finally
+    (print "closed")
+  )
+  (yield 1)
+  (print "fail")
+  (throw (call ArrayStreamFailure "failed"))
+  (yield 2)
+)
 ```
 
 ```output
@@ -375,118 +427,173 @@ closed
 true
 ```
 
-```yumi
-/core/array-builder
-. attempt = do new
-    . values = Array((1 .. < 1) *> each)
-    -- values[0]
-catch failure
-    -- failure
-attempt.wait()
+```brix
+(import /core/array-builder)
+
+(main
+  (let attempt
+    (do-new
+      (let values (call Array (*> (..< 1 1) each)))
+      (print ([] values 0))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
 Index out of bounds (0 / 0)
 ```
 
-```yumi
-/core/array-builder
-. attempt = do new
-    . values = Array((1 .. < 1) *> each)
-    -- values[0] = 1
-catch failure
-    -- failure
-attempt.wait()
+```brix
+(import /core/array-builder)
+
+(main
+  (let attempt
+    (do-new
+      (let values (call Array (*> (..< 1 1) each)))
+      (print (= ([] values 0) 1))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
 Set out of bounds (0 / 0)
 ```
 
-```yumi
-/core/array-builder
-. attempt = do new
-    . values = Array((1 .. < 1) *> each)
-    -- values[0 .. 1]
-catch failure
-    -- failure
-attempt.wait()
+```brix
+(import /core/array-builder)
+
+(main
+  (let attempt
+    (do-new
+      (let values (call Array (*> (..< 1 1) each)))
+      (print ([] values (.. 0 1)))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
 Range out of bounds (1 / 0)
 ```
 
-```yumi
-/core/array-builder
-/core/arena
-. arena = Arena()
-do finally
-    arena.release()
-. attempt = do new
-    . values = Array(arena, (1 .. < 1) *> each)
-    -- values[0]
-catch failure
-    -- failure
-attempt.wait()
+```brix
+(import /core/array-builder)
+(import /core/arena)
+
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (let attempt
+    (do-new
+      (let values (call Array arena (*> (..< 1 1) each)))
+      (print ([] values 0))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
 Index out of bounds (0 / 0)
 ```
 
-```yumi
-/core/array-builder
-/core/arena
-. arena = Arena()
-do finally
-    arena.release()
-. attempt = do new
-    . values = Array(arena, (1 .. < 1) *> each)
-    -- values[0] = 1
-catch failure
-    -- failure
-attempt.wait()
+```brix
+(import /core/array-builder)
+(import /core/arena)
+
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (let attempt
+    (do-new
+      (let values (call Array arena (*> (..< 1 1) each)))
+      (print (= ([] values 0) 1))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
 Set out of bounds (0 / 0)
 ```
 
-```yumi
-/core/array-builder
-/core/arena
-. arena = Arena()
-do finally
-    arena.release()
-. attempt = do new
-    . values = Array(arena, (1 .. < 1) *> each)
-    -- values[0 .. 1]
-catch failure
-    -- failure
-attempt.wait()
+```brix
+(import /core/array-builder)
+(import /core/arena)
+
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (let attempt
+    (do-new
+      (let values (call Array arena (*> (..< 1 1) each)))
+      (print ([] values (.. 0 1)))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
 Range out of bounds (1 / 0)
 ```
 
-```yumi
-/core/array-builder
-/core/arena
-. arena = Arena()
-do finally
-    arena.release()
-. mutable =
-    ** 1 .. 3
-    *> each * 2
-    |> Array(arena, ...)
-. frozen =
-    ** 1 .. 3
-    *> each * 3
-    |> ImmutableArray(arena, ...)
--- ", ".join(mutable)
--- ", ".join(frozen)
+```brix
+(import /core/array-builder)
+(import /core/arena)
+
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (let mutable
+    (block
+      (spread (.. 1 3))
+      (pipe *> (* each 2))
+      (pipe |> (call Array arena ...))
+    )
+  )
+  (let frozen
+    (block
+      (spread (.. 1 3))
+      (pipe *> (* each 3))
+      (pipe |> (call ImmutableArray arena ...))
+    )
+  )
+  (print (call (. ", " join) mutable))
+  (print (call (. ", " join) frozen))
+)
 ```
 
 ```output
@@ -494,28 +601,31 @@ do finally
 3, 6, 9
 ```
 
-```yumi
-/core/array-builder
-/BxGC/BxGC.h
-. mutable = Array(source())
-. frozen = ImmutableArray(source(), 256)
-C:brixGCCollect()
--- mutable.length, frozen.length
--- mutable[0].text, frozen[64].text
+```brix
+(import /core/array-builder)
+(import /BxGC/BxGC.h)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ArrayStreamBox
-+ text String
-────────────────────
-+ This
-    - text
+(main
+  (let mutable (call Array (call source)))
+  (let frozen (call ImmutableArray (call source) 256))
+  (call C:brixGCCollect)
+  (print (tuple (. mutable length) (. frozen length)))
+  (print (tuple (. ([] mutable 0) text) (. ([] frozen 64) text)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do source @inline
+(type + ArrayStreamBox
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-for i in 0 .. < 65
-    <= ArrayStreamBox("item $i")
-    C:brixGCCollect()
+(fn-do + source _ @inline
+  (for (in i (..< 0 65))
+    (yield (call ArrayStreamBox (str "item " i)))
+    (call C:brixGCCollect)
+  )
+)
 ```
 
 ```output
@@ -523,34 +633,36 @@ for i in 0 .. < 65
 (item 0, item 64)
 ```
 
-```yumi
-/core/array-builder
-/core/arena
-. arena = Arena()
-do finally
-    arena.release()
-. result = catch collect(arena)
--- result is ArrayStreamFailure
+```brix
+(import /core/array-builder)
+(import /core/arena)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ArrayStreamFailure is Error
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (let result (catch (call collect arena)))
+  (print (is result ArrayStreamFailure))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do collect Int ?! ArrayStreamFailure
-    - arena Arena
+(type + ArrayStreamFailure (is Error))
 
-. values = Array(arena, source(), 20)
-= values.length as Int
+(fn-do + collect Int (?! ArrayStreamFailure)
+  (param arena Arena)
+  (let values (call Array arena (call source) 20))
+  (return (as (. values length) Int))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do source <Int> ?! ArrayStreamFailure @inline
-
-do finally
-    -- "closed"
-<= 1
--- "fail"
-?! ArrayStreamFailure("failed")
-<= 2
+(fn-do + source (stream Int) (?! ArrayStreamFailure) @inline
+  (finally
+    (print "closed")
+  )
+  (yield 1)
+  (print "fail")
+  (throw (call ArrayStreamFailure "failed"))
+  (yield 2)
+)
 ```
 
 ```output
@@ -559,34 +671,36 @@ closed
 true
 ```
 
-```yumi
-/core/array-builder
-/core/arena
-. arena = Arena()
-do finally
-    arena.release()
-. result = catch collect(arena)
--- result is ArrayStreamFailure
+```brix
+(import /core/array-builder)
+(import /core/arena)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ArrayStreamFailure is Error
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (let result (catch (call collect arena)))
+  (print (is result ArrayStreamFailure))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do collect Int ?! ArrayStreamFailure
-    - arena Arena
+(type + ArrayStreamFailure (is Error))
 
-. values = ImmutableArray(arena, source(), 20)
-= values.length as Int
+(fn-do + collect Int (?! ArrayStreamFailure)
+  (param arena Arena)
+  (let values (call ImmutableArray arena (call source) 20))
+  (return (as (. values length) Int))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do source <Int> ?! ArrayStreamFailure @inline
-
-do finally
-    -- "closed"
-<= 1
--- "fail"
-?! ArrayStreamFailure("failed")
-<= 2
+(fn-do + source (stream Int) (?! ArrayStreamFailure) @inline
+  (finally
+    (print "closed")
+  )
+  (yield 1)
+  (print "fail")
+  (throw (call ArrayStreamFailure "failed"))
+  (yield 2)
+)
 ```
 
 ```output
@@ -595,23 +709,27 @@ closed
 true
 ```
 
-```yumi
-/core/array-builder
-/BxGC/BxGC.h
-for capacity in [65, 256]
-    . input = source()
-    . initial-count = C:brixGCAllocatedObjectCount()
-    . initial-bytes = C:brixGCRequestedByteCount()
-    . values = Array(input, capacity as Size)
-    . count = C:brixGCAllocatedObjectCount() - initial-count
-    . bytes = C:brixGCRequestedByteCount() - initial-bytes
-    -- count, bytes, values.length, values[64]
+```brix
+(import /core/array-builder)
+(import /BxGC/BxGC.h)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do source
+(main
+  (for (in capacity (list 65 256))
+    (let input (call source))
+    (let initial-count (call C:brixGCAllocatedObjectCount))
+    (let initial-bytes (call C:brixGCRequestedByteCount))
+    (let values (call Array input (as capacity Size)))
+    (let count (- (call C:brixGCAllocatedObjectCount) initial-count))
+    (let bytes (- (call C:brixGCRequestedByteCount) initial-bytes))
+    (print (tuple count bytes (. values length) ([] values 64)))
+  )
+)
 
-for i in 0 .. < 65
-    <= i
+(fn-do + source _
+  (for (in i (..< 0 65))
+    (yield i)
+  )
+)
 ```
 
 ```output
@@ -619,23 +737,27 @@ for i in 0 .. < 65
 (2, 2080, 65, 64)
 ```
 
-```yumi
-/core/array-builder
-/BxGC/BxGC.h
-for capacity in [65, 256]
-    . input = source()
-    . initial-count = C:brixGCAllocatedObjectCount()
-    . initial-bytes = C:brixGCRequestedByteCount()
-    . values = ImmutableArray(input, capacity as Size)
-    . count = C:brixGCAllocatedObjectCount() - initial-count
-    . bytes = C:brixGCRequestedByteCount() - initial-bytes
-    -- count, bytes, values.length, values[64]
+```brix
+(import /core/array-builder)
+(import /BxGC/BxGC.h)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do source
+(main
+  (for (in capacity (list 65 256))
+    (let input (call source))
+    (let initial-count (call C:brixGCAllocatedObjectCount))
+    (let initial-bytes (call C:brixGCRequestedByteCount))
+    (let values (call ImmutableArray input (as capacity Size)))
+    (let count (- (call C:brixGCAllocatedObjectCount) initial-count))
+    (let bytes (- (call C:brixGCRequestedByteCount) initial-bytes))
+    (print (tuple count bytes (. values length) ([] values 64)))
+  )
+)
 
-for i in 0 .. < 65
-    <= i
+(fn-do + source _
+  (for (in i (..< 0 65))
+    (yield i)
+  )
+)
 ```
 
 ```output

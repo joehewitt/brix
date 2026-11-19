@@ -1,0 +1,441 @@
+(import ./completions)
+(import /ai/media)
+(import /ai/model)
+(import /data)
+(import /data/json)
+(import /net/http)
+(import /net/sse)
+(import /net/url)
+
+(type + OpenAIImages (is AIProvider)
+  (prop + api-key String)
+  (prop + base-url URL)
+  (prop + partial-images Size)
+  (fn-do + This _
+    (param api-key _)
+    (param base-url _ (= openai-api-base))
+    (param partial-images Size (= 0))
+    (call super)
+  )
+  (fn-expr _ headers (list HTTPHeader) :get
+    (item (tuple "Authorization" (str "Bearer " api-key)))
+    (item (tuple "Content-Type" "application/json"))
+    (item (tuple "Accept" "text/event-stream"))
+  )
+  (fn-do + stream (stream AIEvent)
+    (param request AIRequest)
+    (for (in event (call openai-image-provider-events this request))
+      (yield event)
+    )
+  )
+)
+
+(fn-do _ openai-image-provider-events (stream AIEvent)
+  (param provider OpenAIImages)
+  (param request AIRequest)
+  (let response
+    (call openai-image-provider-response provider request
+      (block
+        (on-error (: canceled TaskCancelationError)
+          (throw (call AIError (. AIErrorKind cancellation) (str canceled)))
+        )
+        (on-error (: terminated TaskTerminationError)
+          (throw (call AIError (. AIErrorKind cancellation) (str terminated)))
+        )
+      )
+    )
+  )
+  (if (!= (. response status) (. HTTPStatus ok))
+    (let error-body (. response text))
+    (let error (call openai-response-error response error-body))
+    (do
+      (inline (call (. response close)))
+    )
+    (throw error)
+  )
+  (blank)
+  (for (in event (call openai-image-response-events (call OpenAIResponseLease response)))
+    (yield event)
+  )
+)
+
+(fn-do _ openai-image-provider-response HTTPResponse (?! AIError)
+  (param provider OpenAIImages)
+  (param request AIRequest)
+  (let body (call to-json (call openai-image-request-value request (. provider partial-images))))
+  (let endpoint (/ (. provider base-url) (call openai-image-path request)))
+  (blank)
+  (throw (call AIError (. AIErrorKind unknown) (str transport-error)) (on-error (: transport-error Error)))
+  (blank)
+  (return (call http-send (call HTTPRequest (. HTTPMethod post) endpoint (. provider headers) body)))
+)
+
+(fn-expr + openai-image-path _
+  (param request AIRequest)
+  (if-expr (call openai-image-inputs request) "images/edits" "images/generations")
+)
+
+(fn-do + openai-image-request-value JSON (?! AIError)
+  (param request AIRequest)
+  (param partial-images Size (= 0))
+  (throw (call AIError (. AIErrorKind invalid-request) "AIRequest.model is required") (if (not (. request model))))
+  (throw (call AIError (. AIErrorKind invalid-request) "OpenAI Images does not support audio output") (if (. request audio-output)))
+  (throw (call AIError (. AIErrorKind invalid-request) "OpenAI Images does not support video output") (if (. request video-output)))
+  (blank)
+  (let prompt (call openai-image-prompt request))
+  (throw (call AIError (. AIErrorKind invalid-request) "OpenAI Images requires a prompt") (if (not prompt)))
+  (blank)
+  (let options (?? (. request image-output) (call AIImageOptions)))
+  (let size (call openai-image-size options))
+  (let inputs (call openai-image-inputs request))
+  (let root
+    (call (of Map String JSON)
+      (block
+        (:model (. request model))
+        (:prompt prompt)
+        (:stream true)
+        (:size? size)
+        (:quality? (call openai-image-quality (. options quality)))
+      )
+    )
+  )
+  (blank)
+  (if (. options format)
+    (= ([] root "output_format") (call openai-image-format (. options format)))
+  )
+  (if (. options background)
+    (= ([] root "background") (call openai-image-background (. options background)))
+  )
+  (if partial-images
+    (= ([] root "partial_images") (as partial-images Int))
+  )
+  (if inputs
+    (= ([] root "images") (call openai-image-references inputs))
+  )
+  (if (. request provider-json)
+    (call merge-openai-object root (. request provider-json) "AIRequest.provider-json")
+  )
+  (return root)
+)
+
+(fn-expr _ openai-image-prompt String
+  (param request AIRequest)
+  (case? (and options (. options prompt))
+    (. options prompt)
+  )
+  (case? turn
+    (call ai-parts-text (. turn parts))
+  )
+  (default
+    ""
+  )
+  (where
+    (lazy options (. request image-output))
+    (lazy turn (call openai-image-turn (. request messages)))
+  )
+)
+
+(fn-do _ openai-image-inputs (list AIImage)
+  (param request AIRequest)
+  (let inputs (list AIImage))
+  (let options (. request image-output))
+  (if options
+    (if (. options reference-image)
+      (+= inputs (. options reference-image))
+    )
+    (for (in image (. options reference-images))
+      (+= inputs image)
+    )
+  )
+  (let turn (call openai-image-turn (. request messages)))
+  (if turn
+    (for (in part (. turn parts))
+      (if (is part AIImagePart)
+        (+= inputs (. (as part AIImagePart) image))
+      )
+    )
+  )
+  (return inputs)
+)
+
+(fn-do _ openai-image-turn (? AIMessage)
+  (param messages (list AIMessage))
+  (let turn (? AIMessage))
+  (for (in message messages)
+    (if (== (. message role) (. AIMessageRole user))
+      (= turn message)
+    )
+  )
+  (return turn)
+)
+
+(fn-expr _ openai-image-size (? String) (?! AIError)
+  (param options AIImageOptions)
+  (case? (and width height)
+    (str width "x" height)
+  )
+  (throw (call AIError (. AIErrorKind invalid-request) "OpenAI image size requires both width and height") (if (or width height)))
+  (default
+    (call openai-aspect-size (. options aspect-ratio))
+  )
+  (where
+    (lazy width (?? (. options width) 0))
+    (lazy height (?? (. options height) 0))
+  )
+)
+
+(fn-expr _ openai-aspect-size (? String)
+  (param ratio AIAspectRatio)
+  (match? ratio
+    (case (. AIAspectRatio square)
+      "1024x1024"
+    )
+    (case (. AIAspectRatio portrait)
+      "1024x1536"
+    )
+    (case (. AIAspectRatio landscape)
+      "1536x1024"
+    )
+  )
+)
+
+(fn-expr _ openai-image-quality (? String)
+  (param quality AIQuality)
+  (match? quality
+    (case (. AIQuality low)
+      "low"
+    )
+    (case (. AIQuality medium)
+      "medium"
+    )
+    (case (. AIQuality high)
+      "high"
+    )
+    (case (. AIQuality extra-high)
+      "xhigh"
+    )
+    (case (. AIQuality ultra)
+      "max"
+    )
+  )
+)
+
+(fn-expr _ openai-image-format _ (?! AIError)
+  (param mime-type String)
+  (match mime-type
+    (case= ai-format-png
+      "png"
+    )
+    (case= ai-format-jpeg
+      "jpeg"
+    )
+    (case= ai-format-webp
+      "webp"
+    )
+    (throw (call AIError (. AIErrorKind invalid-request) "OpenAI image output requires PNG, JPEG, or WebP"))
+  )
+)
+
+(fn-expr _ openai-image-background _
+  (param background AIImageBackground)
+  (match background
+    (case (. AIImageBackground transparent)
+      "transparent"
+    )
+    (case (. AIImageBackground opaque)
+      "opaque"
+    )
+  )
+)
+
+(fn-expr _ openai-image-references JSON (?! AIError)
+  (param images (list AIImage))
+  (in (call openai-image-reference each) images)
+)
+
+(fn-expr _ openai-image-reference JSON (?! AIError)
+  (param image AIImage)
+  (case? (is (. image file source) AIProviderFileSource)
+    (throw (call AIError (. AIErrorKind invalid-request) message) (if (!= (. provider-file provider-id) "openai")))
+    (blank)
+    (call (of Map String JSON)
+      (block
+        (entry "file_id" (. provider-file file-id))
+      )
+    )
+    (blank)
+    (lazy provider-file (as (. image file source) AIProviderFileSource))
+    (lazy message (str "OpenAI cannot use a file ID owned by " (. provider-file provider-id)))
+  )
+  (default
+    (call (of Map String JSON)
+      (block
+        (entry "image_url" (call openai-file-url (. image file)))
+      )
+    )
+  )
+)
+
+(fn-do + openai-image-stream-events (stream AIEvent)
+  (param body (of ReadableData Byte))
+  (let state (call OpenAIImageStreamState))
+  (for (in event (call server-sent-events body))
+    (if (!= (. event data) "[DONE]")
+      (let decoded (call parse-openai-json (. event data) "OpenAI returned invalid image stream JSON"))
+      (for (in ai-event (call consume-openai-image-event state decoded))
+        (yield ai-event)
+      )
+    )
+  )
+  (blank)
+  (for (in final-event (call finish-openai-image-stream state))
+    (yield final-event)
+  )
+)
+
+(fn-do + openai-image-response-events (stream AIEvent)
+  (param lease OpenAIResponseLease)
+  (finally
+    (inline (call (. lease close)))
+  )
+  (for (in event (call openai-image-stream-events (. lease response reader)))
+    (yield event)
+  )
+)
+
+(type _ OpenAIImageStreamState
+  (prop + image-count Size)
+  (prop + image-started _ (= false))
+  (prop + usage AIUsage)
+)
+
+(fn-do _ consume-openai-image-event (stream AIEvent)
+  (param state OpenAIImageStreamState)
+  (param value JSON)
+  (throw (call AIError (. AIErrorKind invalid-response) "OpenAI image stream event was not an object") (if (is-not value (map String JSON))))
+  (let root (as value (map String JSON)))
+  (let kind (?? (call json-string ([] root "type")) ""))
+  (throw (call openai-image-stream-error root) (if (== kind "error")))
+  (blank)
+  (let is-partial (or (== kind "image_generation.partial_image") (== kind "image_edit.partial_image")))
+  (let is-complete (or (== kind "image_generation.completed") (== kind "image_edit.completed")))
+  (return-if (if (and (not is-partial) (not is-complete))))
+  (blank)
+  (let image (call openai-stream-image root))
+  (let part-id (str "image-" (. state image-count)))
+  (if (not (. state image-started))
+    (= (. state image-started) true)
+    (yield (call AIPartBeginEvent (call AIImagePart part-id (call openai-blank-image image))))
+  )
+  (if is-partial
+    (yield (call AIPartDeltaEvent part-id (call AIImageDelta image)))
+    (return)
+  )
+  (blank)
+  (= (. state image-started) false)
+  (+= (. state image-count) 1)
+  (yield (call AIPartEndEvent (call AIImagePart part-id image)))
+  (blank)
+  (let usage (call json-object ([] root "usage")))
+  (if usage
+    (= (. state usage) (call openai-image-usage usage))
+    (yield (call AIUsageEvent (. state usage)))
+  )
+)
+
+(fn-do _ finish-openai-image-stream (stream AIEvent)
+  (param state OpenAIImageStreamState)
+  (throw (call AIError (. AIErrorKind invalid-response) "OpenAI image stream ended before its image completed") (if (or (. state image-started) (not (. state image-count)))))
+  (blank)
+  (yield (call AIDoneEvent (. AIFinishReason stop) (. state usage)))
+)
+
+(fn-expr _ openai-stream-image AIImage (?! AIError)
+  (param root (map String JSON))
+  (throw (call AIError (. AIErrorKind invalid-response) "OpenAI returned invalid base64 image data") (on-error SyntaxError))
+  (throw (call AIError (. AIErrorKind invalid-response) "OpenAI image event omitted its image data") (if (not data)))
+  (blank)
+  (call openai-sized-image file (?? (call json-string ([] root "size")) ""))
+  (where
+    (lazy data (call json-string ([] root "b64_json")))
+    (lazy format (?? (call json-string ([] root "output_format")) "png"))
+    (lazy file (call AIFile (call AIBytesSource (call decode-base64 data)) (call openai-image-mime-type format)))
+  )
+)
+
+(fn-expr _ openai-sized-image AIImage
+  (param file AIFile)
+  (param size String)
+  (match size
+    (~ (seq (: width (of \num U32)) "x" (: height (of \num U32)))
+      (call AIImage file width height)
+    )
+    (default
+      (call AIImage file)
+    )
+  )
+)
+
+(fn-expr _ openai-blank-image _
+  (param image AIImage)
+  (call AIImage (call AIFile (call AIBytesSource ([] Byte 0)) (. image file mime-type)) (. image width) (. image height))
+)
+
+(fn-expr _ openai-image-mime-type _
+  (param format String)
+  (match format
+    (case "jpeg"
+      ai-format-jpeg
+    )
+    (case "webp"
+      ai-format-webp
+    )
+    (default
+      ai-format-png
+    )
+  )
+)
+
+(fn-expr _ openai-image-usage _
+  (param value (map String JSON))
+  (call AIUsage
+    (block
+      (:input-tokens (call json-size ([] value "input_tokens")))
+      (:output-tokens (call json-size ([] value "output_tokens")))
+      (:total-tokens (call json-size ([] value "total_tokens")))
+    )
+  )
+)
+
+(fn-expr _ openai-image-stream-error _
+  (param root (map String JSON))
+  (call AIError kind message)
+  (where
+    (lazy error (?? (call json-object ([] root "error")) root))
+    (lazy message (?? (call json-string ([] error "message")) "OpenAI image generation failed"))
+    (lazy code (?? (call json-string ([] error "code")) ""))
+    (lazy is-rejected (or (== code "moderation_blocked") (== code "image_generation_user_error")))
+    (lazy kind (if-expr is-rejected (. AIErrorKind invalid-request) (. AIErrorKind server)))
+  )
+)
+
+(fn-expr _ json-string _
+  (param value (? JSON))
+  (match? value
+    (case String)
+  )
+)
+
+(fn-expr _ json-object _
+  (param value (? JSON))
+  (match? value
+    (case (map String JSON))
+  )
+)
+
+(fn-expr _ json-size (? Size)
+  (param value (? JSON))
+  (match? value
+    (case (all Int ({} (>= it 0))))
+  )
+)

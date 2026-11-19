@@ -1,105 +1,135 @@
 # Ccalls
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-C:ctest1()
+(main
+  (call C:ctest1)
+)
 ```
 
 ```output
 received!
 ```
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-C:ctest2a(42)
+(main
+  (call C:ctest2a 42)
+)
 ```
 
 ```output
 received 42
 ```
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-C:ctest2a(true)
+(main
+  (call C:ctest2a true)
+)
 ```
 
 ```output
 received 1
 ```
 
-```yumi crash
-/JaCore/tests.h
+```brix crash
+(import /JaCore/tests.h)
+(blank)
 
-C:ctest2a((1,2))
+(main
+  (call C:ctest2a (tuple 1 2))
+)
 ```
 
 ```output
 Exception: No C function "ctest2a" accepts ((I64, I64)); it is declared as "ctest2a(I32)"
-<no file:4>
-    C:ctest2a((1,2))
-    ^^^^^^^^^^^^^^^^
+<no file:6>
+      (call C:ctest2a (tuple 1 2))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-/JaCore/tests.h
+```brix crash
+(import /JaCore/tests.h)
+(blank)
 
-C:ctest2a • with 1
+(main
+  (call C:ctest2a (:with 1))
+)
 ```
 
 ```output
 Exception: No C function "ctest2a" accepts with I64; it is declared as "ctest2a(I32)"
-<no file:4>
-    C:ctest2a • with 1
-    ^^^^^^^^^^^^^^^^^^
+<no file:6>
+      (call C:ctest2a (:with 1))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-C:ctest2a(42)
+(main
+  (call C:ctest2a 42)
+)
 ```
 
 ```output
 received 42
 ```
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-C:ctest2b(true)
+(main
+  (call C:ctest2b true)
+)
 ```
 
 ```output
 received 1
 ```
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-C:ctest2c(42.1234f)
+(main
+  (call C:ctest2c 42.1234f)
+)
 ```
 
 ```output
 received 42.123400
 ```
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-C:ctest2d(9223372036854775807i64)
+(main
+  (call C:ctest2d 9223372036854775807i64)
+)
 ```
 
 ```output
 received 9223372036854775807
 ```
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-C:ctest2e("foo")
+(main
+  (call C:ctest2e "foo")
+)
 ```
 
 ```output
@@ -108,17 +138,19 @@ received 'foo'
 
 ### An optional text given to a C pointer is the text it holds, or a null pointer where it holds none.
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-give("foo")
-give(null)
+(main
+  (call give "foo")
+  (call give null)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do give
-    - text String?
-
-C:ctest2g(text)
+(fn-do + give _
+  (param text (? String))
+  (call C:ctest2g text)
+)
 ```
 
 ```output
@@ -126,63 +158,76 @@ received 'foo'
 received null
 ```
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-. thing = Thing()
-C:ctest2f(thing)
+(main
+  (let thing (call Thing))
+  (call C:ctest2f thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a I32 = 48
+(type + Thing
+  (prop + a I32 (= 48))
+)
 ```
 
 ```output
 received 48
 ```
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-. thing = Thing()
-C:ctest2f(thing)
+(main
+  (let thing (call Thing))
+  (call C:ctest2f thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a I32 = 48
-+ doubled = #a * 2
+(type + Thing
+  (prop + a I32 (= 48))
+  (prop + doubled _ (= (* #a 2)))
+)
 ```
 
 ```output
 received 48
 ```
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
--- C:ctest4a()
+(main
+  (print (call C:ctest4a))
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
--- C:ctest4b()
+(main
+  (print (call C:ctest4b))
+)
 ```
 
 ```output
 9223372036854775807
 ```
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
--- C:ctest4c()
+(main
+  (print (call C:ctest4c))
+)
 ```
 
 ```output
@@ -191,105 +236,110 @@ received 48
 
 ## Casting C functions to function types
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-. f2 = C:ctest2a as Foo
-f2(42)
+(main
+  (let f2 (as C:ctest2a Foo))
+  (call f2 42)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Void
-    - a Int
+(type + Foo (is (fn-type Void (param a Int))))
 ```
 
 ```output
 received 42
 ```
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-. f1 = C:ctest2a as Foo
-f1(42)
+(main
+  (let f1 (as C:ctest2a Foo))
+  (call f1 42)
+  (blank)
+  (let f2 (as C:ctest2aa Foo))
+  (call f2 43)
+)
 
-. f2 = C:ctest2aa as Foo
-f2(43)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Void
-    - a Int
+(type + Foo (is (fn-type Void (param a Int))))
 ```
 
 ```output
 received 42received aa 43
 ```
 
-```yumi crash
-/JaCore/tests.h
+```brix crash
+(import /JaCore/tests.h)
+(blank)
 
-. f1 = C:ctest2a as Foo
-f1(1, 2)
+(main
+  (let f1 (as C:ctest2a Foo))
+  (call f1 1 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Void
-    - a Int
+(type + Foo (is (fn-type Void (param a Int))))
 ```
 
 ```output
 Exception: Wrong number of arguments
-<no file:5>
-    f1(1, 2)
-    ^^^^^^^^
+<no file:7>
+      (call f1 1 2)
+      ^^^^^^^^^^^^^
 ```
 
 ### Cast C function to another function with different return type
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-. f1 = C:ctest4a as Foo
--- f1()
+(main
+  (let f1 (as C:ctest4a Foo))
+  (print (call f1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Float
+(type + Foo (is (fn-type Float)))
 ```
 
 ```output
 42
 ```
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-. f1 = C:ctest2a as Foo
-f1(42.5)
+(main
+  (let f1 (as C:ctest2a Foo))
+  (call f1 42.5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Void
-    - a Float
+(type + Foo (is (fn-type Void (param a Float))))
 ```
 
 ```output
 received 42
 ```
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-. f1 = C:ctest2a as Foo
-f1(Thing())
+(main
+  (let f1 (as C:ctest2a Foo))
+  (call f1 (call Thing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (fn-to-expr + I32
+    42
+  )
+)
 
-────────────────────
-+ to I32
-
-42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Void
-    - a Thing
+(type + Foo (is (fn-type Void (param a Thing))))
 ```
 
 ```output
@@ -298,36 +348,38 @@ received 42
 
 ### Cast C function to another function with incompatible return type
 
-```yumi crash
-/JaCore/tests.h
+```brix crash
+(import /JaCore/tests.h)
+(blank)
 
-. f1 = C:ctest2a as Foo
-f1(Thing())
+(main
+  (let f1 (as C:ctest2a Foo))
+  (call f1 (call Thing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Void
-    - a Thing
+(type + Foo (is (fn-type Void (param a Thing))))
 ```
 
 ```output
 Exception: function ctest2a cannot be cast to Foo; there is no conversion between them
-<no file:4>
-    . f1 = C:ctest2a as Foo
-           ^^^^^^^^^^^^^^^^
+<no file:6>
+      (let f1 (as C:ctest2a Foo))
+              ^^^^^^^^^^^^^^^^^^
 ```
 
 ### Multiple arguments
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-C:ctest13(Thing(), "foo")
+(main
+  (call C:ctest13 (call Thing) "foo")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing)
 ```
 
 ```output
@@ -336,13 +388,15 @@ received 1 foo
 
 ### Multiple arguments with one missing
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
--- C:ctest13(Thing(), ...)
+(main
+  (print (call C:ctest13 (call Thing) ...))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing)
 ```
 
 ```output
@@ -351,45 +405,52 @@ received 1 foo
 
 ### Multiple arguments with one extra
 
-```yumi crash
-/JaCore/tests.h
+```brix crash
+(import /JaCore/tests.h)
+(blank)
 
-C:ctest13(Thing(), "foo", "bar")
+(main
+  (call C:ctest13 (call Thing) "foo" "bar")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing)
 ```
 
 ```output
 Exception: No C function "ctest13" accepts (Thing, String, String); it is declared as "ctest13(CPointer'I8, CPointer'Char8)"
-<no file:4>
-    C:ctest13(Thing(), "foo", "bar")
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:6>
+      (call C:ctest13 (call Thing) "foo" "bar")
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Returning null from C to string
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-. called = C:ctest14()
--- "'$called'"
+(main
+  (let called (call C:ctest14))
+  (print (str "'" called "'"))
+)
 ```
 
 ```output
 ''
 ```
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-. thing Thing
-C:ctest15(&thing)
--- thing.a
--- thing.b as String
+(main
+  (let thing Thing)
+  (call C:ctest15 &thing)
+  (print (. thing a))
+  (print (as (. thing b) String))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is (a Int, b CPointer'Char8)
+(type + Thing (is (tuple (: a Int) (: b (of CPointer Char8)))))
 ```
 
 ```output
@@ -399,11 +460,14 @@ hi there
 
 ### A header read as C++ declares `abs` once for each type; here it is one function.
 
-```yumi
-/stdlib.h
+```brix
+(import /stdlib.h)
+(blank)
 
--- C:abs(-5)
--- C:llabs(-6)
+(main
+  (print (call C:abs -5))
+  (print (call C:llabs -6))
+)
 ```
 
 ```output
@@ -413,25 +477,26 @@ hi there
 
 ### A C function that may block is called from the main and from a function.
 
-```yumi
-/unistd.h
-/string.h
+```brix
+(import /unistd.h)
+(import /string.h)
+(blank)
 
--- C:usleep(10)
--- C:getpid() > 0
--- own-pid() > 0
--- length("hello")
+(main
+  (print (call C:usleep 10))
+  (print (> (call C:getpid) 0))
+  (print (> (call own-pid) 0))
+  (print (call length "hello"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do own-pid Int
+(fn-do + own-pid Int
+  (return (call C:getpid))
+)
 
-= C:getpid()
-
-━━━━━━━━━━━━━━━━━━━━
-+ length U64
-    - text String
-
-C:strlen(text)
+(fn-expr + length U64
+  (param text String)
+  (call C:strlen text)
+)
 ```
 
 ```output
@@ -443,10 +508,13 @@ true
 
 ### null is given where C takes a function pointer.
 
-```yumi
-/stdlib.h
+```brix
+(import /stdlib.h)
+(blank)
 
--- C:bsearch(null, null, 0, 8, null) == null
+(main
+  (print (== (call C:bsearch null null 0 8 null) null))
+)
 ```
 
 ```output
@@ -455,14 +523,17 @@ true
 
 ### A pointer from C is held, added to, and passed back. An integer is given where C takes a pointer.
 
-```yumi
-/stdlib.h
-/string.h
+```brix
+(import /stdlib.h)
+(import /string.h)
+(blank)
 
-. home = C:getenv("HOME")
-. rest = home + 1
--- C:strlen(home) - C:strlen(rest)
--- C:strtoull("31", null, 10)
+(main
+  (let home (call C:getenv "HOME"))
+  (let rest (+ home 1))
+  (print (- (call C:strlen home) (call C:strlen rest)))
+  (print (call C:strtoull "31" null 10))
+)
 ```
 
 ```output
@@ -472,20 +543,23 @@ true
 
 ### A pointer equals `null` when it holds no address.
 
-```yumi
-/string.h
+```brix
+(import /string.h)
+(blank)
 
-. found = C:strstr("hello", "x")
--- found == null
--- null == found
--- null != found
-. held = C:strstr("hello", "l")
--- held == null
--- held != null
--- null == held
--- null != held
-. empty Pointer = null
--- empty == null
+(main
+  (let found (call C:strstr "hello" "x"))
+  (print (== found null))
+  (print (== null found))
+  (print (!= null found))
+  (let held (call C:strstr "hello" "l"))
+  (print (== held null))
+  (print (!= held null))
+  (print (== null held))
+  (print (!= null held))
+  (let empty Pointer null)
+  (print (== empty null))
+)
 ```
 
 ```output
@@ -501,12 +575,15 @@ true
 
 ### The address of a local is given to C, which writes through it.
 
-```yumi
-/time.h
+```brix
+(import /time.h)
+(blank)
 
-. t I64
-C:time(&t)
--- t > 0
+(main
+  (let t I64)
+  (call C:time &t)
+  (print (> t 0))
+)
 ```
 
 ```output
@@ -515,17 +592,20 @@ true
 
 ### A pointer prints as the text it leads to when that is C chars, and as its type when it is not.
 
-```yumi
-/string.h
+```brix
+(import /string.h)
+(blank)
 
-. cell I64 = 7
-. p CPointer'I64 = &cell
--- p
--- "at $p"
--- C:strstr("hello world", "wor")
-. q = C:strstr("hello world", "lo")
--- q
--- "found $q"
+(main
+  (let cell I64 7)
+  (let p (of CPointer I64) &cell)
+  (print p)
+  (print (str "at " p))
+  (print (call C:strstr "hello world" "wor"))
+  (let q (call C:strstr "hello world" "lo"))
+  (print q)
+  (print (str "found " q))
+)
 ```
 
 ```output
@@ -538,23 +618,25 @@ found lo world
 
 ### A pointer to C chars becomes text where text is wanted, with `as` and without.
 
-```yumi
-/string.h
+```brix
+(import /string.h)
+(blank)
 
-. s String = C:strstr("hello world", "wor")
--- s
--- s.size
-. t = C:strstr("hello world", "lo") as String
--- t ++ "!"
--- shout(C:strstr("abc", "b"))
--- (C:strstr("héllo ✓", "llo") as String).length
--- s == "world"
+(main
+  (let s String (call C:strstr "hello world" "wor"))
+  (print s)
+  (print (. s size))
+  (let t (as (call C:strstr "hello world" "lo") String))
+  (print (++ t "!"))
+  (print (call shout (call C:strstr "abc" "b")))
+  (print (. (as (call C:strstr "héllo ✓" "llo") String) length))
+  (print (== s "world"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ shout String
-    - text String
-
-text.uppercased
+(fn-expr + shout String
+  (param text String)
+  (. text uppercased)
+)
 ```
 
 ```output
@@ -568,25 +650,28 @@ true
 
 ### A class that is a pointer to C chars is the text it leads to, and a class that is another pointer prints as that pointer.
 
-```yumi
-/stdlib.h
+```brix
+(import /stdlib.h)
+(blank)
+(type-line + CStr (is (of CPointer Char8)))
+(type-line + (of Buf T) (is (of CPointer U8)))
+(type-line + (of Ref T) (is (of CPointer T)))
+(type-line + Fixed (is (of CPointer F64)))
+(type-line + Deep (is Fixed))
+(blank)
 
-+ CStr is CPointer'Char8
-+ Buf'T is CPointer'U8
-+ Ref'T is CPointer'T
-+ Fixed is CPointer'F64
-+ Deep is Fixed
-
-. p CPointer'Char8 = "hello"
-. c CStr = p as CStr
--- c
--- "$c!"
-. raw = C:malloc(64)
--- raw as Buf'I64
--- raw as Ref'I64
--- raw as Fixed
--- raw as Deep
-C:free(raw)
+(main
+  (let p (of CPointer Char8) "hello")
+  (let c CStr (as p CStr))
+  (print c)
+  (print (str c "!"))
+  (let raw (call C:malloc 64))
+  (print (as raw (of Buf I64)))
+  (print (as raw (of Ref I64)))
+  (print (as raw Fixed))
+  (print (as raw Deep))
+  (call C:free raw)
+)
 ```
 
 ```output
@@ -600,17 +685,18 @@ hello!
 
 ### A pointer to C chars becomes a class that is String the way it becomes String.
 
-```yumi
--- hexof("ff")
--- hexof("ff") ++ "!"
-. h Hex = hexof("0a")
--- h
+```brix
+(main
+  (print (call hexof "ff"))
+  (print (++ (call hexof "ff") "!"))
+  (let h Hex (call hexof "0a"))
+  (print h)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do hexof Hex
-    - p CPointer'Char8
-
-= p
+(fn-do + hexof Hex
+  (param p (of CPointer Char8))
+  (return p)
+)
 ```
 
 ```output
@@ -621,24 +707,24 @@ ff!
 
 ### A C function as a value of a function type, kept in a local and given to a function.
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-. f Take = C:ctest2a
-f(1)
-run(f)
-run(C:ctest2aa)
--- ""
+(main
+  (let f Take C:ctest2a)
+  (call f 1)
+  (call run f)
+  (call run C:ctest2aa)
+  (print "")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Take is () Void
-    - a I32
+(type + Take (is (fn-type Void (param a I32))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
-    - take Take
-
-take(7)
+(fn-do + run _
+  (param take Take)
+  (call take 7)
+)
 ```
 
 ```output
@@ -647,22 +733,21 @@ received 1received 7received aa 7
 
 ### C functions that answer, as values of function types.
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-. add = C:ctest5 as Add
--- add(2, 3)
-. get = C:ctest4a as Get
--- get()
--- get() + add(1, 1)
+(main
+  (let add (as C:ctest5 Add))
+  (print (call add 2 3))
+  (let get (as C:ctest4a Get))
+  (print (call get))
+  (print (+ (call get) (call add 1 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Add is () I32
-    - a I32
-    - b I32
+(type + Add (is (fn-type I32 (param a I32) (param b I32))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Get is () I32
+(type + Get (is (fn-type I32)))
 ```
 
 ```output
@@ -673,25 +758,25 @@ received 1received 7received aa 7
 
 ### A C function given one argument, as a value of a function type that takes the other.
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-. two I32 = 2
-. one = C:ctest5(two, ...) as One
--- one(5)
--- apply(one, 9)
--- apply(C:ctest5(two, ...), 1)
+(main
+  (let two I32 2)
+  (let one (as (call C:ctest5 two ...) One))
+  (print (call one 5))
+  (print (call apply one 9))
+  (print (call apply (call C:ctest5 two ...) 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ One is () I32
-    - b I32
+(type + One (is (fn-type I32 (param b I32))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ apply
-    - one One
-    - n I32
-
-one(n)
+(fn-expr + apply _
+  (param one One)
+  (param n I32)
+  (call one n)
+)
 ```
 
 ```output
@@ -702,32 +787,31 @@ one(n)
 
 ### A C function kept in an optional property of a function type.
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-. box = Box()
-box.take = C:ctest2a
-box.run(3)
-box.take = C:ctest2aa
-box.run(4)
--- ""
+(main
+  (let box (call Box))
+  (= (. box take) C:ctest2a)
+  (call (. box run) 3)
+  (= (. box take) C:ctest2aa)
+  (call (. box run) 4)
+  (print "")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Take is () Void
-    - a I32
+(type + Take (is (fn-type Void (param a I32))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ take Take?
-
-────────────────────
-+ do run
-    - n I32
-
-. held = take
-if held
-    held(n)
+(type + Box
+  (prop + take (? Take))
+  (fn-do + run _
+    (param n I32)
+    (let held take)
+    (if held
+      (call held n)
+    )
+  )
+)
 ```
 
 ```output
@@ -736,37 +820,36 @@ received 3received aa 4
 
 ### C function values chosen in a loop, and one given where a function is.
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-. f Take = C:ctest2a
-. g Take = C:ctest2aa
-. i I32 = 0
-while i < 3
-    . pick = if i == 1 then f else g
-    pick(i)
-    i += 1
--- ""
--- run(C:ctest4a)
--- run(four)
+(main
+  (let f Take C:ctest2a)
+  (let g Take C:ctest2aa)
+  (let i I32 0)
+  (while (< i 3)
+    (let pick (if-expr (== i 1) f g))
+    (call pick i)
+    (+= i 1)
+  )
+  (print "")
+  (print (call run C:ctest4a))
+  (print (call run four))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Take is () Void
-    - a I32
+(type + Take (is (fn-type Void (param a I32))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Get is () I32
+(type + Get (is (fn-type I32)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ run
-    - get Get
+(fn-expr + run _
+  (param get Get)
+  (+ (call get) 1)
+)
 
-get() + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ four I32
-
-4
+(fn-expr + four I32
+  4
+)
 ```
 
 ```output
@@ -777,13 +860,16 @@ received aa 0received 1received aa 2
 
 ### Narrow C arguments on the stack
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
-. small U8 = 7
-. other U8 = 9
-. wide I16 = -300
-C:ctestStackPacked(1, 2, 3, 4, 5, 6, 7, 8, small, other, wide, 123456)
+(main
+  (let small U8 7)
+  (let other U8 9)
+  (let wide I16 -300)
+  (call C:ctestStackPacked 1 2 3 4 5 6 7 8 small other wide 123456)
+)
 ```
 
 ```output
@@ -792,13 +878,16 @@ h 8 i 7 j 9 k -300 l 123456
 
 ### A pointer from C that may point at nothing gives its text where it points at some, and the other side where it does not
 
-```yumi
-/stdlib.h
+```brix
+(import /stdlib.h)
+(blank)
 
-. home = C:getenv("HOME") ?? ""
-. missing = C:getenv("BRIX_NO_SUCH_VARIABLE") ?? "none"
--- home.length > 0
--- missing
+(main
+  (let home (?? (call C:getenv "HOME") ""))
+  (let missing (?? (call C:getenv "BRIX_NO_SUCH_VARIABLE") "none"))
+  (print (> (. home length) 0))
+  (print missing)
+)
 ```
 
 ```output
@@ -808,17 +897,20 @@ none
 
 ### A pointer moved on by a signed count moves back when the count is negative, whatever its width
 
-```yumi
-/string.h
+```brix
+(import /string.h)
+(blank)
 
-. q = C:strstr("hello world", "wor")
-. back I32 = -2
-. ahead I8 = 1
-. step I16 = -1
--- q + back
--- q + ahead
--- q + step
--- q[back] as Int
+(main
+  (let q (call C:strstr "hello world" "wor"))
+  (let back I32 -2)
+  (let ahead I8 1)
+  (let step I16 -1)
+  (print (+ q back))
+  (print (+ q ahead))
+  (print (+ q step))
+  (print (as ([] q back) Int))
+)
 ```
 
 ```output
@@ -830,12 +922,15 @@ orld
 
 ### A C `unsigned long long` is a U64
 
-```yumi
-/stdlib.h
+```brix
+(import /stdlib.h)
+(blank)
 
-. most = C:strtoull("18446744073709551615", null, 10)
--- most
--- most > 0
+(main
+  (let most (call C:strtoull "18446744073709551615" null 10))
+  (print most)
+  (print (> most 0))
+)
 ```
 
 ```output
@@ -845,11 +940,14 @@ true
 
 ### A call of `brixBenchCollect` outside the benchmark runtime does nothing
 
-```yumi
-/BxCore/BxCore.h
+```brix
+(import /BxCore/BxCore.h)
+(blank)
 
-C:brixBenchCollect()
--- "collected"
+(main
+  (call C:brixBenchCollect)
+  (print "collected")
+)
 ```
 
 ```output
@@ -858,11 +956,13 @@ collected
 
 ### A pointer to a local, kept in another local, writes the local it points to
 
-```yumi
-. cell I64 = 7
-. pointer CPointer'I64 = &cell
-pointer[0] = 9
--- cell
+```brix
+(main
+  (let cell I64 7)
+  (let pointer (of CPointer I64) &cell)
+  (= ([] pointer 0) 9)
+  (print cell)
+)
 ```
 
 ```output
@@ -871,23 +971,25 @@ pointer[0] = 9
 
 ### A constant a C header defines is read by its C name as the number it is written as, and takes a type beside or in place of a value of another integer type as an integer written with no suffix does. A union's value may be one.
 
-```yumi
-/stdio.h
-/stdlib.h
+```brix
+(import /stdio.h)
+(import /stdlib.h)
+(blank)
 
--- C:EXIT_FAILURE
--- C:EOF
-. offset I16 = C:SEEK_END
--- offset + 1
-. small U8 = 254
--- small + C:SEEK_END
--- Ending.failure as I32
+(main
+  (print C:EXIT_FAILURE)
+  (print C:EOF)
+  (let offset I16 C:SEEK_END)
+  (print (+ offset 1))
+  (let small U8 254)
+  (print (+ small C:SEEK_END))
+  (print (as (. Ending failure) I32))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Ending is I32
-
-| success = C:EXIT_SUCCESS
-| failure = C:EXIT_FAILURE
+(type + Ending (is I32)
+  (variant success (= C:EXIT_SUCCESS))
+  (variant failure (= C:EXIT_FAILURE))
+)
 ```
 
 ```output
@@ -900,33 +1002,35 @@ pointer[0] = 9
 
 ### A number becomes a pointer only when asked, so a tuple with a pointer field given one is refused
 
-```yumi compile-error
-. address U64 = 5
--- Holder(address).data.address
+```brix compile-error
+(main
+  (let address U64 5)
+  (print (. (call Holder address) data address))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Tuple
-
-+ data CPointer'Byte
+(type + Holder (is Tuple)
+  (prop + data (of CPointer Byte))
+)
 ```
 
 ```output
 Exception: No constructor of Holder accepts (U64); its declared constructors are "Holder(data CPointer'Byte)"
-<no file:3>
-    -- Holder(address).data.address
-       ^^^^^^
+<no file:4>
+      (print (. (call Holder address) data address))
+                      ^^^^^^
 ```
 
 ### A number asked to become a pointer is the pointer at that address
 
-```yumi
-. address U64 = 5
--- Holder(address as CPointer'Byte).data.address
+```brix
+(main
+  (let address U64 5)
+  (print (. (call Holder (as address (of CPointer Byte))) data address))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Tuple
-
-+ data CPointer'Byte
+(type + Holder (is Tuple)
+  (prop + data (of CPointer Byte))
+)
 ```
 
 ```output
@@ -935,14 +1039,16 @@ Exception: No constructor of Holder accepts (U64); its declared constructors are
 
 ### A pointer becomes a pointer to another type only when asked, or by way of a pointer to `Void`
 
-```yumi
-. bytes = Byte[8]
-bytes[0] = 7
-. words = bytes.data as CPointer'I32
-. opaque CPointer'Void = bytes.data
-. back CPointer'Byte = opaque
--- words[0]
--- back[0]
+```brix
+(main
+  (let bytes ([] Byte 8))
+  (= ([] bytes 0) 7)
+  (let words (as (. bytes data) (of CPointer I32)))
+  (let opaque (of CPointer Void) (. bytes data))
+  (let back (of CPointer Byte) opaque)
+  (print ([] words 0))
+  (print ([] back 0))
+)
 ```
 
 ```output
@@ -952,48 +1058,55 @@ bytes[0] = 7
 
 ### A pointer to one type is not a pointer to another unasked
 
-```yumi compile-error
-. bytes = Byte[8]
-. words CPointer'I32 = bytes.data
--- words[0]
+```brix compile-error
+(main
+  (let bytes ([] Byte 8))
+  (let words (of CPointer I32) (. bytes data))
+  (print ([] words 0))
+)
 ```
 
 ```output
-Exception: Expected CPointer'I32 here, but this is CPointer'U8, which becomes CPointer'I32 only when asked; write "as CPointer'I32"
-<no file:3>
-    . words CPointer'I32 = bytes.data
-            ^^^^^^^^^^^^
+Exception: Expected CPointer'I32 here, but this is CPointer'U8, which becomes CPointer'I32 only when asked; write "(as (. bytes data) (of CPointer I32))"
+<no file:4>
+      (let words (of CPointer I32) (. bytes data))
+                 ^^^^^^^^^^^^^^^^^
 ```
 
 ### An object becomes a pointer only to `Void` unasked
 
-```yumi compile-error
-. box = Box()
-. opaque CPointer'Void = box
-. bytes CPointer'Byte = box
--- bytes.address == opaque.address
+```brix compile-error
+(main
+  (let box (call Box))
+  (let opaque (of CPointer Void) box)
+  (let bytes (of CPointer Byte) box)
+  (print (== (. bytes address) (. opaque address)))
+)
 
-+ Box
+(blank)
+(type-line + Box)
 ```
 
 ```output
-Exception: Expected CPointer'U8 here, but this is Box, which becomes CPointer'U8 only when asked; write "as CPointer'U8"
-<no file:4>
-    . bytes CPointer'Byte = box
-            ^^^^^^^^^^^^^
+Exception: Expected CPointer'U8 here, but this is Box, which becomes CPointer'U8 only when asked; write "(as box (of CPointer U8))"
+<no file:5>
+      (let bytes (of CPointer Byte) box)
+                 ^^^^^^^^^^^^^^^^^^
 ```
 
 ### An array becomes a pointer to its own items or to `Void` unasked, and to others only when asked
 
-```yumi
-. bytes = Byte[16]
-bytes[0] = 3
-. own CPointer'Byte = bytes
-. opaque CPointer'Void = bytes
-. words = bytes as CPointer'I64
--- own[0]
--- words[0]
--- opaque.address == own.address
+```brix
+(main
+  (let bytes ([] Byte 16))
+  (= ([] bytes 0) 3)
+  (let own (of CPointer Byte) bytes)
+  (let opaque (of CPointer Void) bytes)
+  (let words (as bytes (of CPointer I64)))
+  (print ([] own 0))
+  (print ([] words 0))
+  (print (== (. opaque address) (. own address)))
+)
 ```
 
 ```output
@@ -1004,46 +1117,53 @@ true
 
 ### An array is not a pointer to another type unasked
 
-```yumi compile-error
-. bytes = Byte[16]
-. words CPointer'I64 = bytes
--- words[0]
+```brix compile-error
+(main
+  (let bytes ([] Byte 16))
+  (let words (of CPointer I64) bytes)
+  (print ([] words 0))
+)
 ```
 
 ```output
-Exception: Expected CPointer'I64 here, but this is Array'U8, which becomes CPointer'I64 only when asked; write "as CPointer'I64"
-<no file:3>
-    . words CPointer'I64 = bytes
-            ^^^^^^^^^^^^
+Exception: Expected CPointer'I64 here, but this is Array'U8, which becomes CPointer'I64 only when asked; write "(as bytes (of CPointer I64))"
+<no file:4>
+      (let words (of CPointer I64) bytes)
+                 ^^^^^^^^^^^^^^^^^
 ```
 
 ### A C function takes a number for a pointer parameter only when asked
 
-```yumi compile-error
-/string.h
+```brix compile-error
+(import /string.h)
+(blank)
 
-. address U64 = 5
--- C:strlen(address)
+(main
+  (let address U64 5)
+  (print (call C:strlen address))
+)
 ```
 
 ```output
 Exception: No C function "strlen" accepts (U64); it is declared as "strlen(CPointer'Char8)"
-<no file:5>
-    -- C:strlen(address)
-       ^^^^^^^^^^^^^^^^^
+<no file:7>
+      (print (call C:strlen address))
+             ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A C function's parameter of an enum type takes a number, as the enum's integer type does
 
-```yumi
-/time.h
+```brix
+(import /time.h)
+(blank)
 
-. spec = Spec[1]
--- C:clock_gettime(C:CLOCK_REALTIME, spec)
--- spec[0].sec > 0
+(main
+  (let spec ([] Spec 1))
+  (print (call C:clock_gettime C:CLOCK_REALTIME spec))
+  (print (> (. ([] spec 0) sec) 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Spec is (sec I64, nsec I64)
+(type + Spec (is (tuple (: sec I64) (: nsec I64))))
 ```
 
 ```output
@@ -1053,53 +1173,50 @@ true
 
 ### A collection waits while a thread C created runs a callback, after a callback nested in it has returned, and not once it has returned
 
-```yumi
-/pthread.h
-/stdlib.h
-/unistd.h
-/BxGC/BxGC.h
+```brix
+(import /pthread.h)
+(import /stdlib.h)
+(import /unistd.h)
+(import /BxGC/BxGC.h)
+(blank)
 
-. flags = C:calloc(3, 4) as CPointer'I32
-. handle = C:calloc(1, 8) as CPointer'Pointer
-C:pthread_create(handle as Pointer, null, run as Start, flags as Pointer)
-while flags[0] == 0
-    C:usleep(1000)
-C:brixCollect()
--- flags[1] == 1
-C:pthread_join(handle[0], null)
--- flags[2]
-C:brixCollect()
+(main
+  (let flags (as (call C:calloc 3 4) (of CPointer I32)))
+  (let handle (as (call C:calloc 1 8) (of CPointer Pointer)))
+  (call C:pthread_create (as handle Pointer) null (as run Start) (as flags Pointer))
+  (while (== ([] flags 0) 0)
+    (call C:usleep 1000)
+  )
+  (call C:brixCollect)
+  (print (== ([] flags 1) 1))
+  (call C:pthread_join ([] handle 0) null)
+  (print ([] flags 2))
+  (call C:brixCollect)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ Start is (*C) Pointer
-    - context Pointer
+(type _ Start (is (c-fn-type Pointer (param context Pointer))))
 
-━━━━━━━━━━━━━━━━━━━━
-_ Compare is (*C) I32
-    - a CPointer'I32
-    - b CPointer'I32
+(type _ Compare (is (c-fn-type I32 (param a (of CPointer I32)) (param b (of CPointer I32)))))
 
-━━━━━━━━━━━━━━━━━━━━
-_ ascending I32
-    - a CPointer'I32
-    - b CPointer'I32
+(fn-expr _ ascending I32
+  (param a (of CPointer I32))
+  (param b (of CPointer I32))
+  (- ([] a 0) ([] b 0))
+)
 
-a[0] - b[0]
-
-━━━━━━━━━━━━━━━━━━━━
-_ do run Pointer
-    - context Pointer
-
-. flags = context as CPointer'I32
-. kept = [5, 6, 7]
-. values = Array'I32([3, 1, 2])
-C:qsort(values, values.length, I32.size, ascending as Compare)
-C:brixCollect()
-flags[0] = 1
-C:usleep(30000)
-flags[2] = (kept[0] + kept[1] + kept[2] + values[0]) as I32
-flags[1] = 1
-= null
+(fn-do _ run Pointer
+  (param context Pointer)
+  (let flags (as context (of CPointer I32)))
+  (let kept (list 5 6 7))
+  (let values (call (of Array I32) (list 3 1 2)))
+  (call C:qsort values (. values length) (. I32 size) (as ascending Compare))
+  (call C:brixCollect)
+  (= ([] flags 0) 1)
+  (call C:usleep 30000)
+  (= ([] flags 2) (as (+ ([] kept 0) ([] kept 1) ([] kept 2) ([] values 0)) I32))
+  (= ([] flags 1) 1)
+  (return null)
+)
 ```
 
 ```output

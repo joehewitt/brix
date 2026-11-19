@@ -1,0 +1,98 @@
+; benchmark.meta description: Boolean operations over many disjoint curved paths to validate bounds pruning.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/boolean)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /graphics/shapes)
+(import /math)
+(blank)
+
+(main
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 40))
+    (let a (call many-disjoint-contours-a pass))
+    (let b (call many-disjoint-contours-b pass))
+    (for (in operation (..< 0 4))
+      (let result (call boolean-operation operation a b))
+      (+= checksum (+ (call path-score result) pass operation))
+    )
+  )
+  (blank)
+  (print (str "bench-result graphics/boolean-many-disjoint checksum=" checksum))
+)
+
+(fn-do _ many-disjoint-contours-a _
+  (param pass Int)
+  (let path (call Path))
+  (for (in y (..< 0 4))
+    (for (in x (..< 0 4))
+      (call (. path add-path) (call circle (tuple (+ 42.0 (* x 54) (% pass 5)) (+ 42.0 (* y 54))) 12))
+    )
+  )
+  (blank)
+  (return path)
+)
+
+(fn-do _ many-disjoint-contours-b _
+  (param pass Int)
+  (let path (call Path))
+  (for (in y (..< 0 4))
+    (for (in x (..< 0 4))
+      (call (. path add-path) (call circle (tuple (+ 69.0 (* x 54)) (+ 69.0 (* y 54) (% pass 3))) 10))
+    )
+  )
+  (blank)
+  (return path)
+)
+
+(fn-expr _ boolean-operation _
+  (param operation _)
+  (param a Path)
+  (param b Path)
+  (case? (== operation 0)
+    (call union a b)
+  )
+  (case? (== operation 1)
+    (call intersect a b)
+  )
+  (case? (== operation 2)
+    (call subtract a b)
+  )
+  (default
+    (call clip a b)
+  )
+)
+
+(fn-expr _ path-score _
+  (param path (? Path))
+  (case? path
+    (call solid-path-score path)
+  )
+  (default
+    0
+  )
+)
+
+(fn-expr _ solid-path-score Size
+  (param path Path)
+  (case? (not (. path count))
+    0
+  )
+  (default
+    (+ box-score (call numeric-check (. path last-point x)) (call numeric-check (. path last-point y)))
+  )
+  (where
+    (lazy bounds (. path bounding-box))
+    (lazy box-score (+ origin-score (call numeric-check (. bounds width)) (call numeric-check (. bounds height))))
+    (lazy origin-score (+ (. path count) (call numeric-check (. bounds x)) (call numeric-check (. bounds y))))
+  )
+)
+
+(fn-expr _ numeric-check Size
+  (param value Coord)
+  (% (as (call abs (* value 1000)) Size) 1000003)
+)

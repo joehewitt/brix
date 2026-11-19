@@ -1,0 +1,34 @@
+; benchmark.meta description: Repeated feed map/filter pipelines consumed by a loop.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator
+(blank)
+(import /core)
+(blank)
+
+(main
+  (let rounds 40000)
+  (let upper-bound 256)
+  (let checksum (call feed-checksum rounds upper-bound))
+  (throw (call Panic "feed checksum mismatch") (if (!= checksum (* rounds 3 128 129))))
+  (blank)
+  (print (str "bench-result compiler-shape/feed-loop checksum=" checksum))
+)
+
+(fn-do _ feed-checksum Int
+  (param rounds Int)
+  (param upper-bound Int)
+  (let total 0)
+  (for (in round (..< 0 rounds))
+    (let values
+      (block
+        (spread (.. 1 upper-bound))
+        (pipe *> (* each 3))
+        (pipe ?> (== (% each 2) 0))
+      )
+    )
+    (for (in value values)
+      (+= total value)
+    )
+  )
+  (return total)
+)

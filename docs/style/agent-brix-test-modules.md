@@ -145,14 +145,14 @@ nothing else there. Put shared helpers in `tests/support/`, and put a module's f
 Incorrect:
 
 ```text
-stdlib/graphics/tests/support.yumi
+stdlib/graphics/tests/support.bx
 stdlib/graphics/tests/text-fixtures/noto-sans/NotoSans-Regular.ttf
 ```
 
 Correct:
 
 ```text
-stdlib/graphics/tests/support/geometry.yumi
+stdlib/graphics/tests/support/geometry.bx
 stdlib/gui/tests/fixtures/tight-paragraph/noto-sans/NotoSans-Regular.ttf
 ```
 
@@ -164,7 +164,7 @@ project root is the nearest folder at or above the current one that holds `.git`
 `.brix/tests.json` has one suite, `tests`, which holds every module in a `tests` folder under the
 project root.
 
-- `brix test run` runs every suite, `brix test run parser/tests/tokens.yumi` runs one module by its
+- `brix test run` runs every suite, `brix test run parser/tests/tokens.bx` runs one module by its
   path from the project root, and `brix test list --tests suite:tests` lists the modules of a suite.
 - Each module builds into `.tmp/build/tests/` and runs in a folder of its own, which starts as a
   copy of its fixtures folder when it has one.
@@ -197,7 +197,7 @@ paths start from its own folder. It takes `brix` and `env` from the nearest conf
 its own `env` after them, and replaces `brix` if it names one. Test ids and paths stay relative to
 the project root.
 
-To run one module by hand, build and run it with `brix tests/path.yumi -o .tmp/build/tests/path`.
+To run one module by hand, build and run it with `brix tests/path.bx -o .tmp/build/tests/path`.
 When it has fixtures, build it with `--compile` and run the executable from `tests/fixtures/path/`.
 A failed assertion prints its label with the expected and actual values, and one whose actual side
 raises prints `caught:` with the error's message and, where the error has one, its source. At the

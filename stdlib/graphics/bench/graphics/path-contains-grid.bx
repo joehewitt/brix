@@ -1,0 +1,30 @@
+; benchmark.meta description: Runs grid point containment checks against closed paths.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/shapes)
+(import /math)
+(blank)
+
+(main
+  (let paths (list Path))
+  (for (in i (..< 0 36))
+    (let f (as i Float))
+    (+= paths (call circle (tuple (+ 60 (* f 3)) (+ 70 (* f 2))) (+ 30 (% f 9))))
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in path paths)
+    (for (in x (..< 0 120 (by: 4)))
+      (for (in y (..< 0 120 (by: 4)))
+        (if (call (. path contains) (tuple (as x Float) (as y Float)))
+          (+= checksum (+ x y (. path count)))
+        )
+      )
+    )
+  )
+  (blank)
+  (print (str "bench-result graphics/path-contains-grid checksum=" checksum))
+)

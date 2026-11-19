@@ -1,0 +1,304 @@
+(import /core/intrinsics)
+(blank)
+(import /BxCore/BxCore.h)
+(import /math.h)
+(import /sys/random.h)
+(blank)
+(prop + π _ (= 3.14159265358979323846264338327rad))
+(prop + euler _ (= 2.7182818284590451))
+(prop + epsilon _ (= 0.000000000001))
+(blank)
+(prop _ random-state U64 (= (call random-seed)))
+(prop _ random-increment U64 (= 0x9e3779b97f4a7c15))
+(prop _ random-first-multiplier U64 (= 0xbf58476d1ce4e5b9))
+(prop _ random-second-multiplier U64 (= 0x94d049bb133111eb))
+
+(type + Radians (alias rad) (is F64))
+
+(type + Degrees (alias ° deg) (is 0.017453292519943295rad))
+
+(fn-expr + is-finite _
+  (param n Float)
+  (and (== n n) (!= n (call C:getInfinity)) (!= n (- (call C:getInfinity))))
+)
+
+(fn-expr + abs _
+  (param n I32)
+  (call C:abs n)
+)
+
+(fn-expr + abs _
+  (param n I64)
+  (call C:llabs n)
+)
+
+(fn-expr + abs _
+  (param n F32)
+  (call C:fabsf n)
+)
+
+(fn-expr + abs F64
+  (param n F64)
+)
+
+(fn-expr + round _
+  (param n F32)
+  (call C:roundf n)
+)
+
+(fn-expr + round _
+  (param n F64)
+  (call C:round n)
+)
+
+(fn-expr + floor _
+  (param n F32)
+  (call C:floorf n)
+)
+
+(fn-expr + floor _
+  (param n F64)
+  (call C:floor n)
+)
+
+(fn-expr + ceil _
+  (param n F32)
+  (call C:ceilf n)
+)
+
+(fn-expr + ceil _
+  (param n F64)
+  (call C:ceil n)
+)
+
+(fn-expr + fmod _
+  (param n F64)
+  (param x F64)
+  (call C:fmod n x)
+)
+
+(fn-expr + log _
+  (param n F64)
+  (call C:log n)
+)
+
+(fn-expr + exp _
+  (param n F64)
+  (call C:exp n)
+)
+
+(fn-expr + sqrt F64
+  (param n F64)
+)
+
+(fn-expr + cbrt _
+  (param n F64)
+  (call C:cbrt n)
+)
+
+(fn-do + modf _
+  (param n F64)
+  (let mod ([] F64 1))
+  (let rem (call C:modf n mod))
+  (blank)
+  (return (tuple ([] mod 0) rem))
+)
+
+(fn-expr + sin _
+  (param n Radians)
+  (call C:sin n)
+)
+
+(fn-expr + cos _
+  (param n Radians)
+  (call C:cos n)
+)
+
+(fn-expr + tan _
+  (param n Radians)
+  (call C:tan n)
+)
+
+(fn-expr + acos Radians
+  (param n F64)
+  (call C:acos n)
+)
+
+(fn-expr + asin Radians
+  (param n F64)
+  (call C:asin n)
+)
+
+(fn-expr + atan Radians
+  (param n F64)
+  (call C:atan n)
+)
+
+(fn-expr + atan2 Radians
+  (param y F64)
+  (param x F64)
+  (call C:atan2 y x)
+)
+
+(fn-do _ random-seed U64
+  (let seed ([] U64 1))
+  (call C:getentropy seed 8)
+  (return ([] seed 0))
+)
+
+(fn-do _ next-random U64
+  (+= random-state random-increment)
+  (return (call random-mix random-state))
+)
+
+(fn-expr _ random-mix U64
+  (param state U64)
+  (/xor/ second (/zrshift/ second 31))
+  (where
+    (lazy first (* (/xor/ state (/zrshift/ state 30)) random-first-multiplier))
+    (lazy second (* (/xor/ first (/zrshift/ first 27)) random-second-multiplier))
+  )
+)
+
+(fn-expr _ random-fraction F64
+  (param bits U64)
+  (/ (as (/zrshift/ bits 11) F64) 9007199254740992.0)
+)
+
+(fn-do _ (of random-between Num) Num
+  (param bits U64)
+  (param min Num)
+  (param max Num)
+  (if (. Num is-integer)
+    (let width (as (- (as max I64) (as min I64)) U64))
+    (return (as (+ (as min I64) (as (% bits width) I64)) Num))
+  )
+  (let value (as (+ min (* (call random-fraction bits) (- max min))) Num))
+  (return (if-expr (!= value max) value min))
+)
+
+(fn-do + random F64
+  (return (call random-fraction (call next-random)))
+)
+
+(fn-do + (of random Num) Num
+  (param min Num)
+  (param max Num)
+  (return (call random-between (call next-random) min max))
+)
+
+(type + Random
+  (prop + seed U64)
+  (prop _ state U64)
+  (fn-do + This _
+    (= seed (call random-seed))
+    (= state seed)
+  )
+  (fn-do + This _
+    (param seed U64)
+    (= state seed)
+  )
+  (fn-do + random F64
+    (return (call random-fraction (call draw)))
+  )
+  (fn-do + (of random Num) Num
+    (param min Num)
+    (param max Num)
+    (return (call random-between (call draw) min max))
+  )
+  (fn-do + split Random
+    (return (call Random (call draw)))
+  )
+  (fn-do _ draw U64
+    (+= state random-increment)
+    (return (call random-mix state))
+  )
+)
+
+(fn-expr + (of not Num) _
+  (param n Num)
+  (- (. Num max) n)
+)
+
+(fn-expr + min F64
+  (param n1 F64)
+  (param n2 F64)
+)
+
+(fn-expr + (of min Num) _
+  (param n1 Num)
+  (param n2 Num)
+  (case? (< n2 n1)
+    n2
+  )
+  (default
+    n1
+  )
+)
+
+(fn-expr + max F64
+  (param n1 F64)
+  (param n2 F64)
+)
+
+(fn-expr + (of max Num) _
+  (param n1 Num)
+  (param n2 Num)
+  (case? (> n2 n1)
+    n2
+  )
+  (default
+    n1
+  )
+)
+
+(fn-expr + (of clamp Num) _
+  (param value Num)
+  (param low Num)
+  (param high Num)
+  (case? (< value low)
+    low
+  )
+  (case? (> value high)
+    high
+  )
+  (default
+    value
+  )
+)
+
+(fn-expr + clamp-unit F64
+  (param value F64)
+  (if-expr (not (call is-finite value)) 0 (call clamp value 0 1))
+)
+
+(fn-expr + (of is-even Num) _
+  (param n Num)
+  (== (% n 2) 0)
+)
+
+(fn-expr + (of is-odd Num) _
+  (param n Num)
+  (!= (% n 2) 0)
+)
+
+(fn-expr + num _
+  (param numerator Float)
+  (param denominator Float)
+  (/ numerator denominator)
+)
+
+(fn-expr + denom _
+  (param denominator Float)
+  (param numerator Float)
+  (/ numerator denominator)
+)
+
+(fn-expr + (of power-of-2 Num) _
+  (param n Num)
+  (if-expr (== shift bit-width) (as 0 Num) (/lshift/ (as 1 Num) shift))
+  (where
+    (lazy shift (- bit-width (call count-leading-zeros (as (- n 1) Num))))
+    (lazy bit-width (* (. (type-of n) size) 8))
+  )
+)

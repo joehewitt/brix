@@ -1,0 +1,65 @@
+(import ./ast-nodes)
+(import /core/map)
+
+(type + EffectTable
+  ; The effects a program declares, numbered in the order of their modules and declarations. Each
+  ; C function an effect claims names it in `claims`, the first to claim it where two do, and those
+  ; claimed again are in `contested`. A function whose header bans effects has them in `bans`, and a
+  ; door its effect in `doors`, by its module and declaration.
+  (blank)
+  (prop + modules (list U32))
+  (prop + decls (list U32))
+  (prop + names (list Atom))
+  (prop + claims _ (= (call (of Map Atom U32))))
+  (prop + contested _ (= (call (of Map Atom U32))))
+  (prop + bans _ (= (call (of Map U64 EffectMask))))
+  (prop + doors _ (= (call (of Map U64 U32))))
+  (fn-expr + count Size :get
+    (. modules length)
+  )
+  (fn-do + index-of (? U32)
+    (param module U32)
+    (param decl U32)
+    (for (in index (..< 0 (. modules length)))
+      (return-if (as index U32) (if (and (== ([] modules index) module) (== ([] decls index) decl))))
+    )
+    (return null)
+  )
+  (fn-do + bans-of EffectMask
+    (param module U32)
+    (param decl U32)
+    (return (?? ([] bans (call effect-place module decl)) 0))
+  )
+  (fn-do + same-as Bool
+    (param other EffectTable)
+    ; Whether another program's effects are these, with the same claims, bans and doors, so the
+    ; instances typed for one hold the bans the other's would.
+    (return-if false (if (or (!= modules (. other modules)) (!= decls (. other decls)) (!= names (. other names)))))
+    (return-if false (if (or (!= (. claims length) (. other claims length)) (!= (. contested length) (. other contested length)))))
+    (return-if false (if (or (!= (. bans length) (. other bans length)) (!= (. doors length) (. other doors length)))))
+    (for (in key (. claims keys))
+      (return-if false (if (!= ([] claims key) ([] (. other claims) key))))
+    )
+    (for (in key (. contested keys))
+      (return-if false (if (!= ([] contested key) ([] (. other contested) key))))
+    )
+    (for (in key (. bans keys))
+      (return-if false (if (!= ([] bans key) ([] (. other bans) key))))
+    )
+    (for (in key (. doors keys))
+      (return-if false (if (!= ([] doors key) ([] (. other doors) key))))
+    )
+    (return true)
+  )
+  (fn-do + door-of (? U32)
+    (param module U32)
+    (param decl U32)
+    (return ([] doors (call effect-place module decl)))
+  )
+)
+
+(fn-expr + effect-place U64
+  (param module U32)
+  (param decl U32)
+  (/or/ (/lshift/ (as module U64) 32) (as decl U64))
+)

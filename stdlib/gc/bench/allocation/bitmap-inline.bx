@@ -1,0 +1,27 @@
+; benchmark.meta description: Inline Bitmap bit writes and reads matching the raw integer workload.
+; benchmark.meta timing: not-recommended
+; benchmark.meta profiles: allocator
+(blank)
+(import /core/bitmap)
+(blank)
+
+(main
+  (let checksum U64)
+  (for (in round (..< 0 10000))
+    (let bits (call (of Bitmap U64)))
+    (for (in index (..< 0 64))
+      (= ([] bits index) true)
+    )
+    (for (in index (..< 0 64))
+      (if ([] bits index)
+        (+= checksum 1)
+      )
+    )
+    (= bits (call (. bits fill) false))
+    (if ([] bits 0)
+      (+= checksum 1)
+    )
+  )
+  (blank)
+  (print (str "bench-result allocation/bitmap-inline checksum=" checksum))
+)

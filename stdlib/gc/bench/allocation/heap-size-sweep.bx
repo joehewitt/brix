@@ -1,0 +1,51 @@
+; benchmark.meta description: Runs 100 MiB through 2 GiB heap goals over stable 1:8 scaled pointerful live sets.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: gc-runtime,allocator,compile-timing
+(blank)
+(import /BxGC/BxGC.h)
+(blank)
+; Each tier sets the real collector heap goal named here. One 128 KiB physical payload represents
+; one MiB of live application heap; the explicit 1:8 live-set scale keeps three-variant Stage-0
+; runs bounded while preserving the 20x graph-size and sweep progression.
+(main
+  (let heap-goal-tiers-mib (list 100 250 500 1000 2000))
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in nominal-mib heap-goal-tiers-mib)
+    (call C:brixGCSetHeapGoal (* nominal-mib 1048576))
+    (+= checksum (call exercise-heap-tier nominal-mib))
+    (call C:brixGCCollect)
+  )
+  (blank)
+  (print (str "bench-result allocation/heap-size-sweep checksum=" checksum))
+)
+
+(fn-do _ exercise-heap-tier Size
+  (param nominal-mib Int)
+  (let pages (list SyntheticHeapPage))
+  (let checksum (as nominal-mib Size))
+  (blank)
+  (for (in index (..< 0 nominal-mib))
+    (let page (call SyntheticHeapPage index ([] Byte 131072)))
+    (= ([] (. page payload) 0) (as (% index 251) U8))
+    (= ([] (. page payload) 131071) (as (% nominal-mib 251) U8))
+    (if (> (. pages length) 0)
+      (= (. page prior) ([] pages (- (. pages length) 1)))
+    )
+    (+= pages page)
+    (+= checksum (+ (. page id) (as ([] (. page payload) 0) Size) (as ([] (. page payload) 131071) Size)))
+  )
+  (blank)
+  (call C:brixGCCollect)
+  (return (+ checksum (. pages length)))
+)
+
+(type + SyntheticHeapPage
+  (prop + id Int)
+  (prop + payload ([] Byte))
+  (prop + prior (? SyntheticHeapPage))
+  (fn-do + This _
+    (param id _)
+    (param payload _)
+  )
+)

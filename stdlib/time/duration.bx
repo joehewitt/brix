@@ -1,0 +1,106 @@
+(import ./clock)
+(import ./ctime)
+(import ./timer)
+(import /BxEvents/BxEvents.h)
+(import /math)
+(import /time.h)
+
+(type + Duration (is F64)
+  (fn-to-expr + (of Broadcastable Seconds)
+    (call (of interval Seconds))
+  )
+  (fn-to-expr + CTimeSpec
+    (call CTimeSpec s ns)
+    (where
+      (lazy nd (call modf (as this Seconds)))
+      (lazy s (as ([] nd 0) CSeconds))
+      (lazy ns (as (* ([] nd 1) 1000 1000 1000) CNanoseconds))
+      (blank)
+      ; ====================================================================================================
+      ; + Range ...
+      ;     _ Duration Duration
+      ;
+      ; -------------------------------------------------------------------------------------------------
+      ; + interval'Interval
+      ;
+      ; Timer(increment, start, end)
+      ;
+      ; -------------------------------------------------------------------------------------------------
+      ; + to Broadcastable'Seconds
+      ;
+      ; interval'Seconds()
+      ;
+      ; -------------------------------------------------------------------------------------------------
+      ; + to Iterable'Seconds
+      ;
+      ; interval'Seconds()
+    )
+  )
+  (fn-do + wait _
+    (let sem (call Semaphore))
+    (let canceled (call wait-for-duration (as this Microseconds) sem))
+    (call check-task-cancelation canceled)
+    (blank)
+    (return this)
+  )
+  (fn-do + freeze _
+    (call freeze-thread this)
+  )
+  (fn-do + loop _
+    (param with Doer)
+    (let loop (call TimerLoop))
+    (do-new
+      (inline (call (. loop loop) this with))
+    )
+    (return loop)
+  )
+  (fn-expr + animation-loop _
+    (param with Doer)
+    (call AnimationLoop this with)
+  )
+  (fn-expr + (of interval Interval) _
+    (call Timer (as this Interval))
+  )
+)
+
+(type-line + Nanoseconds (alias ns) (is Duration))
+(type-line + Microseconds (alias µs) (is 1000ns))
+(type-line + Milliseconds (alias ms) (is 1000µs))
+(type-line + Seconds (alias s seconds) (is 1000ms))
+(type-line + Minutes (alias minutes) (is 60s))
+(type-line + Hours (alias hours) (is 60minutes))
+(type-line + Days (alias days) (is 24hours))
+(type-line + Weeks (alias weeks) (is 7days))
+(blank)
+; These intervals are approximations since not all months or years have the same length
+(type-line + Months (alias months) (is 31days))
+(type-line + Years (alias years) (is 365days))
+(type-line + Decades (alias decades) (is 10years))
+(type-line + Centuries (alias centuries) (is 100years))
+(type-line + Milleniums (alias milleniums) (is 1000years))
+(unit + 1csec 1000000000cnsec)
+(unit + 1csec 1seconds)
+(unit + 1cnsec 1ns)
+
+(fn-do + freeze-thread _ (door time)
+  (param delay Duration)
+  (let spec (as delay CTimeSpec))
+  (call C:brixGCEnterFFI)
+  (do
+    (inline (call C:nanosleep &spec null))
+  )
+  (call C:brixGCLeaveFFI)
+)
+
+(fn-do + (of timeout Item) _
+  (param stream (stream Item))
+  (for (in message stream)
+    (yield message)
+    (break)
+    (or-for (in t this)
+      (yield (call TimeoutError))
+    )
+  )
+  (blank)
+  (yield-all stream)
+)

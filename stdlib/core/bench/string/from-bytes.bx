@@ -1,0 +1,22 @@
+; benchmark.meta description: Builds short Strings from bytes: Byte[] slices, C bytes checked then copied, and formatted numbers.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: timing
+(blank)
+(import /BxCore/BxString.h)
+(blank)
+
+(main
+  (let record "person 1234,p1234@example.com,café 42,")
+  (let bytes (call byte-view record))
+  (let total 0)
+  (for (in i (..< 0 200000))
+    (+= total (. (call (. bytes slice-string) (..< 0 11)) length))
+    (+= total (. (call (. bytes slice-string) (..< 30 38)) length))
+    (if (== (call C:brixStringValidateUtf8 record 29) 0)
+      (+= total (. (call C:brixStringCreate record 29) length))
+    )
+    (+= total (. (str i) length))
+  )
+  (blank)
+  (print (str "bench-result string/from-bytes checksum=" total))
+)

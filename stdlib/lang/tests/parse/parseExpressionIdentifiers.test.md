@@ -2,10 +2,6 @@
 
 Identifiers
 
-```yumi
-foo
-```
-
 ```brix
 (main
   foo
@@ -14,10 +10,6 @@ foo
 
 ```output
 <Id name="foo"/>
-```
-
-```yumi
-foo-bar
 ```
 
 ```brix
@@ -30,10 +22,6 @@ foo-bar
 <Id name="foo-bar"/>
 ```
 
-```yumi
-FooBar
-```
-
 ```brix
 (main
   FooBar
@@ -44,10 +32,6 @@ FooBar
 <TypeId name="FooBar"/>
 ```
 
-```yumi
-FooBar
-```
-
 ```brix
 (main
   FooBar
@@ -56,10 +40,6 @@ FooBar
 
 ```output
 <TypeId name="FooBar"/>
-```
-
-```yumi
-''FooBar
 ```
 
 ```brix
@@ -72,33 +52,7 @@ FooBar
 <TypeId name="FooBar" declare="true"/>
 ```
 
-```yumi
-fooBar
-```
-
-```output
-Exception: Names are kebab-case; write "foo-bar", not "fooBar"
-<no file:2>
-    fooBar
-       ^
-```
-
-```yumi
-Foo-Bar
-```
-
-```output
-Exception: Syntax error
-<no file:2>
-    Foo-Bar
-       ^
-```
-
 ## Greek alphabet
-
-```yumi
-μ
-```
 
 ```brix
 (main
@@ -108,10 +62,6 @@ Exception: Syntax error
 
 ```output
 <Id name="μ"/>
-```
-
-```yumi
-Δ
 ```
 
 ```brix
@@ -124,10 +74,6 @@ Exception: Syntax error
 <Id name="Δ"/>
 ```
 
-```yumi
-α
-```
-
 ```brix
 (main
   α
@@ -138,10 +84,6 @@ Exception: Syntax error
 <Id name="α"/>
 ```
 
-```yumi
-Φ
-```
-
 ```brix
 (main
   Φ
@@ -150,10 +92,6 @@ Exception: Syntax error
 
 ```output
 <Id name="Φ"/>
-```
-
-```yumi
-π
 ```
 
 ```brix
@@ -168,21 +106,6 @@ Exception: Syntax error
 
 ## Other Unicode characters
 
-```yumi
-º
-```
-
-```output
-Exception: Syntax error
-<no file:2>
-    º
-    ^
-```
-
-```yumi
-C:fooBar1
-```
-
 ```brix
 (main
   C:fooBar1
@@ -191,10 +114,6 @@ C:fooBar1
 
 ```output
 <CId name="fooBar1"/>
-```
-
-```yumi
-C:_fooBar1
 ```
 
 ```brix
@@ -207,10 +126,6 @@ C:_fooBar1
 <CId name="_fooBar1"/>
 ```
 
-```yumi
-&foo
-```
-
 ```brix
 (main
   &foo
@@ -221,10 +136,6 @@ C:_fooBar1
 <Ref name="foo"/>
 ```
 
-```yumi
-event
-```
-
 ```brix
 (main
   event
@@ -233,10 +144,6 @@ event
 
 ```output
 <Id name="event"/>
-```
-
-```yumi
-publish
 ```
 
 ```brix

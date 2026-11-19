@@ -1,26 +1,35 @@
 # Maps
 
-```yumi
-. map = Map'String'Int()
--- map["foo"]
+```brix
+(main
+  (let map (call (of Map String Int)))
+  (print ([] map "foo"))
+)
 ```
 
 ```output
 unknown
 ```
 
-```yumi
-. present Int? = 7
-. absent Int?
-. property = "strokeJoin"
-. map = Map'String'Int
-    •? "strokeWidth" present
-    •? "strokeCap" absent
-    •? (property) present
--- map.length
--- map["strokeWidth"]
--- map has "strokeCap"
--- map["strokeJoin"]
+```brix
+(main
+  (let present (? Int) 7)
+  (let absent (? Int))
+  (let property "strokeJoin")
+  (let map
+    (call (of Map String Int)
+      (block
+        (entry? "strokeWidth" present)
+        (entry? "strokeCap" absent)
+        (entry? property present)
+      )
+    )
+  )
+  (print (. map length))
+  (print ([] map "strokeWidth"))
+  (print (has map "strokeCap"))
+  (print ([] map "strokeJoin"))
+)
 ```
 
 ```output
@@ -30,44 +39,57 @@ false
 7
 ```
 
-```yumi
-/BxGC/BxGC.h
+```brix
+(import /BxGC/BxGC.h)
+(blank)
 
-. done SyncChannel'String
-do new
-    . prior-goal = C:brixGCHeapGoal()
-    C:brixGCSetHeapGoal(C:brixGCLiveByteCount() + 1)
-    . property = "strokeJoin-${41 + 1}"
-    . present String? = "managed-${20 + 2}"
-    . map = Map'String'String
-        •? "strokeWidth" present
-        •? (property) present
-    C:brixGCSetHeapGoal(prior-goal)
-    C:brixCollect()
-    done <- "${map["strokeWidth"]!},${map[property]!}"
--- <- done
+(main
+  (let done (of SyncChannel String))
+  (do-new
+    (let prior-goal (call C:brixGCHeapGoal))
+    (call C:brixGCSetHeapGoal (+ (call C:brixGCLiveByteCount) 1))
+    (let property (str "strokeJoin-" (+ 41 1)))
+    (let present (? String) (str "managed-" (+ 20 2)))
+    (let map
+      (call (of Map String String)
+        (block
+          (entry? "strokeWidth" present)
+          (entry? property present)
+        )
+      )
+    )
+    (call C:brixGCSetHeapGoal prior-goal)
+    (call C:brixCollect)
+    (<- done (str (!! ([] map "strokeWidth")) "," (!! ([] map property))))
+  )
+  (print (<- done))
+)
 ```
 
 ```output
 managed-22,managed-22
 ```
 
-```yumi
-. map = Map'String'Int()
-map["foo"] = 42
--- map["foo"]
+```brix
+(main
+  (let map (call (of Map String Int)))
+  (= ([] map "foo") 42)
+  (print ([] map "foo"))
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-. map = Map'String'Int()
-map["a"] = 1
-map["b"] = 2
--- map["a"]
--- map["b"]
+```brix
+(main
+  (let map (call (of Map String Int)))
+  (= ([] map "a") 1)
+  (= ([] map "b") 2)
+  (print ([] map "a"))
+  (print ([] map "b"))
+)
 ```
 
 ```output
@@ -75,11 +97,13 @@ map["b"] = 2
 2
 ```
 
-```yumi
-. map = Map'String'Int()
--- map.length
-map["foo"] = 42
--- map.length
+```brix
+(main
+  (let map (call (of Map String Int)))
+  (print (. map length))
+  (= ([] map "foo") 42)
+  (print (. map length))
+)
 ```
 
 ```output
@@ -87,13 +111,15 @@ map["foo"] = 42
 1
 ```
 
-```yumi
-. map = Map'String'Int()
-map["foo"] = 1
-map["bar"] = 2
--- map.length
--- map["foo"]
--- map["bar"]
+```brix
+(main
+  (let map (call (of Map String Int)))
+  (= ([] map "foo") 1)
+  (= ([] map "bar") 2)
+  (print (. map length))
+  (print ([] map "foo"))
+  (print ([] map "bar"))
+)
 ```
 
 ```output
@@ -102,18 +128,21 @@ map["bar"] = 2
 2
 ```
 
-```yumi
-. map = Map'String'Int()
-map["c"] = 3
-map["a"] = 1
-map["b"] = 2
-. copy = Map'String'Int()
-for key, value in map
-    copy[key] = value
--- copy.length
--- copy["a"]
--- copy["b"]
--- copy["c"]
+```brix
+(main
+  (let map (call (of Map String Int)))
+  (= ([] map "c") 3)
+  (= ([] map "a") 1)
+  (= ([] map "b") 2)
+  (let copy (call (of Map String Int)))
+  (for (in (tuple key value) map)
+    (= ([] copy key) value)
+  )
+  (print (. copy length))
+  (print ([] copy "a"))
+  (print ([] copy "b"))
+  (print ([] copy "c"))
+)
 ```
 
 ```output
@@ -123,16 +152,18 @@ for key, value in map
 3
 ```
 
-```yumi
-. map = Map'String'Int()
-map["a"] = 1
-map["b"] = 2
-map["c"] = 3
--= map["a"]
--- map.length
--- map has "a"
--- map["b"]
--- map["c"]
+```brix
+(main
+  (let map (call (of Map String Int)))
+  (= ([] map "a") 1)
+  (= ([] map "b") 2)
+  (= ([] map "c") 3)
+  (-= ([] map "a"))
+  (print (. map length))
+  (print (has map "a"))
+  (print ([] map "b"))
+  (print ([] map "c"))
+)
 ```
 
 ```output
@@ -142,18 +173,20 @@ false
 3
 ```
 
-```yumi
-. map1 = Map'String'Int()
-map1["a"] = 1
-map1["c"] = 3
-. map2 = Map'String'Int()
-map2["b"] = 2
-map2["c"] = 4
-. combined = map1 + map2
--- combined.length
--- combined["a"]
--- combined["b"]
--- combined["c"]
+```brix
+(main
+  (let map1 (call (of Map String Int)))
+  (= ([] map1 "a") 1)
+  (= ([] map1 "c") 3)
+  (let map2 (call (of Map String Int)))
+  (= ([] map2 "b") 2)
+  (= ([] map2 "c") 4)
+  (let combined (+ map1 map2))
+  (print (. combined length))
+  (print ([] combined "a"))
+  (print ([] combined "b"))
+  (print ([] combined "c"))
+)
 ```
 
 ```output
@@ -163,19 +196,21 @@ map2["c"] = 4
 4
 ```
 
-```yumi
-. map1 = Map'String'Int()
-map1["a"] = 1
-map1["b"] = 2
-map1["c"] = 3
-. map2 = Map'String'Int()
-map2["b"] = 2
-map2["c"] = 4
-. difference = map1 - map2
--- difference.length
--- difference["a"]
--- difference has "b"
--- difference has "c"
+```brix
+(main
+  (let map1 (call (of Map String Int)))
+  (= ([] map1 "a") 1)
+  (= ([] map1 "b") 2)
+  (= ([] map1 "c") 3)
+  (let map2 (call (of Map String Int)))
+  (= ([] map2 "b") 2)
+  (= ([] map2 "c") 4)
+  (let difference (- map1 map2))
+  (print (. difference length))
+  (print ([] difference "a"))
+  (print (has difference "b"))
+  (print (has difference "c"))
+)
 ```
 
 ```output
@@ -187,17 +222,19 @@ false
 
 ### In-place merge and subtraction with the map itself keep or empty it.
 
-```yumi
-. map = Map'String'Int()
-map["a"] = 1
-map["b"] = 2
-. alias = map
-map += alias
--- map.length
--- alias["b"]
-map -= alias
--- map.length
--- alias.length
+```brix
+(main
+  (let map (call (of Map String Int)))
+  (= ([] map "a") 1)
+  (= ([] map "b") 2)
+  (let alias map)
+  (+= map alias)
+  (print (. map length))
+  (print ([] alias "b"))
+  (-= map alias)
+  (print (. map length))
+  (print (. alias length))
+)
 ```
 
 ```output
@@ -207,18 +244,21 @@ map -= alias
 0
 ```
 
-```yumi
-. map = Map'String'Int()
-map["a"] = 1
-map["b"] = 2
-map["c"] = 2
-. found = Map'String'Bool()
-for key in map.find(2)
-    found[key] = true
--- found.length
--- found has "a"
--- found has "b"
--- found has "c"
+```brix
+(main
+  (let map (call (of Map String Int)))
+  (= ([] map "a") 1)
+  (= ([] map "b") 2)
+  (= ([] map "c") 2)
+  (let found (call (of Map String Bool)))
+  (for (in key (call (. map find) 2))
+    (= ([] found key) true)
+  )
+  (print (. found length))
+  (print (has found "a"))
+  (print (has found "b"))
+  (print (has found "c"))
+)
 ```
 
 ```output
@@ -228,26 +268,50 @@ true
 true
 ```
 
-```yumi
-. map [String = Int]
--- type-of map
+```brix
+(main
+  (let map (map String Int))
+  (print (type-of map))
+)
 ```
 
 ```output
 [TypeInfo Map'String'I64'GCBacking]
 ```
 
-```yumi
--- Map
-    • baz 42
--- Map
-    • ("foo") 42
--- Map
-    • ("foo") 1
-    • baz 2
--- Map
-    • baz 2
-    • ("foo") 1
+```brix
+(main
+  (print
+    (call Map
+      (block
+        (:baz 42)
+      )
+    )
+  )
+  (print
+    (call Map
+      (block
+        (entry "foo" 42)
+      )
+    )
+  )
+  (print
+    (call Map
+      (block
+        (entry "foo" 1)
+        (:baz 2)
+      )
+    )
+  )
+  (print
+    (call Map
+      (block
+        (:baz 2)
+        (entry "foo" 1)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -257,12 +321,19 @@ true
 [baz = 2, foo = 1]
 ```
 
-```yumi
--- Map
-    • ("foo") 42
-    • ("bar") x
-    • baz 42
-    .. x = 10
+```brix
+(main
+  (print
+    (call Map
+      (block
+        (entry "foo" 42)
+        (entry "bar" x)
+        (:baz 42)
+        (lazy x 10)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -271,18 +342,24 @@ true
 
 ### A map constructor keeps its map result when contextualized as one case of a union.
 
-```yumi
-. root [String = MapConstructorValue] = Map'String'MapConstructorValue()
-root["stream_options"] = Map
-    • "include_usage" true
-. stream-options = root["stream_options"] as [String = MapConstructorValue]
--- stream-options["include_usage"] as Bool
+```brix
+(main
+  (let root (map String MapConstructorValue) (call (of Map String MapConstructorValue)))
+  (= ([] root "stream_options")
+    (call Map
+      (block
+        (entry "include_usage" true)
+      )
+    )
+  )
+  (let stream-options (as ([] root "stream_options") (map String MapConstructorValue)))
+  (print (as ([] stream-options "include_usage") Bool))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MapConstructorValue is Union
-
-| Bool
-| [String = MapConstructorValue]
+(type + MapConstructorValue (is Union)
+  (variant Bool)
+  (variant (map String MapConstructorValue))
+)
 ```
 
 ```output
@@ -291,21 +368,32 @@ true
 
 ### Map literals can mix identifier keys with explicit string keys.
 
-```yumi
-. content MapLiteralValue = Map'String'MapLiteralValue
-    • type "image_url"
-    • "image_url" Map'String'MapLiteralValue
-        • url "https://example.com/image.png"
-. root = content as [String = MapLiteralValue]
-. image = root["image_url"] as [String = MapLiteralValue]
--- root["type"] as String
--- image["url"] as String
+```brix
+(main
+  (let content MapLiteralValue
+    (call (of Map String MapLiteralValue)
+      (block
+        (:type "image_url")
+        (entry "image_url"
+          (call (of Map String MapLiteralValue)
+            (block
+              (:url "https://example.com/image.png")
+            )
+          )
+        )
+      )
+    )
+  )
+  (let root (as content (map String MapLiteralValue)))
+  (let image (as ([] root "image_url") (map String MapLiteralValue)))
+  (print (as ([] root "type") String))
+  (print (as ([] image "url") String))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MapLiteralValue is Union
-
-| String
-| [String = MapLiteralValue]
+(type + MapLiteralValue (is Union)
+  (variant String)
+  (variant (map String MapLiteralValue))
+)
 ```
 
 ```output
@@ -315,16 +403,23 @@ https://example.com/image.png
 
 ### Optional map entries omit absent values and unwrap present values.
 
-```yumi
-. present String? = "yes"
-. absent String?
-. map = Map'String'String
-    • type "image"
-    •? present present
-    •? absent absent
--- map has "present"
--- map has "absent"
--- map["present"]
+```brix
+(main
+  (let present (? String) "yes")
+  (let absent (? String))
+  (let map
+    (call (of Map String String)
+      (block
+        (:type "image")
+        (:present? present)
+        (:absent? absent)
+      )
+    )
+  )
+  (print (has map "present"))
+  (print (has map "absent"))
+  (print ([] map "present"))
+)
 ```
 
 ```output
@@ -335,13 +430,15 @@ yes
 
 ### Full-width numeric keys remain distinct.
 
-```yumi
-. map = Map'U64'Int()
-map[0u64] = 1
-map[4294967296u64] = 2
--- map[0u64]
--- map[4294967296u64]
--- map.length
+```brix
+(main
+  (let map (call (of Map U64 Int)))
+  (= ([] map 0u64) 1)
+  (= ([] map 4294967296u64) 2)
+  (print ([] map 0u64))
+  (print ([] map 4294967296u64))
+  (print (. map length))
+)
 ```
 
 ```output
@@ -352,17 +449,19 @@ map[4294967296u64] = 2
 
 ### UTF-8 prefixes and equal 32-bit string hashes do not alias keys.
 
-```yumi
-. map = Map'String'Int()
-map["éa"] = 1
-map["éb"] = 2
-map["zsycr9pu60"] = 3
-map["hngah7hg7b"] = 4
--- map["éa"]
--- map["éb"]
--- map["zsycr9pu60"]
--- map["hngah7hg7b"]
--- map.length
+```brix
+(main
+  (let map (call (of Map String Int)))
+  (= ([] map "éa") 1)
+  (= ([] map "éb") 2)
+  (= ([] map "zsycr9pu60") 3)
+  (= ([] map "hngah7hg7b") 4)
+  (print ([] map "éa"))
+  (print ([] map "éb"))
+  (print ([] map "zsycr9pu60"))
+  (print ([] map "hngah7hg7b"))
+  (print (. map length))
+)
 ```
 
 ```output
@@ -375,22 +474,24 @@ map["hngah7hg7b"] = 4
 
 ### Deleting a same-bucket head or tail preserves the rest of the chain.
 
-```yumi
-. delete-head = Map'U32'Int()
-delete-head[0u32] = 0
-delete-head[8u32] = 8
--= delete-head[0u32]
--- delete-head has 0u32
--- delete-head[8u32]
--- delete-head.length
-
-. delete-tail = Map'U32'Int()
-delete-tail[0u32] = 0
-delete-tail[8u32] = 8
--= delete-tail[8u32]
--- delete-tail[0u32]
--- delete-tail has 8u32
--- delete-tail.length
+```brix
+(main
+  (let delete-head (call (of Map U32 Int)))
+  (= ([] delete-head 0u32) 0)
+  (= ([] delete-head 8u32) 8)
+  (-= ([] delete-head 0u32))
+  (print (has delete-head 0u32))
+  (print ([] delete-head 8u32))
+  (print (. delete-head length))
+  (blank)
+  (let delete-tail (call (of Map U32 Int)))
+  (= ([] delete-tail 0u32) 0)
+  (= ([] delete-tail 8u32) 8)
+  (-= ([] delete-tail 8u32))
+  (print ([] delete-tail 0u32))
+  (print (has delete-tail 8u32))
+  (print (. delete-tail length))
+)
 ```
 
 ```output
@@ -404,43 +505,49 @@ false
 
 ### Existing and missing deletes keep length, emptiness, and every iteration surface consistent.
 
-```yumi
-. map = Map'U32'Int()
-map[0u32] = 0
-map[8u32] = 8
-map[16u32] = 16
--= map[8u32]
-
-. key-count = 0
-for key in map.keys
-    key-count += 1
-. value-count = 0
-for value in map.values
-    value-count += 1
-. item-count = 0
-for item in map.items
-    item-count += 1
-. iteration-count = 0
-for key, value in map
-    iteration-count += 1
-
--- map.length
--- !map
--- map has 0u32
--- map has 8u32
--- map has 16u32
--- (key-count, value-count, item-count, iteration-count)
-
--= map[24u32]
--- map.length
--- map has 0u32
--- map has 8u32
--- map has 16u32
-
--= map[0u32]
--= map[16u32]
--- map.length
--- !map
+```brix
+(main
+  (let map (call (of Map U32 Int)))
+  (= ([] map 0u32) 0)
+  (= ([] map 8u32) 8)
+  (= ([] map 16u32) 16)
+  (-= ([] map 8u32))
+  (blank)
+  (let key-count 0)
+  (for (in key (. map keys))
+    (+= key-count 1)
+  )
+  (let value-count 0)
+  (for (in value (. map values))
+    (+= value-count 1)
+  )
+  (let item-count 0)
+  (for (in item (. map items))
+    (+= item-count 1)
+  )
+  (let iteration-count 0)
+  (for (in (tuple key value) map)
+    (+= iteration-count 1)
+  )
+  (blank)
+  (print (. map length))
+  (print (not map))
+  (print (has map 0u32))
+  (print (has map 8u32))
+  (print (has map 16u32))
+  (print (tuple key-count value-count item-count iteration-count))
+  (blank)
+  (-= ([] map 24u32))
+  (print (. map length))
+  (print (has map 0u32))
+  (print (has map 8u32))
+  (print (has map 16u32))
+  (blank)
+  (-= ([] map 0u32))
+  (-= ([] map 16u32))
+  (print (. map length))
+  (print (not map))
+)
 ```
 
 ```output
@@ -460,60 +567,69 @@ true
 
 ### Growth preserves 80,000 mixed-width keys across lookup and every iteration surface.
 
-```yumi
-. count = 80000
-. map = Map'U64'U64()
-. expected-key-checksum = 0u64
-. expected-value-checksum = 0u64
-for i in 0 .. < count
-    . key = (i as U64) + ((i % 17) as U64) * 4294967296u64
-    map[key] = i as U64
-    expected-key-checksum += key
-    expected-value-checksum += i as U64
-
-. lookup-ok = true
-for i in 0 .. < count
-    . key = (i as U64) + ((i % 17) as U64) * 4294967296u64
-    if map[key]! != i as U64
-        lookup-ok = false
-
-. key-count = 0
-. key-checksum = 0u64
-for key in map.keys
-    key-count += 1
-    key-checksum += key
-
-. value-count = 0
-. value-checksum = 0u64
-for value in map.values
-    value-count += 1
-    value-checksum += value
-
-. item-count = 0
-. item-key-checksum = 0u64
-. item-value-checksum = 0u64
-for item in map.items
-    item-count += 1
-    item-key-checksum += item.key
-    item-value-checksum += item.value
-
-. iteration-count = 0
-. iteration-key-checksum = 0u64
-. iteration-value-checksum = 0u64
-for key, value in map
-    iteration-count += 1
-    iteration-key-checksum += key
-    iteration-value-checksum += value
-
--- map.length
--- lookup-ok
--- (key-count, value-count, item-count, iteration-count)
--- key-checksum == expected-key-checksum
--- value-checksum == expected-value-checksum
--- item-key-checksum == expected-key-checksum
--- item-value-checksum == expected-value-checksum
--- iteration-key-checksum == expected-key-checksum
--- iteration-value-checksum == expected-value-checksum
+```brix
+(main
+  (let count 80000)
+  (let map (call (of Map U64 U64)))
+  (let expected-key-checksum 0u64)
+  (let expected-value-checksum 0u64)
+  (for (in i (..< 0 count))
+    (let key (+ (as i U64) (* (as (% i 17) U64) 4294967296u64)))
+    (= ([] map key) (as i U64))
+    (+= expected-key-checksum key)
+    (+= expected-value-checksum (as i U64))
+  )
+  (blank)
+  (let lookup-ok true)
+  (for (in i (..< 0 count))
+    (let key (+ (as i U64) (* (as (% i 17) U64) 4294967296u64)))
+    (if (!= (!! ([] map key)) (as i U64))
+      (= lookup-ok false)
+    )
+  )
+  (blank)
+  (let key-count 0)
+  (let key-checksum 0u64)
+  (for (in key (. map keys))
+    (+= key-count 1)
+    (+= key-checksum key)
+  )
+  (blank)
+  (let value-count 0)
+  (let value-checksum 0u64)
+  (for (in value (. map values))
+    (+= value-count 1)
+    (+= value-checksum value)
+  )
+  (blank)
+  (let item-count 0)
+  (let item-key-checksum 0u64)
+  (let item-value-checksum 0u64)
+  (for (in item (. map items))
+    (+= item-count 1)
+    (+= item-key-checksum (. item key))
+    (+= item-value-checksum (. item value))
+  )
+  (blank)
+  (let iteration-count 0)
+  (let iteration-key-checksum 0u64)
+  (let iteration-value-checksum 0u64)
+  (for (in (tuple key value) map)
+    (+= iteration-count 1)
+    (+= iteration-key-checksum key)
+    (+= iteration-value-checksum value)
+  )
+  (blank)
+  (print (. map length))
+  (print lookup-ok)
+  (print (tuple key-count value-count item-count iteration-count))
+  (print (== key-checksum expected-key-checksum))
+  (print (== value-checksum expected-value-checksum))
+  (print (== item-key-checksum expected-key-checksum))
+  (print (== item-value-checksum expected-value-checksum))
+  (print (== iteration-key-checksum expected-key-checksum))
+  (print (== iteration-value-checksum expected-value-checksum))
+)
 ```
 
 ```output
@@ -530,11 +646,13 @@ true
 
 ### Membership is based on key presence rather than value truthiness.
 
-```yumi
-. map = Map'String'Bool()
-map["f"] = false
--- map has "f"
--- map has "missing"
+```brix
+(main
+  (let map (call (of Map String Bool)))
+  (= ([] map "f") false)
+  (print (has map "f"))
+  (print (has map "missing"))
+)
 ```
 
 ```output
@@ -544,18 +662,19 @@ false
 
 ### Plain reference keys use stable object identity.
 
-```yumi
-. first = Thing()
-. second = Thing()
-. map = Map'Thing'String()
-map[first] = "first"
-map[second] = "second"
--- map[first]
--- map[second]
--- map.length
+```brix
+(main
+  (let first (call Thing))
+  (let second (call Thing))
+  (let map (call (of Map Thing String)))
+  (= ([] map first) "first")
+  (= ([] map second) "second")
+  (print ([] map first))
+  (print ([] map second))
+  (print (. map length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing)
 ```
 
 ```output
@@ -566,25 +685,28 @@ second
 
 ### Open-addressed capacity uses a 75% occupancy limit; reserve and clear retain storage.
 
-```yumi
-. map = Map'U32'U32()
--- map.capacity
-for key in 0u32 .. < 6u32
-    map[key] = key
--- map.capacity
-map[6u32] = 6u32
--- map.capacity
-. length-before-update = map.length
-map[3u32] = 33u32
--- map.length == length-before-update
--- map[3u32]
-map.reserve(24)
--- map.capacity
-map.reserve(25)
--- map.capacity
-map.clear()
--- map.length
--- map.capacity
+```brix
+(main
+  (let map (call (of Map U32 U32)))
+  (print (. map capacity))
+  (for (in key (..< 0u32 6u32))
+    (= ([] map key) key)
+  )
+  (print (. map capacity))
+  (= ([] map 6u32) 6u32)
+  (print (. map capacity))
+  (let length-before-update (. map length))
+  (= ([] map 3u32) 33u32)
+  (print (== (. map length) length-before-update))
+  (print ([] map 3u32))
+  (call (. map reserve) 24)
+  (print (. map capacity))
+  (call (. map reserve) 25)
+  (print (. map capacity))
+  (call (. map clear))
+  (print (. map length))
+  (print (. map capacity))
+)
 ```
 
 ```output
@@ -601,23 +723,29 @@ true
 
 ### Reinserting a removed key reuses its tombstone instead of rebuilding a map at its occupancy limit.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-do finally
-    arena.release()
-
-. map = Map'U32'U32(arena)
-for key in 0u32 .. < 6u32
-    map[key] = key * 10u32
-. active-bytes = arena.active-bytes
-for round in 0 .. < 4
-    -= map[3u32]
-    map[3u32] = 30u32
--- arena.active-bytes == active-bytes
--- map.length, map.capacity
--- map[0u32], map[3u32], map[5u32]
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (blank)
+  (let map (call (of Map U32 U32) arena))
+  (for (in key (..< 0u32 6u32))
+    (= ([] map key) (* key 10u32))
+  )
+  (let active-bytes (. arena active-bytes))
+  (for (in round (..< 0 4))
+    (-= ([] map 3u32))
+    (= ([] map 3u32) 30u32)
+  )
+  (print (== (. arena active-bytes) active-bytes))
+  (print (tuple (. map length) (. map capacity)))
+  (print (tuple ([] map 0u32) ([] map 3u32) ([] map 5u32)))
+)
 ```
 
 ```output
@@ -628,47 +756,49 @@ true
 
 ### Clearing a map with live entries and tombstones releases its values and keeps it usable.
 
-```yumi
-/core/gc
+```brix
+(import /core/gc)
+(blank)
+(import /BxGC/BxGC.h)
+(blank)
 
-/BxGC/BxGC.h
+(main
+  (let map (call (of Map U32 MapClearBox)))
+  (let weaks (call fill-cleared map))
+  (call (. map clear))
+  (call C:brixCollect)
+  (print (. map length))
+  (let live 0)
+  (for (in weak weaks)
+    (if (. weak get)
+      (+= live 1)
+    )
+  )
+  (print live)
+  (= ([] map 2u32) (call MapClearBox 20))
+  (print (. (!! ([] map 2u32)) value))
+  (print (== ([] map 1u32) null))
+)
 
-. map = Map'U32'MapClearBox()
-. weaks = fill-cleared(map)
-map.clear()
-C:brixCollect()
--- map.length
-. live = 0
-for weak in weaks
-    if weak.get
-        live += 1
--- live
-map[2u32] = MapClearBox(20)
--- map[2u32]!.value
--- map[1u32] == null
+(fn-do + fill-cleared (of List (of Weak MapClearBox))
+  (param map (of Map U32 MapClearBox))
+  (let weaks (call (of List (of Weak MapClearBox))))
+  (for (in index (..< 0u32 4u32))
+    (let box (call MapClearBox (as index Int)))
+    (= ([] map index) box)
+    (call (. weaks append) (call Weak box))
+  )
+  (-= ([] map 1u32))
+  (return weaks)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fill-cleared List'(Weak'MapClearBox)
-    - map Map'U32'MapClearBox
-
-. weaks = List'(Weak'MapClearBox)()
-for index in 0u32 .. < 4u32
-    . box = MapClearBox(index as Int)
-    map[index] = box
-    weaks.append(Weak(box))
--= map[1u32]
-= weaks
-
-━━━━━━━━━━━━━━━━━━━━
-+ MapClearBox
-
-+ value = 0
-
-────────────────────
-+ This
-    - v Int
-
-value = v
+(type + MapClearBox
+  (prop + value _ (= 0))
+  (fn-do + This _
+    (param v Int)
+    (= value v)
+  )
+)
 ```
 
 ```output
@@ -680,45 +810,50 @@ true
 
 ### Fully colliding keys survive deletion, tombstone reuse, and repeated churn.
 
-```yumi
-. map = Map'MapCollisionKey'U32()
-for round in 0 .. < 12
-    for index in 0 .. < 96
-        map[MapCollisionKey(index as U32)] = (index + round * 1000) as U32
-    for index in 0 .. < 96 by 3
-        -= map[MapCollisionKey(index as U32)]
-    for index in 0 .. < 96 by 3
-        map[MapCollisionKey(index as U32)] = (index + round * 1000 + 1) as U32
+```brix
+(main
+  (let map (call (of Map MapCollisionKey U32)))
+  (for (in round (..< 0 12))
+    (for (in index (..< 0 96))
+      (= ([] map (call MapCollisionKey (as index U32))) (as (+ index (* round 1000)) U32))
+    )
+    (for (in index (..< 0 96 (by: 3)))
+      (-= ([] map (call MapCollisionKey (as index U32))))
+    )
+    (for (in index (..< 0 96 (by: 3)))
+      (= ([] map (call MapCollisionKey (as index U32))) (as (+ index (* round 1000) 1) U32))
+    )
+  )
+  (blank)
+  (let valid (== (. map length) 96))
+  (for (in index (..< 0 96))
+    (let expected (as (+ index 11000) U32))
+    (if (== (% index 3) 0)
+      (+= expected 1u32)
+    )
+    (if (!= (!! ([] map (call MapCollisionKey (as index U32)))) expected)
+      (= valid false)
+    )
+  )
+  (blank)
+  (for (in index (..< 0 96))
+    (-= ([] map (call MapCollisionKey (as index U32))))
+  )
+  (print valid)
+  (print (. map length))
+  (print (has map (call MapCollisionKey 500u32)))
+)
 
-. valid = map.length == 96
-for index in 0 .. < 96
-    . expected = (index + 11000) as U32
-    if index % 3 == 0
-        expected += 1u32
-    if map[MapCollisionKey(index as U32)]! != expected
-        valid = false
-
-for index in 0 .. < 96
-    -= map[MapCollisionKey(index as U32)]
--- valid
--- map.length
--- map has MapCollisionKey(500u32)
-
-━━━━━━━━━━━━━━━━━━━━
-+ MapCollisionKey is Struct
-    is Hashable
-
-+ identity U32
-
-────────────────────
-+ this == other MapCollisionKey
-
-identity == other.identity
-
-────────────────────
-+ get hash Hash
-
-0u32
+(type + MapCollisionKey (is Struct)
+  (implements Hashable)
+  (prop + identity U32)
+  (fn-expr + (infix this == (param other MapCollisionKey)) _
+    (== identity (. other identity))
+  )
+  (fn-expr + hash Hash :get
+    0u32
+  )
+)
 ```
 
 ```output
@@ -729,27 +864,35 @@ false
 
 ### Iteration visits every live entry exactly once without defining an order.
 
-```yumi
-. count = 128
-. map = Map'U32'U32()
-for index in 0 .. < count
-    map[index as U32] = (index * 7) as U32
-
-. seen = Bool[count]
-. valid = true
-. visited = 0
-for key, value in map
-    if key >= count as U32 || seen[key as Index] || value != key * 7u32
-        valid = false
-    else
-        seen[key as Index] = true
-    visited += 1
-
-for index in 0 .. < count
-    if !seen[index]
-        valid = false
--- valid
--- visited
+```brix
+(main
+  (let count 128)
+  (let map (call (of Map U32 U32)))
+  (for (in index (..< 0 count))
+    (= ([] map (as index U32)) (as (* index 7) U32))
+  )
+  (blank)
+  (let seen ([] Bool count))
+  (let valid true)
+  (let visited 0)
+  (for (in (tuple key value) map)
+    (if (or (>= key (as count U32)) ([] seen (as key Index)) (!= value (* key 7u32)))
+      (= valid false)
+      (else
+        (= ([] seen (as key Index)) true)
+      )
+    )
+    (+= visited 1)
+  )
+  (blank)
+  (for (in index (..< 0 count))
+    (if (not ([] seen index))
+      (= valid false)
+    )
+  )
+  (print valid)
+  (print visited)
+)
 ```
 
 ```output
@@ -759,28 +902,36 @@ true
 
 ### Deterministic mixed operations agree with a simple optional-array model.
 
-```yumi
-. key-count = 257
-. map = Map'U32'I32()
-. model = I32?[key-count]
-. valid = true
-for step in 0 .. < 20000
-    . key = ((step * 73 + step / 11) % key-count) as U32
-    . action = step % 5
-    if action < 3
-        . value = (step * 17 - 9000) as I32
-        map[key] = value
-        model[key as Index] = value
-    else if action == 3
-        -= map[key]
-        model[key as Index] = null
-    else if map[key] != model[key as Index]
-        valid = false
-
-for key in 0 .. < key-count
-    if map[key as U32] != model[key]
-        valid = false
--- valid
+```brix
+(main
+  (let key-count 257)
+  (let map (call (of Map U32 I32)))
+  (let model ([] (? I32) key-count))
+  (let valid true)
+  (for (in step (..< 0 20000))
+    (let key (as (% (+ (* step 73) (/ step 11)) key-count) U32))
+    (let action (% step 5))
+    (if (< action 3)
+      (let value (as (- (* step 17) 9000) I32))
+      (= ([] map key) value)
+      (= ([] model (as key Index)) value)
+      (else-if (== action 3)
+        (-= ([] map key))
+        (= ([] model (as key Index)) null)
+      )
+      (else-if (!= ([] map key) ([] model (as key Index)))
+        (= valid false)
+      )
+    )
+  )
+  (blank)
+  (for (in key (..< 0 key-count))
+    (if (!= ([] map (as key U32)) ([] model key))
+      (= valid false)
+    )
+  )
+  (print valid)
+)
 ```
 
 ```output
@@ -789,65 +940,70 @@ true
 
 ### Optional and large reference-bearing values survive growth and deletion.
 
-```yumi
-/BxGC/BxGC.h
+```brix
+(import /BxGC/BxGC.h)
+(blank)
 
-. optional = Map'U32'(Optional'String)()
-. absent Optional'String
-optional[1u32] = absent
-optional[2u32] = "present"
+(main
+  (let optional (call (of Map U32 (of Optional String))))
+  (let absent (of Optional String))
+  (= ([] optional 1u32) absent)
+  (= ([] optional 2u32) "present")
+  (blank)
+  (let references (call (of Map ReferenceMapThing ReferenceMapThing)))
+  (let roots (list ReferenceMapThing))
+  (for (in key (..< 0 2000))
+    (let key-object (call ReferenceMapThing (as key U32)))
+    (let value-object (call ReferenceMapThing (as (+ key 2000) U32)))
+    (+= roots key-object)
+    (+= roots value-object)
+    (= ([] references key-object) value-object)
+  )
+  (for (in key (..< 0 1000))
+    (-= ([] references ([] roots (* key 2))))
+  )
+  (call (. roots clear))
+  (call C:brixGCCollect)
+  (blank)
+  (let reference-checksum 0u64)
+  (for (in (tuple key value) references)
+    (+= reference-checksum (as (. key id) U64))
+    (+= reference-checksum (as (. value id) U64))
+  )
+  (blank)
+  (let large (call (of Map U32 LargeMapValue)))
+  (for (in key (..< 0 2000))
+    (= ([] large (as key U32)) (call LargeMapValue (str "value-" key) (as key U64) (as (+ key 1) U64) (as (+ key 2) U64) (as (+ key 3) U64)))
+  )
+  (for (in key (..< 0 1000))
+    (-= ([] large (as key U32)))
+  )
+  (blank)
+  (print (has optional 1u32))
+  (print (has optional 2u32))
+  (print (. optional length))
+  (print (. references length))
+  (print reference-checksum)
+  (print (. large length))
+  (let final-value (!! ([] large 1999u32)))
+  (print (. final-value label))
+  (print (. final-value d))
+)
 
-. references = Map'ReferenceMapThing'ReferenceMapThing()
-. roots [ReferenceMapThing]
-for key in 0 .. < 2000
-    . key-object = ReferenceMapThing(key as U32)
-    . value-object = ReferenceMapThing((key + 2000) as U32)
-    roots += key-object
-    roots += value-object
-    references[key-object] = value-object
-for key in 0 .. < 1000
-    -= references[roots[key * 2]]
-roots.clear()
-C:brixGCCollect()
+(type + LargeMapValue (is Struct)
+  (prop + label String)
+  (prop + a U64)
+  (prop + b U64)
+  (prop + c U64)
+  (prop + d U64)
+)
 
-. reference-checksum = 0u64
-for key, value in references
-    reference-checksum += key.id as U64
-    reference-checksum += value.id as U64
-
-. large = Map'U32'LargeMapValue()
-for key in 0 .. < 2000
-    large[key as U32] = LargeMapValue("value-$key", key as U64, (key + 1) as U64, (key + 2) as U64, (key + 3) as U64)
-for key in 0 .. < 1000
-    -= large[key as U32]
-
--- optional has 1u32
--- optional has 2u32
--- optional.length
--- references.length
--- reference-checksum
--- large.length
-. final-value = large[1999u32]!
--- final-value.label
--- final-value.d
-
-━━━━━━━━━━━━━━━━━━━━
-+ LargeMapValue is Struct
-
-+ label String
-+ a U64
-+ b U64
-+ c U64
-+ d U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ ReferenceMapThing
-
-+ id U32
-
-────────────────────
-+ This
-    - id
+(type + ReferenceMapThing
+  (prop + id U32)
+  (fn-do + This _
+    (param id _)
+  )
+)
 ```
 
 ```output
@@ -863,72 +1019,76 @@ value-1999
 
 ### Arena-backed Maps share one storage context across all slot arrays and preserve their backing.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-do finally
-    arena.release()
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (blank)
+  (let map (call (of Map MapArenaCollisionKey U32) arena))
+  (let reserved (call (of Map MapArenaCollisionKey U32) arena 24))
+  (let from-pairs (call (of Map MapArenaCollisionKey U32) arena (call KeyValuePair (call MapArenaCollisionKey 300u32) 3u32)))
+  (blank)
+  (for (in index (..< 0 96))
+    (= ([] map (call MapArenaCollisionKey (as index U32))) (as index U32))
+  )
+  (= ([] map (call MapArenaCollisionKey 5u32)) 5000u32)
+  (for (in index (..< 0 96 (by: 3)))
+    (-= ([] map (call MapArenaCollisionKey (as index U32))))
+  )
+  (for (in index (..< 0 96 (by: 3)))
+    (= ([] map (call MapArenaCollisionKey (as index U32))) (as (+ index 1000) U32))
+  )
+  (blank)
+  (let valid (== (. map length) 96))
+  (let visited 0)
+  (let checksum 0u64)
+  (for (in (tuple key value) map)
+    (+= visited 1)
+    (+= checksum (as value U64))
+    (if (!= (!! ([] map key)) value)
+      (= valid false)
+    )
+  )
+  (blank)
+  (let extra (call (of Map MapArenaCollisionKey U32) arena))
+  (= ([] extra (call MapArenaCollisionKey 200u32)) 200u32)
+  (let clone (+ map extra))
+  (let removed (- clone extra))
+  (blank)
+  (print (type-of (call (of Map MapArenaCollisionKey U32))))
+  (print (type-of map))
+  (print (type-of clone))
+  (print (type-of removed))
+  (print (. reserved capacity))
+  (print ([] from-pairs (call MapArenaCollisionKey 300u32)))
+  (print (tuple valid visited checksum))
+  (print (tuple ([] map (call MapArenaCollisionKey 5u32)) ([] map (call MapArenaCollisionKey 6u32))))
+  (print (tuple (. clone length) ([] clone (call MapArenaCollisionKey 200u32))))
+  (print (tuple (. removed length) (has removed (call MapArenaCollisionKey 200u32))))
+  (print (tuple (. GCBacking Context size) (. ArenaBacking Context size)))
+  (print (tuple (. (of Map U32 U32) size) (. (of Map U32 U32 ArenaBacking) size)))
+  (blank)
+  (let retained-capacity (. map capacity))
+  (call (. map clear))
+  (= ([] map (call MapArenaCollisionKey 7u32)) 77u32)
+  (print (tuple (. map length) (. map capacity) retained-capacity ([] map (call MapArenaCollisionKey 7u32))))
+)
 
-. map = Map'MapArenaCollisionKey'U32(arena)
-. reserved = Map'MapArenaCollisionKey'U32(arena, 24)
-. from-pairs = Map'MapArenaCollisionKey'U32(arena, KeyValuePair(MapArenaCollisionKey(300u32), 3u32))
-
-for index in 0 .. < 96
-    map[MapArenaCollisionKey(index as U32)] = index as U32
-map[MapArenaCollisionKey(5u32)] = 5000u32
-for index in 0 .. < 96 by 3
-    -= map[MapArenaCollisionKey(index as U32)]
-for index in 0 .. < 96 by 3
-    map[MapArenaCollisionKey(index as U32)] = (index + 1000) as U32
-
-. valid = map.length == 96
-. visited = 0
-. checksum = 0u64
-for key, value in map
-    visited += 1
-    checksum += value as U64
-    if map[key]! != value
-        valid = false
-
-. extra = Map'MapArenaCollisionKey'U32(arena)
-extra[MapArenaCollisionKey(200u32)] = 200u32
-. clone = map + extra
-. removed = clone - extra
-
--- type-of Map'MapArenaCollisionKey'U32()
--- type-of map
--- type-of clone
--- type-of removed
--- reserved.capacity
--- from-pairs[MapArenaCollisionKey(300u32)]
--- valid, visited, checksum
--- map[MapArenaCollisionKey(5u32)], map[MapArenaCollisionKey(6u32)]
--- clone.length, clone[MapArenaCollisionKey(200u32)]
--- removed.length, removed has MapArenaCollisionKey(200u32)
--- GCBacking.Context.size, ArenaBacking.Context.size
--- Map'U32'U32.size, Map'U32'U32'ArenaBacking.size
-
-. retained-capacity = map.capacity
-map.clear()
-map[MapArenaCollisionKey(7u32)] = 77u32
--- map.length, map.capacity, retained-capacity, map[MapArenaCollisionKey(7u32)]
-
-━━━━━━━━━━━━━━━━━━━━
-+ MapArenaCollisionKey is Struct
-    is Hashable
-
-+ identity U32
-
-────────────────────
-+ this == other MapArenaCollisionKey
-
-identity == other.identity
-
-────────────────────
-+ get hash Hash
-
-0u32
+(type + MapArenaCollisionKey (is Struct)
+  (implements Hashable)
+  (prop + identity U32)
+  (fn-expr + (infix this == (param other MapArenaCollisionKey)) _
+    (== identity (. other identity))
+  )
+  (fn-expr + hash Hash :get
+    0u32
+  )
+)
 ```
 
 ```output
@@ -949,58 +1109,71 @@ identity == other.identity
 
 ### Arena-backed Map reservation failures use the normal Map error path.
 
-```yumi crash
-/core/arena
+```brix crash
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-do finally
-    arena.release()
-. map = Map'U32'U32(arena, map-maximum-capacity)
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (let map (call (of Map U32 U32) arena map-maximum-capacity))
+)
 ```
 
 ### Mutating a map during active iteration is detected.
 
-```yumi crash
-. map = Map'U32'U32()
-map[1u32] = 1u32
-map[2u32] = 2u32
-for key in map.keys
-    map[3u32] = 3u32
+```brix crash
+(main
+  (let map (call (of Map U32 U32)))
+  (= ([] map 1u32) 1u32)
+  (= ([] map 2u32) 2u32)
+  (for (in key (. map keys))
+    (= ([] map 3u32) 3u32)
+  )
+)
 ```
 
 ### Impossible reservations fail explicitly before allocating.
 
-```yumi crash
-. map = Map'U32'U32(map-maximum-capacity)
+```brix crash
+(main
+  (let map (call (of Map U32 U32) map-maximum-capacity))
+)
 ```
 
-```yumi
-/core/atom-pool
+```brix
+(import /core/atom-pool)
+(blank)
 
-. atoms = AtomPool()
-. others = AtomPool()
-do finally
-    atoms.release()
-    others.release()
-
-. alpha = atoms.store("alpha")
-. alpha-again = atoms.store("alpha")
-. beta = atoms.store("beta")
-. other-alpha = others.store("alpha")
-. map = Map'Atom'String()
-map[alpha] = "first"
-map[alpha-again] = "updated"
-map[beta] = "second"
-map[other-alpha] = "other"
-
--- map.length
--- map[alpha]
--- map[beta]
--- map[other-alpha]
--- map has alpha-again
--- alpha == alpha-again
--- alpha != other-alpha
--- hash-for(alpha) == hash-for(alpha.address)
+(main
+  (let atoms (call AtomPool))
+  (let others (call AtomPool))
+  (finally
+    (call (. atoms release))
+    (call (. others release))
+  )
+  (blank)
+  (let alpha (call (. atoms store) "alpha"))
+  (let alpha-again (call (. atoms store) "alpha"))
+  (let beta (call (. atoms store) "beta"))
+  (let other-alpha (call (. others store) "alpha"))
+  (let map (call (of Map Atom String)))
+  (= ([] map alpha) "first")
+  (= ([] map alpha-again) "updated")
+  (= ([] map beta) "second")
+  (= ([] map other-alpha) "other")
+  (blank)
+  (print (. map length))
+  (print ([] map alpha))
+  (print ([] map beta))
+  (print ([] map other-alpha))
+  (print (has map alpha-again))
+  (print (== alpha alpha-again))
+  (print (!= alpha other-alpha))
+  (print (== (call hash-for alpha) (call hash-for (. alpha address))))
+)
 ```
 
 ```output
@@ -1014,15 +1187,20 @@ true
 true
 ```
 
-```yumi
-. map =
-    * "alpha"
-    * "beta"
-    *> (each, each)
-    |> Map
-
--- type-of map
--- (map.length, map["alpha"], map["beta"])
+```brix
+(main
+  (let map
+    (block
+      (item "alpha")
+      (item "beta")
+      (pipe *> (tuple each each))
+      (pipe |> Map)
+    )
+  )
+  (blank)
+  (print (type-of map))
+  (print (tuple (. map length) ([] map "alpha") ([] map "beta")))
+)
 ```
 
 ```output
@@ -1030,19 +1208,20 @@ true
 (2, alpha, beta)
 ```
 
-```yumi
-. map = Map(pairs(), 24)
+```brix
+(main
+  (let map (call Map (call pairs) 24))
+  (blank)
+  (print (type-of map))
+  (print (. map capacity))
+  (print (tuple (. map length) ([] map "a") ([] map "b")))
+)
 
--- type-of map
--- map.capacity
--- (map.length, map["a"], map["b"])
-
-━━━━━━━━━━━━━━━━━━━━
-+ pairs
-
-* ("a", 1)
-* ("b", 2)
-* ("a", 3)
+(fn-expr + pairs _
+  (item (tuple "a" 1))
+  (item (tuple "b" 2))
+  (item (tuple "a" 3))
+)
 ```
 
 ```output
@@ -1051,24 +1230,27 @@ true
 (2, 3, 2)
 ```
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-do finally
-    arena.release()
-. map = Map(arena, pairs(), 24)
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (let map (call Map arena (call pairs) 24))
+  (blank)
+  (print (type-of map))
+  (print (. map capacity))
+  (print (tuple (. map length) ([] map "a") ([] map "b")))
+)
 
--- type-of map
--- map.capacity
--- (map.length, map["a"], map["b"])
-
-━━━━━━━━━━━━━━━━━━━━
-+ pairs
-
-* ("a", 1)
-* ("b", 2)
-* ("a", 3)
+(fn-expr + pairs _
+  (item (tuple "a" 1))
+  (item (tuple "b" 2))
+  (item (tuple "a" 3))
+)
 ```
 
 ```output
@@ -1079,20 +1261,26 @@ do finally
 
 ### Map bullets preserve string keys when their values widen into a union.
 
-```yumi
-. map = Map'String'Value
-    • "include_usage" true
+```brix
+(main
+  (let map
+    (call (of Map String Value)
+      (block
+        (entry "include_usage" true)
+      )
+    )
+  )
+  (blank)
+  (print (as ([] map "include_usage") Bool))
+)
 
--- map["include_usage"] as Bool
-
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| Null
-| Bool
-| Int
-| String
-| [String = Value]
+(type + Value (is Union)
+  (variant Null)
+  (variant Bool)
+  (variant Int)
+  (variant String)
+  (variant (map String Value))
+)
 ```
 
 ```output
@@ -1101,16 +1289,18 @@ true
 
 ### A map assigned by a key answers the value assigned, and holds one value for a key.
 
-```yumi
-. map [String = Int]
-map["foo"] = 42
--- map["foo"]
--- map.length
--- (map["bar"] = 7)
--- map["bar"], map["none"]
-map["foo"] = 43
--- map["foo"], map.length
--- map has "foo", map has "zed"
+```brix
+(main
+  (let map (map String Int))
+  (= ([] map "foo") 42)
+  (print ([] map "foo"))
+  (print (. map length))
+  (print (= ([] map "bar") 7))
+  (print (tuple ([] map "bar") ([] map "none")))
+  (= ([] map "foo") 43)
+  (print (tuple ([] map "foo") (. map length)))
+  (print (tuple (has map "foo") (has map "zed")))
+)
 ```
 
 ```output
@@ -1124,27 +1314,33 @@ map["foo"] = 43
 
 ### A map made from one pair, from two, and from a bullet, with a value that is a number and one that is a union.
 
-```yumi
-. one = Map'String'Int(("a", 1))
--- one.length
--- one["a"]
-. two = Map'String'Int(("a", 1), ("b", 2))
--- two.length
--- two["b"]
-. mixed = Map'String'Value(("flag", true))
--- mixed.length
--- mixed["flag"] as Bool
-. listed = Map'String'Value
-    • "count" 3
--- listed.length
--- listed["count"] as Int
+```brix
+(main
+  (let one (call (of Map String Int) (tuple "a" 1)))
+  (print (. one length))
+  (print ([] one "a"))
+  (let two (call (of Map String Int) (tuple "a" 1) (tuple "b" 2)))
+  (print (. two length))
+  (print ([] two "b"))
+  (let mixed (call (of Map String Value) (tuple "flag" true)))
+  (print (. mixed length))
+  (print (as ([] mixed "flag") Bool))
+  (let listed
+    (call (of Map String Value)
+      (block
+        (entry "count" 3)
+      )
+    )
+  )
+  (print (. listed length))
+  (print (as ([] listed "count") Int))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| Null
-| Bool
-| Int
+(type + Value (is Union)
+  (variant Null)
+  (variant Bool)
+  (variant Int)
+)
 ```
 
 ```output
@@ -1158,42 +1354,48 @@ true
 3
 ```
 
-```yumi
-. map = build()
--- map.length
--- map has "omitted"
--- map["type"]! as String
--- map["width"]! as Int
--- ", ".join(map["children"]! as [Value])
+```brix
+(main
+  (let map (call build))
+  (print (. map length))
+  (print (has map "omitted"))
+  (print (as (!! ([] map "type")) String))
+  (print (as (!! ([] map "width")) Int))
+  (print (call (. ", " join) (as (!! ([] map "children")) (list Value))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
+(type + Value (is Union)
+  (variant Null)
+  (variant Int)
+  (variant String)
+  (variant (list Value))
+)
 
-| Null
-| Int
-| String
-| [Value]
+(fn-expr + build _ (?! Error)
+  (call (of Map String Value)
+    (block
+      (:children children)
+      (:type? (only-if "layer" (if include)))
+      (:width? (only-if (call checked 3) (if include)))
+      (:omitted? (only-if (call checked 4) (if (not include))))
+    )
+  )
+  (where
+    (lazy children
+      (block
+        (spread (list 1 2))
+        (pipe *> (call checked each))
+        (pipe |> List)
+      )
+    )
+    (lazy include true)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ build ?! Error
-
-Map'String'Value
-    • children children
-    •? type "layer" if include
-    •? width checked(3) if include
-    •? omitted checked(4) if !include
-
-.. children =
-    ** [1, 2]
-    *> checked(each)
-    |> List
-.. include = true
-
-━━━━━━━━━━━━━━━━━━━━
-_ checked ?! Error
-    - value Int
-
-value as Value
+(fn-expr _ checked _ (?! Error)
+  (param value Int)
+  (as value Value)
+)
 ```
 
 ```output
@@ -1206,32 +1408,36 @@ layer
 
 ### A map's length is read with a getter, so it cannot be assigned.
 
-```yumi crash
-. map = Map'String'Int()
-map["a"] = 1
-map.length = 5
+```brix crash
+(main
+  (let map (call (of Map String Int)))
+  (= ([] map "a") 1)
+  (= (. map length) 5)
+)
 ```
 
 ```output
 Exception: Setter not found
-<no file:4>
-    map.length = 5
-    ^^^^^^^^^^
+<no file:5>
+      (= (. map length) 5)
+         ^^^^^^^^^^^^^^
 ```
 
 ### Fractional float keys hash by their bits, and signed zeros share one key.
 
-```yumi
-. map = Map'F64'String()
-map[0.25] = "quarter"
-map[0.5] = "half"
-map[0.0] = "positive"
-map[-0.0] = "negative"
--= map[0.25]
--- map.length
--- map[0.0]!
--- map[0.5]!
--- hash-for(0.0f32) == hash-for(-0.0f32)
+```brix
+(main
+  (let map (call (of Map F64 String)))
+  (= ([] map 0.25) "quarter")
+  (= ([] map 0.5) "half")
+  (= ([] map 0.0) "positive")
+  (= ([] map -0.0) "negative")
+  (-= ([] map 0.25))
+  (print (. map length))
+  (print (!! ([] map 0.0)))
+  (print (!! ([] map 0.5)))
+  (print (== (call hash-for 0.0f32) (call hash-for -0.0f32)))
+)
 ```
 
 ```output
@@ -1240,4 +1446,3 @@ negative
 half
 true
 ```
-

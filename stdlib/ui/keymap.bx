@@ -1,0 +1,128 @@
+(import ./key-assignment)
+(import ./key-combo)
+(import /data/json)
+
+(type + KeyMapping (is Tuple)
+  (prop + stable-key String)
+  (prop + key (? KeyCombo))
+  (prop + disabled _ (= false))
+)
+
+(type + KeyMappingProfile
+  (prop + version Int (= 1))
+  (prop + mappings (list KeyMapping))
+  (fn-do + This _)
+  (fn-do + This _
+    (param mappings _)
+  )
+  (fn-expr + json _ :get
+    (as root JSON)
+    (where
+      (lazy encoded (list JSON)
+        (block
+          (spread mappings)
+          (pipe *> (call key-mapping-json each))
+        )
+      )
+      (lazy root
+        (call (of Map String JSON)
+          (block
+            (arg (tuple "version" (as version JSON)))
+            (arg (tuple "mappings" (as encoded JSON)))
+          )
+        )
+      )
+    )
+  )
+  (fn-to-expr + String
+    (call to-json json)
+  )
+)
+
+(fn-expr _ key-mapping-json _
+  (param mapping KeyMapping)
+  (call (of Map String JSON)
+    (block
+      (arg (tuple "stableKey" (as (. mapping stable-key) JSON)))
+      (arg (tuple "disabled" (as (. mapping disabled) JSON)))
+      (arg (tuple "key" key))
+    )
+  )
+  (where
+    (lazy key JSON
+      (match (. mapping key)
+        (case (: value KeyCombo)
+          (as (str value) JSON)
+        )
+        (default
+          (as null JSON)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + load-key-mapping-profile (? KeyMappingProfile)
+  (param text String)
+  (catch? (call key-mapping-profile (call JSONReader "Key mappings" (catch? (call parse-json text)))))
+)
+
+(fn-expr + load-key-mapping-json (? KeyMappingProfile)
+  (param value JSON)
+  (catch? (call key-mapping-profile (call JSONReader "Key mappings" value)))
+)
+
+(fn-expr _ key-mapping-profile _ (?! Error)
+  (param reader JSONReader)
+  (before
+    (throw (call Error (str "Unsupported key mapping profile version " version)) (if (!= version 1)))
+  )
+  (call KeyMappingProfile mappings)
+  (where
+    (lazy root (call (. reader object)))
+    (lazy version (call (. ([] root "version") int)))
+    (lazy mappings
+      (block
+        (spread (call (. ([] root "mappings") items)))
+        (pipe *> (call key-mapping (call (. each object))))
+        (pipe |> List)
+      )
+    )
+  )
+)
+
+(fn-expr _ key-mapping _ (?! Error)
+  (param fields JSONObjectReader)
+  (call KeyMapping
+    (block
+      (arg (call (. ([] fields "stableKey") string)))
+      (arg key)
+      (arg (call (. ([] fields "disabled") bool)))
+    )
+  )
+  (where
+    (lazy spec ([] fields "key"))
+    (lazy key (only-if (call KeyCombo (call (. spec string))) (if (. spec is-present))))
+  )
+)
+
+(fn-do + apply-key-mapping-profile _
+  (param assignments (list KeyAssignment))
+  (param profile KeyMappingProfile)
+  (for (in assignment assignments)
+    (let fallback (. assignment mapping-default))
+    (call (. fallback capture) assignment)
+    (call (. fallback restore) assignment)
+  )
+  (for (in mapping (. profile mappings))
+    (for (in assignment assignments)
+      (if (== (. assignment stable-key) (. mapping stable-key))
+        (call (. assignment set-binding-enabled) (not (. mapping disabled)))
+        (let remapped (. mapping key))
+        (if remapped
+          (call (. assignment set-binding-key) remapped)
+        )
+      )
+    )
+  )
+)

@@ -1,0 +1,67 @@
+; benchmark.meta description: Repeats buffered iterable parsing with growing retained windows.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+
+(main
+  (let source (call window-small-refills-source))
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in iteration (..< 0 1300))
+    (let stream (call (of ChunkedTokenStream Char) (. source codepoints)))
+    (let rows
+      (match stream
+        (~ \window-small-refills-document)
+        (throw (call Panic "window-small-refills-repeated did not parse"))
+      )
+    )
+    (blank)
+    (for (in row rows)
+      (+= checksum row)
+    )
+  )
+  (blank)
+  (print (str "bench-result stream/window-small-refills-repeated checksum=" checksum))
+)
+
+(fn-expr + window-small-refills-document _ (over: Char)
+  (~ (: rows (+ \window-small-row))
+    rows
+  )
+  (where
+    (lazy window-small-row Size
+      (pattern
+        (~ (seq (& (seq "rec:" (* (seq (! "\n") .)) "\n")) "rec:" (: name \window-small-word) ":" (: value \window-small-digits) "\n")
+          (+ (* (. name length) 29) (. value length))
+        )
+      )
+    )
+    (blank)
+    (lazy window-small-word String
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_"))))
+      )
+    )
+    (blank)
+    (lazy window-small-digits String
+      (pattern
+        (~ (+ (chars "0-9")))
+      )
+    )
+  )
+)
+
+(fn-do _ window-small-refills-source _
+  (let source "")
+  (let large-name (* "x" 32))
+  (for (in index (..< 0 260))
+    (let name (str "n" (% index 10)))
+    (if (== (% index 43) 42)
+      (= name large-name)
+      (+= large-name large-name)
+    )
+    (+= source (str "rec:" name ":" (* index 41) "\n"))
+  )
+  (blank)
+  (return source)
+)

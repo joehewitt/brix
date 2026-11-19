@@ -1,9 +1,5 @@
 # Declare
 
-```yumi
-. foo
-```
-
 ```brix
 (main
   (let foo)
@@ -16,10 +12,6 @@
         <Id name="foo"/>
     </TypeCapture>
 </Declaration>
-```
-
-```yumi
-. foo = bar
 ```
 
 ```brix
@@ -35,11 +27,6 @@
     </TypeCapture>
     <Id name="bar"/>
 </Declaration>
-```
-
-```yumi
-. foo
-    bar
 ```
 
 ```brix
@@ -63,10 +50,6 @@
 </Declaration>
 ```
 
-```yumi
-.. foo = bar
-```
-
 ```brix
 (main
   (lazy foo bar)
@@ -80,10 +63,6 @@
     </TypeCapture>
     <Id name="bar"/>
 </Declaration>
-```
-
-```yumi
-. foo Foo = bar
 ```
 
 ```brix
@@ -102,10 +81,6 @@
 </Declaration>
 ```
 
-```yumi
-. foo [Foo] = bar
-```
-
 ```brix
 (main
   (let foo (list Foo) bar)
@@ -122,11 +97,6 @@
     </TypeCapture>
     <Id name="bar"/>
 </Declaration>
-```
-
-```yumi
-.. name ~
-    ~ Foo
 ```
 
 ```brix
@@ -149,25 +119,5 @@
             <TypeId name="Foo"/>
         </StreamType>
     </StreamMatch>
-</Declaration>
-```
-
-```yumi
-. x =
-    -- foo
-    foo
-```
-
-```output
-<Declaration>
-    <TypeCapture>
-        <Id name="x"/>
-    </TypeCapture>
-    <Block>
-        <Print>
-            <Id name="foo"/>
-        </Print>
-        <Id name="foo"/>
-    </Block>
 </Declaration>
 ```

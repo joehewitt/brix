@@ -1,0 +1,66 @@
+; benchmark.meta description: Tokenizes ASCII text with grammars.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+
+(main
+  (let tokens
+    (match (call ascii-tokenizer-source)
+      (~ \ascii-tokenizer-document)
+      (throw (call Panic "ascii-tokenizer did not parse"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in token tokens)
+    (+= checksum token)
+  )
+  (blank)
+  (print (str "bench-result stream/ascii-tokenizer checksum=" checksum))
+)
+
+(fn-expr + ascii-tokenizer-document _ (over: Char)
+  (~ (: tokens (+ \ascii-token))
+    tokens
+  )
+  (where
+    (lazy ascii-token Size
+      (pattern
+        (~ (: id \ascii-identifier)
+          (* (. id length) 2)
+        )
+        (~ (: number \ascii-number)
+          (* (. number length) 3)
+        )
+        (~ \ascii-space
+          1
+        )
+        (~ (| "(" ")" "{" "}" "[" "]" ";" "," "." ":" "+" "-" "*" "/" "=")
+          5
+        )
+      )
+    )
+    (blank)
+    (lazy ascii-identifier String
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_"))))
+      )
+    )
+    (blank)
+    (lazy ascii-number String
+      (pattern
+        (~ (+ (chars "0-9")))
+      )
+    )
+    (blank)
+    (lazy ascii-space
+      (pattern
+        (~ (+ (| " " "\n" "\t")))
+      )
+    )
+  )
+)
+
+(fn-expr _ ascii-tokenizer-source _
+  (call (. "" join) (in (str "fn alpha_" each "(x" (% each 9) ", y" (% each 13) ") { value = x + y * " (+ each 1) "; }\n") (..< 0 220)))
+)

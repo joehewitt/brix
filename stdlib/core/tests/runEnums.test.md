@@ -1,22 +1,23 @@
 # Enums
 
-```yumi
--- Foo.bar
--- Foo.baz
--- 0 as Foo == Foo.bar
--- 1 as Foo == Foo.baz
--- 0 as Foo == Foo.baz
+```brix
+(main
+  (print (. Foo bar))
+  (print (. Foo baz))
+  (print (== (as 0 Foo) (. Foo bar)))
+  (print (== (as 1 Foo) (. Foo baz)))
+  (print (== (as 0 Foo) (. Foo baz)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-| bar
-| baz
-
-`-----
-`+ to String
-
-`"Foo $number"
+(type + Foo
+  (variant bar)
+  (variant baz)
+  (blank)
+  ; -----
+  ; + to String
+  (blank)
+  ; "Foo $number"
+)
 ```
 
 ```output
@@ -27,21 +28,20 @@ true
 false
 ```
 
-```yumi
--- Foo.bar
--- Foo.baz
--- 0 as Foo
+```brix
+(main
+  (print (. Foo bar))
+  (print (. Foo baz))
+  (print (as 0 Foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is (a Int, b String)
-
-| bar = (1, "BAR")
-| baz = (2, "BAZ")
-
-────────────────────
-+ to String
-
-b
+(type + Foo (is (tuple (: a Int) (: b String)))
+  (variant bar (= (tuple 1 "BAR")))
+  (variant baz (= (tuple 2 "BAZ")))
+  (fn-to-expr + String
+    b
+  )
+)
 ```
 
 ```output
@@ -50,41 +50,47 @@ BAZ
 BAR
 ```
 
-```yumi
-. value Foo = Foo.baz
--- match value
-    |= Foo.bar
+```brix
+(main
+  (let value Foo (. Foo baz))
+  (print
+    (match value
+      (case= (. Foo bar)
         "bar"
-    |= Foo.baz
+      )
+      (case= (. Foo baz)
         "baz"
-    ??
+      )
+      (default
         "unknown"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is (a Int, b String)
-
-| bar = (1, "BAR")
-| baz = (2, "BAZ")
-
-────────────────────
-+ to String
-
-b
+(type + Foo (is (tuple (: a Int) (: b String)))
+  (variant bar (= (tuple 1 "BAR")))
+  (variant baz (= (tuple 2 "BAZ")))
+  (fn-to-expr + String
+    b
+  )
+)
 ```
 
 ```output
 baz
 ```
 
-```yumi
--- Foo.bar
--- Foo.baz
+```brix
+(main
+  (print (. Foo bar))
+  (print (. Foo baz))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Int
-
-| bar
-| baz
+(type + Foo (is Int)
+  (variant bar)
+  (variant baz)
+)
 ```
 
 ```output
@@ -92,33 +98,48 @@ baz
 1
 ```
 
-```yumi
-. value Foo = Foo.baz
--- match value
-    |= .bar
+```brix
+(main
+  (let value Foo (. Foo baz))
+  (print
+    (match value
+      (case= .bar
         "bar"
-    |= .baz
+      )
+      (case= .baz
         "baz"
-    |= .qux
+      )
+      (case= .qux
         "qux"
-    ??
+      )
+      (default
         "unknown"
--- match Foo.qux
-    |= Foo.bar
+      )
+    )
+  )
+  (print
+    (match (. Foo qux)
+      (case= (. Foo bar)
         "bar"
-    |= Foo.baz
+      )
+      (case= (. Foo baz)
         "baz"
-    |= Foo.qux
+      )
+      (case= (. Foo qux)
         "qux"
-    ??
+      )
+      (default
         "unknown"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Int
-
-| bar
-| baz
-| qux
+(type + Foo (is Int)
+  (variant bar)
+  (variant baz)
+  (variant qux)
+)
 ```
 
 ```output
@@ -126,36 +147,43 @@ baz
 qux
 ```
 
-```yumi crash
--- match Foo.bar
-    | .bar
+```brix crash
+(main
+  (print
+    (match (. Foo bar)
+      (case .bar
         "union case"
-    ??
+      )
+      (default
         "fallback"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is U8
-
-| bar
-| baz
+(type + Foo (is U8)
+  (variant bar)
+  (variant baz)
+)
 ```
 
 ```output
-Exception: Foo.bar is an enum value, not a union case; match it with '|= .bar'
-<no file:3>
-        | .bar
-          ^^^^
+Exception: Foo.bar is an enum value, not a union case; match it with "(case= .bar …)"
+<no file:5>
+          (case .bar
+                ^^^^
 ```
 
-```yumi
--- Foo.bar
--- Foo.baz
+```brix
+(main
+  (print (. Foo bar))
+  (print (. Foo baz))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Float
-
-| bar
-| baz
+(type + Foo (is Float)
+  (variant bar)
+  (variant baz)
+)
 ```
 
 ```output
@@ -163,26 +191,24 @@ Exception: Foo.bar is an enum value, not a union case; match it with '|= .bar'
 1
 ```
 
-```yumi
--- Foo.bar
--- 0 as Foo
--- 0 as Foo == Foo.bar
+```brix
+(main
+  (print (. Foo bar))
+  (print (as 0 Foo))
+  (print (== (as 0 Foo) (. Foo bar)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-| bar = "hello"
-
-+ name String
-
-────────────────────
-+ This
-    - name String
-
-────────────────────
-+ to String
-
-"[Foo $name]"
+(type + Foo
+  (variant bar (= "hello"))
+  (blank)
+  (prop + name String)
+  (fn-do + This _
+    (param name String)
+  )
+  (fn-to-expr + String
+    (str "[Foo " name "]")
+  )
+)
 ```
 
 ```output
@@ -191,58 +217,66 @@ Exception: Foo.bar is an enum value, not a union case; match it with '|= .bar'
 true
 ```
 
-```yumi crash
--- Foo.bar
+```brix crash
+(main
+  (print (. Foo bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-| bar = "hello"
+(type + Foo
+  (variant bar (= "hello"))
+)
 ```
 
 ```output
 Exception: Expected Foo here, but this is String, and there is no conversion between them
 <no file:7>
-    | bar = "hello"
-            ^^^^^^^
+      (variant bar (= "hello"))
+                      ^^^^^^^
 ```
 
 ### U8 enum values match with value patterns, including inside the enum's own methods.
 
-```yumi
-for kind in [Kind.first, Kind.second, Kind.third]
-    -- kind.label
-    -- describe(kind)
+```brix
+(main
+  (for (in kind (list (. Kind first) (. Kind second) (. Kind third)))
+    (print (. kind label))
+    (print (call describe kind))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - kind Kind
+(fn-expr + describe String
+  (param kind Kind)
+  (match kind
+    (case= .first
+      "one"
+    )
+    (case= (. Kind second)
+      "two"
+    )
+    (default
+      "other"
+    )
+  )
+)
 
-match kind
-    |= .first
+(type + Kind (is U8)
+  (variant first)
+  (variant second)
+  (variant third)
+  (fn-expr + label _ :get
+    (match this
+      (case= .first
         "one"
-    |= Kind.second
+      )
+      (case= .second
         "two"
-    ??
+      )
+      (default
         "other"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Kind is U8
-
-| first
-| second
-| third
-
-────────────────────
-+ get label
-
-match this
-    |= .first
-        "one"
-    |= .second
-        "two"
-    ??
-        "other"
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -256,65 +290,64 @@ other
 
 ### Values of enums of a number, a tuple and a class, named, compared and matched
 
-```yumi
--- Level.low
--- Level.high
--- Level.low == Level.low
--- Level.low == Level.high
--- rank(.low)
--- rank(.mid)
--- rank(Level.high)
-. picked Level = .mid
--- picked
--- Tone.warm
--- Tone.cool.name
--- Tone.warm == Tone.cool
--- Mark.plain.label
--- Mark.bold.label
--- Mark.plain == Mark.plain
--- Mark.plain == Mark.bold
+```brix
+(main
+  (print (. Level low))
+  (print (. Level high))
+  (print (== (. Level low) (. Level low)))
+  (print (== (. Level low) (. Level high)))
+  (print (call rank .low))
+  (print (call rank .mid))
+  (print (call rank (. Level high)))
+  (let picked Level .mid)
+  (print picked)
+  (print (. Tone warm))
+  (print (. Tone cool name))
+  (print (== (. Tone warm) (. Tone cool)))
+  (print (. Mark plain label))
+  (print (. Mark bold label))
+  (print (== (. Mark plain) (. Mark plain)))
+  (print (== (. Mark plain) (. Mark bold)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ rank Int
-    - level Level
+(fn-expr + rank Int
+  (param level Level)
+  (match level
+    (case= .low
+      1
+    )
+    (case= (. Level mid)
+      2
+    )
+    (default
+      3
+    )
+  )
+)
 
-match level
-    |= .low
-        1
-    |= Level.mid
-        2
-    ??
-        3
+(type + Level (is U8)
+  (variant low)
+  (variant mid)
+  (variant high)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Level is U8
+(type + Tone (is (tuple (: heat Int) (: name String)))
+  (variant warm (= (tuple 30 "warm")))
+  (variant cool (= (tuple 5 "cool")))
+  (fn-to-expr + String
+    (str "tone " name " " heat)
+  )
+)
 
-| low
-| mid
-| high
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tone is (heat Int, name String)
-
-| warm = (30, "warm")
-| cool = (5, "cool")
-
-────────────────────
-+ to String
-
-"tone $name $heat"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mark
-
-| plain = "p"
-| bold = "b"
-
-+ label String
-
-────────────────────
-+ This
-    - label String
+(type + Mark
+  (variant plain (= "p"))
+  (variant bold (= "b"))
+  (blank)
+  (prop + label String)
+  (fn-do + This _
+    (param label String)
+  )
+)
 ```
 
 ```output
@@ -337,44 +370,41 @@ false
 
 ### Number converted to an enum of a class by its place
 
-```yumi
--- 0 as Foo
--- 1 as Foo
--- 2 as Foo
--- -1 as Foo
-. n = 1
--- n as Foo
-. wide I64 = 0
--- wide as Foo
-. small U8 = 1
--- small as Foo
--- (5 as Foo).name
--- (0 as Foo) == Foo.bar
--- take(0 as Foo)
--- take(7 as Foo)
+```brix
+(main
+  (print (as 0 Foo))
+  (print (as 1 Foo))
+  (print (as 2 Foo))
+  (print (as -1 Foo))
+  (let n 1)
+  (print (as n Foo))
+  (let wide I64 0)
+  (print (as wide Foo))
+  (let small U8 1)
+  (print (as small Foo))
+  (print (. (as 5 Foo) name))
+  (print (== (as 0 Foo) (. Foo bar)))
+  (print (call take (as 0 Foo)))
+  (print (call take (as 7 Foo)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ take String
-    - foo Foo
+(fn-expr + take String
+  (param foo Foo)
+  (str "took " (. foo name))
+)
 
-"took ${foo.name}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-| bar = "hello"
-| baz = "there"
-
-+ name String = "made"
-
-────────────────────
-+ This
-    - name String = "none"
-
-────────────────────
-+ to String
-
-"[Foo $name]"
+(type + Foo
+  (variant bar (= "hello"))
+  (variant baz (= "there"))
+  (blank)
+  (prop + name String (= "made"))
+  (fn-do + This _
+    (param name String (= "none"))
+  )
+  (fn-to-expr + String
+    (str "[Foo " name "]")
+  )
+)
 ```
 
 ```output
@@ -393,43 +423,43 @@ took none
 
 ### A number becomes an enum of a class only when asked
 
-```yumi compile-error
-. place = 1
-. chosen Foo = place
+```brix compile-error
+(main
+  (let place 1)
+  (let chosen Foo place)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-| bar = "hello"
-| baz = "there"
+(type + Foo
+  (variant bar (= "hello"))
+  (variant baz (= "there"))
+)
 ```
 
 ```output
-Exception: Expected Foo here, but this is I64, which becomes Foo only when asked; write "as Foo"
-<no file:3>
-    . chosen Foo = place
-             ^^^
+Exception: Expected Foo here, but this is I64, which becomes Foo only when asked; write "(as place Foo)"
+<no file:4>
+      (let chosen Foo place)
+                  ^^^
 ```
 
 ### Number converted to an enum of a tuple by its place
 
-```yumi
--- 0 as Pair
--- 1 as Pair
--- 3 as Pair
--- (1 as Pair).b
--- (4 as Pair).a
+```brix
+(main
+  (print (as 0 Pair))
+  (print (as 1 Pair))
+  (print (as 3 Pair))
+  (print (. (as 1 Pair) b))
+  (print (. (as 4 Pair) a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (a Int, b String)
-
-| one = (1, "ONE")
-| two = (2, "TWO")
-
-────────────────────
-+ to String
-
-"$a $b"
+(type + Pair (is (tuple (: a Int) (: b String)))
+  (variant one (= (tuple 1 "ONE")))
+  (variant two (= (tuple 2 "TWO")))
+  (fn-to-expr + String
+    (str a " " b)
+  )
+)
 ```
 
 ```output
@@ -442,26 +472,24 @@ TWO
 
 ### Number past the values of an enum constructs it with nothing
 
-```yumi
--- 0 as Foo
--- 2 as Foo
+```brix
+(main
+  (print (as 0 Foo))
+  (print (as 2 Foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-| bar = "hello"
-| baz = "there"
-
-+ name String
-
-────────────────────
-+ This
-    - name String
-
-────────────────────
-+ to String
-
-"[Foo $name]"
+(type + Foo
+  (variant bar (= "hello"))
+  (variant baz (= "there"))
+  (blank)
+  (prop + name String)
+  (fn-do + This _
+    (param name String)
+  )
+  (fn-to-expr + String
+    (str "[Foo " name "]")
+  )
+)
 ```
 
 ```output
@@ -471,22 +499,21 @@ TWO
 
 ### Number converted to an enum whose values are never named
 
-```yumi
--- 0 as Foo
--- 2 as Foo
+```brix
+(main
+  (print (as 0 Foo))
+  (print (as 2 Foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-| bar
-| baz
-
-+ name String = "made"
-
-────────────────────
-+ to String
-
-"[Foo $name]"
+(type + Foo
+  (variant bar)
+  (variant baz)
+  (blank)
+  (prop + name String (= "made"))
+  (fn-to-expr + String
+    (str "[Foo " name "]")
+  )
+)
 ```
 
 ```output
@@ -496,103 +523,99 @@ TWO
 
 ### A number an argument's call gives does not become an enum unasked.
 
-```yumi crash
--- take(compute())
+```brix crash
+(main
+  (print (call take (call compute)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do compute Int
+(fn-do + compute Int
+  (print "compute")
+  (return 0)
+)
 
--- "compute"
-= 0
+(fn-expr + take String
+  (param foo Foo)
+  (str "took " (. foo name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ take String
-    - foo Foo
-
-"took ${foo.name}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-| bar = "hello"
-| baz = "there"
-
-+ name String
-
-────────────────────
-+ This
-    - name String = "none"
+(type + Foo
+  (variant bar (= "hello"))
+  (variant baz (= "there"))
+  (blank)
+  (prop + name String)
+  (fn-do + This _
+    (param name String (= "none"))
+  )
+)
 ```
 
 ```output
 Exception: No function "take" accepts (I64); it is declared as "take(foo Foo)"
-<no file:2>
-    -- take(compute())
-       ^^^^^^^^^^^^^^^
+<no file:3>
+      (print (call take (call compute)))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A number converted to an enum with as where returned, declared and compared
 
-```yumi
--- pick(0).name
--- pick(1).name
--- pick(5).name
--- choose(true).name
--- choose(false).name
--- each()
-. made = next(0) as Foo
--- made.name
-. later = next(1) as Foo
--- later.name
--- (next(4) as Foo).name
-. same = (1 as Foo) == Foo.baz
--- same
--- (1 as Foo) == (1 as Foo)
--- (9 as Foo) == (9 as Foo)
+```brix
+(main
+  (print (. (call pick 0) name))
+  (print (. (call pick 1) name))
+  (print (. (call pick 5) name))
+  (print (. (call choose true) name))
+  (print (. (call choose false) name))
+  (print (call each))
+  (let made (as (call next 0) Foo))
+  (print (. made name))
+  (let later (as (call next 1) Foo))
+  (print (. later name))
+  (print (. (as (call next 4) Foo) name))
+  (let same (== (as 1 Foo) (. Foo baz)))
+  (print same)
+  (print (== (as 1 Foo) (as 1 Foo)))
+  (print (== (as 9 Foo) (as 9 Foo)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do next Int
-    - from Int
+(fn-do + next Int
+  (param from Int)
+  (print (str "next " from))
+  (return (+ from 1))
+)
 
--- "next $from"
-= from + 1
+(fn-expr + pick Foo
+  (param n Int)
+  (as n Foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pick Foo
-    - n Int
+(fn-do + choose Foo
+  (param first Bool)
+  (if first
+    (return (as 0 Foo))
+  )
+  (return (as 1 Foo))
+)
 
-n as Foo
+(fn-do + each String
+  (let text "")
+  (let n 0)
+  (while (< n 4)
+    (let foo (as n Foo))
+    (= text (++ text (. foo name) " "))
+    (+= n 1)
+  )
+  (return text)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do choose Foo
-    - first Bool
-
-if first
-    = 0 as Foo
-= 1 as Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ do each String
-
-. text = ""
-. n = 0
-while n < 4
-    . foo = n as Foo
-    text = text ++ foo.name ++ " "
-    n += 1
-= text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-| bar = "hello"
-| baz = "there"
-
-+ name String
-
-────────────────────
-+ This
-    - name String = "none"
+(type + Foo
+  (variant bar (= "hello"))
+  (variant baz (= "there"))
+  (blank)
+  (prop + name String)
+  (fn-do + This _
+    (param name String (= "none"))
+  )
+)
 ```
 
 ```output
@@ -615,18 +638,23 @@ false
 
 ### Match over some values of a class is open
 
-```yumi
-. level = Level.low
--- match level
-    |= .low
+```brix
+(main
+  (let level (. Level low))
+  (print
+    (match level
+      (case= .low
         "low"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Level
-
-| low
-| middle
-| high
+(type + Level
+  (variant low)
+  (variant middle)
+  (variant high)
+)
 ```
 
 ```output
@@ -635,24 +663,32 @@ low
 
 ### Match over the values of a class by equality
 
-```yumi
-. level = Level.low
--- match level
-    | .low
+```brix
+(main
+  (let level (. Level low))
+  (print
+    (match level
+      (case .low
         "low"
-    |= .middle
+      )
+      (case= .middle
         "middle"
-    |= .high
+      )
+      (case= .high
         "high"
-    |= .low
+      )
+      (case= .low
         "really low"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Level
-
-| low
-| middle
-| high
+(type + Level
+  (variant low)
+  (variant middle)
+  (variant high)
+)
 ```
 
 ```output
@@ -661,44 +697,53 @@ really low
 
 ### Match over a class with values that no arm takes
 
-```yumi crash
-. level = Level.low
--- match level
-    | .low
+```brix crash
+(main
+  (let level (. Level low))
+  (print
+    (match level
+      (case .low
         "low"
-    |= .middle
+      )
+      (case= .middle
         "middle"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Level
-
-| low
-| middle
+(type + Level
+  (variant low)
+  (variant middle)
+)
 ```
 
 ### Match over a class with values falls through
 
-```yumi crash
--- name(Level.low)
--- name(Level.middle)
--- name(Level.high)
+```brix crash
+(main
+  (print (call name (. Level low)))
+  (print (call name (. Level middle)))
+  (print (call name (. Level high)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ name String
-    - level Level
+(fn-expr + name String
+  (param level Level)
+  (match level
+    (case= .low
+      "low"
+    )
+    (case= .middle
+      "middle"
+    )
+  )
+)
 
-match level
-    |= .low
-        "low"
-    |= .middle
-        "middle"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Level
-
-| low
-| middle
-| high
+(type + Level
+  (variant low)
+  (variant middle)
+  (variant high)
+)
 ```
 
 ```output
@@ -708,73 +753,83 @@ middle
 
 ### Arm naming a value of a number type as a case
 
-```yumi crash
-. level = Level.low
--- match level
-    | .low
+```brix crash
+(main
+  (let level (. Level low))
+  (print
+    (match level
+      (case .low
         "low"
-    |= .middle
+      )
+      (case= .middle
         "middle"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Level is Int
-
-| low = 1
-| middle = 2
+(type + Level (is Int)
+  (variant low (= 1))
+  (variant middle (= 2))
+)
 ```
 
 ```output
-Exception: Level.low is an enum value, not a union case; match it with '|= .low'
-<no file:4>
-        | .low
-          ^^^^
+Exception: Level.low is an enum value, not a union case; match it with "(case= .low …)"
+<no file:6>
+          (case .low
+                ^^^^
 ```
 
 ### Match over some values of a number type is closed
 
-```yumi crash
--- name(Level.low)
--- name(Level.high)
+```brix crash
+(main
+  (print (call name (. Level low)))
+  (print (call name (. Level high)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ name String
-    - level Level
+(fn-expr + name String
+  (param level Level)
+  (match level
+    (case= .low
+      "low"
+    )
+    (case= .middle
+      "middle"
+    )
+  )
+)
 
-match level
-    |= .low
-        "low"
-    |= .middle
-        "middle"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Level is Int
-
-| low = 1
-| middle = 2
-| high = 3
+(type + Level (is Int)
+  (variant low (= 1))
+  (variant middle (= 2))
+  (variant high (= 3))
+)
 ```
 
 ```output
-Exception: This match on Level does not handle Level.high; add "|= Level.high", or "??" for the rest
+Exception: This match on Level does not handle Level.high; add "(case= (. Level high) …)", or "(default …)" for the rest
 <no file:10>
-        |= .low
-        ^^^^^^
+        (case= .low
+        ^^^^^^^^^^
 ```
 
 ### A case of an enum may hold a value as large as the enum's type holds.
 
-```yumi
-. f = Fill.fill-empty
--- "f ${f as U32}"
--- "v ${Fill.fill-variadic as U32}"
-. g Fill = .fill-variadic
--- "same ${g == Fill.fill-variadic} ${f == g}"
+```brix
+(main
+  (let f (. Fill fill-empty))
+  (print (str "f " (as f U32)))
+  (print (str "v " (as (. Fill fill-variadic) U32)))
+  (let g Fill .fill-variadic)
+  (print (str "same " (== g (. Fill fill-variadic)) " " (== f g)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Fill is U32
-
-| fill-empty = 4294967295
-| fill-variadic = 4294967294
+(type + Fill (is U32)
+  (variant fill-empty (= 4294967295))
+  (variant fill-variadic (= 4294967294))
+)
 ```
 
 ```output
@@ -785,19 +840,20 @@ same true false
 
 ### The tuple written for a case of a tuple enum fills its fields in order.
 
-```yumi
-. day = Day.monday
--- "[${day.name}] [${day.short-name}]"
--- "[${Day.sunday.name}]"
+```brix
+(main
+  (let day (. Day monday))
+  (print (str "[" (. day name) "] [" (. day short-name) "]"))
+  (print (str "[" (. Day sunday name) "]"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Day is Tuple
-
-| sunday = ("sunday", "sun")
-| monday = ("monday", "mon")
-
-+ name = ""
-+ short-name = ""
+(type + Day (is Tuple)
+  (variant sunday (= (tuple "sunday" "sun")))
+  (variant monday (= (tuple "monday" "mon")))
+  (blank)
+  (prop + name _ (= ""))
+  (prop + short-name _ (= ""))
+)
 ```
 
 ```output
@@ -807,39 +863,35 @@ same true false
 
 ### A case named by its symbol alone, given for a parameter whose enum has the case, is that enum's case, though an enum imported earlier has a case of the name too.
 
-```yumi
-./lib/near
-./lib/far
+```brix
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
--- describe(.stated) as U32
--- describe(.stated, "named") as U32
+(main
+  (print (as (call describe .stated) U32))
+  (print (as (call describe .stated "named") U32))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do describe Far
-    - kind Far
-    - label String? = null
-
-= kind
+(fn-do _ describe Far
+  (param kind Far)
+  (param label (? String) (= null))
+  (return kind)
+)
 ```
 
-```yumi file=lib/near.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is U32
-
-| first = 0
-| stated = 7
-
+```brix file=lib/near.bx
+(type + Near (is U32)
+  (variant first (= 0))
+  (variant stated (= 7))
+)
 ```
 
-```yumi file=lib/far.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is U32
-
-| first = 0
-| stated = 20
-
+```brix file=lib/far.bx
+(type + Far (is U32)
+  (variant first (= 0))
+  (variant stated (= 20))
+)
 ```
 
 ```output
@@ -849,39 +901,36 @@ _ do describe Far
 
 ### A choice between cases named by their symbols alone, given for a parameter whose enum has both cases, is a choice of that enum's cases, though an enum the module declares has cases of the names too.
 
-```yumi
-./lib/far
+```brix
+(import ./lib/far)
+(blank)
 
--- pick(true) as U32
--- pick(false) as U32
+(main
+  (print (as (call pick true) U32))
+  (print (as (call pick false) U32))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ Near is U32
+(type _ Near (is U32)
+  (variant first (= 3))
+  (variant stated (= 7))
+)
 
-| first = 3
-| stated = 7
+(fn-do _ pick Far
+  (param first Bool)
+  (return (call describe (if-expr first .first .stated)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do pick Far
-    - first Bool
-
-= describe(if first then .first else .stated)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do describe Far
-    - kind Far
-
-= kind
+(fn-do _ describe Far
+  (param kind Far)
+  (return kind)
+)
 ```
 
-```yumi file=lib/far.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is U32
-
-| first = 0
-| stated = 20
-
+```brix file=lib/far.bx
+(type + Far (is U32)
+  (variant first (= 0))
+  (variant stated (= 20))
+)
 ```
 
 ```output
@@ -891,36 +940,31 @@ _ do describe Far
 
 ### A case named by its symbol alone that two imported enums have, on the left of an operator that only one of them declares for the other operand, is that enum's case, though the other's case is the one its name alone gives.
 
-```yumi
-./lib/near
-./lib/far
+```brix
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
--- .stated + "!"
+(main
+  (print (+ .stated "!"))
+)
 ```
 
-```yumi file=lib/near.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is U32
-
-| first = 0
-| stated = 7
-
+```brix file=lib/near.bx
+(type + Near (is U32)
+  (variant first (= 0))
+  (variant stated (= 7))
+)
 ```
 
-```yumi file=lib/far.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is Union
-
-| first
-| stated
-
-────────────────────
-+ this + mark String
-
-"far $this$mark"
-
+```brix file=lib/far.bx
+(type + Far (is Union)
+  (variant first)
+  (variant stated)
+  (fn-expr + (infix this + (param mark String)) _
+    (str "far " this mark)
+  )
+)
 ```
 
 ```output
@@ -929,230 +973,209 @@ far stated!
 
 ### A case named by its symbol alone that two imported enums have is of neither in a local declared without a type, which casts it to nothing.
 
-```yumi crash
-./lib/near
-./lib/far
+```brix crash
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
-. kind = .stated
--- kind as U32
+(main
+  (let kind .stated)
+  (print (as kind U32))
+)
 ```
 
-```yumi file=lib/near.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is U32
-
-| first = 0
-| stated = 7
-
+```brix file=lib/near.bx
+(type + Near (is U32)
+  (variant first (= 0))
+  (variant stated (= 7))
+)
 ```
 
-```yumi file=lib/far.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is U32
-
-| first = 0
-| stated = 20
-
+```brix file=lib/far.bx
+(type + Far (is U32)
+  (variant first (= 0))
+  (variant stated (= 20))
+)
 ```
 
 ```output
 Exception: Case '.stated' is ambiguous between 'Far', 'Near'
-<no file:5>
-    . kind = .stated
-             ^^^^^^^
+<no file:7>
+      (let kind .stated)
+                ^^^^^^^
 ```
 
 ### A case named by its symbol alone is of neither enum that has it in a local declared with a type that has no such case, though the case converts to it.
 
-```yumi crash
-./lib/near
-./lib/far
+```brix crash
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
-. kind U32 = .stated
--- kind
+(main
+  (let kind U32 .stated)
+  (print kind)
+)
 ```
 
-```yumi file=lib/near.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is U32
-
-| first = 0
-| stated = 7
-
+```brix file=lib/near.bx
+(type + Near (is U32)
+  (variant first (= 0))
+  (variant stated (= 7))
+)
 ```
 
-```yumi file=lib/far.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is U32
-
-| first = 0
-| stated = 20
-
+```brix file=lib/far.bx
+(type + Far (is U32)
+  (variant first (= 0))
+  (variant stated (= 20))
+)
 ```
 
 ```output
 Exception: Case '.stated' is ambiguous between 'Far', 'Near'
-<no file:5>
-    . kind U32 = .stated
-                 ^^^^^^^
+<no file:7>
+      (let kind U32 .stated)
+                    ^^^^^^^
 ```
 
 ### A case named by its symbol alone is of neither enum that has it where it is assigned to a local of a type that has no such case.
 
-```yumi crash
-./lib/near
-./lib/far
+```brix crash
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
-. kind U32 = 0
-kind = .stated
--- kind
+(main
+  (let kind U32 0)
+  (= kind .stated)
+  (print kind)
+)
 ```
 
-```yumi file=lib/near.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is U32
-
-| first = 0
-| stated = 7
-
+```brix file=lib/near.bx
+(type + Near (is U32)
+  (variant first (= 0))
+  (variant stated (= 7))
+)
 ```
 
-```yumi file=lib/far.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is U32
-
-| first = 0
-| stated = 20
-
+```brix file=lib/far.bx
+(type + Far (is U32)
+  (variant first (= 0))
+  (variant stated (= 20))
+)
 ```
 
 ```output
 Exception: Case '.stated' is ambiguous between 'Far', 'Near'
-<no file:6>
-    kind = .stated
-           ^^^^^^^
+<no file:8>
+      (= kind .stated)
+              ^^^^^^^
 ```
 
 ### A case named by its symbol alone is of neither enum that has it as the default of a property of a type that has no such case.
 
-```yumi crash
-./lib/near
-./lib/far
+```brix crash
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
--- Box().kind
+(main
+  (print (. (call Box) kind))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ kind U32 = .stated
+(type + Box
+  (prop + kind U32 (= .stated))
+)
 ```
 
-```yumi file=lib/near.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is U32
-
-| first = 0
-| stated = 7
-
+```brix file=lib/near.bx
+(type + Near (is U32)
+  (variant first (= 0))
+  (variant stated (= 7))
+)
 ```
 
-```yumi file=lib/far.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is U32
-
-| first = 0
-| stated = 20
-
+```brix file=lib/far.bx
+(type + Far (is U32)
+  (variant first (= 0))
+  (variant stated (= 20))
+)
 ```
 
 ```output
 Exception: Case '.stated' is ambiguous between 'Far', 'Near'
-<no file:10>
-    + kind U32 = .stated
-                 ^^^^^^^
+<no file:11>
+      (prop + kind U32 (= .stated))
+                          ^^^^^^^
 ```
 
 ### A case named by its symbol alone is of neither enum that has it where a function returns it as a type that has no such case.
 
-```yumi crash
-./lib/near
-./lib/far
+```brix crash
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
--- pick()
+(main
+  (print (call pick))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do pick U32
-
-= .stated
+(fn-do _ pick U32
+  (return .stated)
+)
 ```
 
-```yumi file=lib/near.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is U32
-
-| first = 0
-| stated = 7
-
+```brix file=lib/near.bx
+(type + Near (is U32)
+  (variant first (= 0))
+  (variant stated (= 7))
+)
 ```
 
-```yumi file=lib/far.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is U32
-
-| first = 0
-| stated = 20
-
+```brix file=lib/far.bx
+(type + Far (is U32)
+  (variant first (= 0))
+  (variant stated (= 20))
+)
 ```
 
 ```output
 Exception: Case '.stated' is ambiguous between 'Far', 'Near'
-<no file:10>
-    = .stated
-      ^^^^^^^
+<no file:11>
+      (return .stated)
+              ^^^^^^^
 ```
 
 ### The case named by its symbol alone that a function written without do gives is the case of the enum it returns, though an enum imported earlier has a case of the name too.
 
-```yumi
-./lib/near
-./lib/far
+```brix
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
--- pick() as U32
+(main
+  (print (as (call pick) U32))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ pick Far
-
-.stated
+(fn-expr _ pick Far
+  .stated
+)
 ```
 
-```yumi file=lib/near.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is U32
-
-| first = 0
-| stated = 7
-
+```brix file=lib/near.bx
+(type + Near (is U32)
+  (variant first (= 0))
+  (variant stated (= 7))
+)
 ```
 
-```yumi file=lib/far.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is U32
-
-| first = 0
-| stated = 20
-
+```brix file=lib/far.bx
+(type + Far (is U32)
+  (variant first (= 0))
+  (variant stated (= 20))
+)
 ```
 
 ```output
@@ -1161,39 +1184,40 @@ _ pick Far
 
 ### The cases an `if` gives by their symbols alone are of the type expected of it, though another union has a case of the name too: as the value of a function written without do, and as the value of an arm of a match.
 
-```yumi
-for seed in 0 .. < 3
-    -- given(seed)
-    -- armed(seed)
+```brix
+(main
+  (for (in seed (..< 0 3))
+    (print (call given seed))
+    (print (call armed seed))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Cap is Union
+(type + Cap (is Union)
+  (variant butt)
+  (variant round)
+  (variant square)
+)
 
-| butt
-| round
-| square
+(type + Join (is Union)
+  (variant miter)
+  (variant round)
+  (variant bevel)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Join is Union
+(fn-expr _ given Cap
+  (param seed Int)
+  (if-expr (== seed 0) .round (if-expr (== seed 1) .square .butt))
+)
 
-| miter
-| round
-| bevel
-
-━━━━━━━━━━━━━━━━━━━━
-_ given Cap
-    - seed Int
-
-if seed == 0 then .round else if seed == 1 then .square else .butt
-
-━━━━━━━━━━━━━━━━━━━━
-_ armed Cap
-    - seed Int
-
-|? seed == 0
+(fn-expr _ armed Cap
+  (param seed Int)
+  (case? (== seed 0)
     .butt
-??
-    if seed == 1 then .round else .square
+  )
+  (default
+    (if-expr (== seed 1) .round .square)
+  )
+)
 ```
 
 ```output
@@ -1207,40 +1231,52 @@ square
 
 ### A case named by its symbol alone that another union has too, written alone in a block of its own below a declaration, an assignment, a property or a return, is the case of the type each states.
 
-```yumi
-. cap Cap =
-    .round
--- cap
-. join Join = .miter
-join =
-    .round
--- join
--- Brush().cap
--- ending()
+```brix
+(main
+  (let cap Cap
+    (block
+      .round
+    )
+  )
+  (print cap)
+  (let join Join .miter)
+  (= join
+    (block
+      .round
+    )
+  )
+  (print join)
+  (print (. (call Brush) cap))
+  (print (call ending))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Cap is Union
+(type + Cap (is Union)
+  (variant butt)
+  (variant round)
+)
 
-| butt
-| round
+(type + Join (is Union)
+  (variant miter)
+  (variant round)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Join is Union
+(type + Brush
+  (prop + cap Cap
+    (=
+      (block
+        .round
+      )
+    )
+  )
+)
 
-| miter
-| round
-
-━━━━━━━━━━━━━━━━━━━━
-+ Brush
-
-+ cap Cap =
-    .round
-
-━━━━━━━━━━━━━━━━━━━━
-+ do ending Cap
-
-=
-    .round
+(fn-do + ending Cap
+  (return
+    (block
+      .round
+    )
+  )
+)
 ```
 
 ```output
@@ -1252,72 +1288,65 @@ round
 
 ### A case named by its symbol alone is of neither enum that has it where a function written without do gives it as a type that has no such case.
 
-```yumi crash
-./lib/near
-./lib/far
+```brix crash
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
--- pick()
+(main
+  (print (call pick))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ pick U32
-
-.stated
+(fn-expr _ pick U32
+  .stated
+)
 ```
 
-```yumi file=lib/near.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is U32
-
-| first = 0
-| stated = 7
-
+```brix file=lib/near.bx
+(type + Near (is U32)
+  (variant first (= 0))
+  (variant stated (= 7))
+)
 ```
 
-```yumi file=lib/far.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is U32
-
-| first = 0
-| stated = 20
-
+```brix file=lib/far.bx
+(type + Far (is U32)
+  (variant first (= 0))
+  (variant stated (= 20))
+)
 ```
 
 ```output
 Exception: Case '.stated' is ambiguous between 'Far', 'Near'
-<no file:10>
-    .stated
-    ^^^^^^^
+<no file:11>
+      .stated
+      ^^^^^^^
 ```
 
 ### A case named by its symbol alone cast with `as` to an enum that has the case is that enum's case, though an enum imported earlier has a case of the name too.
 
-```yumi
-./lib/near
-./lib/far
+```brix
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
--- .stated as Far as U32
+(main
+  (print (as .stated Far U32))
+)
 ```
 
-```yumi file=lib/near.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is U32
-
-| first = 0
-| stated = 7
-
+```brix file=lib/near.bx
+(type + Near (is U32)
+  (variant first (= 0))
+  (variant stated (= 7))
+)
 ```
 
-```yumi file=lib/far.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is U32
-
-| first = 0
-| stated = 20
-
+```brix file=lib/far.bx
+(type + Far (is U32)
+  (variant first (= 0))
+  (variant stated (= 20))
+)
 ```
 
 ```output
@@ -1326,226 +1355,206 @@ Exception: Case '.stated' is ambiguous between 'Far', 'Near'
 
 ### A case named by its symbol alone cast with `as` to a type that has no such case is of neither enum that has it, though only an explicit cast converts it.
 
-```yumi crash
-./lib/near
-./lib/far
+```brix crash
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
--- .stated as U8
+(main
+  (print (as .stated U8))
+)
 ```
 
-```yumi file=lib/near.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is U32
-
-| first = 0
-| stated = 7
-
+```brix file=lib/near.bx
+(type + Near (is U32)
+  (variant first (= 0))
+  (variant stated (= 7))
+)
 ```
 
-```yumi file=lib/far.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is U32
-
-| first = 0
-| stated = 20
-
+```brix file=lib/far.bx
+(type + Far (is U32)
+  (variant first (= 0))
+  (variant stated (= 20))
+)
 ```
 
 ```output
 Exception: Case '.stated' is ambiguous between 'Far', 'Near'
-<no file:5>
-    -- .stated as U8
-       ^^^^^^^
+<no file:7>
+      (print (as .stated U8))
+                 ^^^^^^^
 ```
 
 ### A case named by its symbol alone is of neither enum that has it where it is given for a parameter of a type that has no such case.
 
-```yumi crash
-./lib/near
-./lib/far
+```brix crash
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
--- show(.stated)
+(main
+  (print (call show .stated))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ show U32
-    - value U32
-
-value
+(fn-expr _ show U32
+  (param value U32)
+  value
+)
 ```
 
-```yumi file=lib/near.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is U32
-
-| first = 0
-| stated = 7
-
+```brix file=lib/near.bx
+(type + Near (is U32)
+  (variant first (= 0))
+  (variant stated (= 7))
+)
 ```
 
-```yumi file=lib/far.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is U32
-
-| first = 0
-| stated = 20
-
+```brix file=lib/far.bx
+(type + Far (is U32)
+  (variant first (= 0))
+  (variant stated (= 20))
+)
 ```
 
 ```output
 Exception: Case '.stated' is ambiguous between 'Far', 'Near'
-<no file:5>
-    -- show(.stated)
-            ^^^^^^^
+<no file:7>
+      (print (call show .stated))
+                        ^^^^^^^
 ```
 
 ### A case named by its symbol alone is of neither enum that has it where it is given for what a union's case holds, of a type that has no such case.
 
-```yumi crash
-./lib/near
-./lib/far
+```brix crash
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
--- type-of Holder.held(.stated)
+(main
+  (print (type-of (call (. Holder held) .stated)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Union
-
-| held(count U32)
-| empty
+(type + Holder (is Union)
+  (variant held (tuple (: count U32)))
+  (variant empty)
+)
 ```
 
-```yumi file=lib/near.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is U32
-
-| first = 0
-| stated = 7
-
+```brix file=lib/near.bx
+(type + Near (is U32)
+  (variant first (= 0))
+  (variant stated (= 7))
+)
 ```
 
-```yumi file=lib/far.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is U32
-
-| first = 0
-| stated = 20
-
+```brix file=lib/far.bx
+(type + Far (is U32)
+  (variant first (= 0))
+  (variant stated (= 20))
+)
 ```
 
 ```output
 Exception: Case '.stated' is ambiguous between 'Far', 'Near'
-<no file:5>
-    -- type-of Holder.held(.stated)
-                           ^^^^^^^
+<no file:7>
+      (print (type-of (call (. Holder held) .stated)))
+                                            ^^^^^^^
 ```
 
 ### A case named by its symbol alone is of neither enum that has it as a field of a tuple, which casts it to nothing.
 
-```yumi crash
-./lib/near
-./lib/far
+```brix crash
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
-. pair = (.stated, 1)
--- pair
+(main
+  (let pair (tuple .stated 1))
+  (print pair)
+)
 ```
 
-```yumi file=lib/near.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is U32
-
-| first = 0
-| stated = 7
-
+```brix file=lib/near.bx
+(type + Near (is U32)
+  (variant first (= 0))
+  (variant stated (= 7))
+)
 ```
 
-```yumi file=lib/far.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is U32
-
-| first = 0
-| stated = 20
-
+```brix file=lib/far.bx
+(type + Far (is U32)
+  (variant first (= 0))
+  (variant stated (= 20))
+)
 ```
 
 ```output
 Exception: Case '.stated' is ambiguous between 'Far', 'Near'
-<no file:5>
-    . pair = (.stated, 1)
-              ^^^^^^^
+<no file:7>
+      (let pair (tuple .stated 1))
+                       ^^^^^^^
 ```
 
 ### A case named by its symbol alone compared with a value of a type that has no such case is of neither enum that has it.
 
-```yumi crash
-./lib/near
-./lib/far
+```brix crash
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
-. count U32 = 7
--- count == .stated
+(main
+  (let count U32 7)
+  (print (== count .stated))
+)
 ```
 
-```yumi file=lib/near.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is U32
-
-| first = 0
-| stated = 7
-
+```brix file=lib/near.bx
+(type + Near (is U32)
+  (variant first (= 0))
+  (variant stated (= 7))
+)
 ```
 
-```yumi file=lib/far.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is U32
-
-| first = 0
-| stated = 20
-
+```brix file=lib/far.bx
+(type + Far (is U32)
+  (variant first (= 0))
+  (variant stated (= 20))
+)
 ```
 
 ```output
 Exception: Case '.stated' is ambiguous between 'Far', 'Near'
-<no file:6>
-    -- count == .stated
-                ^^^^^^^
+<no file:8>
+      (print (== count .stated))
+                       ^^^^^^^
 ```
 
 ### A case named by its symbol alone that two imported number enums have is printed and made text by its enum's own method, which settles it as the case of the enum its name alone gives.
 
-```yumi
-./lib/near
-./lib/far
+```brix
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
--- .stated
--- "[${.stated}]"
+(main
+  (print .stated)
+  (print (str "[" .stated "]"))
+)
 ```
 
-```yumi file=lib/near.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is U32
-
-| first = 0
-| stated = 7
-
+```brix file=lib/near.bx
+(type + Near (is U32)
+  (variant first (= 0))
+  (variant stated (= 7))
+)
 ```
 
-```yumi file=lib/far.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is U32
-
-| first = 0
-| stated = 20
-
+```brix file=lib/far.bx
+(type + Far (is U32)
+  (variant first (= 0))
+  (variant stated (= 20))
+)
 ```
 
 ```output
@@ -1555,210 +1564,193 @@ Exception: Case '.stated' is ambiguous between 'Far', 'Near'
 
 ### A case named by its symbol alone that two imported unions have, made text where the union has no method for it, is of neither.
 
-```yumi crash
-./lib/near
-./lib/far
+```brix crash
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
--- "[${.stated}]"
+(main
+  (print (str "[" .stated "]"))
+)
 ```
 
-```yumi file=lib/near.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is Union
-
-| first
-| stated
-
+```brix file=lib/near.bx
+(type + Near (is Union)
+  (variant first)
+  (variant stated)
+)
 ```
 
-```yumi file=lib/far.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is Union
-
-| first
-| stated
-
+```brix file=lib/far.bx
+(type + Far (is Union)
+  (variant first)
+  (variant stated)
+)
 ```
 
 ```output
 Exception: Case '.stated' is ambiguous between 'Far', 'Near'
-<no file:5>
-    -- "[${.stated}]"
-           ^^^^^^^
+<no file:7>
+      (print (str "[" .stated "]"))
+                      ^^^^^^^
 ```
 
 ### The type of a case named by its symbol alone that two imported classes have is read from the object, so the case is of neither.
 
-```yumi crash
-./lib/near
-./lib/far
+```brix crash
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
--- type-of .stated
+(main
+  (print (type-of .stated))
+)
 ```
 
-```yumi file=lib/base.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-+ name = ""
-
+```brix file=lib/base.bx
+(type + Base
+  (prop + name _ (= ""))
+)
 ```
 
-```yumi file=lib/near.yumi
+```brix file=lib/near.bx
+(import ./base)
 
-./base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is Base
-
-| first
-| stated
-
+(type + Near (is Base)
+  (variant first)
+  (variant stated)
+)
 ```
 
-```yumi file=lib/far.yumi
+```brix file=lib/far.bx
+(import ./base)
 
-./base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is Base
-
-| first
-| stated
-
+(type + Far (is Base)
+  (variant first)
+  (variant stated)
+)
 ```
 
 ```output
 Exception: Case '.stated' is ambiguous between 'Far', 'Near'
-<no file:5>
-    -- type-of .stated
-               ^^^^^^^
+<no file:7>
+      (print (type-of .stated))
+                      ^^^^^^^
 ```
 
 ### A case named by its symbol alone that two imported classes have, joined with another class's case, is cast to their base class, which has no such case, so it is of neither.
 
-```yumi crash
-./lib/near
-./lib/far
+```brix crash
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
-. chosen = true
-. kind = if chosen then .stated else Far.first
--- kind.name
+(main
+  (let chosen true)
+  (let kind (if-expr chosen .stated (. Far first)))
+  (print (. kind name))
+)
 ```
 
-```yumi file=lib/base.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-+ name = ""
-
+```brix file=lib/base.bx
+(type + Base
+  (prop + name _ (= ""))
+)
 ```
 
-```yumi file=lib/near.yumi
+```brix file=lib/near.bx
+(import ./base)
 
-./base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is Base
-
-| first
-| stated
-
+(type + Near (is Base)
+  (variant first)
+  (variant stated)
+)
 ```
 
-```yumi file=lib/far.yumi
+```brix file=lib/far.bx
+(import ./base)
 
-./base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is Base
-
-| first
-| stated
-
+(type + Far (is Base)
+  (variant first)
+  (variant stated)
+)
 ```
 
 ```output
 Exception: Case '.stated' is ambiguous between 'Far', 'Near'
-<no file:6>
-    . kind = if chosen then .stated else Far.first
-                            ^^^^^^^
+<no file:8>
+      (let kind (if-expr chosen .stated (. Far first)))
+                                ^^^^^^^
 ```
 
 ### A case named by its symbol alone that two imported unions have, given where an optional is empty, joins the optional's union with its own, so it is of neither.
 
-```yumi crash
-./lib/near
-./lib/far
+```brix crash
+(import ./lib/near)
+(import ./lib/far)
+(blank)
 
-. held Far? = null
--- type-of (held ?? .stated)
+(main
+  (let held (? Far) null)
+  (print (type-of (?? held .stated)))
+)
 ```
 
-```yumi file=lib/near.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Near is Union
-
-| first
-| stated
-
+```brix file=lib/near.bx
+(type + Near (is Union)
+  (variant first)
+  (variant stated)
+)
 ```
 
-```yumi file=lib/far.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Far is Union
-
-| first
-| stated
-
+```brix file=lib/far.bx
+(type + Far (is Union)
+  (variant first)
+  (variant stated)
+)
 ```
 
 ```output
 Exception: Case '.stated' is ambiguous between 'Far', 'Near'
-<no file:6>
-    -- type-of (held ?? .stated)
-                        ^^^^^^^
+<no file:8>
+      (print (type-of (?? held .stated)))
+                               ^^^^^^^
 ```
 
 ### A function with no return type that returns cases by their symbols alone returns the union that has every one of them, though its first case is also another union's.
 
-```yumi
-/core
+```brix
+(import /core)
+(blank)
 
-for seed in 0 .. < 3
-    -- describe(cut(seed))
+(main
+  (for (in seed (..< 0 3))
+    (print (call describe (call cut seed)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Edge is Union
+(type + Edge (is Union)
+  (variant sharp)
+  (variant soft)
+)
 
-| sharp
-| soft
+(type + Blade (is Union)
+  (variant sharp)
+  (variant dull)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Blade is Union
+(fn-expr + describe String
+  (param edge Edge)
+  (if-expr (== edge .soft) "soft" "sharp")
+)
 
-| sharp
-| dull
-
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - edge Edge
-
-if edge == .soft then "soft" else "sharp"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do cut
-    - seed Int
-
-if seed == 1
-    = .sharp
-= .soft
+(fn-do + cut _
+  (param seed Int)
+  (if (== seed 1)
+    (return .sharp)
+  )
+  (return .soft)
+)
 ```
 
 ```output
@@ -1769,54 +1761,49 @@ soft
 
 ### A case named by its symbol alone that no enum the module imports has is the case of the type expected of it: of the other side of a comparison, a parameter, or a property stored to.
 
-```yumi
-./lib/rows
+```brix
+(import ./lib/rows)
+(blank)
 
-. row = make-row()
--- row.kind == .second
--- .second == row.kind
--- describe(.second)
-. box = Box()
-box.kind = .second
--- describe(box.kind)
+(main
+  (let row (call make-row))
+  (print (== (. row kind) .second))
+  (print (== .second (. row kind)))
+  (print (call describe .second))
+  (let box (call Box))
+  (= (. box kind) .second)
+  (print (call describe (. box kind)))
+)
 ```
 
-```yumi file=lib/rows.yumi
+```brix file=lib/rows.bx
+(import ./kinds)
 
-./kinds
+(fn-do + make-row Row
+  (let row Row)
+  (= (. row kind) (. Kind second))
+  (return row)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make-row Row
+(fn-do + describe String
+  (param kind Kind)
+  (return (if-expr (== kind (. Kind first)) "first" "second"))
+)
 
-. row Row
-row.kind = Kind.second
-= row
-
-━━━━━━━━━━━━━━━━━━━━
-+ do describe String
-    - kind Kind
-
-= if kind == Kind.first then "first" else "second"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ kind = Kind.first
-
+(type + Box
+  (prop + kind _ (= (. Kind first)))
+)
 ```
 
-```yumi file=lib/kinds.yumi
+```brix file=lib/kinds.bx
+(type + Kind (is U32)
+  (variant first (= 0))
+  (variant second (= 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Kind is U32
-
-| first = 0
-| second = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Row is Struct
-
-+ kind Kind = .first
+(type + Row (is Struct)
+  (prop + kind Kind (= .first))
+)
 ```
 
 ```output
@@ -1828,79 +1815,77 @@ second
 
 ### A case named by its symbol alone that no enum the module imports has is not found where nothing expected of it is a type with the case.
 
-```yumi crash
-./lib/rows
+```brix crash
+(import ./lib/rows)
+(blank)
 
-. kind = .second
--- kind as U32
+(main
+  (let kind .second)
+  (print (as kind U32))
+)
 ```
 
-```yumi file=lib/rows.yumi
+```brix file=lib/rows.bx
+(import ./kinds)
 
-./kinds
+(fn-do + make-row Row
+  (let row Row)
+  (= (. row kind) (. Kind second))
+  (return row)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make-row Row
+(fn-do + describe String
+  (param kind Kind)
+  (return (if-expr (== kind (. Kind first)) "first" "second"))
+)
 
-. row Row
-row.kind = Kind.second
-= row
-
-━━━━━━━━━━━━━━━━━━━━
-+ do describe String
-    - kind Kind
-
-= if kind == Kind.first then "first" else "second"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ kind = Kind.first
-
+(type + Box
+  (prop + kind _ (= (. Kind first)))
+)
 ```
 
-```yumi file=lib/kinds.yumi
+```brix file=lib/kinds.bx
+(type + Kind (is U32)
+  (variant first (= 0))
+  (variant second (= 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Kind is U32
-
-| first = 0
-| second = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Row is Struct
-
-+ kind Kind = .first
+(type + Row (is Struct)
+  (prop + kind Kind (= .first))
+)
 ```
 
 ```output
 Exception: Case ".second" belongs to Kind, which this module does not import, so the case cannot be named alone; write "Kind.second" and add the import ./lib/kinds
-<no file:4>
-    . kind = .second
-             ^^^^^^^
+<no file:6>
+      (let kind .second)
+                ^^^^^^^
 ```
 
 ### A match that returns from every arm ends a function over an enum of a number
 
-```yumi
--- describe(Kind.first)
--- describe(Kind.second)
+```brix
+(main
+  (print (call describe (. Kind first)))
+  (print (call describe (. Kind second)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Kind is U8
+(type + Kind (is U8)
+  (variant first)
+  (variant second)
+)
 
-| first
-| second
-
-━━━━━━━━━━━━━━━━━━━━
-+ do describe String
-    - kind Kind
-
-match kind
-    |= .first
-        = "one"
-    |= .second
-        = "two"
+(fn-do + describe String
+  (param kind Kind)
+  (match kind
+    (case= .first
+      (return "one")
+    )
+    (case= .second
+      (return "two")
+    )
+  )
+)
 ```
 
 ```output

@@ -1,0 +1,40 @@
+; benchmark.meta description: Intersects cubic paths with lines to stress cubic root filtering.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/intersection)
+(import /graphics/path)
+(import /graphics/point)
+(import /math)
+(blank)
+
+(main
+  (let path (call curve-path))
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 700))
+    (let f (as pass Float))
+    (let hits (call intersect-path-line path (tuple 0 (+ 20 (% f 120))) (tuple 260 (+ 40 (% f 90)))))
+    (+= checksum (. hits length))
+    (for (in hit hits)
+      (+= checksum (+ (call numeric-check (. hit t1)) (call numeric-check (. hit t2))))
+    )
+  )
+  (blank)
+  (print (str "bench-result graphics/intersect-curve-line checksum=" checksum))
+)
+
+(fn-do _ curve-path _
+  (let path (call Path))
+  (call (. path move-to) 0 80)
+  (for (in i (..< 0 12))
+    (let f (as i Float))
+    (call (. path cubic-curve-to) (+ (* f 20) 8) (+ 20 (* f 3)) (+ (* f 20) 14) (- 150 (* f 4)) (+ (* f 20) 20) (+ 70 (* f 2)))
+  )
+  (return path)
+)
+
+(fn-expr _ numeric-check Size
+  (param value Float)
+  (% (as (call abs (* value 1000)) Size) 1000003)
+)

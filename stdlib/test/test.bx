@@ -1,0 +1,204 @@
+(type + (of TestFuncPair Expecting Actual) (is Tuple)
+  (prop + expecting Expecting)
+  (prop + actual (of Getter Actual))
+)
+
+(type + (of TestPair Expecting Actual) (is Tuple)
+  (prop + expecting Expecting)
+  (prop + actual Actual)
+)
+
+(type + TestCase
+  (prop + description _ (= ""))
+  (prop + passed _ (= 0))
+  (prop + failed _ (= 0))
+  (prop + caught _ (= 0))
+  (prop + previous (? TestCase))
+  (fn-do + This _
+    (param description _)
+  )
+  (fn-do + run _
+    (param body _)
+    ; Runs the body in a task of its own, with the main task's stack, and waits for it. An error the
+    ; body raises, or a panic that ends its task, counts as caught.
+    (let running
+      (do-new @large-stack
+        (let result (catch (call body this)))
+        (if (is result Error)
+          (print (str description " caught: " (. (as result Error) message)))
+          (+= caught 1)
+          (else-if (is result TestCase)
+            (= passed (. result passed))
+            (= failed (. result failed))
+            (= caught (. result caught))
+          )
+        )
+        (on-failure failure
+          (print (str description " panicked: " (as failure String)))
+          (+= caught 1)
+        )
+      )
+    )
+    (call (. running wait))
+  )
+  (fn-do + with _
+    (param next-case TestCase)
+    (= (. next-case previous) this)
+    (return next-case)
+  )
+  (fn-do + then _
+    (param description String)
+    (param body _)
+    (let next-case (call TestCase description))
+    (= (. next-case previous) this)
+    (call (. next-case run) body)
+    (return next-case)
+  )
+  (fn-do + with _
+    (param pass Bool)
+    (if pass
+      (+= passed 1)
+      (else
+        (+= failed 1)
+      )
+    )
+    (blank)
+    (return this)
+  )
+  (fn-expr + check _
+    (param pass Bool)
+    (call with pass)
+  )
+  (fn-do + check _
+    (param label String)
+    (param pass Bool)
+    (if pass
+      (+= passed 1)
+      (else
+        (print (str "Assertion " label))
+        (+= failed 1)
+      )
+    )
+    (blank)
+    (return this)
+  )
+  (fn-do + (of with Expecting Actual) _
+    (param pair (of TestPair Expecting Actual))
+    (let actual (catch (as (. pair actual) Expecting)))
+    (if (is actual Error)
+      (call report-caught "caught" (as actual Error))
+      (else-if (== actual (. pair expecting))
+        (+= passed 1)
+      )
+      (else
+        (print (str "Expecting " (. pair expecting)))
+        (print (str "Got " actual))
+        (+= failed 1)
+      )
+    )
+    (blank)
+    (return this)
+  )
+  (fn-expr + (of expect Expecting Actual) _
+    (param expected Expecting)
+    (param actual Actual)
+    (call with (tuple expected actual))
+  )
+  (fn-do + (of expect Expecting Actual) _
+    (param label String)
+    (param expected Expecting)
+    (param actual Actual)
+    (let actual-result (catch (as actual Expecting)))
+    (if (is actual-result Error)
+      (call report-caught (str "Assertion " label " caught") (as actual-result Error))
+      (else-if (== actual-result expected)
+        (+= passed 1)
+      )
+      (else
+        (print (str "Assertion " label))
+        (print (str "Expecting " expected))
+        (print (str "Got " actual-result))
+        (+= failed 1)
+      )
+    )
+    (blank)
+    (return this)
+  )
+  (fn-do + (of with Expecting Actual) _
+    (param pair (of TestFuncPair Expecting Actual))
+    (let fn (. pair actual))
+    (let actual (catch (call fn)))
+    (if (is actual Error)
+      (call report-caught "caught" (as actual Error))
+      (return this)
+    )
+    (return (call with (tuple (. pair expecting) actual)))
+  )
+  (fn-expr + (of expect Expecting Actual) _
+    (param expected Expecting)
+    (param actual (of Getter Actual))
+    (call with (tuple expected actual))
+  )
+  (fn-do + (of expect Expecting Actual) _
+    (param label String)
+    (param expected Expecting)
+    (param actual (of Getter Actual))
+    (let fn actual)
+    (let actual-result (catch (call fn)))
+    (if (is actual-result Error)
+      (call report-caught (str "Assertion " label " caught") (as actual-result Error))
+      (return this)
+    )
+    (return (call expect label expected actual-result))
+  )
+  (fn-do _ report-caught _
+    (param prefix String)
+    (param error Error)
+    (let source (. error source))
+    (if source
+      (print (str prefix ": " error " at " source))
+      (else
+        (print (str prefix ": " error))
+      )
+    )
+    (+= caught 1)
+  )
+  (fn-do + show-results _
+    (if previous
+      (call (. previous show-results))
+    )
+    (blank)
+    (if (and (not failed) (not caught))
+      (print (str description " GREEN (" passed " passed)"))
+      (else
+        (print (str description " RED (" passed " passed, " failed " failed, " caught " caught)"))
+      )
+    )
+  )
+  (fn-expr + has-failures Bool
+    (case? (or (> failed 0) (> caught 0))
+      true
+    )
+    (case? previous
+      (call (. previous has-failures))
+    )
+    (default
+      false
+    )
+  )
+)
+
+(type + TestRender
+  (fn-from-do + (: test TestCase)
+    (call (. test show-results))
+    (if (call (. test has-failures))
+      (throw (call Panic (str "TestCase failed: " (. test description))))
+    )
+    (return (call TestRender))
+  )
+)
+
+(fn-expr + test _
+  (param description String)
+  (call TestCase description)
+)

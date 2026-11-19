@@ -1,40 +1,33 @@
 # Type constraints
 
-```yumi
--- event'Int()
--- event'Float()
+```brix
+(main
+  (print (call (of event Int)))
+  (print (call (of event Float)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T
+(type + (of Foo T))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Dispatcher is Interface
+(type + Dispatcher (is Interface)
+  (fn-expr + (of get-foo T) (of Foo T))
+)
 
-────────────────────
-+ get-foo'T Foo'T
+(type + (of EventDispatcher Event)
+  (implements Dispatcher)
+  (prop + foo _ (= (call (of Foo Event))))
+  (fn-expr + (of get-foo Other) (of Foo Other)
+    ; ?! Error("Unsupported event")
+  )
+  (fn-expr + (of get-foo T) _
+    (constraint is! T Event)
+    foo
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ EventDispatcher'Event
-    is Dispatcher
-
-+ foo = Foo'Event()
-
-────────────────────
-+ get-foo'Other Foo'Other
-
-` ?! Error("Unsupported event")
-
-────────────────────
-+ get-foo'T
-    - T is! Event
-
-foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ do event'T
-
-. dispatcher = EventDispatcher'T() as Dispatcher
-= dispatcher.get-foo'T()
+(fn-do + (of event T) _
+  (let dispatcher (as (call (of EventDispatcher T)) Dispatcher))
+  (return (call (of (. dispatcher get-foo) T)))
+)
 ```
 
 ```output
@@ -42,20 +35,20 @@ foo
 [Object __source__:Foo'core/number:F64]
 ```
 
-```yumi
--- foo'Int()
--- foo'Float()
+```brix
+(main
+  (print (call (of foo Int)))
+  (print (call (of foo Float)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo'T
-    - T is! I64
+(fn-expr + (of foo T) _
+  (constraint is! T I64)
+  "int"
+)
 
-"int"
-
-━━━━━━━━━━━━━━━━━━━━
-+ foo'T
-
-"other"
+(fn-expr + (of foo T) _
+  "other"
+)
 ```
 
 ```output
@@ -63,26 +56,24 @@ int
 other
 ```
 
-```yumi
--- foo'Foo()
--- foo'Float()
+```brix
+(main
+  (print (call (of foo Foo)))
+  (print (call (of foo Float)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Interface
+(type + Bar (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Bar
+(type + Foo (is Bar))
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo'T
-    - T is Bar
+(fn-expr + (of foo T) _
+  (constraint is T Bar)
+  "bar"
+)
 
-"bar"
-
-━━━━━━━━━━━━━━━━━━━━
-+ foo'T
-
-"other"
+(fn-expr + (of foo T) _
+  "other"
+)
 ```
 
 ```output
@@ -92,12 +83,14 @@ other
 
 ## Class type constraints
 
-```yumi
--- Foo()
+```brix
+(main
+  (print (call Foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T
-    - T = Char
+(type + (of Foo T)
+  (constraint = T Char)
+)
 ```
 
 ```output
@@ -106,38 +99,33 @@ other
 
 ### Constructor assignments resolve before constructor and class constraints are checked.
 
-```yumi
-. token = ConstraintArenaToken()
-. managed = ConstrainedConstructorBox'U32()
-. native = ConstrainedConstructorBox'U32(token)
--- type-of managed
--- type-of native
+```brix
+(main
+  (let token (call ConstraintArenaToken))
+  (let managed (call (of ConstrainedConstructorBox U32)))
+  (let native (call (of ConstrainedConstructorBox U32) token))
+  (print (type-of managed))
+  (print (type-of native))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ConstraintArenaToken
+(type + ConstraintArenaToken)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ConstructorBacking is Interface
+(type + ConstructorBacking (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ManagedConstraintBacking'Value is ConstructorBacking
+(type + (of ManagedConstraintBacking Value) (is ConstructorBacking))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ArenaConstraintBacking'Value is ConstructorBacking
+(type + (of ArenaConstraintBacking Value) (is ConstructorBacking))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ConstrainedConstructorBox'Value'Backing
-    - Backing = ManagedConstraintBacking'Value
-    - Backing is ConstructorBacking
-
-────────────────────
-+ This
-
-────────────────────
-+ This
-    - token ConstraintArenaToken
-    - Backing = ArenaConstraintBacking'Value
-    - Backing is! ArenaConstraintBacking'Value
+(type + (of ConstrainedConstructorBox Value Backing)
+  (constraint = Backing (of ManagedConstraintBacking Value))
+  (constraint is Backing ConstructorBacking)
+  (fn-do + This _)
+  (fn-do + This _
+    (param token ConstraintArenaToken)
+    (constraint = Backing (of ArenaConstraintBacking Value))
+    (constraint is! Backing (of ArenaConstraintBacking Value))
+  )
+)
 ```
 
 ```output
@@ -147,79 +135,81 @@ other
 
 ### A class constraint rejects the concrete owner type selected by a constructor.
 
-```yumi crash
-InvalidConstrainedConstructorBox'U32(ConstraintFailureToken())
+```brix crash
+(main
+  (call (of InvalidConstrainedConstructorBox U32) (call ConstraintFailureToken))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ConstraintFailureToken
+(type + ConstraintFailureToken)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RequiredConstructorBacking is Interface
+(type + RequiredConstructorBacking (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ValidConstraintBacking'Value is RequiredConstructorBacking
+(type + (of ValidConstraintBacking Value) (is RequiredConstructorBacking))
 
-━━━━━━━━━━━━━━━━━━━━
-+ InvalidConstraintBacking'Value
+(type + (of InvalidConstraintBacking Value))
 
-━━━━━━━━━━━━━━━━━━━━
-+ InvalidConstrainedConstructorBox'Value'Backing
-    - Backing = ValidConstraintBacking'Value
-    - Backing is RequiredConstructorBacking
-
-────────────────────
-+ This
-    - token ConstraintFailureToken
-    - Backing = InvalidConstraintBacking'Value
+(type + (of InvalidConstrainedConstructorBox Value Backing)
+  (constraint = Backing (of ValidConstraintBacking Value))
+  (constraint is Backing RequiredConstructorBacking)
+  (fn-do + This _
+    (param token ConstraintFailureToken)
+    (constraint = Backing (of InvalidConstraintBacking Value))
+  )
+)
 ```
 
 ```output
 Exception: No constructor of InvalidConstrainedConstructorBox matches these arguments; its declared constructors are "InvalidConstrainedConstructorBox(token ConstraintFailureToken)"
-<no file:2>
-    InvalidConstrainedConstructorBox'U32(ConstraintFailureToken())
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:3>
+      (call (of InvalidConstrainedConstructorBox U32) (call ConstraintFailureToken))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
--- Foo'Char()
+```brix
+(main
+  (print (call (of Foo Char)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T
-    - T is! Char
+(type + (of Foo T)
+  (constraint is! T Char)
+)
 ```
 
 ```output
 [Object __source__:Foo'core/number:Char]
 ```
 
-```yumi crash
--- Foo'Byte()
+```brix crash
+(main
+  (print (call (of Foo Byte)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T
-    - T is! Char
+(type + (of Foo T)
+  (constraint is! T Char)
+)
 ```
 
 ```output
 Exception: No constructor of Foo matches these arguments
-<no file:2>
-    -- Foo'Byte()
-       ^^^
+<no file:3>
+      (print (call (of Foo Byte)))
+                       ^^^
 ```
 
-```yumi
-doobs()
-doobs(Foo'Char())
+```brix
+(main
+  (call doobs)
+  (call doobs (call (of Foo Char)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do doobs
-    - f Foo? = null
+(fn-do + doobs _
+  (param f (? Foo) (= null))
+  (print (type-of f))
+)
 
--- type-of f
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T
-    - T = Char
+(type + (of Foo T)
+  (constraint = T Char)
+)
 ```
 
 ```output
@@ -227,13 +217,15 @@ doobs(Foo'Char())
 [TypeInfo Optional'Foo'Char]
 ```
 
-```yumi
-. foo Foo
--- foo
+```brix
+(main
+  (let foo Foo)
+  (print foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T
-    - T = Char
+(type + (of Foo T)
+  (constraint = T Char)
+)
 ```
 
 ```output
@@ -242,30 +234,28 @@ doobs(Foo'Char())
 
 ### A method whose type parameter must be exactly a parameter of its class is chosen where the class's parameter is that type, as the last legal method of its name.
 
-```yumi
-. d = EventDispatcher'Int()
--- d.get-foo'Int()
--- d.get-foo'Float()
+```brix
+(main
+  (let d (call (of EventDispatcher Int)))
+  (print (call (of (. d get-foo) Int)))
+  (print (call (of (. d get-foo) Float)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T
+(type + (of Foo T))
 
-━━━━━━━━━━━━━━━━━━━━
-+ EventDispatcher'Event
-
-+ foo = Foo'Event()
-
-────────────────────
-+ get-foo'Other Foo'Other
-
--- "other"
-Foo'Other()
-
-────────────────────
-+ get-foo'T
-    - T is! Event
-
-foo
+(type + (of EventDispatcher Event)
+  (prop + foo _ (= (call (of Foo Event))))
+  (fn-expr + (of get-foo Other) (of Foo Other)
+    (before
+      (print "other")
+    )
+    (call (of Foo Other))
+  )
+  (fn-expr + (of get-foo T) _
+    (constraint is! T Event)
+    foo
+  )
+)
 ```
 
 ```output
@@ -276,43 +266,36 @@ other
 
 ### A generic function of an interface is answered for each of its instances by the method a direct call would choose.
 
-```yumi
--- event'Int()
--- event'Float()
-. d = EventDispatcher'Int() as Dispatcher
--- d.get-foo'Float()
+```brix
+(main
+  (print (call (of event Int)))
+  (print (call (of event Float)))
+  (let d (as (call (of EventDispatcher Int)) Dispatcher))
+  (print (call (of (. d get-foo) Float)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T
+(type + (of Foo T))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Dispatcher is Interface
+(type + Dispatcher (is Interface)
+  (fn-expr + (of get-foo T) (of Foo T))
+)
 
-────────────────────
-+ get-foo'T Foo'T
+(type + (of EventDispatcher Event)
+  (implements Dispatcher)
+  (prop + foo _ (= (call (of Foo Event))))
+  (fn-expr + (of get-foo Other) (of Foo Other)
+    ; ?! Error("Unsupported event")
+  )
+  (fn-expr + (of get-foo T) _
+    (constraint is! T Event)
+    foo
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ EventDispatcher'Event
-    is Dispatcher
-
-+ foo = Foo'Event()
-
-────────────────────
-+ get-foo'Other Foo'Other
-
-` ?! Error("Unsupported event")
-
-────────────────────
-+ get-foo'T
-    - T is! Event
-
-foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ do event'T
-
-. dispatcher = EventDispatcher'T() as Dispatcher
-= dispatcher.get-foo'T()
+(fn-do + (of event T) _
+  (let dispatcher (as (call (of EventDispatcher T)) Dispatcher))
+  (return (call (of (. dispatcher get-foo) T)))
+)
 ```
 
 ```output

@@ -1,0 +1,227 @@
+(import ./config)
+(import ./diagnostics)
+(import /data/json)
+(import /os/file)
+(blank)
+(prop + lint-protocol _ (= "ometer.lint.v1"))
+(prop + rules-protocol _ (= "ometer.lint.rules.v1"))
+
+(fn-do + write-stderr _
+  (param text String)
+  (<- stderr (str text "\n"))
+)
+
+(fn-expr + lint-event (map String JSON)
+  (param kind String)
+  (call (of Map String JSON)
+    (block
+      (:protocol lint-protocol)
+      (:version 1)
+      (:event kind)
+    )
+  )
+)
+
+(fn-expr + rules-event (map String JSON)
+  (param kind String)
+  (call (of Map String JSON)
+    (block
+      (:protocol rules-protocol)
+      (:version 1)
+      (:event kind)
+    )
+  )
+)
+
+(fn-do + emit-start _
+  (param files Int)
+  (param config-path (? String))
+  (param semantic (? JSON) (= null))
+  (let event (call lint-event "start"))
+  (= ([] event "files") files)
+  (if config-path
+    (= ([] event "configPath") config-path)
+  )
+  (if semantic
+    (= ([] event "semantic") semantic)
+  )
+  (print (call to-json event))
+)
+
+(fn-do + emit-progress _
+  (param file String)
+  (param index Int)
+  (param total Int)
+  (let event (call lint-event "progress"))
+  (= ([] event "phase") "file")
+  (= ([] event "file") file)
+  (= ([] event "index") index)
+  (= ([] event "total") total)
+  (print (call to-json event))
+)
+
+(fn-do + emit-semantic-progress _
+  (param total Int)
+  (param file (? String))
+  (param index (? Int))
+  (param rule (? String))
+  (param step (? String) (= null))
+  ; Reports progress of the semantic phase: of the analysis at a `step`, for a root or for none,
+  ; or of the semantic rules over a file, with no step.
+  (let event (call lint-event "progress"))
+  (= ([] event "phase") "semantic")
+  (if file
+    (= ([] event "file") file)
+  )
+  (if index
+    (= ([] event "index") index)
+  )
+  (= ([] event "total") total)
+  (if rule
+    (= ([] event "rule") rule)
+  )
+  (if step
+    (= ([] event "step") step)
+  )
+  (print (call to-json event))
+)
+
+(fn-do + emit-diagnostic _
+  (param diagnostic LintDiagnostic)
+  (let event (call lint-event "diagnostic"))
+  (= ([] event "diagnostic") (call diagnostic-json diagnostic))
+  (print (call to-json event))
+)
+
+(fn-expr + diagnostic-json JSON
+  (param diagnostic LintDiagnostic)
+  (call (of Map String JSON)
+    (block
+      (:path (. diagnostic path))
+      (entry "ruleId" (. diagnostic rule-id))
+      (:status (. diagnostic status))
+      (:message (. diagnostic message))
+      (:line (. diagnostic line))
+      (:column (. diagnostic column))
+      (:fix? (only-if (call fix-json (. diagnostic fix)) (if (. diagnostic fix))))
+    )
+  )
+)
+
+(fn-expr + fix-json JSON
+  (param fix LintFix)
+  (call (of Map String JSON)
+    (block
+      (:kind (. fix kind))
+      (:title (. fix title))
+      (:edits (in (call edit-json each) (. fix edits)))
+    )
+  )
+)
+
+(fn-expr + edit-json JSON
+  (param edit LintTextEdit)
+  (call (of Map String JSON)
+    (block
+      (:start (. edit start))
+      (:end (. edit end))
+      (:replacement (. edit replacement))
+      (entry "expectedText" (. edit expected-text))
+    )
+  )
+)
+
+(fn-do + emit-semantic _
+  (param report JSON)
+  (let event (call lint-event "semantic"))
+  (= ([] event "semantic") report)
+  (print (call to-json event))
+)
+
+(fn-do + emit-end _
+  (param status String)
+  (param summary (map String JSON))
+  (param semantic (? JSON))
+  (let event (call lint-event "end"))
+  (= ([] event "status") status)
+  (= ([] event "summary") summary)
+  (if semantic
+    (= ([] event "semantic") semantic)
+  )
+  (print (call to-json event))
+)
+
+(fn-do + emit-error _
+  (param message String)
+  (let event (call lint-event "error"))
+  (= ([] event "status") "error")
+  (= ([] event "message") message)
+  (= ([] event "error")
+    (call (of Map String JSON)
+      (block
+        (:message message)
+      )
+    )
+  )
+  (print (call to-json event))
+)
+
+(fn-do + emit-rule-catalog _
+  (param config (? LintConfig) (= null))
+  ; Writes each rule of the catalog, and then their count. With a `config`, each rule also says
+  ; whether the config enables it.
+  (let catalog (call rule-catalog))
+  (for (in rule catalog)
+    (call emit-rule rule config)
+  )
+  (call emit-rules-end (. catalog length))
+)
+
+(fn-do _ emit-rule _
+  (param rule LintRule)
+  (param config (? LintConfig))
+  (let event (call rules-event "rule"))
+  (= ([] event "rule")
+    (call (of Map String JSON)
+      (block
+        (:id (. rule id))
+        (:description (. rule description))
+        (:phase (. rule phase))
+        (:fixable (call fixable-json rule))
+        (entry "defaultOptions" (. rule default-options))
+        (:enabled? (only-if (has (. config rules) (. rule id)) (if config)))
+      )
+    )
+  )
+  (print (call to-json event))
+)
+
+(fn-expr + fixable-json JSON
+  (param rule LintRule)
+  (case? (. rule fixable)
+    (. rule fixable)
+  )
+  (default
+    false
+  )
+)
+
+(fn-do _ emit-rules-end _
+  (param count Int)
+  (let event (call rules-event "end"))
+  (= ([] event "summary")
+    (call (of Map String JSON)
+      (block
+        (:rules count)
+      )
+    )
+  )
+  (print (call to-json event))
+)
+
+(fn-expr + text-diagnostic String
+  (param diagnostic LintDiagnostic)
+  (scope (str place " " (. diagnostic rule-id) " [" (. diagnostic status) "] " (. diagnostic message))
+    (lazy place (str (. diagnostic path) ":" (. diagnostic line) ":" (. diagnostic column)))
+  )
+)

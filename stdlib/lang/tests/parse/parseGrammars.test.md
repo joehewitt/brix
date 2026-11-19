@@ -2,10 +2,6 @@
 
 Patterns
 
-```yumi
-~ Foo
-```
-
 ```brix
 (main
   (~ Foo)
@@ -18,10 +14,6 @@ Patterns
         <TypeId name="Foo"/>
     </StreamType>
 </StreamMatch>
-```
-
-```yumi
-~ foo Foo
 ```
 
 ```brix
@@ -39,10 +31,6 @@ Patterns
         </StreamType>
     </StreamCapture>
 </StreamMatch>
-```
-
-```yumi
-~ foo Foo bar Bar
 ```
 
 ```brix
@@ -70,10 +58,6 @@ Patterns
 </StreamMatch>
 ```
 
-```yumi
-~ Foo?
-```
-
 ```brix
 (main
   (~ (? Foo))
@@ -88,10 +72,6 @@ Patterns
         </StreamType>
     </UnaryStream>
 </StreamMatch>
-```
-
-```yumi
-~ Foo*
 ```
 
 ```brix
@@ -110,10 +90,6 @@ Patterns
 </StreamMatch>
 ```
 
-```yumi
-~ Foo+
-```
-
 ```brix
 (main
   (~ (+ Foo))
@@ -128,10 +104,6 @@ Patterns
         </StreamType>
     </UnaryStream>
 </StreamMatch>
-```
-
-```yumi
-~ Foo (Bar Baz)+
 ```
 
 ```brix
@@ -160,10 +132,6 @@ Patterns
 </StreamMatch>
 ```
 
-```yumi
-~ sc (Foo Bar)
-```
-
 ```brix
 (main
   (~ (: sc (seq Foo Bar)))
@@ -186,10 +154,6 @@ Patterns
 </StreamMatch>
 ```
 
-```yumi
-~ sc Foo+
-```
-
 ```brix
 (main
   (~ (: sc (+ Foo)))
@@ -209,10 +173,6 @@ Patterns
 </StreamMatch>
 ```
 
-```yumi
-~ !Foo
-```
-
 ```brix
 (main
   (~ (! Foo))
@@ -227,10 +187,6 @@ Patterns
         </StreamType>
     </UnaryStream>
 </StreamMatch>
-```
-
-```yumi
-~ Foo | Bar | Baz
 ```
 
 ```brix
@@ -255,10 +211,6 @@ Patterns
         </StreamType>
     </StreamOr>
 </StreamMatch>
-```
-
-```yumi
-~ [a-z0-9|]
 ```
 
 ```brix
@@ -288,10 +240,6 @@ Patterns
 </StreamMatch>
 ```
 
-```yumi
-~ [\u03b1]
-```
-
 ```brix
 (main
   (~ (chars "\\u03b1"))
@@ -305,24 +253,6 @@ Patterns
         <Integer value="945" unit="(char)"/>
     </StreamCharRange>
 </StreamMatch>
-```
-
-```yumi
-~ [\uD800-\uDFFF]
-```
-
-```output
-Exception: "\uD800" is half of a surrogate pair, which is no character by itself; write the character itself in the text
-<no file:2>
-    ~ [\uD800-\uDFFF]
-         ^
-```
-
-```yumi
-~ \foo()
-~ \foo(~ .)
-~ \foo(~ ., ~ .)
-~ \foo(~ ., ~ ., ~ .)
 ```
 
 ```brix
@@ -378,11 +308,6 @@ Exception: "\uD800" is half of a surrogate pair, which is no character by itself
 
 ## Combinations
 
-```yumi
-~ Foo
-~ Bar
-```
-
 ```brix
 (main
   (~ Foo)
@@ -401,11 +326,6 @@ Exception: "\uD800" is half of a surrogate pair, which is no character by itself
         </StreamType>
     </StreamOr>
 </StreamMatch>
-```
-
-```yumi
-~ Foo
-?? bar
 ```
 
 ```brix
@@ -430,11 +350,6 @@ Exception: "\uD800" is half of a surrogate pair, which is no character by itself
 </StreamMatch>
 ```
 
-```yumi
-~ Foo
-?! bar
-```
-
 ```brix
 (main
   (~ Foo)
@@ -455,13 +370,6 @@ Exception: "\uD800" is half of a surrogate pair, which is no character by itself
         </StreamPanic>
     </StreamOr>
 </StreamMatch>
-```
-
-```yumi
-|? expr
-    ~ Foo
-??
-    ~ Bar
 ```
 
 ```brix
@@ -503,10 +411,6 @@ Exception: "\uD800" is half of a surrogate pair, which is no character by itself
 </StructureMatch>
 ```
 
-```yumi
-x = ~ Bar = foo
-```
-
 ```brix
 (main
   (= x (~ Bar (of: foo)))
@@ -525,13 +429,6 @@ x = ~ Bar = foo
         </StreamMatch>
     </Match>
 </AssignmentExpression>
-```
-
-```yumi
-match foo
-    ~ \foo
-    .. foo ~ @rollback
-        ~ Foo
 ```
 
 ```brix
@@ -567,14 +464,6 @@ match foo
         </Declaration>
     </Block>
 </Match>
-```
-
-```yumi
-match foo
-    ~ \bar
-        expr1
-    .. bar ~
-        ~ Pattern
 ```
 
 ```brix
@@ -620,11 +509,6 @@ match foo
 
 ### Consecutive applied matches don't combine
 
-```yumi
-~ \foo'Bar() = foo
-~ \foo'Bar() = foo
-```
-
 ```brix
 (main
   (~ (call (of \foo Bar)) (of: foo))
@@ -653,20 +537,6 @@ match foo
         </StreamCall>
     </StreamMatch>
 </Match>
-```
-
-```yumi
-match foo
-    ~ .
-        42
-    ?! Error()
-    .. a = 1
-
-match foo
-    ~ .
-        42
-    .. a = 1
-    ?! Error()
 ```
 
 ```brix
@@ -744,11 +614,6 @@ match foo
 </Match>
 ```
 
-```yumi
-.. domain ~
-    ~ "x"
-```
-
 ```brix
 (main
   (lazy domain
@@ -768,11 +633,6 @@ match foo
         <StreamString text="x"/>
     </StreamMatch>
 </Declaration>
-```
-
-```yumi
-.. domain ~
-    ~ 'x'
 ```
 
 ```brix
@@ -796,11 +656,6 @@ match foo
         </StreamEquality>
     </StreamMatch>
 </Declaration>
-```
-
-```yumi
-.. gesture ~
-    ~ .press . .release
 ```
 
 ```brix
@@ -834,47 +689,6 @@ match foo
 </Declaration>
 ```
 
-```yumi
-.. domain ~
-    ~ \letter
-
-    .. foo = 1
-```
-
-```output
-Exception: A local rule holds only its arms; declare a lazy local it reads below the action of an arm, or beside the match
-<no file:5>
-        .. foo = 1
-        ^^^^^^^^^
-```
-
-```yumi
-~ [a-z
--- "after"
-```
-
-```output
-Exception: Syntax error
-<no file:2>
-    ~ [a-z
-          ^
-```
-
-```yumi
-~ "a"+*
-```
-
-```output
-Exception: A part of a pattern takes one of ?, * or +, not "+*"; to repeat a repeated part, wrap it in parentheses first
-<no file:2>
-    ~ "a"+*
-          ^
-```
-
-```yumi
-~ \{foo}
-```
-
 ```brix
 (main
   (~ (\{} foo))
@@ -887,10 +701,6 @@ Exception: A part of a pattern takes one of ?, * or +, not "+*"; to repeat a rep
         <Id name="foo"/>
     </StreamPredicate>
 </StreamMatch>
-```
-
-```yumi
-~ ...values Foo
 ```
 
 ```brix
@@ -910,10 +720,6 @@ Exception: A part of a pattern takes one of ?, * or +, not "+*"; to repeat a rep
 </StreamMatch>
 ```
 
-```yumi
-~ \helper(into values)
-```
-
 ```brix
 (main
   (~ (call \helper (into values)))
@@ -928,10 +734,6 @@ Exception: A part of a pattern takes one of ?, * or +, not "+*"; to repeat a rep
         </collectorMappings>
     </StreamCall>
 </StreamMatch>
-```
-
-```yumi
-~ \expression(into terms: outer-terms, into operators: outer-operators)
 ```
 
 ```brix

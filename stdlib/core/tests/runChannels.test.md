@@ -1,12 +1,15 @@
 # Channels
 
-```yumi
-. numbers SyncChannel'Int
-
-do new
-    -- <- numbers
-
-numbers <- 99
+```brix
+(main
+  (let numbers (of SyncChannel Int))
+  (blank)
+  (do-new
+    (print (<- numbers))
+  )
+  (blank)
+  (<- numbers 99)
+)
 ```
 
 ```output
@@ -15,48 +18,43 @@ numbers <- 99
 
 ### A event escapes as one memoized Broadcastable adapter and keeps insertion order
 
-```yumi
-. source = ChannelEventSource()
-. first Broadcastable'Int = source.changed
-. second Broadcastable'Int = source.changed
--- first as Pointer == second as Pointer
+```brix
+(main
+  (let source (call ChannelEventSource))
+  (let first (of Broadcastable Int) (. source changed))
+  (let second (of Broadcastable Int) (. source changed))
+  (print (== (as first Pointer) (as second Pointer)))
+  (blank)
+  (let observer (call ChannelEventObserver first))
+  (call install-channel-loop second)
+  (blank)
+  (call (. source emit) 8)
+)
 
-. observer = ChannelEventObserver(first)
-install-channel-loop(second)
+(fn-do + install-channel-loop _
+  (param source (of Broadcastable Int))
+  (for (on value source)
+    (print (str "loop " value))
+  )
+)
 
-source.emit(8)
+(type + ChannelEventSource
+  (event + changed Int)
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do install-channel-loop
-    - source Broadcastable'Int
-
-for value on source
-    -- "loop $value"
-
-━━━━━━━━━━━━━━━━━━━━
-+ ChannelEventSource
-
-+ event changed Int
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
-
-━━━━━━━━━━━━━━━━━━━━
-+ ChannelEventObserver
-
-+ source Broadcastable'Int
-
-────────────────────
-+ This
-    - source
-
-────────────────────
-for value on source
-
--- "class $value"
+(type + ChannelEventObserver
+  (prop + source (of Broadcastable Int))
+  (fn-do + This _
+    (param source _)
+  )
+  (subscribe-for (on value source)
+    (print (str "class " value))
+  )
+)
 ```
 
 ```output
@@ -67,72 +65,70 @@ class 8
 
 ### A event Broadcastable adapter cannot be written
 
-```yumi crash
-. source = ChannelEventSource()
-. adapter Broadcastable'Int = source.changed
-adapter <- 1
+```brix crash
+(main
+  (let source (call ChannelEventSource))
+  (let adapter (of Broadcastable Int) (. source changed))
+  (<- adapter 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ChannelEventSource
-
-+ event changed Int
+(type + ChannelEventSource
+  (event + changed Int)
+)
 ```
 
 ```output
 Exception: Operator "<-" is not defined for Broadcastable'I64
-<no file:4>
-    adapter <- 1
-    ^^^^^^^^^^^^
+<no file:5>
+      (<- adapter 1)
+      ^^^^^^^^^^^^^^
 ```
 
 ### A write binds more tightly than `&&`, so writing a test of two values needs parentheses: the write itself has no value to test.
 
-```yumi compile-error
-. sender = ChannelSender()
-sender.send(true, false)
+```brix compile-error
+(main
+  (let sender (call ChannelSender))
+  (call (. sender send) true false)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ChannelSender
-
-+ event requests Bool
-
-────────────────────
-+ do send
-    - first Bool
-    - second Bool
-
-requests <- first && second
+(type + ChannelSender
+  (event + requests Bool)
+  (fn-do + send _
+    (param first Bool)
+    (param second Bool)
+    (and (<- requests first) second)
+  )
+)
 ```
 
 ```output
-Exception: Operator "and" is not defined for Void and Bool
-<no file:15>
-    requests <- first && second
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Exception: (and …) cannot be a `row` of (fn-do …), which takes Step. This body runs steps, and each row is a step: a statement form, a `call`, markup, or a value that `pipe` stages after it work on. To return a value, write `(return value)`. If the body is only a value, write `fn-expr`, or remove `:do` from a closure.
+<no file:12>
+        (and (<- requests first) second)
+        ^
 ```
 
 ### A read of one item takes it from a source that is a broadcastable through a property it delegates to.
 
-```yumi
-. ticker = ChannelTicker()
-. got = <- ticker
--- "got $got"
+```brix
+(main
+  (let ticker (call ChannelTicker))
+  (let got (<- ticker))
+  (print (str "got " got))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ChannelTicker
-    is Usable'Void
-
-as Broadcastable'Int for
-_ channel := AsyncOnDemandChannel'Int(this)
-
-────────────────────
-+ do begin-using
-
-do new
-    channel <- 7
-
-────────────────────
-+ do end-using
+(type + ChannelTicker
+  (implements (of Usable Void))
+  (delegate (of Broadcastable Int))
+  (prop _ channel _ (:= (call (of AsyncOnDemandChannel Int) this)))
+  (fn-do + begin-using _
+    (do-new
+      (<- channel 7)
+    )
+  )
+  (fn-do + end-using _)
+)
 ```
 
 ```output
@@ -141,33 +137,38 @@ got 7
 
 ### A event endpoint cannot bind as an AsyncChannel
 
-```yumi crash
-. source = ChannelEventSource()
-. channel AsyncChannel'Int = source.changed
+```brix crash
+(main
+  (let source (call ChannelEventSource))
+  (let channel (of AsyncChannel Int) (. source changed))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ChannelEventSource
-
-+ event changed Int
+(type + ChannelEventSource
+  (event + changed Int)
+)
 ```
 
 ```output
 Exception: Event endpoints provide Broadcastable'I64, not AsyncChannel'I64
-<no file:3>
-    . channel AsyncChannel'Int = source.changed
-      ^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:4>
+      (let channel (of AsyncChannel Int) (. source changed))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-. numbers SyncChannel'Int
-
-do new
-    for n in numbers
-        -- n
-
-numbers <-* 0 .. < 2
-numbers.close()
--- "done"
+```brix
+(main
+  (let numbers (of SyncChannel Int))
+  (blank)
+  (do-new
+    (for (in n numbers)
+      (print n)
+    )
+  )
+  (blank)
+  (<-* numbers (..< 0 2))
+  (call (. numbers close))
+  (print "done")
+)
 ```
 
 ```output
@@ -176,41 +177,52 @@ numbers.close()
 done
 ```
 
-```yumi
-. worker = Worker(1)
-. to-worker SyncChannel'Int
-. from-worker SyncChannel'Int
-
-do (worker) new
-    for i in 0 .. < 200
-        . n = <- to-worker
-        if n != i
-            ?! Panic("worker received $n instead of $i")
-        from-worker <- i
-
-for i in 0 .. < 200
-    to-worker <- i
-    . n = <- from-worker
-    if n != i
-        ?! Panic("main received $n instead of $i")
-
--- "done"
+```brix
+(main
+  (let worker (call Worker 1))
+  (let to-worker (of SyncChannel Int))
+  (let from-worker (of SyncChannel Int))
+  (blank)
+  (do-new (worker: worker)
+    (for (in i (..< 0 200))
+      (let n (<- to-worker))
+      (if (!= n i)
+        (throw (call Panic (str "worker received " n " instead of " i)))
+      )
+      (<- from-worker i)
+    )
+  )
+  (blank)
+  (for (in i (..< 0 200))
+    (<- to-worker i)
+    (let n (<- from-worker))
+    (if (!= n i)
+      (throw (call Panic (str "main received " n " instead of " i)))
+    )
+  )
+  (blank)
+  (print "done")
+)
 ```
 
 ```output
 done
 ```
 
-```yumi
-. chan = SyncBufferedChannel'Int()
-
-do new
-    chan <- 43
-    chan <- 44
-    chan.close()
-
-for item in chan
-    -- item
+```brix
+(main
+  (let chan (call (of SyncBufferedChannel Int)))
+  (blank)
+  (do-new
+    (<- chan 43)
+    (<- chan 44)
+    (call (. chan close))
+  )
+  (blank)
+  (for (in item chan)
+    (print item)
+  )
+)
 ```
 
 ```output
@@ -218,19 +230,25 @@ for item in chan
 44
 ```
 
-```yumi
-+ Pair is (a Int, b Int)
+```brix
+(type-line + Pair (is (tuple (: a Int) (: b Int))))
+(blank)
 
-. pairs SyncChannel'Pair
-
-do new
-    for n in pairs
-        -- n
-
-for i in 0 .. < 5
-    pairs <- Pair(i, i + 1)
-pairs.close()
--- "done"
+(main
+  (let pairs (of SyncChannel Pair))
+  (blank)
+  (do-new
+    (for (in n pairs)
+      (print n)
+    )
+  )
+  (blank)
+  (for (in i (..< 0 5))
+    (<- pairs (call Pair i (+ i 1)))
+  )
+  (call (. pairs close))
+  (print "done")
+)
 ```
 
 ```output
@@ -242,32 +260,38 @@ pairs.close()
 done
 ```
 
-```yumi
-. chan = AsyncChannel'Int()
+```brix
+(main
+  (let chan (call (of AsyncChannel Int)))
+  (blank)
+  (<- chan 43)
+  (blank)
+  (for (on item chan)
+    (print item)
+  )
+  (blank)
+  (<- chan 44)
+)
 
-chan <- 43
-
-for item on chan
-    -- item
-
-chan <- 44
-`chan.close()
+; chan.close()
 ```
 
 ```output
 44
 ```
 
-```yumi
-for item on publisher(foo(1))
-    -- item
+```brix
+(main
+  (for (on item (call publisher (call foo 1)))
+    (print item)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - n
-
-<= n
-<= n * 2
+(fn-do + foo _
+  (param n _)
+  (yield n)
+  (yield (* n 2))
+)
 ```
 
 ```output
@@ -275,45 +299,56 @@ for item on publisher(foo(1))
 2
 ```
 
-```yumi
-. foo = => 2
--- await'Int(foo)
+```brix
+(main
+  (let foo (=> () 2))
+  (print (call (of await Int) foo))
+)
 ```
 
 ```output
 2
 ```
 
-```yumi
-/core/arena
-/BxCore/BxCore.h
+```brix
+(import /core/arena)
+(import /BxCore/BxCore.h)
+(blank)
 
-. reserved-before = C:brixArenaRuntimeReservedBytes()
-. output SyncBufferedChannel'Int
-. scratch-pool SyncBufferedChannel'Arena
-. worker = Worker(4)
-for _ in 0 .. < 4
-    scratch-pool <- Arena()
-for value in 0 .. < 128
-    do (worker) new
-        . scratch = (<- scratch-pool)!
-        do finally
-            scratch-pool <- scratch
-        . buffer = scratch.allocate'Int(1)
-        buffer[0] = value
-        . copied = buffer[0]
-        scratch.reset()
-        output <- copied
-
-. total = 0
-for _ in 0 .. < 128
-    total += (<- output)!
-worker.stop()
-scratch-pool.close()
-for scratch in scratch-pool
-    scratch.release()
--- total == 8128
--- C:brixArenaRuntimeReservedBytes() == reserved-before
+(main
+  (let reserved-before (call C:brixArenaRuntimeReservedBytes))
+  (let output (of SyncBufferedChannel Int))
+  (let scratch-pool (of SyncBufferedChannel Arena))
+  (let worker (call Worker 4))
+  (for (in _ (..< 0 4))
+    (<- scratch-pool (call Arena))
+  )
+  (for (in value (..< 0 128))
+    (do-new (worker: worker)
+      (let scratch (!! (<- scratch-pool)))
+      (finally
+        (<- scratch-pool scratch)
+      )
+      (let buffer (call (of (. scratch allocate) Int) 1))
+      (= ([] buffer 0) value)
+      (let copied ([] buffer 0))
+      (call (. scratch reset))
+      (<- output copied)
+    )
+  )
+  (blank)
+  (let total 0)
+  (for (in _ (..< 0 128))
+    (+= total (!! (<- output)))
+  )
+  (call (. worker stop))
+  (call (. scratch-pool close))
+  (for (in scratch scratch-pool)
+    (call (. scratch release))
+  )
+  (print (== total 8128))
+  (print (== (call C:brixArenaRuntimeReservedBytes) reserved-before))
+)
 ```
 
 ```output
@@ -323,37 +358,40 @@ true
 
 ### Publishing a finite stream closes the broadcaster once its subscribers get every item
 
-```yumi
-. gate SyncBufferedChannel'Bool
-drain(gate, 2)
-drain(gate, 0)
-for n in publisher([3, 4])
-    -- n
--- "list done"
+```brix
+(main
+  (let gate (of SyncBufferedChannel Bool))
+  (call drain gate 2)
+  (call drain gate 0)
+  (for (in n (call publisher (list 3 4)))
+    (print n)
+  )
+  (print "list done")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do drain
-    - gate SyncBufferedChannel'Bool
-    - count Int
+(fn-do + drain _
+  (param gate (of SyncBufferedChannel Bool))
+  (param count Int)
+  (let pub (call publisher (call gated gate count)))
+  (let reader (as pub (of Iterable Int)))
+  (call (. reader begin-iterating))
+  (<- gate true)
+  (let item (<- reader))
+  (while item
+    (print item)
+    (= item (<- reader))
+  )
+  (print (. pub is-closed))
+)
 
-. pub = publisher(gated(gate, count))
-. reader = pub as Iterable'Int
-reader.begin-iterating()
-gate <- true
-. item = <- reader
-while item
-    -- item
-    item = <- reader
--- pub.is-closed
-
-━━━━━━━━━━━━━━━━━━━━
-+ do gated
-    - gate SyncBufferedChannel'Bool
-    - count Int
-
-<- gate
-for n in 0 .. < count
-    <= n + 1
+(fn-do + gated _
+  (param gate (of SyncBufferedChannel Bool))
+  (param count Int)
+  (<- gate)
+  (for (in n (..< 0 count))
+    (yield (+ n 1))
+  )
+)
 ```
 
 ```output
@@ -368,11 +406,14 @@ list done
 
 ### await hands each result across threads, including when the producer posts before the waiter parks.
 
-```yumi
-. total = 0
-for n in 1 .. 300
-    total += await'Int(=> n) ?? 0
--- total
+```brix
+(main
+  (let total 0)
+  (for (in n (.. 1 300))
+    (+= total (?? (call (of await Int) (=> () n)) 0))
+  )
+  (print total)
+)
 ```
 
 ```output
@@ -381,24 +422,28 @@ for n in 1 .. 300
 
 ### A write waiting on a SyncChannel when it closes reaches the next reader
 
-```yumi
-. numbers SyncChannel'Int
-do new
-    numbers <- 1
-    -- "written"
-yield-once()
-numbers.close()
-for n in numbers
-    -- "read $n"
--- "end"
+```brix
+(main
+  (let numbers (of SyncChannel Int))
+  (do-new
+    (<- numbers 1)
+    (print "written")
+  )
+  (call yield-once)
+  (call (. numbers close))
+  (for (in n numbers)
+    (print (str "read " n))
+  )
+  (print "end")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
-
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 ```
 
 ```output
@@ -409,27 +454,34 @@ written
 
 ### A reader of a SyncBufferedChannel cancelled while it waits leaves the values written before it ends to other readers
 
-```yumi
-. numbers SyncBufferedChannel'Int
-. reader = do new
-    for n in numbers
-        -- "reader took $n"
-yield-once()
-reader.cancel-later()
-numbers <- 1
-numbers <- 2
-reader.wait()
-numbers.close()
-for n in numbers
-    -- "left $n"
+```brix
+(main
+  (let numbers (of SyncBufferedChannel Int))
+  (let reader
+    (do-new
+      (for (in n numbers)
+        (print (str "reader took " n))
+      )
+    )
+  )
+  (call yield-once)
+  (call (. reader cancel-later))
+  (<- numbers 1)
+  (<- numbers 2)
+  (call (. reader wait))
+  (call (. numbers close))
+  (for (in n numbers)
+    (print (str "left " n))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
-
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 ```
 
 ```output
@@ -439,28 +491,37 @@ left 2
 
 ### A write to a SyncChannel passes over a reader cancelled while it waits and goes to the next
 
-```yumi
-. numbers SyncChannel'Int
-. cancelled = do new
-    for n in numbers
-        -- "cancelled reader took $n"
-yield-once()
-. other = do new
-    -- "other took ${<- numbers}"
-yield-once()
-cancelled.cancel-later()
-numbers <- 1
--- "written"
-numbers.close()
-other.wait()
+```brix
+(main
+  (let numbers (of SyncChannel Int))
+  (let cancelled
+    (do-new
+      (for (in n numbers)
+        (print (str "cancelled reader took " n))
+      )
+    )
+  )
+  (call yield-once)
+  (let other
+    (do-new
+      (print (str "other took " (<- numbers)))
+    )
+  )
+  (call yield-once)
+  (call (. cancelled cancel-later))
+  (<- numbers 1)
+  (print "written")
+  (call (. numbers close))
+  (call (. other wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
-
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 ```
 
 ```output
@@ -470,16 +531,18 @@ written
 
 ### Reads drain what an AsyncBufferedChannel buffered before it closed, and later writes are dropped
 
-```yumi
-. numbers = AsyncBufferedChannel'Int()
-numbers <- 1
-numbers <- 2
-numbers.close()
-numbers <- 3
--- <- numbers
--- <- numbers
-. rest = <- numbers
--- if !rest then "drained" else "left $rest"
+```brix
+(main
+  (let numbers (call (of AsyncBufferedChannel Int)))
+  (<- numbers 1)
+  (<- numbers 2)
+  (call (. numbers close))
+  (<- numbers 3)
+  (print (<- numbers))
+  (print (<- numbers))
+  (let rest (<- numbers))
+  (print (if-expr (not rest) "drained" (str "left " rest)))
+)
 ```
 
 ```output
@@ -490,45 +553,46 @@ drained
 
 ### An AsyncBufferedChannel releases a message once it is read, past a wrap, and keeps one still buffered
 
-```yumi
-/core/gc
+```brix
+(import /core/gc)
+(blank)
+(import /BxGC/BxGC.h)
+(blank)
 
-/BxGC/BxGC.h
+(main
+  (let channel (call (of AsyncBufferedChannel Node)))
+  (let watched (call read-past-wrap channel))
+  (call C:brixCollect)
+  (print (== (. ([] watched 0) get) null))
+  (print (?. (. ([] watched 1) get) value))
+  (call (. channel close))
+  (print (?. (<- channel) value))
+  (print (if-expr (not (<- channel)) "drained" "left"))
+)
 
-. channel = AsyncBufferedChannel'Node()
-. watched = read-past-wrap(channel)
-C:brixCollect()
--- watched[0].get == null
--- watched[1].get?.value
-channel.close()
--- (<- channel)?.value
--- if !(<- channel) then "drained" else "left"
+(fn-do + read-past-wrap _
+  (param channel (of AsyncBufferedChannel Node))
+  (for (in i (..< 0 16))
+    (<- channel (call Node i))
+  )
+  (for (in i (..< 0 15))
+    (<- channel)
+  )
+  (let waiting (call Node 17))
+  (<- channel (call Node 16))
+  (<- channel waiting)
+  (<- channel)
+  (let delivered (<- channel))
+  (return (tuple (call Weak (!! delivered)) (call Weak waiting)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read-past-wrap
-    - channel AsyncBufferedChannel'Node
-
-for i in 0 .. < 16
-    channel <- Node(i)
-for i in 0 .. < 15
-    <- channel
-. waiting = Node(17)
-channel <- Node(16)
-channel <- waiting
-<- channel
-. delivered = <- channel
-= (Weak(delivered!), Weak(waiting))
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node
-
-+ value = 0
-
-────────────────────
-+ This
-    - v Int
-
-value = v
+(type + Node
+  (prop + value _ (= 0))
+  (fn-do + This _
+    (param v Int)
+    (= value v)
+  )
+)
 ```
 
 ```output
@@ -540,25 +604,26 @@ drained
 
 ### An event reached through an optional chain takes a write when the chain holds a value, and skips it when it is null
 
-```yumi
-. holder = PingHolder()
-holder.pinger = Pinger()
-for value on holder.pinger!.pinged
-    -- "pinged $value"
-holder.pinger?.pinged <- 3
-holder.pinger = null
-holder.pinger?.pinged <- 4
--- "done"
+```brix
+(main
+  (let holder (call PingHolder))
+  (= (. holder pinger) (call Pinger))
+  (for (on value (. (!! (. holder pinger)) pinged))
+    (print (str "pinged " value))
+  )
+  (<- (?. (. holder pinger) pinged) 3)
+  (= (. holder pinger) null)
+  (<- (?. (. holder pinger) pinged) 4)
+  (print "done")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pinger
+(type + Pinger
+  (event + pinged Int)
+)
 
-+ event pinged Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ PingHolder
-
-+ pinger Pinger?
+(type + PingHolder
+  (prop + pinger (? Pinger))
+)
 ```
 
 ```output

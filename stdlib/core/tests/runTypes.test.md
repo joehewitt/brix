@@ -1,41 +1,42 @@
 # Types
 
-```yumi crash
--- Foo().foo
+```brix crash
+(main
+  (print (. (call Foo) foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ foo
+(type + Foo
+  (prop + foo _)
+)
 ```
 
 ```output
 Exception: Property 'foo' of 'Foo' needs either a type or a value
 <no file:7>
-    + foo
-    ^^^^^
+      (prop + foo _)
+      ^^^^^^^^^^^^^^
 ```
 
 ## Recursive Generic Variable Lookup
 
-```yumi
-. node = Node'String'Int("left", 42, CPointer'(Node'String'Int)())
-accept(node)
+```brix
+(main
+  (let node (call (of Node String Int) "left" 42 (call (of CPointer (of Node String Int)))))
+  (call accept node)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node'Left'Right is Tuple
+(type + (of Node Left Right) (is Tuple)
+  (prop + left Left)
+  (prop + right Right)
+  (prop + next (of CPointer (of Node Left Right)))
+)
 
-+ left Left
-+ right Right
-+ next CPointer'(Node'Left'Right)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do accept'Left'Right
-    - node Node'Left'Right
-
--- type-of node
--- node.left
--- node.right
+(fn-do + (of accept Left Right) _
+  (param node (of Node Left Right))
+  (print (type-of node))
+  (print (. node left))
+  (print (. node right))
+)
 ```
 
 ```output
@@ -46,25 +47,31 @@ left
 
 ## Conversions between aliases
 
-```yumi
-. foo = Foo()
-. bar Bar = foo
--- bar
+```brix
+(main
+  (let foo (call Foo))
+  (let bar Bar foo)
+  (print bar)
+)
 
-+ Foo (Bar)
+(blank)
+(type-line + Foo (alias Bar))
 ```
 
 ```output
 [Object __source__:Foo]
 ```
 
-```yumi
-+ Foo
-+ Bar (Baz) is Foo
+```brix
+(type-line + Foo)
+(type-line + Bar (alias Baz) (is Foo))
+(blank)
 
-. foo = Bar()
-. bar Baz = foo
--- bar
+(main
+  (let foo (call Bar))
+  (let bar Baz foo)
+  (print bar)
+)
 ```
 
 ```output
@@ -73,24 +80,30 @@ left
 
 ### Numeric aliases
 
-```yumi
-+ Stuff is I32
+```brix
+(type-line + Stuff (is I32))
+(blank)
 
-. s Stuff = 42
--- s
+(main
+  (let s Stuff 42)
+  (print s)
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-. s Stuff = 42
--- s
-. s2 Fluff = 42
--- s2
+```brix
+(main
+  (let s Stuff 42)
+  (print s)
+  (let s2 Fluff 42)
+  (print s2)
+)
 
-+ Stuff (Fluff) is I32
+(blank)
+(type-line + Stuff (alias Fluff) (is I32))
 ```
 
 ```output
@@ -100,78 +113,82 @@ left
 
 ## Casts
 
-```yumi
--- Foo() as Bar
+```brix
+(main
+  (print (as (call Foo) Bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (fn-to-expr + Bar
+    (call Bar)
+  )
+)
 
-────────────────────
-+ to Bar
-
-Bar()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
+(type + Bar)
 ```
 
 ```output
 [Object __source__:Bar]
 ```
 
-```yumi crash
-. foo = Foo()
--- Foo() as Bar
+```brix crash
+(main
+  (let foo (call Foo))
+  (print (as (call Foo) Bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (fn-to-expr _ Bar
+    (call Bar)
+  )
+)
 
-────────────────────
-_ to Bar
-
-Bar()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
+(type + Bar)
 ```
 
 ```output
 Exception: Converters must be public
-<no file:9>
-    _ to Bar
-    ^^^^^^^
+<no file:8>
+      (fn-to-expr _ Bar
+      ^^^^^^^^^^^^^^^^
 ```
 
 ## Constructors
 
 ### Builtin type constructors
 
-```yumi
--- F32()
+```brix
+(main
+  (print (call F32))
+)
 ```
 
 ```output
 0
 ```
 
-```yumi
-. s = String()
--- "got '$s'"
+```brix
+(main
+  (let s (call String))
+  (print (str "got '" s "'"))
+)
 ```
 
 ```output
 got ''
 ```
 
-```yumi
-. s = I32()
--- "got $s"
-
-s = I32(4.5)
--- "got $s"
-
-s = I32(" 42 ")
--- "got $s"
+```brix
+(main
+  (let s (call I32))
+  (print (str "got " s))
+  (blank)
+  (= s (call I32 4.5))
+  (print (str "got " s))
+  (blank)
+  (= s (call I32 " 42 "))
+  (print (str "got " s))
+)
 ```
 
 ```output
@@ -182,125 +199,126 @@ got 42
 
 ### A number type called with text that is no number of it panics.
 
-```yumi crash
--- I32("42x")
+```brix crash
+(main
+  (print (call I32 "42x"))
+)
 ```
 
 ```stderr
 Unhandled panic: "42x" is not a whole number
-<core/number.yumi>
+<core/number.bx>
 
 Task 1
 
 Stack trace:
-  0  core/number:read-integer core/number.yumi
-  1  core/number:I32:from String6 core/number.yumi
-  2  __source__:main no file:2:4
+  0  core/number:read-integer core/number.bx
+  1  core/number:I32:from String6 core/number.bx
+  2  __source__:main no file:3:10
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ## Subclassing builtin types
 
-```yumi
--- Foo(10)
+```brix
+(main
+  (print (call Foo 10))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is CPointer'I32
+(type + Foo (is (of CPointer I32)))
 ```
 
 ```output
 [CPointer core/number:I32*]
 ```
 
-```yumi crash
--- Foo(10)
+```brix crash
+(main
+  (print (call Foo 10))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Optional'I32
+(type + Foo (is (of Optional I32)))
 ```
 
 ```output
 Exception: Type has illegal base class
-<no file:5>
-    + Foo is Optional'I32
-    ^^^^^^^^^^^^^^^^^^^^
+<no file:6>
+    (type + Foo (is (of Optional I32)))
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
--- Foo(10)
+```brix crash
+(main
+  (print (call Foo 10))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Function
-```
-
-```output
-Exception: Type has illegal base class
-<no file:5>
-    + Foo is Function
-    ^^^^^^^^^^^^^^^^
-```
-
-```yumi crash
--- Foo(10)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is CFunction
+(type + Foo (is Function))
 ```
 
 ```output
 Exception: Type has illegal base class
-<no file:5>
-    + Foo is CFunction
-    ^^^^^^^^^^^^^^^^^
+<no file:6>
+    (type + Foo (is Function))
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
--- Foo(10)
+```brix crash
+(main
+  (print (call Foo 10))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Bool
+(type + Foo (is CFunction))
 ```
 
 ```output
 Exception: Type has illegal base class
-<no file:5>
-    + Foo is Bool
-    ^^^^^^^^^^^^
+<no file:6>
+    (type + Foo (is CFunction))
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-. bar = Bar()
-bar.a = 99
--- bar as Foo
--- Foo(bar)
+```brix crash
+(main
+  (print (call Foo 10))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo (is Bool))
+```
 
-+ bar Bar
+```output
+Exception: Type has illegal base class
+<no file:6>
+    (type + Foo (is Bool))
+    ^^^^^^^^^^^^^^^^^^^^^^
+```
 
-────────────────────
-+ do from b Bar
+```brix
+(main
+  (let bar (call Bar))
+  (= (. bar a) 99)
+  (print (as bar Foo))
+  (print (call Foo bar))
+)
 
-. foo = This()
-foo.bar = b
-= foo
+(type + Foo
+  (prop + bar Bar)
+  (fn-from-do + (: b Bar)
+    (let foo (call This))
+    (= (. foo bar) b)
+    (return foo)
+  )
+  (fn-to-expr + String
+    (str "Foo " bar)
+  )
+)
 
-────────────────────
-+ to String
-
-"Foo $bar"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-+ a = 0
-
-────────────────────
-+ to String
-
-"Bar $a"
+(type + Bar
+  (prop + a _ (= 0))
+  (fn-to-expr + String
+    (str "Bar " a)
+  )
+)
 ```
 
 ```output
@@ -310,42 +328,44 @@ Foo Bar 99
 
 ### Can't use parameterized types as units
 
-```yumi crash
-+ Foo'T (foo) is Float
-+ Bar is Float
+```brix crash
+(type-line + (of Foo T) (alias foo) (is Float))
+(type-line + Bar (is Float))
+(blank)
 
--- 1foo
+(main
+  (print 1foo)
+)
 ```
 
 ```output
 Exception: Unit types must be numeric and unqualified
-<no file:5>
-    -- 1foo
-        ^^^
+<no file:7>
+      (print 1foo)
+              ^^^
 ```
 
 ### Make sure units declared in class declaration are seen even if type was never used
 
-```yumi
--- Foo.compare(Baz)
--- 1foo as Baz
+```brix
+(main
+  (print (call (. Foo compare) Baz))
+  (print (as 1foo Baz))
+)
 
-+ Foo (foo) is Float
-+ Bar (bar) is 2foo
-+ Bazoo (bazoo) is Float
+(blank)
+(type-line + Foo (alias foo) (is Float))
+(type-line + Bar (alias bar) (is 2foo))
+(type-line + Bazoo (alias bazoo) (is Float))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Baz (baz) is Float
+(type + Baz (alias baz) (is Float)
+  (fn-from-expr + (: foo Foo)
+    ; Would never be called if 2foo unit is not seen
+    (as (* 4 foo) Float)
+  )
+)
 
-────────────────────
-+ from foo Foo
-
-` Would never be called if 2foo unit is not seen
-(4 * foo) as Float
-
-━━━━━━━━━━━━━━━━━━━━
-
-+ 1baz = 1bazoo
+(unit + 1baz 1bazoo)
 ```
 
 ```output
@@ -355,39 +375,36 @@ Exception: Unit types must be numeric and unqualified
 
 ### Downcasting hack
 
-```yumi
-do new
-    . box Box = Square("bob")
-    -- box.downcast'Square().id
-    -- box.downcast'Circle().id
-catch failure
-    -- failure
+```brix
+(main
+  (do-new
+    (let box Box (call Square "bob"))
+    (print (. (call (of (. box downcast) Square)) id))
+    (print (. (call (of (. box downcast) Circle)) id))
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + id String)
+  (fn-do + This _
+    (param id _)
+  )
+  (fn-do + (of downcast TargetBox) TargetBox
+    (throw (call Panic "Invalid cast"))
+  )
+)
 
-+ id String
+(type + Circle (is Box))
 
-────────────────────
-+ This
-    - id
-
-────────────────────
-+ do downcast'TargetBox TargetBox
-
-?! Panic("Invalid cast")
-
-━━━━━━━━━━━━━━━━━━━━
-+ Circle is Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Square is Box
-
-────────────────────
-+ downcast'TargetBox TargetBox
-    - TargetBox is! This
-
-this
+(type + Square (is Box)
+  (fn-expr + (of downcast TargetBox) TargetBox
+    (constraint is! TargetBox This)
+    this
+  )
+)
 ```
 
 ```output
@@ -395,12 +412,15 @@ bob
 Invalid cast
 ```
 
-```yumi
-. foo Foo = Bar()
--- foo as Bar
+```brix
+(main
+  (let foo Foo (call Bar))
+  (print (as foo Bar))
+)
 
-+ Foo
-+ Bar is Foo
+(blank)
+(type-line + Foo)
+(type-line + Bar (is Foo))
 ```
 
 ```output
@@ -409,16 +429,19 @@ Invalid cast
 
 ### Downcasting
 
-```yumi
-. foo Foo = Bar()
--- foo is Bar
--- foo as Bar
+```brix
+(main
+  (let foo Foo (call Bar))
+  (print (is foo Bar))
+  (print (as foo Bar))
+  (blank)
+  (print (is foo Baz))
+)
 
--- foo is Baz
-
-+ Foo
-+ Bar is Foo
-+ Baz is Foo
+(blank)
+(type-line + Foo)
+(type-line + Bar (is Foo))
+(type-line + Baz (is Foo))
 ```
 
 ```output
@@ -427,17 +450,20 @@ true
 false
 ```
 
-```yumi
-. foo Foo = Baz()
--- foo is Bar
--- foo as Bar
+```brix
+(main
+  (let foo Foo (call Baz))
+  (print (is foo Bar))
+  (print (as foo Bar))
+  (blank)
+  (print (is foo Other))
+)
 
--- foo is Other
-
-+ Foo
-+ Bar is Foo
-+ Baz is Bar
-+ Other is Foo
+(blank)
+(type-line + Foo)
+(type-line + Bar (is Foo))
+(type-line + Baz (is Bar))
+(type-line + Other (is Foo))
 ```
 
 ```output
@@ -448,37 +474,33 @@ false
 
 ## Or Typing
 
-```yumi
-fetch(Thing())
-fetch(Bling())
+```brix
+(main
+  (call fetch (call Thing))
+  (call fetch (call Bling))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling
+(type + Bling)
 
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
+(type + IFoo (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ IBar is Interface
+(type + IBar (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is IFoo || IBar
+(type + Donald (is IFoo IBar))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fetch
-    - thing Donald
+(fn-do + fetch _
+  (param thing Donald)
+  (print (tuple "duck" thing))
+)
 
--- "duck", thing
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fetch
-    - thing
-
--- "fallthrough", thing
+(fn-do + fetch _
+  (param thing _)
+  (print (tuple "fallthrough" thing))
+)
 ```
 
 ```output
@@ -486,160 +508,143 @@ fetch(Bling())
 (fallthrough, [Object __source__:Bling])
 ```
 
-```yumi
-fetch(Thing())
+```brix
+(main
+  (call fetch (call Thing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Bling
+(type + Thing (is Bling))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling
+(type + Bling)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is Bling || Void
+(type + Donald (is Bling Void))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fetch
-    - thing Donald
+(fn-do + fetch _
+  (param thing Donald)
+  (print (tuple "duck" thing))
+)
 
--- "duck", thing
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fetch
-    - thing
-
--- "fallthrough", thing
+(fn-do + fetch _
+  (param thing _)
+  (print (tuple "fallthrough" thing))
+)
 ```
 
 ```output
 (duck, [Object __source__:Bling])
 ```
 
-```yumi
-fetch(Thing())
+```brix
+(main
+  (call fetch (call Thing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is Thing || Void
+(type + Donald (is Thing Void))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fetch
-    - thing Donald
+(fn-do + fetch _
+  (param thing Donald)
+  (print (tuple "duck" thing))
+)
 
--- "duck", thing
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fetch
-    - thing
-
--- "fallthrough", thing
+(fn-do + fetch _
+  (param thing _)
+  (print (tuple "fallthrough" thing))
+)
 ```
 
 ```output
 (duck, [Object __source__:Thing])
 ```
 
-```yumi
-fetch(Thing())
+```brix
+(main
+  (call fetch (call Thing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (fn-to-expr + IFoo
+    (call FooThing)
+  )
+)
 
-────────────────────
-+ to IFoo
+(type + FooThing
+  (implements IFoo)
+  (fn-expr + foopy _
+    "foopy do"
+  )
+)
 
-FooThing()
+(type + IFoo (is Interface)
+  (fn-expr + foopy String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ FooThing
-    is IFoo
+(type + IBar (is Interface))
 
-────────────────────
-+ foopy
+(type + Donald (is IFoo IBar))
 
-"foopy do"
+(fn-do + fetch _
+  (param thing Donald)
+  (print (tuple "duck" (call (. (as thing IFoo) foopy))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
-
-────────────────────
-+ foopy String
-
-━━━━━━━━━━━━━━━━━━━━
-+ IBar is Interface
-
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is IFoo || IBar
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fetch
-    - thing Donald
-
--- "duck", (thing as IFoo).foopy()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fetch
-    - thing
-
--- "fallthrough", thing
+(fn-do + fetch _
+  (param thing _)
+  (print (tuple "fallthrough" thing))
+)
 ```
 
 ```output
 (duck, foopy do)
 ```
 
-```yumi
-. thing = Thing()
--- thing as Donald
+```brix
+(main
+  (let thing (call Thing))
+  (print (as thing Donald))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (fn-to-expr + Donald
+    (call Goober)
+  )
+)
 
-────────────────────
-+ to Donald
+(type + Goober
+  (implements Foo)
+  (implements Bar)
+)
 
-Goober()
+(type + Foo (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Goober
-    is Foo
-    is Bar
+(type + Bar (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Interface
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Interface
-
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is Foo || Bar
+(type + Donald (is Foo Bar))
 ```
 
 ```output
 [Interface __source__:Foo]
 ```
 
-```yumi
--- Thing() as Donald
-fetch(Thing())
+```brix
+(main
+  (print (as (call Thing) Donald))
+  (call fetch (call Thing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
+(type + IFoo (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is IFoo || Void
+(type + Donald (is IFoo Void))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fetch
-    - thing Donald
-
--- "duck", thing
+(fn-do + fetch _
+  (param thing Donald)
+  (print (tuple "duck" thing))
+)
 ```
 
 ```output
@@ -647,38 +652,34 @@ fetch(Thing())
 (duck, [Interface __source__:IFoo])
 ```
 
-```yumi
-. bling = Bling()
--- bling as Donald
-fetch(bling)
+```brix
+(main
+  (let bling (call Bling))
+  (print (as bling Donald))
+  (call fetch bling)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
-    is IBar
+(type + Thing
+  (implements IFoo)
+  (implements IBar)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling
+(type + Bling
+  (fn-to-expr + Donald
+    (call Thing)
+  )
+)
 
-────────────────────
-+ to Donald
+(type + IFoo (is Interface))
 
-Thing()
+(type + IBar (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
+(type + Donald (is IFoo IBar))
 
-━━━━━━━━━━━━━━━━━━━━
-+ IBar is Interface
-
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is IFoo || IBar
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fetch
-    - thing Donald
-
--- "duck", thing
+(fn-do + fetch _
+  (param thing Donald)
+  (print (tuple "duck" thing))
+)
 ```
 
 ```output
@@ -688,32 +689,28 @@ Thing()
 
 ### Choosing an or-type alternative never compiles the converters of the alternatives it rejects.
 
-```yumi
-fetch(Thing())
+```brix
+(main
+  (call fetch (call Thing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+  (fn-to-expr + IBar
+    (call Missing)
+  )
+)
 
-────────────────────
-+ to IBar
+(type + IFoo (is Interface))
 
-Missing()
+(type + IBar (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
+(type + Donald (is IFoo IBar))
 
-━━━━━━━━━━━━━━━━━━━━
-+ IBar is Interface
-
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is IFoo || IBar
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fetch
-    - thing Donald
-
--- "duck", thing
+(fn-do + fetch _
+  (param thing Donald)
+  (print (tuple "duck" thing))
+)
 ```
 
 ```output
@@ -722,34 +719,30 @@ Missing()
 
 ### A type of alternatives called with a value gives the value as the alternative it converts to, as `as` does.
 
-```yumi
-. count = Choice(3)
--- count + 1
-. text = Choice("x")
--- text ++ "y"
-. duck = Donald(Thing())
--- duck.name
+```brix
+(main
+  (let count (call Choice 3))
+  (print (+ count 1))
+  (let text (call Choice "x"))
+  (print (++ text "y"))
+  (let duck (call Donald (call Thing)))
+  (print (. duck name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Int || String
+(type + Choice (is Int String))
 
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
+(type + IFoo (is Interface)
+  (fn-expr + name String :get)
+)
 
-────────────────────
-+ get name String
+(type + IBar (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ IBar is Interface
+(type + Donald (is IFoo IBar))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is IFoo || IBar
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
-
-+ name = "thing"
+(type + Thing
+  (implements IFoo)
+  (prop + name _ (= "thing"))
+)
 ```
 
 ```output
@@ -760,36 +753,41 @@ thing
 
 ### A type of alternatives has no constructor of its own, so calling it with nothing is an error.
 
-```yumi compile-error
-. choice = Choice()
+```brix compile-error
+(main
+  (let choice (call Choice))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Int || String
+(type + Choice (is Int String))
 ```
 
 ```output
 Exception: Choice stands for any one of Int and String, so it has no constructor; give it a value of one of them, as in Choice(value)
-<no file:2>
-    . choice = Choice()
-               ^^^^^^
+<no file:3>
+      (let choice (call Choice))
+                        ^^^^^^
 ```
 
 ## Matching types with the same name
 
 ### Arena allocations expose ordinary pointer types.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-do finally
-    arena.release()
-. pointer = arena.allocate'U16(2)
-. mark = arena.mark
-
--- type-of arena
--- type-of pointer
--- type-of mark
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (let pointer (call (of (. arena allocate) U16) 2))
+  (let mark (. arena mark))
+  (blank)
+  (print (type-of arena))
+  (print (type-of pointer))
+  (print (type-of mark))
+)
 ```
 
 ```output
@@ -800,29 +798,31 @@ do finally
 
 ### Arena handles and allocation pointers remain pointer-free through ordinary aggregates.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. inner = Arena()
-. pointer = inner.allocate'U32(1)
-pointer[0] = 42u32
-. bundle = ArenaBundle(inner, pointer, inner.mark)
-. outer = Arena()
-. stored = outer.allocate'ArenaBundle(1)
-stored[0] = bundle
+(main
+  (let inner (call Arena))
+  (let pointer (call (of (. inner allocate) U32) 1))
+  (= ([] pointer 0) 42u32)
+  (let bundle (call ArenaBundle inner pointer (. inner mark)))
+  (let outer (call Arena))
+  (let stored (call (of (. outer allocate) ArenaBundle) 1))
+  (= ([] stored 0) bundle)
+  (blank)
+  (print (type-of bundle))
+  (print ([] (. ([] stored 0) pointer) 0))
+  (call (. outer release))
+  (print ([] pointer 0))
+  (call (. inner release))
+)
 
--- type-of bundle
--- stored[0].pointer[0]
-outer.release()
--- pointer[0]
-inner.release()
-
-━━━━━━━━━━━━━━━━━━━━
-+ ArenaBundle is Tuple
-
-+ arena Arena
-+ pointer CPointer'U32
-+ mark ArenaMark
+(type + ArenaBundle (is Tuple)
+  (prop + arena Arena)
+  (prop + pointer (of CPointer U32))
+  (prop + mark ArenaMark)
+)
 ```
 
 ```output
@@ -831,23 +831,24 @@ inner.release()
 42
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. value Table'Payload? = null
--- value == null
-. constructed = Table'Payload()
--- constructed.marker
+(main
+  (let value (? (of Table Payload)) null)
+  (print (== value null))
+  (let constructed (call (of Table Payload)))
+  (print (. constructed marker))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Payload
+(type + Payload
+  (prop + text _ (= "payload"))
+)
 
-+ text = "payload"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Table'Item
-
-+ marker = 7
+(type + (of Table Item)
+  (prop + marker _ (= 7))
+)
 ```
 
 ```output
@@ -857,35 +858,32 @@ true
 
 ### A converter a subclass declares again answers for its objects, whatever type they are held as.
 
-```yumi
-. x A = B()
--- x
-. y A = A()
--- y
-. z B = B()
--- z
-. w A = C()
--- w
--- "$x and $w"
+```brix
+(main
+  (let x A (call B))
+  (print x)
+  (let y A (call A))
+  (print y)
+  (let z B (call B))
+  (print z)
+  (let w A (call C))
+  (print w)
+  (print (str x " and " w))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ A
+(type + A
+  (fn-to-expr + String
+    "A's text"
+  )
+)
 
-────────────────────
-+ to String
+(type + B (is A)
+  (fn-to-expr + String
+    "B's text"
+  )
+)
 
-"A's text"
-
-━━━━━━━━━━━━━━━━━━━━
-+ B is A
-
-────────────────────
-+ to String
-
-"B's text"
-
-━━━━━━━━━━━━━━━━━━━━
-+ C is B
+(type + C (is B))
 ```
 
 ```output
@@ -898,61 +896,56 @@ B's text and B's text
 
 ### A type given as a value prints its name, and answers its name and key.
 
-```yumi
-. n = 5
-. t = (1, 2.5)
-. o Int? = 4
-. b = Box'Int()
-. p = Pair(1, 2)
-. s = "text"
-. thing Base = Sub()
-. named = Named(1, 2)
--- type-of n
--- type-of t
--- type-of o
--- type-of b
--- type-of p
--- type-of s
--- type-of thing
--- type-of named
--- (type-of b).name
--- (type-of t).name
--- (type-of t).key
--- (type-of named).name
--- (type-of o).name
--- (type-of thing).name
--- (type-of thing).concrete-name
--- label'(Int, String)()
--- short'(Box'Float)()
--- label'(Float?)()
+```brix
+(main
+  (let n 5)
+  (let t (tuple 1 2.5))
+  (let o (? Int) 4)
+  (let b (call (of Box Int)))
+  (let p (call Pair 1 2))
+  (let s "text")
+  (let thing Base (call Sub))
+  (let named (call Named 1 2))
+  (print (type-of n))
+  (print (type-of t))
+  (print (type-of o))
+  (print (type-of b))
+  (print (type-of p))
+  (print (type-of s))
+  (print (type-of thing))
+  (print (type-of named))
+  (print (. (type-of b) name))
+  (print (. (type-of t) name))
+  (print (. (type-of t) key))
+  (print (. (type-of named) name))
+  (print (. (type-of o) name))
+  (print (. (type-of thing) name))
+  (print (. (type-of thing) concrete-name))
+  (print (call (of label (tuple Int String))))
+  (print (call (of short (of Box Float))))
+  (print (call (of label (? Float))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box'T
+(type + (of Box T))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Struct
+(type + Pair (is Struct)
+  (prop + a I32)
+  (prop + b I32)
+)
 
-+ a I32
-+ b I32
+(type + Named (is (tuple (: x Int) (: y Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named is (x Int, y Int)
+(type + Base)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Sub (is Base))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Sub is Base
+(fn-expr + (of label Item) String
+  (str (. Item name) " / " (. Item key))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ label'Item String
-
-"${Item.name} / ${Item.key}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ short'Item String
-
-Item.name
+(fn-expr + (of short Item) String
+  (. Item name)
+)
 ```
 
 ```output
@@ -978,13 +971,15 @@ Optional'F64 / Struct:optional(Class:core/number:F64, Class:core/number:I8)
 
 ### The concrete name and key of a tuple and of an optional.
 
-```yumi
-. t = (1, 2.5)
-. o Int? = 4
--- (type-of t).concrete-name
--- (type-of o).concrete-key
--- (type-of o).concrete-name
--- (type-of t).concrete-key
+```brix
+(main
+  (let t (tuple 1 2.5))
+  (let o (? Int) 4)
+  (print (. (type-of t) concrete-name))
+  (print (. (type-of o) concrete-key))
+  (print (. (type-of o) concrete-name))
+  (print (. (type-of t) concrete-key))
+)
 ```
 
 ```output
@@ -996,69 +991,62 @@ Tuple:((0:Class:core/number:I64), (1:Class:core/number:F64))
 
 ### The name and the key of each kind of type given as a type parameter.
 
-```yumi
--- label'Int()
--- label'Bool()
--- label'Char()
--- label'F32()
--- label'String()
--- label'(Int, String)()
--- label'(a Int, b String)()
--- named'Named()
--- named'(Gen'Int)()
--- named'Pair()
--- label'(Int?)()
--- label'(String?)()
--- named'(Named?)()
--- named'(Box'Int)()
--- named'(Box'(Int, Int))()
--- label'(CPointer'U8)()
--- label'Pointer()
--- named'Color()
--- named'Shape()
--- label'[Int]()
--- label'Size()
--- named'Meters()
+```brix
+(main
+  (print (call (of label Int)))
+  (print (call (of label Bool)))
+  (print (call (of label Char)))
+  (print (call (of label F32)))
+  (print (call (of label String)))
+  (print (call (of label (tuple Int String))))
+  (print (call (of label (tuple (: a Int) (: b String)))))
+  (print (call (of named Named)))
+  (print (call (of named (of Gen Int))))
+  (print (call (of named Pair)))
+  (print (call (of label (? Int))))
+  (print (call (of label (? String))))
+  (print (call (of named (? Named))))
+  (print (call (of named (of Box Int))))
+  (print (call (of named (of Box (tuple Int Int)))))
+  (print (call (of label (of CPointer U8))))
+  (print (call (of label Pointer)))
+  (print (call (of named Color)))
+  (print (call (of named Shape)))
+  (print (call (of label (list Int))))
+  (print (call (of label Size)))
+  (print (call (of named Meters)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box'T
+(type + (of Box T))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Struct
+(type + Pair (is Struct)
+  (prop + a I32)
+  (prop + b I32)
+)
 
-+ a I32
-+ b I32
+(type + Named (is (tuple (: x Int) (: y Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named is (x Int, y Int)
+(type + (of Gen T) (is (tuple (: x T) (: y T))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Gen'T is (x T, y T)
+(type + Color (is Union)
+  (variant red)
+  (variant green)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Color is Union
+(type + Shape (is Union)
+  (variant circle Float)
+  (variant square Int)
+)
 
-| red
-| green
+(type + Meters (alias m) (is Float))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
+(fn-expr + (of label Item) String
+  (str (. Item name) " / " (. Item key))
+)
 
-| circle Float
-| square Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Meters (m) is Float
-
-━━━━━━━━━━━━━━━━━━━━
-+ label'Item String
-
-"${Item.name} / ${Item.key}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ named'Item String
-
-Item.name
+(fn-expr + (of named Item) String
+  (. Item name)
+)
 ```
 
 ```output
@@ -1088,39 +1076,36 @@ Meters
 
 ### A tuple with no name is named Tuple and an optional is keyed as the struct that holds it, wherever they are nested.
 
-```yumi
--- named'(Box'(Int?))()
--- label'((Int?, String))()
--- label'((Int?)?)()
--- named'(Box'(Box'(Int, Int)))()
--- named'(Pair'(Int?)'(Int, Int))()
--- label'((a Int?, b (Int, Int)))()
--- label'[Int?]()
--- label'[(Int, Int?)]()
-. box Base = Box'(Int, Int)()
--- (type-of box).concrete-name
--- type-of box
-. deep Base = Box'(Int?)()
--- (type-of deep).concrete-name
+```brix
+(main
+  (print (call (of named (of Box (? Int)))))
+  (print (call (of label (tuple (? Int) String))))
+  (print (call (of label (? (tuple (? Int))))))
+  (print (call (of named (of Box (of Box (tuple Int Int))))))
+  (print (call (of named (of Pair (? Int) (tuple Int Int)))))
+  (print (call (of label (tuple (: a (? Int)) (: b (tuple Int Int))))))
+  (print (call (of label (list (? Int)))))
+  (print (call (of label (list (tuple Int (? Int))))))
+  (let box Base (call (of Box (tuple Int Int))))
+  (print (. (type-of box) concrete-name))
+  (print (type-of box))
+  (let deep Base (call (of Box (? Int))))
+  (print (. (type-of deep) concrete-name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box'T is Base
+(type + (of Box T) (is Base))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair'A'B
+(type + (of Pair A B))
 
-━━━━━━━━━━━━━━━━━━━━
-+ label'Item String
+(fn-expr + (of label Item) String
+  (str (. Item name) " / " (. Item key))
+)
 
-"${Item.name} / ${Item.key}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ named'Item String
-
-Item.name
+(fn-expr + (of named Item) String
+  (. Item name)
+)
 ```
 
 ```output
@@ -1139,35 +1124,34 @@ Box'Optional'I64
 
 ### The size of a type given as a type parameter is the bytes a value of it is held in.
 
-```yumi
--- choose'Int()
--- choose'(Int, Int, Int, Int, Int)()
--- choose'String()
--- choose'Thing()
--- choose'Pair()
--- choose'(Int?)()
--- choose'(Int, String)()
--- choose'Bool()
--- choose'F64()
--- choose'(U8, U8, U8)()
+```brix
+(main
+  (print (call (of choose Int)))
+  (print (call (of choose (tuple Int Int Int Int Int))))
+  (print (call (of choose String)))
+  (print (call (of choose Thing)))
+  (print (call (of choose Pair)))
+  (print (call (of choose (? Int))))
+  (print (call (of choose (tuple Int String))))
+  (print (call (of choose Bool)))
+  (print (call (of choose F64)))
+  (print (call (of choose (tuple U8 U8 U8))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + a _ (= 0))
+  (prop + b _ (= 0))
+  (prop + c _ (= 0))
+)
 
-+ a = 0
-+ b = 0
-+ c = 0
+(type + Pair (is Struct)
+  (prop + a I64)
+  (prop + b U8)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Struct
-
-+ a I64
-+ b U8
-
-━━━━━━━━━━━━━━━━━━━━
-+ do choose'Item Size
-
-= Item.size
+(fn-do + (of choose Item) Size
+  (return (. Item size))
+)
 ```
 
 ```output
@@ -1185,56 +1169,47 @@ Box'Optional'I64
 
 ### A variable of a type that is one of several interfaces holds the one its value is
 
-```yumi
-. first Donald = Thing()
-. second Donald = Bling()
-. third Donald = Both()
--- first, first.name()
--- second, second.name()
--- third, third.name()
+```brix
+(main
+  (let first Donald (call Thing))
+  (let second Donald (call Bling))
+  (let third Donald (call Both))
+  (print (tuple first (call (. first name))))
+  (print (tuple second (call (. second name))))
+  (print (tuple third (call (. third name))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+  (fn-expr + name String
+    "thing"
+  )
+)
 
-────────────────────
-+ name String
+(type + Bling
+  (implements IBar)
+  (fn-expr + name String
+    "bling"
+  )
+)
 
-"thing"
+(type + Both
+  (implements IBar)
+  (implements IFoo)
+  (fn-expr + name String
+    "both"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling
-    is IBar
+(type + IFoo (is Interface)
+  (fn-expr + name String)
+)
 
-────────────────────
-+ name String
+(type + IBar (is Interface)
+  (fn-expr + name String)
+)
 
-"bling"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Both
-    is IBar
-    is IFoo
-
-────────────────────
-+ name String
-
-"both"
-
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
-
-────────────────────
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ IBar is Interface
-
-────────────────────
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is IFoo || IBar
+(type + Donald (is IFoo IBar))
 ```
 
 ```output
@@ -1245,59 +1220,49 @@ Box'Optional'I64
 
 ### A parameter of a type that is one of several interfaces is the one each argument is
 
-```yumi
-show(Thing())
-show(Bling())
-show(Both())
+```brix
+(main
+  (call show (call Thing))
+  (call show (call Bling))
+  (call show (call Both))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+  (fn-expr + name String
+    "thing"
+  )
+)
 
-────────────────────
-+ name String
+(type + Bling
+  (implements IBar)
+  (fn-expr + name String
+    "bling"
+  )
+)
 
-"thing"
+(type + Both
+  (implements IBar)
+  (implements IFoo)
+  (fn-expr + name String
+    "both"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling
-    is IBar
+(type + IFoo (is Interface)
+  (fn-expr + name String)
+)
 
-────────────────────
-+ name String
+(type + IBar (is Interface)
+  (fn-expr + name String)
+)
 
-"bling"
+(type + Donald (is IFoo IBar))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Both
-    is IBar
-    is IFoo
-
-────────────────────
-+ name String
-
-"both"
-
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
-
-────────────────────
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ IBar is Interface
-
-────────────────────
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is IFoo || IBar
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - value Donald
-
--- value, value.name()
+(fn-do + show _
+  (param value Donald)
+  (print (tuple value (call (. value name))))
+)
 ```
 
 ```output
@@ -1308,62 +1273,53 @@ show(Both())
 
 ### A function that returns one of several interfaces returns the one its value is
 
-```yumi
--- pick(true)
--- pick(false)
-. picked = pick(true)
--- picked.name()
+```brix
+(main
+  (print (call pick true))
+  (print (call pick false))
+  (let picked (call pick true))
+  (print (call (. picked name)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+  (fn-expr + name String
+    "thing"
+  )
+)
 
-────────────────────
-+ name String
+(type + Bling
+  (implements IBar)
+  (fn-expr + name String
+    "bling"
+  )
+)
 
-"thing"
+(type + Both
+  (implements IBar)
+  (implements IFoo)
+  (fn-expr + name String
+    "both"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling
-    is IBar
+(type + IFoo (is Interface)
+  (fn-expr + name String)
+)
 
-────────────────────
-+ name String
+(type + IBar (is Interface)
+  (fn-expr + name String)
+)
 
-"bling"
+(type + Donald (is IFoo IBar))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Both
-    is IBar
-    is IFoo
-
-────────────────────
-+ name String
-
-"both"
-
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
-
-────────────────────
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ IBar is Interface
-
-────────────────────
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is IFoo || IBar
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pick Donald
-    - first Bool
-
-if first
-    = Thing()
-= Thing()
+(fn-do + pick Donald
+  (param first Bool)
+  (if first
+    (return (call Thing))
+  )
+  (return (call Thing))
+)
 ```
 
 ```output
@@ -1374,61 +1330,51 @@ thing
 
 ### Two parameters of a type that is one of several interfaces choose alone
 
-```yumi
-show(Thing(), Bling())
-show(Bling(), Thing())
-show(Both(), Both())
+```brix
+(main
+  (call show (call Thing) (call Bling))
+  (call show (call Bling) (call Thing))
+  (call show (call Both) (call Both))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+  (fn-expr + name String
+    "thing"
+  )
+)
 
-────────────────────
-+ name String
+(type + Bling
+  (implements IBar)
+  (fn-expr + name String
+    "bling"
+  )
+)
 
-"thing"
+(type + Both
+  (implements IBar)
+  (implements IFoo)
+  (fn-expr + name String
+    "both"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling
-    is IBar
+(type + IFoo (is Interface)
+  (fn-expr + name String)
+)
 
-────────────────────
-+ name String
+(type + IBar (is Interface)
+  (fn-expr + name String)
+)
 
-"bling"
+(type + Donald (is IFoo IBar))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Both
-    is IBar
-    is IFoo
-
-────────────────────
-+ name String
-
-"both"
-
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
-
-────────────────────
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ IBar is Interface
-
-────────────────────
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is IFoo || IBar
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - left Donald
-    - right Donald
-
--- left.name(), right.name()
--- left, right
+(fn-do + show _
+  (param left Donald)
+  (param right Donald)
+  (print (tuple (call (. left name)) (call (. right name))))
+  (print (tuple left right))
+)
 ```
 
 ```output
@@ -1442,65 +1388,55 @@ show(Both(), Both())
 
 ### A list and a method parameter of a type that is one of several interfaces
 
-```yumi
-. items = [Thing() as Donald, Thing() as Donald]
-for item in items
-    -- item.name()
-. box = Box()
-box.keep(Thing())
-box.keep(Bling())
+```brix
+(main
+  (let items (list (as (call Thing) Donald) (as (call Thing) Donald)))
+  (for (in item items)
+    (print (call (. item name)))
+  )
+  (let box (call Box))
+  (call (. box keep) (call Thing))
+  (call (. box keep) (call Bling))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+  (fn-expr + name String
+    "thing"
+  )
+)
 
-────────────────────
-+ name String
+(type + Bling
+  (implements IBar)
+  (fn-expr + name String
+    "bling"
+  )
+)
 
-"thing"
+(type + Both
+  (implements IBar)
+  (implements IFoo)
+  (fn-expr + name String
+    "both"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling
-    is IBar
+(type + IFoo (is Interface)
+  (fn-expr + name String)
+)
 
-────────────────────
-+ name String
+(type + IBar (is Interface)
+  (fn-expr + name String)
+)
 
-"bling"
+(type + Donald (is IFoo IBar))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Both
-    is IBar
-    is IFoo
-
-────────────────────
-+ name String
-
-"both"
-
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
-
-────────────────────
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ IBar is Interface
-
-────────────────────
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is IFoo || IBar
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-────────────────────
-+ do keep
-    - value Donald
-
--- "kept", value.name()
+(type + Box
+  (fn-do + keep _
+    (param value Donald)
+    (print (tuple "kept" (call (. value name))))
+  )
+)
 ```
 
 ```output
@@ -1512,46 +1448,38 @@ thing
 
 ### A do function that returns one of several interfaces returns the second
 
-```yumi
--- pick()
+```brix
+(main
+  (print (call pick))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+  (fn-expr + name String
+    "thing"
+  )
+)
 
-────────────────────
-+ name String
+(type + Bling
+  (implements IBar)
+  (fn-expr + name String
+    "bling"
+  )
+)
 
-"thing"
+(type + IFoo (is Interface)
+  (fn-expr + name String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling
-    is IBar
+(type + IBar (is Interface)
+  (fn-expr + name String)
+)
 
-────────────────────
-+ name String
+(type + Donald (is IFoo IBar))
 
-"bling"
-
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
-
-────────────────────
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ IBar is Interface
-
-────────────────────
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is IFoo || IBar
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pick Donald
-
-= Bling()
+(fn-do + pick Donald
+  (return (call Bling))
+)
 ```
 
 ```output
@@ -1560,46 +1488,38 @@ thing
 
 ### An expression function that returns one of several interfaces returns the second
 
-```yumi
--- pick()
+```brix
+(main
+  (print (call pick))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+  (fn-expr + name String
+    "thing"
+  )
+)
 
-────────────────────
-+ name String
+(type + Bling
+  (implements IBar)
+  (fn-expr + name String
+    "bling"
+  )
+)
 
-"thing"
+(type + IFoo (is Interface)
+  (fn-expr + name String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling
-    is IBar
+(type + IBar (is Interface)
+  (fn-expr + name String)
+)
 
-────────────────────
-+ name String
+(type + Donald (is IFoo IBar))
 
-"bling"
-
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
-
-────────────────────
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ IBar is Interface
-
-────────────────────
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is IFoo || IBar
-
-━━━━━━━━━━━━━━━━━━━━
-+ pick Donald
-
-Bling()
+(fn-expr + pick Donald
+  (call Bling)
+)
 ```
 
 ```output
@@ -1608,70 +1528,58 @@ Bling()
 
 ### A converter to a type that is one of several interfaces gives the one it returns
 
-```yumi
-. source = Source()
--- source as Donald
-. held Donald = source
--- held.name()
-show(source)
-show(Wrapper())
-show(Thing())
+```brix
+(main
+  (let source (call Source))
+  (print (as source Donald))
+  (let held Donald source)
+  (print (call (. held name)))
+  (call show source)
+  (call show (call Wrapper))
+  (call show (call Thing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+  (fn-expr + name String
+    "thing"
+  )
+)
 
-────────────────────
-+ name String
+(type + Both
+  (implements IBar)
+  (implements IFoo)
+  (fn-expr + name String
+    "both"
+  )
+)
 
-"thing"
+(type + IFoo (is Interface)
+  (fn-expr + name String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Both
-    is IBar
-    is IFoo
+(type + IBar (is Interface)
+  (fn-expr + name String)
+)
 
-────────────────────
-+ name String
+(type + Donald (is IFoo IBar))
 
-"both"
+(type + Source
+  (fn-to-expr + Donald
+    (call Thing)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
+(type + Wrapper
+  (fn-to-expr + Donald
+    (call Both)
+  )
+)
 
-────────────────────
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ IBar is Interface
-
-────────────────────
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is IFoo || IBar
-
-━━━━━━━━━━━━━━━━━━━━
-+ Source
-
-────────────────────
-+ to Donald
-
-Thing()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wrapper
-
-────────────────────
-+ to Donald
-
-Both()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - value Donald
-
--- "shown", value, value.name()
+(fn-do + show _
+  (param value Donald)
+  (print (tuple "shown" value (call (. value name))))
+)
 ```
 
 ```output
@@ -1684,40 +1592,37 @@ thing
 
 ### An overload of a type that is one of several interfaces and one of a number
 
-```yumi
-fetch(Thing())
-fetch(Bling())
-fetch(5)
+```brix
+(main
+  (call fetch (call Thing))
+  (call fetch (call Bling))
+  (call fetch 5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling
-    is IBar
+(type + Bling
+  (implements IBar)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
+(type + IFoo (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ IBar is Interface
+(type + IBar (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is IFoo || IBar
+(type + Donald (is IFoo IBar))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fetch
-    - thing Donald
+(fn-do + fetch _
+  (param thing Donald)
+  (print "duck")
+  (print thing)
+)
 
--- "duck"
--- thing
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fetch
-    - thing Int
-
--- "int"
+(fn-do + fetch _
+  (param thing Int)
+  (print "int")
+)
 ```
 
 ```output
@@ -1730,29 +1635,28 @@ int
 
 ### A value declared and cast as a type that is one of several interfaces
 
-```yumi
-. thing = Thing()
-. donald Donald = thing
--- donald
-. other = Bling() as Donald
--- other
+```brix
+(main
+  (let thing (call Thing))
+  (let donald Donald thing)
+  (print donald)
+  (let other (as (call Bling) Donald))
+  (print other)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling
-    is IBar
+(type + Bling
+  (implements IBar)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
+(type + IFoo (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ IBar is Interface
+(type + IBar (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is IFoo || IBar
+(type + Donald (is IFoo IBar))
 ```
 
 ```output
@@ -1762,50 +1666,44 @@ int
 
 ### A converter declared to give one of several types converts to each of them: an argument and a declaration of one take what it gives, and a function that takes that one is chosen.
 
-```yumi
-take(Source())
-. held IBar = Source()
--- held
-only(Source())
+```brix
+(main
+  (call take (call Source))
+  (let held IBar (call Source))
+  (print held)
+  (call only (call Source))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Barred
-    is IBar
+(type + Barred
+  (implements IBar)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
+(type + IFoo (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ IBar is Interface
+(type + IBar (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Donald is IFoo || IBar
+(type + Donald (is IFoo IBar))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Source
+(type + Source
+  (fn-to-expr + Donald
+    (call Barred)
+  )
+)
 
-────────────────────
-+ to Donald
+(fn-do + take _
+  (param value IBar)
+  (print (tuple "bar" value))
+)
 
-Barred()
+(fn-do + take _
+  (param value Donald)
+  (print (tuple "donald" value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do take
-    - value IBar
-
--- "bar", value
-
-━━━━━━━━━━━━━━━━━━━━
-+ do take
-    - value Donald
-
--- "donald", value
-
-━━━━━━━━━━━━━━━━━━━━
-+ do only
-    - value IBar
-
--- "only", value
+(fn-do + only _
+  (param value IBar)
+  (print (tuple "only" value))
+)
 ```
 
 ```output
@@ -1814,175 +1712,192 @@ Barred()
 (only, [Interface __source__:IBar])
 ```
 
-```yumi crash
-. value Arena? = null
-```
-
-```output
-Exception: Type "Arena" not found; it is declared in /core/arena, which this module does not import. Add the import /core/arena
-<no file:2>
-    . value Arena? = null
-            ^^^^^
-```
-
-```yumi crash
-. value Table'Int? = null
-```
-
-```output
-Exception: Type "Table" not found; it is declared in /core/table and /tui/table, which this module does not import. Import one of them
-<no file:2>
-    . value Table'Int? = null
-            ^^^^^^^^^
-```
-
-```yumi crash
-. value ArrayBuilder'Int? = null
-```
-
-```output
-Exception: Type "ArrayBuilder" not found; it is declared in /core/array-builder, which this module does not import. Add the import /core/array-builder
-<no file:2>
-    . value ArrayBuilder'Int? = null
-            ^^^^^^^^^^^^^^^^
-```
-
-```yumi crash
--- later() == null
-
-━━━━━━━━━━━━━━━━━━━━
-_ later Arena?
-
-null
-```
-
-```output
-Exception: Type "Arena" not found; it is declared in /core/arena, which this module does not import. Add the import /core/arena
-<no file:5>
-    _ later Arena?
-            ^^^^^
-```
-
-```yumi crash
--- take(null)
-
-━━━━━━━━━━━━━━━━━━━━
-_ take Bool
-    - value Arena?
-
-value == null
-```
-
-```output
-Exception: Type "Arena" not found; it is declared in /core/arena, which this module does not import. Add the import /core/arena
-<no file:6>
-        - value Arena?
-                ^^^^^
-```
-
-```yumi crash
-_ size Arena? = null
-
--- size == null
-```
-
-```output
-Exception: Type "Arena" not found; it is declared in /core/arena, which this module does not import. Add the import /core/arena
-<no file:2>
-    _ size Arena? = null
-           ^^^^^
-```
-
-```yumi crash
-. value = 3
--- value is Arena
+```brix crash
+(main
+  (let value (? Arena) null)
+)
 ```
 
 ```output
 Exception: Type "Arena" not found; it is declared in /core/arena, which this module does not import. Add the import /core/arena
 <no file:3>
-    -- value is Arena
-                ^^^^^
+      (let value (? Arena) null)
+                    ^^^^^
 ```
 
-```yumi crash
-. found = List'Arena()
--- found.length
+```brix crash
+(main
+  (let value (? (of Table Int)) null)
+)
+```
+
+```output
+Exception: Type "Table" not found; it is declared in /core/table and /tui/table, which this module does not import. Import one of them
+<no file:3>
+      (let value (? (of Table Int)) null)
+                    ^^^^^^^^^^^^^^
+```
+
+```brix crash
+(main
+  (let value (? (of ArrayBuilder Int)) null)
+)
+```
+
+```output
+Exception: Type "ArrayBuilder" not found; it is declared in /core/array-builder, which this module does not import. Add the import /core/array-builder
+<no file:3>
+      (let value (? (of ArrayBuilder Int)) null)
+                    ^^^^^^^^^^^^^^^^^^^^^
+```
+
+```brix crash
+(main
+  (print (== (call later) null))
+)
+
+(fn-expr _ later (? Arena)
+  null
+)
+```
+
+```output
+Exception: Type "Arena" not found; it is declared in /core/arena, which this module does not import. Add the import /core/arena
+<no file:6>
+    (fn-expr _ later (? Arena)
+                        ^^^^^
+```
+
+```brix crash
+(main
+  (print (call take null))
+)
+
+(fn-expr _ take Bool
+  (param value (? Arena))
+  (== value null)
+)
+```
+
+```output
+Exception: Type "Arena" not found; it is declared in /core/arena, which this module does not import. Add the import /core/arena
+<no file:7>
+      (param value (? Arena))
+                      ^^^^^
+```
+
+```brix crash
+(prop _ size (? Arena) (= null))
+(blank)
+
+(main
+  (print (== size null))
+)
 ```
 
 ```output
 Exception: Type "Arena" not found; it is declared in /core/arena, which this module does not import. Add the import /core/arena
 <no file:2>
-    . found = List'Arena()
-                   ^^^^^
+    (prop _ size (? Arena) (= null))
+                    ^^^^^
 ```
 
-```yumi crash
-. value = 3
-match value
-    | held Arena
-        -- "arena"
-    ??
-        -- "other"
+```brix crash
+(main
+  (let value 3)
+  (print (is value Arena))
+)
 ```
 
 ```output
 Exception: Type "Arena" not found; it is declared in /core/arena, which this module does not import. Add the import /core/arena
 <no file:4>
-        | held Arena
-               ^^^^^
+      (print (is value Arena))
+                       ^^^^^
 ```
 
-```yumi crash
-. b = Box'Int(1)
-. x [Int] = b
--- "never"
+```brix crash
+(main
+  (let found (call (of List Arena)))
+  (print (. found length))
+)
+```
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box'Item
+```output
+Exception: Type "Arena" not found; it is declared in /core/arena, which this module does not import. Add the import /core/arena
+<no file:3>
+      (let found (call (of List Arena)))
+                                ^^^^^
+```
 
-+ k Item
+```brix crash
+(main
+  (let value 3)
+  (match value
+    (case (: held Arena)
+      (print "arena")
+    )
+    (default
+      (print "other")
+    )
+  )
+)
+```
 
-────────────────────
-+ This
-    - k
+```output
+Exception: Type "Arena" not found; it is declared in /core/arena, which this module does not import. Add the import /core/arena
+<no file:5>
+        (case (: held Arena)
+                      ^^^^^
+```
 
-────────────────────
-+ to List'Item
+```brix crash
+(main
+  (let b (call (of Box Int) 1))
+  (let x (list Int) b)
+  (print "never")
+)
 
-?! Panic("conv")
+(type + (of Box Item)
+  (prop + k Item)
+  (fn-do + This _
+    (param k _)
+  )
+  (fn-to-expr + (of List Item)
+    (throw (call Panic "conv"))
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: conv
-<no file:18>
+<no file:14>
 
 Task 1
 
 Stack trace:
-  0  __source__:Box:to List'Item2 no file:18:1
-  1  __source__:main no file:3:5
+  0  __source__:Box:to List'Item2 no file:14:5
+  1  __source__:main no file:4:10
   2  __source__:init.__source__ no file
   3  __source__:brix.main no file
 ```
 
 ### A tuple of one field whose type its value gives is made from a value of that type, not converted by its `from`.
 
-```yumi
--- Wrapped("abc").name
-. w Wrapped = "def"
--- w.name
+```brix
+(main
+  (print (. (call Wrapped "abc") name))
+  (let w Wrapped "def")
+  (print (. w name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wrapped is Tuple
-
-+ name = "none"
-
-────────────────────
-+ do from value String
-
--- "from $value"
-= Wrapped("w-$value")
+(type + Wrapped (is Tuple)
+  (prop + name _ (= "none"))
+  (fn-from-do + (: value String)
+    (print (str "from " value))
+    (return (call Wrapped (str "w-" value)))
+  )
+)
 ```
 
 ```output
@@ -1993,261 +1908,249 @@ w-def
 
 ### A member read from a name that names no type is reported where the name is written.
 
-```yumi crash
--- Missing.word
+```brix crash
+(main
+  (print (. Missing word))
+)
 ```
 
 ```output
 Exception: Type "Missing" not found
-<no file:2>
-    -- Missing.word
-       ^^^^^^^
+<no file:3>
+      (print (. Missing word))
+                ^^^^^^^
 ```
 
 ### A type written after a function's name that names no type is reported where it is written.
 
-```yumi crash
--- convert'Missing(3)
+```brix crash
+(main
+  (print (call (of convert Missing) 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ convert'Unit Int
-    - value Int
-
-value
+(fn-expr + (of convert Unit) Int
+  (param value Int)
+  value
+)
 ```
 
 ```output
 Exception: Type "Missing" not found
-<no file:2>
-    -- convert'Missing(3)
-               ^^^^^^^
+<no file:3>
+      (print (call (of convert Missing) 3))
+                               ^^^^^^^
 ```
 
 ### A type a value is cast to that names no type is reported where it is written.
 
-```yumi crash
-. id = 3 as Missing
--- id
+```brix crash
+(main
+  (let id (as 3 Missing))
+  (print id)
+)
 ```
 
 ```output
 Exception: Type "Missing" not found
-<no file:2>
-    . id = 3 as Missing
-                ^^^^^^^
+<no file:3>
+      (let id (as 3 Missing))
+                    ^^^^^^^
 ```
 
 ### A parameter's type that names no type is reported where it is written when a call reads it.
 
-```yumi crash
--- describe(3)
+```brix crash
+(main
+  (print (call describe 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do describe Int
-    - value Missing
-
-= 1
+(fn-do + describe Int
+  (param value Missing)
+  (return 1)
+)
 ```
 
 ```output
 Exception: Type "Missing" not found
-<no file:6>
-        - value Missing
-                ^^^^^^^
+<no file:7>
+      (param value Missing)
+                   ^^^^^^^
 ```
 
 ### A method overriding a base's whose parameter's type names no type is reported where it is written, not left to the base's.
 
-```yumi crash
--- ask(Thing())
+```brix crash
+(main
+  (print (call ask (call Thing)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do ask String
-    - base Base
+(fn-do + ask String
+  (param base Base)
+  (return (call (. base describe) 3))
+)
 
-= base.describe(3)
+(type + Base
+  (fn-do + describe String
+    (param value Int)
+    (return "base")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-────────────────────
-+ do describe String
-    - value Int
-
-= "base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Base
-
-────────────────────
-+ do describe String
-    - value Missing
-
-= "thing"
+(type + Thing (is Base)
+  (fn-do + describe String
+    (param value Missing)
+    (return "thing")
+  )
+)
 ```
 
 ```output
 Exception: Type "Missing" not found
-<no file:24>
-        - value Missing
-                ^^^^^^^
+<no file:20>
+        (param value Missing)
+                     ^^^^^^^
 ```
 
 ### A method parameter's type that names no type is reported where it is written, though a function of the module has the method's name.
 
-```yumi crash
--- Gauge().reading()
+```brix crash
+(main
+  (print (call (. (call Gauge) reading)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Gauge
+(type + Gauge
+  (fn-expr + reading Int
+    (call scaled 3)
+  )
+  (fn-expr _ scaled Int
+    (param value Missing)
+    1
+  )
+)
 
-────────────────────
-+ reading Int
-
-scaled(3)
-
-────────────────────
-_ scaled Int
-    - value Missing
-
-1
-
-━━━━━━━━━━━━━━━━━━━━
-+ scaled Int
-    - value Int
-
-2
-```
-
-```output
-Exception: Type "Missing" not found
-<no file:14>
-        - value Missing
-                ^^^^^^^
-```
-
-### A constructor parameter's type that names no type is reported where it is written.
-
-```yumi crash
--- Gauge(3).level
-
-━━━━━━━━━━━━━━━━━━━━
-+ Gauge
-
-+ level Int
-
-────────────────────
-+ This
-    - value Missing
+(fn-expr + scaled Int
+  (param value Int)
+  2
+)
 ```
 
 ```output
 Exception: Type "Missing" not found
 <no file:11>
-        - value Missing
-                ^^^^^^^
+        (param value Missing)
+                     ^^^^^^^
+```
+
+### A constructor parameter's type that names no type is reported where it is written.
+
+```brix crash
+(main
+  (print (. (call Gauge 3) level))
+)
+
+(type + Gauge
+  (prop + level Int)
+  (fn-do + This _
+    (param value Missing)
+  )
+)
+```
+
+```output
+Exception: Type "Missing" not found
+<no file:9>
+        (param value Missing)
+                     ^^^^^^^
 ```
 
 ### A local whose written type names nothing is an error where the type is written.
 
-```yumi crash
-. x Nonexistent
-x = 3
--- x
+```brix crash
+(main
+  (let x Nonexistent)
+  (= x 3)
+  (print x)
+)
 ```
 
 ```output
 Exception: Type "Nonexistent" not found
-<no file:2>
-    . x Nonexistent
-        ^^^^^^^^^^^
+<no file:3>
+      (let x Nonexistent)
+             ^^^^^^^^^^^
 ```
 
 ### A class and a generic class may share a name in one module, whichever is declared first. Construction, a written type, and markup each choose the one with as many type parameters as they give, and the class may extend an instance of the generic and override its methods.
 
-```yumi
-. plain = Slot("plain")
-. typed = Slot'Int("typed")
--- describe(plain)
--- describe(typed)
--- plain.parse("1")
--- typed.parse("2")
-. held Slot'String = plain
--- held.parse("3")
-<Slot marked "marked"
-<Slot'Int counted "counted"
--- describe(marked)
--- describe(counted)
-. box Box = Box()
--- box.label()
--- Box'Int().label()
+```brix
+(main
+  (let plain (call Slot "plain"))
+  (let typed (call (of Slot Int) "typed"))
+  (print (call describe plain))
+  (print (call describe typed))
+  (print (call (. plain parse) "1"))
+  (print (call (. typed parse) "2"))
+  (let held (of Slot String) plain)
+  (print (call (. held parse) "3"))
+  (<> Slot (id: marked) (text: "marked"))
+  (<> (of Slot Int) (id: counted) (text: "counted"))
+  (print (call describe marked))
+  (print (call describe counted))
+  (let box Box (call Box))
+  (print (call (. box label)))
+  (print (call (. (call (of Box Int)) label)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (fn-expr + label String
+    "plain box"
+  )
+)
 
-────────────────────
-+ label String
+(type + (of Box T)
+  (fn-expr + label String
+    "typed box"
+  )
+)
 
-"plain box"
+(type + Named
+  (prop + name String)
+  (fn-do + This _
+    (param name String)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box'T
+(type + (of Slot T) (is Named)
+  (fn-do + This _
+    (param name String)
+    (call super name)
+  )
+  (fn-expr + parse String
+    (param text String)
+    (str "typed " text)
+  )
+)
 
-────────────────────
-+ label String
+(type + Slot (is (of Slot String))
+  (fn-do + This _
+    (param name String)
+    (call super name)
+  )
+  (fn-expr + parse String
+    (param text String)
+    (str "plain " text)
+  )
+)
 
-"typed box"
+(fn-expr + describe String
+  (param slot Slot)
+  (str "Slot " (. slot name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named
-
-+ name String
-
-────────────────────
-+ This
-    - name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Slot'T is Named
-
-────────────────────
-+ This
-    - name String
-
-super(name)
-
-────────────────────
-+ parse String
-    - text String
-
-"typed $text"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Slot is Slot'String
-
-────────────────────
-+ This
-    - name String
-
-super(name)
-
-────────────────────
-+ parse String
-    - text String
-
-"plain $text"
-
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - slot Slot
-
-"Slot ${slot.name}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - slot Slot'Int
-
-"Slot'Int ${slot.name}"
+(fn-expr + describe String
+  (param slot (of Slot Int))
+  (str "Slot'Int " (. slot name))
+)
 ```
 
 ```output

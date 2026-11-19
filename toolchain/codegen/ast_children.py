@@ -7,36 +7,32 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
 from common import ROOT, Failure, run_main, say, shown
 
-NODES = os.path.join(ROOT, 'stdlib', 'lang', 'ast', 'ast-nodes.yumi')
-CHILDREN = os.path.join(ROOT, 'stdlib', 'lang', 'ast', 'ast-children.yumi')
-THICK_DIVIDER = '━' * 20
-DIVIDER_LINE = '\n%s\n' % THICK_DIVIDER
-SECTION_END = '━'
-UNION = '+ Syntax is Union'
+NODES = os.path.join(ROOT, 'stdlib', 'lang', 'ast', 'ast-nodes.bx')
+CHILDREN = os.path.join(ROOT, 'stdlib', 'lang', 'ast', 'ast-children.bx')
+UNION = '(type + Syntax (is Union)'
 BASE = 'SyntaxNode'
-CASE = re.compile(r'^\| (node-[a-z0-9-]+) (AST[A-Za-z0-9]+)$')
-STRUCT = re.compile(r'^\+ (AST[A-Za-z0-9]+) is (SyntaxNode|AST[A-Za-z0-9]+)$')
-FIELD = re.compile(r"^\+ (?:@hot )?([a-z][a-z0-9-]*) ([A-Za-z']+)(?: = .*)?$")
+FUNCTION = '(fn-do + gather-children _'
+CASE = re.compile(r'^  \(variant (node-[a-z0-9-]+) (AST[A-Za-z0-9]+)\)$')
+STRUCT = re.compile(r'^\(type \+ (AST[A-Za-z0-9]+) \(is (SyntaxNode|AST[A-Za-z0-9]+)\)')
+FIELD = re.compile(r'^  \(prop \+ ([a-z][a-z0-9-]*) (SyntaxId|\(of RowRange SyntaxId\))[ )]')
 CHILD = 'SyntaxId'
-CHILD_RANGE = "RowRange'SyntaxId"
 HEADER = [
-    './ast',
-    './ast-nodes',
-    './operator',
-    './row-range',
-    '/core/arena',
-    '/core/array-builder',
-    '/core/table',
+    '(import ./ast)',
+    '(import ./ast-nodes)',
+    '(import ./operator)',
+    '(import ./row-range)',
+    '(import /core/arena)',
+    '(import /core/array-builder)',
+    '(import /core/table)',
     '',
-    THICK_DIVIDER,
-    '+ do gather-children',
-    "    - nodes ImmutableTable'Syntax",
-    "    - children ImmutableArray'SyntaxId'ArenaBacking",
-    '    - id SyntaxId',
-    '    - links ChildLinks',
-    '',
-    'do match? nodes[id]',
+    FUNCTION,
+    '  (param nodes (of ImmutableTable Syntax))',
+    '  (param children (of ImmutableArray SyntaxId ArenaBacking))',
+    '  (param id SyntaxId)',
+    '  (param links ChildLinks)',
+    '  (match? ([] nodes id)',
 ]
+FOOTER = ['  )', ')']
 
 
 def main(arguments):
@@ -59,10 +55,11 @@ def read(path):
 
 
 def children_file(nodes_text, current_text):
-    sections = current_text.split(DIVIDER_LINE)
-    if len(sections) < 3:
-        raise Failure('%s must keep its hand-written declarations after the second thick divider' % shown(CHILDREN))
-    return '\n'.join(HEADER + children_arms(nodes_text) + ['', THICK_DIVIDER, DIVIDER_LINE.join(sections[2:])])
+    lines = current_text.split('\n')
+    if FUNCTION not in lines:
+        raise Failure('%s must declare gather-children first and keep its hand-written declarations after it' % shown(CHILDREN))
+    end = lines.index(')', lines.index(FUNCTION))
+    return '\n'.join(HEADER + children_arms(nodes_text) + FOOTER + lines[end + 1:])
 
 
 def children_arms(nodes_text):
@@ -75,7 +72,8 @@ def children_arms(nodes_text):
     for index, line in enumerate(lines):
         head = STRUCT.match(line)
         if head:
-            structs[head.group(1)] = [match.groups() for match in map(FIELD.match, section(lines, index + 1)) if match]
+            fields = section(lines, index + 1) if not line.endswith('))') else []
+            structs[head.group(1)] = [match.groups() for match in map(FIELD.match, fields) if match]
             bases[head.group(1)] = head.group(2)
     arms = []
     for kind, struct in cases:
@@ -86,22 +84,22 @@ def children_arms(nodes_text):
         while name and name != BASE:
             chain.insert(0, name)
             name = bases.get(name)
-        children = [(field, type) for name in chain for field, type in structs.get(name, [])
-                    if type in (CHILD, CHILD_RANGE)]
+        children = [(field, type) for name in chain for field, type in structs.get(name, [])]
         if not children:
             continue
-        arms.append('    | .%s(row)' % kind)
+        arms.append('    (case (call .%s row)' % kind)
         for field, type in children:
             if type == CHILD:
-                arms.append('        links.one(row.%s)' % field)
+                arms.append('      (call (. links one) (. row %s))' % field)
             else:
-                arms.append('        links.all(children[row.%s])' % field)
+                arms.append('      (call (. links all) ([] children (. row %s)))' % field)
+        arms.append('    )')
     return arms
 
 
 def section(lines, start):
     for line in lines[start:]:
-        if line.startswith(SECTION_END):
+        if line == ')':
             return
         yield line
 

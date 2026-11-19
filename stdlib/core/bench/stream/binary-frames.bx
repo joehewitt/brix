@@ -1,0 +1,121 @@
+; benchmark.meta description: Parses deterministic binary-style frame records.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+(import /core/tokenstream)
+(import /data/stream)
+(blank)
+
+(main
+  (let bytes (call (of DataStream Byte) 140000))
+  (for (in index (..< 0 12))
+    (call write-bench-frame bytes index)
+  )
+  (blank)
+  (let stream (call (of ChunkedTokenStream Byte) (call DataStream (. bytes data) (. bytes length))))
+  (let checksum (as 0 Size))
+  (for (in index (..< 0 12))
+    (+= checksum (call read-bench-frame stream index))
+  )
+  (blank)
+  (print (str "bench-result stream/binary-frames checksum=" checksum))
+)
+
+(fn-do + write-bench-frame _
+  (param bytes (of DataStream Byte))
+  (param frame-index Int)
+  (let payload-length (call frame-length frame-index))
+  (let op (if-expr (== (% frame-index 3) 0) 2u8 1u8))
+  (let mask (call frame-mask frame-index))
+  (blank)
+  (<- bytes (/or/ 128 op))
+  (if (< payload-length 126)
+    (<- bytes (/or/ (as payload-length U8) 128))
+    (else-if (< payload-length 65536)
+      (<- bytes (/or/ 126u8 128u8))
+      (<- bytes payload-length)
+    )
+    (else
+      (<- bytes (/or/ 127u8 128u8))
+      (<- bytes payload-length)
+    )
+  )
+  (blank)
+  (<- bytes mask)
+  (for (in i (..< 0 payload-length))
+    (<- bytes (/xor/ (call payload-byte frame-index i) ([] mask (% i 4))))
+  )
+)
+
+(fn-do + read-bench-frame Size
+  (param stream (of ChunkedTokenStream Byte))
+  (param frame-index Int)
+  (let b1 (call (of (. stream require) U8)))
+  (let b2 (call (of (. stream require) U8)))
+  (let length8 (/and/ b2 127))
+  (let length
+    (block
+      (case? (== length8 127)
+        (call (of (. stream require) U64))
+      )
+      (case? (== length8 126)
+        (as (call (of (. stream require) U16)) U64)
+      )
+      (default
+        (as length8 U64)
+      )
+    )
+  )
+  (let mask ([] Byte 4))
+  (for (in i (..< 0 4))
+    (= ([] mask i) (call (of (. stream require) Byte)))
+  )
+  (blank)
+  (let total (+ (* (as b1 Size) 3) (* (as b2 Size) 5) (as length Size) (as frame-index Size)))
+  (for (in i (..< 0 (as length Size)))
+    (let value (/xor/ (call (of (. stream require) Byte)) ([] mask (% i 4))))
+    (+= total (* (as value Size) (+ (% i 17) 1)))
+  )
+  (blank)
+  (return total)
+)
+
+(fn-expr _ frame-length _
+  (param frame-index Int)
+  (match (% frame-index 6)
+    (case= 0
+      0
+    )
+    (case= 1
+      12
+    )
+    (case= 2
+      125
+    )
+    (case= 3
+      126
+    )
+    (case= 4
+      260
+    )
+    (default
+      66000
+    )
+  )
+)
+
+(fn-do _ frame-mask _
+  (param frame-index Int)
+  (let mask ([] Byte 4))
+  (for (in i (..< 0 4))
+    (= ([] mask i) (as (% (+ (* frame-index 31) (* i 17) 9) 256) U8))
+  )
+  (blank)
+  (return mask)
+)
+
+(fn-expr _ payload-byte Byte
+  (param frame-index Int)
+  (param offset Int)
+  (as (% (+ (* frame-index 13) (* offset 7) (/ offset 3)) 256) U8)
+)

@@ -1,0 +1,63 @@
+; benchmark.meta description: Builds filtered lists and joined text with imperative accumulators.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator
+(blank)
+
+(main
+  (let rows (call collect-accumulator-rows))
+  (let checksum (as 0 Size))
+  (for (in iteration (..< 0 4000))
+    (let labels (call collect-accumulator-labels rows))
+    (let depths (call collect-accumulator-depths rows))
+    (+= checksum (+ (. labels length) (. depths length) (. (call collect-accumulator-text rows) length)))
+  )
+  (blank)
+  (print (str "bench-result allocation/collect-accumulator checksum=" checksum))
+)
+
+(type _ CollectAccumulatorRow (is Tuple)
+  (prop + name String)
+  (prop + depth Size)
+  (prop + is-live Bool)
+)
+
+(fn-do _ collect-accumulator-labels (list String)
+  (param rows (list CollectAccumulatorRow))
+  (let result (list String))
+  (for (in row rows)
+    (if (. row is-live)
+      (+= result (str (. row name) ":" (. row depth)))
+    )
+  )
+  (return result)
+)
+
+(fn-do _ collect-accumulator-depths (list Size)
+  (param rows (list CollectAccumulatorRow))
+  (let result (list Size))
+  (for (in row rows)
+    (if (> (. row depth) 2)
+      (+= result (* (. row depth) 2))
+    )
+  )
+  (return result)
+)
+
+(fn-do _ collect-accumulator-text String
+  (param rows (list CollectAccumulatorRow))
+  (let parts (list String))
+  (for (in row rows)
+    (if (. row is-live)
+      (+= parts (. row name))
+    )
+  )
+  (return (call (. " " join) parts))
+)
+
+(fn-do _ collect-accumulator-rows (list CollectAccumulatorRow)
+  (let rows (list CollectAccumulatorRow))
+  (for (in index (..< 0 400))
+    (+= rows (call CollectAccumulatorRow (str "row-" index) (% index 7) (!= (% index 3) 0)))
+  )
+  (return rows)
+)

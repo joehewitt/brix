@@ -1,0 +1,33 @@
+(import /BxAppleGUI/BxAppleGUI.h)
+(import /gc/gc)
+(import /graphics/canvas)
+(import /graphics/point)
+
+(type + CursorImage
+  (implements Closable)
+  (prop _ handle (? Pointer))
+  (prop _ cleanup (? CleanupHandle))
+  (fn-do + This _
+    (param canvas RasterCanvas)
+    (param hotspot Point)
+    (let image (call C:brixGuiCursorCreate (. canvas native) (. hotspot x) (. hotspot y)))
+    (throw (call Error "Cursor image requires a valid canvas and an in-bounds hotspot") (if (== image (call Pointer))))
+    (= handle image)
+    (= cleanup (call on-reclaim this image reclaim-cursor-image))
+  )
+  (fn-expr + native _ :get
+    (?? handle (call Pointer))
+  )
+  (fn-do + close _
+    (if handle
+      (call (?. cleanup cancel))
+      (call reclaim-cursor-image (!! handle))
+      (= handle null)
+    )
+  )
+)
+
+(fn-do _ reclaim-cursor-image _
+  (param handle Pointer)
+  (call C:brixGuiCursorRelease handle)
+)

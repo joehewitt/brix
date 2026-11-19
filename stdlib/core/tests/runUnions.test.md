@@ -1,54 +1,46 @@
 # Unions
 
-```yumi
-. probe = Probe()
-. item Item = Item.first(10)
--- item.render(probe.next())
-item = Item.second(20)
--- item.render(probe.next())
-item = Item.right("R")
--- item.render(probe.next())
--- probe.next-calls
+```brix
+(main
+  (let probe (call Probe))
+  (let item Item (call (. Item first) 10))
+  (print (call (. item render) (call (. probe next))))
+  (= item (call (. Item second) 20))
+  (print (call (. item render) (call (. probe next))))
+  (= item (call (. Item right) "R"))
+  (print (call (. item render) (call (. probe next))))
+  (print (. probe next-calls))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Probe
+(type + Probe
+  (prop + next-calls I32 (= 0))
+  (fn-do + next I32
+    (+= next-calls 1)
+    (return next-calls)
+  )
+)
 
-+ next-calls I32 = 0
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String
+    (param amount I32)
+    (str "L" (+ value amount))
+  )
+)
 
-────────────────────
-+ do next I32
+(type + Right (is Tuple)
+  (prop + value String)
+  (fn-expr + render String
+    (param amount I32)
+    (str value amount)
+  )
+)
 
-next-calls += 1
-= next-calls
-
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
-
-+ value I32
-
-────────────────────
-+ render String
-    - amount I32
-
-"L${value + amount}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value String
-
-────────────────────
-+ render String
-    - amount I32
-
-"${value}${amount}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| first Left
-| second Left
-| right Right
+(type + Item (is Union)
+  (variant first Left)
+  (variant second Left)
+  (variant right Right)
+)
 ```
 
 ```output
@@ -58,65 +50,70 @@ R3
 3
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Node) arena 1))
+  (call (. rows append) (call (. Node wide) 1 10 20 30 40))
+  (blank)
+  (match ([] rows 0)
+    (case (call .small small)
+      (call show-union-case-call (. small value))
+    )
+    (case (call .wide wide)
+      (let escaped (call escape-union-case wide))
+      (= ([] rows 0) (call (. Node wide) 2 100 200 300 400))
+      (call show-union-case-call (. escaped external-a))
+    )
+  )
+  (blank)
+  (match ([] rows 0)
+    (case (call .small small)
+      (call show-union-case-call (. small value))
+    )
+    (case (call .wide wide)
+      (call show-union-case-call (. wide external-a))
+    )
+  )
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Node(arena, 1)
-rows.append(Node.wide(1, 10, 20, 30, 40))
+(fn-do + show-union-case-call _
+  (param value U64)
+  (print value)
+)
 
-match rows[0]
-    | .small(small)
-        show-union-case-call(small.value)
-    | .wide(wide)
-        . escaped = escape-union-case(wide)
-        rows[0] = Node.wide(2, 100, 200, 300, 400)
-        show-union-case-call(escaped.external-a)
+(fn-expr + escape-union-case Wide
+  (param wide Wide)
+  wide
+)
 
-match rows[0]
-    | .small(small)
-        show-union-case-call(small.value)
-    | .wide(wide)
-        show-union-case-call(wide.external-a)
+(type + Syntax (is Tuple)
+  (prop + source U64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show-union-case-call
-    - value U64
+(type + Small (is Syntax)
+  (prop + value U64)
+)
 
--- value
+(type + Wide (is Syntax)
+  (prop + inline-a U64 @hot)
+  (prop + inline-b U64 @hot)
+  (prop + external-a U64)
+  (prop + external-b U64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ escape-union-case Wide
-    - wide Wide
-
-wide
-
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
-
-+ source U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
-
-+ value U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ @hot inline-a U64
-+ @hot inline-b U64
-+ external-a U64
-+ external-b U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 ```
 
 ```output
@@ -124,72 +121,63 @@ wide
 300
 ```
 
-```yumi
-. item Item = Item.left(10)
--- item.render()
+```brix
+(main
+  (let item Item (call (. Item left) 10))
+  (print (call (. item render)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String
+    "case"
+  )
+)
 
-+ value I32
-
-────────────────────
-+ render String
-
-"case"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-
-────────────────────
-+ render String
-
-"union"
+(type + Item (is Union)
+  (variant left Left)
+  (fn-expr + render String
+    "union"
+  )
+)
 ```
 
 ```output
 union
 ```
 
-```yumi
-. item Item = Item.left(10)
--- item.label
-item = Item.right("R")
--- item.label
+```brix
+(main
+  (let item Item (call (. Item left) 10))
+  (print (. item label))
+  (= item (call (. Item right) "R"))
+  (print (. item label))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 
-+ value String
+(extend + Left
+  (fn-expr + label String :get
+    (str "left:" value)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Left
-
-────────────────────
-+ get label String
-
-"left:$value"
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Right
-
-────────────────────
-+ get label String
-
-"right:$value"
+(extend + Right
+  (fn-expr + label String :get
+    (str "right:" value)
+  )
+)
 ```
 
 ```output
@@ -197,72 +185,63 @@ left:10
 right:R
 ```
 
-```yumi
-. item Item = Item.left(10)
--- item.label
+```brix
+(main
+  (let item Item (call (. Item left) 10))
+  (print (. item label))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+)
 
-+ value I32
+(type + Item (is Union)
+  (variant left Left)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
+(extend + Left
+  (fn-expr + label String :get
+    "case"
+  )
+)
 
-| left Left
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Left
-
-────────────────────
-+ get label String
-
-"case"
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Item
-
-────────────────────
-+ get label String
-
-"union"
+(extend + Item
+  (fn-expr + label String :get
+    "union"
+  )
+)
 ```
 
 ```output
 union
 ```
 
-```yumi
-. item Item = Item.left(10)
-item.label = "one"
-item = Item.right("R")
-item.label = "two"
+```brix
+(main
+  (let item Item (call (. Item left) 10))
+  (= (. item label) "one")
+  (= item (call (. Item right) "R"))
+  (= (. item label) "two")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-do + label _ :set (param value String)
+    (print (str "left:" value))
+  )
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value String)
+  (fn-do + label _ :set (param value String)
+    (print (str "right:" value))
+  )
+)
 
-────────────────────
-+ do label = value String
-
--- "left:$value"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value String
-
-────────────────────
-+ do label = value String
-
--- "right:$value"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```output
@@ -270,144 +249,135 @@ left:one
 right:two
 ```
 
-```yumi crash
-. item Item = Item.left(10)
--- item.label
+```brix crash
+(main
+  (let item Item (call (. Item left) 10))
+  (print (. item label))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-expr + label String :get
+    "left"
+  )
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value I32)
+)
 
-────────────────────
-+ get label String
-
-"left"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```output
 Exception: Union case 'right' has no complete dispatch for getter 'label'
-<no file:3>
-    -- item.label
-       ^^^^^^^^^^
+<no file:4>
+      (print (. item label))
+             ^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-. item Item = Item.value(10)
--- item.label
+```brix crash
+(main
+  (let item Item (call (. Item value) 10))
+  (print (. item label))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Tuple
+(type + Value (is Tuple)
+  (prop + value I32)
+  (fn-expr + label String :get
+    "value"
+  )
+)
 
-+ value I32
-
-────────────────────
-+ get label String
-
-"value"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| value Value
-| empty
+(type + Item (is Union)
+  (variant value Value)
+  (variant empty)
+)
 ```
 
 ```output
 Exception: Union case 'empty' has no payload for getter 'label'
-<no file:3>
-    -- item.label
-       ^^^^^^^^^^
+<no file:4>
+      (print (. item label))
+             ^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-. item Item = Item.left(10)
--- item.render()
+```brix crash
+(main
+  (let item Item (call (. Item left) 10))
+  (print (call (. item render)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String
+    "left"
+  )
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value I32)
+)
 
-────────────────────
-+ render String
-
-"left"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```output
 Exception: Union case 'right' has no complete dispatch for method 'render'
-<no file:3>
-    -- item.render()
-       ^^^^^^^^^^^^^
+<no file:4>
+      (print (call (. item render)))
+             ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-. item Item = Item.value(10)
--- item.render()
+```brix crash
+(main
+  (let item Item (call (. Item value) 10))
+  (print (call (. item render)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Tuple
+(type + Value (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String
+    "value"
+  )
+)
 
-+ value I32
-
-────────────────────
-+ render String
-
-"value"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| value Value
-| empty
+(type + Item (is Union)
+  (variant value Value)
+  (variant empty)
+)
 ```
 
 ```output
 Exception: Union case 'empty' has no payload for method 'render'
-<no file:3>
-    -- item.render()
-       ^^^^^^^^^^^^^
+<no file:4>
+      (print (call (. item render)))
+             ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Inspect union contents without exceptions
 
-```yumi
--- Foo(42).case
--- Foo(42).type
--- Foo(42) as Int
--- ""
--- Foo(10.5).case
--- Foo(10.5).type
--- Foo(10.5) as Float
+```brix
+(main
+  (print (. (call Foo 42) case))
+  (print (. (call Foo 42) type))
+  (print (as (call Foo 42) Int))
+  (print "")
+  (print (. (call Foo 10.5) case))
+  (print (. (call Foo 10.5) type))
+  (print (as (call Foo 10.5) Float))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| Int
-| Float
+(type + Foo (is Union)
+  (variant Int)
+  (variant Float)
+)
 ```
 
 ```output
@@ -422,35 +392,39 @@ Class:core/number:F64
 
 ### @hot metadata does not change ordinary tuple construction, union matching, conversion, or values.
 
-```yumi
-. first = Value.left(10, 20)
-. second Value = Value.right(30, 40)
--- first
--- second
--- first as Left
--- match second
-    | .left(left)
-        left.hot + left.cold
-    | .right(right)
-        right.hot + right.cold
+```brix
+(main
+  (let first (call (. Value left) 10 20))
+  (let second Value (call (. Value right) 30 40))
+  (print first)
+  (print second)
+  (print (as first Left))
+  (print
+    (match second
+      (case (call .left left)
+        (+ (. left hot) (. left cold))
+      )
+      (case (call .right right)
+        (+ (. right hot) (. right cold))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + hot I32 @hot)
+  (prop + cold I32)
+)
 
-+ @hot hot I32
-+ cold I32
+(type + Right (is Tuple)
+  (prop + hot I32 @hot)
+  (prop + cold I32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ @hot hot I32
-+ cold I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| left Left
-| right Right
+(type + Value (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```output
@@ -460,15 +434,16 @@ Class:core/number:F64
 70
 ```
 
-```yumi
--- Foo.error
--- Foo.status
+```brix
+(main
+  (print (. Foo error))
+  (print (. Foo status))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| error
-| status
+(type + Foo (is Union)
+  (variant error)
+  (variant status)
+)
 ```
 
 ```output
@@ -476,15 +451,16 @@ error
 status
 ```
 
-```yumi
--- Foo.status == Foo.status
--- Foo.status == Foo.error
+```brix
+(main
+  (print (== (. Foo status) (. Foo status)))
+  (print (== (. Foo status) (. Foo error)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| error
-| status
+(type + Foo (is Union)
+  (variant error)
+  (variant status)
+)
 ```
 
 ```output
@@ -494,40 +470,44 @@ false
 
 ### Explicitly declared Union type name in assignment
 
-```yumi
-. foo Foo = Foo.error
--- foo
+```brix
+(main
+  (let foo Foo (. Foo error))
+  (print foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| error = 1
-| status = "good"
+(type + Foo (is Union)
+  (variant error (= 1))
+  (variant status (= "good"))
+)
 ```
 
 ```output
 1
 ```
 
-```yumi
-do new
-    . foo Foo = 42
-    -- foo
+```brix
+(main
+  (do-new
+    (let foo Foo 42)
+    (print foo)
+    (blank)
+    (= foo 10.5)
+    (print foo)
+    (blank)
+    (= foo "hello")
+    (print foo)
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 
-    foo = 10.5
-    -- foo
-
-    foo = "hello"
-    -- foo
-catch failure
-    -- failure
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| Int
-| Float
-| String
+(type + Foo (is Union)
+  (variant Int)
+  (variant Float)
+  (variant String)
+)
 ```
 
 ```output
@@ -538,36 +518,36 @@ hello
 
 ### A list written where a list of a union is declared holds each item in the case of its type.
 
-```yumi
-. values [Value] = [3, "three", 4.5]
-for value in values
-    -- "$value ${value.case}"
-. shapes [Shape]? = [Circle(1), Square(2)]
-for shape in shapes!
-    -- shape is Square
+```brix
+(main
+  (let values (list Value) (list 3 "three" 4.5))
+  (for (in value values)
+    (print (str value " " (. value case)))
+  )
+  (let shapes (? (list Shape)) (list (call Circle 1) (call Square 2)))
+  (for (in shape (!! shapes))
+    (print (is shape Square))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
+(type + Value (is Union)
+  (variant Int)
+  (variant String)
+  (variant Float)
+)
 
-| Int
-| String
-| Float
+(type + Shape (is Union)
+  (variant Circle)
+  (variant Square)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
+(type + Circle (is Tuple)
+  (prop + radius Int)
+)
 
-| Circle
-| Square
-
-━━━━━━━━━━━━━━━━━━━━
-+ Circle is Tuple
-
-+ radius Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Square is Tuple
-
-+ side Int
+(type + Square (is Tuple)
+  (prop + side Int)
+)
 ```
 
 ```output
@@ -578,19 +558,20 @@ false
 true
 ```
 
-```yumi
-. foo Foo = "hello"
--- foo as String
+```brix
+(main
+  (let foo Foo "hello")
+  (print (as foo String))
+  (blank)
+  (print (catch (as foo Int)))
+  (print (catch? (as foo Int)))
+  (print (type-of (catch (as foo Int))))
+)
 
--- catch (foo as Int)
--- catch? (foo as Int)
--- type-of catch (foo as Int)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| Int
-| String
+(type + Foo (is Union)
+  (variant Int)
+  (variant String)
+)
 ```
 
 ```output
@@ -600,18 +581,19 @@ unknown
 [TypeInfo Union]
 ```
 
-```yumi
-. foo Foo = 42
--- foo as Int
+```brix
+(main
+  (let foo Foo 42)
+  (print (as foo Int))
+  (blank)
+  (= foo "hi")
+  (print (as foo String))
+)
 
-foo = "hi"
--- foo as String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| Int
-| String
+(type + Foo (is Union)
+  (variant Int)
+  (variant String)
+)
 ```
 
 ```output
@@ -619,18 +601,19 @@ foo = "hi"
 hi
 ```
 
-```yumi
-. foo Foo = 42
--- foo.type
+```brix
+(main
+  (let foo Foo 42)
+  (print (. foo type))
+  (blank)
+  (= foo "hello")
+  (print (. foo type))
+)
 
-foo = "hello"
--- foo.type
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| Int
-| String
+(type + Foo (is Union)
+  (variant Int)
+  (variant String)
+)
 ```
 
 ```output
@@ -638,23 +621,24 @@ Class:core/number:I64
 Class:core/string:String
 ```
 
-```yumi
-. foo Foo = 42
--- foo is Int
+```brix
+(main
+  (let foo Foo 42)
+  (print (is foo Int))
+  (blank)
+  (= foo "hello")
+  (print (is! foo Int))
+  (print (is foo String))
+  (blank)
+  (= foo (list (call Foo 42)))
+  (print (is foo (of List Foo)))
+)
 
-foo = "hello"
--- foo is! Int
--- foo is String
-
-foo = [Foo(42)]
--- foo is List'Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| Int
-| String
-| [Foo]
+(type + Foo (is Union)
+  (variant Int)
+  (variant String)
+  (variant (list Foo))
+)
 ```
 
 ```output
@@ -664,37 +648,39 @@ true
 true
 ```
 
-```yumi
-. foo Foo = [Foo(42)]
--- foo is List
+```brix
+(main
+  (let foo Foo (list (call Foo 42)))
+  (print (is foo List))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| Int
-| String
-| [Foo]
+(type + Foo (is Union)
+  (variant Int)
+  (variant String)
+  (variant (list Foo))
+)
 ```
 
 ```output
 true
 ```
 
-```yumi
-. a Foo = 42
-. b Foo = 10.5
-. c Foo = "hello"
-. d Foo = [Foo(99), Foo(99.99f)]
-. foos Foo = [a, b, c, d]
--- "\n".join(foos as [Foo])
+```brix
+(main
+  (let a Foo 42)
+  (let b Foo 10.5)
+  (let c Foo "hello")
+  (let d Foo (list (call Foo 99) (call Foo 99.99f)))
+  (let foos Foo (list a b c d))
+  (print (call (. "\n" join) (as foos (list Foo))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| Int
-| Float
-| String
-| [Foo]
+(type + Foo (is Union)
+  (variant Int)
+  (variant Float)
+  (variant String)
+  (variant (list Foo))
+)
 ```
 
 ```output
@@ -704,85 +690,119 @@ hello
 99, 99.99
 ```
 
-```yumi
-. a Foo = 1
--- match a
-    | Int
+```brix
+(main
+  (let a Foo 1)
+  (print
+    (match a
+      (case Int
         "num"
-    | String
+      )
+      (case String
         "str"
-    ?? ""
+      )
+      (default
+        (inline "")
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| Int
-| String
+(type + Foo (is Union)
+  (variant Int)
+  (variant String)
+)
 ```
 
 ```output
 num
 ```
 
-```yumi
-. a Foo = Foo.status
--- match a
-    | .loading
+```brix
+(main
+  (let a Foo (. Foo status))
+  (print
+    (match a
+      (case .loading
         "loading"
-    | .status
+      )
+      (case .status
         "status"
-    | .error
+      )
+      (case .error
         "error"
-    | .done
+      )
+      (case .done
         "done"
-    ??
+      )
+      (default
         "unknown"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| loading
-| status
-| error
-| done
+(type + Foo (is Union)
+  (variant loading)
+  (variant status)
+  (variant error)
+  (variant done)
+)
 ```
 
 ```output
 status
 ```
 
-```yumi
-. a Foo = Foo.status
--- match a
-    |= .loading
+```brix
+(main
+  (let a Foo (. Foo status))
+  (print
+    (match a
+      (case= .loading
         "loading"
-    |= .status
+      )
+      (case= .status
         "status"
-    |= .error
+      )
+      (case= .error
         "error"
-    |= .done
+      )
+      (case= .done
         "done"
-    ??
+      )
+      (default
         "unknown"
--- match Foo.done
-    |= Foo.loading
+      )
+    )
+  )
+  (print
+    (match (. Foo done)
+      (case= (. Foo loading)
         "loading"
-    |= Foo.status
+      )
+      (case= (. Foo status)
         "status"
-    |= Foo.error
+      )
+      (case= (. Foo error)
         "error"
-    |= Foo.done
+      )
+      (case= (. Foo done)
         "done"
-    ??
+      )
+      (default
         "unknown"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| loading
-| status
-| error
-| done
+(type + Foo (is Union)
+  (variant loading)
+  (variant status)
+  (variant error)
+  (variant done)
+)
 ```
 
 ```output
@@ -790,30 +810,39 @@ status
 done
 ```
 
-```yumi
-. a Foo = [Foo(42)]
--- match a
-    | Int
+```brix
+(main
+  (let a Foo (list (call Foo 42)))
+  (print
+    (match a
+      (case Int
         "num"
-    | String!
+      )
+      (case (exact String)
         "str"
-    | x List
-        "list $l"
-        .. l = x.length
-    | m Map
-        "map $l"
-        .. l = m.length
-    ??
+      )
+      (case (: x List)
+        (str "list " l)
+        (lazy l (. x length))
+      )
+      (case (: m Map)
+        (str "map " l)
+        (lazy l (. m length))
+      )
+      (default
         ""
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| Int
-| Float
-| String
-| [Foo]
-| [String = Foo]
+(type + Foo (is Union)
+  (variant Int)
+  (variant Float)
+  (variant String)
+  (variant (list Foo))
+  (variant (map String Foo))
+)
 ```
 
 ```output
@@ -822,25 +851,26 @@ list 1
 
 ## Enums in unions
 
-```yumi
--- Foo.default
--- Foo.error
--- Foo.status
--- ""
--- Foo.error is Int
--- Foo.error is! String
--- type-of Foo.error
--- ""
--- Foo.status is String
--- Foo.status is! Int
--- type-of Foo.status
+```brix
+(main
+  (print (. Foo default))
+  (print (. Foo error))
+  (print (. Foo status))
+  (print "")
+  (print (is (. Foo error) Int))
+  (print (is! (. Foo error) String))
+  (print (type-of (. Foo error)))
+  (print "")
+  (print (is (. Foo status) String))
+  (print (is! (. Foo status) Int))
+  (print (type-of (. Foo status)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| default
-| error = -1
-| status = "good"
+(type + Foo (is Union)
+  (variant default)
+  (variant error (= -1))
+  (variant status (= "good"))
+)
 ```
 
 ```output
@@ -859,31 +889,32 @@ false
 
 ## Union comparison
 
-```yumi
-. foo = Foo.error
+```brix
+(main
+  (let foo (. Foo error))
+  (blank)
+  (print (== foo (. Foo error)))
+  (print (== foo (. Foo life)))
+  (blank)
+  (print (== foo (. Foo status)))
+  (blank)
+  (print (== foo 1))
+  (print (== foo 41))
+  (print (!= foo (. Foo error)))
+  (print (!= foo (. Foo life)))
+  (print (!= foo (. Foo status)))
+  (blank)
+  (print (!= foo 1))
+  (print (!= foo 41))
+)
 
--- foo == Foo.error
--- foo == Foo.life
-
--- foo == Foo.status
-
--- foo == 1
--- foo == 41
--- foo != Foo.error
--- foo != Foo.life
--- foo != Foo.status
-
--- foo != 1
--- foo != 41
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| error = 1
-| life = 42
-| status = "good"
-| Float
-| Int
+(type + Foo (is Union)
+  (variant error (= 1))
+  (variant life (= 42))
+  (variant status (= "good"))
+  (variant Float)
+  (variant Int)
+)
 ```
 
 ```output
@@ -899,17 +930,18 @@ false
 true
 ```
 
-```yumi
-. a = Authorization.valid("a", "b")
--- | Authorization.valid = a
--- | Authorization.invalid-password = a
+```brix
+(main
+  (let a (call (. Authorization valid) "a" "b"))
+  (print (case (= (. Authorization valid) a)))
+  (print (case (= (. Authorization invalid-password) a)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Authorization is Union
-
-| invalid-password
-| invalid-email
-| valid(email String, password String)
+(type + Authorization (is Union)
+  (variant invalid-password)
+  (variant invalid-email)
+  (variant valid (tuple (: email String) (: password String)))
+)
 ```
 
 ```output
@@ -917,48 +949,51 @@ true
 unknown
 ```
 
-```yumi
-. y Foo? = Foo(1)
--- (y as Foo).case
+```brix
+(main
+  (let y (? Foo) (call Foo 1))
+  (print (. (as y Foo) case))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| Int
-| String
+(type + Foo (is Union)
+  (variant Int)
+  (variant String)
+)
 ```
 
 ```output
 0
 ```
 
-```yumi crash
--- Foo(List())
+```brix crash
+(main
+  (print (call Foo (call List)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| String
-| Int
+(type + Foo (is Union)
+  (variant String)
+  (variant Int)
+)
 ```
 
 ```output
 Exception: Could not resolve parameter Item
-<no file:2>
-    -- Foo(List())
-           ^^^^^^
+<no file:3>
+      (print (call Foo (call List)))
+                       ^^^^^^^^^^^
 ```
 
-```yumi
-. u = Foo(8.5)
--- u
--- u.case
+```brix
+(main
+  (let u (call Foo 8.5))
+  (print u)
+  (print (. u case))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| String
-| Int
+(type + Foo (is Union)
+  (variant String)
+  (variant Int)
+)
 ```
 
 ```output
@@ -966,24 +1001,24 @@ Exception: Could not resolve parameter Item
 1
 ```
 
-```yumi
-. foo Foo = "hi"
--- foo.case
-. bar Bar = foo
--- bar.case
--- bar
+```brix
+(main
+  (let foo Foo "hi")
+  (print (. foo case))
+  (let bar Bar foo)
+  (print (. bar case))
+  (print bar)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
+(type + Foo (is Union)
+  (variant Int)
+  (variant String)
+)
 
-| Int
-| String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Union
-
-| String
-| Int
+(type + Bar (is Union)
+  (variant String)
+  (variant Int)
+)
 ```
 
 ```output
@@ -994,33 +1029,35 @@ hi
 
 ### Casting doesn't work for untyped cases
 
-```yumi crash
--- 1 as Foo
+```brix crash
+(main
+  (print (as 1 Foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| foo
-| bar
+(type + Foo (is Union)
+  (variant foo)
+  (variant bar)
+)
 ```
 
 ```output
 Exception: I64 cannot be cast to Foo; there is no conversion between them
-<no file:2>
-    -- 1 as Foo
-       ^^^^^^^^
+<no file:3>
+      (print (as 1 Foo))
+             ^^^^^^^^^^
 ```
 
 ### Casting works for typed cases
 
-```yumi
--- 1 as Foo
+```brix
+(main
+  (print (as 1 Foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| foo Int
-| bar String
+(type + Foo (is Union)
+  (variant foo Int)
+  (variant bar String)
+)
 ```
 
 ```output
@@ -1029,33 +1066,35 @@ Exception: I64 cannot be cast to Foo; there is no conversion between them
 
 ### Constructors don't work for untyped cases
 
-```yumi crash
--- Foo(1)
+```brix crash
+(main
+  (print (call Foo 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| foo
-| bar
+(type + Foo (is Union)
+  (variant foo)
+  (variant bar)
+)
 ```
 
 ```output
 Exception: No constructor of Foo accepts (I64)
-<no file:2>
-    -- Foo(1)
-       ^^^
+<no file:3>
+      (print (call Foo 1))
+                   ^^^
 ```
 
 ### Constructors work for typed cases
 
-```yumi
--- Foo(1).case
+```brix
+(main
+  (print (. (call Foo 1) case))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| foo String
-| bar Int
+(type + Foo (is Union)
+  (variant foo String)
+  (variant bar Int)
+)
 ```
 
 ```output
@@ -1064,15 +1103,16 @@ Exception: No constructor of Foo accepts (I64)
 
 ### Named typed case accessor returns payload
 
-```yumi
-. foo Foo = Foo(42)
--- foo.foo
+```brix
+(main
+  (let foo Foo (call Foo 42))
+  (print (. foo foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| foo Int
-| bar String
+(type + Foo (is Union)
+  (variant foo Int)
+  (variant bar String)
+)
 ```
 
 ```output
@@ -1081,21 +1121,28 @@ Exception: No constructor of Foo accepts (I64)
 
 ### Named union case match distinguishes duplicate payload types
 
-```yumi
-. v Foo = Foo.b(2)
--- match v
-    | .a(x)
-        "a $x"
-    | .b(x)
-        "b $x"
-    ??
+```brix
+(main
+  (let v Foo (call (. Foo b) 2))
+  (print
+    (match v
+      (case (call .a x)
+        (str "a " x)
+      )
+      (case (call .b x)
+        (str "b " x)
+      )
+      (default
         "none"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| a Int
-| b Int
+(type + Foo (is Union)
+  (variant a Int)
+  (variant b Int)
+)
 ```
 
 ```output
@@ -1104,21 +1151,28 @@ b 2
 
 ### Non-capturing payload case match can dispatch before checking payload shape
 
-```yumi
-. v Foo = Foo.b(2)
--- match v
-    | .a(Int)
-        "a $it"
-    | .b(Int)
-        "b $it"
-    ??
+```brix
+(main
+  (let v Foo (call (. Foo b) 2))
+  (print
+    (match v
+      (case (call .a Int)
+        (str "a " it)
+      )
+      (case (call .b Int)
+        (str "b " it)
+      )
+      (default
         "none"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| a Int
-| b Int
+(type + Foo (is Union)
+  (variant a Int)
+  (variant b Int)
+)
 ```
 
 ```output
@@ -1127,31 +1181,33 @@ b 2
 
 ### Named typed case accessor defaults on wrong case
 
-```yumi
-. foo Foo = Foo(42)
--- foo.bar
+```brix
+(main
+  (let foo Foo (call Foo 42))
+  (print (. foo bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| foo Int
-| bar String
+(type + Foo (is Union)
+  (variant foo Int)
+  (variant bar String)
+)
 ```
 
 ### Named tuple case accessor returns tuple payload
 
-```yumi
-. auth = Authorization.valid("a", "b")
-. valid = auth.valid
--- valid.email
--- valid.password
+```brix
+(main
+  (let auth (call (. Authorization valid) "a" "b"))
+  (let valid (. auth valid))
+  (print (. valid email))
+  (print (. valid password))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Authorization is Union
-
-| invalid-password
-| invalid-email
-| valid(email String, password String)
+(type + Authorization (is Union)
+  (variant invalid-password)
+  (variant invalid-email)
+  (variant valid (tuple (: email String) (: password String)))
+)
 ```
 
 ```output
@@ -1161,15 +1217,16 @@ b
 
 ### Named untyped case accessor returns default payload
 
-```yumi
-. foo Foo = Foo.foo
--- foo.foo
+```brix
+(main
+  (let foo Foo (. Foo foo))
+  (print (. foo foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| foo
-| bar
+(type + Foo (is Union)
+  (variant foo)
+  (variant bar)
+)
 ```
 
 ```output
@@ -1178,27 +1235,41 @@ b
 
 ## Anonymous unions
 
-```yumi
--- v, type-of v, v.case
-    .. v = foo("hi")
+```brix
+(main
+  (print
+    (scope (tuple v (type-of v) (. v case))
+      (lazy v (call foo "hi"))
+    )
+  )
+  (blank)
+  (print
+    (scope (tuple v (type-of v) (. v case))
+      (lazy v (call foo "foo"))
+    )
+  )
+  (blank)
+  (print
+    (scope (tuple v (type-of v) (. v case))
+      (lazy v (call foo "bar"))
+    )
+  )
+)
 
--- v, type-of v, v.case
-    .. v = foo("foo")
-
--- v, type-of v, v.case
-    .. v = foo("bar")
-
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - value
-
-match value
-    ||= "foo"
-        42
-    ||= "bar"
-        [1,2,3]
-    ??
-        "abc"
+(fn-expr + foo _
+  (param value _)
+  (match value
+    (case-union= "foo"
+      42
+    )
+    (case-union= "bar"
+      (list 1 2 3)
+    )
+    (default
+      "abc"
+    )
+  )
+)
 ```
 
 ```output
@@ -1207,15 +1278,16 @@ match value
 (1, 2, 3, [TypeInfo Union], 1)
 ```
 
-```yumi
--- .foo
--- .foo == Foo.foo
+```brix
+(main
+  (print .foo)
+  (print (== .foo (. Foo foo)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| foo
-| bar
+(type + Foo (is Union)
+  (variant foo)
+  (variant bar)
+)
 ```
 
 ```output
@@ -1223,30 +1295,27 @@ foo
 true
 ```
 
-```yumi
-./lib/stuff
+```brix
+(import ./lib/stuff)
+(blank)
 
--- .bar
--- .foo == Foo.foo
--- .baz == Boo.baz
+(main
+  (print .bar)
+  (print (== .foo (. Foo foo)))
+  (print (== .baz (. Boo baz)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| foo
-| bar
-
-━━━━━━━━━━━━━━━━━━━━
+(type + Foo (is Union)
+  (variant foo)
+  (variant bar)
+)
 ```
 
-```yumi file=lib/stuff.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Boo is Union
-
-| foo
-| baz
-
+```brix file=lib/stuff.bx
+(type + Boo (is Union)
+  (variant foo)
+  (variant baz)
+)
 ```
 
 ```output
@@ -1257,64 +1326,65 @@ true
 
 ### A bare case that several visible types share needs an expected type or a qualified name.
 
-```yumi crash
--- .foo
+```brix crash
+(main
+  (print .foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
+(type + Foo (is Union)
+  (variant foo)
+  (variant bar)
+)
 
-| foo
-| bar
-
-━━━━━━━━━━━━━━━━━━━━
-+ Boo is Union
-
-| foo
-| baz
+(type + Boo (is Union)
+  (variant foo)
+  (variant baz)
+)
 ```
 
 ```output
 Exception: Case '.foo' is ambiguous between 'Boo', 'Foo'
-<no file:2>
-    -- .foo
-       ^^^^
+<no file:3>
+      (print .foo)
+             ^^^^
 ```
 
 ### A bare case constructor that several visible unions share must be qualified.
 
-```yumi crash
--- .word("x")
+```brix crash
+(main
+  (print (call .word "x"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Token is Union
+(type + Token (is Union)
+  (variant word (tuple (: text String)))
+  (variant number (tuple (: value Int)))
+)
 
-| word(text String)
-| number(value Int)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Part is Union
-
-| word(text String)
-| space
+(type + Part (is Union)
+  (variant word (tuple (: text String)))
+  (variant space)
+)
 ```
 
 ```output
 Exception: Case '.word' is ambiguous between 'Part', 'Token'
-<no file:2>
-    -- .word("x")
-       ^^^^^
+<no file:3>
+      (print (call .word "x"))
+                   ^^^^^
 ```
 
-```yumi
-. v = if true then .x else .y
--- v
--- type-of v
+```brix
+(main
+  (let v (if-expr true .x .y))
+  (print v)
+  (print (type-of v))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| x
-| y
+(type + Foo (is Union)
+  (variant x)
+  (variant y)
+)
 ```
 
 ```output
@@ -1324,44 +1394,41 @@ x
 
 ### Explicit constructor return type participates in constructor inference
 
-```yumi
-. event = Mouse(1)
--- type-of event
--- event as Down
+```brix
+(main
+  (let event (call Mouse 1))
+  (print (type-of event))
+  (print (as event Down))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Event is Union
+(type + Event (is Union)
+  (variant Down)
+  (variant Unknown)
+)
 
-| Down
-| Unknown
+(type + Mouse
+  (fn-do + This Event
+    (param button Int)
+    (if (== button 1)
+      (return (call Down))
+      (else
+        (return (call Unknown))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Mouse
+(type + Down
+  (fn-to-expr + String
+    "down"
+  )
+)
 
-────────────────────
-+ This Event
-    - button Int
-
-if button == 1
-    = Down()
-else
-    = Unknown()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Down
-
-────────────────────
-+ to String
-
-"down"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Unknown
-
-────────────────────
-+ to String
-
-"unknown"
+(type + Unknown
+  (fn-to-expr + String
+    "unknown"
+  )
+)
 ```
 
 ```output
@@ -1369,138 +1436,120 @@ else
 down
 ```
 
-```yumi
-. event = Mouse(1)
--- type-of event
+```brix
+(main
+  (let event (call Mouse 1))
+  (print (type-of event))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Event is Union
+(type + Event (is Union)
+  (variant Down)
+  (variant Unknown)
+)
 
-| Down
-| Unknown
+(type + Mouse
+  (fn-do + This Event
+    (param button Int)
+    (return
+      (match button
+        (case= 1
+          (call Down)
+        )
+        (default
+          (call Unknown)
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Mouse
+(type + Down)
 
-────────────────────
-+ This Event
-    - button Int
-
-= match button
-    |= 1
-        Down()
-    ??
-        Unknown()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Down
-
-━━━━━━━━━━━━━━━━━━━━
-+ Unknown
+(type + Unknown)
 ```
 
 ```output
 [TypeInfo Event]
 ```
 
-```yumi
-./lib/model
-./lib/use-one
-./lib/use-two
+```brix
+(import ./lib/model)
+(import ./lib/use-one)
+(import ./lib/use-two)
+(blank)
 
-. item Item = Item.left(10)
--- call-one(item)
--- call-two(item)
+(main
+  (let item Item (call (. Item left) 10))
+  (print (call call-one item))
+  (print (call call-two item))
+)
 ```
 
-```yumi file=lib/model.yumi
+```brix file=lib/model.bx
+(type + Left (is Tuple)
+  (prop + value I32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Right (is Tuple)
+  (prop + value I32)
+)
 
-+ value I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
-
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
-```yumi file=lib/extension-one.yumi
+```brix file=lib/extension-one.bx
+(import ./model)
 
-./model
+(extend + Left
+  (fn-expr + render String
+    "one-left"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ extend Left
-
-────────────────────
-+ render String
-
-"one-left"
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Right
-
-────────────────────
-+ render String
-
-"one-right"
-
+(extend + Right
+  (fn-expr + render String
+    "one-right"
+  )
+)
 ```
 
-```yumi file=lib/extension-two.yumi
+```brix file=lib/extension-two.bx
+(import ./model)
 
-./model
+(extend + Left
+  (fn-expr + render String
+    "two-left"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ extend Left
-
-────────────────────
-+ render String
-
-"two-left"
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Right
-
-────────────────────
-+ render String
-
-"two-right"
-
+(extend + Right
+  (fn-expr + render String
+    "two-right"
+  )
+)
 ```
 
-```yumi file=lib/use-one.yumi
+```brix file=lib/use-one.bx
+(import ./model)
+(import ./extension-one)
 
-./model
-./extension-one
-
-━━━━━━━━━━━━━━━━━━━━
-+ call-one String
-    - item Item
-
-item.render()
-
+(fn-expr + call-one String
+  (param item Item)
+  (call (. item render))
+)
 ```
 
-```yumi file=lib/use-two.yumi
+```brix file=lib/use-two.bx
+(import ./model)
+(import ./extension-two)
 
-./model
-./extension-two
-
-━━━━━━━━━━━━━━━━━━━━
-+ call-two String
-    - item Item
-
-item.render()
-
+(fn-expr + call-two String
+  (param item Item)
+  (call (. item render))
+)
 ```
 
 ```output
@@ -1508,127 +1557,109 @@ one-left
 two-left
 ```
 
-```yumi
-. item Item = Item.left(10)
--- item.render()
+```brix
+(main
+  (let item Item (call (. Item left) 10))
+  (print (call (. item render)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String
+    "case"
+  )
+)
 
-+ value I32
+(type + Item (is Union)
+  (variant left Left)
+  (variant empty)
+)
 
-────────────────────
-+ render String
-
-"case"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| empty
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Item
-
-────────────────────
-+ render String
-
-"union-extension"
+(extend + Item
+  (fn-expr + render String
+    "union-extension"
+  )
+)
 ```
 
 ```output
 union-extension
 ```
 
-```yumi
-. leaf Node = Node.leaf("x")
-. branch Node = Node.branch([leaf])
--- branch.render()
+```brix
+(main
+  (let leaf Node (call (. Node leaf) "x"))
+  (let branch Node (call (. Node branch) (list leaf)))
+  (print (call (. branch render)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is Tuple
+(type + Leaf (is Tuple)
+  (prop + text String)
+  (fn-expr + render String
+    text
+  )
+)
 
-+ text String
+(type + Branch (is Tuple)
+  (prop + children (list Node))
+  (fn-expr + render String
+    (call (. ([] children 0) render))
+  )
+)
 
-────────────────────
-+ render String
-
-text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Branch is Tuple
-
-+ children [Node]
-
-────────────────────
-+ render String
-
-children[0].render()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| leaf Leaf
-| branch Branch
+(type + Node (is Union)
+  (variant leaf Leaf)
+  (variant branch Branch)
+)
 ```
 
 ```output
 x
 ```
 
-```yumi
-. item Item = Item.left(10)
-. described = item.describe()
--- type-of described
--- (described as Alpha).value
-item = Item.right("R")
-described = item.describe()
--- (described as Beta).value
+```brix
+(main
+  (let item Item (call (. Item left) 10))
+  (let described (call (. item describe)))
+  (print (type-of described))
+  (print (. (as described Alpha) value))
+  (= item (call (. Item right) "R"))
+  (= described (call (. item describe)))
+  (print (. (as described Beta) value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-expr + describe Alpha
+    (call Alpha value)
+  )
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value String)
+  (fn-expr + describe Beta
+    (call Beta value)
+  )
+)
 
-────────────────────
-+ describe Alpha
+(type + Alpha
+  (prop + value I32)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-Alpha(value)
+(type + Beta
+  (prop + value String)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value String
-
-────────────────────
-+ describe Beta
-
-Beta(value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Alpha
-
-+ value I32
-
-────────────────────
-+ This
-    - value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Beta
-
-+ value String
-
-────────────────────
-+ This
-    - value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```output
@@ -1637,43 +1668,36 @@ Beta(value)
 R
 ```
 
-```yumi
-. item Item = Item.left(1)
--- catch? item.render() ?? "caught-left"
-item = Item.right(2)
--- catch? item.render() ?? "caught-right"
+```brix
+(main
+  (let item Item (call (. Item left) 1))
+  (print (?? (catch? (call (. item render))) "caught-left"))
+  (= item (call (. Item right) 2))
+  (print (?? (catch? (call (. item render))) "caught-right"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ LeftError is Error
+(type + LeftError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ RightError is Error
+(type + RightError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String (?! LeftError)
+    (throw (call LeftError "left"))
+  )
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String (?! RightError)
+    (throw (call RightError "right"))
+  )
+)
 
-────────────────────
-+ render String ?! LeftError
-
-?! LeftError("left")
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value I32
-
-────────────────────
-+ render String ?! RightError
-
-?! RightError("right")
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```output
@@ -1681,19 +1705,20 @@ caught-left
 caught-right
 ```
 
-```yumi
-. xs = [1, 2]
-. generated = each in xs
-. payload = Payload(generated)
+```brix
+(main
+  (let xs (list 1 2))
+  (let generated (in each xs))
+  (let payload (call Payload generated))
+  (blank)
+  (print (. payload items length))
+  (print ([] (. payload items) 0))
+)
 
--- payload.items.length
--- payload.items[0]
-
-━━━━━━━━━━━━━━━━━━━━
-+ Payload is Union
-
-| items [Int]
-| empty
+(type + Payload (is Union)
+  (variant items (list Int))
+  (variant empty)
+)
 ```
 
 ```output
@@ -1703,37 +1728,39 @@ caught-right
 
 ### Union wrap case order breaks same-kind side-cast ties
 
-```yumi
-. offset PositionOffset = 4
-. offset-with-unit PositionOffset = 4tc
+```brix
+(main
+  (let offset PositionOffset 4)
+  (let offset-with-unit PositionOffset 4tc)
+  (blank)
+  (print (call offset-status offset))
+  (print (call offset-status offset-with-unit))
+)
 
--- offset-status(offset)
--- offset-status(offset-with-unit)
+(type + TestCoord (alias tc) (is I16))
 
-━━━━━━━━━━━━━━━━━━━━
-+ TestCoord (tc) is I16
+(type + TestPercent (alias %) (is F64))
 
-━━━━━━━━━━━━━━━━━━━━
-+ TestPercent (%) is F64
+(type + PositionOffset (is Union)
+  (variant coord TestCoord)
+  (variant percent TestPercent)
+  (variant anchor)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ PositionOffset is Union
-
-| coord TestCoord
-| percent TestPercent
-| anchor
-
-━━━━━━━━━━━━━━━━━━━━
-+ offset-status String
-    - offset PositionOffset
-
-match offset
-    | PositionOffset.coord(n)
-        "coord $n"
-    | PositionOffset.percent(percent)
-        "percent ${percent as TestPercent}"
-    ??
-        "other"
+(fn-expr + offset-status String
+  (param offset PositionOffset)
+  (match offset
+    (case (call (. PositionOffset coord) n)
+      (str "coord " n)
+    )
+    (case (call (. PositionOffset percent) percent)
+      (str "percent " (as percent TestPercent))
+    )
+    (default
+      "other"
+    )
+  )
+)
 ```
 
 ```output
@@ -1743,37 +1770,39 @@ coord 4
 
 ### Arena handles and allocation pointers use ordinary union and optional copies.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. first = Arena()
-. second = Arena()
-. first-pointer = first.allocate'U32(1)
-first-pointer[0] = 1u32
-. second-pointer = second.allocate'U32(1)
-second-pointer[0] = 2u32
-. choice ArenaChoice = ArenaChoice.pointer(first-pointer)
--- choice.pointer[0]
-choice = ArenaChoice.pointer(second-pointer)
--- choice.pointer[0]
+(main
+  (let first (call Arena))
+  (let second (call Arena))
+  (let first-pointer (call (of (. first allocate) U32) 1))
+  (= ([] first-pointer 0) 1u32)
+  (let second-pointer (call (of (. second allocate) U32) 1))
+  (= ([] second-pointer 0) 2u32)
+  (let choice ArenaChoice (call (. ArenaChoice pointer) first-pointer))
+  (print ([] (. choice pointer) 0))
+  (= choice (call (. ArenaChoice pointer) second-pointer))
+  (print ([] (. choice pointer) 0))
+  (blank)
+  (let owner-choice ArenaChoice first)
+  (let owner-pointer (call (of (. owner-choice arena allocate) U32) 1))
+  (= ([] owner-pointer 0) 3u32)
+  (print ([] owner-pointer 0))
+  (let optional (? Arena) second)
+  (let optional-pointer (call (of (. (!! optional) allocate) U32) 1))
+  (= ([] optional-pointer 0) 4u32)
+  (print ([] optional-pointer 0))
+  (blank)
+  (call (. first release))
+  (call (. second release))
+)
 
-. owner-choice ArenaChoice = first
-. owner-pointer = owner-choice.arena.allocate'U32(1)
-owner-pointer[0] = 3u32
--- owner-pointer[0]
-. optional Arena? = second
-. optional-pointer = optional!.allocate'U32(1)
-optional-pointer[0] = 4u32
--- optional-pointer[0]
-
-first.release()
-second.release()
-
-━━━━━━━━━━━━━━━━━━━━
-+ ArenaChoice is Union
-
-| arena Arena
-| pointer CPointer'U32
+(type + ArenaChoice (is Union)
+  (variant arena Arena)
+  (variant pointer (of CPointer U32))
+)
 ```
 
 ```output
@@ -1785,30 +1814,34 @@ second.release()
 
 ### A map joins the union through its map case, not as a stream of truth-tested pairs.
 
-```yumi
-. entry = Map'String'Value
-    • "count" 1
--- pick(entry)
--- pick([entry, entry])
+```brix
+(main
+  (let entry
+    (call (of Map String Value)
+      (block
+        (entry "count" 1)
+      )
+    )
+  )
+  (print (call pick entry))
+  (print (call pick (list entry entry)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
+(type + Value (is Union)
+  (variant Bool)
+  (variant Int)
+  (variant (map String Value))
+)
 
-| Bool
-| Int
-| [String = Value]
+(fn-expr + pick String
+  (param value Value)
+  "whole"
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pick String
-    - value Value
-
-"whole"
-
-━━━━━━━━━━━━━━━━━━━━
-+ pick String
-    - values <Value>
-
-"items"
+(fn-expr + pick String
+  (param values (stream Value))
+  "items"
+)
 ```
 
 ```output
@@ -1818,63 +1851,62 @@ items
 
 ### A value never joins a union through the truth test of its Bool case.
 
-```yumi crash
--- describe(true)
--- describe(Box(3))
+```brix crash
+(main
+  (print (call describe true))
+  (print (call describe (call Box 3)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box is Tuple
+(type + Box (is Tuple)
+  (prop + count Int)
+)
 
-+ count Int
+(type + Value (is Union)
+  (variant Bool)
+  (variant Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| Bool
-| Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - value Value
-
-"value"
+(fn-expr + describe String
+  (param value Value)
+  "value"
+)
 ```
 
 ```output
 Exception: No function "describe" accepts (Box); it is declared as "describe(value Value)"
-<no file:3>
-    -- describe(Box(3))
-       ^^^^^^^^^^^^^^^^
+<no file:4>
+      (print (call describe (call Box 3)))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A payloadless union case can call getters declared on its union.
 
-```yumi
-. mode = Mode.pen
--- mode.title
--- mode.draws
--- Mode.zoom.title
--- Mode.zoom.draws
+```brix
+(main
+  (let mode (. Mode pen))
+  (print (. mode title))
+  (print (. mode draws))
+  (print (. Mode zoom title))
+  (print (. Mode zoom draws))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Mode is Union
-
-| pen
-| zoom
-
-────────────────────
-+ get title
-
-match this
-    | Mode.pen
+(type + Mode (is Union)
+  (variant pen)
+  (variant zoom)
+  (fn-expr + title _ :get
+    (match this
+      (case (. Mode pen)
         "Pen"
-    ??
+      )
+      (default
         "Zoom"
-
-────────────────────
-+ get draws
-
-this == Mode.pen
+      )
+    )
+  )
+  (fn-expr + draws _ :get
+    (== this (. Mode pen))
+  )
+)
 ```
 
 ```output
@@ -1886,59 +1918,61 @@ false
 
 ### A union getter cannot shadow a reserved union property.
 
-```yumi crash
--- Mode.pen.name
+```brix crash
+(main
+  (print (. Mode pen name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Mode is Union
-
-| pen
-
-────────────────────
-+ get name
-
-"Pen"
+(type + Mode (is Union)
+  (variant pen)
+  (fn-expr + name _ :get
+    "Pen"
+  )
+)
 ```
 
 ```output
 Exception: Union property 'name' conflicts with reserved union property
-<no file:10>
-    + get name
-    ^^^^^^^^^
+<no file:8>
+      (fn-expr + name _ :get
+      ^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A case whose single field is a tuple accepts a tuple value as well as the tuple's fields.
 
-```yumi
-+ CaseSpot is (x I32, y I32)
+```brix
+(type-line + CaseSpot (is (tuple (: x I32) (: y I32))))
+(blank)
 
-. spot = CaseSpot(1, 2)
--- describe(CasePiece.single(spot))
--- describe(CasePiece.single(3, 4))
--- describe(wrap(CaseSpot(5, 6)))
--- describe(CasePiece.pair(9, spot))
+(main
+  (let spot (call CaseSpot 1 2))
+  (print (call describe (call (. CasePiece single) spot)))
+  (print (call describe (call (. CasePiece single) 3 4)))
+  (print (call describe (call wrap (call CaseSpot 5 6))))
+  (print (call describe (call (. CasePiece pair) 9 spot)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ wrap CasePiece
-    - spot CaseSpot
+(fn-expr + wrap CasePiece
+  (param spot CaseSpot)
+  (call .single spot)
+)
 
-.single(spot)
+(fn-expr + describe String
+  (param piece CasePiece)
+  (match piece
+    (case (call .single place)
+      (str "single " (. place x) " " (. place y))
+    )
+    (case (call .pair x place)
+      (str "pair " x " " (. place y))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - piece CasePiece
-
-match piece
-    | .single(place)
-        "single ${place.x} ${place.y}"
-    | .pair(x, place)
-        "pair $x ${place.y}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ CasePiece is Union
-
-| single(place CaseSpot)
-| pair(x I32, place CaseSpot)
+(type + CasePiece (is Union)
+  (variant single (tuple (: place CaseSpot)))
+  (variant pair (tuple (: x I32) (: place CaseSpot)))
+)
 ```
 
 ```output
@@ -1950,51 +1984,54 @@ pair 9 2
 
 ### A case shorthand shared by several unions resolves against the type it is compared with, assigned to, passed as, or listed beside, instead of whichever union was declared last.
 
-```yumi
-. cap = TipShape.round
-. join = BendShape.miter
--- cap == .round
--- join == .round
--- .round == cap
--- describe-tip(.square)
--- describe-tip(.round)
--- default-tip()
-. tips TipShape? = .round
--- tips == .round
-for tip in [.butt, .round, .square]
-    -- describe-tip(tip)
+```brix
+(main
+  (let cap (. TipShape round))
+  (let join (. BendShape miter))
+  (print (== cap .round))
+  (print (== join .round))
+  (print (== .round cap))
+  (print (call describe-tip .square))
+  (print (call describe-tip .round))
+  (print (call default-tip))
+  (let tips (? TipShape) .round)
+  (print (== tips .round))
+  (for (in tip (list .butt .round .square))
+    (print (call describe-tip tip))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe-tip String
-    - tip TipShape
+(fn-expr + describe-tip String
+  (param tip TipShape)
+  (match tip
+    (case (. TipShape butt)
+      "butt"
+    )
+    (case (. TipShape round)
+      "round"
+    )
+    (case (. TipShape square)
+      "square"
+    )
+  )
+)
 
-match tip
-    | TipShape.butt
-        "butt"
-    | TipShape.round
-        "round"
-    | TipShape.square
-        "square"
+(fn-expr + default-tip String
+  (param tip TipShape (= .round))
+  (call describe-tip tip)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ default-tip String
-    - tip TipShape = .round
+(type + TipShape (is Union)
+  (variant butt)
+  (variant round)
+  (variant square)
+)
 
-describe-tip(tip)
-
-━━━━━━━━━━━━━━━━━━━━
-+ TipShape is Union
-
-| butt
-| round
-| square
-
-━━━━━━━━━━━━━━━━━━━━
-+ BendShape is Union
-
-| miter
-| round
-| bevel
+(type + BendShape (is Union)
+  (variant miter)
+  (variant round)
+  (variant bevel)
+)
 ```
 
 ```output
@@ -2012,36 +2049,37 @@ square
 
 ### Coalescing an optional alternative with a union that contains it widens to the union instead of unwrapping the union, which would fail at runtime for the union's other cases.
 
-```yumi
--- describe(pick(null))
--- describe(pick(Tint(4)))
+```brix
+(main
+  (print (call describe (call pick null)))
+  (print (call describe (call pick (call Tint 4))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tint is Tuple
+(type + Tint (is Tuple)
+  (prop + amount I32)
+)
 
-+ amount I32
+(type + Shade (is Union)
+  (variant none)
+  (variant Tint)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shade is Union
+(fn-expr + pick Shade
+  (param level (? Tint))
+  (if-expr level level (. Shade none))
+)
 
-| none
-| Tint
-
-━━━━━━━━━━━━━━━━━━━━
-+ pick Shade
-    - level Tint?
-
-if level then level else Shade.none
-
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - shade Shade
-
-match shade
-    |= Shade.none
-        "none"
-    | found Tint
-        "level ${found.amount}"
+(fn-expr + describe String
+  (param shade Shade)
+  (match shade
+    (case= (. Shade none)
+      "none"
+    )
+    (case (: found Tint)
+      (str "level " (. found amount))
+    )
+  )
+)
 ```
 
 ```output
@@ -2051,46 +2089,50 @@ level 4
 
 ### A function without a declared return type that returns shared case shorthands infers the union its other returns agree on.
 
-```yumi
--- describe-cap(pick-cap(0))
--- describe-cap(pick-cap(1))
--- describe-cap(pick-cap(2))
+```brix
+(main
+  (print (call describe-cap (call pick-cap 0)))
+  (print (call describe-cap (call pick-cap 1)))
+  (print (call describe-cap (call pick-cap 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick-cap
-    - kind I32
+(fn-do + pick-cap _
+  (param kind I32)
+  (if (== kind 0)
+    (return .flat)
+    (else-if (== kind 1)
+      (return .pointed)
+    )
+  )
+  (blank)
+  (return .rounded)
+)
 
-if kind == 0
-    = .flat
-else if kind == 1
-    = .pointed
+(fn-expr + describe-cap String
+  (param cap CapShape)
+  (match cap
+    (case (. CapShape flat)
+      "flat"
+    )
+    (case (. CapShape pointed)
+      "pointed"
+    )
+    (case (. CapShape rounded)
+      "rounded"
+    )
+  )
+)
 
-= .rounded
+(type + CapShape (is Union)
+  (variant flat)
+  (variant pointed)
+  (variant rounded)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe-cap String
-    - cap CapShape
-
-match cap
-    | CapShape.flat
-        "flat"
-    | CapShape.pointed
-        "pointed"
-    | CapShape.rounded
-        "rounded"
-
-━━━━━━━━━━━━━━━━━━━━
-+ CapShape is Union
-
-| flat
-| pointed
-| rounded
-
-━━━━━━━━━━━━━━━━━━━━
-+ CornerShape is Union
-
-| sharp
-| rounded
+(type + CornerShape (is Union)
+  (variant sharp)
+  (variant rounded)
+)
 ```
 
 ```output
@@ -2101,34 +2143,35 @@ rounded
 
 ### A match capture narrows to a union alternative declared as a shorthand tuple.
 
-```yumi
--- describe(pick(null))
--- describe(pick(Tint(4)))
+```brix
+(main
+  (print (call describe (call pick null)))
+  (print (call describe (call pick (call Tint 4))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tint is (amount I32)
+(type + Tint (is (tuple (: amount I32))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shade is Union
+(type + Shade (is Union)
+  (variant none)
+  (variant Tint)
+)
 
-| none
-| Tint
+(fn-expr + pick Shade
+  (param level (? Tint))
+  (if-expr level level (. Shade none))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pick Shade
-    - level Tint?
-
-if level then level else Shade.none
-
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - shade Shade
-
-match shade
-    |= Shade.none
-        "none"
-    | found Tint
-        "level ${found.amount}"
+(fn-expr + describe String
+  (param shade Shade)
+  (match shade
+    (case= (. Shade none)
+      "none"
+    )
+    (case (: found Tint)
+      (str "level " (. found amount))
+    )
+  )
+)
 ```
 
 ```output
@@ -2138,31 +2181,34 @@ level 4
 
 ### A generic class can hold a union parameterized by its own type parameter.
 
-```yumi
-. h = Holder'Int()
-h.set(5)
--- match h.m!
-    | .some(v)
-        "some $v"
-    ??
+```brix
+(main
+  (let h (call (of Holder Int)))
+  (call (. h set) 5)
+  (print
+    (match (!! (. h m))
+      (case (call .some v)
+        (str "some " v)
+      )
+      (default
         "none"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Maybe'T is Union
+(type + (of Maybe T) (is Union)
+  (variant some (tuple T))
+  (variant none)
+)
 
-| some(T)
-| none
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder'Value
-
-+ m Maybe'Value?
-
-────────────────────
-+ do set
-    - v Value
-
-m = Maybe'Value.some(v)
+(type + (of Holder Value)
+  (prop + m (? (of Maybe Value)))
+  (fn-do + set _
+    (param v Value)
+    (= m (call (. (of Maybe Value) some) v))
+  )
+)
 ```
 
 ```output
@@ -2171,38 +2217,34 @@ some 5
 
 ### A case shorthand shared by two unions resolves to the one that converts to the expected type.
 
-```yumi
-. holder = Holder()
--- holder.chord.label
-holder.chord = .second
--- holder.chord.label
+```brix
+(main
+  (let holder (call Holder))
+  (print (. holder chord label))
+  (= (. holder chord) .second)
+  (print (. holder chord label))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Step
+(type + Step
+  (variant first)
+  (variant second)
+)
 
-| first
-| second
+(type + Motion
+  (variant second)
+  (variant third)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Motion
+(type + Chord (is Tuple)
+  (prop + label String)
+  (fn-from-expr + (: step Step)
+    (call This (if-expr (== step (. Step first)) "step first" "step second"))
+  )
+)
 
-| second
-| third
-
-━━━━━━━━━━━━━━━━━━━━
-+ Chord is Tuple
-
-+ label String
-
-────────────────────
-+ from step Step
-
-This(if step == Step.first then "step first" else "step second")
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ chord Chord = Step.first
+(type + Holder
+  (prop + chord Chord (= (. Step first)))
+)
 ```
 
 ```output
@@ -2212,28 +2254,27 @@ step second
 
 ### A case shorthand shared by two unions resolves by the parameter type in a constructor call.
 
-```yumi
-. span = Span(.invalid, "x")
--- span.kind == SpanKind.invalid
--- span.text
+```brix
+(main
+  (let span (call Span .invalid "x"))
+  (print (== (. span kind) (. SpanKind invalid)))
+  (print (. span text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ SpanKind is Union
+(type + SpanKind (is Union)
+  (variant plain)
+  (variant invalid)
+)
 
-| plain
-| invalid
+(type + TokenKind (is Union)
+  (variant word)
+  (variant invalid)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TokenKind is Union
-
-| word
-| invalid
-
-━━━━━━━━━━━━━━━━━━━━
-+ Span is Tuple
-
-+ kind SpanKind
-+ text String
+(type + Span (is Tuple)
+  (prop + kind SpanKind)
+  (prop + text String)
+)
 ```
 
 ```output
@@ -2243,84 +2284,105 @@ x
 
 ### A union case built inside arguments whose types are inferred, such as a union's constructor, resolves as a case constructor instead of a method on the union's values.
 
-```yumi
-. wrapped = Wrapped(label(Choice.previous(9)))
-match wrapped
-    | .text(text)
-        -- text
-    ??
-        -- "number"
--- label(Choice.every)
--- render(Entry(render(choice-fields(Choice.previous(9)))))
-. checked = checked-text(render(choice-fields(Choice.previous(9))))
-    catch err Error
-        ?! Panic(err as String)
--- checked
+```brix
+(main
+  (let wrapped (call Wrapped (call label (call (. Choice previous) 9))))
+  (match wrapped
+    (case (call .text text)
+      (print text)
+    )
+    (default
+      (print "number")
+    )
+  )
+  (print (call label (. Choice every)))
+  (print (call render (call Entry (call render (call choice-fields (call (. Choice previous) 9))))))
+  (let checked
+    (call checked-text (call render (call choice-fields (call (. Choice previous) 9)))
+      (block
+        (on-error (: err Error)
+          (throw (call Panic (as err String)))
+        )
+      )
+    )
+  )
+  (print checked)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wrapped is Union
+(type + Wrapped (is Union)
+  (variant text String)
+  (variant number F64)
+)
 
-| text String
-| number F64
+(type + Choice (is Union)
+  (variant previous U64)
+  (variant every)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
+(type + Entry (is Union)
+  (variant String)
+  (variant (map String Entry))
+  (fn-do + This _
+    (param text String)
+    (return
+      (call (of Map String Entry)
+        (block
+          (entry "text" text)
+        )
+      )
+    )
+  )
+)
 
-| previous U64
-| every
+(fn-expr + label String
+  (param choice Choice)
+  (match choice
+    (case (call .previous source)
+      (str "previous " source)
+    )
+    (default
+      "every"
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Entry is Union
+(fn-expr + render String
+  (param value _)
+  (match value
+    (case String
+      (str "'" value "'")
+    )
+    (case (: map Map)
+      (str "{" joined "}")
+      (lazy joined (call (. ", " join) pairs))
+      (lazy pairs
+        (case-each (in (tuple key val) map)
+          (str key ": " (call render val))
+        )
+      )
+    )
+    (default
+      "?"
+    )
+  )
+)
 
-| String
-| [String = Entry]
+(fn-do + checked-text String (?! Error)
+  (param text String)
+  (throw (call Error "Empty text") (if (not (. text length))))
+  (return text)
+)
 
-────────────────────
-+ This
-    - text String
-
-= Map'String'Entry
-    • "text" text
-
-━━━━━━━━━━━━━━━━━━━━
-+ label String
-    - choice Choice
-
-match choice
-    | .previous(source)
-        "previous $source"
-    ??
-        "every"
-
-━━━━━━━━━━━━━━━━━━━━
-+ render String
-    - value
-
-match value
-    | String
-        "'$value'"
-    | map Map
-        "{$joined}"
-        .. joined = ", ".join(pairs)
-        .. pairs = <* key, val in map
-            "$key: ${render(val)}"
-    ??
-        "?"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do checked-text String ?! Error
-    - text String
-
-?! Error("Empty text")
-    if !text.length
-= text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do choice-fields [String = Entry]
-    - choice Choice
-
-= Map'String'Entry
-    • "choice" label(choice)
+(fn-do + choice-fields (map String Entry)
+  (param choice Choice)
+  (return
+    (call (of Map String Entry)
+      (block
+        (entry "choice" (call label choice))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2332,28 +2394,28 @@ every
 
 ### A list built from one value of a union with a list case holds that value
 
-```yumi
-. trees = List'Tree(Tree.leaf("a"))
--- trees.length
--- trees[0].leaf
-. pair = List'Tree(Tree.leaf("a"), Tree.branch(List'Tree()))
--- pair.length
-. shapes = List'Shape(Shape(3))
--- shapes.length
-. copied = List'Tree(trees)
--- copied.length
+```brix
+(main
+  (let trees (call (of List Tree) (call (. Tree leaf) "a")))
+  (print (. trees length))
+  (print (. ([] trees 0) leaf))
+  (let pair (call (of List Tree) (call (. Tree leaf) "a") (call (. Tree branch) (call (of List Tree)))))
+  (print (. pair length))
+  (let shapes (call (of List Shape) (call Shape 3)))
+  (print (. shapes length))
+  (let copied (call (of List Tree) trees))
+  (print (. copied length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tree is Union
+(type + Tree (is Union)
+  (variant leaf String)
+  (variant branch (list Tree))
+)
 
-| leaf String
-| branch [Tree]
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
-
-| Int
-| [Shape]
+(type + Shape (is Union)
+  (variant Int)
+  (variant (list Shape))
+)
 ```
 
 ```output
@@ -2366,98 +2428,84 @@ a
 
 ### Overloads that accept several owners of a bare case take the last visible owner
 
-```yumi
-./lib/one
-./lib/two
+```brix
+(import ./lib/one)
+(import ./lib/two)
+(blank)
 
--- choose(.enter)
--- choose(.start)
--- rank(.equal)
--- fallback(.enter)
+(main
+  (print (call choose .enter))
+  (print (call choose .start))
+  (print (call rank .equal))
+  (print (call fallback .enter))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Local is Union
+(type + Local (is Union)
+  (variant enter)
+)
 
-| enter
+(type + Later (is Union)
+  (variant enter)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Later is Union
+(type + Record (is Tuple)
+  (prop + size Int (= 0))
+)
 
-| enter
+(fn-expr + choose String
+  (param two Two)
+  "Two"
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Record is Tuple
+(fn-expr + choose String
+  (param later Later)
+  "Later"
+)
 
-+ size Int = 0
+(fn-expr + choose String
+  (param one One)
+  "One"
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ choose String
-    - two Two
+(fn-expr + choose String
+  (param local Local)
+  "Local"
+)
 
-"Two"
+(fn-expr + rank String
+  (param comparison Comparison)
+  "Comparison"
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ choose String
-    - later Later
+(fn-expr + rank String
+  (param one One)
+  "One"
+)
 
-"Later"
+(fn-expr + fallback String
+  (param record Record)
+  "Record"
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ choose String
-    - one One
-
-"One"
-
-━━━━━━━━━━━━━━━━━━━━
-+ choose String
-    - local Local
-
-"Local"
-
-━━━━━━━━━━━━━━━━━━━━
-+ rank String
-    - comparison Comparison
-
-"Comparison"
-
-━━━━━━━━━━━━━━━━━━━━
-+ rank String
-    - one One
-
-"One"
-
-━━━━━━━━━━━━━━━━━━━━
-+ fallback String
-    - record Record
-
-"Record"
-
-━━━━━━━━━━━━━━━━━━━━
-+ fallback String
-    - one One
-
-"One"
+(fn-expr + fallback String
+  (param one One)
+  "One"
+)
 ```
 
-```yumi file=lib/one.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ One is Union
-
-| enter
-| equal
-| start
-
+```brix file=lib/one.bx
+(type + One (is Union)
+  (variant enter)
+  (variant equal)
+  (variant start)
+)
 ```
 
-```yumi file=lib/two.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Two is Union
-
-| enter
-| start
-
+```brix file=lib/two.bx
+(type + Two (is Union)
+  (variant enter)
+  (variant start)
+)
 ```
 
 ```output
@@ -2469,43 +2517,40 @@ One
 
 ### A case named alone as a default is a case of its parameter's type, though another type has the name
 
-```yumi
--- tip-name()
--- tip-name(.square)
--- bend-name()
--- maybe-tip()
+```brix
+(main
+  (print (call tip-name))
+  (print (call tip-name .square))
+  (print (call bend-name))
+  (print (call maybe-tip))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ tip-name String
-    - tip TipShape = .round
+(fn-expr + tip-name String
+  (param tip TipShape (= .round))
+  (str "tip " tip)
+)
 
-"tip ${tip}"
+(fn-expr + bend-name String
+  (param bend BendShape (= .round))
+  (str "bend " bend)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ bend-name String
-    - bend BendShape = .round
+(fn-expr + maybe-tip String
+  (param tip (? TipShape) (= .round))
+  (str "maybe " (?? tip (. TipShape butt)))
+)
 
-"bend ${bend}"
+(type + TipShape (is Union)
+  (variant butt)
+  (variant round)
+  (variant square)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ maybe-tip String
-    - tip TipShape? = .round
-
-"maybe ${tip ?? TipShape.butt}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ TipShape is Union
-
-| butt
-| round
-| square
-
-━━━━━━━━━━━━━━━━━━━━
-+ BendShape is Union
-
-| miter
-| round
-| bevel
+(type + BendShape (is Union)
+  (variant miter)
+  (variant round)
+  (variant bevel)
+)
 ```
 
 ```output
@@ -2517,37 +2562,35 @@ maybe round
 
 ### A case named alone in a list is a case of the type the other items give the list
 
-```yumi
-. tips = [.butt, .round, .square]
--- tip-name(tips[0]), tip-name(tips[1]), tip-name(tips[2])
-. bends = [.round, .miter]
--- bend-name(bends[0]), bend-name(bends[1])
+```brix
+(main
+  (let tips (list .butt .round .square))
+  (print (tuple (call tip-name ([] tips 0)) (call tip-name ([] tips 1)) (call tip-name ([] tips 2))))
+  (let bends (list .round .miter))
+  (print (tuple (call bend-name ([] bends 0)) (call bend-name ([] bends 1))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ tip-name String
-    - tip TipShape
+(fn-expr + tip-name String
+  (param tip TipShape)
+  (str "tip " tip)
+)
 
-"tip ${tip}"
+(fn-expr + bend-name String
+  (param bend BendShape)
+  (str "bend " bend)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ bend-name String
-    - bend BendShape
+(type + TipShape (is Union)
+  (variant butt)
+  (variant round)
+  (variant square)
+)
 
-"bend ${bend}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ TipShape is Union
-
-| butt
-| round
-| square
-
-━━━━━━━━━━━━━━━━━━━━
-+ BendShape is Union
-
-| miter
-| round
-| bevel
+(type + BendShape (is Union)
+  (variant miter)
+  (variant round)
+  (variant bevel)
+)
 ```
 
 ```output
@@ -2557,32 +2600,31 @@ maybe round
 
 ### A case named alone and assigned to a property is a case of the property's type
 
-```yumi
-. holder = Holder()
-holder.tip = .round
--- holder.tip
-holder.bend = .round
--- holder.bend
+```brix
+(main
+  (let holder (call Holder))
+  (= (. holder tip) .round)
+  (print (. holder tip))
+  (= (. holder bend) .round)
+  (print (. holder bend))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
+(type + Holder
+  (prop + tip TipShape (= (. TipShape butt)))
+  (prop + bend BendShape (= (. BendShape miter)))
+)
 
-+ tip TipShape = TipShape.butt
-+ bend BendShape = BendShape.miter
+(type + TipShape (is Union)
+  (variant butt)
+  (variant round)
+  (variant square)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TipShape is Union
-
-| butt
-| round
-| square
-
-━━━━━━━━━━━━━━━━━━━━
-+ BendShape is Union
-
-| miter
-| round
-| bevel
+(type + BendShape (is Union)
+  (variant miter)
+  (variant round)
+  (variant bevel)
+)
 ```
 
 ```output
@@ -2592,35 +2634,36 @@ round
 
 ### Two unions of one type are equal where they hold the same case and what it holds is equal
 
-```yumi
-. a Shape = .count(3)
-. b Shape = .count(3)
-. c Shape = .count(4)
-. d Shape = .named("x")
-. e Shape = .named("x")
-. f Shape = .empty
-. g Shape = .pair(1, "p")
-. h Shape = .pair(1, "q")
--- a == b
--- a == c
--- a != c
--- a == d
--- d == e
--- d != e
--- f == .empty
--- f == a
--- g == g
--- g == h
--- g != h
--- .empty == f
+```brix
+(main
+  (let a Shape (call .count 3))
+  (let b Shape (call .count 3))
+  (let c Shape (call .count 4))
+  (let d Shape (call .named "x"))
+  (let e Shape (call .named "x"))
+  (let f Shape .empty)
+  (let g Shape (call .pair 1 "p"))
+  (let h Shape (call .pair 1 "q"))
+  (print (== a b))
+  (print (== a c))
+  (print (!= a c))
+  (print (== a d))
+  (print (== d e))
+  (print (!= d e))
+  (print (== f .empty))
+  (print (== f a))
+  (print (== g g))
+  (print (== g h))
+  (print (!= g h))
+  (print (== .empty f))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
-
-| count Int
-| named String
-| pair(a Int, b String)
-| empty
+(type + Shape (is Union)
+  (variant count Int)
+  (variant named String)
+  (variant pair (tuple (: a Int) (: b String)))
+  (variant empty)
+)
 ```
 
 ```output
@@ -2640,49 +2683,51 @@ true
 
 ### Unions compared inside a tuple and inside a union, and a case constructed as an equality pattern
 
-```yumi
-. a = Wrap(.count(3), 1)
-. b = Wrap(.count(3), 1)
-. c = Wrap(.named("n"), 1)
--- a == b
--- a == c
--- a != c
-. n Nest = .inner(.count(2))
-. m Nest = .inner(.count(2))
-. o Nest = .inner(.named("z"))
--- n == m
--- n == o
--- describe(.count(1))
--- describe(.named("x"))
--- describe(.empty)
+```brix
+(main
+  (let a (call Wrap (call .count 3) 1))
+  (let b (call Wrap (call .count 3) 1))
+  (let c (call Wrap (call .named "n") 1))
+  (print (== a b))
+  (print (== a c))
+  (print (!= a c))
+  (let n Nest (call .inner (call .count 2)))
+  (let m Nest (call .inner (call .count 2)))
+  (let o Nest (call .inner (call .named "z")))
+  (print (== n m))
+  (print (== n o))
+  (print (call describe (call .count 1)))
+  (print (call describe (call .named "x")))
+  (print (call describe .empty))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - shape Shape
+(fn-expr + describe String
+  (param shape Shape)
+  (match shape
+    (case= .empty
+      "empty"
+    )
+    (case= (call .count 1)
+      "one"
+    )
+    (default
+      "other"
+    )
+  )
+)
 
-match shape
-    |= .empty
-        "empty"
-    |= .count(1)
-        "one"
-    ??
-        "other"
+(type + Wrap (is (tuple (: shape Shape) (: weight Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wrap is (shape Shape, weight Int)
+(type + Nest (is Union)
+  (variant inner Shape)
+  (variant other)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Nest is Union
-
-| inner Shape
-| other
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
-
-| count Int
-| named String
-| empty
+(type + Shape (is Union)
+  (variant count Int)
+  (variant named String)
+  (variant empty)
+)
 ```
 
 ```output
@@ -2698,33 +2743,33 @@ empty
 
 ### A case constructed by its symbol alone as an operand, for an optional, and inside a case
 
-```yumi
-. a Shape = .count(3)
--- a == .count(3)
--- a == .count(4)
--- .count(3) == a
--- a != .named("x")
-. o Shape? = .count(3)
--- o
-. n Nest = .inner(.count(2))
--- n
-. m Nest = Nest.inner(.empty)
--- m
--- n == m
--- n == .inner(.count(2))
+```brix
+(main
+  (let a Shape (call .count 3))
+  (print (== a (call .count 3)))
+  (print (== a (call .count 4)))
+  (print (== (call .count 3) a))
+  (print (!= a (call .named "x")))
+  (let o (? Shape) (call .count 3))
+  (print o)
+  (let n Nest (call .inner (call .count 2)))
+  (print n)
+  (let m Nest (call (. Nest inner) .empty))
+  (print m)
+  (print (== n m))
+  (print (== n (call .inner (call .count 2))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Nest is Union
+(type + Nest (is Union)
+  (variant inner Shape)
+  (variant other)
+)
 
-| inner Shape
-| other
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
-
-| count Int
-| named String
-| empty
+(type + Shape (is Union)
+  (variant count Int)
+  (variant named String)
+  (variant empty)
+)
 ```
 
 ```output
@@ -2741,36 +2786,41 @@ true
 
 ### Cases declared with values
 
-```yumi
--- Code.missing
--- Code.denied
-. code Code = Code.denied
--- code == Code.denied
--- code == Code.missing
--- describe(Code.missing)
--- describe(Code.denied)
--- describe(.other)
+```brix
+(main
+  (print (. Code missing))
+  (print (. Code denied))
+  (let code Code (. Code denied))
+  (print (== code (. Code denied)))
+  (print (== code (. Code missing)))
+  (print (call describe (. Code missing)))
+  (print (call describe (. Code denied)))
+  (print (call describe .other))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - code Code
+(fn-expr + describe String
+  (param code Code)
+  (match code
+    (case= (. Code missing)
+      "missing"
+    )
+    (case .denied
+      "denied"
+    )
+    (case .other
+      "other"
+    )
+    (default
+      "none"
+    )
+  )
+)
 
-match code
-    |= Code.missing
-        "missing"
-    | .denied
-        "denied"
-    | .other
-        "other"
-    ??
-        "none"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Code is Union
-
-| missing = 404
-| denied = "no"
-| other
+(type + Code (is Union)
+  (variant missing (= 404))
+  (variant denied (= "no"))
+  (variant other)
+)
 ```
 
 ```output
@@ -2785,46 +2835,61 @@ other
 
 ### A cast out of a union under catch gives an error where the union holds another case.
 
-```yumi
-. foo Foo = "hello"
-. num Foo = 42
-. pair Foo = (3, "three")
--- catch (foo as Int)
--- catch (num as Int)
--- catch? (num as Int)
--- catch? (foo as Int)
--- (catch? (pair as (Int, String))) ?? (0, "none")
--- (catch? (foo as (Int, String))) ?? (0, "none")
--- match catch (foo as String)
-    | String
-        "text $it"
-    | UnionError
+```brix
+(main
+  (let foo Foo "hello")
+  (let num Foo 42)
+  (let pair Foo (tuple 3 "three"))
+  (print (catch (as foo Int)))
+  (print (catch (as num Int)))
+  (print (catch? (as num Int)))
+  (print (catch? (as foo Int)))
+  (print (?? (catch? (as pair (tuple Int String))) (tuple 0 "none")))
+  (print (?? (catch? (as foo (tuple Int String))) (tuple 0 "none")))
+  (print
+    (match (catch (as foo String))
+      (case String
+        (str "text " it)
+      )
+      (case UnionError
         "not text"
--- match catch (num as String)
-    | String
-        "text $it"
-    | UnionError
+      )
+    )
+  )
+  (print
+    (match (catch (as num String))
+      (case String
+        (str "text " it)
+      )
+      (case UnionError
         "not text"
--- describe(foo)
--- describe(num)
+      )
+    )
+  )
+  (print (call describe foo))
+  (print (call describe num))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
+(type + Foo (is Union)
+  (variant Int)
+  (variant String)
+  (variant (tuple Int String))
+)
 
-| Int
-| String
-| (Int, String)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do describe String
-    - value Foo
-
-. number = catch (value as Int)
-= match number
-    | Int
-        "number $it"
-    | UnionError
-        "error ${it.message}"
+(fn-do + describe String
+  (param value Foo)
+  (let number (catch (as value Int)))
+  (return
+    (match number
+      (case Int
+        (str "number " it)
+      )
+      (case UnionError
+        (str "error " (. it message))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2842,82 +2907,93 @@ number 42
 
 ### A pattern of a type matches a case that is an optional of it where the case holds a value
 
-```yumi
--- describe(found(0))
--- describe(found(1))
--- describe(found(2))
--- count(0)
--- count(1)
--- count(2)
--- label(0)
--- label(1)
--- label(2)
+```brix
+(main
+  (print (call describe (call found 0)))
+  (print (call describe (call found 1)))
+  (print (call describe (call found 2)))
+  (print (call count 0))
+  (print (call count 1))
+  (print (call count 2))
+  (print (call label 0))
+  (print (call label 1))
+  (print (call label 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Spot is Tuple
+(type + Spot (is Tuple)
+  (prop + number Int)
+  (prop + count Int)
+)
 
-+ number Int
-+ count Int
+(type + Found (is Union)
+  (variant spot (? Spot))
+  (variant code Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Found is Union
+(fn-do + found Found
+  (param kind Int)
+  (if (== kind 0)
+    (let none (? Spot) null)
+    (return (call (. Found spot) none))
+  )
+  (if (== kind 1)
+    (return (call (. Found spot) (call Spot 3 4)))
+  )
+  (return (call (. Found code) 9))
+)
 
-| spot Spot?
-| code Int
+(fn-do + describe String
+  (param found Found)
+  (match? found
+    (case (: spot Spot)
+      (return (str "spot " (. spot number)))
+    )
+    (case (: code Int)
+      (return (str "code " code))
+    )
+  )
+  (return "nothing")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do found Found
-    - kind Int
+(fn-do + look (? Spot) (?! IOError)
+  (param kind Int)
+  (if (== kind 0)
+    (throw (call IOError "io"))
+  )
+  (if (== kind 1)
+    (return (call Spot 5 6))
+  )
+  (return null)
+)
 
-if kind == 0
-    . none Spot? = null
-    = Found.spot(none)
-if kind == 1
-    = Found.spot(Spot(3, 4))
-= Found.code(9)
+(fn-do + count Int
+  (param kind Int)
+  (let held (catch (call look kind)))
+  (match? held
+    (case (: spot Spot)
+      (return (. spot count))
+    )
+  )
+  (return -1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do describe String
-    - found Found
-
-match? found
-    | spot Spot
-        = "spot ${spot.number}"
-    | code Int
-        = "code $code"
-= "nothing"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do look Spot? ?! IOError
-    - kind Int
-
-if kind == 0
-    ?! IOError("io")
-if kind == 1
-    = Spot(5, 6)
-= null
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count Int
-    - kind Int
-
-. held = catch look(kind)
-match? held
-    | spot Spot
-        = spot.count
-= -1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do label String
-    - kind Int
-
-. held = catch look(kind)
-= match held
-    | spot Spot
-        "spot ${spot.number}"
-    | IOError
+(fn-do + label String
+  (param kind Int)
+  (let held (catch (call look kind)))
+  (return
+    (match held
+      (case (: spot Spot)
+        (str "spot " (. spot number))
+      )
+      (case IOError
         "io"
-    ?? "none"
+      )
+      (default
+        (inline "none")
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2934,70 +3010,68 @@ none
 
 ### A union answers `case`, `name`, `type` and the name of a case by itself, and the first value of a case it does not hold.
 
-```yumi
-. a = pick(true)
--- a.type
--- a.case
--- a.name
-. b = pick(false)
--- b.type
--- b.case
--- b.name
-. kind Kind = Kind.second
--- kind.name
--- kind.type
--- kind.case
-. mixed Mixed = Mixed.none
--- mixed.name
--- mixed.type
--- mixed.some
--- mixed.none
--- mixed.word
--- mixed.pair
-mixed = Mixed.some(4)
--- mixed.name
--- mixed.type
--- mixed.some
--- mixed.none
-mixed = Mixed.pair(1, 2.5)
--- mixed.pair
--- mixed.type
--- held(mixed)
--- held(Mixed.word("w"))
+```brix
+(main
+  (let a (call pick true))
+  (print (. a type))
+  (print (. a case))
+  (print (. a name))
+  (let b (call pick false))
+  (print (. b type))
+  (print (. b case))
+  (print (. b name))
+  (let kind Kind (. Kind second))
+  (print (. kind name))
+  (print (. kind type))
+  (print (. kind case))
+  (let mixed Mixed (. Mixed none))
+  (print (. mixed name))
+  (print (. mixed type))
+  (print (. mixed some))
+  (print (. mixed none))
+  (print (. mixed word))
+  (print (. mixed pair))
+  (= mixed (call (. Mixed some) 4))
+  (print (. mixed name))
+  (print (. mixed type))
+  (print (. mixed some))
+  (print (. mixed none))
+  (= mixed (call (. Mixed pair) 1 2.5))
+  (print (. mixed pair))
+  (print (. mixed type))
+  (print (call held mixed))
+  (print (call held (call (. Mixed word) "w")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do held String
-    - mixed Mixed
+(fn-do + held String
+  (param mixed Mixed)
+  (return (str (. mixed name) ":" (. mixed case) ":" (. mixed word) ":" (. mixed some)))
+)
 
-= "${mixed.name}:${mixed.case}:${mixed.word}:${mixed.some}"
+(fn-do + pick Either
+  (param really Bool)
+  (if really
+    (return 1)
+  )
+  (return "one")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick Either
-    - really Bool
+(type + Either (is Union)
+  (variant Int)
+  (variant String)
+)
 
-if really
-    = 1
-= "one"
+(type + Kind (is Union)
+  (variant first)
+  (variant second)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Either is Union
-
-| Int
-| String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Kind is Union
-
-| first
-| second
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mixed is Union
-
-| none
-| some(Int)
-| word(String)
-| pair(Int, Float)
+(type + Mixed (is Union)
+  (variant none)
+  (variant some (tuple Int))
+  (variant word (tuple String))
+  (variant pair (tuple Int Float))
+)
 ```
 
 ```output
@@ -3028,102 +3102,83 @@ word:2:w:0
 
 ### A member of a union of objects is the member of the object it holds, with the arguments evaluated once.
 
-```yumi
-. shape Shape = Circle(2)
--- shape.area(side(3))
--- shape.sides
--- shape.label
-shape.poke()
-shape = Square(3)
--- shape.area(side(4))
--- shape.sides
--- shape.label
-shape.poke()
-. box = Box(shape)
--- box.shape.area(1)
-box.shape.poke()
--- total(Square(2))
--- total(shape)
+```brix
+(main
+  (let shape Shape (call Circle 2))
+  (print (call (. shape area) (call side 3)))
+  (print (. shape sides))
+  (print (. shape label))
+  (call (. shape poke))
+  (= shape (call Square 3))
+  (print (call (. shape area) (call side 4)))
+  (print (. shape sides))
+  (print (. shape label))
+  (call (. shape poke))
+  (let box (call Box shape))
+  (print (call (. box shape area) 1))
+  (call (. box shape poke))
+  (print (call total (call Square 2)))
+  (print (call total shape))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do side Int
-    - n Int
+(fn-do + side Int
+  (param n Int)
+  (print (str "side " n))
+  (return n)
+)
 
--- "side $n"
-= n
+(fn-do + total Int
+  (param shape Shape)
+  (return (+ (call (. shape area) 2) (. shape sides)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do total Int
-    - shape Shape
+(type + Box
+  (prop + shape Shape)
+  (fn-do + This _
+    (param shape _)
+  )
+)
 
-= shape.area(2) + shape.sides
+(type + Circle
+  (prop + radius Int)
+  (prop + sides _ (= 0))
+  (fn-do + This _
+    (param radius _)
+  )
+  (fn-do + area Int
+    (param scale Int)
+    (return (* radius radius 3 scale))
+  )
+  (fn-expr + label String :get
+    (str "circle " radius)
+  )
+  (fn-do + poke _
+    (print "poke circle")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Square
+  (prop + edge Int)
+  (prop + sides _ (= 4))
+  (fn-do + This _
+    (param edge _)
+  )
+  (fn-do + area Int
+    (param scale Int)
+    (return (* edge edge scale))
+  )
+  (fn-expr + label String :get
+    (str "square " edge)
+  )
+  (fn-do + poke _
+    (print "poke square")
+  )
+)
 
-+ shape Shape
-
-────────────────────
-+ This
-    - shape
-
-━━━━━━━━━━━━━━━━━━━━
-+ Circle
-
-+ radius Int
-+ sides = 0
-
-────────────────────
-+ This
-    - radius
-
-────────────────────
-+ do area Int
-    - scale Int
-
-= radius * radius * 3 * scale
-
-────────────────────
-+ get label String
-
-"circle $radius"
-
-────────────────────
-+ do poke
-
--- "poke circle"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Square
-
-+ edge Int
-+ sides = 4
-
-────────────────────
-+ This
-    - edge
-
-────────────────────
-+ do area Int
-    - scale Int
-
-= edge * edge * scale
-
-────────────────────
-+ get label String
-
-"square $edge"
-
-────────────────────
-+ do poke
-
--- "poke square"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
-
-| Circle
-| Square
+(type + Shape (is Union)
+  (variant Circle)
+  (variant Square)
+)
 ```
 
 ```output
@@ -3145,54 +3200,47 @@ poke square
 
 ### A method one case of a union raises from and another does not is forwarded, and its error leaves the caller.
 
-```yumi
-. a = run(Job.quick(Quick()))
--- a
-. b = catch run(Job.slow(Slow(true)))
--- b
--- (catch run(Job.slow(Slow(false))))
+```brix
+(main
+  (let a (call run (call (. Job quick) (call Quick))))
+  (print a)
+  (let b (catch (call run (call (. Job slow) (call Slow true)))))
+  (print b)
+  (print (catch (call run (call (. Job slow) (call Slow false)))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int ?! Failed
-    - job Job
+(fn-do + run Int (?! Failed)
+  (param job Job)
+  (return (call (. job work)))
+)
 
-= job.work()
+(type + Failed (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Failed is Error
+(type + Quick
+  (prop + name _ (= "quick"))
+  (fn-do + work Int
+    (return 1)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Quick
+(type + Slow
+  (prop + fails Bool)
+  (prop + name _ (= "slow"))
+  (fn-do + This _
+    (param fails _)
+  )
+  (fn-do + work Int (?! Failed)
+    (if fails
+      (throw (call Failed))
+    )
+    (return 2)
+  )
+)
 
-+ name = "quick"
-
-────────────────────
-+ do work Int
-
-= 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Slow
-
-+ fails Bool
-+ name = "slow"
-
-────────────────────
-+ This
-    - fails
-
-────────────────────
-+ do work Int ?! Failed
-
-if fails
-    ?! Failed()
-= 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Job is Union
-
-| quick Quick
-| slow Slow
+(type + Job (is Union)
+  (variant quick Quick)
+  (variant slow Slow)
+)
 ```
 
 ```output
@@ -3203,65 +3251,54 @@ if fails
 
 ### A property each case of a union stores in its own type, and a setter each case has, are forwarded.
 
-```yumi
-. item Item = Item.left(10)
--- item.value
-item.label = word("a")
-item = Item.right(2.5)
--- item.value
-item.label = word("b")
+```brix
+(main
+  (let item Item (call (. Item left) 10))
+  (print (. item value))
+  (= (. item label) (call word "a"))
+  (= item (call (. Item right) 2.5))
+  (print (. item value))
+  (= (. item label) (call word "b"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do side Int
-    - n Int
+(fn-do + side Int
+  (param n Int)
+  (print (str "side " n))
+  (return n)
+)
 
--- "side $n"
-= n
+(fn-do + word String
+  (param text String)
+  (print (str "word " text))
+  (return text)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do word String
-    - text String
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-expr + scaled Float
+    (param by Float)
+    (* value by)
+  )
+  (fn-do + label _ :set (param text String)
+    (print (str "left " text))
+  )
+)
 
--- "word $text"
-= text
+(type + Right (is Tuple)
+  (prop + value Float)
+  (fn-expr + scaled Float
+    (param by Int)
+    (* value by)
+  )
+  (fn-do + label _ :set (param text String)
+    (print (str "right " text))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
-
-+ value I32
-
-────────────────────
-+ scaled Float
-    - by Float
-
-value * by
-
-────────────────────
-+ do label = text String
-
--- "left $text"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value Float
-
-────────────────────
-+ scaled Float
-    - by Int
-
-value * by
-
-────────────────────
-+ do label = text String
-
--- "right $text"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```output
@@ -3275,62 +3312,55 @@ right b
 
 ### A method every case of a union raises from is forwarded under `catch`.
 
-```yumi
-. a = catch run(Job.quick(Quick(false)))
--- a
-. b = catch run(Job.slow(Slow(true)))
--- b
--- (catch run(Job.slow(Slow(false))))
--- (catch run(Job.quick(Quick(true))))
+```brix
+(main
+  (let a (catch (call run (call (. Job quick) (call Quick false)))))
+  (print a)
+  (let b (catch (call run (call (. Job slow) (call Slow true)))))
+  (print b)
+  (print (catch (call run (call (. Job slow) (call Slow false)))))
+  (print (catch (call run (call (. Job quick) (call Quick true)))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int ?! Failed
-    - job Job
+(fn-do + run Int (?! Failed)
+  (param job Job)
+  (return (call (. job work)))
+)
 
-= job.work()
+(type + Failed (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Failed is Error
+(type + Quick
+  (prop + fails Bool)
+  (prop + name _ (= "quick"))
+  (fn-do + This _
+    (param fails _)
+  )
+  (fn-do + work Int (?! Failed)
+    (if fails
+      (throw (call Failed))
+    )
+    (return 1)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Quick
+(type + Slow
+  (prop + fails Bool)
+  (prop + name _ (= "slow"))
+  (fn-do + This _
+    (param fails _)
+  )
+  (fn-do + work Int (?! Failed)
+    (if fails
+      (throw (call Failed))
+    )
+    (return 2)
+  )
+)
 
-+ fails Bool
-+ name = "quick"
-
-────────────────────
-+ This
-    - fails
-
-────────────────────
-+ do work Int ?! Failed
-
-if fails
-    ?! Failed()
-= 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Slow
-
-+ fails Bool
-+ name = "slow"
-
-────────────────────
-+ This
-    - fails
-
-────────────────────
-+ do work Int ?! Failed
-
-if fails
-    ?! Failed()
-= 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Job is Union
-
-| quick Quick
-| slow Slow
+(type + Job (is Union)
+  (variant quick Quick)
+  (variant slow Slow)
+)
 ```
 
 ```output
@@ -3341,76 +3371,65 @@ if fails
 
 ### A union that holds itself through an object forwards a member all the way down.
 
-```yumi
-. tree Tree = Tree.leaf(Leaf(3))
--- tree.weight
--- tree.describe(1)
-tree = Tree.node(Node(Tree.leaf(Leaf(4)), 5))
--- tree.weight
--- tree.describe(2)
-. kind = tree.case
--- kind
--- tree.name
--- sum([Tree.leaf(Leaf(1)), tree])
+```brix
+(main
+  (let tree Tree (call (. Tree leaf) (call Leaf 3)))
+  (print (. tree weight))
+  (print (call (. tree describe) 1))
+  (= tree (call (. Tree node) (call Node (call (. Tree leaf) (call Leaf 4)) 5)))
+  (print (. tree weight))
+  (print (call (. tree describe) 2))
+  (let kind (. tree case))
+  (print kind)
+  (print (. tree name))
+  (print (call sum (list (call (. Tree leaf) (call Leaf 1)) tree)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do sum Int
-    - trees [Tree]
+(fn-do + sum Int
+  (param trees (list Tree))
+  (let total 0)
+  (let index 0)
+  (while (< index (. trees length))
+    (+= total (. ([] trees index) weight))
+    (+= index 1)
+  )
+  (return total)
+)
 
-. total = 0
-. index = 0
-while index < trees.length
-    total += trees[index].weight
-    index += 1
-= total
+(type + Leaf
+  (prop + value Int)
+  (fn-do + This _
+    (param value _)
+  )
+  (fn-expr + weight Int :get
+    value
+  )
+  (fn-expr + describe String
+    (param depth Int)
+    (str "leaf " value " at " depth)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf
+(type + Node
+  (prop + child Tree)
+  (prop + extra Int)
+  (fn-do + This _
+    (param child _)
+    (param extra _)
+  )
+  (fn-expr + weight Int :get
+    (+ (. child weight) extra)
+  )
+  (fn-expr + describe String
+    (param depth Int)
+    (str "node over (" (call (. child describe) (+ depth 1)) ")")
+  )
+)
 
-+ value Int
-
-────────────────────
-+ This
-    - value
-
-────────────────────
-+ get weight Int
-
-value
-
-────────────────────
-+ describe String
-    - depth Int
-
-"leaf $value at $depth"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node
-
-+ child Tree
-+ extra Int
-
-────────────────────
-+ This
-    - child
-    - extra
-
-────────────────────
-+ get weight Int
-
-child.weight + extra
-
-────────────────────
-+ describe String
-    - depth Int
-
-"node over (${child.describe(depth + 1)})"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tree is Union
-
-| leaf Leaf
-| node Node
+(type + Tree (is Union)
+  (variant leaf Leaf)
+  (variant node Node)
+)
 ```
 
 ```output
@@ -3425,65 +3444,64 @@ node
 
 ### Objects and atoms held in tuples, structs and unions compare by identity
 
-```yumi
-. box = Box()
-. other = Box()
-. a = (1, box)
-. b = (1, box)
-. c = (1, other)
--- a == b
--- a == c
--- a != c
-. k = ("x" as Atom, 2)
-. l = ("x" as Atom, 2)
-. m = ("y" as Atom, 2)
--- k == l
--- k == m
-. p Holder = box
-. q Holder = box
-. r Holder = other
-. s Holder = Holder.none
--- p == q
--- p == r
--- p != r
--- p == s
--- s == Holder.none
--- s != p
-. w = Wrap(box, 1)
-. x = Wrap(box, 1)
-. y = Wrap(other, 1)
--- w == x
--- w == y
-. deep = (1, (box, "t"), p)
-. same = (1, (box, "t"), q)
-. apart = (1, (box, "t"), r)
--- deep == same
--- deep == apart
-. opt (Int, Box)? = (1, box)
-. none (Int, Box)? = null
--- opt == a
--- a == opt
--- opt == c
--- none == a
--- none == none
+```brix
+(main
+  (let box (call Box))
+  (let other (call Box))
+  (let a (tuple 1 box))
+  (let b (tuple 1 box))
+  (let c (tuple 1 other))
+  (print (== a b))
+  (print (== a c))
+  (print (!= a c))
+  (let k (tuple (as "x" Atom) 2))
+  (let l (tuple (as "x" Atom) 2))
+  (let m (tuple (as "y" Atom) 2))
+  (print (== k l))
+  (print (== k m))
+  (let p Holder box)
+  (let q Holder box)
+  (let r Holder other)
+  (let s Holder (. Holder none))
+  (print (== p q))
+  (print (== p r))
+  (print (!= p r))
+  (print (== p s))
+  (print (== s (. Holder none)))
+  (print (!= s p))
+  (let w (call Wrap box 1))
+  (let x (call Wrap box 1))
+  (let y (call Wrap other 1))
+  (print (== w x))
+  (print (== w y))
+  (let deep (tuple 1 (tuple box "t") p))
+  (let same (tuple 1 (tuple box "t") q))
+  (let apart (tuple 1 (tuple box "t") r))
+  (print (== deep same))
+  (print (== deep apart))
+  (let opt (? (tuple Int Box)) (tuple 1 box))
+  (let none (? (tuple Int Box)) null)
+  (print (== opt a))
+  (print (== a opt))
+  (print (== opt c))
+  (print (== none a))
+  (print (== none none))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + value Int (= 1))
+)
 
-+ value Int = 1
+(type + Wrap (is Struct)
+  (prop + box Box)
+  (prop + count Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wrap is Struct
-
-+ box Box
-+ count Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Union
-
-| none
-| Box
-| Int
+(type + Holder (is Union)
+  (variant none)
+  (variant Box)
+  (variant Int)
+)
 ```
 
 ```output
@@ -3511,34 +3529,35 @@ true
 
 ### Union compared with a value of the type a case holds
 
-```yumi
-. foo = Foo.error
-. bar = Foo.life
-. baz Foo = 7
-. flo Foo = 2.5
-. sta = Foo.status
--- foo == 1
--- bar == 42
--- bar == 1
--- baz == 7
--- baz == 1
--- flo == 2.5
--- flo == 2
--- sta == "good"
--- sta == "bad"
--- foo == "good"
--- sta == 1
--- foo != 1
--- baz != 7
+```brix
+(main
+  (let foo (. Foo error))
+  (let bar (. Foo life))
+  (let baz Foo 7)
+  (let flo Foo 2.5)
+  (let sta (. Foo status))
+  (print (== foo 1))
+  (print (== bar 42))
+  (print (== bar 1))
+  (print (== baz 7))
+  (print (== baz 1))
+  (print (== flo 2.5))
+  (print (== flo 2))
+  (print (== sta "good"))
+  (print (== sta "bad"))
+  (print (== foo "good"))
+  (print (== sta 1))
+  (print (!= foo 1))
+  (print (!= baz 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| error = 1
-| life = 42
-| status = "good"
-| Float
-| Int
+(type + Foo (is Union)
+  (variant error (= 1))
+  (variant life (= 42))
+  (variant status (= "good"))
+  (variant Float)
+  (variant Int)
+)
 ```
 
 ```output
@@ -3559,48 +3578,47 @@ false
 
 ### Valued case keeps its own number where another case holds the same type
 
-```yumi
-. foo = Foo.error
-. bar = Foo.life
-. sta = Foo.status
--- foo.case
--- bar.case
--- sta.case
--- bar == Foo.error
--- foo == Foo.life
--- sta == Foo.status
--- bar != Foo.status
--- bar.name
--- bar
--- held(bar)
--- held(foo)
--- held(7)
--- same(bar, 42)
--- same(foo, 1)
--- same(bar, 1)
--- same(7, 7)
+```brix
+(main
+  (let foo (. Foo error))
+  (let bar (. Foo life))
+  (let sta (. Foo status))
+  (print (. foo case))
+  (print (. bar case))
+  (print (. sta case))
+  (print (== bar (. Foo error)))
+  (print (== foo (. Foo life)))
+  (print (== sta (. Foo status)))
+  (print (!= bar (. Foo status)))
+  (print (. bar name))
+  (print bar)
+  (print (call held bar))
+  (print (call held foo))
+  (print (call held 7))
+  (print (call same bar 42))
+  (print (call same foo 1))
+  (print (call same bar 1))
+  (print (call same 7 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ held U8
-    - value Foo
+(fn-expr + held U8
+  (param value Foo)
+  (. value case)
+)
 
-value.case
+(fn-expr + same Bool
+  (param value Foo)
+  (param number Int)
+  (== value number)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ same Bool
-    - value Foo
-    - number Int
-
-value == number
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
-
-| error = 1
-| life = 42
-| status = "good"
-| Float
-| Int
+(type + Foo (is Union)
+  (variant error (= 1))
+  (variant life (= 42))
+  (variant status (= "good"))
+  (variant Float)
+  (variant Int)
+)
 ```
 
 ```output
@@ -3624,31 +3642,31 @@ true
 
 ### Union compared with an object and a number
 
-```yumi
-. box = Box()
-. p Holder = box
-. q Holder = 3
-. r Holder = Holder.none
--- p == box
--- p == Box()
--- q == 3
--- q == 4
--- r == 3
--- r == box
--- p != box
--- q != 3
+```brix
+(main
+  (let box (call Box))
+  (let p Holder box)
+  (let q Holder 3)
+  (let r Holder (. Holder none))
+  (print (== p box))
+  (print (== p (call Box)))
+  (print (== q 3))
+  (print (== q 4))
+  (print (== r 3))
+  (print (== r box))
+  (print (!= p box))
+  (print (!= q 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + value Int (= 1))
+)
 
-+ value Int = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Union
-
-| none
-| Box
-| Int
+(type + Holder (is Union)
+  (variant none)
+  (variant Box)
+  (variant Int)
+)
 ```
 
 ```output
@@ -3664,35 +3682,35 @@ false
 
 ### An optional union compared with a value of the type a case holds
 
-```yumi
-. no Flag? = false
-. yes Flag? = true
-. count Flag? = 3
-. none Flag? = null
--- no == false
--- no == true
--- yes == true
--- count == false
--- count == 3
--- none == false
--- no != false
--- none != false
--- same(no, false)
--- same(none, false)
--- same(count, null)
+```brix
+(main
+  (let no (? Flag) false)
+  (let yes (? Flag) true)
+  (let count (? Flag) 3)
+  (let none (? Flag) null)
+  (print (== no false))
+  (print (== no true))
+  (print (== yes true))
+  (print (== count false))
+  (print (== count 3))
+  (print (== none false))
+  (print (!= no false))
+  (print (!= none false))
+  (print (call same no false))
+  (print (call same none false))
+  (print (call same count null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ same Bool
-    - value Flag?
-    - other Bool?
+(fn-expr + same Bool
+  (param value (? Flag))
+  (param other (? Bool))
+  (== value other)
+)
 
-value == other
-
-━━━━━━━━━━━━━━━━━━━━
-+ Flag is Union
-
-| Bool
-| Int
+(type + Flag (is Union)
+  (variant Bool)
+  (variant Int)
+)
 ```
 
 ```output
@@ -3711,75 +3729,73 @@ false
 
 ### Union compared with a value in conditions and by a declared ==
 
-```yumi
-. name Named = "ann"
-. other Named = "bob"
-. count Named = 3
-. box = Box(2)
-. held Named = box
--- name == "ann"
--- name == "bob"
--- other != "ann"
--- count == 3
--- count == "3"
--- held == box
--- held == Box(2)
--- held != box
--- label(name)
--- label(count)
--- label(held)
--- label(other)
-if name == "ann" && count == 3
-    -- "both"
-. maybe Named? = name
--- twice(make(), "ann")
+```brix
+(main
+  (let name Named "ann")
+  (let other Named "bob")
+  (let count Named 3)
+  (let box (call Box 2))
+  (let held Named box)
+  (print (== name "ann"))
+  (print (== name "bob"))
+  (print (!= other "ann"))
+  (print (== count 3))
+  (print (== count "3"))
+  (print (== held box))
+  (print (== held (call Box 2)))
+  (print (!= held box))
+  (print (call label name))
+  (print (call label count))
+  (print (call label held))
+  (print (call label other))
+  (if (and (== name "ann") (== count 3))
+    (print "both")
+  )
+  (let maybe (? Named) name)
+  (print (call twice (call make) "ann"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Named
+(fn-do + make Named
+  (print "make")
+  (return "ann")
+)
 
--- "make"
-= "ann"
+(fn-expr + twice Bool
+  (param value Named)
+  (param text String)
+  (and (== value text) (!= value "zed"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ twice Bool
-    - value Named
-    - text String
-
-value == text && value != "zed"
-
-━━━━━━━━━━━━━━━━━━━━
-+ label String
-    - value Named
-
-|? value == "ann"
+(fn-expr + label String
+  (param value Named)
+  (case? (== value "ann")
     "is ann"
-|? value == 3
+  )
+  (case? (== value 3)
     "is three"
-??
+  )
+  (default
     "other"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + x Int)
+  (fn-do + This _
+    (param x _)
+  )
+  (fn-do + (infix this == (param other Box)) _
+    (print "box eq")
+    (return (== x (. other x)))
+  )
+)
 
-+ x Int
-
-────────────────────
-+ This
-    - x
-
-────────────────────
-+ do this == other Box
-
--- "box eq"
-= x == other.x
-
-━━━━━━━━━━━━━━━━━━━━
-+ Named is Union
-
-| nothing
-| String
-| Int
-| Box
+(type + Named (is Union)
+  (variant nothing)
+  (variant String)
+  (variant Int)
+  (variant Box)
+)
 ```
 
 ```output
@@ -3805,33 +3821,35 @@ true
 
 ### A union is tested for the first of its cases that is a list
 
-```yumi
-. foo Foo = [Foo(42)]
--- foo is List
--- foo is not List
-. bar Foo = 42
--- bar is List
-. baz Foo = "text"
--- baz is List
--- baz is String
-show(foo)
-show(bar)
+```brix
+(main
+  (let foo Foo (list (call Foo 42)))
+  (print (is foo List))
+  (print (is-not foo List))
+  (let bar Foo 42)
+  (print (is bar List))
+  (let baz Foo "text")
+  (print (is baz List))
+  (print (is baz String))
+  (call show foo)
+  (call show bar)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Union
+(type + Foo (is Union)
+  (variant Int)
+  (variant String)
+  (variant (list Foo))
+)
 
-| Int
-| String
-| [Foo]
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - value Foo
-
-if value is List
-    -- "list"
-else
-    -- "not a list"
+(fn-do + show _
+  (param value Foo)
+  (if (is value List)
+    (print "list")
+    (else
+      (print "not a list")
+    )
+  )
+)
 ```
 
 ```output
@@ -3846,28 +3864,26 @@ not a list
 
 ### A case read by name where the union holds another gives what its type makes with nothing written.
 
-```yumi
-. payload = Payload.box(Box(3))
--- payload.box.size
-. other = Payload.empty
--- other.box.size
+```brix
+(main
+  (let payload (call (. Payload box) (call Box 3)))
+  (print (. payload box size))
+  (let other (. Payload empty))
+  (print (. other box size))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + size _ (= 0))
+  (fn-do + This _
+    (param n Int)
+    (= size n)
+  )
+)
 
-+ size = 0
-
-────────────────────
-+ This
-    - n Int
-
-size = n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Payload is Union
-
-| box Box
-| empty
+(type + Payload (is Union)
+  (variant box Box)
+  (variant empty)
+)
 ```
 
 ```output
@@ -3877,24 +3893,24 @@ size = n
 
 ### A case of a tuple, a list or text read by name where the union holds another gives its empty value.
 
-```yumi
-. payload = Payload.point(Point(1, 2))
--- payload.point
-. other = Payload.empty
--- other.point
--- other.names.length
--- "[${other.label}]"
+```brix
+(main
+  (let payload (call (. Payload point) (call Point 1 2)))
+  (print (. payload point))
+  (let other (. Payload empty))
+  (print (. other point))
+  (print (. other names length))
+  (print (str "[" (. other label) "]"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is (x Int, y Int)
+(type + Point (is (tuple (: x Int) (: y Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Payload is Union
-
-| point Point
-| names [String]
-| label String
-| empty
+(type + Payload (is Union)
+  (variant point Point)
+  (variant names (list String))
+  (variant label String)
+  (variant empty)
+)
 ```
 
 ```output
@@ -3906,146 +3922,127 @@ size = n
 
 ### A panic through a member a union forwards names its function
 
-```yumi crash
-. item Item = Item.left(Left(1))
--- item.render()
-item = Item.right(Right(2))
--- item.render()
+```brix crash
+(main
+  (let item Item (call (. Item left) (call Left 1)))
+  (print (call (. item render)))
+  (= item (call (. Item right) (call Right 2)))
+  (print (call (. item render)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String
+    (throw (call Panic "left"))
+  )
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String
+    "right"
+  )
+)
 
-────────────────────
-+ render String
-
-?! Panic("left")
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value I32
-
-────────────────────
-+ render String
-
-"right"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```stderr
 Unhandled panic: left
-<no file:15>
+<no file:12>
 
 Task 1
 
 Stack trace:
-  0  __source__:Left:render no file:15:1
-  1  __source__:union-dispatch-1 no file:3:4
-  2  __source__:main no file:3:4
+  0  __source__:Left:render no file:12:5
+  1  __source__:union-dispatch-1 no file:4:10
+  2  __source__:main no file:4:10
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### An unhandled error through a member a union forwards names its function
 
-```yumi crash
-. item Item = Item.left(Left(1))
--- item.render()
+```brix crash
+(main
+  (let item Item (call (. Item left) (call Left 1)))
+  (print (call (. item render)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ LeftError is Error
+(type + LeftError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String (?! LeftError)
+    (throw (call LeftError "left"))
+  )
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String (?! LeftError)
+    "right"
+  )
+)
 
-────────────────────
-+ render String ?! LeftError
-
-?! LeftError("left")
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value I32
-
-────────────────────
-+ render String ?! LeftError
-
-"right"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```stderr
 Unhandled error: left
-<no file:16>
+<no file:12>
 
 Task 1
 
 Stack trace:
-  0  __source__:Left:render no file:16:1
-  1  __source__:union-dispatch-1 no file:3:4
-  2  __source__:main no file:3:4
+  0  __source__:Left:render no file:12:5
+  1  __source__:union-dispatch-1 no file:4:10
+  2  __source__:main no file:4:10
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### A member a union forwards that raises, caught in a function
 
-```yumi
--- show(Item.right(Right(2)))
--- show(Item.left(Left(1)))
+```brix
+(main
+  (print (call show (call (. Item right) (call Right 2))))
+  (print (call show (call (. Item left) (call Left 1))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ LeftError is Error
+(type + LeftError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ RightError is Error
+(type + RightError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String (?! LeftError)
+    (throw (call LeftError "left"))
+  )
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String (?! RightError)
+    "right"
+  )
+)
 
-────────────────────
-+ render String ?! LeftError
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 
-?! LeftError("left")
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value I32
-
-────────────────────
-+ render String ?! RightError
-
-"right"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show String
-    - item Item
-
-= catch? item.render() ?? "caught"
+(fn-do + show String
+  (param item Item)
+  (return (?? (catch? (call (. item render))) "caught"))
+)
 ```
 
 ```output
@@ -4055,141 +4052,125 @@ caught
 
 ### A panic from the second call of a member a union forwards
 
-```yumi crash
-. b Item = Item.left(Left(3))
--- b.scale(2)
--- b.scale(12)
+```brix crash
+(main
+  (let b Item (call (. Item left) (call Left 3)))
+  (print (call (. b scale) 2))
+  (print (call (. b scale) 12))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ LeftError is Error
+(type + LeftError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String
+    (before
+      (throw (call Panic "left") (if (> value 5)))
+    )
+    (str "left " value)
+  )
+  (fn-expr + scale String
+    (param by Int)
+    (before
+      (throw (call Panic "scale") (if (> by 9)))
+    )
+    (str "scaled " (* value by))
+  )
+  (fn-expr + check String (?! LeftError)
+    (before
+      (throw (call LeftError "bad left") (if (> value 5)))
+    )
+    "ok left"
+  )
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String
+    (str "right " value)
+  )
+  (fn-expr + scale String
+    (param by Int)
+    (str "rscaled " (+ value by))
+  )
+  (fn-expr + check String (?! LeftError)
+    "ok right"
+  )
+)
 
-────────────────────
-+ render String
-
-?! Panic("left") if value > 5
-"left $value"
-
-────────────────────
-+ scale String
-    - by Int
-
-?! Panic("scale") if by > 9
-"scaled ${value * by}"
-
-────────────────────
-+ check String ?! LeftError
-
-?! LeftError("bad left") if value > 5
-"ok left"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value I32
-
-────────────────────
-+ render String
-
-"right $value"
-
-────────────────────
-+ scale String
-    - by Int
-
-"rscaled ${value + by}"
-
-────────────────────
-+ check String ?! LeftError
-
-"ok right"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```stderr
 Unhandled panic: scale
-<no file:24>
+<no file:21>
 
 Task 1
 
 Stack trace:
-  0  __source__:Left:scale no file:24:1
-  1  __source__:union-dispatch-1 no file:3:4
-  2  __source__:main no file:4:4
+  0  __source__:Left:scale no file:21:7
+  1  __source__:union-dispatch-1 no file:4:10
+  2  __source__:main no file:5:10
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### A member a union forwards that raises, caught twice
 
-```yumi
-. b Item = Item.left(Left(9))
--- catch? b.check() ?? "caught"
-. c Item = Item.left(Left(1))
--- catch? c.check() ?? "caught"
+```brix
+(main
+  (let b Item (call (. Item left) (call Left 9)))
+  (print (?? (catch? (call (. b check))) "caught"))
+  (let c Item (call (. Item left) (call Left 1)))
+  (print (?? (catch? (call (. c check))) "caught"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ LeftError is Error
+(type + LeftError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String
+    (before
+      (throw (call Panic "left") (if (> value 5)))
+    )
+    (str "left " value)
+  )
+  (fn-expr + scale String
+    (param by Int)
+    (before
+      (throw (call Panic "scale") (if (> by 9)))
+    )
+    (str "scaled " (* value by))
+  )
+  (fn-expr + check String (?! LeftError)
+    (before
+      (throw (call LeftError "bad left") (if (> value 5)))
+    )
+    "ok left"
+  )
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String
+    (str "right " value)
+  )
+  (fn-expr + scale String
+    (param by Int)
+    (str "rscaled " (+ value by))
+  )
+  (fn-expr + check String (?! LeftError)
+    "ok right"
+  )
+)
 
-────────────────────
-+ render String
-
-?! Panic("left") if value > 5
-"left $value"
-
-────────────────────
-+ scale String
-    - by Int
-
-?! Panic("scale") if by > 9
-"scaled ${value * by}"
-
-────────────────────
-+ check String ?! LeftError
-
-?! LeftError("bad left") if value > 5
-"ok left"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value I32
-
-────────────────────
-+ render String
-
-"right $value"
-
-────────────────────
-+ scale String
-    - by Int
-
-"rscaled ${value + by}"
-
-────────────────────
-+ check String ?! LeftError
-
-"ok right"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```output
@@ -4199,66 +4180,64 @@ ok left
 
 ### A member a union forwards that raises, caught by a block
 
-```yumi
-. b Item = Item.left(Left(7))
-. t = b.check()
-    catch error Error
-        "caught ${error.message}"
--- t
+```brix
+(main
+  (let b Item (call (. Item left) (call Left 7)))
+  (let t
+    (call (. b check)
+      (block
+        (on-error (: error Error)
+          (str "caught " (. error message))
+        )
+      )
+    )
+  )
+  (print t)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ LeftError is Error
+(type + LeftError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String
+    (before
+      (throw (call Panic "left") (if (> value 5)))
+    )
+    (str "left " value)
+  )
+  (fn-expr + scale String
+    (param by Int)
+    (before
+      (throw (call Panic "scale") (if (> by 9)))
+    )
+    (str "scaled " (* value by))
+  )
+  (fn-expr + check String (?! LeftError)
+    (before
+      (throw (call LeftError "bad left") (if (> value 5)))
+    )
+    "ok left"
+  )
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String
+    (str "right " value)
+  )
+  (fn-expr + scale String
+    (param by Int)
+    (str "rscaled " (+ value by))
+  )
+  (fn-expr + check String (?! LeftError)
+    "ok right"
+  )
+)
 
-────────────────────
-+ render String
-
-?! Panic("left") if value > 5
-"left $value"
-
-────────────────────
-+ scale String
-    - by Int
-
-?! Panic("scale") if by > 9
-"scaled ${value * by}"
-
-────────────────────
-+ check String ?! LeftError
-
-?! LeftError("bad left") if value > 5
-"ok left"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value I32
-
-────────────────────
-+ render String
-
-"right $value"
-
-────────────────────
-+ scale String
-    - by Int
-
-"rscaled ${value + by}"
-
-────────────────────
-+ check String ?! LeftError
-
-"ok right"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```output
@@ -4267,35 +4246,30 @@ caught bad left
 
 ### A member a union forwards compares the low 32 bits of a wide field
 
-```yumi
-. item Item = Item.wide(Wide(-4294967287))
--- item.above()
+```brix
+(main
+  (let item Item (call (. Item wide) (call Wide -4294967287)))
+  (print (call (. item above)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Tuple
+(type + Wide (is Tuple)
+  (prop + value I64)
+  (fn-expr + above String
+    (str "above " (> (as value I32) 5))
+  )
+)
 
-+ value I64
+(type + Narrow (is Tuple)
+  (prop + value I32)
+  (fn-expr + above String
+    (str "above " (> value 5))
+  )
+)
 
-────────────────────
-+ above String
-
-"above ${(value as I32) > 5}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Narrow is Tuple
-
-+ value I32
-
-────────────────────
-+ above String
-
-"above ${value > 5}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| wide Wide
-| narrow Narrow
+(type + Item (is Union)
+  (variant wide Wide)
+  (variant narrow Narrow)
+)
 ```
 
 ```output
@@ -4304,301 +4278,267 @@ above true
 
 ### A member a union forwards from two places of one function panics
 
-```yumi crash
--- twice(Item.left(Left(1)))
--- twice(Item.left(Left(8)))
+```brix crash
+(main
+  (print (call twice (call (. Item left) (call Left 1))))
+  (print (call twice (call (. Item left) (call Left 8))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String
+    (before
+      (throw (call Panic "left") (if (> value 5)))
+    )
+    (str "left " value)
+  )
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String
+    (str "right " value)
+  )
+)
 
-────────────────────
-+ render String
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 
-?! Panic("left") if value > 5
-"left $value"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value I32
-
-────────────────────
-+ render String
-
-"right $value"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
-
-━━━━━━━━━━━━━━━━━━━━
-+ do twice String
-    - item Item
-
-. first = item.render()
-= "$first/${item.render()}"
+(fn-do + twice String
+  (param item Item)
+  (let first (call (. item render)))
+  (return (str first "/" (call (. item render))))
+)
 ```
 
 ```stderr
 Unhandled panic: left
-<no file:13>
+<no file:11>
 
 Task 1
 
 Stack trace:
-  0  __source__:Left:render no file:13:1
-  1  __source__:union-dispatch-1 no file:36:11
-  2  __source__:twice no file:36:11
-  3  __source__:main no file:3:4
+  0  __source__:Left:render no file:11:7
+  1  __source__:union-dispatch-1 no file:31:14
+  2  __source__:twice no file:31:14
+  3  __source__:main no file:4:10
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
 ### A lazy property a union forwards panics in its value
 
-```yumi crash
-. a Item = Item.right(Right())
--- a.label
-. b Item = Item.left(Left())
--- b.label
+```brix crash
+(main
+  (let a Item (call (. Item right) (call Right)))
+  (print (. a label))
+  (let b Item (call (. Item left) (call Left)))
+  (print (. b label))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left
+(type + Left
+  (prop + value I32 (= 7))
+  (prop + label String (:= (call pick value)))
+)
 
-+ value I32 = 7
-+ label String := pick(value)
+(type + Right
+  (prop + value I32 (= 1))
+  (prop + label String (:= "right"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Right
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 
-+ value I32 = 1
-+ label String := "right"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pick String
-    - n I32
-
-if n > 5
-    ?! Panic("too big")
-= "small"
+(fn-do + pick String
+  (param n I32)
+  (if (> n 5)
+    (throw (call Panic "too big"))
+  )
+  (return "small")
+)
 ```
 
 ```stderr
 Unhandled panic: too big
-<no file:30>
+<no file:27>
 
 Task 1
 
 Stack trace:
-  0  __source__:pick no file:30:5
-  1  __source__:Left:label no file:11:19
-  2  __source__:main no file:5:4
+  0  __source__:pick no file:27:5
+  1  __source__:Left:label no file:11:28
+  2  __source__:main no file:6:10
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### A member a union forwards in a loop panics on the third item
 
-```yumi crash
-. items = [Item.left(Left(1)), Item.right(Right(2)), Item.left(Left(6))]
-for each in items
-    -- each.render()
+```brix crash
+(main
+  (let items (list (call (. Item left) (call Left 1)) (call (. Item right) (call Right 2)) (call (. Item left) (call Left 6))))
+  (for (in each items)
+    (print (call (. each render)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ LeftError is Error
+(type + LeftError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String
+    (before
+      (throw (call Panic "left") (if (> value 5)))
+    )
+    (str "left " value)
+  )
+  (fn-expr + scale String
+    (param by Int)
+    (before
+      (throw (call Panic "scale") (if (> by 9)))
+    )
+    (str "scaled " (* value by))
+  )
+  (fn-expr + check String (?! LeftError)
+    (before
+      (throw (call LeftError "bad left") (if (> value 5)))
+    )
+    "ok left"
+  )
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String
+    (str "right " value)
+  )
+  (fn-expr + scale String
+    (param by Int)
+    (str "rscaled " (+ value by))
+  )
+  (fn-expr + check String (?! LeftError)
+    "ok right"
+  )
+)
 
-────────────────────
-+ render String
-
-?! Panic("left") if value > 5
-"left $value"
-
-────────────────────
-+ scale String
-    - by Int
-
-?! Panic("scale") if by > 9
-"scaled ${value * by}"
-
-────────────────────
-+ check String ?! LeftError
-
-?! LeftError("bad left") if value > 5
-"ok left"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value I32
-
-────────────────────
-+ render String
-
-"right $value"
-
-────────────────────
-+ scale String
-    - by Int
-
-"rscaled ${value + by}"
-
-────────────────────
-+ check String ?! LeftError
-
-"ok right"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```stderr
 Unhandled panic: left
-<no file:17>
+<no file:15>
 
 Task 1
 
 Stack trace:
-  0  __source__:Left:render no file:17:1
-  1  __source__:union-dispatch-1 no file:4:8
-  2  __source__:main no file:4:8
+  0  __source__:Left:render no file:15:7
+  1  __source__:union-dispatch-1 no file:5:12
+  2  __source__:main no file:5:12
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### A setter a union forwards before a forwarded method is named union-dispatch-1 in a trace.
 
-```yumi crash
-. item Item = Item.right(1.5)
-item.label = "x"
--- item.scale(2.0)
-item = Item.left(3)
-item.label = "boom"
+```brix crash
+(main
+  (let item Item (call (. Item right) 1.5))
+  (= (. item label) "x")
+  (print (call (. item scale) 2.0))
+  (= item (call (. Item left) 3))
+  (= (. item label) "boom")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-do + label _ :set (param text String)
+    (print (str "left " text))
+    (throw (call Panic "bad left") (if (== text "boom")))
+  )
+  (fn-do + scale Float
+    (param by Float)
+    (throw (call Panic "bad scale") (if (== by 0)))
+    (return (* value by))
+  )
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value Float)
+  (fn-do + label _ :set (param text String)
+    (print (str "right " text))
+  )
+  (fn-do + scale Float
+    (param by Float)
+    (return (* value by))
+  )
+)
 
-────────────────────
-+ do label = text String
-
--- "left $text"
-?! Panic("bad left")
-    if text == "boom"
-
-────────────────────
-+ do scale Float
-    - by Float
-
-?! Panic("bad scale")
-    if by == 0
-= value * by
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value Float
-
-────────────────────
-+ do label = text String
-
--- "right $text"
-
-────────────────────
-+ do scale Float
-    - by Float
-
-= value * by
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```stderr
 Unhandled panic: bad left
-<no file:17>
+<no file:14>
 
 Task 1
 
 Stack trace:
-  0  __source__:Left:label no file:17:1
-  1  __source__:union-dispatch-1 no file:3:1
-  2  __source__:main no file:6:1
+  0  __source__:Left:label no file:14:5
+  1  __source__:union-dispatch-1 no file:4:6
+  2  __source__:main no file:7:6
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### A setter a union forwards is given the value written, a local or a text made from one.
 
-```yumi
-. item Item = Item.left(1)
-item.label = "a"
-. name = "b"
-item.label = name
-item.label = "${name}c"
+```brix
+(main
+  (let item Item (call (. Item left) 1))
+  (= (. item label) "a")
+  (let name "b")
+  (= (. item label) name)
+  (= (. item label) (str name "c"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-do + label _ :set (param text String)
+    (print (str "left " text))
+    (throw (call Panic "bad left") (if (== text "boom")))
+  )
+  (fn-do + scale Float
+    (param by Float)
+    (throw (call Panic "bad scale") (if (== by 0)))
+    (return (* value by))
+  )
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value Float)
+  (fn-do + label _ :set (param text String)
+    (print (str "right " text))
+  )
+  (fn-do + scale Float
+    (param by Float)
+    (return (* value by))
+  )
+)
 
-────────────────────
-+ do label = text String
-
--- "left $text"
-?! Panic("bad left")
-    if text == "boom"
-
-────────────────────
-+ do scale Float
-    - by Float
-
-?! Panic("bad scale")
-    if by == 0
-= value * by
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value Float
-
-────────────────────
-+ do label = text String
-
--- "right $text"
-
-────────────────────
-+ do scale Float
-    - by Float
-
-= value * by
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```output
@@ -4607,51 +4547,42 @@ left b
 left bc
 ```
 
-```yumi
-. item Item = Item.left(10)
--- item.render(1)
--- item.render(2)
--- item.render("x")
+```brix
+(main
+  (let item Item (call (. Item left) 10))
+  (print (call (. item render) 1))
+  (print (call (. item render) 2))
+  (print (call (. item render) "x"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+  (fn-expr + render String
+    (param amount I32)
+    (str "L" (+ value amount))
+  )
+  (fn-expr + render String
+    (param suffix String)
+    (str "L" suffix)
+  )
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value String)
+  (fn-expr + render String
+    (param amount I32)
+    (str value amount)
+  )
+  (fn-expr + render String
+    (param suffix String)
+    (str value suffix)
+  )
+)
 
-────────────────────
-+ render String
-    - amount I32
-
-"L${value + amount}"
-
-────────────────────
-+ render String
-    - suffix String
-
-"L${suffix}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value String
-
-────────────────────
-+ render String
-    - amount I32
-
-"${value}${amount}"
-
-────────────────────
-+ render String
-    - suffix String
-
-"${value}${suffix}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```output
@@ -4660,50 +4591,56 @@ L12
 Lx
 ```
 
-```yumi
--- describe(entry(null))
--- describe(entry(1))
+```brix
+(main
+  (print (call describe (call entry null)))
+  (print (call describe (call entry 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
+(type + Value (is Union)
+  (variant Null)
+  (variant Int)
+  (variant (list Value))
+)
 
-| Null
-| Int
-| [Value]
+(fn-expr + entry _
+  (param value (? Int))
+  (call (of Map String Value)
+    (block
+      (:values (as (call optional-items value) Value))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ entry
-    - value Int?
+(fn-expr _ optional-items _
+  (param value (? Int))
+  (match? value
+    (case Int
+      (call items it)
+    )
+  )
+)
 
-Map'String'Value
-    • values optional-items(value) as Value
+(fn-expr _ items _
+  (param value Int)
+  (item (as value Value))
+  (item (as (+ value 1) Value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ optional-items
-    - value Int?
-
-match? value
-    | Int
-        items(it)
-
-━━━━━━━━━━━━━━━━━━━━
-_ items
-    - value Int
-
-* value as Value
-* (value + 1) as Value
-
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - map [String = Value]
-
-match map["values"]!
-    | Null
-        "${map.length} null"
-    | Int
-        "${map.length} int"
-    | list List
-        "${map.length} list ${", ".join(list)}"
+(fn-expr + describe String
+  (param map (map String Value))
+  (match (!! ([] map "values"))
+    (case Null
+      (str (. map length) " null")
+    )
+    (case Int
+      (str (. map length) " int")
+    )
+    (case (: list List)
+      (str (. map length) " list " (call (. ", " join) list))
+    )
+  )
+)
 ```
 
 ```output
@@ -4713,36 +4650,36 @@ match map["values"]!
 
 ### A base class test on a union holding a subclass in its own case matches and narrows to the base.
 
-```yumi
-show(Base())
-show(Derived())
-show(7)
+```brix
+(main
+  (call show (call Base))
+  (call show (call Derived))
+  (call show 7)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do show
-    - value Choice
+(fn-do _ show _
+  (param value Choice)
+  (if (is value Base)
+    (print (. value name))
+    (else
+      (print "not base")
+    )
+  )
+)
 
-if value is Base
-    -- value.name
-else
-    -- "not base"
+(type + Base
+  (prop + name _ (= "base"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Derived (is Base)
+  (prop + name _ (= "derived"))
+)
 
-+ name = "base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-+ name = "derived"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| Int
-| Base
-| Derived
+(type + Choice (is Union)
+  (variant Int)
+  (variant Base)
+  (variant Derived)
+)
 ```
 
 ```output
@@ -4753,45 +4690,51 @@ not base
 
 ### A subclass test on a union holding a subclass object in the base class's case matches and narrows to the subclass, as a match arm for the subclass ahead of one for the base does.
 
-```yumi
-. held Base = Derived()
-show(held)
-show(Derived())
-show(Base())
-show(7)
+```brix
+(main
+  (let held Base (call Derived))
+  (call show held)
+  (call show (call Derived))
+  (call show (call Base))
+  (call show 7)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do show
-    - value Choice
-
-. arm = match value
-    | d Derived
-        "derived arm ${d.extra}"
-    | b Base
-        "base arm ${b.name}"
-    ??
+(fn-do _ show _
+  (param value Choice)
+  (let arm
+    (match value
+      (case (: d Derived)
+        (str "derived arm " (. d extra))
+      )
+      (case (: b Base)
+        (str "base arm " (. b name))
+      )
+      (default
         "other arm"
-if value is Derived
-    -- "derived ${value.extra}, $arm"
-else
-    -- "not derived, $arm"
+      )
+    )
+  )
+  (if (is value Derived)
+    (print (str "derived " (. value extra) ", " arm))
+    (else
+      (print (str "not derived, " arm))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + name _ (= "base"))
+)
 
-+ name = "base"
+(type + Derived (is Base)
+  (prop + extra _ (= "extra"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-+ extra = "extra"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| Int
-| Base
-| Derived
+(type + Choice (is Union)
+  (variant Int)
+  (variant Base)
+  (variant Derived)
+)
 ```
 
 ```output
@@ -4803,37 +4746,36 @@ not derived, other arm
 
 ### A union cast to a subclass, or narrowed past `is not` the subclass, gives a subclass object held in the base class's case.
 
-```yumi
-. held Base = Derived()
-. value Choice = held
--- (value as Derived).extra
--- describe(value)
--- describe(Base())
+```brix
+(main
+  (let held Base (call Derived))
+  (let value Choice held)
+  (print (. (as value Derived) extra))
+  (print (call describe value))
+  (print (call describe (call Base)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do describe String
-    - value Choice
+(fn-do _ describe String
+  (param value Choice)
+  (if (is-not value Derived)
+    (return "not derived")
+  )
+  (return (str "derived " (. value extra)))
+)
 
-if value is not Derived
-    = "not derived"
-= "derived ${value.extra}"
+(type + Base
+  (prop + name _ (= "base"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Derived (is Base)
+  (prop + extra _ (= "extra"))
+)
 
-+ name = "base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-+ extra = "extra"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| Int
-| Base
-| Derived
+(type + Choice (is Union)
+  (variant Int)
+  (variant Base)
+  (variant Derived)
+)
 ```
 
 ```output
@@ -4844,35 +4786,35 @@ not derived
 
 ### A subclass test on a union with a case for the base class and none for the subclass narrows the union to the subclass.
 
-```yumi
-show(Derived())
-show(Base())
-show(7)
+```brix
+(main
+  (call show (call Derived))
+  (call show (call Base))
+  (call show 7)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do show
-    - value Choice
+(fn-do _ show _
+  (param value Choice)
+  (if (is value Derived)
+    (print (str "derived " (. value extra)))
+    (else
+      (print "not derived")
+    )
+  )
+)
 
-if value is Derived
-    -- "derived ${value.extra}"
-else
-    -- "not derived"
+(type + Base
+  (prop + name _ (= "base"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Derived (is Base)
+  (prop + extra _ (= "extra"))
+)
 
-+ name = "base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-+ extra = "extra"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| Int
-| Base
+(type + Choice (is Union)
+  (variant Int)
+  (variant Base)
+)
 ```
 
 ```output
@@ -4883,32 +4825,41 @@ not derived
 
 ### An attached catch for a subclass error catches one of that class raised as its base class, ahead of a catch for the base.
 
-```yumi
-show(1)
-show(2)
-show(3)
+```brix
+(main
+  (call show 1)
+  (call show 2)
+  (call show 3)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do show
-    - n Int
+(fn-do _ show _
+  (param n Int)
+  (let text
+    (call describe n
+      (block
+        (on-error IOError
+          "io"
+        )
+        (on-error Error
+          "error"
+        )
+      )
+    )
+  )
+  (print text)
+)
 
-. text = describe(n)
-    catch IOError
-        "io"
-    catch Error
-        "error"
--- text
-
-━━━━━━━━━━━━━━━━━━━━
-_ do describe String ?! Error ?! IOError
-    - n Int
-
-if n == 1
-    . held Error = IOError("held")
-    ?! held
-if n == 2
-    ?! Error("plain")
-= "ok"
+(fn-do _ describe String (?! Error) (?! IOError)
+  (param n Int)
+  (if (== n 1)
+    (let held Error (call IOError "held"))
+    (throw held)
+  )
+  (if (== n 2)
+    (throw (call Error "plain"))
+  )
+  (return "ok")
+)
 ```
 
 ```output
@@ -4919,51 +4870,55 @@ ok
 
 ### An error of a class above every error a function raises leaves it as the most derived of them that the error is of, raised there or by a call.
 
-```yumi
--- describe(catch raise(1))
--- describe(catch raise(2))
--- describe(catch relay(1))
--- describe(catch relay(2))
+```brix
+(main
+  (print (call describe (catch (call raise 1))))
+  (print (call describe (catch (call raise 2))))
+  (print (call describe (catch (call relay 1))))
+  (print (call describe (catch (call relay 2))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ describe String
-    - result
+(fn-expr _ describe String
+  (param result _)
+  (match result
+    (case (: e Missing)
+      (str "missing " (. e message))
+    )
+    (case (: e IOError)
+      (str "io " (. e message))
+    )
+    (default
+      "ok"
+    )
+  )
+)
 
-match result
-    | e Missing
-        "missing ${e.message}"
-    | e IOError
-        "io ${e.message}"
-    ??
-        "ok"
+(type + Missing (is IOError))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Missing is IOError
+(fn-do _ raise Int (?! IOError) (?! Missing)
+  (param n Int)
+  (let error Error (if-expr (== n 1) (call Missing "gone") (call IOError "disk")))
+  (if (< n 3)
+    (throw error)
+  )
+  (return n)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do raise Int ?! IOError ?! Missing
-    - n Int
+(fn-do _ relay Int (?! IOError) (?! Missing)
+  (param n Int)
+  (return (call inner n))
+)
 
-. error Error = if n == 1 then Missing("gone") else IOError("disk")
-if n < 3
-    ?! error
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-_ do relay Int ?! IOError ?! Missing
-    - n Int
-
-= inner(n)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do inner Int ?! Error
-    - n Int
-
-if n == 1
-    ?! Missing("gone")
-if n == 2
-    ?! IOError("disk")
-= n
+(fn-do _ inner Int (?! Error)
+  (param n Int)
+  (if (== n 1)
+    (throw (call Missing "gone"))
+  )
+  (if (== n 2)
+    (throw (call IOError "disk"))
+  )
+  (return n)
+)
 ```
 
 ```output
@@ -4975,40 +4930,45 @@ io disk
 
 ### A caught Result that can hold Error and one of its subclasses is an Error in either case.
 
-```yumi
-show("derived first", catch derived-first(1))
-show("base first", catch base-first(1))
-show("base thrown", catch derived-first(9))
+```brix
+(main
+  (call show "derived first" (catch (call derived-first 1)))
+  (call show "base first" (catch (call base-first 1)))
+  (call show "base thrown" (catch (call derived-first 9)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do show
-    - label String
-    - result
+(fn-do _ show _
+  (param label String)
+  (param result _)
+  (if (is result Error)
+    (print (str label " caught " (. (as result Error) message)))
+    (else
+      (print (str label " not caught"))
+    )
+  )
+)
 
-if result is Error
-    -- "$label caught ${(result as Error).message}"
-else
-    -- "$label not caught"
+(fn-do _ derived-first Int
+  (param n Int)
+  (if (> n 5)
+    (throw (call Error "plain"))
+  )
+  (if (> n 0)
+    (throw (call IOError "boom"))
+  )
+  (return n)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do derived-first Int
-    - n Int
-
-if n > 5
-    ?! Error("plain")
-if n > 0
-    ?! IOError("boom")
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-_ do base-first Int
-    - n Int
-
-if n > 0
-    ?! IOError("boom")
-if n > 5
-    ?! Error("plain")
-= n
+(fn-do _ base-first Int
+  (param n Int)
+  (if (> n 0)
+    (throw (call IOError "boom"))
+  )
+  (if (> n 5)
+    (throw (call Error "plain"))
+  )
+  (return n)
+)
 ```
 
 ```output
@@ -5017,88 +4977,87 @@ base first caught boom
 base thrown caught plain
 ```
 
-```yumi
-. made = .other("x", true)
--- made is .other
+```brix
+(main
+  (let made (call .other "x" true))
+  (print (is made .other))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Partial is Union
-
-| get(name String)
-| other(name String, is-optional Bool)
+(type + Partial (is Union)
+  (variant get (tuple (: name String)))
+  (variant other (tuple (: name String) (: is-optional Bool)))
+)
 ```
 
 ```output
 true
 ```
 
-```yumi crash
-. made = .nothing-here("x", true)
--- 1
+```brix crash
+(main
+  (let made (call .nothing-here "x" true))
+  (print 1)
+)
 ```
 
 ```output
 Exception: Unable to resolve symbol .nothing-here
-<no file:2>
-    . made = .nothing-here("x", true)
-             ^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:3>
+      (let made (call .nothing-here "x" true))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A class instance converts into a union through an interface it implements.
 
-```yumi
--- describe(Reader())
--- describe("text")
--- describe(null)
--- Holder(Reader()).describe-body()
+```brix
+(main
+  (print (call describe (call Reader)))
+  (print (call describe "text"))
+  (print (call describe null))
+  (print (call (. (call Holder (call Reader)) describe-body)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Readable is Interface
+(type + Readable (is Interface)
+  (fn-expr + label String :get)
+)
 
-────────────────────
-+ get label String
+(type + Reader
+  (implements Readable)
+  (fn-expr + label _ :get
+    "reader"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Reader
-    is Readable
+(type + Body (is Union)
+  (variant Null)
+  (variant String)
+  (variant Readable)
+)
 
-────────────────────
-+ get label
+(type + Holder
+  (prop + body Body)
+  (fn-do + This _
+    (param body Body)
+  )
+  (fn-expr + describe-body _
+    (call describe body)
+  )
+)
 
-"reader"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Body is Union
-
-| Null
-| String
-| Readable
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ body Body
-
-────────────────────
-+ This
-    - body Body
-
-────────────────────
-+ describe-body
-
-describe(body)
-
-━━━━━━━━━━━━━━━━━━━━
-+ describe
-    - body Body
-
-match body
-    | Null
-        "null"
-    | text String
-        "string $text"
-    | source Readable
-        "readable ${source.label}"
+(fn-expr + describe _
+  (param body Body)
+  (match body
+    (case Null
+      "null"
+    )
+    (case (: text String)
+      (str "string " text)
+    )
+    (case (: source Readable)
+      (str "readable " (. source label))
+    )
+  )
+)
 ```
 
 ```output
@@ -5110,28 +5069,31 @@ readable reader
 
 ### A union's own string converter wins over a named case that holds a string.
 
-```yumi
--- Verb.get
--- Verb.other("PURGE")
--- "verb ${Verb.post}"
+```brix
+(main
+  (print (. Verb get))
+  (print (call (. Verb other) "PURGE"))
+  (print (str "verb " (. Verb post)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Verb is Union
-
-| get
-| post
-| other(name String)
-
-────────────────────
-+ to String
-
-match this
-    | .get
+(type + Verb (is Union)
+  (variant get)
+  (variant post)
+  (variant other (tuple (: name String)))
+  (fn-to-expr + String
+    (match this
+      (case .get
         "GET"
-    | .post
+      )
+      (case .post
         "POST"
-    | .other(name)
+      )
+      (case (call .other name)
         name
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -5142,53 +5104,44 @@ verb POST
 
 ### Testing a union's interface member for one implementing class checks the held object's class.
 
-```yumi
--- Holder(First()).holds-first
--- Holder(Second()).holds-first
+```brix
+(main
+  (print (. (call Holder (call First)) holds-first))
+  (print (. (call Holder (call Second)) holds-first))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named is Interface
+(type + Named (is Interface)
+  (fn-expr + label String :get)
+)
 
-────────────────────
-+ get label String
+(type + First
+  (implements Named)
+  (fn-expr + label _ :get
+    "first"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ First
-    is Named
+(type + Second
+  (implements Named)
+  (fn-expr + label _ :get
+    "second"
+  )
+)
 
-────────────────────
-+ get label
+(type + Slot (is Union)
+  (variant Null)
+  (variant Named)
+)
 
-"first"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Second
-    is Named
-
-────────────────────
-+ get label
-
-"second"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Slot is Union
-
-| Null
-| Named
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ slot Slot
-
-────────────────────
-+ This
-    - slot Slot
-
-────────────────────
-+ get holds-first
-
-slot is First
+(type + Holder
+  (prop + slot Slot)
+  (fn-do + This _
+    (param slot Slot)
+  )
+  (fn-expr + holds-first _ :get
+    (is slot First)
+  )
+)
 ```
 
 ```output
@@ -5198,47 +5151,53 @@ false
 
 ### Testing or matching as text a union that converts itself to text finds the case that holds text, though converting it gives the text it converts to.
 
-```yumi
--- size(Verb.get)
--- size(Verb.other("PURGE"))
--- pick(Verb.post)
--- pick(Verb.other("x"))
--- "verb ${Verb.other("x")}"
+```brix
+(main
+  (print (call size (. Verb get)))
+  (print (call size (call (. Verb other) "PURGE")))
+  (print (call pick (. Verb post)))
+  (print (call pick (call (. Verb other) "x")))
+  (print (str "verb " (call (. Verb other) "x")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do size Int
-    - verb Verb
+(fn-do + size Int
+  (param verb Verb)
+  (if (is-not verb String)
+    (return -1)
+  )
+  (return (. verb length))
+)
 
-if verb is not String
-    = -1
-= verb.length
+(fn-expr + pick String
+  (param verb Verb)
+  (match verb
+    (case (: s String)
+      (str "text " s)
+    )
+    (default
+      (inline "none")
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pick String
-    - verb Verb
-
-match verb
-    | s String
-        "text $s"
-    ?? "none"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Verb is Union
-
-| get
-| post
-| other(name String)
-
-────────────────────
-+ to String
-
-match this
-    | .get
+(type + Verb (is Union)
+  (variant get)
+  (variant post)
+  (variant other (tuple (: name String)))
+  (fn-to-expr + String
+    (match this
+      (case .get
         "GET"
-    | .post
+      )
+      (case .post
         "POST"
-    | .other(name)
-        "<$name>"
+      )
+      (case (call .other name)
+        (str "<" name ">")
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -5251,27 +5210,30 @@ verb <x>
 
 ### An arm that names a map type gives `it` as that type.
 
-```yumi
-. map = Map'String'Int()
-map["b"] = 3
-show(map)
-show(4)
+```brix
+(main
+  (let map (call (of Map String Int)))
+  (= ([] map "b") 3)
+  (call show map)
+  (call show 4)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
+(type + Value (is Union)
+  (variant Int)
+  (variant (map String Int))
+)
 
-| Int
-| [String = Int]
-
-━━━━━━━━━━━━━━━━━━━━
-_ do show
-    - value Value
-
-match value
-    | [String = Int]
-        -- it["b"]!
-    ??
-        -- "not a map"
+(fn-do _ show _
+  (param value Value)
+  (match value
+    (case (map String Int)
+      (print (!! ([] it "b")))
+    )
+    (default
+      (print "not a map")
+    )
+  )
+)
 ```
 
 ```output
@@ -5281,34 +5243,39 @@ not a map
 
 ### A match written as a statement runs its arms for what they do, one ending in a call that gives nothing.
 
-```yumi
--- measure([W.flex(2), W.fixed(3), W.auto])
+```brix
+(main
+  (print (call measure (list (call (. W flex) 2) (call (. W fixed) 3) (. W auto))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ W is Union
+(type + W (is Union)
+  (variant auto)
+  (variant fixed Int)
+  (variant flex Int)
+)
 
-| auto
-| fixed Int
-| flex Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ do measure Int
-    - widths [W]
-
-. total = 0
-. flexes [Int] = List'Int()
-for w in widths
-    . width = 1
-    match w
-        | W.fixed(value)
-            width = value
-        | W.flex(flex)
-            total += flex
-            flexes += flex
-        ??
-            width = 7
-    total += width
-= total + flexes.length
+(fn-do + measure Int
+  (param widths (list W))
+  (let total 0)
+  (let flexes (list Int) (call (of List Int)))
+  (for (in w widths)
+    (let width 1)
+    (match w
+      (case (call (. W fixed) value)
+        (= width value)
+      )
+      (case (call (. W flex) flex)
+        (+= total flex)
+        (+= flexes flex)
+      )
+      (default
+        (= width 7)
+      )
+    )
+    (+= total width)
+  )
+  (return (+ total (. flexes length)))
+)
 ```
 
 ```output
@@ -5317,42 +5284,45 @@ for w in widths
 
 ### A case named by its symbol alone that gives an arm of a returned match is of the type the function returns, though a union declared after that type has the case too.
 
-```yumi
--- "${cap(0)}"
--- "${cap(1)}"
+```brix
+(main
+  (print (str (call cap 0)))
+  (print (str (call cap 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ cap Cap
-    - index
+(fn-expr + cap Cap
+  (param index _)
+  (match kind
+    (case= 0
+      .round
+    )
+    (default
+      .square
+    )
+  )
+  (where
+    (lazy kind (% index 2))
+  )
+)
 
-match kind
-    |= 0
-        .round
-    ??
-        .square
+(type + Cap (is Union)
+  (variant butt)
+  (variant round)
+  (variant square)
+  (fn-to-expr + String
+    (case? (only-if "round" (if (== this (. Cap round)))))
+    (case? (only-if "square" (if (== this (. Cap square)))))
+    (default
+      (inline "butt")
+    )
+  )
+)
 
-.. kind = index % 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Cap is Union
-
-| butt
-| round
-| square
-
-────────────────────
-+ to String
-
-|? "round" if this == Cap.round
-|? "square" if this == Cap.square
-?? "butt"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Join is Union
-
-| miter
-| round
-| bevel
+(type + Join (is Union)
+  (variant miter)
+  (variant round)
+  (variant bevel)
+)
 ```
 
 ```output
@@ -5362,50 +5332,55 @@ square
 
 ### A union, or an optional of one, cast to a subclass that has no case of its own is a checked down-cast through the case of a class it derives from, and a test or an arm for the subclass checks the object held there.
 
-```yumi
-. held Base = Derived()
-. derived Choice = held
-. optional Choice? = held
-. base Choice = Base()
-. number Choice = 7
--- (derived as Derived).extra
--- (optional as Derived).extra
--- catch (base as Derived)
--- catch (number as Derived)
--- describe(derived)
--- describe(base)
--- describe(number)
+```brix
+(main
+  (let held Base (call Derived))
+  (let derived Choice held)
+  (let optional (? Choice) held)
+  (let base Choice (call Base))
+  (let number Choice 7)
+  (print (. (as derived Derived) extra))
+  (print (. (as optional Derived) extra))
+  (print (catch (as base Derived)))
+  (print (catch (as number Derived)))
+  (print (call describe derived))
+  (print (call describe base))
+  (print (call describe number))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do describe String
-    - value Choice
-
-. arm = match value
-    | d Derived
-        "derived arm ${d.extra}"
-    | b Base
-        "base arm ${b.name}"
-    ??
+(fn-do _ describe String
+  (param value Choice)
+  (let arm
+    (match value
+      (case (: d Derived)
+        (str "derived arm " (. d extra))
+      )
+      (case (: b Base)
+        (str "base arm " (. b name))
+      )
+      (default
         "other arm"
-if value is not Derived
-    = "not derived, $arm"
-= "derived ${value.extra}, $arm"
+      )
+    )
+  )
+  (if (is-not value Derived)
+    (return (str "not derived, " arm))
+  )
+  (return (str "derived " (. value extra) ", " arm))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + name _ (= "base"))
+)
 
-+ name = "base"
+(type + Derived (is Base)
+  (prop + extra _ (= "extra"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-+ extra = "extra"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| Int
-| Base
+(type + Choice (is Union)
+  (variant Int)
+  (variant Base)
+)
 ```
 
 ```output
@@ -5420,127 +5395,124 @@ not derived, other arm
 
 ### A union cast to a class no case of which derives from or is derived from it is illegal.
 
-```yumi crash
-. value Choice = 7
--- (value as Other).name
+```brix crash
+(main
+  (let value Choice 7)
+  (print (. (as value Other) name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + name _ (= "base"))
+)
 
-+ name = "base"
+(type + Other
+  (prop + name _ (= "other"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Other
-
-+ name = "other"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| Int
-| Base
+(type + Choice (is Union)
+  (variant Int)
+  (variant Base)
+)
 ```
 
 ```output
 Exception: Choice cannot be cast to Other; there is no conversion between them
-<no file:3>
-    -- (value as Other).name
-        ^^^^^^^^^^^^^^
+<no file:4>
+      (print (. (as value Other) name))
+                ^^^^^^^^^^^^^^^^
 ```
 
 ### The false edge of a test for a class keeps a union's case for an interface the class implements or for a class it derives from, either of which may hold an object of another class.
 
-```yumi
-show-slot(First())
-show-slot(Second())
-show-slot(7)
-show-choice(Derived())
-show-choice(Base())
-show-choice(7)
+```brix
+(main
+  (call show-slot (call First))
+  (call show-slot (call Second))
+  (call show-slot 7)
+  (call show-choice (call Derived))
+  (call show-choice (call Base))
+  (call show-choice 7)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do show-slot
-    - value Slot
+(fn-do _ show-slot _
+  (param value Slot)
+  (if (is value First)
+    (print "first")
+    (else
+      (print (call describe-slot value))
+    )
+  )
+)
 
-if value is First
-    -- "first"
-else
-    -- describe-slot(value)
+(fn-expr _ describe-slot String
+  (param value Slot)
+  (match value
+    (case Int
+      "int"
+    )
+    (case (: n Named)
+      (str "named " (. n label))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ describe-slot String
-    - value Slot
+(fn-do _ show-choice _
+  (param value Choice)
+  (if (is value Derived)
+    (print "derived")
+    (else
+      (print (call describe-choice value))
+    )
+  )
+)
 
-match value
-    | Int
-        "int"
-    | n Named
-        "named ${n.label}"
+(fn-expr _ describe-choice String
+  (param value Choice)
+  (match value
+    (case Int
+      "int"
+    )
+    (case (: b Base)
+      (str "base " (. b name))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do show-choice
-    - value Choice
+(type + Named (is Interface)
+  (fn-expr + label String :get)
+)
 
-if value is Derived
-    -- "derived"
-else
-    -- describe-choice(value)
+(type + First
+  (implements Named)
+  (fn-expr + label _ :get
+    "first"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ describe-choice String
-    - value Choice
+(type + Second
+  (implements Named)
+  (fn-expr + label _ :get
+    "second"
+  )
+)
 
-match value
-    | Int
-        "int"
-    | b Base
-        "base ${b.name}"
+(type + Slot (is Union)
+  (variant Int)
+  (variant Named)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named is Interface
+(type + Base
+  (prop + name _ (= "base"))
+)
 
-────────────────────
-+ get label String
+(type + Derived (is Base)
+  (prop + name _ (= "derived"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ First
-    is Named
-
-────────────────────
-+ get label
-
-"first"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Second
-    is Named
-
-────────────────────
-+ get label
-
-"second"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Slot is Union
-
-| Int
-| Named
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-+ name = "base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-+ name = "derived"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| Int
-| Base
+(type + Choice (is Union)
+  (variant Int)
+  (variant Base)
+)
 ```
 
 ```output
@@ -5554,59 +5526,61 @@ int
 
 ### A case an `is` test names must be a case some type declares.
 
-```yumi crash
-. shape Shape = Circle(2)
--- shape is .triangle
+```brix crash
+(main
+  (let shape Shape (call Circle 2))
+  (print (is shape .triangle))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Circle is Tuple
+(type + Circle (is Tuple)
+  (prop + radius Int)
+)
 
-+ radius Int
+(type + Square (is Tuple)
+  (prop + side Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Square is Tuple
-
-+ side Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
-
-| circle Circle
-| square Square
+(type + Shape (is Union)
+  (variant circle Circle)
+  (variant square Square)
+)
 ```
 
 ```output
 Exception: Case ".triangle" not found in Shape
-<no file:3>
-    -- shape is .triangle
-                ^^^^^^^^^
+<no file:4>
+      (print (is shape .triangle))
+                       ^^^^^^^^^
 ```
 
 ### A local of a union whose first case is Null, declared with no value, holds null.
 
-```yumi
-. empty Shape
--- describe(empty)
-empty = "text"
--- describe(empty)
+```brix
+(main
+  (let empty Shape)
+  (print (call describe empty))
+  (= empty "text")
+  (print (call describe empty))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
+(type + Shape (is Union)
+  (variant Null)
+  (variant I64)
+  (variant String)
+)
 
-| Null
-| I64
-| String
-
-━━━━━━━━━━━━━━━━━━━━
-_ describe String
-    - value Shape
-
-|? value is Null
+(fn-expr _ describe String
+  (param value Shape)
+  (case? (is value Null)
     "null"
-|? value is String
+  )
+  (case? (is value String)
     "text"
-??
-    "number ${value as I64}"
+  )
+  (default
+    (str "number " (as value I64))
+  )
+)
 ```
 
 ```output
@@ -5614,38 +5588,33 @@ null
 text
 ```
 
-```yumi
-. a = Part.text("x")
-. b = Part.item(Thing(1))
--- a != b
--- a == Part.text("x")
+```brix
+(main
+  (let a (call (. Part text) "x"))
+  (let b (call (. Part item) (call Thing 1)))
+  (print (!= a b))
+  (print (== a (call (. Part text) "x")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Valued
+(type + Thing
+  (implements Valued)
+  (prop + id Int)
+  (fn-do + This _
+    (param id _)
+  )
+  (fn-expr + key String :get
+    (str id)
+  )
+)
 
-+ id Int
+(type + Part (is Union)
+  (variant text String)
+  (variant item Valued)
+)
 
-────────────────────
-+ This
-    - id
-
-────────────────────
-+ get key String
-
-"$id"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Part is Union
-
-| text String
-| item Valued
-
-━━━━━━━━━━━━━━━━━━━━
-+ Valued is Interface
-
-────────────────────
-+ get key String
+(type + Valued (is Interface)
+  (fn-expr + key String :get)
+)
 ```
 
 ```output
@@ -5655,42 +5624,42 @@ true
 
 ### A number alias wraps into the union case of its own kind before converting to another one
 
-```yumi
-. amount Amount = 1.5
-. span Span = 2.5
-. count Count = 3
-. small F32 = 4.5
--- describe(amount)
--- describe(span)
--- describe(count)
--- describe(small)
-. listed = List'Number(each in [amount, amount * 2])
--- describe(listed[1])
+```brix
+(main
+  (let amount Amount 1.5)
+  (let span Span 2.5)
+  (let count Count 3)
+  (let small F32 4.5)
+  (print (call describe amount))
+  (print (call describe span))
+  (print (call describe count))
+  (print (call describe small))
+  (let listed (call (of List Number) (in each (list amount (* amount 2)))))
+  (print (call describe ([] listed 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Amount is Float
+(type + Amount (is Float))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Span (sp) is Float
+(type + Span (alias sp) (is Float))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Count is Int
+(type + Count (is Int))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Number is Union
+(type + Number (is Union)
+  (variant Int)
+  (variant Float)
+)
 
-| Int
-| Float
-
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - value Number
-
-match value
-    | whole Int
-        "int $whole"
-    | real Float
-        "float $real"
+(fn-expr + describe String
+  (param value Number)
+  (match value
+    (case (: whole Int)
+      (str "int " whole)
+    )
+    (case (: real Float)
+      (str "float " real)
+    )
+  )
+)
 ```
 
 ```output
@@ -5703,42 +5672,38 @@ float 3
 
 ### A union whose every case is a class casts to a pointer at the object it holds
 
-```yumi
-. circle = Circle(1)
--- same(circle, circle)
--- same(circle, Square(1))
--- same(circle, Circle(1))
+```brix
+(main
+  (let circle (call Circle 1))
+  (print (call same circle circle))
+  (print (call same circle (call Square 1)))
+  (print (call same circle (call Circle 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
+(type + Shape (is Union)
+  (variant Circle)
+  (variant Square)
+)
 
-| Circle
-| Square
+(type + Circle
+  (prop + radius Int)
+  (fn-do + This _
+    (param radius _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Circle
+(type + Square
+  (prop + side Int)
+  (fn-do + This _
+    (param side _)
+  )
+)
 
-+ radius Int
-
-────────────────────
-+ This
-    - radius
-
-━━━━━━━━━━━━━━━━━━━━
-+ Square
-
-+ side Int
-
-────────────────────
-+ This
-    - side
-
-━━━━━━━━━━━━━━━━━━━━
-+ same Bool
-    - first Shape
-    - second Shape
-
-first as Pointer == second as Pointer
+(fn-expr + same Bool
+  (param first Shape)
+  (param second Shape)
+  (== (as first Pointer) (as second Pointer))
+)
 ```
 
 ```output
@@ -5749,16 +5714,17 @@ false
 
 ### A union casts to a number its case converts to by converting the value that case holds
 
-```yumi
-. whole Reading = 3
--- (whole as Float) / 2
--- whole as I32
+```brix
+(main
+  (let whole Reading 3)
+  (print (/ (as whole Float) 2))
+  (print (as whole I32))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Reading is Union
-
-| Int
-| String
+(type + Reading (is Union)
+  (variant Int)
+  (variant String)
+)
 ```
 
 ```output
@@ -5768,54 +5734,52 @@ false
 
 ### A pointer does not cast to a union, since nothing says which case it would hold
 
-```yumi compile-error
-. circle = Circle(1)
-. shape = (circle as Pointer) as Shape
+```brix compile-error
+(main
+  (let circle (call Circle 1))
+  (let shape (as (as circle Pointer) Shape))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
+(type + Shape (is Union)
+  (variant Circle)
+  (variant Square)
+)
 
-| Circle
-| Square
+(type + Circle
+  (prop + radius Int)
+  (fn-do + This _
+    (param radius _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Circle
-
-+ radius Int
-
-────────────────────
-+ This
-    - radius
-
-━━━━━━━━━━━━━━━━━━━━
-+ Square
-
-+ side Int
-
-────────────────────
-+ This
-    - side
+(type + Square
+  (prop + side Int)
+  (fn-do + This _
+    (param side _)
+  )
+)
 ```
 
 ```output
 Exception: Pointer cannot be cast to Shape; there is no conversion between them
-<no file:3>
-    . shape = (circle as Pointer) as Shape
-              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:4>
+      (let shape (as (as circle Pointer) Shape))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A value goes into a case of a union it converts to unasked before a nearer case it converts to only when asked.
 
-```yumi
-. small = 7u32
-. v Mixed = small
--- v is F64
+```brix
+(main
+  (let small 7u32)
+  (let v Mixed small)
+  (print (is v F64))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Mixed is Union
-
-| I32
-| F64
+(type + Mixed (is Union)
+  (variant I32)
+  (variant F64)
+)
 ```
 
 ```output
@@ -5824,122 +5788,119 @@ true
 
 ### A U64 goes into a union of Int and Float only when asked, since neither holds every value of it.
 
-```yumi compile-error
-. big = 9u64
-. v Number = big
--- v
+```brix compile-error
+(main
+  (let big 9u64)
+  (let v Number big)
+  (print v)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Number is Union
-
-| Int
-| Float
+(type + Number (is Union)
+  (variant Int)
+  (variant Float)
+)
 ```
 
 ```output
-Exception: Expected Number here, but this is U64, which becomes Number only when asked; write "as Number"
-<no file:3>
-    . v Number = big
-        ^^^^^^
+Exception: Expected Number here, but this is U64, which becomes Number only when asked; write "(as big Number)"
+<no file:4>
+      (let v Number big)
+             ^^^^^^
 ```
 
 ### A union, or an optional of one, read from an object and passed or returned in registers reads none of the bytes after it, so one that ends where readable memory ends is read without a fault.
 
-```yumi
-/core/intrinsics
-/sys/mman.h
-/unistd.h
+```brix
+(import /core/intrinsics)
+(import /sys/mman.h)
+(import /unistd.h)
+(blank)
 
--- wide-argument(edge(24))
--- wide-return(edge(24))
--- narrow-argument(edge(24))
+(main
+  (print (call wide-argument (call edge 24)))
+  (print (call wide-return (call edge 24)))
+  (print (call narrow-argument (call edge 24)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Union
+(type + Wide (is Union)
+  (variant whole Int)
+  (variant ratio Float)
+)
 
-| whole Int
-| ratio Float
+(type + Narrow (is Union)
+  (variant whole I32)
+  (variant flag Bool)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Narrow is Union
+(type + WideHolder
+  (prop + value (? Wide))
+)
 
-| whole I32
-| flag Bool
+(type + NarrowHolder
+  (prop + first (? Narrow))
+  (prop + second (? Narrow))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ WideHolder
+(fn-do + wide-argument Int (without gc)
+  (param address Pointer)
+  (let holder (call (of gc-object-from-pointer WideHolder) address))
+  (= (. holder value) (call (. Wide whole) 42))
+  (return (call wide-whole (. holder value) 1))
+)
 
-+ value Wide?
+(fn-do + wide-return Int (without gc)
+  (param address Pointer)
+  (let holder (call (of gc-object-from-pointer WideHolder) address))
+  (= (. holder value) (call (. Wide whole) 43))
+  (return (call wide-whole (call wide-read holder 1) 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ NarrowHolder
+(fn-do + narrow-argument Int (without gc)
+  (param address Pointer)
+  (let holder (call (of gc-object-from-pointer NarrowHolder) address))
+  (= (. holder first) (call (. Narrow flag) true))
+  (= (. holder second) (call (. Narrow whole) 44))
+  (return (call narrow-whole (. holder second) 1))
+)
 
-+ first Narrow?
-+ second Narrow?
+(fn-do + wide-whole Int (without gc)
+  (param value (? Wide))
+  (param depth Int)
+  (return-if (call wide-whole value (- depth 1)) (if (> depth 0)))
+  (match? (!! value)
+    (case (call .whole whole)
+      (return whole)
+    )
+  )
+  (return 0)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do wide-argument Int without gc
-    - address Pointer
+(fn-do + wide-read (? Wide) (without gc)
+  (param holder WideHolder)
+  (param depth Int)
+  (return-if (call wide-read holder (- depth 1)) (if (> depth 0)))
+  (return (. holder value))
+)
 
-. holder = gc-object-from-pointer'WideHolder(address)
-holder.value = Wide.whole(42)
-= wide-whole(holder.value, 1)
+(fn-do + narrow-whole Int (without gc)
+  (param value (? Narrow))
+  (param depth Int)
+  (return-if (call narrow-whole value (- depth 1)) (if (> depth 0)))
+  (match? (!! value)
+    (case (call .whole whole)
+      (return whole)
+    )
+  )
+  (return 0)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do wide-return Int without gc
-    - address Pointer
-
-. holder = gc-object-from-pointer'WideHolder(address)
-holder.value = Wide.whole(43)
-= wide-whole(wide-read(holder, 1), 0)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do narrow-argument Int without gc
-    - address Pointer
-
-. holder = gc-object-from-pointer'NarrowHolder(address)
-holder.first = Narrow.flag(true)
-holder.second = Narrow.whole(44)
-= narrow-whole(holder.second, 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do wide-whole Int without gc
-    - value Wide?
-    - depth Int
-
-=? wide-whole(value, depth - 1) if depth > 0
-match? value!
-    | .whole(whole)
-        = whole
-= 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do wide-read Wide? without gc
-    - holder WideHolder
-    - depth Int
-
-=? wide-read(holder, depth - 1) if depth > 0
-= holder.value
-
-━━━━━━━━━━━━━━━━━━━━
-+ do narrow-whole Int without gc
-    - value Narrow?
-    - depth Int
-
-=? narrow-whole(value, depth - 1) if depth > 0
-match? value!
-    | .whole(whole)
-        = whole
-= 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do edge Pointer
-    - size U64
-
-. page = C:getpagesize() as U64
-. base = C:mmap(null, page * 2, C:PROT_READ /or/ C:PROT_WRITE, C:MAP_PRIVATE /or/ C:MAP_ANON, -1, 0)
-C:mprotect((base.address + page) as CPointer'Void, page, C:PROT_NONE)
-= (base.address + page - size) as Pointer
+(fn-do + edge Pointer
+  (param size U64)
+  (let page (as (call C:getpagesize) U64))
+  (let base (call C:mmap null (* page 2) (/or/ C:PROT_READ C:PROT_WRITE) (/or/ C:MAP_PRIVATE C:MAP_ANON) -1 0))
+  (call C:mprotect (as (+ (. base address) page) (of CPointer Void)) page C:PROT_NONE)
+  (return (as (- (+ (. base address) page) size) Pointer))
+)
 ```
 
 ```output
@@ -5948,26 +5909,25 @@ C:mprotect((base.address + page) as CPointer'Void, page, C:PROT_NONE)
 44
 ```
 
-```yumi
-. state = State()
--- state.previous == null
+```brix
+(main
+  (let state (call State))
+  (print (== (. state previous) null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shade is Tuple
+(type + Shade (is Tuple)
+  (prop + amount _ (= 0.0))
+)
 
-+ amount = 0.0
+(type + Color (is Union)
+  (variant plain (tuple Int))
+  (variant shade (tuple Shade))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Color is Union
-
-| plain(Int)
-| shade(Shade)
-
-━━━━━━━━━━━━━━━━━━━━
-+ State
-
-+ color Color?
-+ previous State?
+(type + State
+  (prop + color (? Color))
+  (prop + previous (? State))
+)
 ```
 
 ```output

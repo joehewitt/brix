@@ -1,0 +1,315 @@
+(import ./box)
+(import ./primitives)
+(import ./status-item)
+(import ./theme)
+(import ./window)
+(import /BxAppleGUI/BxAppleGUI.h)
+(import /core/intrinsics)
+(import /gc)
+(import /graphics/color)
+(import /graphics/vectorgeometry)
+(import /os/bundle)
+(import /os/path)
+(import /ui/app-state)
+(blank)
+(prop + gui-minimum-heap-goal Size (= (* 128 1024 1024)))
+
+(type + App (is GuiNode)
+  (prop + title _ (= (?? main-bundle-name "")))
+  (prop + keeps-display-awake _ (= false))
+  (prop + is-quitting _ (= false))
+  (prop + state (? AppState))
+  (prop + native (? Pointer))
+  (prop + first-window (? Window))
+  (prop + last-window (? Window))
+  (prop + status-items (list StatusItem))
+  (prop + vector-geometry-table _ (:= (call VectorGeometryTable)))
+  (prop + accents (? GUIAccents))
+  (event + open-requested (list Path))
+  (prop _ has-run _ (= false))
+  (blank)
+  (depends title-changed title)
+  (depends keeps-display-awake-changed keeps-display-awake)
+  (fn-do + This _
+    (call set-minimum-heap-goal gui-minimum-heap-goal)
+    (= native (call C:brixGuiAppCreate))
+    (call C:brixGuiAppSetQuitCallback (!! native) (as gui-app-native-quit GuiAppCallback) (as this Pointer))
+    (call C:brixGuiAppSetBackgroundCallback
+      (block
+        (arg (!! native))
+        (arg (as gui-app-native-background GuiAppCallback))
+        (arg (as this Pointer))
+      )
+    )
+    (call C:brixGuiAppSetOpenCallback (!! native) (as gui-app-native-open GuiAppOpenCallback) (as this Pointer))
+    (call C:brixGuiAppSetSystemCallback (!! native) (as gui-app-native-system GuiAppCallback) (as this Pointer))
+    (call title-changed)
+    (call when-main-ends autorun)
+  )
+  (fn-do + title-changed _
+    (if native
+      (call C:brixGuiAppSetTitle native title)
+    )
+  )
+  (fn-do + keeps-display-awake-changed _
+    (if native
+      (call C:brixGuiAppSetKeepsDisplayAwake native keeps-display-awake)
+    )
+  )
+  (fn-do + ensure-accents _
+    (return-if (if accents))
+    (call sync-accents)
+  )
+  (fn-do + system-changed _
+    (let restyles (call sync-accents))
+    (for (in window windows)
+      (call (. window system-changed) restyles)
+    )
+  )
+  (fn-do _ sync-accents Bool
+    (let read
+      (call GUIAccents
+        (block
+          (arg (call gui-system-color (. GUISystemColor accent) (. WindowAppearance dark)))
+          (arg (call gui-system-color (. GUISystemColor selection) (. WindowAppearance dark)))
+          (arg (call gui-system-color (. GUISystemColor unemphasized-selection) (. WindowAppearance dark)))
+          (arg (call gui-system-color (. GUISystemColor accent) (. WindowAppearance light)))
+          (arg (call gui-system-color (. GUISystemColor selection) (. WindowAppearance light)))
+          (arg (call gui-system-color (. GUISystemColor unemphasized-selection) (. WindowAppearance light)))
+        )
+      )
+    )
+    (return-if false (if (== accents read)))
+    (= accents read)
+    (call gui-use-accents read)
+    (return true)
+  )
+  (fn-do + windows _ :get
+    (let window first-window)
+    (while window
+      (yield window)
+      (= window (. window next-window))
+    )
+  )
+  (fn-do + (infix this += (param window Window)) _
+    (= (. window app) this)
+    (if (not first-window)
+      (= first-window (= last-window window))
+      (else
+        (= (?. last-window next-window) window)
+        (= (. window previous-window) last-window)
+        (= last-window window)
+      )
+    )
+    (blank)
+    (return window)
+  )
+  (fn-do + remove-window _
+    (param window Window)
+    (let before (. window previous-window))
+    (let after (. window next-window))
+    (if before
+      (= (. before next-window) after)
+    )
+    (if after
+      (= (. after previous-window) before)
+    )
+    (if (== (as first-window Pointer) (as window Pointer))
+      (= first-window after)
+    )
+    (if (== (as last-window Pointer) (as window Pointer))
+      (= last-window before)
+    )
+  )
+  (fn-do + (infix this += (param status-item StatusItem)) _
+    (= (. status-item app) this)
+    (+= status-items status-item)
+    (return status-item)
+  )
+  (fn-expr + markup-make-region (? GuiNode)
+    (call AppRegion this)
+  )
+  (fn-do + markup-attach-child _
+    (param child GuiNode)
+    (param anchor (? GuiNode))
+    (match? child
+      (case (: window Window)
+        (+= this window)
+      )
+      (case (: status-item StatusItem)
+        (+= this status-item)
+      )
+    )
+    (return-if (if (not has-run)))
+    (do-new
+      (call open-joined child)
+    )
+  )
+  (fn-do + markup-detach-child _
+    (param child GuiNode)
+    (match? child
+      (case (: window Window)
+        (call remove-window window)
+        (= (. window app) null)
+      )
+      (case (: status-item StatusItem)
+        (-= status-items status-item)
+        (= (. status-item app) null)
+      )
+    )
+  )
+  (fn-do _ open-joined _
+    (param child GuiNode)
+    (match? child
+      (case (: window Window)
+        (if (and (== (. window app) this) (not (. window has-opened)))
+          (call (. window open))
+        )
+      )
+      (case (: status-item StatusItem)
+        (if (== (. status-item app) this)
+          (call (. status-item open))
+        )
+      )
+    )
+  )
+  (fn-do + run _
+    (= has-run true)
+    (for (in window windows)
+      (call (. window open))
+    )
+    (for (in status-item status-items)
+      (call (. status-item open))
+    )
+    (call ensure-accents)
+    (blank)
+    (call C:brixGuiAppRun (!! native))
+    (call close)
+    (call (. (call Task) when-finished) end-process)
+  )
+  (fn-do _ autorun _
+    (return-if (if (or has-run (not native))))
+    (call run)
+  )
+  (fn-do _ end-process _
+    (call request-process-termination 0)
+  )
+  (fn-do + quit _
+    (= is-quitting true)
+    (for (in window windows)
+      (if (not (call (. window request-close)))
+        (= is-quitting false)
+        (return)
+      )
+    )
+    (call stop)
+  )
+  (fn-do + stop _
+    (call C:brixGuiAppStop (!! native))
+  )
+  (fn-do + close _
+    (for (in window windows)
+      (call (. window close))
+    )
+    (for (in status-item status-items)
+      (call (. status-item close))
+    )
+    (call (. super close)
+      (block
+        (on-error (: error Error)
+          (call unhandled-error error)
+        )
+      )
+    )
+    (let store state)
+    (if store
+      (call (. store flush))
+    )
+    (blank)
+    (if native
+      (call C:brixGuiAppRelease native)
+      (= native null)
+    )
+  )
+)
+
+(type _ AppRegion (is GuiRegion)
+  (prop + app App)
+  (fn-do + This _
+    (param app _)
+  )
+  (fn-expr + markup-make-region (? GuiNode)
+    (call AppRegion app)
+  )
+  (fn-do + markup-attach-child _
+    (param child GuiNode)
+    (param anchor (? GuiNode))
+    (call (. app markup-attach-child) child anchor)
+  )
+  (fn-do + markup-detach-child _
+    (param child GuiNode)
+    (call (. app markup-detach-child) child)
+  )
+)
+
+(fn-expr + gui-system-appearance WindowAppearance
+  (as (call C:brixGuiSystemAppearance) WindowAppearance)
+)
+
+(fn-expr + gui-system-color RGBA
+  (param color GUISystemColor)
+  (param appearance WindowAppearance)
+  (call rgba8 (call C:brixGuiSystemColor color appearance))
+)
+
+(type + GUISystemOptions (is Tuple)
+  (prop + reduces-motion Bool)
+  (prop + increases-contrast Bool)
+  (prop + reduces-transparency Bool)
+)
+
+(fn-expr + gui-system-options GUISystemOptions
+  (call GUISystemOptions (!= (/and/ bits 1) 0) (!= (/and/ bits 2) 0) (!= (/and/ bits 4) 0))
+  (where
+    (lazy bits (call C:brixGuiSystemOptions))
+  )
+)
+
+(type + GuiAppCallback (is (c-fn-type Void (param app-pointer Pointer))))
+
+(type + GuiAppOpenCallback (is (c-fn-type Void (param app-pointer Pointer) (param paths (of CPointer (of CPointer Char8))) (param count I32))))
+
+(fn-do _ gui-app-native-quit _
+  (param app-pointer Pointer)
+  (call (. (call (of gc-object-from-pointer App) app-pointer) quit)
+    (block
+      (on-error (: error Error)
+        (call unhandled-error error)
+      )
+    )
+  )
+)
+
+(fn-do _ gui-app-native-background _
+  (param app-pointer Pointer)
+  (let store (. (call (of gc-object-from-pointer App) app-pointer) state))
+  (if store
+    (call (. store flush))
+  )
+)
+
+(fn-do _ gui-app-native-system _
+  (param app-pointer Pointer)
+  (call (. (call (of gc-object-from-pointer App) app-pointer) system-changed))
+)
+
+(fn-do _ gui-app-native-open _
+  (param app-pointer Pointer)
+  (param paths (of CPointer (of CPointer Char8)))
+  (param count I32)
+  (let opened (call (of List Path)))
+  (for (in index (..< 0 count))
+    (+= opened (call Path ([] paths index) 0))
+  )
+  (<- (. (call (of gc-object-from-pointer App) app-pointer) open-requested) opened)
+)

@@ -1,0 +1,30 @@
+; benchmark.meta description: Measures expansion of immutable tuple parameters and receivers in a hot loop.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core)
+(blank)
+
+(main
+  (let checksum 0u64)
+  (for (in index (..< 0u64 5000000u64))
+    (+= checksum (call total (call Quad index (+ index 1) (+ index 2) (+ index 3))))
+  )
+  (blank)
+  (print (str "bench-result compiler-shape/tuple-inlining checksum=" checksum))
+)
+
+(type + Quad (is Tuple)
+  (prop + a U64)
+  (prop + b U64)
+  (prop + c U64)
+  (prop + d U64)
+  (fn-expr + sum U64 @inline
+    (+ a b c d)
+  )
+)
+
+(fn-expr + total U64 @inline
+  (param value Quad)
+  (+ (call (. value sum)) (. value a))
+)

@@ -1,0 +1,24 @@
+; benchmark.meta description: Repeatedly reads the first codepoint of a resident 1024-codepoint String.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator,string-iteration
+(blank)
+
+(main
+  (let block "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+  (let source (* block 16))
+  (let repetitions 1000000)
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in iteration (..< 0 repetitions))
+    (+= checksum (as ([] source 0) Size))
+  )
+  (blank)
+  (if (!= checksum 48000000)
+    (throw (call Panic "indexed-first benchmark produced the wrong checksum"))
+  )
+  (blank)
+  (probe-count string-iteration.benchmark-passes repetitions)
+  (probe-count string-iteration.benchmark-codepoints repetitions)
+  (probe-count string-iteration.benchmark-checksum checksum)
+  (print (str "bench-result string/indexed-first checksum=" checksum))
+)

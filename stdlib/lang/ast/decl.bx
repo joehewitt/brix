@@ -1,0 +1,397 @@
+(import ./ast-nodes)
+(import ./operator)
+(import ./row-range)
+(blank)
+(type-line + DeclId (is U32))
+
+(type + Decl (is Union)
+  (variant decl-none NoDecl)
+  (variant decl-function FunctionDecl)
+  (variant decl-class ClassDecl)
+  (variant decl-extension ExtensionDecl)
+  (variant decl-converter ConverterDecl)
+  (variant decl-fromverter FromverterDecl)
+  (variant decl-property PropertyDecl)
+  (variant decl-event EventDecl)
+  (variant decl-unit UnitDecl)
+  (variant decl-import ImportDecl)
+  (variant decl-associated AssociatedDecl)
+  (variant decl-case CaseDecl)
+  (variant decl-using UsingDecl)
+  (variant decl-rule RuleDecl)
+  (variant decl-style-domains StyleDomainsDecl)
+  (variant decl-style-rule StyleRuleDecl)
+  (variant decl-sheet-extension SheetExtensionDecl)
+  (variant decl-effect EffectDecl)
+)
+
+(type + DeclNode (is Tuple)
+  (prop + syntax SyntaxId)
+)
+
+(type + NoDecl (is DeclNode))
+
+(type + FunctionDecl (is DeclNode)
+  (prop + name (? Atom))
+  (prop + names (of RowRange Atom))
+  (prop + owner DeclId)
+  (prop + access Access)
+  (prop + kind DeclKind)
+  (prop + args (of RowRange ArgumentShape))
+  (prop + return-type SyntaxId)
+  (prop + errors (of RowRange SyntaxId))
+  (prop + effects CompilationEffect)
+  (prop + is-static Bool)
+  (prop + body SyntaxId)
+  (prop + subtree SyntaxRange)
+  (prop + type-args (of RowRange SyntaxId))
+  (prop + param-constraints (of RowRange SyntaxId))
+  (prop + param-assignments (of RowRange SyntaxId))
+  (prop + variadic-index U32)
+  (prop + required-count U32)
+  (prop + is-generated Bool)
+  (prop + delegates (of RowRange SyntaxId) (= (call (of RowRange SyntaxId))))
+  (prop + named-by SyntaxId (= 0))
+  (prop + is-content Bool)
+)
+
+(type + ClassDecl (is DeclNode)
+  (prop + name Atom)
+  (prop + aliases (of RowRange Atom))
+  (prop + type-args (of RowRange SyntaxId))
+  (prop + base SyntaxId)
+  (prop + members (of RowRange DeclId))
+  (prop + access Access)
+  (prop + interfaces (of RowRange SyntaxId))
+  (prop + param-constraints (of RowRange SyntaxId))
+  (prop + param-assignments (of RowRange SyntaxId))
+  (prop + or-bases (of RowRange SyntaxId))
+  (prop + content SyntaxId (= 0))
+  (prop + delegated (of RowRange SyntaxId) (= (call (of RowRange SyntaxId))))
+  (prop + content-function DeclId (= 0))
+)
+
+(type + ExtensionDecl (is DeclNode)
+  ; Members added to a type declared elsewhere. One with a name is a facet: a part of the class
+  ; its `receiver` names, or of another facet of it, declared in the class's file family, which
+  ; holds state in the class's objects, reaches the facets its `sees` names and makes the class
+  ; implement the `interfaces` it names.
+  (blank)
+  (prop + receiver SyntaxId)
+  (prop + members (of RowRange DeclId))
+  (prop + access Access)
+  (prop + param-constraints (of RowRange SyntaxId))
+  (prop + param-assignments (of RowRange SyntaxId))
+  (prop + facet (? Atom) (= null))
+  (prop + sees (of RowRange SyntaxId) (= (call (of RowRange SyntaxId))))
+  (prop + interfaces (of RowRange SyntaxId) (= (call (of RowRange SyntaxId))))
+)
+
+(type + SheetExtensionDecl (is DeclNode)
+  ; An extension of a style sheet, `• extend Name`, whose `members`, the usings and style rules it
+  ; declares, the style sheet its `receiver` names has as its own.
+  (blank)
+  (prop + receiver SyntaxId)
+  (prop + members (of RowRange DeclId))
+)
+
+(type + ConverterDecl (is DeclNode)
+  (prop + owner DeclId)
+  (prop + target-type SyntaxId)
+  (prop + access Access)
+  (prop + param-constraints (of RowRange SyntaxId))
+  (prop + param-assignments (of RowRange SyntaxId))
+)
+
+(type + FromverterDecl (is DeclNode)
+  (prop + owner DeclId)
+  (prop + source-type SyntaxId)
+  (prop + access Access)
+)
+
+(type + PropertyDecl (is DeclNode)
+  ; A property. `element` is the markup element whose name declares it, which makes it readable
+  ; from any module, as the reference's `markupIds` does. `flag` is the case of a state machine
+  ; whose flag it is, a `Bool` that says whether the case is active. `context` is the first
+  ; transition of a group of a state machine's event transitions at its root whose activation it
+  ; holds, a `Pointer` the event runtime's table reaches it by. `line` is the line of a class's
+  ; markup that declares it and gives it its value where the line runs (`content-property`).
+  ; `part` is the state machine of a property of a class, which may refine the machine the base's
+  ; property of that name holds; it holds the machine's part for the object, the function the other
+  ; machines merged with it call, with its environment, as a function value (`-> Void`).
+  ; `projection` is the case of a machine a class's markup writes that holds a value, which it
+  ; projects: what the case holds while it is active, and nothing while it is not.
+  (blank)
+  (prop + name (? Atom))
+  (prop + owner DeclId)
+  (prop + type-syntax SyntaxId)
+  (prop + value SyntaxId)
+  (prop + decoration (? Atom))
+  (prop + access Access)
+  (prop + is-lazy Bool)
+  (prop + delegates (of RowRange SyntaxId))
+  (prop + defaults-root Bool)
+  (prop + element SyntaxId (= 0))
+  (prop + flag SyntaxId (= 0))
+  (prop + context SyntaxId (= 0))
+  (prop + line SyntaxId (= 0))
+  (prop + part SyntaxId (= 0))
+  (prop + projection SyntaxId (= 0))
+)
+
+(type + EventDecl (is DeclNode)
+  (prop + name Atom)
+  (prop + owner DeclId)
+  (prop + access Access)
+  (prop + type-syntax SyntaxId)
+  (prop + key-type SyntaxId)
+)
+
+(type + EffectDecl (is DeclNode)
+  ; An effect a library declares, with the C functions it claims.
+  (blank)
+  (prop + name Atom)
+  (prop + access Access)
+  (prop + claims (of RowRange Atom))
+)
+
+(type + UnitDecl (is DeclNode)
+  (prop + owner DeclId)
+  (prop + access Access)
+  (prop + number SyntaxId)
+  (prop + value SyntaxId)
+)
+
+(type + ImportDecl (is DeclNode)
+  (prop + paths (of RowRange Atom))
+  (prop + is-export Bool)
+)
+
+(type + AssociatedDecl (is DeclNode)
+  (prop + name Atom)
+  (prop + owner DeclId)
+  (prop + type-args (of RowRange SyntaxId))
+  (prop + binding SyntaxId)
+  (prop + access Access)
+)
+
+(type + CaseDecl (is DeclNode)
+  (prop + name (? Atom))
+  (prop + owner DeclId)
+  (prop + type-syntax SyntaxId)
+  (prop + value SyntaxId)
+)
+
+(type + UsingDecl (is DeclNode)
+  (prop + owner DeclId)
+  (prop + type-syntax SyntaxId)
+)
+
+(type + RuleDecl (is DeclNode)
+  ; A rule of a class, which its constructors run once their bodies have: `when`, `whenever` on
+  ; a value, a dependency `. m < p`, or a section that subscribes to a stream, `on s`.
+  (blank)
+  (prop + owner DeclId)
+)
+
+(type + StyleDomainsDecl (is DeclNode)
+  ; A line of a style class naming the domains a change to one of its properties raises, on the
+  ; node itself or on its parent: `. ink -> paint`, `. flex -> layout on parent`.
+  (blank)
+  (prop + owner DeclId)
+)
+
+(type + StyleRuleDecl (is DeclNode)
+  ; A style rule a class writes, `• name:arg T`, which markup applies by naming it or by matching
+  ; it to the type or id of what it makes; or one written in the body of another, or of one of
+  ; its `when`s (`outer`), which is no member of the class: markup under an element the rule
+  ; holding it is applied to applies it.
+  (blank)
+  (prop + name Atom)
+  (prop + owner DeclId)
+  (prop + outer DeclId)
+)
+
+(type + ArgumentShape (is Tuple)
+  (prop + name (? Atom))
+  (prop + type-syntax SyntaxId)
+  (prop + default-syntax SyntaxId)
+  (prop + pattern SyntaxId)
+  (prop + is-variadic Bool)
+  (prop + specificity Specificity)
+  (prop + has-default Bool)
+)
+
+(type + CapturedName (is Tuple)
+  (prop + name (? Atom))
+  (prop + type-syntax SyntaxId)
+)
+
+(type + DeclKind (is U32)
+  (variant function-decl (= 0))
+  (variant getter-decl (= 1))
+  (variant setter-decl (= 2))
+  (variant constructor-decl (= 3))
+  (variant default-constructor-decl (= 4))
+  (variant cast-constructor-decl (= 5))
+  (variant main-decl (= 6))
+  (variant tuple-constructor-decl (= 7))
+  (variant closure-decl (= 8))
+  (variant task-decl (= 9))
+  (variant table-size-constructor-decl (= 10))
+  (variant table-arena-constructor-decl (= 11))
+  (variant table-capacity-constructor-decl (= 12))
+  (variant table-filler-constructor-decl (= 13))
+  (variant iterator-decl (= 14))
+  (variant feed-decl (= 15))
+  (variant pipeline-decl (= 16))
+  (variant index-span-source-constructor-decl (= 17))
+  (variant index-span-range-constructor-decl (= 18))
+  (variant init-decl (= 19))
+  (variant task-main-decl (= 20))
+  (variant termination-panic-decl (= 21))
+  (variant subscriber-decl (= 22))
+  (variant live-decl (= 23))
+  (variant whenever-decl (= 24))
+  (variant branch-arm-decl (= 25))
+  (variant branch-decl (= 26))
+  (variant row-decl (= 27))
+  (variant source-decl (= 28))
+  (variant key-decl (= 29))
+  (variant slot-decl (= 30))
+  (variant binder-decl (= 31))
+  (variant machine-decl (= 32))
+  (variant gate-decl (= 33))
+  (variant region-decl (= 34))
+  (variant selector-decl (= 35))
+)
+
+(fn-expr + is-table-constructor-kind Bool
+  (param kind DeclKind)
+  ; A generated constructor of a table type whose arguments follow from the kind rather than
+  ; from declared argument syntax: size, arena, arena with capacity, or size with a filler, and
+  ; an index span's source with or without a range.
+  (case? (or (== kind .table-size-constructor-decl) (== kind .table-arena-constructor-decl))
+    true
+  )
+  (case? (or (== kind .table-capacity-constructor-decl) (== kind .table-filler-constructor-decl))
+    true
+  )
+  (default
+    (call is-index-span-constructor-kind kind)
+  )
+)
+
+(fn-expr + is-index-span-constructor-kind Bool
+  (param kind DeclKind)
+  (or (== kind .index-span-source-constructor-decl) (== kind .index-span-range-constructor-decl))
+)
+
+(fn-expr + is-startup-kind Bool
+  (param kind DeclKind)
+  ; A function the program's start runs and no source names: a module's init, which runs the
+  ; module's statements, or the task main, which runs every init in order.
+  (or (== kind .init-decl) (== kind .task-main-decl))
+)
+
+(fn-expr + is-nested-kind Bool
+  (param kind DeclKind)
+  ; A lambda, a task body, the body of a `do without gc` block, or a comprehension, feed list,
+  ; pipeline body or loop on a stream compiled as a closure, the function that runs a live statement
+  ; again or tests a `whenever` clause again, one that builds an arm of a markup branch region or
+  ; selects its arm again, or one that builds a row of a markup loop region, keys it or reads its
+  ; container again, one that builds what a markup element gives a slot, one that gives the name of an
+  ; element that gives slots content its object, a state machine, or one that tests again the
+  ; condition a style rule written on a markup element is applied under: a function row that lives
+  ; inside another function's subtree and is bound as part of its owner rather than on its own.
+  (case? (or (== kind .closure-decl) (== kind .task-decl) (== kind .iterator-decl) (== kind .gate-decl))
+    true
+  )
+  (case? (== kind .region-decl)
+    true
+  )
+  (case? (or (== kind .feed-decl) (== kind .pipeline-decl))
+    true
+  )
+  (case? (or (== kind .branch-arm-decl) (== kind .branch-decl) (== kind .selector-decl))
+    true
+  )
+  (case? (or (== kind .row-decl) (== kind .source-decl) (== kind .key-decl))
+    true
+  )
+  (case? (or (== kind .slot-decl) (== kind .binder-decl) (== kind .machine-decl))
+    true
+  )
+  (default
+    (or (== kind .subscriber-decl) (== kind .live-decl) (== kind .whenever-decl))
+  )
+)
+
+(fn-expr + is-closure-like Bool
+  (param kind DeclKind)
+  ; A nested function a stack trace names as a closure: a lambda, or a comprehension, feed
+  ; list, pipeline body, loop on a stream or live statement compiled as one. A task body and the
+  ; body of a `do without gc` block are nested and are no closures.
+  (and (call is-nested-kind kind) (!= kind .task-decl) (!= kind .region-decl))
+)
+
+(type + Specificity (is U32)
+  (variant convertible (= 0))
+  (variant similar (= 1))
+  (variant exact (= 2))
+  (variant none (= 3))
+)
+
+(type + CallArgument (is Tuple)
+  (prop + name (? Atom))
+  (prop + is-optional Bool)
+  (prop + is-variadic-list Bool)
+  (prop + is-property Bool)
+  (prop + is-skipped Bool)
+  (prop + symbol (? Atom) (= null))
+  (prop + literal SyntaxId (= 0))
+  (prop + other-symbol (? Atom) (= null))
+)
+
+(type + ArgumentFill (is U32)
+  (variant fill-empty (= 4294967295))
+  (variant fill-variadic (= 4294967294))
+)
+
+(type + ViabilityKind (is U32)
+  (variant fully-viable (= 0))
+  (variant partially-viable (= 1))
+  (variant not-viable (= 2))
+)
+
+(type + Viability (is Tuple)
+  (prop + kind ViabilityKind)
+  (prop + filled U32)
+  (prop + tail-count U32)
+)
+
+(fn-expr + is-overridable-kind Bool
+  (param kind DeclKind)
+  (or (== kind .function-decl) (== kind .getter-decl) (== kind .setter-decl))
+)
+
+(fn-expr + is-specificity Specificity
+  (param op Operator)
+  (match op
+    (case= .is-exactly-op
+      .exact
+    )
+    (case= .is-not-exactly-op
+      .exact
+    )
+    (case= .is-similar-op
+      .convertible
+    )
+    (case= .is-not-similar-op
+      .convertible
+    )
+    (default
+      .similar
+    )
+  )
+)

@@ -1,9 +1,5 @@
 # Expression expressions
 
-```yumi
-#foo
-```
-
 ```brix
 (main
   #foo
@@ -12,10 +8,6 @@
 
 ```output
 <Id name="foo" tracked="true"/>
-```
-
-```yumi
-object.#foo
 ```
 
 ```brix
@@ -30,10 +22,6 @@ object.#foo
 </Get>
 ```
 
-```yumi
-$foo
-```
-
 ```brix
 (main
   $foo
@@ -42,10 +30,6 @@ $foo
 
 ```output
 <StyleRead name="foo"/>
-```
-
-```yumi
-object.$foo
 ```
 
 ```brix
@@ -60,10 +44,6 @@ object.$foo
 </StyleRead>
 ```
 
-```yumi
-object?.$foo
-```
-
 ```brix
 (main
   (?. object $foo)
@@ -76,10 +56,6 @@ object?.$foo
 </StyleRead>
 ```
 
-```yumi
-##foo
-```
-
 ```brix
 (main
   (## foo)
@@ -90,10 +66,6 @@ object?.$foo
 <Latest>
     <Id name="foo"/>
 </Latest>
-```
-
-```yumi
-foo • of ##foo
 ```
 
 ```brix
@@ -111,10 +83,6 @@ foo • of ##foo
         </Latest>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-<foo>
 ```
 
 ```brix

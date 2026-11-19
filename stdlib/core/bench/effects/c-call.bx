@@ -1,0 +1,25 @@
+; benchmark.meta description: Calls a C function directly in a hot loop, against which a call of a door that wraps it is measured.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /stdlib.h)
+(blank)
+
+(main
+  (let pass-count (as 200000000 I64))
+  (let checksum (as 0 I64))
+  (blank)
+  (+= checksum (call sum-magnitudes pass-count))
+  (blank)
+  (print (str "bench-result effects/c-call checksum=" checksum))
+)
+
+(fn-do _ sum-magnitudes I64
+  (param passes I64)
+  (let checksum (as 0 I64))
+  (let half (/ passes 2))
+  (for (in index (..< 0 passes))
+    (+= checksum (call C:labs (- index half)))
+  )
+  (return checksum)
+)

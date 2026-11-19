@@ -1,33 +1,34 @@
 # Lint expression functions
 
-```yumi
-_ current Int = 1
+```brix
+(prop _ current Int (= 1))
+(blank)
 
--- eager()
-current = 1
--- deferred()
+(main
+  (print (call eager))
+  (= current 1)
+  (print (call deferred))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do eager Int
+(fn-do + eager Int
+  (let snapshot current)
+  (throw (call Panic "unexpected") (if (call advance)))
+  (return snapshot)
+)
 
-. snapshot = current
-?! Panic("unexpected")
-    if advance()
-= snapshot
+(fn-expr + deferred Int
+  (before
+    (throw (call Panic "unexpected") (if (call advance)))
+  )
+  (scope snapshot
+    (lazy snapshot current)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ deferred Int
-
-?! Panic("unexpected")
-    if advance()
-snapshot
-    .. snapshot = current
-
-━━━━━━━━━━━━━━━━━━━━
-+ do advance Bool
-
-current = 2
-= false
+(fn-do + advance Bool
+  (= current 2)
+  (return false)
+)
 ```
 
 ```output
@@ -35,40 +36,38 @@ current = 2
 2
 ```
 
-```yumi
-_ invocations Int = 0
+```brix
+(prop _ invocations Int (= 0))
+(blank)
 
--- invoke(DefaultHook())
--- invoke(ActiveHook())
--- invoke(ActiveHook())
+(main
+  (print (call invoke (call DefaultHook)))
+  (print (call invoke (call ActiveHook)))
+  (print (call invoke (call ActiveHook)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Hook is Interface
+(type + Hook (is Interface)
+  (fn-do + value Int
+    (return 0)
+  )
+)
 
-────────────────────
-+ do value Int
+(type + DefaultHook
+  (implements Hook)
+)
 
-= 0
+(type + ActiveHook
+  (implements Hook)
+  (fn-do + value Int
+    (+= invocations 1)
+    (return invocations)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ DefaultHook
-    is Hook
-
-━━━━━━━━━━━━━━━━━━━━
-+ ActiveHook
-    is Hook
-
-────────────────────
-+ do value Int
-
-invocations += 1
-= invocations
-
-━━━━━━━━━━━━━━━━━━━━
-+ do invoke Int
-    - hook Hook
-
-= hook.value()
+(fn-do + invoke Int
+  (param hook Hook)
+  (return (call (. hook value)))
+)
 ```
 
 ```output
@@ -77,40 +76,38 @@ invocations += 1
 2
 ```
 
-```yumi
-_ invocations Int = 0
+```brix
+(prop _ invocations Int (= 0))
+(blank)
 
--- invoke(DefaultHook())
--- invoke(ActiveHook())
--- invoke(ActiveHook())
+(main
+  (print (call invoke (call DefaultHook)))
+  (print (call invoke (call ActiveHook)))
+  (print (call invoke (call ActiveHook)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Hook is Interface
+(type + Hook (is Interface)
+  (fn-expr + value Int
+    0
+  )
+)
 
-────────────────────
-+ value Int
+(type + DefaultHook
+  (implements Hook)
+)
 
-0
+(type + ActiveHook
+  (implements Hook)
+  (fn-do + value Int
+    (+= invocations 1)
+    (return invocations)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ DefaultHook
-    is Hook
-
-━━━━━━━━━━━━━━━━━━━━
-+ ActiveHook
-    is Hook
-
-────────────────────
-+ do value Int
-
-invocations += 1
-= invocations
-
-━━━━━━━━━━━━━━━━━━━━
-+ do invoke Int
-    - hook Hook
-
-= hook.value()
+(fn-do + invoke Int
+  (param hook Hook)
+  (return (call (. hook value)))
+)
 ```
 
 ```output

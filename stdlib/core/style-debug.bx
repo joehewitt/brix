@@ -1,0 +1,645 @@
+(import ./core)
+(import ./markup)
+(import ./style)
+(blank)
+; Diagnostic helpers for the style substrate. Production style lifecycle lives in /core/style;
+; this module imports it for tests and tooling, and is not imported by /core/style.
+(fn-do + style-drain-dirty-queue _
+  (param root MarkupRootElement)
+  ; Debug drain helper: real settling lands in slice 4. Entries whose attachment was detached or
+  ; regenerated since they were queued are stale and must not touch released records.
+  (blank)
+  (let store (call style-store-for root))
+  (if (not store)
+    (return "none")
+  )
+  (blank)
+  (let applied Size 0)
+  (let stale Size 0)
+  (while (. store dirty-queue)
+    (let entry (call (. store dirty-queue pop-first)))
+    (let attachment (call style-live-attachment (as (. entry owner-address) Pointer)))
+    (if (and attachment (== (. attachment generation) (. entry generation)))
+      (let live attachment)
+      (= (. live dirty-bits) 0)
+      (let node-record (call style-node-record live))
+      (if node-record
+        (= (. node-record dirty-bits) 0)
+      )
+      (+= applied 1)
+      (else
+        (+= stale 1)
+      )
+    )
+  )
+  (blank)
+  (call (. store inherited-dirty-roots clear))
+  (return (str "applied=" applied " stale=" stale))
+)
+
+(fn-do + style-debug-touch-node-segment _
+  (param object-pointer (of CPointer Void))
+  ; TEMPORARY (slice 2 only): exercises copy-on-write segment allocation for a node segment.
+  ; Authored writes replace this in slice 3.
+  (blank)
+  (let attachment (call style-required-attachment object-pointer))
+  (let node-record (call style-node-record attachment))
+  (if (not node-record)
+    (let store (call style-attachment-store attachment))
+    (= node-record (call (. store allocate-node-record)))
+    (call style-set-node-record attachment node-record)
+  )
+  (call style-debug-touch attachment node-record)
+)
+
+(fn-expr + style-attachment-snapshot _
+  (param object-pointer (of CPointer Void))
+  ; Inspection helpers return compact snapshot strings; they are diagnostics, not reactive reads.
+  (blank)
+  (case? (not attachment)
+    "none"
+  )
+  (case? (not (. a is-live))
+    "none"
+  )
+  (default
+    (str "live id=" id " root=" root-id " parent=" parent-id " node=" node-id " gen=" gen " dirty=" dirty)
+  )
+  (where
+    (lazy attachment (call style-attachment-for-pointer object-pointer))
+    (lazy a attachment)
+    (lazy store (call style-attachment-store a))
+    (lazy id (. a attachment-id))
+    (lazy root-id (. store store-id))
+    (lazy parent-id (call attachment-label (call style-parent-attachment a)))
+    (lazy node-id (call record-label (call style-node-record a)))
+    (lazy gen (. a generation))
+    (lazy dirty (call style-dirty-letters (. a dirty-bits)))
+  )
+)
+
+(fn-expr + style-node-snapshot _
+  (param object-pointer (of CPointer Void))
+  (case? (not attachment)
+    "none"
+  )
+  (case? (not record)
+    "none"
+  )
+  (default
+    (str "node id=" id " seg=" seg " gen=" gen " mask=" mask)
+  )
+  (where
+    (lazy attachment (call style-live-attachment object-pointer))
+    (lazy record (call style-node-record attachment))
+    (lazy store (call style-attachment-store attachment))
+    (lazy live-record record)
+    (lazy segment (?? (call style-record-segment live-record 0) (. store initial-node-segment)))
+    (lazy id (. live-record record-id))
+    (lazy seg (if-expr (call style-record-owns-segment live-record 0) "owned" "shared"))
+    (lazy gen (. segment generation))
+    (lazy mask (. segment changed-mask))
+  )
+)
+
+(fn-expr + style-authored-snapshot _
+  (param object-pointer (of CPointer Void))
+  ; Renders the authored declarations on the object's node record, one line per declaration in
+  ; storage order.
+  (blank)
+  (case? (not attachment)
+    "none"
+  )
+  (case? (not record)
+    "empty"
+  )
+  (default
+    (if-expr (> (. text length) 0) text "empty")
+  )
+  (where
+    (lazy attachment (call style-live-attachment object-pointer))
+    (lazy live attachment)
+    (lazy record (call style-node-record live))
+    (lazy node-record record)
+    (lazy assoc (call style-live-site-association live))
+    (lazy text
+      (call (. "\n" join)
+        (block
+          (item? (only-if (str "node disabled-blocks=" (. node-record disabled-blocks)) (if (!= (. node-record disabled-blocks) 0))))
+          (spread
+            (block
+              (spread? (only-if (..< 0 (call (. assoc site-template-count))) (if assoc)))
+              (pipe *> (call template-declaration-labels (!! assoc) each))
+              (pipe |> flat-map)
+            )
+          )
+          (spread
+            (block
+              (. node-record authored)
+              (pipe *> (+ "node " (call declaration-label each)))
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + style-read-node-segment _
+  (param object-pointer (of CPointer Void))
+  (param info StyleInfo)
+  (before
+    ; Info-based segment lookup for debug and manual callers: attachment lookup, then the record's
+    ; settled segment for the owning style (or the style's shared initial segment). Reads never
+    ; settle.
+    (blank)
+    (throw (call StyleReadPanic "Style read on an unmounted object") (if (not attachment)))
+    (blank)
+    (throw (call StyleReadPanic "Style read on an object with no node record") (if (not record)))
+  )
+  (case? (< (. info style-index) (. segments length))
+    ([] segments (. info style-index))
+  )
+  (default
+    (call (. store initial-segment) info)
+  )
+  (where
+    (lazy attachment (call style-live-attachment object-pointer))
+    (lazy record (call style-node-record attachment))
+    (lazy store (call style-attachment-store attachment))
+    (lazy segments (. record segments))
+  )
+)
+
+(fn-expr + style-segment-bits _
+  (param segment ComputedSegment)
+  (param offset Size)
+  (call (. segment value-bits) offset)
+)
+
+(fn-expr + style-segment-none _
+  (param segment ComputedSegment)
+  (param offset Size)
+  (call (. segment value-none) offset)
+)
+
+(fn-expr + style-computed-snapshot _
+  (param object-pointer (of CPointer Void))
+  ; Renders settled computed style state, one line per style whose segment diverged from the
+  ; per-style initial segment. Styles still aliasing the initial segment print nothing: untouched
+  ; styles cost zero bytes per node and zero lines here.
+  (blank)
+  (case? (not attachment)
+    "none"
+  )
+  (case? (not record)
+    "initial"
+  )
+  (default
+    (if-expr (> (. text length) 0) text "initial")
+  )
+  (where
+    (lazy attachment (call style-live-attachment object-pointer))
+    (lazy live attachment)
+    (lazy store (call style-attachment-store live))
+    (lazy record (call style-node-record live))
+    (lazy text (call (. "\n" join) (call style-computed-lines store live record "node")))
+  )
+)
+
+(fn-expr + style-sheet-snapshot _
+  (param object-pointer (of CPointer Void))
+  (param sheet-name String)
+  ; Renders the object's effective style-sheet record for one registered style-sheet.
+  (blank)
+  (case? (not attachment)
+    "none"
+  )
+  (case? (not info)
+    "unregistered"
+  )
+  (default
+    (str "style-sheet " name " record=" id " version=" version values)
+  )
+  (where
+    (lazy attachment (call style-live-attachment object-pointer))
+    (lazy info (call style-sheet-info-named sheet-name))
+    (lazy live-info info)
+    (lazy record (call style-effective-style-sheet attachment live-info))
+    (lazy name (. live-info name))
+    (lazy id (. record record-id))
+    (lazy version (. record version))
+    (lazy values (call sheet-values-label live-info record))
+  )
+)
+
+(fn-expr + style-activation-snapshot _
+  (param object-pointer (of CPointer Void))
+  ; Renders the active style names of the object's node record in style-index order.
+  (blank)
+  (case? (not attachment)
+    "none"
+  )
+  (case? (not record)
+    "unrecorded"
+  )
+  (default
+    (+ "node=" (call active-names-label record))
+  )
+  (where
+    (lazy attachment (call style-live-attachment object-pointer))
+    (lazy record (call style-node-record attachment))
+  )
+)
+
+(fn-expr + style-active-styles _
+  (param record StyleRecord)
+  ; The styles raised in the record's settled active list, in style-index order.
+  (blank)
+  (spread (. record active-styles))
+  (pipe ?*> (call style-info-at each))
+  (pipe |> List)
+)
+
+(fn-expr + style-store-snapshot _
+  (param root MarkupRootElement)
+  (case? (not store)
+    "none"
+  )
+  (default
+    (str "store id=" id " live=" live " attachments=" attachments " free-attachments=" free-attachments " nodes=" nodes " free-nodes=" free-nodes " segments=" segments " free-segments=" free-segments " queue=" queue " inherited-roots=" inherited)
+  )
+  (where
+    (lazy store (call style-store-for root))
+    (lazy s store)
+    (lazy id (. s store-id))
+    (lazy live (. s live-count))
+    (lazy attachments (. s attachment-high-water))
+    (lazy free-attachments (. s free-attachments length))
+    (lazy nodes (. s node-records length))
+    (lazy free-nodes (. s free-node-records length))
+    (lazy segments (. s segment-pool length))
+    (lazy free-segments (. s free-segments length))
+    (lazy queue (. s dirty-queue length))
+    (lazy inherited (. s inherited-dirty-roots length))
+  )
+)
+
+(fn-expr + style-pending-snapshot _
+  (param root MarkupRootElement)
+  ; Pending-domain counts under the root, one `name=count` token per materialized store domain.
+  (blank)
+  (case? (not store)
+    "none"
+  )
+  (default
+    (call (. " " join)
+      (block
+        (spread (..< 0 (. counts length)))
+        (pipe ?*>
+          (scope (only-if (str name "=" count) (if (> (. name length) 0)))
+            (lazy name (call style-domain-name-at each))
+            (lazy count ([] counts each))
+          )
+        )
+      )
+    )
+  )
+  (where
+    (lazy store (call style-store-for root))
+    (lazy counts (. store pending-domain-counts))
+  )
+)
+
+(fn-expr + style-domain-pending-count _
+  (param root MarkupRootElement)
+  (param name String)
+  ; The number of live nodes under the root whose named domain bit is currently raised. Production
+  ; roots read pending domains through compiler-generated MarkupBatchFlush properties; the named
+  ; query is diagnostics only.
+  (blank)
+  (case? (not store)
+    0
+  )
+  (case? (< domain 0)
+    0
+  )
+  (case? (>= domain (. counts length))
+    0
+  )
+  (default
+    ([] counts domain)
+  )
+  (where
+    (lazy store (call style-store-for root))
+    (lazy domain (call style-domain-named name))
+    (lazy counts (. store pending-domain-counts))
+  )
+)
+
+(fn-expr + style-domain-pending _
+  (param root MarkupRootElement)
+  (param name String)
+  (> (call style-domain-pending-count root name) 0)
+)
+
+(fn-do + style-pending-nodes _
+  (param root MarkupRootElement)
+  (param name String)
+  ; The attachment ids of live nodes under the root whose named domain bit is raised, in mount
+  ; order.
+  (blank)
+  (let store (call style-store-for root))
+  (if (not store)
+    (return "none")
+  )
+  (blank)
+  (let domain (call style-domain-named name))
+  (if (< domain 0)
+    (return "")
+  )
+  (blank)
+  (let bit U32 (/lshift/ 1u32 domain))
+  (let labels (call (of List String)))
+  (if (!= (. store root-owner-address) 0)
+    (let root-attachment (call style-live-attachment (as (. store root-owner-address) Pointer)))
+    (if root-attachment
+      (call style-debug-collect-pending root-attachment bit labels)
+    )
+  )
+  (return (call (. " " join) labels))
+)
+
+(fn-expr _ style-required-attachment _
+  (param object-pointer (of CPointer Void))
+  (before
+    (throw (call StyleMountPanic "Object is not mounted in a styled tree") (if (not attachment)))
+  )
+  attachment
+  (where
+    (lazy attachment (call style-live-attachment object-pointer))
+  )
+)
+
+(fn-do _ style-debug-touch _
+  (param attachment MarkupAttachment)
+  (param record StyleRecord)
+  (let store (call style-attachment-store attachment))
+  (if (not (call style-record-owns-segment record 0))
+    (let source (?? (call style-record-segment record 0) (. store initial-node-segment)))
+    (call style-record-place-segment record 0 (call (. store allocate-segment) source) true)
+  )
+  (blank)
+  (let segment (!! (call style-record-segment record 0)))
+  (= (. segment changed-mask) (/or/ (. segment changed-mask) 1))
+  (+= (. segment generation) 1)
+  (blank)
+  (= (. attachment dirty-bits) (/or/ (. attachment dirty-bits) style-dirty-bit))
+  (= (. record dirty-bits) (/or/ (. record dirty-bits) style-dirty-bit))
+  (call (. store enqueue-dirty) attachment)
+)
+
+(fn-expr _ attachment-label _
+  (param attachment (? MarkupAttachment))
+  (case? attachment
+    (str (. attachment attachment-id))
+  )
+  (default
+    "-"
+  )
+)
+
+(fn-expr _ record-label _
+  (param record (? StyleRecord))
+  (case? record
+    (str (. record record-id))
+  )
+  (default
+    "-"
+  )
+)
+
+(fn-expr _ style-dirty-letters _
+  (param bits U32)
+  (str s i)
+  (where
+    (lazy s (if-expr (!= (/and/ bits style-dirty-bit) 0) "S" "-"))
+    (lazy i (if-expr (!= (/and/ bits inherited-dirty-bit) 0) "I" "-"))
+  )
+)
+
+(fn-expr _ template-declaration-labels (list String)
+  (param assoc StyleSiteAssociation)
+  (param index Size)
+  (spread (. (call (. assoc site-template-at) index) declarations))
+  (pipe *> (+ "node " (call declaration-label each (call (. assoc block-base-at) index))))
+  (pipe |> List)
+)
+
+(fn-expr _ declaration-label _
+  (param declaration AuthoredDeclaration)
+  (param base I64 (= 0))
+  (paragraph
+    (str style "." property " layer=" layer " order=" order " kind=" kind " bits=" bits tag none sheet block gate)
+  )
+  (where
+    (lazy style (. declaration style name))
+    (lazy property (call property-label (. declaration style) (. declaration offset)))
+    (lazy layer (. declaration layer))
+    (lazy order (. declaration order))
+    (lazy kind (call kind-label (. declaration kind)))
+    (lazy bits (. declaration bits))
+    (lazy tag (if-expr (> (. declaration held-shift) 0) (str " tag=" (. declaration held-tag)) ""))
+    (lazy none (if-expr (. declaration is-none) " none" ""))
+    (lazy sheet (call sheet-label declaration))
+    (lazy block (if-expr (>= (. declaration block) 0) (str " block=" (+ base (. declaration block))) ""))
+    (lazy gate (if-expr (. declaration family) (str " family=" (. declaration family name) "/" (. declaration members)) ""))
+  )
+)
+
+(fn-expr _ sheet-label _
+  (param declaration AuthoredDeclaration)
+  (case? (not style-sheet)
+    ""
+  )
+  (default
+    (str " style-sheet=" name "@" slot)
+  )
+  (where
+    (lazy style-sheet (. declaration style-sheet))
+    (lazy name (. style-sheet name))
+    (lazy slot (if-expr (== (. declaration kind) (. StyleValueKind themed)) (str "value" (. declaration themed-site)) (str (. declaration sheet-offset))))
+  )
+)
+
+(fn-expr _ property-label _
+  (param style StyleInfo)
+  (param offset Size)
+  (?? (?. (call (. style property-at) offset) name) (str "@" offset))
+)
+
+(fn-expr _ kind-label _
+  (param kind U32)
+  (match kind
+    (case= (. StyleValueKind static)
+      "static"
+    )
+    (case= (. StyleValueKind style-sheet)
+      "style-sheet"
+    )
+    (case= (. StyleValueKind style-sheet-projected)
+      "style-sheet-projected"
+    )
+    (case= (. StyleValueKind themed)
+      "themed"
+    )
+    (case= (. StyleValueKind inherit)
+      "inherit"
+    )
+    (case= (. StyleValueKind dynamic)
+      "dynamic"
+    )
+    (case= (. StyleValueKind object)
+      "object"
+    )
+    (default
+      "?"
+    )
+  )
+)
+
+(fn-expr _ style-computed-lines _ @inline
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param record StyleRecord)
+  (param prefix String)
+  (spread (..< 0 (. record segments length)))
+  (pipe ?*>
+    (scope (only-if (str prefix " " label) (if info))
+      (lazy info (call style-info-at (call style-segment-key-style ([] (. record segment-keys) each))))
+      (lazy label (call computed-label store attachment info record ([] (. record segments) each)))
+    )
+  )
+)
+
+(fn-expr _ computed-label _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param info StyleInfo)
+  (param record StyleRecord)
+  (param segment ComputedSegment)
+  (str name " seg=" kind " gen=" gen " mask=" mask values)
+  (where
+    (lazy name (. info name))
+    (lazy kind (call segment-kind attachment info record segment))
+    (lazy gen (. segment generation))
+    (lazy mask (. segment changed-mask))
+    (lazy values (call values-label info segment))
+  )
+)
+
+(fn-expr _ segment-kind _
+  (param attachment MarkupAttachment)
+  (param info StyleInfo)
+  (param record StyleRecord)
+  (param segment ComputedSegment)
+  (case? (call style-record-owns-segment record (. info style-index))
+    "owned"
+  )
+  (case? (and parent-record is-parent-segment)
+    "parent"
+  )
+  (default
+    "shared"
+  )
+  (where
+    (lazy parent-attachment (call style-parent-attachment attachment))
+    (lazy parent-record (only-if (call style-node-record parent-attachment) (if parent-attachment)))
+    (lazy is-parent-segment (== (call style-record-segment parent-record (. info style-index)) segment))
+  )
+)
+
+(fn-expr _ values-label _
+  (param info StyleInfo)
+  (param segment ComputedSegment)
+  (if-expr (> (. info properties length) 0) (str " " values) "")
+  (where
+    (lazy values
+      (call (. " " join)
+        (block
+          (spread (. info properties))
+          (pipe *> (call value-label each segment))
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ value-label _
+  (param property StylePropertyInfo)
+  (param segment ComputedSegment)
+  ; Encoded slots (unions, boxed wide values) print as enc(bits) so registry handles and packed
+  ; case tags are never mistaken for plain numeric values.
+  (blank)
+  (str name "=" value none)
+  (where
+    (lazy bits (call (. segment value-bits) (. property offset)))
+    (lazy name (. property name))
+    (lazy value (if-expr (. property is-encoded) (str "enc(" bits ")") (str bits)))
+    (lazy none (if-expr (call (. segment value-none) (. property offset)) "?" ""))
+  )
+)
+
+(fn-expr _ sheet-values-label _
+  (param info StyleSheetInfo)
+  (param record StyleSheetRecord)
+  (if-expr (> (. info slots length) 0) (str " " values) "")
+  (where
+    (lazy values
+      (call (. " " join)
+        (block
+          (spread (. info slots))
+          (pipe *>
+            (scope (str (. each name) "=" value none)
+              (lazy bits (call (. record value-bits) (. each offset)))
+              (lazy value (if-expr (. each is-encoded) (str "enc(" bits ")") (str bits)))
+              (lazy none (if-expr (call (. record value-none) (. each offset)) "?" ""))
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ active-names-label _
+  (param record StyleRecord)
+  (if-expr (> (. styles length) 0) names "(none)")
+  (where
+    (lazy styles (call style-active-styles record))
+    (lazy names
+      (call (. "," join)
+        (block
+          (spread styles)
+          (pipe *> (. each name))
+        )
+      )
+    )
+  )
+)
+
+(fn-do _ style-debug-collect-pending _
+  (param attachment MarkupAttachment)
+  (param bit U32)
+  (param labels (list String))
+  (if (!= (/and/ (. attachment pending-domains) bit) 0)
+    (let id (. attachment attachment-id))
+    (+= labels (str id))
+  )
+  (blank)
+  (let child (call style-first-child-attachment attachment))
+  (while child
+    (call style-debug-collect-pending child bit labels)
+    (= child (call style-next-child-attachment attachment child))
+  )
+)

@@ -1,0 +1,151 @@
+(import ./class-tables)
+(import ./instances)
+(import ./portable)
+(import ./session)
+(import ./session-merge)
+(import ./shared-results)
+(import ./typing)
+(import ./witnesses)
+(import /lang/ast/module)
+(import /lang/ast/program)
+(import /lang/constants)
+
+(fn-do + type-program _
+  (param session Session)
+  (param workers Int (= default-worker-count))
+  ; Types the program: on `workers` workers first (`type-in-parallel`), where there are several, and
+  ; then in `session` whatever they left, from the mains of the modules, or all of it where what the
+  ; workers typed is not taken. Where the pass starts over (`check-pass`), it is typed so again.
+  (call (. session program note-derived-names))
+  (call seed-mains session)
+  (while true
+    (if (> workers 1)
+      (probe-group + typing.phase (text: "parallel"))
+      (call type-in-parallel session workers)
+      (probe-group - typing.phase (text: "parallel done"))
+    )
+    (probe-group + typing.phase (text: "check-pass"))
+    (let checked (call check-pass session))
+    (probe-group - typing.phase (text: "check-pass done"))
+    (if checked
+      (return)
+    )
+    (call start-over session)
+  )
+)
+
+(fn-do _ type-in-parallel _
+  (param session Session)
+  (param count Int)
+  ; Types the program on `count` workers, each in a type pass of its own, and takes what they typed
+  ; into `session`, which then types whatever is left as it would alone (`merge-sessions`). The
+  ; workers share out the instances that any pass can intern, starting from the mains of the modules
+  ; in the order `seed-mains` gives them, and each takes in what the others published of an instance
+  ; in place of typing it again. Where a pass diverged (`SharedTyping.diverge`), nothing they typed is
+  ; taken, and `session`, which holds only the mains then, types the program as it would alone.
+  (let shared (call SharedTyping))
+  (= (. shared traces-lint) (. session facts traces-lint))
+  (= (. shared tracked) (call (. session panics tracked-keys)))
+  (let program (. session program))
+  (let seeded (call export-instance session (call seed-main session (. program entry-module))))
+  (if seeded
+    (call (. shared offer) seeded)
+  )
+  (for (in position (..< 0 (. program modules length)))
+    (let item (call export-instance session (call seed-main session (as position ModuleId))))
+    (if item
+      (call (. shared offer) item)
+    )
+  )
+  (let passes (of SyncBufferedChannel Session))
+  (let group (call TaskGroup))
+  (let pool (call Worker count))
+  (finally
+    (call (. pool stop))
+  )
+  (for (in _ (..< 0 count))
+    (let task
+      (do-new (worker: pool)
+        (<- passes (call type-share program shared))
+        (on-failure failed
+          (call (. group keep) failed)
+          (call (. shared abandon))
+        )
+      )
+    )
+    (call (. group add) task)
+  )
+  (call (. group settle))
+  (call (. passes close))
+  (let peers (list Session))
+  (for (in peer passes)
+    (+= peers peer)
+  )
+  (if (not (call (. shared has-diverged)))
+    (probe-group + typing.phase (text: "merge"))
+    (call merge-sessions session peers pool)
+    (probe-group - typing.phase (text: "merge done"))
+  )
+  (for (in peer peers)
+    (let task
+      (do-new (worker: pool)
+        (call (. peer release))
+        (on-failure failed
+          (call (. group keep) failed)
+        )
+      )
+    )
+    (call (. group add) task)
+  )
+  (call (. group wait))
+)
+
+(fn-do _ type-share Session
+  (param program Program)
+  (param shared SharedTyping)
+  ; One worker's type pass: types each instance it takes from those the passes share out, offering
+  ; the others what its typing queues as it goes (`offer-queued`), and types itself those only it can
+  ; intern. One another pass published is left to that pass. One whose errors settle only after its
+  ; body ended is published once they do (`Instances.keeps-settled`). Where no offered instance
+  ; waits to be taken, the functions that answer for others in the tables of the classes and the
+  ; interfaces it has typed are offered too (`ClassTables.find-overrides`,
+  ; `WitnessTables.finding`), and are checked in `session` after the merge. Once a pass diverged,
+  ; what the passes typed is not taken, so what is offered after is taken without typing it.
+  (let session (call Session program))
+  (= (. session shared) shared)
+  (= (. session instances keeps-settled) true)
+  (= (. session facts traces-lint) (. shared traces-lint))
+  (call (. session panics seed) (. shared tracked))
+  (let instances (. session instances))
+  (let tables (call ClassTables session))
+  (let witnesses (call WitnessTables session))
+  (= (. witnesses finding) true)
+  (let cursor Size 0)
+  (for (in item (. shared items))
+    (call (. shared take))
+    (if (and (not (call (. shared has-diverged))) (not (call (. shared has) (. item key))))
+      (let id (call import-instance session item))
+      (if (== ([] (. instances stable-keys) id) (. item key))
+        (call demand-instance session id)
+      )
+    )
+    (let drained (call (. shared has-diverged)))
+    (while (not drained)
+      (call offer-queued session)
+      (while (< cursor (. session local length))
+        (call demand-instance session ([] (. session local) cursor))
+        (+= cursor 1)
+        (call offer-queued session)
+      )
+      (let queued (. instances worklist length))
+      (if (call (. shared idle))
+        (call (. tables find-overrides))
+        (call expand-witnesses session witnesses)
+      )
+      (= drained (== (. instances worklist length) queued))
+    )
+    (call (. shared finish))
+  )
+  (call (. tables release))
+  (return session)
+)

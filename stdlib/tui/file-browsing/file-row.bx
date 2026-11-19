@@ -1,0 +1,41 @@
+(import ./file-icon)
+(import /os/file-tree)
+(import /tui)
+(import /tui/listbox)
+(import /tui/treebox)
+
+(type + FileRow (is ListItem)
+  (prop + item FileNode)
+  (blank)
+  (rule This (• text (call file-icon-color #item)))
+  (content
+    (<> This
+      (= text (str " " (call file-row-text #item (. #item #name))))
+    )
+  )
+  (fn-do + This _
+    (param item _)
+    (= has-children (. item is-directory))
+  )
+)
+
+(type + FileTreeRow (is (of TreeBoxItem FileNode))
+  (rule This (• text (call file-icon-color #item)))
+  (content
+    (<> This
+      (= has-children (?? (?. #item is-directory) false))
+      (= content-text (call file-row-text #item (?. #item #name)))
+    )
+  )
+)
+
+(fn-expr + file-row-text String
+  (param node (? FileNode))
+  (param name (? String))
+  (case? (and node name)
+    (str (call file-icon-text node) " " (call file-display-name (. node is-directory) (. node kind) name))
+  )
+  (default
+    ""
+  )
+)

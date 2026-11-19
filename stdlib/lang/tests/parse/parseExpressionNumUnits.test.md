@@ -2,10 +2,6 @@
 
 Units
 
-```yumi
-10px
-```
-
 ```brix
 (main
   10px
@@ -14,10 +10,6 @@ Units
 
 ```output
 <Integer value="10" unit="px"/>
-```
-
-```yumi
-10$
 ```
 
 ```brix
@@ -30,10 +22,6 @@ Units
 <Integer value="10" unit="$"/>
 ```
 
-```yumi
-10¢
-```
-
 ```brix
 (main
   10¢
@@ -42,10 +30,6 @@ Units
 
 ```output
 <Integer value="10" unit="¢"/>
-```
-
-```yumi
-10€
 ```
 
 ```brix
@@ -58,10 +42,6 @@ Units
 <Integer value="10" unit="€"/>
 ```
 
-```yumi
-10%
-```
-
 ```brix
 (main
   10%
@@ -70,10 +50,6 @@ Units
 
 ```output
 <Integer value="10" unit="%"/>
-```
-
-```yumi
-10°
 ```
 
 ```brix
@@ -86,10 +62,6 @@ Units
 <Integer value="10" unit="°"/>
 ```
 
-```yumi
--50%
-```
-
 ```brix
 (main
   -50%
@@ -98,10 +70,6 @@ Units
 
 ```output
 <Integer value="-50" unit="%"/>
-```
-
-```yumi
--1.25px
 ```
 
 ```brix

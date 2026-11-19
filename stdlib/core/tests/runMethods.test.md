@@ -2,26 +2,24 @@
 
 ### Super calls exact base method implementation
 
-```yumi
-. child = Child()
-child.speak()
+```brix
+(main
+  (let child (call Child))
+  (call (. child speak))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (fn-do + speak _
+    (print "base")
+  )
+)
 
-────────────────────
-+ do speak
-
--- "base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ do speak
-
--- "child"
-super.speak()
+(type + Child (is Base)
+  (fn-do + speak _
+    (print "child")
+    (call (. super speak))
+  )
+)
 ```
 
 ```output
@@ -31,29 +29,26 @@ base
 
 ### Super starts at the immediate base but can find an ancestor method
 
-```yumi
-. leaf = Leaf()
-leaf.speak()
+```brix
+(main
+  (let leaf (call Leaf))
+  (call (. leaf speak))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Root
+(type + Root
+  (fn-do + speak _
+    (print "root")
+  )
+)
 
-────────────────────
-+ do speak
+(type + Middle (is Root))
 
--- "root"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Middle is Root
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is Middle
-
-────────────────────
-+ do speak
-
--- "leaf"
-super.speak()
+(type + Leaf (is Middle)
+  (fn-do + speak _
+    (print "leaf")
+    (call (. super speak))
+  )
+)
 ```
 
 ```output
@@ -63,31 +58,27 @@ root
 
 ### Super method keeps the current receiver
 
-```yumi
-. child = Child()
-child.label = "child"
-child.show()
+```brix
+(main
+  (let child (call Child))
+  (= (. child label) "child")
+  (call (. child show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + label _ (= "base"))
+  (fn-do + show _
+    (print (str "base sees " label))
+  )
+)
 
-+ label = "base"
-
-────────────────────
-+ do show
-
--- "base sees $label"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-+ label = "child"
-
-────────────────────
-+ do show
-
--- "child sees $label"
-super.show()
+(type + Child (is Base)
+  (prop + label _ (= "child"))
+  (fn-do + show _
+    (print (str "child sees " label))
+    (call (. super show))
+  )
+)
 ```
 
 ```output
@@ -97,49 +88,41 @@ base sees child
 
 ### Super helper thunks do not enter sibling class method tables
 
-```yumi
-. calls = CallsSuper()
-calls.hook()
-. tracked = TrackedChild()
-tracked.hook()
--- calls.count
--- tracked.status
--- tracked.count
+```brix
+(main
+  (let calls (call CallsSuper))
+  (call (. calls hook))
+  (let tracked (call TrackedChild))
+  (call (. tracked hook))
+  (print (. calls count))
+  (print (. tracked status))
+  (print (. tracked count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + count _ (= 0))
+  (fn-do + hook _
+    (+= count 1)
+  )
+)
 
-+ count = 0
+(type + CallsSuper (is Base)
+  (fn-do + hook _
+    (call (. super hook))
+  )
+)
 
-────────────────────
-+ do hook
-
-count += 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ CallsSuper is Base
-
-────────────────────
-+ do hook
-
-super.hook()
-
-━━━━━━━━━━━━━━━━━━━━
-+ TrackedChild is Base
-
-+ status = ""
-
-. mark < status
-
-────────────────────
-+ do hook
-
-status = "changed"
-
-────────────────────
-+ do mark
-
-count += 1
+(type + TrackedChild (is Base)
+  (prop + status _ (= ""))
+  (blank)
+  (depends mark status)
+  (fn-do + hook _
+    (= status "changed")
+  )
+  (fn-do + mark _
+    (+= count 1)
+  )
+)
 ```
 
 ```output
@@ -150,18 +133,18 @@ changed
 
 ### Super call on numeric core type
 
-```yumi
-. number = TaggedInt(7)
--- number.pad(3)
+```brix
+(main
+  (let number (call TaggedInt 7))
+  (print (call (. number pad) 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TaggedInt (tagged) is I32
-
-────────────────────
-+ pad
-    - n Int
-
-"tagged ${super.pad(n)}"
+(type + TaggedInt (alias tagged) (is I32)
+  (fn-expr + pad _
+    (param n Int)
+    (str "tagged " (call (. super pad) n))
+  )
+)
 ```
 
 ```output
@@ -170,25 +153,23 @@ tagged 007
 
 ### Super call on tuple core type
 
-```yumi
-. pair = OffsetPair(2, 3)
--- pair.sum()
+```brix
+(main
+  (let pair (call OffsetPair 2 3))
+  (print (call (. pair sum)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (x Int, y Int)
+(type + Pair (is (tuple (: x Int) (: y Int)))
+  (fn-expr + sum Int
+    (+ x y)
+  )
+)
 
-────────────────────
-+ sum Int
-
-x + y
-
-━━━━━━━━━━━━━━━━━━━━
-+ OffsetPair is Pair
-
-────────────────────
-+ sum Int
-
-super.sum() + 10
+(type + OffsetPair (is Pair)
+  (fn-expr + sum Int
+    (+ (call (. super sum)) 10)
+  )
+)
 ```
 
 ```output
@@ -197,25 +178,23 @@ super.sum() + 10
 
 ### Super call on string core type
 
-```yumi
-. name = LoudName("Ada")
--- name.decorate()
+```brix
+(main
+  (let name (call LoudName "Ada"))
+  (print (call (. name decorate)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Name is String
+(type + Name (is String)
+  (fn-expr + decorate String
+    (str "<" this ">")
+  )
+)
 
-────────────────────
-+ decorate String
-
-"<$this>"
-
-━━━━━━━━━━━━━━━━━━━━
-+ LoudName is Name
-
-────────────────────
-+ decorate String
-
-"LOUD ${super.decorate()}"
+(type + LoudName (is Name)
+  (fn-expr + decorate String
+    (str "LOUD " (call (. super decorate)))
+  )
+)
 ```
 
 ```output
@@ -224,31 +203,28 @@ LOUD <Ada>
 
 ### Super constructor initializes the same object
 
-```yumi
-. child = Child(4)
--- child.base-value
+```brix
+(main
+  (let child (call Child 4))
+  (print (. child base-value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + base-value _ (= 0))
+  (fn-do + This _
+    (param n Int)
+    (= base-value n)
+    (print (str "base " (. this base-value)))
+  )
+)
 
-+ base-value = 0
-
-────────────────────
-+ This
-    - n Int
-
-base-value = n
--- "base ${this.base-value}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ This
-    - n Int
-
-super(n + 1)
--- "child ${this.base-value}"
+(type + Child (is Base)
+  (fn-do + This _
+    (param n Int)
+    (call super (+ n 1))
+    (print (str "child " (. this base-value)))
+  )
+)
 ```
 
 ```output
@@ -259,34 +235,28 @@ child 5
 
 ### Super constructor uses base dispatch inside the constructor body
 
-```yumi
-Child()
+```brix
+(main
+  (call Child)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (fn-do + This _
+    (call report)
+  )
+  (fn-do + report _
+    (print "base")
+  )
+)
 
-────────────────────
-+ This
-
-report()
-
-────────────────────
-+ do report
-
--- "base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ This
-
-super()
-
-────────────────────
-+ do report
-
--- "child"
+(type + Child (is Base)
+  (fn-do + This _
+    (call super)
+  )
+  (fn-do + report _
+    (print "child")
+  )
+)
 ```
 
 ```output
@@ -295,22 +265,21 @@ base
 
 ### Super constructor can target a default base constructor
 
-```yumi
-. child = Child()
--- child.base-value
+```brix
+(main
+  (let child (call Child))
+  (print (. child base-value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + base-value _ (= 8))
+)
 
-+ base-value = 8
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ This
-
-super()
+(type + Child (is Base)
+  (fn-do + This _
+    (call super)
+  )
+)
 ```
 
 ```output
@@ -319,128 +288,121 @@ super()
 
 ### Super constructor may only be called once
 
-```yumi crash
-Child()
+```brix crash
+(main
+  (call Child)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (fn-do + This _
+    (print "base")
+  )
+)
 
-────────────────────
-+ This
-
--- "base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ This
-
-super()
-super()
+(type + Child (is Base)
+  (fn-do + This _
+    (call super)
+    (call super)
+  )
+)
 ```
 
 ```output
 Exception: super constructor call must be first
-<no file:19>
-    super()
-    ^^^^^^^
+<no file:15>
+        (call super)
+        ^^^^^^^^^^^^
 ```
 
 ### Super constructor must be first executable statement
 
-```yumi crash
-Child()
+```brix crash
+(main
+  (call Child)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (fn-do + This _
+    (print "base")
+  )
+)
 
-────────────────────
-+ This
-
--- "base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ This
-
--- "before"
-super()
+(type + Child (is Base)
+  (fn-do + This _
+    (print "before")
+    (call super)
+  )
+)
 ```
 
 ```output
 Exception: super constructor call must be first
-<no file:19>
-    super()
-    ^^^^^^^
+<no file:15>
+        (call super)
+        ^^^^^^^^^^^^
 ```
 
 ### Super constructor only works in constructors
 
-```yumi crash
-Child().run()
+```brix crash
+(main
+  (call (. (call Child) run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ run
-
-super()
+(type + Child (is Base)
+  (fn-expr + run _
+    (call super)
+  )
+)
 ```
 
 ```output
 Exception: super constructor call is only allowed in constructors
-<no file:13>
-    super()
-    ^^^^^^^
+<no file:10>
+        (call super)
+        ^^^^^^^^^^^^
 ```
 
 ### Super requires an inherited base type
 
-```yumi crash
-Thing().run()
+```brix crash
+(main
+  (call (. (call Thing) run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ run
-
-super.run()
+(type + Thing
+  (fn-expr + run _
+    (call (. super run))
+  )
+)
 ```
 
 ```output
 Exception: super requires a base type
-<no file:10>
-    super.run()
-    ^^^^^
+<no file:8>
+        (call (. super run))
+                 ^^^^^
 ```
 
-```yumi
-. thing = Thing()
-thing.foo(5)
-thing.bar(5)
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing foo) 5)
+  (call (. thing bar) 5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ do foo
-    - x
-
--- "foo$x"
-
-────────────────────
-+ do bar
-    - x
-
--- "bar$x"
+(type + Thing
+  (fn-do + foo _
+    (param x _)
+    (print (str "foo" x))
+  )
+  (fn-do + bar _
+    (param x _)
+    (print (str "bar" x))
+  )
+)
 ```
 
 ```output
@@ -450,78 +412,75 @@ bar5
 
 ### Infer return value of method call
 
-```yumi
-. thing = Thing()
--- thing.foo()
+```brix
+(main
+  (let thing (call Thing))
+  (print (call (. thing foo)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ foo
-
-plop()
-
-────────────────────
-+ plop
-
-42
+(type + Thing
+  (fn-expr + foo _
+    (call plop)
+  )
+  (fn-expr + plop _
+    42
+  )
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
--- plop()
+```brix
+(main
+  (print (call plop))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (fn-expr + foo _
+    42
+  )
+)
 
-────────────────────
-+ foo
-
-42
-
-━━━━━━━━━━━━━━━━━━━━
-+ do plop
-
-. thing = Thing()
-= thing.foo()
+(fn-do + plop _
+  (let thing (call Thing))
+  (return (call (. thing foo)))
+)
 ```
 
 ```output
 42
 ```
 
-```yumi crash
-. thing = Thing()
-thing.foo()
+```brix crash
+(main
+  (let thing (call Thing))
+  (call (. thing foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing)
 ```
 
 ```output
 Exception: Thing has no method "foo"
-<no file:3>
-    thing.foo()
-    ^^^^^^^^^^^
+<no file:4>
+      (call (. thing foo))
+      ^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-. thing = Thing()
-thing.foo()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 42
-
-────────────────────
-+ do foo
-
--- a
+(type + Thing
+  (prop + a _ (= 42))
+  (fn-do + foo _
+    (print a)
+  )
+)
 ```
 
 ```output
@@ -530,19 +489,22 @@ thing.foo()
 
 ### Generic default arguments are specialized by type parameters
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. parent = Box()
-. child = Box()
-. form = Form()
-
-markup-append(parent, child)
-markup-append(form, parent)
-
--- child.ancestor'Box
--- child.ancestor'Form
+(main
+  (let parent (call Box))
+  (let child (call Box))
+  (let form (call Form))
+  (blank)
+  (call markup-append parent child)
+  (call markup-append form parent)
+  (blank)
+  (print (of (. child ancestor) Box))
+  (print (of (. child ancestor) Form))
+)
 ```
 
 ```output
@@ -550,91 +512,82 @@ markup-append(form, parent)
 [Object core/tests/support/markup-fixtures:Form]
 ```
 
-```yumi
-. thing = Thing()
-thing.foo()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 42
-
-────────────────────
-+ do foo
-
--- this.a
+(type + Thing
+  (prop + a _ (= 42))
+  (fn-do + foo _
+    (print (. this a))
+  )
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-. thing = Thing()
-thing.foo()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 42
-
-────────────────────
-+ do foo
-
-bar()
-
-────────────────────
-+ do bar
-
--- a
+(type + Thing
+  (prop + a _ (= 42))
+  (fn-do + foo _
+    (call bar)
+  )
+  (fn-do + bar _
+    (print a)
+  )
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-. thing = Thing()
-thing.foo()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 42
-
-────────────────────
-+ do foo
-
-this.bar()
-
-────────────────────
-+ do bar
-
--- a
+(type + Thing
+  (prop + a _ (= 42))
+  (fn-do + foo _
+    (call (. this bar))
+  )
+  (fn-do + bar _
+    (print a)
+  )
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-. thing = Thing()
-thing.bling.foo()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing bling foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling
+(type + Bling
+  (prop + a _ (= 42))
+  (fn-do + foo _
+    (print a)
+  )
+)
 
-+ a = 42
-
-────────────────────
-+ do foo
-
--- a
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ bling = Bling()
+(type + Thing
+  (prop + bling _ (= (call Bling)))
+)
 ```
 
 ```output
@@ -643,27 +596,24 @@ thing.bling.foo()
 
 ### Method takes precedence over static function
 
-```yumi
-. thing = Thing()
-thing.foo()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do bar
+(fn-do + bar _
+  (print 1)
+)
 
--- 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ do foo
-
-bar()
-
-────────────────────
-+ do bar
-
--- 2
+(type + Thing
+  (fn-do + foo _
+    (call bar)
+  )
+  (fn-do + bar _
+    (print 2)
+  )
+)
 ```
 
 ```output
@@ -672,30 +622,28 @@ bar()
 
 ### Static function and method with same name but different arguments can be called
 
-```yumi
-. thing = Thing()
-thing.foo()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do bar
-    - a
-    - b
+(fn-do + bar _
+  (param a _)
+  (param b _)
+  (print 1)
+)
 
--- 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ do foo
-
-bar(1, 2)
-bar(0)
-
-────────────────────
-+ do bar
-    - x
--- 2
+(type + Thing
+  (fn-do + foo _
+    (call bar 1 2)
+    (call bar 0)
+  )
+  (fn-do + bar _
+    (param x _)
+    (print 2)
+  )
+)
 ```
 
 ```output
@@ -705,76 +653,76 @@ bar(0)
 
 ### Method with type variables
 
-```yumi
-. thing = Thing()
-thing.foo(42.5)
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing foo) 42.5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ do foo'T
-    - x T
-
--- x
+(type + Thing
+  (fn-do + (of foo T) _
+    (param x T)
+    (print x)
+  )
+)
 ```
 
 ```output
 42.5
 ```
 
-```yumi
-. thing = Thing'Float()
-thing.foo(5, 42.5)
+```brix
+(main
+  (let thing (call (of Thing Float)))
+  (call (. thing foo) 5 42.5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T
-
-────────────────────
-+ do foo'G
-    - x
-    - y G
-
--- x + y
+(type + (of Thing T)
+  (fn-do + (of foo G) _
+    (param x _)
+    (param y G)
+    (print (+ x y))
+  )
+)
 ```
 
 ```output
 47.5
 ```
 
-```yumi
-. thing = Thing'Float()
-thing.foo(42)
+```brix
+(main
+  (let thing (call (of Thing Float)))
+  (call (. thing foo) 42)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T
-
-────────────────────
-+ do foo
-    - x T
-
--- x
+(type + (of Thing T)
+  (fn-do + foo _
+    (param x T)
+    (print x)
+  )
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-. thing = Thing()
-thing.foo(24)
-thing.foo(24, 26)
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing foo) 24)
+  (call (. thing foo) 24 26)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ do foo
-    - a I32
-    - b I32 = 25
-
--- a
--- b
+(type + Thing
+  (fn-do + foo _
+    (param a I32)
+    (param b I32 (= 25))
+    (print a)
+    (print b)
+  )
+)
 ```
 
 ```output
@@ -786,63 +734,62 @@ thing.foo(24, 26)
 
 ### Class override may not add undeclared errors to a non-error base slot
 
-```yumi crash
-. base Base = Child()
--- base.value()
+```brix crash
+(main
+  (let base Base (call Child))
+  (print (call (. base value)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (fn-expr + value Int
+    1
+  )
+)
 
-────────────────────
-+ value Int
-
-1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ value Int
-
-?! Error("bad")
+(type + Child (is Base)
+  (fn-expr + value Int
+    (throw (call Error "bad"))
+  )
+)
 ```
 
 ```output
 Exception: "value" can fail with Error, but the method it overrides cannot; add "?! Error" to that method, or catch the error inside "value"
-<no file:17>
-    + value Int
-    ^^^^^^^^^^
+<no file:14>
+      (fn-expr + value Int
+      ^^^^^^^^^^^^^^^^^^^
 Base method:
-<no file:9>
-    + value Int
+<no file:8>
+      (fn-expr + value Int
 ```
 
 ### An override that states no errors carries its base's errors, even when it is called through its own class before anything else compiles the base method
 
-```yumi
-. child = Child()
-child.run()
-    catch error Error
-        -- "caught $error"
--- child.count
+```brix
+(main
+  (let child (call Child))
+  (call (. child run)
+    (block
+      (on-error (: error Error)
+        (print (str "caught " error))
+      )
+    )
+  )
+  (print (. child count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + count _ (= 0))
+  (fn-do + run _ (?! Error)
+    (+= count 1)
+  )
+)
 
-+ count = 0
-
-────────────────────
-+ do run ?! Error
-
-count += 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ do run
-
-count += 2
+(type + Child (is Base)
+  (fn-do + run _
+    (+= count 2)
+  )
+)
 ```
 
 ```output
@@ -851,61 +798,49 @@ count += 2
 
 ### Inherited methods called on subclasses still dispatch to overrides
 
-```yumi
-. nodes = List'Node()
-nodes += Plain(1)
-nodes += Fancy(2)
-nodes += Plain(3)
-for node in nodes
-    -- node.describe()
-. fancy = Fancy(5)
--- fancy.describe()
--- fancy.total()
+```brix
+(main
+  (let nodes (call (of List Node)))
+  (+= nodes (call Plain 1))
+  (+= nodes (call Fancy 2))
+  (+= nodes (call Plain 3))
+  (for (in node nodes)
+    (print (call (. node describe)))
+  )
+  (let fancy (call Fancy 5))
+  (print (call (. fancy describe)))
+  (print (call (. fancy total)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node
+(type + Node
+  (prop + value Int (= 0))
+  (fn-do + This _
+    (param value _)
+  )
+  (fn-expr + label String
+    "node"
+  )
+  (fn-expr + describe String
+    (str (call label) " " value)
+  )
+  (fn-expr + total Int
+    (+ value (call weight))
+  )
+  (fn-expr + weight Int
+    1
+  )
+)
 
-+ value Int = 0
+(type + Plain (is Node))
 
-────────────────────
-+ This
-    - value
-
-────────────────────
-+ label String
-
-"node"
-
-────────────────────
-+ describe String
-
-"${label()} ${value}"
-
-────────────────────
-+ total Int
-
-value + weight()
-
-────────────────────
-+ weight Int
-
-1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Plain is Node
-
-━━━━━━━━━━━━━━━━━━━━
-+ Fancy is Node
-
-────────────────────
-+ label String
-
-"fancy"
-
-────────────────────
-+ weight Int
-
-10
+(type + Fancy (is Node)
+  (fn-expr + label String
+    "fancy"
+  )
+  (fn-expr + weight Int
+    10
+  )
+)
 ```
 
 ```output
@@ -918,47 +853,47 @@ fancy 5
 
 ### Inherited generator getters recurse through base-typed children
 
-```yumi
-. root = Group()
-. inner = Region()
-inner.kids += Leaf(2)
-inner.kids += Leaf(3)
-root.kids += Leaf(1)
-root.kids += inner
-root.kids += Leaf(4)
-for node in root.flattened
-    -- node.value
+```brix
+(main
+  (let root (call Group))
+  (let inner (call Region))
+  (+= (. inner kids) (call Leaf 2))
+  (+= (. inner kids) (call Leaf 3))
+  (+= (. root kids) (call Leaf 1))
+  (+= (. root kids) inner)
+  (+= (. root kids) (call Leaf 4))
+  (for (in node (. root flattened))
+    (print (. node value))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node
+(type + Node
+  (prop + value Int (= 0))
+  (prop + kids _ (= (call (of List Node))))
+  (prop + is-transparent _ (= false))
+  (fn-do + flattened (list Node) :get
+    (for (in child kids)
+      (if (. child is-transparent)
+        (yield-all (. child flattened))
+        (else
+          (yield child)
+        )
+      )
+    )
+  )
+)
 
-+ value Int = 0
-+ kids = List'Node()
-+ is-transparent = false
+(type + Group (is Node))
 
-────────────────────
-+ do get flattened [Node]
+(type + Region (is Node)
+  (prop + is-transparent _ (= true))
+)
 
-for child in kids
-    if child.is-transparent
-        <<= child.flattened
-    else
-        <= child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Group is Node
-
-━━━━━━━━━━━━━━━━━━━━
-+ Region is Node
-
-+ is-transparent = true
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is Node
-
-────────────────────
-+ This
-    - value
+(type + Leaf (is Node)
+  (fn-do + This _
+    (param value _)
+  )
+)
 ```
 
 ```output
@@ -970,45 +905,41 @@ for child in kids
 
 ### A super constructor sets only the base properties its arguments determine.
 
-```yumi
-+ count = 0
+```brix
+(prop + count _ (= 0))
+(blank)
 
-. c = Child(3)
--- "id ${c.id} k ${c.k} double ${c.double} tag ${c.tag} label ${c.label} extra ${c.extra}"
--- "count $count"
+(main
+  (let c (call Child 3))
+  (print (str "id " (. c id) " k " (. c k) " double " (. c double) " tag " (. c tag) " label " (. c label) " extra " (. c extra)))
+  (print (str "count " count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do next-id Int
+(fn-do + next-id Int
+  (+= count 1)
+  (return count)
+)
 
-count += 1
-= count
+(type + Base
+  (prop + id _ (= (call next-id)))
+  (prop + k Int (= 0))
+  (prop + double _ (= (* k 2)))
+  (prop + tag _ (= (str id ":" k)))
+  (prop + label String (= "none"))
+  (fn-do + This _
+    (param k Int)
+    (lazy label (str "base " k))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-+ id = next-id()
-+ k Int = 0
-+ double = k * 2
-+ tag = "$id:$k"
-+ label String = "none"
-
-────────────────────
-+ This
-    - k Int
-
-.. label = "base $k"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-+ extra Int = 5
-
-────────────────────
-+ This
-    - n Int
-
-super(n + 1)
-extra = n
+(type + Child (is Base)
+  (prop + extra Int (= 5))
+  (fn-do + This _
+    (param n Int)
+    (call super (+ n 1))
+    (= extra n)
+  )
+)
 ```
 
 ```output
@@ -1018,44 +949,45 @@ count 1
 
 ### Recursive generator getters dispatch virtually from the declaring class
 
-```yumi
-. root = Node()
-. inner = Region()
-inner.kids += Leaf(2)
-inner.kids += Leaf(3)
-root.kids += Leaf(1)
-root.kids += inner
-root.kids += Leaf(4)
-for node in root.flattened
-    -- node.value
+```brix
+(main
+  (let root (call Node))
+  (let inner (call Region))
+  (+= (. inner kids) (call Leaf 2))
+  (+= (. inner kids) (call Leaf 3))
+  (+= (. root kids) (call Leaf 1))
+  (+= (. root kids) inner)
+  (+= (. root kids) (call Leaf 4))
+  (for (in node (. root flattened))
+    (print (. node value))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node
+(type + Node
+  (prop + value Int (= 0))
+  (prop + kids _ (= (call (of List Node))))
+  (prop + is-transparent _ (= false))
+  (fn-do + flattened (list Node) :get
+    (for (in child kids)
+      (if (. child is-transparent)
+        (yield-all (. child flattened))
+        (else
+          (yield child)
+        )
+      )
+    )
+  )
+)
 
-+ value Int = 0
-+ kids = List'Node()
-+ is-transparent = false
+(type + Region (is Node)
+  (prop + is-transparent _ (= true))
+)
 
-────────────────────
-+ do get flattened [Node]
-
-for child in kids
-    if child.is-transparent
-        <<= child.flattened
-    else
-        <= child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Region is Node
-
-+ is-transparent = true
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is Node
-
-────────────────────
-+ This
-    - value
+(type + Leaf (is Node)
+  (fn-do + This _
+    (param value _)
+  )
+)
 ```
 
 ```output
@@ -1067,44 +999,39 @@ for child in kids
 
 ### Inherited getters and setters reach subclass overrides through dynamic dispatch
 
-```yumi
-. shapes = List'Shape()
-shapes += Shape()
-shapes += Circle()
-for shape in shapes
-    -- shape.description
-    shape.resize(3)
-    -- shape.log
-. circle = Circle()
--- circle.description
+```brix
+(main
+  (let shapes (call (of List Shape)))
+  (+= shapes (call Shape))
+  (+= shapes (call Circle))
+  (for (in shape shapes)
+    (print (. shape description))
+    (call (. shape resize) 3)
+    (print (. shape log))
+  )
+  (let circle (call Circle))
+  (print (. circle description))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape
+(type + Shape
+  (prop + log _ (= ""))
+  (prop + kind _ (=> "shape"))
+  (prop + description _ (=> (str "a " kind)))
+  (fn-do + size _ :set (param value Int)
+    (= log (str "shape " value))
+  )
+  (fn-do + resize _
+    (param value Int)
+    (= size value)
+  )
+)
 
-+ log = ""
-+ kind => "shape"
-+ description => "a $kind"
-
-────────────────────
-+ do size = value Int
-
-log = "shape $value"
-
-────────────────────
-+ do resize
-    - value Int
-
-size = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Circle is Shape
-
-+ kind => "circle"
-
-────────────────────
-+ do size = value Int
-
-log = "circle $value"
+(type + Circle (is Shape)
+  (prop + kind _ (=> "circle"))
+  (fn-do + size _ :set (param value Int)
+    (= log (str "circle " value))
+  )
+)
 ```
 
 ```output
@@ -1117,26 +1044,24 @@ a circle
 
 ### Inherited getters see This as their declaring class, like methods
 
-```yumi
-. circle = Circle()
--- circle.made-kind
--- circle.made-kind-method()
+```brix
+(main
+  (let circle (call Circle))
+  (print (. circle made-kind))
+  (print (call (. circle made-kind-method)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape
+(type + Shape
+  (prop + kind _ (=> "shape"))
+  (prop + made-kind _ (=> (. (call This) kind)))
+  (fn-do + made-kind-method _
+    (return (. (call This) kind))
+  )
+)
 
-+ kind => "shape"
-+ made-kind => This().kind
-
-────────────────────
-+ do made-kind-method
-
-= This().kind
-
-━━━━━━━━━━━━━━━━━━━━
-+ Circle is Shape
-
-+ kind => "circle"
+(type + Circle (is Shape)
+  (prop + kind _ (=> "circle"))
+)
 ```
 
 ```output
@@ -1146,34 +1071,32 @@ shape
 
 ### Inherited getters reach subclass implementations of interface default getters
 
-```yumi
-. nodes = List'Node()
-nodes += Node()
-nodes += Region()
-for node in nodes
-    -- node.is-transparent-node
+```brix
+(main
+  (let nodes (call (of List Node)))
+  (+= nodes (call Node))
+  (+= nodes (call Region))
+  (for (in node nodes)
+    (print (. node is-transparent-node))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Host is Interface
+(type + Host (is Interface)
+  (fn-expr + transparent _ :get
+    false
+  )
+)
 
-────────────────────
-+ get transparent
+(type + Node
+  (implements Host)
+  (prop + is-transparent-node _ (=> transparent))
+)
 
-false
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node
-    is Host
-
-+ is-transparent-node => transparent
-
-━━━━━━━━━━━━━━━━━━━━
-+ Region is Node
-
-────────────────────
-+ get transparent
-
-true
+(type + Region (is Node)
+  (fn-expr + transparent _ :get
+    true
+  )
+)
 ```
 
 ```output
@@ -1183,51 +1106,49 @@ true
 
 ### Optional chaining of a method call on a receiver that is not optional is illegal.
 
-```yumi crash
-. thing = Thing()
-thing?.show()
+```brix crash
+(main
+  (let thing (call Thing))
+  (call (?. thing show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ do show
-
--- "shown"
+(type + Thing
+  (fn-do + show _
+    (print "shown")
+  )
+)
 ```
 
 ```output
-Exception: "thing" is Thing, which is never null, so it needs no "?"; write "thing.show()"
-<no file:3>
-    thing?.show()
-    ^^^^^^^^^^^^^
+Exception: "thing" is Thing, which is never null, so it needs no "?"; write "(call (. thing show))"
+<no file:4>
+      (call (?. thing show))
+      ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Optional chaining of a method call on the receiver's base is illegal.
 
-```yumi crash
-Kid().go()
+```brix crash
+(main
+  (call (. (call Kid) go))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (fn-do + show _
+    (print "shown")
+  )
+)
 
-────────────────────
-+ do show
-
--- "shown"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Kid is Thing
-
-────────────────────
-+ do go
-
-super?.show()
+(type + Kid (is Thing)
+  (fn-do + go _
+    (call (?. super show))
+  )
+)
 ```
 
 ```output
-Exception: "super" is Thing, which is never null, so it needs no "?"; write "super.show()"
-<no file:18>
-    super?.show()
-    ^^^^^^^^^^^^^
+Exception: "super" is Thing, which is never null, so it needs no "?"; write "(call (. super show))"
+<no file:14>
+        (call (?. super show))
+        ^^^^^^^^^^^^^^^^^^^^^^
 ```

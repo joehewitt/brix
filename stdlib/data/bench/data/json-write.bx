@@ -1,0 +1,52 @@
+; benchmark.meta description: Writes one JSON document of 5,000 nested records with strings, escapes, ints, floats and nulls.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator
+(blank)
+(import /data/json)
+(blank)
+
+(main
+  (let records (list JSON)
+    (case-each (in index (..< 0 5000))
+      (as (call record index) JSON)
+    )
+  )
+  (let document
+    (call (of Map String JSON)
+      (block
+        (entry "version" (as 3 JSON))
+        (entry "records" (as records JSON))
+      )
+    )
+  )
+  (let text (call to-json document))
+  (print (str "bench-result data/json-write checksum=" (. text size)))
+)
+
+(fn-expr _ record (map String JSON)
+  (param index Size)
+  (call (of Map String JSON)
+    (block
+      (entry "id" (as index JSON))
+      (entry "name" (as (str "user-" index) JSON))
+      (entry "path" (as (str "stdlib/core/tests/runRecords" index ".test") JSON))
+      (entry "active" (as (== (% index 3) 0) JSON))
+      (entry "score" (as (+ (as index Float) 0.25) JSON))
+      (entry "tags" (as (list (as "alpha" JSON) (as "beta" JSON) (as (str "g" index) JSON)) JSON))
+      (entry "address" (as (call address index) JSON))
+      (entry "bio" (as (str "Line one\nLine \"two\" été 😀\t" index) JSON))
+      (entry "parent" (as null JSON))
+    )
+  )
+)
+
+(fn-expr _ address (map String JSON)
+  (param index Size)
+  (call (of Map String JSON)
+    (block
+      (entry "street" (as (str index " Main St") JSON))
+      (entry "city" (as "Springfield" JSON))
+      (entry "geo" (as (list (as (% index 180) JSON) (as (% index 90) JSON)) JSON))
+    )
+  )
+)

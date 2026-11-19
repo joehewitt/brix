@@ -2,38 +2,35 @@
 
 ### Concrete associated types resolve without adding constructor fields.
 
-```yumi
-. arena = AssociatedArena()
-. holder = AssociatedContextHolder'AssociatedArena()
--- type-of arena
--- type-of AssociatedArena.Context()
--- type-of AssociatedArena.Backing'U32()
--- type-of DerivedAssociatedArena.Context()
--- type-of holder.context
+```brix
+(main
+  (let arena (call AssociatedArena))
+  (let holder (call (of AssociatedContextHolder AssociatedArena)))
+  (print (type-of arena))
+  (print (type-of (call (. AssociatedArena Context))))
+  (print (type-of (call (. AssociatedArena (of Backing U32)))))
+  (print (type-of (call (. DerivedAssociatedArena Context))))
+  (print (type-of (. holder context)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AssociatedContextProvider is Interface
+(type + AssociatedContextProvider (is Interface)
+  (prop + _ Context)
+)
 
-+ Context
+(type + (of AssociatedBox Item))
 
-━━━━━━━━━━━━━━━━━━━━
-+ AssociatedBox'Item
+(type + AssociatedArena
+  (implements AssociatedContextProvider)
+  (prop + _ Context (= I32))
+  (prop + _ (of Backing Item) (= (of AssociatedBox Item)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AssociatedArena
-    is AssociatedContextProvider
+(type + DerivedAssociatedArena (is AssociatedArena))
 
-+ Context = I32
-+ Backing'Item = AssociatedBox'Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ DerivedAssociatedArena is AssociatedArena
-
-━━━━━━━━━━━━━━━━━━━━
-+ AssociatedContextHolder'Backing
-    - Backing is AssociatedContextProvider
-
-+ context Backing.Context = Backing.Context()
+(type + (of AssociatedContextHolder Backing)
+  (constraint is Backing AssociatedContextProvider)
+  (prop + context (. Backing Context) (= (call (. Backing Context))))
+)
 ```
 
 ```output
@@ -46,34 +43,31 @@
 
 ### An inapplicable associated-storage constructor does not block a valid fallback candidate.
 
-```yumi
-. box = AssociatedCandidateFallback'U32(7u32)
--- box.value
+```brix
+(main
+  (let box (call (of AssociatedCandidateFallback U32) 7u32))
+  (print (. box value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AssociatedCandidateProvider is Interface
+(type + AssociatedCandidateProvider (is Interface)
+  (prop + _ (of Backing Item))
+)
 
-+ Backing'Item
+(type + (of AssociatedCandidateBacking Item))
 
-━━━━━━━━━━━━━━━━━━━━
-+ AssociatedCandidateBacking'Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ AssociatedCandidateFallback'Item'Backing
-    - Backing = AssociatedCandidateBacking'Item
-
-+ value Item
-
-────────────────────
-+ This
-    - value Item
-    - Backing = AssociatedCandidateBacking'Item
-
-────────────────────
-+ This'Storage
-    - storage Storage
-    - Storage is AssociatedCandidateProvider
-    - Backing = Storage.Backing'Item
+(type + (of AssociatedCandidateFallback Item Backing)
+  (constraint = Backing (of AssociatedCandidateBacking Item))
+  (prop + value Item)
+  (fn-do + This _
+    (param value Item)
+    (constraint = Backing (of AssociatedCandidateBacking Item))
+  )
+  (fn-do + (of This Storage) _
+    (param storage Storage)
+    (constraint is Storage AssociatedCandidateProvider)
+    (constraint = Backing (. Storage (of Backing Item)))
+  )
+)
 ```
 
 ```output
@@ -82,29 +76,29 @@
 
 ### Rejected constrained constructor candidates do not instantiate converters during matching.
 
-```yumi
-. values = constrained-stream-list(false)
--- values.length
--- values[0]
-. failure = catch constrained-stream-list(true)
--- failure is ConstrainedStreamError
+```brix
+(main
+  (let values (call constrained-stream-list false))
+  (print (. values length))
+  (print ([] values 0))
+  (let failure (catch (call constrained-stream-list true)))
+  (print (is failure ConstrainedStreamError))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ConstrainedStreamError is Error
+(type + ConstrainedStreamError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do constrained-stream-list [I32] ?! ConstrainedStreamError
-    - fail Bool
+(fn-do + constrained-stream-list (list I32) (?! ConstrainedStreamError)
+  (param fail Bool)
+  (return (call (of List I32) (call constrained-stream-items fail)))
+)
 
-= List'I32(constrained-stream-items(fail))
-
-━━━━━━━━━━━━━━━━━━━━
-+ do constrained-stream-items <I32>
-    - fail Bool
-
-if fail
-    ?! ConstrainedStreamError("failed")
-<= 7
+(fn-do + constrained-stream-items (stream I32)
+  (param fail Bool)
+  (if fail
+    (throw (call ConstrainedStreamError "failed"))
+  )
+  (yield 7)
+)
 ```
 
 ```output
@@ -115,35 +109,33 @@ true
 
 ### Interface requirements expose each conformer's binding to constrained generic code.
 
-```yumi
-. managed = associated-context(ManagedAssociatedBacking'U32())
-. native = associated-context(NativeAssociatedBacking'U32())
--- type-of managed
--- type-of native
+```brix
+(main
+  (let managed (call associated-context (call (of ManagedAssociatedBacking U32))))
+  (let native (call associated-context (call (of NativeAssociatedBacking U32))))
+  (print (type-of managed))
+  (print (type-of native))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AssociatedBacking'Item is Interface
+(type + (of AssociatedBacking Item) (is Interface)
+  (prop + _ Context)
+)
 
-+ Context
+(type + (of ManagedAssociatedBacking Item)
+  (implements (of AssociatedBacking Item))
+  (prop + _ Context (= I32))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ManagedAssociatedBacking'Item
-    is AssociatedBacking'Item
+(type + (of NativeAssociatedBacking Item)
+  (implements (of AssociatedBacking Item))
+  (prop + _ Context (= U64))
+)
 
-+ Context = I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ NativeAssociatedBacking'Item
-    is AssociatedBacking'Item
-
-+ Context = U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ associated-context'Item'Backing Backing.Context
-    - backing Backing
-    - Backing is AssociatedBacking'Item
-
-Backing.Context()
+(fn-expr + (of associated-context Item Backing) (. Backing Context)
+  (param backing Backing)
+  (constraint is Backing (of AssociatedBacking Item))
+  (call (. Backing Context))
+)
 ```
 
 ```output
@@ -153,36 +145,33 @@ Backing.Context()
 
 ### Parameterized associated families participate in constructor owner-parameter assignments.
 
-```yumi
-. selected = AssociatedFamilyBox'U32(AssociatedStorage())
--- type-of selected
+```brix
+(main
+  (let selected (call (of AssociatedFamilyBox U32) (call AssociatedStorage)))
+  (print (type-of selected))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AssociatedStorageProvider is Interface
+(type + AssociatedStorageProvider (is Interface)
+  (prop + _ (of Backing Item))
+)
 
-+ Backing'Item
+(type + AssociatedStorage
+  (implements AssociatedStorageProvider)
+  (prop + _ (of Backing Item) (= (of SelectedAssociatedBacking Item)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AssociatedStorage
-    is AssociatedStorageProvider
+(type + (of DefaultAssociatedBacking Item))
 
-+ Backing'Item = SelectedAssociatedBacking'Item
+(type + (of SelectedAssociatedBacking Item))
 
-━━━━━━━━━━━━━━━━━━━━
-+ DefaultAssociatedBacking'Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ SelectedAssociatedBacking'Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ AssociatedFamilyBox'Item'Backing
-    - Backing = DefaultAssociatedBacking'Item
-
-────────────────────
-+ This'Storage
-    - storage Storage
-    - Storage is AssociatedStorageProvider
-    - Backing = Storage.Backing'Item
+(type + (of AssociatedFamilyBox Item Backing)
+  (constraint = Backing (of DefaultAssociatedBacking Item))
+  (fn-do + (of This Storage) _
+    (param storage Storage)
+    (constraint is Storage AssociatedStorageProvider)
+    (constraint = Backing (. Storage (of Backing Item)))
+  )
+)
 ```
 
 ```output
@@ -191,31 +180,29 @@ Backing.Context()
 
 ### Associated-family arguments infer backward after the owner is resolved by another argument.
 
-```yumi
-. item = infer-associated-item(SelectedAssociatedBacking'U32(), AssociatedStorage())
--- type-of item
+```brix
+(main
+  (let item (call infer-associated-item (call (of SelectedAssociatedBacking U32)) (call AssociatedStorage)))
+  (print (type-of item))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AssociatedStorageProvider is Interface
+(type + AssociatedStorageProvider (is Interface)
+  (prop + _ (of Backing Item))
+)
 
-+ Backing'Item
+(type + AssociatedStorage
+  (implements AssociatedStorageProvider)
+  (prop + _ (of Backing Item) (= (of SelectedAssociatedBacking Item)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AssociatedStorage
-    is AssociatedStorageProvider
+(type + (of SelectedAssociatedBacking Item))
 
-+ Backing'Item = SelectedAssociatedBacking'Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ SelectedAssociatedBacking'Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ infer-associated-item'Item'Storage Item
-    - backing Storage.Backing'Item
-    - storage Storage
-    - Storage is AssociatedStorageProvider
-
-Item()
+(fn-expr + (of infer-associated-item Item Storage) Item
+  (param backing (. Storage (of Backing Item)))
+  (param storage Storage)
+  (constraint is Storage AssociatedStorageProvider)
+  (call Item)
+)
 ```
 
 ```output
@@ -224,249 +211,241 @@ Item()
 
 ### A matching concrete member cannot replace a missing generic requirement.
 
-```yumi crash
-undeclared-associated-member(UndeclaredAssociatedStorage())
+```brix crash
+(main
+  (call undeclared-associated-member (call UndeclaredAssociatedStorage))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ EmptyAssociatedProvider is Interface
+(type + EmptyAssociatedProvider (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ UndeclaredAssociatedStorage
-    is EmptyAssociatedProvider
+(type + UndeclaredAssociatedStorage
+  (implements EmptyAssociatedProvider)
+  (prop + _ Context (= I32))
+)
 
-+ Context = I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ undeclared-associated-member'Storage Storage.Context
-    - storage Storage
-    - Storage is EmptyAssociatedProvider
-
-Storage.Context()
+(fn-expr + (of undeclared-associated-member Storage) (. Storage Context)
+  (param storage Storage)
+  (constraint is Storage EmptyAssociatedProvider)
+  (call (. Storage Context))
+)
 ```
 
 ```output
 Exception: Associated type Context is not declared by constraints on Storage
-<no file:14>
-    + undeclared-associated-member'Storage Storage.Context
-                                           ^^^^^^^^^^^^^^^
+<no file:13>
+    (fn-expr + (of undeclared-associated-member Storage) (. Storage Context)
+                                                         ^^^^^^^^^^^^^^^^^^
 ```
 
 ### Conformance requires a same-named associated-type binding.
 
-```yumi crash
-MissingAssociatedBinding()
+```brix crash
+(main
+  (call MissingAssociatedBinding)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MissingAssociatedProvider is Interface
+(type + MissingAssociatedProvider (is Interface)
+  (prop + _ Context)
+)
 
-+ Context
-
-━━━━━━━━━━━━━━━━━━━━
-+ MissingAssociatedBinding
-    is MissingAssociatedProvider
-
-+ context I32
+(type + MissingAssociatedBinding
+  (implements MissingAssociatedProvider)
+  (prop + context I32)
+)
 ```
 
 ```output
 Exception: Must implement associated type Context in MissingAssociatedBinding
 <no file:10>
-    + MissingAssociatedBinding
-    ^^^^^^^^^^^^^^^^^^^^^^^^^
+    (type + MissingAssociatedBinding
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A conformer binding must preserve the requirement's family arity.
 
-```yumi crash
-WrongArityAssociatedBinding()
+```brix crash
+(main
+  (call WrongArityAssociatedBinding)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ FamilyArityProvider is Interface
+(type + FamilyArityProvider (is Interface)
+  (prop + _ (of Backing Item))
+)
 
-+ Backing'Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ WrongArityAssociatedBinding
-    is FamilyArityProvider
-
-+ Backing = I32
+(type + WrongArityAssociatedBinding
+  (implements FamilyArityProvider)
+  (prop + _ Backing (= I32))
+)
 ```
 
 ```output
 Exception: Associated type Backing has incompatible arity
-<no file:13>
-    + Backing = I32
-    ^^^^^^^^^^^^^^^
+<no file:12>
+      (prop + _ Backing (= I32))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A private binding cannot satisfy a public associated-type requirement.
 
-```yumi crash
-PrivateAssociatedBinding()
+```brix crash
+(main
+  (call PrivateAssociatedBinding)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ PublicAssociatedProvider is Interface
+(type + PublicAssociatedProvider (is Interface)
+  (prop + _ Context)
+)
 
-+ Context
-
-━━━━━━━━━━━━━━━━━━━━
-+ PrivateAssociatedBinding
-    is PublicAssociatedProvider
-
-_ Context = I32
+(type + PrivateAssociatedBinding
+  (implements PublicAssociatedProvider)
+  (prop _ _ Context (= I32))
+)
 ```
 
 ```output
 Exception: Associated type Context must be public
-<no file:13>
-    _ Context = I32
-    ^^^^^^^^^^^^^^^
+<no file:12>
+      (prop _ _ Context (= I32))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Circular concrete bindings diagnose the dependent lookup.
 
-```yumi crash
-CircularAssociation.Context()
+```brix crash
+(main
+  (call (. CircularAssociation Context))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CircularAssociation
-
-+ Context = CircularAssociation.Context
+(type + CircularAssociation
+  (prop + _ Context (= (. CircularAssociation Context)))
+)
 ```
 
 ```output
 Exception: Circular associated type Context
 <no file:7>
-    + Context = CircularAssociation.Context
-                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      (prop + _ Context (= (. CircularAssociation Context)))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Two inherited requirements with the same name are ambiguous in generic code.
 
-```yumi crash
-ambiguous-associated-member(AmbiguousAssociatedStorage())
+```brix crash
+(main
+  (call ambiguous-associated-member (call AmbiguousAssociatedStorage))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ LeftAssociatedProvider is Interface
+(type + LeftAssociatedProvider (is Interface)
+  (prop + _ Context)
+)
 
-+ Context
+(type + RightAssociatedProvider (is Interface)
+  (prop + _ Context)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RightAssociatedProvider is Interface
+(type + BothAssociatedProviders (is Interface)
+  (implements LeftAssociatedProvider)
+  (implements RightAssociatedProvider)
+)
 
-+ Context
+(type + AmbiguousAssociatedStorage
+  (implements BothAssociatedProviders)
+  (prop + _ Context (= I32))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BothAssociatedProviders is Interface
-    is LeftAssociatedProvider
-    is RightAssociatedProvider
-
-━━━━━━━━━━━━━━━━━━━━
-+ AmbiguousAssociatedStorage
-    is BothAssociatedProviders
-
-+ Context = I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ ambiguous-associated-member'Storage Storage.Context
-    - storage Storage
-    - Storage is BothAssociatedProviders
-
-Storage.Context()
+(fn-expr + (of ambiguous-associated-member Storage) (. Storage Context)
+  (param storage Storage)
+  (constraint is Storage BothAssociatedProviders)
+  (call (. Storage Context))
+)
 ```
 
 ```output
 Exception: Associated type Context is ambiguous
-<no file:26>
-    + ambiguous-associated-member'Storage Storage.Context
-                                          ^^^^^^^^^^^^^^^
+<no file:24>
+    (fn-expr + (of ambiguous-associated-member Storage) (. Storage Context)
+                                                        ^^^^^^^^^^^^^^^^^^
 ```
 
 ### An associated family with no evidence for its owner stays underconstrained.
 
-```yumi crash
-underconstrained-associated-item(UnderconstrainedBacking'U32())
+```brix crash
+(main
+  (call underconstrained-associated-item (call (of UnderconstrainedBacking U32)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ UnderconstrainedProvider is Interface
+(type + UnderconstrainedProvider (is Interface)
+  (prop + _ (of Backing Item))
+)
 
-+ Backing'Item
+(type + (of UnderconstrainedBacking Item))
 
-━━━━━━━━━━━━━━━━━━━━
-+ UnderconstrainedBacking'Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ underconstrained-associated-item'Item'Storage Item
-    - backing Storage.Backing'Item
-    - Storage is UnderconstrainedProvider
-
-Item()
+(fn-expr + (of underconstrained-associated-item Item Storage) Item
+  (param backing (. Storage (of Backing Item)))
+  (constraint is Storage UnderconstrainedProvider)
+  (call Item)
+)
 ```
 
 ```output
 Exception: No function "underconstrained-associated-item" accepts (UnderconstrainedBacking'U32); it is declared as "underconstrained-associated-item(backing Storage.Backing'Item)"
-<no file:2>
-    underconstrained-associated-item(UnderconstrainedBacking'U32())
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:3>
+      (call underconstrained-associated-item (call (of UnderconstrainedBacking U32)))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Associated-type access obeys module visibility.
 
-```yumi crash
-./foreign-associated
+```brix crash
+(import ./foreign-associated)
+(blank)
 
-ForeignAssociatedOwner.Context()
+(main
+  (call (. ForeignAssociatedOwner Context))
+)
 ```
 
-```yumi file=foreign-associated.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ ForeignAssociatedOwner
-
-_ Context = I32
-
+```brix file=foreign-associated.bx
+(type + ForeignAssociatedOwner
+  (prop _ _ Context (= I32))
+)
 ```
 
 ```output
 Exception: Associated type Context is private
-<no file:4>
-    ForeignAssociatedOwner.Context()
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:6>
+      (call (. ForeignAssociatedOwner Context))
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### An associated type declared with ^ is shared with its module's file family
 
-```yumi
-./lib/shelf
+```brix
+(import ./lib/shelf)
+(blank)
 
--- Shelf().describe()
+(main
+  (print (call (. (call Shelf) describe)))
+)
 ```
 
-```yumi file=lib/shelf.yumi
+```brix file=lib/shelf.bx
+(import ./shelf.parts)
 
-./shelf.parts
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shelf
-
-^ Context = I32
-
-────────────────────
-+ describe String
-
-"${shelf-zero()}"
-
+(type + Shelf
+  (prop ^ _ Context (= I32))
+  (fn-expr + describe String
+    (str (call shelf-zero))
+  )
+)
 ```
 
-```yumi file=lib/shelf.parts.yumi
+```brix file=lib/shelf.parts.bx
+(import ./shelf)
 
-./shelf
-
-━━━━━━━━━━━━━━━━━━━━
-+ shelf-zero I32
-
-Shelf.Context()
-
+(fn-expr + shelf-zero I32
+  (call (. Shelf Context))
+)
 ```
 
 ```output
@@ -475,42 +454,43 @@ Shelf.Context()
 
 ### An associated type declared with ^ is refused outside its module's file family
 
-```yumi crash
-./shared-associated
+```brix crash
+(import ./shared-associated)
+(blank)
 
-SharedAssociatedOwner.Context()
+(main
+  (call (. SharedAssociatedOwner Context))
+)
 ```
 
-```yumi file=shared-associated.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ SharedAssociatedOwner
-
-^ Context = I32
-
+```brix file=shared-associated.bx
+(type + SharedAssociatedOwner
+  (prop ^ _ Context (= I32))
+)
 ```
 
 ```output
 Exception: Associated type Context is shared, declared with ^, so only its own file family can use it
-<no file:4>
-    SharedAssociatedOwner.Context()
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:6>
+      (call (. SharedAssociatedOwner Context))
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### An associated-type binding must be a type expression.
 
-```yumi crash
-InvalidAssociatedBinding()
+```brix crash
+(main
+  (call InvalidAssociatedBinding)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InvalidAssociatedBinding
-
-+ Context = 1
+(type + InvalidAssociatedBinding
+  (prop + _ Context (= 1))
+)
 ```
 
 ```output
 Exception: Associated type binding must be a type
 <no file:7>
-    + Context = 1
-                ^
+      (prop + _ Context (= 1))
+                           ^
 ```

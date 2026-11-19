@@ -1,0 +1,23 @@
+; benchmark.meta description: Finds and slices near the end of a resident 1 MiB ASCII String.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator
+(blank)
+
+(main
+  (let block "0123456789abcdef")
+  (let source (* block 65536))
+  (let passes 4096)
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 passes))
+    (let found (as (?? (call (. source find) "abcdef" 1048560) 0) Size))
+    (let tail ([] source (..< 1048560 1048576)))
+    (+= checksum (+ found (. tail length)))
+  )
+  (blank)
+  (if (!= checksum 4295008256)
+    (throw (call Panic "ascii-find-slice-1m benchmark produced the wrong checksum"))
+  )
+  (blank)
+  (print (str "bench-result string/ascii-find-slice-1m checksum=" checksum))
+)

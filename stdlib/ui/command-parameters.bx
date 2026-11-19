@@ -1,0 +1,292 @@
+(import /graphics/point)
+(import /math)
+(import /stream/aggregate)
+(import /units)
+
+(type + ParameterUnit (is U8)
+  (variant none)
+  (variant degrees)
+  (variant percent)
+  (fn-expr + suffix String :get
+    (match this
+      (case= .degrees
+        "°"
+      )
+      (case= .percent
+        "%"
+      )
+      (default
+        ""
+      )
+    )
+  )
+  (fn-expr + display-scale F64 :get
+    (match this
+      (case= .percent
+        (as 1.0 Ratio Percent F64)
+      )
+      (default
+        1.0
+      )
+    )
+  )
+)
+
+(type + CommandNumberParameter
+  (prop + key String)
+  (prop + label String)
+  (prop + value F64)
+  (prop + unit ParameterUnit)
+  (prop + step F64)
+  (prop + point String)
+  (prop + axis Index)
+  (prop + optional _ (= false))
+  (prop + empty _ (= false))
+  (fn-do + This _
+    (param label _)
+    (param value _)
+    (param unit _ (= (. ParameterUnit none)))
+    (param step _ (= 1.0))
+    (param name _ (= ""))
+    (param point _ (= ""))
+    (param axis Index (= 0))
+    (lazy key (if-expr (. name length) name label))
+  )
+  (fn-expr + display-value _ :get
+    (* value (. unit display-scale))
+  )
+)
+
+(type + CommandPointParameter
+  (prop + key String)
+  (prop + label String)
+  (prop + value Point)
+  (prop + unit ParameterUnit)
+  (prop + step F64)
+  (fn-do + This _
+    (param label _)
+    (param value _)
+    (param unit _ (= (. ParameterUnit none)))
+    (param step _ (= 1.0))
+    (param name _ (= ""))
+    (lazy key (if-expr (. name length) name label))
+  )
+  (fn-expr + x-part _ :get
+    (call CommandNumberParameter label (. value x) unit step (str key ".x") key 0)
+  )
+  (fn-expr + y-part _ :get
+    (call CommandNumberParameter label (. value y) unit step (str key ".y") key 1)
+  )
+)
+
+(type + CommandTextParameter
+  (prop + key String)
+  (prop + label String)
+  (prop + value String)
+  (prop + options (list String))
+  (fn-do + This _
+    (param label _)
+    (param value _)
+    (param options (list String) (= (call (of List String))))
+    (param name _ (= ""))
+    (lazy key (if-expr (. name length) name label))
+  )
+  (fn-expr + accepts _
+    (param candidate String)
+    (if-expr (. options length) (has options candidate) (> (. candidate length) 0))
+  )
+  (fn-expr + next-value _ :get
+    (case? (not (. options length))
+      value
+    )
+    (default
+      ([] options (% (+ (?? (call (. options find) value) (- (. options length) 1)) 1) (. options length)))
+    )
+  )
+)
+
+(type + CommandReferenceParameter
+  (prop + key String)
+  (prop + label String)
+  (prop + ids (list U64))
+  (prop + text String)
+  (prop + kind String)
+  (prop + multiple Bool)
+  (fn-do + This _
+    (param label _)
+    (param ids _)
+    (param text _)
+    (param kind _ (= ""))
+    (param multiple _ (= false))
+    (param name _ (= ""))
+    (lazy key (if-expr (. name length) name label))
+  )
+  (fn-expr + is-empty _ :get
+    (== (. ids length) 0)
+  )
+  (fn-expr + is-editable _ :get
+    (> (. kind length) 0)
+  )
+)
+
+(type + CommandValueParameter (is Interface)
+  (fn-expr + key String :get)
+  (fn-expr + label String :get)
+  (fn-expr + text String :get)
+)
+
+(type + CommandSentencePart (is Union)
+  (variant text String)
+  (variant number CommandNumberParameter)
+  (variant point CommandPointParameter)
+  (variant input CommandTextParameter)
+  (variant color CommandTextParameter)
+  (variant reference CommandReferenceParameter)
+  (variant definition CommandTextParameter)
+  (variant value CommandValueParameter)
+)
+
+(type + CommandParameterValue (is Union)
+  (variant number F64)
+  (variant point Point)
+  (variant text String)
+  (variant ids (list U64))
+)
+
+(fn-expr + command-sentence-text _
+  (param part CommandSentencePart)
+  (match? part
+    (case (call .text value)
+      value
+    )
+  )
+)
+
+(fn-expr + command-sentence-number _
+  (param part CommandSentencePart)
+  (match? part
+    (case (call .number parameter)
+      parameter
+    )
+  )
+)
+
+(fn-expr + command-sentence-point _
+  (param part CommandSentencePart)
+  (match? part
+    (case (call .point parameter)
+      parameter
+    )
+  )
+)
+
+(fn-expr + command-sentence-input _
+  (param part CommandSentencePart)
+  (match? part
+    (case (call .input value)
+      value
+    )
+  )
+)
+
+(fn-expr + command-sentence-color _
+  (param part CommandSentencePart)
+  (match? part
+    (case (call .color value)
+      value
+    )
+  )
+)
+
+(fn-expr + command-sentence-reference _
+  (param part CommandSentencePart)
+  (match? part
+    (case (call .reference value)
+      value
+    )
+  )
+)
+
+(fn-expr + command-sentence-definition _
+  (param part CommandSentencePart)
+  (match? part
+    (case (call .definition value)
+      value
+    )
+  )
+)
+
+(fn-expr + command-sentence-value _
+  (param part CommandSentencePart)
+  (match? part
+    (case (call .value value)
+      value
+    )
+  )
+)
+
+(fn-expr + command-part-key (? String)
+  (param part CommandSentencePart)
+  (match part
+    (case .text
+      null
+    )
+    (case (call .number parameter)
+      (. parameter key)
+    )
+    (case (call .point parameter)
+      (. parameter key)
+    )
+    (case (call .input parameter)
+      (. parameter key)
+    )
+    (case (call .color parameter)
+      (. parameter key)
+    )
+    (case (call .reference parameter)
+      (. parameter key)
+    )
+    (case (call .definition parameter)
+      (. parameter key)
+    )
+    (case (call .value parameter)
+      (. parameter key)
+    )
+  )
+)
+
+(fn-expr + command-part-label String
+  (param part CommandSentencePart)
+  (match part
+    (case (call .text text)
+      text
+    )
+    (case (call .number parameter)
+      (. parameter label)
+    )
+    (case (call .point parameter)
+      (. parameter label)
+    )
+    (case (call .input parameter)
+      (. parameter label)
+    )
+    (case (call .color parameter)
+      (. parameter label)
+    )
+    (case (call .reference parameter)
+      (. parameter label)
+    )
+    (case (call .definition parameter)
+      (. parameter label)
+    )
+    (case (call .value parameter)
+      (. parameter label)
+    )
+  )
+)
+
+(fn-expr + command-sentence-part _
+  (param sentence (list CommandSentencePart))
+  (param key String)
+  (call first (in each sentence (when (== (call command-part-key each) key))))
+)

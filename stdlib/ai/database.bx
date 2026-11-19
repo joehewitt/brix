@@ -1,0 +1,1915 @@
+(import ./chat)
+(import ./images)
+(import ./media)
+(import ./model)
+(import /data/json)
+(import /data/sqlite)
+(import /math)
+(import /os/path)
+(import /time/duration)
+(import /time/timestamp)
+(import /units)
+(blank)
+(prop _ ai-database-version _ (= 3))
+(prop _ ai-database-name _ (= "chats.db"))
+(prop _ ai-part-mark _ (= 1))
+(prop _ ai-part-raw-data _ (= 2))
+(prop _ ai-part-raw-signature _ (= 4))
+(prop _ ai-part-same-text _ (= 8))
+(prop _ ai-snippet-open _ (= "\x01"))
+(prop _ ai-snippet-close _ (= "\x02"))
+(prop _ ai-search-shift _ (= 16))
+(prop _ ai-search-slots _ (= 65536))
+(prop _ ai-search-places (list (? AIChatPlace)) (= (list (. AIChatPlace active) (. AIChatPlace done) (. AIChatPlace archived))))
+(prop _ ai-database-shown _ (= "listed is not null and archived_at is null"))
+(prop _ ai-database-columns _ (= "id, title, service, owner, project, sent_at, replied_at, active_at, outcome, seen_at, done_at, archived_at"))
+(prop _ ai-database-summary _ (= (str "select " ai-database-columns " from chats")))
+(prop _ ai-database-place _ (= "(case when archived_at is not null then 2 when done_at is not null then 1 else 0 end)"))
+(prop _ ai-database-put-message _ (= "insert or replace into messages (chat, id, role, created_at, model, finish_reason, elapsed, usage, error) values (?, ?, ?, ?, ?, ?, ?, ?, ?)"))
+(prop _ ai-database-put-part _ (= "insert or replace into parts (chat, message, position, kind, id, ref, name, flags, text, data, media, signature) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"))
+
+(type + AIChatSummary (is Tuple)
+  (prop + id String)
+  (prop + title (? String))
+  (prop + service (? String))
+  (prop + branches (list AIChatBranchSummary))
+  (prop + owner (? String) (= null))
+  (prop + project (? String) (= null))
+  (prop + activity _ (= (call AIChatActivity)))
+  (prop + marks _ (= (call AIChatMarks)))
+)
+
+(type + AIChatSnippet (is Tuple)
+  (prop + text String)
+  (prop + is-match Bool)
+)
+
+(type + AIChatFound (is Tuple)
+  (prop + summary AIChatSummary)
+  (prop + snippet (list AIChatSnippet))
+)
+
+(type + AIChatFoundGroup (is Tuple)
+  (prop + place AIChatPlace)
+  (prop + found (list AIChatFound))
+  (prop + has-more Bool)
+)
+
+(type + AIChatDatabase
+  (prop + directory Path)
+  (prop + images (? AIImageStore))
+  (event + changed AIChatSummary)
+  (blank)
+  (prop _ connection (? SQLite))
+  (prop _ written _ (= (call (of Map String (map String AIChatMessage)))))
+  (prop _ deleted _ (= (call (of Map String Bool))))
+  (fn-do + This _
+    (param directory _)
+    (param images (? AIImageStore) (= null))
+  )
+  (fn-expr + path _ :get
+    (/ directory ai-database-name)
+  )
+  (fn-do + load-index (list AIChatSummary) (?! Error)
+    (param owner (? String))
+    (let summaries (call (of List AIChatSummary)))
+    (let database (call opened false))
+    (return-if summaries (if (not database)))
+    (let branches (call (of Map String (list AIChatBranchSummary))))
+    (let branch-rows (use (call (. database prepare) (str "select chat, id, parent, title, is_collapsed from branches where chat in (select id from chats where " ai-database-shown " and owner is ?1) order by chat, position"))))
+    (call (. branch-rows bind) owner)
+    (while (call (. branch-rows step))
+      (let row (. branch-rows row))
+      (let chat-id (call (. row string) 0))
+      (let found (?? ([] branches chat-id) (call (of List AIChatBranchSummary))))
+      (+= found
+        (call AIChatBranchSummary
+          (block
+            (arg (call (. row string) 1))
+            (arg (call (. row optional-string) 2))
+            (arg (call (. row optional-string) 3))
+            (arg (call (. row bool) 4))
+          )
+        )
+      )
+      (= ([] branches chat-id) found)
+    )
+    (let chat-rows (use (call (. database prepare) (str ai-database-summary " where " ai-database-shown " and owner is ?1 order by active_at desc, listed desc"))))
+    (call (. chat-rows bind) owner)
+    (while (call (. chat-rows step))
+      (+= summaries (call summary-row (. chat-rows row) branches))
+    )
+    (return summaries)
+  )
+  (fn-do + load-summary (? AIChatSummary) (?! Error)
+    (param id String)
+    (let database (call opened false))
+    (return-if null (if (not database)))
+    (let branches (call (of Map String (list AIChatBranchSummary))))
+    (let found (call (of List AIChatBranchSummary)))
+    (let branch-rows (use (call (. database prepare) "select id, parent, title, is_collapsed from branches where chat = ?1 order by position")))
+    (call (. branch-rows bind) id)
+    (while (call (. branch-rows step))
+      (let row (. branch-rows row))
+      (+= found
+        (call AIChatBranchSummary
+          (block
+            (arg (call (. row string) 0))
+            (arg (call (. row optional-string) 1))
+            (arg (call (. row optional-string) 2))
+            (arg (call (. row bool) 3))
+          )
+        )
+      )
+    )
+    (= ([] branches id) found)
+    (return (call (. database query-first) (str ai-database-summary " where id = ?1 and listed is not null") (=> (row) (call summary-row row branches)) id))
+  )
+  (fn-do + owners (list String) (?! Error)
+    (param project String)
+    (let found (call (of List String)))
+    (let database (call opened false))
+    (return-if found (if (not database)))
+    (let rows (use (call (. database prepare) (str "select distinct owner from chats where " ai-database-shown " and project = ?1 and owner is not null"))))
+    (call (. rows bind) project)
+    (while (call (. rows step))
+      (+= found (call (. rows row string) 0))
+    )
+    (return found)
+  )
+  (fn-do + has Bool (?! Error)
+    (param id String)
+    (let database (call opened false))
+    (return-if false (if (not database)))
+    (return (?? (call (. database query-first) "select exists (select 1 from chats where id = ?)" (=> (row) (call (. row bool) 0)) id) false))
+  )
+  (fn-do + load AIChat (?! Error)
+    (param id String)
+    (let database (call opened false))
+    (throw (call Error (str "There is no saved chat " id)) (if (not database)))
+    (let found (call (. database query-first) "select root_branch, title, is_kept from chats where id = ?" (=> (row) (call saved-chat row id)) id))
+    (throw (call Error (str "There is no saved chat " id)) (if (not found)))
+    (let parts (call (of Map String (list AIMessagePart))))
+    (let part-rows (use (call (. database prepare) "select message, kind, id, ref, name, flags, text, data, media, signature from parts where chat = ? order by message, position")))
+    (call (. part-rows bind) id)
+    (let grouped (? String) null)
+    (let owned (call (of List AIMessagePart)))
+    (while (call (. part-rows step))
+      (let row (. part-rows row))
+      (let message-id (call (. row string) 0))
+      (if (!= message-id grouped)
+        (= owned (call (of List AIMessagePart)))
+        (= ([] parts message-id) owned)
+        (= grouped message-id)
+      )
+      (+= owned (call decode-part row images))
+    )
+    (let messages (call (of Map String AIChatMessage)))
+    (let message-rows (use (call (. database prepare) "select id, role, created_at, model, finish_reason, elapsed, usage, error from messages where chat = ?")))
+    (call (. message-rows bind) id)
+    (while (call (. message-rows step))
+      (let message (call decode-message (. message-rows row) parts))
+      (= ([] messages (. message id)) message)
+    )
+    (= (. found branches) (call (of List AIChatBranch)))
+    (let branch-rows (use (call (. database prepare) "select id, parent, fork, forks, is_collapsed, prefix, messages from branches where chat = ? order by position")))
+    (call (. branch-rows bind) id)
+    (while (call (. branch-rows step))
+      (+= (. found branches) (call decode-branch (. branch-rows row) messages))
+    )
+    (= ([] written id) messages)
+    (return found)
+  )
+  (fn-do + save _ (?! Error)
+    (param chat AIChat)
+    (param service (? String) (= null))
+    (param owner (? String) (= null))
+    (param is-listed _ (= false))
+    (param project (? String) (= null))
+    (return-if (if (has deleted (. chat id))))
+    (let database (!! (call opened true)))
+    (let known (?? ([] written (. chat id)) (call (of Map String AIChatMessage))))
+    (let current (call (of Map String AIChatMessage)))
+    (for (in message (call saved-chat-messages chat))
+      (= ([] current (. message id)) message)
+    )
+    (call (. database transaction) (:is-immediate true)
+      (:body
+        (=> () :do
+          (block
+            (call write-chat database chat service owner project is-listed)
+            (call write-messages database (. chat id) current known)
+          )
+        )
+      )
+    )
+    (= ([] written (. chat id)) current)
+  )
+  (fn-do + save-progress Bool (?! Error)
+    (param chat-id String)
+    (param progress AIChatProgress)
+    (return-if true (if (has deleted chat-id)))
+    (let message (. progress message))
+    (let known ([] written chat-id))
+    (return-if false (if (or (not known) (!= ([] known (. message id)) message))))
+    (let database (call opened false))
+    (return-if false (if (not database)))
+    (let position (. progress part))
+    (if (!= position null)
+      (let put-part (use (call (. database prepare) ai-database-put-part)))
+      (call write-part put-part chat-id (. message id) position ([] (. message parts) position))
+      (return true)
+    )
+    (let put-message (use (call (. database prepare) ai-database-put-message)))
+    (call write-message-row put-message chat-id message)
+    (return true)
+  )
+  (fn-do + move _ (?! Error)
+    (param id String)
+    (param owner (? String))
+    (let database (call opened false))
+    (return-if (if (not database)))
+    (let found (call load-summary id))
+    (return-if (if (or (not found) (== (. found owner) owner))))
+    (call (. database execute) "update chats set owner = ?2 where id = ?1" id owner)
+    (call announce id)
+  )
+  (fn-do + mark-done _ (?! Error)
+    (param id String)
+    (param is-done Bool)
+    (let database (call opened false))
+    (return-if (if (not database)))
+    (call (. database execute) "update chats set done_at = ?2 where id = ?1" id (only-if (call ai-chat-now) (if is-done)))
+    (call announce id)
+  )
+  (fn-do + mark-archived _ (?! Error)
+    (param id String)
+    (param is-archived Bool)
+    (let database (call opened false))
+    (return-if (if (not database)))
+    (case? is-archived
+      (call (. database execute) "update chats set archived_at = ?2 where id = ?1" id (call ai-chat-now))
+    )
+    (default
+      (call (. database execute) "update chats set archived_at = null, done_at = null where id = ?1" id)
+    )
+    (call announce id)
+  )
+  (fn-do + delete _ (?! Error)
+    (param id String)
+    (= ([] deleted id) true)
+    (-= ([] written id))
+    (let database (call opened false))
+    (return-if (if (not database)))
+    (call (. database transaction) (:is-immediate true)
+      (:body
+        (=> () :do
+          (block
+            (call (. database execute) "delete from search where rowid in (select id from search_rows where chat = ?1)" id)
+            (call (. database execute) "delete from search_rows where chat = ?1" id)
+            (call (. database execute) "delete from parts where chat = ?1" id)
+            (call (. database execute) "delete from messages where chat = ?1" id)
+            (call (. database execute) "delete from branches where chat = ?1" id)
+            (call (. database execute) "delete from chats where id = ?1" id)
+          )
+        )
+      )
+    )
+  )
+  (fn-do + see _ (?! Error)
+    (param id String)
+    (param at Int)
+    (let database (call opened false))
+    (return-if (if (not database)))
+    (call (. database execute) "update chats set seen_at = max(coalesce(seen_at, 0), ?2) where id = ?1" id at)
+  )
+  (fn-do + archive-done (list String) (?! Error)
+    (param before Int)
+    (let found (call (of List String)))
+    (let database (call opened false))
+    (return-if found (if (not database)))
+    (let rows (use (call (. database prepare) "select id from chats where archived_at is null and done_at < ?1")))
+    (call (. rows bind) before)
+    (while (call (. rows step))
+      (+= found (call (. rows row string) 0))
+    )
+    (let at (call ai-chat-now))
+    (for (in id found)
+      (call (. database execute) "update chats set archived_at = ?2 where id = ?1" id at)
+      (call announce id)
+    )
+    (return found)
+  )
+  (fn-expr + search (list AIChatFound) (?! Error)
+    (param text String)
+    (param place (? AIChatPlace) (= null))
+    (param project (? String) (= null))
+    (param after (? AIChatSummary) (= null))
+    (param limit Size (= 60))
+    (call find text places project after limit)
+    (where
+      (lazy places (list (? AIChatPlace)) (list place))
+    )
+  )
+  (fn-do + search-places (list AIChatFoundGroup) (?! Error)
+    (param text String)
+    (param project (? String) (= null))
+    (param limit Size (= 60))
+    (let found (call find text ai-search-places project null (+ limit 1)))
+    (let groups (call (of List AIChatFoundGroup)))
+    (for (in place (list (. AIChatPlace active) (. AIChatPlace done) (. AIChatPlace archived)))
+      (let placed (call (of List AIChatFound) (in each found (when (== (call chat-place (. each summary marks)) place)))))
+      (if (> (. placed length) 0)
+        (+= groups
+          (call AIChatFoundGroup
+            (block
+              (arg place)
+              (arg (call (of List AIChatFound) ([] placed (..< 0 (call min (. placed length) limit)))))
+              (arg (> (. placed length) limit))
+            )
+          )
+        )
+      )
+    )
+    (return groups)
+  )
+  (fn-do + absorb _ (?! Error)
+    (param source Path)
+    (param project (? String))
+    (let file (/ source ai-database-name))
+    (return-if (if (not (. file exists))))
+    (let database (!! (call opened true)))
+    (call (. database execute) "attach database ?1 as source" (str file))
+    (finally
+      (catch (call (. database execute) "detach database source"))
+    )
+    (let offset (?? (call (. database query-first) "select coalesce(max(listed), 0) from main.chats" (=> (row) (call (. row int) 0))) 0))
+    (let ids (call (of List String)))
+    (call (. database transaction) (:is-immediate true)
+      (:body
+        (=> () :do
+          (block
+            (call (. database execute) "create temp table absorbed as select id from source.chats where listed is not null and id not in (select id from main.chats)")
+            (call (. database execute) "insert into main.chats (id, listed, owner, service, title, root_branch, is_kept, project) select id, listed + ?1, owner, service, title, root_branch, is_kept, ?2 from source.chats where id in (select id from temp.absorbed)" offset project)
+            (call (. database execute) "insert into main.branches (chat, id, position, parent, fork, title, forks, is_collapsed, prefix, messages) select chat, id, position, parent, fork, title, forks, is_collapsed, prefix, messages from source.branches where chat in (select id from temp.absorbed)")
+            (call (. database execute) "insert into main.messages (chat, id, role, created_at, model, finish_reason, elapsed, usage, error) select chat, id, role, created_at, model, finish_reason, elapsed, usage, error from source.messages where chat in (select id from temp.absorbed)")
+            (call (. database execute) "insert into main.parts (chat, message, position, kind, id, ref, name, flags, text, data, media, signature) select chat, message, position, kind, id, ref, name, flags, text, data, media, signature from source.parts where chat in (select id from temp.absorbed)")
+            (call absorb-images database (/ source "images"))
+            (let rows (use (call (. database prepare) "select id from temp.absorbed")))
+            (while (call (. rows step))
+              (+= ids (call (. rows row string) 0))
+            )
+            (call (. database execute) "drop table temp.absorbed")
+          )
+        )
+      )
+    )
+    (call (. database transaction) (:is-immediate true)
+      (:body
+        (=> () :do
+          (block
+            (for (in id ids)
+              (catch (call refresh database id))
+            )
+          )
+        )
+      )
+    )
+  )
+  (fn-do _ find (list AIChatFound) (?! Error)
+    (param text String)
+    (param places (list (? AIChatPlace)))
+    (param project (? String))
+    (param after (? AIChatSummary))
+    (param limit Size)
+    (let found (call (of List AIChatFound)))
+    (let database (call opened false))
+    (return-if found (if (not database)))
+    (let terms (call ai-search-terms text))
+    (let has-terms (> (. terms length) 0))
+    (let branches (call (of Map String (list AIChatBranchSummary))))
+    (let rows (use (call (. database prepare) (call ai-search-query places (!= project null) has-terms (!= after null)))))
+    (call (. rows bind) project terms (?? (. (?. after activity) active-at) 0) (?. after id) limit)
+    (let summaries (call (of List AIChatSummary)))
+    (let keys (call (of List Int)))
+    (while (call (. rows step))
+      (+= summaries (call summary-row (. rows row) branches))
+      (+= keys (?? (call (. rows row optional-int) 12) 0))
+    )
+    (let snippets (if-expr (and has-terms (> (. keys length) 0)) (call search-snippets database terms keys) (call (of Map Int (list AIChatSnippet)))))
+    (for (in index (..< 0 (. summaries length)))
+      (+= found (call AIChatFound ([] summaries index) (?? ([] snippets ([] keys index)) (call (of List AIChatSnippet)))))
+    )
+    (return found)
+  )
+  (fn-do _ announce _ (?! Error)
+    (param id String)
+    (let found (call load-summary id))
+    (if found
+      (<- changed found)
+    )
+  )
+  (fn-do _ absorb-images _ (?! Error)
+    (param database SQLite)
+    (param folder Path)
+    (let store images)
+    (return-if (if (or (not store) (not (. folder is-dir)))))
+    (for (in file folder)
+      (let id (. file base-name))
+      (let adopted (call (. store adopt) file))
+      (if (and adopted (!= adopted id))
+        (call (. database execute) "update main.parts set media = replace(media, ?1, ?2) where chat in (select id from temp.absorbed) and instr(media, ?1) > 0" (str "\"" id "\"") (str "\"" adopted "\""))
+      )
+    )
+  )
+  (fn-do _ opened (? SQLite) (?! Error)
+    (param is-creating Bool)
+    (let known connection)
+    (return-if known (if known))
+    (return-if null (if (and (not is-creating) (not (. path exists)))))
+    (call (. directory make-directories))
+    (let created (call SQLite (str path)))
+    (let upgraded
+      (call prepare-schema created
+        (block
+          (on-error (: failure Error)
+            (call (. created close))
+            (throw failure)
+          )
+        )
+      )
+    )
+    (= connection created)
+    (if upgraded
+      (call refresh-all created)
+    )
+    (return created)
+  )
+  (fn-do _ refresh-all _ (?! Error)
+    (param database SQLite)
+    (let ids (call (of List String)))
+    (let rows (use (call (. database prepare) "select id from chats where listed is not null")))
+    (while (call (. rows step))
+      (+= ids (call (. rows row string) 0))
+    )
+    (call (. database transaction) (:is-immediate true)
+      (:body
+        (=> () :do
+          (block
+            (for (in id ids)
+              (catch (call refresh database id))
+            )
+          )
+        )
+      )
+    )
+  )
+  (fn-do _ refresh _ (?! Error)
+    (param database SQLite)
+    (param id String)
+    (let was-written (!= ([] written id) null))
+    (let chat (call load id))
+    (if (not was-written)
+      (-= ([] written id))
+    )
+    (let activity (call chat-activity chat))
+    (call (. database execute) "update chats set sent_at = ?2, replied_at = ?3, active_at = ?4, outcome = ?5, seen_at = coalesce(seen_at, ?3) where id = ?1" id (. activity sent-at) (. activity replied-at) (. activity active-at) (call encode-outcome (. activity outcome)))
+    (call index-text database id "" (call chat-search-title chat))
+    (for (in message (call saved-chat-messages chat))
+      (call index-text database id (. message id) (call message-search-text message))
+    )
+  )
+  (fn-do _ write-chat _ (?! Error)
+    (param database SQLite)
+    (param chat AIChat)
+    (param service (? String))
+    (param owner (? String))
+    (param project (? String))
+    (param is-listed Bool)
+    (let activity (call chat-activity chat))
+    (call (. database execute)
+      (block
+        (arg (call ai-database-put-chat))
+        (arg (. chat id))
+        (arg is-listed)
+        (arg owner)
+        (arg service)
+        (arg (. chat title))
+        (arg (. chat root-branch-id))
+        (arg (. chat is-kept))
+        (arg project)
+        (arg (. activity sent-at))
+        (arg (. activity replied-at))
+        (arg (. activity active-at))
+        (arg (call encode-outcome (. activity outcome)))
+      )
+    )
+    (call (. database execute) "delete from branches where chat = ?" (. chat id))
+    (let put (use (call (. database prepare) "insert into branches (chat, id, position, parent, fork, title, forks, is_collapsed, prefix, messages) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")))
+    (for (in position (..< 0 (. chat branches length)))
+      (let branch ([] (. chat branches) position))
+      (call (. put bind)
+        (block
+          (arg (. chat id))
+          (arg (. branch id))
+          (arg position)
+          (arg (. branch parent-branch-id))
+          (arg (. branch fork-message-id))
+          (arg (call chat-branch-label branch))
+          (arg (. branch forks))
+          (arg (. branch is-collapsed))
+          (arg (call message-ids-column (. branch shared-messages)))
+          (arg (call message-ids-column (. branch messages)))
+        )
+      )
+      (call (. put step))
+    )
+    (call index-text database (. chat id) "" (call chat-search-title chat))
+  )
+  (fn-do _ write-messages _ (?! Error)
+    (param database SQLite)
+    (param chat-id String)
+    (param current (map String AIChatMessage))
+    (param known (map String AIChatMessage))
+    (let clear (use (call (. database prepare) "delete from parts where chat = ? and message = ?")))
+    (let put-message (use (call (. database prepare) ai-database-put-message)))
+    (let put-part (use (call (. database prepare) ai-database-put-part)))
+    (let drop (use (call (. database prepare) "delete from messages where chat = ? and id = ?")))
+    (for (in (tuple id message) current)
+      (if (!= ([] known id) message)
+        (call (. clear bind) chat-id id)
+        (call (. clear step))
+        (call write-message put-message put-part chat-id message)
+      )
+    )
+    (for (in id (. known keys))
+      (if (== ([] current id) null)
+        (call (. clear bind) chat-id id)
+        (call (. clear step))
+        (call (. drop bind) chat-id id)
+        (call (. drop step))
+        (call index-text database chat-id id "")
+      )
+    )
+  )
+  (fn-do _ write-message _ (?! Error)
+    (param put-message SQLiteStatement)
+    (param put-part SQLiteStatement)
+    (param chat-id String)
+    (param message AIChatMessage)
+    (call write-message-row put-message chat-id message)
+    (for (in position (..< 0 (. message parts length)))
+      (call write-part put-part chat-id (. message id) position ([] (. message parts) position))
+    )
+  )
+  (fn-do _ write-message-row _ (?! Error)
+    (param put SQLiteStatement)
+    (param chat-id String)
+    (param message AIChatMessage)
+    (let reason (. message finish-reason))
+    (let elapsed (. message elapsed))
+    (let usage (. message usage))
+    (let error (. message error))
+    (call (. put bind)
+      (block
+        (arg chat-id)
+        (arg (. message id))
+        (arg (call encode-role (. message role)))
+        (arg (as (. message created-at) String))
+        (arg (. message model))
+        (arg (only-if (call to-json (call encode-finish-reason reason)) (if reason)))
+        (arg (only-if (/ elapsed 1s) (if (!= elapsed null))))
+        (arg (only-if (call to-json (call encode-usage usage)) (if usage)))
+        (arg (only-if (call to-json (call encode-error error)) (if error)))
+      )
+    )
+    (call (. put step))
+    (call index-text (. put database) chat-id (. message id) (call message-search-text message))
+  )
+  (fn-do _ write-part _ (?! Error)
+    (param put SQLiteStatement)
+    (param chat-id String)
+    (param message-id String)
+    (param position Index)
+    (param part AIMessagePart)
+    (let row (call part-row part images))
+    (call (. put bind)
+      (block
+        (arg chat-id)
+        (arg message-id)
+        (arg position)
+        (arg (. row kind))
+        (arg (. row id))
+        (arg (. row ref))
+        (arg (. row name))
+        (arg (. row flags))
+        (arg (. row text))
+        (arg (. row data))
+        (arg (. row media))
+        (arg (. row signature))
+      )
+    )
+    (call (. put step))
+  )
+)
+
+(type _ AIPartRow (is Tuple)
+  (prop + kind String)
+  (prop + id String)
+  (prop + ref (? String) (= null))
+  (prop + name (? String) (= null))
+  (prop + flags Int)
+  (prop + text (? String) (= null))
+  (prop + data (? String) (= null))
+  (prop + media (? String) (= null))
+  (prop + signature (? String) (= null))
+)
+
+(fn-do _ prepare-schema Bool (?! Error)
+  (param database SQLite)
+  (let version (?? (call (. database query-first) "pragma user_version" (=> (row) (call (. row int) 0))) 0))
+  (throw (call Error (str "The saved chat list uses unsupported version " version)) (if (or (< version 0) (> version ai-database-version))))
+  (if (== version 0)
+    (call (. database execute-script) (call ai-database-schema))
+  )
+  (if (== version 1)
+    (call (. database execute-script) (call ai-database-upgrade))
+  )
+  (if (or (== version 1) (== version 2))
+    (call (. database execute-script) (call ai-database-reindex))
+  )
+  (call (. database execute-script) "pragma synchronous = normal")
+  (return (or (== version 1) (== version 2)))
+)
+
+(fn-do _ index-text _ (?! Error)
+  (param database SQLite)
+  (param chat-id String)
+  (param message-id String)
+  (param text String)
+  (let is-empty (not (. (call (. text trim)) length)))
+  (let known (call (. database query-first) "select id from search_rows where chat = ?1 and message = ?2" (=> (row) (call (. row int) 0)) chat-id message-id))
+  (if (!= known null)
+    (call (. database execute) "delete from search where rowid = ?1" known)
+    (if is-empty
+      (call (. database execute) "delete from search_rows where id = ?1" known)
+      (else
+        (call (. database execute) "insert into search (rowid, text) values (?1, ?2)" known text)
+      )
+    )
+    (else-if (not is-empty)
+      (let slot (call search-slot database chat-id))
+      (if (!= slot null)
+        (call (. database execute)
+          (block
+            (arg "insert into search_rows (id, chat, message) values (?1, ?2, ?3)")
+            (arg slot)
+            (arg chat-id)
+            (arg message-id)
+          )
+        )
+        (call (. database execute) "insert into search (rowid, text) values (?1, ?2)" slot text)
+      )
+    )
+  )
+)
+
+(fn-do _ search-slot (? Int) (?! Error)
+  (param database SQLite)
+  (param chat-id String)
+  (call (. database execute) "update chats set key = (select coalesce(max(key), 0) + 1 from chats) where id = ?1 and key is null" chat-id)
+  (let key (call (. database query-first) "select key from chats where id = ?1 and key is not null" (=> (row) (call (. row int) 0)) chat-id))
+  (return-if null (if (== key null)))
+  (let first (/lshift/ key ai-search-shift))
+  (let last (- (+ first ai-search-slots) 1))
+  (let slot (?? (call (. database query-first) "select coalesce(max(id) + 1, ?1) from search_rows where id between ?1 and ?2" (=> (row) (call (. row int) 0)) first last) first))
+  (return (only-if slot (if (<= slot last))))
+)
+
+(fn-do _ search-snippets (map Int (list AIChatSnippet)) (?! Error)
+  (param database SQLite)
+  (param terms String)
+  (param keys (list Int))
+  (let found (call (of Map Int (list AIChatSnippet))))
+  (let low ([] keys 0))
+  (let high ([] keys 0))
+  (for (in key keys)
+    (= low (call min low key))
+    (= high (call max high key))
+  )
+  (let best (call (of List Int)))
+  (let ranked (use (call (. database prepare) (str "select rowid, rowid >> " ai-search-shift " from search where search match ?1 and rowid between ?2 and ?3 and (rowid >> " ai-search-shift ") in (select value from json_each(?4)) order by 2, rank, 1"))))
+  (call (. ranked bind)
+    (block
+      (arg terms)
+      (arg (/lshift/ low ai-search-shift))
+      (arg (- (+ (/lshift/ high ai-search-shift) ai-search-slots) 1))
+      (arg (call ai-search-list keys))
+    )
+  )
+  (let previous (? Int) null)
+  (while (call (. ranked step))
+    (let key (call (. ranked row int) 1))
+    (if (!= key previous)
+      (+= best (call (. ranked row int) 0))
+      (= previous key)
+    )
+  )
+  (return-if found (if (== (. best length) 0)))
+  (let rows (use (call (. database prepare) (str "select rowid >> " ai-search-shift ", snippet(search, 0, ?2, ?3, '…', 14) from search where search match ?1 and rowid between ?4 and ?5 and +rowid in (select value from json_each(?6))"))))
+  (call (. rows bind)
+    (block
+      (arg terms)
+      (arg ai-snippet-open)
+      (arg ai-snippet-close)
+      (arg ([] best 0))
+      (arg ([] best (- (. best length) 1)))
+      (arg (call ai-search-list best))
+    )
+  )
+  (while (call (. rows step))
+    (= ([] found (call (. rows row int) 0)) (call ai-snippet-spans (call (. rows row string) 1)))
+  )
+  (return found)
+)
+
+(fn-expr _ ai-search-list String
+  (param values (list Int))
+  (call to-json (call (of List JSON) (in (as each JSON) values)))
+)
+
+(fn-expr _ summary-row AIChatSummary (?! SQLiteError)
+  (param row SQLiteRow)
+  (param branches (map String (list AIChatBranchSummary)))
+  (call AIChatSummary
+    (block
+      (arg id)
+      (arg (call (. row optional-string) 1))
+      (arg (call (. row optional-string) 2))
+      (arg (?? ([] branches id) (call (of List AIChatBranchSummary))))
+      (arg (call (. row optional-string) 3))
+      (arg (call (. row optional-string) 4))
+      (arg activity)
+      (arg marks)
+    )
+  )
+  (where
+    (lazy id (call (. row string) 0))
+    (lazy activity
+      (call AIChatActivity
+        (block
+          (arg (call (. row optional-int) 5))
+          (arg (call (. row optional-int) 6))
+          (arg (call (. row optional-int) 7))
+          (arg (call decode-outcome (call (. row optional-string) 8)))
+        )
+      )
+    )
+    (lazy marks (call AIChatMarks (call (. row optional-int) 9) (call (. row optional-int) 10) (call (. row optional-int) 11)))
+  )
+)
+
+(fn-expr _ encode-outcome (? String)
+  (param outcome (? AIChatOutcome))
+  (match? outcome
+    (case (. AIChatOutcome asks)
+      "asks"
+    )
+    (case (. AIChatOutcome failed)
+      "failed"
+    )
+  )
+)
+
+(fn-expr _ decode-outcome (? AIChatOutcome)
+  (param text (? String))
+  (match? text
+    (case= "asks"
+      (. AIChatOutcome asks)
+    )
+    (case= "failed"
+      (. AIChatOutcome failed)
+    )
+  )
+)
+
+(fn-do _ chat-search-title String
+  (param chat AIChat)
+  (let titles (call (of List String)))
+  (if (. chat title)
+    (+= titles (. chat title))
+  )
+  (for (in branch (. chat branches))
+    (let label (call chat-branch-label branch))
+    (if (and label (. branch parent-branch-id))
+      (+= titles label)
+    )
+  )
+  (return (call (. "\n" join) titles))
+)
+
+(fn-expr _ message-search-text String
+  (param message AIChatMessage)
+  (if-expr (or (== (. message role) (. AIMessageRole user)) (== (. message role) (. AIMessageRole assistant))) (call ai-parts-text (. message parts)) "")
+)
+
+(fn-expr _ ai-search-terms String
+  (param text String)
+  (call (. " " join) (in (call ai-search-term each) (call (. text split) " ") (when (> (. each length) 0))))
+)
+
+(fn-expr _ ai-search-term String
+  (param word String)
+  (str "\"" (call (. "\"\"" join) (call (. word split) "\"")) "\"*")
+)
+
+(fn-expr _ ai-search-query String
+  (param places (list (? AIChatPlace)))
+  (param has-project Bool)
+  (param has-terms Bool)
+  (param is-after Bool)
+  (str matched (call (. " union all " join) pages))
+  (where
+    (lazy matched (if-expr has-terms (str "with matched (key) as materialized (select distinct rowid >> " ai-search-shift " from search where search match ?2) ") ""))
+    (lazy pages (in (str "select * from (select " ai-database-columns ", key from chats where " (call ai-search-filters each has-project has-terms is-after) " order by coalesce(active_at, 0) desc, id desc limit ?5)") places))
+  )
+)
+
+(fn-expr _ ai-search-filters String
+  (param place (? AIChatPlace))
+  (param has-project Bool)
+  (param has-terms Bool)
+  (param is-after Bool)
+  (call (. " and " join) filters)
+  (where
+    (lazy filters
+      (block
+        (item "listed is not null")
+        (item? (only-if (str ai-database-place " = " (call ai-place-number place)) (if place)))
+        (item? (only-if "project = ?1" (if has-project)))
+        (item? (only-if "key in matched" (if has-terms)))
+        (item? (only-if "(coalesce(active_at, 0), id) < (?3, ?4)" (if is-after)))
+      )
+    )
+  )
+)
+
+(fn-expr _ ai-place-number Int
+  (param place AIChatPlace)
+  (match place
+    (case (. AIChatPlace active)
+      0
+    )
+    (case (. AIChatPlace done)
+      1
+    )
+    (case (. AIChatPlace archived)
+      2
+    )
+  )
+)
+
+(fn-do _ ai-snippet-spans (list AIChatSnippet)
+  (param text String)
+  (let spans (call (of List AIChatSnippet)))
+  (for (in piece (call (. text split) ai-snippet-open))
+    (let halves (call (of List String) (call (. piece split) ai-snippet-close)))
+    (if (> (. halves length) 1)
+      (if (> (. ([] halves 0) length) 0)
+        (+= spans (call AIChatSnippet ([] halves 0) true))
+      )
+      (if (> (. ([] halves 1) length) 0)
+        (+= spans (call AIChatSnippet ([] halves 1) false))
+      )
+      (else-if (> (. piece length) 0)
+        (+= spans (call AIChatSnippet piece false))
+      )
+    )
+  )
+  (return spans)
+)
+
+(fn-expr _ ai-database-schema _
+  (paragraph
+    "pragma journal_mode = wal;"
+    "begin immediate;"
+    "create table if not exists chats ("
+    "    id text primary key,"
+    "    listed integer,"
+    "    owner text,"
+    "    service text,"
+    "    title text,"
+    "    root_branch text not null,"
+    "    is_kept integer not null,"
+    "    project text,"
+    "    sent_at integer,"
+    "    replied_at integer,"
+    "    active_at integer,"
+    "    outcome text,"
+    "    seen_at integer,"
+    "    done_at integer,"
+    "    archived_at integer,"
+    "    key integer"
+    ") strict;"
+    "create table if not exists branches ("
+    "    chat text not null,"
+    "    id text not null,"
+    "    position integer not null,"
+    "    parent text,"
+    "    fork text,"
+    "    title text,"
+    "    forks integer not null,"
+    "    is_collapsed integer not null,"
+    "    prefix text not null,"
+    "    messages text not null,"
+    "    primary key (chat, id)"
+    ") strict, without rowid;"
+    "create table if not exists messages ("
+    "    chat text not null,"
+    "    id text not null,"
+    "    role text not null,"
+    "    created_at text not null,"
+    "    model text,"
+    "    finish_reason text,"
+    "    elapsed real,"
+    "    usage text,"
+    "    error text,"
+    "    primary key (chat, id)"
+    ") strict, without rowid;"
+    "create table if not exists parts ("
+    "    chat text not null,"
+    "    message text not null,"
+    "    position integer not null,"
+    "    kind text not null,"
+    "    id text not null,"
+    "    ref text,"
+    "    name text,"
+    "    flags integer not null,"
+    "    text text,"
+    "    data text,"
+    "    media text,"
+    "    signature text,"
+    "    unique (chat, message, position)"
+    ") strict;"
+    (str (call ai-database-indexes))
+    "pragma user_version = 3;"
+    "commit;"
+  )
+)
+
+(fn-expr _ ai-database-upgrade _
+  (paragraph
+    "begin immediate;"
+    "alter table chats add column project text;"
+    "alter table chats add column sent_at integer;"
+    "alter table chats add column replied_at integer;"
+    "alter table chats add column active_at integer;"
+    "alter table chats add column outcome text;"
+    "alter table chats add column seen_at integer;"
+    "alter table chats add column done_at integer;"
+    "alter table chats add column archived_at integer;"
+    "pragma user_version = 2;"
+    "commit;"
+  )
+)
+
+(fn-expr _ ai-database-reindex _
+  (paragraph
+    "begin immediate;"
+    "alter table chats add column key integer;"
+    "drop table if exists search;"
+    "drop table if exists search_rows;"
+    (str (call ai-database-indexes))
+    "pragma user_version = 3;"
+    "commit;"
+  )
+)
+
+(fn-expr _ ai-database-indexes _
+  (paragraph
+    "create index if not exists chats_by_owner on chats (owner, archived_at);"
+    "create index if not exists chats_by_activity on chats (archived_at, active_at);"
+    "create unique index if not exists chats_by_key on chats (key);"
+    (str "create index if not exists chats_by_place on chats (" ai-database-place ", coalesce(active_at, 0), id, key);")
+    "create table if not exists search_rows ("
+    "    id integer primary key,"
+    "    chat text not null,"
+    "    message text not null,"
+    "    unique (chat, message)"
+    ") strict;"
+    "create virtual table if not exists search using fts5(text, prefix = '1 2 3', tokenize = 'unicode61 remove_diacritics 2');"
+  )
+)
+
+(fn-expr _ ai-database-put-chat _
+  (paragraph
+    "insert into chats (id, listed, owner, service, title, root_branch, is_kept, project, sent_at, replied_at, active_at, outcome)"
+    "values (?1, case when ?2 then (select coalesce(max(listed), 0) + 1 from chats) end, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"
+    "on conflict (id) do update set"
+    "    listed = coalesce(chats.listed, excluded.listed),"
+    "    owner = iif(chats.listed is null, excluded.owner, chats.owner),"
+    "    project = iif(chats.listed is null, excluded.project, chats.project),"
+    "    service = coalesce(excluded.service, chats.service),"
+    "    title = excluded.title,"
+    "    root_branch = excluded.root_branch,"
+    "    is_kept = excluded.is_kept,"
+    "    sent_at = excluded.sent_at,"
+    "    replied_at = excluded.replied_at,"
+    "    active_at = excluded.active_at,"
+    "    outcome = excluded.outcome,"
+    "    done_at = iif(excluded.sent_at > chats.done_at, null, chats.done_at),"
+    "    archived_at = iif(excluded.sent_at > chats.archived_at, null, chats.archived_at)"
+  )
+)
+
+(fn-do _ saved-chat AIChat (?! SQLiteError)
+  (param row SQLiteRow)
+  (param id String)
+  (let chat (call AIChat id (call (. row string) 0) (call (. row optional-string) 1)))
+  (= (. chat is-kept) (call (. row bool) 2))
+  (return chat)
+)
+
+(fn-do _ decode-message AIChatMessage (?! Error)
+  (param row SQLiteRow)
+  (param parts (map String (list AIMessagePart)))
+  (let id (call (. row string) 0))
+  (let message
+    (call AIChatMessage
+      (block
+        (arg id)
+        (arg (call decode-role (call (. row string) 1)))
+        (arg (?? ([] parts id) (call (of List AIMessagePart))))
+        (arg (call (. row string) 2))
+        (arg (call (. row optional-string) 3))
+      )
+    )
+  )
+  (let reason (call (. row optional-string) 4))
+  (if reason
+    (= (. message finish-reason) (call decode-finish-reason (call parse-saved-json reason "A saved finish reason")))
+  )
+  (let elapsed (call (. row optional-real) 5))
+  (if (!= elapsed null)
+    (= (. message elapsed) (* elapsed 1s))
+  )
+  (let usage (call (. row optional-string) 6))
+  (if usage
+    (= (. message usage)
+      (call decode-usage
+        (block
+          (arg (call saved-object "Saved usage" (call parse-saved-json usage "Saved usage")))
+        )
+      )
+    )
+  )
+  (let error (call (. row optional-string) 7))
+  (if error
+    (= (. message error)
+      (call decode-error
+        (block
+          (arg (call saved-object "A saved error" (call parse-saved-json error "A saved error")))
+        )
+      )
+    )
+    (else-if (and (== (. message role) (. AIMessageRole assistant)) (not reason))
+      (= (. message finish-reason) (. AIFinishReason cancellation))
+    )
+  )
+  (return message)
+)
+
+(fn-do _ decode-branch AIChatBranch (?! Error)
+  (param row SQLiteRow)
+  (param messages (map String AIChatMessage))
+  (let prefix (call found-messages (call saved-message-ids (call (. row string) 5)) messages))
+  (let branch
+    (call AIChatBranch
+      (block
+        (arg (call (. row string) 0))
+        (arg (call (. row optional-string) 1))
+        (arg (call (. row optional-string) 2))
+        (arg prefix)
+        (arg (call (. row bool) 3))
+        (arg (call (. row bool) 4))
+      )
+    )
+  )
+  (= (. branch messages) (call found-messages (call saved-message-ids (call (. row string) 6)) messages))
+  (return branch)
+)
+
+(fn-expr _ message-ids-column String
+  (param messages (list AIChatMessage))
+  (call to-json (call (of List JSON) (in (as (. each id) JSON) messages)))
+)
+
+(fn-expr _ saved-message-ids (list JSON) (?! Error)
+  (param text String)
+  (call saved-list "A saved chat branch" (call parse-saved-json text "A saved chat branch"))
+)
+
+(fn-do _ saved-chat-messages (list AIChatMessage)
+  (param chat AIChat)
+  (let seen (call (of Map String Bool)))
+  (let result (call (of List AIChatMessage)))
+  (for (in branch (. chat branches))
+    (for (in message (++ (call (of List AIChatMessage) (. branch shared-messages)) (. branch messages)))
+      (if (== ([] seen (. message id)) null)
+        (= ([] seen (. message id)) true)
+        (+= result message)
+      )
+    )
+  )
+  (return result)
+)
+
+(fn-do _ found-messages (list AIChatMessage) (?! Error)
+  (param ids (list JSON))
+  (param messages (map String AIChatMessage))
+  (let result (call (of List AIChatMessage)))
+  (for (in id ids)
+    (let message ([] messages (?? (call saved-text id) "")))
+    (throw (call Error "A saved chat branch names a missing message") (if (not message)))
+    (+= result message)
+  )
+  (return result)
+)
+
+(fn-expr _ part-row AIPartRow
+  (param part AIMessagePart)
+  (param images (? AIImageStore))
+  (match part
+    (case (: written AITextPart)
+      (call AIPartRow "text" (. written id) (. written source-id) (:text (. written text)) (:data (call citations-column (. written citations))))
+    )
+    (case (: thought AIReasoningPart)
+      (call AIPartRow "reasoning" (. thought id) (. thought source-id) (:flags (+ (call mark (. thought is-update)) (call raw-flag (. thought provider-signature) ai-part-raw-signature))) (:text (. thought text)) (:signature (call json-column (. thought provider-signature))))
+    )
+    (case (: search AIWebSearchPart)
+      (call AIPartRow "web-search" (. search id) (. search search-id) (call encode-search-status (. search status)) (:text (. search query)))
+    )
+    (case (: file AIFilePart)
+      (call AIPartRow "file" (. file id) (:media (call to-json (call encode-file (. file file)))))
+    )
+    (case (: image AIImagePart)
+      (call AIPartRow "image" (. image id) (:media (call to-json (call encode-image (?? (call (?. images referenced) (. image image)) (. image image))))))
+    )
+    (case (: audio AIAudioPart)
+      (call AIPartRow "audio" (. audio id) (:media (call to-json (call encode-audio (. audio audio)))))
+    )
+    (case (: video AIVideoPart)
+      (call AIPartRow "video" (. video id) (:media (call to-json (call encode-video (. video video)))))
+    )
+    (case (: call AIToolCallPart)
+      (call AIPartRow "tool-call" (. call id) (. call call-id) (. call tool-name) (:flags (+ (call raw-flag (. call arguments) ai-part-raw-data) (call raw-flag (. call provider-signature) ai-part-raw-signature))) (:data (call json-column (. call arguments))) (:signature (call json-column (. call provider-signature))))
+    )
+    (case (: result AIToolResultPart)
+      (call result-row result images)
+    )
+    (case (: refusal AIRefusalPart)
+      (call AIPartRow "refusal" (. refusal id) (:text (. refusal text)))
+    )
+    (case (: extension AIExtensionPart)
+      (call AIPartRow "extension" (. extension id) (. extension provider-id) (. extension part-type) (:flags (call raw-flag (. extension data) ai-part-raw-data)) (:data (call json-column (. extension data))))
+    )
+  )
+)
+
+(fn-expr _ result-row AIPartRow
+  (param part AIToolResultPart)
+  (param images (? AIImageStore))
+  (call AIPartRow "tool-result" (. part id) (. part call-id) (:flags flags) (:text (if-expr is-same null (. part text-output))) (:data (call json-column output)) (:media media))
+  (where
+    (lazy output (. part output))
+    (lazy is-same (and (!= (. part text-output) null) (is output String) (== (. part text-output) output)))
+    (lazy flags (+ (call mark (. part is-error)) (call raw-flag output ai-part-raw-data) (if-expr is-same ai-part-same-text 0)))
+    (lazy media (only-if (call to-json (call (of List JSON) (in (call encode-image (?? (call (?. images referenced) each) each)) (. part images)))) (if (. part images))))
+  )
+)
+
+(fn-expr _ decode-part AIMessagePart (?! Error)
+  (param row SQLiteRow)
+  (param images (? AIImageStore))
+  (match (call (. row string) 1)
+    (case "text"
+      (call AITextPart id (call (. row string) 6) (call (. row optional-string) 3) (call decode-citations data))
+    )
+    (case "reasoning"
+      (call AIReasoningPart id (call (. row string) 6) (call (. row optional-string) 3) signature is-marked)
+    )
+    (case "web-search"
+      (call AIWebSearchPart
+        (block
+          (arg id)
+          (arg (call (. row string) 6))
+          (arg (call decode-search-status (call (. row string) 4)))
+          (arg (call (. row optional-string) 3))
+        )
+      )
+    )
+    (case "file"
+      (call AIFilePart id (call decode-file media))
+    )
+    (case "image"
+      (call AIImagePart id (?? (call (?. images located) (call decode-image media)) (call decode-image media)))
+    )
+    (case "audio"
+      (call AIAudioPart id (call decode-audio media))
+    )
+    (case "video"
+      (call AIVideoPart id (call decode-video media))
+    )
+    (case "tool-call"
+      (call AIToolCallPart id (call (. row string) 3) (call (. row string) 4) (?? data (as null JSON)) signature)
+    )
+    (case "tool-result"
+      (call AIToolResultPart
+        (block
+          (arg id)
+          (arg (call (. row string) 3))
+          (arg output)
+          (arg result-text)
+          (arg is-marked)
+          (arg (call decode-tool-images media images))
+        )
+      )
+    )
+    (case "refusal"
+      (call AIRefusalPart id (call (. row string) 6))
+    )
+    (case "extension"
+      (call AIExtensionPart id (call (. row string) 3) (call (. row string) 4) (?? data (as null JSON)))
+    )
+    (throw (call Error "A saved message part is not recognized"))
+  )
+  (where
+    (lazy id (call (. row string) 2))
+    (lazy flags (call (. row int) 5))
+    (lazy is-marked (!= (/and/ flags ai-part-mark) 0))
+    (lazy data (call json-value row 7 (!= (/and/ flags ai-part-raw-data) 0)))
+    (lazy media (call json-value row 8 false))
+    (lazy signature (call json-value row 9 (!= (/and/ flags ai-part-raw-signature) 0)))
+    (lazy output (?? data (as null JSON)))
+    (lazy result-text (if-expr (!= (/and/ flags ai-part-same-text) 0) (call saved-text output) (call (. row optional-string) 6)))
+  )
+)
+
+(fn-expr _ mark Int
+  (param flag Bool)
+  (if-expr flag ai-part-mark 0)
+)
+
+(fn-expr _ raw-flag Int
+  (param value (? JSON))
+  (param flag Int)
+  (if-expr (is value String) flag 0)
+)
+
+(fn-expr _ json-column (? String)
+  (param value (? JSON))
+  (case? (== value null)
+    null
+  )
+  (case? (is value String)
+    (as value String)
+  )
+  (default
+    (call to-json value)
+  )
+)
+
+(fn-expr _ json-value (? JSON) (?! Error)
+  (param row SQLiteRow)
+  (param index Size)
+  (param is-raw Bool)
+  (case? (== text null)
+    null
+  )
+  (case? is-raw
+    (as text JSON)
+  )
+  (default
+    (call parse-saved-json text "A saved message part")
+  )
+  (where
+    (lazy text (call (. row optional-string) index))
+  )
+)
+
+(fn-do _ decode-tool-images (list AIImage) (?! Error)
+  (param value (? JSON))
+  (param images (? AIImageStore))
+  (let decoded (call (of List AIImage)))
+  (return-if decoded (if (== value null)))
+  (for (in item (call saved-list "Saved tool images" value))
+    (let image (call decode-image item))
+    (+= decoded (?? (call (?. images located) image) image))
+  )
+  (return decoded)
+)
+
+(fn-expr _ citations-column (? String)
+  (param citations (list AICitation))
+  (only-if (call to-json (call (of List JSON) (in (call encode-citation each) citations))) (if citations))
+)
+
+(fn-expr _ encode-role _
+  (param role AIMessageRole)
+  (match role
+    (case (. AIMessageRole developer)
+      "developer"
+    )
+    (case (. AIMessageRole system)
+      "system"
+    )
+    (case (. AIMessageRole user)
+      "user"
+    )
+    (case (. AIMessageRole assistant)
+      "assistant"
+    )
+    (case (. AIMessageRole tool)
+      "tool"
+    )
+  )
+)
+
+(fn-expr _ decode-role _ (?! Error)
+  (param name String)
+  (match name
+    (case "developer"
+      (. AIMessageRole developer)
+    )
+    (case "system"
+      (. AIMessageRole system)
+    )
+    (case "user"
+      (. AIMessageRole user)
+    )
+    (case "assistant"
+      (. AIMessageRole assistant)
+    )
+    (case "tool"
+      (. AIMessageRole tool)
+    )
+    (throw (call Error (str "Unknown saved message role " name)))
+  )
+)
+
+(fn-do _ encode-citation _
+  (param citation AICitation)
+  (let fields
+    (call (of Map String JSON)
+      (block
+        (:title (. citation title))
+        (:url (. citation url))
+      )
+    )
+  )
+  (call put-count fields "start" (. citation start-offset))
+  (call put-count fields "end" (. citation end-offset))
+  (return fields)
+)
+
+(fn-do _ decode-citations (list AICitation) (?! Error)
+  (param value (? JSON))
+  (let citations (call (of List AICitation)))
+  (return-if citations (if (== value null)))
+  (for (in item (call saved-list "Saved citations" value))
+    (let fields (call saved-object "A saved citation" item))
+    (+= citations
+      (call AICitation
+        (block
+          (arg (call saved-string fields "title"))
+          (arg (call saved-string fields "url"))
+          (arg (call saved-count ([] fields "start")))
+          (arg (call saved-count ([] fields "end")))
+        )
+      )
+    )
+  )
+  (return citations)
+)
+
+(fn-expr _ encode-search-status _
+  (param status AIWebSearchStatus)
+  (match status
+    (case (. AIWebSearchStatus started)
+      "started"
+    )
+    (case (. AIWebSearchStatus searching)
+      "searching"
+    )
+    (case (. AIWebSearchStatus completed)
+      "completed"
+    )
+    (case (. AIWebSearchStatus failed)
+      "failed"
+    )
+  )
+)
+
+(fn-expr _ decode-search-status _ (?! Error)
+  (param name String)
+  (match name
+    (case "started"
+      (. AIWebSearchStatus started)
+    )
+    (case "searching"
+      (. AIWebSearchStatus searching)
+    )
+    (case "completed"
+      (. AIWebSearchStatus completed)
+    )
+    (case "failed"
+      (. AIWebSearchStatus failed)
+    )
+    (throw (call Error (str "Unknown saved search status " name)))
+  )
+)
+
+(fn-do _ encode-file _
+  (param file AIFile)
+  (let fields
+    (call (of Map String JSON)
+      (block
+        (:source (call encode-file-source (. file source)))
+        (entry "mimeType" (. file mime-type))
+        (:filename? (. file filename))
+      )
+    )
+  )
+  (if (!= (. file expiration-time) null)
+    (= ([] fields "expirationTime") (as (. file expiration-time) String))
+  )
+  (return fields)
+)
+
+(fn-do _ decode-file AIFile (?! Error)
+  (param value (? JSON))
+  (let fields (call saved-object "A saved file" value))
+  (let file
+    (call AIFile
+      (block
+        (arg (call decode-file-source ([] fields "source")))
+        (arg (call saved-string fields "mimeType"))
+        (arg (call saved-text ([] fields "filename")))
+      )
+    )
+  )
+  (let expires (call saved-text ([] fields "expirationTime")))
+  (if (!= expires null)
+    (= (. file expiration-time) (as expires Timestamp))
+  )
+  (return file)
+)
+
+(fn-expr _ encode-file-source _
+  (param source AIFileSource)
+  (match source
+    (case (: path AIPathSource)
+      (call saved-source "path" (. path path))
+    )
+    (case (: url AIURLSource)
+      (call saved-source "url" (. url url))
+    )
+    (case (: encoded AIBase64Source)
+      (call saved-source "base64" (. encoded data))
+    )
+    (case (: bytes AIBytesSource)
+      (call saved-source "bytes" (as (. bytes data) Base64))
+    )
+    (case (: remote AIProviderFileSource)
+      (call saved-source "provider" (. remote file-id) (. remote provider-id))
+    )
+  )
+)
+
+(fn-expr _ saved-source _
+  (param kind String)
+  (param value String)
+  (param provider (? String) (= null))
+  (call (of Map String JSON)
+    (block
+      (:type kind)
+      (entry "value" value)
+      (:provider? provider)
+    )
+  )
+)
+
+(fn-expr _ decode-file-source AIFileSource (?! Error)
+  (param value (? JSON))
+  (match value
+    (case (list (= "type" "path") (= "value" (: location String)))
+      (call AIPathSource location)
+    )
+    (case (list (= "type" "url") (= "value" (: address String)))
+      (call AIURLSource address)
+    )
+    (case (list (= "type" "base64") (= "value" (: data String)))
+      (call AIBase64Source (call Base64 data))
+    )
+    (case (list (= "type" "bytes") (= "value" (: data String)))
+      (call AIBytesSource (call decode-base64 data))
+    )
+    (case (list (= "type" "provider") (= "value" (: file-id String)) (= "provider" (: provider-id String)))
+      (call AIProviderFileSource provider-id file-id)
+    )
+    (throw (call Error "A saved file source is not recognized"))
+  )
+)
+
+(fn-expr _ encode-image _
+  (param image AIImage)
+  (call (of Map String JSON)
+    (block
+      (:file (call encode-file (. image file)))
+      (:width (as (. image width) Int))
+      (:height (as (. image height) Int))
+      (entry? "sourceId" (. image source-id))
+    )
+  )
+)
+
+(fn-expr _ decode-image _ (?! Error)
+  (param value (? JSON))
+  (call AIImage
+    (block
+      (arg (call decode-file ([] fields "file")))
+      (arg (?? (call saved-count ([] fields "width")) 0))
+      (arg (?? (call saved-count ([] fields "height")) 0))
+      (arg (call saved-text ([] fields "sourceId")))
+    )
+  )
+  (where
+    (lazy fields (call saved-object "A saved image" value))
+  )
+)
+
+(fn-do _ encode-audio _
+  (param audio AIAudio)
+  (let fields
+    (call (of Map String JSON)
+      (block
+        (:file (call encode-file (. audio file)))
+        (:transcript? (. audio transcript))
+        (entry? "sourceId" (. audio source-id))
+        (entry? "providerOutputId" (. audio provider-output-id))
+      )
+    )
+  )
+  (if (!= (. audio duration) null)
+    (= ([] fields "duration") (/ (. audio duration) 1s))
+  )
+  (return fields)
+)
+
+(fn-expr _ decode-audio _ (?! Error)
+  (param value (? JSON))
+  (call AIAudio
+    (block
+      (arg (call decode-file ([] fields "file")))
+      (arg (call saved-duration ([] fields "duration")))
+      (arg (call saved-text ([] fields "transcript")))
+      (arg (call saved-text ([] fields "sourceId")))
+      (arg (call saved-text ([] fields "providerOutputId")))
+    )
+  )
+  (where
+    (lazy fields (call saved-object "Saved audio" value))
+  )
+)
+
+(fn-do _ encode-video _
+  (param video AIVideo)
+  (let fields
+    (call (of Map String JSON)
+      (block
+        (:file (call encode-file (. video file)))
+        (:width (as (. video width) Int))
+        (:height (as (. video height) Int))
+        (:duration (/ (. video duration) 1s))
+        (entry? "sourceId" (. video source-id))
+      )
+    )
+  )
+  (if (!= (. video progress) null)
+    (= ([] fields "progress") (/ (. video progress) 1%))
+  )
+  (return fields)
+)
+
+(fn-expr _ decode-video _ (?! Error)
+  (param value (? JSON))
+  (call AIVideo
+    (block
+      (arg (call decode-file ([] fields "file")))
+      (arg (?? (call saved-count ([] fields "width")) 0))
+      (arg (?? (call saved-count ([] fields "height")) 0))
+      (arg (?? (call saved-duration ([] fields "duration")) 0s))
+      (arg (call saved-text ([] fields "sourceId")))
+      (arg (call saved-percent ([] fields "progress")))
+    )
+  )
+  (where
+    (lazy fields (call saved-object "A saved video" value))
+  )
+)
+
+(fn-do _ encode-usage _
+  (param usage AIUsage)
+  (let fields (call (of Map String JSON)))
+  (call put-count fields "inputTokens" (. usage input-tokens))
+  (call put-count fields "outputTokens" (. usage output-tokens))
+  (call put-count fields "totalTokens" (. usage total-tokens))
+  (call put-count fields "cachedInputTokens" (. usage cached-input-tokens))
+  (call put-count fields "cacheCreationTokens" (. usage cache-creation-tokens))
+  (call put-count fields "cacheReadTokens" (. usage cache-read-tokens))
+  (call put-count fields "reasoningTokens" (. usage reasoning-tokens))
+  (call put-count fields "thoughtTokens" (. usage thought-tokens))
+  (call put-count fields "toolPromptTokens" (. usage tool-prompt-tokens))
+  (return fields)
+)
+
+(fn-expr _ decode-usage _
+  (param fields (map String JSON))
+  (call AIUsage
+    (block
+      (:input-tokens (call saved-count ([] fields "inputTokens")))
+      (:output-tokens (call saved-count ([] fields "outputTokens")))
+      (:total-tokens (call saved-count ([] fields "totalTokens")))
+      (:cached-input-tokens (call saved-count ([] fields "cachedInputTokens")))
+      (:cache-creation-tokens (call saved-count ([] fields "cacheCreationTokens")))
+      (:cache-read-tokens (call saved-count ([] fields "cacheReadTokens")))
+      (:reasoning-tokens (call saved-count ([] fields "reasoningTokens")))
+      (:thought-tokens (call saved-count ([] fields "thoughtTokens")))
+      (:tool-prompt-tokens (call saved-count ([] fields "toolPromptTokens")))
+    )
+  )
+)
+
+(fn-expr _ encode-finish-reason JSON
+  (param reason AIFinishReason)
+  (match reason
+    (case (. AIFinishReason stop)
+      "stop"
+    )
+    (case (. AIFinishReason length)
+      "length"
+    )
+    (case (. AIFinishReason tool-calls)
+      "tool-calls"
+    )
+    (case (. AIFinishReason content-filter)
+      "content-filter"
+    )
+    (case (. AIFinishReason cancellation)
+      "cancellation"
+    )
+    (case (. AIFinishReason error)
+      "error"
+    )
+    (case (: other AIProviderFinishReason)
+      (call saved-source "provider" (. other reason) (. other provider-id))
+    )
+  )
+)
+
+(fn-expr _ decode-finish-reason AIFinishReason (?! Error)
+  (param value JSON)
+  (match value
+    (case "stop"
+      (. AIFinishReason stop)
+    )
+    (case "length"
+      (. AIFinishReason length)
+    )
+    (case "tool-calls"
+      (. AIFinishReason tool-calls)
+    )
+    (case "content-filter"
+      (. AIFinishReason content-filter)
+    )
+    (case "cancellation"
+      (. AIFinishReason cancellation)
+    )
+    (case "error"
+      (. AIFinishReason error)
+    )
+    (case (list (= "type" "provider") (= "value" (: reason String)) (= "provider" (: provider-id String)))
+      (call AIProviderFinishReason provider-id reason)
+    )
+    (throw (call Error "A saved finish reason is not recognized"))
+  )
+)
+
+(fn-do _ encode-error _
+  (param error AIError)
+  (let fields
+    (call (of Map String JSON)
+      (block
+        (:kind (call encode-error-kind (. error kind)))
+        (:message (. error service-message))
+        (entry "isRetryable" (. error is-retryable))
+        (entry? "rateLimitReset" (. error rate-limit-reset))
+      )
+    )
+  )
+  (if (!= (. error http-status) null)
+    (= ([] fields "httpStatus") (. error http-status))
+  )
+  (return fields)
+)
+
+(fn-expr _ decode-error _ (?! Error)
+  (param fields (map String JSON))
+  (call AIError
+    (block
+      (arg (call decode-error-kind (call saved-string fields "kind")))
+      (arg (call saved-string fields "message"))
+      (arg (call saved-int ([] fields "httpStatus")))
+      (arg (call saved-flag ([] fields "isRetryable")))
+      (arg (call saved-text ([] fields "rateLimitReset")))
+    )
+  )
+)
+
+(fn-expr _ encode-error-kind _
+  (param kind AIErrorKind)
+  (match kind
+    (case (. AIErrorKind authentication)
+      "authentication"
+    )
+    (case (. AIErrorKind rate-limit)
+      "rate-limit"
+    )
+    (case (. AIErrorKind context-length)
+      "context-length"
+    )
+    (case (. AIErrorKind server)
+      "server"
+    )
+    (case (. AIErrorKind timeout)
+      "timeout"
+    )
+    (case (. AIErrorKind cancellation)
+      "cancellation"
+    )
+    (case (. AIErrorKind invalid-request)
+      "invalid-request"
+    )
+    (case (. AIErrorKind invalid-response)
+      "invalid-response"
+    )
+    (case (. AIErrorKind unknown)
+      "unknown"
+    )
+  )
+)
+
+(fn-expr _ decode-error-kind _
+  (param name String)
+  (match name
+    (case "authentication"
+      (. AIErrorKind authentication)
+    )
+    (case "rate-limit"
+      (. AIErrorKind rate-limit)
+    )
+    (case "context-length"
+      (. AIErrorKind context-length)
+    )
+    (case "server"
+      (. AIErrorKind server)
+    )
+    (case "timeout"
+      (. AIErrorKind timeout)
+    )
+    (case "cancellation"
+      (. AIErrorKind cancellation)
+    )
+    (case "invalid-request"
+      (. AIErrorKind invalid-request)
+    )
+    (case "invalid-response"
+      (. AIErrorKind invalid-response)
+    )
+    (default
+      (. AIErrorKind unknown)
+    )
+  )
+)
+
+(fn-do _ put-count _
+  (param fields (map String JSON))
+  (param key String)
+  (param value (? Size))
+  (if (!= value null)
+    (= ([] fields key) (as value Int))
+  )
+)
+
+(fn-expr _ parse-saved-json JSON (?! Error)
+  (param text String)
+  (param label String)
+  (match text
+    (~ \json-text)
+    (throw (call Error (str label " is not valid JSON")))
+  )
+)
+
+(fn-expr _ saved-object _ (?! Error)
+  (param label String)
+  (param value (? JSON))
+  (match value
+    (case (: fields (map String JSON))
+      fields
+    )
+    (throw (call Error (str label " must be an object")))
+  )
+)
+
+(fn-expr _ saved-list _ (?! Error)
+  (param label String)
+  (param value (? JSON))
+  (match value
+    (case (: items (list JSON))
+      items
+    )
+    (throw (call Error (str label " must be a list")))
+  )
+)
+
+(fn-expr _ saved-string _ (?! Error)
+  (param fields (map String JSON))
+  (param key String)
+  (match ([] fields key)
+    (case (: text String)
+      text
+    )
+    (throw (call Error (str "Saved field " key " must be text")))
+  )
+)
+
+(fn-expr _ saved-text _
+  (param value (? JSON))
+  (match? value
+    (case String)
+  )
+)
+
+(fn-expr _ saved-int (? Int)
+  (param value (? JSON))
+  (match? value
+    (case Int)
+  )
+)
+
+(fn-expr _ saved-count (? Size)
+  (param value (? JSON))
+  (match? value
+    (case (all Int ({} (>= it 0))))
+  )
+)
+
+(fn-expr _ saved-number (? Float)
+  (param value (? JSON))
+  (match? value
+    (case (: number Float)
+      number
+    )
+    (case (: number Int)
+      (as number Float)
+    )
+  )
+)
+
+(fn-expr _ saved-flag _
+  (param value (? JSON))
+  (?? flag false)
+  (where
+    (lazy flag
+      (match? value
+        (case Bool)
+      )
+    )
+  )
+)
+
+(fn-expr _ saved-duration (? Duration)
+  (param value (? JSON))
+  (only-if (* seconds 1s) (if (!= seconds null)))
+  (where
+    (lazy seconds (call saved-number value))
+  )
+)
+
+(fn-expr _ saved-percent (? Percent)
+  (param value (? JSON))
+  (only-if (* amount 1%) (if (!= amount null)))
+  (where
+    (lazy amount (call saved-number value))
+  )
+)

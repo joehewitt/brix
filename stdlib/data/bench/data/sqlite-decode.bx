@@ -1,0 +1,35 @@
+; benchmark.meta description: Decodes 2,000 rows of five typed columns from an in-memory SQLite table into tuples, 200 times.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: timing
+(blank)
+(import /data/sqlite)
+(blank)
+
+(main
+  (let db (use (call SQLite ":memory:")))
+  (call (. db execute-script) "create table people (name text not null, age integer not null, email text, score real not null, active integer not null)")
+  (call (. db execute-script) "insert into people with recursive n(i) as (select 1 union all select i + 1 from n where i < 2000) select 'person ' || i, i % 90, case when i % 3 = 0 then null else 'p' || i || '@example.com' end, i * 0.5, i % 2 from n")
+  (blank)
+  (let checksum (as 0 I64))
+  (for (in _ (..< 0 200))
+    (for (in person (call (. db query) "select name, age, email, score, active from people" (=> (row) (call Person (call (. row string) 0) (call (. row int) 1) (call (. row optional-string) 2) (call (. row real) 3) (call (. row bool) 4)))))
+      (+= checksum (+ (. person age) (as (. person name length) I64) (as (. person score) I64)))
+      (if (!= (. person email) null)
+        (+= checksum 1)
+      )
+      (if (. person is-active)
+        (+= checksum 1)
+      )
+    )
+  )
+  (blank)
+  (print (str "bench-result data/sqlite-decode checksum=" checksum))
+)
+
+(type + Person (is Tuple)
+  (prop + name String)
+  (prop + age I64)
+  (prop + email (? String))
+  (prop + score F64)
+  (prop + is-active Bool)
+)

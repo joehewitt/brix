@@ -1,0 +1,83 @@
+; benchmark.meta description: Stresses choices that share long prefixes.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+
+(main
+  (let values
+    (match (call shared-prefix-choice-source)
+      (~ \shared-prefix-choice-document)
+      (throw (call Panic "shared-prefix-choice did not parse"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in value values)
+    (+= checksum value)
+  )
+  (blank)
+  (print (str "bench-result stream/shared-prefix-choice checksum=" checksum))
+)
+
+(fn-expr + shared-prefix-choice-document _ (over: Char)
+  (~ (: rows (+ \shared-prefix-row))
+    rows
+  )
+  (where
+    (lazy shared-prefix-row Size
+      (pattern
+        (~ (seq "command-alpha:" (: name \shared-word) ":" (: number \shared-digits) "\n")
+          (+ (. name length) (. number length))
+        )
+        (~ (seq "command-beta:" (: name \shared-word) ":" (: number \shared-digits) "\n")
+          (+ (* (. name length) 2) (. number length))
+        )
+        (~ (seq "command-gamma:" (: name \shared-word) ":" (: number \shared-digits) "\n")
+          (+ (* (. name length) 3) (. number length))
+        )
+        (~ (seq "command-delta:" (: name \shared-word) ":" (: number \shared-digits) "\n")
+          (+ (* (. name length) 4) (. number length))
+        )
+      )
+    )
+    (blank)
+    (lazy shared-word String
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_"))))
+      )
+    )
+    (blank)
+    (lazy shared-digits String
+      (pattern
+        (~ (+ (chars "0-9")))
+      )
+    )
+  )
+)
+
+(fn-expr _ shared-prefix-choice-source _
+  (call (. "" join) (in (call shared-prefix-choice-line each) (..< 0 160)))
+)
+
+(fn-expr _ shared-prefix-choice-line String
+  (param index Int)
+  (str "command-" kind ":name_" index ":" (* index 13) "\n")
+  (where
+    (lazy kind
+      (block
+        (case? (== (% index 4) 0)
+          "alpha"
+        )
+        (case? (== (% index 4) 1)
+          "beta"
+        )
+        (case? (== (% index 4) 2)
+          "gamma"
+        )
+        (default
+          "delta"
+        )
+      )
+    )
+  )
+)

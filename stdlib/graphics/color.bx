@@ -1,0 +1,308 @@
+(import /core/animatable)
+(import /core/patterns)
+(import /math)
+(import /unistd.h)
+(import /units)
+(blank)
+(prop + transparent _ (= (call RGB 0 0 0 0)))
+(prop + black _ (= (call RGB 0 0 0)))
+(prop + white _ (= (call RGB 100% 100% 100%)))
+(prop + red _ (= (call RGB 100% 0 0)))
+(prop + blue _ (= (call RGB 0 0 100%)))
+(prop + green _ (= (call RGB 0 100% 0)))
+(prop + yellow _ (= (call RGB 100% 100% 0)))
+(prop + cyan _ (= (call RGB 0 100% 100%)))
+
+(fn-expr + pack-rgba8 U32
+  (param color RGBA)
+  (/or/ red (/lshift/ green 8) (/lshift/ blue 16) (/lshift/ alpha 24))
+  (where
+    (lazy red (as (call color-channel-byte (. color red)) U32))
+    (lazy green (as (call color-channel-byte (. color green)) U32))
+    (lazy blue (as (call color-channel-byte (. color blue)) U32))
+    (lazy alpha (as (call color-channel-byte (. color alpha)) U32))
+  )
+)
+
+(fn-expr + rgba8 RGBA
+  (param packed U32)
+  (call RGBA red green blue alpha)
+  (where
+    (lazy red (/ (as (/and/ packed 255) F64) 255))
+    (lazy green (/ (as (/and/ (/rshift/ packed 8) 255) F64) 255))
+    (lazy blue (/ (as (/and/ (/rshift/ packed 16) 255) F64) 255))
+    (lazy alpha (/ (as (/and/ (/rshift/ packed 24) 255) F64) 255))
+  )
+)
+
+(fn-expr + color-channel-byte U8
+  (param channel F64)
+  (as (call round (* (call max 0 (call min 1 channel)) 255)) U8)
+)
+
+(fn-expr _ hex-byte _ (over: Char)
+  (~ ({} (chars "0-9a-fA-F") 2)
+    (/ (as (call Hex it) U8) 255.0)
+  )
+)
+
+(fn-expr _ hex-nibble _ (over: Char)
+  (~ (chars "0-9a-fA-F")
+    (/ (as (call Hex (* it 2)) U8) 255.0)
+  )
+)
+
+(fn-expr + rgb-channel _ (over: Char)
+  (~ (seq (: value (of \dec F64)) "%")
+    (call max 0 (call min 1 (/ value 100)))
+  )
+  (~ (: value (of \dec F64))
+    (call max 0 (call min 1 (/ value 255)))
+  )
+)
+
+(fn-expr + alpha-channel _ (over: Char)
+  (~ (seq (: value (of \dec F64)) "%")
+    (call max 0 (call min 1 (/ value 100)))
+  )
+  (~ (: value (of \dec F64))
+    (call max 0 (call min 1 value))
+  )
+)
+
+(fn-expr _ channel-separator _ (over: Char)
+  (~ (seq (* \ws) "," (* \ws)))
+  (~ (+ \ws))
+)
+
+(fn-expr _ alpha-separator _ (over: Char)
+  (~ (seq (* \ws) (| "," "/") (* \ws)))
+)
+
+(fn-expr + rgb-function _ (over: Char)
+  (~ (seq "rgb" (? "a") "(" (* \ws) (: r \rgb-channel) \channel-separator (: g \rgb-channel) \channel-separator (: b \rgb-channel) (? (seq \alpha-separator (: a \alpha-channel))) (* \ws) ")")
+    (call RGBAInput (call RGBA r g b (?? a 1)) (!= a null))
+  )
+)
+
+(type + RGBAInput (is Tuple)
+  (prop + color RGBA)
+  (prop + has-alpha Bool)
+)
+
+(type + RGBA (alias RGB) (is Tuple)
+  (implements Animatable)
+  (prop + red _ (= 0%%))
+  (prop + green _ (= 0%%))
+  (prop + blue _ (= 0%%))
+  (prop + alpha _ (= 1%%))
+  (fn-expr + with-alpha RGBA
+    (param value Ratio)
+    (call RGBA red green blue value)
+  )
+  (fn-expr + over RGBA
+    (param base RGBA)
+    (case? (== coverage 0)
+      (call RGBA 0 0 0 0)
+    )
+    (default
+      (call RGBA
+        (block
+          (arg (/ (+ (* red alpha) (* (. base red) beneath)) coverage))
+          (arg (/ (+ (* green alpha) (* (. base green) beneath)) coverage))
+          (arg (/ (+ (* blue alpha) (* (. base blue) beneath)) coverage))
+          (arg coverage)
+        )
+      )
+    )
+    (where
+      (lazy beneath (* (. base alpha) (- 1 alpha)))
+      (lazy coverage (+ alpha beneath))
+    )
+  )
+  (fn-do + This _
+    (param vector (list F64))
+    (let weight (call clamp ([] vector 3) 0.0 1.0))
+    (return-if (call This 0 0 0 0) (if (<= weight 0)))
+    (let lightness (/ ([] vector 0) weight))
+    (let green-red (/ ([] vector 1) weight))
+    (let blue-yellow (/ ([] vector 2) weight))
+    (let long (call oklab-cone (+ lightness (* 0.3963377774 green-red) (* 0.2158037573 blue-yellow))))
+    (let middle (call oklab-cone (- lightness (* 0.1055613458 green-red) (* 0.0638541728 blue-yellow))))
+    (let short (call oklab-cone (- lightness (* 0.0894841775 green-red) (* 1.2914855480 blue-yellow))))
+    (return
+      (call This
+        (block
+          (arg (call linear-to-srgb (+ (- (* 4.0767416621 long) (* 3.3077115913 middle)) (* 0.2309699292 short))))
+          (arg (call linear-to-srgb (- (+ (* -1.2684380046 long) (* 2.6097574011 middle)) (* 0.3413193965 short))))
+          (arg (call linear-to-srgb (+ (- (* -0.0041960863 long) (* 0.7034186147 middle)) (* 1.7076147010 short))))
+          (arg weight)
+        )
+      )
+    )
+  )
+  (fn-expr + This _ (over: Char)
+    (~ (seq "#" (: r \hex-byte) (: g \hex-byte) (: b \hex-byte) (: a (? \hex-byte)) (! (chars "0-9a-zA-Z")))
+      (call This r g b (?? a 1))
+    )
+    (~ (seq "#" (: r \hex-nibble) (: g \hex-nibble) (: b \hex-nibble) (: a (? \hex-nibble)) (! (chars "0-9a-zA-Z")))
+      (call This r g b (?? a 1))
+    )
+    (~ (: input \rgb-function)
+      (. input color)
+    )
+  )
+  (fn-from-expr + (: value String)
+    (match value
+      (~ (seq (* \ws) (: color This) (* \ws) (! .))
+        color
+      )
+      (throw (call SyntaxError "Invalid color"))
+    )
+  )
+  (fn-to-expr + HSVA
+    (call HSVA h s v alpha)
+    (where
+      (lazy h (/ h1 6))
+      (lazy s
+        (block
+          (case? (== color-max 0)
+            0
+          )
+          (default
+            (/ d color-max)
+          )
+        )
+      )
+      (lazy v color-max)
+      (blank)
+      (lazy color-max (call max (call max red green) blue))
+      (lazy color-min (call min (call min red green) blue))
+      (lazy d (- color-max color-min))
+      (lazy gb
+        (block
+          (case? (< green blue)
+            6
+          )
+          (default
+            0
+          )
+        )
+      )
+      (lazy h1
+        (block
+          (case? (== d 0)
+            0
+          )
+          (case? (== color-max red)
+            (+ (/ (- green blue) d) gb)
+          )
+          (case? (== color-max green)
+            (+ (/ (- blue red) d) 2)
+          )
+          (case? (== color-max blue)
+            (+ (/ (- red green) d) 4)
+          )
+          (default
+            0
+          )
+        )
+      )
+    )
+  )
+  (fn-to-expr + String
+    (str "rgba(" r ", " g ", " b ", " a ")")
+    (where
+      (lazy r (as red Percent UnitString))
+      (lazy g (as green Percent UnitString))
+      (lazy b (as blue Percent UnitString))
+      (lazy a (as alpha Percent UnitString))
+    )
+  )
+  (fn-to-expr + Hex
+    (str "#" r g b)
+    (where
+      (lazy r ([] (as (call color-channel-byte red) Hex) (..< 2 4)))
+      (lazy g ([] (as (call color-channel-byte green) Hex) (..< 2 4)))
+      (lazy b ([] (as (call color-channel-byte blue) Hex) (..< 2 4)))
+    )
+  )
+  (fn-expr + (prefix ! this) _
+    (== alpha 0)
+  )
+  (fn-expr + motion-vector (list F64) :get
+    (list (* weight lightness) (* weight green-red) (* weight blue-yellow) weight)
+    (where
+      (lazy r (call srgb-to-linear red))
+      (lazy g (call srgb-to-linear green))
+      (lazy b (call srgb-to-linear blue))
+      (lazy long (call cbrt (+ (* 0.4122214708 r) (* 0.5363325363 g) (* 0.0514459929 b))))
+      (lazy middle (call cbrt (+ (* 0.2119034982 r) (* 0.6806995451 g) (* 0.1073969566 b))))
+      (lazy short (call cbrt (+ (* 0.0883024619 r) (* 0.2817188376 g) (* 0.6299787005 b))))
+      (lazy weight (as alpha F64))
+      (lazy lightness (- (+ (* 0.2104542553 long) (* 0.7936177850 middle)) (* 0.0040720468 short)))
+      (lazy green-red (+ (- (* 1.9779984951 long) (* 2.4285922050 middle)) (* 0.4505937099 short)))
+      (lazy blue-yellow (- (+ (* 0.0259040371 long) (* 0.7827717662 middle)) (* 0.8086757660 short)))
+    )
+  )
+)
+
+(fn-expr _ srgb-to-linear F64
+  (param channel F64)
+  (case? (<= channel 0.04045)
+    (/ (call max channel 0.0) 12.92)
+  )
+  (default
+    (%% (/ (+ channel 0.055) 1.055) 2.4)
+  )
+)
+
+(fn-expr _ linear-to-srgb F64
+  (param channel F64)
+  (case? (<= channel 0.0031308)
+    (* (call max channel 0.0) 12.92)
+  )
+  (default
+    (call min (- (* 1.055 (%% channel (/ 1 2.4))) 0.055) 1.0)
+  )
+)
+
+(fn-expr _ oklab-cone F64
+  (param root F64)
+  (* root root root)
+)
+
+(type + HSVA (alias HSV) (is Tuple)
+  (prop + hue _ (= 0%%))
+  (prop + saturation _ (= 0%%))
+  (prop + value _ (= 0%%))
+  (prop + alpha _ (= 1%%))
+  (fn-to-expr + RGBA
+    (call RGBA r g b alpha)
+    (where
+      (lazy r ([] (list value q p p t value) mod))
+      (lazy g ([] (list t value value q p p) mod))
+      (lazy b ([] (list p p t value value q) mod))
+      (blank)
+      (lazy pair (call modf (* hue 6)))
+      (lazy i ([] pair 0))
+      (lazy f ([] pair 1))
+      (lazy p (* value (- 1 saturation)))
+      (lazy q (* value (- 1 (* f saturation))))
+      (lazy t (* value (- 1 (* (- 1 f) saturation))))
+      (lazy mod (% (as i Index) 6))
+    )
+  )
+  (fn-to-expr + String
+    (str "hsva(" h ", " s ", " v ", " a ")")
+    (where
+      (lazy h (as hue Percent UnitString))
+      (lazy s (as saturation Percent UnitString))
+      (lazy v (as value Percent UnitString))
+      (lazy a (as alpha Percent UnitString))
+    )
+  )
+  (fn-expr + (prefix ! this) _
+    (== alpha 0)
+  )
+)

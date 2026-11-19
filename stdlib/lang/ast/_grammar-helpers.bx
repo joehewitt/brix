@@ -1,0 +1,5055 @@
+(import ./ast-builder)
+(import ./ast-nodes)
+(import ./error)
+(import ./operator)
+(import ./row-range)
+(import /core/arena)
+(import /core/array-builder)
+(import /core/parsing)
+(import /stream/aggregate)
+(blank)
+(type-line + DoBody (is (tuple (: body SyntaxId) (: annotations (of ImmutableArray Atom)))))
+(type-line + DoAnnotationMasks (is (tuple (: effects CompilationEffect) (: features CompilerFeature))))
+(type-line + ContainerPartial (is (tuple (: container SyntaxId) (: is-subscriber Bool))))
+(type-line + StackBindingPartial (is (tuple (: name Atom) (: value SyntaxId))))
+(type-line + SectionsPartial (is (tuple (: without (of ImmutableArray Atom)) (: bindings (of ImmutableArray StackBindingPartial)))))
+(type-line + ProbeKeySelector (is (tuple (: object (? SyntaxId)) (: key Atom))))
+(type-line + AssociatedTypeMember (is (tuple (: name Atom) (: args (of ImmutableArray SyntaxId)))))
+
+(type + PropertyAssignmentKind (is U8)
+  (variant property-assignment-getter)
+  (variant property-assignment-lazy)
+  (variant property-assignment-immediate)
+)
+
+(type + ReturnOperator (is U8)
+  (variant return-operator-return)
+  (variant return-operator-yield)
+  (variant return-operator-yield-all)
+)
+
+(type + BlockStringComponent (is Union)
+  (variant syntax (tuple (: id SyntaxId)))
+  (variant literal (tuple (: text String)))
+)
+
+(type + ArgumentDeclarationParts (is Tuple)
+  (prop + type-id SyntaxId)
+  (prop + default-value (? SyntaxId))
+)
+
+(type + PropertyAssignmentParts (is Tuple)
+  (prop + kind PropertyAssignmentKind)
+  (prop + value SyntaxId)
+  (prop + imperative Bool)
+)
+
+(type + FunctionKey (is Tuple)
+  (prop + names (of ImmutableArray Atom))
+  (prop + type-args (of ImmutableArray SyntaxId))
+  (prop + returns (? SyntaxId))
+  (prop + pattern (? SyntaxId))
+  (prop + args (? (of ImmutableArray SyntaxId)))
+  (fn-do + This _
+    (param names (of ImmutableArray Atom))
+    (param type-args (of ImmutableArray SyntaxId))
+    (param returns (? SyntaxId))
+    (param pattern (? SyntaxId) (= null))
+    (param args (? (of ImmutableArray SyntaxId)) (= null))
+  )
+)
+
+(type + ClassHeader (is Tuple)
+  (prop + location MatchLocation)
+  (prop + access Access)
+  (prop + name Atom)
+  (prop + type-args (of ImmutableArray SyntaxId))
+  (prop + aliases (? (of ImmutableArray Atom)))
+  (prop + inherits (? (of ImmutableArray SyntaxId)))
+  (prop + header (? (of ImmutableArray ArgumentVariant)))
+  (prop + facet-of SyntaxId (= 0))
+)
+
+(type + SheetDerivation (is Tuple)
+  (prop + base SyntaxId)
+  (prop + tags (? (of ImmutableArray Atom)))
+)
+
+(type + YumiPiece (is Tuple)
+  (prop + location MatchLocation)
+  (prop + items (of ImmutableArray SyntaxId))
+  (prop + header (? ClassHeader) (= null))
+)
+
+(fn-do + detached-piece YumiPiece
+  (param piece YumiPiece)
+  (return-if (call YumiPiece (. piece location) (call detached (. piece items))) (if (not (. piece header))))
+  (let header (. piece header))
+  (let aliases (only-if (call detached (. header aliases)) (if (. header aliases))))
+  (let inherits (only-if (call detached (. header inherits)) (if (. header inherits))))
+  (let variants (only-if (call detached (. header header)) (if (. header header))))
+  (let detached-header
+    (call ClassHeader
+      (block
+        (arg (. header location))
+        (arg (. header access))
+        (arg (. header name))
+        (arg (call detached (. header type-args)))
+        (arg aliases)
+        (arg inherits)
+        (arg variants)
+        (arg (. header facet-of))
+      )
+    )
+  )
+  (return (call YumiPiece (. piece location) (call detached (. piece items)) detached-header))
+)
+
+(fn-do _ (of detached Item) (of ImmutableArray Item)
+  (param items (of ImmutableArray Item))
+  (let copy (call (of ArrayBuilder Item)))
+  (call (. copy reserve) (. items length))
+  (for (in item items)
+    (call (. copy append) item)
+  )
+  (return (call (. copy finish-immutable)))
+)
+
+(type + StyleRuleHeader (is Tuple)
+  ; The line that names a style rule: where it is written, its name, what it takes, the rules it
+  ; applies, and whether it is written `• own`, to reach only the content of an element's own
+  ; class. A rule is located by this line, not by its body.
+  (blank)
+  (prop + location MatchLocation)
+  (prop + name Atom)
+  (prop + arg (? SyntaxId))
+  (prop + rules (? (of ImmutableArray SyntaxId)))
+  (prop + is-own Bool)
+)
+
+(type + StateMachineHeader (is Tuple)
+  (prop + location MatchLocation)
+  (prop + access Access)
+  (prop + decorations (of ImmutableArray SyntaxId))
+  (prop + left SyntaxId)
+)
+
+(type + WheneverTrigger (is Tuple)
+  (prop + kind Atom)
+  (prop + target-type SyntaxId)
+  (prop + expr SyntaxId)
+)
+
+(type + ArgumentVariant (is Union)
+  (variant param-constraint (tuple (: value SyntaxId)))
+  (variant param-assignment (tuple (: value SyntaxId)))
+  (variant argument-decl (tuple (: value SyntaxId)))
+  (variant implements-declaration (tuple (: value SyntaxId)))
+  (variant using-declaration (tuple (: value SyntaxId)))
+  (variant sees-declaration (tuple (: value SyntaxId)))
+  (variant iterator-header (tuple (: location MatchLocation) (: loop SyntaxId)))
+)
+
+(type + StreamMatchRight (is Union)
+  (variant assignment (tuple (: value SyntaxId) (: body (? SyntaxId))))
+  (variant iterator (tuple (: loop SyntaxId) (: body (? SyntaxId))))
+  (variant expression (tuple (: body SyntaxId) (: rollback Bool)))
+)
+
+(type + AnonymousCaseTraversal (is Tuple)
+  (prop + first SyntaxId)
+  (prop + second SyntaxId)
+  (prop + third SyntaxId)
+  (prop + fourth SyntaxId)
+  (prop + first-range (of RowRange SyntaxId))
+  (prop + second-range (of RowRange SyntaxId))
+)
+
+(type + SyntaxPartial (is Union)
+  (variant assign-partial (tuple (: op Operator) (: is-optional Bool) (: right SyntaxId)))
+  (variant iterator-partial (tuple (: loop SyntaxId)))
+  (variant iterator-stream-partial (tuple (: loop SyntaxId) (: body (? SyntaxId))))
+  (variant range-to-partial (tuple (: right SyntaxId) (: increment (? SyntaxId))))
+  (variant range-partial (tuple (: op Operator) (: right SyntaxId) (: increment (? SyntaxId))))
+  (variant get-partial (tuple (: name Atom) (: is-tracked Bool) (: is-optional Bool) (: is-loop Bool)))
+  (variant style-read-partial (tuple (: name Atom) (: is-optional Bool)))
+  (variant markup-read-partial (tuple (: name Atom) (: is-optional Bool)))
+  (variant index-partial (tuple (: index SyntaxId) (: is-optional Bool) (: stop MatchLocation)))
+  (variant force-partial (tuple (: stop MatchLocation)))
+  (variant call-partial (tuple (: params (of ImmutableArray SyntaxId)) (: args (of ImmutableArray SyntaxId)) (: is-curried Bool) (: stop MatchLocation)))
+  (variant args-partial (tuple (: args (of ImmutableArray SyntaxId)) (: is-curried Bool)))
+  (variant assign-stream-partial (tuple (: right SyntaxId) (: body (? SyntaxId))))
+  (variant expr-partial (tuple (: body SyntaxId) (: rollback Bool)))
+  (variant structure-partial (tuple (: pattern SyntaxId)))
+  (variant stream-partial (tuple (: pattern SyntaxId)))
+  (variant iterator-structure-expr-partial (tuple (: loop SyntaxId)))
+  (variant iterator-stream-expr-partial (tuple (: loop SyntaxId)))
+  (variant property-partial (tuple (: kind PropertyAssignmentKind) (: expr SyntaxId)))
+)
+
+(type + TypeShorthandSuffix (is Union)
+  (variant type-suffix-optional (tuple (: name Atom)))
+  (variant type-suffix-optional-buffer (tuple (: optional-name Atom) (: buffer-name Atom)))
+  (variant type-suffix-buffer (tuple (: name Atom)))
+  (variant type-suffix-channel (tuple (: name Atom)))
+)
+
+(type + ComposeExpressionTail (is Tuple)
+  (prop + loc MatchLocation)
+  (prop + op Operator)
+  (prop + right SyntaxId)
+  (prop + is-optional Bool)
+  (prop + write-name (? Atom))
+  (fn-do + This _
+    (param loc _)
+    (param op Operator)
+    (param right SyntaxId)
+    (param is-optional Bool)
+    (param write-name (? String))
+  )
+)
+
+(fn-do + hex-integer-value String
+  (param digits String)
+  ; The value of hexadecimal digits in decimal, however many digits there are.
+  (let places (list U32))
+  (+= places 0)
+  (for (in char digits)
+    (let digit 0u32)
+    (if (and (>= char '0') (<= char '9'))
+      (= digit (- char '0'))
+      (else-if (and (>= char 'a') (<= char 'f'))
+        (= digit (+ (as (- char 'a') U32) 10))
+      )
+      (else-if (and (>= char 'A') (<= char 'F'))
+        (= digit (+ (as (- char 'A') U32) 10))
+      )
+    )
+    (let carry digit)
+    (for (in place (..< 0 (. places length)))
+      (let scaled (+ (* ([] places place) 16) carry))
+      (= ([] places place) (% scaled 10))
+      (= carry (/ scaled 10))
+    )
+    (while (!= carry 0)
+      (+= places (% carry 10))
+      (= carry (/ carry 10))
+    )
+  )
+  (let shown "")
+  (for (in offset (..< 0 (. places length)))
+    (+= shown (str ([] places (- (. places length) 1 offset))))
+  )
+  (return shown)
+)
+
+(fn-expr + hex-integer-unit Atom
+  (param tree ASTBuilder)
+  (param digits String)
+  (case? (<= (. digits length) 2)
+    (call (. tree atom) "u8")
+  )
+  (case? (<= (. digits length) 4)
+    (call (. tree atom) "u16")
+  )
+  (case? (<= (. digits length) 8)
+    (call (. tree atom) "u32")
+  )
+  (default
+    (call (. tree atom) "u64")
+  )
+)
+
+(fn-expr + character-literal-value String (over: Char) (?! YumiSyntaxError)
+  (param char Char)
+  (~ ""
+    (call character-literal-string location char)
+  )
+)
+
+(fn-expr + negative-number-value (? String) (over: Char)
+  (param tree ASTBuilder)
+  (param operators (of ImmutableArray Operator))
+  (param syntax SyntaxId)
+  (~ ""
+    (call negative-number-string tree operators syntax)
+  )
+)
+
+(fn-expr + compose-write-name (? Atom) (over: Char)
+  (param op Operator)
+  (~ ""
+    (only-if (as op String) (if (== op .write-op)))
+  )
+)
+
+(fn-expr + bool-argument-name Atom (over: Char)
+  (param ability String)
+  (param name Atom)
+  (~ ""
+    (str ability "-" (. name text))
+  )
+)
+
+(fn-expr + bool-argument-value Atom (over: Char)
+  (param is-not Bool)
+  (~ ""
+    (if-expr is-not "false" "true")
+  )
+)
+
+(fn-expr + unescape _
+  (param c _)
+  (match c
+    (case= "t"
+      "\t"
+    )
+    (case= "n"
+      "\n"
+    )
+    (case= "r"
+      "\r"
+    )
+    (case= "b"
+      "\x08"
+    )
+    (case= "f"
+      "\x0c"
+    )
+    (case= "v"
+      "\x0b"
+    )
+    (case= "/"
+      "/"
+    )
+    (case= "\\"
+      "\\"
+    )
+    (case= "\$"
+      "\$"
+    )
+    (case= "\""
+      "\""
+    )
+    (case= "'"
+      "'"
+    )
+    (default
+      ""
+    )
+  )
+)
+
+(fn-expr + character-literal-string String (?! YumiSyntaxError)
+  (param loc MatchLocation)
+  (param char Char)
+  (before
+    (throw (call YumiSyntaxError loc "Character literal must contain a valid Unicode scalar") (if (and (>= value 55296) (<= value 57343))))
+  )
+  (str value)
+  (where
+    (lazy value (as char U32))
+  )
+)
+
+(fn-expr + negative-number-string (? String)
+  (param tree ASTBuilder)
+  (param operators (of ImmutableArray Operator))
+  (param syntax SyntaxId)
+  (match? ([] (. tree nodes) syntax)
+    (case (call .node-integer-syntax number)
+      (only-if (call negated-number-text (. number value) count) (if count))
+    )
+    (case (call .node-float-syntax number)
+      (only-if (call negated-number-text (. number value) count) (if count))
+    )
+  )
+  (where
+    (lazy count (call trailing-negative-count operators))
+  )
+)
+
+(fn-expr + negated-number-text String
+  (param text String)
+  (param count Size)
+  ; The text of a number under `count` minus signs. A number that already has one loses it to
+  ; the next, so an even count leaves a number with no sign.
+  (if-expr (== (% total 2) 1) (++ "-" digits) digits)
+  (where
+    (lazy signed (and (!= (. text length) 0) (== ([] text 0) '-')))
+    (lazy digits (if-expr signed ([] text (..< 1 (. text length))) text))
+    (lazy total (if-expr signed (+ count 1) count))
+  )
+)
+
+(fn-do + escaped-text String
+  (param tree ASTBuilder)
+  (param chars (of ImmutableArray Char))
+  ; The text of the characters a literal writes with escapes. A copy an arena makes of
+  ; characters stops at a NUL, so text that holds one is made whole first and copied after.
+  (for (in char chars)
+    (if (== char (as 0 Char))
+      (return (call (. tree store-string) (call (. chars slice-string))))
+    )
+  )
+  (return (call (. chars slice-string) (. tree text-arena)))
+)
+
+(fn-do + concat-string-parts SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param parts (of ImmutableArray SyntaxId))
+  (let has-expression false)
+  (let has-text false)
+  (for (in part parts)
+    (match ([] (. tree nodes) part)
+      (case (call .node-string-syntax row)
+        (= has-text (or has-text (> (. row text length) 0)))
+      )
+      (default
+        (= has-expression true)
+      )
+    )
+  )
+  (let result (? SyntaxId))
+  (if (and has-expression (not has-text))
+    (= result (call (. tree append) (call ASTString loc (call (. tree store-string) ""))))
+  )
+  (for (in part parts)
+    (if (call is-empty-string tree part)
+      (continue)
+    )
+    (let piece (call relocated-string tree loc part))
+    (match result
+      (case (: previous SyntaxId)
+        (= result (call (. tree append) (call ASTBinaryExpression loc .concat-string-op previous piece)))
+      )
+      (default
+        (= result piece)
+      )
+    )
+  )
+  (return (?? result (call (. tree append) (call ASTString loc (call (. tree store-string) "")))))
+)
+
+(fn-do _ is-empty-string Bool
+  (param tree ASTBuilder)
+  (param part SyntaxId)
+  ; A piece of text with no characters, which a line continuation alone leaves.
+  (match? ([] (. tree nodes) part)
+    (case (call .node-string-syntax row)
+      (return (== (. row text length) 0))
+    )
+  )
+  (return false)
+)
+
+(fn-do + relocated-get SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param expr SyntaxId)
+  (match? ([] (. tree nodes) expr)
+    (case .node-get-expression
+      (= ([] (. tree nodes loc) expr) loc)
+    )
+  )
+  (return expr)
+)
+
+(fn-do + relocated-string SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param part SyntaxId)
+  (match? ([] (. tree nodes) part)
+    (case (call .node-string-syntax row)
+      (return (call (. tree append) (call ASTString loc (. row text))))
+    )
+  )
+  (return part)
+)
+
+(fn-do + make-block-string SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param parts (of ImmutableArray BlockStringComponent))
+  (let end (. parts length))
+  (let final-text (? String))
+  (while end
+    (match ([] parts (- end 1))
+      (case (call .literal text)
+        (let trimmed (call trim-block-string-end text))
+        (if (. trimmed length)
+          (= final-text trimmed)
+          (break)
+        )
+        (-= end 1)
+      )
+      (default
+        (break)
+      )
+    )
+  )
+  (blank)
+  (let has-expression false)
+  (let has-text false)
+  (for (in index (..< 0 end))
+    (match ([] parts index)
+      (case .syntax
+        (= has-expression true)
+      )
+      (case (call .literal text)
+        (= has-text (or has-text (> (. text length) 0)))
+      )
+    )
+  )
+  (blank)
+  (let result (? SyntaxId))
+  (if (and has-expression (not has-text))
+    (= result (call (. tree append) (call ASTString loc (call (. tree store-string) ""))))
+  )
+  (blank)
+  (for (in index (..< 0 end))
+    (let node
+      (match ([] parts index)
+        (case (call .syntax id)
+          id
+        )
+        (case (call .literal value)
+          (scope (only-if (call (. tree append) (call ASTString loc (call (. tree store-string) text))) (if (. text length)))
+            (lazy text (if-expr (and final-text (== index (- end 1))) final-text value))
+          )
+        )
+      )
+    )
+    (if node
+      (match result
+        (case (: previous SyntaxId)
+          (= result (call (. tree append) (call ASTBinaryExpression loc .concat-string-op previous node)))
+        )
+        (default
+          (= result node)
+        )
+      )
+    )
+  )
+  (blank)
+  (return (?? result (call (. tree append) (call ASTString loc (call (. tree store-string) "")))))
+)
+
+(fn-do + trim-block-string-end String
+  (param text String)
+  (let end (. text length))
+  (while (and end (call is-block-string-end-whitespace ([] text (- end 1))))
+    (-= end 1)
+  )
+  (return ([] text (..< 0 end)))
+)
+
+(fn-expr + is-block-string-end-whitespace Bool
+  (param char Char)
+  (match (as char U32)
+    (case= 9u32
+      true
+    )
+    (case= 10u32
+      true
+    )
+    (case= 11u32
+      true
+    )
+    (case= 12u32
+      true
+    )
+    (case= 13u32
+      true
+    )
+    (case= 32u32
+      true
+    )
+    (case= 160u32
+      true
+    )
+    (case= 5760u32
+      true
+    )
+    (case? (and (>= it 8192) (<= it 8202))
+      true
+    )
+    (case= 8232u32
+      true
+    )
+    (case= 8233u32
+      true
+    )
+    (case= 8239u32
+      true
+    )
+    (case= 8287u32
+      true
+    )
+    (case= 12288u32
+      true
+    )
+    (case= 65279u32
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-do + strip-numeric-separators String
+  (param text String)
+  (let has-separators false)
+  (for (in c text)
+    (if (== (as c U32) 39)
+      (= has-separators true)
+      (break)
+    )
+  )
+  (blank)
+  (return-if text (if (not has-separators)))
+  (blank)
+  (let stripped "")
+  (for (in c text)
+    (if (!= (as c U32) 39)
+      (+= stripped c)
+    )
+  )
+  (blank)
+  (return stripped)
+)
+
+(fn-do + auto-call SyntaxId (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param location _)
+  (param expr _)
+  (param params _)
+  (param args _)
+  (param is-curried _)
+  (return-if expr (if (or (not args) (not (. args length)))))
+  (blank)
+  (call refuse-repeated-labels tree args)
+  (let result
+    (match ([] (. tree nodes) expr)
+      (case (call .node-call-expression call)
+        (let callable (. call callable))
+        (let curried (. call is-curried))
+        (let existing-params (. call params))
+        (let existing-args (. call args))
+        (let merged-params (call store-auto-call-children tree existing-params params))
+        (let merged-args (call store-auto-call-args tree existing-args args))
+        (let operands (call (. tree call-operands) merged-params merged-args))
+        (let merged-call
+          (call ASTCallExpression
+            (block
+              (arg location)
+              (arg callable)
+              (arg operands)
+              (arg (as (. merged-params count) U8))
+              (arg curried)
+            )
+          )
+        )
+        (call (. tree append) merged-call)
+      )
+      (default
+        (let stored-params (call (. tree store-optional-children) params))
+        (let stored-args (call store-auto-call-args tree (call (of RowRange SyntaxId)) args))
+        (let created expr)
+        (if (or (. stored-params count) (. stored-args count))
+          (let operands (call (. tree call-operands) stored-params stored-args))
+          (let param-count (. stored-params count))
+          (let call (call ASTCallExpression location expr operands (as param-count U8) is-curried))
+          (= created (call (. tree append) call))
+          (else
+            (= ([] (. tree nodes loc) expr) location)
+          )
+        )
+        created
+      )
+    )
+  )
+  (blank)
+  (let outer-block (call auto-call-outer-block tree params args))
+  (if outer-block
+    (= result (call auto-call-outer-block-expression tree location result outer-block))
+  )
+  (blank)
+  (let catchers (call store-auto-call-catchers tree args))
+  (for (in offset (..< 0 (. catchers count)))
+    (let catcher ([] (. tree children) (+ (. catchers start) offset)))
+    (let joined (call (. tree auto-join) result catcher))
+    (if (not joined)
+      (throw (call Panic "Call catch handler did not join"))
+    )
+    (= result joined)
+  )
+  (return result)
+)
+
+(fn-do + refuse-repeated-labels _ (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param args (of ImmutableArray SyntaxId))
+  (for (in offset (..< 0 (. args length)))
+    (let arg ([] args offset))
+    (match? ([] (. tree nodes) arg)
+      (case (call .node-argument later)
+        (let name (. later name))
+        (if name
+          (for (in earlier-offset (..< 0 offset))
+            (match? ([] (. tree nodes) ([] args earlier-offset))
+              (case (call .node-argument earlier)
+                (if (== (. earlier name) name)
+                  (call reject-syntax tree ([] (. tree nodes loc) arg) (str "\"" (. name text) "\" is given twice in one call; the bullets on a line all belong to one call, so give a nested call its bullets inside parentheses, as in \"• where (some(each.kids) • where each > 2)\""))
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-do + auto-call-outer-block SyntaxId
+  (param tree ASTBuilder)
+  (param params _)
+  (param args (of ImmutableArray SyntaxId))
+  (return-if 0 (if (and params (. params length))))
+  (blank)
+  (let result SyntaxId 0)
+  (for (in arg args)
+    (let node ([] (. tree nodes) arg))
+    (if (is node .node-block)
+      (let block
+        (match node
+          (case (call .node-block value)
+            value
+          )
+          (default
+            (call ASTBlock (call MatchLocation) (call (of RowRange SyntaxId)))
+          )
+        )
+      )
+      (let has-outer-statements (call auto-call-block-has-outer-statements tree (. block body)))
+      (if (and has-outer-statements (not (call auto-call-block-has-body tree (. block body))))
+        (= result arg)
+      )
+    )
+  )
+  (return result)
+)
+
+(fn-do + auto-call-block-has-outer-statements Bool
+  (param tree ASTBuilder)
+  (param body (of RowRange SyntaxId))
+  (for (in child ([] (. tree nodes) (call (. tree child-ids) body)))
+    (match? child
+      (case (call .node-declare declaration)
+        (return-if true (if (. declaration is-lazy)))
+      )
+      (case .node-assertion-syntax
+        (return true)
+      )
+    )
+  )
+  (return false)
+)
+
+(fn-do + auto-call-block-has-body Bool
+  (param tree ASTBuilder)
+  (param body (of RowRange SyntaxId))
+  (for (in child ([] (. tree nodes) (call (. tree child-ids) body)))
+    (match child
+      (case (call .node-declare declaration)
+        (return-if true (if (not (. declaration is-lazy))))
+      )
+      (case .node-list-syntax
+        (continue)
+      )
+      (case .node-argument
+        (continue)
+      )
+      (case .node-assertion-syntax
+        (continue)
+      )
+      (case .node-catcher
+        (continue)
+      )
+      (default
+        (return true)
+      )
+    )
+  )
+  (return false)
+)
+
+(fn-do + store-auto-call-args (of RowRange SyntaxId)
+  (param tree ASTBuilder)
+  (param existing (of RowRange SyntaxId))
+  (param args (of ImmutableArray SyntaxId))
+  (let start (. tree children length))
+  (for (in offset (..< 0 (. existing count)))
+    (call append-auto-call-child tree ([] (. tree children) (+ (. existing start) offset)))
+  )
+  (blank)
+  (for (in arg args)
+    (if (is ([] (. tree nodes) arg) .node-block)
+      (let block
+        (match ([] (. tree nodes) arg)
+          (case (call .node-block value)
+            value
+          )
+          (default
+            (call ASTBlock (call MatchLocation) (call (of RowRange SyntaxId)))
+          )
+        )
+      )
+      (for (in offset (..< 0 (. block body count)))
+        (let child ([] (. tree children) (+ (. block body start) offset)))
+        (if (is ([] (. tree nodes) child) .node-list-syntax)
+          (let list
+            (match ([] (. tree nodes) child)
+              (case (call .node-list-syntax value)
+                value
+              )
+              (default
+                (call ASTList (call MatchLocation) (call (of RowRange SyntaxId)))
+              )
+            )
+          )
+          (for (in item-offset (..< 0 (. list items count)))
+            (let item ([] (. tree children) (+ (. list items start) item-offset)))
+            (let argument (call (. tree make-argument) (call (. tree location) item) item null false))
+            (call append-auto-call-child tree argument)
+          )
+          (else-if (is ([] (. tree nodes) child) .node-argument)
+            (call append-auto-call-child tree child)
+          )
+        )
+      )
+      (if (call auto-call-block-has-body tree (. block body))
+        (let argument (call (. tree make-argument) (call (. tree location) arg) arg null false))
+        (call append-auto-call-child tree argument)
+      )
+      (else-if (is ([] (. tree nodes) arg) .node-argument)
+        (call append-auto-call-child tree arg)
+      )
+      (else
+        (let argument (call (. tree make-argument) (call (. tree location) arg) arg null false))
+        (call append-auto-call-child tree argument)
+      )
+    )
+  )
+  (blank)
+  (return-if (call (of RowRange SyntaxId)) (if (== (. tree children length) start)))
+  (return (call (of RowRange SyntaxId) (as start U32) (as (- (. tree children length) start) U32)))
+)
+
+(fn-do + auto-call-outer-block-expression SyntaxId
+  (param tree ASTBuilder)
+  (param location MatchLocation)
+  (param expression SyntaxId)
+  (param block-id SyntaxId)
+  (let block
+    (match ([] (. tree nodes) block-id)
+      (case (call .node-block value)
+        value
+      )
+      (default
+        (call ASTBlock (call MatchLocation) (call (of RowRange SyntaxId)))
+      )
+    )
+  )
+  (blank)
+  (let start (. tree children length))
+  (for (in offset (..< 0 (. block body count)))
+    (let child ([] (. tree children) (+ (. block body start) offset)))
+    (if (is ([] (. tree nodes) child) .node-declare)
+      (let declaration
+        (match ([] (. tree nodes) child)
+          (case (call .node-declare value)
+            value
+          )
+          (default
+            (call ASTDeclare (call MatchLocation) 0 0 false false false)
+          )
+        )
+      )
+      (if (. declaration is-lazy)
+        (call append-auto-call-child tree child)
+      )
+    )
+  )
+  (for (in offset (..< 0 (. block body count)))
+    (let child ([] (. tree children) (+ (. block body start) offset)))
+    (if (is ([] (. tree nodes) child) .node-assertion-syntax)
+      (call append-auto-call-child tree child)
+    )
+  )
+  (let it (call (. tree append) (call ASTIdentifier location (call (. tree atom) "it") false)))
+  (let capture (call (. tree append) (call ASTTypeCapture location it 0)))
+  (let it-declaration (call (. tree append) (call ASTDeclare location capture expression true false false true)))
+  (call append-auto-call-child tree it-declaration)
+  (call append-auto-call-child tree it)
+  (return
+    (call (. tree append)
+      (block
+        (arg (call ASTBlock location (call (of RowRange SyntaxId) (as start U32) (as (- (. tree children length) start) U32))))
+      )
+    )
+  )
+)
+
+(fn-do + store-auto-call-catchers (of RowRange SyntaxId)
+  (param tree ASTBuilder)
+  (param args (of ImmutableArray SyntaxId))
+  (let start (. tree children length))
+  (for (in arg args)
+    (if (is ([] (. tree nodes) arg) .node-block)
+      (let block
+        (match ([] (. tree nodes) arg)
+          (case (call .node-block value)
+            value
+          )
+          (default
+            (call ASTBlock (call MatchLocation) (call (of RowRange SyntaxId)))
+          )
+        )
+      )
+      (for (in offset (..< 0 (. block body count)))
+        (let child ([] (. tree children) (+ (. block body start) offset)))
+        (if (is ([] (. tree nodes) child) .node-catcher)
+          (call append-auto-call-child tree child)
+        )
+      )
+    )
+  )
+  (blank)
+  (return-if (call (of RowRange SyntaxId)) (if (== (. tree children length) start)))
+  (return (call (of RowRange SyntaxId) (as start U32) (as (- (. tree children length) start) U32)))
+)
+
+(fn-do + append-auto-call-child _
+  (param tree ASTBuilder)
+  (param child SyntaxId)
+  (throw (call Panic "ASTBuilder child pool exceeds U32 capacity") (if (>= (. tree children length) (. U32 max))))
+  (call (. tree children append) child)
+)
+
+(fn-do + store-auto-call-children (of RowRange SyntaxId)
+  (param tree ASTBuilder)
+  (param existing (of RowRange SyntaxId))
+  (param additions (? (of ImmutableArray SyntaxId)))
+  (return-if existing (if (or (not additions) (not (. additions length)))))
+  (blank)
+  (throw (call Panic "ASTBuilder child pool exceeds U32 capacity") (if (> (. tree children length) (. U32 max))))
+  (throw (call Panic "ASTBuilder child pool exceeds U32 capacity") (if (> (. existing count) (- (. U32 max) (. tree children length)))))
+  (throw (call Panic "ASTBuilder child pool exceeds U32 capacity") (if (> (. additions length) (- (. U32 max) (. tree children length) (. existing count)))))
+  (blank)
+  (let start (. tree children length))
+  (for (in offset (..< 0 (. existing count)))
+    (call (. tree children append) ([] (. tree children) (+ (. existing start) offset)))
+  )
+  (for (in child additions)
+    (call (. tree children append) child)
+  )
+  (return (call (of RowRange SyntaxId) (as start U32) (as (+ (. existing count) (. additions length)) U32)))
+)
+
+(fn-expr + tuple-maybe SyntaxId
+  (param tree ASTBuilder)
+  (param loc _)
+  (param list (of ImmutableArray SyntaxId))
+  (match list
+    (case (list item)
+      item
+    )
+    (default
+      (call (. tree append) (call ASTTuple loc (call (. tree store-children) list)))
+    )
+  )
+)
+
+(fn-expr + type-tuple-maybe SyntaxId
+  (param tree ASTBuilder)
+  (param loc _)
+  (param list (of ImmutableArray SyntaxId))
+  (match list
+    (case (list item)
+      item
+    )
+    (default
+      (call (. tree append) (call ASTTypeTuple loc (call (. tree store-children) list)))
+    )
+  )
+)
+
+(fn-expr + (of scratch-array Item) (of Array Item ArenaBacking)
+  (param tree ASTBuilder)
+  (param capacity Size)
+  (call (of Array Item ArenaBacking) (. tree pattern-collector-context) capacity)
+)
+
+(fn-expr + (of scratch-items Item) (of ImmutableArray Item)
+  (param items (of Array Item ArenaBacking))
+  (param size Size)
+  (. (call (of Array Item) (. items data) size) immutable)
+)
+
+(fn-do + (of true-optionals Item) (of ImmutableArray Item)
+  (param tree ASTBuilder)
+  (param list (of ImmutableArray (? Item)))
+  (param head (? Item) (= null))
+  (let items
+    (call (of Array Item ArenaBacking)
+      (block
+        (arg (. tree pattern-collector-context))
+        (arg (+ (. list length) (if-expr head 1 0)))
+      )
+    )
+  )
+  (let size Size 0)
+  (if head
+    (= ([] items size) head)
+    (+= size 1)
+  )
+  (for (in item list)
+    (if item
+      (= ([] items size) item)
+      (+= size 1)
+    )
+  )
+  (return (. (call (of Array Item) (. items data) size) immutable))
+)
+
+(fn-do + store-stream-call-expressions (of RowRange SyntaxId)
+  (param tree ASTBuilder)
+  (param variants (of ImmutableArray SyntaxId))
+  (let children (. tree children))
+  (let start (. children length))
+  (for (in variant variants)
+    (let expression
+      (match? ([] (. tree nodes) variant)
+        (case (call .node-stream-call-expression-argument argument)
+          (. argument expression)
+        )
+      )
+    )
+    (if expression
+      (call (. tree store-child) expression)
+    )
+  )
+  (return (call (of RowRange SyntaxId) (as start U32) (as (- (. children length) start) U32)))
+)
+
+(fn-do + store-stream-call-collector-mappings (of RowRange SyntaxId)
+  (param tree ASTBuilder)
+  (param variants (of ImmutableArray SyntaxId))
+  (let children (. tree children))
+  (let start (. children length))
+  (for (in variant variants)
+    (if (is ([] (. tree nodes) variant) .node-stream-collector-mapping)
+      (call (. tree store-child) variant)
+    )
+  )
+  (return (call (of RowRange SyntaxId) (as start U32) (as (- (. children length) start) U32)))
+)
+
+(fn-expr + make-stream-call SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param name Atom)
+  (param params (of ImmutableArray SyntaxId))
+  (param arguments (? (of ImmutableArray SyntaxId)))
+  (call (. tree append) (call ASTStreamCall loc name (call (. tree store-children) params) (call store-stream-call-expressions tree variants) (call store-stream-call-collector-mappings tree variants))
+    (block
+      (lazy variants (?? arguments (call (of ImmutableArray SyntaxId))))
+    )
+  )
+)
+
+(fn-expr + markup-head-values (tuple SyntaxId SyntaxId)
+  (param tree ASTBuilder)
+  (param head (? SyntaxId))
+  (case? head
+    (match ([] (. tree nodes) head)
+      (case (call .node-markup-head row)
+        (tuple (. row id) (. row slot-binding))
+      )
+      (default
+        (tuple 0 0)
+      )
+    )
+  )
+  (default
+    (tuple 0 0)
+  )
+)
+
+(fn-expr + make-property-declaration SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param access Access)
+  (param decorations (of ImmutableArray SyntaxId))
+  (param left SyntaxId)
+  (param value (? PropertyAssignmentParts))
+  (match value
+    (case (: parts PropertyAssignmentParts)
+      (match (. parts kind)
+        (case= .property-assignment-getter
+          (call (. tree append)
+            (block
+              (arg
+                (call ASTFunction
+                  (block
+                    (arg loc)
+                    (arg access)
+                    (arg (call (. tree store-atoms) (call (of sequence-singleton Atom) tree (call (. tree capture-name) left))))
+                    (arg 0)
+                    (arg (call (of RowRange SyntaxId)))
+                    (arg (call (of RowRange SyntaxId)))
+                    (arg (call (. tree capture-type) left))
+                    (arg (call (of RowRange SyntaxId)))
+                    (arg (call (of RowRange SyntaxId)))
+                    (arg (call (of RowRange SyntaxId)))
+                    (arg (. parts value))
+                    (arg (. CompilationEffect none))
+                    (arg (. parts imperative))
+                    (arg false)
+                    (arg false)
+                    (arg true)
+                    (arg false)
+                    (arg false)
+                    (arg (. (call (. tree store-property-decorations) decorations) annotations))
+                    (arg left)
+                  )
+                )
+              )
+            )
+          )
+        )
+        (default
+          (call (. tree append) (call ASTProperty loc access left marked-value (. stored decoration) (== (. parts kind) .property-assignment-lazy) (. stored annotations))
+            (block
+              (lazy marked-value (call reject-unmarked-state-machine tree loc (. parts value)))
+              (lazy stored (call (. tree store-property-decorations) decorations))
+            )
+          )
+        )
+      )
+    )
+    (default
+      (call (. tree append) (call ASTProperty loc access left 0 (. stored decoration) false (. stored annotations))
+        (block
+          (lazy stored (call (. tree store-property-decorations) decorations))
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + make-c-constant SyntaxId (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param access Access)
+  (param symbol Atom)
+  (param value SyntaxId)
+  ; A constant a C header defines, declared only by the module of the header and named by the C
+  ; name a module reads it by.
+  (call make-property-declaration tree loc access (call (of ImmutableArray SyntaxId)) left parts)
+  (where
+    (lazy left (call (. tree append) (call ASTTypeCapture loc (call (. tree append) (call ASTIdentifier loc ([] named 0) false)) 0)))
+    (lazy named (call c-declaration-name tree loc symbol))
+    (lazy parts (call PropertyAssignmentParts .property-assignment-immediate value false))
+  )
+)
+
+(fn-expr + make-state-machine-property SyntaxId
+  (param tree ASTBuilder)
+  (param header StateMachineHeader)
+  (param body (of ImmutableArray SyntaxId))
+  (call (. tree append) (call ASTProperty (. header location) (. header access) (. header left) machine (. stored decoration) false (. stored annotations))
+    (block
+      (lazy machine (call (. tree append) (call ASTStateMachine (. header location) (call (. tree store-children) body))))
+      (lazy stored (call (. tree store-property-decorations) (. header decorations)))
+    )
+  )
+)
+
+(fn-expr + reject-unmarked-state-machine SyntaxId (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param value SyntaxId)
+  (if-expr (not is-unmarked) value (call reject-syntax tree (call exclusive-end-location loc) message))
+  (where
+    (lazy message "A state machine declaration needs ~> after its name")
+    (lazy is-unmarked (call is-unmarked-state-machine tree value))
+  )
+)
+
+(fn-expr _ is-unmarked-state-machine Bool
+  (param tree ASTBuilder)
+  (param id SyntaxId)
+  (match ([] (. tree nodes) id)
+    (case (all (call .node-block block) ({} (== (. block body count) 1)))
+      (match ([] (. tree nodes) ([] (. tree children) (. block body start)))
+        (case .node-state-machine
+          true
+        )
+        (default
+          false
+        )
+      )
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-expr + make-stream-match-block SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param pattern SyntaxId)
+  (param right (? StreamMatchRight))
+  (match right
+    (case (: resolved StreamMatchRight)
+      (match resolved
+        (case (call .assignment value body)
+          (call (. tree append) (call ASTMatchExpression loc value stream-match false)
+            (block
+              (lazy transformed (if-expr body (call (. tree append) (call ASTStreamTransform loc pattern body false)) pattern))
+              (lazy stream-match (call (. tree append) (call ASTStreamMatch loc transformed true)))
+            )
+          )
+        )
+        (case (call .iterator loop body)
+          (match ([] (. tree nodes) loop)
+            (case (call .node-loop-syntax partial-loop)
+              (call make-iterator-line tree loc (. partial-loop container) (. partial-loop is-subscriber) null stream-match (. partial-loop clause) null null
+                (block
+                  (lazy transformed (if-expr body (call (. tree append) (call ASTStreamTransform loc pattern body false)) pattern))
+                  (lazy stream-match (call (. tree append) (call ASTStreamMatch loc transformed)))
+                )
+              )
+            )
+            (throw (call Panic "Expected partial loop syntax"))
+          )
+        )
+        (case (call .expression body rollback)
+          (call (. tree append) (call ASTStreamMatch loc transformed)
+            (block
+              (lazy transformed (call (. tree append) (call ASTStreamTransform loc pattern body rollback)))
+            )
+          )
+        )
+      )
+    )
+    (default
+      (call (. tree append) (call ASTStreamMatch loc pattern))
+    )
+  )
+)
+
+(fn-do + syntax-optionals (of ImmutableArray SyntaxId)
+  (param tree ASTBuilder)
+  (param first (of ImmutableArray (? SyntaxId)))
+  (param second (of ImmutableArray (? SyntaxId)))
+  (let present (call (of scratch-array SyntaxId) tree (+ (. first length) (. second length))))
+  (let size Size 0)
+  (for (in item first)
+    (if item
+      (= ([] present size) item)
+      (+= size 1)
+    )
+  )
+  (for (in item second)
+    (if item
+      (= ([] present size) item)
+      (+= size 1)
+    )
+  )
+  (return (call scratch-items present size))
+)
+
+(fn-do + (of sequence-singleton Item) (of ImmutableArray Item)
+  (param tree ASTBuilder)
+  (param item Item)
+  (let sequence (call (of scratch-array Item) tree 1))
+  (= ([] sequence 0) item)
+  (return (call scratch-items sequence 1))
+)
+
+(type + KeyframeLineKind (is Union)
+  (variant keyframe-setting)
+  (variant keyframe-range)
+  (variant keyframe-track)
+  (variant keyframe-stop)
+)
+
+(type + KeyframeLine
+  (prop + kind KeyframeLineKind)
+  (prop + location MatchLocation)
+  (prop + name (? Atom))
+  (prop + component (? Atom))
+  (prop + first SyntaxId)
+  (prop + second SyntaxId)
+  (prop + bullets (of ImmutableArray SyntaxId))
+  (prop + stops (of ImmutableArray KeyframeLine))
+  (fn-do + This _
+    (param kind _)
+    (param location _)
+    (param name _)
+    (param component _)
+    (param first _)
+    (param second _)
+    (param bullets _)
+    (param stops _)
+  )
+)
+
+(fn-do + make-keyframe-declaration SyntaxId
+  (param tree ASTBuilder)
+  (param location MatchLocation)
+  (param name Atom)
+  (param parameter (? SyntaxId))
+  (param kind Atom)
+  (param duration SyntaxId)
+  (param lines (? (of ImmutableArray KeyframeLine)))
+  (let given (?? lines (call (of ImmutableArray KeyframeLine))))
+  (let head-count Size 1)
+  (for (in line given)
+    (if (== (. line kind) .keyframe-setting)
+      (+= head-count 1)
+    )
+  )
+  (let head-args (call (of scratch-array SyntaxId) tree head-count))
+  (= ([] head-args 0) (call (. tree make-argument) (call (. tree location) duration) duration null false))
+  (let setting Size 1)
+  (for (in line given)
+    (if (== (. line kind) .keyframe-setting)
+      (= ([] head-args setting) (call (. tree make-argument) (. line location) (. line first) (. line name) false))
+      (+= setting 1)
+    )
+  )
+  (let callee (call (. tree append) (call ASTIdentifier location kind false)))
+  (let chain
+    (call auto-call
+      (block
+        (arg tree)
+        (arg location)
+        (arg callee)
+        (arg (call (of ImmutableArray SyntaxId)))
+        (arg (call scratch-items head-args head-count))
+        (arg false)
+      )
+    )
+  )
+  (for (in line given)
+    (if (== (. line kind) .keyframe-range)
+      (let property
+        (call (. tree append)
+          (block
+            (arg (call ASTStylePropertyExpression (. line location) (!! (. line name)) (. line component)))
+          )
+        )
+      )
+      (= chain (call keyframe-call tree line chain "range" (list property (call keyframe-end tree line (. line first)) (call keyframe-end tree line (. line second)))))
+      (else-if (== (. line kind) .keyframe-track)
+        (let property
+          (call (. tree append)
+            (block
+              (arg (call ASTStylePropertyExpression (. line location) (!! (. line name)) (. line component)))
+            )
+          )
+        )
+        (= chain (call keyframe-call tree line chain "track" (list property)))
+        (for (in stop (. line stops))
+          (let stopped
+            (call (. tree append)
+              (block
+                (arg (call ASTStylePropertyExpression (. stop location) (!! (. line name)) (. line component)))
+              )
+            )
+          )
+          (= chain (call keyframe-call tree stop chain "at" (list stopped (. stop first) (. stop second))))
+        )
+      )
+      (else-if (== (. line kind) .keyframe-stop)
+        (= chain (call keyframe-call tree line chain "at" (list (. line first) (. line second))))
+      )
+    )
+  )
+  (if parameter
+    (let shape (call make-closure tree location false (call sequence-singleton tree parameter) chain))
+    (let shaper (call (. tree append) (call ASTIdentifier location (call (. tree atom) "style-shape") false)))
+    (let shaped (call sequence-singleton tree (call (. tree make-argument) location shape null false)))
+    (= chain (call auto-call tree location shaper (call (of ImmutableArray SyntaxId)) shaped false))
+  )
+  (let named (call (. tree append) (call ASTIdentifier location name false)))
+  (let left (call (. tree append) (call ASTTypeCapture location named 0)))
+  (return (call (. tree append) (call ASTProperty location .public-access left chain null false (call (of RowRange Atom)))))
+)
+
+(fn-do _ keyframe-end SyntaxId
+  (param tree ASTBuilder)
+  (param line KeyframeLine)
+  (param end SyntaxId)
+  (return-if end (if (!= end 0)))
+  (return (call (. tree append) (call ASTIdentifier (. line location) (call (. tree atom) "null") false)))
+)
+
+(fn-do _ keyframe-call SyntaxId
+  (param tree ASTBuilder)
+  (param line KeyframeLine)
+  (param chain SyntaxId)
+  (param member String)
+  (param values (list SyntaxId))
+  (let args (call (of scratch-array SyntaxId) tree (+ (. values length) (. line bullets length))))
+  (for (in index (..< 0 (. values length)))
+    (= ([] args index) (call (. tree make-argument) (. line location) ([] values index) null false))
+  )
+  (for (in index (..< 0 (. line bullets length)))
+    (= ([] args (+ (. values length) index)) ([] (. line bullets) index))
+  )
+  (let get (call (. tree append) (call ASTGetExpression (. line location) chain (call (. tree atom) member) false false false)))
+  (return
+    (call auto-call
+      (block
+        (arg tree)
+        (arg (. line location))
+        (arg get)
+        (arg (call (of ImmutableArray SyntaxId)))
+        (arg (call scratch-items args (+ (. values length) (. line bullets length))))
+        (arg false)
+      )
+    )
+  )
+)
+
+(fn-do + make-shaped SyntaxId
+  (param tree ASTBuilder)
+  (param location MatchLocation)
+  (param shape SyntaxId)
+  (param arg SyntaxId)
+  (let get (call (. tree append) (call ASTGetExpression location shape (call (. tree atom) "bind") false false false)))
+  (let given (call sequence-singleton tree (call (. tree make-argument) (call (. tree location) arg) arg null false)))
+  (return (call auto-call tree location get (call (of ImmutableArray SyntaxId)) given false))
+)
+
+(fn-do + make-style-rule SyntaxId
+  (param tree ASTBuilder)
+  (param header StyleRuleHeader)
+  (param body SyntaxId)
+  (let args (? (of ImmutableArray SyntaxId)) null)
+  (if (. header arg)
+    (= args (call sequence-singleton tree (. header arg)))
+  )
+  (return
+    (call (. tree append)
+      (block
+        (arg
+          (call ASTRule
+            (block
+              (arg (. header location))
+              (arg (. header name))
+              (arg (call (. tree store-optional-children) args))
+              (arg body)
+              (arg (call (. tree store-optional-children) (. header rules)))
+              (arg (. header is-own))
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-do + (of sequence-pair Item) (of ImmutableArray Item)
+  (param tree ASTBuilder)
+  (param first Item)
+  (param second Item)
+  (let sequence (call (of scratch-array Item) tree 2))
+  (= ([] sequence 0) first)
+  (= ([] sequence 1) second)
+  (return (call scratch-items sequence 2))
+)
+
+(fn-do + (of sequence-appending Item) (of ImmutableArray Item)
+  (param tree ASTBuilder)
+  (param items (of ImmutableArray Item))
+  (param item Item)
+  (let sequence (call (of scratch-array Item) tree (+ (. items length) 1)))
+  (for (in index (..< 0 (. items length)))
+    (= ([] sequence index) ([] items index))
+  )
+  (= ([] sequence (. items length)) item)
+  (return (call scratch-items sequence (+ (. items length) 1)))
+)
+
+(fn-do + (of sequence-prepending Item) (of ImmutableArray Item)
+  (param tree ASTBuilder)
+  (param item Item)
+  (param items (of ImmutableArray Item))
+  (let sequence (call (of scratch-array Item) tree (+ (. items length) 1)))
+  (= ([] sequence 0) item)
+  (for (in index (..< 0 (. items length)))
+    (= ([] sequence (+ index 1)) ([] items index))
+  )
+  (return (call scratch-items sequence (+ (. items length) 1)))
+)
+
+(fn-do + arguments-from-expressions (of ImmutableArray SyntaxId)
+  (param tree ASTBuilder)
+  (param loc _)
+  (param expressions (of ImmutableArray SyntaxId))
+  (let arguments (call (of scratch-array SyntaxId) tree (. expressions length)))
+  (for (in index (..< 0 (. expressions length)))
+    (let expression ([] expressions index))
+    (= ([] arguments index) (call (. tree make-argument) (call (. tree location) expression) expression null false))
+  )
+  (return (call scratch-items arguments (. expressions length)))
+)
+
+(fn-expr + reject-syntax SyntaxId (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param location MatchLocation)
+  (param message String)
+  (throw (call YumiSyntaxError location message (. tree source) (. tree source-path)))
+)
+
+(fn-do + make-class-declaration SyntaxId
+  (param tree ASTBuilder)
+  (param location MatchLocation)
+  (param header ClassHeader)
+  (param body (? (of ImmutableArray SyntaxId)))
+  (let inherited-types (?? (. header inherits) (call (of ImmutableArray SyntaxId))))
+  (let base SyntaxId 0)
+  (let or-bases (call (of RowRange SyntaxId)))
+  (if (== (. inherited-types length) 1)
+    (= base ([] inherited-types 0))
+    (else-if (> (. inherited-types length) 1)
+      (= base (call (. tree append) (call ASTTypeIdentifier location (call (. tree atom) "Or") false)))
+      (= or-bases (call (. tree store-children) inherited-types))
+    )
+  )
+  (blank)
+  (let header-variants (?? (. header header) (call (of ImmutableArray ArgumentVariant))))
+  (let body-members (?? body (call (of ImmutableArray SyntaxId))))
+  (let members (call (of scratch-array SyntaxId) tree (+ (. header-variants length) (. body-members length))))
+  (let member-count Size 0)
+  (for (in variant header-variants)
+    (if (is variant .implements-declaration)
+      (= ([] members member-count) variant)
+      (+= member-count 1)
+      (else-if (is variant .using-declaration)
+        (= ([] members member-count) variant)
+        (+= member-count 1)
+      )
+      (else-if (is variant .sees-declaration)
+        (= ([] members member-count) variant)
+        (+= member-count 1)
+      )
+    )
+  )
+  (for (in member body-members)
+    (= ([] members member-count) member)
+    (+= member-count 1)
+  )
+  (let stored-type-args (call (. tree store-children) (. header type-args)))
+  (let stored-aliases (call (. tree store-atoms) (?? (. header aliases) (call (of ImmutableArray Atom)))))
+  (let stored-members (call (. tree store-children) (call scratch-items members member-count)))
+  (let stored-constraints (call (. tree store-children) (call parameter-constraints tree header-variants)))
+  (let stored-assignments (call (. tree store-children) (call parameter-assignments tree header-variants)))
+  (return
+    (call (. tree append)
+      (block
+        (arg
+          (call ASTClassBlock
+            (block
+              (arg (call declared-at location))
+              (arg (. header access))
+              (arg (. header name))
+              (arg stored-type-args)
+              (arg stored-aliases)
+              (arg base)
+              (arg or-bases)
+              (arg stored-members)
+              (arg stored-constraints)
+              (arg stored-assignments)
+              (arg false)
+              (arg (call (of RowRange Atom)))
+              (arg (. header facet-of))
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-do + make-style-sheet-declaration SyntaxId
+  (param tree ASTBuilder)
+  (param location MatchLocation)
+  (param name Atom)
+  (param derived (? SheetDerivation))
+  (param header (? (of ImmutableArray ArgumentVariant)))
+  (param body (? (of ImmutableArray SyntaxId)))
+  (let base (if-expr derived (. derived base) (call (. tree append) (call ASTTypeIdentifier location (call (. tree atom) "StyleSheet") false))))
+  (let inherits (call sequence-singleton tree base))
+  (blank)
+  (let no-type-args (call (of ImmutableArray SyntaxId)))
+  (let class-header (call ClassHeader location .public-access name no-type-args null inherits header))
+  (let declared (call make-class-declaration tree location class-header body))
+  (call (. tree mark-style-sheet) declared (call (. tree store-atoms) (?? (?. derived tags) (call (of ImmutableArray Atom)))))
+  (return declared)
+)
+
+(fn-expr + make-extension-declaration SyntaxId
+  (param tree ASTBuilder)
+  (param location MatchLocation)
+  (param access Access)
+  (param receiver SyntaxId)
+  (param as-types (? (of ImmutableArray SyntaxId)))
+  (param constraints (? (of ImmutableArray ArgumentVariant)))
+  (param body (? (of ImmutableArray SyntaxId)))
+  (call (. tree append) (call ASTExtension (call declared-at location) access receiver stored-as-types stored-constraints stored-assignments stored-body)
+    (block
+      (lazy variants (?? constraints (call (of ImmutableArray ArgumentVariant))))
+      (lazy stored-as-types (call (. tree store-optional-children) as-types))
+      (lazy stored-constraints (call (. tree store-optional-children) (call parameter-constraints tree variants)))
+      (lazy stored-assignments (call (. tree store-optional-children) (call parameter-assignments tree variants)))
+      (lazy stored-body (call (. tree store-optional-children) body))
+    )
+  )
+)
+
+(fn-do + make-style-sheet-extension-declaration SyntaxId
+  (param tree ASTBuilder)
+  (param location MatchLocation)
+  (param receiver SyntaxId)
+  (param header (? (of ImmutableArray ArgumentVariant)))
+  (param body (? (of ImmutableArray SyntaxId)))
+  (let header-members (?? header (call (of ImmutableArray ArgumentVariant))))
+  (let body-members (?? body (call (of ImmutableArray SyntaxId))))
+  (let members (call (of scratch-array SyntaxId) tree (+ (. header-members length) (. body-members length))))
+  (let member-count Size 0)
+  (for (in member header-members)
+    (if (is member .using-declaration)
+      (= ([] members member-count) member)
+      (+= member-count 1)
+    )
+  )
+  (for (in member body-members)
+    (= ([] members member-count) member)
+    (+= member-count 1)
+  )
+  (let stored-members (call (. tree store-children) (call scratch-items members member-count)))
+  (return (call (. tree append) (call ASTStyleSheetExtension (call declared-at location) receiver stored-members)))
+)
+
+(fn-do + argument-declarations (of ImmutableArray SyntaxId)
+  (param tree ASTBuilder)
+  (param variants (of ImmutableArray ArgumentVariant))
+  (let chosen (call (of scratch-array SyntaxId) tree (. variants length)))
+  (let size Size 0)
+  (for (in variant variants)
+    (if (is variant .argument-decl)
+      (= ([] chosen size) variant)
+      (+= size 1)
+    )
+  )
+  (return (call scratch-items chosen size))
+)
+
+(fn-do + parameter-constraints (of ImmutableArray SyntaxId)
+  (param tree ASTBuilder)
+  (param variants (of ImmutableArray ArgumentVariant))
+  (let chosen (call (of scratch-array SyntaxId) tree (. variants length)))
+  (let size Size 0)
+  (for (in variant variants)
+    (if (is variant .param-constraint)
+      (= ([] chosen size) variant)
+      (+= size 1)
+    )
+  )
+  (return (call scratch-items chosen size))
+)
+
+(fn-do + parameter-assignments (of ImmutableArray SyntaxId)
+  (param tree ASTBuilder)
+  (param variants (of ImmutableArray ArgumentVariant))
+  (let chosen (call (of scratch-array SyntaxId) tree (. variants length)))
+  (let size Size 0)
+  (for (in variant variants)
+    (if (is variant .param-assignment)
+      (= ([] chosen size) variant)
+      (+= size 1)
+    )
+  )
+  (return (call scratch-items chosen size))
+)
+
+(fn-expr + declared-at MatchLocation
+  (param location MatchLocation)
+  (call MatchLocation (call TokenLocation (+ (. location begin line) 1) (. location begin column)) (. location end))
+)
+
+(fn-do + make-getter-function SyntaxId (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param location MatchLocation)
+  (param access Access)
+  (param names (of ImmutableArray Atom))
+  (param is-imperative Bool)
+  (param annotations (of ImmutableArray Atom))
+  (param return-type (? SyntaxId))
+  (param body (? SyntaxId))
+  (param errors (of ImmutableArray SyntaxId) (= (call (of ImmutableArray SyntaxId))))
+  (throw (call YumiSyntaxError location "@rollback is only supported on grammar functions") (if (call has-annotation annotations "rollback")))
+  (throw (call YumiSyntaxError location "@live is not supported on getters") (if (call has-annotation annotations "live")))
+  (throw (call YumiSyntaxError location "@no-return is not supported on getters") (if (call has-annotation annotations "no-return")))
+  (let node
+    (call ASTFunction
+      (block
+        (arg (call declared-at location))
+        (arg access)
+        (arg (call (. tree store-atoms) names))
+        (arg 0)
+        (arg (call (of RowRange SyntaxId)))
+        (arg (call (of RowRange SyntaxId)))
+        (arg (call (. tree syntax-or-invalid) return-type))
+        (arg (call (. tree store-children) errors))
+        (arg (call (of RowRange SyntaxId)))
+        (arg (call (of RowRange SyntaxId)))
+        (arg (call (. tree syntax-or-invalid) (call imperative-body tree is-imperative body)))
+        (arg (call compilation-effects location annotations true))
+        (arg is-imperative)
+        (arg false)
+        (arg false)
+        (arg true)
+        (arg false)
+        (arg (call has-annotation annotations "inline"))
+      )
+    )
+  )
+  (= node (= (. node bans) (call lowered-bans tree annotations)))
+  (= node (= (. node door) (call lowered-door tree (call declared-at location) annotations)))
+  (return (call (. tree append) node))
+)
+
+(fn-expr + c-declaration-name (of ImmutableArray Atom) (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param location MatchLocation)
+  (param symbol Atom)
+  (before
+    (throw (call YumiSyntaxError location "C symbol names belong to header modules") (if (not (call (. tree source-path ends-with) ".h"))))
+  )
+  (call sequence-singleton tree symbol)
+)
+
+(fn-do + make-function SyntaxId (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param location MatchLocation)
+  (param access Access)
+  (param is-imperative Bool)
+  (param is-static Bool)
+  (param key FunctionKey)
+  (param errors (of ImmutableArray SyntaxId))
+  (param annotations (of ImmutableArray Atom))
+  (param stream-item-name Atom)
+  (param argument-variants (? (of ImmutableArray ArgumentVariant)))
+  (param body (? SyntaxId))
+  (let stream-item (call (. tree append) (call ASTTypeIdentifier location stream-item-name false)))
+  (let variants (?? argument-variants (call (of ImmutableArray ArgumentVariant))))
+  (let has-rollback (call has-annotation annotations "rollback"))
+  (if (and has-rollback (not (. key pattern)))
+    (throw (call YumiSyntaxError location "@rollback is only supported on grammar functions"))
+  )
+  (if (and is-imperative (. key pattern))
+    (throw (call YumiSyntaxError location "Grammar functions do not support do"))
+  )
+  (let is-constructor (and (== (. key names length) 1) (== (. ([] (. key names) 0) text) "This") (not (. key pattern))))
+  (let stream-argument (? SyntaxId))
+  (if (. key pattern)
+    (let pattern (. key pattern))
+    (let token-stream (call (. tree append) (call ASTTypeIdentifier location (call (. tree atom) "TokenStream") false)))
+    (let stream-type (call (. tree append) (call ASTTypeArguments location token-stream (call (. tree store-child) pattern))))
+    (let stream-name (call (. tree append) (call ASTIdentifier location (call (. tree atom) "(stream)") false)))
+    (let stream-capture (call (. tree append) (call ASTTypeCapture location stream-name stream-type)))
+    (= stream-argument (call (. tree append) (call ASTArgumentDecl location stream-capture 0 false)))
+  )
+  (let children (. tree children))
+  (let arguments-start (. children length))
+  (if stream-argument
+    (call (. tree store-child) stream-argument)
+  )
+  (for (in variant variants)
+    (if (is variant .argument-decl)
+      (call (. tree store-child) variant)
+    )
+  )
+  (if (. key args)
+    (call (. tree store-children) (. key args))
+  )
+  (let arguments (call (of RowRange SyntaxId) (as arguments-start U32) (as (- (. children length) arguments-start) U32)))
+  (blank)
+  (let type-arguments-start (. children length))
+  (if (. key pattern)
+    (call (. tree store-child) stream-item)
+  )
+  (call (. tree store-children) (. key type-args))
+  (let type-arguments
+    (call (of RowRange SyntaxId)
+      (block
+        (arg (as type-arguments-start U32))
+        (arg (as (- (. children length) type-arguments-start) U32))
+      )
+    )
+  )
+  (blank)
+  (let stored-errors (call (. tree store-optional-children) errors))
+  (let constraints-start (. children length))
+  (for (in variant variants)
+    (if (is variant .param-constraint)
+      (call (. tree store-child) variant)
+    )
+  )
+  (if (. key pattern)
+    (call (. tree store-child)
+      (block
+        (arg (call (. tree append) (call ASTParamConstraint location .match-exactly stream-item (. key pattern))))
+      )
+    )
+  )
+  (let constraints
+    (call (of RowRange SyntaxId)
+      (block
+        (arg (as constraints-start U32))
+        (arg (as (- (. children length) constraints-start) U32))
+      )
+    )
+  )
+  (blank)
+  (let assignments-start (. children length))
+  (for (in variant variants)
+    (if (is variant .param-assignment)
+      (call (. tree store-child) variant)
+    )
+  )
+  (let assignments
+    (call (of RowRange SyntaxId)
+      (block
+        (arg (as assignments-start U32))
+        (arg (as (- (. children length) assignments-start) U32))
+      )
+    )
+  )
+  (blank)
+  (let name-atoms (call (. tree store-atoms) (. key names)))
+  (let nested-body (call argument-body tree variants body))
+  (let normalized-body (call imperative-body tree (and is-imperative (not is-constructor)) nested-body))
+  (let node
+    (call ASTFunction
+      (block
+        (arg (call declared-at location))
+        (arg access)
+        (arg name-atoms)
+        (arg (call (. tree syntax-or-invalid) (. key pattern)))
+        (arg arguments)
+        (arg type-arguments)
+        (arg (call (. tree syntax-or-invalid) (. key returns)))
+        (arg stored-errors)
+        (arg constraints)
+        (arg assignments)
+        (arg (call (. tree syntax-or-invalid) normalized-body))
+        (arg (call compilation-effects location annotations true))
+        (arg (or is-imperative is-constructor))
+        (arg is-static)
+        (arg has-rollback)
+        (arg false)
+        (arg false)
+        (arg (call has-annotation annotations "inline"))
+      )
+    )
+  )
+  (= node (= (. node is-live) (call has-annotation annotations "live")))
+  (= node (= (. node is-no-return) (call has-annotation annotations "no-return")))
+  (= node (= (. node bans) (call lowered-bans tree annotations)))
+  (= node (= (. node door) (call lowered-door tree (call declared-at location) annotations)))
+  (return (call (. tree append) node))
+)
+
+(fn-do + argument-body (? SyntaxId) (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param variants (of ImmutableArray ArgumentVariant))
+  (param body (? SyntaxId))
+  (return-if null (if (not body)))
+  (let replacement SyntaxId body)
+  (for (in variant variants)
+    (match? variant
+      (case (call .iterator-header header-location loop)
+        (= replacement (call make-iterator-from-partial tree header-location replacement loop))
+      )
+    )
+  )
+  (return replacement)
+)
+
+(fn-do + (of with-tail Item) (of ImmutableArray Item)
+  (param tree ASTBuilder)
+  (param head Item)
+  (param tail (? (of ImmutableArray Item)))
+  (let following (?? tail (call (of ImmutableArray Item))))
+  (let sequence (call (of scratch-array Item) tree (+ (. following length) 1)))
+  (= ([] sequence 0) head)
+  (for (in index (..< 0 (. following length)))
+    (= ([] sequence (+ index 1)) ([] following index))
+  )
+  (return (call scratch-items sequence (+ (. following length) 1)))
+)
+
+(fn-expr + type-optional SyntaxId
+  (param tree ASTBuilder)
+  (param type SyntaxId)
+  (param name Atom)
+  (call (. tree append)
+    (block
+      (arg
+        (call ASTTypeArguments
+          (block
+            (arg (call (. tree location) type))
+            (arg (call (. tree append) (call ASTTypeIdentifier (call (. tree location) type) name false)))
+            (arg (call (. tree store-child) type))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + type-buffer SyntaxId
+  (param tree ASTBuilder)
+  (param type SyntaxId)
+  (param name Atom)
+  (call (. tree append)
+    (block
+      (arg
+        (call ASTTypeArguments
+          (block
+            (arg (call (. tree location) type))
+            (arg (call (. tree append) (call ASTTypeIdentifier (call (. tree location) type) name false)))
+            (arg (call (. tree store-child) type))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + type-channel SyntaxId
+  (param tree ASTBuilder)
+  (param type SyntaxId)
+  (param name Atom)
+  (call (. tree append)
+    (block
+      (arg
+        (call ASTTypeArguments
+          (block
+            (arg (call (. tree location) type))
+            (arg (call (. tree append) (call ASTTypeIdentifier (call (. tree location) type) name false)))
+            (arg (call (. tree store-child) type))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + type-iterable SyntaxId
+  (param tree ASTBuilder)
+  (param type SyntaxId)
+  (param name Atom)
+  (call (. tree append)
+    (block
+      (arg
+        (call ASTTypeArguments
+          (block
+            (arg (call (. tree location) type))
+            (arg (call (. tree append) (call ASTTypeIdentifier (call (. tree location) type) name false)))
+            (arg (call (. tree store-child) type))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + maybe-optional SyntaxId
+  (param tree ASTBuilder)
+  (param location MatchLocation)
+  (param expr _)
+  (param is-optional Bool)
+  (case? is-optional
+    (call (. tree append) (call ASTOptionalChain location expr))
+  )
+  (default
+    expr
+  )
+)
+
+(fn-expr + make-closure SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param is-imperative Bool)
+  (param args (? (of ImmutableArray SyntaxId)))
+  (param body (? SyntaxId))
+  (call (. tree append)
+    (block
+      (arg
+        (call ASTFunction
+          (block
+            (arg loc)
+            (arg .private-access)
+            (arg (call (of RowRange Atom)))
+            (arg 0)
+            (arg (call (. tree store-optional-children) args))
+            (arg (call (of RowRange SyntaxId)))
+            (arg 0)
+            (arg (call (of RowRange SyntaxId)))
+            (arg (call (of RowRange SyntaxId)))
+            (arg (call (of RowRange SyntaxId)))
+            (arg (call (. tree syntax-or-invalid) body))
+            (arg (. CompilationEffect none))
+            (arg is-imperative)
+            (arg false)
+            (arg false)
+            (arg false)
+            (arg false)
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + make-closure-argument SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param name SyntaxId)
+  (param is-variadic Bool)
+  (param type (? SyntaxId))
+  (call (. tree append) (call ASTArgumentDecl loc binding 0 is-variadic)
+    (block
+      (lazy binding (call (. tree append) (call ASTTypeCapture loc name (call (. tree syntax-or-invalid) type))))
+    )
+  )
+)
+
+(fn-expr + range-position SyntaxId
+  (param tree ASTBuilder)
+  (param name String)
+  (call (. tree append) (call ASTGetExpression (call MatchLocation) position (call (. tree atom) name) false false false)
+    (block
+      (lazy position
+        (call (. tree append)
+          (block
+            (arg (call ASTCoreTypeIdentifier (call MatchLocation) (call (. tree atom) "core/range") (call (. tree atom) "Position")))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + make-decimal-literal SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param integer String)
+  (param tail (? String))
+  (param unit (? Atom))
+  (case? tail
+    (call (. tree append) (call ASTFloat loc (call (. tree store-string) (str integer tail)) unit))
+  )
+  (default
+    (call (. tree append) (call ASTInteger loc (call (. tree store-string) integer) unit))
+  )
+)
+
+(fn-expr + make-yield-all SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param expr SyntaxId)
+  (call (. tree append) (call ASTForBlock loc loop yielder 0)
+    (block
+      (lazy id (call (. tree append) (call ASTIdentifier loc (call (. tree atom) "-") false)))
+      (lazy capture (call (. tree append) (call ASTTypeCapture loc id 0)))
+      (lazy loop (call (. tree append) (call ASTLoop loc capture expr 0 false false 0)))
+      (lazy yielder (call (. tree append) (call ASTYield loc id false)))
+    )
+  )
+)
+
+(fn-expr + make-if-match-body SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param body SyntaxId)
+  (call (. tree append) (call ASTBlock body-location (call (. tree store-child) do-body true-id))
+    (block
+      (lazy body-location (call (. tree location) body))
+      (lazy do-body
+        (call (. tree append)
+          (block
+            (arg (call ASTDoBlock body-location body (. CompilationEffect none) (. CompilerFeature none)))
+          )
+        )
+      )
+      (lazy true-id (call (. tree append) (call ASTIdentifier loc (call (. tree atom) "true") false)))
+    )
+  )
+)
+
+(fn-expr + make-match-block SyntaxId (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param subject SyntaxId)
+  (param body SyntaxId)
+  (param is-optional Bool)
+  (match ([] (. tree nodes) body)
+    (case (call .node-block block)
+      (call make-match-block-from-body tree loc subject (. block loc) (. block body) is-optional)
+    )
+    (default
+      (call (. tree append) (call ASTMatchExpression loc subject (call rooted-stream-match tree arm) is-optional)
+        (block
+          (lazy arm (call checked-arm tree body is-optional))
+        )
+      )
+    )
+  )
+)
+
+(fn-do _ rooted-stream-match SyntaxId
+  (param tree ASTBuilder)
+  (param id SyntaxId)
+  (match? ([] (. tree nodes) id)
+    (case (call .node-stream-match row)
+      (= ([] (. tree nodes) id) (call ASTStreamMatch (. row loc) (. row pattern) true))
+    )
+  )
+  (return id)
+)
+
+(fn-do _ checked-arm SyntaxId (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param arm SyntaxId)
+  (param is-optional Bool)
+  (return-if arm (if (not is-optional)))
+  (let alternative
+    (match ([] (. tree nodes) arm)
+      (case (call .node-structure-match row)
+        (. row pattern)
+      )
+      (case (call .node-stream-match row)
+        (. row pattern)
+      )
+      (default
+        arm
+      )
+    )
+  )
+  (while (!= alternative 0)
+    (let next SyntaxId 0)
+    (let last alternative)
+    (match? ([] (. tree nodes) alternative)
+      (case (call .node-type-or row)
+        (= next (. row left))
+        (= last (. row right))
+      )
+      (case (call .node-stream-or row)
+        (= next (. row left))
+        (= last (. row right))
+      )
+    )
+    (let covering (call covering-arm tree last))
+    (if covering
+      (throw (call YumiSyntaxError (call (. tree location) last) covering (. tree source) (. tree source-path)))
+    )
+    (= alternative next)
+  )
+  (return arm)
+)
+
+(fn-do _ covering-arm (? String)
+  (param tree ASTBuilder)
+  (param alternative SyntaxId)
+  (let pattern
+    (match ([] (. tree nodes) alternative)
+      (case (call .node-type-transform row)
+        (. row pattern)
+      )
+      (case (call .node-stream-transform row)
+        (. row pattern)
+      )
+      (case (call .node-assertion-syntax row)
+        (. row condition)
+      )
+      (case (call .node-type-panic row)
+        (call unless-pattern tree (. row pattern))
+      )
+      (case (call .node-stream-panic row)
+        (call unless-pattern tree (. row pattern))
+      )
+      (default
+        (. U32 max)
+      )
+    )
+  )
+  (return-if null (if (!= pattern 0)))
+  (return
+    (match ([] (. tree nodes) alternative)
+      (case .node-type-transform
+        defaulted
+      )
+      (case .node-stream-transform
+        defaulted
+      )
+      (default
+        raised
+      )
+    )
+  )
+  (lazy defaulted "\"match?\" differs from \"match\" only where no arm is taken, and this default arm is taken wherever no arm before it is; write \"match\"")
+  (lazy raised "\"match?\" differs from \"match\" only where no arm is taken, and this arm raises wherever no arm before it is taken; write \"match\"")
+)
+
+(fn-expr _ unless-pattern SyntaxId
+  (param tree ASTBuilder)
+  (param transform SyntaxId)
+  (match ([] (. tree nodes) transform)
+    (case (call .node-type-transform row)
+      (. row pattern)
+    )
+    (case (call .node-stream-transform row)
+      (. row pattern)
+    )
+    (default
+      (. U32 max)
+    )
+  )
+)
+
+(fn-do _ make-match-block-from-body SyntaxId (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param subject SyntaxId)
+  (param block-loc MatchLocation)
+  (param block-body (of RowRange SyntaxId))
+  (param is-optional Bool)
+  (let helper SyntaxId 0)
+  (let has-stream-match false)
+  (for (in offset (..< 0 (. block-body count)))
+    (let statement (call checked-arm tree ([] (. tree children) (+ (. block-body start) offset)) is-optional))
+    (if (is ([] (. tree nodes) statement) .node-pattern-helper-syntax)
+      (let row
+        (match ([] (. tree nodes) statement)
+          (case (call .node-pattern-helper-syntax value)
+            value
+          )
+          (throw (call Panic "Expected a pattern helper"))
+        )
+      )
+      (throw (call YumiSyntaxError loc "Stream match has more than one helper" source (. tree source-path)) (if helper))
+      (lazy source (. tree source))
+      (throw (call YumiSyntaxError (call exclusive-end-location (. row loc)) "with helper must be the first clause of a stream match" (. tree source) (. tree source-path)) (if (!= offset 0)))
+      (= helper (. row helper))
+      (else-if (is ([] (. tree nodes) statement) .node-stream-match)
+        (= has-stream-match true)
+        (call rooted-stream-match tree statement)
+      )
+    )
+  )
+  (if helper
+    (throw (call YumiSyntaxError loc "with helper requires grammar arms" (. tree source) source-path) (if (not has-stream-match)))
+    (lazy source-path (. tree source-path))
+  )
+  (let skipped U32 (if-expr helper 1 0))
+  (let body-count (- (. block-body count) skipped))
+  (let normalized-body SyntaxId 0)
+  (if (== body-count 1)
+    (= normalized-body ([] (. tree children) (+ (. block-body start) skipped)))
+    (else-if (> body-count 1)
+      (= normalized-body
+        (call (. tree append)
+          (block
+            (arg (call ASTBlock block-loc (call (of RowRange SyntaxId) (+ (. block-body start) skipped) body-count)))
+          )
+        )
+      )
+    )
+  )
+  (return (call (. tree append) (call ASTMatchExpression loc subject normalized-body is-optional helper true)))
+)
+
+(fn-expr + make-conditional-match-block SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param pattern SyntaxId)
+  (param subject SyntaxId)
+  (param body SyntaxId)
+  (param is-stream Bool)
+  (param is-loop Bool)
+  (match is-loop
+    (case= true
+      (call (. tree append)
+        (block
+          (arg (call ASTWhileBlock loc condition (call (. tree append) (call ASTBlock loc (call (of RowRange SyntaxId)))) false))
+        )
+      )
+    )
+    (default
+      (call (. tree append) (call ASTIfBlock loc condition (call (. tree append) (call ASTNoop loc)) false 0))
+    )
+    (lazy transform-body (call make-if-match-body tree loc body))
+    (lazy matched
+      (match is-stream
+        (case= true
+          (call (. tree append)
+            (block
+              (arg
+                (call ASTStreamMatch
+                  (block
+                    (arg loc)
+                    (arg (call (. tree append) (call ASTStreamTransform loc pattern transform-body false)))
+                    (arg true)
+                  )
+                )
+              )
+            )
+          )
+        )
+        (default
+          (call (. tree append)
+            (block
+              (arg
+                (call ASTStructureMatch
+                  (block
+                    (arg loc)
+                    (arg (call (. tree append) (call ASTTypeTransform loc transform-body pattern false)))
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (lazy condition (call (. tree append) (call ASTMatchExpression loc subject matched false)))
+  )
+)
+
+(fn-expr + make-loop-or SyntaxId (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param id SyntaxId)
+  (before
+    (throw (call YumiSyntaxError loop-end "Illegal loop section" (. tree source) (. tree source-path)) (if (not legal)))
+  )
+  (scope id
+    (lazy loop-end (call exclusive-end-location (call (. tree location) id)))
+    (lazy legal
+      (match ([] (. tree nodes) id)
+        (case (call .node-for-block block)
+          (match ([] (. tree nodes) (. block loop))
+            (case (call .node-loop-syntax loop)
+              (not (not (. loop container)))
+            )
+            (default
+              false
+            )
+          )
+        )
+        (default
+          false
+        )
+      )
+    )
+  )
+)
+
+(fn-do + make-declaration SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param left SyntaxId)
+  (param right SyntaxId)
+  (param is-lazy Bool)
+  (param is-pattern Bool)
+  (param rollback Bool)
+  (let owner
+    (match? ([] (. tree nodes) left)
+      (case (call .node-type-capture capture)
+        (match? ([] (. tree nodes) (. capture id))
+          (case (call .node-identifier identifier)
+            (. identifier name)
+          )
+        )
+      )
+    )
+  )
+  (let checked (call reject-unmarked-state-machine tree loc right))
+  (if is-pattern
+    (match? ([] (. tree nodes) checked)
+      (case (call .node-block block)
+        (if (> (. block body count) 1)
+          (let beside ([] (. tree children) (+ (. block body start) 1)))
+          (call reject-syntax tree ([] (. tree nodes loc) beside) beside-arms)
+        )
+      )
+    )
+  )
+  (lazy beside-arms "A local rule holds only its arms; declare a lazy local it reads below the action of an arm, or beside the match")
+  (let value
+    (match ([] (. tree nodes) checked)
+      (case (all (call .node-block block) ({} is-pattern))
+        ([] (. tree children) (. block body start))
+      )
+      (default
+        checked
+      )
+    )
+  )
+  (if (and owner value)
+    (call assign-anonymous-case-owner-tree tree value owner)
+  )
+  (return (call (. tree append) (call ASTDeclare loc left value is-lazy is-pattern rollback)))
+)
+
+(fn-do + assign-anonymous-case-owner-tree _
+  (param tree ASTBuilder)
+  (param id SyntaxId)
+  (param owner Atom)
+  (let pending (call (of ArrayBuilder SyntaxId) (. tree pattern-collector-context)))
+  (call (. pending append) id)
+  (let index Size 0)
+  (while (< index (. pending length))
+    (let current SyntaxId ([] pending index))
+    (+= index 1)
+    (let children (call anonymous-case-owner-children tree current owner))
+    (if (. children first)
+      (call (. pending append) (. children first))
+    )
+    (if (. children second)
+      (call (. pending append) (. children second))
+    )
+    (if (. children third)
+      (call (. pending append) (. children third))
+    )
+    (if (. children fourth)
+      (call (. pending append) (. children fourth))
+    )
+    (for (in offset (..< 0 (. children first-range count)))
+      (call (. pending append) ([] (. tree children) (+ (. children first-range start) offset)))
+    )
+    (for (in offset (..< 0 (. children second-range count)))
+      (call (. pending append) ([] (. tree children) (+ (. children second-range start) offset)))
+    )
+  )
+)
+
+(fn-expr + anonymous-case-owner-children AnonymousCaseTraversal
+  (param tree ASTBuilder)
+  (param id SyntaxId)
+  (param owner Atom)
+  (match ([] (. tree nodes) id)
+    (case (call .node-anonymous-case row)
+      (call update-anonymous-case-owner tree id (. row loc) (. row name) (. row args) owner)
+    )
+    (case (call .node-block row)
+      (call AnonymousCaseTraversal 0 0 0 0 (. row body) (call (of RowRange SyntaxId)))
+    )
+    (case (call .node-match-expression row)
+      (call AnonymousCaseTraversal
+        (block
+          (arg (. row subject))
+          (arg (. row body))
+          (arg (. row helper))
+          (arg 0)
+          (arg (call (of RowRange SyntaxId)))
+          (arg (call (of RowRange SyntaxId)))
+        )
+      )
+    )
+    (case (call .node-structure-match row)
+      (call AnonymousCaseTraversal (. row pattern) 0 0 0 (call (of RowRange SyntaxId)) (call (of RowRange SyntaxId)))
+    )
+    (case (call .node-stream-match row)
+      (call AnonymousCaseTraversal (. row pattern) 0 0 0 (call (of RowRange SyntaxId)) (call (of RowRange SyntaxId)))
+    )
+    (case (call .node-type-transform row)
+      (call AnonymousCaseTraversal
+        (block
+          (arg (. row pattern))
+          (arg (. row expr))
+          (arg 0)
+          (arg 0)
+          (arg (call (of RowRange SyntaxId)))
+          (arg (call (of RowRange SyntaxId)))
+        )
+      )
+    )
+    (case (call .node-type-and row)
+      (call AnonymousCaseTraversal (. row left) (. row right) 0 0 (call (of RowRange SyntaxId)) (call (of RowRange SyntaxId)))
+    )
+    (case (call .node-type-or row)
+      (call AnonymousCaseTraversal (. row left) (. row right) 0 0 (call (of RowRange SyntaxId)) (call (of RowRange SyntaxId)))
+    )
+    (case (call .node-type-panic row)
+      (call AnonymousCaseTraversal (. row pattern) 0 0 0 (call (of RowRange SyntaxId)) (call (of RowRange SyntaxId)))
+    )
+    (case (call .node-stream-transform row)
+      (call AnonymousCaseTraversal
+        (block
+          (arg (. row pattern))
+          (arg (. row right))
+          (arg 0)
+          (arg 0)
+          (arg (call (of RowRange SyntaxId)))
+          (arg (call (of RowRange SyntaxId)))
+        )
+      )
+    )
+    (case (call .node-stream-and row)
+      (call AnonymousCaseTraversal (. row left) (. row right) 0 0 (call (of RowRange SyntaxId)) (call (of RowRange SyntaxId)))
+    )
+    (case (call .node-stream-or row)
+      (call AnonymousCaseTraversal (. row left) (. row right) 0 0 (call (of RowRange SyntaxId)) (call (of RowRange SyntaxId)))
+    )
+    (case (call .node-stream-panic row)
+      (call AnonymousCaseTraversal (. row pattern) 0 0 0 (call (of RowRange SyntaxId)) (call (of RowRange SyntaxId)))
+    )
+    (case (call .node-iterator-expression row)
+      (call AnonymousCaseTraversal
+        (block
+          (arg (. row loop))
+          (arg (. row body))
+          (arg (. row next))
+          (arg 0)
+          (arg (call (of RowRange SyntaxId)))
+          (arg (call (of RowRange SyntaxId)))
+        )
+      )
+    )
+    (case (call .node-loop-syntax row)
+      (call AnonymousCaseTraversal
+        (block
+          (arg (. row pattern))
+          (arg (. row container))
+          (arg (. row clause))
+          (arg (. row next))
+          (arg (call (of RowRange SyntaxId)))
+          (arg (call (of RowRange SyntaxId)))
+        )
+      )
+    )
+    (case (call .node-unary-expression row)
+      (call AnonymousCaseTraversal (. row operand) 0 0 0 (call (of RowRange SyntaxId)) (call (of RowRange SyntaxId)))
+    )
+    (case (call .node-binary-expression row)
+      (call AnonymousCaseTraversal (. row lhs) (. row rhs) 0 0 (call (of RowRange SyntaxId)) (call (of RowRange SyntaxId)))
+    )
+    (case (call .node-call-expression row)
+      (call AnonymousCaseTraversal (. row callable) 0 0 0 (. row params) (. row args))
+    )
+    (case (call .node-get-expression row)
+      (call AnonymousCaseTraversal (. row object) 0 0 0 (call (of RowRange SyntaxId)) (call (of RowRange SyntaxId)))
+    )
+    (case (call .node-tuple-syntax row)
+      (call AnonymousCaseTraversal 0 0 0 0 (. row items) (call (of RowRange SyntaxId)))
+    )
+    (case (call .node-list-syntax row)
+      (call AnonymousCaseTraversal 0 0 0 0 (. row items) (call (of RowRange SyntaxId)))
+    )
+    (default
+      (call AnonymousCaseTraversal)
+    )
+  )
+)
+
+(fn-do _ update-anonymous-case-owner AnonymousCaseTraversal
+  (param tree ASTBuilder)
+  (param id SyntaxId)
+  (param loc MatchLocation)
+  (param name Atom)
+  (param args (of RowRange SyntaxId))
+  (param owner Atom)
+  (= ([] (. tree nodes) id) (call ASTAnonymousCase loc name args owner))
+  (return (call AnonymousCaseTraversal 0 0 0 0 args (call (of RowRange SyntaxId))))
+)
+
+(fn-do + theme-tag-row SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param name Atom)
+  (param condition (? SyntaxId))
+  (let given (call (of scratch-array SyntaxId) tree 2))
+  (= ([] given 1) (call (. tree make-argument) loc (?? condition (call (. tree append) (call ASTIdentifier loc (call (. tree atom) "true") false))) null))
+  (= ([] given 0) (call (. tree make-argument) loc (call (. tree append) (call ASTString loc (call (. tree store-string) (. name text)))) null))
+  (let callee (call (. tree append) (call ASTTypeIdentifier loc (call (. tree atom) "ThemeTag") false)))
+  (let operands (call (. tree call-operands) (call (of RowRange SyntaxId)) (call (. tree store-children) (call scratch-items given 2))))
+  (let call (call (. tree append) (call ASTCallExpression loc callee operands 0u8 false)))
+  (let property (call (. tree append) (call ASTIdentifier loc (call (. tree atom) "theme-tag") false)))
+  (return (call (. tree append) (call ASTAssign loc (. Operator eq-op) property call)))
+)
+
+(fn-do + theme-tag-body SyntaxId (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param type SyntaxId)
+  (param tags (? (of ImmutableArray SyntaxId)))
+  (param body (? SyntaxId))
+  (return-if (call (. tree syntax-or-invalid) body) (if (not tags)))
+  (let bindings tags)
+  (match? ([] (. tree nodes) type)
+    (case (call .node-type-identifier named)
+      (if (and (== (. named name text) "This") (not (. named is-declare)))
+        (let message "Root <This> cannot bind theme tags; bind them with `for` on the element that makes the object")
+        (throw (call YumiSyntaxError (call (. tree location) ([] bindings 0)) message (. tree source) (. tree source-path)))
+      )
+    )
+  )
+  (let existing (call (of RowRange SyntaxId)))
+  (let block SyntaxId 0)
+  (let block-loc loc)
+  (let lone SyntaxId 0)
+  (if body
+    (match ([] (. tree nodes) body)
+      (case (call .node-block row)
+        (= existing (. row body))
+        (= block body)
+        (= block-loc (. row loc))
+      )
+      (default
+        (= lone body)
+      )
+    )
+  )
+  (let extra (if-expr (!= lone 0) 1 0))
+  (let count (+ (. bindings length) (. existing count) extra))
+  (let rows (call (of scratch-array SyntaxId) tree count))
+  (for (in index (..< 0 (. bindings length)))
+    (= ([] rows index) ([] bindings index))
+  )
+  (for (in index (..< 0 (. existing count)))
+    (= ([] rows (+ (. bindings length) index)) ([] (. tree children) (+ (. existing start) index)))
+  )
+  (if (!= lone 0)
+    (= ([] rows (- count 1)) lone)
+  )
+  (let children (call (. tree store-children) (call scratch-items rows count)))
+  (if (!= block 0)
+    (= ([] (. tree nodes) block) (call ASTBlock block-loc children))
+    (return block)
+  )
+  (return (call (. tree append) (call ASTBlock loc children)))
+)
+
+(fn-do + make-assignment SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param op Operator)
+  (param left SyntaxId)
+  (param right SyntaxId)
+  (param is-optional Bool)
+  (let rhs (if-expr is-optional (call (. tree append) (call ASTOptionalChain loc right)) right))
+  (match? ([] (. tree nodes) left)
+    (case .node-structure-match
+      (return (call (. tree append) (call ASTMatchExpression loc rhs left false)))
+    )
+    (case .node-stream-match
+      (return (call (. tree append) (call ASTMatchExpression loc rhs (call rooted-stream-match tree left) false)))
+    )
+  )
+  (if (== op .write-all-op)
+    (return (call make-write-all tree loc left rhs))
+  )
+  (if (== op .bind-op)
+    (call track-place tree rhs)
+  )
+  (match? ([] (. tree nodes) left)
+    (case (call .node-identifier identifier)
+      (call assign-anonymous-case-owner-tree tree rhs (. identifier name))
+    )
+  )
+  (return (call (. tree append) (call ASTAssign loc op left rhs)))
+)
+
+(fn-do + member-place SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param head SyntaxId)
+  (param tail (? (of ImmutableArray Atom)))
+  (let names (?? tail (call (of ImmutableArray Atom))))
+  (let place head)
+  (for (in name names)
+    (= place (call optional-get tree place name false false false))
+  )
+  (return (call relocated-get tree loc place))
+)
+
+(fn-do + track-place _
+  (param tree ASTBuilder)
+  (param place SyntaxId)
+  (match? ([] (. tree nodes) place)
+    (case (call .node-identifier row)
+      (= ([] (. tree nodes) place) (call ASTIdentifier (call (. tree location) place) (. row name) true))
+    )
+    (case (call .node-get-expression row)
+      (= ([] (. tree nodes) place) (call ASTGetExpression (call (. tree location) place) (. row object) (. row name) true (. row is-optional) (. row is-loop)))
+    )
+  )
+)
+
+(fn-do + make-iterator-line SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param container SyntaxId)
+  (param is-subscriber Bool)
+  (param body (? SyntaxId))
+  (param binding (? SyntaxId))
+  (param clauses (? SyntaxId))
+  (param next-loop (? SyntaxId))
+  (param next-iterator (? SyntaxId))
+  (let normalized-body SyntaxId 0)
+  (if body
+    (= normalized-body
+      (match ([] (. tree nodes) body)
+        (case (all (call .node-block block) ({} (== (. block body count) 1)))
+          ([] (. tree children) (. block body start))
+        )
+        (default
+          body
+        )
+      )
+    )
+  )
+  (let normalized-binding (if-expr binding binding 0))
+  (if normalized-body
+    (= (tuple normalized-binding normalized-body)
+      (match ([] (. tree nodes) normalized-body)
+        (case (all (call .node-binary-expression binary) ({} (and (not normalized-binding) (== (. binary op) .map-op))))
+          (match ([] (. tree nodes) (. binary rhs))
+            (case .node-identifier
+              (tuple (call (. tree append) (call ASTTypeCapture (call (. tree location) (. binary rhs)) (. binary rhs) 0)) (. binary lhs))
+            )
+            (default
+              (tuple normalized-binding normalized-body)
+            )
+          )
+        )
+        (case .node-structure-match
+          (tuple normalized-body 0)
+        )
+        (case (call .node-stream-match stream-match)
+          (tuple (. stream-match pattern) 0)
+        )
+        (default
+          (tuple normalized-binding normalized-body)
+        )
+      )
+    )
+  )
+  (blank)
+  (let final-body (if-expr normalized-body normalized-body default-body))
+  (lazy default-body (call (. tree append) (call ASTIdentifier loc (call (. tree atom) "each") false)))
+  (let loop
+    (call (. tree append)
+      (block
+        (arg
+          (call ASTLoop
+            (block
+              (arg loc)
+              (arg normalized-binding)
+              (arg container)
+              (arg (call (. tree syntax-or-invalid) clauses))
+              (arg is-subscriber)
+              (arg true)
+              (arg (call (. tree syntax-or-invalid) next-loop))
+            )
+          )
+        )
+      )
+    )
+  )
+  (return (call (. tree append) (call ASTIteratorExpression loc loop final-body (call (. tree syntax-or-invalid) next-iterator))))
+)
+
+(fn-expr + make-iterator-from-partial SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param body SyntaxId)
+  (param partial SyntaxId)
+  (match ([] (. tree nodes) partial)
+    (case (call .node-loop-syntax loop)
+      (call make-iterator-line
+        (block
+          (arg tree)
+          (arg loc)
+          (arg (. loop container))
+          (arg (. loop is-subscriber))
+          (arg body)
+          (arg null)
+          (arg (. loop clause))
+          (arg null)
+          (arg null)
+        )
+      )
+    )
+    (throw (call Panic "Expected a partial iterator loop"))
+  )
+)
+
+(fn-do + make-iterator-block SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param container SyntaxId)
+  (param args (of ImmutableArray SyntaxId))
+  (param is-subscriber Bool)
+  (param pattern (? SyntaxId))
+  (param initial-clauses (? SyntaxId))
+  (let body (? SyntaxId))
+  (let clauses initial-clauses)
+  (let last-clause initial-clauses)
+  (let loop (? SyntaxId))
+  (let last-loop (? SyntaxId))
+  (let iterator (? SyntaxId))
+  (let last-iterator (? SyntaxId))
+  (blank)
+  (for (in arg args)
+    (match ([] (. tree nodes) arg)
+      (case .node-loop-syntax
+        (if loop
+          (call (. tree set-next) (!! last-loop) arg)
+          (else
+            (= loop arg)
+          )
+        )
+        (= last-loop arg)
+      )
+      (case .node-iterator-expression
+        (if iterator
+          (call (. tree set-next) (!! last-iterator) arg)
+          (else
+            (= iterator arg)
+          )
+        )
+        (= last-iterator arg)
+      )
+      (case .node-clause
+        (if clauses
+          (call (. tree set-next) (!! last-clause) arg)
+          (else
+            (= clauses arg)
+          )
+        )
+        (= last-clause arg)
+      )
+      (default
+        (throw (call YumiSyntaxError (call (. tree location) arg) "Redundant block") (if body))
+        (= body arg)
+      )
+    )
+  )
+  (blank)
+  (return (call make-iterator-line tree loc container is-subscriber body pattern clauses loop iterator))
+)
+
+(fn-expr + make-write-all SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param left SyntaxId)
+  (param right SyntaxId)
+  (match ([] (. tree nodes) right)
+    (case (call .node-iterator-expression iterator)
+      (match ([] (. tree nodes) (. iterator loop))
+        (case (all (call .node-loop-syntax loop) ({} (and (not (. loop is-subscriber)) (not (. iterator next)))))
+          (call (. tree append) (call ASTForBlock loc (. iterator loop) writer 0)
+            (block
+              (lazy item
+                (block
+                  (case? (. iterator body)
+                    (. iterator body)
+                  )
+                  (default
+                    (call (. tree append) (call ASTIdentifier loc (call (. tree atom) "each") false))
+                  )
+                )
+              )
+              (lazy writer (call (. tree append) (call ASTBinaryExpression loc .write-op left item)))
+            )
+          )
+        )
+        (default
+          (call make-write-all-loop tree loc left right)
+        )
+      )
+    )
+    (default
+      (call make-write-all-loop tree loc left right)
+    )
+  )
+)
+
+(fn-expr + make-write-all-loop SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param left SyntaxId)
+  (param right SyntaxId)
+  (call (. tree append) (call ASTForBlock loc loop writer 0)
+    (block
+      (lazy item (call (. tree append) (call ASTIdentifier loc (call (. tree atom) "(item)") false)))
+      (lazy pattern (call (. tree append) (call ASTTypeCapture loc item 0)))
+      (lazy loop (call (. tree append) (call ASTLoop loc pattern right 0 false false 0)))
+      (lazy writer (call (. tree append) (call ASTBinaryExpression loc .write-op left item)))
+    )
+  )
+)
+
+(fn-expr + reduce-user-binary-op SyntaxId
+  (param tree ASTBuilder)
+  (param loc _)
+  (param seed SyntaxId)
+  (param stream _)
+  (call reduce seed stream
+    (:using
+      (=> (accum pair)
+        (block
+          (call user-binary-op tree loc ([] pair 0) accum ([] pair 1))
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + user-binary-op SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param op SyntaxId)
+  (param left SyntaxId)
+  (param right SyntaxId)
+  (match (. (call (. tree identifier-name) op) text)
+    (case= "and"
+      (call (. tree append) (call ASTBinaryExpression loc .bitwise-and-op left right))
+    )
+    (case= "or"
+      (call (. tree append) (call ASTBinaryExpression loc .bitwise-or-op left right))
+    )
+    (case= "xor"
+      (call (. tree append) (call ASTBinaryExpression loc .bitwise-xor-op left right))
+    )
+    (case= "lshift"
+      (call (. tree append) (call ASTBinaryExpression loc .bitwise-lshift-op left right))
+    )
+    (case= "rshift"
+      (call (. tree append) (call ASTBinaryExpression loc .bitwise-rshift-op left right))
+    )
+    (case= "zrshift"
+      (call (. tree append) (call ASTBinaryExpression loc .bitwise-zrshift-op left right))
+    )
+    (case= "not"
+      (call (. tree append) (call ASTUnaryExpression loc .bitwise-not-op right))
+    )
+    (default
+      (call (. tree append)
+        (block
+          (arg
+            (call ASTCallExpression
+              (block
+                (arg loc)
+                (arg op)
+                (arg
+                  (call (. tree store-child)
+                    (block
+                      (arg (call (. tree make-argument) (call (. tree location) left) left null false))
+                      (arg (call (. tree make-argument) (call (. tree location) right) right null false))
+                    )
+                  )
+                )
+                (arg 0)
+                (arg false)
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + reduce-binary-op SyntaxId
+  (param tree ASTBuilder)
+  (param loc _)
+  (param seed SyntaxId)
+  (param stream _)
+  (param is-optional _ (= false))
+  (call reduce seed stream
+    (:using
+      (=> (accum pair)
+        (block
+          (call binary-op tree loc ([] pair 0) accum ([] pair 1) is-optional)
+        )
+      )
+    )
+  )
+)
+
+(fn-do + reduce-glt-op SyntaxId
+  (param tree ASTBuilder)
+  (param loc _)
+  (param seed SyntaxId)
+  (param stream _)
+  ; A chain of orderings: `a < b < c` is `a < b && b < c`, and each further ordering compares
+  ; with the right side of the one before it. That side is evaluated once: the ordering before
+  ; holds it, and the next one reads what was held. The orderings are joined from the right,
+  ; `a < b && (b < c && c < d)`, so each read is in the right side of the `&&` whose left side
+  ; holds its value.
+  (let chain seed)
+  (let last seed)
+  (let links (list SyntaxId))
+  (for (in pair stream)
+    (let shared (call compared-right tree last))
+    (if (!= shared 0)
+      (call hold-right tree last)
+      (let read (call (. tree append) (call ASTHeldRead (call (. tree location) shared))))
+      (= last (call (. tree append) (call ASTBinaryExpression loc ([] pair 0) read ([] pair 1))))
+      (+= links last)
+      (else
+        (= chain
+          (call (. tree append)
+            (block
+              (arg (call ASTBinaryExpression loc ([] pair 0) (call join-orderings tree loc chain links) ([] pair 1)))
+            )
+          )
+        )
+        (call (. links clear))
+        (= last chain)
+      )
+    )
+  )
+  (return (call join-orderings tree loc chain links))
+)
+
+(fn-do + join-orderings SyntaxId
+  (param tree ASTBuilder)
+  (param loc _)
+  (param first SyntaxId)
+  (param links (list SyntaxId))
+  ; The orderings of a chain joined by `&&` from the right.
+  (if (== (. links length) 0)
+    (return first)
+  )
+  (let index (- (. links length) 1))
+  (let joined ([] links index))
+  (while (!= index 0)
+    (-= index 1)
+    (= joined (call (. tree append) (call ASTBinaryExpression loc .and-op ([] links index) joined)))
+  )
+  (return (call (. tree append) (call ASTBinaryExpression loc .and-op first joined)))
+)
+
+(fn-do + hold-right _
+  (param tree ASTBuilder)
+  (param ordering SyntaxId)
+  ; Makes the right side of an ordering a node that holds its value.
+  (match? ([] (. tree nodes) ordering)
+    (case (call .node-binary-expression row)
+      (let holder (call (. tree append) (call ASTHeldExpression (call (. tree location) (. row rhs)) (. row rhs))))
+      (= ([] (. tree nodes) ordering) (call ASTBinaryExpression (. row loc) (. row op) (. row lhs) holder))
+    )
+  )
+)
+
+(fn-expr + compared-right SyntaxId
+  (param tree ASTBuilder)
+  (param syntax SyntaxId)
+  ; The right side of an ordering, or nothing for any other expression.
+  (match ([] (. tree nodes) syntax)
+    (case (call .node-binary-expression previous)
+      (if-expr (call is-glt-compare-op (. previous op)) (. previous rhs) 0)
+    )
+    (default
+      0
+    )
+  )
+)
+
+(fn-expr + is-glt-compare-op Bool
+  (param op Operator)
+  (match op
+    (case .less-than-op
+      true
+    )
+    (case .greater-than-op
+      true
+    )
+    (case .less-than-equals-op
+      true
+    )
+    (case .greater-than-equals-op
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-expr + reduce-compose-expression SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param seed SyntaxId)
+  (param stream (of ImmutableArray ComposeExpressionTail))
+  (call reduce seed stream
+    (:using
+      (=> (accum tail)
+        (block
+          (call binary-op tree loc (. tail op) accum (. tail right) (. tail is-optional) (. tail write-name))
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + binary-op SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param op Operator)
+  (param left SyntaxId)
+  (param right SyntaxId)
+  (param is-optional _ (= false))
+  (param write-name (? Atom) (= null))
+  (match op
+    (case= .as-op
+      (call (. tree append) (call ASTCastExpression loc left right))
+    )
+    (case= .write-op
+      (call (. tree append) (call ASTCallExpression loc member (call (. tree store-child) (call (. tree make-argument) loc right null false)) 0 false)
+        (block
+          (lazy member
+            (call (. tree append)
+              (block
+                (arg (call ASTGetExpression loc left (!! write-name) false is-optional false))
+              )
+            )
+          )
+        )
+      )
+    )
+    (default
+      (call (. tree append) (call ASTBinaryExpression loc op left right))
+    )
+  )
+)
+
+(fn-expr + reduce-unary-op SyntaxId @inline
+  (param tree ASTBuilder)
+  (param loc _)
+  (param seed SyntaxId)
+  (param stream _)
+  (call reduce seed stream
+    (:using
+      (=> (accum op)
+        (block
+          (call (. tree append) (call ASTUnaryExpression loc op accum))
+        )
+      )
+    )
+  )
+)
+
+(fn-do + reduce-prefix-ops SyntaxId
+  (param tree ASTBuilder)
+  (param loc _)
+  (param stream (of ImmutableArray Operator))
+  (param seed SyntaxId)
+  (param negative-value (? String))
+  (let accum SyntaxId seed)
+  (let folded Size 0)
+  (if negative-value
+    (= folded (call trailing-negative-count stream))
+    (= accum (call negative-number tree loc seed negative-value))
+  )
+  (for (in each (..< folded (. stream length)))
+    (= accum (call (. tree append) (call ASTUnaryExpression loc ([] stream (- (. stream length) 1 each)) accum)))
+  )
+  (return accum)
+)
+
+(fn-expr + negative-number SyntaxId
+  (param tree ASTBuilder)
+  (param loc _)
+  (param num SyntaxId)
+  (param value String)
+  (match ([] (. tree nodes) num)
+    (case (call .node-integer-syntax number)
+      (call (. tree append) (call ASTInteger ([] (. tree nodes loc) num) (call (. tree store-string) value) (. number unit)))
+    )
+    (case (call .node-float-syntax number)
+      (call (. tree append) (call ASTFloat ([] (. tree nodes loc) num) (call (. tree store-string) value) (. number unit)))
+    )
+    (default
+      num
+    )
+  )
+)
+
+(fn-expr + negated-number SyntaxId
+  (param tree ASTBuilder)
+  (param num SyntaxId)
+  (match ([] (. tree nodes) num)
+    (case (call .node-integer-syntax number)
+      (call negative-number tree location num (call negated-number-text (. number value) 1))
+    )
+    (case (call .node-float-syntax number)
+      (call negative-number tree location num (call negated-number-text (. number value) 1))
+    )
+    (default
+      num
+    )
+  )
+  (where
+    (lazy location ([] (. tree nodes loc) num))
+  )
+)
+
+(fn-do + trailing-negative-count Size
+  (param stream (of ImmutableArray Operator))
+  (let count 0)
+  (if (. stream length)
+    (for (in op (call (. stream reversed)))
+      (if (!= op .negative-op)
+        (break)
+      )
+      (+= count 1)
+    )
+  )
+  (return count)
+)
+
+(fn-expr + optional-get SyntaxId
+  (param tree ASTBuilder)
+  (param left SyntaxId)
+  (param name Atom)
+  (param is-tracked Bool)
+  (param is-optional Bool)
+  (param is-loop Bool)
+  (call (. tree append) (call ASTGetExpression loc left name is-tracked is-optional is-loop))
+  (where
+    (lazy loc (call (. tree location) left))
+  )
+)
+
+(fn-do + located-block SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param block SyntaxId)
+  (= ([] (. tree nodes loc) block) loc)
+  (return block)
+)
+
+(fn-expr + block-with-statements SyntaxId
+  (param tree ASTBuilder)
+  (param statements (of ImmutableArray SyntaxId))
+  (call (. tree append) (call ASTBlock (call MatchLocation) (call (. tree store-children) linked))
+    (block
+      (lazy linked (call link-statements tree statements false))
+    )
+  )
+)
+
+(fn-do + make-conditional-value SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param test SyntaxId)
+  (param value SyntaxId)
+  (param otherwise SyntaxId)
+  (return
+    (call (. tree append)
+      (block
+        (arg
+          (call ASTBinaryExpression
+            (block
+              (arg loc)
+              (arg .else-op)
+              (arg (call (. tree append) (call ASTBinaryExpression loc .if-op value test)))
+              (arg otherwise)
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-do + prepended-statements (of ImmutableArray SyntaxId)
+  (param tree ASTBuilder)
+  (param statement SyntaxId)
+  (param body (of RowRange SyntaxId))
+  (let items (call (of Array SyntaxId ArenaBacking) (. tree pattern-collector-context) (+ (. body count) 1)))
+  (= ([] items 0) statement)
+  (for (in offset (..< 0 (. body count)))
+    (= ([] items (+ offset 1)) ([] (. tree children) (+ (. body start) offset)))
+  )
+  (return (. (call (of Array SyntaxId) (. items data) (. items length)) immutable))
+)
+
+(fn-do + probe-with-dependencies SyntaxId
+  (param tree ASTBuilder)
+  (param probe SyntaxId)
+  (param dependencies (? SyntaxId))
+  (if dependencies
+    (let items (call (of sequence-pair SyntaxId) tree probe dependencies))
+    (match? ([] (. tree nodes) dependencies)
+      (case (call .node-block block)
+        (= items (call prepended-statements tree probe (. block body)))
+      )
+    )
+    (let linked (call link-statements tree items false))
+    (return (call (. tree append) (call ASTProbeScope (call MatchLocation) (call (. tree store-children) linked))))
+  )
+  (return probe)
+)
+
+(fn-do + link-statements (of ImmutableArray SyntaxId) (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param statements (of ImmutableArray SyntaxId))
+  (param allow-function-declarations _ (= true))
+  (let items (call (of Array SyntaxId ArenaBacking) (. tree pattern-collector-context) (. statements length)))
+  (let size Size 0)
+  (let previous (? SyntaxId))
+  (let passed (? SyntaxId))
+  (for (in node statements)
+    (if (not allow-function-declarations)
+      (match? ([] (. tree nodes) node)
+        (case (all (call .node-function-syntax row) ({} (> (. row names count) 0)))
+          (let begin (call TokenLocation (- (. row loc begin line) 1) (. row loc begin column)))
+          (let end (call TokenLocation (. begin line) (+ (. begin column) 1)))
+          (throw (call YumiSyntaxError (call MatchLocation begin end) (str nesting " " correction)))
+        )
+      )
+    )
+    (let is-held false)
+    (if passed
+      (let rejoined (call (. tree auto-join) passed node))
+      (if rejoined
+        (= passed rejoined)
+        (= is-held true)
+        (else
+          (= ([] items size) (call (. tree auto-join-close) passed))
+          (+= size 1)
+          (= passed null)
+        )
+      )
+    )
+    (if (not is-held)
+      (if previous
+        (if (call (. tree auto-join-passes-over) previous node)
+          (= passed node)
+          (= is-held true)
+        )
+      )
+    )
+    (if (not is-held)
+      (let next-previous (? SyntaxId))
+      (if previous
+        (let joined (call (. tree auto-join) previous node))
+        (if joined
+          (= next-previous joined)
+          (else
+            (= ([] items size) (call (. tree auto-join-close) previous))
+            (+= size 1)
+            (= next-previous node)
+          )
+        )
+        (else
+          (= next-previous node)
+        )
+      )
+      (= previous next-previous)
+    )
+  )
+  (blank)
+  (if passed
+    (= ([] items size) (call (. tree auto-join-close) passed))
+    (+= size 1)
+  )
+  (if previous
+    (= ([] items size) (call (. tree auto-join-close) previous))
+    (+= size 1)
+  )
+  (blank)
+  (return (. (call (of Array SyntaxId) (. items data) size) immutable))
+  (blank)
+  (lazy nesting "A thin-divider function cannot be declared inside another function.")
+  (lazy correction "Use a thick divider (━) for a module-level function.")
+)
+
+(fn-do + link-if-block SyntaxId
+  (param tree ASTBuilder)
+  (param head SyntaxId)
+  (param elseifs (stream SyntaxId))
+  (param els (? SyntaxId))
+  (let tail head)
+  (for (in elseif elseifs)
+    (call (. tree set-next) tail elseif)
+    (= tail elseif)
+  )
+  (call (. tree set-next) tail els)
+  (blank)
+  (return head)
+)
+
+(fn-do + (of linked-list-tail Node) _
+  (param tree ASTBuilder)
+  (param head Node)
+  (param tail (stream Node))
+  (constraint is Node SyntaxId)
+  (let previous head)
+  (for (in node tail)
+    (call (. tree set-next) previous node)
+    (= previous node)
+  )
+  (blank)
+  (return head)
+)
+
+(fn-do + make-pattern-tuple SyntaxId
+  (param tree ASTBuilder)
+  (param loc _)
+  (param patterns (of ImmutableArray SyntaxId))
+  (for (in pattern patterns)
+    (if (call (. tree is-type-remainder) pattern)
+      (throw (call YumiSyntaxError (call exclusive-end-location (call (. tree location) pattern)) "Remainder pattern is only valid inside sequence, map, or text patterns"))
+    )
+  )
+  (blank)
+  (return
+    (match patterns
+      (case (list pattern)
+        pattern
+      )
+      (default
+        (call (. tree append) (call ASTTypeTuple loc (call (. tree store-children) patterns)))
+      )
+    )
+  )
+)
+
+(fn-do + make-pattern-bracket SyntaxId
+  (param tree ASTBuilder)
+  (param loc _)
+  (param patterns (of ImmutableArray SyntaxId))
+  (call validate-single-remainder tree patterns)
+  (blank)
+  (let first-kind (? String))
+  (let mixed (? SyntaxId))
+  (for (in pattern patterns)
+    (let kind (call (. tree pattern-container-kind) pattern))
+    (if kind
+      (if (not first-kind)
+        (= first-kind kind)
+        (else-if (!= first-kind kind)
+          (= mixed pattern)
+          (break)
+        )
+      )
+    )
+  )
+  (blank)
+  (if mixed
+    (throw (call YumiSyntaxError mixed-end "Cannot mix sequence and map items in one bracket pattern"))
+    (lazy mixed-end (call exclusive-end-location (call (. tree location) mixed)))
+  )
+  (blank)
+  (let type
+    (block
+      (case? (== first-kind "map")
+        (call (. tree append) (call ASTTypeMap loc (call (. tree store-children) patterns)))
+      )
+      (default
+        (call (. tree append) (call ASTTypeList loc (call (. tree store-children) patterns)))
+      )
+    )
+  )
+  (return type)
+)
+
+(fn-do + validate-single-remainder _
+  (param tree ASTBuilder)
+  (param patterns (of ImmutableArray SyntaxId))
+  (let found false)
+  (for (in pattern patterns)
+    (if (call (. tree is-type-remainder) pattern)
+      (if found
+        (throw (call YumiSyntaxError pattern-end "Pattern may contain only one remainder"))
+        (lazy pattern-end (call exclusive-end-location (call (. tree location) pattern)))
+      )
+      (= found true)
+    )
+  )
+)
+
+(fn-expr + make-pattern-and-chain SyntaxId
+  (param tree ASTBuilder)
+  (param loc _)
+  (param head SyntaxId)
+  (param tail (of ImmutableArray SyntaxId))
+  (call reduce head tail
+    (:using
+      (=> (left right)
+        (block
+          (throw (call YumiSyntaxError (call exclusive-end-location (call (. tree location) right)) "Pattern may contain only one remainder") (if (and (call contains-pattern-remainder tree left) (call contains-pattern-remainder tree right))))
+          (call (. tree append) (call ASTTypeAnd loc left right))
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + contains-pattern-remainder Bool
+  (param tree ASTBuilder)
+  (param pattern SyntaxId)
+  (match ([] (. tree nodes) pattern)
+    (case .node-type-remainder
+      true
+    )
+    (case (call .node-type-and and-pattern)
+      (or (call contains-pattern-remainder tree (. and-pattern left)) has-right-remainder)
+      (lazy has-right-remainder (call contains-pattern-remainder tree (. and-pattern right)))
+    )
+    (case (call .node-type-or or-pattern)
+      (or (call contains-pattern-remainder tree (. or-pattern left)) has-alternate-remainder)
+      (lazy has-alternate-remainder (call contains-pattern-remainder tree (. or-pattern right)))
+    )
+    (case (call .node-type-capture capture)
+      (if-expr (!= (. capture type) 0) (call contains-pattern-remainder tree (. capture type)) false)
+    )
+    (case (call .node-type-match match-type)
+      (call contains-pattern-remainder tree (. match-type type))
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-do + task-scheduling TaskSchedulingClass
+  (param loc MatchLocation)
+  (param annotations (of ImmutableArray Atom))
+  (let scheduling TaskSchedulingClass .task-scheduling-normal)
+  (let found false)
+  (for (in name annotations)
+    (if (or (== (. name text) "large-stack") (== (. name text) "detached"))
+      (continue)
+    )
+    (let requested TaskSchedulingClass
+      (match (. name text)
+        (case= "normal"
+          .task-scheduling-normal
+        )
+        (case= "priority"
+          .task-scheduling-priority
+        )
+        (throw (call YumiSyntaxError loc (str "Unsupported do task annotation '" (. name text) "'")))
+      )
+    )
+    (throw (call YumiSyntaxError loc (str "Conflicting do task scheduling annotation '" (. name text) "'")) (if (and found (!= scheduling requested))))
+    (= scheduling requested)
+    (= found true)
+  )
+  (return scheduling)
+)
+
+(fn-do + task-large-stack Bool
+  (param annotations (of ImmutableArray Atom))
+  (for (in name annotations)
+    (if (== (. name text) "large-stack")
+      (return true)
+    )
+  )
+  (return false)
+)
+
+(fn-do + task-detached Bool
+  (param annotations (of ImmutableArray Atom))
+  (for (in name annotations)
+    (if (== (. name text) "detached")
+      (return true)
+    )
+  )
+  (return false)
+)
+
+(fn-expr + unannotated-body SyntaxId
+  (param loc MatchLocation)
+  (param body DoBody)
+  (param kind String)
+  (before
+    (throw (call YumiSyntaxError loc (str "Unsupported " kind " annotation '" (. ([] (. body annotations) 0) text) "'")) (if (> (. body annotations length) 0)))
+  )
+  (. body body)
+)
+
+(fn-do + has-annotation Bool
+  (param names (of ImmutableArray Atom))
+  (param text String)
+  (for (in name names)
+    (if (== (. name text) text)
+      (return true)
+    )
+  )
+  (return false)
+)
+
+(fn-expr + compilation-effect-named CompilationEffect
+  (param text String)
+  (match text
+    (case= "no-heap"
+      (. CompilationEffect no-heap)
+    )
+    (case= "no-safepoint"
+      (. CompilationEffect no-safepoint)
+    )
+    (case= "no-safepoints"
+      (. CompilationEffect no-safepoint)
+    )
+    (case= "no-probe-safepoint"
+      (. CompilationEffect no-probe-safepoint)
+    )
+    (case= "no-probe-safepoints"
+      (. CompilationEffect no-probe-safepoint)
+    )
+    (case= "no-suspend"
+      (. CompilationEffect no-suspend)
+    )
+    (case= "no-gc"
+      (/or/ (. CompilationEffect gc-free) (call gc-free-parts))
+    )
+    (case= "gc-leaf"
+      (. CompilationEffect gc-leaf)
+    )
+    (case= "gc-polling"
+      (. CompilationEffect gc-polling)
+    )
+    (default
+      (. CompilationEffect none)
+    )
+  )
+)
+
+(fn-expr + gc-free-parts CompilationEffect
+  (/or/ (. CompilationEffect no-heap) (. CompilationEffect no-safepoint) (. CompilationEffect no-suspend))
+)
+
+(fn-expr + effects-conflict Bool
+  (param mask CompilationEffect)
+  (param effect CompilationEffect)
+  (or gc-free-joined (== (/and/ mask effect) effect))
+  (where
+    (lazy gc-free (. CompilationEffect gc-free))
+    (lazy gc-free-joined (or (and (call has mask gc-free) (call has effect (call gc-free-parts))) (and (call has effect gc-free) (call has mask (call gc-free-parts)))))
+  )
+)
+
+(fn-expr + has Bool
+  (param effects CompilationEffect)
+  (param effect CompilationEffect)
+  (!= (/and/ effects effect) (. CompilationEffect none))
+)
+
+(fn-do + compilation-effects CompilationEffect
+  (param loc MatchLocation)
+  (param names (of ImmutableArray Atom))
+  (param skips-rollback Bool)
+  (let mask (. CompilationEffect none))
+  (for (in name names)
+    (if (or (== (. name text) "inline") (call is-lowered name) (and skips-rollback (or (== (. name text) "rollback") (== (. name text) "live") (== (. name text) "no-return"))))
+      (continue)
+    )
+    (let effect (call compilation-effect-named (. name text)))
+    (throw (call YumiSyntaxError loc (str "Unknown compilation effect '" (. name text) "'")) (if (== effect (. CompilationEffect none))))
+    (throw (call YumiSyntaxError loc (str "Conflicting compilation effect '" (. name text) "'")) (if (call effects-conflict mask effect)))
+    (= mask (/or/ mask effect))
+  )
+  (return (call normalize-compilation-effects mask))
+)
+
+(fn-do + do-annotation-masks DoAnnotationMasks
+  (param loc MatchLocation)
+  (param names (of ImmutableArray Atom))
+  (let effects (. CompilationEffect none))
+  (let features (. CompilerFeature none))
+  (for (in name names)
+    (if (== (. name text) "feature-collection-observers")
+      (= features (/or/ features (. CompilerFeature collection-observers)))
+      (continue)
+    )
+    (throw (call YumiSyntaxError loc "'@door' is only for a function") (if (call (. name text starts-with) "door:")))
+    (if (call (. name text starts-with) "without:")
+      (continue)
+    )
+    (let effect (call compilation-effect-named (. name text)))
+    (throw (call YumiSyntaxError loc (str "Unknown do annotation '" (. name text) "'")) (if (== effect (. CompilationEffect none))))
+    (throw (call YumiSyntaxError loc (str "Conflicting do annotation '" (. name text) "'")) (if (call effects-conflict effects effect)))
+    (= effects (/or/ effects effect))
+  )
+  (return (call DoAnnotationMasks (call normalize-compilation-effects effects) features))
+)
+
+(fn-do + written-annotation Atom (?! YumiSyntaxError)
+  (param loc MatchLocation)
+  (param name Atom)
+  ; An annotation written with `@`. A restriction and a C function's label are written in a
+  ; `without` section, and the names they lower to are refused here.
+  (let meant (call restriction-name (. name text)))
+  (if meant
+    (throw (call YumiSyntaxError loc (str "Write 'without " meant "' in place of '@" (. name text) "'")))
+  )
+  (return name)
+)
+
+(fn-expr + restriction-name (? String)
+  (param text String)
+  ; The name after `without` that the annotation a restriction lowers to stands for, if it is one.
+  (match text
+    (case= "no-heap"
+      "heap"
+    )
+    (case= "no-suspend"
+      "suspend"
+    )
+    (case= "no-gc"
+      "gc"
+    )
+    (case= "gc-leaf"
+      "gc"
+    )
+    (case= "no-safepoint"
+      "safepoints"
+    )
+    (case= "no-safepoints"
+      "safepoints"
+    )
+    (case= "no-probe-safepoint"
+      "probe-safepoints"
+    )
+    (case= "no-probe-safepoints"
+      "probe-safepoints"
+    )
+    (case= "gc-polling"
+      "blocking"
+    )
+    (default
+      null
+    )
+  )
+)
+
+(fn-do + door-annotation Atom
+  (param tree ASTBuilder)
+  (param effect Atom)
+  ; The annotation `@door(effect)` stands for, which the function it is written on keeps as its
+  ; `door`.
+  (return (call (. tree atom) (str "door:" (. effect text))))
+)
+
+(fn-expr + is-lowered Bool
+  (param name Atom)
+  ; Whether an annotation stands for a door or a ban, which a function or a `do` block keeps apart
+  ; from its masks.
+  (or (call (. name text starts-with) "door:") (call (. name text starts-with) "without:"))
+)
+
+(fn-do + unlowered (of ImmutableArray Atom) (?! YumiSyntaxError)
+  (param loc MatchLocation)
+  (param names (of ImmutableArray Atom))
+  ; The annotations of a conversion, which is no door and bans no effect.
+  (for (in name names)
+    (throw (call YumiSyntaxError loc "A conversion cannot be a door") (if (call (. name text starts-with) "door:")))
+    (throw (call YumiSyntaxError loc (str "A conversion cannot ban an effect, as 'without " ([] (. name text) (... (. "without:" length))) "' does")) (if (call (. name text starts-with) "without:")))
+  )
+  (return names)
+)
+
+(fn-do + lowered-bans (of RowRange Atom)
+  (param tree ASTBuilder)
+  (param names (of ImmutableArray Atom))
+  ; The effects the `without` section of a function or a `do` block bans, which the checker looks
+  ; up among those declared.
+  (let bans (call (of scratch-array Atom) tree (. names length)))
+  (let filled Size 0)
+  (for (in name names)
+    (if (call (. name text starts-with) "without:")
+      (= ([] bans filled) (call (. tree atom) ([] (. name text) (... (. "without:" length)))))
+      (+= filled 1)
+    )
+  )
+  (return-if (call (of RowRange Atom)) (if (== filled 0)))
+  (return (call (. tree store-atoms) (call scratch-items bans filled)))
+)
+
+(fn-do + lowered-door (? Atom) (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param names (of ImmutableArray Atom))
+  ; The effect a function is a door of, if it names one.
+  (let door (? Atom) null)
+  (for (in name names)
+    (if (call (. name text starts-with) "door:")
+      (throw (call YumiSyntaxError loc "A function is the door of one effect") (if door))
+      (= door (call (. tree atom) ([] (. name text) (... (. "door:" length)))))
+    )
+  )
+  (return door)
+)
+
+(fn-do + section-annotations (of ImmutableArray Atom) (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param annotations (of ImmutableArray Atom))
+  (param sections (? SectionsPartial))
+  (param is-block Bool)
+  ; The annotations a `without` section stands for, after those written with `@`: a restriction's,
+  ; and for any other name a ban of the effect it names, which the checker looks up. In a header
+  ; module `gc` and `blocking` are the labels of a C function, and no other name is known.
+  (return-if annotations (if (not sections)))
+  (let names (. sections without))
+  (return-if annotations (if (== (. names length) 0)))
+  (let native (call (. tree source-path ends-with) ".h"))
+  (let joined (call (of scratch-array Atom) tree (+ (. annotations length) (. names length))))
+  (let filled Size 0)
+  (for (in annotation annotations)
+    (= ([] joined filled) annotation)
+    (+= filled 1)
+  )
+  (for (in name names)
+    (let text (. name text))
+    (if (== text "cancel")
+      (throw (call YumiSyntaxError loc "'without cancel' is only for a do block") (if (not is-block)))
+      (continue)
+    )
+    (throw (call YumiSyntaxError loc "'without blocking' is only for a C function") (if (and (== text "blocking") (not native))))
+    (let meant
+      (match text
+        (case= "heap"
+          "no-heap"
+        )
+        (case= "suspend"
+          "no-suspend"
+        )
+        (case= "gc"
+          (if-expr native "gc-leaf" "no-gc")
+        )
+        (case= "safepoints"
+          "no-safepoints"
+        )
+        (case= "probe-safepoints"
+          "no-probe-safepoints"
+        )
+        (case= "blocking"
+          "gc-polling"
+        )
+        (default
+          (if-expr native "" (str "without:" text))
+        )
+      )
+    )
+    (throw (call YumiSyntaxError loc (str "Unknown name '" text "' after without")) (if (== (. meant length) 0)))
+    (for (in index (..< 0 filled))
+      (throw (call YumiSyntaxError loc (str "'" text "' is named twice")) (if (== (. ([] joined index) text) meant)))
+    )
+    (= ([] joined filled) (call (. tree atom) meant))
+    (+= filled 1)
+  )
+  (return (call scratch-items joined filled))
+)
+
+(fn-do + stack-bound SyntaxId
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param bindings (of ImmutableArray StackBindingPartial))
+  (param body SyntaxId)
+  ; The body inside the bindings of a `with` section, the first binding outermost.
+  (let inner body)
+  (let index (. bindings length))
+  (while (> index 0)
+    (-= index 1)
+    (let binding ([] bindings index))
+    (let held (if-expr (== index (- (. bindings length) 1)) inner (call (. tree append) (call ASTBlock loc (call (. tree store-child) inner)))))
+    (= inner (call (. tree append) (call ASTStackLocalBindingBlock loc (. binding name) (. binding value) held)))
+  )
+  (return inner)
+)
+
+(fn-do + sectioned-do SyntaxId (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param sections SectionsPartial)
+  (param body DoBody)
+  (let annotations (call section-annotations tree loc (. body annotations) sections true))
+  (let bindings (. sections bindings))
+  (let holds (call names-cancel (. sections without)))
+  (return-if (call stack-bound tree loc bindings (. body body)) (if (and (== (. annotations length) 0) (> (. bindings length) 0) (not holds))))
+  (let masks (call do-annotation-masks loc annotations))
+  (let block (call (. tree append) (call ASTDoBlock loc (. body body) (. masks effects) (. masks features) holds (call lowered-bans tree annotations))))
+  (return-if block (if (== (. bindings length) 0)))
+  (return (call stack-bound tree loc bindings (call (. tree append) (call ASTBlock loc (call (. tree store-child) block)))))
+)
+
+(fn-do _ names-cancel Bool
+  (param names (of ImmutableArray Atom))
+  (for (in name names)
+    (return-if true (if (== (. name text) "cancel")))
+  )
+  (return false)
+)
+
+(fn-do + sectioned-body (? SyntaxId) (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param loc MatchLocation)
+  (param sections (? SectionsPartial))
+  (param is-imperative Bool)
+  (param body (? SyntaxId))
+  ; A function's body inside the bindings of the `with` section on its header.
+  (return-if body (if (not sections)))
+  (let bindings (. sections bindings))
+  (return-if body (if (== (. bindings length) 0)))
+  (throw (call YumiSyntaxError loc "A 'with' section needs a do function") (if (not is-imperative)))
+  (throw (call YumiSyntaxError loc "A 'with' section needs a body") (if (not body)))
+  (return (call (. tree append) (call ASTBlock loc (call (. tree store-child) (call stack-bound tree loc bindings body)))))
+)
+
+(fn-expr + normalize-compilation-effects CompilationEffect
+  (param effects CompilationEffect)
+  (match (/and/ effects (. CompilationEffect gc-free))
+    (case= (. CompilationEffect none)
+      (match (/and/ effects (. CompilationEffect no-safepoint))
+        (case= (. CompilationEffect none)
+          effects
+        )
+        (default
+          (/or/ effects (. CompilationEffect no-suspend))
+        )
+      )
+    )
+    (default
+      (/or/ no-heap-effects (. CompilationEffect no-safepoint) (. CompilationEffect no-suspend))
+      (lazy no-heap-effects (/or/ effects (. CompilationEffect no-heap)))
+    )
+  )
+)
+
+(fn-do + imperative-body (? SyntaxId)
+  (param tree ASTBuilder)
+  (param is-imperative Bool)
+  (param body (? SyntaxId))
+  (if is-imperative
+    (return? (?? body (call (. tree append) (call ASTBlock (call MatchLocation) (call (of RowRange SyntaxId))))))
+  )
+  (return body)
+)
+
+(fn-expr + declaration-body (? SyntaxId) (?! YumiSyntaxError)
+  (param tree ASTBuilder)
+  (param body (? SyntaxId))
+  (param same-line (? MatchLocation))
+  (before
+    (throw (call YumiSyntaxError same-line (str cause " " correction) (. tree source) (. tree source-path)) (if (and body same-line)))
+  )
+  body
+  (where
+    (lazy cause "A divider made this line a function header, and a function body cannot start on its header line.")
+    (lazy correction "Declare values before the first divider, or leave a blank line after a thick divider (━).")
+  )
+)
+
+(extend + ASTBuilder
+  (fn-expr + location MatchLocation
+    (param id SyntaxId)
+    ([] (. nodes loc) id)
+  )
+  (fn-expr + capture-name Atom
+    (param id SyntaxId)
+    (match ([] nodes id)
+      (case (call .node-type-capture capture)
+        (match ([] nodes (. capture id))
+          (case (call .node-identifier identifier)
+            (. identifier name)
+          )
+          (throw (call Panic "Type capture identifier has the wrong syntax case"))
+        )
+      )
+      (throw (call Panic "Expected a type capture"))
+    )
+  )
+  (fn-expr + capture-type SyntaxId
+    (param id SyntaxId)
+    (match ([] nodes id)
+      (case (call .node-type-capture capture)
+        (. capture type)
+      )
+      (throw (call Panic "Expected a type capture"))
+    )
+  )
+  (fn-expr + identifier-name Atom
+    (param id SyntaxId)
+    (match ([] nodes id)
+      (case (call .node-identifier identifier)
+        (. identifier name)
+      )
+      (throw (call Panic "Expected an identifier"))
+    )
+  )
+  (fn-expr + is-type-remainder Bool
+    (param id SyntaxId)
+    (match ([] nodes id)
+      (case .node-type-remainder
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + pattern-container-kind (? String)
+    (param id SyntaxId)
+    (match ([] nodes id)
+      (case .node-type-remainder
+        null
+      )
+      (case .node-type-map-item
+        "map"
+      )
+      (default
+        "sequence"
+      )
+    )
+  )
+)
+
+(extend + ASTBuilder
+  (fn-do + mark-style-sheet _
+    (param id SyntaxId)
+    (param tags (of RowRange Atom))
+    (match? ([] nodes id)
+      (case (call .node-class-block row)
+        (= (. row is-style-sheet) true)
+        (= (. row tags) tags)
+      )
+    )
+  )
+  (fn-expr + set-next _
+    (param id SyntaxId)
+    (param next (? SyntaxId))
+    (match ([] nodes id)
+      (case (call .node-if-block row)
+        (= (. row next) next-id)
+      )
+      (case (call .node-for-block row)
+        (= (. row next) next-id)
+      )
+      (case (call .node-loop-syntax row)
+        (= (. row next) next-id)
+      )
+      (case (call .node-iterator-expression row)
+        (= (. row next) next-id)
+      )
+      (case (call .node-clause row)
+        (= (. row next) next-id)
+      )
+      (throw (call Panic "Syntax node does not support next links"))
+    )
+    (where
+      (lazy next-id (if-expr next next 0))
+    )
+  )
+  (fn-do _ children-appending (of ImmutableArray SyntaxId)
+    (param range (of RowRange SyntaxId))
+    (param child SyntaxId)
+    (let joined (call (of scratch-array SyntaxId) this (+ (. range count) 1)))
+    (for (in offset (..< 0 (. range count)))
+      (= ([] joined offset) ([] children (+ (. range start) offset)))
+    )
+    (= ([] joined (. range count)) child)
+    (return (call scratch-items joined (+ (. range count) 1)))
+  )
+  (fn-do _ children-prepending (of ImmutableArray SyntaxId)
+    (param child SyntaxId)
+    (param range (of RowRange SyntaxId))
+    (let joined (call (of scratch-array SyntaxId) this (+ (. range count) 1)))
+    (= ([] joined 0) child)
+    (for (in offset (..< 0 (. range count)))
+      (= ([] joined (+ offset 1)) ([] children (+ (. range start) offset)))
+    )
+    (return (call scratch-items joined (+ (. range count) 1)))
+  )
+  (fn-do _ children-concat (of ImmutableArray SyntaxId)
+    (param left (of RowRange SyntaxId))
+    (param right (of RowRange SyntaxId))
+    (let joined (call (of scratch-array SyntaxId) this (+ (. left count) (. right count))))
+    (for (in offset (..< 0 (. left count)))
+      (= ([] joined offset) ([] children (+ (. left start) offset)))
+    )
+    (for (in offset (..< 0 (. right count)))
+      (= ([] joined (+ (. left count) offset)) ([] children (+ (. right start) offset)))
+    )
+    (return (call scratch-items joined (+ (. left count) (. right count))))
+  )
+  (fn-expr + auto-join (? SyntaxId)
+    (param left SyntaxId)
+    (param right SyntaxId)
+    (match ([] nodes left)
+      (case (call .node-declare declaration)
+        (call auto-join-declare left (. declaration right) right)
+      )
+      (case .node-assertion-syntax
+        (call auto-join-assertion left right)
+      )
+      (case (call .node-catch-expression catch-expression)
+        (call auto-join-catch-expression left (. catch-expression body) (. catch-expression catchers) right)
+      )
+      (case .node-header-expression
+        (call auto-join-header left right)
+      )
+      (case .node-pipeline-expression
+        (call auto-join-pipeline left right)
+      )
+      (case .node-feed-expression
+        (call auto-join-feed left right)
+      )
+      (case .node-structure-match
+        (call auto-join-structure-match left right)
+      )
+      (case .node-stream-match
+        (call auto-join-stream-match left right)
+      )
+      (case (call .node-state-machine machine)
+        (match? ([] nodes right)
+          (case .node-state-case
+            (call append (call ASTStateMachine (. machine loc) extended-body)
+              (block
+                (lazy extended-body (call store-children (call children-appending (. machine body) right)))
+              )
+            )
+          )
+          (case .node-state-fallback
+            (call append (call ASTStateMachine (. machine loc) extended-body)
+              (block
+                (lazy extended-body (call store-children (call children-appending (. machine body) right)))
+              )
+            )
+          )
+          (case (call .node-state-machine right-machine)
+            (call append (call ASTStateMachine (. machine loc) merged-body)
+              (block
+                (lazy merged-body (call store-children merged-children))
+                (lazy merged-children (call children-concat (. machine body) (. right-machine body)))
+              )
+            )
+          )
+        )
+      )
+      (case (call .node-state-case state)
+        (match? ([] nodes right)
+          (case .node-state-case
+            (call append (call ASTStateMachine (. state loc) joined-body)
+              (block
+                (lazy joined-body (call store-child left right))
+              )
+            )
+          )
+          (case .node-state-fallback
+            (call append (call ASTStateMachine (. state loc) joined-body)
+              (block
+                (lazy joined-body (call store-child left right))
+              )
+            )
+          )
+          (case (call .node-state-machine machine)
+            (call append (call ASTStateMachine (. state loc) merged-body)
+              (block
+                (lazy merged-body (call store-children (call children-prepending left (. machine body))))
+              )
+            )
+          )
+        )
+      )
+      (default
+        (call auto-join-expression left right)
+      )
+    )
+  )
+  (fn-do _ auto-join-structure-match (? SyntaxId)
+    (param left SyntaxId)
+    (param right SyntaxId)
+    (let right-pattern
+      (match ([] nodes right)
+        (case (call .node-structure-match row)
+          (. row pattern)
+        )
+        (case (call .node-assertion-syntax assertion)
+          (let condition SyntaxId 0)
+          (if (. assertion condition)
+            (= condition
+              (match ([] nodes (. assertion condition))
+                (case (call .node-type-predicate predicate)
+                  (call append (call ASTTypePredicate (. predicate loc) (. predicate expr) true))
+                )
+                (default
+                  (call append
+                    (block
+                      (arg
+                        (call ASTTypePredicate
+                          (block
+                            (arg ([] (. nodes loc) (. assertion condition)))
+                            (arg (. assertion condition))
+                            (arg true)
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+          (call append
+            (block
+              (arg
+                (call ASTTypePanic
+                  (block
+                    (arg (. assertion loc))
+                    (arg (call append (call ASTTypeTransform (. assertion loc) (. assertion exception) condition false)))
+                  )
+                )
+              )
+            )
+          )
+        )
+        (default
+          0
+        )
+      )
+    )
+    (return-if null (if (not right-pattern)))
+    (blank)
+    (let left-pattern
+      (match ([] nodes left)
+        (case (call .node-structure-match row)
+          (. row pattern)
+        )
+        (throw (call Panic "Expected a structure match syntax node"))
+      )
+    )
+    (let joined (call append (call ASTTypeOr ([] (. nodes loc) right-pattern) left-pattern right-pattern)))
+    (match ([] nodes left)
+      (case (call .node-structure-match row)
+        (= (. row pattern) joined)
+      )
+      (throw (call Panic "Expected a structure match syntax node"))
+    )
+    (return left)
+  )
+  (fn-do _ auto-join-stream-match (? SyntaxId)
+    (param left SyntaxId)
+    (param right SyntaxId)
+    (let right-pattern
+      (match ([] nodes right)
+        (case (call .node-stream-match row)
+          (. row pattern)
+        )
+        (case (call .node-structure-match row)
+          (match ([] nodes (. row pattern))
+            (case (all (call .node-type-transform transform) ({} (not (. transform pattern))))
+              (call append (call ASTStreamTransform (. transform loc) 0 (. transform expr) false))
+            )
+            (default
+              0
+            )
+          )
+        )
+        (case (all (call .node-assertion-syntax assertion) ({} (not (. assertion condition))))
+          (call append
+            (block
+              (arg
+                (call ASTStreamPanic
+                  (block
+                    (arg (. assertion loc))
+                    (arg (call append (call ASTStreamTransform (. assertion loc) 0 (. assertion exception) false)))
+                  )
+                )
+              )
+            )
+          )
+        )
+        (default
+          0
+        )
+      )
+    )
+    (return-if null (if (not right-pattern)))
+    (blank)
+    (let left-pattern
+      (match ([] nodes left)
+        (case (call .node-stream-match row)
+          (. row pattern)
+        )
+        (throw (call Panic "Expected a stream match syntax node"))
+      )
+    )
+    (let joined (call append (call ASTStreamOr ([] (. nodes loc) right-pattern) left-pattern right-pattern)))
+    (match ([] nodes left)
+      (case (call .node-stream-match row)
+        (= (. row pattern) joined)
+      )
+      (throw (call Panic "Expected a stream match syntax node"))
+    )
+    (return left)
+  )
+  (fn-do _ auto-join-header (? SyntaxId)
+    (param left SyntaxId)
+    (param right SyntaxId)
+    (return-if null (if (not (call is-joinable-header-item right))))
+    (blank)
+    ; The header is written again after the item it gains, so that a node always follows what it
+    ; holds.
+    (return
+      (match ([] nodes left)
+        (case (call .node-header-expression header)
+          (call append (call ASTHeaderExpression (. header loc) (. header expr) items)
+            (block
+              (lazy items (call store-children (call children-appending (. header items) right)))
+            )
+          )
+        )
+        (throw (call Panic "Expected a header syntax node"))
+      )
+    )
+  )
+  (fn-expr _ auto-join-pipeline (? SyntaxId)
+    (param left SyntaxId)
+    (param right SyntaxId)
+    (match? ([] nodes right)
+      (case .node-feed-expression
+        (call append-pipeline-feed left right)
+      )
+      (case .node-pipeline-expression
+        (call set-pipeline-left right left)
+      )
+    )
+  )
+  (fn-expr _ auto-join-feed (? SyntaxId)
+    (param left SyntaxId)
+    (param right SyntaxId)
+    (match? ([] nodes right)
+      (case .node-feed-expression
+        (call append-feed-join left right)
+      )
+      (case .node-pipeline-expression
+        (call set-pipeline-left right left)
+      )
+    )
+  )
+  (fn-expr _ auto-join-expression (? SyntaxId)
+    (param left SyntaxId)
+    (param right SyntaxId)
+    (case? (not (call is-expression left))
+      null
+    )
+    (default
+      (match? ([] nodes right)
+        (case (call .node-pipeline-expression pipeline)
+          (call set-pipeline-left right left)
+        )
+        (case .node-catcher
+          (call append (call ASTCatchExpression ([] (. nodes loc) left) left false (call store-child right)))
+        )
+      )
+    )
+  )
+  (fn-do _ auto-join-declare (? SyntaxId)
+    (param left SyntaxId)
+    (param expression SyntaxId)
+    (param right SyntaxId)
+    (return-if null (if (not expression)))
+    (return-if null (if (is-not ([] nodes right) .node-catcher)))
+    (blank)
+    (let joined (call auto-join expression right))
+    (return-if null (if (or (not joined) (not (call is-expression joined)))))
+    (blank)
+    (return
+      (match ([] nodes left)
+        (case (call .node-declare row)
+          (call append
+            (block
+              (arg
+                (call ASTDeclare
+                  (block
+                    (arg (. row loc))
+                    (arg (. row left))
+                    (arg joined)
+                    (arg (. row is-lazy))
+                    (arg (. row is-pattern))
+                    (arg (. row rollback))
+                    (arg (. row is-scoped))
+                  )
+                )
+              )
+            )
+          )
+        )
+        (throw (call Panic "Expected a declaration syntax node"))
+      )
+    )
+  )
+  (fn-expr _ auto-join-assertion (? SyntaxId)
+    (param left SyntaxId)
+    (param right SyntaxId)
+    (match? ([] nodes right)
+      (case .node-catcher
+        (call append (call ASTCatchExpression ([] (. nodes loc) left) left false (call store-child right)))
+      )
+    )
+  )
+  (fn-do _ auto-join-catch-expression (? SyntaxId)
+    (param left SyntaxId)
+    (param body SyntaxId)
+    (param catchers (of RowRange SyntaxId))
+    (param right SyntaxId)
+    (let raw
+      (match ([] nodes left)
+        (case (call .node-catch-expression row)
+          (. row is-raw-result)
+        )
+        (throw (call Panic "Expected a catch expression syntax node"))
+      )
+    )
+    (if (is ([] nodes right) .node-catcher)
+      (let extended (call store-children (call children-appending catchers right)))
+      (return (call append (call ASTCatchExpression ([] (. nodes loc) left) body raw extended)))
+    )
+    (blank)
+    (return-if null (if (call is-error-transformer-declaration body catchers)))
+    (let joined (call auto-join body right))
+    (return-if null (if (not joined)))
+    (return (call append (call ASTCatchExpression ([] (. nodes loc) left) joined raw catchers)))
+  )
+  (fn-expr _ is-error-transformer-declaration Bool
+    (param body SyntaxId)
+    (param catchers (of RowRange SyntaxId))
+    (case? (not (. catchers count))
+      false
+    )
+    (default
+      (match ([] nodes body)
+        (case (call .node-assertion-syntax assertion)
+          (not (. assertion condition))
+        )
+        (default
+          false
+        )
+      )
+    )
+  )
+  (fn-expr _ append-pipeline-feed SyntaxId
+    (param left SyntaxId)
+    (param right SyntaxId)
+    (call append (call ASTFeedExpression ([] (. nodes loc) left) left right true false))
+  )
+  (fn-do _ set-pipeline-left SyntaxId
+    (param pipeline-id SyntaxId)
+    (param left SyntaxId)
+    ; A pipeline takes the statement before it as its left side. When that statement was itself
+    ; joined after the pipeline was written, the pipeline is written again after it.
+    (match ([] nodes pipeline-id)
+      (case (call .node-pipeline-expression pipeline)
+        (if (> left pipeline-id)
+          (return (call append (call ASTPipelineExpression (. pipeline loc) (. pipeline op) left (. pipeline right))))
+        )
+        (= (. pipeline left) left)
+      )
+      (throw (call Panic "Expected a pipeline syntax node"))
+    )
+    (blank)
+    (return pipeline-id)
+  )
+  (fn-do _ append-feed-join SyntaxId
+    (param left SyntaxId)
+    (param right SyntaxId)
+    (call append-feed left right)
+    (return left)
+  )
+  (fn-do _ append-feed _
+    (param head SyntaxId)
+    (param addition SyntaxId)
+    (let current head)
+    (while current
+      (match ([] nodes current)
+        (case (call .node-feed-expression feed)
+          (if (. feed next)
+            (= current (. feed next))
+            (else
+              (= (. feed next) addition)
+              (= current 0)
+            )
+          )
+        )
+        (throw (call Panic "Expected a feed syntax node"))
+      )
+    )
+  )
+  (fn-expr + auto-join-passes-over Bool
+    (param left SyntaxId)
+    (param right SyntaxId)
+    (match ([] nodes left)
+      (case .node-header-expression
+        (call is-lazy-declaration right)
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr _ is-lazy-declaration Bool
+    (param id SyntaxId)
+    (match ([] nodes id)
+      (case (call .node-declare declaration)
+        (. declaration is-lazy)
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr _ is-joinable-header-item Bool
+    (param id SyntaxId)
+    (match ([] nodes id)
+      (case (call .node-function-syntax function)
+        true
+      )
+      (case (call .node-getter-syntax function)
+        (> (. function names count) 0)
+      )
+      (case (call .node-setter-syntax function)
+        (> (. function names count) 0)
+      )
+      (default
+        (call is-expression id)
+      )
+    )
+  )
+  (fn-expr _ is-expression Bool
+    (param id SyntaxId)
+    (match ([] nodes id)
+      (case .node-noop
+        false
+      )
+      (case .node-top-level-syntax
+        false
+      )
+      (case .node-declare
+        false
+      )
+      (case .node-assertion-syntax
+        false
+      )
+      (case .node-class-block
+        false
+      )
+      (case .node-event-declaration
+        false
+      )
+      (case .node-effect-declaration
+        false
+      )
+      (case .node-property-syntax
+        false
+      )
+      (case .node-state-case
+        false
+      )
+      (case .node-state-continuation
+        false
+      )
+      (case .node-state-fallback
+        false
+      )
+      (case .node-state-trigger
+        false
+      )
+      (case .node-unit-declaration
+        false
+      )
+      (case .node-enum-declaration
+        false
+      )
+      (case .node-delegate-declaration
+        false
+      )
+      (case .node-implements-declaration
+        false
+      )
+      (case .node-using-declaration
+        false
+      )
+      (case .node-sees-declaration
+        false
+      )
+      (case .node-style-domain-item
+        false
+      )
+      (case .node-style-annotation
+        false
+      )
+      (case .node-dependency-declaration
+        false
+      )
+      (case .node-content-block
+        false
+      )
+      (case .node-fromverter-syntax
+        false
+      )
+      (case .node-converter-syntax
+        false
+      )
+      (case .node-subscriber-syntax
+        false
+      )
+      (case .node-when-rule-syntax
+        false
+      )
+      (case .node-rule-syntax
+        false
+      )
+      (case .node-decoration
+        false
+      )
+      (case .node-markup-head
+        false
+      )
+      (case .node-markup-slot-parameter
+        false
+      )
+      (case .node-style-rule-application
+        false
+      )
+      (case .node-if-block
+        false
+      )
+      (case .node-while-block
+        false
+      )
+      (case .node-for-block
+        false
+      )
+      (case .node-do-block
+        false
+      )
+      (case .node-probe-statement
+        false
+      )
+      (case .node-do-finally-block
+        false
+      )
+      (case .node-do-task-block
+        false
+      )
+      (case .node-use-block
+        false
+      )
+      (case .node-stack-local-binding-block
+        false
+      )
+      (case .node-loop-syntax
+        false
+      )
+      (case .node-return
+        false
+      )
+      (case .node-return-if-true
+        false
+      )
+      (case .node-yield
+        false
+      )
+      (case .node-break
+        false
+      )
+      (case .node-continue
+        false
+      )
+      (case .node-catcher
+        false
+      )
+      (case .node-pattern-helper-syntax
+        false
+      )
+      (case .node-argument
+        false
+      )
+      (case .node-argument-decl
+        false
+      )
+      (case .node-import-syntax
+        false
+      )
+      (case .node-clause
+        false
+      )
+      (case .node-stream-call-expression-argument
+        false
+      )
+      (case .node-stream-collector-mapping
+        false
+      )
+      (case .node-probe
+        false
+      )
+      (case .node-probe-scope
+        false
+      )
+      (case .node-probe-group
+        false
+      )
+      (case .node-probe-assign
+        false
+      )
+      (case .node-probe-counter
+        false
+      )
+      (case .node-param-constraint
+        false
+      )
+      (case .node-param-assignment
+        false
+      )
+      (default
+        true
+      )
+    )
+  )
+  (fn-expr + auto-join-close SyntaxId
+    (param node SyntaxId)
+    (match ([] nodes node)
+      (case (call .node-state-case state)
+        (call append (call ASTStateMachine (. state loc) (call store-child node)))
+      )
+      (default
+        node
+      )
+    )
+  )
+)
+
+(extend + ASTBuilder
+  (fn-do + make-argument SyntaxId
+    (param loc MatchLocation)
+    (param expr SyntaxId)
+    (param name (? Atom))
+    (param is-optional Bool (= false))
+    (let expression expr)
+    (if name
+      (if (call has-auto-closure-each expr)
+        (= expression (call make-auto-closure expr))
+      )
+    )
+    (return (call append (call ASTArgument loc expression name is-optional)))
+  )
+  (fn-do + make-pattern-helper SyntaxId
+    (param loc MatchLocation)
+    (param helper SyntaxId)
+    (let expression helper)
+    (if (call has-auto-closure-each helper)
+      (= expression (call make-auto-closure helper))
+    )
+    (return (call append (call ASTPatternHelper loc expression)))
+  )
+  (fn-expr _ make-auto-closure SyntaxId
+    (param expr SyntaxId)
+    (call append (call auto-closure-data loc args expr)
+      (block
+        (lazy loc ([] (. nodes loc) expr))
+        (lazy each (call append (call ASTIdentifier loc (call atom "each") false)))
+        (lazy capture (call append (call ASTTypeCapture loc each 0)))
+        (lazy argument (call append (call ASTArgumentDecl loc capture 0 false)))
+        (lazy args (call store-child argument))
+      )
+    )
+  )
+  (fn-expr _ auto-closure-data ASTFunction
+    (param loc MatchLocation)
+    (param args (of RowRange SyntaxId))
+    (param expr SyntaxId)
+    (call ASTFunction
+      (block
+        (arg loc)
+        (arg .private-access)
+        (arg (call (of RowRange Atom)))
+        (arg 0)
+        (arg args)
+        (arg (call (of RowRange SyntaxId)))
+        (arg 0)
+        (arg (call (of RowRange SyntaxId)))
+        (arg (call (of RowRange SyntaxId)))
+        (arg (call (of RowRange SyntaxId)))
+        (arg expr)
+        (arg (. CompilationEffect none))
+        (arg false)
+        (arg false)
+        (arg false)
+        (arg false)
+        (arg false)
+      )
+    )
+  )
+  (fn-expr _ has-auto-closure-each Bool
+    (param id SyntaxId)
+    (case? (not id)
+      false
+    )
+    (default
+      (match ([] nodes id)
+        (case (call .node-block row)
+          (call children-have-auto-closure-each (. row body))
+        )
+        (case (call .node-identifier row)
+          (== (. row name text) "each")
+        )
+        (case (call .node-print row)
+          (call has-auto-closure-each (. row body))
+        )
+        (case (call .node-use-expression row)
+          (call has-auto-closure-each (. row expr))
+        )
+        (case (call .node-latest-expression row)
+          (call has-auto-closure-each (. row expr))
+        )
+        (case (call .node-header-expression row)
+          (call has-auto-closure-each (. row expr))
+        )
+        (case (call .node-pipeline-expression row)
+          (and (not (call binds-each (. row op))) has-each)
+          (lazy has-each (or (call has-auto-closure-each (. row left)) (call has-auto-closure-each (. row right))))
+        )
+        (case (call .node-feed-expression row)
+          (call has-auto-closure-each (. row item))
+        )
+        (case (call .node-unary-expression row)
+          (call has-auto-closure-each (. row operand))
+        )
+        (case (call .node-binary-expression row)
+          (and (not (call binds-each (. row op))) has-each)
+          (lazy has-each (or (call has-auto-closure-each (. row lhs)) (call has-auto-closure-each (. row rhs))))
+        )
+        (case (call .node-cast-expression row)
+          (or (call has-auto-closure-each (. row lhs)) (call has-auto-closure-each (. row rhs)))
+        )
+        (case (call .node-call-expression row)
+          (or has-callable has-params has-args)
+          (lazy has-callable (call has-auto-closure-each (. row callable)))
+          (lazy has-params (call children-have-auto-closure-each (. row params)))
+          (lazy has-args (call children-have-auto-closure-each (. row args)))
+        )
+        (case (call .node-range-expression row)
+          (or has-left has-right has-increment)
+          (lazy has-left (call has-auto-closure-each (. row left)))
+          (lazy has-right (call has-auto-closure-each (. row right)))
+          (lazy has-increment (call has-auto-closure-each (. row increment)))
+        )
+        (case (call .node-get-expression row)
+          (call has-auto-closure-each (. row object))
+        )
+        (case (call .node-style-read-expression row)
+          (call has-auto-closure-each (. row object))
+        )
+        (case (call .node-markup-read-expression row)
+          (call has-auto-closure-each (. row object))
+        )
+        (case (call .node-index-expression row)
+          (or (call has-auto-closure-each (. row object)) (call has-auto-closure-each (. row index)))
+        )
+        (case (call .node-match-expression row)
+          (or (call has-auto-closure-each (. row subject)) (call has-auto-closure-each (. row body)))
+        )
+        (case (call .node-catch-optional-expression row)
+          (call has-auto-closure-each (. row body))
+        )
+        (case (call .node-catch-expression row)
+          (or (call has-auto-closure-each (. row body)) (call children-have-auto-closure-each (. row catchers)))
+        )
+        (case (call .node-tuple-syntax row)
+          (call children-have-auto-closure-each (. row items))
+        )
+        (case (call .node-list-syntax row)
+          (call children-have-auto-closure-each (. row items))
+        )
+        (case (call .node-iterable-expression row)
+          (call has-auto-closure-each (. row expr))
+        )
+        (case (call .node-optional-chain row)
+          (call has-auto-closure-each (. row expr))
+        )
+        (case (call .node-argument row)
+          (call has-auto-closure-each (. row expr))
+        )
+        (case (call .node-assign row)
+          (or (call has-auto-closure-each (. row lhs)) (call has-auto-closure-each (. row rhs)))
+        )
+        (default
+          false
+        )
+      )
+    )
+  )
+  (fn-do _ children-have-auto-closure-each Bool
+    (param range (of RowRange SyntaxId))
+    (for (in offset (..< 0 (. range count)))
+      (if (call has-auto-closure-each ([] children (+ (. range start) offset)))
+        (return true)
+      )
+    )
+    (return false)
+  )
+  (fn-expr _ binds-each Bool
+    (param op Operator)
+    (match op
+      (case .map-op
+        true
+      )
+      (case .filter-op
+        true
+      )
+      (case .map-filter-op
+        true
+      )
+      (case .pipe-repeat-op
+        true
+      )
+      (case .pipe-closure-op
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-do + name-closures _
+    (let closure-count U32)
+    (for (in node ([] nodes (..< 1 (. nodes length))))
+      (match node
+        (case (call .node-function-syntax function)
+          (if (not (. function names count))
+            (+= closure-count 1)
+            (let name "(closure)")
+            (if (> closure-count 1)
+              (= name (str "(closure" closure-count ")"))
+            )
+            (let start (. atoms length))
+            (call (. atoms append) (call atom name))
+            (= (. function names) (call (of RowRange Atom) (as start U32) 1))
+          )
+        )
+        (default
+          (continue)
+        )
+      )
+    )
+  )
+  (fn-do + finalize-syntax _ (?! YumiSyntaxError)
+    (let end (. nodes length))
+    (for (in node ([] nodes (..< 1 end)))
+      (match node
+        (case (call .node-state-case row)
+          (= (. row body) (call normalized-state-body (. row body)))
+          (call validate-state-fallbacks (. row body))
+        )
+        (case (call .node-state-continuation row)
+          (= (. row body) (call normalized-state-body (. row body)))
+          (call validate-state-fallbacks (. row body))
+        )
+        (case (call .node-state-machine row)
+          (call validate-state-fallbacks (. row body))
+        )
+        (case (call .node-slot-outlet row)
+          (let loc (call exclusive-end-location (. row loc)))
+          (throw (call YumiSyntaxError loc "Slot type inference is not supported yet" source source-path) (if (call slot-type-declares-params (. row type-id))))
+          (throw (call YumiSyntaxError loc "Slot parameter requires a named slot" source source-path) (if (and (. row slot-parameter) (not (. row name)))))
+        )
+        (default
+          (continue)
+        )
+      )
+    )
+  )
+  (fn-do _ normalized-state-body (of RowRange SyntaxId)
+    (param body (of RowRange SyntaxId))
+    (let builder (call (of ArrayBuilder SyntaxId)))
+    (for (in offset (..< 0 (. body count)))
+      (let item ([] children (+ (. body start) offset)))
+      (let flattened
+        (match ([] nodes item)
+          (case (call .node-state-machine machine)
+            (do
+              (for (in child-offset (..< 0 (. machine body count)))
+                (call (. builder append) ([] children (+ (. machine body start) child-offset)))
+              )
+            )
+            true
+          )
+          (default
+            (do
+              (call (. builder append) item)
+            )
+            false
+          )
+        )
+      )
+    )
+    (return (call store-children (call (. builder finish-immutable))))
+  )
+  (fn-do _ validate-state-fallbacks _ (?! YumiSyntaxError)
+    (param body (of RowRange SyntaxId))
+    (let found false)
+    (for (in item ([] nodes (call child-ids body)))
+      (match? item
+        (case (call .node-state-fallback row)
+          (let loc (call exclusive-end-location (. row loc)))
+          (let message "Multiple fallbacks in one state transition group")
+          (throw (call YumiSyntaxError loc message source source-path) (if found))
+          (= found true)
+        )
+      )
+    )
+  )
+  (fn-do _ slot-type-declares-params Bool
+    (param id SyntaxId)
+    (match ([] nodes id)
+      (case (call .node-type-identifier row)
+        (return (. row is-declare))
+      )
+      (case (call .node-type-arguments row)
+        (return-if true (if (call slot-type-declares-params (. row base))))
+        (blank)
+        (for (in offset (..< 0 (. row args count)))
+          (let arg ([] children (+ (. row args start) offset)))
+          (return-if true (if (call slot-type-declares-params arg)))
+        )
+        (return false)
+      )
+      (default
+        (return false)
+      )
+    )
+  )
+)

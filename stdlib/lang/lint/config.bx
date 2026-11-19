@@ -1,0 +1,285 @@
+(import ./diagnostics)
+(import /data/json)
+(import /os/file)
+(import /os/path)
+(import /stream/aggregate)
+
+(type + LintConfig
+  (prop + path (? String))
+  (prop + search-path (? String))
+  (prop + semantic-roots (list String))
+  (prop + rules (map String (map String JSON)))
+  (fn-do + This _)
+)
+
+(fn-do + load-lint-config LintConfig
+  (param project-root String)
+  (param catalog (list LintRule))
+  (param config-path (? String) (= null))
+  (let config (call LintConfig))
+  (= (. config path) (?? config-path (call find-lint-config-path project-root)))
+  (blank)
+  (let root (call config-object (. config path)))
+  (= (. config search-path) (call config-search-path root (call config-base project-root (. config path))))
+  (= (. config semantic-roots) (call config-semantic-roots root (call config-base project-root (. config path))))
+  (let settings (call rule-settings root catalog))
+  (let recommended (call uses-recommended ([] root "extends")))
+  (for (in rule catalog)
+    (let options (call rule-options rule recommended ([] settings (. rule id))))
+    (if options
+      (= ([] (. config rules) (. rule id)) options)
+    )
+  )
+  (return config)
+)
+
+(fn-expr + find-lint-config-path (? String) (?! Error)
+  (param dir String)
+  (case? (. (call Path candidate) is-file)
+    candidate
+  )
+  (case? (or (== (. parent length) 0) (== parent dir))
+    null
+  )
+  (default
+    (call find-lint-config-path parent)
+  )
+  (where
+    (lazy candidate (str dir "/.brix/lint.json"))
+    (lazy parent (as (. (call Path dir) dir) String))
+  )
+)
+
+(fn-do + config-object (map String JSON)
+  (param path (? String))
+  (if (not path)
+    (return (call (of Map String JSON)))
+  )
+  (blank)
+  (let decoded (call JSON (call read-file-text (call Path path))))
+  (throw (call Error "The lint config must contain an object") (if (is-not decoded (map String JSON))))
+  (return decoded)
+)
+
+(fn-expr + config-base String
+  (param project-root String)
+  (param config-path (? String))
+  (case? (not config-path)
+    project-root
+  )
+  (case? (call (. dir starts-with) "/")
+    dir
+  )
+  (case? (== (. dir length) 0)
+    project-root
+  )
+  (default
+    (str project-root "/" dir)
+  )
+  (where
+    (lazy folder (. (call Path config-path) dir))
+    (lazy dir (as (if-expr (== (. folder name) ".brix") (. folder dir) folder) String))
+  )
+)
+
+(fn-expr + config-search-path (? String) (?! Error)
+  (param root (map String JSON))
+  (param base String)
+  (case? (not entries)
+    null
+  )
+  (default
+    (match entries
+      (case (all (: paths List) ({} (call all it (:where (is each String)))))
+        (call (. ":" join) (in (call resolved-config-path base (as each String)) paths))
+      )
+      (throw (call Error "The lint config's searchPath must be an array of paths"))
+    )
+  )
+  (where
+    (lazy entries ([] root "searchPath"))
+  )
+)
+
+(fn-do + config-semantic-roots (list String) (?! Error)
+  (param root (map String JSON))
+  (param base String)
+  ; The roots `semantic.roots` names for the semantic rules, each against the config's directory.
+  (let paths (list String))
+  (let semantic ([] root "semantic"))
+  (if (not semantic)
+    (return paths)
+  )
+  (throw (call Error "The lint config's semantic must be an object") (if (is-not semantic (map String JSON))))
+  (let roots ([] (as semantic (map String JSON)) "roots"))
+  (if (not roots)
+    (return paths)
+  )
+  (throw (call Error "The lint config's semantic.roots must be an array of paths") (if (is-not roots (list JSON))))
+  (for (in entry (as roots (list JSON)))
+    (throw (call Error "The lint config's semantic.roots entries must be paths") (if (is-not entry String)))
+    (+= paths (call resolved-config-path base entry))
+  )
+  (return paths)
+)
+
+(fn-expr + resolved-config-path String
+  (param base String)
+  (param entry String)
+  (case? (call (. entry starts-with) "/")
+    entry
+  )
+  (default
+    (str base "/" entry)
+  )
+)
+
+(fn-do + rule-settings (map String JSON)
+  (param root (map String JSON))
+  (param catalog (list LintRule))
+  (let settings ([] root "rules"))
+  (if (not settings)
+    (return (call (of Map String JSON)))
+  )
+  (throw (call Error "The lint config's rules must be an object") (if (is-not settings (map String JSON))))
+  (blank)
+  (let listed (as settings (map String JSON)))
+  (for (in (tuple id setting) listed)
+    (throw (call Error (str "Unknown lint rule: " id)) (if (not (call find-rule catalog id))))
+  )
+  (return listed)
+)
+
+(fn-expr + uses-recommended Bool
+  (param value (? JSON))
+  (case? (not value)
+    true
+  )
+  (default
+    (match value
+      (case (: items List)
+        (call mentions-recommended items)
+      )
+      (case (: word String)
+        (== word "recommended")
+      )
+      (default
+        false
+      )
+    )
+  )
+)
+
+(fn-expr + mentions-recommended Bool
+  (param items (list JSON))
+  (not (not found))
+  (where
+    (lazy found
+      (block
+        (spread? items)
+        (pipe ?> (call is-recommended-word each))
+        (pipe |> first)
+      )
+    )
+  )
+)
+
+(fn-expr + is-recommended-word Bool
+  (param item JSON)
+  (and (is item String) (== (as item String) "recommended"))
+)
+
+(fn-expr + rule-options (? (map String JSON))
+  (param rule LintRule)
+  (param recommended Bool)
+  (param setting (? JSON) (= null))
+  (case? setting
+    (call resolve-rule-setting rule setting)
+  )
+  (case? (and recommended (. rule recommended))
+    (call default-options rule)
+  )
+  (default
+    null
+  )
+)
+
+(fn-expr + resolve-rule-setting (? (map String JSON))
+  (param rule LintRule)
+  (param setting JSON)
+  (match setting
+    (case (all Bool ({} it))
+      (call default-options rule)
+    )
+    (case Bool
+      null
+    )
+    (case (all String ({} (== it "on")))
+      (call default-options rule)
+    )
+    (case (all String ({} (== it "off")))
+      null
+    )
+    (case (: overrides Map)
+      (call validated rule (call merge-options (. rule default-options) overrides))
+    )
+    (throw (call Error (str "Invalid lint rule setting for " (. rule id) ": " (call to-json setting))))
+  )
+)
+
+(fn-expr + default-options (map String JSON)
+  (param rule LintRule)
+  (call validated rule (call copy-options (. rule default-options)))
+)
+
+(fn-do + validated (map String JSON)
+  (param rule LintRule)
+  (param options (map String JSON))
+  (if (== (. rule id) "complexity/cyclomatic")
+    (let max ([] options "max"))
+    (let valid (and max (is max Int) (> (as max Int) 0)))
+    (throw (call Error (str "Invalid lint rule configuration for " (. rule id) ": max must be a positive integer")) (if (not valid)))
+  )
+  (blank)
+  (return options)
+)
+
+(fn-do + copy-options (map String JSON)
+  (param options (map String JSON))
+  (let copied (map String JSON))
+  (for (in (tuple key value) options)
+    (= ([] copied key) value)
+  )
+  (return copied)
+)
+
+(fn-do + merge-options (map String JSON)
+  (param defaults (map String JSON))
+  (param overrides (map String JSON))
+  (let merged (call copy-options defaults))
+  (for (in (tuple key value) overrides)
+    (let existing ([] defaults key))
+    (if (and existing (is existing (map String JSON)) (is value (map String JSON)))
+      (= ([] merged key) (call merge-options existing value))
+      (else
+        (= ([] merged key) value)
+      )
+    )
+  )
+  (return merged)
+)
+
+(fn-expr + option-int Int
+  (param options (map String JSON))
+  (param key String)
+  (param fallback Int)
+  (case? (and value (is value Int))
+    (as value Int)
+  )
+  (default
+    fallback
+  )
+  (where
+    (lazy value ([] options key))
+  )
+)

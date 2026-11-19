@@ -67,7 +67,7 @@ GATE_ROOT = '/tmp/brix-gate'
 LINK_PATH_FLAGS = ('--sysroot=', '-L')
 LINK_TARGET_FLAGS = ('-dynamic-linker',)
 C_HEADERS = '.c-headers'
-SOURCE = os.path.join(ROOT, 'apps', 'compiler', 'brix-cli.yumi')
+SOURCE = os.path.join(ROOT, 'apps', 'compiler', 'brix-cli.bx')
 MAIN_BRANCH = 'main'
 MAIN_REMOTE = 'origin'
 REMOTE_MAIN = 'refs/remotes/%s/%s' % (MAIN_REMOTE, MAIN_BRANCH)
@@ -81,9 +81,8 @@ GUIDE_INDEX = 'docs/index.md'
 INIT_FILES = (('AGENTS.md', '`brix --help`'), ('CLAUDE.md', '@AGENTS.md'))
 LINK_PATTERN = re.compile(r'\]\(([^)\s]+)\)')
 CORE_TESTS = 'stdlib/core/tests'
-EXAMPLE_SOURCES = ('.yumi', '.bx')
-EXAMPLE_IMPORT = re.compile(r'^\+? ?(\.{1,2}/\S+)$')
-BRIX_EXAMPLE_IMPORT = re.compile(r'^\s*\((?:import|export) (\.{1,2}/[^\s)]+)\)$')
+EXAMPLE_SOURCE = '.bx'
+EXAMPLE_IMPORT = re.compile(r'^\s*\((?:import|export) (\.{1,2}/[^\s)]+)\)$')
 EXAMPLE_WORKERS = max(1, (os.cpu_count() or 2) // 2)
 CORE_TESTS_LEFT_OUT = (
     'runFlowFacts.test.md',
@@ -741,7 +740,7 @@ def toolchain_files(config, host, binary, tools):
 
 
 def is_left_out_core_test(part):
-    return part in CORE_TESTS_LEFT_OUT or not (part == 'support' or part.endswith(('.test.md', '.yumi')))
+    return part in CORE_TESTS_LEFT_OUT or not (part == 'support' or part.endswith(('.test.md', '.bx')))
 
 
 def add_guide(files):
@@ -906,7 +905,7 @@ def clean_room_environment(room):
 
 
 def check_clean_room(toolchain, kits, denied, logs):
-    programs = sorted(name[:-5] for name in os.listdir(CLEAN_ROOM_PROGRAMS) if name.endswith('.yumi'))
+    programs = sorted(name[:-3] for name in os.listdir(CLEAN_ROOM_PROGRAMS) if name.endswith('.bx'))
     with temporary_directory('brix-cleanroom-') as room:
         profile = sandbox_profile(denied, room)
         root = os.path.join(room, 'toolchain')
@@ -920,7 +919,7 @@ def check_clean_room(toolchain, kits, denied, logs):
             executable = os.path.join(room, 'out', program)
             os.makedirs(os.path.dirname(executable), exist_ok=True)
             run(sandbox + [os.path.join(root, 'bin', 'brix'), '--compile', '-o', executable,
-                           os.path.join(sources, program + '.yumi')],
+                           os.path.join(sources, program + '.bx')],
                 environment, logs, 'cleanroom-compile-' + program, cwd=room)
             actual = run_program(sandbox + [executable], environment, logs, 'cleanroom-run-' + program, room)
             with open(os.path.join(sources, program + '.out')) as file:
@@ -955,20 +954,18 @@ def example_entries(root):
     sources = []
     for directory, directories, file_names in os.walk(os.path.join(root, 'examples')):
         sources += [os.path.join(directory, file_name) for file_name in file_names
-                    if file_name.endswith(EXAMPLE_SOURCES)]
+                    if file_name.endswith(EXAMPLE_SOURCE)]
     imported = {target for source in sources for target in example_imports(source, source)}
     return sorted(os.path.relpath(source, root) for source in sources if source not in imported)
 
 
 def example_imports(source, name):
-    pattern = BRIX_EXAMPLE_IMPORT if source.endswith('.bx') else EXAMPLE_IMPORT
     with open(source) as file:
         for line in file:
-            match = pattern.match(line.rstrip())
+            match = EXAMPLE_IMPORT.match(line.rstrip())
             if match:
                 stem = os.path.normpath(os.path.join(os.path.dirname(name), match.group(1)))
-                for extension in EXAMPLE_SOURCES:
-                    yield stem + extension
+                yield stem + EXAMPLE_SOURCE
 
 
 def check_tools(brix, root, sources, environment, logs, room):
@@ -980,7 +977,7 @@ def check_tools(brix, root, sources, environment, logs, room):
     for name in TOOLS:
         say('Clean room: running brix %s --help' % name)
         run_program(brix + [name, '--help'], environment, logs, 'cleanroom-help-' + name, room)
-    program = os.path.join(sources, TOOL_PROGRAM + '.yumi')
+    program = os.path.join(sources, TOOL_PROGRAM + '.bx')
     say('Clean room: recording the probes of %s and reading them back' % TOOL_PROGRAM)
     run_program(brix + [program, '--probes'], environment, logs, 'cleanroom-probes-run', room)
     log = run_program(brix + ['probes', 'log'], environment, logs, 'cleanroom-probes-log', room)

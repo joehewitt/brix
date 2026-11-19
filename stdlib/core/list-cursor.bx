@@ -1,0 +1,61 @@
+(type + ListCursor (is Tuple)
+  (prop + count Index)
+  (prop + current (? Index))
+  (fn-expr + stepped (? Index)
+    (param offset Int)
+    (case? (== count 0)
+      null
+    )
+    (case? (== current null)
+      edge
+    )
+    (case? (or (< target 0) (>= target (as count Int)))
+      null
+    )
+    (default
+      (as target Index)
+    )
+    (where
+      (lazy edge (if-expr (< offset 0) (- count 1) 0))
+      (lazy target (+ (as current Int) offset))
+    )
+  )
+  (fn-expr + wrapped (? Index)
+    (param offset Int)
+    (case? (== count 0)
+      null
+    )
+    (case? (== current null)
+      edge
+    )
+    (default
+      (as (% (+ (% (+ (as current Int) offset) total) total) total) Index)
+    )
+    (where
+      (lazy edge (if-expr (< offset 0) (- count 1) 0))
+      (lazy total (as count Int))
+    )
+  )
+  (fn-expr + clamped (? Index)
+    (param offset Int)
+    (case? (== count 0)
+      null
+    )
+    (case? (== current null)
+      edge
+    )
+    (case? (< target 0)
+      0
+    )
+    (case? (>= target (as count Int))
+      (- count 1)
+    )
+    (default
+      (as target Index)
+    )
+    (where
+      (lazy edge (if-expr (< offset 0) (- count 1) 0))
+      (lazy target (+ (as current Int) offset))
+    )
+  )
+)

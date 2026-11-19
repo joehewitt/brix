@@ -1,55 +1,52 @@
 # Generators
 
-```yumi
-. gen = stuff(42)
--- gen
+```brix
+(main
+  (let gen (call stuff 42))
+  (print gen)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do stuff
-    - a
-
-<= a
+(fn-do + stuff _
+  (param a _)
+  (yield a)
+)
 ```
 
 ```output
 [Function Generator'I64]
 ```
 
-```yumi
-. source = EntrySource()
-. names = each.text in source.entries when each.text != ""
--- tally(names)
+```brix
+(main
+  (let source (call EntrySource))
+  (let names (in (. each text) (. source entries) (when (!= (. each text) ""))))
+  (print (call tally names))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Entry
+(type + Entry
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-+ text String
+(type + EntryProblem (is Error))
 
-────────────────────
-+ This
-    - text String
+(type + EntrySource
+  (fn-do + entries (stream Entry) :get
+    (throw (call EntryProblem "failed") (if false))
+    (yield (call Entry "a"))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ EntryProblem is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ EntrySource
-
-────────────────────
-+ do get entries <Entry>
-
-?! EntryProblem("failed")
-    if false
-<= Entry("a")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tally'Item Int
-    - stream Iterable'Item
-
-. count = 0
-for item in stream
-    count += 1
-= count
+(fn-do + (of tally Item) Int
+  (param stream (of Iterable Item))
+  (let count 0)
+  (for (in item stream)
+    (+= count 1)
+  )
+  (return count)
+)
 ```
 
 ```output
@@ -58,31 +55,30 @@ for item in stream
 
 ### A raising generator passed as an Iterable panics when it raises, since the interface carries no error type.
 
-```yumi crash
-. source = EntrySource()
--- tally(source.entries)
+```brix crash
+(main
+  (let source (call EntrySource))
+  (print (call tally (. source entries)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ EntryProblem is Error
+(type + EntryProblem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ EntrySource
+(type + EntrySource
+  (fn-do + entries (stream String) :get
+    (yield "a")
+    (throw (call EntryProblem "failed"))
+  )
+)
 
-────────────────────
-+ do get entries <String>
-
-<= "a"
-?! EntryProblem("failed")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tally'Item Int
-    - stream Iterable'Item
-
-. count = 0
-for item in stream
-    -- item
-    count += 1
-= count
+(fn-do + (of tally Item) Int
+  (param stream (of Iterable Item))
+  (let count 0)
+  (for (in item stream)
+    (print item)
+    (+= count 1)
+  )
+  (return count)
+)
 ```
 
 ```output
@@ -91,26 +87,27 @@ a
 
 ### A generator can publish an event between yields.
 
-```yumi
-. source = PublishingGeneratorSource()
-for value on source.changed
-    -- "got $value"
-for n in source.numbers()
-    -- "n $n"
--- "done"
+```brix
+(main
+  (let source (call PublishingGeneratorSource))
+  (for (on value (. source changed))
+    (print (str "got " value))
+  )
+  (for (in n (call (. source numbers)))
+    (print (str "n " n))
+  )
+  (print "done")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ PublishingGeneratorSource
-
-+ event changed Int
-
-────────────────────
-+ do numbers <Int>
-
-changed <- 1
-<= 10
-changed <- 2
-<= 20
+(type + PublishingGeneratorSource
+  (event + changed Int)
+  (fn-do + numbers (stream Int)
+    (<- changed 1)
+    (yield 10)
+    (<- changed 2)
+    (yield 20)
+  )
+)
 ```
 
 ```output
@@ -123,24 +120,24 @@ done
 
 ### A generator survives erased event publications between yields.
 
-```yumi
-. source = ErasedPublishingGeneratorSource()
-for n in source.numbers()
-    -- "n $n"
--- "done"
+```brix
+(main
+  (let source (call ErasedPublishingGeneratorSource))
+  (for (in n (call (. source numbers)))
+    (print (str "n " n))
+  )
+  (print "done")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ErasedPublishingGeneratorSource
-
-+ event changed Int
-
-────────────────────
-+ do numbers <Int>
-
-changed <- 1
-<= 10
-changed <- 2
-<= 20
+(type + ErasedPublishingGeneratorSource
+  (event + changed Int)
+  (fn-do + numbers (stream Int)
+    (<- changed 1)
+    (yield 10)
+    (<- changed 2)
+    (yield 20)
+  )
+)
 ```
 
 ```output
@@ -151,61 +148,62 @@ done
 
 ### Virtual generator overrides preserve the base method's error-result ABI.
 
-```yumi
-_ generator-cleanups = 0
+```brix
+(prop _ generator-cleanups _ (= 0))
+(blank)
 
-. source EventSource = QuietEventSource()
-. result = catch collect-events(source)
-if result is [Int]
-    . values = result as [Int]
-    -- "count ${values.length}"
-    -- "first ${values[0]}"
-else
-    -- "unexpected error"
+(main
+  (let source EventSource (call QuietEventSource))
+  (let result (catch (call collect-events source)))
+  (if (is result (list Int))
+    (let values (as result (list Int)))
+    (print (str "count " (. values length)))
+    (print (str "first " ([] values 0)))
+    (else
+      (print "unexpected error")
+    )
+  )
+  (blank)
+  (let failed (catch (call collect-events (call EventSource))))
+  (print (str "base error " (is failed EventProblem)))
+  (blank)
+  (for (in value (call cleanup-items))
+    (break)
+  )
+  (print (str "cleanup count " generator-cleanups))
+)
 
-. failed = catch collect-events(EventSource())
--- "base error ${failed is EventProblem}"
+(type + EventProblem (is Error))
 
-for value in cleanup-items()
-    break
--- "cleanup count $generator-cleanups"
+(type + EventSource
+  (fn-do + events (stream Int) (?! EventProblem)
+    (yield 1)
+    (throw (call EventProblem "base"))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ EventProblem is Error
+(type + QuietEventSource (is EventSource)
+  (fn-do + events (stream Int)
+    (yield 2)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ EventSource
+(fn-do _ collect-events (list Int) (?! EventProblem)
+  (param source EventSource)
+  (let values (list Int) (call (of List Int)))
+  (for (in value (call (. source events)))
+    (+= values value)
+  )
+  (return values)
+)
 
-────────────────────
-+ do events <Int> ?! EventProblem
-
-<= 1
-?! EventProblem("base")
-
-━━━━━━━━━━━━━━━━━━━━
-+ QuietEventSource is EventSource
-
-────────────────────
-+ do events <Int>
-
-<= 2
-
-━━━━━━━━━━━━━━━━━━━━
-_ do collect-events [Int] ?! EventProblem
-    - source EventSource
-
-. values [Int] = List'Int()
-for value in source.events()
-    values += value
-= values
-
-━━━━━━━━━━━━━━━━━━━━
-_ do cleanup-items <Int>
-
-do finally
-    generator-cleanups += 1
-<= 1
-<= 2
+(fn-do _ cleanup-items (stream Int)
+  (finally
+    (+= generator-cleanups 1)
+  )
+  (yield 1)
+  (yield 2)
+)
 ```
 
 ```output
@@ -215,22 +213,23 @@ base error true
 cleanup count 1
 ```
 
-```yumi
-. gen = stuff(42)
--- gen
--- gen()
--- gen()
--- gen()
--- gen()
+```brix
+(main
+  (let gen (call stuff 42))
+  (print gen)
+  (print (call gen))
+  (print (call gen))
+  (print (call gen))
+  (print (call gen))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do stuff
-    - a
-
-<= a
--- "hi"
-<= a + 1
--- "bye"
+(fn-do + stuff _
+  (param a _)
+  (yield a)
+  (print "hi")
+  (yield (+ a 1))
+  (print "bye")
+)
 ```
 
 ```output
@@ -243,20 +242,21 @@ unknown
 unknown
 ```
 
-```yumi
-. gen = stuff()
--- gen()
--- gen()
--- gen()
+```brix
+(main
+  (let gen (call stuff))
+  (print (call gen))
+  (print (call gen))
+  (print (call gen))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do stuff
-
-. a = 1
-. n = 10 + a
-<= n
-n = 20 + a
-<= n
+(fn-do + stuff _
+  (let a 1)
+  (let n (+ 10 a))
+  (yield n)
+  (= n (+ 20 a))
+  (yield n)
+)
 ```
 
 ```output
@@ -265,22 +265,24 @@ n = 20 + a
 unknown
 ```
 
-```yumi
-. mapper = map(3) • cb each * 2
--- mapper()
--- mapper()
--- mapper()
--- mapper()
+```brix
+(main
+  (let mapper (call map 3 (:cb (* each 2))))
+  (print (call mapper))
+  (print (call mapper))
+  (print (call mapper))
+  (print (call mapper))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do map
-    - n
-    - cb
-
-. index = 0
-while index < n
-    <= cb(index)
-    index += 1
+(fn-do + map _
+  (param n _)
+  (param cb _)
+  (let index 0)
+  (while (< index n)
+    (yield (call cb index))
+    (+= index 1)
+  )
+)
 ```
 
 ```output
@@ -290,16 +292,18 @@ while index < n
 unknown
 ```
 
-```yumi
-for a in gen()
-    -- a
+```brix
+(main
+  (for (in a (call gen))
+    (print a)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen
-
-<= 1
-<= 2
-<= 3
+(fn-do + gen _
+  (yield 1)
+  (yield 2)
+  (yield 3)
+)
 ```
 
 ```output
@@ -308,18 +312,20 @@ for a in gen()
 3
 ```
 
-```yumi
-. genny = gen()
--- type-of genny
-for a in gen()
-    -- a
+```brix
+(main
+  (let genny (call gen))
+  (print (type-of genny))
+  (for (in a (call gen))
+    (print a)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen <Int>
-
-<= 1
-<= 2
-<= 3
+(fn-do + gen (stream Int)
+  (yield 1)
+  (yield 2)
+  (yield 3)
+)
 ```
 
 ```output
@@ -329,16 +335,18 @@ for a in gen()
 3
 ```
 
-```yumi
-for a in gen() while a < 3
-    -- a
+```brix
+(main
+  (for (in a (call gen) (while (< a 3)))
+    (print a)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen
-
-<= 1
-<= 2
-<= 3
+(fn-do + gen _
+  (yield 1)
+  (yield 2)
+  (yield 3)
+)
 ```
 
 ```output
@@ -346,16 +354,18 @@ for a in gen() while a < 3
 2
 ```
 
-```yumi
-for a in gen() when a != 2
-    -- a
+```brix
+(main
+  (for (in a (call gen) (when (!= a 2)))
+    (print a)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen
-
-<= 1
-<= 2
-<= 3
+(fn-do + gen _
+  (yield 1)
+  (yield 2)
+  (yield 3)
+)
 ```
 
 ```output
@@ -363,22 +373,24 @@ for a in gen() when a != 2
 3
 ```
 
-```yumi
-for a in gen2()
-    -- a
+```brix
+(main
+  (for (in a (call gen2))
+    (print a)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen1
+(fn-do + gen1 _
+  (yield 1)
+  (yield 2)
+  (yield 3)
+)
 
-<= 1
-<= 2
-<= 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ do gen2
-
-for a in gen1()
-    <= a + 1
+(fn-do + gen2 _
+  (for (in a (call gen1))
+    (yield (+ a 1))
+  )
+)
 ```
 
 ```output
@@ -387,23 +399,25 @@ for a in gen1()
 4
 ```
 
-```yumi
-for a in foo(bar())
-    -- a
+```brix
+(main
+  (for (in a (call foo (call bar)))
+    (print a)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - stream
+(fn-do + foo _
+  (param stream _)
+  (let accum 1)
+  (for (in item stream)
+    (yield 1)
+  )
+  (= accum 2)
+)
 
-. accum = 1
-for item in stream
-    <= 1
-accum = 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bar
-
-<= 1
+(fn-do + bar _
+  (yield 1)
+)
 ```
 
 ```output
@@ -412,21 +426,22 @@ accum = 2
 
 ### Generator as method
 
-```yumi
-. thing = Thing()
-for a in thing.foo(1)
-    -- a
+```brix
+(main
+  (let thing (call Thing))
+  (for (in a (call (. thing foo) 1))
+    (print a)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ do foo
-    - n
-
-<= n + 1
--- this
-<= n + 2
+(type + Thing
+  (fn-do + foo _
+    (param n _)
+    (yield (+ n 1))
+    (print this)
+    (yield (+ n 2))
+  )
+)
 ```
 
 ```output
@@ -437,15 +452,23 @@ for a in thing.foo(1)
 
 ### Generator as closure
 
-```yumi
-. outer = 1
-. gen = => do
-    <= outer
-    <= outer
-
-for a in gen()
-    -- a
-    outer += 1
+```brix
+(main
+  (let outer 1)
+  (let gen
+    (=> () :do
+      (block
+        (yield outer)
+        (yield outer)
+      )
+    )
+  )
+  (blank)
+  (for (in a (call gen))
+    (print a)
+    (+= outer 1)
+  )
+)
 ```
 
 ```output
@@ -453,26 +476,43 @@ for a in gen()
 2
 ```
 
-```yumi
-. outer = 1
-. gen = :: n => do
-    <= outer + n
-
-for a in gen(1)
-    -- a
+```brix
+(main
+  (let outer 1)
+  (let gen
+    (=> (n) :do
+      (block
+        (yield (+ outer n))
+      )
+    )
+  )
+  (blank)
+  (for (in a (call gen 1))
+    (print a)
+  )
+)
 ```
 
 ```output
 2
 ```
 
-```yumi
-. gen = :: iterable => do
-    for i in iterable
-        <= i
-
-for a in gen([1,2,3])
-    -- a
+```brix
+(main
+  (let gen
+    (=> (iterable) :do
+      (block
+        (for (in i iterable)
+          (yield i)
+        )
+      )
+    )
+  )
+  (blank)
+  (for (in a (call gen (list 1 2 3)))
+    (print a)
+  )
+)
 ```
 
 ```output
@@ -483,18 +523,21 @@ for a in gen([1,2,3])
 
 ### Generator with do finally
 
-```yumi
-for a in foo()
-    -- a
+```brix
+(main
+  (for (in a (call foo))
+    (print a)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-
-do finally
-    -- "bye"
-
-<= 1
-<= 2
+(fn-do + foo _
+  (finally
+    (print "bye")
+  )
+  (blank)
+  (yield 1)
+  (yield 2)
+)
 ```
 
 ```output
@@ -505,19 +548,22 @@ bye
 
 ### Generator with explicit return
 
-```yumi
-for a in foo()
-    -- a
+```brix
+(main
+  (for (in a (call foo))
+    (print a)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-
-do finally
-    -- "bye"
-
-<= 1
-=
-<= 3
+(fn-do + foo _
+  (finally
+    (print "bye")
+  )
+  (blank)
+  (yield 1)
+  (return)
+  (yield 3)
+)
 ```
 
 ```output
@@ -527,21 +573,22 @@ bye
 
 ### Generator can return early and return expression is evaluated but discarded
 
-```yumi
-for n in foo()
-    -- n
+```brix
+(main
+  (for (in n (call foo))
+    (print n)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
+(fn-do + foo _
+  (yield 1)
+  (return (call say))
+)
 
-<= 1
-= say()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do say
-
--- "say"
-= 42
+(fn-do + say _
+  (print "say")
+  (return 42)
+)
 ```
 
 ```output
@@ -551,20 +598,24 @@ say
 
 ### Generator with explicit return in nested scope
 
-```yumi
-for a in foo(1)
-    -- a
+```brix
+(main
+  (for (in a (call foo 1))
+    (print a)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - a
-
-do finally
-    -- "bye"
-<= 1
-if a
-    =
-<= 3
+(fn-do + foo _
+  (param a _)
+  (finally
+    (print "bye")
+  )
+  (yield 1)
+  (if a
+    (return)
+  )
+  (yield 3)
+)
 ```
 
 ```output
@@ -572,70 +623,75 @@ if a
 bye
 ```
 
-```yumi
-. f = foo()
-. g = f as Iterable'Int
-for n in g
-    -- n
+```brix
+(main
+  (let f (call foo))
+  (let g (as f (of Iterable Int)))
+  (for (in n g)
+    (print n)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-
-<= 1
+(fn-do + foo _
+  (yield 1)
+)
 ```
 
 ```output
 1
 ```
 
-```yumi
-. thing = Thing'Int()
-for n in thing
-    -- n
+```brix
+(main
+  (let thing (call (of Thing Int)))
+  (for (in n thing)
+    (print n)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T
-
-────────────────────
-+ do to Iterable'T
-
-<= 1
+(type + (of Thing T)
+  (fn-to-do + (of Iterable T)
+    (yield 1)
+  )
+)
 ```
 
 ```output
 1
 ```
 
-```yumi
-. thing = Thing'Int(1)
-for n in thing
-    -- n
+```brix
+(main
+  (let thing (call (of Thing Int) 1))
+  (for (in n thing)
+    (print n)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T is Tuple
-
-+ start T
-
-────────────────────
-+ do to Iterable'T
-
-<= this.start
+(type + (of Thing T) (is Tuple)
+  (prop + start T)
+  (fn-to-do + (of Iterable T)
+    (yield (. this start))
+  )
+)
 ```
 
 ```output
 1
 ```
 
-```yumi
-for i in foo(10 .. < 15)
-    -- i
+```brix
+(main
+  (for (in i (call foo (..< 10 15)))
+    (print i)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo'T
-    - stream <T>
-
-<= 1
-<<= stream
+(fn-do + (of foo T) _
+  (param stream (stream T))
+  (yield 1)
+  (yield-all stream)
+)
 ```
 
 ```output
@@ -647,14 +703,21 @@ for i in foo(10 .. < 15)
 14
 ```
 
-```yumi
-. names = ["a", "b", "c"]
-. sizes = [1, 0, 3]
-. labels = in names
-and size in sizes
-    "$each=$size"
-for label in labels
-    -- label
+```brix
+(main
+  (let names (list "a" "b" "c"))
+  (let sizes (list 1 0 3))
+  (let labels
+    (iterate (in names) (and-for (in size sizes))
+      (block
+        (str each "=" size)
+      )
+    )
+  )
+  (for (in label labels)
+    (print label)
+  )
+)
 ```
 
 ```output
@@ -665,28 +728,31 @@ c=3
 
 ### A generator read by two loops, the first left early, and one read by `<-` past its end.
 
-```yumi
-. g = gen()
-for a in g
-    -- a
-    break
-for a in g
-    -- a
--- "end"
-. h = gen()
--- <-h
--- <-h
--- <-h
--- <-h
+```brix
+(main
+  (let g (call gen))
+  (for (in a g)
+    (print a)
+    (break)
+  )
+  (for (in a g)
+    (print a)
+  )
+  (print "end")
+  (let h (call gen))
+  (print (<- h))
+  (print (<- h))
+  (print (<- h))
+  (print (<- h))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen
-
--- "start"
-<= 1
--- "middle"
-<= 2
--- "last"
+(fn-do + gen _
+  (print "start")
+  (yield 1)
+  (print "middle")
+  (yield 2)
+  (print "last")
+)
 ```
 
 ```output
@@ -704,17 +770,19 @@ unknown
 
 ### A local of a generator keeps its value from one yield to the next.
 
-```yumi
-for a in gen()
-    -- a
+```brix
+(main
+  (for (in a (call gen))
+    (print a)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen
-
-. count = 3
-<= 1
-count += 1
-<= count
+(fn-do + gen _
+  (let count 3)
+  (yield 1)
+  (+= count 1)
+  (yield count)
+)
 ```
 
 ```output
@@ -724,59 +792,69 @@ count += 1
 
 ### Generators that yield in loops: over a range up and down, over a list, over a text, and in two loops nested.
 
-```yumi
-for a in count(3)
-    -- a
-for a in down(3)
-    -- a
-for a in evens([1, 2, 3, 4, 5, 6])
-    -- a
-for a in letters("héy")
-    -- a
-for a in nested(2)
-    -- a
-. total = 0
-for a in count(1000)
-    total += a
--- total
+```brix
+(main
+  (for (in a (call count 3))
+    (print a)
+  )
+  (for (in a (call down 3))
+    (print a)
+  )
+  (for (in a (call evens (list 1 2 3 4 5 6)))
+    (print a)
+  )
+  (for (in a (call letters "héy"))
+    (print a)
+  )
+  (for (in a (call nested 2))
+    (print a)
+  )
+  (let total 0)
+  (for (in a (call count 1000))
+    (+= total a)
+  )
+  (print total)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do count
-    - limit Int
+(fn-do + count _
+  (param limit Int)
+  (for (in i (..< 0 limit))
+    (yield i)
+  )
+)
 
-for i in 0 .. < limit
-    <= i
+(fn-do + down _
+  (param from Int)
+  (for (in i (.. from 1))
+    (yield i)
+  )
+  (yield 0)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do down
-    - from Int
+(fn-do + evens _
+  (param items (list Int))
+  (for (in item items)
+    (if (== (% item 2) 0)
+      (yield item)
+    )
+  )
+)
 
-for i in from .. 1
-    <= i
-<= 0
+(fn-do + letters _
+  (param text String)
+  (for (in char text)
+    (yield char)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do evens
-    - items [Int]
-
-for item in items
-    if item % 2 == 0
-        <= item
-
-━━━━━━━━━━━━━━━━━━━━
-+ do letters
-    - text String
-
-for char in text
-    <= char
-
-━━━━━━━━━━━━━━━━━━━━
-+ do nested
-    - size Int
-
-for i in 0 .. < size
-    for j in 0 .. < size
-        <= i * 10 + j
+(fn-do + nested _
+  (param size Int)
+  (for (in i (..< 0 size))
+    (for (in j (..< 0 size))
+      (yield (+ (* i 10) j))
+    )
+  )
+)
 ```
 
 ```output
@@ -802,79 +880,83 @@ y
 
 ### A generator that reads another, one that stops reading early, a member that yields, and generators of texts and of tuples.
 
-```yumi
-for a in doubled(count(3))
-    -- a
-for a in firsts(count(100), 2)
-    -- a
-. c = Counter(2)
-for a in c.steps()
-    -- a
-for a in c.steps()
-    -- a
--- c.made
-for word in words()
-    -- word
-for pair in pairs()
-    -- pair[0]
-    -- pair[1]
+```brix
+(main
+  (for (in a (call doubled (call count 3)))
+    (print a)
+  )
+  (for (in a (call firsts (call count 100) 2))
+    (print a)
+  )
+  (let c (call Counter 2))
+  (for (in a (call (. c steps)))
+    (print a)
+  )
+  (for (in a (call (. c steps)))
+    (print a)
+  )
+  (print (. c made))
+  (for (in word (call words))
+    (print word)
+  )
+  (for (in pair (call pairs))
+    (print ([] pair 0))
+    (print ([] pair 1))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do count
-    - limit Int
+(fn-do + count _
+  (param limit Int)
+  (let i 0)
+  (while (< i limit)
+    (yield i)
+    (+= i 1)
+  )
+)
 
-. i = 0
-while i < limit
-    <= i
-    i += 1
+(fn-do + doubled _
+  (param source (of Generator Int))
+  (for (in item source)
+    (yield (* item 2))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do doubled
-    - source Generator'Int
+(fn-do + firsts _
+  (param source (of Generator Int))
+  (param limit Int)
+  (let taken 0)
+  (for (in item source)
+    (if (== taken limit)
+      (break)
+    )
+    (+= taken 1)
+    (yield item)
+  )
+)
 
-for item in source
-    <= item * 2
+(fn-do + words _
+  (yield "one")
+  (yield "two")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do firsts
-    - source Generator'Int
-    - limit Int
+(fn-do + pairs _
+  (yield (tuple 1 "a"))
+  (yield (tuple 2 "b"))
+)
 
-. taken = 0
-for item in source
-    if taken == limit
-        break
-    taken += 1
-    <= item
-
-━━━━━━━━━━━━━━━━━━━━
-+ do words
-
-<= "one"
-<= "two"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pairs
-
-<= (1, "a")
-<= (2, "b")
-
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
-
-+ limit Int
-+ made = 0
-
-────────────────────
-+ This
-    - limit Int
-
-────────────────────
-+ do steps
-
-for i in 0 .. < limit
-    made += 1
-    <= made * 100 + i
+(type + Counter
+  (prop + limit Int)
+  (prop + made _ (= 0))
+  (fn-do + This _
+    (param limit Int)
+  )
+  (fn-do + steps _
+    (for (in i (..< 0 limit))
+      (+= made 1)
+      (yield (+ (* made 100) i))
+    )
+  )
+)
 ```
 
 ```output
@@ -898,29 +980,28 @@ b
 
 ### A panic raised between two yields of a generator leaves the loop that reads it.
 
-```yumi crash
-run()
+```brix crash
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (for (in a (call gen 2))
+    (print a)
+  )
+)
 
-for a in gen(2)
-    -- a
+(fn-do + gen _
+  (param limit Int)
+  (yield 1)
+  (call check limit)
+  (yield 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen
-    - limit Int
-
-<= 1
-check(limit)
-<= 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do check
-    - n Int
-
-?! Panic("bad")
-    if n == 2
+(fn-do + check _
+  (param n Int)
+  (throw (call Panic "bad") (if (== n 2)))
+)
 ```
 
 ```output
@@ -929,36 +1010,43 @@ check(limit)
 
 ### A generator left by `break` goes on where it stopped; one read by `<-` and then by a loop; a return from inside a loop over one.
 
-```yumi
-. g = count(5)
-for a in g
-    -- a
-    if a == 1
-        break
--- "between"
-for a in g
-    -- a
--- "after"
-. h = count(3)
--- <-h
-for a in h
-    -- a
--- outer()
+```brix
+(main
+  (let g (call count 5))
+  (for (in a g)
+    (print a)
+    (if (== a 1)
+      (break)
+    )
+  )
+  (print "between")
+  (for (in a g)
+    (print a)
+  )
+  (print "after")
+  (let h (call count 3))
+  (print (<- h))
+  (for (in a h)
+    (print a)
+  )
+  (print (call outer))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do count
-    - limit Int
+(fn-do + count _
+  (param limit Int)
+  (for (in i (..< 0 limit))
+    (yield i)
+  )
+)
 
-for i in 0 .. < limit
-    <= i
-
-━━━━━━━━━━━━━━━━━━━━
-+ do outer Int
-
-for a in count(10)
-    if a == 3
-        = a * 2
-= 0
+(fn-do + outer Int
+  (for (in a (call count 10))
+    (if (== a 3)
+      (return (* a 2))
+    )
+  )
+  (return 0)
+)
 ```
 
 ```output
@@ -974,38 +1062,41 @@ after
 
 ### A generator given to a function that takes a stream, read by a loop there, left early, and made a list.
 
-```yumi
-show(gen(3))
--- total(gen(4))
-. list = List'Int(gen(3))
--- list.length, list[0], list[2]
+```brix
+(main
+  (call show (call gen 3))
+  (print (call total (call gen 4)))
+  (let list (call (of List Int) (call gen 3)))
+  (print (tuple (. list length) ([] list 0) ([] list 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - stream <Int>
+(fn-do + show _
+  (param stream (stream Int))
+  (for (in item stream)
+    (print item)
+  )
+)
 
-for item in stream
-    -- item
+(fn-do + total Int
+  (param stream (stream Int))
+  (let sum 0)
+  (for (in item stream)
+    (if (== item 3)
+      (break)
+    )
+    (+= sum item)
+  )
+  (return sum)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do total Int
-    - stream <Int>
-
-. sum = 0
-for item in stream
-    if item == 3
-        break
-    sum += item
-= sum
-
-━━━━━━━━━━━━━━━━━━━━
-+ do gen <Int>
-    - n Int
-
-. i = 0
-while i < n
-    <= i
-    i += 1
+(fn-do + gen (stream Int)
+  (param n Int)
+  (let i 0)
+  (while (< i n)
+    (yield i)
+    (+= i 1)
+  )
+)
 ```
 
 ```output
@@ -1018,38 +1109,39 @@ while i < n
 
 ### A loop over a stream in a constructor, left early.
 
-```yumi
-. bag = Bag(gen(4))
--- bag.count, bag.sum
-. other = Bag(gen(0))
--- other.count, other.sum
-. third = Bag(gen(9))
--- third.count, third.sum
+```brix
+(main
+  (let bag (call Bag (call gen 4)))
+  (print (tuple (. bag count) (. bag sum)))
+  (let other (call Bag (call gen 0)))
+  (print (tuple (. other count) (. other sum)))
+  (let third (call Bag (call gen 9)))
+  (print (tuple (. third count) (. third sum)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bag
+(type + Bag
+  (prop + count Int)
+  (prop + sum Int)
+  (fn-do + This _
+    (param stream (stream Int))
+    (for (in item stream)
+      (if (== item 5)
+        (break)
+      )
+      (+= count 1)
+      (+= sum item)
+    )
+  )
+)
 
-+ count Int
-+ sum Int
-
-────────────────────
-+ This
-    - stream <Int>
-
-for item in stream
-    if item == 5
-        break
-    count += 1
-    sum += item
-
-━━━━━━━━━━━━━━━━━━━━
-+ do gen <Int>
-    - n Int
-
-. i = 0
-while i < n
-    <= i
-    i += 1
+(fn-do + gen (stream Int)
+  (param n Int)
+  (let i 0)
+  (while (< i n)
+    (yield i)
+    (+= i 1)
+  )
+)
 ```
 
 ```output
@@ -1060,40 +1152,41 @@ while i < n
 
 ### A panic in the body of a loop over a generator runs the cleanup the generator has open.
 
-```yumi crash
-. bag = Bag(gen(4))
--- bag.count
+```brix crash
+(main
+  (let bag (call Bag (call gen 4)))
+  (print (. bag count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bag
+(type + Bag
+  (prop + count Int)
+  (fn-do + This _
+    (param stream (stream Int))
+    (for (in item stream)
+      (+= count (call check item))
+    )
+  )
+)
 
-+ count Int
+(fn-do + check Int
+  (param item Int)
+  (if (== item 2)
+    (throw (call Panic "two"))
+  )
+  (return 1)
+)
 
-────────────────────
-+ This
-    - stream <Int>
-
-for item in stream
-    count += check(item)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do check Int
-    - item Int
-
-if item == 2
-    ?! Panic("two")
-= 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do gen <Int>
-    - n Int
-
-do finally
-    -- "closed"
-. i = 0
-while i < n
-    <= i
-    i += 1
+(fn-do + gen (stream Int)
+  (param n Int)
+  (finally
+    (print "closed")
+  )
+  (let i 0)
+  (while (< i n)
+    (yield i)
+    (+= i 1)
+  )
+)
 ```
 
 ```output
@@ -1102,46 +1195,43 @@ closed
 
 ### A generator an interface declares, run for an object through a value of the interface and read by `<-`.
 
-```yumi
-. dog Pet = Dog("rex")
-for line in dog.lines(2)
-    -- line
-. cat = Dog("tom")
-for line in cat.lines(1)
-    -- line
-. lines = dog.lines(3)
--- <-lines
--- <-lines
+```brix
+(main
+  (let dog Pet (call Dog "rex"))
+  (for (in line (call (. dog lines) 2))
+    (print line)
+  )
+  (let cat (call Dog "tom"))
+  (for (in line (call (. cat lines) 1))
+    (print line)
+  )
+  (let lines (call (. dog lines) 3))
+  (print (<- lines))
+  (print (<- lines))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pet is Interface
+(type + Pet (is Interface)
+  (fn-expr + name String :get)
+  (fn-do + lines (stream String)
+    (param n Int)
+    (let i 0)
+    (while (< i n)
+      (yield (str name " " i))
+      (+= i 1)
+    )
+  )
+)
 
-────────────────────
-+ get name String
-
-────────────────────
-+ do lines <String>
-    - n Int
-
-. i = 0
-while i < n
-    <= "$name $i"
-    i += 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Dog
-    is Pet
-
-_ called String
-
-────────────────────
-+ This
-    - called
-
-────────────────────
-+ get name
-
-called
+(type + Dog
+  (implements Pet)
+  (prop _ called String)
+  (fn-do + This _
+    (param called _)
+  )
+  (fn-expr + name _ :get
+    called
+  )
+)
 ```
 
 ```output
@@ -1154,42 +1244,39 @@ rex 1
 
 ### A panic in a generator an interface declares.
 
-```yumi crash
-. dog Pet = Dog("rex")
-for line in dog.lines(4)
-    -- line
+```brix crash
+(main
+  (let dog Pet (call Dog "rex"))
+  (for (in line (call (. dog lines) 4))
+    (print line)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pet is Interface
+(type + Pet (is Interface)
+  (fn-expr + name String :get)
+  (fn-do + lines (stream String)
+    (param n Int)
+    (let i 0)
+    (while (< i n)
+      (if (== i 2)
+        (throw (call Panic "at two"))
+      )
+      (yield (str name " " i))
+      (+= i 1)
+    )
+  )
+)
 
-────────────────────
-+ get name String
-
-────────────────────
-+ do lines <String>
-    - n Int
-
-. i = 0
-while i < n
-    if i == 2
-        ?! Panic("at two")
-    <= "$name $i"
-    i += 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Dog
-    is Pet
-
-_ called String
-
-────────────────────
-+ This
-    - called
-
-────────────────────
-+ get name
-
-called
+(type + Dog
+  (implements Pet)
+  (prop _ called String)
+  (fn-do + This _
+    (param called _)
+  )
+  (fn-expr + name _ :get
+    called
+  )
+)
 ```
 
 ```output
@@ -1199,30 +1286,29 @@ rex 1
 
 ### A stream read by `<-` in a function that does nothing else, once and twice in a tuple.
 
-```yumi
-. g = gen()
--- first(g)
--- first(g)
--- both(g)
+```brix
+(main
+  (let g (call gen))
+  (print (call first g))
+  (print (call first g))
+  (print (call both g))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do first Int?
-    - stream <Int>
+(fn-do + first (? Int)
+  (param stream (stream Int))
+  (return (<- stream))
+)
 
-= <- stream
+(fn-expr + both (tuple (? Int) (? Int))
+  (param stream (stream Int))
+  (tuple (<- stream) (<- stream))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ both (Int?, Int?)
-    - stream <Int>
-
-<- stream, <- stream
-
-━━━━━━━━━━━━━━━━━━━━
-+ do gen <Int>
-
-<= 1
-<= 2
-<= 3
+(fn-do + gen (stream Int)
+  (yield 1)
+  (yield 2)
+  (yield 3)
+)
 ```
 
 ```output
@@ -1233,52 +1319,56 @@ rex 1
 
 ### A yield of an optional, `<=?`: only a value that is there is yielded.
 
-```yumi
-for each in evens([1, 2, 3, 4, 5, 6])
-    -- each
-for each in firsts(["ab", "", "cd"])
-    -- each
-for each in both(3)
-    -- each
+```brix
+(main
+  (for (in each (call evens (list 1 2 3 4 5 6)))
+    (print each)
+  )
+  (for (in each (call firsts (list "ab" "" "cd")))
+    (print each)
+  )
+  (for (in each (call both 3))
+    (print each)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do evens <Int>
-    - items [Int]
+(fn-do _ evens (stream Int)
+  (param items (list Int))
+  (for (in item items)
+    (yield? (call even item))
+  )
+)
 
-for item in items
-    <=? even(item)
+(fn-do _ even (? Int)
+  (param n Int)
+  (if (== (% n 2) 0)
+    (return n)
+  )
+  (return null)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do even Int?
-    - n Int
+(fn-do _ firsts (stream String)
+  (param words (list String))
+  (for (in word words)
+    (yield? (call head word))
+    (yield "-")
+  )
+)
 
-if n % 2 == 0
-    = n
-= null
+(fn-do _ head (? String)
+  (param word String)
+  (if (== (. word length) 0)
+    (return null)
+  )
+  (return word)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do firsts <String>
-    - words [String]
-
-for word in words
-    <=? head(word)
-    <= "-"
-
-━━━━━━━━━━━━━━━━━━━━
-_ do head String?
-    - word String
-
-if word.length == 0
-    = null
-= word
-
-━━━━━━━━━━━━━━━━━━━━
-_ do both <Int>
-    - n Int
-
-<=? even(n)
-<= n
-<=? even(n + 1)
+(fn-do _ both (stream Int)
+  (param n Int)
+  (yield? (call even n))
+  (yield n)
+  (yield? (call even (+ n 1)))
+)
 ```
 
 ```output
@@ -1296,35 +1386,38 @@ cd
 
 ### A yield converted to the type of the generator's items: a whole number to a float and to a wider one, and a tuple.
 
-```yumi
-for each in halves()
-    -- each
-for each in wide()
-    -- each
-for (index, word) in tagged(["one", "two"])
-    -- "$index $word"
+```brix
+(main
+  (for (in each (call halves))
+    (print each)
+  )
+  (for (in each (call wide))
+    (print each)
+  )
+  (for (in (tuple index word) (call tagged (list "one" "two")))
+    (print (str index " " word))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do halves <Float>
+(fn-do _ halves (stream Float)
+  (yield 1)
+  (yield 2.5)
+  (let n I32 3)
+  (yield n)
+)
 
-<= 1
-<= 2.5
-. n I32 = 3
-<= n
+(fn-do _ wide (stream Int64)
+  (let n 7)
+  (yield n)
+  (yield 8)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do wide <Int64>
-
-. n = 7
-<= n
-<= 8
-
-━━━━━━━━━━━━━━━━━━━━
-_ do tagged <(Int, String)>
-    - items [String]
-
-for index in 0 .. < items.length
-    <= (index, items[index])
+(fn-do _ tagged (stream (tuple Int String))
+  (param items (list String))
+  (for (in index (..< 0 (. items length)))
+    (yield (tuple index ([] items index)))
+  )
+)
 ```
 
 ```output
@@ -1339,34 +1432,37 @@ for index in 0 .. < items.length
 
 ### A yield of every item of a stream, `<<=`: of a generator and of a list.
 
-```yumi
-for each in all()
-    -- each
-for each in twice([1, 2])
-    -- each
+```brix
+(main
+  (for (in each (call all))
+    (print each)
+  )
+  (for (in each (call twice (list 1 2)))
+    (print each)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do evens <Int>
-    - items [Int]
+(fn-do _ evens (stream Int)
+  (param items (list Int))
+  (for (in item items)
+    (if (== (% item 2) 0)
+      (yield item)
+    )
+  )
+)
 
-for item in items
-    if item % 2 == 0
-        <= item
+(fn-do _ all (stream Int)
+  (yield 0)
+  (yield-all (call evens (list 10 11 12)))
+  (yield-all (list 20 21))
+  (yield 99)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do all <Int>
-
-<= 0
-<<= evens([10, 11, 12])
-<<= [20, 21]
-<= 99
-
-━━━━━━━━━━━━━━━━━━━━
-_ do twice <Int>
-    - items [Int]
-
-<<= items
-<<= items
+(fn-do _ twice (stream Int)
+  (param items (list Int))
+  (yield-all items)
+  (yield-all items)
+)
 ```
 
 ```output
@@ -1384,17 +1480,20 @@ _ do twice <Int>
 
 ### A generator declared to return a stream that yields every item of a call to itself.
 
-```yumi
-for value in leaves(3)
-    -- "$value"
+```brix
+(main
+  (for (in value (call leaves 3))
+    (print (str value))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do leaves <Int>
-    - depth Int
-
-if depth > 0
-    <<= leaves(depth - 1)
-<= depth
+(fn-do _ leaves (stream Int)
+  (param depth Int)
+  (if (> depth 0)
+    (yield-all (call leaves (- depth 1)))
+  )
+  (yield depth)
+)
 ```
 
 ```output
@@ -1406,34 +1505,32 @@ if depth > 0
 
 ### A method generator that yields every item of a call to itself, first reached by a bare call inside its class and then called on an object.
 
-```yumi
-. node = Node("a")
-node.kids += Node("b")
--- node.first()?.id ?? "none"
-for each in node.all()
-    -- each.id
+```brix
+(main
+  (let node (call Node "a"))
+  (+= (. node kids) (call Node "b"))
+  (print (?? (?. (call (. node first)) id) "none"))
+  (for (in each (call (. node all)))
+    (print (. each id))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node
-
-+ id String
-+ kids [Node]
-
-────────────────────
-+ This
-    - id
-
-────────────────────
-+ do all <Node>
-
-<= this
-for kid in kids
-    <<= kid.all()
-
-────────────────────
-+ first Node?
-
-<- all()
+(type + Node
+  (prop + id String)
+  (prop + kids (list Node))
+  (fn-do + This _
+    (param id _)
+  )
+  (fn-do + all (stream Node)
+    (yield this)
+    (for (in kid kids)
+      (yield-all (call (. kid all)))
+    )
+  )
+  (fn-expr + first (? Node)
+    (<- (call all))
+  )
+)
 ```
 
 ```output
@@ -1444,19 +1541,20 @@ b
 
 ### A generator that yields every item of another generator, in a program that asks to inline nothing.
 
-```yumi
-for each in outer()
-    -- each
+```brix
+(main
+  (for (in each (call outer))
+    (print each)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do inner <String>
+(fn-do _ inner (stream String)
+  (yield "a")
+)
 
-<= "a"
-
-━━━━━━━━━━━━━━━━━━━━
-_ do outer <String>
-
-<<= inner()
+(fn-do _ outer (stream String)
+  (yield-all (call inner))
+)
 ```
 
 ```output
@@ -1465,23 +1563,41 @@ a
 
 ### A comprehension written as a block, over a range: with a name for the item, and with `when`, `while` and `until`.
 
-```yumi
-. iter = <* n in 1 .. 3
-    n * 2
-for each in iter
-    -- each
-. evens = <* n in 1 .. 6 when n % 2 == 0
-    n
-for each in evens
-    -- each
-. early = <* n in 1 .. 6 while n < 3
-    n + 100
-for each in early
-    -- each
-. late = <* n in 1 .. 6 until n == 3
-    n - 100
-for each in late
-    -- each
+```brix
+(main
+  (let iter
+    (case-each (in n (.. 1 3))
+      (* n 2)
+    )
+  )
+  (for (in each iter)
+    (print each)
+  )
+  (let evens
+    (case-each (in n (.. 1 6) (when (== (% n 2) 0)))
+      n
+    )
+  )
+  (for (in each evens)
+    (print each)
+  )
+  (let early
+    (case-each (in n (.. 1 6) (while (< n 3)))
+      (+ n 100)
+    )
+  )
+  (for (in each early)
+    (print each)
+  )
+  (let late
+    (case-each (in n (.. 1 6) (until (== n 3)))
+      (- n 100)
+    )
+  )
+  (for (in each late)
+    (print each)
+  )
+)
 ```
 
 ```output
@@ -1499,23 +1615,27 @@ for each in late
 
 ### A comprehension over a range that reads a local of the function that writes it, one in a function with a clause, and one of floats.
 
-```yumi
-. k = 10
-for each in (each * k in 1 .. 3)
-    -- each
--- total(4)
-. scaled = (it + 0.5 in 0 .. < 3)
-for each in scaled
-    -- each
+```brix
+(main
+  (let k 10)
+  (for (in each (in (* each k) (.. 1 3)))
+    (print each)
+  )
+  (print (call total 4))
+  (let scaled (in (+ it 0.5) (..< 0 3)))
+  (for (in each scaled)
+    (print each)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do total Int
-    - n Int
-
-. sum = 0
-for each in (each * each in 1 .. n when each % 2 == 0)
-    sum += each
-= sum
+(fn-do _ total Int
+  (param n Int)
+  (let sum 0)
+  (for (in each (in (* each each) (.. 1 n) (when (== (% each 2) 0))))
+    (+= sum each)
+  )
+  (return sum)
+)
 ```
 
 ```output
@@ -1530,32 +1650,30 @@ for each in (each * each in 1 .. n when each % 2 == 0)
 
 ### A comprehension a method returns, which reads the receiver and an argument.
 
-```yumi
-. box = Box(3)
-for each in box.steps()
-    -- each
-for each in box.doubled(2)
-    -- each
+```brix
+(main
+  (let box (call Box 3))
+  (for (in each (call (. box steps)))
+    (print each)
+  )
+  (for (in each (call (. box doubled) 2))
+    (print each)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ size Int
-
-────────────────────
-+ This
-    - size Int
-
-────────────────────
-+ do steps <Int>
-
-= (each + size in 0 .. < size)
-
-────────────────────
-+ do doubled <Int>
-    - by Int
-
-= (each * by * size in 1 .. 2)
+(type + Box
+  (prop + size Int)
+  (fn-do + This _
+    (param size Int)
+  )
+  (fn-do + steps (stream Int)
+    (return (in (+ each size) (..< 0 size)))
+  )
+  (fn-do + doubled (stream Int)
+    (param by Int)
+    (return (in (* each by size) (.. 1 2)))
+  )
+)
 ```
 
 ```output
@@ -1568,37 +1686,42 @@ for each in box.doubled(2)
 
 ### A comprehension reads a local as it is when the items are read; one never read, one left by `break`, one given to a function as a stream, and an empty one.
 
-```yumi
-. k = 2
-. later = (each * k in 1 .. 3)
-k = 5
-for each in later
-    -- each
-. unread = (each in 1 .. 3)
-for each in (each + 1 in 1 .. 10)
-    if each > 3
-        break
-    -- each
--- sum-of((each * each in 1 .. 4))
--- count((it in 0 .. < 0))
+```brix
+(main
+  (let k 2)
+  (let later (in (* each k) (.. 1 3)))
+  (= k 5)
+  (for (in each later)
+    (print each)
+  )
+  (let unread (in each (.. 1 3)))
+  (for (in each (in (+ each 1) (.. 1 10)))
+    (if (> each 3)
+      (break)
+    )
+    (print each)
+  )
+  (print (call sum-of (in (* each each) (.. 1 4))))
+  (print (call count (in it (..< 0 0))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do sum-of Int
-    - items <Int>
+(fn-do _ sum-of Int
+  (param items (stream Int))
+  (let sum 0)
+  (for (in item items)
+    (+= sum item)
+  )
+  (return sum)
+)
 
-. sum = 0
-for item in items
-    sum += item
-= sum
-
-━━━━━━━━━━━━━━━━━━━━
-_ do count Int
-    - items <Int>
-
-. n = 0
-for item in items
-    n += 1
-= n
+(fn-do _ count Int
+  (param items (stream Int))
+  (let n 0)
+  (for (in item items)
+    (+= n 1)
+  )
+  (return n)
+)
 ```
 
 ```output
@@ -1613,23 +1736,29 @@ for item in items
 
 ### A comprehension in a function that yields, one a nested function returns, and one read inside the loop of another.
 
-```yumi
-for each in outer(3)
-    -- each
-. twice = :: n => (each * n in 1 .. 2)
-for each in twice(7)
-    -- each
-for row in (each * 10 in 1 .. 2)
-    for cell in (each + 100 in 1 .. 2)
-        -- cell + row
+```brix
+(main
+  (for (in each (call outer 3))
+    (print each)
+  )
+  (let twice (=> (n) (in (* each n) (.. 1 2))))
+  (for (in each (call twice 7))
+    (print each)
+  )
+  (for (in row (in (* each 10) (.. 1 2)))
+    (for (in cell (in (+ each 100) (.. 1 2)))
+      (print (+ cell row))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do outer <Int>
-    - n Int
-
-for each in (each * n in 1 .. 2)
-    <= each
-<<= (each - n in 1 .. 2)
+(fn-do _ outer (stream Int)
+  (param n Int)
+  (for (in each (in (* each n) (.. 1 2)))
+    (yield each)
+  )
+  (yield-all (in (- each n) (.. 1 2)))
+)
 ```
 
 ```output
@@ -1647,37 +1776,39 @@ for each in (each * n in 1 .. 2)
 
 ### A generator given where an iterable of another type of item is wanted, each item converted: from a function that yields and from a comprehension.
 
-```yumi
--- total(walk())
--- wide(walk())
--- total((each * 2 in 1i32 .. 3))
-. kept Iterable'Float = walk()
-for each in kept
-    -- each
+```brix
+(main
+  (print (call total (call walk)))
+  (print (call wide (call walk)))
+  (print (call total (in (* each 2) (.. 1i32 3))))
+  (let kept (of Iterable Float) (call walk))
+  (for (in each kept)
+    (print each)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do walk <I32>
+(fn-do _ walk (stream I32)
+  (yield 1)
+  (yield 2)
+)
 
-<= 1
-<= 2
+(fn-do _ total Float
+  (param items (of Iterable Float))
+  (let sum 0.0)
+  (for (in item items)
+    (+= sum item)
+  )
+  (return sum)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do total Float
-    - items Iterable'Float
-
-. sum = 0.0
-for item in items
-    sum += item
-= sum
-
-━━━━━━━━━━━━━━━━━━━━
-_ do wide Int64
-    - items Iterable'Int64
-
-. sum = 0i64
-for item in items
-    sum += item
-= sum
+(fn-do _ wide Int64
+  (param items (of Iterable Int64))
+  (let sum 0i64)
+  (for (in item items)
+    (+= sum item)
+  )
+  (return sum)
+)
 ```
 
 ```output
@@ -1690,18 +1821,21 @@ for item in items
 
 ### A panic under a comprehension written in the header of a loop.
 
-```yumi crash
-. items = [1, 0]
-for each in (10 / check(each) in items)
-    -- each
+```brix crash
+(main
+  (let items (list 1 0))
+  (for (in each (in (/ 10 (call check each)) items))
+    (print each)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do check Int
-    - d Int
-
-if d == 0
-    ?! Panic("zero")
-= d
+(fn-do _ check Int
+  (param d Int)
+  (if (== d 0)
+    (throw (call Panic "zero"))
+  )
+  (return d)
+)
 ```
 
 ```output
@@ -1710,69 +1844,76 @@ if d == 0
 
 ### A panic under a comprehension kept in a local and read by a loop of the same function.
 
-```yumi crash
--- total()
+```brix crash
+(main
+  (print (call total))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do total Int
+(fn-do _ total Int
+  (let items (list 1 0))
+  (let sum 0)
+  (let halves (in (/ 10 (call check each)) items))
+  (for (in each halves)
+    (+= sum each)
+  )
+  (return sum)
+)
 
-. items = [1, 0]
-. sum = 0
-. halves = (10 / check(each) in items)
-for each in halves
-    sum += each
-= sum
-
-━━━━━━━━━━━━━━━━━━━━
-_ do check Int
-    - d Int
-
-if d == 0
-    ?! Panic("zero")
-= d
+(fn-do _ check Int
+  (param d Int)
+  (if (== d 0)
+    (throw (call Panic "zero"))
+  )
+  (return d)
+)
 ```
 
 ### A panic under a comprehension read through `join`.
 
-```yumi crash
-. items = [1, 0]
-. halves = (10 / check(each) in items)
--- ", ".join(halves)
+```brix crash
+(main
+  (let items (list 1 0))
+  (let halves (in (/ 10 (call check each)) items))
+  (print (call (. ", " join) halves))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do check Int
-    - d Int
-
-if d == 0
-    ?! Panic("zero")
-= d
+(fn-do _ check Int
+  (param d Int)
+  (if (== d 0)
+    (throw (call Panic "zero"))
+  )
+  (return d)
+)
 ```
 
 ### A panic under the second of two comprehensions over one name.
 
-```yumi crash
-run(2)
+```brix crash
+(main
+  (call run 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
-    - bad Int
+(fn-do + run _
+  (param bad Int)
+  (let items (list 1 2 3))
+  (let first (in (call check each 9) items))
+  (for (in item first)
+    (print item)
+  )
+  (let second (in (call check each bad) items))
+  (for (in item second)
+    (print item)
+  )
+)
 
-. items = [1, 2, 3]
-. first = (check(each, 9) in items)
-for item in first
-    -- item
-. second = (check(each, bad) in items)
-for item in second
-    -- item
-
-━━━━━━━━━━━━━━━━━━━━
-+ do check Int
-    - n Int
-    - bad Int
-
-if n == bad
-    ?! Panic("no")
-= n
+(fn-do + check Int
+  (param n Int)
+  (param bad Int)
+  (if (== n bad)
+    (throw (call Panic "no"))
+  )
+  (return n)
+)
 ```
 
 ```output
@@ -1784,24 +1925,26 @@ if n == bad
 
 ### A panic under a comprehension over a range, written in the header of a loop.
 
-```yumi crash
-run(2)
+```brix crash
+(main
+  (call run 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
-    - bad Int
+(fn-do + run _
+  (param bad Int)
+  (for (in item (in (call check each bad) (.. 1 3)))
+    (print item)
+  )
+)
 
-for item in (check(each, bad) in 1 .. 3)
-    -- item
-
-━━━━━━━━━━━━━━━━━━━━
-+ do check Int
-    - n Int
-    - bad Int
-
-if n == bad
-    ?! Panic("no")
-= n
+(fn-do + check Int
+  (param n Int)
+  (param bad Int)
+  (if (== n bad)
+    (throw (call Panic "no"))
+  )
+  (return n)
+)
 ```
 
 ```output
@@ -1810,30 +1953,30 @@ if n == bad
 
 ### A panic under the second of two comprehensions over a property, read through `join`.
 
-```yumi crash
-run(2)
+```brix crash
+(main
+  (call run 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
-    - bad Int
+(fn-do + run _
+  (param bad Int)
+  (let box (call Box))
+  (print (call (. ", " join) (in (call check each 9) (. box items))))
+  (print (call (. ", " join) (in (call check each bad) (. box items))))
+)
 
-. box = Box()
--- ", ".join((check(each, 9) in box.items))
--- ", ".join((check(each, bad) in box.items))
+(type + Box
+  (prop + items _ (= (list 1 2 3)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ items = [1, 2, 3]
-
-━━━━━━━━━━━━━━━━━━━━
-+ do check Int
-    - n Int
-    - bad Int
-
-if n == bad
-    ?! Panic("no")
-= n
+(fn-do + check Int
+  (param n Int)
+  (param bad Int)
+  (if (== n bad)
+    (throw (call Panic "no"))
+  )
+  (return n)
+)
 ```
 
 ```output
@@ -1842,41 +1985,44 @@ if n == bad
 
 ### A class read by `<-` through a value of an interface panics in a later read: the loop that reads it ends, and the program ends by the panic.
 
-```yumi crash
-. f Iterable'Int = Feed()
-. sum = 0
-. item = <-f
-while item
-    sum += item
-    item = <-f
--- sum
+```brix crash
+(main
+  (let f (of Iterable Int) (call Feed))
+  (let sum 0)
+  (let item (<- f))
+  (while item
+    (+= sum item)
+    (= item (<- f))
+  )
+  (print sum)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Feed
-    is Iterable'Int
-
-_ n = 0
-
-────────────────────
-+ do <- this Int?
-
-n += 1
-if n == 2
-    ?! Panic("feed")
-= n
+(type + Feed
+  (implements (of Iterable Int))
+  (prop _ n _ (= 0))
+  (fn-do + (prefix <- this) (? Int)
+    (+= n 1)
+    (if (== n 2)
+      (throw (call Panic "feed"))
+    )
+    (return n)
+  )
+)
 ```
 
 ### Yields of two tuples, neither the wider: the items have the tuple of what the fields at each place join to.
 
-```yumi
-for item in gen()
-    -- item
+```brix
+(main
+  (for (in item (call gen))
+    (print item)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen
-
-<= (1, "a")
-<= (2.5, "b")
+(fn-do + gen _
+  (yield (tuple 1 "a"))
+  (yield (tuple 2.5 "b"))
+)
 ```
 
 ```output
@@ -1886,16 +2032,18 @@ for item in gen()
 
 ### Three yields of pairs with a float on either side: every item has a float at both places.
 
-```yumi
-for item in gen()
-    -- item
+```brix
+(main
+  (for (in item (call gen))
+    (print item)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen
-
-<= (2.5, 1)
-<= (1, 2.5)
-<= (7, 7)
+(fn-do + gen _
+  (yield (tuple 2.5 1))
+  (yield (tuple 1 2.5))
+  (yield (tuple 7 7))
+)
 ```
 
 ```output
@@ -1906,16 +2054,18 @@ for item in gen()
 
 ### Yields of tuples that hold tuples join place by place, within the tuples they hold too.
 
-```yumi
-for item in gen()
-    -- item
+```brix
+(main
+  (for (in item (call gen))
+    (print item)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen
-
-<= (1, (2, 3))
-<= (1.5, (2.5, 3))
-<= (1, (2, 3.5))
+(fn-do + gen _
+  (yield (tuple 1 (tuple 2 3)))
+  (yield (tuple 1.5 (tuple 2.5 3)))
+  (yield (tuple 1 (tuple 2 3.5)))
+)
 ```
 
 ```output
@@ -1926,15 +2076,17 @@ for item in gen()
 
 ### Yields of two lists give a list both convert to.
 
-```yumi
-for item in gen()
-    -- item
+```brix
+(main
+  (for (in item (call gen))
+    (print item)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen
-
-<= [1, 2]
-<= [2.5]
+(fn-do + gen _
+  (yield (list 1 2))
+  (yield (list 2.5))
+)
 ```
 
 ```output
@@ -1944,26 +2096,25 @@ for item in gen()
 
 ### A struct yielded before a tuple of its fields: the tuple is converted to the struct.
 
-```yumi
-for item in gen()
-    -- item
+```brix
+(main
+  (for (in item (call gen))
+    (print item)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen
+(fn-do + gen _
+  (yield (call P 1 2))
+  (yield (tuple 3 4))
+)
 
-<= P(1, 2)
-<= (3, 4)
-
-━━━━━━━━━━━━━━━━━━━━
-+ P is Struct
-
-+ x Int
-+ y Int
-
-────────────────────
-+ to String
-
-"P$x$y"
+(type + P (is Struct)
+  (prop + x Int)
+  (prop + y Int)
+  (fn-to-expr + String
+    (str "P" x y)
+  )
+)
 ```
 
 ```output
@@ -1973,39 +2124,44 @@ P34
 
 ### A generator of optional items yields an item that holds nothing without ending
 
-```yumi
-for item in gaps()
-    -- item ?? -1
--- "collected"
-. all = List(gaps())
--- all.length
-. texts = List(named())
--- texts.length
-for text in named()
-    -- text ?? "(none)"
-. kept =
-    ** gaps()
-    ?> each != null
-    *> each ?? 0
-    |> List
--- ", ".join(kept)
+```brix
+(main
+  (for (in item (call gaps))
+    (print (?? item -1))
+  )
+  (print "collected")
+  (let all (call List (call gaps)))
+  (print (. all length))
+  (let texts (call List (call named)))
+  (print (. texts length))
+  (for (in text (call named))
+    (print (?? text "(none)"))
+  )
+  (let kept
+    (block
+      (spread (call gaps))
+      (pipe ?> (!= each null))
+      (pipe *> (?? each 0))
+      (pipe |> List)
+    )
+  )
+  (print (call (. ", " join) kept))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gaps
+(fn-do + gaps _
+  (let missing (? Int))
+  (yield 1)
+  (yield missing)
+  (yield 3)
+  (yield missing)
+)
 
-. missing Int?
-<= 1
-<= missing
-<= 3
-<= missing
-
-━━━━━━━━━━━━━━━━━━━━
-+ do named <String?>
-
-. missing String?
-<= "a"
-<= missing
-<= "c"
+(fn-do + named (stream (? String))
+  (let missing (? String))
+  (yield "a")
+  (yield missing)
+  (yield "c")
+)
 ```
 
 ```output
@@ -2024,81 +2180,75 @@ c
 
 ### A function that yields and is declared to return a list returns the list of what it yields
 
-```yumi
-. shelf = Shelf()
-shelf.add("b")
-shelf.add("a")
-. titles = shelf.titles
--- type-of titles
--- titles.length
--- ", ".join(titles)
-shelf.add("c")
--- titles.length
--- shelf.titles.length
--- squares(4)
--- squares(0).length
--- type-of pairs()
-for (n, name) in pairs()
-    -- "$n=$name"
-. things = shelf.things
--- type-of things
-for thing in things
-    -- thing.label
+```brix
+(main
+  (let shelf (call Shelf))
+  (call (. shelf add) "b")
+  (call (. shelf add) "a")
+  (let titles (. shelf titles))
+  (print (type-of titles))
+  (print (. titles length))
+  (print (call (. ", " join) titles))
+  (call (. shelf add) "c")
+  (print (. titles length))
+  (print (. shelf titles length))
+  (print (call squares 4))
+  (print (. (call squares 0) length))
+  (print (type-of (call pairs)))
+  (for (in (tuple n name) (call pairs))
+    (print (str n "=" name))
+  )
+  (let things (. shelf things))
+  (print (type-of things))
+  (for (in thing things)
+    (print (. thing label))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Labelled is Interface
+(type + Labelled (is Interface)
+  (fn-expr + label String :get)
+)
 
-────────────────────
-+ get label String
+(type + Book
+  (implements Labelled)
+  (prop + label String)
+  (fn-do + This _
+    (param label _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Book
-    is Labelled
+(type + Shelf
+  (implements Labelled)
+  (prop + label _ (= "shelf"))
+  (prop _ books (list Book))
+  (fn-do + add _
+    (param title String)
+    (+= books (call Book title))
+  )
+  (fn-do + titles (list String) :get
+    (for (in book books)
+      (yield (. book label))
+    )
+  )
+  (fn-do + things (list Labelled) :get
+    (yield this)
+    (for (in book books)
+      (yield book)
+    )
+  )
+)
 
-+ label String
+(fn-do + squares (list Int)
+  (param count Int)
+  (for (in n (..< 0 count))
+    (yield (* n n))
+  )
+)
 
-────────────────────
-+ This
-    - label
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shelf
-    is Labelled
-
-+ label = "shelf"
-_ books [Book]
-
-────────────────────
-+ do add
-    - title String
-
-books += Book(title)
-
-────────────────────
-+ do get titles [String]
-
-for book in books
-    <= book.label
-
-────────────────────
-+ do get things [Labelled]
-
-<= this
-for book in books
-    <= book
-
-━━━━━━━━━━━━━━━━━━━━
-+ do squares [Int]
-    - count Int
-
-for n in 0 .. < count
-    <= n * n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pairs [(Int, String)]
-
-<= (1, "one")
-<= (2, "two")
+(fn-do + pairs (list (tuple Int String))
+  (yield (tuple 1 "one"))
+  (yield (tuple 2 "two"))
+)
 ```
 
 ```output
@@ -2121,53 +2271,54 @@ c
 
 ### A function that yields cannot be declared to return what no generator converts to
 
-```yumi crash
--- bad()
+```brix crash
+(main
+  (print (call bad))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do bad Int
-
-<= 1
+(fn-do + bad Int
+  (yield 1)
+)
 ```
 
 ```output
 Exception: Generator return type does not match declared return type
-<no file:5>
-    + do bad Int
-    ^^^^^^^^^^^
+<no file:6>
+    (fn-do + bad Int
+    ^^^^^^^^^^^^^^^
 ```
 
 ### A generator that is made and never stepped runs nothing of its body
 
-```yumi
-. unused = counted(2)
--- "made"
-. held = counted(3)
--- held
-show(counted(1))
--- kind(counted(5))
-. first = held()
--- first ?? -1
+```brix
+(main
+  (let unused (call counted 2))
+  (print "made")
+  (let held (call counted 3))
+  (print held)
+  (call show (call counted 1))
+  (print (call kind (call counted 5)))
+  (let first (call held))
+  (print (?? first -1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do counted
-    - count Int
+(fn-do + counted _
+  (param count Int)
+  (print "started")
+  (for (in n (..< 0 count))
+    (yield n)
+  )
+)
 
--- "started"
-for n in 0 .. < count
-    <= n
+(fn-do + (of show T) _
+  (param items (stream T))
+  (print (call T))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show'T
-    - items <T>
-
--- T()
-
-━━━━━━━━━━━━━━━━━━━━
-+ kind <Int>
-    - thing
-
-thing
+(fn-expr + kind (stream Int)
+  (param thing _)
+  thing
+)
 ```
 
 ```output
@@ -2181,49 +2332,57 @@ started
 
 ### A return in a function that yields evaluates its value, runs the cleanups and finishes
 
-```yumi
-for n in until(3)
-    -- n
-for n in until(0)
-    -- n
-for n in nested()
-    -- n
-for n in tidy()
-    -- n
+```brix
+(main
+  (for (in n (call until 3))
+    (print n)
+  )
+  (for (in n (call until 0))
+    (print n)
+  )
+  (for (in n (call nested))
+    (print n)
+  )
+  (for (in n (call tidy))
+    (print n)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do until
-    - stop Int
+(fn-do + until _
+  (param stop Int)
+  (for (in n (..< 0 10))
+    (if (== n stop)
+      (return (call announce (str "stop at " n)))
+    )
+    (yield n)
+  )
+  (print "never")
+)
 
-for n in 0 .. < 10
-    if n == stop
-        = announce("stop at $n")
-    <= n
--- "never"
+(fn-do + nested _
+  (for (in a (.. 1 3))
+    (for (in b (.. 1 3))
+      (if (== (* a b) 4)
+        (return (call announce "found"))
+      )
+      (yield (+ (* a 10) b))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do nested
+(fn-do + tidy _
+  (finally
+    (print "tidied")
+  )
+  (yield 1)
+  (return (call announce "leaving"))
+)
 
-for a in 1 .. 3
-    for b in 1 .. 3
-        if a * b == 4
-            = announce("found")
-        <= a * 10 + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tidy
-
-do finally
-    -- "tidied"
-<= 1
-= announce("leaving")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do announce Int
-    - text String
-
--- text
-= 0
+(fn-do + announce Int
+  (param text String)
+  (print text)
+  (return 0)
+)
 ```
 
 ```output
@@ -2244,52 +2403,53 @@ tidied
 
 ### A member of a tuple that yields keeps the tuple it was called on
 
-```yumi
-. counter = Counter(3)
-for n in counter.steps
-    -- n
-    counter = Counter(10)
--- counter.count
-. second = Counter(2)
-. held = second.steps
-second = Counter(5)
-for n in held
-    -- n
--- second.count
-for n in Counter(2).scaled(7)
-    -- n
-for text in Pair("a", 2)
-    -- text
+```brix
+(main
+  (let counter (call Counter 3))
+  (for (in n (. counter steps))
+    (print n)
+    (= counter (call Counter 10))
+  )
+  (print (. counter count))
+  (let second (call Counter 2))
+  (let held (. second steps))
+  (= second (call Counter 5))
+  (for (in n held)
+    (print n)
+  )
+  (print (. second count))
+  (for (in n (call (. (call Counter 2) scaled) 7))
+    (print n)
+  )
+  (for (in text (call Pair "a" 2))
+    (print text)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter is Tuple
+(type + Counter (is Tuple)
+  (prop + count Int)
+  (fn-do + steps _ :get
+    (for (in index (..< 0 count))
+      (yield (+ (* index 100) count))
+    )
+  )
+  (fn-do + (of scaled T) _
+    (param by T)
+    (for (in index (..< 0 count))
+      (yield (tuple by index))
+    )
+  )
+)
 
-+ count Int
-
-────────────────────
-+ do get steps
-
-for index in 0 .. < count
-    <= index * 100 + count
-
-────────────────────
-+ do scaled'T
-    - by T
-
-for index in 0 .. < count
-    <= (by, index)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pair'T is Tuple
-
-+ item T
-+ times Int
-
-────────────────────
-+ do to Iterable'T
-
-for index in 0 .. < times
-    <= item
+(type + (of Pair T) (is Tuple)
+  (prop + item T)
+  (prop + times Int)
+  (fn-to-do + (of Iterable T)
+    (for (in index (..< 0 times))
+      (yield item)
+    )
+  )
+)
 ```
 
 ```output
@@ -2308,15 +2468,17 @@ a
 
 ### List pattern declared in a function that yields
 
-```yumi
-for n in gen()
-    -- n
+```brix
+(main
+  (for (in n (call gen))
+    (print n)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen
-
-. [a, b] = [1, 2]
-<= a + b
+(fn-do + gen _
+  (let (list a b) (list 1 2))
+  (yield (+ a b))
+)
 ```
 
 ```output
@@ -2325,17 +2487,19 @@ for n in gen()
 
 ### List pattern with a named rest declared in a function that yields
 
-```yumi
-for n in gen()
-    -- n
+```brix
+(main
+  (for (in n (call gen))
+    (print n)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen
-
-. [a, ...rest] = [1, 2, 3]
-<= a
-<= rest.length
-<= a + rest[0]
+(fn-do + gen _
+  (let (list a ...rest) (list 1 2 3))
+  (yield a)
+  (yield (. rest length))
+  (yield (+ a ([] rest 0)))
+)
 ```
 
 ```output
@@ -2346,13 +2510,21 @@ for n in gen()
 
 ### List pattern declared in a closure that yields
 
-```yumi
-. g = :: items => do
-    . [a, b] = items
-    <= a
-    <= b
-for n in g([7, 8])
-    -- n
+```brix
+(main
+  (let g
+    (=> (items) :do
+      (block
+        (let (list a b) items)
+        (yield a)
+        (yield b)
+      )
+    )
+  )
+  (for (in n (call g (list 7 8)))
+    (print n)
+  )
+)
 ```
 
 ```output
@@ -2362,15 +2534,16 @@ for n in g([7, 8])
 
 ### List pattern declared in a function that yields a list
 
-```yumi
--- squares()
+```brix
+(main
+  (print (call squares))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do squares [Int]
-
-. [a, b] = [3, 4]
-<= a * a
-<= b * b
+(fn-do + squares (list Int)
+  (let (list a b) (list 3 4))
+  (yield (* a a))
+  (yield (* b b))
+)
 ```
 
 ```output
@@ -2379,16 +2552,20 @@ for n in g([7, 8])
 
 ### each and it of the first header in a function that yields
 
-```yumi
-for text in walk()
-    -- text
+```brix
+(main
+  (for (in text (call walk))
+    (print text)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do walk
-
-for in ["u", "v"]
-and in [1, 2]
-    <= "$each $it"
+(fn-do + walk _
+  (for (in (list "u" "v"))
+    (and-for (in (list 1 2))
+      (yield (str each " " it))
+    )
+  )
+)
 ```
 
 ```output
@@ -2398,25 +2575,26 @@ v v
 
 ### A step that raises is read by <- as a call that raises: the error leaves, or catch holds it.
 
-```yumi
-. gen = items(true)
--- gen
-. first = <- gen
--- first
-. second = catch <- gen
--- second is Problem
+```brix
+(main
+  (let gen (call items true))
+  (print gen)
+  (let first (<- gen))
+  (print first)
+  (let second (catch (<- gen)))
+  (print (is second Problem))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Problem is Error
+(type + Problem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do items
-    - fail Bool
-
-<= 1
-if fail
-    ?! Problem("bad")
-<= 2
+(fn-do + items _
+  (param fail Bool)
+  (yield 1)
+  (if fail
+    (throw (call Problem "bad"))
+  )
+  (yield 2)
+)
 ```
 
 ```output
@@ -2427,38 +2605,42 @@ true
 
 ### A loop over a generator that raises leaves by the error, running the cleanups of the loop's body and of the generator; one that does not raise runs to the end.
 
-```yumi
-_ cleanups = 0
+```brix
+(prop _ cleanups _ (= 0))
+(blank)
 
-. r = catch total(items(true))
--- r is Problem
--- total(items(false))
--- "cleanups $cleanups"
+(main
+  (let r (catch (call total (call items true))))
+  (print (is r Problem))
+  (print (call total (call items false)))
+  (print (str "cleanups " cleanups))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Problem is Error
+(type + Problem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do items
-    - fail Bool
+(fn-do + items _
+  (param fail Bool)
+  (finally
+    (+= cleanups 1)
+  )
+  (yield 1)
+  (if fail
+    (throw (call Problem "bad"))
+  )
+  (yield 2)
+)
 
-do finally
-    cleanups += 1
-<= 1
-if fail
-    ?! Problem("bad")
-<= 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do total Int
-    - stream <Int>
-
-. sum = 0
-for item in stream
-    do finally
-        -- "after $item"
-    sum += item
-= sum
+(fn-do + total Int
+  (param stream (stream Int))
+  (let sum 0)
+  (for (in item stream)
+    (finally
+      (print (str "after " item))
+    )
+    (+= sum item)
+  )
+  (return sum)
+)
 ```
 
 ```output
@@ -2472,45 +2654,45 @@ cleanups 2
 
 ### A generator that loops over one that raises raises too, and so does a comprehension over it.
 
-```yumi
-. r = catch sum-all()
--- r is Problem
-. s = catch outer()
--- s is Problem
+```brix
+(main
+  (let r (catch (call sum-all)))
+  (print (is r Problem))
+  (let s (catch (call outer)))
+  (print (is s Problem))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Problem is Error
+(type + Problem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do inner
+(fn-do + inner _
+  (yield 1)
+  (throw (call Problem "inner"))
+)
 
-<= 1
-?! Problem("inner")
+(fn-do + relay _
+  (for (in x (call inner))
+    (yield (* x 10))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do relay
+(fn-do + outer Int
+  (let n 0)
+  (for (in x (call relay))
+    (print x)
+    (+= n x)
+  )
+  (return n)
+)
 
-for x in inner()
-    <= x * 10
-
-━━━━━━━━━━━━━━━━━━━━
-+ do outer Int
-
-. n = 0
-for x in relay()
-    -- x
-    n += x
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do sum-all Int
-
-. values = each + 1 in relay()
-. n = 0
-for v in values
-    -- v
-    n += v
-= n
+(fn-do + sum-all Int
+  (let values (in (+ each 1) (call relay)))
+  (let n 0)
+  (for (in v values)
+    (print v)
+    (+= n v)
+  )
+  (return n)
+)
 ```
 
 ```output
@@ -2522,43 +2704,40 @@ true
 
 ### An override of a generator whose base states errors carries them, raising or not, and a loop through the base's table leaves by the error.
 
-```yumi
-. src Source = Loud()
-. r = catch drain(src)
--- r is Problem
-. q = catch drain(Source())
--- q
+```brix
+(main
+  (let src Source (call Loud))
+  (let r (catch (call drain src)))
+  (print (is r Problem))
+  (let q (catch (call drain (call Source))))
+  (print q)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Problem is Error
+(type + Problem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Source
+(type + Source
+  (fn-do + numbers (stream Int) (?! Problem)
+    (yield 1)
+    (yield 2)
+  )
+)
 
-────────────────────
-+ do numbers <Int> ?! Problem
+(type + Loud (is Source)
+  (fn-do + numbers (stream Int)
+    (yield 5)
+    (throw (call Problem "loud"))
+  )
+)
 
-<= 1
-<= 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Loud is Source
-
-────────────────────
-+ do numbers <Int>
-
-<= 5
-?! Problem("loud")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do drain Int ?! Problem
-    - source Source
-
-. n = 0
-for x in source.numbers()
-    -- x
-    n += x
-= n
+(fn-do + drain Int (?! Problem)
+  (param source Source)
+  (let n 0)
+  (for (in x (call (. source numbers)))
+    (print x)
+    (+= n x)
+  )
+  (return n)
+)
 ```
 
 ```output
@@ -2571,26 +2750,27 @@ true
 
 ### An error raised by a generator leaves nested loops at once.
 
-```yumi
-. r = catch run()
--- r is Problem
--- "end"
+```brix
+(main
+  (let r (catch (call run)))
+  (print (is r Problem))
+  (print "end")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Problem is Error
+(type + Problem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do items
+(fn-do + items _
+  (yield "a")
+  (throw (call Problem "x"))
+)
 
-<= "a"
-?! Problem("x")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do run
-
-for a in items()
-    for b in 0 .. < 2
-        -- "$a$b"
+(fn-do + run _
+  (for (in a (call items))
+    (for (in b (..< 0 2))
+      (print (str a b))
+    )
+  )
+)
 ```
 
 ```output
@@ -2602,30 +2782,34 @@ end
 
 ### A list of feeds whose feed raises is a generator that raises.
 
-```yumi
-. r = catch run()
--- r is Problem
+```brix
+(main
+  (let r (catch (call run)))
+  (print (is r Problem))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Problem is Error
+(type + Problem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do check Int ?! Problem
-    - n Int
+(fn-do + check Int (?! Problem)
+  (param n Int)
+  (if (> n 2)
+    (throw (call Problem "big"))
+  )
+  (return n)
+)
 
-if n > 2
-    ?! Problem("big")
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do run
-
-. values =
-    * 1
-    * check(2)
-    * check(3)
-for v in values
-    -- v
+(fn-do + run _
+  (let values
+    (block
+      (item 1)
+      (item (call check 2))
+      (item (call check 3))
+    )
+  )
+  (for (in v values)
+    (print v)
+  )
+)
 ```
 
 ```output
@@ -2636,30 +2820,32 @@ true
 
 ### A comprehension that raises, read by a loop whose turns make closures.
 
-```yumi
-. r = catch run()
--- r is Problem
+```brix
+(main
+  (let r (catch (call run)))
+  (print (is r Problem))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Problem is Error
+(type + Problem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do check Int ?! Problem
-    - n Int
+(fn-do + check Int (?! Problem)
+  (param n Int)
+  (if (> n 2)
+    (throw (call Problem "big"))
+  )
+  (return n)
+)
 
-if n > 2
-    ?! Problem("big")
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do run
-
-. callbacks = List'Doer()
-for v in check(each) in [1, 2, 3]
-    callbacks += => do -- "cb $v"
-    -- v
-for c in callbacks
-    c()
+(fn-do + run _
+  (let callbacks (call (of List Doer)))
+  (for (in v (in (call check each) (list 1 2 3)))
+    (+= callbacks (=> () :do (print (str "cb " v))))
+    (print v)
+  )
+  (for (in c callbacks)
+    (call c)
+  )
+)
 ```
 
 ```output
@@ -2668,73 +2854,72 @@ for c in callbacks
 true
 ```
 
-```yumi crash
--- "start"
-for x in items()
-    -- x
+```brix crash
+(main
+  (print "start")
+  (for (in x (call items))
+    (print x)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Problem is Error
+(type + Problem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Other is Error
+(type + Other (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do items <Int> ?! Problem
-
-<= 1
-?! Other("bad")
+(fn-do + items (stream Int) (?! Problem)
+  (yield 1)
+  (throw (call Other "bad"))
+)
 ```
 
 ```output
 Exception: Other can leave generator items, which does not declare it; declare it with ?! Other, or catch it here
-<no file:16>
-    ?! Other("bad")
-    ^^^^^^^^^^^^^^^
+<no file:15>
+      (throw (call Other "bad"))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
--- describe(items())
-. g = items()
--- "made"
+```brix crash
+(main
+  (print (call describe (call items)))
+  (let g (call items))
+  (print "made")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Problem is Error
+(type + Problem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do items
+(fn-do + items _
+  (yield 1)
+  (throw (call Problem "bad"))
+)
 
-<= 1
-?! Problem("bad")
-
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - g Generator'Int
-
-"gen"
+(fn-expr + describe String
+  (param g (of Generator Int))
+  "gen"
+)
 ```
 
 ```output
 Exception: No function "describe" accepts (Generator'I64); it is declared as "describe(g Generator'Int)"
-<no file:2>
-    -- describe(items())
-       ^^^^^^^^^^^^^^^^^
+<no file:3>
+      (print (call describe (call items)))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A generator that raises, made and never read, is made.
 
-```yumi
-. gen = items()
--- "made"
+```brix
+(main
+  (let gen (call items))
+  (print "made")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Problem is Error
+(type + Problem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do items
-
-<= 1
-?! Problem("text")
+(fn-do + items _
+  (yield 1)
+  (throw (call Problem "text"))
+)
 ```
 
 ```output
@@ -2743,18 +2928,18 @@ made
 
 ### A generator that raises, kept as an Iterable'Int that is never read, is made.
 
-```yumi
-. it Iterable'Int = items()
--- "as iterable only"
+```brix
+(main
+  (let it (of Iterable Int) (call items))
+  (print "as iterable only")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Problem is Error
+(type + Problem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do items
-
-<= 1
-?! Problem("text")
+(fn-do + items _
+  (yield 1)
+  (throw (call Problem "text"))
+)
 ```
 
 ```output
@@ -2763,21 +2948,21 @@ as iterable only
 
 ### catch? of a step of a generator that raises gives the item, or nothing where the step raised.
 
-```yumi
-. gen = items()
-. a = catch? <- gen
--- a ?? -1
-. b = catch? <- gen
--- b ?? -2
+```brix
+(main
+  (let gen (call items))
+  (let a (catch? (<- gen)))
+  (print (?? a -1))
+  (let b (catch? (<- gen)))
+  (print (?? b -2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Problem is Error
+(type + Problem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do items
-
-<= 1
-?! Problem("bad")
+(fn-do + items _
+  (yield 1)
+  (throw (call Problem "bad"))
+)
 ```
 
 ```output
@@ -2787,32 +2972,38 @@ as iterable only
 
 ### A generator reads a name a match pattern binds after it yields.
 
-```yumi
-for x in gen([Item.num(1), Item.word("b"), Item.pair((3, "c"))])
-    -- x
+```brix
+(main
+  (for (in x (call gen (list (call (. Item num) 1) (call (. Item word) "b") (call (. Item pair) (tuple 3 "c")))))
+    (print x)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen Iterable'String
-    - items [Item]
+(fn-do + gen (of Iterable String)
+  (param items (list Item))
+  (for (in item items)
+    (match item
+      (case (call .num n)
+        (yield (str "n " n))
+        (yield (str "n again " n))
+      )
+      (case (call .word w)
+        (yield (str "w " w))
+        (yield (str "w again " w))
+      )
+      (case (call .pair a b)
+        (yield (str "p " a))
+        (yield (str "p " b))
+      )
+    )
+  )
+)
 
-for item in items
-    match item
-        | .num(n)
-            <= "n $n"
-            <= "n again $n"
-        | .word(w)
-            <= "w $w"
-            <= "w again $w"
-        | .pair((a, b))
-            <= "p $a"
-            <= "p $b"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| num Int
-| word String
-| pair (Int, String)
+(type + Item (is Union)
+  (variant num Int)
+  (variant word String)
+  (variant pair (tuple Int String))
+)
 ```
 
 ```output
@@ -2824,34 +3015,39 @@ p 3
 p c
 ```
 
-```yumi
-/BxGC/BxGC.h
+```brix
+(import /BxGC/BxGC.h)
+(blank)
 
-. source = kept-values("live")
--- source()
-churn()
--- source()
-churn()
--- source()
+(main
+  (let source (call kept-values "live"))
+  (print (call source))
+  (call churn)
+  (print (call source))
+  (call churn)
+  (print (call source))
+)
 
-+ TextPair is (left String, right String)
+(blank)
+(type-line + TextPair (is (tuple (: left String) (: right String))))
 
-━━━━━━━━━━━━━━━━━━━━
-_ do kept-values
-    - seed String
+(fn-do _ kept-values _
+  (param seed String)
+  (let pair (call TextPair (str seed "-left") (str seed "-right")))
+  (finally
+    (print (str "cleanup " (. pair right)))
+  )
+  (for (in value (list (. pair left) (. pair right)))
+    (yield value)
+  )
+)
 
-. pair = TextPair("${seed}-left", "${seed}-right")
-do finally
-    -- "cleanup ${pair.right}"
-for value in [pair.left, pair.right]
-    <= value
-
-━━━━━━━━━━━━━━━━━━━━
-_ do churn
-
-for index in 0 .. < 8
-    . pair = TextPair("garbage-$index", "discard-$index")
-    C:brixCollect()
+(fn-do _ churn _
+  (for (in index (..< 0 8))
+    (let pair (call TextPair (str "garbage-" index) (str "discard-" index)))
+    (call C:brixCollect)
+  )
+)
 ```
 
 ```output
@@ -2861,32 +3057,38 @@ cleanup live-right
 unknown
 ```
 
-```yumi
-/BxGC/BxGC.h
+```brix
+(import /BxGC/BxGC.h)
+(blank)
 
-for value in kept-values("early")
-    -- value
-    churn()
-    break
+(main
+  (for (in value (call kept-values "early"))
+    (print value)
+    (call churn)
+    (break)
+  )
+)
 
-+ TextPair is (left String, right String)
+(blank)
+(type-line + TextPair (is (tuple (: left String) (: right String))))
 
-━━━━━━━━━━━━━━━━━━━━
-_ do kept-values
-    - seed String
+(fn-do _ kept-values _
+  (param seed String)
+  (let pair (call TextPair (str seed "-left") (str seed "-right")))
+  (finally
+    (print (str "cleanup " (. pair right)))
+  )
+  (for (in value (list (. pair left) (. pair right)))
+    (yield value)
+  )
+)
 
-. pair = TextPair("${seed}-left", "${seed}-right")
-do finally
-    -- "cleanup ${pair.right}"
-for value in [pair.left, pair.right]
-    <= value
-
-━━━━━━━━━━━━━━━━━━━━
-_ do churn
-
-for index in 0 .. < 8
-    . pair = TextPair("garbage-$index", "discard-$index")
-    C:brixCollect()
+(fn-do _ churn _
+  (for (in index (..< 0 8))
+    (let pair (call TextPair (str "garbage-" index) (str "discard-" index)))
+    (call C:brixCollect)
+  )
+)
 ```
 
 ```output
@@ -2894,36 +3096,40 @@ early-left
 cleanup early-right
 ```
 
-```yumi
-/BxGC/BxGC.h
+```brix
+(import /BxGC/BxGC.h)
+(blank)
 
-. left = kept-iterator(2)
-. right = kept-iterator(5)
--- left()
--- right()
-churn()
--- left()
--- right()
-churn()
--- left()
--- right()
--- left()
+(main
+  (let left (call kept-iterator 2))
+  (let right (call kept-iterator 5))
+  (print (call left))
+  (print (call right))
+  (call churn)
+  (print (call left))
+  (print (call right))
+  (call churn)
+  (print (call left))
+  (print (call right))
+  (print (call left))
+)
 
-+ TextPair is (left String, right String)
+(blank)
+(type-line + TextPair (is (tuple (: left String) (: right String))))
 
-━━━━━━━━━━━━━━━━━━━━
-_ do kept-iterator
-    - seed Int
+(fn-do _ kept-iterator _
+  (param seed Int)
+  (for (in value (list seed (+ seed 1) (+ seed 2)))
+    (yield value)
+  )
+)
 
-for value in [seed, seed + 1, seed + 2]
-    <= value
-
-━━━━━━━━━━━━━━━━━━━━
-_ do churn
-
-for index in 0 .. < 8
-    . pair = TextPair("garbage-$index", "discard-$index")
-    C:brixCollect()
+(fn-do _ churn _
+  (for (in index (..< 0 8))
+    (let pair (call TextPair (str "garbage-" index) (str "discard-" index)))
+    (call C:brixCollect)
+  )
+)
 ```
 
 ```output
@@ -2936,34 +3142,42 @@ for index in 0 .. < 8
 unknown
 ```
 
-```yumi
-/BxGC/BxGC.h
+```brix
+(import /BxGC/BxGC.h)
+(blank)
 
-. captured = capture-generator(10)
--- captured()
-churn()
--- captured()
--- captured()
+(main
+  (let captured (call capture-generator 10))
+  (print (call captured))
+  (call churn)
+  (print (call captured))
+  (print (call captured))
+)
 
-+ TextPair is (left String, right String)
+(blank)
+(type-line + TextPair (is (tuple (: left String) (: right String))))
 
-━━━━━━━━━━━━━━━━━━━━
-_ do capture-generator
-    - seed Int
+(fn-do _ capture-generator _
+  (param seed Int)
+  (let count seed)
+  (let produce
+    (=> () :do
+      (block
+        (yield count)
+        (+= count 1)
+        (yield count)
+      )
+    )
+  )
+  (return (call produce))
+)
 
-. count = seed
-. produce = => do
-    <= count
-    count += 1
-    <= count
-= produce()
-
-━━━━━━━━━━━━━━━━━━━━
-_ do churn
-
-for index in 0 .. < 8
-    . pair = TextPair("garbage-$index", "discard-$index")
-    C:brixCollect()
+(fn-do _ churn _
+  (for (in index (..< 0 8))
+    (let pair (call TextPair (str "garbage-" index) (str "discard-" index)))
+    (call C:brixCollect)
+  )
+)
 ```
 
 ```output
@@ -2972,41 +3186,44 @@ for index in 0 .. < 8
 unknown
 ```
 
-```yumi
-/BxGC/BxGC.h
+```brix
+(import /BxGC/BxGC.h)
+(blank)
 
-. result = catch collect-failing()
--- result is GeneratorTrouble
+(main
+  (let result (catch (call collect-failing)))
+  (print (is result GeneratorTrouble))
+)
 
-+ TextPair is (left String, right String)
+(blank)
+(type-line + TextPair (is (tuple (: left String) (: right String))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ GeneratorTrouble is Error
+(type + GeneratorTrouble (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-_ do failing-values
-    - seed String
+(fn-do _ failing-values _
+  (param seed String)
+  (let value (str seed " value"))
+  (finally
+    (print (str "cleanup " value))
+  )
+  (yield value)
+  (throw (call GeneratorTrouble "expected"))
+)
 
-. value = "$seed value"
-do finally
-    -- "cleanup $value"
-<= value
-?! GeneratorTrouble("expected")
+(fn-do _ collect-failing Int (?! GeneratorTrouble)
+  (for (in value (call failing-values "failure"))
+    (print value)
+    (call churn)
+  )
+  (return 0)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do collect-failing Int ?! GeneratorTrouble
-
-for value in failing-values("failure")
-    -- value
-    churn()
-= 0
-
-━━━━━━━━━━━━━━━━━━━━
-_ do churn
-
-for index in 0 .. < 8
-    . pair = TextPair("garbage-$index", "discard-$index")
-    C:brixCollect()
+(fn-do _ churn _
+  (for (in index (..< 0 8))
+    (let pair (call TextPair (str "garbage-" index) (str "discard-" index)))
+    (call C:brixCollect)
+  )
+)
 ```
 
 ```output
@@ -3015,94 +3232,99 @@ cleanup failure value
 true
 ```
 
-```yumi
-/BxGC/BxGC.h
+```brix
+(import /BxGC/BxGC.h)
+(blank)
 
-. total = 0
-for value in borrowed-values()
-    value.count += 10
-    churn()
-    total += value.count
--- total
+(main
+  (let total 0)
+  (for (in value (call borrowed-values))
+    (+= (. value count) 10)
+    (call churn)
+    (+= total (. value count))
+  )
+  (print total)
+)
 
-+ TextPair is (left String, right String)
+(blank)
+(type-line + TextPair (is (tuple (: left String) (: right String))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ YieldRecord is Struct
+(type + YieldRecord (is Struct)
+  (prop + count Int)
+)
 
-+ count Int
+(fn-do _ borrowed-values _
+  (let value (call YieldRecord 3))
+  (yield value)
+  (+= (. value count) 1)
+  (yield value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do borrowed-values
-
-. value = YieldRecord(3)
-<= value
-value.count += 1
-<= value
-
-━━━━━━━━━━━━━━━━━━━━
-_ do churn
-
-for index in 0 .. < 8
-    . pair = TextPair("garbage-$index", "discard-$index")
-    C:brixCollect()
+(fn-do _ churn _
+  (for (in index (..< 0 8))
+    (let pair (call TextPair (str "garbage-" index) (str "discard-" index)))
+    (call C:brixCollect)
+  )
+)
 ```
 
 ```output
 27
 ```
 
-```yumi
-. source = EntrySource()
-. names = each.text in source.entries when each.text != ""
-. collected [String] = collect(names)
--- "${collected.length} ${" ".join(collected)}"
+```brix
+(main
+  (let source (call EntrySource))
+  (let names (in (. each text) (. source entries) (when (!= (. each text) ""))))
+  (let collected (list String) (call collect names))
+  (print (str (. collected length) " " (call (. " " join) collected)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Entry
+(type + Entry
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-+ text String
+(type + EntrySource
+  (fn-do + entries (stream Entry) :get
+    (throw (call Error "failed") (if false))
+    (yield (call Entry "a.txt"))
+    (yield (call Entry ""))
+    (yield (call Entry "b.txt"))
+  )
+)
 
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ EntrySource
-
-────────────────────
-+ do get entries <Entry>
-
-?! Error("failed")
-    if false
-<= Entry("a.txt")
-<= Entry("")
-<= Entry("b.txt")
-
-━━━━━━━━━━━━━━━━━━━━
-+ collect'Item
-    - stream <Item>
-
-List(stream)
+(fn-expr + (of collect Item) _
+  (param stream (stream Item))
+  (call List stream)
+)
 ```
 
 ```output
 2 a.txt b.txt
 ```
 
-```yumi
-for x in pairs("a1")
-    -- x
+```brix
+(main
+  (for (in x (call pairs "a1"))
+    (print x)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pairs <String>
-    - text Indexable'Char
-
-<= "start"
-. got = match text
-    ~ w [a-z] n [0-9]
-        "$n$w"
-<= got ?? "none"
+(fn-do + pairs (stream String)
+  (param text (of Indexable Char))
+  (yield "start")
+  (let got
+    (match text
+      (~ (seq (: w (chars "a-z")) (: n (chars "0-9")))
+        (str n w)
+      )
+    )
+  )
+  (yield (?? got "none"))
+)
 ```
 
 ```output
@@ -3112,19 +3334,25 @@ start
 
 ### A function that yields reads a lazy local declared under the value it yields.
 
-```yumi
-for line in format(3)
-    -- line
--- "\n".join(format(0))
+```brix
+(main
+  (for (in line (call format 3))
+    (print line)
+  )
+  (print (call (. "\n" join) (call format 0)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do format
-    - width U32
-
-<= "first"
-if width
-    <= "    $indent^"
-        .. indent = "-" * width
+(fn-do + format _
+  (param width U32)
+  (yield "first")
+  (if width
+    (yield
+      (scope (str "    " indent "^")
+        (lazy indent (* "-" width))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3135,19 +3363,22 @@ first
 
 ### A return written with only its condition ends what a function that yields makes.
 
-```yumi
-for n in numbers(0)
-    -- n
-for n in numbers(3)
-    -- n
+```brix
+(main
+  (for (in n (call numbers 0))
+    (print n)
+  )
+  (for (in n (call numbers 3))
+    (print n)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do numbers <Int>
-    - count Int
-
-<= 1
-=? if count == 0
-<= count
+(fn-do + numbers (stream Int)
+  (param count Int)
+  (yield 1)
+  (return-if (if (== count 0)))
+  (yield count)
+)
 ```
 
 ```output
@@ -3158,56 +3389,57 @@ for n in numbers(3)
 
 ### An override that yields and states no errors raises those of the base's generator when called through the base: an error of a class above them is cast to one as it leaves.
 
-```yumi
-do new
-    . sources [Source] = [Source(), Counter(2), Counter(0)]
-    for source in sources
-        -- catch? total(source) ?? -1
-catch failure
-    -- failure
+```brix
+(main
+  (do-new
+    (let sources (list Source) (list (call Source) (call Counter 2) (call Counter 0)))
+    (for (in source sources)
+      (print (?? (catch? (call total source)) -1))
+    )
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do total Int ?! Error
-    - source Source
+(fn-do + total Int (?! Error)
+  (param source Source)
+  (let sum 0)
+  (for (in value (call (. source values)))
+    (+= sum value)
+  )
+  (return sum)
+)
 
-. sum = 0
-for value in source.values()
-    sum += value
-= sum
+(type + Failed (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Failed is Error
+(type + Source
+  (fn-do + values (stream Int)
+    (if false
+      (yield 0)
+    )
+    (throw (call Failed "not here"))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Source
-
-────────────────────
-+ do values <Int>
-
-if false
-    <= 0
-?! Failed("not here")
-
-━━━━━━━━━━━━━━━━━━━━
-+ Counter is Source
-
-+ count Int
-
-────────────────────
-+ This
-    - count
-
-super()
-
-────────────────────
-+ do values <Int>
-
-for step in 0 .. < 3
-    <= step
-if count == 0
-    ?! Error("plain")
-if count == 1
-    ?! Failed("counted")
+(type + Counter (is Source)
+  (prop + count Int)
+  (fn-do + This _
+    (param count _)
+    (call super)
+  )
+  (fn-do + values (stream Int)
+    (for (in step (..< 0 3))
+      (yield step)
+    )
+    (if (== count 0)
+      (throw (call Error "plain"))
+    )
+    (if (== count 1)
+      (throw (call Failed "counted"))
+    )
+  )
+)
 ```
 
 ```output
@@ -3218,42 +3450,40 @@ Invalid cast to [Object __source__:Failed]
 
 ### A `use` in a generator ends where the generator ends, and where a loop leaves it after a yield.
 
-```yumi
-for c in letters()
-    -- "first $c"
-    break
--- "mid"
-for c in letters()
-    -- "all $c"
--- "after"
+```brix
+(main
+  (for (in c (call letters))
+    (print (str "first " c))
+    (break)
+  )
+  (print "mid")
+  (for (in c (call letters))
+    (print (str "all " c))
+  )
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do letters <Char>
+(fn-do + letters (stream Char)
+  (let text (use (call Holder "xy")))
+  (for (in c text)
+    (yield c)
+  )
+)
 
-. text = use Holder("xy")
-for c in text
-    <= c
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-    is Usable'String
-
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-────────────────────
-+ do begin-using String
-
--- "begin"
-= text
-
-────────────────────
-+ do end-using
-
--- "end"
+(type + Holder
+  (implements (of Usable String))
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+  (fn-do + begin-using String
+    (print "begin")
+    (return text)
+  )
+  (fn-do + end-using _
+    (print "end")
+  )
+)
 ```
 
 ```output
@@ -3270,43 +3500,42 @@ after
 
 ### A method that yields and raises nothing, in the place of a base's whose generator raises, takes the base's errors.
 
-```yumi
-. providers [Provider] = [Provider(), Demo()]
-for provider in providers
-    -- catch? run(provider) ?? "failed"
+```brix
+(main
+  (let providers (list Provider) (list (call Provider) (call Demo)))
+  (for (in provider providers)
+    (print (?? (catch? (call run provider)) "failed"))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ProviderError is Error
+(type + ProviderError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Provider
+(type + Provider
+  (fn-do + stream (stream String)
+    (param n I64)
+    (if false
+      (yield "never")
+    )
+    (throw (call ProviderError "not implemented"))
+  )
+)
 
-────────────────────
-+ do stream <String>
-    - n I64
+(type + Demo (is Provider)
+  (fn-do + stream (stream String)
+    (param n I64)
+    (yield (str "one " n))
+    (yield (str "two " n))
+  )
+)
 
-if false
-    <= "never"
-?! ProviderError("not implemented")
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Provider
-
-────────────────────
-+ do stream <String>
-    - n I64
-
-<= "one $n"
-<= "two $n"
-
-━━━━━━━━━━━━━━━━━━━━
-_ do run String ?! ProviderError
-    - provider Provider
-
-. text = ""
-for word in provider.stream(3)
-    text += "$word,"
-= text
+(fn-do _ run String (?! ProviderError)
+  (param provider Provider)
+  (let text "")
+  (for (in word (call (. provider stream) 3))
+    (+= text (str word ","))
+  )
+  (return text)
+)
 ```
 
 ```output
@@ -3316,18 +3545,21 @@ one 3,two 3,
 
 ### A comprehension over an index span.
 
-```yumi
-/core/arena
-/core/array-builder
-/core/table
+```brix
+(import /core/arena)
+(import /core/array-builder)
+(import /core/table)
+(blank)
 
-. arena = Arena()
-. items = ArrayBuilder'U32(arena)
-items.append(4)
-items.append(5)
-items.append(6)
-. ids = IndexSpan'U32(items, 1 .. < 3)
--- ", ".join("$each" in ids)
+(main
+  (let arena (call Arena))
+  (let items (call (of ArrayBuilder U32) arena))
+  (call (. items append) 4)
+  (call (. items append) 5)
+  (call (. items append) 6)
+  (let ids (call (of IndexSpan U32) items (..< 1 3)))
+  (print (call (. ", " join) (in (str each) ids)))
+)
 ```
 
 ```output
@@ -3336,22 +3568,24 @@ items.append(6)
 
 ### A yield keeps what a test found of a property.
 
-```yumi
-for line in lines(Release("1.2"))
-    -- line
+```brix
+(main
+  (for (in line (call lines (call Release "1.2")))
+    (print line)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do lines
-    - release Release
+(fn-do _ lines _
+  (param release Release)
+  (if (. release version)
+    (yield "version")
+    (yield (str (. release version length)))
+  )
+)
 
-if release.version
-    <= "version"
-    <= "${release.version.length}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Release is Tuple
-
-+ version String?
+(type + Release (is Tuple)
+  (prop + version (? String))
+)
 ```
 
 ```output
@@ -3361,19 +3595,23 @@ version
 
 ### A generator's variadic tail with a default takes no items, one item, or several.
 
-```yumi
-for n in count()
-    -- n
-for n in count(10)
-    -- n
-for n in count(10, 20)
-    -- n
+```brix
+(main
+  (for (in n (call count))
+    (print n)
+  )
+  (for (in n (call count 10))
+    (print n)
+  )
+  (for (in n (call count 10 20))
+    (print n)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do count <Size>
-    ... items [Int] = List'Int()
-
-<= items.length
+(fn-do + count (stream Size)
+  (param ... items (list Int) (= (call (of List Int))))
+  (yield (. items length))
+)
 ```
 
 ```output
@@ -3384,57 +3622,60 @@ for n in count(10, 20)
 
 ### A stream has no truth to test, so a generator of one Bool does not become that Bool, with or without `as`, and a condition over it is an error too.
 
-```yumi compile-error
--- found([1, 2, 3], 2) as Bool
+```brix compile-error
+(main
+  (print (as (call found (list 1 2 3) 2) Bool))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do found <Bool>
-    - items [Int]
-    - wanted Int
-
-<= items.length > 0 && items[0] == wanted
+(fn-do + found (stream Bool)
+  (param items (list Int))
+  (param wanted Int)
+  (yield (and (> (. items length) 0) (== ([] items 0) wanted)))
+)
 ```
 
 ```output
 Exception: Iterable'Bool cannot become Bool: it has no truth to test, and "as" does not read the values it gives; read them instead
-<no file:2>
-    -- found([1, 2, 3], 2) as Bool
-       ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:3>
+      (print (as (call found (list 1 2 3) 2) Bool))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi compile-error
-. answer Bool = found([1, 2, 3], 2)
--- answer
+```brix compile-error
+(main
+  (let answer Bool (call found (list 1 2 3) 2))
+  (print answer)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do found <Bool>
-    - items [Int]
-    - wanted Int
-
-<= items.length > 0 && items[0] == wanted
+(fn-do + found (stream Bool)
+  (param items (list Int))
+  (param wanted Int)
+  (yield (and (> (. items length) 0) (== ([] items 0) wanted)))
+)
 ```
 
 ```output
 Exception: Iterable'Bool cannot become Bool: it has no truth to test, and "as" does not read the values it gives; read them instead
-<no file:2>
-    . answer Bool = found([1, 2, 3], 2)
-             ^^^^
+<no file:3>
+      (let answer Bool (call found (list 1 2 3) 2))
+                  ^^^^
 ```
 
-```yumi compile-error
--- if found([1, 2, 3], 2) then "found" else "missing"
+```brix compile-error
+(main
+  (print (if-expr (call found (list 1 2 3) 2) "found" "missing"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do found <Bool>
-    - items [Int]
-    - wanted Int
-
-<= items.length > 0 && items[0] == wanted
+(fn-do + found (stream Bool)
+  (param items (list Int))
+  (param wanted Int)
+  (yield (and (> (. items length) 0) (== ([] items 0) wanted)))
+)
 ```
 
 ```output
 Exception: Iterable'Bool has no truth to test; read the values it gives instead
-<no file:2>
-    -- if found([1, 2, 3], 2) then "found" else "missing"
-          ^^^^^^^^^^^^^^^^^^^
+<no file:3>
+      (print (if-expr (call found (list 1 2 3) 2) "found" "missing"))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```

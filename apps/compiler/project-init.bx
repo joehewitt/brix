@@ -1,0 +1,79 @@
+(import /os/cli)
+(import /os/env)
+(import /os/file)
+(import /os/path)
+(import /stream/aggregate)
+(blank)
+(prop _ agents-file-name _ (= "AGENTS.md"))
+(prop _ claude-file-name _ (= "CLAUDE.md"))
+(prop _ agents-heading _ (= "## Brix"))
+(prop _ claude-import _ (= "@AGENTS.md"))
+
+(type + InitCommand (is CommandLine)
+  (content
+    (<> This
+      (= name "brix init")
+      (= about "Write the AGENTS.md section, and the CLAUDE.md import, that tell agents to read the Brix guides before writing Brix. Files that already have them are left alone.")
+      (blank)
+      (<> Argument (id: folder) (text: "folder")
+        (= about "the project folder; the current folder by default")
+      )
+    )
+  )
+  (fn-do + main Int (?! Error)
+    (let root (call Path (?? (. folder value) (call cwd))))
+    (throw (call Error (str (as root String) " is not a folder")) (if (not (. root is-dir))))
+    (print (call add-agents-section (/ root agents-file-name)))
+    (print (call add-claude-import (/ root claude-file-name)))
+    (return 0)
+  )
+  (fn-do _ add-agents-section String (?! Error)
+    (param path Path)
+    (let section (str (call agents-section) "\n"))
+    (return-if (call write-new path section) (if (not (. path exists))))
+    (let text (call read-file-text path))
+    (return-if (str agents-file-name " already has a Brix section") (if (call has-line text agents-heading)))
+    (call write-file-atomically path (str (call with-break text) "\n" section))
+    (return (str "Added a Brix section to " agents-file-name))
+  )
+  (fn-do _ add-claude-import String (?! Error)
+    (param path Path)
+    (return-if (call write-new path (str claude-import "\n")) (if (not (. path exists))))
+    (let text (call read-file-text path))
+    (return-if (str claude-file-name " already imports " agents-file-name) (if (call has-line text claude-import)))
+    (call write-file-atomically path (str (call with-break text) "\n" claude-import "\n"))
+    (return (str "Added " claude-import " to " claude-file-name))
+  )
+  (fn-do _ write-new String (?! Error)
+    (param path Path)
+    (param text String)
+    (call write-file-atomically path text)
+    (return (str "Wrote " (. path name)))
+  )
+)
+
+(fn-expr _ has-line Bool
+  (param text String)
+  (param line String)
+  (call some (call (. text split) "\n") (:where (== (call (. each trim)) line)))
+)
+
+(fn-expr _ with-break String
+  (param text String)
+  (if-expr (or (== text "") (call (. text ends-with) "\n")) text (str text "\n"))
+)
+
+(fn-expr _ agents-section _
+  (paragraph
+    "## Brix"
+    (blank)
+    "This project is written in Brix. Before writing or changing Brix, run `brix --help`: it names the"
+    "index of the guides, the standard library and the examples that came with the installed"
+    "toolchain. Read the correctness guide the index lists before writing any code."
+    (blank)
+    "- Check a file with `brix x.bx`, and build and run it with `brix x.bx -o .tmp/build/x`."
+    "- To see what a program does, write probes and run it with `--probes` instead of adding prints."
+    "  `brix probes --help` says how to query what they recorded."
+    "- Read a library's source in the standard library before using it, rather than guessing its API."
+  )
+)

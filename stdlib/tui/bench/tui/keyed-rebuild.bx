@@ -1,0 +1,75 @@
+; benchmark.meta description: Rebuilds a keyed dynamic collection after source replacement.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: tui,tui-fps,compile-timing
+(blank)
+(import /tui/box)
+(import /tui/text)
+(blank)
+
+(main
+  (let row-count Size 256)
+  (let frame-count Size 8)
+  (let forward (call make-items row-count))
+  (let backward (call reversed forward))
+  (blank)
+  (<> Demo (id: demo)
+    (for (in item (. demo #items) (keyed-by (. item id)))
+      (<> TextBox (value: (. item text)))
+    )
+  )
+  (blank)
+  (let checksum Size 0)
+  (for (in frame (..< 0 frame-count))
+    (if (== (% frame 2) 0)
+      (= (. demo items) backward)
+      (else
+        (= (. demo items) forward)
+      )
+    )
+    (blank)
+    (let region (!! (. demo %first-child)))
+    (+= checksum (call count-children region))
+    (+= checksum (. (as (!! (. region %first-child)) TextBox) text length))
+    (+= checksum (. (as (!! (. region %last-child)) TextBox) text length))
+  )
+  (blank)
+  (print (str "bench-result tui/keyed-rebuild checksum=" checksum))
+)
+
+(type + RowData
+  (prop + id String)
+  (prop + text String)
+  (fn-do + This _
+    (param id String)
+    (param text String)
+  )
+)
+
+(type + Demo (is Box)
+  (prop + items (list RowData))
+)
+
+(fn-expr + make-items (list RowData)
+  (param count Size)
+  (in (call RowData (str "id-" each) (str "row-" each)) (..< 0 count))
+)
+
+(fn-do + reversed (list RowData)
+  (param source (list RowData))
+  (let items (list RowData))
+  (let index (. source length))
+  (while (> index 0)
+    (-= index 1)
+    (+= items ([] source index))
+  )
+  (return items)
+)
+
+(fn-do + count-children Size
+  (param box Box)
+  (let count Size 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)

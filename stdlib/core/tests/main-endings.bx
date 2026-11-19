@@ -1,0 +1,50 @@
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Main endings"))
+  (call (. cases run) main-ending-tests)
+  (return cases)
+)
+
+(fn-do _ main-ending-tests TestCase
+  (param t TestCase)
+  (let log (call MainEndingLog))
+  (do-new
+    (inline (call play-main-endings log))
+  )
+  (call (. log finished wait))
+  (call (. t expect)
+    (block
+      (arg "an action runs where main ends, and one given after once its task finishes")
+      (arg (list "before end" "first" "after end" "second"))
+      (arg (. log events))
+    )
+  )
+  (return t)
+)
+
+(fn-do _ play-main-endings _
+  (param log MainEndingLog)
+  (call when-main-ends (. log first))
+  (+= (. log events) "before end")
+  (call end-main)
+  (call when-main-ends (. log second))
+  (+= (. log events) "after end")
+)
+
+(type _ MainEndingLog
+  (prop + events (list String))
+  (prop + finished _ (= (call Semaphore)))
+  (fn-do + first _
+    (+= events "first")
+  )
+  (fn-do + second _
+    (+= events "second")
+    (call (. finished post))
+  )
+)

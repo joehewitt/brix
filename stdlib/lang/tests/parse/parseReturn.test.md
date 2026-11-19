@@ -1,9 +1,5 @@
 # Return
 
-```yumi
-= foo
-```
-
 ```brix
 (main
   (return foo)
@@ -16,10 +12,6 @@
 </Return>
 ```
 
-```yumi
-<= foo
-```
-
 ```brix
 (main
   (yield foo)
@@ -30,10 +22,6 @@
 <Yield>
     <Id name="foo"/>
 </Yield>
-```
-
-```yumi
-<<= foo
 ```
 
 ```brix
@@ -56,11 +44,6 @@
 </For>
 ```
 
-```yumi
-x
--- foo
-```
-
 ```brix
 (main
   x
@@ -75,10 +58,6 @@ x
 </Print>
 ```
 
-```yumi
-break
-```
-
 ```brix
 (main
   (break)
@@ -87,10 +66,6 @@ break
 
 ```output
 <Break/>
-```
-
-```yumi
-continue
 ```
 
 ```brix
@@ -104,11 +79,6 @@ continue
 ```
 
 ### A name that begins with break or continue is a name, not a break or a continue.
-
-```yumi
-break-x()
-continue-x()
-```
 
 ```brix
 (main

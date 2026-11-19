@@ -1,0 +1,48 @@
+; benchmark.meta description: Renders a deterministic terminal transcript.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: tui,compile-timing
+(blank)
+(import /tui/canvas)
+(import /tui/layout)
+(import /tui/primitives)
+(import /tui/text)
+(blank)
+
+(main
+  (let transcript (call MarkdownText "seed"))
+  (= (. transcript bounds) (call Rect 0 0 84 28))
+  (blank)
+  (let canvas (call Canvas (call PSize 84 28)))
+  (let assistant "")
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in chunk (call assistant-chunks))
+    (+= assistant chunk)
+    (= (. transcript text) (call transcript-markdown assistant))
+    (call (. transcript update-layout))
+    (call (. transcript paint) canvas)
+    (+= checksum (+ (. assistant length) (. transcript inner-height) (. transcript inner-width)))
+  )
+  (blank)
+  (print (str "bench-result tui/transcript-render checksum=" checksum))
+)
+
+(fn-expr _ transcript-markdown String
+  (param assistant String)
+  (++ "# Chat\n\n**User:** Please analyze this deterministic benchmark.\n\n**Assistant:** " assistant)
+)
+
+(fn-do _ assistant-chunks (list String)
+  (let chunks (list String))
+  (+= chunks "We can treat the workload as a fixed transcript with ")
+  (+= chunks "**markdown pressure**, stable parsing, and repeated layout. ")
+  (+= chunks "The key point is that no API calls or clocks are involved.\n\n")
+  (+= chunks "* Parse the accumulated message\n")
+  (+= chunks "* Rebuild rich text lines\n")
+  (+= chunks "* Paint into an in-memory canvas\n\n")
+  (+= chunks "`checksum` values make output validation small and stable. ")
+  (+= chunks "The final paragraph is deliberately long enough to wrap across ")
+  (+= chunks "multiple lines in the transcript surface.")
+  (blank)
+  (return chunks)
+)

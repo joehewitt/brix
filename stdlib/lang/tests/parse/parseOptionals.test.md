@@ -1,9 +1,5 @@
 # Optionals
 
-```yumi
-foo?.bar
-```
-
 ```brix
 (main
   (?. foo bar)
@@ -14,10 +10,6 @@ foo?.bar
 <Get name="bar" optional="true">
     <Id name="foo"/>
 </Get>
-```
-
-```yumi
-foo?.bar?.baz
 ```
 
 ```brix
@@ -34,10 +26,6 @@ foo?.bar?.baz
 </Get>
 ```
 
-```yumi
-foo.bar?.baz
-```
-
 ```brix
 (main
   (?. (. foo bar) baz)
@@ -50,10 +38,6 @@ foo.bar?.baz
         <Id name="foo"/>
     </Get>
 </Get>
-```
-
-```yumi
-foo[0]?.baz
 ```
 
 ```brix
@@ -71,10 +55,6 @@ foo[0]?.baz
 </Get>
 ```
 
-```yumi
-foo?.bar[0]
-```
-
 ```brix
 (main
   ([] (?. foo bar) 0)
@@ -88,10 +68,6 @@ foo?.bar[0]
     </Get>
     <Integer value="0"/>
 </Index>
-```
-
-```yumi
-foo()?.bar
 ```
 
 ```brix
@@ -108,10 +84,6 @@ foo()?.bar
 </Get>
 ```
 
-```yumi
-foo?.bar()?.baz
-```
-
 ```brix
 (main
   (?. (call (?. foo bar)) baz)
@@ -126,15 +98,6 @@ foo?.bar()?.baz
         </Get>
     </CallExpression>
 </Get>
-```
-
-```yumi
-foo =? bar
-foo +=? bar
-=? foo
-<=? foo
-use? foo
---? foo
 ```
 
 ```brix
@@ -183,11 +146,6 @@ use? foo
 </Print>
 ```
 
-```yumi
-=? if !foo
-= !foo
-```
-
 ```brix
 (main
   (return-if (if (not foo)))
@@ -208,11 +166,6 @@ use? foo
 </Return>
 ```
 
-```yumi
-=? true
-    if foo
-```
-
 ```brix
 (main
   (return-if true (if foo))
@@ -226,10 +179,6 @@ use? foo
 </ReturnIfTrue>
 ```
 
-```yumi
-=? if foo
-```
-
 ```brix
 (main
   (return-if (if foo))
@@ -242,11 +191,6 @@ use? foo
 </ReturnIfTrue>
 ```
 
-```yumi
-=?
-    if foo
-```
-
 ```brix
 (main
   (return-if (if foo))
@@ -257,10 +201,6 @@ use? foo
 <ReturnIfTrue>
     <Id name="foo"/>
 </ReturnIfTrue>
-```
-
-```yumi
-*? foo
 ```
 
 ```brix
@@ -273,10 +213,6 @@ use? foo
 <Feed optional="true">
     <Id name="foo"/>
 </Feed>
-```
-
-```yumi
-foo.bar!.baz
 ```
 
 ```brix
@@ -295,10 +231,6 @@ foo.bar!.baz
 </Get>
 ```
 
-```yumi
-foo()!.bar
-```
-
 ```brix
 (main
   (. (!! (call foo)) bar)
@@ -313,10 +245,6 @@ foo()!.bar
         </CallExpression>
     </UnaryExpression>
 </Get>
-```
-
-```yumi
-foo[0]!.bar
 ```
 
 ```brix
@@ -336,10 +264,6 @@ foo[0]!.bar
 </Get>
 ```
 
-```yumi
-foo.bar![0]
-```
-
 ```brix
 (main
   ([] (!! (. foo bar)) 0)
@@ -355,10 +279,6 @@ foo.bar![0]
     </UnaryExpression>
     <Integer value="0"/>
 </Index>
-```
-
-```yumi
-foo.bar()!.baz!.qux
 ```
 
 ```brix
@@ -381,11 +301,6 @@ foo.bar()!.baz!.qux
         </Get>
     </UnaryExpression>
 </Get>
-```
-
-```yumi
-foo.bar!
-foo.bar != baz
 ```
 
 ```brix

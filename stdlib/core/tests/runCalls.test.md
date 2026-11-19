@@ -1,23 +1,26 @@
 # Calls
 
-```yumi
-/BxCore/tests.h
+```brix
+(import /BxCore/tests.h)
+(blank)
 
-. data1 = (81, 92, 33, 45, 55)
-C:ctestStructLarge(data1)
-
-. data1n = (81, 92, 33, 45, (88, 99))
-C:ctestStructLargeNested(data1n)
-
-. data2 = (81, 92)
-C:ctestStructSmall1(data2)
-
-. data3 = (81, 92, 33, 45)
-C:ctestStructSmall2(data3)
-
-. data4 = (1.8, 9.2, 3.3)
-C:ctestStructHFA(data4)
-C:ctestStructHFASpill(1, 2, 3, 4, 5, 6, data4)
+(main
+  (let data1 (tuple 81 92 33 45 55))
+  (call C:ctestStructLarge data1)
+  (blank)
+  (let data1n (tuple 81 92 33 45 (tuple 88 99)))
+  (call C:ctestStructLargeNested data1n)
+  (blank)
+  (let data2 (tuple 81 92))
+  (call C:ctestStructSmall1 data2)
+  (blank)
+  (let data3 (tuple 81 92 33 45))
+  (call C:ctestStructSmall2 data3)
+  (blank)
+  (let data4 (tuple 1.8 9.2 3.3))
+  (call C:ctestStructHFA data4)
+  (call C:ctestStructHFASpill 1 2 3 4 5 6 data4)
+)
 ```
 
 ```output
@@ -31,134 +34,134 @@ a 1.000000 b 2.000000 c 3.000000 d 4.000000 e 5.000000 f 6.000000
 a 1.800000 b 9.200000 c 3.300000
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /BxEvents/BxGCHandshake.h)
+(import /core/arena)
+(blank)
 
-/BxEvents/BxGCHandshake.h
-/core/arena
+(main
+  (let arena (call Arena 32768))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Node) arena 2))
+  (call (. rows append) (call (. Node wide) 1 10 20 30 40))
+  (blank)
+  (match ([] rows 0)
+    (case (call .small small)
+      (call show-call-cursor (. small value))
+    )
+    (case (call .wide wide)
+      (call show-call-cursor (call direct-wide wide))
+      (call show-call-cursor (call forward-wide wide))
+      (call show-call-cursor (call ignore-wide wide))
+      (call show-call-cursor (call conditional-wide wide true))
+      (call show-call-cursor (call recursive-wide wide 2))
+      (call show-call-cursor (. (call escape-wide wide) external-a))
+      (call show-call-cursor (call pair-wide wide wide))
+      (call show-call-cursor (call safepoint-wide wide))
+      (call show-call-cursor (call direct-wide (call Wide 9 11 12 13 14)))
+      (call show-call-cursor (call unsafe-wide wide rows))
+    )
+  )
+)
 
-. arena = Arena(32768)
-do finally arena.release()
-. rows = Table'Node(arena, 2)
-rows.append(Node.wide(1, 10, 20, 30, 40))
+(fn-do + show-call-cursor _
+  (param value U64)
+  (print value)
+)
 
-match rows[0]
-    | .small(small)
-        show-call-cursor(small.value)
-    | .wide(wide)
-        show-call-cursor(direct-wide(wide))
-        show-call-cursor(forward-wide(wide))
-        show-call-cursor(ignore-wide(wide))
-        show-call-cursor(conditional-wide(wide, true))
-        show-call-cursor(recursive-wide(wide, 2))
-        show-call-cursor(escape-wide(wide).external-a)
-        show-call-cursor(pair-wide(wide, wide))
-        show-call-cursor(safepoint-wide(wide))
-        show-call-cursor(direct-wide(Wide(9, 11, 12, 13, 14)))
-        show-call-cursor(unsafe-wide(wide, rows))
+(fn-expr + direct-wide U64
+  (param wide Wide)
+  (+ (. wide external-a) (. wide external-b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show-call-cursor
-    - value U64
+(fn-expr + forward-wide U64
+  (param wide Wide)
+  (call direct-wide wide)
+)
 
--- value
+(fn-expr + ignore-wide U64
+  (param wide Wide)
+  7
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ direct-wide U64
-    - wide Wide
-
-wide.external-a + wide.external-b
-
-━━━━━━━━━━━━━━━━━━━━
-+ forward-wide U64
-    - wide Wide
-
-direct-wide(wide)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ignore-wide U64
-    - wide Wide
-
-7
-
-━━━━━━━━━━━━━━━━━━━━
-+ conditional-wide U64
-    - wide Wide
-    - take Bool
-
-|? take
-    wide.external-a
-??
+(fn-expr + conditional-wide U64
+  (param wide Wide)
+  (param take Bool)
+  (case? take
+    (. wide external-a)
+  )
+  (default
     0
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ recursive-wide U64
-    - wide Wide
-    - count U64
+(fn-expr + recursive-wide U64
+  (param wide Wide)
+  (param count U64)
+  (case? (== count 0)
+    (. wide external-b)
+  )
+  (default
+    (call recursive-wide wide (- count 1))
+  )
+)
 
-|? count == 0
-    wide.external-b
-??
-    recursive-wide(wide, count - 1)
+(fn-expr + escape-wide Wide
+  (param wide Wide)
+  wide
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ escape-wide Wide
-    - wide Wide
+(fn-expr + pair-wide U64
+  (param left Wide)
+  (param right Wide)
+  (+ (. left external-a) (. right external-b))
+)
 
-wide
+(fn-do + safepoint-wide U64
+  (param wide Wide)
+  (call C:brixGCSafepoint)
+  (return (. wide external-a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pair-wide U64
-    - left Wide
-    - right Wide
+(fn-expr + unsafe-wide U64
+  (param wide Wide)
+  (param rows (of Table Node))
+  (before
+    (do
+      (call mutate-call-cursor-rows rows)
+    )
+  )
+  (. wide external-a)
+)
 
-left.external-a + right.external-b
+(fn-do + mutate-call-cursor-rows _
+  (param rows (of Table Node))
+  (= ([] rows 0) (call (. Node wide) 2 100 200 300 400))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do safepoint-wide U64
-    - wide Wide
+(type + Syntax (is Tuple)
+  (prop + source U64)
+)
 
-C:brixGCSafepoint()
-= wide.external-a
+(type + Small (is Syntax)
+  (prop + value U64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ unsafe-wide U64
-    - wide Wide
-    - rows Table'Node
+(type + Wide (is Syntax)
+  (prop + inline-a U64 @hot)
+  (prop + inline-b U64 @hot)
+  (prop + external-a U64)
+  (prop + external-b U64)
+)
 
-do
-    mutate-call-cursor-rows(rows)
-wide.external-a
-
-━━━━━━━━━━━━━━━━━━━━
-+ do mutate-call-cursor-rows
-    - rows Table'Node
-
-rows[0] = Node.wide(2, 100, 200, 300, 400)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
-
-+ source U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
-
-+ value U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ @hot inline-a U64
-+ @hot inline-b U64
-+ external-a U64
-+ external-b U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 ```
 
 ```output
@@ -174,13 +177,16 @@ rows[0] = Node.wide(2, 100, 200, 300, 400)
 30
 ```
 
-```yumi
-/BxCore/tests.h
+```brix
+(import /BxCore/tests.h)
+(blank)
 
--- C:ctestStructReturnHFA()
--- C:ctestStructReturnSmall1()
--- C:ctestStructReturnSmall2()
--- C:ctestStructReturnLarge()
+(main
+  (print (call C:ctestStructReturnHFA))
+  (print (call C:ctestStructReturnSmall1))
+  (print (call C:ctestStructReturnSmall2))
+  (print (call C:ctestStructReturnLarge))
+)
 ```
 
 ```output
@@ -190,61 +196,60 @@ rows[0] = Node.wide(2, 100, 200, 300, 400)
 (1, 2, 3, 4, 5)
 ```
 
-```yumi
-. data1a = (81, 92, 33, 45, 55)
-struct-pass(data1a)
+```brix
+(main
+  (let data1a (tuple 81 92 33 45 55))
+  (call struct-pass data1a)
+  (blank)
+  (let data2a (tuple 81 92))
+  (call struct-pass data2a)
+  (call struct-pass-overflow9 1 2 3 4 5 6 7 8 data2a 9)
+  (blank)
+  (let data3a (tuple 81 92 33 45))
+  (call struct-pass data3a)
+  (call struct-pass-overflow8 1 2 3 4 5 6 7 data3a 9 10)
+  (blank)
+  (let data4a (tuple 1.8 9.2 3.3))
+  (call struct-pass data4a)
+  (call struct-pass-overflow8 1 2 3 4 5 6 7 data4a 9 10)
+)
 
-. data2a = (81, 92)
-struct-pass(data2a)
-struct-pass-overflow9(1, 2, 3, 4, 5, 6, 7, 8, data2a, 9)
+(fn-do + struct-pass _
+  (param x _)
+  (print x)
+  (return 0)
+)
 
-. data3a = (81, 92, 33, 45)
-struct-pass(data3a)
-struct-pass-overflow8(1, 2, 3, 4, 5, 6, 7, data3a, 9, 10)
+(fn-do + struct-pass-overflow8 _
+  (param a _)
+  (param b _)
+  (param c _)
+  (param d _)
+  (param e _)
+  (param f _)
+  (param g _)
+  (param x _)
+  (param i _)
+  (param j _)
+  (print (tuple a b c d e f g i j))
+  (print x)
+  (return 0)
+)
 
-. data4a = (1.8, 9.2, 3.3)
-struct-pass(data4a)
-struct-pass-overflow8(1, 2, 3, 4, 5, 6, 7, data4a, 9, 10)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do struct-pass
-    - x
-
--- x
-= 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do struct-pass-overflow8
-    - a
-    - b
-    - c
-    - d
-    - e
-    - f
-    - g
-    - x
-    - i
-    - j
-
--- a, b, c, d, e, f, g, i, j
--- x
-= 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do struct-pass-overflow9
-    - a
-    - b
-    - c
-    - d
-    - e
-    - f
-    - g
-    - h
-    - x
-    - j
-
--- x
-= 0
+(fn-do + struct-pass-overflow9 _
+  (param a _)
+  (param b _)
+  (param c _)
+  (param d _)
+  (param e _)
+  (param f _)
+  (param g _)
+  (param h _)
+  (param x _)
+  (param j _)
+  (print x)
+  (return 0)
+)
 ```
 
 ```output
@@ -259,31 +264,29 @@ struct-pass-overflow8(1, 2, 3, 4, 5, 6, 7, data4a, 9, 10)
 (1.8, 9.2, 3.3)
 ```
 
-```yumi
--- struct-return-hfa()
--- struct-return-small1()
--- struct-return-small2()
--- struct-return-large()
+```brix
+(main
+  (print (call struct-return-hfa))
+  (print (call struct-return-small1))
+  (print (call struct-return-small2))
+  (print (call struct-return-large))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do struct-return-hfa
+(fn-do + struct-return-hfa _
+  (return (tuple 1.8 9.2 3.3))
+)
 
-= (1.8, 9.2, 3.3)
+(fn-do + struct-return-small1 _
+  (return (tuple 8 9))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do struct-return-small1
+(fn-do + struct-return-small2 _
+  (return (tuple 8 9 10 11))
+)
 
-= (8, 9)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do struct-return-small2
-
-= (8, 9, 10, 11)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do struct-return-large
-
-= (8, 9, 10, 11, 12)
+(fn-do + struct-return-large _
+  (return (tuple 8 9 10 11 12))
+)
 ```
 
 ```output
@@ -293,128 +296,115 @@ struct-pass-overflow8(1, 2, 3, 4, 5, 6, 7, data4a, 9, 10)
 (8, 9, 10, 11, 12)
 ```
 
-```yumi
-. sink = Sink()
-set-before-overflow(sink, 7)
-set-after-overflow("a", "b", "c", "d", "e", "f", "g", "h", sink)
--- sink.value
+```brix
+(main
+  (let sink (call Sink))
+  (call set-before-overflow sink 7)
+  (call set-after-overflow "a" "b" "c" "d" "e" "f" "g" "h" sink)
+  (print (. sink value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Sink
+(type + Sink
+  (prop + value _ (= 0))
+)
 
-+ value = 0
+(fn-do + set-before-overflow _
+  (param sink Sink)
+  (param value Int)
+  (= (. sink value) value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do set-before-overflow
-    - sink Sink
-    - value Int
-
-sink.value = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ do set-after-overflow
-    - a String
-    - b String
-    - c String
-    - d String
-    - e String
-    - f String
-    - g String
-    - h String
-    - sink Sink
-
-set-before-overflow(sink, 123)
+(fn-do + set-after-overflow _
+  (param a String)
+  (param b String)
+  (param c String)
+  (param d String)
+  (param e String)
+  (param f String)
+  (param g String)
+  (param h String)
+  (param sink Sink)
+  (call set-before-overflow sink 123)
+)
 ```
 
 ```output
 123
 ```
 
-```yumi
-callme(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18)
+```brix
+(main
+  (call callme 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do callme
-    - a
-    - b
-    - c
-    - d
-    - e
-    - f
-    - g
-    - h
-    - i
-    - j
-    - k
-    - l
-    - m
-    - n
-    - o
-    - p
-    - q
-    - r
-
--- a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r
+(fn-do + callme _
+  (param a _)
+  (param b _)
+  (param c _)
+  (param d _)
+  (param e _)
+  (param f _)
+  (param g _)
+  (param h _)
+  (param i _)
+  (param j _)
+  (param k _)
+  (param l _)
+  (param m _)
+  (param n _)
+  (param o _)
+  (param p _)
+  (param q _)
+  (param r _)
+  (print (tuple a b c d e f g h i j k l m n o p q r))
+)
 ```
 
 ```output
 (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18)
 ```
 
-```yumi
--- foo()
+```brix
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo I32
-
-. abc = 5
-= 5
+(fn-do + foo I32
+  (let abc 5)
+  (return 5)
+)
 ```
 
 ```output
 5
 ```
 
-```yumi
-. x I32 = 1
--- foo(x)
+```brix
+(main
+  (let x I32 1)
+  (print (call foo x))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo I32
-    - i I32
-
-i + 2
+(fn-expr + foo I32
+  (param i I32)
+  (+ i 2)
+)
 ```
 
 ```output
 3
 ```
 
-```yumi
--- bar(1)
--- bar(1.0)
+```brix
+(main
+  (print (call bar 1))
+  (print (call bar 1.0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ bar'T T
-    - b T
-
-(b + 2.5) as T
-```
-
-```output
-3
-3.5
-```
-
-```yumi
--- bar(1)
--- bar(1.0)
-
-━━━━━━━━━━━━━━━━━━━━
-+ bar T
-    - b ''T
-
-(b + 2.5) as T
+(fn-expr + (of bar T) T
+  (param b T)
+  (as (+ b 2.5) T)
+)
 ```
 
 ```output
@@ -422,37 +412,58 @@ i + 2
 3.5
 ```
 
-```yumi crash
--- bar(1)
+```brix
+(main
+  (print (call bar 1))
+  (print (call bar 1.0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ bar'T'B T
-    - b T''B
+(fn-expr + bar T
+  (param b ''T)
+  (as (+ b 2.5) T)
+)
+```
 
-b + 2.5
+```output
+3
+3.5
+```
+
+```brix crash
+(main
+  (print (call bar 1))
+)
+
+(fn-expr + (of bar T B) T
+  (param b (of T ''B))
+  (+ b 2.5)
+)
 ```
 
 ```output
 Exception: Duplicate type parameter
-<no file:6>
-        - b T''B
-             ^^^
+<no file:7>
+      (param b (of T ''B))
+                     ^^^
 ```
 
-```yumi
-. r = Range'Index(0, 1)
+```brix
+(main
+  (let r (call (of Range Index) 0 1))
+)
 ```
 
-```yumi
--- bar(1)
--- bar(1.0)
+```brix
+(main
+  (print (call bar 1))
+  (print (call bar 1.0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do bar'T T
-    - b T
-
-. a T = (b + 2.5) as T
-= a
+(fn-do + (of bar T) T
+  (param b T)
+  (let a T (as (+ b 2.5) T))
+  (return a)
+)
 ```
 
 ```output
@@ -460,59 +471,44 @@ Exception: Duplicate type parameter
 3.5
 ```
 
-```yumi crash
-foo()
+```brix crash
+(main
+  (call foo)
+)
 ```
 
 ```output
 Exception: Function "foo" not found
-<no file:2>
-    foo()
-    ^^^^^
+<no file:3>
+      (call foo)
+      ^^^^^^^^^^
 ```
 
-```yumi crash
--- foo
+```brix crash
+(main
+  (print foo)
+)
 ```
 
 ```output
 Exception: Name "foo" not found
-<no file:2>
-    -- foo
-       ^^^
+<no file:3>
+      (print foo)
+             ^^^
 ```
 
-```yumi
-foo(24)
-foo(24, 26)
+```brix
+(main
+  (call foo 24)
+  (call foo 24 26)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - a I32
-    - b = 25
-
--- a
--- b
-```
-
-```output
-24
-25
-24
-26
-```
-
-```yumi
-foo(24)
-foo(24, 26)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - a I32
-    - b I32 = 25
-
--- a
--- b
+(fn-do + foo _
+  (param a I32)
+  (param b _ (= 25))
+  (print a)
+  (print b)
+)
 ```
 
 ```output
@@ -522,16 +518,38 @@ foo(24, 26)
 26
 ```
 
-```yumi
-foo(1, 2)
+```brix
+(main
+  (call foo 24)
+  (call foo 24 26)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - a I32
-    - b = 25
+(fn-do + foo _
+  (param a I32)
+  (param b I32 (= 25))
+  (print a)
+  (print b)
+)
+```
 
--- a
--- b
+```output
+24
+25
+24
+26
+```
+
+```brix
+(main
+  (call foo 1 2)
+)
+
+(fn-do + foo _
+  (param a I32)
+  (param b _ (= 25))
+  (print a)
+  (print b)
+)
 ```
 
 ```output
@@ -541,31 +559,33 @@ foo(1, 2)
 
 ### Unresolved type parameter
 
-```yumi
--- foo(24, ...)
+```brix
+(main
+  (print (call foo 24 ...))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo'T'G
-    - a T
-
-. b G
--- a
+(fn-do + (of foo T G) _
+  (param a T)
+  (let b G)
+  (print a)
+)
 ```
 
 ```output
 [Binding foo]
 ```
 
-```yumi
-foo(24)
-foo(24.5)
+```brix
+(main
+  (call foo 24)
+  (call foo 24.5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - a
-    - b = 25
-
--- a + b
+(fn-do + foo _
+  (param a _)
+  (param b _ (= 25))
+  (print (+ a b))
+)
 ```
 
 ```output
@@ -573,23 +593,23 @@ foo(24.5)
 49.5
 ```
 
-```yumi
--- foo(1)
--- foo(1.0)
+```brix
+(main
+  (print (call foo 1))
+  (print (call foo 1.0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - b Int
-    - a = 10
+(fn-expr + foo _
+  (param b Int)
+  (param a _ (= 10))
+  (+ b a)
+)
 
-b + a
-
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - b Float
-    - a = 5.5
-
-b + a
+(fn-expr + foo _
+  (param b Float)
+  (param a _ (= 5.5))
+  (+ b a)
+)
 ```
 
 ```output
@@ -597,19 +617,19 @@ b + a
 6.5
 ```
 
-```yumi
--- foo()
+```brix
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - a = bar()
+(fn-expr + foo _
+  (param a _ (= (call bar)))
+  (+ a 1)
+)
 
-a + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ bar
-
-42
+(fn-expr + bar _
+  42
+)
 ```
 
 ```output
@@ -618,82 +638,83 @@ a + 1
 
 ### A default cannot read a member of the method's class
 
-```yumi crash
-. holder = Holder()
-holder.show()
+```brix crash
+(main
+  (let holder (call Holder))
+  (call (. holder show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ name = "kept"
-
-────────────────────
-+ do show
-    - text String = name
-
--- text
+(type + Holder
+  (prop + name _ (= "kept"))
+  (fn-do + show _
+    (param text String (= name))
+    (print text)
+  )
+)
 ```
 
 ```output
 Exception: Name "name" not found
-<no file:12>
-        - text String = name
-                        ^^^^
+<no file:10>
+        (param text String (= name))
+                              ^^^^
 ```
 
-```yumi crash
-foo(24)
+```brix crash
+(main
+  (call foo 24)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - a
-    - b = 25
-    - c
-
--- a + b
+(fn-do + foo _
+  (param a _)
+  (param b _ (= 25))
+  (param c _)
+  (print (+ a b))
+)
 ```
 
 ```output
 Exception: Parameter "c" has no default but comes after "b", which has a default; declare required parameters first, or give "c" a default
-<no file:8>
-        - c
-          ^
+<no file:9>
+      (param c _)
+      ^^^^^^^^
 ```
 
 ### Too many arguments
 
-```yumi crash
-foo(24, 25)
+```brix crash
+(main
+  (call foo 24 25)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - a
-
--- a
+(fn-do + foo _
+  (param a _)
+  (print a)
+)
 ```
 
 ```output
 Exception: No function "foo" accepts (I64, I64); it is declared as "foo(a)"
-<no file:2>
-    foo(24, 25)
-    ^^^^^^^^^^^
+<no file:3>
+      (call foo 24 25)
+      ^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-foo(42l)
-foo(34i)
+```brix
+(main
+  (call foo 42l)
+  (call foo 34i)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - n I64
+(fn-do + foo _
+  (param n I64)
+  (print "i64")
+)
 
--- "i64"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - n I32
-
--- "i32"
+(fn-do + foo _
+  (param n I32)
+  (print "i32")
+)
 ```
 
 ```output
@@ -701,49 +722,49 @@ i64
 i64
 ```
 
-```yumi
--- foo(Foo())
+```brix
+(main
+  (print (call foo (call Foo)))
+)
 
-+ Bar
-+ Foo is Bar
+(blank)
+(type-line + Bar)
+(type-line + Foo (is Bar))
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n Bar
+(fn-expr + foo _
+  (param n Bar)
+  "Bar"
+)
 
-"Bar"
-
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n Foo
-
-"Foo"
+(fn-expr + foo _
+  (param n Foo)
+  "Foo"
+)
 ```
 
 ```output
 Foo
 ```
 
-```yumi
-Thing(Foo())
+```brix
+(main
+  (call Thing (call Foo))
+)
 
-+ Bar
-+ Foo is Bar
+(blank)
+(type-line + Bar)
+(type-line + Foo (is Bar))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ This
-    - n Bar
-
--- "Bar"
-
-────────────────────
-+ This
-    - n Foo
-
--- "Foo"
+(type + Thing
+  (fn-do + This _
+    (param n Bar)
+    (print "Bar")
+  )
+  (fn-do + This _
+    (param n Foo)
+    (print "Foo")
+  )
+)
 ```
 
 ```output
@@ -752,29 +773,26 @@ Foo
 
 ### Overriding base class constructor with same signature
 
-```yumi
-Thing(Bar())
+```brix
+(main
+  (call Thing (call Bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
+(type + Bar)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ThingBase
+(type + ThingBase
+  (fn-do + This _
+    (param n Bar)
+    (print "Bar")
+  )
+)
 
-────────────────────
-+ This
-    - n Bar
-
--- "Bar"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is ThingBase
-
-────────────────────
-+ This
-    - n Bar
-
--- "Foo"
+(type + Thing (is ThingBase)
+  (fn-do + This _
+    (param n Bar)
+    (print "Foo")
+  )
+)
 ```
 
 ```output
@@ -783,29 +801,28 @@ Foo
 
 ### More specific base class constructor wins
 
-```yumi
-Thing(Foo())
+```brix
+(main
+  (call Thing (call Foo))
+)
 
-+ Bar
-+ Foo is Bar
+(blank)
+(type-line + Bar)
+(type-line + Foo (is Bar))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ThingBase
+(type + ThingBase
+  (fn-do + This _
+    (param n Foo)
+    (print "Foo")
+  )
+)
 
-────────────────────
-+ This
-    - n Foo
-
--- "Foo"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is ThingBase
-
-────────────────────
-+ This
-    - n Bar
-
--- "Bar"
+(type + Thing (is ThingBase)
+  (fn-do + This _
+    (param n Bar)
+    (print "Bar")
+  )
+)
 ```
 
 ```output
@@ -814,152 +831,161 @@ Foo
 
 ## Named arguments
 
-```yumi
--- foo(1)
+```brix
+(main
+  (print (call foo 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - a = 2
-
-a
+(fn-expr + foo _
+  (param a _ (= 2))
+  a
+)
 ```
 
 ```output
 1
 ```
 
-```yumi
--- foo(1) • c 1
+```brix
+(main
+  (print (call foo 1 (:c 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - a
-    - b = 1
-    - c = 2
-
-a + b + c
+(fn-expr + foo _
+  (param a _)
+  (param b _ (= 1))
+  (param c _ (= 2))
+  (+ a b c)
+)
 ```
 
 ```output
 3
 ```
 
-```yumi
--- foo(0) • c 3
+```brix
+(main
+  (print (call foo 0 (:c 3)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - a
-    - b = 1
-    - c = 2
-
-"$a $b $c"
+(fn-expr + foo _
+  (param a _)
+  (param b _ (= 1))
+  (param c _ (= 2))
+  (str a " " b " " c)
+)
 ```
 
 ```output
 0 1 3
 ```
 
-```yumi
--- foo(0) • c 3 • d 4
+```brix
+(main
+  (print (call foo 0 (:c 3) (:d 4)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - a
-    - b = 1
-    - c = 2
-    - d = 3
-
-"$a $b $c $d"
+(fn-expr + foo _
+  (param a _)
+  (param b _ (= 1))
+  (param c _ (= 2))
+  (param d _ (= 3))
+  (str a " " b " " c " " d)
+)
 ```
 
 ```output
 0 1 3 4
 ```
 
-```yumi
--- foo(1) • c 1
+```brix
+(main
+  (print (call foo 1 (:c 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - a
-    - b = 1
-    - c = 2
-
-a + b + c
+(fn-expr + foo _
+  (param a _)
+  (param b _ (= 1))
+  (param c _ (= 2))
+  (+ a b c)
+)
 ```
 
 ```output
 3
 ```
 
-```yumi
--- foo(2) • c 1
+```brix
+(main
+  (print (call foo 2 (:c 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - a
-    - b = 1
-    - c = 2
-
-a + b + c
+(fn-expr + foo _
+  (param a _)
+  (param b _ (= 1))
+  (param c _ (= 2))
+  (+ a b c)
+)
 ```
 
 ```output
 4
 ```
 
-```yumi crash
--- foo() • to 1 • with 2
+```brix crash
+(main
+  (print (call foo (:to 1) (:with 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - a
-    - b = 1
-
-a + b
+(fn-expr + foo _
+  (param a _)
+  (param b _ (= 1))
+  (+ a b)
+)
 ```
 
 ```output
 Exception: No function "foo" accepts to I64 with I64; it is declared as "foo(a, b)"
-<no file:2>
-    -- foo() • to 1 • with 2
-       ^^^^^^^^^^^^^^^^^^^^^
+<no file:3>
+      (print (call foo (:to 1) (:with 2)))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ## Storing type parameters in bindings
 
-```yumi
-. c = foo'F32(1, 2, ...)
--- c(3)
+```brix
+(main
+  (let c (call (of foo F32) 1 2 ...))
+  (print (call c 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo'T1'T2
-    - a I32
-    - b T1
-    - c T2
-
-a * b * c
+(fn-expr + (of foo T1 T2) _
+  (param a I32)
+  (param b T1)
+  (param c T2)
+  (* a b c)
+)
 ```
 
 ```output
 6
 ```
 
-```yumi
--- foo'Int(1, 3, 2)
--- foo'Int(1, 2, 3)
--- foo(1, 2.0, 3.0)
--- foo(1, 2.0, 3.0)
+```brix
+(main
+  (print (call (of foo Int) 1 3 2))
+  (print (call (of foo Int) 1 2 3))
+  (print (call foo 1 2.0 3.0))
+  (print (call foo 1 2.0 3.0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo'T'T2
-    - a T2
-    - b T
-    - c T
-
--- T
-= a * b * c
+(fn-do + (of foo T T2) _
+  (param a T2)
+  (param b T)
+  (param c T)
+  (print T)
+  (return (* a b c))
+)
 ```
 
 ```output
@@ -973,17 +999,18 @@ a * b * c
 6
 ```
 
-```yumi
-foo'Int(1, 3, 2)
-foo(1, 2.0, 3.0)
+```brix
+(main
+  (call (of foo Int) 1 3 2)
+  (call foo 1 2.0 3.0)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo'T'T2
-    - a T2
-    - b T
-    - c T
-
--- T
+(fn-do + (of foo T T2) _
+  (param a T2)
+  (param b T)
+  (param c T)
+  (print T)
+)
 ```
 
 ```output
@@ -991,29 +1018,31 @@ foo(1, 2.0, 3.0)
 [TypeInfo F64]
 ```
 
-```yumi
-. c = foo'F32(...)
--- c'F32(1)
+```brix
+(main
+  (let c (call (of foo F32) ...))
+  (print (call (of c F32) 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo'T1'T2
-    - a
-
-(a as T1) as T2
+(fn-expr + (of foo T1 T2) _
+  (param a _)
+  (as (as a T1) T2)
+)
 ```
 
 ```output
 1
 ```
 
-```yumi
-foo(2)
+```brix
+(main
+  (call foo 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - a ''A
-
--- type-of a
+(fn-do + foo _
+  (param a ''A)
+  (print (type-of a))
+)
 ```
 
 ```output
@@ -1022,40 +1051,44 @@ foo(2)
 
 ## Infer argument type from its default value (but only if not provided by caller)
 
-```yumi
--- foo()
-    • a "hi"
-    • b 42
+```brix
+(main
+  (print
+    (call foo
+      (block
+        (:a "hi")
+        (:b 42)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - a String
-    - b Int
-
-"$a = $b"
+(fn-expr + foo _
+  (param a String)
+  (param b Int)
+  (str a " = " b)
+)
 ```
 
 ```output
 hi = 42
 ```
 
-```yumi
--- Foo(5)
--- Foo()
+```brix
+(main
+  (print (call Foo 5))
+  (print (call Foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar Int = 10
-
-────────────────────
-+ This
-    - bar Int?
-
-────────────────────
-+ to String
-
-"[Foo $bar]"
+(type + Foo
+  (prop + bar Int (= 10))
+  (fn-do + This _
+    (param bar (? Int))
+  )
+  (fn-to-expr + String
+    (str "[Foo " bar "]")
+  )
+)
 ```
 
 ```output
@@ -1063,52 +1096,55 @@ hi = 42
 [Foo 10]
 ```
 
-```yumi crash
--- foo()
+```brix crash
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-
-5
-6
+(fn-expr + foo _
+  5
+  6
+)
 ```
 
 ```output
-Exception: A value cannot stand alone as a step; use it, or remove it
-<no file:7>
-    5
-    ^
+Exception: A `fn-expr` body has one value, and `6` follows the value `5`. Put checks, prints, probes and `do` forms in `(before …)`, other steps in a `(do …)` there, and lazies in `(where …)`, or write `fn-do` and return with `(return value)`.
+<no file:8>
+      6
+      ^
 ```
 
-```yumi crash
--- foo()
+```brix crash
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
+(fn-expr + foo _
+  (call bar)
+  6
+)
 
-bar()
-6
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bar
-
--- "bar"
+(fn-do + bar _
+  (print "bar")
+)
 ```
 
 ```output
-Exception: Function "foo" is not declared with do, so its body is one expression and cannot run calls before its value; put the call in a "do" block, or write "+ do foo" and return its value with "= value"
-<no file:7>
-    bar()
-    ^^^^^
+Exception: A `fn-expr` body has one value, and `6` follows the value (call …). Put checks, prints, probes and `do` forms in `(before …)`, other steps in a `(do …)` there, and lazies in `(where …)`, or write `fn-do` and return with `(return value)`.
+<no file:8>
+      6
+      ^
 ```
 
-```yumi
--- foo()
+```brix
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
--- "hi"
-= 6
+(fn-do + foo _
+  (print "hi")
+  (return 6)
+)
 ```
 
 ```output
@@ -1118,16 +1154,16 @@ hi
 
 ### Empty do functions are ok
 
-```yumi
-. foo = Foo()
-foo.act()
--- "ok"
+```brix
+(main
+  (let foo (call Foo))
+  (call (. foo act))
+  (print "ok")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do act
+(type + Foo
+  (fn-do + act _)
+)
 ```
 
 ```output
@@ -1136,16 +1172,16 @@ ok
 
 ### Empty explicit-void do functions are ok
 
-```yumi
-. foo = Foo()
-foo.act()
--- "ok"
+```brix
+(main
+  (let foo (call Foo))
+  (call (. foo act))
+  (print "ok")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do act Void
+(type + Foo
+  (fn-do + act Void)
+)
 ```
 
 ```output
@@ -1154,14 +1190,15 @@ ok
 
 ### Ability to reference params in argument defaults
 
-```yumi
--- foo'Int()
+```brix
+(main
+  (print (call (of foo Int)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo'T
-    - type = T
-
-type
+(fn-expr + (of foo T) _
+  (param type _ (= T))
+  type
+)
 ```
 
 ```output
@@ -1170,49 +1207,50 @@ type
 
 ### Write operation always returns left hand side, ignoring return value of override
 
-```yumi
--- Foo() <- 42
+```brix
+(main
+  (print (<- (call Foo) 42))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do this <- other
+(type + Foo
+  (fn-do + (infix this <- (param other _)) _)
+)
 ```
 
 ```output
 [Object __source__:Foo]
 ```
 
-```yumi
-foo()
+```brix
+(main
+  (call foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo'T
-    - T = String
-
--- T
+(fn-do + (of foo T) _
+  (constraint = T String)
+  (print T)
+)
 ```
 
 ```output
 [TypeInfo String]
 ```
 
-```yumi
-foo(3.5)
-foo(3)
+```brix
+(main
+  (call foo 3.5)
+  (call foo 3)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - n Int!
+(fn-do + foo _
+  (param n (exact Int))
+  (print "!")
+)
 
--- "!"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - n Int~
-
--- "~"
+(fn-do + foo _
+  (param n (similar Int))
+  (print "~")
+)
 ```
 
 ```output
@@ -1222,20 +1260,24 @@ foo(3)
 
 ## Variadic arguments
 
-```yumi
-foo("hi")
-    - 1
-    - 2
-    - 3
+```brix
+(main
+  (call foo "hi"
+    (block
+      (arg 1)
+      (arg 2)
+      (arg 3)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - text
-    ... keys [Int]
-
--- text
--- keys.length
--- keys
+(fn-do + foo _
+  (param text _)
+  (param ... keys (list Int))
+  (print text)
+  (print (. keys length))
+  (print keys)
+)
 ```
 
 ```output
@@ -1244,17 +1286,18 @@ hi
 1, 2, 3
 ```
 
-```yumi
-foo("hi")
+```brix
+(main
+  (call foo "hi")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - text
-    ... keys = List'Int()
-
--- text
--- keys.length
--- keys
+(fn-do + foo _
+  (param text _)
+  (param ... keys _ (= (call (of List Int))))
+  (print text)
+  (print (. keys length))
+  (print keys)
+)
 ```
 
 ```output
@@ -1262,20 +1305,24 @@ hi
 0
 ```
 
-```yumi
-foo("hi")
-    - 1
-    - 2.5
-    - 3
+```brix
+(main
+  (call foo "hi"
+    (block
+      (arg 1)
+      (arg 2.5)
+      (arg 3)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - text
-    ... keys
-
--- text
--- keys.length
--- keys
+(fn-do + foo _
+  (param text _)
+  (param ... keys _)
+  (print text)
+  (print (. keys length))
+  (print keys)
+)
 ```
 
 ```output
@@ -1284,24 +1331,27 @@ hi
 1, 2.5, 3
 ```
 
-```yumi
-. f = Foo()
-f.foo("hi")
-    - 1
-    - 2
-    - 3
+```brix
+(main
+  (let f (call Foo))
+  (call (. f foo) "hi"
+    (block
+      (arg 1)
+      (arg 2)
+      (arg 3)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do foo
-    - text
-    ... keys [Int]
-
--- text
--- keys.length
--- keys
+(type + Foo
+  (fn-do + foo _
+    (param text _)
+    (param ... keys (list Int))
+    (print text)
+    (print (. keys length))
+    (print keys)
+  )
+)
 ```
 
 ```output
@@ -1310,21 +1360,24 @@ hi
 1, 2, 3
 ```
 
-```yumi
-Foo
-    - 1
-    - 2
-    - 3
+```brix
+(main
+  (call Foo
+    (block
+      (arg 1)
+      (arg 2)
+      (arg 3)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ This
-    ... keys [Int]
-
--- keys.length
--- keys
+(type + Foo
+  (fn-do + This _
+    (param ... keys (list Int))
+    (print (. keys length))
+    (print keys)
+  )
+)
 ```
 
 ```output
@@ -1332,76 +1385,78 @@ Foo
 1, 2, 3
 ```
 
-```yumi
-. fn = :: text String, ... keys [Int] => "$text $keys"
--- fn("hi", 1, 2, 3)
+```brix
+(main
+  (let fn (=> ((: text String) (: ...keys (list Int))) (str text " " keys)))
+  (print (call fn "hi" 1 2 3))
+)
 ```
 
 ```output
 hi 1, 2, 3
 ```
 
-```yumi crash
-foo("hi")
+```brix crash
+(main
+  (call foo "hi")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    ... keys
-    - a
+(fn-do + foo _
+  (param ... keys _)
+  (param a _)
+)
 ```
 
 ```output
 Exception: Variadic arguments must be the last one
-<no file:7>
-        - a
-          ^
+<no file:8>
+      (param a _)
+      ^^^^^^^^
 ```
 
-```yumi crash
-foo("hi")
+```brix crash
+(main
+  (call foo "hi")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    ... keys
-    ... bees
+(fn-do + foo _
+  (param ... keys _)
+  (param ... bees _)
+)
 ```
 
 ```output
 Exception: Variadic arguments must be the last one
-<no file:7>
-        ... bees
-            ^^^^
+<no file:8>
+      (param ... bees _)
+      ^^^^^^^^^^^^^^^
 ```
 
 ### Constructor assignments select omitted owner parameters before class defaults.
 
-```yumi
-. arena = ConstructorArena()
-. managed = ConstructorSelectedBox'U32()
-. native = ConstructorSelectedBox'U32(arena)
--- type-of managed
--- type-of native
+```brix
+(main
+  (let arena (call ConstructorArena))
+  (let managed (call (of ConstructorSelectedBox U32)))
+  (let native (call (of ConstructorSelectedBox U32) arena))
+  (print (type-of managed))
+  (print (type-of native))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ConstructorArena
+(type + ConstructorArena)
 
-━━━━━━━━━━━━━━━━━━━━
-+ GCConstructorBacking'Value
+(type + (of GCConstructorBacking Value))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ArenaConstructorBacking'Value
+(type + (of ArenaConstructorBacking Value))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ConstructorSelectedBox'Value'Backing
-    - Backing = GCConstructorBacking'Value
-
-────────────────────
-+ This
-
-────────────────────
-+ This
-    - arena ConstructorArena
-    - Backing = ArenaConstructorBacking'Value
+(type + (of ConstructorSelectedBox Value Backing)
+  (constraint = Backing (of GCConstructorBacking Value))
+  (fn-do + This _)
+  (fn-do + This _
+    (param arena ConstructorArena)
+    (constraint = Backing (of ArenaConstructorBacking Value))
+  )
+)
 ```
 
 ```output
@@ -1411,60 +1466,56 @@ Exception: Variadic arguments must be the last one
 
 ### Explicit owner arguments reject a conflicting constructor assignment.
 
-```yumi crash
-. arena = ConstructorConflictArena()
-ConstructorConflictBox'U32'(GCConflictBacking'U32)(arena)
+```brix crash
+(main
+  (let arena (call ConstructorConflictArena))
+  (call (of ConstructorConflictBox U32 (of GCConflictBacking U32)) arena)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ConstructorConflictArena
+(type + ConstructorConflictArena)
 
-━━━━━━━━━━━━━━━━━━━━
-+ GCConflictBacking'Value
+(type + (of GCConflictBacking Value))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ArenaConflictBacking'Value is Tuple
+(type + (of ArenaConflictBacking Value) (is Tuple))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ConstructorConflictBox'Value'Backing
-    - Backing = GCConflictBacking'Value
-
-────────────────────
-+ This
-    - arena ConstructorConflictArena
-    - Backing = ArenaConflictBacking'Value
+(type + (of ConstructorConflictBox Value Backing)
+  (constraint = Backing (of GCConflictBacking Value))
+  (fn-do + This _
+    (param arena ConstructorConflictArena)
+    (constraint = Backing (of ArenaConflictBacking Value))
+  )
+)
 ```
 
 ```output
 Exception: No constructor of ConstructorConflictBox matches these arguments; its declared constructors are "ConstructorConflictBox(arena ConstructorConflictArena)"
-<no file:3>
-    ConstructorConflictBox'U32'(GCConflictBacking'U32)(arena)
-    ^^^^^^^^^^^^^^^^^^^^^^
+<no file:4>
+      (call (of ConstructorConflictBox U32 (of GCConflictBacking U32)) arena)
+                ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Ordinary overload ranking wins before a constructor assignment selects the owner type.
 
-```yumi
-. selected = RankedConstructorBox'U32(3)
--- type-of selected
+```brix
+(main
+  (let selected (call (of RankedConstructorBox U32) 3))
+  (print (type-of selected))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ExactRankedBacking'Value
+(type + (of ExactRankedBacking Value))
 
-━━━━━━━━━━━━━━━━━━━━
-+ SimilarRankedBacking'Value
+(type + (of SimilarRankedBacking Value))
 
-━━━━━━━━━━━━━━━━━━━━
-+ RankedConstructorBox'Value'Backing
-
-────────────────────
-+ This
-    - value Int~
-    - Backing = SimilarRankedBacking'Value
-
-────────────────────
-+ This
-    - value Int!
-    - Backing = ExactRankedBacking'Value
+(type + (of RankedConstructorBox Value Backing)
+  (fn-do + This _
+    (param value (similar Int))
+    (constraint = Backing (of SimilarRankedBacking Value))
+  )
+  (fn-do + This _
+    (param value (exact Int))
+    (constraint = Backing (of ExactRankedBacking Value))
+  )
+)
 ```
 
 ```output
@@ -1473,84 +1524,80 @@ Exception: No constructor of ConstructorConflictBox matches these arguments; its
 
 ### Equally ranked constructors selecting different owner types are ambiguous.
 
-```yumi crash
-AmbiguousConstructorBox'U32(true)
+```brix crash
+(main
+  (call (of AmbiguousConstructorBox U32) true)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ FirstAmbiguousBacking'Value
+(type + (of FirstAmbiguousBacking Value))
 
-━━━━━━━━━━━━━━━━━━━━
-+ SecondAmbiguousBacking'Value
+(type + (of SecondAmbiguousBacking Value))
 
-━━━━━━━━━━━━━━━━━━━━
-+ AmbiguousConstructorBox'Value'Backing
-
-────────────────────
-+ This
-    - marker Bool
-    - Backing = FirstAmbiguousBacking'Value
-
-────────────────────
-+ This
-    - marker Bool
-    - Backing = SecondAmbiguousBacking'Value
+(type + (of AmbiguousConstructorBox Value Backing)
+  (fn-do + This _
+    (param marker Bool)
+    (constraint = Backing (of FirstAmbiguousBacking Value))
+  )
+  (fn-do + This _
+    (param marker Bool)
+    (constraint = Backing (of SecondAmbiguousBacking Value))
+  )
+)
 ```
 
 ```output
 Exception: Ambiguous constructor
-<no file:2>
-    AmbiguousConstructorBox'U32(true)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:3>
+      (call (of AmbiguousConstructorBox U32) true)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### An omitted owner parameter without a constructor assignment or class default is diagnosed.
 
-```yumi crash
-UnresolvedConstructorBox(true)
+```brix crash
+(main
+  (call UnresolvedConstructorBox true)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ UnresolvedConstructorBox'Backing
-
-────────────────────
-+ This
-    - marker Bool
+(type + (of UnresolvedConstructorBox Backing)
+  (fn-do + This _
+    (param marker Bool)
+  )
+)
 ```
 
 ```output
 Exception: Could not resolve parameter Backing
-<no file:2>
-    UnresolvedConstructorBox(true)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:3>
+      (call UnresolvedConstructorBox true)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Runtime arguments infer earlier owner parameters before constructor assignments and later defaults.
 
-```yumi
-. selected = InferredConstructorBox(5u32, InferenceArenaToken())
--- type-of selected
+```brix
+(main
+  (let selected (call InferredConstructorBox 5u32 (call InferenceArenaToken)))
+  (print (type-of selected))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InferenceArenaToken
+(type + InferenceArenaToken)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InferredManagedBacking'Value
+(type + (of InferredManagedBacking Value))
 
-━━━━━━━━━━━━━━━━━━━━
-+ InferredArenaBacking'Value
+(type + (of InferredArenaBacking Value))
 
-━━━━━━━━━━━━━━━━━━━━
-+ InferredPolicy'Value
+(type + (of InferredPolicy Value))
 
-━━━━━━━━━━━━━━━━━━━━
-+ InferredConstructorBox'Value'Backing'Policy
-    - Backing = InferredManagedBacking'Value
-    - Policy = InferredPolicy'Value
-
-────────────────────
-+ This
-    - value Value
-    - token InferenceArenaToken
-    - Backing = InferredArenaBacking'Value
+(type + (of InferredConstructorBox Value Backing Policy)
+  (constraint = Backing (of InferredManagedBacking Value))
+  (constraint = Policy (of InferredPolicy Value))
+  (fn-do + This _
+    (param value Value)
+    (param token InferenceArenaToken)
+    (constraint = Backing (of InferredArenaBacking Value))
+  )
+)
 ```
 
 ```output
@@ -1559,43 +1606,37 @@ Exception: Could not resolve parameter Backing
 
 ### An imported extension can contribute a factory constructor that selects an omitted owner parameter.
 
-```yumi
-. selected = ExtensionConstructorBox'U32(ExtensionConstructorToken(), 7u32)
--- type-of selected
--- selected.value
+```brix
+(main
+  (let selected (call (of ExtensionConstructorBox U32) (call ExtensionConstructorToken) 7u32))
+  (print (type-of selected))
+  (print (. selected value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ExtensionConstructorToken
+(type + ExtensionConstructorToken)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ExtensionManagedBacking'Value
+(type + (of ExtensionManagedBacking Value))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ExtensionArenaBacking'Value
+(type + (of ExtensionArenaBacking Value))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ExtensionConstructorBox'Value'Backing is Tuple
-    - Backing = ExtensionManagedBacking'Value
+(type + (of ExtensionConstructorBox Value Backing) (is Tuple)
+  (constraint = Backing (of ExtensionManagedBacking Value))
+  (prop + value Value)
+  (fn-do + This _
+    (param item Value)
+    (param marker U8)
+    (= value item)
+  )
+)
 
-+ value Value
-
-────────────────────
-+ This
-    - item Value
-    - marker U8
-
-value = item
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend ExtensionConstructorBox''Value''Backing
-
-────────────────────
-+ This
-    - token ExtensionConstructorToken
-    - item Value
-    - Backing = ExtensionArenaBacking'Value
-
-= ExtensionConstructorBox'Value'Backing(item, 0u8)
+(extend + (of ExtensionConstructorBox ''Value ''Backing)
+  (fn-do + This _
+    (param token ExtensionConstructorToken)
+    (param item Value)
+    (constraint = Backing (of ExtensionArenaBacking Value))
+    (return (call (of ExtensionConstructorBox Value Backing) item 0u8))
+  )
+)
 ```
 
 ```output
@@ -1603,167 +1644,89 @@ value = item
 7
 ```
 
-```yumi crash
-━━━━━━━━━━━━━━━━━━━━
-+ unused Int
+```brix
+(main
+  (print (call second))
+)
 
-1
+(fn-expr + first Int
+  1
+)
 
-────────────────────
-+ second Int
-
-2
-```
-
-```output
-Exception: A thin-divider function cannot be declared inside another function. Use a thick divider (━) for a module-level function.
-<no file:7>
-    ────────────────────
-    ^
-```
-
-```yumi crash
-━━━━━━━━━━━━━━━━━━━━
-+ unused'T T
-    - value T
-
-value
-
-────────────────────
-_ second Int
-
-2
-```
-
-```output
-Exception: A thin-divider function cannot be declared inside another function. Use a thick divider (━) for a module-level function.
-<no file:8>
-    ────────────────────
-    ^
-```
-
-```yumi crash
--- second()
-
-━━━━━━━━━━━━━━━━━━━━
-_ do unused
-
--- 1
-
-
-────────────────────
-_ second Int
-
-2
-
-━━━━━━━━━━━━━━━━━━━━
-+ later Int
-
-3
-```
-
-```output
-Exception: A thin-divider function cannot be declared inside another function. Use a thick divider (━) for a module-level function.
-<no file:10>
-    ────────────────────
-    ^
-```
-
-```yumi
--- second()
-
-━━━━━━━━━━━━━━━━━━━━
-+ first Int
-
-1
-
-━━━━━━━━━━━━━━━━━━━━
-_ second Int
-
-2
+(fn-expr _ second Int
+  2
+)
 ```
 
 ```output
 2
 ```
 
-```yumi
-. value = (41 as Size, 9u32)
--- forward(value)
--- reverse(value)
--- nested((value, 7u32))
+```brix
+(main
+  (let value (tuple (as 41 Size) 9u32))
+  (print (call forward value))
+  (print (call reverse value))
+  (print (call nested (tuple value 7u32)))
+  (blank)
+  (let address EntryAddress 41)
+  (let generation EntryGeneration 9)
+  (let typed (tuple address generation))
+  (print (call forward typed))
+  (print (call reverse typed))
+  (print (call nested (tuple typed 7u32)))
+  (blank)
+  (let pointer (as 41 EntryPointer))
+  (let count EntryCount 9)
+  (print (call forward (tuple pointer count)))
+  (print (call reverse (tuple pointer count)))
+)
 
-. address EntryAddress = 41
-. generation EntryGeneration = 9
-. typed = (address, generation)
--- forward(typed)
--- reverse(typed)
--- nested((typed, 7u32))
+(type + EntryAddress (is Size))
 
-. pointer = 41 as EntryPointer
-. count EntryCount = 9
--- forward((pointer, count))
--- reverse((pointer, count))
+(type + EntryGeneration (is U32))
 
-━━━━━━━━━━━━━━━━━━━━
-+ EntryAddress is Size
+(type + EntryPointer (is (of CPointer U8)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ EntryGeneration is U32
+(type + EntryCount (is Size))
 
-━━━━━━━━━━━━━━━━━━━━
-+ EntryPointer is CPointer'U8
+(type + ExactEntry (is (tuple (: address Size) (: generation U32))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ EntryCount is Size
+(type + ConvertedEntry (is (tuple (: address (of CPointer U8)) (: generation Size))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ExactEntry is (address Size, generation U32)
+(type + ExactNested (is (tuple (: entry ExactEntry) (: count U32))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ConvertedEntry is (address CPointer'U8, generation Size)
+(type + ConvertedNested (is (tuple (: entry ConvertedEntry) (: count U32))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ExactNested is (entry ExactEntry, count U32)
+(fn-expr + forward _
+  (param entry ExactEntry)
+  "exact"
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ConvertedNested is (entry ConvertedEntry, count U32)
+(fn-expr + forward _
+  (param entry ConvertedEntry)
+  "converted"
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ forward
-    - entry ExactEntry
+(fn-expr + reverse _
+  (param entry ConvertedEntry)
+  "converted"
+)
 
-"exact"
+(fn-expr + reverse _
+  (param entry ExactEntry)
+  "exact"
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ forward
-    - entry ConvertedEntry
+(fn-expr + nested _
+  (param entry ExactNested)
+  "exact nested"
+)
 
-"converted"
-
-━━━━━━━━━━━━━━━━━━━━
-+ reverse
-    - entry ConvertedEntry
-
-"converted"
-
-━━━━━━━━━━━━━━━━━━━━
-+ reverse
-    - entry ExactEntry
-
-"exact"
-
-━━━━━━━━━━━━━━━━━━━━
-+ nested
-    - entry ExactNested
-
-"exact nested"
-
-━━━━━━━━━━━━━━━━━━━━
-+ nested
-    - entry ConvertedNested
-
-"converted nested"
+(fn-expr + nested _
+  (param entry ConvertedNested)
+  "converted nested"
+)
 ```
 
 ```output
@@ -1779,76 +1742,67 @@ converted
 
 ### An integer argument takes an integer overload, and a C pointer parameter takes an integer only when asked
 
-```yumi
-. byte U8 = 2
-. unsigned U32 = 2
-. signed I32 = 2
-. wide I64 = 2
-. pointer = (0 as Pointer) as CPointer'U8
--- Box(byte).address
--- Box(unsigned).address
--- Box(signed).address
--- Box(wide).address
--- pick(byte)
--- pick(unsigned)
--- pick(signed)
--- pick(wide)
--- pick(pointer)
--- reversed(unsigned)
--- reversed(pointer)
--- only-pointer(0 as CPointer'Char8)
--- only-pointer(unsigned as CPointer'Char8)
+```brix
+(main
+  (let byte U8 2)
+  (let unsigned U32 2)
+  (let signed I32 2)
+  (let wide I64 2)
+  (let pointer (as (as 0 Pointer) (of CPointer U8)))
+  (print (. (call Box byte) address))
+  (print (. (call Box unsigned) address))
+  (print (. (call Box signed) address))
+  (print (. (call Box wide) address))
+  (print (call pick byte))
+  (print (call pick unsigned))
+  (print (call pick signed))
+  (print (call pick wide))
+  (print (call pick pointer))
+  (print (call reversed unsigned))
+  (print (call reversed pointer))
+  (print (call only-pointer (as 0 (of CPointer Char8))))
+  (print (call only-pointer (as unsigned (of CPointer Char8))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box is Tuple
+(type + Box (is Tuple)
+  (prop _ native (of CPointer Char8))
+  (fn-do + This _
+    (param count Int (= 1))
+    (print (str "public " count))
+    (return (call This (as (as 0 Pointer) (of CPointer Char8))))
+  )
+  (fn-do _ This _
+    (param native (of CPointer Char8))
+  )
+  (fn-expr + address _ :get
+    (. native address)
+  )
+)
 
-_ native CPointer'Char8
+(fn-expr + pick _
+  (param value Int)
+  "integer"
+)
 
-────────────────────
-+ This
-    - count Int = 1
+(fn-expr + pick _
+  (param value (of CPointer Char8))
+  "pointer"
+)
 
--- "public $count"
-= This((0 as Pointer) as CPointer'Char8)
+(fn-expr + reversed _
+  (param value (of CPointer Char8))
+  "pointer"
+)
 
-────────────────────
-_ This
-    - native CPointer'Char8
+(fn-expr + reversed _
+  (param value Int)
+  "integer"
+)
 
-────────────────────
-+ get address
-
-native.address
-
-━━━━━━━━━━━━━━━━━━━━
-+ pick
-    - value Int
-
-"integer"
-
-━━━━━━━━━━━━━━━━━━━━
-+ pick
-    - value CPointer'Char8
-
-"pointer"
-
-━━━━━━━━━━━━━━━━━━━━
-+ reversed
-    - value CPointer'Char8
-
-"pointer"
-
-━━━━━━━━━━━━━━━━━━━━
-+ reversed
-    - value Int
-
-"integer"
-
-━━━━━━━━━━━━━━━━━━━━
-+ only-pointer
-    - value CPointer'Char8
-
-value.address
+(fn-expr + only-pointer _
+  (param value (of CPointer Char8))
+  (. value address)
+)
 ```
 
 ```output
@@ -1871,58 +1825,51 @@ pointer
 2
 ```
 
-```yumi
--- choose((1, 2))
--- choose((1, => 2))
--- choose((1, produce))
-. chooser = PairChooser()
--- chooser.choose((1, 2))
--- chooser.choose((1, => 2))
--- chooser.choose((1, produce))
+```brix
+(main
+  (print (call choose (tuple 1 2)))
+  (print (call choose (tuple 1 (=> () 2))))
+  (print (call choose (tuple 1 produce)))
+  (let chooser (call PairChooser))
+  (print (call (. chooser choose) (tuple 1 2)))
+  (print (call (. chooser choose) (tuple 1 (=> () 2))))
+  (print (call (. chooser choose) (tuple 1 produce)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ValuePair'Expected'Actual is Tuple
+(type + (of ValuePair Expected Actual) (is Tuple)
+  (prop + expected Expected)
+  (prop + actual Actual)
+)
 
-+ expected Expected
-+ actual Actual
+(type + (of LazyPair Expected Actual) (is Tuple)
+  (prop + expected Expected)
+  (prop + actual (of Getter Actual))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ LazyPair'Expected'Actual is Tuple
+(fn-expr + (of choose Expected Actual) _
+  (param pair (of ValuePair Expected Actual))
+  "value"
+)
 
-+ expected Expected
-+ actual Getter'Actual
+(fn-expr + (of choose Expected Actual) _
+  (param pair (of LazyPair Expected Actual))
+  "lazy"
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ choose'Expected'Actual
-    - pair ValuePair'Expected'Actual
+(type + PairChooser
+  (fn-expr + (of choose Expected Actual) _
+    (param pair (of ValuePair Expected Actual))
+    "value"
+  )
+  (fn-expr + (of choose Expected Actual) _
+    (param pair (of LazyPair Expected Actual))
+    "lazy"
+  )
+)
 
-"value"
-
-━━━━━━━━━━━━━━━━━━━━
-+ choose'Expected'Actual
-    - pair LazyPair'Expected'Actual
-
-"lazy"
-
-━━━━━━━━━━━━━━━━━━━━
-+ PairChooser
-
-────────────────────
-+ choose'Expected'Actual
-    - pair ValuePair'Expected'Actual
-
-"value"
-
-────────────────────
-+ choose'Expected'Actual
-    - pair LazyPair'Expected'Actual
-
-"lazy"
-
-━━━━━━━━━━━━━━━━━━━━
-+ produce
-
-2
+(fn-expr + produce _
+  2
+)
 ```
 
 ```output
@@ -1934,15 +1881,16 @@ lazy
 lazy
 ```
 
-```yumi
--- inline-add(2)
--- inline-add(5)
+```brix
+(main
+  (print (call inline-add 2))
+  (print (call inline-add 5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ inline-add Int @inline
-    - value Int
-
-value + 1
+(fn-expr _ inline-add Int @inline
+  (param value Int)
+  (+ value 1)
+)
 ```
 
 ```output
@@ -1950,73 +1898,65 @@ value + 1
 6
 ```
 
-```yumi
--- score32(roundtrip32(Quad32(Pair32(1, 2), Pair32(3, 4))))
--- pressured32(1, 2, 3, 4, 5, 6, 7, Quad32(Pair32(1, 2), Pair32(3, 4)))
--- score64(roundtrip64(Quad64(Pair64(1, 2), Pair64(3, 4))))
--- pressured64(1, 2, 3, 4, 5, 6, 7, Quad64(Pair64(1, 2), Pair64(3, 4)))
+```brix
+(main
+  (print (call score32 (call roundtrip32 (call Quad32 (call Pair32 1 2) (call Pair32 3 4)))))
+  (print (call pressured32 1 2 3 4 5 6 7 (call Quad32 (call Pair32 1 2) (call Pair32 3 4))))
+  (print (call score64 (call roundtrip64 (call Quad64 (call Pair64 1 2) (call Pair64 3 4)))))
+  (print (call pressured64 1 2 3 4 5 6 7 (call Quad64 (call Pair64 1 2) (call Pair64 3 4))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair32 is (x F32, y F32)
+(type + Pair32 (is (tuple (: x F32) (: y F32))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Quad32 is (a Pair32, b Pair32)
+(type + Quad32 (is (tuple (: a Pair32) (: b Pair32))))
 
-━━━━━━━━━━━━━━━━━━━━
-_ roundtrip32 Quad32
-    - input Quad32
+(fn-expr _ roundtrip32 Quad32
+  (param input Quad32)
+  input
+)
 
-input
+(fn-expr _ score32 F32
+  (param input Quad32)
+  (+ (. input a x) (* (. input a y) 10) (* (. input b x) 100) (* (. input b y) 1000))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ score32 F32
-    - input Quad32
+(fn-expr _ pressured32 F32
+  (param a F32)
+  (param b F32)
+  (param c F32)
+  (param d F32)
+  (param e F32)
+  (param f F32)
+  (param g F32)
+  (param input Quad32)
+  (+ (call score32 input) a b c d e f g)
+)
 
-input.a.x + input.a.y * 10 + input.b.x * 100 + input.b.y * 1000
+(type + Pair64 (is (tuple (: x F64) (: y F64))))
 
-━━━━━━━━━━━━━━━━━━━━
-_ pressured32 F32
-    - a F32
-    - b F32
-    - c F32
-    - d F32
-    - e F32
-    - f F32
-    - g F32
-    - input Quad32
+(type + Quad64 (is (tuple (: a Pair64) (: b Pair64))))
 
-score32(input) + a + b + c + d + e + f + g
+(fn-expr _ roundtrip64 Quad64
+  (param input Quad64)
+  input
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair64 is (x F64, y F64)
+(fn-expr _ score64 F64
+  (param input Quad64)
+  (+ (. input a x) (* (. input a y) 10) (* (. input b x) 100) (* (. input b y) 1000))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Quad64 is (a Pair64, b Pair64)
-
-━━━━━━━━━━━━━━━━━━━━
-_ roundtrip64 Quad64
-    - input Quad64
-
-input
-
-━━━━━━━━━━━━━━━━━━━━
-_ score64 F64
-    - input Quad64
-
-input.a.x + input.a.y * 10 + input.b.x * 100 + input.b.y * 1000
-
-━━━━━━━━━━━━━━━━━━━━
-_ pressured64 F64
-    - a F64
-    - b F64
-    - c F64
-    - d F64
-    - e F64
-    - f F64
-    - g F64
-    - input Quad64
-
-score64(input) + a + b + c + d + e + f + g
+(fn-expr _ pressured64 F64
+  (param a F64)
+  (param b F64)
+  (param c F64)
+  (param d F64)
+  (param e F64)
+  (param f F64)
+  (param g F64)
+  (param input Quad64)
+  (+ (call score64 input) a b c d e f g)
+)
 ```
 
 ```output
@@ -2028,44 +1968,44 @@ score64(input) + a + b + c + d + e + f + g
 
 ### Two definitions of a function with the same signature are rejected.
 
-```yumi crash
--- shape()
+```brix crash
+(main
+  (print (call shape))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ shape Int
+(fn-expr + shape Int
+  1
+)
 
-1
-
-━━━━━━━━━━━━━━━━━━━━
-+ shape Int
-
-2
+(fn-expr + shape Int
+  2
+)
 ```
 
 ```output
 Exception: Duplicate definition of shape with the same signature
 <no file:10>
-    + shape Int
-    ^^^^^^^^^^
+    (fn-expr + shape Int
+    ^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Overloads that differ by argument type remain legal.
 
-```yumi
--- describe(1)
--- describe("one")
+```brix
+(main
+  (print (call describe 1))
+  (print (call describe "one"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - value Int
+(fn-expr + describe String
+  (param value Int)
+  "int"
+)
 
-"int"
-
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - value String
-
-"string"
+(fn-expr + describe String
+  (param value String)
+  "string"
+)
 ```
 
 ```output
@@ -2075,71 +2015,65 @@ string
 
 ### An aggregate operand keeps its value when a later operand changes its storage.
 
-```yumi
-+ g Int? = 5
-+ h (Int, Int) = (1, 2)
+```brix
+(prop + g (? Int) (= 5))
+(prop + h (tuple Int Int) (= (tuple 1 2)))
+(blank)
 
-. box = Box()
--- show(box.value, box.clear())
--- show(g, reset())
-g = 5
--- (g, reset())
-g = 5
--- g == reset-to(6)
-g = 5
--- g |> trail(reset())
--- sum(h, bump())
+(main
+  (let box (call Box))
+  (print (call show (. box value) (call (. box clear))))
+  (print (call show g (call reset)))
+  (= g 5)
+  (print (tuple g (call reset)))
+  (= g 5)
+  (print (== g (call reset-to 6)))
+  (= g 5)
+  (print (|> g (call trail (call reset))))
+  (print (call sum h (call bump)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + value (? Int) (= 5))
+  (fn-do + clear Int
+    (= value null)
+    (return 0)
+  )
+)
 
-+ value Int? = 5
+(fn-do + reset Int
+  (= g null)
+  (return 0)
+)
 
-────────────────────
-+ do clear Int
+(fn-do + reset-to (? Int)
+  (param value Int)
+  (= g value)
+  (return value)
+)
 
-value = null
-= 0
+(fn-do + bump Int
+  (= h (tuple 10 20))
+  (return 0)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do reset Int
+(fn-expr + sum Int
+  (param pair (tuple Int Int))
+  (param extra Int)
+  (+ ([] pair 0) ([] pair 1) extra)
+)
 
-g = null
-= 0
+(fn-expr + show String
+  (param value (? Int))
+  (param extra Int (= 0))
+  (str value " " extra)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do reset-to Int?
-    - value Int
-
-g = value
-= value
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bump Int
-
-h = (10, 20)
-= 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ sum Int
-    - pair (Int, Int)
-    - extra Int
-
-pair[0] + pair[1] + extra
-
-━━━━━━━━━━━━━━━━━━━━
-+ show String
-    - value Int?
-    - extra Int = 0
-
-"$value $extra"
-
-━━━━━━━━━━━━━━━━━━━━
-+ trail String
-    - extra Int
-    - value Int?
-
-"$value $extra"
+(fn-expr + trail String
+  (param extra Int)
+  (param value (? Int))
+  (str value " " extra)
+)
 ```
 
 ```output
@@ -2153,44 +2087,40 @@ false
 
 ### A method call evaluates its receiver before its arguments, and a skipped optional call evaluates none.
 
-```yumi
-+ box = Step("first")
+```brix
+(prop + box _ (= (call Step "first")))
+(blank)
 
--- box.then(swap())
--- step("a").then(step("x")).then(step("y")).name
-. none Step? = null
--- none?.then(step("skipped"))
+(main
+  (print (call (. box then) (call swap)))
+  (print (. (call (. (call (. (call step "a") then) (call step "x")) then) (call step "y")) name))
+  (let none (? Step) null)
+  (print (call (?. none then) (call step "skipped")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do swap Step
+(fn-do + swap Step
+  (= box (call Step "second"))
+  (return (call Step "x"))
+)
 
-box = Step("second")
-= Step("x")
+(fn-do + step Step
+  (param name String)
+  (print (str "eval " name))
+  (return (call Step name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do step Step
-    - name String
-
--- "eval $name"
-= Step(name)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Step
-
-+ name String
-
-────────────────────
-+ This
-    - name String
-
-this.name = name
-
-────────────────────
-+ do then Step
-    - next Step
-
--- "call ${name} then ${next.name}"
-= next
+(type + Step
+  (prop + name String)
+  (fn-do + This _
+    (param name String)
+    (= (. this name) name)
+  )
+  (fn-do + then Step
+    (param next Step)
+    (print (str "call " name " then " (. next name)))
+    (return next)
+  )
+)
 ```
 
 ```output
@@ -2207,29 +2137,29 @@ unknown
 
 ### An optional argument that holds no value takes the default its parameter declares.
 
-```yumi
-. none I64?
-. some I64? = 5
--- pick(1, none)
--- pick(1, some)
--- pick(1)
--- maybe(1, none)
--- maybe(1, some)
--- maybe(1)
+```brix
+(main
+  (let none (? I64))
+  (let some (? I64) 5)
+  (print (call pick 1 none))
+  (print (call pick 1 some))
+  (print (call pick 1))
+  (print (call maybe 1 none))
+  (print (call maybe 1 some))
+  (print (call maybe 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick I64
-    - a I64
-    - b I64 = 7
+(fn-do + pick I64
+  (param a I64)
+  (param b I64 (= 7))
+  (return (+ a b))
+)
 
-= a + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ do maybe I64
-    - a I64
-    - b I64? = 9
-
-= a + (b ?? 100)
+(fn-do + maybe I64
+  (param a I64)
+  (param b (? I64) (= 9))
+  (return (+ a (?? b 100)))
+)
 ```
 
 ```output
@@ -2243,21 +2173,21 @@ unknown
 
 ### An optional argument given to a constructor parameter that writes a property of a class type takes the parameter's default where it holds no value.
 
-```yumi
-. none [Int]?
-. some [Int]? = [1, 2]
--- Basket(none).items.length
--- Basket(some).items.length
--- Basket().items.length
+```brix
+(main
+  (let none (? (list Int)))
+  (let some (? (list Int)) (list 1 2))
+  (print (. (call Basket none) items length))
+  (print (. (call Basket some) items length))
+  (print (. (call Basket) items length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Basket
-
-+ items [Int]
-
-────────────────────
-+ This
-    - items = [9, 9, 9]
+(type + Basket
+  (prop + items (list Int))
+  (fn-do + This _
+    (param items _ (= (list 9 9 9)))
+  )
+)
 ```
 
 ```output
@@ -2268,74 +2198,72 @@ unknown
 
 ### The first eight integers and the first eight floats are passed in registers, counted apart, and the rest on the stack.
 
-```yumi
--- sum10(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
--- fsum10(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.5)
--- mixed(1, 2.5, 3, 4.5, 5, 6.5, 7, 8.5, 9, 10.5, 11, 12.5)
--- texts("a", "b", "c", "d", "e", "f", "g", "h", "i", "j")
+```brix
+(main
+  (print (call sum10 1 2 3 4 5 6 7 8 9 10))
+  (print (call fsum10 1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.5))
+  (print (call mixed 1 2.5 3 4.5 5 6.5 7 8.5 9 10.5 11 12.5))
+  (print (call texts "a" "b" "c" "d" "e" "f" "g" "h" "i" "j"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ sum10 Int
-    - a Int
-    - b Int
-    - c Int
-    - d Int
-    - e Int
-    - f Int
-    - g Int
-    - h Int
-    - i Int
-    - j Int
+(fn-expr + sum10 Int
+  (param a Int)
+  (param b Int)
+  (param c Int)
+  (param d Int)
+  (param e Int)
+  (param f Int)
+  (param g Int)
+  (param h Int)
+  (param i Int)
+  (param j Int)
+  (+ a (* b 2) c d e f g h (* i 3) j)
+)
 
-a + b * 2 + c + d + e + f + g + h + i * 3 + j
+(fn-expr + fsum10 Float
+  (param a Float)
+  (param b Float)
+  (param c Float)
+  (param d Float)
+  (param e Float)
+  (param f Float)
+  (param g Float)
+  (param h Float)
+  (param i Float)
+  (param j Float)
+  (+ a b c d e f g h (* i 2) j)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ fsum10 Float
-    - a Float
-    - b Float
-    - c Float
-    - d Float
-    - e Float
-    - f Float
-    - g Float
-    - h Float
-    - i Float
-    - j Float
+(fn-expr + mixed Float
+  (param a Int)
+  (param b Float)
+  (param c Int)
+  (param d Float)
+  (param e Int)
+  (param f Float)
+  (param g Int)
+  (param h Float)
+  (param i Int)
+  (param j Float)
+  (param k Int)
+  (param l Float)
+  (+ a b c d e f g h i j k l)
+)
 
-a + b + c + d + e + f + g + h + i * 2 + j
-
-━━━━━━━━━━━━━━━━━━━━
-+ mixed Float
-    - a Int
-    - b Float
-    - c Int
-    - d Float
-    - e Int
-    - f Float
-    - g Int
-    - h Float
-    - i Int
-    - j Float
-    - k Int
-    - l Float
-
-a + b + c + d + e + f + g + h + i + j + k + l
-
-━━━━━━━━━━━━━━━━━━━━
-+ do texts String
-    - a String
-    - b String
-    - c String
-    - d String
-    - e String
-    - f String
-    - g String
-    - h String
-    - i String
-    - j String
-
-i ++= "!"
-= a ++ h ++ i ++ j
+(fn-do + texts String
+  (param a String)
+  (param b String)
+  (param c String)
+  (param d String)
+  (param e String)
+  (param f String)
+  (param g String)
+  (param h String)
+  (param i String)
+  (param j String)
+  (++= i "!")
+  (return (++ a h i j))
+)
 ```
 
 ```output
@@ -2347,46 +2275,43 @@ ahi!j
 
 ### An argument and a result are numbers of any width: each widens to the type its parameter declares, and narrows to it when asked.
 
-```yumi
-. x = 5
-. y I64 = 7
--- add8(100, 27)
--- wide(x)
--- narrow(y as U8)
--- f32(1.5)
--- both(true, false)
+```brix
+(main
+  (let x 5)
+  (let y I64 7)
+  (print (call add8 100 27))
+  (print (call wide x))
+  (print (call narrow (as y U8)))
+  (print (call f32 1.5))
+  (print (call both true false))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ add8 I8
-    - a I8
-    - b I8
+(fn-expr + add8 I8
+  (param a I8)
+  (param b I8)
+  (+ a b)
+)
 
-a + b
+(fn-expr + wide I64
+  (param n I64)
+  (* n 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ wide I64
-    - n I64
+(fn-expr + narrow U8
+  (param n U8)
+  (+ n 250)
+)
 
-n * 2
+(fn-expr + f32 F32
+  (param n F32)
+  (* n 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ narrow U8
-    - n U8
-
-n + 250
-
-━━━━━━━━━━━━━━━━━━━━
-+ f32 F32
-    - n F32
-
-n * 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ both Bool
-    - a Bool
-    - b Bool
-
-a && !b
+(fn-expr + both Bool
+  (param a Bool)
+  (param b Bool)
+  (and a (not b))
+)
 ```
 
 ```output
@@ -2399,33 +2324,37 @@ true
 
 ### Arguments are evaluated in the order they are written, also when they are given by name.
 
-```yumi
--- add(show(1), show(2))
--- add(show(3), add(show(4), show(5)))
--- pair()
-    • b show(6)
-    • a show(7)
+```brix
+(main
+  (print (call add (call show 1) (call show 2)))
+  (print (call add (call show 3) (call add (call show 4) (call show 5))))
+  (print
+    (call pair
+      (block
+        (:b (call show 6))
+        (:a (call show 7))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ add Int
-    - a Int
-    - b Int
+(fn-expr + add Int
+  (param a Int)
+  (param b Int)
+  (+ a b)
+)
 
-a + b
+(fn-expr + pair Int
+  (param a Int)
+  (param b Int)
+  (+ (* a 10) b)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pair Int
-    - a Int
-    - b Int
-
-a * 10 + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show Int
-    - n Int
-
--- n
-= n
+(fn-do + show Int
+  (param n Int)
+  (print n)
+  (return n)
+)
 ```
 
 ```output
@@ -2443,51 +2372,52 @@ a * 10 + b
 
 ### A call is a statement, a value, a condition, an argument, and the bound of a loop.
 
-```yumi
-. n = 3
-note(n)
-note(add(n, add(1, 2)))
-if big(n)
-    -- "big"
-else if small(n)
-    -- "small"
-while below(n, 6)
-    n += 1
-for i in 0 .. < add(1, 2)
-    note(i)
--- n
+```brix
+(main
+  (let n 3)
+  (call note n)
+  (call note (call add n (call add 1 2)))
+  (if (call big n)
+    (print "big")
+    (else-if (call small n)
+      (print "small")
+    )
+  )
+  (while (call below n 6)
+    (+= n 1)
+  )
+  (for (in i (..< 0 (call add 1 2)))
+    (call note i)
+  )
+  (print n)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do note
-    - n Int
+(fn-do + note _
+  (param n Int)
+  (print n)
+)
 
--- n
+(fn-expr + add Int
+  (param a Int)
+  (param b Int)
+  (+ a b)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ add Int
-    - a Int
-    - b Int
+(fn-expr + big Bool
+  (param n Int)
+  (> n 10)
+)
 
-a + b
+(fn-expr + small Bool
+  (param n Int)
+  (< n 5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ big Bool
-    - n Int
-
-n > 10
-
-━━━━━━━━━━━━━━━━━━━━
-+ small Bool
-    - n Int
-
-n < 5
-
-━━━━━━━━━━━━━━━━━━━━
-+ below Bool
-    - n Int
-    - limit Int
-
-n < limit
+(fn-expr + below Bool
+  (param n Int)
+  (param limit Int)
+  (< n limit)
+)
 ```
 
 ```output
@@ -2502,28 +2432,28 @@ small
 
 ### An argument is a local of its function, and an assignment to it stays there.
 
-```yumi
-. n = 1
-. s = "a"
--- bump(n)
--- grow(s)
--- n
--- s
+```brix
+(main
+  (let n 1)
+  (let s "a")
+  (print (call bump n))
+  (print (call grow s))
+  (print n)
+  (print s)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do bump Int
-    - n Int
+(fn-do + bump Int
+  (param n Int)
+  (+= n 1)
+  (= n (* n 10))
+  (return n)
+)
 
-n += 1
-n = n * 10
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do grow String
-    - s String
-
-s ++= "b"
-= s
+(fn-do + grow String
+  (param s String)
+  (++= s "b")
+  (return s)
+)
 ```
 
 ```output
@@ -2535,42 +2465,39 @@ a
 
 ### A function of one name is chosen by the types of its arguments.
 
-```yumi
--- describe(1)
--- describe("one")
--- describe(1.5)
-width(42l)
-width(34i)
+```brix
+(main
+  (print (call describe 1))
+  (print (call describe "one"))
+  (print (call describe 1.5))
+  (call width 42l)
+  (call width 34i)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - value Int
+(fn-expr + describe String
+  (param value Int)
+  "int"
+)
 
-"int"
+(fn-expr + describe String
+  (param value String)
+  "string"
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - value String
+(fn-expr + describe String
+  (param value Float)
+  "float"
+)
 
-"string"
+(fn-do + width _
+  (param n I64)
+  (print "i64")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - value Float
-
-"float"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do width
-    - n I64
-
--- "i64"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do width
-    - n I32
-
--- "i32"
+(fn-do + width _
+  (param n I32)
+  (print "i32")
+)
 ```
 
 ```output
@@ -2583,23 +2510,23 @@ i64
 
 ### A parameter with no type, or with a type parameter, makes a function for each type it is called with.
 
-```yumi
--- plus(1)
--- plus(1.5)
--- same(1)
--- same(1.0)
+```brix
+(main
+  (print (call plus 1))
+  (print (call plus 1.5))
+  (print (call same 1))
+  (print (call same 1.0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ plus
-    - a
+(fn-expr + plus _
+  (param a _)
+  (+ a 1)
+)
 
-a + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ same'T T
-    - b T
-
-(b + 2.5) as T
+(fn-expr + (of same T) T
+  (param b T)
+  (as (+ b 2.5) T)
+)
 ```
 
 ```output
@@ -2611,23 +2538,23 @@ a + 1
 
 ### A pipe gives its left side to the function on its right as the first argument.
 
-```yumi
--- 5 |> double
--- 5 |> add(2)
--- 5 |> double |> add(1)
+```brix
+(main
+  (print (|> 5 double))
+  (print (|> 5 (call add 2)))
+  (print (|> 5 double (call add 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ double Int
-    - n Int
+(fn-expr + double Int
+  (param n Int)
+  (* n 2)
+)
 
-n * 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ add Int
-    - a Int
-    - b Int
-
-a + b
+(fn-expr + add Int
+  (param a Int)
+  (param b Int)
+  (+ a b)
+)
 ```
 
 ```output
@@ -2638,24 +2565,24 @@ a + b
 
 ### A function is called as an operator between slashes, and one named as a bitwise operator replaces it.
 
-```yumi
--- 6 /and/ 3
--- 6 /mix/ 3
--- 6 /xor/ 3
+```brix
+(main
+  (print (/and/ 6 3))
+  (print (/mix/ 6 3))
+  (print (/xor/ 6 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ mix Int
-    - a Int
-    - b Int
+(fn-expr + mix Int
+  (param a Int)
+  (param b Int)
+  (+ (* a 10) b)
+)
 
-a * 10 + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ xor Int
-    - a Int
-    - b Int
-
-a - b
+(fn-expr + xor Int
+  (param a Int)
+  (param b Int)
+  (- a b)
+)
 ```
 
 ```output
@@ -2666,36 +2593,34 @@ a - b
 
 ### `@inline` functions and those `without gc` or `without heap` are called as any other.
 
-```yumi
--- inline-add(2)
--- square(4)
--- cube(3)
--- through(5)
+```brix
+(main
+  (print (call inline-add 2))
+  (print (call square 4))
+  (print (call cube 3))
+  (print (call through 5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ inline-add Int @inline
-    - value Int
+(fn-expr _ inline-add Int @inline
+  (param value Int)
+  (+ value 1)
+)
 
-value + 1
+(fn-expr + square Int (without gc)
+  (param n Int)
+  (* n n)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ square Int without gc
-    - n Int
+(fn-do + cube Int (without heap safepoints)
+  (param n Int)
+  (let t (* n n))
+  (return (* t n))
+)
 
-n * n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do cube Int without heap, safepoints
-    - n Int
-
-. t = n * n
-= t * n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do through Int without gc
-    - n Int
-
-= square(n) + 1
+(fn-do + through Int (without gc)
+  (param n Int)
+  (return (+ (call square n) 1))
+)
 ```
 
 ```output
@@ -2707,26 +2632,25 @@ n * n
 
 ### A function calls one declared after it, through as many calls as it takes.
 
-```yumi
--- a(1)
+```brix
+(main
+  (print (call a 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ a Int
-    - n Int
+(fn-expr + a Int
+  (param n Int)
+  (+ (call b n) 1)
+)
 
-b(n) + 1
+(fn-expr + b Int
+  (param n Int)
+  (+ (call c n) 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ b Int
-    - n Int
-
-c(n) + 1
-
-━━━━━━━━━━━━━━━━━━━━
-_ do c Int
-    - n Int
-
-= n * 100
+(fn-do _ c Int
+  (param n Int)
+  (return (* n 100))
+)
 ```
 
 ```output
@@ -2735,35 +2659,33 @@ _ do c Int
 
 ### A call a value is piped into evaluates the value first, then the arguments written, and its receiver last.
 
-```yumi
--- show(2).plus(show(3), show(4))
--- show(1) |> show(2).plus(show(3))
--- show(8) |> two(show(9))
--- show(1) + show(2) |> show(3).plus(show(4))
+```brix
+(main
+  (print (call (. (call show 2) plus) (call show 3) (call show 4)))
+  (print (|> (call show 1) (call (. (call show 2) plus) (call show 3))))
+  (print (|> (call show 8) (call two (call show 9))))
+  (print (|> (+ (call show 1) (call show 2)) (call (. (call show 3) plus) (call show 4))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show Int
-    - n Int
+(fn-do + show Int
+  (param n Int)
+  (print n)
+  (return n)
+)
 
--- n
-= n
+(fn-expr + two Int
+  (param a Int)
+  (param b Int)
+  (+ (* a 10) b)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ two Int
-    - a Int
-    - b Int
-
-a * 10 + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Int
-
-────────────────────
-+ plus Int
-    - a Int
-    - b Int
-
-this * 100 + a * 10 + b
+(extend + Int
+  (fn-expr + plus Int
+    (param a Int)
+    (param b Int)
+    (+ (* this 100) (* a 10) b)
+  )
+)
 ```
 
 ```output
@@ -2787,34 +2709,33 @@ this * 100 + a * 10 + b
 
 ### A parameter with no type written that is given `null` keeps its place, and the arguments after it arrive as given.
 
-```yumi
-. a = Node(null, 3)
--- a.value, a.next == null
-. c = Node(a, 6)
--- c.value, c.next!.value
--- pick(null, 4, 5)
-. nothing = null
--- pick(nothing, 6, 7)
--- Node(nothing, 8).value
+```brix
+(main
+  (let a (call Node null 3))
+  (print (tuple (. a value) (== (. a next) null)))
+  (let c (call Node a 6))
+  (print (tuple (. c value) (. (!! (. c next)) value)))
+  (print (call pick null 4 5))
+  (let nothing null)
+  (print (call pick nothing 6 7))
+  (print (. (call Node nothing 8) value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pick
-    - first
-    - second
-    - third
+(fn-expr + pick _
+  (param first _)
+  (param second _)
+  (param third _)
+  (+ (* second 10) third)
+)
 
-second * 10 + third
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node
-
-+ next Node?
-+ value I32
-
-────────────────────
-+ This
-    - next
-    - value
+(type + Node
+  (prop + next (? Node))
+  (prop + value I32)
+  (fn-do + This _
+    (param next _)
+    (param value _)
+  )
+)
 ```
 
 ```output
@@ -2827,38 +2748,36 @@ second * 10 + third
 
 ### A function with a variadic tail and one with a fixed argument, each declared first: a number that converts to either.
 
-```yumi
--- first(5)
--- second(5)
--- first(5, 6)
--- second(5, 6)
-. n I32 = 5
--- first(n)
--- second(n)
+```brix
+(main
+  (print (call first 5))
+  (print (call second 5))
+  (print (call first 5 6))
+  (print (call second 5 6))
+  (let n I32 5)
+  (print (call first n))
+  (print (call second n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do first Int
-    ... items [Int64]
+(fn-do _ first Int
+  (param ... items (list Int64))
+  (return (+ 100 (. items length)))
+)
 
-= 100 + items.length
+(fn-do _ first Int
+  (param item Float)
+  (return 7)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do first Int
-    - item Float
+(fn-do _ second Int
+  (param item Float)
+  (return 7)
+)
 
-= 7
-
-━━━━━━━━━━━━━━━━━━━━
-_ do second Int
-    - item Float
-
-= 7
-
-━━━━━━━━━━━━━━━━━━━━
-_ do second Int
-    ... items [Int64]
-
-= 100 + items.length
+(fn-do _ second Int
+  (param ... items (list Int64))
+  (return (+ 100 (. items length)))
+)
 ```
 
 ```output
@@ -2872,59 +2791,53 @@ _ do second Int
 
 ### One tuple given where a variadic tail of pairs, a stream of pairs and a pair can each take it.
 
-```yumi
--- first(("a", 1))
--- second(("a", 1))
--- third(("a", 1))
--- fourth(("a", 1))
+```brix
+(main
+  (print (call first (tuple "a" 1)))
+  (print (call second (tuple "a" 1)))
+  (print (call third (tuple "a" 1)))
+  (print (call fourth (tuple "a" 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do first Int
-    ... pairs [KeyValuePair'String'Int]
+(fn-do _ first Int
+  (param ... pairs (list (of KeyValuePair String Int)))
+  (return (+ 100 (. pairs length)))
+)
 
-= 100 + pairs.length
+(fn-do _ first Int
+  (param pairs (stream (of KeyValuePair String Int)))
+  (return 7)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do first Int
-    - pairs <KeyValuePair'String'Int>
+(fn-do _ second Int
+  (param pairs (stream (of KeyValuePair String Int)))
+  (return 7)
+)
 
-= 7
+(fn-do _ second Int
+  (param ... pairs (list (of KeyValuePair String Int)))
+  (return (+ 100 (. pairs length)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do second Int
-    - pairs <KeyValuePair'String'Int>
+(fn-do _ third Int
+  (param pair (of KeyValuePair String Int))
+  (return 50)
+)
 
-= 7
+(fn-do _ third Int
+  (param pairs (stream (of KeyValuePair String Int)))
+  (return 7)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do second Int
-    ... pairs [KeyValuePair'String'Int]
+(fn-do _ fourth Int
+  (param pairs (stream (of KeyValuePair String Int)))
+  (return 7)
+)
 
-= 100 + pairs.length
-
-━━━━━━━━━━━━━━━━━━━━
-_ do third Int
-    - pair KeyValuePair'String'Int
-
-= 50
-
-━━━━━━━━━━━━━━━━━━━━
-_ do third Int
-    - pairs <KeyValuePair'String'Int>
-
-= 7
-
-━━━━━━━━━━━━━━━━━━━━
-_ do fourth Int
-    - pairs <KeyValuePair'String'Int>
-
-= 7
-
-━━━━━━━━━━━━━━━━━━━━
-_ do fourth Int
-    - pair KeyValuePair'String'Int
-
-= 50
+(fn-do _ fourth Int
+  (param pair (of KeyValuePair String Int))
+  (return 50)
+)
 ```
 
 ```output
@@ -2936,41 +2849,38 @@ _ do fourth Int
 
 ### One tuple given where a variadic tail of pairs with a union and a stream or an array of them can each take it.
 
-```yumi
--- first(("a", true))
--- second(("a", 2))
--- first(("a", true), ("b", 2))
+```brix
+(main
+  (print (call first (tuple "a" true)))
+  (print (call second (tuple "a" 2)))
+  (print (call first (tuple "a" true) (tuple "b" 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do first Int
-    ... pairs [KeyValuePair'String'Value]
+(fn-do _ first Int
+  (param ... pairs (list (of KeyValuePair String Value)))
+  (return (+ 100 (. pairs length)))
+)
 
-= 100 + pairs.length
+(fn-do _ first Int
+  (param pairs (stream (of KeyValuePair String Value)))
+  (return 7)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do first Int
-    - pairs <KeyValuePair'String'Value>
+(fn-do _ second Int
+  (param pairs (of ImmutableArray (of KeyValuePair String Value)))
+  (return 7)
+)
 
-= 7
+(fn-do _ second Int
+  (param ... pairs (list (of KeyValuePair String Value)))
+  (return (+ 100 (. pairs length)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do second Int
-    - pairs ImmutableArray'(KeyValuePair'String'Value)
-
-= 7
-
-━━━━━━━━━━━━━━━━━━━━
-_ do second Int
-    ... pairs [KeyValuePair'String'Value]
-
-= 100 + pairs.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| Null
-| Bool
-| Int
+(type + Value (is Union)
+  (variant Null)
+  (variant Bool)
+  (variant Int)
+)
 ```
 
 ```output
@@ -2981,49 +2891,45 @@ _ do second Int
 
 ### A variadic tail and a fixed argument of one type, and of two: one argument, and two.
 
-```yumi
--- text("a")
--- text("a", "b")
--- number(1)
--- number(1, 2)
--- either(3)
--- either("x")
+```brix
+(main
+  (print (call text "a"))
+  (print (call text "a" "b"))
+  (print (call number 1))
+  (print (call number 1 2))
+  (print (call either 3))
+  (print (call either "x"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do text String
-    - one String
+(fn-do _ text String
+  (param one String)
+  (return (str "one " one))
+)
 
-= "one $one"
+(fn-do _ text String
+  (param ... all (list String))
+  (return (str "all " (. all length)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do text String
-    ... all [String]
+(fn-do _ number String
+  (param ... all (list Int))
+  (return (str "all " (. all length)))
+)
 
-= "all ${all.length}"
+(fn-do _ number String
+  (param one Int)
+  (return (str "one " one))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do number String
-    ... all [Int]
+(fn-do _ either String
+  (param ... all (list Int))
+  (return (str "numbers " (. all length)))
+)
 
-= "all ${all.length}"
-
-━━━━━━━━━━━━━━━━━━━━
-_ do number String
-    - one Int
-
-= "one $one"
-
-━━━━━━━━━━━━━━━━━━━━
-_ do either String
-    ... all [Int]
-
-= "numbers ${all.length}"
-
-━━━━━━━━━━━━━━━━━━━━
-_ do either String
-    - one String
-
-= "text $one"
+(fn-do _ either String
+  (param one String)
+  (return (str "text " one))
+)
 ```
 
 ```output
@@ -3037,37 +2943,35 @@ text x
 
 ### A variadic tail after an untyped argument ranks by what its arguments convert to, against fixed arguments, each declared first.
 
-```yumi
--- first(1, 2)
--- second(1, 2)
+```brix
+(main
+  (print (call first 1 2))
+  (print (call second 1 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do first String
-    - name
-    ... rest [String]
+(fn-do _ first String
+  (param name _)
+  (param ... rest (list String))
+  (return "variadic")
+)
 
-= "variadic"
+(fn-do _ first String
+  (param count Int)
+  (param other (? Int))
+  (return "fixed")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do first String
-    - count Int
-    - other Int?
+(fn-do _ second String
+  (param count Int)
+  (param other (? Int))
+  (return "fixed")
+)
 
-= "fixed"
-
-━━━━━━━━━━━━━━━━━━━━
-_ do second String
-    - count Int
-    - other Int?
-
-= "fixed"
-
-━━━━━━━━━━━━━━━━━━━━
-_ do second String
-    - name
-    ... rest [String]
-
-= "variadic"
+(fn-do _ second String
+  (param name _)
+  (param ... rest (list String))
+  (return "variadic")
+)
 ```
 
 ```output
@@ -3077,31 +2981,29 @@ fixed
 
 ### An overload that types its parameter is chosen over one that leaves it untyped
 
-```yumi
-fetch(Thing())
-fetch(Bling())
+```brix
+(main
+  (call fetch (call Thing))
+  (call fetch (call Bling))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling
+(type + Bling)
 
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
+(type + IFoo (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fetch
-    - thing IFoo
+(fn-do + fetch _
+  (param thing IFoo)
+  (print "duck")
+)
 
--- "duck"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fetch
-    - thing
-
--- "fallthrough"
+(fn-do + fetch _
+  (param thing _)
+  (print "fallthrough")
+)
 ```
 
 ```output
@@ -3111,34 +3013,32 @@ fallthrough
 
 ### Overloads that each leave a different parameter untyped
 
-```yumi
-fetch(Thing(), 1)
-fetch(Bling(), 2)
-fetch(Thing(), "a")
+```brix
+(main
+  (call fetch (call Thing) 1)
+  (call fetch (call Bling) 2)
+  (call fetch (call Thing) "a")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling
+(type + Bling)
 
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
+(type + IFoo (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fetch
-    - thing IFoo
-    - count
+(fn-do + fetch _
+  (param thing IFoo)
+  (param count _)
+  (print "duck")
+)
 
--- "duck"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fetch
-    - thing
-    - count Int
-
--- "fallthrough"
+(fn-do + fetch _
+  (param thing _)
+  (param count Int)
+  (print "fallthrough")
+)
 ```
 
 ```output
@@ -3149,46 +3049,40 @@ duck
 
 ### Methods that leave a parameter untyped take the call from the ones before them
 
-```yumi
-. box = Box()
-box.put(Thing(), 1)
-box.put(Bling(), 2)
-box.put(Thing(), "a")
-box.put(1, 2)
+```brix
+(main
+  (let box (call Box))
+  (call (. box put) (call Thing) 1)
+  (call (. box put) (call Bling) 2)
+  (call (. box put) (call Thing) "a")
+  (call (. box put) 1 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling
+(type + Bling)
 
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
+(type + IFoo (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-────────────────────
-+ do put
-    - thing IFoo
-    - count
-
--- "duck"
-
-────────────────────
-+ do put
-    - thing
-    - count Int
-
--- "fallthrough"
-
-────────────────────
-+ do put
-    - thing Int
-    - count Int
-
--- "ints"
+(type + Box
+  (fn-do + put _
+    (param thing IFoo)
+    (param count _)
+    (print "duck")
+  )
+  (fn-do + put _
+    (param thing _)
+    (param count Int)
+    (print "fallthrough")
+  )
+  (fn-do + put _
+    (param thing Int)
+    (param count Int)
+    (print "ints")
+  )
+)
 ```
 
 ```output
@@ -3200,46 +3094,43 @@ ints
 
 ### An untyped parameter keeps what an earlier overload compared its argument to
 
-```yumi
-show(Thing(), Thing())
-show(Thing(), 1)
-show(1, Thing())
-show(1, 1)
+```brix
+(main
+  (call show (call Thing) (call Thing))
+  (call show (call Thing) 1)
+  (call show 1 (call Thing))
+  (call show 1 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
+(type + IFoo (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - a
-    - b
+(fn-do + show _
+  (param a _)
+  (param b _)
+  (print "any any")
+)
 
--- "any any"
+(fn-do + show _
+  (param a IFoo)
+  (param b _)
+  (print "foo any")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - a IFoo
-    - b
+(fn-do + show _
+  (param a _)
+  (param b IFoo)
+  (print "any foo")
+)
 
--- "foo any"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - a
-    - b IFoo
-
--- "any foo"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - a Thing
-    - b Thing
-
--- "thing thing"
+(fn-do + show _
+  (param a Thing)
+  (param b Thing)
+  (print "thing thing")
+)
 ```
 
 ```output
@@ -3251,46 +3142,43 @@ any any
 
 ### Overloads with untyped parameters declared most specific first
 
-```yumi
-show(Thing(), Thing())
-show(Thing(), 1)
-show(1, Thing())
-show(1, 1)
+```brix
+(main
+  (call show (call Thing) (call Thing))
+  (call show (call Thing) 1)
+  (call show 1 (call Thing))
+  (call show 1 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
+(type + IFoo (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - a Thing
-    - b Thing
+(fn-do + show _
+  (param a Thing)
+  (param b Thing)
+  (print "thing thing")
+)
 
--- "thing thing"
+(fn-do + show _
+  (param a _)
+  (param b IFoo)
+  (print "any foo")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - a
-    - b IFoo
+(fn-do + show _
+  (param a IFoo)
+  (param b _)
+  (print "foo any")
+)
 
--- "any foo"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - a IFoo
-    - b
-
--- "foo any"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - a
-    - b
-
--- "any any"
+(fn-do + show _
+  (param a _)
+  (param b _)
+  (print "any any")
+)
 ```
 
 ```output
@@ -3302,43 +3190,37 @@ any any
 
 ### Constructors with a typed and an untyped parameter
 
-```yumi
-. made = Maker(1)
-. other = Maker("a")
-. third = Maker(Thing())
--- made.tag
--- other.tag
--- third.tag
+```brix
+(main
+  (let made (call Maker 1))
+  (let other (call Maker "a"))
+  (let third (call Maker (call Thing)))
+  (print (. made tag))
+  (print (. other tag))
+  (print (. third tag))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
+(type + IFoo (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Maker
-
-+ tag String
-
-────────────────────
-+ This
-    - value IFoo
-
-.. tag = "foo"
-
-────────────────────
-+ This
-    - value
-
-.. tag = "any"
-
-────────────────────
-+ This
-    - value Int
-
-.. tag = "int"
+(type + Maker
+  (prop + tag String)
+  (fn-do + This _
+    (param value IFoo)
+    (lazy tag "foo")
+  )
+  (fn-do + This _
+    (param value _)
+    (lazy tag "any")
+  )
+  (fn-do + This _
+    (param value Int)
+    (lazy tag "int")
+  )
+)
 ```
 
 ```output
@@ -3349,59 +3231,53 @@ any
 
 ### A function whose types fit the arguments is chosen over a generic one, compared under what the arguments bind its type parameter to.
 
-```yumi
-show("a", 2)
-show(1, 2)
-pick(1.5, 2)
-pick(1, 2)
-. shower = Shower()
-shower.show("a", 2)
-shower.show(1, 2)
+```brix
+(main
+  (call show "a" 2)
+  (call show 1 2)
+  (call pick 1.5 2)
+  (call pick 1 2)
+  (let shower (call Shower))
+  (call (. shower show) "a" 2)
+  (call (. shower show) 1 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show'T
-    - a T
-    - b T
+(fn-do + (of show T) _
+  (param a T)
+  (param b T)
+  (print (str "(generic, " a ", " b ")"))
+)
 
--- "(generic, $a, $b)"
+(fn-do + show _
+  (param a String)
+  (param b Int)
+  (print (str "(plain, " a ", " b ")"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - a String
-    - b Int
+(fn-do + (of pick T) _
+  (param a T)
+  (param b T)
+  (print "same")
+)
 
--- "(plain, $a, $b)"
+(fn-do + pick _
+  (param a Float)
+  (param b Int)
+  (print "float int")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick'T
-    - a T
-    - b T
-
--- "same"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pick
-    - a Float
-    - b Int
-
--- "float int"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shower
-
-────────────────────
-+ do show'T
-    - a T
-    - b T
-
--- "(method generic, $a, $b)"
-
-────────────────────
-+ do show
-    - a String
-    - b Int
-
--- "(method plain, $a, $b)"
+(type + Shower
+  (fn-do + (of show T) _
+    (param a T)
+    (param b T)
+    (print (str "(method generic, " a ", " b ")"))
+  )
+  (fn-do + show _
+    (param a String)
+    (param b Int)
+    (print (str "(method plain, " a ", " b ")"))
+  )
+)
 ```
 
 ```output
@@ -3415,22 +3291,22 @@ same
 
 ### A constructor default that builds an object is built again for each call.
 
-```yumi
-. first = Bag()
-first.items += "a"
-. second = Bag()
-second.items += "b"
--- first.items.length
--- second.items.length
+```brix
+(main
+  (let first (call Bag))
+  (+= (. first items) "a")
+  (let second (call Bag))
+  (+= (. second items) "b")
+  (print (. first items length))
+  (print (. second items length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bag
-
-+ items [String]
-
-────────────────────
-+ This
-    - items [String] = List'String()
+(type + Bag
+  (prop + items (list String))
+  (fn-do + This _
+    (param items (list String) (= (call (of List String))))
+  )
+)
 ```
 
 ```output
@@ -3440,16 +3316,17 @@ second.items += "b"
 
 ### A function default that builds an object is built again for each call.
 
-```yumi
--- grown().length
--- grown().length
+```brix
+(main
+  (print (. (call grown) length))
+  (print (. (call grown) length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do grown
-    - items [String] = List'String()
-
-items += "a"
-= items
+(fn-do + grown _
+  (param items (list String) (= (call (of List String))))
+  (+= items "a")
+  (return items)
+)
 ```
 
 ```output
@@ -3459,56 +3336,53 @@ items += "a"
 
 ### An argument default is evaluated only by a call that omits the argument.
 
-```yumi
--- "start ${counter.count}"
--- next-id()
--- next-id(10)
--- next-id()
--- counter.count
--- level()
-level-floor = 9
--- level()
--- side()
--- side(.left)
--- side(Side.right)
+```brix
+(main
+  (print (str "start " (. counter count)))
+  (print (call next-id))
+  (print (call next-id 10))
+  (print (call next-id))
+  (print (. counter count))
+  (print (call level))
+  (= level-floor 9)
+  (print (call level))
+  (print (call side))
+  (print (call side .left))
+  (print (call side (. Side right)))
+)
 
-+ counter = Counter()
-+ level-floor = 3
+(blank)
+(prop + counter _ (= (call Counter)))
+(prop + level-floor _ (= 3))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
+(type + Counter
+  (prop + count _ (= 0))
+)
 
-+ count = 0
+(type + Side
+  (variant left)
+  (variant right)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Side
+(fn-do + next-id _
+  (param id Int (= (call bump)))
+  (return id)
+)
 
-| left
-| right
+(fn-do + bump Int
+  (+= (. counter count) 1)
+  (return (. counter count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do next-id
-    - id Int = bump()
+(fn-expr + level _
+  (param floor _ (= level-floor))
+  (+ floor 1)
+)
 
-= id
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bump Int
-
-counter.count += 1
-= counter.count
-
-━━━━━━━━━━━━━━━━━━━━
-+ level
-    - floor = level-floor
-
-floor + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ side
-    - which Side = Side.right
-
-if which == Side.left then "left" else "right"
+(fn-expr + side _
+  (param which Side (= (. Side right)))
+  (if-expr (== which (. Side left)) "left" "right")
+)
 ```
 
 ```output
@@ -3524,41 +3398,39 @@ left
 right
 ```
 
-```yumi
-. a Circ = (Point(1, 2), 3)
-. b Circ = (Point(4, 5), 6)
-. c Circ = (Point(7, 8), 9)
-show(a, b)
-show(a, b, c, 10)
+```brix
+(main
+  (let a Circ (tuple (call Point 1 2) 3))
+  (let b Circ (tuple (call Point 4 5) 6))
+  (let c Circ (tuple (call Point 7 8) 9))
+  (call show a b)
+  (call show a b c 10)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Tuple
+(type + Point (is Tuple)
+  (prop + x Float)
+  (prop + y Float)
+)
 
-+ x Float
-+ y Float
+(type + Circ (is (tuple (: pt Point) (: radius Float))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Circ is (pt Point, radius Float)
+(fn-do + show _
+  (param a Circ)
+  (param b Circ)
+  (print a)
+  (print b)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - a Circ
-    - b Circ
-
--- a
--- b
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - a Circ
-    - b Circ
-    - c Circ
-    - last Float
-
--- a
--- b
--- c
--- last
+(fn-do + show _
+  (param a Circ)
+  (param b Circ)
+  (param c Circ)
+  (param last Float)
+  (print a)
+  (print b)
+  (print c)
+  (print last)
+)
 ```
 
 ```output
@@ -3572,31 +3444,35 @@ show(a, b, c, 10)
 
 ### A scalar overload and a labelled stream overload of one name resolve side by side.
 
-```yumi
--- least(4, 2)
--- least([5, 3, 4])
+```brix
+(main
+  (print (call least 4 2))
+  (print (call least (list 5 3 4)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ least'Num
-    - n1 Num
-    - n2 Num
-
-|? n2 < n1
+(fn-expr + (of least Num) _
+  (param n1 Num)
+  (param n2 Num)
+  (case? (< n2 n1)
     n2
-??
+  )
+  (default
     n1
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do least'Item
-    - stream <Item>
-
-. result = Item()
-. found = false
-for item in stream
-    if !found || item < result
-        result = item
-        found = true
-= result
+(fn-do + (of least Item) _
+  (param stream (stream Item))
+  (let result (call Item))
+  (let found false)
+  (for (in item stream)
+    (if (or (not found) (< item result))
+      (= result item)
+      (= found true)
+    )
+  )
+  (return result)
+)
 ```
 
 ```output
@@ -3606,28 +3482,27 @@ for item in stream
 
 ### An untyped argument with a literal default takes the type of what a call gives.
 
-```yumi
-scaled(1)
-scaled()
-scaled("s")
--- Node("leaf", Node("root")).parent!.name
+```brix
+(main
+  (call scaled 1)
+  (call scaled)
+  (call scaled "s")
+  (print (. (!! (. (call Node "leaf" (call Node "root")) parent)) name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do scaled
-    - x = 0.5
+(fn-do + scaled _
+  (param x _ (= 0.5))
+  (print x)
+)
 
--- x
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node
-
-+ name String
-+ parent Node?
-
-────────────────────
-+ This
-    - name
-    - parent = null
+(type + Node
+  (prop + name String)
+  (prop + parent (? Node))
+  (fn-do + This _
+    (param name _)
+    (param parent _ (= null))
+  )
+)
 ```
 
 ```output
@@ -3639,14 +3514,15 @@ root
 
 ### A default is cast to the type its parameter writes.
 
-```yumi
--- plain()
+```brix
+(main
+  (print (call plain))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ plain String
-    - b Int = 0.5
-
-"$b"
+(fn-expr + plain String
+  (param b Int (= 0.5))
+  (str b)
+)
 ```
 
 ```output
@@ -3655,22 +3531,22 @@ root
 
 ### A symbol given for an untyped argument whose default is a symbol names a case of the default's type.
 
-```yumi
-faced(.right)
-faced()
-faced(5)
+```brix
+(main
+  (call faced .right)
+  (call faced)
+  (call faced 5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Side
+(type + Side
+  (variant left)
+  (variant right)
+)
 
-| left
-| right
-
-━━━━━━━━━━━━━━━━━━━━
-+ do faced
-    - side = .left
-
--- side
+(fn-do + faced _
+  (param side _ (= .left))
+  (print side)
+)
 ```
 
 ```output
@@ -3681,27 +3557,24 @@ faced(5)
 
 ### Type arguments a call writes rule out an overload that declares no type parameters, though one of its arguments has no type written.
 
-```yumi
--- Reader().read'U32(Endian.big)
+```brix
+(main
+  (print (call (of (. (call Reader) read) U32) (. Endian big)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Reader
-
-+ count Int = 0
-
-────────────────────
-+ do read'Num Num?
-    - endian = .big
-    - Num is Number
-
-= 7 as Num
-
-────────────────────
-+ do read String?
-    - terminal String
-    - limit = Size.max
-
-= "until"
+(type + Reader
+  (prop + count Int (= 0))
+  (fn-do + (of read Num) (? Num)
+    (param endian _ (= .big))
+    (constraint is Num Number)
+    (return (as 7 Num))
+  )
+  (fn-do + read (? String)
+    (param terminal String)
+    (param limit _ (= (. Size max)))
+    (return "until")
+  )
+)
 ```
 
 ```output
@@ -3710,48 +3583,44 @@ faced(5)
 
 ### A default no call takes is not typed for the instance, which it does not fit.
 
-```yumi
-. items = List'Foo([Foo(2), Foo(1), Foo(3)])
--- (pick'Foo(items, by-n))?.n
+```brix
+(main
+  (let items (call (of List Foo) (list (call Foo 2) (call Foo 1) (call Foo 3))))
+  (print (?. (call (of pick Foo) items by-n) n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + n Int)
+  (fn-do + This _
+    (param n Int)
+  )
+)
 
-+ n Int
+(fn-expr + by-n Bool
+  (param a Foo)
+  (param b Foo)
+  (< (. a n) (. b n))
+)
 
-────────────────────
-+ This
-    - n Int
+(type + (of Better Item) (is (fn-type Bool (param a Item) (param b Item))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ by-n Bool
-    - a Foo
-    - b Foo
+(fn-do + (of pick Item) (? Item)
+  (param stream (list Item))
+  (param better (of Better Item) (= basic-better))
+  (let best (? Item) null)
+  (for (in item stream)
+    (if (or (not best) (call better item best))
+      (= best item)
+    )
+  )
+  (return best)
+)
 
-a.n < b.n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Better'Item is () Bool
-    - a Item
-    - b Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pick'Item Item?
-    - stream [Item]
-    - better Better'Item = basic-better
-
-. best Item? = null
-for item in stream
-    if !best || better(item, best)
-        best = item
-= best
-
-━━━━━━━━━━━━━━━━━━━━
-+ basic-better
-    - a
-    - b
-
-a.length < b.length
+(fn-expr + basic-better _
+  (param a _)
+  (param b _)
+  (< (. a length) (. b length))
+)
 ```
 
 ```output
@@ -3760,32 +3629,34 @@ a.length < b.length
 
 ### A call of a type name that names nothing finds no constructor
 
-```yumi crash
-. items = [Missing'Int("y")]
--- items.length
+```brix crash
+(main
+  (let items (list (call (of Missing Int) "y")))
+  (print (. items length))
+)
 ```
 
 ```output
 Exception: Type "Missing" not found
-<no file:2>
-    . items = [Missing'Int("y")]
-               ^^^^^^^
+<no file:3>
+      (let items (list (call (of Missing Int) "y")))
+                                 ^^^^^^^
 ```
 
 ### A pipe gives its left side to the constructor of a generic class on its right, which infers the class's type parameters from it.
 
-```yumi
-. box = ["a", "b"] |> Box
--- box.value
+```brix
+(main
+  (let box (|> (list "a" "b") Box))
+  (print (. box value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box'Item
-
-+ value [Item]
-
-────────────────────
-+ This
-    - value [Item]
+(type + (of Box Item)
+  (prop + value (list Item))
+  (fn-do + This _
+    (param value (list Item))
+  )
+)
 ```
 
 ```output
@@ -3794,49 +3665,48 @@ a, b
 
 ### A method called by its name alone with arguments it does not take is reported as a method of its class.
 
-```yumi crash
-. b = Button()
-b.describe()
+```brix crash
+(main
+  (let b (call Button))
+  (call (. b describe))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Button
-
-────────────────────
-+ do describe
-
-note(5)
-
-────────────────────
-+ do note
-    - text String
-
--- text
+(type + Button
+  (fn-do + describe _
+    (call note 5)
+  )
+  (fn-do + note _
+    (param text String)
+    (print text)
+  )
+)
 ```
 
 ```output
 Exception: No method "note" of Button accepts (I64); it is declared as "note(text String)"
-<no file:11>
-    note(5)
-    ^^^^^^^
+<no file:9>
+        (call note 5)
+        ^^^^^^^^^^^^^
 ```
 
 ### A constructor given bullets it does not take is reported with them, and a field declared by its default is shown with it.
 
-```yumi crash
-. b1 = 129u8
-. packet = Packet(b1) • is-fin b1
--- packet.is-fin
+```brix crash
+(main
+  (let b1 129u8)
+  (let packet (call Packet b1 (:is-fin b1)))
+  (print (. packet is-fin))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Packet is Tuple
-
-+ value U8
-+ is-fin = true
+(type + Packet (is Tuple)
+  (prop + value U8)
+  (prop + is-fin _ (= true))
+)
 ```
 
 ```output
 Exception: No constructor of Packet accepts (U8) is-fin U8; its declared constructors are "Packet(value U8, is-fin = true)"
-<no file:3>
-    . packet = Packet(b1) • is-fin b1
-               ^^^^^^
+<no file:4>
+      (let packet (call Packet b1 (:is-fin b1)))
+                        ^^^^^^
 ```

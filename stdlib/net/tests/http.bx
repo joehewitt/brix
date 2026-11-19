@@ -1,0 +1,112 @@
+(import /core/tokenstream)
+(import /data)
+(import /data/stream)
+(import /net/http)
+(import /net/sse)
+(import /net/url)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-expr + tests TestRender
+  (header (call test "HTTP Stream"))
+  (scope (tuple "hello world" (. response text))
+    (lazy response
+      (call read-http-response (call (of ChunkedTokenStream Byte) source)
+        (block
+          (lazy source (call (of DataStream Byte) text))
+          (lazy text (str "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" chunks))
+          (lazy chunks "5\r\nhello\r\n6;ext=1\r\n world\r\n0\r\n\r\n")
+        )
+      )
+    )
+  )
+  (scope (tuple "hello world" (. response text))
+    (lazy response
+      (call read-http-response (call (of ChunkedTokenStream Byte) source)
+        (block
+          (lazy source (call ShortReadStream text (!! (call (. text find) body)) 5))
+          (lazy body "hello world")
+          (lazy text (str "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nB\r\n" body "\r\n0\r\n\r\n"))
+        )
+      )
+    )
+  )
+  (scope (tuple "plain body" (. response text))
+    (lazy response
+      (call read-http-response (call (of ChunkedTokenStream Byte) source)
+        (block
+          (lazy source (call (of DataStream Byte) text))
+          (lazy text "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nplain body")
+        )
+      )
+    )
+  )
+  (header (call test "Server Sent Events"))
+  (scope (tuple "hello\none\ntwo\n7\n---\n\n[DONE]\n7\n---" (call (. "\n" join) (call sse-lines source)))
+    (lazy source (call (of DataStream Byte) text))
+    (lazy text "event: hello\r\ndata: one\r\ndata: two\r\nid: 7\r\n\r\ndata: [DONE]\n\n")
+  )
+  (header (call test "URL Parse"))
+  (tuple "http://joe:pass@foo.com:80/home/base?aa=bb&dd=ee&ccc#poop" (as (call parsed-url) String))
+)
+
+(type + ShortReadStream
+  (implements (of ReadableData Byte))
+  (prop + data ([] Byte))
+  (prop + split Index)
+  (prop + cursor Index)
+  (prop + max-read Size)
+  (fn-do + This _
+    (param data ([] Byte))
+    (param split Index)
+    (param max-read Size)
+  )
+  (fn-expr + is-encoded _ :get
+    false
+  )
+  (fn-do + read Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (if (> amount 0)
+      (= ([] buffer (..< 0 amount)) ([] data (..< cursor (+ cursor amount))))
+      (+= cursor amount)
+    )
+    (blank)
+    (return amount)
+    (blank)
+    (lazy remaining (- (. data size) cursor))
+    (lazy capped
+      (block
+        (case? (< cursor split)
+          (- split cursor)
+        )
+        (default
+          max-read
+        )
+      )
+    )
+    (lazy wanted (if-expr (< size capped) size capped))
+    (lazy amount (if-expr (< remaining wanted) remaining wanted))
+  )
+)
+
+(fn-do _ sse-lines _
+  (param source (of ReadableData Byte))
+  (let lines (list String))
+  (for (in event (call server-sent-events source))
+    (+= lines (. event event))
+    (+= lines (. event data))
+    (+= lines (. event id))
+    (+= lines "---")
+  )
+  (blank)
+  (return lines)
+)
+
+(fn-expr + parsed-url _
+  (call URL "http://joe:pass@foo.com:80/home/base?aa=bb&dd=ee&ccc#poop")
+)

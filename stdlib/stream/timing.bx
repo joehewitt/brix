@@ -1,0 +1,330 @@
+(fn-expr + totaled Totaled
+  (param source (of Broadcastable F64))
+  (call Totaled source)
+)
+
+(fn-expr + delayed Delayed
+  (param source (of Broadcastable F64))
+  (param limit F64)
+  (call Delayed source limit)
+)
+
+(fn-expr + driven Driven
+  (param source (of Broadcastable F64))
+  (param driver Driver)
+  (call Driven source driver)
+)
+
+(type + Driver (is (fn-type Bool (param dt F64))))
+
+(type + Totaled
+  (implements (of Broadcastable (tuple F64 F64)))
+  (prop + source (of Broadcastable F64))
+  (prop _ links (list TotalLink))
+  (fn-do + This _
+    (param source _)
+  )
+  (fn-do _ attach _
+    (param link TotalLink)
+    (+= links link)
+    (call (. source subscribe) link)
+  )
+  (fn-do _ detach _
+    (param link TotalLink)
+    (call (. source unsubscribe) link)
+    (-= links link)
+  )
+  (fn-expr + is-closed Bool :get
+    (. source is-closed)
+  )
+  (fn-do + subscribe _
+    (param subscriber (of Subscriber (tuple F64 F64)))
+    (call attach (call TotalLink this subscriber))
+  )
+  (fn-do + unsubscribe _
+    (param subscriber (of Subscriber (tuple F64 F64)))
+    (for (in link links)
+      (if (call (. link serves) subscriber)
+        (call detach link)
+        (return)
+      )
+    )
+  )
+  (fn-do + subscribe _
+    (param subscriber (of Subscribable (tuple F64 F64)))
+    (let forward (of Subscriber (tuple F64 F64))
+      (=> (item from) :do
+        (block
+          (call subscriber item from)
+        )
+      )
+    )
+    (call attach (call TotalLink this forward subscriber))
+  )
+  (fn-do + unsubscribe _
+    (param subscriber (of Subscribable (tuple F64 F64)))
+    (for (in link links)
+      (if (and (. link target) (== (as (. link target) Pointer) (as subscriber Pointer)))
+        (call detach link)
+        (return)
+      )
+    )
+  )
+)
+
+(type + Delayed
+  (implements (of Broadcastable F64))
+  (prop + source (of Broadcastable F64))
+  (prop + limit F64)
+  (prop _ links (list DelayLink))
+  (fn-do + This _
+    (param source _)
+    (param limit _)
+  )
+  (fn-do _ attach _
+    (param link DelayLink)
+    (+= links link)
+    (call (. source subscribe) link)
+  )
+  (fn-do _ detach _
+    (param link DelayLink)
+    (call (. source unsubscribe) link)
+    (-= links link)
+  )
+  (fn-expr + is-closed Bool :get
+    (. source is-closed)
+  )
+  (fn-do + subscribe _
+    (param subscriber (of Subscriber F64))
+    (call attach (call DelayLink this subscriber))
+  )
+  (fn-do + unsubscribe _
+    (param subscriber (of Subscriber F64))
+    (for (in link links)
+      (if (call (. link serves) subscriber)
+        (call detach link)
+        (return)
+      )
+    )
+  )
+  (fn-do + subscribe _
+    (param subscriber (of Subscribable F64))
+    (let forward (of Subscriber F64)
+      (=> (item from) :do
+        (block
+          (call subscriber item from)
+        )
+      )
+    )
+    (call attach (call DelayLink this forward subscriber))
+  )
+  (fn-do + unsubscribe _
+    (param subscriber (of Subscribable F64))
+    (for (in link links)
+      (if (and (. link target) (== (as (. link target) Pointer) (as subscriber Pointer)))
+        (call detach link)
+        (return)
+      )
+    )
+  )
+)
+
+(type + Driven
+  (implements (of Broadcastable F64))
+  (prop + source (of Broadcastable F64))
+  (prop + driver Driver)
+  (prop _ links (list DriveLink))
+  (fn-do + This _
+    (param source _)
+    (param driver _)
+  )
+  (fn-do _ attach _
+    (param link DriveLink)
+    (+= links link)
+    (call (. source subscribe) link)
+  )
+  (fn-do _ detach _
+    (param link DriveLink)
+    (call (. source unsubscribe) link)
+    (-= links link)
+  )
+  (fn-expr + is-closed Bool :get
+    (. source is-closed)
+  )
+  (fn-do + subscribe _
+    (param subscriber (of Subscriber F64))
+    (call attach (call DriveLink this subscriber))
+  )
+  (fn-do + unsubscribe _
+    (param subscriber (of Subscriber F64))
+    (for (in link links)
+      (if (call (. link serves) subscriber)
+        (call detach link)
+        (return)
+      )
+    )
+  )
+  (fn-do + subscribe _
+    (param subscriber (of Subscribable F64))
+    (let forward (of Subscriber F64)
+      (=> (item from) :do
+        (block
+          (call subscriber item from)
+        )
+      )
+    )
+    (call attach (call DriveLink this forward subscriber))
+  )
+  (fn-do + unsubscribe _
+    (param subscriber (of Subscribable F64))
+    (for (in link links)
+      (if (and (. link target) (== (as (. link target) Pointer) (as subscriber Pointer)))
+        (call detach link)
+        (return)
+      )
+    )
+  )
+)
+
+(type _ TotalLink
+  (implements (of Subscribable F64))
+  (prop + owner Totaled)
+  (prop + subscriber (of Subscriber (tuple F64 F64)))
+  (prop + target (? (of Subscribable (tuple F64 F64))))
+  (prop _ total F64)
+  (fn-do + This _
+    (param owner _)
+    (param subscriber _)
+    (param target _ (= null))
+  )
+  (fn-expr + serves Bool
+    (param other (of Subscriber (tuple F64 F64)))
+    (if-expr target (== target other) (== subscriber other))
+  )
+  (fn-do + this _
+    (param message F64)
+    (param broadcaster (of Broadcastable F64))
+    (+= total message)
+    (call subscriber (tuple total message) owner
+      (block
+        (on-error (: error Error)
+          (call unhandled-error error)
+        )
+      )
+    )
+  )
+  (fn-do + finish _
+    (param broadcaster (of Broadcastable F64))
+    (if target
+      (call (. target finish) owner)
+      (else
+        (call (. owner detach) this
+          (block
+            (on-error (: error Error)
+              (call unhandled-error error)
+            )
+          )
+        )
+      )
+    )
+  )
+  (fn-do + unsubscribe _
+    (call (?. target unsubscribe))
+  )
+)
+
+(type _ DelayLink
+  (implements (of Subscribable F64))
+  (prop + owner Delayed)
+  (prop + subscriber (of Subscriber F64))
+  (prop + target (? (of Subscribable F64)))
+  (prop _ total F64)
+  (fn-do + This _
+    (param owner _)
+    (param subscriber _)
+    (param target _ (= null))
+  )
+  (fn-expr + serves Bool
+    (param other (of Subscriber F64))
+    (if-expr target (== target other) (== subscriber other))
+  )
+  (fn-do + this _
+    (param message F64)
+    (param broadcaster (of Broadcastable F64))
+    (+= total message)
+    (if (>= total (. owner limit))
+      (call subscriber message owner
+        (block
+          (on-error (: error Error)
+            (call unhandled-error error)
+          )
+        )
+      )
+    )
+  )
+  (fn-do + finish _
+    (param broadcaster (of Broadcastable F64))
+    (if target
+      (call (. target finish) owner)
+      (else
+        (call (. owner detach) this
+          (block
+            (on-error (: error Error)
+              (call unhandled-error error)
+            )
+          )
+        )
+      )
+    )
+  )
+  (fn-do + unsubscribe _
+    (call (?. target unsubscribe))
+  )
+)
+
+(type _ DriveLink
+  (implements (of Subscribable F64))
+  (prop + owner Driven)
+  (prop + subscriber (of Subscriber F64))
+  (prop + target (? (of Subscribable F64)))
+  (fn-do + This _
+    (param owner _)
+    (param subscriber _)
+    (param target _ (= null))
+  )
+  (fn-expr + serves Bool
+    (param other (of Subscriber F64))
+    (if-expr target (== target other) (== subscriber other))
+  )
+  (fn-do + this _
+    (param message F64)
+    (param broadcaster (of Broadcastable F64))
+    (if (call (. owner driver) message)
+      (call subscriber message owner
+        (block
+          (on-error (: error Error)
+            (call unhandled-error error)
+          )
+        )
+      )
+    )
+  )
+  (fn-do + finish _
+    (param broadcaster (of Broadcastable F64))
+    (if target
+      (call (. target finish) owner)
+      (else
+        (call (. owner detach) this
+          (block
+            (on-error (: error Error)
+              (call unhandled-error error)
+            )
+          )
+        )
+      )
+    )
+  )
+  (fn-do + unsubscribe _
+    (call (?. target unsubscribe))
+  )
+)

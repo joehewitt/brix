@@ -1,0 +1,1202 @@
+(import /lang/ast/ast-nodes)
+(import /lang/ast/decl)
+(import /lang/ast/module)
+(import /lang/ast/row-range)
+(blank)
+(type-line + TypeId (is U32))
+(blank)
+(prop + no-type TypeId (= (. U32 max)))
+(prop + invalid-type TypeId (= 0))
+
+(type + TypeData (is Union)
+  (variant type-invalid InvalidType)
+  (variant type-class ClassType)
+  (variant type-variable VariableType)
+  (variant type-inference InferenceType)
+  (variant type-tuple TupleType)
+  (variant type-struct StructType)
+  (variant type-union UnionType)
+  (variant type-named-union NamedUnionType)
+  (variant type-function FunctionType)
+  (variant type-result ResultType)
+  (variant type-associated AssociatedType)
+  (variant type-closure ClosureType)
+  (variant type-binding BindingType)
+)
+
+(type + Runner (is Interface)
+  ; What is checking an instance right now. The type pass keeps the runners in a stack so a
+  ; closure called from another function is checked under the function that defines it.
+)
+
+(type + IdleKit (is Interface)
+  ; What a checker is made of that a type pass keeps once the checker is done, for the next
+  ; (`TypingScratch.idle`).
+)
+
+(type + TypeNode (is Tuple)
+  (prop + module ModuleId)
+  (prop + decl DeclId)
+)
+
+(type + InvalidType (is TypeNode)
+  (prop + reason (? Atom))
+)
+
+(type + ClassType (is TypeNode)
+  (prop + args (of RowRange TypeId))
+  (prop + errors (of RowRange TypeId))
+)
+
+(type + TupleType (is TypeNode)
+  (prop + fields (of RowRange TypeId))
+  (prop + names (of RowRange Atom))
+)
+
+(type + FunctionType (is TypeNode)
+  (prop + return-type TypeId)
+  (prop + args (of RowRange TypeId))
+  (prop + errors (of RowRange TypeId))
+  (prop + is-c Bool)
+)
+
+(type + VariableType (is TypeNode)
+  (prop + index U32)
+  (prop + name Atom)
+)
+
+(type + InferenceType (is TypeNode)
+  (prop + scope U32)
+  (prop + ordinal U32)
+)
+
+(type + StructType (is TypeNode)
+  (prop + fields (of RowRange TypeId))
+  (prop + names (of RowRange Atom))
+)
+
+(type + UnionType (is TypeNode)
+  (prop + cases (of RowRange TypeId))
+)
+
+(type + NamedUnionType (is TypeNode)
+  ; A union whose cases are named, for the declaration it is named for. One private to what makes it
+  ; is told apart by the module that makes it and its place there, which are none for any other: a
+  ; state machine's number among the machines of the module.
+  (blank)
+  (prop + owner Atom)
+  (prop + cases (of RowRange TypeId))
+  (prop + names (of RowRange Atom))
+  (prop + made-in U32 (= 0))
+  (prop + made-at U32 (= 0))
+)
+
+(type + ResultType (is TypeNode)
+  (prop + value TypeId)
+  (prop + errors (of RowRange TypeId))
+)
+
+(type + ClosureType (is TypeNode)
+  (prop + enclosing U32)
+)
+
+(type + BindingForm (is U32)
+  ; What a binding calls when it has all its arguments: a function or method by the name of its
+  ; declaration, a constructor of its object, its object as a closure, or its object as a value
+  ; of a function type.
+  (variant bound-function (= 0))
+  (variant bound-method (= 1))
+  (variant bound-constructor (= 2))
+  (variant bound-closure (= 3))
+  (variant bound-c-function (= 4))
+  (variant bound-value (= 5))
+)
+
+(type + BindingType (is TypeNode)
+  ; The explicit type arguments come first in the items, then the argument types bound so far.
+  ; The scope is the module the binding was made in, whose overloads a call of it chooses from.
+  (prop + form BindingForm)
+  (prop + scope ModuleId)
+  (prop + object TypeId)
+  (prop + param-count U32)
+  (prop + items (of RowRange TypeId))
+)
+
+(type + AssociatedType (is TypeNode)
+  (prop + owner TypeId)
+  (prop + name Atom)
+  (prop + args (of RowRange TypeId))
+)
+
+(type + DeclRef (is Tuple)
+  (prop + module ModuleId)
+  (prop + decl DeclId)
+  (fn-expr + key Size :get
+    (/or/ (/lshift/ (as module Size) 32) (as decl Size))
+  )
+  (fn-expr + refers-to Bool
+    (param module ModuleId)
+    (param decl DeclId)
+    ; Whether this is the declaration `decl` of `module`.
+    (and (== (. this module) module) (== (. this decl) decl))
+  )
+)
+
+(fn-expr + same-decl Bool
+  (param left DeclRef)
+  (param right DeclRef)
+  (and (== (. left module) (. right module)) (== (. left decl) (. right decl)))
+)
+
+(type + BuiltinClasses (is Tuple)
+  ; The classes of core with members the compiler answers itself: `Optional`'s `value` and
+  ; `has-value`, `TypeInfo`'s `name` and `key`, and `Number`'s `unit`.
+  (blank)
+  (prop + optional DeclRef)
+  (prop + type-info DeclRef)
+  (prop + number DeclRef)
+)
+
+(type + CompletionState (is U32)
+  (variant completion-unstarted (= 0))
+  (variant completion-in-progress (= 1))
+  (variant completion-done (= 2))
+  (variant completion-failed (= 3))
+)
+
+(fn-expr + storage-name String
+  (param storage StorageKind)
+  (match storage
+    (case= .storage-eager
+      "eager"
+    )
+    (case= .storage-lazy
+      "lazy"
+    )
+    (default
+      "getter"
+    )
+  )
+)
+
+(type + TypeCompletion (is Struct)
+  (prop + completion CompletionState)
+  (prop + base TypeId (= no-type))
+  (prop + intrinsic IntrinsicKind)
+  (prop + bit-size U32)
+  (prop + is-signed Bool)
+  (prop + is-pointer Bool)
+  (prop + is-struct Bool)
+  (prop + interfaces (of RowRange TypeId))
+  (prop + properties (of RowRange TypeProperty))
+  (prop + cases (of RowRange TypeCase))
+  (prop + converters (of RowRange TypeId))
+  (prop + fromverters (of RowRange TypeId))
+  (prop + associated (of RowRange TypeAssociated))
+  (prop + alternatives (of RowRange TypeId))
+  (prop + delegates (of RowRange TypeId))
+  (prop + delegate-names (of RowRange Atom))
+  (prop + is-builtin Bool)
+  (prop + has-variables Bool)
+  (prop + has-closures Bool)
+  (prop + has-equalities Bool)
+  (prop + has-enums Bool)
+)
+
+(type + FactFlag (is U32)
+  (variant flag-builtin (= 0))
+  (variant flag-variables (= 1))
+  (variant flag-equalities (= 2))
+  (variant flag-enums (= 3))
+)
+
+(type + StorageKind (is U32)
+  (variant storage-eager (= 0))
+  (variant storage-lazy (= 1))
+  (variant storage-getter (= 2))
+)
+
+(type + TypeProperty (is Struct)
+  ; A property of a type, its own or one it takes from a class above. One a facet of the class
+  ; declares has the facet's place among the program's facets as `facet`, and others none.
+  (blank)
+  (prop + name Atom)
+  (prop + storage-kind StorageKind)
+  (prop + slot U32)
+  (prop + type TypeId (= no-type))
+  (prop + owner TypeId (= no-type))
+  (prop + facet U32 (= (. U32 max)))
+)
+
+(type + TypeCase (is Struct)
+  (prop + name (? Atom))
+  (prop + type TypeId (= no-type))
+  (prop + is-default Bool)
+)
+
+(type + TypeAssociated (is Struct)
+  (prop + name Atom)
+  (prop + type TypeId (= no-type))
+)
+
+(type + UnitLiteral (is Tuple)
+  (prop + unit (? Atom))
+  (prop + ratio F64)
+)
+
+(type + UnitRatio (is Tuple)
+  (prop + multiplier F64)
+  (prop + divisor F64)
+  (fn-expr + is-none Bool :get @inline
+    (or (== multiplier 0.0) (== divisor 0.0))
+  )
+)
+
+(fn-expr + no-ratio UnitRatio
+  (call UnitRatio 0.0 0.0)
+)
+
+(type + TypeEquality (is Struct)
+  (prop + from TypeId)
+  (prop + to TypeId)
+  (prop + ratio UnitRatio)
+)
+
+(type + IntrinsicKind (is U32)
+  (variant none (= 0))
+  (variant class (= 1))
+  (variant void (= 2))
+  (variant cpointer (= 3))
+  (variant cfunction (= 4))
+  (variant tuple (= 5))
+  (variant union (= 6))
+  (variant atom (= 7))
+  (variant interface (= 8))
+  (variant or (= 9))
+  (variant struct (= 10))
+  (variant optional (= 11))
+  (variant gc-type-map (= 12))
+  (variant number (= 13))
+  (variant int1 (= 14))
+  (variant int8 (= 15))
+  (variant uint8 (= 16))
+  (variant int16 (= 17))
+  (variant uint16 (= 18))
+  (variant int32 (= 19))
+  (variant uint32 (= 20))
+  (variant int64 (= 21))
+  (variant uint64 (= 22))
+  (variant float32 (= 23))
+  (variant float64 (= 24))
+  (variant bool (= 25))
+  (variant char (= 26))
+  (variant string (= 27))
+  (variant type-info (= 28))
+  (variant type-relation (= 29))
+  (variant table (= 30))
+  (variant table-row (= 31))
+  (variant table-span (= 32))
+  (variant table-selection (= 33))
+  (variant table-column (= 34))
+  (variant immutable-table (= 35))
+  (variant immutable-table-row (= 36))
+  (variant immutable-table-span (= 37))
+  (variant immutable-table-selection (= 38))
+  (variant immutable-table-column (= 39))
+  (variant index-span (= 40))
+  (variant table-mark (= 41))
+  (variant function (= 46))
+  (variant closure (= 47))
+  (variant capture (= 48))
+  (variant binding (= 49))
+  (variant array-builder (= 50))
+  (variant style (= 51))
+  (variant style-sheet (= 52))
+)
+
+(fn-expr + intrinsic-name String
+  (param type IntrinsicKind)
+  (match type
+    (case= .class
+      "ClassType"
+    )
+    (case= .void
+      "VoidType"
+    )
+    (case= .cpointer
+      "CPointerType"
+    )
+    (case= .cfunction
+      "CFunctionType"
+    )
+    (case= .tuple
+      "TupleType"
+    )
+    (case= .union
+      "UnionType"
+    )
+    (case= .atom
+      "AtomType"
+    )
+    (case= .interface
+      "InterfaceType"
+    )
+    (case= .or
+      "OrType"
+    )
+    (case= .struct
+      "StructType"
+    )
+    (case= .optional
+      "OptionalType"
+    )
+    (case= .gc-type-map
+      "GCTypeMapType"
+    )
+    (case= .number
+      "NumberType"
+    )
+    (case= .int1
+      "Int1Type"
+    )
+    (case= .int8
+      "Int8Type"
+    )
+    (case= .uint8
+      "UInt8Type"
+    )
+    (case= .int16
+      "Int16Type"
+    )
+    (case= .uint16
+      "UInt16Type"
+    )
+    (case= .int32
+      "Int32Type"
+    )
+    (case= .uint32
+      "UInt32Type"
+    )
+    (case= .int64
+      "Int64Type"
+    )
+    (case= .uint64
+      "UInt64Type"
+    )
+    (case= .float32
+      "Float32Type"
+    )
+    (case= .float64
+      "Float64Type"
+    )
+    (case= .bool
+      "BoolType"
+    )
+    (case= .char
+      "CharType"
+    )
+    (case= .string
+      "StringType"
+    )
+    (case= .type-info
+      "TypeInfoType"
+    )
+    (case= .type-relation
+      "TypeRelationType"
+    )
+    (case= .table
+      "TableType"
+    )
+    (case= .table-row
+      "TableRowType"
+    )
+    (case= .table-span
+      "TableSpanType"
+    )
+    (case= .table-selection
+      "TableSelectionType"
+    )
+    (case= .table-column
+      "TableColumnType"
+    )
+    (case= .immutable-table
+      "ImmutableTableType"
+    )
+    (case= .immutable-table-row
+      "ImmutableTableRowType"
+    )
+    (case= .immutable-table-span
+      "ImmutableTableSpanType"
+    )
+    (case= .immutable-table-selection
+      "ImmutableTableSelectionType"
+    )
+    (case= .immutable-table-column
+      "ImmutableTableColumnType"
+    )
+    (case= .index-span
+      "IndexSpanType"
+    )
+    (case= .table-mark
+      "TableMarkType"
+    )
+    (case= .function
+      "FunctionType"
+    )
+    (case= .closure
+      "ClosureType"
+    )
+    (case= .capture
+      "CaptureType"
+    )
+    (case= .binding
+      "BindingType"
+    )
+    (case= .array-builder
+      "ArrayBuilderType"
+    )
+    (case= .style
+      "StyleType"
+    )
+    (case= .style-sheet
+      "StyleSheetType"
+    )
+    (default
+      "-"
+    )
+  )
+)
+
+(fn-expr + intrinsic-bit-size U32
+  (param type IntrinsicKind)
+  (match type
+    (case= .int1
+      1u32
+    )
+    (case= .bool
+      1u32
+    )
+    (case= .int8
+      8u32
+    )
+    (case= .uint8
+      8u32
+    )
+    (case= .int16
+      16u32
+    )
+    (case= .uint16
+      16u32
+    )
+    (case= .int32
+      32u32
+    )
+    (case= .uint32
+      32u32
+    )
+    (case= .float32
+      32u32
+    )
+    (case= .char
+      32u32
+    )
+    (case= .int64
+      64u32
+    )
+    (case= .uint64
+      64u32
+    )
+    (case= .float64
+      64u32
+    )
+    (case= .cpointer
+      64u32
+    )
+    (default
+      0u32
+    )
+  )
+)
+
+(fn-expr + intrinsic-is-signed Bool
+  (param type IntrinsicKind)
+  (match type
+    (case= .number
+      true
+    )
+    (case= .int1
+      true
+    )
+    (case= .int8
+      true
+    )
+    (case= .int16
+      true
+    )
+    (case= .int32
+      true
+    )
+    (case= .int64
+      true
+    )
+    (case= .float32
+      true
+    )
+    (case= .float64
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-expr + intrinsic-is-pointer Bool
+  (param type IntrinsicKind)
+  (match type
+    (case= .class
+      true
+    )
+    (case= .cpointer
+      true
+    )
+    (case= .closure
+      true
+    )
+    (case= .capture
+      true
+    )
+    (case= .style
+      true
+    )
+    (case= .style-sheet
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-expr + intrinsic-is-struct Bool
+  (param type IntrinsicKind)
+  (match type
+    (case= .tuple
+      true
+    )
+    (case= .struct
+      true
+    )
+    (case= .union
+      true
+    )
+    (case= .interface
+      true
+    )
+    (case= .optional
+      true
+    )
+    (case= .function
+      true
+    )
+    (case= .binding
+      true
+    )
+    (case= .gc-type-map
+      true
+    )
+    (case= .type-info
+      true
+    )
+    (case= .table
+      true
+    )
+    (case= .table-row
+      true
+    )
+    (case= .table-span
+      true
+    )
+    (case= .table-selection
+      true
+    )
+    (case= .table-column
+      true
+    )
+    (case= .immutable-table
+      true
+    )
+    (case= .immutable-table-row
+      true
+    )
+    (case= .immutable-table-span
+      true
+    )
+    (case= .immutable-table-selection
+      true
+    )
+    (case= .immutable-table-column
+      true
+    )
+    (case= .index-span
+      true
+    )
+    (case= .table-mark
+      true
+    )
+    (case= .array-builder
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-expr + anonymous-root Bool
+  (param type IntrinsicKind)
+  (match type
+    (case= .tuple
+      true
+    )
+    (case= .struct
+      true
+    )
+    (case= .union
+      true
+    )
+    (case= .function
+      true
+    )
+    (case= .cfunction
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(type + RelationRank (is I32))
+
+(type + RelationKind (is U32)
+  (variant relation-illegal (= 0))
+  (variant relation-same (= 1))
+  (variant relation-equal (= 2))
+  (variant relation-side-cast (= 3))
+  (variant relation-unwrap-cast (= 4))
+  (variant relation-up-cast (= 5))
+  (variant relation-down-cast (= 6))
+  (variant relation-interface-cast (= 7))
+  (variant relation-or-cast (= 8))
+  (variant relation-wrap-cast (= 9))
+  (variant relation-fromverter (= 10))
+  (variant relation-converter (= 11))
+  (variant relation-common-equality (= 12))
+  (variant relation-common-converter (= 13))
+  (variant relation-common-up-cast (= 14))
+  (variant relation-common-interface (= 15))
+  (variant relation-final-cast (= 16))
+  (variant relation-string-cast (= 17))
+  (variant relation-interface-down-cast (= 18))
+)
+
+(type + RelationReason (is U32)
+  (variant reason-none (= 0))
+  (variant reason-illegal-cast (= 1))
+  (variant reason-unresolved (= 2))
+  (variant reason-conflict (= 3))
+  (variant reason-ambiguous (= 4))
+)
+
+(type + Relation (is Struct)
+  (prop + kind RelationKind)
+  (prop + rank RelationRank)
+  (prop + match Specificity)
+  (prop + from TypeId (= no-type))
+  (prop + to TypeId (= no-type))
+  (prop + unified TypeId (= no-type))
+  (prop + case-index U32 (= (. U32 max)))
+  (prop + via TypeId (= no-type))
+  (prop + ratio UnitRatio)
+  (prop + reason RelationReason)
+  (prop + converter-module ModuleId (= (. U32 max)))
+  (prop + converter-decl DeclId (= 0))
+  (prop + explicit Bool)
+)
+
+(fn-expr + relation-rank RelationRank
+  (param kind RelationKind)
+  (match kind
+    (case= .relation-same
+      0i32
+    )
+    (case= .relation-equal
+      10i32
+    )
+    (case= .relation-side-cast
+      20i32
+    )
+    (case= .relation-unwrap-cast
+      30i32
+    )
+    (case= .relation-up-cast
+      30i32
+    )
+    (case= .relation-down-cast
+      40i32
+    )
+    (case= .relation-interface-cast
+      50i32
+    )
+    (case= .relation-interface-down-cast
+      55i32
+    )
+    (case= .relation-or-cast
+      60i32
+    )
+    (case= .relation-wrap-cast
+      70i32
+    )
+    (case= .relation-fromverter
+      80i32
+    )
+    (case= .relation-converter
+      90i32
+    )
+    (case= .relation-common-equality
+      100i32
+    )
+    (case= .relation-common-converter
+      110i32
+    )
+    (case= .relation-common-up-cast
+      120i32
+    )
+    (case= .relation-common-interface
+      130i32
+    )
+    (case= .relation-final-cast
+      140i32
+    )
+    (case= .relation-string-cast
+      150i32
+    )
+    (default
+      -1i32
+    )
+  )
+)
+
+(fn-expr + same-relation Relation
+  (param type TypeId)
+  (call Relation .relation-same 0i32 .exact type type type (. U32 max) no-type ratio none (. U32 max) 0)
+  (where
+    (lazy none (. RelationReason reason-none))
+    (lazy ratio (call no-ratio))
+  )
+)
+
+(fn-expr + side-cast-relation Relation
+  (param source TypeId)
+  (param target TypeId)
+  (call Relation
+    (block
+      (arg kind)
+      (arg (call relation-rank kind))
+      (arg match)
+      (arg source)
+      (arg target)
+      (arg target)
+      (arg (. U32 max))
+      (arg no-type)
+      (arg (call no-ratio))
+      (arg none)
+      (arg (. U32 max))
+      (arg 0)
+    )
+  )
+  (where
+    (lazy none (. RelationReason reason-none))
+    (blank)
+    (lazy kind (. RelationKind relation-side-cast))
+    (lazy match (call relation-match kind))
+  )
+)
+
+(fn-expr + relation-name String
+  (param kind RelationKind)
+  (match kind
+    (case= .relation-same
+      "Same"
+    )
+    (case= .relation-equal
+      "Equal"
+    )
+    (case= .relation-side-cast
+      "SideCast"
+    )
+    (case= .relation-unwrap-cast
+      "Unwrap"
+    )
+    (case= .relation-up-cast
+      "UpCast"
+    )
+    (case= .relation-down-cast
+      "DownCast"
+    )
+    (case= .relation-interface-down-cast
+      "InterfaceDownCast"
+    )
+    (case= .relation-interface-cast
+      "InterfaceCast"
+    )
+    (case= .relation-or-cast
+      "Or"
+    )
+    (case= .relation-wrap-cast
+      "Wrap"
+    )
+    (case= .relation-fromverter
+      "Fromverter"
+    )
+    (case= .relation-converter
+      "Converter"
+    )
+    (case= .relation-common-equality
+      "CommonEquality"
+    )
+    (case= .relation-common-converter
+      "CommonConverter"
+    )
+    (case= .relation-common-up-cast
+      "CommonUpCast"
+    )
+    (case= .relation-common-interface
+      "CommonInterface"
+    )
+    (case= .relation-final-cast
+      "FinalCast"
+    )
+    (case= .relation-string-cast
+      "StringCast"
+    )
+    (default
+      "Illegal"
+    )
+  )
+)
+
+(fn-expr + relation-match Specificity
+  (param kind RelationKind)
+  (match kind
+    (case= .relation-same
+      .exact
+    )
+    (case= .relation-equal
+      .exact
+    )
+    (case= .relation-or-cast
+      .exact
+    )
+    (case= .relation-common-equality
+      .exact
+    )
+    (case= .relation-fromverter
+      .convertible
+    )
+    (case= .relation-converter
+      .convertible
+    )
+    (case= .relation-common-converter
+      .convertible
+    )
+    (case= .relation-string-cast
+      .convertible
+    )
+    (case= .relation-illegal
+      .convertible
+    )
+    (default
+      .similar
+    )
+  )
+)
+
+(fn-expr + intrinsic-is-numeric Bool
+  (param type IntrinsicKind)
+  (match type
+    (case= .number
+      true
+    )
+    (case= .int1
+      true
+    )
+    (case= .int8
+      true
+    )
+    (case= .uint8
+      true
+    )
+    (case= .int16
+      true
+    )
+    (case= .uint16
+      true
+    )
+    (case= .int32
+      true
+    )
+    (case= .uint32
+      true
+    )
+    (case= .int64
+      true
+    )
+    (case= .uint64
+      true
+    )
+    (case= .float32
+      true
+    )
+    (case= .float64
+      true
+    )
+    (case= .bool
+      true
+    )
+    (case= .char
+      true
+    )
+    (case= .cpointer
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-expr + intrinsic-is-float Bool
+  (param type IntrinsicKind)
+  (match type
+    (case= .float32
+      true
+    )
+    (case= .float64
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-expr + intrinsic-is-class Bool
+  (param type IntrinsicKind)
+  (match type
+    (case= .class
+      true
+    )
+    (case= .style
+      true
+    )
+    (case= .style-sheet
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-expr + intrinsic-is-tuple-like Bool
+  (param type IntrinsicKind)
+  (match type
+    (case= .tuple
+      true
+    )
+    (case= .struct
+      true
+    )
+    (case= .table
+      true
+    )
+    (case= .table-row
+      true
+    )
+    (case= .table-span
+      true
+    )
+    (case= .table-selection
+      true
+    )
+    (case= .table-column
+      true
+    )
+    (case= .immutable-table
+      true
+    )
+    (case= .immutable-table-row
+      true
+    )
+    (case= .immutable-table-span
+      true
+    )
+    (case= .immutable-table-selection
+      true
+    )
+    (case= .immutable-table-column
+      true
+    )
+    (case= .index-span
+      true
+    )
+    (case= .table-mark
+      true
+    )
+    (case= .array-builder
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(type + Assigned (is Tuple)
+  (prop + type TypeId)
+  (prop + match Specificity)
+  (prop + implicit Bool (= true))
+)
+
+(type + MatchScope (is Tuple)
+  (prop + start Size)
+  (prop + end Size)
+)
+
+(type + TypeParamMatch (is Struct)
+  (prop + name Atom)
+  (prop + type TypeId (= no-type))
+  (prop + is-explicit Bool)
+  (prop + is-pinned Bool)
+  (prop + specificity Specificity)
+  (prop + has-specificity Bool)
+  (prop + links U64)
+  (prop + syntax-module ModuleId)
+  (prop + assign-syntax SyntaxId)
+  (prop + must-match Bool)
+  (prop + default-syntax SyntaxId)
+  (prop + constraint-syntax SyntaxId)
+  (prop + constraint-op Specificity)
+)
+
+(fn-expr + is-illegal-base Bool
+  (param kind IntrinsicKind)
+  (match kind
+    (case= .bool
+      true
+    )
+    (case= .optional
+      true
+    )
+    (case= .void
+      true
+    )
+    (case= .closure
+      true
+    )
+    (case= .capture
+      true
+    )
+    (case= .binding
+      true
+    )
+    (case= .type-info
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-expr + is-index-reader Bool
+  (param kind IntrinsicKind)
+  ; Whether a value reads indices: an index span, or a selection of a table's rows by one.
+  (or (== kind .index-span) (== kind .table-selection) (== kind .immutable-table-selection))
+)
+
+(fn-expr + is-table-container Bool
+  (param kind IntrinsicKind)
+  (or table spans (== .immutable-table-selection kind) (== .index-span kind))
+  (where
+    (lazy table (or (== kind .table) (== kind .immutable-table)))
+    (lazy spans (or (== kind .table-span) (== kind .immutable-table-span)))
+  )
+)
+
+(fn-expr + known-type Bool
+  (param type TypeId)
+  (and (!= type no-type) (!= type invalid-type))
+)
+
+(fn-expr + down-cast-rank RelationRank
+  (call relation-rank .relation-down-cast)
+)
+
+(fn-expr + boxed-style Bool
+  (param kind IntrinsicKind)
+  ; Whether a style value of a kind is kept in a box the runtime holds a handle to, as the
+  ; reference's `styleValueClass` says of a value that is no number, object or union: a tuple, a
+  ; struct or a string.
+  (or (== kind .tuple) (== kind .struct) (== kind .string))
+)
+
+(fn-expr + is-column-receiver Bool
+  (param kind IntrinsicKind)
+  (case? (or (== kind .table) (== kind .immutable-table))
+    true
+  )
+  (default
+    (or (== kind .table-span) (== kind .immutable-table-span))
+  )
+)
+
+(fn-expr + is-field-view Bool
+  (param kind IntrinsicKind)
+  ; Whether a value is a view of a field's column.
+  (or (== kind .table-column) (== kind .immutable-table-column))
+)
+
+(fn-expr + is-immutable-view Bool
+  (param kind IntrinsicKind)
+  ; Whether a value is a table that was finished, or a view of one, which holds no metadata.
+  (or table-or-span (== kind .immutable-table-row) (== kind .immutable-table-column))
+  (where
+    (lazy table-or-span (or (== kind .immutable-table) (== kind .immutable-table-span)))
+  )
+)
+
+(fn-expr + is-row-source Bool
+  (param kind IntrinsicKind)
+  ; Whether a value is a table or a span of one, whose rows can be read.
+  (or (== kind .table) (== kind .table-span) (== kind .immutable-table) (== kind .immutable-table-span))
+)
+
+(fn-expr + source-name String
+  (param kind IntrinsicKind)
+  ; The name of a table, or of a span of one, its panics give.
+  (case? (== kind .table)
+    "Table"
+  )
+  (case? (== kind .table-span)
+    "TableSpan"
+  )
+  (case? (== kind .immutable-table)
+    "ImmutableTable"
+  )
+  (default
+    "ImmutableTableSpan"
+  )
+)

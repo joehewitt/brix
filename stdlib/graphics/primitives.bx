@@ -1,0 +1,366 @@
+(import ./point)
+(import /core/animatable)
+(import /math)
+(blank)
+(type-line + Coord (alias px) (is Float))
+(type-line + Length (is Float))
+(type-line + PointOnCurve (is Float))
+
+(type + LineCap (is Union)
+  (variant butt)
+  (variant round)
+  (variant square)
+  (fn-to-expr + String
+    (case? (only-if "round" (if (== this (. LineCap round)))))
+    (case? (only-if "square" (if (== this (. LineCap square)))))
+    (default
+      (inline "butt")
+    )
+  )
+)
+
+(type + LineJoin (is Union)
+  (variant miter)
+  (variant round)
+  (variant bevel)
+  (fn-to-expr + String
+    (case? (only-if "round" (if (== this (. LineJoin round)))))
+    (case? (only-if "bevel" (if (== this (. LineJoin bevel)))))
+    (default
+      (inline "miter")
+    )
+  )
+)
+
+(type + StrokeAlignment (is Union)
+  (variant center)
+  (variant inside)
+  (variant outside)
+  (fn-to-expr + String
+    (case? (only-if "inside" (if (== this (. StrokeAlignment inside)))))
+    (case? (only-if "outside" (if (== this (. StrokeAlignment outside)))))
+    (default
+      (inline "center")
+    )
+  )
+)
+
+(type + BlendMode (is I32)
+  (variant normal (= 0))
+  (variant multiply (= 1))
+  (variant screen (= 2))
+  (variant overlay (= 3))
+  (variant darken (= 4))
+  (variant lighten (= 5))
+  (variant color-dodge (= 6))
+  (variant color-burn (= 7))
+  (variant soft-light (= 8))
+  (variant hard-light (= 9))
+  (variant difference (= 10))
+  (variant exclusion (= 11))
+  (variant hue (= 12))
+  (variant saturation (= 13))
+  (variant color (= 14))
+  (variant luminosity (= 15))
+  (variant clear (= 16))
+  (variant copy (= 17))
+  (variant source-in (= 18))
+  (variant source-out (= 19))
+  (variant source-atop (= 20))
+  (variant destination-over (= 21))
+  (variant destination-in (= 22))
+  (variant destination-out (= 23))
+  (variant destination-atop (= 24))
+  (variant xor (= 25))
+  (variant plus-darker (= 26))
+  (variant plus-lighter (= 27))
+)
+
+(type + ImageSampling (is I32)
+  (variant smooth (= 0))
+  (variant pixelated (= 1))
+)
+
+(type + ColorSpace (is I32)
+  (variant srgb (= 0))
+  (variant display-p3 (= 1))
+  (variant linear-srgb (= 2))
+  (variant linear-display-p3 (= 3))
+  (variant linear-rec2020 (= 4))
+)
+
+(type + PixelFormat (is I32)
+  (variant rgba8 (= 0))
+  (variant rgba16-float (= 1))
+)
+
+(type + FillRule (is Union)
+  (variant nonzero)
+  (variant even-odd)
+)
+
+(type + Side (is Union)
+  (variant top)
+  (variant bottom)
+  (variant left)
+  (variant right)
+  (fn-expr + opposite _ :get
+    (match this
+      (case (. Side top)
+        (. Side bottom)
+      )
+      (case (. Side bottom)
+        (. Side top)
+      )
+      (case (. Side left)
+        (. Side right)
+      )
+      (default
+        (. Side left)
+      )
+    )
+  )
+  (fn-expr + is-vertical _ :get
+    (or (== this (. Side top)) (== this (. Side bottom)))
+  )
+)
+
+(type + SegmentType
+  (variant segment-type-move)
+  (variant segment-type-line)
+  (variant segment-type-cubic)
+  (fn-to-expr + String
+    (case? (only-if "move" (if (== this .segment-type-move))))
+    (case? (only-if "line" (if (== this .segment-type-line))))
+    (default
+      (inline "cubic")
+    )
+  )
+)
+
+(type + Dimensions (is (tuple (: width Length) (: height Length)))
+  (implements Animatable)
+  (fn-do + This _
+    (param vector (list F64))
+    (return (call This ([] vector 0) ([] vector 1)))
+  )
+  (fn-expr + (infix this / (param div Float)) _
+    (call This (/ width div) (/ height div))
+  )
+  (fn-expr + motion-vector (list F64) :get
+    (list (as width F64) (as height F64))
+  )
+)
+
+(type + Rect (is (tuple (: x Coord) (: y Coord) (: width Coord) (: height Coord)))
+  (prop + left _ (=> x))
+  (prop + right _ (=> (+ x width)))
+  (prop + top _ (=> y))
+  (prop + bottom _ (=> (+ y height)))
+  (prop + longest _ (=> (if-expr (> width height) width height)))
+  (prop + distance _ (=> (call (. top-left distance) bottom-right)))
+  (prop + size _ (=> (call Dimensions width height)))
+  (prop + top-left _ (=> (call Point x y)))
+  (prop + bottom-right _ (=> (call Point (+ x width) (+ y height))))
+  (prop + center _ (=> (call Point (+ x (/ width 2)) (+ y (/ height 2)))))
+  (prop + top-center _ (=> (call Point (+ x (/ width 2)) top)))
+  (prop + bottom-center _ (=> (call Point (+ x (/ width 2)) bottom)))
+  (prop + left-center _ (=> (call Point left (+ y (/ height 2)))))
+  (prop + right-center _ (=> (call Point right (+ y (/ height 2)))))
+  (prop + corners _ (=> (list x y right y right bottom x bottom)))
+  (fn-do + This _
+    (param size Dimensions)
+    (return (call This 0 0 (. size width) (. size height)))
+  )
+  (fn-do + This _
+    (param width Coord)
+    (param height Coord)
+    (param point Point)
+    (return (call This (. point x) (. point y) width height))
+  )
+  (fn-do + This _
+    (param point Point)
+    (param size Dimensions)
+    (return (call This (. point x) (. point y) (. size width) (. size height)))
+  )
+  (fn-do + This _
+    (param pt1 Point)
+    (param pt2 Point)
+    (return
+      (call This
+        (block
+          (arg (. pt1 x))
+          (arg (. pt1 y))
+          (arg (- (. pt2 x) (. pt1 x)))
+          (arg (- (. pt2 y) (. pt1 y)))
+        )
+      )
+    )
+  )
+  (fn-expr + (infix this + (param other Point)) _
+    (call This
+      (block
+        (arg (+ x (. other x)))
+        (arg (+ y (. other y)))
+        (arg width)
+        (arg height)
+      )
+    )
+  )
+  (fn-expr + (infix this + (param other Rect)) _
+    (call This
+      (block
+        (arg x1)
+        (arg y1)
+        (arg (- x2 x1))
+        (arg (- y2 y1))
+      )
+    )
+    (where
+      (lazy x1 (call min x (. other x)))
+      (lazy y1 (call min y (. other y)))
+      (lazy x2 (call max right (. other right)))
+      (lazy y2 (call max bottom (. other bottom)))
+    )
+  )
+  (fn-expr + (infix this / (param factor Length)) _
+    (call This
+      (block
+        (arg x)
+        (arg y)
+        (arg (/ width factor))
+        (arg (/ height factor))
+      )
+    )
+  )
+  (fn-expr + pad _
+    (param w Length)
+    (call pad w w)
+  )
+  (fn-expr + pad _
+    (param w Length)
+    (param h Length)
+    (call This
+      (block
+        (arg (+ x w))
+        (arg (+ y h))
+        (arg (- width (* w 2)))
+        (arg (- height (* h 2)))
+      )
+    )
+  )
+  (fn-expr + inflate _
+    (param w Length)
+    (call inflate w w)
+  )
+  (fn-expr + inflate _
+    (param w Length)
+    (param h Length)
+    (call This
+      (block
+        (arg (- x (/ w 2)))
+        (arg (- y (/ h 2)))
+        (arg (+ width w))
+        (arg (+ height h))
+      )
+    )
+  )
+  (fn-expr + contains _
+    (param point Point)
+    (and (>= (. point x) x) (>= (. point y) y) (<= (. point x) (+ x width)) (<= (. point y) (+ y height)))
+  )
+  (fn-expr + contains _
+    (param other Rect)
+    (param tolerance Length (= 0))
+    (and horizontal vertical)
+    (where
+      (lazy horizontal (and (>= (. other left) (- left tolerance)) (<= (. other right) (+ right tolerance))))
+      (lazy vertical (and (>= (. other top) (- top tolerance)) (<= (. other bottom) (+ bottom tolerance))))
+    )
+  )
+  (fn-expr + is-empty _ :get
+    (or (<= width 0) (<= height 0))
+  )
+  (fn-expr + intersection _
+    (param other Rect)
+    (call This x1 y1 (call max 0 (- x2 x1)) (call max 0 (- y2 y1)))
+    (where
+      (lazy x1 (call max left (. other left)))
+      (lazy y1 (call max top (. other top)))
+      (lazy x2 (call min right (. other right)))
+      (lazy y2 (call min bottom (. other bottom)))
+    )
+  )
+  (fn-expr + inset _
+    (param edges Insets)
+    (call This
+      (block
+        (arg (+ x (. edges left)))
+        (arg (+ y (. edges top)))
+        (arg (call max 0 (- width (. edges horizontal))))
+        (arg (call max 0 (- height (. edges vertical))))
+      )
+    )
+  )
+  (fn-expr + outset _
+    (param edges Insets)
+    (call This (- x (. edges left)) (- y (. edges top)) (+ width (. edges horizontal)) (+ height (. edges vertical)))
+  )
+  (fn-expr + overlaps _
+    (param other Rect)
+    (and (<= left (. other right)) (>= right (. other left)) (<= top (. other bottom)) (>= bottom (. other top)))
+  )
+  (fn-expr + normalized _ :get
+    (call This
+      (block
+        (arg (call min x right))
+        (arg (call min y bottom))
+        (arg (call abs width))
+        (arg (call abs height))
+      )
+    )
+  )
+)
+
+(type + Insets (is (tuple (: top Length) (: right Length) (: bottom Length) (: left Length)))
+  (prop + horizontal _ (=> (+ left right)))
+  (prop + vertical _ (=> (+ top bottom)))
+  (fn-expr + clamped _ :get
+    (call Insets
+      (block
+        (arg (call nonnegative-span top))
+        (arg (call nonnegative-span right))
+        (arg (call nonnegative-span bottom))
+        (arg (call nonnegative-span left))
+      )
+    )
+  )
+)
+
+(fn-expr _ nonnegative-span _
+  (param value Length)
+  (if-expr (call is-finite value) (call max 0 value) 0)
+)
+
+(type + PathVerb (is U8)
+  (variant path-verb-move)
+  (variant path-verb-line)
+  (variant path-verb-cubic)
+  (variant path-verb-close)
+  (fn-to-expr + String
+    (match this
+      (case= .path-verb-move
+        "move"
+      )
+      (case= .path-verb-line
+        "line"
+      )
+      (case= .path-verb-cubic
+        "cubic"
+      )
+      (case= .path-verb-close
+        "close"
+      )
+    )
+  )
+)

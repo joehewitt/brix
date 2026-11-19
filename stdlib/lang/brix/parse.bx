@@ -1,0 +1,78 @@
+(import ./build)
+(import ./grammar)
+(import /core/arena)
+(import /core/parsing)
+(import /core/table)
+(import /data/source-tree)
+(import /lang/ast/preparse)
+
+(type + BrixSyntaxError (is Error)
+  (prop + line Size)
+  (prop + column Size)
+  (fn-do + This _
+    (param line _)
+    (param column _)
+    (= message (str "Syntax error at line " line ", column " column))
+  )
+)
+
+(fn-do + brix-build (of ImmutableTableRow SourceNode) (?! BrixSyntaxError)
+  (param source String)
+  (param builder BrixBuilder)
+  (let scratch (use (call Arena)))
+  (let prepared (call preparse source scratch))
+  (return
+    (match prepared
+      (~ (: parsed (call \brix-grammar builder (. BrixEntry whole-file)))
+        parsed
+      )
+      (throw (call BrixSyntaxError (+ (as (. location line) Size) 1) (+ (as (. location column) Size) 1)))
+    )
+  )
+)
+
+(fn-do + brix-parse-row (? (of ImmutableTableRow SourceNode))
+  (param text String)
+  (param store SourceStore)
+  (param entry BrixEntry)
+  (let builder (call BrixBuilder store))
+  (let scratch (use (call Arena)))
+  (let source (if-expr (== entry (. BrixEntry head-row)) (str "━━━━━━━━━━━━━━━━━━━━\n" text "\n") text))
+  (let prepared (call preparse source scratch))
+  (return
+    (match prepared
+      (~ (: parsed (call \brix-grammar builder entry))
+        (call (. builder only) parsed)
+      )
+      (default
+        (inline null)
+      )
+    )
+  )
+)
+
+(fn-do + brix-parse-prose (? (of ImmutableTableRow SourceNode))
+  (param text String)
+  (param store SourceStore)
+  (let builder (call BrixBuilder store))
+  (let scratch (use (call Arena)))
+  (return
+    (match (call brix-chars (str "Æ" (call (. "\ufdd0" join) (call (. text split) "≥")) "\n≥") scratch)
+      (~ (: parsed (call \brix-grammar builder (. BrixEntry prose-row)))
+        (call (. builder only) parsed)
+      )
+      (default
+        (inline null)
+      )
+    )
+  )
+)
+
+(fn-do _ brix-chars ([] Char)
+  (param source String)
+  (param scratch Arena)
+  (let bytes (call byte-view source))
+  (let chars (call (of Array Char) (call (of (. scratch allocate) Char) (. bytes size)) (. bytes size)))
+  (let (tuple count _) (call decode-utf8-buffer bytes (. bytes size) chars))
+  (return (call (of Array Char) (. chars data) count))
+)

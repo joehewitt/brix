@@ -1,0 +1,31 @@
+; benchmark.meta description: Measures the ordinary ordered F64 maximum call seam for intrinsic comparison.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core)
+(blank)
+
+(main
+  (let checksum 0.0)
+  (let operations 4000000)
+  (blank)
+  (for (in i (..< 0 operations))
+    (let left (as (- (% i 1009) 504) F64))
+    (let right (as (- (% i 997) 498) F64))
+    (+= checksum (call fallback-max left right))
+  )
+  (blank)
+  (let checksum-result (as (* (+ checksum (* operations 1000.0)) 1000.0) Size))
+  (print (str "bench-result graphics/f64-max-fallback checksum=" checksum-result))
+)
+
+(fn-expr _ fallback-max F64
+  (param left F64)
+  (param right F64)
+  (case? (> right left)
+    right
+  )
+  (default
+    left
+  )
+)

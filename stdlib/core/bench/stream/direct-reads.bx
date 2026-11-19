@@ -1,0 +1,33 @@
+; benchmark.meta description: Reads 4 MB of byte records with direct pulls, bulk reads and delimiter reads.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: allocator,compile-timing
+(blank)
+(import /core/tokenstream)
+(import /data/stream)
+(blank)
+
+(main
+  (let record-count 65536)
+  (let bytes ([] Byte (* record-count 64)))
+  (for (in index (..< 0 record-count))
+    (for (in offset (..< 0 63))
+      (= ([] bytes (+ (* index 64) offset)) (as (+ 97 (% (+ index offset) 26)) U8))
+    )
+    (= ([] bytes (+ (* index 64) 63)) 10)
+  )
+  (blank)
+  (let stream (call (of ChunkedTokenStream Byte) (call DataStream bytes (. bytes size))))
+  (let block ([] Byte 16))
+  (let checksum (as 0 Size))
+  (for (in index (..< 0 record-count))
+    (for (in pull (..< 0 4))
+      (+= checksum (as (!! (<- stream)) Size))
+    )
+    (+= checksum (call (. stream read) (. block size) block))
+    (+= checksum (as ([] block 15) Size))
+    (let line (call (. stream read) "\n"))
+    (+= checksum (. (!! line) size))
+  )
+  (blank)
+  (print (str "bench-result stream/direct-reads checksum=" checksum))
+)

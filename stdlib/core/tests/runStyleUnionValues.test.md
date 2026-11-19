@@ -2,101 +2,102 @@
 
 ### Union-typed style properties author every case shape — inline scalar, wide value, descriptor object — and read back the active case and payload through $property; wide-value properties box and decode whole values while computed slots stay one I64.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Swatch levels
-        fill = TestPaint.level(3)
-    <Swatch colors
-        fill = TestPaint.color(0.25, 0.5, 0.75, 1)
-        shade = RGBA(0.5, 0.25, 0)
-    <Swatch tints
-        fill = TestPaint.tint(0.25, 0.5, 0.75, 1)
-    <Swatch painted
-        fill = TestPaint.painter(StyleTestPainter(42))
+(main
+  (<> BatchDemo (id: demo)
+    (<> Swatch (id: levels)
+      (= fill (call (. TestPaint level) 3))
+    )
+    (<> Swatch (id: colors)
+      (= fill (call (. TestPaint color) 0.25 0.5 0.75 1))
+      (= shade (call RGBA 0.5 0.25 0))
+    )
+    (<> Swatch (id: tints)
+      (= fill (call (. TestPaint tint) 0.25 0.5 0.75 1))
+    )
+    (<> Swatch (id: painted)
+      (= fill (call (. TestPaint painter) (call StyleTestPainter 42)))
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (print (call (. demo paint-of) levels))
+  (print (call (. demo paint-of) colors))
+  (print (call (. demo paint-of) tints))
+  (print (call (. demo paint-of) painted))
+  (print (call (. demo shade-of) colors))
+  (print (call (. demo shade-of) levels))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using PaintStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+  (fn-expr + paint-of String
+    (param swatch Box)
+    (call paint-label (. swatch $fill))
+  )
+  (fn-expr + shade-of String
+    (param swatch Box)
+    (call rgba-label (. swatch $shade))
+  )
+)
 
--- demo.paint-of(levels)
--- demo.paint-of(colors)
--- demo.paint-of(tints)
--- demo.paint-of(painted)
--- demo.shade-of(colors)
--- demo.shade-of(levels)
+(type + StyleTestPainter
+  (prop + tag I64)
+  (fn-do + This _
+    (param tag _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using PaintStyle
+(type + TestPaint (is Union)
+  (variant level (tuple (: n U8)))
+  (variant color (tuple (: c RGBA)))
+  (variant tint (tuple (: t HSVA)))
+  (variant painter (tuple (: p StyleTestPainter)))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + PaintStyle (is Style)
+  (prop + fill TestPaint (= (call (. TestPaint level) 1)))
+  (prop + shade RGBA (= (call RGBA 0 0 0)))
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + Swatch (is Box)
+  (using PaintStyle)
+)
 
-────────────────────
-+ paint-of String
-    - swatch Box
+(fn-expr + paint-label String
+  (param paint TestPaint)
+  (match paint
+    (case (call .level n)
+      (str "level(" n ")")
+    )
+    (case (call .color c)
+      (call rgba-label c)
+    )
+    (case (call .tint t)
+      (str "tint(" (as (* (. t hue) 100) I64) " " (as (* (. t saturation) 100) I64) " " (as (* (. t value) 100) I64) " " (as (* (. t alpha) 100) I64) ")")
+    )
+    (case (call .painter p)
+      (str "painter(" (. p tag) ")")
+    )
+  )
+)
 
-paint-label(swatch.$fill)
-
-────────────────────
-+ shade-of String
-    - swatch Box
-
-rgba-label(swatch.$shade)
-
-━━━━━━━━━━━━━━━━━━━━
-+ StyleTestPainter
-
-+ tag I64
-
-────────────────────
-+ This
-    - tag
-
-━━━━━━━━━━━━━━━━━━━━
-+ TestPaint is Union
-
-| level(n U8)
-| color(c RGBA)
-| tint(t HSVA)
-| painter(p StyleTestPainter)
-
-━━━━━━━━━━━━━━━━━━━━
-+ PaintStyle is Style
-
-+ fill TestPaint = TestPaint.level(1)
-+ shade RGBA = RGBA(0, 0, 0)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Swatch is Box
-    using PaintStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ paint-label String
-    - paint TestPaint
-
-match paint
-    | .level(n)
-        "level($n)"
-    | .color(c)
-        rgba-label(c)
-    | .tint(t)
-        "tint(${(t.hue * 100) as I64} ${(t.saturation * 100) as I64} ${(t.value * 100) as I64} ${(t.alpha * 100) as I64})"
-    | .painter(p)
-        "painter(${p.tag})"
-
-━━━━━━━━━━━━━━━━━━━━
-+ rgba-label String
-    - c RGBA
-
-"color(${(c.red * 100) as I64} ${(c.green * 100) as I64} ${(c.blue * 100) as I64} ${(c.alpha * 100) as I64})"
+(fn-expr + rgba-label String
+  (param c RGBA)
+  (str "color(" (as (* (. c red) 100) I64) " " (as (* (. c green) 100) I64) " " (as (* (. c blue) 100) I64) " " (as (* (. c alpha) 100) I64) ")")
+)
 ```
 
 ```output
@@ -110,91 +111,92 @@ color(0 0 0 100)
 
 ### Static rule declarations with wide union cases evaluate once per value site: every application shares the cached interned handle, so the registry grows by one entry per rule value, not per instance. A forced collection cannot reclaim the objects behind those permanent handles.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
-/BxGC/BxGC.h
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(import /BxGC/BxGC.h)
+(blank)
 
-<BatchDemo demo
-    <Swatch a • vivid
-    <Swatch b • vivid
-    <Swatch c • stamped
-    <Swatch d • stamped
+(main
+  (<> BatchDemo (id: demo)
+    (<> Swatch (id: a) (• vivid))
+    (<> Swatch (id: b) (• vivid))
+    (<> Swatch (id: c) (• stamped))
+    (<> Swatch (id: d) (• stamped))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (call C:brixCollect)
+  (blank)
+  (print (str "grew=" (call style-object-live-count)))
+  (print (call style-authored-snapshot a))
+  (print (call style-authored-snapshot b))
+  (print (call style-authored-snapshot c))
+  (print (call (. demo paint-of) a))
+  (print (call (. demo paint-of) d))
+)
 
-demo.markup-batch-queue.checkpoint()
-C:brixCollect()
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using PaintStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+  (fn-expr + paint-of String
+    (param swatch Box)
+    (call paint-label (. swatch $fill))
+  )
+)
 
--- "grew=${style-object-live-count()}"
--- style-authored-snapshot(a)
--- style-authored-snapshot(b)
--- style-authored-snapshot(c)
--- demo.paint-of(a)
--- demo.paint-of(d)
+(type + StyleTestPainter
+  (prop + tag I64)
+  (fn-do + This _
+    (param tag _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using PaintStyle
+(type + TestPaint (is Union)
+  (variant level (tuple (: n U8)))
+  (variant color (tuple (: c RGBA)))
+  (variant tint (tuple (: t HSVA)))
+  (variant painter (tuple (: p StyleTestPainter)))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + PaintStyle (is Style)
+  (prop + fill TestPaint (= (call (. TestPaint level) 1)))
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + Swatch (is Box)
+  (using PaintStyle)
+  (rule vivid
+    (= fill (call (. TestPaint color) 1 0 0 1))
+  )
+  (blank)
+  (rule stamped
+    (= fill (call (. TestPaint painter) (call StyleTestPainter 42)))
+  )
+)
 
-────────────────────
-+ paint-of String
-    - swatch Box
-
-paint-label(swatch.$fill)
-
-━━━━━━━━━━━━━━━━━━━━
-+ StyleTestPainter
-
-+ tag I64
-
-────────────────────
-+ This
-    - tag
-
-━━━━━━━━━━━━━━━━━━━━
-+ TestPaint is Union
-
-| level(n U8)
-| color(c RGBA)
-| tint(t HSVA)
-| painter(p StyleTestPainter)
-
-━━━━━━━━━━━━━━━━━━━━
-+ PaintStyle is Style
-
-+ fill TestPaint = TestPaint.level(1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Swatch is Box
-    using PaintStyle
-
-• vivid
-    fill = TestPaint.color(1, 0, 0, 1)
-
-• stamped
-    fill = TestPaint.painter(StyleTestPainter(42))
-
-━━━━━━━━━━━━━━━━━━━━
-+ paint-label String
-    - paint TestPaint
-
-match paint
-    | .level(n)
-        "level($n)"
-    | .color(c)
-        "color(${(c.red * 100) as I64} ${(c.green * 100) as I64} ${(c.blue * 100) as I64} ${(c.alpha * 100) as I64})"
-    | .tint(t)
-        "tint(${(t.hue * 100) as I64} ${(t.saturation * 100) as I64} ${(t.value * 100) as I64} ${(t.alpha * 100) as I64})"
-    | .painter(p)
-        "painter(${p.tag})"
+(fn-expr + paint-label String
+  (param paint TestPaint)
+  (match paint
+    (case (call .level n)
+      (str "level(" n ")")
+    )
+    (case (call .color c)
+      (str "color(" (as (* (. c red) 100) I64) " " (as (* (. c green) 100) I64) " " (as (* (. c blue) 100) I64) " " (as (* (. c alpha) 100) I64) ")")
+    )
+    (case (call .tint t)
+      (str "tint(" (as (* (. t hue) 100) I64) " " (as (* (. t saturation) 100) I64) " " (as (* (. t value) 100) I64) " " (as (* (. t alpha) 100) I64) ")")
+    )
+    (case (call .painter p)
+      (str "painter(" (. p tag) ")")
+    )
+  )
+)
 ```
 
 ```output
@@ -208,150 +210,166 @@ painter(42)
 
 ### Dynamic declarations switch among inline, wide, and descriptor union cases. Forced collection reclaims replaced weak handles without disturbing mounted reads; ordinary unmount preserves the owner template for remount, and owner reclaim clears the last holder.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/task
-/core/tests/support/markup-fixtures
-/BxGC/BxGC.h
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/task)
+(import /core/tests/support/markup-fixtures)
+(import /BxGC/BxGC.h)
+(blank)
 
-. done = Semaphore()
+(main
+  (let done (call Semaphore))
+  (blank)
+  (<> BatchDemo (id: demo))
+  (blank)
+  (let base (call churn-paints demo done))
+  (call C:brixCollect)
+  (do
+    (inline (call C:brixGCDrainCleanups))
+  )
+  (print (str "reclaimed=" (- (call style-object-live-count) base)))
+)
 
-<BatchDemo demo
+(fn-do + churn-paints Size
+  (param demo BatchDemo)
+  (param done Semaphore)
+  (lazy mode 0)
+  (blank)
+  (<> Swatch (id: swatch)
+    (= fill (call paint-for #mode))
+  )
+  (call markup-append demo swatch)
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (let base (call style-object-live-count))
+  (print (call (. demo paint-of) swatch))
+  (print (str "live=" (- (call style-object-live-count) base)))
+  (blank)
+  (= mode 1)
+  (do-new
+    (call (. demo markup-batch-queue checkpoint))
+    (print (call (. demo paint-of) swatch))
+    (call C:brixCollect)
+    (do
+      (inline (call C:brixGCDrainCleanups))
+    )
+    (print (str "live=" (- (call style-object-live-count) base)))
+    (call (. done post))
+  )
+  (call (. done wait))
+  (blank)
+  (= mode 2)
+  (do-new
+    (call (. demo markup-batch-queue checkpoint))
+    (print (call (. demo paint-of) swatch))
+    (call C:brixCollect)
+    (do
+      (inline (call C:brixGCDrainCleanups))
+    )
+    (print (str "live=" (- (call style-object-live-count) base)))
+    (call (. done post))
+  )
+  (call (. done wait))
+  (blank)
+  (= mode 3)
+  (do-new
+    (call (. demo markup-batch-queue checkpoint))
+    (print (call (. demo paint-of) swatch))
+    (call C:brixCollect)
+    (do
+      (inline (call C:brixGCDrainCleanups))
+    )
+    (print (str "live=" (- (call style-object-live-count) base)))
+    (call markup-remove demo swatch)
+    (call (. demo markup-batch-queue checkpoint))
+    (print (str "unmounted=" (- (call style-object-live-count) base)))
+    (call markup-append demo swatch)
+    (call (. demo markup-batch-queue checkpoint))
+    (call C:brixCollect)
+    (do
+      (inline (call C:brixGCDrainCleanups))
+    )
+    (print (str "remounted=" (call (. demo paint-of) swatch) " live=" (- (call style-object-live-count) base)))
+    (call markup-remove demo swatch)
+    (call (. demo markup-batch-queue checkpoint))
+    (call (. done post))
+  )
+  (call (. done wait))
+  (return base)
+)
 
-. base = churn-paints(demo, done)
-C:brixCollect()
-do C:brixGCDrainCleanups()
--- "reclaimed=${style-object-live-count() - base}"
+(fn-expr + paint-for TestPaint
+  (param mode I64)
+  (match mode
+    (case= 1
+      (call (. TestPaint color) 0.25 0.5 0.75 1)
+    )
+    (case= 2
+      (call (. TestPaint tint) 0.5 0.25 0.75 1)
+    )
+    (case= 3
+      (call (. TestPaint painter) (call StyleTestPainter 9))
+    )
+    (default
+      (call (. TestPaint level) 5)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do churn-paints Size
-    - demo BatchDemo
-    - done Semaphore
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using PaintStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+  (fn-expr + paint-of String
+    (param swatch Box)
+    (call paint-label (. swatch $fill))
+  )
+)
 
-.. mode = 0
+(type + StyleTestPainter
+  (prop + tag I64)
+  (fn-do + This _
+    (param tag _)
+  )
+)
 
-<Swatch swatch
-    fill = paint-for(#mode)
-markup-append(demo, swatch)
+(type + TestPaint (is Union)
+  (variant level (tuple (: n U8)))
+  (variant color (tuple (: c RGBA)))
+  (variant tint (tuple (: t HSVA)))
+  (variant painter (tuple (: p StyleTestPainter)))
+)
 
-demo.markup-batch-queue.checkpoint()
-. base = style-object-live-count()
--- demo.paint-of(swatch)
--- "live=${style-object-live-count() - base}"
+(type + PaintStyle (is Style)
+  (prop + fill TestPaint (= (call (. TestPaint level) 1)))
+)
 
-mode = 1
-do new
-    demo.markup-batch-queue.checkpoint()
-    -- demo.paint-of(swatch)
-    C:brixCollect()
-    do C:brixGCDrainCleanups()
-    -- "live=${style-object-live-count() - base}"
-    done.post()
-done.wait()
+(type + Swatch (is Box)
+  (using PaintStyle)
+)
 
-mode = 2
-do new
-    demo.markup-batch-queue.checkpoint()
-    -- demo.paint-of(swatch)
-    C:brixCollect()
-    do C:brixGCDrainCleanups()
-    -- "live=${style-object-live-count() - base}"
-    done.post()
-done.wait()
-
-mode = 3
-do new
-    demo.markup-batch-queue.checkpoint()
-    -- demo.paint-of(swatch)
-    C:brixCollect()
-    do C:brixGCDrainCleanups()
-    -- "live=${style-object-live-count() - base}"
-    markup-remove(demo, swatch)
-    demo.markup-batch-queue.checkpoint()
-    -- "unmounted=${style-object-live-count() - base}"
-    markup-append(demo, swatch)
-    demo.markup-batch-queue.checkpoint()
-    C:brixCollect()
-    do C:brixGCDrainCleanups()
-    -- "remounted=${demo.paint-of(swatch)} live=${style-object-live-count() - base}"
-    markup-remove(demo, swatch)
-    demo.markup-batch-queue.checkpoint()
-    done.post()
-done.wait()
-= base
-
-━━━━━━━━━━━━━━━━━━━━
-+ paint-for TestPaint
-    - mode I64
-
-match mode
-    |= 1
-        TestPaint.color(0.25, 0.5, 0.75, 1)
-    |= 2
-        TestPaint.tint(0.5, 0.25, 0.75, 1)
-    |= 3
-        TestPaint.painter(StyleTestPainter(9))
-    ??
-        TestPaint.level(5)
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using PaintStyle
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-────────────────────
-+ paint-of String
-    - swatch Box
-
-paint-label(swatch.$fill)
-
-━━━━━━━━━━━━━━━━━━━━
-+ StyleTestPainter
-
-+ tag I64
-
-────────────────────
-+ This
-    - tag
-
-━━━━━━━━━━━━━━━━━━━━
-+ TestPaint is Union
-
-| level(n U8)
-| color(c RGBA)
-| tint(t HSVA)
-| painter(p StyleTestPainter)
-
-━━━━━━━━━━━━━━━━━━━━
-+ PaintStyle is Style
-
-+ fill TestPaint = TestPaint.level(1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Swatch is Box
-    using PaintStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ paint-label String
-    - paint TestPaint
-
-match paint
-    | .level(n)
-        "level($n)"
-    | .color(c)
-        "color(${(c.red * 100) as I64} ${(c.green * 100) as I64} ${(c.blue * 100) as I64} ${(c.alpha * 100) as I64})"
-    | .tint(t)
-        "tint(${(t.hue * 100) as I64} ${(t.saturation * 100) as I64} ${(t.value * 100) as I64} ${(t.alpha * 100) as I64})"
-    | .painter(p)
-        "painter(${p.tag})"
+(fn-expr + paint-label String
+  (param paint TestPaint)
+  (match paint
+    (case (call .level n)
+      (str "level(" n ")")
+    )
+    (case (call .color c)
+      (str "color(" (as (* (. c red) 100) I64) " " (as (* (. c green) 100) I64) " " (as (* (. c blue) 100) I64) " " (as (* (. c alpha) 100) I64) ")")
+    )
+    (case (call .tint t)
+      (str "tint(" (as (* (. t hue) 100) I64) " " (as (* (. t saturation) 100) I64) " " (as (* (. t value) 100) I64) " " (as (* (. t alpha) 100) I64) ")")
+    )
+    (case (call .painter p)
+      (str "painter(" (. p tag) ")")
+    )
+  )
+)
 ```
 
 ```output
@@ -370,130 +388,127 @@ reclaimed=0
 
 ### Optional union and wide properties preserve null versus present: absent values store zero bits with the none flag and decode to null without touching the registry, and dynamic declarations toggle between null and present cases.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/task
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/task)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-.. has-accent = false
-. done = Semaphore()
+(main
+  (lazy has-accent false)
+  (let done (call Semaphore))
+  (blank)
+  (<> BatchDemo (id: demo)
+    (<> Swatch (id: plain))
+    (<> Swatch (id: fancy)
+      (= accent (call (. TestPaint tint) 0.5 0.25 0.75 1))
+    )
+    (<> Swatch (id: toggly)
+      (= accent (call accent-for #has-accent))
+    )
+    (<> Swatch (id: veiled)
+      (= veil (call RGBA 0.25 0.25 0.5))
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (print (call (. demo accent-of) plain))
+  (print (call (. demo accent-of) fancy))
+  (print (call (. demo accent-of) toggly))
+  (print (call (. demo veil-of) veiled))
+  (print (call (. demo veil-of) plain))
+  (blank)
+  (= has-accent true)
+  (do-new
+    (call (. demo markup-batch-queue checkpoint))
+    (print (call (. demo accent-of) toggly))
+    (call (. done post))
+  )
+  (call (. done wait))
+  (blank)
+  (= has-accent false)
+  (do-new
+    (call (. demo markup-batch-queue checkpoint))
+    (print (call (. demo accent-of) toggly))
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 
-<BatchDemo demo
-    <Swatch plain
-    <Swatch fancy
-        accent = TestPaint.tint(0.5, 0.25, 0.75, 1)
-    <Swatch toggly
-        accent = accent-for(#has-accent)
-    <Swatch veiled
-        veil = RGBA(0.25, 0.25, 0.5)
+(fn-do + accent-for (? TestPaint)
+  (param has Bool)
+  (return-if (call (. TestPaint level) 9) (if has))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using PaintStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+  (fn-do + accent-of String
+    (param swatch Box)
+    (let accent (. swatch $accent))
+    (return-if (call paint-label accent) (if accent))
+    (return "null")
+  )
+  (fn-do + veil-of String
+    (param swatch Box)
+    (let veil (. swatch $veil))
+    (return-if (call rgba-label veil) (if veil))
+    (return "null")
+  )
+)
 
--- demo.accent-of(plain)
--- demo.accent-of(fancy)
--- demo.accent-of(toggly)
--- demo.veil-of(veiled)
--- demo.veil-of(plain)
+(type + StyleTestPainter
+  (prop + tag I64)
+  (fn-do + This _
+    (param tag _)
+  )
+)
 
-has-accent = true
-do new
-    demo.markup-batch-queue.checkpoint()
-    -- demo.accent-of(toggly)
-    done.post()
-done.wait()
+(type + TestPaint (is Union)
+  (variant level (tuple (: n U8)))
+  (variant color (tuple (: c RGBA)))
+  (variant tint (tuple (: t HSVA)))
+  (variant painter (tuple (: p StyleTestPainter)))
+)
 
-has-accent = false
-do new
-    demo.markup-batch-queue.checkpoint()
-    -- demo.accent-of(toggly)
-    done.post()
-done.wait()
+(type + PaintStyle (is Style)
+  (prop + accent (? TestPaint) (= null))
+  (prop + veil (? RGBA) (= null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do accent-for TestPaint?
-    - has Bool
+(type + Swatch (is Box)
+  (using PaintStyle)
+)
 
-=? TestPaint.level(9)
+(fn-expr + paint-label String
+  (param paint TestPaint)
+  (match paint
+    (case (call .level n)
+      (str "level(" n ")")
+    )
+    (case (call .color c)
+      (call rgba-label c)
+    )
+    (case (call .tint t)
+      (str "tint(" (as (* (. t hue) 100) I64) " " (as (* (. t saturation) 100) I64) " " (as (* (. t value) 100) I64) " " (as (* (. t alpha) 100) I64) ")")
+    )
+    (case (call .painter p)
+      (str "painter(" (. p tag) ")")
+    )
+  )
+)
 
-    if has
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using PaintStyle
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-────────────────────
-+ do accent-of String
-    - swatch Box
-
-. accent = swatch.$accent
-=? paint-label(accent)
-    if accent
-= "null"
-
-────────────────────
-+ do veil-of String
-    - swatch Box
-
-. veil = swatch.$veil
-=? rgba-label(veil)
-    if veil
-= "null"
-
-━━━━━━━━━━━━━━━━━━━━
-+ StyleTestPainter
-
-+ tag I64
-
-────────────────────
-+ This
-    - tag
-
-━━━━━━━━━━━━━━━━━━━━
-+ TestPaint is Union
-
-| level(n U8)
-| color(c RGBA)
-| tint(t HSVA)
-| painter(p StyleTestPainter)
-
-━━━━━━━━━━━━━━━━━━━━
-+ PaintStyle is Style
-
-+ accent TestPaint? = null
-+ veil RGBA? = null
-
-━━━━━━━━━━━━━━━━━━━━
-+ Swatch is Box
-    using PaintStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ paint-label String
-    - paint TestPaint
-
-match paint
-    | .level(n)
-        "level($n)"
-    | .color(c)
-        rgba-label(c)
-    | .tint(t)
-        "tint(${(t.hue * 100) as I64} ${(t.saturation * 100) as I64} ${(t.value * 100) as I64} ${(t.alpha * 100) as I64})"
-    | .painter(p)
-        "painter(${p.tag})"
-
-━━━━━━━━━━━━━━━━━━━━
-+ rgba-label String
-    - c RGBA
-
-"color(${(c.red * 100) as I64} ${(c.green * 100) as I64} ${(c.blue * 100) as I64} ${(c.alpha * 100) as I64})"
+(fn-expr + rgba-label String
+  (param c RGBA)
+  (str "color(" (as (* (. c red) 100) I64) " " (as (* (. c green) 100) I64) " " (as (* (. c blue) 100) I64) " " (as (* (. c alpha) 100) I64) ")")
+)
 ```
 
 ```output
@@ -508,93 +523,93 @@ null
 
 ### StyleSheet slots hold union values: registration encodes typed defaults, provider records carry scalar and interned wide cases, and slot changes settle and invalidate dependents. The debug snapshot marks encoded slots so handles never read as plain numbers.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Swatch swatch
-        fill = glow
+(main
+  (<> BatchDemo (id: demo)
+    (<> Swatch (id: swatch)
+      (= fill glow)
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call (. demo paint-of) swatch))
+  (blank)
+  (let theme (call StyleSheetRecord (!! (call style-sheet-info-named "PaintTheme"))))
+  (call (. theme set-slot-named) "glow" (/lshift/ 9 8) false)
+  (call style-provide-style-sheet demo theme)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call (. demo paint-of) swatch))
+  (blank)
+  (let held (call style-intern-holder (call (of StyleWideHolder RGBA) (call RGBA 0.25 0.5 0.75))))
+  (call (. theme set-slot-named) "glow" (/or/ (/lshift/ held 8) 1) false)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call (. demo paint-of) swatch))
+  (print (str "glow=enc(" (call (. theme value-bits) 0) ")"))
+)
 
-demo.markup-batch-queue.checkpoint()
--- demo.paint-of(swatch)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using PaintStyle)
+  (using PaintTheme)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+  (fn-expr + paint-of String
+    (param swatch Box)
+    (call paint-label (. swatch $fill))
+  )
+)
 
-. theme = StyleSheetRecord(style-sheet-info-named("PaintTheme")!)
-theme.set-slot-named("glow", 9 /lshift/ 8, false)
-style-provide-style-sheet(demo, theme)
-demo.markup-batch-queue.checkpoint()
--- demo.paint-of(swatch)
+(type + StyleTestPainter
+  (prop + tag I64)
+  (fn-do + This _
+    (param tag _)
+  )
+)
 
-. held = style-intern-holder(StyleWideHolder'RGBA(RGBA(0.25, 0.5, 0.75)))
-theme.set-slot-named("glow", (held /lshift/ 8) /or/ 1, false)
-demo.markup-batch-queue.checkpoint()
--- demo.paint-of(swatch)
--- "glow=enc(${theme.value-bits(0)})"
+(type + TestPaint (is Union)
+  (variant level (tuple (: n U8)))
+  (variant color (tuple (: c RGBA)))
+  (variant tint (tuple (: t HSVA)))
+  (variant painter (tuple (: p StyleTestPainter)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using PaintStyle
-    using PaintTheme
+(style PaintTheme
+  (prop + glow TestPaint (= (call (. TestPaint level) 7)))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + PaintStyle (is Style)
+  (prop + fill TestPaint (= (call (. TestPaint level) 1)))
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + Swatch (is Box)
+  (using PaintStyle)
+)
 
-────────────────────
-+ paint-of String
-    - swatch Box
-
-paint-label(swatch.$fill)
-
-━━━━━━━━━━━━━━━━━━━━
-+ StyleTestPainter
-
-+ tag I64
-
-────────────────────
-+ This
-    - tag
-
-━━━━━━━━━━━━━━━━━━━━
-+ TestPaint is Union
-
-| level(n U8)
-| color(c RGBA)
-| tint(t HSVA)
-| painter(p StyleTestPainter)
-
-━━━━━━━━━━━━━━━━━━━━
-• PaintTheme
-
-+ glow TestPaint = TestPaint.level(7)
-
-━━━━━━━━━━━━━━━━━━━━
-+ PaintStyle is Style
-
-+ fill TestPaint = TestPaint.level(1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Swatch is Box
-    using PaintStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ paint-label String
-    - paint TestPaint
-
-match paint
-    | .level(n)
-        "level($n)"
-    | .color(c)
-        "color(${(c.red * 100) as I64} ${(c.green * 100) as I64} ${(c.blue * 100) as I64} ${(c.alpha * 100) as I64})"
-    | .tint(t)
-        "tint(${(t.hue * 100) as I64} ${(t.saturation * 100) as I64} ${(t.value * 100) as I64} ${(t.alpha * 100) as I64})"
-    | .painter(p)
-        "painter(${p.tag})"
+(fn-expr + paint-label String
+  (param paint TestPaint)
+  (match paint
+    (case (call .level n)
+      (str "level(" n ")")
+    )
+    (case (call .color c)
+      (str "color(" (as (* (. c red) 100) I64) " " (as (* (. c green) 100) I64) " " (as (* (. c blue) 100) I64) " " (as (* (. c alpha) 100) I64) ")")
+    )
+    (case (call .tint t)
+      (str "tint(" (as (* (. t hue) 100) I64) " " (as (* (. t saturation) 100) I64) " " (as (* (. t value) 100) I64) " " (as (* (. t alpha) 100) I64) ")")
+    )
+    (case (call .painter p)
+      (str "painter(" (. p tag) ")")
+    )
+  )
+)
 ```
 
 ```output
@@ -606,89 +621,91 @@ glow=enc(257)
 
 ### StyleSheet slot projections wrap reusable payload bits into union style properties without decoding: RGBA and HSVA reuse wide-value handles, and object payloads reuse descriptor handles.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Swatch color
-        fill = accent-color
-    <Swatch tint
-        fill = accent-tint
-    <Swatch painted
-        fill = accent-painter
+(main
+  (<> BatchDemo (id: demo)
+    (<> Swatch (id: color)
+      (= fill accent-color)
+    )
+    (<> Swatch (id: tint)
+      (= fill accent-tint)
+    )
+    (<> Swatch (id: painted)
+      (= fill accent-painter)
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (print (call (. demo paint-of) color))
+  (print (call (. demo paint-of) tint))
+  (print (call (. demo paint-of) painted))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using PaintStyle)
+  (using PaintTheme)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+  (fn-expr + paint-of String
+    (param swatch Box)
+    (call paint-label (. swatch $fill))
+  )
+)
 
--- demo.paint-of(color)
--- demo.paint-of(tint)
--- demo.paint-of(painted)
+(type + StyleTestPainter
+  (prop + tag I64)
+  (fn-do + This _
+    (param tag _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using PaintStyle
-    using PaintTheme
+(type + TestPaint (is Union)
+  (variant level (tuple (: n U8)))
+  (variant color (tuple (: c RGBA)))
+  (variant tint (tuple (: t HSVA)))
+  (variant painter (tuple (: p StyleTestPainter)))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(style PaintTheme
+  (prop + accent-color RGBA (= (call RGBA 0.25 0.5 0.75 1)))
+  (prop + accent-tint HSVA (= (call HSVA 0.5 0.25 0.75 1)))
+  (prop + accent-painter StyleTestPainter (= (call StyleTestPainter 77)))
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + PaintStyle (is Style)
+  (prop + fill TestPaint (= (call (. TestPaint level) 1)))
+)
 
-────────────────────
-+ paint-of String
-    - swatch Box
+(type + Swatch (is Box)
+  (using PaintStyle)
+)
 
-paint-label(swatch.$fill)
-
-━━━━━━━━━━━━━━━━━━━━
-+ StyleTestPainter
-
-+ tag I64
-
-────────────────────
-+ This
-    - tag
-
-━━━━━━━━━━━━━━━━━━━━
-+ TestPaint is Union
-
-| level(n U8)
-| color(c RGBA)
-| tint(t HSVA)
-| painter(p StyleTestPainter)
-
-━━━━━━━━━━━━━━━━━━━━
-• PaintTheme
-
-+ accent-color RGBA = RGBA(0.25, 0.5, 0.75, 1)
-+ accent-tint HSVA = HSVA(0.5, 0.25, 0.75, 1)
-+ accent-painter StyleTestPainter = StyleTestPainter(77)
-
-━━━━━━━━━━━━━━━━━━━━
-+ PaintStyle is Style
-
-+ fill TestPaint = TestPaint.level(1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Swatch is Box
-    using PaintStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ paint-label String
-    - paint TestPaint
-
-match paint
-    | .level(n)
-        "level($n)"
-    | .color(c)
-        "color(${(c.red * 100) as I64} ${(c.green * 100) as I64} ${(c.blue * 100) as I64} ${(c.alpha * 100) as I64})"
-    | .tint(t)
-        "tint(${(t.hue * 100) as I64} ${(t.saturation * 100) as I64} ${(t.value * 100) as I64} ${(t.alpha * 100) as I64})"
-    | .painter(p)
-        "painter(${p.tag})"
+(fn-expr + paint-label String
+  (param paint TestPaint)
+  (match paint
+    (case (call .level n)
+      (str "level(" n ")")
+    )
+    (case (call .color c)
+      (str "color(" (as (* (. c red) 100) I64) " " (as (* (. c green) 100) I64) " " (as (* (. c blue) 100) I64) " " (as (* (. c alpha) 100) I64) ")")
+    )
+    (case (call .tint t)
+      (str "tint(" (as (* (. t hue) 100) I64) " " (as (* (. t saturation) 100) I64) " " (as (* (. t value) 100) I64) " " (as (* (. t alpha) 100) I64) ")")
+    )
+    (case (call .painter p)
+      (str "painter(" (. p tag) ")")
+    )
+  )
+)
 ```
 
 ```output
@@ -699,88 +716,89 @@ painter(77)
 
 ### Union-to-union StyleSheet projections remap tags while preserving payload bits, and repeated construction of the same converted markup site does not re-register remap metadata per instance.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Swatch swatch
-        fill = accent
-    for item in demo.#items
-        <Swatch
-            fill = accent
+(main
+  (<> BatchDemo (id: demo)
+    (<> Swatch (id: swatch)
+      (= fill accent)
+    )
+    (for (in item (. demo #items))
+      (<> Swatch
+        (= fill accent)
+      )
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (print (str "remaps=" (call style-projection-remap-site-count)))
+  (print (str "attempts=" (call style-projection-remap-registration-attempt-count)))
+  (print (call (. demo paint-of) swatch))
+  (blank)
+  (let theme (call StyleSheetRecord (!! (call style-sheet-info-named "PaintTheme"))))
+  (let held (call style-intern-holder (call (of StyleWideHolder RGBA) (call RGBA 0.25 0.5 0.75 1))))
+  (call (. theme set-slot-named) "accent" (/or/ (/lshift/ held 8) 0) false)
+  (call style-provide-style-sheet demo theme)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (print (call (. demo paint-of) swatch))
+  (print (str "remaps=" (call style-projection-remap-site-count)))
+  (print (str "attempts=" (call style-projection-remap-registration-attempt-count)))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using PaintStyle)
+  (using PaintTheme)
+  (prop + items (list String) (= (call (of List String) (list "a" "b" "c" "d"))))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+  (fn-expr + paint-of String
+    (param swatch Box)
+    (call paint-label (. swatch $fill))
+  )
+)
 
--- "remaps=${style-projection-remap-site-count()}"
--- "attempts=${style-projection-remap-registration-attempt-count()}"
--- demo.paint-of(swatch)
+(type + SourcePaint (is Union)
+  (variant color (tuple (: c RGBA)))
+  (variant level (tuple (: n U8)))
+)
 
-. theme = StyleSheetRecord(style-sheet-info-named("PaintTheme")!)
-. held = style-intern-holder(StyleWideHolder'RGBA(RGBA(0.25, 0.5, 0.75, 1)))
-theme.set-slot-named("accent", (held /lshift/ 8) /or/ 0, false)
-style-provide-style-sheet(demo, theme)
-demo.markup-batch-queue.checkpoint()
+(type + TestPaint (is Union)
+  (variant level (tuple (: n U8)))
+  (variant color (tuple (: c RGBA)))
+)
 
--- demo.paint-of(swatch)
--- "remaps=${style-projection-remap-site-count()}"
--- "attempts=${style-projection-remap-registration-attempt-count()}"
+(style PaintTheme
+  (prop + accent SourcePaint (= (call (. SourcePaint level) 7)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using PaintStyle
-    using PaintTheme
+(type + PaintStyle (is Style)
+  (prop + fill TestPaint (= (call (. TestPaint level) 1)))
+)
 
-+ items [String] = List'String(["a", "b", "c", "d"])
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + Swatch (is Box)
+  (using PaintStyle)
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-────────────────────
-+ paint-of String
-    - swatch Box
-
-paint-label(swatch.$fill)
-
-━━━━━━━━━━━━━━━━━━━━
-+ SourcePaint is Union
-
-| color(c RGBA)
-| level(n U8)
-
-━━━━━━━━━━━━━━━━━━━━
-+ TestPaint is Union
-
-| level(n U8)
-| color(c RGBA)
-
-━━━━━━━━━━━━━━━━━━━━
-• PaintTheme
-
-+ accent SourcePaint = SourcePaint.level(7)
-
-━━━━━━━━━━━━━━━━━━━━
-+ PaintStyle is Style
-
-+ fill TestPaint = TestPaint.level(1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Swatch is Box
-    using PaintStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ paint-label String
-    - paint TestPaint
-
-match paint
-    | .level(n)
-        "level($n)"
-    | .color(c)
-        "color(${(c.red * 100) as I64} ${(c.green * 100) as I64} ${(c.blue * 100) as I64} ${(c.alpha * 100) as I64})"
+(fn-expr + paint-label String
+  (param paint TestPaint)
+  (match paint
+    (case (call .level n)
+      (str "level(" n ")")
+    )
+    (case (call .color c)
+      (str "color(" (as (* (. c red) 100) I64) " " (as (* (. c green) 100) I64) " " (as (* (. c blue) 100) I64) " " (as (* (. c alpha) 100) I64) ")")
+    )
+  )
+)
 ```
 
 ```output
@@ -794,94 +812,101 @@ attempts=2
 
 ### Rule arguments flow into union case constructors of every case shape — inline scalar, wide value, descriptor object — and each declaration records exactly the constructed case.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Swatch levels • level:3
-    <Swatch colors • color:RGBA(0.25, 0.5, 0.75, 1)
-    <Swatch tints • tint:HSVA(0.25, 0.5, 0.75, 1)
-    <Swatch painted • painter:StyleTestPainter(42)
+(main
+  (<> BatchDemo (id: demo)
+    (<> Swatch (id: levels) (• level 3))
+    (<> Swatch (id: colors) (• color (call RGBA 0.25 0.5 0.75 1)))
+    (<> Swatch (id: tints) (• tint (call HSVA 0.25 0.5 0.75 1)))
+    (<> Swatch (id: painted) (• painter (call StyleTestPainter 42)))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (print (call (. demo paint-of) levels))
+  (print (call (. demo paint-of) colors))
+  (print (call (. demo paint-of) tints))
+  (print (call (. demo paint-of) painted))
+  (print (call style-authored-snapshot levels))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using PaintStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+  (fn-expr + paint-of String
+    (param swatch Box)
+    (call paint-label (. swatch $fill))
+  )
+)
 
--- demo.paint-of(levels)
--- demo.paint-of(colors)
--- demo.paint-of(tints)
--- demo.paint-of(painted)
--- style-authored-snapshot(levels)
+(type + StyleTestPainter
+  (prop + tag I64)
+  (fn-do + This _
+    (param tag _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using PaintStyle
+(type + TestPaint (is Union)
+  (variant level (tuple (: n U8)))
+  (variant color (tuple (: c RGBA)))
+  (variant tint (tuple (: t HSVA)))
+  (variant painter (tuple (: p StyleTestPainter)))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + PaintStyle (is Style)
+  (prop + fill TestPaint (= (call (. TestPaint level) 1)))
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + Swatch (is Box)
+  (using PaintStyle)
+  (rule level
+    (param n U8)
+    (= fill (call (. TestPaint level) n))
+  )
+  (blank)
+  (rule color
+    (param c RGBA)
+    (= fill (call (. TestPaint color) c))
+  )
+  (blank)
+  (rule tint
+    (param t HSVA)
+    (= fill (call (. TestPaint tint) t))
+  )
+  (blank)
+  (rule painter
+    (param p StyleTestPainter)
+    (= fill (call (. TestPaint painter) p))
+  )
+)
 
-────────────────────
-+ paint-of String
-    - swatch Box
-
-paint-label(swatch.$fill)
-
-━━━━━━━━━━━━━━━━━━━━
-+ StyleTestPainter
-
-+ tag I64
-
-────────────────────
-+ This
-    - tag
-
-━━━━━━━━━━━━━━━━━━━━
-+ TestPaint is Union
-
-| level(n U8)
-| color(c RGBA)
-| tint(t HSVA)
-| painter(p StyleTestPainter)
-
-━━━━━━━━━━━━━━━━━━━━
-+ PaintStyle is Style
-
-+ fill TestPaint = TestPaint.level(1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Swatch is Box
-    using PaintStyle
-
-• level:n U8
-    fill = TestPaint.level(n)
-
-• color:c RGBA
-    fill = TestPaint.color(c)
-
-• tint:t HSVA
-    fill = TestPaint.tint(t)
-
-• painter:p StyleTestPainter
-    fill = TestPaint.painter(p)
-
-━━━━━━━━━━━━━━━━━━━━
-+ paint-label String
-    - paint TestPaint
-
-match paint
-    | .level(n)
-        "level($n)"
-    | .color(c)
-        "color(${(c.red * 100) as I64} ${(c.green * 100) as I64} ${(c.blue * 100) as I64} ${(c.alpha * 100) as I64})"
-    | .tint(t)
-        "tint(${(t.hue * 100) as I64} ${(t.saturation * 100) as I64} ${(t.value * 100) as I64} ${(t.alpha * 100) as I64})"
-    | .painter(p)
-        "painter(${p.tag})"
+(fn-expr + paint-label String
+  (param paint TestPaint)
+  (match paint
+    (case (call .level n)
+      (str "level(" n ")")
+    )
+    (case (call .color c)
+      (str "color(" (as (* (. c red) 100) I64) " " (as (* (. c green) 100) I64) " " (as (* (. c blue) 100) I64) " " (as (* (. c alpha) 100) I64) ")")
+    )
+    (case (call .tint t)
+      (str "tint(" (as (* (. t hue) 100) I64) " " (as (* (. t saturation) 100) I64) " " (as (* (. t value) 100) I64) " " (as (* (. t alpha) 100) I64) ")")
+    )
+    (case (call .painter p)
+      (str "painter(" (. p tag) ")")
+    )
+  )
+)
 ```
 
 ```output
@@ -892,68 +917,67 @@ painter(42)
 node PaintStyle.fill layer=2 order=0 kind=static bits=768
 ```
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Swatch swatch
+(main
+  (<> BatchDemo (id: demo)
+    (<> Swatch (id: swatch))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call (. swatch label)))
+  (blank)
+  (= (. swatch stamp) (call Stamp 2))
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call (. swatch label)))
+)
 
-demo.markup-batch-queue.checkpoint()
--- swatch.label()
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-swatch.stamp = Stamp(2)
-demo.markup-batch-queue.checkpoint()
--- swatch.label()
+(type + Stamp
+  (prop + tag I64)
+  (fn-do + This _
+    (param tag _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + Paint (is Union)
+  (variant level (tuple (: n U8)))
+  (variant stamped (tuple (: stamp Stamp)))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + PaintStyle (is Style)
+  (prop + fill Paint (= (call (. Paint level) 1)))
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Stamp
-
-+ tag I64
-
-────────────────────
-+ This
-    - tag
-
-━━━━━━━━━━━━━━━━━━━━
-+ Paint is Union
-
-| level(n U8)
-| stamped(stamp Stamp)
-
-━━━━━━━━━━━━━━━━━━━━
-+ PaintStyle is Style
-
-+ fill Paint = Paint.level(1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Swatch is Box
-    using PaintStyle
-
-+ stamp = Stamp(1)
-
-• This
-    fill = Paint.stamped(#stamp)
-
-────────────────────
-+ label String
-
-match $fill
-    | .level(n)
-        "level($n)"
-    | .stamped(stamp)
-        "stamped(${stamp.tag})"
+(type + Swatch (is Box)
+  (using PaintStyle)
+  (prop + stamp _ (= (call Stamp 1)))
+  (blank)
+  (rule This
+    (= fill (call (. Paint stamped) #stamp))
+  )
+  (fn-expr + label String
+    (match $fill
+      (case (call .level n)
+        (str "level(" n ")")
+      )
+      (case (call .stamped stamp)
+        (str "stamped(" (. stamp tag) ")")
+      )
+    )
+  )
+)
 ```
 
 ```output

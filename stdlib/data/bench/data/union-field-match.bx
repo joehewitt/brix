@@ -1,0 +1,59 @@
+; benchmark.meta description: Reads a field shared by every union case through a getter written as a match.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator
+(blank)
+
+(main
+  (let nodes (call union-field-match-nodes))
+  (let checksum U64)
+  (for (in iteration (..< 0 400000))
+    (for (in node nodes)
+      (+= checksum (. node key))
+    )
+  )
+  (blank)
+  (print (str "bench-result data/union-field-match checksum=" checksum))
+)
+
+(type _ UnionFieldMatchNode (is Union)
+  (variant atom (tuple (: id U64) (: text String)))
+  (variant string (tuple (: id U64) (: text String)))
+  (variant comment (tuple (: id U64) (: text String)))
+  (variant list (tuple (: id U64) (: items (list UnionFieldMatchNode))))
+  (fn-expr + key U64 :get
+    (match this
+      (case (call .atom id _)
+        id
+      )
+      (case (call .string id _)
+        id
+      )
+      (case (call .comment id _)
+        id
+      )
+      (case (call .list id _)
+        id
+      )
+    )
+  )
+)
+
+(fn-do _ union-field-match-nodes (list UnionFieldMatchNode)
+  (let nodes (list UnionFieldMatchNode))
+  (for (in index (..< 0 1000))
+    (let id (as index U64))
+    (if (== (% index 4) 0)
+      (+= nodes (call (. UnionFieldMatchNode atom) id "atom"))
+      (else-if (== (% index 4) 1)
+        (+= nodes (call (. UnionFieldMatchNode string) id "string"))
+      )
+      (else-if (== (% index 4) 2)
+        (+= nodes (call (. UnionFieldMatchNode comment) id "comment"))
+      )
+      (else
+        (+= nodes (call (. UnionFieldMatchNode list) id (call (of List UnionFieldMatchNode))))
+      )
+    )
+  )
+  (return nodes)
+)

@@ -1,0 +1,1575 @@
+(import ./source-tracking)
+(import /core/array-builder)
+(import /core/atom-pool)
+(import /data/json)
+(import /lang/ast/ast)
+(import /lang/ast/ast-builder)
+(import /lang/ast/ast-children)
+(import /lang/ast/ast-nodes)
+(import /lang/ast/ast-xml)
+(import /lang/ast/row-range)
+(import /stream/coincidence)
+(import /stream/filter)
+(import /stream/sort)
+
+(type + SourceScope (is Tuple)
+  (prop + start Index)
+  (prop + end Index)
+  (prop + name String)
+  (prop + specificity U8)
+)
+
+(type + SourceRun (is Tuple)
+  (prop + start Index)
+  (prop + end Index)
+  (prop + scopes (list String))
+  (prop + nodes (list U32))
+  (prop + divider (? String))
+)
+
+(type + SourcePresentationNode (is Tuple)
+  (prop + id U32)
+  (prop + kind String)
+  (prop + start Index)
+  (prop + end Index)
+  (prop + children (list U32))
+  (prop + fields (map String String))
+)
+
+(type + SourcePresentation (is Tuple)
+  (prop + source-path String)
+  (prop + root U32)
+  (prop + nodes (list SourcePresentationNode))
+  (prop + runs (list SourceRun))
+)
+
+(fn-expr + yumi-source-html String
+  (param source String)
+  (param source-path _ (= ""))
+  (call render-yumi-source source source-path true)
+)
+
+(fn-expr + yumi-source-code-html String
+  (param source String)
+  (param source-path _ (= ""))
+  (call render-yumi-source source source-path false)
+)
+
+(fn-do + yumi-source-presentation SourcePresentation
+  (param source String)
+  (param source-path _ (= ""))
+  (let parsed (call parse-yumi-tracked source source-path))
+  (let builder (. parsed tree))
+  (use builder)
+  (let infos (call syntax-infos builder))
+  (let atoms (use (call AtomPool)))
+  (let tree (call (. builder finish) atoms))
+  (use tree)
+  (let ranges (call source-ranges tree infos (. parsed tracking)))
+  (let scopes (call syntax-scopes tree infos ranges source))
+  (++= scopes
+    (call lexical-scopes
+      (block
+        (arg source)
+        (arg (. parsed tracking source-line-starts))
+        (arg (. parsed tracking trivia))
+        (arg (. parsed grammar-word-ranges))
+        (arg scopes)
+      )
+    )
+  )
+  (let runs (call source-runs source scopes ranges (. parsed tracking trivia)))
+  (let nodes (call source-presentation-nodes tree infos ranges))
+  (return (call SourcePresentation source-path (. tree root) nodes runs))
+)
+
+(type _ SyntaxInfo (is Tuple)
+  (prop + kind String)
+  (prop + fields (list (of KeyValuePair String String)))
+)
+
+(type _ NodeCoverage (is Tuple)
+  (prop + id U32)
+  (prop + start Index)
+  (prop + end Index)
+)
+
+(type _ SourceLexicalKind (is U8)
+  (variant double-quoted (= 0))
+  (variant single-quoted (= 1))
+  (variant word (= 2))
+  (variant number (= 3))
+  (variant operator (= 4))
+  (variant other (= 5))
+)
+
+(type _ SourceLexicalToken (is Tuple)
+  (prop + start Index)
+  (prop + end Index)
+  (prop + kind SourceLexicalKind)
+  (prop + text String)
+  (prop + escapes (list SourceRange))
+)
+
+(fn-do _ render-yumi-source String
+  (param source String)
+  (param source-path String)
+  (param include-presentation Bool)
+  (let presentation (call yumi-source-presentation source source-path))
+  (let code (call render-source-code-compact source (. presentation runs)))
+  (if include-presentation
+    (= code (call render-source-code source (. presentation runs)))
+  )
+  (let source-html (call source-code-html code))
+  (blank)
+  (return-if (call compact-source-html source-html) (if (not include-presentation)))
+  (let data (call presentation-json presentation source))
+  (let data-html (call source-presentation-data-html (call script-safe-json (call to-json data))))
+  (return (call source-presentation-html source-html data-html))
+)
+
+(fn-expr _ source-code-html _
+  (param code String)
+  (paragraph
+    (str "<pre class=\"yumi-source-pre\"><code class=\"source-yumi\">" code "</code></pre>")
+  )
+)
+
+(fn-expr _ compact-source-html _
+  (param source-html String)
+  (paragraph
+    (str "<div class=\"yumi-source\" data-yumi-source>" source-html "</div>")
+  )
+)
+
+(fn-expr _ source-presentation-html _
+  (param source-html String)
+  (param data-html String)
+  (paragraph
+    (str "<div class=\"yumi-source\" data-yumi-source>" source-html data-html "</div>")
+  )
+)
+
+(fn-expr _ source-presentation-data-html _
+  (param data String)
+  (paragraph
+    (str "<script type=\"application/json\" data-yumi-ast>" data "</script>")
+  )
+)
+
+(fn-do _ syntax-infos (list SyntaxInfo)
+  (param tree ASTBuilder)
+  (let infos (list SyntaxInfo))
+  (let total (as (. tree nodes length) SyntaxId))
+  (for (in id (..< 0 total))
+    (let xml (call (. tree view) id))
+    (let kind (. xml node-name))
+    (if (not kind)
+      (= kind (if-expr (== id (. tree root)) "TopLevel" "Noop"))
+    )
+    (+= infos (call SyntaxInfo kind (. xml attrs)))
+  )
+  (return infos)
+)
+
+(fn-do _ source-ranges (list (? SourceRange))
+  (param tree AST)
+  (param infos (list SyntaxInfo))
+  (param tracking TrackedPreparse)
+  (let ranges (list (? SourceRange)) (list null))
+  (for (in index (..< 1 (. tree nodes length)))
+    (let location ([] (. tree nodes loc) index))
+    (let range (call (. tracking source-range) location))
+    (if (not range)
+      (+= ranges range)
+      (continue)
+    )
+    (let start (. range start))
+    (if (call is-divider-declaration-kind (. ([] infos index) kind))
+      (= start (call declaration-source-start start location (. ([] infos index) kind) tracking))
+    )
+    (+= ranges (call SourceRange start (. range end)))
+  )
+  (return ranges)
+)
+
+(fn-do _ declaration-source-start Index
+  (param fallback Index)
+  (param location MatchLocation)
+  (param kind String)
+  (param tracking TrackedPreparse)
+  (return-if fallback (if (== (. location begin line) 0)))
+  (let divider-line (- (. location begin line) 1))
+  (return-if fallback (if (>= divider-line (. tracking source-line-starts length))))
+  (let divider-start ([] (. tracking source-line-starts) divider-line))
+  (for (in item (. tracking trivia))
+    (if (and (== (. item start) divider-start) (call divider-belongs-to (. item kind) kind))
+      (return (. item start))
+    )
+  )
+  (return fallback)
+)
+
+(fn-expr _ is-divider-declaration-kind Bool
+  (param kind String)
+  (or (== kind "Class") (call is-function-kind kind))
+)
+
+(fn-expr _ divider-belongs-to Bool
+  (param divider PreparseTriviaKind)
+  (param kind String)
+  (match kind
+    (case= "Class"
+      (== divider .divider-class)
+    )
+    (case? (call is-function-kind it)
+      (or (== divider .divider-class) (== divider .divider-function))
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-do _ syntax-scopes (list SourceScope)
+  (param tree AST)
+  (param infos (list SyntaxInfo))
+  (param ranges (list (? SourceRange)))
+  (param source String)
+  (let scopes (list SourceScope))
+  (for (in index (..< 1 (. tree nodes length)))
+    (let range ([] ranges index))
+    (if (not range)
+      (continue)
+    )
+    (let info ([] infos index))
+    (let parent-scope (call parent-scope-for (. info kind)))
+    (if parent-scope
+      (+= scopes (call SourceScope (. range start) (. range end) parent-scope 4))
+    )
+    (let leaf-scope (call leaf-scope-for (. info kind)))
+    (if leaf-scope
+      (+= scopes (call SourceScope (. range start) (. range end) leaf-scope 24))
+    )
+    (let property-name (call is-property-name index infos ranges))
+    (for (in field (. info fields))
+      (call add-field-scopes
+        (block
+          (arg scopes)
+          (arg source)
+          (arg range)
+          (arg (. info kind))
+          (arg (. field key))
+          (arg (. field value))
+          (arg property-name)
+        )
+      )
+    )
+    (if (== (. info kind) "Declaration")
+      (call add-declaration-bullet-scope scopes source range)
+    )
+    (match? ([] (. tree nodes) index)
+      (case (call .node-declare row)
+        (if (call declaration-bullet-index source range)
+          (call add-left-hand-identifier-scope scopes tree ranges source (. row left))
+        )
+      )
+      (case (call .node-assign row)
+        (call add-left-hand-identifier-scope scopes tree ranges source (. row lhs))
+      )
+      (case (call .node-class-block row)
+        (call add-type-parameter-scopes scopes tree ranges source (. row type-args))
+      )
+      (case (call .node-function-syntax row)
+        (call add-type-parameter-scopes scopes tree ranges source (. row type-args))
+      )
+      (case (call .node-getter-syntax row)
+        (call add-type-parameter-scopes scopes tree ranges source (. row type-args))
+      )
+      (case (call .node-setter-syntax row)
+        (call add-type-parameter-scopes scopes tree ranges source (. row type-args))
+      )
+      (case (call .node-type-arguments row)
+        (call add-type-parameter-scopes scopes tree ranges source (. row args))
+      )
+      (case (call .node-probe row)
+        (call add-probe-prefix-scope scopes source range)
+        (if (not (. row name))
+          (+= scopes (call SourceScope (. range start) (. range end) "header.probe.yumi" 4))
+          (call add-probe-content-scopes scopes tree infos ranges source (. row content))
+        )
+      )
+      (case (call .node-probe-group row)
+        (call add-probe-prefix-scope scopes source range)
+        (if (not (. row is-data))
+          (+= scopes (call SourceScope (. range start) (. range end) "header.probe.yumi" 4))
+          (call add-probe-content-scopes scopes tree infos ranges source (. row content))
+        )
+      )
+      (case .node-probe-statement
+        (call add-probe-prefix-scope scopes source range)
+      )
+      (case .node-probe-assign
+        (call add-probe-prefix-scope scopes source range)
+      )
+      (case .node-probe-counter
+        (call add-probe-prefix-scope scopes source range)
+      )
+    )
+  )
+  (return scopes)
+)
+
+(fn-do _ add-probe-prefix-scope _
+  (param scopes (list SourceScope))
+  (param source String)
+  (param range SourceRange)
+  (let start (. range start))
+  (while (and (< start (. range end)) (or (== ([] source start) (char " ")) (== ([] source start) (char "\t")) (== ([] source start) (char "\r"))))
+    (+= start 1)
+  )
+  (let end start)
+  (while (< end (. range end))
+    (let char ([] source end))
+    (if (or (== char (char " ")) (== char (char "\t")) (== char (char "\r")) (== char (char "\n")))
+      (break)
+    )
+    (+= end 1)
+  )
+  (if (> end start)
+    (+= scopes (call SourceScope start end "entity.name.function.probe.yumi" 36))
+  )
+)
+
+(fn-do _ add-probe-content-scopes _
+  (param scopes (list SourceScope))
+  (param tree AST)
+  (param infos (list SyntaxInfo))
+  (param ranges (list (? SourceRange)))
+  (param source String)
+  (param content (of RowRange SyntaxId))
+  (for (in id ([] (. tree children) content))
+    (if (or (== id 0) (>= id (. ranges length)) (not ([] ranges id)))
+      (continue)
+    )
+    (let kind (. ([] infos id) kind))
+    (if (or (== kind "String") (== kind "StreamString"))
+      (continue)
+    )
+    (let scope "probe.embedded.yumi")
+    (if (== kind "ProbeSnapshot")
+      (= scope "probe.embedded.snapshot.yumi")
+      (else-if (== kind "ProbePreview")
+        (= scope "probe.embedded.preview.yumi")
+      )
+    )
+    (call add-probe-interpolation-scope scopes source (!! ([] ranges id)) scope)
+  )
+)
+
+(fn-do _ add-probe-interpolation-scope _
+  (param scopes (list SourceScope))
+  (param source String)
+  (param range SourceRange)
+  (param name String)
+  (let marker-start (. range start))
+  (let expression-start (. range start))
+  (let braced false)
+  (if (and (< (. range start) (. source length)) (== ([] source (. range start)) '$'))
+    (+= expression-start 1)
+    (if (< expression-start (. range end))
+      (let marker ([] source expression-start))
+      (if (or (== marker '!') (== marker '?'))
+        (+= expression-start 1)
+      )
+    )
+    (if (and (< expression-start (. range end)) (== ([] source expression-start) '{'))
+      (+= expression-start 1)
+      (= braced true)
+    )
+    (else-if (and (>= (. range start) 3) (== ([] source (- (. range start) 3)) '$'))
+      (let marker ([] source (- (. range start) 2)))
+      (if (and (or (== marker '!') (== marker '?')) (== ([] source (- (. range start) 1)) '{'))
+        (= marker-start (- (. range start) 3))
+        (= braced true)
+      )
+    )
+    (else-if (and (>= (. range start) 2) (== ([] source (- (. range start) 2)) '$') (== ([] source (- (. range start) 1)) '{'))
+      (= marker-start (- (. range start) 2))
+      (= braced true)
+    )
+    (else-if (and (>= (. range start) 2) (== ([] source (- (. range start) 2)) '$'))
+      (let marker ([] source (- (. range start) 1)))
+      (if (or (== marker '!') (== marker '?'))
+        (= marker-start (- (. range start) 2))
+      )
+    )
+    (else-if (and (>= (. range start) 1) (== ([] source (- (. range start) 1)) '$'))
+      (= marker-start (- (. range start) 1))
+    )
+  )
+  (blank)
+  (let scope-end (. range end))
+  (let closer-start (. range end))
+  (if braced
+    (if (and (> scope-end expression-start) (== ([] source (- scope-end 1)) '}'))
+      (= closer-start (- scope-end 1))
+      (else-if (and (< scope-end (. source length)) (== ([] source scope-end) '}'))
+        (+= scope-end 1)
+      )
+    )
+    (+= scopes (call SourceScope marker-start scope-end name 18))
+    (+= scopes (call SourceScope marker-start expression-start name 40))
+    (if (< closer-start scope-end)
+      (+= scopes (call SourceScope closer-start scope-end name 40))
+    )
+    (else
+      (+= scopes (call SourceScope marker-start scope-end name 40))
+    )
+  )
+)
+
+(fn-do _ add-left-hand-identifier-scope _
+  (param scopes (list SourceScope))
+  (param tree AST)
+  (param ranges (list (? SourceRange)))
+  (param source String)
+  (param id SyntaxId)
+  (return-if (if (or (== id 0) (>= id (. ranges length)) (not ([] ranges id)))))
+  (let range (!! ([] ranges id)))
+  (match? ([] (. tree nodes) id)
+    (case (call .node-type-capture row)
+      (call add-left-hand-identifier-scope scopes tree ranges source (. row id))
+    )
+    (case (call .node-identifier row)
+      (call add-left-hand-name-scope scopes source range (. row name text))
+    )
+    (case (call .node-ref-identifier row)
+      (call add-left-hand-name-scope scopes source range (. row name text))
+    )
+    (case (call .node-get-expression row)
+      (call add-left-hand-name-scope scopes source range (. row name text))
+    )
+    (case (call .node-index-expression row)
+      (call add-left-hand-identifier-scope scopes tree ranges source (. row object))
+    )
+  )
+)
+
+(fn-do _ add-left-hand-name-scope _
+  (param scopes (list SourceScope))
+  (param source String)
+  (param range SourceRange)
+  (param name String)
+  (return-if (if (not name)))
+  (let relative (call (. ([] source (..< (. range start) (. range end))) find-reverse) name))
+  (if relative
+    (let start (+ (. range start) relative))
+    (+= scopes (call SourceScope start (+ start (. name length)) "meta.definition.variable.yumi" 40))
+  )
+)
+
+(fn-do _ add-type-parameter-scopes _
+  (param scopes (list SourceScope))
+  (param tree AST)
+  (param ranges (list (? SourceRange)))
+  (param source String)
+  (param type-args (of RowRange SyntaxId))
+  (for (in type-arg ([] (. tree children) type-args))
+    (let name-id (call type-argument-name-id tree type-arg))
+    (if (or (== name-id 0) (>= name-id (. ranges length)) (not ([] ranges name-id)))
+      (continue)
+    )
+    (let range (!! ([] ranges name-id)))
+    (let start (. range start))
+    (if (or (== start 0) (!= ([] source (- start 1)) (char "'")))
+      (continue)
+    )
+    (while (and (> start 0) (== ([] source (- start 1)) (char "'")))
+      (-= start 1)
+    )
+    (+= scopes (call SourceScope start (. range end) "variable.parameter.type.yumi" 40))
+  )
+)
+
+(fn-expr _ type-argument-name-id SyntaxId
+  (param tree AST)
+  (param id SyntaxId)
+  (match ([] (. tree nodes) id)
+    (case .node-type-identifier
+      id
+    )
+    (case (call .node-type-arguments row)
+      (call type-argument-name-id tree (. row base))
+    )
+    (case (call .node-type-associated row)
+      (call type-argument-name-id tree (. row owner))
+    )
+    (default
+      0
+    )
+  )
+)
+
+(fn-expr _ parent-scope-for (? String)
+  (param kind String)
+  (case? (== kind "Class")
+    "header.class.yumi"
+  )
+  (case? (call is-function-kind kind)
+    "solo.function.yumi"
+  )
+  (case? (== kind "Import")
+    "meta.import.yumi"
+  )
+  (case? (== kind "Markup")
+    "meta.markup.element.yumi"
+  )
+  (case? (== kind "StructureMatch")
+    "meta.match.structure.yumi"
+  )
+  (case? (== kind "StreamMatch")
+    "section.pattern.stream.yumi"
+  )
+  (case? (== kind "StyleRuleApplication")
+    "meta.style.application.yumi"
+  )
+  (default
+    null
+  )
+)
+
+(fn-expr _ leaf-scope-for (? String)
+  (param kind String)
+  (case? (== kind "Integer")
+    "constant.numeric.integer.decimal.yumi"
+  )
+  (case? (== kind "Float")
+    "constant.numeric.float.yumi"
+  )
+  (case? (or (== kind "String") (== kind "StreamString"))
+    "string.quoted.double.yumi"
+  )
+  (default
+    null
+  )
+)
+
+(fn-do _ add-field-scopes _
+  (param scopes (list SourceScope))
+  (param source String)
+  (param range SourceRange)
+  (param kind String)
+  (param key String)
+  (param value String)
+  (param property-name Bool)
+  (let scope (call field-scope-for kind key))
+  (return-if (if (or (not scope) (not value))))
+  (let scope-name (if-expr property-name "name.function.solo.yumi" scope))
+  (if (and (== kind "Import") (== key "path"))
+    (+= scopes (call SourceScope (. range start) (. range end) scope-name 32))
+    (return)
+  )
+  (let values (if-expr (== key "names") (call (. value split) ", ") (list value)))
+  (for (in spelling values)
+    (let relative (call (. ([] source (..< (. range start) (. range end))) find) spelling))
+    (if relative
+      (let start (+ (. range start) relative))
+      (+= scopes (call SourceScope start (+ start (. spelling length)) scope-name 32))
+    )
+  )
+)
+
+(fn-do _ is-property-name Bool
+  (param index Index)
+  (param infos (list SyntaxInfo))
+  (param ranges (list (? SourceRange)))
+  (return-if false (if (or (!= (. ([] infos index) kind) "Id") (not ([] ranges index)))))
+  (let range (!! ([] ranges index)))
+  (for (in property-index (..< 1 (. ranges length)))
+    (return-if false (if (>= property-index (. infos length))))
+    (if (or (!= (. ([] infos property-index) kind) "Property") (not ([] ranges property-index)))
+      (continue)
+    )
+    (let property-range (!! ([] ranges property-index)))
+    (if (or (> (. property-range start) (. range start)) (< (. property-range end) (. range end)))
+      (continue)
+    )
+    (let first-id-start (. Index max))
+    (for (in candidate (..< 1 (. ranges length)))
+      (if (or (>= candidate (. infos length)) (!= (. ([] infos candidate) kind) "Id") (not ([] ranges candidate)))
+        (continue)
+      )
+      (let candidate-range (!! ([] ranges candidate)))
+      (let contained (<= (. property-range start) (. candidate-range start)))
+      (= contained (and contained (>= (. property-range end) (. candidate-range end))))
+      (if contained
+        (if (< (. candidate-range start) first-id-start)
+          (= first-id-start (. candidate-range start))
+        )
+      )
+    )
+    (return (== (. range start) first-id-start))
+  )
+  (return false)
+)
+
+(fn-do _ add-declaration-bullet-scope _
+  (param scopes (list SourceScope))
+  (param source String)
+  (param range SourceRange)
+  (let cursor (call declaration-bullet-index source range))
+  (if cursor
+    (+= scopes (call SourceScope cursor (+ cursor 1) "definition.yumi" 24))
+    (+= scopes (call SourceScope cursor (+ cursor 1) "operator.bullet.definition.yumi" 32))
+  )
+)
+
+(fn-do _ declaration-bullet-index (? Index)
+  (param source String)
+  (param range SourceRange)
+  (let cursor (. range start))
+  (while (and (< cursor (. range end)) (or (== ([] source cursor) (char " ")) (== ([] source cursor) (char "\t"))))
+    (+= cursor 1)
+  )
+  (return-if cursor (if (and (< cursor (. range end)) (== ([] source cursor) '.'))))
+  (return null)
+)
+
+(fn-expr _ field-scope-for (? String)
+  (param kind String)
+  (param key String)
+  (case? (not (call is-source-field-key key))
+    null
+  )
+  (case? (call is-type-kind kind)
+    "entity.name.type.yumi"
+  )
+  (case? (call is-function-kind kind)
+    "name.function.solo.yumi"
+  )
+  (case? (== kind "StreamCall")
+    "entity.name.function.stream.yumi"
+  )
+  (case? (call is-style-kind kind)
+    "entity.name.style.yumi"
+  )
+  (case? (== kind "CId")
+    "entity.name.function.foreign.c.yumi"
+  )
+  (case? (== kind "Import")
+    "string.unquoted.import.path.yumi"
+  )
+  (case? (call is-state-kind kind)
+    "entity.name.state.yumi"
+  )
+  (default
+    "entity.name.variable.yumi"
+  )
+)
+
+(fn-expr _ is-source-field-key Bool
+  (param key String)
+  (or (== key "name") (== key "names") (== key "path") (== key "state") (== key "target"))
+)
+
+(fn-expr _ is-type-kind Bool
+  (param kind String)
+  (match kind
+    (case= "Class"
+      true
+    )
+    (case= "TypeId"
+      true
+    )
+    (case= "AssociatedType"
+      true
+    )
+    (case= "TypeCase"
+      true
+    )
+    (case= "TypeProperty"
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-expr _ is-function-kind Bool
+  (param kind String)
+  (match kind
+    (case= "Function"
+      true
+    )
+    (case= "Getter"
+      true
+    )
+    (case= "Setter"
+      true
+    )
+    (case= "Converter"
+      true
+    )
+    (case= "Fromverter"
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-expr _ is-style-kind Bool
+  (param kind String)
+  (or (== kind "StyleRule") (== kind "StyleRuleApplication") (== kind "StyleRead"))
+)
+
+(fn-expr _ is-state-kind Bool
+  (param kind String)
+  (match kind
+    (case= "StateCase"
+      true
+    )
+    (case= "StateContinuation"
+      true
+    )
+    (case= "StateFallback"
+      true
+    )
+    (case= "StyleWhen"
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-do _ lexical-scopes (list SourceScope)
+  (param source String)
+  (param line-starts (list Index))
+  (param trivia (list PreparseTrivia))
+  (param grammar-word-ranges (list SourceRange))
+  (param semantic-scopes (list SourceScope))
+  (let scopes (list SourceScope))
+  (for (in item trivia)
+    (+= scopes (call SourceScope (. item start) (. item end) (call trivia-scope (. item kind)) 20))
+  )
+  (for (in range grammar-word-ranges)
+    (if (not (call semantic-token-covered semantic-scopes (. range start) (. range end)))
+      (+= scopes (call SourceScope (. range start) (. range end) "keyword.yumi" 12))
+    )
+  )
+  (blank)
+  (for (in token (call source-lexical-tokens source line-starts))
+    (if (call trivia-at trivia (. token start))
+      (continue)
+    )
+    (match (. token kind)
+      (case= .double-quoted
+        (if (not (call semantic-token-covered semantic-scopes (. token start) (. token end)))
+          (+= scopes (call SourceScope (. token start) (. token end) "string.quoted.double.yumi" 20))
+        )
+        (for (in escape (. token escapes))
+          (+= scopes
+            (call SourceScope
+              (block
+                (arg (. escape start))
+                (arg (. escape end))
+                (arg "constant.character.escape.yumi")
+                (arg 36)
+              )
+            )
+          )
+        )
+      )
+      (case= .single-quoted
+        (if (not (call semantic-token-covered semantic-scopes (. token start) (. token end)))
+          (+= scopes (call SourceScope (. token start) (. token end) "constant.character.yumi" 20))
+        )
+        (for (in escape (. token escapes))
+          (+= scopes
+            (call SourceScope
+              (block
+                (arg (. escape start))
+                (arg (. escape end))
+                (arg "constant.character.escape.yumi")
+                (arg 36)
+              )
+            )
+          )
+        )
+      )
+      (case= .word
+        (if (and (== (. token text) "_") (call is-line-leading source (. token start)))
+          (+= scopes (call SourceScope (. token start) (. token end) "operator.bullet.yumi" 12))
+        )
+      )
+      (case= .number
+        (let scope "constant.numeric.integer.decimal.yumi")
+        (if (call (. token text find) ".")
+          (= scope "constant.numeric.float.yumi")
+        )
+        (if (not (call semantic-token-covered semantic-scopes (. token start) (. token end)))
+          (+= scopes (call SourceScope (. token start) (. token end) scope 14))
+        )
+      )
+      (case= .operator
+        (if (not (call semantic-token-covered semantic-scopes (. token start) (. token end)))
+          (+= scopes
+            (call SourceScope
+              (block
+                (arg (. token start))
+                (arg (. token end))
+                (arg (call operator-scope source (. token start) (. token end)))
+                (arg 10)
+              )
+            )
+          )
+        )
+      )
+      (case= .other
+        (continue)
+      )
+    )
+  )
+  (return scopes)
+)
+
+(fn-expr _ source-lexical-tokens (of ImmutableArray SourceLexicalToken)
+  (param source String)
+  (param line-starts (list Index))
+  (match source
+    (~ (seq (: tokens (* (call \source-lexical-token source line-starts))) (! .))
+      tokens
+    )
+    (throw (call Panic "Source lexer did not consume its input"))
+  )
+)
+
+(fn-expr _ source-lexical-token SourceLexicalToken (over: Char)
+  (param source String)
+  (param line-starts (list Index))
+  (~ (call \source-double-quoted-token line-starts))
+  (~ (call \source-single-quoted-token line-starts))
+  (~ \source-word
+    (call source-lexical-token-at location line-starts .word source)
+  )
+  (~ \source-number
+    (call source-lexical-token-at location line-starts .number source)
+  )
+  (~ (+ \source-operator)
+    (call source-lexical-token-at location line-starts .operator source)
+  )
+  (~ .
+    (call source-lexical-token-at location line-starts .other source)
+  )
+  (where
+    (lazy source-word
+      (pattern
+        (~ (seq \source-word-start (* \source-word-part)))
+      )
+    )
+    (blank)
+    (lazy source-word-start
+      (pattern
+        (~ (chars "a-zA-Z_"))
+        (~ "°")
+      )
+    )
+    (blank)
+    (lazy source-word-part
+      (pattern
+        (~ (chars "a-zA-Z0-9_-"))
+        (~ "°")
+      )
+    )
+    (blank)
+    (lazy source-number
+      (pattern
+        (~ (seq (chars "0-9") (* \source-number-part)))
+      )
+    )
+    (blank)
+    (lazy source-number-part
+      (pattern
+        (~ (chars "0-9a-z"))
+        (~ (chars ".'%"))
+        (~ "µ")
+        (~ "°")
+      )
+    )
+    (blank)
+    (lazy source-operator
+      (pattern
+        (~ (chars "+*/%<>=!?|&:.~\\\\#@\$•-"))
+      )
+    )
+  )
+)
+
+(fn-expr _ source-double-quoted-token SourceLexicalToken (over: Char)
+  (param line-starts (list Index))
+  (~ (seq "\"" (: escapes (* (call \source-double-quoted-piece line-starts))) (? "\""))
+    (call source-quoted-token-at location line-starts .double-quoted escapes)
+  )
+)
+
+(fn-expr _ source-double-quoted-piece (? SourceRange) (over: Char)
+  (param line-starts (list Index))
+  (~ (seq "\\" .)
+    (call source-range-at location line-starts)
+  )
+  (~ (seq "\\" (! .))
+    (call source-range-at location line-starts)
+  )
+  (~ (seq (! (| "\"" \nl)) .)
+    null
+  )
+)
+
+(fn-expr _ source-single-quoted-token SourceLexicalToken (over: Char)
+  (param line-starts (list Index))
+  (~ (seq "'" (: escapes (* (call \source-single-quoted-piece line-starts))) (? "'"))
+    (call source-quoted-token-at location line-starts .single-quoted escapes)
+  )
+)
+
+(fn-expr _ source-single-quoted-piece (? SourceRange) (over: Char)
+  (param line-starts (list Index))
+  (~ (seq "\\" .)
+    (call source-range-at location line-starts)
+  )
+  (~ (seq "\\" (! .))
+    (call source-range-at location line-starts)
+  )
+  (~ (seq (! (| "'" \nl)) .)
+    null
+  )
+)
+
+(fn-expr _ source-quoted-token-at SourceLexicalToken
+  (param location MatchLocation)
+  (param line-starts (list Index))
+  (param kind SourceLexicalKind)
+  (param optional-escapes (of ImmutableArray (? SourceRange)))
+  (call SourceLexicalToken (. range start) (. range end) kind "" escapes)
+  (where
+    (lazy range (call source-range-at location line-starts))
+    (lazy escapes (list SourceRange)
+      (case-each (in escape optional-escapes (when escape))
+        escape
+      )
+    )
+  )
+)
+
+(fn-expr _ source-lexical-token-at SourceLexicalToken
+  (param location MatchLocation)
+  (param line-starts (list Index))
+  (param kind SourceLexicalKind)
+  (param source String)
+  (call SourceLexicalToken
+    (block
+      (arg (. range start))
+      (arg (. range end))
+      (arg kind)
+      (arg ([] source (..< (. range start) (. range end))))
+      (arg ([] SourceRange 0))
+    )
+  )
+  (where
+    (lazy range (call source-range-at location line-starts))
+  )
+)
+
+(fn-expr _ source-range-at SourceRange
+  (param location MatchLocation)
+  (param line-starts (list Index))
+  (call SourceRange start end)
+  (where
+    (lazy start (+ ([] line-starts (. location begin line)) (. location begin column)))
+    (lazy end (+ ([] line-starts (. location end line)) (. location end column) 1))
+  )
+)
+
+(fn-do _ semantic-token-covered Bool
+  (param scopes (list SourceScope))
+  (param start Index)
+  (param end Index)
+  (for (in scope scopes)
+    (if (and (>= (. scope specificity) 24) (<= (. scope start) start) (>= (. scope end) end))
+      (return true)
+    )
+  )
+  (return false)
+)
+
+(fn-do _ trivia-at (? PreparseTrivia)
+  (param trivia (list PreparseTrivia))
+  (param offset Index)
+  (for (in item trivia)
+    (return-if item (if (and (<= (. item start) offset) (> (. item end) offset))))
+  )
+)
+
+(fn-expr _ trivia-scope String
+  (param kind PreparseTriviaKind)
+  (match kind
+    (case= .comment
+      "comment.yumi"
+    )
+    (case= .divider-class
+      "divider.class.yumi"
+    )
+    (case= .divider-function
+      "divider.function.yumi"
+    )
+    (case= .divider-header
+      "divider.header.yumi"
+    )
+  )
+)
+
+(fn-expr _ operator-scope String
+  (param source String)
+  (param start Index)
+  (param end Index)
+  (case? (call is-bullet-operator source start op)
+    "operator.bullet.yumi"
+  )
+  (case? (or (== op "--") (== op "--?"))
+    "operator.printing.yumi"
+  )
+  (case? (call is-comparison-operator op)
+    "operator.compare.yumi"
+  )
+  (case? (or (== op "=") (call (. op ends-with) "="))
+    "operator.assign.yumi"
+  )
+  (case? (or (== op "&&") (== op "||") (== op "??"))
+    "operator.logical.yumi"
+  )
+  (case? (or (== op "..") (== op "..."))
+    "operator.range.yumi"
+  )
+  (case? (call is-pipeline-operator op)
+    "operator.pipeline.yumi"
+  )
+  (case? (or (== op "!") (== op "?"))
+    "operator.postfix.yumi"
+  )
+  (default
+    "operator.infix.yumi"
+  )
+  (where
+    (lazy op ([] source (..< start end)))
+  )
+)
+
+(fn-expr _ is-bullet-operator Bool
+  (param source String)
+  (param start Index)
+  (param op String)
+  (case? (not (call is-line-leading source start))
+    false
+  )
+  (default
+    (or (== op "+") (== op "_") (== op "-") (== op ".") (== op "|") (== op "*"))
+  )
+)
+
+(fn-expr _ is-comparison-operator Bool
+  (param op String)
+  (or (== op "==") (== op "!=") (== op "<=") (== op ">=") (== op "<") (== op ">"))
+)
+
+(fn-expr _ is-pipeline-operator Bool
+  (param op String)
+  (or (== op "|>") (== op "->") (== op "<|") (== op ">>") (== op "<<"))
+)
+
+(fn-do _ is-line-leading Bool
+  (param source String)
+  (param offset Index)
+  (let cursor offset)
+  (while (and (> cursor 0) (!= ([] source (- cursor 1)) (char "\n")))
+    (-= cursor 1)
+  )
+  (while (< cursor offset)
+    (return-if false (if (and (!= ([] source cursor) (char " ")) (!= ([] source cursor) (char "\t")))))
+    (+= cursor 1)
+  )
+  (return true)
+)
+
+(fn-expr _ source-runs (list SourceRun)
+  (param source String)
+  (param scopes (list SourceScope))
+  (param ranges (list (? SourceRange)))
+  (param trivia (list PreparseTrivia))
+  (call sort (call source-run-boundaries source scopes ranges))
+  (pipe |> distinct-until-changed)
+  (pipe |> pairwise)
+  (pipe ?> (> (. each b) (. each a)))
+  (pipe *> (call source-run (. each a) (. each b) scopes ranges trivia))
+  (pipe |> List)
+)
+
+(fn-expr _ source-run-boundaries (list Index)
+  (param source String)
+  (param scopes (list SourceScope))
+  (param ranges (list (? SourceRange)))
+  (item 0)
+  (item (. source length))
+  (spread
+    (block
+      scopes
+      (pipe *> (. each start))
+    )
+  )
+  (spread
+    (block
+      scopes
+      (pipe *> (. each end))
+    )
+  )
+  (spread
+    (block
+      ranges
+      (pipe ?*> each)
+      (pipe *> (. each start))
+    )
+  )
+  (spread
+    (block
+      ranges
+      (pipe ?*> each)
+      (pipe *> (. each end))
+    )
+  )
+  (spread
+    (block
+      (..< 0 (. source length))
+      (pipe ?> (== ([] source each) (char "\n")))
+    )
+  )
+  (spread
+    (block
+      (..< 0 (. source length))
+      (pipe ?> (== ([] source each) (char "\n")))
+      (pipe *> (+ each 1))
+    )
+  )
+)
+
+(fn-expr _ source-run SourceRun
+  (param start Index)
+  (param end Index)
+  (param scopes (list SourceScope))
+  (param ranges (list (? SourceRange)))
+  (param trivia (list PreparseTrivia))
+  (call SourceRun start end scope-names node-ids divider)
+  (where
+    (lazy active-scopes (list SourceScope)
+      (call sort (:stream (call source-scopes-at scopes start end))
+        (block
+          (:using compare-source-scopes)
+        )
+      )
+    )
+    (lazy scope-names (list String) (call distinct (call source-run-scope-names active-scopes)))
+    (lazy covering (list NodeCoverage)
+      (call sort (:stream (call source-node-coverages ranges start end))
+        (block
+          (:using compare-node-coverage)
+        )
+      )
+    )
+    (lazy node-ids (list U32) (in (. each id) covering))
+    (lazy divider (call divider-at trivia start end))
+  )
+)
+
+(fn-expr _ source-scopes-at (list SourceScope)
+  (param scopes (list SourceScope))
+  (param start Index)
+  (param end Index)
+  (case-each (in scope scopes (when (and (<= (. scope start) start) (>= (. scope end) end))))
+    scope
+  )
+)
+
+(fn-expr _ source-run-scope-names (list String)
+  (param scopes (list SourceScope))
+  (item "source.yumi")
+  (spread (in (. each name) scopes))
+)
+
+(fn-expr _ source-node-coverages (list NodeCoverage)
+  (param ranges (list (? SourceRange)))
+  (param start Index)
+  (param end Index)
+  (case-each (in node-index (..< 1 count) (when (call source-range-covers start end ([] ranges node-index))))
+    (call source-node-coverage node-index (!! ([] ranges node-index)))
+  )
+  (where
+    (lazy count (as (. ranges length) U32))
+  )
+)
+
+(fn-expr _ source-node-coverage NodeCoverage
+  (param id U32)
+  (param range SourceRange)
+  (call NodeCoverage id (. range start) (. range end))
+)
+
+(fn-expr _ source-range-covers Bool
+  (param start Index)
+  (param end Index)
+  (param range (? SourceRange))
+  (and range (<= (. range start) start) (>= (. range end) end))
+)
+
+(fn-expr _ compare-source-scopes Comparison
+  (param left SourceScope)
+  (param right SourceScope)
+  (case? (< (. left specificity) (. right specificity))
+    .lesser
+  )
+  (case? (> (. left specificity) (. right specificity))
+    .greater
+  )
+  (case? (> left-width right-width)
+    .lesser
+  )
+  (case? (< left-width right-width)
+    .greater
+  )
+  (default
+    .equal
+  )
+  (where
+    (lazy left-width (- (. left end) (. left start)))
+    (lazy right-width (- (. right end) (. right start)))
+  )
+)
+
+(fn-expr _ compare-node-coverage Comparison
+  (param left NodeCoverage)
+  (param right NodeCoverage)
+  (case? (> left-width right-width)
+    .lesser
+  )
+  (case? (< left-width right-width)
+    .greater
+  )
+  (case? (> (. left id) (. right id))
+    .lesser
+  )
+  (case? (< (. left id) (. right id))
+    .greater
+  )
+  (default
+    .equal
+  )
+  (where
+    (lazy left-width (- (. left end) (. left start)))
+    (lazy right-width (- (. right end) (. right start)))
+  )
+)
+
+(fn-do _ divider-at (? String)
+  (param trivia (list PreparseTrivia))
+  (param start Index)
+  (param end Index)
+  (for (in item trivia)
+    (if (and (<= (. item start) start) (>= (. item end) end))
+      (return-if "class" (if (== (. item kind) .divider-class)))
+      (return-if "function" (if (== (. item kind) .divider-function)))
+      (return-if "header" (if (== (. item kind) .divider-header)))
+    )
+  )
+)
+
+(fn-expr _ render-source-code String
+  (param source String)
+  (param runs (list SourceRun))
+  (call (. "" join) (in (call span-html source each) runs))
+)
+
+(fn-expr _ render-source-code-compact String
+  (param source String)
+  (param runs (list SourceRun))
+  (call (. "" join) (in (call compact-span-html source each) runs))
+)
+
+(fn-do _ span-html String
+  (param source String)
+  (param run SourceRun)
+  (let classes "yumi-run")
+  (if (. run divider)
+    (+= classes " yumi-divider")
+  )
+  (let divider-attribute (if-expr (. run divider) (str " data-divider=\"" (. run divider) "\"") ""))
+  (let nodes (call (. "," join) (in (str each) (. run nodes))))
+  (let scopes (call (. " " join) (. run scopes)))
+  (let text (call html-escape ([] source (..< (. run start) (. run end)))))
+  (let attributes
+    (call source-run-attributes
+      (block
+        (arg (. run start))
+        (arg (. run end))
+        (arg (call html-attribute scopes))
+        (arg nodes)
+        (arg divider-attribute)
+      )
+    )
+  )
+  (return (call source-run-html classes attributes text))
+)
+
+(fn-expr _ source-run-attributes _
+  (param start Index)
+  (param end Index)
+  (param scopes String)
+  (param nodes String)
+  (param divider-attribute String)
+  (str range metadata divider-attribute)
+  (where
+    (lazy range (call source-run-range-attributes start end))
+    (lazy metadata (call source-run-metadata-attributes scopes nodes))
+  )
+)
+
+(fn-expr _ source-run-range-attributes _
+  (param start Index)
+  (param end Index)
+  (paragraph
+    (str (str " ") "data-yumi-run data-range=\"" start ":" end "\"")
+  )
+)
+
+(fn-expr _ source-run-metadata-attributes _
+  (param scopes String)
+  (param nodes String)
+  (paragraph
+    (str (str " ") "data-scopes=\"" scopes "\" data-nodes=\"" nodes "\"")
+  )
+)
+
+(fn-expr _ source-run-html _
+  (param classes String)
+  (param attributes String)
+  (param text String)
+  (paragraph
+    (str "<span class=\"" classes "\"" attributes ">" text "</span>")
+  )
+)
+
+(fn-do _ compact-span-html String
+  (param source String)
+  (param run SourceRun)
+  (let classes "yumi-run")
+  (let divider-attributes "")
+  (if (. run divider)
+    (+= classes " yumi-divider")
+    (let fill (* (as ([] source (. run start)) String) 512))
+    (let width (- (. run end) (. run start)))
+    (= divider-attributes (str " data-divider-fill=\"" (call html-attribute fill) "\""))
+    (+= divider-attributes (str " style=\"--divider-source-width:" width "ch\""))
+  )
+  (let scopes (call (. " " join) (. run scopes)))
+  (let text (call html-escape ([] source (..< (. run start) (. run end)))))
+  (return
+    (call compact-source-run-html
+      (block
+        (arg classes)
+        (arg (call html-attribute scopes))
+        (arg divider-attributes)
+        (arg text)
+      )
+    )
+  )
+)
+
+(fn-expr _ compact-source-run-html _
+  (param classes String)
+  (param scopes String)
+  (param divider-attributes String)
+  (param text String)
+  (paragraph
+    (str "<span class=\"" classes "\" data-scopes=\"" scopes "\"" divider-attributes ">" text "</span>")
+  )
+)
+
+(fn-do _ presentation-json (map String JSON)
+  (param presentation SourcePresentation)
+  (param source String)
+  (let nodes (list JSON))
+  (for (in node (. presentation nodes))
+    (let children (list JSON)
+      (case-each (in child (. node children))
+        (as child Int JSON)
+      )
+    )
+    (let fields (call (of Map String JSON)))
+    (for (in (tuple key value) (. node fields))
+      (= ([] fields key) value)
+    )
+    (let node-data
+      (call (of Map String JSON)
+        (block
+          (entry "id" (as (. node id) Int JSON))
+          (entry "kind" (as (. node kind) JSON))
+          (entry "range" (as (list (as (. node start) Int JSON) (as (. node end) Int JSON)) JSON))
+          (entry "children" (as children JSON))
+          (entry "fields" (as fields JSON))
+        )
+      )
+    )
+    (+= nodes node-data)
+  )
+  (blank)
+  (let run-data (list JSON))
+  (for (in run (. presentation runs))
+    (let scopes (list JSON))
+    (for (in scope (. run scopes))
+      (+= scopes scope)
+    )
+    (let node-ids (list JSON))
+    (for (in id (. run nodes))
+      (+= node-ids (as id Int))
+    )
+    (let item
+      (call (of Map String JSON)
+        (block
+          (entry "range" (as (list (as (. run start) Int JSON) (as (. run end) Int JSON)) JSON))
+          (entry "text" (as (call source-text-json run source) JSON))
+          (entry "scopes" (as scopes JSON))
+          (entry "nodes" (as node-ids JSON))
+        )
+      )
+    )
+    (if (. run divider)
+      (= ([] item "divider") (. run divider))
+    )
+    (+= run-data item)
+  )
+  (blank)
+  (return
+    (call (of Map String JSON)
+      (block
+        (entry "sourcePath" (as (. presentation source-path) JSON))
+        (entry "root" (as (. presentation root) Int JSON))
+        (entry "nodes" (as nodes JSON))
+        (entry "runs" (as run-data JSON))
+      )
+    )
+  )
+)
+
+(fn-do _ source-presentation-nodes (list SourcePresentationNode)
+  (param tree AST)
+  (param infos (list SyntaxInfo))
+  (param ranges (list (? SourceRange)))
+  (let nodes (list SourcePresentationNode))
+  (let total (as (. tree nodes length) SyntaxId))
+  (for (in index (..< 1 total))
+    (let range ([] ranges index))
+    (if (not range)
+      (continue)
+    )
+    (let children (list U32)
+      (case-each (in child (call (. tree children-of) index))
+        child
+      )
+    )
+    (let fields (call (of Map String String)))
+    (for (in field (. ([] infos index) fields))
+      (let key (call (. (call byte-view (. field key)) slice-string)))
+      (= ([] fields key) (call (. (call byte-view (. field value)) slice-string)))
+    )
+    (+= nodes
+      (call SourcePresentationNode
+        (block
+          (arg index)
+          (arg (call (. (call byte-view (. ([] infos index) kind)) slice-string)))
+          (arg (. range start))
+          (arg (. range end))
+          (arg children)
+          (arg fields)
+        )
+      )
+    )
+  )
+  (return nodes)
+)
+
+(fn-expr _ source-text-json String
+  (param run SourceRun)
+  (param source String)
+  ([] source (..< (. run start) (. run end)))
+)
+
+(fn-expr _ html-escape String
+  (param text String)
+  (call (. "" join) (in (call html-escaped each) text))
+)
+
+(fn-expr _ html-attribute String
+  (param text String)
+  (call (. "" join) (in (call html-attribute-escaped each) text))
+)
+
+(fn-expr _ html-escaped String
+  (param char Char)
+  (case? (== char '&')
+    "&amp;"
+  )
+  (case? (== char '<')
+    "&lt;"
+  )
+  (case? (== char '>')
+    "&gt;"
+  )
+  (default
+    (as char String)
+  )
+)
+
+(fn-expr _ html-attribute-escaped String
+  (param char Char)
+  (case? (== char (char "\""))
+    "&quot;"
+  )
+  (case? (== char (char "'"))
+    "&#39;"
+  )
+  (default
+    (call html-escaped char)
+  )
+)
+
+(fn-expr _ script-safe-json String
+  (param text String)
+  (call (. "" join) (in (call script-json-char each) text))
+)
+
+(fn-expr _ script-json-char String
+  (param char Char)
+  (case? (== char '<')
+    "\\u003c"
+  )
+  (case? (== char '>')
+    "\\u003e"
+  )
+  (case? (== char '&')
+    "\\u0026"
+  )
+  (default
+    (as char String)
+  )
+)

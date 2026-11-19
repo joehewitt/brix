@@ -1,0 +1,1400 @@
+(type-line _ ListEntry (is (tuple (: indent I32) (: width I32) (: ordered Bool) (: start U32) (: contents (list Markdown)) (: line U32) (: block (? Markdown)))))
+(type-line _ MarkdownSourceRange (is (tuple (: start Index) (: end Index))))
+
+(type + Markdown (is Union)
+  (variant MDDocument)
+  (variant MDHeader)
+  (variant MDParagraph)
+  (variant MDDivider)
+  (variant MDLink)
+  (variant MDImage)
+  (variant MDStrong)
+  (variant MDEm)
+  (variant MDText)
+  (variant MDList)
+  (variant MDListItem)
+  (variant MDBlockQuote)
+  (variant MDInlineCode)
+  (variant MDFencedCode)
+  (variant MDTable)
+  (variant MDTableRow)
+  (variant MDTableCell)
+  (fn-expr + This _ (over: Char)
+    (~ (: source (seq (* \nl) (* (seq (: ...values \top-value) (* \nl))) (! .)))
+      (call finish-markdown-document source values)
+    )
+    (where
+      (lazy top-value Markdown
+        (pattern
+          (~ \fenced-code)
+          (~ \table)
+          (~ \header)
+          (~ \list)
+          (~ \divider)
+          (~ \blockquote)
+          (~ \paragraph)
+        )
+      )
+      (blank)
+      (lazy header Markdown
+        (pattern
+          (~ (seq (: level ({} "#" 1 6)) // (: contents (* \inline)))
+            (call MDHeader (as (. level length) U8) contents (. location begin line))
+          )
+        )
+      )
+      (blank)
+      (lazy paragraph Markdown
+        (pattern
+          (~ (seq (: first (+ (seq (! \nl) .))) (: rest (* \paragraph-continuation)))
+            (call MDParagraph (call markdown-paragraph-inlines first rest) (. location begin line))
+          )
+        )
+      )
+      (blank)
+      (lazy paragraph-continuation String
+        (pattern
+          (~ (seq \nl (! \block-start) / (: text (+ (seq (! \nl) .))))
+            text
+          )
+        )
+      )
+      (blank)
+      (lazy block-start
+        (pattern
+          (~ (& \fence-start))
+          (~ (& \table-start))
+          (~ (& \header-start))
+          (~ (& \list-start))
+          (~ (& \divider-start))
+          (~ (& \blockquote-start))
+        )
+      )
+      (blank)
+      (lazy header-start
+        (pattern
+          (~ (seq ({} "#" 1 6) //))
+        )
+      )
+      (blank)
+      (lazy fence-start
+        (pattern
+          (~ (seq ({} "`" 3) (* "`")))
+        )
+      )
+      (blank)
+      (lazy table-start
+        (pattern
+          (~ (seq \table-row-source \nl \table-delimiter-row))
+        )
+      )
+      (blank)
+      (lazy list-start
+        (pattern
+          (~ (seq / (chars "*+-") //))
+          (~ (seq / (+ (chars "0-9")) "." //))
+        )
+      )
+      (blank)
+      (lazy divider-start
+        (pattern
+          (~ (seq ({} (seq "-" /) 3) (* (seq "-" /)) (& (| \nl (! .)))))
+        )
+      )
+      (blank)
+      (lazy blockquote-start
+        (pattern
+          (~ ">")
+        )
+      )
+      (blank)
+      (lazy list Markdown
+        (pattern
+          (~ (: entries (+ \list-entry))
+            (call group-items entries)
+          )
+        )
+      )
+      (blank)
+      (lazy list-entry ListEntry
+        (pattern
+          (~ (seq (* \nl) (: entry \list-item-line))
+            entry
+          )
+          (~ (seq \nl (+ (seq / \nl)) (: entry \list-block))
+            entry
+          )
+        )
+      )
+      (blank)
+      (lazy list-item-line ListEntry
+        (pattern
+          (~ (seq (: indent /) (chars "*+-") (: gap //) (: first (* (seq (! \nl) .))) (: rest (* \paragraph-continuation)))
+            (let contents (call markdown-paragraph-inlines first rest))
+            (let width (as (+ 1 (. gap length)) I32))
+            (call ListEntry (as (. indent length) I32) width false 1 contents (. location begin line) null)
+          )
+          (~ (seq (: indent /) (: start (of \num U32)) "." (: gap //) (: first (* (seq (! \nl) .))) (: rest (* \paragraph-continuation)))
+            (let contents (call markdown-paragraph-inlines first rest))
+            (let width (as (+ (. (str start) length) 1 (. gap length)) I32))
+            (call ListEntry (as (. indent length) I32) width true start contents (. location begin line) null)
+          )
+        )
+      )
+      (blank)
+      (lazy list-block ListEntry
+        (pattern
+          (~ (seq (: indent //) (: fence \fence-mark) (: language \fence-opening) (: body (call \markdown-item-fence fence indent)))
+            (let code (call make-fenced-code language body location))
+            (call ListEntry (as (. indent length) I32) 0 false 1 (call (of List Markdown)) (. location begin line) code)
+          )
+          (~ (seq (: indent //) (: first (+ (seq (! \nl) .))) (: rest (* \paragraph-continuation)))
+            (let prose (call MDParagraph (call markdown-paragraph-inlines first rest) (. location begin line)))
+            (call ListEntry (as (. indent length) I32) 0 false 1 (call (of List Markdown)) (. location begin line) prose)
+          )
+        )
+      )
+      (blank)
+      (lazy divider Markdown
+        (pattern
+          (~ (seq ({} (seq "-" /) 3) (* (seq "-" /)) (& (| \nl (! .))))
+            (call MDDivider "" (. location begin line))
+          )
+        )
+      )
+      (blank)
+      (lazy blockquote Markdown
+        (pattern
+          (~ (: lines (+ \blockquote-line))
+            (call make-blockquote lines (. location begin line))
+          )
+        )
+      )
+      (blank)
+      (lazy blockquote-line String
+        (pattern
+          (~ (seq (* \nl) ">" / (: text (* (seq (! \nl) .))))
+            text
+          )
+        )
+      )
+      (blank)
+      (lazy fenced-code Markdown
+        (pattern
+          (~ (seq (: fence \fence-mark) (: language \fence-opening) (: body (call \markdown-closed-fence-body (. fence length))))
+            (call make-fenced-code language body location)
+          )
+          (~ (seq (: fence \fence-mark) (: language \fence-opening) (: body (call \markdown-open-fence-body (. fence length))))
+            (call make-fenced-code language body location)
+          )
+          (~ (seq (: fence \fence-mark) / (: language (? \fence-language)) (* (seq (! \nl) .)) (! .))
+            (call make-fenced-code (?? language "") "" location)
+          )
+        )
+      )
+      (blank)
+      (lazy fence-mark String
+        (pattern
+          (~ (seq ({} "`" 3) (* "`")))
+        )
+      )
+      (blank)
+      (lazy fence-language String
+        (pattern
+          (~ (+ (seq (! \ws) (! \nl) .)))
+        )
+      )
+      (blank)
+      (lazy fence-opening String
+        (pattern
+          (~ (seq / (: language (? \fence-language)) (* (seq (! \nl) .)) \nl)
+            (?? language "")
+          )
+        )
+      )
+      (blank)
+      (lazy table Markdown
+        (pattern
+          (~ (seq (: header \table-row-source) \nl (: alignments \table-delimiter-row) (: rows (* \table-body-row)))
+            (call MDTable
+              (block
+                (arg (call markdown-table-row header))
+                (arg (call markdown-table-rows rows))
+                (arg alignments)
+                (arg (. location begin line))
+              )
+            )
+          )
+        )
+      )
+      (blank)
+      (lazy table-body-row (list String)
+        (pattern
+          (~ (seq \nl \table-row-source))
+        )
+      )
+      (blank)
+      (lazy table-row-source (list String)
+        (pattern
+          (~ (seq (? "|") (: ...cells \table-cell-source) (+ (seq "|" (: ...cells \table-cell-source))) (? "|"))
+            (call normalized-table-cells cells)
+          )
+        )
+      )
+      (blank)
+      (lazy table-cell-source String
+        (pattern
+          (~ (: parts (* \table-cell-part))
+            (call (. "" join) parts)
+          )
+        )
+      )
+      (blank)
+      (lazy table-cell-part String
+        (pattern
+          (~ "\\|"
+            "\\|"
+          )
+          (~ \markdown-code-source)
+          (~ (seq (! (| "|" \nl)) (: char .))
+            (as char String)
+          )
+        )
+      )
+      (blank)
+      (lazy table-delimiter-row (list MDTableAlignment)
+        (pattern
+          (~ (seq (? "|") (: ...cells \table-delimiter-cell) (+ (seq "|" (: ...cells \table-delimiter-cell))) (? "|") (& (| \nl (! .))))
+            cells
+          )
+        )
+      )
+      (blank)
+      (lazy table-delimiter-cell MDTableAlignment
+        (pattern
+          (~ (seq / ":" (+ "-") ":" /)
+            (. MDTableAlignment center)
+          )
+          (~ (seq / ":" (+ "-") /)
+            (. MDTableAlignment left)
+          )
+          (~ (seq / (+ "-") ":" /)
+            (. MDTableAlignment right)
+          )
+          (~ (seq / ({} "-" 3) (* "-") /)
+            (. MDTableAlignment none)
+          )
+        )
+      )
+      (blank)
+      (lazy inline Markdown
+        (pattern
+          (~ (call \markdown-inline false))
+        )
+      )
+    )
+  )
+  (fn-from-expr + (: text String)
+    (match text
+      (~ This)
+      (default
+        (call MDDocument (list (call MDParagraph (list (call MDText text)))))
+      )
+    )
+  )
+)
+
+(type + MDDocument (is Tuple)
+  (prop + content (list Markdown))
+  (fn-to-expr + String
+    (call (. "" join) content)
+  )
+)
+
+(type + MDHeader (is Tuple)
+  (prop + level U8)
+  (prop + content (list Markdown))
+  (prop + line U32)
+  (fn-to-expr + String
+    (paragraph
+      (str "!" (* "#" level) " " (call (. "" join) content) " " (str "\n"))
+    )
+  )
+)
+
+(type + MDParagraph (is Tuple)
+  (prop + content (list Markdown))
+  (prop + line U32)
+  (fn-to-expr + String
+    (paragraph
+      (str "|" (str "\n") (call (. "" join) content) (str "\n") "|")
+    )
+  )
+)
+
+(type + MDDivider (is Tuple)
+  (prop + content String)
+  (prop + line U32)
+  (fn-to-expr + String
+    (paragraph
+      "---"
+    )
+  )
+)
+
+(type + MDLink (is Tuple)
+  (prop + url String)
+  (prop + content (list Markdown))
+  (fn-to-expr + String
+    (paragraph
+      (str "![" (call (. "" join) content) "](" url ")!")
+    )
+  )
+)
+
+(type + MDImage (is Tuple)
+  (prop + url String)
+  (prop + content (list Markdown))
+  (fn-to-expr + String
+    (paragraph
+      (str "img ![" (call (. "" join) content) "](" url ")!")
+    )
+  )
+)
+
+(type + MDStrong (is Tuple)
+  (prop + content (list Markdown))
+  (fn-to-expr + String
+    (paragraph
+      (str "!**" (call (. "" join) content) "**!")
+    )
+  )
+)
+
+(type + MDEm (is Tuple)
+  (prop + content (list Markdown))
+  (fn-to-expr + String
+    (paragraph
+      (str "!*" (call (. "" join) content) "*!")
+    )
+  )
+)
+
+(type + MDText (is Tuple)
+  (prop + text String)
+  (prop + is-break _ (= false))
+  (fn-to-expr + String
+    (paragraph
+      (str text)
+    )
+  )
+)
+
+(type + MDList (is Tuple)
+  (prop + ordered Bool)
+  (prop + start U32)
+  (prop + children (list Markdown))
+  (fn-do + This _
+    (param ordered _ (= false))
+    (param start _ (= 1u32))
+  )
+  (fn-to-expr + String
+    (paragraph
+      (str (call (. "" join) children))
+    )
+  )
+)
+
+(type + MDListItem (is Tuple)
+  (prop + content (list Markdown))
+  (prop + blocks (list Markdown))
+  (prop + line U32)
+  (fn-to-expr + String
+    (paragraph
+      (str "(*) " (call (. "" join) content))
+    )
+  )
+)
+
+(type + MDBlockQuote (is Tuple)
+  (prop + content (list Markdown))
+  (prop + line U32)
+)
+
+(type + MDInlineCode (is Tuple)
+  (prop + code String)
+  (prop + language _ (= ""))
+)
+
+(type + MDFencedCode (is Tuple)
+  (prop + language String)
+  (prop + body String)
+  (prop + range MarkdownSourceRange)
+  (prop + body-range MarkdownSourceRange)
+  (prop + first-body-line U32)
+  (prop + source-location MatchLocation)
+)
+
+(type + MDTableAlignment (is Union)
+  (variant none)
+  (variant left)
+  (variant center)
+  (variant right)
+)
+
+(type + MDTable (is Tuple)
+  (prop + header MDTableRow)
+  (prop + rows (list MDTableRow))
+  (prop + alignments (list MDTableAlignment))
+  (prop + line U32)
+  (fn-expr + alignment _
+    (param column Index)
+    (if-expr (< column (. alignments length)) ([] alignments column) (. MDTableAlignment none))
+  )
+)
+
+(type + MDTableRow (is Tuple)
+  (prop + cells (list MDTableCell))
+)
+
+(type + MDTableCell (is Tuple)
+  (prop + content (list Markdown))
+)
+
+(type + MarkdownFencedCodeRenderer (is (fn-type String (?! Error) (param code MDFencedCode))))
+
+(type + MarkdownInlineCodeRenderer (is (fn-type String (?! Error) (param code MDInlineCode))))
+
+(type + MarkdownHeadingIdRenderer (is (fn-type String (param heading MDHeader) (param default-id String))))
+
+(type + MarkdownHTMLLink (is Tuple)
+  (prop + target String)
+  (prop + attributes String)
+)
+
+(type + MarkdownLinkRenderer (is (fn-type MarkdownHTMLLink (?! Error) (param link MDLink))))
+
+(fn-expr + markdown-closed-fence-body String (over: Char)
+  (param width Size)
+  (~ (seq (: lines (* (call \markdown-non-closing-code-line width))) (call \markdown-fence-close width))
+    (call (. "" join) lines)
+  )
+)
+
+(fn-expr + markdown-open-fence-body String (over: Char)
+  (param width Size)
+  (~ (: body (* .))
+    body
+  )
+)
+
+(fn-expr + markdown-non-closing-code-line String (over: Char)
+  (param width Size)
+  (~ (seq (! (call \markdown-fence-close width)) (: text (* (seq (! \nl) .))) \nl)
+    (str text "\n")
+  )
+)
+
+(fn-expr + markdown-fence-close _ (over: Char)
+  (param width Size)
+  (~ (seq ({} "`" width) (* "`") / (& (| \nl (! .)))))
+)
+
+(fn-expr _ markdown-item-fence String (over: Char)
+  (param fence String)
+  (param indent String)
+  (~ (seq (: lines (* (call \markdown-item-code-line (. fence length) (. indent length)))) / (call \markdown-fence-close (. fence length)))
+    (call (. "" join) lines)
+  )
+)
+
+(fn-expr _ markdown-item-code-line String (over: Char)
+  (param width Size)
+  (param indent Size)
+  (~ (seq (! (seq / (call \markdown-fence-close width))) ({} " " 0 indent) (: text (* (seq (! \nl) .))) \nl)
+    (str text "\n")
+  )
+)
+
+(fn-expr + markdown-inline Markdown (over: Char)
+  (param wraps Bool)
+  (~ (seq (& (\{} wraps)) \nl /)
+    (call MDText " " true)
+  )
+  (~ \strong)
+  (~ "**"
+    (call MDText "**")
+  )
+  (~ \em)
+  (~ \image)
+  (~ \link)
+  (~ (call \markdown-code-span wraps))
+  (~ (: ticks (+ "`"))
+    (call MDText ticks)
+  )
+  (~ \escaped-text)
+  (~ \text)
+  (~ \special-text)
+  (where
+    (lazy strong Markdown
+      (pattern
+        (~ (seq "**" (+ (seq (! "**") (: ...contents (call \markdown-inline wraps)))) "**")
+          (call MDStrong contents)
+        )
+      )
+    )
+    (blank)
+    (lazy em Markdown
+      (pattern
+        (~ (seq "*" (+ (seq (! "*") (: ...contents (call \markdown-inline wraps)))) "*")
+          (call MDEm contents)
+        )
+      )
+    )
+    (blank)
+    (lazy link Markdown
+      (pattern
+        (~ (seq "[" (+ (seq (! "]") (: ...contents (call \markdown-inline wraps)))) "](" (: url \url-text) ")")
+          (call MDLink url contents)
+        )
+      )
+    )
+    (blank)
+    (lazy image Markdown
+      (pattern
+        (~ (seq "![" (+ (seq (! "]") (: ...contents (call \markdown-inline wraps)))) "](" (: url \url-text) ")")
+          (call MDImage url contents)
+        )
+      )
+    )
+    (blank)
+    (lazy escaped-text Markdown
+      (pattern
+        (~ (seq "\\" (: text \escaped-char))
+          (call MDText text)
+        )
+      )
+    )
+    (blank)
+    (lazy special-text Markdown
+      (pattern
+        (~ (: text \reserved-char)
+          (call MDText text)
+        )
+      )
+    )
+    (blank)
+    (lazy text Markdown
+      (pattern
+        (~ (: text \chars)
+          (call MDText text)
+        )
+      )
+    )
+    (blank)
+    (lazy chars String
+      (pattern
+        (~ (: chars (+ \char))
+          chars
+        )
+      )
+    )
+    (blank)
+    (lazy char
+      (pattern
+        (~ (seq (! (| \reserved-char \nl)) .))
+      )
+    )
+    (blank)
+    (lazy reserved-char
+      (pattern
+        (~ (| "\\" "*" "[" "]" "!" "`"))
+      )
+    )
+    (blank)
+    (lazy escaped-char
+      (pattern
+        (~ (| \reserved-char "|" "#" ">" "-" "+" "." "_" "(" ")" "~" "<"))
+      )
+    )
+    (blank)
+    (lazy url-text String
+      (pattern
+        (~ (: chars (+ \url-char))
+          (call (. (call Array chars) slice-string))
+        )
+      )
+    )
+    (blank)
+    (lazy url-char Char
+      (pattern
+        (~ "\\)"
+          (char ")")
+        )
+        (~ (seq (! (| ")" \nl)) .))
+      )
+    )
+  )
+)
+
+(fn-expr _ markdown-code-span Markdown (over: Char)
+  (param wraps Bool)
+  (~ (seq (: code (call \markdown-code-body wraps)) (: language (? \markdown-code-class)))
+    (call MDInlineCode code (?? language ""))
+  )
+)
+
+(fn-expr _ markdown-code-body String (over: Char)
+  (param wraps Bool)
+  (~ (seq (: ticks (+ "`")) (: pieces (* (call \markdown-code-piece (. ticks length) wraps))) (call \markdown-code-close (. ticks length)))
+    (call markdown-code-text (call (. "" join) pieces))
+  )
+)
+
+(fn-expr _ markdown-code-source String (over: Char)
+  (~ (seq (: ticks (+ "`")) (: pieces (* (call \markdown-code-piece (. ticks length) false))) (call \markdown-code-close (. ticks length)))
+    (str ticks (call (. "" join) pieces) ticks)
+  )
+)
+
+(fn-expr _ markdown-code-piece String (over: Char)
+  (param width Size)
+  (param wraps Bool)
+  (~ (seq (& (\{} wraps)) \nl /)
+    " "
+  )
+  (~ (seq (! (call \markdown-code-close width)) (: text (+ "`")))
+    text
+  )
+  (~ (: text (+ (seq (! "`") (! \nl) .)))
+    text
+  )
+)
+
+(fn-expr _ markdown-code-close _ (over: Char)
+  (param width Size)
+  (~ (seq ({} "`" width) (! "`")))
+)
+
+(fn-expr _ markdown-code-text String
+  (param text String)
+  (case? (and (> (. text length) 1) (call (. text starts-with) " ") (call (. text ends-with) " ") (call (. text trim)))
+    ([] text (..< 1 (- (. text length) 1)))
+  )
+  (default
+    text
+  )
+)
+
+(fn-expr _ markdown-code-class String (over: Char)
+  (~ (seq "{." (: name (+ (chars "a-zA-Z0-9_-"))) "}")
+    name
+  )
+)
+
+(fn-expr + markdown-to-html String
+  (param doc Markdown)
+  (param fenced-code-renderer (? MarkdownFencedCodeRenderer) (= null))
+  (param heading-id-renderer (? MarkdownHeadingIdRenderer) (= null))
+  (param link-renderer (? MarkdownLinkRenderer) (= null))
+  (param inline-code-renderer (? MarkdownInlineCodeRenderer) (= null))
+  (call (. (call MarkdownHTMLRenderer fenced-code-renderer heading-id-renderer link-renderer inline-code-renderer) render) doc)
+)
+
+(fn-expr + markdown-visible-text String
+  (param nodes (list Markdown))
+  (call (. "" join) (in (call markdown-visible-node-text each) nodes))
+)
+
+(fn-expr + markdown-heading-slug String
+  (param text String)
+  (match (. text lowercased)
+    (~ (seq (* \ws) (* (seq (: ...words \markdown-slug-word) (* \ws))) (! .))
+      (call (. "-" join) (in each words (when (> (. each length) 0))))
+    )
+    (default
+      ""
+    )
+  )
+)
+
+(fn-expr + markdown-slug-word String (over: Char)
+  (~ (: pieces (+ \markdown-slug-piece))
+    (call (. "" join) pieces)
+  )
+)
+
+(fn-expr + markdown-slug-piece String (over: Char)
+  (~ (: c \markdown-slug-codepoint)
+    (if-expr (call is-markdown-slug-character c) (str c) "")
+  )
+)
+
+(fn-expr + markdown-slug-codepoint Char (over: Char)
+  (~ (seq (! \ws) .))
+)
+
+(type _ MarkdownHTMLRenderer
+  (prop _ fenced-code-renderer (? MarkdownFencedCodeRenderer))
+  (prop _ heading-id-renderer (? MarkdownHeadingIdRenderer))
+  (prop _ link-renderer (? MarkdownLinkRenderer))
+  (prop _ inline-code-renderer (? MarkdownInlineCodeRenderer))
+  (prop _ heading-counts (of Map String U32))
+  (fn-do + This _
+    (param fenced-code-renderer (? MarkdownFencedCodeRenderer))
+    (param heading-id-renderer (? MarkdownHeadingIdRenderer))
+    (param link-renderer (? MarkdownLinkRenderer))
+    (param inline-code-renderer (? MarkdownInlineCodeRenderer))
+  )
+  (fn-expr + render String (?! Error)
+    (param node Markdown)
+    (match node
+      (case (list Markdown)
+        (call render-blocks it)
+      )
+      (case MDDocument
+        (call render-blocks (. it content))
+      )
+      (case MDParagraph
+        (call html-paragraph (call render-inlines (. it content)))
+      )
+      (case MDDivider
+        "<hr>"
+      )
+      (case MDHeader
+        (call render-heading it)
+      )
+      (case MDStrong
+        (call html-strong (call render-inlines (. it content)))
+      )
+      (case MDEm
+        (call html-emphasis (call render-inlines (. it content)))
+      )
+      (case MDLink
+        (call render-link it)
+      )
+      (case MDImage
+        (call html-image (call html-escape (. it url)) (call html-escape (call markdown-visible-text (. it content))))
+      )
+      (case MDText
+        (call html-escape (. it text))
+      )
+      (case MDBlockQuote
+        (call html-blockquote (call render-blocks (. it content)))
+      )
+      (case MDInlineCode
+        (call render-inline-code it)
+      )
+      (case MDFencedCode
+        (call render-fenced-code it)
+      )
+      (case MDList
+        (call render-list it)
+      )
+      (case MDListItem
+        (call html-list-item (call render-inlines (. it content)) (call render-blocks (. it blocks)))
+      )
+      (case MDTable
+        (call render-table it)
+      )
+      (case MDTableRow
+        (call render-table-row it "td" (call (of List MDTableAlignment)))
+      )
+      (case MDTableCell
+        (call render-inlines (. it content))
+      )
+      (default
+        ""
+      )
+    )
+  )
+  (fn-expr _ render-blocks _
+    (param nodes (list Markdown))
+    (call (. "\n" join) (in (call render each) nodes))
+  )
+  (fn-expr _ render-inlines _
+    (param nodes (list Markdown))
+    (call (. "" join) (in (call render each) nodes))
+  )
+  (fn-do _ render-heading _
+    (param heading MDHeader)
+    (let text (call markdown-visible-text (. heading content)))
+    (let base (call markdown-heading-slug text))
+    (let count (+ (?? ([] heading-counts base) 0) 1))
+    (= ([] heading-counts base) count)
+    (let default-id (if-expr (== count 1) base (call numbered-heading-slug base count)))
+    (let slug (if-expr heading-id-renderer (call heading-id-renderer heading default-id) default-id))
+    (return (call html-heading (. heading level) (call html-escape slug) (call render-inlines (. heading content))))
+  )
+  (fn-expr _ render-link String
+    (param link MDLink)
+    (call html-link (call html-escape (. rendered target)) (. rendered attributes) (call render-inlines (. link content)))
+    (where
+      (lazy rendered (if-expr link-renderer (call link-renderer link) (call MarkdownHTMLLink (. link url) "")))
+    )
+  )
+  (fn-expr _ render-inline-code _
+    (param code MDInlineCode)
+    (case? inline-code-renderer
+      (call inline-code-renderer code)
+    )
+    (case? (. code language)
+      (call html-language-inline-code (call html-escape (. code language)) (call html-escape (. code code)))
+    )
+    (default
+      (call html-inline-code (call html-escape (. code code)))
+    )
+  )
+  (fn-expr _ render-fenced-code _
+    (param code MDFencedCode)
+    (case? fenced-code-renderer
+      (call fenced-code-renderer code)
+    )
+    (case? (. code language)
+      (call html-language-fenced-code (call html-escape (. code language)) (call html-escape (. code body)))
+    )
+    (default
+      (call html-fenced-code (call html-escape (. code body)))
+    )
+  )
+  (fn-expr _ render-list _
+    (param list MDList)
+    (case? (not (. list ordered))
+      (call html-unordered-list contents)
+    )
+    (case? (== (. list start) 1)
+      (call html-ordered-list contents)
+    )
+    (default
+      (call html-starting-ordered-list (. list start) contents)
+    )
+    (where
+      (lazy contents (call render-blocks (. list children)))
+    )
+  )
+  (fn-expr _ render-table _
+    (param table MDTable)
+    (call html-table
+      (block
+        (arg (call html-table-head (call render-table-row (. table header) "th" (. table alignments))))
+        (arg (call html-table-body (call (. "\n" join) (in (call render-table-row each "td" (. table alignments)) (. table rows)))))
+      )
+    )
+  )
+  (fn-expr _ render-table-row _
+    (param row MDTableRow)
+    (param tag String)
+    (param alignments (list MDTableAlignment))
+    (call html-table-row (call (. "" join) (in (call render-table-cell row each tag alignments) (..< 0 (. row cells length)))))
+  )
+  (fn-expr _ render-table-cell _
+    (param row MDTableRow)
+    (param column Index)
+    (param tag String)
+    (param alignments (list MDTableAlignment))
+    (call html-table-cell
+      (block
+        (arg tag)
+        (arg (call html-table-align column alignments))
+        (arg (call render-inlines (. ([] (. row cells) column) content)))
+      )
+    )
+  )
+  (fn-expr _ html-table-align _
+    (param column Index)
+    (param alignments (list MDTableAlignment))
+    (match alignment
+      (case .left
+        " align=\"left\""
+      )
+      (case .center
+        " align=\"center\""
+      )
+      (case .right
+        " align=\"right\""
+      )
+      (case .none
+        ""
+      )
+    )
+    (where
+      (lazy alignment (if-expr (< column (. alignments length)) ([] alignments column) (. MDTableAlignment none)))
+    )
+  )
+)
+
+(type _ MarkdownLines
+  (prop _ source String)
+  (prop _ starts (list Index))
+  (prop _ length Index)
+  (prop _ is-indexed _ (= false))
+  (fn-do + This _
+    (param source _)
+  )
+  (fn-do + offset Index
+    (param target TokenLocation)
+    (let start (call line-offset (. target line)))
+    (return-if length (if (>= (. target line) (. starts length))))
+    (let next (+ (. target line) 1))
+    (let line-end (if-expr (< next (. starts length)) (- ([] starts next) 1) length))
+    (return-if length (if (> (+ start (. target column)) line-end)))
+    (return (+ start (. target column)))
+  )
+  (fn-do + line-offset Index
+    (param line U32)
+    (call index-lines)
+    (return-if length (if (>= line (. starts length))))
+    (return ([] starts line))
+  )
+  (fn-do _ index-lines _
+    (return-if (if is-indexed))
+    (= is-indexed true)
+    (+= starts 0)
+    (let position Index 0)
+    (for (in c source)
+      (+= position 1)
+      (if (== c (char "\n"))
+        (+= starts position)
+      )
+    )
+    (= length position)
+  )
+)
+
+(fn-expr _ html-paragraph _
+  (param content String)
+  (paragraph
+    (str "<p>" content "</p>")
+  )
+)
+
+(fn-expr _ html-heading _
+  (param level U8)
+  (param id String)
+  (param content String)
+  (paragraph
+    (str "<h" level " id=\"" id "\">" content "</h" level ">")
+  )
+)
+
+(fn-expr _ numbered-heading-slug _
+  (param base String)
+  (param count U32)
+  (paragraph
+    (str base "-" count)
+  )
+)
+
+(fn-expr _ html-strong _
+  (param content String)
+  (paragraph
+    (str "<b>" content "</b>")
+  )
+)
+
+(fn-expr _ html-emphasis _
+  (param content String)
+  (paragraph
+    (str "<i>" content "</i>")
+  )
+)
+
+(fn-expr _ html-link _
+  (param target String)
+  (param attributes String)
+  (param content String)
+  (paragraph
+    (str "<a href=\"" target "\"" attributes ">" content "</a>")
+  )
+)
+
+(fn-expr _ html-image _
+  (param source String)
+  (param alt String)
+  (paragraph
+    (str "<img src=\"" source "\" alt=\"" alt "\">")
+  )
+)
+
+(fn-expr _ html-blockquote _
+  (param content String)
+  (paragraph
+    (str "<blockquote>" content "</blockquote>")
+  )
+)
+
+(fn-expr _ html-inline-code _
+  (param content String)
+  (paragraph
+    (str "<code>" content "</code>")
+  )
+)
+
+(fn-expr _ html-language-inline-code _
+  (param language String)
+  (param content String)
+  (paragraph
+    (str "<code class=\"language-" language "\">" content "</code>")
+  )
+)
+
+(fn-expr _ html-language-fenced-code _
+  (param language String)
+  (param body String)
+  (paragraph
+    (str "<pre><code class=\"language-" language "\">" body "</code></pre>")
+  )
+)
+
+(fn-expr _ html-fenced-code _
+  (param body String)
+  (paragraph
+    (str "<pre><code>" body "</code></pre>")
+  )
+)
+
+(fn-expr _ html-list-item _
+  (param content String)
+  (param children String)
+  (paragraph
+    (str "<li>" content children "</li>")
+  )
+)
+
+(fn-expr _ html-unordered-list _
+  (param content String)
+  (paragraph
+    (str "<ul>" content "</ul>")
+  )
+)
+
+(fn-expr _ html-ordered-list _
+  (param content String)
+  (paragraph
+    (str "<ol>" content "</ol>")
+  )
+)
+
+(fn-expr _ html-starting-ordered-list _
+  (param start U32)
+  (param content String)
+  (paragraph
+    (str "<ol start=\"" start "\">" content "</ol>")
+  )
+)
+
+(fn-expr _ html-table _
+  (param head String)
+  (param body String)
+  (paragraph
+    (str "<table>" head body "</table>")
+  )
+)
+
+(fn-expr _ html-table-head _
+  (param content String)
+  (paragraph
+    (str "<thead>" content "</thead>")
+  )
+)
+
+(fn-expr _ html-table-body _
+  (param content String)
+  (paragraph
+    (str "<tbody>" content "</tbody>")
+  )
+)
+
+(fn-expr _ html-table-row _
+  (param content String)
+  (paragraph
+    (str "<tr>" content "</tr>")
+  )
+)
+
+(fn-expr _ html-table-cell _
+  (param tag String)
+  (param attributes String)
+  (param content String)
+  (paragraph
+    (str "<" tag attributes ">" content "</" tag ">")
+  )
+)
+
+(fn-do _ group-items Markdown
+  (param entries (list ListEntry))
+  (let first ([] entries 0))
+  (let indent (. first indent))
+  (let stack (list (call MDList (. first ordered) (. first start))))
+  (let indents (list indent))
+  (let columns (list (+ (. first indent) (. first width))))
+  (blank)
+  (for (in entry entries)
+    (let block (. entry block))
+    (if block
+      (while (and (> (. stack length) 1) (> (. columns tail) (. entry indent)))
+        (call (. stack pop))
+        (call (. indents pop))
+        (call (. columns pop))
+      )
+      (= indent (. indents tail))
+      (if (= (| (list ... (: last-item MDListItem))) (. stack tail children))
+        (+= (. last-item blocks) block)
+      )
+      (else-if (> (. entry indent) indent)
+        (if (= (| (list ... (: last-item MDListItem))) (. stack tail children))
+          (let new-list (call MDList (. entry ordered) (. entry start)))
+          (+= (. new-list children) (call MDListItem (. entry contents) (call (of List Markdown)) (. entry line)))
+          (+= (. last-item blocks) new-list)
+          (= indent (. entry indent))
+          (+= stack new-list)
+          (+= indents indent)
+          (+= columns (+ (. entry indent) (. entry width)))
+        )
+      )
+      (else
+        (while (and (< (. entry indent) indent) (> (. stack length) 1))
+          (call (. stack pop))
+          (call (. indents pop))
+          (call (. columns pop))
+          (= indent (. indents tail))
+        )
+        (+= (. stack tail children) (call MDListItem (. entry contents) (call (of List Markdown)) (. entry line)))
+        (call (. columns pop))
+        (+= columns (+ (. entry indent) (. entry width)))
+      )
+    )
+  )
+  (blank)
+  (return ([] stack 0))
+)
+
+(fn-expr _ make-fenced-code _
+  (param language String)
+  (param body String)
+  (param location MatchLocation)
+  (call MDFencedCode language body (tuple 0 0) (tuple 0 (. body length)) (+ (. location begin line) 2) location)
+)
+
+(fn-do _ finalize-markdown (list Markdown)
+  (param lines MarkdownLines)
+  (param nodes (list Markdown))
+  (let result (of List Markdown))
+  (for (in node nodes)
+    (if (= (| (: code MDFencedCode)) node)
+      (let start (call (. lines offset) (. code source-location begin)))
+      (let end (+ (call (. lines offset) (. code source-location end)) 1))
+      (let body-start (call (. lines line-offset) (+ (. code source-location begin line) 1)))
+      (let finished
+        (call MDFencedCode
+          (block
+            (arg (. code language))
+            (arg (. code body))
+            (arg (tuple start end))
+            (arg (tuple body-start (+ body-start (. code body length))))
+            (arg (. code first-body-line))
+            (arg (. code source-location))
+          )
+        )
+      )
+      (+= result finished)
+      (else-if (= (| (: quote MDBlockQuote)) node)
+        (+= result (call MDBlockQuote (call finalize-markdown lines (. quote content)) (. quote line)))
+      )
+      (else-if (= (| (: list MDList)) node)
+        (for (in child (. list children))
+          (if (= (| (: item MDListItem)) child)
+            (let finished (call finalize-markdown lines (. item blocks)))
+            (call (. item blocks clear))
+            (++= (. item blocks) finished)
+          )
+        )
+        (+= result node)
+      )
+      (else
+        (+= result node)
+      )
+    )
+  )
+  (return result)
+)
+
+(fn-expr _ finish-markdown-document _
+  (param source String)
+  (param nodes (list Markdown))
+  (call MDDocument (call finalize-markdown (call MarkdownLines source) nodes))
+)
+
+(fn-expr _ normalized-table-cells _
+  (param cells (list String))
+  ([] cells (..< start end))
+  (where
+    (lazy start (if-expr (and cells (not (call (. ([] cells 0) trim)))) 1 0))
+    (lazy end (if-expr (and cells (not (call (. cells tail trim)))) (- (. cells length) 1) (. cells length)))
+  )
+)
+
+(fn-expr _ markdown-table-row _
+  (param cells (list String))
+  (call MDTableRow (in (call MDTableCell (call markdown-inlines (call table-cell-text each))) cells))
+)
+
+(fn-expr _ table-cell-text String
+  (param cell String)
+  (call (. "|" join) (call (. (call (. cell trim)) split) "\\|"))
+)
+
+(fn-expr _ markdown-table-rows _
+  (param rows (list (list String)))
+  (in (call markdown-table-row each) rows)
+)
+
+(fn-do _ make-blockquote _
+  (param lines (list String))
+  (param line U32)
+  (let blocks (of List Markdown))
+  (let paragraph (of List String))
+  (let first line)
+  (for (in index (..< 0 (. lines length)))
+    (if (call (. ([] lines index) trim))
+      (if (not paragraph)
+        (= first (+ line (as index U32)))
+      )
+      (+= paragraph ([] lines index))
+      (else-if paragraph
+        (+= blocks (call MDParagraph (call markdown-paragraph-inlines ([] paragraph 0) ([] paragraph (... 1))) first))
+        (call (. paragraph clear))
+      )
+    )
+  )
+  (if paragraph
+    (+= blocks (call MDParagraph (call markdown-paragraph-inlines ([] paragraph 0) ([] paragraph (... 1))) first))
+  )
+  (return (call MDBlockQuote blocks line))
+)
+
+(fn-do _ markdown-inlines (list Markdown)
+  (param source String)
+  (return?
+    (match? source
+      (~ (seq (: values (* (call \markdown-inline false))) (! .))
+        values
+      )
+    )
+  )
+  (blank)
+  (return (list (call MDText source)))
+)
+
+(fn-do _ markdown-paragraph-inlines (list Markdown)
+  (param first String)
+  (param rest (list String))
+  (let source (call (. "\n" join) (++ (list first) rest)))
+  (return?
+    (match? source
+      (~ (seq (: values (* (call \markdown-inline true))) (! .))
+        values
+      )
+    )
+  )
+  (blank)
+  (return (list (call MDText source)))
+)
+
+(fn-expr _ markdown-visible-node-text String
+  (param node Markdown)
+  (match node
+    (case MDText
+      (. it text)
+    )
+    (case MDInlineCode
+      (. it code)
+    )
+    (case MDStrong
+      (call markdown-visible-text (. it content))
+    )
+    (case MDEm
+      (call markdown-visible-text (. it content))
+    )
+    (case MDLink
+      (call markdown-visible-text (. it content))
+    )
+    (case MDImage
+      (call markdown-visible-text (. it content))
+    )
+    (case MDParagraph
+      (call markdown-visible-text (. it content))
+    )
+    (case MDHeader
+      (call markdown-visible-text (. it content))
+    )
+    (case MDTableCell
+      (call markdown-visible-text (. it content))
+    )
+    (default
+      ""
+    )
+  )
+)
+
+(fn-expr _ html-escape _
+  (param text String)
+  (call (. "" join) (in (call html-escaped each) text))
+)
+
+(fn-expr _ html-escaped _
+  (param c Char)
+  (match c
+    (case= '&'
+      "&amp;"
+    )
+    (case= '<'
+      "&lt;"
+    )
+    (case= '>'
+      "&gt;"
+    )
+    (case= (char "\"")
+      "&quot;"
+    )
+    (case= (char "'")
+      "&#39;"
+    )
+    (default
+      (str c)
+    )
+  )
+)
+
+(fn-expr _ is-markdown-slug-character Bool
+  (param c Char)
+  (match (. c category)
+    (case= .letter-uppercase
+      true
+    )
+    (case= .letter-lowercase
+      true
+    )
+    (case= .letter-titlecase
+      true
+    )
+    (case= .letter-modifier
+      true
+    )
+    (case= .letter-other
+      true
+    )
+    (case= .number-decimal
+      true
+    )
+    (case= .number-letter
+      true
+    )
+    (case= .number-other
+      true
+    )
+    (default
+      false
+    )
+  )
+)

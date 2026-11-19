@@ -1,0 +1,26 @@
+; benchmark.meta description: Parks thousands of tasks on short staggered sleeps so the poller juggles many pending timers.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core/channel)
+(import /time/duration)
+(blank)
+
+(main
+  (let sleepers 4000)
+  (let done (of SyncBufferedChannel Int))
+  (blank)
+  (for (in i (..< 0 sleepers))
+    (do-new
+      (call (. (as (% i 50) Milliseconds) wait))
+      (<- done 1)
+    )
+  )
+  (blank)
+  (let checksum 0)
+  (for (in i (..< 0 sleepers))
+    (+= checksum (!! (<- done)))
+  )
+  (blank)
+  (print (str "bench-result tasks/sleep-timers checksum=" checksum))
+)

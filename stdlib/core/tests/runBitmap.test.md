@@ -1,41 +1,43 @@
 # Bitmap
 
-```yumi
-. value = 7 as Value'U64
-value[0] = 9ul
--- value as U64
-━━━━━━━━━━━━━━━━━━━━
-+ Value'Integer is Integer
-────────────────────
-+ this[index Index]
+```brix
+(main
+  (let value (as 7 (of Value U64)))
+  (= ([] value 0) 9ul)
+  (print (as value U64))
+)
 
-(this as Integer) + (index as Integer)
-────────────────────
-+ this[index Index] = value Integer
-
-value as This
+(type + (of Value Integer) (is Integer)
+  (fn-expr + (index-get this (param index Index)) _
+    (+ (as this Integer) (as index Integer))
+  )
+  (fn-expr + (index-set this (param index Index) (param value Integer)) _
+    (as value This)
+  )
+)
 ```
 
 ```output
 9
 ```
 
-```yumi
-. value = 7 as Value'I8
-. copy = value
-value[0] = -8 as I8
--- value as I8
--- copy as I8
-━━━━━━━━━━━━━━━━━━━━
-+ Value'Integer is Integer
-────────────────────
-+ this[index Index]
+```brix
+(main
+  (let value (as 7 (of Value I8)))
+  (let copy value)
+  (= ([] value 0) (as -8 I8))
+  (print (as value I8))
+  (print (as copy I8))
+)
 
-(this as Integer) + (index as Integer)
-────────────────────
-+ this[index Index] = value Integer
-
-value as This
+(type + (of Value Integer) (is Integer)
+  (fn-expr + (index-get this (param index Index)) _
+    (+ (as this Integer) (as index Integer))
+  )
+  (fn-expr + (index-set this (param index Index) (param value Integer)) _
+    (as value This)
+  )
+)
 ```
 
 ```output
@@ -43,85 +45,86 @@ value as This
 7
 ```
 
-```yumi
-. holder = Holder(7 as Value'U64)
-holder.value[0] = 9ul
--- holder.value as U64
-━━━━━━━━━━━━━━━━━━━━
-+ Value'Integer is Integer
-────────────────────
-+ this[index Index]
+```brix
+(main
+  (let holder (call Holder (as 7 (of Value U64))))
+  (= ([] (. holder value) 0) 9ul)
+  (print (as (. holder value) U64))
+)
 
-(this as Integer) + (index as Integer)
-────────────────────
-+ this[index Index] = value Integer
+(type + (of Value Integer) (is Integer)
+  (fn-expr + (index-get this (param index Index)) _
+    (+ (as this Integer) (as index Integer))
+  )
+  (fn-expr + (index-set this (param index Index) (param value Integer)) _
+    (as value This)
+  )
+)
 
-value as This
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ value Value'U64
-────────────────────
-+ This
-    - value
+(type + Holder
+  (prop + value (of Value U64))
+  (fn-do + This _
+    (param value _)
+  )
+)
 ```
 
 ```output
 9
 ```
 
-```yumi
-. values = Array'(Value'U64)([7 as Value'U64])
-values[0][0] = 9ul
--- values[0] as U64
-━━━━━━━━━━━━━━━━━━━━
-+ Value'Integer is Integer
-────────────────────
-+ this[index Index]
+```brix
+(main
+  (let values (call (of Array (of Value U64)) (list (as 7 (of Value U64)))))
+  (= ([] ([] values 0) 0) 9ul)
+  (print (as ([] values 0) U64))
+)
 
-(this as Integer) + (index as Integer)
-────────────────────
-+ this[index Index] = value Integer
-
-value as This
+(type + (of Value Integer) (is Integer)
+  (fn-expr + (index-get this (param index Index)) _
+    (+ (as this Integer) (as index Integer))
+  )
+  (fn-expr + (index-set this (param index Index) (param value Integer)) _
+    (as value This)
+  )
+)
 ```
 
 ```output
 9
 ```
 
-```yumi
-. probe = Probe()
-probe.values()[probe.index()][probe.index()] = 9ul
--- probe.items[0] as U64
--- probe.calls
--- probe.indices
-━━━━━━━━━━━━━━━━━━━━
-+ Value'Integer is Integer
-────────────────────
-+ this[index Index]
+```brix
+(main
+  (let probe (call Probe))
+  (= ([] ([] (call (. probe values)) (call (. probe index))) (call (. probe index))) 9ul)
+  (print (as ([] (. probe items) 0) U64))
+  (print (. probe calls))
+  (print (. probe indices))
+)
 
-(this as Integer) + (index as Integer)
-────────────────────
-+ this[index Index] = value Integer
+(type + (of Value Integer) (is Integer)
+  (fn-expr + (index-get this (param index Index)) _
+    (+ (as this Integer) (as index Integer))
+  )
+  (fn-expr + (index-set this (param index Index) (param value Integer)) _
+    (as value This)
+  )
+)
 
-value as This
-━━━━━━━━━━━━━━━━━━━━
-+ Probe
-
-+ items = Array'(Value'U64)([7 as Value'U64])
-+ calls = 0
-+ indices = 0
-────────────────────
-+ do values
-
-calls += 1
-= items
-────────────────────
-+ do index
-
-indices += 1
-= 0
+(type + Probe
+  (prop + items _ (= (call (of Array (of Value U64)) (list (as 7 (of Value U64))))))
+  (prop + calls _ (= 0))
+  (prop + indices _ (= 0))
+  (fn-do + values _
+    (+= calls 1)
+    (return items)
+  )
+  (fn-do + index _
+    (+= indices 1)
+    (return 0)
+  )
+)
 ```
 
 ```output
@@ -132,28 +135,29 @@ indices += 1
 
 ### What []= answers for a number an index gave is stored through that index
 
-```yumi
-+ kept = Array'(Count'U8)([0 as Count'U8])
+```brix
+(prop + kept _ (= (call (of Array (of Count U8)) (list (as 0 (of Count U8))))))
+(blank)
 
-. counts = Array'(Count'U8)([0 as Count'U8, 0 as Count'U8])
-counts[1][3] = 10u8
-counts[1][1] = 20u8
-counts[0][7] = 1u8
--- counts[0] as U8, counts[1] as U8
-kept[0][2] = 5u8
--- kept[0] as U8
-. longs = Array'(Count'I64)([5 as Count'I64])
-. copy = longs[0]
-longs[0][1] = -8
--- longs[0] as I64, copy as I64
+(main
+  (let counts (call (of Array (of Count U8)) (list (as 0 (of Count U8)) (as 0 (of Count U8)))))
+  (= ([] ([] counts 1) 3) 10u8)
+  (= ([] ([] counts 1) 1) 20u8)
+  (= ([] ([] counts 0) 7) 1u8)
+  (print (tuple (as ([] counts 0) U8) (as ([] counts 1) U8)))
+  (= ([] ([] kept 0) 2) 5u8)
+  (print (as ([] kept 0) U8))
+  (let longs (call (of Array (of Count I64)) (list (as 5 (of Count I64)))))
+  (let copy ([] longs 0))
+  (= ([] ([] longs 0) 1) -8)
+  (print (tuple (as ([] longs 0) I64) (as copy I64)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Count'Integer is Integer
-
-────────────────────
-+ this[index Index] = value Integer
-
-((this as Integer) + value + (index as Integer)) as This
+(type + (of Count Integer) (is Integer)
+  (fn-expr + (index-set this (param index Index) (param value Integer)) _
+    (as (+ (as this Integer) value (as index Integer)) This)
+  )
+)
 ```
 
 ```output
@@ -164,46 +168,41 @@ longs[0][1] = -8
 
 ### What a number's []= answers is stored where the number is held: a local, a property, an argument
 
-```yumi
-. value = 1 as Count'U8
-value[2] = 10u8
--- value as U8
-. holder = Holder(3 as Count'U8)
-holder.count[1] = 4u8
--- holder.count as U8
-holder.add(5u8)
--- holder.count as U8
--- raise(value) as U8, value as U8
+```brix
+(main
+  (let value (as 1 (of Count U8)))
+  (= ([] value 2) 10u8)
+  (print (as value U8))
+  (let holder (call Holder (as 3 (of Count U8))))
+  (= ([] (. holder count) 1) 4u8)
+  (print (as (. holder count) U8))
+  (call (. holder add) 5u8)
+  (print (as (. holder count) U8))
+  (print (tuple (as (call raise value) U8) (as value U8)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do raise Count'U8
-    - given Count'U8
+(fn-do + raise (of Count U8)
+  (param given (of Count U8))
+  (= ([] given 0) 100u8)
+  (return given)
+)
 
-given[0] = 100u8
-= given
+(type + (of Count Integer) (is Integer)
+  (fn-expr + (index-set this (param index Index) (param value Integer)) _
+    (as (+ (as this Integer) value (as index Integer)) This)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Count'Integer is Integer
-
-────────────────────
-+ this[index Index] = value Integer
-
-((this as Integer) + value + (index as Integer)) as This
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ count Count'U8
-
-────────────────────
-+ This
-    - count
-
-────────────────────
-+ do add
-    - value U8
-
-count[0] = value
+(type + Holder
+  (prop + count (of Count U8))
+  (fn-do + This _
+    (param count _)
+  )
+  (fn-do + add _
+    (param value U8)
+    (= ([] count 0) value)
+  )
+)
 ```
 
 ```output
@@ -213,12 +212,16 @@ count[0] = value
 (113, 13)
 ```
 
-```yumi
-/core/bitmap
+```brix
+(import /core/bitmap)
+(blank)
 
-for capacity in [0, 1, 63, 64, 65, 130]
-    . bits = BitmapBuffer(capacity)
-    -- "${bits.capacity} ${bits.count(false)} ${bits.count(true)}"
+(main
+  (for (in capacity (list 0 1 63 64 65 130))
+    (let bits (call BitmapBuffer capacity))
+    (print (str (. bits capacity) " " (call (. bits count) false) " " (call (. bits count) true)))
+  )
+)
 ```
 
 ```output
@@ -230,45 +233,54 @@ for capacity in [0, 1, 63, 64, 65, 130]
 130 130 0
 ```
 
-```yumi
-/core/bitmap
+```brix
+(import /core/bitmap)
+(blank)
 
-read(Bitmap'U8(), 8)
-read(Bitmap'U8(), Size.max)
-write(Bitmap'U8(), 8)
-write(Bitmap'U8(), Size.max)
-read(BitmapBuffer(8), 8)
-read(BitmapBuffer(8), Size.max)
-write(BitmapBuffer(8), 8)
-write(BitmapBuffer(8), Size.max)
-read(BitmapBuffer(0), 0)
-read(BitmapBuffer(0), Size.max)
-write(BitmapBuffer(0), 0)
-write(BitmapBuffer(0), Size.max)
+(main
+  (call read (call (of Bitmap U8)) 8)
+  (call read (call (of Bitmap U8)) (. Size max))
+  (call write (call (of Bitmap U8)) 8)
+  (call write (call (of Bitmap U8)) (. Size max))
+  (call read (call BitmapBuffer 8) 8)
+  (call read (call BitmapBuffer 8) (. Size max))
+  (call write (call BitmapBuffer 8) 8)
+  (call write (call BitmapBuffer 8) (. Size max))
+  (call read (call BitmapBuffer 0) 0)
+  (call read (call BitmapBuffer 0) (. Size max))
+  (call write (call BitmapBuffer 0) 0)
+  (call write (call BitmapBuffer 0) (. Size max))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do read'Bits
-    - bits Bits
-    - index Index
+(fn-do _ (of read Bits) _
+  (param bits Bits)
+  (param index Index)
+  (let attempt
+    (do-new
+      (let value ([] bits index))
+      (on-failure failure
+        (let panic (? Panic) failure)
+        (print (str "read " index ": " (is panic OutOfBoundsError) " " panic))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. attempt = do new
-    . value = bits[index]
-catch failure
-    . panic Panic? = failure
-    -- "read $index: ${panic is OutOfBoundsError} $panic"
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-_ do write'Bits
-    - bits Bits
-    - index Index
-
-. attempt = do new
-    bits[index] = true
-catch failure
-    . panic Panic? = failure
-    -- "write $index: ${panic is OutOfBoundsError} $panic"
-attempt.wait()
+(fn-do _ (of write Bits) _
+  (param bits Bits)
+  (param index Index)
+  (let attempt
+    (do-new
+      (= ([] bits index) true)
+      (on-failure failure
+        (let panic (? Panic) failure)
+        (print (str "write " index ": " (is panic OutOfBoundsError) " " panic))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -286,35 +298,44 @@ write 0: true Bitmap index out of bounds
 write 9223372036854775807: true Bitmap index out of bounds
 ```
 
-```yumi
-/core/bitmap
+```brix
+(import /core/bitmap)
+(blank)
 
-read(Bitmap'U8(), -1)
-write(Bitmap'U8(), -1)
-read(BitmapBuffer(8), -1)
-write(BitmapBuffer(8), -1)
+(main
+  (call read (call (of Bitmap U8)) -1)
+  (call write (call (of Bitmap U8)) -1)
+  (call read (call BitmapBuffer 8) -1)
+  (call write (call BitmapBuffer 8) -1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do read'Bits
-    - bits Bits
-    - index Index
+(fn-do _ (of read Bits) _
+  (param bits Bits)
+  (param index Index)
+  (let attempt
+    (do-new
+      (let value ([] bits index))
+      (on-failure failure
+        (print (str "read " index ": " (is failure OutOfBoundsError) " " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. attempt = do new
-    . value = bits[index]
-catch failure
-    -- "read $index: ${failure is OutOfBoundsError} $failure"
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-_ do write'Bits
-    - bits Bits
-    - index Index
-
-. attempt = do new
-    bits[index] = true
-catch failure
-    -- "write $index: ${failure is OutOfBoundsError} $failure"
-attempt.wait()
+(fn-do _ (of write Bits) _
+  (param bits Bits)
+  (param index Index)
+  (let attempt
+    (do-new
+      (= ([] bits index) true)
+      (on-failure failure
+        (print (str "write " index ": " (is failure OutOfBoundsError) " " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -324,21 +345,25 @@ read -1: true Bitmap index out of bounds
 write -1: true Bitmap index out of bounds
 ```
 
-```yumi
-/core/bitmap
+```brix
+(import /core/bitmap)
+(blank)
 
-for index in 0 .. < 8
-    . raw = (1 as I8) /lshift/ index
-    . bits = Bitmap'I8(raw)
-    -- "$raw ${bits as I8} ${bits[index]} ${bits.count(true)}"
-. one = Bitmap'I1(1 as I1)
--- "${one as I1} ${one[0]}"
-. top = Bitmap'I64((1 as I64) /lshift/ 63)
--- "${top as I64} ${top[63]} ${top.count(true)}"
-. high = Bitmap'U64(9223372036854775809ul)
--- "${high as U64} ${high[63]} ${high[0]} ${high.count(true)}"
-. ones = Bitmap'I64(-1l)
--- "${ones as I64} ${ones.count(true)}"
+(main
+  (for (in index (..< 0 8))
+    (let raw (/lshift/ (as 1 I8) index))
+    (let bits (call (of Bitmap I8) raw))
+    (print (str raw " " (as bits I8) " " ([] bits index) " " (call (. bits count) true)))
+  )
+  (let one (call (of Bitmap I1) (as 1 I1)))
+  (print (str (as one I1) " " ([] one 0)))
+  (let top (call (of Bitmap I64) (/lshift/ (as 1 I64) 63)))
+  (print (str (as top I64) " " ([] top 63) " " (call (. top count) true)))
+  (let high (call (of Bitmap U64) 9223372036854775809ul))
+  (print (str (as high U64) " " ([] high 63) " " ([] high 0) " " (call (. high count) true)))
+  (let ones (call (of Bitmap I64) -1l))
+  (print (str (as ones I64) " " (call (. ones count) true)))
+)
 ```
 
 ```output
@@ -356,23 +381,26 @@ for index in 0 .. < 8
 -1 64
 ```
 
-```yumi
-/core/bitmap
+```brix
+(import /core/bitmap)
+(blank)
 
-. bits = BitmapBuffer(65)
-. alias = bits
-alias[64] = true
--- bits[64]
-alias.fill(true)
--- bits.count(true)
-. copy = bits.copy()
-bits[64] = false
--- copy[64]
-copy[0] = false
--- bits[0]
--- copy.capacity
-. empty = BitmapBuffer(0).copy()
--- "${empty.capacity} ${empty.count(true)}"
+(main
+  (let bits (call BitmapBuffer 65))
+  (let alias bits)
+  (= ([] alias 64) true)
+  (print ([] bits 64))
+  (call (. alias fill) true)
+  (print (call (. bits count) true))
+  (let copy (call (. bits copy)))
+  (= ([] bits 64) false)
+  (print ([] copy 64))
+  (= ([] copy 0) false)
+  (print ([] bits 0))
+  (print (. copy capacity))
+  (let empty (call (. (call BitmapBuffer 0) copy)))
+  (print (str (. empty capacity) " " (call (. empty count) true)))
+)
 ```
 
 ```output
@@ -384,20 +412,23 @@ true
 0 0
 ```
 
-```yumi
-/core/arena
-/core/bitmap
+```brix
+(import /core/arena)
+(import /core/bitmap)
+(blank)
 
-. source-arena = Arena()
-. target-arena = Arena()
-. bits = BitmapBuffer(source-arena, 65)
-bits[64] = true
-. copy = bits.copy(target-arena)
-source-arena.release()
--- copy[64]
-copy[0] = true
--- copy.count(true)
-target-arena.release()
+(main
+  (let source-arena (call Arena))
+  (let target-arena (call Arena))
+  (let bits (call BitmapBuffer source-arena 65))
+  (= ([] bits 64) true)
+  (let copy (call (. bits copy) target-arena))
+  (call (. source-arena release))
+  (print ([] copy 64))
+  (= ([] copy 0) true)
+  (print (call (. copy count) true))
+  (call (. target-arena release))
+)
 ```
 
 ```output
@@ -405,21 +436,25 @@ true
 2
 ```
 
-```yumi
-/core/bitmap
+```brix
+(import /core/bitmap)
+(blank)
 
-. empty = Bitmap'I1()
-. full = empty.fill(true)
--- "${full.count(true)} ${full.count(false)} ${empty.count(false)} ${full.fill(false) as I1}"
-. wide-empty = Bitmap'U64()
-. wide-full = wide-empty.fill(true)
--- "${wide-full.count(true)} ${wide-full.count(false)} ${wide-empty.count(false)}"
--- wide-full as U64
--- wide-full.fill(false) as U64
-. sparse = Bitmap'U8()
-for index in [0, 3, 7]
-    sparse[index] = true
--- "${sparse.count(true)} ${sparse.count(false)} ${sparse as U8}"
+(main
+  (let empty (call (of Bitmap I1)))
+  (let full (call (. empty fill) true))
+  (print (str (call (. full count) true) " " (call (. full count) false) " " (call (. empty count) false) " " (as (call (. full fill) false) I1)))
+  (let wide-empty (call (of Bitmap U64)))
+  (let wide-full (call (. wide-empty fill) true))
+  (print (str (call (. wide-full count) true) " " (call (. wide-full count) false) " " (call (. wide-empty count) false)))
+  (print (as wide-full U64))
+  (print (as (call (. wide-full fill) false) U64))
+  (let sparse (call (of Bitmap U8)))
+  (for (in index (list 0 3 7))
+    (= ([] sparse index) true)
+  )
+  (print (str (call (. sparse count) true) " " (call (. sparse count) false) " " (as sparse U8)))
+)
 ```
 
 ```output
@@ -430,20 +465,25 @@ for index in [0, 3, 7]
 3 5 137
 ```
 
-```yumi
-/core/bitmap
+```brix
+(import /core/bitmap)
+(blank)
 
-for capacity in [0, 1, 64, 65, 130]
-    . bits = BitmapBuffer(capacity)
-    bits.fill(true)
-    . set = bits.count(true)
-    . clear = bits.count(false)
-    bits.fill(false)
-    -- "$set $clear ${bits.count(false)} ${bits.capacity}"
-. sparse = BitmapBuffer(8)
-for index in [0, 3, 7]
-    sparse[index] = true
--- "${sparse.count(true)} ${sparse.count(false)}"
+(main
+  (for (in capacity (list 0 1 64 65 130))
+    (let bits (call BitmapBuffer capacity))
+    (call (. bits fill) true)
+    (let set (call (. bits count) true))
+    (let clear (call (. bits count) false))
+    (call (. bits fill) false)
+    (print (str set " " clear " " (call (. bits count) false) " " (. bits capacity)))
+  )
+  (let sparse (call BitmapBuffer 8))
+  (for (in index (list 0 3 7))
+    (= ([] sparse index) true)
+  )
+  (print (str (call (. sparse count) true) " " (call (. sparse count) false)))
+)
 ```
 
 ```output
@@ -455,22 +495,25 @@ for index in [0, 3, 7]
 3 5
 ```
 
-```yumi
-/core/bitmap
+```brix
+(import /core/bitmap)
+(blank)
 
-. bits = Bitmap'I8()
-bits[7] = true
--- "${bits[7]} ${bits.count(true)} ${bits as I8}"
-bits[7] = false
--- bits as I8
-. flags = Bitmap'U8()
-flags[3] = true
-flags[3] = true
--- "${flags[3]} ${flags.count(true)}"
-flags[4] = true
-flags[3] = false
-flags[3] = false
--- "${flags[3]} ${flags[4]} ${flags.count(true)}"
+(main
+  (let bits (call (of Bitmap I8)))
+  (= ([] bits 7) true)
+  (print (str ([] bits 7) " " (call (. bits count) true) " " (as bits I8)))
+  (= ([] bits 7) false)
+  (print (as bits I8))
+  (let flags (call (of Bitmap U8)))
+  (= ([] flags 3) true)
+  (= ([] flags 3) true)
+  (print (str ([] flags 3) " " (call (. flags count) true)))
+  (= ([] flags 4) true)
+  (= ([] flags 3) false)
+  (= ([] flags 3) false)
+  (print (str ([] flags 3) " " ([] flags 4) " " (call (. flags count) true)))
+)
 ```
 
 ```output
@@ -480,15 +523,19 @@ true 1
 false true 1
 ```
 
-```yumi
-/core/bitmap
+```brix
+(import /core/bitmap)
+(blank)
 
-. bits = BitmapBuffer(130)
-for index in [0, 63, 64, 129]
-    bits[index] = true
-    -- "${bits[index]} ${bits.count(true)} ${bits.find(true)!}"
-    bits[index] = false
-    -- bits.count(true)
+(main
+  (let bits (call BitmapBuffer 130))
+  (for (in index (list 0 63 64 129))
+    (= ([] bits index) true)
+    (print (str ([] bits index) " " (call (. bits count) true) " " (!! (call (. bits find) true))))
+    (= ([] bits index) false)
+    (print (call (. bits count) true))
+  )
+)
 ```
 
 ```output
@@ -502,32 +549,40 @@ true 1 129
 0
 ```
 
-```yumi
-/core/bitmap
+```brix
+(import /core/bitmap)
+(blank)
 
-. bits = Bitmap'U8()
-. iterator = bits as Iterable'Bool
-bits = bits.fill(true)
-. clear = 0
-for bit in iterator
-    if !bit
-        clear += 1
--- clear
--- bits.count(true)
-. changing = Bitmap'U8()
-. seen = 0
-for bit in changing
-    changing = changing.fill(true)
-    if !bit
-        seen += 1
--- seen
-. source = Bitmap'U8()
-. indices = source.indices(false)
-source = source.fill(true)
-. count = 0
-for index in indices
-    count += 1
--- count
+(main
+  (let bits (call (of Bitmap U8)))
+  (let iterator (as bits (of Iterable Bool)))
+  (= bits (call (. bits fill) true))
+  (let clear 0)
+  (for (in bit iterator)
+    (if (not bit)
+      (+= clear 1)
+    )
+  )
+  (print clear)
+  (print (call (. bits count) true))
+  (let changing (call (of Bitmap U8)))
+  (let seen 0)
+  (for (in bit changing)
+    (= changing (call (. changing fill) true))
+    (if (not bit)
+      (+= seen 1)
+    )
+  )
+  (print seen)
+  (let source (call (of Bitmap U8)))
+  (let indices (call (. source indices) false))
+  (= source (call (. source fill) true))
+  (let count 0)
+  (for (in index indices)
+    (+= count 1)
+  )
+  (print count)
+)
 ```
 
 ```output
@@ -537,23 +592,29 @@ for index in indices
 8
 ```
 
-```yumi
-/core/bitmap
+```brix
+(import /core/bitmap)
+(blank)
 
-. bits = BitmapBuffer(3)
-. iterator = bits as Iterable'Bool
-bits[2] = true
-for bit in iterator
-    -- "before $bit"
-. live = BitmapBuffer(3)
-for bit in live
-    -- "during $bit"
-    live[2] = true
-. source = BitmapBuffer(3)
-. snapshot = source.copy() as Iterable'Bool
-source.fill(true)
-for bit in snapshot
-    -- "copy $bit"
+(main
+  (let bits (call BitmapBuffer 3))
+  (let iterator (as bits (of Iterable Bool)))
+  (= ([] bits 2) true)
+  (for (in bit iterator)
+    (print (str "before " bit))
+  )
+  (let live (call BitmapBuffer 3))
+  (for (in bit live)
+    (print (str "during " bit))
+    (= ([] live 2) true)
+  )
+  (let source (call BitmapBuffer 3))
+  (let snapshot (as (call (. source copy)) (of Iterable Bool)))
+  (call (. source fill) true)
+  (for (in bit snapshot)
+    (print (str "copy " bit))
+  )
+)
 ```
 
 ```output
@@ -568,27 +629,36 @@ copy false
 copy false
 ```
 
-```yumi
-/core/bitmap
+```brix
+(import /core/bitmap)
+(blank)
 
-. packed = Bitmap'U8(66 as U8)
-for index in packed.indices(true)
-    -- "packed true $index"
-for index in packed.indices(false)
-    -- "packed false $index"
-. buffer = BitmapBuffer(8)
-buffer[1] = true
-buffer[6] = true
-for index in buffer.indices(true)
-    -- "buffer true $index"
-for index in buffer.indices(false)
-    -- "buffer false $index"
-. empty = BitmapBuffer(0)
-for bit in empty
-    -- "empty bit"
-for index in empty.indices(false)
-    -- "empty index"
--- "done"
+(main
+  (let packed (call (of Bitmap U8) (as 66 U8)))
+  (for (in index (call (. packed indices) true))
+    (print (str "packed true " index))
+  )
+  (for (in index (call (. packed indices) false))
+    (print (str "packed false " index))
+  )
+  (let buffer (call BitmapBuffer 8))
+  (= ([] buffer 1) true)
+  (= ([] buffer 6) true)
+  (for (in index (call (. buffer indices) true))
+    (print (str "buffer true " index))
+  )
+  (for (in index (call (. buffer indices) false))
+    (print (str "buffer false " index))
+  )
+  (let empty (call BitmapBuffer 0))
+  (for (in bit empty)
+    (print "empty bit")
+  )
+  (for (in index (call (. empty indices) false))
+    (print "empty index")
+  )
+  (print "done")
+)
 ```
 
 ```output
@@ -611,43 +681,50 @@ buffer false 7
 done
 ```
 
-```yumi
-/BxGC/BxGCTest.h
-/core/bitmap
+```brix
+(import /BxGC/BxGCTest.h)
+(import /core/bitmap)
+(blank)
 
-. iterator = retained-iterator()
-C:brixCollect()
-. seen = 0
-for bit in iterator
-    if bit
-        seen += 1
--- seen
+(main
+  (let iterator (call retained-iterator))
+  (call C:brixCollect)
+  (let seen 0)
+  (for (in bit iterator)
+    (if bit
+      (+= seen 1)
+    )
+  )
+  (print seen)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do retained-iterator
-
-. bits = BitmapBuffer(257)
-bits.fill(true)
-= bits as Iterable'Bool
+(fn-do _ retained-iterator _
+  (let bits (call BitmapBuffer 257))
+  (call (. bits fill) true)
+  (return (as bits (of Iterable Bool)))
+)
 ```
 
 ```output
 257
 ```
 
-```yumi
-/core/bitmap
+```brix
+(import /core/bitmap)
+(blank)
 
-. bits = Bitmap'U8()
--- bits.find(true)
--- bits.fill(true).find(false)
-bits[6] = true
-bits[2] = true
--- bits.find(true)
--- bits.find(false)
-bits[0] = true
-bits[1] = true
--- bits.find(false)
+(main
+  (let bits (call (of Bitmap U8)))
+  (print (call (. bits find) true))
+  (print (call (. (call (. bits fill) true) find) false))
+  (= ([] bits 6) true)
+  (= ([] bits 2) true)
+  (print (call (. bits find) true))
+  (print (call (. bits find) false))
+  (= ([] bits 0) true)
+  (= ([] bits 1) true)
+  (print (call (. bits find) false))
+)
 ```
 
 ```output
@@ -658,31 +735,37 @@ unknown
 3
 ```
 
-```yumi
-/core/bitmap
+```brix
+(import /core/bitmap)
+(blank)
 
-. bits = Bitmap'U8()
--- bits.find-consecutive(0, false)
--- bits.find-consecutive(8, false)
--- bits.find-consecutive(9, false)
--- bits.find-consecutive(Size.max, false)
-for index in [1, 2, 5, 6, 7]
-    bits[index] = true
--- bits.find-consecutive(2, true)
--- bits.find-consecutive(3, true)
--- bits.find-consecutive(4, true)
--- bits.find-consecutive(2, false)
--- bits.find-consecutive(3, false)
-. ends = Bitmap'U8()
-for index in [0, 1, 6, 7]
-    ends[index] = true
--- ends.find-consecutive(3, true)
--- ends.find-consecutive(4, false)
-. alternating = Bitmap'U8()
-for index in [0, 2, 4, 6]
-    alternating[index] = true
--- alternating.find-consecutive(2, true)
--- alternating.find-consecutive(2, false)
+(main
+  (let bits (call (of Bitmap U8)))
+  (print (call (. bits find-consecutive) 0 false))
+  (print (call (. bits find-consecutive) 8 false))
+  (print (call (. bits find-consecutive) 9 false))
+  (print (call (. bits find-consecutive) (. Size max) false))
+  (for (in index (list 1 2 5 6 7))
+    (= ([] bits index) true)
+  )
+  (print (call (. bits find-consecutive) 2 true))
+  (print (call (. bits find-consecutive) 3 true))
+  (print (call (. bits find-consecutive) 4 true))
+  (print (call (. bits find-consecutive) 2 false))
+  (print (call (. bits find-consecutive) 3 false))
+  (let ends (call (of Bitmap U8)))
+  (for (in index (list 0 1 6 7))
+    (= ([] ends index) true)
+  )
+  (print (call (. ends find-consecutive) 3 true))
+  (print (call (. ends find-consecutive) 4 false))
+  (let alternating (call (of Bitmap U8)))
+  (for (in index (list 0 2 4 6))
+    (= ([] alternating index) true)
+  )
+  (print (call (. alternating find-consecutive) 2 true))
+  (print (call (. alternating find-consecutive) 2 false))
+)
 ```
 
 ```output
@@ -701,28 +784,33 @@ unknown
 unknown
 ```
 
-```yumi
-/core/bitmap
+```brix
+(import /core/bitmap)
+(blank)
 
-. bits = BitmapBuffer(193)
-for index in 60 .. < 140
-    bits[index] = true
--- bits.find-consecutive(80, true)
--- bits.find-consecutive(81, true)
-. word = BitmapBuffer(130)
-for index in 62 .. < 66
-    word[index] = true
--- word.find-consecutive(4, true)
--- word.find-consecutive(5, true)
-. padded = BitmapBuffer(65)
-padded.fill(true)
--- padded.find(false)
--- padded.find-consecutive(1, false)
--- padded.find-consecutive(65, true)
-. empty = BitmapBuffer(0)
--- empty.find(true)
--- empty.find(false)
--- empty.find-consecutive(1, false)
+(main
+  (let bits (call BitmapBuffer 193))
+  (for (in index (..< 60 140))
+    (= ([] bits index) true)
+  )
+  (print (call (. bits find-consecutive) 80 true))
+  (print (call (. bits find-consecutive) 81 true))
+  (let word (call BitmapBuffer 130))
+  (for (in index (..< 62 66))
+    (= ([] word index) true)
+  )
+  (print (call (. word find-consecutive) 4 true))
+  (print (call (. word find-consecutive) 5 true))
+  (let padded (call BitmapBuffer 65))
+  (call (. padded fill) true)
+  (print (call (. padded find) false))
+  (print (call (. padded find-consecutive) 1 false))
+  (print (call (. padded find-consecutive) 65 true))
+  (let empty (call BitmapBuffer 0))
+  (print (call (. empty find) true))
+  (print (call (. empty find) false))
+  (print (call (. empty find-consecutive) 1 false))
+)
 ```
 
 ```output
@@ -740,27 +828,40 @@ unknown
 
 ### BitmapBuffer rejects a negative capacity and counts the bits of a partial final word.
 
-```yumi
-/core/arena
-/core/bitmap
+```brix
+(import /core/arena)
+(import /core/bitmap)
+(blank)
 
-. arena = Arena()
-for capacity in [-1, -64]
-    . gc = do new
-        . bits = BitmapBuffer(capacity)
-    catch failure
-        -- "gc $capacity: $failure"
-    gc.wait()
-    . arena-attempt = do new
-        . bits = BitmapBuffer(arena, capacity)
-    catch failure
-        -- "arena $capacity: $failure"
-    arena-attempt.wait()
-arena.release()
-for capacity in [63, 64, 65]
-    . bits = BitmapBuffer(capacity)
-    bits.fill(true)
-    -- "${bits.capacity} ${bits[capacity - 1]} ${bits.count(true)} ${bits.count(false)}"
+(main
+  (let arena (call Arena))
+  (for (in capacity (list -1 -64))
+    (let gc
+      (do-new
+        (let bits (call BitmapBuffer capacity))
+        (on-failure failure
+          (print (str "gc " capacity ": " failure))
+        )
+      )
+    )
+    (call (. gc wait))
+    (let arena-attempt
+      (do-new
+        (let bits (call BitmapBuffer arena capacity))
+        (on-failure failure
+          (print (str "arena " capacity ": " failure))
+        )
+      )
+    )
+    (call (. arena-attempt wait))
+  )
+  (call (. arena release))
+  (for (in capacity (list 63 64 65))
+    (let bits (call BitmapBuffer capacity))
+    (call (. bits fill) true)
+    (print (str (. bits capacity) " " ([] bits (- capacity 1)) " " (call (. bits count) true) " " (call (. bits count) false)))
+  )
+)
 ```
 
 ```output
@@ -772,4 +873,3 @@ arena -64: BitmapBuffer capacity is negative
 64 true 64 0
 65 true 65 0
 ```
-

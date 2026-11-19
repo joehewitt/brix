@@ -1,0 +1,58 @@
+; benchmark.meta description: Tokenizes UTF-8 text with grammars.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+
+(main
+  (let tokens
+    (match (call utf8-tokenizer-source)
+      (~ \utf8-tokenizer-document)
+      (throw (call Panic "utf8-tokenizer did not parse"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in token tokens)
+    (+= checksum token)
+  )
+  (blank)
+  (print (str "bench-result stream/utf8-tokenizer checksum=" checksum))
+)
+
+(fn-expr + utf8-tokenizer-document _ (over: Char)
+  (~ (: tokens (+ \utf8-token))
+    tokens
+  )
+  (where
+    (lazy utf8-token Size
+      (pattern
+        (~ (seq "café:" (: value (* (seq (! "\n") .))) "\n")
+          (* (. value length) 3)
+        )
+        (~ (seq "mañana:" (: value (* (seq (! "\n") .))) "\n")
+          (* (. value length) 5)
+        )
+        (~ (seq "東京:" (: value (* (seq (! "\n") .))) "\n")
+          (* (. value length) 7)
+        )
+        (~ (seq "emoji:" (: value (* (seq (! "\n") .))) "\n")
+          (* (. value length) 11)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ utf8-tokenizer-source _
+  (call (. "" join) (in (call utf8-tokenizer-block each) (..< 0 80)))
+)
+
+(fn-expr _ utf8-tokenizer-block _
+  (param index Int)
+  (paragraph
+    (str "café: crème brûlée numéro " index)
+    (str "mañana: jalapeño piñata año " index)
+    (str "東京: 日本語の見出し " index)
+    (str "emoji: snowman ☃ music ♫ heart ♥ " index (str "\n"))
+  )
+)

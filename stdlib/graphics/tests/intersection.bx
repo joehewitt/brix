@@ -1,0 +1,100 @@
+(import /graphics/curve)
+(import /graphics/intersection)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /graphics/shapes)
+(import /graphics/tests/support/geometry)
+(import /math)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-expr + tests TestRender
+  (header (call test "Curve Line Intersections"))
+  (tuple 0 (. (call intersect-path-line (call crossing-curve) (tuple 0 20) (tuple 10 20)) length))
+  (tuple 1 (. (call intersect-path-line (call crossing-curve) (tuple 0 7.5) (tuple 10 7.5)) length))
+  (tuple true (call near-intersections (call intersect-path-line (call crossing-curve) (tuple 0 7.5) (tuple 10 7.5)) (list 0.5) (list 0.5)))
+  (tuple 2 (. (call intersect-path-line (call crossing-curve) (tuple 0 5) (tuple 10 5)) length))
+  (tuple true (call expected-crossing-intersections (call intersect-path-line (call crossing-curve) (tuple 0 5) (tuple 10 5))))
+  (tuple true (call crossing-line-intersections-sorted))
+  (header (call test "Curve Curve Intersections"))
+  (tuple true (call crossing-arcs-meet-once false))
+  (tuple true (call crossing-arcs-meet-once true))
+  (header (call test "Curve Tangency Precision"))
+  (tuple true (call tangent-curve-precision))
+)
+
+(fn-do + crossing-arcs-meet-once _
+  (param reversed Bool)
+  (let first
+    (call Curve
+      (block
+        (arg (tuple 136.24613570265703 127.26086968841116))
+        (arg (tuple 137.1809999188523 131.95793712812724))
+        (arg (tuple 140.71739975574994 135.70794896465424))
+        (arg (tuple 145.35163347742176 136.91637415840148))
+        (arg .segment-type-cubic)
+      )
+    )
+  )
+  (let second
+    (call Curve
+      (block
+        (arg (tuple 148.70551487989482 128.89924335623766))
+        (arg (tuple 142.71946146454377 125.46030507189589))
+        (arg (tuple 135.0789960742474 127.52514986154284))
+        (arg (tuple 131.64005778990565 133.51120327689387))
+        (arg .segment-type-cubic)
+      )
+    )
+  )
+  (let hits (list CurveIntersection))
+  (if reversed
+    (call intersect-curves hits second first)
+    (return (and (== (. hits length) 1) (call near 0.6455 (. ([] hits 0) t1) 0.001) (call near 0.104 (. ([] hits 0) t2) 0.001)))
+  )
+  (blank)
+  (call intersect-curves hits first second)
+  (return (and (== (. hits length) 1) (call near 0.104 (. ([] hits 0) t1) 0.001) (call near 0.6455 (. ([] hits 0) t2) 0.001)))
+)
+
+(fn-expr + crossing-line-intersections-sorted _
+  (< (. ([] intersections 0) t1) (. ([] intersections 1) t1))
+  (where
+    (lazy intersections (call intersect-path-line (call crossing-curve) (tuple 0 5) (tuple 10 5)))
+  )
+)
+
+(fn-expr + expected-crossing-intersections _
+  (param intersections (list CurveIntersection))
+  (call near-intersections intersections (list 0.211325 0.788675) (list 0.115100 0.884900))
+)
+
+(fn-do + crossing-curve _
+  (let curve (call Path))
+  (call (. curve move-to) 0 0)
+  (call (. curve cubic-curve-to) 0 10 10 10 10 0)
+  (return curve)
+)
+
+(fn-do + tangent-curve-precision _
+  (let first (call circle (tuple 50 50) 30))
+  (let second (call circle (tuple 110 50) 30))
+  (let hits (list CurveIntersection))
+  (for (in a (. first curves))
+    (for (in b (. second curves))
+      (call (. hits clear))
+      (call intersect-curves hits a b)
+      (for (in hit hits)
+        (let pa (. (call (. a split-at-range) 0 (. hit t1)) anchor2))
+        (let pb (. (call (. b split-at-range) 0 (. hit t2)) anchor2))
+        (return-if false (if (> (call (. pa distance) pb) 0.00001)))
+      )
+    )
+  )
+  (return true)
+)

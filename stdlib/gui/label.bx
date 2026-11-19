@@ -1,0 +1,435 @@
+(import ./box)
+(import ./primitives)
+(import /BxAppleGUI/BxAppleGUI.h)
+(import /graphics/canvas)
+(import /graphics/primitives)
+(import /graphics/text)
+(import /math)
+
+(type + Label (is Box)
+  (prop + text String)
+  (prop + shorthand (? String))
+  (blank)
+  (prop _ text-layout (? TextLayout))
+  (prop _ shorthand-layout (? TextLayout))
+  (prop _ tight-selected-width Length (= -1))
+  (prop _ tight-cap (? Length))
+  (prop _ cached-style-bits U8)
+  (blank)
+  (depends invalidate-content-size text shorthand)
+  (fn-do + This _
+    (param text String)
+  )
+  (fn-expr + text-layout-snapshot _ :get
+    (?. text-layout snapshot)
+  )
+  (fn-expr _ selected-text-width _ :get
+    tight-selected-width
+  )
+  (fn-expr _ has-cached-style-bit _
+    (param bit U8)
+    (!= (/and/ cached-style-bits bit) 0)
+  )
+  (fn-do _ set-cached-style-bit _
+    (param bit U8)
+    (param value Bool)
+    (if value
+      (= cached-style-bits (/or/ cached-style-bits bit))
+      (else
+        (= cached-style-bits (/and/ cached-style-bits (call not bit)))
+      )
+    )
+  )
+  (fn-expr _ layout-style-matches _
+    (case? (!= (call has-cached-style-bit 1) truncates-tail)
+      false
+    )
+    (case? (!= (call has-cached-style-bit 8) truncates-head)
+      false
+    )
+    (case? (!= (call has-cached-style-bit 2) wrap)
+      false
+    )
+    (default
+      (== (call has-cached-style-bit 4) tight)
+    )
+    (where
+      (lazy truncates-tail (== $text-overflow (. TextOverflow truncate-tail)))
+      (lazy truncates-head (== $text-overflow (. TextOverflow truncate-head)))
+      (lazy wrap (== $text-wrap (. TextWrap word)))
+      (lazy tight (and wrap (== $text-wrap-sizing (. TextWrapSizing tight))))
+    )
+  )
+  (fn-do _ cache-layout-style _
+    (let wrap (== $text-wrap (. TextWrap word)))
+    (= cached-style-bits 0)
+    (call set-cached-style-bit 1 (== $text-overflow (. TextOverflow truncate-tail)))
+    (call set-cached-style-bit 8 (== $text-overflow (. TextOverflow truncate-head)))
+    (call set-cached-style-bit 2 wrap)
+    (call set-cached-style-bit 4 (and wrap (== $text-wrap-sizing (. TextWrapSizing tight))))
+  )
+  (fn-do + measure _
+    (param query MeasureQuery (= (call measure-fit-query)))
+    (let font effective-font)
+    (if text-layout
+      (let request (. text-layout request))
+      (let inputs-changed (or (!= (. request text) text) (!= (. request font) font)))
+      (= inputs-changed (or inputs-changed (not (call layout-style-matches))))
+      (if inputs-changed
+        (call clear-measure-cache)
+      )
+    )
+    (return (call (. super measure) query))
+  )
+  (fn-do + close _
+    (call release-text-layout)
+    (call release-shorthand-layout)
+    (call (. super close))
+  )
+  (fn-do + paint-self _
+    (param canvas Canvas)
+    (let content content-bounds)
+    (return-if (if (or (<= (. content width) 0) (<= (. content height) 0))))
+    (blank)
+    (do-use (. canvas saved-state)
+      (= (. canvas font) effective-font)
+      (= (. canvas text-color) $color)
+      (= (. canvas text-fill) $text-fill)
+      (call (. canvas clip) content)
+      (let full (call ensure-text-layout canvas))
+      (let layout
+        (scope (if-expr abbreviated (call ensure-shorthand-layout (!! shorthand) (. content width)) full)
+          (lazy abbreviated (call abbreviates full (. content width)))
+        )
+      )
+      (call (. canvas draw-text) layout (call text-rect content layout) $text-alignment)
+    )
+  )
+  (fn-do + constrained-outer-main-size Length
+    (param proposed Length)
+    (param orient Orientation)
+    (param available Length)
+    (let base (call (. super constrained-outer-main-size) proposed orient available))
+    (let short shorthand)
+    (let layout text-layout)
+    (return-if base (if (or (not short) (not layout) (!= orient (. Orientation horizontal)) (== $text-wrap (. TextWrap word)))))
+    (let extras (+ (. margin-edges horizontal) (. padding-edges horizontal) (. border-edges horizontal)))
+    (return-if base (if (>= base (- (+ (call gui-device-ceiled (. layout natural-width)) extras) 0.01))))
+    (let condensed (+ (call gui-device-ceiled (. (call ensure-shorthand-layout short null) natural-width)) extras))
+    (return (call (. super constrained-outer-main-size) (call min base condensed) orient available))
+  )
+  (fn-expr + first-baseline _ :get
+    (if-expr (not layout) null (+ (. (call text-rect content layout) y) (. layout baseline)))
+    (where
+      (lazy layout text-layout)
+      (lazy content content-bounds)
+    )
+  )
+  (fn-do + measured-content-size _
+    (param query MeasureQuery)
+    (let font effective-font)
+    (let maximum-width (call measured-text-maximum-width query))
+    (let wrap-word (== $text-wrap (. TextWrap word)))
+    (let use-tight (and wrap-word (== $text-wrap-sizing (. TextWrapSizing tight))))
+    (if use-tight
+      (let layout (call ensure-tight-text-layout font maximum-width (. TextOverflow clip)))
+      (return (call Dimensions (call gui-device-ceiled selected-text-width) (call gui-device-ceiled (. layout height))))
+    )
+    (blank)
+    (if (not (call measure-layout-serves font wrap-word maximum-width))
+      (call replace-text-layout
+        (block
+          (arg
+            (call TextLayout
+              (block
+                (arg text)
+                (arg font)
+                (arg maximum-width)
+                (arg (. TextOverflow clip))
+                (arg $text-wrap)
+                (arg effective-line-spacing)
+              )
+            )
+          )
+          (arg -1)
+        )
+      )
+    )
+    (let layout (!! text-layout))
+    (let height (call gui-device-ceiled (. layout height)))
+    (let pinned-width (if-expr wrap-word null (call pinned-content-width query)))
+    (return-if (call Dimensions pinned-width height) (if (!= pinned-width null)))
+    (let ceiled-width (call gui-device-ceiled (. layout natural-width)))
+    (if (= (| (: short String)) shorthand)
+      (let limit (call measured-available-width query))
+      (if (and (not wrap-word) (<= $shrink 0) (!= limit null) (> ceiled-width (+ limit 0.01)))
+        (return (call Dimensions (call gui-device-ceiled (. (call ensure-shorthand-layout short null) natural-width)) height))
+      )
+    )
+    (let measured-width (if-expr (== maximum-width null) ceiled-width (call min ceiled-width maximum-width)))
+    (return (call Dimensions measured-width height))
+  )
+  (fn-expr _ text-rect Rect
+    (param content Rect)
+    (param layout TextLayout)
+    (case? (or (!= (. layout line-count) 1) (>= (. layout height) (. content height)))
+      content
+    )
+    (default
+      (call Rect (. content x) (+ (. content y) (/ (- (. content height) (. layout height)) 2)) (. content width) (. layout height))
+    )
+  )
+  (fn-expr _ abbreviates _
+    (param layout TextLayout)
+    (param width Length)
+    (and (!= shorthand null) (!= $text-wrap (. TextWrap word)) (> (. layout natural-width) (+ width 0.01)))
+  )
+  (fn-do _ ensure-shorthand-layout TextLayout
+    (param short String)
+    (param maximum-width (? Length))
+    (let font effective-font)
+    (if (= (| (: retained TextLayout)) shorthand-layout)
+      (let request (. retained request))
+      (let same
+        (scope (and same-text (== (. request line-spacing) effective-line-spacing))
+          (lazy same-text (and (== (. request text) short) (== (. request font) font)))
+        )
+      )
+      (return-if retained (if (and same (or (== maximum-width null) same-limit))))
+      (lazy same-limit (and (== (. request maximum-width) maximum-width) (== (. request overflow) $text-overflow)))
+      (call (. retained close))
+    )
+    (let layout
+      (call TextLayout
+        (block
+          (arg short)
+          (arg font)
+          (arg maximum-width)
+          (arg $text-overflow)
+          (arg (. TextWrap no-wrap))
+          (arg effective-line-spacing)
+        )
+      )
+    )
+    (= shorthand-layout layout)
+    (return layout)
+  )
+  (fn-do _ release-shorthand-layout _
+    (if shorthand-layout
+      (call (. shorthand-layout close))
+      (= shorthand-layout null)
+    )
+  )
+  (fn-expr + effective-line-spacing _ :get
+    (call gui-safe-span $line-spacing)
+  )
+  (fn-expr + effective-font _ :get
+    (call Font $font-family $font-size $font-weight $font-slant)
+  )
+  (fn-do + ensure-text-layout _
+    (param canvas Canvas)
+    (let font effective-font)
+    (let content-width (. content-bounds width))
+    (let wrap-word (== $text-wrap (. TextWrap word)))
+    (let use-tight (and wrap-word (== $text-wrap-sizing (. TextWrapSizing tight))))
+    (if use-tight
+      (return (call ensure-tight-text-layout font content-width $text-overflow))
+    )
+    (blank)
+    (let ignored canvas)
+    (if (not (call paint-layout-serves font wrap-word content-width))
+      (call install-text-layout
+        (block
+          (arg (call TextLayout text font content-width $text-overflow $text-wrap effective-line-spacing))
+          (arg -1)
+        )
+      )
+    )
+    (blank)
+    (return (!! text-layout))
+  )
+  (fn-do _ ensure-tight-text-layout _
+    (param font Font)
+    (param maximum-width (? Length))
+    (param overflow TextOverflow (= (. TextOverflow clip)))
+    (if (== maximum-width null)
+      (return-if (!! text-layout) (if (call unbounded-tight-layout-serves font)))
+      (else
+        (return-if (!! text-layout) (if (call tight-layout-serves font (call gui-safe-span maximum-width))))
+      )
+    )
+    (let tight
+      (call tight-text-layout
+        (block
+          (arg (=> (width) (call TextLayout text font width overflow (. TextWrap word) effective-line-spacing)))
+          (arg (call gui-text-search-precision this))
+          (arg gui-packed-span-up)
+          (arg maximum-width)
+        )
+      )
+    )
+    (call replace-text-layout (. tight layout) (. tight width) (. tight cap))
+    (return (!! text-layout))
+  )
+  (fn-expr _ measure-layout-serves _
+    (param font Font)
+    (param wrap-word Bool)
+    (param maximum-width (? Length))
+    (case? (or (not text-layout) (call has-cached-style-bit 4) (not (call layout-style-matches)))
+      false
+    )
+    (case? (or (!= (. request text) text) (!= (. request font) font) spacing-changed)
+      false
+    )
+    (case? (!= (. request wrap) $text-wrap)
+      false
+    )
+    (case? (and (not wrap-word) (. (!! text-layout) is-simple))
+      true
+    )
+    (case? (. (!! text-layout) is-truncated)
+      false
+    )
+    (case? (not wrap-word)
+      true
+    )
+    (case? (== (. request maximum-width) maximum-width)
+      true
+    )
+    (default
+      (and retained-unwrapped requested-unwrapped)
+    )
+    (where
+      (lazy request (. text-layout request))
+      (lazy spacing-changed (!= (. request line-spacing) effective-line-spacing))
+      (lazy natural-width (. (!! text-layout) natural-width))
+      (lazy retained-maximum (. request maximum-width))
+      (lazy retained-unwrapped (or (== retained-maximum null) (<= natural-width (+ retained-maximum 0.01))))
+      (lazy requested-unwrapped (or (== maximum-width null) (<= natural-width (+ maximum-width 0.01))))
+    )
+  )
+  (fn-expr _ paint-layout-serves _
+    (param font Font)
+    (param wrap-word Bool)
+    (param content-width Length)
+    (case? (or (not text-layout) (call has-cached-style-bit 4) (not (call layout-style-matches)))
+      false
+    )
+    (case? (or (!= (. request text) text) (!= (. request font) font) (!= (. request wrap) $text-wrap))
+      false
+    )
+    (case? (!= (. request line-spacing) effective-line-spacing)
+      false
+    )
+    (case? (and exact-width (or wrap-word (== (. request overflow) $text-overflow)))
+      true
+    )
+    (case? (not (. (!! text-layout) is-shaped))
+      false
+    )
+    (case? (. (!! text-layout) is-truncated)
+      false
+    )
+    (case? (> natural-width (+ content-width 0.01))
+      false
+    )
+    (case? (or (== (. request maximum-width) null) (not wrap-word))
+      true
+    )
+    (default
+      (<= natural-width (+ (. request maximum-width) 0.01))
+    )
+    (where
+      (lazy request (. text-layout request))
+      (lazy exact-width (and (!= (. request maximum-width) null) (== (. request maximum-width) content-width)))
+      (lazy natural-width (. (!! text-layout) natural-width))
+    )
+  )
+  (fn-expr _ unbounded-tight-layout-serves _
+    (param font Font)
+    (case? (or (not text-layout) (not (call has-cached-style-bit 4)) (not (call layout-style-matches)))
+      false
+    )
+    (default
+      (and (== (. request text) text) (== (. request font) font) same-spacing (== (. request maximum-width) null))
+    )
+    (where
+      (lazy request (. text-layout request))
+      (lazy same-spacing (== (. request line-spacing) effective-line-spacing))
+    )
+  )
+  (fn-expr _ tight-layout-serves _
+    (param font Font)
+    (param cap Length)
+    (case? (or (not text-layout) (not (call has-cached-style-bit 4)) (not (call layout-style-matches)))
+      false
+    )
+    (case? (or (!= (. request text) text) (!= (. request font) font) (!= (. request wrap) (. TextWrap word)))
+      false
+    )
+    (case? (!= (. request line-spacing) effective-line-spacing)
+      false
+    )
+    (case? (. (!! text-layout) is-truncated)
+      (and (!= (. request maximum-width) null) (== (. request maximum-width) cap))
+    )
+    (case? (and (!= (. request maximum-width) null) (> (. (!! text-layout) width) (. request maximum-width)))
+      (== (. request maximum-width) cap)
+    )
+    (default
+      (call tight-text-width-serves tight-selected-width cap tight-cap)
+    )
+    (where
+      (lazy request (. text-layout request))
+    )
+  )
+  (fn-do _ replace-text-layout _
+    (param replacement TextLayout)
+    (param selected-width Length)
+    (param cap (? Length) (= null))
+    (call install-text-layout replacement selected-width cap)
+    (call invalidate-paint)
+  )
+  (fn-do _ install-text-layout _
+    (param replacement TextLayout)
+    (param selected-width Length)
+    (param cap (? Length) (= null))
+    (call release-text-layout)
+    (= text-layout replacement)
+    (= tight-selected-width selected-width)
+    (= tight-cap cap)
+    (call cache-layout-style)
+  )
+  (fn-expr _ measured-text-maximum-width _
+    (param query MeasureQuery)
+    (only-if (call measured-available-width query) (if (== $text-wrap (. TextWrap word))))
+  )
+  (fn-expr _ measured-available-width _
+    (param query MeasureQuery)
+    (case? (not proposed)
+      null
+    )
+    (default
+      (call constrained-axis-size
+        (block
+          (arg (call gui-safe-span proposed))
+          (arg (. query inline))
+          (arg $min-width)
+          (arg $max-width)
+        )
+      )
+    )
+    (where
+      (lazy proposed (?? (. (call derived-child-measure-query query) inline available) resolved))
+      (lazy resolved (call resolved-size-spec (. query inline) $max-width))
+    )
+  )
+  (fn-do _ release-text-layout _
+    (if text-layout
+      (call (. text-layout close))
+      (= text-layout null)
+    )
+    (= tight-selected-width -1)
+    (= tight-cap null)
+  )
+)

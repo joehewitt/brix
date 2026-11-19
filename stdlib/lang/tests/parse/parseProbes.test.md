@@ -1,13 +1,5 @@
 # Probes
 
-```yumi
-// foo ${bar} baz
-// foo $bar baz
-// foo $bar.baz
-// foo $bar?.baz
-// foo $bar
-```
-
 ```brix
 (main
   (probe-log _ (text: "foo " bar " baz"))
@@ -47,10 +39,6 @@
 </Probe>
 ```
 
-```yumi
-// dispatch $shown returns ${type-text(store, index, result)}
-```
-
 ```brix
 (main
   (probe-log _ (text: "dispatch " shown " returns " (call type-text store index result)))
@@ -75,16 +63,6 @@
         </Argument>
     </CallExpression>
 </Probe>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-_ do trace-call TypeId
-
-if result
-    // dispatch $shown returns ${type-text(store, index, result)}
-
-= result
 ```
 
 ```brix
@@ -132,10 +110,6 @@ if result
 </Function>
 ```
 
-```yumi
-// $$foo
-```
-
 ```brix
 (main
   (probe-log _ (text: "\$" foo))
@@ -147,10 +121,6 @@ if result
     <String text="$"/>
     <Id name="foo"/>
 </Probe>
-```
-
-```yumi
-// $foo$
 ```
 
 ```brix
@@ -166,10 +136,6 @@ if result
 </Probe>
 ```
 
-```yumi
-// \$foo
-```
-
 ```brix
 (main
   (probe-log _ (text: "\$foo"))
@@ -182,10 +148,6 @@ if result
 </Probe>
 ```
 
-```yumi
-// \${foo}
-```
-
 ```brix
 (main
   (probe-log _ (text: "\${foo}"))
@@ -196,14 +158,6 @@ if result
 <Probe>
     <String text="${foo}"/>
 </Probe>
-```
-
-```yumi
-// ${foo
-// $foo}
-// ${foo}}
-// ${{foo}}
-// ${{foo}}
 ```
 
 ```brix
@@ -236,22 +190,6 @@ if result
 </Probe>
 ```
 
-```yumi
--- // foo
-```
-
-```output
-Exception: Syntax error
-<no file:2>
-    -- // foo
-       ^
-```
-
-```yumi
-//foo = bar
-//object:foo = bar
-```
-
 ```brix
 (main
   (probe-assign foo bar)
@@ -266,10 +204,6 @@ Exception: Syntax error
 <ProbeAssign key="foo" object="object">
     <Id name="bar"/>
 </ProbeAssign>
-```
-
-```yumi
-//+ foo $!name
 ```
 
 ```brix
@@ -287,10 +221,6 @@ Exception: Syntax error
 </ProbeGroup>
 ```
 
-```yumi
-//-probe.group
-```
-
 ```brix
 (main
   (probe-group - probe.group)
@@ -299,10 +229,6 @@ Exception: Syntax error
 
 ```output
 <ProbeGroup end="true" key="probe.group" data="true"/>
-```
-
-```yumi
-//- goodbye $name snapshot $!name
 ```
 
 ```brix
@@ -322,10 +248,6 @@ Exception: Syntax error
 </ProbeGroup>
 ```
 
-```yumi
-//+- foo
-```
-
 ```brix
 (main
   (probe-group +- _ (text: "foo"))
@@ -336,10 +258,6 @@ Exception: Syntax error
 <ProbeGroup begin="true" end="true">
     <String text="foo"/>
 </ProbeGroup>
-```
-
-```yumi
-//+probe.group -> name, count
 ```
 
 ```brix
@@ -353,13 +271,6 @@ Exception: Syntax error
     <Id name="name"/>
     <Id name="count"/>
 </ProbeGroup>
-```
-
-```yumi
-// foo $?bar baz
-// foo $?bar.baz
-// foo $?bar?.baz
-// foo $?{bar.baz} baz
 ```
 
 ```brix
@@ -406,10 +317,6 @@ Exception: Syntax error
 </Probe>
 ```
 
-```yumi
-//tui.paint -> "repaint", frame
-```
-
 ```brix
 (main
   (probe-log tui.paint (items: "repaint" frame))
@@ -421,13 +328,6 @@ Exception: Syntax error
     <String text="repaint"/>
     <Id name="frame"/>
 </Probe>
-```
-
-```yumi
-//+tui.paint// begin $frame
-//-tui.paint// end $frame
-//+-tui.layout// layout $box
-//-tui.paint
 ```
 
 ```brix
@@ -453,11 +353,6 @@ Exception: Syntax error
     <Id name="box"/>
 </ProbeGroup>
 <ProbeGroup end="true" key="tui.paint" data="true"/>
-```
-
-```yumi
-//channel:write -> $?message, task
-//channel:read -> $?{reader.message!}, task
 ```
 
 ```brix
@@ -486,11 +381,6 @@ Exception: Syntax error
 </Probe>
 ```
 
-```yumi
-//tui.box.root -> window
-//tui.box.root
-```
-
 ```brix
 (main
   (probe-log tui.box.root (items: window))
@@ -503,12 +393,6 @@ Exception: Syntax error
     <Id name="window"/>
 </Probe>
 <Probe key="tui.box.root"/>
-```
-
-```yumi
-//http.response.headers -> response-headers
-    .. response-headers = "ok"
-        .. suffix = "!"
 ```
 
 ```brix
@@ -553,11 +437,6 @@ Exception: Syntax error
 </Block>
 ```
 
-```yumi
-//channel:write -> detail, task
-    .. detail = "ok"
-```
-
 ```brix
 (main
   (probe-log (: channel write) (items: detail task)
@@ -581,11 +460,6 @@ Exception: Syntax error
         <String text="ok"/>
     </Declaration>
 </Block>
-```
-
-```yumi
-//http.bad -> x
-    . x = "nope"
 ```
 
 ```brix
@@ -612,10 +486,6 @@ Exception: Syntax error
 </Block>
 ```
 
-```yumi
-//http// bad $x
-```
-
 ```brix
 (main
   (probe-log http (text: "bad " x))
@@ -627,10 +497,6 @@ Exception: Syntax error
     <String text="bad "/>
     <Id name="x"/>
 </Probe>
-```
-
-```yumi
-//!grammar do foo(1)
 ```
 
 ```brix
@@ -656,13 +522,6 @@ Exception: Syntax error
 </ProbeStatement>
 ```
 
-```yumi
-//grammar.reads ++
-//this:grammar.object-reads ++
-//grammar.read-tokens += size
-//this:grammar.object-tokens += size
-```
-
 ```brix
 (main
   (probe-count grammar.reads)
@@ -681,10 +540,6 @@ Exception: Syntax error
 <ProbeCounter key="grammar.object-tokens" object="this">
     <Id name="size"/>
 </ProbeCounter>
-```
-
-```yumi
-//!gui.frame.objects . start0 = 5
 ```
 
 ```brix

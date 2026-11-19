@@ -1,0 +1,41 @@
+; benchmark.meta description: Measures an ordinary ordered F64 min/max clamp seam for intrinsic comparison.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core)
+(blank)
+
+(main
+  (let checksum 0.0)
+  (let operations 4000000)
+  (blank)
+  (for (in i (..< 0 operations))
+    (let value (as (- (% i 1009) 504) F64))
+    (+= checksum (call fallback-min (call fallback-max value -125.0) 125.0))
+  )
+  (blank)
+  (let checksum-result (as (* (+ checksum (* operations 1000.0)) 1000.0) Size))
+  (print (str "bench-result graphics/f64-clamp-fallback checksum=" checksum-result))
+)
+
+(fn-expr _ fallback-min F64
+  (param left F64)
+  (param right F64)
+  (case? (< right left)
+    right
+  )
+  (default
+    left
+  )
+)
+
+(fn-expr _ fallback-max F64
+  (param left F64)
+  (param right F64)
+  (case? (> right left)
+    right
+  )
+  (default
+    left
+  )
+)

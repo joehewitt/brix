@@ -1,10 +1,13 @@
 # Stream location
 
-```yumi
-/core/parsing
+```brix
+(import /core/parsing)
+(blank)
 
--- TokenLocation.size
--- MatchLocation.size
+(main
+  (print (. TokenLocation size))
+  (print (. MatchLocation size))
+)
 ```
 
 ```output
@@ -14,14 +17,23 @@
 
 ### Baseline: successful String input should report each matched line span.
 
-```yumi
-match "a\nbc\ndef\n"
-    ~ (\line \nl)+
-
-    .. line ~
-        ~ [a-z]+
-            do -- "line $location"
-            ""
+```brix
+(main
+  (match "a\nbc\ndef\n"
+    (~ (+ (seq \line \nl)))
+    (blank)
+    (lazy line
+      (pattern
+        (~ (+ (chars "a-z"))
+          (do
+            (inline (print (str "line " location)))
+          )
+          ""
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -34,17 +46,20 @@ line ((2, 0), (2, 2))
 
 ### Rewinding a mark restores the cursor directly, including across newlines.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. stream = IndexableTokenStream'Char("ab\nc")
-. begin = stream.mark()
-. buf = Char[4]
-stream.read(4, buf)
-stream.rewind(begin)
-
--- "direct-rewind"
--- stream.location
+(main
+  (let stream (call (of IndexableTokenStream Char) "ab\nc"))
+  (let begin (call (. stream mark)))
+  (let buf ([] Char 4))
+  (call (. stream read) 4 buf)
+  (call (. stream rewind) begin)
+  (blank)
+  (print "direct-rewind")
+  (print (. stream location))
+)
 ```
 
 ```output
@@ -54,29 +69,32 @@ direct-rewind
 
 ### Indexable marks support nesting, repeated rewind, EOF, and cached-location reuse.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. stream = IndexableTokenStream'Char("a\nb")
-. outer = stream.mark()
-. first = <- stream
--- stream.cursor
-. inner = stream.mark()
-. second = <- stream
-. third = <- stream
-. eof = <- stream
--- stream.cursor
-
-stream.rewind(inner)
-. rewound-newline = <- stream
--- rewound-newline! as U32
--- stream.cursor
-stream.rewind(outer)
--- stream.location
-. first-again = <- stream
-stream.rewind(outer)
-. first-repeated = <- stream
--- stream.cursor
+(main
+  (let stream (call (of IndexableTokenStream Char) "a\nb"))
+  (let outer (call (. stream mark)))
+  (let first (<- stream))
+  (print (. stream cursor))
+  (let inner (call (. stream mark)))
+  (let second (<- stream))
+  (let third (<- stream))
+  (let eof (<- stream))
+  (print (. stream cursor))
+  (blank)
+  (call (. stream rewind) inner)
+  (let rewound-newline (<- stream))
+  (print (as (!! rewound-newline) U32))
+  (print (. stream cursor))
+  (call (. stream rewind) outer)
+  (print (. stream location))
+  (let first-again (<- stream))
+  (call (. stream rewind) outer)
+  (let first-repeated (<- stream))
+  (print (. stream cursor))
+)
 ```
 
 ```output
@@ -90,16 +108,23 @@ stream.rewind(outer)
 
 ### A mark cannot be used with another stream instance.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. attempt = do new
-    . first = IndexableTokenStream'Char("a")
-    . second = IndexableTokenStream'Char("b")
-    first.rewind(second.mark())
-catch failure
-    -- failure
-attempt.wait()
+(main
+  (let attempt
+    (do-new
+      (let first (call (of IndexableTokenStream Char) "a"))
+      (let second (call (of IndexableTokenStream Char) "b"))
+      (call (. first rewind) (call (. second mark)))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -108,15 +133,18 @@ Stream mark belongs to another stream
 
 ### A large direct cursor displacement rewinds to zero and rereads the first token.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. stream = IndexableTokenStream'Char(Char[65537])
-. begin = stream.mark()
-stream.cursor = 65536
-stream.rewind(begin)
--- stream.cursor
--- (<- stream)! as U32
+(main
+  (let stream (call (of IndexableTokenStream Char) ([] Char 65537)))
+  (let begin (call (. stream mark)))
+  (= (. stream cursor) 65536)
+  (call (. stream rewind) begin)
+  (print (. stream cursor))
+  (print (as (!! (<- stream)) U32))
+)
 ```
 
 ```output
@@ -126,19 +154,26 @@ stream.rewind(begin)
 
 ### Rewinding an outer mark invalidates nested marks beyond the restored cursor.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. attempt = do new
-    . stream = IndexableTokenStream'Char("ab")
-    . outer = stream.mark()
-    . item = <- stream
-    . inner = stream.mark()
-    stream.rewind(outer)
-    stream.rewind(inner)
-catch failure
-    -- failure
-attempt.wait()
+(main
+  (let attempt
+    (do-new
+      (let stream (call (of IndexableTokenStream Char) "ab"))
+      (let outer (call (. stream mark)))
+      (let item (<- stream))
+      (let inner (call (. stream mark)))
+      (call (. stream rewind) outer)
+      (call (. stream rewind) inner)
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -147,19 +182,23 @@ Stream mark is no longer valid
 
 ### Lazy locations recognize LF, CRLF, and CR without rescanning cached prefixes after rewind.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. stream = IndexableTokenStream'Char("a\r\nb\rc\nλ")
-. begin = stream.mark()
--- stream.location
-while stream.has-more
-    . item = <- stream
-    -- stream.location
-
-stream.rewind(begin)
--- stream.location
--- stream.get-error-location()
+(main
+  (let stream (call (of IndexableTokenStream Char) "a\r\nb\rc\nλ"))
+  (let begin (call (. stream mark)))
+  (print (. stream location))
+  (while (. stream has-more)
+    (let item (<- stream))
+    (print (. stream location))
+  )
+  (blank)
+  (call (. stream rewind) begin)
+  (print (. stream location))
+  (print (call (. stream get-error-location)))
+)
 ```
 
 ```output
@@ -178,22 +217,25 @@ stream.rewind(begin)
 
 ### A mark restores the exact indexable cursor for single and bulk reads.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. stream = IndexableTokenStream'Char("abcd")
-. begin = stream.mark()
-. bulk = Char[3]
-. actual = stream.read(3, bulk)
-stream.rewind(begin)
--- stream.cursor
--- (<- stream)!
-
-. second = stream.mark()
-. item = (<- stream)!
-stream.rewind(second)
--- stream.cursor
--- (<- stream)!
+(main
+  (let stream (call (of IndexableTokenStream Char) "abcd"))
+  (let begin (call (. stream mark)))
+  (let bulk ([] Char 3))
+  (let actual (call (. stream read) 3 bulk))
+  (call (. stream rewind) begin)
+  (print (. stream cursor))
+  (print (!! (<- stream)))
+  (blank)
+  (let second (call (. stream mark)))
+  (let item (!! (<- stream)))
+  (call (. stream rewind) second)
+  (print (. stream cursor))
+  (print (!! (<- stream)))
+)
 ```
 
 ```output
@@ -205,28 +247,31 @@ b
 
 ### Cached lazy locations preserve repeated, monotonic, backward, Unicode, and high-water queries.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. stream = ArrayTokenStream'Char("a\r\nb\rc\nλ".codepoints)
--- stream.location
--- stream.location
-. first = <- stream
--- stream.location
-. carriage = <- stream
-. line-feed = <- stream
-. second-line = <- stream
--- stream.location
-. backward = stream.mark()
-. second-carriage = <- stream
-. third-line = <- stream
-. third = <- stream
-. final-line-feed = <- stream
-. unicode = <- stream
--- stream.location
-stream.rewind(backward)
--- stream.location
--- stream.get-error-location()
+(main
+  (let stream (call (of ArrayTokenStream Char) (. "a\r\nb\rc\nλ" codepoints)))
+  (print (. stream location))
+  (print (. stream location))
+  (let first (<- stream))
+  (print (. stream location))
+  (let carriage (<- stream))
+  (let line-feed (<- stream))
+  (let second-line (<- stream))
+  (print (. stream location))
+  (let backward (call (. stream mark)))
+  (let second-carriage (<- stream))
+  (let third-line (<- stream))
+  (let third (<- stream))
+  (let final-line-feed (<- stream))
+  (let unicode (<- stream))
+  (print (. stream location))
+  (call (. stream rewind) backward)
+  (print (. stream location))
+  (print (call (. stream get-error-location)))
+)
 ```
 
 ```output
@@ -241,17 +286,20 @@ stream.rewind(backward)
 
 ### Chunked iterable streams rewind by cursor while preserving their logical position.
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. stream = ChunkedTokenStream'Char("abcd")
-. begin = stream.mark()
-. bulk = Char[3]
-. actual = stream.read(3, bulk)
-stream.rewind(begin)
--- stream.location
--- stream.read(3, bulk)
--- bulk.slice-string()
+(main
+  (let stream (call (of ChunkedTokenStream Char) "abcd"))
+  (let begin (call (. stream mark)))
+  (let bulk ([] Char 3))
+  (let actual (call (. stream read) 3 bulk))
+  (call (. stream rewind) begin)
+  (print (. stream location))
+  (print (call (. stream read) 3 bulk))
+  (print (call (. bulk slice-string)))
+)
 ```
 
 ```output
@@ -262,20 +310,23 @@ abc
 
 ### Chunked byte streams rewind by cursor while preserving their logical position.
 
-```yumi
-/core/tests/support/byte-source
-/core/tokenstream
+```brix
+(import /core/tests/support/byte-source)
+(import /core/tokenstream)
+(blank)
 
-. data = TestByteSource'Char("abcd".codepoints)
-data.rewind()
-. stream = ChunkedTokenStream'Char(data)
-. begin = stream.mark()
-. bulk = Char[3]
-. actual = stream.read(3, bulk)
-stream.rewind(begin)
--- stream.location
--- stream.read(3, bulk)
--- bulk.slice-string()
+(main
+  (let data (call (of TestByteSource Char) (. "abcd" codepoints)))
+  (call (. data rewind))
+  (let stream (call (of ChunkedTokenStream Char) data))
+  (let begin (call (. stream mark)))
+  (let bulk ([] Char 3))
+  (let actual (call (. stream read) 3 bulk))
+  (call (. stream rewind) begin)
+  (print (. stream location))
+  (print (call (. stream read) 3 bulk))
+  (print (call (. bulk slice-string)))
+)
 ```
 
 ```output
@@ -286,29 +337,36 @@ abc
 
 ### A prefix release keeps a later mark on its own token and rejects a mark it discarded.
 
-```yumi
-/core/tests/support/byte-source
-/core/tokenstream
+```brix
+(import /core/tests/support/byte-source)
+(import /core/tokenstream)
+(blank)
 
-. data = TestByteSource'Char("abcd".codepoints)
-data.rewind()
-. stream = ChunkedTokenStream'Char(data)
-. lost = stream.mark()
-<- stream
-<- stream
-. kept = stream.mark()
-stream.pattern-release()
-<- stream
-<- stream
--- "${stream.capture-span(kept)!}"
-stream.rewind(kept)
--- (<- stream)!
--- stream.location
-. attempt = do new
-    stream.rewind(lost)
-catch failure
-    -- failure
-attempt.wait()
+(main
+  (let data (call (of TestByteSource Char) (. "abcd" codepoints)))
+  (call (. data rewind))
+  (let stream (call (of ChunkedTokenStream Char) data))
+  (let lost (call (. stream mark)))
+  (<- stream)
+  (<- stream)
+  (let kept (call (. stream mark)))
+  (call (. stream pattern-release))
+  (<- stream)
+  (<- stream)
+  (print (str (!! (call (. stream capture-span) kept))))
+  (call (. stream rewind) kept)
+  (print (!! (<- stream)))
+  (print (. stream location))
+  (let attempt
+    (do-new
+      (call (. stream rewind) lost)
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -320,16 +378,19 @@ Stream mark is no longer valid
 
 ### A bulk read whose refill releases as much as the source gives still reads its full count.
 
-```yumi
-/core/tests/support/byte-source
-/core/tokenstream
+```brix
+(import /core/tests/support/byte-source)
+(import /core/tokenstream)
+(blank)
 
-. data = TestByteSource'Byte(("x" * 8192) as Byte[])
-data.chunk-limit = 1024
-. stream = ChunkedTokenStream'Byte(data)
--- stream.read(1024, Byte[1024])
--- stream.read(2048, Byte[2048])
--- stream.read(3072, Byte[3072])
+(main
+  (let data (call (of TestByteSource Byte) (as (* "x" 8192) ([] Byte))))
+  (= (. data chunk-limit) 1024)
+  (let stream (call (of ChunkedTokenStream Byte) data))
+  (print (call (. stream read) 1024 ([] Byte 1024)))
+  (print (call (. stream read) 2048 ([] Byte 2048)))
+  (print (call (. stream read) 3072 ([] Byte 3072)))
+)
 ```
 
 ```output
@@ -342,11 +403,17 @@ data.chunk-limit = 1024
 
 ### The first alternative consumes "ab\nc" before failing; the second should restart at (0, 0).
 
-```yumi
-match "ab\nc"
-    ~ (("a" "b" \nl "x") | ("a" "b" \nl "c"))
-        do -- "alternate $location"
-        ""
+```brix
+(main
+  (match "ab\nc"
+    (~ (| (seq "a" "b" \nl "x") (seq "a" "b" \nl "c"))
+      (do
+        (inline (print (str "alternate " location)))
+      )
+      ""
+    )
+  )
+)
 ```
 
 ```output
@@ -355,11 +422,17 @@ alternate ((0, 0), (1, 0))
 
 ### Positive lookahead consumes "ab\n" and puts it back before the real match.
 
-```yumi
-match "ab\nc"
-    ~ &("a" "b" \nl) "a" "b" \nl "c"
-        do -- "lookahead $location"
-        ""
+```brix
+(main
+  (match "ab\nc"
+    (~ (seq (& (seq "a" "b" \nl)) "a" "b" \nl "c")
+      (do
+        (inline (print (str "lookahead " location)))
+      )
+      ""
+    )
+  )
+)
 ```
 
 ```output
@@ -368,11 +441,17 @@ lookahead ((0, 0), (1, 0))
 
 ### A failed optional branch should leave the stream location unchanged for the following match.
 
-```yumi
-match "ab\nc"
-    ~ ("a" "b" \nl "x")? "a" "b" \nl "c"
-        do -- "optional $location"
-        ""
+```brix
+(main
+  (match "ab\nc"
+    (~ (seq (? (seq "a" "b" \nl "x")) "a" "b" \nl "c")
+      (do
+        (inline (print (str "optional " location)))
+      )
+      ""
+    )
+  )
+)
 ```
 
 ```output
@@ -381,13 +460,20 @@ optional ((0, 0), (1, 0))
 
 ### A failed static combinator branch restores its caller mark before the location-bearing arm.
 
-```yumi
-/core/patterns
+```brix
+(import /core/patterns)
+(blank)
 
-match "ab;\ncd"
-    ~ ((\delimited(",", ~ [a-z]+) "!") | ("ab" ";" \nl "cd"))
-        do -- "combinator $location"
-        ""
+(main
+  (match "ab;\ncd"
+    (~ (| (seq (call \delimited "," (~ (+ (chars "a-z")))) "!") (seq "ab" ";" \nl "cd"))
+      (do
+        (inline (print (str "combinator " location)))
+      )
+      ""
+    )
+  )
+)
 ```
 
 ```output
@@ -398,13 +484,18 @@ combinator ((0, 0), (1, 1))
 
 ### A body with no pattern uses TokenStream.error-location; it should point at the next unread token.
 
-```yumi
-do new
-    match "ok\nbad"
-        ~ "ok" \nl
-        ?! Panic("extra at $location")
-catch failure
-    -- failure
+```brix
+(main
+  (do-new
+    (match "ok\nbad"
+      (~ (seq "ok" \nl))
+      (throw (call Panic (str "extra at " location)))
+    )
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 ```
 
 ```output
@@ -413,19 +504,30 @@ extra at (1, 0)
 
 ### A choice that skips every alternative, since none can start with the next item, fails where it began.
 
-```yumi
-do new
-    match "'+"
-        ~ "'" (\upper | \bracketed) !.
-        ?! Panic("failed at $location")
-
-        .. upper ~
-            ~ [A-Z]
-
-        .. bracketed ~
-            ~ "[" [a-z] "]"
-catch failure
-    -- failure
+```brix
+(main
+  (do-new
+    (match "'+"
+      (~ (seq "'" (| \upper \bracketed) (! .)))
+      (throw (call Panic (str "failed at " location)))
+      (blank)
+      (lazy upper
+        (pattern
+          (~ (chars "A-Z"))
+        )
+      )
+      (blank)
+      (lazy bracketed
+        (pattern
+          (~ (seq "[" (chars "a-z") "]"))
+        )
+      )
+    )
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 ```
 
 ```output
@@ -436,18 +538,25 @@ failed at (0, 1)
 
 ### Numeric U8 patterns exercise ChunkedTokenStream reads one token at a time.
 
-```yumi
-/core/tests/support/byte-source
-/core/tokenstream
+```brix
+(import /core/tests/support/byte-source)
+(import /core/tokenstream)
+(blank)
 
-. data = TestByteSource(Array'U8([97u8, 98u8, 10u8, 99u8]))
-data.rewind()
-
-. stream = ChunkedTokenStream'U8(data)
-match stream
-    ~ .{4}
-        do -- "buffer-uint8 $location"
-        ""
+(main
+  (let data (call TestByteSource (call (of Array U8) (list 97u8 98u8 10u8 99u8))))
+  (call (. data rewind))
+  (blank)
+  (let stream (call (of ChunkedTokenStream U8) data))
+  (match stream
+    (~ ({} . 4)
+      (do
+        (inline (print (str "buffer-uint8 " location)))
+      )
+      ""
+    )
+  )
+)
 ```
 
 ```output
@@ -456,39 +565,53 @@ buffer-uint8 ((0, 0), (1, 0))
 
 ### String patterns exercise ChunkedTokenStream.read(size) bulk reads for Char streams.
 
-```yumi
-/core/tests/support/byte-source
-/core/tokenstream
+```brix
+(import /core/tests/support/byte-source)
+(import /core/tokenstream)
+(blank)
 
-. data = TestByteSource'Char("ab\nc".codepoints)
-. stream = ChunkedTokenStream'Char(data)
-match stream
-    ~ "ab\nc"
-        do -- "buffer-char $location"
-        ""
+(main
+  (let data (call (of TestByteSource Char) (. "ab\nc" codepoints)))
+  (let stream (call (of ChunkedTokenStream Char) data))
+  (match stream
+    (~ "ab\nc"
+      (do
+        (inline (print (str "buffer-char " location)))
+      )
+      ""
+    )
+  )
+)
 ```
 
 ```output
 buffer-char ((0, 0), (1, 0))
 ```
 
-```yumi
-/core/tokenstream
+```brix
+(import /core/tokenstream)
+(blank)
 
-. stream = ArrayTokenStream'Char("!é\n東京😀?".codepoints)
-. literal = "é\n東京😀"
--- match stream
-    ~ "!" span \runtime-location(literal) "?"
+(main
+  (let stream (call (of ArrayTokenStream Char) (. "!é\n東京😀?" codepoints)))
+  (let literal "é\n東京😀")
+  (print
+    (match stream
+      (~ (seq "!" (: span (call \runtime-location literal)) "?")
         span
--- stream.cursor
--- stream.cursor-extent
+      )
+    )
+  )
+  (print (. stream cursor))
+  (print (. stream cursor-extent))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ runtime-location ~ Char
-    - literal String
-
-~ $literal
+(fn-expr + runtime-location _ (over: Char)
+  (param literal String)
+  (~ $literal
     location
+  )
+)
 ```
 
 ```output
@@ -497,23 +620,32 @@ buffer-char ((0, 0), (1, 0))
 7
 ```
 
-```yumi
-/BxGC/BxGC.h
+```brix
+(import /BxGC/BxGC.h)
+(blank)
 
-match "xfoo\nxxfooo\nfo\n"
-    ~ ("x"* \foo \nl)+
+(main
+  (match "xfoo\nxxfooo\nfo\n"
+    (~ (+ (seq (* "x") \foo \nl)))
+    (blank)
+    (lazy foo
+      (pattern
+        (~ (seq "f" (+ "o"))
+          (do
+            (inline (print (call after-collection location)))
+          )
+          ""
+        )
+      )
+    )
+  )
+)
 
-    .. foo ~
-        ~ "f" "o"+
-            do -- after-collection(location)
-            ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ do after-collection MatchLocation
-    - location MatchLocation
-
-C:brixCollect()
-= location
+(fn-do + after-collection MatchLocation
+  (param location MatchLocation)
+  (call C:brixCollect)
+  (return location)
+)
 ```
 
 ```output
@@ -522,21 +654,26 @@ C:brixCollect()
 ((2, 0), (2, 1))
 ```
 
-```yumi
-/core/parsing
+```brix
+(import /core/parsing)
+(blank)
 
-. result = match ""
-    ~ \empty
-?! Panic("empty match failed")
-    if !result
+(main
+  (let result
+    (match ""
+      (~ \empty)
+    )
+  )
+  (throw (call Panic "empty match failed") (if (not result)))
+  (blank)
+  (print (str (. result begin line) ":" (. result begin column) "-" (. result end line) ":" (. result end column)))
+)
 
--- "${result.begin.line}:${result.begin.column}-${result.end.line}:${result.end.column}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ empty ~ Char
-
-~ ""
+(fn-expr + empty _ (over: Char)
+  (~ ""
     location
+  )
+)
 ```
 
 ```output
@@ -545,25 +682,47 @@ C:brixCollect()
 
 ### A function that the expression of a rule's arm makes reads the arm's `location`.
 
-```yumi
-/stream/aggregate
+```brix
+(import /stream/aggregate)
+(blank)
 
-for text in ["a,b,c", "a"]
-    -- match text
-        ~ found \words
-            found
-        ?? "none"
+(main
+  (for (in text (list "a,b,c" "a"))
+    (print
+      (match text
+        (~ (: found \words)
+          found
+        )
+        (default
+          (inline "none")
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ words ~ Char String
-
-~ head \word tail ("," \word)*
-    reduce • seed head • stream tail • using :: left, right =>
-        "($left $right ${location.end.column})"
-
-.. word String ~
-    ~ w [a-z]+
-        "<$w>"
+(fn-expr + words String (over: Char)
+  (~ (seq (: head \word) (: tail (* (seq "," \word))))
+    (call reduce (:seed head) (:stream tail)
+      (:using
+        (=> (left right)
+          (block
+            (str "(" left " " right " " (. location end column) ")")
+          )
+        )
+      )
+    )
+  )
+  (where
+    (lazy word String
+      (pattern
+        (~ (: w (+ (chars "a-z")))
+          (str "<" w ">")
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output

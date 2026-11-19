@@ -1,9 +1,5 @@
 # Expression calls
 
-```yumi
-foo()
-```
-
 ```brix
 (main
   (call foo)
@@ -14,10 +10,6 @@ foo()
 <CallExpression>
     <Id name="foo"/>
 </CallExpression>
-```
-
-```yumi
-foo(a)
 ```
 
 ```brix
@@ -33,10 +25,6 @@ foo(a)
         <Id name="a"/>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-foo(a, b)
 ```
 
 ```brix
@@ -55,10 +43,6 @@ foo(a, b)
         <Id name="b"/>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-foo(a)(b)
 ```
 
 ```brix
@@ -81,10 +65,6 @@ foo(a)(b)
 </CallExpression>
 ```
 
-```yumi
-foo.bar
-```
-
 ```brix
 (main
   (. foo bar)
@@ -95,10 +75,6 @@ foo.bar
 <Get name="bar">
     <Id name="foo"/>
 </Get>
-```
-
-```yumi
-foo.bar.baz
 ```
 
 ```brix
@@ -115,10 +91,6 @@ foo.bar.baz
 </Get>
 ```
 
-```yumi
-foo[1]
-```
-
 ```brix
 (main
   ([] foo 1)
@@ -130,10 +102,6 @@ foo[1]
     <Id name="foo"/>
     <Integer value="1"/>
 </Index>
-```
-
-```yumi
-foo[1][2]
 ```
 
 ```brix
@@ -152,10 +120,6 @@ foo[1][2]
 </Index>
 ```
 
-```yumi
-foo.bar[1]
-```
-
 ```brix
 (main
   ([] (. foo bar) 1)
@@ -169,10 +133,6 @@ foo.bar[1]
     </Get>
     <Integer value="1"/>
 </Index>
-```
-
-```yumi
-foo.bar[1](2)
 ```
 
 ```brix
@@ -195,10 +155,6 @@ foo.bar[1](2)
 </CallExpression>
 ```
 
-```yumi
-foo.bar()[0]
-```
-
 ```brix
 (main
   ([] (call (. foo bar)) 0)
@@ -216,10 +172,6 @@ foo.bar()[0]
 </Index>
 ```
 
-```yumi
-foo'Bar()
-```
-
 ```brix
 (main
   (call (of foo Bar))
@@ -235,10 +187,6 @@ foo'Bar()
 </CallExpression>
 ```
 
-```yumi
-foo • by bar
-```
-
 ```brix
 (main
   (call foo (:by bar))
@@ -252,10 +200,6 @@ foo • by bar
         <Id name="bar"/>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-foo • of bar • by bar
 ```
 
 ```brix
@@ -276,10 +220,6 @@ foo • of bar • by bar
 </CallExpression>
 ```
 
-```yumi
-foo'Bar • at bar
-```
-
 ```brix
 (main
   (call (of foo Bar) (:at bar))
@@ -296,10 +236,6 @@ foo'Bar • at bar
         <Id name="bar"/>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-foo.bar'Bar • at bar
 ```
 
 ```brix
@@ -322,10 +258,6 @@ foo.bar'Bar • at bar
 </CallExpression>
 ```
 
-```yumi
-Foo'Bar'Baz[0]
-```
-
 ```brix
 (main
   ([] (of Foo Bar Baz) 0)
@@ -341,10 +273,6 @@ Foo'Bar'Baz[0]
     </TypeArguments>
     <Integer value="0"/>
 </Index>
-```
-
-```yumi
-foo?.bar <- 1
 ```
 
 ```brix
@@ -366,10 +294,6 @@ foo?.bar <- 1
 </CallExpression>
 ```
 
-```yumi
-foo? <- bar
-```
-
 ```brix
 (main
   (?<- foo bar)
@@ -385,10 +309,6 @@ foo? <- bar
         <Id name="bar"/>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-foo'Bar
 ```
 
 ```brix
@@ -408,10 +328,6 @@ foo'Bar
 
 ## Named arguments
 
-```yumi
-foo • bar
-```
-
 ```brix
 (main
   (call foo (:bar))
@@ -425,10 +341,6 @@ foo • bar
         <Id name="bar"/>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-foo • bar 42
 ```
 
 ```brix
@@ -446,10 +358,6 @@ foo • bar 42
 </CallExpression>
 ```
 
-```yumi
-foo • where 42
-```
-
 ```brix
 (main
   (call foo (:where 42))
@@ -463,10 +371,6 @@ foo • where 42
         <Integer value="42"/>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-foo • is recursive
 ```
 
 ```brix
@@ -484,10 +388,6 @@ foo • is recursive
 </CallExpression>
 ```
 
-```yumi
-foo • is !recursive
-```
-
 ```brix
 (main
   (call foo (:is-recursive false))
@@ -503,10 +403,6 @@ foo • is !recursive
 </CallExpression>
 ```
 
-```yumi
-foo(...)
-```
-
 ```brix
 (main
   (call foo ...)
@@ -517,10 +413,6 @@ foo(...)
 <CallExpression curried="true">
     <Id name="foo"/>
 </CallExpression>
-```
-
-```yumi
-foo(1, ...)
 ```
 
 ```brix

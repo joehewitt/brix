@@ -1,0 +1,444 @@
+(import /graphics/canvas)
+(import /graphics/color)
+(import /graphics/primitives)
+(import /graphics/text)
+(import /math)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Text Layout Paragraph Breaks And Wrapping"))
+  (call (. cases run) text-layout-paragraph-tests)
+  (= cases (call (. cases then) "Text Layout Constraints And Raster" text-layout-constraint-tests))
+  (= cases (call (. cases then) "Styled Text Layout Fragments" styled-layout-tests))
+  (return cases)
+)
+
+(fn-do + text-layout-paragraph-tests TestCase
+  (param t TestCase)
+  (let font (call Font "Helvetica" 14 (. FontWeight regular)))
+  (let separators (list String))
+  (+= separators "\n")
+  (+= separators "\r")
+  (+= separators "\r\n")
+  (+= separators "\u2028")
+  (+= separators "\u2029")
+  (let separator-reference (? TextLayoutSnapshot))
+  (for (in separator separators)
+    (let layout (call TextLayout (str "alpha" separator "beta") font null (. TextOverflow clip)))
+    (do-use layout
+      (let snapshot (. layout snapshot))
+      (call (. t expect) "separator creates two lines" 2 (. snapshot line-count))
+      (if separator-reference
+        (call (. t expect) "hard separators have equivalent geometry" separator-reference snapshot)
+        (else
+          (= separator-reference snapshot)
+        )
+      )
+    )
+  )
+  (blank)
+  (let empty (call TextLayout "" font))
+  (let leading (call TextLayout "\nalpha" font))
+  (let trailing (call TextLayout "alpha\n" font))
+  (let consecutive (call TextLayout "alpha\n\nbeta" font))
+  (do-use empty
+    (do-use leading
+      (do-use trailing
+        (do-use consecutive
+          (call (. t expect) "empty string remains one empty line" 1 (. empty line-count))
+          (call (. t expect) "leading boundary creates an empty first line" 2 (. leading line-count))
+          (call (. t expect) "trailing boundary creates an empty final line" 2 (. trailing line-count))
+          (call (. t expect)
+            (block
+              (arg "consecutive boundaries create an empty middle line")
+              (arg 3)
+              (arg (. consecutive line-count))
+            )
+          )
+          (call (. t expect)
+            (block
+              (arg "every empty line contributes a normal line box")
+              (arg (* (. empty height) 3))
+              (arg (. consecutive height))
+            )
+          )
+          (for (in index (..< 1 (. consecutive line-count)))
+            (let previous ([] (. consecutive snapshot lines) (- index 1)))
+            (let current ([] (. consecutive snapshot lines) index))
+            (call (. t expect)
+              (block
+                (arg "paragraph typographic lines stack without gaps")
+                (arg (. previous typographic-bounds bottom))
+                (arg (. current typographic-bounds top))
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (let natural (call TextLayout "one two three four" font null (. TextOverflow clip)))
+  (do-use natural
+    (let word-unbounded
+      (call TextLayout
+        (block
+          (arg (. natural request text))
+          (arg font)
+          (arg null)
+          (arg (. TextOverflow truncate-tail))
+          (arg (. TextWrap word))
+        )
+      )
+    )
+    (let word-wide
+      (call TextLayout
+        (block
+          (arg (. natural request text))
+          (arg font)
+          (arg (. natural natural-width))
+          (arg (. TextOverflow truncate-tail))
+          (arg (. TextWrap word))
+        )
+      )
+    )
+    (let word-narrow
+      (call TextLayout
+        (block
+          (arg (. natural request text))
+          (arg font)
+          (arg 48.5)
+          (arg (. TextOverflow truncate-tail))
+          (arg (. TextWrap word))
+        )
+      )
+    )
+    (do-use word-unbounded
+      (do-use word-wide
+        (do-use word-narrow
+          (call (. t expect)
+            (block
+              (arg "unbounded word wrapping inserts no soft break")
+              (arg 1)
+              (arg (. word-unbounded line-count))
+            )
+          )
+          (call (. t expect) "exact-fit word wrapping inserts no soft break" 1 (. word-wide line-count))
+          (call (. t check) "narrow word wrapping creates multiple lines" (> (. word-narrow line-count) 1))
+          (call (. t expect)
+            (block
+              (arg "wrapping preserves unwrapped natural width")
+              (arg (. natural natural-width))
+              (arg (. word-narrow natural-width))
+            )
+          )
+          (call (. t check) "complete word wrapping is not truncation" (not (. word-narrow is-truncated)))
+        )
+      )
+    )
+  )
+  (blank)
+  (let zero (call TextLayout "one\ntwo" font 0 (. TextOverflow truncate-tail) (. TextWrap word)))
+  (do-use zero
+    (call (. t expect) "zero-width wrapping keeps one line per hard source line" 2 (. zero line-count))
+    (call (. t expect) "zero-width wrapping has zero layout width" 0 (. zero width))
+    (call (. t check) "zero-width nonempty wrapping is marked truncated" (. zero is-truncated))
+    (for (in line (. zero snapshot lines))
+      (call (. t expect) "zero-width wrapping paints no ink" 0 (. line ink-bounds width))
+    )
+  )
+  (blank)
+  (let word-only (call TextLayout "word" font))
+  (do-use word-only
+    (let spaced
+      (call TextLayout
+        (block
+          (arg "word   next")
+          (arg font)
+          (arg (+ (. word-only width) 0.5))
+          (arg (. TextOverflow clip))
+          (arg (. TextWrap word))
+        )
+      )
+    )
+    (do-use spaced
+      (call (. t expect) "a break-supplying whitespace run creates two lines" 2 (. spaced line-count))
+      (call (. t expect)
+        (block
+          (arg "whitespace at a soft wrap edge contributes no visible advance")
+          (arg (. word-only width))
+          (arg (. ([] (. spaced snapshot lines) 0) typographic-bounds width))
+        )
+      )
+    )
+  )
+  (blank)
+  (let token
+    (call TextLayout
+      (block
+        (arg "supercalifragilisticexpialidocious")
+        (arg font)
+        (arg 24)
+        (arg (. TextOverflow clip))
+        (arg (. TextWrap word))
+      )
+    )
+  )
+  (do-use token
+    (call (. t check) "long tokens use emergency grapheme wrapping" (> (. token line-count) 1))
+    (for (in line (. token snapshot lines))
+      (call (. t check) "ordinary emergency-wrapped clusters fit" (<= (. line typographic-bounds width) 24))
+    )
+  )
+  (blank)
+  (let emoji (call TextLayout "👩🏽‍💻" font))
+  (do-use emoji
+    (let over-wide (call TextLayout "👩🏽‍💻" font 1 (. TextOverflow clip) (. TextWrap word)))
+    (let joined
+      (call TextLayout
+        (block
+          (arg "👩🏽‍💻👩🏽‍💻")
+          (arg font)
+          (arg (+ (. emoji width) 0.01))
+          (arg (. TextOverflow clip))
+          (arg (. TextWrap word))
+        )
+      )
+    )
+    (do-use over-wide
+      (do-use joined
+        (call (. t expect) "one over-wide grapheme remains one line" 1 (. over-wide line-count))
+        (call (. t expect) "one over-wide grapheme remains intact" (. emoji width) (. over-wide width))
+        (call (. t check) "one over-wide grapheme is clipped without truncation" (not (. over-wide is-truncated)))
+        (call (. t expect) "emoji ZWJ sequences wrap only between clusters" 2 (. joined line-count))
+        (for (in line (. joined snapshot lines))
+          (call (. t expect)
+            (block
+              (arg "each wrapped emoji line retains one full cluster")
+              (arg (. emoji width))
+              (arg (. line typographic-bounds width))
+            )
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (let combining (call TextLayout "é" font))
+  (do-use combining
+    (let combined-pair
+      (call TextLayout
+        (block
+          (arg "éé")
+          (arg font)
+          (arg (+ (. combining width) 0.01))
+          (arg (. TextOverflow clip))
+          (arg (. TextWrap word))
+        )
+      )
+    )
+    (do-use combined-pair
+      (call (. t expect) "combining sequences wrap only between graphemes" 2 (. combined-pair line-count))
+      (for (in line (. combined-pair snapshot lines))
+        (call (. t expect)
+          (block
+            (arg "each combining line retains one full grapheme")
+            (arg (. combining width))
+            (arg (. line typographic-bounds width))
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (let independently-truncated
+    (call TextLayout
+      (block
+        (arg "a deliberately long first line\nshort")
+        (arg font)
+        (arg 44)
+        (arg (. TextOverflow truncate-tail))
+        (arg (. TextWrap no-wrap))
+      )
+    )
+  )
+  (do-use independently-truncated
+    (call (. t expect) "no-wrap overflow keeps every hard line" 2 (. independently-truncated line-count))
+    (call (. t check)
+      (block
+        (arg "any independently truncated hard line marks the snapshot")
+        (arg (. independently-truncated is-truncated))
+      )
+    )
+    (for (in line (. independently-truncated snapshot lines))
+      (call (. t check)
+        (block
+          (arg "each truncated hard line respects its constraint")
+          (arg (<= (. line typographic-bounds width) 44))
+        )
+      )
+    )
+  )
+  (blank)
+  (let two-x (call RasterCanvas 240 180 2))
+  (do-use two-x
+    (= (. two-x font) font)
+    (= (. two-x text-color) black)
+    (let paragraph-two (call (. two-x text-layout) "I\nMMMM" 220 (. TextOverflow clip)))
+    (do-use paragraph-two
+      (call (. two-x draw-text) paragraph-two (call Rect 120 60 100 10) (. TextAlignment left))
+      (call (. t expect)
+        (block
+          (arg "fixed-height paragraph clips below its ten-point box")
+          (arg 0)
+          (arg (call (. two-x nontransparent-pixel-count) (call Rect 120 70 100 42)))
+        )
+      )
+    )
+  )
+  (blank)
+  (return t)
+)
+
+(fn-do + text-layout-constraint-tests TestCase
+  (param t TestCase)
+  (let font (call Font "Helvetica" 14 (. FontWeight regular)))
+  (let text "A long label with é and 👩🏽‍💻 clusters")
+  (let natural (call TextLayout text font null (. TextOverflow clip)))
+  (do-use natural
+    (let clipped (call TextLayout text font 42 (. TextOverflow clip)))
+    (do-use clipped
+      (call (. t expect) "clip keeps the natural layout width" (. natural natural-width) (. clipped width))
+      (call (. t check) "clip is not truncation" (not (. clipped is-truncated)))
+    )
+    (blank)
+    (let fitting (call TextLayout text font (. natural natural-width) (. TextOverflow truncate-tail)))
+    (do-use fitting
+      (call (. t expect) "fitting truncation request is unchanged" (. natural natural-width) (. fitting width))
+      (call (. t check) "fitting request is not truncated" (not (. fitting is-truncated)))
+    )
+    (blank)
+    (let narrow (call TextLayout text font 42 (. TextOverflow truncate-tail)))
+    (do-use narrow
+      (call (. t check) "narrow request truncates" (. narrow is-truncated))
+      (call (. t check) "narrow result fits" (<= (. narrow width) 42))
+      (call (. t expect)
+        (block
+          (arg "narrow result retains natural advance")
+          (arg (. natural natural-width))
+          (arg (. narrow natural-width))
+        )
+      )
+    )
+  )
+  (blank)
+  (let clip-zero (call TextLayout text font 0 (. TextOverflow clip)))
+  (let truncate-zero (call TextLayout text font 0 (. TextOverflow truncate-tail)))
+  (do-use clip-zero
+    (do-use truncate-zero
+      (call (. t check) "zero-width clip retains natural line" (> (. clip-zero width) 0))
+      (call (. t expect) "zero-width truncation paints no line" 0 (. truncate-zero width))
+      (call (. t check) "zero-width nonempty truncation is marked" (. truncate-zero is-truncated))
+    )
+  )
+  (blank)
+  (let ellipsis (call TextLayout "…" font))
+  (do-use ellipsis
+    (let sub-ellipsis (call TextLayout text font (- (. ellipsis natural-width) 0.01)))
+    (do-use sub-ellipsis
+      (call (. t expect) "sub-ellipsis width emits no partial token" 0 (. sub-ellipsis width))
+      (call (. t check) "sub-ellipsis request is truncated" (. sub-ellipsis is-truncated))
+    )
+  )
+  (blank)
+  (let aligned (call RasterCanvas 180 90 2))
+  (do-use aligned
+    (= (. aligned font) font)
+    (= (. aligned text-color) black)
+    (let glyph (call (. aligned text-layout) "I" null (. TextOverflow clip)))
+    (do-use glyph
+      (call (. aligned draw-text) glyph (call Rect 0 0 180 24) (. TextAlignment left))
+      (call (. aligned draw-text) glyph (call Rect 0 32 180 24) (. TextAlignment center))
+      (call (. aligned draw-text) glyph (call Rect 0 64 180 24) (. TextAlignment right))
+      (call (. t check)
+        (block
+          (arg "left alignment paints at the leading edge")
+          (arg (> (call (. aligned nontransparent-pixel-count) (call Rect 0 0 30 24)) 0))
+        )
+      )
+      (call (. t check)
+        (block
+          (arg "center alignment paints at the center")
+          (arg (> (call (. aligned nontransparent-pixel-count) (call Rect 70 32 40 24)) 0))
+        )
+      )
+      (call (. t check)
+        (block
+          (arg "right alignment paints at the trailing edge")
+          (arg (> (call (. aligned nontransparent-pixel-count) (call Rect 150 64 30 24)) 0))
+        )
+      )
+    )
+  )
+  (blank)
+  (return t)
+)
+
+(fn-do + styled-layout-tests TestCase
+  (param t TestCase)
+  (let font (call Font "Helvetica" 14))
+  (let segments (list TextSegment))
+  (+= segments (call TextSegment 0 "Hello " font))
+  (+= segments (call TextSegment 1 "bold" (call Font "Helvetica" 14 (. FontWeight bold)) red))
+  (+= segments (call TextSegment 2 "" font null (call TextObjectMetrics 30 12 4)))
+  (+= segments (call TextSegment 3 " world" (call Font "Helvetica" 14 (. FontWeight regular) (. FontSlant italic))))
+  (let layout (call TextLayout segments font))
+  (let fragments (. layout fragments))
+  (call (. t expect) "one fragment per tagged run" 4 (. fragments length))
+  (call (. t expect) "fragments keep text order" (list 0 1 2 3) (call fragment-tags layout))
+  (call (. t expect) "object keeps its width" 30 (. ([] fragments 2) width))
+  (call (. t expect) "object keeps its ascent" 12 (. ([] fragments 2) ascent))
+  (call (. t expect) "object keeps its descent" 4 (. ([] fragments 2) descent))
+  (call (. t check) "fragments are adjacent" (< (call abs (- (+ (. ([] fragments 1) x) (. ([] fragments 1) width)) (. ([] fragments 2) x))) 0.01))
+  (blank)
+  (let wrapped (call TextLayout (list (call TextSegment 7 "alpha beta gamma delta" font)) font 60))
+  (call (. t check) "wrapping splits one tag across lines" (> (. wrapped fragments length) 1))
+  (call (. t check)
+    (block
+      (arg "wrapped fragments share the tag")
+      (arg (and (== (. ([] (. wrapped fragments) 1) tag) 7) (== (. ([] (. wrapped fragments) 1) line) 1)))
+    )
+  )
+  (let spaced
+    (call TextLayout
+      (block
+        (arg (list (call TextSegment 7 "alpha beta gamma delta" font)))
+        (arg font)
+        (arg 60)
+        (arg (. TextOverflow clip))
+        (arg (. TextWrap word))
+        (arg 6)
+      )
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "line spacing adds between lines")
+      (arg (+ (. wrapped height) (* 6 (- (. wrapped line-count) 1))))
+      (arg (. spaced height))
+    )
+  )
+  (return t)
+)
+
+(fn-expr _ fragment-tags _
+  (param layout TextLayout)
+  (spread (. layout fragments))
+  (pipe *> (. each tag))
+  (pipe |> List)
+)

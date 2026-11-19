@@ -1,0 +1,89 @@
+(import ./program-tables)
+(import /data/json)
+(import /lang/ast/probe-selection)
+(import /lang/ast/program)
+(import /os/file)
+(import /os/path)
+
+(fn-expr + unmatched-probe-selectors (list String)
+  (param program Program)
+  (param tables ProgramTables)
+  (in each (. program probes selectors) (when (not (call (. tables selects-any) (call ProbeSelection true each)))))
+)
+
+(fn-do + write-probe-catalog _ (?! Error)
+  (param path String)
+  (param program Program)
+  (param tables ProgramTables)
+  (param unmatched (list String))
+  (let sites (list String))
+  (for (in position (..< 0 (. tables probes length)))
+    (let site (call (. tables probe-site) ([] (. tables probes) position)))
+    (if site
+      (+= sites (str "    " (call site-json (+ position 1) site)))
+    )
+  )
+  (let metrics (list String))
+  (for (in position (..< 0 (. tables profile-metrics length)))
+    (+= metrics (str "    " (call site-json (+ position 1) metric)))
+    (lazy metric (call (. tables metric-site) ([] (. tables profile-metrics) position)))
+  )
+  (call write-file-atomically (call Path path) (str (call probe-catalog program unmatched sites metrics) "\n"))
+)
+
+(fn-expr _ probe-catalog _
+  (param program Program)
+  (param unmatched (list String))
+  (param sites (list String))
+  (param metrics (list String))
+  (paragraph
+    "{"
+    "  \"version\": 1,"
+    (str "  \"selectors\": " (call strings-json (. program probes selectors)) ",")
+    (str "  \"locals\": " (call strings-json (. program probes locals)) ",")
+    (str "  \"unmatched\": " (call strings-json unmatched) ",")
+    "  \"sites\": ["
+    (str site-rows)
+    "  ],"
+    "  \"metrics\": ["
+    (str metric-rows)
+    "  ]"
+    "}"
+  )
+  (where
+    (lazy site-rows (call (. ",\n" join) sites))
+    (lazy metric-rows (call (. ",\n" join) metrics))
+  )
+)
+
+(fn-expr _ site-json String
+  (param id Size)
+  (param site ProbeSite)
+  (str "{\"id\": " id ", \"kind\": \"" (call kind-name (. site kind)) "\", \"key\": " (call json-quote (. site key)) ", \"name\": " (call json-quote (. site name)) ", \"template\": " (call json-quote (. site template)) ", \"fields\": " (call strings-json (. site fields)) ", \"module\": " (call json-quote (. site module-name)) ", \"path\": " (call json-quote (. site path)) ", \"line\": " (. site line) "}")
+)
+
+(fn-expr _ kind-name String
+  (param kind ProbeSiteKind)
+  (match kind
+    (case= .log
+      "log"
+    )
+    (case= .event
+      "event"
+    )
+    (case= .counter
+      "counter"
+    )
+    (default
+      "timer"
+    )
+  )
+)
+
+(fn-expr _ strings-json String
+  (param values (list String))
+  (str "[" (call (. ", " join) quoted) "]")
+  (where
+    (lazy quoted (in (call json-quote each) values))
+  )
+)

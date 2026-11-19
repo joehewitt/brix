@@ -1,0 +1,379 @@
+(import /graphics/color)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /graphics/shapes)
+(import /graphics/stroke)
+(import /math)
+(import /units)
+(blank)
+(prop + stroke-grid-cell-count Index (= 12))
+(prop + stroke-grid-cell-width I32 (= 251))
+(prop + stroke-grid-cell-height I32 (= 248))
+
+(fn-expr + stroke-grid-cell-name String
+  (param index _)
+  (case? (< index 10)
+    (str "0" index)
+  )
+  (default
+    (str index)
+  )
+)
+
+(fn-expr + stroke-grid-cell-stroked-path Path
+  (param index _)
+  (param cell Rect)
+  (call stroke
+    (block
+      (arg source)
+      (arg amount)
+      (arg (call stroke-grid-cell-alignment index))
+      (arg (call stroke-grid-cell-join-type index))
+      (arg (call stroke-grid-cell-cap index))
+      (arg 5)
+      (arg 0)
+    )
+  )
+  (where
+    (lazy center (. cell center))
+    (lazy radius (* (call min (. cell width) (. cell height)) 0.34))
+    (lazy source (call stroke-grid-cell-shape index center radius))
+    (lazy amount (call stroke-grid-cell-stroke-amount index))
+  )
+)
+
+(fn-expr + stroke-grid-cell-stroke-amount Length
+  (param index _)
+  (match index
+    (case= 8
+      (* amount 0.5)
+    )
+    (default
+      amount
+    )
+  )
+  (where
+    (lazy amount (+ 4 (* (as index Float) 2.35)))
+  )
+)
+
+(fn-do + stroke-grid-cell-shape Path
+  (param index _)
+  (param center Point)
+  (param radius Length)
+  (let kind (% index 12))
+  (if (== kind 0)
+    (return (call line (+ center (tuple (* (- radius) 0.82) (* (- radius) 0.22))) (+ center (tuple (* radius 0.82) (* radius 0.22)))))
+    (else-if (== kind 1)
+      (let path
+        (call rectangle
+          (block
+            (arg
+              (call Rect
+                (block
+                  (arg (- (. center x) (* radius 0.72)))
+                  (arg (- (. center y) (* radius 0.5)))
+                  (arg (* radius 1.44))
+                  (arg radius)
+                )
+              )
+            )
+          )
+        )
+      )
+      (call (. path rotate) -9deg center)
+      (return path)
+    )
+    (else-if (== kind 2)
+      (let path (call polygon 3 (* radius 1.82) center))
+      (call (. path rotate) 18deg center)
+      (return path)
+    )
+    (else-if (== kind 3)
+      (return (call circle center (* radius 0.7)))
+    )
+    (else-if (== kind 4)
+      (let path (call polygon 5 (* radius 1.78) center))
+      (call (. path rotate) -12deg center)
+      (return path)
+    )
+    (else-if (== kind 5)
+      (return (call stroke-grid-zigzag center radius))
+    )
+    (else-if (== kind 6)
+      (return (call stroke-grid-bounded-spiral center (* radius 0.95) 3.4 72 -45deg))
+    )
+    (else-if (== kind 7)
+      (return (call stroke-grid-cubic-snake center radius))
+    )
+    (else-if (== kind 8)
+      (return (call stroke-grid-rosette center (* radius 0.92) (* radius 0.28) 9 -18deg))
+    )
+    (else-if (== kind 9)
+      (return (call stroke-grid-lissajous center (* radius 0.9)))
+    )
+    (else-if (== kind 10)
+      (return (call stroke-grid-petal-loop center radius))
+    )
+    (else
+      (return (call stroke-grid-comet-loop center radius))
+    )
+  )
+)
+
+(fn-expr + stroke-grid-cell-alignment StrokeAlignment
+  (param index _)
+  .center
+)
+
+(fn-expr + stroke-grid-cell-join-type JoinType
+  (param index _)
+  (case? (>= index 8)
+    .round-join-type
+  )
+  (case? (== (% index 3) 0)
+    .round-join-type
+  )
+  (case? (== (% index 3) 1)
+    .miter-join-type
+  )
+  (default
+    .square-join-type
+  )
+)
+
+(fn-expr + stroke-grid-cell-cap LineCap
+  (param index _)
+  (match cap
+    (case= 0
+      .round
+    )
+    (default
+      .square
+    )
+  )
+  (where
+    (lazy cap (% index 2))
+  )
+)
+
+(fn-expr + stroke-grid-cell-fill-color RGBA
+  (param index _)
+  (match color
+    (case= 0
+      (call RGBA 89% 26% 35% 62%)
+    )
+    (case= 1
+      (call RGBA 10% 48% 78% 58%)
+    )
+    (case= 2
+      (call RGBA 18% 63% 42% 58%)
+    )
+    (case= 3
+      (call RGBA 90% 55% 14% 58%)
+    )
+    (case= 4
+      (call RGBA 44% 34% 78% 60%)
+    )
+    (case= 5
+      (call RGBA 4% 61% 66% 58%)
+    )
+    (case= 6
+      (call RGBA 83% 31% 66% 58%)
+    )
+    (case= 7
+      (call RGBA 53% 58% 9% 58%)
+    )
+    (case= 8
+      (call RGBA 73% 23% 15% 58%)
+    )
+    (case= 9
+      (call RGBA 18% 45% 72% 60%)
+    )
+    (case= 10
+      (call RGBA 62% 28% 77% 58%)
+    )
+    (default
+      (call RGBA 7% 55% 36% 58%)
+    )
+  )
+  (where
+    (lazy color (% index 12))
+  )
+)
+
+(fn-do _ stroke-grid-zigzag _
+  (param center Point)
+  (param radius Length)
+  (let path (call Path))
+  (call (. path move-to) (+ center (tuple (* (- radius) 0.82) (* (- radius) 0.45))))
+  (call (. path line-to) (+ center (tuple (* (- radius) 0.42) (* radius 0.36))))
+  (call (. path line-to) (+ center (tuple (* (- radius) 0.05) (* (- radius) 0.24))))
+  (call (. path line-to) (+ center (tuple (* radius 0.34) (* radius 0.48))))
+  (call (. path line-to) (+ center (tuple (* radius 0.82) (* (- radius) 0.34))))
+  (return path)
+)
+
+(fn-do _ stroke-grid-cubic-snake _
+  (param center Point)
+  (param radius Length)
+  (let path (call Path))
+  (call (. path move-to) (+ center (tuple (* (- radius) 0.86) (* radius 0.34))))
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* (- radius) 0.65) (* (- radius) 0.85))))
+      (arg (+ center (tuple (* (- radius) 0.18) (* radius 0.82))))
+      (arg (+ center (tuple (* radius 0.06) (* (- radius) 0.08))))
+    )
+  )
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* radius 0.34) (* (- radius) 1.04))))
+      (arg (+ center (tuple (* radius 0.76) (* radius 0.74))))
+      (arg (+ center (tuple (* radius 0.88) (* (- radius) 0.24))))
+    )
+  )
+  (return path)
+)
+
+(fn-do _ stroke-grid-bounded-spiral _
+  (param center Point)
+  (param radius Length)
+  (param coils Float)
+  (param steps Int)
+  (param rotation Radians)
+  (let path (call Path))
+  (for (in i (..< 0 steps))
+    (let t (/ (as i Float) (as (- steps 1) Float)))
+    (let angle (+ rotation (* t coils π 2)))
+    (let point (call (. center translate-at-angle) angle (* radius t)))
+    (if (== i 0)
+      (call (. path move-to) point)
+      (else
+        (call (. path line-to) point)
+      )
+    )
+  )
+  (blank)
+  (return path)
+)
+
+(fn-do _ stroke-grid-rosette _
+  (param center Point)
+  (param outer-radius Length)
+  (param inner-radius Length)
+  (param lobes Int)
+  (param rotation Radians)
+  (let path (call Path))
+  (let count (* lobes 2))
+  (let step (/ (* π 2) count))
+  (blank)
+  (for (in i (..< 0 count))
+    (let a1 (+ rotation (* step i)))
+    (let a2 (+ rotation (* step (+ i 1))))
+    (let r1 (if-expr (== (% i 2) 0) outer-radius inner-radius))
+    (let r2 (if-expr (== (% (+ i 1) 2) 0) outer-radius inner-radius))
+    (let bulge (* outer-radius (+ 0.52 (* (as (% i 3) Float) 0.08))))
+    (let p1 (call (. center translate-at-angle) a1 r1))
+    (let p2 (call (. center translate-at-angle) a2 r2))
+    (let h1 (call (. center translate-at-angle) (+ a1 (* step 0.42)) (+ r1 bulge)))
+    (let h2 (call (. center translate-at-angle) (- a2 (* step 0.42)) (+ r2 bulge)))
+    (blank)
+    (if (== i 0)
+      (call (. path move-to) p1)
+    )
+    (blank)
+    (call (. path cubic-curve-to) h1 h2 p2)
+  )
+  (blank)
+  (call (. path close))
+  (return path)
+)
+
+(fn-do _ stroke-grid-lissajous _
+  (param center Point)
+  (param radius Length)
+  (let path (call Path))
+  (let first true)
+  (for (in t (..< 0.0 (* π 2.0) (by: 0.11)))
+    (let point
+      (call Point
+        (block
+          (arg (+ (. center x) (* (call sin (+ (* t 3.0) 0.35)) radius)))
+          (arg (+ (. center y) (* (call sin (* t 4.0)) radius 0.72)))
+        )
+      )
+    )
+    (if first
+      (call (. path move-to) point)
+      (= first false)
+      (else
+        (call (. path line-to) point)
+      )
+    )
+  )
+  (blank)
+  (call (. path close))
+  (return path)
+)
+
+(fn-do _ stroke-grid-petal-loop _
+  (param center Point)
+  (param radius Length)
+  (let path (call Path))
+  (call (. path move-to) (+ center (tuple 0 (* (- radius) 0.9))))
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* radius 1.25) (* (- radius) 0.72))))
+      (arg (+ center (tuple (* radius 0.35) (* radius 0.28))))
+      (arg (+ center (tuple (* radius 0.78) (* radius 0.72))))
+    )
+  )
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* radius 0.18) (* radius 1.08))))
+      (arg (+ center (tuple (* (- radius) 0.4) (* radius 0.34))))
+      (arg (+ center (tuple (* (- radius) 0.82) (* radius 0.66))))
+    )
+  )
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* (- radius) 1.22) (* radius 0.08))))
+      (arg (+ center (tuple (* (- radius) 0.55) (* (- radius) 0.72))))
+      (arg (+ center (tuple 0 (* (- radius) 0.9))))
+    )
+  )
+  (call (. path close))
+  (return path)
+)
+
+(fn-do _ stroke-grid-comet-loop _
+  (param center Point)
+  (param radius Length)
+  (let path (call Path))
+  (call (. path move-to) (+ center (tuple (* (- radius) 0.9) 0)))
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* (- radius) 0.5) (* (- radius) 1.05))))
+      (arg (+ center (tuple (* radius 0.32) (* (- radius) 0.62))))
+      (arg (+ center (tuple (* radius 0.68) (* (- radius) 0.18))))
+    )
+  )
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* radius 1.24) (* radius 0.5))))
+      (arg (+ center (tuple (* (- radius) 0.18) (* radius 0.95))))
+      (arg (+ center (tuple (* (- radius) 0.05) (* radius 0.04))))
+    )
+  )
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* (- radius) 0.34) (* (- radius) 0.32))))
+      (arg (+ center (tuple (* (- radius) 0.54) (* radius 0.38))))
+      (arg (+ center (tuple (* (- radius) 0.9) 0)))
+    )
+  )
+  (call (. path close))
+  (return path)
+)

@@ -1,14 +1,15 @@
 # Stream call scopes
 
-```yumi
--- collect(((1 .. 3) *> (each * 2)))
--- collect(((1 .. 4) ?> (each > 2)))
+```brix
+(main
+  (print (call collect (*> (.. 1 3) (* each 2))))
+  (print (call collect (?> (.. 1 4) (> each 2))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ collect
-    - source <Int>
-
-",".join(source)
+(fn-expr + collect _
+  (param source (stream Int))
+  (call (. "," join) source)
+)
 ```
 
 ```output
@@ -16,22 +17,22 @@
 3,4
 ```
 
-```yumi
--- greatest(((1 .. 3) *> each))
--- greatest(4, 2)
+```brix
+(main
+  (print (call greatest (*> (.. 1 3) each)))
+  (print (call greatest 4 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ greatest'T
-    - source <T>
+(fn-expr + (of greatest T) _
+  (param source (stream T))
+  "stream"
+)
 
-"stream"
-
-━━━━━━━━━━━━━━━━━━━━
-+ greatest'T
-    - a T
-    - b T
-
-"scalar"
+(fn-expr + (of greatest T) _
+  (param a T)
+  (param b T)
+  "scalar"
+)
 ```
 
 ```output
@@ -39,22 +40,22 @@ stream
 scalar
 ```
 
-```yumi
--- greatest(((1 .. 3) *> each))
--- greatest(4, 2)
+```brix
+(main
+  (print (call greatest (*> (.. 1 3) each)))
+  (print (call greatest 4 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ greatest'T
-    - a T
-    - b T
+(fn-expr + (of greatest T) _
+  (param a T)
+  (param b T)
+  "scalar"
+)
 
-"scalar"
-
-━━━━━━━━━━━━━━━━━━━━
-+ greatest'T
-    - source <T>
-
-"stream"
+(fn-expr + (of greatest T) _
+  (param source (stream T))
+  "stream"
+)
 ```
 
 ```output
@@ -62,37 +63,40 @@ stream
 scalar
 ```
 
-```yumi
--- catch fold-values()
--- fold(0, [1, 2, 3], :: left, right => left + right)
--- fold(0, List'Int(), :: left, right => left + right)
+```brix
+(main
+  (print (catch (call fold-values)))
+  (print (call fold 0 (list 1 2 3) (=> (left right) (+ left right))))
+  (print (call fold 0 (call (of List Int)) (=> (left right) (+ left right))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ FoldFailure is Error
+(type + FoldFailure (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ FoldAccumulator'Accum'Item'Result is () Result
-    - accum Accum
-    - item Item
+(type + (of FoldAccumulator Accum Item Result) (is (fn-type Result (param accum Accum) (param item Item))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fold'Item'Result @inline
-    - seed Result
-    - source <Item>
-    - accumulator FoldAccumulator'Result'Item
+(fn-do + (of fold Item Result) _ @inline
+  (param seed Result)
+  (param source (stream Item))
+  (param accumulator (of FoldAccumulator Result Item))
+  (let accum seed)
+  (for (in item source)
+    (= accum (call accumulator accum item))
+  )
+  (return accum)
+)
 
-. accum = seed
-for item in source
-    accum = accumulator(accum, item)
-= accum
-
-━━━━━━━━━━━━━━━━━━━━
-+ fold-values Int
-
-fold(0, [1, 2, 3]) • accumulator :: left, right => do
-    ?! FoldFailure("remainder")
-        if right == 2
-    = left + right
+(fn-expr + fold-values Int
+  (call fold 0 (list 1 2 3)
+    (:accumulator
+      (=> (left right) :do
+        (block
+          (throw (call FoldFailure "remainder") (if (== right 2)))
+          (return (+ left right))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -101,38 +105,34 @@ remainder
 0
 ```
 
-```yumi
--- combined().value
+```brix
+(main
+  (print (. (call combined) value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ combined
+(fn-expr + combined _
+  (list (call ScanValue 1) (call ScanValue 2))
+  (pipe |> (call combine (:accumulator (=> (a b) (call ScanValue (+ (. a value) (. b value)))))))
+)
 
-[ScanValue(1), ScanValue(2)]
-|> combine • accumulator :: a, b => ScanValue(a.value + b.value)
+(type + ScanValue (is Tuple)
+  (prop + value Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ScanValue is Tuple
-+ value Int
+(type + (of Combine Item Result) (is (fn-type Result (param a Item) (param b Item))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Combine'Item'Result is () Result
-    - a Item
-    - b Item
+(fn-expr + (of combine Item) _
+  (param source (list Item))
+  (param accumulator (of Combine Item))
+  (call accumulator ([] source 0) ([] source 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ combine'Item
-    - source [Item]
-    - accumulator Combine'Item
-
-accumulator(source[0], source[1])
-
-━━━━━━━━━━━━━━━━━━━━
-+ combine'Item
-    - seed Item
-    - source [Item]
-    - accumulator Combine'Item
-
-accumulator(seed, source[0])
+(fn-expr + (of combine Item) _
+  (param seed Item)
+  (param source (list Item))
+  (param accumulator (of Combine Item))
+  (call accumulator seed ([] source 0))
+)
 ```
 
 ```output
@@ -141,10 +141,12 @@ accumulator(seed, source[0])
 
 ### Inline stages bind looser than comparisons and arithmetic, like stages on their own lines.
 
-```yumi
-. values = [1, -2, 3]
--- List(values ?> each > 0)
--- List(values *> each * 10)
+```brix
+(main
+  (let values (list 1 -2 3))
+  (print (call List (?> values (> each 0))))
+  (print (call List (*> values (* each 10))))
+)
 ```
 
 ```output

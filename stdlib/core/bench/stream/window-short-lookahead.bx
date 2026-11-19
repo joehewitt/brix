@@ -1,0 +1,51 @@
+; benchmark.meta description: Exercises short lookahead over the canonical Array-backed stream.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+
+(main
+  (let rows
+    (match (call window-short-lookahead-source)
+      (~ \window-short-lookahead-document)
+      (throw (call Panic "window-short-lookahead did not parse"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in row rows)
+    (+= checksum row)
+  )
+  (blank)
+  (print (str "bench-result stream/window-short-lookahead checksum=" checksum))
+)
+
+(fn-expr + window-short-lookahead-document _ (over: Char)
+  (~ (: rows (+ \window-short-row))
+    rows
+  )
+  (where
+    (lazy window-short-row Size
+      (pattern
+        (~ (seq (& "rec:") "rec:" (: name \window-short-word) ":" (: value \window-short-digits) "\n")
+          (+ (* (. name length) 29) (. value length))
+        )
+      )
+    )
+    (blank)
+    (lazy window-short-word String
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_"))))
+      )
+    )
+    (blank)
+    (lazy window-short-digits String
+      (pattern
+        (~ (+ (chars "0-9")))
+      )
+    )
+  )
+)
+
+(fn-expr _ window-short-lookahead-source _
+  (call (. "" join) (in (str "rec:n" each ":" (* each 41) "\n") (..< 0 260)))
+)

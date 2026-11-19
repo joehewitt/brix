@@ -1,0 +1,551 @@
+(import ./ctime)
+(import ./duration)
+(import ./zone)
+(import /math)
+(import /units)
+(blank)
+(prop + midnight _ (= 12am))
+(prop + noon _ (= 12pm))
+(prop + january _ (= (. Month january)))
+(prop + february _ (= (. Month february)))
+(prop + march _ (= (. Month march)))
+(prop + april _ (= (. Month april)))
+(prop + may _ (= (. Month may)))
+(prop + june _ (= (. Month june)))
+(prop + july _ (= (. Month july)))
+(prop + august _ (= (. Month august)))
+(prop + september _ (= (. Month september)))
+(prop + october _ (= (. Month october)))
+(prop + november _ (= (. Month november)))
+(prop + december _ (= (. Month december)))
+(prop + february-leap _ (= (. Month february-leap)))
+(blank)
+(type-line + AbsoluteTime (is UInt))
+
+(type + DateTime (is Tuple)
+  (prop + since-epoch CSeconds)
+  (prop + second Second)
+  (prop + minute Minute)
+  (prop + hour Hour)
+  (prop + day DayOfMonth)
+  (prop + month Month)
+  (prop + year Year)
+  (blank)
+  ; @readonly
+  (prop + day-of-week DayOfWeek)
+  (blank)
+  ; @readonly
+  (prop + day-of-year DayOfYear)
+  (prop + zone _ (= local))
+  (prop + is-daylight-savings Bool)
+  (fn-do + This _
+    (param zone _ (= local))
+    (return (call This (. zone now) zone))
+  )
+  (fn-do + This _
+    (param time Time)
+    (param date _ (= today))
+    (return (call This date time))
+  )
+  (fn-do + This _
+    (param date Date)
+    (param time _ (= midnight))
+    (return (call This (. time second) (. time minute) (. time hour) (. date day) (. date month) (. date year) (. time zone)))
+  )
+  (fn-do + This _
+    (param second Second)
+    (param minute Minute)
+    (param hour Hour)
+    (param day DayOfMonth)
+    (param month Month)
+    (param year Year)
+    (param zone _ (= local))
+    (return (call This new-seconds zone))
+    (blank)
+    (lazy new-seconds (call make-time (as second I32) (as minute I32) (as hour I32) (as d I32) (as m I32) (as y I32)))
+    (lazy d (+ (. day number) 1))
+    (lazy m (. month number))
+    (lazy y (- year 1900))
+  )
+  (fn-do + This _
+    (param since-epoch CSeconds)
+    (param zone _ (= local))
+    (lazy tm (call break-down-utc-time since-epoch))
+    (lazy second (as (. tm sec) Second))
+    (lazy minute (as (. tm min) Minute))
+    (lazy hour (as (. tm hour) Hour))
+    (lazy day (call (. month day) (. tm mday)))
+    (lazy day-of-week (as (. tm wday) DayOfWeek))
+    (lazy day-of-year (call (. year day) (. tm yday)))
+    (lazy month (call (. year month) (. tm mon)))
+    (lazy year (call Year (+ (. tm year) 1900)))
+    (lazy is-daylight-savings (> (. tm isdst) 0))
+  )
+  (fn-to-expr + TimeZone
+    zone
+  )
+  (fn-to-expr + CSeconds
+    since-epoch
+  )
+  (fn-to-expr + Second
+    second
+  )
+  (fn-to-expr + Minute
+    minute
+  )
+  (fn-to-expr + Hour
+    hour
+  )
+  (fn-to-expr + DayOfMonth
+    day
+  )
+  (fn-to-expr + DayOfWeek
+    day-of-week
+  )
+  (fn-to-expr + DayOfYear
+    day-of-year
+  )
+  (fn-to-expr + Month
+    month
+  )
+  (fn-to-expr + Year
+    year
+  )
+  (fn-to-expr + Date
+    date
+  )
+  (fn-to-expr + Time
+    time
+  )
+  (fn-to-expr + String
+    (str day " " year " " hour ":" m)
+    (where
+      (lazy m (call (. minute pad) 2))
+    )
+  )
+  (fn-expr + readable String :get
+    (str short-month " " (+ (. day number) 1) ", " year " at " (. clock military-hour) ":" m " " (. clock ampm uppercased))
+    (where
+      (lazy clock time)
+      (lazy m (call (. minute pad) 2))
+      (lazy short-month (str (. ([] (. month short-name) (..< 0 1)) uppercased) ([] (. month short-name) (... 1))))
+    )
+  )
+  (fn-expr + time _ :get
+    (call Time hour minute second zone)
+  )
+  (fn-expr + time _ :set (param time Time)
+    (call This second (. time minute) (. time hour) day month year (. time zone))
+  )
+  (fn-expr + since-epoch _ :set (param other _)
+    (call This (+ (as other Seconds) (. zone offset)) zone)
+  )
+  (fn-expr + second _ :set (param other _)
+    (call This other minute hour day month year)
+  )
+  (fn-expr + minute _ :set (param other _)
+    (call This second other hour day month year)
+  )
+  (fn-expr + hour _ :set (param other _)
+    (call This second minute other day month year)
+  )
+  (fn-expr + date _ :set (param date Date)
+    (call This second minute hour (. date day) (. date month) (. date year) zone)
+  )
+  (fn-expr + day _ :set (param other _)
+    (call This second minute hour other month year)
+  )
+  (fn-expr + month _ :set (param other _)
+    (call This second minute hour day other year)
+  )
+  (fn-expr + year _ :set (param other _)
+    (call This second minute hour day month other)
+  )
+  (fn-expr + zone _ :set (param other _)
+    (call This csecs other)
+    (lazy csecs (call (. zone convert) seconds other))
+  )
+  (fn-expr + (infix this == (param other CSeconds)) _
+    (== since-epoch other)
+  )
+  (fn-expr + (infix this < (param other CSeconds)) _
+    (< since-epoch other)
+  )
+  (fn-expr + (infix this > (param other CSeconds)) _
+    (> since-epoch other)
+  )
+  (fn-expr + (infix this - (param other DateTime)) _
+    (call TimeDelta this other)
+  )
+  (fn-expr + (infix this - (param other CSeconds)) _
+    (call DateTime (- since-epoch other) zone)
+  )
+  (fn-expr + (infix this + (param other CSeconds)) _
+    (call DateTime (+ since-epoch other) zone)
+  )
+  (fn-expr + elapsed _
+    (- (. zone now) since-epoch)
+  )
+  (fn-expr + date _
+    (call Date day year)
+  )
+  (fn-expr + decade _
+    (* (as (* ([] (call modf (/ year 100.0)) 1) 10) AbsoluteTime) 10)
+  )
+  (fn-expr + century _
+    (as ([] (call modf (/ year 100.0)) 0) AbsoluteTime)
+  )
+  (fn-expr + millenium _
+    (as (/ year 1000.0) AbsoluteTime)
+  )
+)
+
+(fn-expr + now _
+  (call DateTime)
+)
+
+(fn-expr + today _
+  (call (. (call now) date))
+)
+
+(fn-expr + yesterday _
+  (call (. dt date))
+  (where
+    (lazy dt (- (call now) 24hours))
+  )
+)
+
+(type + Second (alias second) (is AbsoluteTime)
+  (implements (of Scalable AbsoluteTime))
+  (prop + scale _ (=> (call Scale 0second 59second)))
+  (fn-from-expr + (: ratio Ratio)
+    (* scale ratio)
+  )
+  (fn-to-expr + Ratio
+    (* scale this)
+  )
+)
+
+(type + Minute (alias minute) (is AbsoluteTime)
+  (implements (of Scalable AbsoluteTime))
+  (prop + scale _ (=> (call Scale 0minute 59minute)))
+  (fn-from-expr + (: ratio Ratio)
+    (* (. (call This) scale) ratio)
+  )
+  (fn-to-expr + Ratio
+    (* scale this)
+  )
+)
+
+(type + Hour (alias hour) (is AbsoluteTime)
+  (implements (of Scalable AbsoluteTime))
+  (prop + scale _ (=> (call Scale 0hour 23hour)))
+  (fn-from-expr + (: ratio Ratio)
+    (* (. (call This) scale) ratio)
+  )
+  (fn-to-expr + Ratio
+    (* scale this)
+  )
+)
+
+(type + DayOfWeek (is Tuple)
+  (implements (of Scalable AbsoluteTime))
+  (variant sunday (= (tuple "sunday" "sun")))
+  (variant monday (= (tuple "monday" "mon")))
+  (variant tuesday (= (tuple "tuesday" "tue")))
+  (variant wednesday (= (tuple "wednesday" "wed")))
+  (variant thursday (= (tuple "thursday" "thu")))
+  (variant friday (= (tuple "friday" "fri")))
+  (variant saturday (= (tuple "saturday" "sat")))
+  (blank)
+  (prop + name _ (= ""))
+  (prop + short-name _ (= ""))
+  (prop + scale _ (=> (call Scale 0 6)))
+  (fn-to-expr + String
+    name
+  )
+  (fn-to-expr + AbsoluteTime
+    number
+  )
+  (fn-to-expr + Abbreviation
+    short-name
+  )
+)
+
+(type + DayOfMonth (is Tuple)
+  (implements (of Scalable AbsoluteTime))
+  (prop + number AbsoluteTime)
+  (prop + month Month)
+  (prop + scale _ (=> (. month day-scale)))
+  (fn-to-expr + AbsoluteTime
+    number
+  )
+  (fn-to-expr + String
+    (str month " " (+ number 1))
+  )
+  (fn-expr + year _
+    (param year Year)
+    (call Date this year)
+  )
+)
+
+(type + DayOfYear (is Tuple)
+  (implements (of Scalable AbsoluteTime))
+  (prop + number AbsoluteTime)
+  (prop + year Year)
+  (prop + scale _ (=> (. year day-scale)))
+  (fn-to-expr + String
+    (str number)
+  )
+  (fn-to-expr + AbsoluteTime
+    number
+  )
+)
+
+(type + Month (is Tuple)
+  (implements (of Scalable AbsoluteTime))
+  (variant january (= (tuple 0 "january" "jan" 31)))
+  (variant february (= (tuple 1 "february" "feb" 28)))
+  (variant march (= (tuple 2 "march" "mar" 31)))
+  (variant april (= (tuple 3 "april" "apr" 30)))
+  (variant may (= (tuple 4 "may" "may" 31)))
+  (variant june (= (tuple 5 "june" "jun" 30)))
+  (variant july (= (tuple 6 "july" "jul" 31)))
+  (variant august (= (tuple 7 "august" "aug" 31)))
+  (variant september (= (tuple 8 "september" "sep" 30)))
+  (variant october (= (tuple 9 "october" "oct" 31)))
+  (variant november (= (tuple 10 "november" "nov" 30)))
+  (variant december (= (tuple 11 "december" "dec" 31)))
+  (variant february-leap (= (tuple 1 "february" "feb" 29)))
+  (blank)
+  (prop + number Int)
+  (prop + name String)
+  (prop + short-name String)
+  (prop + days AbsoluteTime)
+  (prop + day-scale _ (=> (call Scale 0 days-1)))
+  (prop + scale _ (=> (call Scale 0 11)))
+  (fn-do + This _
+    (param number AbsoluteTime)
+    (return (call (. now year month) number))
+  )
+  (fn-to-expr + String
+    name
+  )
+  (fn-to-expr + AbsoluteTime
+    number
+  )
+  (fn-to-expr + Abbreviation
+    short-name
+  )
+  (fn-to-expr + Days
+    days
+  )
+  (fn-expr + day _
+    (param number Int)
+    (before
+      (throw (call OutOfBoundsError (str this " ranges from 0 to " days)) (if (or (< n 0) (> n (- days 1)))))
+    )
+    (call DayOfMonth (as n AbsoluteTime) this)
+    (where
+      (lazy n (- number 1))
+    )
+  )
+  (fn-expr + this _
+    (param number Int)
+    (param year Year)
+    (call (. (call day number) year) year)
+  )
+  (fn-expr + this _
+    (param number Int)
+    (call day number)
+  )
+)
+
+(type + Year (is AbsoluteTime)
+  (prop + is-leap-year _ (=> (and (== (/and/ this 3) 0) (or (!= (% this 25) 0) (== (/and/ this 15) 0)))))
+  (prop + days _ (=> (if-expr is-leap-year 366days 365days)))
+  (prop + day-scale _ (=> (call Scale 0 (- days 1))))
+  (fn-to-expr + Days
+    days
+  )
+  (fn-expr + day _
+    (param number Int)
+    (before
+      (throw (call OutOfBoundsError (str this " ranges from 0 to " (- days 1))) (if (or (< number 0) (> (as number Days) days))))
+    )
+    (call DayOfYear (as number AbsoluteTime) this)
+  )
+  (fn-expr + month _
+    (param number Int)
+    (before
+      (throw (call OutOfBoundsError "Months range from 0 to 11") (if (or (< number 0) (> number 11))))
+    )
+    (case? (and (== number 1) is-leap-year)
+      february-leap
+    )
+    (default
+      (as number Month)
+    )
+  )
+)
+
+(type + Date (is Tuple)
+  (prop + day DayOfMonth)
+  (prop + year Year)
+  (prop + month _ (=> (. day month)))
+  (fn-to-expr + DateTime
+    (call DateTime this)
+  )
+  (fn-to-expr + DayOfWeek
+    (. (call DateTime this) day-of-week)
+  )
+  (fn-to-expr + DayOfMonth
+    day
+  )
+  (fn-to-expr + DayOfYear
+    (. (call DateTime this) day-of-year)
+  )
+  (fn-to-expr + Month
+    (. day month)
+  )
+  (fn-to-expr + Year
+    year
+  )
+  (fn-to-expr + String
+    (str (. day month) " " d " " year)
+    (where
+      (lazy d (+ (. day number) 1))
+    )
+  )
+  (fn-expr + month _ :set (param other Month)
+    (call This (call (. other day) day) year)
+  )
+  (fn-expr + (infix this + (param time Time)) _
+    (call DateTime this time)
+  )
+)
+
+(type + Time (is Tuple)
+  (prop + hour Hour)
+  (prop + minute Minute (= 0))
+  (prop + second Second (= 0))
+  (prop + zone TimeZone (= local))
+  (prop + military-time _ (= false))
+  (fn-do + This _
+    (param t F64)
+    (param zone TimeZone (= local))
+    (return (call This t false zone))
+  )
+  (fn-do + This _
+    (param t F64)
+    (param pm Bool)
+    (param zone TimeZone (= local))
+    (return (call This h m 0 zone true))
+    (blank)
+    (lazy hm (call modf t))
+    (lazy hour24 (as ([] hm 0) Hour))
+    (lazy minute60 ([] hm 1))
+    (lazy h
+      (block
+        (case? (and (== hour24 12) (not pm))
+          0
+        )
+        (case? (and (!= hour24 12) pm)
+          (+ 12 hour24)
+        )
+        (default
+          hour24
+        )
+      )
+    )
+    (lazy m (* (call Scale 0 0.59) minute60))
+  )
+  (fn-to-expr + Hour
+    hour
+  )
+  (fn-to-expr + Minute
+    minute
+  )
+  (fn-to-expr + DateTime
+    (call DateTime this)
+  )
+  (fn-to-expr + String
+    (case? military-time
+      (str military-hour ":" min ampm)
+    )
+    (default
+      (str hour ":" min ":" sec)
+    )
+    (where
+      (lazy min (call (. minute pad) 2))
+      (lazy sec (call (. second pad) 2))
+    )
+  )
+  (fn-expr + military-hour _ :get
+    (case? (== hour 0)
+      12
+    )
+    (case? (> hour 12)
+      (- hour 12)
+    )
+    (default
+      hour
+    )
+  )
+  (fn-expr + ampm _ :get
+    (case? (< hour 12)
+      "am"
+    )
+    (default
+      "pm"
+    )
+  )
+  (fn-expr + (infix this + (param date Date)) _
+    (call DateTime date this)
+  )
+)
+
+(type + AM (alias am) (is F32)
+  (fn-do + This _
+    (param t _)
+    (return (call Time t false))
+  )
+)
+
+(type + PM (alias pm) (is F32)
+  (fn-do + This _
+    (param t _)
+    (return (call Time t true))
+  )
+)
+
+(type + TimeDelta (is (tuple (: later DateTime) (: earlier DateTime)))
+  (prop + delta _ (= (- (. later since-epoch) (. earlier since-epoch))))
+  (fn-to-expr + String
+    delta
+  )
+  (fn-to-expr + ''OtherDuration
+    (constraint is OtherDuration Duration)
+    delta
+  )
+  (fn-to-expr + CSeconds
+    delta
+  )
+  (fn-to-expr + (of Iterable ''OtherDuration)
+    (constraint is OtherDuration Duration)
+    (call range (call OtherDuration 1))
+  )
+  (fn-expr + range _
+    (param interval Duration)
+    (constraint is! Duration Duration)
+    (.. start end (by: interval))
+    (where
+      (lazy start (. earlier since-epoch))
+      (lazy end (. later since-epoch))
+    )
+  )
+)
+
+(unit + 1hour 1hours)
+(unit + 1minute 1minutes)
+(unit + 1second 1seconds)

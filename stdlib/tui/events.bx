@@ -1,0 +1,699 @@
+(import ./primitives)
+(import /ui/input)
+(blank)
+(type-line + KeyEvent (is TerminalEvent))
+(type-line + DialogEvent (is BoxEvent))
+
+(type + TerminalEvents (is Union)
+  (variant KeyPressEvent)
+  (variant KeyInputEvent)
+  (variant PasteEvent)
+  (variant CursorEvent)
+  (variant MouseDownEvent)
+  (variant MouseUpEvent)
+  (variant MouseMoveEvent)
+  (variant MouseDragEvent)
+  (variant ScrollEvent)
+  (variant SizeRequestEvent)
+  (variant UnknownEvent)
+  (fn-expr + This TerminalEvents (over: Char)
+    (~ (seq \paste-start (: text \paste-text) \paste-end)
+      (call PasteEvent text)
+    )
+    (~ (seq \escape "[<" (: code I32) ";" (: x I32) ";" (: y I32) (: type \char))
+      (call mouse-event (call Point (as (- x 1) Coord) (as (- y 1) Coord)) code type)
+    )
+    (~ (seq \escape "[8;" (: x I32) ";" (: y I32) "t")
+      (call SizeRequestEvent x y)
+    )
+    (~ (seq \escape "[" (: row I32) ";" (: col I32) "R")
+      (call CursorEvent row col)
+    )
+    (~ (seq \escape "[27;" (: modifiers I32) ";" (: code I32) "~")
+      (call csi-u-event code modifiers)
+    )
+    (~ (seq \escape "[" (: code (? \csi-number)) (: modifiers (? \csi-modifiers)) (: final \csi-final))
+      (call csi-event (?? code 1) (?? modifiers 1) final)
+    )
+    (~ (seq \escape "[" (? \csi-parameters) (? \csi-intermediates) \csi-final)
+      (call UnknownEvent)
+    )
+    (~ (seq \escape "O" (: final \csi-final))
+      (call csi-letter-event final 1)
+    )
+    (~ (seq \escape "b")
+      (call KeyPressEvent (. Key arrow-left) (call PointerModifiers false false true))
+    )
+    (~ (seq \escape "f")
+      (call KeyPressEvent (. Key arrow-right) (call PointerModifiers false false true))
+    )
+    (~ (seq \escape "B")
+      (call option-shift-key (. Key arrow-left))
+    )
+    (~ (seq \escape "F")
+      (call option-shift-key (. Key arrow-right))
+    )
+    (~ (seq \escape (: c \control-key))
+      (call control-key-event c true)
+    )
+    (~ (seq \escape (: c \option-char))
+      (call option-key-input c)
+    )
+    (~ \escape
+      (call KeyPressEvent (. Key escape))
+    )
+    (~ (: c \control-key)
+      (call control-key-event c false)
+    )
+    (~ (: c \char)
+      (call char-event c)
+    )
+    (where
+      (lazy escape
+        (pattern
+          (~ "\x1b")
+        )
+      )
+      (lazy char Char
+        (pattern
+          (~ (: c .)
+            ([] c 0)
+          )
+        )
+      )
+      (lazy paste-start
+        (pattern
+          (~ "\x1b[200~")
+        )
+      )
+      (lazy paste-end
+        (pattern
+          (~ "\x1b[201~")
+        )
+      )
+      (lazy paste-text String
+        (pattern
+          (~ (: chars (* \paste-char))
+            (call (. (call Array chars) slice-string))
+          )
+        )
+      )
+      (lazy paste-char Char
+        (pattern
+          (~ (seq (! \paste-end) (: c .))
+            ([] c 0)
+          )
+        )
+      )
+      (lazy csi-number I32
+        (pattern
+          (~ (: number I32)
+            number
+          )
+        )
+      )
+      (lazy csi-modifiers I32
+        (pattern
+          (~ (seq ";" (: modifiers I32))
+            modifiers
+          )
+        )
+      )
+      (lazy csi-parameters
+        (pattern
+          (~ (+ (chars "0-?")))
+        )
+      )
+      (lazy csi-intermediates
+        (pattern
+          (~ (+ (chars " -/")))
+        )
+      )
+      (lazy csi-final Char
+        (pattern
+          (~ (chars "@-~")
+            ([] it 0)
+          )
+        )
+      )
+      (lazy control-key Char
+        (pattern
+          (~ (: c (| "\t" "\r" "\n" "\x7f"))
+            ([] c 0)
+          )
+        )
+      )
+      (lazy option-char Char
+        (pattern
+          (~ (seq (! \escape) (: c \char))
+            c
+          )
+        )
+      )
+    )
+  )
+)
+
+(type + FocusedInputEvent (is KeyPressEvent KeyInputEvent PasteEvent))
+
+(type + PointerEvent (is MouseDownEvent MouseUpEvent MouseMoveEvent MouseDragEvent ScrollEvent))
+
+(type + BoxEventRouteNext (is (fn-type (? Pointer) (param event Pointer) (param current Pointer))))
+
+(type + BoxEventRouteState (is Tuple)
+  (prop + next (? BoxEventRouteNext))
+  (prop + root (? Pointer))
+  (prop + boundary (? Pointer))
+  (prop + route-point Point)
+  (prop + offset Point)
+  (prop + point Point)
+)
+
+(type + BoxEvent
+  (prop + is-canceled _ (= false))
+  (prop + route-root (? Pointer))
+  (prop + route-boundary (? Pointer))
+  (prop + route-offset Point)
+  (blank)
+  (prop _ event-route-next (? BoxEventRouteNext))
+  (prop _ event-route-point Point)
+  (prop _ event-point Point)
+  (fn-expr + has-own-route Bool :get
+    (if-expr event-route-next true false)
+  )
+  (fn-do + cancel _
+    (= is-canceled true)
+  )
+  (fn-do + begin-route BoxEventRouteState
+    (param next BoxEventRouteNext)
+    (param root Pointer)
+    (param root-point Point)
+    (param offset Point)
+    (param boundary (? Pointer))
+    (let old-next event-route-next)
+    (let old-root route-root)
+    (let old-boundary route-boundary)
+    (let old-route event-route-point)
+    (let old-offset route-offset)
+    (let old-point event-point)
+    (let saved (call BoxEventRouteState old-next old-root old-boundary old-route old-offset old-point))
+    (= event-route-next next)
+    (= route-root root)
+    (= route-boundary boundary)
+    (= event-route-point root-point)
+    (= event-point (call Point (- (. root-point x) (. offset x)) (- (. root-point y) (. offset y))))
+    (= route-offset offset)
+    (return saved)
+  )
+  (fn-do + end-route _
+    (param saved BoxEventRouteState)
+    (= event-route-next (. saved next))
+    (= route-root (. saved root))
+    (= route-boundary (. saved boundary))
+    (= event-route-point (. saved route-point))
+    (= route-offset (. saved offset))
+    (= event-point (. saved point))
+  )
+  (fn-do + advance-route _
+    (param offset Point)
+    (= event-point (call Point (- (. event-route-point x) (. offset x)) (- (. event-route-point y) (. offset y))))
+    (= route-offset offset)
+  )
+  (fn-do + next-event-owner (? Pointer)
+    (param current Pointer)
+    (return-if (if (not event-route-next)))
+    (return (call event-route-next (as this Pointer) current))
+  )
+)
+
+(type + TerminalEvent (is BoxEvent)
+  (implements RoutedEvent)
+  (prop + modifiers _ (= (call PointerModifiers)))
+)
+
+(type + UnknownEvent (is TerminalEvent)
+  (fn-to-expr + String
+    "unknown"
+  )
+)
+
+(type + SignalEvent (is TerminalEvent)
+  (prop + signal Char)
+)
+
+(type + KeyPressEvent (is KeyEvent)
+  (prop + key Key)
+  (fn-do + This _
+    (param key _)
+    (param modifiers PointerModifiers (= (call PointerModifiers)))
+    (= (. this modifiers) modifiers)
+  )
+  (fn-to-expr + String
+    (str "KeyPressEvent(" key ")")
+  )
+)
+
+(type + KeyInputEvent (is KeyEvent)
+  (prop + char Char)
+  (fn-do + This _
+    (param char _)
+    (param modifiers PointerModifiers (= (call PointerModifiers)))
+    (= (. this modifiers) modifiers)
+  )
+  (fn-to-expr + String
+    (str "KeyInputEvent(" char ")")
+  )
+)
+
+(type + PasteEvent (is TerminalEvent)
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+  (fn-to-expr + String
+    (str "PasteEvent(" text ")")
+  )
+)
+
+(type + SizeRequestEvent (is TerminalEvent)
+  (prop + x I32)
+  (prop + y I32)
+  (fn-do + This _
+    (param x I32)
+    (param y I32)
+  )
+  (fn-to-expr + String
+    (str "SizeRequestEvent(" x ", " y ")")
+  )
+)
+
+(type + MouseEvent (is TerminalEvent)
+  (prop + root-point Point)
+  (prop + button _ (= (. PointerButton primary)))
+  (prop + point _ (=> event-point))
+  (fn-do + This _
+    (param root-point Point)
+    (param button PointerButton (= (. PointerButton primary)))
+  )
+)
+
+(type + MouseDownEvent (is MouseEvent)
+  (fn-to-expr + String
+    (str "MouseDownEvent(" root-point ")")
+  )
+)
+
+(type + MouseUpEvent (is MouseEvent)
+  (fn-to-expr + String
+    (str "MouseUpEvent(" root-point ")")
+  )
+)
+
+(type + MouseMoveEvent (is MouseEvent)
+  (fn-to-expr + String
+    (str "MouseMoveEvent(" root-point ")")
+  )
+)
+
+(type + MouseDragEvent (is MouseEvent)
+  (fn-to-expr + String
+    (str "MouseDragEvent(" root-point ")")
+  )
+)
+
+(type + ScrollEvent (is MouseEvent)
+  (prop + direction Direction)
+  (fn-do + This _
+    (param root-point Point)
+    (param direction Direction)
+  )
+  (fn-to-expr + String
+    (str "ScrollEvent(" root-point ", " direction ")")
+  )
+)
+
+(type + CursorEvent (is TerminalEvent)
+  (prop + point Point)
+  (fn-do + This _
+    (param row I32)
+    (param col I32)
+    (lazy point (tuple (as row Coord) (as col Coord)))
+  )
+)
+
+(type + ClickEvent (is BoxEvent)
+  (implements RoutedEvent)
+  (prop + root-point Point)
+  (prop + point _ (=> event-point))
+  (fn-do + This _
+    (param root-point Point)
+  )
+  (fn-to-expr + String
+    (str "ClickEvent(" root-point ")")
+  )
+)
+
+(type + SubmitEvent (is BoxEvent)
+  (fn-to-expr + String
+    "SubmitEvent()"
+  )
+)
+
+(type + SelectEvent (is BoxEvent)
+  (fn-to-expr + String
+    "SelectEvent()"
+  )
+)
+
+(type + ActivateEvent (is BoxEvent)
+  (fn-to-expr + String
+    "ActivateEvent()"
+  )
+)
+
+(type + DialogAcceptEvent (is DialogEvent)
+  (fn-to-expr + String
+    "DialogAcceptEvent()"
+  )
+)
+
+(type + DialogCancelEvent (is DialogEvent)
+  (fn-to-expr + String
+    "DialogCancelEvent()"
+  )
+)
+
+(type + DialogDismissEvent (is DialogEvent)
+  (fn-to-expr + String
+    "DialogDismissEvent()"
+  )
+)
+
+(fn-expr _ csi-event TerminalEvents
+  (param code I32)
+  (param modifiers I32)
+  (param final Char)
+  (match final
+    (case= '~'
+      (call csi-tilde-event code modifiers)
+    )
+    (case= 'u'
+      (call csi-u-event code modifiers)
+    )
+    (case= 'Z'
+      (as (call KeyPressEvent (. Key tab) (call PointerModifiers true)) TerminalEvents)
+    )
+    (default
+      (call csi-letter-event final modifiers)
+    )
+  )
+)
+
+(fn-expr _ csi-letter-event TerminalEvents
+  (param final Char)
+  (param modifiers I32)
+  (case? key
+    (call key-press-event key modifiers)
+  )
+  (default
+    (as (call UnknownEvent) TerminalEvents)
+  )
+  (where
+    (lazy key (call csi-letter-key final))
+  )
+)
+
+(fn-expr _ csi-letter-key (? Key)
+  (param final Char)
+  (match? final
+    (case= 'A'
+      (. Key arrow-up)
+    )
+    (case= 'B'
+      (. Key arrow-down)
+    )
+    (case= 'C'
+      (. Key arrow-right)
+    )
+    (case= 'D'
+      (. Key arrow-left)
+    )
+    (case= 'H'
+      (. Key home)
+    )
+    (case= 'F'
+      (. Key end)
+    )
+    (case= 'P'
+      (call (. Key function-key) 1)
+    )
+    (case= 'Q'
+      (call (. Key function-key) 2)
+    )
+    (case= 'R'
+      (call (. Key function-key) 3)
+    )
+    (case= 'S'
+      (call (. Key function-key) 4)
+    )
+  )
+)
+
+(fn-expr _ csi-tilde-event TerminalEvents
+  (param code I32)
+  (param modifiers I32)
+  (case? key
+    (call key-press-event key modifiers)
+  )
+  (default
+    (as (call UnknownEvent) TerminalEvents)
+  )
+  (where
+    (lazy key (call csi-tilde-key code))
+  )
+)
+
+(fn-expr _ csi-tilde-key (? Key)
+  (param code I32)
+  (match? code
+    (case= 1
+      (. Key home)
+    )
+    (case= 3
+      (. Key delete)
+    )
+    (case= 4
+      (. Key end)
+    )
+    (case= 5
+      (. Key page-up)
+    )
+    (case= 6
+      (. Key page-down)
+    )
+    (case= 7
+      (. Key home)
+    )
+    (case= 8
+      (. Key end)
+    )
+    (case? (and (>= code 11) (<= code 15))
+      (call (. Key function-key) (as (- code 10) U32))
+    )
+    (case? (and (>= code 17) (<= code 21))
+      (call (. Key function-key) (as (- code 11) U32))
+    )
+    (case= 23
+      (call (. Key function-key) 11)
+    )
+    (case= 24
+      (call (. Key function-key) 12)
+    )
+    (case= 25
+      (call (. Key function-key) 13)
+    )
+    (case= 26
+      (call (. Key function-key) 14)
+    )
+    (case= 28
+      (call (. Key function-key) 15)
+    )
+    (case= 29
+      (call (. Key function-key) 16)
+    )
+  )
+)
+
+(fn-expr _ csi-u-event TerminalEvents
+  (param code I32)
+  (param modifiers I32)
+  (case? key
+    (call key-press-event key modifiers)
+  )
+  (case? (and (> code 32) (< code 0x110000))
+    (as (call KeyInputEvent (as code Char) (call xterm-modifiers modifiers)) TerminalEvents)
+  )
+  (case? (== code 32)
+    (as (call KeyInputEvent (char " ") (call xterm-modifiers modifiers)) TerminalEvents)
+  )
+  (default
+    (as (call UnknownEvent) TerminalEvents)
+  )
+  (where
+    (lazy key (call csi-u-key code))
+  )
+)
+
+(fn-expr _ csi-u-key (? Key)
+  (param code I32)
+  (match? code
+    (case= 9
+      (. Key tab)
+    )
+    (case= 13
+      (. Key enter)
+    )
+    (case= 27
+      (. Key escape)
+    )
+    (case= 127
+      (. Key backspace)
+    )
+  )
+)
+
+(fn-expr _ key-press-event TerminalEvents
+  (param key Key)
+  (param modifiers I32)
+  (call KeyPressEvent key (call xterm-modifiers modifiers))
+)
+
+(fn-expr _ xterm-modifiers PointerModifiers
+  (param modifiers I32)
+  (call PointerModifiers (== (% bits 2) 1) (== (% (/ bits 4) 2) 1) (== (% (/ bits 2) 2) 1) (== (% (/ bits 8) 2) 1))
+  (where
+    (lazy bits (if-expr (> modifiers 1) (- modifiers 1) 0))
+  )
+)
+
+(fn-expr _ control-key-event TerminalEvents
+  (param char Char)
+  (param option Bool)
+  (match char
+    (case= (char "\t")
+      (as (call KeyPressEvent (. Key tab) (call PointerModifiers false false option)) TerminalEvents)
+    )
+    (case= (char "\r")
+      (as (call KeyPressEvent (. Key enter) (call PointerModifiers false false option)) TerminalEvents)
+    )
+    (case= (char "\n")
+      (as (call KeyInputEvent 'j' (call PointerModifiers false true option)) TerminalEvents)
+    )
+    (default
+      (as (call KeyPressEvent (. Key backspace) (call PointerModifiers false false option)) TerminalEvents)
+    )
+  )
+)
+
+(fn-expr _ char-event TerminalEvents
+  (param char Char)
+  (case? (== char (as 0 Char))
+    (as (call KeyInputEvent (char " ") (call PointerModifiers false true)) TerminalEvents)
+  )
+  (case? (< char (char " "))
+    (as (call KeyInputEvent (as (+ char 0x60) Char) (call PointerModifiers false true)) TerminalEvents)
+  )
+  (case? (and (>= char 'A') (<= char 'Z'))
+    (as (call KeyInputEvent char (call PointerModifiers true)) TerminalEvents)
+  )
+  (default
+    (as (call KeyInputEvent char) TerminalEvents)
+  )
+)
+
+(fn-expr _ option-shift-key TerminalEvents
+  (param key Key)
+  (call KeyPressEvent key (call PointerModifiers true false true))
+)
+
+(fn-expr _ option-key-input TerminalEvents
+  (param char Char)
+  (call KeyInputEvent char (call PointerModifiers (and (>= char 'A') (<= char 'Z')) false true))
+)
+
+(fn-do _ mouse-event TerminalEvents
+  (param point Point)
+  (param code I32)
+  (param type Char)
+  (let base (% code 4))
+  (let button (call mouse-button code))
+  (if (== (% (/ code 64) 2) 1)
+    (let scroll (call ScrollEvent point (call scroll-direction base (== (% (/ code 4) 2) 1))))
+    (call apply-mouse-modifiers scroll code)
+    (return scroll)
+  )
+  (if (== (% (/ code 32) 2) 1)
+    (if (== base 3)
+      (let move (call MouseMoveEvent point))
+      (call apply-mouse-modifiers move code)
+      (return move)
+    )
+    (let drag (call MouseDragEvent point button))
+    (call apply-mouse-modifiers drag code)
+    (return drag)
+  )
+  (if (== type 'M')
+    (let down (call MouseDownEvent point button))
+    (call apply-mouse-modifiers down code)
+    (return down)
+  )
+  (if (== type 'm')
+    (let up (call MouseUpEvent point button))
+    (call apply-mouse-modifiers up code)
+    (return up)
+  )
+  (return (call UnknownEvent))
+)
+
+(fn-expr _ mouse-button PointerButton
+  (param code I32)
+  (match (% code 4)
+    (case? (== (% (/ code 128) 2) 1)
+      (call (. PointerButton other) (as (+ (% code 4) 3) U32))
+    )
+    (case= 1
+      (. PointerButton middle)
+    )
+    (case= 2
+      (. PointerButton secondary)
+    )
+    (default
+      (. PointerButton primary)
+    )
+  )
+)
+
+(fn-expr _ scroll-direction Direction
+  (param base I32)
+  (param shift Bool)
+  (match base
+    (case= 0
+      (if-expr shift (. Direction left) (. Direction up))
+    )
+    (case= 1
+      (if-expr shift (. Direction right) (. Direction down))
+    )
+    (case= 2
+      (. Direction left)
+    )
+    (default
+      (. Direction right)
+    )
+  )
+)
+
+(fn-do _ apply-mouse-modifiers _
+  (param event MouseEvent)
+  (param code I32)
+  (= (. event modifiers) (call PointerModifiers (== (% (/ code 4) 2) 1) (== (% (/ code 16) 2) 1) (== (% (/ code 8) 2) 1)))
+)

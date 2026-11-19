@@ -1,0 +1,21 @@
+; benchmark.meta description: Measures O(1) indexable rewind across a distance of 65,536 tokens.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+(import /core/tokenstream)
+(blank)
+
+(main
+  (let depth Size 65536)
+  (let stream (call (of IndexableTokenStream Char) ([] Char (+ depth 1))))
+  (let mark (call (. stream mark)))
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in iteration (..< 0 1000000))
+    (= (. stream cursor) depth)
+    (call (. stream rewind) mark)
+    (+= checksum (. stream cursor))
+  )
+  (blank)
+  (print (str "bench-result stream/rewind-depth-65536 checksum=" checksum))
+)

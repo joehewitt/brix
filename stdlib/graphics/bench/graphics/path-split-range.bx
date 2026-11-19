@@ -1,0 +1,49 @@
+; benchmark.meta description: Splits paths at points and ranges, including wrapped and reverse ranges.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/path)
+(import /graphics/primitives)
+(import /math)
+(blank)
+
+(main
+  (let path (call cubic-path))
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 900))
+    (let f (as pass Float))
+    (let max-t (as (. path curve-count) Float))
+    (let i (% pass (- (. path curve-count) 2)))
+    (let t1 (+ (as i Float) 0.2))
+    (let t2 (+ t1 0.6))
+    (let (tuple a b) (call (. path split-at-point) t1))
+    (if a
+      (+= checksum (+ (call numeric-check (. a anchor2 x)) (call numeric-check (. a anchor2 y))))
+    )
+    (if b
+      (+= checksum (+ (call numeric-check (. b anchor1 x)) (call numeric-check (. b anchor1 y))))
+    )
+    (blank)
+    (let subpath (call (. path split-at-range) t1 t2))
+    (+= checksum (+ (. subpath count) (call numeric-check (. subpath last-point x))))
+  )
+  (blank)
+  (print (str "bench-result graphics/path-split-range checksum=" checksum))
+)
+
+(fn-do _ cubic-path _
+  (let path (call Path))
+  (call (. path move-to) 0 0)
+  (for (in i (..< 0 12))
+    (let f (as i Float))
+    (call (. path cubic-curve-to) (+ (* f 7) 3) (+ 30 (* f 2)) (+ (* f 7) 5) (+ -10 f) (+ (* f 7) 9) (+ 20 (* f 3)))
+  )
+  (call (. path close))
+  (return path)
+)
+
+(fn-expr _ numeric-check Size
+  (param value Coord)
+  (% (as (call abs (* value 1000)) Size) 1000003)
+)

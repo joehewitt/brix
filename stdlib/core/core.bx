@@ -1,0 +1,115 @@
+(import ./array)
+(import ./error)
+(import ./number)
+(import ./range)
+(import ./stream)
+(import ./string)
+(blank)
+(prop + false _ (= (call Bool 0)))
+(prop + true _ (= (call Bool 1)))
+(prop + null _ (= (call Null)))
+(blank)
+(type-line + (of NTuple2 T) (is (tuple (: a T) (: b T))))
+(type-line + (of NTuple3 T) (is (tuple (: a T) (: b T) (: c T))))
+(type-line + (of NTuple4 T) (is (tuple (: a T) (: b T) (: c T) (: d T))))
+(type-line + (of NTuple5 T) (is (tuple (: a T) (: b T) (: c T) (: d T) (: e T))))
+(type-line + (of NTuple6 T) (is (tuple (: a T) (: b T) (: c T) (: d T) (: e T) (: f T))))
+(type-line + Pointer (is (of CPointer Byte)))
+(type-line + (of ConstArray Item) (is (of CPointer Item)))
+
+(type + Void)
+
+(type + (of CPointer T)
+  ; Only here for debugging situations
+  ; ------------------------------------------------------------------------------------------------
+  ; + to String
+  ;
+  ; C:brixUlonglongToString(this as Int, 0)
+)
+
+(type + CFunction)
+
+(type + Atom)
+
+(type + Null
+  (fn-expr + (prefix ! this) _
+    true
+  )
+)
+
+(type + Tuple)
+
+(type + Union)
+
+(type + Interface)
+
+(type + Or)
+
+(type + Struct)
+
+(type + (of Optional Value)
+  (fn-do + This _
+    (param other Value)
+    (return (as other This))
+  )
+  (fn-from-expr + (: other Value)
+    (call This other)
+  )
+  (fn-to-expr + String
+    (case? this
+      (as value String)
+    )
+    (default
+      "unknown"
+    )
+  )
+  (fn-to-expr + Bool
+    has-value
+  )
+  (fn-to-expr + Value
+    (before
+      (throw (call Error (str "Optional\\" (. Value name) " is null")) (if (not this)))
+    )
+    value
+  )
+)
+
+(type + (of Usable Used) (is Interface)
+  (fn-expr + begin-using Used (?! Error))
+  (fn-expr + end-using _ (?! Error))
+)
+
+(type + Inspectable (is Interface)
+  (fn-do + inspectable-snapshot _)
+  (fn-do + inspectable-inspect _
+    (param facet String)
+    (param depth U32 (= 1))
+    (param offset U32 (= 0))
+    (param limit U32 (= 100))
+    (if (== facet "snapshot")
+      (call inspectable-snapshot)
+    )
+  )
+)
+
+(type + GCTypeMap
+  ;  + offset Int
+  ;  + kind Int
+  ;  + type Int
+)
+
+(fn-do + (of print Item) _
+  (param item Item)
+  (print item)
+)
+
+(fn-do + (of print-all Item) _
+  (param items (stream Item))
+  (for (in item items)
+    (print item)
+  )
+)
+
+(fn-do + gc-add-root _
+  (param pointer Pointer)
+)

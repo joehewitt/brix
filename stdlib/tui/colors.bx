@@ -1,0 +1,132 @@
+(import ./primitives)
+(import /math)
+(import /units)
+(blank)
+(prop + black _ (= (call AnsiColor 0)))
+(prop + maroon _ (= (call AnsiColor 1)))
+(prop + green _ (= (call AnsiColor 2)))
+(prop + olive _ (= (call AnsiColor 3)))
+(prop + navy _ (= (call AnsiColor 4)))
+(prop + purple _ (= (call AnsiColor 5)))
+(prop + teal _ (= (call AnsiColor 6)))
+(prop + silver _ (= (call AnsiColor 7)))
+(prop + grey _ (= (call AnsiColor 8)))
+(prop + gray _ (= grey))
+(prop + red _ (= (call AnsiColor 9)))
+(prop + lime _ (= (call AnsiColor 10)))
+(prop + yellow _ (= (call AnsiColor 11)))
+(prop + blue _ (= (call AnsiColor 12)))
+(prop + fuchsia _ (= (call AnsiColor 13)))
+(prop + magenta _ (= fuchsia))
+(prop + aqua _ (= (call AnsiColor 14)))
+(prop + cyan _ (= aqua))
+(prop + brightwhite _ (= (call AnsiColor 15)))
+(prop + white _ (= (call AnsiColor 255)))
+(prop + charcoal _ (= (call AnsiColor 234)))
+(prop + slate _ (= (call AnsiColor 237)))
+(prop + dimgray _ (= (call AnsiColor 240)))
+(prop + midgray _ (= (call AnsiColor 244)))
+(prop + mutedgray _ (= (call AnsiColor 246)))
+(prop + lightgray _ (= (call AnsiColor 252)))
+(prop + deepblue _ (= (call AnsiColor 20)))
+(prop + vermillion _ (= (call AnsiColor 202)))
+(prop + salmon _ (= (call AnsiColor 203)))
+(prop + coral _ (= (call AnsiColor 209)))
+(prop + orange _ (= (call AnsiColor 214)))
+(prop + amber _ (= (call AnsiColor 220)))
+(prop + gold _ (= (call AnsiColor 226)))
+(prop + chartreuse _ (= (call AnsiColor 118)))
+(prop + emerald _ (= (call AnsiColor 48)))
+(prop + mint _ (= (call AnsiColor 121)))
+(prop + sky _ (= (call AnsiColor 81)))
+(prop + ice _ (= (call AnsiColor 195)))
+(prop + rose _ (= (call AnsiColor 205)))
+(prop + pink _ (= (call AnsiColor 213)))
+(prop + violet _ (= (call AnsiColor 135)))
+(prop + indigo _ (= (call AnsiColor 56)))
+
+(fn-expr + ansi-gray _
+  (param level Percent)
+  (as (+ 232 clipped) AnsiColor)
+  (where
+    (lazy clipped (call min 23 (call max 0 raw)))
+    (lazy raw (as (call round (/ (- (* (as level Ratio) 255.0) 8.0) 10.0)) Int))
+  )
+)
+
+(fn-expr + ansi-rgb _
+  (param red Int)
+  (param green Int)
+  (param blue Int)
+  (as (+ 16 (* r 36) (* g 6) b) AnsiColor)
+  (where
+    (lazy r (call ansi-cube-level red))
+    (lazy g (call ansi-cube-level green))
+    (lazy b (call ansi-cube-level blue))
+  )
+)
+
+(fn-expr + ansi-red _
+  (param intensity Percent (= 100%))
+  (call ansi-rgb (call ansi-intensity-level intensity) 0 0)
+)
+
+(fn-expr + ansi-green _
+  (param intensity Percent (= 100%))
+  (call ansi-rgb 0 (call ansi-intensity-level intensity) 0)
+)
+
+(fn-expr + ansi-blue _
+  (param intensity Percent (= 100%))
+  (call ansi-rgb 0 0 (call ansi-intensity-level intensity))
+)
+
+(fn-expr + ansi-yellow _
+  (param intensity Percent (= 100%))
+  (call ansi-rgb level level 0)
+  (where
+    (lazy level (call ansi-intensity-level intensity))
+  )
+)
+
+(fn-expr + ansi-cyan _
+  (param intensity Percent (= 100%))
+  (call ansi-rgb 0 level level)
+  (where
+    (lazy level (call ansi-intensity-level intensity))
+  )
+)
+
+(fn-expr + ansi-magenta _
+  (param intensity Percent (= 100%))
+  (call ansi-rgb level 0 level)
+  (where
+    (lazy level (call ansi-intensity-level intensity))
+  )
+)
+
+(fn-expr + ansi-orange _
+  (param intensity Percent (= 100%))
+  (call ansi-rgb level (call orange-green-level level) 0)
+  (where
+    (lazy level (call ansi-intensity-level intensity))
+  )
+)
+
+(fn-expr _ ansi-cube-level _
+  (param value Int)
+  (call min 5 (call max 0 value))
+)
+
+(fn-expr _ ansi-intensity-level _
+  (param intensity Percent)
+  (call min 5 (call max 0 raw))
+  (where
+    (lazy raw (as (call round (* (as intensity Ratio) 5.0)) Int))
+  )
+)
+
+(fn-expr _ orange-green-level _
+  (param level Int)
+  (/ (+ level 1) 2)
+)

@@ -2,22 +2,26 @@
 
 ### mem2reg: else-if should re-read the original argument in the chained branch
 
-```yumi
-check(1)
-check(11)
-check(3)
+```brix
+(main
+  (call check 1)
+  (call check 11)
+  (call check 3)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do check
-    - x I32
-
-if x > 10
-    -- "a"
-else if x >= 2
-    -- "b"
-else
-    -- "c"
--- "done"
+(fn-do + check _
+  (param x I32)
+  (if (> x 10)
+    (print "a")
+    (else-if (>= x 2)
+      (print "b")
+    )
+    (else
+      (print "c")
+    )
+  )
+  (print "done")
+)
 ```
 
 ```output
@@ -31,16 +35,20 @@ done
 
 ### mem2reg: a join with one updated local should not clobber an unrelated local
 
-```yumi
-. cond = 1
-. a = 10
-. b = 20
-if cond > 0
-    a = 1
-else
-    a = 3
--- a
--- b
+```brix
+(main
+  (let cond 1)
+  (let a 10)
+  (let b 20)
+  (if (> cond 0)
+    (= a 1)
+    (else
+      (= a 3)
+    )
+  )
+  (print a)
+  (print b)
+)
 ```
 
 ```output
@@ -50,16 +58,20 @@ else
 
 ### mem2reg: both sides of the same join should preserve the correct values
 
-```yumi
-. cond = 0
-. a = 10
-. b = 20
-if cond > 0
-    a = 1
-else
-    a = 3
--- a
--- b
+```brix
+(main
+  (let cond 0)
+  (let a 10)
+  (let b 20)
+  (if (> cond 0)
+    (= a 1)
+    (else
+      (= a 3)
+    )
+  )
+  (print a)
+  (print b)
+)
 ```
 
 ```output
@@ -69,18 +81,22 @@ else
 
 ### mem2reg: a multi-variable join should keep the branch-specific pair
 
-```yumi
-. cond = 1
-. a = 10
-. b = 20
-if cond > 0
-    a = 1
-    b = 2
-else
-    a = 3
-    b = 4
--- a
--- b
+```brix
+(main
+  (let cond 1)
+  (let a 10)
+  (let b 20)
+  (if (> cond 0)
+    (= a 1)
+    (= b 2)
+    (else
+      (= a 3)
+      (= b 4)
+    )
+  )
+  (print a)
+  (print b)
+)
 ```
 
 ```output
@@ -90,18 +106,22 @@ else
 
 ### mem2reg: the false branch of the same multi-variable join should also work
 
-```yumi
-. cond = 0
-. a = 10
-. b = 20
-if cond > 0
-    a = 1
-    b = 2
-else
-    a = 3
-    b = 4
--- a
--- b
+```brix
+(main
+  (let cond 0)
+  (let a 10)
+  (let b 20)
+  (if (> cond 0)
+    (= a 1)
+    (= b 2)
+    (else
+      (= a 3)
+      (= b 4)
+    )
+  )
+  (print a)
+  (print b)
+)
 ```
 
 ```output
@@ -111,11 +131,14 @@ else
 
 ### mem2reg: a loop-carried single local should converge to the final value
 
-```yumi
-. a = 3
-while a > 0
-    a -= 1
--- a
+```brix
+(main
+  (let a 3)
+  (while (> a 0)
+    (-= a 1)
+  )
+  (print a)
+)
 ```
 
 ```output
@@ -124,14 +147,17 @@ while a > 0
 
 ### mem2reg: multiple loop-carried locals should keep their own values
 
-```yumi
-. a = 2
-. b = 20
-while a > 0
-    a -= 1
-    b -= 10
--- a
--- b
+```brix
+(main
+  (let a 2)
+  (let b 20)
+  (while (> a 0)
+    (-= a 1)
+    (-= b 10)
+  )
+  (print a)
+  (print b)
+)
 ```
 
 ```output
@@ -141,12 +167,15 @@ while a > 0
 
 ### mem2reg: a partially-defined optional local should not crash on the defined path
 
-```yumi
-. cond = 1
-. a I32?
-if cond > 0
-    a = 1
--- a
+```brix
+(main
+  (let cond 1)
+  (let a (? I32))
+  (if (> cond 0)
+    (= a 1)
+  )
+  (print a)
+)
 ```
 
 ```output
@@ -155,12 +184,15 @@ if cond > 0
 
 ### mem2reg: a partially-defined optional local should not crash on the undefined path
 
-```yumi
-. cond = 0
-. a I32?
-if cond > 0
-    a = 1
--- a
+```brix
+(main
+  (let cond 0)
+  (let a (? I32))
+  (if (> cond 0)
+    (= a 1)
+  )
+  (print a)
+)
 ```
 
 ```output
@@ -169,17 +201,20 @@ unknown
 
 ### mem2reg: a while loop should serialize a two-variable swap as a parallel copy
 
-```yumi
-. a = 1
-. b = 2
-. i = 0
-while i < 5
-    . t = a
-    a = b
-    b = t
-    i += 1
--- a
--- b
+```brix
+(main
+  (let a 1)
+  (let b 2)
+  (let i 0)
+  (while (< i 5)
+    (let t a)
+    (= a b)
+    (= b t)
+    (+= i 1)
+  )
+  (print a)
+  (print b)
+)
 ```
 
 ```output
@@ -189,15 +224,18 @@ while i < 5
 
 ### mem2reg: a for loop should serialize a two-variable swap as a parallel copy
 
-```yumi
-. a = 1
-. b = 2
-for i in 0 .. < 4
-    . t = a
-    a = b
-    b = t
--- a
--- b
+```brix
+(main
+  (let a 1)
+  (let b 2)
+  (for (in i (..< 0 4))
+    (let t a)
+    (= a b)
+    (= b t)
+  )
+  (print a)
+  (print b)
+)
 ```
 
 ```output
@@ -207,20 +245,23 @@ for i in 0 .. < 4
 
 ### mem2reg: a while loop should break a three-variable phi cycle
 
-```yumi
-. a = 1
-. b = 2
-. c = 3
-. i = 0
-while i < 4
-    . t = a
-    a = b
-    b = c
-    c = t
-    i += 1
--- a
--- b
--- c
+```brix
+(main
+  (let a 1)
+  (let b 2)
+  (let c 3)
+  (let i 0)
+  (while (< i 4)
+    (let t a)
+    (= a b)
+    (= b c)
+    (= c t)
+    (+= i 1)
+  )
+  (print a)
+  (print b)
+  (print c)
+)
 ```
 
 ```output
@@ -231,18 +272,21 @@ while i < 4
 
 ### mem2reg: a for loop should break a three-variable phi cycle
 
-```yumi
-. a = 1
-. b = 2
-. c = 3
-for i in 0 .. < 5
-    . t = a
-    a = b
-    b = c
-    c = t
--- a
--- b
--- c
+```brix
+(main
+  (let a 1)
+  (let b 2)
+  (let c 3)
+  (for (in i (..< 0 5))
+    (let t a)
+    (= a b)
+    (= b c)
+    (= c t)
+  )
+  (print a)
+  (print b)
+  (print c)
+)
 ```
 
 ```output
@@ -253,17 +297,20 @@ for i in 0 .. < 5
 
 ### mem2reg: an acyclic phi overwrite chain should retain every pre-edge value
 
-```yumi
-. previous = 0
-. current = 1
-. i = 0
-while i < 10
-    . next = previous + current
-    previous = current
-    current = next
-    i += 1
--- previous
--- current
+```brix
+(main
+  (let previous 0)
+  (let current 1)
+  (let i 0)
+  (while (< i 10)
+    (let next (+ previous current))
+    (= previous current)
+    (= current next)
+    (+= i 1)
+  )
+  (print previous)
+  (print current)
+)
 ```
 
 ```output
@@ -273,18 +320,21 @@ while i < 10
 
 ### mem2reg: register cycles and constant phi inputs should coexist on one edge
 
-```yumi
-. a = 1
-. b = 2
-. state = 0
-for i in 0 .. < 3
-    . t = a
-    a = b
-    b = t
-    state = 7
--- a
--- b
--- state
+```brix
+(main
+  (let a 1)
+  (let b 2)
+  (let state 0)
+  (for (in i (..< 0 3))
+    (let t a)
+    (= a b)
+    (= b t)
+    (= state 7)
+  )
+  (print a)
+  (print b)
+  (print state)
+)
 ```
 
 ```output
@@ -295,21 +345,25 @@ for i in 0 .. < 3
 
 ### mem2reg: self-copies and a split conditional-continue edge should not stall serialization
 
-```yumi
-. a = 1
-. b = 2
-. swaps = 0
-for i in 0 .. < 5
-    if i % 2 == 0
-        continue
-
-    . t = a
-    a = b
-    b = t
-    swaps += 1
--- a
--- b
--- swaps
+```brix
+(main
+  (let a 1)
+  (let b 2)
+  (let swaps 0)
+  (for (in i (..< 0 5))
+    (if (== (% i 2) 0)
+      (continue)
+    )
+    (blank)
+    (let t a)
+    (= a b)
+    (= b t)
+    (+= swaps 1)
+  )
+  (print a)
+  (print b)
+  (print swaps)
+)
 ```
 
 ```output

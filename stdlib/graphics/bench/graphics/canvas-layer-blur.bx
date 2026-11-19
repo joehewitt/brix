@@ -1,0 +1,39 @@
+; benchmark.meta description: Blurs canvas layers on a CoreGraphics canvas at the small, medium and large radii of an app icon's edge rims and drop shadows.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/canvas)
+(import /graphics/color)
+(import /graphics/primitives)
+(blank)
+
+(main
+  (let checksum (+ (call blur-passes 2 20) (call blur-passes 22 6) (call blur-passes 120 2)))
+  (print (str "bench-result graphics/canvas-layer-blur checksum=" checksum))
+)
+
+(fn-do _ blur-passes Size
+  (param radius F64)
+  (param passes Size)
+  (let sum Size 0)
+  (for (in pass (..< 0 passes))
+    (let canvas (call RasterCanvas 914 914))
+    (call (. canvas begin-opacity) 1)
+    (call (. canvas begin-blur) radius)
+    (= (. canvas fill-color) null)
+    (= (. canvas stroke-color) (call RGBA 0.2 0.4 0.9 0.8))
+    (= (. canvas stroke-width) 10)
+    (call (. canvas oval) (call Rect 60 60 794 794))
+    (= (. canvas stroke-color) null)
+    (= (. canvas fill-color) (call RGBA 0.9 0.3 0.1))
+    (call (. canvas rect) (call Rect (+ 300 (as pass F64)) 280 260 360))
+    (call (. canvas end-blur))
+    (call (. canvas end-opacity))
+    (let bytes (call (. canvas premultiplied-pixels)))
+    (for (in index (..< 0 (/ (. bytes size) 97)))
+      (+= sum (as ([] bytes (* index 97)) Size))
+    )
+    (call (. canvas close))
+  )
+  (return sum)
+)

@@ -1,0 +1,359 @@
+(import ./type-store)
+(import ./types)
+(import /lang/ast/ast-queries)
+(import /lang/ast/program)
+
+(fn-do + decimal-text String
+  (param text String)
+  ; A decimal integer literal as its value reads: without separators.
+  (let shown "")
+  (for (in char text)
+    (if (!= char '_')
+      (+= shown char)
+    )
+  )
+  (return shown)
+)
+
+(fn-expr + literal-fits Bool
+  (param literal IntegerLiteral)
+  (param bits U32)
+  (param is-signed Bool)
+  (case? (. literal overflow)
+    false
+  )
+  (case? (== bits 1)
+    (and (not (. literal negative)) (<= (. literal value) 1))
+  )
+  (case? is-signed
+    (scope (if-expr (. literal negative) (<= (. literal value) limit) (< (. literal value) limit))
+      (lazy limit (/lshift/ 1u64 (- bits 1)))
+    )
+  )
+  (case? (. literal negative)
+    (== (. literal value) 0)
+  )
+  (case? (>= bits 64)
+    true
+  )
+  (default
+    (< (. literal value) (/lshift/ 1u64 bits))
+  )
+)
+
+(fn-expr + literal-fits-target Bool
+  (param types Types)
+  (param literal IntegerLiteral)
+  (param target TypeId)
+  (case? (or (not (call intrinsic-is-numeric kind)) (call intrinsic-is-float kind) (== kind .cpointer))
+    true
+  )
+  (default
+    (call literal-fits literal (. completion bit-size) (. completion is-signed))
+  )
+  (where
+    (lazy completion (call (. types completion-of) target))
+    (lazy kind (. completion intrinsic))
+  )
+)
+
+(fn-expr + float-literal-fits Bool
+  (param types Types)
+  (param text String)
+  (param target TypeId)
+  ; Whether a float written with no suffix is one a float type holds without overflowing, at the
+  ; value of that type nearest it.
+  (case? (not (call intrinsic-is-float kind))
+    false
+  )
+  (case? (== kind .float32)
+    (and (<= value limit) (>= value (- limit)))
+  )
+  (default
+    true
+  )
+  (where
+    (lazy kind (. (call (. types completion-of) target) intrinsic))
+    (lazy value (as text F64))
+    (lazy limit (as (. F32 max) F64))
+  )
+)
+
+(fn-expr + magnitude-type TypeId
+  (param types Types)
+  (param literal IntegerLiteral)
+  (case? (. literal overflow)
+    (call (. types type-row) .uint64)
+  )
+  (case? (or (. literal negative) (< (. literal value) limit64))
+    (call (. types type-row) .int64)
+  )
+  (default
+    (call (. types type-row) .uint64)
+  )
+  (where
+    (lazy limit64 (/lshift/ 1u64 63))
+  )
+)
+
+(fn-expr + is-numeric Bool
+  (param types Types)
+  (param id TypeId)
+  (and (call intrinsic-is-numeric kind) (!= kind .cpointer))
+  (where
+    (lazy kind (call (. types intrinsic-of) id))
+  )
+)
+
+(fn-expr + compares-by-machine Bool
+  (param types Types)
+  (param id TypeId)
+  ; Whether two values of a type are equal when their bits are: a number, a truth, a
+  ; character or a C pointer.
+  (call intrinsic-is-numeric (call (. types intrinsic-of) id))
+)
+
+(fn-do + builtin-number TypeId
+  (param types Types)
+  (param id TypeId)
+  (let current id)
+  (while true
+    (if (== (call (. types type-row) (. ([] (. types completions) current) intrinsic)) current)
+      (return current)
+    )
+    (let base (call (. types base-of) current))
+    (if (not base)
+      (return current)
+    )
+    (= current base)
+  )
+)
+
+(fn-expr + unit-arithmetic-type TypeId
+  (param types Types)
+  (param lhs TypeId)
+  (param rhs TypeId)
+  (param commutes _ (= false))
+  (case? (and commutes (call is-machine-number types lhs) (not (call is-machine-number types rhs)))
+    (call unit-arithmetic-type types rhs lhs)
+  )
+  (case? (not (call is-unit-class types lhs))
+    no-type
+  )
+  (case? (or (== lhs rhs) (call is-machine-number types rhs))
+    (if-expr (. ([] (. types completions) lhs) has-equalities) lhs no-type)
+  )
+  (default
+    (if-expr (call has-equality-to types rhs lhs 0) lhs no-type)
+  )
+)
+
+(fn-expr + is-machine-number Bool
+  (param types Types)
+  (param id TypeId)
+  (and (call is-numeric types id) (== (call (. types type-row) (call (. types intrinsic-of) id)) id))
+)
+
+(fn-do + has-equality-to Bool
+  (param types Types)
+  (param source TypeId)
+  (param target TypeId)
+  (param depth U32)
+  (if (or (> depth 8) (not (. ([] (. types completions) source) has-equalities)))
+    (return false)
+  )
+  (for (in equality (. types equalities))
+    (if (== (. equality from) source)
+      (if (or (== (. equality to) target) (call has-equality-to types (. equality to) target (+ depth 1)))
+        (return true)
+      )
+    )
+  )
+  (return false)
+)
+
+(fn-do + is-unit-class Bool
+  (param types Types)
+  (param type TypeId)
+  (let program (. types program))
+  (let current type)
+  (while (and (!= current no-type) (!= current invalid-type))
+    (match? ([] (. types rows) current)
+      (case (call .type-class row)
+        (match? ([] (. ([] (. program modules) (. row module)) decls) (. row decl))
+          (case (call .decl-class cls)
+            (if (!= (. cls aliases count) 0)
+              (return true)
+            )
+          )
+        )
+      )
+    )
+    (let base (call (. types base-of) current))
+    (if (not base)
+      (return false)
+    )
+    (= current base)
+  )
+  (return false)
+)
+
+(fn-do + unit-name (? Atom)
+  (param types Types)
+  (param type TypeId)
+  ; The name a number of a type is written with: the last name its class is also known by, or
+  ; else that of the class it is derived from.
+  (let program (. types program))
+  (let current type)
+  (while (and (!= current no-type) (!= current invalid-type))
+    (match? ([] (. types rows) current)
+      (case (call .type-class row)
+        (let owner ([] (. program modules) (. row module)))
+        (match? ([] (. owner decls) (. row decl))
+          (case (call .decl-class cls)
+            (if (!= (. cls aliases count) 0)
+              (return ([] (. owner tree atoms) (- (+ (. cls aliases start) (. cls aliases count)) 1)))
+            )
+          )
+        )
+      )
+    )
+    (let base (call (. types base-of) current))
+    (if (not base)
+      (return null)
+    )
+    (= current base)
+  )
+  (return null)
+)
+
+(fn-do + promote TypeId
+  (param types Types)
+  (param lhs TypeId)
+  (param rhs TypeId)
+  ; The type two numbers are brought to for arithmetic: a float where either is one, and otherwise
+  ; the integer type both are of, or the wider of the two, unsigned where the unsigned one is at
+  ; least as wide. An integer narrower than a byte is brought to `I32`. It may be a type nothing in
+  ; the program has named, so every type read or given here is completed first.
+  (if (== (. (call (. types completion-of) lhs) intrinsic) .char)
+    (return (call promote types (call (. types type-row) .uint32) rhs))
+  )
+  (if (== (. (call (. types completion-of) rhs) intrinsic) .char)
+    (return (call promote types lhs (call (. types type-row) .uint32)))
+  )
+  (let left (call (. types completion-of) lhs))
+  (let right (call (. types completion-of) rhs))
+  (if (or (call intrinsic-is-float (. left intrinsic)) (call intrinsic-is-float (. right intrinsic)))
+    (if (or (== (. left intrinsic) .float64) (== (. right intrinsic) .float64))
+      (return (. types f64-type))
+    )
+    (return (call builtin-number types (if-expr (call intrinsic-is-float (. left intrinsic)) lhs rhs)))
+  )
+  (if (and (== lhs rhs) (>= (. left bit-size) 8))
+    (return (call builtin-number types lhs))
+  )
+  (let left-bits (if-expr (>= (. left bit-size) 8) (. left bit-size) 32u32))
+  (let left-signed (if-expr (>= (. left bit-size) 8) (. left is-signed) true))
+  (let right-bits (if-expr (>= (. right bit-size) 8) (. right bit-size) 32u32))
+  (let right-signed (if-expr (>= (. right bit-size) 8) (. right is-signed) true))
+  (let bits left-bits)
+  (let signed left-signed)
+  (if (== left-signed right-signed)
+    (= bits (if-expr (>= left-bits right-bits) left-bits right-bits))
+    (else-if left-signed
+      (if (>= right-bits left-bits)
+        (= bits right-bits)
+        (= signed false)
+      )
+    )
+    (else
+      (if (>= left-bits right-bits)
+        (= signed false)
+        (else
+          (= bits right-bits)
+          (= signed true)
+        )
+      )
+    )
+  )
+  (let tag (if-expr signed (. IntrinsicKind int32) .uint32))
+  (if (== bits 64)
+    (= tag (if-expr signed .int64 .uint64))
+    (else-if (== bits 16)
+      (= tag (if-expr signed .int16 .uint16))
+    )
+    (else-if (== bits 8)
+      (= tag (if-expr signed .int8 .uint8))
+    )
+  )
+  (let promoted (call (. types type-row) tag))
+  (call (. types complete) promoted)
+  (return promoted)
+)
+
+(fn-do + integer-comparison-type TypeId
+  (param types Types)
+  (param lhs TypeId)
+  (param rhs TypeId)
+  (let left ([] (. types completions) lhs))
+  (let right ([] (. types completions) rhs))
+  (if (or (not (call is-integer-kind (. left intrinsic))) (not (call is-integer-kind (. right intrinsic))))
+    (return no-type)
+  )
+  (if (and (. left has-equalities) (. right has-equalities))
+    (return no-type)
+  )
+  (let bits (if-expr (>= (. left bit-size) (. right bit-size)) (. left bit-size) (. right bit-size)))
+  (let signed-bits (if-expr (. left is-signed) (. left bit-size) (. right bit-size)))
+  (let unsigned-bits (if-expr (. left is-signed) (. right bit-size) (. left bit-size)))
+  (let sign-check (and (!= (. left is-signed) (. right is-signed)) (<= signed-bits unsigned-bits)))
+  (let signed (if-expr (== (. left is-signed) (. right is-signed)) (. left is-signed) (not sign-check)))
+  (let tag (. IntrinsicKind int32))
+  (if (== bits 64)
+    (= tag (if-expr signed .int64 .uint64))
+    (else-if (not signed)
+      (= tag .uint32)
+    )
+  )
+  (let common (call (. types type-row) tag))
+  (call (. types complete) common)
+  (return common)
+)
+
+(fn-expr + compares-by-sign Bool
+  (param types Types)
+  (param lhs TypeId)
+  (param rhs TypeId)
+  ; Whether two integers of different signs compare by the sign of the signed one first: when
+  ; the unsigned one is at least as wide, the type both are compared in cannot hold a negative.
+  (case? (== (. left is-signed) (. right is-signed))
+    false
+  )
+  (default
+    (<= signed-bits unsigned-bits)
+  )
+  (where
+    (lazy left ([] (. types completions) lhs))
+    (lazy right ([] (. types completions) rhs))
+    (lazy signed-bits (if-expr (. left is-signed) (. left bit-size) (. right bit-size)))
+    (lazy unsigned-bits (if-expr (. left is-signed) (. right bit-size) (. left bit-size)))
+  )
+)
+
+(fn-do + integer-limit U64
+  (param width U32)
+  (param is-signed Bool)
+  (param is-max Bool)
+  ; The greatest or the least integer of a width, as 64 bits extended by its sign.
+  (if (not is-signed)
+    (return-if 0 (if (not is-max)))
+    (return (if-expr (== width 64) (. U64 max) (- (/lshift/ 1u64 width) 1)))
+  )
+  (let top (/lshift/ 1u64 (- width 1)))
+  (return (if-expr is-max (- top 1) (- 0 top)))
+)
+
+(fn-expr + is-integer-kind Bool
+  (param kind IntrinsicKind)
+  (and (call intrinsic-is-numeric kind) (not (call intrinsic-is-float kind)) (!= kind .cpointer) (!= kind .number))
+)

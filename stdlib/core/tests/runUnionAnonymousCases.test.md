@@ -1,14 +1,21 @@
 # Union anonymous cases
 
-```yumi
-. result = match true
-    |? true
+```brix
+(main
+  (let result
+    (match true
+      (case? true
         ..ok
-    ??
+      )
+      (default
         ..failed
-
--- result is .ok
--- result.name
+      )
+    )
+  )
+  (blank)
+  (print (is result .ok))
+  (print (. result name))
+)
 ```
 
 ```output
@@ -16,34 +23,53 @@ true
 ok
 ```
 
-```yumi
-. result = match true
-    |? true
-        ..valid("email", "password")
-    ??
+```brix
+(main
+  (let result
+    (match true
+      (case? true
+        (call ..valid "email" "password")
+      )
+      (default
         ..invalid-email
-
--- match result
-    | .valid(email, password)
-        "$email:$password"
-    | .invalid-email
+      )
+    )
+  )
+  (blank)
+  (print
+    (match result
+      (case (call .valid email password)
+        (str email ":" password)
+      )
+      (case .invalid-email
         "email"
+      )
+    )
+  )
+)
 ```
 
 ```output
 email:password
 ```
 
-```yumi
-. use-same = false
-. result = match use-same
-    |? use-same
+```brix
+(main
+  (let use-same false)
+  (let result
+    (match use-same
+      (case? use-same
         ..same
-    ??
+      )
+      (default
         ..same
-
--- result.name
--- result.case
+      )
+    )
+  )
+  (blank)
+  (print (. result name))
+  (print (. result case))
+)
 ```
 
 ```output
@@ -51,56 +77,91 @@ same
 0
 ```
 
-```yumi
-. use-int = false
-. result = match use-int
-    |? use-int
-        ..value(1)
-    ??
-        ..value(1.5)
-
--- match result
-    | .value(x)
+```brix
+(main
+  (let use-int false)
+  (let result
+    (match use-int
+      (case? use-int
+        (call ..value 1)
+      )
+      (default
+        (call ..value 1.5)
+      )
+    )
+  )
+  (blank)
+  (print
+    (match result
+      (case (call .value x)
         x
+      )
+    )
+  )
+)
 ```
 
 ```output
 1.5
 ```
 
-```yumi
-. input = "no"
-. event = match input
-    ~ "ok"
+```brix
+(main
+  (let input "no")
+  (let event
+    (match input
+      (~ "ok"
         ..ok
-    ??
-        ..failed(404)
-
--- match event
-    | .ok
+      )
+      (default
+        (call ..failed 404)
+      )
+    )
+  )
+  (blank)
+  (print
+    (match event
+      (case .ok
         "ok"
-    | .failed(code)
-        "failed:$code"
+      )
+      (case (call .failed code)
+        (str "failed:" code)
+      )
+    )
+  )
+)
 ```
 
 ```output
 failed:404
 ```
 
-```yumi
-. result = match true
-    |? true
+```brix
+(main
+  (let result
+    (match true
+      (case? true
         ..ok
-    ??
-        ..failed(1)
-
-. other = .failed(2)
--- other.name
--- match other
-    | .failed(code)
+      )
+      (default
+        (call ..failed 1)
+      )
+    )
+  )
+  (blank)
+  (let other (call .failed 2))
+  (print (. other name))
+  (print
+    (match other
+      (case (call .failed code)
         code
-    | .ok
+      )
+      (case .ok
         0
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -108,60 +169,90 @@ failed
 2
 ```
 
-```yumi
-. result = match true
-    |? true
+```brix
+(main
+  (let result
+    (match true
+      (case? true
         ..ok
-    ??
+      )
+      (default
         ..failed
-
-result = match false
-    |? false
+      )
+    )
+  )
+  (blank)
+  (= result
+    (match false
+      (case? false
         ..failed
-    ??
+      )
+      (default
         ..ok
-
--- result.name
+      )
+    )
+  )
+  (blank)
+  (print (. result name))
+)
 ```
 
 ```output
 ok
 ```
 
-```yumi
-+ submitted AsyncChannel'Bool
+```brix
+(prop + submitted (of AsyncChannel Bool))
+(blank)
 
-.. login-submission = on submitted
-    |? true
-        ..valid("email", "password")
-    ??
-        ..invalid-password
-
--- login-submission is .valid
+(main
+  (lazy login-submission
+    (iterate (on submitted)
+      (block
+        (case? true
+          (call ..valid "email" "password")
+        )
+        (default
+          ..invalid-password
+        )
+      )
+    )
+  )
+  (blank)
+  (print (is login-submission .valid))
+)
 ```
 
 ```output
 false
 ```
 
-```yumi
-. result = authenticate("email", "secret")
--- result.name
--- match result
-    | .authentic(email, token)
-        "$email:$token"
-    | .incorrect-password
+```brix
+(main
+  (let result (call authenticate "email" "secret"))
+  (print (. result name))
+  (print
+    (match result
+      (case (call .authentic email token)
+        (str email ":" token)
+      )
+      (case .incorrect-password
         "bad"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ authenticate
-    - email String
-    - password String
-
-|? password == "secret"
-    ..authentic(email, "token")
-??
+(fn-expr + authenticate _
+  (param email String)
+  (param password String)
+  (case? (== password "secret")
+    (call ..authentic email "token")
+  )
+  (default
     ..incorrect-password
+  )
+)
 ```
 
 ```output
@@ -169,25 +260,37 @@ authentic
 email:token
 ```
 
-```yumi
-for result in authenticate("email", "secret")
-    -- result.name
-    -- match result
-        | .authentic(email, token)
-            "$email:$token"
-        | .incorrect-password
-            "bad"
+```brix
+(main
+  (for (in result (call authenticate "email" "secret"))
+    (print (. result name))
+    (print
+      (match result
+        (case (call .authentic email token)
+          (str email ":" token)
+        )
+        (case .incorrect-password
+          "bad"
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do authenticate
-    - email String
-    - password String
-
-<=
-    |? password == "secret"
-        ..authentic(email, "token")
-    ??
+(fn-do + authenticate _
+  (param email String)
+  (param password String)
+  (yield
+    (block
+      (case? (== password "secret")
+        (call ..authentic email "token")
+      )
+      (default
         ..incorrect-password
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -195,61 +298,87 @@ authentic
 email:token
 ```
 
-```yumi crash
--- match true
-    |? true
+```brix crash
+(main
+  (print
+    (match true
+      (case? true
         ..ok
-    ??
+      )
+      (default
         ..failed
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Anonymous match case '..ok' needs a stable result owner
-<no file:4>
+<no file:6>
             ..ok
             ^^^^
 ```
 
-```yumi crash
-. result = match true
-    |? true
-        ..value(1)
-    ??
-        ..value(1, 2)
+```brix crash
+(main
+  (let result
+    (match true
+      (case? true
+        (call ..value 1)
+      )
+      (default
+        (call ..value 1 2)
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Anonymous case '..value' has conflicting arity
-<no file:6>
-            ..value(1, 2)
-            ^^^^^^^^^^^^^
+<no file:9>
+            (call ..value 1 2)
+            ^^^^^^^^^^^^^^^^^^
 ```
 
 ### Anonymous case named again by its symbol, bare and called
 
-```yumi
-. result = match true
-    |? true
+```brix
+(main
+  (let result
+    (match true
+      (case? true
         ..ok
-    ??
-        ..failed(1)
-
-. other = .ok
--- other.name
--- other.case
--- other is .ok
--- result is .ok
-. again = .failed(7)
--- again.name
--- again.case
--- match again
-    | .failed(code)
-        code + 1
-    | .ok
+      )
+      (default
+        (call ..failed 1)
+      )
+    )
+  )
+  (blank)
+  (let other .ok)
+  (print (. other name))
+  (print (. other case))
+  (print (is other .ok))
+  (print (is result .ok))
+  (let again (call .failed 7))
+  (print (. again name))
+  (print (. again case))
+  (print
+    (match again
+      (case (call .failed code)
+        (+ code 1)
+      )
+      (case .ok
         0
--- other == result
--- again == result
--- again != result
+      )
+    )
+  )
+  (print (== other result))
+  (print (== again result))
+  (print (!= again result))
+)
 ```
 
 ```output
@@ -267,49 +396,55 @@ true
 
 ### Anonymous cases of a function with several values and an object
 
-```yumi
-. box = Box(4)
--- describe(pick(0, box))
--- describe(pick(1, box))
--- describe(pick(2, box))
--- describe(pick(3, box))
--- pick(1, box).name
--- pick(3, box).case
+```brix
+(main
+  (let box (call Box 4))
+  (print (call describe (call pick 0 box)))
+  (print (call describe (call pick 1 box)))
+  (print (call describe (call pick 2 box)))
+  (print (call describe (call pick 3 box)))
+  (print (. (call pick 1 box) name))
+  (print (. (call pick 3 box) case))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + x Int)
+  (fn-do + This _
+    (param x _)
+  )
+)
 
-+ x Int
-
-────────────────────
-+ This
-    - x
-
-━━━━━━━━━━━━━━━━━━━━
-+ pick
-    - which Int
-    - box Box
-
-|? which == 0
+(fn-expr + pick _
+  (param which Int)
+  (param box Box)
+  (case? (== which 0)
     ..empty
-|? which == 1
-    ..triple(1, 2.5, "three")
-|? which == 2
-    ..triple(4, 5, "six")
-??
-    ..boxed(box)
+  )
+  (case? (== which 1)
+    (call ..triple 1 2.5 "three")
+  )
+  (case? (== which 2)
+    (call ..triple 4 5 "six")
+  )
+  (default
+    (call ..boxed box)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - value
-
-match value
-    | .empty
-        "empty"
-    | .triple(a, b, c)
-        "triple $a $b $c"
-    | .boxed(held)
-        "boxed ${held.x}"
+(fn-expr + describe String
+  (param value _)
+  (match value
+    (case .empty
+      "empty"
+    )
+    (case (call .triple a b c)
+      (str "triple " a " " b " " c)
+    )
+    (case (call .boxed held)
+      (str "boxed " (. held x))
+    )
+  )
+)
 ```
 
 ```output
@@ -323,45 +458,67 @@ triple
 
 ### Anonymous cases assigned again and by symbol
 
-```yumi
-. count = 0
-. result = match count
-    |? count > 0
-        ..many(count)
-    ??
+```brix
+(main
+  (let count 0)
+  (let result
+    (match count
+      (case? (> count 0)
+        (call ..many count)
+      )
+      (default
         ..none
--- result.name
-count = 3
-result = match count
-    |? count > 0
-        ..many(count)
-    ??
+      )
+    )
+  )
+  (print (. result name))
+  (= count 3)
+  (= result
+    (match count
+      (case? (> count 0)
+        (call ..many count)
+      )
+      (default
         ..none
--- result.name
--- match result
-    | .many(n)
-        n * 2
-    | .none
+      )
+    )
+  )
+  (print (. result name))
+  (print
+    (match result
+      (case (call .many n)
+        (* n 2)
+      )
+      (case .none
         0
-result = .none
--- result.name
-result = .many(9)
--- match result
-    | .many(n)
+      )
+    )
+  )
+  (= result .none)
+  (print (. result name))
+  (= result (call .many 9))
+  (print
+    (match result
+      (case (call .many n)
         n
-    | .none
+      )
+      (case .none
         0
--- step(result)
-result = .none
--- step(result)
+      )
+    )
+  )
+  (print (call step result))
+  (= result .none)
+  (print (call step result))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do step String
-    - value
-
-if value is .none
-    = "none"
-= "many"
+(fn-do + step String
+  (param value _)
+  (if (is value .none)
+    (return "none")
+  )
+  (return "many")
+)
 ```
 
 ```output
@@ -376,55 +533,82 @@ none
 
 ### Anonymous cases with converted values and matched fields
 
-```yumi
-. shape = match 2
-    |? false
-        ..circle(1.5)
-    ??
-        ..rect(2, 3.5)
--- area(shape)
-shape = .circle(2)
--- area(shape)
-. label = match shape
-    | .circle(r)
-        ..round("circle", 2)
-    | .rect(w, h)
-        ..flat("rect")
--- label.name
--- match label
-    | .round(text, size)
-        "$text $size"
-    | .flat(text)
+```brix
+(main
+  (let shape
+    (match 2
+      (case? false
+        (call ..circle 1.5)
+      )
+      (default
+        (call ..rect 2 3.5)
+      )
+    )
+  )
+  (print (call area shape))
+  (= shape (call .circle 2))
+  (print (call area shape))
+  (let label
+    (match shape
+      (case (call .circle r)
+        (call ..round "circle" 2)
+      )
+      (case (call .rect w h)
+        (call ..flat "rect")
+      )
+    )
+  )
+  (print (. label name))
+  (print
+    (match label
+      (case (call .round text size)
+        (str text " " size)
+      )
+      (case (call .flat text)
         text
-. nested = match true
-    |? true
-        ..wrapped(1, Box(2))
-    ??
+      )
+    )
+  )
+  (let nested
+    (match true
+      (case? true
+        (call ..wrapped 1 (call Box 2))
+      )
+      (default
         ..bare
--- match nested
-    | .wrapped(first, box)
-        first + box.x
-    | .bare
+      )
+    )
+  )
+  (print
+    (match nested
+      (case (call .wrapped first box)
+        (+ first (. box x))
+      )
+      (case .bare
         0
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + x Int)
+  (fn-do + This _
+    (param x _)
+  )
+)
 
-+ x Int
-
-────────────────────
-+ This
-    - x
-
-━━━━━━━━━━━━━━━━━━━━
-+ area Float
-    - shape
-
-match shape
-    | .circle(r)
-        r * r * 3.0
-    | .rect(w, h)
-        w * h
+(fn-expr + area Float
+  (param shape _)
+  (match shape
+    (case (call .circle r)
+      (* r r 3.0)
+    )
+    (case (call .rect w h)
+      (* w h)
+    )
+  )
+)
 ```
 
 ```output
@@ -437,95 +621,123 @@ circle 2
 
 ### Symbol of an anonymous case that two owners have is ambiguous
 
-```yumi crash
-. first = match true
-    |? true
+```brix crash
+(main
+  (let first
+    (match true
+      (case? true
         ..ok
-    ??
+      )
+      (default
         ..failed
-
-. second = match true
-    |? true
+      )
+    )
+  )
+  (blank)
+  (let second
+    (match true
+      (case? true
         ..ok
-    ??
+      )
+      (default
         ..other
-
-. third = .ok
--- third.name
+      )
+    )
+  )
+  (blank)
+  (let third .ok)
+  (print (. third name))
+)
 ```
 
 ```output
 Exception: Anonymous case '.ok' is ambiguous between 'first', 'second'
-<no file:14>
-    . third = .ok
-              ^^^
+<no file:25>
+      (let third .ok)
+                 ^^^
 ```
 
 ### Anonymous case with conflicting arity in one owner
 
-```yumi crash
-. result = match 1
-    |? false
-        ..ok(1)
-    ??
-        ..ok(1, 2)
--- result.name
+```brix crash
+(main
+  (let result
+    (match 1
+      (case? false
+        (call ..ok 1)
+      )
+      (default
+        (call ..ok 1 2)
+      )
+    )
+  )
+  (print (. result name))
+)
 ```
 
 ```output
 Exception: Anonymous case '..ok' has conflicting arity
-<no file:6>
-            ..ok(1, 2)
-            ^^^^^^^^^^
+<no file:9>
+            (call ..ok 1 2)
+            ^^^^^^^^^^^^^^^
 ```
 
 ### Anonymous case given a whole tuple converts it to the first field
 
-```yumi crash
-. point = Point(1, 2)
-. nested = match true
-    |? true
-        ..wrapped(point)
-    ??
+```brix crash
+(main
+  (let point (call Point 1 2))
+  (let nested
+    (match true
+      (case? true
+        (call ..wrapped point)
+      )
+      (default
         ..bare
--- nested.name
+      )
+    )
+  )
+  (print (. nested name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Tuple
-
-+ x Int
-+ y Int
+(type + Point (is Tuple)
+  (prop + x Int)
+  (prop + y Int)
+)
 ```
 
 ```output
 Exception: Expected I64 here, but this is Point, and there is no conversion between them
-<no file:5>
-            ..wrapped(point)
-            ^^^^^^^^^^^^^^^^
+<no file:7>
+            (call ..wrapped point)
+            ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Anonymous case of a function holds a name a later arm's pattern captures
 
-```yumi
--- label(true) is .loaded
--- label(false) is .failed
+```brix
+(main
+  (print (is (call label true) .loaded))
+  (print (is (call label false) .failed))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ label
-    - works Bool
+(fn-expr + label _
+  (param works Bool)
+  (match (catch (call risky works))
+    (case (: error Error)
+      (call ..failed "no")
+    )
+    (case (: found (list Int))
+      (call ..loaded found)
+    )
+  )
+)
 
-match catch risky(works)
-    | error Error
-        ..failed("no")
-    | found [Int]
-        ..loaded(found)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do risky [Int] ?! Error
-    - works Bool
-
-?! Error("no") if !works
-= [1, 2]
+(fn-do + risky (list Int) (?! Error)
+  (param works Bool)
+  (throw (call Error "no") (if (not works)))
+  (return (list 1 2))
+)
 ```
 
 ```output
@@ -535,20 +747,27 @@ true
 
 ### Anonymous case of a function holds its value as known where the case is written
 
-```yumi
--- match pick(null)
-    | .some(n)
-        n + 1
-    | .other(n)
-        n ?? -1
+```brix
+(main
+  (print
+    (match (call pick null)
+      (case (call .some n)
+        (+ n 1)
+      )
+      (case (call .other n)
+        (?? n -1)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick
-    - value Int?
-
-if value
-    = ..some(value)
-= ..other(value)
+(fn-do + pick _
+  (param value (? Int))
+  (if value
+    (return (call ..some value))
+  )
+  (return (call ..other value))
+)
 ```
 
 ```output

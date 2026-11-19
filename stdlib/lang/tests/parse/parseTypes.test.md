@@ -1,9 +1,5 @@
 # Types
 
-```yumi
-''Bar
-```
-
 ```brix
 (main
   ''Bar
@@ -12,10 +8,6 @@
 
 ```output
 <TypeId name="Bar" declare="true"/>
-```
-
-```yumi
-Bar
 ```
 
 ```brix
@@ -30,10 +22,6 @@ Bar
 
 ## Paths
 
-```yumi
-Foo''Bar
-```
-
 ```brix
 (main
   (of Foo ''Bar)
@@ -47,10 +35,6 @@ Foo''Bar
 </TypeArguments>
 ```
 
-```yumi
-Foo'Bar
-```
-
 ```brix
 (main
   (of Foo Bar)
@@ -62,10 +46,6 @@ Foo'Bar
     <TypeId name="Foo"/>
     <TypeId name="Bar"/>
 </TypeArguments>
-```
-
-```yumi
-Foo'Bar'Baz
 ```
 
 ```brix
@@ -82,10 +62,6 @@ Foo'Bar'Baz
 </TypeArguments>
 ```
 
-```yumi
-Foo'Bar
-```
-
 ```brix
 (main
   (of Foo Bar)
@@ -99,10 +75,6 @@ Foo'Bar
 </TypeArguments>
 ```
 
-```yumi
-Foo'Bar
-```
-
 ```brix
 (main
   (of Foo Bar)
@@ -114,10 +86,6 @@ Foo'Bar
     <TypeId name="Foo"/>
     <TypeId name="Bar"/>
 </TypeArguments>
-```
-
-```yumi
-Foo'Bar'Baz
 ```
 
 ```brix
@@ -132,10 +100,6 @@ Foo'Bar'Baz
     <TypeId name="Bar"/>
     <TypeId name="Baz"/>
 </TypeArguments>
-```
-
-```yumi
-Foo'(Bar'Baz)
 ```
 
 ```brix
@@ -154,10 +118,6 @@ Foo'(Bar'Baz)
 </TypeArguments>
 ```
 
-```yumi
-Storage.Backing'Item
-```
-
 ```brix
 (main
   (. Storage (of Backing Item))
@@ -172,10 +132,6 @@ Storage.Backing'Item
 ```
 
 ## Optional types
-
-```yumi
-Foo?
-```
 
 ```brix
 (main
@@ -192,10 +148,6 @@ Foo?
 
 ## Compound type shorthands
 
-```yumi
-+ Foo is [Foo]
-```
-
 ```brix
 (type-line + Foo (is (list Foo)))
 ```
@@ -209,10 +161,6 @@ Foo?
         </TypeArguments>
     </Implements>
 </Class>
-```
-
-```yumi
-+ Foo is [Foo = Bar]
 ```
 
 ```brix
@@ -231,10 +179,6 @@ Foo?
 </Class>
 ```
 
-```yumi
-+ Foo is <Foo>
-```
-
 ```brix
 (type-line + Foo (is (stream Foo)))
 ```
@@ -251,11 +195,6 @@ Foo?
 ```
 
 ## Function types
-
-```yumi
-+ Foo is () Baz
-    - foo Foo
-```
 
 ```brix
 (type-line + Foo (is (fn-type Baz (param foo Foo))))
@@ -277,12 +216,6 @@ Foo?
 </Class>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is () Baz
-    - foo Foo
-```
-
 ```brix
 (type + Foo (is (fn-type Baz (param foo Foo))))
 ```
@@ -301,13 +234,6 @@ Foo?
         </TypeFunction>
     </Implements>
 </Class>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ fn
-    - arg () Baz
-        - foo Foo
 ```
 
 ```brix
@@ -335,12 +261,6 @@ Foo?
 </Function>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Statement'Item is () Void
-    - a Int
-```
-
 ```brix
 (type + (of Statement Item) (is (fn-type Void (param a Int))))
 ```
@@ -360,12 +280,6 @@ Foo?
         </TypeFunction>
     </Implements>
 </Class>
-```
-
-```yumi
-x is Foo
-x is! Foo
-x is~ Foo
 ```
 
 ```brix

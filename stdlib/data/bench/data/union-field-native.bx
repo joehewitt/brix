@@ -1,0 +1,43 @@
+; benchmark.meta description: Reads a field shared by every union case through native union member dispatch.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator
+(blank)
+
+(main
+  (let nodes (call union-field-native-nodes))
+  (let checksum U64)
+  (for (in iteration (..< 0 400000))
+    (for (in node nodes)
+      (+= checksum (. node id))
+    )
+  )
+  (blank)
+  (print (str "bench-result data/union-field-native checksum=" checksum))
+)
+
+(type _ UnionFieldNativeNode (is Union)
+  (variant atom (tuple (: id U64) (: text String)))
+  (variant string (tuple (: id U64) (: text String)))
+  (variant comment (tuple (: id U64) (: text String)))
+  (variant list (tuple (: id U64) (: items (list UnionFieldNativeNode))))
+)
+
+(fn-do _ union-field-native-nodes (list UnionFieldNativeNode)
+  (let nodes (list UnionFieldNativeNode))
+  (for (in index (..< 0 1000))
+    (let id (as index U64))
+    (if (== (% index 4) 0)
+      (+= nodes (call (. UnionFieldNativeNode atom) id "atom"))
+      (else-if (== (% index 4) 1)
+        (+= nodes (call (. UnionFieldNativeNode string) id "string"))
+      )
+      (else-if (== (% index 4) 2)
+        (+= nodes (call (. UnionFieldNativeNode comment) id "comment"))
+      )
+      (else
+        (+= nodes (call (. UnionFieldNativeNode list) id (call (of List UnionFieldNativeNode))))
+      )
+    )
+  )
+  (return nodes)
+)

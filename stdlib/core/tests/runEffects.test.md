@@ -2,275 +2,279 @@
 
 ### A ban rejects a door the code under it reaches, with the path from the ban
 
-```yumi compile-error
-/JaCore/tests.h
+```brix compile-error
+(import /JaCore/tests.h)
+(blank)
 
--- parse-document()
+(main
+  (print (call parse-document))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect probe-world
-    - C:ctest4a
+(effect + probe-world
+  (claim C:ctest4a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do probe Int @door(probe-world)
+(fn-do + probe Int (door probe-world)
+  (return (call C:ctest4a))
+)
 
-= C:ctest4a()
+(fn-do + load-schema Int
+  (return (call probe))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do load-schema Int
-
-= probe()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do parse-document Int without probe-world
-
-= load-schema()
+(fn-do + parse-document Int (without probe-world)
+  (return (call load-schema))
+)
 ```
 
 ```output
-Exception: cannot reach a door of 'probe-world' under 'without probe-world': parse-document (without probe-world) → load-schema → probe()
+Exception: cannot reach a door of 'probe-world' under 'without probe-world': parse-document (without probe-world) → load-schema → (call probe)
 <no file:18>
-    = probe()
-      ^^^^^^^
+      (return (call probe))
+              ^^^^^^^^^^^^
 ```
 
 ### A do block bans what its code reaches, and code outside it reaches the door
 
-```yumi compile-error
-/JaCore/tests.h
+```brix compile-error
+(import /JaCore/tests.h)
+(blank)
 
--- run()
+(main
+  (print (call run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect probe-world
-    - C:ctest4a
+(effect + probe-world
+  (claim C:ctest4a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do probe Int @door(probe-world)
+(fn-do + probe Int (door probe-world)
+  (return (call C:ctest4a))
+)
 
-= C:ctest4a()
+(fn-do + helper Int
+  (return (call probe))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do helper Int
-
-= probe()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int
-
-. outside = helper()
-do without probe-world
-    -- helper()
-= outside
+(fn-do + run Int
+  (let outside (call helper))
+  (do (without probe-world)
+    (print (call helper))
+  )
+  (return outside)
+)
 ```
 
 ```output
-Exception: cannot reach a door of 'probe-world' under 'without probe-world': run (do without probe-world) → helper → probe()
+Exception: cannot reach a door of 'probe-world' under 'without probe-world': run (do without probe-world) → helper → (call probe)
 <no file:18>
-    = probe()
-      ^^^^^^^
+      (return (call probe))
+              ^^^^^^^^^^^^
 ```
 
 ### A ban reaches a door that answers an interface member
 
-```yumi compile-error
-/JaCore/tests.h
+```brix compile-error
+(import /JaCore/tests.h)
+(blank)
 
-. source = Impl() as Source
--- direct(source)
+(main
+  (let source (as (call Impl) Source))
+  (print (call direct source))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect probe-world
-    - C:ctest4a
+(effect + probe-world
+  (claim C:ctest4a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Source is Interface
+(type + Source (is Interface)
+  (fn-do + take Int)
+)
 
-────────────────────
-+ do take Int
+(type + Impl
+  (implements Source)
+  (fn-do + take Int (door probe-world)
+    (return (call C:ctest4a))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Impl
-    is Source
-
-────────────────────
-+ do take Int @door(probe-world)
-
-= C:ctest4a()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do direct Int without probe-world
-    - source Source
-
-= source.take()
+(fn-do + direct Int (without probe-world)
+  (param source Source)
+  (return (call (. source take)))
+)
 ```
 
 ```output
-Exception: cannot reach a door of 'probe-world' under 'without probe-world': direct (without probe-world) → source.take() → Impl.take
-<no file:30>
-    = source.take()
-      ^^^^^^^^^^^^^
+Exception: cannot reach a door of 'probe-world' under 'without probe-world': direct (without probe-world) → (call (. source take)) → Impl.take
+<no file:27>
+      (return (call (. source take)))
+              ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A ban holds in a task started under it, and a constructor may be a door
 
-```yumi compile-error
-/JaCore/tests.h
+```brix compile-error
+(import /JaCore/tests.h)
+(blank)
 
--- run()
+(main
+  (print (call run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect probe-world
-    - C:ctest4a
+(effect + probe-world
+  (claim C:ctest4a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do probe Int @door(probe-world)
+(fn-do + probe Int (door probe-world)
+  (return (call C:ctest4a))
+)
 
-= C:ctest4a()
+(type + Reading
+  (prop + value Int (= 0))
+  (fn-do + This _ (door probe-world)
+    (= value (call C:ctest4a))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Reading
-
-+ value Int = 0
-
-────────────────────
-+ This @door(probe-world)
-
-value = C:ctest4a()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int without probe-world
-
-. task = do new
-    probe()
-task.wait()
-= Reading().value
+(fn-do + run Int (without probe-world)
+  (let task
+    (do-new
+      (call probe)
+    )
+  )
+  (call (. task wait))
+  (return (. (call Reading) value))
+)
 ```
 
 ```output
-Exception: cannot reach a door of 'probe-world' under 'without probe-world': run (without probe-world) → a function in run → probe()
-<no file:29>
-        probe()
-        ^^^^^^^
+Exception: cannot reach a door of 'probe-world' under 'without probe-world': run (without probe-world) → a function in run → (call probe)
+<no file:27>
+          (call probe)
+          ^^^^^^^^^^^^
 
-Exception: cannot reach a door of 'probe-world' under 'without probe-world': run (without probe-world) → Reading()
+Exception: cannot reach a door of 'probe-world' under 'without probe-world': run (without probe-world) → (call Reading)
 <no file:31>
-    = Reading().value
-      ^^^^^^^^^
+      (return (. (call Reading) value))
+                 ^^^^^^^^^^^^^^
 ```
 
 ### A door that calls another door of its effect is reported where it is reached
 
-```yumi compile-error
-/JaCore/tests.h
+```brix compile-error
+(import /JaCore/tests.h)
+(blank)
 
--- run()
+(main
+  (print (call run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect probe-world
-    - C:ctest4a
+(effect + probe-world
+  (claim C:ctest4a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do inner Int @door(probe-world)
+(fn-do + inner Int (door probe-world)
+  (return (call C:ctest4a))
+)
 
-= C:ctest4a()
+(fn-do + outer Int (door probe-world)
+  (return (+ (call inner) 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do outer Int @door(probe-world)
-
-= inner() + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int without probe-world
-
-= outer()
+(fn-do + run Int (without probe-world)
+  (return (call outer))
+)
 ```
 
 ```output
-Exception: cannot reach a door of 'probe-world' under 'without probe-world': run (without probe-world) → outer()
-<no file:23>
-    = outer()
-      ^^^^^^^
+Exception: cannot reach a door of 'probe-world' under 'without probe-world': run (without probe-world) → (call outer)
+<no file:22>
+      (return (call outer))
+              ^^^^^^^^^^^^
 ```
 
 ### A call through a function value is an error under a ban
 
-```yumi compile-error
-/JaCore/tests.h
+```brix compile-error
+(import /JaCore/tests.h)
+(blank)
 
--- run(=> 1)
+(main
+  (print (call run (=> () 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect probe-world
-    - C:ctest4a
+(effect + probe-world
+  (claim C:ctest4a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int without probe-world
-    - f () Int
-
-= f()
+(fn-do + run Int (without probe-world)
+  (param f (fn-type Int))
+  (return (call f))
+)
 ```
 
 ```output
-Exception: Function value call requires unrestricted effects: run (without probe-world) → f()
-<no file:14>
-    = f()
-      ^^^
+Exception: Function value call requires unrestricted effects: run (without probe-world) → (call f)
+<no file:15>
+      (return (call f))
+              ^^^^^^^^
 ```
 
 ### A C function an effect claims is called only by its doors and the functions written in them
 
-```yumi compile-error
-/JaCore/tests.h
+```brix compile-error
+(import /JaCore/tests.h)
+(blank)
 
--- probe()
--- sneak()
+(main
+  (print (call probe))
+  (print (call sneak))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect probe-world
-    - C:ctest4a
+(effect + probe-world
+  (claim C:ctest4a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do probe Int @door(probe-world)
+(fn-do + probe Int (door probe-world)
+  (let read (=> () (call C:ctest4a)))
+  (return (call read))
+)
 
-. read = => C:ctest4a()
-= read()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do sneak Int
-
-= C:ctest4a()
+(fn-do + sneak Int
+  (return (call C:ctest4a))
+)
 ```
 
 ```output
 Exception: 'C:ctest4a' belongs to the 'probe-world' effect, so only its doors may call it
 <no file:20>
-    = C:ctest4a()
-      ^^^^^^^^^^^
+      (return (call C:ctest4a))
+              ^^^^^^^^^^^^^^^^
 ```
 
 ### A ban lets through a C function no effect claims, and code outside the ban reaches doors
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
--- run()
--- probe()
+(main
+  (print (call run))
+  (print (call probe))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect probe-world
-    - C:ctest4a
+(effect + probe-world
+  (claim C:ctest4a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do probe Int @door(probe-world)
+(fn-do + probe Int (door probe-world)
+  (return (call C:ctest4a))
+)
 
-= C:ctest4a()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int without probe-world, heap
-
-C:ctest2a(7)
-= 1
+(fn-do + run Int (without probe-world heap)
+  (call C:ctest2a 7)
+  (return 1)
+)
 ```
 
 ```output
@@ -280,171 +284,169 @@ received 71
 
 ### A name after without names an effect the module sees
 
-```yumi compile-error
-/JaCore/tests.h
+```brix compile-error
+(import /JaCore/tests.h)
+(blank)
 
--- run()
+(main
+  (print (call run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int without nowhere
-
-= 1
+(fn-do + run Int (without nowhere)
+  (return 1)
+)
 ```
 
 ```output
 Exception: Unknown name 'nowhere' after without
-<no file:7>
-    + do run Int without nowhere
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:9>
+    (fn-do + run Int (without nowhere)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A C function two effects claim is called by neither's doors
 
-```yumi compile-error
-/JaCore/tests.h
+```brix compile-error
+(import /JaCore/tests.h)
+(blank)
 
--- probe()
+(main
+  (print (call probe))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect probe-world
-    - C:ctest4a
+(effect + probe-world
+  (claim C:ctest4a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect other-world
-    - C:ctest4a
+(effect + other-world
+  (claim C:ctest4a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do probe Int @door(probe-world)
-
-= C:ctest4a()
+(fn-do + probe Int (door probe-world)
+  (return (call C:ctest4a))
+)
 ```
 
 ```output
 Exception: 'C:ctest4a' is claimed by both the 'probe-world' and the 'other-world' effect
-<no file:17>
-    = C:ctest4a()
-      ^^^^^^^^^^^
+<no file:18>
+      (return (call C:ctest4a))
+              ^^^^^^^^^^^^^^^^
 ```
 
 ### A ban follows a getter, an operator and a conversion to the doors they are, or call
 
-```yumi compile-error
-/JaCore/tests.h
+```brix compile-error
+(import /JaCore/tests.h)
+(blank)
 
--- run()
+(main
+  (print (call run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect probe-world
-    - C:ctest4a
+(effect + probe-world
+  (claim C:ctest4a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Meter
+(type + Meter
+  (prop + base Int (= 0))
+  (fn-do + reading Int :get (door probe-world)
+    (return (call C:ctest4a))
+  )
+  (fn-do + (infix this + (param other Meter)) Int (door probe-world)
+    (return (+ (call C:ctest4a) (. other base)))
+  )
+  (fn-to-do + Int
+    (return (call sample))
+  )
+)
 
-+ base Int = 0
+(fn-do + sample Int (door probe-world)
+  (let task
+    (do-new
+      (call C:ctest4a)
+    )
+  )
+  (call (. task wait))
+  (return 1)
+)
 
-────────────────────
-+ do get reading Int @door(probe-world)
+(fn-do + take _
+  (param value Int)
+  (print value)
+)
 
-= C:ctest4a()
-
-────────────────────
-+ do this Int + other Meter @door(probe-world)
-
-= C:ctest4a() + other.base
-
-────────────────────
-+ do to Int
-
-= sample()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do sample Int @door(probe-world)
-
-. task = do new
-    C:ctest4a()
-task.wait()
-= 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do take
-    - value Int
-
--- value
-
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int without probe-world
-
-. meter = Meter()
-. a = meter.reading
-. b = meter + meter
-take(meter)
-= a + b
+(fn-do + run Int (without probe-world)
+  (let meter (call Meter))
+  (let a (. meter reading))
+  (let b (+ meter meter))
+  (call take meter)
+  (return (+ a b))
+)
 ```
 
 ```output
-Exception: cannot reach a door of 'probe-world' under 'without probe-world': run (without probe-world) → the converter of Meter → sample()
-<no file:28>
-    = sample()
-      ^^^^^^^^
+Exception: cannot reach a door of 'probe-world' under 'without probe-world': run (without probe-world) → the converter of Meter → (call sample)
+<no file:22>
+        (return (call sample))
+                ^^^^^^^^^^^^^
 
-Exception: cannot reach a door of 'probe-world' under 'without probe-world': run (without probe-world) → meter.reading
-<no file:48>
-    . a = meter.reading
-          ^^^^^^^^^^^^^
+Exception: cannot reach a door of 'probe-world' under 'without probe-world': run (without probe-world) → (. meter reading)
+<no file:43>
+      (let a (. meter reading))
+             ^^^^^^^^^^^^^^^^^
 
-Exception: cannot reach a door of 'probe-world' under 'without probe-world': run (without probe-world) → meter + meter
-<no file:49>
-    . b = meter + meter
-          ^^^^^^^^^^^^^
+Exception: cannot reach a door of 'probe-world' under 'without probe-world': run (without probe-world) → (+ meter meter)
+<no file:44>
+      (let b (+ meter meter))
+             ^^^^^^^^^^^^^^^
 ```
 
 ### A fake bound to an effect answers each door the code under the binding reaches, and code outside it reaches the real doors
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
--- run()
--- add(2, 3)
+(main
+  (print (call run))
+  (print (call add 2 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect adder-world
-    - C:ctest5
+(effect + adder-world
+  (claim C:ctest5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do add I32 @door(adder-world)
-    - a I32
-    - b I32
+(fn-do + add I32 (door adder-world)
+  (param a I32)
+  (param b I32)
+  (return (call C:ctest5 a b))
+)
 
-= C:ctest5(a, b)
+(fn-do + twice I32
+  (param a I32)
+  (return (call add a a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do twice I32
-    - a I32
+(type + Multiplier
+  (prop + calls _ (= 0))
+  (fn-do + add I32
+    (param a I32)
+    (param b I32)
+    (+= calls 1)
+    (return (* a b))
+  )
+)
 
-= add(a, a)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Multiplier
-
-+ calls = 0
-
-────────────────────
-+ do add I32
-    - a I32
-    - b I32
-
-calls += 1
-= a * b
-
-━━━━━━━━━━━━━━━━━━━━
-+ do run I32
-
-. fake = Multiplier()
-. inside = 0 as I32
-do with adder-world = fake
-    inside = twice(3) + add(2, 5)
--- "calls ${fake.calls}"
-= inside + twice(3)
+(fn-do + run I32
+  (let fake (call Multiplier))
+  (let inside (as 0 I32))
+  (do-with adder-world fake
+    (= inside (+ (call twice 3) (call add 2 5)))
+  )
+  (print (str "calls " (. fake calls)))
+  (return (+ inside (call twice 3)))
+)
 ```
 
 ```output
@@ -455,58 +457,55 @@ calls 2
 
 ### A fake's method runs under what was bound to the effect outside its binding: the real doors, or the fake of an outer binding
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
--- run()
+(main
+  (print (call run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect adder-world
-    - C:ctest5
+(effect + adder-world
+  (claim C:ctest5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do add I32 @door(adder-world)
-    - a I32
-    - b I32
+(fn-do + add I32 (door adder-world)
+  (param a I32)
+  (param b I32)
+  (return (call C:ctest5 a b))
+)
 
-= C:ctest5(a, b)
+(fn-do + real-add I32
+  (param a I32)
+  (param b I32)
+  (return (call add a b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do real-add I32
-    - a I32
-    - b I32
+(type + Outer
+  (fn-do + add I32
+    (param a I32)
+    (param b I32)
+    (print (str "outer " a " " b))
+    (return (+ (call real-add a b) 100))
+  )
+)
 
-= add(a, b)
+(type + Inner
+  (fn-do + add I32
+    (param a I32)
+    (param b I32)
+    (print (str "inner " a " " b))
+    (return (+ (call real-add a b) 100))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Outer
-
-────────────────────
-+ do add I32
-    - a I32
-    - b I32
-
--- "outer $a $b"
-= real-add(a, b) + 100
-
-━━━━━━━━━━━━━━━━━━━━
-+ Inner
-
-────────────────────
-+ do add I32
-    - a I32
-    - b I32
-
--- "inner $a $b"
-= real-add(a, b) + 100
-
-━━━━━━━━━━━━━━━━━━━━
-+ do run I32 with adder-world = Outer()
-
--- real-add(1, 2)
-do with adder-world = Inner()
-    -- real-add(3, 4)
-= 0
+(fn-do + run I32 (with adder-world (call Outer))
+  (print (call real-add 1 2))
+  (do-with adder-world (call Inner)
+    (print (call real-add 3 4))
+  )
+  (return 0)
+)
 ```
 
 ```output
@@ -520,220 +519,219 @@ outer 3 4
 
 ### A fake must have a method of each door's name that the code under its binding reaches, taking and giving what the door does
 
-```yumi compile-error
-/JaCore/tests.h
+```brix compile-error
+(import /JaCore/tests.h)
+(blank)
 
--- run()
+(main
+  (print (call run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect adder-world
-    - C:ctest5
+(effect + adder-world
+  (claim C:ctest5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do add I32 @door(adder-world)
-    - a I32
-    - b I32
+(fn-do + add I32 (door adder-world)
+  (param a I32)
+  (param b I32)
+  (return (call C:ctest5 a b))
+)
 
-= C:ctest5(a, b)
+(fn-do + twice I32
+  (param a I32)
+  (return (call add a a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do twice I32
-    - a I32
+(type + Empty)
 
-= add(a, a)
+(type + Wrong
+  (fn-do + add I64
+    (param a I32)
+    (param b I32)
+    (return 0)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Empty
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wrong
-
-────────────────────
-+ do add I64
-    - a I32
-    - b I32
-
-= 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do run I32
-
-do with adder-world = Empty()
-    -- twice(1)
-do with adder-world = Wrong()
-    -- add(1, 2)
-= 0
+(fn-do + run I32
+  (do-with adder-world (call Empty)
+    (print (call twice 1))
+  )
+  (do-with adder-world (call Wrong)
+    (print (call add 1 2))
+  )
+  (return 0)
+)
 ```
 
 ```output
-Exception: Empty has no method 'add' to answer the door of 'adder-world': run (with adder-world) → twice → add(a, a)
+Exception: Empty has no method 'add' to answer the door of 'adder-world': run (with adder-world) → twice → (call add a a)
 <no file:21>
-    = add(a, a)
-      ^^^^^^^^^
+      (return (call add a a))
+              ^^^^^^^^^^^^^^
 
-Exception: Wrong.add does not take and give what the door of 'adder-world' does: run (with adder-world) → add(1, 2)
-<no file:42>
-        -- add(1, 2)
-           ^^^^^^^^^
+Exception: Wrong.add does not take and give what the door of 'adder-world' does: run (with adder-world) → (call add 1 2)
+<no file:39>
+        (print (call add 1 2))
+               ^^^^^^^^^^^^^^
 ```
 
 ### A fake is an object of a class, and answers only a door that is a function of its module
 
-```yumi compile-error
-/JaCore/tests.h
+```brix compile-error
+(import /JaCore/tests.h)
+(blank)
 
--- run()
+(main
+  (print (call run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect adder-world
-    - C:ctest5
+(effect + adder-world
+  (claim C:ctest5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Meter
+(type + Meter
+  (fn-do + reading I32 :get (door adder-world)
+    (return (call C:ctest5 1 2))
+  )
+)
 
-────────────────────
-+ do get reading I32 @door(adder-world)
+(type + Fake)
 
-= C:ctest5(1, 2)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Fake
-
-━━━━━━━━━━━━━━━━━━━━
-+ do run I32
-
-do with adder-world = 5
-    -- 1
-do with adder-world = Fake()
-    -- Meter().reading
-= 0
+(fn-do + run I32
+  (do-with adder-world 5
+    (print 1)
+  )
+  (do-with adder-world (call Fake)
+    (print (. (call Meter) reading))
+  )
+  (return 0)
+)
 ```
 
 ```output
 Exception: A fake bound to 'adder-world' is an object of a class, not I64
-<no file:24>
-    do with adder-world = 5
-                          ^
+<no file:22>
+      (do-with adder-world 5
+                           ^
 
-Exception: a fake answers only a door of 'adder-world' that is a function of its module, and Meter.reading is not: run (with adder-world) → Meter().reading
-<no file:27>
-        -- Meter().reading
-           ^^^^^^^^^^^^^^^
+Exception: a fake answers only a door of 'adder-world' that is a function of its module, and Meter.reading is not: run (with adder-world) → (. (call Meter) reading)
+<no file:26>
+        (print (. (call Meter) reading))
+               ^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Under a ban a fake's door passes, and a fake's method that reaches the real door is the error
 
-```yumi compile-error
-/JaCore/tests.h
+```brix compile-error
+(import /JaCore/tests.h)
+(blank)
 
--- run()
+(main
+  (print (call run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect adder-world
-    - C:ctest5
+(effect + adder-world
+  (claim C:ctest5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do add I32 @door(adder-world)
-    - a I32
-    - b I32
+(fn-do + add I32 (door adder-world)
+  (param a I32)
+  (param b I32)
+  (return (call C:ctest5 a b))
+)
 
-= C:ctest5(a, b)
+(fn-do + real-add I32
+  (param a I32)
+  (param b I32)
+  (return (call add a b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do real-add I32
-    - a I32
-    - b I32
+(type + Quiet
+  (fn-do + add I32
+    (param a I32)
+    (param b I32)
+    (return (- a b))
+  )
+)
 
-= add(a, b)
+(type + Passing
+  (fn-do + add I32
+    (param a I32)
+    (param b I32)
+    (return (call real-add a b))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Quiet
-
-────────────────────
-+ do add I32
-    - a I32
-    - b I32
-
-= a - b
-
-━━━━━━━━━━━━━━━━━━━━
-+ Passing
-
-────────────────────
-+ do add I32
-    - a I32
-    - b I32
-
-= real-add(a, b)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do run I32 without adder-world
-
-. got = 0 as I32
-do with adder-world = Quiet()
-    got = add(5, 2)
-do with adder-world = Passing()
-    got += add(5, 2)
-= got
+(fn-do + run I32 (without adder-world)
+  (let got (as 0 I32))
+  (do-with adder-world (call Quiet)
+    (= got (call add 5 2))
+  )
+  (do-with adder-world (call Passing)
+    (+= got (call add 5 2))
+  )
+  (return got)
+)
 ```
 
 ```output
-Exception: cannot reach a door of 'adder-world' under 'without adder-world': run (without adder-world) → add → Passing.add → real-add → add(a, b)
+Exception: cannot reach a door of 'adder-world' under 'without adder-world': run (without adder-world) → add → Passing.add → real-add → (call add a b)
 <no file:22>
-    = add(a, b)
-      ^^^^^^^^^
+      (return (call add a b))
+              ^^^^^^^^^^^^^^
 ```
 
 ### A task started under a binding keeps it, and so does a lambda made under it
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
--- run()
+(main
+  (print (call run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect adder-world
-    - C:ctest5
+(effect + adder-world
+  (claim C:ctest5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do add I32 @door(adder-world)
-    - a I32
-    - b I32
+(fn-do + add I32 (door adder-world)
+  (param a I32)
+  (param b I32)
+  (return (call C:ctest5 a b))
+)
 
-= C:ctest5(a, b)
+(fn-do + twice I32
+  (param a I32)
+  (return (call add a a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do twice I32
-    - a I32
+(type + Multiplier
+  (fn-do + add I32
+    (param a I32)
+    (param b I32)
+    (return (* a b))
+  )
+)
 
-= add(a, a)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Multiplier
-
-────────────────────
-+ do add I32
-    - a I32
-    - b I32
-
-= a * b
-
-━━━━━━━━━━━━━━━━━━━━
-+ do run I32
-
-. later Getter'I32?
-. done = Semaphore()
-do with adder-world = Multiplier()
-    do new
-        -- "task", twice(3)
-        do new
-            -- "inner task", twice(4)
-            done.post()
-    done.wait()
-    later = => twice(5)
--- "later", (later)()
--- "outside", twice(5)
-= 0
+(fn-do + run I32
+  (let later (? (of Getter I32)))
+  (let done (call Semaphore))
+  (do-with adder-world (call Multiplier)
+    (do-new
+      (print (tuple "task" (call twice 3)))
+      (do-new
+        (print (tuple "inner task" (call twice 4)))
+        (call (. done post))
+      )
+    )
+    (call (. done wait))
+    (= later (=> () (call twice 5)))
+  )
+  (print (tuple "later" (call later)))
+  (print (tuple "outside" (call twice 5)))
+  (return 0)
+)
 ```
 
 ```output
@@ -746,57 +744,55 @@ do with adder-world = Multiplier()
 
 ### A door a function value reaches calls the fake bound where it is called, and panics where that fake has no method for it
 
-```yumi crash
-/JaCore/tests.h
+```brix crash
+(import /JaCore/tests.h)
+(blank)
 
--- run()
+(main
+  (print (call run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect adder-world
-    - C:ctest5
+(effect + adder-world
+  (claim C:ctest5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do add I32 @door(adder-world)
-    - a I32
-    - b I32
+(fn-do + add I32 (door adder-world)
+  (param a I32)
+  (param b I32)
+  (return (call C:ctest5 a b))
+)
 
-= C:ctest5(a, b)
+(fn-do + twice I32
+  (param a I32)
+  (return (call add a a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do twice I32
-    - a I32
+(type + Multiplier
+  (fn-do + add I32
+    (param a I32)
+    (param b I32)
+    (return (* a b))
+  )
+)
 
-= add(a, a)
+(type + Empty)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Multiplier
+(fn-do + call-it I32
+  (param f (of Mapper I32 I32))
+  (return (call f 3))
+)
 
-────────────────────
-+ do add I32
-    - a I32
-    - b I32
-
-= a * b
-
-━━━━━━━━━━━━━━━━━━━━
-+ Empty
-
-━━━━━━━━━━━━━━━━━━━━
-+ do call-it I32
-    - f Mapper'I32'I32
-
-= f(3)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do run I32
-
-. through Mapper'I32'I32 = twice
--- "outside", call-it(through)
-do with adder-world = Multiplier()
-    -- "multiplier", call-it(through)
-do with adder-world = Empty()
-    -- "empty", call-it(through)
-= 0
+(fn-do + run I32
+  (let through (of Mapper I32 I32) twice)
+  (print (tuple "outside" (call call-it through)))
+  (do-with adder-world (call Multiplier)
+    (print (tuple "multiplier" (call call-it through)))
+  )
+  (do-with adder-world (call Empty)
+    (print (tuple "empty" (call call-it through)))
+  )
+  (return 0)
+)
 ```
 
 ```output
@@ -806,60 +802,57 @@ do with adder-world = Empty()
 
 ### A closure made outside a binding reaches what was bound where it was made, and a named function made a value there reads the binding where it is called
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
 
--- run()
+(main
+  (print (call run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect adder-world
-    - C:ctest5
+(effect + adder-world
+  (claim C:ctest5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do add I32 @door(adder-world)
-    - a I32
-    - b I32
+(fn-do + add I32 (door adder-world)
+  (param a I32)
+  (param b I32)
+  (return (call C:ctest5 a b))
+)
 
-= C:ctest5(a, b)
+(fn-do + twice I32
+  (param a I32)
+  (return (call add a a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do twice I32
-    - a I32
+(type + Multiplier
+  (fn-do + add I32
+    (param a I32)
+    (param b I32)
+    (return (* a b))
+  )
+)
 
-= add(a, a)
+(fn-do + call-it I32
+  (param f (of Getter I32))
+  (return (call f))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Multiplier
+(fn-do + apply I32
+  (param f (of Mapper I32 I32))
+  (return (call f 3))
+)
 
-────────────────────
-+ do add I32
-    - a I32
-    - b I32
-
-= a * b
-
-━━━━━━━━━━━━━━━━━━━━
-+ do call-it I32
-    - f Getter'I32
-
-= f()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do apply I32
-    - f Mapper'I32'I32
-
-= f(3)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do run I32
-
-. n = 3 as I32
-. closure Getter'I32 = => add(n, n)
-. named Mapper'I32'I32 = twice
-do with adder-world = Multiplier()
-    -- "closure", call-it(closure)
-    -- "named", apply(named)
-= 0
+(fn-do + run I32
+  (let n (as 3 I32))
+  (let closure (of Getter I32) (=> () (call add n n)))
+  (let named (of Mapper I32 I32) twice)
+  (do-with adder-world (call Multiplier)
+    (print (tuple "closure" (call call-it closure)))
+    (print (tuple "named" (call apply named)))
+  )
+  (return 0)
+)
 ```
 
 ```output
@@ -870,83 +863,86 @@ do with adder-world = Multiplier()
 
 ### A function that reaches a door cannot become a function value under a binding of its effect
 
-```yumi compile-error
-/JaCore/tests.h
+```brix compile-error
+(import /JaCore/tests.h)
+(blank)
 
--- run()
+(main
+  (print (call run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect adder-world
-    - C:ctest5
+(effect + adder-world
+  (claim C:ctest5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do add I32 @door(adder-world)
-    - a I32
-    - b I32
+(fn-do + add I32 (door adder-world)
+  (param a I32)
+  (param b I32)
+  (return (call C:ctest5 a b))
+)
 
-= C:ctest5(a, b)
+(fn-do + twice I32
+  (param a I32)
+  (return (call add a a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do twice I32
-    - a I32
+(type + Multiplier
+  (fn-do + add I32
+    (param a I32)
+    (param b I32)
+    (return (* a b))
+  )
+)
 
-= add(a, a)
+(fn-do + apply I32
+  (param f (of Mapper I32 I32))
+  (return (call f 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Multiplier
-
-────────────────────
-+ do add I32
-    - a I32
-    - b I32
-
-= a * b
-
-━━━━━━━━━━━━━━━━━━━━
-+ do apply I32
-    - f Mapper'I32'I32
-
-= f(3)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do run I32
-
-. got = 0 as I32
-do with adder-world = Multiplier()
-    got = apply(twice)
-= got
+(fn-do + run I32
+  (let got (as 0 I32))
+  (do-with adder-world (call Multiplier)
+    (= got (call apply twice))
+  )
+  (return got)
+)
 ```
 
 ```output
 Exception: The fake bound to 'adder-world' cannot be read through a function value: twice → add
-<no file:44>
-        got = apply(twice)
-                    ^^^^^
+<no file:40>
+        (= got (call apply twice))
+                           ^^^^^
 ```
 
 ### A fake stays bound to its effect where the code under the binding only reads String values of the module, written, made lazily, or copied into a local
 
-```yumi
-/JaCore/tests.h
+```brix
+(import /JaCore/tests.h)
+(blank)
+(prop + kept _ (= "x"))
+(prop + joined _ (:= (++ "x" "y")))
+(blank)
 
-+ kept = "x"
-+ joined := "x" ++ "y"
+(main
+  (let fake (call Stub))
+  (do-with probe-world fake
+    (print kept)
+  )
+  (do-with probe-world fake
+    (print joined)
+  )
+  (do-with probe-world fake
+    (let copy kept)
+    (print copy)
+  )
+)
 
-. fake = Stub()
-do with probe-world = fake
-    -- kept
-do with probe-world = fake
-    -- joined
-do with probe-world = fake
-    . copy = kept
-    -- copy
+(effect + probe-world
+  (claim C:ctest4a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ effect probe-world
-    - C:ctest4a
-
-━━━━━━━━━━━━━━━━━━━━
-+ Stub
+(type + Stub)
 ```
 
 ```output

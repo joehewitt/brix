@@ -1,0 +1,139 @@
+; benchmark.meta description: Materializes implicit String and Atom pattern results into their final arena.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator
+(blank)
+(import /core/arena)
+(import /core/tokenstream)
+(blank)
+
+(main
+  (let arena (call Arena))
+  (let helper (call SourceOwner arena))
+  (let stream (call (of ArrayTokenStream Char) (. "éabc😀!" codepoints)))
+  (let checksum Size)
+  (for (in i (..< 0 100000))
+    (= (. stream cursor) 0)
+    (+= checksum (. (call source-result stream helper) length))
+    (= (. stream cursor) 0)
+    (+= checksum (. (call it-result stream helper) length))
+    (= (. stream cursor) 0)
+    (+= checksum (. (call atom-result stream helper) text length))
+    (call (. arena reset))
+  )
+  (blank)
+  (call (. arena release))
+  (print (str "bench-result parser/implicit-results checksum=" checksum))
+)
+
+(fn-do + source-result String
+  (param stream (of TokenStream Char))
+  (param helper SourceOwner)
+  (return
+    (match stream
+      (with helper)
+      (~ \source-word)
+      (default
+        (inline "")
+      )
+      (blank)
+      (lazy source-word String
+        (pattern
+          (~ (seq . (+ (chars "a-z")) . "!"))
+        )
+      )
+    )
+  )
+)
+
+(fn-do + it-result String
+  (param stream (of TokenStream Char))
+  (param helper SourceOwner)
+  (return
+    (match stream
+      (with helper)
+      (~ \source-word)
+      (default
+        (inline "")
+      )
+      (blank)
+      (lazy source-word String
+        (pattern
+          (~ (seq . (+ (chars "a-z")) . "!")
+            it
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-do + atom-result Atom
+  (param stream (of TokenStream Char))
+  (param helper SourceOwner)
+  (return
+    (match stream
+      (with helper)
+      (~ \source-word)
+      (default
+        (inline (as "" Atom))
+      )
+      (blank)
+      (lazy source-word Atom
+        (pattern
+          (~ (seq . (+ (chars "a-z")) . "!"))
+        )
+      )
+    )
+  )
+)
+
+(type + SourceOwner
+  (implements (of PatternMaterializationRoot U32))
+  (implements (of PatternCaptureMaterializer Char String))
+  (implements (of PatternValueMaterializer String String))
+  (implements (of PatternRollback Size))
+  (prop + arena Arena)
+  (blank)
+  (delegate (of PatternCaptureMaterializer Char Atom))
+  (delegate (of PatternValueMaterializer String Atom))
+  (prop _ atoms _ (:= (call SourceAtoms arena)))
+  (fn-do + This _
+    (param arena Arena)
+  )
+  (fn-expr + materialize-capture String (without gc)
+    (param source ([] Char))
+    (param start Index)
+    (param end Index)
+    (call (. arena copy-span) source start end)
+  )
+  (fn-expr + materialize-value String (without gc)
+    (param source String)
+    (call (. arena copy-string) source)
+  )
+  (fn-expr + mark Size (without gc)
+    (throw (call Panic "Unexpected source materialization mark"))
+  )
+  (fn-do + rewind _ (without gc)
+    (param mark Size)
+    (throw (call Panic "Unexpected source materialization rewind"))
+  )
+)
+
+(type _ SourceAtoms (is Tuple)
+  (implements (of PatternCaptureMaterializer Char Atom))
+  (implements (of PatternValueMaterializer String Atom))
+  (prop _ arena Arena)
+  (fn-do + This _
+    (param arena Arena)
+  )
+  (fn-expr + materialize-capture Atom (without gc)
+    (param source ([] Char))
+    (param start Index)
+    (param end Index)
+    (as (call (. arena copy-span) source start end) Atom)
+  )
+  (fn-expr + materialize-value Atom (without gc)
+    (param source String)
+    (as (call (. arena copy-string) source) Atom)
+  )
+)

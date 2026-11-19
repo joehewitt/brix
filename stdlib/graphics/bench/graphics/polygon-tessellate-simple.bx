@@ -1,0 +1,31 @@
+; benchmark.meta description: Tessellates simple closed polygons without self-intersections.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/point)
+(import /graphics/polygon)
+(import /graphics/shapes)
+(import /math)
+(blank)
+
+(main
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 700))
+    (let sides (+ 5 (% pass 9)))
+    (let path (call polygon (as sides U32) (+ 80.0 (% pass 17)) (call Point 100 100)))
+    (let poly (call Polygon path 4))
+    (let pieces (call (. poly tessellate)))
+    (+= checksum (+ (. pieces length) (call numeric-check (. poly area))))
+    (for (in piece pieces)
+      (+= checksum (+ (. piece points length) (call numeric-check (. piece area))))
+    )
+  )
+  (blank)
+  (print (str "bench-result graphics/polygon-tessellate-simple checksum=" checksum))
+)
+
+(fn-expr _ numeric-check Size
+  (param value Float)
+  (% (as (call abs (* value 1000)) Size) 1000003)
+)

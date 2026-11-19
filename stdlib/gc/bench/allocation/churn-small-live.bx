@@ -1,0 +1,24 @@
+; benchmark.meta description: Keeps about 15 MB of strings live while making about 1 GB of short-lived strings, then idles in the event loop for one second so the memory profile records how much the collector keeps for a small live set.
+; benchmark.meta timing: not-recommended
+; benchmark.meta profiles: memory,gc-runtime
+(blank)
+(import /time/duration)
+(blank)
+
+(main
+  (let keep (list String))
+  (for (in index (..< 0 50000))
+    (+= keep (str "kept item " index " with some padding text to make it longer than a word"))
+  )
+  (let checksum (as 0 Size))
+  (for (in round (..< 0 3000))
+    (let junk (list String))
+    (for (in index (..< 0 1000))
+      (+= junk (str "garbage " round " " index " padding padding padding padding padding"))
+    )
+    (+= checksum (. ([] junk (% round (. junk length))) length))
+  )
+  (call (. 1s wait))
+  (+= checksum (. keep length))
+  (print (str "bench-result allocation/churn-small-live checksum=" checksum))
+)

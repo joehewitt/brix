@@ -2,16 +2,21 @@
 
 ### Basic subscriber
 
-```yumi
-+ numbers AsyncChannel'Int
+```brix
+(prop + numbers (of AsyncChannel Int))
+(blank)
 
-for n on numbers
-    -- n
-
-for x in 0 .. 2
-    numbers <- x
-`numbers.close()
--- "done"
+(main
+  (for (on n numbers)
+    (print n)
+  )
+  (blank)
+  (for (in x (.. 0 2))
+    (<- numbers x)
+  )
+  ; numbers.close()
+  (print "done")
+)
 ```
 
 ```output
@@ -23,23 +28,28 @@ done
 
 ### A subscriber runs on the queue of the task that subscribed, whichever thread publishes.
 
-```yumi
-. worker = Worker(1)
-. numbers AsyncChannel'Int
-. done Int<>
-place = "main"
-for n on numbers
-    -- "$n on $place"
-    done <- n
-do (worker) new
-    place = "worker"
-    numbers <- 1
--- "read ${<- done}"
-numbers <- 2
--- "read ${<- done}"
-worker.stop()
+```brix
+(main
+  (let worker (call Worker 1))
+  (let numbers (of AsyncChannel Int))
+  (let done (channel Int))
+  (= place "main")
+  (for (on n numbers)
+    (print (str n " on " place))
+    (<- done n)
+  )
+  (do-new (worker: worker)
+    (= place "worker")
+    (<- numbers 1)
+  )
+  (print (str "read " (<- done)))
+  (<- numbers 2)
+  (print (str "read " (<- done)))
+  (call (. worker stop))
+)
 
-+ @thread place = "unset"
+(blank)
+(prop + place _ @thread (= "unset"))
 ```
 
 ```output
@@ -51,15 +61,19 @@ read 2
 
 ### Subscriber with condition
 
-```yumi
-+ numbers AsyncChannel'Int
+```brix
+(prop + numbers (of AsyncChannel Int))
+(blank)
 
-for n on numbers when n != 1
-    -- n
-
-numbers <-* 0 .. 2
-`numbers.close()
--- "done"
+(main
+  (for (on n numbers (when (!= n 1)))
+    (print n)
+  )
+  (blank)
+  (<-* numbers (.. 0 2))
+  ; numbers.close()
+  (print "done")
+)
 ```
 
 ```output
@@ -70,15 +84,19 @@ done
 
 ### Subscriber with while condition
 
-```yumi
-+ numbers AsyncChannel'Int
+```brix
+(prop + numbers (of AsyncChannel Int))
+(blank)
 
-for n on numbers while n != 3
-    -- n
-
-numbers <-* 0 .. 5
-`numbers.close()
--- "done"
+(main
+  (for (on n numbers (while (!= n 3)))
+    (print n)
+  )
+  (blank)
+  (<-* numbers (.. 0 5))
+  ; numbers.close()
+  (print "done")
+)
 ```
 
 ```output
@@ -88,15 +106,19 @@ done
 2
 ```
 
-```yumi
-+ numbers AsyncChannel'Int
+```brix
+(prop + numbers (of AsyncChannel Int))
+(blank)
 
-for n on numbers until n == 3
-    -- n
-
-numbers <-* 0 .. 5
-`numbers.close()
--- "done"
+(main
+  (for (on n numbers (until (== n 3)))
+    (print n)
+  )
+  (blank)
+  (<-* numbers (.. 0 5))
+  ; numbers.close()
+  (print "done")
+)
 ```
 
 ```output
@@ -108,17 +130,22 @@ done
 
 ### Break to unsubscribe
 
-```yumi
-+ numbers AsyncChannel'Int
+```brix
+(prop + numbers (of AsyncChannel Int))
+(blank)
 
-for n on numbers
-    -- n
-    if n == 1
-        break
-
-numbers <-* 0 .. 2
-`numbers.close()
--- "done"
+(main
+  (for (on n numbers)
+    (print n)
+    (if (== n 1)
+      (break)
+    )
+  )
+  (blank)
+  (<-* numbers (.. 0 2))
+  ; numbers.close()
+  (print "done")
+)
 ```
 
 ```output
@@ -127,32 +154,40 @@ done
 1
 ```
 
-```yumi crash
-+ numbers AsyncChannel'Int
+```brix crash
+(prop + numbers (of AsyncChannel Int))
+(blank)
 
-for foo on numbers
-    =
--- numbers
+(main
+  (for (on foo numbers)
+    (return)
+  )
+  (print numbers)
+)
 ```
 
 ```output
 Exception: The body of a loop on "numbers" cannot return with "="; skip to the next value with "continue", or stop the loop with "break"
-<no file:5>
-        =
-        ^
+<no file:7>
+        (return)
+        ^^^^^^^^
 ```
 
 ### Continue to exit subscriber
 
-```yumi
-+ numbers AsyncChannel'Int
+```brix
+(prop + numbers (of AsyncChannel Int))
+(blank)
 
-for foo on numbers
-    -- "in"
-    continue
-    -- "out"
-
-numbers <- 1
+(main
+  (for (on foo numbers)
+    (print "in")
+    (continue)
+    (print "out")
+  )
+  (blank)
+  (<- numbers 1)
+)
 ```
 
 ```output
@@ -161,25 +196,25 @@ in
 
 ### Continue ends one run of a class's event handler
 
-```yumi
-. spot = Spot()
-spot.pings <- true
-spot.pings <- false
-spot.pings <- true
--- spot.taps
+```brix
+(main
+  (let spot (call Spot))
+  (<- (. spot pings) true)
+  (<- (. spot pings) false)
+  (<- (. spot pings) true)
+  (print (. spot taps))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Spot
-
-+ taps Size = 0
-+ event pings Bool
-
-────────────────────
-for event on pings
-
-if !event
-    continue
-taps += 1
+(type + Spot
+  (prop + taps Size (= 0))
+  (event + pings Bool)
+  (subscribe-for (on event pings)
+    (if (not event)
+      (continue)
+    )
+    (+= taps 1)
+  )
+)
 ```
 
 ```output
@@ -188,76 +223,91 @@ taps += 1
 
 ### Combined subscriptions
 
-```yumi crash
-+ numbers1 AsyncChannel'Int
-+ numbers2 AsyncChannel'Int
+```brix crash
+(prop + numbers1 (of AsyncChannel Int))
+(prop + numbers2 (of AsyncChannel Int))
+(blank)
 
-for foo on numbers1
-and bar on numbers2
-    -- "in"
-    continue
-    -- "out"
-
-numbers1 <- 1
-numbers2 <- 2
+(main
+  (for (on foo numbers1)
+    (and-for (on bar numbers2)
+      (print "in")
+      (continue)
+      (print "out")
+    )
+  )
+  (blank)
+  (<- numbers1 1)
+  (<- numbers2 2)
+)
 ```
 
 ```output
 Exception: A loop on a stream subscribes to one source, so it cannot be joined to another; write a loop for each source
-<no file:5>
-    for foo on numbers1
-       ^^^^^^^^^^^^^^^^
+<no file:7>
+      (for (on foo numbers1)
+           ^^^^^^^^^^^^^^^^^
 ```
 
 ### A loop on a stream joined to another by an or arm
 
-```yumi compile-error
-+ numbers1 AsyncChannel'Int
-+ numbers2 AsyncChannel'Int
+```brix compile-error
+(prop + numbers1 (of AsyncChannel Int))
+(prop + numbers2 (of AsyncChannel Int))
+(blank)
 
-for foo on numbers1
-    -- "one"
-or bar on numbers2
-    -- "two"
+(main
+  (for (on foo numbers1)
+    (print "one")
+    (or-for (on bar numbers2)
+      (print "two")
+    )
+  )
+)
 ```
 
 ```output
 Exception: A loop on a stream subscribes to one source, so it cannot be joined to another; write a loop for each source
-<no file:5>
-    for foo on numbers1
-       ^^^^^^^^^^^^^^^^
+<no file:7>
+      (for (on foo numbers1)
+           ^^^^^^^^^^^^^^^^^
 ```
 
 ### Declarative subscription in module
 
-```yumi
-+ numbers SyncBufferedChannel'Int
-+ doubles = doubler(numbers)
+```brix
+(prop + numbers (of SyncBufferedChannel Int))
+(prop + doubles _ (= (call doubler numbers)))
+(blank)
 
-for n on doubles
-    -- n
+(main
+  (for (on n doubles)
+    (print n)
+  )
+  (blank)
+  (<-* numbers (.. 0 2))
+  (call (. numbers close))
+  (print "done")
+)
 
-numbers <-* 0 .. 2
-numbers.close()
--- "done"
+(fn-do + task _
+  (param outputs _)
+  (param inputs _)
+  (for (in n inputs)
+    (print (str "double " n))
+    (<- outputs (* n 2))
+  )
+  ; outputs.close()
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do task
-    - outputs
-    - inputs
-
-for n in inputs
-    -- "double $n"
-    outputs <- n * 2
-`outputs.close()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do doubler
-    - inputs
-
-. outputs AsyncChannel'Int
-do new task(outputs, inputs)
-= outputs
+(fn-do + doubler _
+  (param inputs _)
+  (let outputs (of AsyncChannel Int))
+  (do-new
+    (inline (call task outputs inputs))
+  )
+  (return outputs)
+)
 ```
 
 ```output
@@ -272,39 +322,39 @@ double 2
 
 ### Declarative subscription in class
 
-```yumi
-. thing = Thing()
-thing.numbers <-* 0 .. 2
-thing.numbers.close()
--- "done"
+```brix
+(main
+  (let thing (call Thing))
+  (<-* (. thing numbers) (.. 0 2))
+  (call (. thing numbers close))
+  (print "done")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + numbers (of SyncBufferedChannel Int))
+  (prop + doubles _ (= (call doubler numbers)))
+  (subscribe-for (on n doubles)
+    (print n)
+  )
+)
 
-+ numbers SyncBufferedChannel'Int
-+ doubles = doubler(numbers)
+(fn-do + task _
+  (param outputs _)
+  (param inputs _)
+  (for (in n inputs)
+    (print (str "double " n))
+    (<- outputs (* n 2))
+  )
+)
 
-────────────────────
-for n on doubles
-
--- n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do task
-    - outputs
-    - inputs
-
-for n in inputs
-    -- "double $n"
-    outputs <- n * 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do doubler
-    - inputs
-
-. outputs AsyncChannel'Int
-do new task(outputs, inputs)
-= outputs
+(fn-do + doubler _
+  (param inputs _)
+  (let outputs (of AsyncChannel Int))
+  (do-new
+    (inline (call task outputs inputs))
+  )
+  (return outputs)
+)
 ```
 
 ```output
@@ -319,26 +369,23 @@ double 2
 
 ### A class's subscription calls a method of the class by its name alone where a function of another module has the name.
 
-```yumi
-. spot = Spot()
-spot.pings <- true
--- spot.taps
+```brix
+(main
+  (let spot (call Spot))
+  (<- (. spot pings) true)
+  (print (. spot taps))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Spot
-
-+ taps Size = 0
-+ event pings Bool
-
-────────────────────
-for event on pings
-
-tap()
-
-────────────────────
-_ do tap
-
-taps += 1
+(type + Spot
+  (prop + taps Size (= 0))
+  (event + pings Bool)
+  (subscribe-for (on event pings)
+    (call tap)
+  )
+  (fn-do _ tap _
+    (+= taps 1)
+  )
+)
 ```
 
 ```output
@@ -347,39 +394,48 @@ taps += 1
 
 ### Illegal broadcaster
 
-```yumi crash
--- ""
-
-for n on 42
-    -- n
+```brix crash
+(main
+  (print "")
+  (blank)
+  (for (on n 42)
+    (print n)
+  )
+)
 ```
 
 ```output
 Exception: Object is not a broadcastable or iterable: I64
-<no file:4>
-    for n on 42
-       ^^^^^^^
+<no file:5>
+      (for (on n 42)
+      ^^^^^^^^^^^^^
 ```
 
 ### Subscriber expression
 
-```yumi
-numbers <-* 0 .. 2
-numbers.close()
--- "done"
+```brix
+(main
+  (<-* numbers (.. 0 2))
+  (call (. numbers close))
+  (print "done")
+)
 
-_ numbers SyncBufferedChannel'Int
-_ doubles = dump(n) * 2 <* n on numbers
+(blank)
+(prop _ numbers (of SyncBufferedChannel Int))
+(prop _ doubles _ (= (on (select (* (call dump n) 2) (<* n)) numbers)))
+(blank)
 
-for n on doubles
-    -- n
+(main
+  (for (on n doubles)
+    (print n)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump
-    - n
-
--- "got $n"
-= n
+(fn-do + dump _
+  (param n _)
+  (print (str "got " n))
+  (return n)
+)
 ```
 
 ```output
@@ -394,23 +450,35 @@ got 2
 
 ### Subscriber expression with condition
 
-```yumi
-numbers <-* 0 .. 2
-numbers.close()
--- "done"
+```brix
+(main
+  (<-* numbers (.. 0 2))
+  (call (. numbers close))
+  (print "done")
+)
 
-_ numbers SyncBufferedChannel'Int
-_ doubles = <* n on numbers when n > 1: dump(n) * 2
+(blank)
+(prop _ numbers (of SyncBufferedChannel Int))
+(prop _ doubles _
+  (=
+    (case-each (on n numbers (when (> n 1)))
+      (inline (* (call dump n) 2))
+    )
+  )
+)
+(blank)
 
-for n on doubles
-    -- n
+(main
+  (for (on n doubles)
+    (print n)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump
-    - n
-
--- "got $n"
-= n
+(fn-do + dump _
+  (param n _)
+  (print (str "got " n))
+  (return n)
+)
 ```
 
 ```output
@@ -419,23 +487,29 @@ got 2
 4
 ```
 
-```yumi
-numbers <-* 0 .. 8
-numbers.close()
--- "done"
+```brix
+(main
+  (<-* numbers (.. 0 8))
+  (call (. numbers close))
+  (print "done")
+)
 
-_ numbers SyncBufferedChannel'Int
-_ doubles = dump(n) * 2 <* n on numbers while n < 5
+(blank)
+(prop _ numbers (of SyncBufferedChannel Int))
+(prop _ doubles _ (= (on (select (* (call dump n) 2) (<* n)) numbers (while (< n 5)))))
+(blank)
 
-for n on doubles
-    -- n
+(main
+  (for (on n doubles)
+    (print n)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump
-    - n
-
--- "got $n"
-= n
+(fn-do + dump _
+  (param n _)
+  (print (str "got " n))
+  (return n)
+)
 ```
 
 ```output
@@ -455,11 +529,14 @@ got 5
 
 ### Subscribe to an iterable object
 
-```yumi
--- "before"
-for n on [1, 2, 3]
-    -- n
--- "after"
+```brix
+(main
+  (print "before")
+  (for (on n (list 1 2 3))
+    (print n)
+  )
+  (print "after")
+)
 ```
 
 ```output
@@ -470,24 +547,21 @@ after
 3
 ```
 
-```yumi
-Foo()
+```brix
+(main
+  (call Foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar = [1, 2, 3]
-+ bee = [1, 2, 3]
-
-────────────────────
-on bar
-
--- "bar"
-
-────────────────────
-for x on bee
-
--- x
+(type + Foo
+  (prop + bar _ (= (list 1 2 3)))
+  (prop + bee _ (= (list 1 2 3)))
+  (subscribe (on bar)
+    (print "bar")
+  )
+  (subscribe-for (on x bee)
+    (print x)
+  )
+)
 ```
 
 ```output
@@ -499,30 +573,26 @@ bar
 3
 ```
 
-```yumi
-Foo()
+```brix
+(main
+  (call Foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Bar
+(type + Foo (is Bar)
+  (prop + a _ (= 0))
+  (subscribe (on stuff)
+    (print this)
+    (print "Foo.stuff")
+  )
+)
 
-+ a = 0
-
-────────────────────
-on stuff
-
--- this
--- "Foo.stuff"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-+ stuff = [1]
-
-────────────────────
-on stuff
-
--- this
--- "Bar.stuff"
+(type + Bar
+  (prop + stuff _ (= (list 1)))
+  (subscribe (on stuff)
+    (print this)
+    (print "Bar.stuff")
+  )
+)
 ```
 
 ```output
@@ -532,29 +602,36 @@ Bar.stuff
 Foo.stuff
 ```
 
-```yumi
-. a AsyncChannel'Int
-do new
-    for i in 0 .. < 3
-        yield-once()
-        a <- i
-    `a.close()
+```brix
+(main
+  (let a (of AsyncChannel Int))
+  (do-new
+    (for (in i (..< 0 3))
+      (call yield-once)
+      (<- a i)
+    )
+    ; a.close()
+  )
+  (blank)
+  (let nums1 (on (select (* n 2) (<* (: n (similar Float)))) a))
+  (let nums2 (on each a))
+  (blank)
+  (for (on n nums1)
+    (print n)
+  )
+  (for (on n nums2)
+    (print n)
+  )
+)
 
-. nums1 = n * 2 <* n Float~ on a
-. nums2 = each on a
-
-for n on nums1
-    -- n
-for n on nums2
-    -- n
-`
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
-
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+;
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 ```
 
 ```output
@@ -566,30 +643,37 @@ done.wait()
 2
 ```
 
-```yumi
-. a AsyncChannel'Int
-do new
-    for i in 0 .. < 3
-        yield-once()
-        a <- i
-    `a.close()
+```brix
+(main
+  (let a (of AsyncChannel Int))
+  (do-new
+    (for (in i (..< 0 3))
+      (call yield-once)
+      (<- a i)
+    )
+    ; a.close()
+  )
+  (blank)
+  (let x 3)
+  (let nums1 (on (select (* n x) (<* (: n (similar Float)))) a))
+  (let nums2 (on each a))
+  (blank)
+  (for (on n nums1)
+    (print n)
+  )
+  (for (on n nums2)
+    (print n)
+  )
+)
 
-. x = 3
-. nums1 = n * x <* n Float~ on a
-. nums2 = each on a
-
-for n on nums1
-    -- n
-for n on nums2
-    -- n
-`
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
-
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+;
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 ```
 
 ```output
@@ -603,22 +687,31 @@ done.wait()
 
 ### This tested a messy situation involving creating a fragment without pushing a catcher inside it, resulting in a refernce to the unwind block inside the fragment referencing a block in a different function, thus crashing LLVM
 
-```yumi
-.. stuff = on 0 .. < 3
-    |? true
-        Choices.choice
-    ??
-        Choices.choice
+```brix
+(main
+  (lazy stuff
+    (iterate (on (..< 0 3))
+      (block
+        (case? true
+          (. Choices choice)
+        )
+        (default
+          (. Choices choice)
+        )
+      )
+    )
+  )
+  (blank)
+  (lazy filtered (on (select a (<* (: a Int))) stuff))
+  (blank)
+  (for (on x filtered)
+    (print x)
+  )
+)
 
-.. filtered = a <* a Int on stuff
-
-for x on filtered
-    -- x
-
-━━━━━━━━━━━━━━━━━━━━
-+ Choices is Union
-
-| choice = 1
+(type + Choices (is Union)
+  (variant choice (= 1))
+)
 ```
 
 ```output
@@ -627,48 +720,59 @@ for x on filtered
 1
 ```
 
-```yumi
-.. is-open = true
-.. ticks = 0
-. timer AsyncChannel'F64
+```brix
+(main
+  (lazy is-open true)
+  (lazy ticks 0)
+  (let timer (of AsyncChannel F64))
+  (blank)
+  (let dump
+    (=> (t) :do
+      (block
+        (print t)
+        (+= ticks 1)
+        (return t)
+      )
+    )
+  )
+  (blank)
+  (let stuff
+    (case-each (on t timer (whenever #is-open))
+      (inline (call dump t))
+    )
+  )
+  (blank)
+  (<- timer 0.03)
+  (call yield-once)
+  (<- timer 0.06)
+  (call yield-once)
+  (print "STOP!")
+  (= is-open false)
+  (blank)
+  (<- timer 0.07)
+  (call yield-once)
+  (print "START!")
+  (let start-ticks ticks)
+  (= is-open true)
+  (call yield-once)
+  (blank)
+  (<- timer 0.03)
+  (call yield-once)
+  (<- timer 0.06)
+  (call yield-once)
+  (<- timer 0.09)
+  (call yield-once)
+  (print "STOP!")
+  (= is-open false)
+)
 
-. dump = :: t => do
-    -- t
-    ticks += 1
-    = t
-
-. stuff = <* t on timer whenever #is-open: dump(t)
-
-timer <- 0.03
-yield-once()
-timer <- 0.06
-yield-once()
--- "STOP!"
-is-open = false
-
-timer <- 0.07
-yield-once()
--- "START!"
-. start-ticks = ticks
-is-open = true
-yield-once()
-
-timer <- 0.03
-yield-once()
-timer <- 0.06
-yield-once()
-timer <- 0.09
-yield-once()
--- "STOP!"
-is-open = false
-
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
-
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 ```
 
 ```output
@@ -682,45 +786,48 @@ START!
 STOP!
 ```
 
-```yumi
-.. is-open = true
-.. ticks = 0
-. timer AsyncChannel'F64
+```brix
+(main
+  (lazy is-open true)
+  (lazy ticks 0)
+  (let timer (of AsyncChannel F64))
+  (blank)
+  (for (on t timer (whenever #is-open))
+    (print t)
+    (+= ticks 1)
+  )
+  (blank)
+  (<- timer 0.03)
+  (call yield-once)
+  (<- timer 0.06)
+  (call yield-once)
+  (print "STOP!")
+  (= is-open false)
+  (blank)
+  (<- timer 0.07)
+  (call yield-once)
+  (print "START!")
+  (let start-ticks ticks)
+  (= is-open true)
+  (call yield-once)
+  (blank)
+  (<- timer 0.03)
+  (call yield-once)
+  (<- timer 0.06)
+  (call yield-once)
+  (<- timer 0.09)
+  (call yield-once)
+  (print "STOP!")
+  (= is-open false)
+)
 
-for t on timer whenever #is-open
-    -- t
-    ticks += 1
-
-timer <- 0.03
-yield-once()
-timer <- 0.06
-yield-once()
--- "STOP!"
-is-open = false
-
-timer <- 0.07
-yield-once()
--- "START!"
-. start-ticks = ticks
-is-open = true
-yield-once()
-
-timer <- 0.03
-yield-once()
-timer <- 0.06
-yield-once()
-timer <- 0.09
-yield-once()
--- "STOP!"
-is-open = false
-
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
-
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 ```
 
 ```output
@@ -736,72 +843,73 @@ STOP!
 
 ### Illegal to refer to loop counter in whenever expressions
 
-```yumi crash
-<* n on 0 .. < 3 whenever n > 0
-    -- n
+```brix crash
+(main
+  (case-each (on n (..< 0 3) (whenever (> n 0)))
+    (print n)
+  )
+)
 ```
 
 ```output
 Exception: Name "n" not found
-<no file:2>
-    <* n on 0 .. < 3 whenever n > 0
-                              ^
+<no file:3>
+      (case-each (on n (..< 0 3) (whenever (> n 0)))
+                                              ^
 ```
 
 ### whenever clauses require tracked reads
 
-```yumi crash
-.. is-open = true
-. timer AsyncChannel'F64
-
-for t on timer whenever is-open
-    -- t
+```brix crash
+(main
+  (lazy is-open true)
+  (let timer (of AsyncChannel F64))
+  (blank)
+  (for (on t timer (whenever is-open))
+    (print t)
+  )
+)
 ```
 
 ```output
 Exception: whenever clauses must read at least one tracked property (like #is-open)
-<no file:5>
-    for t on timer whenever is-open
-                  ^^^^^^^^^^^^^^^^^
+<no file:6>
+      (for (on t timer (whenever is-open))
+                       ^^^^^^^^^^^^^^^^^^
 ```
 
 ### Broadcastable readable adapter returns no message when subscription is rejected
 
-```yumi
-/core/stream
+```brix
+(import /core/stream)
+(blank)
 
-. source = RejectingBroadcastable()
-. message = <- source
--- message ?? "none"
+(main
+  (let source (call RejectingBroadcastable))
+  (let message (<- source))
+  (print (?? message "none"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RejectingBroadcastable
-    is Broadcastable'String
-
-────────────────────
-+ get is-closed Bool
-
-false
-
-────────────────────
-+ do subscribe ?! Error
-    - subscriber Subscriber'String
-
-?! Error("subscribe rejected")
-
-────────────────────
-+ do unsubscribe ?! Error
-    - subscriber Subscriber'String
-
-────────────────────
-+ do subscribe ?! Error
-    - subscriber Subscribable'String
-
-?! Error("subscribe rejected")
-
-────────────────────
-+ do unsubscribe ?! Error
-    - subscriber Subscribable'String
+(type + RejectingBroadcastable
+  (implements (of Broadcastable String))
+  (fn-expr + is-closed Bool :get
+    false
+  )
+  (fn-do + subscribe _ (?! Error)
+    (param subscriber (of Subscriber String))
+    (throw (call Error "subscribe rejected"))
+  )
+  (fn-do + unsubscribe _ (?! Error)
+    (param subscriber (of Subscriber String))
+  )
+  (fn-do + subscribe _ (?! Error)
+    (param subscriber (of Subscribable String))
+    (throw (call Error "subscribe rejected"))
+  )
+  (fn-do + unsubscribe _ (?! Error)
+    (param subscriber (of Subscribable String))
+  )
+)
 ```
 
 ```output
@@ -810,25 +918,24 @@ none
 
 ### A dead event keeps receiver effects but erases payload construction
 
-```yumi
-receiver().dead <- make-payload()
+```brix
+(main
+  (<- (. (call receiver) dead) (call make-payload))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ DeadSurfaceSource
+(type + DeadSurfaceSource
+  (event + dead Int)
+)
 
-+ event dead Int
+(fn-do + receiver DeadSurfaceSource
+  (print "receiver")
+  (return (call DeadSurfaceSource))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do receiver DeadSurfaceSource
-
--- "receiver"
-= DeadSurfaceSource()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make-payload Int
-
--- "built"
-= 1
+(fn-do + make-payload Int
+  (print "built")
+  (return 1)
+)
 ```
 
 ```output
@@ -837,25 +944,25 @@ receiver
 
 ### A subscriber reached through an escaped adapter keeps the event live
 
-```yumi
-. source = EscapedAdapterSource()
-. endpoint Broadcastable'Int = source.changed
+```brix
+(main
+  (let source (call EscapedAdapterSource))
+  (let endpoint (of Broadcastable Int) (. source changed))
+  (blank)
+  (for (on value endpoint)
+    (print (str "escaped " value))
+  )
+  (blank)
+  (call (. source emit) 17)
+)
 
-for value on endpoint
-    -- "escaped $value"
-
-source.emit(17)
-
-━━━━━━━━━━━━━━━━━━━━
-+ EscapedAdapterSource
-
-+ event changed Int
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
+(type + EscapedAdapterSource
+  (event + changed Int)
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 ```
 
 ```output
@@ -864,26 +971,26 @@ escaped 17
 
 ### Event declarations publish synchronously
 
-```yumi
-. source = EventSource()
+```brix
+(main
+  (let source (call EventSource))
+  (blank)
+  (for (on value (. source changed))
+    (print (str "heard " value))
+  )
+  (blank)
+  (print "before")
+  (call (. source emit) 42)
+  (print "after")
+)
 
-for value on source.changed
-    -- "heard $value"
-
--- "before"
-source.emit(42)
--- "after"
-
-━━━━━━━━━━━━━━━━━━━━
-+ EventSource
-
-+ event changed Int
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
+(type + EventSource
+  (event + changed Int)
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 ```
 
 ```output
@@ -894,37 +1001,33 @@ after
 
 ### Event class subscriptions are installed base-first before external subscriptions
 
-```yumi
-. source = DerivedEventSource()
+```brix
+(main
+  (let source (call DerivedEventSource))
+  (blank)
+  (for (on value (. source changed))
+    (print (str "external " value))
+  )
+  (blank)
+  (call (. source emit) 7)
+)
 
-for value on source.changed
-    -- "external $value"
+(type + BaseEventSource
+  (event + changed Int)
+  (subscribe-for (on value changed)
+    (print (str "base " value))
+  )
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 
-source.emit(7)
-
-━━━━━━━━━━━━━━━━━━━━
-+ BaseEventSource
-
-+ event changed Int
-
-────────────────────
-for value on changed
-
--- "base $value"
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
-
-━━━━━━━━━━━━━━━━━━━━
-+ DerivedEventSource is BaseEventSource
-
-────────────────────
-for value on changed
-
--- "derived $value"
+(type + DerivedEventSource (is BaseEventSource)
+  (subscribe-for (on value changed)
+    (print (str "derived " value))
+  )
+)
 ```
 
 ```output
@@ -935,59 +1038,49 @@ external 7
 
 ### Constructor-body subscriptions are delivered before class-body subscriptions
 
-```yumi
-. direct = ConstructorOrderedEventSource()
-direct.emit(7)
+```brix
+(main
+  (let direct (call ConstructorOrderedEventSource))
+  (call (. direct emit) 7)
+  (blank)
+  (let inherited (call ConstructorOrderedEventChild))
+  (call (. inherited emit) 9)
+)
 
-. inherited = ConstructorOrderedEventChild()
-inherited.emit(9)
+(type + ConstructorOrderedEventSource
+  (event + changed Int)
+  (fn-do + This _
+    (for (on value changed)
+      (print (str "constructor " value))
+    )
+  )
+  (subscribe-for (on value changed)
+    (print (str "class body " value))
+  )
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ConstructorOrderedEventSource
+(type + ConstructorOrderedEventBase
+  (event + changed Int)
+  (subscribe-for (on value changed)
+    (print (str "base class body " value))
+  )
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 
-+ event changed Int
-
-────────────────────
-+ This
-
-for value on changed
-    -- "constructor $value"
-
-────────────────────
-for value on changed
-
--- "class body $value"
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
-
-━━━━━━━━━━━━━━━━━━━━
-+ ConstructorOrderedEventBase
-
-+ event changed Int
-
-────────────────────
-for value on changed
-
--- "base class body $value"
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
-
-━━━━━━━━━━━━━━━━━━━━
-+ ConstructorOrderedEventChild is ConstructorOrderedEventBase
-
-────────────────────
-+ This
-
-for value on changed
-    -- "derived constructor $value"
+(type + ConstructorOrderedEventChild (is ConstructorOrderedEventBase)
+  (fn-do + This _
+    (for (on value changed)
+      (print (str "derived constructor " value))
+    )
+  )
+)
 ```
 
 ```output
@@ -999,40 +1092,42 @@ base class body 9
 
 ### Event payload evaluation is lazy when there are no subscribers
 
-```yumi
-/BxGC/BxGC.h
+```brix
+(import /BxGC/BxGC.h)
+(blank)
 
-. source = LazyEventSource()
-. event-lane = C:brixGCEventsSidePayloadLane()
-. sidecars-before = C:brixGCObjectSidePayloadCount(event-lane)
-source.emit()
--- C:brixGCObjectSidePayloadCount(event-lane) == sidecars-before
+(main
+  (let source (call LazyEventSource))
+  (let event-lane (call C:brixGCEventsSidePayloadLane))
+  (let sidecars-before (call C:brixGCObjectSidePayloadCount event-lane))
+  (call (. source emit))
+  (print (== (call C:brixGCObjectSidePayloadCount event-lane) sidecars-before))
+  (blank)
+  (for (on value (. source changed))
+    (print value)
+  )
+  (blank)
+  (for (on value (. source other))
+    (do
+      (inline value)
+    )
+  )
+  (blank)
+  (print (== (call C:brixGCObjectSidePayloadCount event-lane) (+ sidecars-before 1)))
+  (call (. source emit))
+)
 
-for value on source.changed
-    -- value
-
-for value on source.other
-    do value
-
--- C:brixGCObjectSidePayloadCount(event-lane) == sidecars-before + 1
-source.emit()
-
-━━━━━━━━━━━━━━━━━━━━
-+ LazyEventSource
-
-+ event changed Int
-+ event other String
-
-────────────────────
-+ do emit
-
-changed <- make-value()
-
-────────────────────
-+ do make-value Int
-
--- "made"
-= 9
+(type + LazyEventSource
+  (event + changed Int)
+  (event + other String)
+  (fn-do + emit _
+    (<- changed (call make-value))
+  )
+  (fn-do + make-value Int
+    (print "made")
+    (return 9)
+  )
+)
 ```
 
 ```output
@@ -1044,60 +1139,60 @@ made
 
 ### A value function that ends with a publish must still return
 
-```yumi crash
-. source = PublishFallthroughSource()
--- source.compute()
+```brix crash
+(main
+  (let source (call PublishFallthroughSource))
+  (print (call (. source compute)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ PublishFallthroughSource
-
-+ event changed Int
-
-────────────────────
-+ do compute Int
-
-changed <- 1
+(type + PublishFallthroughSource
+  (event + changed Int)
+  (fn-do + compute Int
+    (<- changed 1)
+  )
+)
 ```
 
 ```output
 Exception: Function compute can fall through without returning I64
-<no file:11>
-    + do compute Int
-    ^^^^^^^^^^^^^^^
+<no file:9>
+      (fn-do + compute Int
+      ^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Subscriptions added during dispatch start with the next publication
 
-```yumi
-.. installed = false
-. source = MutatingEventSource()
+```brix
+(main
+  (lazy installed false)
+  (let source (call MutatingEventSource))
+  (blank)
+  (for (on value (. source changed))
+    (print (str "first " value))
+    (if (not installed)
+      (= installed true)
+      (call install-late source)
+    )
+  )
+  (blank)
+  (call (. source emit) 1)
+  (call (. source emit) 2)
+)
 
-for value on source.changed
-    -- "first $value"
-    if !installed
-        installed = true
-        install-late(source)
+(fn-do + install-late _
+  (param source MutatingEventSource)
+  (for (on value (. source changed))
+    (print (str "late " value))
+  )
+)
 
-source.emit(1)
-source.emit(2)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do install-late
-    - source MutatingEventSource
-
-for value on source.changed
-    -- "late $value"
-
-━━━━━━━━━━━━━━━━━━━━
-+ MutatingEventSource
-
-+ event changed Int
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
+(type + MutatingEventSource
+  (event + changed Int)
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 ```
 
 ```output
@@ -1108,29 +1203,30 @@ late 2
 
 ### A later event subscriber can break its loop without disturbing earlier subscribers
 
-```yumi
-. source = BreakingEventSource()
+```brix
+(main
+  (let source (call BreakingEventSource))
+  (blank)
+  (for (on value (. source changed))
+    (print (str "first " value))
+  )
+  (blank)
+  (for (on value (. source changed))
+    (print (str "later " value))
+    (break)
+  )
+  (blank)
+  (call (. source emit) 1)
+  (call (. source emit) 2)
+)
 
-for value on source.changed
-    -- "first $value"
-
-for value on source.changed
-    -- "later $value"
-    break
-
-source.emit(1)
-source.emit(2)
-
-━━━━━━━━━━━━━━━━━━━━
-+ BreakingEventSource
-
-+ event changed Int
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
+(type + BreakingEventSource
+  (event + changed Int)
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 ```
 
 ```output
@@ -1141,29 +1237,31 @@ first 2
 
 ### Nested event publication is depth-first
 
-```yumi
-. source = NestedEventSource()
+```brix
+(main
+  (let source (call NestedEventSource))
+  (blank)
+  (for (on value (. source changed))
+    (print (str "first " value))
+    (if (== value 1)
+      (call (. source emit) 2)
+    )
+  )
+  (blank)
+  (for (on value (. source changed))
+    (print (str "second " value))
+  )
+  (blank)
+  (call (. source emit) 1)
+)
 
-for value on source.changed
-    -- "first $value"
-    if value == 1
-        source.emit(2)
-
-for value on source.changed
-    -- "second $value"
-
-source.emit(1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ NestedEventSource
-
-+ event changed Int
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
+(type + NestedEventSource
+  (event + changed Int)
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 ```
 
 ```output
@@ -1175,29 +1273,27 @@ second 1
 
 ### Closing an event owner detaches its event subscriptions
 
-```yumi
-. source = ClosableEventSource()
+```brix
+(main
+  (let source (call ClosableEventSource))
+  (blank)
+  (for (on value (. source changed))
+    (print value)
+  )
+  (blank)
+  (call (. source emit) 1)
+  (call (. source close))
+  (call (. source emit) 2)
+)
 
-for value on source.changed
-    -- value
-
-source.emit(1)
-source.close()
-source.emit(2)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ClosableEventSource
-
-+ event changed Int
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
-
-────────────────────
-+ do close
+(type + ClosableEventSource
+  (event + changed Int)
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+  (fn-do + close _)
+)
 ```
 
 ```output
@@ -1206,27 +1302,27 @@ changed <- value
 
 ### Event endpoint escape is a memoized read-only Broadcastable adapter
 
-```yumi
-. source = EscapedEventSource()
-. first Broadcastable'Int = source.changed
-. second Broadcastable'Int = source.changed
--- first as Pointer == second as Pointer
+```brix
+(main
+  (let source (call EscapedEventSource))
+  (let first (of Broadcastable Int) (. source changed))
+  (let second (of Broadcastable Int) (. source changed))
+  (print (== (as first Pointer) (as second Pointer)))
+  (blank)
+  (for (on value first)
+    (print value)
+  )
+  (blank)
+  (call (. source emit) 5)
+)
 
-for value on first
-    -- value
-
-source.emit(5)
-
-━━━━━━━━━━━━━━━━━━━━
-+ EscapedEventSource
-
-+ event changed Int
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
+(type + EscapedEventSource
+  (event + changed Int)
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 ```
 
 ```output
@@ -1236,37 +1332,37 @@ true
 
 ### A handler can unsubscribe a different subscriber through an escaped adapter without detaching itself
 
-```yumi
-. source = EscapedUnsubscribeSource()
-. endpoint Broadcastable'Int = source.changed
+```brix
+(main
+  (let source (call EscapedUnsubscribeSource))
+  (let endpoint (of Broadcastable Int) (. source changed))
+  (blank)
+  (for (on value endpoint)
+    (print (str "first " value))
+    (if (== value 1)
+      (call (. endpoint unsubscribe) on-escaped-other)
+    )
+  )
+  (blank)
+  (call (. endpoint subscribe) on-escaped-other)
+  (blank)
+  (call (. source emit) 1)
+  (call (. source emit) 2)
+)
 
-for value on endpoint
-    -- "first $value"
-    if value == 1
-        endpoint.unsubscribe(on-escaped-other)
+(fn-do + on-escaped-other _
+  (param item Int)
+  (param broadcaster (of Broadcastable Int))
+  (print (str "other " item))
+)
 
-endpoint.subscribe(on-escaped-other)
-
-source.emit(1)
-source.emit(2)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do on-escaped-other
-    - item Int
-    - broadcaster Broadcastable'Int
-
--- "other $item"
-
-━━━━━━━━━━━━━━━━━━━━
-+ EscapedUnsubscribeSource
-
-+ event changed Int
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
+(type + EscapedUnsubscribeSource
+  (event + changed Int)
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 ```
 
 ```output
@@ -1276,35 +1372,34 @@ first 2
 
 ### A handler can unsubscribe itself through an escaped adapter without skipping later subscribers
 
-```yumi
-. source = SelfUnsubscribeSource()
-. endpoint Broadcastable'Int = source.changed
+```brix
+(main
+  (let source (call SelfUnsubscribeSource))
+  (let endpoint (of Broadcastable Int) (. source changed))
+  (blank)
+  (call (. endpoint subscribe) on-escaped-self)
+  (for (on value endpoint)
+    (print (str "later " value))
+  )
+  (blank)
+  (call (. source emit) 1)
+  (call (. source emit) 2)
+)
 
-endpoint.subscribe(on-escaped-self)
-for value on endpoint
-    -- "later $value"
+(fn-do + on-escaped-self _
+  (param item Int)
+  (param broadcaster (of Broadcastable Int))
+  (print (str "self " item))
+  (catch (call (. broadcaster unsubscribe) on-escaped-self))
+)
 
-source.emit(1)
-source.emit(2)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do on-escaped-self
-    - item Int
-    - broadcaster Broadcastable'Int
-
--- "self $item"
-catch broadcaster.unsubscribe(on-escaped-self)
-
-━━━━━━━━━━━━━━━━━━━━
-+ SelfUnsubscribeSource
-
-+ event changed Int
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
+(type + SelfUnsubscribeSource
+  (event + changed Int)
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 ```
 
 ```output
@@ -1315,81 +1410,70 @@ later 2
 
 ### Inherited events cannot be redeclared
 
-```yumi crash
-DerivedRedeclaration()
+```brix crash
+(main
+  (call DerivedRedeclaration)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BaseRedeclaration
+(type + BaseRedeclaration
+  (event + changed Int)
+)
 
-+ event changed Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ DerivedRedeclaration is BaseRedeclaration
-
-+ event changed Int
+(type + DerivedRedeclaration (is BaseRedeclaration)
+  (event + changed Int)
+)
 ```
 
 ```output
 Exception: Inherited event "changed" cannot be redeclared
-<no file:12>
-    + event changed Int
-    ^^^^^^^^^^^^^^^^^^^
+<no file:11>
+      (event + changed Int)
+      ^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A event callback can detach a later subscriber before its turn
 
-```yumi
-. source = DetachingEventSource()
-. controller = DetachingController(source)
-. later = DetachingObserver(source)
-controller.target = later
+```brix
+(main
+  (let source (call DetachingEventSource))
+  (let controller (call DetachingController source))
+  (let later (call DetachingObserver source))
+  (= (. controller target) later)
+  (blank)
+  (call (. source emit) 1)
+  (call (. source emit) 2)
+)
 
-source.emit(1)
-source.emit(2)
+(type + DetachingEventSource
+  (event + changed Int)
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ DetachingEventSource
+(type + DetachingController
+  (prop + source DetachingEventSource)
+  (prop + target (? DetachingObserver))
+  (fn-do + This _
+    (param source _)
+  )
+  (subscribe-for (on value (. source changed))
+    (print (str "controller " value))
+    (call (?. target close))
+  )
+)
 
-+ event changed Int
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
-
-━━━━━━━━━━━━━━━━━━━━
-+ DetachingController
-
-+ source DetachingEventSource
-+ target DetachingObserver?
-
-────────────────────
-+ This
-    - source
-
-────────────────────
-for value on source.changed
-
--- "controller $value"
-target?.close()
-
-━━━━━━━━━━━━━━━━━━━━
-+ DetachingObserver
-
-+ source DetachingEventSource
-
-────────────────────
-+ This
-    - source
-
-────────────────────
-for value on source.changed
-
--- "later $value"
-
-────────────────────
-+ do close
+(type + DetachingObserver
+  (prop + source DetachingEventSource)
+  (fn-do + This _
+    (param source _)
+  )
+  (subscribe-for (on value (. source changed))
+    (print (str "later " value))
+  )
+  (fn-do + close _)
+)
 ```
 
 ```output
@@ -1399,86 +1483,70 @@ controller 2
 
 ### A subscriber behind a closed one is still delivered when the freed slot is reused during dispatch
 
-```yumi
-. source = ReusingEventSource()
-. controller = ReusingController(source)
-. later = ReusingObserver(source)
-. last = LastReusingObserver(source)
-controller.target = later
+```brix
+(main
+  (let source (call ReusingEventSource))
+  (let controller (call ReusingController source))
+  (let later (call ReusingObserver source))
+  (let last (call LastReusingObserver source))
+  (= (. controller target) later)
+  (blank)
+  (call (. source emit) 1)
+  (call (. source emit) 2)
+)
 
-source.emit(1)
-source.emit(2)
+(fn-do + install-reusing-late _
+  (param source ReusingEventSource)
+  (for (on value (. source changed))
+    (print (str "late " value))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do install-reusing-late
-    - source ReusingEventSource
+(type + ReusingEventSource
+  (event + changed Int)
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 
-for value on source.changed
-    -- "late $value"
+(type + ReusingController
+  (prop + source ReusingEventSource)
+  (prop + target (? ReusingObserver))
+  (fn-do + This _
+    (param source _)
+  )
+  (subscribe-for (on value (. source changed))
+    (print (str "controller " value))
+    (if target
+      (call (. target close))
+      (= target null)
+      (call install-reusing-late source)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ReusingEventSource
+(type + ReusingObserver
+  (prop + source ReusingEventSource)
+  (fn-do + This _
+    (param source _)
+  )
+  (subscribe-for (on value (. source changed))
+    (print (str "later " value))
+  )
+  (fn-do + close _)
+)
 
-+ event changed Int
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
-
-━━━━━━━━━━━━━━━━━━━━
-+ ReusingController
-
-+ source ReusingEventSource
-+ target ReusingObserver?
-
-────────────────────
-+ This
-    - source
-
-────────────────────
-for value on source.changed
-
--- "controller $value"
-if target
-    target.close()
-    target = null
-    install-reusing-late(source)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ReusingObserver
-
-+ source ReusingEventSource
-
-────────────────────
-+ This
-    - source
-
-────────────────────
-for value on source.changed
-
--- "later $value"
-
-────────────────────
-+ do close
-
-━━━━━━━━━━━━━━━━━━━━
-+ LastReusingObserver
-
-+ source ReusingEventSource
-
-────────────────────
-+ This
-    - source
-
-────────────────────
-for value on source.changed
-
--- "last $value"
-
-────────────────────
-+ do close
+(type + LastReusingObserver
+  (prop + source ReusingEventSource)
+  (fn-do + This _
+    (param source _)
+  )
+  (subscribe-for (on value (. source changed))
+    (print (str "last " value))
+  )
+  (fn-do + close _)
+)
 ```
 
 ```output
@@ -1491,34 +1559,30 @@ late 2
 
 ### Lowered self subscriptions run before later external subscribers in lexical order
 
-```yumi
-. owner = OrderedLoweredOwner()
+```brix
+(main
+  (let owner (call OrderedLoweredOwner))
+  (blank)
+  (for (on value (. owner changed))
+    (print (str "external " value))
+  )
+  (blank)
+  (call (. owner emit) 7)
+)
 
-for value on owner.changed
-    -- "external $value"
-
-owner.emit(7)
-
-━━━━━━━━━━━━━━━━━━━━
-+ OrderedLoweredOwner
-
-+ event changed Int
-
-────────────────────
-for value on changed
-
--- "self-1 $value"
-
-────────────────────
-for value on changed
-
--- "self-2 $value"
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
+(type + OrderedLoweredOwner
+  (event + changed Int)
+  (subscribe-for (on value changed)
+    (print (str "self-1 " value))
+  )
+  (subscribe-for (on value changed)
+    (print (str "self-2 " value))
+  )
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 ```
 
 ```output
@@ -1529,31 +1593,26 @@ external 7
 
 ### Dense runtime event ids isolate lowered descriptor buckets
 
-```yumi
-. owner = BucketedLoweredOwner()
-owner.emit()
+```brix
+(main
+  (let owner (call BucketedLoweredOwner))
+  (call (. owner emit))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BucketedLoweredOwner
-
-+ event first Int
-+ event second String
-
-────────────────────
-for value on first
-
--- "first $value"
-
-────────────────────
-for value on second
-
--- "second $value"
-
-────────────────────
-+ do emit
-
-first <- 7
-second <- "eight"
+(type + BucketedLoweredOwner
+  (event + first Int)
+  (event + second String)
+  (subscribe-for (on value first)
+    (print (str "first " value))
+  )
+  (subscribe-for (on value second)
+    (print (str "second " value))
+  )
+  (fn-do + emit _
+    (<- first 7)
+    (<- second "eight")
+  )
+)
 ```
 
 ```output
@@ -1563,53 +1622,42 @@ second eight
 
 ### A lowered callback can remove an external subscriber before sidecar dispatch
 
-```yumi
-. owner = RemovingLoweredOwner()
-. later = RemovingExternalObserver(owner)
-owner.later = later
+```brix
+(main
+  (let owner (call RemovingLoweredOwner))
+  (let later (call RemovingExternalObserver owner))
+  (= (. owner later) later)
+  (blank)
+  (call (. owner emit) 1)
+  (call (. owner emit) 2)
+)
 
-owner.emit(1)
-owner.emit(2)
+(type + RemovingLoweredOwner
+  (event + changed Int)
+  (prop + later (? RemovingExternalObserver))
+  (subscribe-for (on value changed)
+    (print (str "owner-first " value))
+    (call (?. later close))
+  )
+  (subscribe-for (on value changed)
+    (print (str "owner-second " value))
+  )
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RemovingLoweredOwner
-
-+ event changed Int
-+ later RemovingExternalObserver?
-
-────────────────────
-for value on changed
-
--- "owner-first $value"
-later?.close()
-
-────────────────────
-for value on changed
-
--- "owner-second $value"
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
-
-━━━━━━━━━━━━━━━━━━━━
-+ RemovingExternalObserver
-
-+ source RemovingLoweredOwner
-
-────────────────────
-+ This
-    - source
-
-────────────────────
-for value on source.changed
-
--- "external-later $value"
-
-────────────────────
-+ do close
+(type + RemovingExternalObserver
+  (prop + source RemovingLoweredOwner)
+  (fn-do + This _
+    (param source _)
+  )
+  (subscribe-for (on value (. source changed))
+    (print (str "external-later " value))
+  )
+  (fn-do + close _)
+)
 ```
 
 ```output
@@ -1621,32 +1669,27 @@ owner-second 2
 
 ### A breaking self subscription stays in the sidecar and unsubscribes after its first turn
 
-```yumi
-. owner = MixedBreakingOwner()
-owner.emit(1)
-owner.emit(2)
+```brix
+(main
+  (let owner (call MixedBreakingOwner))
+  (call (. owner emit) 1)
+  (call (. owner emit) 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MixedBreakingOwner
-
-+ event changed Int
-
-────────────────────
-for value on changed
-
--- "lowered $value"
-
-────────────────────
-for value on changed
-
--- "breaking $value"
-break
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
+(type + MixedBreakingOwner
+  (event + changed Int)
+  (subscribe-for (on value changed)
+    (print (str "lowered " value))
+  )
+  (subscribe-for (on value changed)
+    (print (str "breaking " value))
+    (break)
+  )
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 ```
 
 ```output
@@ -1657,35 +1700,31 @@ lowered 2
 
 ### A self subscription after a breaking one stays in the sidecar so lexical order is kept
 
-```yumi
-. owner = PriorSidecarOrderOwner()
-for value on owner.changed
-    -- "external $value"
+```brix
+(main
+  (let owner (call PriorSidecarOrderOwner))
+  (for (on value (. owner changed))
+    (print (str "external " value))
+  )
+  (blank)
+  (call (. owner emit) 1)
+  (call (. owner emit) 2)
+)
 
-owner.emit(1)
-owner.emit(2)
-
-━━━━━━━━━━━━━━━━━━━━
-+ PriorSidecarOrderOwner
-
-+ event changed Int
-
-────────────────────
-for value on changed
-
--- "breaking $value"
-break
-
-────────────────────
-for value on changed
-
--- "second $value"
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
+(type + PriorSidecarOrderOwner
+  (event + changed Int)
+  (subscribe-for (on value changed)
+    (print (str "breaking " value))
+    (break)
+  )
+  (subscribe-for (on value changed)
+    (print (str "second " value))
+  )
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 ```
 
 ```output
@@ -1698,35 +1737,28 @@ external 2
 
 ### Closing an owner in a lowered callback suppresses later descriptors and future publication
 
-```yumi
-. owner = ClosingLoweredOwner()
-owner.emit(1)
-owner.emit(2)
+```brix
+(main
+  (let owner (call ClosingLoweredOwner))
+  (call (. owner emit) 1)
+  (call (. owner emit) 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ClosingLoweredOwner
-
-+ event changed Int
-
-────────────────────
-for value on changed
-
--- "closing $value"
-close()
-
-────────────────────
-for value on changed
-
--- "too-late $value"
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
-
-────────────────────
-+ do close
+(type + ClosingLoweredOwner
+  (event + changed Int)
+  (subscribe-for (on value changed)
+    (print (str "closing " value))
+    (call close)
+  )
+  (subscribe-for (on value changed)
+    (print (str "too-late " value))
+  )
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+  (fn-do + close _)
+)
 ```
 
 ```output
@@ -1735,24 +1767,24 @@ closing 1
 
 ### Generic classes resolve event payload types in their class scope
 
-```yumi
-. source = GenericEventSource'String()
+```brix
+(main
+  (let source (call (of GenericEventSource String)))
+  (blank)
+  (for (on value (. source changed))
+    (print value)
+  )
+  (blank)
+  (call (. source emit) "generic")
+)
 
-for value on source.changed
-    -- value
-
-source.emit("generic")
-
-━━━━━━━━━━━━━━━━━━━━
-+ GenericEventSource'Payload
-
-+ event changed Payload
-
-────────────────────
-+ do emit
-    - value Payload
-
-changed <- value
+(type + (of GenericEventSource Payload)
+  (event + changed Payload)
+  (fn-do + emit _
+    (param value Payload)
+    (<- changed value)
+  )
+)
 ```
 
 ```output
@@ -1761,28 +1793,27 @@ generic
 
 ### Public events can be observed across module boundaries
 
-```yumi
-./lib/event-source
+```brix
+(import ./lib/event-source)
+(blank)
 
-. source = LibraryEventSource()
-for value on source.changed
-    -- value
-source.emit(12)
+(main
+  (let source (call LibraryEventSource))
+  (for (on value (. source changed))
+    (print value)
+  )
+  (call (. source emit) 12)
+)
 ```
 
-```yumi file=lib/event-source.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ LibraryEventSource
-
-+ event changed Int
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
-
+```brix file=lib/event-source.bx
+(type + LibraryEventSource
+  (event + changed Int)
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 ```
 
 ```output
@@ -1791,22 +1822,23 @@ changed <- value
 
 ### Consumers can publish public events
 
-```yumi
-./lib/event-source
+```brix
+(import ./lib/event-source)
+(blank)
 
-. source = LibraryEventSource()
-for value on source.changed
-    -- value
-source.changed <- 12
+(main
+  (let source (call LibraryEventSource))
+  (for (on value (. source changed))
+    (print value)
+  )
+  (<- (. source changed) 12)
+)
 ```
 
-```yumi file=lib/event-source.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ LibraryEventSource
-
-+ event changed Int
-
+```brix file=lib/event-source.bx
+(type + LibraryEventSource
+  (event + changed Int)
+)
 ```
 
 ```output
@@ -1815,73 +1847,68 @@ source.changed <- 12
 
 ### Private events reject observation from another module
 
-```yumi crash
-./lib/private-event-source
+```brix crash
+(import ./lib/private-event-source)
+(blank)
 
-. source = PrivateEventSource()
-for value on source.hidden
-    -- value
+(main
+  (let source (call PrivateEventSource))
+  (for (on value (. source hidden))
+    (print value)
+  )
+)
 ```
 
-```yumi file=lib/private-event-source.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ PrivateEventSource
-
-_ event hidden Int
-
+```brix file=lib/private-event-source.bx
+(type + PrivateEventSource
+  (event _ hidden Int)
+)
 ```
 
 ```output
 Exception: Event "hidden" is private
-<lib/private-event-source.yumi:5>
-    _ event hidden Int
-    ^^^^^^^^^^^^^^^^^^
+<lib/private-event-source.bx:2>
+      (event _ hidden Int)
+      ^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A shared event is heard in its module's file family
 
-```yumi
-./lib/shared-source
+```brix
+(import ./lib/shared-source)
+(blank)
 
-. source = SharedSource()
-source.listen()
-source.emit(5)
+(main
+  (let source (call SharedSource))
+  (call (. source listen))
+  (call (. source emit) 5)
+)
 ```
 
-```yumi file=lib/shared-source.yumi
+```brix file=lib/shared-source.bx
+(import ./shared-source.watch)
 
-./shared-source.watch
-
-━━━━━━━━━━━━━━━━━━━━
-+ SharedSource
-
-^ event pinged Int
-
-────────────────────
-+ do emit
-    - value Int
-
-pinged <- value
-
-────────────────────
-+ do listen
-
-watch(this)
-
+(type + SharedSource
+  (event ^ pinged Int)
+  (fn-do + emit _
+    (param value Int)
+    (<- pinged value)
+  )
+  (fn-do + listen _
+    (call watch this)
+  )
+)
 ```
 
-```yumi file=lib/shared-source.watch.yumi
+```brix file=lib/shared-source.watch.bx
+(import ./shared-source)
 
-./shared-source
-
-━━━━━━━━━━━━━━━━━━━━
-+ do watch
-    - source SharedSource
-
-for value on source.pinged
-    -- "heard $value"
-
+(fn-do + watch _
+  (param source SharedSource)
+  (for (on value (. source pinged))
+    (print (str "heard " value))
+  )
+)
 ```
 
 ```output
@@ -1890,162 +1917,169 @@ heard 5
 
 ### Shared events reject observation from outside their module's file family
 
-```yumi crash
-./lib/shared-event-source
+```brix crash
+(import ./lib/shared-event-source)
+(blank)
 
-. source = SharedEventSource()
-for value on source.hidden
-    -- value
+(main
+  (let source (call SharedEventSource))
+  (for (on value (. source hidden))
+    (print value)
+  )
+)
 ```
 
-```yumi file=lib/shared-event-source.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ SharedEventSource
-
-^ event hidden Int
-
+```brix file=lib/shared-event-source.bx
+(type + SharedEventSource
+  (event ^ hidden Int)
+)
 ```
 
 ```output
 Exception: Event "hidden" is shared, declared with ^, so only its own file family can use it
-<lib/shared-event-source.yumi:5>
-    ^ event hidden Int
-    ^^^^^^^^^^^^^^^^^^
+<lib/shared-event-source.bx:2>
+      (event ^ hidden Int)
+      ^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Event names cannot collide with stored properties
 
-```yumi crash
-CollisionSource()
+```brix crash
+(main
+  (call CollisionSource)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CollisionSource
-
-+ changed = 1
-+ event changed Int
+(type + CollisionSource
+  (prop + changed _ (= 1))
+  (event + changed Int)
+)
 ```
 
 ```output
 Exception: Redefinition of class member
 <no file:8>
-    + event changed Int
-    ^^^^^^^^^^^^^^^^^^^
+      (event + changed Int)
+      ^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Event names cannot collide with methods
 
-```yumi crash
-CollisionMethodSource()
+```brix crash
+(main
+  (call CollisionMethodSource)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CollisionMethodSource
-
-+ event changed Int
-
-────────────────────
-+ do changed
-    - value Int
+(type + CollisionMethodSource
+  (event + changed Int)
+  (fn-do + changed _
+    (param value Int)
+  )
+)
 ```
 
 ```output
 Exception: Redefinition of class member
-<no file:10>
-    + do changed
-    ^^^^^^^^^^^
+<no file:8>
+      (fn-do + changed _
+      ^^^^^^^^^^^^^^^^^
 ```
 
 ### Routed events walk providers just in time and keep cancellation on the event
 
-```yumi
-/core/intrinsics
+```brix
+(import /core/intrinsics)
+(blank)
 
-. root = RoutedEventNode("root")
-. alternate = RoutedEventNode("alternate")
-. mid = RoutedEventNode("mid", root)
-. leaf = RoutedEventNode("leaf", mid)
+(main
+  (let root (call RoutedEventNode "root"))
+  (let alternate (call RoutedEventNode "alternate"))
+  (let mid (call RoutedEventNode "mid" root))
+  (let leaf (call RoutedEventNode "leaf" mid))
+  (blank)
+  (for (on event (. root changed))
+    (print (str "root " (. event value) " " (. event current-name)))
+  )
+  (blank)
+  (for (on event (. alternate changed))
+    (print (str "alternate " (. event value) " " (. event current-name)))
+  )
+  (blank)
+  (for (on event (. mid changed))
+    (print (str "mid-first " (. event value) " " (. event current-name)))
+    (if (== (. event value) 3)
+      (call (. event cancel))
+      (else-if (== (. event value) 4)
+        (= (. mid parent) alternate)
+      )
+    )
+  )
+  (blank)
+  (for (on event (. mid changed))
+    (print (str "mid-second " (. event value)))
+  )
+  (blank)
+  (for (on event (. mid changed) (when arrival))
+    (print (str "mid-arrival " (. event value)))
+  )
+  (blank)
+  (for (on event (. leaf changed) (when arrival))
+    (print (str "leaf-arrival " (. event value)))
+  )
+  (blank)
+  (for (on event (. leaf changed))
+    (print (str "leaf " (. event value) " " (. event current-name)))
+    (if (== (. event value) 1)
+      (call (. leaf route) 2)
+      (print (str "leaf-restored " (. event current-name) " " (. event is-canceled)))
+      (else-if (== (. event value) 2)
+        (call (. event cancel))
+      )
+    )
+  )
+  (blank)
+  (print (str "route-one-canceled " (call (. leaf route) 1)))
+  (print (str "route-three-canceled " (call (. leaf route) 3)))
+  (print (str "route-four-canceled " (call (. leaf route) 4)))
+)
 
-for event on root.changed
-    -- "root ${event.value} ${event.current-name}"
+(type + TestRoutedEvent
+  (implements RoutedEvent)
+  (prop + value Int)
+  (prop + current-name String)
+  (prop + is-canceled _ (= false))
+  (fn-do + This _
+    (param value _)
+    (param current-name _)
+  )
+  (fn-do + cancel _
+    (= is-canceled true)
+  )
+  (fn-do + next-event-owner (? Pointer)
+    (param raw-current Pointer)
+    (let current (call (of gc-object-from-pointer RoutedEventNode) raw-current))
+    (let next (. current parent))
+    (if next
+      (= current-name (. next name))
+      (return (as next Pointer))
+    )
+  )
+)
 
-for event on alternate.changed
-    -- "alternate ${event.value} ${event.current-name}"
-
-for event on mid.changed
-    -- "mid-first ${event.value} ${event.current-name}"
-    if event.value == 3
-        event.cancel()
-    else if event.value == 4
-        mid.parent = alternate
-
-for event on mid.changed
-    -- "mid-second ${event.value}"
-
-for event on mid.changed when arrival
-    -- "mid-arrival ${event.value}"
-
-for event on leaf.changed when arrival
-    -- "leaf-arrival ${event.value}"
-
-for event on leaf.changed
-    -- "leaf ${event.value} ${event.current-name}"
-    if event.value == 1
-        leaf.route(2)
-        -- "leaf-restored ${event.current-name} ${event.is-canceled}"
-    else if event.value == 2
-        event.cancel()
-
--- "route-one-canceled ${leaf.route(1)}"
--- "route-three-canceled ${leaf.route(3)}"
--- "route-four-canceled ${leaf.route(4)}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ TestRoutedEvent
-    is RoutedEvent
-
-+ value Int
-+ current-name String
-+ is-canceled = false
-
-────────────────────
-+ This
-    - value
-    - current-name
-
-────────────────────
-+ do cancel
-
-is-canceled = true
-
-────────────────────
-+ do next-event-owner Pointer?
-    - raw-current Pointer
-
-. current = gc-object-from-pointer'RoutedEventNode(raw-current)
-. next = current.parent
-if next
-    current-name = next.name
-    = next as Pointer
-
-━━━━━━━━━━━━━━━━━━━━
-+ RoutedEventNode
-
-+ name String
-+ parent RoutedEventNode?
-+ event changed TestRoutedEvent
-
-────────────────────
-+ This
-    - name
-    - parent = null
-
-────────────────────
-+ do route Bool
-    - value Int
-
-. event = TestRoutedEvent(value, name)
-changed <- event
-= event.is-canceled
+(type + RoutedEventNode
+  (prop + name String)
+  (prop + parent (? RoutedEventNode))
+  (event + changed TestRoutedEvent)
+  (fn-do + This _
+    (param name _)
+    (param parent _ (= null))
+  )
+  (fn-do + route Bool
+    (param value Int)
+    (let event (call TestRoutedEvent value name))
+    (<- changed event)
+    (return (. event is-canceled))
+  )
+)
 ```
 
 ```output
@@ -2072,107 +2106,96 @@ route-four-canceled false
 
 ### Routed dispatch continues through target subscribers and bubble hops when a freed slot is reused
 
-```yumi
-/core/intrinsics
+```brix
+(import /core/intrinsics)
+(blank)
 
-. root = ReusingRoutedNode("root")
-. leaf = ReusingRoutedNode("leaf", root)
-. controller = ReusingRoutedController(leaf)
-. later = ReusingRoutedObserver(leaf)
-controller.target = later
+(main
+  (let root (call ReusingRoutedNode "root"))
+  (let leaf (call ReusingRoutedNode "leaf" root))
+  (let controller (call ReusingRoutedController leaf))
+  (let later (call ReusingRoutedObserver leaf))
+  (= (. controller target) later)
+  (blank)
+  (for (on event (. leaf changed))
+    (print (str "last " (. event value) " " (. event current-name)))
+  )
+  (blank)
+  (for (on event (. root changed))
+    (print (str "root " (. event value) " " (. event current-name)))
+  )
+  (blank)
+  (call (. leaf route) 1)
+  (call (. leaf route) 2)
+)
 
-for event on leaf.changed
-    -- "last ${event.value} ${event.current-name}"
+(fn-do + install-reusing-routed-late _
+  (param source ReusingRoutedNode)
+  (for (on event (. source changed))
+    (print (str "late " (. event value) " " (. event current-name)))
+  )
+)
 
-for event on root.changed
-    -- "root ${event.value} ${event.current-name}"
+(type + ReusingRoutedEvent
+  (implements RoutedEvent)
+  (prop + value Int)
+  (prop + current-name String)
+  (prop + is-canceled _ (= false))
+  (fn-do + This _
+    (param value _)
+    (param current-name _)
+  )
+  (fn-do + next-event-owner (? Pointer)
+    (param raw-current Pointer)
+    (let current (call (of gc-object-from-pointer ReusingRoutedNode) raw-current))
+    (let next (. current parent))
+    (if next
+      (= current-name (. next name))
+      (return (as next Pointer))
+    )
+  )
+)
 
-leaf.route(1)
-leaf.route(2)
+(type + ReusingRoutedNode
+  (prop + name String)
+  (prop + parent (? ReusingRoutedNode))
+  (event + changed ReusingRoutedEvent)
+  (fn-do + This _
+    (param name _)
+    (param parent _ (= null))
+  )
+  (fn-do + route _
+    (param value Int)
+    (<- changed (call ReusingRoutedEvent value name))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do install-reusing-routed-late
-    - source ReusingRoutedNode
+(type + ReusingRoutedController
+  (prop + source ReusingRoutedNode)
+  (prop + target (? ReusingRoutedObserver))
+  (fn-do + This _
+    (param source _)
+  )
+  (subscribe-for (on event (. source changed))
+    (print (str "controller " (. event value) " " (. event current-name)))
+    (if target
+      (call (. target close))
+      (= target null)
+      (call install-reusing-routed-late source)
+    )
+  )
+)
 
-for event on source.changed
-    -- "late ${event.value} ${event.current-name}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ ReusingRoutedEvent
-    is RoutedEvent
-
-+ value Int
-+ current-name String
-+ is-canceled = false
-
-────────────────────
-+ This
-    - value
-    - current-name
-
-────────────────────
-+ do next-event-owner Pointer?
-    - raw-current Pointer
-
-. current = gc-object-from-pointer'ReusingRoutedNode(raw-current)
-. next = current.parent
-if next
-    current-name = next.name
-    = next as Pointer
-
-━━━━━━━━━━━━━━━━━━━━
-+ ReusingRoutedNode
-
-+ name String
-+ parent ReusingRoutedNode?
-+ event changed ReusingRoutedEvent
-
-────────────────────
-+ This
-    - name
-    - parent = null
-
-────────────────────
-+ do route
-    - value Int
-
-changed <- ReusingRoutedEvent(value, name)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ReusingRoutedController
-
-+ source ReusingRoutedNode
-+ target ReusingRoutedObserver?
-
-────────────────────
-+ This
-    - source
-
-────────────────────
-for event on source.changed
-
--- "controller ${event.value} ${event.current-name}"
-if target
-    target.close()
-    target = null
-    install-reusing-routed-late(source)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ReusingRoutedObserver
-
-+ source ReusingRoutedNode
-
-────────────────────
-+ This
-    - source
-
-────────────────────
-for event on source.changed
-
--- "later ${event.value} ${event.current-name}"
-
-────────────────────
-+ do close
+(type + ReusingRoutedObserver
+  (prop + source ReusingRoutedNode)
+  (fn-do + This _
+    (param source _)
+  )
+  (subscribe-for (on event (. source changed))
+    (print (str "later " (. event value) " " (. event current-name)))
+  )
+  (fn-do + close _)
+)
 ```
 
 ```output
@@ -2187,37 +2210,33 @@ root 2 root
 
 ### Erased routed publication removes its event constructor
 
-```yumi
-. node = ErasedRoutedEventNode()
+```brix
+(main
+  (let node (call ErasedRoutedEventNode))
+  (blank)
+  (print (str "erased-canceled " (call (. node route))))
+)
 
--- "erased-canceled ${node.route()}"
+(type + ErasedRoutedEvent
+  (implements RoutedEvent)
+  (prop + is-canceled _ (= false))
+  (fn-do + next-event-owner (? Pointer)
+    (param current Pointer)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ErasedRoutedEvent
-    is RoutedEvent
+(type + ErasedRoutedEventNode
+  (event + changed ErasedRoutedEvent)
+  (fn-do + route Bool
+    (<- changed (call make-erased-routed-event))
+    (return false)
+  )
+)
 
-+ is-canceled = false
-
-────────────────────
-+ do next-event-owner Pointer?
-    - current Pointer
-
-━━━━━━━━━━━━━━━━━━━━
-+ ErasedRoutedEventNode
-
-+ event changed ErasedRoutedEvent
-
-────────────────────
-+ do route Bool
-
-changed <- make-erased-routed-event()
-= false
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make-erased-routed-event ErasedRoutedEvent
-
--- "built erased routed payload"
-= ErasedRoutedEvent()
+(fn-do + make-erased-routed-event ErasedRoutedEvent
+  (print "built erased routed payload")
+  (return (call ErasedRoutedEvent))
+)
 ```
 
 ```output
@@ -2226,69 +2245,62 @@ erased-canceled false
 
 ### Legacy publish-routed calls are rejected after routed writes become type-directed
 
-```yumi crash
-. node = RoutedArityEventNode()
-publish-routed(node.changed, null, RoutedArityEvent())
+```brix crash
+(main
+  (let node (call RoutedArityEventNode))
+  (call publish-routed (. node changed) null (call RoutedArityEvent))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RoutedArityEvent
-    is RoutedEvent
+(type + RoutedArityEvent
+  (implements RoutedEvent)
+  (prop + is-canceled _ (= false))
+  (fn-do + next-event-owner (? Pointer)
+    (param current Pointer)
+  )
+)
 
-+ is-canceled = false
-
-────────────────────
-+ do next-event-owner Pointer?
-    - current Pointer
-
-━━━━━━━━━━━━━━━━━━━━
-+ RoutedArityEventNode
-
-+ event changed RoutedArityEvent
+(type + RoutedArityEventNode
+  (event + changed RoutedArityEvent)
+)
 ```
 
 ```output
 Exception: Function "publish-routed" not found
-<no file:3>
-    publish-routed(node.changed, null, RoutedArityEvent())
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:4>
+      (call publish-routed (. node changed) null (call RoutedArityEvent))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Lowered self descriptors receive routed event objects
 
-```yumi
-. source = RoutedDescriptorSource()
-source.route()
+```brix
+(main
+  (let source (call RoutedDescriptorSource))
+  (call (. source route))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RoutedDescriptorEvent
-    is RoutedEvent
+(type + RoutedDescriptorEvent
+  (implements RoutedEvent)
+  (prop + value Int)
+  (prop + is-canceled _ (= false))
+  (fn-do + This _
+    (param value _)
+  )
+  (fn-do + next-event-owner (? Pointer)
+    (param current Pointer)
+  )
+)
 
-+ value Int
-+ is-canceled = false
-
-────────────────────
-+ This
-    - value
-
-────────────────────
-+ do next-event-owner Pointer?
-    - current Pointer
-
-━━━━━━━━━━━━━━━━━━━━
-+ RoutedDescriptorSource
-
-+ event changed RoutedDescriptorEvent
-
-────────────────────
-for event on changed
-
--- "descriptor ${event.value}"
-
-────────────────────
-+ do route Bool
-
-changed <- RoutedDescriptorEvent(7)
-= false
+(type + RoutedDescriptorSource
+  (event + changed RoutedDescriptorEvent)
+  (subscribe-for (on event changed)
+    (print (str "descriptor " (. event value)))
+  )
+  (fn-do + route Bool
+    (<- changed (call RoutedDescriptorEvent 7))
+    (return false)
+  )
+)
 ```
 
 ```output
@@ -2297,47 +2309,39 @@ descriptor 7
 
 ### A class-body self subscription that reads a markup id stays a sidecar
 
-```yumi
-. host = MarkupIdDescriptorHost()
-host.emit(3)
--- "count ${host.count}"
+```brix
+(main
+  (let host (call MarkupIdDescriptorHost))
+  (call (. host emit) 3)
+  (print (str "count " (. host count)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupIdDescriptorNode
+(type + MarkupIdDescriptorNode
+  (prop + value _ (= 10))
+)
 
-+ value = 10
+(type + MarkupIdDescriptorBox
+  (prop + child _ (:= (call MarkupIdDescriptorNode)))
+  (fn-do + (infix this += (param child MarkupIdDescriptorNode)) _
+    (= (. this child) child)
+    (return child)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupIdDescriptorBox
-
-+ child := MarkupIdDescriptorNode()
-
-────────────────────
-+ do this += child MarkupIdDescriptorNode
-
-this.child = child
-= child
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupIdDescriptorHost is MarkupIdDescriptorBox
-
-+ event changed Int
-+ count = 0
-
-────────────────────
-for n on changed
-
-count += n + node.value
-
-────────────────────
-
-<MarkupIdDescriptorNode node
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
+(type + MarkupIdDescriptorHost (is MarkupIdDescriptorBox)
+  (event + changed Int)
+  (prop + count _ (= 0))
+  (subscribe-for (on n changed)
+    (+= count (+ n (. node value)))
+  )
+  (content
+    (<> MarkupIdDescriptorNode (id: node))
+  )
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 ```
 
 ```output
@@ -2346,92 +2350,82 @@ count 13
 
 ### Keyed events address one receiver with ordered subscriptions and lazy misses
 
-```yumi
-. mailbox = KeyedMailbox()
-. receiver = KeyedReceiver(mailbox, 7)
-. duplicate = catch KeyedReceiver(mailbox, 7)
+```brix
+(main
+  (let mailbox (call KeyedMailbox))
+  (let receiver (call KeyedReceiver mailbox 7))
+  (let duplicate (catch (call KeyedReceiver mailbox 7)))
+  (blank)
+  (print duplicate)
+  (<- ([] (. mailbox messages) 7) 3)
+  (<- ([] (. mailbox messages) 8) (call keyed-missed-payload))
+  (let moving (call KeyedReceiver mailbox 11))
+  (let occupied (call KeyedReceiver mailbox 12))
+  (let collision (catch (call (. moving change-key) 12)))
+  (print collision)
+  (<- ([] (. mailbox messages) 11) 6)
+  (call (. moving change-key) 13)
+  (<- ([] (. mailbox messages) 11) (call keyed-missed-payload))
+  (<- ([] (. mailbox messages) 13) 7)
+  (<- ([] (. mailbox messages) 7) (call replace-keyed-receiver mailbox receiver))
+  (<- ([] (. mailbox messages) 7) 5)
+  (let releasing (call KeyedReceiver mailbox 17))
+  (<- ([] (. mailbox messages) 17) 8)
+  (call (. releasing release-address))
+  (<- ([] (. mailbox messages) 17) (call keyed-missed-payload))
+  (let reclaimed (call KeyedReceiver mailbox 17))
+  (<- ([] (. mailbox messages) 17) 9)
+  (for (in generation (..< 0 300))
+    (let churn (call KeyedReceiver mailbox 18))
+    (call (. churn release-address))
+  )
+  (let after-churn (call KeyedReceiver mailbox 18))
+  (<- ([] (. mailbox messages) 18) 10)
+)
 
--- duplicate
-mailbox.messages[7] <- 3
-mailbox.messages[8] <- keyed-missed-payload()
-. moving = KeyedReceiver(mailbox, 11)
-. occupied = KeyedReceiver(mailbox, 12)
-. collision = catch moving.change-key(12)
--- collision
-mailbox.messages[11] <- 6
-moving.change-key(13)
-mailbox.messages[11] <- keyed-missed-payload()
-mailbox.messages[13] <- 7
-mailbox.messages[7] <- replace-keyed-receiver(mailbox, receiver)
-mailbox.messages[7] <- 5
-. releasing = KeyedReceiver(mailbox, 17)
-mailbox.messages[17] <- 8
-releasing.release-address()
-mailbox.messages[17] <- keyed-missed-payload()
-. reclaimed = KeyedReceiver(mailbox, 17)
-mailbox.messages[17] <- 9
-for generation in 0 .. < 300
-    . churn = KeyedReceiver(mailbox, 18)
-    churn.release-address()
-. after-churn = KeyedReceiver(mailbox, 18)
-mailbox.messages[18] <- 10
+(type + KeyedMailbox
+  (event + messages Int U64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ KeyedMailbox
+(type + KeyedReceiver
+  (prop + mailbox KeyedMailbox)
+  (prop + id U64)
+  (fn-do + This _
+    (param mailbox _)
+    (param id _)
+  )
+  (subscribe-for (on value ([] (. mailbox messages) id))
+    (print (str "first " value))
+  )
+  (subscribe-for (on value ([] (. mailbox messages) id))
+    (print (str "second " value))
+  )
+  (fn-do + close _)
+  (fn-do + change-key _ (?! Error)
+    (param next U64)
+    (call (. ([] (. mailbox messages) id) rekey) next)
+    (= id next)
+  )
+  (fn-do + release-address _
+    (call (. ([] (. mailbox messages) id) release))
+  )
+)
 
-+ event messages Int keyed by U64
+(fn-do + keyed-missed-payload Int
+  (print "built")
+  (return 9)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ KeyedReceiver
-
-+ mailbox KeyedMailbox
-+ id U64
-
-────────────────────
-+ This
-    - mailbox
-    - id
-
-────────────────────
-for value on mailbox.messages[id]
-
--- "first $value"
-
-────────────────────
-for value on mailbox.messages[id]
-
--- "second $value"
-
-────────────────────
-+ do close
-
-────────────────────
-+ do change-key ?! Error
-    - next U64
-
-mailbox.messages[id].rekey(next)
-id = next
-
-────────────────────
-+ do release-address
-
-mailbox.messages[id].release()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do keyed-missed-payload Int
-
--- "built"
-= 9
-
-━━━━━━━━━━━━━━━━━━━━
-+ do replace-keyed-receiver Int
-    - mailbox KeyedMailbox
-    - previous KeyedReceiver
-
-previous.close()
-do KeyedReceiver(mailbox, 7)
--- "built replacement"
-= 4
+(fn-do + replace-keyed-receiver Int
+  (param mailbox KeyedMailbox)
+  (param previous KeyedReceiver)
+  (call (. previous close))
+  (do
+    (inline (call KeyedReceiver mailbox 7))
+  )
+  (print "built replacement")
+  (return 4)
+)
 ```
 
 ```output
@@ -2456,49 +2450,44 @@ second 10
 
 ### Keyed endpoint adapters require a stable address and close with its receiver lifetime
 
-```yumi
-. mailbox = KeyedAdapterMailbox()
-. receiver = KeyedAdapterReceiver(mailbox, 4)
-. endpoint = receiver.endpoint()
-. second = receiver.endpoint()
--- endpoint as Pointer == second as Pointer
+```brix
+(main
+  (let mailbox (call KeyedAdapterMailbox))
+  (let receiver (call KeyedAdapterReceiver mailbox 4))
+  (let endpoint (call (. receiver endpoint)))
+  (let second (call (. receiver endpoint)))
+  (print (== (as endpoint Pointer) (as second Pointer)))
+  (blank)
+  (for (on value endpoint)
+    (print (str "adapter " value))
+  )
+  (blank)
+  (<- ([] (. mailbox messages) 4) 1)
+  (call (. receiver close))
+  (<- ([] (. mailbox messages) 4) (call keyed-adapter-missed))
+)
 
-for value on endpoint
-    -- "adapter $value"
+(type + KeyedAdapterMailbox
+  (event + messages Int U64)
+)
 
-mailbox.messages[4] <- 1
-receiver.close()
-mailbox.messages[4] <- keyed-adapter-missed()
+(type + KeyedAdapterReceiver
+  (prop + mailbox KeyedAdapterMailbox)
+  (prop + id U64)
+  (fn-do + This _
+    (param mailbox _)
+    (param id _)
+  )
+  (fn-do + endpoint (of Broadcastable Int)
+    (return ([] (. mailbox messages) id))
+  )
+  (fn-do + close _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ KeyedAdapterMailbox
-
-+ event messages Int keyed by U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ KeyedAdapterReceiver
-
-+ mailbox KeyedAdapterMailbox
-+ id U64
-
-────────────────────
-+ This
-    - mailbox
-    - id
-
-────────────────────
-+ do endpoint Broadcastable'Int
-
-= mailbox.messages[id]
-
-────────────────────
-+ do close
-
-━━━━━━━━━━━━━━━━━━━━
-+ do keyed-adapter-missed Int
-
--- "adapter built"
-= 2
+(fn-do + keyed-adapter-missed Int
+  (print "adapter built")
+  (return 2)
+)
 ```
 
 ```output
@@ -2508,45 +2497,38 @@ adapter 1
 
 ### Keyed address rekey and release compile without a publisher
 
-```yumi
-. mailbox = NoPublishKeyedMailbox()
-. receiver = NoPublishKeyedReceiver(mailbox, 1)
-receiver.change-key(2)
-receiver.release-address()
--- "done"
+```brix
+(main
+  (let mailbox (call NoPublishKeyedMailbox))
+  (let receiver (call NoPublishKeyedReceiver mailbox 1))
+  (call (. receiver change-key) 2)
+  (call (. receiver release-address))
+  (print "done")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ NoPublishKeyedMailbox
+(type + NoPublishKeyedMailbox
+  (event + messages Int U64)
+)
 
-+ event messages Int keyed by U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ NoPublishKeyedReceiver
-
-+ mailbox NoPublishKeyedMailbox
-+ id U64
-
-────────────────────
-+ This
-    - mailbox
-    - id
-
-────────────────────
-for value on mailbox.messages[id]
-
--- "got $value"
-
-────────────────────
-+ do change-key ?! Error
-    - next U64
-
-mailbox.messages[id].rekey(next)
-id = next
-
-────────────────────
-+ do release-address
-
-mailbox.messages[id].release()
+(type + NoPublishKeyedReceiver
+  (prop + mailbox NoPublishKeyedMailbox)
+  (prop + id U64)
+  (fn-do + This _
+    (param mailbox _)
+    (param id _)
+  )
+  (subscribe-for (on value ([] (. mailbox messages) id))
+    (print (str "got " value))
+  )
+  (fn-do + change-key _ (?! Error)
+    (param next U64)
+    (call (. ([] (. mailbox messages) id) rekey) next)
+    (= id next)
+  )
+  (fn-do + release-address _
+    (call (. ([] (. mailbox messages) id) release))
+  )
+)
 ```
 
 ```output
@@ -2555,61 +2537,58 @@ done
 
 ### A keyed endpoint stays claimed and can resubscribe after its last subscriber breaks
 
-```yumi
-. mailbox = PersistentKeyedAdapterMailbox()
-. receiver = PersistentKeyedAdapterReceiver(mailbox, 4)
-. endpoint = receiver.endpoint()
+```brix
+(main
+  (let mailbox (call PersistentKeyedAdapterMailbox))
+  (let receiver (call PersistentKeyedAdapterReceiver mailbox 4))
+  (let endpoint (call (. receiver endpoint)))
+  (blank)
+  (for (on value endpoint)
+    (print (str "first " value))
+    (break)
+  )
+  (blank)
+  (<- ([] (. mailbox messages) 4) 1)
+  (<- ([] (. mailbox messages) 4) (call persistent-keyed-adapter-missed))
+  (print "resubscribing")
+  (blank)
+  (for (on value endpoint)
+    (print (str "second " value))
+  )
+  (blank)
+  (<- ([] (. mailbox messages) 4) 3)
+  (call (. receiver close))
+  (blank)
+  (let replacement (call PersistentKeyedAdapterReceiver mailbox 4))
+  (let replacement-endpoint (call (. replacement endpoint)))
+  (for (on value replacement-endpoint)
+    (print (str "replacement " value))
+  )
+  (blank)
+  (<- ([] (. mailbox messages) 4) 4)
+)
 
-for value on endpoint
-    -- "first $value"
-    break
+(type + PersistentKeyedAdapterMailbox
+  (event + messages Int U64)
+)
 
-mailbox.messages[4] <- 1
-mailbox.messages[4] <- persistent-keyed-adapter-missed()
--- "resubscribing"
+(type + PersistentKeyedAdapterReceiver
+  (prop + mailbox PersistentKeyedAdapterMailbox)
+  (prop + id U64)
+  (fn-do + This _
+    (param mailbox _)
+    (param id _)
+  )
+  (fn-do + endpoint (of Broadcastable Int)
+    (return ([] (. mailbox messages) id))
+  )
+  (fn-do + close _)
+)
 
-for value on endpoint
-    -- "second $value"
-
-mailbox.messages[4] <- 3
-receiver.close()
-
-. replacement = PersistentKeyedAdapterReceiver(mailbox, 4)
-. replacement-endpoint = replacement.endpoint()
-for value on replacement-endpoint
-    -- "replacement $value"
-
-mailbox.messages[4] <- 4
-
-━━━━━━━━━━━━━━━━━━━━
-+ PersistentKeyedAdapterMailbox
-
-+ event messages Int keyed by U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ PersistentKeyedAdapterReceiver
-
-+ mailbox PersistentKeyedAdapterMailbox
-+ id U64
-
-────────────────────
-+ This
-    - mailbox
-    - id
-
-────────────────────
-+ do endpoint Broadcastable'Int
-
-= mailbox.messages[id]
-
-────────────────────
-+ do close
-
-━━━━━━━━━━━━━━━━━━━━
-+ do persistent-keyed-adapter-missed Int
-
--- "built missed payload"
-= 2
+(fn-do + persistent-keyed-adapter-missed Int
+  (print "built missed payload")
+  (return 2)
+)
 ```
 
 ```output
@@ -2621,55 +2600,48 @@ replacement 4
 
 ### A keyed endpoint stays open after its last function subscriber unsubscribes
 
-```yumi
-. mailbox = FunctionKeyedAdapterMailbox()
-. receiver = FunctionKeyedAdapterReceiver(mailbox, 5)
-. endpoint Broadcastable'Int = receiver.endpoint()
-endpoint.subscribe(on-persistent-keyed-first)
+```brix
+(main
+  (let mailbox (call FunctionKeyedAdapterMailbox))
+  (let receiver (call FunctionKeyedAdapterReceiver mailbox 5))
+  (let endpoint (of Broadcastable Int) (call (. receiver endpoint)))
+  (call (. endpoint subscribe) on-persistent-keyed-first)
+  (blank)
+  (<- ([] (. mailbox messages) 5) 1)
+  (print "resubscribing function")
+  (call (. endpoint subscribe) on-persistent-keyed-second)
+  (<- ([] (. mailbox messages) 5) 2)
+)
 
-mailbox.messages[5] <- 1
--- "resubscribing function"
-endpoint.subscribe(on-persistent-keyed-second)
-mailbox.messages[5] <- 2
+(fn-do + on-persistent-keyed-first _
+  (param item Int)
+  (param broadcaster (of Broadcastable Int))
+  (print (str "first function " item))
+  (catch (call (. broadcaster unsubscribe) on-persistent-keyed-first))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do on-persistent-keyed-first
-    - item Int
-    - broadcaster Broadcastable'Int
+(fn-do + on-persistent-keyed-second _
+  (param item Int)
+  (param broadcaster (of Broadcastable Int))
+  (print (str "second function " item))
+)
 
--- "first function $item"
-catch broadcaster.unsubscribe(on-persistent-keyed-first)
+(type + FunctionKeyedAdapterMailbox
+  (event + messages Int U64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do on-persistent-keyed-second
-    - item Int
-    - broadcaster Broadcastable'Int
-
--- "second function $item"
-
-━━━━━━━━━━━━━━━━━━━━
-+ FunctionKeyedAdapterMailbox
-
-+ event messages Int keyed by U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ FunctionKeyedAdapterReceiver
-
-+ mailbox FunctionKeyedAdapterMailbox
-+ id U64
-
-────────────────────
-+ This
-    - mailbox
-    - id
-
-────────────────────
-+ do endpoint Broadcastable'Int
-
-= mailbox.messages[id]
-
-────────────────────
-+ do close
+(type + FunctionKeyedAdapterReceiver
+  (prop + mailbox FunctionKeyedAdapterMailbox)
+  (prop + id U64)
+  (fn-do + This _
+    (param mailbox _)
+    (param id _)
+  )
+  (fn-do + endpoint (of Broadcastable Int)
+    (return ([] (. mailbox messages) id))
+  )
+  (fn-do + close _)
+)
 ```
 
 ```output
@@ -2680,115 +2652,128 @@ second function 2
 
 ### A keyed endpoint backed by a temporary key expression cannot escape
 
-```yumi crash
-. mailbox = TemporaryKeyMailbox()
-. adapter Broadcastable'Int = mailbox.messages[temporary-key()]
+```brix crash
+(main
+  (let mailbox (call TemporaryKeyMailbox))
+  (let adapter (of Broadcastable Int) ([] (. mailbox messages) (call temporary-key)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TemporaryKeyMailbox
+(type + TemporaryKeyMailbox
+  (event + messages Int U64)
+)
 
-+ event messages Int keyed by U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ do temporary-key U64
-
-= 1
+(fn-do + temporary-key U64
+  (return 1)
+)
 ```
 
 ```output
 Exception: A temporary keyed event address cannot escape; declare a stable address key and use that stable addressed lifetime
-<no file:3>
-    . adapter Broadcastable'Int = mailbox.messages[temporary-key()]
-              ^^^^^^^^^^^^^^^^^
+<no file:4>
+      (let adapter (of Broadcastable Int) ([] (. mailbox messages) (call temporary-key)))
+                   ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### An unaddressed class-body subscription to a keyed event is rejected
 
-```yumi crash
-. mailbox = UnaddressedKeyedMailbox()
-mailbox.messages[1] <- 5
--- "done"
+```brix crash
+(main
+  (let mailbox (call UnaddressedKeyedMailbox))
+  (<- ([] (. mailbox messages) 1) 5)
+  (print "done")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ UnaddressedKeyedMailbox
-
-+ event messages Int keyed by U64
-
-────────────────────
-for value on messages
-
--- "got $value"
+(type + UnaddressedKeyedMailbox
+  (event + messages Int U64)
+  (subscribe-for (on value messages)
+    (print (str "got " value))
+  )
+)
 ```
 
 ```output
 Exception: Keyed event "messages" must be addressed with [key]
-<no file:12>
-    for value on messages
-       ^^^^^^^^^^^^^^^^^^
+<no file:10>
+      (subscribe-for (on value messages)
+                     ^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Floating-point keyed event declarations are rejected
 
-```yumi crash
-do FloatKeyMailbox()
+```brix crash
+(main
+  (do
+    (inline (call FloatKeyMailbox))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ FloatKeyMailbox
-
-+ event messages Int keyed by F64
+(type + FloatKeyMailbox
+  (event + messages Int F64)
+)
 ```
 
 ```output
 Exception: Keyed event keys must conform to EventKey: integer, Char, Bool, interned identity, or an integer (index, generation) handle; Float and user-defined equality/hash keys are not supported
-<no file:7>
-    + event messages Int keyed by F64
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:9>
+      (event + messages Int F64)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### User-defined keyed event equality is rejected
 
-```yumi crash
-do CustomKeyMailbox()
+```brix crash
+(main
+  (do
+    (inline (call CustomKeyMailbox))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CustomEventKey
+(type + CustomEventKey
+  (prop + identity U64)
+  (fn-expr + (infix this == (param other CustomEventKey)) _
+    (== identity (. other identity))
+  )
+)
 
-+ identity U64
-
-────────────────────
-+ this == other CustomEventKey
-
-identity == other.identity
-
-━━━━━━━━━━━━━━━━━━━━
-+ CustomKeyMailbox
-
-+ event messages Int keyed by CustomEventKey
+(type + CustomKeyMailbox
+  (event + messages Int CustomEventKey)
+)
 ```
 
 ```output
 Exception: Keyed event keys must conform to EventKey: integer, Char, Bool, interned identity, or an integer (index, generation) handle; Float and user-defined equality/hash keys are not supported
-<no file:17>
-    + event messages Int keyed by CustomEventKey
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:16>
+      (event + messages Int CustomEventKey)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### An error a subscriber raises goes to unhandled-error, and later items are still delivered.
 
-```yumi
-+ numbers AsyncChannel'Int
+```brix
+(prop + numbers (of AsyncChannel Int))
+(blank)
 
-unhandled-error = :: error => do
-    -- "handled ${error.message}"
-
-for n on numbers
-    if n == 1
-        ?! IOError("one is bad")
-    -- "got $n"
-
-for x in 0 .. 2
-    numbers <- x
--- "done"
+(main
+  (= unhandled-error
+    (=> (error) :do
+      (block
+        (print (str "handled " (. error message)))
+      )
+    )
+  )
+  (blank)
+  (for (on n numbers)
+    (if (== n 1)
+      (throw (call IOError "one is bad"))
+    )
+    (print (str "got " n))
+  )
+  (blank)
+  (for (in x (.. 0 2))
+    (<- numbers x)
+  )
+  (print "done")
+)
 ```
 
 ```output
@@ -2800,39 +2785,40 @@ got 2
 
 ### An error a lowered handler raises goes to unhandled-error, and the handlers after it still run.
 
-```yumi
-. seen = List'String()
-unhandled-error = :: error => do
-    seen += error.message
-. owner = FailingLoweredOwner()
+```brix
+(main
+  (let seen (call (of List String)))
+  (= unhandled-error
+    (=> (error) :do
+      (block
+        (+= seen (. error message))
+      )
+    )
+  )
+  (let owner (call FailingLoweredOwner))
+  (blank)
+  (for (on value (. owner changed))
+    (print (str "external " value))
+  )
+  (blank)
+  (call (. owner emit) 7)
+  (print (. seen length))
+  (print ([] seen 0))
+)
 
-for value on owner.changed
-    -- "external $value"
-
-owner.emit(7)
--- seen.length
--- seen[0]
-
-━━━━━━━━━━━━━━━━━━━━
-+ FailingLoweredOwner
-
-+ event changed Int
-
-────────────────────
-for value on changed
-
-?! IOError("self-1 failed $value")
-
-────────────────────
-for value on changed
-
--- "self-2 $value"
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
+(type + FailingLoweredOwner
+  (event + changed Int)
+  (subscribe-for (on value changed)
+    (throw (call IOError (str "self-1 failed " value)))
+  )
+  (subscribe-for (on value changed)
+    (print (str "self-2 " value))
+  )
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 ```
 
 ```output
@@ -2842,57 +2828,60 @@ external 7
 self-1 failed 7
 ```
 
-```yumi
-. source = ChainedSource()
-for value on source.first
-    source.second <- value
-for value on source.second
-    -- value
-source.first <- 1
+```brix
+(main
+  (let source (call ChainedSource))
+  (for (on value (. source first))
+    (<- (. source second) value)
+  )
+  (for (on value (. source second))
+    (print value)
+  )
+  (<- (. source first) 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ChainedSource
-
-+ event first Int
-+ event second Int
+(type + ChainedSource
+  (event + first Int)
+  (event + second Int)
+)
 ```
 
 ```output
 1
 ```
 
-```yumi
-deliver(1)
--- "after"
+```brix
+(main
+  (call deliver 1)
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do deliver
-    - value Int
+(fn-do + deliver _
+  (param value Int)
+  (let attempt
+    (do-new
+      (let owner (call SignalOwner))
+      (call (. owner emit) value)
+      (print "not reached after emit")
+      (on-failure failure
+        (print (str "recovered " (. failure message)))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. attempt = do new
-    . owner = SignalOwner()
-    owner.emit(value)
-    -- "not reached after emit"
-catch failure
-    -- "recovered $failure.message"
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ SignalOwner
-
-+ event changed Int
-
-────────────────────
-for value on changed
-
-?! Panic("callback $value")
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
--- "not reached after publish"
+(type + SignalOwner
+  (event + changed Int)
+  (subscribe-for (on value changed)
+    (throw (call Panic (str "callback " value)))
+  )
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+    (print "not reached after publish")
+  )
+)
 ```
 
 ```output
@@ -2902,35 +2891,34 @@ after
 
 ### A `whenever` clause on the loop of a class section subscribes it while the clause holds
 
-```yumi
-. box = Box()
-box.timer <- 1
-yield-once()
-box.is-open = false
-box.timer <- 2
-yield-once()
-box.is-open = true
-box.timer <- 3
-yield-once()
+```brix
+(main
+  (let box (call Box))
+  (<- (. box timer) 1)
+  (call yield-once)
+  (= (. box is-open) false)
+  (<- (. box timer) 2)
+  (call yield-once)
+  (= (. box is-open) true)
+  (<- (. box timer) 3)
+  (call yield-once)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + is-open _ (= true))
+  (prop + timer (of AsyncChannel Int))
+  (subscribe-for (on t timer (whenever #is-open))
+    (print (str "box " t))
+  )
+)
 
-+ is-open = true
-+ timer AsyncChannel'Int
-
-────────────────────
-for t on timer whenever #is-open
-
--- "box $t"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
-
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 ```
 
 ```output
@@ -2940,161 +2928,154 @@ box 3
 
 ### A panic while a `whenever` clause is tested again is raised from the loop
 
-```yumi crash
-.. index = 0
-. timer AsyncChannel'Int
+```brix crash
+(main
+  (lazy index 0)
+  (let timer (of AsyncChannel Int))
+  (blank)
+  (for (on t timer (whenever (call allowed #index)))
+    (print (str "got " t))
+  )
+  (blank)
+  (<- timer 1)
+  (call yield-once)
+  (= index 5)
+)
 
-for t on timer whenever allowed(#index)
-    -- "got $t"
+(fn-do + allowed Bool
+  (param index Int)
+  (throw (call Panic "Index too far") (if (> index 2)))
+  (return true)
+)
 
-timer <- 1
-yield-once()
-index = 5
-
-━━━━━━━━━━━━━━━━━━━━
-+ do allowed Bool
-    - index Int
-
-?! Panic("Index too far")
-    if index > 2
-= true
-
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
-
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 ```
 
 ```stderr
 Unhandled panic: Index too far
-<no file:16>
+<no file:17>
 
 Task 1
 
 Stack trace:
-  0  __source__:allowed no file:16:1
-  1  __source__:whenever no file:5:25
-  2  __source__:wheneverCasting no file:5:4
-  3  core/tracker:LiveAction:refresh-trackers-into core/tracker.yumi
-  4  core/tracker:LiveAction:refresh-trackers core/tracker.yumi
-  5  core/tracker:LiveAction:run-now core/tracker.yumi
-  6  core/tracker:LiveAction:run-queued core/tracker.yumi
-  7  core/tracker:LiveBatch:run core/tracker.yumi
-  8  core/tracker:LiveBatch:leave core/tracker.yumi
-  9  core/tracker:property-dispatch core/tracker.yumi
-  10  __source__:main no file:10:1
+  0  __source__:allowed no file:17:3
+  1  __source__:whenever no file:6:30
+  2  __source__:wheneverCasting no file:6:8
+  3  core/tracker:LiveAction:refresh-trackers-into core/tracker.bx
+  4  core/tracker:LiveAction:refresh-trackers core/tracker.bx
+  5  core/tracker:LiveAction:run-now core/tracker.bx
+  6  core/tracker:LiveAction:run-queued core/tracker.bx
+  7  core/tracker:LiveBatch:run core/tracker.bx
+  8  core/tracker:LiveBatch:leave core/tracker.bx
+  9  core/tracker:property-dispatch core/tracker.bx
+  10  __source__:main no file:12:3
   11  __source__:init.__source__ no file
   12  __source__:brix.main no file
 ```
 
 ### A panic while a `whenever` clause of a class section is tested again is raised from the section
 
-```yumi crash
-. box = Box()
-box.timer <- 1
-yield-once()
-box.index = 5
+```brix crash
+(main
+  (let box (call Box))
+  (<- (. box timer) 1)
+  (call yield-once)
+  (= (. box index) 5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + index _ (= 0))
+  (prop + timer (of AsyncChannel Int))
+  (subscribe-for (on t timer (whenever (call allowed #index)))
+    (print (str "box " t))
+  )
+)
 
-+ index = 0
-+ timer AsyncChannel'Int
+(fn-do + allowed Bool
+  (param index Int)
+  (throw (call Panic "Index too far") (if (> index 2)))
+  (return true)
+)
 
-────────────────────
-for t on timer whenever allowed(#index)
-
--- "box $t"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do allowed Bool
-    - index Int
-
-?! Panic("Index too far")
-    if index > 2
-= true
-
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
-
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 ```
 
 ```stderr
 Unhandled panic: Index too far
-<no file:22>
+<no file:19>
 
 Task 1
 
 Stack trace:
-  0  __source__:allowed no file:22:1
-  1  __source__:whenever no file:14:25
-  2  __source__:wheneverCasting no file:13:1
-  3  core/tracker:LiveAction:refresh-trackers-into core/tracker.yumi
-  4  core/tracker:LiveAction:refresh-trackers core/tracker.yumi
-  5  core/tracker:LiveAction:run-now core/tracker.yumi
-  6  core/tracker:LiveAction:run-queued core/tracker.yumi
-  7  core/tracker:LiveBatch:run core/tracker.yumi
-  8  core/tracker:LiveBatch:leave core/tracker.yumi
-  9  core/tracker:property-dispatch core/tracker.yumi
-  10  __source__:main no file:5:1
+  0  __source__:allowed no file:19:3
+  1  __source__:whenever no file:12:40
+  2  __source__:wheneverCasting no file:12:3
+  3  core/tracker:LiveAction:refresh-trackers-into core/tracker.bx
+  4  core/tracker:LiveAction:refresh-trackers core/tracker.bx
+  5  core/tracker:LiveAction:run-now core/tracker.bx
+  6  core/tracker:LiveAction:run-queued core/tracker.bx
+  7  core/tracker:LiveBatch:run core/tracker.bx
+  8  core/tracker:LiveBatch:leave core/tracker.bx
+  9  core/tracker:property-dispatch core/tracker.bx
+  10  __source__:main no file:6:3
   11  __source__:init.__source__ no file
   12  __source__:brix.main no file
 ```
 
 ### A subscription made inside a task inside a method is owned by the method's receiver
 
-```yumi
-. source = TaskSubscriptionSource()
-. changes Broadcastable'Int = source.changed
-. listener = TaskSubscriptionListener(changes)
-listener.start()
-<- listener.ready
-source.emit(8)
-source.emit(5)
+```brix
+(main
+  (let source (call TaskSubscriptionSource))
+  (let changes (of Broadcastable Int) (. source changed))
+  (let listener (call TaskSubscriptionListener changes))
+  (call (. listener start))
+  (<- (. listener ready))
+  (call (. source emit) 8)
+  (call (. source emit) 5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TaskSubscriptionSource
+(type + TaskSubscriptionSource
+  (event + changed Int)
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 
-+ event changed Int
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
-
-━━━━━━━━━━━━━━━━━━━━
-+ TaskSubscriptionListener
-
-+ source Broadcastable'Int
-+ ready SyncChannel'Bool
-_ total = 0
-
-────────────────────
-+ This
-    - source
-
-────────────────────
-+ do start
-
-do new
-    for value on source
-        note(value)
-    ready <- true
-
-────────────────────
-_ do note
-    - value Int
-
-total += value
--- "noted $total"
+(type + TaskSubscriptionListener
+  (prop + source (of Broadcastable Int))
+  (prop + ready (of SyncChannel Bool))
+  (prop _ total _ (= 0))
+  (fn-do + This _
+    (param source _)
+  )
+  (fn-do + start _
+    (do-new
+      (for (on value source)
+        (call note value)
+      )
+      (<- ready true)
+    )
+  )
+  (fn-do _ note _
+    (param value Int)
+    (+= total value)
+    (print (str "noted " total))
+  )
+)
 ```
 
 ```output
@@ -3104,24 +3085,25 @@ noted 13
 
 ### A case written by its symbol alone is published to an event as a case of the event's payload
 
-```yumi
-. source = Source()
+```brix
+(main
+  (let source (call Source))
+  (blank)
+  (for (on result (. source results))
+    (print (is result .limited))
+  )
+  (blank)
+  (<- (. source results) .limited)
+)
 
-for result on source.results
-    -- result is .limited
+(type + Source
+  (event + results Outcome)
+)
 
-source.results <- .limited
-
-━━━━━━━━━━━━━━━━━━━━
-+ Source
-
-+ event results Outcome
-
-━━━━━━━━━━━━━━━━━━━━
-+ Outcome is Union
-
-| passed
-| limited
+(type + Outcome (is Union)
+  (variant passed)
+  (variant limited)
+)
 ```
 
 ```output
@@ -3130,47 +3112,41 @@ true
 
 ### An event may be keyed by a type named for a tuple of an integer index and generation, which addresses one receiver.
 
-```yumi
-. mailbox = Mailbox()
-. receiver = Receiver(mailbox, Handle(3, 1))
-mailbox.messages[Handle(3, 1)] <- 5
-mailbox.messages[Handle(4, 1)] <- 6
-mailbox.messages[Handle(3, 2)] <- 7
--- catch Receiver(mailbox, Handle(3, 1))
-receiver.move(Handle(5, 9))
-mailbox.messages[Handle(3, 1)] <- 8
-mailbox.messages[Handle(5, 9)] <- 9
+```brix
+(main
+  (let mailbox (call Mailbox))
+  (let receiver (call Receiver mailbox (call Handle 3 1)))
+  (<- ([] (. mailbox messages) (call Handle 3 1)) 5)
+  (<- ([] (. mailbox messages) (call Handle 4 1)) 6)
+  (<- ([] (. mailbox messages) (call Handle 3 2)) 7)
+  (print (catch (call Receiver mailbox (call Handle 3 1))))
+  (call (. receiver move) (call Handle 5 9))
+  (<- ([] (. mailbox messages) (call Handle 3 1)) 8)
+  (<- ([] (. mailbox messages) (call Handle 5 9)) 9)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Handle is (index Index, generation U64)
+(type + Handle (is (tuple (: index Index) (: generation U64))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Mailbox
+(type + Mailbox
+  (event + messages Int Handle)
+)
 
-+ event messages Int keyed by Handle
-
-━━━━━━━━━━━━━━━━━━━━
-+ Receiver
-
-+ mailbox Mailbox
-+ id Handle
-
-────────────────────
-+ This
-    - mailbox
-    - id
-
-────────────────────
-for value on mailbox.messages[id]
-
--- "got $value"
-
-────────────────────
-+ do move
-    - next Handle
-
-mailbox.messages[id].rekey(next)
-id = next
+(type + Receiver
+  (prop + mailbox Mailbox)
+  (prop + id Handle)
+  (fn-do + This _
+    (param mailbox _)
+    (param id _)
+  )
+  (subscribe-for (on value ([] (. mailbox messages) id))
+    (print (str "got " value))
+  )
+  (fn-do + move _
+    (param next Handle)
+    (call (. ([] (. mailbox messages) id) rekey) next)
+    (= id next)
+  )
+)
 ```
 
 ```output
@@ -3181,34 +3157,46 @@ got 9
 
 ### A comprehension on an event of the object maps each publication through match arms whose conditions read `it`.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. form = Form()
--- form.shown.text
-form.submitted <- 3
-do new
-    do new
-        -- form.shown.text
-        form.submitted <- -1
-        do new
-            do new
-                -- form.shown.text
+(main
+  (let form (call Form))
+  (print (. form shown text))
+  (<- (. form submitted) 3)
+  (do-new
+    (do-new
+      (print (. form shown text))
+      (<- (. form submitted) -1)
+      (do-new
+        (do-new
+          (print (. form shown text))
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Form is Box
-
-+ event submitted Int
-
-────────────────────
-
-<Label shown "got:${##checked}"
-
-.. checked = on submitted
-    |? it < 0
-        "negative"
-    ??
-        "ok $it"
+(type + Form (is Box)
+  (event + submitted Int)
+  (content
+    (<> Label (id: shown) (text: (str "got:" (## checked))))
+    (blank)
+    (lazy checked
+      (iterate (on submitted)
+        (block
+          (case? (< it 0)
+            "negative"
+          )
+          (default
+            (str "ok " it)
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3219,21 +3207,27 @@ got:negative
 
 ### A lazy declaration whose value is the latest item of a stream, read tracked in markup, gives the markup each new item.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
+(prop + numbers (of AsyncChannel Int))
+(blank)
 
-+ numbers AsyncChannel'Int
-
-.. last = ##numbers
-
-<Label shown "got ${#last}"
-
--- shown.text
-do new
-    numbers <- 4
-    do new
-        do new
-            -- shown.text
+(main
+  (lazy last (## numbers))
+  (blank)
+  (<> Label (id: shown) (text: (str "got " #last)))
+  (blank)
+  (print (. shown text))
+  (do-new
+    (<- numbers 4)
+    (do-new
+      (do-new
+        (print (. shown text))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3243,24 +3237,27 @@ got 4
 
 ### The latest item of a stream of union values is the first case of the union until the stream gives one.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
+(prop + picks (of AsyncChannel Pick))
+(blank)
 
-+ picks AsyncChannel'Pick
+(main
+  (<> Label (id: shown) (text: (str "got " (## picks))))
+  (blank)
+  (print (. shown text))
+  (<- picks .second)
+  (do-new
+    (print (. shown text))
+  )
+)
 
-<Label shown "got ${##picks}"
-
--- shown.text
-picks <- .second
-do new
-    -- shown.text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pick is Union
-
-| first
-| second
-| third(Int)
+(type + Pick (is Union)
+  (variant first)
+  (variant second)
+  (variant third (tuple Int))
+)
 ```
 
 ```output
@@ -3270,10 +3267,12 @@ got second
 
 ### A lazy declaration whose value is the latest item of a stream compiles where nothing reads it.
 
-```yumi
-. timer = AsyncChannel'Int()
-.. latest = ##timer
--- "ran"
+```brix
+(main
+  (let timer (call (of AsyncChannel Int)))
+  (lazy latest (## timer))
+  (print "ran")
+)
 ```
 
 ```output
@@ -3282,23 +3281,23 @@ ran
 
 ### A loop in a section of a class on an event of the object runs each time the event is sent.
 
-```yumi
-. thing = Thing()
-thing.opened <- 3
--- thing.total
+```brix
+(main
+  (let thing (call Thing))
+  (<- (. thing opened) 3)
+  (print (. thing total))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ event opened Int
-+ items = [1, 2, 3]
-+ total = 0
-
-────────────────────
-for n on opened
-
-for item in items
-    total += item * n
+(type + Thing
+  (event + opened Int)
+  (prop + items _ (= (list 1 2 3)))
+  (prop + total _ (= 0))
+  (subscribe-for (on n opened)
+    (for (in item items)
+      (+= total (* item n))
+    )
+  )
+)
 ```
 
 ```output
@@ -3307,17 +3306,22 @@ for item in items
 
 ### A `break` in a loop on a stream unsubscribes and leaves the body at once
 
-```yumi
-+ numbers AsyncChannel'Int
+```brix
+(prop + numbers (of AsyncChannel Int))
+(blank)
 
-for n on numbers
-    if n == 1
-        break
-    -- "n=$n"
-
-numbers <-* 0 .. 3
-`numbers.close()
--- "done"
+(main
+  (for (on n numbers)
+    (if (== n 1)
+      (break)
+    )
+    (print (str "n=" n))
+  )
+  (blank)
+  (<-* numbers (.. 0 3))
+  ; numbers.close()
+  (print "done")
+)
 ```
 
 ```output
@@ -3327,21 +3331,28 @@ n=0
 
 ### A `break` or a `continue` in a loop in the body of a loop on a stream belongs to that loop
 
-```yumi
-+ numbers AsyncChannel'Int
+```brix
+(prop + numbers (of AsyncChannel Int))
+(blank)
 
-for n on numbers
-    for k in 0 .. < 4
-        if k == 1
-            continue
-        if k == 3
-            break
-        -- "n=$n k=$k"
-    -- "after n=$n"
-
-numbers <-* 0 .. 1
-`numbers.close()
--- "done"
+(main
+  (for (on n numbers)
+    (for (in k (..< 0 4))
+      (if (== k 1)
+        (continue)
+      )
+      (if (== k 3)
+        (break)
+      )
+      (print (str "n=" n " k=" k))
+    )
+    (print (str "after n=" n))
+  )
+  (blank)
+  (<-* numbers (.. 0 1))
+  ; numbers.close()
+  (print "done")
+)
 ```
 
 ```output
@@ -3356,15 +3367,19 @@ after n=1
 
 ### The clauses of a loop on a stream are tested in the order written for each item
 
-```yumi
-+ numbers AsyncChannel'Int
+```brix
+(prop + numbers (of AsyncChannel Int))
+(blank)
 
-for n on numbers when n != 1 until n == 3
-    -- "on $n"
-
-numbers <-* 0 .. 4
-`numbers.close()
--- "done"
+(main
+  (for (on n numbers (when (!= n 1)) (until (== n 3)))
+    (print (str "on " n))
+  )
+  (blank)
+  (<-* numbers (.. 0 4))
+  ; numbers.close()
+  (print "done")
+)
 ```
 
 ```output
@@ -3375,57 +3390,56 @@ on 2
 
 ### An error the unsubscribe a `break` makes raises goes to unhandled-error, and the program goes on.
 
-```yumi
-/core/stream
+```brix
+(import /core/stream)
+(blank)
 
-unhandled-error = :: error => do
-    -- "handled ${error.message}"
+(main
+  (= unhandled-error
+    (=> (error) :do
+      (block
+        (print (str "handled " (. error message)))
+      )
+    )
+  )
+  (blank)
+  (let source (call RefusingSource))
+  (for (on message source)
+    (print message)
+    (break)
+  )
+  (call (. source send) "one")
+  (print "done")
+)
 
-. source = RefusingSource()
-for message on source
-    -- message
-    break
-source.send("one")
--- "done"
-
-━━━━━━━━━━━━━━━━━━━━
-+ RefusingSource
-    is Broadcastable'String
-
-+ held Subscriber'String?
-
-────────────────────
-+ get is-closed Bool
-
-false
-
-────────────────────
-+ do subscribe ?! Error
-    - subscriber Subscriber'String
-
-held = subscriber
-
-────────────────────
-+ do unsubscribe ?! Error
-    - subscriber Subscriber'String
-
-?! Error("unsubscribe refused")
-
-────────────────────
-+ do subscribe ?! Error
-    - subscriber Subscribable'String
-
-────────────────────
-+ do unsubscribe ?! Error
-    - subscriber Subscribable'String
-
-────────────────────
-+ do send ?! Error
-    - message String
-
-. call = held
-if call
-    call(message, this)
+(type + RefusingSource
+  (implements (of Broadcastable String))
+  (prop + held (? (of Subscriber String)))
+  (fn-expr + is-closed Bool :get
+    false
+  )
+  (fn-do + subscribe _ (?! Error)
+    (param subscriber (of Subscriber String))
+    (= held subscriber)
+  )
+  (fn-do + unsubscribe _ (?! Error)
+    (param subscriber (of Subscriber String))
+    (throw (call Error "unsubscribe refused"))
+  )
+  (fn-do + subscribe _ (?! Error)
+    (param subscriber (of Subscribable String))
+  )
+  (fn-do + unsubscribe _ (?! Error)
+    (param subscriber (of Subscribable String))
+  )
+  (fn-do + send _ (?! Error)
+    (param message String)
+    (let call held)
+    (if call
+      (call call message this)
+    )
+  )
+)
 ```
 
 ```output
@@ -3436,83 +3450,87 @@ done
 
 ### A `for … on` source that reads a tracked value must be a stream: one that only iterates is an error that points at `whenever`.
 
-```yumi crash
-. foo = Foo()
-for v on foo.#t
-    -- v
+```brix crash
+(main
+  (let foo (call Foo))
+  (for (on v (. foo #t))
+    (print v)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ t = "ab"
+(type + Foo
+  (prop + t _ (= "ab"))
+)
 ```
 
 ```output
 Exception: #t is not a stream; use `whenever #t`
-<no file:3>
-    for v on foo.#t
-       ^^^^^^^^^^^
+<no file:4>
+      (for (on v (. foo #t))
+      ^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A class loop on a tracked number of an element a branch builds is not on a stream
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
--- "constructed"
-demo.shows = true
-demo.pinger.size = 4
--- "seen=${demo.seen}"
+(main
+  (<> Demo (id: demo))
+  (print "constructed")
+  (= (. demo shows) true)
+  (= (. demo pinger size) 4)
+  (print (str "seen=" (. demo seen)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pinger is Box
+(type + Pinger (is Box)
+  (prop + size _ (= 0))
+)
 
-+ size = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ shows = false
-+ seen = 0
-
-────────────────────
-
-<This
-    if #shows
-        <Pinger pinger
-
-────────────────────
-for value on pinger.#size
-
-seen = value
+(type + Demo (is Box)
+  (prop + shows _ (= false))
+  (prop + seen _ (= 0))
+  (content
+    (<> This
+      (if #shows
+        (<> Pinger (id: pinger))
+      )
+    )
+  )
+  (subscribe-for (on value (. pinger #size))
+    (= seen value)
+  )
+)
 ```
 
 ```output
 Exception: #size is not a stream; use `whenever #size`
 <no file:27>
-    ────────────────────
-    ^^^^^^^^^^^^^^^^^^^
+      (subscribe-for (on value (. pinger #size))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A latest-value read gets an item an AsyncChannel accepted in the turn it closes
 
-```yumi
-. numbers = AsyncChannel'Int()
-.. latest = ##numbers
-. started = latest
-numbers <- 12
-numbers.close()
-yield-once()
--- latest
+```brix
+(main
+  (let numbers (call (of AsyncChannel Int)))
+  (lazy latest (## numbers))
+  (let started latest)
+  (<- numbers 12)
+  (call (. numbers close))
+  (call yield-once)
+  (print latest)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
-
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 ```
 
 ```output
@@ -3521,32 +3539,31 @@ done.wait()
 
 ### A class subscription gets the items an AsyncChannel accepted in the turn it closes
 
-```yumi
-. holder = ClosingHolder()
-holder.numbers <- 1
-holder.numbers <- 2
-holder.numbers.close()
--- "closed"
-yield-once()
--- "end"
+```brix
+(main
+  (let holder (call ClosingHolder))
+  (<- (. holder numbers) 1)
+  (<- (. holder numbers) 2)
+  (call (. holder numbers close))
+  (print "closed")
+  (call yield-once)
+  (print "end")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ ClosingHolder
-
-+ numbers = AsyncChannel'Int()
-
-────────────────────
-for n on numbers
-
--- "on $n"
+(type + ClosingHolder
+  (prop + numbers _ (= (call (of AsyncChannel Int))))
+  (subscribe-for (on n numbers)
+    (print (str "on " n))
+  )
+)
 ```
 
 ```output
@@ -3558,34 +3575,31 @@ end
 
 ### Closing a subscription's owner after its AsyncChannel closes drops the items still queued for it
 
-```yumi
-. holder = DroppingHolder()
-holder.numbers <- 1
-holder.numbers.close()
-holder.close()
-yield-once()
--- "end"
+```brix
+(main
+  (let holder (call DroppingHolder))
+  (<- (. holder numbers) 1)
+  (call (. holder numbers close))
+  (call (. holder close))
+  (call yield-once)
+  (print "end")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ DroppingHolder
-
-+ numbers = AsyncChannel'Int()
-
-────────────────────
-for n on numbers
-
--- "on $n"
-
-────────────────────
-+ do close
+(type + DroppingHolder
+  (prop + numbers _ (= (call (of AsyncChannel Int))))
+  (subscribe-for (on n numbers)
+    (print (str "on " n))
+  )
+  (fn-do + close _)
+)
 ```
 
 ```output
@@ -3594,17 +3608,22 @@ end
 
 ### A subscription that breaks while its closed AsyncChannel drains gets no more items
 
-```yumi
-for n on numbers
-    -- n
-    if n == 1
-        break
+```brix
+(main
+  (for (on n numbers)
+    (print n)
+    (if (== n 1)
+      (break)
+    )
+  )
+  (blank)
+  (<-* numbers (.. 0 3))
+  (call (. numbers close))
+  (print "done")
+)
 
-numbers <-* 0 .. 3
-numbers.close()
--- "done"
-
-+ numbers AsyncChannel'Int
+(blank)
+(prop + numbers (of AsyncChannel Int))
 ```
 
 ```output
@@ -3615,29 +3634,34 @@ done
 
 ### Closing an AsyncChannel delivers to both a subscription and an iterator, then detaches both
 
-```yumi
-. numbers = AsyncChannel'Int()
-for n on numbers
-    -- "on $n"
-do new
-    for n in numbers
-        -- "in $n"
-    -- "loop ended"
-yield-once()
-numbers <- 1
-numbers <- 2
-numbers.close()
-yield-once()
-yield-once()
--- if !numbers then "no subscribers" else "subscribed"
+```brix
+(main
+  (let numbers (call (of AsyncChannel Int)))
+  (for (on n numbers)
+    (print (str "on " n))
+  )
+  (do-new
+    (for (in n numbers)
+      (print (str "in " n))
+    )
+    (print "loop ended")
+  )
+  (call yield-once)
+  (<- numbers 1)
+  (<- numbers 2)
+  (call (. numbers close))
+  (call yield-once)
+  (call yield-once)
+  (print (if-expr (not numbers) "no subscribers" "subscribed"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
-
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 ```
 
 ```output
@@ -3651,25 +3675,29 @@ no subscribers
 
 ### An AsyncBufferedChannel subscription gets the items accepted in the turn it closes, not later ones
 
-```yumi
-for n on numbers
-    -- "on $n"
-numbers <- 1
-numbers <- 2
-numbers.close()
-numbers <- 3
-yield-once()
--- "end"
+```brix
+(main
+  (for (on n numbers)
+    (print (str "on " n))
+  )
+  (<- numbers 1)
+  (<- numbers 2)
+  (call (. numbers close))
+  (<- numbers 3)
+  (call yield-once)
+  (print "end")
+)
 
-+ numbers AsyncBufferedChannel'Int
+(blank)
+(prop + numbers (of AsyncBufferedChannel Int))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
-
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 ```
 
 ```output
@@ -3680,38 +3708,37 @@ end
 
 ### An AsyncOnDemandChannel subscription gets the items accepted in the turn it closes
 
-```yumi
-. channel = AsyncOnDemandChannel'Int(OnDemandSource())
-for n on channel
-    -- "on $n"
-channel <- 1
-channel <- 2
-channel.close()
-channel <- 3
-yield-once()
--- "end"
+```brix
+(main
+  (let channel (call (of AsyncOnDemandChannel Int) (call OnDemandSource)))
+  (for (on n channel)
+    (print (str "on " n))
+  )
+  (<- channel 1)
+  (<- channel 2)
+  (call (. channel close))
+  (<- channel 3)
+  (call yield-once)
+  (print "end")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ OnDemandSource
-    is Usable'Void
-
-────────────────────
-+ do begin-using
-
--- "begin using"
-
-────────────────────
-+ do end-using
-
--- "end using"
+(type + OnDemandSource
+  (implements (of Usable Void))
+  (fn-do + begin-using _
+    (print "begin using")
+  )
+  (fn-do + end-using _
+    (print "end using")
+  )
+)
 ```
 
 ```output
@@ -3724,45 +3751,42 @@ end
 
 ### An event assigned to a property of the event's Broadcastable is the event's endpoint, as a declaration of that type takes it.
 
-```yumi
-. first = Source()
-. second = Source()
-. listener = Listener(first.changed)
-listener.swap(second)
-listener.start()
-<- listener.ready
-first.changed <- 4
-second.changed <- 6
-second.changed <- 7
+```brix
+(main
+  (let first (call Source))
+  (let second (call Source))
+  (let listener (call Listener (. first changed)))
+  (call (. listener swap) second)
+  (call (. listener start))
+  (<- (. listener ready))
+  (<- (. first changed) 4)
+  (<- (. second changed) 6)
+  (<- (. second changed) 7)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Source
+(type + Source
+  (event + changed Int)
+)
 
-+ event changed Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Listener
-
-+ source Broadcastable'Int
-+ ready SyncChannel'Bool
-
-────────────────────
-+ This
-    - source
-
-────────────────────
-+ do swap
-    - other Source
-
-source = other.changed
-
-────────────────────
-+ do start
-
-do new
-    for value on source
-        -- "got $value"
-    ready <- true
+(type + Listener
+  (prop + source (of Broadcastable Int))
+  (prop + ready (of SyncChannel Bool))
+  (fn-do + This _
+    (param source _)
+  )
+  (fn-do + swap _
+    (param other Source)
+    (= source (. other changed))
+  )
+  (fn-do + start _
+    (do-new
+      (for (on value source)
+        (print (str "got " value))
+      )
+      (<- ready true)
+    )
+  )
+)
 ```
 
 ```output
@@ -3772,78 +3796,61 @@ got 7
 
 ### Events published on an EventNode bubble to ancestors that name them by class; arrival and private events stay at the target
 
-```yumi
-. root = Panel("root")
-. list = Picker("list", root)
-. inner = Picker("inner", list)
-inner.pick("a")
-list.pick("b")
-root.note("c")
+```brix
+(main
+  (let root (call Panel "root"))
+  (let list (call Picker "list" root))
+  (let inner (call Picker "inner" list))
+  (call (. inner pick) "a")
+  (call (. list pick) "b")
+  (call (. root note) "c")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node
-    is EventNode
+(type + Node
+  (implements EventNode)
+  (prop + name String)
+  (prop + up (? Node))
+  (event + noted String)
+  (fn-do + This _
+    (param name _)
+    (param up _ (= null))
+  )
+  (fn-do + note _
+    (param text String)
+    (<- noted text)
+  )
+  (fn-expr + event-parent (? EventNode) :get
+    up
+  )
+)
 
-+ name String
-+ up Node?
-+ event noted String
+(type + Picker (is Node)
+  (event + picked String)
+  (event _ quiet String)
+  (fn-do + pick _
+    (param text String)
+    (<- picked text)
+    (<- quiet text)
+  )
+  (subscribe-for (on value picked)
+    (print (str name " own " value))
+  )
+  (subscribe-for (on value picked (when arrival))
+    (print (str name " arrival " value))
+  )
+  (subscribe-for (on value quiet)
+    (print (str name " quiet " value))
+  )
+)
 
-────────────────────
-+ This
-    - name
-    - up = null
-
-────────────────────
-+ do note
-    - text String
-
-noted <- text
-
-────────────────────
-+ get event-parent EventNode?
-
-up
-
-━━━━━━━━━━━━━━━━━━━━
-+ Picker is Node
-
-+ event picked String
-_ event quiet String
-
-────────────────────
-+ do pick
-    - text String
-
-picked <- text
-quiet <- text
-
-────────────────────
-for value on picked
-
--- "$name own $value"
-
-────────────────────
-for value on picked when arrival
-
--- "$name arrival $value"
-
-────────────────────
-for value on quiet
-
--- "$name quiet $value"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Node
-
-────────────────────
-for value on Picker.picked
-
--- "$name heard $value"
-
-────────────────────
-for value on noted
-
--- "$name noted $value"
+(type + Panel (is Node)
+  (subscribe-for (on value (. Picker picked))
+    (print (str name " heard " value))
+  )
+  (subscribe-for (on value noted)
+    (print (str name " noted " value))
+  )
+)
 ```
 
 ```output
@@ -3861,66 +3868,55 @@ root noted c
 
 ### An event an interface declares is one event for every class that is of it
 
-```yumi
-. root = Holder("root")
-. a = PickA(root)
-. b = PickB(a)
-b.pick("x")
-a.pick("y")
+```brix
+(main
+  (let root (call Holder "root"))
+  (let a (call PickA root))
+  (let b (call PickB a))
+  (call (. b pick) "x")
+  (call (. a pick) "y")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Picking is Interface
+(type + Picking (is Interface)
+  (event + chosen String)
+)
 
-+ event chosen String
+(type + Node
+  (implements EventNode)
+  (prop + up (? Node))
+  (fn-do + This _
+    (param up _ (= null))
+  )
+  (fn-expr + event-parent (? EventNode) :get
+    up
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node
-    is EventNode
+(type + PickA (is Node)
+  (implements Picking)
+  (fn-do + pick _
+    (param text String)
+    (<- chosen text)
+  )
+)
 
-+ up Node?
+(type + PickB (is Node)
+  (implements Picking)
+  (fn-do + pick _
+    (param text String)
+    (<- chosen text)
+  )
+)
 
-────────────────────
-+ This
-    - up = null
-
-────────────────────
-+ get event-parent EventNode?
-
-up
-
-━━━━━━━━━━━━━━━━━━━━
-+ PickA is Node
-    is Picking
-
-────────────────────
-+ do pick
-    - text String
-
-chosen <- text
-
-━━━━━━━━━━━━━━━━━━━━
-+ PickB is Node
-    is Picking
-
-────────────────────
-+ do pick
-    - text String
-
-chosen <- text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Node
-
-+ name String
-
-────────────────────
-+ This
-    - name
-
-────────────────────
-for text on Picking.chosen
-
--- "$name chose $text"
+(type + Holder (is Node)
+  (prop + name String)
+  (fn-do + This _
+    (param name _)
+  )
+  (subscribe-for (on text (. Picking chosen))
+    (print (str name " chose " text))
+  )
+)
 ```
 
 ```output
@@ -3930,135 +3926,133 @@ root chose y
 
 ### A private event cannot be named by its class
 
-```yumi compile-error
-. root = Panel()
+```brix compile-error
+(main
+  (let root (call Panel))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Picker
+(type + Picker
+  (event _ quiet String)
+)
 
-_ event quiet String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel
-
-────────────────────
-for value on Picker.quiet
-
--- value
+(type + Panel
+  (subscribe-for (on value (. Picker quiet))
+    (print value)
+  )
+)
 ```
 
 ```output
 Exception: Event "quiet" is not public, so it does not bubble and cannot be named by its class
-<no file:13>
-    for value on Picker.quiet
-                 ^^^^^^^^^^^^
+<no file:11>
+      (subscribe-for (on value (. Picker quiet))
+                               ^^^^^^^^^^^^^^^^
 ```
 
 ### A shared event does not bubble, so it cannot be named by its class either
 
-```yumi compile-error
-. root = Panel()
+```brix compile-error
+(main
+  (let root (call Panel))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Picker
+(type + Picker
+  (event ^ quiet String)
+)
 
-^ event quiet String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel
-
-────────────────────
-for value on Picker.quiet
-
--- value
+(type + Panel
+  (subscribe-for (on value (. Picker quiet))
+    (print value)
+  )
+)
 ```
 
 ```output
 Exception: Event "quiet" is not public, so it does not bubble and cannot be named by its class
-<no file:13>
-    for value on Picker.quiet
-                 ^^^^^^^^^^^^
+<no file:11>
+      (subscribe-for (on value (. Picker quiet))
+                               ^^^^^^^^^^^^^^^^
 ```
 
 ### A handler in a markup element's body hears an event the element's class has from an interface
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = Panel()
-panel.run()
+(main
+  (let panel (call Panel))
+  (call (. panel run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Editing is Interface
+(type + Editing (is Interface)
+  (event + edited String)
+)
 
-+ event edited String
+(type + Field (is Box)
+  (implements Editing)
+  (fn-do + edit _
+    (param text String)
+    (<- edited text)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Field is Box
-    is Editing
-
-────────────────────
-+ do edit
-    - text String
-
-edited <- text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-────────────────────
-
-<This
-    <Field field
-        for text on edited
-            -- "field edited $text"
-
-────────────────────
-+ do run
-
-field.edit("x")
+(type + Panel (is Box)
+  (content
+    (<> This
+      (<> Field (id: field)
+        (for (on text edited)
+          (print (str "field edited " text))
+        )
+      )
+    )
+  )
+  (fn-do + run _
+    (call (. field edit) "x")
+  )
+)
 ```
 
 ```output
 field edited x
 ```
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. box = Listener()
-markup-mount-root(box, null)
-box.timer <- 1
-yield-once()
-box.is-open = false
-box.timer <- 2
-yield-once()
-box.is-open = true
-box.timer <- 3
-yield-once()
-box.close()
-box.timer <- 4
-yield-once()
+(main
+  (let box (call Listener))
+  (call markup-mount-root box null)
+  (<- (. box timer) 1)
+  (call yield-once)
+  (= (. box is-open) false)
+  (<- (. box timer) 2)
+  (call yield-once)
+  (= (. box is-open) true)
+  (<- (. box timer) 3)
+  (call yield-once)
+  (call (. box close))
+  (<- (. box timer) 4)
+  (call yield-once)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Listener is Box
+(type + Listener (is Box)
+  (prop + is-open _ (= true))
+  (prop + timer (of AsyncChannel Int))
+  (subscribe-for (on t timer (whenever #is-open))
+    (print t)
+  )
+)
 
-+ is-open = true
-+ timer AsyncChannel'Int
-
-────────────────────
-for t on timer whenever #is-open
-
--- t
-
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
-
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 ```
 
 ```output
@@ -4068,99 +4062,105 @@ done.wait()
 
 ### An event declared by a struct is rejected, as a struct's values are copied and no object keeps its subscribers.
 
-```yumi crash
-. p = P()
-for v on p.moved
-    -- "moved $v"
-p.moved <- 3
+```brix crash
+(main
+  (let p (call P))
+  (for (on v (. p moved))
+    (print (str "moved " v))
+  )
+  (<- (. p moved) 3)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ P is Struct
-
-+ x Int
-+ event moved Int
+(type + P (is Struct)
+  (prop + x Int)
+  (event + moved Int)
+)
 ```
 
 ```output
 Exception: Only a class can declare an event, which belongs to an object, and P is a struct, whose values are copied; declare P as a class
-<no file:11>
-    + event moved Int
-    ^^^^^^^^^^^^^^^^^
+<no file:12>
+      (event + moved Int)
+      ^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A stream of a value that reads nothing tracked is rejected, as it would never change.
 
-```yumi crash
-. c = Counter()
-. s = <c.count * 2>
+```brix crash
+(main
+  (let c (call Counter))
+  (let s (stream (* (. c count) 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
-
-+ count = 1
+(type + Counter
+  (prop + count _ (= 1))
+)
 ```
 
 ```output
 Exception: A stream of a value follows the reads written with "#", and this one has none, so it would never change; write "#" before what it follows, as in "<c.#count>"
-<no file:3>
-    . s = <c.count * 2>
-          ^^^^^^^^^^^^^
+<no file:4>
+      (let s (stream (* (. c count) 2)))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A stream of a value in a property's value is rejected, as only a statement in a function's body makes one.
 
-```yumi crash
-. w = Watcher()
--- w.feed
+```brix crash
+(main
+  (let w (call Watcher))
+  (print (. w feed))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Watcher
-
-+ feed = 1
-+ feeds = <#feed>
+(type + Watcher
+  (prop + feed _ (= 1))
+  (prop + feeds _ (= (stream #feed)))
+)
 ```
 
 ```output
 Exception: A stream of a value is made only by a statement in a function's body, as in ". values = <c.#count>"; make it there, move a machine as a value changes with a "whenever" trigger, as in "then loading whenever #feed", or publish an event from a "whenever" rule and loop on it
 <no file:9>
-    + feeds = <#feed>
-              ^^^^^^^
+      (prop + feeds _ (= (stream #feed)))
+                         ^^^^^^^^^^^^^^
 ```
 
 ### An event that carries Void is rejected, as nothing could be published to it.
 
-```yumi crash
-. d = Door()
+```brix crash
+(main
+  (let d (call Door))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Door
-
-+ event pinged Void
-+ count = 0
+(type + Door
+  (event + pinged Void)
+  (prop + count _ (= 0))
+)
 ```
 
 ```output
 Exception: An event gives each subscriber a value, so it cannot carry Void; an event that only signals carries Bool, as in "+ event pinged Bool"
 <no file:7>
-    + event pinged Void
-                   ^^^^
+      (event + pinged Void)
+                      ^^^^
 ```
 
 ### An event read with "<-" is pointed to a loop that hears it, as an event keeps no value to read.
 
-```yumi crash
-. d = Door()
-. first = <- d.rang
+```brix crash
+(main
+  (let d (call Door))
+  (let first (<- (. d rang)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Door
-
-+ event rang Int
+(type + Door
+  (event + rang Int)
+)
 ```
 
 ```output
 Exception: "rang" is an event of Door, which gives each value to its subscribers and keeps none to read with "<-"; hear the next one with "for value on d.rang", and end the loop with "break"
-<no file:3>
-    . first = <- d.rang
-                 ^^^^^^
+<no file:4>
+      (let first (<- (. d rang)))
+                     ^^^^^^^^^^
 ```

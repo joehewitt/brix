@@ -1,0 +1,292 @@
+(import /core/table)
+(import /data/source-sexp)
+(import /data/source-tree)
+
+(type + BrixLayout
+  (implements SexpLayout)
+  (prop _ store SourceStore)
+  (fn-do + This _
+    (param store _)
+  )
+  (fn-do + header-count (? Int)
+    (param node (of ImmutableTableRow SourceNode))
+    (let items (call (. store items) node))
+    (let head (call (. store head) node))
+    (return-if null (if (not head)))
+    (let is-piped (and (== head "pipe") (> (. items length) 1)))
+    (return-if 3 (if (and is-piped (call (. store is-atom) ([] items 1)) (== (call (. store text) ([] items 1)) "~>"))))
+    (if (== head "for")
+      (let listed (> (. items length) 1))
+      (for (in position (..< 1 (. items length)))
+        (= listed (and listed (call (. store is-atom) ([] items position))))
+      )
+      (return-if (. items length) (if listed))
+    )
+    (if (== head "keyframes")
+      (return (if-expr (and (> (. items length) 2) (call (. store is-form) ([] items 2) "param")) 5 4))
+    )
+    (let fixed (call brix-fixed-header head))
+    (return-if fixed (if (!= fixed null)))
+    (let first (call brix-leading-header head))
+    (return-if null (if (== first null)))
+    (let count first)
+    (let is-type (or (== head "type") (== head "extend") (== head "style") (== head "style-extend")))
+    (let is-function (call brix-is-callable head))
+    (let is-setter false)
+    (while (and (< count (. items length)) (call is-attribute ([] items count) is-type))
+      (let item ([] items count))
+      (if (and is-function (call (. store is-list) item) (call (. (?? (call (. store head) item) "") starts-with) ":"))
+        (break)
+      )
+      (= is-setter (or is-setter (and (call (. store is-atom) item) (== (call (. store text) item) ":set"))))
+      (+= count 1)
+    )
+    (return (if-expr (and is-setter (< count (. items length))) (+ count 1) count))
+  )
+  (fn-expr + wrapper (? String)
+    (param node (of ImmutableTableRow SourceNode))
+    (only-if "main" (if (not (or (call (. store is-comment) node) (call brix-is-top (?? (call (. store head) node) ""))))))
+  )
+  (fn-expr + is-apart Bool
+    (param node (of ImmutableTableRow SourceNode))
+    (call brix-is-divided (?? (call (. store head) node) ""))
+  )
+  (fn-expr _ is-attribute Bool
+    (param node (of ImmutableTableRow SourceNode))
+    (param is-type Bool)
+    (case? (not text)
+      false
+    )
+    (case? (and is-type (or (== text "is") (== text "facet-of") (== text "alias") is-clause))
+      true
+    )
+    (case? (and (call (. store is-list) node) (or (== text "without") (== text "door") (and (== text "with") (== (call (. store count) node) 3))))
+      true
+    )
+    (case? (== (. bytes length) 0)
+      false
+    )
+    (case? (or (== ([] bytes 0) 58) (== ([] bytes 0) 64) (== ([] bytes (- (. bytes length) 1)) 58))
+      true
+    )
+    (default
+      (or (== text "?!") (== text "•") (== text "trigger"))
+    )
+    (where
+      (lazy text (if-expr (call (. store is-atom) node) (call (. store text) node) (call (. store head) node)))
+      (lazy bytes (call byte-view text))
+      (lazy is-clause (or (== text "as") (== text "where") (== text "for")))
+    )
+  )
+)
+
+(fn-expr + brix-is-divided Bool
+  (param head String)
+  (or (call brix-is-callable head) (== head "content") (== head "effect") (has types head) (has rules head))
+  (where
+    (lazy types (list "type" "extend" "style" "style-extend"))
+    (lazy rules (list "when-rule" "whenever-rule" "subscribe" "subscribe-for"))
+  )
+)
+
+(fn-expr + brix-is-callable Bool
+  (param head String)
+  (has (list "fn-do" "fn-expr" "fn-from-do" "fn-from-expr" "fn-to-do" "fn-to-expr") head)
+)
+
+(fn-expr + brix-is-top Bool
+  (param head String)
+  (or (call brix-is-divided head) (has rows head))
+  (where
+    (lazy rows (list "import" "export" "prop" "type-line" "extend-line" "unit" "blank" "raw" "unparsed"))
+  )
+)
+
+(fn-expr _ brix-fixed-header (? Int)
+  (param head String)
+  (match? head
+    (case= "block"
+      1
+    )
+    (case= "before"
+      1
+    )
+    (case= "where"
+      1
+    )
+    (case= "content"
+      1
+    )
+    (case= "machine"
+      1
+    )
+    (case= "else"
+      1
+    )
+    (case= "default"
+      1
+    )
+    (case= "finally"
+      1
+    )
+    (case= "pattern"
+      1
+    )
+    (case= "paragraph"
+      1
+    )
+    (case= "scope"
+      2
+    )
+    (case= "if"
+      2
+    )
+    (case= "else-if"
+      2
+    )
+    (case= "while"
+      2
+    )
+    (case= "for"
+      2
+    )
+    (case= "or-for"
+      2
+    )
+    (case= "and-for"
+      2
+    )
+    (case= "when-style"
+      2
+    )
+    (case= "else-state"
+      2
+    )
+    (case= "match"
+      2
+    )
+    (case= "match?"
+      2
+    )
+    (case= "case"
+      2
+    )
+    (case= "case?"
+      2
+    )
+    (case= "case="
+      2
+    )
+    (case= "case-union"
+      2
+    )
+    (case= "case-union?"
+      2
+    )
+    (case= "case-union="
+      2
+    )
+    (case= "case-each"
+      2
+    )
+    (case= "on-error"
+      2
+    )
+    (case= "on-failure"
+      2
+    )
+    (case= "when-rule"
+      2
+    )
+    (case= "subscribe"
+      2
+    )
+    (case= "subscribe-for"
+      2
+    )
+    (case= "do-use"
+      2
+    )
+    (case= "do-use?"
+      2
+    )
+    (case= "do-with"
+      3
+    )
+  )
+)
+
+(fn-expr _ brix-leading-header (? Int)
+  (param head String)
+  (match? head
+    (case= "fn-do"
+      4
+    )
+    (case= "fn-expr"
+      4
+    )
+    (case= "fn-from-do"
+      3
+    )
+    (case= "fn-from-expr"
+      3
+    )
+    (case= "fn-to-do"
+      3
+    )
+    (case= "fn-to-expr"
+      3
+    )
+    (case= "type"
+      3
+    )
+    (case= "extend"
+      3
+    )
+    (case= "style"
+      2
+    )
+    (case= "style-extend"
+      2
+    )
+    (case= "rule"
+      2
+    )
+    (case= "track"
+      2
+    )
+    (case= "own-rule"
+      2
+    )
+    (case= "whenever-rule"
+      2
+    )
+    (case= "effect"
+      3
+    )
+    (case= "<>"
+      2
+    )
+    (case= "+<>"
+      2
+    )
+    (case= "~"
+      2
+    )
+    (case= "state"
+      2
+    )
+    (case= "then"
+      2
+    )
+    (case= "do"
+      1
+    )
+    (case= "do-new"
+      1
+    )
+    (case= "do-new-thread"
+      1
+    )
+  )
+)

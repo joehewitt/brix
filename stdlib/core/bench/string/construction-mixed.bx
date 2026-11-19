@@ -1,0 +1,25 @@
+; benchmark.meta description: Constructs repeated, concatenated, and sliced ASCII plus mixed UTF-8 Strings.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator
+(blank)
+
+(main
+  (let ascii-unit "0123456789abcdef")
+  (let mixed-unit "Aé漢😀")
+  (let passes 8192)
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 passes))
+    (let ascii (* ascii-unit 64))
+    (let mixed (* mixed-unit 16))
+    (let joined (++ ascii mixed))
+    (let tail ([] joined (..< 1024 1088)))
+    (+= checksum (+ (. joined size) (. joined length) (. tail size) (. tail length)))
+  )
+  (blank)
+  (if (!= checksum 20447232)
+    (throw (call Panic "construction-mixed benchmark produced the wrong checksum"))
+  )
+  (blank)
+  (print (str "bench-result string/construction-mixed checksum=" checksum))
+)

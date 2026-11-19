@@ -1,37 +1,37 @@
 # Inheritance
 
-```yumi
-. bar = Bar()
-. thing Foo = bar
--- thing.a
+```brix
+(main
+  (let bar (call Bar))
+  (let thing Foo bar)
+  (print (. thing a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + a _ (= 0))
+)
 
-+ a = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
+(type + Bar (is Foo))
 ```
 
 ```output
 0
 ```
 
-```yumi
-. bar = Bar()
--- bar.b
--- bar.a
+```brix
+(main
+  (let bar (call Bar))
+  (print (. bar b))
+  (print (. bar a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + a _ (= 42))
+)
 
-+ a = 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-+ b = 99
+(type + Bar (is Foo)
+  (prop + b _ (= 99))
+)
 ```
 
 ```output
@@ -41,26 +41,25 @@
 
 ### Overriding base property
 
-```yumi
-. bar = Bar()
--- bar.a
--- show(bar)
+```brix
+(main
+  (let bar (call Bar))
+  (print (. bar a))
+  (print (call show bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + a _ (= 42))
+)
 
-+ a = 42
+(type + Bar (is Foo)
+  (prop + a _ (= 99))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-+ a = 99
-
-━━━━━━━━━━━━━━━━━━━━
-+ show
-    - foo Foo
-
-foo.a
+(fn-expr + show _
+  (param foo Foo)
+  (. foo a)
+)
 ```
 
 ```output
@@ -70,26 +69,25 @@ foo.a
 
 ### Overriding base property with different type should cast to base type
 
-```yumi
-. bar = Bar()
--- bar.a
--- show(bar)
+```brix
+(main
+  (let bar (call Bar))
+  (print (. bar a))
+  (print (call show bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + a _ (= 42.0))
+)
 
-+ a = 42.0
+(type + Bar (is Foo)
+  (prop + a _ (= 99))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-+ a = 99
-
-━━━━━━━━━━━━━━━━━━━━
-+ show
-    - foo Foo
-
-foo.a
+(fn-expr + show _
+  (param foo Foo)
+  (. foo a)
+)
 ```
 
 ```output
@@ -97,25 +95,23 @@ foo.a
 99
 ```
 
-```yumi
-. bar = Bar()
-bar.bar()
+```brix
+(main
+  (let bar (call Bar))
+  (call (. bar bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + a _ (= 42))
+)
 
-+ a = 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-+ b = 99
-
-────────────────────
-+ do bar
-
--- b
--- a
+(type + Bar (is Foo)
+  (prop + b _ (= 99))
+  (fn-do + bar _
+    (print b)
+    (print a)
+  )
+)
 ```
 
 ```output
@@ -123,31 +119,27 @@ bar.bar()
 42
 ```
 
-```yumi
-. bar = Bar()
-bar.bar()
-bar.foo()
+```brix
+(main
+  (let bar (call Bar))
+  (call (. bar bar))
+  (call (. bar foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + a _ (= 42))
+  (fn-do + foo _
+    (print (str "Foo.a = " a))
+  )
+)
 
-+ a = 42
-
-────────────────────
-+ do foo
-
--- "Foo.a = $a"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-+ b = 99
-
-────────────────────
-+ do bar
-
--- "Bar.b = $b"
--- "Bar.a = $a"
+(type + Bar (is Foo)
+  (prop + b _ (= 99))
+  (fn-do + bar _
+    (print (str "Bar.b = " b))
+    (print (str "Bar.a = " a))
+  )
+)
 ```
 
 ```output
@@ -156,123 +148,109 @@ Bar.a = 42
 Foo.a = 42
 ```
 
-```yumi
-. bar = Bar()
-act(bar)
+```brix
+(main
+  (let bar (call Bar))
+  (call act bar)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + a _ (= 42))
+  (fn-do + foo _
+    (print (str "Foo.a = " a))
+  )
+)
 
-+ a = 42
+(type + Bar (is Foo)
+  (prop + b _ (= 99))
+  (fn-do + bar _
+    (print (str "Bar.b = " b))
+    (print (str "Bar.a = " a))
+  )
+)
 
-────────────────────
-+ do foo
-
--- "Foo.a = $a"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-+ b = 99
-
-────────────────────
-+ do bar
-
--- "Bar.b = $b"
--- "Bar.a = $a"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do act
-    - thing Foo
-
-thing.foo()
+(fn-do + act _
+  (param thing Foo)
+  (call (. thing foo))
+)
 ```
 
 ```output
 Foo.a = 42
 ```
 
-```yumi
-. bar = Bar()
-bar.f1()
+```brix
+(main
+  (let bar (call Bar))
+  (call (. bar f1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (fn-do + f1 _
+    (print "Foo 1")
+  )
+)
 
-────────────────────
-+ do f1
-
--- "Foo 1"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-────────────────────
-+ do f1
-
--- "Bar 1"
+(type + Bar (is Foo)
+  (fn-do + f1 _
+    (print "Bar 1")
+  )
+)
 ```
 
 ```output
 Bar 1
 ```
 
-```yumi
-. bar = Bar()
+```brix
+(main
+  (let bar (call Bar))
+  (blank)
+  ; Downcast still calls method on subclass
+  (let foo Foo bar)
+  (call (. foo f1))
+)
 
-` Downcast still calls method on subclass
-. foo Foo = bar
-foo.f1()
+(type + Foo
+  (fn-do + f1 _
+    (print "Foo 1")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do f1
-
--- "Foo 1"
-
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-────────────────────
-+ do f1
-
--- "Bar 1"
+(type + Bar (is Foo)
+  (fn-do + f1 _
+    (print "Bar 1")
+  )
+)
 ```
 
 ```output
 Bar 1
 ```
 
-```yumi
-. bar = Bar()
-. foo = Foo()
+```brix
+(main
+  (let bar (call Bar))
+  (let foo (call Foo))
+  (blank)
+  (call (. bar f1))
+  (call (. foo f2))
+)
 
-bar.f1()
-foo.f2()
+(type + Foo
+  (fn-do + f1 _
+    (print "Foo 1")
+  )
+  (fn-do + f2 _
+    (print "Foo 2")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do f1
-
--- "Foo 1"
-
-────────────────────
-+ do f2
-
--- "Foo 2"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-────────────────────
-+ do f1
-
--- "Bar 1"
+(type + Bar (is Foo)
+  (fn-do + f1 _
+    (print "Bar 1")
+  )
+)
 ```
 
 ```output
@@ -280,98 +258,89 @@ Bar 1
 Foo 2
 ```
 
-```yumi
-. bar = Bar()
+```brix
+(main
+  (let bar (call Bar))
+  (blank)
+  ; Downcast still calls method on subclass
+  (let foo Foo bar)
+  (call (. foo f2))
+)
 
-` Downcast still calls method on subclass
-. foo Foo = bar
-foo.f2()
+(type + Foo
+  (fn-do + f1 _
+    (print "Foo 1")
+  )
+  (fn-do + f2 _
+    (print "Foo 2")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do f1
-
--- "Foo 1"
-
-────────────────────
-+ do f2
-
--- "Foo 2"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-────────────────────
-+ do f1
-
--- "Bar 1"
+(type + Bar (is Foo)
+  (fn-do + f1 _
+    (print "Bar 1")
+  )
+)
 ```
 
 ```output
 Foo 2
 ```
 
-```yumi
-. bar = Bar()
+```brix
+(main
+  (let bar (call Bar))
+  (blank)
+  ; Downcast in argument still calls method on subclass
+  (let foo Foo bar)
+  (call act foo)
+)
 
-` Downcast in argument still calls method on subclass
-. foo Foo = bar
-act(foo)
+(type + Foo
+  (fn-do + f1 _
+    (print "Foo 1")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Bar (is Foo)
+  (fn-do + f1 _
+    (print "Bar 1")
+  )
+)
 
-────────────────────
-+ do f1
-
--- "Foo 1"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-────────────────────
-+ do f1
-
--- "Bar 1"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do act
-    - foo Foo
-
-foo.f1()
+(fn-do + act _
+  (param foo Foo)
+  (call (. foo f1))
+)
 ```
 
 ```output
 Bar 1
 ```
 
-```yumi
-. bar = Bar()
+```brix
+(main
+  (let bar (call Bar))
+  (blank)
+  ; Downcast still calls method on subclass
+  (let foo Foo bar)
+  (call (. foo f1) 5.5)
+  (call (. foo f1) 3)
+)
 
-` Downcast still calls method on subclass
-. foo Foo = bar
-foo.f1(5.5)
-foo.f1(3)
+(type + Foo
+  (fn-do + (of f1 T) _
+    (param a T)
+    (print (str "Foo 1 " a))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do f1'T
-    - a T
-
--- "Foo 1 $a"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-────────────────────
-+ do f1'T
-    - a T
-
--- "Bar 1 $a"
+(type + Bar (is Foo)
+  (fn-do + (of f1 T) _
+    (param a T)
+    (print (str "Bar 1 " a))
+  )
+)
 ```
 
 ```output
@@ -381,25 +350,25 @@ Bar 1 3
 
 ### This test verifies a fix I made to the layout of class structs which puts the lazy flag in a predictable place for all subclasses.
 
-```yumi
-. foo = Foo()
--- foo.a
-. bar = Bar()
--- bar.a
+```brix
+(main
+  (let foo (call Foo))
+  (print (. foo a))
+  (let bar (call Bar))
+  (print (. bar a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + foo _ (= 42))
+  (prop + a _ (=> b))
+  (prop + b _ (:= foo))
+)
 
-+ foo = 42
-+ a => b
-+ b := foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-` This is here just to shift the properties down in the struct
-` which, in the old code, would move the lazy flag lower in the subclass struct only
-+ bar = 1
+(type + Bar (is Foo)
+  ; This is here just to shift the properties down in the struct
+  ; which, in the old code, would move the lazy flag lower in the subclass struct only
+  (prop + bar _ (= 1))
+)
 ```
 
 ```output
@@ -409,34 +378,31 @@ Bar 1 3
 
 ### Direct dispatch must account for declared subclasses that are instantiated later
 
-```yumi
-. base = Base()
-act(base)
+```brix
+(main
+  (let base (call Base))
+  (call act base)
+  (blank)
+  (let child (call Child))
+  (call act child)
+)
 
-. child = Child()
-act(child)
+(type + Base
+  (fn-do + name _
+    (print "Base")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Child (is Base)
+  (fn-do + name _
+    (print "Child")
+  )
+)
 
-────────────────────
-+ do name
-
--- "Base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ do name
-
--- "Child"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do act
-    - thing Base
-
-thing.name()
+(fn-do + act _
+  (param thing Base)
+  (call (. thing name))
+)
 ```
 
 ```output
@@ -446,34 +412,31 @@ Child
 
 ### Direct dispatch must account for generic declared subclasses that are instantiated later
 
-```yumi
-. base = Base'Int()
-act(base)
+```brix
+(main
+  (let base (call (of Base Int)))
+  (call act base)
+  (blank)
+  (let child (call (of Child Int)))
+  (call act child)
+)
 
-. child = Child'Int()
-act(child)
+(type + (of Base T)
+  (fn-do + name _
+    (print "Base")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base'T
+(type + (of Child T) (is (of Base T))
+  (fn-do + name _
+    (print "Child")
+  )
+)
 
-────────────────────
-+ do name
-
--- "Base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child'T is Base'T
-
-────────────────────
-+ do name
-
--- "Child"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do act
-    - thing Base'Int
-
-thing.name()
+(fn-do + act _
+  (param thing (of Base Int))
+  (call (. thing name))
+)
 ```
 
 ```output
@@ -483,34 +446,31 @@ Child
 
 ### Direct dispatch must account for generic subclasses of non-generic bases
 
-```yumi
-. base = Base()
-act(base)
+```brix
+(main
+  (let base (call Base))
+  (call act base)
+  (blank)
+  (let child (call (of Child Int)))
+  (call act child)
+)
 
-. child = Child'Int()
-act(child)
+(type + Base
+  (fn-do + name _
+    (print "Base")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + (of Child T) (is Base)
+  (fn-do + name _
+    (print "Child")
+  )
+)
 
-────────────────────
-+ do name
-
--- "Base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child'T is Base
-
-────────────────────
-+ do name
-
--- "Child"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do act
-    - thing Base
-
-thing.name()
+(fn-do + act _
+  (param thing Base)
+  (call (. thing name))
+)
 ```
 
 ```output
@@ -520,150 +480,139 @@ Child
 
 ### An inherited event cannot be redeclared as a property
 
-```yumi crash
-EventPropertyChild()
+```brix crash
+(main
+  (call EventPropertyChild)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ EventBase
+(type + EventBase
+  (event + changed Int)
+)
 
-+ event changed Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ EventPropertyChild is EventBase
-
-+ changed = 1
+(type + EventPropertyChild (is EventBase)
+  (prop + changed _ (= 1))
+)
 ```
 
 ```output
 Exception: Inherited event "changed" cannot be redeclared as a property
-<no file:12>
-    + changed = 1
-    ^^^^^^^^^^^^^
+<no file:11>
+      (prop + changed _ (= 1))
+      ^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### An inherited property cannot be redeclared as a event
 
-```yumi crash
-PropertyEventChild()
+```brix crash
+(main
+  (call PropertyEventChild)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ PropertyBase
+(type + PropertyBase
+  (prop + changed _ (= 1))
+)
 
-+ changed = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ PropertyEventChild is PropertyBase
-
-+ event changed Int
+(type + PropertyEventChild (is PropertyBase)
+  (event + changed Int)
+)
 ```
 
 ```output
 Exception: Inherited property "changed" cannot be redeclared as an event
-<no file:12>
-    + event changed Int
-    ^^^^^^^^^^^^^^^^^^^
+<no file:11>
+      (event + changed Int)
+      ^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### An inherited event cannot be redeclared as a method
 
-```yumi crash
-EventMethodChild().run()
+```brix crash
+(main
+  (call (. (call EventMethodChild) run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ EventMethodBase
+(type + EventMethodBase
+  (event + submit String)
+)
 
-+ event submit String
-
-━━━━━━━━━━━━━━━━━━━━
-+ EventMethodChild is EventMethodBase
-
-────────────────────
-+ do run
-
-submit("x")
-
-────────────────────
-_ do submit
-    - text String
-
--- text
+(type + EventMethodChild (is EventMethodBase)
+  (fn-do + run _
+    (call submit "x")
+  )
+  (fn-do _ submit _
+    (param text String)
+    (print text)
+  )
+)
 ```
 
 ```output
 Exception: Inherited event "submit" cannot be redeclared as a method
-<no file:18>
-    _ do submit
-    ^^^^^^^^^^
+<no file:14>
+      (fn-do _ submit _
+      ^^^^^^^^^^^^^^^^
 ```
 
 ### An inherited method cannot be redeclared as an event
 
-```yumi crash
-MethodEventChild()
+```brix crash
+(main
+  (call MethodEventChild)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MethodEventBase
+(type + MethodEventBase
+  (fn-do + changed _
+    (param value Int)
+  )
+)
 
-────────────────────
-+ do changed
-    - value Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ MethodEventChild is MethodEventBase
-
-+ event changed Int
+(type + MethodEventChild (is MethodEventBase)
+  (event + changed Int)
+)
 ```
 
 ```output
 Exception: Inherited method "changed" cannot be redeclared as an event
-<no file:14>
-    + event changed Int
-    ^^^^^^^^^^^^^^^^^^^
+<no file:13>
+      (event + changed Int)
+      ^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Lowered inherited subscriptions preserve base-before-derived lexical order
 
-```yumi
-. owner = OrderedEventChild()
+```brix
+(main
+  (let owner (call OrderedEventChild))
+  (blank)
+  (for (on value (. owner changed))
+    (print (str "external " value))
+  )
+  (blank)
+  (call (. owner emit) 9)
+)
 
-for value on owner.changed
-    -- "external $value"
+(type + OrderedEventBase
+  (event + changed Int)
+  (subscribe-for (on value changed)
+    (print (str "base-1 " value))
+  )
+  (subscribe-for (on value changed)
+    (print (str "base-2 " value))
+  )
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
 
-owner.emit(9)
-
-━━━━━━━━━━━━━━━━━━━━
-+ OrderedEventBase
-
-+ event changed Int
-
-────────────────────
-for value on changed
-
--- "base-1 $value"
-
-────────────────────
-for value on changed
-
--- "base-2 $value"
-
-────────────────────
-+ do emit
-    - value Int
-
-changed <- value
-
-━━━━━━━━━━━━━━━━━━━━
-+ OrderedEventChild is OrderedEventBase
-
-────────────────────
-for value on changed
-
--- "derived-1 $value"
-
-────────────────────
-for value on changed
-
--- "derived-2 $value"
+(type + OrderedEventChild (is OrderedEventBase)
+  (subscribe-for (on value changed)
+    (print (str "derived-1 " value))
+  )
+  (subscribe-for (on value changed)
+    (print (str "derived-2 " value))
+  )
+)
 ```
 
 ```output
@@ -674,83 +623,72 @@ derived-2 9
 external 9
 ```
 
-```yumi
-. child = Child'I32()
-child.target = Target'I32()
-child.value = 42
-child.run()
+```brix
+(main
+  (let child (call (of Child I32)))
+  (= (. child target) (call (of Target I32)))
+  (= (. child value) 42)
+  (call (. child run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Root
+(type + Root)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Root
+(type + Base (is Root)
+  (fn-do + run _
+    (call execute)
+  )
+  (fn-do + execute _
+    (print "base")
+  )
+)
 
-────────────────────
-+ do run
+(type + (of Target T)
+  (fn-do + accept _
+    (param value T)
+    (print value)
+  )
+)
 
-execute()
-
-────────────────────
-+ do execute
-
--- "base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Target'T
-
-────────────────────
-+ do accept
-    - value T
-
--- value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child'T is Base
-
-+ target Target'T
-+ value T
-
-────────────────────
-+ do execute
-
-target.accept(value)
+(type + (of Child T) (is Base)
+  (prop + target (of Target T))
+  (prop + value T)
+  (fn-do + execute _
+    (call (. target accept) value)
+  )
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-. derived = pick(true)
-. base = pick(false)
--- derived is Derived
--- base is Derived
--- base.name()
-. fallback = if false then Derived() else Base()
--- fallback.name()
+```brix
+(main
+  (let derived (call pick true))
+  (let base (call pick false))
+  (print (is derived Derived))
+  (print (is base Derived))
+  (print (call (. base name)))
+  (let fallback (if-expr false (call Derived) (call Base)))
+  (print (call (. fallback name)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (fn-do + name String
+    (return "base")
+  )
+)
 
-────────────────────
-+ do name String
+(type + Derived (is Base)
+  (fn-do + name String
+    (return "derived")
+  )
+)
 
-= "base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-────────────────────
-+ do name String
-
-= "derived"
-
-━━━━━━━━━━━━━━━━━━━━
-+ pick Base
-    - derived Bool
-
-if derived then Derived() else Base()
+(fn-expr + pick Base
+  (param derived Bool)
+  (if-expr derived (call Derived) (call Base))
+)
 ```
 
 ```output
@@ -762,35 +700,29 @@ base
 
 ### A subclass getter can read its base getter through super without dispatching back to itself.
 
-```yumi
--- SuperReadChild().label
--- SuperReadChild().is-ready
+```brix
+(main
+  (print (. (call SuperReadChild) label))
+  (print (. (call SuperReadChild) is-ready))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ SuperReadBase
+(type + SuperReadBase
+  (fn-do + label String :get
+    (return "base")
+  )
+  (fn-do + is-ready Bool :get
+    (return true)
+  )
+)
 
-────────────────────
-+ do get label String
-
-= "base"
-
-────────────────────
-+ do get is-ready Bool
-
-= true
-
-━━━━━━━━━━━━━━━━━━━━
-+ SuperReadChild is SuperReadBase
-
-────────────────────
-+ do get label
-
-= "child of ${super.label}"
-
-────────────────────
-+ do get is-ready
-
-= super.is-ready && false
+(type + SuperReadChild (is SuperReadBase)
+  (fn-do + label _ :get
+    (return (str "child of " (. super label)))
+  )
+  (fn-do + is-ready _ :get
+    (return (and (. super is-ready) false))
+  )
+)
 ```
 
 ```output
@@ -800,33 +732,28 @@ false
 
 ### This in an inherited method names the declaring class, the type of `this` there.
 
-```yumi
-. keyed = ThisKeyed()
-. same = keyed.me()
--- same.count
--- keyed.with'Int(:: item => item.count + 1)
+```brix
+(main
+  (let keyed (call ThisKeyed))
+  (let same (call (. keyed me)))
+  (print (. same count))
+  (print (call (of (. keyed with) Int) (=> (item) (+ (. item count) 1))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ThisBase
+(type + ThisBase
+  (prop + count _ (= 1))
+  (fn-expr + me This
+    this
+  )
+  (fn-expr + (of with Result) _
+    (param func (fn-type Result (param _ This)))
+    (call func this)
+  )
+)
 
-+ count = 1
-
-────────────────────
-+ me This
-
-this
-
-────────────────────
-+ with'Result
-    - func () Result
-        - This
-
-func(this)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ThisKeyed is ThisBase
-
-+ extra = 2
+(type + ThisKeyed (is ThisBase)
+  (prop + extra _ (= 2))
+)
 ```
 
 ```output
@@ -836,73 +763,64 @@ func(this)
 
 ### A member only the subclass declares is not visible through an inherited This.
 
-```yumi compile-error
-. keyed = ThisKeyed()
--- keyed.me().extra
+```brix compile-error
+(main
+  (let keyed (call ThisKeyed))
+  (print (. (call (. keyed me)) extra))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ThisBase
+(type + ThisBase
+  (fn-expr + me This
+    this
+  )
+)
 
-────────────────────
-+ me This
-
-this
-
-━━━━━━━━━━━━━━━━━━━━
-+ ThisKeyed is ThisBase
-
-+ extra = 2
+(type + ThisKeyed (is ThisBase)
+  (prop + extra _ (= 2))
+)
 ```
 
 ```output
 Exception: ThisBase has no property "extra"
-<no file:3>
-    -- keyed.me().extra
-       ^^^^^^^^^^^^^^^^
+<no file:4>
+      (print (. (call (. keyed me)) extra))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A method called in a constructor is the one of the constructor's own class, whether it is called by name, on `this`, or by another method the constructor calls.
 
-```yumi
-Child()
--- "--"
-Base()
+```brix
+(main
+  (call Child)
+  (print "--")
+  (call Base)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (fn-do + This _
+    (call report)
+    (call (. this report))
+    (call relay)
+  )
+  (fn-do + relay _
+    (call report)
+  )
+  (fn-do + report _
+    (print "base")
+  )
+)
 
-────────────────────
-+ This
-
-report()
-this.report()
-relay()
-
-────────────────────
-+ do relay
-
-report()
-
-────────────────────
-+ do report
-
--- "base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ This
-
-super()
--- "child ctor"
-report()
-relay()
-
-────────────────────
-+ do report
-
--- "child"
+(type + Child (is Base)
+  (fn-do + This _
+    (call super)
+    (print "child ctor")
+    (call report)
+    (call relay)
+  )
+  (fn-do + report _
+    (print "child")
+  )
+)
 ```
 
 ```output
@@ -920,64 +838,50 @@ base
 
 ### A constructor the compiler generates gives the base's properties their values before its own, and a method a base's constructor calls is the base's.
 
-```yumi
-Child()
--- "--"
-Grand()
+```brix
+(main
+  (call Child)
+  (print "--")
+  (call Grand)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + a _ (= (call say "a")))
+  (fn-do + This _
+    (call report)
+    (call relay)
+  )
+  (fn-do + relay _
+    (call report)
+  )
+  (fn-do + report _
+    (print "base")
+  )
+)
 
-+ a = say("a")
+(type + Child (is Base)
+  (prop + b _ (= (call say "b")))
+  (fn-do + report _
+    (print "child")
+  )
+)
 
-────────────────────
-+ This
+(type + Grand (is Child)
+  (prop + c _ (= (call say "c")))
+  (fn-do + This _
+    (call super)
+    (print "grand after")
+  )
+  (fn-do + report _
+    (print "grand")
+  )
+)
 
-report()
-relay()
-
-────────────────────
-+ do relay
-
-report()
-
-────────────────────
-+ do report
-
--- "base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-+ b = say("b")
-
-────────────────────
-+ do report
-
--- "child"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Grand is Child
-
-+ c = say("c")
-
-────────────────────
-+ This
-
-super()
--- "grand after"
-
-────────────────────
-+ do report
-
--- "grand"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do say String
-    - s String
-
--- "say $s"
-= s
+(fn-do + say String
+  (param s String)
+  (print (str "say " s))
+  (return s)
+)
 ```
 
 ```output
@@ -996,31 +900,28 @@ grand after
 
 ### A setter a subclass declares again is called through a value held as the base.
 
-```yumi
-. b Base = Child()
-b.value = 5
--- b.stored
-. c Base = Base()
-c.value = 5
--- c.stored
+```brix
+(main
+  (let b Base (call Child))
+  (= (. b value) 5)
+  (print (. b stored))
+  (let c Base (call Base))
+  (= (. c value) 5)
+  (print (. c stored))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + stored _ (= 0))
+  (fn-do + value _ :set (param v Int)
+    (= stored v)
+  )
+)
 
-+ stored = 0
-
-────────────────────
-+ do value = v Int
-
-stored = v
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ do value = v Int
-
-stored = v * 2
+(type + Child (is Base)
+  (fn-do + value _ :set (param v Int)
+    (= stored (* v 2))
+  )
+)
 ```
 
 ```output
@@ -1030,45 +931,37 @@ stored = v * 2
 
 ### An operator a subclass declares again is called through a value held as the base.
 
-```yumi
-. a Base = Child()
-. b Base = Base()
--- a + 1
--- b + 1
--- a == b
--- !a
--- !b
+```brix
+(main
+  (let a Base (call Child))
+  (let b Base (call Base))
+  (print (+ a 1))
+  (print (+ b 1))
+  (print (== a b))
+  (print (not a))
+  (print (not b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (fn-expr + (infix this + (param n Int)) _
+    (+ n 100)
+  )
+  (fn-expr + (infix this == (param other Base)) _
+    true
+  )
+  (fn-expr + (prefix ! this) _
+    false
+  )
+)
 
-────────────────────
-+ this + n Int
-
-n + 100
-
-────────────────────
-+ this == other Base
-
-true
-
-────────────────────
-+ !this
-
-false
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ this + n Int
-
-n + 200
-
-────────────────────
-+ !this
-
-true
+(type + Child (is Base)
+  (fn-expr + (infix this + (param n Int)) _
+    (+ n 200)
+  )
+  (fn-expr + (prefix ! this) _
+    true
+  )
+)
 ```
 
 ```output
@@ -1081,141 +974,129 @@ false
 
 ### A panic raised by a method a subclass declares again passes through a call made on the base.
 
-```yumi crash
-. b Base = Child()
-run(b)
--- "after"
+```brix crash
+(main
+  (let b Base (call Child))
+  (call run b)
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
-    - b Base
+(fn-do + run _
+  (param b Base)
+  (call (. b go))
+  (print "not here")
+)
 
-b.go()
--- "not here"
+(type + Base
+  (fn-do + go _
+    (print "base")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-────────────────────
-+ do go
-
--- "base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ do go
-
-?! Panic("child boom")
+(type + Child (is Base)
+  (fn-do + go _
+    (throw (call Panic "child boom"))
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: child boom
-<no file:27>
+<no file:22>
 
 Task 1
 
 Stack trace:
-  0  __source__:Child:go no file:27:1
-  1  __source__:run no file:10:1
-  2  __source__:main no file:3:1
+  0  __source__:Child:go no file:22:5
+  1  __source__:run no file:10:3
+  2  __source__:main no file:4:3
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### A panic raised by a getter a subclass declares again passes through a read made on the base, and the trace names the getter with its class.
 
-```yumi crash
-. b Base = Child()
-show(b)
--- "after"
+```brix crash
+(main
+  (let b Base (call Child))
+  (call show b)
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - b Base
+(fn-do + show _
+  (param b Base)
+  (print (. b label))
+  (print "not here")
+)
 
--- b.label
--- "not here"
+(type + Base
+  (fn-expr + label _ :get
+    "base"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Child (is Base)
+  (fn-expr + label _ :get
+    (call boom)
+  )
+)
 
-────────────────────
-+ get label
-
-"base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ get label
-
-boom()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do boom String
-
-?! Panic("getter boom")
-= "child"
+(fn-do + boom String
+  (throw (call Panic "getter boom"))
+  (return "child")
+)
 ```
 
 ```stderr
 Unhandled panic: getter boom
-<no file:32>
+<no file:27>
 
 Task 1
 
 Stack trace:
-  0  __source__:boom no file:32:1
-  1  __source__:Child:label no file:27:1
-  2  __source__:show no file:10:4
-  3  __source__:main no file:3:1
+  0  __source__:boom no file:27:3
+  1  __source__:Child:label no file:22:5
+  2  __source__:show no file:10:10
+  3  __source__:main no file:4:3
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
 ### `super(…)` gives the base's constructor the object being made: the properties its arguments fill are stored again, with the values that read them.
 
-```yumi
-. c = Child(5)
--- c.n
--- c.double
--- c.other
--- c.extra
+```brix
+(main
+  (let c (call Child 5))
+  (print (. c n))
+  (print (. c double))
+  (print (. c other))
+  (print (. c extra))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + n _ (= 1))
+  (prop + double _ (= (* n 2)))
+  (prop + other _ (= (call say 7)))
+  (fn-do + This _
+    (param n _)
+    (print (str "base body " n " " double))
+  )
+)
 
-+ n = 1
-+ double = n * 2
-+ other = say(7)
+(type + Child (is Base)
+  (prop + extra _ (= (call say 9)))
+  (fn-do + This _
+    (param k Int)
+    (call super k)
+    (print (str "child body " n " " double))
+  )
+)
 
-────────────────────
-+ This
-    - n
-
--- "base body $n $double"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-+ extra = say(9)
-
-────────────────────
-+ This
-    - k Int
-
-super(k)
--- "child body $n $double"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do say Int
-    - v Int
-
--- "say $v"
-= v
+(fn-do + say Int
+  (param v Int)
+  (print (str "say " v))
+  (return v)
+)
 ```
 
 ```output
@@ -1231,45 +1112,38 @@ child body 5 10
 
 ### `super(…)` through three classes.
 
-```yumi
-. g = Grand()
--- g.a
--- g.b
--- g.c
+```brix
+(main
+  (let g (call Grand))
+  (print (. g a))
+  (print (. g b))
+  (print (. g c))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + a _ (= 1))
+  (fn-do + This _
+    (param a _)
+    (print (str "base " a))
+  )
+)
 
-+ a = 1
+(type + Child (is Base)
+  (prop + b _ (= 2))
+  (fn-do + This _
+    (param b _)
+    (call super (+ b 10))
+    (print (str "child " a " " b))
+  )
+)
 
-────────────────────
-+ This
-    - a
-
--- "base $a"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-+ b = 2
-
-────────────────────
-+ This
-    - b
-
-super(b + 10)
--- "child $a $b"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Grand is Child
-
-+ c = 3
-
-────────────────────
-+ This
-
-super(20)
--- "grand $a $b $c"
+(type + Grand (is Child)
+  (prop + c _ (= 3))
+  (fn-do + This _
+    (call super 20)
+    (print (str "grand " a " " b " " c))
+  )
+)
 ```
 
 ```output
@@ -1283,41 +1157,33 @@ grand 30 20 3
 
 ### A getter reads the one it replaces through `super`.
 
-```yumi
-. c = Child()
--- c.label
--- c.both()
+```brix
+(main
+  (let c (call Child))
+  (print (. c label))
+  (print (call (. c both)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (fn-expr + label _ :get
+    "base"
+  )
+  (fn-expr + name String
+    "base name"
+  )
+)
 
-────────────────────
-+ get label
-
-"base"
-
-────────────────────
-+ name String
-
-"base name"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ get label
-
-"child+${super.label}"
-
-────────────────────
-+ name String
-
-"child name"
-
-────────────────────
-+ both String
-
-"${super.name()} / ${name()}"
+(type + Child (is Base)
+  (fn-expr + label _ :get
+    (str "child+" (. super label))
+  )
+  (fn-expr + name String
+    "child name"
+  )
+  (fn-expr + both String
+    (str (call (. super name)) " / " (call name))
+  )
+)
 ```
 
 ```output
@@ -1327,34 +1193,30 @@ base name / child name
 
 ### A method makes another object of its class with `This(…)`.
 
-```yumi
-. c = Child(1)
--- c.n
-. d = c.again()
--- d.n
+```brix
+(main
+  (let c (call Child 1))
+  (print (. c n))
+  (let d (call (. c again)))
+  (print (. d n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + n _ (= 0))
+  (fn-do + This _
+    (param n _)
+  )
+)
 
-+ n = 0
-
-────────────────────
-+ This
-    - n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ This
-    - k Int
-
-super(k + 1)
-
-────────────────────
-+ again Child
-
-This(n * 10)
+(type + Child (is Base)
+  (fn-do + This _
+    (param k Int)
+    (call super (+ k 1))
+  )
+  (fn-expr + again Child
+    (call This (* n 10))
+  )
+)
 ```
 
 ```output
@@ -1364,29 +1226,27 @@ This(n * 10)
 
 ### An object is tested for its class and for a class derived from it.
 
-```yumi
-. b Base = Child()
--- b is Base
--- b is Child
--- b is Other
--- b is not Child
--- b is not Other
+```brix
+(main
+  (let b Base (call Child))
+  (print (is b Base))
+  (print (is b Child))
+  (print (is b Other))
+  (print (is-not b Child))
+  (print (is-not b Other))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + n _ (= 1))
+)
 
-+ n = 1
+(type + Child (is Base)
+  (prop + m _ (= 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
+(type + Other (is Base))
 
-+ m = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Other is Base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Lone
+(type + Lone)
 ```
 
 ```output
@@ -1399,25 +1259,23 @@ true
 
 ### An object is never of a class that is not in its chain.
 
-```yumi
-. c = Child()
--- c is Other
+```brix
+(main
+  (let c (call Child))
+  (print (is c Other))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + n _ (= 1))
+)
 
-+ n = 1
+(type + Child (is Base)
+  (prop + m _ (= 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
+(type + Other (is Base))
 
-+ m = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Other is Base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Lone
+(type + Lone)
 ```
 
 ```output
@@ -1426,35 +1284,32 @@ false
 
 ### An object of a class two below is of each class above it.
 
-```yumi
-. g Base = Grand()
--- g is Child
--- g is Grand
--- g is Other
-. c Child = Grand()
--- c is Grand
--- (c as Grand).deep
+```brix
+(main
+  (let g Base (call Grand))
+  (print (is g Child))
+  (print (is g Grand))
+  (print (is g Other))
+  (let c Child (call Grand))
+  (print (is c Grand))
+  (print (. (as c Grand) deep))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Grand is Child
+(type + Grand (is Child)
+  (prop + deep _ (= 99))
+)
 
-+ deep = 99
+(type + Base
+  (prop + n _ (= 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Child (is Base)
+  (prop + m _ (= 7))
+)
 
-+ n = 1
+(type + Other (is Base))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-+ m = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Other is Base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Lone
+(type + Lone)
 ```
 
 ```output
@@ -1467,29 +1322,27 @@ true
 
 ### An object held as its base is cast to the class it was made as.
 
-```yumi
-. b Base = Child()
-. c = b as Child
--- c.m
--- (b as Child).m
-. u = c as Base
--- u.n
+```brix
+(main
+  (let b Base (call Child))
+  (let c (as b Child))
+  (print (. c m))
+  (print (. (as b Child) m))
+  (let u (as c Base))
+  (print (. u n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + n _ (= 1))
+)
 
-+ n = 1
+(type + Child (is Base)
+  (prop + m _ (= 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
+(type + Other (is Base))
 
-+ m = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Other is Base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Lone
+(type + Lone)
 ```
 
 ```output
@@ -1500,186 +1353,164 @@ true
 
 ### A cast to a class the object is not of panics.
 
-```yumi crash
-. b Base = Child()
--- "before"
-. o = b as Other
--- "not here"
+```brix crash
+(main
+  (let b Base (call Child))
+  (print "before")
+  (let o (as b Other))
+  (print "not here")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + n _ (= 1))
+)
 
-+ n = 1
+(type + Child (is Base)
+  (prop + m _ (= 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
+(type + Other (is Base))
 
-+ m = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Other is Base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Lone
+(type + Lone)
 ```
 
 ```stderr
 Unhandled panic: Invalid cast to [Object __source__:Other]
-<no file:4>
+<no file:5>
 
 Task 1
 
 Stack trace:
-  0  __source__:main no file:4:7
+  0  __source__:main no file:5:10
   1  __source__:init.__source__ no file
   2  __source__:brix.main no file
 ```
 
 ### A value of a base class cast with as and stored in an optional property of a derived class panics when the object is not of that class.
 
-```yumi crash
-. h = Holder()
-h.f(Child())
--- h.c?.value
-h.f(Box())
+```brix crash
+(main
+  (let h (call Holder))
+  (call (. h f) (call Child))
+  (print (?. (. h c) value))
+  (call (. h f) (call Box))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
+(type + Holder
+  (prop + c (? Child))
+  (fn-do + f _
+    (param b Box)
+    (= c (as b Child))
+  )
+)
 
-+ c Child?
+(type + Box)
 
-────────────────────
-+ do f
-    - b Box
-
-c = b as Child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Box
-
-+ value = 5
+(type + Child (is Box)
+  (prop + value _ (= 5))
+)
 ```
 
 ```stderr
 Unhandled panic: Invalid cast to [Object __source__:Child]
-<no file:16>
+<no file:13>
 
 Task 1
 
 Stack trace:
-  0  __source__:Holder:f no file:16:5
-  1  __source__:main no file:5:1
+  0  __source__:Holder:f no file:13:10
+  1  __source__:main no file:6:3
   2  __source__:init.__source__ no file
   3  __source__:brix.main no file
 ```
 
 ### An optional of a base class cast to a derived class unwraps, then panics when the object is not of that class.
 
-```yumi crash
-. b = Box()
-b.first = Child()
-. c = b.first as Child
--- c.value
-b.first = Box()
-. d = b.first as Child
--- "not here"
+```brix crash
+(main
+  (let b (call Box))
+  (= (. b first) (call Child))
+  (let c (as (. b first) Child))
+  (print (. c value))
+  (= (. b first) (call Box))
+  (let d (as (. b first) Child))
+  (print "not here")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + first (? Box))
+)
 
-+ first Box?
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Box
-
-+ value = 3
+(type + Child (is Box)
+  (prop + value _ (= 3))
+)
 ```
 
 ```stderr
 Unhandled panic: Invalid cast to [Object __source__:Child]
-<no file:7>
+<no file:8>
 
 Task 1
 
 Stack trace:
-  0  __source__:main no file:7:7
+  0  __source__:main no file:8:10
   1  __source__:init.__source__ no file
   2  __source__:brix.main no file
 ```
 
 ### A member a class inherits through its base is the nearest one declared above it.
 
-```yumi
-. leaf = Leaf()
-. held Mid = Leaf()
--- leaf.one(3)
--- held.one(4)
--- leaf.label
-leaf.value = 4
--- leaf.stored
--- leaf.plain()
--- leaf.both()
--- Last().one(5)
--- Last().both()
+```brix
+(main
+  (let leaf (call Leaf))
+  (let held Mid (call Leaf))
+  (print (call (. leaf one) 3))
+  (print (call (. held one) 4))
+  (print (. leaf label))
+  (= (. leaf value) 4)
+  (print (. leaf stored))
+  (print (call (. leaf plain)))
+  (print (call (. leaf both)))
+  (print (call (. (call Last) one) 5))
+  (print (call (. (call Last) both)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + stored _ (= 0))
+  (fn-expr + one String
+    (param n Int)
+    (str "base one " n)
+  )
+  (fn-expr + label _ :get
+    "base label"
+  )
+  (fn-do + value _ :set (param v Int)
+    (= stored v)
+  )
+  (fn-expr + plain String
+    "base plain"
+  )
+  (fn-expr + both String
+    (str (call one 1) " " label)
+  )
+)
 
-+ stored = 0
+(type + Mid (is Base)
+  (fn-expr + one String
+    (param n Int)
+    (str "mid one " n)
+  )
+  (fn-expr + label _ :get
+    "mid label"
+  )
+  (fn-do + value _ :set (param v Int)
+    (= stored (* v 10))
+  )
+)
 
-────────────────────
-+ one String
-    - n Int
+(type + Leaf (is Mid))
 
-"base one $n"
-
-────────────────────
-+ get label
-
-"base label"
-
-────────────────────
-+ do value = v Int
-
-stored = v
-
-────────────────────
-+ plain String
-
-"base plain"
-
-────────────────────
-+ both String
-
-"${one(1)} ${label}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mid is Base
-
-────────────────────
-+ one String
-    - n Int
-
-"mid one $n"
-
-────────────────────
-+ get label
-
-"mid label"
-
-────────────────────
-+ do value = v Int
-
-stored = v * 10
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is Mid
-
-━━━━━━━━━━━━━━━━━━━━
-+ Last is Leaf
+(type + Last (is Leaf))
 ```
 
 ```output
@@ -1695,56 +1526,43 @@ mid one 1 mid label
 
 ### `super` reaches the nearest member declared above the base.
 
-```yumi
--- Leaf().name()
--- Leaf().label
--- Leaf().n
+```brix
+(main
+  (print (call (. (call Leaf) name)))
+  (print (. (call Leaf) label))
+  (print (. (call Leaf) n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + n _ (= 1))
+  (fn-expr + name String
+    "base"
+  )
+  (fn-expr + label _ :get
+    "base label"
+  )
+)
 
-+ n = 1
+(type + Mid1 (is Base)
+  (prop + n _ (= 2))
+  (fn-expr + name String
+    "mid1"
+  )
+  (fn-expr + label _ :get
+    "mid1 label"
+  )
+)
 
-────────────────────
-+ name String
+(type + Mid2 (is Mid1))
 
-"base"
-
-────────────────────
-+ get label
-
-"base label"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mid1 is Base
-
-+ n = 2
-
-────────────────────
-+ name String
-
-"mid1"
-
-────────────────────
-+ get label
-
-"mid1 label"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mid2 is Mid1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is Mid2
-
-────────────────────
-+ name String
-
-"leaf<${super.name()}>"
-
-────────────────────
-+ get label
-
-"leaf<${super.label}>"
+(type + Leaf (is Mid2)
+  (fn-expr + name String
+    (str "leaf<" (call (. super name)) ">")
+  )
+  (fn-expr + label _ :get
+    (str "leaf<" (. super label) ">")
+  )
+)
 ```
 
 ```output
@@ -1755,36 +1573,34 @@ leaf<mid1 label>
 
 ### A value a class gives a property of its base is converted to the type the base gave the property, through every class between.
 
-```yumi
-. leaf = Leaf()
--- leaf.a
--- half(leaf)
--- (type-of leaf.a).name
--- half(Mid())
--- half(Base())
-leaf.a = 3
--- half(leaf)
+```brix
+(main
+  (let leaf (call Leaf))
+  (print (. leaf a))
+  (print (call half leaf))
+  (print (. (type-of (. leaf a)) name))
+  (print (call half (call Mid)))
+  (print (call half (call Base)))
+  (= (. leaf a) 3)
+  (print (call half leaf))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + a _ (= 42.0))
+)
 
-+ a = 42.0
+(type + Mid (is Base)
+  (prop + a _ (= 99))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Mid is Base
+(type + Leaf (is Mid)
+  (prop + a _ (= 7))
+)
 
-+ a = 99
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is Mid
-
-+ a = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ half
-    - base Base
-
-base.a / 2
+(fn-expr + half _
+  (param base Base)
+  (/ (. base a) 2)
+)
 ```
 
 ```output
@@ -1798,35 +1614,34 @@ F64
 
 ### A class gives a property its base declared a type for a value of another type, which is converted as one assigned is.
 
-```yumi
-. bar = Bar()
--- bar.a
--- (type-of bar.a).name
--- bar.wide
--- (type-of bar.wide).name
--- bar.count
--- (type-of bar.count).name
--- total(bar)
+```brix
+(main
+  (let bar (call Bar))
+  (print (. bar a))
+  (print (. (type-of (. bar a)) name))
+  (print (. bar wide))
+  (print (. (type-of (. bar wide)) name))
+  (print (. bar count))
+  (print (. (type-of (. bar count)) name))
+  (print (call total bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + a F64 (= 42.0))
+  (prop + wide _ (= (as 1 I64)))
+  (prop + count _ (= 3))
+)
 
-+ a F64 = 42.0
-+ wide = 1 as I64
-+ count = 3
+(type + Bar (is Foo)
+  (prop + a _ (= 99))
+  (prop + wide _ (= 7))
+  (prop + count _ (= 12u8))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-+ a = 99
-+ wide = 7
-+ count = 12u8
-
-━━━━━━━━━━━━━━━━━━━━
-+ total
-    - foo Foo
-
-foo.a + foo.wide + foo.count
+(fn-expr + total _
+  (param foo Foo)
+  (+ (. foo a) (. foo wide) (. foo count))
+)
 ```
 
 ```output
@@ -1841,45 +1656,36 @@ I64
 
 ### A getter and a method of the base are reached after super.
 
-```yumi
-. box = Box()
-box.grow()
+```brix
+(main
+  (let box (call Box))
+  (call (. box grow))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + held _ (= 1))
+  (fn-expr + twice _ :get
+    (* held 2)
+  )
+  (fn-do + show _
+    (print "base show")
+  )
+)
 
-+ held = 1
-
-────────────────────
-+ get twice
-
-held * 2
-
-────────────────────
-+ do show
-
--- "base show"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box is Base
-
-────────────────────
-+ get twice
-
-held * 3
-
-────────────────────
-+ do show
-
--- "box show"
-
-────────────────────
-+ do grow
-
--- super.twice
--- twice
-super.show()
-show()
+(type + Box (is Base)
+  (fn-expr + twice _ :get
+    (* held 3)
+  )
+  (fn-do + show _
+    (print "box show")
+  )
+  (fn-do + grow _
+    (print (. super twice))
+    (print twice)
+    (call (. super show))
+    (call show)
+  )
+)
 ```
 
 ```output
@@ -1891,147 +1697,133 @@ box show
 
 ### super is no value: a stored property is not read after it.
 
-```yumi crash
-. box = Box()
-box.grow()
+```brix crash
+(main
+  (let box (call Box))
+  (call (. box grow))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + held _ (= 1))
+)
 
-+ held = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box is Base
-
-────────────────────
-+ do grow
-
--- super.held
+(type + Box (is Base)
+  (fn-do + grow _
+    (print (. super held))
+  )
+)
 ```
 
 ```output
 Exception: Bare super is not a value
-<no file:16>
-    -- super.held
-       ^^^^^
+<no file:13>
+        (print (. super held))
+                  ^^^^^
 ```
 
 ### super is no value: a property is not assigned after it.
 
-```yumi crash
-. box = Box()
-box.grow()
+```brix crash
+(main
+  (let box (call Box))
+  (call (. box grow))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + held _ (= 1))
+)
 
-+ held = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box is Base
-
-────────────────────
-+ do grow
-
-super.held = 5
+(type + Box (is Base)
+  (fn-do + grow _
+    (= (. super held) 5)
+  )
+)
 ```
 
 ```output
 Exception: Bare super is not a value
-<no file:16>
-    super.held = 5
-    ^^^^^
+<no file:13>
+        (= (. super held) 5)
+              ^^^^^
 ```
 
 ### super is no value: it is not given as an argument.
 
-```yumi crash
-. box = Box()
-box.grow()
+```brix crash
+(main
+  (let box (call Box))
+  (call (. box grow))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + held _ (= 1))
+)
 
-+ held = 1
+(type + Box (is Base)
+  (fn-do + grow _
+    (call take super)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box is Base
-
-────────────────────
-+ do grow
-
-take(super)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do take
-    - base Base
-
--- base.held
+(fn-do + take _
+  (param base Base)
+  (print (. base held))
+)
 ```
 
 ```output
 Exception: Bare super is not a value
-<no file:16>
-    take(super)
-         ^^^^^
+<no file:13>
+        (call take super)
+                   ^^^^^
 ```
 
 ### A method with type parameters of its own that a subclass declares again is called through a value held as the base, with the type parameters the call gave.
 
-```yumi
-. bar = Bar()
-. foo Foo = bar
-foo.f1(5.5)
-foo.f1(3)
-foo.f2'Int(1)
-foo.f2'String("a")
--- foo.f3'Int()
--- foo.f3'String()
-. plain Foo = Foo()
-plain.f1(2)
-plain.f2'Int(1)
--- plain.f3'Int()
+```brix
+(main
+  (let bar (call Bar))
+  (let foo Foo bar)
+  (call (. foo f1) 5.5)
+  (call (. foo f1) 3)
+  (call (of (. foo f2) Int) 1)
+  (call (of (. foo f2) String) "a")
+  (print (call (of (. foo f3) Int)))
+  (print (call (of (. foo f3) String)))
+  (let plain Foo (call Foo))
+  (call (. plain f1) 2)
+  (call (of (. plain f2) Int) 1)
+  (print (call (of (. plain f3) Int)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (fn-do + (of f1 T) _
+    (param a T)
+    (print (str "Foo 1 " a))
+  )
+  (fn-do + (of f2 T) _
+    (param a T)
+    (print (str "Foo 2 " a))
+  )
+  (fn-expr + (of f3 T) String
+    "Foo 3"
+  )
+)
 
-────────────────────
-+ do f1'T
-    - a T
-
--- "Foo 1 $a"
-
-────────────────────
-+ do f2'T
-    - a T
-
--- "Foo 2 $a"
-
-────────────────────
-+ f3'T String
-
-"Foo 3"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-────────────────────
-+ do f1'T
-    - a T
-
--- "Bar 1 $a"
-
-────────────────────
-+ do f2
-    - a Int
-
--- "Bar 2 $a"
-
-────────────────────
-+ f3'T String
-    - T is! Int
-
-"Bar 3"
+(type + Bar (is Foo)
+  (fn-do + (of f1 T) _
+    (param a T)
+    (print (str "Bar 1 " a))
+  )
+  (fn-do + f2 _
+    (param a Int)
+    (print (str "Bar 2 " a))
+  )
+  (fn-expr + (of f3 T) String
+    (constraint is! T Int)
+    "Bar 3"
+  )
+)
 ```
 
 ```output
@@ -2048,33 +1840,30 @@ Foo 3
 
 ### A method whose type parameter must be exactly This answers only for that class, called directly or through the base.
 
-```yumi
-. box Box = Square()
--- box.pick'Square()
--- box.pick'Circle()
-. square = Square()
--- square.pick'Square()
--- square.pick'Circle()
+```brix
+(main
+  (let box Box (call Square))
+  (print (call (of (. box pick) Square)))
+  (print (call (of (. box pick) Circle)))
+  (let square (call Square))
+  (print (call (of (. square pick) Square)))
+  (print (call (of (. square pick) Circle)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (fn-expr + (of pick Target) String
+    "box"
+  )
+)
 
-────────────────────
-+ pick'Target String
+(type + Circle (is Box))
 
-"box"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Circle is Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Square is Box
-
-────────────────────
-+ pick'Target String
-    - Target is! This
-
-"square"
+(type + Square (is Box)
+  (fn-expr + (of pick Target) String
+    (constraint is! Target This)
+    "square"
+  )
+)
 ```
 
 ```output
@@ -2086,72 +1875,64 @@ box
 
 ### A lazy property's value is typed once, for the class that declares it, and reads the object it is evaluated for.
 
-```yumi
-. d = Derived()
--- d.who
-. b = Base()
--- b.who
-. held Base = Derived()
--- held.who
--- Other().who
-. other Base = Other()
--- other.who
--- d.said
--- b.said
--- held.said
--- d.loud
--- name-of(d.me)
--- name-of(Other().me)
+```brix
+(main
+  (let d (call Derived))
+  (print (. d who))
+  (let b (call Base))
+  (print (. b who))
+  (let held Base (call Derived))
+  (print (. held who))
+  (print (. (call Other) who))
+  (let other Base (call Other))
+  (print (. other who))
+  (print (. d said))
+  (print (. b said))
+  (print (. held said))
+  (print (. d loud))
+  (print (call name-of (. d me)))
+  (print (call name-of (. (call Other) me)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - b Base
+(fn-expr + describe String
+  (param b Base)
+  "base"
+)
 
-"base"
+(fn-expr + describe String
+  (param d Derived)
+  "derived"
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - d Derived
+(fn-expr + describe String
+  (param o Other)
+  "other"
+)
 
-"derived"
+(fn-expr + name-of String
+  (param b Base)
+  (str (call describe b) " " (. b label))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - o Other
+(type + Base
+  (prop + who _ (:= (call describe this)))
+  (prop + said _ (:= (++ label "!")))
+  (prop + loud _ (:= (++ (. this label) "?")))
+  (prop + me _ (:= this))
+  (fn-expr + label _ :get
+    "plain"
+  )
+)
 
-"other"
+(type + Derived (is Base)
+  (fn-expr + label _ :get
+    "fancier"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ name-of String
-    - b Base
-
-"${describe(b)} ${b.label}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-+ who := describe(this)
-+ said := label ++ "!"
-+ loud := this.label ++ "?"
-+ me := this
-
-────────────────────
-+ get label
-
-"plain"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-────────────────────
-+ get label
-
-"fancier"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Other is Base
-
-+ who := describe(this)
+(type + Other (is Base)
+  (prop + who _ (:= (call describe this)))
+)
 ```
 
 ```output
@@ -2170,48 +1951,41 @@ base plain
 
 ### A method that writes a type for an argument overrides a base method that writes none, called through the base, from inside it, and through a class between.
 
-```yumi
-. held Base = Derived()
-held.put(1)
-held.relay(2)
-. lower Base = Bottom()
-lower.put(3)
+```brix
+(main
+  (let held Base (call Derived))
+  (call (. held put) 1)
+  (call (. held relay) 2)
+  (let lower Base (call Bottom))
+  (call (. lower put) 3)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (fn-do + put _
+    (param thing _)
+    (print (str "(base any, " thing ")"))
+  )
+  (fn-do + relay _
+    (param value Int)
+    (call put value)
+  )
+)
 
-────────────────────
-+ do put
-    - thing
+(type + Derived (is Base)
+  (fn-do + put _
+    (param thing Int)
+    (print (str "(derived int, " thing ")"))
+  )
+)
 
--- "(base any, $thing)"
+(type + Middle (is Base))
 
-────────────────────
-+ do relay
-    - value Int
-
-put(value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-────────────────────
-+ do put
-    - thing Int
-
--- "(derived int, $thing)"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Middle is Base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bottom is Middle
-
-────────────────────
-+ do put
-    - thing Int
-
--- "(bottom int, $thing)"
+(type + Bottom (is Middle)
+  (fn-do + put _
+    (param thing Int)
+    (print (str "(bottom int, " thing ")"))
+  )
+)
 ```
 
 ```output
@@ -2222,64 +1996,59 @@ put(value)
 
 ### An override that answers a subclass of what the base answers is called through an adapter, which a trace names.
 
-```yumi crash
-. base Animal = Dog()
--- base.make().name
+```brix crash
+(main
+  (let base Animal (call Dog))
+  (print (. (call (. base make)) name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Animal
+(type + Animal
+  (prop + name _ (= "animal"))
+  (fn-expr + make Animal
+    (call Animal)
+  )
+)
 
-+ name = "animal"
-
-────────────────────
-+ make Animal
-
-Animal()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Dog is Animal
-
-────────────────────
-+ make Dog
-
-?! Panic("boom")
+(type + Dog (is Animal)
+  (fn-expr + make Dog
+    (throw (call Panic "boom"))
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: boom
-<no file:21>
+<no file:16>
 
 Task 1
 
 Stack trace:
-  0  __source__:Dog:make no file:21:1
-  1  __source__:make(class-adapter) no file:19:1
-  2  __source__:main no file:3:4
+  0  __source__:Dog:make no file:16:5
+  1  __source__:make(class-adapter) no file:15:3
+  2  __source__:main no file:4:13
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### An override that answers a narrower number than the base converts it where it is called as the base.
 
-```yumi
-. base Source = Narrow()
--- base.value()
+```brix
+(main
+  (let base Source (call Narrow))
+  (print (call (. base value)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Source
+(type + Source
+  (fn-expr + value Int
+    1
+  )
+)
 
-────────────────────
-+ value Int
-
-1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Narrow is Source
-
-────────────────────
-+ value I16
-
-7
+(type + Narrow (is Source)
+  (fn-expr + value I16
+    7
+  )
+)
 ```
 
 ```output
@@ -2288,62 +2057,58 @@ Stack trace:
 
 ### A panic in an override that answers a narrower number names the adapter in its trace.
 
-```yumi crash
-. base Source = Narrow()
--- base.value()
+```brix crash
+(main
+  (let base Source (call Narrow))
+  (print (call (. base value)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Source
+(type + Source
+  (fn-expr + value Int
+    1
+  )
+)
 
-────────────────────
-+ value Int
-
-1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Narrow is Source
-
-────────────────────
-+ value I16
-
-?! Panic("boom")
+(type + Narrow (is Source)
+  (fn-expr + value I16
+    (throw (call Panic "boom"))
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: boom
-<no file:19>
+<no file:15>
 
 Task 1
 
 Stack trace:
-  0  __source__:Narrow:value no file:19:1
-  1  __source__:value(class-adapter) no file:17:1
-  2  __source__:main no file:3:4
+  0  __source__:Narrow:value no file:15:5
+  1  __source__:value(class-adapter) no file:14:3
+  2  __source__:main no file:4:10
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### An override answering a type its base's answer converts to fills the base's slot with an adapter.
 
-```yumi
-. b Base = Sub()
--- b.value()
+```brix
+(main
+  (let b Base (call Sub))
+  (print (call (. b value)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (fn-expr + value Float
+    1.5
+  )
+)
 
-────────────────────
-+ value Float
-
-1.5
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub is Base
-
-────────────────────
-+ value Int
-
-300
+(type + Sub (is Base)
+  (fn-expr + value Int
+    300
+  )
+)
 ```
 
 ```output
@@ -2352,56 +2117,52 @@ Stack trace:
 
 ### A getter that overrides another may not state its type.
 
-```yumi crash
-. base Source = Narrow()
--- base.value
+```brix crash
+(main
+  (let base Source (call Narrow))
+  (print (. base value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Source
+(type + Source
+  (fn-expr + value Int :get
+    1
+  )
+)
 
-────────────────────
-+ get value Int
-
-1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Narrow is Source
-
-────────────────────
-+ get value Int
-
-7
+(type + Narrow (is Source)
+  (fn-expr + value Int :get
+    7
+  )
+)
 ```
 
 ```output
 Exception: "value" is inherited from Source, so it keeps the type it has there and cannot state its own; remove "Int"
-<no file:17>
-    + get value Int
-    ^^^^^^^^^^^^^^
+<no file:14>
+      (fn-expr + value Int :get
+      ^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A getter may state its type over a base getter that states none.
 
-```yumi
-. base Source = Narrow()
--- base.value
--- Narrow().value
+```brix
+(main
+  (let base Source (call Narrow))
+  (print (. base value))
+  (print (. (call Narrow) value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Source
+(type + Source
+  (fn-expr + value _ :get
+    1
+  )
+)
 
-────────────────────
-+ get value
-
-1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Narrow is Source
-
-────────────────────
-+ get value Int
-
-7
+(type + Narrow (is Source)
+  (fn-expr + value Int :get
+    7
+  )
+)
 ```
 
 ```output
@@ -2411,34 +2172,30 @@ Exception: "value" is inherited from Source, so it keeps the type it has there a
 
 ### A getter may state its type over a chain of getters whose first states none, though the one it overrides states one.
 
-```yumi
-. base Source = Leaf()
--- base.value
--- Mid().value
+```brix
+(main
+  (let base Source (call Leaf))
+  (print (. base value))
+  (print (. (call Mid) value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Source
+(type + Source
+  (fn-expr + value _ :get
+    1
+  )
+)
 
-────────────────────
-+ get value
+(type + Mid (is Source)
+  (fn-expr + value Int :get
+    2
+  )
+)
 
-1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mid is Source
-
-────────────────────
-+ get value Int
-
-2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is Mid
-
-────────────────────
-+ get value Int
-
-3
+(type + Leaf (is Mid)
+  (fn-expr + value Int :get
+    3
+  )
+)
 ```
 
 ```output
@@ -2448,71 +2205,63 @@ Exception: "value" is inherited from Source, so it keeps the type it has there a
 
 ### A getter may not state its type over a chain of getters whose first states one, though the one it overrides states none.
 
-```yumi crash
-. base Source = Leaf()
--- base.value
+```brix crash
+(main
+  (let base Source (call Leaf))
+  (print (. base value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Source
+(type + Source
+  (fn-expr + value Int :get
+    1
+  )
+)
 
-────────────────────
-+ get value Int
+(type + Mid (is Source)
+  (fn-expr + value _ :get
+    2
+  )
+)
 
-1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mid is Source
-
-────────────────────
-+ get value
-
-2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is Mid
-
-────────────────────
-+ get value Int
-
-3
+(type + Leaf (is Mid)
+  (fn-expr + value Int :get
+    3
+  )
+)
 ```
 
 ```output
 Exception: "value" is inherited from Mid, so it keeps the type it has there and cannot state its own; remove "Int"
-<no file:25>
-    + get value Int
-    ^^^^^^^^^^^^^^
+<no file:20>
+      (fn-expr + value Int :get
+      ^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Two classes made from one generic class, each overriding a method of their base with one that answers another type, each have an adapter of their own in the base's table.
 
-```yumi
-. first Base = Holder'String(["a", "b"])
-. second Base = Holder'I64([1, 2, 3])
--- first.total
--- second.total
+```brix
+(main
+  (let first Base (call (of Holder String) (list "a" "b")))
+  (let second Base (call (of Holder I64) (list 1 2 3)))
+  (print (. first total))
+  (print (. second total))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (fn-expr + total Index :get
+    0
+  )
+)
 
-────────────────────
-+ get total Index
-
-0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder'Item is Base
-
-+ items [Item]
-
-────────────────────
-+ This
-    - items
-
-────────────────────
-+ get total
-
-items.length
+(type + (of Holder Item) (is Base)
+  (prop + items (list Item))
+  (fn-do + This _
+    (param items _)
+  )
+  (fn-expr + total _ :get
+    (. items length)
+  )
+)
 ```
 
 ```output
@@ -2522,35 +2271,30 @@ items.length
 
 ### A class nothing uses is not checked, so its override of a method called on its base is never typed.
 
-```yumi
-. shape Shape = Square()
-print(shape.area())
+```brix
+(main
+  (let shape Shape (call Square))
+  (call print (call (. shape area)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape
+(type + Shape
+  (fn-expr + area Int
+    0
+  )
+)
 
-────────────────────
-+ area Int
+(type + Square (is Shape)
+  (fn-expr + area Int
+    4
+  )
+)
 
-0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Square is Shape
-
-────────────────────
-+ area Int
-
-4
-
-━━━━━━━━━━━━━━━━━━━━
-+ Broken is Shape
-
-+ size Int
-
-────────────────────
-+ area Int
-
-size * missing
+(type + Broken (is Shape)
+  (prop + size Int)
+  (fn-expr + area Int
+    (* size missing)
+  )
+)
 ```
 
 ```output
@@ -2559,35 +2303,33 @@ size * missing
 
 ### A base-typed reference and a subclass-typed reference to one object compare equal.
 
-```yumi
-. bar = Bar()
-. other = Bar()
-. holder = Holder()
-holder.held = bar
--- holder.held! == bar
--- bar == holder.held!
--- holder.held! != bar
--- holder.held! == other
--- holder.held! != other
-bar.hold(holder)
+```brix
+(main
+  (let bar (call Bar))
+  (let other (call Bar))
+  (let holder (call Holder))
+  (= (. holder held) bar)
+  (print (== (!! (. holder held)) bar))
+  (print (== bar (!! (. holder held))))
+  (print (!= (!! (. holder held)) bar))
+  (print (== (!! (. holder held)) other))
+  (print (!= (!! (. holder held)) other))
+  (call (. bar hold) holder)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
+(type + Bar (is Foo)
+  (fn-do + hold _
+    (param holder Holder)
+    (= (. holder held) this)
+    (print (== (!! (. holder held)) this))
+  )
+)
 
-────────────────────
-+ do hold
-    - holder Holder
-
-holder.held = this
--- holder.held! == this
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ held Foo?
+(type + Holder
+  (prop + held (? Foo))
+)
 ```
 
 ```output
@@ -2601,80 +2343,72 @@ true
 
 ### A method that returns nothing does not override one that returns a truth or an optional.
 
-```yumi crash
-. shapes [Shape]
-shapes += Shape()
-shapes += Dot()
-for shape in shapes
-    -- shape.check()
-    -- shape.label()
+```brix crash
+(main
+  (let shapes (list Shape))
+  (+= shapes (call Shape))
+  (+= shapes (call Dot))
+  (for (in shape shapes)
+    (print (call (. shape check)))
+    (print (call (. shape label)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape
+(type + Shape
+  (fn-do + check Bool
+    (return true)
+  )
+  (fn-do + label (? String)
+    (return "shape")
+  )
+)
 
-────────────────────
-+ do check Bool
-
-= true
-
-────────────────────
-+ do label String?
-
-= "shape"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Dot is Shape
-
-────────────────────
-+ do check
-
--- "dot check"
-
-────────────────────
-+ do label
-
--- "dot label"
+(type + Dot (is Shape)
+  (fn-do + check _
+    (print "dot check")
+  )
+  (fn-do + label _
+    (print "dot label")
+  )
+)
 ```
 
 ```output
-Exception: Expected Bool here, but this is Void, which becomes Bool only when asked; write "as Bool"
-<no file:26>
-    + do check
-    ^^^^^^^^^
+Exception: Expected Bool here, but this is Void, which becomes Bool only when asked; write "(as … Bool)"
+<no file:22>
+      (fn-do + check _
+      ^^^^^^^^^^^^^^^
 
-Exception: Expected String? here, but this is Void, which becomes String? only when asked; write "as String?"
-<no file:31>
-    + do label
-    ^^^^^^^^^
+Exception: Expected String? here, but this is Void, which becomes String? only when asked; write "(as … (? String))"
+<no file:25>
+      (fn-do + label _
+      ^^^^^^^^^^^^^^^
 ```
 
 ### A class named as a core class is the base of a subclass declared as of that name, so a method called through it reaches the subclass's override, though the call is compiled first.
 
-```yumi
--- show(List())
--- show(Thing())
+```brix
+(main
+  (print (call show (call List)))
+  (print (call show (call Thing)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ List
+(type + List
+  (fn-expr + name String
+    "list"
+  )
+)
 
-────────────────────
-+ name String
+(type + Thing (is List)
+  (fn-expr + name String
+    "thing"
+  )
+)
 
-"list"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is List
-
-────────────────────
-+ name String
-
-"thing"
-
-━━━━━━━━━━━━━━━━━━━━
-+ show String
-    - list List
-
-list.name()
+(fn-expr + show String
+  (param list List)
+  (call (. list name))
+)
 ```
 
 ```output
@@ -2684,88 +2418,76 @@ thing
 
 ### A method that declares no type, and gives no value as nothing after a statement that leaves is compiled, overrides one that gives a value, and runs when called through the base.
 
-```yumi crash
-. node Node = Failing()
--- node.execute()
+```brix crash
+(main
+  (let node Node (call Failing))
+  (print (call (. node execute)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node
+(type + Node
+  (fn-do + execute I32
+    (return 0)
+  )
+)
 
-────────────────────
-+ do execute I32
-
-= 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Failing is Node
-
-────────────────────
-+ This
-
-────────────────────
-+ do execute
-
-. prior = 1
-?! Panic("boom")
-= prior
+(type + Failing (is Node)
+  (fn-do + This _)
+  (fn-do + execute _
+    (let prior 1)
+    (throw (call Panic "boom"))
+    (return prior)
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: boom
-<no file:23>
+<no file:17>
 
 Task 1
 
 Stack trace:
-  0  __source__:Failing:execute no file:23:1
-  1  __source__:execute(class-adapter) no file:20:1
-  2  __source__:main no file:3:4
+  0  __source__:Failing:execute no file:17:5
+  1  __source__:execute(class-adapter) no file:15:3
+  2  __source__:main no file:4:10
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
-```yumi
-. numbers = Numbers()
--- numbers[1]
-. plain = PlainNumbers()
--- plain[0]
+```brix
+(main
+  (let numbers (call Numbers))
+  (print ([] numbers 1))
+  (let plain (call PlainNumbers))
+  (print ([] plain 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder'T
+(type + (of Holder T)
+  (prop + items (list T) (= (call (of List T))))
+  (fn-expr + (index-get this (param index Index)) _
+    ([] items index)
+  )
+)
 
-+ items [T] = List'T()
+(type + Numbers (is (of Holder Int))
+  (fn-do + This _
+    (+= items 4)
+    (+= items 5)
+  )
+)
 
-────────────────────
-+ this[index Index]
+(type + PlainHolder
+  (prop + items (list Int) (= (call (of List Int))))
+  (fn-expr + (index-get this (param index Index)) _
+    ([] items index)
+  )
+)
 
-items[index]
-
-━━━━━━━━━━━━━━━━━━━━
-+ Numbers is Holder'Int
-
-────────────────────
-+ This
-
-items += 4
-items += 5
-
-━━━━━━━━━━━━━━━━━━━━
-+ PlainHolder
-
-+ items [Int] = List'Int()
-
-────────────────────
-+ this[index Index]
-
-items[index]
-
-━━━━━━━━━━━━━━━━━━━━
-+ PlainNumbers is PlainHolder
-
-────────────────────
-+ This
-
-items += 6
+(type + PlainNumbers (is PlainHolder)
+  (fn-do + This _
+    (+= items 6)
+  )
+)
 ```
 
 ```output
@@ -2775,32 +2497,28 @@ items += 6
 
 ### A getter over one whose type a base states keeps that type where the class reads it, so an integer it gives is of that type.
 
-```yumi
-. boat = Rowboat()
--- boat.quarter
-. held Boat = boat
--- held.drop
+```brix
+(main
+  (let boat (call Rowboat))
+  (print (. boat quarter))
+  (let held Boat boat)
+  (print (. held drop))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Boat
+(type + Boat
+  (fn-expr + drop F64 :get
+    0.5
+  )
+)
 
-────────────────────
-+ get drop F64
-
-0.5
-
-━━━━━━━━━━━━━━━━━━━━
-+ Rowboat is Boat
-
-────────────────────
-+ get drop
-
-30
-
-────────────────────
-+ get quarter
-
-drop / 4
+(type + Rowboat (is Boat)
+  (fn-expr + drop _ :get
+    30
+  )
+  (fn-expr + quarter _ :get
+    (/ drop 4)
+  )
+)
 ```
 
 ```output
@@ -2808,58 +2526,50 @@ drop / 4
 30
 ```
 
-```yumi
-. plain = PlainPainter()
-. checked = CheckedPainter()
-draw(plain, 2)
-draw(checked, 3)
--- plain.value
--- checked.value
-plain.transform(4)
--- plain.value
+```brix
+(main
+  (let plain (call PlainPainter))
+  (let checked (call CheckedPainter))
+  (call draw plain 2)
+  (call draw checked 3)
+  (print (. plain value))
+  (print (. checked value))
+  (call (. plain transform) 4)
+  (print (. plain value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Painter
+(type + Painter
+  (prop + value Float)
+  (fn-do + translate _
+    (param x Float)
+    (call transform x)
+  )
+  (fn-do + transform _
+    (param x Float)
+    (= value x)
+  )
+)
 
-+ value Float
+(type + PlainPainter (is Painter)
+  (fn-do + translate _
+    (param x Float)
+    (call transform x)
+  )
+)
 
-────────────────────
-+ do translate
-    - x Float
+(type + CheckedPainter (is Painter)
+  (fn-do + transform _
+    (param x Float)
+    (throw (call Panic "negative") (if (< x 0)))
+    (= value (+ x 10))
+  )
+)
 
-transform(x)
-
-────────────────────
-+ do transform
-    - x Float
-
-value = x
-
-━━━━━━━━━━━━━━━━━━━━
-+ PlainPainter is Painter
-
-────────────────────
-+ do translate
-    - x Float
-
-transform(x)
-
-━━━━━━━━━━━━━━━━━━━━
-+ CheckedPainter is Painter
-
-────────────────────
-+ do transform
-    - x Float
-
-?! Panic("negative") if x < 0
-value = x + 10
-
-━━━━━━━━━━━━━━━━━━━━
-+ do draw
-    - painter Painter
-    - x Float
-
-painter.translate(x)
+(fn-do + draw _
+  (param painter Painter)
+  (param x Float)
+  (call (. painter translate) x)
+)
 ```
 
 ```output
@@ -2870,43 +2580,44 @@ painter.translate(x)
 
 ### A class is built on one type, written in its header: a row under it that names a class names no interface, and is an error.
 
-```yumi compile-error
-. c = C()
+```brix compile-error
+(main
+  (let c (call C))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ A
+(type + A)
 
-━━━━━━━━━━━━━━━━━━━━
-+ B
+(type + B)
 
-━━━━━━━━━━━━━━━━━━━━
-+ C is A
-    is B
+(type + C (is A)
+  (implements B)
+)
 ```
 
 ```output
 Exception: C cannot implement B, which is not an interface; C is built on A, and a type is built on one type
-<no file:12>
-        is B
-           ^
+<no file:11>
+      (implements B)
+                  ^
 ```
 
 ### A row under a class's header that names a class, where the header names none, says to write it in the header.
 
-```yumi compile-error
-. c = C()
+```brix compile-error
+(main
+  (let c (call C))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ A
+(type + A)
 
-━━━━━━━━━━━━━━━━━━━━
-+ C
-    is A
+(type + C
+  (implements A)
+)
 ```
 
 ```output
 Exception: C cannot implement A, which is not an interface; a type is built on one type, written in its header, as in "+ C is A"
 <no file:9>
-        is A
-           ^
+      (implements A)
+                  ^
 ```

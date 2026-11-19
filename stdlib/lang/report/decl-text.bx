@@ -1,0 +1,202 @@
+(import /lang/ast/ast-nodes)
+(import /lang/ast/decl)
+(import /lang/ast/module)
+(import /lang/ast/row-range)
+
+(fn-expr + shape-text String
+  (param module Module)
+  (param row FunctionDecl)
+  (str (call shape-head-text row) " args=[" (call shape-args-text module row) "]")
+)
+
+(fn-do + shape-head-text String
+  (param row FunctionDecl)
+  (let kind (call kind-text (. row kind)))
+  (if (and (== (. row owner) 0) (or (== (. row kind) .getter-decl) (== (. row kind) .setter-decl)))
+    (= kind "fn")
+  )
+  (let static (if-expr (. row is-static) "yes" "no"))
+  (let effects (call effects-text (. row effects)))
+  (let variadic (if-expr (== (. row variadic-index) (. U32 max)) "-" (str (. row variadic-index))))
+  (return (str "kind=" kind " static=" static " without=" effects " variadic=" variadic " required=" (. row required-count)))
+)
+
+(fn-expr + shape-args-text String
+  (param module Module)
+  (param row FunctionDecl)
+  (call (. ", " join) (in (call shape-arg-text each) ([] (. module arg-pool) (. row args))))
+)
+
+(fn-do + shape-arg-text String
+  (param shape ArgumentShape)
+  (let name "-")
+  (if (. shape name)
+    (let atom (. shape name))
+    (= name (. atom text))
+  )
+  (let default (if-expr (. shape has-default) "default" "-"))
+  (return (str name ":" (call specificity-text (. shape specificity)) ":" default))
+)
+
+(fn-do + extension-members-text String
+  (param module Module)
+  (param decl DeclId)
+  (let items (list String))
+  (match? ([] (. module decls) decl)
+    (case (call .decl-extension row)
+      (for (in member ([] (. module member-pool) (. row members)))
+        (match? ([] (. module decls) member)
+          (case (call .decl-function fn)
+            (let name "-")
+            (if (. fn name)
+              (let atom (. fn name))
+              (= name (. atom text))
+            )
+            (+= items
+              (match (. fn kind)
+                (case= .constructor-decl
+                  "ctor"
+                )
+                (case= .getter-decl
+                  (str "get:" name)
+                )
+                (case= .setter-decl
+                  (str "set:" name)
+                )
+                (default
+                  (str "fn:" name)
+                )
+              )
+            )
+          )
+          (case .decl-converter
+            (+= items "to")
+          )
+          (case .decl-fromverter
+            (+= items "from")
+          )
+        )
+      )
+    )
+  )
+  (return (call (. "," join) items))
+)
+
+(fn-expr + kind-text String
+  (param kind DeclKind)
+  (match kind
+    (case= .getter-decl
+      "get"
+    )
+    (case= .setter-decl
+      "set"
+    )
+    (case= .constructor-decl
+      "ctor"
+    )
+    (case= .default-constructor-decl
+      "default"
+    )
+    (case= .cast-constructor-decl
+      "cast"
+    )
+    (case= .main-decl
+      "main"
+    )
+    (case= .tuple-constructor-decl
+      "tuple"
+    )
+    (case= .closure-decl
+      "closure"
+    )
+    (case= .task-decl
+      "task"
+    )
+    (case= .region-decl
+      "region"
+    )
+    (case= .table-size-constructor-decl
+      "table-size"
+    )
+    (case= .table-arena-constructor-decl
+      "table-arena"
+    )
+    (case= .table-capacity-constructor-decl
+      "table-capacity"
+    )
+    (case= .table-filler-constructor-decl
+      "table-filler"
+    )
+    (case= .index-span-source-constructor-decl
+      "index-span-source"
+    )
+    (case= .index-span-range-constructor-decl
+      "index-span-range"
+    )
+    (case= .iterator-decl
+      "iterator"
+    )
+    (case= .feed-decl
+      "feed"
+    )
+    (case= .pipeline-decl
+      "pipeline"
+    )
+    (case= .init-decl
+      "init"
+    )
+    (case= .task-main-decl
+      "task-main"
+    )
+    (case= .termination-panic-decl
+      "termination-panic"
+    )
+    (default
+      "fn"
+    )
+  )
+)
+
+(fn-expr + specificity-text String
+  (param specificity Specificity)
+  (match specificity
+    (case= .convertible
+      "convertible"
+    )
+    (case= .similar
+      "similar"
+    )
+    (case= .exact
+      "exactly"
+    )
+    (default
+      "-"
+    )
+  )
+)
+
+(fn-expr + effects-text String
+  (param effects CompilationEffect)
+  (if-expr names (call (. "," join) names) "-")
+  (where
+    (lazy names
+      (call (of List String)
+        (block
+          (item? (only-if "gc" (if gc-free)))
+          (item? (only-if "heap" (if (and (not gc-free) (call has-effect effects (. CompilationEffect no-heap))))))
+          (item? (only-if "safepoints" (if (and (not gc-free) safepoint-free))))
+          (item? (only-if "probe-safepoints" (if (call has-effect effects (. CompilationEffect no-probe-safepoint)))))
+          (item? (only-if "suspend" (if (and (call has-effect effects (. CompilationEffect no-suspend)) (not safepoint-free)))))
+        )
+      )
+    )
+    (lazy gc-free (call has-effect effects (. CompilationEffect gc-free)))
+    (lazy safepoint-free (call has-effect effects (. CompilationEffect no-safepoint)))
+  )
+)
+
+(fn-expr _ has-effect Bool
+  (param effects CompilationEffect)
+  (param effect CompilationEffect)
+  (!= (/and/ effects effect) (. CompilationEffect none))
+)

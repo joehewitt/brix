@@ -1,7 +1,7 @@
 # Markup Batching and the Mutation Protocol
 
 This document is the authoritative guide to Brix's markup batching runtime
-(`stdlib/core/markup.yumi`) for library and framework authors. It covers the batch lifecycle, the
+(`stdlib/core/markup.bx`) for library and framework authors. It covers the batch lifecycle, the
 contracts each tier of client must uphold, the `checkpoint()` boundary, and the compiler-driven
 mutation protocol that parents implement.
 
@@ -144,8 +144,8 @@ mount walk still makes appends into unmounted subtrees and same-root rehomes O(1
 ### The portal API: `markup-adopt` / `markup-release`
 
 Some elements present structure that lives *beside* their child list rather than in it. `VectorImage`
-(`stdlib/gui/vector-image.yumi`) mounts its vector group, a separate graphics tree, when it mounts
-and releases it when it unmounts, and `VectorGroup` (`stdlib/graphics/vector-group.yumi`) does the
+(`stdlib/gui/vector-image.bx`) mounts its vector group, a separate graphics tree, when it mounts
+and releases it when it unmounts, and `VectorGroup` (`stdlib/graphics/vector-group.bx`) does the
 same for its vector nodes. Such structure never flows through attach/detach, so the element mounts it
 explicitly:
 
@@ -256,7 +256,7 @@ a batch action or a settle callback is re-entrant and will be absorbed by the in
 
 ## Worked example: Window
 
-`stdlib/tui/window.yumi` is the reference root implementation. The complete batching surface of
+`stdlib/tui/window.bx` is the reference root implementation. The complete batching surface of
 a production root is three small pieces:
 
 ```yumi

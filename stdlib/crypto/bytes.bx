@@ -1,0 +1,23 @@
+(import /stream/aggregate)
+
+(fn-do + joined-bytes ([] Byte)
+  (param parts (list ([] Byte)))
+  (let result ([] Byte (call sum (in (. each size) parts))))
+  (let offset Size 0)
+  (for (in part parts)
+    (= ([] result (..< offset (+ offset (. part size)))) part)
+    (+= offset (. part size))
+  )
+  (return result)
+)
+
+(fn-do + bytes-match Bool
+  (param first ([] Byte))
+  (param second ([] Byte))
+  (return-if false (if (!= (. first size) (. second size))))
+  (let difference Byte)
+  (for (in index (..< 0 (. first size)))
+    (= difference (/or/ difference (/xor/ ([] first index) ([] second index))))
+  )
+  (return (== difference 0))
+)

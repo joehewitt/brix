@@ -1,0 +1,353 @@
+; Based on Matrix from Paper.js. Gracias, amigos!
+(blank)
+(import ./point)
+(import ./primitives)
+(import ./utils)
+(import /core/animatable)
+(import /math)
+
+(type + Matrix (is Tuple)
+  (implements Animatable)
+  (prop + a Coord)
+  (prop + c Coord)
+  (prop + b Coord)
+  (prop + d Coord)
+  (prop + tx Coord)
+  (prop + ty Coord)
+  (fn-do + This _
+    (return (call matrix-from-identity))
+  )
+  (fn-do + This _
+    (param vector (list F64))
+    (let turn (as ([] vector 2) Radians))
+    (let width ([] vector 3))
+    (let height ([] vector 4))
+    (let shear (* ([] vector 5) height))
+    (let cosa (call cos turn))
+    (let sina (call sin turn))
+    (return
+      (call This
+        (block
+          (arg (* cosa width))
+          (arg (* sina width))
+          (arg (- (* cosa shear) (* sina height)))
+          (arg (+ (* sina shear) (* cosa height)))
+          (arg ([] vector 0))
+          (arg ([] vector 1))
+        )
+      )
+    )
+  )
+  (fn-expr + is-translation _ :get
+    (and (== a 1) (== b 0) (== c 0) (== d 1))
+  )
+  (fn-to-expr + String
+    (str "[[" a ", " b ", " tx "], [" c ", " d ", " ty "]]")
+  )
+  (fn-expr + translation _ :get
+    (call Point tx ty)
+  )
+  (fn-expr + scaling _ :get
+    (call Dimensions x y)
+    (where
+      (lazy x (if-expr (< a 0) (- hor) hor))
+      (lazy y (if-expr (< b 0) (- ver) ver))
+      (lazy hor (call sqrt (+ (* a a) (* c c))))
+      (lazy ver (call sqrt (+ (* b b) (* d d))))
+    )
+  )
+  (fn-expr + rotation (? Radians) :get
+    (case? (< (call abs (- angle1 angle2)) tolerance)
+      angle1
+    )
+    (where
+      (lazy angle1 (- (call atan2 b d)))
+      (lazy angle2 (call atan2 c a))
+    )
+  )
+  (fn-expr + determinant _ :get
+    (case? (and (call is-finite det) (> (call abs det) epsilon) (call is-finite tx) (call is-finite ty))
+      det
+    )
+    (where
+      (lazy det (- (* a d) (* b c)))
+    )
+  )
+  (fn-expr + is-identity _ :get
+    (and (== a 1) (== c 0) (== b 0) (== d 1) (== tx 0) (== ty 0))
+  )
+  (fn-expr + is-invertible _ :get
+    (not (not determinant))
+  )
+  (fn-expr + is-singular _ :get
+    (not determinant)
+  )
+  (fn-expr + (infix this == (param other Matrix)) _
+    (and (== a (. other a)) (== b (. other b)) (== c (. other c)) (== d (. other d)) (== tx (. other tx)) (== ty (. other ty)))
+  )
+  (fn-do + scale _ @inline
+    (param size Dimensions)
+    (probe-count graphics.matrix.transforms)
+    (return
+      (call Matrix
+        (block
+          (arg (* a (. size width)))
+          (arg (* c (. size width)))
+          (arg (* b (. size height)))
+          (arg (* d (. size height)))
+          (arg tx)
+          (arg ty)
+        )
+      )
+    )
+  )
+  (fn-do + translate _ @inline
+    (param pt Point)
+    (probe-count graphics.matrix.transforms)
+    (return
+      (call Matrix
+        (block
+          (arg a)
+          (arg c)
+          (arg b)
+          (arg d)
+          (arg (+ tx (* (. pt x) a) (* (. pt y) b)))
+          (arg (+ ty (* (. pt x) c) (* (. pt y) d)))
+        )
+      )
+    )
+  )
+  (fn-do + rotate _
+    (param angle Radians)
+    (param center Point)
+    (probe-count graphics.matrix.transforms)
+    (return (call concatenate (call matrix-from-rotation angle center)))
+  )
+  (fn-do + shear _
+    (param size Dimensions)
+    (probe-count graphics.matrix.transforms)
+    (return
+      (call Matrix
+        (block
+          (arg (+ a (* (. size height) b)))
+          (arg (+ c (* (. size height) d)))
+          (arg (+ b (* (. size width) a)))
+          (arg (+ d (* (. size width) c)))
+          (arg tx)
+          (arg ty)
+        )
+      )
+    )
+  )
+  (fn-do + concatenate _ @inline
+    (param other Matrix)
+    (probe-count graphics.matrix.compositions)
+    (return
+      (call Matrix
+        (block
+          (arg (+ (* (. other a) a) (* (. other c) b)))
+          (arg (+ (* (. other a) c) (* (. other c) d)))
+          (arg (+ (* (. other b) a) (* (. other d) b)))
+          (arg (+ (* (. other b) c) (* (. other d) d)))
+          (arg (+ tx (* (. other tx) a) (* (. other ty) b)))
+          (arg (+ ty (* (. other tx) c) (* (. other ty) d)))
+        )
+      )
+    )
+  )
+  (fn-do + pre-concatenate _
+    (param other Matrix)
+    (probe-count graphics.matrix.compositions)
+    (return
+      (call Matrix
+        (block
+          (arg (+ (* (. other a) a) (* (. other b) c)))
+          (arg (+ (* (. other c) a) (* (. other d) c)))
+          (arg (+ (* (. other a) b) (* (. other b) d)))
+          (arg (+ (* (. other c) b) (* (. other d) d)))
+          (arg (+ (* (. other a) tx) (* (. other b) ty) (. other tx)))
+          (arg (+ (* (. other c) tx) (* (. other d) ty) (. other ty)))
+        )
+      )
+    )
+  )
+  (fn-do + invert _
+    (param det Coord)
+    (probe-count graphics.matrix.inversions)
+    (return
+      (call Matrix
+        (block
+          (arg (/ d det))
+          (arg (/ (- c) det))
+          (arg (/ (- b) det))
+          (arg (/ a det))
+          (arg (/ (- (* b ty) (* d tx)) det))
+          (arg (/ (- (* c tx) (* a ty)) det))
+        )
+      )
+    )
+  )
+  (fn-do + transform _ @inline
+    (param pt Point)
+    (probe-count graphics.matrix.point-transforms)
+    (return
+      (call Point
+        (block
+          (arg (+ (* (. pt x) a) (* (. pt y) b) tx))
+          (arg (+ (* (. pt x) c) (* (. pt y) d) ty))
+        )
+      )
+    )
+  )
+  (fn-expr + inverse-transform _
+    (param pt Point)
+    (before
+      (probe-count graphics.matrix.point-transforms)
+    )
+    (case? det
+      inverted
+    )
+    (where
+      (lazy inverted
+        (call Point
+          (block
+            (arg (/ (- (* x d) (* y b)) det))
+            (arg (/ (- (* y a) (* x c)) det))
+          )
+        )
+      )
+      (lazy det determinant)
+      (lazy x (- (. pt x) tx))
+      (lazy y (- (. pt y) ty))
+    )
+  )
+  (fn-do + transform _
+    (param bounds Rect)
+    (probe-count graphics.matrix.rect-transforms)
+    (let left (. bounds x))
+    (let top (. bounds y))
+    (let right (. bounds right))
+    (let bottom (. bounds bottom))
+    (let x0 (+ (* left a) (* top b) tx))
+    (let y0 (+ (* left c) (* top d) ty))
+    (let x1 (+ (* right a) (* top b) tx))
+    (let y1 (+ (* right c) (* top d) ty))
+    (let x2 (+ (* right a) (* bottom b) tx))
+    (let y2 (+ (* right c) (* bottom d) ty))
+    (let x3 (+ (* left a) (* bottom b) tx))
+    (let y3 (+ (* left c) (* bottom d) ty))
+    (let min-x (call min (call min x0 x1) (call min x2 x3)))
+    (let min-y (call min (call min y0 y1) (call min y2 y3)))
+    (let max-x (call max (call max x0 x1) (call max x2 x3)))
+    (let max-y (call max (call max y0 y1) (call max y2 y3)))
+    (return (call Rect min-x min-y (- max-x min-x) (- max-y min-y)))
+  )
+  (fn-do + transform-coordinates _
+    (param src _)
+    (param src-off Int)
+    (param dst _)
+    (param dst-off Int)
+    (param num-pts Int)
+    (probe-count graphics.matrix.bulk-transforms)
+    (probe-count graphics.matrix.bulk-points num-pts)
+    (let i src-off)
+    (let j dst-off)
+    (let src-end (+ src-off (* 2 num-pts)))
+    (while (< i src-end)
+      (let x ([] src i))
+      (+= i 1)
+      (let y ([] src i))
+      (+= i 1)
+      (= ([] dst j) (+ (* x a) (* y b) tx))
+      (+= j 1)
+      (= ([] dst j) (+ (* x c) (* y d) ty))
+      (+= j 1)
+    )
+    (blank)
+    (return dst)
+  )
+  (fn-expr + transform-corners _
+    (param rect Rect)
+    (call transform-coordinates coords 0 coords 0 4)
+    (where
+      (lazy coords (. rect corners))
+    )
+  )
+  (fn-expr + inverse-transform _
+    (param bounds Rect)
+    (case? (and pt1 pt2)
+      (call Rect (. pt1 x) (. pt1 y) (- (. pt2 x) (. pt1 x)) (- (. pt2 y) (. pt1 y)))
+    )
+    (where
+      (lazy pt1 (call inverse-transform (. bounds top-left)))
+      (lazy pt2 (call inverse-transform (. bounds bottom-right)))
+    )
+  )
+  (fn-expr + create-inverse _
+    (before
+      (probe-count graphics.matrix.inversions)
+    )
+    (case? det
+      (call invert det)
+    )
+    (where
+      (lazy det determinant)
+    )
+  )
+  (fn-expr + create-shiftless _
+    (call Matrix a c b d 0 0)
+  )
+  (fn-expr + motion-vector (list F64) :get
+    (case? (== width 0)
+      (list (as tx F64) (as ty F64) 0 0 (as d F64) (if-expr (== d 0) 0 (/ b d)))
+    )
+    (default
+      (list (as tx F64) (as ty F64) angle (as width F64) (as height F64) (if-expr (== height 0) 0 slant))
+    )
+    (where
+      (lazy angle (as (call atan2 c a) F64))
+      (lazy width (call sqrt (+ (* a a) (* c c))))
+      (lazy height (/ (- (* a d) (* b c)) width))
+      (lazy shear (/ (+ (* a b) (* c d)) width))
+      (lazy slant (/ shear height))
+    )
+  )
+)
+
+(fn-expr + matrix-from-identity _
+  (call Matrix 1 0 0 1 0 0)
+)
+
+(fn-expr + matrix-from-scale _
+  (param size Dimensions)
+  (call Matrix (. size width) 0 0 (. size height) 0 0)
+)
+
+(fn-expr + matrix-from-translation _
+  (param point Point)
+  (call Matrix 1 0 0 1 (. point x) (. point y))
+)
+
+(fn-expr + matrix-from-shear _
+  (param size Dimensions)
+  (call Matrix 1 (. size height) (. size width) 1 0 0)
+)
+
+(fn-expr + matrix-from-rotation _
+  (param angle Radians)
+  (param center Point)
+  (call Matrix
+    (block
+      (arg cosa)
+      (arg sina)
+      (arg (- sina))
+      (arg cosa)
+      (arg (+ (- (. center x) (* (. center x) cosa)) (* (. center y) sina)))
+      (arg (- (. center y) (* (. center x) sina) (* (. center y) cosa)))
+    )
+  )
+  (where
+    (lazy cosa (call cos angle))
+    (lazy sina (call sin angle))
+  )
+)

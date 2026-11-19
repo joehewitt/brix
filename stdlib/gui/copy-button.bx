@@ -1,0 +1,45 @@
+(import ./clipboard)
+(import ./icon)
+(import ./icon-button)
+(import /gui/icons/lucide/check)
+(import /gui/icons/lucide/copy)
+(import /time/duration)
+(blank)
+(prop _ copy-button-settle Duration (= 1500ms))
+
+(type + CopyButton (is IconButton)
+  (prop + text _ (= ""))
+  (prop + is-copied _ (= false))
+  (blank)
+  (prop _ settler (? Task))
+  (blank)
+  (rule This
+    (when-style (not #is-copied)
+      (own-rule icon-host
+        (<> LucideCopy (slot: first-child) (• icon))
+      )
+    )
+    (blank)
+    (when-style #is-copied
+      (own-rule icon-host
+        (<> LucideCheck (slot: first-child) (• icon))
+      )
+    )
+  )
+  (subscribe-for (on event click)
+    (call write)
+    (call (. event cancel))
+  )
+  (fn-do + write Bool
+    (return-if false (if (not (call (. (call Clipboard) write-text) text))))
+    (= is-copied true)
+    (call (?. settler cancel-later))
+    (= settler
+      (do-new
+        (call (. copy-button-settle wait))
+        (= is-copied false)
+      )
+    )
+    (return true)
+  )
+)

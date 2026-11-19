@@ -2,22 +2,28 @@
 
 Units
 
-```yumi
--- 24.0foo as UnitString
+```brix
+(main
+  (print (as 24.0foo UnitString))
+)
 
-+ Foo (foo) is F64
+(blank)
+(type-line + Foo (alias foo) (is F64))
 ```
 
 ```output
 24foo
 ```
 
-```yumi
--- 24.0foo as Bar as UnitString
--- 48.0bar as Foo as UnitString
+```brix
+(main
+  (print (as 24.0foo Bar UnitString))
+  (print (as 48.0bar Foo UnitString))
+)
 
-+ Foo (foo) is F64
-+ Bar (bar) is 0.5foo
+(blank)
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is 0.5foo))
 ```
 
 ```output
@@ -25,13 +31,16 @@ Units
 24foo
 ```
 
-```yumi
--- 24.0foo as Baz as UnitString
--- 192.0baz as Foo as UnitString
+```brix
+(main
+  (print (as 24.0foo Baz UnitString))
+  (print (as 192.0baz Foo UnitString))
+)
 
-+ Foo (foo) is F64
-+ Bar (bar) is 0.5foo
-+ Baz (baz) is 0.25bar
+(blank)
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is 0.5foo))
+(type-line + Baz (alias baz) (is 0.25bar))
 ```
 
 ```output
@@ -39,14 +48,17 @@ Units
 24foo
 ```
 
-```yumi
--- 24.0foo as Bar as UnitString
--- 72bar as Foo as UnitString
+```brix
+(main
+  (print (as 24.0foo Bar UnitString))
+  (print (as 72bar Foo UnitString))
+)
 
-+ Foo (foo) is F64
-+ Bar (bar) is I32
-
-+ 1bar = 0.333333333333foo
+(blank)
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is I32))
+(blank)
+(unit + 1bar 0.333333333333foo)
 ```
 
 ```output
@@ -56,14 +68,17 @@ Units
 
 ### Divide operator in unit
 
-```yumi
--- 24.0foo as Bar as UnitString
--- 72bar as Foo as UnitString
+```brix
+(main
+  (print (as 24.0foo Bar UnitString))
+  (print (as 72bar Foo UnitString))
+)
 
-+ Foo (foo) is F64
-+ Bar (bar) is I32
-
-+ 1bar = 1 / 3foo
+(blank)
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is I32))
+(blank)
+(unit + 1bar (/ 1 3foo))
 ```
 
 ```output
@@ -73,14 +88,17 @@ Units
 
 ### Pow operator in unit
 
-```yumi
--- 24.0foo as Bar as UnitString
--- 72bar as Foo as UnitString
+```brix
+(main
+  (print (as 24.0foo Bar UnitString))
+  (print (as 72bar Foo UnitString))
+)
 
-+ Foo (foo) is F64
-+ Bar (bar) is I32
-
-+ 1bar = 2 %% 3foo
+(blank)
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is I32))
+(blank)
+(unit + 1bar (%% 2 3foo))
 ```
 
 ```output
@@ -90,14 +108,17 @@ Units
 
 ### Negative unit
 
-```yumi
--- 5foo as Bar as UnitString
--- -5bar as Foo as UnitString
+```brix
+(main
+  (print (as 5foo Bar UnitString))
+  (print (as -5bar Foo UnitString))
+)
 
-+ Foo (foo) is F64
-+ Bar (bar) is I32
-
-+ 1bar = -1foo
+(blank)
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is I32))
+(blank)
+(unit + 1bar -1foo)
 ```
 
 ```output
@@ -107,14 +128,17 @@ Units
 
 ### Multiple operations
 
-```yumi
--- 24.0foo as Bar as UnitString
--- 72bar as Foo as UnitString
+```brix
+(main
+  (print (as 24.0foo Bar UnitString))
+  (print (as 72bar Foo UnitString))
+)
 
-+ Foo (foo) is F64
-+ Bar (bar) is I32
-
-+ 1bar = (1 / 3) + 0foo
+(blank)
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is I32))
+(blank)
+(unit + 1bar (+ (/ 1 3) 0foo))
 ```
 
 ```output
@@ -122,61 +146,63 @@ Units
 24foo
 ```
 
-```yumi crash
-+ Foo (foo) is I32
-+ Bar (bar) is I32
-
-_ 1bar = 1foo
+```brix crash
+(type-line + Foo (alias foo) (is I32))
+(type-line + Bar (alias bar) (is I32))
+(blank)
+(unit _ 1bar 1foo)
 ```
 
 ```output
 Exception: Equalities must be public
 <no file:5>
-    _ 1bar = 1foo
-    ^^^^^^^^^^^^^
+    (unit _ 1bar 1foo)
+    ^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-+ Foo (foo) is F64
-+ Bar (bar) is I32
-
-+ 1.0bar = 1 / 3
+```brix crash
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is I32))
+(blank)
+(unit + 1.0bar (/ 1 3))
 ```
 
 ```output
 Exception: Ambiguous units
 <no file:5>
-    + 1.0bar = 1 / 3
-    ^^^^^^^^^^^^^^^^
+    (unit + 1.0bar (/ 1 3))
+    ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-+ Foo (foo) is F64
-+ Bar (bar) is I32
-
-+ 1.0bar = 1foo / 3foo
+```brix crash
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is I32))
+(blank)
+(unit + 1.0bar (/ 1foo 3foo))
 ```
 
 ```output
 Exception: Conflicting units
 <no file:5>
-    + 1.0bar = 1foo / 3foo
-               ^^^^^^^^^^^
+    (unit + 1.0bar (/ 1foo 3foo))
+                   ^^^^^^^^^^^^^
 ```
 
 ### Argument cast to unit
 
-```yumi
-foo(24.0foo)
+```brix
+(main
+  (call foo 24.0foo)
+)
 
-+ Foo (foo) is F64
-+ Bar (bar) is 0.5foo
+(blank)
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is 0.5foo))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - n Bar
-
--- n as UnitString
+(fn-do + foo _
+  (param n Bar)
+  (print (as n UnitString))
+)
 ```
 
 ```output
@@ -185,17 +211,19 @@ foo(24.0foo)
 
 ### Return value cast to unit
 
-```yumi
--- foo(24.0foo)  as UnitString
+```brix
+(main
+  (print (as (call foo 24.0foo) UnitString))
+)
 
-+ Foo (foo) is F64
-+ Bar (bar) is 0.5foo
+(blank)
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is 0.5foo))
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n Bar
-
-n
+(fn-expr + foo _
+  (param n Bar)
+  n
+)
 ```
 
 ```output
@@ -204,17 +232,17 @@ n
 
 ### Units should call constructor
 
-```yumi
--- 4foo as UnitString
+```brix
+(main
+  (print (as 4foo UnitString))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo (foo) is Int
-
-────────────────────
-+ This
-    - n
-
-= 99
+(type + Foo (alias foo) (is Int)
+  (fn-do + This _
+    (param n _)
+    (return 99)
+  )
+)
 ```
 
 ```output
@@ -223,11 +251,14 @@ n
 
 ### Allow casting numbers without equalities to each other
 
-```yumi
--- (300foo as Bar) as UnitString
+```brix
+(main
+  (print (as (as 300foo Bar) UnitString))
+)
 
-+ Foo (foo) is I64
-+ Bar (bar) is I64
+(blank)
+(type-line + Foo (alias foo) (is I64))
+(type-line + Bar (alias bar) (is I64))
 ```
 
 ```output
@@ -236,63 +267,64 @@ n
 
 ### Do not allow casting numbers that have equalities to other types
 
-```yumi crash
--- (300foo as Bar) as UnitString
+```brix crash
+(main
+  (print (as (as 300foo Bar) UnitString))
+)
 
-+ Foo (foo) is I64
-+ Bar (bar) is I64
-+ Baz (baz) is I64
-+ Baz2 (baz2) is I64
-
-+ 1baz = 1bar
-+ 1baz2 = 1foo
+(blank)
+(type-line + Foo (alias foo) (is I64))
+(type-line + Bar (alias bar) (is I64))
+(type-line + Baz (alias baz) (is I64))
+(type-line + Baz2 (alias baz2) (is I64))
+(blank)
+(unit + 1baz 1bar)
+(unit + 1baz2 1foo)
 ```
 
 ```output
 Exception: Foo cannot be cast to Bar; there is no conversion between them
-<no file:2>
-    -- (300foo as Bar) as UnitString
-        ^^^^^^^^^^^^^
+<no file:3>
+      (print (as (as 300foo Bar) UnitString))
+                 ^^^^^^^^^^^^^^^
 ```
 
 ### A number of one unit becomes one of another by the ratio between them, in casts and arithmetic.
 
-```yumi
--- 72bar as Foo
--- 72foo as Bar
--- 1foo + 2bar
--- 2bar + 1foo
--- (1foo + 2bar) as UnitString
--- (2bar + 1foo) as UnitString
--- 3foo
--- 1.5foo
--- 3foo as UnitString
--- 3foo * 2foo
--- 3foo - 5foo
--- 10foo / 4foo
--- 5km as M
--- 1500m as Km
--- (2km + 500m) as UnitString
--- (500m + 2km) as UnitString
--- 3km < 5km
--- 3km < 500m
--- 3km == 3000m
--- 72bar < 40foo
--- 72bar == 36foo
--- 5m as I32
--- 5m as F64
+```brix
+(main
+  (print (as 72bar Foo))
+  (print (as 72foo Bar))
+  (print (+ 1foo 2bar))
+  (print (+ 2bar 1foo))
+  (print (as (+ 1foo 2bar) UnitString))
+  (print (as (+ 2bar 1foo) UnitString))
+  (print 3foo)
+  (print 1.5foo)
+  (print (as 3foo UnitString))
+  (print (* 3foo 2foo))
+  (print (- 3foo 5foo))
+  (print (/ 10foo 4foo))
+  (print (as 5km M))
+  (print (as 1500m Km))
+  (print (as (+ 2km 500m) UnitString))
+  (print (as (+ 500m 2km) UnitString))
+  (print (< 3km 5km))
+  (print (< 3km 500m))
+  (print (== 3km 3000m))
+  (print (< 72bar 40foo))
+  (print (== 72bar 36foo))
+  (print (as 5m I32))
+  (print (as 5m F64))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo (foo) is F64
+(type + Foo (alias foo) (is F64))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar (bar) is 0.5foo
+(type + Bar (alias bar) (is 0.5foo))
 
-━━━━━━━━━━━━━━━━━━━━
-+ M (m) is I32
+(type + M (alias m) (is I32))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Km (km) is 1000m
+(type + Km (alias km) (is 1000m))
 ```
 
 ```output
@@ -323,20 +355,23 @@ true
 
 ### A unit declared through bitwise operators.
 
-```yumi
--- 8bar as Foo
--- (1bar + 4foo) as UnitString
--- 3baz as Foo
--- 16qux as Foo
+```brix
+(main
+  (print (as 8bar Foo))
+  (print (as (+ 1bar 4foo) UnitString))
+  (print (as 3baz Foo))
+  (print (as 16qux Foo))
+)
 
-+ Foo (foo) is I32
-+ Bar (bar) is I32
-+ Baz (baz) is I32
-+ Qux (qux) is I32
-
-+ 1bar = 2foo /lshift/ 1
-+ 1baz = 6foo /and/ 3
-+ 8qux = 16foo /rshift/ 2
+(blank)
+(type-line + Foo (alias foo) (is I32))
+(type-line + Bar (alias bar) (is I32))
+(type-line + Baz (alias baz) (is I32))
+(type-line + Qux (alias qux) (is I32))
+(blank)
+(unit + 1bar (/lshift/ 2foo 1))
+(unit + 1baz (/and/ 6foo 3))
+(unit + 8qux (/rshift/ 16foo 2))
 ```
 
 ```output
@@ -348,45 +383,43 @@ true
 
 ### A unit declared through an operator that gives no number.
 
-```yumi crash
-+ Foo (foo) is I32
-+ Bar (bar) is I32
-
-+ 1bar = 2foo < 1
+```brix crash
+(type-line + Foo (alias foo) (is I32))
+(type-line + Bar (alias bar) (is I32))
+(blank)
+(unit + 1bar (< 2foo 1))
 ```
 
 ```output
 Exception: Invalid constant expression
 <no file:5>
-    + 1bar = 2foo < 1
-             ^^^^^^^^
+    (unit + 1bar (< 2foo 1))
+                 ^^^^^^^^^^
 ```
 
 ### Arithmetic on units as the operand of another operator.
 
-```yumi
--- (1foo + 2bar + 3foo) as UnitString
--- (1foo + 2bar) * 2foo
--- 1foo + 2bar < 3foo
--- 1foo + 2bar == 2foo
--- (2bar + 1foo + 2bar) as UnitString
--- (1foo + 2bar) as Bar
--- 3foo - (1foo + 2bar)
--- 5km + 500m + 1km
--- (5km + 500m + 1km) as M
--- 2km + 500m < 3km
+```brix
+(main
+  (print (as (+ 1foo 2bar 3foo) UnitString))
+  (print (* (+ 1foo 2bar) 2foo))
+  (print (< (+ 1foo 2bar) 3foo))
+  (print (== (+ 1foo 2bar) 2foo))
+  (print (as (+ 2bar 1foo 2bar) UnitString))
+  (print (as (+ 1foo 2bar) Bar))
+  (print (- 3foo (+ 1foo 2bar)))
+  (print (+ 5km 500m 1km))
+  (print (as (+ 5km 500m 1km) M))
+  (print (< (+ 2km 500m) 3km))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo (foo) is F64
+(type + Foo (alias foo) (is F64))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar (bar) is 0.5foo
+(type + Bar (alias bar) (is 0.5foo))
 
-━━━━━━━━━━━━━━━━━━━━
-+ M (m) is I32
+(type + M (alias m) (is I32))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Km (km) is 1000m
+(type + Km (alias km) (is 1000m))
 ```
 
 ```output
@@ -404,28 +437,31 @@ true
 
 ### An assigning operator between units converts by their ratio, as its operator does.
 
-```yumi
-. x = 3foo
-x += 2bar
--- x as UnitString
-x += 1
--- x as UnitString
-x *= 2foo
--- x as UnitString
-. f = 1.5
-f += 2bar
--- f
-. y = 2bar
-y += 6foo
--- y as UnitString
-. i = 3.0
-i += 2bar
--- i
+```brix
+(main
+  (let x 3foo)
+  (+= x 2bar)
+  (print (as x UnitString))
+  (+= x 1)
+  (print (as x UnitString))
+  (*= x 2foo)
+  (print (as x UnitString))
+  (let f 1.5)
+  (+= f 2bar)
+  (print f)
+  (let y 2bar)
+  (+= y 6foo)
+  (print (as y UnitString))
+  (let i 3.0)
+  (+= i 2bar)
+  (print i)
+)
 
-+ Foo (foo) is F64
-+ Bar (bar) is F64
-
-+ 1bar = 3foo
+(blank)
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is F64))
+(blank)
+(unit + 1bar 3foo)
 ```
 
 ```output
@@ -439,35 +475,36 @@ i += 2bar
 
 ### A unit that names no type is an error at the unit.
 
-```yumi crash
--- 5zz
+```brix crash
+(main
+  (print 5zz)
+)
 ```
 
 ```output
 Exception: Unit "zz" not found
-<no file:2>
-    -- 5zz
-        ^^
+<no file:3>
+      (print 5zz)
+              ^^
 ```
 
 ### A number written with a unit whose class declares a constructor is what that constructor returns.
 
-```yumi
--- 4foo as UnitString
--- 4foo + 1
--- 7bar as UnitString
+```brix
+(main
+  (print (as 4foo UnitString))
+  (print (+ 4foo 1))
+  (print (as 7bar UnitString))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo (foo) is Int
+(type + Foo (alias foo) (is Int)
+  (fn-do + This _
+    (param n _)
+    (return 99)
+  )
+)
 
-────────────────────
-+ This
-    - n
-
-= 99
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar (bar) is Int
+(type + Bar (alias bar) (is Int))
 ```
 
 ```output
@@ -478,42 +515,38 @@ Exception: Unit "zz" not found
 
 ### A default written with a unit whose class declares a constructor is evaluated once, as its module starts.
 
-```yumi
--- "start"
--- big(3foo)
--- twice(1bar)
+```brix
+(main
+  (print "start")
+  (print (call big 3foo))
+  (print (call twice 1bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo (foo) is Int
+(type + Foo (alias foo) (is Int)
+  (fn-do + This _
+    (param n _)
+    (print (str "foo " n))
+    (return (+ n 100))
+  )
+)
 
-────────────────────
-+ This
-    - n
+(type + Bar (alias bar) (is Float)
+  (fn-do + This _
+    (param n _)
+    (print (str "bar " n))
+    (return (* n 2))
+  )
+)
 
--- "foo $n"
-= n + 100
+(fn-expr + big Foo
+  (param f Foo (= 9foo))
+  f
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar (bar) is Float
-
-────────────────────
-+ This
-    - n
-
--- "bar $n"
-= n * 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ big Foo
-    - f Foo = 9foo
-
-f
-
-━━━━━━━━━━━━━━━━━━━━
-+ twice
-    - f = 9bar
-
-f * 2
+(fn-expr + twice _
+  (param f _ (= 9bar))
+  (* f 2)
+)
 ```
 
 ```output
@@ -528,37 +561,34 @@ bar 1
 
 ### A number type derived from an integer picks the integer overload over a float one.
 
-```yumi
--- half(7 as Ticks)
--- half(7.0)
--- half(7ticks) + 1
+```brix
+(main
+  (print (call half (as 7 Ticks)))
+  (print (call half 7.0))
+  (print (+ (call half 7ticks) 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Ticks (ticks) is I64
+(type + Ticks (alias ticks) (is I64))
 
-━━━━━━━━━━━━━━━━━━━━
-+ half
-    - value I32
+(fn-expr + half _
+  (param value I32)
+  (str "I32 " (/ value 2))
+)
 
-"I32 ${value / 2}"
+(fn-expr + half _
+  (param value I64)
+  (/ value 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ half
-    - value I64
+(fn-expr + half _
+  (param value F32)
+  (str "F32 " (/ value 2))
+)
 
-value / 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ half
-    - value F32
-
-"F32 ${value / 2}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ half
-    - value F64
-
-value / 2
+(fn-expr + half _
+  (param value F64)
+  (/ value 2)
+)
 ```
 
 ```output
@@ -569,18 +599,21 @@ value / 2
 
 ### A number of one unit becomes a whole number of another exactly, through a chain of units.
 
-```yumi
--- 2880minutes as Days as UnitString
--- 2days as Minutes as UnitString
--- 10080minutes as Weeks as UnitString
--- 1weeks as Minutes as UnitString
--- 90minutes as Hours as UnitString
--- 4320minutes as Days
+```brix
+(main
+  (print (as 2880minutes Days UnitString))
+  (print (as 2days Minutes UnitString))
+  (print (as 10080minutes Weeks UnitString))
+  (print (as 1weeks Minutes UnitString))
+  (print (as 90minutes Hours UnitString))
+  (print (as 4320minutes Days))
+)
 
-+ Minutes (minutes) is F64
-+ Hours (hours) is 60minutes
-+ Days (days) is 24hours
-+ Weeks (weeks) is 7days
+(blank)
+(type-line + Minutes (alias minutes) (is F64))
+(type-line + Hours (alias hours) (is 60minutes))
+(type-line + Days (alias days) (is 24hours))
+(type-line + Weeks (alias weeks) (is 7days))
 ```
 
 ```output
@@ -594,15 +627,18 @@ value / 2
 
 ### A whole number of one unit in another stays exact where smaller units lie below both.
 
-```yumi
--- 36inches as Feet as UnitString
--- 3ft as Inches as UnitString
--- 30inches as Feet
+```brix
+(main
+  (print (as 36inches Feet UnitString))
+  (print (as 3ft Inches UnitString))
+  (print (as 30inches Feet))
+)
 
-+ Millimeters (mm) is F64
-+ Centimeters (cm) is 10mm
-+ Inches (inches) is 2.54cm
-+ Feet (ft) is 12inches
+(blank)
+(type-line + Millimeters (alias mm) (is F64))
+(type-line + Centimeters (alias cm) (is 10mm))
+(type-line + Inches (alias inches) (is 2.54cm))
+(type-line + Feet (alias ft) (is 12inches))
 ```
 
 ```output
@@ -613,13 +649,16 @@ value / 2
 
 ### Subtracting, dividing or multiplying across units converts the right side to the unit of the left.
 
-```yumi
--- (8hours - 30minutes) as UnitString
--- (8hours / 120minutes) as UnitString
--- (4hours * 120minutes) as UnitString
+```brix
+(main
+  (print (as (- 8hours 30minutes) UnitString))
+  (print (as (/ 8hours 120minutes) UnitString))
+  (print (as (* 4hours 120minutes) UnitString))
+)
 
-+ Minutes (minutes) is F64
-+ Hours (hours) is 60minutes
+(blank)
+(type-line + Minutes (alias minutes) (is F64))
+(type-line + Hours (alias hours) (is 60minutes))
 ```
 
 ```output
@@ -630,27 +669,28 @@ value / 2
 
 ### A unit declared on a number type of its own is one of that type, so a value held as the type keeps its size.
 
-```yumi
-. holder = Holder()
--- holder.span as Small
--- take(3bg)
--- (2bg as Base) as Big
--- 2bg as F64
+```brix
+(main
+  (let holder (call Holder))
+  (print (as (. holder span) Small))
+  (print (call take 3bg))
+  (print (as (as 2bg Base) Big))
+  (print (as 2bg F64))
+)
 
-+ Base is F64
-+ Small (sm) is Base
-+ Big (bg) is 1000sm
+(blank)
+(type-line + Base (is F64))
+(type-line + Small (alias sm) (is Base))
+(type-line + Big (alias bg) (is 1000sm))
 
-━━━━━━━━━━━━━━━━━━━━
-+ take
-    - n Base
+(fn-expr + take _
+  (param n Base)
+  (as n Small)
+)
 
-n as Small
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ span Base = 2bg
+(type + Holder
+  (prop + span Base (= 2bg))
+)
 ```
 
 ```output
@@ -662,26 +702,25 @@ n as Small
 
 ### Arithmetic between a unit and a plain number keeps the unit, on either side of a multiplication.
 
-```yumi
-. scaled = 2km * 2
--- scaled as UnitString
--- (2 * 2km) as UnitString
--- (6km / 2) as UnitString
--- meters(scaled)
--- meters(2 * 2km)
--- meters(2km * 2 + 1km)
+```brix
+(main
+  (let scaled (* 2km 2))
+  (print (as scaled UnitString))
+  (print (as (* 2 2km) UnitString))
+  (print (as (/ 6km 2) UnitString))
+  (print (call meters scaled))
+  (print (call meters (* 2 2km)))
+  (print (call meters (+ (* 2km 2) 1km)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ meters F64
-    - distance Foo
+(fn-expr + meters F64
+  (param distance Foo)
+  (as distance F64)
+)
 
-distance as F64
+(type + Foo (alias foo) (is F64))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo (foo) is F64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Km (km) is 1000foo
+(type + Km (alias km) (is 1000foo))
 ```
 
 ```output
@@ -695,14 +734,17 @@ distance as F64
 
 ### The distance units convert by their metric and imperial factors.
 
-```yumi
-/units/distance
+```brix
+(import /units/distance)
+(blank)
 
--- 1meters as Millimeters
--- 1km as Meters
--- 1µm as Nanometers
--- 1miles as Meters
--- 1inches as Millimeters
+(main
+  (print (as 1meters Millimeters))
+  (print (as 1km Meters))
+  (print (as 1µm Nanometers))
+  (print (as 1miles Meters))
+  (print (as 1inches Millimeters))
+)
 ```
 
 ```output
@@ -715,183 +757,195 @@ distance as F64
 
 ### An integer written with a unit that its number type cannot hold is rejected, as a plain one is.
 
-```yumi crash
-+ Tk (tk) is U8
+```brix crash
+(type-line + Tk (alias tk) (is U8))
+(blank)
 
--- 300tk
+(main
+  (print 300tk)
+)
 ```
 
 ```output
 Exception: Integer literal 300 does not fit Tk
-<no file:4>
-    -- 300tk
-       ^^^^^
+<no file:6>
+      (print 300tk)
+             ^^^^^
 ```
 
 ### A symbol written after a number that names no unit is named in the error.
 
-```yumi crash
--- 25%
+```brix crash
+(main
+  (print 25%)
+)
 ```
 
 ```output
 Exception: Unit "%" not found
-<no file:2>
-    -- 25%
-         ^
+<no file:3>
+      (print 25%)
+               ^
 ```
 
 ### A number with a fraction written in a unit that holds whole numbers is rejected.
 
-```yumi crash
-+ M (m) is I32
+```brix crash
+(type-line + M (alias m) (is I32))
+(blank)
 
--- 3.7m
+(main
+  (print 3.7m)
+)
 ```
 
 ```output
 Exception: M holds whole numbers, as I32 does, so 3.7m cannot be written; write a whole number
-<no file:4>
-    -- 3.7m
-       ^^^^
+<no file:6>
+      (print 3.7m)
+             ^^^^
 ```
 
 ### A number written in the unit of a class that is no number and has no constructor is rejected.
 
-```yumi crash
-+ Name (nm) is String
+```brix crash
+(type-line + Name (alias nm) (is String))
+(blank)
 
--- 5nm
+(main
+  (print 5nm)
+)
 ```
 
 ```output
 Exception: Name is no number and declares no constructor that takes one, so no number can be written in its unit; declare Name as a number type
-<no file:4>
-    -- 5nm
-       ^^^
+<no file:6>
+      (print 5nm)
+             ^^^
 ```
 
 ### A unit declared as a number of a unit that names nothing is reported at the declaration.
 
-```yumi crash
--- 2bar
+```brix crash
+(main
+  (print 2bar)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar (bar) is 2zz
+(type + Bar (alias bar) (is 2zz))
 ```
 
 ```output
 Exception: Unit "zz" not found
-<no file:5>
-    + Bar (bar) is 2zz
-                    ^^
+<no file:6>
+    (type + Bar (alias bar) (is 2zz))
+                                 ^^
 ```
 
 ### A unit declared as zero of another is rejected, as no number of it would convert.
 
-```yumi crash
--- 2bar as Foo as UnitString
+```brix crash
+(main
+  (print (as 2bar Foo UnitString))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-
-+ Foo (foo) is F64
-+ Bar (bar) is 0foo
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is 0foo))
 ```
 
 ```output
 Exception: A unit cannot be declared as zero of another, which no number of it would convert from; write a number other than zero
 <no file:7>
-    + Bar (bar) is 0foo
-                   ^^^^
+    (type-line + Bar (alias bar) (is 0foo))
+                                     ^^^^
 ```
 
 ### An equality with a side in a number type of the language is rejected.
 
-```yumi crash
--- 2bar as F64
+```brix crash
+(main
+  (print (as 2bar F64))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-
-+ Bar (bar) is F64
-+ 1bar = 3f
+(type-line + Bar (alias bar) (is F64))
+(unit + 1bar 3f)
 ```
 
 ```output
 Exception: An equality relates units a program declares, and F64 is a number type of the language; write each side in a unit the program declares
 <no file:7>
-    + 1bar = 3f
-    ^^^^^^^^^^^
+    (unit + 1bar 3f)
+    ^^^^^^^^^^^^^^^^
 ```
 
 ### A unit suffix a module declares twice is rejected.
 
-```yumi crash
--- 2q
+```brix crash
+(main
+  (print 2q)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-
-+ A (q) is F64
-+ B (q) is I32
+(type-line + A (alias q) (is F64))
+(type-line + B (alias q) (is I32))
 ```
 
 ```output
 Exception: "q" already names A; give B a suffix of its own
 <no file:7>
-    + B (q) is I32
-               ^^^
+    (type-line + B (alias q) (is I32))
+                                 ^^^
 ```
 
 ### A unit suffix that a class of an imported module has is rejected, as it would hide that class's.
 
-```yumi crash
--- 'a'
+```brix crash
+(main
+  (print 'a')
+)
 
-━━━━━━━━━━━━━━━━━━━━
-
-+ C (c) is F64
+(type-line + C (alias c) (is F64))
 ```
 
 ```output
 Exception: "c" already names Char; give C a suffix of its own
 <no file:6>
-    + C (c) is F64
-               ^^^
+    (type-line + C (alias c) (is F64))
+                                 ^^^
 ```
 
 ### Two equalities between the same units that disagree are rejected.
 
-```yumi crash
--- 1bar as Foo as UnitString
+```brix crash
+(main
+  (print (as 1bar Foo UnitString))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-
-+ Foo (foo) is F64
-+ Bar (bar) is 2foo
-+ 1bar = 3foo
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is 2foo))
+(unit + 1bar 3foo)
 ```
 
 ```output
 Exception: Equalities between Bar and Foo disagree: one makes 1 Bar 2 Foo, another 3 Foo; keep one of them
 <no file:8>
-    + 1bar = 3foo
-    ^^^^^^^^^^^^^
+    (unit + 1bar 3foo)
+    ^^^^^^^^^^^^^^^^^^
 ```
 
 ### An equality that adds a number with no unit to one in a unit is rejected, as it is no ratio.
 
-```yumi crash
--- 1bar as Foo as UnitString
+```brix crash
+(main
+  (print (as 1bar Foo UnitString))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-
-+ Foo (foo) is F64
-+ Bar (bar) is F64
-+ 1bar = 2foo + 5
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is F64))
+(unit + 1bar (+ 2foo 5))
 ```
 
 ```output
 Exception: An equality relates two units by a ratio alone, so a number with no unit cannot be added to or taken from one; write the ratio as one number in the unit
 <no file:8>
-    + 1bar = 2foo + 5
-                    ^
+    (unit + 1bar (+ 2foo 5))
+                         ^
 ```

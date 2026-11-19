@@ -1,0 +1,233 @@
+(import ./backing)
+(import ./core)
+(import ./error)
+(import ./number)
+(import ./range)
+(import ./stream)
+
+(type + (of Bitmap Integer) (is Integer)
+  (fn-do + This _
+    (param integer Integer (= (as 0 Integer)))
+    (. Integer bit-width)
+    (return (as integer This))
+  )
+  (fn-expr + capacity Size :get
+    (. Integer bit-width)
+  )
+  (fn-expr + (index-get this (param index Index)) _
+    (before
+      (throw (call OutOfBoundsError "Bitmap index out of bounds") (if (>= (as index UInt) (as capacity UInt))))
+    )
+    (!= (/and/ (as this Integer) mask) (as 0 Integer))
+    (where
+      (lazy mask (/lshift/ (as 1 Integer) index))
+    )
+  )
+  (fn-expr + (index-set this (param index Index) (param truth Bool)) _
+    (before
+      (throw (call OutOfBoundsError "Bitmap index out of bounds") (if (>= (as index UInt) (as capacity UInt))))
+    )
+    (case? truth
+      (as (/or/ (as this Integer) mask) This)
+    )
+    (default
+      (as (/and/ (as this Integer) (/xor/ mask (call (of bitmap-mask Integer) capacity))) This)
+    )
+    (where
+      (lazy mask (/lshift/ (as 1 Integer) index))
+    )
+  )
+  (fn-expr + fill _
+    (param truth Bool)
+    (as (if-expr truth (call (of bitmap-mask Integer) capacity) (as 0 Integer)) This)
+  )
+  (fn-expr + copy _
+    this
+  )
+  (fn-expr + find _
+    (param truth Bool)
+    (call bitmap-find this truth)
+  )
+  (fn-expr + find-consecutive _
+    (param count Size)
+    (param truth Bool)
+    (call bitmap-find-consecutive this count truth)
+  )
+  (fn-expr + count _
+    (param truth Bool)
+    (call bitmap-count this truth)
+  )
+  (fn-to-do + (of Iterable Bool) @inline
+    (for (in index (..< 0 capacity))
+      (yield ([] this index))
+    )
+  )
+  (fn-do + indices _
+    (param truth Bool)
+    (for (in index (..< 0 capacity))
+      (yield? (only-if index (if (== ([] this index) truth))))
+    )
+  )
+)
+
+(type + (of BitmapBuffer Backing) (is Tuple)
+  (constraint = Backing GCBacking)
+  (constraint is Backing StorageBacking)
+  (prop _ storage (. Backing (of Storage U64)))
+  (prop _ bit-capacity Size)
+  (fn-do + This _
+    (param capacity Size)
+    (constraint = Backing GCBacking)
+    (return (call This (call Void) capacity))
+  )
+  (fn-do + This _
+    (param context (. Backing Context))
+    (param capacity Size)
+    (let words (call bitmap-word-count capacity))
+    (= storage (call (of (. Backing allocate) U64) context words))
+    (= bit-capacity capacity)
+    (for (in index (..< 0 words))
+      (call (of (. Backing store) U64) storage 0ul index)
+    )
+  )
+  (fn-do + (of This Provider) _
+    (param provider Provider)
+    (param capacity Size)
+    (constraint is Provider ArrayStorageProvider)
+    (constraint = Backing (. Provider (of Backing U64)))
+    (let context (as provider (. Backing Context)))
+    (let words (call bitmap-word-count capacity))
+    (= storage (call (of (. Backing allocate) U64) context words))
+    (= bit-capacity capacity)
+    (for (in index (..< 0 words))
+      (call (of (. Backing store) U64) storage 0ul index)
+    )
+  )
+  (fn-expr + capacity Size :get
+    bit-capacity
+  )
+  (fn-expr + (index-get this (param index Index)) _
+    (before
+      (throw (call OutOfBoundsError "Bitmap index out of bounds") (if (>= (as index UInt) (as capacity UInt))))
+    )
+    (!= (/and/ word (/lshift/ 1ul (% index 64))) 0ul)
+    (where
+      (lazy word (call (of (. Backing load) U64) storage (/ index 64)))
+    )
+  )
+  (fn-do + (index-set this (param index Index) (param truth Bool)) _
+    (throw (call OutOfBoundsError "Bitmap index out of bounds") (if (>= (as index UInt) (as capacity UInt))))
+    (let word-index (/ index 64))
+    (let word (call (of (. Backing load) U64) storage word-index))
+    (let mask (/lshift/ 1ul (% index 64)))
+    (if truth
+      (= word (/or/ word mask))
+      (else
+        (= word (/and/ word (/xor/ mask (. U64 max))))
+      )
+    )
+    (call (of (. Backing store) U64) storage word word-index)
+  )
+  (fn-do + fill _
+    (param truth Bool)
+    (let full-words (/ capacity 64))
+    (let word (if-expr truth (. U64 max) 0ul))
+    (for (in index (..< 0 full-words))
+      (call (of (. Backing store) U64) storage word index)
+    )
+    (if (!= (% capacity 64) 0)
+      (let tail (if-expr truth (call (of bitmap-mask U64) (% capacity 64)) 0ul))
+      (call (of (. Backing store) U64) storage tail full-words)
+    )
+  )
+  (fn-do + copy _
+    (param context (. Backing Context) (= (call Void)))
+    (let result (call This context capacity))
+    (for (in index (..< 0 (call bitmap-word-count capacity)))
+      (let word (call (of (. Backing load) U64) storage index))
+      (call (of (. Backing store) U64) (. result storage) word index)
+    )
+    (return result)
+  )
+  (fn-expr + find _
+    (param truth Bool)
+    (call bitmap-find this truth)
+  )
+  (fn-expr + find-consecutive _
+    (param count Size)
+    (param truth Bool)
+    (call bitmap-find-consecutive this count truth)
+  )
+  (fn-expr + count _
+    (param truth Bool)
+    (call bitmap-count this truth)
+  )
+  (fn-to-do + (of Iterable Bool) @inline
+    (for (in index (..< 0 capacity))
+      (yield ([] this index))
+    )
+  )
+  (fn-do + indices _
+    (param truth Bool)
+    (for (in index (..< 0 capacity))
+      (yield? (only-if index (if (== ([] this index) truth))))
+    )
+  )
+)
+
+(fn-expr _ bitmap-word-count Size
+  (param capacity Size)
+  (before
+    (throw (call Panic "BitmapBuffer capacity is negative") (if (< capacity 0)))
+  )
+  (+ (/ capacity 64) (if-expr (!= (% capacity 64) 0) 1 0))
+)
+
+(fn-expr _ (of bitmap-mask Integer) _
+  (param capacity Size)
+  (case? (== capacity (. Integer bit-width))
+    (as (- (as 0 Integer) (as 1 Integer)) Integer)
+  )
+  (default
+    (as (- (/lshift/ (as 1 Integer) capacity) (as 1 Integer)) Integer)
+  )
+)
+
+(fn-do _ (of bitmap-find Bits) (? Index)
+  (param bitmap Bits)
+  (param truth Bool)
+  (for (in index (..< 0 (. bitmap capacity)))
+    (return-if index (if (== ([] bitmap index) truth)))
+  )
+  (return null)
+)
+
+(fn-do _ (of bitmap-find-consecutive Bits) (? Index)
+  (param bitmap Bits)
+  (param count Size)
+  (param truth Bool)
+  (return-if null (if (or (== count 0) (> count (. bitmap capacity)))))
+  (let run Size 0)
+  (for (in index (..< 0 (. bitmap capacity)))
+    (if (== ([] bitmap index) truth)
+      (+= run 1)
+      (return-if (- (+ index 1) count) (if (== run count)))
+      (else
+        (= run 0)
+      )
+    )
+  )
+  (return null)
+)
+
+(fn-do _ (of bitmap-count Bits) Size
+  (param bitmap Bits)
+  (param truth Bool)
+  (let result Size 0)
+  (for (in index (..< 0 (. bitmap capacity)))
+    (if (== ([] bitmap index) truth)
+      (+= result 1)
+    )
+  )
+  (return result)
+)

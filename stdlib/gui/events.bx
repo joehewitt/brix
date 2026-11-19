@@ -1,0 +1,998 @@
+(import ./box)
+(import ./clipboard)
+(import ./primitives)
+(import /core/event)
+(import /core/intrinsics)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /ui/input)
+(import /ui/value-change-phase)
+
+(type + PointerDeviceKind (is Union)
+  (variant mouse)
+  (variant pen)
+  (variant cursor)
+  (variant eraser)
+  (variant touch)
+  (variant unknown U32)
+)
+
+(type + ScrollPhase (is U64)
+  (variant none (= 0))
+  (variant began (= 1))
+  (variant stationary (= 2))
+  (variant changed (= 4))
+  (variant ended (= 8))
+  (variant cancelled (= 16))
+  (variant may-begin (= 32))
+)
+
+(type + PointerEventData (is Tuple)
+  (prop + root-point Point)
+  (prop + pointer-id U64)
+  (prop + device-kind PointerDeviceKind (= (. PointerDeviceKind mouse)))
+  (prop + modifiers PointerModifiers (= (call PointerModifiers)))
+  (prop + buttons U64)
+  (prop + ordering-time F64)
+)
+
+(type + PointerEvent (is Union)
+  (variant PointerDownEvent)
+  (variant PointerUpEvent)
+  (variant PointerMoveEvent)
+  (variant PointerDragEvent)
+  (variant ScrollEvent)
+  (variant MagnifyEvent)
+  (variant ClickEvent)
+)
+
+(type + FocusedInputEvent (is Union)
+  (variant KeyPressEvent)
+  (variant KeyReleaseEvent)
+  (variant KeyInputEvent)
+  (variant TextCommandEvent)
+  (variant TextCompositionEvent)
+  (variant CopyEvent)
+  (variant CutEvent)
+  (variant PasteEvent)
+)
+
+(type + GUIRoutedEvent (is Union)
+  (variant PointerDownEvent)
+  (variant PointerUpEvent)
+  (variant PointerMoveEvent)
+  (variant PointerDragEvent)
+  (variant ScrollEvent)
+  (variant MagnifyEvent)
+  (variant TouchEvent)
+  (variant ClickEvent)
+  (variant FocusEvent)
+  (variant BlurEvent)
+  (variant KeyPressEvent)
+  (variant KeyReleaseEvent)
+  (variant KeyInputEvent)
+  (variant TextCommandEvent)
+  (variant TextCompositionEvent)
+  (variant CopyEvent)
+  (variant CutEvent)
+  (variant PasteEvent)
+  (variant ModifiersChangedEvent)
+)
+
+(type + ModifiersChangedEvent (is GUIEvent)
+  (fn-do + This _
+    (param data PointerEventData)
+  )
+)
+
+(type + GUIEventRouteNext (is (fn-type (? Pointer) (param event Pointer) (param current Pointer))))
+
+(type + GUIEventRouteFrame (is Tuple)
+  (prop + owner Pointer)
+  (prop + generation U64)
+  (prop + point Point)
+)
+
+(type + GUIEventRouteState (is Tuple)
+  (prop + next (? GUIEventRouteNext))
+  (prop + frames (list GUIEventRouteFrame))
+  (prop + index Size)
+  (prop + point Point)
+)
+
+(type + GUIEvent
+  (implements RoutedEvent)
+  (prop + data PointerEventData)
+  (prop + point Point)
+  (prop + route-frames (list GUIEventRouteFrame))
+  (prop + route-index Size)
+  (prop + is-canceled _ (= false))
+  (prop + root-point _ (=> (. data root-point)))
+  (prop + pointer-id _ (=> (. data pointer-id)))
+  (prop + device-kind _ (=> (. data device-kind)))
+  (prop + modifiers _ (=> (. data modifiers)))
+  (prop + buttons _ (=> (. data buttons)))
+  (prop + ordering-time _ (=> (. data ordering-time)))
+  (blank)
+  (prop _ route-next (? GUIEventRouteNext))
+  (fn-expr + hit-box (? Box) :get
+    (only-if (call (of gc-object-from-pointer Box) (. ([] route-frames 0) owner)) (if (> (. route-frames length) 0)))
+  )
+  (fn-expr + has-own-route Bool :get
+    (if-expr route-next true false)
+  )
+  (fn-do + cancel _
+    (= is-canceled true)
+  )
+  (fn-do + begin-route _
+    (param next GUIEventRouteNext)
+    (param frames (list GUIEventRouteFrame))
+    (let saved (call GUIEventRouteState route-next route-frames route-index point))
+    (= route-next next)
+    (= route-frames frames)
+    (= route-index 0)
+    (= point (. ([] frames 0) point))
+    (return saved)
+  )
+  (fn-do + end-route _
+    (param saved GUIEventRouteState)
+    (= route-next (. saved next))
+    (= route-frames (. saved frames))
+    (= route-index (. saved index))
+    (= point (. saved point))
+  )
+  (fn-do + advance-route _
+    (param index Size)
+    (param next-point Point)
+    (= route-index index)
+    (= point next-point)
+  )
+  (fn-do + next-event-owner _
+    (param current Pointer)
+    (return-if (if (not route-next)))
+    (return (call route-next (as this Pointer) current))
+  )
+)
+
+(type + PointerDownEvent (is GUIEvent)
+  (prop + button PointerButton)
+  (prop + click-count U32)
+  (prop + window-drag-token U64)
+  (fn-do + This _
+    (param data PointerEventData)
+    (param button PointerButton (= (. PointerButton primary)))
+    (param click-count U32 (= 1))
+    (param window-drag-token U64 (= 0))
+  )
+)
+
+(type + PointerUpEvent (is GUIEvent)
+  (prop + button PointerButton)
+  (prop + is-interrupted Bool)
+  (fn-do + This _
+    (param data PointerEventData)
+    (param button PointerButton (= (. PointerButton primary)))
+    (param is-interrupted Bool (= false))
+  )
+)
+
+(type + PointerMoveEvent (is GUIEvent)
+  (prop + delta Point)
+  (fn-do + This _
+    (param data PointerEventData)
+    (param delta Point (= (call Point 0 0)))
+  )
+)
+
+(type + PointerDragEvent (is GUIEvent)
+  (prop + button PointerButton)
+  (prop + delta Point)
+  (fn-do + This _
+    (param data PointerEventData)
+    (param button PointerButton (= (. PointerButton primary)))
+    (param delta Point (= (call Point 0 0)))
+  )
+)
+
+(type + ScrollEvent (is GUIEvent)
+  (prop + delta-x Length)
+  (prop + delta-y Length)
+  (prop + is-precise Bool)
+  (prop + phase ScrollPhase)
+  (prop + momentum-phase ScrollPhase)
+  (prop + delta _ (=> (call Point delta-x delta-y)))
+  (fn-do + This _
+    (param data PointerEventData)
+    (param delta-x Length (= 0))
+    (param delta-y Length (= 0))
+    (param is-precise Bool (= false))
+    (param phase ScrollPhase (= (. ScrollPhase none)))
+    (param momentum-phase ScrollPhase (= (. ScrollPhase none)))
+  )
+)
+
+(type + MagnifyEvent (is GUIEvent)
+  (prop + magnification F64)
+  (prop + phase ScrollPhase)
+  (prop + scale _ (=> (+ 1 magnification)))
+  (fn-do + This _
+    (param data PointerEventData)
+    (param magnification F64 (= 0))
+    (param phase ScrollPhase (= (. ScrollPhase none)))
+  )
+)
+
+(type + TouchPhase (is U32)
+  (variant began (= 0))
+  (variant moved (= 1))
+  (variant ended (= 2))
+  (variant cancelled (= 3))
+)
+
+(type + TouchEvent (is GUIEvent)
+  (prop + phase TouchPhase)
+  (prop + delta Point)
+  (prop + tap-count U32)
+  (prop + radius F64)
+  (prop + touch-id _ (=> pointer-id))
+  (fn-do + This _
+    (param data PointerEventData)
+    (param phase TouchPhase (= (. TouchPhase began)))
+    (param delta Point (= (call Point 0 0)))
+    (param tap-count U32 (= 0))
+    (param radius F64 (= 0))
+  )
+)
+
+(type + ScrollChangedEvent (is Tuple)
+  (prop + old-position Point)
+  (prop + position Point)
+  (prop + cause ScrollCause)
+  (prop + phase ScrollPhase (= (. ScrollPhase none)))
+  (prop + momentum-phase ScrollPhase (= (. ScrollPhase none)))
+)
+
+(type + ClickEvent (is GUIEvent)
+  (prop + button PointerButton)
+  (prop + click-count U32)
+  (fn-do + This _
+    (param data PointerEventData)
+    (param button PointerButton (= (. PointerButton primary)))
+    (param click-count U32 (= 1))
+  )
+)
+
+(type + FocusMode (is Union)
+  (variant none)
+  (variant press)
+  (variant keys)
+  (variant inside)
+  (variant input)
+)
+
+(type + FocusEvent (is GUIEvent)
+  (fn-do + This _
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(type + BlurEvent (is GUIEvent)
+  (fn-do + This _
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(type + KeyPressEvent (is GUIEvent)
+  (prop + key Key)
+  (prop + is-repeat Bool)
+  (prop + native-key-code U32)
+  (prop + characters String)
+  (fn-do + This _
+    (param key _)
+    (param key-modifiers PointerModifiers (= (call PointerModifiers)))
+    (param is-repeat Bool (= false))
+    (param native-key-code U32 (= 0))
+    (param characters String (= ""))
+    (param data PointerEventData (= (call PointerEventData)))
+    (= (. this data)
+      (call PointerEventData
+        (block
+          (arg (. data root-point))
+          (arg (. data pointer-id))
+          (arg (. data device-kind))
+          (arg key-modifiers)
+          (arg (. data buttons))
+          (arg (. data ordering-time))
+        )
+      )
+    )
+  )
+  (fn-expr + typed-text String :get
+    (if-expr is-shortcut "" (call key-typed-text key characters))
+    (where
+      (lazy is-shortcut (or (. modifiers control) (. modifiers option) (. modifiers command)))
+    )
+  )
+)
+
+(fn-expr _ key-typed-text String
+  (param key Key)
+  (param characters String)
+  (match key
+    (case (call (. Key unknown) code)
+      characters
+    )
+    (case (. Key space)
+      characters
+    )
+    (default
+      ""
+    )
+  )
+)
+
+(type + KeyReleaseEvent (is GUIEvent)
+  (prop + key Key)
+  (prop + native-key-code U32)
+  (prop + characters String)
+  (fn-do + This _
+    (param key _)
+    (param key-modifiers PointerModifiers (= (call PointerModifiers)))
+    (param native-key-code U32 (= 0))
+    (param characters String (= ""))
+    (param data PointerEventData (= (call PointerEventData)))
+    (= (. this data)
+      (call PointerEventData
+        (block
+          (arg (. data root-point))
+          (arg (. data pointer-id))
+          (arg (. data device-kind))
+          (arg key-modifiers)
+          (arg (. data buttons))
+          (arg (. data ordering-time))
+        )
+      )
+    )
+  )
+)
+
+(type + KeyInputEvent (is GUIEvent)
+  (prop + text String)
+  (prop + replaces-before Size)
+  (prop + replaces-length Size)
+  (fn-do + This _
+    (param text _)
+    (param replaces-before Size (= 0))
+    (param replaces-length Size (= 0))
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(type + TextCommand (is Union)
+  (variant move-backward)
+  (variant move-forward)
+  (variant move-up)
+  (variant move-down)
+  (variant move-word-backward)
+  (variant move-word-forward)
+  (variant move-to-line-start)
+  (variant move-to-line-end)
+  (variant move-to-paragraph-start)
+  (variant move-to-paragraph-end)
+  (variant move-to-start)
+  (variant move-to-end)
+  (variant page-up)
+  (variant page-down)
+  (variant scroll-to-start)
+  (variant scroll-to-end)
+  (variant scroll-page-up)
+  (variant scroll-page-down)
+  (variant delete-backward)
+  (variant delete-forward)
+  (variant delete-word-backward)
+  (variant delete-word-forward)
+  (variant delete-to-line-start)
+  (variant delete-to-line-end)
+  (variant delete-to-paragraph-end)
+  (variant insert-newline)
+  (variant insert-line-break)
+  (variant insert-tab)
+  (variant insert-backtab)
+  (variant cancel)
+  (variant complete)
+  (variant transpose)
+  (variant select-all)
+  (variant other String)
+)
+
+(type + TextCommandEvent (is GUIEvent)
+  (prop + command TextCommand)
+  (prop + extends-selection Bool)
+  (prop + selector String)
+  (fn-do + This _
+    (param command _)
+    (param extends-selection Bool (= false))
+    (param selector String (= ""))
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(fn-expr + text-command-event TextCommandEvent
+  (param selector String)
+  (call TextCommandEvent (call text-command-from-selector base) extends selector)
+  (where
+    (lazy suffix "AndModifySelection:")
+    (lazy extends (and (> (. selector length) (. suffix length)) (call (. selector ends-with) suffix)))
+    (lazy base (if-expr extends (str ([] selector (..< 0 (- (. selector length) (. suffix length)))) ":") selector))
+  )
+)
+
+(fn-expr + text-command-from-selector TextCommand
+  (param selector String)
+  (match selector
+    (case= "moveLeft:"
+      (. TextCommand move-backward)
+    )
+    (case= "moveBackward:"
+      (. TextCommand move-backward)
+    )
+    (case= "moveRight:"
+      (. TextCommand move-forward)
+    )
+    (case= "moveForward:"
+      (. TextCommand move-forward)
+    )
+    (case= "moveUp:"
+      (. TextCommand move-up)
+    )
+    (case= "moveDown:"
+      (. TextCommand move-down)
+    )
+    (case= "moveWordLeft:"
+      (. TextCommand move-word-backward)
+    )
+    (case= "moveWordBackward:"
+      (. TextCommand move-word-backward)
+    )
+    (case= "moveWordRight:"
+      (. TextCommand move-word-forward)
+    )
+    (case= "moveWordForward:"
+      (. TextCommand move-word-forward)
+    )
+    (case= "moveToLeftEndOfLine:"
+      (. TextCommand move-to-line-start)
+    )
+    (case= "moveToBeginningOfLine:"
+      (. TextCommand move-to-line-start)
+    )
+    (case= "moveToRightEndOfLine:"
+      (. TextCommand move-to-line-end)
+    )
+    (case= "moveToEndOfLine:"
+      (. TextCommand move-to-line-end)
+    )
+    (case= "moveToBeginningOfParagraph:"
+      (. TextCommand move-to-paragraph-start)
+    )
+    (case= "moveParagraphBackward:"
+      (. TextCommand move-to-paragraph-start)
+    )
+    (case= "moveToEndOfParagraph:"
+      (. TextCommand move-to-paragraph-end)
+    )
+    (case= "moveParagraphForward:"
+      (. TextCommand move-to-paragraph-end)
+    )
+    (case= "moveToBeginningOfDocument:"
+      (. TextCommand move-to-start)
+    )
+    (case= "moveToEndOfDocument:"
+      (. TextCommand move-to-end)
+    )
+    (case= "pageUp:"
+      (. TextCommand page-up)
+    )
+    (case= "pageDown:"
+      (. TextCommand page-down)
+    )
+    (case= "scrollToBeginningOfDocument:"
+      (. TextCommand scroll-to-start)
+    )
+    (case= "scrollToEndOfDocument:"
+      (. TextCommand scroll-to-end)
+    )
+    (case= "scrollPageUp:"
+      (. TextCommand scroll-page-up)
+    )
+    (case= "scrollPageDown:"
+      (. TextCommand scroll-page-down)
+    )
+    (case= "deleteBackward:"
+      (. TextCommand delete-backward)
+    )
+    (case= "deleteBackwardByDecomposingPreviousCharacter:"
+      (. TextCommand delete-backward)
+    )
+    (case= "deleteForward:"
+      (. TextCommand delete-forward)
+    )
+    (case= "deleteWordBackward:"
+      (. TextCommand delete-word-backward)
+    )
+    (case= "deleteWordForward:"
+      (. TextCommand delete-word-forward)
+    )
+    (case= "deleteToBeginningOfLine:"
+      (. TextCommand delete-to-line-start)
+    )
+    (case= "deleteToEndOfLine:"
+      (. TextCommand delete-to-line-end)
+    )
+    (case= "deleteToEndOfParagraph:"
+      (. TextCommand delete-to-paragraph-end)
+    )
+    (case= "insertNewline:"
+      (. TextCommand insert-newline)
+    )
+    (case= "insertLineBreak:"
+      (. TextCommand insert-line-break)
+    )
+    (case= "insertNewlineIgnoringFieldEditor:"
+      (. TextCommand insert-line-break)
+    )
+    (case= "insertTab:"
+      (. TextCommand insert-tab)
+    )
+    (case= "insertTabIgnoringFieldEditor:"
+      (. TextCommand insert-tab)
+    )
+    (case= "insertBacktab:"
+      (. TextCommand insert-backtab)
+    )
+    (case= "cancelOperation:"
+      (. TextCommand cancel)
+    )
+    (case= "complete:"
+      (. TextCommand complete)
+    )
+    (case= "transpose:"
+      (. TextCommand transpose)
+    )
+    (case= "selectAll:"
+      (. TextCommand select-all)
+    )
+    (default
+      (call (. TextCommand other) selector)
+    )
+  )
+)
+
+(type + TextCompositionEvent (is GUIEvent)
+  (prop + text String)
+  (prop + selection-start Size)
+  (prop + selection-length Size)
+  (prop + is-composing _ (=> (> (. text length) 0)))
+  (fn-do + This _
+    (param text _)
+    (param selection-start Size (= 0))
+    (param selection-length Size (= 0))
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(type + TextInputContext (is Tuple)
+  (prop + preceding String)
+  (prop + selected String)
+  (prop + caret Rect)
+)
+
+(type + PasteEvent (is GUIEvent)
+  (prop + clipboard Clipboard)
+  (fn-do + This _
+    (param clipboard Clipboard (= (call Clipboard)))
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+  (fn-do + text String :get
+    (return (?? (call (. clipboard read-text)) ""))
+  )
+)
+
+(type + CopyEvent (is GUIEvent)
+  (prop + clipboard Clipboard)
+  (fn-do + This _
+    (param clipboard Clipboard (= (call Clipboard)))
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(type + CutEvent (is GUIEvent)
+  (prop + clipboard Clipboard)
+  (fn-do + This _
+    (param clipboard Clipboard (= (call Clipboard)))
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(type + InputEvent (is GUIEvent)
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(type + ChangeEvent (is GUIEvent)
+  (prop + old-text String)
+  (prop + text String)
+  (fn-do + This _
+    (param old-text _)
+    (param text _)
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(type + TextEditEvent (is GUIEvent)
+  (prop + text String)
+  (prop + phase ValueChangePhase)
+  (fn-do + This _
+    (param text _)
+    (param phase _)
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(type + SubmitEvent (is GUIEvent)
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(type + TextSelectionEvent (is GUIEvent)
+  (prop + start Size)
+  (prop + end Size)
+  (fn-do + This _
+    (param start _)
+    (param end _)
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(type + SelectEvent (is GUIEvent)
+  (fn-do + This _
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(type + ActivateEvent (is GUIEvent)
+  (fn-do + This _
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(type + ChooseEvent (is GUIEvent)
+  (prop + key (? String))
+  (fn-do + This _
+    (param key (? String) (= null))
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(type + Choosing (is Interface)
+  (event + chosen ChooseEvent)
+)
+
+(type + TextEditing (is Interface)
+  (event + input InputEvent)
+  (event + change ChangeEvent)
+  (event + text-edited TextEditEvent)
+  (event + submit SubmitEvent)
+  (event + text-selected TextSelectionEvent)
+)
+
+(type + (of ValueChange T) (is GUIEvent)
+  (prop + old-value T)
+  (prop + value T)
+  (prop + phase ValueChangePhase)
+  (fn-do + This _
+    (param old-value _)
+    (param value _)
+    (param phase ValueChangePhase (= (. ValueChangePhase discrete)))
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(type + WindowActivatedEvent (is GUIEvent)
+  (fn-do + This _
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(type + WindowDeactivatedEvent (is GUIEvent)
+  (fn-do + This _
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(type + ClosingEvent (is GUIEvent)
+  (fn-do + This _
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(type + ClosedEvent (is GUIEvent)
+  (fn-do + This _
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(fn-expr + pointer-device-kind-from-native _
+  (param raw U32)
+  (match raw
+    (case= 0
+      (. PointerDeviceKind mouse)
+    )
+    (case= 1
+      (. PointerDeviceKind pen)
+    )
+    (case= 2
+      (. PointerDeviceKind cursor)
+    )
+    (case= 3
+      (. PointerDeviceKind eraser)
+    )
+    (case= 4
+      (. PointerDeviceKind touch)
+    )
+    (default
+      (call (. PointerDeviceKind unknown) raw)
+    )
+  )
+)
+
+(fn-expr + pointer-button-from-native _
+  (param raw U32)
+  (match raw
+    (case= 0
+      (. PointerButton primary)
+    )
+    (case= 1
+      (. PointerButton secondary)
+    )
+    (case= 2
+      (. PointerButton middle)
+    )
+    (default
+      (call (. PointerButton other) raw)
+    )
+  )
+)
+
+(fn-expr + pointer-device-kind-to-native _
+  (param kind PointerDeviceKind)
+  (match kind
+    (case (. PointerDeviceKind mouse)
+      0u32
+    )
+    (case (. PointerDeviceKind pen)
+      1u32
+    )
+    (case (. PointerDeviceKind cursor)
+      2u32
+    )
+    (case (. PointerDeviceKind eraser)
+      3u32
+    )
+    (case (. PointerDeviceKind touch)
+      4u32
+    )
+    (case (call (. PointerDeviceKind unknown) raw)
+      raw
+    )
+  )
+)
+
+(fn-expr + pointer-button-to-native _
+  (param button PointerButton)
+  (match button
+    (case (. PointerButton primary)
+      0u32
+    )
+    (case (. PointerButton secondary)
+      1u32
+    )
+    (case (. PointerButton middle)
+      2u32
+    )
+    (case (call (. PointerButton other) raw)
+      raw
+    )
+  )
+)
+
+(type + PointerRecordKind (is U32)
+  (variant move (= 0))
+  (variant down (= 1))
+  (variant up (= 2))
+  (variant drag (= 3))
+  (variant scroll (= 4))
+  (variant exit (= 5))
+  (variant deactivate (= 6))
+  (variant magnify (= 7))
+  (variant cancel (= 8))
+  (variant drop-enter (= 9))
+  (variant drop-over (= 10))
+  (variant drop-exit (= 11))
+  (variant drop (= 12))
+  (variant peer-press (= 13))
+)
+
+(type + PointerRecord (is Tuple)
+  (prop + kind PointerRecordKind)
+  (prop + point Point)
+  (prop + delta Point (= (call Point 0 0)))
+  (prop + pointer-id U64)
+  (prop + device-kind U32)
+  (prop + button U32)
+  (prop + buttons U64)
+  (prop + modifier-bits U64)
+  (prop + ordering-time F64)
+  (prop + click-count U32)
+  (prop + is-precise _ (= false))
+  (prop + phase U64)
+  (prop + momentum-phase U64)
+  (prop + window-drag-token U64)
+  (fn-expr + data PointerEventData :get
+    (call PointerEventData
+      (block
+        (arg point)
+        (arg pointer-id)
+        (arg (call pointer-device-kind-from-native device-kind))
+        (arg (call pointer-modifiers-from-native modifier-bits))
+        (arg buttons)
+        (arg ordering-time)
+      )
+    )
+  )
+  (fn-expr + pointer-button PointerButton :get
+    (call pointer-button-from-native button)
+  )
+)
+
+(fn-expr + pointer-modifiers-from-native _
+  (param raw U64)
+  (call PointerModifiers
+    (block
+      (arg (!= (/and/ raw 1) 0))
+      (arg (!= (/and/ raw 2) 0))
+      (arg (!= (/and/ raw 4) 0))
+      (arg (!= (/and/ raw 8) 0))
+      (arg (!= (/and/ raw 16) 0))
+      (arg (!= (/and/ raw 32) 0))
+    )
+  )
+)
+
+(fn-expr + key-from-native _
+  (param raw U32)
+  (param native-key-code U32)
+  (match raw
+    (case= 1
+      (. Key tab)
+    )
+    (case= 2
+      (. Key enter)
+    )
+    (case= 3
+      (. Key escape)
+    )
+    (case= 4
+      (. Key space)
+    )
+    (case= 5
+      (. Key arrow-up)
+    )
+    (case= 6
+      (. Key arrow-down)
+    )
+    (case= 7
+      (. Key arrow-left)
+    )
+    (case= 8
+      (. Key arrow-right)
+    )
+    (case= 9
+      (. Key home)
+    )
+    (case= 10
+      (. Key end)
+    )
+    (case= 11
+      (. Key page-up)
+    )
+    (case= 12
+      (. Key page-down)
+    )
+    (case= 13
+      (. Key backspace)
+    )
+    (case= 14
+      (. Key delete)
+    )
+    (case? (and (>= raw 100) (<= raw 115))
+      (call (. Key function-key) (- raw 99))
+    )
+    (default
+      (call (. Key unknown) native-key-code)
+    )
+  )
+)
+
+(fn-expr + key-to-native _
+  (param key Key)
+  (match key
+    (case (. Key tab)
+      1u32
+    )
+    (case (. Key enter)
+      2u32
+    )
+    (case (. Key escape)
+      3u32
+    )
+    (case (. Key space)
+      4u32
+    )
+    (case (. Key arrow-up)
+      5u32
+    )
+    (case (. Key arrow-down)
+      6u32
+    )
+    (case (. Key arrow-left)
+      7u32
+    )
+    (case (. Key arrow-right)
+      8u32
+    )
+    (case (. Key home)
+      9u32
+    )
+    (case (. Key end)
+      10u32
+    )
+    (case (. Key page-up)
+      11u32
+    )
+    (case (. Key page-down)
+      12u32
+    )
+    (case (. Key backspace)
+      13u32
+    )
+    (case (. Key delete)
+      14u32
+    )
+    (case (call (. Key function-key) index)
+      (+ index 99)
+    )
+    (default
+      0u32
+    )
+  )
+)
+
+(fn-expr + pointer-modifiers-to-native _
+  (param modifiers PointerModifiers)
+  (/or/ shift-bit control-bit option-bit command-bit caps-lock-bit function-bit)
+  (where
+    (lazy shift-bit (if-expr (. modifiers shift) 1u64 0u64))
+    (lazy control-bit (if-expr (. modifiers control) 2u64 0u64))
+    (lazy option-bit (if-expr (. modifiers option) 4u64 0u64))
+    (lazy command-bit (if-expr (. modifiers command) 8u64 0u64))
+    (lazy caps-lock-bit (if-expr (. modifiers caps-lock) 16u64 0u64))
+    (lazy function-bit (if-expr (. modifiers function) 32u64 0u64))
+  )
+)

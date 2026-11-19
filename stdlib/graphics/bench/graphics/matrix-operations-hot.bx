@@ -1,0 +1,23 @@
+; benchmark.meta description: Repeats matrix translation, scaling, composition and point transforms.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/matrix)
+(import /graphics/point)
+(import /graphics/primitives)
+(blank)
+
+(main
+  (let base (call Matrix 2 3 5 7 11 13))
+  (let checksum 0.0)
+  (for (in index (..< 0 5000000))
+    (let point (call Point (as (% index 97) F64) (as (% index 61) F64)))
+    (let shifted (call (. base translate) point))
+    (let scaled (call (. shifted scale) (call Dimensions 2 3)))
+    (let composed (call (. scaled concatenate) base))
+    (let transformed (call (. composed transform) point))
+    (+= checksum (+ (. transformed x) (. transformed y)))
+  )
+  (blank)
+  (print (str "bench-result graphics/matrix-operations-hot checksum=" (as checksum Size)))
+)

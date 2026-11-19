@@ -1,0 +1,39 @@
+(import /BxCore/BxSystem.h)
+(import /BxEvents/BxEvents.h)
+(blank)
+(prop + sig-int _ (= (call SignalStream 2)))
+(prop + sig-quit _ (= (call SignalStream 3)))
+(prop + sig-term _ (= (call SignalStream 15)))
+(prop + sig-wnch _ (= (call SignalStream 28)))
+(blank)
+(type-line + Signal (is Int))
+
+(type _ SignalStream
+  (implements (of Usable Void))
+  (prop + sig Signal)
+  (blank)
+  (prop _ lock Semaphore)
+  (blank)
+  (delegate (of Broadcastable Signal))
+  (prop _ channel _ (:= (call (of AsyncOnDemandChannel Signal) this)))
+  (fn-do + This _
+    (param sig Signal)
+  )
+  (fn-do + begin-using _
+    (call C:brixSetSignalIgnored sig 1)
+    (blank)
+    (do-new
+      (while true
+        (if (call C:brixSuspendActiveTaskUntilSignal sig (. lock native-pointer))
+          (break)
+        )
+        (blank)
+        (<- channel sig)
+      )
+    )
+  )
+  (fn-do + end-using _
+    (call C:brixSetSignalIgnored sig 0)
+    (call C:brixCancelSignalEventListener sig (. lock native-pointer))
+  )
+)

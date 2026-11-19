@@ -1,50 +1,61 @@
 # Tuples
 
-```yumi
--- Tuple(1, 2)
+```brix
+(main
+  (print (call Tuple 1 2))
+)
 ```
 
 ```output
 (1, 2)
 ```
 
-```yumi
--- Tuple
-    - 1
-    - "abc"
+```brix
+(main
+  (print
+    (call Tuple
+      (block
+        (arg 1)
+        (arg "abc")
+      )
+    )
+  )
+)
 ```
 
 ```output
 (1, abc)
 ```
 
-```yumi
-. a = foo(5)
--- a
+```brix
+(main
+  (let a (call foo 5))
+  (print a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n
-
-n, n * 2
+(fn-expr + foo _
+  (param n _)
+  (tuple n (* n 2))
+)
 ```
 
 ```output
 (5, 10)
 ```
 
-```yumi
-. a = 1
-. b = 2
-a, b = foo(5)
--- a
--- b
+```brix
+(main
+  (let a 1)
+  (let b 2)
+  (= (tuple a b) (call foo 5))
+  (print a)
+  (print b)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n
-
-n, n * 2
+(fn-expr + foo _
+  (param n _)
+  (tuple n (* n 2))
+)
 ```
 
 ```output
@@ -52,16 +63,17 @@ n, n * 2
 10
 ```
 
-```yumi
-. a, b = foo(5)
--- a
--- b
+```brix
+(main
+  (let (tuple a b) (call foo 5))
+  (print a)
+  (print b)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n
-
-n, n * 2
+(fn-expr + foo _
+  (param n _)
+  (tuple n (* n 2))
+)
 ```
 
 ```output
@@ -69,18 +81,20 @@ n, n * 2
 10
 ```
 
-```yumi
-. a, b = foo(5)
--- a
--- b
+```brix
+(main
+  (let (tuple a b) (call foo 5))
+  (print a)
+  (print b)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n
-
-a, b
-
-.. a, b = 1, 2
+(fn-expr + foo _
+  (param n _)
+  (tuple a b)
+  (where
+    (lazy (tuple a b) (tuple 1 2))
+  )
+)
 ```
 
 ```output
@@ -88,16 +102,17 @@ a, b
 2
 ```
 
-```yumi
-. a = foo(5)
--- a[0]
--- a[1]
+```brix
+(main
+  (let a (call foo 5))
+  (print ([] a 0))
+  (print ([] a 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n
-
-n, n * 2
+(fn-expr + foo _
+  (param n _)
+  (tuple n (* n 2))
+)
 ```
 
 ```output
@@ -107,16 +122,17 @@ n, n * 2
 
 ### Create new tuple by assignment
 
-```yumi
-. a = foo(5)
-. b = a[0] = 3
--- b
+```brix
+(main
+  (let a (call foo 5))
+  (let b (= ([] a 0) 3))
+  (print b)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n
-
-n, n * 2
+(fn-expr + foo _
+  (param n _)
+  (tuple n (* n 2))
+)
 ```
 
 ```output
@@ -125,16 +141,17 @@ n, n * 2
 
 ### Create new tuple by assignment with casting
 
-```yumi
-. a = foo(5.0)
-. b = a[0] = 3
--- b
+```brix
+(main
+  (let a (call foo 5.0))
+  (let b (= ([] a 0) 3))
+  (print b)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n
-
-n, n * 2
+(fn-expr + foo _
+  (param n _)
+  (tuple n (* n 2))
+)
 ```
 
 ```output
@@ -143,16 +160,17 @@ n, n * 2
 
 ### Create new tuple by tail assignment
 
-```yumi
-. a = foo(5)
-. b = a[2] = 3
--- b
+```brix
+(main
+  (let a (call foo 5))
+  (let b (= ([] a 2) 3))
+  (print b)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n
-
-n, n * 2
+(fn-expr + foo _
+  (param n _)
+  (tuple n (* n 2))
+)
 ```
 
 ```output
@@ -161,16 +179,17 @@ n, n * 2
 
 ### Create new tuple by increment
 
-```yumi
-. a = foo(5)
-. b = a += 3
--- b
+```brix
+(main
+  (let a (call foo 5))
+  (let b (+= a 3))
+  (print b)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n
-
-n, n * 2
+(fn-expr + foo _
+  (param n _)
+  (tuple n (* n 2))
+)
 ```
 
 ```output
@@ -179,10 +198,12 @@ n, n * 2
 
 ### tuple truncation
 
-```yumi
-. a = 1, 2, 3, 4, 5
-. b = a.length = 3
--- b
+```brix
+(main
+  (let a (tuple 1 2 3 4 5))
+  (let b (= (. a length) 3))
+  (print b)
+)
 ```
 
 ```output
@@ -191,29 +212,32 @@ n, n * 2
 
 ### tuple length
 
-```yumi crash
-. a = 1, 2, 3, 4, 5
-. n = 5
-. b = a.length = n
--- b
+```brix crash
+(main
+  (let a (tuple 1 2 3 4 5))
+  (let n 5)
+  (let b (= (. a length) n))
+  (print b)
+)
 ```
 
 ```output
 Exception: Value has no constant form
-<no file:4>
-    . b = a.length = n
-          ^^^^^^^^
+<no file:5>
+      (let b (= (. a length) n))
+                ^^^^^^^^^^^^
 ```
 
-```yumi
-. a = foo(5)
--- a.length
+```brix
+(main
+  (let a (call foo 5))
+  (print (. a length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n
-
-n, n * 2
+(fn-expr + foo _
+  (param n _)
+  (tuple n (* n 2))
+)
 ```
 
 ```output
@@ -222,12 +246,14 @@ n, n * 2
 
 ### nested tuple
 
-```yumi
-. a = (1, (2, 3), 4)
--- a.length
--- a[0]
--- a[1]
--- a[2]
+```brix
+(main
+  (let a (tuple 1 (tuple 2 3) 4))
+  (print (. a length))
+  (print ([] a 0))
+  (print ([] a 1))
+  (print ([] a 2))
+)
 ```
 
 ```output
@@ -237,93 +263,97 @@ n, n * 2
 4
 ```
 
-```yumi crash
-. a = foo(5)
--- a[2]
+```brix crash
+(main
+  (let a (call foo 5))
+  (print ([] a 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n
-
-n, n * 2
+(fn-expr + foo _
+  (param n _)
+  (tuple n (* n 2))
+)
 ```
 
 ```output
 Exception: Index out of bounds
-<no file:3>
-    -- a[2]
-       ^^^^
+<no file:4>
+      (print ([] a 2))
+             ^^^^^^^^
 ```
 
-```yumi crash
-. a = foo(5)
-. n = 0
--- a[n]
+```brix crash
+(main
+  (let a (call foo 5))
+  (let n 0)
+  (print ([] a n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n
-
-n, n * 2
+(fn-expr + foo _
+  (param n _)
+  (tuple n (* n 2))
+)
 ```
 
 ```output
 Exception: Value has no constant form
-<no file:4>
-    -- a[n]
-       ^^^^
+<no file:5>
+      (print ([] a n))
+             ^^^^^^^^
 ```
 
-```yumi
-. thing = Thing()
--- thing
+```brix
+(main
+  (let thing (call Thing))
+  (print thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is (foo Int, bar Float)
+(type + Thing (is (tuple (: foo Int) (: bar Float))))
 ```
 
 ```output
 (0, 0)
 ```
 
-```yumi
-. thing = Thing(10, 20)
--- thing
+```brix
+(main
+  (let thing (call Thing 10 20))
+  (print thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is (foo Int, bar Float)
+(type + Thing (is (tuple (: foo Int) (: bar Float))))
 ```
 
 ```output
 (10, 20)
 ```
 
-```yumi
-. bling = Bling(10, 20)
--- bling
+```brix
+(main
+  (let bling (call Bling 10 20))
+  (print bling)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is (foo Int, bar Float)
+(type + Thing (is (tuple (: foo Int) (: bar Float))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling is Thing
+(type + Bling (is Thing))
 ```
 
 ```output
 (10, 20)
 ```
 
-```yumi
-. bling = Bling(10, 20, "blah")
--- bling
+```brix
+(main
+  (let bling (call Bling 10 20 "blah"))
+  (print bling)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is (foo Int, bar Float)
+(type + Thing (is (tuple (: foo Int) (: bar Float))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling is Thing
-
-_ baz String
+(type + Bling (is Thing)
+  (prop _ baz String)
+)
 ```
 
 ```output
@@ -332,63 +362,62 @@ _ baz String
 
 ### Tuple with base class from another module (to show it evaluates base in correct scope)
 
-```yumi
-./lib/foo
+```brix
+(import ./lib/foo)
+(blank)
 
-. bling = Bling()
--- bling
+(main
+  (let bling (call Bling))
+  (print bling)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling is Thing
-
-_ baz Int
+(type + Bling (is Thing)
+  (prop _ baz Int)
+)
 ```
 
-```yumi file=lib/foo.yumi
+```brix file=lib/foo.bx
+(type + Thing (is Tuple)
+  (prop _ foo Foo)
+  (prop _ bar Float (= (call goo)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
+(fn-expr _ goo I32
+  42
+)
 
-_ foo Foo
-_ bar Float = goo()
-
-━━━━━━━━━━━━━━━━━━━━
-_ goo I32
-
-42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is Tuple
-
-_ bar Int = goo()
-
+(type + Foo (is Tuple)
+  (prop _ bar Int (= (call goo)))
+)
 ```
 
 ```output
 ((42), 42, 0)
 ```
 
-```yumi
-. thing = Thing(10)
--- thing
+```brix
+(main
+  (let thing (call Thing 10))
+  (print thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is (foo Int, bar Float)
+(type + Thing (is (tuple (: foo Int) (: bar Float))))
 ```
 
 ```output
 (10, 0)
 ```
 
-```yumi
-. thing = Thing(10)
--- thing
+```brix
+(main
+  (let thing (call Thing 10))
+  (print thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
-
-_ foo Int
-_ bar Float = 20
+(type + Thing (is Tuple)
+  (prop _ foo Int)
+  (prop _ bar Float (= 20))
+)
 ```
 
 ```output
@@ -397,16 +426,17 @@ _ bar Float = 20
 
 ### Refer to other fields in default values
 
-```yumi
-. thing = Thing(10)
--- thing
+```brix
+(main
+  (let thing (call Thing 10))
+  (print thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
-
-_ foo Int
-_ zab Float = 20
-_ bar Float = foo * zab
+(type + Thing (is Tuple)
+  (prop _ foo Int)
+  (prop _ zab Float (= 20))
+  (prop _ bar Float (= (* foo zab)))
+)
 ```
 
 ```output
@@ -415,16 +445,17 @@ _ bar Float = foo * zab
 
 ### Type inference of default values for fields
 
-```yumi
-. thing = Thing(10)
--- thing
+```brix
+(main
+  (let thing (call Thing 10))
+  (print thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
-
-_ foo Int
-_ zab Float = 20
-_ bar = foo
+(type + Thing (is Tuple)
+  (prop _ foo Int)
+  (prop _ zab Float (= 20))
+  (prop _ bar _ (= foo))
+)
 ```
 
 ```output
@@ -433,38 +464,38 @@ _ bar = foo
 
 ### Refer to other fields in default values of base tuple
 
-```yumi
-. thing = Bling()
--- thing
+```brix
+(main
+  (let thing (call Bling))
+  (print thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
+(type + Thing (is Tuple)
+  (prop _ foo Int)
+  (prop _ bar Float (= 20))
+)
 
-_ foo Int
-_ bar Float = 20
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bling is Thing
-
-_ baz Float = bar
+(type + Bling (is Thing)
+  (prop _ baz Float (= bar))
+)
 ```
 
 ```output
 (0, 20, 20)
 ```
 
-```yumi
-. thing = Thing()
--- thing
+```brix
+(main
+  (let thing (call Thing))
+  (print thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
+(type + Thing (is Tuple)
+  (prop _ bar Float (= 20))
+  (prop _ baz Float (= bar))
+)
 
-_ bar Float = 20
-_ baz Float = bar
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bling is Thing
+(type + Bling (is Thing))
 ```
 
 ```output
@@ -473,15 +504,16 @@ _ baz Float = bar
 
 ### Refer to other fields out of order in default values
 
-```yumi
-. thing = Thing()
--- thing
+```brix
+(main
+  (let thing (call Thing))
+  (print thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
-
-_ zab Float = bar
-_ bar Float = 20
+(type + Thing (is Tuple)
+  (prop _ zab Float (= bar))
+  (prop _ bar Float (= 20))
+)
 ```
 
 ```output
@@ -490,32 +522,34 @@ _ bar Float = 20
 
 ### Circular reference in fields
 
-```yumi crash
-. thing = Thing()
--- thing
+```brix crash
+(main
+  (let thing (call Thing))
+  (print thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
-
-_ zab Float = bar
-_ bar Float = zab
+(type + Thing (is Tuple)
+  (prop _ zab Float (= bar))
+  (prop _ bar Float (= zab))
+)
 ```
 
 ```output
 Exception: "zab" depends on its own value, directly or through the values it reads; break the cycle
 <no file:8>
-    _ zab Float = bar
-    ^^^^^^^^^^^^^^^^^
+      (prop _ zab Float (= bar))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Parameterized tuple type constructor
 
-```yumi
-. thing = Thing'Int(10, 20.0)
--- thing
+```brix
+(main
+  (let thing (call (of Thing Int) 10 20.0))
+  (print thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T is (foo T, bar Float)
+(type + (of Thing T) (is (tuple (: foo T) (: bar Float))))
 ```
 
 ```output
@@ -524,12 +558,13 @@ Exception: "zab" depends on its own value, directly or through the values it rea
 
 ### Parameterized tuple type inferred from constructor arguments
 
-```yumi
-. thing = Thing(10, 20.0)
--- thing
+```brix
+(main
+  (let thing (call Thing 10 20.0))
+  (print thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T is (foo T, bar Float)
+(type + (of Thing T) (is (tuple (: foo T) (: bar Float))))
 ```
 
 ```output
@@ -538,17 +573,17 @@ Exception: "zab" depends on its own value, directly or through the values it rea
 
 ### Parameterized tuple type with base class constructor
 
-```yumi
-. thing = Thing'Int(10, 20, 30)
--- thing
+```brix
+(main
+  (let thing (call (of Thing Int) 10 20 30))
+  (print thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling'T is (foo T, bar Float)
+(type + (of Bling T) (is (tuple (: foo T) (: bar Float))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T is Bling'T
-
-+ baz Float
+(type + (of Thing T) (is (of Bling T))
+  (prop + baz Float)
+)
 ```
 
 ```output
@@ -557,16 +592,18 @@ Exception: "zab" depends on its own value, directly or through the values it rea
 
 ### Parameterized tuple type with base class inferred from constructor arguments
 
-```yumi
-. thing = Thing(10, 20, 30)
--- thing
+```brix
+(main
+  (let thing (call Thing 10 20 30))
+  (print thing)
+)
 
-+ Bling'T is (foo T, bar Float)
+(blank)
+(type-line + (of Bling T) (is (tuple (: foo T) (: bar Float))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T is Bling'T
-
-+ baz T
+(type + (of Thing T) (is (of Bling T))
+  (prop + baz T)
+)
 ```
 
 ```output
@@ -575,17 +612,17 @@ Exception: "zab" depends on its own value, directly or through the values it rea
 
 ### Able to infer type if parameter is resolved in base type
 
-```yumi
-. thing = Thing(10, 20, 30)
--- thing
+```brix
+(main
+  (let thing (call Thing 10 20 30))
+  (print thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling'T is (foo T, bar Float)
+(type + (of Bling T) (is (tuple (: foo T) (: bar Float))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T is Bling'T
-
-+ baz Float
+(type + (of Thing T) (is (of Bling T))
+  (prop + baz Float)
+)
 ```
 
 ```output
@@ -594,48 +631,49 @@ Exception: "zab" depends on its own value, directly or through the values it rea
 
 ### Tuple constructor re-routed to builtin constructor using "This"
 
-```yumi
-. thing = Thing(10.5)
--- thing
+```brix
+(main
+  (let thing (call Thing 10.5))
+  (print thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is (foo Int, bar Float)
-
-────────────────────
-+ This
-    - xx Float
-
-= This(1, xx)
+(type + Thing (is (tuple (: foo Int) (: bar Float)))
+  (fn-do + This _
+    (param xx Float)
+    (return (call This 1 xx))
+  )
+)
 ```
 
 ```output
 (1, 10.5)
 ```
 
-```yumi
-. thing = Thing(10.5, ...)
--- thing'Float()
+```brix
+(main
+  (let thing (call Thing 10.5 ...))
+  (print (call (of thing Float)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T is (foo Int, bar T)
-
-────────────────────
-+ This
-    - n Float
-
-= This(1, n)
+(type + (of Thing T) (is (tuple (: foo Int) (: bar T)))
+  (fn-do + This _
+    (param n Float)
+    (return (call This 1 n))
+  )
+)
 ```
 
 ```output
 (1, 10.5)
 ```
 
-```yumi
-. thing = Thing(10, ...)
--- thing'Float()
+```brix
+(main
+  (let thing (call Thing 10 ...))
+  (print (call (of thing Float)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T is (foo Int, bar T)
+(type + (of Thing T) (is (tuple (: foo Int) (: bar T))))
 ```
 
 ```output
@@ -644,17 +682,18 @@ Exception: "zab" depends on its own value, directly or through the values it rea
 
 ### Replace tuple property (creates a new tuple)
 
-```yumi
-. thing = Thing()
-. thing2 = thing.foo = 99
--- thing
--- thing2
+```brix
+(main
+  (let thing (call Thing))
+  (let thing2 (= (. thing foo) 99))
+  (print thing)
+  (print thing2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
-
-+ foo I32
-+ bar I32
+(type + Thing (is Tuple)
+  (prop + foo I32)
+  (prop + bar I32)
+)
 ```
 
 ```output
@@ -662,37 +701,38 @@ Exception: "zab" depends on its own value, directly or through the values it rea
 (99, 0)
 ```
 
-```yumi crash
-. foo = Foo()
--- foo
-. bar = Bar()
--- bar
+```brix crash
+(main
+  (let foo (call Foo))
+  (print foo)
+  (let bar (call Bar))
+  (print bar)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is (bar Int, baz Int)
+(type + Foo (is (tuple (: bar Int) (: baz Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-+ bar Int
+(type + Bar (is Foo)
+  (prop + bar Int)
+)
 ```
 
 ```output
 Exception: "bar" is inherited from Foo, so it keeps the type it has there and cannot state its own; remove "Int"
-<no file:13>
-    + bar Int
-    ^^^^^^^^^
+<no file:12>
+      (prop + bar Int)
+      ^^^^^^^^^^^^^^^^
 ```
 
 ### Casting tuple
 
-```yumi
-. n = (1, 2) as Pair
--- n
--- type-of n
+```brix
+(main
+  (let n (as (tuple 1 2) Pair))
+  (print n)
+  (print (type-of n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (a Int, b Float)
+(type + Pair (is (tuple (: a Int) (: b Float))))
 ```
 
 ```output
@@ -702,13 +742,14 @@ Exception: "bar" is inherited from Foo, so it keeps the type it has there and ca
 
 ### Casting tuple to parameterized tuple
 
-```yumi
-. n = (1,2) as Pair'Int'Int
--- n
--- type-of n
+```brix
+(main
+  (let n (as (tuple 1 2) (of Pair Int Int)))
+  (print n)
+  (print (type-of n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair'T1'T2 is (a T1, b T2)
+(type + (of Pair T1 T2) (is (tuple (: a T1) (: b T2))))
 ```
 
 ```output
@@ -718,13 +759,14 @@ Exception: "bar" is inherited from Foo, so it keeps the type it has there and ca
 
 ### Casting tuple to parameterized tuple with parameters inferred
 
-```yumi
-. n = (1,2) as Pair
--- n
--- type-of n
+```brix
+(main
+  (let n (as (tuple 1 2) Pair))
+  (print n)
+  (print (type-of n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair'T1'T2 is (a T1, b T2)
+(type + (of Pair T1 T2) (is (tuple (: a T1) (: b T2))))
 ```
 
 ```output
@@ -732,17 +774,17 @@ Exception: "bar" is inherited from Foo, so it keeps the type it has there and ca
 [TypeInfo Pair'I64'I64]
 ```
 
-```yumi
--- foo((1, 2))
+```brix
+(main
+  (print (call foo (tuple 1 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair'T1'T2 is (a T1, b T2)
+(type + (of Pair T1 T2) (is (tuple (: a T1) (: b T2))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo'T1'T2
-    - pair Pair'T1'T2
-
-pair.a, pair.b
+(fn-expr + (of foo T1 T2) _
+  (param pair (of Pair T1 T2))
+  (tuple (. pair a) (. pair b))
+)
 ```
 
 ```output
@@ -751,14 +793,15 @@ pair.a, pair.b
 
 ### Implicit tuple constructors respect named arguments and default omitted fields
 
-```yumi
-. positional = Thing(10)
-. named = Thing() • bar 20
--- positional
--- named
+```brix
+(main
+  (let positional (call Thing 10))
+  (let named (call Thing (:bar 20)))
+  (print positional)
+  (print named)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is (foo Int, bar Int, baz Int)
+(type + Thing (is (tuple (: foo Int) (: bar Int) (: baz Int))))
 ```
 
 ```output
@@ -768,12 +811,13 @@ pair.a, pair.b
 
 ### Implicit tuple constructors accept trailing boolean ability arguments
 
-```yumi
-. thing = Thing(7) • does complete
--- thing
+```brix
+(main
+  (let thing (call Thing 7 (:does-complete true)))
+  (print thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is (index Int, does-complete Bool)
+(type + Thing (is (tuple (: index Int) (: does-complete Bool))))
 ```
 
 ```output
@@ -782,72 +826,70 @@ pair.a, pair.b
 
 ### Override increment function
 
-```yumi
-. thing = Thing(20)
--- thing += 3
+```brix
+(main
+  (let thing (call Thing 20))
+  (print (+= thing 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
-
-+ foo Int
-
-────────────────────
-+ this += other ''T
-
-This(foo * other)
+(type + Thing (is Tuple)
+  (prop + foo Int)
+  (fn-expr + (infix this += (param other ''T)) _
+    (call This (* foo other))
+  )
+)
 ```
 
 ```output
 (60)
 ```
 
-```yumi
-. thing = Thing(20)
--- thing + 3
+```brix
+(main
+  (let thing (call Thing 20))
+  (print (+ thing 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
-
-+ foo Int
-
-────────────────────
-+ this + other ''T
-
-This(foo * other)
+(type + Thing (is Tuple)
+  (prop + foo Int)
+  (fn-expr + (infix this + (param other ''T)) _
+    (call This (* foo other))
+  )
+)
 ```
 
 ```output
 (60)
 ```
 
-```yumi
-. thing = Thing(20)
--- thing += 3
+```brix
+(main
+  (let thing (call Thing 20))
+  (print (+= thing 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
-
-+ foo Int
-
-────────────────────
-+ this + other ''T
-
-This(foo * other)
+(type + Thing (is Tuple)
+  (prop + foo Int)
+  (fn-expr + (infix this + (param other ''T)) _
+    (call This (* foo other))
+  )
+)
 ```
 
 ```output
 (60)
 ```
 
-```yumi
-. foos = [Foo("hi", "you"), Foo("aa", "vv"), Foo("dd", "cc")]
--- ("dd", "cc") is in foos
--- ("dfd", "cc") is in foos
--- ("dd", "cc") not in foos
--- ("dfd", "cc") not in foos
+```brix
+(main
+  (let foos (list (call Foo "hi" "you") (call Foo "aa" "vv") (call Foo "dd" "cc")))
+  (print (is-in (tuple "dd" "cc") foos))
+  (print (is-in (tuple "dfd" "cc") foos))
+  (print (not-in (tuple "dd" "cc") foos))
+  (print (not-in (tuple "dfd" "cc") foos))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is (a String, b String)
+(type + Foo (is (tuple (: a String) (: b String))))
 ```
 
 ```output
@@ -857,14 +899,15 @@ false
 true
 ```
 
-```yumi
--- Foo("foo", 42) == Foo("foo", 42)
--- Foo("foo", 42) != Foo("foo", 42)
--- Foo("foo", 43) == Foo("foo", 42)
--- Foo("foo", 43) != Foo("foo", 42)
+```brix
+(main
+  (print (== (call Foo "foo" 42) (call Foo "foo" 42)))
+  (print (!= (call Foo "foo" 42) (call Foo "foo" 42)))
+  (print (== (call Foo "foo" 43) (call Foo "foo" 42)))
+  (print (!= (call Foo "foo" 43) (call Foo "foo" 42)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo is (a String, b Int)
+(type + Foo (is (tuple (: a String) (: b Int))))
 ```
 
 ```output
@@ -874,18 +917,17 @@ false
 true
 ```
 
-```yumi
--- RecursiveComputedTuple(1) == RecursiveComputedTuple(1)
+```brix
+(main
+  (print (== (call RecursiveComputedTuple 1) (call RecursiveComputedTuple 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RecursiveComputedTuple is Tuple
-
-+ value Int
-
-────────────────────
-+ get child RecursiveComputedTuple
-
-RecursiveComputedTuple(value)
+(type + RecursiveComputedTuple (is Tuple)
+  (prop + value Int)
+  (fn-expr + child RecursiveComputedTuple :get
+    (call RecursiveComputedTuple value)
+  )
+)
 ```
 
 ```output
@@ -894,18 +936,23 @@ true
 
 ### Tests that comparing named tuples against each other does not use structural comparison
 
-```yumi
--- match A("hi", 1)
-    | B
+```brix
+(main
+  (print
+    (match (call A "hi" 1)
+      (case B
         "B"
-    | A
+      )
+      (case A
         "A"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ A is (a String, b Int)
+(type + A (is (tuple (: a String) (: b Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ B is (a String, b Int)
+(type + B (is (tuple (: a String) (: b Int))))
 ```
 
 ```output
@@ -914,49 +961,43 @@ A
 
 ### Constructor-selected backing parameters produce exact tuple types with distinct layouts.
 
-```yumi
-. managed ConstructorLayoutBox'U32'(ManagedLayoutBacking'U32) = ConstructorLayoutBox'U32()
-. native ConstructorLayoutBox'U32'(ArenaLayoutBacking'U32) = ConstructorLayoutBox'U32(LayoutArenaToken(), true)
--- type-of managed
--- type-of native
--- type-of managed.storage
--- type-of native.storage
--- managed.storage.label
--- native.storage.generation
+```brix
+(main
+  (let managed (of ConstructorLayoutBox U32 (of ManagedLayoutBacking U32)) (call (of ConstructorLayoutBox U32)))
+  (let native (of ConstructorLayoutBox U32 (of ArenaLayoutBacking U32)) (call (of ConstructorLayoutBox U32) (call LayoutArenaToken) true))
+  (print (type-of managed))
+  (print (type-of native))
+  (print (type-of (. managed storage)))
+  (print (type-of (. native storage)))
+  (print (. managed storage label))
+  (print (. native storage generation))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ LayoutArenaToken
+(type + LayoutArenaToken)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ManagedLayoutBacking'Value is Tuple
+(type + (of ManagedLayoutBacking Value) (is Tuple)
+  (prop + value Value)
+  (prop + label String (= "managed"))
+)
 
-+ value Value
-+ label String = "managed"
+(type + (of ArenaLayoutBacking Value) (is Tuple)
+  (prop + value Value)
+  (prop + generation U64 (= 7u64))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ArenaLayoutBacking'Value is Tuple
-
-+ value Value
-+ generation U64 = 7u64
-
-━━━━━━━━━━━━━━━━━━━━
-+ ConstructorLayoutBox'Value'Backing is Tuple
-    - Backing = ManagedLayoutBacking'Value
-
-+ storage Backing
-
-────────────────────
-+ This
-
-storage = Backing()
-
-────────────────────
-+ This
-    - token LayoutArenaToken
-    - marker Bool
-    - Backing = ArenaLayoutBacking'Value
-
-storage = Backing()
+(type + (of ConstructorLayoutBox Value Backing) (is Tuple)
+  (constraint = Backing (of ManagedLayoutBacking Value))
+  (prop + storage Backing)
+  (fn-do + This _
+    (= storage (call Backing))
+  )
+  (fn-do + This _
+    (param token LayoutArenaToken)
+    (param marker Bool)
+    (constraint = Backing (of ArenaLayoutBacking Value))
+    (= storage (call Backing))
+  )
+)
 ```
 
 ```output
@@ -970,58 +1011,55 @@ managed
 
 ### Tuple constructors retain property values returned by function calls.
 
-```yumi
-. box = CalledValueBox(41)
--- box.value
+```brix
+(main
+  (let box (call CalledValueBox 41))
+  (print (. box value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CalledValueBox is Tuple
+(type + CalledValueBox (is Tuple)
+  (prop + value Int)
+  (fn-do + This _
+    (param input Int)
+    (= value (call make-called-value input))
+  )
+)
 
-+ value Int
-
-────────────────────
-+ This
-    - input Int
-
-value = make-called-value(input)
-
-━━━━━━━━━━━━━━━━━━━━
-+ make-called-value Int
-    - input Int
-
-input + 1
+(fn-expr + make-called-value Int
+  (param input Int)
+  (+ input 1)
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-. derived = NarrowPointSource()
-. base PointSource = derived
--- derived.point
--- base.point
-. tiny = TinyPointSource()
-. middle NarrowPointSource = tiny
-. root PointSource = tiny
--- tiny.point
--- middle.point
--- root.point
+```brix
+(main
+  (let derived (call NarrowPointSource))
+  (let base PointSource derived)
+  (print (. derived point))
+  (print (. base point))
+  (let tiny (call TinyPointSource))
+  (let middle NarrowPointSource tiny)
+  (let root PointSource tiny)
+  (print (. tiny point))
+  (print (. middle point))
+  (print (. root point))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ PointSource
+(type + PointSource
+  (prop + point _ (=> (tuple 0 0)))
+)
 
-+ point => 0, 0
+(type + NarrowPointSource (is PointSource)
+  (prop + point _ (=> (tuple 12i16 27i16)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ NarrowPointSource is PointSource
-
-+ point => 12i16, 27i16
-
-━━━━━━━━━━━━━━━━━━━━
-+ TinyPointSource is NarrowPointSource
-
-+ point => -3i8, 4i8
+(type + TinyPointSource (is NarrowPointSource)
+  (prop + point _ (=> (tuple -3i8 4i8)))
+)
 ```
 
 ```output
@@ -1034,13 +1072,14 @@ input + 1
 
 ### A shorthand tuple with one named field declares a tuple, not a subtype of the field type.
 
-```yumi
-. single = Solo(7)
--- single.amount
--- single
+```brix
+(main
+  (let single (call Solo 7))
+  (print (. single amount))
+  (print single)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Solo is (amount I32)
+(type + Solo (is (tuple (: amount I32))))
 ```
 
 ```output
@@ -1050,18 +1089,18 @@ input + 1
 
 ### A one-field tuple's own constructor wins over its conversion when the argument is the field type.
 
-```yumi
-. wrapped Wrapped = "hi"
--- wrapped
--- wrapped.text
+```brix
+(main
+  (let wrapped Wrapped "hi")
+  (print wrapped)
+  (print (. wrapped text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wrapped is (text String)
-
-────────────────────
-+ from other String
-
-Wrapped(other)
+(type + Wrapped (is (tuple (: text String)))
+  (fn-from-expr + (: other String)
+    (call Wrapped other)
+  )
+)
 ```
 
 ```output
@@ -1071,116 +1110,122 @@ hi
 
 ### A tuple property assignment whose new tuple is discarded is an error.
 
-```yumi crash
-. record = Record(17)
-record.flag = true
+```brix crash
+(main
+  (let record (call Record 17))
+  (= (. record flag) true)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Record is Tuple
-
-+ size I32
-+ flag = false
+(type + Record (is Tuple)
+  (prop + size I32)
+  (prop + flag _ (= false))
+)
 ```
 
 ```output
 Exception: Assigning flag creates a new Record tuple that is discarded; write record = record.flag = value
-<no file:3>
-    record.flag = true
-    ^^^^^^^^^^^^^^^^^^
+<no file:4>
+      (= (. record flag) true)
+      ^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A tuple property assignment whose new tuple is discarded is an error where its value has statements of its own.
 
-```yumi crash
-. record = Record(17)
-record.flag = match record.size
-    | 17
-        . big = true
+```brix crash
+(main
+  (let record (call Record 17))
+  (= (. record flag)
+    (match (. record size)
+      (case 17
+        (let big true)
         big
-    ??
+      )
+      (default
         false
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Record is Tuple
-
-+ size I32
-+ flag = false
+(type + Record (is Tuple)
+  (prop + size I32)
+  (prop + flag _ (= false))
+)
 ```
 
 ```output
 Exception: Assigning flag creates a new Record tuple that is discarded; write record = record.flag = value
-<no file:3>
-    record.flag = match record.size
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:4>
+      (= (. record flag)
+      ^^^^^^^^^^^^^^^^^
 ```
 
 ### The error for a discarded tuple names the path its owner is read through.
 
-```yumi crash
-. outer = Outer(Record(17))
-outer.record.flag = true
+```brix crash
+(main
+  (let outer (call Outer (call Record 17)))
+  (= (. outer record flag) true)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Record is Tuple
+(type + Record (is Tuple)
+  (prop + size I32)
+  (prop + flag _ (= false))
+)
 
-+ size I32
-+ flag = false
-
-━━━━━━━━━━━━━━━━━━━━
-+ Outer is Tuple
-
-+ record Record
+(type + Outer (is Tuple)
+  (prop + record Record)
+)
 ```
 
 ```output
 Exception: Assigning flag creates a new Record tuple that is discarded; write outer.record = outer.record.flag = value
-<no file:3>
-    outer.record.flag = true
-    ^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:4>
+      (= (. outer record flag) true)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A class method cannot update a tuple property in place.
 
-```yumi crash
-Holder().touch()
+```brix crash
+(main
+  (call (. (call Holder) touch))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Record is Tuple
+(type + Record (is Tuple)
+  (prop + size I32)
+)
 
-+ size I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ record = Record(3)
-
-────────────────────
-+ do touch
-
-record.size = 9
+(type + Holder
+  (prop + record _ (= (call Record 3)))
+  (fn-do + touch _
+    (= (. record size) 9)
+  )
+)
 ```
 
 ```output
 Exception: Assigning size creates a new Record tuple that is discarded; write record = record.size = value
-<no file:17>
-    record.size = 9
-    ^^^^^^^^^^^^^^^
+<no file:13>
+        (= (. record size) 9)
+        ^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Assigning the updated tuple back keeps the update.
 
-```yumi
-. record = Record(17)
-record = record.flag = true
--- record
-. copy = record.size = 3
--- copy
+```brix
+(main
+  (let record (call Record 17))
+  (= record (= (. record flag) true))
+  (print record)
+  (let copy (= (. record size) 3))
+  (print copy)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Record is Tuple
-
-+ size I32
-+ flag = false
+(type + Record (is Tuple)
+  (prop + size I32)
+  (prop + flag _ (= false))
+)
 ```
 
 ```output
@@ -1190,47 +1235,51 @@ record = record.flag = true
 
 ### An expression function cannot return a tuple property assignment.
 
-```yumi crash
--- flagged(Record(3))
+```brix crash
+(main
+  (print (call flagged (call Record 3)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Record is Tuple
+(type + Record (is Tuple)
+  (prop + size I32)
+  (prop + flag _ (= false))
+)
 
-+ size I32
-+ flag = false
-
-━━━━━━━━━━━━━━━━━━━━
-+ flagged Record
-    - record Record
-
-record.flag = true
+(fn-expr + flagged Record
+  (param record Record)
+  (= (. record flag) true)
+)
 ```
 
 ```output
-Exception: Assigning flag creates a new Record tuple that is discarded; write record = record.flag = value
-<no file:14>
-    record.flag = true
-    ^^^^^^^^^^^^^^^^^^
+Exception: (= …) takes (| …) here, and (. …) stands in its place. Its shape is (= (| pattern:Pattern+) value:Expr).
+<no file:13>
+      (= (. record flag) true)
+         ^
 ```
 
 ### A local that holds a tuple is copied where it is assigned, in a loop and under a condition.
 
-```yumi
-. a = (1, "one")
-. b = a
-b = (2, "two")
--- a[0], a[1]
--- b[0], b[1]
-. sum = 0
-. i = 0
-while i < 3
-    . step = (i, i * 2)
-    if step[1] > 1
-        a = (step[0] + step[1], "more")
-    sum += step[0] + step[1]
-    i += 1
--- sum
--- a
+```brix
+(main
+  (let a (tuple 1 "one"))
+  (let b a)
+  (= b (tuple 2 "two"))
+  (print (tuple ([] a 0) ([] a 1)))
+  (print (tuple ([] b 0) ([] b 1)))
+  (let sum 0)
+  (let i 0)
+  (while (< i 3)
+    (let step (tuple i (* i 2)))
+    (if (> ([] step 1) 1)
+      (= a (tuple (+ ([] step 0) ([] step 1)) "more"))
+    )
+    (+= sum (+ ([] step 0) ([] step 1)))
+    (+= i 1)
+  )
+  (print sum)
+  (print a)
+)
 ```
 
 ```output
@@ -1242,22 +1291,22 @@ while i < 3
 
 ### A field of a tuple is read by a constant index, by name and through a path, and `length` counts its fields.
 
-```yumi
-. nested = ((1, 2), (3, (4, "deep")))
--- nested[0][1]
--- nested[1][1][1]
--- nested.length
--- nested[1].length
-. named = Outer(Inner(5, 6), 7)
--- named.inner.b
--- named[0][0]
--- named.length
+```brix
+(main
+  (let nested (tuple (tuple 1 2) (tuple 3 (tuple 4 "deep"))))
+  (print ([] ([] nested 0) 1))
+  (print ([] ([] ([] nested 1) 1) 1))
+  (print (. nested length))
+  (print (. ([] nested 1) length))
+  (let named (call Outer (call Inner 5 6) 7))
+  (print (. named inner b))
+  (print ([] ([] named 0) 0))
+  (print (. named length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Inner is (a Int, b Int)
+(type + Inner (is (tuple (: a Int) (: b Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Outer is (inner Inner, last Int)
+(type + Outer (is (tuple (: inner Inner) (: last Int))))
 ```
 
 ```output
@@ -1272,23 +1321,24 @@ deep
 
 ### An assignment to a field of a tuple gives a new tuple and leaves the old one as it was.
 
-```yumi
-. a = (5, 10)
-. b = a[0] = 3
--- a
--- b
-. r = Record(17)
-. s = r.flag = true
--- r
--- s
-r = r.size = 4
--- r
+```brix
+(main
+  (let a (tuple 5 10))
+  (let b (= ([] a 0) 3))
+  (print a)
+  (print b)
+  (let r (call Record 17))
+  (let s (= (. r flag) true))
+  (print r)
+  (print s)
+  (= r (= (. r size) 4))
+  (print r)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Record is Tuple
-
-+ size I32
-+ flag = false
+(type + Record (is Tuple)
+  (prop + size I32)
+  (prop + flag _ (= false))
+)
 ```
 
 ```output
@@ -1301,17 +1351,19 @@ r = r.size = 4
 
 ### A tuple is extended by `+=` and by an assignment one past its last field, and truncated by an assignment to its length.
 
-```yumi
-. a = (5, "ten")
-. b = a += 3.5
--- b
--- b.length
-. c = a[2] = true
--- c
-. d = (1, "two", 3.5, true, 5).length = 2
--- d
--- d.length
--- a
+```brix
+(main
+  (let a (tuple 5 "ten"))
+  (let b (+= a 3.5))
+  (print b)
+  (print (. b length))
+  (let c (= ([] a 2) true))
+  (print c)
+  (let d (= (. (tuple 1 "two" 3.5 true 5) length) 2))
+  (print d)
+  (print (. d length))
+  (print a)
+)
 ```
 
 ```output
@@ -1325,26 +1377,27 @@ r = r.size = 4
 
 ### A tuple is taken apart into new locals and into old ones, and two locals are swapped.
 
-```yumi
-. a, b = (1, "one")
--- a
--- b
-. x = 1
-. y = 2
-x, y = y, x
--- x, y
-x, y = pair(x)
--- x, y
-. first, second, third = (1.5, (2, 3), "last")
--- first
--- second
--- third
+```brix
+(main
+  (let (tuple a b) (tuple 1 "one"))
+  (print a)
+  (print b)
+  (let x 1)
+  (let y 2)
+  (= (tuple x y) (tuple y x))
+  (print (tuple x y))
+  (= (tuple x y) (call pair x))
+  (print (tuple x y))
+  (let (tuple first second third) (tuple 1.5 (tuple 2 3) "last"))
+  (print first)
+  (print second)
+  (print third)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pair (Int, Int)
-    - n Int
-
-n * 10, n * 100
+(fn-expr + pair (tuple Int Int)
+  (param n Int)
+  (tuple (* n 10) (* n 100))
+)
 ```
 
 ```output
@@ -1359,17 +1412,20 @@ last
 
 ### A tuple is taken apart into globals and task-locals that exist.
 
-```yumi
-. pair = (1u32, 2u16)
-ga, gb = pair
-ta, tb = pair
--- ga + gb
--- ta, tb
+```brix
+(main
+  (let pair (tuple 1u32 2u16))
+  (= (tuple ga gb) pair)
+  (= (tuple ta tb) pair)
+  (print (+ ga gb))
+  (print (tuple ta tb))
+)
 
-+ ga = 0u32
-+ gb = 0u16
-+ @task ta U32 = 0
-+ @task tb U16 = 0
+(blank)
+(prop + ga _ (= 0u32))
+(prop + gb _ (= 0u16))
+(prop + ta U32 @task (= 0))
+(prop + tb U16 @task (= 0))
 ```
 
 ```output
@@ -1379,33 +1435,32 @@ ta, tb = pair
 
 ### A named tuple is made by its fields in order, by name, and with none; a field left out takes its default.
 
-```yumi
--- Thing(1)
--- Thing(1, 2.5)
--- Thing(1, 2.5, "three")
--- Thing() • bar 4.5
--- Thing() • baz "six" • foo 5
--- Thing()
--- Pair(1, "x")
--- Wide(7)
+```brix
+(main
+  (print (call Thing 1))
+  (print (call Thing 1 2.5))
+  (print (call Thing 1 2.5 "three"))
+  (print (call Thing (:bar 4.5)))
+  (print (call Thing (:baz "six") (:foo 5)))
+  (print (call Thing))
+  (print (call Pair 1 "x"))
+  (print (call Wide 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
+(type + Thing (is Tuple)
+  (prop + foo Int)
+  (prop + bar Float (= 20))
+  (prop + baz _ (= "none"))
+)
 
-+ foo Int
-+ bar Float = 20
-+ baz = "none"
+(type + (of Pair T1 T2) (is Tuple)
+  (prop + a T1)
+  (prop + b T2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair'T1'T2 is Tuple
-
-+ a T1
-+ b T2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Thing
-
-+ last = 9
+(type + Wide (is Thing)
+  (prop + last _ (= 9))
+)
 ```
 
 ```output
@@ -1421,65 +1476,60 @@ ta, tb = pair
 
 ### A tuple is passed and returned in registers when it is small or all floats, and through memory when it is not.
 
-```yumi
--- small((1, 2))
--- words((1, 2, 3))
--- floats((1.5, 2.5, 3.5, 4.5))
--- singles((1.5f32, 2.5f32))
--- mixed((1, "two", 3.5))
--- large((1, 2, 3, 4, 5))
--- many(1, (2, 3), 4, (5, 6), 7, (8, 9), 10, (11, 12), (13, 14), 15)
+```brix
+(main
+  (print (call small (tuple 1 2)))
+  (print (call words (tuple 1 2 3)))
+  (print (call floats (tuple 1.5 2.5 3.5 4.5)))
+  (print (call singles (tuple 1.5f32 2.5f32)))
+  (print (call mixed (tuple 1 "two" 3.5)))
+  (print (call large (tuple 1 2 3 4 5)))
+  (print (call many 1 (tuple 2 3) 4 (tuple 5 6) 7 (tuple 8 9) 10 (tuple 11 12) (tuple 13 14) 15))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ small (I32, I32)
-    - v (I32, I32)
+(fn-expr + small (tuple I32 I32)
+  (param v (tuple I32 I32))
+  (tuple ([] v 1) ([] v 0))
+)
 
-v[1], v[0]
+(fn-expr + words (tuple I64 I32 I8)
+  (param v (tuple I8 I32 I64))
+  (tuple ([] v 2) ([] v 1) ([] v 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ words (I64, I32, I8)
-    - v (I8, I32, I64)
+(fn-expr + floats (tuple F64 F64 F64 F64)
+  (param v (tuple F64 F64 F64 F64))
+  (tuple ([] v 3) ([] v 2) ([] v 1) ([] v 0))
+)
 
-v[2], v[1], v[0]
+(fn-expr + singles (tuple F32 F32)
+  (param v (tuple F32 F32))
+  (tuple ([] v 1) ([] v 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ floats (F64, F64, F64, F64)
-    - v (F64, F64, F64, F64)
+(fn-expr + mixed (tuple F64 String Int)
+  (param v (tuple Int String F64))
+  (tuple ([] v 2) ([] v 1) ([] v 0))
+)
 
-v[3], v[2], v[1], v[0]
+(fn-expr + large (tuple Int Int Int Int Int)
+  (param v (tuple Int Int Int Int Int))
+  (tuple ([] v 4) ([] v 3) ([] v 2) ([] v 1) ([] v 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ singles (F32, F32)
-    - v (F32, F32)
-
-v[1], v[0]
-
-━━━━━━━━━━━━━━━━━━━━
-+ mixed (F64, String, Int)
-    - v (Int, String, F64)
-
-v[2], v[1], v[0]
-
-━━━━━━━━━━━━━━━━━━━━
-+ large (Int, Int, Int, Int, Int)
-    - v (Int, Int, Int, Int, Int)
-
-v[4], v[3], v[2], v[1], v[0]
-
-━━━━━━━━━━━━━━━━━━━━
-+ many I64
-    - a I64
-    - b (I64, I64)
-    - c I64
-    - d (I64, I64)
-    - e I64
-    - f (I64, I64)
-    - g I64
-    - h (I64, I64)
-    - i (I64, I64)
-    - j I64
-
-a + b[0] * 2 + b[1] * 3 + c * 4 + d[0] * 5 + d[1] * 6 + e * 7 + f[0] * 8 + f[1] * 9 + g * 10 + h[0] * 11 + h[1] * 12 + i[0] * 13 + i[1] * 14 + j * 15
+(fn-expr + many I64
+  (param a I64)
+  (param b (tuple I64 I64))
+  (param c I64)
+  (param d (tuple I64 I64))
+  (param e I64)
+  (param f (tuple I64 I64))
+  (param g I64)
+  (param h (tuple I64 I64))
+  (param i (tuple I64 I64))
+  (param j I64)
+  (+ a (* ([] b 0) 2) (* ([] b 1) 3) (* c 4) (* ([] d 0) 5) (* ([] d 1) 6) (* e 7) (* ([] f 0) 8) (* ([] f 1) 9) (* g 10) (* ([] h 0) 11) (* ([] h 1) 12) (* ([] i 0) 13) (* ([] i 1) 14) (* j 15))
+)
 ```
 
 ```output
@@ -1494,28 +1544,27 @@ a + b[0] * 2 + b[1] * 3 + c * 4 + d[0] * 5 + d[1] * 6 + e * 7 + f[0] * 8 + f[1] 
 
 ### A tuple is cast to a named tuple field by field, where it is written and where a type is declared.
 
-```yumi
-. n = (1, 2) as Pair
--- n
--- n.b
-. p Pair = (3, 4)
--- p
--- wide((1, (2, 3)))
--- make()
+```brix
+(main
+  (let n (as (tuple 1 2) Pair))
+  (print n)
+  (print (. n b))
+  (let p Pair (tuple 3 4))
+  (print p)
+  (print (call wide (tuple 1 (tuple 2 3))))
+  (print (call make))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (a Int, b Float)
+(type + Pair (is (tuple (: a Int) (: b Float))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ make Pair
+(fn-expr + make Pair
+  (tuple 5 6)
+)
 
-5, 6
-
-━━━━━━━━━━━━━━━━━━━━
-+ wide Float
-    - t (Float, (Int, Float))
-
-t[0] / 2 + t[1][1]
+(fn-expr + wide Float
+  (param t (tuple Float (tuple Int Float)))
+  (+ (/ ([] t 0) 2) ([] ([] t 1) 1))
+)
 ```
 
 ```output
@@ -1528,26 +1577,24 @@ t[0] / 2 + t[1][1]
 
 ### A tuple is made text field by field, each by its own conversion, and a tuple inside it the same way.
 
-```yumi
-. t = (1, "two", 3.5, true, 'c')
--- t
--- "<$t>"
-. nested = (t, (1, (2, "three")), Named(2, Named2("in")))
--- nested
--- 1, "two", (3, 4)
+```brix
+(main
+  (let t (tuple 1 "two" 3.5 true 'c'))
+  (print t)
+  (print (str "<" t ">"))
+  (let nested (tuple t (tuple 1 (tuple 2 "three")) (call Named 2 (call Named2 "in"))))
+  (print nested)
+  (print (tuple 1 "two" (tuple 3 4)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named is (count Int, inner Named2)
+(type + Named (is (tuple (: count Int) (: inner Named2))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named2 is Tuple
-
-+ text String
-
-────────────────────
-+ to String
-
-"[$text]"
+(type + Named2 (is Tuple)
+  (prop + text String)
+  (fn-to-expr + String
+    (str "[" text "]")
+  )
+)
 ```
 
 ```output
@@ -1559,30 +1606,29 @@ t[0] / 2 + t[1][1]
 
 ### Two tuples are equal when every field is, compared by the machine or by the `==` the field declares.
 
-```yumi
-. a = (1, "x", (2.5, true))
-. b = (1, "x", (2.5, true))
-. c = (1, "x", (2.5, false))
-. d = (1, "y", (2.5, true))
--- a == b
--- a != b
--- a == c
--- a != c
--- a == d
--- Loose(1, 100) == Loose(1, 200)
--- (Loose(1, 100), 5) == (Loose(1, 200), 5)
--- (Loose(1, 100), 5) != (Loose(2, 100), 5)
+```brix
+(main
+  (let a (tuple 1 "x" (tuple 2.5 true)))
+  (let b (tuple 1 "x" (tuple 2.5 true)))
+  (let c (tuple 1 "x" (tuple 2.5 false)))
+  (let d (tuple 1 "y" (tuple 2.5 true)))
+  (print (== a b))
+  (print (!= a b))
+  (print (== a c))
+  (print (!= a c))
+  (print (== a d))
+  (print (== (call Loose 1 100) (call Loose 1 200)))
+  (print (== (tuple (call Loose 1 100) 5) (tuple (call Loose 1 200) 5)))
+  (print (!= (tuple (call Loose 1 100) 5) (tuple (call Loose 2 100) 5)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Loose is Tuple
-
-+ key Int
-+ note Int
-
-────────────────────
-+ this == other
-
-key == other.key
+(type + Loose (is Tuple)
+  (prop + key Int)
+  (prop + note Int)
+  (fn-expr + (infix this == (param other _)) _
+    (== key (. other key))
+  )
+)
 ```
 
 ```output
@@ -1598,34 +1644,34 @@ true
 
 ### An operand that names a tuple is copied before a later operand that changes it.
 
-```yumi
-+ g = (1, 2)
+```brix
+(prop + g _ (= (tuple 1 2)))
+(blank)
 
--- both(g, change())
--- g
-g = (1, 2)
--- (g == (1, 2), change-flag())
--- (g, change())
--- g
+(main
+  (print (call both g (call change)))
+  (print g)
+  (= g (tuple 1 2))
+  (print (tuple (== g (tuple 1 2)) (call change-flag)))
+  (print (tuple g (call change)))
+  (print g)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ both String
-    - first (Int, Int)
-    - second (Int, Int)
+(fn-expr + both String
+  (param first (tuple Int Int))
+  (param second (tuple Int Int))
+  (str first " " second)
+)
 
-"$first $second"
+(fn-do + change (tuple Int Int)
+  (= g (tuple (+ ([] g 0) 10) (+ ([] g 1) 10)))
+  (return g)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do change (Int, Int)
-
-g = (g[0] + 10, g[1] + 10)
-= g
-
-━━━━━━━━━━━━━━━━━━━━
-+ do change-flag Bool
-
-g = (0, 0)
-= true
+(fn-do + change-flag Bool
+  (= g (tuple 0 0))
+  (return true)
+)
 ```
 
 ```output
@@ -1638,11 +1684,13 @@ g = (0, 0)
 
 ### `Tuple` called with values is the tuple of them.
 
-```yumi
-. t = Tuple(1, "two", 3.5)
--- t
--- t[1]
--- Tuple(1, 2) == (1, 2)
+```brix
+(main
+  (let t (call Tuple 1 "two" 3.5))
+  (print t)
+  (print ([] t 1))
+  (print (== (call Tuple 1 2) (tuple 1 2)))
+)
 ```
 
 ```output
@@ -1653,19 +1701,19 @@ true
 
 ### Two tuples whose fields have other names are not equal.
 
-```yumi
--- Named(1, 2) == (1, 2)
--- (1, 2) == Named(1, 2)
--- Named(1, 2) == Other(1, 2)
--- Named(1, 2) != Other(1, 2)
--- Named(1, 2) == Named(1, 2)
--- (1, 2) == (1, 2)
+```brix
+(main
+  (print (== (call Named 1 2) (tuple 1 2)))
+  (print (== (tuple 1 2) (call Named 1 2)))
+  (print (== (call Named 1 2) (call Other 1 2)))
+  (print (!= (call Named 1 2) (call Other 1 2)))
+  (print (== (call Named 1 2) (call Named 1 2)))
+  (print (== (tuple 1 2) (tuple 1 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named is (a Int, b Int)
+(type + Named (is (tuple (: a Int) (: b Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Other is (c Int, d Int)
+(type + Other (is (tuple (: c Int) (: d Int))))
 ```
 
 ```output
@@ -1679,23 +1727,23 @@ true
 
 ### A field left out of a named tuple takes its class's value; a tuple with no name has no bits set.
 
-```yumi
--- Holder(1)
--- Holder()
+```brix
+(main
+  (print (call Holder 1))
+  (print (call Holder))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Part is Struct
+(type + Part (is Struct)
+  (prop + x I32 (= 7))
+  (prop + y I32)
+)
 
-+ x I32 = 7
-+ y I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Tuple
-
-+ n Int
-+ part Part
-+ loose (Part, Int)
-+ made Part = Part(1, 2)
+(type + Holder (is Tuple)
+  (prop + n Int)
+  (prop + part Part)
+  (prop + loose (tuple Part Int))
+  (prop + made Part (= (call Part 1 2)))
+)
 ```
 
 ```output
@@ -1705,26 +1753,25 @@ true
 
 ### A tuple's constructor assigns its fields.
 
-```yumi
-. t = Trip(1)
--- t.a + t.b + t.c
--- Trip(4).c
--- t
+```brix
+(main
+  (let t (call Trip 1))
+  (print (+ (. t a) (. t b) (. t c)))
+  (print (. (call Trip 4) c))
+  (print t)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Trip is Tuple
-
-+ a Int
-+ b Int
-+ c Int
-
-────────────────────
-+ This
-    - n Int
-
-a = n
-b = n + 1
-c = b + 1
+(type + Trip (is Tuple)
+  (prop + a Int)
+  (prop + b Int)
+  (prop + c Int)
+  (fn-do + This _
+    (param n Int)
+    (= a n)
+    (= b (+ n 1))
+    (= c (+ b 1))
+  )
+)
 ```
 
 ```output
@@ -1735,33 +1782,31 @@ c = b + 1
 
 ### What the function of an assigning operator answers for a tuple is stored where the tuple is held.
 
-```yumi
-. pair = Pair(1, 2)
-pair += 3
--- pair.a
--- pair.b
--- (pair += 1).a
--- pair.b
-. holder = Holder()
-holder.held += 5
--- holder.held.a
--- holder.held.b
+```brix
+(main
+  (let pair (call Pair 1 2))
+  (+= pair 3)
+  (print (. pair a))
+  (print (. pair b))
+  (print (. (+= pair 1) a))
+  (print (. pair b))
+  (let holder (call Holder))
+  (+= (. holder held) 5)
+  (print (. holder held a))
+  (print (. holder held b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Tuple
+(type + Pair (is Tuple)
+  (prop + a I32)
+  (prop + b I32)
+  (fn-expr + (infix this += (param other I32)) _
+    (call This (+ a other) (+ b other))
+  )
+)
 
-+ a I32
-+ b I32
-
-────────────────────
-+ this += other I32
-
-This(a + other, b + other)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ held = Pair(1, 1)
+(type + Holder
+  (prop + held _ (= (call Pair 1 1)))
+)
 ```
 
 ```output
@@ -1775,29 +1820,27 @@ This(a + other, b + other)
 
 ### A tuple called with one value of its only field's type is constructed from it, and any other single value goes through the function that converts from it.
 
-```yumi
-. made = Wrapped("made")
--- made.text
-. cast Wrapped = "cast"
--- cast.text
-. other = Count("four")
--- other.n
+```brix
+(main
+  (let made (call Wrapped "made"))
+  (print (. made text))
+  (let cast Wrapped "cast")
+  (print (. cast text))
+  (let other (call Count "four"))
+  (print (. other n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wrapped is (text String)
+(type + Wrapped (is (tuple (: text String)))
+  (fn-from-expr + (: other String)
+    (call Wrapped (str other "!"))
+  )
+)
 
-────────────────────
-+ from other String
-
-Wrapped("$other!")
-
-━━━━━━━━━━━━━━━━━━━━
-+ Count is (n Int)
-
-────────────────────
-+ from other String
-
-Count(other.size)
+(type + Count (is (tuple (: n Int)))
+  (fn-from-expr + (: other String)
+    (call Count (. other size))
+  )
+)
 ```
 
 ```output
@@ -1808,30 +1851,28 @@ cast!
 
 ### A tuple or struct declared with no value has the first values of its fields.
 
-```yumi
-. thing Thing
--- thing.a
-. pair Pair
--- pair
-. set Preset
--- set
-. deep Deep
--- deep
+```brix
+(main
+  (let thing Thing)
+  (print (. thing a))
+  (let pair Pair)
+  (print pair)
+  (let set Preset)
+  (print set)
+  (let deep Deep)
+  (print deep)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is (a Int, b CPointer'Char8)
+(type + Thing (is (tuple (: a Int) (: b (of CPointer Char8)))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (x Int, y Float)
+(type + Pair (is (tuple (: x Int) (: y Float))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Preset is Tuple
+(type + Preset (is Tuple)
+  (prop _ x Int (= 3))
+  (prop _ y Float (= 1.5))
+)
 
-_ x Int = 3
-_ y Float = 1.5
-
-━━━━━━━━━━━━━━━━━━━━
-+ Deep is (pair Pair, name String, flag Bool)
+(type + Deep (is (tuple (: pair Pair) (: name String) (: flag Bool))))
 ```
 
 ```output
@@ -1843,71 +1884,64 @@ _ y Float = 1.5
 
 ### A field's first value reads other fields, in whatever order they are declared, with the arguments the call gave.
 
-```yumi
--- Thing(10)
--- Thing(10, 2)
--- Thing(10, 2, 3)
--- Later()
--- Later(5)
--- Child()
--- Holder().inner
--- Chain()
--- Chain(5)
--- Made(3)
--- Made(3).wide
-. local Later
--- local
+```brix
+(main
+  (print (call Thing 10))
+  (print (call Thing 10 2))
+  (print (call Thing 10 2 3))
+  (print (call Later))
+  (print (call Later 5))
+  (print (call Child))
+  (print (. (call Holder) inner))
+  (print (call Chain))
+  (print (call Chain 5))
+  (print (call Made 3))
+  (print (. (call Made 3) wide))
+  (let local Later)
+  (print local)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
+(type + Thing (is Tuple)
+  (prop _ foo Int)
+  (prop _ zab Float (= 20))
+  (prop _ bar Float (= (* foo zab)))
+)
 
-_ foo Int
-_ zab Float = 20
-_ bar Float = foo * zab
+(type + Later (is Struct)
+  (prop + zab I32 (= bar))
+  (prop + bar I32 (= 20))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Later is Struct
+(type + Base (is Struct)
+  (prop + foo I32 (= 1))
+  (prop + bar I32 (= 2))
+)
 
-+ zab I32 = bar
-+ bar I32 = 20
+(type + Child (is Base)
+  (prop + baz I32 (= (+ bar 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Struct
+(type + Holder
+  (prop + scale _ (= 3))
+  (prop + inner _ (= (call Thing scale)))
+)
 
-+ foo I32 = 1
-+ bar I32 = 2
+(type + Chain (is Tuple)
+  (prop _ a Int (= (+ b 1)))
+  (prop _ b Int (= (+ c 1)))
+  (prop _ c Int (= 1))
+  (prop _ d (tuple Int Int) (= (tuple a c)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-+ baz I32 = bar + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ scale = 3
-+ inner = Thing(scale)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Chain is Tuple
-
-_ a Int = b + 1
-_ b Int = c + 1
-_ c Int = 1
-_ d (Int, Int) = (a, c)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Made is Struct
-
-+ n I32
-+ wide I64 = n * 2
-+ text = "n$n"
-
-────────────────────
-+ This
-    - n I32
-
-n += 1
+(type + Made (is Struct)
+  (prop + n I32)
+  (prop + wide I64 (= (* n 2)))
+  (prop + text _ (= (str "n" n)))
+  (fn-do + This _
+    (param n I32)
+    (+= n 1)
+  )
+)
 ```
 
 ```output
@@ -1927,55 +1961,53 @@ n += 1
 
 ### An assignment to an argument that is a tuple changes the function's own copy.
 
-```yumi
-. original = Pair(1, 2)
--- rebind(original)
--- original
--- keep(original, true)
--- keep(original, false)
--- original
--- grow(original)
--- original
-. holder = Holder()
--- holder.swap(original)
--- original
+```brix
+(main
+  (let original (call Pair 1 2))
+  (print (call rebind original))
+  (print original)
+  (print (call keep original true))
+  (print (call keep original false))
+  (print original)
+  (print (call grow original))
+  (print original)
+  (let holder (call Holder))
+  (print (call (. holder swap) original))
+  (print original)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (a I64, b I64)
+(type + Pair (is (tuple (: a I64) (: b I64))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do rebind I64
-    - value Pair
+(fn-do + rebind I64
+  (param value Pair)
+  (= value (call Pair 9 8))
+  (return (+ (. value a) (. value b)))
+)
 
-value = Pair(9, 8)
-= value.a + value.b
+(fn-do + keep I64
+  (param value Pair)
+  (param replace Bool)
+  (if replace
+    (= value (call Pair 10 9))
+  )
+  (return (+ (. value a) (. value b)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do keep I64
-    - value Pair
-    - replace Bool
+(fn-do + grow I64
+  (param value Pair)
+  (for (in index (..< 0 3))
+    (= value (call Pair (+ (. value a) 1) (. value b)))
+  )
+  (return (. value a))
+)
 
-if replace
-    value = Pair(10, 9)
-= value.a + value.b
-
-━━━━━━━━━━━━━━━━━━━━
-+ do grow I64
-    - value Pair
-
-for index in 0 .. < 3
-    value = Pair(value.a + 1, value.b)
-= value.a
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-────────────────────
-+ do swap Pair
-    - value Pair
-
-value = Pair(value.b, value.a)
-= value
+(type + Holder
+  (fn-do + swap Pair
+    (param value Pair)
+    (= value (call Pair (. value b) (. value a)))
+    (return value)
+  )
+)
 ```
 
 ```output
@@ -1992,26 +2024,25 @@ value = Pair(value.b, value.a)
 
 ### A field's value is evaluated for a tuple and for a tuple derived from it.
 
-```yumi
-. plain = Thing()
--- plain
-. bling = Bling()
--- bling
+```brix
+(main
+  (let plain (call Thing))
+  (print plain)
+  (let bling (call Bling))
+  (print bling)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
+(type + Thing (is Tuple)
+  (prop _ bar Int (= (call goo)))
+)
 
-_ bar Int = goo()
+(type + Bling (is Thing)
+  (prop _ baz Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bling is Thing
-
-_ baz Int
-
-━━━━━━━━━━━━━━━━━━━━
-_ goo
-
-42
+(fn-expr _ goo _
+  42
+)
 ```
 
 ```output
@@ -2021,33 +2052,32 @@ _ goo
 
 ### A tuple with no name declared with no value has no bits set, whatever its fields' types write for theirs.
 
-```yumi
-. o (Int, S)
--- o
-. p (S, S)
--- p
-. q (Int, T)
--- q
-. r (Int, P)
--- r
--- "[${r[1].y}]"
-. named S
--- named
+```brix
+(main
+  (let o (tuple Int S))
+  (print o)
+  (let p (tuple S S))
+  (print p)
+  (let q (tuple Int T))
+  (print q)
+  (let r (tuple Int P))
+  (print r)
+  (print (str "[" (. ([] r 1) y) "]"))
+  (let named S)
+  (print named)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ S is Struct
+(type + S (is Struct)
+  (prop + a I32 (= 3))
+  (prop + b F64)
+)
 
-+ a I32 = 3
-+ b F64
+(type + T (is Tuple)
+  (prop + a I32 (= 3))
+  (prop + b F64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ T is Tuple
-
-+ a I32 = 3
-+ b F64
-
-━━━━━━━━━━━━━━━━━━━━
-+ P is (x Int, y String)
+(type + P (is (tuple (: x Int) (: y String))))
 ```
 
 ```output
@@ -2061,33 +2091,29 @@ _ goo
 
 ### A property that holds a tuple and has no value is made by the tuple's constructor, with the defaults it declares
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. holder = Holder()
--- holder.size()
-holder.release()
+(main
+  (let holder (call Holder))
+  (print (call (. holder size)))
+  (call (. holder release))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-_ arena Arena
-_ numbers Array'U32'ArenaBacking
-
-────────────────────
-+ This
-
-.. numbers = Array'U32(arena, 8)
-
-────────────────────
-+ size Size
-
-numbers.length
-
-────────────────────
-+ do release
-
-arena.release()
+(type + Holder
+  (prop _ arena Arena)
+  (prop _ numbers (of Array U32 ArenaBacking))
+  (fn-do + This _
+    (lazy numbers (call (of Array U32) arena 8))
+  )
+  (fn-expr + size Size
+    (. numbers length)
+  )
+  (fn-do + release _
+    (call (. arena release))
+  )
+)
 ```
 
 ```output
@@ -2096,46 +2122,41 @@ arena.release()
 
 ### Properties that hold tuples and have no values: one with a constructor written, one without
 
-```yumi
-. holder = Holder()
--- holder.counter.count
--- holder.plain.left
+```brix
+(main
+  (let holder (call Holder))
+  (print (. holder counter count))
+  (print (. holder plain left))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter is Tuple
+(type + Counter (is Tuple)
+  (prop + count _ (= 1))
+  (prop + label _ (= "plain"))
+  (fn-do + This _
+    (param start _ (= 40))
+    (= count (+ start 2))
+    (= label "made")
+  )
+)
 
-+ count = 1
-+ label = "plain"
+(type + Plain (is Tuple)
+  (prop + left _ (= 7))
+  (prop + right _ (= 8))
+)
 
-────────────────────
-+ This
-    - start = 40
+(type + Holder
+  (prop + counter Counter)
+  (prop + plain Plain)
+)
 
-count = start + 2
-label = "made"
+(type + Inner (is Tuple)
+  (prop + counter Counter)
+  (prop + extra _ (= 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Plain is Tuple
-
-+ left = 7
-+ right = 8
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ counter Counter
-+ plain Plain
-
-━━━━━━━━━━━━━━━━━━━━
-+ Inner is Tuple
-
-+ counter Counter
-+ extra = 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ Nest
-
-+ inner Inner
+(type + Nest
+  (prop + inner Inner)
+)
 ```
 
 ```output
@@ -2145,32 +2166,29 @@ label = "made"
 
 ### Globals with no values, of a class and of a tuple that write a constructor
 
-```yumi
--- kept.count
--- tally.count
+```brix
+(main
+  (print (. kept count))
+  (print (. tally count))
+)
 
-_ kept Counter
-_ tally Tally
+(blank)
+(prop _ kept Counter)
+(prop _ tally Tally)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
+(type + Counter
+  (prop + count _ (= 1))
+  (fn-do + This _
+    (= count 9)
+  )
+)
 
-+ count = 1
-
-────────────────────
-+ This
-
-count = 9
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tally is Tuple
-
-+ count = 1
-
-────────────────────
-+ This
-
-count = 8
+(type + Tally (is Tuple)
+  (prop + count _ (= 1))
+  (fn-do + This _
+    (= count 8)
+  )
+)
 ```
 
 ```output
@@ -2180,45 +2198,40 @@ count = 8
 
 ### Tuple fields that hold objects with no value written
 
-```yumi
-. pair = Pair()
--- pair.left.label
--- pair.right.label
--- pair.size
-. named = Pair(Foo("l"))
--- named.left.label
--- named.right.label
+```brix
+(main
+  (let pair (call Pair))
+  (print (. pair left label))
+  (print (. pair right label))
+  (print (. pair size))
+  (let named (call Pair (call Foo "l")))
+  (print (. named left label))
+  (print (. named right label))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Tuple
+(type + Pair (is Tuple)
+  (prop + left Foo)
+  (prop + right Foo)
+  (prop + size Int (= 2))
+)
 
-+ left Foo
-+ right Foo
-+ size Int = 2
+(type + Proto (is Interface)
+  (fn-expr + act String
+    (param x Int)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ act String
-    - x Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ label String
-
-────────────────────
-+ This
-    - given String = "foo"
-
-.. label = given
-
-────────────────────
-+ do act String
-    - x Int
-
-= "$label $x"
+(type + Foo
+  (prop + label String)
+  (fn-do + This _
+    (param given String (= "foo"))
+    (lazy label given)
+  )
+  (fn-do + act String
+    (param x Int)
+    (return (str label " " x))
+  )
+)
 ```
 
 ```output
@@ -2231,29 +2244,27 @@ foo
 
 ### Fields of a tuple written in parentheses that hold an object, an array and a list with no value written are made by their types' constructors, for a tuple declared with no value and for one given some of its fields.
 
-```yumi
-. pair Pair
--- pair.holder.label
--- pair.bytes.size
--- pair.items.length
-. given = Pair(2)
--- given.count
--- given.holder.label
--- given.items.length
+```brix
+(main
+  (let pair Pair)
+  (print (. pair holder label))
+  (print (. pair bytes size))
+  (print (. pair items length))
+  (let given (call Pair 2))
+  (print (. given count))
+  (print (. given holder label))
+  (print (. given items length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (count Int, holder Foo, bytes Byte[], items [Int])
+(type + Pair (is (tuple (: count Int) (: holder Foo) (: bytes ([] Byte)) (: items (list Int)))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ label String
-
-────────────────────
-+ This
-    - given String = "foo"
-
-.. label = given
+(type + Foo
+  (prop + label String)
+  (fn-do + This _
+    (param given String (= "foo"))
+    (lazy label given)
+  )
+)
 ```
 
 ```output
@@ -2267,22 +2278,22 @@ foo
 
 ### Fields of another module's tuple written in parentheses that hold an array and a list with no value written are made by their types' constructors.
 
-```yumi
-./lib/pair
+```brix
+(import ./lib/pair)
+(blank)
 
-. pair Pair
--- pair.bytes.size
--- pair.items.length
-. given = Pair(3)
--- given.count
--- given.items.length
+(main
+  (let pair Pair)
+  (print (. pair bytes size))
+  (print (. pair items length))
+  (let given (call Pair 3))
+  (print (. given count))
+  (print (. given items length))
+)
 ```
 
-```yumi file=lib/pair.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (count Int, bytes Byte[], items [Int])
-
+```brix file=lib/pair.bx
+(type + Pair (is (tuple (: count Int) (: bytes ([] Byte)) (: items (list Int)))))
 ```
 
 ```output
@@ -2294,21 +2305,21 @@ foo
 
 ### A function prints several values, one an interface value
 
-```yumi
-show(Thing())
+```brix
+(main
+  (call show (call Thing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is IFoo
+(type + Thing
+  (implements IFoo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ IFoo is Interface
+(type + IFoo (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - thing IFoo
-
--- "shown", thing
+(fn-do + show _
+  (param thing IFoo)
+  (print (tuple "shown" thing))
+)
 ```
 
 ```output
@@ -2317,17 +2328,17 @@ show(Thing())
 
 ### A function prints several values, one an object
 
-```yumi
-show(Thing())
+```brix
+(main
+  (call show (call Thing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - thing Thing
-
--- "shown", thing
+(fn-do + show _
+  (param thing Thing)
+  (print (tuple "shown" thing))
+)
 ```
 
 ```output
@@ -2336,14 +2347,16 @@ show(Thing())
 
 ### A tuple nested in a tuple is taken apart, by a declaration and by a lazy one.
 
-```yumi
-. (a, (b, c)) = ("x", (1, "y"))
--- a
--- b
--- c
-.. p, (q, r) = ("z", (2, "w"))
--- r
--- q
+```brix
+(main
+  (let (tuple a (tuple b c)) (tuple "x" (tuple 1 "y")))
+  (print a)
+  (print b)
+  (print c)
+  (lazy (tuple p (tuple q r)) (tuple "z" (tuple 2 "w")))
+  (print r)
+  (print q)
+)
 ```
 
 ```output
@@ -2356,16 +2369,17 @@ w
 
 ### A generic tuple named bare in a cast and a declaration
 
-```yumi
-. n = (1, "two") as Pair
--- n.b
--- type-of n
-. m Pair = (3, 4)
--- m
--- type-of m
+```brix
+(main
+  (let n (as (tuple 1 "two") Pair))
+  (print (. n b))
+  (print (type-of n))
+  (let m Pair (tuple 3 4))
+  (print m)
+  (print (type-of m))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair'T1'T2 is (a T1, b T2)
+(type + (of Pair T1 T2) (is (tuple (: a T1) (: b T2))))
 ```
 
 ```output
@@ -2377,13 +2391,14 @@ two
 
 ### A generic tuple named bare declared with a list field
 
-```yumi
-. m Pair = ([1], "x")
--- type-of m
--- m.b
+```brix
+(main
+  (let m Pair (tuple (list 1) "x"))
+  (print (type-of m))
+  (print (. m b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair'T1'T2 is (a T1, b T2)
+(type + (of Pair T1 T2) (is (tuple (: a T1) (: b T2))))
 ```
 
 ```output
@@ -2393,18 +2408,18 @@ x
 
 ### A generic tuple named bare as a return type
 
-```yumi
-. m = make()
--- type-of m
--- m
+```brix
+(main
+  (let m (call make))
+  (print (type-of m))
+  (print m)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair'T1'T2 is (a T1, b T2)
+(type + (of Pair T1 T2) (is (tuple (: a T1) (: b T2))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Pair
-
-= (1, "two")
+(fn-do + make Pair
+  (return (tuple 1 "two"))
+)
 ```
 
 ```output
@@ -2414,15 +2429,16 @@ x
 
 ### A generic tuple named bare cast from fields read from another
 
-```yumi
-. q = (1, 2) as Pair
-. r = (q.a + 1, q.b * 2) as Pair
--- r
-. s = (1.5, 2) as Pair
--- type-of s
+```brix
+(main
+  (let q (as (tuple 1 2) Pair))
+  (let r (as (tuple (+ (. q a) 1) (* (. q b) 2)) Pair))
+  (print r)
+  (let s (as (tuple 1.5 2) Pair))
+  (print (type-of s))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair'T1'T2 is (a T1, b T2)
+(type + (of Pair T1 T2) (is (tuple (: a T1) (: b T2))))
 ```
 
 ```output
@@ -2432,13 +2448,14 @@ x
 
 ### A generic tuple named bare whose field is a tuple of its parameter
 
-```yumi
-. p = ((1, 2), 3) as Wrap
--- type-of p
--- p.inner
+```brix
+(main
+  (let p (as (tuple (tuple 1 2) 3) Wrap))
+  (print (type-of p))
+  (print (. p inner))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wrap'T is (inner (T, T), extra T)
+(type + (of Wrap T) (is (tuple (: inner (tuple T T)) (: extra T))))
 ```
 
 ```output
@@ -2448,13 +2465,14 @@ x
 
 ### A generic tuple named bare whose field is a list of its parameter
 
-```yumi
-. p = ([1, 2], 3) as Bag
--- type-of p
--- p.extra
+```brix
+(main
+  (let p (as (tuple (list 1 2) 3) Bag))
+  (print (type-of p))
+  (print (. p extra))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bag'T is (items [T], extra T)
+(type + (of Bag T) (is (tuple (: items (list T)) (: extra T))))
 ```
 
 ```output
@@ -2464,16 +2482,18 @@ x
 
 ### A tuple parameter whose field is an interface given a list
 
-```yumi
-foo(([1, 2], 3))
+```brix
+(main
+  (call foo (tuple (list 1 2) 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - n (x Iterable'Int, y Int)
-
-for v in n.x
-    -- v
--- n.y
+(fn-do + foo _
+  (param n (tuple (: x (of Iterable Int)) (: y Int)))
+  (for (in v (. n x))
+    (print v)
+  )
+  (print (. n y))
+)
 ```
 
 ```output
@@ -2484,17 +2504,19 @@ for v in n.x
 
 ### A tuple parameter whose two fields are streams
 
-```yumi
-foo(([1, 2], ["a", "b"]))
+```brix
+(main
+  (call foo (tuple (list 1 2) (list "a" "b")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - n (x Stream'Int, y Stream'String)
-
--- type-of n.x
--- type-of n.y
-for v in n.y
-    -- v
+(fn-do + foo _
+  (param n (tuple (: x (of Stream Int)) (: y (of Stream String))))
+  (print (type-of (. n x)))
+  (print (type-of (. n y)))
+  (for (in v (. n y))
+    (print v)
+  )
+)
 ```
 
 ```output
@@ -2506,15 +2528,17 @@ b
 
 ### A nested tuple parameter whose field is an interface
 
-```yumi
-foo(((1, [2, 3]), 4))
+```brix
+(main
+  (call foo (tuple (tuple 1 (list 2 3)) 4))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - n (p (a Int, b Iterable'Int), c Int)
-
-for v in n.p.b
-    -- v
+(fn-do + foo _
+  (param n (tuple (: p (tuple (: a Int) (: b (of Iterable Int)))) (: c Int)))
+  (for (in v (. n p b))
+    (print v)
+  )
+)
 ```
 
 ```output
@@ -2524,17 +2548,18 @@ for v in n.p.b
 
 ### A binding of a generic constructor called with two parameters in turn
 
-```yumi
-. mk = Thing(1, ...)
-. a = mk'Int()
-. b = mk'String()
--- a
--- b
--- type-of a
--- type-of b
+```brix
+(main
+  (let mk (call Thing 1 ...))
+  (let a (call (of mk Int)))
+  (let b (call (of mk String)))
+  (print a)
+  (print b)
+  (print (type-of a))
+  (print (type-of b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T is (foo Int, bar T)
+(type + (of Thing T) (is (tuple (: foo Int) (: bar T))))
 ```
 
 ```output
@@ -2546,13 +2571,14 @@ for v in n.p.b
 
 ### A binding of a constructor of two parameters that holds the first field
 
-```yumi
-. mk = Duo(3, ...)
--- mk'Int'Bool()
--- mk'Int'Bool()
+```brix
+(main
+  (let mk (call Duo 3 ...))
+  (print (call (of mk Int Bool)))
+  (print (call (of mk Int Bool)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Duo'A'B is (c Int, a A, b B)
+(type + (of Duo A B) (is (tuple (: c Int) (: a A) (: b B))))
 ```
 
 ```output
@@ -2562,14 +2588,15 @@ for v in n.p.b
 
 ### A binding of a generic constructor whose held argument converts
 
-```yumi
-. mk = Thing(10u8, ...)
-. t = mk'Float()
--- t.bar
--- t.foo
+```brix
+(main
+  (let mk (call Thing 10u8 ...))
+  (let t (call (of mk Float)))
+  (print (. t bar))
+  (print (. t foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T is (foo Int, bar T)
+(type + (of Thing T) (is (tuple (: foo Int) (: bar T))))
 ```
 
 ```output
@@ -2579,22 +2606,21 @@ for v in n.p.b
 
 ### A tuple whose field holds a number class with its own == compares that field by it.
 
-```yumi
-. a = Holder(Counter(1), 2)
-. b = Holder(Counter(1), 2)
--- a == b
+```brix
+(main
+  (let a (call Holder (call Counter 1) 2))
+  (let b (call Holder (call Counter 1) 2))
+  (print (== a b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter is I32
+(type + Counter (is I32)
+  (fn-do + (infix this == (param other Counter)) _
+    (print "counter compare")
+    (return false)
+  )
+)
 
-────────────────────
-+ do this == other Counter
-
--- "counter compare"
-= false
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is (count Counter, other I32)
+(type + Holder (is (tuple (: count Counter) (: other I32))))
 ```
 
 ```output
@@ -2604,19 +2630,19 @@ false
 
 ### A number class with its own == is compared by it, not by its machine value.
 
-```yumi
-. a = Counter(1)
-. b = Counter(1)
--- a == b
+```brix
+(main
+  (let a (call Counter 1))
+  (let b (call Counter 1))
+  (print (== a b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter is I32
-
-────────────────────
-+ do this == other Counter
-
--- "counter compare"
-= false
+(type + Counter (is I32)
+  (fn-do + (infix this == (param other Counter)) _
+    (print "counter compare")
+    (return false)
+  )
+)
 ```
 
 ```output
@@ -2626,13 +2652,14 @@ false
 
 ### A binding of a generic tuple's constructor that holds nothing makes the default once its parameter is written.
 
-```yumi
-. mk = Thing(...)
-. t = mk'Int()
--- t
+```brix
+(main
+  (let mk (call Thing ...))
+  (let t (call (of mk Int)))
+  (print t)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T is (a T, b T)
+(type + (of Thing T) (is (tuple (: a T) (: b T))))
 ```
 
 ```output
@@ -2641,53 +2668,56 @@ false
 
 ### A binding of a generic tuple's constructor takes its parameters and no argument.
 
-```yumi crash
-. mk = Thing(...)
-. t = mk'Float(1.5, 2.5)
--- t
--- type-of t
+```brix crash
+(main
+  (let mk (call Thing ...))
+  (let t (call (of mk Float) 1.5 2.5))
+  (print t)
+  (print (type-of t))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T is (a T, b T)
+(type + (of Thing T) (is (tuple (: a T) (: b T))))
 ```
 
 ```output
 Exception: Illegal arguments to binding
-<no file:3>
-    . t = mk'Float(1.5, 2.5)
-          ^^^^^^^^^^^^^^^^^^
+<no file:4>
+      (let t (call (of mk Float) 1.5 2.5))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A binding of a generic tuple's constructor that holds an argument takes no more.
 
-```yumi crash
-. mk = Trio(1, ...)
--- mk'Int(5, 6)
--- mk'Float(5, 6.5)
+```brix crash
+(main
+  (let mk (call Trio 1 ...))
+  (print (call (of mk Int) 5 6))
+  (print (call (of mk Float) 5 6.5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Trio'T is (a Int, b Int, c T)
+(type + (of Trio T) (is (tuple (: a Int) (: b Int) (: c T))))
 ```
 
 ```output
 Exception: Illegal arguments to binding
-<no file:3>
-    -- mk'Int(5, 6)
-       ^^^^^^^^^^^^
+<no file:4>
+      (print (call (of mk Int) 5 6))
+             ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A tuple class named bare takes the join of the types its fields give one parameter.
 
-```yumi
-. p = (1, 2.5) as Same
--- type-of p
--- p
-. q = (1u8, 300) as Same
--- type-of q
--- q
+```brix
+(main
+  (let p (as (tuple 1 2.5) Same))
+  (print (type-of p))
+  (print p)
+  (let q (as (tuple 1u8 300) Same))
+  (print (type-of q))
+  (print q)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Same'T is (a T, b T)
+(type + (of Same T) (is (tuple (: a T) (: b T))))
 ```
 
 ```output
@@ -2699,16 +2729,17 @@ Exception: Illegal arguments to binding
 
 ### A declared list of a tuple class named bare is completed from its items.
 
-```yumi
-. ps [Pair] = [(1, "x"), (2, "y")]
--- type-of ps
--- ps[0].a + 10
--- ps[1].b
-. qs [Pair?] = [(3, "z"), null]
--- type-of qs
+```brix
+(main
+  (let ps (list Pair) (list (tuple 1 "x") (tuple 2 "y")))
+  (print (type-of ps))
+  (print (+ (. ([] ps 0) a) 10))
+  (print (. ([] ps 1) b))
+  (let qs (list (? Pair)) (list (tuple 3 "z") null))
+  (print (type-of qs))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair'T1'T2 is (a T1, b T2)
+(type + (of Pair T1 T2) (is (tuple (: a T1) (: b T2))))
 ```
 
 ```output
@@ -2720,13 +2751,14 @@ y
 
 ### A tuple compared field by field compares a field of a function type as one object.
 
-```yumi
-. f = => 1
--- Holder(f, 1) == Holder(f, 1)
--- Holder(f, 1) == Holder(f, 2)
+```brix
+(main
+  (let f (=> () 1))
+  (print (== (call Holder f 1) (call Holder f 1)))
+  (print (== (call Holder f 1) (call Holder f 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is (fn () Int, n I32)
+(type + Holder (is (tuple (: fn (fn-type Int)) (: n I32))))
 ```
 
 ```output
@@ -2734,73 +2766,73 @@ true
 false
 ```
 
-```yumi
-/BxGC/BxGCTest.h
+```brix
+(import /BxGC/BxGCTest.h)
+(blank)
 
-. local = Wide(1, 2, 3, 4, 5, 6, 7, 8)
-. alias = local
-. optional Wide? = local
-. values = [local, Wide(8, 7, 6, 5, 4, 3, 2, 2)]
-. callback WideCallback = :: value Wide => sum(value)
--- sum(local)
--- sum(alias)
--- sum(optional!)
--- sum(values[0])
--- sum(values[1])
--- callback(local)
--- catch? sum-fallible(local)
--- sum-after-collection(local)
--- sum(local.shifted(1))
--- local
+(main
+  (let local (call Wide 1 2 3 4 5 6 7 8))
+  (let alias local)
+  (let optional (? Wide) local)
+  (let values (list local (call Wide 8 7 6 5 4 3 2 2)))
+  (let callback WideCallback (=> ((: value Wide)) (call sum value)))
+  (print (call sum local))
+  (print (call sum alias))
+  (print (call sum (!! optional)))
+  (print (call sum ([] values 0)))
+  (print (call sum ([] values 1)))
+  (print (call callback local))
+  (print (catch? (call sum-fallible local)))
+  (print (call sum-after-collection local))
+  (print (call sum (call (. local shifted) 1)))
+  (print local)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Tuple
+(type + Wide (is Tuple)
+  (prop + a Float)
+  (prop + b Float)
+  (prop + c Float)
+  (prop + d Float)
+  (prop + e Float)
+  (prop + f Float)
+  (prop + g Float)
+  (prop + h Float)
+  (fn-do + shifted Wide
+    (param amount Float)
+    (return
+      (call Wide
+        (block
+          (arg (+ a amount))
+          (arg (+ b amount))
+          (arg (+ c amount))
+          (arg (+ d amount))
+          (arg (+ e amount))
+          (arg (+ f amount))
+          (arg (+ g amount))
+          (arg (+ h amount))
+        )
+      )
+    )
+  )
+)
 
-+ a Float
-+ b Float
-+ c Float
-+ d Float
-+ e Float
-+ f Float
-+ g Float
-+ h Float
+(type + WideCallback (is (fn-type Float (param value Wide))))
 
-────────────────────
-+ do shifted Wide
-    - amount Float
+(fn-expr _ sum Float
+  (param value Wide)
+  (+ (. value a) (. value b) (. value c) (. value d) (. value e) (. value f) (. value g) (. value h))
+)
 
-= Wide
-    - a + amount
-    - b + amount
-    - c + amount
-    - d + amount
-    - e + amount
-    - f + amount
-    - g + amount
-    - h + amount
+(fn-do _ sum-fallible Float (?! Error)
+  (param value Wide)
+  (return (call sum value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ WideCallback is () Float
-    - value Wide
-
-━━━━━━━━━━━━━━━━━━━━
-_ sum Float
-    - value Wide
-
-value.a + value.b + value.c + value.d + value.e + value.f + value.g + value.h
-
-━━━━━━━━━━━━━━━━━━━━
-_ do sum-fallible Float ?! Error
-    - value Wide
-
-= sum(value)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do sum-after-collection Float
-    - value Wide
-
-C:brixCollect()
-= sum(value) + 1
+(fn-do _ sum-after-collection Float
+  (param value Wide)
+  (call C:brixCollect)
+  (return (+ (call sum value) 1))
+)
 ```
 
 ```output
@@ -2816,88 +2848,85 @@ C:brixCollect()
 (1, 2, 3, 4, 5, 6, 7, 8)
 ```
 
-```yumi
-. nested = Nested
-    - Pair(1, 2)
-    - Pair(3, 4)
-    - Pair(5, 6)
-    - Pair(7, 8)
--- sum-nested(nested)
--- sum-ten(Ten(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
--- sum-one(One(36))
--- sum-pair(Pair(17, 19))
--- sum-four(Four(6, 8, 10, 12))
+```brix
+(main
+  (let nested
+    (call Nested
+      (block
+        (arg (call Pair 1 2))
+        (arg (call Pair 3 4))
+        (arg (call Pair 5 6))
+        (arg (call Pair 7 8))
+      )
+    )
+  )
+  (print (call sum-nested nested))
+  (print (call sum-ten (call Ten 1 2 3 4 5 6 7 8 9 10)))
+  (print (call sum-one (call One 36)))
+  (print (call sum-pair (call Pair 17 19)))
+  (print (call sum-four (call Four 6 8 10 12)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ One is Tuple
+(type + One (is Tuple)
+  (prop + a Float)
+)
 
-+ a Float
+(type + Pair (is Tuple)
+  (prop + a Float)
+  (prop + b Float)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Tuple
+(type + Four (is Tuple)
+  (prop + a Float)
+  (prop + b Float)
+  (prop + c Float)
+  (prop + d Float)
+)
 
-+ a Float
-+ b Float
+(type + Ten (is Tuple)
+  (prop + a Float)
+  (prop + b Float)
+  (prop + c Float)
+  (prop + d Float)
+  (prop + e Float)
+  (prop + f Float)
+  (prop + g Float)
+  (prop + h Float)
+  (prop + i Float)
+  (prop + j Float)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Four is Tuple
+(type + Nested (is Tuple)
+  (prop + a Pair)
+  (prop + b Pair)
+  (prop + c Pair)
+  (prop + d Pair)
+)
 
-+ a Float
-+ b Float
-+ c Float
-+ d Float
+(fn-expr _ sum-one Float
+  (param value One)
+  (. value a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Ten is Tuple
+(fn-expr _ sum-pair Float
+  (param value Pair)
+  (+ (. value a) (. value b))
+)
 
-+ a Float
-+ b Float
-+ c Float
-+ d Float
-+ e Float
-+ f Float
-+ g Float
-+ h Float
-+ i Float
-+ j Float
+(fn-expr _ sum-four Float
+  (param value Four)
+  (+ (. value a) (. value b) (. value c) (. value d))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Nested is Tuple
+(fn-expr _ sum-ten Float
+  (param value Ten)
+  (+ (. value a) (. value b) (. value c) (. value d) (. value e) (. value f) (. value g) (. value h) (. value i) (. value j))
+)
 
-+ a Pair
-+ b Pair
-+ c Pair
-+ d Pair
-
-━━━━━━━━━━━━━━━━━━━━
-_ sum-one Float
-    - value One
-
-value.a
-
-━━━━━━━━━━━━━━━━━━━━
-_ sum-pair Float
-    - value Pair
-
-value.a + value.b
-
-━━━━━━━━━━━━━━━━━━━━
-_ sum-four Float
-    - value Four
-
-value.a + value.b + value.c + value.d
-
-━━━━━━━━━━━━━━━━━━━━
-_ sum-ten Float
-    - value Ten
-
-value.a + value.b + value.c + value.d + value.e + value.f + value.g + value.h + value.i + value.j
-
-━━━━━━━━━━━━━━━━━━━━
-_ sum-nested Float
-    - value Nested
-
-sum-pair(value.a) + sum-pair(value.b) + sum-pair(value.c) + sum-pair(value.d)
+(fn-expr _ sum-nested Float
+  (param value Nested)
+  (+ (call sum-pair (. value a)) (call sum-pair (. value b)) (call sum-pair (. value c)) (call sum-pair (. value d)))
+)
 ```
 
 ```output
@@ -2908,44 +2937,45 @@ sum-pair(value.a) + sum-pair(value.b) + sum-pair(value.c) + sum-pair(value.d)
 36
 ```
 
-```yumi
-/BxGC/BxGC.h
+```brix
+(import /BxGC/BxGC.h)
+(blank)
 
-. nested-value = nested("live").value
--- nested-value!.a
--- reused("same").right.a
-. interrupted-value = interrupted("safe").value
--- interrupted-value!.a
+(main
+  (let nested-value (. (call nested "live") value))
+  (print (. (!! nested-value) a))
+  (print (. (call reused "same") right a))
+  (let interrupted-value (. (call interrupted "safe") value))
+  (print (. (!! interrupted-value) a))
+)
 
-+ Text is (a String, b String, c String, d String)
-+ Box is (value Text?, marker U64)
-+ Pair is (left Text, right Text)
+(blank)
+(type-line + Text (is (tuple (: a String) (: b String) (: c String) (: d String))))
+(type-line + Box (is (tuple (: value (? Text)) (: marker U64))))
+(type-line + Pair (is (tuple (: left Text) (: right Text))))
 
-━━━━━━━━━━━━━━━━━━━━
-_ do nested Box
-    - seed String
+(fn-do _ nested Box
+  (param seed String)
+  (let result (call Box (call Text seed "b" "c" "d") 7))
+  (call C:brixCollect)
+  (return result)
+)
 
-. result = Box(Text(seed, "b", "c", "d"), 7)
-C:brixCollect()
-= result
+(fn-do _ reused Pair
+  (param seed String)
+  (let text (call Text seed "b" "c" "d"))
+  (let result (call Pair text text))
+  (call C:brixCollect)
+  (return result)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do reused Pair
-    - seed String
-
-. text = Text(seed, "b", "c", "d")
-. result = Pair(text, text)
-C:brixCollect()
-= result
-
-━━━━━━━━━━━━━━━━━━━━
-_ do interrupted Box
-    - seed String
-
-. text = Text(seed, "b", "c", "d")
-C:brixCollect()
-. result = Box(text, 8)
-= result
+(fn-do _ interrupted Box
+  (param seed String)
+  (let text (call Text seed "b" "c" "d"))
+  (call C:brixCollect)
+  (let result (call Box text 8))
+  (return result)
+)
 ```
 
 ```output
@@ -2954,60 +2984,58 @@ same
 safe
 ```
 
-```yumi
-/BxGC/BxGC.h
+```brix
+(import /BxGC/BxGC.h)
+(blank)
 
-. wrapped = wrap(1)
-. base = Big(1 as U64, 2 as U64, 3 as U64, 4 as U64)
-. forwarded = forward-input(base)
-. text = wrap-text("a")
-C:brixCollect()
--- wrapped!.a
--- wrapped!.b
--- wrapped!.c
--- wrapped!.d
--- forwarded.a
--- text!.a
--- text!.d
+(main
+  (let wrapped (call wrap 1))
+  (let base (call Big (as 1 U64) (as 2 U64) (as 3 U64) (as 4 U64)))
+  (let forwarded (call forward-input base))
+  (let text (call wrap-text "a"))
+  (call C:brixCollect)
+  (print (. (!! wrapped) a))
+  (print (. (!! wrapped) b))
+  (print (. (!! wrapped) c))
+  (print (. (!! wrapped) d))
+  (print (. forwarded a))
+  (print (. (!! text) a))
+  (print (. (!! text) d))
+)
 
-+ Big is (a U64, b U64, c U64, d U64)
-+ BigText is (a String, b String, c String, d String)
+(blank)
+(type-line + Big (is (tuple (: a U64) (: b U64) (: c U64) (: d U64))))
+(type-line + BigText (is (tuple (: a String) (: b String) (: c String) (: d String))))
 
-━━━━━━━━━━━━━━━━━━━━
-_ make Big
-    - seed U64
+(fn-expr _ make Big
+  (param seed U64)
+  (call Big seed (as 2 U64) (as 3 U64) (as 4 U64))
+)
 
-Big(seed, 2 as U64, 3 as U64, 4 as U64)
+(fn-expr _ wrap (? Big)
+  (param seed U64)
+  (call make seed)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ wrap Big?
-    - seed U64
+(fn-expr _ return-input Big
+  (param value Big)
+  value
+)
 
-make(seed)
+(fn-expr _ forward-input Big
+  (param value Big)
+  (call return-input value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ return-input Big
-    - value Big
+(fn-expr _ make-text BigText
+  (param seed String)
+  (call BigText seed "b" "c" "d")
+)
 
-value
-
-━━━━━━━━━━━━━━━━━━━━
-_ forward-input Big
-    - value Big
-
-return-input(value)
-
-━━━━━━━━━━━━━━━━━━━━
-_ make-text BigText
-    - seed String
-
-BigText(seed, "b", "c", "d")
-
-━━━━━━━━━━━━━━━━━━━━
-_ wrap-text BigText?
-    - seed String
-
-make-text(seed)
+(fn-expr _ wrap-text (? BigText)
+  (param seed String)
+  (call make-text seed)
+)
 ```
 
 ```output
@@ -3020,11 +3048,14 @@ a
 d
 ```
 
-```yumi
--- Pair("a", null)
--- Pair("b", "c")
+```brix
+(main
+  (print (call Pair "a" null))
+  (print (call Pair "b" "c"))
+)
 
-+ Pair is (name String, detail String?)
+(blank)
+(type-line + Pair (is (tuple (: name String) (: detail (? String)))))
 ```
 
 ```output
@@ -3032,44 +3063,37 @@ d
 (b, c)
 ```
 
-```yumi
-. owner = Owner(Box(3))
--- owner.held.box.n
+```brix
+(main
+  (let owner (call Owner (call Box 3)))
+  (print (. owner held box n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Owner
+(type + Owner
+  (prop _ inner Pair)
+  (fn-do + This _
+    (param box Box)
+    (print (. inner box n))
+    (= inner (call Pair box))
+  )
+  (fn-expr + held Pair :get
+    inner
+  )
+)
 
-_ inner Pair
+(type + Pair (is Tuple)
+  (prop + box Box)
+  (fn-do + This _
+    (param box Box)
+  )
+)
 
-────────────────────
-+ This
-    - box Box
-
--- inner.box.n
-inner = Pair(box)
-
-────────────────────
-+ get held Pair
-
-inner
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Tuple
-
-+ box Box
-
-────────────────────
-+ This
-    - box Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ n I32 = 7
-
-────────────────────
-+ This
-    - n I32
+(type + Box
+  (prop + n I32 (= 7))
+  (fn-do + This _
+    (param n I32)
+  )
+)
 ```
 
 ```output
@@ -3077,25 +3101,23 @@ inner
 3
 ```
 
-```yumi
-. h = Holder()
--- h.inner.n
+```brix
+(main
+  (let h (call Holder))
+  (print (. h inner n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Tuple
+(type + Holder (is Tuple)
+  (prop + inner Inner)
+)
 
-+ inner Inner
-
-━━━━━━━━━━━━━━━━━━━━
-+ Inner is Tuple
-
-+ n Size
-
-────────────────────
-+ This
-    - start Size = 4
-
-n = start + 1
+(type + Inner (is Tuple)
+  (prop + n Size)
+  (fn-do + This _
+    (param start Size (= 4))
+    (= n (+ start 1))
+  )
+)
 ```
 
 ```output
@@ -3104,44 +3126,41 @@ n = start + 1
 
 ### A tuple given where one of other field types is taken converts each field by its place.
 
-```yumi
--- show(make(1, 7))
--- show(make(2, 9))
--- show(make(5, 0))
+```brix
+(main
+  (print (call show (call make 1 7)))
+  (print (call show (call make 2 9)))
+  (print (call show (call make 5 0)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Id is Int
+(type + Id (is Int))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Partial is (container Id, count Int)
+(type + Partial (is (tuple (: container Id) (: count Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ make Partial
-    - count Int
-    - container Id
+(fn-expr + make Partial
+  (param count Int)
+  (param container Id)
+  (tuple count container)
+)
 
-(count, container)
+(fn-expr + show String
+  (param partial Partial)
+  (call describe (call pick container) count)
+  (where
+    (lazy (tuple count container) partial)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ show String
-    - partial Partial
+(fn-expr + pick Id
+  (param value (? Id))
+  (?? value 0)
+)
 
-describe(pick(container), count)
-
-.. count, container = partial
-
-━━━━━━━━━━━━━━━━━━━━
-+ pick Id
-    - value Id?
-
-value ?? 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - id Id
-    - count Int
-
-"$id $count"
+(fn-expr + describe String
+  (param id Id)
+  (param count Int)
+  (str id " " count)
+)
 ```
 
 ```output
@@ -3152,37 +3171,37 @@ value ?? 0
 
 ### A function value a tuple pattern binds is called by its name.
 
-```yumi
-. b = Boxed(:: n Int => "k$n")
--- b.key(3, "p")
--- Boxed(null).key(4, "q")
--- Boxed(null).key(5, "")
+```brix
+(main
+  (let b (call Boxed (=> ((: n Int)) (str "k" n))))
+  (print (call (. b key) 3 "p"))
+  (print (call (. (call Boxed null) key) 4 "q"))
+  (print (call (. (call Boxed null) key) 5 ""))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Keyer is () String
-    - n Int
+(type + Keyer (is (fn-type String (param n Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Boxed
-
-+ keyer Keyer?
-
-────────────────────
-+ This
-    - keyer Keyer?
-
-────────────────────
-+ key String
-    - n Int
-    - prefix String
-
-match keyer, prefix
-    | f Keyer, _
-        f(n)
-    | _, {it}
-        "$prefix/$n"
-    ??
-        "$n"
+(type + Boxed
+  (prop + keyer (? Keyer))
+  (fn-do + This _
+    (param keyer (? Keyer))
+  )
+  (fn-expr + key String
+    (param n Int)
+    (param prefix String)
+    (match (tuple keyer prefix)
+      (case (tuple (: f Keyer) _)
+        (call f n)
+      )
+      (case (tuple _ ({} it))
+        (str prefix "/" n)
+      )
+      (default
+        (str n)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3193,24 +3212,29 @@ q/4
 
 ### A tuple made with one field given by name gives the fields before it their values.
 
-```yumi
-. p = Pair
-    • b 4
--- p.a
+```brix
+(main
+  (let p
+    (call Pair
+      (block
+        (:b 4)
+      )
+    )
+  )
+  (print (. p a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Tuple
+(type + Pair (is Tuple)
+  (prop + a Size (= 5))
+  (prop + b Size (= 0))
+  (prop + c Size (= 0))
+)
 
-+ a Size = 5
-+ b Size = 0
-+ c Size = 0
-
-━━━━━━━━━━━━━━━━━━━━
-_ both Size
-    - first Size
-    - second Size
-
-first + second
+(fn-expr _ both Size
+  (param first Size)
+  (param second Size)
+  (+ first second)
+)
 ```
 
 ```output
@@ -3219,34 +3243,48 @@ first + second
 
 ### The value of a field of a tuple calls with arguments written as lines and reads fields declared after it.
 
-```yumi
-. u = Usage
-    • reasoning-tokens 3
--- u.total-tokens ?? 0
--- u.input-tokens ?? 0
+```brix
+(main
+  (let u
+    (call Usage
+      (block
+        (:reasoning-tokens 3)
+      )
+    )
+  )
+  (print (?? (. u total-tokens) 0))
+  (print (?? (. u input-tokens) 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Usage is Tuple
+(type + Usage (is Tuple)
+  (prop + input-tokens (? Size)
+    (=
+      (call usage-sum
+        (block
+          (arg cached-input-tokens)
+          (arg tool-prompt-tokens)
+        )
+      )
+    )
+  )
+  (prop + output-tokens (? Size) (= (call usage-sum reasoning-tokens thought-tokens)))
+  (prop + total-tokens (? Size) (= (call usage-sum input-tokens output-tokens)))
+  (prop + cached-input-tokens (? Size) (= null))
+  (prop + reasoning-tokens (? Size) (= null))
+  (prop + thought-tokens (? Size) (= null))
+  (prop + tool-prompt-tokens (? Size) (= null))
+)
 
-+ input-tokens Size? = usage-sum
-    - cached-input-tokens
-    - tool-prompt-tokens
-+ output-tokens Size? = usage-sum(reasoning-tokens, thought-tokens)
-+ total-tokens Size? = usage-sum(input-tokens, output-tokens)
-+ cached-input-tokens Size? = null
-+ reasoning-tokens Size? = null
-+ thought-tokens Size? = null
-+ tool-prompt-tokens Size? = null
-
-━━━━━━━━━━━━━━━━━━━━
-_ usage-sum Size?
-    - first Size?
-    - second Size?
-
-|? first is Size || second is Size
-    (first ?? 0) + (second ?? 0)
-??
+(fn-expr _ usage-sum (? Size)
+  (param first (? Size))
+  (param second (? Size))
+  (case? (or (is first Size) (is second Size))
+    (+ (?? first 0) (?? second 0))
+  )
+  (default
     null
+  )
+)
 ```
 
 ```output
@@ -3256,39 +3294,40 @@ _ usage-sum Size?
 
 ### Assigning a field of a tuple as the value of an arm gives the new tuple.
 
-```yumi
--- describe(with-field(Pair(1, 2), "left", 7))
--- describe(with-field(Pair(1, 2), "right", 8))
--- describe(with-field(Pair(1, 2), "other", 9))
+```brix
+(main
+  (print (call describe (call with-field (call Pair 1 2) "left" 7)))
+  (print (call describe (call with-field (call Pair 1 2) "right" 8)))
+  (print (call describe (call with-field (call Pair 1 2) "other" 9)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Tuple
+(type + Pair (is Tuple)
+  (prop + left U64)
+  (prop + right U64)
+  (fn-do + This _
+    (param left _)
+    (param right _)
+  )
+)
 
-+ left U64
-+ right U64
+(fn-expr + describe String
+  (param pair (? Pair))
+  (if-expr pair (str (. pair left) " " (. pair right)) "none")
+)
 
-────────────────────
-+ This
-    - left
-    - right
-
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - pair Pair?
-
-if pair then "${pair.left} ${pair.right}" else "none"
-
-━━━━━━━━━━━━━━━━━━━━
-+ with-field
-    - pair Pair
-    - field String
-    - value U64
-
-match? field
-    |= "left"
-        pair.left = value
-    |= "right"
-        pair.right = value
+(fn-expr + with-field _
+  (param pair Pair)
+  (param field String)
+  (param value U64)
+  (match? field
+    (case= "left"
+      (= (. pair left) value)
+    )
+    (case= "right"
+      (= (. pair right) value)
+    )
+  )
+)
 ```
 
 ```output
@@ -3299,36 +3338,36 @@ none
 
 ### Two tuples are equal where their fields are, an optional field of a type that declares `==` compared by it where both hold a value, with the right one first.
 
-```yumi
-. one = Record(Spot(1, 2), 3)
-. two = Record(Spot(5, 6), 3)
-. three = Record(null, 3)
-. four = Record(null, 3)
--- one == two
--- one == three
--- three == four
--- three == one
-. a Spot? = Spot(1, 2)
-. b Spot? = Spot(5, 6)
--- a == b
+```brix
+(main
+  (let one (call Record (call Spot 1 2) 3))
+  (let two (call Record (call Spot 5 6) 3))
+  (let three (call Record null 3))
+  (let four (call Record null 3))
+  (print (== one two))
+  (print (== one three))
+  (print (== three four))
+  (print (== three one))
+  (let a (? Spot) (call Spot 1 2))
+  (let b (? Spot) (call Spot 5 6))
+  (print (== a b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Spot is Tuple
+(type + Spot (is Tuple)
+  (prop + x I32)
+  (prop + y I32)
+  (fn-expr + (infix this == (param other Spot)) _
+    (before
+      (print (str "called " x " " (. other x)))
+    )
+    true
+  )
+)
 
-+ x I32
-+ y I32
-
-────────────────────
-+ this == other Spot
-
--- "called ${x} ${other.x}"
-true
-
-━━━━━━━━━━━━━━━━━━━━
-+ Record is Tuple
-
-+ pivot Spot?
-+ size I32
+(type + Record (is Tuple)
+  (prop + pivot (? Spot))
+  (prop + size I32)
+)
 ```
 
 ```output
@@ -3343,33 +3382,32 @@ true
 
 ### What two optional fields hold is compared with the right one first, down to the `==` a field within declares.
 
-```yumi
-. one = Record(Wrap(Spot(1, 2)), 3)
-. two = Record(Wrap(Spot(5, 6)), 3)
--- one == two
+```brix
+(main
+  (let one (call Record (call Wrap (call Spot 1 2)) 3))
+  (let two (call Record (call Wrap (call Spot 5 6)) 3))
+  (print (== one two))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Spot is Tuple
+(type + Spot (is Tuple)
+  (prop + x I32)
+  (prop + y I32)
+  (fn-expr + (infix this == (param other Spot)) _
+    (before
+      (print (str "called " x " " (. other x)))
+    )
+    true
+  )
+)
 
-+ x I32
-+ y I32
+(type + Wrap (is Tuple)
+  (prop + spot Spot)
+)
 
-────────────────────
-+ this == other Spot
-
--- "called ${x} ${other.x}"
-true
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wrap is Tuple
-
-+ spot Spot
-
-━━━━━━━━━━━━━━━━━━━━
-+ Record is Tuple
-
-+ inner Wrap?
-+ size I32
+(type + Record (is Tuple)
+  (prop + inner (? Wrap))
+  (prop + size I32)
+)
 ```
 
 ```output
@@ -3379,35 +3417,33 @@ true
 
 ### A field whose type declares `==` only for a type it converts to is compared by that `==`, the other field converted to it, and an optional one so where both hold a value.
 
-```yumi
-. one = Record(Stamp(1), Stamp(4))
-. two = Record(Stamp(1), Stamp(4))
-. three = Record(Stamp(1), null)
--- one == two
--- one == three
--- [one, three] == [two, three]
+```brix
+(main
+  (let one (call Record (call Stamp 1) (call Stamp 4)))
+  (let two (call Record (call Stamp 1) (call Stamp 4)))
+  (let three (call Record (call Stamp 1) null))
+  (print (== one two))
+  (print (== one three))
+  (print (== (list one three) (list two three)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Stamp is Tuple
+(type + Stamp (is Tuple)
+  (prop + seconds Int)
+  (fn-to-expr + Int
+    seconds
+  )
+  (fn-expr + (infix this == (param other Int)) _
+    (before
+      (print (str "compared " seconds " " other))
+    )
+    (== seconds other)
+  )
+)
 
-+ seconds Int
-
-────────────────────
-+ to Int
-
-seconds
-
-────────────────────
-+ this == other Int
-
--- "compared $seconds $other"
-seconds == other
-
-━━━━━━━━━━━━━━━━━━━━
-+ Record is Tuple
-
-+ start Stamp
-+ end Stamp?
+(type + Record (is Tuple)
+  (prop + start Stamp)
+  (prop + end (? Stamp))
+)
 ```
 
 ```output
@@ -3424,16 +3460,17 @@ true
 
 ### A tuple that declares a field named `length` has that field assigned, as any other, and keeps all its fields.
 
-```yumi
-. span = Span(4, 0)
-span = span.length = span.size + 1
--- "$span.size $span.length"
+```brix
+(main
+  (let span (call Span 4 0))
+  (= span (= (. span length) (+ (. span size) 1)))
+  (print (str (. span size) " " (. span length)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Span is Tuple
-
-+ size U32
-+ length U32
+(type + Span (is Tuple)
+  (prop + size U32)
+  (prop + length U32)
+)
 ```
 
 ```output
@@ -3442,32 +3479,38 @@ span = span.length = span.size + 1
 
 ### A tuple pattern on an optional tuple matches its fields where there is one, and nothing where there is none.
 
-```yumi
-. found = search(1)
-match? found
-    | name, size
-        -- "$name $size"
-. none = search(5)
-match? none
-    | name, size
-        -- "$name $size"
--- "done"
+```brix
+(main
+  (let found (call search 1))
+  (match? found
+    (case (tuple name size)
+      (print (str name " " size))
+    )
+  )
+  (let none (call search 5))
+  (match? none
+    (case (tuple name size)
+      (print (str name " " size))
+    )
+  )
+  (print "done")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do search (String, Int)?
-    - least Int
+(fn-do _ search (? (tuple String Int))
+  (param least Int)
+  (for (in pair (call pairs))
+    (if (> ([] pair 1) least)
+      (return pair)
+    )
+  )
+  (return null)
+)
 
-for pair in pairs()
-    if pair[1] > least
-        = pair
-= null
-
-━━━━━━━━━━━━━━━━━━━━
-_ pairs
-
-* "x", 1
-* "yy", 2
-* "zzz", 3
+(fn-expr _ pairs _
+  (item (tuple "x" 1))
+  (item (tuple "yy" 2))
+  (item (tuple "zzz" 3))
+)
 ```
 
 ```output
@@ -3477,49 +3520,44 @@ done
 
 ### An assignment to a field of a tuple an index names evaluates the value before the tuple, and stores the new tuple it gives.
 
-```yumi
-. l [T]
-l += T(1, 2)
-l += T(3, 4)
-. n = 0
-l[1] = l[1].a = bump(l, n)
--- "l1 ${l[1].a} ${l[1].b}"
-l[0] = l[0].b = bump(l, 5)
--- "l0 ${l[0].a} ${l[0].b}"
-. h = Holder()
-h.items[0] = h.items[0].a = h.grow()
--- "h ${h.items[0].a} ${h.items[0].b} ${h.items.length}"
+```brix
+(main
+  (let l (list T))
+  (+= l (call T 1 2))
+  (+= l (call T 3 4))
+  (let n 0)
+  (= ([] l 1) (= (. ([] l 1) a) (call bump l n)))
+  (print (str "l1 " (. ([] l 1) a) " " (. ([] l 1) b)))
+  (= ([] l 0) (= (. ([] l 0) b) (call bump l 5)))
+  (print (str "l0 " (. ([] l 0) a) " " (. ([] l 0) b)))
+  (let h (call Holder))
+  (= ([] (. h items) 0) (= (. ([] (. h items) 0) a) (call (. h grow))))
+  (print (str "h " (. ([] (. h items) 0) a) " " (. ([] (. h items) 0) b) " " (. h items length)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ T is Tuple
+(type + T (is Tuple)
+  (prop + a Int)
+  (prop + b Int)
+)
 
-+ a Int
-+ b Int
+(type + Holder
+  (prop + items (list T))
+  (fn-do + This _
+    (+= items (call T 8 9))
+  )
+  (fn-do + grow Int
+    (= ([] items 0) (call T 100 200))
+    (return 3)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ items [T]
-
-────────────────────
-+ This
-
-items += T(8, 9)
-
-────────────────────
-+ do grow Int
-
-items[0] = T(100, 200)
-= 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bump Int
-    - l [T]
-    - n Int
-
-l[1] = T(30, 40)
-l[0] = T(10, 20)
-= n + 7
+(fn-do + bump Int
+  (param l (list T))
+  (param n Int)
+  (= ([] l 1) (call T 30 40))
+  (= ([] l 0) (call T 10 20))
+  (return (+ n 7))
+)
 ```
 
 ```output
@@ -3530,36 +3568,35 @@ h 3 200 1
 
 ### An assignment to a field of a tuple evaluates the value, then the index of the tuple, then the index it is stored at, and gives a new tuple without changing the one it read.
 
-```yumi
-. l [T]
-l += T(1, 2)
-l += T(3, 4)
-l[at("outer", 1)] = l[at("inner", 1)].a = val("rhs")
--- "l1 ${l[1].a} ${l[1].b}"
-. t = T(5, 6)
-. u = (t.b = val("tb"))
--- "u ${u.a} ${u.b} t ${t.a} ${t.b}"
+```brix
+(main
+  (let l (list T))
+  (+= l (call T 1 2))
+  (+= l (call T 3 4))
+  (= ([] l (call at "outer" 1)) (= (. ([] l (call at "inner" 1)) a) (call val "rhs")))
+  (print (str "l1 " (. ([] l 1) a) " " (. ([] l 1) b)))
+  (let t (call T 5 6))
+  (let u (= (. t b) (call val "tb")))
+  (print (str "u " (. u a) " " (. u b) " t " (. t a) " " (. t b)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ T is Tuple
+(type + T (is Tuple)
+  (prop + a Int)
+  (prop + b Int)
+)
 
-+ a Int
-+ b Int
+(fn-do + at Index
+  (param tag String)
+  (param i Index)
+  (print tag)
+  (return i)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do at Index
-    - tag String
-    - i Index
-
--- tag
-= i
-
-━━━━━━━━━━━━━━━━━━━━
-+ do val Int
-    - tag String
-
--- tag
-= 9
+(fn-do + val Int
+  (param tag String)
+  (print tag)
+  (return 9)
+)
 ```
 
 ```output
@@ -3573,23 +3610,23 @@ u 5 9 t 5 6
 
 ### An assigning operator on a tuple's field gives a new tuple and leaves the tuple it read as it was.
 
-```yumi
-. p = Pt(5, 7)
-. v = p.x -= 1
--- "local ${v.x} ${v.y} / ${p.x} ${p.y}"
--- shift(Pt(5, 7), Pt(1, 2))
+```brix
+(main
+  (let p (call Pt 5 7))
+  (let v (-= (. p x) 1))
+  (print (str "local " (. v x) " " (. v y) " / " (. p x) " " (. p y)))
+  (print (call shift (call Pt 5 7) (call Pt 1 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pt is (x I32, y I32)
+(type + Pt (is (tuple (: x I32) (: y I32))))
 
-━━━━━━━━━━━━━━━━━━━━
-_ do shift String
-    - a Pt
-    - c Pt
-
-. v = a.x -= c.x
-a = a.y -= c.y
-= "param ${v.x} ${v.y} / ${a.x} ${a.y}"
+(fn-do _ shift String
+  (param a Pt)
+  (param c Pt)
+  (let v (-= (. a x) (. c x)))
+  (= a (-= (. a y) (. c y)))
+  (return (str "param " (. v x) " " (. v y) " / " (. a x) " " (. a y)))
+)
 ```
 
 ```output
@@ -3599,49 +3636,50 @@ param 4 7 / 5 5
 
 ### A statement that applies an assigning operator to a tuple's field loses the new tuple.
 
-```yumi crash
--- shift(Pt(5, 7), Pt(1, 2))
+```brix crash
+(main
+  (print (call shift (call Pt 5 7) (call Pt 1 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pt is (x I32, y I32)
+(type + Pt (is (tuple (: x I32) (: y I32))))
 
-━━━━━━━━━━━━━━━━━━━━
-_ do shift String
-    - a Pt
-    - c Pt
-
-a.x -= c.x
-= "${a.x} ${a.y}"
+(fn-do _ shift String
+  (param a Pt)
+  (param c Pt)
+  (-= (. a x) (. c x))
+  (return (str (. a x) " " (. a y)))
+)
 ```
 
 ```output
 Exception: Assigning x creates a new Pt tuple that is discarded; write a = a.x = value
-<no file:12>
-    a.x -= c.x
-    ^^^^^^^^^^
+<no file:11>
+      (-= (. a x) (. c x))
+      ^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### An assigning operator that the field's own type answers in place, as an array's `+=` does, assigns no field of the tuple, so the statement loses nothing.
 
-```yumi
-. boxes = fill([1, 2])
--- "${boxes.tail.items.length} ${boxes.tail.count}"
+```brix
+(main
+  (let boxes (call fill (list 1 2)))
+  (print (str (. boxes tail items length) " " (. boxes tail count)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box is Tuple
+(type + Box (is Tuple)
+  (prop + count Int)
+  (prop + items (list Int))
+)
 
-+ count Int
-+ items [Int]
-
-━━━━━━━━━━━━━━━━━━━━
-_ do fill [Box]
-    - numbers [Int]
-
-. boxes = [Box(0)]
-for number in numbers
-    boxes.tail.items += number
-    boxes.tail.items += number
-= boxes
+(fn-do _ fill (list Box)
+  (param numbers (list Int))
+  (let boxes (list (call Box 0)))
+  (for (in number numbers)
+    (+= (. boxes tail items) number)
+    (+= (. boxes tail items) number)
+  )
+  (return boxes)
+)
 ```
 
 ```output
@@ -3650,13 +3688,15 @@ for number in numbers
 
 ### A tuple written in parentheses after a local's name is the local's type: the value is converted to it field by field, as an argument is.
 
-```yumi
-. t (Float, Int) = (1, 2)
-. (x, y) = t
--- x / 2
--- t
-. k (I8, Float) = (3, 4)
--- k
+```brix
+(main
+  (let t (tuple Float Int) (tuple 1 2))
+  (let (tuple x y) t)
+  (print (/ x 2))
+  (print t)
+  (let k (tuple I8 Float) (tuple 3 4))
+  (print k)
+)
 ```
 
 ```output
@@ -3667,11 +3707,13 @@ for number in numbers
 
 ### A local written with a named tuple type has the fields by name, and declares no local for them.
 
-```yumi
-. a (x Int, y Int) = (1, 2)
--- a.x
--- a.y
--- a
+```brix
+(main
+  (let a (tuple (: x Int) (: y Int)) (tuple 1 2))
+  (print (. a x))
+  (print (. a y))
+  (print a)
+)
 ```
 
 ```output
@@ -3682,9 +3724,11 @@ for number in numbers
 
 ### A local written with a tuple type and no value holds the tuple with nothing written.
 
-```yumi
-. t (Float, Int)
--- t
+```brix
+(main
+  (let t (tuple Float Int))
+  (print t)
+)
 ```
 
 ```output
@@ -3693,42 +3737,43 @@ for number in numbers
 
 ### A field of a local written with a named tuple type is not a local.
 
-```yumi crash
-. a (x Int, y Int) = (1, 2)
--- x
+```brix crash
+(main
+  (let a (tuple (: x Int) (: y Int)) (tuple 1 2))
+  (print x)
+)
 ```
 
 ```output
 Exception: Name "x" not found
-<no file:3>
-    -- x
-       ^
+<no file:4>
+      (print x)
+             ^
 ```
 
 ### A named tuple given as its base is a copy of the base's fields: cast, passed, or held by a local declared as the base.
 
-```yumi
-. c = Colored(1, 2, 3)
--- c as Point
--- (c as Point).length
--- both(c, 7)
-. p Point = c
--- p
+```brix
+(main
+  (let c (call Colored 1 2 3))
+  (print (as c Point))
+  (print (. (as c Point) length))
+  (print (call both c 7))
+  (let p Point c)
+  (print p)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is (x Int, y Int)
+(type + Point (is (tuple (: x Int) (: y Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Colored is Point
+(type + Colored (is Point)
+  (prop + color Int)
+)
 
-+ color Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ both Int
-    - first Point
-    - second Int
-
-first.x * 1000 + first.y * 10 + second
+(fn-expr + both Int
+  (param first Point)
+  (param second Int)
+  (+ (* (. first x) 1000) (* (. first y) 10) second)
+)
 ```
 
 ```output
@@ -3740,29 +3785,28 @@ first.x * 1000 + first.y * 10 + second
 
 ### A struct held by a local declared as its base is a copy of the base's fields.
 
-```yumi
-. c = Colored(1, 2, 3)
-. p Point = c
--- p
--- both(c, 7)
+```brix
+(main
+  (let c (call Colored 1 2 3))
+  (let p Point c)
+  (print p)
+  (print (call both c 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(type + Point (is Struct)
+  (prop + x Int)
+  (prop + y Int)
+)
 
-+ x Int
-+ y Int
+(type + Colored (is Point)
+  (prop + color Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Colored is Point
-
-+ color Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ both Int
-    - first Point
-    - second Int
-
-first.x * 1000 + first.y * 10 + second
+(fn-expr + both Int
+  (param first Point)
+  (param second Int)
+  (+ (* (. first x) 1000) (* (. first y) 10) second)
+)
 ```
 
 ```output
@@ -3772,56 +3816,56 @@ first.x * 1000 + first.y * 10 + second
 
 ### A tuple taken apart from an optional takes apart what it holds, and panics where it holds nothing.
 
-```yumi crash
-for seed in 0 .. < 3
-    . lane, checksum = make(seed)
-    -- "$lane $checksum"
+```brix crash
+(main
+  (for (in seed (..< 0 3))
+    (let (tuple lane checksum) (call make seed))
+    (print (str lane " " checksum))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (lane Index, checksum Size)
+(type + Pair (is (tuple (: lane Index) (: checksum Size))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ make Pair?
-    - seed Int
-
-Pair(seed + 1, seed + 2) if seed != 1
+(fn-expr + make (? Pair)
+  (param seed Int)
+  (only-if (call Pair (+ seed 1) (+ seed 2)) (if (!= seed 1)))
+)
 ```
 
 ```stderr
 Unhandled panic: Optional'Pair is null
-<no file:3>
+<no file:4>
 
 Task 1
 
 Stack trace:
-  0  __source__:main no file:3:7
+  0  __source__:main no file:4:10
   1  __source__:init.__source__ no file
   2  __source__:brix.main no file
 ```
 
 ### A field of an object a tuple written as `(…)` is not given holds the object its class constructs.
 
-```yumi
-. made Pair
--- made.count
--- made.thing.value
-. rev = Rev(5)
--- rev.thing.value
-. map [Int = Pair]
-map[1] = Pair(Thing(), 2)
--= map[1]
--- map.length
+```brix
+(main
+  (let made Pair)
+  (print (. made count))
+  (print (. made thing value))
+  (let rev (call Rev 5))
+  (print (. rev thing value))
+  (let map (map Int Pair))
+  (= ([] map 1) (call Pair (call Thing) 2))
+  (-= ([] map 1))
+  (print (. map length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + value _ (= 7))
+)
 
-+ value = 7
+(type + Pair (is (tuple (: thing Thing) (: count Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (thing Thing, count Int)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Rev is (count Int, thing Thing)
+(type + Rev (is (tuple (: count Int) (: thing Thing))))
 ```
 
 ```output
@@ -3831,28 +3875,27 @@ map[1] = Pair(Thing(), 2)
 0
 ```
 
-```yumi
-. holder = Holder()
-holder.data.items += Item(7)
--- "${holder.data.items.length} ${holder.data.items[0].id} ${holder.data.count}"
-. other = Holder()
--- other.data.items.length
+```brix
+(main
+  (let holder (call Holder))
+  (+= (. holder data items) (call Item 7))
+  (print (str (. holder data items length) " " (. ([] (. holder data items) 0) id) " " (. holder data count)))
+  (let other (call Holder))
+  (print (. other data items length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Tuple
+(type + Item (is Tuple)
+  (prop + id U64)
+)
 
-+ id U64
+(type + Data (is Tuple)
+  (prop + items (list Item))
+  (prop + count I64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Data is Tuple
-
-+ items [Item]
-+ count I64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ data = Data()
+(type + Holder
+  (prop + data _ (= (call Data)))
+)
 ```
 
 ```output
@@ -3862,55 +3905,51 @@ holder.data.items += Item(7)
 
 ### A tuple written with no name becomes a tuple class unasked only where each field would convert unasked to the field at its place.
 
-```yumi crash
--- make(true, 7).container
+```brix crash
+(main
+  (print (. (call make true 7) container))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Id is U32
+(type + Id (is U32))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Partial is (container Id, flag Bool)
+(type + Partial (is (tuple (: container Id) (: flag Bool))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ make Partial
-    - flag Bool
-    - container Id
-
-(flag, container)
+(fn-expr + make Partial
+  (param flag Bool)
+  (param container Id)
+  (tuple flag container)
+)
 ```
 
 ```output
-Exception: Expected Partial here, but this is (Bool, Id), which becomes Partial only when asked; write "as Partial"
-<no file:15>
-    (flag, container)
-     ^^^^^^^^^^^^^^^
+Exception: Expected Partial here, but this is (Bool, Id), which becomes Partial only when asked; write "(as (tuple flag container) Partial)"
+<no file:13>
+      (tuple flag container)
+      ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A tuple written with integers with no suffix is given where a tuple class is expected before anything else has read the class, and each integer takes the type of its field.
 
-```yumi
-. holder = Holder()
-holder.go()
+```brix
+(main
+  (let holder (call Holder))
+  (call (. holder go))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
+(type + Holder
+  (fn-do + go _
+    (call move (tuple 3 0))
+  )
+  (fn-do + move _
+    (param spot Spot)
+    (print (+ (. spot x) (. spot y)))
+  )
+)
 
-────────────────────
-+ do go
-
-move((3, 0))
-
-────────────────────
-+ do move
-    - spot Spot
-
--- spot.x + spot.y
-
-━━━━━━━━━━━━━━━━━━━━
-+ Spot is Tuple
-
-+ x I16
-+ y I16
+(type + Spot (is Tuple)
+  (prop + x I16)
+  (prop + y I16)
+)
 ```
 
 ```output
@@ -3919,11 +3958,13 @@ move((3, 0))
 
 ### Tuples of numbers written with no suffix in a list join place by place, a float at a place where either holds one.
 
-```yumi
-. pairs = [(2.5, 1), (1, 2.5)]
-. floats [(Float, Float)] = pairs
--- floats[0]
--- floats[1]
+```brix
+(main
+  (let pairs (list (tuple 2.5 1) (tuple 1 2.5)))
+  (let floats (list (tuple Float Float)) pairs)
+  (print ([] floats 0))
+  (print ([] floats 1))
+)
 ```
 
 ```output
@@ -3933,32 +3974,29 @@ move((3, 0))
 
 ### A tuple whose own constructors all take arguments starts at its fields' first values where a parameter's default holds it with no value written.
 
-```yumi
--- shown()
+```brix
+(main
+  (print (call shown))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Spot is Tuple
+(type + Spot (is Tuple)
+  (prop + x Float)
+  (prop + y Float)
+  (fn-do + This _
+    (param parts (list Float))
+    (return (call This ([] parts 0) ([] parts 1)))
+  )
+)
 
-+ x Float
-+ y Float
+(type + Holder (is Tuple)
+  (prop + place Spot)
+  (prop + count U64)
+)
 
-────────────────────
-+ This
-    - parts [Float]
-
-= This(parts[0], parts[1])
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Tuple
-
-+ place Spot
-+ count U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ shown Float
-    - holder Holder = Holder()
-
-holder.place.x + holder.place.y
+(fn-expr + shown Float
+  (param holder Holder (= (call Holder)))
+  (+ (. holder place x) (. holder place y))
+)
 ```
 
 ```output
@@ -3967,30 +4005,32 @@ holder.place.x + holder.place.y
 
 ### A returned tuple of unsuffixed numbers takes the named tuple type another return gives.
 
-```yumi
-. found = first-found(3)
--- found.ok
--- found.x
-. missing = first-found(0)
--- missing.ok
--- missing.x
+```brix
+(main
+  (let found (call first-found 3))
+  (print (. found ok))
+  (print (. found x))
+  (let missing (call first-found 0))
+  (print (. missing ok))
+  (print (. missing x))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do first-found
-    - count I64
+(fn-do _ first-found _
+  (param count I64)
+  (for (in index (..< 0 count))
+    (let item (call item-at index))
+    (if (. item ok)
+      (return item)
+    )
+  )
+  (blank)
+  (return (tuple false 0))
+)
 
-for index in 0 .. < count
-    . item = item-at(index)
-    if item.ok
-        = item
-
-= (false, 0)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do item-at (ok Bool, x F64)
-    - index I64
-
-= (index > 1, 1.5)
+(fn-do _ item-at (tuple (: ok Bool) (: x F64))
+  (param index I64)
+  (return (tuple (> index 1) 1.5))
+)
 ```
 
 ```output
@@ -4002,34 +4042,33 @@ false
 
 ### A list of tuples larger than a pair store can reach builds, clearing each one whole.
 
-```yumi
-. items [Huge] = [Huge()]
--- items[0].e.d.d
+```brix
+(main
+  (let items (list Huge) (list (call Huge)))
+  (print (. ([] items 0) e d d))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ Quad is Tuple
+(type _ Quad (is Tuple)
+  (prop + a F64 (= 1))
+  (prop + b F64 (= 2))
+  (prop + c F64 (= 3))
+  (prop + d F64 (= 4))
+)
 
-+ a F64 = 1
-+ b F64 = 2
-+ c F64 = 3
-+ d F64 = 4
+(type _ Wide (is Tuple)
+  (prop + a Quad (= (call Quad)))
+  (prop + b Quad (= (call Quad)))
+  (prop + c Quad (= (call Quad)))
+  (prop + d Quad (= (call Quad)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ Wide is Tuple
-
-+ a Quad = Quad()
-+ b Quad = Quad()
-+ c Quad = Quad()
-+ d Quad = Quad()
-
-━━━━━━━━━━━━━━━━━━━━
-_ Huge is Tuple
-
-+ a Wide = Wide()
-+ b Wide = Wide()
-+ c Wide = Wide()
-+ d Wide = Wide()
-+ e Wide = Wide()
+(type _ Huge (is Tuple)
+  (prop + a Wide (= (call Wide)))
+  (prop + b Wide (= (call Wide)))
+  (prop + c Wide (= (call Wide)))
+  (prop + d Wide (= (call Wide)))
+  (prop + e Wide (= (call Wide)))
+)
 ```
 
 ```output
@@ -4038,15 +4077,17 @@ _ Huge is Tuple
 
 ### `is` tests a tuple against the types written in parentheses, one for each field.
 
-```yumi
-. pair = (3, "three")
--- pair is (Int, String)
--- pair is (String, String)
--- pair is not (Int, String)
-. maybe (Int, String)? = pair
--- maybe is (Int, String)
-. none (Int, String)? = null
--- none is (Int, String)
+```brix
+(main
+  (let pair (tuple 3 "three"))
+  (print (is pair (tuple Int String)))
+  (print (is pair (tuple String String)))
+  (print (is-not pair (tuple Int String)))
+  (let maybe (? (tuple Int String)) pair)
+  (print (is maybe (tuple Int String)))
+  (let none (? (tuple Int String)) null)
+  (print (is none (tuple Int String)))
+)
 ```
 
 ```output
@@ -4059,29 +4100,33 @@ false
 
 ### Only types are written in parentheses after `is`; what the fields hold is tested by an arm of a match.
 
-```yumi crash
-. pair = (3, "three")
--- pair is (3, String)
+```brix crash
+(main
+  (let pair (tuple 3 "three"))
+  (print (is pair (tuple 3 String)))
+)
 ```
 
 ```output
 Exception: Only types may be written in parentheses after "is"; to test what the fields hold, match the value with an arm, as in "| (3, name)"
-<no file:3>
-    -- pair is (3, String)
-                ^^^^^^^^^
+<no file:4>
+      (print (is pair (tuple 3 String)))
+                      ^^^^^^^^^^^^^^^^
 ```
 
 ### Names in brackets are declared from a list but not assigned again; names are assigned again from a tuple.
 
-```yumi crash
-. x = 0
-. y = 0
-[x, y] = [3, 4]
+```brix crash
+(main
+  (let x 0)
+  (let y 0)
+  (= (list x y) (list 3 4))
+)
 ```
 
 ```output
 Exception: Names in brackets can be declared from a list, as in ". [x, y] = items", but not assigned again; assign a tuple to them, as in "x, y = items[0], items[1]"
-<no file:4>
-    [x, y] = [3, 4]
-    ^^^^^^
+<no file:5>
+      (= (list x y) (list 3 4))
+         ^^^^^^^^^^
 ```

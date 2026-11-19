@@ -1,0 +1,154 @@
+(import /ai/model)
+(import /ai/tasks)
+(import /data/json)
+(import /os/path)
+
+(fn-expr + claude-tool-title (? String)
+  (param call AIToolCallPart)
+  (match (. call tool-name)
+    (case= "Bash"
+      (?? description (call claude-first-line (call ai-argument arguments "command")))
+    )
+    (case= "Read"
+      (str "Read " (?? path "a file"))
+    )
+    (case= "Write"
+      (str "Write " (?? path "a file"))
+    )
+    (case? (or (== it "Edit") (== it "MultiEdit") (== it "NotebookEdit"))
+      (str "Edit " (?? path "a file"))
+    )
+    (case= "Glob"
+      (str "Find " (?? (call ai-argument arguments "pattern") "files"))
+    )
+    (case= "Grep"
+      (str "Search for “" (?? (call ai-argument arguments "pattern") "") "”")
+    )
+    (case= "WebFetch"
+      (str "Fetch " (?? (call ai-argument arguments "url") "a page"))
+    )
+    (case= "WebSearch"
+      (str "Search the web for “" (?? (call ai-argument arguments "query") "") "”")
+    )
+    (case? (or (== it "Agent") (== it "Task"))
+      (?? description "Run an agent")
+    )
+    (case= "Skill"
+      (str "Use the " (?? (call ai-argument arguments "skill") "") " skill")
+    )
+    (case= "ToolSearch"
+      "Load tools"
+    )
+    (default
+      (?? description (call claude-mcp-title (. call tool-name)))
+    )
+  )
+  (where
+    (lazy arguments (. call arguments))
+    (lazy description (call ai-argument arguments "description"))
+    (lazy path (call claude-tool-file arguments))
+  )
+)
+
+(fn-expr + claude-tool-kind AIToolKind
+  (param call AIToolCallPart)
+  (match (. call tool-name)
+    (case= "Bash"
+      (. AIToolKind command)
+    )
+    (case= "Read"
+      (. AIToolKind read)
+    )
+    (case= "Write"
+      (. AIToolKind write)
+    )
+    (case? (or (== it "Edit") (== it "MultiEdit") (== it "NotebookEdit"))
+      (. AIToolKind edit)
+    )
+    (case? (or (== it "Glob") (== it "Grep"))
+      (. AIToolKind search)
+    )
+    (case= "WebFetch"
+      (. AIToolKind fetch)
+    )
+    (case= "WebSearch"
+      (. AIToolKind web-search)
+    )
+    (case? (or (== it "Agent") (== it "Task"))
+      (. AIToolKind agent)
+    )
+    (case= "Skill"
+      (. AIToolKind skill)
+    )
+    (case= "ToolSearch"
+      (. AIToolKind tool-search)
+    )
+    (default
+      (. AIToolKind other)
+    )
+  )
+)
+
+(fn-expr + claude-tool-input (? String)
+  (param call AIToolCallPart)
+  (match? (. call tool-name)
+    (case= "Bash"
+      (call ai-argument arguments "command")
+    )
+    (case? (or (== it "Read") (== it "Write") (== it "Edit") (== it "MultiEdit"))
+      (call ai-argument arguments "file_path")
+    )
+    (case= "NotebookEdit"
+      (call ai-argument arguments "notebook_path")
+    )
+    (case? (or (== it "Glob") (== it "Grep"))
+      (call ai-argument arguments "pattern")
+    )
+    (case= "WebFetch"
+      (call ai-argument arguments "url")
+    )
+    (case= "WebSearch"
+      (call ai-argument arguments "query")
+    )
+    (case? (or (== it "Agent") (== it "Task"))
+      (call ai-argument arguments "prompt")
+    )
+  )
+  (where
+    (lazy arguments (. call arguments))
+  )
+)
+
+(fn-expr _ claude-tool-file (? String)
+  (param arguments JSON)
+  (only-if (. (call Path found 0) name) (if found))
+  (where
+    (lazy found (?? (call ai-argument arguments "file_path") (call ai-argument arguments "notebook_path")))
+  )
+)
+
+(fn-expr _ claude-first-line (? String)
+  (param text (? String))
+  (case? (== text null)
+    null
+  )
+  (case? (!= (call (. text find) "\n") null)
+    (str (call (. ([] text (..< 0 (!! (call (. text find) "\n")))) trim)) " …")
+  )
+  (default
+    (call (. text trim))
+  )
+)
+
+(fn-expr _ claude-mcp-title String
+  (param name String)
+  (case? (and (>= (. parts length) 3) (== ([] parts 0) "mcp"))
+    (str ([] parts 1) ": " ([] parts 2))
+  )
+  (default
+    name
+  )
+  (where
+    (lazy parts (call List (call (. name split) "__")))
+  )
+)

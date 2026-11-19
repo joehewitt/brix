@@ -1,0 +1,41 @@
+; benchmark.meta description: Builds cubic and arc-heavy paths to expose segment construction overhead.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /math)
+(blank)
+
+(main
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 220))
+    (let path (call Path))
+    (let base (as pass Float))
+    (call (. path move-to) (% base 50) (% base 40))
+    (for (in i (..< 0 18))
+      (let f (as i Float))
+      (call (. path cubic-curve-to)
+        (block
+          (arg (+ 20 base (* f 2)))
+          (arg (+ 30 (* f 3)))
+          (arg (+ 40 (/ base 2) (* f 4)))
+          (arg (+ 10 (* f 5)))
+          (arg (+ 60 base (* f 6)))
+          (arg (+ 70 (* f 2)))
+        )
+      )
+      (call (. path arc) (tuple (+ 80 (* f 3)) (+ 80 (* f 2))) (+ 8 (% f 5)) 0 (/ π 2))
+    )
+    (+= checksum (+ (. path count) (call numeric-check (. path last-point x)) (call numeric-check (. path last-point y))))
+  )
+  (blank)
+  (print (str "bench-result graphics/path-build-cubics-arcs checksum=" checksum))
+)
+
+(fn-expr _ numeric-check Size
+  (param value Coord)
+  (% (as (call abs (* value 1000)) Size) 1000003)
+)

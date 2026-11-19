@@ -2,10 +2,6 @@
 
 Lists
 
-```yumi
-[]
-```
-
 ```brix
 (main
   (list)
@@ -14,10 +10,6 @@ Lists
 
 ```output
 <List/>
-```
-
-```yumi
-[1]
 ```
 
 ```brix
@@ -32,10 +24,6 @@ Lists
 </List>
 ```
 
-```yumi
-[1, 2]
-```
-
 ```brix
 (main
   (list 1 2)
@@ -47,10 +35,6 @@ Lists
     <Integer value="1"/>
     <Integer value="2"/>
 </List>
-```
-
-```yumi
-[1, 2, 3]
 ```
 
 ```brix

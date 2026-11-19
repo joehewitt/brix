@@ -2,10 +2,6 @@
 
 Basic strings
 
-```yumi
-""
-```
-
 ```brix
 (main
   ""
@@ -14,10 +10,6 @@ Basic strings
 
 ```output
 <String text=""/>
-```
-
-```yumi
-"foo"
 ```
 
 ```brix
@@ -32,10 +24,6 @@ Basic strings
 
 ## Character literals
 
-```yumi
-'A'
-```
-
 ```brix
 (main
   'A'
@@ -44,10 +32,6 @@ Basic strings
 
 ```output
 <Integer value="65" unit="(char)"/>
-```
-
-```yumi
-'\n'
 ```
 
 ```brix
@@ -60,10 +44,6 @@ Basic strings
 <Integer value="10" unit="(char)"/>
 ```
 
-```yumi
-'\u20AC'
-```
-
 ```brix
 (main
   (char "€")
@@ -72,10 +52,6 @@ Basic strings
 
 ```output
 <Integer value="8364" unit="(char)"/>
-```
-
-```yumi
-'💜'
 ```
 
 ```brix
@@ -88,10 +64,6 @@ Basic strings
 <Integer value="128156" unit="(char)"/>
 ```
 
-```yumi
-'\''
-```
-
 ```brix
 (main
   (char "'")
@@ -100,10 +72,6 @@ Basic strings
 
 ```output
 <Integer value="39" unit="(char)"/>
-```
-
-```yumi
-'\v'
 ```
 
 ```brix
@@ -116,10 +84,6 @@ Basic strings
 <Integer value="11" unit="(char)"/>
 ```
 
-```yumi
-'\0'
-```
-
 ```brix
 (main
   (char "\x00")
@@ -130,22 +94,7 @@ Basic strings
 <Integer value="0" unit="(char)"/>
 ```
 
-```yumi
-'ab'
-```
-
-```output
-Exception: Syntax error
-<no file:2>
-    'ab'
-      ^
-```
-
 ## Embedded expressions
-
-```yumi
-"foo\${1}bar"
-```
 
 ```brix
 (main
@@ -157,10 +106,6 @@ Exception: Syntax error
 <String text="foo${1}bar"/>
 ```
 
-```yumi
-"foo\$bar"
-```
-
 ```brix
 (main
   "foo\$bar"
@@ -169,10 +114,6 @@ Exception: Syntax error
 
 ```output
 <String text="foo$bar"/>
-```
-
-```yumi
-"foo${1}"
 ```
 
 ```brix
@@ -188,10 +129,6 @@ Exception: Syntax error
 </BinaryExpression>
 ```
 
-```yumi
-"${1}bar"
-```
-
 ```brix
 (main
   (str 1 "bar")
@@ -203,10 +140,6 @@ Exception: Syntax error
     <Integer value="1"/>
     <String text="bar"/>
 </BinaryExpression>
-```
-
-```yumi
-"foo${1}bar"
 ```
 
 ```brix
@@ -223,10 +156,6 @@ Exception: Syntax error
     </BinaryExpression>
     <String text="bar"/>
 </BinaryExpression>
-```
-
-```yumi
-"foo${1}bar${2}baz"
 ```
 
 ```brix
@@ -251,10 +180,6 @@ Exception: Syntax error
 </BinaryExpression>
 ```
 
-```yumi
-"foo$bar"
-```
-
 ```brix
 (main
   (str "foo" bar)
@@ -266,10 +191,6 @@ Exception: Syntax error
     <String text="foo"/>
     <Id name="bar"/>
 </BinaryExpression>
-```
-
-```yumi
-"foo$bar.baz"
 ```
 
 ```brix
@@ -285,10 +206,6 @@ Exception: Syntax error
         <Id name="bar"/>
     </Get>
 </BinaryExpression>
-```
-
-```yumi
-"foo$bar.#baz"
 ```
 
 ```brix
@@ -307,10 +224,6 @@ Exception: Syntax error
 </BinaryExpression>
 ```
 
-```yumi
-"\n"
-```
-
 ```brix
 (main
   "\n"
@@ -320,10 +233,6 @@ Exception: Syntax error
 ```output
 <String text="
 "/>
-```
-
-```yumi
-"\t"
 ```
 
 ```brix
@@ -336,10 +245,6 @@ Exception: Syntax error
 <String text="	"/>
 ```
 
-```yumi
-"\"\""
-```
-
 ```brix
 (main
   "\"\""
@@ -350,10 +255,6 @@ Exception: Syntax error
 <String text=""""/>
 ```
 
-```yumi
-"\u20AC"
-```
-
 ```brix
 (main
   "€"
@@ -362,10 +263,6 @@ Exception: Syntax error
 
 ```output
 <String text="€"/>
-```
-
-```yumi
-"\x25"
 ```
 
 ```brix
@@ -380,11 +277,6 @@ Exception: Syntax error
 
 ### A line continuation in text adds no character.
 
-```yumi
-"abc\
-def"
-```
-
 ```brix
 (main
   "abcdef"
@@ -396,12 +288,6 @@ def"
 ```
 
 ### Text that is only line continuations is dropped beside an expression.
-
-```yumi
-"\
-${1}\
-"
-```
 
 ```brix
 (main
@@ -417,13 +303,6 @@ ${1}\
 ```
 
 ### Line continuations around text and an expression.
-
-```yumi
-"p\
-\
-q${1}\
-r"
-```
 
 ```brix
 (main
@@ -441,10 +320,6 @@ r"
 </BinaryExpression>
 ```
 
-```yumi
-"\x41B"
-```
-
 ```brix
 (main
   "AB"
@@ -453,10 +328,6 @@ r"
 
 ```output
 <String text="AB"/>
-```
-
-```yumi
-"\x25f"
 ```
 
 ```brix
@@ -469,10 +340,6 @@ r"
 <String text="%f"/>
 ```
 
-```yumi
-"\u20ACa"
-```
-
 ```brix
 (main
   "€a"
@@ -483,10 +350,6 @@ r"
 <String text="€a"/>
 ```
 
-```yumi
-"\u00412"
-```
-
 ```brix
 (main
   "A2"
@@ -495,10 +358,6 @@ r"
 
 ```output
 <String text="A2"/>
-```
-
-```yumi
-"\━"
 ```
 
 ```brix

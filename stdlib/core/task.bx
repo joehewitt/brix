@@ -1,0 +1,418 @@
+(import ./array)
+(import ./core)
+(import ./error)
+(import ./function)
+(import ./intrinsics)
+(import ./list)
+(import ./number)
+(import /BxCore/BxPanic.h)
+(import /BxEvents/BxEvents.h)
+(blank)
+(prop _ main-endings (list MainEnding) @task)
+(prop _ main-has-ended _ @task (= false))
+
+(type + TaskEnd (is U8)
+  (variant running)
+  (variant finished)
+  (variant raised)
+  (variant panicked)
+  (variant cancelled)
+)
+
+(type + Task (is Tuple)
+  (prop _ handle U64)
+  (prop _ record (? TaskRecord) (= null))
+  (fn-do + This _
+    (lazy handle (call C:brixGetActiveTaskHandle))
+  )
+  (fn-do _ This _
+    (param record TaskRecord)
+    (lazy handle (. record handle))
+  )
+  (fn-expr + id _ :get
+    (call C:brixGetTaskHandleId handle)
+  )
+  (fn-expr + is-finished _ :get
+    (call C:brixGetTaskFinished handle)
+  )
+  (fn-expr + end TaskEnd :get
+    ; How the task ended: `running` while it runs, then `finished`, `raised` where an error left its
+    ; body, `panicked` where a panic ended it, or `cancelled`. A `Task` that `do new` gave knows which;
+    ; one that `Task()` gave says only `finished` once the task has ended.
+    (if-expr record (. record end) (if-expr is-finished .finished .running))
+  )
+  (fn-expr + is-canceled _ :get
+    ; Whether the task was cancelled, inside a `do without cancel` block or not, so code there can see
+    ; the request and wind down.
+    (call C:brixGetTaskCanceled handle)
+  )
+  (fn-expr + is-cancel-in-force _ :get
+    ; Whether the task's next wait ends it: it was cancelled and no `do without cancel` block holds
+    ; that off, or it is terminating.
+    (call C:brixGetTaskCancelInForce handle)
+  )
+  (fn-expr + is-terminating _ :get
+    (call C:brixGetTaskTerminating handle)
+  )
+  (fn-expr + failure (? Panic) :get
+    ; The panic ending this task, read while its cleanups run, or none. Reading it does not stop it.
+    ; Only the active task can read its own.
+    (if-expr (and own (!= raised null)) (call (of gc-object-from-pointer Panic) raised) null)
+    (where
+      (lazy own (== handle (call C:brixGetActiveTaskHandle)))
+      (lazy raised (call C:brixTaskFailure))
+    )
+  )
+  (fn-do + wait _
+    ; Suspends the active task until this task ends. A task that waits for itself panics, since it
+    ; could never wake.
+    (throw (call Panic "A task cannot wait for itself") (if (== handle (call C:brixGetActiveTaskHandle))))
+    (let canceled (if-expr record (call (. record wait)) (call C:brixWaitForTask handle)))
+    (call check-task-cancelation canceled)
+  )
+  (fn-do + cancel _
+    ; Cancels the task and yields to it: the active task waits its turn behind every task ready to
+    ; run, the cancelled one included.
+    (call C:brixCancelTask handle)
+  )
+  (fn-do + cancel-later _
+    ; Cancels the task without yielding to it: the active task goes on, and the task ends at the wait
+    ; it is parked at, or at its next, once it runs. One that has not run yet runs up to its first
+    ; wait.
+    (call C:brixCancelTaskLater handle)
+  )
+  (fn-do + close _
+    ; Ends the task, as `use` does where its block ends: cancels it where it still runs, then waits
+    ; for it.
+    (return-if (if is-finished))
+    (call cancel)
+    (call wait)
+  )
+  (fn-expr + suspend _
+    ; Suspends this task, which must be the active one, until something resumes it, and answers
+    ; whether it is cancelled. Unlike the library's waits it does not end a cancelled task: a caller
+    ; that waits this way checks the answer, with `check-task-cancelation` where the task should end.
+    (call C:brixSuspendTask handle)
+  )
+  (fn-expr + resume-now _
+    ; Runs this task now, while the active one waits its turn, and answers whether the active task is
+    ; cancelled. As with `suspend`, the caller checks the answer.
+    (call C:brixResumeTaskNow handle)
+  )
+  (fn-do + resume-later _
+    (call C:brixResumeTaskLater handle)
+  )
+  (fn-do + when-finished _
+    (param action Doer)
+    (call C:brixScheduleMainTaskWhenTaskFinishes
+      (block
+        (arg handle)
+        (arg (as run-task-finish-action TaskFinishCallback))
+        (arg (as (call TaskFinishAction action) Pointer))
+      )
+    )
+  )
+)
+
+(type + TaskGroup
+  ; Tasks started together and waited for together. The `catch` after each task's block keeps the
+  ; panic that ended it, and `wait` raises the first one kept once every task has ended, so that a
+  ; task's crash fails the work that started it rather than ending the process.
+  (blank)
+  (prop _ tasks (list Task))
+  (prop _ lock _ (= (call Mutex)))
+  (prop _ first (? Panic) (= null))
+  (fn-do + add _
+    (param task Task)
+    (+= tasks task)
+  )
+  (fn-do + keep _
+    (param failure Panic)
+    ; Keeps the panic that ended a task, unless one is kept already.
+    (use lock)
+    (if (not first)
+      (= first failure)
+    )
+  )
+  (fn-do + wait _
+    ; Waits for every task to end, then raises the first panic kept.
+    (call settle)
+    (let kept (call taken))
+    (throw kept (if kept))
+  )
+  (fn-do + settle _
+    ; Waits for every task to end, and leaves the first panic kept for a later `wait` to raise.
+    (for (in task tasks)
+      (call (. task wait))
+    )
+    (call (. tasks clear))
+  )
+  (fn-do + cancel _
+    ; Cancels every task that still runs.
+    (for (in task tasks)
+      (call (. task cancel))
+    )
+  )
+  (fn-do _ taken (? Panic)
+    (use lock)
+    (return first)
+  )
+)
+
+(type _ TaskOwner
+  ; What a case of a state machine keeps, from the first time it is entered, for the tasks its
+  ; activations spawn: it owns them, and those of each activation are cancelled as the case exits.
+  ; The compiler makes it.
+)
+
+(type + Worker (is Tuple)
+  (prop _ native (of CPointer Char8))
+  (fn-do + This _
+    (param thread-count Int (= 1))
+    (return (call This (call C:brixNewWorker thread-count)))
+  )
+  (fn-do _ This _
+    (param native (of CPointer Char8))
+  )
+  (fn-expr + current Worker :static
+    (call This (call C:brixActiveTaskQueue))
+  )
+  (fn-to-expr + (of CPointer ''T)
+    (as native (of CPointer T))
+  )
+  (fn-expr + is-stopped _ :get
+    (call C:brixWorkerGetStatus this)
+  )
+  (fn-do + stop _
+    (call C:brixWorkerStop this)
+  )
+)
+
+(type + (of Semaphore Payload)
+  (constraint = Payload Void)
+  (prop _ native (of CPointer Char8))
+  (fn-do + This _
+    (return (call This (call C:brixNewSemaphore)))
+  )
+  (fn-do _ This _
+    (param native (of CPointer Char8))
+  )
+  (fn-to-expr + (of CPointer ''T)
+    (as native (of CPointer T))
+  )
+  (fn-expr + native-pointer _ :get
+    native
+  )
+  (fn-do + await (? Payload)
+    (param mutex (? Mutex) (= null))
+    (let task (call Task))
+    (let buf ([] Payload 1))
+    (let did-post Bool)
+    (if mutex
+      (= did-post (call C:brixWaitForSemaphore native buf (. Payload size) mutex))
+      (else
+        (= did-post (call C:brixWaitForSemaphore native buf (. Payload size) null))
+      )
+    )
+    (call check-task-cancelation (. task is-cancel-in-force))
+    (if did-post
+      (return ([] buf 0))
+    )
+  )
+  (fn-do + post _
+    (param value Payload)
+    (let task (call Task))
+    (call C:brixPostSemaphore native &value (. Payload size))
+    (call check-task-cancelation (. task is-cancel-in-force))
+  )
+)
+
+(type + Mutex (is Tuple)
+  (implements (of Usable Void))
+  (prop _ native (of CPointer Char8))
+  (fn-do + This _
+    (return (call This (call C:brixNewMutex)))
+  )
+  (fn-do _ This _
+    (param native (of CPointer Char8))
+  )
+  (fn-to-expr + (of CPointer ''T)
+    (as native (of CPointer T))
+  )
+  (fn-do + begin-using _
+    (call lock)
+  )
+  (fn-do + end-using _
+    (call unlock)
+  )
+  (fn-do + lock _
+    (call C:brixLockMutex native)
+  )
+  (fn-do + unlock _
+    (call C:brixUnlockMutex native)
+  )
+)
+
+(type + (of Completion Value)
+  (prop + value (? Value))
+  (prop + is-finished _ (= false))
+  (prop + is-abandoned _ (= false))
+  (blank)
+  (prop _ waiters _ (= (call (of List U64))))
+  (fn-do + await (? Value)
+    (return-if value (if is-finished))
+    (let task (call Task))
+    (+= waiters (. task handle))
+    (while (not is-finished)
+      (if (call (. task suspend))
+        (if (and (not is-finished) (== (. waiters length) 1))
+          (= is-abandoned true)
+        )
+        (-= waiters (. task handle))
+        (call check-task-cancelation true)
+      )
+    )
+    (return value)
+  )
+  (fn-do + finish _
+    (param result (? Value))
+    (= value result)
+    (= is-finished true)
+    (for (in waiter waiters)
+      (call C:brixResumeTaskLater waiter)
+    )
+    (call (. waiters clear))
+  )
+)
+
+(extend + (of Semaphore Void)
+  (fn-do + wait _
+    (let task (call Task))
+    (call C:brixWaitForSemaphore native null 0 null)
+    (call check-task-cancelation (. task is-cancel-in-force))
+  )
+  (fn-do + post _
+    (let task (call Task))
+    (call C:brixPostSemaphore native null 0)
+    (call check-task-cancelation (. task is-cancel-in-force))
+  )
+)
+
+(fn-do + task-started Task
+  (param ending Pointer)
+  ; The `Task` a `do new` whose value is used gives, given the record the runtime keeps of how the
+  ; task ends.
+  (return (call Task (call TaskRecord ending)))
+)
+
+(fn-do + when-main-ends _
+  (param action Doer)
+  ; Runs an action where the statements of the program's main end, before the values main uses
+  ; are closed and its `do finally` blocks run. One given by another task, or once main's
+  ; statements have ended, runs once the task that gave it finishes.
+  (let ending (call MainEnding action))
+  (if (not main-has-ended)
+    (+= main-endings ending)
+  )
+)
+
+(fn-do + end-main _
+  ; Runs the actions `when-main-ends` was given, in order. The program's main calls it where its
+  ; statements end.
+  (= main-has-ended true)
+  (for (in ending main-endings)
+    (call (. ending run))
+  )
+  (call (. main-endings clear))
+)
+
+(fn-expr + usable-core-count Int
+  ; How many workers the machine keeps busy at once: every core it has online except efficiency cores,
+  ; and at least one.
+  (call C:brixUsableCoreCount)
+)
+
+(fn-expr + get-current-task-id _
+  (call C:brixGetActiveTaskId)
+)
+
+(fn-expr + get-active-task _
+  (call Task)
+)
+
+(fn-expr + request-process-termination _
+  (param exit-code Int (= 130))
+  (call C:brixRequestProcessTermination exit-code)
+)
+
+(fn-do + check-task-cancelation _
+  (param was-canceled Bool)
+  ; Ends the active task where a wait found it cancelled, with the termination panic where the task
+  ; is terminating and the cancellation panic otherwise. A wait in the library calls it after its
+  ; own work for a cancelled wait, such as leaving a queue. The termination is taken as it is
+  ; raised, so a poll in the task's cleanups does not raise it again.
+  (if was-canceled
+    (if (. (call Task) is-terminating)
+      (call C:brixTakeActiveTaskTermination)
+      (throw (call TaskTerminationError))
+    )
+    (throw (call TaskCancelationError))
+  )
+)
+
+(type _ TaskRecord
+  (prop _ ending Pointer)
+  (fn-do + This _
+    (param ending _)
+    (call C:brixTaskEndingAdopt (as this Pointer) ending)
+  )
+  (fn-expr + handle U64 :get
+    (call C:brixTaskEndingHandle ending)
+  )
+  (fn-expr + end TaskEnd :get
+    (as (call C:brixTaskEndingEnd ending) TaskEnd)
+  )
+  (fn-do + wait Bool
+    (return (call C:brixTaskEndingWait ending))
+  )
+)
+
+(type _ MainEnding
+  (prop + action Doer)
+  (prop + has-run _ (= false))
+  (fn-do + This _
+    (param action _)
+    (call (. (call Task) when-finished) run)
+  )
+  (fn-do + run _
+    (return-if (if has-run))
+    (= has-run true)
+    (call action
+      (block
+        (on-error (: error Error)
+          (call unhandled-error error)
+        )
+      )
+    )
+  )
+)
+
+(type _ TaskFinishAction
+  (prop + action Doer)
+  (fn-do + This _
+    (param action _)
+  )
+)
+
+(type _ TaskFinishCallback (is (c-fn-type Void (param context Pointer))))
+
+(fn-do _ run-task-finish-action _
+  (param context Pointer)
+  (call (. (call (of gc-object-from-pointer TaskFinishAction) context) action)
+    (block
+      (on-error (: error Error)
+        (call unhandled-error error)
+      )
+    )
+  )
+)

@@ -2,11 +2,13 @@
 
 ### Void is an ordinary logical value with a zero-sized physical representation.
 
-```yumi
-. empty Void = Void()
--- (type-of empty).name
--- Void.size
--- (Void() == Void())
+```brix
+(main
+  (let empty Void (call Void))
+  (print (. (type-of empty) name))
+  (print (. Void size))
+  (print (== (call Void) (call Void)))
+)
 ```
 
 ```output
@@ -17,21 +19,21 @@ true
 
 ### A union keeps its tag while omitting an all-Void payload.
 
-```yumi
-. tagged ZeroUnion = EmptyPayload(Void())
--- tagged.case
--- (type-of (tagged as EmptyPayload).empty).name
+```brix
+(main
+  (let tagged ZeroUnion (call EmptyPayload (call Void)))
+  (print (. tagged case))
+  (print (. (type-of (. (as tagged EmptyPayload) empty)) name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ EmptyPayload is Tuple
+(type + EmptyPayload (is Tuple)
+  (prop + empty Void)
+)
 
-+ empty Void
-
-━━━━━━━━━━━━━━━━━━━━
-+ ZeroUnion is Union
-
-| I32
-| EmptyPayload
+(type + ZeroUnion (is Union)
+  (variant I32)
+  (variant EmptyPayload)
+)
 ```
 
 ```output
@@ -41,33 +43,33 @@ Void
 
 ### Void fields retain their logical positions without contributing to aggregate layout.
 
-```yumi
-. mixed = Mixed(11, Void(), 22)
-. only = OnlyVoid(Void(), Void())
-. tuple = Tuple(33, Void(), 44)
--- Mixed.size
--- OnlyVoid.size
--- (type-of mixed.empty).name
--- mixed.before
--- mixed.after
--- (type-of only.left).name
--- tuple.length
--- (type-of tuple[1]).name
--- tuple[0]
--- tuple[2]
+```brix
+(main
+  (let mixed (call Mixed 11 (call Void) 22))
+  (let only (call OnlyVoid (call Void) (call Void)))
+  (let tuple (call Tuple 33 (call Void) 44))
+  (print (. Mixed size))
+  (print (. OnlyVoid size))
+  (print (. (type-of (. mixed empty)) name))
+  (print (. mixed before))
+  (print (. mixed after))
+  (print (. (type-of (. only left)) name))
+  (print (. tuple length))
+  (print (. (type-of ([] tuple 1)) name))
+  (print ([] tuple 0))
+  (print ([] tuple 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Mixed is Struct
+(type + Mixed (is Struct)
+  (prop + before I32)
+  (prop + empty Void)
+  (prop + after I32)
+)
 
-+ before I32
-+ empty Void
-+ after I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ OnlyVoid is Struct
-
-+ left Void
-+ right Void
+(type + OnlyVoid (is Struct)
+  (prop + left Void)
+  (prop + right Void)
+)
 ```
 
 ```output
@@ -85,28 +87,27 @@ Void
 
 ### Void parameters are omitted physically while every argument expression keeps source order.
 
-```yumi
-consume(first(), 41, last())
+```brix
+(main
+  (call consume (call first) 41 (call last))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do first Void
+(fn-do + first Void
+  (print "first")
+  (return (call Void))
+)
 
--- "first"
-= Void()
+(fn-do + last Void
+  (print "last")
+  (return (call Void))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do last Void
-
--- "last"
-= Void()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do consume
-    - leading Void
-    - number I32
-    - trailing Void
-
--- "consume $number ${(type-of leading).name} ${(type-of trailing).name}"
+(fn-do + consume _
+  (param leading Void)
+  (param number I32)
+  (param trailing Void)
+  (print (str "consume " number " " (. (type-of leading) name) " " (. (type-of trailing) name)))
+)
 ```
 
 ```output
@@ -117,28 +118,27 @@ consume 41 Void Void
 
 ### An all-Void aggregate is also passed and returned without an ABI payload.
 
-```yumi
-. empty = make-empty()
-consume-empty(empty, 57)
+```brix
+(main
+  (let empty (call make-empty))
+  (call consume-empty empty 57)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ EmptyPair is Struct
+(type + EmptyPair (is Struct)
+  (prop + left Void)
+  (prop + right Void)
+)
 
-+ left Void
-+ right Void
+(fn-do + make-empty EmptyPair
+  (print "make-empty")
+  (return (call EmptyPair (call Void) (call Void)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make-empty EmptyPair
-
--- "make-empty"
-= EmptyPair(Void(), Void())
-
-━━━━━━━━━━━━━━━━━━━━
-+ do consume-empty
-    - empty EmptyPair
-    - number I32
-
--- "empty $number ${EmptyPair.size} ${(type-of empty.left).name}"
+(fn-do + consume-empty _
+  (param empty EmptyPair)
+  (param number I32)
+  (print (str "empty " number " " (. EmptyPair size) " " (. (type-of (. empty left)) name)))
+)
 ```
 
 ```output
@@ -148,32 +148,31 @@ empty 57 0 Void
 
 ### Void returns and assignments preserve effects while storing no payload.
 
-```yumi
-. value Void = make("initial")
-value = make("assigned")
-. box = EffectBox(Void(), 19)
-box.empty = make("field")
-accept(value)
--- box.value
+```brix
+(main
+  (let value Void (call make "initial"))
+  (= value (call make "assigned"))
+  (let box (call EffectBox (call Void) 19))
+  (= (. box empty) (call make "field"))
+  (call accept value)
+  (print (. box value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ EffectBox is Struct
+(type + EffectBox (is Struct)
+  (prop + empty Void)
+  (prop + value I32)
+)
 
-+ empty Void
-+ value I32
+(fn-do + make Void
+  (param label String)
+  (print label)
+  (return (call Void))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Void
-    - label String
-
--- label
-= Void()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do accept
-    - value Void
-
--- "accepted ${(type-of value).name}"
+(fn-do + accept _
+  (param value Void)
+  (print (str "accepted " (. (type-of value) name)))
+)
 ```
 
 ```output
@@ -186,17 +185,21 @@ accepted Void
 
 ### Closure calls retain Void in their logical signature and omit its physical argument.
 
-```yumi
-. closure = :: empty Void, number I32 => do
-    -- "closure $number ${(type-of empty).name}"
-. callback = closure as VoidConsumer
+```brix
+(main
+  (let closure
+    (=> ((: empty Void) (: number I32)) :do
+      (block
+        (print (str "closure " number " " (. (type-of empty) name)))
+      )
+    )
+  )
+  (let callback (as closure VoidConsumer))
+  (blank)
+  (call callback (call Void) 73)
+)
 
-callback(Void(), 73)
-
-━━━━━━━━━━━━━━━━━━━━
-+ VoidConsumer is () Void
-    - empty Void
-    - number I32
+(type + VoidConsumer (is (fn-type Void (param empty Void) (param number I32))))
 ```
 
 ```output
@@ -205,27 +208,26 @@ closure 73 Void
 
 ### A constrained associated type may specialize to Void and remain callable as a value.
 
-```yumi
-. context = associated-void(VoidAssociatedBacking())
--- (type-of context).name
+```brix
+(main
+  (let context (call associated-void (call VoidAssociatedBacking)))
+  (print (. (type-of context) name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AssociatedVoidProvider is Interface
+(type + AssociatedVoidProvider (is Interface)
+  (prop + _ Context)
+)
 
-+ Context
+(type + VoidAssociatedBacking
+  (implements AssociatedVoidProvider)
+  (prop + _ Context (= Void))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ VoidAssociatedBacking
-    is AssociatedVoidProvider
-
-+ Context = Void
-
-━━━━━━━━━━━━━━━━━━━━
-+ do associated-void'Backing Backing.Context
-    - backing Backing
-    - Backing is AssociatedVoidProvider
-
-= Backing.Context()
+(fn-do + (of associated-void Backing) (. Backing Context)
+  (param backing Backing)
+  (constraint is Backing AssociatedVoidProvider)
+  (return (call (. Backing Context)))
+)
 ```
 
 ```output
@@ -234,13 +236,15 @@ Void
 
 ### Nullable Void retains its discriminant.
 
-```yumi
-. some = Optional'Void(Void())
-. none = Optional'Void()
--- Optional'Void.size
--- (some as Bool)
--- (none as Bool)
--- (type-of (some as Void)).name
+```brix
+(main
+  (let some (call (of Optional Void) (call Void)))
+  (let none (call (of Optional Void)))
+  (print (. (of Optional Void) size))
+  (print (as some Bool))
+  (print (as none Bool))
+  (print (. (type-of (as some Void)) name))
+)
 ```
 
 ```output
@@ -252,17 +256,18 @@ Void
 
 ### Generic specialization may erase a Void field independently of neighboring values.
 
-```yumi
-. box = ContextBox'Void(Void(), 91)
--- ContextBox'Void.size
--- (type-of box.context).name
--- box.value
+```brix
+(main
+  (let box (call (of ContextBox Void) (call Void) 91))
+  (print (. (of ContextBox Void) size))
+  (print (. (type-of (. box context)) name))
+  (print (. box value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ContextBox'Context is Struct
-
-+ context Context
-+ value I32
+(type + (of ContextBox Context) (is Struct)
+  (prop + context Context)
+  (prop + value I32)
+)
 ```
 
 ```output
@@ -273,74 +278,76 @@ Void
 
 ### A pointer cannot target a zero-sized Void value.
 
-```yumi crash
-. pointer = CPointer'Void()
-pointer[0]
+```brix crash
+(main
+  (let pointer (call (of CPointer Void)))
+  (print ([] pointer 0))
+)
 ```
 
 ```output
 Exception: Void has no physical address
-<no file:3>
-    pointer[0]
-    ^^^^^^^^^^
+<no file:4>
+      (print ([] pointer 0))
+             ^^^^^^^^^^^^^^
 ```
 
 ### A local Void value has no address to expose.
 
-```yumi crash
-. empty Void
--- &empty
+```brix crash
+(main
+  (let empty Void)
+  (print &empty)
+)
 ```
 
 ```output
 Exception: Void has no physical address
-<no file:3>
-    -- &empty
-       ^^^^^^
+<no file:4>
+      (print &empty)
+             ^^^^^^
 ```
 
 ### An argument that is nothing is not passed, wherever it stands among the others.
 
-```yumi
-consume(first(), 41, last())
--- pass(first(), 1, 2, 3, 4, 5, 6, 7, 8, 9)
-. v = first()
-consume(v, 5, v)
+```brix
+(main
+  (call consume (call first) 41 (call last))
+  (print (call pass (call first) 1 2 3 4 5 6 7 8 9))
+  (let v (call first))
+  (call consume v 5 v)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do first Void
+(fn-do + first Void
+  (print "first")
+  (return (call Void))
+)
 
--- "first"
-= Void()
+(fn-do + last Void
+  (print "last")
+  (return (call Void))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do last Void
+(fn-do + consume _
+  (param leading Void)
+  (param number I32)
+  (param trailing Void)
+  (print (str "consume " number))
+)
 
--- "last"
-= Void()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do consume
-    - leading Void
-    - number I32
-    - trailing Void
-
--- "consume $number"
-
-━━━━━━━━━━━━━━━━━━━━
-+ pass Int
-    - nothing Void
-    - a Int
-    - b Int
-    - c Int
-    - d Int
-    - e Int
-    - f Int
-    - g Int
-    - h Int
-    - i Int
-
-a + b * 2 + c + d + e + f + g + h * 3 + i * 5
+(fn-expr + pass Int
+  (param nothing Void)
+  (param a Int)
+  (param b Int)
+  (param c Int)
+  (param d Int)
+  (param e Int)
+  (param f Int)
+  (param g Int)
+  (param h Int)
+  (param i Int)
+  (+ a (* b 2) c d e f g (* h 3) (* i 5))
+)
 ```
 
 ```output
@@ -355,16 +362,17 @@ consume 5
 
 ### A value that is nothing prints as the name of its type.
 
-```yumi
--- foo()
-. a = foo()
--- a
--- "[${foo()}]"
+```brix
+(main
+  (print (call foo))
+  (let a (call foo))
+  (print a)
+  (print (str "[" (call foo) "]"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-
--- "hi"
+(fn-do + foo _
+  (print "hi")
+)
 ```
 
 ```output
@@ -378,82 +386,73 @@ hi
 
 ### A function that returns text does not return nothing as empty text.
 
-```yumi crash
--- "[${via()}]"
+```brix crash
+(main
+  (print (str "[" (call via) "]"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
+(fn-do + foo _
+  (print "hi")
+)
 
--- "hi"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do via String
-
-= foo()
+(fn-do + via String
+  (return (call foo))
+)
 ```
 
 ```output
-Exception: Expected String here, but this is Void, which becomes text only inside a text or a print, or when asked; write "as String", or write it inside a text, as in "$name"
-<no file:12>
-    = foo()
-      ^^^^^
+Exception: Expected String here, but this is Void, which becomes text only inside a text or a print, or when asked; write "(as (call foo) String)", or put it in a "(str …)"
+<no file:11>
+      (return (call foo))
+              ^^^^^^^^^^
 ```
 
 ### A property that holds nothing is read as nothing, and is passed to a function and kept in a local.
 
-```yumi
-. h = Holder(3)
--- h.take()
-h.give()
--- h.take()
-. g = Generic'Int()
--- g.size
+```brix
+(main
+  (let h (call Holder 3))
+  (print (call (. h take)))
+  (call (. h give))
+  (print (call (. h take)))
+  (let g (call (of Generic Int)))
+  (print (. g size))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
+(type + Holder
+  (prop + count Int)
+  (prop _ nothing Void)
+  (fn-do + This _
+    (param count Int)
+    (lazy nothing (call Void))
+  )
+  (fn-expr + take Int
+    (call sum count nothing)
+  )
+  (fn-do + give _
+    (let kept nothing)
+    (= count (call sum count kept))
+  )
+)
 
-+ count Int
-_ nothing Void
+(fn-expr + sum Int
+  (param count Int)
+  (param nothing Void)
+  (+ count 1)
+)
 
-────────────────────
-+ This
-    - count Int
-
-.. nothing = Void()
-
-────────────────────
-+ take Int
-
-sum(count, nothing)
-
-────────────────────
-+ do give
-
-. kept = nothing
-count = sum(count, kept)
-
-━━━━━━━━━━━━━━━━━━━━
-+ sum Int
-    - count Int
-    - nothing Void
-
-count + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Generic'Item'Backing
-    - Backing = GCBacking
-    - Backing is StorageBacking
-
-+ size Size = 0
-_ items Array'Item'Backing
-_ context Backing.Context
-
-────────────────────
-+ This
-    - Backing = GCBacking
-
-.. context = Void()
-.. items = Array'Item'Backing(context, 0)
+(type + (of Generic Item Backing)
+  (constraint = Backing GCBacking)
+  (constraint is Backing StorageBacking)
+  (prop + size Size (= 0))
+  (prop _ items (of Array Item Backing))
+  (prop _ context (. Backing Context))
+  (fn-do + This _
+    (constraint = Backing GCBacking)
+    (lazy context (call Void))
+    (lazy items (call (of Array Item Backing) context 0))
+  )
+)
 ```
 
 ```output

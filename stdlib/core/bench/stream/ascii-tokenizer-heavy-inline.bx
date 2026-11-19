@@ -1,0 +1,70 @@
+; benchmark.meta description: Twin of ascii-tokenizer-heavy with each character class written inline instead of as a named rule.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing,allocator
+(blank)
+
+(main
+  (let source (call ascii-tokenizer-source))
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in iteration (..< 0 1600))
+    (let tokens
+      (match source
+        (~ \ascii-tokenizer-document)
+        (throw (call Panic "ascii-tokenizer-heavy-inline did not parse"))
+      )
+    )
+    (blank)
+    (for (in token tokens)
+      (+= checksum token)
+    )
+  )
+  (blank)
+  (print (str "bench-result stream/ascii-tokenizer-heavy-inline checksum=" checksum))
+)
+
+(fn-expr + ascii-tokenizer-document _ (over: Char)
+  (~ (: tokens (+ \ascii-token))
+    tokens
+  )
+  (where
+    (lazy ascii-token Size
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_")))
+          2
+        )
+        (~ (+ (chars "0-9"))
+          3
+        )
+        (~ (+ (| " " "\n" "\t"))
+          1
+        )
+        (~ (| "(" ")" "{" "}" "[" "]" ";" "," "." ":" "+" "-" "*" "/" "=")
+          5
+        )
+      )
+    )
+    (blank)
+    (lazy ascii-identifier String
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_"))))
+      )
+    )
+    (blank)
+    (lazy ascii-number String
+      (pattern
+        (~ (+ (chars "0-9")))
+      )
+    )
+    (blank)
+    (lazy ascii-space
+      (pattern
+        (~ (+ (| " " "\n" "\t")))
+      )
+    )
+  )
+)
+
+(fn-expr _ ascii-tokenizer-source _
+  (call (. "" join) (in (str "fn alpha_" each "(x" (% each 9) ", y" (% each 13) ") { value = x + y * " (+ each 1) "; }\n") (..< 0 220)))
+)

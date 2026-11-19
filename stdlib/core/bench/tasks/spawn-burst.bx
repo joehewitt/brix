@@ -1,0 +1,24 @@
+; benchmark.meta description: Spawns a burst of short allocating tasks before any of them runs, then collects their results.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core/channel)
+(blank)
+
+(main
+  (let count 20000)
+  (let results (of SyncBufferedChannel Int))
+  (for (in i (..< 0 count))
+    (do-new
+      (let items (list i (+ i 1) (+ i 2)))
+      (<- results (+ ([] items 0) ([] items 2)))
+    )
+  )
+  (blank)
+  (let checksum 0)
+  (for (in i (..< 0 count))
+    (+= checksum (!! (<- results)))
+  )
+  (blank)
+  (print (str "bench-result tasks/spawn-burst checksum=" checksum))
+)

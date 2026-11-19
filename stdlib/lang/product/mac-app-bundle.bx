@@ -1,0 +1,237 @@
+(import ./bundle-files)
+(import /lang/backend/mir-text)
+(import /lang/emit/products)
+(import /os/file)
+(import /os/path)
+(blank)
+(prop _ lsregister _ (= "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"))
+(prop _ sips _ (= "/usr/bin/sips"))
+(prop _ iconutil _ (= "/usr/bin/iconutil"))
+(prop _ icon-points (list Int) (= (list 16 32 128 256 512)))
+
+(type + MacAppBundle (is Tuple)
+  (prop + path Path)
+  (prop + executable Path)
+)
+
+(fn-do + write-mac-app-bundle MacAppBundle (?! Error)
+  (param product AppProduct)
+  (param executable Path)
+  (param claims-documents Bool)
+  (let bundle (/ (. executable dir) (str (. product name) ".app")))
+  (throw (call Error (str "-o " executable " is where the app bundle goes; give the executable another name")) (if (== (as bundle String) (as executable String))))
+  (let contents (/ bundle "Contents"))
+  (let info (/ contents "Info.plist"))
+  (let macos (/ contents "MacOS"))
+  (let inner (/ macos (. product name)))
+  (let resources (/ contents "Resources"))
+  (let icon (/ resources "AppIcon.icns"))
+  (let signature (/ contents "_CodeSignature"))
+  (let kept (list String) (list (as contents String) (as info String) (as macos String) (as inner String) (as signature String) (as (/ signature "CodeResources") String)))
+  (if (. product icon)
+    (+= kept (as resources String))
+    (+= kept (as icon String))
+  )
+  (call make-directories macos)
+  (call prune bundle kept)
+  (let source (call icon-source (call Path (str executable ".icons")) (. product icon)))
+  (let changed false)
+  (if source
+    (call make-directories resources)
+    (= changed (call install-file source icon))
+  )
+  (if (call write-if-changed info (call info-plist product claims-documents))
+    (= changed true)
+  )
+  (if (. inner exists)
+    (call (. inner delete))
+  )
+  (call (. executable clone) inner)
+  (call sign bundle)
+  (if changed
+    (call register bundle)
+  )
+  (return (call MacAppBundle bundle inner))
+)
+
+(fn-expr _ info-plist _
+  (param product AppProduct)
+  (param claims-documents Bool)
+  (paragraph
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+    "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">"
+    "<plist version=\"1.0\">"
+    "<dict>"
+    (str document-types "    <key>CFBundleExecutable</key>")
+    (str "    " (call plist-string (. product name)))
+    (str icon "    <key>CFBundleIdentifier</key>")
+    (str "    " (call plist-string (. product id)))
+    "    <key>CFBundleInfoDictionaryVersion</key>"
+    "    <string>6.0</string>"
+    "    <key>CFBundleName</key>"
+    (str "    " (call plist-string (. product name)))
+    "    <key>CFBundlePackageType</key>"
+    "    <string>APPL</string>"
+    (str version agent "    <key>NSHighResolutionCapable</key>")
+    "    <true/>"
+    "    <key>NSPrincipalClass</key>"
+    "    <string>NSApplication</string>"
+    "</dict>"
+    "</plist>"
+  )
+  (where
+    (lazy document-types (if-expr (and claims-documents (. product document-types)) (str document-entries "\n") ""))
+    (lazy document-entries (call document-types-plist (. product document-types)))
+    (lazy icon (if-expr (. product icon) (str (call icon-plist) "\n") ""))
+    (lazy version (if-expr (. product version) (str (call version-plist (. product version)) "\n") ""))
+    (lazy agent (if-expr (. product shows-in-dock) "" (str (call agent-plist) "\n")))
+  )
+)
+
+(fn-expr _ document-types-plist _
+  (param document-types (list AppDocumentType))
+  (paragraph
+    "    <key>CFBundleDocumentTypes</key>"
+    "    <array>"
+    (str entries)
+    "    </array>"
+  )
+  (where
+    (lazy entries (call (. "\n" join) (in (call document-type-plist each) document-types)))
+  )
+)
+
+(fn-expr _ document-type-plist _
+  (param document-type AppDocumentType)
+  (paragraph
+    "        <dict>"
+    (str extensions "            <key>CFBundleTypeName</key>")
+    (str "            " (call plist-string (. document-type name)))
+    "            <key>CFBundleTypeRole</key>"
+    "            <string>Editor</string>"
+    (str rank content-types "        </dict>")
+  )
+  (where
+    (lazy extensions (call plist-key-array "CFBundleTypeExtensions" (. document-type extensions)))
+    (lazy content-types (call plist-key-array "LSItemContentTypes" (. document-type content-types)))
+    (lazy rank (if-expr (. document-type rank) (str (call document-rank-plist (. document-type rank)) "\n") ""))
+  )
+)
+
+(fn-expr _ plist-key-array String
+  (param key String)
+  (param values (list String))
+  (if-expr (== (. values length) 0) "" (str header "\n" items "\n            </array>\n"))
+  (where
+    (lazy header (str "            <key>" key "</key>\n            <array>"))
+    (lazy items (call (. "\n" join) (in (str "                " (call plist-string each)) values)))
+  )
+)
+
+(fn-expr _ document-rank-plist _
+  (param rank String)
+  (paragraph
+    "            <key>LSHandlerRank</key>"
+    (str "            " (call plist-string (+ (. ([] rank (..< 0 1)) uppercased) ([] rank (... 1)))))
+  )
+)
+
+(fn-expr _ icon-plist _
+  (paragraph
+    "    <key>CFBundleIconFile</key>"
+    "    <string>AppIcon</string>"
+  )
+)
+
+(fn-expr _ version-plist _
+  (param version String)
+  (paragraph
+    "    <key>CFBundleShortVersionString</key>"
+    (str "    " (call plist-string version))
+    "    <key>CFBundleVersion</key>"
+    (str "    " (call plist-string version))
+  )
+)
+
+(fn-expr _ agent-plist _
+  (paragraph
+    "    <key>LSUIElement</key>"
+    "    <true/>"
+  )
+)
+
+(fn-do _ icon-source (? Path) (?! Error)
+  (param cache Path)
+  (param icon (? Path))
+  (if (or (not icon) (!= (. icon ext) "png"))
+    (if (. cache is-dir)
+      (call remove-tree cache (. PathKind directory))
+    )
+    (return icon)
+  )
+  (let bytes (call read-file-bytes icon))
+  (let hex String (as (call fnv-hash (. bytes data) (. bytes length)) Hex))
+  (let name ([] hex (... 2)))
+  (let converted (/ cache (str name ".icns")))
+  (call make-directories cache)
+  (call prune cache (list (as converted String)))
+  (if (not (. converted is-file))
+    (call convert-icon icon cache name)
+  )
+  (return converted)
+)
+
+(fn-do _ convert-icon _ (?! Error)
+  (param source Path)
+  (param cache Path)
+  (param name String)
+  (let iconset (/ cache (str name ".iconset")))
+  (let partial (/ cache (str name ".partial.icns")))
+  (call make-directories iconset)
+  (for (in points icon-points)
+    (call render-icon source (/ iconset (str "icon_" points "x" points ".png")) points)
+    (call render-icon source (/ iconset (str "icon_" points "x" points "@2x.png")) (* points 2))
+  )
+  (call run-tool iconutil (list "-c" "icns" (as iconset String) "-o" (as partial String)))
+  (call (. partial move) (/ cache (str name ".icns")))
+  (call remove-tree iconset (. PathKind directory))
+)
+
+(fn-do _ render-icon _ (?! Error)
+  (param source Path)
+  (param target Path)
+  (param pixels Int)
+  (call run-tool sips (list "-s" "format" "png" "-z" (str pixels) (str pixels) (as source String) "--out" (as target String)))
+)
+
+(fn-do _ install-file Bool (?! Error)
+  (param source Path)
+  (param target Path)
+  (if (and (. target is-file) (call same-bytes (call read-file-bytes source) (call read-file-bytes target)))
+    (return false)
+  )
+  (if (. target exists)
+    (call (. target delete))
+  )
+  (call (. source copy) target)
+  (return true)
+)
+
+(fn-do _ same-bytes Bool
+  (param first ([] Byte))
+  (param second ([] Byte))
+  (if (!= (. first length) (. second length))
+    (return false)
+  )
+  (for (in index (..< 0 (. first length)))
+    (if (!= ([] first index) ([] second index))
+      (return false)
+    )
+  )
+  (return true)
+)
+
+(fn-do _ register _ (?! Error)
+  (param bundle Path)
+  (call run-tool lsregister (list "-f" (as bundle String)))
+)

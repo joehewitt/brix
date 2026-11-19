@@ -1,0 +1,55 @@
+; benchmark.meta description: Matches byte-oriented grammars.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+(import /core/tokenstream)
+(import /data/stream)
+(blank)
+
+(main
+  (let stream (call byte-patterns-stream))
+  (let rows
+    (match stream
+      (~ \byte-patterns-document)
+      (throw (call Panic "byte-patterns did not parse"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in row rows)
+    (+= checksum row)
+  )
+  (blank)
+  (print (str "bench-result stream/byte-patterns checksum=" checksum))
+)
+
+(fn-expr + byte-patterns-document _ (over: Byte)
+  (~ (: rows (+ \byte-pattern-row))
+    rows
+  )
+  (where
+    (lazy byte-pattern-row Size
+      (pattern
+        (~ (seq (: magic U8) (: length U8) (: payload ({} Byte length)))
+          (+ (* (as magic Size) 17) (. payload size))
+        )
+      )
+    )
+  )
+)
+
+(fn-do _ byte-patterns-stream _
+  (let bytes (call (of DataStream Byte) 60000))
+  (call (. bytes reset))
+  (for (in row (..< 0 220))
+    (let length (as (+ (% row 17) 3) U8))
+    (<- bytes (as (+ 160 (% row 7)) Byte))
+    (<- bytes length)
+    (for (in offset (..< 0 length))
+      (<- bytes (as (% (+ (* row 13) (* offset 7)) 256) Byte))
+    )
+  )
+  (blank)
+  (call (. bytes rewind))
+  (return (call (of ChunkedTokenStream Byte) bytes))
+)

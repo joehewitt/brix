@@ -2,137 +2,137 @@
 
 ### Demonstrates named slots, default slot routing, declaration order, and slot overlay updates.
 
-```yumi
-. title = "Settings"
+```brix
+(main
+  (let title "Settings")
+  (blank)
+  (<> Panel (id: panel)
+    (<> MarkText (slot: header) (value: #title))
+    (<> MarkText (value: "body one"))
+    (<> MarkText (value: "body two"))
+  )
+  (blank)
+  (print (call text-at panel 0))
+  (print (call text-at panel 1))
+  (print (call text-at panel 2))
+  (print (call text-at panel 3))
+  (print (call count-children panel))
+  (= title "Account")
+  (= (. panel footer-label) "Done")
+  (print (call text-at panel 0))
+  (print (call text-at panel 1))
+  (blank)
+  (<> OrderedPanel (id: ordered)
+    (<> MarkText (slot: beta) (value: "B"))
+    (<> MarkText (slot: alpha) (value: "A"))
+  )
+  (print (call text-at ordered 0))
+  (print (call text-at ordered 1))
+  (blank)
+  (<> OverlayPanel (id: overlay)
+    (<> MarkText (slot: header) (value: "caller"))
+  )
+  (print (call text-at overlay 0))
+  (= (. overlay header-title) "Updated")
+  (print (call text-at overlay 0))
+)
 
-<Panel panel
-    <MarkText (header) = #title
-    <MarkText = "body one"
-    <MarkText = "body two"
+(fn-expr + text-at String
+  (param node MarkNode)
+  (param index Index)
+  (. (as (!! (call (. node child-at) index)) MarkText) text)
+)
 
--- text-at(panel, 0)
--- text-at(panel, 1)
--- text-at(panel, 2)
--- text-at(panel, 3)
--- count-children(panel)
-title = "Account"
-panel.footer-label = "Done"
--- text-at(panel, 0)
--- text-at(panel, 1)
+(fn-do + count-children _
+  (param node MarkNode)
+  (let count 0)
+  (for (in child (. node children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-<OrderedPanel ordered
-    <MarkText (beta) = "B"
-    <MarkText (alpha) = "A"
--- text-at(ordered, 0)
--- text-at(ordered, 1)
+(type + MarkNode
+  (implements (of MarkupParent MarkNode))
+  (prop + parent (? MarkNode))
+  (prop + first-child (? MarkNode))
+  (prop + last-child (? MarkNode))
+  (prop + previous (? MarkNode))
+  (prop + next (? MarkNode))
+  (fn-do + children _ :get
+    (let maybe-child first-child)
+    (if maybe-child
+      (let child maybe-child)
+      (while true
+        (yield child)
+        (if (not (. child next))
+          (break)
+        )
+        (= child (. child next))
+      )
+    )
+  )
+  (fn-do + child-at (? MarkNode)
+    (param index Index)
+    (let cursor Index 0)
+    (for (in child children)
+      (if (== cursor index)
+        (return child)
+      )
+      (+= cursor 1)
+    )
+  )
+  (fn-expr + markup-content MarkNode
+    (param child MarkNode)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child MarkNode)
+    (param anchor (? MarkNode))
+    (= (. child parent) this)
+    (if (not first-child)
+      (= first-child (= last-child child))
+      (else
+        (= (?. last-child next) child)
+        (= (. child previous) last-child)
+        (= last-child child)
+      )
+    )
+  )
+)
 
-<OverlayPanel overlay
-    <MarkText (header) = "caller"
--- text-at(overlay, 0)
-overlay.header-title = "Updated"
--- text-at(overlay, 0)
+(type + MarkText (is MarkNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ text-at String
-    - node MarkNode
-    - index Index
+(type + Panel (is MarkNode)
+  (prop + footer-label _ (= "Foot"))
+  (content
+    (+<> MarkText (id: header))
+    (+<> MarkText (id: footer)
+      (<> MarkText (value: #footer-label))
+    )
+  )
+)
 
-((node.child-at(index))! as MarkText).text
+(type + OrderedPanel (is MarkNode)
+  (content
+    (+<> MarkText (id: alpha))
+    (+<> MarkText (id: beta))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - node MarkNode
-
-. count = 0
-for child in node.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
-
-+ parent MarkNode?
-+ first-child MarkNode?
-+ last-child MarkNode?
-+ previous MarkNode?
-+ next MarkNode?
-
-────────────────────
-+ do get children
-
-. maybe-child = first-child
-if maybe-child
-    . child = maybe-child
-    while true
-        <= child
-        if !child.next
-            break
-        child = child.next
-
-────────────────────
-+ do child-at MarkNode?
-    - index Index
-
-. cursor Index = 0
-for child in children
-    if cursor == index
-        = child
-    cursor += 1
-
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
-
-child
-
-────────────────────
-+ do markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-child.parent = this
-if !first-child
-    first-child = last-child = child
-else
-    last-child?.next = child
-    child.previous = last-child
-    last-child = child
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkText is MarkNode
-
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is MarkNode
-
-+ footer-label = "Foot"
-
-────────────────────
-+ <MarkText header
-+ <MarkText footer
-    <MarkText = #footer-label
-
-━━━━━━━━━━━━━━━━━━━━
-+ OrderedPanel is MarkNode
-
-────────────────────
-+ <MarkText alpha
-+ <MarkText beta
-
-━━━━━━━━━━━━━━━━━━━━
-+ OverlayPanel is MarkNode
-
-+ header-title = "Overlay"
-
-────────────────────
-+ <MarkText header
-    text = #header-title
+(type + OverlayPanel (is MarkNode)
+  (prop + header-title _ (= "Overlay"))
+  (content
+    (+<> MarkText (id: header)
+      (= text #header-title)
+    )
+  )
+)
 ```
 
 ```output
@@ -151,45 +151,45 @@ Updated
 
 ### A named object supplied to a slot remains the caller's binding when the host absorbs it.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<AbsorbingRoot root
-. absorbed = root.host.absorbed!
--- absorbed.name
--- absorbed as Pointer == root.named as Pointer
+(main
+  (<> AbsorbingRoot (id: root))
+  (let absorbed (!! (. root host absorbed)))
+  (print (. absorbed name))
+  (print (== (as absorbed Pointer) (as (. root named) Pointer)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AbsorbedSlotValue
+(type + AbsorbedSlotValue
+  (prop + name _ (= ""))
+)
 
-+ name = ""
+(type + AbsorbingSlotHost (is Box)
+  (prop + absorbed (? AbsorbedSlotValue))
+  (content
+    (+<> AbsorbedSlotValue)
+  )
+  (fn-do + markup-absorb _
+    (param content AbsorbedSlotValue)
+    (= absorbed content)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AbsorbingSlotHost is Box
-
-+ absorbed AbsorbedSlotValue?
-
-────────────────────
-+ <AbsorbedSlotValue
-
-────────────────────
-+ do markup-absorb
-    - content AbsorbedSlotValue
-
-absorbed = content
-
-━━━━━━━━━━━━━━━━━━━━
-+ AbsorbingRoot is Box
-
-+ host AbsorbingSlotHost
-+ named AbsorbedSlotValue
-
-────────────────────
-
-<This
-    <AbsorbingSlotHost host
-        <AbsorbedSlotValue named
-            name = "slot"
+(type + AbsorbingRoot (is Box)
+  (prop + host AbsorbingSlotHost)
+  (prop + named AbsorbedSlotValue)
+  (content
+    (<> This
+      (<> AbsorbingSlotHost (id: host)
+        (<> AbsorbedSlotValue (id: named)
+          (= name "slot")
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -199,79 +199,78 @@ true
 
 ### Demonstrates repeated row slots that receive a component-owned item value.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<RowHost host
-host.items += RowData("a")
-host.items += RowData("b")
-host.markup-batch-queue.checkpoint()
-. panel = host.panel
--- row-texts(panel)
-host.items += RowData("c")
-host.markup-batch-queue.checkpoint()
--- row-texts(panel)
+(main
+  (<> RowHost (id: host))
+  (+= (. host items) (call RowData "a"))
+  (+= (. host items) (call RowData "b"))
+  (call (. host markup-batch-queue checkpoint))
+  (let panel (. host panel))
+  (print (call row-texts panel))
+  (+= (. host items) (call RowData "c"))
+  (call (. host markup-batch-queue checkpoint))
+  (print (call row-texts panel))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
+(type + RowData
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-+ text String
+(type + (of RowPanel Item) (is Box)
+  (implements MarkupRootElement)
+  (prop + items (list Item) (= (call (of List Item))))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (content
+    (<> This
+      (for (in item #items)
+        (<> Box
+          (+<> Box (id: row) (param: item Item))
+        )
+      )
+    )
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+)
 
-────────────────────
-+ This
-    - text
+(fn-do + row-texts String
+  (param panel Box)
+  (let parts (list String) (call (of List String)))
+  (let region (. panel %first-child))
+  (if region
+    (for (in child (. region children))
+      (+= parts (. (as (!! (. child %first-child)) TextBox) text))
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowPanel'Item is Box
-    is MarkupRootElement
-
-+ items [Item] = List'Item()
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-
-<This
-    for item in #items
-        <Box
-            + <Box row - item Item
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-━━━━━━━━━━━━━━━━━━━━
-+ do row-texts String
-    - panel Box
-
-. parts [String] = List'String()
-. region = panel.%first-child
-if region
-    for child in region.children
-        parts += (child.%first-child! as TextBox).text
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ RowHost is Box
-    is MarkupRootElement
-
-+ items [RowData] = List'RowData()
-+ panel RowPanel'RowData
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-
-<This
-    <RowPanel'RowData panel
-        items = #items
-        <TextBox (row) - item = item.text
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
+(type + RowHost (is Box)
+  (implements MarkupRootElement)
+  (prop + items (list RowData) (= (call (of List RowData))))
+  (prop + panel (of RowPanel RowData))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (content
+    (<> This
+      (<> (of RowPanel RowData) (id: panel)
+        (= items #items)
+        (<> TextBox (slot: row) (param: item) (value: (. item text)))
+      )
+    )
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+)
 ```
 
 ```output
@@ -281,73 +280,79 @@ a,b,c
 
 ### Demonstrates nested repeated row slot forwarding through another component.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. left = List'RowData([RowData("a"), RowData("b")])
-. right = List'RowData([RowData("x")])
-. columns [[RowData]] = List'(List'RowData)()
-columns += left
-columns += right
+(main
+  (let left (call (of List RowData) (list (call RowData "a") (call RowData "b"))))
+  (let right (call (of List RowData) (list (call RowData "x"))))
+  (let columns (list (list RowData)) (call (of List (of List RowData))))
+  (+= columns left)
+  (+= columns right)
+  (blank)
+  (<> (of GridPanel RowData) (id: panel)
+    (= columns #columns)
+    (<> TextBox (slot: row) (param: item) (value: (. item text)))
+  )
+  (blank)
+  (print (call grid-texts panel))
+  (+= left (call RowData "c"))
+  (print (call grid-texts panel))
+  (+= columns (call (of List RowData) (list (call RowData "z"))))
+  (print (call grid-texts panel))
+)
 
-<GridPanel'RowData panel
-    columns = #columns
-    <TextBox (row) - item = item.text
+(type + RowData
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
--- grid-texts(panel)
-left += RowData("c")
--- grid-texts(panel)
-columns += List'RowData([RowData("z")])
--- grid-texts(panel)
+(type + (of RowPanel Item) (is Box)
+  (prop + items (list Item))
+  (content
+    (<> This
+      (for (in item #items)
+        (+<> Box (id: row) (param: item Item))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
+(type + (of GridPanel Item) (is Box)
+  (prop + columns (list (list Item)))
+  (content
+    (<> This
+      (for (in items #columns)
+        (<> (of RowPanel Item)
+          (= items items)
+          (<+ row)
+        )
+      )
+    )
+  )
+)
 
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ RowPanel'Item is Box
-
-+ items [Item]
-
-────────────────────
-
-<This
-    for item in #items
-        + <Box row - item Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ GridPanel'Item is Box
-
-+ columns [[Item]]
-
-────────────────────
-
-<This
-    for items in #columns
-        <RowPanel'Item
-            items = items
-            <+ (row)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do grid-texts String
-    - panel Box
-
-. column-texts [String] = List'String()
-. column-region = panel.%first-child
-if column-region
-    for column in column-region.children
-        . row-texts [String] = List'String()
-        . row-region = column.%first-child
-        if row-region
-            for child in row-region.children
-                row-texts += (child as TextBox).text
-        column-texts += ",".join(row-texts)
-= "|".join(column-texts)
+(fn-do + grid-texts String
+  (param panel Box)
+  (let column-texts (list String) (call (of List String)))
+  (let column-region (. panel %first-child))
+  (if column-region
+    (for (in column (. column-region children))
+      (let row-texts (list String) (call (of List String)))
+      (let row-region (. column %first-child))
+      (if row-region
+        (for (in child (. row-region children))
+          (+= row-texts (. (as child TextBox) text))
+        )
+      )
+      (+= column-texts (call (. "," join) row-texts))
+    )
+  )
+  (return (call (. "|" join) column-texts))
+)
 ```
 
 ```output
@@ -358,49 +363,51 @@ a,b,c|x|z
 
 ### Demonstrates inherited repeated row slots see markup-provided properties during initial content construction.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items = List'RowData([RowData("a"), RowData("b")])
-<DerivedRowPanel'RowData panel
-    items = #items
-    <TextBox (row) - item = item.text
+(main
+  (let items (call (of List RowData) (list (call RowData "a") (call RowData "b"))))
+  (<> (of DerivedRowPanel RowData) (id: panel)
+    (= items #items)
+    (<> TextBox (slot: row) (param: item) (value: (. item text)))
+  )
+  (blank)
+  (print (call row-texts panel))
+)
 
--- row-texts(panel)
+(type + RowData
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
+(type + (of RowPanel Item) (is Box)
+  (prop + items (list Item))
+  (content
+    (<> This
+      (for (in item #items)
+        (+<> Box (id: row) (param: item Item))
+      )
+    )
+  )
+)
 
-+ text String
+(type + (of DerivedRowPanel Item) (is (of RowPanel Item)))
 
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ RowPanel'Item is Box
-
-+ items [Item]
-
-────────────────────
-
-<This
-    for item in #items
-        + <Box row - item Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ DerivedRowPanel'Item is RowPanel'Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ do row-texts String
-    - panel Box
-
-. parts [String] = List'String()
-. region = panel.%first-child
-if region
-    for child in region.children
-        parts += (child as TextBox).text
-= ",".join(parts)
+(fn-do + row-texts String
+  (param panel Box)
+  (let parts (list String) (call (of List String)))
+  (let region (. panel %first-child))
+  (if region
+    (for (in child (. region children))
+      (+= parts (. (as child TextBox) text))
+    )
+  )
+  (return (call (. "," join) parts))
+)
 ```
 
 ```output
@@ -409,72 +416,77 @@ a,b
 
 ### Demonstrates nested repeated row forwarding into inherited base content.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. left = List'RowData([RowData("a"), RowData("b")])
-. right = List'RowData([RowData("x")])
-. columns [[RowData]] = List'(List'RowData)()
-columns += left
-columns += right
+(main
+  (let left (call (of List RowData) (list (call RowData "a") (call RowData "b"))))
+  (let right (call (of List RowData) (list (call RowData "x"))))
+  (let columns (list (list RowData)) (call (of List (of List RowData))))
+  (+= columns left)
+  (+= columns right)
+  (blank)
+  (<> (of DerivedGridPanel RowData) (id: panel)
+    (= columns #columns)
+    (<> TextBox (slot: row) (param: item) (value: (. item text)))
+  )
+  (blank)
+  (print (call grid-texts panel))
+)
 
-<DerivedGridPanel'RowData panel
-    columns = #columns
-    <TextBox (row) - item = item.text
+(type + RowData
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
--- grid-texts(panel)
+(type + (of RowPanel Item) (is Box)
+  (prop + items (list Item))
+  (content
+    (<> This
+      (for (in item #items)
+        (+<> Box (id: row) (param: item Item))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
+(type + (of DerivedRowPanel Item) (is (of RowPanel Item)))
 
-+ text String
+(type + (of DerivedGridPanel Item) (is Box)
+  (prop + columns (list (list Item)))
+  (content
+    (<> This
+      (for (in items #columns)
+        (<> (of DerivedRowPanel Item)
+          (= items items)
+          (<+ row)
+        )
+      )
+    )
+  )
+)
 
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ RowPanel'Item is Box
-
-+ items [Item]
-
-────────────────────
-
-<This
-    for item in #items
-        + <Box row - item Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ DerivedRowPanel'Item is RowPanel'Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ DerivedGridPanel'Item is Box
-
-+ columns [[Item]]
-
-────────────────────
-
-<This
-    for items in #columns
-        <DerivedRowPanel'Item
-            items = items
-            <+ (row)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do grid-texts String
-    - panel Box
-
-. column-texts [String] = List'String()
-. column-region = panel.%first-child
-if column-region
-    for column in column-region.children
-        . row-texts [String] = List'String()
-        . row-region = column.%first-child
-        if row-region
-            for child in row-region.children
-                row-texts += (child as TextBox).text
-        column-texts += ",".join(row-texts)
-= "|".join(column-texts)
+(fn-do + grid-texts String
+  (param panel Box)
+  (let column-texts (list String) (call (of List String)))
+  (let column-region (. panel %first-child))
+  (if column-region
+    (for (in column (. column-region children))
+      (let row-texts (list String) (call (of List String)))
+      (let row-region (. column %first-child))
+      (if row-region
+        (for (in child (. row-region children))
+          (+= row-texts (. (as child TextBox) text))
+        )
+      )
+      (+= column-texts (call (. "," join) row-texts))
+    )
+  )
+  (return (call (. "|" join) column-texts))
+)
 ```
 
 ```output
@@ -483,58 +495,59 @@ a,b|x
 
 ### Demonstrates repeated row slot content can pass the item as a property to an explicit row constructor.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items = List'RowData([RowData("a"), RowData("b")])
-<RowPanel'RowData panel
-    items = #items
-    <ExplicitRow (row) - item
-        item = item
+(main
+  (let items (call (of List RowData) (list (call RowData "a") (call RowData "b"))))
+  (<> (of RowPanel RowData) (id: panel)
+    (= items #items)
+    (<> ExplicitRow (slot: row) (param: item)
+      (= item item)
+    )
+  )
+  (blank)
+  (print (call row-texts panel))
+)
 
--- row-texts(panel)
+(type + RowData
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
+(type + (of RowPanel Item) (is Box)
+  (prop + items (list Item))
+  (content
+    (<> This
+      (for (in item #items)
+        (+<> Box (id: row) (param: item Item))
+      )
+    )
+  )
+)
 
-+ text String
+(type + ExplicitRow (is TextBox)
+  (prop + item RowData)
+  (fn-do + This _
+    (param item _)
+    (= text (. item text))
+  )
+)
 
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ RowPanel'Item is Box
-
-+ items [Item]
-
-────────────────────
-
-<This
-    for item in #items
-        + <Box row - item Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ ExplicitRow is TextBox
-
-+ item RowData
-
-────────────────────
-+ This
-    - item
-
-text = item.text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do row-texts String
-    - panel Box
-
-. parts [String] = List'String()
-. region = panel.%first-child
-if region
-    for child in region.children
-        parts += (child as TextBox).text
-= ",".join(parts)
+(fn-do + row-texts String
+  (param panel Box)
+  (let parts (list String) (call (of List String)))
+  (let region (. panel %first-child))
+  (if region
+    (for (in child (. region children))
+      (+= parts (. (as child TextBox) text))
+    )
+  )
+  (return (call (. "," join) parts))
+)
 ```
 
 ```output
@@ -543,72 +556,69 @@ a,b
 
 ### Demonstrates that a slot outlet can be referenced locally inside the component body.
 
-```yumi
-<ReferencePanel panel
-    <MarkText (header) = "slot"
+```brix
+(main
+  (<> ReferencePanel (id: panel)
+    (<> MarkText (slot: header) (value: "slot"))
+  )
+  (blank)
+  (print (call text-at panel 0))
+  (print (call text-at panel 1))
+)
 
--- text-at(panel, 0)
--- text-at(panel, 1)
+(fn-expr + text-at String
+  (param node MarkNode)
+  (param index Index)
+  (. (as (!! (call (. node child-at) index)) MarkText) text)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ text-at String
-    - node MarkNode
-    - index Index
+(type + MarkNode
+  (implements (of MarkupParent MarkNode))
+  (prop + first-child (? MarkNode))
+  (prop + last-child (? MarkNode))
+  (prop + next (? MarkNode))
+  (fn-do + child-at (? MarkNode)
+    (param index Index)
+    (let cursor Index 0)
+    (let child first-child)
+    (while child
+      (if (== cursor index)
+        (return child)
+      )
+      (+= cursor 1)
+      (= child (. child next))
+    )
+  )
+  (fn-expr + markup-content MarkNode
+    (param child MarkNode)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child MarkNode)
+    (param anchor (? MarkNode))
+    (if (not first-child)
+      (= first-child (= last-child child))
+      (else
+        (= (?. last-child next) child)
+        (= last-child child)
+      )
+    )
+  )
+)
 
-((node.child-at(index))! as MarkText).text
+(type + MarkText (is MarkNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
-
-+ first-child MarkNode?
-+ last-child MarkNode?
-+ next MarkNode?
-
-────────────────────
-+ do child-at MarkNode?
-    - index Index
-
-. cursor Index = 0
-. child = first-child
-while child
-    if cursor == index
-        = child
-    cursor += 1
-    child = child.next
-
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
-
-child
-
-────────────────────
-+ do markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-if !first-child
-    first-child = last-child = child
-else
-    last-child?.next = child
-    last-child = child
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkText is MarkNode
-
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ ReferencePanel is MarkNode
-
-────────────────────
-+ <MarkText header
-<MarkText = header.text
+(type + ReferencePanel (is MarkNode)
+  (content
+    (+<> MarkText (id: header))
+    (<> MarkText (value: (. header text)))
+  )
+)
 ```
 
 ```output
@@ -618,73 +628,71 @@ slot
 
 ### Demonstrates that a slot outlet that sets attributes on its content can be referenced locally inside the component body.
 
-```yumi
-<ReferencePanel panel
-    <MarkText (header) = "slot"
+```brix
+(main
+  (<> ReferencePanel (id: panel)
+    (<> MarkText (slot: header) (value: "slot"))
+  )
+  (blank)
+  (print (call text-at panel 0))
+  (print (call text-at panel 1))
+)
 
--- text-at(panel, 0)
--- text-at(panel, 1)
+(fn-expr + text-at String
+  (param node MarkNode)
+  (param index Index)
+  (. (as (!! (call (. node child-at) index)) MarkText) text)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ text-at String
-    - node MarkNode
-    - index Index
+(type + MarkNode
+  (implements (of MarkupParent MarkNode))
+  (prop + first-child (? MarkNode))
+  (prop + last-child (? MarkNode))
+  (prop + next (? MarkNode))
+  (fn-do + child-at (? MarkNode)
+    (param index Index)
+    (let cursor Index 0)
+    (let child first-child)
+    (while child
+      (if (== cursor index)
+        (return child)
+      )
+      (+= cursor 1)
+      (= child (. child next))
+    )
+  )
+  (fn-expr + markup-content MarkNode
+    (param child MarkNode)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child MarkNode)
+    (param anchor (? MarkNode))
+    (if (not first-child)
+      (= first-child (= last-child child))
+      (else
+        (= (?. last-child next) child)
+        (= last-child child)
+      )
+    )
+  )
+)
 
-((node.child-at(index))! as MarkText).text
+(type + MarkText (is MarkNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
-
-+ first-child MarkNode?
-+ last-child MarkNode?
-+ next MarkNode?
-
-────────────────────
-+ do child-at MarkNode?
-    - index Index
-
-. cursor Index = 0
-. child = first-child
-while child
-    if cursor == index
-        = child
-    cursor += 1
-    child = child.next
-
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
-
-child
-
-────────────────────
-+ do markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-if !first-child
-    first-child = last-child = child
-else
-    last-child?.next = child
-    last-child = child
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkText is MarkNode
-
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ ReferencePanel is MarkNode
-
-────────────────────
-+ <MarkText header
-    text = "overlaid"
-<MarkText = header.text
+(type + ReferencePanel (is MarkNode)
+  (content
+    (+<> MarkText (id: header)
+      (= text "overlaid")
+    )
+    (<> MarkText (value: (. header text)))
+  )
+)
 ```
 
 ```output
@@ -694,109 +702,107 @@ overlaid
 
 ### Demonstrates local ids on slotted nodes and live property overlays on slot fallbacks.
 
-```yumi
-. title = "Inline"
+```brix
+(main
+  (let title "Inline")
+  (blank)
+  (<> Panel (id: panel)
+    (<> MarkText (slot: header) (value: #title))
+    (<> MarkText (id: footer-text) (slot: footer) (value: "Tail"))
+    (<> MarkText (value: "body"))
+  )
+  (blank)
+  (print (call count-children panel))
+  (print (call text-at panel 0))
+  (print (call text-at panel 1))
+  (print (call text-at panel 2))
+  (print (. footer-text text))
+  (= title "Changed")
+  (= (. panel footer-label) "Overlay Tail")
+  (print (call text-at panel 0))
+  (print (call text-at panel 1))
+)
 
-<Panel panel
-    <MarkText (header) = #title
-    <MarkText footer-text(footer) = "Tail"
-    <MarkText = "body"
+(fn-expr + text-at String
+  (param node MarkNode)
+  (param index Index)
+  (. (as (!! (call (. node child-at) index)) MarkText) text)
+)
 
--- count-children(panel)
--- text-at(panel, 0)
--- text-at(panel, 1)
--- text-at(panel, 2)
--- footer-text.text
-title = "Changed"
-panel.footer-label = "Overlay Tail"
--- text-at(panel, 0)
--- text-at(panel, 1)
+(fn-do + count-children _
+  (param node MarkNode)
+  (let count 0)
+  (for (in child (. node children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ text-at String
-    - node MarkNode
-    - index Index
+(type + MarkNode
+  (implements (of MarkupParent MarkNode))
+  (prop + parent (? MarkNode))
+  (prop + first-child (? MarkNode))
+  (prop + last-child (? MarkNode))
+  (prop + previous (? MarkNode))
+  (prop + next (? MarkNode))
+  (fn-do + children _ :get
+    (let maybe-child first-child)
+    (if maybe-child
+      (let child maybe-child)
+      (while true
+        (yield child)
+        (if (not (. child next))
+          (break)
+        )
+        (= child (. child next))
+      )
+    )
+  )
+  (fn-do + child-at (? MarkNode)
+    (param index Index)
+    (let cursor Index 0)
+    (for (in child children)
+      (if (== cursor index)
+        (return child)
+      )
+      (+= cursor 1)
+    )
+  )
+  (fn-expr + markup-content MarkNode
+    (param child MarkNode)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child MarkNode)
+    (param anchor (? MarkNode))
+    (= (. child parent) this)
+    (if (not first-child)
+      (= first-child (= last-child child))
+      (else
+        (= (?. last-child next) child)
+        (= (. child previous) last-child)
+        (= last-child child)
+      )
+    )
+  )
+)
 
-((node.child-at(index))! as MarkText).text
+(type + MarkText (is MarkNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - node MarkNode
-
-. count = 0
-for child in node.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
-
-+ parent MarkNode?
-+ first-child MarkNode?
-+ last-child MarkNode?
-+ previous MarkNode?
-+ next MarkNode?
-
-────────────────────
-+ do get children
-
-. maybe-child = first-child
-if maybe-child
-    . child = maybe-child
-    while true
-        <= child
-        if !child.next
-            break
-        child = child.next
-
-────────────────────
-+ do child-at MarkNode?
-    - index Index
-
-. cursor Index = 0
-for child in children
-    if cursor == index
-        = child
-    cursor += 1
-
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
-
-child
-
-────────────────────
-+ do markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-child.parent = this
-if !first-child
-    first-child = last-child = child
-else
-    last-child?.next = child
-    child.previous = last-child
-    last-child = child
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkText is MarkNode
-
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is MarkNode
-
-+ footer-label = "Foot"
-
-────────────────────
-+ <MarkText header
-+ <MarkText footer
-    text = #footer-label
+(type + Panel (is MarkNode)
+  (prop + footer-label _ (= "Foot"))
+  (content
+    (+<> MarkText (id: header))
+    (+<> MarkText (id: footer)
+      (= text #footer-label)
+    )
+  )
+)
 ```
 
 ```output
@@ -811,91 +817,90 @@ Overlay Tail
 
 ### Demonstrates that default slot content can be a single host node containing nested children.
 
-```yumi
-<DefaultPanel panel
-    <MarkGroup
-        <MarkText = "one"
-        <MarkText = "two"
+```brix
+(main
+  (<> DefaultPanel (id: panel)
+    (<> MarkGroup
+      (<> MarkText (value: "one"))
+      (<> MarkText (value: "two"))
+    )
+  )
+  (blank)
+  (print (call count-children panel))
+  (print (call child-texts (!! (. panel %first-child))))
+)
 
--- count-children(panel)
--- child-texts(panel.%first-child!)
+(fn-do + child-texts String
+  (param node MarkNode)
+  (let parts (call (of List String)))
+  (for (in child (. node children))
+    (+= parts (. (as child MarkText) text))
+  )
+  (return (call (. "," join) parts))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do child-texts String
-    - node MarkNode
+(fn-do + count-children _
+  (param node MarkNode)
+  (let count 0)
+  (for (in child (. node children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-. parts = List'String()
-for child in node.children
-    parts += (child as MarkText).text
-= ",".join(parts)
+(type + MarkNode
+  (implements (of MarkupParent MarkNode))
+  (prop + parent (? MarkNode))
+  (prop + first-child (? MarkNode))
+  (prop + last-child (? MarkNode))
+  (prop + previous (? MarkNode))
+  (prop + next (? MarkNode))
+  (fn-do + children _ :get
+    (let maybe-child first-child)
+    (if maybe-child
+      (let child maybe-child)
+      (while true
+        (yield child)
+        (if (not (. child next))
+          (break)
+        )
+        (= child (. child next))
+      )
+    )
+  )
+  (fn-expr + markup-content MarkNode
+    (param child MarkNode)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child MarkNode)
+    (param anchor (? MarkNode))
+    (= (. child parent) this)
+    (if (not first-child)
+      (= first-child (= last-child child))
+      (else
+        (= (?. last-child next) child)
+        (= (. child previous) last-child)
+        (= last-child child)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - node MarkNode
+(type + MarkGroup (is MarkNode))
 
-. count = 0
-for child in node.children
-    count += 1
-= count
+(type + MarkText (is MarkNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
-
-+ parent MarkNode?
-+ first-child MarkNode?
-+ last-child MarkNode?
-+ previous MarkNode?
-+ next MarkNode?
-
-────────────────────
-+ do get children
-
-. maybe-child = first-child
-if maybe-child
-    . child = maybe-child
-    while true
-        <= child
-        if !child.next
-            break
-        child = child.next
-
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
-
-child
-
-────────────────────
-+ do markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-child.parent = this
-if !first-child
-    first-child = last-child = child
-else
-    last-child?.next = child
-    child.previous = last-child
-    last-child = child
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkGroup is MarkNode
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkText is MarkNode
-
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ DefaultPanel is MarkNode
-
-────────────────────
-+ <MarkNode
+(type + DefaultPanel (is MarkNode)
+  (content
+    (+<> MarkNode)
+  )
+)
 ```
 
 ```output
@@ -905,115 +910,114 @@ one,two
 
 ### Demonstrates inherited default slot routing and caller override precedence for the default slot.
 
-```yumi
-<DefaultSubPanel panel
+```brix
+(main
+  (<> DefaultSubPanel (id: panel))
+  (blank)
+  (print (call count-children panel))
+  (print (call text-at panel 0))
+  (print (call text-at panel 1))
+  (print (call text-at panel 2))
+  (blank)
+  (<> DefaultSubPanel (id: caller)
+    (<> MarkText (value: "caller body"))
+  )
+  (print (call text-at caller 0))
+  (print (call text-at caller 1))
+  (print (call text-at caller 2))
+)
 
--- count-children(panel)
--- text-at(panel, 0)
--- text-at(panel, 1)
--- text-at(panel, 2)
+(fn-expr + text-at String
+  (param node MarkNode)
+  (param index Index)
+  (. (as (!! (call (. node child-at) index)) MarkText) text)
+)
 
-<DefaultSubPanel caller
-    <MarkText = "caller body"
--- text-at(caller, 0)
--- text-at(caller, 1)
--- text-at(caller, 2)
+(fn-do + count-children _
+  (param node MarkNode)
+  (let count 0)
+  (for (in child (. node children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ text-at String
-    - node MarkNode
-    - index Index
+(type + MarkNode
+  (implements (of MarkupParent MarkNode))
+  (prop + parent (? MarkNode))
+  (prop + first-child (? MarkNode))
+  (prop + last-child (? MarkNode))
+  (prop + previous (? MarkNode))
+  (prop + next (? MarkNode))
+  (fn-do + children _ :get
+    (let maybe-child first-child)
+    (if maybe-child
+      (let child maybe-child)
+      (while true
+        (yield child)
+        (if (not (. child next))
+          (break)
+        )
+        (= child (. child next))
+      )
+    )
+  )
+  (fn-do + child-at (? MarkNode)
+    (param index Index)
+    (let cursor Index 0)
+    (for (in child children)
+      (if (== cursor index)
+        (return child)
+      )
+      (+= cursor 1)
+    )
+  )
+  (fn-expr + markup-content MarkNode
+    (param child MarkNode)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child MarkNode)
+    (param anchor (? MarkNode))
+    (= (. child parent) this)
+    (if (not first-child)
+      (= first-child (= last-child child))
+      (else
+        (= (?. last-child next) child)
+        (= (. child previous) last-child)
+        (= last-child child)
+      )
+    )
+  )
+)
 
-((node.child-at(index))! as MarkText).text
+(type + MarkText (is MarkNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - node MarkNode
+(type + BasePanel (is MarkNode)
+  (content
+    (+<> MarkText (id: header)
+      (<> MarkText (value: "base header"))
+    )
+    (+<> MarkNode
+      (<> MarkText (value: "base body"))
+    )
+    (blank)
+    (+<> MarkText (id: footer)
+      (<> MarkText (value: "base footer"))
+    )
+  )
+)
 
-. count = 0
-for child in node.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
-
-+ parent MarkNode?
-+ first-child MarkNode?
-+ last-child MarkNode?
-+ previous MarkNode?
-+ next MarkNode?
-
-────────────────────
-+ do get children
-
-. maybe-child = first-child
-if maybe-child
-    . child = maybe-child
-    while true
-        <= child
-        if !child.next
-            break
-        child = child.next
-
-────────────────────
-+ do child-at MarkNode?
-    - index Index
-
-. cursor Index = 0
-for child in children
-    if cursor == index
-        = child
-    cursor += 1
-
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
-
-child
-
-────────────────────
-+ do markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-child.parent = this
-if !first-child
-    first-child = last-child = child
-else
-    last-child?.next = child
-    child.previous = last-child
-    last-child = child
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkText is MarkNode
-
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ BasePanel is MarkNode
-
-────────────────────
-+ <MarkText header
-    <MarkText = "base header"
-
-+ <MarkNode
-    <MarkText = "base body"
-
-+ <MarkText footer
-    <MarkText = "base footer"
-
-━━━━━━━━━━━━━━━━━━━━
-+ DefaultSubPanel is BasePanel
-
-────────────────────
-
-<MarkText = "sub body"
+(type + DefaultSubPanel (is BasePanel)
+  (content
+    (<> MarkText (value: "sub body"))
+  )
+)
 ```
 
 ```output
@@ -1028,67 +1032,64 @@ base footer
 
 ### The lines of a class's markup that give the default slot of the class above make each element where it is written, and an element written with a name gives the class's property of the name its object.
 
-```yumi
-<Sub sub
--- sub.spare.label
+```brix
+(main
+  (<> Sub (id: sub))
+  (print (. sub spare label))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
+(type + MarkNode
+  (implements (of MarkupParent MarkNode))
+  (prop + parent (? MarkNode))
+  (prop + first-child (? MarkNode))
+  (prop + last-child (? MarkNode))
+  (prop + previous (? MarkNode))
+  (prop + next (? MarkNode))
+  (fn-expr + markup-content MarkNode
+    (param child MarkNode)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child MarkNode)
+    (param anchor (? MarkNode))
+    (= (. child parent) this)
+    (if (not first-child)
+      (= first-child (= last-child child))
+      (else
+        (= (?. last-child next) child)
+        (= (. child previous) last-child)
+        (= last-child child)
+      )
+    )
+  )
+)
 
-+ parent MarkNode?
-+ first-child MarkNode?
-+ last-child MarkNode?
-+ previous MarkNode?
-+ next MarkNode?
+(type + Note (is MarkNode)
+  (prop + label String)
+  (fn-do + This _
+    (param label String)
+    (print (str "made " label))
+  )
+)
 
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
+(type + Panel (is MarkNode)
+  (content
+    (<> This
+      (+<> MarkNode)
+    )
+  )
+)
 
-child
-
-────────────────────
-+ do markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-child.parent = this
-if !first-child
-    first-child = last-child = child
-else
-    last-child?.next = child
-    child.previous = last-child
-    last-child = child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Note is MarkNode
-
-+ label String
-
-────────────────────
-+ This
-    - label String
-
--- "made $label"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is MarkNode
-
-────────────────────
-
-<This
-    + <MarkNode
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub is Panel
-
-────────────────────
-
-<This
-    <Note "one"
-        <Note spare "two"
-    <Note "three"
+(type + Sub (is Panel)
+  (content
+    (<> This
+      (<> Note (text: "one")
+        (<> Note (id: spare) (text: "two"))
+      )
+      (<> Note (text: "three"))
+    )
+  )
+)
 ```
 
 ```output
@@ -1100,100 +1101,98 @@ two
 
 ### Demonstrates subclass-provided named slot defaults and caller override precedence.
 
-```yumi
-<SubPanel panel
--- text-at(panel, 0)
--- text-at(panel, 1)
+```brix
+(main
+  (<> SubPanel (id: panel))
+  (print (call text-at panel 0))
+  (print (call text-at panel 1))
+  (blank)
+  (<> SubPanel (id: caller)
+    (<> MarkText (slot: header) (value: "caller header"))
+  )
+  (print (call text-at caller 0))
+  (print (call text-at caller 1))
+)
 
-<SubPanel caller
-    <MarkText (header) = "caller header"
--- text-at(caller, 0)
--- text-at(caller, 1)
+(fn-expr + text-at String
+  (param node MarkNode)
+  (param index Index)
+  (. (as (!! (call (. node child-at) index)) MarkText) text)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ text-at String
-    - node MarkNode
-    - index Index
+(type + MarkNode
+  (implements (of MarkupParent MarkNode))
+  (prop + parent (? MarkNode))
+  (prop + first-child (? MarkNode))
+  (prop + last-child (? MarkNode))
+  (prop + previous (? MarkNode))
+  (prop + next (? MarkNode))
+  (fn-do + children _ :get
+    (let maybe-child first-child)
+    (if maybe-child
+      (let child maybe-child)
+      (while true
+        (yield child)
+        (if (not (. child next))
+          (break)
+        )
+        (= child (. child next))
+      )
+    )
+  )
+  (fn-do + child-at (? MarkNode)
+    (param index Index)
+    (let cursor Index 0)
+    (for (in child children)
+      (if (== cursor index)
+        (return child)
+      )
+      (+= cursor 1)
+    )
+  )
+  (fn-expr + markup-content MarkNode
+    (param child MarkNode)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child MarkNode)
+    (param anchor (? MarkNode))
+    (= (. child parent) this)
+    (if (not first-child)
+      (= first-child (= last-child child))
+      (else
+        (= (?. last-child next) child)
+        (= (. child previous) last-child)
+        (= last-child child)
+      )
+    )
+  )
+)
 
-((node.child-at(index))! as MarkText).text
+(type + MarkText (is MarkNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
+(type + BasePanel (is MarkNode)
+  (content
+    (+<> MarkText (id: header)
+      (<> MarkText (value: "base header"))
+    )
+    (+<> MarkNode
+      (<> MarkText (value: "base body"))
+    )
+  )
+)
 
-+ parent MarkNode?
-+ first-child MarkNode?
-+ last-child MarkNode?
-+ previous MarkNode?
-+ next MarkNode?
-
-────────────────────
-+ do get children
-
-. maybe-child = first-child
-if maybe-child
-    . child = maybe-child
-    while true
-        <= child
-        if !child.next
-            break
-        child = child.next
-
-────────────────────
-+ do child-at MarkNode?
-    - index Index
-
-. cursor Index = 0
-for child in children
-    if cursor == index
-        = child
-    cursor += 1
-
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
-
-child
-
-────────────────────
-+ do markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-child.parent = this
-if !first-child
-    first-child = last-child = child
-else
-    last-child?.next = child
-    child.previous = last-child
-    last-child = child
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkText is MarkNode
-
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ BasePanel is MarkNode
-
-────────────────────
-+ <MarkText header
-    <MarkText = "base header"
-
-+ <MarkNode
-    <MarkText = "base body"
-
-━━━━━━━━━━━━━━━━━━━━
-+ SubPanel is BasePanel
-
-────────────────────
-
-<MarkText (header) = "sub header"
-<MarkText = "sub body"
+(type + SubPanel (is BasePanel)
+  (content
+    (<> MarkText (slot: header) (value: "sub header"))
+    (<> MarkText (value: "sub body"))
+  )
+)
 ```
 
 ```output
@@ -1205,93 +1204,92 @@ sub body
 
 ### Demonstrates that subclasses can declare additional named slot outlets.
 
-```yumi
-<SubPanel panel
-    <MarkText (footer) = "caller footer"
--- text-at(panel, 0)
--- text-at(panel, 1)
--- text-at(panel, 2)
+```brix
+(main
+  (<> SubPanel (id: panel)
+    (<> MarkText (slot: footer) (value: "caller footer"))
+  )
+  (print (call text-at panel 0))
+  (print (call text-at panel 1))
+  (print (call text-at panel 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ text-at String
-    - node MarkNode
-    - index Index
+(fn-expr + text-at String
+  (param node MarkNode)
+  (param index Index)
+  (. (as (!! (call (. node child-at) index)) MarkText) text)
+)
 
-((node.child-at(index))! as MarkText).text
+(type + MarkNode
+  (implements (of MarkupParent MarkNode))
+  (prop + parent (? MarkNode))
+  (prop + first-child (? MarkNode))
+  (prop + last-child (? MarkNode))
+  (prop + previous (? MarkNode))
+  (prop + next (? MarkNode))
+  (fn-do + children _ :get
+    (let maybe-child first-child)
+    (if maybe-child
+      (let child maybe-child)
+      (while true
+        (yield child)
+        (if (not (. child next))
+          (break)
+        )
+        (= child (. child next))
+      )
+    )
+  )
+  (fn-do + child-at (? MarkNode)
+    (param index Index)
+    (let cursor Index 0)
+    (for (in child children)
+      (if (== cursor index)
+        (return child)
+      )
+      (+= cursor 1)
+    )
+  )
+  (fn-expr + markup-content MarkNode
+    (param child MarkNode)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child MarkNode)
+    (param anchor (? MarkNode))
+    (= (. child parent) this)
+    (if (not first-child)
+      (= first-child (= last-child child))
+      (else
+        (= (?. last-child next) child)
+        (= (. child previous) last-child)
+        (= last-child child)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
+(type + MarkText (is MarkNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-+ parent MarkNode?
-+ first-child MarkNode?
-+ last-child MarkNode?
-+ previous MarkNode?
-+ next MarkNode?
+(type + BasePanel (is MarkNode)
+  (content
+    (+<> MarkText (id: header)
+      (<> MarkText (value: "base header"))
+    )
+  )
+)
 
-────────────────────
-+ do get children
-
-. maybe-child = first-child
-if maybe-child
-    . child = maybe-child
-    while true
-        <= child
-        if !child.next
-            break
-        child = child.next
-
-────────────────────
-+ do child-at MarkNode?
-    - index Index
-
-. cursor Index = 0
-for child in children
-    if cursor == index
-        = child
-    cursor += 1
-
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
-
-child
-
-────────────────────
-+ do markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-child.parent = this
-if !first-child
-    first-child = last-child = child
-else
-    last-child?.next = child
-    child.previous = last-child
-    last-child = child
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkText is MarkNode
-
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ BasePanel is MarkNode
-
-────────────────────
-+ <MarkText header
-    <MarkText = "base header"
-
-━━━━━━━━━━━━━━━━━━━━
-+ SubPanel is BasePanel
-
-────────────────────
-+ <MarkText footer
-<MarkText = "sub body"
+(type + SubPanel (is BasePanel)
+  (content
+    (+<> MarkText (id: footer))
+    (<> MarkText (value: "sub body"))
+  )
+)
 ```
 
 ```output
@@ -1302,176 +1300,173 @@ sub body
 
 ### Demonstrates that subclasses cannot redeclare inherited slot outlets.
 
-```yumi crash
-<SubPanel panel
+```brix crash
+(main
+  (<> SubPanel (id: panel))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
+(type + MarkNode
+  (implements (of MarkupParent MarkNode))
+  (fn-expr + markup-content MarkNode
+    (param child MarkNode)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child MarkNode)
+    (param anchor (? MarkNode))
+  )
+)
 
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
+(type + MarkText (is MarkNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-child
+(type + BasePanel (is MarkNode)
+  (content
+    (+<> MarkText (id: header))
+  )
+)
 
-────────────────────
-+ do markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkText is MarkNode
-
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ BasePanel is MarkNode
-
-────────────────────
-+ <MarkText header
-
-━━━━━━━━━━━━━━━━━━━━
-+ SubPanel is BasePanel
-
-────────────────────
-+ <MarkText header
+(type + SubPanel (is BasePanel)
+  (content
+    (+<> MarkText (id: header))
+  )
+)
 ```
 
 ```output
 Exception: Duplicate slot outlet
-<no file:38>
-    + <MarkText header
-    ^^^^^^^^^^^^^^^^^^
+<no file:33>
+        (+<> MarkText (id: header))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Demonstrates recursive slot signature discovery reports a diagnostic instead of recursing.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<RecursivePanel
-    <TextBox (header) = "caller"
+(main
+  (<> RecursivePanel
+    (<> TextBox (slot: header) (value: "caller"))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RecursivePanel is Box
-
-────────────────────
-
-<This
-    <RecursivePanel
-        <+ (header)
-    + <Box header
+(type + RecursivePanel (is Box)
+  (content
+    (<> This
+      (<> RecursivePanel
+        (<+ header)
+      )
+      (+<> Box (id: header))
+    )
+  )
+)
 ```
 
 ```output
 Exception: Recursive markup slot signature discovery for RecursivePanel
-<no file:13>
-        <RecursivePanel
-        ^^^^^^^^^^^^^^
+<no file:14>
+          (<> RecursivePanel
+          ^^^^^^^^^^^^^^^^^
 ```
 
 ### Demonstrates that subclass body content appends as ordinary child content when the base has no default slot.
 
-```yumi
-<ChildSubPanel panel
--- count-children(panel)
--- text-at(panel, 0)
--- text-at(panel, 1)
+```brix
+(main
+  (<> ChildSubPanel (id: panel))
+  (print (call count-children panel))
+  (print (call text-at panel 0))
+  (print (call text-at panel 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ text-at String
-    - node MarkNode
-    - index Index
+(fn-expr + text-at String
+  (param node MarkNode)
+  (param index Index)
+  (. (as (!! (call (. node child-at) index)) MarkText) text)
+)
 
-((node.child-at(index))! as MarkText).text
+(fn-do + count-children _
+  (param node MarkNode)
+  (let count 0)
+  (for (in child (. node children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - node MarkNode
+(type + MarkNode
+  (implements (of MarkupParent MarkNode))
+  (prop + parent (? MarkNode))
+  (prop + first-child (? MarkNode))
+  (prop + last-child (? MarkNode))
+  (prop + previous (? MarkNode))
+  (prop + next (? MarkNode))
+  (fn-do + children _ :get
+    (let maybe-child first-child)
+    (if maybe-child
+      (let child maybe-child)
+      (while true
+        (yield child)
+        (if (not (. child next))
+          (break)
+        )
+        (= child (. child next))
+      )
+    )
+  )
+  (fn-do + child-at (? MarkNode)
+    (param index Index)
+    (let cursor Index 0)
+    (for (in child children)
+      (if (== cursor index)
+        (return child)
+      )
+      (+= cursor 1)
+    )
+  )
+  (fn-expr + markup-content MarkNode
+    (param child MarkNode)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child MarkNode)
+    (param anchor (? MarkNode))
+    (= (. child parent) this)
+    (if (not first-child)
+      (= first-child (= last-child child))
+      (else
+        (= (?. last-child next) child)
+        (= (. child previous) last-child)
+        (= last-child child)
+      )
+    )
+  )
+)
 
-. count = 0
-for child in node.children
-    count += 1
-= count
+(type + MarkText (is MarkNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
+(type + ShellPanel (is MarkNode)
+  (content
+    (<> MarkText (value: "base shell"))
+  )
+)
 
-+ parent MarkNode?
-+ first-child MarkNode?
-+ last-child MarkNode?
-+ previous MarkNode?
-+ next MarkNode?
-
-────────────────────
-+ do get children
-
-. maybe-child = first-child
-if maybe-child
-    . child = maybe-child
-    while true
-        <= child
-        if !child.next
-            break
-        child = child.next
-
-────────────────────
-+ do child-at MarkNode?
-    - index Index
-
-. cursor Index = 0
-for child in children
-    if cursor == index
-        = child
-    cursor += 1
-
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
-
-child
-
-────────────────────
-+ do markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-child.parent = this
-if !first-child
-    first-child = last-child = child
-else
-    last-child?.next = child
-    child.previous = last-child
-    last-child = child
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkText is MarkNode
-
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ ShellPanel is MarkNode
-
-────────────────────
-
-<MarkText = "base shell"
-
-━━━━━━━━━━━━━━━━━━━━
-+ ChildSubPanel is ShellPanel
-
-────────────────────
-
-<MarkText = "sub child"
+(type + ChildSubPanel (is ShellPanel)
+  (content
+    (<> MarkText (value: "sub child"))
+  )
+)
 ```
 
 ```output
@@ -1480,266 +1475,175 @@ base shell
 sub child
 ```
 
-### Demonstrates that legacy slot element syntax is rejected.
-
-```yumi crash
-<Panel panel
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel
-
-────────────────────
-<slot
-```
-
-```output
-Exception: Syntax error
-<no file:8>
-    <slot
-```
-
-### Demonstrates that legacy nested slot element syntax is rejected.
-
-```yumi crash
-<Panel
-    <header
-        <MarkText = "a"
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
-
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
-
-child
-
-────────────────────
-+ do markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkText is MarkNode
-
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is MarkNode
-
-────────────────────
-+ <MarkText header
-```
-
-```output
-Exception: Syntax error
-<no file:3>
-        <header
-               ^
-```
-
 ### Demonstrates that a caller cannot provide duplicate content for the same slot.
 
-```yumi crash
-<Panel
-    <MarkText (header) = "a"
-    <MarkText (header) = "b"
+```brix crash
+(main
+  (<> Panel
+    (<> MarkText (slot: header) (value: "a"))
+    (<> MarkText (slot: header) (value: "b"))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
+(type + MarkNode
+  (implements (of MarkupParent MarkNode))
+  (fn-expr + markup-content MarkNode
+    (param child MarkNode)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child MarkNode)
+    (param anchor (? MarkNode))
+  )
+)
 
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
+(type + MarkText (is MarkNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-child
-
-────────────────────
-+ do markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkText is MarkNode
-
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is MarkNode
-
-────────────────────
-+ <MarkText header
+(type + Panel (is MarkNode)
+  (content
+    (+<> MarkText (id: header))
+  )
+)
 ```
 
 ```output
 Exception: Duplicate slot content
-<no file:4>
-        <MarkText (header) = "b"
-                   ^^^^^^
+<no file:5>
+        (<> MarkText (slot: header) (value: "b"))
+                            ^^^^^^
 ```
 
 ### Demonstrates that a caller cannot provide content for an undeclared slot.
 
-```yumi crash
-<Panel
-    <MarkText (footer) = "x"
+```brix crash
+(main
+  (<> Panel
+    (<> MarkText (slot: footer) (value: "x"))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
+(type + MarkNode
+  (implements (of MarkupParent MarkNode))
+  (fn-expr + markup-content MarkNode
+    (param child MarkNode)
+    child
+  )
+  (fn-expr + markup-attach-child _
+    (param child MarkNode)
+    (param anchor (? MarkNode))
+  )
+)
 
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
+(type + MarkText (is MarkNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-child
-
-────────────────────
-+ markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkText is MarkNode
-
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is MarkNode
-
-────────────────────
-+ <MarkText header
+(type + Panel (is MarkNode)
+  (content
+    (+<> MarkText (id: header))
+  )
+)
 ```
 
 ```output
 Exception: Unknown slot
-<no file:3>
-        <MarkText (footer) = "x"
-                   ^^^^^^
-```
-
-### Demonstrates that slot declarations reject same-line property assignments.
-
-```yumi crash
-+ Box
-+ flex Int
-+ color Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel
-
-────────────────────
-+ <Box body flex = 1
-```
-
-```output
-Exception: Syntax error
-<no file:10>
-    + <Box body flex = 1
-                ^
+<no file:4>
+        (<> MarkText (slot: footer) (value: "x"))
+                            ^^^^^^
 ```
 
 ### Root <This> unwraps before inherited slot default routing.
 
-```yumi
-<ChildPanel panel
+```brix
+(main
+  (<> ChildPanel (id: panel))
+  (blank)
+  (print (call text-at panel 0))
+  (print (call text-at panel 1))
+)
 
--- text-at(panel, 0)
--- text-at(panel, 1)
+(fn-expr + text-at String
+  (param node MarkNode)
+  (param index Index)
+  (. (as (!! (call (. node child-at) index)) MarkText) text)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ text-at String
-    - node MarkNode
-    - index Index
+(type + MarkNode
+  (implements (of MarkupParent MarkNode))
+  (prop + first-child (? MarkNode))
+  (prop + last-child (? MarkNode))
+  (prop + previous (? MarkNode))
+  (prop + next (? MarkNode))
+  (fn-do + children _ :get
+    (let maybe-child first-child)
+    (if maybe-child
+      (let child maybe-child)
+      (while true
+        (yield child)
+        (if (not (. child next))
+          (break)
+        )
+        (= child (. child next))
+      )
+    )
+  )
+  (fn-do + child-at (? MarkNode)
+    (param index Index)
+    (let cursor Index 0)
+    (for (in child children)
+      (if (== cursor index)
+        (return child)
+      )
+      (+= cursor 1)
+    )
+  )
+  (fn-expr + markup-content MarkNode
+    (param child MarkNode)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child MarkNode)
+    (param anchor (? MarkNode))
+    (if (not first-child)
+      (= first-child (= last-child child))
+      (else
+        (= (?. last-child next) child)
+        (= (. child previous) last-child)
+        (= last-child child)
+      )
+    )
+  )
+)
 
-((node.child-at(index))! as MarkText).text
+(type + MarkText (is MarkNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
+(type + BasePanel (is MarkNode)
+  (content
+    (+<> MarkText (id: header))
+  )
+)
 
-+ first-child MarkNode?
-+ last-child MarkNode?
-+ previous MarkNode?
-+ next MarkNode?
-
-────────────────────
-+ do get children
-
-. maybe-child = first-child
-if maybe-child
-    . child = maybe-child
-    while true
-        <= child
-        if !child.next
-            break
-        child = child.next
-
-────────────────────
-+ do child-at MarkNode?
-    - index Index
-
-. cursor Index = 0
-for child in children
-    if cursor == index
-        = child
-    cursor += 1
-
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
-
-child
-
-────────────────────
-+ do markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-if !first-child
-    first-child = last-child = child
-else
-    last-child?.next = child
-    child.previous = last-child
-    last-child = child
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkText is MarkNode
-
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ BasePanel is MarkNode
-
-────────────────────
-+ <MarkText header
-
-━━━━━━━━━━━━━━━━━━━━
-+ ChildPanel is BasePanel
-
-────────────────────
-
-<This
-    <MarkText (header) = "Root"
-    <MarkText = "Body"
+(type + ChildPanel (is BasePanel)
+  (content
+    (<> This
+      (<> MarkText (slot: header) (value: "Root"))
+      (<> MarkText (value: "Body"))
+    )
+  )
+)
 ```
 
 ```output
@@ -1749,43 +1653,48 @@ Body
 
 ### Component-authored named slot content can wrap supplied content in an identified node without requiring that id to exist in the caller scope.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<ConfirmLike confirm
+(main
+  (<> ConfirmLike (id: confirm))
+  (blank)
+  (let actions Box (!! (call (. confirm child-at) 0)))
+  (let ok (call first-text-descendant actions))
+  (print (. ok text))
+)
 
-. actions Box = (confirm.child-at(0))!
-. ok = first-text-descendant(actions)
--- ok.text
+(type + DialogLike (is Box)
+  (content
+    (<> This
+      (+<> Box (id: actions)
+        (<> Box)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ DialogLike is Box
+(type + ConfirmLike (is DialogLike)
+  (content
+    (<> This
+      (<> Box (slot: actions)
+        (<> TextBox (id: ok) (value: "OK"))
+      )
+    )
+  )
+)
 
-────────────────────
-
-<This
-    + <Box actions
-        <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ ConfirmLike is DialogLike
-
-────────────────────
-
-<This
-    <Box (actions)
-        <TextBox ok = "OK"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do first-text-descendant TextBox
-    - box Box
-
-. first = (box.child-at(0))!
-if first is TextBox
-    = first as TextBox
-. wrapper = first as Box
-= (wrapper.child-at(0))! as TextBox
+(fn-do + first-text-descendant TextBox
+  (param box Box)
+  (let first (!! (call (. box child-at) 0)))
+  (if (is first TextBox)
+    (return (as first TextBox))
+  )
+  (let wrapper (as first Box))
+  (return (as (!! (call (. wrapper child-at) 0)) TextBox))
+)
 ```
 
 ```output
@@ -1794,55 +1703,58 @@ OK
 
 ### A rebindable repeated-slot scope updates tracked reads without rebuilding the physical row, and a closure that reads the stable scope directly observes its current item when invoked.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items = List'RowData([RowData("a"), RowData("b")])
-<RebindPanel'RowData panel
-    items = items
-    <RebindCommandRow (row) - slot
-        text = slot.#item.text
-        command = => slot.item.text
+(main
+  (let items (call (of List RowData) (list (call RowData "a") (call RowData "b"))))
+  (<> (of RebindPanel RowData) (id: panel)
+    (= items items)
+    (<> RebindCommandRow (slot: row) (param: slot)
+      (= text (. slot #item text))
+      (= command (=> () (. slot item text)))
+    )
+  )
+  (blank)
+  (let region (!! (. panel %first-child)))
+  (let first (as (!! (. region %first-child)) RebindCommandRow))
+  (= (. first uid) 41)
+  (print (call row-texts panel))
+  (print (. first uid))
+  (blank)
+  (call (. panel rebind) 0 10 100 (call RowData "x"))
+  (call (. panel markup-batch-queue checkpoint))
+  (blank)
+  (let rebound (as (!! (. region %first-child)) RebindCommandRow))
+  (print (call row-texts panel))
+  (print (. rebound uid))
+  (print (call (!! (. rebound command))))
+)
 
-. region = panel.%first-child!
-. first = region.%first-child! as RebindCommandRow
-first.uid = 41
--- row-texts(panel)
--- first.uid
+(type + RowData
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-panel.rebind(0, 10, 100, RowData("x"))
-panel.markup-batch-queue.checkpoint()
+(type + RebindCommandRow (is TextBox)
+  (prop + uid U64 (= 0))
+  (prop + command (? (of Getter String)))
+)
 
-. rebound = region.%first-child! as RebindCommandRow
--- row-texts(panel)
--- rebound.uid
--- (rebound.command!)()
-
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
-
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ RebindCommandRow is TextBox
-
-+ uid U64 = 0
-+ command Getter'String?
-
-━━━━━━━━━━━━━━━━━━━━
-+ do row-texts String
-    - panel Box
-
-. texts [String] = List'String()
-. row-region = panel.%first-child
-if row-region
-    for child in row-region.children
-        texts += (child as TextBox).text
-= ",".join(texts)
+(fn-do + row-texts String
+  (param panel Box)
+  (let texts (list String) (call (of List String)))
+  (let row-region (. panel %first-child))
+  (if row-region
+    (for (in child (. row-region children))
+      (+= texts (. (as child TextBox) text))
+    )
+  )
+  (return (call (. "," join) texts))
+)
 ```
 
 ```output
@@ -1855,65 +1767,73 @@ x
 
 ### Branches, nested loops, and styles all re-evaluate from one stable rebindable scope.
 
-```yumi
-/core/tests/support/markup-fixtures
-/core/style
+```brix
+(import /core/tests/support/markup-fixtures)
+(import /core/style)
+(blank)
 
-. items = List'RebindComplexData([RebindComplexData(true, List'String(["a", "b"])), RebindComplexData(false, List'String(["z"]))])
-<RebindPanel'RebindComplexData panel
-    items = items
-    <RebindComplexRow (row) - slot
-        address = slot.#address
-        if slot.#item.flag
-            <TextBox = "on"
-        else
-            <TextBox = "off"
-        for part in slot.#item.parts
-            <TextBox = part
+(main
+  (let items (call (of List RebindComplexData) (list (call RebindComplexData true (call (of List String) (list "a" "b"))) (call RebindComplexData false (call (of List String) (list "z"))))))
+  (<> (of RebindPanel RebindComplexData) (id: panel)
+    (= items items)
+    (<> RebindComplexRow (slot: row) (param: slot)
+      (= address (. slot #address))
+      (if (. slot #item flag)
+        (<> TextBox (value: "on"))
+        (else
+          (<> TextBox (value: "off"))
+        )
+      )
+      (for (in part (. slot #item parts))
+        (<> TextBox (value: part))
+      )
+    )
+  )
+  (blank)
+  (let region (!! (. panel %first-child)))
+  (let row (as (!! (. region %first-child)) RebindComplexRow))
+  (print (str (. row $address) ":" (call descendant-texts row)))
+  (blank)
+  (call (. panel rebind) 0 9 90 (call RebindComplexData false (call (of List String) (list "x"))))
+  (call (. panel markup-batch-queue checkpoint))
+  (print (str (. row $address) ":" (call descendant-texts row)))
+)
 
-. region = panel.%first-child!
-. row = region.%first-child! as RebindComplexRow
--- "${row.$address}:${descendant-texts(row)}"
+(type + RebindComplexData
+  (prop + flag Bool)
+  (prop + parts (list String))
+  (fn-do + This _
+    (param flag _)
+    (param parts _)
+  )
+)
 
-panel.rebind(0, 9, 90, RebindComplexData(false, List'String(["x"])))
-panel.markup-batch-queue.checkpoint()
--- "${row.$address}:${descendant-texts(row)}"
+(type + RebindAddressStyle (is Style)
+  (prop + address I64 (= 0))
+  (blank)
+  (style-domains address (domain paint))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RebindComplexData
+(type + RebindComplexRow (is Box)
+  (using RebindAddressStyle)
+)
 
-+ flag Bool
-+ parts [String]
-
-────────────────────
-+ This
-    - flag
-    - parts
-
-━━━━━━━━━━━━━━━━━━━━
-+ RebindAddressStyle is Style
-
-+ address I64 = 0
-
-. address -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ RebindComplexRow is Box
-    using RebindAddressStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ do descendant-texts String
-    - box Box
-
-. texts [String] = List'String()
-for child in box.children
-    if child is TextBox
-        texts += (child as TextBox).text
-    else
-        . nested = descendant-texts(child)
-        if nested
-            texts += nested
-= "|".join(texts)
+(fn-do + descendant-texts String
+  (param box Box)
+  (let texts (list String) (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= texts (. (as child TextBox) text))
+      (else
+        (let nested (call descendant-texts child))
+        (if nested
+          (+= texts nested)
+        )
+      )
+    )
+  )
+  (return (call (. "|" join) texts))
+)
 ```
 
 ```output
@@ -1923,73 +1843,85 @@ for child in box.children
 
 ### Untracked long-lived reads of a rebindable slot scope are rejected at the member access.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<RebindPanel'RowData
-    items = List'RowData([RowData("a")])
-    <TextBox (row) - slot = slot.item.text
+(main
+  (<> (of RebindPanel RowData)
+    (= items (call (of List RowData) (list (call RowData "a"))))
+    (<> TextBox (slot: row) (param: slot) (value: (. slot item text)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
-
-+ text String
-
-────────────────────
-+ This
-    - text
+(type + RowData
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 ```
 
 ```output
 Exception: Rebindable slot scope reads must be tracked as slot.#item; use an explicit snapshot inside do for a stable value
-<no file:6>
-        <TextBox (row) - slot = slot.item.text
-                                    ^^^^^
+<no file:8>
+        (<> TextBox (slot: row) (param: slot) (value: (. slot item text)))
+                                                             ^^^^^
 ```
 
 ### Closure locals and parameters may shadow a rebindable-scope-derived outer local.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<RebindPanel'RowData panel
-    items = List'RowData([RowData("a")])
-    <ShadowCaptureRow (row) - slot
-        . text = slot.#item.text
-        eager = => do
-            . text = "eager"
-            = text
-        parameter = :: text String => text
-        nested = => do
-            . text = "nested"
-            . read = => text
-            = read()
+(main
+  (<> (of RebindPanel RowData) (id: panel)
+    (= items (call (of List RowData) (list (call RowData "a"))))
+    (<> ShadowCaptureRow (slot: row) (param: slot)
+      (let text (. slot #item text))
+      (= eager
+        (=> () :do
+          (block
+            (let text "eager")
+            (return text)
+          )
+        )
+      )
+      (= parameter (=> ((: text String)) text))
+      (= nested
+        (=> () :do
+          (block
+            (let text "nested")
+            (let read (=> () text))
+            (return (call read))
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (let region (!! (. panel %first-child)))
+  (let row (as (!! (. region %first-child)) ShadowCaptureRow))
+  (print (call (!! (. row eager))))
+  (print (call (!! (. row parameter)) "parameter"))
+  (print (call (!! (. row nested))))
+)
 
-. region = panel.%first-child!
-. row = region.%first-child! as ShadowCaptureRow
--- (row.eager!)()
--- (row.parameter!)("parameter")
--- (row.nested!)()
+(type + RowData
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
+(type + TextMapper (is (fn-type String (param text String))))
 
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextMapper is () String
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ ShadowCaptureRow is Box
-
-+ eager Getter'String?
-+ parameter TextMapper?
-+ nested Getter'String?
+(type + ShadowCaptureRow (is Box)
+  (prop + eager (? (of Getter String)))
+  (prop + parameter (? TextMapper))
+  (prop + nested (? (of Getter String)))
+)
 ```
 
 ```output
@@ -2000,93 +1932,104 @@ nested
 
 ### Eager values derived from a rebindable scope cannot escape in an event-style closure.
 
-```yumi warn crash
-/core/tests/support/markup-fixtures
+```brix warn crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<RebindPanel'RowData
-    items = List'RowData([RowData("a")])
-    <CaptureRow (row) - slot
-        . text = slot.#item.text
-        command = => do
-            if false
-                . text = "unrelated"
-            = text
+(main
+  (<> (of RebindPanel RowData)
+    (= items (call (of List RowData) (list (call RowData "a"))))
+    (<> CaptureRow (slot: row) (param: slot)
+      (let text (. slot #item text))
+      (= command
+        (=> () :do
+          (block
+            (if false
+              (let text "unrelated")
+            )
+            (return text)
+          )
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
+(type + RowData
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ CaptureRow is Box
-
-+ command Getter'String
+(type + CaptureRow (is Box)
+  (prop + command (of Getter String))
+)
 ```
 
 ```output
 Exception: Local text derived from rebindable slot scope slot cannot escape into a closure; read slot directly in the closure or take an explicit snapshot inside do
-<no file:11>
-                = text
-                  ^^^^
+<no file:16>
+                (return text)
+                        ^^^^
 ```
 
 ### Closures in supplied slot content may refer to the slot host's own markup id; the id resolves to the owning class property when the closure runs.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
--- demo.run()
+(main
+  (<> Demo (id: demo))
+  (print (call (. demo run)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
+(type + Demo (is Box)
+  (content
+    (<> This
+      (<> Holder (id: panel)
+        (<> Clicker (slot: actions)
+          (= action (=> () :do (+= (. panel hits) 1)))
+        )
+      )
+    )
+  )
+  (fn-do + run _
+    (let callback (. (!! (call find-clicker panel)) action))
+    (if callback
+      (call callback)
+    )
+    (return (. panel hits))
+  )
+)
 
-────────────────────
+(type + Holder (is Box)
+  (prop + hits _ (= 0))
+  (content
+    (<> This
+      (+<> Box (id: actions))
+    )
+  )
+)
 
-<This
-    <Holder panel
-        <Clicker (actions)
-            action = => do panel.hits += 1
+(type + Clicker (is Box)
+  (prop + action (? Doer))
+)
 
-────────────────────
-+ do run
-
-. callback = find-clicker(panel)!.action
-if callback
-    callback()
-= panel.hits
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-+ hits = 0
-
-────────────────────
-
-<This
-    + <Box actions
-
-
-━━━━━━━━━━━━━━━━━━━━
-+ Clicker is Box
-
-+ action Doer?
-
-━━━━━━━━━━━━━━━━━━━━
-+ do find-clicker Clicker?
-    - node Box
-
-if node is Clicker
-    = node as Clicker
-for child in node.children
-    if child is Box
-        . found = find-clicker(child as Box)
-        =? found if found
-= null
+(fn-do + find-clicker (? Clicker)
+  (param node Box)
+  (if (is node Clicker)
+    (return (as node Clicker))
+  )
+  (for (in child (. node children))
+    (if (is child Box)
+      (let found (call find-clicker (as child Box)))
+      (return-if found (if found))
+    )
+  )
+  (return null)
+)
 ```
 
 ```output
@@ -2095,31 +2038,35 @@ for child in node.children
 
 ### A closure in a named element of top-level markup may read an earlier named element whose class has slots it gives no content to.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Box root
-    <Holder holder
-        hits = 4
-    <Trigger trigger
-        action = => do -- holder.hits
+(main
+  (<> Box (id: root)
+    (<> Holder (id: holder)
+      (= hits 4)
+    )
+    (<> Trigger (id: trigger)
+      (= action (=> () :do (print (. holder hits))))
+    )
+  )
+  (blank)
+  (call (. trigger action))
+)
 
-trigger.action()
+(type + Holder (is Box)
+  (prop + hits _ (= 0))
+  (content
+    (<> This
+      (+<> Box (id: actions))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-+ hits = 0
-
-────────────────────
-
-<This
-    + <Box actions
-
-━━━━━━━━━━━━━━━━━━━━
-+ Trigger is Box
-
-+ action Doer = => do -- "none"
+(type + Trigger (is Box)
+  (prop + action Doer (= (=> () :do (print "none"))))
+)
 ```
 
 ```output
@@ -2128,70 +2075,70 @@ trigger.action()
 
 ### A closure may refer to a slot host declared later in the same content; the reference reads the owning class property when the closure runs instead of constructing the host early.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
--- demo.run()
+(main
+  (<> Demo (id: demo))
+  (print (call (. demo run)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
+(type + Demo (is Box)
+  (prop + hits _ (= 0))
+  (content
+    (<> This
+      (<> Clicker
+        (= action (=> () :do (call (. panel fire))))
+      )
+      (<> Holder (id: panel)
+        (<> Box (slot: body)
+          (<> TextBox (id: field) (value: "hello"))
+        )
+      )
+    )
+  )
+  (subscribe-for (on value (. panel fired))
+    (+= hits (. field text length))
+  )
+  (fn-do + run _
+    (let callback (. (!! (call find-clicker this)) action))
+    (if callback
+      (call callback)
+    )
+    (return hits)
+  )
+)
 
-+ hits = 0
+(type + Holder (is Box)
+  (event + fired Bool)
+  (content
+    (<> This
+      (+<> Box (id: body))
+    )
+  )
+  (fn-do + fire _
+    (<- fired true)
+  )
+)
 
-────────────────────
+(type + Clicker (is Box)
+  (prop + action (? Doer))
+)
 
-<This
-    <Clicker
-        action = => do panel.fire()
-    <Holder panel
-        <Box (body)
-            <TextBox field = "hello"
-
-────────────────────
-for value on panel.fired
-
-hits += field.text.length
-
-────────────────────
-+ do run
-
-. callback = find-clicker(this)!.action
-if callback
-    callback()
-= hits
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-+ event fired Bool
-
-────────────────────
-
-<This
-    + <Box body
-
-────────────────────
-+ do fire
-
-fired <- true
-
-━━━━━━━━━━━━━━━━━━━━
-+ Clicker is Box
-
-+ action Doer?
-
-━━━━━━━━━━━━━━━━━━━━
-+ do find-clicker Clicker?
-    - node Box
-
-if node is Clicker
-    = node as Clicker
-for child in node.children
-    if child is Box
-        . found = find-clicker(child as Box)
-        =? found if found
-= null
+(fn-do + find-clicker (? Clicker)
+  (param node Box)
+  (if (is node Clicker)
+    (return (as node Clicker))
+  )
+  (for (in child (. node children))
+    (if (is child Box)
+      (let found (call find-clicker (as child Box)))
+      (return-if found (if found))
+    )
+  )
+  (return null)
+)
 ```
 
 ```output
@@ -2200,67 +2147,71 @@ for child in node.children
 
 ### A repeated slot outlet inside a keyed row rebuilds its caller content when the row item is replaced by a new object under the same key, while the physical row is preserved. Arguments passed through a derived local follow the replacement too.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items = List'RowData([RowData("a", "A"), RowData("b", "B")])
-<KeyedSlotPanel panel
-    items = items
-    <TextBox (row) - item = item.text
-    <TextBox (label) - item = "${item.text}~"
+(main
+  (let items (call (of List RowData) (list (call RowData "a" "A") (call RowData "b" "B"))))
+  (<> KeyedSlotPanel (id: panel)
+    (= items items)
+    (<> TextBox (slot: row) (param: item) (value: (. item text)))
+    (<> TextBox (slot: label) (param: item) (value: (str (. item text) "~")))
+  )
+  (blank)
+  (let region (!! (. panel %first-child)))
+  (let first (!! (. region %first-child)))
+  (print (call slot-texts panel))
+  (= ([] items 0) (call RowData "a" "Z"))
+  (print (call slot-texts panel))
+  (print (if-expr (== first (!! (. region %first-child))) "preserved" "lost"))
+  (= ([] items 1) (call RowData "b" "B"))
+  (print (call slot-texts panel))
+)
 
-. region = panel.%first-child!
-. first = region.%first-child!
--- slot-texts(panel)
-items[0] = RowData("a", "Z")
--- slot-texts(panel)
--- if first == region.%first-child! then "preserved" else "lost"
-items[1] = RowData("b", "B")
--- slot-texts(panel)
+(type + RowData
+  (prop + id String)
+  (prop + text String)
+  (fn-do + This _
+    (param id String)
+    (param text String)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
+(type + KeyedSlotPanel (is Box)
+  (prop + items (list RowData) (= (call (of List RowData))))
+  (content
+    (<> This
+      (for (in item #items (keyed-by (. item id)))
+        (let same item)
+        (<> Box
+          (+<> Box (id: row) (param: item RowData))
+          (+<> Box (id: label) (param: same RowData))
+        )
+      )
+    )
+  )
+)
 
-+ id String
-+ text String
+(fn-do + slot-texts String
+  (param panel Box)
+  (let parts (list String) (call (of List String)))
+  (for (in child (. (!! (. panel %first-child)) children))
+    (for (in slot (. (as child Box) children))
+      (+= parts (call text-in (as slot Box)))
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
-────────────────────
-+ This
-    - id String
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ KeyedSlotPanel is Box
-
-+ items [RowData] = List'RowData()
-
-────────────────────
-
-<This
-    for item in #items keyed by item.id
-        . same = item
-        <Box
-            + <Box row - item RowData
-            + <Box label - same RowData
-
-━━━━━━━━━━━━━━━━━━━━
-+ do slot-texts String
-    - panel Box
-
-. parts [String] = List'String()
-for child in panel.%first-child!.children
-    for slot in (child as Box).children
-        parts += text-in(slot as Box)
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do text-in String
-    - box Box
-
-=? (box as TextBox).text if box is TextBox
-for child in box.children
-    = text-in(child as Box)
-= ""
+(fn-do + text-in String
+  (param box Box)
+  (return-if (. (as box TextBox) text) (if (is box TextBox)))
+  (for (in child (. box children))
+    (return (call text-in (as child Box)))
+  )
+  (return "")
+)
 ```
 
 ```output
@@ -2272,66 +2223,70 @@ Z,Z~,B,B~
 
 ### Slot outlets under an `if` in a keyed markup row, one plain and one that rebuilds on the row's item, come and go with the condition.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items = List'RowData([RowData("a", "A"), RowData("b", "B")])
-<KeyedSlotPanel panel
-    items = items
-    <TextBox (mark) = "*"
-    <TextBox (label) - item = item.text
+(main
+  (let items (call (of List RowData) (list (call RowData "a" "A") (call RowData "b" "B"))))
+  (<> KeyedSlotPanel (id: panel)
+    (= items items)
+    (<> TextBox (slot: mark) (value: "*"))
+    (<> TextBox (slot: label) (param: item) (value: (. item text)))
+  )
+  (blank)
+  (print (call slot-texts panel))
+  (= (. panel show) false)
+  (print (call slot-texts panel))
+  (= ([] items 0) (call RowData "a" "Z"))
+  (= (. panel show) true)
+  (print (call slot-texts panel))
+)
 
--- slot-texts(panel)
-panel.show = false
--- slot-texts(panel)
-items[0] = RowData("a", "Z")
-panel.show = true
--- slot-texts(panel)
+(type + RowData
+  (prop + id String)
+  (prop + text String)
+  (fn-do + This _
+    (param id String)
+    (param text String)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
+(type + KeyedSlotPanel (is Box)
+  (prop + items (list RowData) (= (call (of List RowData))))
+  (prop + show _ (= true))
+  (content
+    (<> This
+      (for (in item #items (keyed-by (. item id)))
+        (<> Box
+          (if #show
+            (+<> Box (id: mark))
+            (+<> Box (id: label) (param: item RowData))
+          )
+        )
+      )
+    )
+  )
+)
 
-+ id String
-+ text String
+(fn-do + slot-texts String
+  (param panel Box)
+  (let parts (list String) (call (of List String)))
+  (for (in row (. (!! (. panel %first-child)) children))
+    (+= parts (call texts-in (as row Box)))
+  )
+  (return (call (. "|" join) parts))
+)
 
-────────────────────
-+ This
-    - id String
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ KeyedSlotPanel is Box
-
-+ items [RowData] = List'RowData()
-+ show = true
-
-────────────────────
-
-<This
-    for item in #items keyed by item.id
-        <Box
-            if #show
-                + <Box mark
-                + <Box label - item RowData
-
-━━━━━━━━━━━━━━━━━━━━
-+ do slot-texts String
-    - panel Box
-
-. parts [String] = List'String()
-for row in panel.%first-child!.children
-    parts += texts-in(row as Box)
-= "|".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do texts-in String
-    - box Box
-
-=? (box as TextBox).text if box is TextBox
-. parts [String] = List'String()
-for child in box.children
-    parts += texts-in(child as Box)
-= "".join(parts)
+(fn-do + texts-in String
+  (param box Box)
+  (return-if (. (as box TextBox) text) (if (is box TextBox)))
+  (let parts (list String) (call (of List String)))
+  (for (in child (. box children))
+    (+= parts (call texts-in (as child Box)))
+  )
+  (return (call (. "" join) parts))
+)
 ```
 
 ```output
@@ -2342,64 +2297,69 @@ for child in box.children
 
 ### A repeated slot outlet placed directly in a static loop inside a keyed row also rebuilds its caller content when the row item is replaced, while the physical row is preserved.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items = List'RowData([RowData("a", "A"), RowData("b", "B")])
-<KeyedSlotPanel panel
-    items = items
-    <TextBox (row) - item = item.text
+(main
+  (let items (call (of List RowData) (list (call RowData "a" "A") (call RowData "b" "B"))))
+  (<> KeyedSlotPanel (id: panel)
+    (= items items)
+    (<> TextBox (slot: row) (param: item) (value: (. item text)))
+  )
+  (blank)
+  (let region (!! (. panel %first-child)))
+  (let first (!! (. region %first-child)))
+  (print (call slot-texts panel))
+  (= ([] items 0) (call RowData "a" "Z"))
+  (print (call slot-texts panel))
+  (print (if-expr (== first (!! (. region %first-child))) "preserved" "lost"))
+)
 
-. region = panel.%first-child!
-. first = region.%first-child!
--- slot-texts(panel)
-items[0] = RowData("a", "Z")
--- slot-texts(panel)
--- if first == region.%first-child! then "preserved" else "lost"
+(type + RowData
+  (prop + id String)
+  (prop + text String)
+  (fn-do + This _
+    (param id String)
+    (param text String)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
+(type + KeyedSlotPanel (is Box)
+  (prop + items (list RowData) (= (call (of List RowData))))
+  (prop + passes _ (= (call (of List String) (list "x" "y"))))
+  (content
+    (<> This
+      (for (in item #items (keyed-by (. item id)))
+        (<> Box
+          (for (in pass passes)
+            (+<> Box (id: row) (param: item RowData))
+          )
+        )
+      )
+    )
+  )
+)
 
-+ id String
-+ text String
+(fn-do + slot-texts String
+  (param panel Box)
+  (let parts (list String) (call (of List String)))
+  (for (in child (. (!! (. panel %first-child)) children))
+    (for (in slot (. (as child Box) children))
+      (+= parts (call text-in (as slot Box)))
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
-────────────────────
-+ This
-    - id String
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ KeyedSlotPanel is Box
-
-+ items [RowData] = List'RowData()
-+ passes = List'String(["x", "y"])
-
-────────────────────
-
-<This
-    for item in #items keyed by item.id
-        <Box
-            for pass in passes
-                + <Box row - item RowData
-
-━━━━━━━━━━━━━━━━━━━━
-+ do slot-texts String
-    - panel Box
-
-. parts [String] = List'String()
-for child in panel.%first-child!.children
-    for slot in (child as Box).children
-        parts += text-in(slot as Box)
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do text-in String
-    - box Box
-
-=? (box as TextBox).text if box is TextBox
-for child in box.children
-    = text-in(child as Box)
-= ""
+(fn-do + text-in String
+  (param box Box)
+  (return-if (. (as box TextBox) text) (if (is box TextBox)))
+  (for (in child (. box children))
+    (return (call text-in (as child Box)))
+  )
+  (return "")
+)
 ```
 
 ```output
@@ -2410,51 +2370,62 @@ preserved
 
 ### A loop that is the only default slot content fills a node of the slot's type.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. names = List'String(["a", "b"])
-. plain = ["x", "y"]
+(main
+  (let names (call (of List String) (list "a" "b")))
+  (let plain (list "x" "y"))
+  (blank)
+  (<> Card (id: keyed)
+    (for (in name #names (keyed-by name))
+      (<> TextBox (value: name))
+    )
+  )
+  (blank)
+  (<> Card (id: unkeyed)
+    (for (in name #names)
+      (<> TextBox (value: name))
+    )
+  )
+  (blank)
+  (<> Card (id: static)
+    (for (in name plain)
+      (<> TextBox (value: name))
+    )
+  )
+  (blank)
+  (print (call dump keyed))
+  (print (call dump unkeyed))
+  (print (call dump static))
+  (+= names "c")
+  (print (call dump keyed))
+  (print (call dump unkeyed))
+)
 
-<Card keyed
-    for name in #names keyed by name
-        <TextBox = name
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
-<Card unkeyed
-    for name in #names
-        <TextBox = name
-
-<Card static
-    for name in plain
-        <TextBox = name
-
--- dump(keyed)
--- dump(unkeyed)
--- dump(static)
-names += "c"
--- dump(keyed)
--- dump(unkeyed)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    <TextBox = "head"
-    + <Box
+(type + Card (is Box)
+  (content
+    (<> This
+      (<> TextBox (value: "head"))
+      (+<> Box)
+    )
+  )
+)
 ```
 
 ```output
@@ -2467,60 +2438,74 @@ head,[[a,b,c]]
 
 ### A branch or match that is the only default slot content fills a node of the slot's type.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. is-shown = true
-. kind = "a"
-. is-fixed = false
+(main
+  (let is-shown true)
+  (let kind "a")
+  (let is-fixed false)
+  (blank)
+  (<> Card (id: branched)
+    (if #is-shown
+      (<> TextBox (value: "shown"))
+    )
+  )
+  (blank)
+  (<> Card (id: matched)
+    (match #kind
+      (case= "a"
+        (<> TextBox (value: "alpha"))
+      )
+      (case _
+        (<> TextBox (value: "other"))
+      )
+    )
+  )
+  (blank)
+  (<> Card (id: static)
+    (if is-fixed
+      (<> TextBox (value: "fixed"))
+      (else
+        (<> TextBox (value: "loose"))
+      )
+    )
+  )
+  (blank)
+  (print (call dump branched))
+  (print (call dump matched))
+  (print (call dump static))
+  (= is-shown false)
+  (= kind "b")
+  (print (call dump branched))
+  (print (call dump matched))
+  (= is-shown true)
+  (print (call dump branched))
+)
 
-<Card branched
-    if #is-shown
-        <TextBox = "shown"
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
-<Card matched
-    match #kind
-        |= "a"
-            <TextBox = "alpha"
-        | _
-            <TextBox = "other"
-
-<Card static
-    if is-fixed
-        <TextBox = "fixed"
-    else
-        <TextBox = "loose"
-
--- dump(branched)
--- dump(matched)
--- dump(static)
-is-shown = false
-kind = "b"
--- dump(branched)
--- dump(matched)
-is-shown = true
--- dump(branched)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    <TextBox = "head"
-    + <Box
+(type + Card (is Box)
+  (content
+    (<> This
+      (<> TextBox (value: "head"))
+      (+<> Box)
+    )
+  )
+)
 ```
 
 ```output
@@ -2534,45 +2519,50 @@ head,[[shown]]
 
 ### A slot outlet's styles apply to the node that holds lone control flow, as they do to the node that holds several children.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. names = List'String(["a", "b"])
+(main
+  (let names (call (of List String) (list "a" "b")))
+  (blank)
+  (<> BatchDemo (id: demo)
+    (<> Card (id: looped)
+      (for (in name #names (keyed-by name))
+        (<> TextBox (value: name))
+      )
+    )
+    (blank)
+    (<> Card (id: paired)
+      (<> TextBox (value: "x"))
+      (<> TextBox (value: "y"))
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot (!! (. looped %last-child))))
+  (print (call style-computed-snapshot (!! (. paired %last-child))))
+)
 
-<BatchDemo demo
-    <Card looped
-        for name in #names keyed by name
-            <TextBox = name
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-    <Card paired
-        <TextBox = "x"
-        <TextBox = "y"
-
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(looped.%last-child!)
--- style-computed-snapshot(paired.%last-child!)
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    <TextBox = "head"
-    + <Box • flex:2
+(type + Card (is Box)
+  (content
+    (<> This
+      (<> TextBox (value: "head"))
+      (+<> Box (• flex 2))
+    )
+  )
+)
 ```
 
 ```output
@@ -2582,41 +2572,48 @@ node BoxPlacement seg=owned gen=1 mask=1 flex=2
 
 ### A slot outlet's fallback content can be lone control flow, and caller content replaces it.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Listing listing
--- dump(listing)
-listing.names += "c"
--- dump(listing)
+(main
+  (<> Listing (id: listing))
+  (print (call dump listing))
+  (+= (. listing names) "c")
+  (print (call dump listing))
+  (blank)
+  (<> Listing (id: replaced)
+    (<> TextBox (value: "caller"))
+  )
+  (print (call dump replaced))
+)
 
-<Listing replaced
-    <TextBox = "caller"
--- dump(replaced)
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Listing is Box
-
-+ names = List'String(["a", "b"])
-
-────────────────────
-
-<This
-    + <Box
-        for name in #names keyed by name
-            <TextBox = name
+(type + Listing (is Box)
+  (prop + names _ (= (call (of List String) (list "a" "b"))))
+  (content
+    (<> This
+      (+<> Box
+        (for (in name #names (keyed-by name))
+          (<> TextBox (value: name))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2627,70 +2624,83 @@ caller
 
 ### Loops and branches in slot content under a batch root read locals of the enclosing function.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. names = List'String(["a", "b"])
-. is-shown = true
+(main
+  (let names (call (of List String) (list "a" "b")))
+  (let is-shown true)
+  (blank)
+  (<> BatchDemo (id: demo)
+    (<> Card (id: keyed)
+      (<> Box
+        (for (in name #names (keyed-by name))
+          (<> TextBox (value: name))
+        )
+      )
+    )
+    (blank)
+    (<> Card (id: unkeyed)
+      (<> Box
+        (for (in name #names)
+          (<> TextBox (value: name))
+        )
+      )
+    )
+    (blank)
+    (<> Card (id: branched)
+      (<> Box
+        (if #is-shown
+          (<> TextBox (value: "shown"))
+        )
+      )
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call dump keyed))
+  (print (call dump unkeyed))
+  (print (call dump branched))
+  (+= names "c")
+  (= is-shown false)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call dump keyed))
+  (print (call dump unkeyed))
+  (print (call dump branched))
+)
 
-<BatchDemo demo
-    <Card keyed
-        <Box
-            for name in #names keyed by name
-                <TextBox = name
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
-    <Card unkeyed
-        <Box
-            for name in #names
-                <TextBox = name
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-    <Card branched
-        <Box
-            if #is-shown
-                <TextBox = "shown"
-
-demo.markup-batch-queue.checkpoint()
--- dump(keyed)
--- dump(unkeyed)
--- dump(branched)
-names += "c"
-is-shown = false
-demo.markup-batch-queue.checkpoint()
--- dump(keyed)
--- dump(unkeyed)
--- dump(branched)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    <TextBox = "head"
-    + <Box
+(type + Card (is Box)
+  (content
+    (<> This
+      (<> TextBox (value: "head"))
+      (+<> Box)
+    )
+  )
+)
 ```
 
 ```output
@@ -2704,41 +2714,48 @@ head,[[]]
 
 ### A slot filled inside a live if holds the caller's content, one region deeper, while the condition holds, and nothing otherwise, as the unfilled slot shows.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. is-shown = true
+(main
+  (let is-shown true)
+  (blank)
+  (<> Card (id: card)
+    (if #is-shown
+      (<> TextBox (slot: icon) (value: "badge"))
+    )
+  )
+  (blank)
+  (print (call dump card))
+  (= is-shown false)
+  (print (call dump card))
+  (= is-shown true)
+  (print (call dump card))
+)
 
-<Card card
-    if #is-shown
-        <TextBox (icon) = "badge"
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
--- dump(card)
-is-shown = false
--- dump(card)
-is-shown = true
--- dump(card)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-    + <Box
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon))
+      (+<> Box)
+    )
+  )
+)
 ```
 
 ```output
@@ -2749,43 +2766,51 @@ for child in box.children
 
 ### A slot filled inside a live if holds the caller's content while the condition holds, and the slot's fallback otherwise.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. is-shown = true
+(main
+  (let is-shown true)
+  (blank)
+  (<> Card (id: card)
+    (if #is-shown
+      (<> TextBox (slot: icon) (value: "badge"))
+    )
+    (<> TextBox (value: "body"))
+  )
+  (blank)
+  (print (call dump card))
+  (= is-shown false)
+  (print (call dump card))
+  (= is-shown true)
+  (print (call dump card))
+)
 
-<Card card
-    if #is-shown
-        <TextBox (icon) = "badge"
-    <TextBox = "body"
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
--- dump(card)
-is-shown = false
--- dump(card)
-is-shown = true
--- dump(card)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-        <TextBox = "no icon"
-    + <Box
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon)
+        (<> TextBox (value: "no icon"))
+      )
+      (+<> Box)
+    )
+  )
+)
 ```
 
 ```output
@@ -2796,44 +2821,55 @@ for child in box.children
 
 ### A static if decides the slot's content as the element is made.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. shown = true
-. hidden = false
+(main
+  (let shown true)
+  (let hidden false)
+  (blank)
+  (<> Card (id: visible)
+    (if shown
+      (<> TextBox (slot: icon) (value: "badge"))
+    )
+  )
+  (<> Card (id: invisible)
+    (if hidden
+      (<> TextBox (slot: icon) (value: "badge"))
+    )
+  )
+  (blank)
+  (print (call dump visible))
+  (print (call dump invisible))
+)
 
-<Card visible
-    if shown
-        <TextBox (icon) = "badge"
-<Card invisible
-    if hidden
-        <TextBox (icon) = "badge"
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
--- dump(visible)
--- dump(invisible)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-        <TextBox = "no icon"
-    + <Box
-        <TextBox = "no body"
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon)
+        (<> TextBox (value: "no icon"))
+      )
+      (+<> Box
+        (<> TextBox (value: "no body"))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2843,57 +2879,72 @@ for child in box.children
 
 ### Each arm of an if and else, or of a match, may fill the same slot; an arm that fills nothing leaves the fallback.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. is-draft = true
-. kind = "a"
+(main
+  (let is-draft true)
+  (let kind "a")
+  (blank)
+  (<> Card (id: toggled)
+    (if #is-draft
+      (<> TextBox (slot: icon) (value: "draft"))
+      (else
+        (<> TextBox (slot: icon) (value: "final"))
+      )
+    )
+  )
+  (<> Card (id: matched)
+    (match #kind
+      (case= "a"
+        (<> TextBox (slot: icon) (value: "alpha"))
+      )
+      (case= "b"
+        (<> TextBox (slot: icon) (value: "beta"))
+      )
+      (case _
+        (<> TextBox (value: "plain"))
+      )
+    )
+  )
+  (blank)
+  (print (call dump toggled))
+  (print (call dump matched))
+  (= is-draft false)
+  (= kind "b")
+  (print (call dump toggled))
+  (print (call dump matched))
+  (= kind "c")
+  (print (call dump matched))
+)
 
-<Card toggled
-    if #is-draft
-        <TextBox (icon) = "draft"
-    else
-        <TextBox (icon) = "final"
-<Card matched
-    match #kind
-        |= "a"
-            <TextBox (icon) = "alpha"
-        |= "b"
-            <TextBox (icon) = "beta"
-        | _
-            <TextBox = "plain"
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
--- dump(toggled)
--- dump(matched)
-is-draft = false
-kind = "b"
--- dump(toggled)
--- dump(matched)
-kind = "c"
--- dump(matched)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-        <TextBox = "no icon"
-    + <Box
-        <TextBox = "no body"
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon)
+        (<> TextBox (value: "no icon"))
+      )
+      (+<> Box
+        (<> TextBox (value: "no body"))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2906,46 +2957,54 @@ for child in box.children
 
 ### An arm may fill a slot and give the default slot content too, and both come and go with it. A fallback that reads the component's state follows it while it shows.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. is-open = true
+(main
+  (let is-open true)
+  (blank)
+  (<> Card (id: card)
+    (if #is-open
+      (<> TextBox (slot: icon) (value: "badge"))
+      (<> TextBox (value: "details"))
+    )
+  )
+  (blank)
+  (print (call dump card))
+  (= is-open false)
+  (print (call dump card))
+  (= (. card label) "closed")
+  (print (call dump card))
+)
 
-<Card card
-    if #is-open
-        <TextBox (icon) = "badge"
-        <TextBox = "details"
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
--- dump(card)
-is-open = false
--- dump(card)
-card.label = "closed"
--- dump(card)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-+ label = "no icon"
-
-────────────────────
-
-<This
-    + <Box icon
-        <TextBox = #label
-    + <Box
-        <TextBox = "no body"
+(type + Card (is Box)
+  (prop + label _ (= "no icon"))
+  (content
+    (<> This
+      (+<> Box (id: icon)
+        (<> TextBox (value: #label))
+      )
+      (+<> Box
+        (<> TextBox (value: "no body"))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2956,45 +3015,54 @@ for child in box.children
 
 ### One component given a slot unfilled, filled and filled in a branch in one program.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. is-shown = false
+(main
+  (let is-shown false)
+  (blank)
+  (<> Card (id: plain))
+  (<> Card (id: filled)
+    (<> TextBox (slot: icon) (value: "given"))
+  )
+  (<> Card (id: branched)
+    (if #is-shown
+      (<> TextBox (slot: icon) (value: "maybe"))
+    )
+  )
+  (blank)
+  (print (call dump plain))
+  (print (call dump filled))
+  (print (call dump branched))
+  (= is-shown true)
+  (print (call dump branched))
+)
 
-<Card plain
-<Card filled
-    <TextBox (icon) = "given"
-<Card branched
-    if #is-shown
-        <TextBox (icon) = "maybe"
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
--- dump(plain)
--- dump(filled)
--- dump(branched)
-is-shown = true
--- dump(branched)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-        <TextBox = "no icon"
-    + <Box
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon)
+        (<> TextBox (value: "no icon"))
+      )
+      (+<> Box)
+    )
+  )
+)
 ```
 
 ```output
@@ -3006,58 +3074,73 @@ given
 
 ### Each arm of an else-if chain may fill the slot, alone or with default slot content, and an arm that fills nothing leaves the fallback.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. level = 0
-. extra = "x"
+(main
+  (let level 0)
+  (let extra "x")
+  (blank)
+  (<> Card (id: only)
+    (if (== #level 0)
+      (<> TextBox (slot: icon) (value: "zero"))
+      (else-if (== #level 1)
+        (<> TextBox (slot: icon) (value: (str "one " extra)))
+      )
+      (else-if (== #level 2)
+        (<> TextBox (slot: icon) (value: "two"))
+      )
+    )
+  )
+  (<> Card (id: mixed)
+    (if (== #level 0)
+      (<> TextBox (slot: icon) (value: "zero"))
+      (else-if (== #level 1)
+        (<> TextBox (slot: icon) (value: "one"))
+        (<> TextBox (value: "one body"))
+      )
+      (else
+        (<> TextBox (value: "else body"))
+      )
+    )
+  )
+  (blank)
+  (print (str (call dump only) " | " (call dump mixed)))
+  (= level 1)
+  (print (str (call dump only) " | " (call dump mixed)))
+  (= level 2)
+  (print (str (call dump only) " | " (call dump mixed)))
+  (= level 0)
+  (print (str (call dump only) " | " (call dump mixed)))
+)
 
-<Card only
-    if #level == 0
-        <TextBox (icon) = "zero"
-    else if #level == 1
-        <TextBox (icon) = "one $extra"
-    else if #level == 2
-        <TextBox (icon) = "two"
-<Card mixed
-    if #level == 0
-        <TextBox (icon) = "zero"
-    else if #level == 1
-        <TextBox (icon) = "one"
-        <TextBox = "one body"
-    else
-        <TextBox = "else body"
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
--- "${dump(only)} | ${dump(mixed)}"
-level = 1
--- "${dump(only)} | ${dump(mixed)}"
-level = 2
--- "${dump(only)} | ${dump(mixed)}"
-level = 0
--- "${dump(only)} | ${dump(mixed)}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-        <TextBox = "no icon"
-    + <Box
-        <TextBox = "no body"
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon)
+        (<> TextBox (value: "no icon"))
+      )
+      (+<> Box
+        (<> TextBox (value: "no body"))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3069,403 +3152,472 @@ for child in box.children
 
 ### A slot filled both outside and inside a branch is filled twice.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. is-shown = true
+(main
+  (let is-shown true)
+  (blank)
+  (<> Card (id: card)
+    (<> TextBox (slot: icon) (value: "first"))
+    (if #is-shown
+      (<> TextBox (slot: icon) (value: "second"))
+    )
+  )
+)
 
-<Card card
-    <TextBox (icon) = "first"
-    if #is-shown
-        <TextBox (icon) = "second"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-    + <Box
-```
-
-```output
-Exception: Duplicate slot content
-<no file:9>
-            <TextBox (icon) = "second"
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^
-```
-
-### Two branches filling one slot fill it twice.
-
-```yumi crash
-/core/tests/support/markup-fixtures
-
-. a = true
-. b = false
-
-<Card card
-    if #a
-        <TextBox (icon) = "first"
-    if #b
-        <TextBox (icon) = "second"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-    + <Box
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon))
+      (+<> Box)
+    )
+  )
+)
 ```
 
 ```output
 Exception: Duplicate slot content
 <no file:11>
-            <TextBox (icon) = "second"
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+          (<> TextBox (slot: icon) (value: "second"))
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-### One arm filling a slot twice fills it twice.
+### Two branches filling one slot fill it twice.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. a = true
+(main
+  (let a true)
+  (let b false)
+  (blank)
+  (<> Card (id: card)
+    (if #a
+      (<> TextBox (slot: icon) (value: "first"))
+    )
+    (if #b
+      (<> TextBox (slot: icon) (value: "second"))
+    )
+  )
+)
 
-<Card card
-    if #a
-        <TextBox (icon) = "first"
-        <TextBox (icon) = "second"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-    + <Box
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon))
+      (+<> Box)
+    )
+  )
+)
 ```
 
 ```output
 Exception: Duplicate slot content
-<no file:9>
-            <TextBox (icon) = "second"
-                      ^^^^
+<no file:14>
+          (<> TextBox (slot: icon) (value: "second"))
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### One arm filling a slot twice fills it twice.
+
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
+
+(main
+  (let a true)
+  (blank)
+  (<> Card (id: card)
+    (if #a
+      (<> TextBox (slot: icon) (value: "first"))
+      (<> TextBox (slot: icon) (value: "second"))
+    )
+  )
+)
+
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon))
+      (+<> Box)
+    )
+  )
+)
+```
+
+```output
+Exception: Duplicate slot content
+<no file:11>
+          (<> TextBox (slot: icon) (value: "second"))
+                             ^^^^
 ```
 
 ### A slot filled in a branch inside a loop is rejected.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. names = List'String(["a", "b"])
+(main
+  (let names (call (of List String) (list "a" "b")))
+  (blank)
+  (<> Card (id: card)
+    (for (in name names)
+      (if (== name "a")
+        (<> TextBox (slot: icon) (value: name))
+      )
+    )
+  )
+)
 
-<Card card
-    for name in names
-        if name == "a"
-            <TextBox (icon) = name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-    + <Box
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon))
+      (+<> Box)
+    )
+  )
+)
 ```
 
 ```output
 Exception: A slot is filled by a line of the element's body, or by a line of an arm of an if or match there
-<no file:9>
-                <TextBox (icon) = name
-                          ^^^^
+<no file:11>
+            (<> TextBox (slot: icon) (value: name))
+                               ^^^^
 ```
 
 ### A slot filled in a loop inside a branch is rejected.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. a = true
-. names = List'String(["a", "b"])
+(main
+  (let a true)
+  (let names (call (of List String) (list "a" "b")))
+  (blank)
+  (<> Card (id: card)
+    (if #a
+      (for (in name names)
+        (<> TextBox (slot: icon) (value: name))
+      )
+    )
+  )
+)
 
-<Card card
-    if #a
-        for name in names
-            <TextBox (icon) = name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-    + <Box
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon))
+      (+<> Box)
+    )
+  )
+)
 ```
 
 ```output
 Exception: A slot is filled by a line of the element's body, or by a line of an arm of an if or match there
-<no file:10>
-                <TextBox (icon) = name
-                          ^^^^
+<no file:12>
+            (<> TextBox (slot: icon) (value: name))
+                               ^^^^
 ```
 
 ### A match arm that binds names does not fill a slot.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. pick Int? = 3
+(main
+  (let pick (? Int) 3)
+  (blank)
+  (<> Card (id: card)
+    (match pick
+      (case (: n Int)
+        (<> TextBox (slot: icon) (value: "number"))
+      )
+    )
+  )
+)
 
-<Card card
-    match pick
-        | n Int
-            <TextBox (icon) = "number"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-    + <Box
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon))
+      (+<> Box)
+    )
+  )
+)
 ```
 
 ```output
 Exception: A match arm that fills a slot binds no names; test the subject without binding, as |= value or a type alone does
-<no file:8>
-            | n Int
-              ^^^^^
+<no file:10>
+          (case (: n Int)
+                ^^^^^^^^^
 ```
 
 ### A slot filled in an if two deep is rejected.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. shown = true
-. more = true
+(main
+  (let shown true)
+  (let more true)
+  (blank)
+  (<> Card (id: card)
+    (if shown
+      (if more
+        (<> TextBox (slot: icon) (value: "badge"))
+      )
+    )
+  )
+)
 
-<Card card
-    if shown
-        if more
-            <TextBox (icon) = "badge"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-    + <Box
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon))
+      (+<> Box)
+    )
+  )
+)
 ```
 
 ```output
 Exception: A slot is filled by a line of the element's body, or by a line of an arm of an if or match there
-<no file:10>
-                <TextBox (icon) = "badge"
-                          ^^^^
+<no file:12>
+            (<> TextBox (slot: icon) (value: "badge"))
+                               ^^^^
 ```
 
 ### A slot is not passed on with <+ inside an if.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Wrap wrap
-    <TextBox (icon) = "badge"
+(main
+  (<> Wrap (id: wrap)
+    (<> TextBox (slot: icon) (value: "badge"))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon))
+      (+<> Box)
+    )
+  )
+)
 
-────────────────────
-
-<This
-    + <Box icon
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wrap is Box
-
-+ shown = true
-
-────────────────────
-
-<This
-    <Card
-        if shown
-            <+ (icon)
+(type + Wrap (is Box)
+  (prop + shown _ (= true))
+  (content
+    (<> This
+      (<> Card
+        (if shown
+          (<+ icon)
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: A slot is not passed on with <+ inside an if or match; write <+ as a line of the element's body
 <no file:26>
-                <+ (icon)
-                ^^^^^^^^^
+              (<+ icon)
+              ^^^^^^^^^
 ```
 
 ### A slot filled inside an if is not passed on with <+.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. shown = true
+(main
+  (let shown true)
+  (blank)
+  (<> Wrap (id: wrap)
+    (if shown
+      (<> TextBox (slot: icon) (value: "badge"))
+    )
+  )
+)
 
-<Wrap wrap
-    if shown
-        <TextBox (icon) = "badge"
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon))
+      (+<> Box)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wrap is Box
-
-────────────────────
-
-<This
-    <Card
-        <+ (icon)
+(type + Wrap (is Box)
+  (content
+    (<> This
+      (<> Card
+        (<+ icon)
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: A slot filled inside an if or match is not passed on with <+; give it content here instead
-<no file:26>
-            <+ (icon)
+<no file:28>
+            (<+ icon)
             ^^^^^^^^^
 ```
 
 ### A subclass does not fill its base's slots inside an if.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Sub sub
+(main
+  (<> Sub (id: sub))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon))
+      (+<> Box)
+    )
+  )
+)
 
-────────────────────
-
-<This
-    + <Box icon
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub is Card
-
-+ shown = true
-
-────────────────────
-
-if shown
-    <TextBox (icon) = "badge"
+(type + Sub (is Card)
+  (prop + shown _ (= true))
+  (content
+    (if shown
+      (<> TextBox (slot: icon) (value: "badge"))
+    )
+  )
+)
 ```
 
 ```output
 Exception: A subclass fills its base's slots with lines of its content, not inside an if or match
-<no file:22>
-    if shown
-    ^^^^^^^
+<no file:21>
+        (if shown
+        ^^^^^^^^
 ```
 
 ### A component does not read an outlet by its name where its slot is filled inside an if.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. shown = true
+(main
+  (let shown true)
+  (blank)
+  (<> Card (id: card)
+    (if shown
+      (<> TextBox (slot: icon) (value: "badge"))
+    )
+  )
+)
 
-<Card card
-    if shown
-        <TextBox (icon) = "badge"
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-    <TextBox = dump(icon)
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon))
+      (<> TextBox (value: (call dump icon)))
+    )
+  )
+)
 ```
 
 ```output
 Exception: Outlet "icon" is not read by its name where its slot is filled inside an if or match
-<no file:29>
-        <TextBox = dump(icon)
-                        ^^^^
+<no file:33>
+          (<> TextBox (value: (call dump icon)))
+                                         ^^^^
 ```
 
 ### A slot filled inside a live if reaches an outlet in each row of a keyed loop, rows added later too.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. shown = true
+(main
+  (let shown true)
+  (blank)
+  (<> List (id: list)
+    (if #shown
+      (<> TextBox (slot: icon) (value: "badge"))
+    )
+  )
+  (blank)
+  (print (call dump list))
+  (= shown false)
+  (print (call dump list))
+  (+= (. list names) "c")
+  (print (call dump list))
+  (= shown true)
+  (print (call dump list))
+)
 
-<List list
-    if #shown
-        <TextBox (icon) = "badge"
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
--- dump(list)
-shown = false
--- dump(list)
-list.names += "c"
--- dump(list)
-shown = true
--- dump(list)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ List is Box
-
-+ names = List'String(["a", "b"])
-
-────────────────────
-
-<This
-    for name in #names keyed by name
-        <Box
-            + <Box icon
-                <TextBox = "no icon"
-            <TextBox = name
+(type + List (is Box)
+  (prop + names _ (= (call (of List String) (list "a" "b"))))
+  (content
+    (<> This
+      (for (in name #names (keyed-by name))
+        (<> Box
+          (+<> Box (id: icon)
+            (<> TextBox (value: "no icon"))
+          )
+          (<> TextBox (value: name))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3477,80 +3629,93 @@ for child in box.children
 
 ### A repeated slot is not filled inside an if.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. shown = true
+(main
+  (let shown true)
+  (blank)
+  (<> List (id: list)
+    (if shown
+      (<> TextBox (slot: row) (param: who) (value: who))
+    )
+  )
+)
 
-<List list
-    if shown
-        <TextBox (row) - who = who
-
-━━━━━━━━━━━━━━━━━━━━
-+ List is Box
-
-+ names = List'String(["a", "b"])
-
-────────────────────
-
-<This
-    for name in names
-        + <TextBox row - name String
+(type + List (is Box)
+  (prop + names _ (= (call (of List String) (list "a" "b"))))
+  (content
+    (<> This
+      (for (in name names)
+        (+<> TextBox (id: row) (param: name String))
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: A repeated slot cannot be filled inside an if or match
-<no file:8>
-            <TextBox (row) - who = who
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:10>
+          (<> TextBox (slot: row) (param: who) (value: who))
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A slot filled inside a live if in a class's content follows the class's property.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Page page
--- dump(page)
-page.shown = false
--- dump(page)
-page.shown = true
--- dump(page)
+(main
+  (<> Page (id: page))
+  (print (call dump page))
+  (= (. page shown) false)
+  (print (call dump page))
+  (= (. page shown) true)
+  (print (call dump page))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon)
+        (<> TextBox (value: "no icon"))
+      )
+      (+<> Box
+        (<> TextBox (value: "no body"))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-        <TextBox = "no icon"
-    + <Box
-        <TextBox = "no body"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Page is Box
-
-+ shown = true
-
-────────────────────
-
-<This
-    <Card
-        if #shown
-            <TextBox (icon) = "badge"
+(type + Page (is Box)
+  (prop + shown _ (= true))
+  (content
+    (<> This
+      (<> Card
+        (if #shown
+          (<> TextBox (slot: icon) (value: "badge"))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3561,50 +3726,61 @@ for child in box.children
 
 ### An element whose slot is filled inside a live if may itself be in the arm of a live if.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. outer = true
-. inner = true
+(main
+  (let outer true)
+  (let inner true)
+  (blank)
+  (<> Box (id: root)
+    (if #outer
+      (<> Card
+        (if #inner
+          (<> TextBox (slot: icon) (value: "badge"))
+        )
+      )
+    )
+  )
+  (blank)
+  (print (call dump root))
+  (= inner false)
+  (print (call dump root))
+  (= outer false)
+  (print (call dump root))
+  (= outer true)
+  (print (call dump root))
+  (= inner true)
+  (print (call dump root))
+)
 
-<Box root
-    if #outer
-        <Card
-            if #inner
-                <TextBox (icon) = "badge"
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
--- dump(root)
-inner = false
--- dump(root)
-outer = false
--- dump(root)
-outer = true
--- dump(root)
-inner = true
--- dump(root)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-        <TextBox = "no icon"
-    + <Box
-        <TextBox = "no body"
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon)
+        (<> TextBox (value: "no icon"))
+      )
+      (+<> Box
+        (<> TextBox (value: "no body"))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3617,43 +3793,54 @@ for child in box.children
 
 ### A slot filled inside an if in a keyed loop row follows the row's item.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. names = List'String(["a", "bb"])
+(main
+  (let names (call (of List String) (list "a" "bb")))
+  (blank)
+  (<> Box (id: root)
+    (for (in name #names (keyed-by name))
+      (<> Card
+        (if (== name "bb")
+          (<> TextBox (slot: icon) (value: name))
+        )
+      )
+    )
+  )
+  (blank)
+  (print (call dump root))
+  (+= names "cc")
+  (print (call dump root))
+)
 
-<Box root
-    for name in #names keyed by name
-        <Card
-            if name == "bb"
-                <TextBox (icon) = name
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
--- dump(root)
-names += "cc"
--- dump(root)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-        <TextBox = "no icon"
-    + <Box
-        <TextBox = "no body"
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon)
+        (<> TextBox (value: "no icon"))
+      )
+      (+<> Box
+        (<> TextBox (value: "no body"))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3663,44 +3850,55 @@ for child in box.children
 
 ### A fill reads a local as the arm's condition narrows it.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. maybe-name String? = "ann"
-. none String? = null
+(main
+  (let maybe-name (? String) "ann")
+  (let none (? String) null)
+  (blank)
+  (<> Card (id: a)
+    (if maybe-name
+      (<> TextBox (slot: icon) (value: maybe-name))
+    )
+  )
+  (<> Card (id: b)
+    (if none
+      (<> TextBox (slot: icon) (value: none))
+    )
+  )
+  (blank)
+  (print (call dump a))
+  (print (call dump b))
+)
 
-<Card a
-    if maybe-name
-        <TextBox (icon) = maybe-name
-<Card b
-    if none
-        <TextBox (icon) = none
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
--- dump(a)
--- dump(b)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-        <TextBox = "no icon"
-    + <Box
-        <TextBox = "no body"
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon)
+        (<> TextBox (value: "no icon"))
+      )
+      (+<> Box
+        (<> TextBox (value: "no body"))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3710,45 +3908,54 @@ for child in box.children
 
 ### A slot whose outlet sets attributes on its content gets them on content given inside an if.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. shown = true
+(main
+  (let shown true)
+  (blank)
+  (<> Card (id: a)
+    (if #shown
+      (<> TextBox (slot: header) (value: "slot"))
+    )
+  )
+  (<> Card (id: b)
+    (<> TextBox (slot: header) (value: "slot"))
+  )
+  (blank)
+  (print (call dump a))
+  (print (call dump b))
+  (= shown false)
+  (print (call dump a))
+  (= shown true)
+  (print (call dump a))
+)
 
-<Card a
-    if #shown
-        <TextBox (header) = "slot"
-<Card b
-    <TextBox (header) = "slot"
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
--- dump(a)
--- dump(b)
-shown = false
--- dump(a)
-shown = true
--- dump(a)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <TextBox header
-        text = "overlaid"
-    <TextBox = "end"
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> TextBox (id: header)
+        (= text "overlaid")
+      )
+      (<> TextBox (value: "end"))
+    )
+  )
+)
 ```
 
 ```output
@@ -3760,48 +3967,56 @@ overlaid,end
 
 ### A subclass that leaves a slot alone passes on what its caller fills inside an if.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. shown = true
+(main
+  (let shown true)
+  (blank)
+  (<> Sub (id: a)
+    (if #shown
+      (<> TextBox (slot: icon) (value: "badge"))
+    )
+  )
+  (blank)
+  (print (call dump a))
+  (= shown false)
+  (print (call dump a))
+)
 
-<Sub a
-    if #shown
-        <TextBox (icon) = "badge"
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
--- dump(a)
-shown = false
--- dump(a)
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon)
+        (<> TextBox (value: "no icon"))
+      )
+      (+<> Box
+        (<> TextBox (value: "no body"))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-        <TextBox = "no icon"
-    + <Box
-        <TextBox = "no body"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub is Card
-
-────────────────────
-
-<TextBox = "sub body"
+(type + Sub (is Card)
+  (content
+    (<> TextBox (value: "sub body"))
+  )
+)
 ```
 
 ```output
@@ -3811,156 +4026,185 @@ for child in box.children
 
 ### An if that fills a slot tests a condition, not a pattern.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. pick Int? = 3
+(main
+  (let pick (? Int) 3)
+  (blank)
+  (<> Card (id: a)
+    (if (= (| (: n Int)) pick)
+      (<> TextBox (slot: icon) (value: (str "num " n)))
+    )
+  )
+  (blank)
+  (print (call dump a))
+)
 
-<Card a
-    if | n Int = pick
-        <TextBox (icon) = "num $n"
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
--- dump(a)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-        <TextBox = "no icon"
-    + <Box
-        <TextBox = "no body"
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon)
+        (<> TextBox (value: "no icon"))
+      )
+      (+<> Box
+        (<> TextBox (value: "no body"))
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: An if that fills a slot tests a condition, not a pattern; write is or == instead
-<no file:7>
-        if | n Int = pick
-             ^^^^^
+<no file:9>
+        (if (= (| (: n Int)) pick)
+                  ^^^^^^^^^
 ```
 
 ### A subclass does not fill a slot its caller fills inside an if.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. shown = true
+(main
+  (let shown true)
+  (blank)
+  (<> Sub (id: a)
+    (if #shown
+      (<> TextBox (slot: icon) (value: "badge"))
+    )
+  )
+  (<> Sub (id: plain))
+  (blank)
+  (print (call dump a))
+  (print (call dump plain))
+  (= shown false)
+  (print (call dump a))
+)
 
-<Sub a
-    if #shown
-        <TextBox (icon) = "badge"
-<Sub plain
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
--- dump(a)
--- dump(plain)
-shown = false
--- dump(a)
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon)
+        (<> TextBox (value: "no icon"))
+      )
+      (+<> Box
+        (<> TextBox (value: "no body"))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-        <TextBox = "no icon"
-    + <Box
-        <TextBox = "no body"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub is Card
-
-────────────────────
-
-<TextBox (icon) = "sub icon"
-<TextBox = "sub body"
+(type + Sub (is Card)
+  (content
+    (<> TextBox (slot: icon) (value: "sub icon"))
+    (<> TextBox (value: "sub body"))
+  )
+)
 ```
 
 ```output
 Exception: Slot "icon" is filled inside an if or match where this object is made, so the class's content does not fill it too
-<no file:44>
-    <TextBox (icon) = "sub icon"
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:50>
+        (<> TextBox (slot: icon) (value: "sub icon"))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A slot binding on a loop row is rejected.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. names = List'String(["a", "b"])
+(main
+  (let names (call (of List String) (list "a" "b")))
+  (blank)
+  (<> Card (id: card)
+    (for (in name #names (keyed-by name))
+      (<> TextBox (slot: icon) (value: name))
+    )
+  )
+)
 
-<Card card
-    for name in #names keyed by name
-        <TextBox (icon) = name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    + <Box icon
-    + <Box
+(type + Card (is Box)
+  (content
+    (<> This
+      (+<> Box (id: icon))
+      (+<> Box)
+    )
+  )
+)
 ```
 
 ```output
 Exception: A slot is filled by a line of the element's body, or by a line of an arm of an if or match there
-<no file:8>
-            <TextBox (icon) = name
-                      ^^^^
+<no file:10>
+          (<> TextBox (slot: icon) (value: name))
+                             ^^^^
 ```
 
 ### An id on the only node supplied to a default slot names the node the slot mounts, as it does when the slot receives several nodes, and ids nested beneath it resolve the same way.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Box demo
-    <Holder one
-        <Box sole
-            <Box inner
-    <Holder two
-        <Box first
-        <Box second
+(main
+  (<> Box (id: demo)
+    (<> Holder (id: one)
+      (<> Box (id: sole)
+        (<> Box (id: inner))
+      )
+    )
+    (<> Holder (id: two)
+      (<> Box (id: first))
+      (<> Box (id: second))
+    )
+  )
+  (blank)
+  (print (str "sole is the slot node " (== (as (. one %first-child) (? Pointer)) (as sole (? Pointer)))))
+  (print (str "inner is its child " (== (as (. sole %first-child) (? Pointer)) (as inner (? Pointer)))))
+  (print (str "first is mounted " (!= (. first %parent) null)))
+)
 
--- "sole is the slot node ${(one.%first-child as Pointer?) == (sole as Pointer?)}"
--- "inner is its child ${(sole.%first-child as Pointer?) == (inner as Pointer?)}"
--- "first is mounted ${first.%parent != null}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-────────────────────
-
-<This
-    + <Box
+(type + Holder (is Box)
+  (content
+    (<> This
+      (+<> Box)
+    )
+  )
+)
 ```
 
 ```output
@@ -3971,61 +4215,58 @@ first is mounted true
 
 ### A class subscription to an event on the only node supplied to a default slot receives the event, as it does for a direct child and for one of several slot nodes.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
+(main
+  (<> Demo (id: demo))
+  (blank)
+  (<- (. demo direct pinged) 1)
+  (<- (. demo multi pinged) 1)
+  (<- (. demo single pinged) 1)
+  (print (str "direct=" (. demo direct-pings) " multi=" (. demo multi-pings) " single=" (. demo single-pings)))
+  (print (str "single is the slot node " (== (as (. demo holder %first-child) (? Pointer)) (as (. demo single) (? Pointer)))))
+)
 
-demo.direct.pinged <- 1
-demo.multi.pinged <- 1
-demo.single.pinged <- 1
--- "direct=${demo.direct-pings} multi=${demo.multi-pings} single=${demo.single-pings}"
--- "single is the slot node ${(demo.holder.%first-child as Pointer?) == (demo.single as Pointer?)}"
+(type + Holder (is Box)
+  (content
+    (<> This
+      (+<> Box)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
+(type + Pinger (is Box)
+  (event + pinged Int)
+)
 
-────────────────────
-
-<This
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pinger is Box
-
-+ event pinged Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ direct-pings = 0
-+ multi-pings = 0
-+ single-pings = 0
-
-────────────────────
-
-<This
-    <Pinger direct
-    <Holder
-        <Pinger multi
-        <Box
-    <Holder holder
-        <Pinger single
-
-────────────────────
-for event on direct.pinged
-
-direct-pings += 1
-
-────────────────────
-for event on multi.pinged
-
-multi-pings += 1
-
-────────────────────
-for event on single.pinged
-
-single-pings += 1
+(type + Demo (is Box)
+  (prop + direct-pings _ (= 0))
+  (prop + multi-pings _ (= 0))
+  (prop + single-pings _ (= 0))
+  (content
+    (<> This
+      (<> Pinger (id: direct))
+      (<> Holder
+        (<> Pinger (id: multi))
+        (<> Box)
+      )
+      (<> Holder (id: holder)
+        (<> Pinger (id: single))
+      )
+    )
+  )
+  (subscribe-for (on event (. direct pinged))
+    (+= direct-pings 1)
+  )
+  (subscribe-for (on event (. multi pinged))
+    (+= multi-pings 1)
+  )
+  (subscribe-for (on event (. single pinged))
+    (+= single-pings 1)
+  )
+)
 ```
 
 ```output
@@ -4035,50 +4276,58 @@ single is the slot node true
 
 ### An id on a slot host supplied through nested slot content binds from inside the inner slot builder, both as a class property and as a module-level name.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
--- "class name=${demo.inner.name} mounted=${demo.inner.%parent != null}"
+(main
+  (<> Demo (id: demo))
+  (print (str "class name=" (. demo inner name) " mounted=" (!= (. demo inner %parent) null)))
+  (blank)
+  (<> Box (id: root)
+    (<> Wrap
+      (<> Wrap
+        (<> Host (id: local)
+          (= name "local")
+        )
+      )
+    )
+  )
+  (blank)
+  (print (str "module name=" (. local name) " mounted=" (!= (. local %parent) null)))
+)
 
-<Box root
-    <Wrap
-        <Wrap
-            <Host local
-                name = "local"
+(type + Demo (is Box)
+  (prop + inner Host)
+  (content
+    (<> This
+      (<> Wrap
+        (<> Wrap
+          (<> Host (id: inner)
+            (= name "bound")
+          )
+        )
+      )
+    )
+  )
+)
 
--- "module name=${local.name} mounted=${local.%parent != null}"
+(type + Wrap (is Box)
+  (content
+    (<> This
+      (+<> Box)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ inner Host
-
-────────────────────
-
-<This
-    <Wrap
-        <Wrap
-            <Host inner
-                name = "bound"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wrap is Box
-
-────────────────────
-
-<This
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Host is Box
-
-+ name = ""
-
-────────────────────
-
-<This
-    + <Box extra
+(type + Host (is Box)
+  (prop + name _ (= ""))
+  (content
+    (<> This
+      (+<> Box (id: extra))
+    )
+  )
+)
 ```
 
 ```output
@@ -4088,53 +4337,59 @@ module name=local mounted=true
 
 ### An id on the only node supplied to a default slot binds the owning class property when the slot host sits inside another element, whether or not the node is itself a slot host.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
--- "host name=${demo.inner.name} mounted=${demo.inner.%parent != null}"
--- "plain name=${demo.plain.name} mounted=${demo.plain.%parent != null}"
+(main
+  (<> Demo (id: demo))
+  (print (str "host name=" (. demo inner name) " mounted=" (!= (. demo inner %parent) null)))
+  (print (str "plain name=" (. demo plain name) " mounted=" (!= (. demo plain %parent) null)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
+(type + Demo (is Box)
+  (prop + inner Host)
+  (prop + plain Plain)
+  (content
+    (<> This
+      (<> Box
+        (<> Wrap
+          (<> Host (id: inner)
+            (= name "bound")
+          )
+        )
+      )
+      (<> Box
+        (<> Wrap
+          (<> Plain (id: plain)
+            (= name "bound")
+          )
+        )
+      )
+    )
+  )
+)
 
-+ inner Host
-+ plain Plain
+(type + Wrap (is Box)
+  (content
+    (<> This
+      (+<> Box)
+    )
+  )
+)
 
-────────────────────
+(type + Host (is Box)
+  (prop + name _ (= ""))
+  (content
+    (<> This
+      (+<> Box (id: extra))
+    )
+  )
+)
 
-<This
-    <Box
-        <Wrap
-            <Host inner
-                name = "bound"
-    <Box
-        <Wrap
-            <Plain plain
-                name = "bound"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wrap is Box
-
-────────────────────
-
-<This
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Host is Box
-
-+ name = ""
-
-────────────────────
-
-<This
-    + <Box extra
-
-━━━━━━━━━━━━━━━━━━━━
-+ Plain is Box
-
-+ name = ""
+(type + Plain (is Box)
+  (prop + name _ (= ""))
+)
 ```
 
 ```output
@@ -4144,63 +4399,66 @@ plain name=bound mounted=true
 
 ### Supplied slot content reads its slot host by the host's markup id, in named and default slots. The id is bound before the host builds its content, so an untracked read sees the host and a tracked read follows it.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
--- pane-labels(demo)
-demo.named.title = "two"
-demo.plain.title = "two"
--- pane-labels(demo)
+(main
+  (<> Demo (id: demo))
+  (print (call pane-labels demo))
+  (= (. demo named title) "two")
+  (= (. demo plain title) "two")
+  (print (call pane-labels demo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
+(type + Demo (is Box)
+  (content
+    (<> This
+      (<> NamedHolder (id: named)
+        (<> Pane (id: named-pane) (slot: detail)
+          (= tracked (. named #title))
+          (= untracked (. named title))
+        )
+      )
+      (<> PlainHolder (id: plain)
+        (<> Pane (id: plain-pane)
+          (= tracked (. plain #title))
+          (= untracked (. plain title))
+        )
+      )
+    )
+  )
+)
 
-────────────────────
+(type + NamedHolder (is Box)
+  (prop + title _ (= "one"))
+  (content
+    (<> This
+      (+<> Box (id: detail))
+    )
+  )
+)
 
-<This
-    <NamedHolder named
-        <Pane named-pane(detail)
-            tracked = named.#title
-            untracked = named.title
-    <PlainHolder plain
-        <Pane plain-pane
-            tracked = plain.#title
-            untracked = plain.title
+(type + PlainHolder (is Box)
+  (prop + title _ (= "one"))
+  (content
+    (<> This
+      (+<> Box)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ NamedHolder is Box
+(type + Pane (is Box)
+  (prop + tracked _ (= ""))
+  (prop + untracked _ (= ""))
+)
 
-+ title = "one"
-
-────────────────────
-
-<This
-    + <Box detail
-
-━━━━━━━━━━━━━━━━━━━━
-+ PlainHolder is Box
-
-+ title = "one"
-
-────────────────────
-
-<This
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
-
-+ tracked = ""
-+ untracked = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pane-labels String
-    - demo Demo
-
-. named = demo.named-pane
-. plain = demo.plain-pane
-= "named=${named.tracked}/${named.untracked} plain=${plain.tracked}/${plain.untracked}"
+(fn-do + pane-labels String
+  (param demo Demo)
+  (let named (. demo named-pane))
+  (let plain (. demo plain-pane))
+  (return (str "named=" (. named tracked) "/" (. named untracked) " plain=" (. plain tracked) "/" (. plain untracked)))
+)
 ```
 
 ```output
@@ -4210,56 +4468,63 @@ named=two/one plain=two/one
 
 ### A slot outlet nested inside an element of a generic host's content receives content that reads a computed field of the host by the host's markup id, including when the host is itself supplied as slot content.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
--- "${demo.direct-pane.shown ?? "none"} ${demo.nested-pane.shown ?? "none"}"
-demo.direct.title = "two"
-demo.nested.title = "two"
--- "${demo.direct-pane.shown ?? "none"} ${demo.nested-pane.shown ?? "none"}"
+(main
+  (<> Demo (id: demo))
+  (print (str (?? (. demo direct-pane shown) "none") " " (?? (. demo nested-pane shown) "none")))
+  (= (. demo direct title) "two")
+  (= (. demo nested title) "two")
+  (print (str (?? (. demo direct-pane shown) "none") " " (?? (. demo nested-pane shown) "none")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
+(type + Demo (is Box)
+  (content
+    (<> This
+      (<> (of Holder String) (id: direct)
+        (= seed "x")
+        (blank)
+        (<> Pane (id: direct-pane) (slot: detail)
+          (= shown (. direct #shown))
+        )
+      )
+      (<> Wrap
+        (<> (of Holder String) (id: nested)
+          (<> Pane (id: nested-pane) (slot: detail)
+            (= shown (. nested #shown))
+          )
+        )
+      )
+    )
+  )
+)
 
-────────────────────
+(type + (of Holder Item) (is Box)
+  (prop + seed (? Item))
+  (prop + title _ (= "one"))
+  (prop + shown (? String) (= #title))
+  (content
+    (<> This
+      (<> Box (id: detail-pane)
+        (+<> Box (id: detail))
+      )
+    )
+  )
+)
 
-<This
-    <Holder'String direct
-        seed = "x"
+(type + Wrap (is Box)
+  (content
+    (<> This
+      (+<> Box)
+    )
+  )
+)
 
-        <Pane direct-pane(detail)
-            shown = direct.#shown
-    <Wrap
-        <Holder'String nested
-            <Pane nested-pane(detail)
-                shown = nested.#shown
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder'Item is Box
-
-+ seed Item?
-+ title = "one"
-+ shown String? = #title
-
-────────────────────
-
-<This
-    <Box detail-pane
-        + <Box detail
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wrap is Box
-
-────────────────────
-
-<This
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
-
-+ shown String?
+(type + Pane (is Box)
+  (prop + shown (? String))
+)
 ```
 
 ```output
@@ -4269,44 +4534,46 @@ two two
 
 ### Slot content that reads its slot host through an explicitly declared id property sees the host the markup constructs, not the property's default value.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
--- demo.pane.label
--- demo.pane.holder as Pointer == demo.columns as Pointer
+(main
+  (<> Demo (id: demo))
+  (print (. demo pane label))
+  (print (== (as (. demo pane holder) Pointer) (as (. demo columns) Pointer)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
+(type + Demo (is Box)
+  (prop + columns Holder)
+  (prop + pane Pane)
+  (content
+    (<> This
+      (<> Holder (id: columns)
+        (= title "markup")
+        (blank)
+        (<> Pane (id: pane) (slot: detail)
+          (= label (. columns title))
+          (= holder columns)
+        )
+      )
+    )
+  )
+)
 
-+ columns Holder
-+ pane Pane
+(type + Holder (is Box)
+  (prop + title _ (= "default"))
+  (content
+    (<> This
+      (+<> Box (id: detail))
+    )
+  )
+)
 
-────────────────────
-
-<This
-    <Holder columns
-        title = "markup"
-
-        <Pane pane(detail)
-            label = columns.title
-            holder = columns
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-+ title = "default"
-
-────────────────────
-
-<This
-    + <Box detail
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
-
-+ label = ""
-+ holder Holder?
+(type + Pane (is Box)
+  (prop + label _ (= ""))
+  (prop + holder (? Holder))
+)
 ```
 
 ```output
@@ -4316,86 +4583,93 @@ true
 
 ### An element's own property value cannot read the element by its markup id.
 
-```yumi compile-error
-/core/tests/support/markup-fixtures
+```brix compile-error
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
+(main
+  (<> Demo (id: demo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
+(type + Demo (is Box)
+  (content
+    (<> This
+      (<> Holder (id: columns)
+        (= label (. columns title))
+      )
+    )
+  )
+)
 
-────────────────────
-
-<This
-    <Holder columns
-        label = columns.title
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-+ title = "one"
-+ label = ""
+(type + Holder (is Box)
+  (prop + title _ (= "one"))
+  (prop + label _ (= ""))
+)
 ```
 
 ```output
 Exception: Named markup element "columns" is read before its markup constructs it
 <no file:13>
-            label = columns.title
-                    ^^^^^^^
+            (= label (. columns title))
+                        ^^^^^^^
 ```
 
 ### Supplied slot content in module-level markup reads its slot host by the host's markup id, in named and default slots. The id is bound before the host builds its content, so an untracked read sees the host and a tracked read follows it.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Box root
-    <NamedHolder named
-        <Pane named-pane(detail)
-            tracked = named.#title
-            untracked = named.title
-    <PlainHolder plain
-        <Pane plain-pane
-            tracked = plain.#title
-            untracked = plain.title
+(main
+  (<> Box (id: root)
+    (<> NamedHolder (id: named)
+      (<> Pane (id: named-pane) (slot: detail)
+        (= tracked (. named #title))
+        (= untracked (. named title))
+      )
+    )
+    (<> PlainHolder (id: plain)
+      (<> Pane (id: plain-pane)
+        (= tracked (. plain #title))
+        (= untracked (. plain title))
+      )
+    )
+  )
+  (blank)
+  (print (call pane-labels named-pane plain-pane))
+  (= (. named title) "two")
+  (= (. plain title) "two")
+  (print (call pane-labels named-pane plain-pane))
+)
 
--- pane-labels(named-pane, plain-pane)
-named.title = "two"
-plain.title = "two"
--- pane-labels(named-pane, plain-pane)
+(type + NamedHolder (is Box)
+  (prop + title _ (= "one"))
+  (content
+    (<> This
+      (+<> Box (id: detail))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ NamedHolder is Box
+(type + PlainHolder (is Box)
+  (prop + title _ (= "one"))
+  (content
+    (<> This
+      (+<> Box)
+    )
+  )
+)
 
-+ title = "one"
+(type + Pane (is Box)
+  (prop + tracked _ (= ""))
+  (prop + untracked _ (= ""))
+)
 
-────────────────────
-
-<This
-    + <Box detail
-
-━━━━━━━━━━━━━━━━━━━━
-+ PlainHolder is Box
-
-+ title = "one"
-
-────────────────────
-
-<This
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
-
-+ tracked = ""
-+ untracked = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pane-labels String
-    - named Pane
-    - plain Pane
-
-= "named=${named.tracked}/${named.untracked} plain=${plain.tracked}/${plain.untracked}"
+(fn-do + pane-labels String
+  (param named Pane)
+  (param plain Pane)
+  (return (str "named=" (. named tracked) "/" (. named untracked) " plain=" (. plain tracked) "/" (. plain untracked)))
+)
 ```
 
 ```output
@@ -4405,47 +4679,51 @@ named=two/one plain=two/one
 
 ### Supplied slot content in function-level markup reads its slot host by the host's markup id, and a closure in that content reads the host when it runs.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-show("one")
+(main
+  (call show "one")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - first String
+(fn-do + show _
+  (param first String)
+  (<> Box (id: root)
+    (<> Holder (id: columns)
+      (= title first)
+      (blank)
+      (<> Pane (id: pane) (slot: detail)
+        (= label (. columns #title))
+        (= action (=> () :do (+= (. columns hits) 1)))
+      )
+    )
+  )
+  (blank)
+  (print (. pane label))
+  (= (. columns title) "two")
+  (print (. pane label))
+  (let action (. pane action))
+  (if action
+    (call action)
+  )
+  (print (. columns hits))
+)
 
-<Box root
-    <Holder columns
-        title = first
+(type + Holder (is Box)
+  (prop + title _ (= ""))
+  (prop + hits _ (= 0))
+  (content
+    (<> This
+      (+<> Box (id: detail))
+    )
+  )
+)
 
-        <Pane pane(detail)
-            label = columns.#title
-            action = => do columns.hits += 1
-
--- pane.label
-columns.title = "two"
--- pane.label
-. action = pane.action
-if action
-    action()
--- columns.hits
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-+ title = ""
-+ hits = 0
-
-────────────────────
-
-<This
-    + <Box detail
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
-
-+ label = ""
-+ action Doer?
+(type + Pane (is Box)
+  (prop + label _ (= ""))
+  (prop + action (? Doer))
+)
 ```
 
 ```output
@@ -4456,41 +4734,46 @@ two
 
 ### A slot host that is itself supplied as slot content outside class content is read by its markup id from its own slot content.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Box root
-    <Wrap
-        <Holder columns
-            <Pane pane(detail)
-                label = columns.#title
+(main
+  (<> Box (id: root)
+    (<> Wrap
+      (<> Holder (id: columns)
+        (<> Pane (id: pane) (slot: detail)
+          (= label (. columns #title))
+        )
+      )
+    )
+  )
+  (blank)
+  (print (. pane label))
+  (= (. columns title) "two")
+  (print (. pane label))
+)
 
--- pane.label
-columns.title = "two"
--- pane.label
+(type + Wrap (is Box)
+  (content
+    (<> This
+      (+<> Box)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wrap is Box
+(type + Holder (is Box)
+  (prop + title _ (= "one"))
+  (content
+    (<> This
+      (+<> Box (id: detail))
+    )
+  )
+)
 
-────────────────────
-
-<This
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-+ title = "one"
-
-────────────────────
-
-<This
-    + <Box detail
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
-
-+ label = ""
+(type + Pane (is Box)
+  (prop + label _ (= ""))
+)
 ```
 
 ```output
@@ -4500,142 +4783,151 @@ two
 
 ### Outside class content, a slot host's own property value cannot read the host by its markup id.
 
-```yumi compile-error
-/core/tests/support/markup-fixtures
+```brix compile-error
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Box root
-    <Holder columns
-        label = columns.title
+(main
+  (<> Box (id: root)
+    (<> Holder (id: columns)
+      (= label (. columns title))
+      (blank)
+      (<> Pane (slot: detail))
+    )
+  )
+)
 
-        <Pane (detail)
+(type + Holder (is Box)
+  (prop + title _ (= "one"))
+  (prop + label _ (= ""))
+  (content
+    (<> This
+      (+<> Box (id: detail))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-+ title = "one"
-+ label = ""
-
-────────────────────
-
-<This
-    + <Box detail
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
+(type + Pane (is Box))
 ```
 
 ```output
 Exception: Named markup element "columns" is read before its markup constructs it
-<no file:6>
-            label = columns.title
-                    ^^^^^^^
+<no file:8>
+          (= label (. columns title))
+                      ^^^^^^^
 ```
 
 ### Supplied slot content in a method's markup reads its slot host by the host's markup id, which is not a property of the method's class.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
--- demo.show()
+(main
+  (<> Demo (id: demo))
+  (print (call (. demo show)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
+(type + Demo (is Box)
+  (fn-do + show String
+    (<> Box (id: outer)
+      (<> Holder (id: columns)
+        (<> Pane (id: pane) (slot: detail)
+          (= label (. columns #title))
+        )
+      )
+    )
+    (blank)
+    (= (. columns title) "two")
+    (return (. pane label))
+  )
+)
 
-────────────────────
-+ do show String
+(type + Holder (is Box)
+  (prop + title _ (= "one"))
+  (content
+    (<> This
+      (+<> Box (id: detail))
+    )
+  )
+)
 
-<Box outer
-    <Holder columns
-        <Pane pane(detail)
-            label = columns.#title
-
-columns.title = "two"
-= pane.label
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-+ title = "one"
-
-────────────────────
-
-<This
-    + <Box detail
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
-
-+ label = ""
+(type + Pane (is Box)
+  (prop + label _ (= ""))
+)
 ```
 
 ```output
 two
 ```
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<NestedHost host
-    <NestedLeaf (row) - row
-        address = row.#address
+(main
+  (<> NestedHost (id: host)
+    (<> NestedLeaf (slot: row) (param: row)
+      (= address (. row #address))
+    )
+  )
+  (blank)
+  (let opening (call leaves host))
+  (print (call addresses opening))
+  (blank)
+  (call (. host panel rebind) 0 10 100 "x")
+  (call (. host panel markup-batch-queue checkpoint))
+  (blank)
+  (let closing (call leaves host))
+  (print (call addresses closing))
+  (print (and (== (. opening length) (. closing length)) (== ([] opening 0) ([] closing 0)) (== ([] opening 1) ([] closing 1))))
+)
 
-. opening = leaves(host)
--- addresses(opening)
+(type + NestedRow (is Box)
+  (prop + address I64 (= 0))
+)
 
-host.panel.rebind(0, 10, 100, "x")
-host.panel.markup-batch-queue.checkpoint()
+(type + NestedLeaf (is Box)
+  (prop + address I64 (= 0))
+)
 
-. closing = leaves(host)
--- addresses(closing)
--- opening.length == closing.length && opening[0] == closing[0] && opening[1] == closing[1]
+(type + NestedHost (is Box)
+  (content
+    (<> This
+      (<> (of RebindPanel String) (id: panel)
+        (= items (call (of List String) (list "a" "b")))
+        (<> NestedRow (id: host-row) (slot: row) (param: slot)
+          (= address (. slot #address))
+          (blank)
+          (+<> Box (id: row) (param: host-row NestedRow))
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ NestedRow is Box
+(fn-do + leaves (list NestedLeaf)
+  (param box Box)
+  (let found (list NestedLeaf) (call (of List NestedLeaf)))
+  (call collect-leaves box found)
+  (return found)
+)
 
-+ address I64 = 0
+(fn-do + collect-leaves _
+  (param box Box)
+  (param found (list NestedLeaf))
+  (if (is box NestedLeaf)
+    (+= found (as box NestedLeaf))
+  )
+  (for (in child (. box children))
+    (call collect-leaves child found)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ NestedLeaf is Box
-
-+ address I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ NestedHost is Box
-
-────────────────────
-
-<This
-    <RebindPanel'String panel
-        items = List'String(["a", "b"])
-        <NestedRow host-row(row) - slot
-            address = slot.#address
-
-            + <Box row - host-row NestedRow
-
-━━━━━━━━━━━━━━━━━━━━
-+ do leaves [NestedLeaf]
-    - box Box
-
-. found [NestedLeaf] = List'NestedLeaf()
-collect-leaves(box, found)
-= found
-
-━━━━━━━━━━━━━━━━━━━━
-+ do collect-leaves
-    - box Box
-    - found [NestedLeaf]
-
-if box is NestedLeaf
-    found += box as NestedLeaf
-for child in box.children
-    collect-leaves(child, found)
-
-━━━━━━━━━━━━━━━━━━━━
-+ addresses String
-    - found [NestedLeaf]
-
-",".join("${each.address}" in found)
+(fn-expr + addresses String
+  (param found (list NestedLeaf))
+  (call (. "," join) (in (str (. each address)) found))
+)
 ```
 
 ```output
@@ -4644,44 +4936,46 @@ for child in box.children
 true
 ```
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
-./lib/panel
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(import ./lib/panel)
+(blank)
 
-<Panel panel
-    <Box
-    <Box
+(main
+  (<> Panel (id: panel)
+    (<> Box)
+    (<> Box)
+  )
+  (blank)
+  (print (call size panel))
+)
 
--- size(panel)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do size Int
-    - box Box
-
-. total = 1
-for child in box.children
-    total += size(child)
-= total
+(fn-do + size Int
+  (param box Box)
+  (let total 1)
+  (for (in child (. box children))
+    (+= total (call size child))
+  )
+  (return total)
+)
 ```
 
-```yumi file=lib/panel.yumi
+```brix file=lib/panel.bx
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
 
-/core/markup
-/core/tests/support/markup-fixtures
+(type + Panel (is Box)
+  (content
+    (<> This
+      (<> PanelFrame
+        (+<> Box)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-────────────────────
-
-<This
-    <PanelFrame
-        + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-_ PanelFrame is Box
-
+(type _ PanelFrame (is Box))
 ```
 
 ```output
@@ -4690,60 +4984,57 @@ _ PanelFrame is Box
 
 ### A closure an attribute of an element whose class has slots gives reads the name of a markup element of its body, made after the closure, as the receiver's property when it runs.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = Panel()
-. holder = panel.%first-child! as Holder
-holder.fire()
--- panel.seen
-panel.later.title = "changed"
-holder.fire()
--- panel.seen
+(main
+  (let panel (call Panel))
+  (let holder (as (!! (. panel %first-child)) Holder))
+  (call (. holder fire))
+  (print (. panel seen))
+  (= (. panel later title) "changed")
+  (call (. holder fire))
+  (print (. panel seen))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Box
+(type + Item (is Box)
+  (prop + title _ (= ""))
+  (fn-do + This _
+    (param title _ (= ""))
+  )
+)
 
-+ title = ""
+(type + Holder (is Box)
+  (prop + run (? Doer))
+  (content
+    (<> This
+      (+<> Box (id: trailing))
+    )
+  )
+  (fn-do + fire _
+    (let callback run)
+    (if callback
+      (call callback)
+    )
+  )
+)
 
-────────────────────
-+ This
-    - title = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-+ run Doer?
-
-────────────────────
-
-<This
-    + <Box trailing
-
-────────────────────
-+ do fire
-
-. callback = run
-if callback
-    callback()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ seen = ""
-
-────────────────────
-
-<This
-    <Holder
-        run = => do note(later.title)
-        <Item later "b"
-
-────────────────────
-+ do note
-    - text String
-
-seen = text
+(type + Panel (is Box)
+  (prop + seen _ (= ""))
+  (content
+    (<> This
+      (<> Holder
+        (= run (=> () :do (call note (. later title))))
+        (<> Item (id: later) (text: "b"))
+      )
+    )
+  )
+  (fn-do + note _
+    (param text String)
+    (= seen text)
+  )
+)
 ```
 
 ```output
@@ -4753,56 +5044,60 @@ changed
 
 ### The lines of an element's body that give its class's default slot are built into a node of the slot's type of their own, though the body also gives an attribute and another slot content.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = Panel()
--- describe(panel)
--- (panel.%first-child! as Frame).size
-panel.n = 5
--- describe(panel)
--- (panel.%first-child! as Frame).size
+(main
+  (let panel (call Panel))
+  (print (call describe panel))
+  (print (. (as (!! (. panel %first-child)) Frame) size))
+  (= (. panel n) 5)
+  (print (call describe panel))
+  (print (. (as (!! (. panel %first-child)) Frame) size))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do describe String
-    - node Box
+(fn-do + describe String
+  (param node Box)
+  (let text "")
+  (if (is node TextBox)
+    (= text (. (as node TextBox) text))
+  )
+  (let child (. node %first-child))
+  (if child
+    (= text (++ text "["))
+    (while child
+      (= text (++ text (call describe child) " "))
+      (= child (. child %next-sibling))
+    )
+    (= text (++ text "]"))
+  )
+  (return text)
+)
 
-. text = ""
-if node is TextBox
-    text = (node as TextBox).text
-. child = node.%first-child
-if child
-    text = text ++ "["
-    while child
-        text = text ++ describe(child) ++ " "
-        child = child.%next-sibling
-    text = text ++ "]"
-= text
+(type + Frame (is Box)
+  (prop + size _ (= 0))
+  (content
+    (<> This
+      (+<> Box (id: header))
+      (+<> Box)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Frame is Box
-
-+ size = 0
-
-────────────────────
-
-<This
-    + <Box header
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ n = 2
-
-────────────────────
-
-<This
-    <Frame
-        size = #n
-        <TextBox "a"
-        <TextBox "b ${#n}"
-        <TextBox (header) "h ${#n}"
+(type + Panel (is Box)
+  (prop + n _ (= 2))
+  (content
+    (<> This
+      (<> Frame
+        (= size #n)
+        (<> TextBox (text: "a"))
+        (<> TextBox (text: (str "b " #n)))
+        (<> TextBox (slot: header) (text: (str "h " #n)))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -4814,24 +5109,30 @@ if child
 
 ### The name of a slot outlet written in a nested element body holds the node it mounts for the lines after it.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Panel panel
-    <TextBox (header) = "H"
+(main
+  (<> Panel (id: panel)
+    (<> TextBox (slot: header) (value: "H"))
+  )
+  (blank)
+  (for (in child (. (as (!! (. panel %first-child)) Box) children))
+    (print (. (as child TextBox) text))
+  )
+)
 
-for child in (panel.%first-child! as Box).children
-    -- (child as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-────────────────────
-
-<This
-    <Box
-        + <TextBox header
-        <TextBox = "n${header.text}"
+(type + Panel (is Box)
+  (content
+    (<> This
+      (<> Box
+        (+<> TextBox (id: header))
+        (<> TextBox (value: (str "n" (. header text))))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -4841,102 +5142,103 @@ nH
 
 ### A class whose markup gives the default slot of the class above several lines builds them into one node, and a line it binds to another slot fills that slot.
 
-```yumi
-. panel = Fancy()
-show(panel, "")
+```brix
+(main
+  (let panel (call Fancy))
+  (call show panel "")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - node MarkNode
-    - indent String
+(fn-do + show _
+  (param node MarkNode)
+  (param indent String)
+  (if (is node MarkText)
+    (print (str indent (. (as node MarkText) text)))
+    (else
+      (print (str indent "node"))
+    )
+  )
+  (for (in child (. node children))
+    (call show child (str indent "  "))
+  )
+)
 
-if node is MarkText
-    -- "$indent${(node as MarkText).text}"
-else
-    -- "${indent}node"
-for child in node.children
-    show(child, "$indent  ")
+(type + MarkNode
+  (implements (of MarkupParent MarkNode))
+  (prop + parent (? MarkNode))
+  (prop + first-child (? MarkNode))
+  (prop + last-child (? MarkNode))
+  (prop + previous (? MarkNode))
+  (prop + next (? MarkNode))
+  (fn-do + children _ :get
+    (let maybe-child first-child)
+    (if maybe-child
+      (let child maybe-child)
+      (while true
+        (yield child)
+        (if (not (. child next))
+          (break)
+        )
+        (= child (. child next))
+      )
+    )
+  )
+  (fn-do + child-at (? MarkNode)
+    (param index Index)
+    (let cursor Index 0)
+    (for (in child children)
+      (if (== cursor index)
+        (return child)
+      )
+      (+= cursor 1)
+    )
+  )
+  (fn-expr + markup-content MarkNode
+    (param child MarkNode)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child MarkNode)
+    (param anchor (? MarkNode))
+    (= (. child parent) this)
+    (if (not first-child)
+      (= first-child (= last-child child))
+      (else
+        (= (?. last-child next) child)
+        (= (. child previous) last-child)
+        (= last-child child)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
+(type + MarkText (is MarkNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-+ parent MarkNode?
-+ first-child MarkNode?
-+ last-child MarkNode?
-+ previous MarkNode?
-+ next MarkNode?
+(type + Panel (is MarkNode)
+  (content
+    (+<> MarkText (id: header)
+      (<> MarkText (value: "head"))
+    )
+    (+<> MarkNode)
+    (+<> MarkText (id: footer)
+      (<> MarkText (value: "foot"))
+    )
+  )
+)
 
-────────────────────
-+ do get children
-
-. maybe-child = first-child
-if maybe-child
-    . child = maybe-child
-    while true
-        <= child
-        if !child.next
-            break
-        child = child.next
-
-────────────────────
-+ do child-at MarkNode?
-    - index Index
-
-. cursor Index = 0
-for child in children
-    if cursor == index
-        = child
-    cursor += 1
-
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
-
-child
-
-────────────────────
-+ do markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-child.parent = this
-if !first-child
-    first-child = last-child = child
-else
-    last-child?.next = child
-    child.previous = last-child
-    last-child = child
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkText is MarkNode
-
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is MarkNode
-
-────────────────────
-
-+ <MarkText header
-    <MarkText = "head"
-+ <MarkNode
-+ <MarkText footer
-    <MarkText = "foot"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Fancy is Panel
-
-────────────────────
-
-<This
-    <MarkText = "one"
-    <MarkText = "two"
-    <MarkText (footer) = "fancy foot"
+(type + Fancy (is Panel)
+  (content
+    (<> This
+      (<> MarkText (value: "one"))
+      (<> MarkText (value: "two"))
+      (<> MarkText (slot: footer) (value: "fancy foot"))
+    )
+  )
+)
 ```
 
 ```output
@@ -4950,81 +5252,84 @@ node
 
 ### A named element among the lines a subclass gives its base's default slot binds the property while its own slot content reads it.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
--- row-texts(demo.panel)
--- demo.size()
+(main
+  (<> Demo (id: demo))
+  (print (call row-texts (. demo panel)))
+  (print (call (. demo size)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
+(type + RowData
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-+ text String
+(type + (of RowPanel Item) (is Box)
+  (prop + items (list Item) (= (call (of List Item))))
+  (content
+    (<> This
+      (for (in item #items)
+        (<> Box
+          (+<> Box (id: row) (param: item Item))
+        )
+      )
+    )
+  )
+)
 
-────────────────────
-+ This
-    - text
+(type + Wrap (is Box)
+  (content
+    (<> This
+      (+<> Box)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowPanel'Item is Box
+(fn-do + row-texts String
+  (param panel Box)
+  (let parts (list String) (call (of List String)))
+  (let region (. panel %first-child))
+  (if region
+    (for (in child (. region children))
+      (+= parts (. (as (!! (. child %first-child)) TextBox) text))
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
-+ items [Item] = List'Item()
+(type + Base (is Box)
+  (content
+    (<> This
+      (+<> Box)
+    )
+  )
+)
 
-────────────────────
-
-<This
-    for item in #items
-        <Box
-            + <Box row - item Item
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wrap is Box
-
-────────────────────
-
-<This
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ do row-texts String
-    - panel Box
-
-. parts [String] = List'String()
-. region = panel.%first-child
-if region
-    for child in region.children
-        parts += (child.%first-child! as TextBox).text
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Box
-
-────────────────────
-
-<This
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Base
-
-+ items [RowData] = [RowData("a"), RowData("b")]
-+ names [String] = ["x"]
-
-────────────────────
-
-<This
-    <RowPanel'RowData panel
-        items = #items
-        <TextBox (row) - item = "${item.text}${panel.items.length}"
-    for name in #names keyed by name
-        <TextBox
-            text = name
-
-────────────────────
-+ do size Size
-
-= panel.items.length
+(type + Demo (is Base)
+  (prop + items (list RowData) (= (list (call RowData "a") (call RowData "b"))))
+  (prop + names (list String) (= (list "x")))
+  (content
+    (<> This
+      (<> (of RowPanel RowData) (id: panel)
+        (= items #items)
+        (<> TextBox (slot: row) (param: item) (value: (str (. item text) (. panel items length))))
+      )
+      (for (in name #names (keyed-by name))
+        (<> TextBox
+          (= text name)
+        )
+      )
+    )
+  )
+  (fn-do + size Size
+    (return (. panel items length))
+  )
+)
 ```
 
 ```output
@@ -5034,48 +5339,51 @@ a2,b2
 
 ### An element whose class has slots but whose body gives none is made as any other: a named element among its lines is made where the block starts, so an attribute of the host reads it.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
--- demo.button.is-on
-demo.button.clicked <- 1
-do new
-    -- demo.button.is-on
+(main
+  (<> Demo (id: demo))
+  (print (. demo button is-on))
+  (<- (. demo button clicked) 1)
+  (do-new
+    (print (. demo button is-on))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pop is Box
+(type + Pop (is Box)
+  (prop + is-open Bool (= false))
+  (fn-do + toggle _
+    (= is-open (not is-open))
+  )
+)
 
-+ is-open Bool = false
+(type + Btn (is Box)
+  (prop + is-on Bool (= false))
+  (event + clicked Int)
+  (content
+    (<> This
+      (<> Box
+        (+<> Box (id: trailing))
+      )
+    )
+  )
+)
 
-────────────────────
-+ do toggle
-
-is-open = !is-open
-
-━━━━━━━━━━━━━━━━━━━━
-+ Btn is Box
-
-+ is-on Bool = false
-+ event clicked Int
-
-────────────────────
-
-<This
-    <Box
-        + <Box trailing
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-────────────────────
-
-<This
-    <Btn button
-        is-on = pop.#is-open
-        for n on clicked
-            pop.toggle()
-        <Pop pop
+(type + Demo (is Box)
+  (content
+    (<> This
+      (<> Btn (id: button)
+        (= is-on (. pop #is-open))
+        (for (on n clicked)
+          (call (. pop toggle))
+        )
+        (<> Pop (id: pop))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -5085,91 +5393,102 @@ true
 
 ### Content a repeated slot gives that holds an outlet of its class's own slot, whose fallback reads the item tracked: where the caller gives that slot, the fallback is not built and reads nothing.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Box panel
-    <View view
-        <Bar (content) - item-box
-            item = item-box.#item
--- found(panel)
--- bars(panel)
+(main
+  (<> Box (id: panel)
+    (<> View (id: view)
+      (<> Bar (slot: content) (param: item-box)
+        (= item (. item-box #item))
+      )
+    )
+  )
+  (print (call found panel))
+  (print (call bars panel))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Row is Tuple
+(type + Row (is Tuple)
+  (prop + id String)
+  (prop + selected Bool)
+)
 
-+ id String
-+ selected Bool
+(type + ItemBox (is Box)
+  (prop + item Row (= (call Row "" false)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ItemBox is Box
+(type + LaneBox (is Box)
+  (prop + items (list Row) (= (call (of List Row))))
+  (content
+    (<> This
+      (for (in item #items (keyed-by (. item id)))
+        (<> ItemBox (id: item-box)
+          (= item item)
+          (+<> Box (id: content) (param: item-box ItemBox))
+        )
+      )
+    )
+  )
+)
 
-+ item Row = Row("", false)
+(type + Body (is Box)
+  (prop + is-selected Bool (= false))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ LaneBox is Box
+(type + View (is Box)
+  (prop + lanes (list (list Row)) (= (list (list (call Row "a" true) (call Row "b" false)))))
+  (content
+    (<> This
+      (for (in lane #lanes)
+        (<> LaneBox
+          (= items lane)
+          (<> Box (slot: content) (param: item-box)
+            (+<> Box (id: content) (param: item-box ItemBox)
+              (<> Body
+                (= is-selected (. item-box #item selected))
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)
 
-+ items [Row] = List'Row()
+(type + Bar (is Box)
+  (prop + item Row (= (call Row "" false)))
+)
 
-────────────────────
+(fn-do + bars String
+  (param box Box)
+  (let parts (list String) (call (of List String)))
+  (for (in child (. box children))
+    (if (is child Bar)
+      (+= parts (. (as child Bar) item id))
+    )
+    (let inner (call bars child))
+    (if (!= (. inner size) 0)
+      (+= parts inner)
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
-<This
-    for item in #items keyed by item.id
-        <ItemBox item-box
-            item = item
-            + <Box content - item-box ItemBox
-
-━━━━━━━━━━━━━━━━━━━━
-+ Body is Box
-
-+ is-selected Bool = false
-
-━━━━━━━━━━━━━━━━━━━━
-+ View is Box
-
-+ lanes [[Row]] = [[Row("a", true), Row("b", false)]]
-
-────────────────────
-
-<This
-    for lane in #lanes
-        <LaneBox
-            items = lane
-            <Box (content) - item-box
-                + <Box content - item-box ItemBox
-                    <Body
-                        is-selected = item-box.#item.selected
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Box
-
-+ item Row = Row("", false)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bars String
-    - box Box
-
-. parts [String] = List'String()
-for child in box.children
-    if child is Bar
-        parts += (child as Bar).item.id
-    . inner = bars(child)
-    if inner.size != 0
-        parts += inner
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do found String
-    - box Box
-
-. parts [String] = List'String()
-for child in box.children
-    if child is Body
-        parts += "${(child as Body).is-selected}"
-    . inner = found(child)
-    if inner.size != 0
-        parts += inner
-= ",".join(parts)
+(fn-do + found String
+  (param box Box)
+  (let parts (list String) (call (of List String)))
+  (for (in child (. box children))
+    (if (is child Body)
+      (+= parts (str (. (as child Body) is-selected)))
+    )
+    (let inner (call found child))
+    (if (!= (. inner size) 0)
+      (+= parts inner)
+    )
+  )
+  (return (call (. "," join) parts))
+)
 ```
 
 ```output
@@ -5178,70 +5497,68 @@ a,b
 
 ### A class whose markup holds the default slot outlet does not change how an element of a class of the same name in another module takes the lines of its body.
 
-```yumi
-./lib/outlet
-./lib/plain
+```brix
+(import ./lib/outlet)
+(import ./lib/plain)
+(blank)
 
--- outlet-size()
--- plain-size()
+(main
+  (print (call outlet-size))
+  (print (call plain-size))
+)
 ```
 
-```yumi file=lib/outlet.yumi
+```brix file=lib/outlet.bx
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
 
-/core/markup
-/core/tests/support/markup-fixtures
+(fn-do + outlet-size Int
+  (<> Panel (id: panel))
+  (return (call size panel))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do outlet-size Int
+(fn-do + size Int
+  (param box Box)
+  (let total 1)
+  (for (in child (. box children))
+    (+= total (call size child))
+  )
+  (return total)
+)
 
-<Panel panel
-= size(panel)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do size Int
-    - box Box
-
-. total = 1
-for child in box.children
-    total += size(child)
-= total
-
-━━━━━━━━━━━━━━━━━━━━
-_ Panel is Box
-
-────────────────────
-
-<This
-    <Box
-        + <Box
-
+(type _ Panel (is Box)
+  (content
+    (<> This
+      (<> Box
+        (+<> Box)
+      )
+    )
+  )
+)
 ```
 
-```yumi file=lib/plain.yumi
+```brix file=lib/plain.bx
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
 
-/core/markup
-/core/tests/support/markup-fixtures
+(fn-do + plain-size Int
+  (<> Panel (id: panel)
+    (<> Box)
+    (<> Box)
+  )
+  (return (call size panel))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do plain-size Int
+(fn-do + size Int
+  (param box Box)
+  (let total 1)
+  (for (in child (. box children))
+    (+= total (call size child))
+  )
+  (return total)
+)
 
-<Panel panel
-    <Box
-    <Box
-= size(panel)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do size Int
-    - box Box
-
-. total = 1
-for child in box.children
-    total += size(child)
-= total
-
-━━━━━━━━━━━━━━━━━━━━
-_ Panel is Box
-
+(type _ Panel (is Box))
 ```
 
 ```output
@@ -5251,22 +5568,27 @@ _ Panel is Box
 
 ### A named slot outlet whose body holds only attributes and no default content mounts nothing when its slot is not supplied, and mounts the supplied node when it is.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Panel bare
-<Panel full
-    <TextBox (footer) = "foot"
--- "bare=${bare.%first-child == null} full=${(full.%first-child! as TextBox).text}"
+(main
+  (<> Panel (id: bare))
+  (<> Panel (id: full)
+    (<> TextBox (slot: footer) (value: "foot"))
+  )
+  (print (str "bare=" (== (. bare %first-child) null) " full=" (. (as (!! (. full %first-child)) TextBox) text)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-────────────────────
-
-<This
-    + <Box footer
-        flex = 1
+(type + Panel (is Box)
+  (content
+    (<> This
+      (+<> Box (id: footer)
+        (= flex 1)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -5275,26 +5597,30 @@ bare=true full=foot
 
 ### A named slot outlet whose body holds only an attribute that reads a tracked property mounts nothing when its slot is not supplied, and gives the supplied node the attribute again when the property changes.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Panel bare
-<Panel full
-    <TextBox (footer) = "foot"
--- "bare=${bare.%first-child == null} full=${(full.%first-child! as TextBox).text}"
-full.is-wide = true
--- "full=${(full.%first-child! as TextBox).text}"
+(main
+  (<> Panel (id: bare))
+  (<> Panel (id: full)
+    (<> TextBox (slot: footer) (value: "foot"))
+  )
+  (print (str "bare=" (== (. bare %first-child) null) " full=" (. (as (!! (. full %first-child)) TextBox) text)))
+  (= (. full is-wide) true)
+  (print (str "full=" (. (as (!! (. full %first-child)) TextBox) text)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ is-wide = false
-
-────────────────────
-
-<This
-    + <TextBox footer
-        text = if #is-wide then "wide" else "narrow"
+(type + Panel (is Box)
+  (prop + is-wide _ (= false))
+  (content
+    (<> This
+      (+<> TextBox (id: footer)
+        (= text (if-expr #is-wide "wide" "narrow"))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -5304,43 +5630,41 @@ full=wide
 
 ### The one line of an element's body that gives its class's default slot content may be a value rather than an element: the value is converted to the slot's type.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<CaptionHost first
-    Label("plain")
-<CaptionHost second
-    Plain("converted")
--- first.caption!.text
--- second.caption!.text
+(main
+  (<> CaptionHost (id: first)
+    (call Label "plain")
+  )
+  (<> CaptionHost (id: second)
+    (call Plain "converted")
+  )
+  (print (. (!! (. first caption)) text))
+  (print (. (!! (. second caption)) text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Plain
+(type + Plain
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+  (fn-to-expr + Label
+    (call Label text)
+  )
+)
 
-+ text String
-
-────────────────────
-+ This
-    - text
-
-────────────────────
-+ to Label
-
-Label(text)
-
-━━━━━━━━━━━━━━━━━━━━
-+ CaptionHost is Box
-
-+ caption Label?
-
-────────────────────
-+ <Label
-
-────────────────────
-+ do markup-absorb
-    - content Label
-
-caption = content
+(type + CaptionHost (is Box)
+  (prop + caption (? Label))
+  (content
+    (+<> Label)
+  )
+  (fn-do + markup-absorb _
+    (param content Label)
+    (= caption content)
+  )
+)
 ```
 
 ```output
@@ -5350,48 +5674,42 @@ converted
 
 ### Default slot content that a `use` lends is converted to the slot's type before the `use` ends.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<CaptionHost host
-    use Lender()
--- host.caption!.text
+(main
+  (<> CaptionHost (id: host)
+    (use (call Lender))
+  )
+  (print (. (!! (. host caption)) text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Lender
+(type + Lender
+  (prop + open _ (= false))
+  (fn-do + begin-using _
+    (= open true)
+    (return this)
+  )
+  (fn-do + end-using _
+    (= open false)
+    (print "end-using")
+  )
+  (fn-to-expr + Label
+    (call Label (if-expr open "open" "closed"))
+  )
+)
 
-+ open = false
-
-────────────────────
-+ do begin-using
-
-open = true
-= this
-
-────────────────────
-+ do end-using
-
-open = false
--- "end-using"
-
-────────────────────
-+ to Label
-
-Label(if open then "open" else "closed")
-
-━━━━━━━━━━━━━━━━━━━━
-+ CaptionHost is Box
-
-+ caption Label?
-
-────────────────────
-+ <Label
-
-────────────────────
-+ do markup-absorb
-    - content Label
-
-caption = content
+(type + CaptionHost (is Box)
+  (prop + caption (? Label))
+  (content
+    (+<> Label)
+  )
+  (fn-do + markup-absorb _
+    (param content Label)
+    (= caption content)
+  )
+)
 ```
 
 ```output
@@ -5401,45 +5719,46 @@ open
 
 ### A slot host named under an `if` line binds the owning class property before it builds its content, so the content reads the host by its markup id, as it does outside the `if`.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
--- demo.label()
+(main
+  (<> Demo (id: demo))
+  (print (call (. demo label)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
+(type + Demo (is Box)
+  (prop + is-shown _ (= true))
+  (content
+    (<> This
+      (if #is-shown
+        (<> Holder (id: picked)
+          (<> Pane (slot: detail)
+            (= untracked (. picked title))
+          )
+        )
+      )
+    )
+  )
+  (fn-do + label String
+    (let pane (as (!! (. picked %first-child)) Pane))
+    (return (str (. picked title) " " (. pane untracked)))
+  )
+)
 
-+ is-shown = true
+(type + Holder (is Box)
+  (prop + title _ (= "one"))
+  (content
+    (<> This
+      (+<> Box (id: detail))
+    )
+  )
+)
 
-────────────────────
-
-<This
-    if #is-shown
-        <Holder picked
-            <Pane (detail)
-                untracked = picked.title
-
-────────────────────
-+ do label String
-
-. pane = picked.%first-child! as Pane
-= "${picked.title} ${pane.untracked}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-+ title = "one"
-
-────────────────────
-
-<This
-    + <Box detail
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
-
-+ untracked = ""
+(type + Pane (is Box)
+  (prop + untracked _ (= ""))
+)
 ```
 
 ```output
@@ -5448,48 +5767,53 @@ one one
 
 ### Demonstrates that a subclass of a class that forwards a named slot appends its own lines as ordinary child content.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<ForwardingSubPanel panel
-    <TextBox (extra) "added"
+(main
+  (<> ForwardingSubPanel (id: panel)
+    (<> TextBox (slot: extra) (text: "added"))
+  )
+  (blank)
+  (print (call count-children panel))
+  (print (call count-children (. panel holder)))
+)
 
--- count-children(panel)
--- count-children(panel.holder)
+(fn-do + count-children Index
+  (param box Box)
+  (let found 0)
+  (for (in child (. box children))
+    (+= found 1)
+  )
+  (return found)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children Index
-    - box Box
+(type + ExtraHolder (is Box)
+  (content
+    (<> This
+      (+<> Box (id: extra))
+    )
+  )
+)
 
-. found = 0
-for child in box.children
-    found += 1
-= found
+(type + ForwardingPanel (is Box)
+  (content
+    (<> This
+      (<> ExtraHolder (id: holder)
+        (<+ extra)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ExtraHolder is Box
-
-────────────────────
-
-<This
-    + <Box extra
-
-━━━━━━━━━━━━━━━━━━━━
-+ ForwardingPanel is Box
-
-────────────────────
-
-<This
-    <ExtraHolder holder
-        <+ (extra)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ForwardingSubPanel is ForwardingPanel
-
-────────────────────
-
-<This
-    <TextBox "own"
+(type + ForwardingSubPanel (is ForwardingPanel)
+  (content
+    (<> This
+      (<> TextBox (text: "own"))
+    )
+  )
+)
 ```
 
 ```output
@@ -5499,42 +5823,47 @@ for child in box.children
 
 ### Demonstrates that forwarding a slot the component was not given gives the inner element nothing for that slot.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<ForwardingPanel panel
-    <TextBox "plain"
+(main
+  (<> ForwardingPanel (id: panel)
+    (<> TextBox (text: "plain"))
+  )
+  (blank)
+  (print (call count-children panel))
+  (print (call count-children (. panel holder)))
+  (let made (call ForwardingPanel))
+  (print (call count-children (. made holder)))
+)
 
--- count-children(panel)
--- count-children(panel.holder)
-. made = ForwardingPanel()
--- count-children(made.holder)
+(fn-do + count-children Index
+  (param box Box)
+  (let found 0)
+  (for (in child (. box children))
+    (+= found 1)
+  )
+  (return found)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children Index
-    - box Box
+(type + ExtraHolder (is Box)
+  (content
+    (<> This
+      (+<> Box (id: extra))
+    )
+  )
+)
 
-. found = 0
-for child in box.children
-    found += 1
-= found
-
-━━━━━━━━━━━━━━━━━━━━
-+ ExtraHolder is Box
-
-────────────────────
-
-<This
-    + <Box extra
-
-━━━━━━━━━━━━━━━━━━━━
-+ ForwardingPanel is Box
-
-────────────────────
-
-<This
-    <ExtraHolder holder
-        <+ (extra)
+(type + ForwardingPanel (is Box)
+  (content
+    (<> This
+      (<> ExtraHolder (id: holder)
+        (<+ extra)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -5545,160 +5874,173 @@ for child in box.children
 
 ### A named element of a slot's default content panics where it is read once a caller fills the slot.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Holder holder
-    <Box (detail)
--- holder.marker.title
+(main
+  (<> Holder (id: holder)
+    (<> Box (slot: detail))
+  )
+  (print (. holder marker title))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
+(type + Holder (is Box)
+  (content
+    (<> This
+      (+<> Box (id: detail)
+        (<> Pane (id: marker))
+      )
+    )
+  )
+)
 
-────────────────────
-
-<This
-    + <Box detail
-        <Pane marker
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
-
-+ title = "one"
+(type + Pane (is Box)
+  (prop + title _ (= "one"))
+)
 ```
 
 ```stderr
 Unhandled panic: Named markup element "marker" is read before its markup constructs it
-<no file:6>
+<no file:9>
 
 Task 1
 
 Stack trace:
-  0  __source__:main no file:6:4
+  0  __source__:main no file:9:13
   1  __source__:init.__source__ no file
   2  __source__:brix.main no file
 ```
 
 ### Slot content cannot read an element it writes later: it makes its elements in order.
 
-```yumi compile-error
-/core/tests/support/markup-fixtures
+```brix compile-error
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Pair pair
+(main
+  (<> Pair (id: pair))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
+(type + Holder (is Box)
+  (prop + value _ (= false))
+)
 
-+ value = false
+(type + Shelf (is Box)
+  (content
+    (<> This
+      (+<> Box)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shelf is Box
-
-────────────────────
-
-<This
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Shelf
-
-────────────────────
-
-<This
-    <Holder first
-        value = second.value
-    <Holder second
-        value = true
+(type + Pair (is Shelf)
+  (content
+    (<> This
+      (<> Holder (id: first)
+        (= value (. second value))
+      )
+      (<> Holder (id: second)
+        (= value true)
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Named markup element "second" is read before its markup constructs it
-<no file:26>
-            value = second.value
-                    ^^^^^^
+<no file:25>
+            (= value (. second value))
+                        ^^^^^^
 ```
 
 ### A tracked read in slot content cannot read an element the content writes later.
 
-```yumi compile-error
-/core/tests/support/markup-fixtures
+```brix compile-error
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Pair pair
+(main
+  (<> Pair (id: pair))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
+(type + Holder (is Box)
+  (prop + value _ (= false))
+)
 
-+ value = false
+(type + Shelf (is Box)
+  (content
+    (<> This
+      (+<> Box)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shelf is Box
-
-────────────────────
-
-<This
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Shelf
-
-────────────────────
-
-<This
-    <Holder first
-        value = second.#value
-    <Holder second
-        value = true
-
-────────────────────
-+ do peek Bool
-
-= second.value
+(type + Pair (is Shelf)
+  (content
+    (<> This
+      (<> Holder (id: first)
+        (= value (. second #value))
+      )
+      (<> Holder (id: second)
+        (= value true)
+      )
+    )
+  )
+  (fn-do + peek Bool
+    (return (. second value))
+  )
+)
 ```
 
 ```output
 Exception: Named markup element "second" is read before its markup constructs it
-<no file:26>
-            value = second.#value
-                    ^^^^^^
+<no file:25>
+            (= value (. second #value))
+                        ^^^^^^
 ```
 
 ### Class content cannot read a slot host it writes above an element it names: the host is made where it is written, after the elements the block makes where it starts.
 
-```yumi compile-error
-/core/tests/support/markup-fixtures
+```brix compile-error
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
+(main
+  (<> Demo (id: demo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
+(type + Holder (is Box)
+  (prop + value _ (= false))
+)
 
-+ value = false
+(type + Shelf (is Box)
+  (prop + value _ (= true))
+  (content
+    (<> This
+      (+<> Box)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shelf is Box
-
-+ value = true
-
-────────────────────
-
-<This
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-────────────────────
-
-<This
-    <Shelf shelf
-        <Box
-    <Holder holder
-        value = shelf.value
+(type + Demo (is Box)
+  (content
+    (<> This
+      (<> Shelf (id: shelf)
+        (<> Box)
+      )
+      (<> Holder (id: holder)
+        (= value (. shelf value))
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Named markup element "shelf" is read before its markup constructs it
-<no file:30>
-            value = shelf.value
-                    ^^^^^
+<no file:29>
+            (= value (. shelf value))
+                        ^^^^^
 ```

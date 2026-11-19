@@ -1,0 +1,24 @@
+; benchmark.meta description: Opens a 300-message chat transcript from a short one and returns, framing each selection through the retained scene.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: gui,compile-timing
+(blank)
+(import /gui/bench/fixtures/chat-transcript-bench-fixture)
+(blank)
+
+(main
+  (let checksum (call run-chat-transcript-open 6))
+  (blank)
+  (print (str "bench-result gui/chat-transcript-open checksum=" checksum))
+)
+
+(fn-do + run-chat-transcript-open Size
+  (param rounds Size)
+  (let bench (call ChatTranscriptBench chat-bench-long-turns))
+  (let checksum (. bench chat messages length))
+  (for (in round (..< 0 rounds))
+    (+= checksum (call (. bench show) (. bench chat)))
+    (+= checksum (call (. bench show) (. bench blank)))
+  )
+  (call (. bench close))
+  (return checksum)
+)

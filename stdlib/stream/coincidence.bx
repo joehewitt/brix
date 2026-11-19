@@ -1,0 +1,294 @@
+(import ./aggregate)
+(import /core/channel)
+(blank)
+;  =================================================================================================
+;  + buffer'Item BufferedChannel'Item @task
+;      of stream <Item>
+(blank)
+;  for message in stream
+;      <= message
+(blank)
+;  buffer.close()
+(blank)
+; =================================================================================================
+; + window <Channel'Item>
+;     - count Int
+;     in stream <Item>
+;
+; . current-window Item<>
+; . remaining = count
+;
+; for item in stream
+;     if remaining == count
+;         <= current-window
+;     current-window <- item
+;     remaining -= 1
+;     if remaining == 0
+;         current-window.close
+;         current-window Item<>
+;         remaining = count
+;
+; current-window.close
+;
+; =================================================================================================
+; + window
+;     in stream <Item>
+;      until delimiter <Any>
+;
+; . current-window Channel'Item?
+;
+; for item in stream
+;     if !current-window
+;         current-window Item<>
+;         <= current-window
+;     current-window <- item
+; or item in delimiter
+;     if current-window
+;         current-window.close
+;         current-window = Nothing
+;
+(type + (of PairwisePair Item) (is Tuple)
+  (prop + a Item)
+  (prop + b Item)
+)
+
+(fn-do + (of buffer Item) _
+  (param stream (stream Item))
+  (let buffer (call create-buffered-stream stream))
+  (do-new
+    (for (in message stream)
+      (<- buffer message)
+    )
+    (call (. buffer close))
+  )
+  (return buffer)
+)
+
+(fn-do + (of buffer Item) (stream (of List Item)) @inline
+  (param count Int)
+  (param stream (stream Item))
+  ; - Container ImmutableArray'Item
+  ; = List'Item
+  (blank)
+  (let current-buffer (call (of List Item)))
+  (let remaining count)
+  (for (in item stream)
+    (+= current-buffer item)
+    (-= remaining 1)
+    (if (== remaining 0)
+      (yield current-buffer)
+      (= current-buffer (call (of List Item)))
+      (= remaining count)
+    )
+  )
+)
+
+(fn-do + (of window Item) _ @inline
+  (param stream (stream Item))
+  (param where (of Predicate Item))
+  (let last (? Item) null)
+  (let started false)
+  (for (in item stream)
+    (if (not started)
+      (= started true)
+      (yield item)
+      (= last item)
+      (else-if (call where item)
+        (yield item)
+        (= last null)
+      )
+      (else
+        (= last item)
+      )
+    )
+  )
+  (blank)
+  (yield? last)
+  (blank)
+  ; =================================================================================================
+  ; + buffer <Container'Item>
+  ;     of stream <Item>
+  ;     until delimiter <Any>
+  ;     - Container Container'Item
+  ;         ` = List'Item
+  ;
+  ; . current-buffer = Container'Item()
+  ; for item in stream
+  ;     current-buffer <- item
+  ; or item in delimiter
+  ;     . completed-buffer = current-buffer
+  ;     current-buffer = Container'Item()
+  ;     <= completed-buffer
+)
+
+(fn-do + (of pairwise Item) _ @inline
+  (param stream (stream Item))
+  (param is-looped _ (= false))
+  (let first (? Item) null)
+  (let previous (? Item) null)
+  (let started false)
+  (for (in item stream)
+    (if started
+      (yield (call PairwisePair (!! previous) item))
+      (else
+        (= started true)
+        (= first item)
+      )
+    )
+    (= previous item)
+  )
+  (blank)
+  (if (and started is-looped)
+    (yield (call PairwisePair (!! previous) (!! first)))
+  )
+)
+
+(fn-do + (of partition Item) _
+  (param stream (stream Item))
+  (param where (of Predicate Item))
+  (let out1 (of SyncBufferedChannel Item))
+  (let out2 (of SyncBufferedChannel Item))
+  (blank)
+  (do-new
+    (for (in item stream)
+      (if (call where item)
+        (<- out1 item)
+        (else
+          (<- out2 item)
+        )
+      )
+    )
+    (call (. out1 close))
+    (call (. out2 close))
+  )
+  (blank)
+  (return (tuple out1 out2))
+  (blank)
+  ; =================================================================================================
+  ; + split
+  ;     - delimiter Item
+  ;     in stream <Item>
+  ;
+  ; split for item in stream: item == delimiter
+  ;
+  ; =================================================================================================
+  ; + split
+  ;     of stream <Item>
+  ;     where predicate Predicate'Item
+  ;
+  ; . windows Channel\<Item>
+  ; . current-window Item<>
+  ;
+  ; windows <- current-window
+  ;
+  ; do new for item in stream
+  ;     if predicate(item)
+  ;         current-window.close
+  ;         current-window Item<>
+  ;         current-window >> windows
+  ;     else
+  ;         current-window <- item
+  ;
+  ; = windows
+  ;
+  ; =================================================================================================
+  ; + group-by
+  ;     of stream <Item>
+  ;     where selector Selector'Item'Key
+  ;
+  ; . groups [Key = Channel'Item]
+  ;
+  ; for item in stream
+  ;     . key = selector(item)
+  ;     . group = groups[key]
+  ;     if !group
+  ;         group Item<>
+  ;         groups[key] = group
+  ;         <= group
+  ;
+  ;     group <- item
+  ;
+  ; for group in groups.values
+  ;     group.close
+  ;
+  ; =================================================================================================
+  ; + group-by
+  ;     in stream <Item>
+  ;     until terminator () <Any>
+  ;         - group Channel'Item
+  ;     where selector Selector'Item'Key
+  ;
+  ; . groups [Key = Channel'Item]
+  ;
+  ; for item in stream
+  ;     . key = selector(item)
+  ;     . group = groups[key]
+  ;     if !group
+  ;         group Item<>
+  ;         groups[key] = group
+  ;         . until-stream = terminator(group)
+  ;         do new
+  ;             <= until-stream
+  ;             group.close
+  ;             groups[key] = Nothing
+  ;         <= group
+  ;
+  ;     group <- item
+  ;
+  ; for group in groups.values
+  ;     group.close
+  ;
+  ; =================================================================================================
+  ; + join
+  ;     in (left <Left>, right <Right>)
+  ;     with selector () Result
+  ;         - left Left
+  ;         - right Right
+  ;
+  ; . window-item Left?
+  ; for right-item in right
+  ;     if window-item
+  ;         <= selector(window-item, right-item)
+  ; or left-item in left
+  ;     window-item = left-item
+  ; or on left.closed
+  ;     break
+)
+
+(fn-do + (of alternate Item) (stream Item) @inline
+  (param stream (stream Item))
+  (let odds (list Item))
+  (let even true)
+  (for (in item stream)
+    (if even
+      (yield item)
+      (else
+        (+= odds item)
+      )
+    )
+    (= even (not even))
+  )
+  (yield-all odds)
+)
+
+(fn-do + (of evens Item) (stream Item) @inline
+  (param stream (stream Item))
+  (let even true)
+  (for (in item stream)
+    (if even
+      (yield item)
+    )
+    (= even (not even))
+  )
+)
+
+(fn-do + (of odds Item) (stream Item) @inline
+  (param stream (stream Item))
+  (let even true)
+  (for (in item stream)
+    (if (not even)
+      (yield item)
+    )
+    (= even (not even))
+  )
+)

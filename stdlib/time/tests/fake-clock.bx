@@ -1,0 +1,213 @@
+(import /os/file)
+(import /os/process)
+(import /test)
+(import /time)
+(import /time/fake-clock)
+(import /time/timer)
+(blank)
+(prop _ start _ (= 1767225600))
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Fake Clock Reads"))
+  (call (. cases run) read-tests)
+  (= cases (call (. cases then) "Fake Clock Waits" wait-tests))
+  (= cases (call (. cases then) "Fake Clock Order" order-tests))
+  (= cases (call (. cases then) "Fake Clock Loops" loop-tests))
+  (= cases (call (. cases then) "Fake Clock Timers" timer-tests))
+  (= cases (call (. cases then) "Fake Clock Cancels" cancel-tests))
+  (= cases (call (. cases then) "Fake Clock Freeze" freeze-tests))
+  (= cases (call (. cases then) "Fake Clock Handle Waits" handle-tests))
+  (return cases)
+)
+
+(fn-do + read-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeClock))
+  (do-with time fake
+    (call (. t expect) "the wall clock starts at the fake's start" start (. (call clock) s))
+    (call (. t expect) "a date reads the fake's time" "2026-01-01T00:00:00+00:00" (as (call DateTime) ISO8601))
+    (call (. t expect) "the local zone is the fake's" "UTC" (. local name))
+    (let began (call monotonic-time-nanoseconds))
+    (call (. fake advance) 90s)
+    (call (. t expect) "advancing moves the wall clock" (+ start 90) (. (call clock) s))
+    (let moved (- (call monotonic-time-nanoseconds) began))
+    (call (. t expect) "advancing moves the monotonic clock" 90000000000u moved)
+  )
+  (return t)
+)
+
+(fn-do + wait-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeClock))
+  (let heard (list String))
+  (do-with time fake
+    (let reminder
+      (do-new
+        (call (. 5minutes wait))
+        (+= heard "ring")
+      )
+    )
+    (call (. fake advance) 4minutes)
+    (call (. t expect) "a wait does not end before its time" 0 (. heard length))
+    (call (. fake advance) 60s)
+    (call (. t expect) "a wait ends when fake time reaches it" (list "ring") heard)
+    (call (. reminder close))
+  )
+  (return t)
+)
+
+(fn-do + order-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeClock))
+  (let heard (list String))
+  (do-with time fake
+    (let third
+      (do-new
+        (call (. 3s wait))
+        (+= heard (str "third at " (- (. (call clock) s) start)))
+      )
+    )
+    (let first
+      (do-new
+        (call (. 1s wait))
+        (+= heard (str "first at " (- (. (call clock) s) start)))
+      )
+    )
+    (let second
+      (do-new
+        (call (. 2s wait))
+        (+= heard (str "second at " (- (. (call clock) s) start)))
+      )
+    )
+    (call (. fake advance) 5s)
+    (let expected (list "first at 1" "second at 2" "third at 3"))
+    (call (. t expect) "waits end in deadline order, each at its deadline" expected heard)
+    (call (. t expect) "the clock ends at the time advanced to" (+ start 5) (. (call clock) s))
+    (call (. third close))
+    (call (. first close))
+    (call (. second close))
+  )
+  (return t)
+)
+
+(fn-do + loop-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeClock))
+  (let ticks 0)
+  (do-with time fake
+    (let loop (call (. 100ms loop) (=> () :do (+= ticks 1))))
+    (call (. fake advance) 1s)
+    (call (. t expect) "a timer loop ticks once for each interval passed" 10 ticks)
+    (call (. fake advance) 50ms)
+    (call (. t expect) "a loop does not tick between intervals" 10 ticks)
+    (call (. loop cancel))
+    (call (. fake advance) 1s)
+    (call (. t expect) "cancelling a loop ends its wait" 10 ticks)
+  )
+  (return t)
+)
+
+(fn-do + timer-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeClock))
+  (let ticks (list Milliseconds))
+  (let counter (of Subscriber Milliseconds) (=> (elapsed source) :do (+= ticks elapsed)))
+  (do-with time fake
+    (let timer (call Timer 100ms))
+    (call (. timer subscribe) counter)
+    (call (. fake advance) 1s)
+    (call (. t expect) "a timer's subscribers hear each tick advancing passes" 10 (. ticks length))
+    (call (. t expect) "each tick gives the time since the timer began" 1000ms ([] ticks 9))
+    (call (. timer unsubscribe) counter)
+    (call (. fake advance) 1s)
+    (call (. t expect) "a timer with no subscriber stops" 10 (. ticks length))
+  )
+  (return t)
+)
+
+(fn-do + cancel-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeClock))
+  (let heard (list String))
+  (let calls 0)
+  (do-with time fake
+    (let waiting
+      (do-new
+        (call (. 10s wait))
+        (+= heard "late")
+      )
+    )
+    (call (. fake advance) 0s)
+    (call (. waiting close))
+    (call (. fake advance) 20s)
+    (call (. t expect) "a task cancelled in its wait ends there" 0 (. heard length))
+    (blank)
+    (let action (call debounced 100ms (=> () :do (+= calls 1))))
+    (call action)
+    (call (. fake advance) 50ms)
+    (call action)
+    (call (. fake advance) 50ms)
+    (call (. t expect) "a call within the delay starts it again" 0 calls)
+    (call (. fake advance) 50ms)
+    (call (. t expect) "the action runs a delay after the last call" 1 calls)
+  )
+  (return t)
+)
+
+(fn-do + freeze-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeClock))
+  (let heard (list String))
+  (do-with time fake
+    (let waiting
+      (do-new
+        (call (. 1s wait))
+        (+= heard "woke")
+      )
+    )
+    (call (. 2s freeze))
+    (call (. t expect) "freezing moves fake time on" (+ start 2) (. (call clock) s))
+    (call (. t expect) "freezing ends the waits it passes" (list "woke") heard)
+    (call (. waiting close))
+  )
+  (return t)
+)
+
+(fn-do + handle-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeClock))
+  (let heard (list String))
+  (let idle (call process-pipe))
+  (let busy (call process-pipe))
+  (do-with time fake
+    (let timing-out
+      (do-new
+        (let waited (catch (call wait-until-readable (. idle reader fd) (call Deadline 1s))))
+        (+= heard (if-expr (is waited TimeoutError) "timed out" "ready"))
+      )
+    )
+    (call (. fake advance) 999ms)
+    (call (. t expect) "a handle wait goes on before its deadline" 0 (. heard length))
+    (call (. fake advance) 1ms)
+    (call (. t expect) "a handle wait times out at its deadline in fake time" (list "timed out") heard)
+    (call (. timing-out close))
+    (blank)
+    (let readable
+      (do-new
+        (let waited (catch (call wait-until-readable (. busy reader fd) (call Deadline 1s))))
+        (+= heard (if-expr (is waited TimeoutError) "timed out" "ready"))
+      )
+    )
+    (call (. fake advance) 0s)
+    (call (. busy writer write) "x")
+    (call (. readable wait))
+    (call (. t expect) "a handle that becomes ready ends the wait" (list "timed out" "ready") heard)
+    (call (. t expect) "a wait that ends on its handle leaves fake time alone" (+ start 1) (. (call clock) s))
+  )
+  (return t)
+)

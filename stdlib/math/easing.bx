@@ -1,0 +1,156 @@
+(import ./math)
+
+(type + Easing (is Union)
+  (variant linear)
+  (variant ease)
+  (variant ease-in)
+  (variant ease-out)
+  (variant ease-in-out)
+  (variant cubic-bezier CubicBezier)
+  (variant steps Int)
+  (fn-expr + curve (? CubicBezier) :get
+    (match? this
+      (case= .ease
+        (call CubicBezier 0.25 0.1 0.25 1)
+      )
+      (case= .ease-in
+        (call CubicBezier 0.42 0 1 1)
+      )
+      (case= .ease-out
+        (call CubicBezier 0 0 0.58 1)
+      )
+      (case= .ease-in-out
+        (call CubicBezier 0.42 0 0.58 1)
+      )
+      (case (call .cubic-bezier points)
+        points
+      )
+    )
+  )
+  (fn-do + eased F64
+    (param t F64)
+    (return-if 0 (if (<= t 0)))
+    (return-if 1 (if (>= t 1)))
+    (match? this
+      (case (call .steps count)
+        (return-if t (if (<= count 0)))
+        (return (/ (call floor (* t count)) count))
+      )
+    )
+    (let points curve)
+    (return-if t (if (not points)))
+    (return (call (. points eased) t))
+  )
+  (fn-do + slope F64
+    (param t F64)
+    (match? this
+      (case (call .steps count)
+        (return 0)
+      )
+    )
+    (let points curve)
+    (return-if 1 (if (not points)))
+    (return (call (. points slope) (call clamp-unit t)))
+  )
+)
+
+(type + CubicBezier (is Tuple)
+  (prop + x1 F64)
+  (prop + y1 F64)
+  (prop + x2 F64)
+  (prop + y2 F64)
+  (fn-expr + eased F64
+    (param t F64)
+    (case? (<= t 0)
+      0
+    )
+    (case? (>= t 1)
+      1
+    )
+    (default
+      (call axis (call solve t) y1 y2)
+    )
+  )
+  (fn-expr + slope F64
+    (param t F64)
+    (case? (> (call abs run) 0.000001)
+      (/ rise run)
+    )
+    (case? (<= (call abs bend) 0.000001)
+      0
+    )
+    (default
+      (/ (call axis-bend u y1 y2) bend)
+    )
+    (where
+      (lazy u (call solve (call clamp-unit t)))
+      (lazy run (call axis-slope u x1 x2))
+      (lazy rise (call axis-slope u y1 y2))
+      (lazy bend (call axis-bend u x1 x2))
+    )
+  )
+  (fn-do _ solve F64
+    (param x F64)
+    (let guess x)
+    (for (in _ (..< 0 8))
+      (let error (- (call axis guess x1 x2) x))
+      (return-if guess (if (< (call abs error) 0.0000001)))
+      (let run (call axis-slope guess x1 x2))
+      (if (< (call abs run) 0.000001)
+        (break)
+      )
+      (-= guess (/ error run))
+    )
+    (let low 0.0)
+    (let high 1.0)
+    (= guess x)
+    (for (in _ (..< 0 40))
+      (let found (call axis guess x1 x2))
+      (return-if guess (if (< (call abs (- found x)) 0.0000001)))
+      (if (< found x)
+        (= low guess)
+        (else
+          (= high guess)
+        )
+      )
+      (= guess (/ (+ low high) 2))
+    )
+    (return guess)
+  )
+)
+
+(fn-expr _ axis F64
+  (param u F64)
+  (param first F64)
+  (param second F64)
+  (* (+ (* (+ (* a u) b) u) c) u)
+  (where
+    (lazy c (* 3 first))
+    (lazy b (- (* 3 (- second first)) c))
+    (lazy a (- 1 c b))
+  )
+)
+
+(fn-expr _ axis-slope F64
+  (param u F64)
+  (param first F64)
+  (param second F64)
+  (+ (* (+ (* 3 a u) (* 2 b)) u) c)
+  (where
+    (lazy c (* 3 first))
+    (lazy b (- (* 3 (- second first)) c))
+    (lazy a (- 1 c b))
+  )
+)
+
+(fn-expr _ axis-bend F64
+  (param u F64)
+  (param first F64)
+  (param second F64)
+  (+ (* 6 a u) (* 2 b))
+  (where
+    (lazy c (* 3 first))
+    (lazy b (- (* 3 (- second first)) c))
+    (lazy a (- 1 c b))
+  )
+)

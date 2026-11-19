@@ -1,0 +1,26 @@
+(import ./json)
+
+(type + JSONLineError (is Error)
+  (prop + line Size)
+  (prop + column Size)
+  (fn-do + This _
+    (param line _)
+    (param column _)
+    (= message (str "Line " line " is not valid JSON"))
+  )
+)
+
+(fn-expr + json-line JSON (over: Char) (?! JSONLineError)
+  (~ (seq / (: value JSON) / \line-end)
+    value
+  )
+  (throw (call JSONLineError (+ (. location line) 1) (+ (. location column) 1)))
+  (where
+    (lazy line-end
+      (pattern
+        (~ (seq (? "\r") "\n"))
+        (~ (! .))
+      )
+    )
+  )
+)

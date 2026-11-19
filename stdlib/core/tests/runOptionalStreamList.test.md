@@ -1,33 +1,34 @@
 # Optional stream list
 
-```yumi
-. a = Entry("a")
-. b = Entry("b")
-. missing Entry?
-. source [Entry?] = [a, missing, b]
-for item in source
-    -- if item then "present" else "absent"
-. entries = collect(source)
--- entries.length
-for entry in entries
-    -- entry.text
+```brix
+(main
+  (let a (call Entry "a"))
+  (let b (call Entry "b"))
+  (let missing (? Entry))
+  (let source (list (? Entry)) (list a missing b))
+  (for (in item source)
+    (print (if-expr item "present" "absent"))
+  )
+  (let entries (call collect source))
+  (print (. entries length))
+  (for (in entry entries)
+    (print (. entry text))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Entry
+(type + Entry
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ collect
-    - source <Entry?>
-
-** source
-?*> each
-|> List
+(fn-expr + collect _
+  (param source (stream (? Entry)))
+  (spread source)
+  (pipe ?*> each)
+  (pipe |> List)
+)
 ```
 
 ```output
@@ -39,26 +40,33 @@ a
 b
 ```
 
-```yumi
-. mapped =
-    ** values()
-    *> each ?? -1
-    |> List
-. filtered =
-    ** values()
-    ?> each != null
-    *> each ?? -1
-    |> List
--- ",".join(mapped)
--- ",".join(filtered)
+```brix
+(main
+  (let mapped
+    (block
+      (spread (call values))
+      (pipe *> (?? each -1))
+      (pipe |> List)
+    )
+  )
+  (let filtered
+    (block
+      (spread (call values))
+      (pipe ?> (!= each null))
+      (pipe *> (?? each -1))
+      (pipe |> List)
+    )
+  )
+  (print (call (. "," join) mapped))
+  (print (call (. "," join) filtered))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do values @inline
-
-. missing I32?
-<= 2
-<= missing
-<= 4
+(fn-do + values _ @inline
+  (let missing (? I32))
+  (yield 2)
+  (yield missing)
+  (yield 4)
+)
 ```
 
 ```output
@@ -68,44 +76,47 @@ b
 
 ### A stream of optional objects passes the ones that hold nothing to a loop
 
-```yumi
-. boxes [Box?] = [Box(1), null, Box(3)]
-. count = 0
-for box in boxes
-    count += 1
-    -- if box then box.value else 0
--- count
--- total(boxes)
--- total(some(boxes))
+```brix
+(main
+  (let boxes (list (? Box)) (list (call Box 1) null (call Box 3)))
+  (let count 0)
+  (for (in box boxes)
+    (+= count 1)
+    (print (if-expr box (. box value) 0))
+  )
+  (print count)
+  (print (call total boxes))
+  (print (call total (call some boxes)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + value Int)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value Int
+(fn-do + some (stream (? Box))
+  (param boxes (list (? Box)))
+  (for (in box boxes)
+    (yield box)
+  )
+  (yield null)
+)
 
-────────────────────
-+ This
-    - value
-
-━━━━━━━━━━━━━━━━━━━━
-+ do some <Box?>
-    - boxes [Box?]
-
-for box in boxes
-    <= box
-<= null
-
-━━━━━━━━━━━━━━━━━━━━
-+ do total Int
-    - boxes <Box?>
-
-. sum = 0
-for box in boxes
-    if box
-        sum += box.value
-    else
-        sum += 100
-= sum
+(fn-do + total Int
+  (param boxes (stream (? Box)))
+  (let sum 0)
+  (for (in box boxes)
+    (if box
+      (+= sum (. box value))
+      (else
+        (+= sum 100)
+      )
+    )
+  )
+  (return sum)
+)
 ```
 
 ```output
@@ -119,14 +130,16 @@ for box in boxes
 
 ### A map-filter whose body is never null drops no item, and asks for a map.
 
-```yumi crash
--- List([1, 2, 3] ?*> (if each > 1 then each else null))
--- List([1, 2, 3] ?*> each * 2)
+```brix crash
+(main
+  (print (call List (?*> (list 1 2 3) (if-expr (> each 1) each null))))
+  (print (call List (?*> (list 1 2 3) (* each 2))))
+)
 ```
 
 ```output
 Exception: The body of this "?*>" gives I64, which is never null, so it drops no item; write "*>"
-<no file:3>
-    -- List([1, 2, 3] ?*> each * 2)
-            ^^^^^^^^^^^^^^^^^^^^^^
+<no file:4>
+      (print (call List (?*> (list 1 2 3) (* each 2))))
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```

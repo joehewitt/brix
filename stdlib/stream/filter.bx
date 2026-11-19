@@ -1,0 +1,186 @@
+(import ./aggregate)
+(import ./combine)
+
+(fn-expr + (of identity T) _
+  (param a T)
+  a
+)
+
+(fn-expr + (of are Item) _
+  (param type Type)
+  (param stream (stream Item))
+  (call filter stream (:where (is each type)))
+)
+
+(fn-do + (of distinct Item) _ @inline
+  (param stream (stream Item))
+  (let seen (list Item))
+  (for (in item stream (when (not (call (. seen find) item))))
+    (+= seen item)
+    (yield item)
+  )
+)
+
+(fn-do + (of distinct Item Key) _ @inline
+  (param stream (stream Item))
+  (param where (of Selector Item Key))
+  (let seen (map Key Item))
+  (for (in item stream)
+    (let key (call where item))
+    (if (not ([] seen key))
+      (= ([] seen key) item)
+      (yield item)
+    )
+  )
+)
+
+(fn-expr + (of distinct-until-changed Item) _
+  (param stream (stream Item))
+  (call distinct-until-changed stream (:where (=> (a) a)))
+)
+
+(fn-do + (of distinct-until-changed Item Keyed) _ @inline
+  (param stream (stream Item))
+  (param where (of Selector Item Keyed))
+  (let seen (? Keyed) null)
+  (let started false)
+  (for (in item stream)
+    (let key (call where item))
+    (if (or (not started) (!= key seen))
+      (= started true)
+      (= seen key)
+      (yield item)
+    )
+  )
+  (blank)
+  ; ` Example
+  ; > distinct-until-changed of item in values: item.key
+  ; > distinct-until-changed where: each.key
+  ; > distinct-until-changed of values where: each.key
+  ;
+  ; ** values
+  ; > distinct-until-changed where: each.key
+)
+
+(fn-do + (of take Item) _
+  (param number Int)
+  (param stream (of Indexable Item))
+  (yield ([] stream number))
+)
+
+(fn-do + (of take Item) _
+  (param number Int)
+  (param stream (of Iterable Item))
+  (for (in i (..< 0 number))
+    (<- stream)
+  )
+  (blank)
+  (yield (<- stream))
+)
+
+(fn-do + (of take-last Item) _ @inline
+  (param number Int)
+  (param stream (stream Item))
+  (let cache (list Item))
+  (let count 0)
+  (for (in item stream)
+    (if (== count (+ number 1))
+      (call (. cache slide) -1)
+      (else
+        (+= count 1)
+      )
+    )
+    (+= cache item)
+  )
+  (blank)
+  (throw (call OutOfBoundsError (str "Not enough items in stream to take " number ".")) (if (!= count (+ number 1))))
+  (blank)
+  (yield ([] cache 0))
+)
+
+(fn-do + (of take Item Terminator) _
+  (param stream (stream Item))
+  (param terminator (stream Terminator))
+  (let ok true)
+  (blank)
+  (for (on n terminator)
+    (= ok false)
+    (break)
+  )
+  (blank)
+  (for (in item stream (while ok))
+    (yield item)
+  )
+  (blank)
+  ;  for item in stream
+  ;      <= item
+  ;  or anything in terminator
+  ;      break
+)
+
+(fn-expr + (of take Item Interval) _
+  (param stream (stream Item))
+  (param interval (stream Interval))
+  (call map (call zip stream interval) (:with ([] each 0)))
+)
+
+(fn-expr + (of every Item Interval) _
+  (param stream (stream Item))
+  (param interval (stream Interval))
+  (call map (call zip stream interval) (:with ([] each 0)))
+  (blank)
+  ; =================================================================================================
+  ; + in stream <Item> until other <Any>
+  ;
+  ; for item in stream
+  ;     --
+  ; and x in other
+  ;     <= item
+  ;
+  ; `Examples
+  ; take for item in stream until 1s
+  ; take for item until 1s
+  ; take until 1s
+  (blank)
+  ; =================================================================================================
+  ; + in stream <Item> while predicate Predicate'Item
+  ;
+  ; for item in stream
+  ;     if predicate(item)
+  ;         <= item
+  ;     else
+  ;         break
+  ;
+  ; ` Example
+  ; take for item in values while: item > 10
+  ; take while: * > 10
+)
+
+(fn-do + (of skip Item) _
+  (param number Int)
+  (param stream (stream Item))
+  (for (in i (..< 0 number))
+    (<- stream)
+  )
+  (return stream)
+  (blank)
+  ; =================================================================================================
+  ; + skip in stream <Item>
+  ;     until other <Any>
+  ;
+  ; for item in stream
+  ;     --
+  ; or x in other
+  ;     break
+  ; = stream
+  ;
+  ; ` Example
+  ; skip until 1s
+  (blank)
+  ; =================================================================================================
+  ; + skip in stream <Item>
+  ;     while predicate Predicate'Item
+  ;
+  ; for item in stream while !predicate(item) do: --
+  ; = stream
+)

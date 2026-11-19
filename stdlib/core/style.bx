@@ -1,0 +1,5364 @@
+(import ./animatable)
+(import ./core)
+(import ./intrinsics)
+(import ./markup)
+(import /BxGC/BxGC.h)
+(import /core/gc)
+(blank)
+; Runtime style state is merged into each object's markup attachment. The historical style
+; side-payload lane holds only the root-owned record and segment pools, conservative dirty queues,
+; and minimal batch summaries. The MarkupRootElement implementor is the style root; only markup mounted
+; under a batch root participates, and everything else allocates nothing.
+(blank)
+(prop + style-dirty-bit U32 (= 1))
+(prop + inherited-dirty-bit U32 (= 2))
+(blank)
+; Style property metadata flags mirrored from the compiler (brix/Type.ts stylePropertyFlagBits).
+; Encoded slots hold a union (case tag plus payload) or a boxed wide-value handle; their bits are
+; not plain numeric scalars.
+(prop _ style-flag-inherited U32 (= 1))
+(prop _ style-flag-encoded U32 (= 2))
+(prop _ style-flag-float U32 (= 4))
+(prop _ style-flag-object U32 (= 8))
+(blank)
+; Gated declaration blocks are per-site; the record's disabled mask is one U64
+(prop _ style-block-cap Size (= 64))
+(blank)
+; Style property offsets are stored in U64 masks
+(prop _ style-mask-cap Size (= 64))
+(prop _ next-style-store-id U32)
+(blank)
+; Registry of all registered Style types, indexed by style-index
+(prop _ style-infos (list StyleInfo))
+(blank)
+; Registry of declared invalidation domains. Domains are library-defined: the compiler interns
+; every name appearing in a `-> domain` annotation or a $is-<domain>-invalid accessor and mirrors
+; the (name, index) pairs here through style registrations, so roots can query pending state by
+; name without any domain being known to the compiler itself.
+(prop _ style-domain-names (list String))
+(blank)
+; Registry of interned object style values (layout/painter descriptors). Encoded I64 handles are
+; append-only 1-based slots so a reclaimed handle can never alias a later value. The registry is
+; weak: authored declarations and live owner side payloads provide dynamic ownership, while
+; compiler-interned static values are retained separately for the lifetime of the program.
+(prop _ style-object-holders (list (of Weak StyleObjectHolder)))
+(prop _ style-permanent-object-holders (list StyleObjectHolder))
+(blank)
+; Cached packed bits for static rule expressions, indexed by compiler-assigned site. A rule's
+; object value (`layout = flex-col`) is evaluated once and shared by every application.
+(prop _ style-static-site-bits (list I64))
+(prop _ style-projection-remaps (list StyleProjectionRemap))
+(prop _ style-projection-remap-registered (list Bool))
+(prop _ style-projection-remap-registration-attempts Size (= 0))
+(blank)
+; Shared authored declaration templates, indexed by compiler-assigned markup construction site.
+; Static declarations live here once per site; mounted node records point at the template instead
+; of copying those declarations on every mount.
+(prop _ style-site-templates (list StyleSiteTemplate))
+(prop _ style-imperative-site-template StyleSiteTemplate)
+(blank)
+; Registry of all registered StyleSheet types, indexed by style-sheet-index
+(prop _ style-sheet-infos (list StyleSheetInfo))
+(blank)
+; Shared default records per style-sheet, indexed by style-sheet-index, empty for a sheet not yet
+; read. Kept out of StyleSheetInfo so info metadata does not participate in the attachment type
+; cycle.
+(prop _ style-sheet-defaults (list (? StyleSheetRecord)))
+(prop _ style-sheet-members (list StyleSheetRecord))
+(prop _ style-theme-tags (list String))
+(prop _ style-outlet-state-keys (list U32))
+(prop _ style-outlet-state-cells (list StyleScopeState))
+(prop _ next-style-sheet-record-id U32)
+(prop _ style-motion-host (? StyleMotionHost) (= null))
+(prop _ style-bits-cell _ (= ([] I64 1)))
+(blank)
+; Static union-tag remap tables for converted style-sheet declarations, indexed by
+; compiler-assigned site. Each table maps source union case tag -> target union case tag.
+(prop _ style-empty-projection-remap _ (:= (call StyleProjectionRemap)))
+(blank)
+; Empty-slot filler for the per-settle winner table; compared by identity only, never read.
+(prop _ style-no-winner _ (:= (call AuthoredDeclaration (call StyleInfo "" "" 0))))
+(blank)
+(type-line + StyleMountPanic (is Panic))
+(type-line + StyleReadPanic (is Panic))
+(type-line + StyleValueChange (is (tuple (: info StyleInfo) (: offset Size) (: old-bits I64) (: old-none Bool) (: bits I64) (: none Bool))))
+(type-line _ StyleRegistryPanic (is Panic))
+(type-line _ StyleDomainPanic (is Panic))
+(type-line _ StyleOptionalBits (is (tuple (: bits I64) (: none Bool))))
+(type-line _ StyleDomainMasks (is (tuple (: self-mask U32) (: parent-mask U32))))
+(type-line _ StyleTemplatePanic (is Panic))
+(type-line _ StyleSettlePanic (is Panic))
+(type-line _ StyleSheetPanic (is Panic))
+(type-line _ NodeStyleRecord (is StyleRecord))
+(type-line _ StyleDirtyEntry (is (tuple (: owner-address Size) (: generation U32))))
+(blank)
+
+(main
+  (call set-markup-batch-settle-hook style-settle)
+  (call set-markup-mount-hook style-apply-mount)
+  (call set-markup-attachment-reclaim-hook style-reclaim-markup-attachment)
+  (call set-markup-theme-hooks style-set-theme-tag style-use-theme-key)
+)
+
+(type + Style)
+
+(type + StyleLayer (is U32)
+  ; Authored declaration layers: later layers win, and later orders win within a layer
+  (blank)
+  (variant defaults)
+  (variant content)
+  (variant rule)
+  (variant defaults-conditional)
+  (variant conditional)
+  (variant inline)
+  (variant imperative)
+)
+
+(type + StyleValueKind (is U32)
+  ; Authored declaration value kinds
+  (blank)
+  (variant static)
+  (variant style-sheet)
+  (variant inherit)
+  (variant dynamic)
+  (variant object)
+  (variant style-sheet-projected)
+  (variant themed)
+)
+
+(type + StyleSheet)
+
+(type + StylePropertyInfo
+  ; Compiler-registered metadata for one style property. Slot values are encoded as I64 bits with a
+  ; separate none flag for optional-typed properties.
+  (blank)
+  (prop + offset Size (= 0))
+  (prop + name String)
+  (prop + initial-bits I64)
+  (prop + initial-none _ (= false))
+  (prop + flags U32)
+  (prop + self-domain-mask U32)
+  (prop + parent-domain-mask U32)
+  (prop + wide-shift U32)
+  (prop + wide-tags U64)
+  (prop + is-inherited _ (=> (!= (/and/ flags style-flag-inherited) 0)))
+  (prop + is-encoded _ (=> (!= (/and/ flags style-flag-encoded) 0)))
+  (prop + is-float _ (=> (!= (/and/ flags style-flag-float) 0)))
+  (prop + is-object _ (=> (!= (/and/ flags style-flag-object) 0)))
+)
+
+(type + StyleInfo
+  ; One registered Style type. style-key is the style type's unique qualified name, which makes
+  ; registration idempotent across compilation units; style-index keys the style's computed segments.
+  (blank)
+  (prop + style-key String)
+  (prop + name String)
+  (prop + slot-count Size (= 0))
+  (prop + style-index Index (= 0))
+  (prop + properties (list StylePropertyInfo))
+  (prop + inherited-mask U64)
+  (prop + mount-mask U64)
+  (prop + watch-mask U64)
+  (prop + is-watch-known _ (= false))
+  (prop + all-inherited _ (= false))
+  (prop + self-domain-mask U32)
+  (prop + parent-domain-mask U32)
+  (fn-do + This _
+    (param style-key _)
+    (param name _)
+    (param slot-count _)
+  )
+  (fn-do + property-at _
+    (param offset Size)
+    (if (< offset (. properties length))
+      (let property ([] properties offset))
+      (if (== (. property offset) offset)
+        (return property)
+      )
+    )
+  )
+)
+
+(type + StyleObjectHolder
+  ; Base entry in the interned object registry. identity is the held object's pointer, used for
+  ; stable equality between authored values; the typed subclass keeps the object GC-reachable.
+  ; slot is append-only once registered and remains the holder's stable encoded identity.
+  (blank)
+  (prop + identity Pointer (= (call Pointer)))
+  (prop + slot I64 (= -1))
+  (prop + is-permanent Bool (= false))
+  (fn-expr + holds-equal Bool
+    (param other StyleObjectHolder)
+    (== identity (. other identity))
+  )
+  (fn-expr + motion-vector (? (list F64))
+    null
+  )
+  (fn-expr + motion-none-vector (? (list F64))
+    null
+  )
+  (fn-expr + motion-holder (? StyleObjectHolder)
+    null
+  )
+  (fn-expr + moves-to Bool
+    (param other StyleObjectHolder)
+    true
+  )
+  (fn-do + take-motion-vector _
+    (param vector (list F64))
+  )
+)
+
+(type + (of StyleWideHolder Value) (is StyleObjectHolder)
+  ; Boxes one wide style value (a value type that does not fit in I64 slot bits) behind the
+  ; interned-object registry. The holder is its own registry identity: separately boxed values
+  ; encode to distinct bits even when equal, so change detection compares the boxed values whenever
+  ; two handles differ.
+  (blank)
+  (prop + value Value)
+  (fn-do + This _
+    (param value _)
+    (= identity (as this Pointer))
+  )
+  (fn-expr + holds-equal Bool
+    (param other StyleObjectHolder)
+    (and (is other (of StyleWideHolder Value)) (== value (. (as other (of StyleWideHolder Value)) value)))
+  )
+  (fn-expr + motion-vector (? (list F64))
+    (call style-value-motion-vector value)
+  )
+  (fn-expr + motion-none-vector (? (list F64))
+    (call style-value-none-vector value)
+  )
+  (fn-expr + motion-holder (? StyleObjectHolder)
+    (call (of StyleWideHolder Value) value)
+  )
+  (fn-expr + moves-to Bool
+    (param other StyleObjectHolder)
+    (if-expr (is other (of StyleWideHolder Value)) (call style-value-moves-to value other-value) true)
+    (where
+      (lazy other-value (. (as other (of StyleWideHolder Value)) value))
+    )
+  )
+  (fn-do + take-motion-vector _
+    (param vector (list F64))
+    (= value (call style-value-from-vector value vector))
+  )
+)
+
+(type + StyleSheetInfo
+  ; One registered StyleSheet type. sheet-key is the style-sheet type's unique qualified name, which
+  ; makes registration idempotent across compilation units.
+  (blank)
+  (prop + sheet-key String)
+  (prop + name String)
+  (prop + slot-count Size (= 0))
+  (prop + style-sheet-index Index (= 0))
+  (prop + slots (list StyleSheetSlotInfo))
+  (prop + tags U64)
+  (prop + domains U32)
+  (fn-do + This _
+    (param sheet-key _)
+    (param name _)
+    (param slot-count _)
+  )
+  (fn-do + slot-named _
+    (param slot-name String)
+    (for (in slot slots)
+      (if (== (. slot name) slot-name)
+        (return slot)
+      )
+    )
+  )
+)
+
+(type + StyleSheetRecord
+  ; One style-sheet value bundle. Records carry identity and per-slot versions so settling can
+  ; reason about style-sheet-driven changes. Each style-sheet has a shared default record holding
+  ; initial slot values; provider nodes install their own records to change a subtree's effective
+  ; style-sheet.
+  (blank)
+  (prop + record-id U32)
+  (prop + info StyleSheetInfo)
+  (prop + key String)
+  (prop + name String)
+  (prop + member U32)
+  (prop + parent U32)
+  (prop + tags U64)
+  (prop + values (list I64))
+  (prop + nones (list Bool))
+  (prop + version U32)
+  (prop + slot-versions (list U32))
+  (prop + providers (list Size))
+  (prop + themed (list (? StyleOptionalBits)))
+  (fn-do + This _
+    (param info _)
+    (+= next-style-sheet-record-id 1)
+    (= record-id next-style-sheet-record-id)
+    (while (< (. values length) (. info slot-count))
+      (+= values 0)
+      (+= nones false)
+      (+= slot-versions 0)
+    )
+    (for (in slot (. info slots))
+      (= ([] values (. slot offset)) (. slot initial-bits))
+      (= ([] nones (. slot offset)) (. slot initial-none))
+    )
+  )
+  (fn-expr + value-bits _
+    (param offset Size)
+    (case? (>= offset (. values length))
+      0
+    )
+    (default
+      ([] values offset)
+    )
+  )
+  (fn-expr + value-none _
+    (param offset Size)
+    (and (< offset (. nones length)) ([] nones offset))
+  )
+  (fn-do + set-slot _
+    (param offset Size)
+    (param bits I64)
+    (param is-none Bool)
+    ; Equality-gated slot write: identical values change nothing. A real change bumps the record and
+    ; slot versions and marks every live provider's subtree style-sheet-dirty.
+    (blank)
+    (throw (call StyleSheetPanic "StyleSheet slot offset out of range") (if (>= offset (. values length))))
+    (blank)
+    (let old-bits ([] values offset))
+    (let old-none (call value-none offset))
+    (return-if (if (and (== bits old-bits) (== is-none old-none))))
+    (blank)
+    (= ([] values offset) bits)
+    (= ([] nones offset) is-none)
+    (blank)
+    (+= version 1)
+    (+= ([] slot-versions offset) 1)
+    (call (. themed clear))
+    (blank)
+    (for (in owner-address providers)
+      (let provider (call style-live-attachment (as owner-address Pointer)))
+      (if provider
+        (let live provider)
+        (call style-mark-style-sheet-provider (call style-attachment-store live) live)
+      )
+    )
+  )
+  (fn-do + set-slot-named _
+    (param slot-name String)
+    (param bits I64)
+    (param is-none Bool)
+    (let slot (call (. info slot-named) slot-name))
+    (throw (call StyleSheetPanic "Unknown style-sheet slot") (if (not slot)))
+    (blank)
+    (let live-slot slot)
+    (call set-slot (. live-slot offset) bits is-none)
+  )
+)
+
+(type + AuthoredDeclaration
+  ; One authored style declaration. Declarations are contextual to the mounted tree: they live on
+  ; node records, are discarded at unmount, and are re-derived from the markup site template when
+  ; the object mounts again. block addresses the site's gated block the declaration belongs to;
+  ; -1 means ungated.
+  ;
+  ; Holder-backed declarations (kind StyleValueKind.object) keep their descriptor or boxed wide value
+  ; GC-reachable through held. During a dynamic replacement, settled-held temporarily keeps the
+  ; holder named by the still-published computed bits alive until settling replaces those bits.
+  ; held-shift and held-tag compose the stable handle into the slot bits: plain descriptors store the
+  ; handle directly (shift 0, tag 0), union cases shift it over the authored case tag.
+  (blank)
+  (prop + style StyleInfo)
+  (prop + offset Size (= 0))
+  (prop + layer U32)
+  (prop + order U32)
+  (prop + block I64 (= -1))
+  (prop + kind U32)
+  (prop + bits I64)
+  (prop + is-none _ (= false))
+  (prop + style-sheet (? StyleSheetInfo) (= null))
+  (prop + sheet-offset Size (= 0))
+  (prop + held (? StyleObjectHolder) (= null))
+  (prop + settled-held (? StyleObjectHolder) (= null))
+  (prop + held-shift U32)
+  (prop + held-tag I64)
+  (prop + projection-kind U32 (= (. StyleProjectionKind copy)))
+  (prop + projection-tag I64)
+  (prop + projection-map-site Size (= 0))
+  (prop + projection-preserves-none _ (= false))
+  (prop + is-shared _ (= false))
+  (prop + themed-site Size (= 0))
+  (prop + themed (? StyleThemedMaker) (= null))
+  (prop + family (? StyleSheetInfo) (= null))
+  (prop + members U64)
+  (fn-do + This _
+    (param style _)
+  )
+  (fn-do + copied _
+    (let other (call AuthoredDeclaration style))
+    (= (. other offset) offset)
+    (= (. other layer) layer)
+    (= (. other order) order)
+    (= (. other block) block)
+    (= (. other kind) kind)
+    (= (. other bits) bits)
+    (= (. other is-none) is-none)
+    (= (. other style-sheet) style-sheet)
+    (= (. other sheet-offset) sheet-offset)
+    (= (. other held) held)
+    (= (. other held-shift) held-shift)
+    (= (. other held-tag) held-tag)
+    (= (. other projection-kind) projection-kind)
+    (= (. other projection-tag) projection-tag)
+    (= (. other themed-site) themed-site)
+    (= (. other themed) themed)
+    (= (. other family) family)
+    (= (. other members) members)
+    (= (. other projection-map-site) projection-map-site)
+    (= (. other projection-preserves-none) projection-preserves-none)
+    (return other)
+  )
+  (fn-expr + acquire-held-bits _
+    ; Interns the declaration's holder and composes the slot bits the record stores: the stable handle
+    ; shifted over the declaration's encoded tag bits.
+    (blank)
+    (/or/ (/lshift/ (call style-acquire-object held) held-shift) held-tag)
+  )
+  (fn-expr + held-handle-bits _
+    ; The registry handle currently composed into bits; what a release must return to the registry.
+    (blank)
+    (/rshift/ bits held-shift)
+  )
+)
+
+(type + StyleSiteAssociation
+  ; The static association between a markup object and its construction sites' style declarations.
+  ; Every styled construction publishes one association in the templates lane; static-only sites
+  ; get a slim one holding just the shared template pointer, and per-instance state — instance
+  ; declarations, dynamic actions, gated blocks — allocates lazily only at sites that need it.
+  ; The association is permanent site identity, not authored state: mounting applies it to fresh
+  ; records, and unmounting discards the records without touching the association.
+  ;
+  ; Gated blocks: while the compiler records a conditionally applied group of declarations it opens
+  ; a block, and per-instance registrations stamp declarations with current-block. Block indexes
+  ; allocate per object, so they stay unique across all of its construction sites; the enabled
+  ; state lives on the record's disabled mask.
+  (blank)
+  (prop + site-template StyleSiteTemplate)
+  (prop + extra-site-templates (? (list StyleSiteTemplate)))
+  (prop + extra-block-bases (? (list I64)))
+  (prop + recording StyleSiteTemplate)
+  (prop + recording-base I64)
+  (prop + template (? (list AuthoredDeclaration)))
+  (prop + dynamic-actions (? (list StyleDynamicActionBase)))
+  (prop + content-records (? (list StyleContentRecord)))
+  (prop + block-count Size (= 0))
+  (prop + current-block I64 (= -1))
+  (fn-do + This _
+    (param site-template _)
+    (param recording _)
+  )
+  (fn-expr + site-template-count Size
+    (case? extra-site-templates
+      (+ 1 (. extra-site-templates length))
+    )
+    (default
+      1
+    )
+  )
+  (fn-expr + site-template-at _
+    (param index Size)
+    (case? (== index 0)
+      site-template
+    )
+    (default
+      ([] (!! extra-site-templates) (- index 1))
+    )
+  )
+  (fn-expr + block-base-at I64
+    (param index Size)
+    (if-expr (or (== index 0) (not bases) (> index (. bases length))) 0 ([] bases (- index 1)))
+    (where
+      (lazy bases extra-block-bases)
+    )
+  )
+  (fn-do + add-template _
+    (param added StyleSiteTemplate)
+    (= recording added)
+    (if (== added site-template)
+      (= recording-base 0)
+      (return)
+    )
+    (if (not extra-site-templates)
+      (= extra-site-templates (call (of List StyleSiteTemplate)))
+    )
+    (let extras (!! extra-site-templates))
+    (let index Size 0)
+    (while (< index (. extras length))
+      (if (== ([] extras index) added)
+        (= recording-base (call block-base-at (+ index 1)))
+        (return)
+      )
+      (+= index 1)
+    )
+    (= recording-base (as block-count I64))
+    (+= extras added)
+    (return-if (if (== recording-base 0)))
+    (if (not extra-block-bases)
+      (= extra-block-bases (call (of List I64)))
+    )
+    (let bases (!! extra-block-bases))
+    (while (< (+ (. bases length) 1) (. extras length))
+      (+= bases 0)
+    )
+    (+= bases recording-base)
+  )
+  (fn-do + add-instance-declaration _
+    (param declaration AuthoredDeclaration)
+    (= (. declaration is-shared) true)
+    (let list template)
+    (if list
+      (+= list declaration)
+      (else
+        (let created (list AuthoredDeclaration))
+        (+= created declaration)
+        (= template created)
+      )
+    )
+  )
+  (fn-do + upsert-instance-declaration _
+    (param declaration AuthoredDeclaration)
+    (let list template)
+    (if list
+      (let index Size 0)
+      (while (< index (. list length))
+        (if (call style-same-site ([] list index) declaration)
+          (= (. declaration block) (. ([] list index) block))
+          (= (. declaration is-shared) true)
+          (= ([] list index) declaration)
+          (return declaration)
+        )
+        (+= index 1)
+      )
+    )
+    (call add-instance-declaration declaration)
+    (return declaration)
+  )
+  (fn-do + add-dynamic-action _
+    (param action StyleDynamicActionBase)
+    (let list dynamic-actions)
+    (if (not list)
+      (= dynamic-actions (call (of List StyleDynamicActionBase)))
+      (= list dynamic-actions)
+    )
+    (+= (!! list) action)
+  )
+  (fn-do + has-declarations _
+    (return-if true (if template))
+    (return-if true (if (. site-template declarations)))
+    (if extra-site-templates
+      (for (in extra extra-site-templates)
+        (return-if true (if (. extra declarations)))
+      )
+    )
+    (return false)
+  )
+)
+
+(type + ComputedSegment
+  ; One computed segment per (record, style). values holds encoded slot bits at style-local property
+  ; offsets; none-mask carries the per-slot none flag for optional-typed properties. Shared segments
+  ; (per-style initial values, parent flow-through) are never mutated by sharers.
+  (blank)
+  (prop + segment-id Index (= 0))
+  (prop + generation U32)
+  (prop + changed-mask U64)
+  (prop + values (list I64))
+  (prop + none-mask U64)
+  (fn-expr + value-bits _
+    (param offset Size)
+    (case? (>= offset (. values length))
+      0
+    )
+    (default
+      ([] values offset)
+    )
+  )
+  (fn-expr + value-none _
+    (param offset Size)
+    (!= (/and/ none-mask (/lshift/ 1u64 offset)) 0)
+  )
+  (fn-do + resize _
+    (param slot-count Size)
+    (while (< (. values length) slot-count)
+      (+= values 0)
+    )
+    (while (> (. values length) slot-count)
+      (call (. values pop))
+    )
+  )
+)
+
+(type + StyleRecord
+  ; segments holds the record's computed segments in style index order, one per style whose values
+  ; differ from the root store's initial segment. A style with no segment reads its initial segment, so
+  ; the cost of a record follows the styles it settles, not their indexes. segment-keys holds each
+  ; segment's style index times two, plus one when the segment is the record's own copy rather than a
+  ; parent's segment flowing through. segment-mask has the bit of each style index below 64 that
+  ; segments holds, so a lookup counts the bits below its own to find its position. authored
+  ; declarations are contextual to the mounted tree and are discarded when the record is released.
+  ; disabled-blocks masks out declarations whose site gate condition is currently false; settling
+  ; ignores them entirely.
+  (blank)
+  (prop + record-id Index (= 0))
+  (prop + is-free _ (= true))
+  (prop + segments (list ComputedSegment) (= (call (of List ComputedSegment))))
+  (prop + segment-keys (list Index) (= (call (of List Index))))
+  (prop + segment-mask U64 (= 0))
+  (prop + active-styles (list Index) (= (call (of List Index))))
+  (prop + disabled-blocks U64 (= 0))
+  (prop + dirty-bits U32 (= 0))
+  (prop + generation U32 (= 0))
+  (prop + authored (list AuthoredDeclaration) (= (call (of List AuthoredDeclaration))))
+  (prop + provided-style-sheets (? (list StyleSheetRecord)))
+  (prop + read-sheets (? (list StyleSheetRecord)))
+  (prop + presented (? StylePresentation))
+)
+
+(type + StyleMotionHost (is Interface)
+  (fn-expr + watch-mask U64
+    (param info StyleInfo)
+    (. U64 max)
+  )
+  (fn-do + style-values-changed _
+    (param owner MarkupElement)
+    (param changes (list StyleValueChange))
+  )
+  (fn-do + style-node-settled _
+    (param owner MarkupElement)
+  )
+)
+
+(type + RootStyleStore
+  ; The root owns the style sidecar state for one retained tree. Record and segment pools hand out
+  ; stable objects with free lists: pool growth never invalidates a record or segment held by an
+  ; attachment, and released entries are reused by index.
+  ;
+  ; pending-domain-counts summarizes per-node pending bits: counts[d] is the number of live
+  ; attachments under this root whose domain d bit is raised. Roots consult these counts after
+  ; settling to decide which phases to run; the counts and bits change together, only through the
+  ; raise/clear helpers below.
+  (blank)
+  (prop + store-id U32)
+  (prop + batch-address Size (= 0))
+  (prop + batch-queue-address Size (= 0))
+  (prop + node-records (list NodeStyleRecord))
+  (prop + segment-pool (list ComputedSegment))
+  (prop + free-node-records (list Index))
+  (prop + free-attachments (list Index))
+  (prop + free-segments (list Index))
+  (prop + initial-segments (list ComputedSegment))
+  (prop + dirty-queue (list StyleDirtyEntry))
+  (prop + inherited-dirty-roots (list StyleDirtyEntry))
+  (prop + style-sheet-dirty-roots (list StyleDirtyEntry))
+  (prop + sheet-read-notices (list StyleDirtyEntry))
+  (prop + pending-domain-counts (list Size))
+  (blank)
+  ; Reusable per-settle scratch, cleared and refilled by style-settle-style so settling allocates
+  ; nothing once capacities warm up. Winner slots hold the winning declaration for a property
+  ; offset; the style-no-winner sentinel marks offsets with no enabled declaration.
+  (prop + scratch-values (list I64))
+  (prop + scratch-winners (list AuthoredDeclaration))
+  (prop + scratch-none-mask U64)
+  (prop + scratch-style-candidates (list Index))
+  (prop + scratch-families (list StyleSheetInfo))
+  (prop + scratch-sheets (list StyleSheetRecord))
+  (prop + scratch-active-styles (list Index))
+  (prop + motion-changes (list StyleValueChange))
+  (prop + settling-address Size (= 0))
+  (prop + settling-self-mask U32)
+  (prop + settling-parent-mask U32)
+  (prop + root-owner-address Size (= 0))
+  (prop + attachment-high-water Size (= 0))
+  (prop + live-count Size (= 0))
+  (prop + initial-node-segment _ (:= (call ComputedSegment)))
+  (fn-do + This _
+    (param batch _)
+    (= batch-address (as (. (as batch Pointer) address) Size))
+    (= batch-queue-address (as (. (as (. batch markup-batch-queue) Pointer) address) Size))
+    (+= next-style-store-id 1)
+    (= store-id next-style-store-id)
+  )
+  (fn-do + allocate-node-record _
+    (let record (?? (call reusable-node-record) (call fresh-node-record)))
+    (= (. record is-free) false)
+    (call (. record active-styles clear))
+    (= (. record disabled-blocks) 0)
+    (= (. record dirty-bits) 0)
+    (call (. record segments clear))
+    (call (. record segment-keys clear))
+    (= (. record segment-mask) 0)
+    (= (. record provided-style-sheets) null)
+    (= (. record read-sheets) null)
+    (= (. record presented) null)
+    (return record)
+  )
+  (fn-do + release-node-record _
+    (param record NodeStyleRecord)
+    (call release-record-segments record)
+    (throw (call StyleSheetPanic "Releasing a style record that still provides style-sheets") (if (. record provided-style-sheets)))
+    (= (. record is-free) true)
+    (+= free-node-records (. record record-id))
+  )
+  (fn-do + allocate-attachment _
+    (param attachment MarkupAttachment)
+    (if free-attachments
+      (= (. attachment attachment-id) (+ (call (. free-attachments pop)) 1))
+      (else
+        (+= attachment-high-water 1)
+        (= (. attachment attachment-id) attachment-high-water)
+      )
+    )
+    (= (. attachment style-store-address) (as (. (as this Pointer) address) Size))
+    (= (. attachment style-node-record-address) 0)
+    (= (. attachment dirty-bits) 0)
+    (= (. attachment pending-domains) 0)
+    (= (. attachment descendant-domains) 0)
+    (= (. attachment style-settled) false)
+    (+= live-count 1)
+  )
+  (fn-do + release-attachment _
+    (param attachment MarkupAttachment)
+    (= (. attachment style-store-address) 0)
+    (= (. attachment style-node-record-address) 0)
+    (= (. attachment dirty-bits) 0)
+    (= (. attachment pending-domains) 0)
+    (= (. attachment descendant-domains) 0)
+    (+= (. attachment generation) 1)
+    (+= free-attachments (- (. attachment attachment-id) 1))
+    (= (. attachment attachment-id) 0)
+    (-= live-count 1)
+  )
+  (fn-do + allocate-segment _
+    (param source ComputedSegment)
+    ; Copy-on-write clone: the new owned segment starts from the shared source's values so untouched
+    ; slots automatically carry correct inherited or initial values.
+    (blank)
+    (let segment (?? (call reusable-segment) (call fresh-segment)))
+    (= (. segment generation) 0)
+    (= (. segment changed-mask) 0)
+    (call (. segment values clear))
+    (for (in bits (. source values))
+      (+= (. segment values) bits)
+    )
+    (= (. segment none-mask) (. source none-mask))
+    (return segment)
+  )
+  (fn-do + initial-segment _
+    (param info StyleInfo)
+    ; The canonical shared segment holding one style's initial values. Any record with no winning
+    ; declarations for the style aliases it for free.
+    (blank)
+    (while (<= (. initial-segments length) (. info style-index))
+      (+= initial-segments (call ComputedSegment))
+    )
+    (blank)
+    (let segment ([] initial-segments (. info style-index)))
+    (if (!= (. segment values length) (. info slot-count))
+      (call (. segment resize) (. info slot-count))
+      (= (. segment none-mask) 0)
+      (for (in property (. info properties))
+        (= ([] (. segment values) (. property offset)) (. property initial-bits))
+        (if (. property initial-none)
+          (= (. segment none-mask) (/or/ (. segment none-mask) (/lshift/ 1u64 (. property offset))))
+        )
+      )
+    )
+    (return segment)
+  )
+  (fn-do + release-segment _
+    (param segment ComputedSegment)
+    (+= free-segments (. segment segment-id))
+  )
+  (fn-do + enqueue-dirty _
+    (param attachment MarkupAttachment)
+    ; Every dirty transition schedules the root's batch queue, so authored changes, mounts, and
+    ; rehomes settle on the next flush without any client requesting settlement. Scheduling no-ops
+    ; while a flush is already draining this queue.
+    (blank)
+    (+= dirty-queue (tuple (. attachment owner-address) (. attachment generation)))
+    (= (. attachment cause) (call current-markup-cause))
+    (probe-count style.dirty.enqueues)
+    (call (. (call style-store-batch-queue this) schedule))
+  )
+  (fn-do + enqueue-inherited-root _
+    (param attachment MarkupAttachment)
+    (+= inherited-dirty-roots (tuple (. attachment owner-address) (. attachment generation)))
+  )
+  (fn-do + enqueue-style-sheet-root _
+    (param attachment MarkupAttachment)
+    (+= style-sheet-dirty-roots (tuple (. attachment owner-address) (. attachment generation)))
+  )
+  (fn-do _ reusable-node-record _
+    (if free-node-records
+      (let record ([] node-records (call (. free-node-records pop))))
+      (+= (. record generation) 1)
+      (return record)
+    )
+  )
+  (fn-do _ fresh-node-record _
+    (let record (call NodeStyleRecord))
+    (= (. record record-id) (. node-records length))
+    (+= node-records record)
+    (return record)
+  )
+  (fn-do _ release-record-segments _
+    (param record StyleRecord)
+    (for (in position (..< 0 (. record segments length)))
+      (if (call style-segment-key-owned ([] (. record segment-keys) position))
+        (call release-segment ([] (. record segments) position))
+      )
+    )
+    (blank)
+    (call (. record segments clear))
+    (call (. record segment-keys clear))
+    (= (. record segment-mask) 0)
+    (call style-clear-declaration-list (. record authored))
+    (call (. record active-styles clear))
+    (= (. record disabled-blocks) 0)
+    (= (. record dirty-bits) 0)
+    (= (. record presented) null)
+  )
+  (fn-do _ reusable-segment _
+    (if free-segments
+      (return ([] segment-pool (call (. free-segments pop))))
+    )
+  )
+  (fn-do _ fresh-segment _
+    (let segment (call ComputedSegment))
+    (= (. segment segment-id) (. segment-pool length))
+    (+= segment-pool segment)
+    (return segment)
+  )
+  (fn-do _ style-clear-declaration-list _
+    (param declarations (list AuthoredDeclaration))
+    ; List.clear preserves capacity and its backing GC buffer. Scrub traced declaration slots first so
+    ; pooled records and settle scratch do not retain holder-backed values beyond their logical length.
+    (blank)
+    (let index Index 0)
+    (while (< index (. declarations length))
+      (= ([] declarations index) style-no-winner)
+      (+= index 1)
+    )
+    (call (. declarations clear))
+  )
+)
+
+(type + (of StyleProperty Value)
+  (prop + style-index Index)
+  (prop + offset Size)
+  (prop + component (? Index))
+  (fn-do + This _
+    (param style-index _)
+    (param offset _)
+    (param component _)
+  )
+  (fn-expr + info (? StyleInfo) :get
+    (call style-info-at style-index)
+  )
+)
+
+(type + (of StyleShape Arg Value)
+  (prop + make (of Mapper Arg Value))
+  (blank)
+  (prop _ args _ (= (call (of List Arg))))
+  (prop _ values _ (= (call (of List Value))))
+  (fn-do + This _
+    (param make _)
+  )
+  (fn-do + bind Value
+    (param arg Arg)
+    (for (in index (..< 0 (. args length)))
+      (return-if ([] values index) (if (== ([] args index) arg)))
+    )
+    (let value (call make arg))
+    (+= args arg)
+    (+= values value)
+    (return value)
+  )
+)
+
+(type + StylePresenter
+  (prop + property StylePropertyInfo)
+  (blank)
+  (prop _ holder (? StyleObjectHolder))
+  (fn-do + This _
+    (param property _)
+    (param sample-bits I64)
+    (if (not (. property is-float))
+      (= holder (call (?. (call style-object-holder sample-bits) motion-holder)))
+    )
+  )
+  (fn-do + adopt _
+    (param sample StyleObjectHolder)
+    (= holder (?? holder (call (. sample motion-holder))))
+  )
+  (fn-do + retarget _
+    (param sample-bits I64)
+    (return-if (if (. property is-float)))
+    (= holder (?? (call (?. (call style-object-holder sample-bits) motion-holder)) holder))
+  )
+  (fn-do + bits I64
+    (param vector (list F64))
+    (return-if (call style-float-bits ([] vector 0)) (if (. property is-float)))
+    (let live holder)
+    (return-if 0 (if (not live)))
+    (call (. live take-motion-vector) vector)
+    (return (call style-acquire-object live))
+  )
+)
+
+(fn-do + style-info-at _
+  (param style-index Index)
+  ; Placeholder entries pad the registry when compiler-assigned indexes register out of module-init
+  ; order; they read as unregistered.
+  (blank)
+  (if (< style-index (. style-infos length))
+    (let info ([] style-infos style-index))
+    (if (> (. info style-key length) 0)
+      (return info)
+    )
+  )
+)
+
+(fn-do + style-info-named _
+  (param name String)
+  (for (in info style-infos)
+    (if (== (. info name) name)
+      (return info)
+    )
+  )
+)
+
+(fn-do + style-domain-named I64
+  (param name String)
+  ; The registered bit index for a domain name, or -1 when no style property declares it.
+  (blank)
+  (let index Index 0)
+  (while (< index (. style-domain-names length))
+    (if (== ([] style-domain-names index) name)
+      (return index)
+    )
+    (+= index 1)
+  )
+  (return -1)
+)
+
+(fn-expr + style-domain-count _
+  (. style-domain-names length)
+)
+
+(fn-expr + style-domain-name-at _
+  (param index Size)
+  (case? (< index (. style-domain-names length))
+    ([] style-domain-names index)
+  )
+  (default
+    ""
+  )
+)
+
+(fn-expr + style-intern-holder _
+  (param holder (? StyleObjectHolder))
+  ; Interns one holder-backed style value and returns its stable encoded handle bits: 0 for null,
+  ; otherwise an append-only 1-based registry slot. Compiler-generated static wide values use this
+  ; entry point, so the holder remains live for as long as its cached bits can be read.
+  (blank)
+  (call style-retain-object holder)
+)
+
+(fn-do + style-object-live-count Size
+  ; Currently live interned object holders. Debug and test visibility only; production decoding is
+  ; direct by stable slot and never scans.
+  (blank)
+  (let count Size 0)
+  (for (in weak style-object-holders)
+    (if (. weak get)
+      (+= count 1)
+    )
+  )
+  (return count)
+)
+
+(fn-do + style-projection-remap-site-count _
+  (let count Size 0)
+  (for (in registered style-projection-remap-registered)
+    (if registered
+      (+= count 1)
+    )
+  )
+  (return count)
+)
+
+(fn-expr + style-projection-remap-registration-attempt-count _
+  style-projection-remap-registration-attempts
+)
+
+(fn-do + style-site-template-declaration-count _
+  (let count Size 0)
+  (for (in template style-site-templates)
+    (+= count (. template declarations length))
+  )
+  (return count)
+)
+
+(fn-do + style-register-property _
+  (param info StyleInfo)
+  (param offset Size)
+  (param name String)
+  (param initial-bits I64)
+  (param initial-none Bool)
+  (param flags U32)
+  (param self-domain-mask U32)
+  (param parent-domain-mask U32)
+  (param wide-shift U32 (= 0))
+  (param wide-tags U64 (= 0))
+  (throw (call StyleRegistryPanic "Style property offset exceeds the mask cap") (if (>= offset style-mask-cap)))
+  (blank)
+  (let property (call StylePropertyInfo))
+  (= (. property offset) offset)
+  (= (. property name) name)
+  (= (. property initial-bits) initial-bits)
+  (= (. property initial-none) initial-none)
+  (= (. property flags) flags)
+  (= (. property self-domain-mask) self-domain-mask)
+  (= (. property parent-domain-mask) parent-domain-mask)
+  (= (. property wide-shift) wide-shift)
+  (= (. property wide-tags) wide-tags)
+  (+= (. info properties) property)
+  (= (. info self-domain-mask) (/or/ (. info self-domain-mask) self-domain-mask))
+  (= (. info parent-domain-mask) (/or/ (. info parent-domain-mask) parent-domain-mask))
+)
+
+(fn-do + style-register _
+  (param info StyleInfo)
+  (param expected-index I64 (= -1))
+  ; Idempotent: a style already registered under its key keeps its index and metadata. The compiler
+  ; passes its program-interned index so compiled constants and the live registry can never
+  ; disagree silently; a conflict is unrecoverable. Registration follows module-init order while
+  ; indexes follow compile order, so placeholder entries pad index gaps until their styles register.
+  (blank)
+  (let existing (call style-info-for (. info style-key)))
+  (if existing
+    (throw (call StyleRegistryPanic "Conflicting style index for '(info.style-key)") (if (and (>= expected-index 0) (!= (. existing style-index) expected-index))))
+    (return existing)
+  )
+  (blank)
+  (let index Index (. style-infos length))
+  (if (>= expected-index 0)
+    (= index expected-index)
+  )
+  (blank)
+  (let mask U64)
+  (let inherited-count Size 0)
+  (for (in property (. info properties))
+    (if (. property is-inherited)
+      (= mask (/or/ mask (/lshift/ 1u64 (. property offset))))
+      (+= inherited-count 1)
+    )
+  )
+  (blank)
+  (= (. info inherited-mask) mask)
+  (= (. info all-inherited) (and (> (. info properties length) 0) (== inherited-count (. info properties length))))
+  (= (. info style-index) index)
+  (blank)
+  ; Property offsets are dense; keep the existing list in segment-slot order so storeless
+  ; fallback reads can index it directly instead of scanning.
+  (let sort-index Size 0)
+  (while (< sort-index (. info properties length))
+    (let scan sort-index)
+    (while (< scan (. info properties length))
+      (if (== (. ([] (. info properties) scan) offset) sort-index)
+        (let property ([] (. info properties) scan))
+        (= ([] (. info properties) scan) ([] (. info properties) sort-index))
+        (= ([] (. info properties) sort-index) property)
+        (break)
+      )
+      (+= scan 1)
+    )
+    (throw (call StyleRegistryPanic (str "Style '(info.style-key) property offsets are not dense at slot " sort-index)) (if (!= (. ([] (. info properties) sort-index) offset) sort-index)))
+    (+= sort-index 1)
+  )
+  (blank)
+  (while (<= (. style-infos length) index)
+    (+= style-infos (call StyleInfo "" "" 0))
+  )
+  (blank)
+  (throw (call StyleRegistryPanic (str "Style index " index " conflicts with '(style-infos[index].style-key)")) (if (> (. ([] style-infos index) style-key length) 0)))
+  (blank)
+  (= ([] style-infos index) info)
+  (return info)
+)
+
+(fn-do + style-sheet-info-named _
+  (param name String)
+  (for (in info style-sheet-infos)
+    (if (== (. info name) name)
+      (return info)
+    )
+  )
+)
+
+(fn-expr + style-record-owns-segment Bool
+  (param record StyleRecord)
+  (param style-index Index)
+  (and (>= position 0) (call style-segment-key-owned ([] (. record segment-keys) position)))
+  (where
+    (lazy position (call style-held-segment-position record style-index))
+  )
+)
+
+(fn-expr + style-attachment-for-pointer _
+  (param object-pointer (of CPointer Void))
+  (call markup-attachment object-pointer)
+)
+
+(fn-do + style-live-attachment _
+  (param object-pointer (of CPointer Void))
+  (let attachment (call style-attachment-for-pointer object-pointer))
+  (if (and attachment (. attachment is-live))
+    (return attachment)
+  )
+)
+
+(fn-expr + style-attachment-store RootStyleStore
+  (param attachment MarkupAttachment)
+  (call (of gc-object-from-pointer RootStyleStore) (as (. attachment style-store-address) Pointer))
+)
+
+(fn-do + style-node-record (? NodeStyleRecord)
+  (param attachment MarkupAttachment)
+  (return-if (if (== (. attachment style-node-record-address) 0)))
+  (return (call (of gc-object-from-pointer NodeStyleRecord) (as (. attachment style-node-record-address) Pointer)))
+)
+
+(fn-do + style-set-node-record _
+  (param attachment MarkupAttachment)
+  (param record (? NodeStyleRecord))
+  (= (. attachment style-node-record-address) (if-expr record (as (. (as record Pointer) address) Size) 0))
+)
+
+(fn-do + style-parent-attachment (? MarkupAttachment)
+  (param attachment MarkupAttachment)
+  (let cursor (. attachment structural-parent))
+  (while cursor
+    (let candidate cursor)
+    (if (and (. candidate is-live) (== (. candidate style-store-address) (. attachment style-store-address)))
+      (return candidate)
+    )
+    (= cursor (. candidate structural-parent))
+  )
+)
+
+(fn-expr + style-first-child-attachment (? MarkupAttachment)
+  (param attachment MarkupAttachment)
+  (call style-scan-child attachment (. attachment first-child))
+)
+
+(fn-expr + style-next-child-attachment (? MarkupAttachment)
+  (param parent MarkupAttachment)
+  (param child MarkupAttachment)
+  (call style-scan-child parent (call style-next-structural-after parent child))
+)
+
+(fn-do + style-author-dynamic _
+  (param object-pointer (of CPointer Void))
+  (param style StyleInfo)
+  (param offset Size)
+  (param layer U32)
+  (param order U32)
+  (param block I64)
+  (param bits I64)
+  (param is-none Bool)
+  ; Live write for one dynamic authored declaration. Unmounted subjects drop the write: authored
+  ; state is contextual, and mounting re-runs the site's dynamic actions to re-derive it.
+  (blank)
+  (let attachment (call style-live-attachment object-pointer))
+  (return-if (if (not attachment)))
+  (blank)
+  (let live-record (call style-ensure-node-record attachment))
+  (let store (call style-attachment-store attachment))
+  (let existing (call style-record-authored-at-site live-record style offset layer order))
+  (if (and existing (not (. existing is-shared)))
+    (return-if (if (and (== (. existing kind) (. StyleValueKind dynamic)) (== (. existing block) block) same-value)))
+    (lazy same-value (and (== (. existing is-none) is-none) (== (. existing bits) bits)))
+    (call style-authored-assign-dynamic existing bits is-none)
+    (else
+      (let declaration (call AuthoredDeclaration style))
+      (= (. declaration offset) offset)
+      (= (. declaration layer) layer)
+      (= (. declaration order) order)
+      (= (. declaration block) block)
+      (= (. declaration kind) (. StyleValueKind dynamic))
+      (= (. declaration bits) bits)
+      (= (. declaration is-none) is-none)
+      (if existing
+        (return-if (if (call style-record-has-identical-authored live-record declaration)))
+        (call style-record-upsert-authored live-record declaration store)
+        (else
+          (+= (. live-record authored) declaration)
+        )
+      )
+    )
+  )
+  (blank)
+  (= (. attachment dirty-bits) (/or/ (. attachment dirty-bits) style-dirty-bit))
+  (= (. live-record dirty-bits) (/or/ (. live-record dirty-bits) style-dirty-bit))
+  (call (. store enqueue-dirty) attachment)
+)
+
+(fn-expr + style-store-for _
+  (param root MarkupRootElement)
+  (call (of gc-object-side-payload RootStyleStore) (as root Pointer) (as (call style-attachments-lane) Size))
+)
+
+(fn-do + style-provide-style-sheet _
+  (param object-pointer (of CPointer Void))
+  (param record StyleSheetRecord)
+  ; Installs (or replaces) a provided style-sheet on a mounted node, changing the effective
+  ; style-sheet of that style-sheet kind for the node and its mounted subtree.
+  (blank)
+  (let attachment (call style-live-attachment object-pointer))
+  (throw (call StyleSheetPanic "Cannot provide a style-sheet on an unmounted object") (if (not attachment)))
+  (blank)
+  (let live attachment)
+  (let store (call style-attachment-store live))
+  (let node-record (call style-ensure-node-record live))
+  (blank)
+  (let provided (. node-record provided-style-sheets))
+  (if (not provided)
+    (= (. node-record provided-style-sheets) (call (of List StyleSheetRecord)))
+    (= provided (. node-record provided-style-sheets))
+  )
+  (blank)
+  (let sheets (!! provided))
+  (let index Index 0)
+  (while (< index (. sheets length))
+    (let existing ([] sheets index))
+    (if (== (. existing info) (. record info))
+      (return-if (if (== existing record)))
+      (-= (. existing providers) (. live owner-address))
+      (= ([] sheets index) record)
+      (+= (. record providers) (. live owner-address))
+      (call style-mark-style-sheet-provider store live)
+      (return)
+    )
+    (+= index 1)
+  )
+  (blank)
+  (+= sheets record)
+  (+= (. record providers) (. live owner-address))
+  (call style-mark-style-sheet-provider store live)
+)
+
+(fn-do + (of style-use-theme Theme) _
+  (param object-pointer (of CPointer Void))
+  (param theme (of TypeInfo Theme))
+  (call style-use-theme-key object-pointer (. theme key))
+)
+
+(fn-do + (of style-set-theme-slot Theme) _
+  (param theme (of TypeInfo Theme))
+  (param name String)
+  (param bits I64)
+  (param is-none Bool)
+  (let record (call style-theme-record (. theme key)))
+  (throw (call StyleSheetPanic "Unknown theme '(theme.key)") (if (not record)))
+  (blank)
+  (call (. record set-slot-named) name bits is-none)
+)
+
+(fn-do + style-restyle-themes _
+  (param object-pointer (of CPointer Void))
+  (let attachment (call style-live-attachment object-pointer))
+  (return-if (if (not attachment)))
+  (let live attachment)
+  (call style-mark-style-sheet-provider (call style-attachment-store live) live)
+)
+
+(fn-do + style-set-theme-tag _
+  (param node MarkupElement)
+  (param tag String)
+  (param active (? Bool))
+  (let held (call markup-attachment-for-write node))
+  (let bit (call style-theme-tag tag))
+  (let turned-on (- (. held theme-tags-on) (/and/ (. held theme-tags-on) bit)))
+  (let turned-off (- (. held theme-tags-off) (/and/ (. held theme-tags-off) bit)))
+  (if (== active true)
+    (= turned-on (/or/ turned-on bit))
+    (else-if (== active false)
+      (= turned-off (/or/ turned-off bit))
+    )
+  )
+  (return-if (if (and (== turned-on (. held theme-tags-on)) (== turned-off (. held theme-tags-off)))))
+  (let attachment (call style-live-attachment (as node Pointer)))
+  (if (not attachment)
+    (call (. held set-theme-tags) turned-on turned-off)
+    (return)
+  )
+  (let live attachment)
+  (let was-on (!= (/and/ (call style-effective-tags live) bit) 0))
+  (call (. live set-theme-tags) turned-on turned-off)
+  (return-if (if (== was-on (!= (/and/ (call style-effective-tags live) bit) 0))))
+  (let infos (call (of List StyleSheetInfo)))
+  (for (in info style-sheet-infos)
+    (if (!= (/and/ (. info tags) bit) 0)
+      (+= infos info)
+    )
+  )
+  (let changes (call style-tag-changes live infos bit was-on))
+  (if changes
+    (call style-mark-tag-change (call style-attachment-store live) live changes bit was-on)
+  )
+)
+
+(fn-do + style-effective-style-sheet _
+  (param attachment MarkupAttachment)
+  (param info StyleSheetInfo)
+  (let selected (? StyleSheetRecord) null)
+  (let tags 0u64)
+  (let decided 0u64)
+  (let cursor (? MarkupAttachment) attachment)
+  (while cursor
+    (let live cursor)
+    (let node-record (call style-node-record live))
+    (if node-record
+      (let held node-record)
+      (let provided (. held provided-style-sheets))
+      (if (and (not selected) provided)
+        (for (in record provided)
+          (if (== (. record info) info)
+            (= selected record)
+          )
+        )
+      )
+    )
+    (= tags (/or/ tags (- (. live theme-tags-on) (/and/ (. live theme-tags-on) decided))))
+    (= decided (/or/ decided (. live theme-tags-on) (. live theme-tags-off)))
+    (if (and selected (== (. info tags) 0))
+      (return selected)
+    )
+    (= cursor (call style-parent-attachment live))
+  )
+  (blank)
+  (let base (?? selected (call style-sheet-default-record info)))
+  (return-if base (if (== (. info tags) 0)))
+  (return (call style-sheet-variant info base tags))
+)
+
+(fn-do + style-copy-authored-state _
+  (param source MarkupElement)
+  (param target MarkupElement)
+  (let target-pointer (as target Pointer))
+  (for (in info style-infos)
+    (let winners (call style-authored-winners source info))
+    (for (in winner winners)
+      (if (!= winner style-no-winner)
+        (let copy (call (. winner copied)))
+        (= (. copy layer) (. StyleLayer imperative))
+        (= (. copy order) 0)
+        (= (. copy block) -1)
+        (call style-author-imperative-declaration target-pointer copy)
+      )
+    )
+  )
+)
+
+(fn-do + style-has-authored-property Bool
+  (param source MarkupElement)
+  (param style-name String)
+  (param property-name String)
+  (let info (call style-info-named style-name))
+  (return-if false (if (not info)))
+  (let winners (call style-authored-winners source info))
+  (for (in property (. info properties))
+    (if (== (. property name) property-name)
+      (return (!= ([] winners (. property offset)) style-no-winner))
+    )
+  )
+  (return false)
+)
+
+(fn-do + style-live-site-association _
+  (param attachment MarkupAttachment)
+  (let owner-address (. attachment owner-address))
+  (if owner-address
+    (return (call style-association-for (as owner-address Pointer)))
+  )
+)
+
+(fn-do + style-set-motion-host _
+  (param host (? StyleMotionHost))
+  (= style-motion-host host)
+)
+
+(fn-expr + (of style-read-object Value) (? Value)
+  (param owner MarkupElement)
+  (param info StyleInfo)
+  (param offset Size)
+  (case? (or (not property) (not (. property is-object)))
+    null
+  )
+  (case? (. read none)
+    null
+  )
+  (case? (== pointer (call Pointer))
+    null
+  )
+  (default
+    (call (of gc-object-from-pointer Value) pointer)
+  )
+  (where
+    (lazy property (call (. info property-at) offset))
+    (lazy read
+      (call style-read-attached-optional
+        (block
+          (arg (. owner markup-attachment-cache))
+          (arg (as owner Pointer))
+          (arg (. info style-index))
+          (arg offset)
+        )
+      )
+    )
+    (lazy pointer (call style-object-pointer (. read bits)))
+  )
+)
+
+(fn-expr + style-motion-vector (? (list F64))
+  (param property StylePropertyInfo)
+  (param bits I64)
+  (param none Bool)
+  (case? none
+    null
+  )
+  (case? (. property is-float)
+    (list (call style-float-from-bits bits))
+  )
+  (case? (or (not (. property is-encoded)) (!= (. property wide-shift) 0))
+    null
+  )
+  (default
+    (call (?. (call style-object-holder bits) motion-vector))
+  )
+)
+
+(fn-do + style-motion-vector-into Bool
+  (param into (list F64))
+  (param property StylePropertyInfo)
+  (param bits I64)
+  (param none Bool)
+  (call (. into clear))
+  (return-if false (if none))
+  (if (. property is-float)
+    (+= into (call style-float-from-bits bits))
+    (return true)
+  )
+  (let vector (call style-motion-vector property bits none))
+  (return-if false (if (not vector)))
+  (++= into vector)
+  (return true)
+)
+
+(fn-expr + style-motion-moves Bool
+  (param property StylePropertyInfo)
+  (param from-bits I64)
+  (param to-bits I64)
+  (case? (or (. property is-float) (not (. property is-encoded)) (!= (. property wide-shift) 0))
+    true
+  )
+  (case? (or (not from) (not to))
+    true
+  )
+  (default
+    (call (. from moves-to) to)
+  )
+  (where
+    (lazy from (call style-object-holder from-bits))
+    (lazy to (call style-object-holder to-bits))
+  )
+)
+
+(fn-expr + style-motion-none-vector (? (list F64))
+  (param property StylePropertyInfo)
+  (param bits I64)
+  (case? (. property is-float)
+    (list 0.0)
+  )
+  (case? (or (not (. property is-encoded)) (!= (. property wide-shift) 0))
+    null
+  )
+  (default
+    (call (?. (call style-object-holder bits) motion-none-vector))
+  )
+)
+
+(fn-do + style-present Bool
+  (param owner MarkupElement)
+  (param info StyleInfo)
+  (param offset Size)
+  (param bits I64)
+  (param none Bool)
+  (let attachment (call style-live-attachment (as owner Pointer)))
+  (return-if false (if (not attachment)))
+  (let live attachment)
+  (let record (call style-ensure-node-record live))
+  (let lane (?? (. record presented) (call StylePresentation)))
+  (= (. record presented) lane)
+  (let property (call (. info property-at) offset))
+  (let held (only-if (call style-slot-holder property bits) (if (and property (not none)))))
+  (call (. lane put) (. info style-index) offset bits none held false)
+  (let store (call style-attachment-store live))
+  (call style-raise-changed-domains store live info (/lshift/ 1u64 offset))
+  (if (!= (/and/ (. info inherited-mask) (/lshift/ 1u64 offset)) 0)
+    (call style-present-followers store live record info offset bits none held)
+  )
+  (return true)
+)
+
+(fn-do + style-unpresent _
+  (param owner MarkupElement)
+  (param info StyleInfo)
+  (param offset Size)
+  (let attachment (call style-live-attachment (as owner Pointer)))
+  (return-if (if (not attachment)))
+  (let live attachment)
+  (let record (call style-node-record live))
+  (return-if (if (not record)))
+  (let lane (. record presented))
+  (return-if (if (not lane)))
+  (return-if (if (not (call (. lane remove) (. info style-index) offset))))
+  (if (not (. lane entries))
+    (= (. record presented) null)
+  )
+  (let store (call style-attachment-store live))
+  (call style-raise-changed-domains store live info (/lshift/ 1u64 offset))
+  (if (!= (/and/ (. info inherited-mask) (/lshift/ 1u64 offset)) 0)
+    (call style-unpresent-followers store live info offset)
+  )
+)
+
+(fn-do + style-is-within Bool
+  (param node MarkupElement)
+  (param root MarkupElement)
+  (let target (call style-live-attachment (as root Pointer)))
+  (return-if false (if (not target)))
+  (let cursor (call style-live-attachment (as node Pointer)))
+  (while cursor
+    (let live cursor)
+    (return-if true (if (== (as live Pointer) (as target Pointer))))
+    (= cursor (call style-parent-attachment live))
+  )
+  (return false)
+)
+
+(fn-do + style-unsettle _
+  (param owner MarkupElement)
+  (let attachment (call style-live-attachment (as owner Pointer)))
+  (if attachment
+    (call style-unsettle-attachment attachment)
+  )
+)
+
+(fn-expr + style-is-presenting Bool
+  (param owner MarkupElement)
+  (if-expr attachment (not (not (?. (call style-node-record attachment) presented))) false)
+  (where
+    (lazy attachment (call style-live-attachment (as owner Pointer)))
+  )
+)
+
+(fn-expr + (of style-is-initial Host) Bool
+  (param host Host)
+  (param info StyleInfo)
+  (constraint is Host MarkupElement)
+  (case? (or (not attachment) (not (. attachment is-live)))
+    false
+  )
+  (case? (not record)
+    true
+  )
+  (case? (. record presented)
+    false
+  )
+  (default
+    (< (call style-held-segment-position record (. info style-index)) 0)
+  )
+  (where
+    (lazy attachment (. host markup-attachment-cache))
+    (lazy record (call style-node-record attachment))
+  )
+)
+
+(fn-do + style-report-next-settle _
+  (param owner MarkupElement)
+  (let attachment (call markup-attachment owner))
+  (if attachment
+    (= (. attachment style-reports-settle) true)
+  )
+)
+
+(fn-do + style-report-on-mount _
+  (param info StyleInfo)
+  (param offset Size)
+  (= (. info mount-mask) (/or/ (. info mount-mask) (/lshift/ 1u64 offset)))
+)
+
+(fn-do + style-watch-changes _
+  (param info StyleInfo)
+  (param offset Size)
+  (= (. info watch-mask) (/or/ (. info watch-mask) (/lshift/ 1u64 offset)))
+)
+
+(fn-do + style-read-settled StyleOptionalBits
+  (param owner MarkupElement)
+  (param info StyleInfo)
+  (param offset Size)
+  (let attachment (call style-live-attachment (as owner Pointer)))
+  (if attachment
+    (let live attachment)
+    (let record (call style-node-record live))
+    (if record
+      (let position (call style-held-segment-position record (. info style-index)))
+      (if (>= position 0)
+        (let segment ([] (. record segments) position))
+        (if (< offset (. segment values length))
+          (return (tuple ([] (. segment values) offset) (call (. segment value-none) offset)))
+        )
+      )
+    )
+    (let initial (call style-read-initial-segment live (. info style-index)))
+    (return (tuple (call (. initial value-bits) offset) (call (. initial value-none) offset)))
+  )
+  (let property (call style-initial-property (. info style-index) offset))
+  (return (tuple (. property initial-bits) (. property initial-none)))
+)
+
+(fn-expr + (of style-shape Arg Value) (of StyleShape Arg Value)
+  (param make (of Mapper Arg Value))
+  (call (of StyleShape Arg Value) make)
+)
+
+(fn-expr + style-record-segment (? ComputedSegment)
+  (param record StyleRecord)
+  (param style-index Index)
+  (only-if ([] (. record segments) position) (if (>= position 0)))
+  (where
+    (lazy position (call style-held-segment-position record style-index))
+  )
+)
+
+(fn-do + style-record-place-segment _
+  (param record StyleRecord)
+  (param style-index Index)
+  (param segment ComputedSegment)
+  (param owned Bool)
+  (let key (call style-segment-key style-index owned))
+  (let position (call style-held-segment-position record style-index))
+  (if (>= position 0)
+    (= ([] (. record segments) position) segment)
+    (= ([] (. record segment-keys) position) key)
+    (return)
+  )
+  (let inserted (call style-segment-position record style-index))
+  (call (. record segments insert) segment inserted)
+  (call (. record segment-keys insert) key inserted)
+  (= (. record segment-mask) (/or/ (. record segment-mask) (call style-segment-bit style-index)))
+)
+
+(fn-expr + style-segment-key-style Index
+  (param key Index)
+  (/ key 2)
+)
+
+(type _ StyleContentSlot (is U32)
+  ; Style-generated content slots mirrored from the compiler.
+  (blank)
+  (variant before)
+  (variant after)
+  (variant first-child)
+  (variant last-child)
+)
+
+(type _ StyleProjectionKind (is U32)
+  ; Style-sheet projection descriptors. Converted style-sheet declarations are admitted only when
+  ; source slot bits can be reused directly, wrapped in a target union case, or union-tag remapped.
+  (blank)
+  (variant copy)
+  (variant union-wrap)
+  (variant union-remap)
+)
+
+(type _ StyleStaticMaker (is (fn-type I64)))
+
+(type _ StyleThemedMaker (is (fn-type StyleOptionalBits (param record StyleSheetRecord))))
+
+(type _ StyleProjectionRemap
+  (prop + target-tags (list U8))
+)
+
+(type _ (of StyleValueHolder Value) (is StyleObjectHolder)
+  (prop + held (? Value))
+  (fn-do + This _
+    (param held _)
+    (= identity (call style-held-pointer held))
+  )
+)
+
+(type _ StyleSheetSlotInfo
+  ; Compiler-registered metadata for one style-sheet slot. Slot values use the same I64-bits-plus-
+  ; none-flag encoding as style properties.
+  (blank)
+  (prop + offset Size (= 0))
+  (prop + name String)
+  (prop + initial-bits I64)
+  (prop + initial-none _ (= false))
+  (prop + flags U32)
+  (prop + domains U32)
+  (prop + is-encoded _ (=> (!= (/and/ flags style-flag-encoded) 0)))
+)
+
+(type _ StyleSheetChange
+  ; How a theme tag turned on or off changes a family's active member in a subtree: the member
+  ; before and after, which slots hold other values, and whether any does.
+  (blank)
+  (prop + info StyleSheetInfo)
+  (prop + before StyleSheetRecord)
+  (prop + after StyleSheetRecord)
+  (prop + slots (list Bool))
+  (prop + differs _ (= false))
+  (fn-do + This _
+    (param info _)
+    (param before _)
+    (param after _)
+    (let offset Size 0)
+    (while (< offset (. info slot-count))
+      (let changed
+        (scope (or bits-differ (!= (call (. before value-none) offset) (call (. after value-none) offset)))
+          (lazy bits-differ (!= (call (. before value-bits) offset) (call (. after value-bits) offset)))
+        )
+      )
+      (+= slots changed)
+      (= differs (or differs changed))
+      (+= offset 1)
+    )
+  )
+)
+
+(type _ StyleSiteTemplate
+  ; A shared static declaration template for one compiler-assigned markup construction site.
+  ; Registrations are idempotent because construction code runs for every instance of the site,
+  ; while the declarations themselves must allocate once per program site. Shared declarations are
+  ; value-kind only: object values stay per-instance on the association, so holder ownership remains
+  ; per-owner state. A gated shared declaration's block counts from the first block the site opens;
+  ; each association offsets it by the base it recorded for the site.
+  (blank)
+  (prop + declarations (list AuthoredDeclaration))
+  (prop + current-block I64 (= -1))
+  (prop + current-family (? StyleSheetInfo) (= null))
+  (prop + current-members U64)
+  (prop + recorded _ (= false))
+  (fn-do + has-declaration _
+    (param style StyleInfo)
+    (param offset Size)
+    (param layer U32)
+    (param order U32)
+    (param block I64)
+    (for (in declaration declarations)
+      (let is-style (and (== (. declaration style) style) (== (. declaration offset) offset)))
+      (let is-order (and (== (. declaration layer) layer) (== (. declaration order) order)))
+      (return-if true (if (and is-style is-order (== (. declaration block) block))))
+    )
+    (return false)
+  )
+)
+
+(type _ StyleContentRecord
+  (prop + target MarkupElement)
+  (prop + slot U32)
+  (prop + order U32)
+  (prop + builder (of MarkupSlotBuilder MarkupElement))
+  (prop + enabled _ (= true))
+  (prop + node (? MarkupElement))
+  (fn-do + This _
+    (param target _)
+    (param slot _)
+    (param order _)
+    (param builder _)
+  )
+  (fn-do + detach _
+    (let existing node)
+    (return-if (if (not existing)))
+    (blank)
+    (= node null)
+    (call markup-remove-shadow existing)
+  )
+  (fn-do + refresh _
+    (param should-rebuild _ (= false))
+    (if (not enabled)
+      (call detach)
+      (return)
+    )
+    (if node
+      (return-if (if (not should-rebuild)))
+      (call detach)
+    )
+    (blank)
+    (let parent (call style-content-parent target slot))
+    (return-if (if (not parent)))
+    (blank)
+    (let child (call builder))
+    (= node child)
+    (let anchor (call style-content-anchor target slot parent))
+    (call markup-insert-shadow parent child target slot anchor)
+  )
+)
+
+(type _ StyleScopeState
+  (prop + is-on _ (= false))
+)
+
+(type _ StyleDynamicActionBase (is MarkupBatchAction)
+  (fn-do + refresh _
+    ; Mount-time re-derivation: evaluates the declaration expression once against the current tree.
+    (blank)
+    (call refresh-markup-batch-action)
+  )
+)
+
+(type _ (of StyleDynamicAction Subject) (is StyleDynamicActionBase)
+  ; A markup batch action for one dynamic authored declaration. The traced subject reference keeps
+  ; tracker-retained actions from dereferencing a collected object; the batch root is resolved from
+  ; the subject's current mount when trackers fire, so the action follows the object across remounts.
+  ; When the subject is unmounted the update is dropped and the mount path re-runs the action instead.
+  (blank)
+  (prop + subject Subject)
+  (prop + accepts-run _ (=> (!= (call style-live-attachment (as subject Pointer)) null)))
+  (fn-do + This _
+    (param subject _)
+    (param initial-trackers (list Tracker))
+    (param action-callback SubscriberCallback)
+    (lazy trackers initial-trackers)
+    (= callback action-callback)
+    (blank)
+    (for (in tracker trackers)
+      (call (. tracker attach) this)
+    )
+  )
+  (fn-do + schedule _
+    ; Tracker fire: resolve the batch root from the subject's current mount, then enqueue like
+    ; MarkupBatchAction. Unmounted subjects drop the update; mounting re-runs the action instead.
+    (blank)
+    (let attachment (call style-live-attachment (as subject Pointer)))
+    (if (not attachment)
+      (probe-count style.dynamic.dropped)
+    )
+    (return-if (if (not attachment)))
+    (blank)
+    (let live-store (call style-attachment-store attachment))
+    (= batch-root (. (call style-store-batch-queue live-store) root))
+    (probe-count style.dynamic.enqueues)
+    (call enqueue-markup-batch-action)
+  )
+)
+
+(type _ StylePresentation
+  (prop + entries (list StylePresentedValue))
+  (fn-do + find (? StylePresentedValue)
+    (param style-index Index)
+    (param offset Size)
+    (for (in entry entries)
+      (return-if entry (if (and (== (. entry style-index) style-index) (== (. entry offset) offset))))
+    )
+    (return null)
+  )
+  (fn-do + put _
+    (param style-index Index)
+    (param offset Size)
+    (param bits I64)
+    (param none Bool)
+    (param held (? StyleObjectHolder))
+    (param follows Bool)
+    (let found (call find style-index offset))
+    (if found
+      (= (. found bits) bits)
+      (= (. found none) none)
+      (= (. found held) held)
+      (= (. found follows) follows)
+      (return)
+    )
+    (let entry (call StylePresentedValue))
+    (= (. entry style-index) style-index)
+    (= (. entry offset) offset)
+    (= (. entry bits) bits)
+    (= (. entry none) none)
+    (= (. entry held) held)
+    (= (. entry follows) follows)
+    (+= entries entry)
+  )
+  (fn-do + remove Bool
+    (param style-index Index)
+    (param offset Size)
+    (for (in index (..< 0 (. entries length)))
+      (let entry ([] entries index))
+      (if (and (== (. entry style-index) style-index) (== (. entry offset) offset))
+        (call (. entries remove) index)
+        (return true)
+      )
+    )
+    (return false)
+  )
+)
+
+(type _ StylePresentedValue
+  (prop + style-index Index (= 0))
+  (prop + offset Size (= 0))
+  (prop + bits I64)
+  (prop + none _ (= false))
+  (prop + held (? StyleObjectHolder) (= null))
+  (prop + follows _ (= false))
+)
+
+(fn-expr _ (of style-value-motion-vector Value) (? (list F64))
+  (param value Value)
+  (constraint is Value Animatable)
+  (. value motion-vector)
+)
+
+(fn-expr _ (of style-value-motion-vector Value) (? (list F64))
+  (param value Value)
+  null
+)
+
+(fn-expr _ (of style-value-none-vector Value) (? (list F64))
+  (param value Value)
+  (constraint is Value Animatable)
+  (. value motion-none-vector)
+)
+
+(fn-expr _ (of style-value-none-vector Value) (? (list F64))
+  (param value Value)
+  null
+)
+
+(fn-expr _ (of style-value-moves-to Value) Bool
+  (param value Value)
+  (param other Value)
+  (constraint is Value Animatable)
+  (call (. value moves-to) other)
+)
+
+(fn-expr _ (of style-value-moves-to Value) Bool
+  (param value Value)
+  (param other Value)
+  true
+)
+
+(fn-expr _ (of style-value-from-vector Value) Value
+  (param value Value)
+  (param vector (list F64))
+  (constraint is Value Animatable)
+  (call (. value with-motion-vector) vector)
+)
+
+(fn-expr _ (of style-value-from-vector Value) Value
+  (param value Value)
+  (param vector (list F64))
+  value
+)
+
+(fn-expr _ style-outlet-states-mark Size
+  (. style-outlet-state-keys length)
+)
+
+(fn-do _ style-outlet-state-push _
+  (param key U32)
+  (param cell StyleScopeState)
+  (+= style-outlet-state-keys key)
+  (+= style-outlet-state-cells cell)
+)
+
+(fn-do _ style-outlet-states-release _
+  (param mark Size)
+  (let count (. style-outlet-state-keys length))
+  (return-if (if (<= count mark)))
+  (call (. style-outlet-state-keys remove) mark (- count mark))
+  (call (. style-outlet-state-cells remove) mark (- count mark))
+)
+
+(fn-do _ style-outlet-state StyleScopeState
+  (param key U32)
+  (let index (. style-outlet-state-keys length))
+  (while (> index 0)
+    (-= index 1)
+    (return-if ([] style-outlet-state-cells index) (if (== ([] style-outlet-state-keys index) key)))
+  )
+  (return (call StyleScopeState))
+)
+
+(fn-do _ style-register-projection-remap-site _
+  (param site Size)
+  (param target-tags (of ConstArray U8))
+  (param target-count Size)
+  (+= style-projection-remap-registration-attempts 1)
+  (blank)
+  (while (<= (. style-projection-remaps length) site)
+    (+= style-projection-remaps style-empty-projection-remap)
+    (+= style-projection-remap-registered false)
+  )
+  (blank)
+  (if (not ([] style-projection-remap-registered site))
+    (let remap (call StyleProjectionRemap))
+    (let index Size 0)
+    (while (< index target-count)
+      (+= (. remap target-tags) ([] target-tags index))
+      (+= index 1)
+    )
+    (= ([] style-projection-remaps site) remap)
+    (= ([] style-projection-remap-registered site) true)
+  )
+)
+
+(fn-do _ style-theme-tag U64
+  (param name String)
+  (for (in position (..< 0 (. style-theme-tags length)))
+    (if (== ([] style-theme-tags position) name)
+      (return (/lshift/ 1u64 position))
+    )
+  )
+  (throw (call StyleSheetPanic "A program names at most 64 theme tags") (if (>= (. style-theme-tags length) 64)))
+  (+= style-theme-tags name)
+  (return (/lshift/ 1u64 (- (. style-theme-tags length) 1)))
+)
+
+(fn-do _ style-sheet-info-at _
+  (param style-sheet-index Index)
+  ; Placeholder entries pad the registry when compiler-assigned indexes register out of module-init
+  ; order; they read as unregistered.
+  (blank)
+  (if (< style-sheet-index (. style-sheet-infos length))
+    (let info ([] style-sheet-infos style-sheet-index))
+    (if (> (. info sheet-key length) 0)
+      (return info)
+    )
+  )
+)
+
+(fn-do _ style-content-set-enabled _
+  (param record StyleContentRecord)
+  (param enabled Bool)
+  (= (. record enabled) enabled)
+  (call (. record refresh))
+)
+
+(fn-do _ style-content-refresh _
+  (param record StyleContentRecord)
+  (param should-rebuild _ (= true))
+  (call (. record refresh) should-rebuild)
+)
+
+(fn-do _ style-next-structural-after (? MarkupAttachment)
+  (param root MarkupAttachment)
+  (param attachment MarkupAttachment)
+  (let cursor attachment)
+  (while (!= cursor root)
+    (if (. cursor next-sibling)
+      (return (. cursor next-sibling))
+    )
+    (return-if (if (not (. cursor structural-parent))))
+    (= cursor (. cursor structural-parent))
+  )
+)
+
+(fn-do _ style-scan-child (? MarkupAttachment)
+  (param parent MarkupAttachment)
+  (param candidate (? MarkupAttachment))
+  (let cursor candidate)
+  (while cursor
+    (let live cursor)
+    (if (and (. live is-live) (== (. live style-store-address) (. parent style-store-address)))
+      (return live)
+    )
+    (if (. live first-child)
+      (= cursor (. live first-child))
+      (else
+        (= cursor (call style-next-structural-after parent live))
+      )
+    )
+  )
+)
+
+(fn-do _ style-clear-domain _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param domain Size)
+  (let bit U32 (/lshift/ 1u32 domain))
+  (let has-domain (!= (/and/ (. attachment pending-domains) bit) 0))
+  (return-if (if (not has-domain)))
+  (blank)
+  (-= (. attachment pending-domains) bit)
+  (if (and (< domain (. store pending-domain-counts length)) (> ([] (. store pending-domain-counts) domain) 0))
+    (-= ([] (. store pending-domain-counts) domain) 1)
+  )
+)
+
+(fn-do _ style-use-theme-key _
+  (param object-pointer (of CPointer Void))
+  (param key String)
+  (let record (call style-theme-record key))
+  (if record
+    (call style-provide-style-sheet object-pointer record)
+  )
+)
+
+(fn-do _ style-theme-record (? StyleSheetRecord)
+  (param key String)
+  (for (in record style-sheet-members)
+    (if (== (. record key) key)
+      (return record)
+    )
+  )
+  (for (in info style-sheet-infos)
+    (if (== (. info sheet-key) key)
+      (return (call style-sheet-default-record info))
+    )
+  )
+  (return null)
+)
+
+(fn-do _ style-effective-tags U64
+  (param attachment MarkupAttachment)
+  (let tags 0u64)
+  (let decided 0u64)
+  (let cursor (? MarkupAttachment) attachment)
+  (while cursor
+    (let live cursor)
+    (= tags (/or/ tags (- (. live theme-tags-on) (/and/ (. live theme-tags-on) decided))))
+    (= decided (/or/ decided (. live theme-tags-on) (. live theme-tags-off)))
+    (= cursor (call style-parent-attachment live))
+  )
+  (return tags)
+)
+
+(fn-do _ style-effective-base StyleSheetRecord
+  (param attachment MarkupAttachment)
+  (param info StyleSheetInfo)
+  (let cursor (? MarkupAttachment) attachment)
+  (while cursor
+    (let live cursor)
+    (let node-record (call style-node-record live))
+    (if (and node-record (. node-record provided-style-sheets))
+      (for (in record (. node-record provided-style-sheets))
+        (if (== (. record info) info)
+          (return record)
+        )
+      )
+    )
+    (= cursor (call style-parent-attachment live))
+  )
+  (return (call style-sheet-default-record info))
+)
+
+(fn-do _ style-tag-changes (? (list StyleSheetChange))
+  (param attachment MarkupAttachment)
+  (param infos (list StyleSheetInfo))
+  (param bit U64)
+  (param was-on Bool)
+  ; The families whose active member at a node differs with a tag as it was and as it is.
+  (blank)
+  (let tags (call style-effective-tags attachment))
+  (let old-tags (if-expr was-on (/or/ tags bit) (- tags (/and/ tags bit))))
+  (let changes (? (list StyleSheetChange)) null)
+  (for (in info infos)
+    (let base (call style-effective-base attachment info))
+    (let before (call style-sheet-variant info base old-tags))
+    (let after (call style-sheet-variant info base tags))
+    (if (!= before after)
+      (if (not changes)
+        (= changes (call (of List StyleSheetChange)))
+      )
+      (+= changes (call StyleSheetChange info before after))
+    )
+  )
+  (return changes)
+)
+
+(fn-do _ style-mark-tag-change _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param changes (list StyleSheetChange))
+  (param bit U64)
+  (param was-on Bool)
+  ; Marks a node and its mounted subtree where they read what a tag changes, as their declarations,
+  ; the families that gate them, and their reads of slots say. A node that decides the tag itself
+  ; ends the walk; one that turns other tags or provides a sheet of a changed family takes its own
+  ; changes.
+  (blank)
+  (call style-mark-sheet-dependent store attachment changes)
+  (let child (call style-first-child-attachment attachment))
+  (while child
+    (let live child)
+    (let own (call style-subtree-changes live changes bit was-on))
+    (if own
+      (call style-mark-tag-change store live own bit was-on)
+    )
+    (= child (call style-next-child-attachment attachment live))
+  )
+)
+
+(fn-do _ style-subtree-changes (? (list StyleSheetChange))
+  (param attachment MarkupAttachment)
+  (param changes (list StyleSheetChange))
+  (param bit U64)
+  (param was-on Bool)
+  (let decided (/or/ (. attachment theme-tags-on) (. attachment theme-tags-off)))
+  (return-if null (if (!= (/and/ decided bit) 0)))
+  (let node-record (call style-node-record attachment))
+  (let provides false)
+  (if (and node-record (. node-record provided-style-sheets))
+    (for (in provided (. node-record provided-style-sheets))
+      (for (in change changes)
+        (= provides (or provides (== (. provided info) (. change info))))
+      )
+    )
+  )
+  (return-if changes (if (and (== decided 0) (not provides))))
+  (let infos (call (of List StyleSheetInfo)))
+  (for (in change changes)
+    (+= infos (. change info))
+  )
+  (return (call style-tag-changes attachment infos bit was-on))
+)
+
+(fn-do _ style-mark-sheet-dependent _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param changes (list StyleSheetChange))
+  (let node-record (call style-node-record attachment))
+  (return-if (if (not node-record)))
+  (let record node-record)
+  (if (. record read-sheets)
+    (let reads false)
+    (for (in read (. record read-sheets))
+      (for (in change changes)
+        (= reads (or reads (and (== (. read info) (. change info)) (. change differs))))
+      )
+    )
+    (if reads
+      (call style-refresh-sheet-reads store attachment)
+    )
+  )
+  (return-if (if (not (call style-declares-changes attachment record changes))))
+  (= (. attachment dirty-bits) (/or/ (. attachment dirty-bits) style-dirty-bit))
+  (call (. store enqueue-dirty) attachment)
+)
+
+(fn-do _ style-declares-changes Bool
+  (param attachment MarkupAttachment)
+  (param record NodeStyleRecord)
+  (param changes (list StyleSheetChange))
+  (let assoc (call style-live-site-association attachment))
+  (if assoc
+    (let live-assoc assoc)
+    (let template-index Size 0)
+    (while (< template-index (call (. live-assoc site-template-count)))
+      (for (in declaration (. (call (. live-assoc site-template-at) template-index) declarations))
+        (return-if true (if (call style-declaration-reads-changes declaration changes)))
+      )
+      (+= template-index 1)
+    )
+  )
+  (for (in declaration (. record authored))
+    (return-if true (if (call style-declaration-reads-changes declaration changes)))
+  )
+  (return false)
+)
+
+(fn-do _ style-declaration-reads-changes Bool
+  (param declaration AuthoredDeclaration)
+  (param changes (list StyleSheetChange))
+  (for (in change changes)
+    (return-if true (if (and (== (. declaration family) (. change info)) (!= (. change before member) (. change after member)))))
+    (if (== (. declaration style-sheet) (. change info))
+      (return-if true (if (and (== (. declaration kind) (. StyleValueKind themed)) (. change differs))))
+      (return-if true (if (and (!= (. declaration kind) (. StyleValueKind themed)) slot-changed)))
+      (lazy slot-changed ([] (. change slots) (. declaration sheet-offset)))
+    )
+  )
+  (return false)
+)
+
+(fn-do _ style-sheet-variant StyleSheetRecord
+  (param info StyleSheetInfo)
+  (param base StyleSheetRecord)
+  (param tags U64)
+  (return-if base (if (and (== (. base member) 0) (!= base (call style-sheet-default-record info)))))
+  (let best base)
+  (let best-count 0u32)
+  (let best-depth 0u32)
+  (for (in record style-sheet-members)
+    (if (!= (. record info) info)
+      (continue)
+    )
+    (let required 0u64)
+    (let depth 0u32)
+    (let eligible true)
+    (let level record)
+    (while (and eligible (!= (. level member) (. base member)) (!= (. level member) 0))
+      (= eligible (!= (. level tags) 0))
+      (= required (/or/ required (. level tags)))
+      (+= depth 1)
+      (= level (call style-sheet-member-record info (. level parent)))
+    )
+    (if (or (not eligible) (!= (. level member) (. base member)) (!= (/and/ required tags) required))
+      (continue)
+    )
+    (let count (call style-tag-count required))
+    (if (or (> count best-count) (and (== count best-count) (> depth best-depth)))
+      (= best record)
+      (= best-count count)
+      (= best-depth depth)
+    )
+  )
+  (return best)
+)
+
+(fn-do _ style-sheet-member-record StyleSheetRecord
+  (param info StyleSheetInfo)
+  (param member U32)
+  (if (!= member 0)
+    (for (in record style-sheet-members)
+      (if (and (== (. record info) info) (== (. record member) member))
+        (return record)
+      )
+    )
+  )
+  (return (call style-sheet-default-record info))
+)
+
+(fn-do _ style-tag-count U32
+  (param tags U64)
+  (let count 0u32)
+  (let rest tags)
+  (while (!= rest 0)
+    (= rest (/and/ rest (- rest 1)))
+    (+= count 1)
+  )
+  (return count)
+)
+
+(fn-expr _ style-attachments-lane _
+  (call C:brixGCStyleAttachmentsSidePayloadLane)
+)
+
+(fn-expr _ style-templates-lane _
+  (call C:brixGCStyleTemplatesSidePayloadLane)
+)
+
+(fn-expr _ style-objects-lane _
+  (call C:brixGCStyleObjectsSidePayloadLane)
+)
+
+(fn-do _ style-info-for _
+  (param style-key String)
+  (for (in info style-infos)
+    (if (== (. info style-key) style-key)
+      (return info)
+    )
+  )
+)
+
+(fn-expr _ style-info-required _
+  (param style-index Index)
+  (before
+    ; Compiled declaration sites land here with their program-interned style index. Eager module-init
+    ; registration guarantees the entry exists before any compiled use; a miss means a module
+    ; initialization cycle ran style code before the style's defining module registered it.
+    (blank)
+    (throw (call StyleRegistryPanic (str "Style index " style-index " read before registration; check module initialization order")) (if (not info)))
+  )
+  info
+  (where
+    (lazy info (call style-info-at style-index))
+  )
+)
+
+(fn-do _ style-register-domain _
+  (param name String)
+  (param index Size)
+  ; Mirrors one compiler-interned invalidation domain into the runtime registry. Idempotent for a
+  ; matching (name, index) pair; a conflicting registration means two compilation units disagree
+  ; about the program-wide domain table, which is unrecoverable.
+  (blank)
+  (probe-count style.domain.registration.initializations)
+  (blank)
+  (if (< index (. style-domain-names length))
+    (let existing-name ([] style-domain-names index))
+    (if (> (. existing-name length) 0)
+      (throw (call StyleDomainPanic "Conflicting style domain registration for '(name)") (if (!= existing-name name)))
+      (probe-count style.domain.registration.redundant-attempts)
+      (return)
+    )
+  )
+  (blank)
+  (while (<= (. style-domain-names length) index)
+    (+= style-domain-names "")
+  )
+  (blank)
+  (probe-count style.domain.registration.stores)
+  (= ([] style-domain-names index) name)
+)
+
+(fn-expr _ (of style-held-pointer Value) Pointer
+  (param value (? Value))
+  (case? (not value)
+    (call Pointer)
+  )
+  (default
+    pointer
+  )
+  (where
+    (lazy pointer (as value Pointer))
+  )
+)
+
+(fn-do _ (of style-intern-object Value) I64
+  (param value (? Value))
+  ; Interns one object style value and returns its stable encoded bits: 0 for null, otherwise an
+  ; append-only 1-based registry slot. Re-interning the same live object returns the same bits, so
+  ; settled-value comparisons reduce to integer equality. These values back registration initials
+  ; and static rule sites, whose cached bits remain readable for the lifetime of the program.
+  (blank)
+  (if (not value)
+    (return 0)
+  )
+  (blank)
+  (let pointer (as value Pointer))
+  (let existing (call style-registered-holder pointer))
+  (if existing
+    (return (call style-retain-object existing))
+  )
+  (blank)
+  (return (call style-retain-object (call (of StyleValueHolder Value) value)))
+)
+
+(fn-expr _ style-registered-holder _
+  (param pointer Pointer)
+  (call (of gc-object-side-payload StyleObjectHolder) pointer (as (call style-objects-lane) Size))
+)
+
+(fn-do _ style-acquire-object _
+  (param holder (? StyleObjectHolder))
+  ; Returns the holder's stable encoded bits, registering it on first use. The descriptor's live
+  ; holder rides in the style-objects side-payload lane, so re-interning is O(1) with no scanning.
+  (blank)
+  (if (not holder)
+    (return 0)
+  )
+  (blank)
+  (let live holder)
+  (if (>= (. live slot) 0)
+    (return (+ (. live slot) 1))
+  )
+  (blank)
+  (let pointer (. live identity))
+  (if (== pointer (call Pointer))
+    (return 0)
+  )
+  (blank)
+  (let existing (call style-registered-holder pointer))
+  (if existing
+    (return (+ (. existing slot) 1))
+  )
+  (blank)
+  (let slot (. style-object-holders length))
+  (= (. live slot) slot)
+  (let weak (catch? (call Weak live)))
+  (throw (call StyleRegistryPanic "Unable to register weak style object") (if (not weak)))
+  (+= style-object-holders weak)
+  (call gc-publish-object-side-payload pointer (as (call style-objects-lane) Size) live)
+  (return (+ slot 1))
+)
+
+(fn-do _ style-retain-object _
+  (param holder (? StyleObjectHolder))
+  ; Acquires a registry slot and gives compiler-interned values permanent ownership. Dynamic
+  ; declarations bypass this helper and remain reclaimable with their authored owner.
+  (blank)
+  (if (not holder)
+    (return 0)
+  )
+  (blank)
+  (let live holder)
+  (let pointer (. live identity))
+  (if (== pointer (call Pointer))
+    (return 0)
+  )
+  (blank)
+  (let existing (call style-registered-holder pointer))
+  (if existing
+    (= live existing)
+  )
+  (blank)
+  (let bits (call style-acquire-object live))
+  (if (not (. live is-permanent))
+    (+= style-permanent-object-holders live)
+    (= (. live is-permanent) true)
+  )
+  (return bits)
+)
+
+(fn-expr _ style-object-pointer _
+  (param bits I64)
+  ; Resolves interned object bits back to the held object's pointer; 0, out-of-range, and freed
+  ; bits decode to null.
+  (blank)
+  (case? (or (<= bits 0) (> bits (. style-object-holders length)))
+    (call Pointer)
+  )
+  (case? holder
+    (. holder identity)
+  )
+  (default
+    (call Pointer)
+  )
+  (where
+    (lazy holder (. ([] style-object-holders (- bits 1)) get))
+  )
+)
+
+(fn-expr _ style-object-holder (? StyleObjectHolder)
+  (param bits I64)
+  (if-expr (or (<= bits 0) (> bits (. style-object-holders length))) null (. ([] style-object-holders (- bits 1)) get))
+)
+
+(fn-expr _ style-slot-holder (? StyleObjectHolder)
+  (param property StylePropertyInfo)
+  (param bits I64)
+  (case? (. property is-object)
+    (call style-object-holder bits)
+  )
+  (case? (== (. property wide-tags) 0)
+    null
+  )
+  (case? (or (>= tag 64) (== (/and/ (. property wide-tags) (/lshift/ 1u64 tag)) 0))
+    null
+  )
+  (default
+    (call style-object-holder (/rshift/ bits shift))
+  )
+  (where
+    (lazy shift (. property wide-shift))
+    (lazy tag (- bits (/lshift/ (/rshift/ bits shift) shift)))
+  )
+)
+
+(fn-expr _ style-slot-rebound Bool
+  (param property StylePropertyInfo)
+  (param old-bits I64)
+  (param bits I64)
+  (case? (== (. property wide-tags) 0)
+    false
+  )
+  (case? (!= (- bits (/lshift/ (/rshift/ bits shift) shift)) (- old-bits (/lshift/ (/rshift/ old-bits shift) shift)))
+    false
+  )
+  (case? (or (not old-holder) (not holder))
+    false
+  )
+  (default
+    (call (. old-holder holds-equal) holder)
+  )
+  (where
+    (lazy shift (. property wide-shift))
+    (lazy old-holder (call style-slot-holder property old-bits))
+    (lazy holder (call style-slot-holder property bits))
+  )
+)
+
+(fn-do _ style-site-template _
+  (param site Size)
+  (while (<= (. style-site-templates length) site)
+    (+= style-site-templates (call StyleSiteTemplate))
+  )
+  (blank)
+  (return ([] style-site-templates site))
+)
+
+(fn-do _ style-site-declaration _
+  (param site Size)
+  (param style StyleInfo)
+  (param offset Size)
+  (param layer U32)
+  (param order U32)
+  ; Shared-template registration entry: construction code re-runs for every instance of the site,
+  ; so the first construction allocates the declaration and later ones find it recorded and skip.
+  (blank)
+  (let template (call style-site-template site))
+  (let block (. template current-block))
+  (if (not (call (. template has-declaration) style offset layer order block))
+    (let declaration (call AuthoredDeclaration style))
+    (= (. declaration offset) offset)
+    (= (. declaration layer) layer)
+    (= (. declaration order) order)
+    (= (. declaration block) block)
+    (= (. declaration family) (. template current-family))
+    (= (. declaration members) (. template current-members))
+    (+= (. template declarations) declaration)
+    (return declaration)
+  )
+)
+
+(fn-do _ style-template-site-static _
+  (param site Size)
+  (param style StyleInfo)
+  (param offset Size)
+  (param layer U32)
+  (param order U32)
+  (param bits I64)
+  (param is-none Bool)
+  (let declaration (call style-site-declaration site style offset layer order))
+  (return-if (if (not declaration)))
+  (let fresh declaration)
+  (= (. fresh kind) (. StyleValueKind static))
+  (= (. fresh bits) bits)
+  (= (. fresh is-none) is-none)
+)
+
+(fn-expr _ style-site-recording Bool
+  (param site Size)
+  (not (. (call style-site-template site) recorded))
+)
+
+(fn-do _ style-site-recorded _
+  (param site Size)
+  (= (. (call style-site-template site) recorded) true)
+)
+
+(fn-do _ style-template-site-inherit _
+  (param site Size)
+  (param style StyleInfo)
+  (param offset Size)
+  (param layer U32)
+  (param order U32)
+  (let declaration (call style-site-declaration site style offset layer order))
+  (if declaration
+    (= (. declaration kind) (. StyleValueKind inherit))
+  )
+)
+
+(fn-do _ style-template-site-style-sheet _
+  (param site Size)
+  (param style StyleInfo)
+  (param offset Size)
+  (param layer U32)
+  (param order U32)
+  (param style-sheet StyleSheetInfo)
+  (param sheet-offset Size)
+  (let declaration (call style-site-declaration site style offset layer order))
+  (return-if (if (not declaration)))
+  (let fresh declaration)
+  (= (. fresh kind) (. StyleValueKind style-sheet))
+  (= (. fresh style-sheet) style-sheet)
+  (= (. fresh sheet-offset) sheet-offset)
+)
+
+(fn-do _ style-template-site-style-sheet-projected _
+  (param site Size)
+  (param style StyleInfo)
+  (param offset Size)
+  (param layer U32)
+  (param order U32)
+  (param style-sheet StyleSheetInfo)
+  (param sheet-offset Size)
+  (param projection-kind U32)
+  (param projection-tag I64)
+  (param projection-map-site Size)
+  (param preserves-none Bool)
+  (param remap-target-tags (? (of ConstArray U8)))
+  (let declaration (call style-site-declaration site style offset layer order))
+  (return-if (if (not declaration)))
+  (blank)
+  (if (== projection-kind (. StyleProjectionKind union-remap))
+    (throw (call StyleTemplatePanic "Missing style-sheet projection remap table") (if (not remap-target-tags)))
+    (call style-register-projection-remap-site projection-map-site remap-target-tags projection-tag)
+  )
+  (blank)
+  (let fresh declaration)
+  (= (. fresh kind) (. StyleValueKind style-sheet-projected))
+  (= (. fresh style-sheet) style-sheet)
+  (= (. fresh sheet-offset) sheet-offset)
+  (= (. fresh projection-kind) projection-kind)
+  (= (. fresh projection-tag) projection-tag)
+  (= (. fresh projection-map-site) projection-map-site)
+  (= (. fresh projection-preserves-none) preserves-none)
+)
+
+(fn-do _ style-template-site-family _
+  (param site Size)
+  (param family StyleSheetInfo)
+  (param members U64)
+  (let template (call style-site-template site))
+  (= (. template current-family) family)
+  (= (. template current-members) members)
+)
+
+(fn-do _ style-template-site-family-end _
+  (param site Size)
+  (let template (call style-site-template site))
+  (= (. template current-family) null)
+  (= (. template current-members) 0)
+)
+
+(fn-do _ style-template-site-themed _
+  (param site Size)
+  (param style StyleInfo)
+  (param offset Size)
+  (param layer U32)
+  (param order U32)
+  (param style-sheet StyleSheetInfo)
+  (param themed-site Size)
+  (param make StyleThemedMaker)
+  (let declaration (call style-site-declaration site style offset layer order))
+  (return-if (if (not declaration)))
+  (let fresh declaration)
+  (= (. fresh kind) (. StyleValueKind themed))
+  (= (. fresh style-sheet) style-sheet)
+  (= (. fresh themed-site) themed-site)
+  (= (. fresh themed) make)
+)
+
+(fn-do _ style-themed-bits StyleOptionalBits
+  (param declaration AuthoredDeclaration)
+  (param record StyleSheetRecord)
+  (let cache (. record themed))
+  (while (<= (. cache length) (. declaration themed-site))
+    (+= cache null)
+  )
+  (let held ([] cache (. declaration themed-site)))
+  (return-if held (if held))
+  (let make (!! (. declaration themed)))
+  (let made (call make record))
+  (= ([] cache (. declaration themed-site)) made)
+  (return made)
+)
+
+(fn-expr _ style-themed-slot I64
+  (param record StyleSheetRecord)
+  (param offset Size)
+  (call (. record value-bits) offset)
+)
+
+(fn-expr _ style-themed-none Bool
+  (param record StyleSheetRecord)
+  (param offset Size)
+  (call (. record value-none) offset)
+)
+
+(fn-do _ style-template-site-static-cached _
+  (param template-site Size)
+  (param style StyleInfo)
+  (param offset Size)
+  (param layer U32)
+  (param order U32)
+  (param value-site Size)
+  (param make StyleStaticMaker)
+  (while (<= (. style-static-site-bits length) value-site)
+    (+= style-static-site-bits 0)
+  )
+  (blank)
+  (let packed ([] style-static-site-bits value-site))
+  (if (== packed 0)
+    (= packed (call make))
+    (= ([] style-static-site-bits value-site) packed)
+  )
+  (blank)
+  (call style-template-site-static
+    (block
+      (arg template-site)
+      (arg style)
+      (arg offset)
+      (arg layer)
+      (arg order)
+      (arg (- (/rshift/ packed 1) 1))
+      (arg (!= (/and/ packed 1) 0))
+    )
+  )
+)
+
+(fn-do _ style-sheet-info-for _
+  (param sheet-key String)
+  (for (in info style-sheet-infos)
+    (if (== (. info sheet-key) sheet-key)
+      (return info)
+    )
+  )
+)
+
+(fn-expr _ style-sheet-info-required _
+  (param style-sheet-index Index)
+  (before
+    ; Compiled declaration sites land here with their program-interned style-sheet index. Eager
+    ; module-init registration guarantees the entry exists before any compiled use.
+    (blank)
+    (throw (call StyleRegistryPanic (str "StyleSheet index " style-sheet-index " read before registration; check module initialization order")) (if (not info)))
+  )
+  info
+  (where
+    (lazy info (call style-sheet-info-at style-sheet-index))
+  )
+)
+
+(fn-do _ style-sheet-register-slot _
+  (param info StyleSheetInfo)
+  (param offset Size)
+  (param name String)
+  (param initial-bits I64)
+  (param initial-none Bool)
+  (param flags U32 (= 0))
+  (param domains U32 (= 0))
+  (let slot (call StyleSheetSlotInfo))
+  (= (. slot offset) offset)
+  (= (. slot name) name)
+  (= (. slot initial-bits) initial-bits)
+  (= (. slot initial-none) initial-none)
+  (= (. slot flags) flags)
+  (= (. slot domains) domains)
+  (+= (. info slots) slot)
+  (= (. info domains) (/or/ (. info domains) domains))
+)
+
+(fn-do _ style-sheet-register _
+  (param info StyleSheetInfo)
+  (param expected-index I64 (= -1))
+  ; Idempotent: a style-sheet already registered under its key keeps its index and metadata. The
+  ; compiler passes its program-interned index; placeholder entries pad index gaps until their
+  ; sheets register, mirroring style-register.
+  (blank)
+  (let existing (call style-sheet-info-for (. info sheet-key)))
+  (if existing
+    (throw (call StyleRegistryPanic "Conflicting style-sheet index for '(info.sheet-key)") (if (and (>= expected-index 0) (!= (. existing style-sheet-index) expected-index))))
+    (return existing)
+  )
+  (blank)
+  (let index Index (. style-sheet-infos length))
+  (if (>= expected-index 0)
+    (= index expected-index)
+  )
+  (blank)
+  (= (. info style-sheet-index) index)
+  (blank)
+  (while (<= (. style-sheet-infos length) index)
+    (+= style-sheet-infos (call StyleSheetInfo "" "" 0))
+  )
+  (blank)
+  (throw (call StyleRegistryPanic (str "StyleSheet index " index " conflicts with '(style-sheet-infos[index].sheet-key)")) (if (> (. ([] style-sheet-infos index) sheet-key length) 0)))
+  (blank)
+  (= ([] style-sheet-infos index) info)
+  (return info)
+)
+
+(fn-do _ style-sheet-register-member StyleSheetRecord
+  (param info StyleSheetInfo)
+  (param key String)
+  (param name String)
+  (param member U32)
+  (param parent U32)
+  (let record (call StyleSheetRecord info))
+  (= (. record key) key)
+  (= (. record name) name)
+  (= (. record member) member)
+  (= (. record parent) parent)
+  (+= style-sheet-members record)
+  (return record)
+)
+
+(fn-do _ style-sheet-member-tag _
+  (param record StyleSheetRecord)
+  (param tag String)
+  (let bit (call style-theme-tag tag))
+  (= (. record tags) (/or/ (. record tags) bit))
+  (= (. record info tags) (/or/ (. record info tags) bit))
+)
+
+(fn-do _ style-sheet-member-slot _
+  (param record StyleSheetRecord)
+  (param offset Size)
+  (param bits I64)
+  (param is-none Bool)
+  (call (. record set-slot) offset bits is-none)
+)
+
+(fn-do _ style-sheet-default-record StyleSheetRecord
+  (param info StyleSheetInfo)
+  ; The shared record holding a style-sheet's initial slot values; subtrees with no provider read
+  ; from it for free. It is made when the sheet is first read, so an index whose sheet is never
+  ; read, such as one of another case in a batch, makes no record.
+  (blank)
+  (while (<= (. style-sheet-defaults length) (. info style-sheet-index))
+    (+= style-sheet-defaults null)
+  )
+  (blank)
+  (let existing ([] style-sheet-defaults (. info style-sheet-index)))
+  (if (and existing (== (. existing info) info))
+    (return existing)
+  )
+  (blank)
+  (let record (call StyleSheetRecord info))
+  (= ([] style-sheet-defaults (. info style-sheet-index)) record)
+  (return record)
+)
+
+(fn-expr _ style-same-site _
+  (param a AuthoredDeclaration)
+  (param b AuthoredDeclaration)
+  (and (== (. a style) (. b style)) (== (. a offset) (. b offset)) same-priority)
+  (where
+    (lazy same-priority (and (== (. a layer) (. b layer)) (== (. a order) (. b order))))
+  )
+)
+
+(fn-expr _ style-content-parent _
+  (param target MarkupElement)
+  (param slot U32)
+  (case? (or (== slot (. StyleContentSlot before)) (== slot (. StyleContentSlot after)))
+    (call markup-structural-parent-host target)
+  )
+  (default
+    target
+  )
+)
+
+(fn-do _ style-content-anchor _
+  (param target MarkupElement)
+  (param slot U32)
+  (param parent MarkupElement)
+  (if (== slot (. StyleContentSlot before))
+    (return target)
+  )
+  (blank)
+  (if (== slot (. StyleContentSlot after))
+    (let cursor (call markup-structural-next-sibling-host target))
+    (while (and cursor (== (call markup-style-parent-host cursor) target))
+      (= cursor (call markup-structural-next-sibling-host cursor))
+    )
+    (return cursor)
+  )
+  (blank)
+  (if (== slot (. StyleContentSlot first-child))
+    (let cursor (call markup-structural-first-child-host parent))
+    (while (and cursor (== (call markup-style-parent-host cursor) target))
+      (= cursor (call markup-structural-next-sibling-host cursor))
+    )
+    (return cursor)
+  )
+  (blank)
+  (return null)
+)
+
+(fn-do _ style-template-content _
+  (param assoc StyleSiteAssociation)
+  (param target MarkupElement)
+  (param slot U32)
+  (param order U32)
+  (param builder (of MarkupSlotBuilder MarkupElement))
+  (let record (call StyleContentRecord target slot order builder))
+  (let list (. assoc content-records))
+  (if (not list)
+    (= (. assoc content-records) (call (of List StyleContentRecord)))
+    (= list (. assoc content-records))
+  )
+  (+= (!! list) record)
+  (return record)
+)
+
+(fn-do _ style-refresh-content _
+  (param object-pointer Pointer)
+  (let records (?. (call style-association-for object-pointer) content-records))
+  (return-if (if (not records)))
+  (blank)
+  (for (in record records)
+    (catch? (call (. record refresh)))
+  )
+)
+
+(fn-do _ style-detach-content _
+  (param object-pointer Pointer)
+  (let records (?. (call style-association-for object-pointer) content-records))
+  (return-if (if (not records)))
+  (blank)
+  (for (in record records)
+    (catch? (call (. record detach)))
+  )
+)
+
+(fn-expr _ style-projected-declaration-bits _
+  (param declaration AuthoredDeclaration)
+  (param sheet-bits I64)
+  (case? (== (. declaration projection-kind) (. StyleProjectionKind copy))
+    sheet-bits
+  )
+  (case? (== (. declaration projection-kind) (. StyleProjectionKind union-wrap))
+    (/or/ (/lshift/ sheet-bits 8) (. declaration projection-tag))
+  )
+  (case? (== (. declaration projection-kind) (. StyleProjectionKind union-remap))
+    (throw (call StyleSettlePanic "Style-sheet projection remap source tag is out of range") (if (>= source-tag (. remap target-tags length))))
+    (blank)
+    (/or/ (/lshift/ (/rshift/ sheet-bits 8) 8) target-tag)
+    (blank)
+    (lazy remap ([] style-projection-remaps (. declaration projection-map-site)))
+    (lazy source-tag (as (/and/ sheet-bits 255) Size))
+    (lazy target-tag (as ([] (. remap target-tags) source-tag) I64))
+  )
+  (throw (call StyleSettlePanic "Unknown style-sheet projection kind"))
+)
+
+(fn-expr _ style-record-declaration-enabled _
+  (param record StyleRecord)
+  (param declaration AuthoredDeclaration)
+  (param base I64 (= 0))
+  (or has-no-block (== (/and/ (. record disabled-blocks) (/lshift/ 1u64 (+ base (. declaration block)))) 0))
+  (where
+    (lazy has-no-block (< (. declaration block) 0))
+  )
+)
+
+(fn-do _ style-record-authored-at-site (? AuthoredDeclaration)
+  (param record StyleRecord)
+  (param style StyleInfo)
+  (param offset Size)
+  (param layer U32)
+  (param order U32)
+  (for (in existing (. record authored))
+    (return-if existing (if (and same-property (== (. existing layer) layer) (== (. existing order) order))))
+    (lazy same-property (and (== (. existing style) style) (== (. existing offset) offset)))
+  )
+  (return null)
+)
+
+(fn-do _ style-authored-assign-dynamic _
+  (param existing AuthoredDeclaration)
+  (param bits I64)
+  (param is-none Bool)
+  (if (and (. existing held) (not (. existing settled-held)))
+    (= (. existing settled-held) (. existing held))
+  )
+  (= (. existing kind) (. StyleValueKind dynamic))
+  (= (. existing bits) bits)
+  (= (. existing is-none) is-none)
+  (= (. existing style-sheet) null)
+  (= (. existing sheet-offset) 0)
+  (= (. existing held) null)
+  (= (. existing held-shift) 0)
+  (= (. existing held-tag) 0)
+  (= (. existing projection-kind) (. StyleProjectionKind copy))
+  (= (. existing projection-tag) 0)
+  (= (. existing projection-map-site) 0)
+  (= (. existing projection-preserves-none) false)
+)
+
+(fn-do _ style-record-has-identical-authored Bool
+  (param record StyleRecord)
+  (param declaration AuthoredDeclaration)
+  ; Dynamic re-runs can reach authoring with the exact declaration already recorded. Authored value
+  ; state lives in bits plus is-none, or in the held value for holder-backed declarations, whose
+  ; bits are acquired only once the declaration is known to differ; the remaining fields establish
+  ; its kind and identity.
+  (blank)
+  (for (in existing (. record authored))
+    (if (call style-same-site existing declaration)
+      (return-if false (if (!= (. existing kind) (. declaration kind))))
+      (return-if false (if (!= (. existing block) (. declaration block))))
+      (return-if false (if (!= (. existing is-none) (. declaration is-none))))
+      (return-if (call style-declarations-hold-equal existing declaration) (if (== (. declaration kind) (. StyleValueKind object))))
+      (return (== (. existing bits) (. declaration bits)))
+    )
+  )
+  (return false)
+)
+
+(fn-expr _ style-declarations-hold-equal Bool
+  (param existing AuthoredDeclaration)
+  (param declaration AuthoredDeclaration)
+  (case? (or (!= (. existing held-shift) (. declaration held-shift)) (!= (. existing held-tag) (. declaration held-tag)))
+    false
+  )
+  (case? (and held replacement)
+    (call (. held holds-equal) replacement)
+  )
+  (default
+    (and (not held) (not replacement))
+  )
+  (where
+    (lazy held (. existing held))
+    (lazy replacement (. declaration held))
+  )
+)
+
+(fn-do _ style-record-upsert-authored _
+  (param record StyleRecord)
+  (param declaration AuthoredDeclaration)
+  (param store RootStyleStore)
+  ; Site declarations are identified by (style, offset, layer, order); dynamic re-runs replace the
+  ; previous value instead of appending duplicates. The incoming declaration becomes the holder's
+  ; strong owner until it is replaced or the record is discarded.
+  (blank)
+  (let index Size 0)
+  (while (< index (. record authored length))
+    (let existing ([] (. record authored) index))
+    (if (call style-same-site existing declaration)
+      (if (. existing is-shared)
+        (= ([] (. record authored) index) declaration)
+        (return)
+      )
+      (if (and (. existing held) (not (. existing settled-held)))
+        (= (. existing settled-held) (. existing held))
+      )
+      (= (. existing kind) (. declaration kind))
+      (= (. existing bits) (. declaration bits))
+      (= (. existing is-none) (. declaration is-none))
+      (= (. existing style-sheet) (. declaration style-sheet))
+      (= (. existing sheet-offset) (. declaration sheet-offset))
+      (= (. existing held) (. declaration held))
+      (= (. existing held-shift) (. declaration held-shift))
+      (= (. existing held-tag) (. declaration held-tag))
+      (= (. existing projection-kind) (. declaration projection-kind))
+      (= (. existing projection-tag) (. declaration projection-tag))
+      (= (. existing projection-map-site) (. declaration projection-map-site))
+      (= (. existing projection-preserves-none) (. declaration projection-preserves-none))
+      (return)
+    )
+    (+= index 1)
+  )
+  (+= (. record authored) declaration)
+)
+
+(fn-expr _ style-association-for _
+  (param object-pointer Pointer)
+  (call (of gc-object-side-payload StyleSiteAssociation) object-pointer (as (call style-templates-lane) Size))
+)
+
+(fn-do _ style-imperative-association StyleSiteAssociation
+  (param object-pointer Pointer)
+  (let existing (call style-association-for object-pointer))
+  (if existing
+    (return existing)
+  )
+  (let created (call StyleSiteAssociation style-imperative-site-template style-imperative-site-template))
+  (call gc-publish-object-side-payload object-pointer (as (call style-templates-lane) Size) created)
+  (return created)
+)
+
+(fn-do _ style-author-imperative-declaration _
+  (param object-pointer Pointer)
+  (param declaration AuthoredDeclaration)
+  (let attachment (call style-live-attachment object-pointer))
+  (let live-record (? NodeStyleRecord))
+  (if attachment
+    (= live-record (call style-ensure-node-record attachment))
+  )
+  (let assoc (call style-imperative-association object-pointer))
+  (let authored (call (. assoc upsert-instance-declaration) declaration))
+  (return-if (if (not attachment)))
+  (let live attachment)
+  (let record (!! live-record))
+  (let copy (call (. authored copied)))
+  (return-if (if (call style-record-has-identical-authored record copy)))
+  (if (== (. copy kind) (. StyleValueKind object))
+    (= (. copy bits) (call (. copy acquire-held-bits)))
+  )
+  (let store (call style-attachment-store live))
+  (call style-record-upsert-authored record copy store)
+  (= (. live dirty-bits) (/or/ (. live dirty-bits) style-dirty-bit))
+  (= (. record dirty-bits) (/or/ (. record dirty-bits) style-dirty-bit))
+  (call (. store enqueue-dirty) live)
+)
+
+(fn-do _ style-author-imperative _
+  (param object-pointer (of CPointer Void))
+  (param style StyleInfo)
+  (param offset Size)
+  (param bits I64)
+  (param is-none Bool)
+  (let declaration (call AuthoredDeclaration style))
+  (= (. declaration offset) offset)
+  (= (. declaration layer) (. StyleLayer imperative))
+  (= (. declaration kind) (. StyleValueKind static))
+  (= (. declaration bits) bits)
+  (= (. declaration is-none) is-none)
+  (call style-author-imperative-declaration object-pointer declaration)
+)
+
+(fn-do _ style-authored-winners (list AuthoredDeclaration)
+  (param source MarkupElement)
+  (param info StyleInfo)
+  (let source-pointer (as source Pointer))
+  (let attachment (call style-live-attachment source-pointer))
+  (let record (? NodeStyleRecord))
+  (if attachment
+    (= record (call style-node-record attachment))
+  )
+  (let assoc (call style-association-for source-pointer))
+  (let winners (list AuthoredDeclaration))
+  (while (< (. winners length) (. info slot-count))
+    (+= winners style-no-winner)
+  )
+  (if assoc
+    (let template-index Size 0)
+    (while (< template-index (call (. assoc site-template-count)))
+      (let base (call (. assoc block-base-at) template-index))
+      (for (in declaration (. (call (. assoc site-template-at) template-index) declarations))
+        (call style-copy-bucket info declaration winners record base)
+      )
+      (+= template-index 1)
+    )
+  )
+  (if record
+    (for (in declaration (. record authored))
+      (call style-copy-bucket info declaration winners record)
+    )
+    (else-if (and assoc (. assoc template))
+      (for (in declaration (. assoc template))
+        (call style-copy-bucket info declaration winners)
+      )
+    )
+  )
+  (return winners)
+)
+
+(fn-do _ style-copy-bucket _
+  (param info StyleInfo)
+  (param declaration AuthoredDeclaration)
+  (param winners (list AuthoredDeclaration))
+  (param record (? NodeStyleRecord) (= null))
+  (param base I64 (= 0))
+  (return-if (if (!= (. declaration style) info)))
+  (return-if (if (and record (not (call style-record-declaration-enabled record declaration base)))))
+  (let current ([] winners (. declaration offset)))
+  (if (or (== current style-no-winner) (call style-outranks declaration current))
+    (= ([] winners (. declaration offset)) declaration)
+  )
+)
+
+(fn-do _ style-author-imperative-object _
+  (param object-pointer Pointer)
+  (param style StyleInfo)
+  (param offset Size)
+  (param is-none Bool)
+  (param holder (? StyleObjectHolder) (= null))
+  (param value-shift U32 (= 0))
+  (param value-tag I64 (= 0))
+  (let declaration (call AuthoredDeclaration style))
+  (= (. declaration offset) offset)
+  (= (. declaration layer) (. StyleLayer imperative))
+  (= (. declaration kind) (. StyleValueKind object))
+  (= (. declaration held) holder)
+  (= (. declaration held-shift) value-shift)
+  (= (. declaration held-tag) value-tag)
+  (= (. declaration is-none) is-none)
+  (call style-author-imperative-declaration object-pointer declaration)
+)
+
+(fn-do _ style-ensure-node-record _
+  (param attachment MarkupAttachment)
+  (let record (call style-node-record attachment))
+  (if record
+    (return record)
+  )
+  (blank)
+  (let store (call style-attachment-store attachment))
+  (let created (call (. store allocate-node-record)))
+  (call style-set-node-record attachment created)
+  (blank)
+  (let owner-address (. attachment owner-address))
+  (if owner-address
+    (call style-apply-template attachment (as owner-address Pointer))
+  )
+  (blank)
+  (return created)
+)
+
+(fn-do _ style-associate _
+  (param object-pointer Pointer)
+  (param site Size)
+  ; Get-or-create the site association for a markup object. The compiler calls this once per styled
+  ; markup construction; an object built through several styled sites (class defaults plus its
+  ; markup site) accumulates each site's shared template on one association.
+  (blank)
+  (let template (call style-site-template site))
+  (let existing (call style-association-for object-pointer))
+  (if existing
+    (call (. existing add-template) template)
+    (return existing)
+  )
+  (blank)
+  (let assoc (call StyleSiteAssociation template template))
+  (call gc-publish-object-side-payload object-pointer (as (call style-templates-lane) Size) assoc)
+  (return assoc)
+)
+
+(fn-do _ style-template-static _
+  (param assoc StyleSiteAssociation)
+  (param style StyleInfo)
+  (param offset Size)
+  (param layer U32)
+  (param order U32)
+  (param bits I64)
+  (param is-none Bool)
+  (let declaration (call AuthoredDeclaration style))
+  (= (. declaration offset) offset)
+  (= (. declaration layer) layer)
+  (= (. declaration order) order)
+  (= (. declaration block) (. assoc current-block))
+  (= (. declaration kind) (. StyleValueKind static))
+  (= (. declaration bits) bits)
+  (= (. declaration is-none) is-none)
+  (call (. assoc add-instance-declaration) declaration)
+)
+
+(fn-do _ style-template-object _
+  (param assoc StyleSiteAssociation)
+  (param style StyleInfo)
+  (param offset Size)
+  (param layer U32)
+  (param order U32)
+  (param is-none Bool)
+  (param holder (? StyleObjectHolder) (= null))
+  (param value-shift U32 (= 0))
+  (param value-tag I64 (= 0))
+  ; A non-static holder-backed declaration (its expression reads enclosing scope, so the value is
+  ; per markup instance). The association keeps the descriptor or boxed wide value alive through the
+  ; traced holder; each mount's record copy carries that ownership while its computed bits are live.
+  ; value-shift and value-tag carry the encoded union case framing; plain descriptors pass zero.
+  (blank)
+  (let declaration (call AuthoredDeclaration style))
+  (= (. declaration offset) offset)
+  (= (. declaration layer) layer)
+  (= (. declaration order) order)
+  (= (. declaration block) (. assoc current-block))
+  (= (. declaration kind) (. StyleValueKind object))
+  (= (. declaration held) holder)
+  (= (. declaration held-shift) value-shift)
+  (= (. declaration held-tag) value-tag)
+  (= (. declaration is-none) is-none)
+  (call (. assoc add-instance-declaration) declaration)
+)
+
+(fn-do _ style-template-dynamic _
+  (param assoc StyleSiteAssociation)
+  (param action StyleDynamicActionBase)
+  (call (. assoc add-dynamic-action) action)
+)
+
+(fn-do _ style-template-open-block _
+  (param assoc StyleSiteAssociation)
+  ; Opens one gated declaration block at a markup site. Declarations registered until the matching
+  ; close call carry the returned block index; the block's enabled state is driven by a gate action
+  ; through style-set-block-enabled.
+  (blank)
+  (throw (call StyleTemplatePanic "Style site exceeds the gated block cap") (if (>= (. assoc block-count) style-block-cap)))
+  (blank)
+  (let block I64 (. assoc block-count))
+  (+= (. assoc block-count) 1)
+  (= (. assoc current-block) block)
+  (= (. assoc recording current-block) (- block (. assoc recording-base)))
+  (return block)
+)
+
+(fn-do _ style-template-close-block _
+  (param assoc StyleSiteAssociation)
+  (param block I64)
+  (if (== (. assoc current-block) block)
+    (= (. assoc current-block) -1)
+    (= (. assoc recording current-block) -1)
+  )
+)
+
+(fn-do _ style-set-block-enabled _
+  (param object-pointer Pointer)
+  (param block I64)
+  (param enabled Bool)
+  ; Gate action target: flips one block's participation on the subject's node record. Unmounted
+  ; subjects drop the write; mounting re-runs the site's gate actions against the fresh record.
+  ; Equality-gated: a no-change write schedules nothing.
+  (blank)
+  (let attachment (call style-live-attachment object-pointer))
+  (return-if (if (not attachment)))
+  (blank)
+  (let live attachment)
+  (return-if (if (< block 0)))
+  (return-if (if (>= block style-block-cap)))
+  (blank)
+  (let live-record (call style-ensure-node-record live))
+  (let bit U64 (/lshift/ 1u64 block))
+  (let was-disabled (!= (/and/ (. live-record disabled-blocks) bit) 0))
+  (return-if (if (== was-disabled (not enabled))))
+  (blank)
+  (if enabled
+    (-= (. live-record disabled-blocks) bit)
+    (else
+      (= (. live-record disabled-blocks) (/or/ (. live-record disabled-blocks) bit))
+    )
+  )
+  (blank)
+  (probe-log style.gate (text: (. object-pointer address) " block " block " enabled " enabled))
+  (let store (call style-attachment-store live))
+  (= (. live dirty-bits) (/or/ (. live dirty-bits) style-dirty-bit))
+  (= (. live-record dirty-bits) (/or/ (. live-record dirty-bits) style-dirty-bit))
+  (call (. store enqueue-dirty) live)
+)
+
+(fn-do _ style-site-ready _
+  (param object-pointer Pointer)
+  ; Called by the compiler after a markup site finishes recording its declarations. Objects that
+  ; mounted before the site code ran (batch roots mount during construction) catch up here; objects
+  ; that mount later pick the template up in style-mount.
+  (blank)
+  (let attachment (call style-live-attachment object-pointer))
+  (return-if (if (not attachment)))
+  (blank)
+  (let live attachment)
+  (call style-apply-template live object-pointer)
+  (call style-refresh-dynamics object-pointer)
+  (call style-refresh-content object-pointer)
+  (blank)
+  (let store (call style-attachment-store live))
+  (= (. live dirty-bits) (/or/ (. live dirty-bits) style-dirty-bit))
+  (call (. store enqueue-dirty) live)
+)
+
+(fn-do _ style-author-dynamic-object _
+  (param object-pointer Pointer)
+  (param style StyleInfo)
+  (param offset Size)
+  (param layer U32)
+  (param order U32)
+  (param block I64)
+  (param is-none Bool)
+  (param holder (? StyleObjectHolder) (= null))
+  (param value-shift U32 (= 0))
+  (param value-tag I64 (= 0))
+  ; Live write for one dynamic holder-backed declaration. The record owns the new holder while its
+  ; computed bits are live; reclaimed holders leave stable registry slots that can never be reused.
+  ; Unmounted subjects drop the write.
+  (blank)
+  (let attachment (call style-live-attachment object-pointer))
+  (return-if (if (not attachment)))
+  (blank)
+  (let live-record (call style-ensure-node-record attachment))
+  (let declaration (call AuthoredDeclaration style))
+  (= (. declaration offset) offset)
+  (= (. declaration layer) layer)
+  (= (. declaration order) order)
+  (= (. declaration block) block)
+  (= (. declaration kind) (. StyleValueKind object))
+  (= (. declaration held) holder)
+  (= (. declaration held-shift) value-shift)
+  (= (. declaration held-tag) value-tag)
+  (= (. declaration is-none) is-none)
+  (return-if (if (call style-record-has-identical-authored live-record declaration)))
+  (= (. declaration bits) (call (. declaration acquire-held-bits)))
+  (blank)
+  (let store (call style-attachment-store attachment))
+  (call style-record-upsert-authored live-record declaration store)
+  (blank)
+  (= (. attachment dirty-bits) (/or/ (. attachment dirty-bits) style-dirty-bit))
+  (= (. live-record dirty-bits) (/or/ (. live-record dirty-bits) style-dirty-bit))
+  (call (. store enqueue-dirty) attachment)
+)
+
+(fn-do _ style-raise-domain _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param domain Size)
+  ; Raising a node's bit also marks the domain on every ancestor's descendant rollup, stopping at
+  ; the first ancestor that already has it (its ancestors are marked by the same invariant).
+  ; Clearing a node's bit leaves rollups alone: they are conservative and phase walks clear them.
+  ; Re-raising an already-pending node still refreshes the ancestor rollup, since a phase walk may
+  ; have cleared rollups before the node's own pending work was visited.
+  (blank)
+  (let bit U32 (/lshift/ 1u32 domain))
+  (probe-count style.domain.raises)
+  (if (== (/and/ (. attachment pending-domains) bit) 0)
+    (= (. attachment pending-domains) (/or/ (. attachment pending-domains) bit))
+    (while (<= (. store pending-domain-counts length) domain)
+      (+= (. store pending-domain-counts) 0)
+    )
+    (+= ([] (. store pending-domain-counts) domain) 1)
+  )
+  (blank)
+  (let ancestor (call style-parent-attachment attachment))
+  (while ancestor
+    (let live ancestor)
+    (if (!= (/and/ (. live descendant-domains) bit) 0)
+      (break)
+    )
+    (= (. live descendant-domains) (/or/ (. live descendant-domains) bit))
+    (probe-count style.domain.bubble-steps)
+    (= ancestor (call style-parent-attachment live))
+  )
+)
+
+(fn-do _ style-bubble-pending-domains _
+  (param attachment MarkupAttachment)
+  ; A node adopting a parent late carries its pending bits and rollup into the new ancestor chain,
+  ; preserving the walk invariant: a raised bit implies every ancestor's rollup includes it.
+  (blank)
+  (let mask (/or/ (. attachment pending-domains) (. attachment descendant-domains)))
+  (return-if (if (== mask 0)))
+  (blank)
+  (let ancestor (call style-parent-attachment attachment))
+  (while ancestor
+    (let live ancestor)
+    (if (== (/and/ (. live descendant-domains) mask) mask)
+      (break)
+    )
+    (= (. live descendant-domains) (/or/ (. live descendant-domains) mask))
+    (= ancestor (call style-parent-attachment live))
+  )
+)
+
+(fn-do _ style-raise-domain-mask _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param mask U32)
+  (let bits mask)
+  (let domain Size 0)
+  (while (!= bits 0)
+    (if (!= (/and/ bits 1) 0)
+      (call style-raise-domain store attachment domain)
+    )
+    (= bits (/rshift/ bits 1))
+    (+= domain 1)
+  )
+)
+
+(fn-do _ style-clear-all-domains _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (let bits (. attachment pending-domains))
+  (let domain Size 0)
+  (while (!= bits 0)
+    (if (!= (/and/ bits 1) 0)
+      (call style-clear-domain store attachment domain)
+    )
+    (= bits (/rshift/ bits 1))
+    (+= domain 1)
+  )
+)
+
+(fn-do _ style-raise-domain-masks _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param self-mask U32)
+  (param parent-mask U32)
+  ; A changed declared property raises the property's self domains on its own node and its parent
+  ; domains on the containing node (e.g. `flex -> layout on parent`); a root-less node owns both.
+  (blank)
+  (if (and (!= (. store settling-address) 0) (== (. store settling-address) (. attachment object-address)))
+    (= (. store settling-self-mask) (/or/ (. store settling-self-mask) self-mask))
+    (= (. store settling-parent-mask) (/or/ (. store settling-parent-mask) parent-mask))
+    (return)
+  )
+  (call style-apply-domain-masks store attachment self-mask parent-mask)
+)
+
+(fn-do _ style-apply-domain-masks _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param self-mask U32)
+  (param parent-mask U32)
+  (if (!= self-mask 0)
+    (call style-raise-domain-mask store attachment self-mask)
+    (call (. attachment host markup-style-domains-changed) self-mask)
+  )
+  (if (!= parent-mask 0)
+    (let parent (call style-parent-attachment attachment))
+    (call style-raise-domain-mask store (?? parent attachment) parent-mask)
+    (call (. attachment host markup-parent-style-domains-changed) parent-mask)
+  )
+)
+
+(fn-do _ style-raise-changed-domains _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param info StyleInfo)
+  (param changed-mask U64)
+  (let self-mask U32)
+  (let parent-mask U32)
+  (for (in property (. info properties))
+    (if (!= (/and/ changed-mask (/lshift/ 1u64 (. property offset))) 0)
+      (= self-mask (/or/ self-mask (. property self-domain-mask)))
+      (= parent-mask (/or/ parent-mask (. property parent-domain-mask)))
+    )
+  )
+  (call style-raise-domain-masks store attachment self-mask parent-mask)
+)
+
+(fn-do _ style-node-domain-invalid _
+  (param object-pointer Pointer)
+  (param domain Size)
+  ; Reads one node's persistent pending bit; unmounted objects have no pending state. Backs the
+  ; generated `$is-<domain>-invalid` read accessors.
+  (blank)
+  (let attachment (call style-live-attachment object-pointer))
+  (return-if (if (not attachment)))
+  (return (!= (/and/ (. attachment pending-domains) (/lshift/ 1u32 domain)) 0))
+)
+
+(fn-do _ style-node-domain-write _
+  (param object-pointer Pointer)
+  (param domain Size)
+  (param on Bool)
+  ; Raises or clears one node's pending bit. Backs `$is-<domain>-invalid` assignment, which root
+  ; phases use to clear bits as work completes (and may use to force invalidation).
+  (blank)
+  (let attachment (call style-live-attachment object-pointer))
+  (return-if (if (not attachment)))
+  (blank)
+  (let live attachment)
+  (let store (call style-attachment-store live))
+  (if on
+    (call style-raise-domain store live domain)
+    (else
+      (call style-clear-domain store live domain)
+    )
+  )
+)
+
+(fn-do _ style-node-domain-invalid-below _
+  (param object-pointer Pointer)
+  (param domain Size)
+  ; Reads one node's conservative descendant rollup: true when some descendant raised the domain
+  ; since this node's rollup bit was last cleared. Backs the generated `$is-<domain>-invalid-below`
+  ; read accessors that phase walks use to skip clean subtrees.
+  (blank)
+  (let attachment (call style-live-attachment object-pointer))
+  (return-if (if (not attachment)))
+  (return (!= (/and/ (. attachment descendant-domains) (/lshift/ 1u32 domain)) 0))
+)
+
+(fn-do _ style-node-domain-write-below _
+  (param object-pointer Pointer)
+  (param domain Size)
+  (param on Bool)
+  ; Sets or clears one node's descendant rollup bit. Backs `$is-<domain>-invalid-below` assignment;
+  ; phase walks clear the bit after recursing into children, once every pending descendant has
+  ; been visited.
+  (blank)
+  (let attachment (call style-live-attachment object-pointer))
+  (return-if (if (not attachment)))
+  (blank)
+  (let live attachment)
+  (let bit U32 (/lshift/ 1u32 domain))
+  (if on
+    (= (. live descendant-domains) (/or/ (. live descendant-domains) bit))
+    (else-if (!= (/and/ (. live descendant-domains) bit) 0)
+      (-= (. live descendant-domains) bit)
+    )
+  )
+)
+
+(fn-do _ style-apply-template _
+  (param attachment MarkupAttachment)
+  (param object-pointer Pointer)
+  ; Apply the association's shared site templates to the node record. The record deliberately does
+  ; not retain the association: it belongs only to the owner's templates side-payload lane, so an
+  ; unreachable mounted owner can be reclaimed and its attachment cleanup can run.
+  (blank)
+  (let assoc (call style-association-for object-pointer))
+  (return-if (if (not assoc)))
+  (blank)
+  (let live-assoc assoc)
+  (let record (call style-node-record attachment))
+  (if (not record)
+    (return-if (if (not (call (. live-assoc has-declarations)))))
+    (let store (call style-attachment-store attachment))
+    (= record (call (. store allocate-node-record)))
+    (call style-set-node-record attachment record)
+  )
+  (blank)
+  (let live-record record)
+  (if (. live-assoc template)
+    (let store (call style-attachment-store attachment))
+    (for (in declaration (!! (. live-assoc template)))
+      (if (== (. declaration kind) (. StyleValueKind object))
+        (let copy (call (. declaration copied)))
+        (= (. copy bits) (call (. copy acquire-held-bits)))
+        (call style-record-upsert-authored live-record copy store)
+        (else
+          (call style-record-upsert-authored live-record declaration store)
+        )
+      )
+    )
+  )
+)
+
+(fn-do _ style-refresh-dynamics _
+  (param object-pointer Pointer)
+  (let actions (?. (call style-association-for object-pointer) dynamic-actions))
+  (return-if (if (not actions)))
+  (blank)
+  ; Mount machinery must stay error-free: a failing client dynamic expression is contained here,
+  ; and the action re-runs at the next settle through the batch queue.
+  (for (in action actions)
+    (catch? (call (. action refresh)))
+  )
+)
+
+(fn-do _ style-detach-dynamics _
+  (param object-pointer Pointer)
+  (let actions (?. (call style-association-for object-pointer) dynamic-actions))
+  (return-if (if (not actions)))
+  (for (in action actions)
+    (call (. action detach-trackers))
+  )
+)
+
+(fn-do _ style-apply-mount Bool
+  (param node MarkupElement)
+  (param parent (? MarkupElement))
+  (param root (? MarkupRootElement))
+  ; Single-node mount, unmount, or rehome event from the markup runtime (markup-adopt). Returns
+  ; true when this node's own mount state changed, telling the runtime walk to continue into the
+  ; node's children; same-root parent rehomes and no-ops return false and prune the walk. Mount
+  ; panics fire before any caller link mutation, so host mutators stay atomic without a preflight.
+  (blank)
+  (let node-pointer (as node Pointer))
+  (let existing (call style-live-attachment node-pointer))
+  (if (. node markup-is-transparent-region)
+    (if existing
+      (call style-unmount node-pointer)
+    )
+    (return (!= root null))
+  )
+  (blank)
+  (if (not root)
+    (if existing
+      (call style-unmount node-pointer)
+      (return true)
+    )
+    (return false)
+  )
+  (blank)
+  (let batch root)
+  (let root-pointer (as batch Pointer))
+  (blank)
+  (if existing
+    (let store (call style-attachment-store existing))
+    (if (!= (. store batch-address) (. root-pointer address))
+      ; Moving between roots is semantically unmount followed by mount; nothing styled survives
+      (call style-unmount node-pointer)
+      (call style-apply-mount node parent root)
+      (return true)
+    )
+    (call style-update-parent existing parent)
+    (return false)
+  )
+  (blank)
+  (let store (call style-root-store batch root-pointer node-pointer))
+  (if store
+    (let live-store store)
+    (let attachment (call style-mount node-pointer live-store parent))
+    (if (== root-pointer node-pointer)
+      (= (. live-store root-owner-address) (as (. node-pointer address) Size))
+    )
+    (return true)
+  )
+  (blank)
+  (return false)
+)
+
+(fn-do _ style-root-store _
+  (param batch MarkupRootElement)
+  (param root-pointer Pointer)
+  (param object-pointer Pointer)
+  ; The root style store is created when a MarkupRootElement object is set as its own batch root. Objects
+  ; mounted under a root that never created a store do not participate and allocate nothing.
+  (blank)
+  (if (== root-pointer object-pointer)
+    (let existing
+      (call (of gc-object-side-payload RootStyleStore)
+        (block
+          (arg root-pointer)
+          (arg (as (call style-attachments-lane) Size))
+        )
+      )
+    )
+    (if existing
+      (return existing)
+    )
+    (let created (call RootStyleStore batch))
+    (return (call gc-publish-object-side-payload root-pointer (as (call style-attachments-lane) Size) created))
+  )
+  (blank)
+  (return (call (of gc-object-side-payload RootStyleStore) root-pointer (as (call style-attachments-lane) Size)))
+)
+
+(fn-do _ style-detach-provided-style-sheets _
+  (param attachment MarkupAttachment)
+  (let node-record (call style-node-record attachment))
+  (return-if (if (not node-record)))
+  (let provided (. node-record provided-style-sheets))
+  (return-if (if (not provided)))
+  (blank)
+  (for (in record provided)
+    (-= (. record providers) (. attachment owner-address))
+  )
+  (call (. provided clear))
+  (= (. node-record provided-style-sheets) null)
+)
+
+(fn-do _ style-mount _
+  (param object-pointer Pointer)
+  (param store RootStyleStore)
+  (param parent (? MarkupElement))
+  (throw (call StyleMountPanic "Markup object is already mounted in a styled tree") (if (call style-live-attachment object-pointer)))
+  (blank)
+  (let attachment (call markup-attachment object-pointer))
+  (throw (call StyleMountPanic "Styled markup object has no merged attachment") (if (not attachment)))
+  (let live attachment)
+  (call (. store allocate-attachment) live)
+  (= (. live dirty-bits) (/or/ style-dirty-bit inherited-dirty-bit))
+  (blank)
+  (call style-apply-template live object-pointer)
+  (call style-refresh-dynamics object-pointer)
+  (call style-refresh-content object-pointer)
+  (blank)
+  (if (call C:brixCollectionMayBeObserved object-pointer)
+    (+= (. store sheet-read-notices) (tuple (. live owner-address) (. live generation)))
+  )
+  (call (. store enqueue-dirty) live)
+  (return live)
+)
+
+(fn-do _ style-mount-parent _
+  (param store RootStyleStore)
+  (param parent (? MarkupElement))
+  (let cursor parent)
+  (while cursor
+    (let candidate (call style-live-attachment (as cursor Pointer)))
+    (if (and candidate (== (. candidate style-store-address) (. (as store Pointer) address)))
+      (return candidate)
+    )
+    (= cursor (call markup-structural-parent-host cursor))
+  )
+)
+
+(fn-do _ style-update-parent _
+  (param attachment MarkupAttachment)
+  (param parent (? MarkupElement))
+  ; Same-root bridge events: repeated propagation is idempotent; objects that received their batch
+  ; root before being linked (markup regions) adopt their parent late; unlinking the parent while
+  ; keeping the root drops the parent link. A live attachment asked to move directly between two
+  ; parents is a second mounted identity, which is illegal: any real move is an unmount followed by
+  ; a remount, erasing and recreating the sidecar.
+  (blank)
+  (let store (call style-attachment-store attachment))
+  (let new-parent (call style-mount-parent store parent))
+  (let current-parent (call style-parent-attachment attachment))
+  (blank)
+  (return-if (if (== current-parent new-parent)))
+  (blank)
+  (call style-bubble-pending-domains attachment)
+  (= (. attachment dirty-bits) (/or/ (. attachment dirty-bits) style-dirty-bit inherited-dirty-bit))
+  (call (. store enqueue-inherited-root) attachment)
+  (call (. store enqueue-dirty) attachment)
+)
+
+(fn-do _ style-unmount _
+  (param object-pointer Pointer)
+  ; Authored declarations are contextual to the mounted tree; once authored blocks exist (slice 3)
+  ; they are discarded here. Records and owned segments return to the root store pools, and the
+  ; attachment generation bump invalidates any pending dirty-queue entries.
+  (blank)
+  (let attachment (call style-live-attachment object-pointer))
+  (return-if (if (not attachment)))
+  (blank)
+  (let store (call style-attachment-store attachment))
+  (call style-detach-dynamics object-pointer)
+  (call style-detach-content object-pointer)
+  (call style-release-mounted-attachment store attachment)
+  (if (== (. object-pointer address) (. store batch-address))
+    (call C:brixGCClearObjectSidePayload object-pointer (call style-attachments-lane))
+  )
+)
+
+(fn-do _ style-reclaim-markup-attachment _
+  (param attachment MarkupAttachment)
+  ; A publicly mounted parentless leaf is the only markup attachment that carries a cleanup token.
+  ; Adding a structural child restores ordinary ownership; removing the last child restores cleanup.
+  (return-if (if (not (. attachment is-live))))
+  (let live-store (call style-attachment-store attachment))
+  (return-if (if (== (. live-store store-id) 0)))
+  (call style-release-mounted-attachment live-store attachment)
+)
+
+(fn-expr _ style-store-batch-queue MarkupBatchQueue
+  (param store RootStyleStore)
+  ; The scalar is captured from the live batch when the store is constructed. Ordinary style work
+  ; can only enqueue while that batch still owns the mounted tree; reclaim cleanup never schedules
+  ; the queue. Do not verify through C here: this helper is on every dirty/domain hot path, and a C
+  ; transition publishes and flushes all active allocation buffers.
+  (blank)
+  (call (of gc-object-from-pointer MarkupBatchQueue) queue-pointer)
+  (where
+    (lazy queue-pointer (as (. store batch-queue-address) Pointer))
+  )
+)
+
+(fn-do _ style-release-mounted-attachment _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  ; Shared release path for explicit unmount and owner reclaim. The caller handles operations that
+  ; require a live owner pointer (content detach and explicit lane clear).
+  (blank)
+  (call style-clear-all-domains store attachment)
+  (call style-detach-provided-style-sheets attachment)
+  (let node-record (call style-node-record attachment))
+  (if node-record
+    (call (. store release-node-record) node-record)
+    (call style-set-node-record attachment null)
+  )
+  (blank)
+  (if (== (. store root-owner-address) (. attachment owner-address))
+    (= (. store root-owner-address) 0)
+  )
+  (blank)
+  (call (. store release-attachment) attachment)
+)
+
+(fn-do _ style-mark-style-sheet-provider _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  ; The provider settles now; its mounted subtree is marked when the settle pass drains the
+  ; style-sheet-dirty roots, so providers changed many times per batch pay the walk once.
+  (blank)
+  (= (. attachment dirty-bits) (/or/ (. attachment dirty-bits) style-dirty-bit))
+  (call (. store enqueue-style-sheet-root) attachment)
+  (call (. store enqueue-dirty) attachment)
+)
+
+(fn-do _ style-mark-style-sheet-subtree _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  ; A provider's effective style-sheet changed; every mounted descendant must re-read its
+  ; style-sheet-backed declarations against the new values.
+  (blank)
+  (let child (call style-first-child-attachment attachment))
+  (while child
+    (let live child)
+    (= (. live dirty-bits) (/or/ (. live dirty-bits) style-dirty-bit))
+    (call (. store enqueue-dirty) live)
+    (call style-refresh-sheet-reads store live)
+    (call style-mark-style-sheet-subtree store live)
+    (= child (call style-next-child-attachment attachment live))
+  )
+)
+
+(fn-do _ style-refresh-sheet-reads _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (let node-record (call style-node-record attachment))
+  (return-if (if (not node-record)))
+  (let read (. node-record read-sheets))
+  (return-if (if (not read)))
+  (let mask 0u32)
+  (for (in record read)
+    (= mask (/or/ mask (. record info domains)))
+  )
+  (= (. node-record read-sheets) null)
+  (if (call C:brixCollectionMayBeObserved (. attachment object-pointer))
+    (+= (. store sheet-read-notices) (tuple (. attachment owner-address) (. attachment generation)))
+  )
+  (if (!= mask 0)
+    (call style-apply-domain-masks store attachment mask 0)
+  )
+)
+
+(fn-do _ style-settle _
+  (param root MarkupRootElement)
+  ; Settles all dirty style subjects under a batch root to a fixed point: authored declarations and
+  ; inheritance become computed segment values, and downstream invalidation lands on each node's
+  ; persistent pending-domain bits. Returns whether work ran plus a snapshot of aggregate pending
+  ; domains, so the flush can notify the root even when no markup actions applied. Roots without a
+  ; style store settle for free.
+  (blank)
+  (let store (call style-store-for root))
+  (if (not store)
+    (return (call MarkupBatchSettleResult false 0))
+  )
+  (blank)
+  (let live-store store)
+  (let settled (call style-settle-store live-store))
+  (return (call MarkupBatchSettleResult settled (call style-pending-domain-mask live-store)))
+)
+
+(fn-do _ style-pending-domain-mask _
+  (param store RootStyleStore)
+  (let mask U32)
+  (let domain Size 0)
+  (while (< domain (. store pending-domain-counts length))
+    (if (> ([] (. store pending-domain-counts) domain) 0)
+      (let bit U32 (/lshift/ 1u32 domain))
+      (= mask (/or/ mask bit))
+    )
+    (+= domain 1)
+  )
+  (blank)
+  (return mask)
+)
+
+(fn-do _ style-settle-store _
+  (param store RootStyleStore)
+  ; Each pass drains the entries that existed when the pass began; work scheduled during a pass runs
+  ; in the next one. The pass cap is a conservative guard against authored updates scheduling
+  ; unbounded new work.
+  (blank)
+  ; Queues drain by index instead of front-removal so a drain is O(entries), not O(entries^2).
+  ; Entries enqueued mid-pass stay in the dirty queue for the next pass; one shift compacts them
+  ; to the front after the drained prefix is dropped.
+  (blank)
+  (let passes Size 0)
+  (while (or (. store dirty-queue) (. store inherited-dirty-roots) (. store style-sheet-dirty-roots) (. store sheet-read-notices))
+    (+= passes 1)
+    (probe-count style.settle.passes)
+    (throw (call StyleSettlePanic "Style settling did not reach a fixed point") (if (> passes 64)))
+    (blank)
+    (let moved-index Size 0)
+    (while (< moved-index (. store inherited-dirty-roots length))
+      (let entry ([] (. store inherited-dirty-roots) moved-index))
+      (let attachment (call style-live-attachment (as (. entry owner-address) Pointer)))
+      (if attachment
+        (let live attachment)
+        (let same-store (== (. live style-store-address) (. (as store Pointer) address)))
+        (if (and same-store (== (. live generation) (. entry generation)))
+          (call style-mark-inherited-subtree store live)
+        )
+      )
+      (+= moved-index 1)
+    )
+    (call (. store inherited-dirty-roots clear))
+    (blank)
+    (let provider-index Size 0)
+    (while (< provider-index (. store style-sheet-dirty-roots length))
+      (let entry ([] (. store style-sheet-dirty-roots) provider-index))
+      (let attachment (call style-live-attachment (as (. entry owner-address) Pointer)))
+      (if attachment
+        (let live attachment)
+        (let same-store (== (. live style-store-address) (. (as store Pointer) address)))
+        (if (and same-store (== (. live generation) (. entry generation)))
+          (call style-refresh-sheet-reads store live)
+          (call style-mark-style-sheet-subtree store live)
+        )
+      )
+      (+= provider-index 1)
+    )
+    (call (. store style-sheet-dirty-roots clear))
+    (blank)
+    (let notice-index Size 0)
+    (while (< notice-index (. store sheet-read-notices length))
+      (let entry ([] (. store sheet-read-notices) notice-index))
+      (let attachment (call style-live-attachment (as (. entry owner-address) Pointer)))
+      (if (and attachment (== (. attachment generation) (. entry generation)))
+        (call notify-collection-reset (as (. entry owner-address) Pointer))
+      )
+      (+= notice-index 1)
+    )
+    (call (. store sheet-read-notices clear))
+    (blank)
+    (let pending I64 (. store dirty-queue length))
+    (let index I64)
+    (while (< index pending)
+      (let entry ([] (. store dirty-queue) index))
+      (+= index 1)
+      (let attachment (call style-live-attachment (as (. entry owner-address) Pointer)))
+      (if attachment
+        (let live attachment)
+        (let same-store (== (. live style-store-address) (. (as store Pointer) address)))
+        (if (and same-store (== (. live generation) (. entry generation)) (!= (. live dirty-bits) 0))
+          (call style-settle-attachment store live)
+        )
+      )
+    )
+    (call (. store dirty-queue slide) (- pending))
+  )
+  (blank)
+  (return (!= passes 0))
+)
+
+(fn-do _ style-unsettle-attachment _
+  (param attachment MarkupAttachment)
+  (= (. attachment style-settled) false)
+  (let child (call style-first-child-attachment attachment))
+  (while child
+    (let live child)
+    (call style-unsettle-attachment live)
+    (= child (call style-next-child-attachment attachment live))
+  )
+)
+
+(fn-do _ style-watched-mask U64
+  (param info StyleInfo)
+  (let host style-motion-host)
+  (return-if 0 (if (not host)))
+  (if (not (. info is-watch-known))
+    (= (. info is-watch-known) true)
+    (= (. info watch-mask) (/or/ (. info watch-mask) (call (. host watch-mask) info)))
+  )
+  (return (. info watch-mask))
+)
+
+(fn-do _ style-float-from-bits F64
+  (param bits I64)
+  (= ([] style-bits-cell 0) bits)
+  (return ([] (as (. (as style-bits-cell ([] Byte)) data) (of CPointer F64)) 0))
+)
+
+(fn-do _ style-float-bits I64
+  (param value F64)
+  (= ([] (as (. (as style-bits-cell ([] Byte)) data) (of CPointer F64)) 0) value)
+  (return ([] style-bits-cell 0))
+)
+
+(fn-expr _ (of style-property Value) (of StyleProperty Value)
+  (param style-index Index)
+  (param offset Size)
+  (call (of StyleProperty Value) style-index offset null)
+)
+
+(fn-expr _ (of style-property-component Value) (of StyleProperty Value)
+  (param style-index Index)
+  (param offset Size)
+  (param component Index)
+  (call (of StyleProperty Value) style-index offset component)
+)
+
+(fn-expr _ style-read-bits _
+  (param object-pointer Pointer)
+  (param style-index Index)
+  (param offset Size)
+  ; Compiled $property reads land here with their program-interned style index: attachment lookup,
+  ; the record's settled segment (or the style's shared initial segment), then a constant-offset
+  ; load. Reads never settle, and reads are total: unmounted objects read the property's registered
+  ; initial value, so clients never track mounted-ness around style access. Only an unregistered
+  ; style panics, which can only happen through a module initialization cycle.
+  (blank)
+  (call style-read-attached-bits
+    (block
+      (arg (call style-attachment-for-pointer object-pointer))
+      (arg object-pointer)
+      (arg style-index)
+      (arg offset)
+    )
+  )
+)
+
+(fn-expr _ style-read-sheet-bits I64
+  (param object-pointer Pointer)
+  (param sheet-index Index)
+  (param offset Size)
+  (param tracked Bool)
+  (call (. (call style-read-sheet-record object-pointer attachment sheet-index tracked) value-bits) offset)
+  (where
+    (lazy attachment (call style-attachment-for-pointer object-pointer))
+  )
+)
+
+(fn-expr _ (of style-read-host-sheet-bits Host) I64
+  (param host Host)
+  (param sheet-index Index)
+  (param offset Size)
+  (param tracked Bool)
+  (constraint is Host MarkupElement)
+  (call (. (call style-read-sheet-record (as host Pointer) attachment sheet-index tracked) value-bits) offset)
+  (where
+    (lazy attachment (. host markup-attachment-cache))
+  )
+)
+
+(fn-expr _ style-read-sheet-optional StyleOptionalBits
+  (param object-pointer Pointer)
+  (param sheet-index Index)
+  (param offset Size)
+  (param tracked Bool)
+  (tuple (call (. record value-bits) offset) (call (. record value-none) offset))
+  (where
+    (lazy record
+      (call style-read-sheet-record
+        (block
+          (arg object-pointer)
+          (arg (call style-attachment-for-pointer object-pointer))
+          (arg sheet-index)
+          (arg tracked)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ (of style-read-host-sheet-optional Host) StyleOptionalBits
+  (param host Host)
+  (param sheet-index Index)
+  (param offset Size)
+  (param tracked Bool)
+  (constraint is Host MarkupElement)
+  (tuple (call (. record value-bits) offset) (call (. record value-none) offset))
+  (where
+    (lazy record
+      (call style-read-sheet-record
+        (block
+          (arg (as host Pointer))
+          (arg (. host markup-attachment-cache))
+          (arg sheet-index)
+          (arg tracked)
+        )
+      )
+    )
+  )
+)
+
+(fn-do _ style-read-sheet-record StyleSheetRecord
+  (param object-pointer Pointer)
+  (param attachment (? MarkupAttachment))
+  (param sheet-index Index)
+  (param tracked Bool)
+  (let info (call style-sheet-info-required sheet-index))
+  (if (not tracked)
+    (call track-active-dependency object-pointer)
+  )
+  (if (and attachment (. attachment is-live))
+    (let live attachment)
+    (let node-record (call style-ensure-node-record live))
+    (let read (. node-record read-sheets))
+    (if read
+      (for (in record read)
+        (if (== (. record info) info)
+          (return record)
+        )
+      )
+    )
+    (let record (call style-effective-style-sheet live info))
+    (if (not read)
+      (= (. node-record read-sheets) (call (of List StyleSheetRecord)))
+    )
+    (+= (!! (. node-record read-sheets)) record)
+    (return record)
+  )
+  (return (call style-sheet-default-record info))
+)
+
+(fn-expr _ (of style-read-host-bits Host) I64
+  (param host Host)
+  (param style-index Index)
+  (param offset Size)
+  (constraint is Host MarkupElement)
+  (call style-read-attached-bits (. host markup-attachment-cache) (as host Pointer) style-index offset)
+)
+
+(fn-do _ style-read-attached-bits I64 @inline
+  (param attachment (? MarkupAttachment))
+  (param object-pointer Pointer)
+  (param style-index Index)
+  (param offset Size)
+  (if (and attachment (. attachment is-live))
+    (let live attachment)
+    (let record (call style-node-record live))
+    (if record
+      (let presented (. record presented))
+      (if presented
+        (let shown (call (. presented find) style-index offset))
+        (if shown
+          (return (. shown bits))
+        )
+      )
+      (let position (call style-held-segment-position record style-index))
+      (if (>= position 0)
+        (let segment ([] (. record segments) position))
+        (if (< offset (. segment values length))
+          (return ([] (. segment values) offset))
+        )
+      )
+    )
+    (let initials (. (call style-attachment-store live) initial-segments))
+    (if (< style-index (. initials length))
+      (let initial ([] initials style-index))
+      (if (< offset (. initial values length))
+        (return ([] (. initial values) offset))
+      )
+    )
+    (return (call (. (call style-read-initial-segment live style-index) value-bits) offset))
+  )
+  (blank)
+  (let authored (call style-read-unmounted-imperative object-pointer style-index offset))
+  (if authored
+    (return (. authored bits))
+  )
+  (return (. (call style-initial-property style-index offset) initial-bits))
+)
+
+(fn-expr _ style-read-optional StyleOptionalBits
+  (param object-pointer Pointer)
+  (param style-index Index)
+  (param offset Size)
+  ; Fused read for compiled optional-typed $property reads: one attachment lookup and one segment
+  ; resolution return the slot bits and none flag together. Total like style-read-bits: unmounted
+  ; objects read the property's registered initial value and none flag.
+  (blank)
+  (call style-read-attached-optional
+    (block
+      (arg (call style-attachment-for-pointer object-pointer))
+      (arg object-pointer)
+      (arg style-index)
+      (arg offset)
+    )
+  )
+)
+
+(fn-expr _ (of style-read-host-optional Host) StyleOptionalBits
+  (param host Host)
+  (param style-index Index)
+  (param offset Size)
+  (constraint is Host MarkupElement)
+  (call style-read-attached-optional (. host markup-attachment-cache) (as host Pointer) style-index offset)
+)
+
+(fn-do _ style-read-attached-optional StyleOptionalBits @inline
+  (param attachment (? MarkupAttachment))
+  (param object-pointer Pointer)
+  (param style-index Index)
+  (param offset Size)
+  (if (and attachment (. attachment is-live))
+    (let live attachment)
+    (let record (call style-node-record live))
+    (if record
+      (let presented (. record presented))
+      (if presented
+        (let shown (call (. presented find) style-index offset))
+        (if shown
+          (return (tuple (. shown bits) (. shown none)))
+        )
+      )
+      (let position (call style-held-segment-position record style-index))
+      (if (>= position 0)
+        (let segment ([] (. record segments) position))
+        (if (< offset (. segment values length))
+          (return (tuple ([] (. segment values) offset) (call (. segment value-none) offset)))
+        )
+      )
+    )
+    (let initials (. (call style-attachment-store live) initial-segments))
+    (if (< style-index (. initials length))
+      (let prepared ([] initials style-index))
+      (if (< offset (. prepared values length))
+        (return (tuple ([] (. prepared values) offset) (call (. prepared value-none) offset)))
+      )
+    )
+    (let initial (call style-read-initial-segment live style-index))
+    (return (tuple (call (. initial value-bits) offset) (call (. initial value-none) offset)))
+  )
+  (blank)
+  (let authored (call style-read-unmounted-imperative object-pointer style-index offset))
+  (if authored
+    (return authored)
+  )
+  (let property (call style-initial-property style-index offset))
+  (return (tuple (. property initial-bits) (. property initial-none)))
+)
+
+(fn-do _ style-read-unmounted-imperative (? StyleOptionalBits)
+  (param object-pointer Pointer)
+  (param style-index Index)
+  (param offset Size)
+  (let declarations (?. (call style-association-for object-pointer) template))
+  (return-if null (if (not declarations)))
+  (for (in declaration declarations)
+    (let same-property (and (== (. declaration style style-index) style-index) (== (. declaration offset) offset)))
+    (if (and same-property (== (. declaration layer) (. StyleLayer imperative)))
+      (let bits (if-expr (== (. declaration kind) (. StyleValueKind object)) (call (. declaration acquire-held-bits)) (. declaration bits)))
+      (return (call StyleOptionalBits bits (. declaration is-none)))
+    )
+  )
+  (return null)
+)
+
+(fn-expr _ style-initial-property _
+  (param style-index Index)
+  (param offset Size)
+  (before
+    ; Storeless initial-value source for reads on unmounted objects: the registered property carries
+    ; its own initial bits and none flag, so no attachment or store is required.
+    (blank)
+    (throw (call StyleReadPanic (str "Style index " style-index " read before registration; check module initialization order")) (if (not info)))
+    (blank)
+    (throw (call StyleReadPanic (str "Style property at offset " offset " read before registration")) (if (not property)))
+  )
+  property
+  (where
+    (lazy info (call style-info-at style-index))
+    (lazy property (call (. info property-at) offset))
+  )
+)
+
+(fn-expr _ style-read-initial-segment _
+  (param attachment MarkupAttachment)
+  (param style-index Index)
+  (before
+    ; The record has no segment for the style and the store has not prepared the style's initial
+    ; segment, so the read prepares it, which requires the registration to have run.
+    (blank)
+    (throw (call StyleReadPanic (str "Style index " style-index " read before registration; check module initialization order")) (if (not info)))
+  )
+  (call (. store initial-segment) info)
+  (where
+    (lazy info (call style-info-at style-index))
+    (lazy store (call style-attachment-store attachment))
+  )
+)
+
+(fn-do _ style-mark-inherited-subtree _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  ; A reparented or re-placed attachment is already queued; its mounted descendants must re-read
+  ; inherited values against the new ancestry.
+  (blank)
+  (let child (call style-first-child-attachment attachment))
+  (while child
+    (let live child)
+    (= (. live dirty-bits) (/or/ (. live dirty-bits) inherited-dirty-bit))
+    (call (. store enqueue-dirty) live)
+    (call style-mark-inherited-subtree store live)
+    (= child (call style-next-child-attachment attachment live))
+  )
+)
+
+(fn-do _ style-settle-attachment _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (let outer (call swap-markup-cause (. attachment cause)))
+  (= (. attachment cause) markup-cause-none)
+  (finally
+    (call swap-markup-cause outer)
+  )
+  (let raised (call style-settle-attachment-domains store attachment))
+  (call style-apply-domain-masks store attachment (. raised self-mask) (. raised parent-mask))
+)
+
+(fn-do _ style-settle-attachment-domains StyleDomainMasks
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (let outer-address (. store settling-address))
+  (let outer (call StyleDomainMasks (. store settling-self-mask) (. store settling-parent-mask)))
+  (= (. store settling-address) (. attachment object-address))
+  (= (. store settling-self-mask) 0)
+  (= (. store settling-parent-mask) 0)
+  (finally
+    (= (. store settling-address) outer-address)
+    (= (. store settling-self-mask) (. outer self-mask))
+    (= (. store settling-parent-mask) (. outer parent-mask))
+  )
+  (blank)
+  (probe-count style.settle.attachments)
+  (let dirty (. attachment dirty-bits))
+  (= (. attachment dirty-bits) 0)
+  (blank)
+  (let node-record (call style-node-record attachment))
+  (if (and (not node-record) (!= (/and/ dirty inherited-dirty-bit) 0))
+    (if (call style-parent-has-inherited-divergence attachment)
+      (call style-ensure-node-record attachment)
+      (= node-record (call style-node-record attachment))
+    )
+  )
+  (blank)
+  (if node-record
+    (let live-record node-record)
+    (call style-settle-record store attachment live-record)
+    (call style-recompute-activation store attachment live-record)
+    (= (. live-record dirty-bits) 0)
+  )
+  (= (. attachment style-settled) true)
+  (if (. attachment style-reports-settle)
+    (= (. attachment style-reports-settle) false)
+    (call (?. style-motion-host style-node-settled) (. attachment host))
+  )
+  (blank)
+  (return (call StyleDomainMasks (. store settling-self-mask) (. store settling-parent-mask)))
+)
+
+(fn-do _ style-parent-has-inherited-divergence _
+  (param attachment MarkupAttachment)
+  (let parent (call style-parent-attachment attachment))
+  (return-if (if (not parent)))
+  (blank)
+  (let parent-record (call style-node-record parent))
+  (return-if (if (not parent-record)))
+  (blank)
+  (for (in key (. parent-record segment-keys))
+    (let parent-info (call style-info-at (call style-segment-key-style key)))
+    (return-if true (if (and parent-info (!= (. parent-info inherited-mask) 0))))
+  )
+  (blank)
+  (return false)
+)
+
+(fn-do _ style-index-list-has _
+  (param indexes (list Index))
+  (param index Index)
+  (for (in entry indexes)
+    (return-if true (if (== entry index)))
+  )
+  (return false)
+)
+
+(fn-do _ style-index-list-add _
+  (param indexes (list Index))
+  (param index Index)
+  (if (not (call style-index-list-has indexes index))
+    (+= indexes index)
+  )
+)
+
+(fn-do _ style-index-lists-match _
+  (param left (list Index))
+  (param right (list Index))
+  (return-if (if (!= (. left length) (. right length))))
+  (for (in entry left)
+    (return-if (if (not (call style-index-list-has right entry))))
+  )
+  (return true)
+)
+
+(fn-do _ style-copy-index-list _
+  (param target (list Index))
+  (param source (list Index))
+  (call (. target clear))
+  (for (in entry source)
+    (+= target entry)
+  )
+)
+
+(fn-do _ style-raise-flipped-style-domains _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param record StyleRecord)
+  (param style-index Index)
+  (let found (call style-info-at style-index))
+  (return-if (if (not found)))
+  (let info found)
+  (let offsets (call style-participating-offsets store attachment record info))
+  (if (== offsets 0)
+    (call style-raise-domain-masks store attachment (. info self-domain-mask) (. info parent-domain-mask))
+    (return)
+  )
+  (let self-mask U32)
+  (let parent-mask U32)
+  (for (in property (. info properties))
+    (if (!= (/and/ offsets (/lshift/ 1u64 (. property offset))) 0)
+      (= self-mask (/or/ self-mask (. property self-domain-mask)))
+      (= parent-mask (/or/ parent-mask (. property parent-domain-mask)))
+    )
+  )
+  (call style-raise-domain-masks store attachment self-mask parent-mask)
+)
+
+(fn-do _ style-participating-offsets U64
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param record StyleRecord)
+  (param info StyleInfo)
+  (let offsets U64)
+  (let assoc (call style-live-site-association attachment))
+  (if assoc
+    (let live-assoc assoc)
+    (let template-index Size 0)
+    (while (< template-index (call (. live-assoc site-template-count)))
+      (for (in declaration (. (call (. live-assoc site-template-at) template-index) declarations))
+        (if (== (. declaration style style-index) (. info style-index))
+          (= offsets (/or/ offsets (/lshift/ 1u64 (. declaration offset))))
+        )
+      )
+      (+= template-index 1)
+    )
+  )
+  (blank)
+  (for (in declaration (. record authored))
+    (if (== (. declaration style style-index) (. info style-index))
+      (= offsets (/or/ offsets (/lshift/ 1u64 (. declaration offset))))
+    )
+  )
+  (blank)
+  (for (in position (..< 0 (. record segments length)))
+    (if (== (call style-segment-key-style ([] (. record segment-keys) position)) (. info style-index))
+      (let initial (call (. store initial-segment) info))
+      (= offsets (/or/ offsets (call style-diff-segments ([] (. record segments) position) initial info)))
+    )
+  )
+  (return offsets)
+)
+
+(fn-do _ style-recompute-activation _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param record StyleRecord)
+  ; The active style set is derived from settled state: a style activates when any enabled
+  ; declaration authors one of its properties, or when inheritance/style-sheet settling leaves any
+  ; computed property divergent from that style's initial segment. An active-set change raises the
+  ; domains of the flipped style's properties that are declared on the node or divergent, so
+  ; downstream phases re-run even when no additional computed property changed; a property that is
+  ; neither reads its initial value whether or not its style is active. Style indexes are
+  ; program-wide and can exceed one machine word, so the active set is stored as a small unique index
+  ; list rather than a U64 mask.
+  (blank)
+  (let active (. store scratch-active-styles))
+  (call (. active clear))
+  (let assoc (call style-live-site-association attachment))
+  (if assoc
+    (let live-assoc assoc)
+    (let template-index Size 0)
+    (while (< template-index (call (. live-assoc site-template-count)))
+      (let base (call (. live-assoc block-base-at) template-index))
+      (for (in declaration (. (call (. live-assoc site-template-at) template-index) declarations))
+        (let declared (. declaration style))
+        (if (call style-record-declaration-enabled record declaration base)
+          (call style-index-list-add active (. declared style-index))
+        )
+      )
+      (+= template-index 1)
+    )
+  )
+  (blank)
+  (for (in declaration (. record authored))
+    (let declared (. declaration style))
+    (if (call style-record-declaration-enabled record declaration)
+      (call style-index-list-add active (. declared style-index))
+    )
+  )
+  (blank)
+  (for (in position (..< 0 (. record segments length)))
+    (let style-index (call style-segment-key-style ([] (. record segment-keys) position)))
+    (let info (call style-info-at style-index))
+    (if info
+      (if (not (call style-segments-match ([] (. record segments) position) (call (. store initial-segment) info) info))
+        (call style-index-list-add active style-index)
+      )
+    )
+  )
+  (blank)
+  (return-if (if (call style-index-lists-match active (. record active-styles))))
+  (blank)
+  (for (in active-index active)
+    (if (not (call style-index-list-has (. record active-styles) active-index))
+      (call style-raise-flipped-style-domains store attachment record active-index)
+    )
+  )
+  (blank)
+  (for (in previous-index (. record active-styles))
+    (if (not (call style-index-list-has active previous-index))
+      (call style-raise-flipped-style-domains store attachment record previous-index)
+    )
+  )
+  (blank)
+  (call style-copy-index-list (. record active-styles) active)
+)
+
+(fn-do _ style-collect-candidate _
+  (param candidates (list Index))
+  (param style-index Index)
+  (call style-index-list-add candidates style-index)
+)
+
+(fn-do _ style-settle-record _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param record StyleRecord)
+  ; Candidate styles: styles with authored declarations here, styles the record holds a segment for,
+  ; and styles where the parent holds a segment with inheritable properties. Style indexes are
+  ; program-wide, so the candidate set is a small reusable list.
+  (blank)
+  (let candidates (. store scratch-style-candidates))
+  (call (. candidates clear))
+  (let assoc (call style-live-site-association attachment))
+  (if assoc
+    (let live-assoc assoc)
+    (let template-index Size 0)
+    (while (< template-index (call (. live-assoc site-template-count)))
+      (for (in declaration (. (call (. live-assoc site-template-at) template-index) declarations))
+        (call style-collect-candidate candidates (. declaration style style-index))
+      )
+      (+= template-index 1)
+    )
+  )
+  (blank)
+  (for (in declaration (. record authored))
+    (call style-collect-candidate candidates (. declaration style style-index))
+  )
+  (blank)
+  (for (in key (. record segment-keys))
+    (call style-collect-candidate candidates (call style-segment-key-style key))
+  )
+  (blank)
+  (let parent-attachment (call style-parent-attachment attachment))
+  (if parent-attachment
+    (let parent-record (call style-node-record parent-attachment))
+    (if parent-record
+      (for (in key (. parent-record segment-keys))
+        (let parent-index (call style-segment-key-style key))
+        (let parent-info (call style-info-at parent-index))
+        (if (and parent-info (!= (. parent-info inherited-mask) 0))
+          (call style-collect-candidate candidates parent-index)
+        )
+      )
+    )
+  )
+  (blank)
+  (let candidate-index Index 0)
+  (while (< candidate-index (. candidates length))
+    (let settle-index ([] candidates candidate-index))
+    (let settle-info (call style-info-at settle-index))
+    (if settle-info
+      (call style-settle-style store attachment record settle-info)
+    )
+    (+= candidate-index 1)
+  )
+  (blank)
+  (if (. store motion-changes)
+    (let changes (. store motion-changes))
+    (= (. store motion-changes) (call (of List StyleValueChange)))
+    (call (?. style-motion-host style-values-changed) (. attachment host) changes)
+  )
+  (blank)
+  ; Every candidate settled successfully, so no published segment still names a replaced holder.
+  (for (in declaration (. record authored))
+    (= (. declaration settled-held) null)
+  )
+)
+
+(fn-do _ style-record-drop-segment _
+  (param record StyleRecord)
+  (param style-index Index)
+  (let position (call style-held-segment-position record style-index))
+  (if (>= position 0)
+    (call (. record segments remove) position)
+    (call (. record segment-keys remove) position)
+    (= (. record segment-mask) (/and/ (. record segment-mask) (/xor/ (call style-segment-bit style-index) (. U64 max))))
+  )
+)
+
+(fn-expr _ style-segment-key Index
+  (param style-index Index)
+  (param owned Bool)
+  (+ (* style-index 2) (if-expr owned 1 0))
+)
+
+(fn-expr _ style-segment-key-owned Bool
+  (param key Index)
+  (== (% key 2) 1)
+)
+
+(fn-expr _ style-held-segment-position I64 @inline
+  (param record StyleRecord)
+  (param style-index Index)
+  (case? (>= style-index 64)
+    (call style-wide-held-segment-position record style-index)
+  )
+  (case? (== (/and/ (. record segment-mask) bit) 0)
+    -1
+  )
+  (default
+    (as (call style-bit-count (/and/ (. record segment-mask) (- bit 1))) I64)
+  )
+  (where
+    (lazy bit (/lshift/ 1u64 style-index))
+  )
+)
+
+(fn-expr _ style-segment-position Index
+  (param record StyleRecord)
+  (param style-index Index)
+  (case? (< style-index 64)
+    (call style-bit-count (/and/ (. record segment-mask) (- (/lshift/ 1u64 style-index) 1)))
+  )
+  (default
+    (call style-wide-segment-position record style-index)
+  )
+)
+
+(fn-expr _ style-wide-held-segment-position I64
+  (param record StyleRecord)
+  (param style-index Index)
+  (case? (and (< position (. keys length)) (== (call style-segment-key-style ([] keys position)) style-index))
+    (as position I64)
+  )
+  (default
+    -1
+  )
+  (where
+    (lazy keys (. record segment-keys))
+    (lazy position (call style-wide-segment-position record style-index))
+  )
+)
+
+(fn-do _ style-wide-segment-position Index
+  (param record StyleRecord)
+  (param style-index Index)
+  (let keys (. record segment-keys))
+  (let position (call style-bit-count (. record segment-mask)))
+  (while (and (< position (. keys length)) (< (call style-segment-key-style ([] keys position)) style-index))
+    (+= position 1)
+  )
+  (return position)
+)
+
+(fn-expr _ style-segment-bit U64
+  (param style-index Index)
+  (case? (< style-index 64)
+    (/lshift/ 1u64 style-index)
+  )
+  (default
+    0
+  )
+)
+
+(fn-expr _ style-bit-count Index @inline
+  (param bits U64)
+  (as (/zrshift/ (* bytes 0x0101010101010101) 56) Index)
+  (where
+    (lazy pairs (- bits (/and/ (/zrshift/ bits 1) 0x5555555555555555)))
+    (lazy nibbles (+ (/and/ pairs 0x3333333333333333) (/and/ (/zrshift/ pairs 2) 0x3333333333333333)))
+    (lazy bytes (/and/ (+ nibbles (/zrshift/ nibbles 4)) 0x0f0f0f0f0f0f0f0f))
+  )
+)
+
+(fn-do _ style-store-segment _
+  (param store RootStyleStore)
+  (param record StyleRecord)
+  (param info StyleInfo)
+  (param segment ComputedSegment)
+  (param owned Bool)
+  (if (== segment (call (. store initial-segment) info))
+    (call style-record-drop-segment record (. info style-index))
+    (else
+      (call style-record-place-segment record (. info style-index) segment owned)
+    )
+  )
+)
+
+(fn-expr _ style-outranks _
+  (param declaration AuthoredDeclaration)
+  (param other AuthoredDeclaration)
+  (case? (> (. declaration layer) (. other layer))
+    true
+  )
+  (default
+    (and (== (. declaration layer) (. other layer)) (>= (. declaration order) (. other order)))
+  )
+)
+
+(fn-do _ style-bucket-winner _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param record StyleRecord)
+  (param info StyleInfo)
+  (param declaration AuthoredDeclaration)
+  (param winner-slots (list AuthoredDeclaration))
+  (param base I64 (= 0))
+  ; One declaration into the per-offset winner table; style-no-winner marks an empty slot.
+  (blank)
+  (return-if (if (!= (. declaration style) info)))
+  (return-if (if (not (call style-record-declaration-enabled record declaration base))))
+  (return-if (if (and (. declaration family) (not (call style-member-active store attachment (. declaration family) members)))))
+  (lazy members (. declaration members))
+  (let current ([] winner-slots (. declaration offset)))
+  (if (or (== current style-no-winner) (call style-outranks declaration current))
+    (= ([] winner-slots (. declaration offset)) declaration)
+  )
+)
+
+(fn-do _ style-member-active Bool
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param family StyleSheetInfo)
+  (param members U64)
+  (let member (. (call style-settle-sheet store attachment family) member))
+  (return (!= (/and/ members (/lshift/ 1u64 (as member Size))) 0))
+)
+
+(fn-do _ style-settle-sheet StyleSheetRecord
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param info StyleSheetInfo)
+  (for (in position (..< 0 (. store scratch-families length)))
+    (if (== ([] (. store scratch-families) position) info)
+      (return ([] (. store scratch-sheets) position))
+    )
+  )
+  (let record (call style-effective-style-sheet attachment info))
+  (+= (. store scratch-families) info)
+  (+= (. store scratch-sheets) record)
+  (return record)
+)
+
+(fn-do _ style-settle-style _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param record StyleRecord)
+  (param info StyleInfo)
+  (let style-index (. info style-index))
+  (let initial (call (. store initial-segment) info))
+  (let old (?? (call style-record-segment record style-index) initial))
+  (blank)
+  (let parent-segment (? ComputedSegment) null)
+  (let parent-attachment (call style-parent-attachment attachment))
+  (if parent-attachment
+    (let parent-record (call style-node-record parent-attachment))
+    (if parent-record
+      (= parent-segment (?? (call style-record-segment parent-record style-index) initial))
+    )
+  )
+  (blank)
+  ; Compute the desired value of every property in the style. One pass over the shared template
+  ; and authored declarations buckets the winner per offset; the property loop then resolves each
+  ; offset without rescanning.
+  (let inherit-source (?? parent-segment initial))
+  (let inheriting U64)
+  (let new-values (. store scratch-values))
+  (let winner-slots (. store scratch-winners))
+  (finally
+    ; Winner declarations can own object holders. Keep list capacity for reuse, but never let the
+    ; root store retain the last settled owner's declaration after the settle call returns.
+    (call (. store style-clear-declaration-list) winner-slots)
+  )
+  (= (. store scratch-none-mask) 0)
+  (call (. store scratch-families clear))
+  (call (. store scratch-sheets clear))
+  (let has-declaration false)
+  (call (. new-values clear))
+  (call (. store style-clear-declaration-list) winner-slots)
+  (while (< (. new-values length) (. info slot-count))
+    (+= new-values 0)
+    (+= winner-slots style-no-winner)
+  )
+  (blank)
+  (let assoc (call style-live-site-association attachment))
+  (if assoc
+    (let live-assoc assoc)
+    (let template-index Size 0)
+    (while (< template-index (call (. live-assoc site-template-count)))
+      (let base (call (. live-assoc block-base-at) template-index))
+      (for (in declaration (. (call (. live-assoc site-template-at) template-index) declarations))
+        (call style-bucket-winner store attachment record info declaration winner-slots base)
+      )
+      (+= template-index 1)
+    )
+  )
+  (blank)
+  (for (in declaration (. record authored))
+    (call style-bucket-winner store attachment record info declaration winner-slots)
+  )
+  (blank)
+  (for (in property (. info properties))
+    (let offset (. property offset))
+    (let bits I64)
+    (let is-none Bool)
+    (let winner ([] winner-slots offset))
+    (if (!= winner style-no-winner)
+      (= has-declaration true)
+      (let declaration winner)
+      (if (== (. declaration kind) (. StyleValueKind inherit))
+        (= bits (call (. inherit-source value-bits) offset))
+        (= is-none (call (. inherit-source value-none) offset))
+        (else-if (== (. declaration kind) (. StyleValueKind style-sheet))
+          (let sheet-record (call style-settle-sheet store attachment (!! (. declaration style-sheet))))
+          (= bits (call (. sheet-record value-bits) (. declaration sheet-offset)))
+          (= is-none (call (. sheet-record value-none) (. declaration sheet-offset)))
+        )
+        (else-if (== (. declaration kind) (. StyleValueKind themed))
+          (let made
+            (call style-themed-bits
+              (block
+                (arg declaration)
+                (arg (call style-settle-sheet store attachment (!! (. declaration style-sheet))))
+              )
+            )
+          )
+          (= bits (. made bits))
+          (= is-none (. made none))
+        )
+        (else-if (== (. declaration kind) (. StyleValueKind style-sheet-projected))
+          (let sheet-record (call style-settle-sheet store attachment (!! (. declaration style-sheet))))
+          (let sheet-bits (call (. sheet-record value-bits) (. declaration sheet-offset)))
+          (let sheet-none (call (. sheet-record value-none) (. declaration sheet-offset)))
+          (if (and (. declaration projection-preserves-none) sheet-none)
+            (= bits 0)
+            (= is-none true)
+            (else
+              (= bits (call style-projected-declaration-bits declaration sheet-bits))
+              (= is-none false)
+            )
+          )
+        )
+        (else
+          (= bits (. declaration bits))
+          (= is-none (. declaration is-none))
+        )
+      )
+      (else-if (and (. property is-inherited) parent-segment)
+        (let live-parent-segment parent-segment)
+        (= bits (call (. live-parent-segment value-bits) offset))
+        (= is-none (call (. live-parent-segment value-none) offset))
+        (= inheriting (/or/ inheriting (/lshift/ 1u64 offset)))
+      )
+      (else
+        (= bits (call (. initial value-bits) offset))
+        (= is-none (call (. initial value-none) offset))
+      )
+    )
+    (= ([] new-values offset) bits)
+    (if is-none
+      (= (. store scratch-none-mask) (/or/ (. store scratch-none-mask) (/lshift/ 1u64 offset)))
+    )
+  )
+  (blank)
+  ; Choose the cheapest correct representation: parent flow-through, initial alias, or owned copy
+  (let new-none U64 (. store scratch-none-mask))
+  (let alias (? ComputedSegment) null)
+  (if (and (not has-declaration) (. info all-inherited) parent-segment)
+    (= alias parent-segment)
+    (else-if (call style-values-match new-values new-none initial)
+      (= alias initial)
+    )
+  )
+  (blank)
+  (let was-owned (call style-record-owns-segment record style-index))
+  (blank)
+  (if alias
+    (let target alias)
+    (if (== old target)
+      ; Pointer equality is the unchanged fast path; in-place changes to a shared parent segment
+      ; are propagated by the parent's own settle.
+      (return)
+    )
+    (let changed (call style-diff-segments old target info))
+    (let rebound (call style-rebound-slots old target info changed))
+    (let noted (if-expr (. attachment style-settled) (/and/ changed (call style-watched-mask info)) 0u64))
+    (if (!= noted 0)
+      (call style-note-changes store info noted old target)
+    )
+    (if was-owned
+      (call (. store release-segment) old)
+    )
+    (call style-store-segment store record info target false)
+    (if (!= changed 0)
+      (call style-record-changes store attachment info changed rebound target)
+      (call style-follow-parent store attachment record info changed inheriting)
+    )
+    (return)
+  )
+  ; Owned write with copy-on-write: never mutate a shared segment
+  (let target old)
+  (if (not was-owned)
+    (= target (call (. store allocate-segment) old))
+    (call style-store-segment store record info target true)
+  )
+  (blank)
+  (call (. target resize) (. info slot-count))
+  (let changed U64)
+  (let rebound U64)
+  (let reporting
+    (block
+      (case? (. attachment style-settled)
+        (call style-watched-mask info)
+      )
+      (case? style-motion-host
+        (. info mount-mask)
+      )
+      (default
+        0u64
+      )
+    )
+  )
+  (for (in property (. info properties))
+    (let offset (. property offset))
+    (let old-bits (call (. old value-bits) offset))
+    (let old-none (call (. old value-none) offset))
+    (let bits ([] new-values offset))
+    (let none (!= (/and/ new-none (/lshift/ 1u64 offset)) 0))
+    (if (or (!= bits old-bits) (!= none old-none))
+      (= changed (/or/ changed (/lshift/ 1u64 offset)))
+      (if (!= (/and/ reporting (/lshift/ 1u64 offset)) 0)
+        (+= (. store motion-changes) (call StyleValueChange info offset old-bits old-none bits none))
+      )
+      (if (and (== none old-none) (call style-slot-rebound property old-bits bits))
+        (= rebound (/or/ rebound (/lshift/ 1u64 offset)))
+      )
+    )
+    (= ([] (. target values) offset) bits)
+  )
+  (= (. target none-mask) new-none)
+  (blank)
+  (if (!= changed 0)
+    (= (. target changed-mask) changed)
+    (+= (. target generation) 1)
+    (call style-record-changes store attachment info changed rebound target)
+    (call style-follow-parent store attachment record info changed inheriting)
+  )
+)
+
+(fn-do _ style-follow-parent _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param record StyleRecord)
+  (param info StyleInfo)
+  (param changed U64)
+  (param inheriting U64)
+  (let own (. record presented))
+  (if own
+    (for (in entry (call (of List StylePresentedValue) (. own entries)))
+      (if (and (. entry follows) (== (. entry style-index) (. info style-index)) offset-changed)
+        (call (. own remove) (. entry style-index) (. entry offset))
+      )
+      (lazy offset-changed (!= (/and/ changed (/lshift/ 1u64 (. entry offset))) 0))
+    )
+    (if (not (. own entries))
+      (= (. record presented) null)
+    )
+  )
+  (return-if (if (== (/and/ changed inheriting) 0)))
+  (let parent (call style-parent-attachment attachment))
+  (return-if (if (not parent)))
+  (let source (?. (call style-node-record parent) presented))
+  (return-if (if (not source)))
+  (for (in entry (. source entries))
+    (if (and same-style (!= (/and/ changed inheriting (/lshift/ 1u64 (. entry offset))) 0))
+      (let lane (?? (. record presented) (call StylePresentation)))
+      (= (. record presented) lane)
+      (if (not (call (. lane find) (. entry style-index) (. entry offset)))
+        (call (. lane put) (. entry style-index) (. entry offset) (. entry bits) (. entry none) (. entry held) true)
+        (call style-drop-motion-change store info (. entry offset))
+      )
+    )
+    (lazy same-style (== (. entry style-index) (. info style-index)))
+  )
+)
+
+(fn-do _ style-drop-motion-change _
+  (param store RootStyleStore)
+  (param info StyleInfo)
+  (param offset Size)
+  (let changes (. store motion-changes))
+  (let index (. changes length))
+  (while (> index 0)
+    (-= index 1)
+    (let change ([] changes index))
+    (if (and (== (. change info) info) (== (. change offset) offset))
+      (call (. changes remove) index)
+    )
+  )
+)
+
+(fn-do _ style-present-followers _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param record StyleRecord)
+  (param info StyleInfo)
+  (param offset Size)
+  (param bits I64)
+  (param none Bool)
+  (param held (? StyleObjectHolder))
+  (let segment (call style-record-segment record (. info style-index)))
+  (let child (call style-first-child-attachment attachment))
+  (while child
+    (let live child)
+    (let child-record (call style-node-record live))
+    (if child-record
+      (let lane (. child-record presented))
+      (let existing (call (?. lane find) (. info style-index) offset))
+      (let aliases (and (not (not segment)) (== (call style-record-segment child-record (. info style-index)) segment)))
+      (if (or (and existing (. existing follows)) (and (not existing) aliases))
+        (let shown (?? lane (call StylePresentation)))
+        (= (. child-record presented) shown)
+        (call (. shown put) (. info style-index) offset bits none held true)
+        (call style-raise-changed-domains store live info (/lshift/ 1u64 offset))
+        (call style-present-followers store live child-record info offset bits none held)
+      )
+    )
+    (= child (call style-next-child-attachment attachment live))
+  )
+)
+
+(fn-do _ style-unpresent-followers _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param info StyleInfo)
+  (param offset Size)
+  (let child (call style-first-child-attachment attachment))
+  (while child
+    (let live child)
+    (let child-record (call style-node-record live))
+    (let lane (?. child-record presented))
+    (let existing (call (?. lane find) (. info style-index) offset))
+    (if (and child-record lane existing (. existing follows))
+      (call (. lane remove) (. info style-index) offset)
+      (if (not (. lane entries))
+        (= (. child-record presented) null)
+      )
+      (call style-raise-changed-domains store live info (/lshift/ 1u64 offset))
+      (call style-unpresent-followers store live info offset)
+    )
+    (= child (call style-next-child-attachment attachment live))
+  )
+)
+
+(fn-do _ style-note-changes _
+  (param store RootStyleStore)
+  (param info StyleInfo)
+  (param changed U64)
+  (param old ComputedSegment)
+  (param target ComputedSegment)
+  (for (in property (. info properties))
+    (let offset (. property offset))
+    (if (!= (/and/ changed (/lshift/ 1u64 offset)) 0)
+      (let old-bits (call (. old value-bits) offset))
+      (let old-none (call (. old value-none) offset))
+      (+= (. store motion-changes)
+        (call StyleValueChange
+          (block
+            (arg info)
+            (arg offset)
+            (arg old-bits)
+            (arg old-none)
+            (arg (call (. target value-bits) offset))
+            (arg (call (. target value-none) offset))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-do _ style-values-match _
+  (param values (list I64))
+  (param none-mask U64)
+  (param segment ComputedSegment)
+  (return-if (if (!= (. segment none-mask) none-mask)))
+  (let offset Size 0)
+  (while (< offset (. values length))
+    (return-if (if (!= (call (. segment value-bits) offset) ([] values offset))))
+    (+= offset 1)
+  )
+  (return true)
+)
+
+(fn-do _ style-segments-match _
+  (param a ComputedSegment)
+  (param b ComputedSegment)
+  (param info StyleInfo)
+  (return-if true (if (== a b)))
+  (return-if (if (!= (. a none-mask) (. b none-mask))))
+  (for (in property (. info properties))
+    (let offset (. property offset))
+    (return-if (if (!= (call (. a value-bits) offset) (call (. b value-bits) offset))))
+  )
+  (return true)
+)
+
+(fn-do _ style-diff-segments _
+  (param old ComputedSegment)
+  (param target ComputedSegment)
+  (param info StyleInfo)
+  (let changed U64)
+  (for (in property (. info properties))
+    (let offset (. property offset))
+    (if (or (!= (call (. old value-bits) offset) (call (. target value-bits) offset)) none-differs)
+      (= changed (/or/ changed (/lshift/ 1u64 offset)))
+    )
+    (lazy none-differs (!= (call (. old value-none) offset) (call (. target value-none) offset)))
+  )
+  (return changed)
+)
+
+(fn-do _ style-rebound-slots U64
+  (param old ComputedSegment)
+  (param target ComputedSegment)
+  (param info StyleInfo)
+  (param changed-mask U64)
+  (let rebound U64)
+  (return-if rebound (if (== changed-mask 0)))
+  (for (in property (. info properties))
+    (let offset (. property offset))
+    (let bit U64 (/lshift/ 1u64 offset))
+    (if (and (!= (/and/ changed-mask bit) 0) (== (call (. old value-none) offset) (call (. target value-none) offset)))
+      (if (call style-slot-rebound property (call (. old value-bits) offset) (call (. target value-bits) offset))
+        (= rebound (/or/ rebound bit))
+      )
+    )
+  )
+  (return rebound)
+)
+
+(fn-do _ style-record-changes _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param info StyleInfo)
+  (param changed-mask U64)
+  (param rebound-mask U64)
+  (param segment ComputedSegment)
+  (let raised-mask (- changed-mask rebound-mask))
+  (if (!= raised-mask 0)
+    (call style-raise-changed-domains store attachment info raised-mask)
+  )
+  (let inherited-changed (/and/ changed-mask (. info inherited-mask)))
+  (blank)
+  (if (!= inherited-changed 0)
+    (call style-propagate-inherited store attachment info inherited-changed raised-mask segment)
+  )
+)
+
+(fn-do _ style-propagate-inherited _
+  (param store RootStyleStore)
+  (param attachment MarkupAttachment)
+  (param info StyleInfo)
+  (param changed-mask U64)
+  (param raised-mask U64)
+  (param segment ComputedSegment)
+  ; Children aliasing the changed segment changed by construction: record their invalidation now and
+  ; keep walking, since their own children alias the same pointer. Everyone else re-derives values
+  ; from authored state on the next settle pass.
+  (blank)
+  (let child (call style-first-child-attachment attachment))
+  (while child
+    (let live child)
+    (let child-record (call style-node-record live))
+    (if child-record
+      (let entry (call style-record-segment child-record (. info style-index)))
+      (if (== entry segment)
+        (let child-raised (/and/ changed-mask raised-mask))
+        (if (!= child-raised 0)
+          (call style-raise-changed-domains store live info child-raised)
+        )
+        (call style-recompute-activation store live child-record)
+        (call style-propagate-inherited store live info changed-mask raised-mask segment)
+        (else
+          (= (. live dirty-bits) (/or/ (. live dirty-bits) inherited-dirty-bit))
+          (call (. store enqueue-dirty) live)
+        )
+      )
+      (else
+        (= (. live dirty-bits) (/or/ (. live dirty-bits) inherited-dirty-bit))
+        (call (. store enqueue-dirty) live)
+      )
+    )
+    (= child (call style-next-child-attachment attachment live))
+  )
+)

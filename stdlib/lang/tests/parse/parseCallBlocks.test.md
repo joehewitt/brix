@@ -1,10 +1,5 @@
 # Call blocks
 
-```yumi
-foo • at bar
-    ?! err
-```
-
 ```brix
 (main
   (call foo (:at bar)
@@ -33,12 +28,6 @@ foo • at bar
     </Declaration>
     <Id name="it"/>
 </Block>
-```
-
-```yumi
-Map
-    •? "strokeWidth" width
-    •? (property) value
 ```
 
 ```brix
@@ -70,10 +59,6 @@ Map
 </CallExpression>
 ```
 
-```yumi
-a • of b in c when c
-```
-
 ```brix
 (main
   (call a (:of (in b c (when c))))
@@ -97,11 +82,6 @@ a • of b in c when c
 </CallExpression>
 ```
 
-```yumi
-call
-    a
-```
-
 ```brix
 (main
   (call call
@@ -123,10 +103,6 @@ call
 </CallExpression>
 ```
 
-```yumi
-call: a
-```
-
 ```brix
 (main
   (call call (inline a))
@@ -140,11 +116,6 @@ call: a
         <Id name="a"/>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-call'Foo
-    a
 ```
 
 ```brix
@@ -171,11 +142,6 @@ call'Foo
 </CallExpression>
 ```
 
-```yumi
-call • with
-    a
-```
-
 ```brix
 (main
   (call call
@@ -197,11 +163,6 @@ call • with
         </Block>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-call • with a • at
-    b
 ```
 
 ```brix
@@ -228,15 +189,6 @@ call • with a • at
         </Block>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-call
-    • with this
-        | .alpha
-            "A"
-        ??
-            "B"
 ```
 
 ```brix
@@ -290,11 +242,6 @@ call
 </CallExpression>
 ```
 
-```yumi
-call(a) • with
-    b
-```
-
 ```brix
 (main
   (call call a
@@ -321,11 +268,6 @@ call(a) • with
 </CallExpression>
 ```
 
-```yumi
-call
-    .. a = b
-```
-
 ```brix
 (main
   (scope call
@@ -350,12 +292,6 @@ call
     </Declaration>
     <Id name="it"/>
 </Block>
-```
-
-```yumi
-call
-    b
-    .. a = b
 ```
 
 ```brix
@@ -386,11 +322,6 @@ call
 </CallExpression>
 ```
 
-```yumi
-call • of ex • with
-    indented
-```
-
 ```brix
 (main
   (call call (:of ex)
@@ -415,11 +346,6 @@ call • of ex • with
         </Block>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-a = :: a =>
-    indented
 ```
 
 ```brix
@@ -448,11 +374,6 @@ a = :: a =>
         </Block>
     </Function>
 </AssignmentExpression>
-```
-
-```yumi
-. a = call • of :: a =>
-    indented
 ```
 
 ```brix
@@ -494,11 +415,6 @@ a = :: a =>
 </Declaration>
 ```
 
-```yumi
-a = call • of :: a =>
-    indented
-```
-
 ```brix
 (main
   (= a
@@ -538,10 +454,6 @@ a = call • of :: a =>
 
 ## Pronouns
 
-```yumi
-foo • at bar
-```
-
 ```brix
 (main
   (call foo (:at bar))
@@ -555,10 +467,6 @@ foo • at bar
         <Id name="bar"/>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-join(this) • with ", "
 ```
 
 ```brix
@@ -577,10 +485,6 @@ join(this) • with ", "
         <String text=", "/>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-this += foo • at ", "
 ```
 
 ```brix
@@ -602,11 +506,6 @@ this += foo • at ", "
 ```
 
 ## Nested declarations and asserts
-
-```yumi
-foo(a)
-    .. a = 5
-```
 
 ```brix
 (main
@@ -639,12 +538,6 @@ foo(a)
     </Declaration>
     <Id name="it"/>
 </Block>
-```
-
-```yumi
-foo(a)
-    .. a = 5
-    ?! foo if bar
 ```
 
 ```brix
@@ -687,10 +580,6 @@ foo(a)
 </Block>
 ```
 
-```yumi
-call • where :: foo Foo => bar
-```
-
 ```brix
 (main
   (call call (:where (=> ((: foo Foo)) bar)))
@@ -716,11 +605,6 @@ call • where :: foo Foo => bar
 
 ## Indented arguments
 
-```yumi
-foo
-    • name
-```
-
 ```brix
 (main
   (call foo
@@ -738,11 +622,6 @@ foo
         <Id name="name"/>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-foo
-    • name true
 ```
 
 ```brix
@@ -764,11 +643,6 @@ foo
 </CallExpression>
 ```
 
-```yumi
-partition
-    • until 1
-```
-
 ```brix
 (main
   (call partition
@@ -788,12 +662,6 @@ partition
 </CallExpression>
 ```
 
-```yumi
-partition
-    - a
-    - b
-```
-
 ```brix
 (main
   (call partition
@@ -817,12 +685,6 @@ partition
 </CallExpression>
 ```
 
-```yumi
-partition
-    - a
-    - b
-```
-
 ```brix
 (main
   (call partition
@@ -844,11 +706,6 @@ partition
         <Id name="b"/>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-find • is recursive
-    "foo"
 ```
 
 ```brix
@@ -875,11 +732,6 @@ find • is recursive
 </CallExpression>
 ```
 
-```yumi
-find("foo")
-    • is recursive
-```
-
 ```brix
 (main
   (call find "foo"
@@ -900,12 +752,6 @@ find("foo")
         <Id name="true"/>
     </Argument>
 </CallExpression>
-```
-
-```yumi
-find
-    - "foo"
-    • is recursive
 ```
 
 ```brix
@@ -933,10 +779,6 @@ find
 
 ## Bracketed calls
 
-```yumi
-(foo() • at bar)
-```
-
 ```brix
 (main
   (call foo (:at bar))
@@ -953,10 +795,6 @@ find
 ```
 
 ## Closure as preoosition argument
-
-```yumi
-fn • from arg • using :: binding => result
-```
 
 ```brix
 (main

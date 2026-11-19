@@ -1,7 +1,7 @@
 # The Compiler
 
 How the compiler in `stdlib/lang` is built, and the rules its design keeps. The program is
-`apps/compiler/brix-cli.yumi`; `bin/brix` builds it into `.tmp/build/tools/brix` from the seed
+`apps/compiler/brix-cli.bx`; `bin/brix` builds it into `.tmp/build/tools/brix` from the seed
 that `.release.json` pins (`toolchain/compiler.py`).
 
 | Directory | Holds |
@@ -20,10 +20,10 @@ that `.release.json` pins (`toolchain/compiler.py`).
 ## Pipeline
 
 1. **Parse.** `SyntaxProgram` parses modules on workers, a large file in pieces between its
-   dividers (`piece-parse.yumi`). `ProgramBuilder` makes each module's `AST` and declaration
+   dividers (`piece-parse.bx`). `ProgramBuilder` makes each module's `AST` and declaration
    rows (`ModuleBuilder`) and links them into a `Program`.
 2. **Bind.** `Binder` binds each declaration once into `Bindings`, shared by all its instances.
-3. **Type.** `type-program` (`parallel-typing.yumi`) types the program on parallel passes
+3. **Type.** `type-program` (`parallel-typing.bx`) types the program on parallel passes
    (`type-in-parallel`). `merge-sessions` takes in what they typed. `check-pass` types what is
    left, then settles class tables, witness tables, panics and stack locals on one thread.
    `Session.seal` then seals the type store and the instance table.
@@ -54,8 +54,8 @@ that `.release.json` pins (`toolchain/compiler.py`).
    code. Binding runs once per declaration. Typing and emission run per instance.
 2. One walker per pass enumerates the language: `Binder`, `Checker`, `Emitter`. Lowering is
    never spread across type, operator and builder objects. The checker and the emitter are each
-   a file family: a core module (`checker.yumi`, `emitter.yumi`) and one module per feature, such
-   as `emitter.loops.yumi`, each a facet of the walker that `sees` the sibling features it calls.
+   a file family: a core module (`checker.bx`, `emitter.bx`) and one module per feature, such
+   as `emitter.loops.bx`, each a facet of the walker that `sees` the sibling features it calls.
    A helper or state two features use stays in the core.
 3. There are two lowering modes, statement and expression. A subsystem (markup, styles, state
    machines, grammars, reactivity) desugars, uses typed intrinsics, or uses a
@@ -128,7 +128,7 @@ that `.release.json` pins (`toolchain/compiler.py`).
 
 **Binding**
 - The `with` and `without` sections of a block or a header never reach binding. Both readers
-  lower them (`section-annotations` and `stack-bound` in `ast/_grammar-helpers.yumi`): a
+  lower them (`section-annotations` and `stack-bound` in `ast/_grammar-helpers.bx`): a
   `without` name becomes the annotation it stands for, and each binding an
   `ASTStackLocalBindingBlock`.
 - Binding reads syntax and declaration rows, never types. No type id appears in a binding table.
@@ -171,10 +171,10 @@ that `.release.json` pins (`toolchain/compiler.py`).
   into the key. A lambda instance is keyed by its closure row plus its enclosing instance.
 
 **Facets**
-- The loader finds file families (`family-base` in `module-resolver.yumi`), and refuses an import
-  of a family's module from outside the family (`syntax-program.yumi`).
+- The loader finds file families (`family-base` in `module-resolver.bx`), and refuses an import
+  of a family's module from outside the family (`syntax-program.bx`).
 - A facet is an `ExtensionDecl` with a `facet` name. `ProgramBuilder` binds facets into
-  `program.facets` (`FacetTable`, `ast/facets.yumi`) before it indexes extensions: each facet's
+  `program.facets` (`FacetTable`, `ast/facets.bx`) before it indexes extensions: each facet's
   parent, owner class and state, the siblings its `sees` names, and each class's facets in the
   order they are laid out, by the name of the declaring module and then by declaration.
 - A facet joins the extension index under its owner class. `Program.extension-after` shows it

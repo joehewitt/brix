@@ -1,0 +1,431 @@
+(import ./point)
+(import ./primitives)
+(import /math)
+(import /os/path)
+(blank)
+(prop + tolerance _ (= 10e-6))
+(prop + tolerance-tight _ (= 10e-12))
+(prop + tolerance-loose _ (= 10e-2))
+(blank)
+(prop _ pi2 _ (= (* π 2)))
+
+(type + Hull (is Tuple)
+  (prop + top (list Point))
+  (prop + bottom (list Point))
+  (fn-expr + reversed _
+    (call Hull bottom top)
+  )
+)
+
+(type + CurveRoots (is Tuple)
+  (prop + root1 Coord)
+  (prop + root2 Coord)
+  (prop + root3 Coord)
+  (prop + count I8)
+  (fn-do + This _
+    (param r1 Coord)
+    (return (call CurveRoots r1 0 0 1))
+  )
+  (fn-do + This _
+    (param r1 Coord)
+    (param r2 Coord)
+    (return (call CurveRoots r1 r2 0 2))
+  )
+  (fn-do + This _
+    (param r1 Coord)
+    (param r2 Coord)
+    (param r3 Coord)
+    (return (call CurveRoots r1 r2 r3 3))
+  )
+  (fn-expr + (index-get this (param index Index)) _
+    (case? (== index 0)
+      root1
+    )
+    (case? (== index 1)
+      root2
+    )
+    (case? (== index 2)
+      root3
+    )
+    (default
+      -1
+    )
+  )
+)
+
+(fn-expr + normalize-angle Radians
+  (param angle Radians)
+  (before
+    (probe-count graphics.numeric.angle-normalizations)
+  )
+  (case? (< (call abs (- rotated pi2)) tolerance)
+    0
+  )
+  (default
+    rotated
+  )
+  (where
+    (lazy rotated Float
+      (block
+        (case? (>= normal 0)
+          normal
+        )
+        (default
+          (+ normal pi2)
+        )
+      )
+    )
+    (lazy normal (% angle pi2))
+  )
+)
+
+(fn-expr + normalize-angle Degrees
+  (param angle Degrees)
+  (before
+    (probe-count graphics.numeric.angle-normalizations)
+  )
+  (case? (< (call abs (- rotated 360)) tolerance)
+    0
+  )
+  (default
+    rotated
+  )
+  (where
+    (lazy rotated
+      (block
+        (case? (>= normal 0)
+          normal
+        )
+        (default
+          (+ normal 360)
+        )
+      )
+    )
+    (lazy normal (% angle 360))
+  )
+)
+
+(fn-expr + nearly-equals _
+  (param a _)
+  (param b _)
+  (< (call abs (- a b)) 0.01)
+)
+
+(type + SignedDistanceLine (is Tuple)
+  (prop + origin-x Coord)
+  (prop + is-vertical Bool)
+  (prop + is-ascending Bool)
+  (prop + slope Coord)
+  (prop + intercept Coord)
+  (prop + norm Coord)
+  (fn-expr + distance Coord
+    (param a Point)
+    (before
+      (probe-count graphics.numeric.signed-distances)
+    )
+    (case? (and is-vertical is-ascending)
+      (- (. a x) origin-x)
+    )
+    (case? is-vertical
+      (- origin-x (. a x))
+    )
+    (default
+      (/ (- (. a y) (* slope (. a x)) intercept) norm)
+    )
+  )
+)
+
+(fn-expr + signed-distance-line _
+  (param p Point)
+  (param v Point)
+  (call SignedDistanceLine (. p x) (== vx 0) (>= vy 0) m (- (. p y) (* m (. p x))) (call sqrt (+ (* m m) 1)))
+  (where
+    (lazy vx (- (. v x) (. p x)))
+    (lazy vy (- (. v y) (. p y)))
+    (lazy m (/ vy vx))
+  )
+)
+
+(fn-expr + get-signed-distance _
+  (param p Point)
+  (param v Point)
+  (param a Point)
+  (call (. (call signed-distance-line p v) distance) a)
+)
+
+(fn-do + get-convex-hull Hull
+  (param dq0 _)
+  (param dq1 _)
+  (param dq2 _)
+  (param dq3 _)
+  ; CREDIT: Paper.js
+  (probe-count graphics.numeric.hulls)
+  (let p0 (tuple 0.0 dq0))
+  (let p1 (tuple (/ 1.0 3.0) dq1))
+  (let p2 (tuple (/ 2.0 3.0) dq2))
+  (let p3 (tuple 1.0 dq3))
+  ; Find signed distance of p1 and p2 from line [ p0, p3 ]
+  (let dist1 (call get-signed-distance (tuple 0.0 dq0) (tuple 1.0 dq3) (tuple (/ 1.0 3.0) dq1)))
+  (let dist2 (call get-signed-distance (tuple 0.0 dq0) (tuple 1.0 dq3) (tuple (/ 2.0 3.0) dq2)))
+  (let flip false)
+  (let hull Hull)
+  (blank)
+  ; Check if p1 and p2 are on the same side of the line [ p0, p3 ]
+  (if (< (* dist1 dist2) 0)
+    ; p1 and p2 lie on different sides of [ p0, p3 ]. The hull is a
+    ; quadrilateral and line [ p0, p3 ] is NOT part of the hull so we
+    ; are pretty much done here.
+    ; The top part includes p1,
+    ; we will reverse it later if that is not the case
+    (= hull (tuple (list p0 p1 p3) (list p0 p2 p3)))
+    (= flip (< dist1 0))
+    (else
+      ; p1 and p2 lie on the same sides of [ p0, p3 ]. The hull can be
+      ; a triangle or a quadrilateral and line [ p0, p3 ] is part of the
+      ; hull. Check if the hull is a triangle or a quadrilateral.
+      ; Also, if at least one of the distances for p1 or p2, from line
+      ; [p0, p3] is zero then hull must at most have 3 vertices.
+      (let pmax Point)
+      (let cross 0.0)
+      (let dist-zero (or (== dist1 0) (== dist2 0)))
+      (if (> (call abs dist1) (call abs dist2))
+        (= pmax p1)
+        ; apex is dq3 and the other apex point is dq0 vector dqapex ->
+        ; dqapex2 or base vector which is already part of the hull.
+        (= cross (/ (* (- dq3 dq2 (/ (- dq3 dq0) 3.0)) (+ (- (* 2.0 (- dq3 dq2)) dq3) dq1)) 3.0))
+        (else
+          (= pmax p2)
+          ; apex is dq0 in this case, and the other apex point is dq3
+          ; vector dqapex -> dqapex2 or base vector which is already part
+          ; of the hull.
+          (= cross (/ (* (+ (- dq1 dq0) (/ (- dq0 dq3) 3.0)) (- (+ (* -2.0 (- dq0 dq1)) dq0) dq2)) 3.0))
+        )
+      )
+      (blank)
+      ; Compare cross products of these vectors to determine if the point
+      ; is in the triangle [ p3, pmax, p0 ], or if it is a quadrilateral.
+      (= hull
+        (block
+          ; p2 is inside the triangle, hull is a triangle.
+          (case? (or (< cross 0) dist-zero)
+            (call Hull (list p0 pmax p3) (list p0 p3))
+          )
+          ; Convex hull is a quadrilateral and we need all lines in
+          ; correct order where line [ p0, p3 ] is part of the hull.
+          (default
+            (call Hull (list p0 p1 p2 p3) (list p0 p3))
+          )
+        )
+      )
+      (= flip
+        (block
+          (case? dist1
+            (< dist1 0)
+          )
+          (default
+            (< dist2 0)
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (return (if-expr flip (call (. hull reversed)) hull))
+)
+
+(fn-do + clip-convex-hull (? PointOnCurve)
+  (param top (list Point))
+  (param bottom (list Point))
+  (param d-min _)
+  (param d-max _)
+  ; CREDIT: Paper.js
+  (probe-count graphics.numeric.hull-clips)
+  (let t-proxy (? PointOnCurve))
+  (let t-val (? PointOnCurve))
+  (let px Coord)
+  (let py Coord)
+  (let qx Coord)
+  (let qy Coord)
+  (for (in i (..< 0 (- (. bottom length) 1)))
+    (= py (. ([] bottom i) y))
+    (= qy (. ([] bottom (+ i 1)) y))
+    (if (< py qy)
+      (= t-proxy null)
+      (else-if (<= qy d-max)
+        (= px (. ([] bottom i) x))
+        (= qx (. ([] bottom (+ i 1)) x))
+        (= t-proxy (+ px (/ (* (- d-max py) (- qx px)) (- qy py))))
+      )
+      (else
+        ; Try the next chain
+        (continue)
+      )
+    )
+    (blank)
+    ; We got a proxy-t
+    (break)
+  )
+  (blank)
+  (if (<= (. ([] top 0) y) d-max)
+    (= t-proxy (. ([] top 0) x))
+  )
+  (blank)
+  (for (in i (..< 0 (- (. top length) 1)))
+    (= py (. ([] top i) y))
+    (= qy (. ([] top (+ i 1)) y))
+    (if (>= py d-min)
+      (= t-val t-proxy)
+      (else-if (> py qy)
+        (= t-val null)
+      )
+      (else-if (>= qy d-min)
+        (= px (. ([] top i) x))
+        (= qx (. ([] top (+ i 1)) x))
+        (= t-val (+ px (/ (* (- d-min py) (- qx px)) (- qy py))))
+      )
+      (else
+        (continue)
+      )
+    )
+    (break)
+  )
+  (blank)
+  (return t-val)
+)
+
+(fn-do + solve-quadratic _
+  (param a _)
+  (param b _)
+  (param c _)
+  (param tolerance _)
+  (probe-count graphics.numeric.quadratic-roots)
+  ; Code ported over and adapted from Uintah library (MIT license).
+  ; If problem is actually linear, return 0 or 1 easy roots
+  (blank)
+  (if (< (call abs a) tolerance)
+    (if (>= (call abs b) tolerance)
+      (return
+        (call CurveRoots
+          (block
+            (arg (/ (- c) b))
+          )
+        )
+      )
+      (else-if (< (call abs c) tolerance)
+        (return (call CurveRoots 0 0 0 -1))
+      )
+      (else
+        (return (call CurveRoots))
+      )
+    )
+  )
+  (blank)
+  (let q (- (* b b) (* 4.0 a c)))
+  (if (< q 0)
+    (return (call CurveRoots))
+  )
+  (blank)
+  (= q (call sqrt q))
+  (*= a 2)
+  (blank)
+  (if (> q 0)
+    (return
+      (call CurveRoots
+        (block
+          (arg (/ (- (- b) q) a))
+          (arg (/ (+ (- b) q) a))
+        )
+      )
+    )
+    (else
+      (return
+        (call CurveRoots
+          (block
+            (arg (/ (- (- b) q) a))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-do + solve-cubic CurveRoots
+  (param a _)
+  (param b _)
+  (param c _)
+  (param d _)
+  (param tolerance _)
+  (probe-count graphics.numeric.cubic-roots)
+  ; Code ported over and adapted from Uintah library (MIT license).
+  (blank)
+  (if (< (call abs a) tolerance)
+    (return (call solve-quadratic b c d tolerance))
+  )
+  (blank)
+  ; Normalize to form: x^3 + b x^2 + c x + d = 0:
+  (/= b a)
+  (/= c a)
+  (/= d a)
+  (blank)
+  ; Compute discriminants
+  (let bb (* b b))
+  (let p (* (/ 1.0 3.0) (+ (* (/ -1.0 3.0) bb) c)))
+  (let q (* (/ 1.0 2.0) (+ (- (* (/ 2.0 27.0) b bb) (* (/ 1.0 3.0) b c)) d)))
+  (blank)
+  ; Use Cardano's formula
+  (let ppp (* p p p))
+  (let dd (+ (* q q) ppp))
+  (blank)
+  ; Substitute x = y - b/3 to eliminate quadric term: x^3 +px + q = 0
+  (/= b 3)
+  (blank)
+  (if (< (call abs dd) tolerance)
+    (if (< (call abs q) tolerance)
+      ; One triple solution
+      (return
+        (call CurveRoots
+          (block
+            (arg (- b))
+          )
+        )
+      )
+      (else
+        ; One single and one double solution
+        (let u (call cbrt (- q)))
+        (return
+          (call CurveRoots
+            (block
+              (arg (- (* 2.0 u) b))
+              (arg (- (- u) b))
+            )
+          )
+        )
+      )
+    )
+    (else-if (< dd 0)
+      ; Casus irreducibilis: three real solutions
+      (let phi (* (/ 1.0 3.0) (call acos (/ (- q) (call sqrt (- ppp))))))
+      (let t (* 2.0 (call sqrt (- p))))
+      (return
+        (call CurveRoots
+          (block
+            (arg (- (* t (call cos phi)) b))
+            (arg (- (* (- t) (call cos (+ phi (/ π 3.0)))) b))
+            (arg (- (* (- t) (call cos (- phi (/ π 3.0)))) b))
+          )
+        )
+      )
+    )
+    (else
+      ; One real solution
+      (let sdd (call sqrt dd))
+      (return
+        (call CurveRoots
+          (block
+            (arg (- (call cbrt (- sdd q)) (call cbrt (+ sdd q)) b))
+          )
+        )
+      )
+    )
+  )
+)

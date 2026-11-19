@@ -1,0 +1,55 @@
+; benchmark.meta description: Measures size-stable edits in a wide vertical Flow layout.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: tui,tui-fps,compile-timing
+(blank)
+(import /tui/box)
+(import /tui/layout)
+(import /tui/primitives)
+(import /tui/text)
+(blank)
+
+(main
+  (<> BenchFlowWideRoot (id: root)
+    (<> BenchFlowWideCell (id: changing))
+    (for (in index (..< 1 640))
+      (<> BenchFlowWideCell)
+    )
+  )
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (= (. root bounds) (call Rect 0 0 120 40))
+  (call (. root update-layout))
+  (blank)
+  (let checksum Size 0)
+  (for (in frame (..< 0 64))
+    (+= (. changing revision) 1)
+    (call (. root update-layout))
+    (probe-count tui.bench.mutations)
+    (probe-count tui.bench.frames)
+    (+= checksum (+ (. root inner-height) (. root inner-width) frame))
+  )
+  (blank)
+  (print (str "bench-result tui/layout-flow-wide checksum=" checksum))
+)
+
+(type + BenchFlowWideRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (blank)
+  (rule This
+    (= layout flow-col)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
+
+(type + BenchFlowWideCell (is Box)
+  (prop + revision Size (= 0))
+  (blank)
+  (depends invalidate-content-size revision)
+  (fn-expr + measured-content-size PSize
+    (param query MeasureQuery)
+    (call PSize 7 1)
+  )
+)

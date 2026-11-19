@@ -1,0 +1,134 @@
+(import ./binary)
+
+(type + ProtobufWireType (is U8)
+  (variant varint (= 0))
+  (variant fixed64 (= 1))
+  (variant length-delimited (= 2))
+  (variant fixed32 (= 5))
+)
+
+(type + ProtobufWriter
+  (prop _ writer _ (= (call ByteWriter)))
+  (fn-do + varint _
+    (param field U32)
+    (param value U64)
+    (call tag field .varint)
+    (call (. writer varint) value)
+  )
+  (fn-do + int _
+    (param field U32)
+    (param value I64)
+    (call varint field (as value U64))
+  )
+  (fn-do + bool _
+    (param field U32)
+    (param value Bool)
+    (call varint field (if-expr value 1 0))
+  )
+  (fn-do + double _
+    (param field U32)
+    (param value F64)
+    (call tag field .fixed64)
+    (call (. writer f64-le) value)
+  )
+  (fn-do + float _
+    (param field U32)
+    (param value F32)
+    (call tag field .fixed32)
+    (call (. writer f32-le) value)
+  )
+  (fn-do + bytes _
+    (param field U32)
+    (param value (of ImmutableArray Byte))
+    (call tag field .length-delimited)
+    (call (. writer varint) (as (. value size) U64))
+    (call (. writer bytes) value)
+  )
+  (fn-do + string _
+    (param field U32)
+    (param value String)
+    (call bytes field (call byte-view value))
+  )
+  (fn-do + message _
+    (param field U32)
+    (param value ProtobufWriter)
+    (call bytes field (call (. value finish)))
+  )
+  (fn-expr + finish ([] Byte)
+    (call (. writer finish))
+  )
+  (fn-do _ tag _
+    (param field U32)
+    (param wire-type ProtobufWireType)
+    (call (. writer varint) (/or/ (/lshift/ (as field U64) 3) (as wire-type U64)))
+  )
+)
+
+(type + ProtobufField (is Tuple)
+  (prop + number U32)
+  (prop + wire-type ProtobufWireType)
+  (prop + value U64)
+  (prop + data ([] Byte))
+  (fn-expr + int I64 :get
+    (as value I64)
+  )
+  (fn-expr + bool Bool :get
+    (!= value 0)
+  )
+  (fn-expr + double F64 :get
+    ([] (as &cell (of CPointer F64)) 0)
+    (where
+      (lazy cell value)
+    )
+  )
+  (fn-expr + float F32 :get
+    ([] (as &cell (of CPointer F32)) 0)
+    (where
+      (lazy cell (as value U32))
+    )
+  )
+  (fn-expr + string String (?! SyntaxError)
+    (call utf8-string data)
+  )
+  (fn-expr + message ProtobufReader :get
+    (call ProtobufReader data)
+  )
+)
+
+(type + ProtobufReader
+  (prop _ reader ByteReader)
+  (fn-do + This _
+    (param data ([] Byte))
+    (= reader (call ByteReader data))
+  )
+  (fn-do + next (? ProtobufField) (?! SyntaxError)
+    (return-if null (if (. reader is-done)))
+    (let key (call (. reader varint)))
+    (let number (as (/zrshift/ key 3) U32))
+    (let wire-type (as (/and/ key 7) ProtobufWireType))
+    (throw (call SyntaxError "A protobuf field has number 0") (if (== number 0)))
+    (return
+      (match wire-type
+        (case= .varint
+          (call ProtobufField number .varint (call (. reader varint)) ([] Byte 0))
+        )
+        (case= .fixed64
+          (call ProtobufField number .fixed64 (call (. reader u64-le)) ([] Byte 0))
+        )
+        (case= .fixed32
+          (call ProtobufField number .fixed32 (call (. reader u32-le)) ([] Byte 0))
+        )
+        (case= .length-delimited
+          (call delimited number)
+        )
+        (throw (call SyntaxError (str "Protobuf field " number " has wire type " (/and/ key 7) ", which is not supported")))
+      )
+    )
+  )
+  (fn-do _ delimited ProtobufField (?! SyntaxError)
+    (param number U32)
+    (let size (call (. reader varint)))
+    (throw (call SyntaxError (str "Protobuf field " number " claims " size " bytes, past the end of its message")) (if (> size (. reader remaining))))
+    (return (call ProtobufField number .length-delimited size (call (. reader bytes) (as size Size))))
+  )
+)

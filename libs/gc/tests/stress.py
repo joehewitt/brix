@@ -24,7 +24,7 @@ MEMORY_CASES = (
 
 
 def fixture(name):
-    return os.path.join(FIXTURES, name + '.yumi')
+    return os.path.join(FIXTURES, name + '.bx')
 
 
 def run_memory_cases(case, environment):

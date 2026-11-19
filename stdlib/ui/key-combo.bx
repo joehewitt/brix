@@ -1,0 +1,591 @@
+(import ./input)
+(import /stream/aggregate)
+
+(type + KeyTrigger (is Union)
+  (variant none)
+  (variant key Key)
+  (variant characters String)
+)
+
+(type + KeyModifier (is Union)
+  (variant shift)
+  (variant control)
+  (variant option)
+  (variant command)
+  (fn-expr + (infix this + (param that KeyModifier)) _
+    (+ (call KeyCombo this) that)
+  )
+  (fn-expr + (infix this + (param combo KeyCombo)) _
+    (+ (call KeyCombo this) combo)
+  )
+  (fn-expr + (infix this + (param key Key)) _
+    (+ (call KeyCombo this) key)
+  )
+  (fn-expr + (infix this + (param characters String)) _
+    (+ (call KeyCombo this) characters)
+  )
+)
+
+(type + KeyCombo (is Tuple)
+  (prop + modifiers PointerModifiers (= (call PointerModifiers)))
+  (prop + trigger KeyTrigger (= (. KeyTrigger none)))
+  (prop + display-label _ (=> (call key-combo-label this (call key-combo-trigger-label trigger))))
+  (prop + symbol-label _ (=> (call key-combo-symbol-label this)))
+  (fn-do + This _)
+  (fn-do + This _
+    (param key Key)
+    (return (call key-combo-key key))
+  )
+  (fn-do + This _
+    (param characters String)
+    (return
+      (match characters
+        (~ This
+          it
+        )
+        (default
+          (call key-combo-characters characters)
+        )
+      )
+    )
+  )
+  (fn-do + This _
+    (param modifier KeyModifier)
+    (return (call key-combo-from-modifier modifier))
+  )
+  (fn-expr + This _ (over: Char)
+    (~ (seq (: mods (* \key-combo-modifier-plus)) (: pressed \key-combo-trigger) \key-combo-ws)
+      (call reduce pressed mods (:using (=> (combo modifier) (+ combo modifier))))
+    )
+    (where
+      (lazy key-combo-modifier-plus KeyCombo
+        (pattern
+          (~ (seq \key-combo-ws (: modifier \key-combo-modifier) \key-combo-ws "+" \key-combo-ws)
+            modifier
+          )
+        )
+      )
+      (blank)
+      (lazy key-combo-modifier KeyCombo
+        (pattern
+          (~ (| "Shift" "shift")
+            (call key-combo-modifiers true)
+          )
+          (~ (| "Ctrl" "ctrl" "Control" "control")
+            (call key-combo-modifiers false true)
+          )
+          (~ (| "Option" "option" "Alt" "alt")
+            (call key-combo-modifiers false false true)
+          )
+          (~ (| "Cmd" "cmd" "Command" "command" "Meta" "meta")
+            (call key-combo-modifiers false false false true)
+          )
+        )
+      )
+      (blank)
+      (lazy key-combo-trigger KeyCombo
+        (pattern
+          (~ (| "Tab" "tab")
+            (call key-combo-key (. Key tab))
+          )
+          (~ (| "Enter" "enter" "Return" "return")
+            (call key-combo-key (. Key enter))
+          )
+          (~ (| "Esc" "esc" "Escape" "escape")
+            (call key-combo-key (. Key escape))
+          )
+          (~ (| "Space" "space")
+            (call key-combo-key (. Key space))
+          )
+          (~ (| "Home" "home")
+            (call key-combo-key (. Key home))
+          )
+          (~ (| "End" "end")
+            (call key-combo-key (. Key end))
+          )
+          (~ (| "PageUp" "pageUp" "Page-Up" "page-up")
+            (call key-combo-key (. Key page-up))
+          )
+          (~ (| "PageDown" "pageDown" "Page-Down" "page-down")
+            (call key-combo-key (. Key page-down))
+          )
+          (~ (| "Backspace" "backspace")
+            (call key-combo-key (. Key backspace))
+          )
+          (~ (| "Delete" "delete")
+            (call key-combo-key (. Key delete))
+          )
+          (~ (| "Up" "up" "ArrowUp" "arrowUp" "Arrow-Up" "arrow-up")
+            (call key-combo-key (. Key arrow-up))
+          )
+          (~ (| "Down" "down" "ArrowDown" "arrowDown" "Arrow-Down" "arrow-down")
+            (call key-combo-key (. Key arrow-down))
+          )
+          (~ (| "Left" "left" "ArrowLeft" "arrowLeft" "Arrow-Left" "arrow-left")
+            (call key-combo-key (. Key arrow-left))
+          )
+          (~ (| "Right" "right" "ArrowRight" "arrowRight" "Arrow-Right" "arrow-right")
+            (call key-combo-key (. Key arrow-right))
+          )
+          (~ (seq (| "F" "f") (: number I32))
+            (call key-combo-function-key number)
+          )
+          (~ (: char .)
+            (call key-combo-characters char)
+          )
+        )
+      )
+      (blank)
+      (lazy key-combo-ws
+        (pattern
+          (~ (* (| " " "\t")))
+        )
+      )
+    )
+  )
+  (fn-to-expr + String
+    (call key-combo-label this (call key-combo-trigger-spec trigger))
+  )
+  (fn-from-expr + (: characters String)
+    (call This characters)
+  )
+  (fn-from-expr + (: character Char)
+    (call key-combo-characters (str character))
+  )
+  (fn-from-expr + (: key Key)
+    (call This key)
+  )
+  (fn-from-expr + (: modifier KeyModifier)
+    (call This modifier)
+  )
+  (fn-expr + (infix this + (param that KeyCombo)) _
+    (call KeyCombo (call key-combo-merged-modifiers this that) merged-trigger)
+    (where
+      (lazy merged-trigger (if-expr (!= (. that trigger) (. KeyTrigger none)) (. that trigger) (. this trigger)))
+    )
+  )
+  (fn-expr + (infix this + (param modifier KeyModifier)) _
+    (+ this (call KeyCombo modifier))
+  )
+  (fn-expr + (infix this + (param key Key)) _
+    (+ this (call KeyCombo key))
+  )
+  (fn-expr + (infix this + (param characters String)) _
+    (+ this (call key-combo-characters characters))
+  )
+  (fn-expr + matches-key _
+    (param key Key)
+    (param characters String)
+    (param modifiers PointerModifiers)
+    (match trigger
+      (case (call (. KeyTrigger key) expected)
+        (and (== expected key) (call key-combo-modifiers-match this modifiers))
+      )
+      (case (call (. KeyTrigger characters) expected)
+        (and (call key-combo-characters-match expected characters) modifiers-fit)
+      )
+      (default
+        false
+      )
+    )
+    (where
+      (lazy modifiers-fit (call key-combo-character-modifiers-match this modifiers))
+    )
+  )
+  (fn-expr + matches-text _
+    (param text String)
+    (match trigger
+      (case (call (. KeyTrigger characters) expected)
+        (and (not wants-command-modifier) (call key-combo-characters-match expected text))
+      )
+      (default
+        false
+      )
+      (blank)
+      (lazy wants-command-modifier (or (. modifiers control) (. modifiers option) (. modifiers command)))
+    )
+  )
+  (fn-expr + is-modifier-only _
+    (and (== trigger (. KeyTrigger none)) has-modifier)
+    (where
+      (lazy has-modifier (or (. modifiers shift) (. modifiers control) (. modifiers option) (. modifiers command)))
+    )
+  )
+  (fn-expr + matches-modifiers _
+    (param pressed PointerModifiers)
+    (and (call is-modifier-only) (call key-combo-modifiers-match this pressed))
+  )
+  (fn-expr + is-printable-input _
+    (match trigger
+      (case (call (. KeyTrigger characters) characters)
+        (and (not (. modifiers control)) (not (. modifiers option)) (not (. modifiers command)))
+      )
+      (case (call (. KeyTrigger key) pressed)
+        (and (== pressed (. Key space)) (not (. modifiers control)) (not (. modifiers option)) (not (. modifiers command)))
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + is-text-editing _
+    (match trigger
+      (case (call (. KeyTrigger key) pressed)
+        (and (call text-editing-key pressed) (not (. modifiers control)) (not is-command-enter))
+        (blank)
+        (lazy is-command-enter (and (== pressed (. Key enter)) (. modifiers command)))
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr + is-text-input _
+    (or (call is-printable-input) (call is-text-editing))
+  )
+  (fn-expr + is-focus-navigation _
+    (== trigger (call (. KeyTrigger key) (. Key tab)))
+  )
+)
+
+(fn-expr _ key-combo-function-key _
+  (param number I32)
+  (case? (and (>= number 1) (<= number 16))
+    (call key-combo-key (call (. Key function-key) (as number U32)))
+  )
+  (default
+    (call KeyCombo)
+  )
+)
+
+(fn-expr _ key-combo-from-modifier _
+  (param modifier KeyModifier)
+  (match modifier
+    (case (. KeyModifier shift)
+      (call key-combo-modifiers true)
+    )
+    (case (. KeyModifier control)
+      (call key-combo-modifiers false true)
+    )
+    (case (. KeyModifier option)
+      (call key-combo-modifiers false false true)
+    )
+    (case (. KeyModifier command)
+      (call key-combo-modifiers false false false true)
+    )
+  )
+)
+
+(fn-expr _ key-combo-modifiers _
+  (param shift Bool (= false))
+  (param control Bool (= false))
+  (param option Bool (= false))
+  (param command Bool (= false))
+  (call KeyCombo (call PointerModifiers shift control option command) (. KeyTrigger none))
+)
+
+(fn-expr _ key-combo-key _
+  (param key Key)
+  (call KeyCombo (call PointerModifiers) (call (. KeyTrigger key) key))
+)
+
+(fn-expr _ key-combo-characters _
+  (param characters String)
+  (call KeyCombo (call PointerModifiers) (call (. KeyTrigger characters) characters))
+)
+
+(fn-expr _ key-combo-merged-modifiers _
+  (param left KeyCombo)
+  (param right KeyCombo)
+  (call PointerModifiers
+    (block
+      (arg (or (. left modifiers shift) (. right modifiers shift)))
+      (arg (or (. left modifiers control) (. right modifiers control)))
+      (arg (or (. left modifiers option) (. right modifiers option)))
+      (arg (or (. left modifiers command) (. right modifiers command)))
+    )
+  )
+)
+
+(fn-expr _ key-combo-modifiers-match _
+  (param combo KeyCombo)
+  (param event PointerModifiers)
+  (case? (and shift-matches control-matches option-matches)
+    (== (. combo modifiers command) (. event command))
+  )
+  (default
+    false
+  )
+  (where
+    (lazy shift-matches (== (. combo modifiers shift) (. event shift)))
+    (lazy control-matches (== (. combo modifiers control) (. event control)))
+    (lazy option-matches (== (. combo modifiers option) (. event option)))
+  )
+)
+
+(fn-expr _ key-combo-characters-match _
+  (param expected String)
+  (param actual String)
+  (case? (or (not expected) (not actual))
+    false
+  )
+  (default
+    (== (. expected lowercased) (. actual lowercased))
+  )
+)
+
+(fn-expr _ key-combo-character-modifiers-match _
+  (param combo KeyCombo)
+  (param event PointerModifiers)
+  (case? (and shift-matches control-matches option-matches)
+    (== (. combo modifiers command) (. event command))
+  )
+  (default
+    false
+  )
+  (where
+    (lazy shift-matches (or (not (. combo modifiers shift)) (. event shift)))
+    (lazy control-matches (== (. combo modifiers control) (. event control)))
+    (lazy option-matches (== (. combo modifiers option) (. event option)))
+  )
+)
+
+(fn-expr _ key-combo-label _
+  (param combo KeyCombo)
+  (param trigger String)
+  (call (. "+" join) (call key-combo-labels combo trigger))
+)
+
+(fn-expr _ key-combo-labels (list String)
+  (param combo KeyCombo)
+  (param trigger String)
+  (item? (only-if "Cmd" (if (. combo modifiers command))))
+  (item? (only-if "Option" (if (. combo modifiers option))))
+  (item? (only-if "Ctrl" (if (. combo modifiers control))))
+  (item? (only-if "Shift" (if (. combo modifiers shift))))
+  (item? (only-if trigger (if trigger)))
+)
+
+(fn-expr _ key-combo-symbol-label _
+  (param combo KeyCombo)
+  (call (. "" join) (call key-combo-symbols combo))
+)
+
+(fn-expr _ key-combo-symbols (list String)
+  (param combo KeyCombo)
+  (item? (only-if "⌃" (if (. combo modifiers control))))
+  (item? (only-if "⌥" (if (. combo modifiers option))))
+  (item? (only-if "⇧" (if (. combo modifiers shift))))
+  (item? (only-if "⌘" (if (. combo modifiers command))))
+  (item? (only-if (call key-combo-trigger-symbol (. combo trigger)) (if (!= (. combo trigger) (. KeyTrigger none)))))
+)
+
+(fn-expr _ key-combo-trigger-symbol _
+  (param trigger KeyTrigger)
+  (match trigger
+    (case (call (. KeyTrigger characters) characters)
+      (. characters uppercased)
+    )
+    (case (call (. KeyTrigger key) key)
+      (call key-combo-key-symbol key)
+    )
+    (default
+      ""
+    )
+  )
+)
+
+(fn-expr _ key-combo-key-symbol _
+  (param key Key)
+  (match key
+    (case (. Key tab)
+      "⇥"
+    )
+    (case (. Key enter)
+      "↩"
+    )
+    (case (. Key escape)
+      "⎋"
+    )
+    (case (. Key space)
+      "Space"
+    )
+    (case (. Key arrow-up)
+      "↑"
+    )
+    (case (. Key arrow-down)
+      "↓"
+    )
+    (case (. Key arrow-left)
+      "←"
+    )
+    (case (. Key arrow-right)
+      "→"
+    )
+    (case (. Key home)
+      "↖"
+    )
+    (case (. Key end)
+      "↘"
+    )
+    (case (. Key page-up)
+      "⇞"
+    )
+    (case (. Key page-down)
+      "⇟"
+    )
+    (case (. Key backspace)
+      "⌫"
+    )
+    (case (. Key delete)
+      "⌦"
+    )
+    (case (call (. Key function-key) index)
+      (str "F" index)
+    )
+    (default
+      ""
+    )
+  )
+)
+
+(fn-expr _ key-combo-trigger-label _
+  (param trigger KeyTrigger)
+  (match trigger
+    (case (call (. KeyTrigger characters) characters)
+      (. characters uppercased)
+    )
+    (case (call (. KeyTrigger key) key)
+      (call key-combo-key-label key)
+    )
+    (default
+      ""
+    )
+  )
+)
+
+(fn-expr _ key-combo-trigger-spec _
+  (param trigger KeyTrigger)
+  (match trigger
+    (case (call (. KeyTrigger characters) characters)
+      characters
+    )
+    (case (call (. KeyTrigger key) key)
+      (call key-combo-key-spec key)
+    )
+    (default
+      ""
+    )
+  )
+)
+
+(fn-expr _ key-combo-key-spec _
+  (param key Key)
+  (match key
+    (case (. Key page-up)
+      "PageUp"
+    )
+    (case (. Key page-down)
+      "PageDown"
+    )
+    (default
+      (call key-combo-key-label key)
+    )
+  )
+)
+
+(fn-expr _ key-combo-key-label _
+  (param key Key)
+  (match key
+    (case (. Key tab)
+      "Tab"
+    )
+    (case (. Key enter)
+      "Enter"
+    )
+    (case (. Key escape)
+      "Esc"
+    )
+    (case (. Key space)
+      "Space"
+    )
+    (case (. Key arrow-up)
+      "Up"
+    )
+    (case (. Key arrow-down)
+      "Down"
+    )
+    (case (. Key arrow-left)
+      "Left"
+    )
+    (case (. Key arrow-right)
+      "Right"
+    )
+    (case (. Key home)
+      "Home"
+    )
+    (case (. Key end)
+      "End"
+    )
+    (case (. Key page-up)
+      "Page Up"
+    )
+    (case (. Key page-down)
+      "Page Down"
+    )
+    (case (. Key backspace)
+      "Backspace"
+    )
+    (case (. Key delete)
+      "Delete"
+    )
+    (case (call (. Key function-key) index)
+      (str "F" index)
+    )
+    (default
+      ""
+    )
+  )
+)
+
+(fn-expr + text-editing-key _
+  (param key Key)
+  (match key
+    (case= (. Key backspace)
+      true
+    )
+    (case= (. Key delete)
+      true
+    )
+    (case= (. Key arrow-left)
+      true
+    )
+    (case= (. Key arrow-right)
+      true
+    )
+    (case= (. Key arrow-up)
+      true
+    )
+    (case= (. Key arrow-down)
+      true
+    )
+    (case= (. Key home)
+      true
+    )
+    (case= (. Key end)
+      true
+    )
+    (case= (. Key page-up)
+      true
+    )
+    (case= (. Key page-down)
+      true
+    )
+    (case= (. Key enter)
+      true
+    )
+    (default
+      false
+    )
+  )
+)

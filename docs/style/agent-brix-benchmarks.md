@@ -7,7 +7,7 @@ that code got faster or uses less, and probes (`agent-brix-probes.md`) to explai
 ## Writing A Benchmark
 
 Put each benchmark in a suite folder inside a `bench` folder beside the code it measures, such as
-`parser/bench/tokens/split-words.yumi`. Each folder inside a `bench` folder is a suite named after
+`parser/bench/tokens/split-words.bx`. Each folder inside a `bench` folder is a suite named after
 it, so `tokens` here, except `bench/fixtures`, which holds code and data the benchmarks share. Two
 suites cannot have the same name.
 

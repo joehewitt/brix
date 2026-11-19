@@ -1,0 +1,230 @@
+(import ./model)
+(import ./query)
+(import /data/json)
+(import /probes/console)
+(import /probes/model)
+(import /probes/trace)
+
+(type + Output
+  (prop + format _ (= "text"))
+  (prop + limit (? Size))
+  (prop + offset Size (= 0))
+  (blank)
+  (prop _ collected (list JSON))
+  (fn-expr + is-text _ :get
+    (== format "text")
+  )
+  (fn-do + line _
+    (param text String)
+    (if is-text
+      (print text)
+    )
+  )
+  (fn-do + record _
+    (param value JSON)
+    (if (== format "jsonl")
+      (print (call to-json value))
+      (else-if (== format "json")
+        (+= collected value)
+      )
+    )
+  )
+  (fn-do + value _
+    (param value JSON)
+    (if (or (== format "json") (== format "jsonl"))
+      (print (call to-json value))
+    )
+  )
+  (fn-do + finish _
+    (if (and (== format "json") (!= (. collected length) 0))
+      (print (call to-json (as collected JSON)))
+    )
+  )
+  (fn-do + page (list Size)
+    (param count Size)
+    (param fallback Size)
+    (let shown (?? limit fallback))
+    (let first (if-expr (< offset count) offset count))
+    (let last (if-expr (< (+ first shown) count) (+ first shown) count))
+    (let positions (list Size))
+    (for (in position (..< first last))
+      (+= positions position)
+    )
+    (return positions)
+  )
+  (fn-do + more _
+    (param count Size)
+    (param fallback Size)
+    (param noun String)
+    (let shown (?? limit fallback))
+    (let next (+ offset shown))
+    (return-if (if (or (>= next count) (not is-text))))
+    (print (str "… +" (- count next) " more " noun " (--offset " next ", --limit N, or --format jsonl for all)"))
+  )
+)
+
+(type + Table
+  (prop + headers (list String))
+  (prop + rights (list Bool))
+  (blank)
+  (prop _ rows (list (list String)))
+  (fn-do + This _
+    (param headers (list String))
+    (param rights (list Bool) (= (call (of List Bool))))
+  )
+  (fn-do + add _
+    (param cells (list String))
+    (+= rows cells)
+  )
+  (fn-expr + length Size :get
+    (. rows length)
+  )
+  (fn-do + lines (list String)
+    (let widths (list Size))
+    (for (in header headers)
+      (+= widths (. header length))
+    )
+    (for (in cells rows)
+      (for (in index (..< 0 (. cells length)))
+        (if (and (< index (. widths length)) (> (. ([] cells index) length) ([] widths index)))
+          (= ([] widths index) (. ([] cells index) length))
+        )
+      )
+    )
+    (return
+      (call (of List String)
+        (block
+          (item (call cells-line headers widths))
+          (spread (in (call cells-line each widths) rows))
+        )
+      )
+    )
+  )
+  (fn-expr _ cells-line String
+    (param cells (list String))
+    (param widths (list Size))
+    (call (. "  " join) (in (call cell-text cells widths each) (..< 0 (. cells length))))
+  )
+  (fn-expr _ cell-text String
+    (param cells (list String))
+    (param widths (list Size))
+    (param index Index)
+    (case? (and (< index (. rights length)) ([] rights index))
+      (str gap cell)
+    )
+    (case? (== index (- (. cells length) 1))
+      cell
+    )
+    (default
+      (str cell gap)
+    )
+    (where
+      (lazy cell ([] cells index))
+      (lazy width (if-expr (< index (. widths length)) ([] widths index) (. cell length)))
+      (lazy gap (if-expr (> width (. cell length)) (* " " (- width (. cell length))) ""))
+    )
+  )
+)
+
+(fn-expr + kind-name String
+  (param kind TraceRowKind)
+  (match kind
+    (case= .log
+      "log"
+    )
+    (case= .event
+      "event"
+    )
+    (case= .begin
+      "begin"
+    )
+    (case= .end
+      "end"
+    )
+    (default
+      "system"
+    )
+  )
+)
+
+(fn-expr + row-line String
+  (param row TraceRow)
+  (str head padding stamp "  " indent mark tag (. row text) took place)
+  (where
+    (lazy head (str "#" (. row index)))
+    (lazy stamp (call duration-text (. row time)))
+    (lazy room (- 14 (. head length) (. stamp length)))
+    (lazy padding (* " " (if-expr (> room 2) room 2)))
+    (lazy indent (* "  " (. row depth)))
+    (lazy mark (if-expr (== (. row kind) (. TraceRowKind begin)) "+ " (if-expr (== (. row kind) (. TraceRowKind end)) "- " "")))
+    (lazy took (if-expr (and (== (. row kind) (. TraceRowKind end)) (. row duration)) (str " " (call duration-text (. row duration))) ""))
+    (lazy tag (if-expr (and (!= (. row key) "") (== (. row kind) (. TraceRowKind log))) (str "[" (. row key) "] ") ""))
+    (lazy place (if-expr (!= (. row location) "") (str "  " (. row location)) ""))
+  )
+)
+
+(fn-do + row-json JSON
+  (param row TraceRow)
+  (param types (map U16 String))
+  (let record
+    (call (of Map String JSON)
+      (block
+        (entry "index" (as (as (. row index) Int) JSON))
+        (entry "kind" (as (call kind-name (. row kind)) JSON))
+        (entry "time_ns" (as (as (. row time) Int) JSON))
+        (entry "key" (as (. row key) JSON))
+        (entry "label" (as (. row label) JSON))
+        (entry "text" (as (. row text) JSON))
+      )
+    )
+  )
+  (let fields (call (of Map String JSON)))
+  (for (in index (..< 0 (. row fields length)))
+    (if (< index (. row values length))
+      (= ([] fields ([] (. row fields) index)) (call value-json ([] (. row values) index) types))
+    )
+  )
+  (= ([] record "fields") fields)
+  (= ([] record "location") (. row location))
+  (= ([] record "depth") (as (. row depth) Int))
+  (if (. row duration)
+    (= ([] record "duration_ns") (as (. row duration) Int))
+  )
+  (if (!= (. row owner) "")
+    (= ([] record "owner") (. row owner))
+  )
+  (return record)
+)
+
+(fn-do + value-json JSON
+  (param value TraceValue)
+  (param types (map U16 String))
+  (match? value
+    (case (call .truth truth)
+      (return truth)
+    )
+    (case (call .integer integer)
+      (return (as integer Int))
+    )
+    (case (call .unsigned unsigned)
+      (return (as unsigned Int))
+    )
+    (case (call .real real)
+      (return real)
+    )
+    (case (call .text text)
+      (return text)
+    )
+  )
+  (return (call value-text value types))
+)
+
+(fn-expr + number-json JSON
+  (param value F64)
+  (case? (== (as (as value I64) F64) value)
+    (as (as (as value I64) Int) JSON)
+  )
+  (default
+    (as value JSON)
+  )
+)

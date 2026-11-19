@@ -1,0 +1,541 @@
+(import ./dns)
+(import ./http)
+(import ./socket)
+(import ./sse)
+(import ./websocket)
+(import /core/tokenstream)
+(import /data)
+(import /os/file)
+(import /os/signal)
+(import /stream/filter)
+(import /time/deadline)
+(import /time/duration)
+(blank)
+(prop _ http-accept-retry-delay Milliseconds (= 5ms))
+(prop _ http-accept-retry-limit Milliseconds (= 1000ms))
+
+(type + HTTPHandler (is (fn-type HTTPResponse (?! Error) (param request HTTPRequest))))
+
+(type + Route
+  (prop + path String)
+  (prop + get (? HTTPHandler))
+  (prop + post (? HTTPHandler))
+  (prop + put (? HTTPHandler))
+  (prop + patch (? HTTPHandler))
+  (prop + delete (? HTTPHandler))
+  (prop + websocket (? WebSocketHandler))
+  (prop + protocols (list String))
+  (prop + routes (list Route))
+  (fn-do + This _
+    (param path String)
+  )
+  (fn-do + (infix this += (param route Route)) _
+    (+= routes route)
+    (return route)
+  )
+  (fn-expr + handler (? HTTPHandler)
+    (param method HTTPMethod)
+    (match? method
+      (case .get
+        get
+      )
+      (case .head
+        get
+      )
+      (case .post
+        post
+      )
+      (case .put
+        put
+      )
+      (case .patch
+        patch
+      )
+      (case .delete
+        delete
+      )
+    )
+  )
+  (fn-expr + has-handlers _ :get
+    (or get post put patch delete websocket)
+  )
+  (fn-expr + allowed-methods String :get
+    (call (. ", " join) methods)
+    (where
+      (lazy methods
+        (block
+          (item? (only-if "GET, HEAD" (if get)))
+          (item? (only-if "POST" (if post)))
+          (item? (only-if "PUT" (if put)))
+          (item? (only-if "PATCH" (if patch)))
+          (item? (only-if "DELETE" (if delete)))
+        )
+      )
+    )
+  )
+)
+
+(type + HTTPService
+  (fn-do + respond HTTPResponse (?! Error)
+    (param request HTTPRequest)
+    (let route (. request route))
+    (return-if (call HTTPResponse (. HTTPStatus not-found)) (if (not route)))
+    (let handler (call (. route handler) (. request method)))
+    (return (if-expr handler (call handler request) (call unhandled route)))
+  )
+  (fn-expr _ unhandled HTTPResponse
+    (param route Route)
+    (case? (. route websocket)
+      (call HTTPResponse (. HTTPStatus upgrade-required) null upgrade)
+    )
+    (default
+      (call HTTPResponse (. HTTPStatus method-not-allowed) null allow)
+    )
+    (where
+      (lazy upgrade (list HTTPHeader)
+        (block
+          (item (tuple "Upgrade" "websocket"))
+        )
+      )
+      (lazy allow (list HTTPHeader)
+        (block
+          (item (tuple "Allow" (. route allowed-methods)))
+        )
+      )
+    )
+  )
+)
+
+(type + HTTPServer
+  (implements Closable)
+  (prop + host _ (= "127.0.0.1"))
+  (prop + port Port (= 8080))
+  (prop + service _ (= (call HTTPService)))
+  (prop + routes (list Route))
+  (prop + read-timeout Seconds (= 30s))
+  (prop + write-timeout Seconds (= 30s))
+  (prop + max-connections Size (= 10000))
+  (prop + max-header-size Size (= 0x10000))
+  (prop + max-body-size Size (= 0x100000))
+  (prop + websocket-ping-interval Seconds (= 30s))
+  (prop + worker (? Worker))
+  (blank)
+  (prop _ listener (? TCPListener))
+  (prop _ route-map (? HTTPRouteMap))
+  (prop _ connections (list HTTPServerConnection))
+  (prop _ accept-waiter (? Task))
+  (prop _ lock Mutex)
+  (fn-do + (infix this += (param route Route)) _
+    (+= routes route)
+    (return route)
+  )
+  (fn-expr + is-running _ :get
+    (!= listener null)
+  )
+  (fn-do + start _ (?! Error)
+    (return-if (if listener))
+    (blank)
+    (let opened (call TCPListener port host))
+    (= listener opened)
+    (= port (. opened port))
+    (= route-map (call HTTPRouteMap routes))
+    (if worker
+      (do-new (worker: worker)
+        (inline (call accept-connections opened))
+      )
+      (else
+        (do-new
+          (inline (call accept-connections opened))
+        )
+      )
+    )
+  )
+  (fn-do + run _ (?! Error)
+    (call start)
+    (for (on sig sig-int)
+      (call close)
+      (break)
+    )
+  )
+  (fn-do + close _
+    (let current (call take-listener))
+    (return-if (if (not current)))
+    (blank)
+    (catch (call (. current close)))
+    (call close-connections)
+    (call wake-acceptor)
+  )
+  (fn-do _ accept-connections _
+    (param opened TCPListener)
+    (let delay http-accept-retry-delay)
+    (while (call is-accepting opened)
+      (if (call wait-for-capacity)
+        (call check-task-cancelation (call (. (call Task) suspend)))
+        (else
+          (let connection
+            (call (. opened accept)
+              (block
+                (on-error (: failure Error)
+                  (do
+                    (<- stderr (str "HTTP server failed to accept a connection: " failure "\n"))
+                    (call (. delay wait))
+                    (= delay (if-expr (< (* delay 2) http-accept-retry-limit) (* delay 2) http-accept-retry-limit))
+                  )
+                  null
+                )
+              )
+            )
+          )
+          (if connection
+            (= delay http-accept-retry-delay)
+            (let served (call HTTPServerConnection connection write-timeout))
+            (call track served)
+            (do-new
+              (inline (call serve-connection served))
+              (on-failure failure
+                (<- stderr (str "HTTP connection failed: " failure "\n"))
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  (fn-do _ is-accepting Bool
+    (param opened TCPListener)
+    (use lock)
+    (return (and (== listener opened) (not (. opened is-closed))))
+  )
+  (fn-do _ wait-for-capacity Bool
+    (use lock)
+    (return-if false (if (< (. connections length) max-connections)))
+    (= accept-waiter (call Task))
+    (return true)
+  )
+  (fn-do _ take-listener (? TCPListener)
+    (use lock)
+    (let current listener)
+    (= listener null)
+    (return current)
+  )
+  (fn-do _ close-connections _
+    (use lock)
+    (for (in connection connections)
+      (catch (call (. connection socket close)))
+    )
+    (call (. connections clear))
+  )
+  (fn-do _ track _
+    (param connection HTTPServerConnection)
+    (use lock)
+    (= (. connection slot) (. connections length))
+    (+= connections connection)
+  )
+  (fn-do _ wake-acceptor _
+    (let waiter (call take-accept-waiter))
+    (call (?. waiter resume-later))
+  )
+  (fn-do _ take-accept-waiter (? Task)
+    (use lock)
+    (let waiter accept-waiter)
+    (= accept-waiter null)
+    (return waiter)
+  )
+  (fn-do _ serve-connection _
+    (param connection HTTPServerConnection)
+    (finally
+      (if (and (not (. (call Task) is-canceled)) (not (. (call Task) is-terminating)) (. (call Task) failure) (not (. connection is-responding)))
+        (catch (call reject connection (. HTTPStatus internal-server-error)))
+      )
+      (call forget connection)
+      (catch (call (. connection socket close)))
+      (call wake-acceptor)
+    )
+    (catch (call serve-requests connection))
+  )
+  (fn-do _ forget _
+    (param connection HTTPServerConnection)
+    (use lock)
+    (let slot (. connection slot))
+    (return-if (if (or (>= slot (. connections length)) (!= (as ([] connections slot) Pointer) (as connection Pointer)))))
+    (blank)
+    (let last (call (. connections pop)))
+    (if (< slot (. connections length))
+      (= ([] connections slot) last)
+      (= (. last slot) slot)
+    )
+  )
+  (fn-do _ serve-requests _ (?! Error)
+    (param connection HTTPServerConnection)
+    (let socket (. connection socket))
+    (let stream (call (of ChunkedTokenStream Byte) socket))
+    (while true
+      (= (. connection is-responding) false)
+      (= (. socket read-deadline) (call Deadline read-timeout))
+      (let request
+        (call read-http-request stream max-header-size max-body-size
+          (block
+            (on-error SyntaxError
+              (do
+                (call reject connection (. HTTPStatus bad-request))
+              )
+              null
+            )
+            (on-error SizeLimitError
+              (do
+                (call reject connection (. HTTPStatus request-header-fields-too-large))
+              )
+              null
+            )
+          )
+        )
+      )
+      (return-if (if (not request)))
+      (blank)
+      (if (> (call declared-body-size request) max-body-size)
+        (call reject connection (. HTTPStatus content-too-large))
+        (return)
+      )
+      (blank)
+      (= (. socket read-deadline) (call Deadline read-timeout))
+      (let keeps-alive (call http-keeps-alive request))
+      (call (?. route-map resolve) request)
+      (let websocket (?. (. request route) websocket))
+      (if (and websocket (call is-websocket-request request))
+        (call serve-websocket connection stream request websocket)
+        (return)
+      )
+      (blank)
+      (let response
+        (call (. service respond) request
+          (block
+            (on-error SizeLimitError
+              (do
+                (= keeps-alive false)
+              )
+              (call HTTPResponse (. HTTPStatus content-too-large))
+            )
+            (on-error Error
+              (call HTTPResponse (. HTTPStatus internal-server-error))
+            )
+          )
+        )
+      )
+      (= (. connection is-responding) true)
+      (call write-http-response connection response (== (. request method) (. HTTPMethod head)) keeps-alive)
+      (match? (. request body)
+        (case (: reader HTTPBodyReader)
+          (if (not (. reader is-complete))
+            (= (. socket read-deadline) (call Deadline read-timeout))
+            (call (. reader drain))
+          )
+        )
+      )
+      (return-if (if (not keeps-alive)))
+    )
+  )
+  (fn-do _ serve-websocket _ (?! Error)
+    (param connection HTTPServerConnection)
+    (param stream (of ChunkedTokenStream Byte))
+    (param request HTTPRequest)
+    (param handler WebSocketHandler)
+    (let protocol (call websocket-protocol request (. (!! (. request route)) protocols)))
+    (let response (call websocket-handshake request protocol))
+    (let is-accepted (== (. response status) (. HTTPStatus switching-protocols)))
+    (= (. connection is-responding) true)
+    (call write-http-response connection response false is-accepted)
+    (return-if (if (not is-accepted)))
+    (blank)
+    (= (. connection socket read-deadline) null)
+    (let socket (call WebSocket request protocol stream (. connection socket) connection websocket-ping-interval))
+    (let failure (catch (call handler socket)))
+    (call (. socket close) (if-expr (is failure Error) (. WebSocketClose internal-error) (. WebSocketClose normal)))
+  )
+  (fn-do _ reject _ (?! Error)
+    (param connection HTTPServerConnection)
+    (param status HTTPStatus)
+    (= (. connection is-responding) true)
+    (call write-http-response connection (call HTTPResponse status) false false)
+  )
+)
+
+(type _ HTTPServerConnection
+  (implements WritableData)
+  (prop + socket (of TCP Byte))
+  (prop + write-timeout Nanoseconds)
+  (prop + is-responding _ (= false))
+  (prop + slot Index)
+  (fn-do + This _
+    (param socket (of TCP Byte))
+    (param write-timeout Nanoseconds)
+  )
+  (fn-do + write Size (?! Error)
+    (param buffer (of ImmutableArray Byte))
+    (param size Size)
+    (= (. socket write-deadline) (call Deadline write-timeout))
+    (return (call (. socket write) buffer size))
+  )
+)
+
+(type _ HTTPRouteEntry (is (tuple (: segments (list String)) (: route Route))))
+
+(type + HTTPRouteMap
+  (prop _ entries (list HTTPRouteEntry))
+  (fn-do + This _
+    (param routes (list Route))
+    (for (in route routes)
+      (call add route (call (of List String)))
+    )
+  )
+  (fn-do + resolve _
+    (param request HTTPRequest)
+    (let parts (. request paths))
+    (let best (? HTTPRouteEntry))
+    (let best-score -1)
+    (for (in entry entries)
+      (let score (call route-match-score (. entry segments) parts))
+      (if (> score best-score)
+        (= best entry)
+        (= best-score score)
+      )
+    )
+    (blank)
+    (return-if (if (not best)))
+    (blank)
+    (= (. request route) (. best route))
+    (= (. request params) (call route-params (. best segments) parts))
+  )
+  (fn-do _ add _
+    (param route Route)
+    (param prefix (list String))
+    (let segments (call route-segments prefix (. route path)))
+    (if (. route has-handlers)
+      (+= entries (tuple segments route))
+    )
+    (for (in child (. route routes))
+      (call add child segments)
+    )
+  )
+)
+
+(fn-expr _ route-segments (list String)
+  (param prefix (list String))
+  (param path String)
+  (spread prefix)
+  (spread (in each (call (. path split) "/") (when (> (. each length) 0))))
+)
+
+(fn-do _ route-match-score Int
+  (param segments (list String))
+  (param parts (list String))
+  (return-if -1 (if (!= (. segments length) (. parts length))))
+  (blank)
+  (let score 0)
+  (for (in i (..< 0 (. segments length)))
+    (let segment ([] segments i))
+    (if (not (call is-route-param segment))
+      (return-if -1 (if (!= segment ([] parts i))))
+      (+= score 1)
+    )
+  )
+  (return score)
+)
+
+(fn-do _ route-params (map String String)
+  (param segments (list String))
+  (param parts (list String))
+  (let params (map String String))
+  (for (in i (..< 0 (. segments length)))
+    (let segment ([] segments i))
+    (if (call is-route-param segment)
+      (= ([] params ([] segment (..< 1 (- (. segment length) 1)))) ([] parts i))
+    )
+  )
+  (return params)
+)
+
+(fn-expr _ is-route-param _
+  (param segment String)
+  (and (> (. segment length) 2) (call (. segment starts-with) "{") (call (. segment ends-with) "}"))
+)
+
+(fn-expr _ declared-body-size Size
+  (param request HTTPRequest)
+  (match (. request body)
+    (case (: reader HTTPBodyReader)
+      (match (. reader framing)
+        (case (call .length size)
+          size
+        )
+        (default
+          0
+        )
+      )
+    )
+    (default
+      0
+    )
+  )
+)
+
+(fn-expr _ http-keeps-alive _
+  (param request HTTPRequest)
+  (case? (== connection "close")
+    false
+  )
+  (case? (== (. request version) "HTTP/1.0")
+    (== connection "keep-alive")
+  )
+  (default
+    true
+  )
+  (where
+    (lazy connection (?? (?. (call (. request header) "Connection") lowercased) ""))
+  )
+)
+
+(fn-do _ write-http-response _ (?! Error)
+  (param output WritableData)
+  (param response HTTPResponse)
+  (param is-head-request Bool)
+  (param keeps-alive Bool)
+  (let body (as (only-if (. response body) (if (. response status has-body))) HTTPBody))
+  (let headers (call http-response-headers response body keeps-alive))
+  (call write-http-message output (. response start-line) headers (if-expr is-head-request null body))
+)
+
+(fn-expr _ http-response-headers (list HTTPHeader)
+  (param response HTTPResponse)
+  (param body HTTPBody)
+  (param keeps-alive Bool)
+  (spread (. response headers))
+  (item? (only-if (tuple "Content-Type" content-type) (if content-type)))
+  (item? (only-if (tuple "Content-Length" (str size)) (if (and has-body (!= size null)))))
+  (item? (only-if (tuple "Transfer-Encoding" "chunked") (if (and has-body (== size null)))))
+  (item? (only-if (tuple "Cache-Control" "no-cache") (if is-events)))
+  (item? (only-if (tuple "X-Accel-Buffering" "no") (if is-events)))
+  (item? (only-if (tuple "Connection" "close") (if (not keeps-alive))))
+  (pipe |> (call distinct (:where (. each name lowercased))))
+  (pipe |> List)
+  (where
+    (lazy has-body (. response status has-body))
+    (lazy size (call http-body-size body))
+    (lazy is-events (is body (of Iterable ServerSentEvent)))
+    (lazy content-type (call http-content-type body))
+  )
+)
+
+(fn-expr _ http-content-type (? String)
+  (param body HTTPBody)
+  (match? body
+    (case String
+      "text/plain; charset=utf-8"
+    )
+    (case ([] Byte)
+      "application/octet-stream"
+    )
+    (case (of Iterable ServerSentEvent)
+      "text/event-stream"
+    )
+  )
+)

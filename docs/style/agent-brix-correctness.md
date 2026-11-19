@@ -4,7 +4,7 @@ Read this before writing Brix. It covers recurring compiler errors.
 
 ## Builtin Module Imports
 
-Treat every module named by `builtin-module-names` in `stdlib/lang/constants.yumi` as implicitly
+Treat every module named by `builtin-module-names` in `stdlib/lang/constants.bx` as implicitly
 imported by each non-builtin Brix module. Do not explicitly import these modules.
 
 A builtin module is the exception. It must explicitly import every other builtin module it depends

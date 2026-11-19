@@ -22,9 +22,8 @@ GUIDE_INDEX = 'docs/index.md'
 INIT_FILES = (('AGENTS.md', '`brix --help`'), ('CLAUDE.md', '@AGENTS.md'))
 EXAMPLES = ('net', 'tui')
 MACOS_EXAMPLES = ('examples/tui/chromatic/chromatic-app.bx',)
-EXAMPLE_SOURCES = ('.yumi', '.bx')
-EXAMPLE_IMPORT = re.compile(r'^\+? ?(\.{1,2}/\S+)$')
-BRIX_EXAMPLE_IMPORT = re.compile(r'^\s*\((?:import|export) (\.{1,2}/[^\s)]+)\)$')
+EXAMPLE_SOURCE = '.bx'
+EXAMPLE_IMPORT = re.compile(r'^\s*\((?:import|export) (\.{1,2}/[^\s)]+)\)$')
 
 
 class GateFailure(Exception):
@@ -57,11 +56,11 @@ def main(arguments):
 
 
 def clean_room(brix, programs, work):
-    names = sorted(name[:-5] for name in os.listdir(programs) if name.endswith('.yumi'))
+    names = sorted(name[:-3] for name in os.listdir(programs) if name.endswith('.bx'))
     for name in names:
         say('Compiling and running %s' % name)
         executable = os.path.join(work, 'cleanroom', name)
-        run([brix, '--compile', '-o', executable, os.path.join(programs, name + '.yumi')], cwd=work)
+        run([brix, '--compile', '-o', executable, os.path.join(programs, name + '.bx')], cwd=work)
         actual = run([executable], cwd=work)
         with open(os.path.join(programs, name + '.out')) as file:
             expected = file.read()
@@ -81,7 +80,7 @@ def tools(brix, release, programs, work):
     for name in TOOLS:
         say('Running brix %s --help' % name)
         run([brix, name, '--help'], cwd=room)
-    program = os.path.join(programs, TOOL_PROGRAM + '.yumi')
+    program = os.path.join(programs, TOOL_PROGRAM + '.bx')
     say('Recording the probes of %s and reading them back' % TOOL_PROGRAM)
     run([brix, program, '--probes'], cwd=room)
     log = run([brix, 'probes', 'log'], cwd=room)
@@ -130,16 +129,15 @@ def example_entries(root):
     for name in EXAMPLES:
         for directory, directories, file_names in os.walk(os.path.join(root, 'examples', name)):
             sources += [os.path.join(directory, file_name) for file_name in file_names
-                        if file_name.endswith(EXAMPLE_SOURCES)]
+                        if file_name.endswith(EXAMPLE_SOURCE)]
     imported = set()
     for source in sources:
-        pattern = BRIX_EXAMPLE_IMPORT if source.endswith('.bx') else EXAMPLE_IMPORT
         with open(source) as file:
             for line in file:
-                match = pattern.match(line.rstrip())
+                match = EXAMPLE_IMPORT.match(line.rstrip())
                 if match:
                     stem = os.path.normpath(os.path.join(os.path.dirname(source), match.group(1)))
-                    imported.update(stem + extension for extension in EXAMPLE_SOURCES)
+                    imported.add(stem + EXAMPLE_SOURCE)
     return sorted(os.path.relpath(source, root) for source in sources if source not in imported)
 
 
@@ -170,7 +168,7 @@ def relinked(home, version, host, work):
 def fixed_point(brix, sources, host, work):
     say('Compiling the compiler with the installed compiler')
     executable = os.path.join(work, 'compiler', 'brix')
-    run([brix, '--compile', '-o', executable, os.path.join(sources, 'brix-cli.yumi')], cwd=work)
+    run([brix, '--compile', '-o', executable, os.path.join(sources, 'brix-cli.bx')], cwd=work)
     digest = file_digest(executable + '.o')
     if digest != host['hashes']['obj/brix.o']:
         raise GateFailure('The compiler built on Linux has object %s, not the released %s' % (
@@ -187,7 +185,7 @@ def macos_object(brix, sources, files, macos, work):
         output.write(source.read())
     output_path = os.path.join(work, 'macos', 'brix.o')
     run([brix, '--target', 'macos', '--object-only', '--c-headers', snapshot, '-o', output_path,
-         os.path.join(sources, 'brix-cli.yumi')], cwd=work)
+         os.path.join(sources, 'brix-cli.bx')], cwd=work)
     digest = file_digest(output_path)
     if digest != macos['hashes']['obj/brix.o']:
         raise GateFailure('The macOS compiler built on Linux has object %s, not the released %s' % (

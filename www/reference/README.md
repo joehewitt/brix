@@ -7,9 +7,9 @@ out of the site.
 
 ## Building the reference
 
-Run `bin/brix www/reference/build.yumi -o .tmp/build/build-reference` from the repository root to generate `.tmp/site/ref`. Add `--watch` to keep the Brix builder running and rebuild after any Markdown change below the source directory. The whole reference renders into one `index.html`, with shared CSS and JavaScript alongside it. Open that file directly, or serve the directory over HTTP. The build emits a regular deferred script so interactions work in both cases. Individual chapter HTML pages are not generated.
+Run `bin/brix www/reference/build.bx -o .tmp/build/build-reference` from the repository root to generate `.tmp/site/ref`. Add `--watch` to keep the Brix builder running and rebuild after any Markdown change below the source directory. The whole reference renders into one `index.html`, with shared CSS and JavaScript alongside it. Open that file directly, or serve the directory over HTTP. The build emits a regular deferred script so interactions work in both cases. Individual chapter HTML pages are not generated.
 
-`reference/build.yumi` uses the reusable `www/markdown-site/site.yumi` library for recursive document discovery, index ordering, scoped headings, and local links. `reference/forms.yumi` shows Brix code as rows the way the Brix editor draws them, and `reference/annotations.yumi` adds annotated Brix examples and paired layouts. Code examples are parsed for presentation through the typed tracked-source API, not executed. The page shell is a Brix paragraph template; presentation and interactions remain in `reference/style.css` and `reference/script.js`.
+`reference/build.bx` uses the reusable `www/markdown-site/site.bx` library for recursive document discovery, index ordering, scoped headings, and local links. `reference/forms.bx` shows Brix code as rows the way the Brix editor draws them, and `reference/annotations.bx` adds annotated Brix examples and paired layouts. Code examples are parsed for presentation through the typed tracked-source API, not executed. The page shell is a Brix paragraph template; presentation and interactions remain in `reference/style.css` and `reference/script.js`.
 
 ## Rows and forms
 

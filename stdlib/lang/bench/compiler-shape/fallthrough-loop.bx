@@ -1,0 +1,23 @@
+; benchmark.meta description: Runs one tight integer loop to expose MIR fallthrough branch redirects.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core)
+(blank)
+
+(main
+  (let upper-bound (as 50000000 Size))
+  (let checksum (call fallthrough-checksum upper-bound))
+  (throw (call Panic "fallthrough-loop checksum mismatch") (if (!= checksum (/ (* upper-bound (+ upper-bound 1)) 2))))
+  (blank)
+  (print (str "bench-result compiler-shape/fallthrough-loop checksum=" checksum))
+)
+
+(fn-do _ fallthrough-checksum Size
+  (param upper-bound Size)
+  (let total (as 0 Size))
+  (for (in index (..< 0 upper-bound))
+    (+= total (+ (as index Size) 1))
+  )
+  (return total)
+)

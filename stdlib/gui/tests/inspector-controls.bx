@@ -1,0 +1,63 @@
+(import /core/markup)
+(import /graphics/primitives)
+(import /gui/box)
+(import /gui/number-field)
+(import /gui/primitives)
+(import /gui/shorthands)
+(import /gui/window)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Number Field Snapping"))
+  (call (. cases run) number-field-snap-tests)
+  (return cases)
+)
+
+(fn-do + number-field-snap-tests _
+  (param t TestCase)
+  (let window (call InspectorTestWindow))
+  (call (. window open))
+  (call settle-inspector window)
+  (let field (. window field))
+  (= (. field minimum) 3)
+  (= (. field maximum) 10)
+  (= (. field step) 2)
+  (= (. field snaps) true)
+  (call (. field accept-value) 6.2)
+  (call (. t expect) "a typed value goes to the nearest step from the minimum" 7 (. field value))
+  (call (. field accept-value) 1)
+  (call (. t expect) "a value below the range is the minimum" 3 (. field value))
+  (call (. field accept-value) 40)
+  (call (. t expect) "a value above the range is the last step inside it" 9 (. field value))
+  (call (. window close))
+  (return t)
+)
+
+(fn-do + settle-inspector _
+  (param window InspectorTestWindow)
+  (let root (!! (. window field markup-batch-root)))
+  (call (. root markup-batch-queue checkpoint))
+  (call (. window layout))
+)
+
+(type + InspectorTestWindow (is Window)
+  (prop + field NumberField)
+  (content
+    (<> This
+      (= size (call Dimensions 260 200))
+      (blank)
+      (<> Box (• flex-col) (• absolute) (• cover .parent) (• p 8)
+        (<> NumberField (id: field) (• h 24))
+      )
+    )
+  )
+  (fn-do + ensure-native _)
+  (fn-do + render Bool
+    (return false)
+  )
+)

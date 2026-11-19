@@ -1,0 +1,58 @@
+; benchmark.meta description: Exercises grammar actions across public boundary materialization.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+
+(main
+  (let rows
+    (match (call action-boundary-source)
+      (~ \action-boundary-document)
+      (throw (call Panic "action-boundary did not parse"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in row rows)
+    (+= checksum row)
+  )
+  (blank)
+  (print (str "bench-result stream/action-boundary checksum=" checksum))
+)
+
+(fn-expr + action-boundary-document _ (over: Char)
+  (~ (: rows (+ \action-boundary-row))
+    rows
+  )
+  (where
+    (lazy action-boundary-row Size
+      (pattern
+        (~ (seq "item:" (: name \action-boundary-word) ":" (: value \action-boundary-digits) ":" (: text (* (seq (! "\n") .))) "\n")
+          (call action-boundary-score name value text)
+        )
+      )
+    )
+    (blank)
+    (lazy action-boundary-word String
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_"))))
+      )
+    )
+    (blank)
+    (lazy action-boundary-digits String
+      (pattern
+        (~ (+ (chars "0-9")))
+      )
+    )
+  )
+)
+
+(fn-expr _ action-boundary-score Size
+  (param name String)
+  (param value String)
+  (param text String)
+  (+ (* (. name length) 19) (* (. value length) 23) (. text length))
+)
+
+(fn-expr _ action-boundary-source _
+  (call (. "" join) (in (str "item:name_" each ":" (* each 31) ":materialized action boundary text " each "\n") (..< 0 120)))
+)

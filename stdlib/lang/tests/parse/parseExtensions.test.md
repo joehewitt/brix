@@ -1,15 +1,5 @@
 # Extensions
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ extend Thing
-
-────────────────────
-+ describe String
-
-"thing"
-```
-
 ```brix
 (extend + Thing
   (fn-expr + describe String
@@ -31,17 +21,6 @@
 ```
 
 ### Parses a style sheet extension with slots, usings, and rules.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-• extend DefaultTheme
-    using BoxPaint
-
-+ accent I64 = 11
-
-• panel
-    ink = accent
-```
 
 ```brix
 (style-extend DefaultTheme
@@ -78,16 +57,6 @@
 </StyleSheetExtension>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ extend Box''T where T is Printable
-
-────────────────────
-+ describe String
-
-"box"
-```
-
 ```brix
 (extend + (of Box ''T) (where (constraint is T Printable))
   (fn-expr + describe String
@@ -113,16 +82,6 @@
         </Block>
     </Function>
 </Extension>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ extend Box''T as ImmutableArray where T is Printable
-
-────────────────────
-+ get label String
-
-"label"
 ```
 
 ```brix
@@ -153,21 +112,6 @@
         </Block>
     </Function>
 </Extension>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ extend Thing
-
-────────────────────
-+ get label String
-
-"label"
-
-────────────────────
-+ to String
-
-"converted"
 ```
 
 ```brix

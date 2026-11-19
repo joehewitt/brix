@@ -1,0 +1,169 @@
+; benchmark.meta description: Recomputes strokes for tight and self-overlapping paths across a slider-width sweep.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,graphics-fps,compile-timing
+(blank)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /graphics/stroke)
+(import /math)
+(blank)
+
+(main
+  (let sources (call stress-slider-sources))
+  (let checksum (as (. sources length) Size))
+  (blank)
+  (for (in frame (..< 0 32))
+    (probe-count graphics.frame.frames)
+    (let width (call slider-width frame 8 36))
+    (for (in i (..< 0 (. sources length)))
+      (probe-count graphics.frame.items)
+      (let source ([] sources i))
+      (let stroked (call stroke source width .center .round-join-type .butt 5 0))
+      (+= checksum (+ (. source count) (call path-score stroked)))
+    )
+  )
+  (blank)
+  (print (str "bench-result graphics/stroke-slider-stress checksum=" checksum))
+)
+
+(fn-do _ stress-slider-sources _
+  (let center (call Point 120 100))
+  (let paths (list Path))
+  (+= paths (call pretzel-loop center 64))
+  (+= paths (call rosette center 66 20 10 -18deg))
+  (+= paths (call comet-loop center 74))
+  (+= paths (call lissajous-loop center 68))
+  (return paths)
+)
+
+(fn-expr _ slider-width Length
+  (param frame Int)
+  (param min-width Length)
+  (param max-width Length)
+  (+ min-width (* (- max-width min-width) (/ (as frame Float) 31)))
+)
+
+(fn-do _ pretzel-loop _
+  (param center Point)
+  (param radius Length)
+  (let path (call Path))
+  (let first true)
+  (for (in t (..< 0.0 (* π 2.0) (by: 0.08)))
+    (let point
+      (call Point
+        (block
+          (arg (+ (. center x) (* (call sin (+ (* t 3.0) 0.35)) radius)))
+          (arg (+ (. center y) (* (call sin (* t 4.0)) radius 0.72)))
+        )
+      )
+    )
+    (if first
+      (call (. path move-to) point)
+      (= first false)
+      (else
+        (call (. path line-to) point)
+      )
+    )
+  )
+  (blank)
+  (call (. path close))
+  (return path)
+)
+
+(fn-do _ rosette _
+  (param center Point)
+  (param outer-radius Length)
+  (param inner-radius Length)
+  (param lobes Int)
+  (param rotation Radians)
+  (let path (call Path))
+  (let count (* lobes 2))
+  (let step (/ (* π 2) count))
+  (blank)
+  (for (in i (..< 0 count))
+    (let a1 (+ rotation (* step i)))
+    (let a2 (+ rotation (* step (+ i 1))))
+    (let r1 (if-expr (== (% i 2) 0) outer-radius inner-radius))
+    (let r2 (if-expr (== (% (+ i 1) 2) 0) outer-radius inner-radius))
+    (let bulge (* outer-radius (+ 0.62 (* (as (% i 4) Float) 0.07))))
+    (let p1 (call (. center translate-at-angle) a1 r1))
+    (let p2 (call (. center translate-at-angle) a2 r2))
+    (let h1 (call (. center translate-at-angle) (+ a1 (* step 0.45)) (+ r1 bulge)))
+    (let h2 (call (. center translate-at-angle) (- a2 (* step 0.45)) (+ r2 bulge)))
+    (blank)
+    (if (== i 0)
+      (call (. path move-to) p1)
+    )
+    (blank)
+    (call (. path cubic-curve-to) h1 h2 p2)
+  )
+  (blank)
+  (call (. path close))
+  (return path)
+)
+
+(fn-do _ comet-loop _
+  (param center Point)
+  (param radius Length)
+  (let path (call Path))
+  (call (. path move-to) (+ center (tuple (* (- radius) 0.9) 0)))
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* (- radius) 0.5) (* (- radius) 1.05))))
+      (arg (+ center (tuple (* radius 0.32) (* (- radius) 0.62))))
+      (arg (+ center (tuple (* radius 0.68) (* (- radius) 0.18))))
+    )
+  )
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* radius 1.24) (* radius 0.5))))
+      (arg (+ center (tuple (* (- radius) 0.18) (* radius 0.95))))
+      (arg (+ center (tuple (* (- radius) 0.05) (* radius 0.04))))
+    )
+  )
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* (- radius) 0.34) (* (- radius) 0.32))))
+      (arg (+ center (tuple (* (- radius) 0.54) (* radius 0.38))))
+      (arg (+ center (tuple (* (- radius) 0.9) 0)))
+    )
+  )
+  (call (. path close))
+  (return path)
+)
+
+(fn-do _ lissajous-loop _
+  (param center Point)
+  (param radius Length)
+  (let path (call Path))
+  (let first true)
+  (for (in t (..< 0.0 (* π 2.0) (by: 0.07)))
+    (let point (call Point (+ (. center x) (* (call sin (+ (* t 5.0) 0.6)) radius)) (+ (. center y) (* (call sin (* t 7.0)) radius 0.74))))
+    (if first
+      (call (. path move-to) point)
+      (= first false)
+      (else
+        (call (. path line-to) point)
+      )
+    )
+  )
+  (blank)
+  (call (. path close))
+  (return path)
+)
+
+(fn-expr _ path-score Size
+  (param path Path)
+  (case? (not (. path count))
+    0
+  )
+  (default
+    (+ (. path count) (call numeric-check (. path last-point x)) (call numeric-check (. path last-point y)))
+  )
+)
+
+(fn-expr _ numeric-check Size
+  (param value Coord)
+  (% (as (call abs (* value 1000)) Size) 1000003)
+)

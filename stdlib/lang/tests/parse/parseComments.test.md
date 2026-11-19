@@ -1,12 +1,5 @@
 # Comments
 
-```yumi
-x
-` Foo
-    ` Foo
-x
-```
-
 ```brix
 (main
   x

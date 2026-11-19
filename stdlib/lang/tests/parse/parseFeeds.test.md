@@ -1,11 +1,5 @@
 # Feeds
 
-```yumi
-* foo
-* bar
-* baz
-```
-
 ```brix
 (main
   (item foo)
@@ -26,11 +20,6 @@
 </Feed>
 ```
 
-```yumi
-*? foo
-**? bar
-```
-
 ```brix
 (main
   (item? foo)
@@ -45,12 +34,6 @@
         <Id name="bar"/>
     </Feed>
 </Feed>
-```
-
-```yumi
-* foo
-** bar
-* baz
 ```
 
 ```brix
@@ -73,11 +56,6 @@
 </Feed>
 ```
 
-```yumi
-* foo
-|> bar
-```
-
 ```brix
 (main
   (item foo)
@@ -92,14 +70,6 @@
     </Feed>
     <Id name="bar"/>
 </Pipeline>
-```
-
-```yumi
-1
-|> a
-*> b
-?> c
-|=> d
 ```
 
 ```brix
@@ -128,13 +98,6 @@
 </Pipeline>
 ```
 
-```yumi
-source
-~> \record
-?> each.relevant
-*-> destination
-```
-
 ```brix
 (main
   source
@@ -161,10 +124,6 @@ source
 </Pipeline>
 ```
 
-```yumi
-source ~> \record+
-```
-
 ```brix
 (main
   (~> source (+ \record))
@@ -180,13 +139,6 @@ source ~> \record+
         </UnaryStream>
     </StreamMatch>
 </BinaryExpression>
-```
-
-```yumi
-source
-~> line (.)* \nl?
-    line
-|> print-all
 ```
 
 ```brix
@@ -226,12 +178,6 @@ source
 </Pipeline>
 ```
 
-```yumi
-* foo in set • with
-    indented
-* bar
-```
-
 ```brix
 (main
   (item
@@ -268,10 +214,6 @@ source
 </Feed>
 ```
 
-```yumi
-foo <-* bar
-```
-
 ```brix
 (main
   (<-* foo bar)
@@ -293,11 +235,6 @@ foo <-* bar
 </For>
 ```
 
-```yumi
-1
-*> each * 2
-```
-
 ```brix
 (main
   1
@@ -313,11 +250,6 @@ foo <-* bar
         <Integer value="2"/>
     </BinaryExpression>
 </Pipeline>
-```
-
-```yumi
-1
-?> each * 2
 ```
 
 ```brix
@@ -337,11 +269,6 @@ foo <-* bar
 </Pipeline>
 ```
 
-```yumi
-1
-|=> it * 2
-```
-
 ```brix
 (main
   1
@@ -357,11 +284,6 @@ foo <-* bar
         <Integer value="2"/>
     </BinaryExpression>
 </Pipeline>
-```
-
-```yumi
-1
-|> double • where each % 2
 ```
 
 ```brix
@@ -393,14 +315,6 @@ foo <-* bar
 </Pipeline>
 ```
 
-```yumi
-════════════════════
-foo
-
-bar
-baz
-```
-
 ```brix
 (main
   (header foo)
@@ -417,14 +331,6 @@ baz
         <Id name="baz"/>
     </items>
 </Header>
-```
-
-```yumi
-════════════════════
-foo
-
-=> bar
-=> baz
 ```
 
 ```brix
@@ -447,19 +353,6 @@ foo
         </Function>
     </items>
 </Header>
-```
-
-```yumi
-════════════════════
-foo
-
-bar
-.. bar = 1
-
-════════════════════
-baz
-
-qux
 ```
 
 ```brix

@@ -1,0 +1,171 @@
+(export ./shader-declarations)
+
+(type + CRT (is LayerShader)
+  (prop + curvature F64)
+  (prop + time FrameTime)
+  (fn-do + This _
+    (param curvature _ (= 0.08))
+  )
+  (fn-expr + metal _
+    (paragraph
+      "float4 filter(float2 position, ShaderLayer layer, CRTArgs args) {"
+      "    float t = args.time;"
+      "    float2 c = position / layer.size * 2.0 - 1.0;"
+      "    c *= 1.0 + args.curvature * c.yx * c.yx;"
+      "    float2 q = c * 0.5 + 0.5;"
+      "    if (q.x < 0.0 || q.y < 0.0 || q.x > 1.0 || q.y > 1.0) {"
+      "        return float4(0.0, 0.0, 0.0, 1.0);"
+      "    }"
+      "    float2 p = q * layer.size;"
+      "    float4 r = layer.sample(p + float2(1.5, 0.0));"
+      "    float4 g = layer.sample(p);"
+      "    float4 b = layer.sample(p - float2(1.5, 0.0));"
+      "    float3 color = float3(r.r * r.a, g.g * g.a, b.b * b.a);"
+      "    color *= 0.78 + 0.22 * cos(p.y * 2.0944);"
+      "    color *= 0.95 + 0.1 * smoothstep(0.88, 1.0, fract(q.y - t * 0.15));"
+      "    color *= pow(16.0 * q.x * q.y * (1.0 - q.x) * (1.0 - q.y), 0.25);"
+      "    color *= 0.97 + 0.03 * sin(t * 47.0);"
+      "    return float4(color * float3(0.92, 1.04, 0.95) + 0.015, 1.0);"
+      "}"
+    )
+  )
+)
+
+(type + Pixelate (is LayerShader)
+  (prop + size F64)
+  (fn-do + This _
+    (param size _ (= 8))
+  )
+  (fn-expr + metal _
+    (paragraph
+      "float4 filter(float2 position, ShaderLayer layer, PixelateArgs args) {"
+      "    float cell = max(args.size, 1.0);"
+      "    float2 index = floor(position / cell);"
+      "    float4 sum = float4(0.0);"
+      "    for (int i = 0; i < 4; ++i) {"
+      "        float2 offset = float2(float(i & 1), float(i >> 1)) * 0.5 + 0.25;"
+      "        float4 color = layer.sample((index + offset) * cell);"
+      "        sum += float4(color.rgb * color.a, color.a);"
+      "    }"
+      "    sum *= 0.25;"
+      "    float2 local = position / cell - index;"
+      "    float2 edge = smoothstep(0.0, 0.1, local) * smoothstep(0.0, 0.1, 1.0 - local);"
+      "    float3 color = sum.a > 0.0 ? sum.rgb / sum.a : float3(0.0);"
+      "    return float4(color * (0.82 + 0.18 * edge.x * edge.y), sum.a);"
+      "}"
+    )
+  )
+)
+
+(type + Wave (is LayerShader)
+  (prop + amplitude F64)
+  (prop + time FrameTime)
+  (fn-do + This _
+    (param amplitude _ (= 6))
+  )
+  (fn-expr + metal _
+    (paragraph
+      "float4 filter(float2 position, ShaderLayer layer, WaveArgs args) {"
+      "    float t = args.time;"
+      "    float2 offset = float2("
+      "        sin(position.y * 0.035 + t * 2.2) + 0.5 * sin(position.y * 0.09 - t * 3.1),"
+      "        cos(position.x * 0.03 + t * 1.7) + 0.5 * cos(position.x * 0.08 + t * 2.6)"
+      "    ) * args.amplitude;"
+      "    float4 color = layer.sample(clamp(position + offset, float2(0.5), layer.size - 0.5));"
+      "    float caustic = 0.5 + 0.5 * sin("
+      "        (position.x + position.y) * 0.05 + offset.x * 0.6 + t * 2.0);"
+      "    float3 tint = color.rgb * float3(0.88, 0.97, 1.05)"
+      "        + 0.07 * caustic * float3(0.4, 0.8, 1.0);"
+      "    return float4(tint, color.a);"
+      "}"
+    )
+  )
+)
+
+(type + Thermal (is LayerShader)
+  (prop + time FrameTime)
+  (fn-expr + metal _
+    (paragraph
+      "float3 thermalColor(float v) {"
+      "    float3 color = mix("
+      "        float3(0.02, 0.0, 0.2), float3(0.45, 0.0, 0.7), smoothstep(0.0, 0.25, v));"
+      "    color = mix(color, float3(0.95, 0.15, 0.25), smoothstep(0.2, 0.5, v));"
+      "    color = mix(color, float3(1.0, 0.7, 0.0), smoothstep(0.45, 0.75, v));"
+      "    return mix(color, float3(1.0, 1.0, 0.8), smoothstep(0.75, 1.0, v));"
+      "}"
+      (blank)
+      "float4 filter(float2 position, ShaderLayer layer, ThermalArgs args) {"
+      "    float t = args.time;"
+      "    float4 color = layer.sample("
+      "        position + float2(sin(position.y * 0.07 + t * 5.0) * 0.8, 0.0));"
+      "    float luma = dot(color.rgb, float3(0.299, 0.587, 0.114));"
+      "    float chroma = max(color.r, max(color.g, color.b))"
+      "        - min(color.r, min(color.g, color.b));"
+      "    float v = saturate(luma * 0.85 + chroma * 0.6);"
+      "    v += 0.03 * sin(position.y * 0.15 - t * 6.0);"
+      "    return float4(thermalColor(saturate(v)), color.a);"
+      "}"
+    )
+  )
+)
+
+(type + Halftone (is LayerShader)
+  (prop + size F64)
+  (prop + time FrameTime)
+  (fn-do + This _
+    (param size _ (= 7))
+  )
+  (fn-expr + metal _
+    (paragraph
+      "float4 filter(float2 position, ShaderLayer layer, HalftoneArgs args) {"
+      "    float angle = 0.5236 + args.time * 0.15;"
+      "    float cell = max(args.size, 2.0);"
+      "    float2x2 turn = float2x2(cos(angle), sin(angle), -sin(angle), cos(angle));"
+      "    float2 p = turn * position;"
+      "    float2 center = (floor(p / cell) + 0.5) * cell;"
+      "    float4 color = layer.sample(transpose(turn) * center);"
+      "    float3 rgb = mix(float3(1.0), color.rgb, color.a);"
+      "    float ink = 1.0 - dot(rgb, float3(0.299, 0.587, 0.114));"
+      "    float radius = cell * 0.68 * sqrt(ink);"
+      "    float cover = 1.0 - smoothstep(radius - 0.75, radius + 0.75, length(p - center));"
+      "    float3 paper = float3(1.0, 0.97, 0.9);"
+      "    return float4(mix(paper, rgb * 0.8, cover), 1.0);"
+      "}"
+    )
+  )
+)
+
+(type + Glitch (is LayerShader)
+  (prop + amount F64)
+  (prop + time FrameTime)
+  (fn-do + This _
+    (param amount _ (= 1))
+  )
+  (fn-expr + metal _
+    (paragraph
+      "float glitchHash(float2 value) {"
+      "    return fract(sin(dot(value, float2(12.9898, 78.233))) * 43758.5453);"
+      "}"
+      (blank)
+      "float4 filter(float2 position, ShaderLayer layer, GlitchArgs args) {"
+      "    float amount = args.amount;"
+      "    float frame = floor(args.time * 12.0);"
+      "    float band = floor(position.y / 14.0);"
+      "    float n = glitchHash(float2(band, frame));"
+      "    float shift = n > 0.86 ? (glitchHash(float2(frame, band)) - 0.5) * 80.0 * amount : 0.0;"
+      "    float2 p = position + float2(shift, 0.0);"
+      "    float split = amount * (2.0 + 4.0 * glitchHash(float2(frame, 3.0)));"
+      "    float4 r = layer.sample(p + float2(split, 0.0));"
+      "    float4 g = layer.sample(p);"
+      "    float4 b = layer.sample(p - float2(split, 0.0));"
+      "    float alpha = max(g.a, max(r.a, b.a));"
+      "    float3 color = float3(r.r * r.a, g.g * g.a, b.b * b.a);"
+      "    color *= 0.9 + 0.1 * glitchHash(floor(position / 2.0) + frame);"
+      "    if (n > 0.97) {"
+      "        color = alpha - color;"
+      "    }"
+      "    return float4(alpha > 0.0 ? color / alpha : float3(0.0), alpha);"
+      "}"
+    )
+  )
+)

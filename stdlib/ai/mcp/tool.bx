@@ -1,0 +1,145 @@
+(import /core/channel)
+(import /data/json)
+(import /data/jsonrpc)
+(import /net/http)
+
+(type + MCPToolHandler (is (fn-type MCPToolResult (?! Error) (param call MCPToolCall))))
+
+(type + MCPTool
+  (prop + name String)
+  (prop + title (? String))
+  (prop + description _ (= ""))
+  (prop + input-schema JSON)
+  (prop + call (? MCPToolHandler))
+  (fn-do + This _
+    (param name String)
+  )
+  (fn-expr + json (map String JSON) :get
+    (call (of Map String JSON)
+      (block
+        (:name name)
+        (:title? title)
+        (:description description)
+        (entry "inputSchema" schema)
+      )
+    )
+    (where
+      (lazy schema (if-expr (not (is input-schema Null)) input-schema (call mcp-empty-input-schema)))
+    )
+  )
+)
+
+(type + MCPToolCall
+  (prop + request JSONRPCRequest)
+  (prop + headers (list HTTPHeader))
+  (prop + name String)
+  (prop + tool (? MCPTool))
+  (prop + arguments JSONObjectReader)
+  (blank)
+  (prop _ progress-token JSON)
+  (prop _ updates (? (of SyncBufferedChannel JSONRPCMessage)))
+  (fn-do + This _
+    (param request JSONRPCRequest)
+    (param headers (list HTTPHeader))
+    (param name String)
+    (param fields (map String JSON))
+    (param progress-token JSON)
+    (param tool (? MCPTool))
+    (param updates (? (of SyncBufferedChannel JSONRPCMessage)))
+    (= arguments (call JSONObjectReader "arguments" fields))
+  )
+  (fn-expr + (index-get this (param key String)) _
+    ([] arguments key)
+  )
+  (fn-expr + header (? String)
+    (param name String)
+    (call http-header headers name)
+  )
+  (fn-expr + wants-progress _ :get
+    (and (!= updates null) (not (is progress-token Null)))
+  )
+  (fn-do + progress _
+    (param amount Float)
+    (param total (? Float) (= null))
+    (param message (? String) (= null))
+    (return-if (if (not wants-progress)))
+    (blank)
+    (let params
+      (call (of Map String JSON)
+        (block
+          (entry "progressToken" progress-token)
+          (:progress amount)
+          (:total? total)
+          (:message? message)
+        )
+      )
+    )
+    (<- (!! updates) (call JSONRPCNotification "notifications/progress" params))
+  )
+)
+
+(type + MCPImage (is Tuple)
+  (prop + data Base64)
+  (prop + mime-type String)
+  (fn-expr + json (map String JSON) :get
+    (call (of Map String JSON)
+      (block
+        (:type "image")
+        (:data data)
+        (entry "mimeType" mime-type)
+      )
+    )
+  )
+)
+
+(type + MCPToolResult
+  (prop + text String)
+  (prop + images (list MCPImage))
+  (prop + structured-content JSON)
+  (prop + is-error _ (= false))
+  (fn-do + This _
+    (param text String)
+    (param is-error _ (= false))
+    (param structured-content JSON (= null))
+  )
+  (fn-from-expr + (: text String)
+    (call This text)
+  )
+  (fn-from-expr + (: json JSON)
+    (call This (call to-json json) false json)
+  )
+  (fn-expr + json (map String JSON) :get
+    (call (of Map String JSON)
+      (block
+        (:content content)
+        (entry? "structuredContent" (only-if structured-content (if (not (is structured-content Null)))))
+        (entry? "isError" (only-if true (if is-error)))
+      )
+    )
+    (where
+      (lazy content (list JSON)
+        (block
+          (item? (only-if text-content (if (or (. text length) (not (. images length))))))
+          (spread (in (. each json) images))
+        )
+      )
+      (lazy text-content
+        (call (of Map String JSON)
+          (block
+            (:type "text")
+            (:text text)
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + mcp-empty-input-schema JSON
+  (call (of Map String JSON)
+    (block
+      (:type "object")
+      (entry "additionalProperties" false)
+    )
+  )
+)

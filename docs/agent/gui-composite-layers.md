@@ -68,7 +68,7 @@ ancestors as usual.
 
 ## Implementation
 
-`composite.yumi` keeps a registry of mounted boxes that set `layer`. `composite-refresh` turns it
+`composite.bx` keeps a registry of mounted boxes that set `layer`. `composite-refresh` turns it
 into a plan, and each entry point refreshes first: `hit-path`, `hit-path-within`, `Box.paint`, and
 `DisplayScene` build and update. A refresh does real work only after something invalidated the plan.
 

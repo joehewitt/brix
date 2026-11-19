@@ -1,9 +1,5 @@
 # Markup
 
-```yumi
-<Foo
-```
-
 ```brix
 (main
   (<> Foo)
@@ -14,40 +10,6 @@
 <Markup>
     <TypeId name="Foo"/>
 </Markup>
-```
-
-```yumi crash
-━━━━━━━━━━━━━━━━━━━━
-+ Panel
-
-────────────────────
-+ <''T header
-```
-
-```output
-Exception: Slot type inference is not supported yet
-<no file:6>
-    + <''T header
-    ^^^^^^^^^^^^^
-```
-
-```yumi crash
-━━━━━━━━━━━━━━━━━━━━
-+ Panel
-
-────────────────────
-<header'TextBox
-```
-
-```output
-Exception: Syntax error
-<no file:6>
-    <header'TextBox
-```
-
-```yumi
-<Foo
-    a = b
 ```
 
 ```brix
@@ -68,12 +30,6 @@ Exception: Syntax error
         </AssignmentExpression>
     </Block>
 </Markup>
-```
-
-```yumi
-<Foo
-    a <-> b
-    c <-> d.e.f
 ```
 
 ```brix
@@ -105,18 +61,6 @@ Exception: Syntax error
 </Markup>
 ```
 
-```yumi crash
-<Foo
-    a <-> #b
-```
-
-```output
-Exception: The place of "<->" is a name or a chain of members, written without "#", as in "value <-> settings.volume"
-<no file:3>
-        a <-> #b
-              ^
-```
-
 ```brix
 (main
   (<> Foo
@@ -132,10 +76,6 @@ Exception: The place of “<->” is a name or a chain of members, written witho
                ^^^^^^^
 ```
 
-```yumi
-<Foo "text"
-```
-
 ```brix
 (main
   (<> Foo (text: "text"))
@@ -149,13 +89,6 @@ Exception: The place of “<->” is a name or a chain of members, written witho
         <String text="text"/>
     </args>
 </Markup>
-```
-
-```yumi
-<Foo
-    a = b
-    <Foo
-    <Foo
 ```
 
 ```brix
@@ -186,10 +119,6 @@ Exception: The place of “<->” is a name or a chain of members, written witho
 </Markup>
 ```
 
-```yumi
-<Foo foo
-```
-
 ```brix
 (main
   (<> Foo (id: foo))
@@ -201,12 +130,6 @@ Exception: The place of “<->” is a name or a chain of members, written witho
     <TypeId name="Foo"/>
     <Id name="foo"/>
 </Markup>
-```
-
-```yumi
-<Panel
-    <Box (body)
-    <Label local-label(header)
 ```
 
 ```brix
@@ -239,10 +162,6 @@ Exception: The place of “<->” is a name or a chain of members, written witho
 </Markup>
 ```
 
-```yumi
-<Foo = bar
-```
-
 ```brix
 (main
   (<> Foo (value: bar))
@@ -256,10 +175,6 @@ Exception: The place of “<->” is a name or a chain of members, written witho
         <Id name="bar"/>
     </args>
 </Markup>
-```
-
-```yumi
-<Foo = bar • w:1 h:2
 ```
 
 ```brix
@@ -289,10 +204,6 @@ Exception: The place of “<->” is a name or a chain of members, written witho
 </Markup>
 ```
 
-```yumi
-<Foo foo = bar
-```
-
 ```brix
 (main
   (<> Foo (id: foo) (value: bar))
@@ -309,10 +220,6 @@ Exception: The place of “<->” is a name or a chain of members, written witho
 </Markup>
 ```
 
-```yumi
-<Foo foo = bar
-```
-
 ```brix
 (main
   (<> Foo (id: foo) (value: bar))
@@ -327,10 +234,6 @@ Exception: The place of “<->” is a name or a chain of members, written witho
         <Id name="bar"/>
     </args>
 </Markup>
-```
-
-```yumi
-foo = <Foo
 ```
 
 ```brix
@@ -348,10 +251,6 @@ foo = <Foo
 </AssignmentExpression>
 ```
 
-```yumi
-* <Foo
-```
-
 ```brix
 (main
   (item (<> Foo))
@@ -364,11 +263,6 @@ foo = <Foo
         <TypeId name="Foo"/>
     </Markup>
 </Feed>
-```
-
-```yumi
-foo • with <Foo
-    <Bar
 ```
 
 ```brix
@@ -399,15 +293,6 @@ foo • with <Foo
 </CallExpression>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-
-<Bar
-```
-
 ```brix
 (type + Foo
   (content
@@ -426,15 +311,6 @@ foo • with <Foo
         </Block>
     </Content>
 </Class>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-
-+ foo = bar
 ```
 
 ```brix
@@ -458,17 +334,6 @@ foo • with <Foo
         </Block>
     </Content>
 </Class>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Panel
-
-────────────────────
-+ <TextBox header • selected
-    text = "Fallback"
-    <TextBox = "Body"
-+ <MarkNode
 ```
 
 ```brix
@@ -512,19 +377,6 @@ foo • with <Foo
         </Block>
     </Content>
 </Class>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Panel
-
-────────────────────
-+ <Box row - item RowData
-
-━━━━━━━━━━━━━━━━━━━━
-
-<Panel
-    <TextBox (row) - item = item.text
 ```
 
 ```brix
@@ -577,11 +429,6 @@ foo • with <Foo
 </Markup>
 ```
 
-```yumi
-<Panel
-    <+ (row)
-```
-
 ```brix
 (main
   (<> Panel
@@ -602,11 +449,6 @@ foo • with <Foo
         </MarkupSlotForward>
     </Block>
 </Markup>
-```
-
-```yumi
-<Panel
-    <TextBox (header) = "Title"
 ```
 
 ```brix
@@ -632,43 +474,4 @@ foo • with <Foo
         </Markup>
     </Block>
 </Markup>
-```
-
-### Markup inside an expression is refused with the forms it can take.
-
-```yumi crash
-. label = show(<Text "x")
-```
-
-```output
-Exception: Markup cannot be written inside an expression. Give it as a row: an argument row, as in "- <Text", a named argument, as in "• title <Text", or an item, as in "* <Text"; or name it first, as in ". label = <Text"
-<no file:2>
-    . label = show(<Text "x")
-                   ^
-```
-
-### A header part after one that follows it is out of order.
-
-```yumi crash
-<Text "hi" stage
-```
-
-```output
-Exception: This part of the element's header is out of order. After the type come its name, then (slot), - parameter, = value or "text", • style rules, and for tags, as in "<Text title(heading) "Hi" • bold for dark"
-<no file:2>
-    <Text "hi" stage
-               ^
-```
-
-### Style rules come before theme tags.
-
-```yumi crash
-<Box for night • page
-```
-
-```output
-Exception: This part of the element's header is out of order. After the type come its name, then (slot), - parameter, = value or "text", • style rules, and for tags, as in "<Text title(heading) "Hi" • bold for dark"
-<no file:2>
-    <Box for night • page
-                   ^
 ```

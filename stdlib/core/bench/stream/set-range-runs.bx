@@ -1,0 +1,63 @@
+; benchmark.meta description: Matches repeated set and range classes.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+
+(main
+  (let tokens
+    (match (call set-range-runs-source)
+      (~ \set-range-runs-document)
+      (throw (call Panic "set-range-runs did not parse"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in token tokens)
+    (+= checksum token)
+  )
+  (blank)
+  (print (str "bench-result stream/set-range-runs checksum=" checksum))
+)
+
+(fn-expr + set-range-runs-document _ (over: Char)
+  (~ (: tokens (+ \set-range-token))
+    tokens
+  )
+  (where
+    (lazy set-range-token Size
+      (pattern
+        (~ (seq (: id \set-range-identifier) \set-range-space)
+          (* (. id length) 3)
+        )
+        (~ (seq (: number \set-range-number) \set-range-space)
+          (* (. number length) 5)
+        )
+        (~ (seq (: symbol (chars ";:=,()")) \set-range-space)
+          7
+        )
+      )
+    )
+    (blank)
+    (lazy set-range-identifier String
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_-"))))
+      )
+    )
+    (blank)
+    (lazy set-range-number String
+      (pattern
+        (~ (seq (+ (chars "0-9")) (? (seq "." (+ (chars "0-9"))))))
+      )
+    )
+    (blank)
+    (lazy set-range-space
+      (pattern
+        (~ (* (| " " "\n" "\t")))
+      )
+    )
+  )
+)
+
+(fn-expr _ set-range-runs-source _
+  (call (. "" join) (in (str "alpha_" each " = " (* each 17) "; beta-name_" (% each 11) " = " each ".125, gamma(" each ")\n") (..< 0 180)))
+)

@@ -1,20 +1,22 @@
 # Stream match generic source
 
-```yumi
--- parse-name("name:ada\n")
--- catch parse-name("invalid\n")
+```brix
+(main
+  (print (call parse-name "name:ada\n"))
+  (print (catch (call parse-name "invalid\n")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InvalidRecord is Error
+(type + InvalidRecord (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ parse-name String ?! InvalidRecord
-    - source <Char>
-
-match source
-    ~ "name:" name [a-z]+ "\n"
-        name
-    ?! InvalidRecord("Expected a name record")
+(fn-expr + parse-name String (?! InvalidRecord)
+  (param source (stream Char))
+  (match source
+    (~ (seq "name:" (: name (+ (chars "a-z"))) "\n")
+      name
+    )
+    (throw (call InvalidRecord "Expected a name record"))
+  )
+)
 ```
 
 ```output
@@ -22,28 +24,32 @@ ada
 Expected a name record
 ```
 
-```yumi
--- parse-name("name:ada\n")
+```brix
+(main
+  (print (call parse-name "name:ada\n"))
+  (blank)
+  (let incoming (channel Char))
+  (do-new
+    (for (in char "name:bob\n")
+      (<- incoming char)
+    )
+    (call (. incoming close))
+  )
+  (blank)
+  (print (call parse-name incoming))
+)
 
-. incoming Char<>
-do new
-    for char in "name:bob\n"
-        incoming <- char
-    incoming.close()
+(type + InvalidRecord (is Error))
 
--- parse-name(incoming)
-
-━━━━━━━━━━━━━━━━━━━━
-+ InvalidRecord is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ parse-name String ?! InvalidRecord
-    - source <Char>
-
-match source
-    ~ "name:" name [a-z]+ "\n"
-        name
-    ?! InvalidRecord("Expected a name record")
+(fn-expr + parse-name String (?! InvalidRecord)
+  (param source (stream Char))
+  (match source
+    (~ (seq "name:" (: name (+ (chars "a-z"))) "\n")
+      name
+    )
+    (throw (call InvalidRecord "Expected a name record"))
+  )
+)
 ```
 
 ```output

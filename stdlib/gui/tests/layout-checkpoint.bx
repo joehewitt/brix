@@ -1,0 +1,80 @@
+(import /core/markup)
+(import /gui/box)
+(import /gui/label)
+(import /gui/primitives)
+(import /gui/window)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "GUI Layout Checkpoint Outside Mutation"))
+  (call (. cases run) layout-checkpoint-outside-tests)
+  (return cases)
+)
+
+(fn-do _ layout-checkpoint-outside-tests _
+  (param t TestCase)
+  (let window (call open-checkpoint-window))
+  (let region (. window region))
+  (let outside (. window outside))
+  (blank)
+  (= (. region base) 12345678)
+  (call (. region invalidate-layout))
+  (call (. window layout))
+  (= t (call (. t expect) "outside data changes during the region checkpoint" "Outside 12345678" (. outside text)))
+  (blank)
+  (call (. window layout))
+  (= t (call (. t expect) "outside relayout is not lost" (. outside intrinsic-size width) (. outside bounds width)))
+  (return t)
+)
+
+(fn-do _ open-checkpoint-window _
+  (<> CheckpointWindow (id: window))
+  (blank)
+  (call (. window open))
+  (return window)
+)
+
+(type + CheckpointShared
+  (prop + outside-text _ (= "Outside"))
+)
+
+(type + CheckpointRegion (is Box)
+  (prop + shared (? CheckpointShared))
+  (prop + base I64)
+  (fn-do + did-layout _
+    (= (?. shared outside-text) (str "Outside " base))
+    (let root markup-batch-root)
+    (if root
+      (catch (call (. root markup-batch-queue checkpoint)))
+    )
+    (call (. super did-layout))
+  )
+)
+
+(type + CheckpointWindow (is Window)
+  (prop + shared _ (:= (call CheckpointShared)))
+  (content
+    (<> This (• flex-col)
+      (= size (tuple 320 400))
+      (blank)
+      (<> Box (• flex-row)
+        (<> Label (id: outside)
+          (= text (. shared #outside-text))
+        )
+      )
+      (blank)
+      (<> CheckpointRegion (id: region) (• h 200)
+        (= shared #shared)
+      )
+    )
+  )
+  (fn-do + ensure-native _)
+  (fn-do + render Bool
+    (return false)
+  )
+)

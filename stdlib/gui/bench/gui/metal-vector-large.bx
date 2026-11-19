@@ -1,0 +1,161 @@
+; benchmark.meta description: Repaints eight 180pt Lucide icons through a 2x Metal DisplayScene on each of 120 frames, where every 360px icon would exceed the BGRA per-frame mask upload cap, and asserts that their strokes draw as GPU paths without CoreGraphics tile fallbacks or skipped operations.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,gui-metal
+(blank)
+(import /core/markup)
+(import /graphics/canvas)
+(import /graphics/color)
+(import /graphics/primitives)
+(import /gui/box)
+(import /gui/icons/lucide/activity)
+(import /gui/icons/lucide/airplay)
+(import /gui/icons/lucide/alarm-clock)
+(import /gui/icons/lucide/album)
+(import /gui/layout)
+(import /gui/metal)
+(import /gui/primitives)
+(import /gui/scene)
+(import /gui/vector-image)
+(blank)
+
+(main
+  (let root (call BenchRoot))
+  (call markup-mount-root root root)
+  (let icons (list Box))
+  (for (in row-index (..< 0 2))
+    (let row (call BenchRow))
+    (call markup-append root row)
+    (for (in column (..< 0 4))
+      (let icon Box
+        (match (% (+ row-index column) 4)
+          (case= 0
+            (call ActivityIcon)
+          )
+          (case= 1
+            (call AirplayIcon)
+          )
+          (case= 2
+            (call AlbumIcon)
+          )
+          (default
+            (call AlarmIcon)
+          )
+        )
+      )
+      (+= icons icon)
+      (call markup-append row icon)
+    )
+  )
+  (call (. root markup-batch-queue checkpoint))
+  (call (. root layout) (call Rect 0 0 720 360))
+  (blank)
+  (let renderer (call MetalOffscreenRenderer 720 360 2 white))
+  (let scene (call DisplayScene 2 white renderer))
+  (let reference (call RasterCanvas 720 360 2 white))
+  (let checksum Size)
+  (let fallbacks Size)
+  (let skipped I64)
+  (do-use renderer
+    (do-use reference
+      (call (. scene build) root)
+      (call (. scene commit))
+      (call (. scene frame-metal) renderer)
+      (for (in frame (..< 0 120))
+        (for (in icon icons)
+          (call (. icon invalidate-paint))
+        )
+        (call (. scene update) root)
+        (call (. scene commit))
+        (call (. scene frame-metal) renderer)
+        (+= checksum 1)
+      )
+      (call (. renderer finish))
+      (= fallbacks (. scene metal-tile-fallbacks))
+      (= skipped (. renderer skipped-ops))
+      (call (. root paint) reference)
+      (+= checksum (as (. (call (. renderer diff) reference 2) differing-pixels) Size))
+    )
+  )
+  (blank)
+  (call (. scene close))
+  (call (. root close))
+  (call markup-release root)
+  (throw (call Panic "Large vectors fell back to CoreGraphics tiles") (if (!= fallbacks 0)))
+  (throw (call Panic "Large vectors skipped Metal operations") (if (!= skipped 0)))
+  (print (str "bench-result gui/metal-vector-large checksum=" checksum))
+)
+
+(type + BenchRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (blank)
+  (rule This
+    (= layout flow-col)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+)
+
+(type + BenchRow (is Box)
+  (rule This
+    (= layout flow-row)
+  )
+)
+
+(type + ActivityIcon (is LucideActivity)
+  (rule This
+    (= min-width (call (. SizeSpec coord) 180))
+    (= max-width (call (. SizeSpec coord) 180))
+    (= min-height (call (. SizeSpec coord) 180))
+    (= max-height (call (. SizeSpec coord) 180))
+  )
+  (content
+    (<> This
+      (= stroke "#334155")
+    )
+  )
+)
+
+(type + AirplayIcon (is LucideAirplay)
+  (rule This
+    (= min-width (call (. SizeSpec coord) 180))
+    (= max-width (call (. SizeSpec coord) 180))
+    (= min-height (call (. SizeSpec coord) 180))
+    (= max-height (call (. SizeSpec coord) 180))
+  )
+  (content
+    (<> This
+      (= stroke "#2563eb")
+    )
+  )
+)
+
+(type + AlbumIcon (is LucideAlbum)
+  (rule This
+    (= min-width (call (. SizeSpec coord) 180))
+    (= max-width (call (. SizeSpec coord) 180))
+    (= min-height (call (. SizeSpec coord) 180))
+    (= max-height (call (. SizeSpec coord) 180))
+  )
+  (content
+    (<> This
+      (= stroke "#334155")
+    )
+  )
+)
+
+(type + AlarmIcon (is LucideAlarmClock)
+  (rule This
+    (= min-width (call (. SizeSpec coord) 180))
+    (= max-width (call (. SizeSpec coord) 180))
+    (= min-height (call (. SizeSpec coord) 180))
+    (= max-height (call (. SizeSpec coord) 180))
+  )
+  (content
+    (<> This
+      (= stroke "#b91c1c")
+    )
+  )
+)

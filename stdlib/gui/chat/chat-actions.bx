@@ -1,0 +1,121 @@
+(import /ai)
+(import /graphics/text)
+(import /gui)
+(import /gui/markdown)
+(import /time)
+
+(style-extend GUIDefaultTheme
+  (rule chat-message-time (• text gui-muted-text-color)
+    (= font-size gui-footnote-font-size)
+    (= text-wrap (. TextWrap no-wrap))
+  )
+  (blank)
+  (rule chat-message-copy (• min-w 24) (• min-h 24)
+    (rule icon (• w 14) (• h 14))
+  )
+)
+
+(type + ChatMessageActions (is Box)
+  (prop + message AIChatMessage)
+  (prop + is-user _ (= false))
+  (prop + is-shown _ (= false))
+  (prop + copy-text _ (= (call chat-copy-text (. #message #parts))))
+  (blank)
+  (rule This
+    (when-style #is-user
+      (• mb 12)
+    )
+  )
+  (content
+    (<> This (• flex-row) (• items-center) (• h 24)
+      (if #is-user
+        (<> Box (• flex 1))
+      )
+      (if #is-shown
+        (if #is-user
+          (<> Label (• chat-message-time) (• mr 4)
+            (= text (call chat-relative-time (. #message created-at) (call now)))
+          )
+        )
+        (if (> (. #copy-text length) 0)
+          (<> CopyButton (• chat-message-copy) (• w 24) (• h 24)
+            (= text #copy-text)
+          )
+        )
+        (if (not #is-user)
+          (<> Label (• chat-message-time) (• ml 4)
+            (= text (call chat-relative-time (. #message created-at) (call now)))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-do + chat-copy-text String
+  (param parts (list AIMessagePart))
+  (let texts (call (of List String)))
+  (for (in part parts)
+    (if (= (| (: text AITextPart)) part)
+      (let trimmed (call (. text text trim)))
+      (if (> (. trimmed length) 0)
+        (+= texts trimmed)
+      )
+    )
+  )
+  (return (call (. "\n\n" join) texts))
+)
+
+(fn-expr + chat-message-selection (? MarkdownView)
+  (param row Box)
+  (only-if selected (if (and selected (call (. selected is-within) row))))
+  (where
+    (lazy selected (call markdown-selected-view))
+  )
+)
+
+(fn-expr + chat-relative-time String
+  (param stamp Timestamp)
+  (param current DateTime)
+  (case? (not sent)
+    ""
+  )
+  (case? (< seconds 60)
+    "Just now"
+  )
+  (case? (< seconds 3600)
+    (call chat-ago (/ seconds 60) "minute")
+  )
+  (case? (or (== days 0) (< seconds (* 6 3600)))
+    (call chat-ago (/ seconds 3600) "hour")
+  )
+  (case? (== days 1)
+    "Yesterday"
+  )
+  (case? (< days 7)
+    (call chat-capitalized (. sent day-of-week name))
+  )
+  (case? (== (. sent year) (. current year))
+    date
+  )
+  (default
+    (str date ", " (. sent year))
+  )
+  (where
+    (lazy sent (call parse-iso8601 stamp (. current zone)))
+    (lazy seconds (as (- (. current since-epoch) (. sent since-epoch)) I64))
+    (lazy days (as (- (/ (. current since-epoch) 86400) (/ (. sent since-epoch) 86400)) I64))
+    (lazy date (str (call chat-capitalized (. sent month short-name)) " " (+ (. sent day number) 1)))
+  )
+)
+
+(fn-expr _ chat-ago String
+  (param count I64)
+  (param unit String)
+  (if-expr (== count 1) (str "1 " unit " ago") (str count " " unit "s ago"))
+)
+
+(fn-expr _ chat-capitalized String
+  (param text String)
+  (if-expr (. text length) (str (. ([] text (..< 0 1)) uppercased) ([] text (... 1))) text)
+)

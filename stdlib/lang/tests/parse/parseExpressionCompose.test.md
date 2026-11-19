@@ -1,9 +1,5 @@
 # Expression compose
 
-```yumi
-foo |> bar
-```
-
 ```brix
 (main
   (|> foo bar)
@@ -15,10 +11,6 @@ foo |> bar
     <Id name="foo"/>
     <Id name="bar"/>
 </BinaryExpression>
-```
-
-```yumi
-foo >> bar
 ```
 
 ```brix
@@ -34,10 +26,6 @@ foo >> bar
 </BinaryExpression>
 ```
 
-```yumi
-bar << foo
-```
-
 ```brix
 (main
   (<< bar foo)
@@ -49,10 +37,6 @@ bar << foo
     <Id name="bar"/>
     <Id name="foo"/>
 </BinaryExpression>
-```
-
-```yumi
-foo *> bar
 ```
 
 ```brix
@@ -68,10 +52,6 @@ foo *> bar
 </BinaryExpression>
 ```
 
-```yumi
-bar ?> foo
-```
-
 ```brix
 (main
   (?> bar foo)
@@ -83,10 +63,6 @@ bar ?> foo
     <Id name="bar"/>
     <Id name="foo"/>
 </BinaryExpression>
-```
-
-```yumi
-bar *> foo
 ```
 
 ```brix
@@ -102,10 +78,6 @@ bar *> foo
 </BinaryExpression>
 ```
 
-```yumi
-bar ?> foo
-```
-
 ```brix
 (main
   (?> bar foo)
@@ -117,10 +89,6 @@ bar ?> foo
     <Id name="bar"/>
     <Id name="foo"/>
 </BinaryExpression>
-```
-
-```yumi
-values ?> each > 0
 ```
 
 ```brix
@@ -139,10 +107,6 @@ values ?> each > 0
 </BinaryExpression>
 ```
 
-```yumi
-foo <| bar
-```
-
 ```brix
 (main
   (<| foo bar)
@@ -156,10 +120,6 @@ foo <| bar
 </BinaryExpression>
 ```
 
-```yumi
-bar |=> foo
-```
-
 ```brix
 (main
   (|=> bar foo)
@@ -171,16 +131,6 @@ bar |=> foo
     <Id name="bar"/>
     <Id name="foo"/>
 </BinaryExpression>
-```
-
-```yumi
-. rows =
-    ** 1 .. 2
-    *>
-        List
-            ** 1 .. 2
-            *> each * 10 + outer
-        .. outer = each
 ```
 
 ```brix
@@ -252,10 +202,6 @@ bar |=> foo
 </Declaration>
 ```
 
-```yumi
-values *|> action(each)
-```
-
 ```brix
 (main
   (*|> values (call action each))
@@ -272,11 +218,6 @@ values *|> action(each)
         </Argument>
     </CallExpression>
 </BinaryExpression>
-```
-
-```yumi
-** values
-*|> action(each)
 ```
 
 ```brix

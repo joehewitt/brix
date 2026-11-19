@@ -1,0 +1,29 @@
+; benchmark.meta description: Product over integer ranges, manual loop reference.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator
+(blank)
+(import /stream/combine)
+(blank)
+
+(main
+  (let checksum (call range-checksum 100000 24 32))
+  (throw (call Panic "range checksum mismatch") (if (!= checksum 58022400000)))
+  (print (str "bench-result compiler-shape/product-manual checksum=" checksum))
+)
+
+(fn-do + range-checksum I64
+  (param rounds Int)
+  (param rows Int)
+  (param columns Int)
+  (let total 0i64)
+  (for (in round (..< 0 rounds))
+    (let index Index 0)
+    (for (in row (..< 0 rows))
+      (for (in column (..< 0 columns))
+        (+= total (+ index (* row 31) column))
+        (+= index 1)
+      )
+    )
+  )
+  (return total)
+)

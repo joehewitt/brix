@@ -1,0 +1,237 @@
+(import ./instances)
+(import ./stable-key)
+(import /core/map)
+(import /lang/ast/ast-nodes)
+(import /lang/ast/decl)
+(import /lang/ast/module)
+(blank)
+(prop _ shard-count Size (= 64))
+
+(type + PortableInstance (is Tuple)
+  ; An instance as another type pass can intern it: its declaration and effects, and its types
+  ; written out in `words` and `names` by what they are rather than by the ids one pass gives them.
+  ; `key` is its stable key, which every pass gives it.
+  (blank)
+  (prop + module ModuleId)
+  (prop + decl DeclId)
+  (prop + effects EffectMask)
+  (prop + key StableKey)
+  (prop + row-case U32)
+  (prop + row-validated Bool)
+  (prop + words (list U32))
+  (prop + names (list Atom))
+)
+
+(type + PortableClass (is Tuple)
+  ; A class as another type pass can intern it, written out in `words` and `names` as
+  ; `PortableInstance` writes its types, and the stable key every pass gives it.
+  (blank)
+  (prop + key StableKey)
+  (prop + words (list U32))
+  (prop + names (list Atom))
+)
+
+(type + PortableResult (is Tuple)
+  ; What a type pass knew of an instance once it typed its body, as another pass over the same
+  ; program can take it in place of typing the body itself: its state, what its typing found, and
+  ; its signature, with the types written out in `words` and `names` by what they are rather than
+  ; by the ids one pass gives them (`export-result`).
+  (blank)
+  (prop + may-panic Bool)
+  (prop + polls Bool)
+  (prop + is-generator Bool)
+  (prop + reads-self Bool)
+  (prop + branches Bool)
+  (prop + returns-own Bool)
+  (prop + gives-unwritten Bool)
+  (prop + casts-errors Bool)
+  (prop + ends-generator Bool)
+  (prop + quiet Bool)
+  (prop + splits-yields Bool)
+  (prop + fills-share Bool)
+  (prop + uses-helper Bool)
+  (prop + rolls-helper Bool)
+  (prop + carries-mark Bool)
+  (prop + is-live Bool)
+  (prop + consumes U64)
+  (prop + hands-back U64)
+  (prop + return-state ReturnState)
+  (prop + header HeaderState)
+  (prop + error-state ErrorState)
+  (prop + unreturned SyntaxId)
+  (prop + read-in-progress Bool)
+  (prop + errors-read-early Bool)
+  (prop + words (list U32))
+  (prop + names (list Atom))
+)
+
+(type _ SharedShard
+  (prop _ lock _ (= (call Mutex)))
+  (prop _ results (of Map StableKey PortableResult))
+  (prop _ seen (of Map StableKey Bool))
+  (prop _ claimed (of Map StableKey Bool))
+  (fn-do + sees Bool
+    (param key StableKey)
+    (use lock)
+    (if ([] seen key)
+      (return false)
+    )
+    (= ([] seen key) true)
+    (return true)
+  )
+  (fn-do + claim Bool
+    (param key StableKey)
+    (use lock)
+    (if ([] claimed key)
+      (return false)
+    )
+    (= ([] claimed key) true)
+    (return true)
+  )
+  (fn-do + publish _
+    (param key StableKey)
+    (param result PortableResult)
+    (use lock)
+    (if (== ([] results key) null)
+      (= ([] results key) result)
+    )
+  )
+  (fn-do + find (? PortableResult)
+    (param key StableKey)
+    (use lock)
+    (return ([] results key))
+  )
+  (fn-do + has Bool
+    (param key StableKey)
+    (use lock)
+    (return (!= ([] results key) null))
+  )
+)
+
+(type + SharedTyping
+  ; What the type passes of one parallel type pass share: the instances they share out to type, each
+  ; offered once by its stable key, and what they published of the instances they typed, the first
+  ; published of each kept, for each pass to take in where it would otherwise type the body again.
+  ; `pending` counts the instances offered and not yet finished; the last to finish closes `items`.
+  ; `waiting` counts those offered and not yet taken (`take`). Other work the passes share out by
+  ; what it is goes to the first to claim it (`claim`). A pass that typed an instance whose type
+  ; depends on where it entered a cycle of instances says so (`diverge`). Each pass records the
+  ; facts only the linter reads where `traces-lint` asks it to, and knows from the start that some
+  ; read tracks each property of `tracked` (`Panics.seed`). The methods and the classes the passes
+  ; list in the tables of classes are shared too, each once, for a pass to pair a method one typed
+  ; with a class another completed (`ClassTables.share-tables`).
+  (blank)
+  (prop _ shards (list SharedShard))
+  (prop _ queue-lock _ (= (call Mutex)))
+  (prop _ table-lock _ (= (call Mutex)))
+  (prop _ diverge-lock _ (= (call Mutex)))
+  (prop _ tabled-methods (of Map StableKey Bool))
+  (prop _ tabled-classes (of Map StableKey Bool))
+  (prop _ table-methods (list PortableInstance))
+  (prop _ table-classes (list PortableClass))
+  (prop + items (of SyncBufferedChannel PortableInstance))
+  (prop + traces-lint Bool)
+  (prop + tracked (list U32))
+  (prop _ pending Size (= 0))
+  (prop _ waiting Size (= 0))
+  (prop _ diverged _ (= false))
+  (fn-do + This _
+    (lazy items (call (of SyncBufferedChannel PortableInstance)))
+    (for (in _ (..< 0 shard-count))
+      (+= shards (call SharedShard))
+    )
+  )
+  (fn-expr _ shard SharedShard
+    (param key StableKey)
+    ([] shards (as (/and/ key (as (- shard-count 1) StableKey)) Index))
+  )
+  (fn-do + offer _
+    (param item PortableInstance)
+    (if (not (call (. (call shard (. item key)) sees) (. item key)))
+      (return)
+    )
+    (use queue-lock)
+    (+= pending 1)
+    (+= waiting 1)
+    (<- items item)
+  )
+  (fn-do + claim Bool
+    (param key StableKey)
+    ; Whether no pass claimed the work `key` names before, which this one now does.
+    (return (call (. (call shard key) claim) key))
+  )
+  (fn-do + offer-table-method _
+    (param item PortableInstance)
+    (use table-lock)
+    (if (not ([] tabled-methods (. item key)))
+      (= ([] tabled-methods (. item key)) true)
+      (+= table-methods item)
+    )
+  )
+  (fn-do + offer-table-class _
+    (param item PortableClass)
+    (use table-lock)
+    (if (not ([] tabled-classes (. item key)))
+      (= ([] tabled-classes (. item key)) true)
+      (+= table-classes item)
+    )
+  )
+  (fn-do + table-methods-from (list PortableInstance)
+    (param start Size)
+    ; The methods offered for the tables of classes from the one at `start` on.
+    (use table-lock)
+    (return ([] table-methods (... start)))
+  )
+  (fn-do + table-classes-from (list PortableClass)
+    (param start Size)
+    ; The classes offered for the tables of classes from the one at `start` on.
+    (use table-lock)
+    (return ([] table-classes (... start)))
+  )
+  (fn-do + diverge _
+    ; Notes that a pass read what a function returns while it was still being typed, and the function
+    ; then returned another type: what follows depends on which of the functions the pass began with,
+    ; which a pass alone begins as the reference does, so what the passes typed is not taken.
+    (use diverge-lock)
+    (= diverged true)
+  )
+  (fn-do + abandon _
+    ; Ends the sharing after a pass crashed: what the passes typed is not taken, and the others stop
+    ; waiting for instances to type once they took those already offered.
+    (call diverge)
+    (call (. items close))
+  )
+  (fn-do + has-diverged Bool
+    (use diverge-lock)
+    (return diverged)
+  )
+  (fn-do + take _
+    (use queue-lock)
+    (-= waiting 1)
+  )
+  (fn-do + idle Bool
+    ; Whether every instance offered has been taken.
+    (use queue-lock)
+    (return (== waiting 0))
+  )
+  (fn-do + finish _
+    (use queue-lock)
+    (-= pending 1)
+    (if (== pending 0)
+      (call (. items close))
+    )
+  )
+  (fn-do + publish _
+    (param key StableKey)
+    (param result PortableResult)
+    (call (. (call shard key) publish) key result)
+  )
+  (fn-do + find (? PortableResult)
+    (param key StableKey)
+    (return (call (. (call shard key) find) key))
+  )
+  (fn-do + has Bool
+    (param key StableKey)
+    (return (call (. (call shard key) has) key))
+  )
+)

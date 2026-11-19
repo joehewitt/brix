@@ -1,0 +1,77 @@
+; benchmark.meta description: Parses parameterized delimited records.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+
+(main
+  (let rows
+    (match (call parameterized-delimited-source)
+      (~ \parameterized-delimited-document)
+      (throw (call Panic "parameterized-delimited did not parse"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in row rows)
+    (+= checksum (. row length))
+  )
+  (blank)
+  (print (str "bench-result stream/parameterized-delimited checksum=" checksum))
+)
+
+(fn-expr + parameterized-delimited-document _ (over: Char)
+  (~ (: rows (+ \parameterized-row))
+    rows
+  )
+  (where
+    (lazy parameterized-row (list String)
+      (pattern
+        (~ (seq "row[" (: items (call \bench-delimited "," (~ \parameterized-item))) "]" "\n")
+          items
+        )
+      )
+    )
+    (blank)
+    (lazy parameterized-item String
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_"))))
+      )
+    )
+  )
+)
+
+(fn-expr + (of bench-delimited Result) _ (over: Char)
+  (param delimiter _)
+  (param pattern (of PatternFunc Char Result))
+  (~ \items)
+  (where
+    (lazy items (list Result)
+      (pattern
+        (~ (seq (: head \item) $delimiter (: tail \items))
+          (++ head tail)
+        )
+        (~ \item)
+      )
+    )
+    (blank)
+    (lazy item (list Result)
+      (pattern
+        (~ $pattern
+          (list it)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ parameterized-delimited-source _
+  (call (. "" join) (in (call parameterized-delimited-row each) (..< 0 100)))
+)
+
+(fn-expr _ parameterized-delimited-row String
+  (param row Int)
+  (str "row[" items "]\n")
+  (where
+    (lazy items (call (. "," join) (in (str "item_" row "_" each) (..< 0 10))))
+  )
+)

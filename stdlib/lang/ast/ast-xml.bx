@@ -1,0 +1,1829 @@
+(import ./ast-builder)
+(import ./ast-nodes)
+(import ./row-range)
+(import /core/array-builder)
+(import /lang/xmlwriter)
+(import /stream/aggregate)
+(blank)
+(prop _ syntax-xml-tree ASTBuilder @stack)
+
+(extend + ASTBuilder
+  (fn-do + syntax-xml XML
+    (param id SyntaxId)
+    (do-with syntax-xml-tree this
+      (return (. ([] (. syntax-xml-tree nodes) id) xml))
+    )
+  )
+  (fn-expr + view XML
+    (param id SyntaxId)
+    (call syntax-xml id)
+  )
+  (fn-expr + xml XML :get
+    (call syntax-xml root)
+  )
+  (fn-to-expr + XML
+    xml
+  )
+  (fn-to-expr + String
+    xml
+  )
+)
+
+(fn-expr _ child-xml (? XML)
+  (param id SyntaxId)
+  (only-if (. ([] (. syntax-xml-tree nodes) id) xml) (if (!= id 0)))
+)
+
+(fn-do _ child-xmls (? (of ImmutableArray XML))
+  (param range (of RowRange SyntaxId))
+  (return-if (if (== (. range count) 0)))
+  (blank)
+  (let builder (call (of ArrayBuilder XML)))
+  (for (in syntax-node ([] (. syntax-xml-tree nodes) (call (. syntax-xml-tree child-ids) range)))
+    (let xml (. syntax-node xml))
+    (if (or (. xml node-name) (. xml children length))
+      (call (. builder append) xml)
+    )
+  )
+  (return (call (. builder finish-immutable)))
+)
+
+(fn-do _ atoms-in (of ImmutableArray Atom)
+  (param range (of RowRange Atom))
+  (let builder (call (of ArrayBuilder Atom)))
+  (for (in offset (..< 0 (. range count)))
+    (call (. builder append) ([] (. syntax-xml-tree atoms) (+ (. range start) offset)))
+  )
+  (return (call (. builder finish-immutable)))
+)
+
+(fn-expr _ syntax-type-name String
+  (param id SyntaxId)
+  (match ([] (. syntax-xml-tree nodes) id)
+    (case (call .node-type-identifier type)
+      (. type name text)
+    )
+    (case (call .node-core-type-identifier type)
+      (. type name text)
+    )
+    (case (call .node-type-arguments type)
+      (str (call syntax-type-name (. type base)) suffix)
+      (lazy suffix (if-expr (. type args count) (str "'" argument-names) ""))
+      (lazy argument-names
+        (call (. "'" join) (in (call syntax-type-name each) argument-ids)
+          (block
+            (lazy argument-ids (call (. syntax-xml-tree child-ids) (. type args)))
+          )
+        )
+      )
+    )
+    (case (call .node-type-associated type)
+      (str (call syntax-type-name (. type owner)) "." (. type name text) suffix)
+      (lazy suffix (if-expr (. type args count) (str "'" argument-names) ""))
+      (lazy argument-names
+        (call (. "'" join) (in (call syntax-type-name each) argument-ids)
+          (block
+            (lazy argument-ids (call (. syntax-xml-tree child-ids) (. type args)))
+          )
+        )
+      )
+    )
+    (throw (call Panic "Expected a named type syntax node"))
+  )
+)
+
+(fn-do _ probe-object (tuple (? String) (? XML))
+  (param id SyntaxId)
+  (return-if (tuple null null) (if (not id)))
+  (let object-name (? String))
+  (let object-child (? XML))
+  (match ([] (. syntax-xml-tree nodes) id)
+    (case (call .node-identifier row)
+      (= object-name (. row name text))
+    )
+    (default
+      (= object-child
+        (<> XML (text: "Object")
+          (call child-xml id)
+        )
+      )
+    )
+  )
+  (return (tuple object-name object-child))
+)
+
+(extend + ASTNoop
+  (fn-expr + xml XML :get
+    (<> XML)
+  )
+)
+
+(extend + ASTTopLevel
+  (fn-expr + xml XML :get
+    (<> XML
+      (call child-xmls statements)
+    )
+  )
+)
+
+(extend + ASTBlock
+  (fn-expr + xml XML :get
+    (<> XML (text: "Block")
+      (if (. body count)
+        (call child-xmls body)
+      )
+    )
+  )
+)
+
+(extend + ASTProbeScope
+  (fn-expr + xml XML :get
+    (<> XML (text: "Block")
+      (call child-xmls body)
+    )
+  )
+)
+
+(extend + ASTPrint
+  (fn-expr + xml XML :get
+    (<> XML (text: "Print")
+      (call child-xml body)
+    )
+  )
+)
+
+(extend + ASTDeclare
+  (fn-expr + xml XML :get
+    (<> XML (text: "Declaration") (:lazy? is-lazy) (:pattern? is-pattern) (:rollback?)
+      (call child-xml left)
+      (call child-xml right)
+    )
+  )
+)
+
+(extend + ASTAssertion
+  (fn-expr + xml XML :get
+    (<> XML (text: "Assert")
+      (call child-xml condition)
+      (call child-xml exception)
+    )
+  )
+)
+
+(extend + ASTClassBlock
+  (fn-expr + xml XML :get
+    (<> XML (text: "Class") (:name (. name text)) (:access)
+      (if (. alias-atoms length)
+        (:aliases (call (. ", " join) (in (. each text) alias-atoms)))
+      )
+      (if (. tag-atoms length)
+        (:tags (call (. ", " join) (in (. each text) tag-atoms)))
+      )
+      (call child-xmls type-args)
+      (if facet-of
+        (<> XML (text: "FacetOf")
+          (call child-xml facet-of)
+        )
+      )
+      (if base
+        (<> XML (text: "Implements") (:inherited true)
+          (call child-xml base)
+        )
+      )
+      (if (. or-bases count)
+        (<> XML (text: "Or")
+          (call child-xmls or-bases)
+        )
+      )
+      (call child-xmls param-constraints)
+      (call child-xmls param-assignments)
+      (call child-xmls members)
+    )
+    (where
+      (lazy alias-atoms (call atoms-in aliases))
+      (lazy tag-atoms (call atoms-in tags))
+    )
+  )
+)
+
+(extend + ASTExtension
+  (fn-expr + xml XML :get
+    (<> XML (text: "Extension") (:access)
+      (call child-xml receiver)
+      (if (. as-types count)
+        (<> XML (text: "As")
+          (call child-xmls as-types)
+        )
+      )
+      (call child-xmls param-constraints)
+      (call child-xmls param-assignments)
+      (call child-xmls body)
+    )
+  )
+)
+
+(extend + ASTStyleSheetExtension
+  (fn-expr + xml XML :get
+    (<> XML (text: "StyleSheetExtension")
+      (call child-xml receiver)
+      (call child-xmls body)
+    )
+  )
+)
+
+(extend + ASTEventDeclaration
+  (fn-expr + xml XML :get
+    (<> XML (text: "Event") (:name (. name text)) (:type (call syntax-type-name type)) (:access)
+      (if key-type
+        (:keyed (call syntax-type-name key-type))
+      )
+    )
+  )
+)
+
+(extend + ASTEffectDeclaration
+  (fn-expr + xml XML :get
+    (<> XML (text: "Effect") (:name (. name text)) (:access) (:claims (call (. ", " join) (in (. each text) (call atoms-in claims)))))
+  )
+)
+
+(extend + ASTFunction
+  (fn-expr + xml XML :get
+    (<> XML (text: "Function") (:names (call (. ", " join) (in (. each text) (call atoms-in names)))) (:access)
+      (if is-getter
+        (:getter true)
+        (else-if is-setter
+          (:setter true)
+        )
+      )
+      (:imperative?)
+      (if is-static
+        (entry "static" true)
+      )
+      (if compilation-effects
+        (:effects (call format-compilation-effect-mask compilation-effects))
+      )
+      (if is-inline
+        (entry "inline" true)
+      )
+      (if is-live
+        (entry "live" true)
+      )
+      (if is-no-return
+        (entry "no-return" true)
+      )
+      (:rollback?)
+      (if (. bans count)
+        (:without (call (. ", " join) (in (. each text) (call atoms-in bans))))
+      )
+      (if door
+        (:door (. door text))
+      )
+      (if pattern
+        (<> XML (text: "pattern")
+          (call child-xml pattern)
+        )
+      )
+      (call child-xmls type-args)
+      (call child-xmls args)
+      (call child-xmls param-constraints)
+      (call child-xmls param-assignments)
+      (call child-xml return-type)
+      (if (. errors count)
+        (<> XML (text: "errors")
+          (call child-xmls errors)
+        )
+      )
+      (call child-xml body)
+    )
+  )
+)
+
+(extend + ASTGetter
+  (fn-expr + xml XML :get
+    (<> XML (text: "Getter") (:access) (:names (call (. ", " join) (in (. each text) (call atoms-in names)))) (:imperative)
+      (call child-xmls type-args)
+      (call child-xmls args)
+      (call child-xml return-type)
+      (call child-xml body)
+    )
+  )
+)
+
+(extend + ASTSetter
+  (fn-expr + xml XML :get
+    (<> XML (text: "Setter") (:access) (:names (call (. ", " join) (in (. each text) (call atoms-in names)))) (:imperative)
+      (call child-xmls args)
+      (call child-xml body)
+    )
+  )
+)
+
+(extend + ASTProperty
+  (fn-expr + xml XML :get
+    (<> XML (text: "Property") (:access) (:decoration? (?. decoration text)) (:lazy? is-lazy)
+      (if (. annotation-atoms length)
+        (:annotations (call (. ", " join) (in (. each text) annotation-atoms)))
+      )
+      (call child-xml left)
+      (call child-xml value)
+    )
+    (where
+      (lazy annotation-atoms (call atoms-in annotations))
+    )
+  )
+)
+
+(extend + ASTStateMachine
+  (fn-expr + xml XML :get
+    (<> XML (text: "StateMachine")
+      (call child-xmls body)
+    )
+  )
+)
+
+(extend + ASTStateCase
+  (fn-expr + xml XML :get
+    (<> XML (text: "StateCase") (:name (. name text))
+      (if (. target count)
+        (<> XML (text: "target")
+          (call child-xmls target)
+        )
+      )
+      (call child-xml trigger)
+      (call child-xmls body)
+    )
+  )
+)
+
+(extend + ASTStateContinuation
+  (fn-expr + xml XML :get
+    (<> XML (text: "StateContinuation") (:name (. name text))
+      (if (. target count)
+        (<> XML (text: "target")
+          (call child-xmls target)
+        )
+      )
+      (call child-xml trigger)
+      (call child-xmls body)
+    )
+  )
+)
+
+(extend + ASTStateFallback
+  (fn-expr + xml XML :get
+    (<> XML (text: "StateFallback") (:target (. target text))
+      (if (. values count)
+        (<> XML (text: "target")
+          (call child-xmls values)
+        )
+      )
+    )
+  )
+)
+
+(extend + ASTStateTrigger
+  (fn-expr + xml XML :get
+    (<> XML (text: "StateTrigger")
+      (:kind
+        (match kind
+          (case= .state-trigger-for-on-when
+            "for-on-when"
+          )
+          (case= .state-trigger-for-on
+            "for-on"
+          )
+          (case= .state-trigger-on-when
+            "on-when"
+          )
+          (case= .state-trigger-on
+            "on"
+          )
+          (case= .state-trigger-if-match
+            "if-match"
+          )
+          (case= .state-trigger-if
+            "if"
+          )
+          (case= .state-trigger-when-stream
+            "when-stream"
+          )
+          (case= .state-trigger-whenever
+            "whenever"
+          )
+        )
+      )
+      (call child-xmls items)
+    )
+  )
+)
+
+(extend + ASTStateMatchExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "MatchExpression")
+      (call child-xml subject)
+      (call child-xml pattern)
+    )
+  )
+)
+
+(extend + ASTUnitDeclaration
+  (fn-expr + xml XML :get
+    (<> XML (text: "Unit") (:access)
+      (call child-xml number)
+      (call child-xml value)
+    )
+  )
+)
+
+(extend + ASTEnumDeclaration
+  (fn-expr + xml XML :get
+    (<> XML (text: "Enum") (:name? (?. name text))
+      (call child-xml type)
+      (call child-xml value)
+    )
+  )
+)
+
+(extend + ASTDelegateDeclaration
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeDelegates")
+      (call child-xmls types)
+    )
+  )
+)
+
+(extend + ASTImplementsDeclaration
+  (fn-expr + xml XML :get
+    (<> XML (text: "Implements")
+      (call child-xml type)
+    )
+  )
+)
+
+(extend + ASTUsingDeclaration
+  (fn-expr + xml XML :get
+    (<> XML (text: "Using")
+      (call child-xml type)
+    )
+  )
+)
+
+(extend + ASTSeesDeclaration
+  (fn-expr + xml XML :get
+    (<> XML (text: "Sees")
+      (call child-xml type)
+    )
+  )
+)
+
+(extend + ASTStyleDomainItem
+  (fn-expr + xml XML :get
+    (<> XML (text: "domain")
+      (call child-xml target)
+      (call child-xml domain)
+    )
+  )
+)
+
+(extend + ASTStyleAnnotation
+  (fn-expr + xml XML :get
+    (<> XML (text: "StyleAnnotation")
+      (call child-xml left)
+      (call child-xmls domains)
+    )
+  )
+)
+
+(extend + ASTDependencyDeclaration
+  (fn-expr + xml XML :get
+    (<> XML (text: "Dependencies")
+      (call child-xml left)
+      (call child-xmls right)
+    )
+  )
+)
+
+(extend + ASTContentBlock
+  (fn-expr + xml XML :get
+    (<> XML (text: "Content")
+      (call child-xml body)
+    )
+  )
+)
+
+(extend + ASTFromverter
+  (fn-expr + xml XML :get
+    (<> XML (text: "Fromverter") (:access) (:imperative?)
+      (call child-xml type)
+      (call child-xml body)
+    )
+  )
+)
+
+(extend + ASTConverter
+  (fn-expr + xml XML :get
+    (<> XML (text: "Converter") (:access) (:imperative?)
+      (if compilation-effects
+        (:effects (call format-compilation-effect-mask compilation-effects))
+      )
+      (if is-inline
+        (entry "inline" true)
+      )
+      (call child-xml type)
+      (call child-xmls param-constraints)
+      (call child-xmls param-assignments)
+      (call child-xml body)
+    )
+  )
+)
+
+(extend + ASTSubscriber
+  (fn-expr + xml XML :get
+    (<> XML (text: "Subscriber")
+      (call child-xml iterator)
+    )
+  )
+)
+
+(extend + ASTWhenRule
+  (fn-expr + xml XML :get
+    (<> XML (text: "When")
+      (call child-xml expr)
+      (call child-xml body)
+    )
+  )
+)
+
+(extend + ASTWheneverRule
+  (fn-expr + xml XML :get
+    (<> XML (text: "Whenever") (:kind (. kind text))
+      (case? target-type
+        (call child-xml target-type)
+      )
+      (default
+        (call child-xml expr)
+      )
+      (call child-xmls args)
+      (call child-xml body)
+    )
+  )
+)
+
+(extend + ASTRule
+  (fn-do + xml XML :get
+    (lazy style-rule-applications-xml (call child-xmls style-rule-applications))
+    (let params (call (of ArrayBuilder XML)))
+    (for (in offset (..< 0 (. args count)))
+      (let id ([] (. syntax-xml-tree children) (+ (. args start) offset)))
+      (let argument
+        (match ([] (. syntax-xml-tree nodes) id)
+          (case (call .node-argument-decl row)
+            row
+          )
+          (throw (call Panic "Expected a style rule argument"))
+        )
+      )
+      (let param
+        (match ([] (. syntax-xml-tree nodes) (. argument pattern))
+          (case (call .node-type-capture capture)
+            (<> XML (text: "Param") (:name (call rule-parameter-name (. capture id)))
+              (case? (. capture type)
+                (call child-xml (. capture type))
+              )
+              (default
+                (call child-xml (. argument pattern))
+              )
+            )
+          )
+          (default
+            (<> XML (text: "Param")
+              (call child-xml (. argument pattern))
+            )
+          )
+        )
+      )
+      (call (. params append) param)
+    )
+    (blank)
+    (return
+      (<> XML (text: "StyleRule") (:name (. name text)) (:own? is-own)
+        (call (. params finish-immutable))
+        (if style-rule-applications-xml
+          (<> XML (text: "StyleRuleApplications")
+            style-rule-applications-xml
+          )
+        )
+        (call child-xml body)
+      )
+    )
+  )
+)
+
+(fn-expr _ rule-parameter-name String
+  (param id SyntaxId)
+  (match ([] (. syntax-xml-tree nodes) id)
+    (case (call .node-identifier row)
+      (. row name text)
+    )
+    (throw (call Panic "Expected a style rule parameter name"))
+  )
+)
+
+(extend + ASTStyleWhen
+  (fn-expr + xml XML :get
+    (<> XML (text: "StyleWhen") (:state (. state text)) (:negated? is-negated)
+      (call child-xml body)
+    )
+  )
+)
+
+(extend + ASTInteger
+  (fn-expr + xml XML :get
+    (<> XML (text: "Integer") (:value) (:unit? (?. unit text)))
+  )
+)
+
+(extend + ASTFloat
+  (fn-expr + xml XML :get
+    (<> XML (text: "Float") (:value) (:unit? (?. unit text)))
+  )
+)
+
+(extend + ASTString
+  (fn-expr + xml XML :get
+    (<> XML (text: "String") (:text))
+  )
+)
+
+(extend + ASTIdentifier
+  (fn-expr + xml XML :get
+    (<> XML (text: "Id") (:name (. name text)) (:tracked? is-tracked))
+  )
+)
+
+(extend + ASTRefIdentifier
+  (fn-expr + xml XML :get
+    (<> XML (text: "Ref") (:name (. name text)))
+  )
+)
+
+(extend + ASTSymbol
+  (fn-expr + xml XML :get
+    (<> XML (text: "Symbol") (:name (. name text)))
+  )
+)
+
+(extend + ASTAnonymousCase
+  (fn-expr + xml XML :get
+    (<> XML (text: "AnonymousCase") (:name (. name text)) (:owner? (?. owner text))
+      (call child-xmls args)
+    )
+  )
+)
+
+(extend + ASTDecoration
+  (fn-expr + xml XML :get
+    (<> XML (text: "Decoration") (:name (. name text)))
+  )
+)
+
+(extend + ASTCIdentifier
+  (fn-expr + xml XML :get
+    (<> XML (text: "CId") (:name (. name text)))
+  )
+)
+
+(extend + ASTUseExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "Use")
+      (call child-xml expr)
+    )
+  )
+)
+
+(extend + ASTLatestExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "Latest")
+      (call child-xml expr)
+    )
+  )
+)
+
+(extend + ASTHeaderExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "Header")
+      (call child-xml expr)
+      (<> XML (text: "items")
+        (call child-xmls items)
+      )
+    )
+  )
+)
+
+(extend + ASTPipelineExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "Pipeline") (:op)
+      (call child-xml left)
+      (call child-xml right)
+    )
+  )
+)
+
+(extend + ASTFeedExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "Feed") (:spread? is-spread) (:optional? is-optional)
+      (call child-xml item)
+      (call child-xml next)
+    )
+  )
+)
+
+(extend + ASTMarkupHead
+  (fn-expr + xml XML :get
+    (<> XML (text: "Syntax"))
+  )
+)
+
+(extend + ASTMarkupSlotParameter
+  (fn-expr + xml XML :get
+    (<> XML (text: "SlotParameter")
+      (call child-xml name)
+      (call child-xml type-id)
+    )
+  )
+)
+
+(extend + ASTMarkup
+  (fn-expr + xml XML :get
+    (<> XML (text: "Markup")
+      (call child-xml type-id)
+      (call child-xml id)
+      (if slot-binding-xml
+        (<> XML (text: "SlotBinding")
+          slot-binding-xml
+          (call child-xml slot-parameter)
+        )
+      )
+      (if (. args count)
+        (<> XML (text: "args")
+          args-xml
+        )
+      )
+      (if style-rule-applications-xml
+        (<> XML (text: "StyleRuleApplications")
+          style-rule-applications-xml
+        )
+      )
+      (call child-xml body)
+    )
+    (where
+      (lazy slot-binding-xml (call child-xml slot-binding))
+      (lazy args-xml (call child-xmls args))
+      (lazy style-rule-applications-xml (call child-xmls style-rule-applications))
+    )
+  )
+)
+
+(extend + ASTMarkupSlotForward
+  (fn-expr + xml XML :get
+    (<> XML (text: "MarkupSlotForward")
+      (call child-xml slot-binding)
+      (call child-xml outlet)
+    )
+  )
+)
+
+(extend + ASTSlotOutlet
+  (fn-expr + xml XML :get
+    (<> XML (text: "SlotOutlet")
+      (call child-xml name)
+      (call child-xml type-id)
+      (call child-xml slot-parameter)
+      (if slot-attrs-xml
+        (<> XML (text: "attrs")
+          slot-attrs-xml
+        )
+      )
+      (if style-rule-applications-xml
+        (<> XML (text: "StyleRuleApplications")
+          style-rule-applications-xml
+        )
+      )
+      (call child-xml body)
+    )
+    (where
+      (lazy slot-attrs-xml (call child-xmls slot-attrs))
+      (lazy style-rule-applications-xml (call child-xmls style-rule-applications))
+    )
+  )
+)
+
+(extend + ASTStyleRuleApplication
+  (fn-expr + xml XML :get
+    (<> XML (text: "StyleRuleApplication") (:name (. name text))
+      (if args-xml
+        (<> XML (text: "args")
+          args-xml
+        )
+      )
+      (if condition-xml
+        (<> XML (text: "condition")
+          condition-xml
+        )
+      )
+    )
+    (where
+      (lazy args-xml (call child-xmls args))
+      (lazy condition-xml (call child-xml condition))
+    )
+  )
+)
+
+(extend + ASTStructureMatch
+  (fn-expr + xml XML :get
+    (<> XML (text: "StructureMatch")
+      (call child-xml pattern)
+    )
+  )
+)
+
+(extend + ASTTypeIdentifier
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeId") (:name (. name text)) (:declare? is-declare))
+  )
+)
+
+(extend + ASTCoreTypeIdentifier
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeId") (:name (. name text)))
+  )
+)
+
+(extend + ASTTypeArguments
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeArguments")
+      (call child-xml base)
+      (call child-xmls args)
+    )
+  )
+)
+
+(extend + ASTTypeAssociated
+  (fn-expr + xml XML :get
+    (<> XML (text: "AssociatedType") (:name (. name text))
+      (call child-xml owner)
+      (call child-xmls args)
+    )
+  )
+)
+
+(extend + ASTTypeOptional
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeOptional")
+      (call child-xmls field-types)
+    )
+  )
+)
+
+(extend + ASTTypeTuple
+  (fn-expr + xml XML :get
+    (<> XML (value: (if-expr is-struct "TypeStruct" "TypeTuple"))
+      (call child-xmls field-types)
+    )
+  )
+)
+
+(extend + ASTTypeCapture
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeCapture")
+      (call child-xml id)
+      (call child-xml type)
+    )
+  )
+)
+
+(extend + ASTTypePredicate
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypePredicate")
+      (call child-xml expr)
+    )
+  )
+)
+
+(extend + ASTTypeEquality
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeEquality") (:is-contextual?)
+      (call child-xml expr)
+    )
+  )
+)
+
+(extend + ASTTypeTransform
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeTransform")
+      (if is-union
+        (entry "isUnion" true)
+      )
+      (call child-xml pattern)
+      (call child-xml expr)
+    )
+  )
+)
+
+(extend + ASTTypePanic
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypePanic")
+      (call child-xml pattern)
+    )
+  )
+)
+
+(extend + ASTTypeAnd
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeAnd")
+      (call child-xml left)
+      (call child-xml right)
+    )
+  )
+)
+
+(extend + ASTTypeOr
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeOr")
+      (call child-xml left)
+      (call child-xml right)
+    )
+  )
+)
+
+(extend + ASTTypeRelation
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeRelation") (:op)
+      (call child-xml left)
+      (call child-xml right)
+    )
+  )
+)
+
+(extend + ASTTypeMatch
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeMatch")
+      (:op
+        (match op
+          (case .match-convertible
+            "convertible"
+          )
+          (case .match-similar
+            "similar"
+          )
+          (case .match-exactly
+            "exactly"
+          )
+        )
+      )
+      (call child-xml type)
+    )
+  )
+)
+
+(extend + ASTTypeWildcard
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeWildcard"))
+  )
+)
+
+(extend + ASTTypeRemainder
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeRemainder")
+      (call child-xml name)
+    )
+  )
+)
+
+(extend + ASTTypeList
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeList")
+      (call child-xmls patterns)
+    )
+  )
+)
+
+(extend + ASTTypeMap
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeMap")
+      (call child-xmls patterns)
+    )
+  )
+)
+
+(extend + ASTTypeMapItem
+  (fn-expr + xml XML :get
+    (<> XML (text: "MapItem")
+      (call child-xml key)
+      (call child-xml value)
+    )
+  )
+)
+
+(extend + ASTTypeFunction
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeFunction")
+      (call child-xml return-type)
+      (call child-xmls args)
+      (if (. errors count)
+        (<> XML (text: "errors")
+          (call child-xmls errors)
+        )
+      )
+    )
+  )
+)
+
+(extend + ASTTypeIterable
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeIterable")
+      (call child-xml pattern)
+    )
+  )
+)
+
+(extend + ASTTypeCase
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeCase") (:name (. name text))
+      (call child-xml type)
+      (call child-xml value)
+    )
+  )
+)
+
+(extend + ASTTypeProperty
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeProperty") (:name (. name text)))
+  )
+)
+
+(extend + ASTTypeNumeric
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeNumeric")
+      (call child-xml value)
+    )
+  )
+)
+
+(extend + ASTIfBlock
+  (fn-expr + xml XML :get
+    (<> XML (text: "If") (:is-optional?)
+      (call child-xml condition)
+      (call child-xml body)
+      (call child-xml next)
+    )
+  )
+)
+
+(extend + ASTWhileBlock
+  (fn-expr + xml XML :get
+    (<> XML (text: "While") (:is-optional?)
+      (call child-xml condition)
+      (call child-xml body)
+    )
+  )
+)
+
+(extend + ASTForBlock
+  (fn-expr + xml XML :get
+    (<> XML (text: "For")
+      (call child-xml loop)
+      (call child-xml body)
+      (call child-xml next)
+    )
+  )
+)
+
+(extend + ASTDoBlock
+  (fn-expr + xml XML :get
+    (<> XML (text: "Do")
+      (if compilation-effects
+        (:effects (call format-compilation-effect-mask compilation-effects))
+      )
+      (if feature-gate-features
+        (:features "feature-collection-observers")
+      )
+      (if holds-cancel
+        (:cancel "held")
+      )
+      (if (. bans count)
+        (:without (call (. ", " join) (in (. each text) (call atoms-in bans))))
+      )
+      (call child-xml body)
+    )
+  )
+)
+
+(fn-do _ format-compilation-effect-mask String
+  (param effects CompilationEffect)
+  (let visible
+    (match (/and/ effects (. CompilationEffect gc-free))
+      (case= (. CompilationEffect none)
+        effects
+      )
+      (default
+        (- effects (/and/ effects (/or/ (. CompilationEffect no-heap) (. CompilationEffect no-safepoint))))
+      )
+    )
+  )
+  (= visible
+    (match (/and/ effects (. CompilationEffect no-safepoint))
+      (case= (. CompilationEffect none)
+        visible
+      )
+      (default
+        (- visible (/and/ visible (. CompilationEffect no-suspend)))
+      )
+    )
+  )
+  (let names (call (of ArrayBuilder String)))
+  (for (in index (..< 0 5))
+    (let (tuple effect name)
+      (match index
+        (case= 0
+          (tuple (. CompilationEffect gc-free) "no-gc")
+        )
+        (case= 1
+          (tuple (. CompilationEffect no-heap) "no-heap")
+        )
+        (case= 2
+          (tuple (. CompilationEffect no-safepoint) "no-safepoint")
+        )
+        (case= 3
+          (tuple (. CompilationEffect no-probe-safepoint) "no-probe-safepoint")
+        )
+        (default
+          (tuple (. CompilationEffect no-suspend) "no-suspend")
+        )
+      )
+    )
+    (if (!= (/and/ visible effect) (. CompilationEffect none))
+      (call (. names append) name)
+    )
+  )
+  (return (call (. "," join) (call (. names finish-immutable))))
+)
+
+(extend + ASTProbeStatement
+  (fn-expr + xml XML :get
+    (<> XML (text: "ProbeStatement") (:object? object-name) (:key? (?. key text))
+      object-child
+      (call child-xml body)
+    )
+    (where
+      (lazy (tuple object-name object-child) (call probe-object object))
+    )
+  )
+)
+
+(extend + ASTDoFinallyBlock
+  (fn-expr + xml XML :get
+    (<> XML (text: "Defer")
+      (call child-xml body)
+    )
+  )
+)
+
+(extend + ASTDoTaskBlock
+  (fn-expr + xml XML :get
+    (<> XML (text: "DoTask") (:parallel? is-parallel)
+      (if (== scheduling .task-scheduling-priority)
+        (:scheduling "priority")
+      )
+      (if large-stack
+        (:stack "large")
+      )
+      (:detached? detached)
+      (if worker-xml
+        (<> XML (text: "worker")
+          worker-xml
+        )
+      )
+      (call child-xml body)
+      (call child-xmls catchers)
+    )
+    (where
+      (lazy worker-xml (call child-xml worker))
+    )
+  )
+)
+
+(extend + ASTUseBlock
+  (fn-expr + xml XML :get
+    (<> XML (text: "UseBlock")
+      (call child-xml subject)
+      (call child-xml body)
+    )
+  )
+)
+
+(extend + ASTStackLocalBindingBlock
+  (fn-expr + xml XML :get
+    (<> XML (text: "StackLocalBinding") (:name (. name text))
+      (call child-xml value)
+      (call child-xml body)
+    )
+  )
+)
+
+(extend + ASTLoop
+  (fn-expr + xml XML :get
+    (<> XML (value: (if-expr is-subscriber "On" "In"))
+      (call child-xml pattern)
+      (call child-xml container)
+      (call child-xml clause)
+      (call child-xml next)
+    )
+  )
+)
+
+(extend + ASTReturn
+  (fn-expr + xml XML :get
+    (<> XML (text: "Return")
+      (call child-xml expr)
+    )
+  )
+)
+
+(extend + ASTReturnIfTrue
+  (fn-expr + xml XML :get
+    (<> XML (text: "ReturnIfTrue")
+      (call child-xml expr)
+      (call child-xml condition)
+    )
+  )
+)
+
+(extend + ASTYield
+  (fn-expr + xml XML :get
+    (<> XML (text: "Yield") (:does-yield-all?)
+      (call child-xml expr)
+    )
+  )
+)
+
+(extend + ASTBreak
+  (fn-expr + xml XML :get
+    (<> XML (text: "Break"))
+  )
+)
+
+(extend + ASTContinue
+  (fn-expr + xml XML :get
+    (<> XML (text: "Continue"))
+  )
+)
+
+(extend + ASTCatcher
+  (fn-expr + xml XML :get
+    (<> XML (text: "Catch")
+      (call child-xml type)
+      (call child-xmls previous)
+      (call child-xml body)
+    )
+  )
+)
+
+(extend + ASTUnaryExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "UnaryExpression") (:operator op)
+      (call child-xml operand)
+    )
+  )
+)
+
+(extend + ASTHeldExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "Held")
+      (call child-xml expr)
+    )
+  )
+)
+
+(extend + ASTHeldRead
+  (fn-expr + xml XML :get
+    (<> XML (text: "HeldRead"))
+  )
+)
+
+(extend + ASTBinaryExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "BinaryExpression") (:operator)
+      (call child-xml lhs)
+      (call child-xml rhs)
+    )
+    (where
+      (lazy operator
+        (match op
+          (case= .or-op
+            "||"
+          )
+          (case= .and-op
+            "&&"
+          )
+          (case= .bitwise-or-op
+            "or"
+          )
+          (case= .bitwise-and-op
+            "and"
+          )
+          (case= .bitwise-xor-op
+            "xor"
+          )
+          (default
+            (str op)
+          )
+        )
+      )
+    )
+  )
+)
+
+(extend + ASTCastExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "CastExpression")
+      (call child-xml lhs)
+      (call child-xml rhs)
+    )
+  )
+)
+
+(extend + ASTCallExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "CallExpression") (:curried? is-curried)
+      (call child-xml callable)
+      (if (. params count)
+        (<> XML (text: "params")
+          (call child-xmls params)
+        )
+      )
+      (call child-xmls args)
+    )
+  )
+)
+
+(extend + ASTRangeExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "RangeExpression") (:operator op)
+      (call child-xml left)
+      (call child-xml right)
+      (call child-xml increment)
+    )
+  )
+)
+
+(extend + ASTGetExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "Get") (:name (. name text)) (:tracked? is-tracked) (:optional? is-optional) (:loop? is-loop)
+      (call child-xml object)
+    )
+  )
+)
+
+(extend + ASTStyleReadExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "StyleRead") (:name (. name text)) (:optional? is-optional)
+      (call child-xml object)
+    )
+  )
+)
+
+(extend + ASTStylePropertyExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "StyleProperty") (:name (. name text)) (:component? (?. component text)))
+  )
+)
+
+(extend + ASTMarkupReadExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "MarkupRead") (:name (. name text)) (:optional? is-optional)
+      (call child-xml object)
+    )
+  )
+)
+
+(extend + ASTIndexExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "Index") (:is-optional?)
+      (call child-xml object)
+      (call child-xml index)
+    )
+  )
+)
+
+(extend + ASTMatchExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "Match") (:is-optional?)
+      (call child-xml subject)
+      (if helper
+        (<> XML (text: "PatternHelper")
+          (call child-xml helper)
+        )
+      )
+      (call child-xml body)
+    )
+  )
+)
+
+(extend + ASTPatternHelper
+  (fn-expr + xml XML :get
+    (<> XML (text: "PatternHelper")
+      (call child-xml helper)
+    )
+  )
+)
+
+(extend + ASTCatchOptionalExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "CatchOptional")
+      (call child-xml body)
+    )
+  )
+)
+
+(extend + ASTCatchExpression
+  (fn-expr + xml XML :get
+    (match is-raw-result
+      (case= true
+        (<> XML (text: "CatchBlock")
+          (entry "rawResult" true)
+          (call child-xml body)
+          (call child-xmls catchers)
+        )
+      )
+      (default
+        (<> XML (text: "CatchBlock")
+          (call child-xml body)
+          (call child-xmls catchers)
+        )
+      )
+    )
+  )
+)
+
+(extend + ASTTuple
+  (fn-expr + xml XML :get
+    (<> XML (text: "Tuple")
+      (call child-xmls items)
+    )
+  )
+)
+
+(extend + ASTList
+  (fn-expr + xml XML :get
+    (<> XML (text: "List")
+      (call child-xmls items)
+    )
+  )
+)
+
+(extend + ASTIterableExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "Iterable")
+      (call child-xml expr)
+    )
+  )
+)
+
+(extend + ASTIteratorExpression
+  (fn-expr + xml XML :get
+    (<> XML (text: "Iterator")
+      (call child-xml loop)
+      (call child-xml body)
+      (call child-xml next)
+    )
+  )
+)
+
+(extend + ASTOptionalChain
+  (fn-expr + xml XML :get
+    (<> XML (text: "OptionalChain")
+      (call child-xml expr)
+    )
+  )
+)
+
+(extend + ASTArgument
+  (fn-expr + xml XML :get
+    (<> XML (text: "Argument") (:name? (?. name text)) (:optional? is-optional)
+      (call child-xml expr)
+    )
+  )
+)
+
+(extend + ASTArgumentDecl
+  (fn-expr + xml XML :get
+    (<> XML (text: "ArgumentDecl") (:variadic? is-variadic)
+      (call child-xml pattern)
+      (call child-xml default-value)
+    )
+  )
+)
+
+(extend + ASTImport
+  (fn-expr + xml XML :get
+    (<> XML (text: "Import")
+      (entry "path" (call (. "/" join) (in (. each text) (call atoms-in paths))))
+      (:export? is-export)
+    )
+  )
+)
+
+(extend + ASTAssign
+  (fn-expr + xml XML :get
+    (<> XML (text: "AssignmentExpression") (:op)
+      (call child-xml lhs)
+      (call child-xml rhs)
+    )
+  )
+)
+
+(extend + ASTClause
+  (fn-expr + xml XML :get
+    (match op
+      (case .when-clause
+        (<> XML (text: "When")
+          (call child-xml expr)
+          (call child-xml next)
+        )
+      )
+      (case .while-clause
+        (<> XML (text: "While")
+          (call child-xml expr)
+          (call child-xml next)
+        )
+      )
+      (case .until-clause
+        (<> XML (text: "Until")
+          (call child-xml expr)
+          (call child-xml next)
+        )
+      )
+      (default
+        (<> XML (text: "Clause") (:op)
+          (call child-xml expr)
+          (call child-xml next)
+        )
+      )
+    )
+  )
+)
+
+(extend + ASTStreamMatch
+  (fn-expr + xml XML :get
+    (<> XML (text: "StreamMatch")
+      (call child-xml pattern)
+      (if helper
+        (<> XML (text: "PatternHelper")
+          (call child-xml helper)
+        )
+      )
+    )
+  )
+)
+
+(extend + ASTStreamAnd
+  (fn-expr + xml XML :get
+    (<> XML (text: "StreamAnd")
+      (call child-xml left)
+      (call child-xml right)
+    )
+  )
+)
+
+(extend + ASTStreamOr
+  (fn-expr + xml XML :get
+    (<> XML (text: "StreamOr")
+      (call child-xml left)
+      (call child-xml right)
+    )
+  )
+)
+
+(extend + ASTStreamTransform
+  (fn-expr + xml XML :get
+    (<> XML (text: "StreamTransform") (:rollback?)
+      (call child-xml pattern)
+      (call child-xml right)
+    )
+  )
+)
+
+(extend + ASTStreamPanic
+  (fn-expr + xml XML :get
+    (<> XML (text: "StreamPanic")
+      (call child-xml pattern)
+    )
+  )
+)
+
+(extend + ASTStreamType
+  (fn-expr + xml XML :get
+    (<> XML (text: "StreamType")
+      (call child-xml type)
+    )
+  )
+)
+
+(extend + ASTStreamEquality
+  (fn-expr + xml XML :get
+    (<> XML (text: "StreamEquality")
+      (call child-xml value)
+    )
+  )
+)
+
+(extend + ASTStreamLength
+  (fn-expr + xml XML :get
+    (<> XML (text: "StreamLength")
+      (call child-xml operand)
+      (call child-xml min)
+      (call child-xml max)
+    )
+  )
+)
+
+(extend + ASTStreamUnary
+  (fn-expr + xml XML :get
+    (<> XML (text: "UnaryStream") (:op)
+      (call child-xml operand)
+    )
+  )
+)
+
+(extend + ASTStreamCall
+  (fn-expr + xml XML :get
+    (<> XML (text: "StreamCall") (:name (. name text))
+      (if (. params count)
+        (<> XML (text: "params")
+          (call child-xmls params)
+        )
+      )
+      (if (. args count)
+        (<> XML (text: "args")
+          (call child-xmls args)
+        )
+      )
+      (if (. collector-mappings count)
+        (<> XML (text: "collectorMappings")
+          (call child-xmls collector-mappings)
+        )
+      )
+    )
+  )
+)
+
+(extend + ASTStreamCallExpressionArgument
+  (fn-expr + xml XML :get
+    (!! (call child-xml expression))
+  )
+)
+
+(extend + ASTStreamCollectorMapping
+  (fn-expr + xml XML :get
+    (<> XML (text: "CollectorMapping") (:callee? (?. callee text)) (:caller (. caller text)))
+  )
+)
+
+(extend + ASTStreamPredicate
+  (fn-expr + xml XML :get
+    (<> XML (text: "StreamPredicate")
+      (call child-xml predicate)
+    )
+  )
+)
+
+(extend + ASTStreamCapture
+  (fn-expr + xml XML :get
+    (<> XML (text: "StreamCapture")
+      (if accumulating
+        (entry "accumulating" true)
+      )
+      (call child-xml name)
+      (call child-xml pattern)
+    )
+  )
+)
+
+(extend + ASTStreamCharRange
+  (fn-expr + xml XML :get
+    (<> XML (text: "StreamCharRange")
+      (call child-xml first)
+      (call child-xml last)
+    )
+  )
+)
+
+(extend + ASTStreamString
+  (fn-expr + xml XML :get
+    (<> XML (text: "StreamString") (:text))
+  )
+)
+
+(extend + ASTStreamAny
+  (fn-expr + xml XML :get
+    (<> XML (text: "StreamAny"))
+  )
+)
+
+(extend + ASTProbe
+  (fn-expr + xml XML :get
+    (<> XML (text: "Probe") (:object? object-name) (:name? probe-name) (:key? (?. key text))
+      object-child
+      (call child-xmls content)
+    )
+    (where
+      (lazy probe-name (only-if (. name text) (if (and name (!= name key)))))
+      (lazy (tuple object-name object-child) (call probe-object object))
+    )
+  )
+)
+
+(extend + ASTProbeGroup
+  (fn-expr + xml XML :get
+    (<> XML (text: "ProbeGroup") (:begin? is-begin) (:end? is-end) (:key? (?. key text)) (:data? is-data) (:object? object-name)
+      object-child
+      (call child-xmls content)
+    )
+    (where
+      (lazy (tuple object-name object-child) (call probe-object object))
+    )
+  )
+)
+
+(extend + ASTProbeAssign
+  (fn-expr + xml XML :get
+    (<> XML (text: "ProbeAssign") (:key (. key text)) (:object? object-name)
+      object-child
+      (call child-xml content)
+    )
+    (where
+      (lazy (tuple object-name object-child) (call probe-object object))
+    )
+  )
+)
+
+(extend + ASTProbeCounter
+  (fn-expr + xml XML :get
+    (<> XML (text: "ProbeCounter") (:key (. key text)) (:object? object-name)
+      object-child
+      (call child-xml delta)
+    )
+    (where
+      (lazy (tuple object-name object-child) (call probe-object object))
+    )
+  )
+)
+
+(extend + ASTProbeSnapshot
+  (fn-expr + xml XML :get
+    (<> XML (text: "ProbeSnapshot")
+      (call child-xml content)
+    )
+  )
+)
+
+(extend + ASTProbePreview
+  (fn-expr + xml XML :get
+    (<> XML (text: "ProbePreview")
+      (call child-xml content)
+    )
+  )
+)
+
+(extend + ASTParamConstraint
+  (fn-expr + xml XML :get
+    (<> XML (text: "TypeConstraint")
+      (:op
+        (match op
+          (case .match-convertible
+            "convertible"
+          )
+          (case .match-similar
+            "similar"
+          )
+          (case .match-exactly
+            "exactly"
+          )
+        )
+      )
+      (call child-xml left)
+      (call child-xml right)
+    )
+  )
+)
+
+(extend + ASTParamAssignment
+  (fn-expr + xml XML :get
+    (<> XML (text: "ConstAssignment") (:specificity? is-specificity)
+      (call child-xml left)
+      (call child-xml right)
+    )
+  )
+)

@@ -1,0 +1,640 @@
+(import ./array)
+(import ./core)
+(import ./error)
+(import ./number)
+(import ./range)
+(import ./stream)
+(import /BxCore/BxCore.h)
+(import /BxCore/BxString.h)
+(import /string.h)
+(blank)
+(type-line + Binary (is String))
+(type-line + UnitString (is String))
+(type-line + Abbreviation (is String))
+(type-line _ ResultCharIndex (is (tuple (: byte-count I32) (: char Char))))
+(type-line _ ResultDecodeUTF8 (is (tuple (: codepoints (of CPointer Char)) (: codepoints-decoded Size) (: bytes-decoded Size))))
+(type-line _ ResultDisplayWidth (is (tuple (: widths (of CPointer U8)) (: display-width Size) (: codepoints-decoded Size) (: bytes-decoded Size) (: flags Size))))
+
+(type + String
+  (implements (of CursorIterable Char Size))
+  (implements (of Indexable Char))
+  (fn-do + This _
+    (return "")
+  )
+  (fn-expr + initial-iterator-state Size :get
+    (before
+      (probe-count string-iteration.passes-started)
+    )
+    0
+  )
+  (fn-do + next-iterator (tuple Size (? Char))
+    (param byte-offset Size)
+    (let none (? Char))
+    (if (>= byte-offset size)
+      (probe-count string-iteration.passes-completed)
+      (return (tuple byte-offset none))
+    )
+    (blank)
+    (let result ResultCharIndex)
+    (let current (+ (as this (of CPointer Char8)) byte-offset))
+    (probe-count string-iteration.next-char-calls)
+    (let status (call C:brixStringGetNextChar current &result))
+    (if status
+      (probe-count string-iteration.invalid-results)
+      (throw (call Panic "Unable to read UTF8 content"))
+    )
+    (blank)
+    (if (<= (. result byte-count) 0)
+      (probe-count string-iteration.zero-width-results)
+      (throw (call Panic "UTF8 decoder did not advance"))
+    )
+    (blank)
+    (probe-count string-iteration.codepoints-yielded)
+    (probe-count string-iteration.bytes-consumed (. result byte-count))
+    (return (tuple (as (+ byte-offset (. result byte-count)) Size) (. result char)))
+  )
+  (fn-to-do + (of Iterable Char)
+    (for (in char this)
+      (yield char)
+    )
+  )
+  (fn-to-expr + Char
+    ([] this 0)
+  )
+  (fn-to-expr + ([] Char)
+    codepoints
+  )
+  (fn-to-expr + ([] Byte)
+    (call (of Array Byte) this)
+  )
+  (fn-expr + length Size :get @inline
+    (before
+      (probe-count string-iteration.length-calls)
+    )
+    ([] (as (- (. (as this Pointer) address) 8) (of CPointer U32)) 0)
+  )
+  (fn-expr + (index-get this (param index Position)) _
+    ([] this normal)
+    (where
+      (lazy normal (call (. index normalize) this))
+    )
+  )
+  (fn-do + (index-get this (param index Index)) _
+    (let result ResultCharIndex)
+    (probe-count string-iteration.indexed-calls)
+    (call C:brixStringGetCharAtIndex this index &result
+      (block
+        (throw (call Panic "Unable to read UTF8 content") (if (== it 1)))
+        (throw (call OutOfBoundsError (str "Index out of bounds (" index " / " len ")")) (if (== it 2)))
+      )
+    )
+    (blank)
+    (return (. result char))
+    (blank)
+    (lazy len length)
+  )
+  (fn-expr + (index-get this (param range (of Range Position))) _
+    ([] this normal)
+    (where
+      (lazy normal (call (. range normalize) this))
+    )
+  )
+  (fn-expr + (index-get this (param range (of Range Index))) _
+    (before
+      (throw (call Panic "Only increments of 1 are currently supported") (if (!= (. normal increment) 1)))
+      (throw (call OutOfBoundsError (str "Range out of bounds (" out-index " / " len ")")) (if (or (> (as start UInt) (as len UInt)) (> end len) (< end start))))
+    )
+    (as (call C:brixStringSlice this start end) String)
+    (where
+      (lazy normal (call (. range forward)))
+      (lazy start (. normal start))
+      (lazy end (. normal end))
+      (lazy out-index (if-expr (> end 0) (- end 1) end))
+      (lazy len length)
+    )
+  )
+  (fn-expr + size Size :get @inline
+    (as ([] (as (- (. (as this Pointer) address) 16) (of CPointer U64)) 0) Size)
+  )
+  (fn-expr + display-width Size :get
+    (call C:brixStringGetDisplayWidth this)
+  )
+  (fn-do + codepoints ([] Char) :get
+    (let result ResultDecodeUTF8)
+    (call C:brixStringToUtf8Codepoints this &result
+      (block
+        (throw (call Panic "Unable to read UTF8 content") (if it))
+      )
+    )
+    (blank)
+    (return (call (of Array Char) (. result codepoints) (. result codepoints-decoded)))
+  )
+  (fn-expr + validated-length Size :get
+    (before
+      (throw (call Panic "Unable to read UTF8 content") (if (== (/and/ (call C:brixStringGetFlags this) 2) 0)))
+    )
+    length
+  )
+  (fn-expr + copied String :get
+    (call C:brixStringCopy this)
+  )
+  (fn-expr + decomposed String :get
+    (call C:brixStringDecompose this)
+  )
+  (fn-expr + normalized String :get
+    (call C:brixStringNormalize this)
+  )
+  (fn-expr + lowercased String :get
+    (call C:brixStringToLowercase this)
+  )
+  (fn-expr + uppercased String :get
+    (call C:brixStringToUppercase this)
+  )
+  (fn-expr + (infix this == (param other String)) _
+    (call C:brixStringEquals this other)
+  )
+  (fn-expr + (infix this > (param other String)) _
+    (> (call C:brixStringCompare this other) 0)
+  )
+  (fn-expr + (infix this < (param other String)) _
+    (< (call C:brixStringCompare this other) 0)
+  )
+  (fn-expr + (infix this + (param other String)) _
+    (as (call C:brixStringConcat this other) String)
+  )
+  (fn-expr + (infix this + (param other Char)) _
+    (+ this (as other String))
+  )
+  (fn-expr + (infix this ++ (param other String)) _
+    (as (call C:brixStringConcat this other) String)
+  )
+  (fn-expr + (infix this * (param n Int)) _
+    (call C:brixStringRepeat this n)
+  )
+  (fn-expr + (index-set this (param index Index) (param other String)) _
+    (before
+      (throw (call OutOfBoundsError (str "Index out of bounds (" index " / " length ")")) (if (>= (as index UInt) (as length UInt))))
+    )
+    (++ ([] this (... _ index)) other ([] this (... (+ index 1))))
+  )
+  (fn-expr + (index-set this (param index Position) (param other String)) _
+    (before
+      (throw (call OutOfBoundsError (str "Index out of bounds (" normal " / " length ")")) (if (>= (as normal UInt) (as length UInt))))
+    )
+    (++ ([] this (... _ normal)) other ([] this (... (+ normal 1))))
+    (where
+      (lazy normal (call (. index normalize) this))
+    )
+  )
+  (fn-expr + (index-set this (param index Index) (param other Char)) _
+    (before
+      (throw (call OutOfBoundsError (str "Index out of bounds (" index " / " length ")")) (if (>= (as index UInt) (as length UInt))))
+    )
+    (++ ([] this (... _ index)) (str other) ([] this (... (+ index 1))))
+  )
+  (fn-expr + (index-set this (param index Position) (param other Char)) _
+    (before
+      (throw (call OutOfBoundsError (str "Index out of bounds (" normal " / " length ")")) (if (>= (as normal UInt) (as length UInt))))
+    )
+    (++ ([] this (... _ normal)) (str other) ([] this (... (+ normal 1))))
+    (where
+      (lazy normal (call (. index normalize) this))
+    )
+  )
+  (fn-expr + (index-set this (param range (of Range Position)) (param other String)) _
+    (++ ([] this (... _ (. normal start))) other ([] this (... (. normal end))))
+    (where
+      (lazy normal (call (. (call (. range normalize) this) forward)))
+    )
+  )
+  (fn-expr + (index-set this (param range (of Range Index)) (param other String)) _
+    (++ ([] this (... _ (. normal start))) other ([] this (... (. normal end))))
+    (where
+      (lazy normal (call (. range forward)))
+    )
+  )
+  (fn-expr + (prefix ! this) _
+    (call C:brixStringIsEmpty this)
+  )
+  (fn-expr + (of this T) _
+    (param stream (stream T))
+    (call join stream)
+  )
+  (fn-do + find _
+    (param find-str String)
+    (param start _ (= 0))
+    (param is-reverse _ (= false))
+    (let buf I32)
+    (let found (call C:brixStringFind this find-str is-reverse start &buf))
+    (return (only-if buf (if found)))
+  )
+  (fn-expr + find-reverse _
+    (param find-str String)
+    (param start _ (= 0))
+    (call find find-str start true)
+  )
+  (fn-expr + starts-with _
+    (param str String)
+    (== (call find str) 0)
+  )
+  (fn-expr + ends-with _
+    (param str String)
+    (== (call find-reverse str) (- length (. str length)))
+  )
+  (fn-do + trim _
+    (if (== length 0)
+      (return "")
+    )
+    (blank)
+    (let i1 Index 0)
+    (let i2 Index (- length 1))
+    (while (and (<= i1 i2) (call is-whitespace ([] this i1)))
+      (+= i1 1)
+    )
+    (if (> i1 i2)
+      (return "")
+    )
+    (blank)
+    (while (and (> i2 i1) (call is-whitespace ([] this i2)))
+      (-= i2 1)
+    )
+    (blank)
+    (return ([] this (.. i1 i2)))
+  )
+  (fn-expr + truncate _
+    (param trunc-len Size)
+    (case? (> length trunc-len)
+      (++ ([] this (..< 0 trunc-len)) "...")
+    )
+    (default
+      this
+    )
+  )
+  (fn-do + split _
+    (param delim String)
+    (throw (call Panic "String split delimiter must not be empty") (if (== (. delim size) 0)))
+    (blank)
+    (let start Index 0)
+    (let dl (. delim size))
+    (let buf (call byte-view this))
+    (while true
+      (let index I32)
+      (let found (call C:brixStringFindBytes this delim false start &index))
+      (blank)
+      (if (not found)
+        (yield (call (. ([] buf (... start)) slice-string)))
+        (break)
+        (else
+          (yield (call (. ([] buf (..< start index)) slice-string)))
+          (= start (+ index dl))
+        )
+      )
+    )
+  )
+  (fn-do + (of join Item) String
+    (param stream (stream Item))
+    (let first (? String) null)
+    (let buf (? ([] Byte)) null)
+    (let cursor 0)
+    (let delim-size size)
+    (blank)
+    (for (in item stream)
+      (let str (as item String))
+      (let lead first)
+      (if (not lead)
+        (= first str)
+        (continue)
+      )
+      (blank)
+      (let str-size (. str size))
+      (let needed (+ cursor delim-size str-size))
+      (let current buf)
+      (if (not current)
+        (let started ([] Byte (* (+ (. lead size) delim-size str-size) 2)))
+        (= ([] started (..< 0 (. lead size))) (call byte-view lead))
+        (= cursor (. lead size))
+        (= buf started)
+        (else-if (> needed (. current size))
+          (let grown (* (. current size) 2))
+          (= buf (call (. current resize) (if-expr (< grown needed) needed grown)))
+        )
+      )
+      (blank)
+      (let target (!! buf))
+      (= ([] target (..< cursor (+ cursor delim-size))) (call byte-view this))
+      (+= cursor delim-size)
+      (= ([] target (..< cursor (+ cursor str-size))) (call byte-view str))
+      (+= cursor str-size)
+    )
+    (blank)
+    (let lead first)
+    (return-if "" (if (not lead)))
+    (let joined buf)
+    (return-if lead (if (not joined)))
+    (return (call (. joined slice-string) (..< 0 cursor)))
+  )
+)
+
+(type + Hex (is String)
+  (fn-to-expr + Char
+    (as (call C:strtol this null 16) Char)
+  )
+  (fn-to-do + ([] Byte)
+    (throw (call Panic "Hex byte arrays require an even digit count") (if (!= (% digit-size 2) 0)))
+    (blank)
+    (let output ([] Byte (/ digit-size 2)))
+    (let read-index prefix-size)
+    (let write-index 0)
+    (while (< read-index length)
+      (let hi (call hex-byte-value ([] this read-index)))
+      (let lo (call hex-byte-value ([] this (+ read-index 1))))
+      (= ([] output write-index) (/or/ (/lshift/ hi 4) lo))
+      (+= read-index 2)
+      (+= write-index 1)
+    )
+    (return output)
+    (blank)
+    (lazy prefix-size
+      (block
+        (case? (and (>= length 2) (== ([] this 0) '0') (or (== ([] this 1) 'x') (== ([] this 1) 'X')))
+          2
+        )
+        (default
+          0
+        )
+      )
+    )
+    (lazy digit-size (- length prefix-size))
+  )
+  (fn-to-expr + Char8
+    (as (call C:strtol this null 16) Char8)
+  )
+  (fn-to-expr + U8
+    (as (call C:strtol this null 16) U8)
+  )
+  (fn-to-expr + U16
+    (as (call C:strtol this null 16) U16)
+  )
+  (fn-to-expr + U32
+    (as (call C:strtol this null 16) U32)
+  )
+  (fn-to-expr + U64
+    (call C:strtol this null 16)
+  )
+)
+
+(type + Base64 (is String)
+  (fn-to-do + ([] Byte)
+    (return
+      (call decode-base64 this
+        (block
+          (on-error (: err SyntaxError)
+            (throw (call Panic (. err message)))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-do + decode-base64 ([] Byte) (?! SyntaxError)
+  (param text String)
+  (throw (call SyntaxError "Invalid Base64 length") (if (!= (% (. text length) 4) 0)))
+  (blank)
+  (let padding Size 0)
+  (if (. text length)
+    (if (== ([] text (- (. text length) 1)) '=')
+      (+= padding 1)
+      (if (== ([] text (- (. text length) 2)) '=')
+        (+= padding 1)
+      )
+    )
+  )
+  (blank)
+  (let output ([] Byte (- (* (/ (. text length) 4) 3) padding)))
+  (let read-index 0)
+  (let write-index 0)
+  (while (< read-index (. text length))
+    (let final-block (== (+ read-index 4) (. text length)))
+    (let c0 ([] text read-index))
+    (let c1 ([] text (+ read-index 1)))
+    (let c2 ([] text (+ read-index 2)))
+    (let c3 ([] text (+ read-index 3)))
+    (throw (call SyntaxError "Invalid Base64 padding") (if (or (== c0 '=') (== c1 '='))))
+    (blank)
+    (let v0 (call base64-byte-value c0))
+    (let v1 (call base64-byte-value c1))
+    (if (== c2 '=')
+      (throw (call SyntaxError "Invalid Base64 padding") (if (or (!= c3 '=') (not final-block))))
+      (= ([] output write-index) (as (/or/ (/lshift/ v0 2) (/rshift/ v1 4)) Byte))
+      (+= write-index 1)
+      (else-if (== c3 '=')
+        (throw (call SyntaxError "Invalid Base64 padding") (if (not final-block)))
+        (let v2 (call base64-byte-value c2))
+        (= ([] output write-index) (as (/or/ (/lshift/ v0 2) (/rshift/ v1 4)) Byte))
+        (= ([] output (+ write-index 1)) (as (/or/ (/lshift/ (/and/ v1 0x0f) 4) (/rshift/ v2 2)) Byte))
+        (+= write-index 2)
+      )
+      (else
+        (let v2 (call base64-byte-value c2))
+        (let v3 (call base64-byte-value c3))
+        (let value (/or/ (/lshift/ v0 18) (/lshift/ v1 12) (/lshift/ v2 6) v3))
+        (= ([] output write-index) (as (/rshift/ value 16) Byte))
+        (= ([] output (+ write-index 1)) (as (/rshift/ value 8) Byte))
+        (= ([] output (+ write-index 2)) (as value Byte))
+        (+= write-index 3)
+      )
+    )
+    (blank)
+    (+= read-index 4)
+  )
+  (return output)
+)
+
+(fn-do + decode-utf8 String (?! SyntaxError)
+  (param data ([] Byte))
+  (return-if "" (if (== (. data size) 0)))
+  (let made (call C:brixStringSliceUtf8 data 0 (. data size)))
+  (throw (call SyntaxError "Invalid UTF-8") (if (== (. (as made Pointer) address) 0)))
+  (return (as made String))
+)
+
+(type + UTF8Category (is U32)
+  (variant none)
+  (variant letter-uppercase)
+  (variant letter-lowercase)
+  (variant letter-titlecase)
+  (variant letter-modifier)
+  (variant letter-other)
+  (variant mark-nonspacing)
+  (variant mark-spacing-combining)
+  (variant mark-enclosing)
+  (variant number-decimal)
+  (variant number-letter)
+  (variant number-other)
+  (variant punctuation-connector)
+  (variant punctuation-dash)
+  (variant punctuation-open)
+  (variant punctuation-close)
+  (variant punctuation-initial-quote)
+  (variant punctuation-final-quote)
+  (variant punctuation-other)
+  (variant symbol-math)
+  (variant symbol-currency)
+  (variant symbol-modifier)
+  (variant symbol-other)
+  (variant separator-space)
+  (variant separator-line)
+  (variant separator-paragraph)
+  (variant other-control)
+  (variant other-format)
+  (variant other-surrogate)
+  (variant other-private)
+)
+
+(type + DisplayText (is (tuple (: text String) (: display-width Size) (: codepoint-count Size) (: widths ([] U8))))
+  (fn-do + This _
+    (param source String)
+    (let result ResultDisplayWidth)
+    (call C:brixStringMeasureDisplayWidth source &result
+      (block
+        (throw (call Panic "Unable to read UTF8 content") (if it))
+      )
+    )
+    (blank)
+    (let widths ([] U8 0))
+    (if (!= (. result flags) 0)
+      (= widths (call (of Array U8) (. result widths) (. result codepoints-decoded)))
+    )
+    (blank)
+    (return (call This source (. result display-width) (. result codepoints-decoded) widths))
+  )
+  (fn-expr + is-single-cell _ :get @inline
+    (== (. widths size) 0)
+  )
+  (fn-expr + (infix this + (param other DisplayText)) _
+    (call DisplayText joined-text joined-width joined-count combined-widths)
+    (where
+      (lazy joined-text (++ text (. other text)))
+      (lazy joined-width (+ display-width (. other display-width)))
+      (lazy joined-count (+ codepoint-count (. other codepoint-count)))
+      (lazy combined-widths
+        (block
+          (case? (and is-single-cell (. other is-single-cell))
+            ([] U8 0)
+          )
+          (default
+            (call combine-display-widths this other)
+          )
+        )
+      )
+    )
+  )
+  (fn-expr + width-at _ @inline
+    (param index Index)
+    (case? is-single-cell
+      1
+    )
+    (default
+      (as ([] widths index) Size)
+    )
+  )
+)
+
+(fn-expr + (of join Item) _
+  (param stream (stream Item))
+  (param delimiter _ (= ""))
+  (param has-tail _ (= false))
+  (case? has-tail
+    (++ joined delimiter)
+  )
+  (default
+    joined
+  )
+  (where
+    (lazy joined (call (. delimiter join) stream))
+  )
+)
+
+(fn-do + (of decode-utf8-buffer Token) _
+  (param data (of ImmutableArray Byte))
+  (param size Size)
+  (param output ([] Token))
+  (let result ResultDecodeUTF8)
+  (call C:brixStringSliceToUtf8Codepoints data size output (. output size) &result
+    (block
+      (throw (call Panic "Unable to read UTF8 content") (if (== it 1u8)))
+    )
+  )
+  (blank)
+  (return (tuple (. result codepoints-decoded) (. result bytes-decoded)))
+)
+
+(fn-expr + utf8-is-continuation Bool
+  (param byte Byte)
+  (== (/and/ byte 192) 128)
+)
+
+(fn-expr + byte-view (of ImmutableArray Byte) @inline
+  (param text String)
+  (. (call (of Array Byte) text (. text size)) immutable)
+)
+
+(fn-do _ combine-display-widths _
+  (param left DisplayText)
+  (param right DisplayText)
+  (let result ([] U8 (+ (. left codepoint-count) (. right codepoint-count))))
+  (call copy-display-widths result 0 left)
+  (call copy-display-widths result (. left codepoint-count) right)
+  (return result)
+)
+
+(fn-do _ copy-display-widths _
+  (param target ([] U8))
+  (param offset Size)
+  (param text DisplayText)
+  (if (. text is-single-cell)
+    (= ([] target (..< offset (+ offset (. text codepoint-count)))) 1)
+    (return)
+  )
+  (= ([] target (..< offset (+ offset (. text codepoint-count)))) (. text widths))
+)
+
+(fn-expr _ hex-byte-value _
+  (param char Char)
+  (case? (and (>= char '0') (<= char '9'))
+    (as (- char '0') Byte)
+  )
+  (case? (and (>= char 'a') (<= char 'f'))
+    (as (+ (- char 'a') 10) Byte)
+  )
+  (case? (and (>= char 'A') (<= char 'F'))
+    (as (+ (- char 'A') 10) Byte)
+  )
+  (throw (call Panic "Invalid hex digit"))
+)
+
+(fn-expr _ base64-byte-value U32 (?! SyntaxError)
+  (param char Char)
+  (case? (and (>= char 'A') (<= char 'Z'))
+    (- char 'A')
+  )
+  (case? (and (>= char 'a') (<= char 'z'))
+    (+ (- char 'a') 26)
+  )
+  (case? (and (>= char '0') (<= char '9'))
+    (+ (- char '0') 52)
+  )
+  (case? (== char '+')
+    62
+  )
+  (case? (== char '/')
+    63
+  )
+  (throw (call SyntaxError "Invalid Base64 digit"))
+)
+
+(fn-expr _ is-whitespace _
+  (param c Char)
+  (or (== c (char " ")) (== c (char "\t")) (== c (char "\r")) (== c (char "\n")))
+)

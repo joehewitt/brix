@@ -1,0 +1,183 @@
+(import ./media)
+(import ./model)
+(import ./tasks)
+(import /os/file)
+(import /os/path)
+(blank)
+(prop + ai-image-tool-name _ (= "generate_image"))
+(prop + ai-full-size-tool-name _ (= "full_size_image"))
+(prop + ai-view-tool-name _ (= "view_image"))
+(prop + ai-reply-argument _ (= "reply"))
+(prop _ ai-image-owner _ (= "chat-images"))
+
+(type + AIImageStore
+  (prop + directory Path)
+  (blank)
+  (prop _ last-number Size)
+  (fn-do + This _
+    (param directory _)
+  )
+  (fn-expr + id (? String)
+    (param image AIImage)
+    (match? (. image file source)
+      (case (all (: stored AIProviderFileSource) ({} (== (. it provider-id) ai-image-owner)))
+        (. stored file-id)
+      )
+      (case (: kept AIPathSource)
+        (call ai-kept-image-id directory (call Path (. kept path) 0))
+      )
+    )
+  )
+  (fn-expr + referenced AIImage
+    (param image AIImage)
+    (if-expr found (call AIImage (call AIFile (call AIProviderFileSource ai-image-owner found) (. image file mime-type)) (. image width) (. image height) (. image source-id)) image)
+    (where
+      (lazy found (call id image))
+    )
+  )
+  (fn-do + located AIImage
+    (param image AIImage)
+    (let found (call id image))
+    (let file (only-if (call path found) (if found)))
+    (return-if image (if (not file)))
+    (return
+      (call AIImage
+        (block
+          (arg (call AIFile (call AIPathSource (str file)) (. image file mime-type)))
+          (arg (. image width))
+          (arg (. image height))
+          (arg (. image source-id))
+        )
+      )
+    )
+  )
+  (fn-do + is-gone Bool
+    (param image AIImage)
+    (let found (call id image))
+    (return (and (!= found null) (== (call path found) null)))
+  )
+  (fn-do + path (? Path)
+    (param id String)
+    (return-if null (if (not (call ai-is-image-id id))))
+    (for (in extension (list "png" "jpg" "webp" "gif"))
+      (let candidate (/ directory (str id "." extension)))
+      (return-if candidate (if (. candidate exists)))
+    )
+    (return null)
+  )
+  (fn-do + input AIImage (?! AIError)
+    (param id String)
+    (let found (call path id))
+    (throw (call AIError (. AIErrorKind invalid-request) (str "There is no image with ID " id)) (if (not found)))
+    (return (call AIImage (call AIFile (call AIPathSource (str found)) (call ai-image-format (. found ext)))))
+  )
+  (fn-do + save AIImage (?! Error)
+    (param image AIImage)
+    (let id (call store image))
+    (let reference (call AIFile (call AIProviderFileSource ai-image-owner id) (. image file mime-type)))
+    (return (call AIImage reference (. image width) (. image height)))
+  )
+  (fn-do + attach AIImage (?! Error)
+    (param image AIImage)
+    (let id (call store image))
+    (let file (call AIFile (call AIPathSource (str (!! (call path id)))) (. image file mime-type)))
+    (return (call AIImage file (. image width) (. image height)))
+  )
+  (fn-do + adopt (? String) (?! Error)
+    (param file Path)
+    (let id (. file base-name))
+    (return-if null (if (not (call ai-is-image-id id))))
+    (let chosen (if-expr (== (call path id) null) id (call next-id)))
+    (call (. directory make-directories))
+    (call (. file copy) (/ directory (str chosen "." (. file extension))))
+    (return chosen)
+  )
+  (fn-do _ store String (?! Error)
+    (param image AIImage)
+    (let source (. image file source))
+    (throw (call Error "An image has no bytes to save") (if (is-not source AIBytesSource)))
+    (let bytes (. (as source AIBytesSource) data))
+    (call (. directory make-directories))
+    (let id (call next-id))
+    (let target (/ directory (str id "." (call ai-image-extension (. image file mime-type)))))
+    (let file (call File target (+ (. FileFlags write-mode) (. FileFlags create-mode) (. FileFlags exclusive-mode))))
+    (do-use file
+      (call (. file write) bytes (. bytes size))
+    )
+    (return id)
+  )
+  (fn-do _ next-id String
+    (+= last-number 1)
+    (while (call path (str "img-" last-number))
+      (+= last-number 1)
+    )
+    (return (str "img-" last-number))
+  )
+)
+
+(fn-expr + ai-call-reply (? String)
+  (param call AIToolCallPart)
+  (only-if reply (if reply))
+  (where
+    (lazy reply (call (?. (call ai-argument (. call arguments) ai-reply-argument) trim)))
+  )
+)
+
+(fn-expr + ai-is-image-call _
+  (param call AIToolCallPart)
+  (or (== (. call tool-name) ai-image-tool-name) (== (. call tool-name) ai-full-size-tool-name))
+)
+
+(fn-expr _ ai-kept-image-id (? String)
+  (param directory Path)
+  (param file Path)
+  (only-if (. file base-name) (if (and (== (. file parent) directory) (call ai-is-image-id (. file base-name)))))
+)
+
+(fn-expr _ ai-is-image-id _
+  (param id String)
+  (match id
+    (~ (seq "img-" (+ (chars "0-9a-f")) (! .))
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-expr _ ai-image-extension _
+  (param mime-type String)
+  (match mime-type
+    (case= ai-format-jpeg
+      "jpg"
+    )
+    (case= ai-format-webp
+      "webp"
+    )
+    (case= ai-format-gif
+      "gif"
+    )
+    (default
+      "png"
+    )
+  )
+)
+
+(fn-expr _ ai-image-format _
+  (param extension String)
+  (match extension
+    (case "jpg"
+      ai-format-jpeg
+    )
+    (case "webp"
+      ai-format-webp
+    )
+    (case "gif"
+      ai-format-gif
+    )
+    (default
+      ai-format-png
+    )
+  )
+)

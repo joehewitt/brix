@@ -2,19 +2,23 @@
 
 ### Unused lazy variables are not evaluated.
 
-```yumi
--- "start"
--- kept
-    .. kept = tick("kept", 1)
-    .. unused = tick("unused", 99)
+```brix
+(main
+  (print "start")
+  (print
+    (scope kept
+      (lazy kept (call tick "kept" 1))
+      (lazy unused (call tick "unused" 99))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -25,38 +29,35 @@ tick kept
 
 ### A module variable demanded while compiling a cross-module virtual override initializes before the module main call that first dispatches to the override.
 
-```yumi
-./lib/base
+```brix
+(import ./lib/base)
+(blank)
 
--- read-through-base(Derived())
+(main
+  (print (call read-through-base (call Derived)))
+)
 
-_ module-value Int = 37
+(blank)
+(prop _ module-value Int (= 37))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-────────────────────
-+ value Int
-
-module-value
+(type + Derived (is Base)
+  (fn-expr + value Int
+    module-value
+  )
+)
 ```
 
-```yumi file=lib/base.yumi
+```brix file=lib/base.bx
+(type + Base
+  (fn-expr + value Int
+    0
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-────────────────────
-+ value Int
-
-0
-
-━━━━━━━━━━━━━━━━━━━━
-+ read-through-base Int
-    - item Base
-
-item.value()
-
+(fn-expr + read-through-base Int
+  (param item Base)
+  (call (. item value))
+)
 ```
 
 ```output
@@ -65,17 +66,21 @@ item.value()
 
 ### A single lazy use may be evaluated directly at the use site.
 
-```yumi
--- value
-    .. value = tick("single", 42)
+```brix
+(main
+  (print
+    (scope value
+      (lazy value (call tick "single" 42))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -85,19 +90,33 @@ tick single
 
 ### Lazy-only dependency chains evaluate each dependency once in demand order.
 
-```yumi
--- c
-    .. c = tick("c", b + 1)
-        .. b = tick("b", a + 1)
-            .. a = tick("a", 1)
+```brix
+(main
+  (print
+    (scope c
+      (lazy c
+        (call tick "c" (+ b 1)
+          (block
+            (lazy b
+              (call tick "b" (+ a 1)
+                (block
+                  (lazy a (call tick "a" 1))
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -109,17 +128,21 @@ tick c
 
 ### Lazy initializer dependency reads do not materialize dependencies at declaration sites.
 
-```yumi
-_ hits = 0
+```brix
+(prop _ hits _ (= 0))
+(blank)
 
-if false
-    -- a
-
--- b
--- hits
-
-.. a = b + b
-.. b = hits += 1
+(main
+  (if false
+    (print a)
+  )
+  (blank)
+  (print b)
+  (print hits)
+  (blank)
+  (lazy a (+ b b))
+  (lazy b (+= hits 1))
+)
 ```
 
 ```output
@@ -129,17 +152,21 @@ if false
 
 ### Repeated reads after a dominating first read evaluate the initializer once.
 
-```yumi
--- value + value
-    .. value = tick("repeat", 21)
+```brix
+(main
+  (print
+    (scope (+ value value)
+      (lazy value (call tick "repeat" 21))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -149,28 +176,30 @@ tick repeat
 
 ### A lazy value used only in one branch is not evaluated by the other branch.
 
-```yumi
-choose(false)
-choose(true)
+```brix
+(main
+  (call choose false)
+  (call choose true)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do choose
-    - use-value Bool
+(fn-do + choose _
+  (param use-value Bool)
+  (if use-value
+    (print (str "used " value))
+    (else
+      (print "skipped")
+    )
+  )
+  (blank)
+  (lazy value (call tick "branch" 5))
+)
 
-if use-value
-    -- "used $value"
-else
-    -- "skipped"
-
-.. value = tick("branch", 5)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -181,30 +210,32 @@ used 5
 
 ### First evaluation in either branch is visible after the branch joins.
 
-```yumi
-choose(true)
-choose(false)
+```brix
+(main
+  (call choose true)
+  (call choose false)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do choose
-    - left Bool
+(fn-do + choose _
+  (param left Bool)
+  (if left
+    (print (str "left " value))
+    (else
+      (print (str "right " value))
+    )
+  )
+  (blank)
+  (print (str "after " value))
+  (blank)
+  (lazy value (call tick "join" 8))
+)
 
-if left
-    -- "left $value"
-else
-    -- "right $value"
-
--- "after $value"
-
-.. value = tick("join", 8)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -218,19 +249,21 @@ after 8
 
 ### A single lexical read in a loop is still many dynamic reads, but evaluates once per lazy lifetime.
 
-```yumi
-for i in 0 .. < 3
-    -- "$i:$value"
+```brix
+(main
+  (for (in i (..< 0 3))
+    (print (str i ":" value))
+  )
+  (blank)
+  (lazy value (call tick "loop" 7))
+)
 
-.. value = tick("loop", 7)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -242,22 +275,25 @@ tick loop
 
 ### A single lexical read in a while loop is still many dynamic reads.
 
-```yumi
-_ i = 0
+```brix
+(prop _ i _ (= 0))
+(blank)
 
-while i < 3
-    -- "$i:$value"
-    i += 1
+(main
+  (while (< i 3)
+    (print (str i ":" value))
+    (+= i 1)
+  )
+  (blank)
+  (lazy value (call tick "while" 7))
+)
 
-.. value = tick("while", 7)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -269,25 +305,25 @@ tick while
 
 ### Lazy locals have a fresh lifetime for each function call.
 
-```yumi
-foo()
-foo()
+```brix
+(main
+  (call foo)
+  (call foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
+(fn-do + foo _
+  (print value)
+  (print value)
+  (blank)
+  (lazy value (call tick "call" 9))
+)
 
--- value
--- value
-
-.. value = tick("call", 9)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -301,25 +337,26 @@ tick call
 
 ### An escaping closure can capture a lazy local and memoize it for that closure instance.
 
-```yumi
-. fn = make()
--- fn()
--- fn()
+```brix
+(main
+  (let fn (call make))
+  (print (call fn))
+  (print (call fn))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ make
+(fn-expr + make _
+  (=> () value)
+  (where
+    (lazy value (call tick "closure" 3))
+  )
+)
 
-=> value
-
-.. value = tick("closure", 3)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -330,27 +367,31 @@ tick closure
 
 ### Mutating a captured lazy local initializes it before applying the mutation.
 
-```yumi
-. add = make-counter()
--- add(2)
--- add(3)
+```brix
+(main
+  (let add (call make-counter))
+  (print (call add 2))
+  (print (call add 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ make-counter
+(fn-expr + make-counter _
+  (=> (n) :do
+    (block
+      (+= total n)
+      (return total)
+    )
+  )
+  (where
+    (lazy total (call tick "counter" 0))
+  )
+)
 
-:: n => do
-    total += n
-    = total
-
-.. total = tick("counter", 0)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -361,19 +402,20 @@ tick counter
 
 ### Mutating a local lazy variable before a plain read initializes it first.
 
-```yumi
-value += 2
--- value
+```brix
+(main
+  (+= value 2)
+  (print value)
+  (blank)
+  (lazy value (call tick "mutate" 10))
+)
 
-.. value = tick("mutate", 10)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -383,11 +425,13 @@ tick mutate
 
 ### Lazy variables with only a type use the type's default value and memoize it.
 
-```yumi
--- value
--- value
-
-.. value Int
+```brix
+(main
+  (print value)
+  (print value)
+  (blank)
+  (lazy value Int)
+)
 ```
 
 ```output
@@ -397,26 +441,29 @@ tick mutate
 
 ### A recoverable error result from lazy evaluation is memoized, not retried.
 
-```yumi
-_ attempts = 0
+```brix
+(prop _ attempts _ (= 0))
+(blank)
 
--- catch? value ?? -1
--- catch? value ?? -1
--- value
--- attempts
+(main
+  (print (?? (catch? value) -1))
+  (print (?? (catch? value) -1))
+  (print value)
+  (print attempts)
+  (blank)
+  (lazy value (call maybe))
+)
 
-.. value = maybe()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do maybe Int ?! Error
-
-attempts += 1
--- "attempt $attempts"
-
-if attempts == 1
-    ?! Error("first")
-
-= 12
+(fn-do + maybe Int (?! Error)
+  (+= attempts 1)
+  (print (str "attempt " attempts))
+  (blank)
+  (if (== attempts 1)
+    (throw (call Error "first"))
+  )
+  (blank)
+  (return 12)
+)
 ```
 
 ```output
@@ -429,39 +476,41 @@ first
 
 ### Circular lazy references are diagnosed.
 
-```yumi crash
--- a
-
-.. a = b
-.. b = a
+```brix crash
+(main
+  (print a)
+  (blank)
+  (lazy a b)
+  (lazy b a)
+)
 ```
 
 ```output
 Exception: "a" depends on its own value, directly or through the values it reads; break the cycle
-<no file:4>
-    .. a = b
-       ^
+<no file:5>
+      (lazy a b)
+            ^
 ```
 
 ### Lazy tuple destructuring evaluates the shared initializer once for all captures.
 
-```yumi
-foo()
+```brix
+(main
+  (call foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
+(fn-do + foo _
+  (print a)
+  (print b)
+  (print (+ a b))
+  (blank)
+  (lazy (tuple a b) (call pair))
+)
 
--- a
--- b
--- a + b
-
-.. a, b = pair()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pair
-
--- "pair"
-= 1, 2
+(fn-do + pair _
+  (print "pair")
+  (return (tuple 1 2))
+)
 ```
 
 ```output
@@ -473,35 +522,36 @@ pair
 
 ### Lazy variables in markup scope are visible to nested content and are not reevaluated.
 
-```yumi
-<Foo root
-    .. value = tick("markup", 41)
-    <Foo
-        a = value + 1
-        <Foo
-            a = value + 2
+```brix
+(main
+  (<> Foo (id: root)
+    (lazy value (call tick "markup" 41))
+    (<> Foo
+      (= a (+ value 1))
+      (<> Foo
+        (= a (+ value 2))
+      )
+    )
+  )
+  (blank)
+  (print (?. (. root child) a))
+  (print (?. (?. (. root child) child) a))
+)
 
--- root.child?.a
--- root.child?.child?.a
+(type + Foo
+  (prop + a _ (= 0))
+  (prop + child (? Foo))
+  (fn-do + (infix this += (param foo _)) _
+    (= child foo)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ a = 0
-+ child Foo?
-
-────────────────────
-+ do this += foo
-
-child = foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -512,33 +562,37 @@ tick markup
 
 ### Local lazy declaration state machines initialize once per lazy declaration lifetime.
 
-```yumi
-lazy-local("first")
-lazy-local("second")
+```brix
+(main
+  (call lazy-local "first")
+  (call lazy-local "second")
+)
 
-_ hits = 0
+(blank)
+(prop _ hits _ (= 0))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do lazy-local
-    - label String
+(fn-do + lazy-local _
+  (param label String)
+  (lazy flow
+    (machine
+      (state idle)
+      (state ready (trigger if (call mark label)))
+    )
+  )
+  (blank)
+  (print (str "before " label " " hits))
+  (print (is flow .ready))
+  (print (str "middle " label " " hits))
+  (print (is flow .ready))
+  (print (str "after " label " " hits))
+)
 
-.. flow ~>
-    ~> idle
-    ~> ready if mark(label)
-
--- "before $label $hits"
--- flow is .ready
--- "middle $label $hits"
--- flow is .ready
--- "after $label $hits"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do mark Bool
-    - label String
-
-hits += 1
--- "mark $label $hits"
-= true
+(fn-do + mark Bool
+  (param label String)
+  (+= hits 1)
+  (print (str "mark " label " " hits))
+  (return true)
+)
 ```
 
 ```output
@@ -558,19 +612,20 @@ after second 2
 
 ### A lazy local nothing reads is never evaluated.
 
-```yumi
--- "start"
+```brix
+(main
+  (print "start")
+  (blank)
+  (lazy a (call noisy))
+  (lazy b (+ a 1))
+  (blank)
+  (print "done")
+)
 
-.. a = noisy()
-.. b = a + 1
-
--- "done"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do noisy Int
-
--- "noisy"
-= 1
+(fn-do + noisy Int
+  (print "noisy")
+  (return 1)
+)
 ```
 
 ```output
@@ -580,35 +635,35 @@ done
 
 ### A lazy local of a constructor that is named as a property gives the property its first value at the turn of the property, and a lazy local a property reads is evaluated then, once.
 
-```yumi
-. h = Holder(7)
--- "made ${h.a} ${h.b} ${h.c} ${h.d} ${h.e}"
+```brix
+(main
+  (let h (call Holder 7))
+  (print (str "made " (. h a) " " (. h b) " " (. h c) " " (. h d) " " (. h e)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ note Int
-    - text String
-    - n Int
+(fn-expr + note Int
+  (param text String)
+  (param n Int)
+  (before
+    (print text)
+  )
+  n
+)
 
--- text
-n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ a = note("a default", 1)
-+ b Int
-+ c = note("c default", 3)
-+ d Int
-+ e = note("e default", 5)
-
-────────────────────
-+ This
-    - seed Int
-
-.. d = note("d lazy", b + seed)
-.. b = note("b lazy", 20)
-.. e = note("e lazy", 50)
--- "body"
+(type + Holder
+  (prop + a _ (= (call note "a default" 1)))
+  (prop + b Int)
+  (prop + c _ (= (call note "c default" 3)))
+  (prop + d Int)
+  (prop + e _ (= (call note "e default" 5)))
+  (fn-do + This _
+    (param seed Int)
+    (lazy d (call note "d lazy" (+ b seed)))
+    (lazy b (call note "b lazy" 20))
+    (lazy e (call note "e lazy" 50))
+    (print "body")
+  )
+)
 ```
 
 ```output
@@ -623,44 +678,41 @@ made 1 20 3 27 50
 
 ### A lazy local that a property of a constructor reads is evaluated once for the properties, and again for the body.
 
-```yumi
-. k = Keeper()
--- "made ${k.b} ${k.c}"
-. m = Mixed()
--- "made ${m.b}"
+```brix
+(main
+  (let k (call Keeper))
+  (print (str "made " (. k b) " " (. k c)))
+  (let m (call Mixed))
+  (print (str "made " (. m b)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ note Int
-    - text String
-    - n Int
+(fn-expr + note Int
+  (param text String)
+  (param n Int)
+  (before
+    (print text)
+  )
+  n
+)
 
--- text
-n
+(type + Keeper
+  (prop + b Int)
+  (prop + c Int)
+  (fn-do + This _
+    (lazy b (+ c (call note "b lazy" 1)))
+    (lazy c (call note "c lazy" 2))
+    (print "body")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Keeper
-
-+ b Int
-+ c Int
-
-────────────────────
-+ This
-
-.. b = c + note("b lazy", 1)
-.. c = note("c lazy", 2)
--- "body"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mixed
-
-+ b Int
-
-────────────────────
-+ This
-
-.. helper = note("helper", 5)
-.. b = helper + note("b lazy", 1)
--- "body $helper"
+(type + Mixed
+  (prop + b Int)
+  (fn-do + This _
+    (lazy helper (call note "helper" 5))
+    (lazy b (+ helper (call note "b lazy" 1)))
+    (print (str "body " helper))
+  )
+)
 ```
 
 ```output
@@ -677,44 +729,41 @@ made 6
 
 ### A struct given before a lazy local is what it was before the local was evaluated
 
-```yumi
-+ kept = Vec(1)
+```brix
+(prop + kept _ (= (call Vec 1)))
+(blank)
 
-run()
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (print (call take kept later))
+  (= kept (call Vec 1))
+  (print (+ kept twice))
+  (blank)
+  (lazy later (call change 100))
+  (lazy twice (call change 200))
+)
 
--- take(kept, later)
-kept = Vec(1)
--- kept + twice
+(fn-expr + take Int
+  (param vec Vec)
+  (param n Int)
+  (+ (. vec a) n)
+)
 
-.. later = change(100)
-.. twice = change(200)
+(fn-do + change Int
+  (param n Int)
+  (= kept (call Vec n))
+  (return 5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ take Int
-    - vec Vec
-    - n Int
-
-vec.a + n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do change Int
-    - n Int
-
-kept = Vec(n)
-= 5
-
-━━━━━━━━━━━━━━━━━━━━
-+ Vec is Struct
-
-+ a Int
-
-────────────────────
-+ this + n Int = Int
-
-a + n
+(type + Vec (is Struct)
+  (prop + a Int)
+  (fn-expr + (infix this + (param n Int (= Int))) _
+    (+ a n)
+  )
+)
 ```
 
 ```output
@@ -724,37 +773,32 @@ a + n
 
 ### A struct given before a lazy property is what it was before the property was evaluated
 
-```yumi
--- Holder().run()
+```brix
+(main
+  (print (call (. (call Holder) run)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ take Int
-    - vec Vec
-    - n Int
+(fn-expr + take Int
+  (param vec Vec)
+  (param n Int)
+  (+ (. vec a) n)
+)
 
-vec.a + n
+(type + Holder
+  (prop + vec _ (= (call Vec 1)))
+  (prop + later _ (:= (call change)))
+  (fn-expr + run Int
+    (call take vec later)
+  )
+  (fn-do + change Int
+    (= vec (call Vec 100))
+    (return 5)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ vec = Vec(1)
-+ later := change()
-
-────────────────────
-+ run Int
-
-take(vec, later)
-
-────────────────────
-+ do change Int
-
-vec = Vec(100)
-= 5
-
-━━━━━━━━━━━━━━━━━━━━
-+ Vec is Struct
-
-+ a Int
+(type + Vec (is Struct)
+  (prop + a Int)
+)
 ```
 
 ```output
@@ -763,29 +807,29 @@ vec = Vec(100)
 
 ### A struct given before a lazy global is what it was before the global was evaluated
 
-```yumi
-+ kept = Vec(1)
-+ later := change()
+```brix
+(prop + kept _ (= (call Vec 1)))
+(prop + later _ (:= (call change)))
+(blank)
 
--- take(kept, later)
+(main
+  (print (call take kept later))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ take Int
-    - vec Vec
-    - n Int
+(fn-expr + take Int
+  (param vec Vec)
+  (param n Int)
+  (+ (. vec a) n)
+)
 
-vec.a + n
+(fn-do + change Int
+  (= kept (call Vec 100))
+  (return 5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do change Int
-
-kept = Vec(100)
-= 5
-
-━━━━━━━━━━━━━━━━━━━━
-+ Vec is Struct
-
-+ a Int
+(type + Vec (is Struct)
+  (prop + a Int)
+)
 ```
 
 ```output
@@ -794,46 +838,43 @@ kept = Vec(100)
 
 ### Operand read before a lazy local that changes what it names
 
-```yumi
--- run()
--- twice()
+```brix
+(main
+  (print (call run))
+  (print (call twice))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(type + Point (is Struct)
+  (prop + x Int)
+  (prop + y Int)
+)
 
-+ x Int
-+ y Int
+(fn-do + add Int
+  (param first Point)
+  (param second Int)
+  (return (+ (. first x) (. first y) second))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do add Int
-    - first Point
-    - second Int
+(fn-do + run Int
+  (let point (call Point 1 2))
+  (lazy bumped (call bump point))
+  (let total (call add point bumped))
+  (return (+ total (. point x)))
+)
 
-= first.x + first.y + second
+(fn-do + bump Int
+  (param point Point)
+  (= (. point x) 100)
+  (return (. point x))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int
-
-. point = Point(1, 2)
-.. bumped = bump(point)
-. total = add(point, bumped)
-= total + point.x
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bump Int
-    - point Point
-
-point.x = 100
-= point.x
-
-━━━━━━━━━━━━━━━━━━━━
-+ do twice Int
-
-. count = 1
-.. stepped = count += 10
-. first = count + stepped
-. second = count + stepped
-= first * 100 + second
+(fn-do + twice Int
+  (let count 1)
+  (lazy stepped (+= count 10))
+  (let first (+ count stepped))
+  (let second (+ count stepped))
+  (return (+ (* first 100) second))
+)
 ```
 
 ```output
@@ -843,29 +884,30 @@ point.x = 100
 
 ### A lazy local assigned on one path before it is read is not evaluated on that path.
 
-```yumi
-run(true)
-run(false)
+```brix
+(main
+  (call run true)
+  (call run false)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
-    - c Bool
+(fn-do + run _
+  (param c Bool)
+  (if c
+    (= v 5)
+  )
+  (print v)
+  (+= v 1)
+  (print v)
+  (blank)
+  (lazy v (call tick "v" 1))
+)
 
-if c
-    v = 5
--- v
-v += 1
--- v
-
-.. v = tick("v", 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -878,32 +920,34 @@ tick v
 
 ### Lazy locals assigned and read in a loop are evaluated once, by the first read that runs.
 
-```yumi
-run(3)
+```brix
+(main
+  (call run 3)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
-    - n Int
+(fn-do + run _
+  (param n Int)
+  (let i 0)
+  (while (< i n)
+    (if (== i 1)
+      (= v 10)
+    )
+    (+= total v)
+    (+= i 1)
+  )
+  (print total)
+  (print v)
+  (blank)
+  (lazy v (call tick "v" 1))
+  (lazy total (call tick "total" 100))
+)
 
-. i = 0
-while i < n
-    if i == 1
-        v = 10
-    total += v
-    i += 1
--- total
--- v
-
-.. v = tick("v", 1)
-.. total = tick("total", 100)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -915,36 +959,35 @@ tick v
 
 ### A lazy local assigned before anything reads it is never evaluated.
 
-```yumi
-run()
+```brix
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (= v 7)
+  (= w "x")
+  (+= w "y")
+  (print w)
+  (= z 2.5)
+  (blank)
+  (lazy v (call tick "v" 1))
+  (lazy w (call name "w"))
+  (lazy z Float (call tick "z" 3))
+)
 
-v = 7
-w = "x"
-w += "y"
--- w
-z = 2.5
+(fn-do + name _
+  (param label String)
+  (print (str "name " label))
+  (return label)
+)
 
-.. v = tick("v", 1)
-.. w = name("w")
-.. z Float = tick("z", 3)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do name
-    - label String
-
--- "name $label"
-= label
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value I32
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value I32)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -953,29 +996,30 @@ xy
 
 ### A lazy local assigned on a path that returns, and read and assigned on the other.
 
-```yumi
--- run(1)
--- run(20)
+```brix
+(main
+  (print (call run 1))
+  (print (call run 20))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int
-    - n Int
+(fn-do + run Int
+  (param n Int)
+  (if (> n 10)
+    (= v n)
+    (return v)
+  )
+  (+= v n)
+  (return v)
+  (blank)
+  (lazy v (call tick "v" 1))
+)
 
-if n > 10
-    v = n
-    = v
-v += n
-= v
-
-.. v = tick("v", 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -986,25 +1030,25 @@ tick v
 
 ### A lazy local assigned from itself is evaluated by the read.
 
-```yumi
--- run(1)
+```brix
+(main
+  (print (call run 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int
-    - n Int
+(fn-do + run Int
+  (param n Int)
+  (= v (+ v n))
+  (return v)
+  (blank)
+  (lazy v (call tick "v" 1))
+)
 
-v = v + n
-= v
-
-.. v = tick("v", 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -1014,30 +1058,31 @@ tick v
 
 ### Lazy locals declared together are evaluated together, once, by the first read of any.
 
-```yumi
-run(true)
-run(false)
+```brix
+(main
+  (call run true)
+  (call run false)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
-    - c Bool
+(fn-do + run _
+  (param c Bool)
+  (if c
+    (print b)
+  )
+  (print (+ a b))
+  (print x)
+  (print (str y " " z))
+  (blank)
+  (lazy (tuple a b) (tuple (call tick "a" 1) (call tick "b" 2)))
+  (lazy (tuple x y z) (tuple (call tick "x" 5) "s" 2.5))
+)
 
-if c
-    -- b
--- a + b
--- x
--- "$y $z"
-
-.. a, b = tick("a", 1), tick("b", 2)
-.. x, y, z = tick("x", 5), "s", 2.5
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -1058,30 +1103,32 @@ s 2.5
 
 ### Lazy locals declared together from one value, read in a loop.
 
-```yumi
--- run(3)
+```brix
+(main
+  (print (call run 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int
-    - n Int
+(fn-do + run Int
+  (param n Int)
+  (let i 0)
+  (let sum 0)
+  (while (< i n)
+    (+= sum a)
+    (if (== i 1)
+      (+= sum b)
+    )
+    (+= i 1)
+  )
+  (return sum)
+  (blank)
+  (lazy (tuple a b) (call pair n))
+)
 
-. i = 0
-. sum = 0
-while i < n
-    sum += a
-    if i == 1
-        sum += b
-    i += 1
-= sum
-
-.. a, b = pair(n)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pair
-    - n Int
-
--- "pair"
-= n, n * 10
+(fn-do + pair _
+  (param n Int)
+  (print "pair")
+  (return (tuple n (* n 10)))
+)
 ```
 
 ```output
@@ -1091,23 +1138,24 @@ pair
 
 ### Lazy locals declared together under an expression are evaluated only where it reads them.
 
-```yumi
--- run(3)
--- run(0)
+```brix
+(main
+  (print (call run 3))
+  (print (call run 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ run
-    - n Int
+(fn-expr + run _
+  (param n Int)
+  (scope (if-expr (> n 1) (+ a b) 0)
+    (lazy (tuple a b) (call pair n))
+  )
+)
 
-if n > 1 then a + b else 0
-    .. a, b = pair(n)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pair
-    - n Int
-
--- "pair"
-= n, n * 10
+(fn-do + pair _
+  (param n Int)
+  (print "pair")
+  (return (tuple n (* n 10)))
+)
 ```
 
 ```output
@@ -1118,24 +1166,24 @@ pair
 
 ### Lazy locals declared together in a method, from its properties.
 
-```yumi
-. thing = Thing()
--- thing.sum()
--- thing.sum()
+```brix
+(main
+  (let thing (call Thing))
+  (print (call (. thing sum)))
+  (print (call (. thing sum)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ size = 4
-
-────────────────────
-+ do sum Int
-
-if size > 3
-    = w + h
-= 0
-
-.. w, h = size, size * 2
+(type + Thing
+  (prop + size _ (= 4))
+  (fn-do + sum Int
+    (if (> size 3)
+      (return (+ w h))
+    )
+    (return 0)
+    (blank)
+    (lazy (tuple w h) (tuple size (* size 2)))
+  )
+)
 ```
 
 ```output
@@ -1145,11 +1193,13 @@ if size > 3
 
 ### Lazy locals declared together with types are converted to them.
 
-```yumi
-.. foo Int, bar String, baz Float = (1, "hi", 2.5)
--- foo
--- bar
--- baz
+```brix
+(main
+  (lazy (tuple (: foo Int) (: bar String) (: baz Float)) (tuple 1 "hi" 2.5))
+  (print foo)
+  (print bar)
+  (print baz)
+)
 ```
 
 ```output
@@ -1160,10 +1210,12 @@ hi
 
 ### A lazy local with a type and no value is the default of the type.
 
-```yumi
--- a
-
-.. a Int
+```brix
+(main
+  (print a)
+  (blank)
+  (lazy a Int)
+)
 ```
 
 ```output
@@ -1172,14 +1224,16 @@ hi
 
 ### A lazy local with no value under an expression.
 
-```yumi
--- foo()
+```brix
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-
-a + 0
-    .. a Int
+(fn-expr + foo _
+  (scope (+ a 0)
+    (lazy a Int)
+  )
+)
 ```
 
 ```output
@@ -1188,26 +1242,26 @@ a + 0
 
 ### A captured lazy local the function reads first is evaluated once, for it and for the closure.
 
-```yumi
-. fn = make()
--- fn()
--- fn()
+```brix
+(main
+  (let fn (call make))
+  (print (call fn))
+  (print (call fn))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make
+(fn-do + make _
+  (print value)
+  (return (=> () (+ value 1)))
+  (blank)
+  (lazy value (call tick "owner first" 3))
+)
 
--- value
-= => value + 1
-
-.. value = tick("owner first", 3)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -1219,25 +1273,25 @@ tick owner first
 
 ### A captured lazy local a closure reads first is evaluated once, for it and for the function.
 
-```yumi
--- make()
+```brix
+(main
+  (print (call make))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Int
+(fn-do + make Int
+  (let get (=> () (+ value 1)))
+  (let first (call get))
+  (return (+ first value))
+  (blank)
+  (lazy value (call tick "closure first" 3))
+)
 
-. get = => value + 1
-. first = get()
-= first + value
-
-.. value = tick("closure first", 3)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -1247,28 +1301,29 @@ tick closure first
 
 ### The value of a captured lazy local reads an argument that nothing else captures.
 
-```yumi
-. fn = make(5)
--- fn()
--- fn()
-. other = make(7)
--- other()
+```brix
+(main
+  (let fn (call make 5))
+  (print (call fn))
+  (print (call fn))
+  (let other (call make 7))
+  (print (call other))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ make
-    - n Int
+(fn-expr + make _
+  (param n Int)
+  (=> () (+ value 1))
+  (where
+    (lazy value (call tick "argument" (* n 2)))
+  )
+)
 
-=> value + 1
-
-.. value = tick("argument", n * 2)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -1281,27 +1336,31 @@ tick argument
 
 ### A captured lazy local a closure assigns before any read is never evaluated.
 
-```yumi
-. set = make()
--- set(2)
--- set(3)
+```brix
+(main
+  (let set (call make))
+  (print (call set 2))
+  (print (call set 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ make
+(fn-expr + make _
+  (=> (n) :do
+    (block
+      (= total n)
+      (return total)
+    )
+  )
+  (where
+    (lazy total (call tick "assigned" 0))
+  )
+)
 
-:: n => do
-    total = n
-    = total
-
-.. total = tick("assigned", 0)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -1311,28 +1370,33 @@ tick argument
 
 ### A captured lazy local a closure assigns after a read keeps what was assigned.
 
-```yumi
-. fn = make()
--- fn(1)
--- fn(2)
+```brix
+(main
+  (let fn (call make))
+  (print (call fn 1))
+  (print (call fn 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ make
+(fn-expr + make _
+  (=> (n) :do
+    (block
+      (if (== n 2)
+        (= value 100)
+      )
+      (return (+ value n))
+    )
+  )
+  (where
+    (lazy value (call tick "assigned later" 5))
+  )
+)
 
-:: n => do
-    if n == 2
-        value = 100
-    = value + n
-
-.. value = tick("assigned later", 5)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -1343,26 +1407,27 @@ tick assigned later
 
 ### The value of a captured lazy local reads another lazy local.
 
-```yumi
-. fn = make()
--- fn()
--- fn()
+```brix
+(main
+  (let fn (call make))
+  (print (call fn))
+  (print (call fn))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ make
+(fn-expr + make _
+  (=> () (+ a 1))
+  (where
+    (lazy a (* b 2))
+    (lazy b (call tick "chain" 4))
+  )
+)
 
-=> a + 1
-
-.. a = b * 2
-.. b = tick("chain", 4)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -1373,29 +1438,33 @@ tick chain
 
 ### A lazy local read two closures deep is evaluated once in a run of the function that declares it.
 
-```yumi
-. fn = make()
-. inner = fn()
--- inner()
--- inner()
-. again = fn()
--- again()
+```brix
+(main
+  (let fn (call make))
+  (let inner (call fn))
+  (print (call inner))
+  (print (call inner))
+  (let again (call fn))
+  (print (call again))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ make
+(fn-expr + make _
+  (=> ()
+    (block
+      (=> () (+ value 1))
+    )
+  )
+  (where
+    (lazy value (call tick "two deep" 3))
+  )
+)
 
-=>
-    => value + 1
-
-.. value = tick("two deep", 3)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -1407,34 +1476,33 @@ tick two deep
 
 ### The value of a captured lazy local reads a property of the receiver.
 
-```yumi
-. thing = Thing()
-. fn = thing.make()
--- fn()
-thing.size = 9
--- fn()
-. next = thing.make()
--- next()
+```brix
+(main
+  (let thing (call Thing))
+  (let fn (call (. thing make)))
+  (print (call fn))
+  (= (. thing size) 9)
+  (print (call fn))
+  (let next (call (. thing make)))
+  (print (call next))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + size _ (= 4))
+  (fn-expr + make _
+    (=> () (+ value 1))
+    (where
+      (lazy value (call tick "member" (* size 2)))
+    )
+  )
+)
 
-+ size = 4
-
-────────────────────
-+ make
-
-=> value + 1
-
-.. value = tick("member", size * 2)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -1447,30 +1515,28 @@ tick member
 
 ### The value of a captured lazy local calls a method of the receiver.
 
-```yumi
-. thing = Thing()
-. fn = thing.make()
--- fn()
--- fn()
+```brix
+(main
+  (let thing (call Thing))
+  (let fn (call (. thing make)))
+  (print (call fn))
+  (print (call fn))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ size = 4
-
-────────────────────
-+ make
-
-=> value + 1
-
-.. value = helper(2)
-
-────────────────────
-+ do helper Int
-    - n Int
-
--- "helper"
-= size * n
+(type + Thing
+  (prop + size _ (= 4))
+  (fn-expr + make _
+    (=> () (+ value 1))
+    (where
+      (lazy value (call helper 2))
+    )
+  )
+  (fn-do + helper Int
+    (param n Int)
+    (print "helper")
+    (return (* size n))
+  )
+)
 ```
 
 ```output
@@ -1481,34 +1547,35 @@ helper
 
 ### A closure in a method adds a captured lazy local to a property its value changes.
 
-```yumi
-. counter = Counter()
-. step = counter.stepper()
--- step()
--- step()
--- counter.count
+```brix
+(main
+  (let counter (call Counter))
+  (let step (call (. counter stepper)))
+  (print (call step))
+  (print (call step))
+  (print (. counter count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
-
-+ count = 0
-
-────────────────────
-+ stepper
-
-=> do
-    count += base
-    = count
-
-.. base = bump(10)
-
-────────────────────
-+ do bump Int
-    - n Int
-
-count += 1
--- "bump"
-= n
+(type + Counter
+  (prop + count _ (= 0))
+  (fn-expr + stepper _
+    (=> () :do
+      (block
+        (+= count base)
+        (return count)
+      )
+    )
+    (where
+      (lazy base (call bump 10))
+    )
+  )
+  (fn-do + bump Int
+    (param n Int)
+    (+= count 1)
+    (print "bump")
+    (return n)
+  )
+)
 ```
 
 ```output
@@ -1520,26 +1587,26 @@ bump
 
 ### The value of a captured lazy local reads a local as it is when the value is evaluated.
 
-```yumi
--- make()
+```brix
+(main
+  (print (call make))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Int
+(fn-do + make Int
+  (let n 1)
+  (let get (=> () (+ value 1)))
+  (= n 5)
+  (return (+ (call get) n))
+  (blank)
+  (lazy value (call tick "later" (* n 10)))
+)
 
-. n = 1
-. get = => value + 1
-n = 5
-= get() + n
-
-.. value = tick("later", n * 10)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -1549,28 +1616,29 @@ tick later
 
 ### A captured lazy local whose value reads an optional argument.
 
-```yumi
--- make(4)
--- make(null)
+```brix
+(main
+  (print (call make 4))
+  (print (call make null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Int
-    - n Int?
+(fn-do + make Int
+  (param n (? Int))
+  (if n
+    (let get (=> () (+ value 1)))
+    (return (call get))
+  )
+  (return 0)
+  (blank)
+  (lazy value (call tick "narrowed" (* (?? n 7) 10)))
+)
 
-if n
-    . get = => value + 1
-    = get()
-= 0
-
-.. value = tick("narrowed", (n ?? 7) * 10)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -1581,41 +1649,41 @@ tick narrowed
 
 ### Captured lazy locals of text, a tuple and an object, read after many allocations.
 
-```yumi
-. fn = make("a")
-. junk = [1]
-. i = 0
-while i < 20000
-    junk = [i, i + 1, i + 2]
-    i += 1
--- fn()
--- fn()
--- junk.length
+```brix
+(main
+  (let fn (call make "a"))
+  (let junk (list 1))
+  (let i 0)
+  (while (< i 20000)
+    (= junk (list i (+ i 1) (+ i 2)))
+    (+= i 1)
+  )
+  (print (call fn))
+  (print (call fn))
+  (print (. junk length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ make
-    - prefix String
+(fn-expr + make _
+  (param prefix String)
+  (=> () (str text "/" (+ (. point x) (. point y)) "/" (. thing size)))
+  (where
+    (lazy text (call build prefix))
+    (lazy point (call Point 3 4))
+    (lazy thing (call Thing))
+  )
+)
 
-=> "$text/${point.x + point.y}/${thing.size}"
+(type + Point (is (tuple (: x Int) (: y Int))))
 
-.. text = build(prefix)
-.. point = Point(3, 4)
-.. thing = Thing()
+(type + Thing
+  (prop + size _ (= 9))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is (x Int, y Int)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ size = 9
-
-━━━━━━━━━━━━━━━━━━━━
-+ do build String
-    - prefix String
-
--- "build"
-= "${prefix}-built"
+(fn-do + build String
+  (param prefix String)
+  (print "build")
+  (return (str prefix "-built"))
+)
 ```
 
 ```output
@@ -1627,19 +1695,24 @@ a-built/7/9
 
 ### A captured lazy local with no value is the default of its type.
 
-```yumi
-. add = make()
--- add(2)
--- add(3)
+```brix
+(main
+  (let add (call make))
+  (print (call add 2))
+  (print (call add 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ make
-
-:: n => do
-    total += n
-    = total
-
-.. total Int
+(fn-expr + make _
+  (=> (n) :do
+    (block
+      (+= total n)
+      (return total)
+    )
+  )
+  (where
+    (lazy total Int)
+  )
+)
 ```
 
 ```output
@@ -1649,24 +1722,25 @@ a-built/7/9
 
 ### A captured lazy local with a type is converted to it.
 
-```yumi
-. get = make()
--- get()
+```brix
+(main
+  (let get (call make))
+  (print (call get))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ make
+(fn-expr + make _
+  (=> () (/ value 2))
+  (where
+    (lazy value Float (call tick "typed" 3))
+  )
+)
 
-=> value / 2
-
-.. value Float = tick("typed", 3)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value I32
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value I32)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -1676,23 +1750,24 @@ tick typed
 
 ### A captured lazy local that is an optional holding nothing is evaluated once.
 
-```yumi
-. fn = make()
--- fn()
--- fn()
+```brix
+(main
+  (let fn (call make))
+  (print (call fn))
+  (print (call fn))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ make
+(fn-expr + make _
+  (=> () (?? value -1))
+  (where
+    (lazy value (? Int) (call maybe))
+  )
+)
 
-=> value ?? -1
-
-.. value Int? = maybe()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do maybe Int?
-
--- "maybe"
-= null
+(fn-do + maybe (? Int)
+  (print "maybe")
+  (return null)
+)
 ```
 
 ```output
@@ -1703,32 +1778,38 @@ maybe
 
 ### A closure that reads a captured lazy local, called in a loop.
 
-```yumi
--- run(3)
+```brix
+(main
+  (print (call run 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int
-    - n Int
+(fn-do + run Int
+  (param n Int)
+  (let sum 0)
+  (let i 0)
+  (let add
+    (=> () :do
+      (block
+        (+= sum value)
+        (return sum)
+      )
+    )
+  )
+  (while (< i n)
+    (call add)
+    (+= i 1)
+  )
+  (return sum)
+  (blank)
+  (lazy value (call tick "loop" 5))
+)
 
-. sum = 0
-. i = 0
-. add = => do
-    sum += value
-    = sum
-while i < n
-    add()
-    i += 1
-= sum
-
-.. value = tick("loop", 5)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -1738,28 +1819,29 @@ tick loop
 
 ### A captured lazy local the function reads on one path only.
 
-```yumi
--- make(true)
--- make(false)
+```brix
+(main
+  (print (call make true))
+  (print (call make false))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Int
-    - early Bool
+(fn-do + make Int
+  (param early Bool)
+  (let get (=> () (+ value 1)))
+  (if early
+    (print value)
+  )
+  (return (call get))
+  (blank)
+  (lazy value (call tick "branch" 5))
+)
 
-. get = => value + 1
-if early
-    -- value
-= get()
-
-.. value = tick("branch", 5)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -1772,24 +1854,25 @@ tick branch
 
 ### A captured lazy local of a closure that is never called is never evaluated.
 
-```yumi
-. fn = make()
--- 1
+```brix
+(main
+  (let fn (call make))
+  (print 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ make
+(fn-expr + make _
+  (=> () (+ value 1))
+  (where
+    (lazy value (call tick "never" 5))
+  )
+)
 
-=> value + 1
-
-.. value = tick("never", 5)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
-    - label String
-    - value Int
-
--- "tick $label"
-= value
+(fn-do + tick _
+  (param label String)
+  (param value Int)
+  (print (str "tick " label))
+  (return value)
+)
 ```
 
 ```output
@@ -1798,19 +1881,21 @@ tick branch
 
 ### Captured lazy locals whose values are a list's length and a conditional.
 
-```yumi
-. fn = make(3)
--- fn()
--- fn()
+```brix
+(main
+  (let fn (call make 3))
+  (print (call fn))
+  (print (call fn))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ make
-    - n Int
-
-=> value + it-total
-
-.. value = [n, n + 1, n + 2].length
-.. it-total = if n > 2 then n * 2 else 0
+(fn-expr + make _
+  (param n Int)
+  (=> () (+ value it-total))
+  (where
+    (lazy value (. (list n (+ n 1) (+ n 2)) length))
+    (lazy it-total (if-expr (> n 2) (* n 2) 0))
+  )
+)
 ```
 
 ```output
@@ -1820,25 +1905,28 @@ tick branch
 
 ### A panic raised by the value of a captured lazy local, in the closure that reads it.
 
-```yumi
-do new
-    . fn = make()
-    -- fn()
-catch failure
-    -- failure
+```brix
+(main
+  (do-new
+    (let fn (call make))
+    (print (call fn))
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ make
+(fn-expr + make _
+  (=> () (+ value 1))
+  (where
+    (lazy value (call fail "lazy"))
+  )
+)
 
-=> value + 1
-
-.. value = fail("lazy")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fail Int
-    - label String
-
-?! Panic("failed $label")
+(fn-do + fail Int
+  (param label String)
+  (throw (call Panic (str "failed " label)))
+)
 ```
 
 ```output
@@ -1847,19 +1935,22 @@ failed lazy
 
 ### A lazy local declared in a loop body has a fresh lifetime for each iteration, also when its first read is inside a branch.
 
-```yumi
-for title in ["a", "b", "c"]
-    .. shown = tick(title)
-    if title == "b"
-        -- shown
-    -- "$shown+"
+```brix
+(main
+  (for (in title (list "a" "b" "c"))
+    (lazy shown (call tick title))
+    (if (== title "b")
+      (print shown)
+    )
+    (print (str shown "+"))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tick String
-    - text String
-
--- "tick $text"
-= "$text!"
+(fn-do + tick String
+  (param text String)
+  (print (str "tick " text))
+  (return (str text "!"))
+)
 ```
 
 ```output
@@ -1874,18 +1965,20 @@ c!+
 
 ### Lazy tuple destructuring in a loop body evaluates its initializer once per iteration.
 
-```yumi
-for title in ["a", "b"]
-    .. first, second = pair(title)
-    -- first
-    -- second
+```brix
+(main
+  (for (in title (list "a" "b"))
+    (lazy (tuple first second) (call pair title))
+    (print first)
+    (print second)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pair
-    - text String
-
--- "pair $text"
-= "${text}1", "${text}2"
+(fn-do + pair _
+  (param text String)
+  (print (str "pair " text))
+  (return (tuple (str text "1") (str text "2")))
+)
 ```
 
 ```output
@@ -1899,18 +1992,21 @@ b2
 
 ### A lazy local declared in a loop body and read in a nested loop evaluates once per iteration of the loop that declares it.
 
-```yumi
-for title in ["a", "b"]
-    .. shown = tick(title)
-    for index in 0 .. < 2
-        -- "$index $shown"
+```brix
+(main
+  (for (in title (list "a" "b"))
+    (lazy shown (call tick title))
+    (for (in index (..< 0 2))
+      (print (str index " " shown))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tick String
-    - text String
-
--- "tick $text"
-= "$text!"
+(fn-do + tick String
+  (param text String)
+  (print (str "tick " text))
+  (return (str text "!"))
+)
 ```
 
 ```output
@@ -1924,21 +2020,24 @@ tick b
 
 ### A lazy local declared in a while loop body has a fresh lifetime for each iteration.
 
-```yumi
-. index = 0
-while index < 2
-    .. shown = tick("row $index")
-    if index == 1
-        -- shown
-    -- "$shown+"
-    index += 1
+```brix
+(main
+  (let index 0)
+  (while (< index 2)
+    (lazy shown (call tick (str "row " index)))
+    (if (== index 1)
+      (print shown)
+    )
+    (print (str shown "+"))
+    (+= index 1)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tick String
-    - text String
-
--- "tick $text"
-= "$text!"
+(fn-do + tick String
+  (param text String)
+  (print (str "tick " text))
+  (return (str text "!"))
+)
 ```
 
 ```output
@@ -1951,21 +2050,24 @@ row 1!+
 
 ### A lazy local declared in a loop body and read both directly and by a closure created in that iteration is evaluated once per iteration and shared between the two.
 
-```yumi
-for title in ["a", "b", "c"]
-    .. shown = tick(title)
-    if title == "b"
-        -- shown
-    . fn = => shown
-    -- fn()
-    -- fn()
+```brix
+(main
+  (for (in title (list "a" "b" "c"))
+    (lazy shown (call tick title))
+    (if (== title "b")
+      (print shown)
+    )
+    (let fn (=> () shown))
+    (print (call fn))
+    (print (call fn))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tick String
-    - text String
-
--- "tick $text"
-= "$text!"
+(fn-do + tick String
+  (param text String)
+  (print (str "tick " text))
+  (return (str text "!"))
+)
 ```
 
 ```output
@@ -1983,22 +2085,30 @@ c!
 
 ### A guard written before a function's value reads a lazy local declared under the value.
 
-```yumi
--- catch pick(1)
--- catch pick(5)
+```brix
+(main
+  (print (catch (call pick 1)))
+  (print (catch (call pick 5)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pick String ?! Error
-    - id U32
-
-?! Error("too big")
-    if !legal
-"fine $id"
-    .. legal = match id
-        |= 1
-            true
-        ??
-            false
+(fn-expr + pick String (?! Error)
+  (param id U32)
+  (before
+    (throw (call Error "too big") (if (not legal)))
+  )
+  (scope (str "fine " id)
+    (lazy legal
+      (match id
+        (case= 1
+          true
+        )
+        (default
+          false
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2008,25 +2118,27 @@ too big
 
 ### A lazy local declared under a function's value, read by a guard before the value and by the value, is computed once.
 
-```yumi
--- catch scaled(3)
--- catch scaled(1)
+```brix
+(main
+  (print (catch (call scaled 3)))
+  (print (catch (call scaled 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ scaled Int ?! Error
-    - n Int
+(fn-expr + scaled Int (?! Error)
+  (param n Int)
+  (before
+    (throw (call Error "too small") (if (not legal)))
+  )
+  (scope (if-expr legal (* n 10) 0)
+    (lazy legal (call checked n))
+  )
+)
 
-?! Error("too small")
-    if !legal
-if legal then n * 10 else 0
-    .. legal = checked(n)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do checked Bool
-    - n Int
-
--- "checking $n"
-= n > 2
+(fn-do + checked Bool
+  (param n Int)
+  (print (str "checking " n))
+  (return (> n 2))
+)
 ```
 
 ```output
@@ -2038,28 +2150,35 @@ too small
 
 ### A lazy local beside a stream match, read by two of its arms, is computed by the arm that runs.
 
-```yumi
--- run("b")
--- run("a")
+```brix
+(main
+  (print (call run "b"))
+  (print (call run "a"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run String
-    - text String
+(fn-do + run String
+  (param text String)
+  (return
+    (match text
+      (~ "a"
+        (str "first " label)
+      )
+      (~ "b"
+        (str "second " label)
+      )
+      (default
+        (inline "none")
+      )
+      (blank)
+      (lazy label (call make-label))
+    )
+  )
+)
 
-= match text
-    ~ "a"
-        "first $label"
-    ~ "b"
-        "second $label"
-    ?? "none"
-
-    .. label = make-label()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make-label String
-
--- "computing"
-= "L"
+(fn-do + make-label String
+  (print "computing")
+  (return "L")
+)
 ```
 
 ```output
@@ -2071,42 +2190,48 @@ first L
 
 ### A lazy local declared twice in one block is diagnosed.
 
-```yumi crash
--- pick(1)
+```brix crash
+(main
+  (print (call pick 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pick String
-    - id U32
-
-"fine $a"
-    .. a = id + 1
-    .. a = id + 2
+(fn-expr + pick String
+  (param id U32)
+  (scope (str "fine " a)
+    (lazy a (+ id 1))
+    (lazy a (+ id 2))
+  )
+)
 ```
 
 ```output
 Exception: Variable is already defined
 <no file:10>
-        .. a = id + 2
-           ^
+        (lazy a (+ id 2))
+              ^
 ```
 
 ### A lazy local read twice may narrow an optional by a test its own value makes.
 
-```yumi
--- pick("fallback", 1, null)
--- pick("fallback", 1, "chosen")
--- pick("fallback", 2, "chosen")
--- pick("", 1, null)
+```brix
+(main
+  (print (call pick "fallback" 1 null))
+  (print (call pick "fallback" 1 "chosen"))
+  (print (call pick "fallback" 2 "chosen"))
+  (print (call pick "" 1 null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick String
-    - value String
-    - index U32
-    - preferred String?
-
-. shown = "<$text>" if text.length
-    .. text = if preferred && index == 1 then preferred else value
-= shown ?? "empty"
+(fn-do + pick String
+  (param value String)
+  (param index U32)
+  (param preferred (? String))
+  (let shown
+    (scope (only-if (str "<" text ">") (if (. text length)))
+      (lazy text (if-expr (and preferred (== index 1)) preferred value))
+    )
+  )
+  (return (?? shown "empty"))
+)
 ```
 
 ```output
@@ -2118,27 +2243,30 @@ empty
 
 ### A lazy local read twice may narrow, by its own test, a lazy local it is the first to read.
 
-```yumi
--- label(3)
--- label(-1)
+```brix
+(main
+  (print (call label 3))
+  (print (call label -1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ find Int?
-    - n Int
+(fn-expr _ find (? Int)
+  (param n Int)
+  (only-if n (if (> n 0)))
+)
 
-n if n > 0
-
-━━━━━━━━━━━━━━━━━━━━
-_ label
-    - n Int
-
-|? record
-    "found ${record}"
-??
+(fn-expr _ label _
+  (param n Int)
+  (case? record
+    (str "found " record)
+  )
+  (default
     "none"
-
-.. found = find(n)
-.. record = found * 2 if found
+  )
+  (where
+    (lazy found (call find n))
+    (lazy record (only-if (* found 2) (if found)))
+  )
+)
 ```
 
 ```output
@@ -2148,21 +2276,23 @@ none
 
 ### A lazy attached to a function's result is visible to the statements above the result.
 
-```yumi
--- checked(5)
--- catch? checked(0) ?? -1
+```brix
+(main
+  (print (call checked 5))
+  (print (?? (catch? (call checked 0)) -1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CheckError is Error
+(type + CheckError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ checked Int ?! CheckError
-    - n Int
-
-?! CheckError("illegal")
-    if !legal
-n
-    .. legal = n > 0
+(fn-expr + checked Int (?! CheckError)
+  (param n Int)
+  (before
+    (throw (call CheckError "illegal") (if (not legal)))
+  )
+  (scope n
+    (lazy legal (> n 0))
+  )
+)
 ```
 
 ```output
@@ -2172,40 +2302,41 @@ n
 
 ### A lazy local whose value raises, first read in a comprehension, is evaluated there, and its error leaves the function that declares it.
 
-```yumi
--- catch? listed(3) ?? "failed"
--- catch? listed(-1) ?? "failed"
+```brix
+(main
+  (print (?? (catch? (call listed 3)) "failed"))
+  (print (?? (catch? (call listed -1)) "failed"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do check Int ?! Error
-    - n Int
+(fn-do + check Int (?! Error)
+  (param n Int)
+  (print "check")
+  (throw (call Error "negative") (if (< n 0)))
+  (return n)
+)
 
--- "check"
-?! Error("negative")
-    if n < 0
-= n
+(fn-do + note Int
+  (param n Int)
+  (print (str "item " n))
+  (return n)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do note Int
-    - n Int
-
--- "item $n"
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do listed String ?! Error
-    - n Int
-
--- "before"
-. a = items.length
--- "after"
-= "$a"
-
-.. checked = check(n)
-.. items =
-    ** [1, 2]
-    *> note(each) * checked
-    |> List
+(fn-do + listed String (?! Error)
+  (param n Int)
+  (print "before")
+  (let a (. items length))
+  (print "after")
+  (return (str a))
+  (blank)
+  (lazy checked (call check n))
+  (lazy items
+    (block
+      (spread (list 1 2))
+      (pipe *> (* (call note each) checked))
+      (pipe |> List)
+    )
+  )
+)
 ```
 
 ```output
@@ -2223,18 +2354,22 @@ failed
 
 ### A lazy local holding a closable value, first read in the content of a markup element, is closed when the element closes.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. numbers AsyncChannel'Int
-.. source = numbers
-
-<Label shown
-    "closed ${source.is-closed}"
-
--- shown.text
-shown.close()
--- numbers.is-closed
+(main
+  (let numbers (of AsyncChannel Int))
+  (lazy source numbers)
+  (blank)
+  (<> Label (id: shown)
+    (str "closed " (. source is-closed))
+  )
+  (blank)
+  (print (. shown text))
+  (call (. shown close))
+  (print (. numbers is-closed))
+)
 ```
 
 ```output
@@ -2244,26 +2379,37 @@ true
 
 ### A lazy local whose value pipes a list through a function, read by a list of feeds, is evaluated where the list reads it, and the function reads the arguments of the one that declares the local.
 
-```yumi
--- matches(["a", "bb", "c", "b"], "b", true)
--- matches(["a", "bb", "c", "b"], "b", false)
+```brix
+(main
+  (print (call matches (list "a" "bb" "c" "b") "b" true))
+  (print (call matches (list "a" "bb" "c" "b") "b" false))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ matches
-    - keys [String]
-    - needle String
-    - more Bool
-
-List'String
-    ** found
-    **? others if more
-
-.. found =
-    ** keys
-    ?> each.starts-with(needle)
-.. others =
-    ** keys
-    ?> !each.starts-with(needle)
+(fn-expr _ matches _
+  (param keys (list String))
+  (param needle String)
+  (param more Bool)
+  (call (of List String)
+    (block
+      (spread found)
+      (spread? (only-if others (if more)))
+    )
+  )
+  (where
+    (lazy found
+      (block
+        (spread keys)
+        (pipe ?> (call (. each starts-with) needle))
+      )
+    )
+    (lazy others
+      (block
+        (spread keys)
+        (pipe ?> (not (call (. each starts-with) needle)))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2273,96 +2419,83 @@ bb, b
 
 ### The value of a lazy local read under more than one flow, where what a test in the value itself finds of a local holds wherever the value is evaluated.
 
-```yumi
-. finder = Finder()
--- finder.hit(2)
--- finder.hit(0)
--- finder.hit(-1)
+```brix
+(main
+  (let finder (call Finder))
+  (print (call (. finder hit) 2))
+  (print (call (. finder hit) 0))
+  (print (call (. finder hit) -1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + size Index)
+  (fn-do + This _
+    (param size _)
+  )
+)
 
-+ size Index
+(type + Pick (is Tuple)
+  (prop + segment Index)
+  (prop + parameter Index)
+)
 
-────────────────────
-+ This
-    - size
+(type + Hit (is Tuple)
+  (prop + shape (? Box) (= null))
+  (prop + segment Index (= 0))
+  (prop + parameter Index (= 0))
+  (prop + leaf (? Box) (= null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pick is Tuple
+(type + Doc
+  (fn-expr + has Bool
+    (param box Box)
+    (> (. box size) 5)
+  )
+  (fn-expr + pick-in (? Pick)
+    (param box Box)
+    (only-if (call Pick (. box size) 2) (if (> (. box size) 25)))
+  )
+)
 
-+ segment Index
-+ parameter Index
-
-━━━━━━━━━━━━━━━━━━━━
-+ Hit is Tuple
-
-+ shape Box? = null
-+ segment Index = 0
-+ parameter Index = 0
-+ leaf Box? = null
-
-━━━━━━━━━━━━━━━━━━━━
-+ Doc
-
-────────────────────
-+ has Bool
-    - box Box
-
-box.size > 5
-
-────────────────────
-+ pick-in Pick?
-    - box Box
-
-Pick(box.size, 2) if box.size > 25
-
-━━━━━━━━━━━━━━━━━━━━
-+ Finder
-
-+ boxes [Box] = [Box(1), Box(20), Box(30)]
-+ document = Doc()
-
-────────────────────
-+ do box-at Box?
-    - at I64
-
-=? null if at < 0
-= boxes[at as Index]
-
-────────────────────
-+ has Bool
-    - box Box
-
-box.size > 5
-
-────────────────────
-+ pick-in Pick?
-    - box Box
-
-Pick(box.size, 2) if box.size > 25
-
-────────────────────
-+ do hit String
-    - at I64
-
-. found = node-hit(at)
-= "${found.shape?.size ?? 0} ${found.segment} ${found.parameter} ${found.leaf?.size ?? 0}"
-
-────────────────────
-+ node-hit Hit
-    - at I64
-
-|? !leaf
-    Hit()
-|? pick
-    Hit(shape, pick.segment, pick.parameter, leaf)
-??
-    Hit(shape, 0, 0, leaf)
-
-.. leaf = box-at(at)
-.. shape = leaf if leaf && document.has(leaf)
-.. pick = document.pick-in(shape) if shape
+(type + Finder
+  (prop + boxes (list Box) (= (list (call Box 1) (call Box 20) (call Box 30))))
+  (prop + document _ (= (call Doc)))
+  (fn-do + box-at (? Box)
+    (param at I64)
+    (return-if null (if (< at 0)))
+    (return ([] boxes (as at Index)))
+  )
+  (fn-expr + has Bool
+    (param box Box)
+    (> (. box size) 5)
+  )
+  (fn-expr + pick-in (? Pick)
+    (param box Box)
+    (only-if (call Pick (. box size) 2) (if (> (. box size) 25)))
+  )
+  (fn-do + hit String
+    (param at I64)
+    (let found (call node-hit at))
+    (return (str (?? (?. (. found shape) size) 0) " " (. found segment) " " (. found parameter) " " (?? (?. (. found leaf) size) 0)))
+  )
+  (fn-expr + node-hit Hit
+    (param at I64)
+    (case? (not leaf)
+      (call Hit)
+    )
+    (case? pick
+      (call Hit shape (. pick segment) (. pick parameter) leaf)
+    )
+    (default
+      (call Hit shape 0 0 leaf)
+    )
+    (where
+      (lazy leaf (call box-at at))
+      (lazy shape (only-if leaf (if (and leaf (call (. document has) leaf)))))
+      (lazy pick (only-if (call (. document pick-in) shape) (if shape)))
+    )
+  )
+)
 ```
 
 ```output
@@ -2373,28 +2506,40 @@ Pick(box.size, 2) if box.size > 25
 
 ### Lazy locals nested in the lazy local of an arm are evaluated where the arm reads them.
 
-```yumi
-for item in paths(".abc")
-    -- "${item[0]} ${item[1]}"
-for item in paths(".abcdefg")
-    -- "${item[0]} ${item[1]}"
-for item in paths("plain")
-    -- "${item[0]} ${item[1]}"
+```brix
+(main
+  (for (in item (call paths ".abc"))
+    (print (str ([] item 0) " " ([] item 1)))
+  )
+  (for (in item (call paths ".abcdefg"))
+    (print (str ([] item 0) " " ([] item 1)))
+  )
+  (for (in item (call paths "plain"))
+    (print (str ([] item 0) " " ([] item 1)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ paths
-    - name String
-
-|? name.starts-with(".")
-    * full-name, 1
-    * "${full-name}!", 2
-
-    .. full-name = local-name ?? default-name
-        .. local-name = "L$name" if name.length > 5
-        .. default-name = base ++ name
-            .. base = "D"
-??
-    * name, 3
+(fn-expr _ paths _
+  (param name String)
+  (case? (call (. name starts-with) ".")
+    (item (tuple full-name 1))
+    (item (tuple (str full-name "!") 2))
+    (blank)
+    (lazy full-name
+      (scope (?? local-name default-name)
+        (lazy local-name (only-if (str "L" name) (if (> (. name length) 5))))
+        (lazy default-name
+          (scope (++ base name)
+            (lazy base "D")
+          )
+        )
+      )
+    )
+  )
+  (default
+    (item (tuple name 3))
+  )
+)
 ```
 
 ```output
@@ -2407,41 +2552,34 @@ plain 3
 
 ### A caught read of a lazy property of a class converted to an interface but never constructed is emitted, and never runs.
 
-```yumi
-. holder Holder? = null
-. proto Proto? = holder
--- proto?.bar() ?? -1
--- holder?.read() ?? -1
+```brix
+(main
+  (let holder (? Holder) null)
+  (let proto (? Proto) holder)
+  (print (?? (call (?. proto bar)) -1))
+  (print (?? (call (?. holder read)) -1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + bar Int)
+)
 
-────────────────────
-+ bar Int
+(fn-do + checked Int (?! Error)
+  (param value Int)
+  (throw (call Error "bad") (if (< value 0)))
+  (return value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do checked Int ?! Error
-    - value Int
-
-?! Error("bad")
-    if value < 0
-= value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-    is Proto
-
-+ value := checked(3)
-
-────────────────────
-+ bar
-
-7
-
-────────────────────
-+ do read Int?
-
-= catch? value
+(type + Holder
+  (implements Proto)
+  (prop + value _ (:= (call checked 3)))
+  (fn-expr + bar _
+    7
+  )
+  (fn-do + read (? Int)
+    (return (catch? value))
+  )
+)
 ```
 
 ```output
@@ -2451,34 +2589,35 @@ plain 3
 
 ### A lazy local whose value reads a property its own value types holds wherever it is read, so an argument the flow narrows before the read is read narrowed in the value.
 
-```yumi
-. holder = Holder()
--- holder.note("a")
--- holder.note("b")
--- holder.note(null)
+```brix
+(main
+  (let holder (call Holder))
+  (print (call (. holder note) "a"))
+  (print (call (. holder note) "b"))
+  (print (call (. holder note) null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-_ table = Map'String'String()
-
-────────────────────
-+ This
-
-table["a"] = "found a"
-
-────────────────────
-+ note
-    - name String?
-
-|? !name
-    "none"
-|? found
-    found
-??
-    name
-
-.. found = table[name]
+(type + Holder
+  (prop _ table _ (= (call (of Map String String))))
+  (fn-do + This _
+    (= ([] table "a") "found a")
+  )
+  (fn-expr + note _
+    (param name (? String))
+    (case? (not name)
+      "none"
+    )
+    (case? found
+      found
+    )
+    (default
+      name
+    )
+    (where
+      (lazy found ([] table name))
+    )
+  )
+)
 ```
 
 ```output
@@ -2489,45 +2628,43 @@ none
 
 ### A lazy local read again where every way passes an earlier read has its value there, so the later read does not type the value again after a getter the first read called.
 
-```yumi
--- Holder(Thing()).check()
--- Holder(null).check()
+```brix
+(main
+  (print (call (. (call Holder (call Thing)) check)))
+  (print (call (. (call Holder null) check)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Owner is Interface
+(type + Owner (is Interface)
+  (fn-expr + level (? Int) :get)
+)
 
-────────────────────
-+ get level Int?
+(type + Thing
+  (implements Owner)
+  (fn-expr + level (? Int) :get
+    7
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Owner
-
-────────────────────
-+ get level Int?
-
-7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ owner Owner?
-
-────────────────────
-+ This
-    - owner
-
-────────────────────
-+ check Int
-
-|? !owner
-    0
-|? !level
-    1
-??
-    level
-
-.. level = owner.level
+(type + Holder
+  (prop + owner (? Owner))
+  (fn-do + This _
+    (param owner _)
+  )
+  (fn-expr + check Int
+    (case? (not owner)
+      0
+    )
+    (case? (not level)
+      1
+    )
+    (default
+      level
+    )
+    (where
+      (lazy level (. owner level))
+    )
+  )
+)
 ```
 
 ```output
@@ -2537,21 +2674,23 @@ none
 
 ### A lazy local read in a branch of another lazy local's value, and again outside it, takes what its value tests as its type, which holds at both reads.
 
-```yumi
--- f(1, 10, 4)
--- f(0, 10, 4)
+```brix
+(main
+  (print (call f 1 10 4))
+  (print (call f 0 10 4))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ f Int
-    - side Int
-    - track Int
-    - size Int
-
-x + width
-
-.. align = if side > 0 then side else null
-.. width = if align != null then size else track
-.. x = if align != null then track - width else 0
+(fn-expr + f Int
+  (param side Int)
+  (param track Int)
+  (param size Int)
+  (+ x width)
+  (where
+    (lazy align (if-expr (> side 0) side null))
+    (lazy width (if-expr (!= align null) size track))
+    (lazy x (if-expr (!= align null) (- track width) 0))
+  )
+)
 ```
 
 ```output
@@ -2561,23 +2700,27 @@ x + width
 
 ### A lazy local read in an arm a test narrows what its value tests, and again in another arm, takes what its value tests as its type.
 
-```yumi
--- f(1, 10, 4)
--- f(0, 10, 4)
+```brix
+(main
+  (print (call f 1 10 4))
+  (print (call f 0 10 4))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ f Int
-    - side Int
-    - track Int
-    - size Int
-
-|? align != null
-    track - width
-??
+(fn-expr + f Int
+  (param side Int)
+  (param track Int)
+  (param size Int)
+  (case? (!= align null)
+    (- track width)
+  )
+  (default
     width
-
-.. align = if side > 0 then side else null
-.. width = if align != null then size else track
+  )
+  (where
+    (lazy align (if-expr (> side 0) side null))
+    (lazy width (if-expr (!= align null) size track))
+  )
+)
 ```
 
 ```output
@@ -2587,49 +2730,48 @@ x + width
 
 ### A lazy local whose value reads a field a guard narrowed, read in a later guard's call and again after it, is evaluated once, with the field as the guard left it.
 
-```yumi
--- Holder(Address(3)).check()
--- Holder(Address(0)).check()
--- Holder(Address(9)).check()
--- Holder(null).check()
+```brix
+(main
+  (print (call (. (call Holder (call Address 3)) check)))
+  (print (call (. (call Holder (call Address 0)) check)))
+  (print (call (. (call Holder (call Address 9)) check)))
+  (print (call (. (call Holder null) check)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Address
+(type + Address
+  (prop + limit Int)
+  (fn-do + This _
+    (param limit _)
+  )
+  (fn-expr + is-live Bool
+    (param n Int)
+    (< n limit)
+  )
+)
 
-+ limit Int
-
-────────────────────
-+ This
-    - limit
-
-────────────────────
-+ is-live Bool
-    - n Int
-
-n < limit
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ keyed Address?
-
-────────────────────
-+ This
-    - keyed
-
-────────────────────
-+ check Int
-
-|? !keyed
-    0
-|? !address.is-live(1)
-    1
-|? address.limit > 5
-    2
-??
-    address.limit
-
-.. address = keyed
+(type + Holder
+  (prop + keyed (? Address))
+  (fn-do + This _
+    (param keyed _)
+  )
+  (fn-expr + check Int
+    (case? (not keyed)
+      0
+    )
+    (case? (not (call (. address is-live) 1))
+      1
+    )
+    (case? (> (. address limit) 5)
+      2
+    )
+    (default
+      (. address limit)
+    )
+    (where
+      (lazy address keyed)
+    )
+  )
+)
 ```
 
 ```output
@@ -2641,70 +2783,69 @@ n < limit
 
 ### Forcing a field a guard narrowed is illegal in the value of a lazy local whose later reads each come after an earlier one, which evaluates it there.
 
-```yumi compile-error
--- Holder(Address(3)).check()
+```brix compile-error
+(main
+  (print (call (. (call Holder (call Address 3)) check)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Address
+(type + Address
+  (prop + limit Int)
+  (fn-do + This _
+    (param limit _)
+  )
+  (fn-expr + is-live Bool
+    (param n Int)
+    (< n limit)
+  )
+)
 
-+ limit Int
-
-────────────────────
-+ This
-    - limit
-
-────────────────────
-+ is-live Bool
-    - n Int
-
-n < limit
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ keyed Address?
-
-────────────────────
-+ This
-    - keyed
-
-────────────────────
-+ check Int
-
-|? !keyed
-    0
-|? !address.is-live(1)
-    1
-??
-    address.limit
-
-.. address = keyed!
+(type + Holder
+  (prop + keyed (? Address))
+  (fn-do + This _
+    (param keyed _)
+  )
+  (fn-expr + check Int
+    (case? (not keyed)
+      0
+    )
+    (case? (not (call (. address is-live) 1))
+      1
+    )
+    (default
+      (. address limit)
+    )
+    (where
+      (lazy address (!! keyed))
+    )
+  )
+)
 ```
 
 ```output
-Exception: "keyed" is Address, which is never null here, so it needs no "!"
-<no file:38>
-    .. address = keyed!
-                 ^^^^^^
+Exception: "keyed" is Address, which is never null here, so it needs no "!!"
+<no file:33>
+          (lazy address (!! keyed))
+                        ^^^^^^^^^^
 ```
 
 ### A lazy local read twice in a straight line is typed once, though an assignment between the reads changes what is known of a local its value reads.
 
-```yumi
--- f(5)
--- f(null)
+```brix
+(main
+  (print (call f 5))
+  (print (call f null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do f Int
-    - given Int?
-
-. c = given
-=? 0 if c == null
-. a = doubled
-c = null
-= a + doubled
-
-.. doubled = c * 2
+(fn-do + f Int
+  (param given (? Int))
+  (let c given)
+  (return-if 0 (if (== c null)))
+  (let a doubled)
+  (= c null)
+  (return (+ a doubled))
+  (blank)
+  (lazy doubled (* c 2))
+)
 ```
 
 ```output
@@ -2714,55 +2855,50 @@ c = null
 
 ### A lazy local whose value reads a field a guard narrowed is evaluated at its first read, and a read of it in another lazy local's value, after a call, finds it evaluated there: the value is not typed again where the call has ended what is known of the field.
 
-```yumi
--- Holder(Layout(Request("a"))).serves("a")
--- Holder(Layout(Request("b"))).serves("a")
--- Holder(null).serves("a")
+```brix
+(main
+  (print (call (. (call Holder (call Layout (call Request "a"))) serves) "a"))
+  (print (call (. (call Holder (call Layout (call Request "b"))) serves) "a"))
+  (print (call (. (call Holder null) serves) "a"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Request
+(type + Request
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-+ text String
+(type + Layout
+  (prop + request Request)
+  (fn-do + This _
+    (param request _)
+  )
+)
 
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Layout
-
-+ request Request
-
-────────────────────
-+ This
-    - request
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ layout Layout?
-+ count = 0
-
-────────────────────
-+ This
-    - layout
-
-────────────────────
-+ matches Bool
-
-count == 0
-
-────────────────────
-+ serves Bool
-    - text String
-
-|? !layout || !matches()
-    false
-??
-    request.text == text && same
-
-.. request = layout.request
-.. same = request.text == text
+(type + Holder
+  (prop + layout (? Layout))
+  (prop + count _ (= 0))
+  (fn-do + This _
+    (param layout _)
+  )
+  (fn-expr + matches Bool
+    (== count 0)
+  )
+  (fn-expr + serves Bool
+    (param text String)
+    (case? (or (not layout) (not (call matches)))
+      false
+    )
+    (default
+      (and (== (. request text) text) same)
+    )
+    (where
+      (lazy request (. layout request))
+      (lazy same (== (. request text) text))
+    )
+  )
+)
 ```
 
 ```output
@@ -2773,100 +2909,93 @@ false
 
 ### Forcing that field in the value is illegal, as the value is typed only where the guard left the field known.
 
-```yumi compile-error
--- Holder(Layout(Request("a"))).serves("a")
+```brix compile-error
+(main
+  (print (call (. (call Holder (call Layout (call Request "a"))) serves) "a"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Request
+(type + Request
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-+ text String
+(type + Layout
+  (prop + request Request)
+  (fn-do + This _
+    (param request _)
+  )
+)
 
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Layout
-
-+ request Request
-
-────────────────────
-+ This
-    - request
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ layout Layout?
-+ count = 0
-
-────────────────────
-+ This
-    - layout
-
-────────────────────
-+ matches Bool
-
-count == 0
-
-────────────────────
-+ serves Bool
-    - text String
-
-|? !layout || !matches()
-    false
-??
-    request.text == text && same
-
-.. request = layout!.request
-.. same = request.text == text
+(type + Holder
+  (prop + layout (? Layout))
+  (prop + count _ (= 0))
+  (fn-do + This _
+    (param layout _)
+  )
+  (fn-expr + matches Bool
+    (== count 0)
+  )
+  (fn-expr + serves Bool
+    (param text String)
+    (case? (or (not layout) (not (call matches)))
+      false
+    )
+    (default
+      (and (== (. request text) text) same)
+    )
+    (where
+      (lazy request (. (!! layout) request))
+      (lazy same (== (. request text) text))
+    )
+  )
+)
 ```
 
 ```output
-Exception: "layout" is Layout, which is never null here, so it needs no "!"
-<no file:46>
-    .. request = layout!.request
-                 ^^^^^^^
+Exception: "layout" is Layout, which is never null here, so it needs no "!!"
+<no file:38>
+          (lazy request (. (!! layout) request))
+                           ^^^^^^^^^^^
 ```
 
 ### A lazy local first read in an assertion's condition has its value after the assertion, so what the condition found of a property of it holds at a later read.
 
-```yumi
--- require(Store([Entry(1, 5)]), 0, 1)
--- require(Store([Entry(1, 5), Entry(2, 7)]), 1, 2)
+```brix
+(main
+  (print (call require (call Store (list (call Entry 1 5))) 0 1))
+  (print (call require (call Store (list (call Entry 1 5) (call Entry 2 7))) 1 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Entry
+(type + Entry
+  (prop + generation Int)
+  (prop + geometry (? Int))
+  (fn-do + This _
+    (param generation _)
+    (param geometry _)
+  )
+)
 
-+ generation Int
-+ geometry Int?
+(type + Store
+  (prop + entries (list Entry))
+  (fn-do + This _
+    (param entries _)
+  )
+)
 
-────────────────────
-+ This
-    - generation
-    - geometry
-
-━━━━━━━━━━━━━━━━━━━━
-+ Store
-
-+ entries [Entry]
-
-────────────────────
-+ This
-    - entries
-
-━━━━━━━━━━━━━━━━━━━━
-+ require Int
-    - store Store
-    - index Index
-    - generation Int
-
-?! Panic("stale")
-    if entry.generation != generation || !entry.geometry
-
-entry.geometry
-
-.. entry = store.entries[index]
+(fn-expr + require Int
+  (param store Store)
+  (param index Index)
+  (param generation Int)
+  (before
+    (throw (call Panic "stale") (if (or (!= (. entry generation) generation) (not (. entry geometry)))))
+  )
+  (. entry geometry)
+  (where
+    (lazy entry ([] (. store entries) index))
+  )
+)
 ```
 
 ```output
@@ -2876,112 +3005,102 @@ entry.geometry
 
 ### A lazy local whose value reads a field a guard narrowed, first read in another lazy local's value, is typed again at a later read that no evaluation of it comes before, under what is known there: a call between them has ended what is known of the field, so it is read from an optional.
 
-```yumi compile-error
--- Holder(Layout(Request("a"))).serves("a")
+```brix compile-error
+(main
+  (print (call (. (call Holder (call Layout (call Request "a"))) serves) "a"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Request
+(type + Request
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-+ text String
+(type + Layout
+  (prop + request Request)
+  (fn-do + This _
+    (param request _)
+  )
+)
 
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Layout
-
-+ request Request
-
-────────────────────
-+ This
-    - request
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ layout Layout?
-+ count = 0
-
-────────────────────
-+ This
-    - layout
-
-────────────────────
-+ matches Bool
-
-count == 0
-
-────────────────────
-+ serves Bool
-    - text String
-
-|? !layout
-    false
-??
-    same && request.text == text
-
-.. request = layout.request
-.. same = request.text.length > 0 && matches()
+(type + Holder
+  (prop + layout (? Layout))
+  (prop + count _ (= 0))
+  (fn-do + This _
+    (param layout _)
+  )
+  (fn-expr + matches Bool
+    (== count 0)
+  )
+  (fn-expr + serves Bool
+    (param text String)
+    (case? (not layout)
+      false
+    )
+    (default
+      (and same (== (. request text) text))
+    )
+    (where
+      (lazy request (. layout request))
+      (lazy same (and (> (. request text length) 0) (call matches)))
+    )
+  )
+)
 ```
 
 ```output
-Exception: Property "request" is read from Layout?, which may be null; unwrap it first with ! or ?.
-<no file:46>
-    .. request = layout.request
-                 ^^^^^^^^^^^^^^
+Exception: Property "request" is read from Layout?, which may be null; unwrap it first with "(!! …)" or "(?. …)"
+<no file:38>
+          (lazy request (. layout request))
+                        ^^^^^^^^^^^^^^^^^^
 ```
 
 ### Forcing that field in the value is legal, as the value is typed again where the field may hold nothing.
 
-```yumi
--- Holder(Layout(Request("a"))).serves("a")
--- Holder(null).serves("a")
+```brix
+(main
+  (print (call (. (call Holder (call Layout (call Request "a"))) serves) "a"))
+  (print (call (. (call Holder null) serves) "a"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Request
+(type + Request
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-+ text String
+(type + Layout
+  (prop + request Request)
+  (fn-do + This _
+    (param request _)
+  )
+)
 
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Layout
-
-+ request Request
-
-────────────────────
-+ This
-    - request
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ layout Layout?
-+ count = 0
-
-────────────────────
-+ This
-    - layout
-
-────────────────────
-+ matches Bool
-
-count == 0
-
-────────────────────
-+ serves Bool
-    - text String
-
-|? !layout
-    false
-??
-    same && request.text == text
-
-.. request = layout!.request
-.. same = request.text.length > 0 && matches()
+(type + Holder
+  (prop + layout (? Layout))
+  (prop + count _ (= 0))
+  (fn-do + This _
+    (param layout _)
+  )
+  (fn-expr + matches Bool
+    (== count 0)
+  )
+  (fn-expr + serves Bool
+    (param text String)
+    (case? (not layout)
+      false
+    )
+    (default
+      (and same (== (. request text) text))
+    )
+    (where
+      (lazy request (. (!! layout) request))
+      (lazy same (and (> (. request text length) 0) (call matches)))
+    )
+  )
+)
 ```
 
 ```output
@@ -2991,60 +3110,52 @@ false
 
 ### A local the value reads, narrowed where the value is first typed and assigned again before a later read that types it again, is read there as its type.
 
-```yumi compile-error
--- Holder(Layout(Request("a"))).serves(Layout(Request("a")), "a")
+```brix compile-error
+(main
+  (print (call (. (call Holder (call Layout (call Request "a"))) serves) (call Layout (call Request "a")) "a"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Request
+(type + Request
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-+ text String
+(type + Layout
+  (prop + request Request)
+  (fn-do + This _
+    (param request _)
+  )
+)
 
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Layout
-
-+ request Request
-
-────────────────────
-+ This
-    - request
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ layout Layout?
-+ count = 0
-
-────────────────────
-+ This
-    - layout
-
-────────────────────
-+ matches Bool
-
-count == 0
-
-────────────────────
-+ do serves Bool
-    - given Layout?
-    - text String
-
-. found = given
-=? false if !found
-. first = text != "" && same
-found = given
-= first && request.text == text
-
-.. request = found.request
-.. same = request.text.length > 0
+(type + Holder
+  (prop + layout (? Layout))
+  (prop + count _ (= 0))
+  (fn-do + This _
+    (param layout _)
+  )
+  (fn-expr + matches Bool
+    (== count 0)
+  )
+  (fn-do + serves Bool
+    (param given (? Layout))
+    (param text String)
+    (let found given)
+    (return-if false (if (not found)))
+    (let first (and (!= text "") same))
+    (= found given)
+    (return (and first (== (. request text) text)))
+    (blank)
+    (lazy request (. found request))
+    (lazy same (> (. request text length) 0))
+  )
+)
 ```
 
 ```output
-Exception: Property "request" is read from Layout?, which may be null; unwrap it first with ! or ?.
-<no file:48>
-    .. request = found.request
-                 ^^^^^^^^^^^^^
+Exception: Property "request" is read from Layout?, which may be null; unwrap it first with "(!! …)" or "(?. …)"
+<no file:38>
+        (lazy request (. found request))
+                      ^^^^^^^^^^^^^^^^^
 ```

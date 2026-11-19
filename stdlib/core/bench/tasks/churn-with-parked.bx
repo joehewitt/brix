@@ -1,0 +1,29 @@
+; benchmark.meta description: Spawns and finishes short tasks one at a time while thousands of other tasks stay parked.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core/channel)
+(blank)
+
+(main
+  (let parked 2000)
+  (let cycles 20000)
+  (let gate (of SyncChannel Int))
+  (let done (of SyncChannel Int))
+  (for (in i (..< 0 parked))
+    (do-new
+      (<- gate)
+    )
+  )
+  (blank)
+  (let checksum 0)
+  (for (in i (..< 0 cycles))
+    (do-new
+      (<- done i)
+    )
+    (+= checksum (!! (<- done)))
+  )
+  (call (. gate close))
+  (blank)
+  (print (str "bench-result tasks/churn-with-parked checksum=" checksum))
+)

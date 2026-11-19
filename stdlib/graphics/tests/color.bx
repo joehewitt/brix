@@ -1,0 +1,56 @@
+(import /graphics/color)
+(import /graphics/tests/support/geometry)
+(import /test)
+(import /units)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-expr + tests TestRender
+  (header (call test "Hex Output"))
+  (tuple "#80801a" (as (call RGB 50% 50% 10%) Hex))
+  (tuple "#264ade" (as (call RGB 15% 29% 87%) Hex))
+  (tuple "#000000" (as transparent Hex))
+  (tuple "#336699" (as (call RGBA (/ 51.0 255) (/ 102.0 255) (/ 153.0 255)) Hex))
+  (tuple "#ffffff" (as (call RGBA 1.2 1.5 2) Hex))
+  (tuple "#000000" (as (call RGBA -0.5 -1 -2) Hex))
+  (header (call test "Hex Color Parsing"))
+  (tuple "#336699" (as (call RGBA "  #336699 ") Hex))
+  (tuple "#aabbcc" (as (call RGBA "#AbC") Hex))
+  (tuple 1.0 (. (call RGBA "#336699") alpha))
+  (tuple (/ 128.0 255) (. (call RGBA "#33669980") alpha))
+  (tuple (/ 136.0 255) (. (call RGBA "#3698") alpha))
+  (tuple true (== (call matched-color "") null))
+  (tuple true (== (call matched-color "#") null))
+  (tuple true (== (call matched-color "#12345") null))
+  (tuple true (== (call matched-color "#12345g") null))
+  (tuple true (== (call matched-color "#ggg") null))
+  (tuple true (== (call matched-color "#1234567890") null))
+  (tuple "#ff0088" (as (!! (call embedded-color "fill #f08, done")) Hex))
+  (tuple true (== (call embedded-color "fill #f08badz, done") null))
+  (header (call test "RGB HSV"))
+  (tuple "hsva(63.42592592592592%, 82.75862068965517%, 87%, 100%)" (as (call RGBA 15% 29% 87%) HSVA))
+  (tuple true (call near 0.15%% (. (as (as (call RGBA 15% 29% 87%) HSVA) RGBA) red)))
+  (tuple true (call near 0.29%% (. (as (as (call RGBA 15% 29% 87%) HSVA) RGBA) green)))
+  (tuple true (call near 0.87%% (. (as (as (call RGBA 15% 29% 87%) HSVA) RGBA) blue)))
+)
+
+(fn-expr _ matched-color _
+  (param text String)
+  (match? text
+    (~ (seq (: color RGBA) (! .))
+      color
+    )
+  )
+)
+
+(fn-expr _ embedded-color _
+  (param text String)
+  (match? text
+    (~ (seq "fill " (: color RGBA) ", done" (! .))
+      color
+    )
+  )
+)

@@ -1,0 +1,21 @@
+(import /BxGC/BxGC.h)
+(import /core/error)
+(import /core/intrinsics)
+
+(type + GCManagedCleanupCallback (is (c-fn-type Size (param context-pointer Pointer))))
+
+(type + (of Weak T)
+  (prop _ registry-token Size (= 0))
+  (fn-do + This _
+    (param target T)
+    (= registry-token (as (call C:brixGCRegisterOwnerWeak (as this Pointer) (as target Pointer)) Size))
+    (if (not registry-token)
+      (throw (call Error "Unable to register weak reference"))
+    )
+  )
+  (fn-do + get (? T) :get
+    (let pointer (call C:brixGCOwnerWeakLoad registry-token))
+    (return-if (if (not pointer)))
+    (return (call (of gc-object-from-pointer T) pointer))
+  )
+)

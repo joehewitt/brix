@@ -1,22 +1,27 @@
 # Thread locals
 
-```yumi
-+ @thread scratch = 10
+```brix
+(prop + scratch _ @thread (= 10))
+(blank)
 
-. worker = Worker(1)
-. results SyncChannel'String
-
-do (worker) new
-    scratch += 1
-    results <- "first $scratch"
-
--- <- results
-
-do (worker) new
-    scratch += 1
-    results <- "second $scratch"
-
--- <- results
+(main
+  (let worker (call Worker 1))
+  (let results (of SyncChannel String))
+  (blank)
+  (do-new (worker: worker)
+    (+= scratch 1)
+    (<- results (str "first " scratch))
+  )
+  (blank)
+  (print (<- results))
+  (blank)
+  (do-new (worker: worker)
+    (+= scratch 1)
+    (<- results (str "second " scratch))
+  )
+  (blank)
+  (print (<- results))
+)
 ```
 
 ```output
@@ -24,46 +29,56 @@ first 11
 second 12
 ```
 
-```yumi
-+ @thread parallel-scratch = 41
+```brix
+(prop + parallel-scratch _ @thread (= 41))
+(blank)
 
-. results SyncChannel'Int
-
-do new thread
-    parallel-scratch += 1
-    results <- parallel-scratch
-
--- <- results
+(main
+  (let results (of SyncChannel Int))
+  (blank)
+  (do-new-thread
+    (+= parallel-scratch 1)
+    (<- results parallel-scratch)
+  )
+  (blank)
+  (print (<- results))
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-+ @thread scratch = 0
+```brix
+(prop + scratch _ @thread (= 0))
+(blank)
 
-. worker-a = Worker(1)
-. worker-b = Worker(1)
-. results SyncChannel'String
-
-do (worker-a) new
-    scratch += 1
-    results <- "a $scratch"
-
--- <- results
-
-do (worker-b) new
-    scratch += 1
-    results <- "b $scratch"
-
--- <- results
-
-do (worker-a) new
-    scratch += 1
-    results <- "a $scratch"
-
--- <- results
+(main
+  (let worker-a (call Worker 1))
+  (let worker-b (call Worker 1))
+  (let results (of SyncChannel String))
+  (blank)
+  (do-new (worker: worker-a)
+    (+= scratch 1)
+    (<- results (str "a " scratch))
+  )
+  (blank)
+  (print (<- results))
+  (blank)
+  (do-new (worker: worker-b)
+    (+= scratch 1)
+    (<- results (str "b " scratch))
+  )
+  (blank)
+  (print (<- results))
+  (blank)
+  (do-new (worker: worker-a)
+    (+= scratch 1)
+    (<- results (str "a " scratch))
+  )
+  (blank)
+  (print (<- results))
+)
 ```
 
 ```output
@@ -72,34 +87,41 @@ b 1
 a 2
 ```
 
-```yumi
-+ @thread thread-value = 0
+```brix
+(prop + thread-value _ @thread (= 0))
+(blank)
 
-. worker-a = Worker(1)
-. worker-b = Worker(1)
-. results SyncChannel'Int
-
-do (worker-a) new
-    thread-value = 101
-    results <- thread-value
-
--- <- results
-
-do (worker-b) new
-    thread-value = 202
-    results <- thread-value
-
--- <- results
-
-do (worker-a) new
-    results <- thread-value
-
--- <- results
-
-do (worker-b) new
-    results <- thread-value
-
--- <- results
+(main
+  (let worker-a (call Worker 1))
+  (let worker-b (call Worker 1))
+  (let results (of SyncChannel Int))
+  (blank)
+  (do-new (worker: worker-a)
+    (= thread-value 101)
+    (<- results thread-value)
+  )
+  (blank)
+  (print (<- results))
+  (blank)
+  (do-new (worker: worker-b)
+    (= thread-value 202)
+    (<- results thread-value)
+  )
+  (blank)
+  (print (<- results))
+  (blank)
+  (do-new (worker: worker-a)
+    (<- results thread-value)
+  )
+  (blank)
+  (print (<- results))
+  (blank)
+  (do-new (worker: worker-b)
+    (<- results thread-value)
+  )
+  (blank)
+  (print (<- results))
+)
 ```
 
 ```output
@@ -109,27 +131,32 @@ do (worker-b) new
 202
 ```
 
-```yumi
-+ @task logical = 0
-+ @thread physical = 0
-+ Result is (label String, logical Int, physical Int)
+```brix
+(prop + logical _ @task (= 0))
+(prop + physical _ @thread (= 0))
+(type-line + Result (is (tuple (: label String) (: logical Int) (: physical Int))))
+(blank)
 
-. worker = Worker(1)
-. results SyncChannel'Result
-
-do (worker) new
-    logical += 1
-    physical += 1
-    results <- ("task 1", logical, physical)
-
--- <- results
-
-do (worker) new
-    logical += 1
-    physical += 1
-    results <- ("task 2", logical, physical)
-
--- <- results
+(main
+  (let worker (call Worker 1))
+  (let results (of SyncChannel Result))
+  (blank)
+  (do-new (worker: worker)
+    (+= logical 1)
+    (+= physical 1)
+    (<- results (tuple "task 1" logical physical))
+  )
+  (blank)
+  (print (<- results))
+  (blank)
+  (do-new (worker: worker)
+    (+= logical 1)
+    (+= physical 1)
+    (<- results (tuple "task 2" logical physical))
+  )
+  (blank)
+  (print (<- results))
+)
 ```
 
 ```output
@@ -137,14 +164,17 @@ do (worker) new
 (task 2, 1, 2)
 ```
 
-```yumi
-+ @thread inferred = (1, 2)
-+ @thread explicit Int = 5
+```brix
+(prop + inferred _ @thread (= (tuple 1 2)))
+(prop + explicit Int @thread (= 5))
+(blank)
 
--- inferred, explicit
-inferred = (3, 4)
-explicit = 8
--- inferred, explicit
+(main
+  (print (tuple inferred explicit))
+  (= inferred (tuple 3 4))
+  (= explicit 8)
+  (print (tuple inferred explicit))
+)
 ```
 
 ```output
@@ -152,18 +182,19 @@ explicit = 8
 ((3, 4), 8)
 ```
 
-```yumi
-./lib/threadlocals
+```brix
+(import ./lib/threadlocals)
+(blank)
 
--- remote-count
-remote-count = 7
--- remote-count
+(main
+  (print remote-count)
+  (= remote-count 7)
+  (print remote-count)
+)
 ```
 
-```yumi file=lib/threadlocals.yumi
-
-+ @thread remote-count = 3
-
+```brix file=lib/threadlocals.bx
+(prop + remote-count _ @thread (= 3))
 ```
 
 ```output
@@ -173,12 +204,15 @@ remote-count = 7
 
 ### A global may read a thread local declared after it.
 
-```yumi
--- later
--- th
+```brix
+(main
+  (print later)
+  (print th)
+)
 
-+ later = th + 1
-+ @thread th = 5
+(blank)
+(prop + later _ (= (+ th 1)))
+(prop + th _ @thread (= 5))
 ```
 
 ```output
@@ -188,11 +222,14 @@ remote-count = 7
 
 ### A thread-local's value may read one declared before it.
 
-```yumi
--- later
+```brix
+(main
+  (print later)
+)
 
-+ @thread early = 5
-+ @thread later = early + 1
+(blank)
+(prop + early _ @thread (= 5))
+(prop + later _ @thread (= (+ early 1)))
 ```
 
 ```output
@@ -201,37 +238,42 @@ remote-count = 7
 
 ### A thread-local's value cannot read one declared after it, which takes its value later.
 
-```yumi crash
--- early
+```brix crash
+(main
+  (print early)
+)
 
-+ @thread early = later + 1
-+ @thread later = 5
+(blank)
+(prop + early _ @thread (= (+ later 1)))
+(prop + later _ @thread (= 5))
 ```
 
 ```output
 Exception: Global 'later' is read before it is initialized
-<no file:4>
-    + @thread early = later + 1
-                      ^^^^^
+<no file:7>
+    (prop + early _ @thread (= (+ later 1)))
+                                  ^^^^^
 ```
 
 ### A panic while a thread-local takes its value is reported, and ends the process.
 
-```yumi crash
--- label
+```brix crash
+(main
+  (print label)
+)
 
-+ @thread label = pick()
+(blank)
+(prop + label _ @thread (= (call pick)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick String
-
-?! Panic("armed")
-= "ok"
+(fn-do + pick String
+  (throw (call Panic "armed"))
+  (return "ok")
+)
 ```
 
 ```stderr
 Unhandled panic: armed
-<no file:9>
+<no file:10>
 
 Stack trace:
   <no frames>

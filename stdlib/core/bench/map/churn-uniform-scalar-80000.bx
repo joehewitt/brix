@@ -1,0 +1,28 @@
+; benchmark.meta description: Mixed scalar Map lookup, delete, and reinsert churn at 80,000 entries.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core)
+(blank)
+
+(main
+  (let count (as 80000 Size))
+  (let map (call (of Map U64 U64)))
+  (for (in index (..< 0 count))
+    (= ([] map (as index U64)) (as index U64))
+  )
+  (blank)
+  (let checksum 0u64)
+  (for (in repetition (..< 0 10))
+    (for (in index (..< 0 count (by: 2)))
+      (+= checksum (!! ([] map (as index U64))))
+      (-= ([] map (as index U64)))
+    )
+    (for (in index (..< 0 count (by: 2)))
+      (= ([] map (as index U64)) (as (+ index repetition) U64))
+    )
+  )
+  (blank)
+  (+= checksum (as (. map length) U64))
+  (print (str "bench-result map/churn-uniform-scalar-80000 checksum=" checksum))
+)

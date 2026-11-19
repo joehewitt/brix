@@ -1,34 +1,31 @@
 # Optional null fallback
 
-```yumi
-. omitted = Box() if !mixed()
--- mixed()
--- !mixed()
--- omitted == null
-. context = Context()
-context.report(omitted)
--- context.fix == null
+```brix
+(main
+  (let omitted (only-if (call Box) (if (not (call mixed)))))
+  (print (call mixed))
+  (print (not (call mixed)))
+  (print (== omitted null))
+  (let context (call Context))
+  (call (. context report) omitted)
+  (print (== (. context fix) null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + value Int (= 1))
+)
 
-+ value Int = 1
+(type + Context
+  (prop + fix (? Box))
+  (fn-do + report _
+    (param fix (? Box) (= null))
+    (= (. this fix) fix)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Context
-
-+ fix Box?
-
-────────────────────
-+ do report
-    - fix Box? = null
-
-this.fix = fix
-
-━━━━━━━━━━━━━━━━━━━━
-+ do mixed Bool
-
-= true
+(fn-do + mixed Bool
+  (return true)
+)
 ```
 
 ```output
@@ -38,27 +35,27 @@ true
 true
 ```
 
-```yumi
-. box = Box()
-. present Box? = box
-. absent Box? = null
--- (present ?? null) == box
--- (absent ?? null) == null
-. number Int? = null
--- (number ?? null) == null
-number = 7
--- retain(number)!
+```brix
+(main
+  (let box (call Box))
+  (let present (? Box) box)
+  (let absent (? Box) null)
+  (print (== (?? present null) box))
+  (print (== (?? absent null) null))
+  (let number (? Int) null)
+  (print (== (?? number null) null))
+  (= number 7)
+  (print (!! (call retain number)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + value Int (= 1))
+)
 
-+ value Int = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ retain
-    - value Int?
-
-value ?? null
+(fn-expr + retain _
+  (param value (? Int))
+  (?? value null)
+)
 ```
 
 ```output
@@ -68,23 +65,23 @@ true
 7
 ```
 
-```yumi
-. box = Box()
-. present Box? = box
-. absent Box? = null
--- (present ?? fallback()) == box
--- (absent ?? fallback()) == null
+```brix
+(main
+  (let box (call Box))
+  (let present (? Box) box)
+  (let absent (? Box) null)
+  (print (== (?? present (call fallback)) box))
+  (print (== (?? absent (call fallback)) null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + value Int (= 1))
+)
 
-+ value Int = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fallback
-
--- "fallback"
-= null
+(fn-do + fallback _
+  (print "fallback")
+  (return null)
+)
 ```
 
 ```output
@@ -93,19 +90,20 @@ fallback
 true
 ```
 
-```yumi
-. half F64 = 7.5
-. none F64 = 0
--- if !is-set() then 0 else half
--- if is-set() then half else 0
--- if !is-set() then 0 else 7.5
--- none ?? 2.5
--- half ?? 0
+```brix
+(main
+  (let half F64 7.5)
+  (let none F64 0)
+  (print (if-expr (not (call is-set)) 0 half))
+  (print (if-expr (call is-set) half 0))
+  (print (if-expr (not (call is-set)) 0 7.5))
+  (print (?? none 2.5))
+  (print (?? half 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do is-set Bool
-
-= true
+(fn-do + is-set Bool
+  (return true)
+)
 ```
 
 ```output
@@ -118,24 +116,28 @@ true
 
 ### A conditional with a null fallback yields null on every loop iteration where its condition fails.
 
-```yumi
-. values = [1.5, 2.5, 3.5]
-. present = [true, false, false]
-for index in 0 .. < values.length
-    . value F64? = values[index] if present[index]
-    -- value == null
-for index in 0 .. < values.length
-    . pair Pair? = Pair(index, values[index]) if present[index]
-    -- pair == null
-for index in 0 .. < values.length
-    . inferred = values[index] if present[index]
-    -- inferred == null
+```brix
+(main
+  (let values (list 1.5 2.5 3.5))
+  (let present (list true false false))
+  (for (in index (..< 0 (. values length)))
+    (let value (? F64) (only-if ([] values index) (if ([] present index))))
+    (print (== value null))
+  )
+  (for (in index (..< 0 (. values length)))
+    (let pair (? Pair) (only-if (call Pair index ([] values index)) (if ([] present index))))
+    (print (== pair null))
+  )
+  (for (in index (..< 0 (. values length)))
+    (let inferred (only-if ([] values index) (if ([] present index))))
+    (print (== inferred null))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Tuple
-
-+ index Index
-+ value F64
+(type + Pair (is Tuple)
+  (prop + index Index)
+  (prop + value F64)
+)
 ```
 
 ```output
@@ -152,25 +154,26 @@ true
 
 ### A declared optional capture keeps null when its initializer converts from a different optional type.
 
-```yumi
-. flag = off()
-. a F64? = if flag then 1.5 else null
--- a == null
-. b F64? = 1.5 if flag
--- b == null
-. c Int? = if flag then 3 else null
--- c == null
-. d = if flag then 1.5 else null
--- d == null
-. e F64? = if flag then 1.5 else (2.5 if flag)
--- e == null
-. f F64? = if flag then 1.5 else 2.5
--- f!
+```brix
+(main
+  (let flag (call off))
+  (let a (? F64) (if-expr flag 1.5 null))
+  (print (== a null))
+  (let b (? F64) (only-if 1.5 (if flag)))
+  (print (== b null))
+  (let c (? Int) (if-expr flag 3 null))
+  (print (== c null))
+  (let d (if-expr flag 1.5 null))
+  (print (== d null))
+  (let e (? F64) (if-expr flag 1.5 (only-if 2.5 (if flag))))
+  (print (== e null))
+  (let f (? F64) (if-expr flag 1.5 2.5))
+  (print (!! f))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do off Bool
-
-= false
+(fn-do + off Bool
+  (return false)
+)
 ```
 
 ```output
@@ -184,29 +187,29 @@ true
 
 ### A null branch before a concrete fallback unifies to the fallback's optional type.
 
-```yumi
-. owner U64 = 7
--- pick(true, owner) == null
--- pick(false, owner)!
--- pick-do(true, owner) == null
--- pick-do(false, owner)!
-. text = if owner == 7 then null else "seven"
--- text == null
+```brix
+(main
+  (let owner U64 7)
+  (print (== (call pick true owner) null))
+  (print (!! (call pick false owner)))
+  (print (== (call pick-do true owner) null))
+  (print (!! (call pick-do false owner)))
+  (let text (if-expr (== owner 7) null "seven"))
+  (print (== text null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pick U64?
-    - hide Bool
-    - value U64
+(fn-expr + pick (? U64)
+  (param hide Bool)
+  (param value U64)
+  (if-expr hide null value)
+)
 
-if hide then null else value
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pick-do U64?
-    - hide Bool
-    - value U64
-
-. kept = value
-= if hide then null else kept
+(fn-do + pick-do (? U64)
+  (param hide Bool)
+  (param value U64)
+  (let kept value)
+  (return (if-expr hide null kept))
+)
 ```
 
 ```output
@@ -219,12 +222,14 @@ true
 
 ### An optional holding zero is present.
 
-```yumi
-. zero Index? = 0
--- if zero then "present" else "absent"
--- !zero
-. none Index? = null
--- if none then "present" else "absent"
+```brix
+(main
+  (let zero (? Index) 0)
+  (print (if-expr zero "present" "absent"))
+  (print (not zero))
+  (let none (? Index) null)
+  (print (if-expr none "present" "absent"))
+)
 ```
 
 ```output
@@ -233,39 +238,41 @@ false
 absent
 ```
 
-```yumi
-. three = Box()
-three.value = 3
-. five = Box()
-five.value = 5
-. missing = Box()
-missing.value = -1
-. boxes = List'Box()
-boxes += three
-boxes += five
-. entries = Map'Int'[Box]()
-entries[1] = boxes
--- (cached(entries, 1, 5) ?? missing).value
--- (cached(entries, 1, 9) ?? missing).value
--- (cached(entries, 2, 5) ?? missing).value
+```brix
+(main
+  (let three (call Box))
+  (= (. three value) 3)
+  (let five (call Box))
+  (= (. five value) 5)
+  (let missing (call Box))
+  (= (. missing value) -1)
+  (let boxes (call (of List Box)))
+  (+= boxes three)
+  (+= boxes five)
+  (let entries (call (of Map Int (list Box))))
+  (= ([] entries 1) boxes)
+  (print (. (?? (call cached entries 1 5) missing) value))
+  (print (. (?? (call cached entries 1 9) missing) value))
+  (print (. (?? (call cached entries 2 5) missing) value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + value Int (= 1))
+)
 
-+ value Int = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do cached
-    - entries Map'Int'[Box]
-    - id Int
-    - value Int
-
-. list = entries[id]
-=? null if !list
-for entry in list
-    if entry.value == value
-        = entry
-= null
+(fn-do + cached _
+  (param entries (of Map Int (list Box)))
+  (param id Int)
+  (param value Int)
+  (let list ([] entries id))
+  (return-if null (if (not list)))
+  (for (in entry list)
+    (if (== (. entry value) value)
+      (return entry)
+    )
+  )
+  (return null)
+)
 ```
 
 ```output
@@ -274,40 +281,42 @@ for entry in list
 -1
 ```
 
-```yumi
-. five = Box()
-five.value = 5
-. missing = Box()
-missing.value = -1
--- (loop-only([five], 5) ?? missing).value
--- (loop-only([five], 9) ?? missing).value
--- (null-first([five], 9) ?? missing).value
--- (null-first(List'Box(), 5) ?? missing).value
+```brix
+(main
+  (let five (call Box))
+  (= (. five value) 5)
+  (let missing (call Box))
+  (= (. missing value) -1)
+  (print (. (?? (call loop-only (list five) 5) missing) value))
+  (print (. (?? (call loop-only (list five) 9) missing) value))
+  (print (. (?? (call null-first (list five) 9) missing) value))
+  (print (. (?? (call null-first (call (of List Box)) 5) missing) value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + value Int (= 1))
+)
 
-+ value Int = 1
+(fn-do + loop-only _
+  (param boxes (list Box))
+  (param value Int)
+  (for (in entry boxes)
+    (if (== (. entry value) value)
+      (return entry)
+    )
+  )
+  (return null)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do loop-only
-    - boxes [Box]
-    - value Int
-
-for entry in boxes
-    if entry.value == value
-        = entry
-= null
-
-━━━━━━━━━━━━━━━━━━━━
-+ do null-first
-    - boxes [Box]
-    - value Int
-
-=? null if !boxes.length
-if boxes[0].value == value
-    = boxes[0]
-= null
+(fn-do + null-first _
+  (param boxes (list Box))
+  (param value Int)
+  (return-if null (if (not (. boxes length))))
+  (if (== (. ([] boxes 0) value) value)
+    (return ([] boxes 0))
+  )
+  (return null)
+)
 ```
 
 ```output
@@ -319,43 +328,41 @@ if boxes[0].value == value
 
 ### null where a condition holds or else a value, which is evaluated only when it is taken
 
-```yumi
-. a Int? = if flag() then null else 5
--- a ?? -1
-. b = if !flag() then null else "text"
--- b ?? "none"
-. c = if flag() then null else make()
--- c ?? 0
--- (if !flag() then null else make()) ?? 0
-. d = if !flag() then null else a
--- d ?? 7
-. e = if !flag() then null else Point(1, 2)
--- e!.y
--- hidden(true) ?? "hidden"
--- hidden(false) ?? "hidden"
+```brix
+(main
+  (let a (? Int) (if-expr (call flag) null 5))
+  (print (?? a -1))
+  (let b (if-expr (not (call flag)) null "text"))
+  (print (?? b "none"))
+  (let c (if-expr (call flag) null (call make)))
+  (print (?? c 0))
+  (print (?? (if-expr (not (call flag)) null (call make)) 0))
+  (let d (if-expr (not (call flag)) null a))
+  (print (?? d 7))
+  (let e (if-expr (not (call flag)) null (call Point 1 2)))
+  (print (. (!! e) y))
+  (print (?? (call hidden true) "hidden"))
+  (print (?? (call hidden false) "hidden"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 
-+ x I32
-+ y I32
+(fn-do + flag Bool
+  (return true)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do flag Bool
+(fn-do + make Int
+  (print "made")
+  (return 9)
+)
 
-= true
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Int
-
--- "made"
-= 9
-
-━━━━━━━━━━━━━━━━━━━━
-+ hidden String?
-    - hide Bool
-
-if hide then null else "shown"
+(fn-expr + hidden (? String)
+  (param hide Bool)
+  (if-expr hide null "shown")
+)
 ```
 
 ```output
@@ -372,24 +379,25 @@ shown
 
 ### A number that falls back to a number of another type joins with it
 
-```yumi
-. a F64 = 0
-. b I64 = 0
-. c U8 = 3
-. d I32 = 12
--- a ?? 1
--- b ?? 2
--- c ?? 4
--- a ?? d
--- d ?? 0.5
--- a ?? next()
--- c ?? next()
+```brix
+(main
+  (let a F64 0)
+  (let b I64 0)
+  (let c U8 3)
+  (let d I32 12)
+  (print (?? a 1))
+  (print (?? b 2))
+  (print (?? c 4))
+  (print (?? a d))
+  (print (?? d 0.5))
+  (print (?? a (call next)))
+  (print (?? c (call next)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do next I32
-
--- "next"
-= 8
+(fn-do + next I32
+  (print "next")
+  (return 8)
+)
 ```
 
 ```output

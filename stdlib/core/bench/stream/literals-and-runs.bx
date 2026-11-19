@@ -1,0 +1,96 @@
+; benchmark.meta description: Combines literal matches with repeated character runs.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+
+(main
+  (let checksum (call stream-literals-checksum (call corpus-tokens)))
+  (print (str "bench-result stream/literals-and-runs checksum=" checksum))
+)
+
+(fn-do + stream-literals-checksum _
+  (param tokens (list String))
+  (let total (as 0 Size))
+  (for (in i (..< 0 24))
+    (for (in token tokens)
+      (let matched
+        (match token
+          (~ \bench-token)
+          (throw (call Panic "literal token did not parse"))
+        )
+      )
+      (+= total (. matched length))
+    )
+  )
+  (blank)
+  (return total)
+)
+
+(fn-expr + bench-token _ (over: Char)
+  (~ (: text \quoted-string)
+    text
+  )
+  (~ (: text \identifier)
+    text
+  )
+  (~ (: text \number)
+    text
+  )
+  (~ (: text \whitespace)
+    text
+  )
+  (~ (: c .)
+    (as c String)
+  )
+  (where
+    (lazy quoted-string String
+      (pattern
+        (~ (seq "\"" (: chars (* (seq (! "\"") .))) "\"")
+          chars
+        )
+      )
+    )
+    (blank)
+    (lazy identifier String
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_-"))))
+      )
+    )
+    (blank)
+    (lazy number String
+      (pattern
+        (~ (seq (+ (chars "0-9")) (? (seq "." (+ (chars "0-9"))))))
+      )
+    )
+    (blank)
+    (lazy whitespace String
+      (pattern
+        (~ (+ (| " " "\n" "\t")))
+      )
+    )
+  )
+)
+
+(fn-do _ corpus-tokens _
+  (let tokens (list String))
+  (+= tokens "let")
+  (+= tokens "   ")
+  (+= tokens "alpha")
+  (+= tokens " ")
+  (+= tokens "=")
+  (+= tokens " ")
+  (+= tokens "\"plain literal\"")
+  (+= tokens "12345")
+  (+= tokens "\n\t")
+  (+= tokens "beta_name")
+  (+= tokens "\"café mañana 東京\"")
+  (+= tokens "67890")
+  (+= tokens "identifier-one")
+  (+= tokens "identifier_two")
+  (+= tokens "314159")
+  (+= tokens "2.71828")
+  (+= tokens "\"quoted string with spaces\"")
+  (+= tokens "\n    ")
+  (blank)
+  (return tokens)
+)

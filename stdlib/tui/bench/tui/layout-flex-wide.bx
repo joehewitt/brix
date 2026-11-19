@@ -1,0 +1,49 @@
+; benchmark.meta description: Measures a wide horizontal Flex layout with fixed and flexible cells.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: tui,compile-timing
+(blank)
+(import /tui/box)
+(import /tui/layout)
+(import /tui/primitives)
+(import /tui/text)
+(blank)
+
+(main
+  (<> BenchFlexWideRoot (id: root)
+    (for (in index (..< 0 360))
+      (<> BenchFlexWideCell
+        (<> Label (text: (str "c" index)))
+      )
+    )
+  )
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (= (. root bounds) (call Rect 0 0 160 30))
+  (blank)
+  (let checksum Size 0)
+  (for (in frame (..< 0 64))
+    (call (. root update-layout))
+    (+= checksum (+ (. root inner-height) (. root inner-width) frame))
+  )
+  (blank)
+  (print (str "bench-result tui/layout-flex-wide checksum=" checksum))
+)
+
+(type + BenchFlexWideRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (blank)
+  (rule This
+    (= layout flex-row)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
+
+(type + BenchFlexWideCell (is Box)
+  (rule This
+    (= layout flow-col)
+    (= flex 1)
+  )
+)

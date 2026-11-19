@@ -2,10 +2,6 @@
 
 Floating point numbers
 
-```yumi
-4.2
-```
-
 ```brix
 (main
   4.2
@@ -16,10 +12,6 @@ Floating point numbers
 <Float value="4.2"/>
 ```
 
-```yumi
-1.2'3
-```
-
 ```brix
 (main
   1.2'3
@@ -28,10 +20,6 @@ Floating point numbers
 
 ```output
 <Float value="1.23"/>
-```
-
-```yumi
--4.2
 ```
 
 ```brix
@@ -46,10 +34,6 @@ Floating point numbers
 
 ## Scientific notation
 
-```yumi
-4.2e+0
-```
-
 ```brix
 (main
   4.2e+0
@@ -58,10 +42,6 @@ Floating point numbers
 
 ```output
 <Float value="4.2e+0"/>
-```
-
-```yumi
-4.2e+1
 ```
 
 ```brix
@@ -74,10 +54,6 @@ Floating point numbers
 <Float value="4.2e+1"/>
 ```
 
-```yumi
-4.2e+2
-```
-
 ```brix
 (main
   4.2e+2
@@ -86,10 +62,6 @@ Floating point numbers
 
 ```output
 <Float value="4.2e+2"/>
-```
-
-```yumi
-1e1'0
 ```
 
 ```brix
@@ -102,10 +74,6 @@ Floating point numbers
 <Float value="1e10"/>
 ```
 
-```yumi
-4.2e+3'0
-```
-
 ```brix
 (main
   4.2e+3'0
@@ -116,10 +84,6 @@ Floating point numbers
 <Float value="4.2e+30"/>
 ```
 
-```yumi
-4.2e+20
-```
-
 ```brix
 (main
   4.2e+20
@@ -128,10 +92,6 @@ Floating point numbers
 
 ```output
 <Float value="4.2e+20"/>
-```
-
-```yumi
-4.2e+350
 ```
 
 ```brix
@@ -148,10 +108,6 @@ Floating point numbers
 
 ### Maximum float
 
-```yumi
-1.7976931348623158e+308
-```
-
 ```brix
 (main
   1.7976931348623158e+308
@@ -164,10 +120,6 @@ Floating point numbers
 
 ### More than maximum float
 
-```yumi
-1.7976931348623159e+308
-```
-
 ```brix
 (main
   1.7976931348623159e+308
@@ -179,10 +131,6 @@ Floating point numbers
 ```
 
 ### Two more than maximum float
-
-```yumi
-2.7976931348623158e+308
-```
 
 ```brix
 (main
@@ -198,10 +146,6 @@ Floating point numbers
 
 ### Minimum float
 
-```yumi
-2.2250738585072014e-308
-```
-
 ```brix
 (main
   2.2250738585072014e-308
@@ -213,10 +157,6 @@ Floating point numbers
 ```
 
 ### Less than minimum float
-
-```yumi
--2.2250738585072015e+308
-```
 
 ```brix
 (main
@@ -230,10 +170,6 @@ Floating point numbers
 
 ### Two less than minimum float
 
-```yumi
--2.2250738585072016e+308
-```
-
 ```brix
 (main
   -2.2250738585072016e+308
@@ -242,50 +178,4 @@ Floating point numbers
 
 ```output
 <Float value="-2.2250738585072016e+308"/>
-```
-
-## Invalid separators
-
-```yumi
-1'.0
-```
-
-```output
-Exception: Syntax error
-<no file:2>
-    1'.0
-      ^
-```
-
-```yumi
-1.'0
-```
-
-```output
-Exception: Syntax error
-<no file:2>
-    1.'0
-       ^
-```
-
-```yumi
-1e'3
-```
-
-```output
-Exception: Syntax error
-<no file:2>
-    1e'3
-       ^
-```
-
-```yumi
-1e+'3
-```
-
-```output
-Exception: Syntax error
-<no file:2>
-    1e+'3
-      ^
 ```

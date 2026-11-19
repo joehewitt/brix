@@ -2,10 +2,6 @@
 
 Apply without input
 
-```yumi
-result <* binding
-```
-
 ```brix
 (main
   (select result (<* binding))
@@ -21,10 +17,6 @@ result <* binding
         <Id name="result"/>
     </TypeTransform>
 </StructureMatch>
-```
-
-```yumi
-result ~ Binding
 ```
 
 ```brix
@@ -46,10 +38,6 @@ result ~ Binding
 
 ## Apply without binding
 
-```yumi
-result = input
-```
-
 ```brix
 (main
   (= result input)
@@ -61,10 +49,6 @@ result = input
     <Id name="result"/>
     <Id name="input"/>
 </AssignmentExpression>
-```
-
-```yumi
-result in input
 ```
 
 ```brix
@@ -84,10 +68,6 @@ result in input
 
 ## Structural match with binding and input
 
-```yumi
-result | binding = input
-```
-
 ```brix
 (main
   (= (select result (| binding)) input)
@@ -106,10 +86,6 @@ result | binding = input
         </TypeTransform>
     </StructureMatch>
 </Match>
-```
-
-```yumi
-result <* binding in input
 ```
 
 ```brix
@@ -133,10 +109,6 @@ result <* binding in input
     </In>
     <Id name="each"/>
 </Iterator>
-```
-
-```yumi
-result <* binding in input until later
 ```
 
 ```brix
@@ -167,10 +139,6 @@ result <* binding in input until later
 
 ## Pattern match with binding and input
 
-```yumi
-result ~ Binding = input
-```
-
 ```brix
 (main
   (= (select result (~ Binding)) input)
@@ -189,10 +157,6 @@ result ~ Binding = input
         </StreamTransform>
     </StreamMatch>
 </Match>
-```
-
-```yumi
-result ~ Binding in input
 ```
 
 ```brix
@@ -215,7 +179,3 @@ result ~ Binding in input
     <Id name="each"/>
 </Iterator>
 ```
-
-## Structural pattern first
-
-## Grammar first

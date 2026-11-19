@@ -1,49 +1,51 @@
 # Markup loops
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items
-        <TextBox = item
--- "made"
--- dump(demo)
-demo.items += "c"
--- dump(demo)
-demo.items -= "b"
--- dump(demo)
-demo.items[1] = "z"
--- dump(demo)
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items))
+      (<> TextBox (value: item))
+    )
+  )
+  (print "made")
+  (print (call dump demo))
+  (+= (. demo items) "c")
+  (print (call dump demo))
+  (-= (. demo items) "b")
+  (print (call dump demo))
+  (= ([] (. demo items) 1) "z")
+  (print (call dump demo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - demo Demo
+(fn-expr + dump String
+  (param demo Demo)
+  (str count ":" first-text ":" last-text)
+  (where
+    (lazy region (!! (. demo %first-child)))
+    (lazy count (call count-children region))
+    (lazy first-text (. (as (!! (. region %first-child)) TextBox) text))
+    (lazy last-text (. (as (!! (. region %last-child)) TextBox) text))
+  )
+)
 
-"$count:$first-text:$last-text"
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-.. region = demo.%first-child!
-.. count = count-children(region)
-.. first-text = (region.%first-child! as TextBox).text
-.. last-text = (region.%last-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [String]
-
-────────────────────
-+ This
-
-items = List'String(["a", "b"])
+(type + Demo (is Box)
+  (prop + items (list String))
+  (fn-do + This _
+    (= items (call (of List String) (list "a" "b")))
+  )
+)
 ```
 
 ```output
@@ -54,77 +56,93 @@ made
 2:a:z
 ```
 
-```yumi crash
-. items = List'String(["a"])
+```brix crash
+(main
+  (let items (call (of List String) (list "a")))
+  (blank)
+  (<> Plain (id: root)
+    (for (in item #items)
+      (<> Plain)
+    )
+  )
+)
 
-<Plain root
-    for item in #items
-        <Plain
-
-━━━━━━━━━━━━━━━━━━━━
-+ Plain
+(type + Plain)
 ```
 
 ```output
 Exception: Dynamic markup loop parent must implement MarkupElement
-<no file:5>
-        for item in #items
-           ^^^^^^^^^^^^^^
+<no file:6>
+        (for (in item #items)
+        ^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. list = List'String(["a"])
-. items Collection'String = list
-
-<Box box
-    for item in #items
-        <TextBox = item
+(main
+  (let list (call (of List String) (list "a")))
+  (let items (of Collection String) list)
+  (blank)
+  (<> Box (id: box)
+    (for (in item #items)
+      (<> TextBox (value: item))
+    )
+  )
+)
 ```
 
 ```output
 Exception: Markup loop requires a concrete Collection source
-<no file:8>
-        for item in #items
-           ^^^^^^^^^^^^^^
+<no file:10>
+        (for (in item #items)
+        ^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A markup loop row with an `if` is a region of its own, and the arm it takes is its content.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items = List'String(["a", ""])
+(main
+  (let items (call (of List String) (list "a" "")))
+  (blank)
+  (<> Box (id: box)
+    (for (in item #items)
+      (if (. item length)
+        (<> TextBox (value: item))
+        (else
+          (<> TextBox (value: "empty"))
+        )
+      )
+    )
+  )
+  (print (call texts box))
+  (+= items "b")
+  (print (call texts box))
+)
 
-<Box box
-    for item in #items
-        if item.length
-            <TextBox = item
-        else
-            <TextBox = "empty"
--- texts(box)
-items += "b"
--- texts(box)
+(fn-do + texts String
+  (param box Box)
+  (let parts (call (of List String)))
+  (call gather box parts)
+  (return (call (. " " join) parts))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do texts String
-    - box Box
-
-. parts = List'String()
-gather(box, parts)
-= " ".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do gather
-    - box Box
-    - parts [String]
-
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        gather(child, parts)
+(fn-do + gather _
+  (param box Box)
+  (param parts (list String))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (call gather child parts)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -134,39 +152,45 @@ a empty b
 
 ### A markup loop row with two sibling elements is a region of its own that holds both.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items = List'String(["a"])
+(main
+  (let items (call (of List String) (list "a")))
+  (blank)
+  (<> Box (id: box)
+    (for (in item #items (keyed-by item))
+      (<> TextBox (value: item))
+      (<> TextBox (value: "/"))
+    )
+  )
+  (print (call texts box))
+  (+= items "b")
+  (print (call texts box))
+  (-= items "a")
+  (print (call texts box))
+)
 
-<Box box
-    for item in #items keyed by item
-        <TextBox = item
-        <TextBox = "/"
--- texts(box)
-items += "b"
--- texts(box)
-items -= "a"
--- texts(box)
+(fn-do + texts String
+  (param box Box)
+  (let parts (call (of List String)))
+  (call gather box parts)
+  (return (call (. " " join) parts))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do texts String
-    - box Box
-
-. parts = List'String()
-gather(box, parts)
-= " ".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do gather
-    - box Box
-    - parts [String]
-
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        gather(child, parts)
+(fn-do + gather _
+  (param box Box)
+  (param parts (list String))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (call gather child parts)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -175,61 +199,69 @@ a / b /
 b /
 ```
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items = List'String(["a"])
-
-<Box box
-    for item in #items
-        item
+(main
+  (let items (call (of List String) (list "a")))
+  (blank)
+  (<> Box (id: box)
+    (for (in item #items)
+      item
+    )
+  )
+)
 ```
 
 ```output
 Exception: Expected Box here, but this is String, and there is no conversion between them
-<no file:7>
-        for item in #items
+<no file:9>
+        (for (in item #items)
+        ^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items
-        <TextBox = item
--- dump(demo)
-demo.items ++= List'String(["c", "d"])
--- dump(demo)
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items))
+      (<> TextBox (value: item))
+    )
+  )
+  (print (call dump demo))
+  (++= (. demo items) (call (of List String) (list "c" "d")))
+  (print (call dump demo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - demo Demo
+(fn-expr + dump String
+  (param demo Demo)
+  (str count ":" first-text ":" last-text)
+  (where
+    (lazy region (!! (. demo %first-child)))
+    (lazy count (call count-children region))
+    (lazy first-text (. (as (!! (. region %first-child)) TextBox) text))
+    (lazy last-text (. (as (!! (. region %last-child)) TextBox) text))
+  )
+)
 
-"$count:$first-text:$last-text"
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-.. region = demo.%first-child!
-.. count = count-children(region)
-.. first-text = (region.%first-child! as TextBox).text
-.. last-text = (region.%last-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [String]
-
-────────────────────
-+ This
-
-items = List'String(["a", "b"])
+(type + Demo (is Box)
+  (prop + items (list String))
+  (fn-do + This _
+    (= items (call (of List String) (list "a" "b")))
+  )
+)
 ```
 
 ```output
@@ -237,45 +269,47 @@ items = List'String(["a", "b"])
 4:a:d
 ```
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items
-        <TextBox = item
--- dump(demo)
-demo.items.slide(-1)
--- dump(demo)
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items))
+      (<> TextBox (value: item))
+    )
+  )
+  (print (call dump demo))
+  (call (. demo items slide) -1)
+  (print (call dump demo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - demo Demo
+(fn-expr + dump String
+  (param demo Demo)
+  (str count ":" first-text ":" last-text)
+  (where
+    (lazy region (!! (. demo %first-child)))
+    (lazy count (call count-children region))
+    (lazy first-text (. (as (!! (. region %first-child)) TextBox) text))
+    (lazy last-text (. (as (!! (. region %last-child)) TextBox) text))
+  )
+)
 
-"$count:$first-text:$last-text"
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-.. region = demo.%first-child!
-.. count = count-children(region)
-.. first-text = (region.%first-child! as TextBox).text
-.. last-text = (region.%last-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [String]
-
-────────────────────
-+ This
-
-items = List'String(["a", "b", "c"])
+(type + Demo (is Box)
+  (prop + items (list String))
+  (fn-do + This _
+    (= items (call (of List String) (list "a" "b" "c")))
+  )
+)
 ```
 
 ```output
@@ -283,45 +317,47 @@ items = List'String(["a", "b", "c"])
 2:b:c
 ```
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items
-        <TextBox = item
--- dump(demo)
-demo.items.insert("x", 1)
--- dump(demo)
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items))
+      (<> TextBox (value: item))
+    )
+  )
+  (print (call dump demo))
+  (call (. demo items insert) "x" 1)
+  (print (call dump demo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - demo Demo
+(fn-expr + dump String
+  (param demo Demo)
+  (str count ":" first-text ":" last-text)
+  (where
+    (lazy region (!! (. demo %first-child)))
+    (lazy count (call count-children region))
+    (lazy first-text (. (as (!! (. region %first-child)) TextBox) text))
+    (lazy last-text (. (as (!! (. region %last-child)) TextBox) text))
+  )
+)
 
-"$count:$first-text:$last-text"
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-.. region = demo.%first-child!
-.. count = count-children(region)
-.. first-text = (region.%first-child! as TextBox).text
-.. last-text = (region.%last-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [String]
-
-────────────────────
-+ This
-
-items = List'String(["a", "b"])
+(type + Demo (is Box)
+  (prop + items (list String))
+  (fn-do + This _
+    (= items (call (of List String) (list "a" "b")))
+  )
+)
 ```
 
 ```output
@@ -329,45 +365,50 @@ items = List'String(["a", "b"])
 3:a:b
 ```
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items = List'String(["a", "b"])
+(main
+  (let items (call (of List String) (list "a" "b")))
+  (blank)
+  (<> Box (id: box)
+    (for (in item #items)
+      (<> TextBox (value: item))
+    )
+  )
+  (blank)
+  (let old-items items)
+  (print (call dump box))
+  (+= items "c")
+  (print (call dump box))
+  (= items (call (of List String) (list "x" "y")))
+  (print (call dump box))
+  (+= old-items "stale")
+  (print (call dump box))
+  (+= items "z")
+  (print (call dump box))
+)
 
-<Box box
-    for item in #items
-        <TextBox = item
+(fn-expr + dump String
+  (param box Box)
+  (str count ":" first-text ":" last-text)
+  (where
+    (lazy region (!! (. box %first-child)))
+    (lazy count (call count-children region))
+    (lazy first-text (. (as (!! (. region %first-child)) TextBox) text))
+    (lazy last-text (. (as (!! (. region %last-child)) TextBox) text))
+  )
+)
 
-. old-items = items
--- dump(box)
-items += "c"
--- dump(box)
-items = List'String(["x", "y"])
--- dump(box)
-old-items += "stale"
--- dump(box)
-items += "z"
--- dump(box)
-
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - box Box
-
-"$count:$first-text:$last-text"
-
-.. region = box.%first-child!
-.. count = count-children(region)
-.. first-text = (region.%first-child! as TextBox).text
-.. last-text = (region.%last-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 ```
 
 ```output
@@ -378,50 +419,52 @@ for child in box.children
 3:x:z
 ```
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items
-        <TextBox = item
-. old-items = demo.items
--- dump(demo)
-demo.items = List'String(["x", "y"])
--- dump(demo)
-old-items += "stale"
--- dump(demo)
-demo.items += "z"
--- dump(demo)
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items))
+      (<> TextBox (value: item))
+    )
+  )
+  (let old-items (. demo items))
+  (print (call dump demo))
+  (= (. demo items) (call (of List String) (list "x" "y")))
+  (print (call dump demo))
+  (+= old-items "stale")
+  (print (call dump demo))
+  (+= (. demo items) "z")
+  (print (call dump demo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - demo Demo
+(fn-expr + dump String
+  (param demo Demo)
+  (str count ":" first-text ":" last-text)
+  (where
+    (lazy region (!! (. demo %first-child)))
+    (lazy count (call count-children region))
+    (lazy first-text (. (as (!! (. region %first-child)) TextBox) text))
+    (lazy last-text (. (as (!! (. region %last-child)) TextBox) text))
+  )
+)
 
-"$count:$first-text:$last-text"
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-.. region = demo.%first-child!
-.. count = count-children(region)
-.. first-text = (region.%first-child! as TextBox).text
-.. last-text = (region.%last-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [String]
-
-────────────────────
-+ This
-
-items = List'String(["a", "b"])
+(type + Demo (is Box)
+  (prop + items (list String))
+  (fn-do + This _
+    (= items (call (of List String) (list "a" "b")))
+  )
+)
 ```
 
 ```output
@@ -431,71 +474,71 @@ items = List'String(["a", "b"])
 3:x:z
 ```
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items keyed by item.id
-        <TextBox = item.text
-. region = demo.%first-child!
-. a-row = region.%first-child!
--- dump(demo)
-demo.items.insert(RowData("x", "X"), 0)
--- dump(demo)
--- if a-row == (region.child-at(1))! then "preserved" else "lost"
-demo.items.remove(0)
--- dump(demo)
--- if a-row == region.%first-child! then "preserved" else "lost"
-demo.items ++= List'RowData([RowData("c", "C"), RowData("d", "D")])
-. d-row = region.child-at(3)
--- dump(demo)
--- if a-row == region.%first-child! then "append-preserved" else "append-lost"
-. b-row = region.child-at(1)
-demo.items.move(1, 0)
--- dump(demo)
--- if b-row == region.%first-child! then "preserved" else "lost"
--- if d-row == (region.child-at(3))! then "bulk-key-preserved" else "bulk-key-lost"
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items) (keyed-by (. item id)))
+      (<> TextBox (value: (. item text)))
+    )
+  )
+  (let region (!! (. demo %first-child)))
+  (let a-row (!! (. region %first-child)))
+  (print (call dump demo))
+  (call (. demo items insert) (call RowData "x" "X") 0)
+  (print (call dump demo))
+  (print (if-expr (== a-row (!! (call (. region child-at) 1))) "preserved" "lost"))
+  (call (. demo items remove) 0)
+  (print (call dump demo))
+  (print (if-expr (== a-row (!! (. region %first-child))) "preserved" "lost"))
+  (++= (. demo items) (call (of List RowData) (list (call RowData "c" "C") (call RowData "d" "D"))))
+  (let d-row (call (. region child-at) 3))
+  (print (call dump demo))
+  (print (if-expr (== a-row (!! (. region %first-child))) "append-preserved" "append-lost"))
+  (let b-row (call (. region child-at) 1))
+  (call (. demo items move) 1 0)
+  (print (call dump demo))
+  (print (if-expr (== b-row (!! (. region %first-child))) "preserved" "lost"))
+  (print (if-expr (== d-row (!! (call (. region child-at) 3))) "bulk-key-preserved" "bulk-key-lost"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - demo Demo
+(fn-expr + dump String
+  (param demo Demo)
+  (str count ":" first-text ":" last-text)
+  (where
+    (lazy region (!! (. demo %first-child)))
+    (lazy count (call count-children region))
+    (lazy first-text (. (as (!! (. region %first-child)) TextBox) text))
+    (lazy last-text (. (as (!! (. region %last-child)) TextBox) text))
+  )
+)
 
-"$count:$first-text:$last-text"
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-.. region = demo.%first-child!
-.. count = count-children(region)
-.. first-text = (region.%first-child! as TextBox).text
-.. last-text = (region.%last-child! as TextBox).text
+(type + RowData
+  (prop + id String)
+  (prop + text String)
+  (fn-do + This _
+    (param id String)
+    (param text String)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
-
-+ id String
-+ text String
-
-────────────────────
-+ This
-    - id String
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [RowData]
-
-────────────────────
-+ This
-
-items = List'RowData([RowData("a", "A"), RowData("b", "B")])
+(type + Demo (is Box)
+  (prop + items (list RowData))
+  (fn-do + This _
+    (= items (call (of List RowData) (list (call RowData "a" "A") (call RowData "b" "B"))))
+  )
+)
 ```
 
 ```output
@@ -511,69 +554,69 @@ preserved
 bulk-key-preserved
 ```
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items keyed by item.id
-        <TextBox = item.text
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items) (keyed-by (. item id)))
+      (<> TextBox (value: (. item text)))
+    )
+  )
+  (blank)
+  (let region (!! (. demo %first-child)))
+  (let a-row (!! (. region %first-child)))
+  (let c-row (call (. region child-at) 2))
+  (print (call dump demo))
+  (= (. demo items) (call (of List RowData) (list (. demo c-item) (. demo a-item))))
+  (print (call dump demo))
+  (print (if-expr (== c-row (!! (. region %first-child))) "c-preserved" "c-lost"))
+  (print (if-expr (== a-row (!! (call (. region child-at) 1))) "a-preserved" "a-lost"))
+  (print (if-expr (not (call (. region child-at) 2)) "tail-ok" "tail-extra"))
+)
 
-. region = demo.%first-child!
-. a-row = region.%first-child!
-. c-row = region.child-at(2)
--- dump(demo)
-demo.items = List'RowData([demo.c-item, demo.a-item])
--- dump(demo)
--- if c-row == region.%first-child! then "c-preserved" else "c-lost"
--- if a-row == (region.child-at(1))! then "a-preserved" else "a-lost"
--- if !(region.child-at(2)) then "tail-ok" else "tail-extra"
+(fn-expr + dump String
+  (param demo Demo)
+  (str count ":" first-text ":" last-text)
+  (where
+    (lazy region (!! (. demo %first-child)))
+    (lazy count (call count-children region))
+    (lazy first-text (. (as (!! (. region %first-child)) TextBox) text))
+    (lazy last-text (. (as (!! (. region %last-child)) TextBox) text))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - demo Demo
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-"$count:$first-text:$last-text"
+(type + RowData
+  (prop + id String)
+  (prop + text String)
+  (fn-do + This _
+    (param id String)
+    (param text String)
+  )
+)
 
-.. region = demo.%first-child!
-.. count = count-children(region)
-.. first-text = (region.%first-child! as TextBox).text
-.. last-text = (region.%last-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
-
-+ id String
-+ text String
-
-────────────────────
-+ This
-    - id String
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ a-item RowData
-+ b-item RowData
-+ c-item RowData
-+ items [RowData]
-
-────────────────────
-+ This
-
-a-item = RowData("a", "A")
-b-item = RowData("b", "B")
-c-item = RowData("c", "C")
-items = List'RowData([a-item, b-item, c-item])
+(type + Demo (is Box)
+  (prop + a-item RowData)
+  (prop + b-item RowData)
+  (prop + c-item RowData)
+  (prop + items (list RowData))
+  (fn-do + This _
+    (= a-item (call RowData "a" "A"))
+    (= b-item (call RowData "b" "B"))
+    (= c-item (call RowData "c" "C"))
+    (= items (call (of List RowData) (list a-item b-item c-item)))
+  )
+)
 ```
 
 ```output
@@ -584,67 +627,69 @@ a-preserved
 tail-ok
 ```
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items = make-rows(1030)
+(main
+  (let items (call make-rows 1030))
+  (blank)
+  (<> Demo (id: demo)
+    (for (in item #items (keyed-by (. item id)))
+      (<> TextBox (value: (. item text)))
+    )
+  )
+  (blank)
+  (let region (!! (. demo %first-child)))
+  (let first-row (!! (. region %first-child)))
+  (let last-row (call (. region child-at) 1029))
+  (print (call dump demo))
+  (= items (call (of List RowData) (list (call RowData "1029" "row 1029") (call RowData "0" "row 0"))))
+  (print (call dump demo))
+  (print (if-expr (== last-row (!! (. region %first-child))) "last-preserved" "last-lost"))
+  (print (if-expr (== first-row (!! (call (. region child-at) 1))) "first-preserved" "first-lost"))
+  (print (if-expr (not (call (. region child-at) 2)) "tail-ok" "tail-extra"))
+)
 
-<Demo demo
-    for item in #items keyed by item.id
-        <TextBox = item.text
+(fn-expr + dump String
+  (param demo Demo)
+  (str count ":" first-text ":" last-text)
+  (where
+    (lazy region (!! (. demo %first-child)))
+    (lazy count (call count-children region))
+    (lazy first-text (. (as (!! (. region %first-child)) TextBox) text))
+    (lazy last-text (. (as (!! (. region %last-child)) TextBox) text))
+  )
+)
 
-. region = demo.%first-child!
-. first-row = region.%first-child!
-. last-row = region.child-at(1029)
--- dump(demo)
-items = List'RowData([RowData("1029", "row 1029"), RowData("0", "row 0")])
--- dump(demo)
--- if last-row == region.%first-child! then "last-preserved" else "last-lost"
--- if first-row == (region.child-at(1))! then "first-preserved" else "first-lost"
--- if !(region.child-at(2)) then "tail-ok" else "tail-extra"
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - demo Demo
+(fn-do + make-rows (list RowData)
+  (param count Size)
+  (let rows (list RowData))
+  (for (in index (..< 0 count))
+    (+= rows (call RowData (str index) (str "row " index)))
+  )
+  (return rows)
+)
 
-"$count:$first-text:$last-text"
+(type + RowData
+  (prop + id String)
+  (prop + text String)
+  (fn-do + This _
+    (param id String)
+    (param text String)
+  )
+)
 
-.. region = demo.%first-child!
-.. count = count-children(region)
-.. first-text = (region.%first-child! as TextBox).text
-.. last-text = (region.%last-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make-rows [RowData]
-    - count Size
-
-. rows [RowData]
-for index in 0 .. < count
-    rows += RowData("$index", "row $index")
-= rows
-
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
-
-+ id String
-+ text String
-
-────────────────────
-+ This
-    - id String
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
+(type + Demo (is Box))
 ```
 
 ```output
@@ -655,35 +700,37 @@ first-preserved
 tail-ok
 ```
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items
-        <TextBox = item
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items))
+      (<> TextBox (value: item))
+    )
+  )
+  (blank)
+  (let region (!! (. demo %first-child)))
+  (let a-row (!! (. region %first-child)))
+  (let b-row (call (. region child-at) 1))
+  (let c-row (call (. region child-at) 2))
+  (call (. demo items insert) "x" 1)
+  (print (if-expr (== a-row (!! (. region %first-child))) "prefix-preserved" "prefix-lost"))
+  (print (if-expr (== b-row (!! (call (. region child-at) 2))) "insert-suffix-preserved" "insert-suffix-remounted"))
+  (print (if-expr (== c-row (!! (call (. region child-at) 3))) "insert-tail-preserved" "insert-tail-remounted"))
+  (blank)
+  (let after-insert (call (. region child-at) 2))
+  (call (. demo items remove) 1)
+  (print (if-expr (== after-insert (!! (call (. region child-at) 1))) "remove-suffix-preserved" "remove-suffix-remounted"))
+)
 
-. region = demo.%first-child!
-. a-row = region.%first-child!
-. b-row = region.child-at(1)
-. c-row = region.child-at(2)
-demo.items.insert("x", 1)
--- if a-row == region.%first-child! then "prefix-preserved" else "prefix-lost"
--- if b-row == (region.child-at(2))! then "insert-suffix-preserved" else "insert-suffix-remounted"
--- if c-row == (region.child-at(3))! then "insert-tail-preserved" else "insert-tail-remounted"
-
-. after-insert = region.child-at(2)
-demo.items.remove(1)
--- if after-insert == (region.child-at(1))! then "remove-suffix-preserved" else "remove-suffix-remounted"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [String]
-
-────────────────────
-+ This
-
-items = List'String(["a", "b", "c"])
+(type + Demo (is Box)
+  (prop + items (list String))
+  (fn-do + This _
+    (= items (call (of List String) (list "a" "b" "c")))
+  )
+)
 ```
 
 ```output
@@ -693,113 +740,125 @@ insert-tail-remounted
 remove-suffix-remounted
 ```
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in #items
-    and label in labels
-        <TextBox = item
+(main
+  (<> Demo (id: demo)
+    (for (in item #items)
+      (and-for (in label labels)
+        (<> TextBox (value: item))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [String]
-+ labels [String]
-
-────────────────────
-+ This
-
-items = List'String(["a"])
-labels = List'String(["x"])
+(type + Demo (is Box)
+  (prop + items (list String))
+  (prop + labels (list String))
+  (fn-do + This _
+    (= items (call (of List String) (list "a")))
+    (= labels (call (of List String) (list "x")))
+  )
+)
 ```
 
 ```output
 Exception: Combined markup loops not supported
-<no file:5>
-        for item in #items
-           ^^^^^^^^^^^^^^
+<no file:7>
+        (for (in item #items)
+        ^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. list = List'String(["a", "b"])
-. items Indexable'String = list
-
-<Box box
-    for item in #items
-        <TextBox = item
+(main
+  (let list (call (of List String) (list "a" "b")))
+  (let items (of Indexable String) list)
+  (blank)
+  (<> Box (id: box)
+    (for (in item #items)
+      (<> TextBox (value: item))
+    )
+  )
+)
 ```
 
 ```output
 Exception: Markup loop cannot observe Indexable sources because Indexable has no mutation events
-<no file:8>
-        for item in #items
-           ^^^^^^^^^^^^^^
+<no file:10>
+        (for (in item #items)
+        ^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-/core/channel
-/core/tests/support/markup-fixtures
+```brix
+(import /core/channel)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#events
-        <TextBox = item
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #events))
+      (<> TextBox (value: item))
+    )
+  )
+  (blank)
+  (print (call dump demo))
+  (<- (. demo events) "a")
+  (call yield-once)
+  (print (call dump demo))
+  (let old-events (. demo events))
+  (= (. demo events) (call (of AsyncChannel String)))
+  (print (call dump demo))
+  (<- old-events "stale")
+  (call yield-once)
+  (print (call dump demo))
+  (<- (. demo events) "b")
+  (call yield-once)
+  (print (call dump demo))
+  (call (. demo close))
+  (call yield-once)
+  (<- (. demo events) "closed")
+  (call yield-once)
+  (print (call dump demo))
+)
 
--- dump(demo)
-demo.events <- "a"
-yield-once()
--- dump(demo)
-. old-events = demo.events
-demo.events = AsyncChannel'String()
--- dump(demo)
-old-events <- "stale"
-yield-once()
--- dump(demo)
-demo.events <- "b"
-yield-once()
--- dump(demo)
-demo.close()
-yield-once()
-demo.events <- "closed"
-yield-once()
--- dump(demo)
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
+(fn-do + dump String
+  (param demo Demo)
+  (if (== count 0)
+    (return "0")
+  )
+  (return (str count ":" first-text ":" last-text))
+  (blank)
+  (lazy region (!! (. demo %first-child)))
+  (lazy count (call count-children region))
+  (lazy first-text (. (as (!! (. region %first-child)) TextBox) text))
+  (lazy last-text (. (as (!! (. region %last-child)) TextBox) text))
+)
 
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - demo Demo
-
-if count == 0
-    = "0"
-= "$count:$first-text:$last-text"
-
-.. region = demo.%first-child!
-.. count = count-children(region)
-.. first-text = (region.%first-child! as TextBox).text
-.. last-text = (region.%last-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ events AsyncChannel'String
+(type + Demo (is Box)
+  (prop + events (of AsyncChannel String))
+)
 ```
 
 ```output
@@ -813,182 +872,187 @@ for child in box.children
 
 ### Key-builder failures above the keyed crossover remain synchronous and deterministic.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<KeyFailureDemo demo
-    for item in demo.#items keyed by failure-key(item)
-        <TextBox = item.text
+(main
+  (<> KeyFailureDemo (id: demo)
+    (for (in item (. demo #items) (keyed-by (call failure-key item)))
+      (<> TextBox (value: (. item text)))
+    )
+  )
+  (blank)
+  (let replacement (call make-key-failure-items 33))
+  (= ([] replacement 1) (call KeyFailureItem "boom" "boom"))
+  (= (. demo items) replacement)
+)
 
-. replacement = make-key-failure-items(33)
-replacement[1] = KeyFailureItem("boom", "boom")
-demo.items = replacement
+(type + KeyFailureItem (is Tuple)
+  (prop + id String)
+  (prop + text String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ KeyFailureItem is Tuple
+(type + KeyFailureDemo (is Box)
+  (prop + items (list KeyFailureItem) (= (call make-key-failure-items 33)))
+)
 
-+ id String
-+ text String
+(fn-do + make-key-failure-items (list KeyFailureItem)
+  (param count Size)
+  (let items (list KeyFailureItem))
+  (for (in index (..< 0 count))
+    (+= items (call KeyFailureItem (str "id-" index) (str "row-" index)))
+  )
+  (return items)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ KeyFailureDemo is Box
-
-+ items [KeyFailureItem] = make-key-failure-items(33)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make-key-failure-items [KeyFailureItem]
-    - count Size
-
-. items [KeyFailureItem]
-for index in 0 .. < count
-    items += KeyFailureItem("id-$index", "row-$index")
-= items
-
-━━━━━━━━━━━━━━━━━━━━
-+ do failure-key String
-    - item KeyFailureItem
-
-if item.id == "boom"
-    ?! Panic("key failure")
-= item.id
+(fn-do + failure-key String
+  (param item KeyFailureItem)
+  (if (== (. item id) "boom")
+    (throw (call Panic "key failure"))
+  )
+  (return (. item id))
+)
 ```
 
-```yumi
-/core/collection
+```brix
+(import /core/collection)
+(blank)
 
-. items = List'String(["a", "b"])
+(main
+  (let items (call (of List String) (list "a" "b")))
+  (blank)
+  (<> MarkNode (id: root)
+    (for (in item #items)
+      (<> MarkText (value: item))
+    )
+  )
+  (blank)
+  (print (call dump root))
+  (+= items "c")
+  (print (call dump root))
+  (let old-items items)
+  (= items (call (of List String) (list "x")))
+  (print (call dump root))
+  (+= old-items "stale")
+  (print (call dump root))
+  (+= items "y")
+  (print (call dump root))
+)
 
-<MarkNode root
-    for item in #items
-        <MarkText = item
+(fn-expr + dump String
+  (param node MarkNode)
+  (str count ":" first-text ":" last-text)
+  (where
+    (lazy region (!! (. node first-child)))
+    (lazy count (call count-children region))
+    (lazy first-text (. (as (!! (. region first-child)) MarkText) text))
+    (lazy last-text (. (as (!! (. region last-child)) MarkText) text))
+  )
+)
 
--- dump(root)
-items += "c"
--- dump(root)
-. old-items = items
-items = List'String(["x"])
--- dump(root)
-old-items += "stale"
--- dump(root)
-items += "y"
--- dump(root)
+(fn-do + count-children _
+  (param node MarkNode)
+  (let count 0)
+  (for (in child (. node children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - node MarkNode
+(type + MarkNode
+  (implements (of MarkupParent MarkNode))
+  (prop + parent (? MarkNode))
+  (prop + first-child (? MarkNode))
+  (prop + last-child (? MarkNode))
+  (prop + previous (? MarkNode))
+  (prop + next (? MarkNode))
+  (fn-do + children _ :get
+    (let maybe-child first-child)
+    (if maybe-child
+      (let child maybe-child)
+      (while true
+        (yield child)
+        (if (not (. child next))
+          (break)
+        )
+        (= child (. child next))
+      )
+    )
+  )
+  (fn-expr + markup-content MarkNode
+    (param child MarkNode)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child MarkNode)
+    (param anchor (? MarkNode))
+    (= (. child parent) this)
+    (if (not anchor)
+      (if (not first-child)
+        (= first-child (= last-child child))
+        (else
+          (= (?. last-child next) child)
+          (= (. child previous) last-child)
+          (= last-child child)
+        )
+      )
+      (else
+        (let target anchor)
+        (= (. child previous) (. target previous))
+        (= (. child next) target)
+        (if (. target previous)
+          (= (. target previous next) child)
+          (else
+            (= first-child child)
+          )
+        )
+        (= (. target previous) child)
+      )
+    )
+  )
+  (fn-do + markup-detach-child _
+    (param child MarkNode)
+    (if (== (. child parent) this)
+      (= (. child parent) null)
+      (if (== first-child child)
+        (= first-child (. child next))
+      )
+      (if (== last-child child)
+        (= last-child (. child previous))
+      )
+      (= (?. (. child previous) next) (. child next))
+      (= (?. (. child next) previous) (. child previous))
+      (= (. child next) null)
+      (= (. child previous) null)
+    )
+  )
+  (fn-do + clear-children Void
+    (while true
+      (let maybe-child first-child)
+      (if (not maybe-child)
+        (break)
+      )
+      (let child maybe-child)
+      (call markup-remove this child)
+      (call (. child close))
+    )
+  )
+  (fn-do + close Void
+    (call markup-close-region this)
+    (call clear-children)
+  )
+  (fn-expr + markup-make-region (? MarkNode)
+    (call MarkNode)
+  )
+)
 
-"$count:$first-text:$last-text"
-
-.. region = node.first-child!
-.. count = count-children(region)
-.. first-text = (region.first-child! as MarkText).text
-.. last-text = (region.last-child! as MarkText).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - node MarkNode
-
-. count = 0
-for child in node.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
-
-+ parent MarkNode?
-+ first-child MarkNode?
-+ last-child MarkNode?
-+ previous MarkNode?
-+ next MarkNode?
-
-────────────────────
-+ do get children
-
-. maybe-child = first-child
-if maybe-child
-    . child = maybe-child
-    while true
-        <= child
-        if !child.next
-            break
-        child = child.next
-
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
-
-child
-
-────────────────────
-+ do markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-child.parent = this
-if !anchor
-    if !first-child
-        first-child = last-child = child
-    else
-        last-child?.next = child
-        child.previous = last-child
-        last-child = child
-else
-    . target = anchor
-    child.previous = target.previous
-    child.next = target
-    if target.previous
-        target.previous.next = child
-    else
-        first-child = child
-    target.previous = child
-
-────────────────────
-+ do markup-detach-child
-    - child MarkNode
-
-if child.parent == this
-    child.parent = null
-    if first-child == child
-        first-child = child.next
-    if last-child == child
-        last-child = child.previous
-    child.previous?.next = child.next
-    child.next?.previous = child.previous
-    child.next = null
-    child.previous = null
-
-────────────────────
-+ do clear-children Void
-
-while true
-    . maybe-child = first-child
-    if !maybe-child
-        break
-    . child = maybe-child
-    markup-remove(this, child)
-    child.close()
-
-────────────────────
-+ do close Void
-
-markup-close-region(this)
-clear-children()
-
-────────────────────
-+ markup-make-region MarkNode?
-
-MarkNode()
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkText is MarkNode
-
-+ text String
-
-────────────────────
-+ This
-    - text String
+(type + MarkText (is MarkNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 ```
 
 ```output
@@ -999,38 +1063,38 @@ MarkNode()
 2:x:y
 ```
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items keyed by item.id
-        <TextBox = item.text
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items) (keyed-by (. item id)))
+      (<> TextBox (value: (. item text)))
+    )
+  )
+  (blank)
+  (let region (!! (. demo %first-child)))
+  (= (. demo items) (call (of List RowData) (list (call RowData "x" "X1") (call RowData "x" "X2"))))
+  (print (if-expr (!= (!! (. region %first-child)) (!! (call (. region child-at) 1))) "distinct" "same"))
+  (print (if-expr (not (call (. region child-at) 2)) "tail-ok" "tail-extra"))
+)
 
-. region = demo.%first-child!
-demo.items = List'RowData([RowData("x", "X1"), RowData("x", "X2")])
--- if region.%first-child! != (region.child-at(1))! then "distinct" else "same"
--- if !(region.child-at(2)) then "tail-ok" else "tail-extra"
+(type + RowData
+  (prop + id String)
+  (prop + text String)
+  (fn-do + This _
+    (param id String)
+    (param text String)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
-
-+ id String
-+ text String
-
-────────────────────
-+ This
-    - id String
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [RowData]
-
-────────────────────
-+ This
-
-items = List'RowData([RowData("x", "X0")])
+(type + Demo (is Box)
+  (prop + items (list RowData))
+  (fn-do + This _
+    (= items (call (of List RowData) (list (call RowData "x" "X0"))))
+  )
+)
 ```
 
 ```output
@@ -1038,46 +1102,46 @@ distinct
 tail-ok
 ```
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items keyed by item.id
-        <TextBox = item.text
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items) (keyed-by (. item id)))
+      (<> TextBox (value: (. item text)))
+    )
+  )
+  (blank)
+  (let region (!! (. demo %first-child)))
+  (let first-row (!! (. region %first-child)))
+  (let second-row (call (. region child-at) 1))
+  (= (. demo items) (call (of List RowData) (list (. demo first-item) (. demo second-item))))
+  (print (if-expr (== first-row (!! (. region %first-child))) "first-preserved" "first-lost"))
+  (print (if-expr (== second-row (!! (call (. region child-at) 1))) "second-preserved" "second-lost"))
+  (= (. demo items) (call (of List RowData) (list (. demo second-item) (. demo first-item))))
+  (print (if-expr (== first-row (!! (. region %first-child))) "duplicate-fifo" "duplicate-reordered"))
+)
 
-. region = demo.%first-child!
-. first-row = region.%first-child!
-. second-row = region.child-at(1)
-demo.items = List'RowData([demo.first-item, demo.second-item])
--- if first-row == region.%first-child! then "first-preserved" else "first-lost"
--- if second-row == (region.child-at(1))! then "second-preserved" else "second-lost"
-demo.items = List'RowData([demo.second-item, demo.first-item])
--- if first-row == region.%first-child! then "duplicate-fifo" else "duplicate-reordered"
+(type + RowData
+  (prop + id String)
+  (prop + text String)
+  (fn-do + This _
+    (param id String)
+    (param text String)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
-
-+ id String
-+ text String
-
-────────────────────
-+ This
-    - id String
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ first-item RowData
-+ second-item RowData
-+ items [RowData]
-
-────────────────────
-+ This
-
-first-item = RowData("x", "X1")
-second-item = RowData("x", "X2")
-items = List'RowData([first-item, second-item])
+(type + Demo (is Box)
+  (prop + first-item RowData)
+  (prop + second-item RowData)
+  (prop + items (list RowData))
+  (fn-do + This _
+    (= first-item (call RowData "x" "X1"))
+    (= second-item (call RowData "x" "X2"))
+    (= items (call (of List RowData) (list first-item second-item)))
+  )
+)
 ```
 
 ```output
@@ -1086,68 +1150,72 @@ second-preserved
 duplicate-fifo
 ```
 
-```yumi
-/core/channel
-/core/tests/support/markup-fixtures
+```brix
+(import /core/channel)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#events
-        <TextBox = item
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #events))
+      (<> TextBox (value: item))
+    )
+  )
+  (blank)
+  (<- (. demo events) "a")
+  (call yield-once)
+  (print (call dump demo))
+  (let old-events (. demo events))
+  (= (. demo events) (call (of SyncBufferedChannel String)))
+  (print (call dump demo))
+  (<- old-events "stale")
+  (call (. old-events close))
+  (call yield-once)
+  (print (call dump demo))
+  (<- (. demo events) "b")
+  (call yield-once)
+  (print (call dump demo))
+  (call (. demo events close))
+  (call yield-once)
+  (call (. demo close))
+  (<- (. demo events) "closed")
+  (call yield-once)
+  (print (call dump demo))
+)
 
-demo.events <- "a"
-yield-once()
--- dump(demo)
-. old-events = demo.events
-demo.events = SyncBufferedChannel'String()
--- dump(demo)
-old-events <- "stale"
-old-events.close()
-yield-once()
--- dump(demo)
-demo.events <- "b"
-yield-once()
--- dump(demo)
-demo.events.close()
-yield-once()
-demo.close()
-demo.events <- "closed"
-yield-once()
--- dump(demo)
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
+(fn-do + dump String
+  (param demo Demo)
+  (if (== count 0)
+    (return "0")
+  )
+  (return (str count ":" first-text ":" last-text))
+  (blank)
+  (lazy region (!! (. demo %first-child)))
+  (lazy count (call count-children region))
+  (lazy first-text (. (as (!! (. region %first-child)) TextBox) text))
+  (lazy last-text (. (as (!! (. region %last-child)) TextBox) text))
+)
 
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - demo Demo
-
-if count == 0
-    = "0"
-= "$count:$first-text:$last-text"
-
-.. region = demo.%first-child!
-.. count = count-children(region)
-.. first-text = (region.%first-child! as TextBox).text
-.. last-text = (region.%last-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ events SyncBufferedChannel'String
+(type + Demo (is Box)
+  (prop + events (of SyncBufferedChannel String))
+)
 ```
 
 ```output
@@ -1160,53 +1228,57 @@ for child in box.children
 
 ### A tracked range is an iterable source: rows follow the range as its bound changes.
 
-```yumi
-/core/task
-/core/tests/support/markup-fixtures
+```brix
+(import /core/task)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for index in 0 .. < demo.#count
-        <TextBox = "row $index"
-yield-once()
--- dump(demo)
-demo.count = 3
-yield-once()
--- dump(demo)
+(main
+  (<> Demo (id: demo)
+    (for (in index (..< 0 (. demo #count)))
+      (<> TextBox (value: (str "row " index)))
+    )
+  )
+  (call yield-once)
+  (print (call dump demo))
+  (= (. demo count) 3)
+  (call yield-once)
+  (print (call dump demo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+(fn-do + dump String
+  (param demo Demo)
+  (if (== count 0)
+    (return "0")
+  )
+  (return (str count ":" first-text ":" last-text))
+  (blank)
+  (lazy region (!! (. demo %first-child)))
+  (lazy count (call count-children region))
+  (lazy first-text (. (as (!! (. region %first-child)) TextBox) text))
+  (lazy last-text (. (as (!! (. region %last-child)) TextBox) text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - demo Demo
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-if count == 0
-    = "0"
-= "$count:$first-text:$last-text"
-
-.. region = demo.%first-child!
-.. count = count-children(region)
-.. first-text = (region.%first-child! as TextBox).text
-.. last-text = (region.%last-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ count = 2
+(type + Demo (is Box)
+  (prop + count _ (= 2))
+)
 ```
 
 ```output
@@ -1216,55 +1288,57 @@ for child in box.children
 
 ### A shrinking keyed loop removes its rows before their bindings read the new source.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = LoopPanel()
-markup-mount-root(panel, panel)
-panel.markup-batch-queue.checkpoint()
--- dump(panel)
-panel.items = List'String(["x"])
-panel.markup-batch-queue.checkpoint()
--- dump(panel)
-panel.items = List'String(["p", "q", "r"])
-panel.markup-batch-queue.checkpoint()
--- dump(panel)
+(main
+  (let panel (call LoopPanel))
+  (call markup-mount-root panel panel)
+  (call (. panel markup-batch-queue checkpoint))
+  (print (call dump panel))
+  (= (. panel items) (call (of List String) (list "x")))
+  (call (. panel markup-batch-queue checkpoint))
+  (print (call dump panel))
+  (= (. panel items) (call (of List String) (list "p" "q" "r")))
+  (call (. panel markup-batch-queue checkpoint))
+  (print (call dump panel))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do indexes [Index]
-    - count Size
+(fn-do + indexes (list Index)
+  (param count Size)
+  (let result (call (of List Index)))
+  (for (in i (..< 0 count))
+    (+= result i)
+  )
+  (return result)
+)
 
-. result = List'Index()
-for i in 0 .. < count
-    result += i
-= result
+(fn-do + dump String
+  (param panel LoopPanel)
+  (let texts (call (of List String)))
+  (for (in child (. (!! (. panel %first-child)) children))
+    (+= texts (. (as child TextBox) text))
+  )
+  (return (call (. "," join) texts))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - panel LoopPanel
-
-. texts = List'String()
-for child in panel.%first-child!.children
-    texts += (child as TextBox).text
-= ",".join(texts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ LoopPanel is Box
-    is MarkupRootElement
-
-+ items [String] = List'String(["a", "b"])
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-────────────────────
-
-<This
-    for index in indexes(#items.length) keyed by index
-        <TextBox = #items[index]
+(type + LoopPanel (is Box)
+  (implements MarkupRootElement)
+  (prop + items (list String) (= (call (of List String) (list "a" "b"))))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+  (content
+    (<> This
+      (for (in index (call indexes (. #items length)) (keyed-by index))
+        (<> TextBox (value: ([] #items index)))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1275,51 +1349,51 @@ p,q,r
 
 ### A keyed row re-derives body locals that read the row item when the collection replaces an element with a new object under the same key, while preserving the physical row.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items keyed by item.id
-        . label = "${item.text}!"
-        . fixed = "row"
-        <TextBox = "$label $fixed"
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items) (keyed-by (. item id)))
+      (let label (str (. item text) "!"))
+      (let fixed "row")
+      (<> TextBox (value: (str label " " fixed)))
+    )
+  )
+  (blank)
+  (let region (!! (. demo %first-child)))
+  (let first (!! (. region %first-child)))
+  (print (call row-texts demo))
+  (= ([] (. demo items) 0) (call RowData "a" "Z"))
+  (print (call row-texts demo))
+  (print (if-expr (== first (!! (. region %first-child))) "preserved" "lost"))
+)
 
-. region = demo.%first-child!
-. first = region.%first-child!
--- row-texts(demo)
-demo.items[0] = RowData("a", "Z")
--- row-texts(demo)
--- if first == region.%first-child! then "preserved" else "lost"
+(fn-do + row-texts String
+  (param demo Demo)
+  (let parts (list String) (call (of List String)))
+  (for (in child (. (!! (. demo %first-child)) children))
+    (+= parts (. (as child TextBox) text))
+  )
+  (return (call (. "," join) parts))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do row-texts String
-    - demo Demo
+(type + RowData
+  (prop + id String)
+  (prop + text String)
+  (fn-do + This _
+    (param id String)
+    (param text String)
+  )
+)
 
-. parts [String] = List'String()
-for child in demo.%first-child!.children
-    parts += (child as TextBox).text
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
-
-+ id String
-+ text String
-
-────────────────────
-+ This
-    - id String
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [RowData]
-
-────────────────────
-+ This
-
-items = List'RowData([RowData("a", "A"), RowData("b", "B")])
+(type + Demo (is Box)
+  (prop + items (list RowData))
+  (fn-do + This _
+    (= items (call (of List RowData) (list (call RowData "a" "A") (call RowData "b" "B"))))
+  )
+)
 ```
 
 ```output
@@ -1330,53 +1404,55 @@ preserved
 
 ### A lazy local in a markup loop body compiles, and in a keyed row it follows the replaced item.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items keyed by item.id
-        .. label = "${item.text}?"
-        <TextBox = label
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items) (keyed-by (. item id)))
+      (lazy label (str (. item text) "?"))
+      (<> TextBox (value: label))
+    )
+  )
+  (blank)
+  (<> Demo (id: plain)
+    (for (in item (. plain #items))
+      (lazy label (str (. item text) "."))
+      (<> TextBox (value: label))
+    )
+  )
+  (blank)
+  (print (call row-texts demo))
+  (print (call row-texts plain))
+  (= ([] (. demo items) 0) (call RowData "a" "Z"))
+  (print (call row-texts demo))
+)
 
-<Demo plain
-    for item in plain.#items
-        .. label = "${item.text}."
-        <TextBox = label
+(fn-do + row-texts String
+  (param demo Demo)
+  (let parts (list String) (call (of List String)))
+  (for (in child (. (!! (. demo %first-child)) children))
+    (+= parts (. (as child TextBox) text))
+  )
+  (return (call (. "," join) parts))
+)
 
--- row-texts(demo)
--- row-texts(plain)
-demo.items[0] = RowData("a", "Z")
--- row-texts(demo)
+(type + RowData
+  (prop + id String)
+  (prop + text String)
+  (fn-do + This _
+    (param id String)
+    (param text String)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do row-texts String
-    - demo Demo
-
-. parts [String] = List'String()
-for child in demo.%first-child!.children
-    parts += (child as TextBox).text
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
-
-+ id String
-+ text String
-
-────────────────────
-+ This
-    - id String
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [RowData]
-
-────────────────────
-+ This
-
-items = List'RowData([RowData("a", "A"), RowData("b", "B")])
+(type + Demo (is Box)
+  (prop + items (list RowData))
+  (fn-do + This _
+    (= items (call (of List RowData) (list (call RowData "a" "A") (call RowData "b" "B"))))
+  )
+)
 ```
 
 ```output
@@ -1387,94 +1463,109 @@ Z?,B?
 
 ### A row-derived local read where a nested loop shadows the name it depends on is rejected rather than silently resolving to the inner binding.
 
-```yumi warn crash
-/core/tests/support/markup-fixtures
+```brix warn crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items keyed by item.id
-        . label = item.text
-        <Box
-            for item in demo.#extras
-                <TextBox = label
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items) (keyed-by (. item id)))
+      (let label (. item text))
+      (<> Box
+        (for (in item (. demo #extras))
+          (<> TextBox (value: label))
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
+(type + RowData
+  (prop + id String)
+  (prop + text String)
+  (fn-do + This _
+    (param id String)
+    (param text String)
+  )
+)
 
-+ id String
-+ text String
-
-────────────────────
-+ This
-    - id String
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [RowData]
-+ extras [String]
-
-────────────────────
-+ This
-
-items = List'RowData([RowData("a", "A")])
-extras = List'String(["x"])
+(type + Demo (is Box)
+  (prop + items (list RowData))
+  (prop + extras (list String))
+  (fn-do + This _
+    (= items (call (of List RowData) (list (call RowData "a" "A"))))
+    (= extras (call (of List String) (list "x")))
+  )
+)
 ```
 
 ```output
 Exception: Markup row local label reads item, which is shadowed here; rename one of them
-<no file:9>
-                    <TextBox = label
-                               ^^^^^
+<no file:11>
+              (<> TextBox (value: label))
+                                  ^^^^^
 ```
 
 ### An id on the root element of a static markup loop row is a local of that row, so the row's own content reads it and each row sees its own element. Ids nested in the row are row locals too.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. titles = List'String(["a", "b"])
+(main
+  (let titles (call (of List String) (list "a" "b")))
+  (blank)
+  (<> Box (id: root)
+    (for (in title titles)
+      (<> Holder (id: columns)
+        (= title title)
+        (blank)
+        (<> Pane (id: pane)
+          (= label (. columns title))
+        )
+        (<> Pane
+          (= label (str (. pane label) "+" (. columns title)))
+        )
+      )
+    )
+  )
+  (blank)
+  (<> Box (id: listed)
+    (iterate (in titles)
+      (block
+        (<> Holder (id: columns)
+          (= title each)
+          (blank)
+          (<> Pane
+            (= label (. columns title))
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (print (call row-labels root))
+  (print (call row-labels listed))
+)
 
-<Box root
-    for title in titles
-        <Holder columns
-            title = title
+(type + Holder (is Box)
+  (prop + title _ (= ""))
+)
 
-            <Pane pane
-                label = columns.title
-            <Pane
-                label = "${pane.label}+${columns.title}"
+(type + Pane (is Box)
+  (prop + label _ (= ""))
+)
 
-<Box listed
-    in titles
-        <Holder columns
-            title = each
-
-            <Pane
-                label = columns.title
-
--- row-labels(root)
--- row-labels(listed)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-+ title = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
-
-+ label = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ do row-labels String
-    - rows Box
-
-. parts [String] = List'String()
-for row in rows.children
-    for pane in (row as Box).children
-        parts += (pane as Pane).label
-= ",".join(parts)
+(fn-do + row-labels String
+  (param rows Box)
+  (let parts (list String) (call (of List String)))
+  (for (in row (. rows children))
+    (for (in pane (. (as row Box) children))
+      (+= parts (. (as pane Pane) label))
+    )
+  )
+  (return (call (. "," join) parts))
+)
 ```
 
 ```output
@@ -1484,55 +1575,61 @@ a,b
 
 ### Supplied slot content in a static markup loop row reads the row's slot host by the host's markup id. Each row binds its own host, so a tracked read follows only that row's host, and a closure in the content reads its row's host when it runs.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. titles = List'String(["a", "b"])
+(main
+  (let titles (call (of List String) (list "a" "b")))
+  (blank)
+  (<> Box (id: root)
+    (for (in title titles)
+      (<> Holder (id: columns)
+        (= title title)
+        (blank)
+        (<> Pane (slot: detail)
+          (= tracked (. columns #title))
+          (= untracked (. columns title))
+          (= action (=> () :do (= (. columns title) "hit")))
+        )
+      )
+    )
+  )
+  (blank)
+  (print (call pane-labels root))
+  (= (. (as (!! (. root %first-child)) Holder) title) "z")
+  (print (call pane-labels root))
+  (let action (. (as (!! (. (!! (. root %last-child)) %first-child)) Pane) action))
+  (if action
+    (call action)
+  )
+  (print (call pane-labels root))
+)
 
-<Box root
-    for title in titles
-        <Holder columns
-            title = title
+(type + Holder (is Box)
+  (prop + title _ (= ""))
+  (content
+    (<> This
+      (+<> Box (id: detail))
+    )
+  )
+)
 
-            <Pane (detail)
-                tracked = columns.#title
-                untracked = columns.title
-                action = => do columns.title = "hit"
+(type + Pane (is Box)
+  (prop + tracked _ (= ""))
+  (prop + untracked _ (= ""))
+  (prop + action (? Doer))
+)
 
--- pane-labels(root)
-(root.%first-child! as Holder).title = "z"
--- pane-labels(root)
-. action = (root.%last-child!.%first-child! as Pane).action
-if action
-    action()
--- pane-labels(root)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-+ title = ""
-
-────────────────────
-
-<This
-    + <Box detail
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
-
-+ tracked = ""
-+ untracked = ""
-+ action Doer?
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pane-labels String
-    - rows Box
-
-. parts [String] = List'String()
-for row in rows.children
-    . pane = row.%first-child! as Pane
-    parts += "${pane.tracked}/${pane.untracked}"
-= ",".join(parts)
+(fn-do + pane-labels String
+  (param rows Box)
+  (let parts (list String) (call (of List String)))
+  (for (in row (. rows children))
+    (let pane (as (!! (. row %first-child)) Pane))
+    (+= parts (str (. pane tracked) "/" (. pane untracked)))
+  )
+  (return (call (. "," join) parts))
+)
 ```
 
 ```output
@@ -1543,59 +1640,68 @@ z/a,hit/b
 
 ### In tracked markup loops, keyed or not, supplied slot content reads the row's slot host by the host's markup id. A tracked read follows that row's host, and rows added later bind their own.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. titles = List'String(["a", "b"])
+(main
+  (let titles (call (of List String) (list "a" "b")))
+  (blank)
+  (<> Box (id: keyed)
+    (for (in title #titles (keyed-by title))
+      (<> Holder (id: columns)
+        (= title title)
+        (blank)
+        (<> Pane (slot: detail)
+          (= label (. columns #title))
+        )
+      )
+    )
+  )
+  (blank)
+  (<> Box (id: plain)
+    (for (in title #titles)
+      (<> Holder (id: columns)
+        (= title title)
+        (blank)
+        (<> Pane (slot: detail)
+          (= label (. columns #title))
+        )
+      )
+    )
+  )
+  (blank)
+  (let keyed-rows (!! (. keyed %first-child)))
+  (let plain-rows (!! (. plain %first-child)))
+  (print (str (call row-labels keyed-rows) " " (call row-labels plain-rows)))
+  (= (. (as (!! (. keyed-rows %first-child)) Holder) title) "y")
+  (= (. (as (!! (. plain-rows %first-child)) Holder) title) "z")
+  (print (str (call row-labels keyed-rows) " " (call row-labels plain-rows)))
+  (+= titles "c")
+  (print (str (call row-labels keyed-rows) " " (call row-labels plain-rows)))
+)
 
-<Box keyed
-    for title in #titles keyed by title
-        <Holder columns
-            title = title
+(type + Holder (is Box)
+  (prop + title _ (= ""))
+  (content
+    (<> This
+      (+<> Box (id: detail))
+    )
+  )
+)
 
-            <Pane (detail)
-                label = columns.#title
+(type + Pane (is Box)
+  (prop + label _ (= ""))
+)
 
-<Box plain
-    for title in #titles
-        <Holder columns
-            title = title
-
-            <Pane (detail)
-                label = columns.#title
-
-. keyed-rows = keyed.%first-child!
-. plain-rows = plain.%first-child!
--- "${row-labels(keyed-rows)} ${row-labels(plain-rows)}"
-(keyed-rows.%first-child! as Holder).title = "y"
-(plain-rows.%first-child! as Holder).title = "z"
--- "${row-labels(keyed-rows)} ${row-labels(plain-rows)}"
-titles += "c"
--- "${row-labels(keyed-rows)} ${row-labels(plain-rows)}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-+ title = ""
-
-────────────────────
-
-<This
-    + <Box detail
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
-
-+ label = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ do row-labels String
-    - rows Box
-
-. parts [String] = List'String()
-for row in rows.children
-    parts += (row.%first-child! as Pane).label
-= ",".join(parts)
+(fn-do + row-labels String
+  (param rows Box)
+  (let parts (list String) (call (of List String)))
+  (for (in row (. rows children))
+    (+= parts (. (as (!! (. row %first-child)) Pane) label))
+  )
+  (return (call (. "," join) parts))
+)
 ```
 
 ```output
@@ -1606,52 +1712,55 @@ y,b,c z,b,c
 
 ### In class content, supplied slot content in a static markup loop row reads the row's slot host by the host's markup id, and each row binds its own host.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
--- row-labels(demo)
-(demo.%first-child! as Holder).title = "z"
--- row-labels(demo)
+(main
+  (<> Demo (id: demo))
+  (print (call row-labels demo))
+  (= (. (as (!! (. demo %first-child)) Holder) title) "z")
+  (print (call row-labels demo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
+(type + Demo (is Box)
+  (prop + titles _ (= (call (of List String) (list "a" "b"))))
+  (content
+    (<> This
+      (for (in title titles)
+        (<> Holder (id: columns)
+          (= title title)
+          (blank)
+          (<> Pane (slot: detail)
+            (= label (. columns #title))
+          )
+        )
+      )
+    )
+  )
+)
 
-+ titles = List'String(["a", "b"])
+(type + Holder (is Box)
+  (prop + title _ (= ""))
+  (content
+    (<> This
+      (+<> Box (id: detail))
+    )
+  )
+)
 
-────────────────────
+(type + Pane (is Box)
+  (prop + label _ (= ""))
+)
 
-<This
-    for title in titles
-        <Holder columns
-            title = title
-
-            <Pane (detail)
-                label = columns.#title
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-+ title = ""
-
-────────────────────
-
-<This
-    + <Box detail
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
-
-+ label = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ do row-labels String
-    - rows Box
-
-. parts [String] = List'String()
-for row in rows.children
-    parts += (row.%first-child! as Pane).label
-= ",".join(parts)
+(fn-do + row-labels String
+  (param rows Box)
+  (let parts (list String) (call (of List String)))
+  (for (in row (. rows children))
+    (+= parts (. (as (!! (. row %first-child)) Pane) label))
+  )
+  (return (call (. "," join) parts))
+)
 ```
 
 ```output
@@ -1661,64 +1770,75 @@ z,b
 
 ### A markup loop row's id is not visible outside its row.
 
-```yumi compile-error
-/core/tests/support/markup-fixtures
+```brix compile-error
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. titles = List'String(["a", "b"])
+(main
+  (let titles (call (of List String) (list "a" "b")))
+  (blank)
+  (<> Box (id: root)
+    (for (in title titles)
+      (<> Holder (id: columns)
+        (= title title)
+      )
+    )
+  )
+  (blank)
+  (print (. columns title))
+)
 
-<Box root
-    for title in titles
-        <Holder columns
-            title = title
-
--- columns.title
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-+ title = ""
+(type + Holder (is Box)
+  (prop + title _ (= ""))
+)
 ```
 
 ```output
 Exception: Name "columns" not found
-<no file:11>
-    -- columns.title
-       ^^^^^^^
+<no file:16>
+      (print (. columns title))
+                ^^^^^^^
 ```
 
 ### A lazy local declared in a static markup loop body is a local of that body, so the row's content reads it.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. titles = List'String(["a", "b"])
+(main
+  (let titles (call (of List String) (list "a" "b")))
+  (blank)
+  (<> Box (id: root)
+    (for (in title titles)
+      (lazy shown (str title "!"))
+      (<> Holder
+        (<> Pane
+          (= label shown)
+        )
+      )
+    )
+  )
+  (blank)
+  (print (call row-labels root))
+)
 
-<Box root
-    for title in titles
-        .. shown = "$title!"
-        <Holder
-            <Pane
-                label = shown
+(type + Holder (is Box))
 
--- row-labels(root)
+(type + Pane (is Box)
+  (prop + label _ (= ""))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
-
-+ label = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ do row-labels String
-    - rows Box
-
-. parts [String] = List'String()
-for row in rows.children
-    for pane in (row as Box).children
-        parts += (pane as Pane).label
-= ",".join(parts)
+(fn-do + row-labels String
+  (param rows Box)
+  (let parts (list String) (call (of List String)))
+  (for (in row (. rows children))
+    (for (in pane (. (as row Box) children))
+      (+= parts (. (as pane Pane) label))
+    )
+  )
+  (return (call (. "," join) parts))
+)
 ```
 
 ```output
@@ -1727,37 +1847,45 @@ a!,b!
 
 ### The `in` form of a static markup loop declares the lazy locals of its body the same way.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. titles = List'String(["a", "b"])
+(main
+  (let titles (call (of List String) (list "a" "b")))
+  (blank)
+  (<> Box (id: root)
+    (iterate (in titles)
+      (block
+        (lazy shown (str each "?"))
+        (<> Holder
+          (<> Pane
+            (= label shown)
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (print (call row-labels root))
+)
 
-<Box root
-    in titles
-        .. shown = "$each?"
-        <Holder
-            <Pane
-                label = shown
+(type + Holder (is Box))
 
--- row-labels(root)
+(type + Pane (is Box)
+  (prop + label _ (= ""))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
-
-+ label = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ do row-labels String
-    - rows Box
-
-. parts [String] = List'String()
-for row in rows.children
-    for pane in (row as Box).children
-        parts += (pane as Pane).label
-= ",".join(parts)
+(fn-do + row-labels String
+  (param rows Box)
+  (let parts (list String) (call (of List String)))
+  (for (in row (. rows children))
+    (for (in pane (. (as row Box) children))
+      (+= parts (. (as pane Pane) label))
+    )
+  )
+  (return (call (. "," join) parts))
+)
 ```
 
 ```output
@@ -1766,48 +1894,57 @@ a?,b?
 
 ### In class content, each static markup loop body declares its own lazy locals, so two loops can use the same name.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
--- row-labels(demo)
+(main
+  (<> Demo (id: demo))
+  (print (call row-labels demo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
+(type + Demo (is Box)
+  (prop + titles _ (= (call (of List String) (list "a" "b"))))
+  (content
+    (<> This
+      (for (in title titles)
+        (lazy shown (str title "!"))
+        (<> Holder
+          (<> Pane
+            (= label shown)
+          )
+        )
+      )
+      (iterate (in titles)
+        (block
+          (lazy shown (str each "?"))
+          (<> Holder
+            (<> Pane
+              (= label shown)
+            )
+          )
+        )
+      )
+    )
+  )
+)
 
-+ titles = List'String(["a", "b"])
+(type + Holder (is Box))
 
-────────────────────
+(type + Pane (is Box)
+  (prop + label _ (= ""))
+)
 
-<This
-    for title in titles
-        .. shown = "$title!"
-        <Holder
-            <Pane
-                label = shown
-    in titles
-        .. shown = "$each?"
-        <Holder
-            <Pane
-                label = shown
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
-
-+ label = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ do row-labels String
-    - rows Box
-
-. parts [String] = List'String()
-for row in rows.children
-    for pane in (row as Box).children
-        parts += (pane as Pane).label
-= ",".join(parts)
+(fn-do + row-labels String
+  (param rows Box)
+  (let parts (list String) (call (of List String)))
+  (for (in row (. rows children))
+    (for (in pane (. (as row Box) children))
+      (+= parts (. (as pane Pane) label))
+    )
+  )
+  (return (call (. "," join) parts))
+)
 ```
 
 ```output
@@ -1816,47 +1953,53 @@ a!,b!,a?,b?
 
 ### A lazy local that reads the loop variable is evaluated by each row that reads it, once per row, and a lazy local no row reads is never evaluated.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. titles = List'String(["a", "b"])
+(main
+  (let titles (call (of List String) (list "a" "b")))
+  (blank)
+  (<> Box (id: root)
+    (for (in title titles)
+      (lazy pair (list (call stamp title) (str title "?")))
+      (lazy unread (call stamp "unread"))
+      (<> Holder
+        (<> Pane
+          (= label ([] pair 0))
+        )
+        (<> Pane
+          (= label ([] pair 1))
+        )
+      )
+    )
+  )
+  (blank)
+  (print (call row-labels root))
+)
 
-<Box root
-    for title in titles
-        .. pair = [stamp(title), "$title?"]
-        .. unread = stamp("unread")
-        <Holder
-            <Pane
-                label = pair[0]
-            <Pane
-                label = pair[1]
+(fn-do + stamp String
+  (param text String)
+  (print (str "stamp " text))
+  (return (str text "!"))
+)
 
--- row-labels(root)
+(type + Holder (is Box))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do stamp String
-    - text String
+(type + Pane (is Box)
+  (prop + label _ (= ""))
+)
 
--- "stamp $text"
-= "$text!"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
-
-+ label = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ do row-labels String
-    - rows Box
-
-. parts [String] = List'String()
-for row in rows.children
-    for pane in (row as Box).children
-        parts += (pane as Pane).label
-= ",".join(parts)
+(fn-do + row-labels String
+  (param rows Box)
+  (let parts (list String) (call (of List String)))
+  (for (in row (. rows children))
+    (for (in pane (. (as row Box) children))
+      (+= parts (. (as pane Pane) label))
+    )
+  )
+  (return (call (. "," join) parts))
+)
 ```
 
 ```output
@@ -1867,55 +2010,63 @@ a!,a?,b!,b?
 
 ### Each row of a static markup loop evaluates its own lazy locals when the first read is inside an `if` arm, when the read is tracked, and when the lazy local is destructured.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. titles = List'String(["a", "b"])
+(main
+  (let titles (call (of List String) (list "a" "b")))
+  (blank)
+  (<> Box (id: arms)
+    (for (in title titles)
+      (lazy shown (call stamp title))
+      (if (== title "b")
+        (<> TextBox (value: shown))
+      )
+      (<> TextBox (value: (str shown "+")))
+    )
+  )
+  (blank)
+  (<> Box (id: tracked)
+    (for (in title titles)
+      (lazy shown (str title "?"))
+      (<> TextBox (value: #shown))
+    )
+  )
+  (blank)
+  (<> Box (id: pairs)
+    (for (in title titles)
+      (lazy (tuple first second) (call pair title))
+      (<> TextBox (value: first))
+      (<> TextBox (value: second))
+    )
+  )
+  (blank)
+  (print (call texts arms))
+  (print (call texts tracked))
+  (print (call texts pairs))
+)
 
-<Box arms
-    for title in titles
-        .. shown = stamp(title)
-        if title == "b"
-            <TextBox = shown
-        <TextBox = "$shown+"
+(fn-do + stamp String
+  (param text String)
+  (print (str "stamp " text))
+  (return (str text "!"))
+)
 
-<Box tracked
-    for title in titles
-        .. shown = "$title?"
-        <TextBox = #shown
+(fn-do + pair _
+  (param text String)
+  (print (str "pair " text))
+  (return (tuple (str text "1") (str text "2")))
+)
 
-<Box pairs
-    for title in titles
-        .. first, second = pair(title)
-        <TextBox = first
-        <TextBox = second
-
--- texts(arms)
--- texts(tracked)
--- texts(pairs)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do stamp String
-    - text String
-
--- "stamp $text"
-= "$text!"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pair
-    - text String
-
--- "pair $text"
-= "${text}1", "${text}2"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do texts String
-    - rows Box
-
-. parts [String] = List'String()
-for row in rows.children
-    parts += (row as TextBox).text
-= ",".join(parts)
+(fn-do + texts String
+  (param rows Box)
+  (let parts (list String) (call (of List String)))
+  (for (in row (. rows children))
+    (+= parts (. (as row TextBox) text))
+  )
+  (return (call (. "," join) parts))
+)
 ```
 
 ```output
@@ -1930,41 +2081,48 @@ a1,a2,b1,b2
 
 ### A lazy local of a static markup loop row that is read by the row's own content and by the rows of a tracked loop nested in it is evaluated once per row, also for rows added later.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. titles = List'String(["a", "b"])
-. items = List'String(["x", "y"])
+(main
+  (let titles (call (of List String) (list "a" "b")))
+  (let items (call (of List String) (list "x" "y")))
+  (blank)
+  (<> Box (id: root)
+    (for (in title titles)
+      (lazy shown (call stamp title))
+      (<> Box
+        (<> TextBox (value: shown))
+        (for (in item #items)
+          (<> TextBox (value: (str shown item)))
+        )
+      )
+    )
+  )
+  (blank)
+  (print (call texts root))
+  (+= items "z")
+  (print (call texts root))
+)
 
-<Box root
-    for title in titles
-        .. shown = stamp(title)
-        <Box
-            <TextBox = shown
-            for item in #items
-                <TextBox = "$shown$item"
+(fn-do + stamp String
+  (param text String)
+  (print (str "stamp " text))
+  (return (str text "!"))
+)
 
--- texts(root)
-items += "z"
--- texts(root)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do stamp String
-    - text String
-
--- "stamp $text"
-= "$text!"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do texts String
-    - rows Box
-
-. parts [String] = List'String()
-for row in rows.children
-    parts += (row.%first-child! as TextBox).text
-    for child in row.%last-child!.children
-        parts += (child as TextBox).text
-= ",".join(parts)
+(fn-do + texts String
+  (param rows Box)
+  (let parts (list String) (call (of List String)))
+  (for (in row (. rows children))
+    (+= parts (. (as (!! (. row %first-child)) TextBox) text))
+    (for (in child (. (!! (. row %last-child)) children))
+      (+= parts (. (as child TextBox) text))
+    )
+  )
+  (return (call (. "," join) parts))
+)
 ```
 
 ```output
@@ -1976,35 +2134,42 @@ a!,a!x,a!y,a!z,b!,b!x,b!y,b!z
 
 ### A lazy state machine declared in a static markup loop body belongs to its row.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. titles = List'String(["a", "b"])
+(main
+  (let titles (call (of List String) (list "a" "b")))
+  (blank)
+  (<> Box (id: root)
+    (for (in title titles)
+      (lazy flow
+        (machine
+          (state idle)
+          (state ready (trigger if (call mark title)))
+        )
+      )
+      (<> TextBox (value: (if-expr (is flow .ready) "ready" "idle")))
+    )
+  )
+  (blank)
+  (print (call texts root))
+)
 
-<Box root
-    for title in titles
-        .. flow ~>
-            ~> idle
-            ~> ready if mark(title)
-        <TextBox = if flow is .ready then "ready" else "idle"
+(fn-do + mark Bool
+  (param label String)
+  (print (str "mark " label))
+  (return (== label "b"))
+)
 
--- texts(root)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do mark Bool
-    - label String
-
--- "mark $label"
-= label == "b"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do texts String
-    - rows Box
-
-. parts [String] = List'String()
-for row in rows.children
-    parts += (row as TextBox).text
-= ",".join(parts)
+(fn-do + texts String
+  (param rows Box)
+  (let parts (list String) (call (of List String)))
+  (for (in row (. rows children))
+    (+= parts (. (as row TextBox) text))
+  )
+  (return (call (. "," join) parts))
+)
 ```
 
 ```output
@@ -2013,40 +2178,44 @@ mark b
 idle,ready
 ```
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
+(prop _ evaluations _ (= 0))
+(blank)
 
-_ evaluations = 0
+(main
+  (<> Looped (id: looped))
+  (blank)
+  (print evaluations)
+  (for (in i (..< 0 4))
+    (+= (. looped value) 1)
+    (print evaluations)
+  )
+)
 
-<Looped looped
+(fn-do _ observe _
+  (param value F64)
+  (+= evaluations 1)
+  (return value)
+)
 
--- evaluations
-for i in 0 .. < 4
-    looped.value += 1
-    -- evaluations
+(type + Item (is Box)
+  (prop + v F64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do observe
-    - value F64
-
-evaluations += 1
-= value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Box
-
-+ v F64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Looped is Box
-
-+ value F64
-
-────────────────────
-<This
-    for index in 0 .. < 3
-        <Item
-            v = observe(#value)
+(type + Looped (is Box)
+  (prop + value F64)
+  (content
+    (<> This
+      (for (in index (..< 0 3))
+        (<> Item
+          (= v (call observe #value))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2059,29 +2228,35 @@ evaluations += 1
 
 ### An attribute of an element a plain loop in a class's markup makes, which reads a tracked property, follows the property for every element the loop made.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = Panel()
-panel.current = "c"
-for child in panel.children
-    -- (child as Label).text
-panel.current = "a"
-for child in panel.children
-    -- (child as Label).text
+(main
+  (let panel (call Panel))
+  (= (. panel current) "c")
+  (for (in child (. panel children))
+    (print (. (as child Label) text))
+  )
+  (= (. panel current) "a")
+  (for (in child (. panel children))
+    (print (. (as child Label) text))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ current = "b"
-+ items = ["a", "b", "c"]
-
-────────────────────
-
-<This
-    for item in items
-        <Label
-            text = "${item} ${#current == item}"
+(type + Panel (is Box)
+  (prop + current _ (= "b"))
+  (prop + items _ (= (list "a" "b" "c")))
+  (content
+    (<> This
+      (for (in item items)
+        (<> Label
+          (= text (str item " " (== #current item)))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2095,64 +2270,61 @@ c false
 
 ### A closure an attribute of a row of a keyed loop region gives reads the row's item when it runs, the one the row holds then.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items keyed by item.id
-        <Item
-            run = => do demo.note(item.text)
-. region = demo.%first-child!
-. first = region.%first-child! as Item
-first.fire()
--- demo.seen
-. old = first.run
-demo.items[0] = RowData("a", "Z")
-. again = region.%first-child! as Item
--- if again == first then "kept" else "replaced"
-again.fire()
--- demo.seen
--- if old == again.run then "same closure" else "new closure"
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items) (keyed-by (. item id)))
+      (<> Item
+        (= run (=> () :do (call (. demo note) (. item text))))
+      )
+    )
+  )
+  (let region (!! (. demo %first-child)))
+  (let first (as (!! (. region %first-child)) Item))
+  (call (. first fire))
+  (print (. demo seen))
+  (let old (. first run))
+  (= ([] (. demo items) 0) (call RowData "a" "Z"))
+  (let again (as (!! (. region %first-child)) Item))
+  (print (if-expr (== again first) "kept" "replaced"))
+  (call (. again fire))
+  (print (. demo seen))
+  (print (if-expr (== old (. again run)) "same closure" "new closure"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Box
+(type + Item (is Box)
+  (prop + run (? Doer))
+  (fn-do + fire _
+    (let callback run)
+    (if callback
+      (call callback)
+    )
+  )
+)
 
-+ run Doer?
+(type + RowData
+  (prop + id String)
+  (prop + text String)
+  (fn-do + This _
+    (param id String)
+    (param text String)
+  )
+)
 
-────────────────────
-+ do fire
-
-. callback = run
-if callback
-    callback()
-
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
-
-+ id String
-+ text String
-
-────────────────────
-+ This
-    - id String
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [RowData]
-+ seen = ""
-
-────────────────────
-+ This
-
-items = List'RowData([RowData("a", "A"), RowData("b", "B")])
-
-────────────────────
-+ do note
-    - text String
-
-seen = text
+(type + Demo (is Box)
+  (prop + items (list RowData))
+  (prop + seen _ (= ""))
+  (fn-do + This _
+    (= items (call (of List RowData) (list (call RowData "a" "A") (call RowData "b" "B"))))
+  )
+  (fn-do + note _
+    (param text String)
+    (= seen text)
+  )
+)
 ```
 
 ```output
@@ -2164,52 +2336,55 @@ same closure
 
 ### A keyed collection controller passes its row builder's error to the code that builds it.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
--- build(List'String(["a", "b"]))
--- build(List'String(["a", "bad"]))
+(main
+  (print (call build (call (of List String) (list "a" "b"))))
+  (print (call build (call (of List String) (list "a" "bad"))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowFailure is Error
+(type + RowFailure (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do build String
-    - items [String]
+(fn-do + build String
+  (param items (list String))
+  (let region (call Box))
+  (let builder (as row-box (of MarkupCollectionRowBuilder String Box)))
+  (let key-builder (as row-key (of MarkupKeyBuilder String)))
+  (let held (catch (call (of MarkupCollectionController String Box) region items builder key-builder)))
+  (return
+    (match held
+      (case (: error Error)
+        (. error message)
+      )
+      (case (of MarkupCollectionController String Box)
+        (str (call count-children region) " rows")
+      )
+    )
+  )
+)
 
-. region = Box()
-. builder = row-box as MarkupCollectionRowBuilder'String'Box
-. key-builder = row-key as MarkupKeyBuilder'String
-. held = catch MarkupCollectionController'String'Box(region, items, builder, key-builder)
-= match held
-    | error Error
-        error.message
-    | MarkupCollectionController'String'Box
-        "${count-children(region)} rows"
+(fn-do + row-box Box (?! RowFailure)
+  (param row-item (of MarkupRowItem String))
+  (throw (call RowFailure (str "Cannot build " (. row-item item))) (if (== (. row-item item) "bad")))
+  (return (call TextBox (. row-item item)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do row-box Box ?! RowFailure
-    - row-item MarkupRowItem'String
+(fn-expr + row-key String
+  (param item String)
+  item
+)
 
-?! RowFailure("Cannot build ${row-item.item}")
-    if row-item.item == "bad"
-= TextBox(row-item.item)
-
-━━━━━━━━━━━━━━━━━━━━
-+ row-key String
-    - item String
-
-item
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 ```
 
 ```output
@@ -2219,29 +2394,32 @@ Cannot build bad
 
 ### A named element in the row of a tracked loop gives the property of its name the object.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. h = Holder()
--- h.inner != null
+(main
+  (let h (call Holder))
+  (print (!= (. h inner) null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
+(type + Holder (is Box)
+  (prop + items (list String) (= (call (of List String) (list "a"))))
+  (blank)
+  (prop _ inner (? Box))
+  (content
+    (<> This
+      (for (in cur (call snaps #items))
+        (<> Box (id: inner))
+      )
+    )
+  )
+)
 
-+ items [String] = List'String(["a"])
-
-_ inner Box?
-
-────────────────────
-<This
-    for cur in snaps(#items)
-        <Box inner
-
-━━━━━━━━━━━━━━━━━━━━
-_ snaps [[String]]
-    - items [String]
-
-* items
+(fn-expr _ snaps (list (list String))
+  (param items (list String))
+  (item items)
+)
 ```
 
 ```output
@@ -2250,69 +2428,68 @@ true
 
 ### A loop on a stream among the lines of an element in a keyed loop reads the row's item when an item comes.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = Panel()
-. first = panel.%first-child!.%first-child! as Item
-. second = first.%next-sibling! as Item
-first.clicked <- 3
-second.clicked <- 4
--- panel.seen
-panel.rename(0, "z")
-do new
-    -- (panel.%first-child!.%first-child! as Item).tag
-    first.clicked <- 5
-    -- panel.seen
+(main
+  (let panel (call Panel))
+  (let first (as (!! (. (!! (. panel %first-child)) %first-child)) Item))
+  (let second (as (!! (. first %next-sibling)) Item))
+  (<- (. first clicked) 3)
+  (<- (. second clicked) 4)
+  (print (. panel seen))
+  (call (. panel rename) 0 "z")
+  (do-new
+    (print (. (as (!! (. (!! (. panel %first-child)) %first-child)) Item) tag))
+    (<- (. first clicked) 5)
+    (print (. panel seen))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Draft is Tuple
+(type + Draft (is Tuple)
+  (prop + serial U64)
+  (prop + name String)
+  (fn-do + This _
+    (param serial _)
+    (param name _)
+  )
+)
 
-+ serial U64
-+ name String
+(type + Item (is Box)
+  (prop + tag _ (= ""))
+  (event + clicked Int)
+)
 
-────────────────────
-+ This
-    - serial
-    - name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Box
-
-+ tag = ""
-+ event clicked Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ seen = ""
-+ drafts [Draft] = [Draft(1, "a"), Draft(2, "b")]
-
-────────────────────
-
-<This
-    for draft in #drafts keyed by draft.serial
-        <Item
-            tag = draft.name
-            for n on clicked
-                note(draft.serial, n, draft.name)
-
-────────────────────
-+ do note
-    - serial U64
-    - n Int
-    - name String
-
-seen = seen ++ "$serial:$n:$name;"
-
-────────────────────
-+ do rename
-    - index Index
-    - name String
-
-. next = List'Draft(drafts)
-next[index] = Draft(next[index].serial, name)
-drafts = next
+(type + Panel (is Box)
+  (prop + seen _ (= ""))
+  (prop + drafts (list Draft) (= (list (call Draft 1 "a") (call Draft 2 "b"))))
+  (content
+    (<> This
+      (for (in draft #drafts (keyed-by (. draft serial)))
+        (<> Item
+          (= tag (. draft name))
+          (for (on n clicked)
+            (call note (. draft serial) n (. draft name))
+          )
+        )
+      )
+    )
+  )
+  (fn-do + note _
+    (param serial U64)
+    (param n Int)
+    (param name String)
+    (= seen (++ seen (str serial ":" n ":" name ";")))
+  )
+  (fn-do + rename _
+    (param index Index)
+    (param name String)
+    (let next (call (of List Draft) drafts))
+    (= ([] next index) (call Draft (. ([] next index) serial) name))
+    (= drafts next)
+  )
+)
 ```
 
 ```output
@@ -2323,52 +2500,57 @@ z
 
 ### In the body of an element of a keyed row, a name the row gives is the row's item, though the element has a member of the name too: the body reads the scope outside the element.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. lane = Lane()
-lane.items = [Row("a", true), Row("b", false), Row("c", true)]
--- dump(lane)
+(main
+  (let lane (call Lane))
+  (= (. lane items) (list (call Row "a" true) (call Row "b" false) (call Row "c" true)))
+  (print (call dump lane))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Row is Tuple
+(type + Row (is Tuple)
+  (prop + id String)
+  (prop + resizable Bool)
+)
 
-+ id String
-+ resizable Bool
+(type + ItemBox (is Box)
+  (prop + item Row (= (call Row "dflt" true)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ItemBox is Box
+(type + Lane (is Box)
+  (prop + items (list Row) (= (call (of List Row))))
+  (content
+    (<> This
+      (for (in item #items (keyed-by (. item id)))
+        (<> ItemBox
+          (= item (call Row (str "outer-" (. item id)) true))
+          (if (. item resizable)
+            (<> ItemBox
+              (= item item)
+            )
+          )
+        )
+      )
+    )
+  )
+)
 
-+ item Row = Row("dflt", true)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Lane is Box
-
-+ items [Row] = List'Row()
-
-────────────────────
-
-<This
-    for item in #items keyed by item.id
-        <ItemBox
-            item = Row("outer-${item.id}", true)
-            if item.resizable
-                <ItemBox
-                    item = item
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - lane Lane
-
-. parts [String] = List'String()
-. region = lane.%first-child!
-for row in region.children
-    . box = row as ItemBox
-    . inner = "-"
-    for child in box.children
-        inner = (child as ItemBox).item.id
-    parts += "${box.item.id}/$inner"
-= ",".join(parts)
+(fn-do + dump String
+  (param lane Lane)
+  (let parts (list String) (call (of List String)))
+  (let region (!! (. lane %first-child)))
+  (for (in row (. region children))
+    (let box (as row ItemBox))
+    (let inner "-")
+    (for (in child (. box children))
+      (= inner (. (as child ItemBox) item id))
+    )
+    (+= parts (str (. box item id) "/" inner))
+  )
+  (return (call (. "," join) parts))
+)
 ```
 
 ```output
@@ -2377,49 +2559,54 @@ outer-a/a,outer-b/-,outer-c/c
 
 ### A name in the body of a markup element is the local outside the element, though the element has an event of the name: a handler reads the local.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. root = Host()
-fire(root)
--- ", ".join(root.seen)
+(main
+  (let root (call Host))
+  (call fire root)
+  (print (call (. ", " join) (. root seen)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fire
-    - box Box
+(fn-do + fire _
+  (param box Box)
+  (for (in child (. box children))
+    (if (is child Action)
+      (<- (. (as child Action) click) 1)
+      (else
+        (call fire child)
+      )
+    )
+  )
+)
 
-for child in box.children
-    if child is Action
-        (child as Action).click <- 1
-    else
-        fire(child)
+(type + Delta (is Tuple)
+  (prop + text String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Delta is Tuple
+(type + Host (is Box)
+  (prop + seen (list String) (= (call (of List String))))
+  (prop _ changes _ (= (call (of List Delta) (list (call Delta "a") (call Delta "b")))))
+  (content
+    (<> This
+      (for (in change changes)
+        (<> Action
+          (= label (. change text))
+          (for (on event click)
+            (+= seen (. change text))
+          )
+        )
+      )
+    )
+  )
+)
 
-+ text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Host is Box
-
-+ seen [String] = List'String()
-_ changes = List'Delta([Delta("a"), Delta("b")])
-
-────────────────────
-
-<This
-    for change in changes
-        <Action
-            label = change.text
-            for event on click
-                seen += change.text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Action is Box
-
-+ label = ""
-+ event change Int
-+ event click Int
+(type + Action (is Box)
+  (prop + label _ (= ""))
+  (event + change Int)
+  (event + click Int)
+)
 ```
 
 ```output
@@ -2428,49 +2615,55 @@ a, b
 
 ### A name in the attribute of an element in the body of another is the local outside both, though the element around it has a property of the name.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. root = Host()
--- ",".join(labels(root))
+(main
+  (let root (call Host))
+  (print (call (. "," join) (call labels root)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do labels [String]
-    - box Box
+(fn-do + labels (list String)
+  (param box Box)
+  (let parts (list String) (call (of List String)))
+  (for (in child (. box children))
+    (if (is child Action)
+      (let label (. (as child Action) label))
+      (if (!= label "")
+        (+= parts label)
+      )
+    )
+    (for (in label (call labels child))
+      (+= parts label)
+    )
+  )
+  (return parts)
+)
 
-. parts [String] = List'String()
-for child in box.children
-    if child is Action
-        . label = (child as Action).label
-        if label != ""
-            parts += label
-    for label in labels(child)
-        parts += label
-= parts
+(type + Delta (is Tuple)
+  (prop + text String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Delta is Tuple
+(type + Host (is Box)
+  (prop _ changes _ (= (call (of List Delta) (list (call Delta "a") (call Delta "b")))))
+  (content
+    (<> This
+      (for (in change changes)
+        (<> Action
+          (<> Action
+            (= label (. change text))
+          )
+        )
+      )
+    )
+  )
+)
 
-+ text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Host is Box
-
-_ changes = List'Delta([Delta("a"), Delta("b")])
-
-────────────────────
-
-<This
-    for change in changes
-        <Action
-            <Action
-                label = change.text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Action is Box
-
-+ label = ""
-+ change = 0
+(type + Action (is Box)
+  (prop + label _ (= ""))
+  (prop + change _ (= 0))
+)
 ```
 
 ```output
@@ -2479,50 +2672,53 @@ a,b
 
 ### A line of an element in the row of a keyed loop region reads the row's item as it is, under no live action.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items keyed by item.id
-        <Box
-            if item.text != ""
-                <TextBox = item.text
-            <TextBox = item.id
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items) (keyed-by (. item id)))
+      (<> Box
+        (if (!= (. item text) "")
+          (<> TextBox (value: (. item text)))
+        )
+        (<> TextBox (value: (. item id)))
+      )
+    )
+  )
+  (blank)
+  (print (call dump demo))
+  (call (. demo items insert) (call RowData "y" "") 0)
+  (print (call dump demo))
+)
 
--- dump(demo)
-demo.items.insert(RowData("y", ""), 0)
--- dump(demo)
+(fn-do + dump String
+  (param demo Demo)
+  (let text "")
+  (for (in row (. (!! (. demo %first-child)) children))
+    (for (in child (. row children))
+      (+= text (str (. (as child TextBox) text) ";"))
+    )
+  )
+  (return text)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - demo Demo
+(type + RowData
+  (prop + id String)
+  (prop + text String)
+  (fn-do + This _
+    (param id String)
+    (param text String)
+  )
+)
 
-. text = ""
-for row in demo.%first-child!.children
-    for child in row.children
-        text += "${(child as TextBox).text};"
-= text
-
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
-
-+ id String
-+ text String
-
-────────────────────
-+ This
-    - id String
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [RowData]
-
-────────────────────
-+ This
-
-items = List'RowData([RowData("x", "X")])
+(type + Demo (is Box)
+  (prop + items (list RowData))
+  (fn-do + This _
+    (= items (call (of List RowData) (list (call RowData "x" "X"))))
+  )
+)
 ```
 
 ```output
@@ -2532,59 +2728,56 @@ y;X;x;
 
 ### An item of a keyed loop read untracked for its key and tracked in its body updates when the tracked property changes.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.listed(demo.#count) keyed by item.id
-        <TextBox text = label(item.#text)
--- dump(demo)
-demo.items[0].text = "changed"
--- dump(demo)
+(main
+  (<> Demo (id: demo)
+    (for (in item (call (. demo listed) (. demo #count)) (keyed-by (. item id)))
+      (<> TextBox (id: text) (value: (call label (. item #text))))
+    )
+  )
+  (print (call dump demo))
+  (= (. ([] (. demo items) 0) text) "changed")
+  (print (call dump demo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ label String
-    - text String
+(fn-expr + label String
+  (param text String)
+  (str "<" text ">")
+)
 
-"<$text>"
+(fn-expr + dump String
+  (param demo Demo)
+  (str first-text ":" last-text)
+  (where
+    (lazy region (!! (. demo %first-child)))
+    (lazy first-text (. (as (!! (. region %first-child)) TextBox) text))
+    (lazy last-text (. (as (!! (. region %last-child)) TextBox) text))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - demo Demo
+(type + Demo (is Box)
+  (prop + items (list RowData))
+  (prop + count _ (= 0))
+  (fn-expr + listed (list RowData)
+    (param n Int)
+    items
+  )
+  (fn-do + This _
+    (= items (call (of List RowData) (list (call RowData "a" "A") (call RowData "b" "B"))))
+  )
+)
 
-"$first-text:$last-text"
-
-.. region = demo.%first-child!
-.. first-text = (region.%first-child! as TextBox).text
-.. last-text = (region.%last-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [RowData]
-+ count = 0
-
-────────────────────
-+ listed [RowData]
-    - n Int
-
-items
-
-────────────────────
-+ This
-
-items = List'RowData([RowData("a", "A"), RowData("b", "B")])
-
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
-
-+ id String
-+ text String
-
-────────────────────
-+ This
-    - id String
-    - text String
+(type + RowData
+  (prop + id String)
+  (prop + text String)
+  (fn-do + This _
+    (param id String)
+    (param text String)
+  )
+)
 ```
 
 ```output
@@ -2594,39 +2787,42 @@ items = List'RowData([RowData("a", "A"), RowData("b", "B")])
 
 ### A handler in the row of a loop, in the body of an element written among a module's statements, assigns a property of that element through the element's name.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items keyed by item
-        <Pinger
-            for n on pings
-                demo.chosen = item
-                demo.total += n
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items) (keyed-by item))
+      (<> Pinger
+        (for (on n pings)
+          (= (. demo chosen) item)
+          (+= (. demo total) n)
+        )
+      )
+    )
+  )
+  (blank)
+  (let first (as (!! (. (!! (. demo %first-child)) %first-child)) Pinger))
+  (let second (as (!! (. first %next-sibling)) Pinger))
+  (<- (. first pings) 2)
+  (print (str (. demo chosen) ":" (. demo total)))
+  (<- (. second pings) 5)
+  (print (str (. demo chosen) ":" (. demo total)))
+)
 
-. first = demo.%first-child!.%first-child! as Pinger
-. second = first.%next-sibling! as Pinger
-first.pings <- 2
--- "${demo.chosen}:${demo.total}"
-second.pings <- 5
--- "${demo.chosen}:${demo.total}"
+(type + Pinger (is Box)
+  (event + pings Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pinger is Box
-
-+ event pings Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [String]
-+ chosen = "none"
-+ total = 0
-
-────────────────────
-+ This
-
-items = List'String(["a", "b"])
+(type + Demo (is Box)
+  (prop + items (list String))
+  (prop + chosen _ (= "none"))
+  (prop + total _ (= 0))
+  (fn-do + This _
+    (= items (call (of List String) (list "a" "b")))
+  )
+)
 ```
 
 ```output
@@ -2636,23 +2832,28 @@ b:7
 
 ### A value given again where the body of an element is written, as an argument or an attribute of an element there, reads a member of an element around by its name alone, tracked.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    <TextBox = demo.#chosen
-    <Box
-        <TextBox
-            text = "<${demo.#chosen}>"
+(main
+  (<> Demo (id: demo)
+    (<> TextBox (value: (. demo #chosen)))
+    (<> Box
+      (<> TextBox
+        (= text (str "<" (. demo #chosen) ">"))
+      )
+    )
+  )
+  (blank)
+  (= (. demo chosen) "x")
+  (print (. (as (!! (. demo %first-child)) TextBox) text))
+  (print (. (as (!! (. (!! (. demo %last-child)) %first-child)) TextBox) text))
+)
 
-demo.chosen = "x"
--- (demo.%first-child! as TextBox).text
--- (demo.%last-child!.%first-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ chosen = "none"
+(type + Demo (is Box)
+  (prop + chosen _ (= "none"))
+)
 ```
 
 ```output
@@ -2662,63 +2863,66 @@ x
 
 ### A markup loop over an optional source has no rows while the source holds none and follows it once it holds a collection, as when the source initializes after its markup.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. demo = Demo()
--- dump(demo)
-demo.picker.picked = 3
--- dump(demo)
-demo.picker.picked = null
--- dump(demo)
+(main
+  (let demo (call Demo))
+  (print (call dump demo))
+  (= (. demo picker picked) 3)
+  (print (call dump demo))
+  (= (. demo picker picked) null)
+  (print (call dump demo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - demo Demo
+(fn-do + dump String
+  (param demo Demo)
+  (let region (!! (. demo %first-child)))
+  (let count (call count-children region))
+  (if (== count 0)
+    (return "0")
+  )
+  (return (str count ":" (. (as (!! (. region %first-child)) TextBox) text) ":" (. (as (!! (. region %last-child)) TextBox) text)))
+)
 
-. region = demo.%first-child!
-. count = count-children(region)
-if count == 0
-    = "0"
-= "$count:${(region.%first-child! as TextBox).text}:${(region.%last-child! as TextBox).text}"
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
+(fn-do + labels (? (list String))
+  (param chosen (? Size))
+  (if (not chosen)
+    (return null)
+  )
+  (let rows (list String))
+  (for (in index (..< 0 chosen))
+    (+= rows (str "row " index))
+  )
+  (return rows)
+)
 
-. count = 0
-for child in box.children
-    count += 1
-= count
+(type + Demo (is Box)
+  (prop + chosen (? Size) (= (. picker #picked)))
+  (prop + rows (? (list String)) (= (call labels #chosen)))
+  (content
+    (<> This
+      (for (in row #rows (keyed-by row))
+        (<> TextBox (value: row))
+      )
+      (<> Picker (id: picker))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do labels [String]?
-    - chosen Size?
-
-if !chosen
-    = null
-. rows [String]
-for index in 0 .. < chosen
-    rows += "row $index"
-= rows
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ chosen Size? = picker.#picked
-+ rows [String]? = labels(#chosen)
-
-────────────────────
-
-<This
-    for row in #rows keyed by row
-        <TextBox = row
-    <Picker picker
-
-━━━━━━━━━━━━━━━━━━━━
-+ Picker is Box
-
-+ picked Size? = 2
+(type + Picker (is Box)
+  (prop + picked (? Size) (= 2))
+)
 ```
 
 ```output
@@ -2729,29 +2933,34 @@ for index in 0 .. < chosen
 
 ### An unkeyed markup loop over an optional collection follows it as a keyed one does.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items [String]? = List'String(["a", "b"])
+(main
+  (let items (? (list String)) (call (of List String) (list "a" "b")))
+  (blank)
+  (<> Box (id: box)
+    (for (in item #items)
+      (<> TextBox (value: item))
+    )
+  )
+  (blank)
+  (print (call dump box))
+  (= items null)
+  (print (call dump box))
+  (= items (call (of List String) (list "c")))
+  (print (call dump box))
+)
 
-<Box box
-    for item in #items
-        <TextBox = item
-
--- dump(box)
-items = null
--- dump(box)
-items = List'String(["c"])
--- dump(box)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. texts [String]
-for child in box.%first-child!.children
-    texts += (child as TextBox).text
-= "${texts.length}:${",".join(texts)}"
+(fn-do + dump String
+  (param box Box)
+  (let texts (list String))
+  (for (in child (. (!! (. box %first-child)) children))
+    (+= texts (. (as child TextBox) text))
+  )
+  (return (str (. texts length) ":" (call (. "," join) texts)))
+)
 ```
 
 ```output
@@ -2762,42 +2971,46 @@ for child in box.%first-child!.children
 
 ### An optional container that converts to the stream a markup loop reads is converted while it holds one, as a container that is never null is.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items Iterable'String? = letters()
+(main
+  (let items (? (of Iterable String)) (call letters))
+  (blank)
+  (<> Box (id: box)
+    (for (in item #items)
+      (<> TextBox (value: item))
+    )
+  )
+  (blank)
+  (call yield-once)
+  (print (call dump box))
+  (= items null)
+  (print (call dump box))
+)
 
-<Box box
-    for item in #items
-        <TextBox = item
+(fn-do + letters (of Iterable String)
+  (yield "a")
+  (yield "b")
+)
 
-yield-once()
--- dump(box)
-items = null
--- dump(box)
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do letters Iterable'String
-
-<= "a"
-<= "b"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
-
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. texts [String]
-for child in box.%first-child!.children
-    texts += (child as TextBox).text
-= "${texts.length}:${",".join(texts)}"
+(fn-do + dump String
+  (param box Box)
+  (let texts (list String))
+  (for (in child (. (!! (. box %first-child)) children))
+    (+= texts (. (as child TextBox) text))
+  )
+  (return (str (. texts length) ":" (call (. "," join) texts)))
+)
 ```
 
 ```output
@@ -2807,46 +3020,55 @@ for child in box.%first-child!.children
 
 ### A loop over a collection read without tracking is no region, so it has no rows to key.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items = List'String(["a"])
-
-<Box box
-    for item in items keyed by item
-        <TextBox = item
+(main
+  (let items (call (of List String) (list "a")))
+  (blank)
+  (<> Box (id: box)
+    (for (in item items (keyed-by item))
+      (<> TextBox (value: item))
+    )
+  )
+)
 ```
 
 ```output
 Exception: keyed by is only valid on markup loops
-<no file:7>
-        for item in items keyed by item
-                         ^^^^^^^^^^^^^^
+<no file:9>
+        (for (in item items (keyed-by item))
+                            ^^^^^^^^^^^^^^^
 ```
 
 ### A tracked property tested before a row's item is read in the same expression still holds a value after it.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
+(main
+  (<> Demo (id: demo))
+  (blank)
+  (print (. (as (!! (. (!! (. demo %first-child)) %first-child)) TextBox) text))
+  (= (. demo limit) 1)
+  (print (. (as (!! (. (!! (. demo %first-child)) %first-child)) TextBox) text))
+)
 
--- (demo.%first-child!.%first-child! as TextBox).text
-demo.limit = 1
--- (demo.%first-child!.%first-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ limit Int?
-+ rows = [2]
-
-────────────────────
-
-<This
-    for row in #rows keyed by row
-        <TextBox
-            text = "${#limit != null && row >= #limit}"
+(type + Demo (is Box)
+  (prop + limit (? Int))
+  (prop + rows _ (= (list 2)))
+  (content
+    (<> This
+      (for (in row #rows (keyed-by row))
+        (<> TextBox
+          (= text (str (and (!= #limit null) (>= row #limit))))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2856,73 +3078,71 @@ true
 
 ### A keyed row that departs stays where it was until it has gone, and revives when its key returns.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
+(prop + log _ (= (call (of List String))))
+(blank)
 
-+ log = List'String()
+(main
+  (<> Demo (id: demo)
+    (for (in name (. demo #names) (keyed-by name))
+      (<> Leaver
+        (= name name)
+      )
+    )
+  )
+  (blank)
+  (print (call dump demo))
+  (call (. demo names remove) 1)
+  (print (call dump demo))
+  (call (. demo names insert) "b" 1)
+  (print (call dump demo))
+  (call (. demo names remove) 2)
+  (print (call dump demo))
+  (call markup-departed (!! (. (!! (. demo %first-child)) %last-child)))
+  (print (call dump demo))
+  (print (call (. " " join) log))
+)
 
-<Demo demo
-    for name in demo.#names keyed by name
-        <Leaver
-            name = name
+(fn-do + dump String
+  (param demo Demo)
+  (let parts (call (of List String)))
+  (for (in child (. (!! (. demo %first-child)) children))
+    (let leaver (as child Leaver))
+    (if (. leaver is-leaving)
+      (+= parts (str (. leaver name) "*"))
+      (else
+        (+= parts (. leaver name))
+      )
+    )
+  )
+  (return (call (. " " join) parts))
+)
 
--- dump(demo)
-demo.names.remove(1)
--- dump(demo)
-demo.names.insert("b", 1)
--- dump(demo)
-demo.names.remove(2)
--- dump(demo)
-markup-departed(demo.%first-child!.%last-child!)
--- dump(demo)
--- " ".join(log)
+(type + Demo (is Box)
+  (prop + names _ (= (call (of List String) (list "a" "b" "c"))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - demo Demo
-
-. parts = List'String()
-for child in demo.%first-child!.children
-    . leaver = child as Leaver
-    if leaver.is-leaving
-        parts += "${leaver.name}*"
-    else
-        parts += leaver.name
-= " ".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ names = List'String(["a", "b", "c"])
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaver is Box
-
-+ name = ""
-+ is-leaving = false
-
-────────────────────
-+ This
-
-log += "build"
-
-────────────────────
-+ do markup-depart Bool
-
-is-leaving = true
-= true
-
-────────────────────
-+ do markup-revive
-
-is-leaving = false
-
-────────────────────
-+ do close
-
-log += "close:$name"
-super.close()
+(type + Leaver (is Box)
+  (prop + name _ (= ""))
+  (prop + is-leaving _ (= false))
+  (fn-do + This _
+    (+= log "build")
+  )
+  (fn-do + markup-depart Bool
+    (= is-leaving true)
+    (return true)
+  )
+  (fn-do + markup-revive _
+    (= is-leaving false)
+  )
+  (fn-do + close _
+    (+= log (str "close:" name))
+    (call (. super close))
+  )
+)
 ```
 
 ```output
@@ -2936,75 +3156,72 @@ build build build close:c
 
 ### Making the rows of a loop is not tracked by the loop's action. A row that reads a style-sheet slot while it is made does not run the loop again when that read settles after mounting.
 
-```yumi
-/core/markup
-/core/style
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/style)
+(import /core/tests/support/markup-fixtures)
+(blank)
+(prop + builds _ (= 0))
+(blank)
 
-+ builds = 0
+(main
+  (<> Demo (id: demo))
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (= (. demo items) (call (of List I64) (list 1 2)))
+  (call (. demo markup-batch-queue checkpoint))
+  (print (str "builds=" builds " pending=" (. demo markup-batch-queue actions length)))
+)
 
-<Demo demo
+(type + Demo (is Box)
+  (implements MarkupRootElement)
+  (using AppTheme)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (prop + items _ (= (call (of List I64) (list 1))))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+  (content
+    (<> This
+      (for (in item #items)
+        (<> Row
+          (= value item)
+        )
+      )
+    )
+  )
+)
 
-demo.markup-batch-queue.checkpoint()
-demo.items = List'I64([1, 2])
-demo.markup-batch-queue.checkpoint()
--- "builds=$builds pending=${demo.markup-batch-queue.actions.length}"
+(style AppTheme
+  (prop + bright I64 (= 11))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-    is MarkupRootElement
-    using AppTheme
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
-+ items = List'I64([1])
+(fn-expr + row-ink I64
+  (param row Row)
+  (. row $bright)
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-────────────────────
-
-<This
-    for item in #items
-        <Row
-            value = item
-
-━━━━━━━━━━━━━━━━━━━━
-• AppTheme
-
-+ bright I64 = 11
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ row-ink I64
-    - row Row
-
-row.$bright
-
-━━━━━━━━━━━━━━━━━━━━
-+ Row is Box
-    using AppTheme
-    using TextStyle
-
-+ value I64
-+ bright-at-build I64
-
-────────────────────
-+ This
-
-builds += 1
-bright-at-build = $bright
-
-────────────────────
-
-<This
-    ink = row-ink(this) + #value
+(type + Row (is Box)
+  (using AppTheme)
+  (using TextStyle)
+  (prop + value I64)
+  (prop + bright-at-build I64)
+  (fn-do + This _
+    (+= builds 1)
+    (= bright-at-build $bright)
+  )
+  (content
+    (<> This
+      (= ink (+ (call row-ink this) #value))
+    )
+  )
+)
 ```
 
 ```output
@@ -3013,28 +3230,33 @@ builds=3 pending=0
 
 ### A function written where a list is declared adds to it and takes from it, and a loop over the list follows.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items = ["a", "b"]
-<Box box
-    for item in #items
-        <TextBox = item
-. add = => do items += "c"
-. take = => do items -= "a"
-add()
--- texts(box)
-take()
--- texts(box)
+(main
+  (let items (list "a" "b"))
+  (<> Box (id: box)
+    (for (in item #items)
+      (<> TextBox (value: item))
+    )
+  )
+  (let add (=> () :do (+= items "c")))
+  (let take (=> () :do (-= items "a")))
+  (call add)
+  (print (call texts box))
+  (call take)
+  (print (call texts box))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do texts String
-    - box Box
-
-. seen [String]
-for child in box.%first-child!.children
-    seen += (child as TextBox).text
-= ", ".join(seen)
+(fn-do + texts String
+  (param box Box)
+  (let seen (list String))
+  (for (in child (. (!! (. box %first-child)) children))
+    (+= seen (. (as child TextBox) text))
+  )
+  (return (call (. ", " join) seen))
+)
 ```
 
 ```output
@@ -3044,32 +3266,38 @@ b, c
 
 ### A handler in the row of a keyed loop stores to the list the loop reads, declared where the loop is written, with the row's item in what it stores, and the loop follows.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items = ["a", "b", "c"]
-<Box box
-    for item in #items keyed by item
-        <Pinger
-            text = item
-            for n on pings
-                items = [item, "${item}${n}"]
-(box.%first-child!.%last-child! as Pinger).pings <- 2
--- texts(box)
+(main
+  (let items (list "a" "b" "c"))
+  (<> Box (id: box)
+    (for (in item #items (keyed-by item))
+      (<> Pinger
+        (= text item)
+        (for (on n pings)
+          (= items (list item (str item n)))
+        )
+      )
+    )
+  )
+  (<- (. (as (!! (. (!! (. box %first-child)) %last-child)) Pinger) pings) 2)
+  (print (call texts box))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pinger is TextBox
+(type + Pinger (is TextBox)
+  (event + pings Int)
+)
 
-+ event pings Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ do texts String
-    - box Box
-
-. seen [String]
-for child in box.%first-child!.children
-    seen += (child as TextBox).text
-= ", ".join(seen)
+(fn-do + texts String
+  (param box Box)
+  (let seen (list String))
+  (for (in child (. (!! (. box %first-child)) children))
+    (+= seen (. (as child TextBox) text))
+  )
+  (return (call (. ", " join) seen))
+)
 ```
 
 ```output
@@ -3078,40 +3306,44 @@ c, c2
 
 ### A handler in the row of a keyed loop reads the row's item in the value of an assignment written with an operator other than `=` when it runs, the item the row holds then, and the assignment does not run again as the item changes.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items = [Entry("a", "A"), Entry("b", "B")]
-. seen [String]
-<Box box
-    for item in #items keyed by item.id
-        <Pinger
-            for n on pings
-                seen += item.text
-. first = box.%first-child!.%first-child! as Pinger
-first.pings <- 1
-items[0] = Entry("a", "Z")
-. again = box.%first-child!.%first-child! as Pinger
--- if again == first then "kept" else "replaced"
--- ", ".join(seen)
-again.pings <- 1
--- ", ".join(seen)
+(main
+  (let items (list (call Entry "a" "A") (call Entry "b" "B")))
+  (let seen (list String))
+  (<> Box (id: box)
+    (for (in item #items (keyed-by (. item id)))
+      (<> Pinger
+        (for (on n pings)
+          (+= seen (. item text))
+        )
+      )
+    )
+  )
+  (let first (as (!! (. (!! (. box %first-child)) %first-child)) Pinger))
+  (<- (. first pings) 1)
+  (= ([] items 0) (call Entry "a" "Z"))
+  (let again (as (!! (. (!! (. box %first-child)) %first-child)) Pinger))
+  (print (if-expr (== again first) "kept" "replaced"))
+  (print (call (. ", " join) seen))
+  (<- (. again pings) 1)
+  (print (call (. ", " join) seen))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pinger is Box
+(type + Pinger (is Box)
+  (event + pings Int)
+)
 
-+ event pings Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Entry
-
-+ id String
-+ text String
-
-────────────────────
-+ This
-    - id String
-    - text String
+(type + Entry
+  (prop + id String)
+  (prop + text String)
+  (fn-do + This _
+    (param id String)
+    (param text String)
+  )
+)
 ```
 
 ```output
@@ -3122,38 +3354,42 @@ A, Z
 
 ### A closure an attribute of a row of a keyed loop gives takes the row's item from the list the loop reads, and the loop follows.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. items = ["a", "b", "c"]
-<Box box
-    for item in #items keyed by item
-        <Item
-            text = item
-            run = => do items -= item
-(box.%first-child!.%first-child!.%next-sibling! as Item).fire()
--- texts(box)
+(main
+  (let items (list "a" "b" "c"))
+  (<> Box (id: box)
+    (for (in item #items (keyed-by item))
+      (<> Item
+        (= text item)
+        (= run (=> () :do (-= items item)))
+      )
+    )
+  )
+  (call (. (as (!! (. (!! (. (!! (. box %first-child)) %first-child)) %next-sibling)) Item) fire))
+  (print (call texts box))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is TextBox
+(type + Item (is TextBox)
+  (prop + run (? Doer))
+  (fn-do + fire _
+    (let callback run)
+    (if callback
+      (call callback)
+    )
+  )
+)
 
-+ run Doer?
-
-────────────────────
-+ do fire
-
-. callback = run
-if callback
-    callback()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do texts String
-    - box Box
-
-. seen [String]
-for child in box.%first-child!.children
-    seen += (child as TextBox).text
-= ", ".join(seen)
+(fn-do + texts String
+  (param box Box)
+  (let seen (list String))
+  (for (in child (. (!! (. box %first-child)) children))
+    (+= seen (. (as child TextBox) text))
+  )
+  (return (call (. ", " join) seen))
+)
 ```
 
 ```output
@@ -3162,53 +3398,54 @@ a, c
 
 ### A keyed row that is a region keeps its live `if` following the item its key holds now.
 
-```yumi
-/core/markup
+```brix
+(import /core/markup)
+(blank)
 
-. todos = List'Todo([Todo("a", false), Todo("b", true)])
-<Board board
-    for todo in #todos keyed by todo.name
-        <Text = todo.name
-        if todo.#done
-            <Text = "done"
-board.show()
-todos[0].done = true
-board.show()
-todos = List'Todo([Todo("a", false), Todo("b", true)])
-board.show()
-todos[1].done = false
-board.show()
+(main
+  (let todos (call (of List Todo) (list (call Todo "a" false) (call Todo "b" true))))
+  (<> Board (id: board)
+    (for (in todo #todos (keyed-by (. todo name)))
+      (<> Text (value: (. todo name)))
+      (if (. todo #done)
+        (<> Text (value: "done"))
+      )
+    )
+  )
+  (call (. board show))
+  (= (. ([] todos 0) done) true)
+  (call (. board show))
+  (= todos (call (of List Todo) (list (call Todo "a" false) (call Todo "b" true))))
+  (call (. board show))
+  (= (. ([] todos 1) done) false)
+  (call (. board show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Todo
+(type + Todo
+  (prop + name String)
+  (prop + done Bool)
+  (fn-do + This _
+    (param name _)
+    (param done _)
+  )
+)
 
-+ name String
-+ done Bool
+(type + Text (is MarkupNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-────────────────────
-+ This
-    - name
-    - done
-
-━━━━━━━━━━━━━━━━━━━━
-+ Text is MarkupNode
-
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Board is MarkupNode
-
-────────────────────
-+ do show
-
-. parts = List'String()
-for child in children-of'Text()
-    parts += child.text
--- ", ".join(parts)
+(type + Board (is MarkupNode)
+  (fn-do + show _
+    (let parts (call (of List String)))
+    (for (in child (call (of children-of Text)))
+      (+= parts (. child text))
+    )
+    (print (call (. ", " join) parts))
+  )
+)
 ```
 
 ```output
@@ -3220,53 +3457,65 @@ a, b
 
 ### An if or a match that is a line of a keyed row reads the row's item tracked, so it selects its arm again when the key comes to hold another item.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. places = List'Place([Place("a", true), Place("b", false)])
+(main
+  (let places (call (of List Place) (list (call Place "a" true) (call Place "b" false))))
+  (blank)
+  (<> Box (id: root)
+    (for (in place #places (keyed-by (. place name)))
+      (if (. place flag)
+        (<> TextBox (value: (str (. place name) " on")))
+        (else
+          (<> TextBox (value: (str (. place name) " off")))
+        )
+      )
+    )
+  )
+  (<> Box (id: kinds)
+    (for (in place #places (keyed-by (. place name)))
+      (match (. place flag)
+        (case= true
+          (<> TextBox (value: "yes"))
+        )
+        (case= false
+          (<> TextBox (value: "no"))
+        )
+      )
+    )
+  )
+  (blank)
+  (print (str (call dump root) " | " (call dump kinds)))
+  (= places (call (of List Place) (list (call Place "a" false) (call Place "b" true))))
+  (print (str (call dump root) " | " (call dump kinds)))
+  (+= places (call Place "c" true))
+  (print (str (call dump root) " | " (call dump kinds)))
+)
 
-<Box root
-    for place in #places keyed by place.name
-        if place.flag
-            <TextBox = "${place.name} on"
-        else
-            <TextBox = "${place.name} off"
-<Box kinds
-    for place in #places keyed by place.name
-        match place.flag
-            |= true
-                <TextBox = "yes"
-            |= false
-                <TextBox = "no"
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
--- "${dump(root)} | ${dump(kinds)}"
-places = List'Place([Place("a", false), Place("b", true)])
--- "${dump(root)} | ${dump(kinds)}"
-places += Place("c", true)
--- "${dump(root)} | ${dump(kinds)}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Place
-
-+ name String
-+ flag Bool
-
-────────────────────
-+ This
-    - name
-    - flag
+(type + Place
+  (prop + name String)
+  (prop + flag Bool)
+  (fn-do + This _
+    (param name _)
+    (param flag _)
+  )
+)
 ```
 
 ```output
@@ -3277,47 +3526,53 @@ for child in box.children
 
 ### So does one in a row of a loop in a function's markup.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-run()
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (let places (call (of List Place) (list (call Place "a" true) (call Place "b" false))))
+  (<> Box (id: root)
+    (for (in place #places (keyed-by (. place name)))
+      (if (. place flag)
+        (<> TextBox (value: (str (. place name) " on")))
+        (else
+          (<> TextBox (value: (str (. place name) " off")))
+        )
+      )
+    )
+  )
+  (print (call dump root))
+  (= places (call (of List Place) (list (call Place "a" false) (call Place "b" true))))
+  (print (call dump root))
+)
 
-. places = List'Place([Place("a", true), Place("b", false)])
-<Box root
-    for place in #places keyed by place.name
-        if place.flag
-            <TextBox = "${place.name} on"
-        else
-            <TextBox = "${place.name} off"
--- dump(root)
-places = List'Place([Place("a", false), Place("b", true)])
--- dump(root)
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Place
-
-+ name String
-+ flag Bool
-
-────────────────────
-+ This
-    - name
-    - flag
+(type + Place
+  (prop + name String)
+  (prop + flag Bool)
+  (fn-do + This _
+    (param name _)
+    (param flag _)
+  )
+)
 ```
 
 ```output
@@ -3327,46 +3582,53 @@ for child in box.children
 
 ### A named element in an arm of an if that is a line of a keyed row is made by the arm.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. places = List'Place([Place("a", true), Place("b", false)])
+(main
+  (let places (call (of List Place) (list (call Place "a" true) (call Place "b" false))))
+  (blank)
+  (<> Box (id: root)
+    (for (in place #places (keyed-by (. place name)))
+      (if (. place flag)
+        (<> TextBox (id: on) (value: (str (. place name) " on")))
+        (else
+          (<> TextBox (id: off) (value: (str (. place name) " off")))
+        )
+      )
+    )
+  )
+  (blank)
+  (print (call dump root))
+  (= places (call (of List Place) (list (call Place "a" false) (call Place "b" true))))
+  (print (call dump root))
+  (+= places (call Place "c" true))
+  (print (call dump root))
+)
 
-<Box root
-    for place in #places keyed by place.name
-        if place.flag
-            <TextBox on = "${place.name} on"
-        else
-            <TextBox off = "${place.name} off"
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
--- dump(root)
-places = List'Place([Place("a", false), Place("b", true)])
--- dump(root)
-places += Place("c", true)
--- dump(root)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Place
-
-+ name String
-+ flag Bool
-
-────────────────────
-+ This
-    - name
-    - flag
+(type + Place
+  (prop + name String)
+  (prop + flag Bool)
+  (fn-do + This _
+    (param name _)
+    (param flag _)
+  )
+)
 ```
 
 ```output
@@ -3377,44 +3639,50 @@ for child in box.children
 
 ### A row that is a region makes the elements it names where it starts, so a later line reads them.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. places = List'Place([Place("a", true), Place("b", false)])
+(main
+  (let places (call (of List Place) (list (call Place "a" true) (call Place "b" false))))
+  (blank)
+  (<> Box (id: root)
+    (for (in place #places (keyed-by (. place name)))
+      (<> TextBox (id: first) (value: (. place name)))
+      (<> TextBox (value: (str (. first text) "!")))
+      (if (. place flag)
+        (<> TextBox (id: inner) (value: "on"))
+      )
+    )
+  )
+  (blank)
+  (print (call dump root))
+  (+= places (call Place "c" true))
+  (print (call dump root))
+)
 
-<Box root
-    for place in #places keyed by place.name
-        <TextBox first = place.name
-        <TextBox = "${first.text}!"
-        if place.flag
-            <TextBox inner = "on"
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
--- dump(root)
-places += Place("c", true)
--- dump(root)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Place
-
-+ name String
-+ flag Bool
-
-────────────────────
-+ This
-    - name
-    - flag
+(type + Place
+  (prop + name String)
+  (prop + flag Bool)
+  (fn-do + This _
+    (param name _)
+    (param flag _)
+  )
+)
 ```
 
 ```output
@@ -3424,48 +3692,54 @@ for child in box.children
 
 ### So does a row of a loop in a function's markup, with named elements in the arms of a plain if.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-run()
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (let places (call (of List Place) (list (call Place "a" true) (call Place "b" false))))
+  (<> Box (id: root)
+    (for (in place #places)
+      (if (. place flag)
+        (<> TextBox (id: on) (value: (str (. place name) " on")))
+        (else
+          (<> TextBox (id: off) (value: (str (. place name) " off")))
+        )
+      )
+      (<> TextBox (value: "|"))
+    )
+  )
+  (print (call dump root))
+  (+= places (call Place "c" false))
+  (print (call dump root))
+)
 
-. places = List'Place([Place("a", true), Place("b", false)])
-<Box root
-    for place in #places
-        if place.flag
-            <TextBox on = "${place.name} on"
-        else
-            <TextBox off = "${place.name} off"
-        <TextBox = "|"
--- dump(root)
-places += Place("c", false)
--- dump(root)
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Place
-
-+ name String
-+ flag Bool
-
-────────────────────
-+ This
-    - name
-    - flag
+(type + Place
+  (prop + name String)
+  (prop + flag Bool)
+  (fn-do + This _
+    (param name _)
+    (param flag _)
+  )
+)
 ```
 
 ```output
@@ -3475,46 +3749,54 @@ for child in box.children
 
 ### A row may hold a match, and a live match selects its arm again in each row.
 
-```yumi
-/core/markup
+```brix
+(import /core/markup)
+(blank)
 
-. items = List'Int([1, 2])
-. mode = "a"
-<Board board
-    for n in #items
-        match n
-            | 1
-                <Text = "one"
-            | _
-                <Text = "many"
-        match #mode
-            | "a"
-                <Text = "$n:a"
-            | _
-                <Text = "$n:other"
-board.show()
-mode = "b"
-board.show()
+(main
+  (let items (call (of List Int) (list 1 2)))
+  (let mode "a")
+  (<> Board (id: board)
+    (for (in n #items)
+      (match n
+        (case 1
+          (<> Text (value: "one"))
+        )
+        (case _
+          (<> Text (value: "many"))
+        )
+      )
+      (match #mode
+        (case "a"
+          (<> Text (value: (str n ":a")))
+        )
+        (case _
+          (<> Text (value: (str n ":other")))
+        )
+      )
+    )
+  )
+  (call (. board show))
+  (= mode "b")
+  (call (. board show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Text is MarkupNode
+(type + Text (is MarkupNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Board is MarkupNode
-
-────────────────────
-+ do show
-
-. parts = List'String()
-for child in children-of'Text()
-    parts += child.text
--- ", ".join(parts)
+(type + Board (is MarkupNode)
+  (fn-do + show _
+    (let parts (call (of List String)))
+    (for (in child (call (of children-of Text)))
+      (+= parts (. child text))
+    )
+    (print (call (. ", " join) parts))
+  )
+)
 ```
 
 ```output
@@ -3524,55 +3806,54 @@ one, 1:other, many, 2:other
 
 ### A `when` clause on a loop that follows state is tested in each row on its own, as the item changes.
 
-```yumi
-/core/markup
+```brix
+(import /core/markup)
+(blank)
 
-. todos = List'Todo([Todo("a", false), Todo("b", true), Todo("c", false)])
-<Board board
-    for todo in #todos when !todo.#done
-        <Text = todo.name
-board.show()
-todos[1].done = false
-board.show()
-todos[0].done = true
-board.show()
-todos += Todo("d", true)
-board.show()
-todos[3].done = false
-board.show()
+(main
+  (let todos (call (of List Todo) (list (call Todo "a" false) (call Todo "b" true) (call Todo "c" false))))
+  (<> Board (id: board)
+    (for (in todo #todos (when (not (. todo #done))))
+      (<> Text (value: (. todo name)))
+    )
+  )
+  (call (. board show))
+  (= (. ([] todos 1) done) false)
+  (call (. board show))
+  (= (. ([] todos 0) done) true)
+  (call (. board show))
+  (+= todos (call Todo "d" true))
+  (call (. board show))
+  (= (. ([] todos 3) done) false)
+  (call (. board show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Todo
+(type + Todo
+  (prop + name String)
+  (prop + done Bool)
+  (fn-do + This _
+    (param name _)
+    (param done _)
+  )
+)
 
-+ name String
-+ done Bool
+(type + Text (is MarkupNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+    (print (str "  make " text))
+  )
+)
 
-────────────────────
-+ This
-    - name
-    - done
-
-━━━━━━━━━━━━━━━━━━━━
-+ Text is MarkupNode
-
-+ text String
-
-────────────────────
-+ This
-    - text
-
--- "  make $text"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Board is MarkupNode
-
-────────────────────
-+ do show
-
-. parts = List'String()
-for child in children-of'Text()
-    parts += child.text
--- ", ".join(parts)
+(type + Board (is MarkupNode)
+  (fn-do + show _
+    (let parts (call (of List String)))
+    (for (in child (call (of children-of Text)))
+      (+= parts (. child text))
+    )
+    (print (call (. ", " join) parts))
+  )
+)
 ```
 
 ```output
@@ -3589,50 +3870,50 @@ b, c, d
 
 ### A keyed row tests its `when` clause again when its key comes to hold another item.
 
-```yumi
-/core/markup
+```brix
+(import /core/markup)
+(blank)
 
-. todos = List'Todo([Todo("a", false), Todo("b", true)])
-<Board board
-    for todo in #todos keyed by todo.name when todo.#done
-        <Text = todo.name
-        <Text = "!"
-board.show()
-todos = List'Todo([Todo("a", true), Todo("b", false)])
-board.show()
-todos[1].done = true
-board.show()
+(main
+  (let todos (call (of List Todo) (list (call Todo "a" false) (call Todo "b" true))))
+  (<> Board (id: board)
+    (for (in todo #todos (keyed-by (. todo name)) (when (. todo #done)))
+      (<> Text (value: (. todo name)))
+      (<> Text (value: "!"))
+    )
+  )
+  (call (. board show))
+  (= todos (call (of List Todo) (list (call Todo "a" true) (call Todo "b" false))))
+  (call (. board show))
+  (= (. ([] todos 1) done) true)
+  (call (. board show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Todo
+(type + Todo
+  (prop + name String)
+  (prop + done Bool)
+  (fn-do + This _
+    (param name _)
+    (param done _)
+  )
+)
 
-+ name String
-+ done Bool
+(type + Text (is MarkupNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-────────────────────
-+ This
-    - name
-    - done
-
-━━━━━━━━━━━━━━━━━━━━
-+ Text is MarkupNode
-
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Board is MarkupNode
-
-────────────────────
-+ do show
-
-. parts = List'String()
-for child in children-of'Text()
-    parts += child.text
--- ", ".join(parts)
+(type + Board (is MarkupNode)
+  (fn-do + show _
+    (let parts (call (of List String)))
+    (for (in child (call (of children-of Text)))
+      (+= parts (. child text))
+    )
+    (print (call (. ", " join) parts))
+  )
+)
 ```
 
 ```output
@@ -3643,32 +3924,34 @@ a, !, b, !
 
 ### A `when` clause on a loop that follows state reads a tracked local nowhere it could follow it.
 
-```yumi compile-error
-/core/markup
+```brix compile-error
+(import /core/markup)
+(blank)
 
-. names = List'String(["a"])
-. long = false
-<Board board
-    for name in #names when name.length > 1 || #long
-        <Text = name
-long = true
+(main
+  (let names (call (of List String) (list "a")))
+  (let long false)
+  (<> Board (id: board)
+    (for (in name #names (when (or (> (. name length) 1) #long)))
+      (<> Text (value: name))
+    )
+  )
+  (= long true)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Text is MarkupNode
+(type + Text (is MarkupNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Board is MarkupNode
+(type + Board (is MarkupNode))
 ```
 
 ```output
 Exception: The when clause of a markup loop that follows state tracks the row's item and properties, not a local; keep "long" in a property and read it with "#"
-<no file:7>
-        for name in #names when name.length > 1 || #long
-                                                   ^^^^^
+<no file:9>
+        (for (in name #names (when (or (> (. name length) 1) #long)))
+                                                             ^^^^^
 ```

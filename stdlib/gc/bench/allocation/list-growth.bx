@@ -1,0 +1,27 @@
+; benchmark.meta description: Builds lists through appends and literals to expose List capacity growth allocation.
+; benchmark.meta timing: not-recommended
+; benchmark.meta profiles: allocator
+(blank)
+(import /core)
+(blank)
+
+(main
+  (let iterations 12000)
+  (let append-checksum I64)
+  (let literal-checksum I64)
+  (blank)
+  (for (in round (..< 0 20))
+    (let items (call (of List I32)))
+    (for (in i (..< 0 iterations))
+      (+= items (as i I32))
+    )
+    (+= append-checksum (+ (. items length) ([] items (- iterations 1)) round))
+  )
+  (blank)
+  (for (in round (..< 0 12000))
+    (let literal (list round (+ round 1) (+ round 2) (+ round 3) (+ round 4)))
+    (+= literal-checksum (+ (. literal length) ([] literal 0) ([] literal 4)))
+  )
+  (blank)
+  (print (str "bench-result allocation/list-growth checksum=" (+ append-checksum literal-checksum)))
+)

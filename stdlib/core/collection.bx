@@ -1,0 +1,377 @@
+(import ./core)
+(import ./error)
+(import ./intrinsics)
+(import ./number)
+(import ./range)
+(import ./stream)
+(import ./tracker)
+(import /BxGC/BxGC.h)
+
+(type + (of Collection Item) (is Interface)
+  (implements (of Indexable Item))
+)
+
+(type + CollectionMutationKind (is Union)
+  (variant append)
+  (variant insert)
+  (variant remove)
+  (variant set)
+  (variant replace)
+  (variant move)
+  (variant reset)
+)
+
+(type + CollectionMutation
+  (prop + kind CollectionMutationKind)
+  (prop + index Index (= 0))
+  (prop + from-index Index (= 0))
+  (prop + to-index Index (= 0))
+  (prop + count Size (= 1))
+  (fn-do + This _
+    (param kind _)
+    (param index Index (= 0))
+    (param from-index Index (= 0))
+    (param to-index Index (= 0))
+    (param count Size (= 1))
+  )
+)
+
+(type + CollectionObserver (is (fn-type Void (?! Error) (param mutation CollectionMutation))))
+
+(type + (of MutableCollection Item) (is Interface)
+  (implements (of Collection Item))
+  (fn-expr + (index-set this (param index Index) (param item Item)) _)
+  (fn-expr + replace _
+    (param index Index)
+    (param item Item)
+  )
+  (fn-expr + append _
+    (param item Item)
+  )
+  (fn-expr + append _
+    (param items (stream Item))
+  )
+  (fn-expr + insert _
+    (param item Item)
+    (param index Index)
+  )
+  (fn-expr + insert _
+    (param items (stream Item))
+    (param index Index)
+  )
+  (fn-expr + remove _
+    (param index Index)
+    (param count Size (= 1))
+  )
+  (fn-expr + remove _
+    (param range (of Range Index))
+  )
+  (fn-expr + move _
+    (param from-index Index)
+    (param to-index Index)
+    (param count Size (= 1))
+  )
+  (fn-expr + clear _)
+)
+
+(fn-do + collection-observer-bucket-for-pointer _
+  (param collection-pointer Pointer)
+  (let lane (call collection-observers-lane))
+  (let bucket (call (of gc-object-side-payload CollectionObserverBucket) collection-pointer lane))
+  (if bucket
+    (return bucket)
+  )
+  (let created (call CollectionObserverBucket))
+  (let published (call gc-publish-object-side-payload collection-pointer lane created))
+  (if (== published created)
+    (call (. published register-cleanup) collection-pointer)
+  )
+  (return published)
+)
+
+(fn-expr + collection-observer-bucket _
+  (param collection _)
+  (call collection-observer-bucket-for-pointer (as collection Pointer))
+)
+
+(fn-do + observe-collection _
+  (param collection _)
+  (param observer CollectionObserver)
+  (let owner (as collection Pointer))
+  (call (. (call collection-observer-bucket-for-pointer owner) attach) observer owner)
+)
+
+(fn-do + observe-collection-pointer _
+  (param collection-pointer Pointer)
+  (param observer CollectionObserver)
+  (call (. (call collection-observer-bucket-for-pointer collection-pointer) attach) observer collection-pointer)
+)
+
+(fn-do + unobserve-collection _
+  (param collection _)
+  (param observer CollectionObserver)
+  (call unobserve-collection-pointer (as collection Pointer) observer)
+)
+
+(fn-do + unobserve-collection-pointer _
+  (param collection-pointer Pointer)
+  (param observer CollectionObserver)
+  (let bucket
+    (call (of gc-object-side-payload CollectionObserverBucket)
+      (block
+        (arg collection-pointer)
+        (arg (call collection-observers-lane))
+      )
+    )
+  )
+  (if bucket
+    (call (. bucket detach) observer)
+    (if (not (. bucket has-observers))
+      (call C:brixGCClearObjectSidePayload collection-pointer (call collection-observers-lane))
+    )
+  )
+)
+
+(fn-do + notify-collection-append _ @inline
+  (param collection _)
+  (param index Index)
+  (param count Size (= 1))
+  (if (call C:brixCollectionMayBeObserved (as collection Pointer))
+    (call notify-observers (as collection Pointer) (. CollectionMutationKind append) index 0 0 count)
+  )
+)
+
+(fn-do + notify-collection-insert _ @inline
+  (param collection _)
+  (param index Index)
+  (param count Size (= 1))
+  (if (call C:brixCollectionMayBeObserved (as collection Pointer))
+    (call notify-observers (as collection Pointer) (. CollectionMutationKind insert) index 0 0 count)
+  )
+)
+
+(fn-do + notify-collection-remove _ @inline
+  (param collection _)
+  (param index Index)
+  (param count Size (= 1))
+  (if (call C:brixCollectionMayBeObserved (as collection Pointer))
+    (call notify-observers (as collection Pointer) (. CollectionMutationKind remove) index 0 0 count)
+  )
+)
+
+(fn-do + notify-collection-set _ @inline
+  (param collection _)
+  (param index Index)
+  (param count Size (= 1))
+  (if (call C:brixCollectionMayBeObserved (as collection Pointer))
+    (call notify-observers (as collection Pointer) (. CollectionMutationKind set) index 0 0 count)
+  )
+)
+
+(fn-do + notify-collection-replace _ @inline
+  (param collection _)
+  (param index Index)
+  (param count Size (= 1))
+  (if (call C:brixCollectionMayBeObserved (as collection Pointer))
+    (call notify-observers (as collection Pointer) (. CollectionMutationKind replace) index 0 0 count)
+  )
+)
+
+(fn-do + notify-collection-move _ @inline
+  (param collection _)
+  (param from-index Index)
+  (param to-index Index)
+  (param count Size (= 1))
+  (if (call C:brixCollectionMayBeObserved (as collection Pointer))
+    (call notify-observers
+      (block
+        (arg (as collection Pointer))
+        (arg (. CollectionMutationKind move))
+        (arg 0)
+        (arg from-index)
+        (arg to-index)
+        (arg count)
+      )
+    )
+  )
+)
+
+(fn-do + notify-collection-reset _ @inline
+  (param collection _)
+  (if (call C:brixCollectionMayBeObserved (as collection Pointer))
+    (call notify-observers (as collection Pointer) (. CollectionMutationKind reset) 0 0 0 1)
+  )
+)
+
+(type _ CollectionObserverNode
+  (prop + observer CollectionObserver)
+  (prop + next (? CollectionObserverNode))
+  (prop + active _ (= true))
+  (fn-do + This _
+    (param observer CollectionObserver)
+  )
+)
+
+(type _ CollectionObserverBucket
+  (prop _ first (? CollectionObserverNode))
+  (prop _ last (? CollectionObserverNode))
+  (prop _ observer-count Size (= 0))
+  (prop _ dispatch-depth Size (= 0))
+  (prop _ has-inactive-nodes _ (= false))
+  (prop _ cleanup Size (= 0))
+  (fn-expr + has-observers _ :get
+    (> observer-count 0)
+  )
+  (fn-do + attach _
+    (param observer CollectionObserver)
+    (param owner Pointer)
+    (let node (call CollectionObserverNode observer))
+    (blank)
+    (if (and (not observer-count) (not cleanup))
+      (call register-cleanup owner)
+    )
+    (blank)
+    (let maybe-last last)
+    (if maybe-last
+      (let tail maybe-last)
+      (= (. tail next) node)
+      (else
+        (= first node)
+      )
+    )
+    (= last node)
+    (+= observer-count 1)
+  )
+  (fn-do + detach _
+    (param observer CollectionObserver)
+    (let previous (? CollectionObserverNode))
+    (let node first)
+    (while true
+      (let maybe-current node)
+      (if (not maybe-current)
+        (break)
+      )
+      (let current maybe-current)
+      (if (and (. current active) (== (. current observer) observer))
+        (= (. current active) false)
+        (-= observer-count 1)
+        (if (not observer-count)
+          (let cleanup-handle cleanup)
+          (= cleanup 0)
+          (throw (call Panic "Unable to deactivate collection observer") (if (not (call C:brixCollectionObserverDeactivate cleanup-handle))))
+        )
+        (if dispatch-depth
+          (= has-inactive-nodes true)
+          (return)
+        )
+        (let maybe-previous previous)
+        (if maybe-previous
+          (let previous-node maybe-previous)
+          (= (. previous-node next) (. current next))
+          (else
+            (= first (. current next))
+          )
+        )
+        (if (== last current)
+          (= last previous)
+        )
+        (return)
+      )
+      (= previous current)
+      (= node (. current next))
+    )
+  )
+  (fn-do + compact-inactive _
+    (let previous (? CollectionObserverNode))
+    (let node first)
+    (while true
+      (let maybe-current node)
+      (if (not maybe-current)
+        (break)
+      )
+      (let current maybe-current)
+      (= node (. current next))
+      (if (. current active)
+        (= previous current)
+        (else
+          (let maybe-previous previous)
+          (if maybe-previous
+            (let previous-node maybe-previous)
+            (= (. previous-node next) (. current next))
+            (else
+              (= first (. current next))
+            )
+          )
+          (if (== last current)
+            (= last previous)
+          )
+        )
+      )
+    )
+    (= has-inactive-nodes false)
+  )
+  (fn-do + register-cleanup _
+    (param owner Pointer)
+    (= cleanup (as (call C:brixCollectionObserverActivate owner) Size))
+    (throw (call Panic "Unable to register collection observer cleanup") (if (not cleanup)))
+  )
+  (fn-do + notify _
+    (param mutation CollectionMutation)
+    (let original-last last)
+    (+= dispatch-depth 1)
+    (let batch (call live-batch-enter))
+    (finally
+      (-= dispatch-depth 1)
+      (if (and (not dispatch-depth) has-inactive-nodes)
+        (call compact-inactive)
+      )
+      (call (. batch leave))
+    )
+    (blank)
+    (let node first)
+    (while true
+      (let maybe-current node)
+      (if (not maybe-current)
+        (break)
+      )
+      (let current maybe-current)
+      (= node (. current next))
+      (if (. current active)
+        (let observer (. current observer))
+        (call observer mutation
+          (block
+            (on-error (: error Error)
+              (call unhandled-error error)
+            )
+          )
+        )
+      )
+      (if (== original-last current)
+        (break)
+      )
+    )
+  )
+)
+
+(fn-do _ notify-observers _
+  (param collection-pointer Pointer)
+  (param kind CollectionMutationKind)
+  (param index Index)
+  (param from-index Index)
+  (param to-index Index)
+  (param count Size)
+  (let bucket
+    (call (of gc-object-side-payload CollectionObserverBucket)
+      (block
+        (arg collection-pointer)
+        (arg (call collection-observers-lane))
+      )
+    )
+  )
+  (return-if (if (not bucket)))
+  (call (. bucket notify) (call CollectionMutation kind index from-index to-index count))
+)
+
+(fn-expr _ collection-observers-lane _
+  (as (call C:brixGCCollectionObserversSidePayloadLane) Size)
+)

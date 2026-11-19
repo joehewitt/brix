@@ -4,171 +4,190 @@ Errors about returns and the errors a function raises name the function and the 
 
 ### a recursive function with no declared return type
 
-```yumi crash
--- count-down(3)
-━━━━━━━━━━━━━━━━━━━━
-+ do count-down
-    - n I32
+```brix crash
+(main
+  (print (call count-down 3))
+)
 
-if n == 0
-    = 0
-= count-down(n - 1)
+(fn-do + count-down _
+  (param n I32)
+  (if (== n 0)
+    (return 0)
+  )
+  (return (call count-down (- n 1)))
+)
 ```
 
 ```output
-Exception: Function "count-down" calls itself before its return type is known, so the type cannot be inferred; declare it, as in "+ do count-down I64"
-<no file:4>
-    + do count-down
-    ^^^^^^^^^^^^^^
+Exception: Function "count-down" calls itself before its return type is known, so the type cannot be inferred; declare it, as in "(fn-do + count-down I64 …)"
+<no file:6>
+    (fn-do + count-down _
+    ^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### returns that have no common type
 
-```yumi crash
--- pick(2)
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-━━━━━━━━━━━━━━━━━━━━
-+ do pick
-    - x I32
+```brix crash
+(main
+  (print (call pick 2))
+)
 
-if x > 1
-    = Box()
-= 2.5
+(type + Box)
+
+(fn-do + pick _
+  (param x I32)
+  (if (> x 1)
+    (return (call Box))
+  )
+  (return 2.5)
+)
 ```
 
 ```output
 Exception: Function "pick" returns Box here and F64 elsewhere, which have no common type; return one type, or declare the return type
-<no file:10>
-        = Box()
-        ^^^^^^^
+<no file:11>
+        (return (call Box))
+        ^^^^^^^^^^^^^^^^^^^
 ```
 
 ### an error a call raises that the calling function does not declare
 
-```yumi crash
--- outer()
-━━━━━━━━━━━━━━━━━━━━
-+ do outer I32 ?! TypeError
+```brix crash
+(main
+  (print (call outer))
+)
 
-= load()
-━━━━━━━━━━━━━━━━━━━━
-+ do load I32 ?! IOError
+(fn-do + outer I32 (?! TypeError)
+  (return (call load))
+)
 
-?! IOError("disk")
+(fn-do + load I32 (?! IOError)
+  (throw (call IOError "disk"))
+)
 ```
 
 ```output
-Exception: IOError can leave "outer", which does not declare it; declare it, as in "+ do outer I32 ?! TypeError ?! IOError", or catch it here
-<no file:6>
-    = load()
-      ^^^^^^
+Exception: IOError can leave "outer", which does not declare it; declare it, as in "(fn-do + outer I32 (?! TypeError) (?! IOError) …)", or catch it here
+<no file:7>
+      (return (call load))
+              ^^^^^^^^^^^
 ```
 
 ### an error a function raises but does not declare
 
-```yumi crash
--- load()
-━━━━━━━━━━━━━━━━━━━━
-+ do load I32 ?! TypeError
+```brix crash
+(main
+  (print (call load))
+)
 
-?! IOError("disk")
+(fn-do + load I32 (?! TypeError)
+  (throw (call IOError "disk"))
+)
 ```
 
 ```output
-Exception: IOError can leave "load", which does not declare it; declare it, as in "+ do load I32 ?! TypeError ?! IOError"
-<no file:6>
-    ?! IOError("disk")
-    ^^^^^^^^^^^^^^^^^^
+Exception: IOError can leave "load", which does not declare it; declare it, as in "(fn-do + load I32 (?! TypeError) (?! IOError) …)"
+<no file:7>
+      (throw (call IOError "disk"))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### an error a recursive function raises before its errors are inferred
 
-```yumi crash
--- walk(3)
-━━━━━━━━━━━━━━━━━━━━
-+ do walk Bool
-    - n I32
+```brix crash
+(main
+  (print (call walk 3))
+)
 
-if n == 0
-    ?! IOError("disk")
-= walk(n - 1)
+(fn-do + walk Bool
+  (param n I32)
+  (if (== n 0)
+    (throw (call IOError "disk"))
+  )
+  (return (call walk (- n 1)))
+)
 ```
 
 ```output
-Exception: IOError can leave "walk", which calls itself, so its errors cannot be inferred; declare them on it, as in "+ do walk Bool ?! IOError", or catch them here
-<no file:8>
-        ?! IOError("disk")
-        ^^^^^^^^^^^^^^^^^^
+Exception: IOError can leave "walk", which calls itself, so its errors cannot be inferred; declare them on it, as in "(fn-do + walk Bool (?! IOError) …)", or catch them here
+<no file:9>
+        (throw (call IOError "disk"))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### a method that can fail implementing an interface method that cannot
 
-```yumi crash
-. p = Thing() as Proto
--- p.foo()
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+```brix crash
+(main
+  (let p (as (call Thing) Proto))
+  (print (call (. p foo)))
+)
 
-────────────────────
-+ foo I32
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
+(type + Proto (is Interface)
+  (fn-expr + foo I32)
+)
 
-────────────────────
-+ foo
-
-?! Error("fooey")
+(type + Thing
+  (implements Proto)
+  (fn-expr + foo _
+    (throw (call Error "fooey"))
+  )
+)
 ```
 
 ```output
 Exception: "foo" can fail with Error, but the interface method it implements cannot; add "?! Error" to that method, or catch the error inside "foo"
-<no file:14>
-    + foo
-    ^^^^
+<no file:13>
+      (fn-expr + foo _
+      ^^^^^^^^^^^^^^^
 Interface:
 <no file:8>
-    + foo I32
+      (fn-expr + foo I32)
 ```
 
 ### a catch attached to an expression that cannot fail
 
-```yumi crash
-. value = 42
-    catch Error
+```brix crash
+(main
+  (let value
+    (scope 42
+      (on-error Error
         0
--- value
+      )
+    )
+  )
+  (print value)
+)
 ```
 
 ```output
 Exception: "42" cannot fail, so the catch attached to it has nothing to handle; remove the catch, or attach it to a call that can fail
-<no file:2>
-    . value = 42
-              ^
+<no file:4>
+        (scope 42
+               ^
 ```
 
 ### a value returned from a class's event handler
 
-```yumi crash
-. spot = Spot()
-spot.pings <- true
-━━━━━━━━━━━━━━━━━━━━
-+ Spot
+```brix crash
+(main
+  (let spot (call Spot))
+  (<- (. spot pings) true)
+)
 
-+ taps Size = 0
-+ event pings Bool
-
-────────────────────
-for event on pings
-
-=? if !event
-taps += 1
+(type + Spot
+  (prop + taps Size (= 0))
+  (event + pings Bool)
+  (subscribe-for (on event pings)
+    (return-if (if (not event)))
+    (+= taps 1)
+  )
+)
 ```
 
 ```output
 Exception: The event handler for "pings" cannot return with "="; move its body into a method, as in "_ do handle-pings", and call that, or end the handler early with "continue"
-<no file:13>
-    =? if !event
-    ^^^^^^^^^^^^
+<no file:11>
+        (return-if (if (not event)))
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```

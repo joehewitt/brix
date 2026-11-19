@@ -1,0 +1,21 @@
+; benchmark.meta description: Repeats cubic coefficients, control-point evaluation and derivative kernels.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /core)
+(import /graphics/curve-kernels)
+(blank)
+
+(main
+  (let checksum 0.0)
+  (for (in index (..< 0 5000000))
+    (let control (as (% index 17) F64))
+    (let t (/ (as (% index 1024) F64) 1024))
+    (let coeffs (call cubic-coefficients-1d 0 control (+ control 4) 20))
+    (+= checksum (call cubic-evaluate-1d (. coeffs a) (. coeffs b) (. coeffs c) 0 t))
+    (+= checksum (call cubic-evaluate-control-1d 0 control (+ control 4) 20 t))
+    (+= checksum (call cubic-derivative-1d (. coeffs a) (. coeffs b) (. coeffs c) t))
+  )
+  (blank)
+  (print (str "bench-result graphics/cubic-evaluation-hot checksum=" (as checksum Size)))
+)

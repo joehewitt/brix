@@ -1,0 +1,39 @@
+(import ./cnet)
+(import /stdlib.h)
+(blank)
+(type-line + Port (is U16))
+(blank)
+; =================================================================================================
+; + IPAddress is IP4Address | IP6Address
+(type + IP4Address (is Tuple)
+  (prop + address U32)
+  (prop + port Port)
+  (fn-to-expr + String
+    (str host ":" port)
+  )
+  (fn-expr + host String :get
+    (str p1 "." p2 "." p3 "." p4)
+    (where
+      (lazy p4 (/zrshift/ (/and/ address 0xff000000) 24))
+      (lazy p3 (/zrshift/ (/and/ address 0x00ff0000) 16))
+      (lazy p2 (/zrshift/ (/and/ address 0x0000ff00) 8))
+      (lazy p1 (/and/ address 0x000000ff))
+    )
+  )
+)
+
+(type + IP6Address (is Tuple)
+  (prop + address _ (= ([] U8 16)))
+  (prop + port U16)
+)
+
+(fn-do + resolve IP4Address (?! DNSError)
+  (param host String)
+  (param port Port (= 80))
+  (let info (call get-addr-info host port))
+  (finally
+    (inline (call C:free (. info addr)))
+  )
+  (let addr ([] (as (. info addr) (of CPointer CSockAddrInet4)) 0))
+  (return (call IP4Address (. addr address) (call network-to-host (. addr port))))
+)

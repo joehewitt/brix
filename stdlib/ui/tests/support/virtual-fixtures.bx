@@ -1,0 +1,273 @@
+(import /ui/virtual)
+(import /ui/virtual-layout)
+(import /ui/virtual-recycler)
+
+(fn-do + fixed-recycler _
+  (let recycler (call (of VirtualRecycler I64)))
+  (= (. recycler source) (call VirtualRangeSource 1000000000vcoord))
+  (= (. recycler layout) (call VerticalFixedLayout 4vcoord))
+  (= (. recycler owner) (call VirtualDepartureLog recycler))
+  (return recycler)
+)
+
+(fn-do + retaining-recycler _
+  (let recycler (call (of VirtualRecycler I64)))
+  (= (. recycler source) (call VirtualRangeSource 100vcoord))
+  (= (. recycler layout) (call VerticalMeasuredLayout 10vcoord))
+  (= (. recycler retention) (call VirtualInsets 100vcoord 0vcoord 100vcoord 0vcoord))
+  (= (. recycler owner) (call VirtualDepartureLog recycler))
+  (return recycler)
+)
+
+(fn-do + open-recycler _
+  (param source VirtualGrowingSource)
+  (let recycler (call (of VirtualRecycler I64)))
+  (= (. recycler source) source)
+  (= (. recycler layout) (call VerticalFixedLayout 1vcoord))
+  (let window (. recycler window))
+  (= (. window viewport-width) 10vcoord)
+  (= (. window frame-width) 10vcoord)
+  (= (. window viewport-height) 10vcoord)
+  (= (. window frame-height) 10vcoord)
+  (call (. recycler refresh))
+  (return recycler)
+)
+
+(fn-do + request _
+  (param recycler (of VirtualRecycler I64))
+  (param scroll-y VirtualCoord)
+  (param viewport-height VirtualCoord)
+  (let window (. recycler window))
+  (= (. window scroll-y) scroll-y)
+  (= (. window viewport-width) 80vcoord)
+  (= (. window frame-width) 80vcoord)
+  (= (. window viewport-height) viewport-height)
+  (= (. window frame-height) viewport-height)
+  (= (. window overscan-top) 12vcoord)
+  (= (. window overscan-bottom) 12vcoord)
+  (call (. recycler refresh))
+)
+
+(fn-do + request-retained _
+  (param recycler (of VirtualRecycler I64))
+  (param scroll-y VirtualCoord)
+  (let window (. recycler window))
+  (= (. window scroll-y) scroll-y)
+  (= (. window viewport-width) 80vcoord)
+  (= (. window frame-width) 80vcoord)
+  (= (. window viewport-height) 35vcoord)
+  (= (. window frame-height) 35vcoord)
+  (call (. recycler refresh))
+)
+
+(fn-do + slots-match-placements Bool
+  (param recycler (of VirtualRecycler I64))
+  (let placed Size)
+  (for (in index (..< 0 (. recycler pool-size)))
+    (let slot (!! (call (. recycler slot-at) index)))
+    (let placement (call (. recycler placement-for-slot) index))
+    (if placement
+      (return-if false (if (or (not (. slot is-bound)) (!= (. slot address) (. placement address)))))
+      (+= placed 1)
+      (else
+        (return-if false (if (. slot is-bound)))
+      )
+    )
+  )
+  (return (== placed (. recycler window placement-count)))
+)
+
+(fn-do + bound-slot-count _
+  (param recycler (of VirtualRecycler I64))
+  (let count Size)
+  (for (in index (..< 0 (. recycler pool-size)))
+    (if (. (!! (call (. recycler slot-at) index)) is-bound)
+      (+= count 1)
+    )
+  )
+  (return count)
+)
+
+(fn-do + slot-for-address (? (of VirtualSlot I64))
+  (param recycler (of VirtualRecycler I64))
+  (param address I64)
+  (for (in index (..< 0 (. recycler pool-size)))
+    (let slot (!! (call (. recycler slot-at) index)))
+    (return-if slot (if (and (. slot is-bound) (== (. slot address) address))))
+  )
+  (return null)
+)
+
+(fn-do + placement-for-address (? VirtualPlacement)
+  (param recycler (of VirtualRecycler I64))
+  (param address I64)
+  (for (in index (..< 0 (. recycler pool-size)))
+    (let slot (!! (call (. recycler slot-at) index)))
+    (return-if (call (. recycler placement-for-slot) index) (if (and (. slot is-bound) (== (. slot address) address))))
+  )
+  (return null)
+)
+
+(type + VirtualDepartureLog
+  (implements VirtualRecyclerOwner)
+  (prop + recycler (of VirtualRecycler I64))
+  (prop + count Size)
+  (prop + bound-count Size)
+  (fn-do + This _
+    (param recycler _)
+  )
+  (fn-do + virtual-slot-departing _
+    (param slot-index Index)
+    (+= count 1)
+    (if (?? (?. (call (. recycler slot-at) slot-index) is-bound) false)
+      (+= bound-count 1)
+    )
+  )
+  (fn-do + virtual-slot-arriving _
+    (param slot-index Index)
+  )
+)
+
+(type + VirtualTestDomain
+  (implements VirtualSequenceDomain)
+  (prop + known VirtualCoord)
+  (prop + estimate (? VirtualCoord))
+  (prop + finished Bool)
+  (fn-do + This _
+    (param known _)
+  )
+  (fn-expr + known-count VirtualCoord :get
+    known
+  )
+  (fn-expr + estimated-count (? VirtualCoord) :get
+    estimate
+  )
+  (fn-expr + is-final Bool :get
+    finished
+  )
+  (fn-expr + address-at I64
+    (param index VirtualCoord)
+    index
+  )
+  (fn-expr + index-of (? VirtualCoord)
+    (param address I64)
+    (case? (or (< address 0) (>= address (as known I64)))
+      null
+    )
+    (default
+      (as address VirtualCoord)
+    )
+  )
+)
+
+(type + VirtualGrowingSource
+  (implements VirtualSequenceDomain)
+  (implements (of VirtualSource I64))
+  (prop + limit VirtualCoord)
+  (prop + known VirtualCoord)
+  (prop + finished Bool)
+  (prop + revision _ (:= (call VirtualRevision)))
+  (prop + bind-count Size)
+  (fn-do + This _
+    (param limit _)
+  )
+  (fn-expr + known-count VirtualCoord :get
+    known
+  )
+  (fn-expr + estimated-count (? VirtualCoord) :get
+    null
+  )
+  (fn-expr + is-final Bool :get
+    finished
+  )
+  (fn-expr + address-at I64
+    (param index VirtualCoord)
+    index
+  )
+  (fn-expr + index-of (? VirtualCoord)
+    (param address I64)
+    (case? (or (< address 0) (>= address (as known I64)))
+      null
+    )
+    (default
+      (as address VirtualCoord)
+    )
+  )
+  (fn-expr + domain VirtualSequenceDomain :get
+    this
+  )
+  (fn-do + bind _
+    (param address I64)
+    (param generation U64)
+    (param target (of VirtualBindingTarget I64))
+    (+= bind-count 1)
+    (if (and (== address (as known I64)) (< known limit))
+      (+= known 1vcoord)
+      (= finished (== known limit))
+    )
+    (if (and (>= address 0) (< address (as known I64)))
+      (call (. target commit) (call VirtualKey (. revision value) address) address generation)
+      (else
+        (call (. target fail) generation)
+      )
+    )
+  )
+)
+
+(type + VirtualReplaySource
+  (implements VirtualSequenceDomain)
+  (implements (of VirtualSource I64))
+  (prop + count VirtualCoord)
+  (prop + revision _ (:= (call VirtualRevision)))
+  (blank)
+  (prop _ last-target (? (of VirtualBindingTarget I64)))
+  (prop _ last-generation U64)
+  (prop _ last-address I64)
+  (fn-do + This _
+    (param count _)
+  )
+  (fn-do + replay _
+    (let target last-target)
+    (return-if (if (not target)))
+    (call (. target commit) (call VirtualKey (. revision value) last-address) (+ last-address 1) last-generation)
+  )
+  (fn-expr + known-count VirtualCoord :get
+    count
+  )
+  (fn-expr + estimated-count (? VirtualCoord) :get
+    count
+  )
+  (fn-expr + is-final Bool :get
+    true
+  )
+  (fn-expr + address-at I64
+    (param index VirtualCoord)
+    index
+  )
+  (fn-expr + index-of (? VirtualCoord)
+    (param address I64)
+    (case? (or (< address 0) (>= address (as count I64)))
+      null
+    )
+    (default
+      (as address VirtualCoord)
+    )
+  )
+  (fn-expr + domain VirtualSequenceDomain :get
+    this
+  )
+  (fn-do + bind _
+    (param address I64)
+    (param generation U64)
+    (param target (of VirtualBindingTarget I64))
+    (= last-target target)
+    (= last-generation generation)
+    (= last-address address)
+    (if (and (>= address 0) (< address (as count I64)))
+      (call (. target commit) (call VirtualKey (. revision value) address) address generation)
+      (else
+        (call (. target fail) generation)
+      )
+    )
+  )
+)

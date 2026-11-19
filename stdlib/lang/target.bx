@@ -1,0 +1,143 @@
+(import ./host.linux)
+(import ./host.macos)
+(import /stream/aggregate)
+(blank)
+(prop + yumi-extension _ (= ".yumi"))
+(blank)
+(prop + brix-extension _ (= ".bx"))
+(blank)
+(prop + macos-target Target (:= (call Target "macos" .macho "_" 1 0x000f0000 "lang/product/mac-app" "MacApp" .host (list "apple"))))
+(blank)
+(prop + ios-simulator-target Target (:= (call Target "ios-simulator" .macho "_" 7 0x00110000 "lang/product/ios-app" "IOSApp" .simulator (list "ios" "apple"))))
+(blank)
+(prop + ios-target Target (:= (call Target "ios" .macho "_" 2 0x00110000 "lang/product/ios-app" "IOSApp" .device (list "apple"))))
+(blank)
+(prop + linux-target Target (:= (call Target "linux" .elf "" 0 0 null null .host (list "linux"))))
+
+(type + ObjectFormat (is Union)
+  ; The format of the object files a target's linker reads.
+  (blank)
+  (variant macho)
+  (variant elf)
+)
+
+(type + TargetRunner (is Union)
+  ; Where a program built for a target runs: on this machine, in a booted simulator, or on a
+  ; connected device.
+  (blank)
+  (variant host)
+  (variant simulator)
+  (variant device)
+)
+
+(type + Target (is Tuple)
+  ; A platform the compiler builds programs for. Its name selects the platform's entry in the runtime
+  ; build config. Its objects are in its object format, and their symbols carry its symbol prefix.
+  ; Its Mach-O platform and minimum OS version are what its Mach-O objects declare, and are zero for
+  ; a target whose objects are not Mach-O. Its product class, where it has one, is the app a program
+  ; declares to be packaged for it, and its runner is where the program runs.
+  (blank)
+  (prop + name String)
+  (prop + object-format ObjectFormat)
+  (prop + symbol-prefix String)
+  (prop + macho-platform U32)
+  (prop + minimum-os-version U32)
+  (prop + product-module-name (? String))
+  (prop + product-class-name (? String))
+  (prop + runner TargetRunner)
+  (prop + families (list String))
+  (fn-expr + includes Bool
+    (param suffix (? String))
+    (or (not suffix) (== suffix name) (!= (call (. families find) suffix) null))
+  )
+  (fn-expr + runs-on-host Bool :get
+    ; Whether a program built for the target runs on the machine the compiler runs on.
+    (and (is runner .host) (== name (. (call host-target) name)))
+  )
+  (fn-expr + uses-apple-abi Bool :get
+    ; Whether the target's C calling convention is Apple's arm64 variant of AAPCS64. It packs the
+    ; arguments a call passes on the stack at their own size and alignment, where AAPCS64 gives each
+    ; a slot of 8 bytes or more. Its callers extend integer arguments narrower than 32 bits, and its
+    ; functions extend such results; under AAPCS64 neither does, so the receiving side must.
+    (call includes "apple")
+  )
+  (fn-expr + symbol String
+    (param name String)
+    ; The linker's name for a symbol the source names `name`.
+    (str symbol-prefix name)
+  )
+)
+
+(fn-expr + target-named (? Target)
+  (param name String)
+  (spread (call targets))
+  (pipe ?> (== (. each name) name))
+  (pipe |> first)
+)
+
+(fn-do + targets (list Target)
+  (let all (list Target))
+  (+= all macos-target)
+  (+= all ios-simulator-target)
+  (+= all ios-target)
+  (+= all linux-target)
+  (return all)
+)
+
+(fn-expr + host-target Target
+  ; The target of the machine the compiler runs on, which a program builds for unless it names another.
+  (!! (call target-named host-target-name))
+)
+
+(fn-expr + platform-suffix (? String)
+  (param path String)
+  (case? (not stem)
+    null
+  )
+  (case? (<= (. parts length) 1)
+    null
+  )
+  (default
+    ([] parts (- (. parts length) 1))
+  )
+  (where
+    (lazy file (?? (call last (call (. path split) "/")) path))
+    (lazy stem (call source-stem file))
+    (lazy parts (call List (call (. stem split) ".")))
+  )
+)
+
+(fn-expr + source-stem (? String)
+  (param path String)
+  (case? (call (. path ends-with) yumi-extension)
+    ([] path (..< 0 (- (. path length) (. yumi-extension length))))
+  )
+  (case? (call (. path ends-with) brix-extension)
+    ([] path (..< 0 (- (. path length) (. brix-extension length))))
+  )
+  (default
+    null
+  )
+)
+
+(fn-expr + is-platform Bool
+  (param suffix String)
+  (call some (call targets) (:where (call (. each includes) suffix)))
+)
+
+(fn-expr + builds-together Bool
+  (param first (? String))
+  (param second (? String))
+  (call some (call targets) (:where (and (call (. each includes) first) (call (. each includes) second))))
+)
+
+(fn-do + target-including Target
+  (param suffix (? String))
+  (return-if (call host-target) (if (call (. (call host-target) includes) suffix)))
+  (for (in target (call targets))
+    (if (call (. target includes) suffix)
+      (return target)
+    )
+  )
+  (return (call host-target))
+)

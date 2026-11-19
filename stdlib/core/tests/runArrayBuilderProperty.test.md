@@ -1,31 +1,29 @@
 # Array builder property
 
-```yumi
-/core/array-builder
+```brix
+(import /core/array-builder)
+(blank)
 
-. holder = Holder()
-holder.append(7)
-holder.append(9)
--- holder.builder.length
-. result = holder.finish()
--- result.length
--- result
+(main
+  (let holder (call Holder))
+  (call (. holder append) 7)
+  (call (. holder append) 9)
+  (print (. holder builder length))
+  (let result (call (. holder finish)))
+  (print (. result length))
+  (print result)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ builder := ArrayBuilder'I32()
-
-────────────────────
-+ do append
-    - value I32
-
-builder.append(value)
-
-────────────────────
-+ do finish ImmutableArray'I32
-
-= builder.finish-immutable()
+(type + Holder
+  (prop + builder _ (:= (call (of ArrayBuilder I32))))
+  (fn-do + append _
+    (param value I32)
+    (call (. builder append) value)
+  )
+  (fn-do + finish (of ImmutableArray I32)
+    (return (call (. builder finish-immutable)))
+  )
+)
 ```
 
 ```output
@@ -34,30 +32,30 @@ builder.append(value)
 7, 9
 ```
 
-```yumi
-/core/array-builder
+```brix
+(import /core/array-builder)
+(blank)
 
-. holder = Derived() as Base
-holder.builder.append(7)
--- holder.builder.length
--- holder.builder.finish-immutable()
+(main
+  (let holder (as (call Derived) Base))
+  (call (. holder builder append) 7)
+  (print (. holder builder length))
+  (print (call (. holder builder finish-immutable)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + builder _ (:= (call (of ArrayBuilder I32))))
+)
 
-+ builder := ArrayBuilder'I32()
+(type + Derived (is Base)
+  (prop + builder _ (:= (call seeded)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-+ builder := seeded()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do seeded ArrayBuilder'I32
-
-. result = ArrayBuilder'I32()
-result.append(9)
-= result
+(fn-do + seeded (of ArrayBuilder I32)
+  (let result (call (of ArrayBuilder I32)))
+  (call (. result append) 9)
+  (return result)
+)
 ```
 
 ```output
@@ -65,20 +63,22 @@ result.append(9)
 9, 7
 ```
 
-```yumi
-/core/array-builder
+```brix
+(import /core/array-builder)
+(blank)
 
-. holder = Holder()
-holder.builder.append(7)
-. copy = holder.builder
-copy.append(9)
--- holder.builder.length
--- copy.length
+(main
+  (let holder (call Holder))
+  (call (. holder builder append) 7)
+  (let copy (. holder builder))
+  (call (. copy append) 9)
+  (print (. holder builder length))
+  (print (. copy length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ builder := ArrayBuilder'I32()
+(type + Holder
+  (prop + builder _ (:= (call (of ArrayBuilder I32))))
+)
 ```
 
 ```output
@@ -86,25 +86,25 @@ copy.append(9)
 2
 ```
 
-```yumi
-/core/array-builder
+```brix
+(import /core/array-builder)
+(blank)
 
-. holder = Holder()
-holder.builder.reserve(32)
-holder.builder.append(7)
--- holder.builder.length
--- holder.builder.finish-immutable()
--- holder.builder.length
+(main
+  (let holder (call Holder))
+  (call (. holder builder reserve) 32)
+  (call (. holder builder append) 7)
+  (print (. holder builder length))
+  (print (call (. holder builder finish-immutable)))
+  (print (. holder builder length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ builder ArrayBuilder'I32
-
-────────────────────
-+ This
-
-builder = ArrayBuilder'I32()
+(type + Holder
+  (prop + builder (of ArrayBuilder I32))
+  (fn-do + This _
+    (= builder (call (of ArrayBuilder I32)))
+  )
+)
 ```
 
 ```output
@@ -113,21 +113,23 @@ builder = ArrayBuilder'I32()
 0
 ```
 
-```yumi
-/core/array-builder
+```brix
+(import /core/array-builder)
+(blank)
 
-. builder = ArrayBuilder'U32()
-builder.append(1)
-fill(builder)
--- builder.length
--- builder.finish-immutable()
+(main
+  (let builder (call (of ArrayBuilder U32)))
+  (call (. builder append) 1)
+  (call fill builder)
+  (print (. builder length))
+  (print (call (. builder finish-immutable)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do fill
-    - output ArrayBuilder'U32
-
-output.append(2)
-output.append(3)
+(fn-do _ fill _
+  (param output (of ArrayBuilder U32))
+  (call (. output append) 2)
+  (call (. output append) 3)
+)
 ```
 
 ```output
@@ -135,19 +137,22 @@ output.append(3)
 1, 2, 3
 ```
 
-```yumi
-/core/array-builder
+```brix
+(import /core/array-builder)
+(blank)
 
-. builder = ArrayBuilder'U32()
-builder.reserve(8)
-builder.append(1)
-. copy = builder
-builder.append(2)
-. frozen = builder.finish-immutable()
-copy.append(7)
--- frozen
--- copy.length
--- builder.finish-immutable()
+(main
+  (let builder (call (of ArrayBuilder U32)))
+  (call (. builder reserve) 8)
+  (call (. builder append) 1)
+  (let copy builder)
+  (call (. builder append) 2)
+  (let frozen (call (. builder finish-immutable)))
+  (call (. copy append) 7)
+  (print frozen)
+  (print (. copy length))
+  (print (call (. builder finish-immutable)))
+)
 ```
 
 ```output

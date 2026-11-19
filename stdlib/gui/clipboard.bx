@@ -1,0 +1,227 @@
+(import /BxAppleGUI/BxAppleGUI.h)
+(import /graphics/image)
+(import /os/path)
+(import /stream/aggregate)
+(blank)
+(prop + clipboard-text-type _ (= "public.utf8-plain-text"))
+(prop + clipboard-file-type _ (= "public.file-url"))
+(prop + clipboard-image-type _ (= "public.image"))
+(prop + clipboard-promise-type _ (= "com.apple.pasteboard.promised-file-content-type"))
+
+(type + ClipboardData (is Union)
+  (variant text String)
+  (variant bytes ([] Byte))
+  (variant file Path)
+)
+
+(type + ClipboardRepresentation (is Tuple)
+  (prop + type String)
+  (prop + data ClipboardData)
+)
+
+(type + ClipboardItem (is Tuple)
+  (prop + representations (list ClipboardRepresentation))
+)
+
+(fn-expr + clipboard-text-item ClipboardItem
+  (param text String)
+  (call ClipboardItem (list (call ClipboardRepresentation clipboard-text-type (call (. ClipboardData text) text))))
+)
+
+(fn-expr + clipboard-data-item ClipboardItem
+  (param type String)
+  (param bytes ([] Byte))
+  (call ClipboardItem (list (call ClipboardRepresentation type (call (. ClipboardData bytes) bytes))))
+)
+
+(fn-expr + clipboard-file-item ClipboardItem
+  (param path Path)
+  (call ClipboardItem (list (call ClipboardRepresentation clipboard-file-type (call (. ClipboardData file) path))))
+)
+
+(type + ClipboardEntry (is Tuple)
+  (prop + clipboard Clipboard)
+  (prop + index Size)
+  (prop + types (list String))
+  (fn-expr + path (? Path) :get
+    (only-if (as (as value String) Path) (if value))
+    (where
+      (lazy value (call C:brixGuiClipboardItemPath (. clipboard name) index))
+    )
+  )
+  (fn-expr + is-image Bool :get
+    (match path
+      (case= null
+        (!= (call conforming-type clipboard-image-type) null)
+      )
+      (case (: file Path)
+        (call clipboard-path-is-image file)
+      )
+    )
+  )
+  (fn-expr + promised-type (? String) :get
+    (call read-string clipboard-promise-type)
+  )
+  (fn-expr + is-promised-image Bool :get
+    (match promised-type
+      (case= null
+        false
+      )
+      (case (: type String)
+        (call clipboard-type-conforms type clipboard-image-type)
+      )
+    )
+  )
+  (fn-expr + conforming-type (? String)
+    (param type String)
+    (call first (in each types (when (call clipboard-type-conforms each type))))
+  )
+  (fn-do + read-string (? String)
+    (param type String)
+    (let value (call C:brixGuiClipboardItemString (. clipboard name) index type))
+    (return (only-if (as value String) (if value)))
+  )
+  (fn-do + read-text (? String)
+    (return (call read-string clipboard-text-type))
+  )
+  (fn-do + read-data (? ([] Byte))
+    (param type String)
+    (let data (call C:brixGuiClipboardItemData (. clipboard name) index type))
+    (return-if null (if (== data (call Pointer))))
+    (finally
+      (inline (call C:brixGuiClipboardDataRelease data))
+    )
+    (let bytes ([] Byte (as (call C:brixGuiClipboardDataLength data) Size)))
+    (call C:brixGuiClipboardDataCopy data (. bytes data) (. bytes size))
+    (return bytes)
+  )
+  (fn-do + read-image Image (?! IOError)
+    (param max-pixel-size I32 (= 0))
+    (let file path)
+    (return-if (call load-image file max-pixel-size) (if file))
+    (let type (call conforming-type clipboard-image-type))
+    (let bytes (only-if (call read-data type) (if type)))
+    (throw (call IOError "The clipboard item holds no image") (if (not bytes)))
+    (return (call decode-image bytes 1 max-pixel-size))
+  )
+)
+
+(type + Clipboard (is Tuple)
+  (prop + name String)
+  (fn-expr + items (list ClipboardEntry) :get
+    (spread (..< 0 (as (call C:brixGuiClipboardItemCount name) Size)))
+    (pipe *> (call ClipboardEntry this each (call clipboard-item-types name each)))
+    (pipe |> List)
+  )
+  (fn-expr + images (list ClipboardEntry) :get
+    (spread items)
+    (pipe ?> (. each is-image))
+    (pipe |> List)
+  )
+  (fn-expr + paths (list Path) :get
+    (spread items)
+    (pipe ?*> (only-if (. each path) (if (. each path))))
+    (pipe |> List)
+  )
+  (fn-expr + has Bool
+    (param type String)
+    (call some items (:where (!= (call (. each conforming-type) type) null)))
+  )
+  (fn-expr + has-image Bool :get
+    (call some items (:where (. each is-image)))
+  )
+  (fn-do + read-string (? String)
+    (param type String)
+    (for (in entry items)
+      (let value (call (. entry read-string) type))
+      (return-if value (if value))
+    )
+    (return null)
+  )
+  (fn-do + read-text (? String)
+    (return (call read-string clipboard-text-type))
+  )
+  (fn-do + write Bool
+    (param items (list ClipboardItem))
+    (let writer (call clipboard-writer items))
+    (return-if false (if (== writer (call Pointer))))
+    (finally
+      (inline (call C:brixGuiClipboardWriterRelease writer))
+    )
+    (return (call C:brixGuiClipboardWriterCommit writer name))
+  )
+  (fn-do + write-text Bool
+    (param text String)
+    (return (call write (list (call clipboard-text-item text))))
+  )
+  (fn-do + change-count U64 :get
+    (return (call C:brixGuiClipboardChangeCount name))
+  )
+  (fn-do + discard _
+    (return-if (if (not (. name length))))
+    (call C:brixGuiClipboardDiscard name)
+  )
+)
+
+(fn-expr + clipboard-type-conforms Bool
+  (param type String)
+  (param parent String)
+  (or (== type parent) (call C:brixGuiTypeConforms type parent))
+)
+
+(fn-expr + clipboard-path-type (? String)
+  (param path Path)
+  (only-if (as type String) (if type))
+  (where
+    (lazy type (call C:brixGuiTypeOfPath (str path)))
+  )
+)
+
+(fn-expr _ clipboard-path-is-image Bool
+  (param path Path)
+  (if-expr type (call clipboard-type-conforms type clipboard-image-type) false)
+  (where
+    (lazy type (call clipboard-path-type path))
+  )
+)
+
+(fn-expr _ clipboard-item-types (list String)
+  (param name String)
+  (param index Size)
+  (if-expr joined (call (. (as joined String) split) "\n") (call (of List String)))
+  (where
+    (lazy joined (call C:brixGuiClipboardItemTypes name index))
+  )
+)
+
+(fn-do + clipboard-writer Pointer
+  (param items (list ClipboardItem))
+  (let writer (call C:brixGuiClipboardWriterCreate))
+  (return-if writer (if (== writer (call Pointer))))
+  (for (in item items)
+    (call C:brixGuiClipboardWriterAddItem writer)
+    (for (in representation (. item representations))
+      (if (not (call clipboard-writer-set writer representation))
+        (call C:brixGuiClipboardWriterRelease writer)
+        (return (call Pointer))
+      )
+    )
+  )
+  (return writer)
+)
+
+(fn-expr _ clipboard-writer-set Bool
+  (param writer Pointer)
+  (param representation ClipboardRepresentation)
+  (match (. representation data)
+    (case (call (. ClipboardData text) text)
+      (call C:brixGuiClipboardWriterSetString writer (. representation type) text)
+    )
+    (case (call (. ClipboardData bytes) bytes)
+      (call C:brixGuiClipboardWriterSetData writer (. representation type) (. bytes data) (. bytes size))
+    )
+    (case (call (. ClipboardData file) file)
+      (call C:brixGuiClipboardWriterSetPath writer (str file))
+    )
+  )
+)

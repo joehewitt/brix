@@ -1,11 +1,15 @@
 # Stack local edges
 
-```yumi
-+ @stack current = 10
+```brix
+(prop + current _ @stack (= 10))
+(blank)
 
-do with current = 20
-    -- current
--- current
+(main
+  (do-with current 20
+    (print current)
+  )
+  (print current)
+)
 ```
 
 ```output
@@ -13,17 +17,20 @@ do with current = 20
 10
 ```
 
-```yumi
-+ @stack current = 5
+```brix
+(prop + current _ @stack (= 5))
+(blank)
 
--- scoped()
--- current
+(main
+  (print (call scoped))
+  (print current)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do scoped Int
-
-do with current = 99
-    = current
+(fn-do + scoped Int
+  (do-with current 99
+    (return current)
+  )
+)
 ```
 
 ```output
@@ -31,64 +38,77 @@ do with current = 99
 5
 ```
 
-```yumi crash
-+ @stack current Int
+```brix crash
+(prop + current Int @stack)
+(blank)
 
-current = 4
+(main
+  (= current 4)
+)
 ```
 
 ```output
 Exception: Stack-local variable 'current' can only be rebound with do with
-<no file:4>
-    current = 4
-    ^^^^^^^^^^^
+<no file:6>
+      (= current 4)
+      ^^^^^^^^^^^^^
 ```
 
-```yumi crash
-+ @stack current Int
+```brix crash
+(prop + current Int @stack)
+(blank)
 
--- current
+(main
+  (print current)
+)
 ```
 
 ```output
 Exception: Stack-local variable 'current' is not bound
-<no file:4>
-    -- current
-       ^^^^^^^
+<no file:6>
+      (print current)
+             ^^^^^^^
 ```
 
-```yumi crash
-+ @stack current Int
+```brix crash
+(prop + current Int @stack)
+(blank)
 
--- read-current()
+(main
+  (print (call read-current))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ read-current Int
-
-current
+(fn-expr + read-current Int
+  current
+)
 ```
 
 ```output
 Exception: Stack-local variable 'current' is not bound: main → read-current
-<no file:9>
-    current
-    ^^^^^^^
+<no file:10>
+      current
+      ^^^^^^^
 ```
 
-```yumi
-+ @stack current Int
+```brix
+(prop + current Int @stack)
+(blank)
 
-. first Getter'Int?
-. second Getter'Int?
-do with current = 1
-    . captured = => current
-    first = captured as Getter'Int
-do with current = 2
-    . captured = => current
-    second = captured as Getter'Int
-
--- (first)()
--- (second)()
+(main
+  (let first (? (of Getter Int)))
+  (let second (? (of Getter Int)))
+  (do-with current 1
+    (let captured (=> () current))
+    (= first (as captured (of Getter Int)))
+  )
+  (do-with current 2
+    (let captured (=> () current))
+    (= second (as captured (of Getter Int)))
+  )
+  (blank)
+  (print (call first))
+  (print (call second))
+)
 ```
 
 ```output
@@ -96,54 +116,65 @@ do with current = 2
 2
 ```
 
-```yumi
-+ @stack current Int
-+ @stack unused String
+```brix
+(prop + current Int @stack)
+(prop + unused String @stack)
+(blank)
 
-do with current = 73
-    do new
-        -- current
+(main
+  (do-with current 73
+    (do-new
+      (print current)
+    )
+  )
+)
 ```
 
 ```output
 73
 ```
 
-```yumi
-+ @stack current Int
+```brix
+(prop + current Int @stack)
+(blank)
 
-. read Getter'Int?
-do with current = 64
-    . captured = => read-current()
-    read = captured as Getter'Int
+(main
+  (let read (? (of Getter Int)))
+  (do-with current 64
+    (let captured (=> () (call read-current)))
+    (= read (as captured (of Getter Int)))
+  )
+  (blank)
+  (print (call read))
+)
 
--- (read)()
-
-━━━━━━━━━━━━━━━━━━━━
-+ read-current Int
-
-current
+(fn-expr + read-current Int
+  current
+)
 ```
 
 ```output
 64
 ```
 
-```yumi
-+ @stack current = 5
+```brix
+(prop + current _ @stack (= 5))
+(blank)
 
-. read Getter'Int?
-do with current = 64
-    . captured = => read-current()
-    read = captured as Getter'Int
+(main
+  (let read (? (of Getter Int)))
+  (do-with current 64
+    (let captured (=> () (call read-current)))
+    (= read (as captured (of Getter Int)))
+  )
+  (blank)
+  (print (call read))
+  (print current)
+)
 
--- (read)()
--- current
-
-━━━━━━━━━━━━━━━━━━━━
-+ read-current Int
-
-current
+(fn-expr + read-current Int
+  current
+)
 ```
 
 ```output
@@ -151,21 +182,25 @@ current
 5
 ```
 
-```yumi
-+ @stack current = 5
+```brix
+(prop + current _ @stack (= 5))
+(blank)
 
-. results SyncChannel'Int
-do with current = 81
-    do new
-        results <- read-current()
+(main
+  (let results (of SyncChannel Int))
+  (do-with current 81
+    (do-new
+      (<- results (call read-current))
+    )
+  )
+  (blank)
+  (print (<- results))
+  (print current)
+)
 
--- <- results
--- current
-
-━━━━━━━━━━━━━━━━━━━━
-+ read-current Int
-
-current
+(fn-expr + read-current Int
+  current
+)
 ```
 
 ```output
@@ -173,183 +208,189 @@ current
 5
 ```
 
-```yumi
-+ @stack current Int
+```brix
+(prop + current Int @stack)
+(blank)
 
-do with current = 91
-    -- odd(3)
+(main
+  (do-with current 91
+    (print (call odd 3))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do odd Int
-    - n Int
+(fn-do + odd Int
+  (param n Int)
+  (return (call even (- n 1)))
+)
 
-= even(n - 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do even Int
-    - n Int
-
-if n == 0
-    = current
-= odd(n - 1)
+(fn-do + even Int
+  (param n Int)
+  (if (== n 0)
+    (return current)
+  )
+  (return (call odd (- n 1)))
+)
 ```
 
 ```output
 91
 ```
 
-```yumi compile-error
-+ @stack current Int
+```brix compile-error
+(prop + current Int @stack)
+(blank)
 
-. reader = Impl() as Reader
--- reader.read()
+(main
+  (let reader (as (call Impl) Reader))
+  (print (call (. reader read)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Reader is Interface
+(type + Reader (is Interface)
+  (fn-expr + read Int)
+)
 
-────────────────────
-+ read Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Impl
-    is Reader
-
-────────────────────
-+ read Int
-
-current
+(type + Impl
+  (implements Reader)
+  (fn-expr + read Int
+    current
+  )
+)
 ```
 
 ```output
 Exception: Stack-local variable 'current' is not bound: main → Reader.read → Impl.read
-<no file:20>
-    current
-    ^^^^^^^
+<no file:17>
+        current
+        ^^^^^^^
 ```
 
-```yumi compile-error
-+ @stack current Int
+```brix compile-error
+(prop + current Int @stack)
+(blank)
 
-. base Base = Derived()
--- base.value()
+(main
+  (let base Base (call Derived))
+  (print (call (. base value)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (fn-do + This _)
+  (fn-expr + value Int
+    0
+  )
+)
 
-────────────────────
-+ This
-
-────────────────────
-+ value Int
-
-0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-────────────────────
-+ This
-
-────────────────────
-+ value Int
-
-current
+(type + Derived (is Base)
+  (fn-do + This _)
+  (fn-expr + value Int
+    current
+  )
+)
 ```
 
 ```output
 Exception: Stack-local variable 'current' is not bound: main → Base.value → Derived.value
-<no file:27>
-    current
-    ^^^^^^^
+<no file:20>
+        current
+        ^^^^^^^
 ```
 
-```yumi compile-error
-+ @stack current Int
+```brix compile-error
+(prop + current Int @stack)
+(blank)
 
-. get Getter'Int = read-current
-do with current = 4
-    -- get()
+(main
+  (let get (of Getter Int) read-current)
+  (do-with current 4
+    (print (call get))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ read-current Int
-
-current
+(fn-expr + read-current Int
+  current
+)
 ```
 
 ```output
 Exception: Stack-local variable 'current' cannot be read through a function value: read-current
-<no file:4>
-    . get Getter'Int = read-current
-          ^^^^^^^^^^
+<no file:6>
+      (let get (of Getter Int) read-current)
+               ^^^^^^^^^^^^^^^
 ```
 
-```yumi compile-error
-+ @stack current Int
+```brix compile-error
+(prop + current Int @stack)
+(blank)
 
-. get = => current
-do with current = 4
-    -- get()
+(main
+  (let get (=> () current))
+  (do-with current 4
+    (print (call get))
+  )
+)
 ```
 
 ```output
 Exception: Stack-local variable 'current' is not bound: main → (closure)
-<no file:4>
-    . get = => current
-               ^^^^^^^
+<no file:6>
+      (let get (=> () current))
+                      ^^^^^^^
 ```
 
-```yumi compile-error
-+ @stack current Int
+```brix compile-error
+(prop + current Int @stack)
+(blank)
 
--- made()
+(main
+  (print (call made))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do made Int
-
-. get = => current
-= get()
+(fn-do + made Int
+  (let get (=> () current))
+  (return (call get))
+)
 ```
 
 ```output
 Exception: Stack-local variable 'current' is not bound: main → made → (closure)
-<no file:9>
-    . get = => current
-               ^^^^^^^
+<no file:10>
+      (let get (=> () current))
+                      ^^^^^^^
 ```
 
-```yumi
-+ @stack current Int
+```brix
+(prop + current Int @stack)
+(blank)
 
-. reader = Impl() as Reader
-do with current = 4
-    -- reader.read()
-    . get = => current + 1
-    -- get()
--- made(7)
+(main
+  (let reader (as (call Impl) Reader))
+  (do-with current 4
+    (print (call (. reader read)))
+    (let get (=> () (+ current 1)))
+    (print (call get))
+  )
+  (print (call made 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Reader is Interface
+(type + Reader (is Interface)
+  (fn-expr + read Int)
+)
 
-────────────────────
-+ read Int
+(type + Impl
+  (implements Reader)
+  (fn-expr + read Int
+    current
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Impl
-    is Reader
-
-────────────────────
-+ read Int
-
-current
-
-━━━━━━━━━━━━━━━━━━━━
-+ do made Int
-    - n Int
-
-do with current = n
-    . get = => current * 2
-    = get()
-= 0
+(fn-do + made Int
+  (param n Int)
+  (do-with current n
+    (let get (=> () (* current 2)))
+    (return (call get))
+  )
+  (return 0)
+)
 ```
 
 ```output
@@ -358,21 +399,24 @@ do with current = n
 14
 ```
 
-```yumi compile-error
-+ @stack first Int
-+ @stack second Int
+```brix compile-error
+(prop + first Int @stack)
+(prop + second Int @stack)
+(blank)
 
--- first + second
+(main
+  (print (+ first second))
+)
 ```
 
 ```output
 Exception: Stack-local variable 'first' is not bound
-<no file:5>
-    -- first + second
-       ^^^^^
+<no file:7>
+      (print (+ first second))
+                ^^^^^
 
 Exception: Stack-local variable 'second' is not bound
-<no file:5>
-    -- first + second
-               ^^^^^^
+<no file:7>
+      (print (+ first second))
+                      ^^^^^^
 ```

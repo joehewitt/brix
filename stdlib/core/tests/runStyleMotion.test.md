@@ -2,79 +2,84 @@
 
 ### A style property keyed with a dot is a property of its own. Class rules, `when` blocks and style sheet rules set it by its keyed name, and a rule written in a rule reaches generated content with it.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Dial dial • adorned
+(main
+  (<> BatchDemo (id: demo)
+    (<> Dial (id: dial) (• adorned))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot dial))
+  (= (. dial is-on) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot dial))
+  (print (call style-computed-snapshot (!! (. (!! (. dial %first-child)) %first-child))))
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(dial)
-dial.is-on = true
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(dial)
--- style-computed-snapshot(dial.%first-child!.%first-child!)
+(type + TintStyle (is Style)
+  (prop + tone I64 (= 0))
+  (prop + motion.tone I64 (= 0))
+  (prop + motion.shade I64 (= 0))
+  (blank)
+  (style-domains tone (domain paint))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(style AppTheme
+  (using TintStyle)
+  (prop + app-speed I64 (= 5))
+  (blank)
+  (rule Dial
+    (= (. motion shade) app-speed)
+  )
+  (blank)
+  (rule adorned
+    (rule host
+      (<> Mark (slot: first-child) (• mark))
+    )
+  )
+)
 
-+ tone I64 = 0
-+ motion.tone I64 = 0
-+ motion.shade I64 = 0
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using AppTheme)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-. tone -> paint
+(type + Dial (is Box)
+  (using TintStyle)
+  (using AppTheme)
+  (prop + is-on _ (= false))
+  (blank)
+  (rule This
+    (= (. motion tone) 2)
+    (blank)
+    (rule mark
+      (= (. motion tone) 7)
+    )
+    (blank)
+    (when-style #is-on
+      (= (. motion tone) 3)
+    )
+  )
+  (content
+    (<> This
+      (<> Box (• host))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-• AppTheme
-    using TintStyle
-
-+ app-speed I64 = 5
-
-• Dial
-    motion.shade = app-speed
-
-• adorned
-    • host
-        <Mark (first-child) • mark
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using AppTheme
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Dial is Box
-    using TintStyle
-    using AppTheme
-
-+ is-on = false
-
-• This
-    motion.tone = 2
-
-    • mark
-        motion.tone = 7
-
-    when #is-on
-        motion.tone = 3
-
-────────────────────
-
-<This
-    <Box • host
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mark is Box
-    using TintStyle
+(type + Mark (is Box)
+  (using TintStyle)
+)
 ```
 
 ```output
@@ -85,166 +90,162 @@ node TintStyle seg=owned gen=1 mask=2 tone=0 motion.tone=7 motion.shade=0
 
 ### Only a style declares a property keyed with a dot.
 
-```yumi crash
-. thing = Thing()
--- thing.size
+```brix crash
+(main
+  (let thing (call Thing))
+  (print (. thing size))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ size I64 = 1
-+ motion.size I64 = 2
+(type + Thing
+  (prop + size I64 (= 1))
+  (prop + motion.size I64 (= 2))
+)
 ```
 
 ```output
 Exception: Only a Style may declare a keyed property such as "motion.size"
 <no file:9>
-    + motion.size I64 = 2
-    ^^^^^^^^^^^^^^^^^^^^^
+      (prop + motion.size I64 (= 2))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Settling a mounted node reports each changed value to the motion host with its old and new bits, floats flagged as floats and objects as objects. A value the host presents is what `$property` reads until it unpresents it, and descendants that inherit the property follow it.
 
-```yumi
-/core/animatable
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/animatable)
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. host = Presenter()
-style-set-motion-host(host)
+(main
+  (let host (call Presenter))
+  (call style-set-motion-host host)
+  (blank)
+  (<> Demo (id: demo)
+    (<> Dial (id: dial)
+      (<> Inner (id: inner))
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (str "mounted: fade " (. dial $fade) " spot " (. dial $spot) " ink " (. dial $ink) " inner ink " (. inner $ink)))
+  (blank)
+  (= (. dial fade) 0.25)
+  (= (. dial spot) (call Spot 4 8))
+  (= (. dial ink) 9)
+  (= (. dial helper) (call Helper 3))
+  (call (. demo markup-batch-queue checkpoint))
+  (print (str "presented: fade " (. dial $fade) " spot " (. dial $spot) " ink " (. dial $ink) " inner ink " (. inner $ink)))
+  (print (str "helper " (?. (call (of style-read-object Helper) dial (!! (. host helper-info)) (. host helper-offset)) value)))
+  (blank)
+  (call (. host finish) dial)
+  (print (str "settled: fade " (. dial $fade) " spot " (. dial $spot) " ink " (. dial $ink) " inner ink " (. inner $ink) " presenting " (call style-is-presenting dial) " " (call style-is-presenting inner)))
+)
 
-<Demo demo
-    <Dial dial
-        <Inner inner
+(type + Demo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-demo.markup-batch-queue.checkpoint()
--- "mounted: fade ${dial.$fade} spot ${dial.$spot} ink ${dial.$ink} inner ink ${inner.$ink}"
+(type + Spot (is Tuple)
+  (implements Animatable)
+  (prop + x F64)
+  (prop + y F64)
+  (fn-do + This _
+    (param vector (list F64))
+    (return (call This ([] vector 0) ([] vector 1)))
+  )
+  (fn-expr + motion-vector (list F64) :get
+    (list x y)
+  )
+)
 
-dial.fade = 0.25
-dial.spot = Spot(4, 8)
-dial.ink = 9
-dial.helper = Helper(3)
-demo.markup-batch-queue.checkpoint()
--- "presented: fade ${dial.$fade} spot ${dial.$spot} ink ${dial.$ink} inner ink ${inner.$ink}"
--- "helper ${style-read-object'Helper(dial, host.helper-info!, host.helper-offset)?.value}"
+(type + Helper
+  (prop + value I64)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-host.finish(dial)
--- "settled: fade ${dial.$fade} spot ${dial.$spot} ink ${dial.$ink} inner ink ${inner.$ink} presenting ${style-is-presenting(dial)} ${style-is-presenting(inner)}"
+(type + DialStyle (is Style)
+  (prop + fade F64 (= 1))
+  (prop + spot _ (= (call Spot 0 0)))
+  (prop + helper (? Helper) (= null))
+  (blank)
+  (style-domains fade (domain paint))
+  (style-domains spot (domain paint))
+  (style-domains helper (domain paint))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-    is MarkupRootElement
+(type + InkStyle (is Style)
+  (prop + ink I64 @inherited (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + Dial (is Box)
+  (using DialStyle)
+  (using InkStyle)
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + Inner (is Box)
+  (using InkStyle)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Spot is Tuple
-    is Animatable
+(type + Presenter
+  (implements StyleMotionHost)
+  (prop + helper-info (? StyleInfo))
+  (prop + helper-offset Size (= 0))
+  (blank)
+  (prop _ shown _ (= (call (of List StyleValueChange))))
+  (fn-do + finish _
+    (param owner MarkupElement)
+    (for (in change shown)
+      (call style-unpresent owner (. change info) (. change offset))
+    )
+  )
+  (fn-do + style-values-changed _
+    (param owner MarkupElement)
+    (param changes (list StyleValueChange))
+    (for (in change changes)
+      (let property ([] (. change info properties) (. change offset)))
+      (let from (?? (call style-motion-vector property (. change old-bits) (. change old-none)) (call style-motion-none-vector property (. change bits))))
+      (let to (call style-motion-vector property (. change bits) (. change none)))
+      (print (str (. property name) ": float " (. property is-float) " object " (. property is-object) " from " (call describe from) " to " (call describe to)))
+      (if (. property is-object)
+        (= helper-info (. change info))
+        (= helper-offset (. change offset))
+      )
+      (if (and from to)
+        (let middle (call (of List F64)))
+        (for (in index (..< 0 (. to length)))
+          (+= middle (/ (+ ([] from index) ([] to index)) 2))
+        )
+        (let presenter (call StylePresenter property (. change bits)))
+        (call style-present owner (. change info) (. change offset) (call (. presenter bits) middle) false)
+        (+= shown change)
+        (else-if (== (. property name) "ink")
+          (call style-present owner (. change info) (. change offset) 5 false)
+          (+= shown change)
+        )
+      )
+    )
+  )
+)
 
-+ x F64
-+ y F64
-
-────────────────────
-+ This
-    - vector [F64]
-
-= This(vector[0], vector[1])
-
-────────────────────
-+ get motion-vector [F64]
-
-[x, y]
-
-━━━━━━━━━━━━━━━━━━━━
-+ Helper
-
-+ value I64
-
-────────────────────
-+ This
-    - value
-
-━━━━━━━━━━━━━━━━━━━━
-+ DialStyle is Style
-
-+ fade F64 = 1
-+ spot = Spot(0, 0)
-+ helper Helper? = null
-
-. fade -> paint
-. spot -> paint
-. helper -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ InkStyle is Style
-
-+ @inherited ink I64 = 0
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ Dial is Box
-    using DialStyle
-    using InkStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ Inner is Box
-    using InkStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ Presenter
-    is StyleMotionHost
-
-+ helper-info StyleInfo?
-+ helper-offset Size = 0
-
-_ shown = List'StyleValueChange()
-
-────────────────────
-+ do finish
-    - owner MarkupElement
-
-for change in shown
-    style-unpresent(owner, change.info, change.offset)
-
-────────────────────
-+ do style-values-changed
-    - owner MarkupElement
-    - changes [StyleValueChange]
-
-for change in changes
-    . property = change.info.properties[change.offset]
-    . from = style-motion-vector(property, change.old-bits, change.old-none) ?? style-motion-none-vector(property, change.bits)
-    . to = style-motion-vector(property, change.bits, change.none)
-    -- "${property.name}: float ${property.is-float} object ${property.is-object} from ${describe(from)} to ${describe(to)}"
-    if property.is-object
-        helper-info = change.info
-        helper-offset = change.offset
-    if from && to
-        . middle = List'F64()
-        for index in 0 .. < to.length
-            middle += (from[index] + to[index]) / 2
-        . presenter = StylePresenter(property, change.bits)
-        style-present(owner, change.info, change.offset, presenter.bits(middle), false)
-        shown += change
-    else if property.name == "ink"
-        style-present(owner, change.info, change.offset, 5, false)
-        shown += change
-
-━━━━━━━━━━━━━━━━━━━━
-_ do describe String
-    - vector [F64]?
-
-=? "none" if !vector
-. text = ""
-for value in vector
-    text = text + " $value"
-= text
+(fn-do _ describe String
+  (param vector (? (list F64)))
+  (return-if "none" (if (not vector)))
+  (let text "")
+  (for (in value vector)
+    (= text (+ text (str " " value)))
+  )
+  (return text)
+)
 ```
 
 ```output
@@ -260,93 +261,89 @@ settled: fade 0.25 spot (4, 8) ink 9 inner ink 9 presenting false false
 
 ### A presented value is built from its vector by the value it moves to, so what the vector leaves out comes from there. Two values mix only when the first `moves-to` the second.
 
-```yumi
-/core/animatable
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/animatable)
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. host = Presenter()
-style-set-motion-host(host)
+(main
+  (let host (call Presenter))
+  (call style-set-motion-host host)
+  (blank)
+  (<> Demo (id: demo)
+    (<> Dial (id: dial))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (= (. dial glow) (call Glow 1 4 8))
+  (call (. demo markup-batch-queue checkpoint))
+  (print (str "same kind: " (. dial $glow)))
+  (= (. dial glow) (call Glow 2 0 0))
+  (call (. demo markup-batch-queue checkpoint))
+  (print (str "other kind: " (. dial $glow)))
+)
 
-<Demo demo
-    <Dial dial
+(type + Demo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-demo.markup-batch-queue.checkpoint()
-dial.glow = Glow(1, 4, 8)
-demo.markup-batch-queue.checkpoint()
--- "same kind: ${dial.$glow}"
-dial.glow = Glow(2, 0, 0)
-demo.markup-batch-queue.checkpoint()
--- "other kind: ${dial.$glow}"
+(type + Glow (is Tuple)
+  (implements Animatable)
+  (prop + kind I64)
+  (prop + x F64)
+  (prop + y F64)
+  (fn-expr + motion-vector (list F64) :get
+    (list x y)
+  )
+  (fn-expr + with-motion-vector This
+    (param vector (list F64))
+    (call This kind ([] vector 0) ([] vector 1))
+  )
+  (fn-expr + moves-to Bool
+    (param other This)
+    (== kind (. other kind))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-    is MarkupRootElement
+(type + GlowStyle (is Style)
+  (prop + glow _ (= (call Glow 1 0 0)))
+  (blank)
+  (style-domains glow (domain paint))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + Dial (is Box)
+  (using GlowStyle)
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Glow is Tuple
-    is Animatable
-
-+ kind I64
-+ x F64
-+ y F64
-
-────────────────────
-+ get motion-vector [F64]
-
-[x, y]
-
-────────────────────
-+ with-motion-vector This
-    - vector [F64]
-
-This(kind, vector[0], vector[1])
-
-────────────────────
-+ moves-to Bool
-    - other This
-
-kind == other.kind
-
-━━━━━━━━━━━━━━━━━━━━
-+ GlowStyle is Style
-
-+ glow = Glow(1, 0, 0)
-
-. glow -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ Dial is Box
-    using GlowStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ Presenter
-    is StyleMotionHost
-
-────────────────────
-+ do style-values-changed
-    - owner MarkupElement
-    - changes [StyleValueChange]
-
-for change in changes
-    . property = change.info.properties[change.offset]
-    . from = style-motion-vector(property, change.old-bits, false)
-    . to = style-motion-vector(property, change.bits, false)
-    if from && to && style-motion-moves(property, change.old-bits, change.bits)
-        . middle = List'F64()
-        for index in 0 .. < to.length
-            middle += (from[index] + to[index]) / 2
-        . presenter = StylePresenter(property, change.bits)
-        style-present(owner, change.info, change.offset, presenter.bits(middle), false)
-    else
-        style-unpresent(owner, change.info, change.offset)
+(type + Presenter
+  (implements StyleMotionHost)
+  (fn-do + style-values-changed _
+    (param owner MarkupElement)
+    (param changes (list StyleValueChange))
+    (for (in change changes)
+      (let property ([] (. change info properties) (. change offset)))
+      (let from (call style-motion-vector property (. change old-bits) false))
+      (let to (call style-motion-vector property (. change bits) false))
+      (if (and from to (call style-motion-moves property (. change old-bits) (. change bits)))
+        (let middle (call (of List F64)))
+        (for (in index (..< 0 (. to length)))
+          (+= middle (/ (+ ([] from index) ([] to index)) 2))
+        )
+        (let presenter (call StylePresenter property (. change bits)))
+        (call style-present owner (. change info) (. change offset) (call (. presenter bits) middle) false)
+        (else
+          (call style-unpresent owner (. change info) (. change offset))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -356,92 +353,89 @@ other kind: (2, 0, 0)
 
 ### A presented value keeps alive the value its bits name, as does each descendant that follows it, even after the presenter that made it moves on to another value without presenting again.
 
-```yumi
-/BxGC/BxGC.h
-/core/animatable
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /BxGC/BxGC.h)
+(import /core/animatable)
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. host = Presenter()
-style-set-motion-host(host)
+(main
+  (let host (call Presenter))
+  (call style-set-motion-host host)
+  (blank)
+  (<> Demo (id: demo)
+    (<> Dial (id: dial)
+      (<> Inner (id: inner))
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (= (. dial spot) (call Spot 4 8))
+  (call (. demo markup-batch-queue checkpoint))
+  (call C:brixGCCollect)
+  (print (str "presented: " (. dial $spot) " inner " (. inner $spot)))
+)
 
-<Demo demo
-    <Dial dial
-        <Inner inner
+(type + Demo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-demo.markup-batch-queue.checkpoint()
-dial.spot = Spot(4, 8)
-demo.markup-batch-queue.checkpoint()
-C:brixGCCollect()
--- "presented: ${dial.$spot} inner ${inner.$spot}"
+(type + Spot (is Tuple)
+  (implements Animatable)
+  (prop + x F64)
+  (prop + y F64)
+  (fn-do + This _
+    (param vector (list F64))
+    (return (call This ([] vector 0) ([] vector 1)))
+  )
+  (fn-expr + motion-vector (list F64) :get
+    (list x y)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-    is MarkupRootElement
+(type + SpotStyle (is Style)
+  (prop + spot _ @inherited (= (call Spot 0 0)))
+  (blank)
+  (style-domains spot (domain paint))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + Dial (is Box)
+  (using SpotStyle)
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + Inner (is Box)
+  (using SpotStyle)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Spot is Tuple
-    is Animatable
-
-+ x F64
-+ y F64
-
-────────────────────
-+ This
-    - vector [F64]
-
-= This(vector[0], vector[1])
-
-────────────────────
-+ get motion-vector [F64]
-
-[x, y]
-
-━━━━━━━━━━━━━━━━━━━━
-+ SpotStyle is Style
-
-+ @inherited spot = Spot(0, 0)
-
-. spot -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ Dial is Box
-    using SpotStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ Inner is Box
-    using SpotStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ Presenter
-    is StyleMotionHost
-
-_ presenters = List'StylePresenter()
-
-────────────────────
-+ do style-values-changed
-    - owner MarkupElement
-    - changes [StyleValueChange]
-
-for change in changes
-    . property = change.info.properties[change.offset]
-    . from = style-motion-vector(property, change.old-bits, false)
-    . to = style-motion-vector(property, change.bits, false)
-    if from && to
-        . middle = List'F64()
-        for index in 0 .. < to.length
-            middle += (from[index] + to[index]) / 2
-        . presenter = StylePresenter(property, change.bits)
-        style-present(owner, change.info, change.offset, presenter.bits(middle), false)
-        presenter.retarget(change.old-bits)
-        presenters += presenter
+(type + Presenter
+  (implements StyleMotionHost)
+  (prop _ presenters _ (= (call (of List StylePresenter))))
+  (fn-do + style-values-changed _
+    (param owner MarkupElement)
+    (param changes (list StyleValueChange))
+    (for (in change changes)
+      (let property ([] (. change info properties) (. change offset)))
+      (let from (call style-motion-vector property (. change old-bits) false))
+      (let to (call style-motion-vector property (. change bits) false))
+      (if (and from to)
+        (let middle (call (of List F64)))
+        (for (in index (..< 0 (. to length)))
+          (+= middle (/ (+ ([] from index) ([] to index)) 2))
+        )
+        (let presenter (call StylePresenter property (. change bits)))
+        (call style-present owner (. change info) (. change offset) (call (. presenter bits) middle) false)
+        (call (. presenter retarget) (. change old-bits))
+        (+= presenters presenter)
+      )
+    )
+  )
+)
 ```
 
 ```output

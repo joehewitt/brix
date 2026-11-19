@@ -1,0 +1,104 @@
+; benchmark.meta description: Strokes open line and curve paths with mixed caps and joins.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /graphics/stroke)
+(import /math)
+(blank)
+
+(main
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 220))
+    (let source (call open-stroke-source pass))
+    (let stroked
+      (call stroke
+        (block
+          (arg source)
+          (arg (+ 3.0 (% pass 9)))
+          (arg .center)
+          (arg (call stroke-join pass))
+          (arg (call stroke-cap pass))
+          (arg 5)
+          (arg 0)
+        )
+      )
+    )
+    (+= checksum (+ (. source count) (call path-score stroked)))
+  )
+  (blank)
+  (print (str "bench-result graphics/stroke-open-paths checksum=" checksum))
+)
+
+(fn-do _ open-stroke-source _
+  (param seed Int)
+  (let base (as seed Float))
+  (let path (call Path))
+  (call (. path move-to) (+ 8 (% base 9)) (+ 44 (% base 17)))
+  (for (in i (..< 0 7))
+    (let f (as i Float))
+    (call (. path line-to) (+ 20 (* f 18)) (+ 54 (* (call sin (* (+ base (* f 1.7)) 0.34)) 28)))
+  )
+  (blank)
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ 150 (% base 13)))
+      (arg (+ 18 (% base 11)))
+      (arg (- 180 (% base 9)))
+      (arg (- 118 (% base 15)))
+      (arg 212)
+      (arg (+ 62 (% base 25)))
+    )
+  )
+  (return path)
+)
+
+(fn-expr _ stroke-join _
+  (param seed Int)
+  (case? (== kind 0)
+    .bevel-join-type
+  )
+  (case? (== kind 1)
+    .miter-join-type
+  )
+  (default
+    .round-join-type
+  )
+  (where
+    (lazy kind (% seed 3))
+  )
+)
+
+(fn-expr _ stroke-cap LineCap
+  (param seed Int)
+  (case? (== kind 0)
+    .butt
+  )
+  (case? (== kind 1)
+    .square
+  )
+  (default
+    .round
+  )
+  (where
+    (lazy kind (% seed 3))
+  )
+)
+
+(fn-expr _ path-score Size
+  (param path Path)
+  (case? (not (. path count))
+    0
+  )
+  (default
+    (+ (. path count) (call numeric-check (. path last-point x)) (call numeric-check (. path last-point y)))
+  )
+)
+
+(fn-expr _ numeric-check Size
+  (param value Coord)
+  (% (as (call abs (* value 1000)) Size) 1000003)
+)

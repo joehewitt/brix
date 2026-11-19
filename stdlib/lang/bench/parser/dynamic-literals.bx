@@ -1,0 +1,38 @@
+; benchmark.meta description: Matches changing runtime UTF-8 literals with early misses and short input.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator
+(blank)
+(import /core/tokenstream)
+(blank)
+
+(main
+  (let literals (list "abcdef" "xbcdef" "abcdeg" "abcdefghi" "é東京😀" "é京東😀"))
+  (let ascii (call (of ArrayTokenStream Char) (. "abcdef" codepoints)))
+  (let unicode (call (of ArrayTokenStream Char) (. "é東京😀" codepoints)))
+  (let checksum Size)
+  (for (in i (..< 0 100000))
+    (for (in literal literals)
+      (= (. ascii cursor) 0)
+      (= (. unicode cursor) 0)
+      (+= checksum (call probe-literal ascii literal))
+      (+= checksum (call probe-literal unicode literal))
+    )
+  )
+  (blank)
+  (print (str "bench-result parser/dynamic-literals checksum=" checksum))
+)
+
+(fn-do + probe-literal Size
+  (param stream (of TokenStream Char))
+  (param literal String)
+  (return
+    (match stream
+      (~ $literal
+        1
+      )
+      (default
+        (inline 0)
+      )
+    )
+  )
+)

@@ -1,0 +1,221 @@
+(import ./wire)
+(import /ai/mcp)
+(import /ai/model)
+(import /data/json)
+(import /data/jsonrpc)
+(blank)
+(prop + claude-tool-server _ (= "brix-tools"))
+(prop _ claude-tool-prefix _ (= (str "mcp__" claude-tool-server "__")))
+(prop _ claude-tool-use-key _ (= "claudecode/toolUseId"))
+(prop _ claude-tool-version _ (= "0.1.0"))
+(prop _ claude-mcp-version _ (= "2025-06-18"))
+
+(type + ClaudeHostedOutcome (is Tuple)
+  (prop + call-id (? String))
+  (prop + tool String)
+  (prop + result (? AIToolkitResult))
+  (prop + failure (? String))
+)
+
+(type + ClaudeToolHost
+  (prop + toolkits (list AIToolkit))
+  (blank)
+  (prop _ outcomes (list ClaudeHostedOutcome))
+  (prop _ calls Size)
+  (fn-do + This _
+    (param toolkits _)
+  )
+  (fn-do + answer JSON
+    (param message JSON)
+    (param request AIRequest)
+    (let parsed (catch (call json-rpc-message message false)))
+    (let rpc
+      (match? parsed
+        (case JSONRPCRequest)
+      )
+    )
+    (return-if (call claude-mcp-notified) (if (not rpc)))
+    (let outcome (catch (call result rpc request)))
+    (return
+      (match outcome
+        (case (: fields (map String JSON))
+          (. (call (. rpc response) fields) json)
+        )
+        (case (: failure JSONRPCError)
+          (. (call (. rpc error-response) failure) json)
+        )
+        (case (: failure Error)
+          (. (call (. rpc error-response) (call JSONRPCError .internal-error (. failure message))) json)
+        )
+      )
+    )
+  )
+  (fn-do + take (? ClaudeHostedOutcome)
+    (param call-id String)
+    (param tool String)
+    (for (in index (..< 0 (. outcomes length)))
+      (let outcome ([] outcomes index))
+      (if (or (== (. outcome call-id) call-id) (and (== (. outcome call-id) null) (== (. outcome tool) tool)))
+        (call (. outcomes remove) index)
+        (return outcome)
+      )
+    )
+    (return null)
+  )
+  (fn-do _ result (map String JSON) (?! Error)
+    (param rpc JSONRPCRequest)
+    (param request AIRequest)
+    (return
+      (match (. rpc method)
+        (case "initialize"
+          (call claude-mcp-initialized (. rpc params))
+        )
+        (case "ping"
+          (call (of Map String JSON))
+        )
+        (case "tools/list"
+          (call listed)
+        )
+        (case "tools/call"
+          (call call (. rpc params) request)
+        )
+        (throw (call JSONRPCError .method-not-found (str "Method not found: " (. rpc method))))
+      )
+    )
+  )
+  (fn-do _ listed (map String JSON)
+    (let listed (call (of List JSON)))
+    (for (in kit toolkits)
+      (for (in tool (call (. kit tools)))
+        (let hosted (call MCPTool (. tool name)))
+        (= (. hosted description) (. tool description))
+        (= (. hosted input-schema) (. tool parameters))
+        (+= listed (. hosted json))
+      )
+    )
+    (return
+      (call (of Map String JSON)
+        (block
+          (:tools listed)
+        )
+      )
+    )
+  )
+  (fn-do _ call (map String JSON) (?! Error)
+    (param params JSON)
+    (param request AIRequest)
+    (let fields (?? (call json-object params) (call (of Map String JSON))))
+    (let name (?? (call json-string ([] fields "name")) ""))
+    (let kit (call ai-toolkit-for toolkits name))
+    (throw (call JSONRPCError .invalid-params (str "Unknown tool: " name)) (if (not kit)))
+    (let tool-use (call json-string (?[] (call json-object ([] fields "_meta")) claude-tool-use-key)))
+    (+= calls 1)
+    (let id (?? tool-use (str claude-tool-server "-" calls)))
+    (let part (call AIToolCallPart id id name (?? ([] fields "arguments") (as (call (of Map String JSON)) JSON))))
+    (let ran (catch (call (. kit run) request part)))
+    (if (= (| (: failure Error)) ran)
+      (+= outcomes (call ClaudeHostedOutcome tool-use name null (. failure message)))
+      (return (. (call MCPToolResult (. failure message) true) json))
+    )
+    (let made (as ran AIToolkitResult))
+    (+= outcomes (call ClaudeHostedOutcome tool-use name made null))
+    (let reply (call MCPToolResult (call to-json (. made output))))
+    (for (in image (. made images))
+      (+= (. reply images) (call MCPImage (call claude-image-data (. image file)) (. image file mime-type)))
+    )
+    (return (. reply json))
+  )
+)
+
+(fn-do + claude-hosted-server ClaudeMCPServer
+  (param toolkits (list AIToolkit))
+  (let names (call (of List String)))
+  (for (in kit toolkits)
+    (for (in tool (call (. kit tools)))
+      (+= names (. tool name))
+    )
+  )
+  (return (call ClaudeMCPServer claude-tool-server null names))
+)
+
+(fn-expr + claude-hosted-call (? AIToolCallPart)
+  (param part AIMessagePart)
+  (match? part
+    (case (all (: call AIToolCallPart) ({} (call (. it tool-name starts-with) claude-tool-prefix)))
+      (call AIToolCallPart
+        (block
+          (arg (. call id))
+          (arg (. call call-id))
+          (arg ([] (. call tool-name) (..< (. claude-tool-prefix length) (. call tool-name length))))
+          (arg (. call arguments))
+          (arg (. call provider-signature))
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + claude-answers-hosted Bool
+  (param part AIMessagePart)
+  (param calls (map String AIToolCallPart))
+  (match part
+    (case (: result AIToolResultPart)
+      (!= ([] calls (. result call-id)) null)
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-expr _ claude-mcp-initialized (map String JSON)
+  (param params JSON)
+  (call (of Map String JSON)
+    (block
+      (entry "protocolVersion" (?? (call json-string (?[] (call json-object params) "protocolVersion")) claude-mcp-version))
+      (:capabilities capabilities)
+      (entry "serverInfo" info)
+    )
+  )
+  (where
+    (lazy capabilities
+      (call (of Map String JSON)
+        (block
+          (:tools (call (of Map String JSON)))
+        )
+      )
+    )
+    (lazy info
+      (call (of Map String JSON)
+        (block
+          (:name claude-tool-server)
+          (:version claude-tool-version)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ claude-mcp-notified JSON
+  (call (of Map String JSON)
+    (block
+      (:jsonrpc "2.0")
+      (:result (call (of Map String JSON)))
+      (:id 0)
+    )
+  )
+)
+
+(fn-expr _ json-string _
+  (param value (? JSON))
+  (match? value
+    (case String)
+  )
+)
+
+(fn-expr _ json-object _
+  (param value (? JSON))
+  (match? value
+    (case (map String JSON))
+  )
+)

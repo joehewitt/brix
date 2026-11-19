@@ -1,0 +1,91 @@
+(import ./arena)
+(import ./array)
+(import ./error)
+(blank)
+(type-line + ScratchMark (is Size))
+
+(type + (of Scratch Item)
+  ; A growable stack of plain values whose finished runs are handed out as read-only spans. Storage
+  ; lives in an Arena, so a span taken before the stack grows keeps reading the run it was taken
+  ; from: the old buffer is never reused until the Arena is released. Slice only finished runs;
+  ; writes go through the stack by index and land in the current storage.
+  (blank)
+  (prop _ items (of Array Item ArenaBacking))
+  (prop _ arena Arena)
+  (prop + length Size (= 0))
+  (fn-do + This _
+    (param arena Arena)
+    (param capacity Size (= 256))
+    (lazy items (call (of Array Item ArenaBacking) arena capacity))
+  )
+  (fn-expr + mark ScratchMark :get
+    length
+  )
+  (fn-do + push _
+    (param item Item)
+    (if (== length (. items length))
+      (call grow (+ length 1))
+    )
+    (= ([] items length) item)
+    (+= length 1)
+  )
+  (fn-do + insert _
+    (param item Item)
+    (param index Index)
+    (throw (call OutOfBoundsError (str "Scratch insert index " index " out of range")) (if (> (as index UInt) (as length UInt))))
+    (blank)
+    (if (== length (. items length))
+      (call grow (+ length 1))
+    )
+    (let position length)
+    (while (> position index)
+      (= ([] items position) ([] items (- position 1)))
+      (-= position 1)
+    )
+    (= ([] items index) item)
+    (+= length 1)
+  )
+  (fn-do + rewind _
+    (param mark ScratchMark)
+    (throw (call OutOfBoundsError (str "Scratch mark " mark " out of range")) (if (> mark length)))
+    (blank)
+    (= length mark)
+  )
+  (fn-expr + (index-get this (param index Index)) _
+    (before
+      (throw (call OutOfBoundsError (str "Scratch index " index " out of range")) (if (>= (as index UInt) (as length UInt))))
+    )
+    ([] items index)
+  )
+  (fn-do + (index-set this (param index Index) (param item Item)) _
+    (throw (call OutOfBoundsError (str "Scratch index " index " out of range")) (if (>= (as index UInt) (as length UInt))))
+    (blank)
+    (= ([] items index) item)
+  )
+  (fn-expr + since (of ImmutableArray Item ArenaBacking)
+    (param mark ScratchMark)
+    (before
+      (throw (call OutOfBoundsError (str "Scratch mark " mark " out of range")) (if (> mark length)))
+    )
+    (. ([] items (..< mark length)) immutable)
+  )
+  (fn-expr + span (of ImmutableArray Item ArenaBacking)
+    (param start Size)
+    (param count Size)
+    (before
+      (throw (call OutOfBoundsError (str "Scratch span " start "+" count " out of range")) (if (> (+ start count) length)))
+    )
+    (. ([] items (..< start (+ start count))) immutable)
+  )
+  (fn-do _ grow _
+    (param needed Size)
+    (let capacity (* (. items length) 2))
+    (if (< capacity 8)
+      (= capacity 8)
+    )
+    (while (< capacity needed)
+      (*= capacity 2)
+    )
+    (= items (call (. items resize) capacity arena))
+  )
+)

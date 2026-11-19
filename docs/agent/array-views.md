@@ -33,7 +33,7 @@ writes remain visible through live views. Invalidated views raise `Stale array v
 access; iteration validates before entering its body.
 
 The compiler derives aggregate projection, indexing, slicing, and access checks. The shared
-iteration and materialization methods are implemented in `stdlib/core/array.yumi`.
+iteration and materialization methods are implemented in `stdlib/core/array.bx`.
 
 Stable row loops and zero-based indexed loops over a row view's length share the array-of-structs
 cursor lowering. They evaluate the receiver and validate its token before loop effects, keep

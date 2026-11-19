@@ -1,0 +1,140 @@
+(import /core/map)
+
+(type + FacetState (is U8)
+  (variant facet-bound)
+  (variant facet-owner-missing)
+  (variant facet-owner-not-class)
+  (variant facet-owner-generic)
+  (variant facet-outside-family)
+  (variant facet-cycle)
+)
+
+(type + FacetTable
+  ; The facets of a program. Each is the part of a class or of another facet of it its `facet-of`
+  ; names, and has the class at the root of that chain as its owner, and the sibling facets its
+  ; `sees` names. Each class has its facets in the order their properties are laid out and given
+  ; their first values: by the name of the module that declares them, then by declaration. A module
+  ; that declares a facet reaches the private declarations of its owner's module.
+  (blank)
+  (prop + modules (list U32))
+  (prop + decls (list U32))
+  (prop + parents (list U32))
+  (prop + parent-modules (list U32))
+  (prop + parent-decls (list U32))
+  (prop + owner-modules (list U32))
+  (prop + owner-decls (list U32))
+  (prop + states (list FacetState))
+  (prop + sees-starts (list U32))
+  (prop + sees (list U32))
+  (prop + class-modules (list U32))
+  (prop + class-decls (list U32))
+  (prop + class-starts (list U32))
+  (prop + class-facets (list U32))
+  (prop + hosts (list U32))
+  (prop + places _ (= (call (of Map U64 U32))))
+  (fn-expr + count Size :get
+    (. modules length)
+  )
+  (fn-do + index-of (? U32)
+    (param module U32)
+    (param decl U32)
+    (return ([] places (call place-key module decl)))
+  )
+  (fn-do + class-range (tuple Size Size)
+    (param module U32)
+    (param decl U32)
+    ; Where the facets of a class are among `class-facets`, as the start and the end.
+    (for (in key (..< 0 (. class-modules length)))
+      (if (and (== ([] class-modules key) module) (== ([] class-decls key) decl))
+        (return (tuple (as ([] class-starts key) Size) (as ([] class-starts (+ key 1)) Size)))
+      )
+    )
+    (return (tuple 0 0))
+  )
+  (fn-do + declares-facet-of Bool
+    (param module U32)
+    (param owner-module U32)
+    (param owner-decl U32)
+    ; Whether a module declares a facet of a class.
+    (for (in facet (..< 0 (. modules length)))
+      (let owned (and (== ([] owner-modules facet) owner-module) (== ([] owner-decls facet) owner-decl)))
+      (return-if true (if (and owned (== ([] modules facet) module))))
+    )
+    (return false)
+  )
+  (fn-do + reaches Bool
+    (param module U32)
+    (param facet U32)
+    ; Whether code in a module that declares facets of a class reaches a facet of it: one the module
+    ; declares, an ancestor of one, or one that one of them sees.
+    (let owner-module ([] owner-modules facet))
+    (let owner-decl ([] owner-decls facet))
+    (for (in own (..< 0 (. modules length)))
+      (if (and (== ([] modules own) module) (== ([] owner-modules own) owner-module) (== ([] owner-decls own) owner-decl))
+        (return-if true (if (call is-within (as own U32) facet)))
+        (for (in position (..< ([] sees-starts own) ([] sees-starts (+ own 1))))
+          (return-if true (if (== ([] sees position) facet)))
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + root-of (tuple U32 U32)
+    (param facet U32)
+    ; What a facet's chain of parents ends at, as a module and a declaration, or none for a cycle.
+    (let current facet)
+    (let steps Size 0)
+    (while (!= ([] parents current) (. U32 max))
+      (= current ([] parents current))
+      (+= steps 1)
+      (return-if (tuple (. U32 max) (. U32 max)) (if (> steps (. modules length))))
+    )
+    (return (tuple ([] parent-modules current) ([] parent-decls current)))
+  )
+  (fn-do + is-within Bool
+    (param facet U32)
+    (param ancestor U32)
+    ; Whether a facet is another or a part of it, through the facets between them.
+    (let current facet)
+    (let steps Size 0)
+    (while (and (!= current (. U32 max)) (<= steps (. modules length)))
+      (return-if true (if (== current ancestor)))
+      (= current ([] parents current))
+      (+= steps 1)
+    )
+    (return false)
+  )
+)
+
+(fn-expr + place-key U64
+  (param module U32)
+  (param decl U32)
+  (/or/ (/lshift/ (as module U64) 32) (as decl U64))
+)
+
+(fn-expr + facet-state-message String
+  (param state FacetState)
+  (param name String)
+  (param owner String)
+  (param family String)
+  (match state
+    (case= .facet-owner-missing
+      (str "\"" owner "\" names no class or facet that " name " can be part of")
+    )
+    (case= .facet-owner-not-class
+      (str "A facet is part of a class or of another facet of one, and \"" owner "\" is neither")
+    )
+    (case= .facet-owner-generic
+      (str name " can't be part of " owner ", since a class that takes type arguments has no facets")
+    )
+    (case= .facet-outside-family
+      (str name " is a facet of " owner ", so it is declared in the file family of " family ", in a module named after it")
+    )
+    (case= .facet-cycle
+      (str name " is part of itself, through the facets it is part of")
+    )
+    (default
+      (str name " has no owner")
+    )
+  )
+)

@@ -1,0 +1,109 @@
+(import /ai/model)
+(import /data/json)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "AI Completion Collection"))
+  (call (. cases run) ai-completion-tests)
+  (= cases (call (. cases then) "AI Streamed Tool Arguments" ai-tool-argument-tests))
+  (return cases)
+)
+
+(fn-do + ai-tool-argument-tests TestCase
+  (param t TestCase)
+  (let reply (call AIReply))
+  (call (. reply apply) (call AIPartBeginEvent (call AIToolCallPart "call" "call-1" "Glob" null)))
+  (call (. reply apply) (call AIPartDeltaEvent "call" (call AIToolArgumentsDelta "{\"pattern\": \"*.yu")))
+  (let call (as ([] (. reply parts) 0) AIToolCallPart))
+  (call (. t expect) "unfinished arguments keep what arrived" "{\"pattern\": \"*.yu" (call text-of (. call arguments)))
+  (blank)
+  (call (. reply apply) (call AIPartDeltaEvent "call" (call AIToolArgumentsDelta "mi\"}")))
+  (call (. t expect) "finished arguments are decoded" "*.yumi" (call pattern-of (. call arguments)))
+  (call (. t check) "decoded arguments are no longer text" (is-not (. call arguments) String))
+  (return t)
+)
+
+(fn-expr _ text-of _
+  (param value JSON)
+  (?? text "")
+  (where
+    (lazy text
+      (match? value
+        (case String)
+      )
+    )
+  )
+)
+
+(fn-expr _ pattern-of _
+  (param value JSON)
+  (?? pattern "")
+  (where
+    (lazy pattern
+      (match? value
+        (case (map "pattern" (: found String))
+          found
+        )
+      )
+    )
+  )
+)
+
+(fn-do + ai-completion-tests TestCase
+  (param t TestCase)
+  (let events (call (of List AIEvent)))
+  (+= events (call AIPartBeginEvent (call AITextPart "answer" "")))
+  (+= events (call AIPartDeltaEvent "answer" (call AITextDelta "Hel")))
+  (+= events (call AIUsageEvent (call usage-with-input 2)))
+  (+= events (call AIPartDeltaEvent "answer" (call AITextDelta "lo")))
+  (+= events (call AIPartEndEvent (call AITextPart "answer" "Hello")))
+  (+= events (call AIDoneEvent (. AIFinishReason stop) (call usage-with-output 1 3)))
+  (blank)
+  (let provider (call ScriptedAIProvider events))
+  (let response (call (. provider complete) (call AIRequest "mock-model")))
+  (call (. t expect) "assembled text" "Hello" (call ai-response-text response))
+  (call (. t expect) "merged input usage" 2 (!! (. response usage input-tokens)))
+  (call (. t expect) "merged output usage" 1 (!! (. response usage output-tokens)))
+  (call (. t expect) "final total usage" 3 (!! (. response usage total-tokens)))
+  (call (. t expect) "finish reason" (. AIFinishReason stop) (. response finish-reason))
+  (return t)
+)
+
+(fn-expr _ usage-with-input _
+  (param count Size)
+  (call AIUsage
+    (block
+      (:input-tokens count)
+    )
+  )
+)
+
+(fn-expr _ usage-with-output _
+  (param output Size)
+  (param total Size)
+  (call AIUsage
+    (block
+      (:output-tokens output)
+      (:total-tokens total)
+    )
+  )
+)
+
+(type + ScriptedAIProvider (is AIProvider)
+  (prop + events (of List AIEvent))
+  (fn-do + This _
+    (param events _)
+    (call super)
+  )
+  (fn-do + stream (stream AIEvent)
+    (param request AIRequest)
+    (for (in event events)
+      (yield event)
+    )
+  )
+)

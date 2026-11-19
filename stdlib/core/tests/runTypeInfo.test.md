@@ -1,17 +1,21 @@
 # Type info
 
-```yumi
--- type-of 42
+```brix
+(main
+  (print (type-of 42))
+)
 ```
 
 ```output
 [TypeInfo I64]
 ```
 
-```yumi
-. ti = I32
--- ti
--- ti.name
+```brix
+(main
+  (let ti _ I32)
+  (print ti)
+  (print (. ti name))
+)
 ```
 
 ```output
@@ -21,13 +25,15 @@ I32
 
 ### Long fixed-width names are compatibility aliases for the short canonical names.
 
-```yumi
-. ti = Int32
--- ti
--- ti.name
--- Int32 == I32
--- UInt64 == U64
--- Float32 == F32
+```brix
+(main
+  (let ti _ Int32)
+  (print ti)
+  (print (. ti name))
+  (print (== Int32 I32))
+  (print (== UInt64 U64))
+  (print (== Float32 F32))
+)
 ```
 
 ```output
@@ -38,20 +44,22 @@ true
 true
 ```
 
-```yumi
--- I1.size
--- I8.size
--- U8.size
--- I16.size
--- U16.size
--- I32.size
--- U32.size
--- I64.size
--- U64.size
--- F32.size
--- F64.size
--- Bool.size
--- Char.size
+```brix
+(main
+  (print (. I1 size))
+  (print (. I8 size))
+  (print (. U8 size))
+  (print (. I16 size))
+  (print (. U16 size))
+  (print (. I32 size))
+  (print (. U32 size))
+  (print (. I64 size))
+  (print (. U64 size))
+  (print (. F32 size))
+  (print (. F64 size))
+  (print (. Bool size))
+  (print (. Char size))
+)
 ```
 
 ```output
@@ -70,33 +78,37 @@ true
 4
 ```
 
-```yumi
--- I32.base
+```brix
+(main
+  (print (. I32 base))
+)
 ```
 
 ```output
 [TypeInfo Number]
 ```
 
-```yumi crash
--- Number.base
+```brix crash
+(main
+  (print (. Number base))
+)
 ```
 
 ```output
 Exception: No base type
-<no file:2>
-    -- Number.base
-       ^^^^^^^^^^^
+<no file:3>
+      (print (. Number base))
+             ^^^^^^^^^^^^^^^
 ```
 
-```yumi
--- Bar.base
+```brix
+(main
+  (print (. Bar base))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
+(type + Bar (is Foo))
 ```
 
 ```output
@@ -105,13 +117,14 @@ Exception: No base type
 
 ### Runtime class identity
 
-```yumi
--- (type-of Thing()).name
--- (type-of Thing()).concrete-name
--- type-of Thing()
+```brix
+(main
+  (print (. (type-of (call Thing)) name))
+  (print (. (type-of (call Thing)) concrete-name))
+  (print (type-of (call Thing)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing)
 ```
 
 ```output
@@ -122,21 +135,21 @@ Thing
 
 ### Static and concrete identities for a base-typed class value
 
-```yumi
-. thing Base = Child()
--- (type-of thing).name
--- (type-of thing).concrete-name
--- type-of thing
--- (type-of thing).compare(Base)
--- (type-of thing).key == Base.key
--- (type-of thing).key == Child.key
--- (type-of thing).concrete-key == Child.key
+```brix
+(main
+  (let thing Base (call Child))
+  (print (. (type-of thing) name))
+  (print (. (type-of thing) concrete-name))
+  (print (type-of thing))
+  (print (call (. (type-of thing) compare) Base))
+  (print (== (. (type-of thing) key) (. Base key)))
+  (print (== (. (type-of thing) key) (. Child key)))
+  (print (== (. (type-of thing) concrete-key) (. Child key)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
+(type + Child (is Base))
 ```
 
 ```output
@@ -151,27 +164,25 @@ true
 
 ### Static and concrete identities for an interface value
 
-```yumi
-. proto = Thing() as Proto
--- (type-of proto).name
--- (type-of proto).concrete-name
--- type-of proto
-proto.foo()
+```brix
+(main
+  (let proto (as (call Thing) Proto))
+  (print (. (type-of proto) name))
+  (print (. (type-of proto) concrete-name))
+  (print (type-of proto))
+  (call (. proto foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + foo _)
+)
 
-────────────────────
-+ foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-────────────────────
-+ do foo
-
--- "ok"
+(type + Thing
+  (implements Proto)
+  (fn-do + foo _
+    (print "ok")
+  )
+)
 ```
 
 ```output
@@ -183,41 +194,35 @@ ok
 
 ### Concrete identity survives interface-to-interface subtable casts
 
-```yumi
-. child = Thing() as Child
-. base = child as Base
--- (type-of child).name
--- (type-of child).concrete-name
--- (type-of base).name
--- (type-of base).concrete-name
-base.base()
+```brix
+(main
+  (let child (as (call Thing) Child))
+  (let base (as child Base))
+  (print (. (type-of child) name))
+  (print (. (type-of child) concrete-name))
+  (print (. (type-of base) name))
+  (print (. (type-of base) concrete-name))
+  (call (. base base))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Interface
+(type + Base (is Interface)
+  (fn-expr + base _)
+)
 
-────────────────────
-+ base
+(type + Child (is Interface)
+  (implements Base)
+  (fn-expr + child _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Interface
-    is Base
-
-────────────────────
-+ child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Child
-
-────────────────────
-+ do base
-
--- "base"
-
-────────────────────
-+ do child
-
--- "child"
+(type + Thing
+  (implements Child)
+  (fn-do + base _
+    (print "base")
+  )
+  (fn-do + child _
+    (print "child")
+  )
+)
 ```
 
 ```output
@@ -230,23 +235,28 @@ base
 
 ## Comparing types
 
-```yumi crash
--- I32.compare(1)
+```brix crash
+(main
+  (print (call (. I32 compare) 1))
+)
 ```
 
 ```output
 Exception: Invalid argument
-<no file:2>
-    -- I32.compare(1)
-                   ^
+<no file:3>
+      (print (call (. I32 compare) 1))
+                                   ^
 ```
 
-```yumi
--- Foo.compare(Bar)
--- Bar.compare(Foo)
+```brix
+(main
+  (print (call (. Foo compare) Bar))
+  (print (call (. Bar compare) Foo))
+)
 
-+ Foo
-+ Bar
+(blank)
+(type-line + Foo)
+(type-line + Bar)
 ```
 
 ```output
@@ -254,21 +264,26 @@ Exception: Invalid argument
 [Illegal Bar = Foo]
 ```
 
-```yumi
--- I32.compare(I32)
+```brix
+(main
+  (print (call (. I32 compare) I32))
+)
 ```
 
 ```output
 [Same I32 = I32]
 ```
 
-```yumi
--- Foo.compare(Foo)
--- Foo.compare(Bar)
--- Bar.compare(Foo)
+```brix
+(main
+  (print (call (. Foo compare) Foo))
+  (print (call (. Foo compare) Bar))
+  (print (call (. Bar compare) Foo))
+)
 
-+ Foo (foo) is I32
-+ Bar (bar) is  2foo
+(blank)
+(type-line + Foo (alias foo) (is I32))
+(type-line + Bar (alias bar) (is 2foo))
 ```
 
 ```output
@@ -277,9 +292,11 @@ Exception: Invalid argument
 [Equal Bar = Foo]
 ```
 
-```yumi
--- I32.compare(I64)
--- I32.compare(F32)
+```brix
+(main
+  (print (call (. I32 compare) I64))
+  (print (call (. I32 compare) F32))
+)
 ```
 
 ```output
@@ -287,14 +304,17 @@ Exception: Invalid argument
 [SideCast I32 = F32]
 ```
 
-```yumi
--- Foo.compare(I32)
--- Bar.compare(I32)
--- Bar.compare(Foo)
--- Foo.compare(Bar)
+```brix
+(main
+  (print (call (. Foo compare) I32))
+  (print (call (. Bar compare) I32))
+  (print (call (. Bar compare) Foo))
+  (print (call (. Foo compare) Bar))
+)
 
-+ Foo is I32
-+ Bar is Foo
+(blank)
+(type-line + Foo (is I32))
+(type-line + Bar (is Foo))
 ```
 
 ```output
@@ -304,9 +324,11 @@ Exception: Invalid argument
 [SideCast Foo = Bar]
 ```
 
-```yumi
--- Optional'I32.compare(Bool)
--- I32.compare(Optional'I32)
+```brix
+(main
+  (print (call (. (of Optional I32) compare) Bool))
+  (print (call (. I32 compare) (of Optional I32)))
+)
 ```
 
 ```output
@@ -314,23 +336,28 @@ Exception: Invalid argument
 [SideCast I32 = Optional'I32]
 ```
 
-```yumi
-. t = (1,2)
-. t2 = (1.0, 2.0)
--- (type-of t).compare(type-of t2)
+```brix
+(main
+  (let t (tuple 1 2))
+  (let t2 (tuple 1.0 2.0))
+  (print (call (. (type-of t) compare) (type-of t2)))
+)
 ```
 
 ```output
 [FinalCast Tuple = Tuple]
 ```
 
-```yumi
--- Foo.compare(Foo)
--- Foo.compare(Bar)
--- Bar.compare(Foo)
+```brix
+(main
+  (print (call (. Foo compare) Foo))
+  (print (call (. Foo compare) Bar))
+  (print (call (. Bar compare) Foo))
+)
 
-+ Foo
-+ Bar is Foo
+(blank)
+(type-line + Foo)
+(type-line + Bar (is Foo))
 ```
 
 ```output
@@ -339,20 +366,21 @@ Exception: Invalid argument
 [UpCast Bar = Foo]
 ```
 
-```yumi
--- Foo.compare(Foo)
--- Foo.compare(Bar)
--- Bar.compare(Foo)
+```brix
+(main
+  (print (call (. Foo compare) Foo))
+  (print (call (. Foo compare) Bar))
+  (print (call (. Bar compare) Foo))
+)
 
-+ Foo
+(blank)
+(type-line + Foo)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-────────────────────
-+ to Foo
-
-Foo()
+(type + Bar
+  (fn-to-expr + Foo
+    (call Foo)
+  )
+)
 ```
 
 ```output
@@ -361,20 +389,19 @@ Foo()
 [Converter Bar = Foo]
 ```
 
-```yumi
--- Bar.compare(Foo)
--- Foo.compare(Bar)
+```brix
+(main
+  (print (call (. Bar compare) Foo))
+  (print (call (. Foo compare) Bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (fn-from-expr + (: bar Bar)
+    (call This)
+  )
+)
 
-────────────────────
-+ from bar Bar
-
-This()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
+(type + Bar)
 ```
 
 ```output
@@ -384,25 +411,23 @@ This()
 
 ### Show fromverter takes precedence over converter
 
-```yumi
--- Bar.compare(Foo)
--- Foo.compare(Bar)
+```brix
+(main
+  (print (call (. Bar compare) Foo))
+  (print (call (. Foo compare) Bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (fn-from-expr + (: bar Bar)
+    (call This)
+  )
+)
 
-────────────────────
-+ from bar Bar
-
-This()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-────────────────────
-+ to Foo
-
-Foo()
+(type + Bar
+  (fn-to-expr + Foo
+    (call Foo)
+  )
+)
 ```
 
 ```output
@@ -410,13 +435,16 @@ Foo()
 [Illegal Foo = Bar]
 ```
 
-```yumi
--- Foo.compare-unified(Bar)
--- Bar.compare-unified(Foo)
+```brix
+(main
+  (print (call (. Foo compare-unified) Bar))
+  (print (call (. Bar compare-unified) Foo))
+)
 
-+ Base
-+ Foo is Base
-+ Bar is Base
+(blank)
+(type-line + Base)
+(type-line + Foo (is Base))
+(type-line + Bar (is Base))
 ```
 
 ```output
@@ -424,19 +452,22 @@ Foo()
 [CommonUpCast Bar = Foo]
 ```
 
-```yumi
--- Foo.compare-unified(Bar)
--- Bar.compare-unified(Foo)
+```brix
+(main
+  (print (call (. Foo compare-unified) Bar))
+  (print (call (. Bar compare-unified) Foo))
+)
 
-+ Proto is Interface
+(blank)
+(type-line + Proto (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-    is Proto
+(type + Foo
+  (implements Proto)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-    is Proto
+(type + Bar
+  (implements Proto)
+)
 ```
 
 ```output
@@ -444,28 +475,25 @@ Foo()
 [CommonInterface Bar = Foo]
 ```
 
-```yumi
--- Foo.compare-unified(Bar)
--- Bar.compare-unified(Foo)
+```brix
+(main
+  (print (call (. Foo compare-unified) Bar))
+  (print (call (. Bar compare-unified) Foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (fn-to-expr + Baz
+    (call Baz)
+  )
+)
 
-────────────────────
-+ to Baz
+(type + Bar
+  (fn-to-expr + Baz
+    (call Baz)
+  )
+)
 
-Baz()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-────────────────────
-+ to Baz
-
-Baz()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Baz
+(type + Baz)
 ```
 
 ```output
@@ -473,22 +501,23 @@ Baz()
 [CommonConverter Bar = Foo]
 ```
 
-```yumi
--- Foo.compare-unified(Baz)
--- Foo.compare-unified(Bazoo)
+```brix
+(main
+  (print (call (. Foo compare-unified) Baz))
+  (print (call (. Foo compare-unified) Bazoo))
+)
 
-+ Baz (baz) is Int
-+ Bazoo (bazoo) is Int
+(blank)
+(type-line + Baz (alias baz) (is Int))
+(type-line + Bazoo (alias bazoo) (is Int))
+(blank)
+(unit + 1baz 2bazoo)
 
-+ 1baz = 2bazoo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ to Baz
-
-Baz()
+(type + Foo
+  (fn-to-expr + Baz
+    (call Baz)
+  )
+)
 ```
 
 ```output
@@ -496,34 +525,29 @@ Baz()
 [CommonEquality Foo = Bazoo]
 ```
 
-```yumi
--- String.compare(Bar)
--- Bar.compare(String)
--- Foo.compare(String)
+```brix
+(main
+  (print (call (. String compare) Bar))
+  (print (call (. Bar compare) String))
+  (print (call (. Foo compare) String))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (fn-to-expr + Baz
+    (call Baz)
+  )
+)
 
-────────────────────
-+ to Baz
+(type + Bar
+  (fn-to-expr + Baz
+    (call Baz)
+  )
+  (fn-to-expr + String
+    "Bar"
+  )
+)
 
-Baz()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-────────────────────
-+ to Baz
-
-Baz()
-
-────────────────────
-+ to String
-
-"Bar"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Baz
+(type + Baz)
 ```
 
 ```output
@@ -532,18 +556,23 @@ Baz()
 [StringCast Foo = String]
 ```
 
-```yumi
--- String.compare(CPointer'Char)
+```brix
+(main
+  (print (call (. String compare) (of CPointer Char)))
+)
 ```
 
 ```output
 [SideCast String = CPointer'Char]
 ```
 
-```yumi
--- Foo.compare(String)
+```brix
+(main
+  (print (call (. Foo compare) String))
+)
 
-+ Foo
+(blank)
+(type-line + Foo)
 ```
 
 ```output
@@ -554,26 +583,32 @@ Baz()
 
 ### Illegal comparison
 
-```yumi crash
-+ Foo
-+ Bar
+```brix crash
+(type-line + Foo)
+(type-line + Bar)
+(blank)
 
--- Foo.compare(Bar).cast(Foo())
+(main
+  (print (call (. (call (. Foo compare) Bar) cast) (call Foo)))
+)
 ```
 
 ```output
 Exception: Expected Bar here, but this is Foo, and there is no conversion between them
-<no file:5>
-    -- Foo.compare(Bar).cast(Foo())
-       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:7>
+      (print (call (. (call (. Foo compare) Bar) cast) (call Foo)))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Same comparison
 
-```yumi
--- Foo.compare(Foo).cast(Foo())
+```brix
+(main
+  (print (call (. (call (. Foo compare) Foo) cast) (call Foo)))
+)
 
-+ Foo
+(blank)
+(type-line + Foo)
 ```
 
 ```output
@@ -582,13 +617,16 @@ Exception: Expected Bar here, but this is Foo, and there is no conversion betwee
 
 ### Equality comparison
 
-```yumi
--- Foo.compare(Foo).cast(1foo)
--- Foo.compare(Bar).cast(1foo)
--- Bar.compare(Foo).cast(1bar)
+```brix
+(main
+  (print (call (. (call (. Foo compare) Foo) cast) 1foo))
+  (print (call (. (call (. Foo compare) Bar) cast) 1foo))
+  (print (call (. (call (. Bar compare) Foo) cast) 1bar))
+)
 
-+ Foo (foo) is Float
-+ Bar (bar) is 2foo
+(blank)
+(type-line + Foo (alias foo) (is Float))
+(type-line + Bar (alias bar) (is 2foo))
 ```
 
 ```output
@@ -599,9 +637,11 @@ Exception: Expected Bar here, but this is Foo, and there is no conversion betwee
 
 ### SideCast to Number comparison
 
-```yumi
--- I32.compare(I64).cast(4) as UnitString
--- I32.compare(F32).cast(4) as UnitString
+```brix
+(main
+  (print (as (call (. (call (. I32 compare) I64) cast) 4) UnitString))
+  (print (as (call (. (call (. I32 compare) F32) cast) 4) UnitString))
+)
 ```
 
 ```output
@@ -611,12 +651,15 @@ Exception: Expected Bar here, but this is Foo, and there is no conversion betwee
 
 ### Cast numeric subtypes to base builting numeric types
 
-```yumi
--- Foo.compare(I32).cast(1foo) as UnitString
--- Bar.compare(I32).cast(1bar) as UnitString
+```brix
+(main
+  (print (as (call (. (call (. Foo compare) I32) cast) 1foo) UnitString))
+  (print (as (call (. (call (. Bar compare) I32) cast) 1bar) UnitString))
+)
 
-+ Foo (foo) is I32
-+ Bar (bar) is Foo
+(blank)
+(type-line + Foo (alias foo) (is I32))
+(type-line + Bar (alias bar) (is Foo))
 ```
 
 ```output
@@ -624,11 +667,14 @@ Exception: Expected Bar here, but this is Foo, and there is no conversion betwee
 1i32
 ```
 
-```yumi
--- Bar.compare(Foo).cast(1bar)
+```brix
+(main
+  (print (call (. (call (. Bar compare) Foo) cast) 1bar))
+)
 
-+ Foo (foo) is I32
-+ Bar (bar) is Foo
+(blank)
+(type-line + Foo (alias foo) (is I32))
+(type-line + Bar (alias bar) (is Foo))
 ```
 
 ```output
@@ -637,9 +683,11 @@ Exception: Expected Bar here, but this is Foo, and there is no conversion betwee
 
 ### SideCast to Bool comparison
 
-```yumi
--- I32.compare(Bool).cast(0)
--- I32.compare(Bool).cast(1)
+```brix
+(main
+  (print (call (. (call (. I32 compare) Bool) cast) 0))
+  (print (call (. (call (. I32 compare) Bool) cast) 1))
+)
 ```
 
 ```output
@@ -649,11 +697,13 @@ true
 
 ### SideCast Optional comparison
 
-```yumi
-. a I32?
-. b I32? = 1
--- Optional'I32.compare(Bool).cast(a)
--- Optional'I32.compare(Bool).cast(b)
+```brix
+(main
+  (let a (? I32))
+  (let b (? I32) 1)
+  (print (call (. (call (. (of Optional I32) compare) Bool) cast) a))
+  (print (call (. (call (. (of Optional I32) compare) Bool) cast) b))
+)
 ```
 
 ```output
@@ -663,10 +713,12 @@ true
 
 ### SideCast comparison
 
-```yumi
--- type-of CPointer'Char.compare(String).cast(Char[1].data)
--- type-of String.compare(CPointer'Char).cast("foo")
--- String.compare(CPointer'Char8).cast("foo")
+```brix
+(main
+  (print (type-of (call (. (call (. (of CPointer Char) compare) String) cast) (. ([] Char 1) data))))
+  (print (type-of (call (. (call (. String compare) (of CPointer Char)) cast) "foo")))
+  (print (call (. (call (. String compare) (of CPointer Char8)) cast) "foo"))
+)
 ```
 
 ```output
@@ -677,12 +729,15 @@ foo
 
 ### UpCast comparison
 
-```yumi
--- Foo.compare(Foo).cast(Foo())
--- Bar.compare(Foo).cast(Bar())
+```brix
+(main
+  (print (call (. (call (. Foo compare) Foo) cast) (call Foo)))
+  (print (call (. (call (. Bar compare) Foo) cast) (call Bar)))
+)
 
-+ Foo
-+ Bar is Foo
+(blank)
+(type-line + Foo)
+(type-line + Bar (is Foo))
 ```
 
 ```output
@@ -692,19 +747,18 @@ foo
 
 ### Converter comparisonType
 
-```yumi
--- Bar.compare(Foo).cast(Bar())
+```brix
+(main
+  (print (call (. (call (. Bar compare) Foo) cast) (call Bar)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-────────────────────
-+ to Foo
-
-Foo()
+(type + Bar
+  (fn-to-expr + Foo
+    (call Foo)
+  )
+)
 ```
 
 ```output
@@ -713,19 +767,18 @@ Foo()
 
 ### Fromverter comparisonType
 
-```yumi
--- Bar.compare(Foo).cast(Bar())
+```brix
+(main
+  (print (call (. (call (. Bar compare) Foo) cast) (call Bar)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (fn-from-expr + (: bar Bar)
+    (call This)
+  )
+)
 
-────────────────────
-+ from bar Bar
-
-This()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
+(type + Bar)
 ```
 
 ```output
@@ -734,24 +787,26 @@ This()
 
 ### StringCast comparison
 
-```yumi
--- type-of I32.compare(String).cast(4.2)
+```brix
+(main
+  (print (type-of (call (. (call (. I32 compare) String) cast) 4.2)))
+)
 ```
 
 ```output
 [TypeInfo String]
 ```
 
-```yumi
--- Foo.compare(String).cast(Foo())
+```brix
+(main
+  (print (call (. (call (. Foo compare) String) cast) (call Foo)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ to String
-
-"foo"
+(type + Foo
+  (fn-to-expr + String
+    "foo"
+  )
+)
 ```
 
 ```output
@@ -762,21 +817,22 @@ foo
 
 ### Unifying to common equality
 
-```yumi
--- Foo.compare-unified(Bazoo).unify(Foo())
+```brix
+(main
+  (print (call (. (call (. Foo compare-unified) Bazoo) unify) (call Foo)))
+)
 
-+ Baz (baz) is Float
-+ Bazoo (bazoo) is Float
+(blank)
+(type-line + Baz (alias baz) (is Float))
+(type-line + Bazoo (alias bazoo) (is Float))
+(blank)
+(unit + 1baz 2bazoo)
 
-+ 1baz = 2bazoo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ to Baz
-
-1baz
+(type + Foo
+  (fn-to-expr + Baz
+    1baz
+  )
+)
 ```
 
 ```output
@@ -785,28 +841,25 @@ foo
 
 ### Unifying to common converter
 
-```yumi
--- Foo.compare-unified(Bar).unify(Foo())
--- Bar.compare-unified(Foo).unify(Bar())
+```brix
+(main
+  (print (call (. (call (. Foo compare-unified) Bar) unify) (call Foo)))
+  (print (call (. (call (. Bar compare-unified) Foo) unify) (call Bar)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (fn-to-expr + Baz
+    (call Baz)
+  )
+)
 
-────────────────────
-+ to Baz
+(type + Bar
+  (fn-to-expr + Baz
+    (call Baz)
+  )
+)
 
-Baz()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-────────────────────
-+ to Baz
-
-Baz()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Baz
+(type + Baz)
 ```
 
 ```output
@@ -816,13 +869,16 @@ Baz()
 
 ### Unify to common base class
 
-```yumi
--- type-of Foo.compare-unified(Bar).unify(Foo())
--- type-of Bar.compare-unified(Foo).unify(Bar())
+```brix
+(main
+  (print (type-of (call (. (call (. Foo compare-unified) Bar) unify) (call Foo))))
+  (print (type-of (call (. (call (. Bar compare-unified) Foo) unify) (call Bar))))
+)
 
-+ Base
-+ Foo is Base
-+ Bar is Base
+(blank)
+(type-line + Base)
+(type-line + Foo (is Base))
+(type-line + Bar (is Base))
 ```
 
 ```output
@@ -832,9 +888,11 @@ Baz()
 
 ## Comparison operators
 
-```yumi
--- I32 == I32
--- I32 == I64
+```brix
+(main
+  (print (== I32 I32))
+  (print (== I32 I64))
+)
 ```
 
 ```output
@@ -842,9 +900,11 @@ true
 false
 ```
 
-```yumi
--- Optional'I32 == Optional'I32
--- Optional'I32 == Optional'I64
+```brix
+(main
+  (print (== (of Optional I32) (of Optional I32)))
+  (print (== (of Optional I32) (of Optional I64)))
+)
 ```
 
 ```output
@@ -854,27 +914,29 @@ false
 
 ### A number type answers what kind of number it is.
 
-```yumi
--- I8.is-signed
--- U8.is-signed
--- F64.is-signed
--- Bool.is-signed
--- Char.is-signed
--- String.is-signed
--- I8.is-integer
--- F32.is-integer
--- Bool.is-integer
--- Char.is-integer
--- String.is-integer
--- F32.is-number
--- Bool.is-number
--- Char.is-number
--- String.is-number
--- I32.is-tuple
--- String.is-tuple
--- I32.is-struct
--- I32.read-only
--- String.read-only
+```brix
+(main
+  (print (. I8 is-signed))
+  (print (. U8 is-signed))
+  (print (. F64 is-signed))
+  (print (. Bool is-signed))
+  (print (. Char is-signed))
+  (print (. String is-signed))
+  (print (. I8 is-integer))
+  (print (. F32 is-integer))
+  (print (. Bool is-integer))
+  (print (. Char is-integer))
+  (print (. String is-integer))
+  (print (. F32 is-number))
+  (print (. Bool is-number))
+  (print (. Char is-number))
+  (print (. String is-number))
+  (print (. I32 is-tuple))
+  (print (. String is-tuple))
+  (print (. I32 is-struct))
+  (print (. I32 read-only))
+  (print (. String read-only))
+)
 ```
 
 ```output
@@ -902,33 +964,35 @@ true
 
 ### A number type answers its least and its greatest value.
 
-```yumi
--- I8.max
--- I8.min
--- U8.max
--- U8.min
--- I16.max
--- I16.min
--- U16.max
--- I32.max
--- I32.min
--- U32.max
--- I64.max
--- I64.min
--- U64.max
--- U64.min
--- Size.max
--- Int.max
--- Byte.max
--- Index.max
--- Char.max as U32
--- Char.min as U32
--- F64.max
--- F64.min
--- F32.max
--- F32.min
--- Bool.max
--- Bool.min
+```brix
+(main
+  (print (. I8 max))
+  (print (. I8 min))
+  (print (. U8 max))
+  (print (. U8 min))
+  (print (. I16 max))
+  (print (. I16 min))
+  (print (. U16 max))
+  (print (. I32 max))
+  (print (. I32 min))
+  (print (. U32 max))
+  (print (. I64 max))
+  (print (. I64 min))
+  (print (. U64 max))
+  (print (. U64 min))
+  (print (. Size max))
+  (print (. Int max))
+  (print (. Byte max))
+  (print (. Index max))
+  (print (as (. Char max) U32))
+  (print (as (. Char min) U32))
+  (print (. F64 max))
+  (print (. F64 min))
+  (print (. F32 max))
+  (print (. F32 min))
+  (print (. Bool max))
+  (print (. Bool min))
+)
 ```
 
 ```output
@@ -962,24 +1026,26 @@ false
 
 ### An integer type answers its width in bits, and a number type its size in bytes.
 
-```yumi
--- I8.bit-width
--- U8.bit-width
--- I16.bit-width
--- I32.bit-width
--- U64.bit-width
--- Size.bit-width
--- Char.bit-width
--- Int.bit-width
--- Bool.bit-width
--- I8.size
--- I16.size
--- I32.size
--- I64.size
--- F32.size
--- F64.size
--- Bool.size
--- Char.size
+```brix
+(main
+  (print (. I8 bit-width))
+  (print (. U8 bit-width))
+  (print (. I16 bit-width))
+  (print (. I32 bit-width))
+  (print (. U64 bit-width))
+  (print (. Size bit-width))
+  (print (. Char bit-width))
+  (print (. Int bit-width))
+  (print (. Bool bit-width))
+  (print (. I8 size))
+  (print (. I16 size))
+  (print (. I32 size))
+  (print (. I64 size))
+  (print (. F32 size))
+  (print (. F64 size))
+  (print (. Bool size))
+  (print (. Char size))
+)
 ```
 
 ```output
@@ -1004,26 +1070,28 @@ false
 
 ### A type answers its name and its key.
 
-```yumi
--- Int.name
--- I8.name
--- U64.name
--- F64.name
--- Float.name
--- Char.name
--- Bool.name
--- String.name
--- Size.name
--- Index.name
--- Byte.name
--- I32.key
--- String.key
--- Bool.key
--- I32.concrete-name
--- I32.concrete-key
--- Char.concrete-name
--- I8.name ++ "!"
--- I8.name.size
+```brix
+(main
+  (print (. Int name))
+  (print (. I8 name))
+  (print (. U64 name))
+  (print (. F64 name))
+  (print (. Float name))
+  (print (. Char name))
+  (print (. Bool name))
+  (print (. String name))
+  (print (. Size name))
+  (print (. Index name))
+  (print (. Byte name))
+  (print (. I32 key))
+  (print (. String key))
+  (print (. Bool key))
+  (print (. I32 concrete-name))
+  (print (. I32 concrete-key))
+  (print (. Char concrete-name))
+  (print (++ (. I8 name) "!"))
+  (print (. I8 name size))
+)
 ```
 
 ```output
@@ -1050,51 +1118,50 @@ I8!
 
 ### A generic function reads the constants of the type it is given.
 
-```yumi
--- kind(1)
--- kind(1.5)
--- kind(2u8)
--- kind(true)
--- top(1i8)
--- top(1u16)
--- bottom(1i64)
--- label(7)
--- label('c')
--- bits(1u8) + bits(1i64)
+```brix
+(main
+  (print (call kind 1))
+  (print (call kind 1.5))
+  (print (call kind 2u8))
+  (print (call kind true))
+  (print (call top 1i8))
+  (print (call top 1u16))
+  (print (call bottom 1i64))
+  (print (call label 7))
+  (print (call label 'c'))
+  (print (+ (call bits 1u8) (call bits 1i64)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do kind'Item String
-    - value Item
+(fn-do + (of kind Item) String
+  (param value Item)
+  (if (and (. Item is-integer) (. Item is-signed))
+    (return "integer")
+  )
+  (if (. Item is-integer)
+    (return "unsigned")
+  )
+  (return "other")
+)
 
-if Item.is-integer && Item.is-signed
-    = "integer"
-if Item.is-integer
-    = "unsigned"
-= "other"
+(fn-expr + (of top Item) Item
+  (param value Item)
+  (. Item max)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ top'Item Item
-    - value Item
+(fn-expr + (of bottom Item) Item
+  (param value Item)
+  (. Item min)
+)
 
-Item.max
+(fn-expr + (of label Item) String
+  (param value Item)
+  (. Item name)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ bottom'Item Item
-    - value Item
-
-Item.min
-
-━━━━━━━━━━━━━━━━━━━━
-+ label'Item String
-    - value Item
-
-Item.name
-
-━━━━━━━━━━━━━━━━━━━━
-+ bits'Item Int
-    - value Item
-
-Item.bit-width
+(fn-expr + (of bits Item) Int
+  (param value Item)
+  (. Item bit-width)
+)
 ```
 
 ```output
@@ -1112,27 +1179,29 @@ Char
 
 ### The constant of a type is a value like any other.
 
-```yumi
-. limit = I32.max
-. small I8 = I8.min
--- limit - 1
--- small
--- I32.max / 2
--- (U8.max as Int) + 1
-. wide I64 = I32.max
--- wide + 1
-if I8.is-signed
-    -- "signed"
--- "bits ${U16.bit-width}"
--- twice(I16.max)
--- U8.max == 255
--- I8.min < 0
+```brix
+(main
+  (let limit (. I32 max))
+  (let small I8 (. I8 min))
+  (print (- limit 1))
+  (print small)
+  (print (/ (. I32 max) 2))
+  (print (+ (as (. U8 max) Int) 1))
+  (let wide I64 (. I32 max))
+  (print (+ wide 1))
+  (if (. I8 is-signed)
+    (print "signed")
+  )
+  (print (str "bits " (. U16 bit-width)))
+  (print (call twice (. I16 max)))
+  (print (== (. U8 max) 255))
+  (print (< (. I8 min) 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ twice I32
-    - n I32
-
-n * 2
+(fn-expr + twice I32
+  (param n I32)
+  (* n 2)
+)
 ```
 
 ```output
@@ -1150,29 +1219,32 @@ true
 
 ### The width in bits of a type that is no integer is an error.
 
-```yumi crash
--- F64.bit-width
+```brix crash
+(main
+  (print (. F64 bit-width))
+)
 ```
 
 ```output
 Exception: Integer type required for bit-width
-<no file:2>
-    -- F64.bit-width
-       ^^^^^^^^^^^^^
+<no file:3>
+      (print (. F64 bit-width))
+             ^^^^^^^^^^^^^^^^^
 ```
 
 ### `type-of` evaluates its operand before a constant of the type is read.
 
-```yumi
--- (type-of noisy()).max
--- (type-of noisy()).name
--- (type-of noisy()).is-signed
+```brix
+(main
+  (print (. (type-of (call noisy)) max))
+  (print (. (type-of (call noisy)) name))
+  (print (. (type-of (call noisy)) is-signed))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do noisy I8
-
--- "noisy"
-= 1
+(fn-do + noisy I8
+  (print "noisy")
+  (return 1)
+)
 ```
 
 ```output
@@ -1186,23 +1258,25 @@ true
 
 ### A pointer type is an integer without a sign, 64 bits wide.
 
-```yumi
-. cell I64 = 7
--- CPointer'I64.is-number
--- CPointer'I64.is-integer
--- CPointer'I64.is-signed
--- CPointer'I64.bit-width
--- kind(&cell)
--- kind(cell)
--- kind(1.5)
+```brix
+(main
+  (let cell I64 7)
+  (print (. (of CPointer I64) is-number))
+  (print (. (of CPointer I64) is-integer))
+  (print (. (of CPointer I64) is-signed))
+  (print (. (of CPointer I64) bit-width))
+  (print (call kind &cell))
+  (print (call kind cell))
+  (print (call kind 1.5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do kind'Item String
-    - value Item
-
-if Item.is-integer
-    = "integer"
-= "other"
+(fn-do + (of kind Item) String
+  (param value Item)
+  (if (. Item is-integer)
+    (return "integer")
+  )
+  (return "other")
+)
 ```
 
 ```output
@@ -1217,25 +1291,24 @@ other
 
 ### The base of a type, and the name of the class an object was made as.
 
-```yumi
--- Child.base
--- Child.base.name
-. c Base = Child()
--- (type-of c).concrete-name
--- (type-of c).name
--- c.kind()
--- Base().kind()
+```brix
+(main
+  (print (. Child base))
+  (print (. Child base name))
+  (let c Base (call Child))
+  (print (. (type-of c) concrete-name))
+  (print (. (type-of c) name))
+  (print (call (. c kind)))
+  (print (call (. (call Base) kind)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (fn-expr + kind String
+    (. (type-of this) concrete-name)
+  )
+)
 
-────────────────────
-+ kind String
-
-(type-of this).concrete-name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
+(type + Child (is Base))
 ```
 
 ```output
@@ -1249,29 +1322,28 @@ Base
 
 ### Two types given as values are equal when the types the values are held as are one type.
 
-```yumi
-. a Base = Child()
-. b Base = Base()
--- type-of a == type-of b
--- type-of a != type-of b
--- type-of a == Base
--- type-of a == Child
--- Base == Child
--- Base != Child
--- Int == Int
--- type-of make() == Int
+```brix
+(main
+  (let a Base (call Child))
+  (let b Base (call Base))
+  (print (== (type-of a) (type-of b)))
+  (print (!= (type-of a) (type-of b)))
+  (print (== (type-of a) Base))
+  (print (== (type-of a) Child))
+  (print (== Base Child))
+  (print (!= Base Child))
+  (print (== Int Int))
+  (print (== (type-of (call make)) Int))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Int
+(fn-do + make Int
+  (print "made")
+  (return 1)
+)
 
--- "made"
-= 1
+(type + Base)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
+(type + Child (is Base))
 ```
 
 ```output
@@ -1288,26 +1360,25 @@ true
 
 ### `type-of` evaluates its operand.
 
-```yumi
--- type-of make()
--- (type-of make()).name
-. t = type-of thing()
--- t.concrete-name
+```brix
+(main
+  (print (type-of (call make)))
+  (print (. (type-of (call make)) name))
+  (let t (type-of (call thing)))
+  (print (. t concrete-name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Int
+(fn-do + make Int
+  (print "made")
+  (return 1)
+)
 
--- "made"
-= 1
+(fn-do + thing Thing
+  (print "thing")
+  (return (call Thing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do thing Thing
-
--- "thing"
-= Thing()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing)
 ```
 
 ```output
@@ -1321,51 +1392,45 @@ Thing
 
 ### A relation runs the types it is asked of and the value it casts, each once and in the order written, and is text where it is printed or joined into text
 
-```yumi
-. seen = Seen()
--- (type-of seen.next()).compare(type-of seen.next())
--- seen.count
--- "is ${I32.compare(I64)} and ${Foo.compare(Bar)}"
--- I32.compare(I64).cast(seen.next())
--- seen.count
--- Bar.compare(Foo).cast(make(seen))
--- seen.count
--- (type-of make(seen)).compare-unified(type-of other(seen)).unify(make(seen))
--- seen.count
+```brix
+(main
+  (let seen (call Seen))
+  (print (call (. (type-of (call (. seen next))) compare) (type-of (call (. seen next)))))
+  (print (. seen count))
+  (print (str "is " (call (. I32 compare) I64) " and " (call (. Foo compare) Bar)))
+  (print (call (. (call (. I32 compare) I64) cast) (call (. seen next))))
+  (print (. seen count))
+  (print (call (. (call (. Bar compare) Foo) cast) (call make seen)))
+  (print (. seen count))
+  (print (call (. (call (. (type-of (call make seen)) compare-unified) (type-of (call other seen))) unify) (call make seen)))
+  (print (. seen count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Bar
-    - seen Seen
+(fn-do + make Bar
+  (param seen Seen)
+  (call (. seen next))
+  (return (call Bar))
+)
 
-seen.next()
-= Bar()
+(fn-do + other Baz
+  (param seen Seen)
+  (call (. seen next))
+  (return (call Baz))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do other Baz
-    - seen Seen
+(type + Foo)
 
-seen.next()
-= Baz()
+(type + Bar (is Foo))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Baz (is Foo))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Baz is Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Seen
-
-+ count = 0
-
-────────────────────
-+ do next
-
-count += 1
-= count
+(type + Seen
+  (prop + count _ (= 0))
+  (fn-do + next _
+    (+= count 1)
+    (return count)
+  )
+)
 ```
 
 ```output
@@ -1382,27 +1447,25 @@ is [SideCast I32 = I64] and [DownCast Foo = Bar]
 
 ### A relation that is a converter takes a value of another type as the converter's receiver, and one of a type with itself gives the value as it is
 
-```yumi
--- I32.compare(String).cast(4.2)
--- I32.compare(String).cast(7l)
--- Bar.compare(Foo).cast(Baz())
--- type-of Bar.compare(Foo).cast(Baz())
--- I32.compare(I32).cast(4.5)
--- Foo.compare(Foo).cast(Baz())
+```brix
+(main
+  (print (call (. (call (. I32 compare) String) cast) 4.2))
+  (print (call (. (call (. I32 compare) String) cast) 7l))
+  (print (call (. (call (. Bar compare) Foo) cast) (call Baz)))
+  (print (type-of (call (. (call (. Bar compare) Foo) cast) (call Baz))))
+  (print (call (. (call (. I32 compare) I32) cast) 4.5))
+  (print (call (. (call (. Foo compare) Foo) cast) (call Baz)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
+(type + Bar
+  (fn-to-expr + Foo
+    (call Foo)
+  )
+)
 
-────────────────────
-+ to Foo
-
-Foo()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Baz is Bar
+(type + Baz (is Bar))
 ```
 
 ```output
@@ -1416,50 +1479,54 @@ Foo()
 
 ### A relation that is a converter refuses a value that is no receiver of the converter
 
-```yumi crash
--- I32.compare(String).cast(Named())
+```brix crash
+(main
+  (print (call (. (call (. I32 compare) String) cast) (call Named)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named
-
-────────────────────
-+ to String
-
-"named"
+(type + Named
+  (fn-to-expr + String
+    "named"
+  )
+)
 ```
 
 ```output
 Exception: Expected I32 here, but this is Named, and there is no conversion between them
-<no file:2>
-    -- I32.compare(String).cast(Named())
-                                ^^^^^^^
+<no file:3>
+      (print (call (. (call (. I32 compare) String) cast) (call Named)))
+                                                          ^^^^^^^^^^^^
 ```
 
 ### A relation that is a converter refuses a number written that its receiver cannot hold
 
-```yumi crash
--- U8.compare(String).cast(300)
+```brix crash
+(main
+  (print (call (. (call (. U8 compare) String) cast) 300))
+)
 ```
 
 ```output
 Exception: Integer literal 300 does not fit U8
-<no file:2>
-    -- U8.compare(String).cast(300)
-                               ^^^
+<no file:3>
+      (print (call (. (call (. U8 compare) String) cast) 300))
+                                                         ^^^
 ```
 
 ### An array on the collected heap is named without its backing
 
-```yumi
-. plain = Array'Int(2)
-. stated = Array'Float'GCBacking(1)
--- type-of plain
--- type-of stated
--- type-of [plain]
--- type-of plain.immutable
--- Array'Int.name, Array'String.name
--- Array'(Array'Int).name
--- Array'Int.compare(Array'I64)
+```brix
+(main
+  (let plain (call (of Array Int) 2))
+  (let stated (call (of Array Float GCBacking) 1))
+  (print (type-of plain))
+  (print (type-of stated))
+  (print (type-of (list plain)))
+  (print (type-of (. plain immutable)))
+  (print (tuple (. (of Array Int) name) (. (of Array String) name)))
+  (print (. (of Array (of Array Int)) name))
+  (print (call (. (of Array Int) compare) (of Array I64)))
+)
 ```
 
 ```output
@@ -1474,73 +1541,76 @@ Array'Array'I64
 
 ### A relation refuses a number written that the type it leads to cannot hold
 
-```yumi crash
--- I32.compare(U8).cast(300)
+```brix crash
+(main
+  (print (call (. (call (. I32 compare) U8) cast) 300))
+)
 ```
 
 ```output
 Exception: Integer literal 300 does not fit U8
-<no file:2>
-    -- I32.compare(U8).cast(300)
-                            ^^^
+<no file:3>
+      (print (call (. (call (. I32 compare) U8) cast) 300))
+                                                      ^^^
 ```
 
 ### A relation that leads to an optional refuses a number written that the optional cannot hold
 
-```yumi crash
--- I32.compare(Optional'U8).cast(-1)
+```brix crash
+(main
+  (print (call (. (call (. I32 compare) (of Optional U8)) cast) -1))
+)
 ```
 
 ```output
 Exception: Integer literal -1 does not fit U8
-<no file:2>
-    -- I32.compare(Optional'U8).cast(-1)
-                                      ^
+<no file:3>
+      (print (call (. (call (. I32 compare) (of Optional U8)) cast) -1))
+                                                                    ^^
 ```
 
 ### A class lists its stored properties, base class first, without getters or lazy properties
 
-```yumi
-for property in Square.properties
-    -- "${property.name} ${property.type-name} ${kind-name(property)} ${property.size}"
+```brix
+(main
+  (for (in property (. Square properties))
+    (print (str (. property name) " " (. property type-name) " " (call kind-name property) " " (. property size)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ kind-name String
-    - property PropertyInfo
+(fn-expr + kind-name String
+  (param property PropertyInfo)
+  (case? (only-if "aggregate" (if (. property is-aggregate))))
+  (case? (only-if "float" (if (. property is-float))))
+  (case? (only-if "signed" (if (. property is-signed))))
+  (case? (only-if "unsigned" (if (. property is-unsigned))))
+  (case? (only-if "boolean" (if (. property is-boolean))))
+  (case? (only-if "reference" (if (. property is-reference))))
+  (default
+    (inline "other")
+  )
+)
 
-|? "aggregate" if property.is-aggregate
-|? "float" if property.is-float
-|? "signed" if property.is-signed
-|? "unsigned" if property.is-unsigned
-|? "boolean" if property.is-boolean
-|? "reference" if property.is-reference
-?? "other"
+(type + Shape
+  (prop + label _ (= "shape"))
+  (prop + visible _ (= true))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape
+(type + Square (is Shape)
+  (prop + width F64 (= 1))
+  (prop + count I32 (= -2))
+  (prop + flags U8 (= 3))
+  (prop + center Point (= (call Point 1 2)))
+  (prop + cached F64 (:= (* width 3)))
+  (fn-expr + area F64 :get
+    (* width width)
+  )
+)
 
-+ label = "shape"
-+ visible = true
-
-━━━━━━━━━━━━━━━━━━━━
-+ Square is Shape
-
-+ width F64 = 1
-+ count I32 = -2
-+ flags U8 = 3
-+ center Point = Point(1, 2)
-+ cached F64 := width * 3
-
-────────────────────
-+ get area F64
-
-width * width
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Tuple
-
-+ x F32
-+ y F32
+(type + Point (is Tuple)
+  (prop + x F32)
+  (prop + y F32)
+)
 ```
 
 ```output
@@ -1554,20 +1624,20 @@ center Point aggregate 8
 
 ### The type of a value seen through its base class lists the dynamic class's properties
 
-```yumi
-. shape Shape = Square()
--- (type-of shape).properties.length
--- Shape.properties.length
+```brix
+(main
+  (let shape Shape (call Square))
+  (print (. (type-of shape) properties length))
+  (print (. Shape properties length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape
+(type + Shape
+  (prop + label _ (= "shape"))
+)
 
-+ label = "shape"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Square is Shape
-
-+ width F64 = 1
+(type + Square (is Shape)
+  (prop + width F64 (= 1))
+)
 ```
 
 ```output
@@ -1577,23 +1647,24 @@ center Point aggregate 8
 
 ### A tuple-typed property lists the properties of its tuple
 
-```yumi
-. center = Segment.properties.named("start")!
--- center.type-name
-for property in center.properties
-    -- "${property.name} ${property.offset}"
+```brix
+(main
+  (let center (!! (call (. Segment properties named) "start")))
+  (print (. center type-name))
+  (for (in property (. center properties))
+    (print (str (. property name) " " (. property offset)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Tuple
+(type + Segment (is Tuple)
+  (prop + start Point)
+  (prop + end Point)
+)
 
-+ start Point
-+ end Point
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Tuple
-
-+ x F64
-+ y F64
+(type + Point (is Tuple)
+  (prop + x F64)
+  (prop + y F64)
+)
 ```
 
 ```output
@@ -1604,20 +1675,24 @@ y 8
 
 ### Property offsets read a value's stored fields
 
-```yumi
-. square = Square()
-. address = square as Pointer
-for property in Square.properties
-    if property.is-float
-        -- (address + property.offset as CPointer'F64)[0]
-    else if property.is-signed
-        -- (address + property.offset as CPointer'I32)[0]
+```brix
+(main
+  (let square (call Square))
+  (let address (as square Pointer))
+  (for (in property (. Square properties))
+    (if (. property is-float)
+      (print ([] (as (+ address (. property offset)) (of CPointer F64)) 0))
+      (else-if (. property is-signed)
+        (print ([] (as (+ address (. property offset)) (of CPointer I32)) 0))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Square
-
-+ width F64 = 1.5
-+ count I32 = -2
+(type + Square
+  (prop + width F64 (= 1.5))
+  (prop + count I32 (= -2))
+)
 ```
 
 ```output
@@ -1627,19 +1702,20 @@ for property in Square.properties
 
 ### A tuple lists its fields, including those of a type with no storage
 
-```yumi
-for property in Sample.properties
-    -- "${property.name} ${property.offset} ${property.size} ${property.properties.length}"
+```brix
+(main
+  (for (in property (. Sample properties))
+    (print (str (. property name) " " (. property offset) " " (. property size) " " (. property properties length)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Sample is Tuple
+(type + Sample (is Tuple)
+  (prop + tick Tick)
+  (prop + value F32)
+  (prop + weight F64)
+)
 
-+ tick Tick
-+ value F32
-+ weight F64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tick is Tuple
+(type + Tick (is Tuple))
 ```
 
 ```output

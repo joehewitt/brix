@@ -1,0 +1,620 @@
+(import ./box)
+(import ./events)
+(import ./frame-clock)
+(import ./primitives)
+(import ./styles)
+(import /graphics/canvas)
+(import /graphics/color)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /math)
+(import /math/motion)
+(import /time/deadline)
+
+(type + BoxScroll (facet-of Box)
+  (using GUIBoxScroll)
+  (prop + scroll-position _ (=> (if-expr scroll-state (. scroll-state position) (call Point 0 0))))
+  (prop + scroll-x _ (=> (. scroll-position x)))
+  (prop + scroll-y _ (=> (. scroll-position y)))
+  (prop + scroll-min _ (=> (call Point 0 0)))
+  (prop + scroll-max _ (=> (call calculate-scroll-max)))
+  (prop + scroll-viewport _ (=> (. content-bounds size)))
+  (prop + scroll-content-bounds _ (=> (call calculate-scroll-content-bounds)))
+  (prop + scroll-phase _ (=> (call calculate-scroll-phase)))
+  (prop + is-scrolling _ (=> (call is-active-scroll-phase scroll-phase)))
+  (fn-expr + content-scroll-translation _ :get
+    (call Point (- (. offset x)) (- (. offset y)))
+    (where
+      (lazy offset content-offset)
+    )
+  )
+  (fn-expr + is-gliding Bool :get
+    (and (!= glide null) (call is-animating glide))
+    (where
+      (lazy glide (?. scroll-state glide))
+    )
+  )
+  (fn-expr + retained-scroll-indicator-color RGBA :get
+    (?? $scroll-indicator-color $gui-scroll-indicator-color)
+  )
+  (fn-do + has-retained-scroll-indicator Bool :get
+    (let horizontal (call is-scroll-axis-enabled (. Orientation horizontal)))
+    (= horizontal (and horizontal (!= $scroll-indicator-x (. ScrollIndicatorVisibility hidden))))
+    (let vertical (call is-scroll-axis-enabled (. Orientation vertical)))
+    (= vertical (and vertical (!= $scroll-indicator-y (. ScrollIndicatorVisibility hidden))))
+    (return (or horizontal vertical))
+  )
+  (fn-expr + has-lingering-scroll-indicator _
+    (case? (not scroll-state)
+      false
+    )
+    (default
+      (or (. scroll-state is-indicator-lingering) (!= (. scroll-state indicator-fade) null))
+    )
+  )
+  (fn-expr + is-scroll-axis-enabled _
+    (param axis Orientation)
+    (or (== overflow (. ScrollOverflow auto)) (== overflow (. ScrollOverflow scroll)))
+    (where
+      (lazy overflow (if-expr (== axis (. Orientation horizontal)) $overflow-x $overflow-y))
+    )
+  )
+  (fn-expr + scroll-axis-maximum _
+    (param axis Orientation)
+    (case? (not (call is-scroll-axis-enabled axis))
+      0
+    )
+    (default
+      (call gui-safe-span (- content viewport))
+    )
+    (where
+      (lazy viewport (if-expr (== axis (. Orientation horizontal)) (. content-bounds width) (. content-bounds height)))
+      (lazy content (if-expr (== axis (. Orientation horizontal)) inner-width inner-height))
+    )
+  )
+  (fn-do + scroll-to _
+    (param point Point)
+    (param cause ScrollCause (= (. ScrollCause programmatic)))
+    (return (call apply-scroll-position point cause (. ScrollPhase none) (. ScrollPhase none)))
+  )
+  (fn-do + scroll-to _
+    (param point Point)
+    (param motion Motion)
+    (call scroll-to
+      (block
+        (arg (=> () point))
+        (arg motion)
+      )
+    )
+  )
+  (fn-do + scroll-to _
+    (param goal ScrollGoal)
+    (param motion Motion)
+    (let first (call goal))
+    (return-if (if (not first)))
+    (let clock frame-clock)
+    (if (not clock)
+      (let ignored (call scroll-to first))
+      (return)
+    )
+    (let state (call scroll-state-for-write))
+    (let running (. state glide))
+    (if (and running (call (. clock is-animating) running))
+      (call (. running retarget) goal motion (. clock now))
+      (return)
+    )
+    (let position (call MotionChannel (. scroll-position motion-vector) scroll-glide-precision))
+    (let glide (call ScrollGlide this goal motion position))
+    (call (. glide aim) first (. clock now))
+    (= (. state glide) glide)
+    (call animate glide)
+  )
+  (fn-do + stop-gliding _
+    (let glide (?. scroll-state glide))
+    (return-if (if (not glide)))
+    (= (?. scroll-state glide) null)
+    (call stop-animating glide)
+  )
+  (fn-do + scroll-by _
+    (param delta Point)
+    (param cause ScrollCause (= (. ScrollCause programmatic)))
+    (return (call consume-scroll delta cause (. ScrollPhase none) (. ScrollPhase none)))
+  )
+  (fn-do + scroll-by Bool
+    (param amount Length)
+    (param direction ScrollDirection (= (. ScrollDirection down)))
+    (param cause ScrollCause (= (. ScrollCause programmatic)))
+    (let consumed (call scroll-by (call scroll-direction-delta direction amount) cause))
+    (return (or (!= (. consumed actual x) 0) (!= (. consumed actual y) 0)))
+  )
+  (fn-do + consume-scroll _
+    (param delta Point)
+    (param cause ScrollCause)
+    (param phase ScrollPhase)
+    (param momentum-phase ScrollPhase)
+    (let x-consumption (call consume-scroll-axis (. Orientation horizontal) (. delta x) cause))
+    (let y-consumption (call consume-scroll-axis (. Orientation vertical) (. delta y) cause))
+    (let next (call Point (+ scroll-x (. x-consumption actual)) (+ scroll-y (. y-consumption actual))))
+    (call apply-scroll-position next cause phase momentum-phase)
+    (let actual (call Point (. x-consumption actual) (. y-consumption actual)))
+    (return (call ScrollConsumption delta actual (call Point (- (. delta x) (. actual x)) (- (. delta y) (. actual y)))))
+  )
+  (fn-do + settle-scroll-phase _
+    (param phase ScrollPhase)
+    (param momentum-phase ScrollPhase)
+    (return-if (if (or (not scroll-state) (not is-scrolling))))
+    (let state (call scroll-state-for-write))
+    (= (. state direct-phase) (as (call scroll-phase-code phase) U8))
+    (= (. state momentum-phase) (as (call scroll-phase-code momentum-phase) U8))
+  )
+  (fn-expr + consume-scroll-axis _
+    (param axis Orientation)
+    (param pixel-delta Length)
+    (param cause ScrollCause)
+    (case? (not (call is-scroll-axis-enabled axis))
+      (call ScrollAxisConsumption pixel-delta 0 pixel-delta)
+    )
+    (default
+      (call gui-scroll-consume-axis
+        (block
+          (arg (. snapshot position))
+          (arg (. snapshot minimum))
+          (arg (. snapshot maximum))
+          (arg pixel-delta)
+        )
+      )
+    )
+    (where
+      (lazy snapshot (call scroll-axis-snapshot axis))
+    )
+  )
+  (fn-expr + stops-scroll-remainder _
+    (param axis Orientation)
+    (case? (not (call is-scroll-axis-enabled axis))
+      false
+    )
+    (default
+      (!= behavior (. OverscrollBehavior auto))
+    )
+    (where
+      (lazy behavior (if-expr is-horizontal $overscroll-behavior-x $overscroll-behavior-y))
+      (lazy is-horizontal (== axis (. Orientation horizontal)))
+    )
+  )
+  (fn-do + scroll-to-start _
+    (param axis Orientation)
+    (let next (if-expr (== axis (. Orientation horizontal)) (call Point 0 scroll-y) (call Point scroll-x 0)))
+    (return (call scroll-to next))
+  )
+  (fn-do + scroll-to-end _
+    (param axis Orientation)
+    (let next Point)
+    (if (== axis (. Orientation horizontal))
+      (= next (call Point (. scroll-max x) scroll-y))
+      (else
+        (= next (call Point scroll-x (. scroll-max y)))
+      )
+    )
+    (return (call scroll-to next))
+  )
+  (fn-do + nearest-scroll-container (? Box)
+    (param axis Orientation)
+    (let cursor (? Box) this)
+    (while cursor
+      (let box cursor)
+      (if (and (not (. box is-markup-shadow)) (call (. box is-scroll-axis-enabled) axis))
+        (let overflows (. box has-vertical-overflow))
+        (if (== axis (. Orientation horizontal))
+          (= overflows (. box has-horizontal-overflow))
+        )
+        (return-if box (if overflows))
+      )
+      (return-if (if (. box is-presentation-layer)))
+      (= cursor (. box material-parent))
+    )
+  )
+  (fn-do + has-scroll-container-ancestor _
+    (return-if false (if is-presentation-layer))
+    (let cursor (. this material-parent))
+    (while cursor
+      (let ancestor cursor)
+      (let scrolls-x (call (. ancestor is-scroll-axis-enabled) (. Orientation horizontal)))
+      (let scrolls-y (call (. ancestor is-scroll-axis-enabled) (. Orientation vertical)))
+      (return-if true (if (or scrolls-x scrolls-y)))
+      (return-if false (if (. ancestor is-presentation-layer)))
+      (= cursor (. ancestor material-parent))
+    )
+    (return false)
+  )
+  (fn-do + scroll-indicator-bounds _
+    (param axis Orientation)
+    (let track (call scroll-indicator-track-bounds axis))
+    (return-if (call Rect 0 0 0 0) (if (or (<= (. track width) 0) (<= (. track height) 0))))
+    (let snapshot (call scroll-axis-snapshot axis))
+    (if (== axis (. Orientation horizontal))
+      (let metrics
+        (call gui-scroll-indicator-metrics
+          (block
+            (arg (. snapshot position))
+            (arg (. snapshot minimum))
+            (arg (. snapshot maximum))
+            (arg (. snapshot viewport))
+            (arg (. snapshot content))
+            (arg (. track width))
+            (arg $scroll-indicator-min-length)
+          )
+        )
+      )
+      (return
+        (call Rect
+          (block
+            (arg (+ (. track x) (. metrics thumb-start)))
+            (arg (. track y))
+            (arg (. metrics thumb-length))
+            (arg (. track height))
+          )
+        )
+      )
+    )
+    (let metrics
+      (call gui-scroll-indicator-metrics
+        (block
+          (arg (. snapshot position))
+          (arg (. snapshot minimum))
+          (arg (. snapshot maximum))
+          (arg (. snapshot viewport))
+          (arg (. snapshot content))
+          (arg (. track height))
+          (arg $scroll-indicator-min-length)
+        )
+      )
+    )
+    (return
+      (call Rect
+        (block
+          (arg (. track x))
+          (arg (+ (. track y) (. metrics thumb-start)))
+          (arg (. track width))
+          (arg (. metrics thumb-length))
+        )
+      )
+    )
+  )
+  (fn-do + scroll-indicator-axis-at _
+    (param root-point Point)
+    (let vertical (call presentation-rect (call scroll-indicator-track-bounds (. Orientation vertical))))
+    (return-if (. Orientation vertical) (if (and (> (. vertical width) 0) (call (. vertical contains) root-point))))
+    (let horizontal (call presentation-rect (call scroll-indicator-track-bounds (. Orientation horizontal))))
+    (return-if (. Orientation horizontal) (if (and (> (. horizontal height) 0) (call (. horizontal contains) root-point))))
+  )
+  (fn-expr + scroll-indicator-drag-offset _
+    (param axis Orientation)
+    (param root-point Point)
+    (case? (call (. thumb contains) root-point)
+      (- coordinate thumb-start)
+    )
+    (default
+      (/ thumb-length 2)
+    )
+    (where
+      (lazy thumb (call presentation-rect (call scroll-indicator-bounds axis)))
+      (lazy coordinate (if-expr (== axis (. Orientation horizontal)) (. root-point x) (. root-point y)))
+      (lazy thumb-start (if-expr (== axis (. Orientation horizontal)) (. thumb x) (. thumb y)))
+      (lazy thumb-length (if-expr (== axis (. Orientation horizontal)) (. thumb width) (. thumb height)))
+    )
+  )
+  (fn-do + scroll-indicator-scroll-to-point _
+    (param axis Orientation)
+    (param root-point Point)
+    (param drag-offset Length)
+    (let snapshot (call scroll-axis-snapshot axis))
+    (return-if false (if (<= (. snapshot maximum) (. snapshot minimum))))
+    (let track (call presentation-rect (call scroll-indicator-track-bounds axis)))
+    (let thumb (call presentation-rect (call scroll-indicator-bounds axis)))
+    (let coordinate (if-expr (== axis (. Orientation horizontal)) (. root-point x) (. root-point y)))
+    (let track-start (if-expr (== axis (. Orientation horizontal)) (. track x) (. track y)))
+    (let track-length (if-expr (== axis (. Orientation horizontal)) (. track width) (. track height)))
+    (let thumb-length (if-expr (== axis (. Orientation horizontal)) (. thumb width) (. thumb height)))
+    (let travel (call max 0 (- track-length thumb-length)))
+    (return-if false (if (<= travel 0)))
+    (let thumb-start (call min travel (call max 0 (- coordinate track-start drag-offset))))
+    (return
+      (call scroll-indicator-seek
+        (block
+          (arg axis)
+          (arg (+ (. snapshot minimum) (/ (* (- (. snapshot maximum) (. snapshot minimum)) thumb-start) travel)))
+        )
+      )
+    )
+  )
+  (fn-do + paint-scroll-indicators _
+    (param canvas Canvas)
+    (let horizontal (call scroll-indicator-bounds (. Orientation horizontal)))
+    (let vertical (call scroll-indicator-bounds (. Orientation vertical)))
+    (if (and (> (. horizontal width) 0) (> (. horizontal height) 0))
+      (do-use (. canvas saved-state)
+        (= (. canvas fill-color) (call scroll-indicator-paint-color $scroll-indicator-x))
+        (= (. canvas stroke-color) null)
+        (call (. canvas outline) (call gui-scroll-indicator-outline horizontal))
+      )
+    )
+    (if (and (> (. vertical width) 0) (> (. vertical height) 0))
+      (do-use (. canvas saved-state)
+        (= (. canvas fill-color) (call scroll-indicator-paint-color $scroll-indicator-y))
+        (= (. canvas stroke-color) null)
+        (call (. canvas outline) (call gui-scroll-indicator-outline vertical))
+      )
+    )
+  )
+  (fn-do + linger-scroll-indicator _
+    (let state (call scroll-state-for-write))
+    (= (. state indicator-deadline) (call Deadline gui-scroll-indicator-linger))
+    (return-if (if (. state is-indicator-lingering)))
+    (= (. state is-indicator-lingering) true)
+    (= (. state indicator-fade) null)
+    (do-new
+      (call settle-scroll-indicator-linger)
+    )
+  )
+  (fn-expr _ scroll-phase-code _
+    (param phase ScrollPhase)
+    (match phase
+      (case= (. ScrollPhase began)
+        1
+      )
+      (case= (. ScrollPhase stationary)
+        2
+      )
+      (case= (. ScrollPhase changed)
+        3
+      )
+      (case= (. ScrollPhase ended)
+        4
+      )
+      (case= (. ScrollPhase cancelled)
+        5
+      )
+      (case= (. ScrollPhase may-begin)
+        6
+      )
+      (default
+        0
+      )
+    )
+  )
+  (fn-expr _ scroll-phase-from-code _
+    (param code U8)
+    (match code
+      (case= 1
+        (. ScrollPhase began)
+      )
+      (case= 2
+        (. ScrollPhase stationary)
+      )
+      (case= 3
+        (. ScrollPhase changed)
+      )
+      (case= 4
+        (. ScrollPhase ended)
+      )
+      (case= 5
+        (. ScrollPhase cancelled)
+      )
+      (case= 6
+        (. ScrollPhase may-begin)
+      )
+      (default
+        (. ScrollPhase none)
+      )
+    )
+  )
+  (fn-expr _ is-active-scroll-phase _
+    (param phase ScrollPhase)
+    (match phase
+      (case= (. ScrollPhase none)
+        false
+      )
+      (case= (. ScrollPhase ended)
+        false
+      )
+      (case= (. ScrollPhase cancelled)
+        false
+      )
+      (default
+        true
+      )
+    )
+  )
+  (fn-expr _ calculate-scroll-max _
+    (call Point
+      (block
+        (arg (call scroll-axis-maximum (. Orientation horizontal)))
+        (arg (call scroll-axis-maximum (. Orientation vertical)))
+      )
+    )
+  )
+  (fn-expr _ calculate-scroll-content-bounds Rect
+    (call Rect (. content-bounds x) (. content-bounds y) inner-width inner-height)
+  )
+  (fn-expr _ calculate-scroll-phase _
+    (case? (not scroll-state)
+      (. ScrollPhase none)
+    )
+    (case? (!= momentum (. ScrollPhase none))
+      momentum
+    )
+    (default
+      (call scroll-phase-from-code (. (!! scroll-state) direct-phase))
+    )
+    (where
+      (lazy momentum (call scroll-phase-from-code (. scroll-state momentum-phase)))
+    )
+  )
+  (fn-do ^ apply-scroll-position _
+    (param requested Point)
+    (param cause ScrollCause)
+    (param phase ScrollPhase)
+    (param momentum-phase ScrollPhase)
+    (if (. cause is-direct)
+      (call stop-gliding)
+    )
+    (let previous scroll-position)
+    (let next (call clipped-scroll-position requested))
+    (let has-phase (or (!= phase (. ScrollPhase none)) (!= momentum-phase (. ScrollPhase none))))
+    (if (or scroll-state (!= previous next) has-phase)
+      (let state (call scroll-state-for-write))
+      (= (. state direct-phase) (as (call scroll-phase-code phase) U8))
+      (= (. state momentum-phase) (as (call scroll-phase-code momentum-phase) U8))
+    )
+    (return-if false (if (== previous next)))
+    (let state (call scroll-state-for-write))
+    (= (. state position) next)
+    (if (and (. cause is-direct) has-retained-scroll-indicator)
+      (call linger-scroll-indicator)
+    )
+    (call invalidate-scroll-paint)
+    (call invalidate-visited-native-geometry)
+    (let host window-host)
+    (call (?. host invalidate-popup-placement))
+    (call (?. host notify-clip-watchers) this)
+    (if (and (. cause is-direct) (!= cause (. ScrollCause indicator)))
+      (call (?. (call scroll-blur-host) note-scroll-blur) (call Point (- (. next x) (. previous x)) (- (. next y) (. previous y))) this)
+    )
+    (<- scroll-changed (call ScrollChangedEvent previous next cause phase momentum-phase))
+    (return true)
+  )
+  (fn-do _ scroll-blur-host (? Box)
+    (let cursor (? Box) this)
+    (while cursor
+      (let box cursor)
+      (let scrolls (or (call (. box is-scroll-axis-enabled) (. Orientation horizontal)) (call (. box is-scroll-axis-enabled) (. Orientation vertical))))
+      (return-if null (if (and (!= (as box Pointer) (as this Pointer)) scrolls)))
+      (return-if box (if (!= (. box $scroll-blur) null)))
+      (return-if null (if (. box is-presentation-layer)))
+      (= cursor (. box material-parent))
+    )
+    (return null)
+  )
+  (fn-do ^ clamp-scroll-after-layout _
+    (call apply-scroll-position
+      (block
+        (arg scroll-position)
+        (arg (. ScrollCause layout-clamp))
+        (arg (. ScrollPhase none))
+        (arg (. ScrollPhase none))
+      )
+    )
+  )
+  (fn-do _ invalidate-scroll-paint _
+    (= retained-move-only-invalidation false)
+    (= retained-transform-only-invalidation false)
+    (if (not retained-paint-self-invalid)
+      (= retained-scroll-only-invalidation true)
+    )
+    (call mark-retained-paint-invalid)
+    (call (?. window schedule-render))
+  )
+  (fn-expr ^ is-scroll-pinned-to-end Bool
+    (and anchors-end (>= (. scroll-position y) (- (. scroll-max y) 1)))
+    (where
+      (lazy anchors-end (and (== $scroll-anchor (. ScrollAnchor end)) (call is-scroll-axis-enabled (. Orientation vertical))))
+    )
+  )
+  (fn-do ^ keep-scroll-end _
+    (let end (. scroll-max y))
+    (return-if (if (== end (. scroll-position y))))
+    (call apply-scroll-position
+      (block
+        (arg (call Point (. scroll-position x) end))
+        (arg (. ScrollCause layout-clamp))
+        (arg (. ScrollPhase none))
+        (arg (. ScrollPhase none))
+      )
+    )
+  )
+  (fn-expr _ scroll-indicator-paint-color RGBA
+    (param visibility ScrollIndicatorVisibility)
+    (case? (== visibility (. ScrollIndicatorVisibility always))
+      color
+    )
+    (default
+      (call (. color with-alpha) (* (. color alpha) (call scroll-indicator-alpha)))
+    )
+    (where
+      (lazy color retained-scroll-indicator-color)
+    )
+  )
+  (fn-expr _ scroll-indicator-alpha F64
+    (case? (not state)
+      0
+    )
+    (case? (. state is-indicator-lingering)
+      1
+    )
+    (case? (not fade)
+      0
+    )
+    (default
+      (call max 0 (call min 1 ([] (. fade value) 0)))
+    )
+    (where
+      (lazy state scroll-state)
+      (lazy fade (. state indicator-fade))
+    )
+  )
+  (fn-do _ settle-scroll-indicator-linger _
+    (while scroll-state
+      (let state scroll-state)
+      (let host window-host)
+      (if (and host (call (. host holds-scroll-indicator) this))
+        (= (. state indicator-deadline) (call Deadline gui-scroll-indicator-linger))
+      )
+      (let deadline (!! (. state indicator-deadline)))
+      (if (. deadline has-passed)
+        (break)
+      )
+      (call (. deadline remaining wait))
+    )
+    (if scroll-state
+      (= (. scroll-state is-indicator-lingering) false)
+      (call fade-scroll-indicator)
+      (call invalidate-scroll-paint)
+    )
+  )
+  (fn-do _ fade-scroll-indicator _
+    (let state scroll-state)
+    (let clock frame-clock)
+    (return-if (if (or (not state) (not clock))))
+    (let fade (call MotionChannel (list 1.0)))
+    (call (. fade retarget) (list 0.0) $gui-motion-smooth (. clock now))
+    (= (. state indicator-fade) fade)
+    (call animate (call ScrollIndicatorFade this))
+  )
+)
+
+(type _ ScrollIndicatorFade
+  (implements FrameAnimation)
+  (prop + box Box)
+  (fn-do + This _
+    (param box _)
+  )
+  (fn-do + advance Bool
+    (param tick FrameTick)
+    (let state (. box scroll-state))
+    (return-if false (if (not state)))
+    (let fade (. state indicator-fade))
+    (return-if false (if (not fade)))
+    (call (. fade update) (. tick now))
+    (if (not (. fade is-moving))
+      (= (. state indicator-fade) null)
+    )
+    (call (. box invalidate-scroll-paint))
+    (return (. fade is-moving))
+  )
+  (fn-do + finish _
+    (let state (. box scroll-state))
+    (return-if (if (or (not state) (not (. state indicator-fade)))))
+    (= (. state indicator-fade) null)
+    (call (. box invalidate-scroll-paint))
+  )
+)

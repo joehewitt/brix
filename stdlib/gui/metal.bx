@@ -1,0 +1,999 @@
+(import /BxAppleGUI/BxMetalRenderer.h)
+(import /core/error)
+(import /graphics/canvas)
+(import /graphics/color)
+(import /graphics/matrix)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /graphics/roundedrect)
+(import /graphics/shader)
+(import /graphics/surface)
+(import /graphics/text)
+(import /graphics/vectorgeometry)
+(import /math)
+(import /units)
+(blank)
+(prop _ metal-stroke-inherit U8 (= 255))
+(blank)
+(type-line + DisplayGlyphHandle (is (tuple (: index U32) (: generation U32))))
+
+(type + DisplayGlyphRegistrar (is Interface)
+  (fn-expr + register-display-glyph (? DisplayGlyphHandle)
+    (param layout TextLayout)
+    null
+  )
+  (fn-do + release-display-glyph _
+    (param handle DisplayGlyphHandle)
+    (let ignored (. handle index))
+  )
+  (fn-expr + register-display-image _
+    (param table VectorGeometryTable)
+    (param handle ImageHandle)
+    (param destination Rect)
+    false
+  )
+)
+
+(type + TextureResidency (is I32)
+  (variant missing (= 0))
+  (variant ready (= 1))
+  (variant pending (= 2))
+)
+
+(type + MetalPixelDiff (is Tuple)
+  (prop + differing-pixels I64)
+  (prop + maximum-channel-delta I64)
+  (prop + pixel-count I64)
+  (prop + total-delta I64)
+  (fn-expr + differing-ratio F64 :get
+    (if-expr (not pixel-count) 0 (/ (as differing-pixels F64) (as pixel-count F64)))
+  )
+)
+
+(type + MetalOffscreenRenderer
+  (implements Closable)
+  (implements DisplayGlyphRegistrar)
+  (prop + width Length)
+  (prop + height Length)
+  (prop + scale F64)
+  (prop + background RGBA)
+  (blank)
+  (prop _ renderer Pointer)
+  (prop _ is-closed _ (= false))
+  (prop _ path-capture (? MetalPathCapture))
+  (fn-do + This _
+    (param render-width Length)
+    (param render-height Length)
+    (param render-scale F64 (= 1))
+    (param clear-background RGBA (= transparent))
+    (param allow-failure _ (= false))
+    (= width render-width)
+    (= height render-height)
+    (= scale render-scale)
+    (= background clear-background)
+    (= renderer
+      (call C:brixGuiMetalRendererCreate
+        (block
+          (arg width)
+          (arg height)
+          (arg scale)
+          (arg (. background red))
+          (arg (. background green))
+          (arg (. background blue))
+          (arg (. background alpha))
+        )
+      )
+    )
+    (throw (call Panic "Unable to create the offscreen Metal renderer") (if (and (not renderer) (not allow-failure))))
+  )
+  (fn-do + close _
+    (if (not is-closed)
+      (if renderer
+        (call C:brixGuiMetalRendererRelease renderer)
+        (= renderer (call Pointer))
+      )
+      (= is-closed true)
+    )
+  )
+  (fn-do + register-display-glyph _
+    (param layout TextLayout)
+    (return-if null (if (not (. layout native))))
+    (let packed (call C:brixGuiMetalRunRegister renderer (. layout native)))
+    (return-if null (if (< packed 0)))
+    (let bits (as packed U64))
+    (return
+      (call DisplayGlyphHandle
+        (block
+          (arg (as (/and/ bits 4294967295) U32))
+          (arg (as (/rshift/ bits 32) U32))
+        )
+      )
+    )
+  )
+  (fn-do + release-display-glyph _
+    (param handle DisplayGlyphHandle)
+    (call C:brixGuiMetalRunRelease renderer (. handle index) (. handle generation))
+  )
+  (fn-do + register-display-image _
+    (param table VectorGeometryTable)
+    (param handle ImageHandle)
+    (param destination Rect)
+    (let pixel-width (as (call round (* (. destination width) scale)) I32))
+    (let pixel-height (as (call round (* (. destination height) scale)) I32))
+    (return-if false (if (or (<= pixel-width 0) (<= pixel-height 0))))
+    (let resource (call (. table resolve-image) handle))
+    (return-if false (if (not resource)))
+    (let found
+      (call C:brixGuiMetalImageLookup
+        (block
+          (arg renderer)
+          (arg (. handle index))
+          (arg (. handle generation))
+          (arg pixel-width)
+          (arg pixel-height)
+          (arg (. resource template-alpha))
+        )
+      )
+    )
+    (return-if true (if found))
+    (let image (call C:brixGuiMetalCanvasCreateCGImage (. resource native)))
+    (return
+      (call C:brixGuiMetalImageUpsert
+        (block
+          (arg renderer)
+          (arg (. handle index))
+          (arg (. handle generation))
+          (arg pixel-width)
+          (arg pixel-height)
+          (arg (. resource template-alpha))
+          (arg image)
+        )
+      )
+    )
+  )
+  (fn-expr + is-available Bool :get
+    (as renderer Bool)
+  )
+  (fn-expr + completed-frame I64 :get
+    (if-expr renderer (call C:brixGuiMetalRendererCompletedFrame renderer) -1)
+  )
+  (fn-expr + attach-status _ :get
+    (call C:brixGuiMetalRendererAttachStatus renderer)
+  )
+  (fn-expr + is-wide-gamut Bool :get
+    (call C:brixGuiMetalRendererIsWideGamut renderer)
+  )
+  (fn-expr + native _ :get
+    renderer
+  )
+  (fn-expr + encode-nanos I64 :get
+    (call stat (. MetalStat encode-nanos))
+  )
+  (fn-expr + walk-nanos I64 :get
+    (call stat (. MetalStat walk-nanos))
+  )
+  (fn-expr + gpu-nanos _ :get
+    (call stat (. MetalStat gpu-nanos))
+  )
+  (fn-expr + draw-calls _ :get
+    (call stat (. MetalStat draw-calls))
+  )
+  (fn-expr + pipeline-switches I64 :get
+    (call stat (. MetalStat pipeline-switches))
+  )
+  (fn-expr + packet-bytes _ :get
+    (call stat (. MetalStat packet-bytes))
+  )
+  (fn-expr + skipped-ops _ :get
+    (call stat (. MetalStat skipped-ops))
+  )
+  (fn-expr + renderer-allocations _ :get
+    (call stat (. MetalStat renderer-allocations))
+  )
+  (fn-expr + instance-count _ :get
+    (call stat (. MetalStat instances))
+  )
+  (fn-expr + commits _ :get
+    (call stat (. MetalStat commits))
+  )
+  (fn-expr + presents _ :get
+    (call stat (. MetalStat presents))
+  )
+  (fn-expr + pooled-capacity-bytes I64 :get
+    (call stat (. MetalStat packet-capacity))
+  )
+  (fn-expr + glyph-atlas-bytes I64 :get
+    (call stat (. MetalStat glyph-atlas-bytes))
+  )
+  (fn-expr + glyph-atlas-uploads _ :get
+    (call stat (. MetalStat glyph-atlas-uploads))
+  )
+  (fn-expr + glyph-atlas-upload-bytes I64 :get
+    (call stat (. MetalStat glyph-atlas-upload-bytes))
+  )
+  (fn-expr + glyph-atlas-evictions _ :get
+    (call stat (. MetalStat glyph-atlas-evictions))
+  )
+  (fn-expr + image-atlas-bytes _ :get
+    (call stat (. MetalStat image-atlas-bytes))
+  )
+  (fn-expr + image-atlas-evictions _ :get
+    (call stat (. MetalStat image-atlas-evictions))
+  )
+  (fn-expr + image-texture-bytes _ :get
+    (call stat (. MetalStat image-texture-bytes))
+  )
+  (fn-expr + image-texture-evictions _ :get
+    (call stat (. MetalStat image-texture-evictions))
+  )
+  (fn-expr + image-texture-upload-bytes _ :get
+    (call stat (. MetalStat image-texture-upload-bytes))
+  )
+  (fn-expr + image-tile-source-bytes _ :get
+    (call stat (. MetalStat image-tile-source-bytes))
+  )
+  (fn-expr + image-tile-count _ :get
+    (call stat (. MetalStat image-tile-count))
+  )
+  (fn-expr + tile-gpu-nanos I64 :get
+    (call stat (. MetalStat tile-gpu-nanos))
+  )
+  (fn-expr + tiles-rendered I64 :get
+    (call stat (. MetalStat tiles-rendered))
+  )
+  (fn-expr + run-count _ :get
+    (call stat (. MetalStat run-count))
+  )
+  (fn-expr + fallback-runs _ :get
+    (call stat (. MetalStat fallback-runs))
+  )
+  (fn-expr + drawable-wait-nanos I64 :get
+    (call stat (. MetalStat drawable-wait-nanos))
+  )
+  (fn-expr + maximum-frames-per-second I64 :get
+    (call stat (. MetalStat maximum-frames-per-second))
+  )
+  (fn-expr + fill-draws _ :get
+    (call stat (. MetalStat fill-draws))
+  )
+  (fn-expr + fill-segments _ :get
+    (call stat (. MetalStat fill-segments))
+  )
+  (fn-expr + fill-tiles _ :get
+    (call stat (. MetalStat fill-tiles))
+  )
+  (fn-expr + fill-pieces _ :get
+    (call stat (. MetalStat fill-pieces))
+  )
+  (fn-expr + fill-lines _ :get
+    (call stat (. MetalStat fill-lines))
+  )
+  (fn-expr + fill-opaque-tiles _ :get
+    (call stat (. MetalStat fill-opaque-tiles))
+  )
+  (fn-expr + fill-overflows _ :get
+    (call stat (. MetalStat fill-overflows))
+  )
+  (fn-expr + layer-passes _ :get
+    (call stat (. MetalStat layer-passes))
+  )
+  (fn-expr + coverage-clips _ :get
+    (call stat (. MetalStat coverage-clips))
+  )
+  (fn-expr + has-pending-fill-frames _ :get
+    (> (call stat (. MetalStat fill-frames-pending)) 0)
+  )
+  (fn-expr + has-pending-fill-redraw _ :get
+    (> (call stat (. MetalStat fill-redraw-pending)) 0)
+  )
+  (fn-expr + is-filling _ :get
+    (or has-pending-fill-frames has-pending-fill-redraw)
+  )
+  (fn-expr + maximum-run-width-delta _ :get
+    (call C:brixGuiMetalRunMaximumWidthDelta renderer)
+  )
+  (fn-do + resize _
+    (param render-width Length)
+    (param render-height Length)
+    (param render-scale F64)
+    (param clear-background RGBA)
+    (return-if false (if (not renderer)))
+    (let did-resize
+      (call C:brixGuiMetalRendererResize
+        (block
+          (arg renderer)
+          (arg render-width)
+          (arg render-height)
+          (arg render-scale)
+          (arg (. clear-background red))
+          (arg (. clear-background green))
+          (arg (. clear-background blue))
+          (arg (. clear-background alpha))
+        )
+      )
+    )
+    (return-if false (if (not did-resize)))
+    (= width render-width)
+    (= height render-height)
+    (= scale render-scale)
+    (= background clear-background)
+    (return true)
+  )
+  (fn-do + present-into Bool
+    (param surface (? SharedSurface))
+    (return-if false (if (not renderer)))
+    (return (call C:brixGuiMetalRendererSetOutputSurface renderer (?? (?. surface native) (call Pointer))))
+  )
+  (fn-do + attach-window _
+    (param window Pointer)
+    (return-if false (if (not renderer)))
+    (return (== (call C:brixGuiMetalRendererAttachWindow renderer window) 1))
+  )
+  (fn-do + attach-popup _
+    (param popup Pointer)
+    (return-if false (if (not renderer)))
+    (return (== (call C:brixGuiMetalRendererAttachPopup renderer popup) 1))
+  )
+  (fn-do + set-output-gamut Bool
+    (param wide Bool)
+    (param opaque Bool)
+    (return-if false (if (not renderer)))
+    (return (call C:brixGuiMetalRendererSetOutputGamut renderer wide opaque))
+  )
+  (fn-do + pixel-color (? RGBA)
+    (param x I32)
+    (param y I32)
+    (return-if null (if (not renderer)))
+    (let values (call (of List F64) 0 0 0 0))
+    (return-if null (if (not (call C:brixGuiMetalRendererReadColor renderer x y (. values buffer-pointer)))))
+    (return (call RGBA ([] values 0) ([] values 1) ([] values 2) ([] values 3)))
+  )
+  (fn-do + detach-window _
+    (param window Pointer)
+    (if renderer
+      (call C:brixGuiMetalRendererDetachWindow renderer window)
+    )
+  )
+  (fn-do + finish _
+    (call C:brixGuiMetalRendererFinish renderer)
+  )
+  (fn-do + mark-renderer-allocations _
+    (call C:brixGuiMetalRendererStatMark renderer)
+  )
+  (fn-do + diff _
+    (param canvas RasterCanvas)
+    (param tolerance I64 (= 0))
+    (call C:brixGuiMetalRendererDiffWithCanvas renderer (. canvas native) tolerance)
+    (return
+      (call MetalPixelDiff
+        (block
+          (arg (call C:brixGuiMetalRendererDiffValue renderer 0))
+          (arg (call C:brixGuiMetalRendererDiffValue renderer 1))
+          (arg (call C:brixGuiMetalRendererDiffValue renderer 2))
+          (arg (call C:brixGuiMetalRendererDiffValue renderer 3))
+        )
+      )
+    )
+  )
+  (fn-do + write _
+    (param path String)
+    (let did-write (call C:brixGuiMetalRendererWritePNG renderer path))
+    (throw (call IOError (str "Unable to write Metal output image " path)) (if (not did-write)))
+  )
+  (fn-do + read-into Bool
+    (param canvas RasterCanvas)
+    (return (call C:brixGuiMetalRendererReadIntoCanvas renderer (. canvas native)))
+  )
+  (fn-do + set-fill-time _
+    (param seconds F64)
+    (call C:brixGuiMetalRendererSetFillTime renderer seconds)
+  )
+  (fn-do + begin-packet _
+    (call C:brixGuiMetalPacketBegin renderer)
+  )
+  (fn-do + commit-packet _
+    (param mode I32)
+    (param damage Rect)
+    (return
+      (call C:brixGuiMetalPacketCommit
+        (block
+          (arg renderer)
+          (arg mode)
+          (arg (. damage x))
+          (arg (. damage y))
+          (arg (. damage width))
+          (arg (. damage height))
+        )
+      )
+    )
+  )
+  (fn-do + set-damage-areas _
+    (param values (list F64))
+    (call C:brixGuiMetalPacketSetDamageAreas renderer (. values buffer-pointer) (/ (. values length) 4))
+  )
+  (fn-do + commit-tiles I64
+    (return (call C:brixGuiMetalPacketCommitTiles renderer))
+  )
+  (fn-do + push-clip _
+    (param clip Rect)
+    (call C:brixGuiMetalPacketPushClip renderer (. clip x) (. clip y) (. clip width) (. clip height))
+  )
+  (fn-do + push-rounded-clip _
+    (param clip RoundedRect)
+    (if (. clip is-rounded)
+      (call C:brixGuiMetalPacketPushRoundedClip
+        (block
+          (arg renderer)
+          (arg (. clip bounds x))
+          (arg (. clip bounds y))
+          (arg (. clip bounds width))
+          (arg (. clip bounds height))
+          (arg (. clip left))
+          (arg (. clip top))
+          (arg (. clip right))
+          (arg (. clip bottom))
+        )
+      )
+      (else
+        (call push-clip (. clip bounds))
+      )
+    )
+  )
+  (fn-do + push-path-clip _
+    (param path-set I64)
+    (param state U32)
+    (param even-odd Bool)
+    (call C:brixGuiMetalPacketPushPathClip renderer path-set state even-odd)
+  )
+  (fn-do + pop-clip _
+    (call C:brixGuiMetalPacketPopClip renderer)
+  )
+  (fn-do + push-translate _
+    (param offset Point)
+    (call C:brixGuiMetalPacketPushTranslate renderer (. offset x) (. offset y))
+  )
+  (fn-do + pop-translate _
+    (call C:brixGuiMetalPacketPopTranslate renderer)
+  )
+  (fn-do + push-transform _
+    (param matrix Matrix)
+    (call C:brixGuiMetalPacketPushTransform
+      (block
+        (arg renderer)
+        (arg (. matrix a))
+        (arg (. matrix c))
+        (arg (. matrix b))
+        (arg (. matrix d))
+        (arg (. matrix tx))
+        (arg (. matrix ty))
+      )
+    )
+  )
+  (fn-do + pop-transform _
+    (call C:brixGuiMetalPacketPopTranslate renderer)
+  )
+  (fn-do + push-transform-layer _
+    (param matrix Matrix)
+    (param opacity Ratio)
+    (call C:brixGuiMetalPacketPushTransformLayer
+      (block
+        (arg renderer)
+        (arg (. matrix a))
+        (arg (. matrix c))
+        (arg (. matrix b))
+        (arg (. matrix d))
+        (arg (. matrix tx))
+        (arg (. matrix ty))
+        (arg opacity)
+      )
+    )
+  )
+  (fn-do + push-layer _
+    (param opacity Ratio)
+    (call C:brixGuiMetalPacketPushLayer renderer opacity)
+  )
+  (fn-do + push-filter-layer _
+    (param rect Rect)
+    (param filter ShaderFilter)
+    (param opacity Ratio (= 1%%))
+    (let natives (. filter image-natives))
+    (let scales (. filter image-scales))
+    (let keeps (call (of List F64)))
+    (for (in keep (. filter keeps))
+      (++= keeps (list (. keep x) (. keep y) (. keep width) (. keep height)))
+    )
+    (call C:brixGuiMetalPacketPushFilterLayer
+      (block
+        (arg renderer)
+        (arg (. rect x))
+        (arg (. rect y))
+        (arg (. rect width))
+        (arg (. rect height))
+        (arg (. filter shader id))
+        (arg (. filter args buffer-pointer))
+        (arg (. filter args length))
+        (arg (. natives buffer-pointer))
+        (arg (. scales buffer-pointer))
+        (arg (. natives length))
+        (arg (. filter time))
+        (arg opacity)
+        (arg (. filter resolution x))
+        (arg (. filter resolution y))
+        (arg (. keeps buffer-pointer))
+        (arg (. filter keeps length))
+      )
+    )
+  )
+  (fn-do + pop-layer _
+    (call C:brixGuiMetalPacketPopLayer renderer)
+  )
+  (fn-do + append-items _
+    (param scalar-items (of CPointer Void))
+    (param count Size)
+    (param clips (of CPointer Void))
+    (param clip-count Size)
+    (param palette (of CPointer Void))
+    (param palette-count Size)
+    (param shapes (of CPointer Void))
+    (param shape-count Size)
+    (param transforms (of CPointer Void) (= null))
+    (param transform-count Size (= 0))
+    (param item-transforms (of CPointer Void) (= null))
+    (param colors (of CPointer Void) (= null))
+    (param color-count Size (= 0))
+    (param item-strokes (of CPointer Void) (= null))
+    (param item-dashes (of CPointer Void) (= null))
+    (param states (of CPointer Void) (= null))
+    (param state-count Size (= 0))
+    (param item-states (of CPointer Void) (= null))
+    (param image-identities (of CPointer Void) (= null))
+    (param image-count Size (= 0))
+    (param path-set I64 (= -1))
+    (return
+      (call C:brixGuiMetalPacketAppendItems
+        (block
+          (arg renderer)
+          (arg scalar-items)
+          (arg count)
+          (arg clips)
+          (arg clip-count)
+          (arg palette)
+          (arg palette-count)
+          (arg shapes)
+          (arg shape-count)
+          (arg transforms)
+          (arg transform-count)
+          (arg item-transforms)
+          (arg colors)
+          (arg color-count)
+          (arg item-strokes)
+          (arg item-dashes)
+          (arg states)
+          (arg state-count)
+          (arg item-states)
+          (arg image-identities)
+          (arg image-count)
+          (arg path-set)
+        )
+      )
+    )
+  )
+  (fn-do + chunk-paths _
+    (param retained-key U64)
+    (param generation U32)
+    (param scalar-items (of CPointer Void))
+    (param count Size)
+    (param verbs (of CPointer Void))
+    (param verb-count Size)
+    (param coords (of CPointer Void))
+    (param coord-count Size)
+    (param styles (of CPointer Void))
+    (param style-count Size)
+    (param gradients (of CPointer Void))
+    (param gradient-count Size)
+    (param stops (of CPointer Void))
+    (param stop-count Size)
+    (param shader-args (of CPointer Void))
+    (param shader-arg-count Size)
+    (param states (of CPointer Void))
+    (param state-count Size)
+    (return
+      (call C:brixGuiMetalChunkPaths
+        (block
+          (arg renderer)
+          (arg retained-key)
+          (arg generation)
+          (arg scalar-items)
+          (arg count)
+          (arg verbs)
+          (arg verb-count)
+          (arg coords)
+          (arg coord-count)
+          (arg styles)
+          (arg style-count)
+          (arg gradients)
+          (arg gradient-count)
+          (arg stops)
+          (arg stop-count)
+          (arg shader-args)
+          (arg shader-arg-count)
+          (arg states)
+          (arg state-count)
+        )
+      )
+    )
+  )
+  (fn-do + append-tile _
+    (param handle U64)
+    (param bounds Rect)
+    (param opacity Ratio (= 1%%))
+    (call C:brixGuiMetalPacketAppendTile
+      (block
+        (arg renderer)
+        (arg handle)
+        (arg (. bounds x))
+        (arg (. bounds y))
+        (arg (. bounds width))
+        (arg (. bounds height))
+        (arg opacity)
+      )
+    )
+  )
+  (fn-expr + tile-lookup U64
+    (param retained-key U64)
+    (param generation U32)
+    (call C:brixGuiMetalTileLookup renderer retained-key generation)
+  )
+  (fn-do + tile-upsert U64
+    (param retained-key U64)
+    (param generation U32)
+    (param canvas RasterCanvas)
+    (param points-width F64)
+    (param points-height F64)
+    (return
+      (call C:brixGuiMetalTileUpsertCanvas
+        (block
+          (arg renderer)
+          (arg retained-key)
+          (arg generation)
+          (arg (. canvas native))
+          (arg points-width)
+          (arg points-height)
+        )
+      )
+    )
+  )
+  (fn-expr + tile-lookup-rendered U64
+    (param retained-key U64)
+    (param generation U32)
+    (call C:brixGuiMetalTileLookupRendered renderer retained-key generation)
+  )
+  (fn-do + tile-reserve U64
+    (param retained-key U64)
+    (param generation U32)
+    (param pixel-width I32)
+    (param pixel-height I32)
+    (param points-width F64)
+    (param points-height F64)
+    (param slot-x I32)
+    (param slot-y I32)
+    (return
+      (call C:brixGuiMetalTileReserve
+        (block
+          (arg renderer)
+          (arg retained-key)
+          (arg generation)
+          (arg pixel-width)
+          (arg pixel-height)
+          (arg points-width)
+          (arg points-height)
+          (arg slot-x)
+          (arg slot-y)
+        )
+      )
+    )
+  )
+  (fn-do + release-chunk _
+    (param retained-key U64)
+    (call C:brixGuiMetalChunkRelease renderer retained-key)
+  )
+  (fn-do + release-all-chunks _
+    (call C:brixGuiMetalChunkReleaseAll renderer)
+  )
+  (fn-do + register-display-vector _
+    (param table VectorGeometryTable)
+    (param handle VectorGeometryHandle)
+    (let geometry (call (. table resolve) handle))
+    (return
+      (block
+        (case? (not geometry)
+          false
+        )
+        (case? (call C:brixGuiMetalPathLookup renderer (. handle index) (. handle generation))
+          true
+        )
+        (default
+          (call register-display-path handle geometry)
+        )
+      )
+    )
+  )
+  (fn-do + register-display-image-source _
+    (param table VectorGeometryTable)
+    (param handle ImageHandle)
+    (let resource (call (. table resolve-image) handle))
+    (return-if false (if (not resource)))
+    (let template-alpha (. resource template-alpha))
+    (let found
+      (call C:brixGuiMetalImageLookup
+        (block
+          (arg renderer)
+          (arg (. handle index))
+          (arg (. handle generation))
+          (arg 0)
+          (arg 0)
+          (arg template-alpha)
+        )
+      )
+    )
+    (return-if true (if found))
+    (let image (call C:brixGuiMetalCanvasCreateCGImage (. resource native)))
+    (return
+      (call C:brixGuiMetalImageUpsertSource
+        (block
+          (arg renderer)
+          (arg (. handle index))
+          (arg (. handle generation))
+          (arg (. resource pixel-width))
+          (arg (. resource pixel-height))
+          (arg template-alpha)
+          (arg image)
+        )
+      )
+    )
+  )
+  (fn-do + register-canvas-image-source _
+    (param image RasterCanvas)
+    (param serial U64)
+    (param template-alpha Bool)
+    (return-if true (if (call C:brixGuiMetalCanvasImageLookup renderer serial 0 0 template-alpha)))
+    (let snapshot (call C:brixGuiMetalCanvasCreateCGImage (. image native)))
+    (return
+      (call C:brixGuiMetalCanvasImageUpsertSource
+        (block
+          (arg renderer)
+          (arg serial)
+          (arg (. image pixel-width))
+          (arg (. image pixel-height))
+          (arg template-alpha)
+          (arg snapshot)
+        )
+      )
+    )
+  )
+  (fn-do + register-canvas-image _
+    (param image RasterCanvas)
+    (param serial U64)
+    (param destination Rect)
+    (param template-alpha Bool)
+    (let pixel-width (as (call round (* (. destination width) scale)) I32))
+    (let pixel-height (as (call round (* (. destination height) scale)) I32))
+    (return-if false (if (or (<= pixel-width 0) (<= pixel-height 0))))
+    (let found
+      (call C:brixGuiMetalCanvasImageLookup
+        (block
+          (arg renderer)
+          (arg serial)
+          (arg pixel-width)
+          (arg pixel-height)
+          (arg template-alpha)
+        )
+      )
+    )
+    (return-if true (if found))
+    (let snapshot (call C:brixGuiMetalCanvasCreateCGImage (. image native)))
+    (return
+      (call C:brixGuiMetalCanvasImageUpsert
+        (block
+          (arg renderer)
+          (arg serial)
+          (arg pixel-width)
+          (arg pixel-height)
+          (arg template-alpha)
+          (arg snapshot)
+        )
+      )
+    )
+  )
+  (fn-do + register-canvas-texture TextureResidency
+    (param image RasterCanvas)
+    (return (as (call C:brixGuiMetalCanvasTextureUpsert renderer (. image native)) TextureResidency))
+  )
+  (fn-do + take-tile-damage (? Rect)
+    (return-if null (if (not (call C:brixGuiMetalRendererTakeTileDamage renderer))))
+    (return
+      (call Rect
+        (block
+          (arg (call C:brixGuiMetalRendererTileDamageValue renderer 0))
+          (arg (call C:brixGuiMetalRendererTileDamageValue renderer 1))
+          (arg (call C:brixGuiMetalRendererTileDamageValue renderer 2))
+          (arg (call C:brixGuiMetalRendererTileDamageValue renderer 3))
+        )
+      )
+    )
+  )
+  (fn-do + take-fill-redraw _
+    (return (call C:brixGuiMetalRendererTakeFillRedraw renderer))
+  )
+  (fn-do + take-present-copied-pixels U64
+    (return (call C:brixGuiMetalRendererTakePresentCopiedPixels renderer))
+  )
+  (fn-expr + frame-stat _
+    (param frame I64)
+    (param field I32)
+    (call C:brixGuiMetalRendererFrameStatValue renderer frame field)
+  )
+  (fn-do _ register-display-path _
+    (param handle VectorGeometryHandle)
+    (param geometry VectorGeometry)
+    (let capture (?? path-capture (call MetalPathCapture renderer)))
+    (= path-capture capture)
+    (call C:brixGuiMetalPathBegin renderer (. handle index) (. handle generation))
+    (let captured (list Path))
+    (for (in span (. geometry spans))
+      (let path-index U32 (as (. captured length) U32))
+      (for (in index (..< 0 (. captured length)))
+        (if (== (as ([] captured index) Pointer) (as (. span path) Pointer))
+          (= path-index (as index U32))
+        )
+      )
+      (if (== path-index (as (. captured length) U32))
+        (call (. span path outline) capture)
+        (= path-index (call C:brixGuiMetalPathEndPath renderer))
+        (+= captured (. span path))
+      )
+      (let fill-role U8
+        (match (. span fill role)
+          (case= .inherit
+            0
+          )
+          (case= .inherited-stroke
+            1
+          )
+          (case= .none
+            2
+          )
+          (default
+            3
+          )
+        )
+      )
+      (let stroke-role U8
+        (match (. span stroke role)
+          (case= .inherit
+            0
+          )
+          (case= .none
+            2
+          )
+          (default
+            3
+          )
+        )
+      )
+      (let rule U8 (if-expr (== (. span fill-rule) (. FillRule nonzero)) 0 1))
+      (let width (?? (. span stroke-width) -1))
+      (let cap U8
+        (scope (if-expr (. span stroke-cap) cap-code metal-stroke-inherit)
+          (lazy cap-code (as (call line-cap-code (. span stroke-cap)) U8))
+        )
+      )
+      (let join U8
+        (scope (if-expr (. span stroke-join) join-code metal-stroke-inherit)
+          (lazy join-code (as (call line-join-code (. span stroke-join)) U8))
+        )
+      )
+      (let alignment U8
+        (match (. span stroke-alignment)
+          (case= .inside
+            1
+          )
+          (case= .outside
+            2
+          )
+          (default
+            0
+          )
+        )
+      )
+      (call C:brixGuiMetalPathAddSpan
+        (block
+          (arg renderer)
+          (arg path-index)
+          (arg fill-role)
+          (arg (. span fill index))
+          (arg rule)
+          (arg stroke-role)
+          (arg (. span stroke index))
+          (arg width)
+          (arg cap)
+          (arg join)
+          (arg alignment)
+        )
+      )
+    )
+    (return (call C:brixGuiMetalPathEnd renderer))
+  )
+  (fn-expr _ stat I64
+    (param kind MetalStat)
+    (call C:brixGuiMetalRendererStatValue renderer kind)
+  )
+)
+
+(fn-expr + is-metal-renderer-available Bool
+  (call C:brixGuiMetalRendererIsAvailable)
+)
+
+(fn-do + warm-metal-renderer _
+  (call C:brixGuiMetalWarmUp)
+)
+
+(type _ MetalStat (is I32)
+  (variant encode-nanos (= 0))
+  (variant walk-nanos (= 1))
+  (variant gpu-nanos (= 2))
+  (variant draw-calls (= 3))
+  (variant pipeline-switches (= 4))
+  (variant packet-bytes (= 5))
+  (variant skipped-ops (= 6))
+  (variant renderer-allocations (= 7))
+  (variant instances (= 8))
+  (variant commits (= 9))
+  (variant presents (= 10))
+  (variant packet-capacity (= 11))
+  (variant glyph-atlas-bytes (= 12))
+  (variant glyph-atlas-uploads (= 13))
+  (variant glyph-atlas-upload-bytes (= 14))
+  (variant glyph-atlas-evictions (= 15))
+  (variant image-atlas-bytes (= 16))
+  (variant run-count (= 17))
+  (variant fallback-runs (= 18))
+  (variant image-atlas-evictions (= 19))
+  (variant drawable-wait-nanos (= 20))
+  (variant maximum-frames-per-second (= 21))
+  (variant fill-draws (= 22))
+  (variant fill-segments (= 23))
+  (variant fill-tiles (= 24))
+  (variant fill-pieces (= 25))
+  (variant fill-lines (= 26))
+  (variant fill-opaque-tiles (= 27))
+  (variant fill-overflows (= 28))
+  (variant fill-redraw-pending (= 29))
+  (variant fill-frames-pending (= 30))
+  (variant layer-passes (= 31))
+  (variant coverage-clips (= 32))
+  (variant image-texture-bytes (= 33))
+  (variant image-texture-evictions (= 34))
+  (variant image-texture-upload-bytes (= 35))
+  (variant image-tile-source-bytes (= 36))
+  (variant image-tile-count (= 37))
+  (variant tile-gpu-nanos (= 38))
+  (variant tiles-rendered (= 39))
+)
+
+(type _ MetalPathCapture (is Canvas)
+  (prop _ renderer Pointer)
+  (fn-do + This _
+    (param target Pointer)
+    (= width 0)
+    (= height 0)
+    (= renderer target)
+  )
+  (fn-do + trace-path _
+    (param verbs (of Array PathVerb))
+    (param coords (of Array Coord))
+    (param count Size)
+    (call C:brixGuiMetalPathAppend renderer (. verbs data) count (. coords data))
+  )
+)

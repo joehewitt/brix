@@ -1,0 +1,55 @@
+; benchmark.meta description: Computes bounding boxes for many cubic-heavy paths.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /math)
+(blank)
+
+(main
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 260))
+    (let path (call cubic-path pass))
+    (for (in i (..< 0 (- (. path count) 1)))
+      (let box (call (. path get-curve-bounding-box) i))
+      (+= checksum
+        (scope (+ origin-check (call numeric-check (. box width)) (call numeric-check (. box height)))
+          (lazy origin-check (+ (call numeric-check (. box x)) (call numeric-check (. box y))))
+        )
+      )
+    )
+    (let bounds (. path bounding-box))
+    (+= checksum (+ (call numeric-check (. bounds width)) (call numeric-check (. bounds height))))
+  )
+  (blank)
+  (print (str "bench-result graphics/path-bounding-box-cubics checksum=" checksum))
+)
+
+(fn-do _ cubic-path _
+  (param seed Int)
+  (let path (call Path))
+  (let base (as seed Float))
+  (call (. path move-to) (% base 40) (% base 30))
+  (for (in i (..< 0 16))
+    (let f (as i Float))
+    (call (. path cubic-curve-to)
+      (block
+        (arg (+ base (* f 3)))
+        (arg (+ 20 (* f 5)))
+        (arg (+ (/ base 2) (* f 7)))
+        (arg (- 80 (* f 2)))
+        (arg (+ base 60 (* f 4)))
+        (arg (+ 30 (* f 6)))
+      )
+    )
+  )
+  (return path)
+)
+
+(fn-expr _ numeric-check Size
+  (param value Coord)
+  (% (as (call abs (* value 1000)) Size) 1000003)
+)

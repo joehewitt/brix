@@ -2,17 +2,19 @@
 
 ### Applies a no-parameter rule to the receiving element.
 
-```yumi
-<Thing thing • answer
--- thing.x
+```brix
+(main
+  (<> Thing (id: thing) (• answer))
+  (print (. thing x))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-
-• answer
-    x = 42
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule answer
+    (= x 42)
+  )
+)
 ```
 
 ```output
@@ -21,20 +23,22 @@
 
 ### Applies all property assignments from a single rule.
 
-```yumi
-<Thing thing • pair
--- thing.x
--- thing.text
+```brix
+(main
+  (<> Thing (id: thing) (• pair))
+  (print (. thing x))
+  (print (. thing text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-+ text = ""
-
-• pair
-    x = 7
-    text = "seven"
+(type + Thing
+  (prop + x _ (= 0))
+  (prop + text _ (= ""))
+  (blank)
+  (rule pair
+    (= x 7)
+    (= text "seven")
+  )
+)
 ```
 
 ```output
@@ -44,17 +48,20 @@ seven
 
 ### Passes a typed argument to a parameterized rule.
 
-```yumi
-<Thing thing • set-x(42)
--- thing.x
+```brix
+(main
+  (<> Thing (id: thing) (• set-x 42))
+  (print (. thing x))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-
-• set-x:value Int
-    x = value
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule set-x
+    (param value Int)
+    (= x value)
+  )
+)
 ```
 
 ```output
@@ -63,17 +70,20 @@ seven
 
 ### Passes a single typed argument with colon shorthand.
 
-```yumi
-<Thing thing • set-x:42
--- thing.x
+```brix
+(main
+  (<> Thing (id: thing) (• set-x 42))
+  (print (. thing x))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-
-• set-x:value Int
-    x = value
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule set-x
+    (param value Int)
+    (= x value)
+  )
+)
 ```
 
 ```output
@@ -82,23 +92,25 @@ seven
 
 ### Allows nested calls with whitespace inside colon shorthand arguments.
 
-```yumi
-<Thing thing • set-point:Point(1, 2)
--- thing.x
--- thing.y
+```brix
+(main
+  (<> Thing (id: thing) (• set-point (call Point 1 2)))
+  (print (. thing x))
+  (print (. thing y))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + x _ (= 0))
+  (prop + y _ (= 0))
+  (blank)
+  (rule set-point
+    (param point Point)
+    (= x (. point x))
+    (= y (. point y))
+  )
+)
 
-+ x = 0
-+ y = 0
-
-• set-point:point Point
-    x = point.x
-    y = point.y
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is (x Int, y Int)
+(type + Point (is (tuple (: x Int) (: y Int))))
 ```
 
 ```output
@@ -108,22 +120,27 @@ seven
 
 ### Applies overloads by argument type.
 
-```yumi
-<Thing thing • set:42 set:"hi"
--- thing.x
--- thing.text
+```brix
+(main
+  (<> Thing (id: thing) (• set 42) (• set "hi"))
+  (print (. thing x))
+  (print (. thing text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-+ text = ""
-
-• set:value Int
-    x = value
-
-• set:value String
-    text = value
+(type + Thing
+  (prop + x _ (= 0))
+  (prop + text _ (= ""))
+  (blank)
+  (rule set
+    (param value Int)
+    (= x value)
+  )
+  (blank)
+  (rule set
+    (param value String)
+    (= text value)
+  )
+)
 ```
 
 ```output
@@ -133,33 +150,35 @@ hi
 
 ### Converts rule arguments through the parameter type's `from` constructor.
 
-```yumi
-<Thing thing • tint:"red" maybe-tint:"blue"
--- thing.tint
--- thing.maybe-tint
+```brix
+(main
+  (<> Thing (id: thing) (• tint "red") (• maybe-tint "blue"))
+  (print (. thing tint))
+  (print (. thing maybe-tint))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + tint _ (= (call Tint)))
+  (prop + maybe-tint (? Tint))
+  (blank)
+  (rule tint
+    (param value Tint)
+    (= tint value)
+  )
+  (blank)
+  (rule maybe-tint
+    (param value (? Tint))
+    (= maybe-tint value)
+  )
+)
 
-+ tint = Tint()
-+ maybe-tint Tint?
-
-• tint:value Tint
-    tint = value
-
-• maybe-tint:value Tint?
-    maybe-tint = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tint is Tuple
-
-+ name = "none"
-+ converted = false
-
-────────────────────
-+ do from value String
-
-= Tint(value, true)
+(type + Tint (is Tuple)
+  (prop + name _ (= "none"))
+  (prop + converted _ (= false))
+  (fn-from-do + (: value String)
+    (return (call Tint value true))
+  )
+)
 ```
 
 ```output
@@ -169,33 +188,35 @@ hi
 
 ### Prefers a direct overload over one that converts the argument.
 
-```yumi
-<Thing thing • set:"hi"
--- thing.text
--- thing.tint
+```brix
+(main
+  (<> Thing (id: thing) (• set "hi"))
+  (print (. thing text))
+  (print (. thing tint))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + text _ (= ""))
+  (prop + tint _ (= (call Tint)))
+  (blank)
+  (rule set
+    (param value Tint)
+    (= tint value)
+  )
+  (blank)
+  (rule set
+    (param value String)
+    (= text value)
+  )
+)
 
-+ text = ""
-+ tint = Tint()
-
-• set:value Tint
-    tint = value
-
-• set:value String
-    text = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tint is Tuple
-
-+ name = "none"
-+ converted = false
-
-────────────────────
-+ do from value String
-
-= Tint(value, true)
+(type + Tint (is Tuple)
+  (prop + name _ (= "none"))
+  (prop + converted _ (= false))
+  (fn-from-do + (: value String)
+    (return (call Tint value true))
+  )
+)
 ```
 
 ```output
@@ -205,20 +226,23 @@ hi
 
 ### Accepts a tuple parameter for rules that need multiple values.
 
-```yumi
-<Thing thing • set((2 + 3, "five"))
--- thing.x
--- thing.text
+```brix
+(main
+  (<> Thing (id: thing) (• set (tuple (+ 2 3) "five")))
+  (print (. thing x))
+  (print (. thing text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-+ text = ""
-
-• set:value (x Int, text String)
-    x = value.x
-    text = value.text
+(type + Thing
+  (prop + x _ (= 0))
+  (prop + text _ (= ""))
+  (blank)
+  (rule set
+    (param value (tuple (: x Int) (: text String)))
+    (= x (. value x))
+    (= text (. value text))
+  )
+)
 ```
 
 ```output
@@ -228,17 +252,20 @@ five
 
 ### Applies rules left-to-right when they assign the same property.
 
-```yumi
-<Thing thing • set-x(1) set-x(2)
--- thing.x
+```brix
+(main
+  (<> Thing (id: thing) (• set-x 1) (• set-x 2))
+  (print (. thing x))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-
-• set-x:value Int
-    x = value
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule set-x
+    (param value Int)
+    (= x value)
+  )
+)
 ```
 
 ```output
@@ -247,23 +274,27 @@ five
 
 ### Applies implicit type and id selectors before explicit selectors.
 
-```yumi
-<Button ok-button • special-button
--- ok-button.text
+```brix
+(main
+  (<> Button (id: ok-button) (• special-button))
+  (print (. ok-button text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Button
-
-+ text = ""
-
-• Button
-    text = text ++ "type"
-
-• ok-button
-    text = text ++ ":id"
-
-• special-button
-    text = text ++ ":bullet"
+(type + Button
+  (prop + text _ (= ""))
+  (blank)
+  (rule Button
+    (= text (++ text "type"))
+  )
+  (blank)
+  (rule ok-button
+    (= text (++ text ":id"))
+  )
+  (blank)
+  (rule special-button
+    (= text (++ text ":bullet"))
+  )
+)
 ```
 
 ```output
@@ -272,14 +303,15 @@ type:id:bullet
 
 ### Ignores missing implicit type and id selectors.
 
-```yumi
-<Button plain-button
--- plain-button.text
+```brix
+(main
+  (<> Button (id: plain-button))
+  (print (. plain-button text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Button
-
-+ text = "plain"
+(type + Button
+  (prop + text _ (= "plain"))
+)
 ```
 
 ```output
@@ -288,17 +320,19 @@ plain
 
 ### Uses the base type name as the implicit selector for generic markup types.
 
-```yumi
-<Cell'String cell
--- cell.text
+```brix
+(main
+  (<> (of Cell String) (id: cell))
+  (print (. cell text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Cell'Item
-
-+ text = ""
-
-• Cell
-    text = "generic"
+(type + (of Cell Item)
+  (prop + text _ (= ""))
+  (blank)
+  (rule Cell
+    (= text "generic")
+  )
+)
 ```
 
 ```output
@@ -307,19 +341,23 @@ generic
 
 ### Lets explicit markup-body assignments override rule-expanded assignments.
 
-```yumi
-<Thing thing • set-x(1)
-    x = 2
+```brix
+(main
+  (<> Thing (id: thing) (• set-x 1)
+    (= x 2)
+  )
+  (blank)
+  (print (. thing x))
+)
 
--- thing.x
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-
-• set-x:value Int
-    x = value
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule set-x
+    (param value Int)
+    (= x value)
+  )
+)
 ```
 
 ```output
@@ -328,19 +366,23 @@ generic
 
 ### Lets explicit markup-body assignments override colon shorthand rule-expanded assignments.
 
-```yumi
-<Thing thing • set-x:1
-    x = 2
+```brix
+(main
+  (<> Thing (id: thing) (• set-x 1)
+    (= x 2)
+  )
+  (blank)
+  (print (. thing x))
+)
 
--- thing.x
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-
-• set-x:value Int
-    x = value
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule set-x
+    (param value Int)
+    (= x value)
+  )
+)
 ```
 
 ```output
@@ -349,20 +391,24 @@ generic
 
 ### Allows later rules to see properties assigned by earlier rules.
 
-```yumi
-<Thing thing • set-x(3) double-x
--- thing.x
+```brix
+(main
+  (<> Thing (id: thing) (• set-x 3) (• double-x))
+  (print (. thing x))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-
-• set-x:value Int
-    x = value
-
-• double-x
-    x = x * 2
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule set-x
+    (param value Int)
+    (= x value)
+  )
+  (blank)
+  (rule double-x
+    (= x (* x 2))
+  )
+)
 ```
 
 ```output
@@ -371,25 +417,29 @@ generic
 
 ### Applies shorthand rules named on a style-rule header before the rule's own body.
 
-```yumi
-<Thing thing • button
--- thing.x
--- thing.y
+```brix
+(main
+  (<> Thing (id: thing) (• button))
+  (print (. thing x))
+  (print (. thing y))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-+ y = 0
-
-• base
-    x = 1
-
-• side
-    y = 2
-
-• button • base side
-    x = 3
+(type + Thing
+  (prop + x _ (= 0))
+  (prop + y _ (= 0))
+  (blank)
+  (rule base
+    (= x 1)
+  )
+  (blank)
+  (rule side
+    (= y 2)
+  )
+  (blank)
+  (rule button (• base) (• side)
+    (= x 3)
+  )
+)
 ```
 
 ```output
@@ -399,56 +449,61 @@ generic
 
 ### Applies shorthand rules inside a tracked state branch.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel • hot
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• hot))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. panel $ink))
+  (print (. panel $tone))
+  (blank)
+  (= (. panel is-hot) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. panel $ink))
+  (print (. panel $tone))
+)
 
-demo.markup-batch-queue.checkpoint()
--- panel.$ink
--- panel.$tone
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-panel.is-hot = true
-demo.markup-batch-queue.checkpoint()
--- panel.$ink
--- panel.$tone
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (prop + tone I64 (= 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 0
-+ tone I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-+ is-hot = false
-
-• set-ink:value I64
-    ink = value
-
-• set-tone
-    tone = 4
-
-• hot
-    when #is-hot
-        • set-ink:2
-        • set-tone
-        ink = 3
+(type + Panel (is Box)
+  (using TintStyle)
+  (prop + is-hot _ (= false))
+  (blank)
+  (rule set-ink
+    (param value I64)
+    (= ink value)
+  )
+  (blank)
+  (rule set-tone
+    (= tone 4)
+  )
+  (blank)
+  (rule hot
+    (when-style #is-hot
+      (• set-ink 2)
+      (• set-tone)
+      (= ink 3)
+    )
+  )
+)
 ```
 
 ```output
@@ -460,56 +515,61 @@ demo.markup-batch-queue.checkpoint()
 
 ### Shorthand rules inside one tracked state branch share its gated block.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel • hot
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• hot))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-authored-snapshot panel))
+  (blank)
+  (= (. panel is-hot) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. panel $ink))
+  (print (. panel $tone))
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-authored-snapshot(panel)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-panel.is-hot = true
-demo.markup-batch-queue.checkpoint()
--- panel.$ink
--- panel.$tone
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (prop + tone I64 (= 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 0
-+ tone I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-+ is-hot = false
-
-• set-ink:value I64
-    ink = value
-
-• set-tone
-    tone = 4
-
-• hot
-    when #is-hot
-        • set-ink:2
-        • set-tone
-        ink = 3
+(type + Panel (is Box)
+  (using TintStyle)
+  (prop + is-hot _ (= false))
+  (blank)
+  (rule set-ink
+    (param value I64)
+    (= ink value)
+  )
+  (blank)
+  (rule set-tone
+    (= tone 4)
+  )
+  (blank)
+  (rule hot
+    (when-style #is-hot
+      (• set-ink 2)
+      (• set-tone)
+      (= ink 3)
+    )
+  )
+)
 ```
 
 ```output
@@ -523,65 +583,69 @@ node TintStyle.ink layer=4 order=2 kind=static bits=3 block=0
 
 ### A nested state branch closes the enclosing gated block, which reopens for later declarations.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel • hot
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• hot))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-authored-snapshot panel))
+  (blank)
+  (= (. panel is-hot) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. panel $ink))
+  (print (. panel $tone))
+  (blank)
+  (= (. panel is-loud) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. panel $ink))
+  (print (. panel $tone))
+  (blank)
+  (= (. panel is-hot) false)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. panel $ink))
+  (print (. panel $tone))
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-authored-snapshot(panel)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-panel.is-hot = true
-demo.markup-batch-queue.checkpoint()
--- panel.$ink
--- panel.$tone
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (prop + tone I64 (= 0))
+)
 
-panel.is-loud = true
-demo.markup-batch-queue.checkpoint()
--- panel.$ink
--- panel.$tone
-
-panel.is-hot = false
-demo.markup-batch-queue.checkpoint()
--- panel.$ink
--- panel.$tone
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 0
-+ tone I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-+ is-hot = false
-+ is-loud = false
-
-• warm
-    tone = 5
-    when #is-loud
-        tone = 6
-
-• hot
-    when #is-hot
-        • warm
-        ink = 3
+(type + Panel (is Box)
+  (using TintStyle)
+  (prop + is-hot _ (= false))
+  (prop + is-loud _ (= false))
+  (blank)
+  (rule warm
+    (= tone 5)
+    (when-style #is-loud
+      (= tone 6)
+    )
+  )
+  (blank)
+  (rule hot
+    (when-style #is-hot
+      (• warm)
+      (= ink 3)
+    )
+  )
+)
 ```
 
 ```output
@@ -599,60 +663,65 @@ node TintStyle.ink layer=4 order=2 kind=static bits=3 block=2
 
 ### A class rule applied by type records the same declarations at every element, and later rules and inline declarations at an element keep their order after it.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel first
-    <Panel second • tone:9
-        ink = 8
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: first))
+    (<> Panel (id: second) (• tone 9)
+      (= ink 8)
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-authored-snapshot first))
+  (print (call style-authored-snapshot second))
+  (print (. first $ink))
+  (print (. second $tone))
+  (blank)
+  (= (. second is-hot) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. first $ink))
+  (print (. first $tone))
+  (print (. second $ink))
+  (print (. second $tone))
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-authored-snapshot(first)
--- style-authored-snapshot(second)
--- first.$ink
--- second.$tone
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-second.is-hot = true
-demo.markup-batch-queue.checkpoint()
--- first.$ink
--- first.$tone
--- second.$ink
--- second.$tone
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (prop + tone I64 (= 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 0
-+ tone I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-+ is-hot = false
-
-• tone:value I64
-    tone = value
-
-• Panel • tone:1
-    ink = 2
-    when #is-hot
-        • tone:4
-        ink = 3
+(type + Panel (is Box)
+  (using TintStyle)
+  (prop + is-hot _ (= false))
+  (blank)
+  (rule tone
+    (param value I64)
+    (= tone value)
+  )
+  (blank)
+  (rule Panel (• tone 1)
+    (= ink 2)
+    (when-style #is-hot
+      (• tone 4)
+      (= ink 3)
+    )
+  )
+)
 ```
 
 ```output
@@ -678,63 +747,66 @@ node TintStyle.ink layer=5 order=5 kind=static bits=8
 
 ### A class rule applied by type re-authors tracked declarations per element.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel first
-    <Panel second
-        level = 5
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: first))
+    (<> Panel (id: second)
+      (= level 5)
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. first $ink))
+  (print (. first $tone))
+  (print (. second $ink))
+  (print (. second $tone))
+  (blank)
+  (= (. first level) 9)
+  (= (. second is-hot) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. first $ink))
+  (print (. first $tone))
+  (print (. second $ink))
+  (print (. second $tone))
+  (blank)
+  (= (. second level) 20)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. first $tone))
+  (print (. second $tone))
+)
 
-demo.markup-batch-queue.checkpoint()
--- first.$ink
--- first.$tone
--- second.$ink
--- second.$tone
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-first.level = 9
-second.is-hot = true
-demo.markup-batch-queue.checkpoint()
--- first.$ink
--- first.$tone
--- second.$ink
--- second.$tone
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (prop + tone I64 (= 0))
+)
 
-second.level = 20
-demo.markup-batch-queue.checkpoint()
--- first.$tone
--- second.$tone
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 0
-+ tone I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-+ level I64 = 1
-+ is-hot = false
-
-• Panel
-    ink = 7
-    tone = #level + 1
-    when #is-hot
-        tone = #level + 100
+(type + Panel (is Box)
+  (using TintStyle)
+  (prop + level I64 (= 1))
+  (prop + is-hot _ (= false))
+  (blank)
+  (rule Panel
+    (= ink 7)
+    (= tone (+ #level 1))
+    (when-style #is-hot
+      (= tone (+ #level 100))
+    )
+  )
+)
 ```
 
 ```output
@@ -752,55 +824,55 @@ demo.markup-batch-queue.checkpoint()
 
 ### A class rule inherited by several element types applies to each of them.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Card card
-    <Chip chip
-    <Card other
+(main
+  (<> BatchDemo (id: demo)
+    (<> Card (id: card))
+    (<> Chip (id: chip))
+    (<> Card (id: other))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-authored-snapshot card))
+  (print (call style-authored-snapshot chip))
+  (print (call style-authored-snapshot other))
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-authored-snapshot(card)
--- style-authored-snapshot(chip)
--- style-authored-snapshot(other)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (prop + tone I64 (= 0))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + Surface (is Box)
+  (using TintStyle)
+  (rule Surface
+    (= ink 1)
+    (= tone 2)
+  )
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + Card (is Surface)
+  (rule Card
+    (= ink 3)
+    (= tone 4)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 0
-+ tone I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Surface is Box
-    using TintStyle
-
-• Surface
-    ink = 1
-    tone = 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Surface
-
-• Card
-    ink = 3
-    tone = 4
-
-━━━━━━━━━━━━━━━━━━━━
-+ Chip is Surface
+(type + Chip (is Surface))
 ```
 
 ```output
@@ -818,66 +890,63 @@ node TintStyle.tone layer=2 order=3 kind=static bits=4
 
 ### A class rule and its subclass's class rule declared in different modules each apply their own declarations to an element of the subclass.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
-./lib/card
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(import ./lib/card)
+(blank)
 
-<BatchDemo demo
-    <Card card
+(main
+  (<> BatchDemo (id: demo)
+    (<> Card (id: card))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-authored-snapshot card))
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-authored-snapshot(card)
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 ```
 
-```yumi file=lib/surface.yumi
+```brix file=lib/surface.bx
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
 
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (prop + tone I64 (= 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 0
-+ tone I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Surface is Box
-    using TintStyle
-
-• Surface
-    ink = 1
-    tone = 2
-
+(type + Surface (is Box)
+  (using TintStyle)
+  (rule Surface
+    (= ink 1)
+    (= tone 2)
+  )
+)
 ```
 
-```yumi file=lib/card.yumi
+```brix file=lib/card.bx
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(import ./surface)
 
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
-./surface
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Surface
-
-• Card
-    ink = 3
-    tone = 4
-
+(type + Card (is Surface)
+  (rule Card
+    (= ink 3)
+    (= tone 4)
+  )
+)
 ```
 
 ```output
@@ -889,71 +958,73 @@ node TintStyle.tone layer=2 order=3 kind=static bits=4
 
 ### A class rule applied by type resolves its property names through the styles visible at each element: elements under different styles record different properties, and an unrelated visible style changes nothing.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <WarmBox
-        <Panel warm
-    <CoolBox
-        <Panel cool
-    <WarmNoteBox
-        <Panel noted
+(main
+  (<> BatchDemo (id: demo)
+    (<> WarmBox
+      (<> Panel (id: warm))
+    )
+    (<> CoolBox
+      (<> Panel (id: cool))
+    )
+    (<> WarmNoteBox
+      (<> Panel (id: noted))
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-authored-snapshot warm))
+  (print (call style-authored-snapshot cool))
+  (print (call style-authored-snapshot noted))
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-authored-snapshot(warm)
--- style-authored-snapshot(cool)
--- style-authored-snapshot(noted)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + WarmStyle (is Style)
+  (prop + ink I64 (= 0))
+  (prop + tone I64 (= 0))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + CoolStyle (is Style)
+  (prop + ink I64 (= 0))
+  (prop + tone I64 (= 0))
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + NoteStyle (is Style)
+  (prop + note I64 (= 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ WarmStyle is Style
+(type + WarmBox (is Box)
+  (using WarmStyle)
+)
 
-+ ink I64 = 0
-+ tone I64 = 0
+(type + CoolBox (is Box)
+  (using CoolStyle)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CoolStyle is Style
+(type + WarmNoteBox (is Box)
+  (using NoteStyle)
+  (using WarmStyle)
+)
 
-+ ink I64 = 0
-+ tone I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ NoteStyle is Style
-
-+ note I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ WarmBox is Box
-    using WarmStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ CoolBox is Box
-    using CoolStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ WarmNoteBox is Box
-    using NoteStyle
-    using WarmStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-• Panel
-    ink = 1
-    tone = 2
+(type + Panel (is Box)
+  (rule Panel
+    (= ink 1)
+    (= tone 2)
+  )
+)
 ```
 
 ```output
@@ -967,56 +1038,60 @@ node WarmStyle.tone layer=2 order=1 kind=static bits=2
 
 ### A class rule applied by type layers a nested rule scoped by an enclosing element over the shorthand it applies, and elements outside that scope are unaffected.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel before
-    <Group • blue
-        <Panel scoped
-    <Panel after
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: before))
+    (<> Group (• blue)
+      (<> Panel (id: scoped))
+    )
+    (<> Panel (id: after))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-authored-snapshot before))
+  (print (call style-authored-snapshot scoped))
+  (print (call style-authored-snapshot after))
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-authored-snapshot(before)
--- style-authored-snapshot(scoped)
--- style-authored-snapshot(after)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (prop + tone I64 (= 0))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + Group (is Box)
+  (using TintStyle)
+  (rule blue
+    (rule part
+      (= ink 7)
+    )
+  )
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 0
-+ tone I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Group is Box
-    using TintStyle
-
-• blue
-    • part
-        ink = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-• part
-    ink = 1
-
-• Panel • part
-    tone = 2
+(type + Panel (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+  (blank)
+  (rule Panel (• part)
+    (= tone 2)
+  )
+)
 ```
 
 ```output
@@ -1031,46 +1106,48 @@ node TintStyle.tone layer=2 order=1 kind=static bits=2
 
 ### Gated shorthand rules named on style-rule headers inherit the outer condition.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-.. selected = false
+(main
+  (lazy selected false)
+  (blank)
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• button (if: #selected)))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-authored-snapshot panel))
+)
 
-<BatchDemo demo
-    <Panel panel • button = #selected
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-authored-snapshot(panel)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 0
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-• base
-    ink = 7
-
-• button • base
-    ink = 9
+(type + Panel (is Box)
+  (using TintStyle)
+  (rule base
+    (= ink 7)
+  )
+  (blank)
+  (rule button (• base)
+    (= ink 9)
+  )
+)
 ```
 
 ```output
@@ -1081,55 +1158,58 @@ node TintStyle.ink layer=4 order=1 kind=static bits=9 block=1
 
 ### Header-composed rules contribute nested rule scopes to component content.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel • button
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• button))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (let part (!! (. panel %first-child)))
+  (print (call style-authored-snapshot part))
+)
 
-demo.markup-batch-queue.checkpoint()
-. part = panel.%first-child!
--- style-authored-snapshot(part)
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-+ ink I64 = 0
+(type + Panel (is Box)
+  (using TintStyle)
+  (rule This
+    (<> Segment (• part))
+  )
+  (blank)
+  (rule base
+    (rule part
+      (= ink 7)
+    )
+  )
+  (blank)
+  (rule button (• base))
+)
 
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-• This
-    <Segment • part
-
-• base
-    • part
-        ink = 7
-
-• button • base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -1139,55 +1219,59 @@ node TintStyle.ink layer=2 order=1 kind=static bits=7
 
 ### Nested rule scopes preserve parent rule argument values.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-.. shade = 7
+(main
+  (lazy shade 7)
+  (blank)
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• themed shade))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (let part (!! (. panel %first-child)))
+  (print (call style-authored-snapshot part))
+)
 
-<BatchDemo demo
-    <Panel panel • themed:shade
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
-demo.markup-batch-queue.checkpoint()
-. part = panel.%first-child!
--- style-authored-snapshot(part)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + Panel (is Box)
+  (using TintStyle)
+  (rule This
+    (<> Segment (• part))
+  )
+  (blank)
+  (rule themed
+    (param value Int)
+    (rule part
+      (= ink value)
+    )
+  )
+)
 
-+ ink I64 = 0
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-• This
-    <Segment • part
-
-• themed:value Int
-    • part
-        ink = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -1197,142 +1281,164 @@ node TintStyle.ink layer=2 order=1 kind=static bits=7
 
 ### Rejects recursive shorthand rules named on style-rule headers.
 
-```yumi crash
-<Thing thing • a
+```brix crash
+(main
+  (<> Thing (id: thing) (• a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-
-• a • b
-    x = 1
-
-• b • a
-    x = 2
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule a (• b)
+    (= x 1)
+  )
+  (blank)
+  (rule b (• a)
+    (= x 2)
+  )
+)
 ```
 
 ```output
 Exception: Recursive style rule application: a -> b -> a
-<no file:12>
-    • b • a
-          ^
+<no file:13>
+      (rule b (• a)
+              ^^^^^
 ```
 
 ### Rejects a style rule that takes a value written with no type.
 
-```yumi crash
-<Thing thing • tint:3
+```brix crash
+(main
+  (<> Thing (id: thing) (• tint 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-
-• tint:dark
-    x = 1
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule tint
+    (param dark _)
+    (= x 1)
+  )
+)
 ```
 
 ```output
 Exception: Argument type not found
-<no file:9>
-    • tint:dark
-           ^^^^
+<no file:10>
+        (param dark _)
+        ^^^^^^^^^^^^^^
 ```
 
 ### Rejects a style rule that takes a value whose type names nothing.
 
-```yumi crash
-<Thing thing • tint:3
+```brix crash
+(main
+  (<> Thing (id: thing) (• tint 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-
-• tint:value Dark
-    x = 1
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule tint
+    (param value Dark)
+    (= x 1)
+  )
+)
 ```
 
 ```output
 Exception: Type "Dark" not found
-<no file:9>
-    • tint:value Dark
-                 ^^^^
+<no file:10>
+        (param value Dark)
+                     ^^^^
 ```
 
 ### Rejects a style rule that takes a value written as a type with no name.
 
-```yumi crash
-<Thing thing • tint:3
+```brix crash
+(main
+  (<> Thing (id: thing) (• tint 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-
-• tint:I64
-    x = 1
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule tint
+    (param _ I64)
+    (= x 1)
+  )
+)
 ```
 
 ```output
 Exception: Invalid argument
-<no file:9>
-    • tint:I64
-           ^^^
+<no file:10>
+        (param _ I64)
+                 ^^^
 ```
 
 ### Rejects a nested style rule that takes a value written with no type.
 
-```yumi crash
-<Panel panel
+```brix crash
+(main
+  (<> Panel (id: panel))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel
+(type + Panel
+  (rule This
+    (rule part
+      (rule tint
+        (param dark _)
+      )
+    )
+  )
+  (content
+    (<> This
+      (<> Thing (• part) (• tint 3))
+    )
+  )
+)
 
-• This
-    • part
-        • tint:dark
-
-────────────────────
-<This
-    <Thing • part tint:3
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-
-• part
-    x = 1
-
-• tint:value I64
-    x = value
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule part
+    (= x 1)
+  )
+  (blank)
+  (rule tint
+    (param value I64)
+    (= x value)
+  )
+)
 ```
 
 ```output
 Exception: Argument type not found
-<no file:9>
-            • tint:dark
-                   ^^^^
+<no file:10>
+            (param dark _)
+            ^^^^^^^^^^^^^^
 ```
 
 ### Makes a base-class rule available to subclass instances.
 
-```yumi
-<Child child • set-x(9)
--- child.x
+```brix
+(main
+  (<> Child (id: child) (• set-x 9))
+  (print (. child x))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + x _ (= 0))
+  (blank)
+  (rule set-x
+    (param value Int)
+    (= x value)
+  )
+)
 
-+ x = 0
-
-• set-x:value Int
-    x = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
+(type + Child (is Base))
 ```
 
 ```output
@@ -1341,23 +1447,26 @@ Exception: Argument type not found
 
 ### Falls back to a base-class overload when a subclass rule has the wrong arity.
 
-```yumi
-<Child child • themed:9
--- child.x
+```brix
+(main
+  (<> Child (id: child) (• themed 9))
+  (print (. child x))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + x _ (= 0))
+  (blank)
+  (rule themed
+    (param value Int)
+    (= x value)
+  )
+)
 
-+ x = 0
-
-• themed:value Int
-    x = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-• themed
-    x = 1
+(type + Child (is Base)
+  (rule themed
+    (= x 1)
+  )
+)
 ```
 
 ```output
@@ -1366,23 +1475,27 @@ Exception: Argument type not found
 
 ### Falls back to a base-class overload when a subclass rule has the wrong type.
 
-```yumi
-<Child child • themed:9
--- child.x
+```brix
+(main
+  (<> Child (id: child) (• themed 9))
+  (print (. child x))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + x _ (= 0))
+  (blank)
+  (rule themed
+    (param value Int)
+    (= x value)
+  )
+)
 
-+ x = 0
-
-• themed:value Int
-    x = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-• themed:value String
-    x = 1
+(type + Child (is Base)
+  (rule themed
+    (param value String)
+    (= x 1)
+  )
+)
 ```
 
 ```output
@@ -1391,20 +1504,22 @@ Exception: Argument type not found
 
 ### Lets a subclass-scoped rule assign subclass-only properties.
 
-```yumi
-<Child child • label("kid")
--- child.text
+```brix
+(main
+  (<> Child (id: child) (• label "kid"))
+  (print (. child text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-+ text = ""
-
-• label:value String
-    text = value
+(type + Child (is Base)
+  (prop + text _ (= ""))
+  (blank)
+  (rule label
+    (param value String)
+    (= text value)
+  )
+)
 ```
 
 ```output
@@ -1413,23 +1528,24 @@ kid
 
 ### Uses rules imported from another module.
 
-```yumi
-./rules
+```brix
+(import ./rules)
+(blank)
 
-<Thing thing • imported
--- thing.x
+(main
+  (<> Thing (id: thing) (• imported))
+  (print (. thing x))
+)
 ```
 
-```yumi file=rules.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-
-• imported
-    x = 12
-
+```brix file=rules.bx
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule imported
+    (= x 12)
+  )
+)
 ```
 
 ```output
@@ -1438,61 +1554,61 @@ kid
 
 ### A class rule another module writes, applied by type at elements made repeatedly, declares and gates its styles for every object.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
-./tiles
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(import ./tiles)
+(blank)
 
-<BatchDemo demo
+(main
+  (<> BatchDemo (id: demo))
+  (blank)
+  (call (. demo fill))
+  (call (. demo markup-batch-queue checkpoint))
+  (= (. ([] (. demo made) 2) is-hot) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (for (in tile (. demo made))
+    (print (. tile $lift))
+  )
+)
 
-demo.fill()
-demo.markup-batch-queue.checkpoint()
-demo.made[2].is-hot = true
-demo.markup-batch-queue.checkpoint()
-for tile in demo.made
-    -- tile.$lift
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-+ made [Tile]
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-────────────────────
-+ do fill
-
-for index in 0 .. < 3
-    <Tile tile
-    markup-append(this, tile)
-    made += tile
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (prop + made (list Tile))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+  (fn-do + fill _
+    (for (in index (..< 0 3))
+      (<> Tile (id: tile))
+      (call markup-append this tile)
+      (+= made tile)
+    )
+  )
+)
 ```
 
-```yumi file=tiles.yumi
-/core/style
-/core/tests/support/markup-fixtures
+```brix file=tiles.bx
+(import /core/style)
+(import /core/tests/support/markup-fixtures)
 
-━━━━━━━━━━━━━━━━━━━━
-+ LiftStyle is Style
+(type + LiftStyle (is Style)
+  (prop + lift I64 (= 0))
+)
 
-+ lift I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tile is Box
-    using LiftStyle
-
-+ is-hot = false
-
-• Tile
-    lift = 1
-    when #is-hot
-        lift = 9
-
+(type + Tile (is Box)
+  (using LiftStyle)
+  (prop + is-hot _ (= false))
+  (blank)
+  (rule Tile
+    (= lift 1)
+    (when-style #is-hot
+      (= lift 9)
+    )
+  )
+)
 ```
 
 ```output
@@ -1503,25 +1619,27 @@ for index in 0 .. < 3
 
 ### Resolves names in an imported rule's body in the rule's own module.
 
-```yumi
-./rules
+```brix
+(import ./rules)
+(blank)
 
-<Thing thing • boosted:2
--- thing.x
+(main
+  (<> Thing (id: thing) (• boosted 2))
+  (print (. thing x))
+)
 ```
 
-```yumi file=rules.yumi
+```brix file=rules.bx
+(prop _ base-x _ (= 40))
 
-_ base-x = 40
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-
-• boosted:amount I64
-    x = base-x + amount
-
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule boosted
+    (param amount I64)
+    (= x (+ base-x amount))
+  )
+)
 ```
 
 ```output
@@ -1530,29 +1648,30 @@ _ base-x = 40
 
 ### Lets a subclass rule shadow an imported base-class rule with the same name.
 
-```yumi
-./rules
+```brix
+(import ./rules)
+(blank)
 
-<Child child • themed
--- child.x
+(main
+  (<> Child (id: child) (• themed))
+  (print (. child x))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-• themed
-    x = 2
+(type + Child (is Base)
+  (rule themed
+    (= x 2)
+  )
+)
 ```
 
-```yumi file=rules.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-+ x = 0
-
-• themed
-    x = 1
-
+```brix file=rules.bx
+(type + Base
+  (prop + x _ (= 0))
+  (blank)
+  (rule themed
+    (= x 1)
+  )
+)
 ```
 
 ```output
@@ -1561,61 +1680,64 @@ _ base-x = 40
 
 ### A parent rule's nested rules scope component-owned declarative content but not siblings.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel • blue
-    <Segment outside • part
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• blue))
+    (<> Segment (id: outside) (• part))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (let panel-node (!! (. demo %first-child)))
+  (let inside (!! (. panel-node %first-child)))
+  (let outside-node (!! (. panel-node %next-sibling)))
+  (blank)
+  (print (call style-authored-snapshot panel-node))
+  (print (call style-authored-snapshot inside))
+  (print (call style-authored-snapshot outside-node))
+)
 
-demo.markup-batch-queue.checkpoint()
-. panel-node = demo.%first-child!
-. inside = panel-node.%first-child!
-. outside-node = panel-node.%next-sibling!
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
--- style-authored-snapshot(panel-node)
--- style-authored-snapshot(inside)
--- style-authored-snapshot(outside-node)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + Panel (is Box)
+  (using TintStyle)
+  (rule This
+    (<> Segment (• part))
+  )
+  (blank)
+  (rule blue
+    (= ink 3)
+    (blank)
+    (rule part
+      (= ink 7)
+    )
+  )
+)
 
-+ ink I64 = 0
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-• This
-    <Segment • part
-
-• blue
-    ink = 3
-
-    • part
-        ink = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -1627,59 +1749,63 @@ node TintStyle.ink layer=2 order=0 kind=static bits=1
 
 ### A parent rule's nested rules scope the element's body content at any depth but not siblings.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Group group • blue
-        <Segment • part
-        <Group
-            <Segment • part
-    <Segment • part
+(main
+  (<> BatchDemo (id: demo)
+    (<> Group (id: group) (• blue)
+      (<> Segment (• part))
+      (<> Group
+        (<> Segment (• part))
+      )
+    )
+    (<> Segment (• part))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (let direct (!! (. group %first-child)))
+  (let nested (!! (. (!! (. direct %next-sibling)) %first-child)))
+  (let apart (!! (. group %next-sibling)))
+  (blank)
+  (print (call style-authored-snapshot direct))
+  (print (call style-authored-snapshot nested))
+  (print (call style-authored-snapshot apart))
+)
 
-demo.markup-batch-queue.checkpoint()
-. direct = group.%first-child!
-. nested = direct.%next-sibling!.%first-child!
-. apart = group.%next-sibling!
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
--- style-authored-snapshot(direct)
--- style-authored-snapshot(nested)
--- style-authored-snapshot(apart)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + Group (is Box)
+  (using TintStyle)
+  (rule blue
+    (rule part
+      (= ink 7)
+    )
+  )
+)
 
-+ ink I64 = 0
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Group is Box
-    using TintStyle
-
-• blue
-    • part
-        ink = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -1692,56 +1818,60 @@ node TintStyle.ink layer=2 order=0 kind=static bits=1
 
 ### A parent rule's nested rules scope body content that declares ids.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Group • blue
-        <Segment direct • part
-        <Group
-            <Segment nested • part
-    <Segment apart • part
+(main
+  (<> BatchDemo (id: demo)
+    (<> Group (• blue)
+      (<> Segment (id: direct) (• part))
+      (<> Group
+        (<> Segment (id: nested) (• part))
+      )
+    )
+    (<> Segment (id: apart) (• part))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (print (call style-authored-snapshot direct))
+  (print (call style-authored-snapshot nested))
+  (print (call style-authored-snapshot apart))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
--- style-authored-snapshot(direct)
--- style-authored-snapshot(nested)
--- style-authored-snapshot(apart)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + Group (is Box)
+  (using TintStyle)
+  (rule blue
+    (rule part
+      (= ink 7)
+    )
+  )
+)
 
-+ ink I64 = 0
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Group is Box
-    using TintStyle
-
-• blue
-    • part
-        ink = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -1754,71 +1884,78 @@ node TintStyle.ink layer=2 order=0 kind=static bits=1
 
 ### A parent rule's nested rules scope body content inside markup loops and conditionals.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Host host
+(main
+  (<> BatchDemo (id: demo)
+    (<> Host (id: host))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (print (call style-authored-snapshot (!! (. (!! (. host looped %first-child)) %first-child))))
+  (print (call style-authored-snapshot (!! (. (!! (. host guarded %first-child)) %first-child))))
+  (print (call style-authored-snapshot (!! (. (!! (. host apart %first-child)) %first-child))))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + Host (is Box)
+  (prop + names _ (= (list "a" "b")))
+  (prop + is-shown _ (= true))
+  (content
+    (<> This
+      (<> Group (id: looped) (• blue)
+        (for (in name #names (keyed-by name))
+          (<> Segment (• part))
+        )
+      )
+      (<> Group (id: guarded) (• blue)
+        (if #is-shown
+          (<> Segment (• part))
+        )
+      )
+      (<> Group (id: apart)
+        (if #is-shown
+          (<> Segment (• part))
+        )
+      )
+    )
+  )
+)
 
--- style-authored-snapshot(host.looped.%first-child!.%first-child!)
--- style-authored-snapshot(host.guarded.%first-child!.%first-child!)
--- style-authored-snapshot(host.apart.%first-child!.%first-child!)
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Host is Box
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-+ names = ["a", "b"]
-+ is-shown = true
+(type + Group (is Box)
+  (using TintStyle)
+  (rule blue
+    (rule part
+      (= ink 7)
+    )
+  )
+)
 
-────────────────────
-
-<This
-    <Group looped • blue
-        for name in #names keyed by name
-            <Segment • part
-    <Group guarded • blue
-        if #is-shown
-            <Segment • part
-    <Group apart
-        if #is-shown
-            <Segment • part
-
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 0
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Group is Box
-    using TintStyle
-
-• blue
-    • part
-        ink = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -1831,96 +1968,105 @@ node TintStyle.ink layer=2 order=0 kind=static bits=1
 
 ### An outer rule's argument reaches its nested rules in template, body, slot, loop, conditional, and generated content.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Host host
+(main
+  (<> BatchDemo (id: demo)
+    (<> Host (id: host))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (print (call style-authored-snapshot (. host group inner)))
+  (print (call style-authored-snapshot (!! (. host group inner %next-sibling))))
+  (print (call style-authored-snapshot (!! (. host slotted %first-child))))
+  (print (call style-authored-snapshot (!! (. (!! (. host looped %first-child)) %first-child))))
+  (print (call style-authored-snapshot (!! (. (!! (. host guarded %first-child)) %first-child))))
+  (print (call style-authored-snapshot (!! (. host adorned %first-child))))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + Host (is Box)
+  (prop + amount I64 (= 6))
+  (prop + names _ (= (list "a")))
+  (prop + is-shown _ (= true))
+  (content
+    (<> This
+      (<> Group (id: group) (• tint amount)
+        (<> Segment (• part))
+      )
+      (<> Slotted (id: slotted) (• tint amount)
+        (<> Segment (• part))
+      )
+      (<> Tinted (id: looped) (• tint amount)
+        (for (in name #names (keyed-by name))
+          (<> Segment (• part))
+        )
+      )
+      (<> Tinted (id: guarded) (• tint amount)
+        (if #is-shown
+          (<> Segment (• part))
+        )
+      )
+      (<> Tinted (id: adorned) (• tint amount) (• adorn))
+    )
+  )
+)
 
--- style-authored-snapshot(host.group.inner)
--- style-authored-snapshot(host.group.inner.%next-sibling!)
--- style-authored-snapshot(host.slotted.%first-child!)
--- style-authored-snapshot(host.looped.%first-child!.%first-child!)
--- style-authored-snapshot(host.guarded.%first-child!.%first-child!)
--- style-authored-snapshot(host.adorned.%first-child!)
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Host is Box
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-+ amount I64 = 6
-+ names = ["a"]
-+ is-shown = true
+(type + Tinted (is Box)
+  (using TintStyle)
+  (rule tint
+    (param value I64)
+    (rule part
+      (= ink value)
+    )
+  )
+  (blank)
+  (rule adorn
+    (<> Segment (slot: first-child) (• part))
+  )
+)
 
-────────────────────
+(type + Group (is Tinted)
+  (content
+    (<> This
+      (<> Segment (id: inner) (• part))
+    )
+  )
+)
 
-<This
-    <Group group • tint:amount
-        <Segment • part
-    <Slotted slotted • tint:amount
-        <Segment • part
-    <Tinted looped • tint:amount
-        for name in #names keyed by name
-            <Segment • part
-    <Tinted guarded • tint:amount
-        if #is-shown
-            <Segment • part
-    <Tinted adorned • tint:amount adorn
+(type + Slotted (is Tinted)
+  (content
+    (<> This
+      (+<> Box)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 0
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tinted is Box
-    using TintStyle
-
-• tint:value I64
-    • part
-        ink = value
-
-• adorn
-    <Segment (first-child) • part
-
-━━━━━━━━━━━━━━━━━━━━
-+ Group is Tinted
-
-────────────────────
-
-<This
-    <Segment inner • part
-
-━━━━━━━━━━━━━━━━━━━━
-+ Slotted is Tinted
-
-────────────────────
-
-<This
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -1940,50 +2086,56 @@ node TintStyle.ink layer=2 order=1 kind=static bits=6
 
 ### An outer rule's argument reaches a rule nested two levels below it.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel • tint:5
-        <Segment • row
-            <Segment • part
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• tint 5)
+      (<> Segment (• row)
+        (<> Segment (• part))
+      )
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot (!! (. (!! (. panel %first-child)) %first-child))))
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(panel.%first-child!.%first-child!)
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-+ ink I64 = 0
+(type + Panel (is Box)
+  (using TintStyle)
+  (rule tint
+    (param value I64)
+    (rule row
+      (rule part
+        (= ink value)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-• tint:value I64
-    • row
-        • part
-            ink = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -1992,65 +2144,69 @@ node TintStyle seg=owned gen=1 mask=1 ink=5
 
 ### Generated child content is scoped by its target's nested rules and by enclosing rule scopes.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Group • blue
-        <Panel panel • adorn
+(main
+  (<> BatchDemo (id: demo)
+    (<> Group (• blue)
+      (<> Panel (id: panel) (• adorn))
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (let generated (!! (. panel %first-child)))
+  (blank)
+  (print (call markup-is-style-shadow generated))
+  (print (call style-authored-snapshot generated))
+)
 
-demo.markup-batch-queue.checkpoint()
-. generated = panel.%first-child!
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (prop + tone I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+  (style-domains tone (domain paint))
+)
 
--- markup-is-style-shadow(generated)
--- style-authored-snapshot(generated)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + Group (is Box)
+  (using TintStyle)
+  (rule blue
+    (rule part
+      (= ink 7)
+    )
+  )
+)
 
-+ ink I64 = 0
-+ tone I64 = 0
+(type + Panel (is Box)
+  (using TintStyle)
+  (rule adorn
+    (<> Segment (slot: first-child) (• part) (• mark))
+    (blank)
+    (rule mark
+      (= tone 9)
+    )
+  )
+)
 
-. ink -> paint
-. tone -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Group is Box
-    using TintStyle
-
-• blue
-    • part
-        ink = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-• adorn
-    <Segment (first-child) • part mark
-
-    • mark
-        tone = 9
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -2062,65 +2218,69 @@ node TintStyle.tone layer=2 order=2 kind=static bits=9
 
 ### Generated sibling content is scoped by its target's nested rules and by enclosing rule scopes.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Group • blue
-        <Panel panel • trail
+(main
+  (<> BatchDemo (id: demo)
+    (<> Group (• blue)
+      (<> Panel (id: panel) (• trail))
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (let generated (!! (. panel %next-sibling)))
+  (blank)
+  (print (call markup-is-style-shadow generated))
+  (print (call style-authored-snapshot generated))
+)
 
-demo.markup-batch-queue.checkpoint()
-. generated = panel.%next-sibling!
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (prop + tone I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+  (style-domains tone (domain paint))
+)
 
--- markup-is-style-shadow(generated)
--- style-authored-snapshot(generated)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + Group (is Box)
+  (using TintStyle)
+  (rule blue
+    (rule part
+      (= ink 7)
+    )
+  )
+)
 
-+ ink I64 = 0
-+ tone I64 = 0
+(type + Panel (is Box)
+  (using TintStyle)
+  (rule trail
+    (<> Segment (slot: after) (• part) (• mark))
+    (blank)
+    (rule mark
+      (= tone 9)
+    )
+  )
+)
 
-. ink -> paint
-. tone -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Group is Box
-    using TintStyle
-
-• blue
-    • part
-        ink = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-• trail
-    <Segment (after) • part mark
-
-    • mark
-        tone = 9
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -2132,61 +2292,66 @@ node TintStyle.tone layer=2 order=2 kind=static bits=9
 
 ### Scoped nested rules specialize component content cache keys.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel blue-panel • blue
-    <Panel red-panel • red
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: blue-panel) (• blue))
+    (<> Panel (id: red-panel) (• red))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (let blue-part (!! (. blue-panel %first-child)))
+  (let red-part (!! (. red-panel %first-child)))
+  (blank)
+  (print (call style-authored-snapshot blue-part))
+  (print (call style-authored-snapshot red-part))
+)
 
-demo.markup-batch-queue.checkpoint()
-. blue-part = blue-panel.%first-child!
-. red-part = red-panel.%first-child!
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
--- style-authored-snapshot(blue-part)
--- style-authored-snapshot(red-part)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + Panel (is Box)
+  (using TintStyle)
+  (rule This
+    (<> Segment (• part))
+  )
+  (blank)
+  (rule blue
+    (rule part
+      (= ink 7)
+    )
+  )
+  (blank)
+  (rule red
+    (rule part
+      (= ink 9)
+    )
+  )
+)
 
-+ ink I64 = 0
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-• This
-    <Segment • part
-
-• blue
-    • part
-        ink = 7
-
-• red
-    • part
-        ink = 9
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -2198,57 +2363,59 @@ node TintStyle.ink layer=2 order=1 kind=static bits=9
 
 ### Inherited `This` nested rules scope subclass-owned declarative content.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <ChildPanel child
+(main
+  (<> BatchDemo (id: demo)
+    (<> ChildPanel (id: child))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (let part (!! (. child %first-child)))
+  (blank)
+  (print (call style-authored-snapshot part))
+)
 
-demo.markup-batch-queue.checkpoint()
-. part = child.%first-child!
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
--- style-authored-snapshot(part)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + BasePanel (is Box)
+  (using TintStyle)
+  (rule This
+    (rule part
+      (= ink 5)
+    )
+  )
+)
 
-+ ink I64 = 0
+(type + ChildPanel (is BasePanel)
+  (content
+    (<> Segment (• part))
+  )
+)
 
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ BasePanel is Box
-    using TintStyle
-
-• This
-    • part
-        ink = 5
-
-━━━━━━━━━━━━━━━━━━━━
-+ ChildPanel is BasePanel
-
-────────────────────
-<Segment • part
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -2258,73 +2425,77 @@ node TintStyle.ink layer=2 order=1 kind=static bits=5
 
 ### A subclass `This` nested rule scopes declarative content inherited from its base class, with and without a "when" state branch.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <ChildPanel child
-    <GatedPanel gated
+(main
+  (<> BatchDemo (id: demo)
+    (<> ChildPanel (id: child))
+    (<> GatedPanel (id: gated))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print "plain nested rule")
+  (print (call style-authored-snapshot (!! (. child %first-child))))
+  (print "gated nested rule, off")
+  (print (call style-authored-snapshot (!! (. gated %first-child))))
+  (= (. gated is-on) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (print "gated nested rule, on")
+  (print (call style-authored-snapshot (!! (. gated %first-child))))
+)
 
-demo.markup-batch-queue.checkpoint()
--- "plain nested rule"
--- style-authored-snapshot(child.%first-child!)
--- "gated nested rule, off"
--- style-authored-snapshot(gated.%first-child!)
-gated.is-on = true
-demo.markup-batch-queue.checkpoint()
--- "gated nested rule, on"
--- style-authored-snapshot(gated.%first-child!)
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-+ ink I64 = 0
+(type + BasePanel (is Box)
+  (using TintStyle)
+  (content
+    (<> Segment (• part))
+  )
+)
 
-. ink -> paint
+(type + ChildPanel (is BasePanel)
+  (rule This
+    (rule part
+      (= ink 5)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + GatedPanel (is BasePanel)
+  (prop + is-on _ (= false))
+  (blank)
+  (rule This
+    (when-style #is-on
+      (rule part
+        (= ink 7)
+      )
+    )
+  )
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ BasePanel is Box
-    using TintStyle
-
-────────────────────
-<Segment • part
-
-━━━━━━━━━━━━━━━━━━━━
-+ ChildPanel is BasePanel
-
-• This
-    • part
-        ink = 5
-
-━━━━━━━━━━━━━━━━━━━━
-+ GatedPanel is BasePanel
-
-+ is-on = false
-
-• This
-    when #is-on
-        • part
-            ink = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -2342,62 +2513,65 @@ node TintStyle.ink layer=4 order=1 kind=static bits=7 block=0
 
 ### A "when" state branch that styles nested content keeps following its state after a collection.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
-/BxGC/BxGC.h
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(import /BxGC/BxGC.h)
+(blank)
 
-<BatchDemo demo
-    <GatedPanel gated
+(main
+  (<> BatchDemo (id: demo)
+    (<> GatedPanel (id: gated))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (call C:brixGCCollect)
+  (call C:brixGCCollect)
+  (= (. gated is-on) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. (as (!! (. gated %first-child)) Segment) $ink))
+  (= (. gated is-on) false)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. (as (!! (. gated %first-child)) Segment) $ink))
+)
 
-demo.markup-batch-queue.checkpoint()
-C:brixGCCollect()
-C:brixGCCollect()
-gated.is-on = true
-demo.markup-batch-queue.checkpoint()
--- (gated.%first-child! as Segment).$ink
-gated.is-on = false
-demo.markup-batch-queue.checkpoint()
--- (gated.%first-child! as Segment).$ink
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-+ ink I64 = 0
+(type + GatedPanel (is Box)
+  (using TintStyle)
+  (prop + is-on _ (= false))
+  (blank)
+  (rule This
+    (when-style #is-on
+      (rule part
+        (= ink 7)
+      )
+    )
+  )
+  (content
+    (<> Segment (• part))
+  )
+)
 
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ GatedPanel is Box
-    using TintStyle
-
-+ is-on = false
-
-• This
-    when #is-on
-        • part
-            ink = 7
-
-────────────────────
-<Segment • part
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -2407,49 +2581,53 @@ demo.markup-batch-queue.checkpoint()
 
 ### Static style rule values preserve zero-valued union payloads.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel • dark
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• dark))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (print (== (. panel $background-color) null))
+  (print (call ansi-background (. panel $background-color)))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
--- panel.$background-color == null
--- ansi-background(panel.$background-color)
+(type + Panel (is Box)
+  (rule dark
+    (= background-color (call (. BackgroundColor ansi) (call AnsiColor 0)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-• dark
-    background-color = BackgroundColor.ansi(AnsiColor(0))
-
-━━━━━━━━━━━━━━━━━━━━
-+ do ansi-background AnsiColor
-    - background BackgroundColor?
-
-=? AnsiColor(255)
-
-    if !background
-
-. live = background
-= match live
-    | .ansi(color)
+(fn-do + ansi-background AnsiColor
+  (param background (? BackgroundColor))
+  (return-if (call AnsiColor 255) (if (not background)))
+  (blank)
+  (let live background)
+  (return
+    (match live
+      (case (call .ansi color)
         color
-    ??
-        AnsiColor(8)
+      )
+      (default
+        (call AnsiColor 8)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2459,70 +2637,73 @@ false
 
 ### Static object-valued nested rule thunks use module scope, not the component content closure.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <ConfirmLite confirm
+(main
+  (<> BatchDemo (id: demo)
+    (<> ConfirmLite (id: confirm))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (let backdrop (!! (. confirm %first-child)))
+  (blank)
+  (print (call ansi-background (. backdrop $background-color)))
+)
 
-demo.markup-batch-queue.checkpoint()
-. backdrop = confirm.%first-child!
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
--- ansi-background(backdrop.$background-color)
+(type + BaseDialogLite (is Box)
+  (rule This
+    (rule modal-backdrop
+      (= background-color (call (. BackgroundColor ansi) (call AnsiColor 0)))
+    )
+  )
+  (content
+    (<> This
+      (<> BackdropLite (• modal-backdrop))
+      (<> DialogPartLite)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + ConfirmLite (is BaseDialogLite)
+  (content
+    (<> This
+      (<> DialogPartLite)
+    )
+  )
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + BackdropLite (is Box))
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + DialogPartLite (is Box))
 
-━━━━━━━━━━━━━━━━━━━━
-+ BaseDialogLite is Box
-
-• This
-    • modal-backdrop
-        background-color = BackgroundColor.ansi(AnsiColor(0))
-
-────────────────────
-
-<This
-    <BackdropLite • modal-backdrop
-    <DialogPartLite
-
-━━━━━━━━━━━━━━━━━━━━
-+ ConfirmLite is BaseDialogLite
-
-────────────────────
-
-<This
-    <DialogPartLite
-
-━━━━━━━━━━━━━━━━━━━━
-+ BackdropLite is Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ DialogPartLite is Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ do ansi-background AnsiColor
-    - background BackgroundColor?
-
-=? AnsiColor(255)
-
-    if !background
-
-. live = background
-= match live
-    | .ansi(color)
+(fn-do + ansi-background AnsiColor
+  (param background (? BackgroundColor))
+  (return-if (call AnsiColor 255) (if (not background)))
+  (blank)
+  (let live background)
+  (return
+    (match live
+      (case (call .ansi color)
         color
-    ??
-        AnsiColor(8)
+      )
+      (default
+        (call AnsiColor 8)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2531,69 +2712,75 @@ demo.markup-batch-queue.checkpoint()
 
 ### Slot outlet nested rules scope supplied slot content but not caller siblings.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel
-        <ActionBox (actions)
-            <Segment • part
-    <Segment outside • part
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel)
+      (<> ActionBox (slot: actions)
+        (<> Segment (• part))
+      )
+    )
+    (<> Segment (id: outside) (• part))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (let actions (!! (. panel %first-child)))
+  (let segment (!! (. actions %first-child)))
+  (let outside-node (!! (. panel %next-sibling)))
+  (blank)
+  (print (call style-authored-snapshot actions))
+  (print (call style-authored-snapshot segment))
+  (print (call style-authored-snapshot outside-node))
+)
 
-demo.markup-batch-queue.checkpoint()
-. actions = panel.%first-child!
-. segment = actions.%first-child!
-. outside-node = panel.%next-sibling!
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
--- style-authored-snapshot(actions)
--- style-authored-snapshot(segment)
--- style-authored-snapshot(outside-node)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + Panel (is Box)
+  (using TintStyle)
+  (rule This
+    (rule actions
+      (= ink 2)
+      (blank)
+      (rule part
+        (= ink 7)
+      )
+    )
+  )
+  (content
+    (+<> ActionBox (id: actions) (• actions)
+      (<> ActionBox)
+    )
+  )
+)
 
-+ ink I64 = 0
+(type + ActionBox (is Box)
+  (using TintStyle)
+)
 
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-• This
-    • actions
-        ink = 2
-
-        • part
-            ink = 7
-
-────────────────────
-+ <ActionBox actions • actions
-    <ActionBox
-
-━━━━━━━━━━━━━━━━━━━━
-+ ActionBox is Box
-    using TintStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -2605,74 +2792,79 @@ node TintStyle.ink layer=2 order=0 kind=static bits=1
 
 ### An own rule written in a parent rule scopes the template of the element the parent rule is applied to, at any depth, but not the element itself, its body content, or the templates of components in its template or its body.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel • blue part
-        <Segment written • part
-        <Card card
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• blue) (• part)
+      (<> Segment (id: written) (• part))
+      (<> Card (id: card))
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (print (call style-computed-snapshot panel))
+  (print (call style-computed-snapshot (. panel near)))
+  (print (call style-computed-snapshot (. panel deep)))
+  (print (call style-computed-snapshot (. panel held inside)))
+  (print (call style-computed-snapshot written))
+  (print (call style-computed-snapshot (. card inside)))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+)
 
--- style-computed-snapshot(panel)
--- style-computed-snapshot(panel.near)
--- style-computed-snapshot(panel.deep)
--- style-computed-snapshot(panel.held.inside)
--- style-computed-snapshot(written)
--- style-computed-snapshot(card.inside)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + Panel (is Box)
+  (using TintStyle)
+  (rule blue
+    (own-rule part
+      (= ink 7)
+    )
+  )
+  (blank)
+  (rule part
+    (= ink 2)
+  )
+  (content
+    (<> This
+      (<> Segment (id: near) (• part))
+      (<> Box
+        (<> Segment (id: deep) (• part))
+      )
+      (<> Card (id: held))
+    )
+  )
+)
 
-+ ink I64 = 0
+(type + Card (is Box)
+  (content
+    (<> This
+      (<> Segment (id: inside) (• part))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-• blue
-    • own part
-        ink = 7
-
-• part
-    ink = 2
-
-────────────────────
-
-<This
-    <Segment near • part
-    <Box
-        <Segment deep • part
-    <Card held
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-────────────────────
-
-<This
-    <Segment inside • part
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -2686,64 +2878,67 @@ node TintStyle seg=owned gen=1 mask=1 ink=1
 
 ### An own rule reaches the template a class inherits and content the element's rules generate, but not the content a caller gives a slot of the template.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel • blue adorn
-        <Segment supplied • part
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• blue) (• adorn)
+      (<> Segment (id: supplied) (• part))
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (print (call markup-is-style-shadow (!! (. panel %first-child))))
+  (print (call style-computed-snapshot (!! (. panel %first-child))))
+  (print (call style-computed-snapshot (. panel inherited)))
+  (print (call style-computed-snapshot supplied))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+)
 
--- markup-is-style-shadow(panel.%first-child!)
--- style-computed-snapshot(panel.%first-child!)
--- style-computed-snapshot(panel.inherited)
--- style-computed-snapshot(supplied)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + Frame (is Box)
+  (using TintStyle)
+  (rule blue
+    (own-rule part
+      (= ink 7)
+    )
+  )
+  (blank)
+  (rule adorn
+    (<> Segment (slot: first-child) (• part))
+  )
+  (content
+    (<> This
+      (<> Segment (id: inherited) (• part))
+      (+<> Box)
+    )
+  )
+)
 
-+ ink I64 = 0
+(type + Panel (is Frame))
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Frame is Box
-    using TintStyle
-
-• blue
-    • own part
-        ink = 7
-
-• adorn
-    <Segment (first-child) • part
-
-────────────────────
-
-<This
-    <Segment inherited • part
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Frame
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -2755,78 +2950,81 @@ node TintStyle seg=owned gen=1 mask=1 ink=1
 
 ### An own rule reaches what its element's template gives a slot of a component written there, and what a subclass's template gives a slot of the template it inherits, but not the template of the component whose slot is given.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel • blue
-    <Filled filled • blue
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• blue))
+    (<> Filled (id: filled) (• blue))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (print (call style-computed-snapshot (. panel given)))
+  (print (call style-computed-snapshot (. panel framed inner)))
+  (print (call style-computed-snapshot (. filled filler)))
+  (print (call style-computed-snapshot (. filled inner)))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+)
 
--- style-computed-snapshot(panel.given)
--- style-computed-snapshot(panel.framed.inner)
--- style-computed-snapshot(filled.filler)
--- style-computed-snapshot(filled.inner)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + Tinted (is Box)
+  (using TintStyle)
+  (rule blue
+    (own-rule part
+      (= ink 7)
+    )
+  )
+)
 
-+ ink I64 = 0
+(type + Panel (is Tinted)
+  (content
+    (<> This
+      (<> Frame (id: framed)
+        (<> Segment (id: given) (• part))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + Frame (is Tinted)
+  (content
+    (<> This
+      (<> Segment (id: inner) (• part))
+      (+<> Box)
+    )
+  )
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + Filled (is Frame)
+  (content
+    (<> This
+      (<> Segment (id: filler) (• part))
+    )
+  )
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tinted is Box
-    using TintStyle
-
-• blue
-    • own part
-        ink = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Tinted
-
-────────────────────
-
-<This
-    <Frame framed
-        <Segment given • part
-
-━━━━━━━━━━━━━━━━━━━━
-+ Frame is Tinted
-
-────────────────────
-
-<This
-    <Segment inner • part
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Filled is Frame
-
-────────────────────
-
-<This
-    <Segment filler • part
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -2838,63 +3036,67 @@ node TintStyle seg=owned gen=1 mask=1 ink=7
 
 ### An own rule inside a "when" state branch of a class "This" rule applies in the class template only while the state holds, and never in the content a caller gives a slot.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Toggle toggle
-        <Segment supplied • part
+(main
+  (<> BatchDemo (id: demo)
+    (<> Toggle (id: toggle)
+      (<> Segment (id: supplied) (• part))
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot (. toggle mark)))
+  (print (call style-computed-snapshot supplied))
+  (blank)
+  (= (. toggle is-on) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot (. toggle mark)))
+  (print (call style-computed-snapshot supplied))
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(toggle.mark)
--- style-computed-snapshot(supplied)
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+)
 
-toggle.is-on = true
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(toggle.mark)
--- style-computed-snapshot(supplied)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + Toggle (is Box)
+  (using TintStyle)
+  (prop + is-on _ (= false))
+  (blank)
+  (rule This
+    (when-style #is-on
+      (own-rule part
+        (= ink 7)
+      )
+    )
+  )
+  (content
+    (<> This
+      (<> Segment (id: mark) (• part))
+      (+<> Box)
+    )
+  )
+)
 
-+ ink I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Toggle is Box
-    using TintStyle
-
-+ is-on = false
-
-• This
-    when #is-on
-        • own part
-            ink = 7
-
-────────────────────
-
-<This
-    <Segment mark • part
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -2906,67 +3108,71 @@ node TintStyle seg=owned gen=1 mask=1 ink=1
 
 ### An own rule takes the value given to the rule it is written in and generates content where it matches in the template, but not where it would match in body content.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel • tint:5
-        <Slab written • host
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• tint 5)
+      (<> Slab (id: written) (• host))
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (print (call style-computed-snapshot (. panel near)))
+  (print (call markup-is-style-shadow (!! (. panel near %first-child))))
+  (print (call style-computed-snapshot (!! (. panel near %first-child))))
+  (print (call style-computed-snapshot written))
+  (print (== (. written %first-child) null))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+)
 
--- style-computed-snapshot(panel.near)
--- markup-is-style-shadow(panel.near.%first-child!)
--- style-computed-snapshot(panel.near.%first-child!)
--- style-computed-snapshot(written)
--- written.%first-child == null
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + Panel (is Box)
+  (using TintStyle)
+  (rule tint
+    (param value I64)
+    (own-rule host
+      (= ink value)
+      (blank)
+      (<> Segment (slot: first-child) (• part))
+    )
+  )
+  (content
+    (<> This
+      (<> Slab (id: near) (• host))
+    )
+  )
+)
 
-+ ink I64 = 0
+(type + Slab (is Box)
+  (using TintStyle)
+  (rule host
+    (= ink 2)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-• tint:value I64
-    • own host
-        ink = value
-
-        <Segment (first-child) • part
-
-────────────────────
-
-<This
-    <Slab near • host
-
-━━━━━━━━━━━━━━━━━━━━
-+ Slab is Box
-    using TintStyle
-
-• host
-    ink = 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -2979,30 +3185,32 @@ true
 
 ### Reports a rule name nothing declares.
 
-```yumi compile-error
-<Thing thing • missing
+```brix compile-error
+(main
+  (<> Thing (id: thing) (• missing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing)
 ```
 
 ```output
 Exception: No style rule is named "missing". Write one in a style sheet, or, where a library applies it for a theme to style, declare it there with an empty rule
-<no file:2>
-    <Thing thing • missing
-                   ^^^^^^^
+<no file:3>
+      (<> Thing (id: thing) (• missing))
+                            ^^^^^^^^^^^
 ```
 
 ### An empty rule declares a name for a theme to style.
 
-```yumi
-<Thing thing • hook
-print("ok")
+```brix
+(main
+  (<> Thing (id: thing) (• hook))
+  (call print "ok")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-• hook
+(type + Thing
+  (rule hook)
+)
 ```
 
 ```output
@@ -3011,48 +3219,51 @@ ok
 
 ### Attaches generated style content and gates it with a tracked state.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel • adorn
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• adorn))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (let adornment (!! (. panel %next-sibling)))
+  (print (== (. panel %first-child) null))
+  (print (call markup-is-style-shadow adornment))
+  (print (== (as (!! (call markup-style-parent-host adornment)) Pointer) (as panel Pointer)))
+  (blank)
+  (= (. panel has-adornment) false)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (== (. panel %next-sibling) null))
+  (blank)
+  (= (. panel has-adornment) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (let next-adornment (!! (. panel %next-sibling)))
+  (print (call markup-is-style-shadow next-adornment))
+  (print (== (as (!! (call markup-style-parent-host next-adornment)) Pointer) (as panel Pointer)))
+)
 
-demo.markup-batch-queue.checkpoint()
-. adornment = panel.%next-sibling!
--- panel.%first-child == null
--- markup-is-style-shadow(adornment)
--- markup-style-parent-host(adornment)! as Pointer == panel as Pointer
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-panel.has-adornment = false
-demo.markup-batch-queue.checkpoint()
--- panel.%next-sibling == null
-
-panel.has-adornment = true
-demo.markup-batch-queue.checkpoint()
-. next-adornment = panel.%next-sibling!
--- markup-is-style-shadow(next-adornment)
--- markup-style-parent-host(next-adornment)! as Pointer == panel as Pointer
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ has-adornment = true
-
-• adorn
-    when #has-adornment
-        <Label (after) "!"
+(type + Panel (is Box)
+  (prop + has-adornment _ (= true))
+  (blank)
+  (rule adorn
+    (when-style #has-adornment
+      (<> Label (slot: after) (text: "!"))
+    )
+  )
+)
 ```
 
 ```output
@@ -3066,43 +3277,46 @@ true
 
 ### Attaches generated style content while a negated tracked state is false.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel • adorn
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• adorn))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call markup-is-style-shadow (!! (. panel %next-sibling))))
+  (blank)
+  (= (. panel is-plain) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (== (. panel %next-sibling) null))
+  (blank)
+  (= (. panel is-plain) false)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call markup-is-style-shadow (!! (. panel %next-sibling))))
+)
 
-demo.markup-batch-queue.checkpoint()
--- markup-is-style-shadow(panel.%next-sibling!)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-panel.is-plain = true
-demo.markup-batch-queue.checkpoint()
--- panel.%next-sibling == null
-
-panel.is-plain = false
-demo.markup-batch-queue.checkpoint()
--- markup-is-style-shadow(panel.%next-sibling!)
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ is-plain = false
-
-• adorn
-    when !#is-plain
-        <Label (after) "!"
+(type + Panel (is Box)
+  (prop + is-plain _ (= false))
+  (blank)
+  (rule adorn
+    (when-style (not #is-plain)
+      (<> Label (slot: after) (text: "!"))
+    )
+  )
+)
 ```
 
 ```output
@@ -3113,66 +3327,70 @@ true
 
 ### A nested rule inside a "when" state branch of a class "This" rule applies in the class template only while the state holds.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Section section
+(main
+  (<> BatchDemo (id: demo)
+    (<> Section (id: section))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot (. section header)))
+  (blank)
+  (= (. section is-expanded) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot (. section header)))
+  (blank)
+  (= (. section is-expanded) false)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot (. section header)))
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(section.header)
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+)
 
-section.is-expanded = true
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(section.header)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-section.is-expanded = false
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(section.header)
+(type + Section (is Box)
+  (using TintStyle)
+  (prop + is-expanded _ (= false))
+  (blank)
+  (rule This
+    (rule part
+      (= ink 3)
+    )
+    (blank)
+    (when-style #is-expanded
+      (rule part
+        (= ink 7)
+      )
+    )
+  )
+  (content
+    (<> This
+      (<> Segment (id: header) (• part))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Section is Box
-    using TintStyle
-
-+ is-expanded = false
-
-• This
-    • part
-        ink = 3
-
-    when #is-expanded
-        • part
-            ink = 7
-
-────────────────────
-
-<This
-    <Segment header • part
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -3183,120 +3401,129 @@ node TintStyle seg=owned gen=3 mask=1 ink=3
 
 ### Nested rules inside a "when" state branch follow the element's state in slot content, body children, generated content, and content nested inside another component.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Host host
+(main
+  (<> BatchDemo (id: demo)
+    (<> Host (id: host))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (call show host)
+  (blank)
+  (= (. host slotted is-open) false)
+  (= (. host plain is-open) false)
+  (= (. host adorned is-open) false)
+  (= (. host deep is-open) false)
+  (call (. demo markup-batch-queue checkpoint))
+  (print "closed")
+  (call show host)
+  (blank)
+  (= (. host slotted is-open) true)
+  (= (. host plain is-open) true)
+  (= (. host adorned is-open) true)
+  (= (. host deep is-open) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (print "open")
+  (call show host)
+)
 
-demo.markup-batch-queue.checkpoint()
-show(host)
+(fn-do _ show _
+  (param host Host)
+  (print (str "slot " (call style-computed-snapshot (!! (. host slotted %first-child)))))
+  (print (str "body " (call style-computed-snapshot (!! (. host plain %first-child)))))
+  (print (str "generated " (call style-computed-snapshot (!! (. host adorned %first-child)))))
+  (print (str "deep " (call style-computed-snapshot (!! (. (!! (. host deep %first-child)) %first-child)))))
+)
 
-host.slotted.is-open = false
-host.plain.is-open = false
-host.adorned.is-open = false
-host.deep.is-open = false
-demo.markup-batch-queue.checkpoint()
--- "closed"
-show(host)
+(type + Host (is Box)
+  (content
+    (<> This
+      (<> Slotted (id: slotted)
+        (= is-open true)
+        (<> Segment (• part))
+      )
+      (<> Panel (id: plain) (• openable)
+        (= is-open true)
+        (<> Segment (• part))
+      )
+      (<> Panel (id: adorned) (• openable) (• adorn)
+        (= is-open true)
+      )
+      (<> Slotted (id: deep)
+        (= is-open true)
+        (<> Wrapper)
+      )
+    )
+  )
+)
 
-host.slotted.is-open = true
-host.plain.is-open = true
-host.adorned.is-open = true
-host.deep.is-open = true
-demo.markup-batch-queue.checkpoint()
--- "open"
-show(host)
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do show
-    - host Host
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
--- "slot ${style-computed-snapshot(host.slotted.%first-child!)}"
--- "body ${style-computed-snapshot(host.plain.%first-child!)}"
--- "generated ${style-computed-snapshot(host.adorned.%first-child!)}"
--- "deep ${style-computed-snapshot(host.deep.%first-child!.%first-child!)}"
+(type + Slotted (is Box)
+  (using TintStyle)
+  (prop + is-open _ (= false))
+  (blank)
+  (rule This
+    (when-style #is-open
+      (rule part
+        (= ink 7)
+      )
+    )
+  )
+  (content
+    (<> This
+      (+<> Box)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Host is Box
+(type + Panel (is Box)
+  (using TintStyle)
+  (prop + is-open _ (= false))
+  (blank)
+  (rule openable
+    (when-style #is-open
+      (rule part
+        (= ink 7)
+      )
+    )
+  )
+  (blank)
+  (rule adorn
+    (<> Segment (slot: first-child) (• part))
+  )
+)
 
-────────────────────
+(type + Wrapper (is Box)
+  (content
+    (<> This
+      (<> Segment (id: inner) (• part))
+    )
+  )
+)
 
-<This
-    <Slotted slotted
-        is-open = true
-        <Segment • part
-    <Panel plain • openable
-        is-open = true
-        <Segment • part
-    <Panel adorned • openable adorn
-        is-open = true
-    <Slotted deep
-        is-open = true
-        <Wrapper
-
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Slotted is Box
-    using TintStyle
-
-+ is-open = false
-
-• This
-    when #is-open
-        • part
-            ink = 7
-
-────────────────────
-
-<This
-    + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-+ is-open = false
-
-• openable
-    when #is-open
-        • part
-            ink = 7
-
-• adorn
-    <Segment (first-child) • part
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wrapper is Box
-
-────────────────────
-
-<This
-    <Segment inner • part
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -3318,138 +3545,158 @@ deep node TintStyle seg=owned gen=3 mask=1 ink=7
 
 ### Nested rules inside a "when" state branch follow the element's state for inherited defaults, root rule applications, rule arguments, deeper nested rules with generated content, and rules applied by a slot outlet.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Host host
+(main
+  (<> BatchDemo (id: demo)
+    (<> Host (id: host))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (call show host)
+  (blank)
+  (= (. host derived is-open) true)
+  (= (. host rooted is-open) true)
+  (= (. host tinted is-open) true)
+  (= (. host chained is-open) true)
+  (let held (as (!! (. host holder %first-child)) Panel))
+  (= (. held is-open) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (print "open")
+  (call show host)
+)
 
-demo.markup-batch-queue.checkpoint()
-show(host)
+(fn-do _ show _
+  (param host Host)
+  (print (str "derived " (call style-computed-snapshot (. host derived inner))))
+  (print (str "rooted " (call style-computed-snapshot (. host rooted inner))))
+  (print (str "tinted " (call style-computed-snapshot (!! (. host tinted %first-child)))))
+  (print (str "chained " (call style-computed-snapshot (!! (. (!! (. host chained %first-child)) %first-child)))))
+  (print (str "chained mark " (!= (. (!! (. (!! (. host chained %first-child)) %first-child)) %first-child) null)))
+  (print (str "outlet " (call style-computed-snapshot (!! (. (!! (. host holder %first-child)) %first-child)))))
+)
 
-host.derived.is-open = true
-host.rooted.is-open = true
-host.tinted.is-open = true
-host.chained.is-open = true
-. held = host.holder.%first-child! as Panel
-held.is-open = true
-demo.markup-batch-queue.checkpoint()
--- "open"
-show(host)
+(type + Host (is Box)
+  (content
+    (<> This
+      (<> Derived (id: derived))
+      (<> Rooted (id: rooted))
+      (<> Panel (id: tinted) (• tint 5)
+        (<> Segment (• part))
+      )
+      (<> Panel (id: chained) (• chain)
+        (<> Segment (• row)
+          (<> Segment (• part))
+        )
+      )
+      (<> Holder (id: holder)
+        (<> Panel
+          (<> Segment (• part))
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do show
-    - host Host
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+)
 
--- "derived ${style-computed-snapshot(host.derived.inner)}"
--- "rooted ${style-computed-snapshot(host.rooted.inner)}"
--- "tinted ${style-computed-snapshot(host.tinted.%first-child!)}"
--- "chained ${style-computed-snapshot(host.chained.%first-child!.%first-child!)}"
--- "chained mark ${host.chained.%first-child!.%first-child!.%first-child != null}"
--- "outlet ${style-computed-snapshot(host.holder.%first-child!.%first-child!)}"
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Host is Box
+(type + Panel (is Box)
+  (using TintStyle)
+  (prop + is-open _ (= false))
+  (blank)
+  (rule This
+    (when-style #is-open
+      (rule part
+        (= ink 7)
+      )
+    )
+  )
+  (blank)
+  (rule tint
+    (param value I64)
+    (when-style #is-open
+      (rule part
+        (= ink value)
+      )
+    )
+  )
+  (blank)
+  (rule chain
+    (when-style #is-open
+      (rule row
+        (rule part
+          (= ink 8)
+          (blank)
+          (<> Segment (slot: first-child))
+        )
+      )
+    )
+  )
+  (blank)
+  (rule opened
+    (when-style #is-open
+      (rule part
+        (= ink 6)
+      )
+    )
+  )
+)
 
-────────────────────
+(type + Derived (is Panel)
+  (content
+    (<> This
+      (<> Segment (id: inner) (• part))
+    )
+  )
+)
 
-<This
-    <Derived derived
-    <Rooted rooted
-    <Panel tinted • tint:5
-        <Segment • part
-    <Panel chained • chain
-        <Segment • row
-            <Segment • part
-    <Holder holder
-        <Panel
-            <Segment • part
+(type + Rooted (is Box)
+  (using TintStyle)
+  (prop + is-open _ (= false))
+  (blank)
+  (rule rooted
+    (when-style #is-open
+      (rule part
+        (= ink 4)
+      )
+    )
+  )
+  (content
+    (<> This (• rooted)
+      (<> Segment (id: inner) (• part))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + Holder (is Box)
+  (content
+    (<> This
+      (+<> Panel (• opened))
+    )
+  )
+)
 
-+ ink I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-+ is-open = false
-
-• This
-    when #is-open
-        • part
-            ink = 7
-
-• tint:value I64
-    when #is-open
-        • part
-            ink = value
-
-• chain
-    when #is-open
-        • row
-            • part
-                ink = 8
-
-                <Segment (first-child)
-
-• opened
-    when #is-open
-        • part
-            ink = 6
-
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Panel
-
-────────────────────
-
-<This
-    <Segment inner • part
-
-━━━━━━━━━━━━━━━━━━━━
-+ Rooted is Box
-    using TintStyle
-
-+ is-open = false
-
-• rooted
-    when #is-open
-        • part
-            ink = 4
-
-────────────────────
-
-<This • rooted
-    <Segment inner • part
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-────────────────────
-
-<This
-    + <Panel • opened
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -3470,292 +3717,316 @@ outlet node TintStyle seg=owned gen=2 mask=1 ink=6
 
 ### Rejects nested rules inside a "when" state branch of a rule that is applied conditionally.
 
-```yumi crash
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel • outer
-        <Segment • part
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• outer)
+      (<> Segment (• part))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+)
 
-+ ink I64 = 0
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + Panel (is Box)
+  (using TintStyle)
+  (prop + is-open _ (= false))
+  (prop + is-hot _ (= false))
+  (blank)
+  (rule opened
+    (when-style #is-open
+      (rule part
+        (= ink 7)
+      )
+    )
+  )
+  (blank)
+  (rule outer
+    (when-style #is-hot
+      (• opened)
+    )
+  )
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-+ is-open = false
-+ is-hot = false
-
-• opened
-    when #is-open
-        • part
-            ink = 7
-
-• outer
-    when #is-hot
-        • opened
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
 Exception: Conditionally applied style rules may only contain style declarations
 <no file:34>
-            • part
-            ^^^^^^
+          (rule part
+          ^^^^^^^^^
 ```
 
 ### Ignores a rule selector whose receiver type is unrelated to the element type.
 
-```yumi
-<Other other • set-x(1)
+```brix
+(main
+  (<> Other (id: other) (• set-x 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule set-x
+    (param value Int)
+    (= x value)
+  )
+)
 
-+ x = 0
-
-• set-x:value Int
-    x = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Other
+(type + Other)
 ```
 
 ### Ignores a subclass-scoped rule selector on an instance of the base class.
 
-```yumi
-<Base base • child-only
+```brix
+(main
+  (<> Base (id: base) (• child-only))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-• child-only
+(type + Child (is Base)
+  (rule child-only)
+)
 ```
 
 ### Type-checks rule arguments against the rule signature.
 
-```yumi crash
-<Thing thing • set-x(Other())
+```brix crash
+(main
+  (<> Thing (id: thing) (• set-x (call Other)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule set-x
+    (param value Int)
+    (= x value)
+  )
+)
 
-+ x = 0
-
-• set-x:value Int
-    x = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Other
+(type + Other)
 ```
 
 ```output
 Exception: Type mismatch
-<no file:2>
-    <Thing thing • set-x(Other())
-                         ^^^^^^^
+<no file:3>
+      (<> Thing (id: thing) (• set-x (call Other)))
+                                     ^^^^^^^^^^^^
 ```
 
 ### Rejects a parameterized rule used without arguments.
 
-```yumi crash
-<Thing thing • set-x
+```brix crash
+(main
+  (<> Thing (id: thing) (• set-x))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-
-• set-x:value Int
-    x = value
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule set-x
+    (param value Int)
+    (= x value)
+  )
+)
 ```
 
 ```output
 Exception: Type mismatch
-<no file:2>
-    <Thing thing • set-x
-                   ^^^^^
+<no file:3>
+      (<> Thing (id: thing) (• set-x))
+                            ^^^^^^^^^
 ```
 
 ### Rejects extra style-rule arguments.
 
-```yumi crash
-<Thing thing • set-x(1, 2)
+```brix crash
+(main
+  (<> Thing (id: thing) (• set-x 1 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-
-• set-x:value Int
-    x = value
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule set-x
+    (param value Int)
+    (= x value)
+  )
+)
 ```
 
 ```output
 Exception: Type mismatch
-<no file:2>
-    <Thing thing • set-x(1, 2)
-                   ^^^^^^^^^^^
+<no file:3>
+      (<> Thing (id: thing) (• set-x 1 2))
+                            ^^^^^^^^^^^^^
 ```
 
 ### Rejects a colon argument passed to a no-parameter rule.
 
-```yumi crash
-<Thing thing • answer:1
+```brix crash
+(main
+  (<> Thing (id: thing) (• answer 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-
-• answer
-    x = 42
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule answer
+    (= x 42)
+  )
+)
 ```
 
 ```output
 Exception: Type mismatch
-<no file:2>
-    <Thing thing • answer:1
-                   ^^^^^^^^
+<no file:3>
+      (<> Thing (id: thing) (• answer 1))
+                            ^^^^^^^^^^^^
 ```
 
 ### Treats a colon shorthand value as one argument even when it contains commas.
 
-```yumi crash
-<Thing thing • set:Point(1, 2)
+```brix crash
+(main
+  (<> Thing (id: thing) (• set (call Point 1 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + x _ (= 0))
+  (prop + y _ (= 0))
+  (blank)
+  (rule set
+    (param value Int)
+    (= x value)
+  )
+)
 
-+ x = 0
-+ y = 0
-
-• set:value Int
-    x = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is (x Int, y Int)
+(type + Point (is (tuple (: x Int) (: y Int))))
 ```
 
 ```output
 Exception: Type mismatch
-<no file:2>
-    <Thing thing • set:Point(1, 2)
-                       ^^^^^^^^^^^
+<no file:3>
+      (<> Thing (id: thing) (• set (call Point 1 2)))
+                                   ^^^^^^^^^^^^^^^^
 ```
 
 ### Type-checks rule bodies against the receiver properties.
 
-```yumi crash
-<Thing thing • bad
+```brix crash
+(main
+  (<> Thing (id: thing) (• bad))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-
-• bad
-    missing = 1
+(type + Thing
+  (prop + x _ (= 0))
+  (blank)
+  (rule bad
+    (= missing 1)
+  )
+)
 ```
 
 ```output
 Exception: Property "missing" not found
 <no file:10>
-        missing = 1
-        ^^^^^^^
+        (= missing 1)
+           ^^^^^^^
 ```
 
 ### Rejects duplicate rule names for the same receiver and signature.
 
-```yumi crash
-<Thing thing • themed
+```brix crash
+(main
+  (<> Thing (id: thing) (• themed))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-• themed
-
-• themed
+(type + Thing
+  (rule themed)
+  (blank)
+  (rule themed)
+)
 ```
 
 ```output
 Exception: Redefinition of style rule
 <no file:9>
-    • themed
-    ^^^^^^^^
+      (rule themed)
+      ^^^^^^^^^^^^^
 ```
 
 ### A subclass style default overrides its base class default for the same property, even when the base declares more defaults before it.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Child
+(main
+  (<> BatchDemo (id: demo)
+    (<> Child)
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (let child (!! (. demo %first-child)))
+  (print (call style-authored-snapshot child))
+  (print (call style-computed-snapshot child))
+)
 
-demo.markup-batch-queue.checkpoint()
-. child = demo.%first-child!
--- style-authored-snapshot(child)
--- style-computed-snapshot(child)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 0))
+  (prop + bold _ (= false))
+  (prop + size I64 (= 0))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + Base (is Box)
+  (using TextStyle)
+  (rule This
+    (= bold true)
+    (= size 12)
+    (= ink 1)
+  )
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 0
-+ bold = false
-+ size I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Box
-    using TextStyle
-
-• This
-    bold = true
-    size = 12
-    ink = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-• This
-    ink = 9
+(type + Child (is Base)
+  (rule This
+    (= ink 9)
+  )
+)
 ```
 
 ```output
@@ -3768,35 +4039,34 @@ node TextStyle seg=owned gen=1 mask=7 ink=9 bold=1 size=12
 
 ### Converts rule arguments through fromverters, including rules applied inside other rules.
 
-```yumi
-<Thing direct • tint:"ab"
-<Thing nested • accent
--- direct.shade.level
--- nested.shade.level
+```brix
+(main
+  (<> Thing (id: direct) (• tint "ab"))
+  (<> Thing (id: nested) (• accent))
+  (print (. direct shade level))
+  (print (. nested shade level))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + shade _ (= (call Shade 0)))
+  (blank)
+  (rule tint
+    (param value Shade)
+    (= shade value)
+  )
+  (blank)
+  (rule accent (• tint "abcd"))
+)
 
-+ shade = Shade(0)
-
-• tint:value Shade
-    shade = value
-
-• accent • tint:"abcd"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shade
-
-+ level Int
-
-────────────────────
-+ This
-    - level
-
-────────────────────
-+ from value String
-
-Shade(value.length)
+(type + Shade
+  (prop + level Int)
+  (fn-do + This _
+    (param level _)
+  )
+  (fn-from-expr + (: value String)
+    (call Shade (. value length))
+  )
+)
 ```
 
 ```output
@@ -3806,36 +4076,37 @@ Shade(value.length)
 
 ### Prefers an exact rule overload over one that needs a conversion.
 
-```yumi
-<Thing thing • pick:"abc"
--- thing.text
--- thing.shade.level
+```brix
+(main
+  (<> Thing (id: thing) (• pick "abc"))
+  (print (. thing text))
+  (print (. thing shade level))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + text _ (= ""))
+  (prop + shade _ (= (call Shade 0)))
+  (blank)
+  (rule pick
+    (param value Shade)
+    (= shade value)
+  )
+  (blank)
+  (rule pick
+    (param value String)
+    (= text value)
+  )
+)
 
-+ text = ""
-+ shade = Shade(0)
-
-• pick:value Shade
-    shade = value
-
-• pick:value String
-    text = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shade
-
-+ level Int
-
-────────────────────
-+ This
-    - level
-
-────────────────────
-+ from value String
-
-Shade(value.length)
+(type + Shade
+  (prop + level Int)
+  (fn-do + This _
+    (param level _)
+  )
+  (fn-from-expr + (: value String)
+    (call Shade (. value length))
+  )
+)
 ```
 
 ```output
@@ -3845,76 +4116,85 @@ abc
 
 ### A component's own rules scope over slot content the same way they scope over its template: nested rules of its defaults matched on a template element, and nested rules of a rule applied by its root, including "when" branches.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <List list
-        <Segment icon • icon
-        <Segment mark • mark
+(main
+  (<> BatchDemo (id: demo)
+    (<> List (id: list)
+      (<> Segment (id: icon) (• icon))
+      (<> Segment (id: mark) (• mark))
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot icon))
+  (print (call style-computed-snapshot mark))
+  (= (. list item is-selected) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot icon))
+  (= (. list is-framed) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot mark))
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(icon)
--- style-computed-snapshot(mark)
-list.item.is-selected = true
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(icon)
-list.is-framed = true
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(mark)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + Segment (is Box)
+  (using TextStyle)
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + List (is Box)
+  (using TextStyle)
+  (prop + is-framed _ (= false))
+  (blank)
+  (rule This
+    (rule Item
+      (when-style #is-selected
+        (rule icon
+          (= ink 21)
+        )
+      )
+    )
+  )
+  (blank)
+  (rule framed
+    (rule mark
+      (= ink 4)
+    )
+    (blank)
+    (when-style #is-framed
+      (rule mark
+        (= ink 8)
+      )
+    )
+  )
+  (content
+    (<> This (• framed)
+      (<> Item (id: item)
+        (+<> Box)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TextStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ List is Box
-    using TextStyle
-
-+ is-framed = false
-
-• This
-    • Item
-        when #is-selected
-            • icon
-                ink = 21
-
-• framed
-    • mark
-        ink = 4
-
-    when #is-framed
-        • mark
-            ink = 8
-
-────────────────────
-
-<This • framed
-    <Item item
-        + <Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Box
-
-+ is-selected = false
+(type + Item (is Box)
+  (prop + is-selected _ (= false))
+)
 ```
 
 ```output
@@ -3924,59 +4204,64 @@ node TextStyle seg=owned gen=1 mask=1 ink=21
 node TextStyle seg=owned gen=2 mask=1 ink=8
 ```
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/task
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/task)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-.. marked = false
-. done = Semaphore()
+(main
+  (lazy marked false)
+  (let done (call Semaphore))
+  (blank)
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• accent (if: #marked)) (• wide 2 (if: #marked)))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot panel))
+  (blank)
+  (= marked true)
+  (do-new
+    (print (call style-computed-snapshot panel))
+    (call (. done post))
+  )
+  (call (. done wait))
+  (blank)
+  (= marked false)
+  (do-new
+    (print (call style-computed-snapshot panel))
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 
-<BatchDemo demo
-    <Panel panel • accent = #marked wide:2 = #marked
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(panel)
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 1))
+  (prop + tone I64 (= 0))
+)
 
-marked = true
-do new
-    -- style-computed-snapshot(panel)
-    done.post()
-done.wait()
-
-marked = false
-do new
-    -- style-computed-snapshot(panel)
-    done.post()
-done.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 1
-+ tone I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-• accent
-    ink = 9
-
-• wide:amount I64
-    tone = amount
+(type + Panel (is Box)
+  (using TintStyle)
+  (rule accent
+    (= ink 9)
+  )
+  (blank)
+  (rule wide
+    (param amount I64)
+    (= tone amount)
+  )
+)
 ```
 
 ```output
@@ -3985,145 +4270,152 @@ node TintStyle seg=owned gen=1 mask=3 ink=9 tone=2
 initial
 ```
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel • loud
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• loud))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot panel))
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(panel)
+(blank)
+(prop + loud _ (= 7))
 
-+ loud = 7
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 1))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-• loud
-    ink = loud
+(type + Panel (is Box)
+  (using TintStyle)
+  (rule loud
+    (= ink loud)
+  )
+)
 ```
 
 ```output
 node TintStyle seg=owned gen=1 mask=1 ink=7
 ```
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel • loud
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• loud))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot panel))
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(panel)
+(blank)
+(prop + loud _ (= 7))
 
-+ loud = 7
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 1))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + Panel (is Box)
+  (using TintStyle)
+  (using Theme)
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-    using Theme
-
-━━━━━━━━━━━━━━━━━━━━
-• Theme
-    using TintStyle
-
-• loud
-    ink = loud
+(style Theme
+  (using TintStyle)
+  (rule loud
+    (= ink loud)
+  )
+)
 ```
 
 ```output
 node TintStyle seg=owned gen=1 mask=1 ink=7
 ```
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/task
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/task)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. done = Semaphore()
+(main
+  (let done (call Semaphore))
+  (blank)
+  (<> BatchDemo (id: demo)
+    (<> Tag (id: tag) (• badge))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot tag))
+  (blank)
+  (= (. tag is-active) true)
+  (do-new
+    (print (call style-computed-snapshot tag))
+    (call (. done post))
+  )
+  (call (. done wait))
+  (blank)
+  (= (. tag is-active) false)
+  (do-new
+    (print (call style-computed-snapshot tag))
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 
-<BatchDemo demo
-    <Tag tag • badge
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(tag)
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+)
 
-tag.is-active = true
-do new
-    -- style-computed-snapshot(tag)
-    done.post()
-done.wait()
-
-tag.is-active = false
-do new
-    -- style-computed-snapshot(tag)
-    done.post()
-done.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tag is Box
-    using TextStyle
-
-+ is-active = false
-
-• badge
-    ink = 9
-
-    is-active:ink = 11
+(type + Tag (is Box)
+  (using TextStyle)
+  (prop + is-active _ (= false))
+  (blank)
+  (rule badge
+    (= ink 9)
+    (blank)
+    (style-set is-active ink 11)
+  )
+)
 ```
 
 ```output
@@ -4134,57 +4426,61 @@ node TextStyle seg=owned gen=3 mask=1 ink=9
 
 ### Rules written in a rule a slot outlet applies reach elements inside what a line gives the slot.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Holder holder
-        <Panel
-            <Segment • part
+(main
+  (<> BatchDemo (id: demo)
+    (<> Holder (id: holder)
+      (<> Panel
+        (<> Segment (• part))
+      )
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot (!! (. (!! (. holder %first-child)) %first-child))))
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(holder.%first-child!.%first-child!)
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-+ ink I64 = 0
+(type + Panel (is Box)
+  (using TintStyle)
+  (rule opened
+    (rule part
+      (= ink 6)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + Holder (is Box)
+  (content
+    (<> This
+      (+<> Panel (• opened))
+    )
+  )
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-• opened
-    • part
-        ink = 6
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-────────────────────
-
-<This
-    + <Panel • opened
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
+(type + Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
 ```output
@@ -4193,47 +4489,51 @@ node TintStyle seg=owned gen=1 mask=1 ink=6
 
 ### A tracked name in a value a rule an element of a class's markup applies is read again as it changes, and the rule's line that sets a property with it runs again, as an attribute would.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = Panel()
--- panel.report()
-panel.amount = 3
--- panel.report()
+(main
+  (let panel (call Panel))
+  (print (call (. panel report)))
+  (= (. panel amount) 3)
+  (print (call (. panel report)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Box
+(type + Thing (is Box)
+  (prop + x _ (= 0))
+  (blank)
+  (rule set
+    (param value Int)
+    (= x value)
+  )
+)
 
-+ x = 0
-
-• set:value Int
-    x = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ amount = 1
-
-────────────────────
-
-<This
-    <Box
-        <Thing • set:(#amount)
-
-────────────────────
-+ do report String
-
-. text = ""
-. node = %first-child
-while node
-    text = text ++ "[box"
-    . inner = node.%first-child
-    while inner
-        text = text ++ " ${(inner as Thing).x}"
-        inner = inner.%next-sibling
-    text = text ++ "]"
-    node = node.%next-sibling
-= text
+(type + Panel (is Box)
+  (prop + amount _ (= 1))
+  (content
+    (<> This
+      (<> Box
+        (<> Thing (• set #amount))
+      )
+    )
+  )
+  (fn-do + report String
+    (let text "")
+    (let node %first-child)
+    (while node
+      (= text (++ text "[box"))
+      (let inner (. node %first-child))
+      (while inner
+        (= text (++ text (str " " (. (as inner Thing) x))))
+        (= inner (. inner %next-sibling))
+      )
+      (= text (++ text "]"))
+      (= node (. node %next-sibling))
+    )
+    (return text)
+  )
+)
 ```
 
 ```output
@@ -4243,53 +4543,55 @@ while node
 
 ### A tracked name in a value a rule an element of a class's markup applies is read again as it changes, and the rule's declaration that reads it is declared again, as the same line written on the element is.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (str (. panel short $ink) " " (. panel long $ink)))
+  (= (. panel amount) 3)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (str (. panel short $ink) " " (. panel long $ink)))
+)
 
-demo.markup-batch-queue.checkpoint()
--- "${panel.short.$ink} ${panel.long.$ink}"
-panel.amount = 3
-demo.markup-batch-queue.checkpoint()
--- "${panel.short.$ink} ${panel.long.$ink}"
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + Mover (is Box)
+  (using TintStyle)
+  (rule tint
+    (param value I64)
+    (= ink value)
+  )
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mover is Box
-    using TintStyle
-
-• tint:value I64
-    ink = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ amount = 1
-
-────────────────────
-
-<This
-    <Mover short • tint:(#amount)
-    <Mover long
-        ink = #amount
+(type + Panel (is Box)
+  (prop + amount _ (= 1))
+  (content
+    (<> This
+      (<> Mover (id: short) (• tint #amount))
+      (<> Mover (id: long)
+        (= ink #amount)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -4299,55 +4601,57 @@ demo.markup-batch-queue.checkpoint()
 
 ### A tracked name in a value a rule an element in an arm of a markup branch region applies is read again as it changes, and the rule's declaration that reads it is declared again, as one an element outside a region applies is.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (let mover (as (!! (. (!! (. panel %first-child)) %first-child)) Mover))
+  (print (. mover $ink))
+  (= (. panel amount) 3)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. mover $ink))
+  (print (== mover (!! (. (!! (. panel %first-child)) %first-child))))
+)
 
-demo.markup-batch-queue.checkpoint()
-. mover = panel.%first-child!.%first-child! as Mover
--- mover.$ink
-panel.amount = 3
-demo.markup-batch-queue.checkpoint()
--- mover.$ink
--- mover == panel.%first-child!.%first-child!
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + Mover (is Box)
+  (using TintStyle)
+  (rule tint
+    (param value I64)
+    (= ink value)
+  )
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mover is Box
-    using TintStyle
-
-• tint:value I64
-    ink = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ amount = 1
-+ is-on = true
-
-────────────────────
-
-<This
-    if #is-on
-        <Mover • tint:(#amount)
+(type + Panel (is Box)
+  (prop + amount _ (= 1))
+  (prop + is-on _ (= true))
+  (content
+    (<> This
+      (if #is-on
+        (<> Mover (• tint #amount))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -4358,48 +4662,52 @@ true
 
 ### A tracked name in a value a class's rule `• This` gives a rule it applies under a `when` is read again as it changes.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Mover mover
+(main
+  (<> BatchDemo (id: demo)
+    (<> Mover (id: mover))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. mover $ink))
+  (= (. mover amount) 3)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. mover $ink))
+)
 
-demo.markup-batch-queue.checkpoint()
--- mover.$ink
-mover.amount = 3
-demo.markup-batch-queue.checkpoint()
--- mover.$ink
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mover is Box
-    using TintStyle
-
-+ amount = 1
-+ is-on = true
-
-• tint:value I64
-    ink = value
-
-• This
-    when #is-on
-        • tint:(#amount)
+(type + Mover (is Box)
+  (using TintStyle)
+  (prop + amount _ (= 1))
+  (prop + is-on _ (= true))
+  (blank)
+  (rule tint
+    (param value I64)
+    (= ink value)
+  )
+  (blank)
+  (rule This
+    (when-style #is-on
+      (• tint #amount)
+    )
+  )
+)
 ```
 
 ```output
@@ -4409,47 +4717,48 @@ demo.markup-batch-queue.checkpoint()
 
 ### A tracked read in a value a rule the root `<This` of a class's markup applies is read again as it changes.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Mover mover
+(main
+  (<> BatchDemo (id: demo)
+    (<> Mover (id: mover))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. mover $ink))
+  (= (. mover rect) (call Rect 0 0 3 1))
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. mover $ink))
+)
 
-demo.markup-batch-queue.checkpoint()
--- mover.$ink
-mover.rect = Rect(0, 0, 3, 1)
-demo.markup-batch-queue.checkpoint()
--- mover.$ink
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + TintStyle (is Style)
+  (prop + ink Coord (= 0))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink Coord = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mover is Box
-    using TintStyle
-
-+ rect = Rect(0, 0, 1, 1)
-
-• tint:value Coord
-    ink = value
-
-────────────────────
-
-<This • tint:(#rect.width)
+(type + Mover (is Box)
+  (using TintStyle)
+  (prop + rect _ (= (call Rect 0 0 1 1)))
+  (blank)
+  (rule tint
+    (param value Coord)
+    (= ink value)
+  )
+  (content
+    (<> This (• tint (. #rect width)))
+  )
+)
 ```
 
 ```output
@@ -4459,37 +4768,43 @@ demo.markup-batch-queue.checkpoint()
 
 ### The values the root `<This` gives its rules, and those its rules give the rules they apply, are evaluated once, by the constructor.
 
-```yumi
-/core/style
+```brix
+(import /core/style)
+(blank)
 
-. thing = Thing()
--- thing.x
--- thing.y
+(main
+  (let thing (call Thing))
+  (print (. thing x))
+  (print (. thing y))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ twice I64
-    - value I64
+(fn-expr + twice I64
+  (param value I64)
+  (before
+    (print (str "twice " value))
+  )
+  (* value 2)
+)
 
--- "twice $value"
-value * 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ x = 0
-+ y = 0
-
-• set-x:value I64
-    x = value
-
-• set-y:value I64
-    y = value
-
-• doubled • set-x:twice(2)
-
-────────────────────
-
-<This • doubled set-y:(twice(3))
+(type + Thing
+  (prop + x _ (= 0))
+  (prop + y _ (= 0))
+  (blank)
+  (rule set-x
+    (param value I64)
+    (= x value)
+  )
+  (blank)
+  (rule set-y
+    (param value I64)
+    (= y value)
+  )
+  (blank)
+  (rule doubled (• set-x (call twice 2)))
+  (content
+    (<> This (• doubled) (• set-y (call twice 3)))
+  )
+)
 ```
 
 ```output
@@ -4501,140 +4816,136 @@ twice 3
 
 ### A style state that is not Bool names the property's type as the reference prints types.
 
-```yumi crash
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Panel panel • lit
+(main
+  (<> Panel (id: panel) (• lit))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+)
 
-+ ink I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-+ hovered = 0
-
-• lit
-    when hovered
-        ink = 3
+(type + Panel (is Box)
+  (using TintStyle)
+  (prop + hovered _ (= 0))
+  (blank)
+  (rule lit
+    (when-style hovered
+      (= ink 3)
+    )
+  )
+)
 ```
 
 ```output
 Exception: Style state "hovered" must be a boolean property, but Panel.hovered is I64
 <no file:20>
-        when hovered
-        ^^^^^^^^^^^
+        (when-style hovered
+        ^^^^^^^^^^^^^^^^^^
 ```
 
 ### The styles a markup element sees are those of the markup it is written in, not those another module's markup typed before it saw: each module's rule declares the property of its own style.
 
-```yumi
-./lib/first
-./lib/second
+```brix
+(import ./lib/first)
+(import ./lib/second)
+(blank)
 
-show-first()
-show-second()
+(main
+  (call show-first)
+  (call show-second)
+)
 ```
 
-```yumi file=lib/first.yumi
+```brix file=lib/first.bx
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
 
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+(fn-do + show-first _
+  (<> Holder (id: holder)
+    (<> Panel (id: panel))
+  )
+  (call (. holder markup-batch-queue checkpoint))
+  (print (call style-authored-snapshot (!! (. panel %first-child))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show-first
+(type _ TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
-<Holder holder
-    <Panel panel
-holder.markup-batch-queue.checkpoint()
--- style-authored-snapshot(panel.%first-child!)
+(type _ Holder (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ TintStyle is Style
+(type _ Panel (is Box)
+  (using TintStyle)
+  (rule This
+    (<> Segment (• part))
+  )
+)
 
-+ ink I64 = 0
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-_ Holder is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-_ Panel is Box
-    using TintStyle
-
-• This
-    <Segment • part
-
-━━━━━━━━━━━━━━━━━━━━
-_ Segment is Box
-    using TintStyle
-
-• part
-    ink = 1
-
+(type _ Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 1)
+  )
+)
 ```
 
-```yumi file=lib/second.yumi
+```brix file=lib/second.bx
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
 
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+(fn-do + show-second _
+  (<> Holder (id: holder)
+    (<> Panel (id: panel))
+  )
+  (call (. holder markup-batch-queue checkpoint))
+  (print (call style-authored-snapshot (!! (. panel %first-child))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show-second
+(type _ TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
-<Holder holder
-    <Panel panel
-holder.markup-batch-queue.checkpoint()
--- style-authored-snapshot(panel.%first-child!)
+(type _ Holder (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ TintStyle is Style
+(type _ Panel (is Box)
+  (using TintStyle)
+  (rule This
+    (<> Segment (• part))
+  )
+)
 
-+ ink I64 = 0
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-_ Holder is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-_ Panel is Box
-    using TintStyle
-
-• This
-    <Segment • part
-
-━━━━━━━━━━━━━━━━━━━━
-_ Segment is Box
-    using TintStyle
-
-• part
-    ink = 2
-
+(type _ Segment (is Box)
+  (using TintStyle)
+  (rule part
+    (= ink 2)
+  )
+)
 ```
 
 ```output
@@ -4644,55 +4955,57 @@ node TintStyle.ink layer=2 order=0 kind=static bits=2
 
 ### The values given to the rules written after the name of a rule an element applies are evaluated as the element is prepared, after its attributes, and again as the rules apply.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel panel • header extra
-        note = pick(5)
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel) (• header) (• extra)
+      (= note (call pick 5))
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. panel $ink))
+)
 
-demo.markup-batch-queue.checkpoint()
--- panel.$ink
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + Panel (is Box)
+  (using TintStyle)
+  (prop + note I64 (= 0))
+  (blank)
+  (rule set-ink
+    (param value I64)
+    (= ink value)
+  )
+  (blank)
+  (rule header (• mid) (• set-ink (call pick 1)))
+  (blank)
+  (rule mid (• set-ink (call pick 2)))
+  (blank)
+  (rule extra (• set-ink (call pick 3)))
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-+ note I64 = 0
-
-• set-ink:value I64
-    ink = value
-
-• header • mid set-ink:pick(1)
-
-• mid • set-ink:pick(2)
-
-• extra • set-ink:pick(3)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pick I64
-    - n I64
-
--- "pick $n"
-= n
+(fn-do + pick I64
+  (param n I64)
+  (print (str "pick " n))
+  (return n)
+)
 ```
 
 ```output
@@ -4708,46 +5021,48 @@ pick 3
 
 ### An element whose body holds only its own style lines still generates the content of the rules it applies once it is mounted under its parent.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Panel plain • trail
-    <Panel lined • trail
-        ink = 3
+(main
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: plain) (• trail))
+    (<> Panel (id: lined) (• trail)
+      (= ink 3)
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call markup-is-style-shadow (!! (. plain %next-sibling))))
+  (print (call markup-is-style-shadow (!! (. lined %next-sibling))))
+  (print (. lined $ink))
+)
 
-demo.markup-batch-queue.checkpoint()
--- markup-is-style-shadow(plain.%next-sibling!)
--- markup-is-style-shadow(lined.%next-sibling!)
--- lined.$ink
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-+ ink I64 = 0
+(type + Panel (is Box)
+  (using TintStyle)
+  (rule trail
+    (<> Segment (slot: after))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using TintStyle
-
-• trail
-    <Segment (after)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Segment is Box
-    using TintStyle
+(type + Segment (is Box)
+  (using TintStyle)
+)
 ```
 
 ```output
@@ -4758,29 +5073,31 @@ true
 
 ### A line of a style rule that sets a property of its class from something tracked sets it again as that changes.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. child = Stateful(5)
--- child.text
-child.address = 7
--- child.text
-child.address = 9
--- child.text
+(main
+  (let child (call Stateful 5))
+  (print (. child text))
+  (= (. child address) 7)
+  (print (. child text))
+  (= (. child address) 9)
+  (print (. child text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Stateful is Box
-
-+ address I64
-+ text = ""
-
-• This
-    text = "at ${#address}"
-
-────────────────────
-+ This
-    - address
+(type + Stateful (is Box)
+  (prop + address I64)
+  (prop + text _ (= ""))
+  (blank)
+  (rule This
+    (= text (str "at " #address))
+  )
+  (fn-do + This _
+    (param address _)
+  )
+)
 ```
 
 ```output
@@ -4791,48 +5108,49 @@ at 9
 
 ### A style rule applied in markup reads the names in its condition on the element it applies to.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-.. heavy = false
+(main
+  (lazy heavy false)
+  (blank)
+  (<> BatchDemo (id: demo)
+    (<> Label (id: label) (• bold (if: #heavy)))
+  )
+  (blank)
+  (= heavy true)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. label $ink))
+  (= (. label heavy) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. label $ink))
+)
 
-<BatchDemo demo
-    <Label label • bold = #heavy
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
-heavy = true
-demo.markup-batch-queue.checkpoint()
--- label.$ink
-label.heavy = true
-demo.markup-batch-queue.checkpoint()
--- label.$ink
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
-
-+ heavy = false
-
-• bold
-    ink = 77
+(type + Label (is Box)
+  (using TextStyle)
+  (prop + heavy _ (= false))
+  (blank)
+  (rule bold
+    (= ink 77)
+  )
+)
 ```
 
 ```output
@@ -4842,48 +5160,50 @@ demo.markup-batch-queue.checkpoint()
 
 ### A main that makes an element of a class whose theme, in another module, gates the rule of an element of the class's markup by a state of the class runs.
 
-```yumi
-/core/markup
-./lib/widget
+```brix
+(import /core/markup)
+(import ./lib/widget)
+(blank)
 
-<Widget widget
-
--- widget.is-hot
+(main
+  (<> Widget (id: widget))
+  (blank)
+  (print (. widget is-hot))
+)
 ```
 
-```yumi file=lib/widget.yumi
+```brix file=lib/widget.bx
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
 
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+(type + PaintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ PaintStyle is Style
+(style WidgetTheme
+  (using PaintStyle)
+  (rule Widget
+    (when-style #is-hot
+      (rule leading
+        (= ink 2)
+      )
+    )
+  )
+)
 
-+ ink I64 = 0
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-• WidgetTheme
-    using PaintStyle
-
-• Widget
-    when #is-hot
-        • leading
-            ink = 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Widget is Box
-    using PaintStyle
-    using WidgetTheme
-
-+ is-hot = false
-
-────────────────────
-<This
-    <Box leading
-
+(type + Widget (is Box)
+  (using PaintStyle)
+  (using WidgetTheme)
+  (prop + is-hot _ (= false))
+  (content
+    (<> This
+      (<> Box (id: leading))
+    )
+  )
+)
 ```
 
 ```output
@@ -4892,105 +5212,108 @@ false
 
 ### A line of a rule that reads the value the rule takes and a property of a style is no live one, as a style's property is not tracked: it declares once, where the rule is applied.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Leaf leaf • heavy:3
+(main
+  (<> BatchDemo (id: demo)
+    (<> Leaf (id: leaf) (• heavy 3))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot leaf))
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(leaf)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using TextStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using TextStyle
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+  (prop + weight I64 (= 1))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-+ weight I64 = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is Box
-    using TextStyle
-
-• heavy:value I64
-    weight = value + $ink
+(type + Leaf (is Box)
+  (using TextStyle)
+  (rule heavy
+    (param value I64)
+    (= weight (+ value $ink))
+  )
+)
 ```
 
 ```output
 node TextStyle seg=owned gen=1 mask=2 ink=7 weight=10
 ```
 
-```yumi
-/core/markup
-/core/style
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/style)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. root = Root()
-markup-mount-root(root, root)
-root.markup-batch-queue.checkpoint()
-. row = root.%first-child!.%first-child! as Thing
--- row.x
--- row.$span
-root.items = [Item("a", 12)]
-root.markup-batch-queue.checkpoint()
--- row.x
--- row.$span
--- row == root.%first-child!.%first-child!
-root.close()
+(main
+  (let root (call Root))
+  (call markup-mount-root root root)
+  (call (. root markup-batch-queue checkpoint))
+  (let row (as (!! (. (!! (. root %first-child)) %first-child)) Thing))
+  (print (. row x))
+  (print (. row $span))
+  (= (. root items) (list (call Item "a" 12)))
+  (call (. root markup-batch-queue checkpoint))
+  (print (. row x))
+  (print (. row $span))
+  (print (== row (!! (. (!! (. root %first-child)) %first-child))))
+  (call (. root close))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Tuple
+(type + Item (is Tuple)
+  (prop + id String)
+  (prop + size Int)
+)
 
-+ id String
-+ size Int
+(type + Thing (is Box)
+  (using Sized)
+  (prop + x Int)
+  (blank)
+  (rule sized
+    (param value Int)
+    (= x value)
+    (= span value)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Box
-    using Sized
+(type + Sized (is Style)
+  (prop + span Int)
+  (blank)
+  (style-domains span (domain layout))
+)
 
-+ x Int
-
-• sized:value Int
-    x = value
-    span = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sized is Style
-
-+ span Int
-
-. span -> layout
-
-━━━━━━━━━━━━━━━━━━━━
-+ Root is Box
-    is MarkupRootElement
-
-+ items = [Item("a", 1)]
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-<This
-    for item in #items keyed by item.id
-        <Thing • sized:item.size
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
+(type + Root (is Box)
+  (implements MarkupRootElement)
+  (prop + items _ (= (list (call Item "a" 1))))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (content
+    (<> This
+      (for (in item #items (keyed-by (. item id)))
+        (<> Thing (• sized (. item size)))
+      )
+    )
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+)
 ```
 
 ```output

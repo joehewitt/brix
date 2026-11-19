@@ -1,0 +1,26 @@
+; benchmark.meta description: Passes a message back and forth between two tasks on the default queue, so every step is a task switch.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core/channel)
+(blank)
+
+(main
+  (let rounds 200000)
+  (let ping (of SyncChannel Int))
+  (let pong (of SyncChannel Int))
+  (blank)
+  (do-new
+    (for (in round (..< 0 rounds))
+      (<- pong (+ (% (!! (<- ping)) 1000) 1))
+    )
+  )
+  (blank)
+  (let checksum 0)
+  (for (in round (..< 0 rounds))
+    (<- ping round)
+    (+= checksum (!! (<- pong)))
+  )
+  (blank)
+  (print (str "bench-result tasks/task-switch checksum=" checksum))
+)

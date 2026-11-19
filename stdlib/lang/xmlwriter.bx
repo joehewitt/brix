@@ -1,0 +1,85 @@
+(type + XMLWriter
+  (prop _ indent _ (= 0))
+  (prop _ lines (list String))
+  (fn-do + tag _
+    (param node XML)
+    (if (. node node-name)
+      (call write-line
+        (block
+          (item (str "<" (. node node-name)))
+          (spread (in (str " " (. each key) "=\"" (. each value) "\"") (. node attrs)))
+          (item (if-expr (. node children) ">" "/>"))
+          (pipe |> join)
+        )
+      )
+      (+= indent 1)
+    )
+    (blank)
+    (for (in child (. node children))
+      (call (. this tag) child)
+    )
+    (blank)
+    (if (. node node-name)
+      (-= indent 1)
+      (if (. node children)
+        (call write-line
+          (block
+            (str "</" (. node node-name) ">")
+          )
+        )
+      )
+    )
+  )
+  (fn-expr + render _
+    (call (. "\n" join) lines)
+  )
+  (fn-do + write-line _
+    (param line String)
+    (+= lines
+      (scope (+ indentation line)
+        (lazy indentation (* "    " indent))
+      )
+    )
+  )
+)
+
+(type + XML
+  (prop + node-name String)
+  (prop + attrs (list (of KeyValuePair String String)))
+  (prop + children (list This))
+  (fn-do + This _
+    (param node-name String (= ""))
+  )
+  (fn-to-do + String
+    (let writer XMLWriter)
+    (call (. writer tag) this)
+    (return (call (. writer render)))
+  )
+  (fn-do + (infix this += (param child (? This))) _
+    (if child
+      (+= children child)
+    )
+  )
+  (fn-do + (infix this ++= (param kids (stream This))) _
+    (for (in kid kids)
+      (+= children kid)
+    )
+  )
+  (fn-do + (infix this ++= (param kids (? (stream This)))) _
+    (if kids
+      (for (in kid kids)
+        (+= children kid)
+      )
+    )
+  )
+  (fn-do + (infix this += (param kv (? (of KeyValuePair String String)))) _
+    (if kv
+      (+= attrs kv)
+    )
+  )
+  (fn-do + (infix this += (param kv (? (of KeyValuePair String ''Value)))) _
+    (if kv
+      (+= attrs (tuple (. kv key) (str (. kv value))))
+    )
+  )
+)

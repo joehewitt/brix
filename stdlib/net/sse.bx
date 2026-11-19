@@ -1,0 +1,119 @@
+(import /core/string)
+(import /core/tokenstream)
+(import /data)
+
+(type + ServerSentEvent
+  (prop + event String)
+  (prop + data String)
+  (prop + id String)
+  (prop + retry Int)
+  (fn-do + This _
+    (param data String)
+    (param event _ (= ""))
+    (param id _ (= ""))
+    (param retry _ (= 0))
+  )
+  (fn-to-expr + String
+    (call (. "" join) lines)
+    (where
+      (lazy lines
+        (block
+          (item? (only-if (str "event: " event "\n") (if event)))
+          (spread (in (str "data: " each "\n") (call (. data split) "\n")))
+          (item? (only-if (str "id: " id "\n") (if id)))
+          (item? (only-if (str "retry: " retry "\n") (if retry)))
+          (item "\n")
+        )
+      )
+    )
+  )
+)
+
+(fn-do + server-sent-events (stream ServerSentEvent)
+  (param body (of ReadableData Byte))
+  (let stream (call (of ChunkedTokenStream Byte) body))
+  (let event "")
+  (let id "")
+  (let retry 0)
+  (let data-lines (call (of List String)))
+  (blank)
+  (while true
+    (let maybe-line (call (. stream read) "\n"))
+    (if (not maybe-line)
+      (if data-lines
+        (yield (call ServerSentEvent (call (. "\n" join) data-lines) event id retry))
+      )
+      (break)
+    )
+    (blank)
+    (let line (call strip-line-ending maybe-line))
+    (if (not line)
+      (if data-lines
+        (yield (call ServerSentEvent (call (. "\n" join) data-lines) event id retry))
+      )
+      (= event "")
+      (= data-lines (call (of List String)))
+      (else-if (is line (all ":" ...))
+        (print)
+      )
+      (else
+        (let (tuple field value) (call sse-field line))
+        (if (== field "event")
+          (= event value)
+          (else-if (== field "data")
+            (+= data-lines value)
+          )
+          (else-if (== field "id")
+            (= id value)
+          )
+          (else-if (== field "retry")
+            (= retry (?? (call retry-time value) retry))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ retry-time (? Int)
+  (param value String)
+  (match? value
+    (~ (seq (+ (chars "0-9")) (! .))
+      (call Int it)
+    )
+  )
+)
+
+(fn-expr _ strip-line-ending _
+  (param line String)
+  (match line
+    (case (all ...body "\r")
+      body
+    )
+    (default
+      line
+    )
+  )
+)
+
+(fn-expr _ sse-field _
+  (param line String)
+  (case? (call (. line find) ":")
+    (tuple ([] line (..< 0 (!! it))) (call sse-field-value ([] line (... (+ (!! it) 1)))))
+  )
+  (default
+    (tuple line "")
+  )
+)
+
+(fn-expr _ sse-field-value _
+  (param value String)
+  (match value
+    (case (all " " ...tail)
+      tail
+    )
+    (default
+      value
+    )
+  )
+)

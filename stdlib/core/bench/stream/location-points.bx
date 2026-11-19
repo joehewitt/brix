@@ -1,0 +1,45 @@
+; benchmark.meta description: Tracks source locations through stream matches.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+
+(main
+  (let points
+    (match (call location-points-source)
+      (~ \location-points-document)
+      (throw (call Panic "location-points did not parse"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in point points)
+    (+= checksum point)
+  )
+  (blank)
+  (print (str "bench-result stream/location-points checksum=" checksum))
+)
+
+(fn-expr + location-points-document _ (over: Char)
+  (~ (: points (+ \location-point))
+    points
+  )
+  (where
+    (lazy location-point Size
+      (pattern
+        (~ (seq "row:" (: name \location-word) "\n")
+          (+ (. name length) (. (str location) length))
+        )
+      )
+    )
+    (blank)
+    (lazy location-word String
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_"))))
+      )
+    )
+  )
+)
+
+(fn-expr _ location-points-source _
+  (call (. "" join) (in (str "row:name_" each "\n") (..< 0 130)))
+)

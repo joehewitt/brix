@@ -1,0 +1,227 @@
+(import /core/markup)
+
+(type + VirtualCoord (alias vcoord) (is I64))
+
+(type + VirtualPoint (is Tuple)
+  (prop + x VirtualCoord)
+  (prop + y VirtualCoord)
+)
+
+(type + VirtualSize (is Tuple)
+  (prop + width VirtualCoord)
+  (prop + height VirtualCoord)
+)
+
+(type + VirtualRect (is Tuple)
+  (prop + x VirtualCoord)
+  (prop + y VirtualCoord)
+  (prop + width VirtualCoord)
+  (prop + height VirtualCoord)
+)
+
+(type + VirtualInsets (is Tuple)
+  (prop + top VirtualCoord)
+  (prop + right VirtualCoord)
+  (prop + bottom VirtualCoord)
+  (prop + left VirtualCoord)
+)
+
+(type + VirtualExtent (is Tuple)
+  (prop + known VirtualCoord)
+  (prop + estimated (? VirtualCoord))
+  (prop + is-final Bool)
+)
+
+(type + VirtualKey (is Tuple)
+  (prop + revision U64)
+  (prop + value I64)
+)
+
+(type + VirtualSequenceDomain (is Interface)
+  (fn-expr + known-count VirtualCoord :get)
+  (fn-expr + estimated-count (? VirtualCoord) :get)
+  (fn-expr + is-final Bool :get)
+  (fn-expr + address-at I64
+    (param index VirtualCoord)
+  )
+  (fn-expr + index-of (? VirtualCoord)
+    (param address I64)
+  )
+)
+
+(type + VirtualRevision
+  (prop + value U64)
+  (prop + changes U64)
+  (blank)
+  (depends value-changed value)
+  (fn-do + bump _
+    (+= value 1)
+  )
+  (fn-do + touch _
+    (+= changes 1)
+  )
+  (fn-do _ value-changed _
+    (+= changes 1)
+  )
+)
+
+(type + (of VirtualBindingTarget Item) (is Interface)
+  (fn-do + commit _
+    (param key VirtualKey)
+    (param item Item)
+    (param generation U64)
+  )
+  (fn-do + fail _
+    (param generation U64)
+  )
+)
+
+(type + (of VirtualSource Item) (is Interface)
+  (fn-expr + revision VirtualRevision :get)
+  (fn-expr + domain VirtualSequenceDomain :get)
+  (fn-do + bind _
+    (param address I64)
+    (param generation U64)
+    (param target (of VirtualBindingTarget Item))
+  )
+  (fn-expr + identity-at (? U64)
+    (param address I64)
+    null
+  )
+)
+
+(type + (of VirtualSlot Item)
+  (implements MarkupRebindableScope)
+  (prop + is-bound Bool (= false))
+  (prop + address I64)
+  (prop + key VirtualKey)
+  (prop + item Item)
+  (prop + generation U64 (= 0))
+  (fn-do + This _
+    (param address _)
+    (param key _)
+    (param item _)
+    (param generation U64 (= 0))
+    (= is-bound true)
+  )
+)
+
+(type + VirtualRangeSource
+  (implements VirtualSequenceDomain)
+  (implements (of VirtualSource I64))
+  (prop + count VirtualCoord)
+  (prop + revision _ (:= (call VirtualRevision)))
+  (blank)
+  (depends count-changed count)
+  (fn-do + This _
+    (param count _)
+    (throw (call Panic "Virtual range count must not be negative") (if (< count 0vcoord)))
+  )
+  (fn-do + bump-revision _
+    (call (. revision bump))
+  )
+  (fn-do _ count-changed _
+    (call (. revision touch))
+  )
+  (fn-expr + known-count VirtualCoord :get
+    count
+  )
+  (fn-expr + estimated-count (? VirtualCoord) :get
+    count
+  )
+  (fn-expr + is-final Bool :get
+    true
+  )
+  (fn-expr + address-at I64
+    (param index VirtualCoord)
+    index
+  )
+  (fn-expr + index-of (? VirtualCoord)
+    (param address I64)
+    (case? (or (< address 0) (>= address (as count I64)))
+      null
+    )
+    (default
+      (as address VirtualCoord)
+    )
+  )
+  (fn-expr + domain VirtualSequenceDomain :get
+    this
+  )
+  (fn-do + bind _
+    (param address I64)
+    (param generation U64)
+    (param target (of VirtualBindingTarget I64))
+    (if (or (< address 0) (>= address (as count I64)))
+      (call (. target fail) generation)
+      (else
+        (let item (+ address (* (as (. revision value) I64) (as count I64))))
+        (call (. target commit) (call VirtualKey (. revision value) address) item generation)
+      )
+    )
+  )
+)
+
+(type + (of VirtualItemIdentity Item) (is (fn-type U64 (param item Item))))
+
+(type + (of VirtualListSource Item)
+  (implements VirtualSequenceDomain)
+  (implements (of VirtualSource Item))
+  (prop + revision _ (:= (call VirtualRevision)))
+  (prop + identity (? (of VirtualItemIdentity Item)))
+  (blank)
+  (prop _ values (list Item) (= (call (of List Item))))
+  (fn-expr + items (list Item) :get
+    values
+  )
+  (fn-expr + count Size :get
+    (. values length)
+  )
+  (fn-do + replace _
+    (param next (list Item))
+    (= values next)
+    (call (. revision bump))
+  )
+  (fn-expr + known-count VirtualCoord :get
+    (. values length)
+  )
+  (fn-expr + estimated-count (? VirtualCoord) :get
+    (as (. values length) VirtualCoord)
+  )
+  (fn-expr + is-final Bool :get
+    true
+  )
+  (fn-expr + address-at I64
+    (param index VirtualCoord)
+    index
+  )
+  (fn-expr + index-of (? VirtualCoord)
+    (param address I64)
+    (case? (or (< address 0) (>= address (as (. values length) I64)))
+      null
+    )
+    (default
+      (as address VirtualCoord)
+    )
+  )
+  (fn-expr + domain VirtualSequenceDomain :get
+    this
+  )
+  (fn-do + bind _
+    (param address I64)
+    (param generation U64)
+    (param target (of VirtualBindingTarget Item))
+    (if (or (< address 0) (>= address (as (. values length) I64)))
+      (call (. target fail) generation)
+      (else
+        (call (. target commit) (call VirtualKey (. revision value) address) ([] values address) generation)
+      )
+    )
+  )
+  (fn-do + identity-at (? U64)
+    (param address I64)
+    (let identify identity)
+    (return-if (if (or (not identify) (< address 0) (>= address (as (. values length) I64)))))
+    (return (call identify ([] values address)))
+  )
+)

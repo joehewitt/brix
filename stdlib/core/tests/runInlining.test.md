@@ -1,33 +1,34 @@
 # Inlining
 
-```yumi
-. nodes [Node] = [Row(), Node(), Row()]
-for row in selected(nodes)
-    -- row.enabled
+```brix
+(main
+  (let nodes (list Node) (list (call Row) (call Node) (call Row)))
+  (for (in row (call selected nodes))
+    (print (. row enabled))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node
+(type + Node)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Row is Node
+(type + Row (is Node)
+  (prop + enabled _ (= true))
+)
 
-+ enabled = true
+(fn-expr + selected _ @inline
+  (param nodes (list Node))
+  (spread nodes)
+  (pipe ?*> (call select-row each))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ selected @inline
-    - nodes [Node]
-
-** nodes
-?*> select-row(each)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do select-row @inline
-    - node Node
-
-if node is Row
-    . row = node as Row
-    if row.enabled
-        = row
+(fn-do + select-row _ @inline
+  (param node Node)
+  (if (is node Row)
+    (let row (as node Row))
+    (if (. row enabled)
+      (return row)
+    )
+  )
+)
 ```
 
 ```output
@@ -35,28 +36,32 @@ true
 true
 ```
 
-```yumi warn
-/core
--- caller(4)
+```brix warn
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do leaf Int @inline
-    - value Int
+(main
+  (print (call caller 4))
+)
 
-. total = 0
-for index in 0 .. < value
-    if index == 2
-        continue
-    total += index
-if total > 1
-    = total
-= value
+(fn-do + leaf Int @inline
+  (param value Int)
+  (let total 0)
+  (for (in index (..< 0 value))
+    (if (== index 2)
+      (continue)
+    )
+    (+= total index)
+  )
+  (if (> total 1)
+    (return total)
+  )
+  (return value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ caller Int
-    - value Int
-
-leaf(value) + leaf(value + 1)
+(fn-expr + caller Int
+  (param value Int)
+  (+ (call leaf value) (call leaf (+ value 1)))
+)
 ```
 
 ```stderr
@@ -66,46 +71,44 @@ leaf(value) + leaf(value + 1)
 12
 ```
 
-```yumi
--- selected-property(Value(4), Value(9), true)
--- selected-property(Value(4), Value(9), false)
+```brix
+(main
+  (print (call selected-property (call Value 4) (call Value 9) true))
+  (print (call selected-property (call Value 4) (call Value 9) false))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Value
+(type + Value
+  (prop + number Int)
+  (fn-do + This _
+    (param number Int)
+  )
+)
 
-+ number Int
+(fn-expr + invoke Int @inline
+  (param callback (of Mapper Int Int))
+  (param value Int)
+  (call callback value)
+)
 
-────────────────────
-+ This
-    - number Int
+(fn-do + choose-value Value @inline
+  (param first Value)
+  (param second Value)
+  (param choose Bool)
+  (if choose
+    (return second)
+  )
+  (return first)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ invoke Int @inline
-    - callback Mapper'Int'Int
-    - value Int
-
-callback(value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do choose-value Value @inline
-    - first Value
-    - second Value
-    - choose Bool
-
-if choose
-    = second
-= first
-
-━━━━━━━━━━━━━━━━━━━━
-+ do selected-property Int
-    - first Value
-    - second Value
-    - choose Bool
-
-. selected = choose-value(first, second, choose)
-. offset = 2
-. callback Mapper'Int'Int = :: value => value + offset
-= invoke(callback, selected.number)
+(fn-do + selected-property Int
+  (param first Value)
+  (param second Value)
+  (param choose Bool)
+  (let selected (call choose-value first second choose))
+  (let offset 2)
+  (let callback (of Mapper Int Int) (=> (value) (+ value offset)))
+  (return (call invoke callback (. selected number)))
+)
 ```
 
 ```output
@@ -113,46 +116,44 @@ if choose
 6
 ```
 
-```yumi
--- selected-property(Value(4), Value(9), true)
--- selected-property(Value(4), Value(9), false)
+```brix
+(main
+  (print (call selected-property (call Value 4) (call Value 9) true))
+  (print (call selected-property (call Value 4) (call Value 9) false))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Value
+(type + Value
+  (prop + number Int)
+  (fn-do + This _
+    (param number Int)
+  )
+)
 
-+ number Int
+(fn-expr + invoke Int
+  (param callback (of Mapper Int Int))
+  (param value Int)
+  (call callback value)
+)
 
-────────────────────
-+ This
-    - number Int
+(fn-do + choose-value Value
+  (param first Value)
+  (param second Value)
+  (param choose Bool)
+  (if choose
+    (return second)
+  )
+  (return first)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ invoke Int
-    - callback Mapper'Int'Int
-    - value Int
-
-callback(value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do choose-value Value
-    - first Value
-    - second Value
-    - choose Bool
-
-if choose
-    = second
-= first
-
-━━━━━━━━━━━━━━━━━━━━
-+ do selected-property Int
-    - first Value
-    - second Value
-    - choose Bool
-
-. selected = choose-value(first, second, choose)
-. offset = 2
-. callback Mapper'Int'Int = :: value => value + offset
-= invoke(callback, selected.number)
+(fn-do + selected-property Int
+  (param first Value)
+  (param second Value)
+  (param choose Bool)
+  (let selected (call choose-value first second choose))
+  (let offset 2)
+  (let callback (of Mapper Int Int) (=> (value) (+ value offset)))
+  (return (call invoke callback (. selected number)))
+)
 ```
 
 ```output
@@ -160,42 +161,48 @@ if choose
 6
 ```
 
-```yumi warn
-/core
--- catch outer(true)
--- catch outer(false)
-panic-leaf()
--- "after"
+```brix warn
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Failure is Error
+(main
+  (print (catch (call outer true)))
+  (print (catch (call outer false)))
+  (call panic-leaf)
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do leaf Int ?! Failure @inline
-    - succeeds Bool
+(type + Failure (is Error))
 
-do finally
-    -- "leaf cleanup"
-if succeeds
-    = 7
-?! Failure("failed")
+(fn-do + leaf Int (?! Failure) @inline
+  (param succeeds Bool)
+  (finally
+    (print "leaf cleanup")
+  )
+  (if succeeds
+    (return 7)
+  )
+  (throw (call Failure "failed"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do outer Int ?! Failure @inline
-    - succeeds Bool
+(fn-do + outer Int (?! Failure) @inline
+  (param succeeds Bool)
+  (finally
+    (print "outer cleanup")
+  )
+  (return (+ (call leaf succeeds) 1))
+)
 
-do finally
-    -- "outer cleanup"
-= leaf(succeeds) + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do panic-leaf @inline
-
-. attempt = do new
-    ?! Panic("panic")
-catch failure
-    -- failure
-attempt.wait()
+(fn-do + panic-leaf _ @inline
+  (let attempt
+    (do-new
+      (throw (call Panic "panic"))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```stderr
@@ -212,28 +219,30 @@ panic
 after
 ```
 
-```yumi warn
-/core
+```brix warn
+(import /core)
+(blank)
 
--- combine(tick(1), tick(2))
--- combine(tick(3))
--- state
+(main
+  (print (call combine (call tick 1) (call tick 2)))
+  (print (call combine (call tick 3)))
+  (print state)
+)
 
-_ state = 0
+(blank)
+(prop _ state _ (= 0))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tick Int
-    - value Int
+(fn-do + tick Int
+  (param value Int)
+  (= state (+ (* state 10) value))
+  (return value)
+)
 
-state = state * 10 + value
-= value
-
-━━━━━━━━━━━━━━━━━━━━
-+ combine Int @inline
-    - value I64
-    - unused Int = tick(9)
-
-(value + value) as Int
+(fn-expr + combine Int @inline
+  (param value I64)
+  (param unused Int (= (call tick 9)))
+  (as (+ value value) Int)
+)
 ```
 
 ```stderr
@@ -245,17 +254,19 @@ state = state * 10 + value
 1239
 ```
 
-```yumi warn
-/core
+```brix warn
+(import /core)
+(blank)
 
--- inline-identity(42)
--- inline-identity("text")
+(main
+  (print (call inline-identity 42))
+  (print (call inline-identity "text"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ inline-identity'T T @inline
-    - value T
-
-value
+(fn-expr + (of inline-identity T) T @inline
+  (param value T)
+  value
+)
 ```
 
 ```stderr
@@ -266,25 +277,25 @@ value
 text
 ```
 
-```yumi warn
-/core
+```brix warn
+(import /core)
+(blank)
 
-. counter = Counter()
--- counter.bump(4)
--- counter.bump(3)
--- counter.value
+(main
+  (let counter (call Counter))
+  (print (call (. counter bump) 4))
+  (print (call (. counter bump) 3))
+  (print (. counter value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
-
-+ value Int = 0
-
-────────────────────
-+ do bump Int @inline
-    - amount Int
-
-value += amount
-= value
+(type + Counter
+  (prop + value Int (= 0))
+  (fn-do + bump Int @inline
+    (param amount Int)
+    (+= value amount)
+    (return value)
+  )
+)
 ```
 
 ```stderr
@@ -296,17 +307,20 @@ value += amount
 7
 ```
 
-```yumi warn
-/core
+```brix warn
+(import /core)
+(blank)
 
--- lazy-value(5)
+(main
+  (print (call lazy-value 5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ lazy-value Int @inline
-    - value Int
-
-twice + twice
-    .. twice = value * 2
+(fn-expr + lazy-value Int @inline
+  (param value Int)
+  (scope (+ twice twice)
+    (lazy twice (* value 2))
+  )
+)
 ```
 
 ```stderr
@@ -316,28 +330,35 @@ twice + twice
 20
 ```
 
-```yumi warn
-/core
+```brix warn
+(import /core)
+(blank)
 
-. sum = 0
-for index in 0 .. < 3
-    sum += fresh(index) + fresh(index + 1)
--- sum
+(main
+  (let sum 0)
+  (for (in index (..< 0 3))
+    (+= sum (+ (call fresh index) (call fresh (+ index 1))))
+  )
+  (print sum)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fresh Int @inline
-    - value Int
-
-. local = value
-for index in 0 .. < 4
-    if index == 1
-        continue
-    if index == 3
-        break
-    local += index
-if local < 3
-    = local + 10
-= local
+(fn-do + fresh Int @inline
+  (param value Int)
+  (let local value)
+  (for (in index (..< 0 4))
+    (if (== index 1)
+      (continue)
+    )
+    (if (== index 3)
+      (break)
+    )
+    (+= local index)
+  )
+  (if (< local 3)
+    (return (+ local 10))
+  )
+  (return local)
+)
 ```
 
 ```stderr
@@ -347,28 +368,27 @@ if local < 3
 31
 ```
 
-```yumi warn
-./inline-support
-/core
+```brix warn
+(import ./inline-support)
+(import /core)
+(blank)
 
--- cross-module(8)
--- cross-module-ordinary(8)
+(main
+  (print (call cross-module 8))
+  (print (call cross-module-ordinary 8))
+)
 ```
 
-```yumi file=inline-support.yumi
+```brix file=inline-support.bx
+(fn-expr + cross-module Int @inline
+  (param value Int)
+  (+ value 3)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ cross-module Int @inline
-    - value Int
-
-value + 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ cross-module-ordinary Int
-    - value Int
-
-value + 3
-
+(fn-expr + cross-module-ordinary Int
+  (param value Int)
+  (+ value 3)
+)
 ```
 
 ```stderr
@@ -379,40 +399,38 @@ value + 3
 11
 ```
 
-```yumi warn
-/BxEvents/BxGCHandshake.h
-/BxGC/BxGC.h
-/core
+```brix warn
+(import /BxEvents/BxGCHandshake.h)
+(import /BxGC/BxGC.h)
+(import /core)
+(blank)
 
--- managed("held")
+(main
+  (print (call managed "held"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do managed String @inline
-    - seed String
+(fn-do + managed String @inline
+  (param seed String)
+  (let live (str seed " value"))
+  (call C:brixGCSafepoint)
+  (call C:brixCollect)
+  (call allocate)
+  (return live)
+)
 
-. live = "$seed value"
-C:brixGCSafepoint()
-C:brixCollect()
-allocate()
-= live
+(fn-do + allocate _
+  (print (str "allocation " (. (call Counter) value)))
+  (call C:brixCollect)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do allocate
-
--- "allocation ${Counter().value}"
-C:brixCollect()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
-
-+ value Int = 0
-
-────────────────────
-+ do bump Int @inline
-    - amount Int
-
-value += amount
-= value
+(type + Counter
+  (prop + value Int (= 0))
+  (fn-do + bump Int @inline
+    (param amount Int)
+    (+= value amount)
+    (return value)
+  )
+)
 ```
 
 ```stderr
@@ -423,34 +441,41 @@ allocation 0
 held value
 ```
 
-```yumi
-/core
--- recurse(3)
--- aggregate((4, 5))
-for value in inline-numbers()
-    -- value
-━━━━━━━━━━━━━━━━━━━━
-+ recurse Int @inline
-    - value Int
+```brix
+(import /core)
 
-match value
-    | 0
-        0
-    ??
-        recurse(value - 1) + 1
-━━━━━━━━━━━━━━━━━━━━
-+ aggregate Int @inline
-    - pair (Int, Int)
+(main
+  (print (call recurse 3))
+  (print (call aggregate (tuple 4 5)))
+  (for (in value (call inline-numbers))
+    (print value)
+  )
+)
 
-pair[0]
-━━━━━━━━━━━━━━━━━━━━
-+ do inline-numbers @inline
+(fn-expr + recurse Int @inline
+  (param value Int)
+  (match value
+    (case 0
+      0
+    )
+    (default
+      (+ (call recurse (- value 1)) 1)
+    )
+  )
+)
 
-<= 7
-━━━━━━━━━━━━━━━━━━━━
-+ unused Int @inline
+(fn-expr + aggregate Int @inline
+  (param pair (tuple Int Int))
+  ([] pair 0)
+)
 
-42
+(fn-do + inline-numbers _ @inline
+  (yield 7)
+)
+
+(fn-expr + unused Int @inline
+  42
+)
 ```
 
 ```output
@@ -459,42 +484,48 @@ pair[0]
 7
 ```
 
-```yumi
-/core
--- dispatch(Child())
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-────────────────────
-+ value Int @inline
+```brix
+(import /core)
 
-1
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-────────────────────
-+ value Int
+(main
+  (print (call dispatch (call Child)))
+)
 
-2
-━━━━━━━━━━━━━━━━━━━━
-+ dispatch Int
-    - object Base
+(type + Base
+  (fn-expr + value Int @inline
+    1
+  )
+)
 
-object.value()
+(type + Child (is Base)
+  (fn-expr + value Int
+    2
+  )
+)
+
+(fn-expr + dispatch Int
+  (param object Base)
+  (call (. object value))
+)
 ```
 
 ```output
 2
 ```
 
-```yumi
-/core
-. fn = bound-leaf
--- fn(4)
--- bound-leaf(7)
-━━━━━━━━━━━━━━━━━━━━
-+ bound-leaf Int @inline
-    - value Int
+```brix
+(import /core)
 
-value + 1
+(main
+  (let fn bound-leaf)
+  (print (call fn 4))
+  (print (call bound-leaf 7))
+)
+
+(fn-expr + bound-leaf Int @inline
+  (param value Int)
+  (+ value 1)
+)
 ```
 
 ```output
@@ -502,27 +533,30 @@ value + 1
 8
 ```
 
-```yumi
-/core
+```brix
+(import /core)
+(blank)
 
--- even(4)
--- even(3)
+(main
+  (print (call even 4))
+  (print (call even 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do even Bool @inline
-    - value Int
+(fn-do + even Bool @inline
+  (param value Int)
+  (if (== value 0)
+    (return true)
+  )
+  (return (call odd (- value 1)))
+)
 
-if value == 0
-    = true
-= odd(value - 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do odd Bool @inline
-    - value Int
-
-if value == 0
-    = false
-= even(value - 1)
+(fn-do + odd Bool @inline
+  (param value Int)
+  (if (== value 0)
+    (return false)
+  )
+  (return (call even (- value 1)))
+)
 ```
 
 ```output
@@ -530,64 +564,73 @@ true
 false
 ```
 
-```yumi warn
-./inline-panic
-/core
+```brix warn
+(import ./inline-panic)
+(import /core)
+(blank)
 
-attempt(0)
-attempt(1)
-attempt(2)
+(main
+  (call attempt 0)
+  (call attempt 1)
+  (call attempt 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do attempt
-    - which Int
-
-. task = do new
-    choose(which)
-catch failure
-    -- failure.source?.line
-task.wait()
+(fn-do + attempt _
+  (param which Int)
+  (let task
+    (do-new
+      (call choose which)
+      (on-failure failure
+        (print (?. (. failure source) line))
+      )
+    )
+  )
+  (call (. task wait))
+)
 ```
 
-```yumi file=inline-panic.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ do choose @inline
-    - which Int
-
-if which == 0
-    . missing Int?
-    -- missing!
-else if which == 1
-    . missing Int?
-    -- missing!
-else
-    ?! Panic("existing")
-
+```brix file=inline-panic.bx
+(fn-do + choose _ @inline
+  (param which Int)
+  (if (== which 0)
+    (let missing (? Int))
+    (print (!! missing))
+    (else-if (== which 1)
+      (let missing (? Int))
+      (print (!! missing))
+    )
+    (else
+      (throw (call Panic "existing"))
+    )
+  )
+)
 ```
 
 ```stderr
 ```
 
 ```output
+5
 8
 11
-13
 ```
 
-```yumi warn
-/core
--- batch-caller(3)
-━━━━━━━━━━━━━━━━━━━━
-+ batch-leaf Int @inline
-    - value Int
+```brix warn
+(import /core)
 
-value + 1
-━━━━━━━━━━━━━━━━━━━━
-+ batch-caller Int
-    - value Int
+(main
+  (print (call batch-caller 3))
+)
 
-batch-leaf(value) + batch-leaf(value + 1)
+(fn-expr + batch-leaf Int @inline
+  (param value Int)
+  (+ value 1)
+)
+
+(fn-expr + batch-caller Int
+  (param value Int)
+  (+ (call batch-leaf value) (call batch-leaf (+ value 1)))
+)
 ```
 
 ```stderr
@@ -597,96 +640,90 @@ batch-leaf(value) + batch-leaf(value + 1)
 9
 ```
 
-```yumi
-/core
--- increment(4)
-━━━━━━━━━━━━━━━━━━━━
-+ increment Int @inline without gc
-    - value Int
+```brix
+(import /core)
 
-value + 1
+(main
+  (print (call increment 4))
+)
+
+(fn-expr + increment Int @inline (without gc)
+  (param value Int)
+  (+ value 1)
+)
 ```
 
 ```output
 5
 ```
 
-```yumi warn
-/core
+```brix warn
+(import /core)
+(blank)
 
--- link-0(1)
+(main
+  (print (call link-0 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ link-0 Int @inline
-    - value Int
+(fn-expr + link-0 Int @inline
+  (param value Int)
+  (+ (call link-1 value) 1)
+)
 
-link-1(value) + 1
+(fn-expr + link-1 Int @inline
+  (param value Int)
+  (+ (call link-2 value) 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ link-1 Int @inline
-    - value Int
+(fn-expr + link-2 Int @inline
+  (param value Int)
+  (+ (call link-3 value) 1)
+)
 
-link-2(value) + 1
+(fn-expr + link-3 Int @inline
+  (param value Int)
+  (+ (call link-4 value) 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ link-2 Int @inline
-    - value Int
+(fn-expr + link-4 Int @inline
+  (param value Int)
+  (+ (call link-5 value) 1)
+)
 
-link-3(value) + 1
+(fn-expr + link-5 Int @inline
+  (param value Int)
+  (+ (call link-6 value) 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ link-3 Int @inline
-    - value Int
+(fn-expr + link-6 Int @inline
+  (param value Int)
+  (+ (call link-7 value) 1)
+)
 
-link-4(value) + 1
+(fn-expr + link-7 Int @inline
+  (param value Int)
+  (+ (call link-8 value) 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ link-4 Int @inline
-    - value Int
+(fn-expr + link-8 Int @inline
+  (param value Int)
+  (+ (call link-9 value) 1)
+)
 
-link-5(value) + 1
+(fn-expr + link-9 Int @inline
+  (param value Int)
+  (+ (call link-10 value) 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ link-5 Int @inline
-    - value Int
+(fn-expr + link-10 Int @inline
+  (param value Int)
+  (+ (call link-11 value) 1)
+)
 
-link-6(value) + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ link-6 Int @inline
-    - value Int
-
-link-7(value) + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ link-7 Int @inline
-    - value Int
-
-link-8(value) + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ link-8 Int @inline
-    - value Int
-
-link-9(value) + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ link-9 Int @inline
-    - value Int
-
-link-10(value) + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ link-10 Int @inline
-    - value Int
-
-link-11(value) + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ link-11 Int @inline
-    - value Int
-
-value + 1
+(fn-expr + link-11 Int @inline
+  (param value Int)
+  (+ value 1)
+)
 ```
 
 ```stderr
@@ -696,57 +733,59 @@ value + 1
 13
 ```
 
-```yumi warn
-/core
+```brix warn
+(import /core)
+(blank)
 
--- large(1)
+(main
+  (print (call large 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do large Int @inline
-    - value Int
-
-. total = value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-total += value + value + value + value + value + value + value + value
-= total
+(fn-do + large Int @inline
+  (param value Int)
+  (let total value)
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (+= total (+ value value value value value value value value))
+  (return total)
+)
 ```
 
 ```stderr
@@ -756,37 +795,34 @@ total += value + value + value + value + value + value + value + value
 321
 ```
 
-```yumi warn
-/core
+```brix warn
+(import /core)
+(blank)
 
--- tuple-sum((3, 4))
-. point = InlinePoint(3.0, 4.0)
--- point.dot(InlinePoint(2.0, 5.0))
--- point.shift(1.0).dot(point)
+(main
+  (print (call tuple-sum (tuple 3 4)))
+  (let point (call InlinePoint 3.0 4.0))
+  (print (call (. point dot) (call InlinePoint 2.0 5.0)))
+  (print (call (. (call (. point shift) 1.0) dot) point))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ tuple-sum Int @inline
-    - pair (Int, Int)
+(fn-expr + tuple-sum Int @inline
+  (param pair (tuple Int Int))
+  (+ ([] pair 0) ([] pair 1))
+)
 
-pair[0] + pair[1]
-
-━━━━━━━━━━━━━━━━━━━━
-+ InlinePoint is Tuple
-
-+ x F64
-+ y F64
-
-────────────────────
-+ dot F64 @inline
-    - other InlinePoint
-
-x * other.x + y * other.y
-
-────────────────────
-+ shift InlinePoint @inline
-    - amount F64
-
-InlinePoint(x + amount, y + amount)
+(type + InlinePoint (is Tuple)
+  (prop + x F64)
+  (prop + y F64)
+  (fn-expr + dot F64 @inline
+    (param other InlinePoint)
+    (+ (* x (. other x)) (* y (. other y)))
+  )
+  (fn-expr + shift InlinePoint @inline
+    (param amount F64)
+    (call InlinePoint (+ x amount) (+ y amount))
+  )
+)
 ```
 
 ```stderr
@@ -798,56 +834,54 @@ InlinePoint(x + amount, y + amount)
 32
 ```
 
-```yumi warn
-/core
+```brix warn
+(import /core)
+(blank)
 
-. value = InlineWide(1, 2, 3, 4, 5, 6)
--- wide-sum(value)
--- wide-forward(value)
--- wide-sum(wide-choice(value, true))
--- wide-sum(wide-choice(value, false))
--- wide-sum(inline-tuple-identity(value))
--- nested-sum(InlineNested(value, (7, 8)))
+(main
+  (let value (call InlineWide 1 2 3 4 5 6))
+  (print (call wide-sum value))
+  (print (call wide-forward value))
+  (print (call wide-sum (call wide-choice value true)))
+  (print (call wide-sum (call wide-choice value false)))
+  (print (call wide-sum (call inline-tuple-identity value)))
+  (print (call nested-sum (call InlineNested value (tuple 7 8))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineWide is (a I64, b I64, c I64, d I64, e I64, f I64)
+(type + InlineWide (is (tuple (: a I64) (: b I64) (: c I64) (: d I64) (: e I64) (: f I64))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineNested is (wide InlineWide, pair (I64, I64))
+(type + InlineNested (is (tuple (: wide InlineWide) (: pair (tuple I64 I64)))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ wide-sum I64 @inline
-    - value InlineWide
+(fn-expr + wide-sum I64 @inline
+  (param value InlineWide)
+  (+ (. value a) (. value b) (. value c) (. value d) (. value e) (. value f))
+)
 
-value.a + value.b + value.c + value.d + value.e + value.f
+(fn-expr + wide-forward I64 @inline
+  (param value InlineWide)
+  (+ (call wide-sum value) (call wide-sum value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ wide-forward I64 @inline
-    - value InlineWide
-
-wide-sum(value) + wide-sum(value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ wide-choice InlineWide @inline
-    - value InlineWide
-    - original Bool
-
-|? original
+(fn-expr + wide-choice InlineWide @inline
+  (param value InlineWide)
+  (param original Bool)
+  (case? original
     value
-??
-    InlineWide(6, 5, 4, 3, 2, 10)
+  )
+  (default
+    (call InlineWide 6 5 4 3 2 10)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ inline-tuple-identity'T T @inline
-    - value T
+(fn-expr + (of inline-tuple-identity T) T @inline
+  (param value T)
+  value
+)
 
-value
-
-━━━━━━━━━━━━━━━━━━━━
-+ nested-sum I64 @inline
-    - value InlineNested
-
-wide-sum(value.wide) + value.pair[0] + value.pair[1]
+(fn-expr + nested-sum I64 @inline
+  (param value InlineNested)
+  (+ (call wide-sum (. value wide)) ([] (. value pair) 0) ([] (. value pair) 1))
+)
 ```
 
 ```stderr
@@ -862,35 +896,34 @@ wide-sum(value.wide) + value.pair[0] + value.pair[1]
 36
 ```
 
-```yumi warn
-/BxGC/BxGC.h
-/core
+```brix warn
+(import /BxGC/BxGC.h)
+(import /core)
+(blank)
 
-. payload = InlinePayload("first", "second", InlineBox(7))
--- keep-payload(payload)
--- payload.box.value
+(main
+  (let payload (call InlinePayload "first" "second" (call InlineBox 7)))
+  (print (call keep-payload payload))
+  (print (. payload box value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineBox
+(type + InlineBox
+  (prop + value Int)
+  (fn-do + This _
+    (param value Int)
+  )
+)
 
-+ value Int
+(type + InlinePayload (is (tuple (: first String) (: second String) (: box InlineBox))))
 
-────────────────────
-+ This
-    - value Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ InlinePayload is (first String, second String, box InlineBox)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do keep-payload String @inline
-    - value InlinePayload
-
-. retained = value
-C:brixCollect()
-retained.box.value += 1
-C:brixCollect()
-= "$retained.first $retained.second ${retained.box.value}"
+(fn-do + keep-payload String @inline
+  (param value InlinePayload)
+  (let retained value)
+  (call C:brixCollect)
+  (+= (. retained box value) 1)
+  (call C:brixCollect)
+  (return (str (. retained first) " " (. retained second) " " (. retained box value)))
+)
 ```
 
 ```stderr
@@ -901,25 +934,27 @@ first second 8
 8
 ```
 
-```yumi warn
-/core
+```brix warn
+(import /core)
+(blank)
 
--- use-tuple-once(make-tuple())
--- tuple-evaluations
+(main
+  (print (call use-tuple-once (call make-tuple)))
+  (print tuple-evaluations)
+)
 
-_ tuple-evaluations = 0
+(blank)
+(prop _ tuple-evaluations _ (= 0))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make-tuple (Int, Int)
+(fn-do + make-tuple (tuple Int Int)
+  (+= tuple-evaluations 1)
+  (return (tuple 3 4))
+)
 
-tuple-evaluations += 1
-= (3, 4)
-
-━━━━━━━━━━━━━━━━━━━━
-+ use-tuple-once Int @inline
-    - value (Int, Int)
-
-value[0] + value[0] + value[1] + value[1]
+(fn-expr + use-tuple-once Int @inline
+  (param value (tuple Int Int))
+  (+ ([] value 0) ([] value 0) ([] value 1) ([] value 1))
+)
 ```
 
 ```stderr
@@ -930,45 +965,50 @@ value[0] + value[0] + value[1] + value[1]
 1
 ```
 
-```yumi warn
-/core
+```brix warn
+(import /core)
+(blank)
 
-. small = InlineMutablePair(3, 4)
-. wide = InlineMutableWide(1, 2, 3, 4)
--- update-pair(small)
--- small.a
--- update-wide(wide)
--- wide.a
+(main
+  (let small (call InlineMutablePair 3 4))
+  (let wide (call InlineMutableWide 1 2 3 4))
+  (print (call update-pair small))
+  (print (. small a))
+  (print (call update-wide wide))
+  (print (. wide a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMutablePair is Struct
+(type + InlineMutablePair (is Struct)
+  (prop + a Int)
+  (prop + b Int)
+)
 
-+ a Int
-+ b Int
+(type + InlineMutableWide (is Struct)
+  (prop + a I64)
+  (prop + b I64)
+  (prop + c I64)
+  (prop + d I64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMutableWide is Struct
+(fn-expr + update-pair Int @inline
+  (param value InlineMutablePair)
+  (before
+    (do
+      (+= (. value a) 10)
+    )
+  )
+  (+ (. value a) (. value b))
+)
 
-+ a I64
-+ b I64
-+ c I64
-+ d I64
-
-━━━━━━━━━━━━━━━━━━━━
-+ update-pair Int @inline
-    - value InlineMutablePair
-
-do
-    value.a += 10
-value.a + value.b
-
-━━━━━━━━━━━━━━━━━━━━
-+ update-wide I64 @inline
-    - value InlineMutableWide
-
-do
-    value.a += 10
-value.a + value.b + value.c + value.d
+(fn-expr + update-wide I64 @inline
+  (param value InlineMutableWide)
+  (before
+    (do
+      (+= (. value a) 10)
+    )
+  )
+  (+ (. value a) (. value b) (. value c) (. value d))
+)
 ```
 
 ```stderr
@@ -981,40 +1021,43 @@ value.a + value.b + value.c + value.d
 1
 ```
 
-```yumi warn
-/core
+```brix warn
+(import /core)
+(blank)
 
-. missing InlineMaybePoint?
--- optional-point-sum(InlineMaybePoint(3, 4))
--- optional-point-sum(missing)
--- catch checked-point-sum(InlineMaybePoint(3, 4), true)
--- catch checked-point-sum(InlineMaybePoint(3, 4), false)
+(main
+  (let missing (? InlineMaybePoint))
+  (print (call optional-point-sum (call InlineMaybePoint 3 4)))
+  (print (call optional-point-sum missing))
+  (print (catch (call checked-point-sum (call InlineMaybePoint 3 4) true)))
+  (print (catch (call checked-point-sum (call InlineMaybePoint 3 4) false)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMaybePoint is (x I64, y I64)
+(type + InlineMaybePoint (is (tuple (: x I64) (: y I64))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlinePointError is Error
+(type + InlinePointError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ optional-point-sum I64 @inline
-    - value InlineMaybePoint?
-
-|? value
-    value.x + value.y
-??
+(fn-expr + optional-point-sum I64 @inline
+  (param value (? InlineMaybePoint))
+  (case? value
+    (+ (. value x) (. value y))
+  )
+  (default
     -1
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do checked-point-sum I64 ?! InlinePointError @inline
-    - value InlineMaybePoint
-    - succeeds Bool
-
-do finally
-    -- "cleanup $value.x"
-if succeeds
-    = value.x + value.y
-?! InlinePointError("failed")
+(fn-do + checked-point-sum I64 (?! InlinePointError) @inline
+  (param value InlineMaybePoint)
+  (param succeeds Bool)
+  (finally
+    (print (str "cleanup " (. value x)))
+  )
+  (if succeeds
+    (return (+ (. value x) (. value y)))
+  )
+  (throw (call InlinePointError "failed"))
+)
 ```
 
 ```stderr
@@ -1029,26 +1072,25 @@ cleanup 3
 failed
 ```
 
-```yumi warn
-./inline-tuple-module
-/core
+```brix warn
+(import ./inline-tuple-module)
+(import /core)
+(blank)
 
-. point = ModulePoint(3.0, 4.0)
--- module-point-dot(point, point)
+(main
+  (let point (call ModulePoint 3.0 4.0))
+  (print (call module-point-dot point point))
+)
 ```
 
-```yumi file=inline-tuple-module.yumi
+```brix file=inline-tuple-module.bx
+(type + ModulePoint (is (tuple (: x F64) (: y F64))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ModulePoint is (x F64, y F64)
-
-━━━━━━━━━━━━━━━━━━━━
-+ module-point-dot F64 @inline
-    - left ModulePoint
-    - right ModulePoint
-
-left.x * right.x + left.y * right.y
-
+(fn-expr + module-point-dot F64 @inline
+  (param left ModulePoint)
+  (param right ModulePoint)
+  (+ (* (. left x) (. right x)) (* (. left y) (. right y)))
+)
 ```
 
 ```stderr
@@ -1058,22 +1100,23 @@ left.x * right.x + left.y * right.y
 25
 ```
 
-```yumi warn
-/core
+```brix warn
+(import /core)
+(blank)
 
-. original = ReboundTuple(1, 2, 3, 4)
--- rebind-tuple(original)
--- original.a
+(main
+  (let original (call ReboundTuple 1 2 3 4))
+  (print (call rebind-tuple original))
+  (print (. original a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ReboundTuple is (a I64, b I64, c I64, d I64)
+(type + ReboundTuple (is (tuple (: a I64) (: b I64) (: c I64) (: d I64))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do rebind-tuple I64 @inline
-    - value ReboundTuple
-
-value = ReboundTuple(9, 8, 7, 6)
-= value.a + value.b
+(fn-do + rebind-tuple I64 @inline
+  (param value ReboundTuple)
+  (= value (call ReboundTuple 9 8 7 6))
+  (return (+ (. value a) (. value b)))
+)
 ```
 
 ```stderr
@@ -1084,27 +1127,27 @@ value = ReboundTuple(9, 8, 7, 6)
 1
 ```
 
-```yumi warn
-/core
+```brix warn
+(import /core)
+(blank)
+(prop _ source _ (= (call SnapshotTuple 1 2 3 4)))
 
-_ source = SnapshotTuple(1, 2, 3, 4)
--- snapshot-tuple(source)
--- source.a
+(main
+  (print (call snapshot-tuple source))
+  (print (. source a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ SnapshotTuple is (a I64, b I64, c I64, d I64)
+(type + SnapshotTuple (is (tuple (: a I64) (: b I64) (: c I64) (: d I64))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do snapshot-tuple I64 @inline
-    - value SnapshotTuple
+(fn-do + snapshot-tuple I64 @inline
+  (param value SnapshotTuple)
+  (call replace-source)
+  (return (. value a))
+)
 
-replace-source()
-= value.a
-
-━━━━━━━━━━━━━━━━━━━━
-+ do replace-source
-
-source = SnapshotTuple(9, 8, 7, 6)
+(fn-do + replace-source _
+  (= source (call SnapshotTuple 9 8 7 6))
+)
 ```
 
 ```stderr
@@ -1115,41 +1158,42 @@ source = SnapshotTuple(9, 8, 7, 6)
 9
 ```
 
-```yumi warn
-/core
+```brix warn
+(import /core)
+(blank)
 
-. value = HugeInlineTuple(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
--- huge-inline-sum(value)
--- branch-inline-tuple(value, true)
--- branch-inline-tuple(value, false)
--- loop-inline-tuple(value)
--- value.a
+(main
+  (let value (call HugeInlineTuple 1 2 3 4 5 6 7 8 9 10))
+  (print (call huge-inline-sum value))
+  (print (call branch-inline-tuple value true))
+  (print (call branch-inline-tuple value false))
+  (print (call loop-inline-tuple value))
+  (print (. value a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ HugeInlineTuple is (a I64, b I64, c I64, d I64, e I64, f I64, g I64, h I64, i I64, j I64)
+(type + HugeInlineTuple (is (tuple (: a I64) (: b I64) (: c I64) (: d I64) (: e I64) (: f I64) (: g I64) (: h I64) (: i I64) (: j I64))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ huge-inline-sum I64 @inline
-    - value HugeInlineTuple
+(fn-expr + huge-inline-sum I64 @inline
+  (param value HugeInlineTuple)
+  (+ (. value a) (. value b) (. value c) (. value d) (. value e) (. value f) (. value g) (. value h) (. value i) (. value j))
+)
 
-value.a + value.b + value.c + value.d + value.e + value.f + value.g + value.h + value.i + value.j
+(fn-do + branch-inline-tuple I64 @inline
+  (param value HugeInlineTuple)
+  (param replace Bool)
+  (if replace
+    (= value (call HugeInlineTuple 10 9 8 7 6 5 4 3 2 1))
+  )
+  (return (. value a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do branch-inline-tuple I64 @inline
-    - value HugeInlineTuple
-    - replace Bool
-
-if replace
-    value = HugeInlineTuple(10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
-= value.a
-
-━━━━━━━━━━━━━━━━━━━━
-+ do loop-inline-tuple I64 @inline
-    - value HugeInlineTuple
-
-for index in 0 .. < 3
-    value = HugeInlineTuple(value.a + 1, value.b, value.c, value.d, value.e, value.f, value.g, value.h, value.i, value.j)
-= value.a
+(fn-do + loop-inline-tuple I64 @inline
+  (param value HugeInlineTuple)
+  (for (in index (..< 0 3))
+    (= value (call HugeInlineTuple (+ (. value a) 1) (. value b) (. value c) (. value d) (. value e) (. value f) (. value g) (. value h) (. value i) (. value j)))
+  )
+  (return (. value a))
+)
 ```
 
 ```stderr
@@ -1163,27 +1207,27 @@ for index in 0 .. < 3
 1
 ```
 
-```yumi
-/core
+```brix
+(import /core)
+(blank)
+(prop _ source _ (= (call SnapshotTuple 1 2 3 4)))
 
-_ source = SnapshotTuple(1, 2, 3, 4)
--- snapshot-tuple(source)
--- source.a
+(main
+  (print (call snapshot-tuple source))
+  (print (. source a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ SnapshotTuple is (a I64, b I64, c I64, d I64)
+(type + SnapshotTuple (is (tuple (: a I64) (: b I64) (: c I64) (: d I64))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do snapshot-tuple I64
-    - value SnapshotTuple
+(fn-do + snapshot-tuple I64
+  (param value SnapshotTuple)
+  (call replace-source)
+  (return (. value a))
+)
 
-replace-source()
-= value.a
-
-━━━━━━━━━━━━━━━━━━━━
-+ do replace-source
-
-source = SnapshotTuple(9, 8, 7, 6)
+(fn-do + replace-source _
+  (= source (call SnapshotTuple 9 8 7 6))
+)
 ```
 
 ```output
@@ -1191,64 +1235,70 @@ source = SnapshotTuple(9, 8, 7, 6)
 9
 ```
 
-```yumi
-/core
--- closure-inline(4)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ twice Int @inline
-    - callback Mapper'Int'Int
-    - value Int
+(main
+  (print (call closure-inline 4))
+)
 
-callback(value) + callback(value + 1)
+(fn-expr + twice Int @inline
+  (param callback (of Mapper Int Int))
+  (param value Int)
+  (+ (call callback value) (call callback (+ value 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do closure-inline Int
-    - value Int
-
-. offset = 3
-. callback Mapper'Int'Int = :: item => item + offset
-. first = twice(callback, value)
-offset = 10
-= first + callback(value)
+(fn-do + closure-inline Int
+  (param value Int)
+  (let offset 3)
+  (let callback (of Mapper Int Int) (=> (item) (+ item offset)))
+  (let first (call twice callback value))
+  (= offset 10)
+  (return (+ first (call callback value)))
+)
 ```
 
 ```output
 29
 ```
 
-```yumi
-/core
--- closure-escape(3)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ invoke Int @inline
-    - callback Mapper'Int'Int
-    - value Int
+(main
+  (print (call closure-escape 3))
+)
 
-callback(value)
+(fn-expr + invoke Int @inline
+  (param callback (of Mapper Int Int))
+  (param value Int)
+  (call callback value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ordinary-invoke Int
-    - callback Mapper'Int'Int
-    - value Int
+(fn-expr + ordinary-invoke Int
+  (param callback (of Mapper Int Int))
+  (param value Int)
+  (call callback value)
+)
 
-callback(value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do closure-escape Int
-    - value Int
-
-. count = 1
-. callback Mapper'Int'Int = :: amount => do
-    count += amount
-    = count
-. alias = callback
-. first = invoke(callback, value)
-. second = ordinary-invoke(alias, 5)
-. third = invoke(callback, 2)
--- callback == alias
-= first * 100 + second * 10 + third
+(fn-do + closure-escape Int
+  (param value Int)
+  (let count 1)
+  (let callback (of Mapper Int Int)
+    (=> (amount) :do
+      (block
+        (+= count amount)
+        (return count)
+      )
+    )
+  )
+  (let alias callback)
+  (let first (call invoke callback value))
+  (let second (call ordinary-invoke alias 5))
+  (let third (call invoke callback 2))
+  (print (== callback alias))
+  (return (+ (* first 100) (* second 10) third))
+)
 ```
 
 ```output
@@ -1256,30 +1306,32 @@ true
 501
 ```
 
-```yumi
-/core
--- closure-join(true, 3)
--- closure-join(false, 3)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ invoke Int @inline
-    - callback Mapper'Int'Int
-    - value Int
+(main
+  (print (call closure-join true 3))
+  (print (call closure-join false 3))
+)
 
-callback(value)
+(fn-expr + invoke Int @inline
+  (param callback (of Mapper Int Int))
+  (param value Int)
+  (call callback value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do closure-join Int
-    - first Bool
-    - value Int
-
-. offset = 4
-. callback Mapper'Int'Int = :: item => item + offset
-if first
-    callback = :: item => item * offset
-. result = invoke(callback, value)
-callback = :: item => item - offset
-= result + invoke(callback, 10)
+(fn-do + closure-join Int
+  (param first Bool)
+  (param value Int)
+  (let offset 4)
+  (let callback (of Mapper Int Int) (=> (item) (+ item offset)))
+  (if first
+    (= callback (=> (item) (* item offset)))
+  )
+  (let result (call invoke callback value))
+  (= callback (=> (item) (- item offset)))
+  (return (+ result (call invoke callback 10)))
+)
 ```
 
 ```output
@@ -1287,133 +1339,144 @@ callback = :: item => item - offset
 13
 ```
 
-```yumi
-/core
--- closure-nested(3)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ invoke Int @inline
-    - callback Mapper'Int'Int
-    - value Int
+(main
+  (print (call closure-nested 3))
+)
 
-callback(value)
+(fn-expr + invoke Int @inline
+  (param callback (of Mapper Int Int))
+  (param value Int)
+  (call callback value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ forward Mapper'Int'Int @inline
-    - callback Mapper'Int'Int
+(fn-expr + forward (of Mapper Int Int) @inline
+  (param callback (of Mapper Int Int))
+  callback
+)
 
-callback
+(fn-expr + make-adder (of Mapper Int Int) @inline
+  (param offset Int)
+  (=> (value) (+ value offset))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ make-adder Mapper'Int'Int @inline
-    - offset Int
-
-:: value => value + offset
-
-━━━━━━━━━━━━━━━━━━━━
-+ do closure-nested Int
-    - value Int
-
-. first = make-adder(2)
-. second = make-adder(5)
-. nested Mapper'Int'Int = :: item => invoke(forward(first), item) + invoke(second, item)
-= invoke(nested, value)
+(fn-do + closure-nested Int
+  (param value Int)
+  (let first (call make-adder 2))
+  (let second (call make-adder 5))
+  (let nested (of Mapper Int Int) (=> (item) (+ (call invoke (call forward first) item) (call invoke second item))))
+  (return (call invoke nested value))
+)
 ```
 
 ```output
 13
 ```
 
-```yumi
-/core
--- closure-loop(4)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do consume Int @inline
-    - callback Mapper'Int'Int
-    - count Int
+(main
+  (print (call closure-loop 4))
+)
 
-. total = 0
-for index in 0 .. < count
-    total += callback(index)
-= total
+(fn-do + consume Int @inline
+  (param callback (of Mapper Int Int))
+  (param count Int)
+  (let total 0)
+  (for (in index (..< 0 count))
+    (+= total (call callback index))
+  )
+  (return total)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do closure-loop Int
-    - count Int
-
-. calls = 0
-. callback Mapper'Int'Int = :: item => do
-    calls += 1
-    = item + calls
-. zero = consume(callback, 0)
-. result = consume(callback, count)
-= zero + result + calls
+(fn-do + closure-loop Int
+  (param count Int)
+  (let calls 0)
+  (let callback (of Mapper Int Int)
+    (=> (item) :do
+      (block
+        (+= calls 1)
+        (return (+ item calls))
+      )
+    )
+  )
+  (let zero (call consume callback 0))
+  (let result (call consume callback count))
+  (return (+ zero result calls))
+)
 ```
 
 ```output
 20
 ```
 
-```yumi
-/core
-/BxGC/BxGC.h
--- closure-managed("capture")
+```brix
+(import /core)
+(import /BxGC/BxGC.h)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Payload is (name String, a Int, b Int, c Int, d Int)
+(main
+  (print (call closure-managed "capture"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ apply-payload Payload @inline
-    - callback Mapper'Payload'Payload
-    - value Payload
+(type + Payload (is (tuple (: name String) (: a Int) (: b Int) (: c Int) (: d Int))))
 
-callback(value)
+(fn-expr + apply-payload Payload @inline
+  (param callback (of Mapper Payload Payload))
+  (param value Payload)
+  (call callback value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do closure-managed String
-    - text String
-
-. capture = Payload(text, 1, 2, 3, 4)
-. callback Mapper'Payload'Payload = :: value => do
-    C:brixGCCollect()
-    = Payload(capture.name + value.name, capture.a + value.a, value.b, value.c, value.d)
-. result = apply-payload(callback, Payload("-alive", 5, 6, 7, 8))
-= result.name + "-${result.a}"
+(fn-do + closure-managed String
+  (param text String)
+  (let capture (call Payload text 1 2 3 4))
+  (let callback (of Mapper Payload Payload)
+    (=> (value) :do
+      (block
+        (call C:brixGCCollect)
+        (return (call Payload (+ (. capture name) (. value name)) (+ (. capture a) (. value a)) (. value b) (. value c) (. value d)))
+      )
+    )
+  )
+  (let result (call apply-payload callback (call Payload "-alive" 5 6 7 8)))
+  (return (+ (. result name) (str "-" (. result a))))
+)
 ```
 
 ```output
 capture-alive-6
 ```
 
-```yumi
-/core
--- closure-each(3)
-. iterator = closure-generator(2)
--- iterator()
--- iterator()
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ apply-each Int @inline
-    - value Int
-    - callback
+(main
+  (print (call closure-each 3))
+  (let iterator (call closure-generator 2))
+  (print (call iterator))
+  (print (call iterator))
+)
 
-callback(value)
+(fn-expr + apply-each Int @inline
+  (param value Int)
+  (param callback _)
+  (call callback value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ closure-each Int
-    - value Int
+(fn-expr + closure-each Int
+  (param value Int)
+  (call apply-each value (:callback (* each 2)))
+)
 
-apply-each(value) • callback each * 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do closure-generator
-    - value Int
-
-. offset = 4
-<= apply-each(value) • callback each + offset
-offset = 5
-<= apply-each(value) • callback each + offset
+(fn-do + closure-generator _
+  (param value Int)
+  (let offset 4)
+  (yield (call apply-each value (:callback (+ each offset))))
+  (= offset 5)
+  (yield (call apply-each value (:callback (+ each offset))))
+)
 ```
 
 ```output
@@ -1422,36 +1485,41 @@ offset = 5
 7
 ```
 
-```yumi
-/core
--- catch closure-errors(true)
--- catch closure-errors(false)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CallbackFailure is Error
+(main
+  (print (catch (call closure-errors true)))
+  (print (catch (call closure-errors false)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CheckedCallback is () Int ?! CallbackFailure
-    - value Int
+(type + CallbackFailure (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ checked-apply Int ?! CallbackFailure @inline
-    - callback CheckedCallback
-    - value Int
+(type + CheckedCallback (is (fn-type Int (?! CallbackFailure) (param value Int))))
 
-callback(value)
+(fn-expr + checked-apply Int (?! CallbackFailure) @inline
+  (param callback CheckedCallback)
+  (param value Int)
+  (call callback value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do closure-errors Int ?! CallbackFailure
-    - succeeds Bool
-
-. callback CheckedCallback = :: value => do
-    do finally
-        -- "callback cleanup"
-    if succeeds
-        = value + 1
-    ?! CallbackFailure("callback failed")
-= checked-apply(callback, 4)
+(fn-do + closure-errors Int (?! CallbackFailure)
+  (param succeeds Bool)
+  (let callback CheckedCallback
+    (=> (value) :do
+      (block
+        (finally
+          (print "callback cleanup")
+        )
+        (if succeeds
+          (return (+ value 1))
+        )
+        (throw (call CallbackFailure "callback failed"))
+      )
+    )
+  )
+  (return (call checked-apply callback 4))
+)
 ```
 
 ```output
@@ -1461,36 +1529,41 @@ callback cleanup
 callback failed
 ```
 
-```yumi
-/core
--- catch closure-errors-ordinary(true)
--- catch closure-errors-ordinary(false)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CallbackFailure is Error
+(main
+  (print (catch (call closure-errors-ordinary true)))
+  (print (catch (call closure-errors-ordinary false)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CheckedCallback is () Int ?! CallbackFailure
-    - value Int
+(type + CallbackFailure (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ checked-apply Int ?! CallbackFailure
-    - callback CheckedCallback
-    - value Int
+(type + CheckedCallback (is (fn-type Int (?! CallbackFailure) (param value Int))))
 
-callback(value)
+(fn-expr + checked-apply Int (?! CallbackFailure)
+  (param callback CheckedCallback)
+  (param value Int)
+  (call callback value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do closure-errors-ordinary Int ?! CallbackFailure
-    - succeeds Bool
-
-. callback CheckedCallback = :: value => do
-    do finally
-        -- "callback cleanup"
-    if succeeds
-        = value + 1
-    ?! CallbackFailure("callback failed")
-= checked-apply(callback, 4)
+(fn-do + closure-errors-ordinary Int (?! CallbackFailure)
+  (param succeeds Bool)
+  (let callback CheckedCallback
+    (=> (value) :do
+      (block
+        (finally
+          (print "callback cleanup")
+        )
+        (if succeeds
+          (return (+ value 1))
+        )
+        (throw (call CallbackFailure "callback failed"))
+      )
+    )
+  )
+  (return (call checked-apply callback 4))
+)
 ```
 
 ```output
@@ -1500,35 +1573,36 @@ callback cleanup
 callback failed
 ```
 
-```yumi
-/core
--- closure-creation-join(true, 3)
--- closure-creation-join(false, 3)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ make-adder Mapper'Int'Int @inline
-    - offset Int
+(main
+  (print (call closure-creation-join true 3))
+  (print (call closure-creation-join false 3))
+)
 
-:: value => value + offset
+(fn-expr + make-adder (of Mapper Int Int) @inline
+  (param offset Int)
+  (=> (value) (+ value offset))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ invoke Int @inline
-    - callback Mapper'Int'Int
-    - value Int
+(fn-expr + invoke Int @inline
+  (param callback (of Mapper Int Int))
+  (param value Int)
+  (call callback value)
+)
 
-callback(value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do closure-creation-join Int
-    - choose Bool
-    - value Int
-
-. first = make-adder(2)
-. second = make-adder(5)
-. callback = first
-if choose
-    callback = second
-= invoke(callback, value)
+(fn-do + closure-creation-join Int
+  (param choose Bool)
+  (param value Int)
+  (let first (call make-adder 2))
+  (let second (call make-adder 5))
+  (let callback first)
+  (if choose
+    (= callback second)
+  )
+  (return (call invoke callback value))
+)
 ```
 
 ```output
@@ -1536,39 +1610,40 @@ if choose
 5
 ```
 
-```yumi
-/core
--- closure-identity(3)
--- closure-unknown(true, :: value => value * 3)
--- closure-unknown(false, :: value => value * 3)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ invoke Int @inline
-    - callback Mapper'Int'Int
-    - value Int
+(main
+  (print (call closure-identity 3))
+  (print (call closure-unknown true (=> (value) (* value 3))))
+  (print (call closure-unknown false (=> (value) (* value 3))))
+)
 
-callback(value)
+(fn-expr + invoke Int @inline
+  (param callback (of Mapper Int Int))
+  (param value Int)
+  (call callback value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do closure-identity Int
-    - value Int
+(fn-do + closure-identity Int
+  (param value Int)
+  (let offset 4)
+  (let callback (of Mapper Int Int) (=> (item) (+ item offset)))
+  (let alias callback)
+  (print (== callback alias))
+  (return (call invoke callback value))
+)
 
-. offset = 4
-. callback Mapper'Int'Int = :: item => item + offset
-. alias = callback
--- callback == alias
-= invoke(callback, value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do closure-unknown Int
-    - choose Bool
-    - unknown Mapper'Int'Int
-
-. offset = 4
-. callback Mapper'Int'Int = :: item => item + offset
-if choose
-    callback = unknown
-= invoke(callback, 3)
+(fn-do + closure-unknown Int
+  (param choose Bool)
+  (param unknown (of Mapper Int Int))
+  (let offset 4)
+  (let callback (of Mapper Int Int) (=> (item) (+ item offset)))
+  (if choose
+    (= callback unknown)
+  )
+  (return (call invoke callback 3))
+)
 ```
 
 ```output
@@ -1578,38 +1653,47 @@ true
 7
 ```
 
-```yumi
-/core
--- closure-lazy-counter([3,2,5,1,4])
--- closure-lazy-counter([9])
--- closure-lazy-counter([4.0,8.0])
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Accumulate'A'I is () A
-    - accum A
-    - item I
+(main
+  (print (call closure-lazy-counter (list 3 2 5 1 4)))
+  (print (call closure-lazy-counter (list 9)))
+  (print (call closure-lazy-counter (list 4.0 8.0)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fold'I'A @inline
-    - seed A
-    - stream <I>
-    - callback Accumulate'A'I
+(type + (of Accumulate A I) (is (fn-type A (param accum A) (param item I))))
 
-. result = seed
-for item in stream
-    result = callback(result, item)
-= result
+(fn-do + (of fold I A) _ @inline
+  (param seed A)
+  (param stream (stream I))
+  (param callback (of Accumulate A I))
+  (let result seed)
+  (for (in item stream)
+    (= result (call callback result item))
+  )
+  (return result)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ closure-lazy-counter'Item Item
-    - stream <Item>
-
-result / count
-
-.. count = Item()
-.. result = fold'Item(Item(), stream) • callback :: accum, item => do
-    count += 1
-    = accum + item
+(fn-expr + (of closure-lazy-counter Item) Item
+  (param stream (stream Item))
+  (/ result count)
+  (where
+    (lazy count (call Item))
+    (lazy result
+      (call (of fold Item) (call Item) stream
+        (:callback
+          (=> (accum item) :do
+            (block
+              (+= count 1)
+              (return (+ accum item))
+            )
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1618,65 +1702,72 @@ result / count
 6
 ```
 
-```yumi
-/core
--- closure-unrelated(4)
--- closure-selected(4)
--- closure-shared-sibling(3)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ scalar-step Int @inline
-    - value Int
+(main
+  (print (call closure-unrelated 4))
+  (print (call closure-selected 4))
+  (print (call closure-shared-sibling 3))
+)
 
-value + 1
+(fn-expr + scalar-step Int @inline
+  (param value Int)
+  (+ value 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ select-callback Int @inline
-    - callback Mapper'Int'Int
-    - value Int
+(fn-expr + select-callback Int @inline
+  (param callback (of Mapper Int Int))
+  (param value Int)
+  (call callback value)
+)
 
-callback(value)
+(fn-expr + ordinary-callback Int
+  (param callback (of Mapper Int Int))
+  (param value Int)
+  (call callback value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ordinary-callback Int
-    - callback Mapper'Int'Int
-    - value Int
+(fn-do + closure-unrelated Int
+  (param value Int)
+  (let offset 3)
+  (let callback (of Mapper Int Int) (=> (item) (+ item offset)))
+  (let result (+ (call scalar-step value) (call ordinary-callback callback value)))
+  (= offset 10)
+  (return (+ result (call ordinary-callback callback value)))
+)
 
-callback(value)
+(fn-do + closure-selected Int
+  (param value Int)
+  (let offset 2)
+  (let callback (of Mapper Int Int) (=> (item) (+ item offset)))
+  (return (call select-callback callback value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do closure-unrelated Int
-    - value Int
-
-. offset = 3
-. callback Mapper'Int'Int = :: item => item + offset
-. result = scalar-step(value) + ordinary-callback(callback, value)
-offset = 10
-= result + ordinary-callback(callback, value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do closure-selected Int
-    - value Int
-
-. offset = 2
-. callback Mapper'Int'Int = :: item => item + offset
-= select-callback(callback, value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do closure-shared-sibling Int
-    - value Int
-
-. count = 1
-. selected Mapper'Int'Int = :: amount => do
-    count += amount
-    = count
-. sibling Mapper'Int'Int = :: amount => do
-    count += amount
-    = count
-. first = select-callback(selected, value)
-. second = ordinary-callback(sibling, 5)
-. third = select-callback(selected, 2)
-= first * 100 + second * 10 + third
+(fn-do + closure-shared-sibling Int
+  (param value Int)
+  (let count 1)
+  (let selected (of Mapper Int Int)
+    (=> (amount) :do
+      (block
+        (+= count amount)
+        (return count)
+      )
+    )
+  )
+  (let sibling (of Mapper Int Int)
+    (=> (amount) :do
+      (block
+        (+= count amount)
+        (return count)
+      )
+    )
+  )
+  (let first (call select-callback selected value))
+  (let second (call ordinary-callback sibling 5))
+  (let third (call select-callback selected 2))
+  (return (+ (* first 100) (* second 10) third))
+)
 ```
 
 ```output
@@ -1685,29 +1776,37 @@ offset = 10
 501
 ```
 
-```yumi
-/core
--- closure-recursive(3)
--- closure-recursive(0)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ recursive-invoke Int @inline
-    - callback Mapper'Int'Int
-    - value Int
+(main
+  (print (call closure-recursive 3))
+  (print (call closure-recursive 0))
+)
 
-callback(value)
+(fn-expr + recursive-invoke Int @inline
+  (param callback (of Mapper Int Int))
+  (param value Int)
+  (call callback value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do closure-recursive Int
-    - depth Int
-
-. callback Mapper'Int'Int = :: value => value
-callback = :: value =>
-    |? value > 0
-        value + recursive-invoke(callback, value - 1)
-    ??
-        0
-= recursive-invoke(callback, depth)
+(fn-do + closure-recursive Int
+  (param depth Int)
+  (let callback (of Mapper Int Int) (=> (value) value))
+  (= callback
+    (=> (value)
+      (block
+        (case? (> value 0)
+          (+ value (call recursive-invoke callback (- value 1)))
+        )
+        (default
+          0
+        )
+      )
+    )
+  )
+  (return (call recursive-invoke callback depth))
+)
 ```
 
 ```output
@@ -1715,36 +1814,43 @@ callback = :: value =>
 0
 ```
 
-```yumi
--- fusion-sum()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-sum Int
+```brix
+(main
+  (print (call fusion-sum))
+)
 
-. source = fusion-numbers(3)
--- "created"
-. alias = source
-. total = 0
-for value in alias
-    -- "consumer $value"
-    if value == 2
-        continue
-    total += value
-    if value == 3
-        break
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-numbers @inline
-    - count Int
+(fn-do + fusion-sum Int
+  (let source (call fusion-numbers 3))
+  (print "created")
+  (let alias source)
+  (let total 0)
+  (for (in value alias)
+    (print (str "consumer " value))
+    (if (== value 2)
+      (continue)
+    )
+    (+= total value)
+    (if (== value 3)
+      (break)
+    )
+  )
+  (return total)
+)
 
--- "started"
-do finally
-    -- "closed"
-. index = 1
-while index <= count
-    <= index
-    -- "resumed $index"
-    index += 1
-<= 99
+(fn-do + fusion-numbers _ @inline
+  (param count Int)
+  (print "started")
+  (finally
+    (print "closed")
+  )
+  (let index 1)
+  (while (<= index count)
+    (yield index)
+    (print (str "resumed " index))
+    (+= index 1)
+  )
+  (yield 99)
+)
 ```
 
 ```output
@@ -1759,43 +1865,50 @@ closed
 4
 ```
 
-```yumi
--- fusion-multiple()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-multiple Int
+```brix
+(main
+  (print (call fusion-multiple))
+)
 
-. total = 0
-for value in fusion-pair(10)
-    total += value
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-pair @inline
-    - value Int
+(fn-do + fusion-multiple Int
+  (let total 0)
+  (for (in value (call fusion-pair 10))
+    (+= total value)
+  )
+  (return total)
+)
 
-<= value
-<= value + 1
+(fn-do + fusion-pair _ @inline
+  (param value Int)
+  (yield value)
+  (yield (+ value 1))
+)
 ```
 
 ```output
 21
 ```
 
-```yumi
--- fusion-return()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-return Int
+```brix
+(main
+  (print (call fusion-return))
+)
 
-for value in fusion-finally()
-    = value
-= 0
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-finally @inline
+(fn-do + fusion-return Int
+  (for (in value (call fusion-finally))
+    (return value)
+  )
+  (return 0)
+)
 
-do finally
-    -- "closed"
-<= 17
--- "unexpected"
-<= 18
+(fn-do + fusion-finally _ @inline
+  (finally
+    (print "closed")
+  )
+  (yield 17)
+  (print "unexpected")
+  (yield 18)
+)
 ```
 
 ```output
@@ -1803,78 +1916,89 @@ closed
 17
 ```
 
-```yumi
--- fusion-callback()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-callback Int
+```brix
+(main
+  (print (call fusion-callback))
+)
 
-. total = 0
-for value in fusion-offsets(3)
-    total += value
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ fusion-apply Int @inline
-    - value Int
-    - callback
+(fn-do + fusion-callback Int
+  (let total 0)
+  (for (in value (call fusion-offsets 3))
+    (+= total value)
+  )
+  (return total)
+)
 
-callback(value)
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-offsets @inline
-    - value Int
+(fn-expr + fusion-apply Int @inline
+  (param value Int)
+  (param callback _)
+  (call callback value)
+)
 
-. offset = 4
-<= fusion-apply(value) • callback each + offset
-offset = 5
-<= fusion-apply(value) • callback each + offset
+(fn-do + fusion-offsets _ @inline
+  (param value Int)
+  (let offset 4)
+  (yield (call fusion-apply value (:callback (+ each offset))))
+  (= offset 5)
+  (yield (call fusion-apply value (:callback (+ each offset))))
+)
 ```
 
 ```output
 15
 ```
 
-```yumi
--- fusion-nested()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-nested Int
+```brix
+(main
+  (print (call fusion-nested))
+)
 
-. total = 0
-for value in fusion-doubled()
-    total += value
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-doubled @inline
+(fn-do + fusion-nested Int
+  (let total 0)
+  (for (in value (call fusion-doubled))
+    (+= total value)
+  )
+  (return total)
+)
 
-for value in fusion-inner()
-    <= value * 2
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-inner @inline
+(fn-do + fusion-doubled _ @inline
+  (for (in value (call fusion-inner))
+    (yield (* value 2))
+  )
+)
 
-<= 3
-<= 4
+(fn-do + fusion-inner _ @inline
+  (yield 3)
+  (yield 4)
+)
 ```
 
 ```output
 14
 ```
 
-```yumi
-. result = catch fusion-errors()
--- result is FusionProblem
-━━━━━━━━━━━━━━━━━━━━
-+ FusionProblem is Error
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-errors Int ?! FusionProblem
+```brix
+(main
+  (let result (catch (call fusion-errors)))
+  (print (is result FusionProblem))
+)
 
-for value in fusion-failure()
-    -- value
-= 0
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-failure <Int> ?! FusionProblem @inline
+(type + FusionProblem (is Error))
 
-do finally
-    -- "closed"
-<= 1
-?! FusionProblem("failed")
+(fn-do + fusion-errors Int (?! FusionProblem)
+  (for (in value (call fusion-failure))
+    (print value)
+  )
+  (return 0)
+)
+
+(fn-do + fusion-failure (stream Int) (?! FusionProblem) @inline
+  (finally
+    (print "closed")
+  )
+  (yield 1)
+  (throw (call FusionProblem "failed"))
+)
 ```
 
 ```output
@@ -1883,33 +2007,41 @@ closed
 true
 ```
 
-```yumi
--- fusion-choice(true)
--- fusion-choice(false)
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-choice Int
-    - first Bool
+```brix
+(main
+  (print (call fusion-choice true))
+  (print (call fusion-choice false))
+)
 
-. source = match first
-    |= true
-        fusion-left(3)
-    ??
-        fusion-right(7)
-. total = 0
-for value in source
-    total += value
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-left @inline
-    - value Int
+(fn-do + fusion-choice Int
+  (param first Bool)
+  (let source
+    (match first
+      (case= true
+        (call fusion-left 3)
+      )
+      (default
+        (call fusion-right 7)
+      )
+    )
+  )
+  (let total 0)
+  (for (in value source)
+    (+= total value)
+  )
+  (return total)
+)
 
-<= value
-<= value + 1
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-right @inline
-    - value Int
+(fn-do + fusion-left _ @inline
+  (param value Int)
+  (yield value)
+  (yield (+ value 1))
+)
 
-<= value * 2
+(fn-do + fusion-right _ @inline
+  (param value Int)
+  (yield (* value 2))
+)
 ```
 
 ```output
@@ -1917,27 +2049,36 @@ for value in source
 14
 ```
 
-```yumi
-fusion-cleanup-panic()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-cleanup-panic
+```brix
+(main
+  (call fusion-cleanup-panic)
+)
 
-. attempt = do new
-    for value in fusion-cleanup-failure()
-        -- value
-        break
-    -- "unexpected"
-catch failure
-    . error Panic? = failure
-    if error
-        -- "recovered"
-attempt.wait()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-cleanup-failure @inline
+(fn-do + fusion-cleanup-panic _
+  (let attempt
+    (do-new
+      (for (in value (call fusion-cleanup-failure))
+        (print value)
+        (break)
+      )
+      (print "unexpected")
+      (on-failure failure
+        (let error (? Panic) failure)
+        (if error
+          (print "recovered")
+        )
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-do finally
-    ?! Panic("cleanup")
-<= 1
+(fn-do + fusion-cleanup-failure _ @inline
+  (finally
+    (throw (call Panic "cleanup"))
+  )
+  (yield 1)
+)
 ```
 
 ```output
@@ -1945,130 +2086,150 @@ do finally
 recovered
 ```
 
-```yumi
--- fusion-interface()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-interface Int
+```brix
+(main
+  (print (call fusion-interface))
+)
 
-. source Stream'Int = fusion-forward()
-. total = 0
-for value in source
-    total += value
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ fusion-forward Stream'Int @inline
+(fn-do + fusion-interface Int
+  (let source (of Stream Int) (call fusion-forward))
+  (let total 0)
+  (for (in value source)
+    (+= total value)
+  )
+  (return total)
+)
 
-fusion-interface-items()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-interface-items Stream'Int @inline
+(fn-expr + fusion-forward (of Stream Int) @inline
+  (call fusion-interface-items)
+)
 
-<= 3
-<= 4
+(fn-do + fusion-interface-items (of Stream Int) @inline
+  (yield 3)
+  (yield 4)
+)
 ```
 
 ```output
 7
 ```
 
-```yumi
--- fusion-mixed()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-mixed Int
+```brix
+(main
+  (print (call fusion-mixed))
+)
 
-. total = 0
-. saved = fusion-mixed-items()
-for value in fusion-mixed-items()
-    total += value
-for value in saved
-    total += value
-for value in saved
-    total += 100
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-mixed-items @inline
+(fn-do + fusion-mixed Int
+  (let total 0)
+  (let saved (call fusion-mixed-items))
+  (for (in value (call fusion-mixed-items))
+    (+= total value)
+  )
+  (for (in value saved)
+    (+= total value)
+  )
+  (for (in value saved)
+    (+= total 100)
+  )
+  (return total)
+)
 
-<= 2
-<= 3
+(fn-do + fusion-mixed-items _ @inline
+  (yield 2)
+  (yield 3)
+)
 ```
 
 ```output
 10
 ```
 
-```yumi
--- fusion-repeated()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-repeated Int
+```brix
+(main
+  (print (call fusion-repeated))
+)
 
-. source = fusion-repeated-items()
-. total = 0
-for pass in 0 .. < 2
-    for value in source
-        total += value
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-repeated-items @inline
+(fn-do + fusion-repeated Int
+  (let source (call fusion-repeated-items))
+  (let total 0)
+  (for (in pass (..< 0 2))
+    (for (in value source)
+      (+= total value)
+    )
+  )
+  (return total)
+)
 
-<= 2
-<= 3
+(fn-do + fusion-repeated-items _ @inline
+  (yield 2)
+  (yield 3)
+)
 ```
 
 ```output
 5
 ```
 
-```yumi
-/BxGC/BxGC.h
--- fusion-escaped()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-escaped Int
+```brix
+(import /BxGC/BxGC.h)
 
-. callbacks [Getter'Int] = List'(Getter'Int)()
-for callback in fusion-captures()
-    callbacks += callback
-C:brixGCCollect()
-= callbacks[0]() + callbacks[1]()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-captures <Getter'Int> @inline
+(main
+  (print (call fusion-escaped))
+)
 
-. value = 3
-<= => value
-value = 4
-<= => value
+(fn-do + fusion-escaped Int
+  (let callbacks (list (of Getter Int)) (call (of List (of Getter Int))))
+  (for (in callback (call fusion-captures))
+    (+= callbacks callback)
+  )
+  (call C:brixGCCollect)
+  (return (+ (call ([] callbacks 0)) (call ([] callbacks 1))))
+)
+
+(fn-do + fusion-captures (stream (of Getter Int)) @inline
+  (let value 3)
+  (yield (=> () value))
+  (= value 4)
+  (yield (=> () value))
+)
 ```
 
 ```output
 8
 ```
 
-```yumi
-/BxGC/BxGC.h
--- fusion-snapshot()
-━━━━━━━━━━━━━━━━━━━━
-+ FusionRecord is Struct
+```brix
+(import /BxGC/BxGC.h)
 
-+ name String
-+ count Int
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-snapshot Int
+(main
+  (print (call fusion-snapshot))
+)
 
-. input = FusionRecord("before", 7)
-. source = fusion-records(input)
-input.name = "after"
-input.count = 9
-. total = 0
-for item in source
-    C:brixGCCollect()
-    -- item.name
-    total += item.count
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-records @inline
-    - value FusionRecord
+(type + FusionRecord (is Struct)
+  (prop + name String)
+  (prop + count Int)
+)
 
-<= value
-value.count += 1
-<= value
+(fn-do + fusion-snapshot Int
+  (let input (call FusionRecord "before" 7))
+  (let source (call fusion-records input))
+  (= (. input name) "after")
+  (= (. input count) 9)
+  (let total 0)
+  (for (in item source)
+    (call C:brixGCCollect)
+    (print (. item name))
+    (+= total (. item count))
+  )
+  (return total)
+)
+
+(fn-do + fusion-records _ @inline
+  (param value FusionRecord)
+  (yield value)
+  (+= (. value count) 1)
+  (yield value)
+)
 ```
 
 ```output
@@ -2077,100 +2238,121 @@ before
 15
 ```
 
-```yumi
--- fusion-input-capture()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-input-capture Int
+```brix
+(main
+  (print (call fusion-input-capture))
+)
 
-. offset = 1
-. source = fusion-map(2) • callback each + offset
-offset = 5
-. total = 0
-for value in source
-    total += value
-    offset += 1
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-map @inline
-    - value Int
-    - callback
+(fn-do + fusion-input-capture Int
+  (let offset 1)
+  (let source (call fusion-map 2 (:callback (+ each offset))))
+  (= offset 5)
+  (let total 0)
+  (for (in value source)
+    (+= total value)
+    (+= offset 1)
+  )
+  (return total)
+)
 
-<= callback(value)
-<= callback(value)
+(fn-do + fusion-map _ @inline
+  (param value Int)
+  (param callback _)
+  (yield (call callback value))
+  (yield (call callback value))
+)
 ```
 
 ```output
 15
 ```
 
-```yumi
--- fusion-generic()
-━━━━━━━━━━━━━━━━━━━━
-+ FusionProducer is Tuple
+```brix
+(main
+  (print (call fusion-generic))
+)
 
-+ count Int
-────────────────────
-+ do items'T @inline
-    - value T
+(type + FusionProducer (is Tuple)
+  (prop + count Int)
+  (fn-do + (of items T) _ @inline
+    (param value T)
+    (for (in index (..< 0 count))
+      (yield value)
+    )
+  )
+)
 
-for index in 0 .. < count
-    <= value
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-generic Int
-
-. producer = FusionProducer(3)
-. total = 0
-for value in producer.items(("item", 4))
-    total += value[1]
-= total
+(fn-do + fusion-generic Int
+  (let producer (call FusionProducer 3))
+  (let total 0)
+  (for (in value (call (. producer items) (tuple "item" 4)))
+    (+= total ([] value 1))
+  )
+  (return total)
+)
 ```
 
 ```output
 12
 ```
 
-```yumi
--- fusion-surrounding()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-surrounding Int
-. total = 0
-for value in fusion-surrounding-outer()
-    total += value
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-surrounding-outer
-. count = 10
-for value in fusion-surrounding-inner()
-    <= count + value
-    count += 1
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-surrounding-inner @inline
-<= 3
-<= 4
+```brix
+(main
+  (print (call fusion-surrounding))
+)
+
+(fn-do + fusion-surrounding Int
+  (let total 0)
+  (for (in value (call fusion-surrounding-outer))
+    (+= total value)
+  )
+  (return total)
+)
+
+(fn-do + fusion-surrounding-outer _
+  (let count 10)
+  (for (in value (call fusion-surrounding-inner))
+    (yield (+ count value))
+    (+= count 1)
+  )
+)
+
+(fn-do + fusion-surrounding-inner _ @inline
+  (yield 3)
+  (yield 4)
+)
 ```
 
 ```output
 28
 ```
 
-```yumi
--- fusion-unbounded()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-unbounded Int
-. total = 0
-for value in fusion-forever()
-    if value == 4
-        break
-    total += value
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-forever @inline
-do finally
-    -- "closed"
-. index = 0
-while true
-    <= index
-    index += 1
+```brix
+(main
+  (print (call fusion-unbounded))
+)
+
+(fn-do + fusion-unbounded Int
+  (let total 0)
+  (for (in value (call fusion-forever))
+    (if (== value 4)
+      (break)
+    )
+    (+= total value)
+  )
+  (return total)
+)
+
+(fn-do + fusion-forever _ @inline
+  (finally
+    (print "closed")
+  )
+  (let index 0)
+  (while true
+    (yield index)
+    (+= index 1)
+  )
+)
 ```
 
 ```output
@@ -2178,28 +2360,39 @@ closed
 6
 ```
 
-```yumi
--- fusion-opaque-choice(true)
--- fusion-opaque-choice(false)
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-opaque-choice Int
-    - known Bool
-. source = match known
-    |= true
-        fusion-known()
-    ??
-        fusion-unknown()
-. total = 0
-for value in source
-    total += value
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-known @inline
-<= 3
-<= 4
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-unknown
-<= 10
+```brix
+(main
+  (print (call fusion-opaque-choice true))
+  (print (call fusion-opaque-choice false))
+)
+
+(fn-do + fusion-opaque-choice Int
+  (param known Bool)
+  (let source
+    (match known
+      (case= true
+        (call fusion-known)
+      )
+      (default
+        (call fusion-unknown)
+      )
+    )
+  )
+  (let total 0)
+  (for (in value source)
+    (+= total value)
+  )
+  (return total)
+)
+
+(fn-do + fusion-known _ @inline
+  (yield 3)
+  (yield 4)
+)
+
+(fn-do + fusion-unknown _
+  (yield 10)
+)
 ```
 
 ```output
@@ -2207,44 +2400,57 @@ for value in source
 10
 ```
 
-```yumi
-do new
-    -- fusion-task()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-task Int
-. total = 0
-for value in fusion-task-values()
-    total += value
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-task-values @inline
-<= 3
-<= 4
+```brix
+(main
+  (do-new
+    (print (call fusion-task))
+  )
+)
+
+(fn-do + fusion-task Int
+  (let total 0)
+  (for (in value (call fusion-task-values))
+    (+= total value)
+  )
+  (return total)
+)
+
+(fn-do + fusion-task-values _ @inline
+  (yield 3)
+  (yield 4)
+)
 ```
 
 ```output
 7
 ```
 
-```yumi
-. result = catch fusion-consumer-error()
--- result is FusionProblem
-━━━━━━━━━━━━━━━━━━━━
-+ FusionProblem is Error
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-consumer-error Int ?! FusionProblem
-do finally
-    -- "consumer closed"
-for value in fusion-consumer-error-values()
-    -- value
-    ?! FusionProblem("failed")
-= 0
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-consumer-error-values @inline
-do finally
-    -- "producer closed"
-<= 3
-<= 4
+```brix
+(main
+  (let result (catch (call fusion-consumer-error)))
+  (print (is result FusionProblem))
+)
+
+(type + FusionProblem (is Error))
+
+(fn-do + fusion-consumer-error Int (?! FusionProblem)
+  (finally
+    (print "consumer closed")
+  )
+  (for (in value (call fusion-consumer-error-values))
+    (print value)
+    (throw (call FusionProblem "failed"))
+  )
+  (return 0)
+)
+
+(fn-do + fusion-consumer-error-values _ @inline
+  (finally
+    (print "producer closed")
+  )
+  (yield 3)
+  (yield 4)
+)
 ```
 
 ```output
@@ -2254,21 +2460,28 @@ consumer closed
 true
 ```
 
-```yumi
--- fusion-empty()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-empty Int
-. total = 0
-for value in fusion-empty-values(false)
-    total += value
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-empty-values @inline
-    - present Bool
-do finally
-    -- "closed"
-if present
-    <= 3
+```brix
+(main
+  (print (call fusion-empty))
+)
+
+(fn-do + fusion-empty Int
+  (let total 0)
+  (for (in value (call fusion-empty-values false))
+    (+= total value)
+  )
+  (return total)
+)
+
+(fn-do + fusion-empty-values _ @inline
+  (param present Bool)
+  (finally
+    (print "closed")
+  )
+  (if present
+    (yield 3)
+  )
+)
 ```
 
 ```output
@@ -2276,23 +2489,29 @@ closed
 0
 ```
 
-```yumi
--- fusion-never-started()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-never-started Int
-. unused = fusion-unused(fusion-unused-argument())
-= 17
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-unused-argument Int
--- "created"
-= 3
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-unused @inline
-    - value Int
--- "entered"
-do finally
-    -- "closed"
-<= value
+```brix
+(main
+  (print (call fusion-never-started))
+)
+
+(fn-do + fusion-never-started Int
+  (let unused (call fusion-unused (call fusion-unused-argument)))
+  (return 17)
+)
+
+(fn-do + fusion-unused-argument Int
+  (print "created")
+  (return 3)
+)
+
+(fn-do + fusion-unused _ @inline
+  (param value Int)
+  (print "entered")
+  (finally
+    (print "closed")
+  )
+  (yield value)
+)
 ```
 
 ```output
@@ -2300,117 +2519,141 @@ created
 17
 ```
 
-```yumi
--- fusion-yield-copy()
-━━━━━━━━━━━━━━━━━━━━
-+ FusionYieldRecord is Struct
-+ count Int
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-yield-copy Int
-. total = 0
-for value in fusion-yield-copy-values()
-    value.count += 10
-    total += value.count
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-yield-copy-values @inline
-. value = FusionYieldRecord(3)
-<= value
-value.count += 1
-<= value
+```brix
+(main
+  (print (call fusion-yield-copy))
+)
+
+(type + FusionYieldRecord (is Struct)
+  (prop + count Int)
+)
+
+(fn-do + fusion-yield-copy Int
+  (let total 0)
+  (for (in value (call fusion-yield-copy-values))
+    (+= (. value count) 10)
+    (+= total (. value count))
+  )
+  (return total)
+)
+
+(fn-do + fusion-yield-copy-values _ @inline
+  (let value (call FusionYieldRecord 3))
+  (yield value)
+  (+= (. value count) 1)
+  (yield value)
+)
 ```
 
 ```output
 27
 ```
 
-```yumi
--- fusion-recursive()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-recursive Int
-. total = 0
-. seen = 0
-for value in fusion-recursive-values(3)
-    seen += 1
-    if seen > 4
-        = -1
-    total += value
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-recursive-values Generator'I32 @inline
-    - count I32
-<= count
-if count > 0
-    for value in fusion-recursive-values(count - 1)
-        <= value
+```brix
+(main
+  (print (call fusion-recursive))
+)
+
+(fn-do + fusion-recursive Int
+  (let total 0)
+  (let seen 0)
+  (for (in value (call fusion-recursive-values 3))
+    (+= seen 1)
+    (if (> seen 4)
+      (return -1)
+    )
+    (+= total value)
+  )
+  (return total)
+)
+
+(fn-do + fusion-recursive-values (of Generator I32) @inline
+  (param count I32)
+  (yield count)
+  (if (> count 0)
+    (for (in value (call fusion-recursive-values (- count 1)))
+      (yield value)
+    )
+  )
+)
 ```
 
 ```output
 6
 ```
 
-```yumi
--- fusion-pipeline()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-pipeline Int
+```brix
+(main
+  (print (call fusion-pipeline))
+)
 
-. total = 0
-for value in (pipeline-filter((pipeline-map((0 .. < 8)) • with each + 1)) • where each % 2 == 0)
-    total += value
-for value in (pipeline-map((pipeline-filter((0 .. < 8)) • where each % 2 == 0)) • with each + 1)
-    total += value
-. first = pipeline-map((0 .. < 8)) • with each + 1
-. second = pipeline-filter(first) • where each % 2 == 0
-. third = pipeline-map(second) • with each * 3
-for value in (pipeline-filter(third) • where each > 10)
-    total += value
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ do pipeline-map'From'To @inline
-    - stream <From>
-    - with Mapper'From'To
+(fn-do + fusion-pipeline Int
+  (let total 0)
+  (for (in value (call pipeline-filter (call pipeline-map (..< 0 8) (:with (+ each 1))) (:where (== (% each 2) 0))))
+    (+= total value)
+  )
+  (for (in value (call pipeline-map (call pipeline-filter (..< 0 8) (:where (== (% each 2) 0))) (:with (+ each 1))))
+    (+= total value)
+  )
+  (let first (call pipeline-map (..< 0 8) (:with (+ each 1))))
+  (let second (call pipeline-filter first (:where (== (% each 2) 0))))
+  (let third (call pipeline-map second (:with (* each 3))))
+  (for (in value (call pipeline-filter third (:where (> each 10))))
+    (+= total value)
+  )
+  (return total)
+)
 
-for item in stream
-    <= with(item)
-━━━━━━━━━━━━━━━━━━━━
-+ do pipeline-filter'Item @inline
-    - stream <Item>
-    - where Predicate'Item
+(fn-do + (of pipeline-map From To) _ @inline
+  (param stream (stream From))
+  (param with (of Mapper From To))
+  (for (in item stream)
+    (yield (call with item))
+  )
+)
 
-for item in stream when where(item)
-    <= item
+(fn-do + (of pipeline-filter Item) _ @inline
+  (param stream (stream Item))
+  (param where (of Predicate Item))
+  (for (in item stream (when (call where item)))
+    (yield item)
+  )
+)
 ```
 
 ```output
 90
 ```
 
-```yumi
-. result = catch fusion-pipeline-errors()
--- result is FusionProblem
-━━━━━━━━━━━━━━━━━━━━
-+ FusionProblem is Error
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-pipeline-errors Int ?! FusionProblem
+```brix
+(main
+  (let result (catch (call fusion-pipeline-errors)))
+  (print (is result FusionProblem))
+)
 
-for value in (pipeline-forward((pipeline-forward(fusion-failure()))))
-    -- value
-= 0
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-failure <Int> ?! FusionProblem @inline
+(type + FusionProblem (is Error))
 
-do finally
-    -- "closed"
-<= 1
-?! FusionProblem("failed")
+(fn-do + fusion-pipeline-errors Int (?! FusionProblem)
+  (for (in value (call pipeline-forward (call pipeline-forward (call fusion-failure))))
+    (print value)
+  )
+  (return 0)
+)
 
+(fn-do + fusion-failure (stream Int) (?! FusionProblem) @inline
+  (finally
+    (print "closed")
+  )
+  (yield 1)
+  (throw (call FusionProblem "failed"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pipeline-forward @inline
-    - stream <Int>
-
-for item in stream
-    <= item
+(fn-do + pipeline-forward _ @inline
+  (param stream (stream Int))
+  (for (in item stream)
+    (yield item)
+  )
+)
 ```
 
 ```output
@@ -2419,63 +2662,72 @@ closed
 true
 ```
 
-```yumi
--- fusion-pipeline-repeated()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-pipeline-repeated Int
+```brix
+(main
+  (print (call fusion-pipeline-repeated))
+)
 
-. source = fusion-repeated-items()
-. total = 0
-for pass in 0 .. < 2
-    for value in (pipeline-forward(source))
-        total += value
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-repeated-items @inline
+(fn-do + fusion-pipeline-repeated Int
+  (let source (call fusion-repeated-items))
+  (let total 0)
+  (for (in pass (..< 0 2))
+    (for (in value (call pipeline-forward source))
+      (+= total value)
+    )
+  )
+  (return total)
+)
 
-<= 2
-<= 3
+(fn-do + fusion-repeated-items _ @inline
+  (yield 2)
+  (yield 3)
+)
 
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pipeline-forward @inline
-    - stream <Int>
-
-for item in stream
-    <= item
+(fn-do + pipeline-forward _ @inline
+  (param stream (stream Int))
+  (for (in item stream)
+    (yield item)
+  )
+)
 ```
 
 ```output
 5
 ```
 
-```yumi
--- fusion-pipeline-cleanup()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-pipeline-cleanup Int
+```brix
+(main
+  (print (call fusion-pipeline-cleanup))
+)
 
-. inner = pipeline-stage(pipeline-items(), "inner")
-for value in (pipeline-stage(inner, "outer"))
-    -- "consumer $value"
-    = value
-= 0
-━━━━━━━━━━━━━━━━━━━━
-+ do pipeline-stage @inline
-    - stream <Int>
-    - name String
+(fn-do + fusion-pipeline-cleanup Int
+  (let inner (call pipeline-stage (call pipeline-items) "inner"))
+  (for (in value (call pipeline-stage inner "outer"))
+    (print (str "consumer " value))
+    (return value)
+  )
+  (return 0)
+)
 
-do finally
-    -- "$name closed"
-for item in stream
-    -- "$name $item"
-    <= item * 2
-━━━━━━━━━━━━━━━━━━━━
-+ do pipeline-items @inline
+(fn-do + pipeline-stage _ @inline
+  (param stream (stream Int))
+  (param name String)
+  (finally
+    (print (str name " closed"))
+  )
+  (for (in item stream)
+    (print (str name " " item))
+    (yield (* item 2))
+  )
+)
 
-do finally
-    -- "source closed"
-<= 1
-<= 2
+(fn-do + pipeline-items _ @inline
+  (finally
+    (print "source closed")
+  )
+  (yield 1)
+  (yield 2)
+)
 ```
 
 ```output
@@ -2488,33 +2740,39 @@ outer closed
 4
 ```
 
-```yumi
-. result = catch fusion-pipeline-consumer-error()
--- result is FusionProblem
-━━━━━━━━━━━━━━━━━━━━
-+ FusionProblem is Error
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-pipeline-consumer-error Int ?! FusionProblem
-do finally
-    -- "consumer closed"
-for value in (pipeline-forward((pipeline-forward(fusion-consumer-error-values()))))
-    -- value
-    ?! FusionProblem("failed")
-= 0
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-consumer-error-values @inline
-do finally
-    -- "producer closed"
-<= 3
-<= 4
+```brix
+(main
+  (let result (catch (call fusion-pipeline-consumer-error)))
+  (print (is result FusionProblem))
+)
 
+(type + FusionProblem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pipeline-forward @inline
-    - stream <Int>
+(fn-do + fusion-pipeline-consumer-error Int (?! FusionProblem)
+  (finally
+    (print "consumer closed")
+  )
+  (for (in value (call pipeline-forward (call pipeline-forward (call fusion-consumer-error-values))))
+    (print value)
+    (throw (call FusionProblem "failed"))
+  )
+  (return 0)
+)
 
-for item in stream
-    <= item
+(fn-do + fusion-consumer-error-values _ @inline
+  (finally
+    (print "producer closed")
+  )
+  (yield 3)
+  (yield 4)
+)
+
+(fn-do + pipeline-forward _ @inline
+  (param stream (stream Int))
+  (for (in item stream)
+    (yield item)
+  )
+)
 ```
 
 ```output
@@ -2524,63 +2782,75 @@ consumer closed
 true
 ```
 
-```yumi
--- fusion-stdlib-pipeline()
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-stdlib-pipeline Int
+```brix
+(main
+  (print (call fusion-stdlib-pipeline))
+)
 
-. total = 0
-for value in (filter((map((0 .. < 8)) • with each + 1)) • where each % 2 == 0)
-    total += value
-for value in (map((filter((0 .. < 8)) • where each % 2 == 0)) • with each + 1)
-    total += value
-. first = map((0 .. < 8)) • with each + 1
-. second = filter(first) • where each % 2 == 0
-. third = map(second) • with each * 3
-for value in (filter(third) • where each > 10)
-    total += value
-= total
+(fn-do + fusion-stdlib-pipeline Int
+  (let total 0)
+  (for (in value (call filter (call map (..< 0 8) (:with (+ each 1))) (:where (== (% each 2) 0))))
+    (+= total value)
+  )
+  (for (in value (call map (call filter (..< 0 8) (:where (== (% each 2) 0))) (:with (+ each 1))))
+    (+= total value)
+  )
+  (let first (call map (..< 0 8) (:with (+ each 1))))
+  (let second (call filter first (:where (== (% each 2) 0))))
+  (let third (call map second (:with (* each 3))))
+  (for (in value (call filter third (:where (> each 10))))
+    (+= total value)
+  )
+  (return total)
+)
 ```
 
 ```output
 90
 ```
 
-```yumi
--- fusion-pipeline-choice(true)
--- fusion-pipeline-choice(false)
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-pipeline-choice Int
-    - first Bool
+```brix
+(main
+  (print (call fusion-pipeline-choice true))
+  (print (call fusion-pipeline-choice false))
+)
 
-. source = match first
-    |= true
-        fusion-left(3)
-    ??
-        fusion-right(7)
-. total = 0
-for value in (pipeline-forward(source))
-    total += value
-= total
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-left @inline
-    - value Int
+(fn-do + fusion-pipeline-choice Int
+  (param first Bool)
+  (let source
+    (match first
+      (case= true
+        (call fusion-left 3)
+      )
+      (default
+        (call fusion-right 7)
+      )
+    )
+  )
+  (let total 0)
+  (for (in value (call pipeline-forward source))
+    (+= total value)
+  )
+  (return total)
+)
 
-<= value
-<= value + 1
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-right @inline
-    - value Int
+(fn-do + fusion-left _ @inline
+  (param value Int)
+  (yield value)
+  (yield (+ value 1))
+)
 
-<= value * 2
+(fn-do + fusion-right _ @inline
+  (param value Int)
+  (yield (* value 2))
+)
 
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pipeline-forward @inline
-    - stream <Int>
-
-for item in stream
-    <= item
+(fn-do + pipeline-forward _ @inline
+  (param stream (stream Int))
+  (for (in item stream)
+    (yield item)
+  )
+)
 ```
 
 ```output
@@ -2588,66 +2858,82 @@ for item in stream
 14
 ```
 
-```yumi
--- feed-chain()
-━━━━━━━━━━━━━━━━━━━━
-+ do feed-chain Int
+```brix
+(main
+  (print (call feed-chain))
+)
 
-. offset = 2
-. source =
-    * 0
-    ** 1 .. 5
-    *? 8 if false
-    **? [6, 7] if true
-    *> each + offset
-    ?> each % 2 == 0
-    ?*> each * 3 if each > 3
-. alias = source
-. total = 0
-for value in alias
-    total += value
-= total
+(fn-do + feed-chain Int
+  (let offset 2)
+  (let source
+    (block
+      (item 0)
+      (spread (.. 1 5))
+      (item? (only-if 8 (if false)))
+      (spread? (only-if (list 6 7) (if true)))
+      (pipe *> (+ each offset))
+      (pipe ?> (== (% each 2) 0))
+      (pipe ?*> (only-if (* each 3) (if (> each 3))))
+    )
+  )
+  (let alias source)
+  (let total 0)
+  (for (in value alias)
+    (+= total value)
+  )
+  (return total)
+)
 ```
 
 ```output
 54
 ```
 
-```yumi
--- feed-list()
-━━━━━━━━━━━━━━━━━━━━
-+ feed-list List'Int
+```brix
+(main
+  (print (call feed-list))
+)
 
-* 1
-** 2 .. 4
-*> each * 2
+(fn-expr + feed-list (of List Int)
+  (item 1)
+  (spread (.. 2 4))
+  (pipe *> (* each 2))
+)
 ```
 
 ```output
 2, 4, 6, 8
 ```
 
-```yumi
--- List(feed-escaping())
-━━━━━━━━━━━━━━━━━━━━
-+ feed-escaping
+```brix
+(main
+  (print (call List (call feed-escaping)))
+)
 
-* 1
-** 2 .. 4
-*> each * 2
-?> each > 3
+(fn-expr + feed-escaping _
+  (item 1)
+  (spread (.. 2 4))
+  (pipe *> (* each 2))
+  (pipe ?> (> each 3))
+)
 ```
 
 ```output
 4, 6, 8
 ```
 
-```yumi
-. source =
-    * 0
-    **? [6, 7] if true
-for item in source
-    -- item
+```brix
+(main
+  (let source
+    (block
+      (item 0)
+      (spread? (only-if (list 6 7) (if true)))
+    )
+  )
+  (for (in item source)
+    (print item)
+  )
+)
 ```
 
 ```output
@@ -2656,37 +2942,45 @@ for item in source
 7
 ```
 
-```yumi
--- feed-partial()
-━━━━━━━━━━━━━━━━━━━━
-+ do feed-partial Int
+```brix
+(main
+  (print (call feed-partial))
+)
 
-. factor = 2
-. values =
-    * feed-effect(1)
-    ** feed-cleanup()
-    * feed-effect(9)
-    *> each * factor
-factor = 3
--- "created"
-for value in values
-    -- value
-    if value >= 6
-        = 17
-= 0
-━━━━━━━━━━━━━━━━━━━━
-+ do feed-effect Int
-    - value Int
+(fn-do + feed-partial Int
+  (let factor 2)
+  (let values
+    (block
+      (item (call feed-effect 1))
+      (spread (call feed-cleanup))
+      (item (call feed-effect 9))
+      (pipe *> (* each factor))
+    )
+  )
+  (= factor 3)
+  (print "created")
+  (for (in value values)
+    (print value)
+    (if (>= value 6)
+      (return 17)
+    )
+  )
+  (return 0)
+)
 
--- "produce $value"
-= value
-━━━━━━━━━━━━━━━━━━━━
-+ do feed-cleanup @inline
+(fn-do + feed-effect Int
+  (param value Int)
+  (print (str "produce " value))
+  (return value)
+)
 
-do finally
-    -- "closed"
-<= 2
-<= 3
+(fn-do + feed-cleanup _ @inline
+  (finally
+    (print "closed")
+  )
+  (yield 2)
+  (yield 3)
+)
 ```
 
 ```output
@@ -2698,43 +2992,49 @@ closed
 17
 ```
 
-```yumi
-. state = FeedState(2)
-. values = feed-lazy(state)
--- "created"
-state.factor = 3
-for value in values
-    -- value
-    if value >= 6
-        break
-━━━━━━━━━━━━━━━━━━━━
-+ FeedState
-+ factor Int
-────────────────────
-+ This
-    - factor
-━━━━━━━━━━━━━━━━━━━━
-+ feed-lazy
-    - state FeedState
+```brix
+(main
+  (let state (call FeedState 2))
+  (let values (call feed-lazy state))
+  (print "created")
+  (= (. state factor) 3)
+  (for (in value values)
+    (print value)
+    (if (>= value 6)
+      (break)
+    )
+  )
+)
 
-* feed-lazy-value(1)
-** feed-lazy-inner()
-* feed-lazy-value(9)
-*> each * state.factor
-?> each > 0
-━━━━━━━━━━━━━━━━━━━━
-+ do feed-lazy-value Int
-    - value Int
+(type + FeedState
+  (prop + factor Int)
+  (fn-do + This _
+    (param factor _)
+  )
+)
 
--- "produce $value"
-= value
-━━━━━━━━━━━━━━━━━━━━
-+ do feed-lazy-inner @inline
+(fn-expr + feed-lazy _
+  (param state FeedState)
+  (item (call feed-lazy-value 1))
+  (spread (call feed-lazy-inner))
+  (item (call feed-lazy-value 9))
+  (pipe *> (* each (. state factor)))
+  (pipe ?> (> each 0))
+)
 
-do finally
-    -- "closed"
-<= 2
-<= 3
+(fn-do + feed-lazy-value Int
+  (param value Int)
+  (print (str "produce " value))
+  (return value)
+)
+
+(fn-do + feed-lazy-inner _ @inline
+  (finally
+    (print "closed")
+  )
+  (yield 2)
+  (yield 3)
+)
 ```
 
 ```output
@@ -2745,49 +3045,62 @@ produce 1
 closed
 ```
 
-```yumi
--- feed-nested()
-━━━━━━━━━━━━━━━━━━━━
-+ do feed-nested Int
+```brix
+(main
+  (print (call feed-nested))
+)
 
-. rows = each * 10 in 1 .. 3
-. values =
-    ** rows
-    ** (each + 1 in 1 .. 2 when each > 1)
-    *> each + 1
-. total = 0
-for value in values
-    total += value
-= total
+(fn-do + feed-nested Int
+  (let rows (in (* each 10) (.. 1 3)))
+  (let values
+    (block
+      (spread rows)
+      (spread (in (+ each 1) (.. 1 2) (when (> each 1))))
+      (pipe *> (+ each 1))
+    )
+  )
+  (let total 0)
+  (for (in value values)
+    (+= total value)
+  )
+  (return total)
+)
 ```
 
 ```output
 67
 ```
 
-```yumi
-. result = catch feed-errors()
--- result is FeedFailure
-━━━━━━━━━━━━━━━━━━━━
-+ FeedFailure is Error
-━━━━━━━━━━━━━━━━━━━━
-+ do feed-errors Int ?! FeedFailure
+```brix
+(main
+  (let result (catch (call feed-errors)))
+  (print (is result FeedFailure))
+)
 
-. values =
-    * 1
-    ** feed-failure()
-    * 9
-    *> each + 1
-for value in values
-    -- value
-= 0
-━━━━━━━━━━━━━━━━━━━━
-+ do feed-failure <Int> ?! FeedFailure @inline
+(type + FeedFailure (is Error))
 
-do finally
-    -- "closed"
-<= 2
-?! FeedFailure("failed")
+(fn-do + feed-errors Int (?! FeedFailure)
+  (let values
+    (block
+      (item 1)
+      (spread (call feed-failure))
+      (item 9)
+      (pipe *> (+ each 1))
+    )
+  )
+  (for (in value values)
+    (print value)
+  )
+  (return 0)
+)
+
+(fn-do + feed-failure (stream Int) (?! FeedFailure) @inline
+  (finally
+    (print "closed")
+  )
+  (yield 2)
+  (throw (call FeedFailure "failed"))
+)
 ```
 
 ```output
@@ -2797,34 +3110,39 @@ closed
 true
 ```
 
-```yumi
-/BxGC/BxGC.h
-. values = feed-managed(FeedBox("one"))
-C:brixGCCollect()
-for value in values
-    C:brixGCCollect()
-    -- value.text
-━━━━━━━━━━━━━━━━━━━━
-+ FeedBox
-+ text String
-────────────────────
-+ This
-    - text
-━━━━━━━━━━━━━━━━━━━━
-+ feed-managed
-    - first FeedBox
+```brix
+(import /BxGC/BxGC.h)
 
-** feed-boxes(first)
-* FeedBox("three")
-*> each
-?> each.text != ""
-━━━━━━━━━━━━━━━━━━━━
-+ do feed-boxes @inline
-    - first FeedBox
+(main
+  (let values (call feed-managed (call FeedBox "one")))
+  (call C:brixGCCollect)
+  (for (in value values)
+    (call C:brixGCCollect)
+    (print (. value text))
+  )
+)
 
-<= first
-C:brixGCCollect()
-<= FeedBox("two")
+(type + FeedBox
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
+
+(fn-expr + feed-managed _
+  (param first FeedBox)
+  (spread (call feed-boxes first))
+  (item (call FeedBox "three"))
+  (pipe *> each)
+  (pipe ?> (!= (. each text) ""))
+)
+
+(fn-do + feed-boxes _ @inline
+  (param first FeedBox)
+  (yield first)
+  (call C:brixGCCollect)
+  (yield (call FeedBox "two"))
+)
 ```
 
 ```output
@@ -2833,59 +3151,68 @@ two
 three
 ```
 
-```yumi
-/core/channel
-/core/task
-. input = SyncBufferedChannel'Int()
-. output = SyncBufferedChannel'Int()
-input <- 7
-input.close()
-for value in feed-task-values(input, output)
-    -- value
-━━━━━━━━━━━━━━━━━━━━
-+ do feed-task-values
-    - input SyncBufferedChannel'Int
-    - output SyncBufferedChannel'Int
+```brix
+(import /core/channel)
+(import /core/task)
 
-do new
-    for value in input
-        . callback Getter'Int = => value + 1
-        output <- callback()
-    output.close()
-for value in output
-    <= value
+(main
+  (let input (call (of SyncBufferedChannel Int)))
+  (let output (call (of SyncBufferedChannel Int)))
+  (<- input 7)
+  (call (. input close))
+  (for (in value (call feed-task-values input output))
+    (print value)
+  )
+)
+
+(fn-do + feed-task-values _
+  (param input (of SyncBufferedChannel Int))
+  (param output (of SyncBufferedChannel Int))
+  (do-new
+    (for (in value input)
+      (let callback (of Getter Int) (=> () (+ value 1)))
+      (<- output (call callback))
+    )
+    (call (. output close))
+  )
+  (for (in value output)
+    (yield value)
+  )
+)
 ```
 
 ```output
 8
 ```
 
-```yumi
-specialization-repeated()
+```brix
+(main
+  (call specialization-repeated)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do specialization-repeated
+(fn-do + specialization-repeated _
+  (let source (call specialization-producer))
+  (for (in index (..< 0 2))
+    (let mapped (call map source (:with (+ each 10))))
+    (call specialization-drain mapped)
+  )
+)
 
-. source = specialization-producer()
-for index in 0 .. < 2
-    . mapped = map(source) • with each + 10
-    specialization-drain(mapped)
+(fn-do + specialization-producer _ @inline
+  (finally
+    (print "closed")
+  )
+  (print "producer")
+  (yield 1)
+  (yield 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do specialization-producer @inline
-
-do finally
-    -- "closed"
--- "producer"
-<= 1
-<= 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do specialization-drain
-    - source <Int>
-
-for value in source
-    -- value
+(fn-do + specialization-drain _
+  (param source (stream Int))
+  (for (in value source)
+    (print value)
+  )
+)
 ```
 
 ```output
@@ -2895,35 +3222,40 @@ producer
 closed
 ```
 
-```yumi
--- fusion-callback-join(true)
--- fusion-callback-join(false)
+```brix
+(main
+  (print (call fusion-callback-join true))
+  (print (call fusion-callback-join false))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-callback-join Int
-    - choose Bool
+(fn-do + fusion-callback-join Int
+  (param choose Bool)
+  (let source
+    (match choose
+      (case= true
+        (call fusion-callback-left)
+      )
+      (default
+        (call fusion-callback-right)
+      )
+    )
+  )
+  (let last (of Getter Int) (=> () 0))
+  (for (in value source)
+    (= last (=> () value))
+  )
+  (return (call last))
+)
 
-. source = match choose
-    |= true
-        fusion-callback-left()
-    ??
-        fusion-callback-right()
-. last Getter'Int = => 0
-for value in source
-    last = => value
-= last()
+(fn-do + fusion-callback-left _ @inline
+  (yield 1)
+  (yield 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-callback-left @inline
-
-<= 1
-<= 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-callback-right @inline
-
-<= 3
-<= 4
+(fn-do + fusion-callback-right _ @inline
+  (yield 3)
+  (yield 4)
+)
 ```
 
 ```output
@@ -2931,98 +3263,89 @@ for value in source
 4
 ```
 
-```yumi
--- fusion-callback-single()
+```brix
+(main
+  (print (call fusion-callback-single))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-callback-single Int
+(fn-do + fusion-callback-single Int
+  (let source (call fusion-callback-left))
+  (let last (of Getter Int) (=> () 0))
+  (for (in value source)
+    (= last (=> () value))
+  )
+  (return (call last))
+)
 
-. source = fusion-callback-left()
-. last Getter'Int = => 0
-for value in source
-    last = => value
-= last()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-callback-left @inline
-
-<= 1
-<= 2
+(fn-do + fusion-callback-left _ @inline
+  (yield 1)
+  (yield 2)
+)
 ```
 
 ```output
 2
 ```
 
-```yumi
-. holder = KeptHolder()
-holder.items += KeptStored(7, "seven")
-holder.before = KeptStored(3, "three")
-. kept = holder.settle(1)
--- "${kept.id} ${kept.name}"
-. next = holder.settle(1)
--- "${next.id} ${next.name}"
-holder.before = KeptStored(4, "four")
-. swapped = holder.swap(KeptStored(5, "five"))
--- "${swapped.id} ${swapped.name}"
-. picked = kept-pick(holder, holder.before!)
--- "${picked.id} ${picked.name}"
--- holder.before == null
+```brix
+(main
+  (let holder (call KeptHolder))
+  (+= (. holder items) (call KeptStored 7 "seven"))
+  (= (. holder before) (call KeptStored 3 "three"))
+  (let kept (call (. holder settle) 1))
+  (print (str (. kept id) " " (. kept name)))
+  (let next (call (. holder settle) 1))
+  (print (str (. next id) " " (. next name)))
+  (= (. holder before) (call KeptStored 4 "four"))
+  (let swapped (call (. holder swap) (call KeptStored 5 "five")))
+  (print (str (. swapped id) " " (. swapped name)))
+  (let picked (call kept-pick holder (!! (. holder before))))
+  (print (str (. picked id) " " (. picked name)))
+  (print (== (. holder before) null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ KeptThing is Interface
+(type + KeptThing (is Interface)
+  (fn-expr + id U64 :get)
+  (fn-expr + name String :get)
+)
 
-────────────────────
-+ get id U64
+(type _ KeptStored (is Tuple)
+  (implements KeptThing)
+  (prop + id U64)
+  (prop + name String)
+)
 
-────────────────────
-+ get name String
+(fn-expr _ kept-doubled Size @inline
+  (param count Size)
+  (* count 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ KeptStored is Tuple
-    is KeptThing
+(fn-do _ kept-pick KeptThing @inline
+  (param holder KeptHolder)
+  (param thing KeptThing)
+  (= (. holder before) null)
+  (return thing)
+)
 
-+ id U64
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-_ kept-doubled Size @inline
-    - count Size
-
-count * 2
-
-━━━━━━━━━━━━━━━━━━━━
-_ do kept-pick KeptThing @inline
-    - holder KeptHolder
-    - thing KeptThing
-
-holder.before = null
-= thing
-
-━━━━━━━━━━━━━━━━━━━━
-_ KeptHolder
-
-+ before KeptThing?
-+ items [KeptThing]
-+ seen Size
-
-────────────────────
-+ do settle KeptThing
-    - scale Size
-
-. original = before ?? items[0]
-before = null
-seen += kept-doubled(scale)
-= original
-
-────────────────────
-+ do swap KeptThing
-    - next KeptThing
-
-. previous = before!
-before = next
-seen += kept-doubled(1)
-= previous
+(type _ KeptHolder
+  (prop + before (? KeptThing))
+  (prop + items (list KeptThing))
+  (prop + seen Size)
+  (fn-do + settle KeptThing
+    (param scale Size)
+    (let original (?? before ([] items 0)))
+    (= before null)
+    (+= seen (call kept-doubled scale))
+    (return original)
+  )
+  (fn-do + swap KeptThing
+    (param next KeptThing)
+    (let previous (!! before))
+    (= before next)
+    (+= seen (call kept-doubled 1))
+    (return previous)
+  )
+)
 ```
 
 ```output
@@ -3033,156 +3356,152 @@ seen += kept-doubled(1)
 true
 ```
 
-```yumi
-./callback-support
-/core
+```brix
+(import ./callback-support)
+(import /core)
+(blank)
 
--- closure-interface(4)
+(main
+  (print (call closure-interface 4))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Measured is Interface
+(type + Measured (is Interface)
+  (fn-expr + total Int)
+)
 
-────────────────────
-+ total Int
+(type + Amount (is Tuple)
+  (implements Measured)
+  (prop + value Int)
+  (fn-expr + total Int @inline
+    value
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Amount is Tuple
-    is Measured
+(fn-expr + read Int @inline
+  (param value Measured)
+  (call (. value total))
+)
 
-+ value Int
-
-────────────────────
-+ total Int @inline
-
-value
-
-━━━━━━━━━━━━━━━━━━━━
-+ read Int @inline
-    - value Measured
-
-value.total()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do closure-interface Int
-    - value Int
-
-. capture Measured = Amount(value)
-. callback Mapper'Measured'Measured = :: input => Amount(input.total() + capture.total())
-= read(apply'Measured'Measured(callback, Amount(3)))
+(fn-do + closure-interface Int
+  (param value Int)
+  (let capture Measured (call Amount value))
+  (let callback (of Mapper Measured Measured) (=> (input) (call Amount (+ (call (. input total)) (call (. capture total))))))
+  (return (call read (call (of apply Measured Measured) callback (call Amount 3))))
+)
 ```
 
-```yumi file=callback-support.yumi
+```brix file=callback-support.bx
+(import /core)
 
-/core
-
-━━━━━━━━━━━━━━━━━━━━
-+ apply'T'U U @inline
-    - callback Mapper'T'U
-    - value T
-
-callback(value)
-
+(fn-expr + (of apply T U) U @inline
+  (param callback (of Mapper T U))
+  (param value T)
+  (call callback value)
+)
 ```
 
 ```output
 7
 ```
 
-```yumi
-./generator-producer
-/core
+```brix
+(import ./generator-producer)
+(import /core)
+(blank)
 
--- fused-total()
+(main
+  (print (call fused-total))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fused-total Int
-
-. total = 0
-for value in values(12)
-    total += value
-= total
+(fn-do + fused-total Int
+  (let total 0)
+  (for (in value (call values 12))
+    (+= total value)
+  )
+  (return total)
+)
 ```
 
-```yumi file=generator-producer.yumi
+```brix file=generator-producer.bx
+(import /core)
 
-/core
-
-━━━━━━━━━━━━━━━━━━━━
-+ do values @inline
-    - count Int
-
-. index = 0
-while index < count
-    <= index
-    index += 1
-
+(fn-do + values _ @inline
+  (param count Int)
+  (let index 0)
+  (while (< index count)
+    (yield index)
+    (+= index 1)
+  )
+)
 ```
 
 ```output
 66
 ```
 
-```yumi
-./feed-producer
-/core
+```brix
+(import ./feed-producer)
+(import /core)
+(blank)
 
--- feed-module()
+(main
+  (print (call feed-module))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do feed-module Int
-
-. values = feed-values()
-. alias = values
-. total = 0
-for value in alias
-    total += value
-= total
+(fn-do + feed-module Int
+  (let values (call feed-values))
+  (let alias values)
+  (let total 0)
+  (for (in value alias)
+    (+= total value)
+  )
+  (return total)
+)
 ```
 
-```yumi file=feed-producer.yumi
+```brix file=feed-producer.bx
+(import /core)
 
-/core
-
-━━━━━━━━━━━━━━━━━━━━
-+ feed-values @inline
-
-* 1
-** 2 .. 12
-*> each * 2
-?> each % 4 == 0
-
+(fn-expr + feed-values _ @inline
+  (item 1)
+  (spread (.. 2 12))
+  (pipe *> (* each 2))
+  (pipe ?> (== (% each 4) 0))
+)
 ```
 
 ```output
 84
 ```
 
-```yumi
-specialization-repeated()
+```brix
+(main
+  (call specialization-repeated)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do specialization-repeated
+(fn-do + specialization-repeated _
+  (for (in index (..< 0 2))
+    (let source (call specialization-producer))
+    (let mapped (call map source (:with (+ each 10))))
+    (call specialization-drain mapped)
+  )
+)
 
-for index in 0 .. < 2
-    . source = specialization-producer()
-    . mapped = map(source) • with each + 10
-    specialization-drain(mapped)
+(fn-do + specialization-producer _ @inline
+  (finally
+    (print "closed")
+  )
+  (print "producer")
+  (yield 1)
+  (yield 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do specialization-producer @inline
-
-do finally
-    -- "closed"
--- "producer"
-<= 1
-<= 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do specialization-drain
-    - source <Int>
-
-for value in source
-    -- value
+(fn-do + specialization-drain _
+  (param source (stream Int))
+  (for (in value source)
+    (print value)
+  )
+)
 ```
 
 ```output
@@ -3196,47 +3515,52 @@ producer
 closed
 ```
 
-```yumi
--- fusion-callback-join(true)
--- fusion-callback-join(false)
--- fusion-callback-single()
+```brix
+(main
+  (print (call fusion-callback-join true))
+  (print (call fusion-callback-join false))
+  (print (call fusion-callback-single))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-callback-join Int
-    - choose Bool
+(fn-do + fusion-callback-join Int
+  (param choose Bool)
+  (let source
+    (match choose
+      (case= true
+        (call fusion-callback-left)
+      )
+      (default
+        (call fusion-callback-right)
+      )
+    )
+  )
+  (let last (of Getter Int) (=> () 0))
+  (for (in value source)
+    (= last (=> () value))
+    (break)
+  )
+  (return (call last))
+)
 
-. source = match choose
-    |= true
-        fusion-callback-left()
-    ??
-        fusion-callback-right()
-. last Getter'Int = => 0
-for value in source
-    last = => value
-    break
-= last()
+(fn-do + fusion-callback-single Int
+  (let source (call fusion-callback-left))
+  (let last (of Getter Int) (=> () 0))
+  (for (in value source)
+    (= last (=> () value))
+    (break)
+  )
+  (return (call last))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-callback-single Int
+(fn-do + fusion-callback-left _ @inline
+  (yield 1)
+  (yield 2)
+)
 
-. source = fusion-callback-left()
-. last Getter'Int = => 0
-for value in source
-    last = => value
-    break
-= last()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-callback-left @inline
-
-<= 1
-<= 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-callback-right @inline
-
-<= 3
-<= 4
+(fn-do + fusion-callback-right _ @inline
+  (yield 3)
+  (yield 4)
+)
 ```
 
 ```output
@@ -3245,47 +3569,52 @@ for value in source
 1
 ```
 
-```yumi
--- fusion-callback-join(true)
--- fusion-callback-join(false)
--- fusion-callback-single()
+```brix
+(main
+  (print (call fusion-callback-join true))
+  (print (call fusion-callback-join false))
+  (print (call fusion-callback-single))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-callback-join Int
-    - choose Bool
+(fn-do + fusion-callback-join Int
+  (param choose Bool)
+  (let source
+    (match choose
+      (case= true
+        (call fusion-callback-left)
+      )
+      (default
+        (call fusion-callback-right)
+      )
+    )
+  )
+  (let last (of Getter Int) (=> () 0))
+  (for (in value source)
+    (print (call last))
+    (= last (=> () value))
+  )
+  (return (call last))
+)
 
-. source = match choose
-    |= true
-        fusion-callback-left()
-    ??
-        fusion-callback-right()
-. last Getter'Int = => 0
-for value in source
-    -- last()
-    last = => value
-= last()
+(fn-do + fusion-callback-single Int
+  (let source (call fusion-callback-left))
+  (let last (of Getter Int) (=> () 0))
+  (for (in value source)
+    (print (call last))
+    (= last (=> () value))
+  )
+  (return (call last))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-callback-single Int
+(fn-do + fusion-callback-left _ @inline
+  (yield 1)
+  (yield 2)
+)
 
-. source = fusion-callback-left()
-. last Getter'Int = => 0
-for value in source
-    -- last()
-    last = => value
-= last()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-callback-left @inline
-
-<= 1
-<= 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fusion-callback-right @inline
-
-<= 3
-<= 4
+(fn-do + fusion-callback-right _ @inline
+  (yield 3)
+  (yield 4)
+)
 ```
 
 ```output
@@ -3300,175 +3629,155 @@ for value in source
 2
 ```
 
-```yumi
-./projection-nodes
-/core/arena
-/core/array-builder
-/core/parsing
-/core/table
+```brix
+(import ./projection-nodes)
+(import /core/arena)
+(import /core/array-builder)
+(import /core/parsing)
+(import /core/table)
+(blank)
+(prop _ xml-tree Tree @stack)
+(blank)
 
-_ @stack xml-tree Tree
+(main
+  (let arena (use (call Arena)))
+  (let tree (call Tree (call (of Table Node) arena 16) (call (of ArrayBuilder NodeId) arena)))
+  (let a (as (call (. tree nodes append) (call Leaf (call MatchLocation) 7)) NodeId))
+  (call (. tree children append) a)
+  (let b (as (call (. tree nodes append) (call Call (call MatchLocation) a (call (of RowRange NodeId) 0 1) 0 false)) NodeId))
+  (call (. tree children append) b)
+  (let c (as (call (. tree nodes append) (call Call (call MatchLocation) b (call (of RowRange NodeId) 1 1) 0 true)) NodeId))
+  (do-with xml-tree tree
+    (print (as (. ([] (. tree nodes) c) xml) String))
+  )
+)
 
-. arena = use Arena()
-. tree = Tree(Table'Node(arena, 16), ArrayBuilder'NodeId(arena))
-. a = tree.nodes.append(Leaf(MatchLocation(), 7)) as NodeId
-tree.children.append(a)
-. b = tree.nodes.append(Call(MatchLocation(), a, RowRange'NodeId(0, 1), 0, false)) as NodeId
-tree.children.append(b)
-. c = tree.nodes.append(Call(MatchLocation(), b, RowRange'NodeId(1, 1), 0, true)) as NodeId
-do with xml-tree = tree
-    -- tree.nodes[c].xml as String
+(type + Tree (is Tuple)
+  (prop + nodes (of Table Node))
+  (prop + children (of ArrayBuilder NodeId ArenaBacking))
+  (fn-expr + child-ids (of IndexSpan NodeId)
+    (param range (of RowRange NodeId))
+    (call (of IndexSpan NodeId) children (..< (. range start) (. range end)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tree is Tuple
+(fn-expr _ child-xml XML
+  (param id NodeId)
+  (. ([] (. xml-tree nodes) id) xml)
+)
 
-+ nodes Table'Node
-+ children ArrayBuilder'NodeId'ArenaBacking
+(fn-do _ child-xmls (? (of ImmutableArray XML))
+  (param range (of RowRange NodeId))
+  (print (str "range " (. range start) "+" (. range count)))
+  (return-if (if (== (. range count) 0)))
+  (let builder (call (of ArrayBuilder XML)))
+  (for (in node ([] (. xml-tree nodes) (call (. xml-tree child-ids) range)))
+    (call (. builder append) (. node xml))
+  )
+  (return (call (. builder finish-immutable)))
+)
 
-────────────────────
-+ child-ids IndexSpan'NodeId
-    - range RowRange'NodeId
+(extend + Leaf
+  (fn-expr + xml XML :get
+    (<> XML (text: "Leaf"))
+  )
+)
 
-IndexSpan'NodeId(children, range.start .. < range.end)
+(extend + Call
+  (fn-expr + xml XML :get
+    (<> XML (text: "Call") (:curried? is-curried)
+      (call child-xml callable)
+      (if (. params count)
+        (<> XML (text: "params")
+          (call child-xmls params)
+        )
+      )
+      (call child-xmls args)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ child-xml XML
-    - id NodeId
-
-xml-tree.nodes[id].xml
-
-━━━━━━━━━━━━━━━━━━━━
-_ do child-xmls ImmutableArray'XML?
-    - range RowRange'NodeId
-
--- "range ${range.start}+${range.count}"
-=? if range.count == 0
-. builder = ArrayBuilder'XML()
-for node in xml-tree.nodes[xml-tree.child-ids(range)]
-    builder.append(node.xml)
-= builder.finish-immutable()
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Leaf
-
-────────────────────
-+ get xml XML
-
-<XML "Leaf"
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Call
-
-────────────────────
-+ get xml XML
-
-<XML "Call"
-    •? curried is-curried
-    child-xml(callable)
-    if params.count
-        <XML "params"
-            child-xmls(params)
-    child-xmls(args)
-
-━━━━━━━━━━━━━━━━━━━━
-+ XML
-
-+ node-name String
-+ attrs [KeyValuePair'String'String]
-+ children [This]
-
-────────────────────
-+ This
-    - node-name String
-
-────────────────────
-+ do to String
-
-. text = "<$node-name"
-for attr in attrs
-    text += " ${attr.key}=\"${attr.value}\""
-text += ">"
-for child in children
-    text += child as String
-= text + "</$node-name>"
-
-────────────────────
-+ do this += child This?
-
-if child
-    children += child
-
-────────────────────
-+ do this ++= kids <This>?
-
-if kids
-    for kid in kids
-        children += kid
-
-────────────────────
-+ do this += kv KeyValuePair'String'String?
-
-if kv
-    attrs += kv
-
-────────────────────
-+ do this += kv KeyValuePair'String''Value?
-
-if kv
-    attrs += (kv.key, "${kv.value}")
+(type + XML
+  (prop + node-name String)
+  (prop + attrs (list (of KeyValuePair String String)))
+  (prop + children (list This))
+  (fn-do + This _
+    (param node-name String)
+  )
+  (fn-to-do + String
+    (let text (str "<" node-name))
+    (for (in attr attrs)
+      (+= text (str " " (. attr key) "=\"" (. attr value) "\""))
+    )
+    (+= text ">")
+    (for (in child children)
+      (+= text (as child String))
+    )
+    (return (+ text (str "</" node-name ">")))
+  )
+  (fn-do + (infix this += (param child (? This))) _
+    (if child
+      (+= children child)
+    )
+  )
+  (fn-do + (infix this ++= (param kids (? (stream This)))) _
+    (if kids
+      (for (in kid kids)
+        (+= children kid)
+      )
+    )
+  )
+  (fn-do + (infix this += (param kv (? (of KeyValuePair String String)))) _
+    (if kv
+      (+= attrs kv)
+    )
+  )
+  (fn-do + (infix this += (param kv (? (of KeyValuePair String ''Value)))) _
+    (if kv
+      (+= attrs (tuple (. kv key) (str (. kv value))))
+    )
+  )
+)
 ```
 
-```yumi file=projection-nodes.yumi
+```brix file=projection-nodes.bx
+(import /core/parsing)
+(blank)
+(type-line + NodeId (is U32))
 
-/core/parsing
+(type + (of RowRange ''Row) (is Tuple)
+  (prop + start U32)
+  (prop + count U32)
+  (fn-expr + end U32 :get @inline
+    (+ start count)
+  )
+)
 
-+ NodeId is U32
+(type + Node (is Union)
+  (variant leaf Leaf)
+  (variant call Call)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowRange''Row is Tuple
+(type + Base (is Tuple)
+  (prop + loc MatchLocation)
+)
 
-+ start U32
-+ count U32
+(type + Leaf (is Base)
+  (prop + value U32)
+)
 
-────────────────────
-+ get end U32 @inline
-
-start + count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| leaf Leaf
-| call Call
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Tuple
-
-+ loc MatchLocation
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is Base
-
-+ value U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Call is Base
-
-+ callable NodeId
-+ operands RowRange'NodeId
-+ param-count U8
-+ is-curried Bool
-
-────────────────────
-+ get params RowRange'NodeId @inline
-
-RowRange'NodeId(operands.start, param-count)
-
-────────────────────
-+ get args RowRange'NodeId @inline
-
-RowRange'NodeId(operands.start + param-count, operands.count - param-count)
-
+(type + Call (is Base)
+  (prop + callable NodeId)
+  (prop + operands (of RowRange NodeId))
+  (prop + param-count U8)
+  (prop + is-curried Bool)
+  (fn-expr + params (of RowRange NodeId) :get @inline
+    (call (of RowRange NodeId) (. operands start) param-count)
+  )
+  (fn-expr + args (of RowRange NodeId) :get @inline
+    (call (of RowRange NodeId) (+ (. operands start) param-count) (- (. operands count) param-count))
+  )
+)
 ```
 
 ```output

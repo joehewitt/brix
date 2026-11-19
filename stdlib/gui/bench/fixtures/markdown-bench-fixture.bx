@@ -1,0 +1,178 @@
+(import /code/code-session)
+(import /graphics/canvas)
+(import /graphics/color)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /gui)
+(import /gui/markdown)
+(import /gui/scene)
+(blank)
+(prop + markdown-bench-sections Size (= 300))
+(prop + markdown-bench-wheel-step Length (= 120))
+(prop + markdown-bench-tables Size (= 40))
+(prop + markdown-bench-table-rows Size (= 24))
+
+(type + MarkdownBench
+  (prop + window MarkdownBenchWindow)
+  (prop + scene DisplayScene)
+  (prop + canvas RasterCanvas)
+  (prop + session CodeSession)
+  (fn-do + This _
+    (param source String)
+    (param caret-text String)
+    (param reveal-text (? String) (= null))
+    (lazy window (call MarkdownBenchWindow))
+    (call (. window open))
+    (= scene (call DisplayScene 2 black))
+    (= canvas (call RasterCanvas 900 800 2 black))
+    (= session (call CodeSession source))
+    (call (. session move-to) (?? (call (. source find) caret-text 0) 0))
+    (call (. window editor show) session)
+    (if reveal-text
+      (call (. window editor reveal-line) (call (. session text line-at) (?? (call (. source find) reveal-text 0) 0)))
+    )
+    (let ignored (call frame true))
+  )
+  (fn-do + frame Size
+    (param builds _ (= false))
+    (let queue (. (!! (. window markup-batch-root)) markup-batch-queue))
+    (call (. queue checkpoint))
+    (let checkpoints Size 1)
+    (while (and (. queue actions) (< checkpoints 64))
+      (call (. queue checkpoint))
+      (+= checkpoints 1)
+    )
+    (call (. window layout))
+    (if builds
+      (call (. scene build) window)
+      (else
+        (call (. scene update) window)
+      )
+    )
+    (call (. scene commit))
+    (call (. scene frame) canvas)
+    (return checkpoints)
+  )
+  (fn-do + type Size
+    (param keys Size)
+    (let checksum Size 0)
+    (for (in key (..< 0 keys))
+      (if (== (% key 15) 14)
+        (call (. window editor perform) (. TextCommand insert-newline))
+        (else
+          (call (. window editor insert-text) "x")
+        )
+      )
+      (+= checksum (call frame))
+    )
+    (return (+ checksum (. session text length)))
+  )
+  (fn-do + sweep Size
+    (param step Length)
+    (let scroller (!! (call markdown-bench-scroller window)))
+    (let checksum Size 0)
+    (while (< (. scroller scroll-y) (. scroller scroll-max y))
+      (let ignored (call (. scroller scroll-by) (call Point 0 step) (. ScrollCause wheel)))
+      (+= checksum (call frame))
+    )
+    (while (> (. scroller scroll-y) 0)
+      (let ignored (call (. scroller scroll-by) (call Point 0 (- step)) (. ScrollCause wheel)))
+      (+= checksum (call frame))
+    )
+    (return checksum)
+  )
+  (fn-do + close _
+    (call (. scene close))
+    (call (. canvas close))
+    (call (. window close))
+  )
+)
+
+(type + MarkdownBenchWindow (is Window)
+  (content
+    (<> This (• flex-col)
+      (= size (call Dimensions 900 800))
+      (<> MarkdownReferenceScope (• flex-col) (• flex 1)
+        (<> MarkdownEditor (id: editor) (• flex 1)
+          (= column-width 820)
+          (= column-padding (call Insets 32 40 64 40))
+        )
+      )
+    )
+  )
+)
+
+(fn-do + markdown-bench-scroller (? Box)
+  (param box Box)
+  (for (in child (call RenderedChildCursor box))
+    (return-if child (if (call (. child is-scroll-axis-enabled) (. Orientation vertical))))
+    (let found (call markdown-bench-scroller child))
+    (return-if found (if found))
+  )
+  (return null)
+)
+
+(fn-expr + markdown-bench-document String
+  (param sections Size)
+  (call (. "\n" join) (in (call markdown-bench-section each) (..< 0 sections)))
+)
+
+(fn-expr _ markdown-bench-section _
+  (param section Size)
+  (paragraph
+    (str "## Section " section)
+    (blank)
+    (str "Paragraph " (* section 2) " has **strong text**, *emphasis*, `inline code`, and [a link](https://example.com/" section "). It runs long enough to wrap across a few lines in the editor column.")
+    (blank)
+    (str "- First item " section)
+    "- Second item with `code`"
+    "  - Nested item"
+    "- Third item"
+    (blank)
+    (str "> Quoted note " section " stays in the document.")
+    (blank)
+    "```"
+    (str "let value = " section)
+    "print(value)"
+    "```"
+    (blank)
+    "| Name | Value |"
+    "|------|-------|"
+    (str "| a" section " | " (* section 3) " |")
+    (str "| b" section " | " (* section 5) " |")
+    (blank)
+    (str "Paragraph " (+ (* section 2) 1) " closes the section." (str "\n"))
+  )
+)
+
+(fn-expr + markdown-bench-table-document String
+  (param tables Size)
+  (param rows Size)
+  (call (. "" join) (in (call markdown-bench-table each rows) (..< 0 tables)))
+)
+
+(fn-expr _ markdown-bench-table _
+  (param table Size)
+  (param rows Size)
+  (paragraph
+    (str "## Table " table)
+    (blank)
+    (str "Table " table " lists every callback site with its **verdict** and the `cursor` state at invocation.")
+    (blank)
+    "| # | file:line | callback | paths | cursor state at invocation | per-exit values / side effects | verdict |"
+    "|---|---|---|---|---|---|---|"
+    (str lines)
+    (str "Table " table " closes with a short paragraph." (str "\n\n"))
+  )
+  (where
+    (lazy lines (call (. "" join) (in (call markdown-bench-table-row table each) (..< 0 rows))))
+  )
+)
+
+(fn-expr _ markdown-bench-table-row _
+  (param table Size)
+  (param row Size)
+  (paragraph
+    (str "| T" table "-" row " | match.ts:" (+ 1000 row) " (`StreamMatchMaker.next`) | `ended()` if defined, else `failed(null)` (" (+ 1600 row) ") | 1 | fresh `nonexists` block after condjump on stream-read | none; failedBuf constant `null`. Caller emits **nothing after** and the continuation decides | **SAFE** per se; joins at the parent group |" (str "\n"))
+  )
+)

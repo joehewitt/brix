@@ -1,18 +1,22 @@
 # Atoms
 
-```yumi
-/core/atom-pool
+```brix
+(import /core/atom-pool)
+(blank)
 
-. atoms = AtomPool()
-do finally
-    atoms.release()
-. empty = atoms.store("")
-. duplicate = atoms.store("")
--- empty == duplicate
--- atoms.owns(empty)
--- empty.text == ""
--- atoms.length
--- Atom.size
+(main
+  (let atoms (call AtomPool))
+  (finally
+    (call (. atoms release))
+  )
+  (let empty (call (. atoms store) ""))
+  (let duplicate (call (. atoms store) ""))
+  (print (== empty duplicate))
+  (print (call (. atoms owns) empty))
+  (print (== (. empty text) ""))
+  (print (. atoms length))
+  (print (. Atom size))
+)
 ```
 
 ```output
@@ -23,19 +27,23 @@ true
 8
 ```
 
-```yumi
-/core/atom-pool
+```brix
+(import /core/atom-pool)
+(blank)
 
-. atoms = AtomPool()
-do finally
-    atoms.release()
-. stored = atoms.store("alpha-beta")
-. spanned = atoms.store("alpha-beta" as Byte[], 0, 10)
--- stored == spanned
-. tail = atoms.store("x-beta" as Byte[], 2, 6)
--- tail.text
--- tail == atoms.store("beta")
--- atoms.length
+(main
+  (let atoms (call AtomPool))
+  (finally
+    (call (. atoms release))
+  )
+  (let stored (call (. atoms store) "alpha-beta"))
+  (let spanned (call (. atoms store) (as "alpha-beta" ([] Byte)) 0 10))
+  (print (== stored spanned))
+  (let tail (call (. atoms store) (as "x-beta" ([] Byte)) 2 6))
+  (print (. tail text))
+  (print (== tail (call (. atoms store) "beta")))
+  (print (. atoms length))
+)
 ```
 
 ```output
@@ -45,19 +53,24 @@ true
 2
 ```
 
-```yumi
-/core/arena
-/core/array-builder
+```brix
+(import /core/arena)
+(import /core/array-builder)
+(blank)
 
-. arena = Arena()
-do finally arena.release()
-. first = arena.copy-string("first") as Atom
-. second = arena.copy-string("second") as Atom
-. atoms = ArrayBuilder'Atom(arena)
-atoms.append(first)
-atoms[0] = second
--- atoms[0].text
--- arena.owns(atoms[0].address as Pointer)
+(main
+  (let arena (call Arena))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let first (as (call (. arena copy-string) "first") Atom))
+  (let second (as (call (. arena copy-string) "second") Atom))
+  (let atoms (call (of ArrayBuilder Atom) arena))
+  (call (. atoms append) first)
+  (= ([] atoms 0) second)
+  (print (. ([] atoms 0) text))
+  (print (call (. arena owns) (as (. ([] atoms 0) address) Pointer)))
+)
 ```
 
 ```output
@@ -65,21 +78,25 @@ second
 true
 ```
 
-```yumi
-/core/atom-pool
+```brix
+(import /core/atom-pool)
+(blank)
 
-. atoms = AtomPool()
-do finally
-    atoms.release()
-. alpha = atoms.store("alpha")
-. duplicate = atoms.store("alpha")
--- alpha == duplicate
--- alpha.address == duplicate.address
--- atoms.owns(alpha)
--- alpha.text
--- alpha as String
--- alpha.text[1 .. 3]
--- "atom=${alpha.text}"
+(main
+  (let atoms (call AtomPool))
+  (finally
+    (call (. atoms release))
+  )
+  (let alpha (call (. atoms store) "alpha"))
+  (let duplicate (call (. atoms store) "alpha"))
+  (print (== alpha duplicate))
+  (print (== (. alpha address) (. duplicate address)))
+  (print (call (. atoms owns) alpha))
+  (print (. alpha text))
+  (print (as alpha String))
+  (print ([] (. alpha text) (.. 1 3)))
+  (print (str "atom=" (. alpha text)))
+)
 ```
 
 ```output
@@ -92,24 +109,28 @@ lph
 atom=alpha
 ```
 
-```yumi
-/core/atom-pool
+```brix
+(import /core/atom-pool)
+(blank)
 
-. atoms = AtomPool()
-. others = AtomPool()
-do finally
-    atoms.release()
-    others.release()
-. codepoints = "xAé漢😀z".codepoints
-. mixed = atoms.store(codepoints, 1, 5)
-. duplicate = atoms.store("Aé漢😀")
-. other = others.store("Aé漢😀")
--- mixed == duplicate
--- mixed != other
--- mixed.text.length
--- mixed.text.size
--- mixed.text[1 .. 2]
--- atoms.length
+(main
+  (let atoms (call AtomPool))
+  (let others (call AtomPool))
+  (finally
+    (call (. atoms release))
+    (call (. others release))
+  )
+  (let codepoints (. "xAé漢😀z" codepoints))
+  (let mixed (call (. atoms store) codepoints 1 5))
+  (let duplicate (call (. atoms store) "Aé漢😀"))
+  (let other (call (. others store) "Aé漢😀"))
+  (print (== mixed duplicate))
+  (print (!= mixed other))
+  (print (. mixed text length))
+  (print (. mixed text size))
+  (print ([] (. mixed text) (.. 1 2)))
+  (print (. atoms length))
+)
 ```
 
 ```output
@@ -121,21 +142,26 @@ true
 1
 ```
 
-```yumi
-/core/atom-pool
+```brix
+(import /core/atom-pool)
+(blank)
 
-. atoms = AtomPool()
-do finally
-    atoms.release()
-. empty = atoms.store("")
-. alpha = atoms.store("alpha")
-. beta = atoms.store("beta")
--- atoms.ordinal(empty), atoms.ordinal(alpha), atoms.ordinal(beta)
--- atoms[0].text, atoms[1].text, atoms[2].text
-. order = ""
-for atom in atoms
-    order ++= "[${atom.text}]"
--- order
+(main
+  (let atoms (call AtomPool))
+  (finally
+    (call (. atoms release))
+  )
+  (let empty (call (. atoms store) ""))
+  (let alpha (call (. atoms store) "alpha"))
+  (let beta (call (. atoms store) "beta"))
+  (print (tuple (call (. atoms ordinal) empty) (call (. atoms ordinal) alpha) (call (. atoms ordinal) beta)))
+  (print (tuple (. ([] atoms 0) text) (. ([] atoms 1) text) (. ([] atoms 2) text)))
+  (let order "")
+  (for (in atom atoms)
+    (++= order (str "[" (. atom text) "]"))
+  )
+  (print order)
+)
 ```
 
 ```output
@@ -144,17 +170,21 @@ for atom in atoms
 [][alpha][beta]
 ```
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-do finally
-    arena.release()
-. text = arena.copy-string("arena-atom")
-. atom = text as Atom
--- arena.owns(atom.address as Pointer)
--- atom.text
--- atom as String
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (let text (call (. arena copy-string) "arena-atom"))
+  (let atom (as text Atom))
+  (print (call (. arena owns) (as (. atom address) Pointer)))
+  (print (. atom text))
+  (print (as atom String))
+)
 ```
 
 ```output
@@ -163,85 +193,111 @@ arena-atom
 arena-atom
 ```
 
-```yumi
-/core/atom-pool
+```brix
+(import /core/atom-pool)
+(blank)
 
-. atoms = AtomPool()
-. others = AtomPool()
-do finally
-    atoms.release()
-    others.release()
-. attempt = do new
-    . alpha = atoms.store("alpha")
-    . other-alpha = others.store("alpha")
-    . ordinal = atoms.ordinal(other-alpha)
-catch failure
-    -- "error: $failure"
-attempt.wait()
+(main
+  (let atoms (call AtomPool))
+  (let others (call AtomPool))
+  (finally
+    (call (. atoms release))
+    (call (. others release))
+  )
+  (let attempt
+    (do-new
+      (let alpha (call (. atoms store) "alpha"))
+      (let other-alpha (call (. others store) "alpha"))
+      (let ordinal (call (. atoms ordinal) other-alpha))
+      (on-failure failure
+        (print (str "error: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
 error: Atom belongs to another AtomPool or is not live
 ```
 
-```yumi
-/core/atom-pool
+```brix
+(import /core/atom-pool)
+(blank)
 
-. atoms = AtomPool()
-do finally
-    atoms.release()
-. attempt = do new
-    . source = "abc".codepoints
-    . invalid = atoms.store(source, 2, 1)
-catch failure
-    -- "error: $failure"
-attempt.wait()
+(main
+  (let atoms (call AtomPool))
+  (finally
+    (call (. atoms release))
+  )
+  (let attempt
+    (do-new
+      (let source (. "abc" codepoints))
+      (let invalid (call (. atoms store) source 2 1))
+      (on-failure failure
+        (print (str "error: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
 error: Atom codepoint span is invalid
 ```
 
-```yumi
-/core/atom-pool
+```brix
+(import /core/atom-pool)
+(blank)
 
-. atoms = AtomPool()
-atoms.release()
-. attempt = do new
-    -- atoms.length
-catch failure
-    -- "error: $failure"
-attempt.wait()
+(main
+  (let atoms (call AtomPool))
+  (call (. atoms release))
+  (let attempt
+    (do-new
+      (print (. atoms length))
+      (on-failure failure
+        (print (str "error: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
 error: AtomPool Arena is stale or released
 ```
 
-```yumi
-/core/arena
-/core/atom-pool
+```brix
+(import /core/arena)
+(import /core/atom-pool)
+(blank)
 
-. atoms = AtomPool()
-. first = Arena()
-. second = Arena()
-. first-name = first.copy-string("ArenaAtomTree") as Atom
-. second-name = second.copy-string("ArenaAtomTree") as Atom
--- first-name.text
--- first-name != second-name
--- first.owns(first-name.address as Pointer)
--- second.owns(second-name.address as Pointer)
-. first-promoted = atoms.store(first-name.text)
-. second-promoted = atoms.store(second-name.text)
--- first-promoted == second-promoted
--- atoms.owns(first-promoted)
--- !first.owns(first-promoted.address as Pointer)
--- !second.owns(second-promoted.address as Pointer)
--- first-name != first-promoted
-first.release()
-second.release()
--- first-promoted.text
-atoms.release()
+(main
+  (let atoms (call AtomPool))
+  (let first (call Arena))
+  (let second (call Arena))
+  (let first-name (as (call (. first copy-string) "ArenaAtomTree") Atom))
+  (let second-name (as (call (. second copy-string) "ArenaAtomTree") Atom))
+  (print (. first-name text))
+  (print (!= first-name second-name))
+  (print (call (. first owns) (as (. first-name address) Pointer)))
+  (print (call (. second owns) (as (. second-name address) Pointer)))
+  (let first-promoted (call (. atoms store) (. first-name text)))
+  (let second-promoted (call (. atoms store) (. second-name text)))
+  (print (== first-promoted second-promoted))
+  (print (call (. atoms owns) first-promoted))
+  (print (not (call (. first owns) (as (. first-promoted address) Pointer))))
+  (print (not (call (. second owns) (as (. second-promoted address) Pointer))))
+  (print (!= first-name first-promoted))
+  (call (. first release))
+  (call (. second release))
+  (print (. first-promoted text))
+  (call (. atoms release))
+)
 ```
 
 ```output
@@ -257,20 +313,24 @@ true
 ArenaAtomTree
 ```
 
-```yumi
-/core/atom-pool
+```brix
+(import /core/atom-pool)
+(blank)
 
-. atoms = AtomPool()
-do finally
-    atoms.release()
-. first = atoms.store("abca")
-. second = atoms.store("axya")
-. third = atoms.store("aZZa")
-. source = "xabca|axyaz".codepoints
--- first != second && second != third
--- atoms.store(source, 1, 5) == first
--- atoms.store(source, 6, 10) == second
--- atoms.length
+(main
+  (let atoms (call AtomPool))
+  (finally
+    (call (. atoms release))
+  )
+  (let first (call (. atoms store) "abca"))
+  (let second (call (. atoms store) "axya"))
+  (let third (call (. atoms store) "aZZa"))
+  (let source (. "xabca|axyaz" codepoints))
+  (print (and (!= first second) (!= second third)))
+  (print (== (call (. atoms store) source 1 5) first))
+  (print (== (call (. atoms store) source 6 10) second))
+  (print (. atoms length))
+)
 ```
 
 ```output
@@ -280,18 +340,23 @@ true
 3
 ```
 
-```yumi
-/core/atom-pool
+```brix
+(import /core/atom-pool)
+(blank)
 
-. atoms = AtomPool()
-do finally
-    atoms.release()
-. first = atoms.store("a00z")
-for index in 1 .. < 24
-    atoms.store("a${index / 10}${index % 10}z")
--- atoms.length
--- atoms.store("a00z") == first
--- atoms.ordinal(atoms.store("a23z"))
+(main
+  (let atoms (call AtomPool))
+  (finally
+    (call (. atoms release))
+  )
+  (let first (call (. atoms store) "a00z"))
+  (for (in index (..< 1 24))
+    (call (. atoms store) (str "a" (/ index 10) (% index 10) "z"))
+  )
+  (print (. atoms length))
+  (print (== (call (. atoms store) "a00z") first))
+  (print (call (. atoms ordinal) (call (. atoms store) "a23z")))
+)
 ```
 
 ```output
@@ -300,19 +365,23 @@ true
 23
 ```
 
-```yumi
-/core/atom-pool
+```brix
+(import /core/atom-pool)
+(blank)
 
-. atoms = AtomPool()
-do finally
-    atoms.release()
-. first = atoms.store("éa😀")
-. second = atoms.store("éb😀")
-. source = "xéa😀|éb😀z".codepoints
--- first != second
--- atoms.store(source, 1, 4) == first
--- atoms.store(source, 5, 8) == second
--- atoms.length
+(main
+  (let atoms (call AtomPool))
+  (finally
+    (call (. atoms release))
+  )
+  (let first (call (. atoms store) "éa😀"))
+  (let second (call (. atoms store) "éb😀"))
+  (let source (. "xéa😀|éb😀z" codepoints))
+  (print (!= first second))
+  (print (== (call (. atoms store) source 1 4) first))
+  (print (== (call (. atoms store) source 5 8) second))
+  (print (. atoms length))
+)
 ```
 
 ```output
@@ -322,18 +391,23 @@ true
 2
 ```
 
-```yumi
-/core/atom-pool
+```brix
+(import /core/atom-pool)
+(blank)
 
-. atoms = AtomPool()
-do finally
-    atoms.release()
-. first = atoms.store("a100000z")
-for index in 100001 .. < 160000
-    atoms.store("a${index}z")
--- atoms.length
--- atoms.store("a100000z") == first
--- atoms.ordinal(atoms.store("a159999z"))
+(main
+  (let atoms (call AtomPool))
+  (finally
+    (call (. atoms release))
+  )
+  (let first (call (. atoms store) "a100000z"))
+  (for (in index (..< 100001 160000))
+    (call (. atoms store) (str "a" index "z"))
+  )
+  (print (. atoms length))
+  (print (== (call (. atoms store) "a100000z") first))
+  (print (call (. atoms ordinal) (call (. atoms store) "a159999z")))
+)
 ```
 
 ```output
@@ -342,56 +416,63 @@ true
 59999
 ```
 
-```yumi
--- selected-name(.named("found" as Atom))
--- selected-name(.missing)
--- assigned-name(.named("found" as Atom))
--- assigned-name(.missing)
--- continuing-name(.named("found" as Atom))
--- continuing-name(.missing)
+```brix
+(main
+  (print (call selected-name (call .named (as "found" Atom))))
+  (print (call selected-name .missing))
+  (print (call assigned-name (call .named (as "found" Atom))))
+  (print (call assigned-name .missing))
+  (print (call continuing-name (call .named (as "found" Atom))))
+  (print (call continuing-name .missing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AtomChoice is Union
+(type + AtomChoice (is Union)
+  (variant named (tuple (: value Atom)))
+  (variant missing)
+)
 
-| named(value Atom)
-| missing
+(fn-do + selected-name String
+  (param choice AtomChoice)
+  (let name (? Atom) null)
+  (match? choice
+    (case (call .named value)
+      (= name value)
+      (print (. name text))
+    )
+  )
+  (if (not name)
+    (return "missing")
+  )
+  (return (. name text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do selected-name String
-    - choice AtomChoice
+(fn-do + assigned-name String
+  (param choice AtomChoice)
+  (let name (? Atom) null)
+  (match choice
+    (case (call .named value)
+      (= name value)
+    )
+    (default
+      (= name (as "fallback" Atom))
+    )
+  )
+  (return (. name text))
+)
 
-. name Atom? = null
-match? choice
-    | .named(value)
-        name = value
-        -- name.text
-if !name
-    = "missing"
-= name.text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do assigned-name String
-    - choice AtomChoice
-
-. name Atom? = null
-match choice
-    | .named(value)
-        name = value
-    ??
-        name = "fallback" as Atom
-= name.text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do continuing-name String
-    - choice AtomChoice
-
-. name Atom? = null
-match choice
-    | .named(value)
-        name = value
-    ??
-        = "missing"
-= name.text
+(fn-do + continuing-name String
+  (param choice AtomChoice)
+  (let name (? Atom) null)
+  (match choice
+    (case (call .named value)
+      (= name value)
+    )
+    (default
+      (return "missing")
+    )
+  )
+  (return (. name text))
+)
 ```
 
 ```output
@@ -406,60 +487,58 @@ missing
 
 ### Atoms compared, read as text and as an address, passed, returned and held in a tuple and an object
 
-```yumi
-. first = "one" as Atom
-. again = first
-. other = "two" as Atom
--- first == again
--- first != again
--- first == other
--- first != other
--- first.text
--- other as String
--- first.address == again.address
--- first.address == other.address
--- Atom.size
--- pick(true).text
--- pick(false).text
--- same(first, again)
--- same(first, other)
-. pair = Pair(first, 3)
--- pair.name.text
--- pair.count
-. box = Box(other)
--- box.name.text
-box.name = first
--- box.name == first
+```brix
+(main
+  (let first (as "one" Atom))
+  (let again first)
+  (let other (as "two" Atom))
+  (print (== first again))
+  (print (!= first again))
+  (print (== first other))
+  (print (!= first other))
+  (print (. first text))
+  (print (as other String))
+  (print (== (. first address) (. again address)))
+  (print (== (. first address) (. other address)))
+  (print (. Atom size))
+  (print (. (call pick true) text))
+  (print (. (call pick false) text))
+  (print (call same first again))
+  (print (call same first other))
+  (let pair (call Pair first 3))
+  (print (. pair name text))
+  (print (. pair count))
+  (let box (call Box other))
+  (print (. box name text))
+  (= (. box name) first)
+  (print (== (. box name) first))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Tuple
+(type + Pair (is Tuple)
+  (prop + name Atom)
+  (prop + count Int)
+)
 
-+ name Atom
-+ count Int
+(type + Box
+  (prop + name Atom)
+  (fn-do + This _
+    (param name _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(fn-do + pick Atom
+  (param first Bool)
+  (if first
+    (return (as "picked first" Atom))
+  )
+  (return (as "picked second" Atom))
+)
 
-+ name Atom
-
-────────────────────
-+ This
-    - name
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pick Atom
-    - first Bool
-
-if first
-    = "picked first" as Atom
-= "picked second" as Atom
-
-━━━━━━━━━━━━━━━━━━━━
-+ do same Bool
-    - left Atom
-    - right Atom
-
-= left == right
+(fn-do + same Bool
+  (param left Atom)
+  (param right Atom)
+  (return (== left right))
+)
 ```
 
 ```output
@@ -484,80 +563,83 @@ true
 
 ### An optional atom tested, forced, matched, defaulted and held in an object
 
-```yumi
--- describe(find(0))
--- describe(find(1))
--- named(find(1))
--- named(find(0))
--- held(1)
--- held(0)
--- forced(1)
-. slot Slot = Slot()
--- slot.name == null
-slot.name = "kept" as Atom
--- slot.name != null
--- slot.name!.text
-slot.name = null
--- slot.name == null
--- chosen(null)
--- chosen("given" as Atom)
-. attempt = do new
-    -- forced(0)
-catch failure
-    -- failure
-attempt.wait()
+```brix
+(main
+  (print (call describe (call find 0)))
+  (print (call describe (call find 1)))
+  (print (call named (call find 1)))
+  (print (call named (call find 0)))
+  (print (call held 1))
+  (print (call held 0))
+  (print (call forced 1))
+  (let slot Slot (call Slot))
+  (print (== (. slot name) null))
+  (= (. slot name) (as "kept" Atom))
+  (print (!= (. slot name) null))
+  (print (. (!! (. slot name)) text))
+  (= (. slot name) null)
+  (print (== (. slot name) null))
+  (print (call chosen null))
+  (print (call chosen (as "given" Atom)))
+  (let attempt
+    (do-new
+      (print (call forced 0))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Slot
+(type + Slot
+  (prop + name (? Atom))
+  (prop + count _ (= 2))
+)
 
-+ name Atom?
-+ count = 2
+(fn-do + find (? Atom)
+  (param kind Int)
+  (if (== kind 0)
+    (return null)
+  )
+  (return (as "found" Atom))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do find Atom?
-    - kind Int
+(fn-do + describe String
+  (param name (? Atom))
+  (if name
+    (return (str "has " (. name text)))
+  )
+  (return "none")
+)
 
-if kind == 0
-    = null
-= "found" as Atom
+(fn-do + named String
+  (param name (? Atom))
+  (return-if "missing" (if (not name)))
+  (return (. name text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do describe String
-    - name Atom?
+(fn-do + held String
+  (param kind Int)
+  (let name (call find kind))
+  (match? name
+    (case (: atom Atom)
+      (return (. atom text))
+    )
+  )
+  (return "nothing")
+)
 
-if name
-    = "has ${name.text}"
-= "none"
+(fn-do + forced String
+  (param kind Int)
+  (return (. (!! (call find kind)) text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do named String
-    - name Atom?
-
-=? "missing" if !name
-= name.text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do held String
-    - kind Int
-
-. name = find(kind)
-match? name
-    | atom Atom
-        = atom.text
-= "nothing"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do forced String
-    - kind Int
-
-= find(kind)!.text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do chosen String
-    - name Atom?
-
-. kept = name ?? ("fallback" as Atom)
-= kept.text
+(fn-do + chosen String
+  (param name (? Atom))
+  (let kept (?? name (as "fallback" Atom)))
+  (return (. kept text))
+)
 ```
 
 ```output
@@ -579,80 +661,83 @@ Optional'core:Atom is null
 
 ### Optional atoms in a tuple and in the cases of a union
 
-```yumi
-. entry = Entry("key" as Atom, null, 4)
--- entry.key.text
--- entry.alias == null
--- entry.count
-. named = Entry("key" as Atom, "also" as Atom, 5)
--- named.alias != null
--- named.alias!.text
--- label(entry)
--- label(named)
-. copy = named
--- copy.alias!.text
--- size(Entry.size)
--- text(.named("n" as Atom))
--- text(.aliased("a" as Atom, null))
--- text(.aliased("a" as Atom, "b" as Atom))
--- text(.empty)
--- optional()
--- optional(find())
+```brix
+(main
+  (let entry (call Entry (as "key" Atom) null 4))
+  (print (. entry key text))
+  (print (== (. entry alias) null))
+  (print (. entry count))
+  (let named (call Entry (as "key" Atom) (as "also" Atom) 5))
+  (print (!= (. named alias) null))
+  (print (. (!! (. named alias)) text))
+  (print (call label entry))
+  (print (call label named))
+  (let copy named)
+  (print (. (!! (. copy alias)) text))
+  (print (call size (. Entry size)))
+  (print (call text (call .named (as "n" Atom))))
+  (print (call text (call .aliased (as "a" Atom) null)))
+  (print (call text (call .aliased (as "a" Atom) (as "b" Atom))))
+  (print (call text .empty))
+  (print (call optional))
+  (print (call optional (call find)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Entry is Tuple
+(type + Entry (is Tuple)
+  (prop + key Atom)
+  (prop + alias (? Atom))
+  (prop + count Int)
+)
 
-+ key Atom
-+ alias Atom?
-+ count Int
+(type + Choice (is Union)
+  (variant named (tuple (: name Atom)))
+  (variant aliased (tuple (: name Atom) (: alias (? Atom))))
+  (variant empty)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
+(fn-do + label String
+  (param entry Entry)
+  (let alias (. entry alias))
+  (if alias
+    (return (str (. entry key text) " as " (. alias text)))
+  )
+  (return (. entry key text))
+)
 
-| named(name Atom)
-| aliased(name Atom, alias Atom?)
-| empty
+(fn-do + size Size
+  (param bytes Size)
+  (return bytes)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do label String
-    - entry Entry
-
-. alias = entry.alias
-if alias
-    = "${entry.key.text} as ${alias.text}"
-= entry.key.text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do size Size
-    - bytes Size
-
-= bytes
-
-━━━━━━━━━━━━━━━━━━━━
-+ do text String
-    - choice Choice
-
-= match choice
-    | .named(name)
-        name.text
-    | .aliased(name, alias)
-        "${name.text}/${(alias ?? name).text}"
-    | .empty
+(fn-do + text String
+  (param choice Choice)
+  (return
+    (match choice
+      (case (call .named name)
+        (. name text)
+      )
+      (case (call .aliased name alias)
+        (str (. name text) "/" (. (?? alias name) text))
+      )
+      (case .empty
         "empty"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do find Atom?
+(fn-do + find (? Atom)
+  (return (as "found" Atom))
+)
 
-= "found" as Atom
-
-━━━━━━━━━━━━━━━━━━━━
-+ do optional String
-    - name Atom? = null
-
-. kept Atom? = name
-if kept == null
-    = "none"
-= kept.text
+(fn-do + optional String
+  (param name (? Atom) (= null))
+  (let kept (? Atom) name)
+  (if (== kept null)
+    (return "none")
+  )
+  (return (. kept text))
+)
 ```
 
 ```output
@@ -675,30 +760,30 @@ found
 
 ### An optional atom left out of a call and filling a property
 
-```yumi
--- left()
--- left("given" as Atom)
-. slot = Slot()
--- slot.name == null
-. named = Slot("made" as Atom)
--- named.name!.text
+```brix
+(main
+  (print (call left))
+  (print (call left (as "given" Atom)))
+  (let slot (call Slot))
+  (print (== (. slot name) null))
+  (let named (call Slot (as "made" Atom)))
+  (print (. (!! (. named name)) text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Slot
+(type + Slot
+  (prop + name (? Atom))
+  (fn-do + This _
+    (param name (? Atom) (= null))
+  )
+)
 
-+ name Atom?
-
-────────────────────
-+ This
-    - name Atom? = null
-
-━━━━━━━━━━━━━━━━━━━━
-+ do left String
-    - name Atom? = null
-
-if name
-    = name.text
-= "left out"
+(fn-do + left String
+  (param name (? Atom) (= null))
+  (if name
+    (return (. name text))
+  )
+  (return "left out")
+)
 ```
 
 ```output
@@ -708,108 +793,115 @@ true
 made
 ```
 
-```yumi
-/core/arena
-/core/atom-pool
+```brix
+(import /core/arena)
+(import /core/atom-pool)
+(blank)
 
-. source = "xAé漢😀z".codepoints
--- atom-cycle(source)
+(main
+  (let source (. "xAé漢😀z" codepoints))
+  (print (call atom-cycle source))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do atom-cycle Size
-    - source Char[]
+(fn-do + atom-cycle Size
+  (param source ([] Char))
+  (let arena (call Arena 4096))
+  (let atoms (call AtomPool))
+  (finally
+    (call (. atoms release))
+    (call (. arena release))
+  )
+  (return (call atom-cycle atoms arena source))
+)
 
-. arena = Arena(4096)
-. atoms = AtomPool()
-do finally
-    atoms.release()
-    arena.release()
-= atom-cycle(atoms, arena, source)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do atom-cycle Size without gc
-    - atoms AtomPool
-    - arena Arena
-    - source Char[]
-
-. first = atoms.store("alpha")
-. duplicate = atoms.store("alpha")
-. mixed = atoms.store(source, 1, 5)
-. temporary = atoms.store("temporary")
-. stored = arena.allocate'Atom(2)
-stored[0] = first
-stored[1] = mixed
-= atoms.ordinal(duplicate) + atoms.ordinal(temporary) + atoms.length + stored[1].text.length
+(fn-do + atom-cycle Size (without gc)
+  (param atoms AtomPool)
+  (param arena Arena)
+  (param source ([] Char))
+  (let first (call (. atoms store) "alpha"))
+  (let duplicate (call (. atoms store) "alpha"))
+  (let mixed (call (. atoms store) source 1 5))
+  (let temporary (call (. atoms store) "temporary"))
+  (let stored (call (of (. arena allocate) Atom) 2))
+  (= ([] stored 0) first)
+  (= ([] stored 1) mixed)
+  (return (+ (call (. atoms ordinal) duplicate) (call (. atoms ordinal) temporary) (. atoms length) (. ([] stored 1) text length)))
+)
 ```
 
 ```output
 9
 ```
 
-```yumi crash
-. atom = "name" as Atom
--- "$atom"
+```brix crash
+(main
+  (let atom (as "name" Atom))
+  (print (str atom))
+)
 ```
 
 ```output
 Exception: Operator "++" is not defined for String and Atom
-<no file:3>
-    -- "$atom"
-       ^^^^^^^
+<no file:4>
+      (print (str atom))
+             ^^^^^^^^^^
 ```
 
-```yumi crash
-. atom = "name" as Atom
--- atom == "name"
+```brix crash
+(main
+  (let atom (as "name" Atom))
+  (print (== atom "name"))
+)
 ```
 
 ```output
 Exception: Operator "==" is not defined for Atom and String
-<no file:3>
-    -- atom == "name"
-       ^^^^^^^^^^^^^^
+<no file:4>
+      (print (== atom "name"))
+             ^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-. atom = "name" as Atom
--- "name" == atom
+```brix crash
+(main
+  (let atom (as "name" Atom))
+  (print (== "name" atom))
+)
 ```
 
 ```output
 Exception: Operator "==" is not defined for String and Atom
-<no file:3>
-    -- "name" == atom
-       ^^^^^^^^^^^^^^
+<no file:4>
+      (print (== "name" atom))
+             ^^^^^^^^^^^^^^^^
 ```
 
 ### An atom and an optional atom chosen by `if` with no default
 
-```yumi
--- named(given(true))
--- named(given(false))
--- named(passed(true))
--- named(passed(false))
+```brix
+(main
+  (print (call named (call given true)))
+  (print (call named (call given false)))
+  (print (call named (call passed true)))
+  (print (call named (call passed false)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do given Atom?
-    - wanted Bool
+(fn-do + given (? Atom)
+  (param wanted Bool)
+  (let atom (as "given" Atom))
+  (let found (only-if atom (if wanted)))
+  (return found)
+)
 
-. atom = "given" as Atom
-. found = atom if wanted
-= found
+(fn-do + passed (? Atom)
+  (param wanted Bool)
+  (let found (only-if (call given true) (if wanted)))
+  (return found)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do passed Atom?
-    - wanted Bool
-
-. found = given(true) if wanted
-= found
-
-━━━━━━━━━━━━━━━━━━━━
-+ named String
-    - name Atom?
-
-name?.text ?? "none"
+(fn-expr + named String
+  (param name (? Atom))
+  (?? (?. name text) "none")
+)
 ```
 
 ```output

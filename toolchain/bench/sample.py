@@ -229,7 +229,7 @@ def cpu_bucket(frames, symbols):
         if found:
             location = found['loc']
             if '/stdlib/' in location:
-                return 'brix:' + re.sub(r'\.yumi.*', '', location.split('/stdlib/')[1])
+                return 'brix:' + re.sub(r'\.bx.*', '', location.split('/stdlib/')[1])
             if '/bench/' in location:
                 return 'brix:bench-app'
             return 'brix:other'

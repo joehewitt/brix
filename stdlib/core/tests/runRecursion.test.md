@@ -1,17 +1,19 @@
 # Recursion
 
-```yumi
--- foo(3)
+```brix
+(main
+  (print (call foo 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo Int
-    - n
-
--- n
-if n > 0
-    -- foo(n - 1)
-
-= n
+(fn-do + foo Int
+  (param n _)
+  (print n)
+  (if (> n 0)
+    (print (call foo (- n 1)))
+  )
+  (blank)
+  (return n)
+)
 ```
 
 ```output
@@ -25,150 +27,181 @@ if n > 0
 3
 ```
 
-```yumi
--- recursive-map(3)["value"]
+```brix
+(main
+  (print ([] (call recursive-map 3) "value"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ recursive-map ?! Error
-    - n Int
+(fn-expr + recursive-map _ (?! Error)
+  (param n Int)
+  (call (of Map String Int)
+    (block
+      (:value (call recursive-value n))
+    )
+  )
+)
 
-Map'String'Int
-    • value recursive-value(n)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do recursive-value ?! Error
-    - n Int
-
-=? n if n == 0
-= recursive-map(n - 1)["value"]!
+(fn-do + recursive-value _ (?! Error)
+  (param n Int)
+  (return-if n (if (== n 0)))
+  (return (!! ([] (call recursive-map (- n 1)) "value")))
+)
 ```
 
 ```output
 0
 ```
 
-```yumi crash
--- foo()
+```brix crash
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-
-foo()
-= 1
+(fn-do + foo _
+  (call foo)
+  (return 1)
+)
 ```
 
 ```output
-Exception: Function "foo" calls itself before its return type is known, so the type cannot be inferred; declare it, as in "+ do foo I64"
-<no file:5>
-    + do foo
-    ^^^^^^^
+Exception: Function "foo" calls itself before its return type is known, so the type cannot be inferred; declare it, as in "(fn-do + foo I64 …)"
+<no file:6>
+    (fn-do + foo _
+    ^^^^^^^^^^^^^
 ```
 
-```yumi crash
-bar()
+```brix crash
+(main
+  (call bar)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
+(fn-do + foo _
+  (call bar)
+  (return 1)
+)
 
-bar()
-= 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ bar
-
-foo()
+(fn-expr + bar _
+  (call foo)
+)
 ```
 
 ```output
-Exception: Function "bar" calls itself before its return type is known, so the type cannot be inferred; declare it, as in "+ bar I64"
+Exception: Function "bar" calls itself before its return type is known, so the type cannot be inferred; declare it, as in "(fn-expr + bar I64 …)"
 <no file:11>
-    + bar
-    ^^^^
+    (fn-expr + bar _
+    ^^^^^^^^^^^^^^^
 ```
 
 ### A rule that calls itself without stating its type.
 
-```yumi crash
-/core/tokenstream
+```brix crash
+(import /core/tokenstream)
+(blank)
 
-. stream = ArrayTokenStream'Char("ab".codepoints)
--- match stream
-    ~ v \word
+(main
+  (let stream (call (of ArrayTokenStream Char) (. "ab" codepoints)))
+  (print
+    (match stream
+      (~ (: v \word)
         v
-    ?? "miss"
+      )
+      (default
+        (inline "miss")
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ word ~ Char
-
-~ "a" \word
-~ "b"
+(fn-expr + word _ (over: Char)
+  (~ (seq "a" \word))
+  (~ "b")
+)
 ```
 
 ```output
-Exception: Function "word" calls itself before its return type is known, so the type cannot be inferred; declare it, as in "+ word ~ Char ReturnType"
-<no file:11>
-    + word ~ Char
-    ^^^^^^^^^^^^
+Exception: Function "word" calls itself before its return type is known, so the type cannot be inferred; declare it, as in "(fn-expr + word ReturnType (over: Char) …)"
+<no file:19>
+    (fn-expr + word _ (over: Char)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A local rule that calls itself without stating its type.
 
-```yumi crash
--- match "((a))"
-    ~ \nest
-    ?? "none"
-
-    .. nest ~
-        ~ ("(" \nest ")") | "a"
+```brix crash
+(main
+  (print
+    (match "((a))"
+      (~ \nest)
+      (default
+        (inline "none")
+      )
+      (blank)
+      (lazy nest
+        (pattern
+          (~ (| (seq "(" \nest ")") "a"))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Can't infer return type after recursion
-<no file:6>
-        .. nest ~
-           ^^^^
+<no file:10>
+          (lazy nest
+                ^^^^
 ```
 
 ### A rule whose arm reads the value of its own call without stating its type.
 
-```yumi crash
--- match "((a))"
-    ~ \nest
-    ?? -1
+```brix crash
+(main
+  (print
+    (match "((a))"
+      (~ \nest)
+      (default
+        (inline -1)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ nest ~ Char
-
-~ "(" inner \nest ")"
-    inner + 1
-~ "a"
+(fn-expr + nest _ (over: Char)
+  (~ (seq "(" (: inner \nest) ")")
+    (+ inner 1)
+  )
+  (~ "a"
     0
+  )
+)
 ```
 
 ```output
-Exception: Function "nest" calls itself before its return type is known, so the type cannot be inferred; declare it, as in "+ nest ~ Char ReturnType"
-<no file:7>
-    + nest ~ Char
-    ^^^^^^^^^^^^
+Exception: Function "nest" calls itself before its return type is known, so the type cannot be inferred; declare it, as in "(fn-expr + nest ReturnType (over: Char) …)"
+<no file:13>
+    (fn-expr + nest _ (over: Char)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Recursion in method
 
-```yumi
-. foo = Foo()
--- foo.bar(3)
+```brix
+(main
+  (let foo (call Foo))
+  (print (call (. foo bar) 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do bar Int
-    - n
-
--- n
-if n > 0
-    -- bar(n - 1)
-= n
+(type + Foo
+  (fn-do + bar Int
+    (param n _)
+    (print n)
+    (if (> n 0)
+      (print (call bar (- n 1)))
+    )
+    (return n)
+  )
+)
 ```
 
 ```output
@@ -182,54 +215,51 @@ if n > 0
 3
 ```
 
-```yumi crash
-. foo = Foo()
-foo.bar()
+```brix crash
+(main
+  (let foo (call Foo))
+  (call (. foo bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do foo
-
-bar()
-= 1
-
-────────────────────
-+ bar
-foo()
+(type + Foo
+  (fn-do + foo _
+    (call bar)
+    (return 1)
+  )
+  (fn-expr + bar _
+    (call foo)
+  )
+)
 ```
 
 ```output
-Exception: Function "bar" calls itself before its return type is known, so the type cannot be inferred; declare it, as in "+ bar I64"
-<no file:15>
-    + bar
-    ^^^^
+Exception: Function "bar" calls itself before its return type is known, so the type cannot be inferred; declare it, as in "(fn-expr + bar I64 …)"
+<no file:12>
+      (fn-expr + bar _
+      ^^^^^^^^^^^^^^^
 ```
 
 ### Recursion in converter
 
-```yumi
-. foo = Foo()
-foo.a = 1
--- foo as Bar
+```brix
+(main
+  (let foo (call Foo))
+  (= (. foo a) 1)
+  (print (as foo Bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + a _ (= 0))
+  (fn-do + This _
+    (param a _)
+  )
+  (fn-to-do + Bar
+    (print a)
+    (return (if-expr (== a 0) (call Bar) (call Foo (- a 1))))
+  )
+)
 
-+ a = 0
-
-────────────────────
-+ This
-    - a
-
-────────────────────
-+ do to Bar
--- a
-= if a == 0 then Bar() else Foo(a - 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
+(type + Bar)
 ```
 
 ```output
@@ -240,56 +270,60 @@ foo.a = 1
 
 ### A panic from a recursive call stops the caller, directly and through mutual recursion.
 
-```yumi
-+ count = 0
+```brix
+(prop + count _ (= 0))
+(blank)
 
--- sum(4)
-guard(=> do countdown(2))
-guard(=> do ping(3))
+(main
+  (print (call sum 4))
+  (call guard (=> () :do (call countdown 2)))
+  (call guard (=> () :do (call ping 3)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do guard
-    - body
+(fn-do + guard _
+  (param body _)
+  (let attempt
+    (do-new
+      (call body)
+      (on-failure failure
+        (let panic (? Panic) failure)
+        (print (str "count " count ", " panic))
+        (= count 0)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. attempt = do new
-    body()
-catch failure
-    . panic Panic? = failure
-    -- "count $count, $panic"
-    count = 0
-attempt.wait()
+(fn-do + sum Int
+  (param n Int)
+  (return-if 0 (if (== n 0)))
+  (return (+ n (call sum (- n 1))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do sum Int
-    - n Int
+(fn-do + countdown _
+  (param n Int)
+  (if (> n 0)
+    (call countdown (- n 1))
+    (+= count 1)
+  )
+  (throw (call Panic (str "countdown " n)))
+)
 
-=? 0 if n == 0
-= n + sum(n - 1)
+(fn-do + ping _
+  (param n Int)
+  (if (> n 0)
+    (call pong (- n 1))
+    (+= count 1)
+  )
+  (throw (call Panic (str "ping " n)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do countdown
-    - n Int
-
-if n > 0
-    countdown(n - 1)
-    count += 1
-?! Panic("countdown $n")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do ping
-    - n Int
-
-if n > 0
-    pong(n - 1)
-    count += 1
-?! Panic("ping $n")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pong
-    - n Int
-
-ping(n)
-count += 10
+(fn-do + pong _
+  (param n Int)
+  (call ping n)
+  (+= count 10)
+)
 ```
 
 ```output
@@ -300,28 +334,32 @@ count 0, ping 0
 
 ### Two functions call each other.
 
-```yumi
--- is-even(10)
--- is-odd(7)
--- is-even(7)
+```brix
+(main
+  (print (call is-even 10))
+  (print (call is-odd 7))
+  (print (call is-even 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ is-even Bool
-    - n Int
-
-|? n == 0
+(fn-expr + is-even Bool
+  (param n Int)
+  (case? (== n 0)
     true
-??
-    is-odd(n - 1)
+  )
+  (default
+    (call is-odd (- n 1))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ is-odd Bool
-    - n Int
-
-|? n == 0
+(fn-expr + is-odd Bool
+  (param n Int)
+  (case? (== n 0)
     false
-??
-    is-even(n - 1)
+  )
+  (default
+    (call is-even (- n 1))
+  )
+)
 ```
 
 ```output
@@ -332,15 +370,16 @@ false
 
 ### A `do` function calls itself a hundred thousand deep.
 
-```yumi
--- depth(100000)
+```brix
+(main
+  (print (call depth 100000))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do depth Int
-    - n Int
-
-=? 0 if n == 0
-= 1 + depth(n - 1)
+(fn-do + depth Int
+  (param n Int)
+  (return-if 0 (if (== n 0)))
+  (return (+ 1 (call depth (- n 1))))
+)
 ```
 
 ```output
@@ -349,14 +388,15 @@ false
 
 ### Unbounded recursion reports a stack overflow with the recursing frame collapsed.
 
-```yumi crash
-recurse(0)
+```brix crash
+(main
+  (call recurse 0)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do recurse Int
-    - n Int
-
-= recurse(n + 1) + 1
+(fn-do + recurse Int
+  (param n Int)
+  (return (+ (call recurse (+ n 1)) 1))
+)
 ```
 
 ```stderr
@@ -365,100 +405,98 @@ Stack overflow
 Task 1
 
 Stack trace:
-  0  __source__:recurse no file:5:1
-  1  __source__:recurse no file:8:3
+  0  __source__:recurse no file:6:1
+  1  __source__:recurse no file:8:14
   ... recursive calls
-  2  __source__:main no file:2:1
+  2  __source__:main no file:3:3
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### A frame larger than the stack guard still overflows cleanly in a spawned task.
 
-```yumi crash
-/core/channel
+```brix crash
+(import /core/channel)
+(blank)
 
-. done SyncChannel'Int
-do new
-    done <- deep(0)
--- <- done
+(main
+  (let done (of SyncChannel Int))
+  (do-new
+    (<- done (call deep 0))
+  )
+  (print (<- done))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do deep Int
-    - n Int
+(fn-do + deep Int
+  (param n Int)
+  (let big (call T5))
+  (return (+ (call deep (+ n 1)) (. big h h h h h)))
+)
 
-. big = T5()
-= deep(n + 1) + big.h.h.h.h.h
+(type + T1 (is Tuple)
+  (prop + a I32 (= 0))
+  (prop + b I32 (= 0))
+  (prop + c I32 (= 0))
+  (prop + d I32 (= 0))
+  (prop + e I32 (= 0))
+  (prop + f I32 (= 0))
+  (prop + g I32 (= 0))
+  (prop + h I32 (= 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ T1 is Tuple
+(type + T2 (is Tuple)
+  (prop + a T1 (= (call T1)))
+  (prop + b T1 (= (call T1)))
+  (prop + c T1 (= (call T1)))
+  (prop + d T1 (= (call T1)))
+  (prop + e T1 (= (call T1)))
+  (prop + f T1 (= (call T1)))
+  (prop + g T1 (= (call T1)))
+  (prop + h T1 (= (call T1)))
+)
 
-+ a I32 = 0
-+ b I32 = 0
-+ c I32 = 0
-+ d I32 = 0
-+ e I32 = 0
-+ f I32 = 0
-+ g I32 = 0
-+ h I32 = 0
+(type + T3 (is Tuple)
+  (prop + a T2 (= (call T2)))
+  (prop + b T2 (= (call T2)))
+  (prop + c T2 (= (call T2)))
+  (prop + d T2 (= (call T2)))
+  (prop + e T2 (= (call T2)))
+  (prop + f T2 (= (call T2)))
+  (prop + g T2 (= (call T2)))
+  (prop + h T2 (= (call T2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ T2 is Tuple
+(type + T4 (is Tuple)
+  (prop + a T3 (= (call T3)))
+  (prop + b T3 (= (call T3)))
+  (prop + c T3 (= (call T3)))
+  (prop + d T3 (= (call T3)))
+  (prop + e T3 (= (call T3)))
+  (prop + f T3 (= (call T3)))
+  (prop + g T3 (= (call T3)))
+  (prop + h T3 (= (call T3)))
+)
 
-+ a T1 = T1()
-+ b T1 = T1()
-+ c T1 = T1()
-+ d T1 = T1()
-+ e T1 = T1()
-+ f T1 = T1()
-+ g T1 = T1()
-+ h T1 = T1()
-
-━━━━━━━━━━━━━━━━━━━━
-+ T3 is Tuple
-
-+ a T2 = T2()
-+ b T2 = T2()
-+ c T2 = T2()
-+ d T2 = T2()
-+ e T2 = T2()
-+ f T2 = T2()
-+ g T2 = T2()
-+ h T2 = T2()
-
-━━━━━━━━━━━━━━━━━━━━
-+ T4 is Tuple
-
-+ a T3 = T3()
-+ b T3 = T3()
-+ c T3 = T3()
-+ d T3 = T3()
-+ e T3 = T3()
-+ f T3 = T3()
-+ g T3 = T3()
-+ h T3 = T3()
-
-━━━━━━━━━━━━━━━━━━━━
-+ T5 is Tuple
-
-+ a T4 = T4()
-+ b T4 = T4()
-+ c T4 = T4()
-+ d T4 = T4()
-+ e T4 = T4()
-+ f T4 = T4()
-+ g T4 = T4()
-+ h T4 = T4()
+(type + T5 (is Tuple)
+  (prop + a T4 (= (call T4)))
+  (prop + b T4 (= (call T4)))
+  (prop + c T4 (= (call T4)))
+  (prop + d T4 (= (call T4)))
+  (prop + e T4 (= (call T4)))
+  (prop + f T4 (= (call T4)))
+  (prop + g T4 (= (call T4)))
+  (prop + h T4 (= (call T4)))
+)
 ```
 
 ```stderr
 Stack overflow
 
-Task 2, spawned by task 1 from no file:5:1
+Task 2, spawned by task 1 from no file:7:3
 
 Stack trace:
-  0  __source__:deep no file:10:1
-  1  __source__:deep no file:14:3
+  0  __source__:deep no file:13:1
+  1  __source__:deep no file:16:14
   ... recursive calls
-  2  __source__:Fork no file:6:13
+  2  __source__:Fork no file:8:14
 ```

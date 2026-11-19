@@ -2,14 +2,6 @@
 
 ### Parses a no-parameter rule as a class member.
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-• flex-col
-    layout = flex-col
-```
-
 ```brix
 (type + Box
   (rule flex-col
@@ -33,14 +25,6 @@
 
 ### Parses an uppercase type-name selector as a style rule.
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Button
-
-• Button
-    role = "button"
-```
-
 ```brix
 (type + Button
   (rule Button
@@ -63,14 +47,6 @@
 ```
 
 ### Parses an inline single parameter on a class-member rule.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-• flex:amount Float
-    flex = amount
-```
 
 ```brix
 (type + Box
@@ -98,15 +74,6 @@
 ```
 
 ### Parses a root "This" rule with indented content.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Panel
-
-• This
-    <Label "child"
-    padding = 1
-```
 
 ```brix
 (type + Panel
@@ -137,17 +104,6 @@
 ```
 
 ### Parses nested style rules inside a rule body.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ ProgressBar
-
-• blue-bar
-    background-color = sky
-
-    • progress-fill
-        color = white
-```
 
 ```brix
 (type + ProgressBar
@@ -184,15 +140,6 @@
 
 ### Parses generated content inside a style-rule state branch.
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ ListItem
-
-• chevron
-    when #expanded
-        <Label (after) ">"
-```
-
 ```brix
 (type + ListItem
   (rule chevron
@@ -227,15 +174,6 @@
 
 ### Parses a negated style-rule state branch.
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ ListItem
-
-• chevron
-    when !#expanded
-        left = 1
-```
-
 ```brix
 (type + ListItem
   (rule chevron
@@ -264,18 +202,6 @@
 ```
 
 ### Parses nested rules and rule applications inside a style-rule state branch.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Section
-
-• panel
-    when #expanded
-        • highlight
-        • header
-            left = 1
-        • footer • flex-row
-```
 
 ```brix
 (type + Section
@@ -319,20 +245,6 @@
 ```
 
 ### Parses own style rules inside a rule body and inside a style-rule state branch.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ IconSlot
-
-• icon-x
-    • own icon-host
-        color = white
-
-    when #pressed
-        • own icon-host • flex-row
-        • own icon-mark
-            color = black
-```
 
 ```brix
 (type + IconSlot
@@ -387,16 +299,6 @@
 
 ### Parses a nested style rule named `own` as a plain rule.
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Panel
-
-• chrome
-    • own • flex-row
-    • owner
-        color = white
-```
-
 ```brix
 (type + Panel
   (rule chrome
@@ -430,32 +332,7 @@
 </Class>
 ```
 
-### Rejects an own style rule written outside another rule.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ IconSlot
-
-• own icon-host
-    color = white
-```
-
-```output
-Exception: Syntax error
-<no file:5>
-    • own icon-host
-          ^
-```
-
 ### Parses inline shorthand applications on a style-rule header.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Button
-
-• button • bg:1 color:blue absolute
-    left = 0
-```
 
 ```brix
 (type + Button
@@ -493,10 +370,6 @@ Exception: Syntax error
 
 ### Parses bare and parameterized style-rule applications on a markup header.
 
-```yumi
-<Box box • flex-col flex(1) bg(blue)
-```
-
 ```brix
 (main
   (<> Box (id: box) (• flex-col) (• flex 1) (• bg blue))
@@ -523,50 +396,7 @@ Exception: Syntax error
 </Markup>
 ```
 
-### Rejects a divider-delimited style rule block.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-────────────────────
-• flex
-    flex = 1
-```
-
-```output
-Exception: Syntax error
-<no file:6>
-    • flex
-    ^
-```
-
-### Rejects divider-less style rules after a member divider.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-────────────────────
-+ noop
-    1
-
-• flex
-    flex = 1
-```
-
-```output
-Exception: Syntax error
-<no file:9>
-    • flex
-    ^
-```
-
 ### Parses colon shorthand style-rule arguments.
-
-```yumi
-<Box box • flex:1 bg:red rgb:RGB(1, 2, 3)
-```
 
 ```brix
 (main
@@ -610,10 +440,6 @@ Exception: Syntax error
 ```
 
 ### Parses colon shorthand with postfix-style argument boundaries.
-
-```yumi
-<Box box • bg:red flex:1 tuple:(1, 2) item:list[0] member:foo.bar
-```
 
 ```brix
 (main
@@ -663,10 +489,6 @@ Exception: Syntax error
 </Markup>
 ```
 
-```yumi
-<Box • ml:-260 offset:-2.5 x:-50% y:-1.25px scale:-1e-3 flex-col
-```
-
 ```brix
 (main
   (<> Box (• ml -260) (• offset -2.5) (• x -50%) (• y -1.25px) (• scale -1e-3) (• flex-col))
@@ -707,37 +529,7 @@ Exception: Syntax error
 </Markup>
 ```
 
-### Rejects whitespace immediately after a colon style argument marker.
-
-```yumi
-<Box box • flex: 1
-```
-
-```output
-Exception: Syntax error
-<no file:2>
-    <Box box • flex: 1
-                    ^
-```
-
-### Rejects top-level expressions in colon style arguments.
-
-```yumi
-<Box box • flex:1 + 2
-```
-
-```output
-Exception: Syntax error
-<no file:2>
-    <Box box • flex:1 + 2
-                      ^
-```
-
 ### Parses styles after constructor arguments.
-
-```yumi
-<Button button "Login" • primary disabled-while(is-authenticating)
-```
 
 ```brix
 (main
@@ -764,10 +556,6 @@ Exception: Syntax error
 ```
 
 ### Parses colon shorthand styles after constructor arguments.
-
-```yumi
-<Button button "Login" • disabled-while:is-authenticating bg:red
-```
 
 ```brix
 (main
@@ -798,12 +586,6 @@ Exception: Syntax error
 ```
 
 ### Parses a style-rule application while preserving the normal markup body.
-
-```yumi
-<Box box • flex-col
-    background-color = red
-    <Label "child"
-```
 
 ```brix
 (main
@@ -837,16 +619,6 @@ Exception: Syntax error
 ```
 
 ### Parses a top-level style sheet declaration as a class inheriting StyleSheet.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-• Theme
-
-• Button
-    role = "button"
-
-+ accent = 3
-```
 
 ```brix
 (style Theme
@@ -882,13 +654,6 @@ Exception: Syntax error
 
 ### Parses a style sheet derived from another for tags, with a slot of its base it overrides.
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-• DarkTheme is Theme for dark, high-contrast
-
-+ accent = 4
-```
-
 ```brix
 (style DarkTheme
   (is Theme)
@@ -912,24 +677,6 @@ Exception: Syntax error
 ```
 
 ### Parses whenever members with a markup query trigger and a value trigger.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ count Int
-
-────────────────────
-whenever children ListItem
-    - item ListItem
-
-count += 1
-
-────────────────────
-whenever count
-
-count = 0
-```
 
 ```brix
 (type + Box
@@ -981,15 +728,6 @@ count = 0
 
 ### Parses a bullet argument whose inline block follows the colon without a space.
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-• cell • border:"#07101d"
-    when #is-hovered
-        • border:"#ffffff"
-```
-
 ```brix
 (type + Box
   (rule cell (• border "#07101d")
@@ -1025,14 +763,6 @@ count = 0
 </Class>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-• button:amount Int • base = #selected
-    x = amount
-```
-
 ```brix
 (type + Thing
   (rule button
@@ -1066,10 +796,6 @@ count = 0
 </Class>
 ```
 
-```yumi
-<Box • hidden = #selected flex:1 = #enabled
-```
-
 ```brix
 (main
   (<> Box (• hidden (if: #selected)) (• flex 1 (if: #enabled)))
@@ -1098,11 +824,6 @@ count = 0
 ```
 
 ### A markup element binds theme tags after `for`: each tag follows its value, and one written without a value is on. Each binding is the element's `theme-tag` row, ahead of its own rows.
-
-```yumi
-<Box stage • page for night = #is-night, round
-    flex = 1
-```
 
 ```brix
 (main
@@ -1154,30 +875,6 @@ count = 0
 
 ### Rejects theme tags bound on a root `<This`, whose lines give properties their first values.
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-────────────────────
-
-<This for night
-```
-
-```output
-Exception: Root <This> cannot bind theme tags; bind them with `for` on the element that makes the object
-<no file:7>
-    <This for night
-              ^^^^
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Tag
-
-• badge
-    is-active:ink = 11
-```
-
 ```brix
 (type + Tag
   (rule badge
@@ -1202,28 +899,6 @@ Exception: Root <This> cannot bind theme tags; bind them with `for` on the eleme
 ```
 
 ### Parses a keyframe animation or motion as a slot whose value calls the builder its head names, and a parameter as a shape, which a name followed by a colon binds.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-• Theme
-
-• pop-in animation 220ms
-    repeat = 2
-    opacity = 0 .. • motion fade
-    tint = .. 1 • after 10ms
-    offset.x
-        at 0% = 0
-        at 50% = 4 • easing ease
-        at 100% = 0
-
-• overshoot:peak F64 motion 280ms
-    at 0% = 0
-    at 65% = peak
-    at 100% = 1 • motion spring
-
-• Field
-    animation = shake:3
-```
 
 ```brix
 (style Theme
@@ -1426,10 +1101,6 @@ Exception: Root <This> cannot bind theme tags; bind them with `for` on the eleme
 ```
 
 ### A shape's argument may be a negated number, which is a negative literal, or a number that starts with its decimal point.
-
-```yumi
-. offsets = [$shake:-4, shake:.5]
-```
 
 ```brix
 (main

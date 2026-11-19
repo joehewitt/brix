@@ -1,0 +1,412 @@
+(import ./box)
+(import ./commands)
+(import ./events)
+(import ./icons/lucide/check)
+(import ./keys)
+(import ./label)
+(import ./match-label)
+(import ./popup)
+(import ./primitives)
+(import ./search-palette)
+(import ./shorthands)
+(import ./styles)
+(import ./theme)
+(import ./window)
+(import /data/fuzzy)
+(import /graphics/outline)
+(import /graphics/primitives)
+(import /graphics/style)
+(import /graphics/text)
+(import /stream/aggregate)
+(import /stream/combine)
+(import /ui/command)
+(import /ui/input)
+(import /ui/recents)
+(import /units)
+
+(style-extend GUIDefaultTheme
+  (using GUITextPaint)
+  (using GUIFontStyle)
+  (using GUIBoxSpacing)
+  (using GUIBoxSize)
+  (using VectorPaintStyle)
+  (rule CommandPaletteRow
+    (rule command-palette-detail (• text gui-muted-text-color) (• ml 8))
+    (blank)
+    (rule command-palette-shortcut (• text gui-muted-text-color) (• w 104)
+      (= font-size gui-footnote-font-size)
+    )
+    (blank)
+    (rule command-palette-check (• w 12) (• h 12) (• mr 6)
+      (= stroke-width 2)
+    )
+  )
+)
+
+(type + CommandChoice
+  (prop + key String)
+  (prop + title String)
+  (prop + checked Bool)
+  (fn-do + This _
+    (param key _)
+    (param title _)
+    (param checked _ (= false))
+  )
+)
+
+(type + CommandChooserNode (is CommandNode)
+  (prop + palette (? CommandPalette))
+  (prop + prompt _ (= "Choose an item"))
+  (fn-do + choices (list CommandChoice) (?! Error)
+    (throw (call Panic "Command chooser must implement choices"))
+  )
+  (fn-do + choose _
+    (param choice CommandChoice)
+    (throw (call Panic "Command chooser must implement choose"))
+  )
+  (fn-do + run _
+    (return-if (if (not enabled)))
+    (call (?. palette show-choices) this)
+  )
+)
+
+(type + CommandPaletteEntry
+  (prop + key String)
+  (prop + command (? Command))
+  (prop + choice (? CommandChoice))
+  (prop + title-hits (list MatchSpan))
+  (prop + detail-hits (list MatchSpan))
+  (fn-do + This _
+    (param key _)
+    (param command (? Command) (= null))
+    (param choice (? CommandChoice) (= null))
+    (param title-hits (list MatchSpan) (= (call (of List MatchSpan))))
+    (param detail-hits (list MatchSpan) (= (call (of List MatchSpan))))
+  )
+)
+
+(type + CommandPalette (is (of Palette CommandPaletteEntry))
+  (prop + snapshot (list Command))
+  (prop + recents _ (= (call Recents)))
+  (prop + chooser (? CommandChooserNode))
+  (prop + choices (list CommandChoice))
+  (prop + returns-to-commands _ (= false))
+  (prop + prompt _ (= (call command-palette-prompt #chooser)))
+  (prop + empty-text _ (= (call command-palette-empty-text #query #chooser)))
+  (prop + results _ (= (call command-palette-entries #snapshot #choices #query (. recents #keys) #chooser)))
+  (prop + key-builder _ (= (=> (entry) (. entry key))))
+  (content
+    (<> This
+      (<> CommandPaletteRow (slot: row) (param: row)
+        (= entry (. row #item))
+      )
+    )
+  )
+  (subscribe-for (on event key-press)
+    (if chooser
+      (if (and (== (. event key) (. Key escape)) returns-to-commands)
+        (call show-commands)
+        (call (. event cancel))
+        (else-if (and (== (. event key) (. Key backspace)) (not query))
+          (call show-commands)
+          (call (. event cancel))
+        )
+      )
+    )
+  )
+  (fn-do + show _
+    (param at (? PopupAnchor) (= null))
+    (let host host-window)
+    (return-if (if (not host)))
+    (= snapshot (call (of List Command) (. host commands)))
+    (= chooser null)
+    (= choices (call (of List CommandChoice)))
+    (= returns-to-commands false)
+    (call (. super show) at)
+  )
+  (fn-do + choose _
+    (param entry CommandPaletteEntry)
+    (let choice (. entry choice))
+    (let command (. entry command))
+    (if choice
+      (call choose-choice choice)
+      (else-if command
+        (call execute command)
+      )
+    )
+  )
+  (fn-do + show-choices _
+    (param source CommandChooserNode)
+    (param at (? PopupAnchor) (= null))
+    (if (not is-open)
+      (call show at)
+    )
+    (return-if (if (not is-open)))
+    (= chooser source)
+    (= choices (call load-command-choices source))
+    (call reset)
+  )
+  (fn-do + show-commands _
+    (= chooser null)
+    (= choices (call (of List CommandChoice)))
+    (= returns-to-commands false)
+    (call reset)
+  )
+  (fn-do + execute _
+    (param command Command)
+    (let host host-window)
+    (return-if (if (not host)))
+    (let live (? Command))
+    (for (in current (. host commands))
+      (if (== (. current identity) (. command identity))
+        (= live current)
+        (break)
+      )
+    )
+    (return-if (if (not live)))
+    (if (not (. live is-available))
+      (= notice
+        (scope (if-expr (. live unavailable-reason) (. live unavailable-reason) default-notice)
+          (lazy default-notice (str "“" (. live title) "” is unavailable"))
+        )
+      )
+      (return)
+    )
+    (call (. recents remember) (. live stable-key))
+    (if (is live CommandChooserNode)
+      (call show-choices (as live CommandChooserNode))
+      (= returns-to-commands true)
+      (return)
+    )
+    (call (. live run))
+    (call dismiss (. DismissReason chosen))
+  )
+  (fn-do + choose-choice _
+    (param choice CommandChoice)
+    (let source chooser)
+    (return-if (if (not source)))
+    (call dismiss (. DismissReason chosen))
+    (call (. source choose) choice)
+  )
+)
+
+(type + CommandPaletteRow (is Box)
+  (prop + entry (? CommandPaletteEntry))
+  (prop + command (? Command) (= (?. #entry command)))
+  (prop + choice (? CommandChoice) (= (?. #entry choice)))
+  (prop + title _ (= (call command-palette-entry-title #command #choice)))
+  (prop + is-enabled _ (= (?? (?. #command is-available) true)))
+  (prop + is-on _ (= (call command-palette-entry-is-on #command #choice)))
+  (prop + detail _ (= (call command-palette-entry-detail #is-enabled #command)))
+  (prop + detail-hits _ (= (if-expr #is-enabled (?? (?. #entry detail-hits) (call (of List MatchSpan))) (call (of List MatchSpan)))))
+  (prop + shortcut-label _ (= (call command-palette-entry-shortcut #command #palette)))
+  (blank)
+  (prop _ palette (of Ancestor CommandPalette))
+  (blank)
+  (rule This (• flex-row) (• flex 1))
+  (content
+    (<> This
+      (<> LucideCheck (• icon) (• command-palette-check)
+        (= align-y (. Alignment center))
+        (= display (if-expr #is-on (. Display visible) (. Display invisible)))
+      )
+      (<> MatchLabel (id: title-label)
+        (= text #title)
+        (= hits (?? (?. #entry title-hits) (call (of List MatchSpan))))
+        (= align-y (. Alignment center))
+      )
+      (<> MatchLabel (id: detail-label) (• command-palette-detail) (• flex 1)
+        (= text #detail)
+        (= hits #detail-hits)
+        (= align-y (. Alignment center))
+      )
+      (if #command
+        (<> Label (id: shortcut) (• command-palette-shortcut)
+          (= text #shortcut-label)
+          (= text-alignment (. TextAlignment right))
+          (= align-y (. Alignment center))
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + command-shortcut-label _
+  (param command Command)
+  (param palette (? CommandPalette))
+  (match (?. palette host-window)
+    (case (: host Window)
+      (call (. ", " join)
+        (:stream
+          (block
+            (spread (. host registered-key-bindings))
+            (pipe ?*> (call command-shortcut-for each command))
+          )
+        )
+      )
+    )
+    (default
+      ""
+    )
+  )
+)
+
+(fn-expr _ command-shortcut-for _
+  (param binding KeyBinding)
+  (param command Command)
+  (case? (or (not target) (!= (. target identity) (. command identity)))
+    null
+  )
+  (case? (not label)
+    null
+  )
+  (default
+    label
+  )
+  (where
+    (lazy target (. binding command-target))
+    (lazy label (. binding symbol-label))
+  )
+)
+
+(fn-do _ command-palette-matches (list Command)
+  (param commands (list Command))
+  (param query String)
+  (param recent (list String))
+  (let ordered (list Command))
+  (for (in key recent)
+    (let found (call first (in each commands (when (== (. each stable-key) key)))))
+    (if (and found (. found is-discoverable))
+      (+= ordered found)
+    )
+  )
+  (return-if ordered (if (not query)))
+  (for (in command commands)
+    (if (and (. command is-discoverable) (not (has recent (. command stable-key))))
+      (+= ordered command)
+    )
+  )
+  (return (call fuzzy-ranked ordered query (=> (command) (call command-palette-text command))))
+)
+
+(fn-expr _ command-palette-text _
+  (param command Command)
+  (str (. command title) " " (. command description))
+)
+
+(fn-expr _ command-palette-prompt _
+  (param chooser (? CommandChooserNode))
+  (case? chooser
+    (. chooser prompt)
+  )
+  (default
+    ""
+  )
+)
+
+(fn-expr _ command-palette-empty-text _
+  (param query String)
+  (param chooser (? CommandChooserNode))
+  (case? chooser
+    "No matches found"
+  )
+  (case? query
+    "No commands found"
+  )
+  (default
+    ""
+  )
+)
+
+(fn-do _ command-palette-entries (list CommandPaletteEntry)
+  (param commands (list Command))
+  (param choices (list CommandChoice))
+  (param query String)
+  (param recent (list String))
+  (param chooser (? CommandChooserNode))
+  (let pattern (call FuzzyQuery query))
+  (let entries (list CommandPaletteEntry))
+  (if chooser
+    (for (in choice (call fuzzy-ranked choices query (=> (choice) (. choice title))))
+      (+= entries
+        (call CommandPaletteEntry
+          (block
+            (arg (str "choice:" (. choice key)))
+            (arg null)
+            (arg choice)
+            (arg (call match-spans (call (. pattern positions) (. choice title))))
+          )
+        )
+      )
+    )
+    (return entries)
+  )
+  (for (in command (call command-palette-matches commands query recent))
+    (let size (. command title size))
+    (let positions (call (. pattern positions) (call command-palette-text command)))
+    (let title-hits (call match-spans (call (of List Index) (in each positions (when (< each size))))))
+    (let detail-hits (call match-spans (call (of List Index) (in each positions (when (> each size)))) (+ size 1)))
+    (+= entries
+      (call CommandPaletteEntry
+        (block
+          (arg (str "command:" (. command identity address)))
+          (arg command)
+          (arg null)
+          (arg title-hits)
+          (arg detail-hits)
+        )
+      )
+    )
+  )
+  (return entries)
+)
+
+(fn-expr _ command-palette-entry-title _
+  (param command (? Command))
+  (param choice (? CommandChoice))
+  (?? (?. choice title) (?. command title) "")
+)
+
+(fn-expr _ command-palette-entry-is-on _
+  (param command (? Command))
+  (param choice (? CommandChoice))
+  (?? (?. choice checked) (?. command is-on) false)
+)
+
+(fn-expr _ command-palette-entry-detail _
+  (param is-enabled Bool)
+  (param command (? Command))
+  (case? (not command)
+    ""
+  )
+  (case? (and (not is-enabled) (. command unavailable-reason))
+    (. command unavailable-reason)
+  )
+  (default
+    (. command description)
+  )
+)
+
+(fn-expr _ command-palette-entry-shortcut _
+  (param command (? Command))
+  (param palette (? CommandPalette))
+  (case? command
+    (call command-shortcut-label command palette)
+  )
+  (default
+    ""
+  )
+)
+
+(fn-do _ load-command-choices _
+  (param source CommandChooserNode)
+  (return
+    (call (. source choices)
+      (block
+        (on-error (: err Error)
+          (return (call (of List CommandChoice)))
+        )
+      )
+    )
+  )
+)

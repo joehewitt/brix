@@ -1,0 +1,126 @@
+(import /core/parsing)
+(import /core/tokenstream)
+
+(type + YumiSyntaxError (is Error)
+  (prop + message _ (= "Syntax error"))
+  (prop + path String)
+  (prop + source-line String)
+  (prop + loc MatchLocation)
+  (blank)
+  (prop _ has-source-line Bool)
+  (prop _ has-line-break Bool)
+  (fn-do + This _
+    (param loc _)
+    (param message String (= "Syntax error"))
+    (param source-line (? String) (= null))
+    (param path (? String) (= null))
+    (if source-line
+      (= has-source-line true)
+      (let line (call diagnostic-line source-line (. loc begin line)))
+      (= (. this source-line) (. line text))
+      (= has-line-break (. line has-line-break))
+    )
+    (if path
+      (= (. this path) (call (. (call byte-view path) slice-string)))
+    )
+  )
+  (fn-do + attach-source _
+    (param source String)
+    (param source-path String)
+    (if (not has-source-line)
+      (= has-source-line true)
+      (let line (call diagnostic-line source (. loc begin line)))
+      (= source-line (. line text))
+      (= has-line-break (. line has-line-break))
+    )
+    (if (not path)
+      (= path source-path)
+    )
+  )
+  (fn-to-expr + String
+    (call (. "\n" join) (call format))
+  )
+  (fn-do + format _
+    (yield (str "Exception: " message))
+    (if path
+      (yield (str "<" path ":" (+ (. loc begin line) 1) ":" (. loc begin column) ">"))
+      (else
+        (yield (str "<(no file):" (+ (. loc begin line) 1) ":" (. loc begin column) ">"))
+      )
+    )
+    (blank)
+    (if has-source-line
+      (yield (str "    " source-line))
+      (yield
+        (scope (str "    " caret-indent "^")
+          (lazy caret-indent (* " " (. loc begin column)))
+        )
+      )
+      ;  <= loc
+    )
+  )
+  (fn-expr + exception-text String :get
+    (case? (not has-source-line)
+      (str "Exception: " message "\n<" shown-path ">")
+    )
+    (default
+      (str "Exception: " message "\n" location "\n    " source-line "\n" caret-indent carets)
+    )
+    (where
+      (lazy location (str "<" shown-path ":" (+ (. loc begin line) 1) ">"))
+      (lazy shown-path (if-expr (!= (. path length) 0) path "no file"))
+      (lazy caret-indent (* " " (+ 4 (. loc begin column))))
+      (lazy carets (* "^" caret-count))
+      (lazy caret-count
+        (block
+          (case? (> (. loc end line) (. loc begin line))
+            (if-expr (> (. source-line length) (+ (. loc begin column) 1)) (- (. source-line length) (. loc begin column) 1) 0)
+          )
+          (case? (>= (. loc begin column) (. source-line length))
+            (if-expr (and has-line-break (== (. loc begin column) (. source-line length))) 1 0)
+          )
+          (case? (> (. loc end column) (. loc begin column))
+            (- (. loc end column) (. loc begin column))
+          )
+          (default
+            1
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-do _ (of diagnostic-line Token) (tuple (: text String) (: has-line-break Bool))
+  (param source ([] Token))
+  (param line Index)
+  (let cursor Index 0)
+  (let current-line Index 0)
+  (while (and (< cursor (. source size)) (< current-line line))
+    (if (== ([] source cursor) 10)
+      (+= current-line 1)
+    )
+    (+= cursor 1)
+  )
+  (let start cursor)
+  (while (and (< cursor (. source size)) (!= ([] source cursor) 10))
+    (+= cursor 1)
+  )
+  (return (tuple (call (. source slice-string) (..< start cursor)) (< cursor (. source size))))
+)
+
+(fn-do + signed-unit-advice String
+  (param lead String)
+  (param name String)
+  (param suffix (? String))
+  (param amount String)
+  ; The advice for a unit declared from a signed amount of another, as in "+ Bar (bar) is -1foo",
+  ; which rows and Brix both reject: the amount takes no sign, and an equality relates two units by
+  ; a negative amount. `lead` is the declaration's `+` or `_`, and `amount` is written with its sign.
+  (let named (if-expr suffix (str " (" suffix ")") ""))
+  (let plain (str "A unit is declared from an amount of another unit with no sign, as in \"" lead " " name named " is " ([] amount (... 1)) "\""))
+  (if (not suffix)
+    (return plain)
+  )
+  (return (str plain "; to relate two units by a negative amount, declare " name " from a number type and write an equality, as in \"" lead " 1" suffix " = " amount "\""))
+)

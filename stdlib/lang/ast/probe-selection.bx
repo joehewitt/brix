@@ -1,0 +1,266 @@
+(import ./ast)
+(import ./ast-nodes)
+(import /stream/aggregate)
+
+(type + ProbeSelection
+  ; The probes a program compiles, from the selectors given to `--probes`, which spaces and commas
+  ; part. None compile where probes are not enabled. Where they are and no selectors are given, every
+  ; probe of a module named among `locals` compiles, and every log and group written with no key;
+  ; selectors choose the probes in their place.
+  (prop + is-enabled Bool)
+  (prop + selectors (list String))
+  (prop + locals (list String))
+  (prop + includes-defaults _ (= false))
+  (fn-do + This _
+    (param is-enabled _ (= false))
+    (param text String (= ""))
+    (param locals (list String) (= (call (of List String))))
+    (let selector "")
+    (for (in char text)
+      (if (or (== char (char " ")) (== char ',') (== char (char "\t")) (== char (char "\n")) (== char (char "\r")))
+        (if (!= selector "")
+          (+= selectors selector)
+        )
+        (= selector "")
+        (else
+          (+= selector (str char))
+        )
+      )
+    )
+    (if (!= selector "")
+      (+= selectors selector)
+    )
+    (= includes-defaults (== (. selectors length) 0))
+  )
+  (fn-expr + compiles-probe Bool
+    (param module String)
+    (param name (? String))
+    (param key (? String))
+    ; Whether a probe written in a module compiles. One with a `name` records an event, under its
+    ; key where it has one, and any other writes to the log, as does a group.
+    (case? (not is-enabled)
+      false
+    )
+    (case? (or (call is-local module) (call selects-all))
+      true
+    )
+    (case? (and logs (not key) includes-defaults)
+      true
+    )
+    (case? (and (not logs) (call names-namespace (?? key (!! name)) "event"))
+      true
+    )
+    (case? (and logs (call selects-log (?? key "")))
+      true
+    )
+    (default
+      (and (call has "compiler") (call (. module starts-with) "lang/"))
+    )
+    (where
+      (lazy logs (or (not name) (== name "groupBegin") (== name "groupEnd")))
+    )
+  )
+  (fn-expr + compiles-statement Bool
+    (param module String)
+    (param key (? String))
+    ; Whether the statement a probe runs compiles: one with no key wherever probes do, and one with a
+    ; key where a probe of that name would, or where its key is selected as a statement's.
+    (case? (not is-enabled)
+      false
+    )
+    (case? (not key)
+      true
+    )
+    (default
+      (or (call compiles-probe module key key) (call names-namespace key null) (call selects-log key) (call names-namespace key "statement" false))
+    )
+  )
+  (fn-expr + compiles-node Bool
+    (param module String)
+    (param tree AST)
+    (param id SyntaxId)
+    (param snapshots Bool (= false))
+    ; Whether a probe the syntax of a module writes compiles: every one written in a function that
+    ; writes the snapshot of an object (`snapshots`), wherever probes compile, and any other as it is
+    ; selected (`selects-node`).
+    (or (and snapshots is-enabled) (call selects-node module tree id))
+  )
+  (fn-expr _ selects-node Bool
+    (param module String)
+    (param tree AST)
+    (param id SyntaxId)
+    ; Whether a probe is selected: a probe with the lazy locals it reads as the probe is, and a group
+    ; as the probe of its kind is, under a name for where it begins and ends.
+    (match ([] (. tree nodes) id)
+      (case (call .node-probe row)
+        (call compiles-probe module (?. (. row name) text) (?. (. row key) text))
+      )
+      (case (call .node-probe-scope row)
+        (and (!= (. row body count) 0) (call compiles-node module tree ([] (. tree children) (. row body start))))
+      )
+      (case (call .node-probe-statement row)
+        (call compiles-statement module (?. (. row key) text))
+      )
+      (case (call .node-probe-counter row)
+        (or (call compiles-counter module (. row key text)) is-profiled)
+        (lazy is-profiled (and (== (. row object) 0) (call compiles-profile (. row key text))))
+      )
+      (case (call .node-probe-assign row)
+        (call compiles-probe module "set-property" (. row key text))
+      )
+      (case (call .node-probe-group row)
+        (case? (. row is-data)
+          (or (call compiles-data module (?? (?. (. row key) text) "")) (call compiles-profile (?? (?. (. row key) text) "")))
+        )
+        (default
+          (call compiles-probe
+            (block
+              (arg module)
+              (arg (if-expr (. row is-begin) "groupBegin" (only-if "groupEnd" (if (. row is-end)))))
+              (arg (?. (. row key) text))
+            )
+          )
+        )
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-do + compiles-safepoints Bool
+    ; Whether loops look in on the probes as they run: wherever probes compile, unless every selector
+    ; is one of the profile.
+    (return-if false (if (not is-enabled)))
+    (for (in selector selectors)
+      (return-if true (if (and (!= selector "profile") (!= selector "profile:*") (not (call (. selector starts-with) "profile:")))))
+    )
+    (return (== (. selectors length) 0))
+  )
+  (fn-expr + compiles-counter Bool
+    (param module String)
+    (param name String)
+    ; Whether a counter compiles: in a module named among `locals`, under every selector of a counter,
+    ; or one that names its namespace.
+    (case? (not is-enabled)
+      false
+    )
+    (case? (or (call is-local module) (call has "counter") (call has "counter:*"))
+      true
+    )
+    (default
+      (call names-namespace name "counter")
+    )
+  )
+  (fn-expr + compiles-profile Bool
+    (param key String)
+    ; Whether a counter or a group of data compiles as a metric of the profile, which a selector of
+    ; the profile or one that names its namespace asks for.
+    (case? (not is-enabled)
+      false
+    )
+    (case? (or (call has "profile") (call has "profile:*"))
+      true
+    )
+    (default
+      (call names-namespace key "profile")
+    )
+  )
+  (fn-expr + compiles-data Bool
+    (param module String)
+    (param key String)
+    ; Whether a group of data compiles: in a module named among `locals`, with no key, under every
+    ; selector, or one that names its namespace alone or as data or an event, and in the compiler where
+    ; it is selected.
+    (case? (not is-enabled)
+      false
+    )
+    (case? (or (call is-local module) (call selects-all) (and (== key "") includes-defaults))
+      true
+    )
+    (case? (or (call names-namespace key null) (call names-namespace key "data") (call names-namespace key "event"))
+      true
+    )
+    (default
+      (and (call has "compiler") (call (. module starts-with) "lang/"))
+    )
+  )
+  (fn-expr _ is-local Bool
+    (param module String)
+    (and includes-defaults (has locals module))
+  )
+  (fn-expr _ selects-all Bool
+    (or (call has "*") (call has "all"))
+  )
+  (fn-expr _ has Bool
+    (param wanted String)
+    (call some selectors (:where (== each wanted)))
+  )
+  (fn-do _ names-namespace Bool
+    (param namespace String)
+    (param kind (? String))
+    (param wildcards Bool (= true))
+    ; Whether a selector names a namespace or one inside it, written alone or after the `kind` it
+    ; selects for, where `*` after a kind names every one unless `wildcards` is false.
+    (for (in token selectors)
+      (return-if true (if (or (== token "*") (== token "all"))))
+      (let selector token)
+      (let tag (call (. token find) ":"))
+      (if tag
+        (if (or (not kind) (!= ([] token (..< 0 tag)) kind))
+          (continue)
+        )
+        (= selector ([] token (... (+ tag 1))))
+      )
+      (return-if true (if (and wildcards (== selector "*"))))
+      (return-if true (if (call in-namespace namespace selector)))
+    )
+    (return false)
+  )
+  (fn-do + compiles-metrics Bool
+    (param namespace String)
+    ; Whether the metrics the compiler counts of its own accord under a namespace compile: under every
+    ; selector, every one of a counter or the profile, and one that names the namespace, alone or
+    ; after either.
+    (return-if false (if (not is-enabled)))
+    (for (in token selectors)
+      (return-if true (if (or (== token "*") (== token "all") (== token "counter") (== token "profile"))))
+      (let selector token)
+      (let tag (call (. token find) ":"))
+      (if tag
+        (let kind ([] token (..< 0 tag)))
+        (if (and (!= kind "counter") (!= kind "profile"))
+          (continue)
+        )
+        (= selector ([] token (... (+ tag 1))))
+      )
+      (return-if true (if (call in-namespace namespace selector)))
+    )
+    (return false)
+  )
+  (fn-do _ selects-log Bool
+    (param key String)
+    ; Whether the log is selected, or a log key that is the key of a probe or holds it, after `log:`
+    ; or alone.
+    (for (in token selectors)
+      (return-if true (if (== token "log")))
+      (if (call (. token starts-with) "log:")
+        (let selector ([] token (... 4)))
+        (return-if true (if (or (== selector "*") (== key selector) (call in-namespace key selector))))
+        (else-if (and (!= key "") (not (call (. token find) ":")))
+          (return-if true (if (call in-namespace key token)))
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-expr _ in-namespace Bool
+    (param namespace String)
+    (param selector String)
+    ; Whether a namespace is the one a selector names or one inside it, where a selector may end in
+    ; `.*`.
+    (and (!= named "") (or (== namespace named) (call (. namespace starts-with) (str named "."))))
+    (where
+      (lazy named (if-expr (call (. selector ends-with) ".*") ([] selector (..< 0 (- (. selector length) 2))) selector))
+    )
+  )
+)

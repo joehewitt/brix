@@ -1,0 +1,82 @@
+(import /BxGC/BxGC.h)
+(import /gc/gc)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(type + GCNode
+  (prop + value _ (= 0))
+  (fn-do + This _
+    (param v Int)
+    (= value v)
+  )
+)
+
+(type + GCCleanupState
+  (prop + value Int)
+  (prop + should-panic Bool)
+  (fn-do + This _
+    (param v Int)
+    (param panic Bool (= false))
+    (= value v)
+    (= should-panic panic)
+  )
+)
+
+(fn-expr + tests TestRender
+  (header (call test "End To End"))
+  (tuple "cleanup-once-ok" (call gc-cleanup-once))
+)
+
+(fn-do + gc-cleanup-once _
+  (let fire-before (call C:brixGCCleanupFireCount))
+  (let exception-before (call C:brixGCCleanupExceptionCount))
+  (let cancel-target (call GCNode 80))
+  (let canceled (call on-reclaim cancel-target (call GCCleanupState 80) gc-test-cleanup))
+  (do
+    (inline (call cancel canceled))
+  )
+  (do
+    (inline (. cancel-target value))
+  )
+  (blank)
+  (do
+    (inline (call gc-make-cleanup 81 false))
+  )
+  (do
+    (inline (call gc-make-cleanup 82 true))
+  )
+  (call C:brixCollect)
+  (do
+    (inline (call drain-reclaim-cleanups))
+  )
+  (blank)
+  (if (!= (call C:brixGCCleanupFireCount) (+ fire-before 2))
+    (return (str "cleanup-fire-count " fire-before "->" (call C:brixGCCleanupFireCount)))
+  )
+  (if (!= (call C:brixGCCleanupExceptionCount) (+ exception-before 1))
+    (return (str "cleanup-exception-count " exception-before "->" (call C:brixGCCleanupExceptionCount)))
+  )
+  (blank)
+  (return "cleanup-once-ok")
+)
+
+(fn-do + gc-make-cleanup CleanupHandle
+  (param value Int)
+  (param should-panic Bool)
+  (let target (call GCNode value))
+  (return (call on-reclaim target (call GCCleanupState value should-panic) gc-test-cleanup))
+)
+
+(fn-do + gc-test-cleanup _
+  (param state GCCleanupState)
+  (if (. state should-panic)
+    (throw (call Error "expected cleanup test error"))
+  )
+  (if (!= (. state value) 81)
+    (throw (call Panic "cleanup state was not delivered"))
+  )
+)

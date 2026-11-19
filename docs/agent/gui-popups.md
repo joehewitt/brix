@@ -9,11 +9,11 @@ follow the logical tree, so a popup inherits its owner's theme.
 
 | Concern | Where | Notes |
 | --- | --- | --- |
-| Behavior | `stdlib/gui/popup.yumi` | `Popup`, `GUIPopupStyle`, `PopupAnchor`, `DismissReason` |
-| Placement | `stdlib/gui/placement.yumi` | `Placement` subclasses place a popup from a `PlacementRequest` |
-| Layer stack | `stdlib/gui/window.yumi` | `popups`, `modal-popup`, hit testing, light dismiss, focus |
+| Behavior | `stdlib/gui/popup.bx` | `Popup`, `GUIPopupStyle`, `PopupAnchor`, `DismissReason` |
+| Placement | `stdlib/gui/placement.bx` | `Placement` subclasses place a popup from a `PlacementRequest` |
+| Layer stack | `stdlib/gui/window.bx` | `popups`, `modal-popup`, hit testing, light dismiss, focus |
 | Native surface | `BxAppleGUI.mm` `brixGuiPopup*` | borderless child `NSPanel` per open popup |
-| Shapes | `stdlib/gui/shape.yumi`, `stdlib/graphics/outline.yumi` | `BoxShape`, `CalloutShape`, `Outline`, `Shadow` |
+| Shapes | `stdlib/gui/shape.bx`, `stdlib/graphics/outline.bx` | `BoxShape`, `CalloutShape`, `Outline`, `Shadow` |
 | Components | `menu`, `tooltip`, `popover`, `select`, `dialog`, `toast`, `command-palette` | built only on the public model |
 
 `Box.is-presentation-layer` makes rendered-child traversal skip a popup, so base paint, hit testing,
@@ -75,7 +75,7 @@ popup opened during a press is chosen by releasing over it after moving.
 
 ## Verification
 
-`stdlib/gui/tests/popups.yumi` states anchored, point and cover placement, snapping above the
+`stdlib/gui/tests/popups.bx` states anchored, point and cover placement, snapping above the
 anchor, re-placement when the anchor scrolls, the modal boundary, and the popup stack.
 `examples/gui/showcase/showcase-app.bx` is the interactive showcase; run it with `-- menus` to open
 its popups.

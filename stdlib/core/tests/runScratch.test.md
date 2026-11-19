@@ -7,25 +7,28 @@ over finished runs.
 
 ### Scratch pushes, indexes, marks, and rewinds.
 
-```yumi
-/core/arena
-/core/scratch
+```brix
+(import /core/arena)
+(import /core/scratch)
+(blank)
 
-. arena = use Arena()
-. scratch = Scratch'U32(arena, 2)
-scratch.push(1)
-scratch.push(2)
-. mark = scratch.mark
-scratch.push(3)
-scratch.push(4)
--- scratch.length
--- scratch[3]
-scratch[1] = 20
--- ", ".join(scratch.since(mark))
--- ", ".join(scratch.span(1, 2))
-scratch.rewind(mark)
--- scratch.length
--- ", ".join(scratch.since(0))
+(main
+  (let arena (use (call Arena)))
+  (let scratch (call (of Scratch U32) arena 2))
+  (call (. scratch push) 1)
+  (call (. scratch push) 2)
+  (let mark (. scratch mark))
+  (call (. scratch push) 3)
+  (call (. scratch push) 4)
+  (print (. scratch length))
+  (print ([] scratch 3))
+  (= ([] scratch 1) 20)
+  (print (call (. ", " join) (call (. scratch since) mark)))
+  (print (call (. ", " join) (call (. scratch span) 1 2)))
+  (call (. scratch rewind) mark)
+  (print (. scratch length))
+  (print (call (. ", " join) (call (. scratch since) 0)))
+)
 ```
 
 ```output
@@ -39,21 +42,24 @@ scratch.rewind(mark)
 
 ### A span taken before growth keeps reading the run it was taken from; later writes land in the current storage.
 
-```yumi
-/core/arena
-/core/scratch
+```brix
+(import /core/arena)
+(import /core/scratch)
+(blank)
 
-. arena = use Arena()
-. scratch = Scratch'U32(arena, 2)
-scratch.push(10)
-scratch.push(20)
-. early = scratch.since(0)
-scratch.push(30)
-scratch.push(40)
-scratch[0] = 99
--- ", ".join(early)
--- ", ".join(scratch.since(0))
--- early.length
+(main
+  (let arena (use (call Arena)))
+  (let scratch (call (of Scratch U32) arena 2))
+  (call (. scratch push) 10)
+  (call (. scratch push) 20)
+  (let early (call (. scratch since) 0))
+  (call (. scratch push) 30)
+  (call (. scratch push) 40)
+  (= ([] scratch 0) 99)
+  (print (call (. ", " join) early))
+  (print (call (. ", " join) (call (. scratch since) 0)))
+  (print (. early length))
+)
 ```
 
 ```output
@@ -64,19 +70,22 @@ scratch[0] = 99
 
 ### Rewinding below a span's mark and pushing again is a caller error; the span then reads whatever the current storage holds.
 
-```yumi
-/core/arena
-/core/scratch
+```brix
+(import /core/arena)
+(import /core/scratch)
+(blank)
 
-. arena = use Arena()
-. scratch = Scratch'U32(arena, 8)
-scratch.push(1)
-scratch.push(2)
-. run = scratch.since(0)
-scratch.rewind(0)
-scratch.push(7)
-scratch.push(8)
--- ", ".join(run)
+(main
+  (let arena (use (call Arena)))
+  (let scratch (call (of Scratch U32) arena 8))
+  (call (. scratch push) 1)
+  (call (. scratch push) 2)
+  (let run (call (. scratch since) 0))
+  (call (. scratch rewind) 0)
+  (call (. scratch push) 7)
+  (call (. scratch push) 8)
+  (print (call (. ", " join) run))
+)
 ```
 
 ```output
@@ -85,16 +94,20 @@ scratch.push(8)
 
 ### Scratch grows from its default capacity and reports its mark.
 
-```yumi
-/core/arena
-/core/scratch
+```brix
+(import /core/arena)
+(import /core/scratch)
+(blank)
 
-. arena = use Arena()
-. scratch = Scratch'Int(arena)
-for value in 0 .. < 5
-    scratch.push(value * value)
--- ", ".join(scratch.since(0))
--- scratch.mark
+(main
+  (let arena (use (call Arena)))
+  (let scratch (call (of Scratch Int) arena))
+  (for (in value (..< 0 5))
+    (call (. scratch push) (* value value))
+  )
+  (print (call (. ", " join) (call (. scratch since) 0)))
+  (print (. scratch mark))
+)
 ```
 
 ```output

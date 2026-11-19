@@ -1,0 +1,49 @@
+; benchmark.meta description: Builds the collect-accumulator lists and text with pipelines and comprehensions.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator
+(blank)
+
+(main
+  (let rows (call collect-pipeline-rows))
+  (let checksum (as 0 Size))
+  (for (in iteration (..< 0 4000))
+    (let labels (call collect-pipeline-labels rows))
+    (let depths (call collect-pipeline-depths rows))
+    (+= checksum (+ (. labels length) (. depths length) (. (call collect-pipeline-text rows) length)))
+  )
+  (blank)
+  (print (str "bench-result allocation/collect-pipeline checksum=" checksum))
+)
+
+(type _ CollectPipelineRow (is Tuple)
+  (prop + name String)
+  (prop + depth Size)
+  (prop + is-live Bool)
+)
+
+(fn-expr _ collect-pipeline-labels (list String)
+  (param rows (list CollectPipelineRow))
+  (spread rows)
+  (pipe ?> (. each is-live))
+  (pipe *> (str (. each name) ":" (. each depth)))
+  (pipe |> List)
+)
+
+(fn-expr _ collect-pipeline-depths (list Size)
+  (param rows (list CollectPipelineRow))
+  (spread rows)
+  (pipe ?> (> (. each depth) 2))
+  (pipe *> (* (. each depth) 2))
+  (pipe |> List)
+)
+
+(fn-expr _ collect-pipeline-text String
+  (param rows (list CollectPipelineRow))
+  (call (. " " join) (in (. each name) rows (when (. each is-live))))
+)
+
+(fn-expr _ collect-pipeline-rows (list CollectPipelineRow)
+  (spread (..< 0 400))
+  (pipe *> (call CollectPipelineRow (str "row-" each) (% each 7) (!= (% each 3) 0)))
+  (pipe |> List)
+)

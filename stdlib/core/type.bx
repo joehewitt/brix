@@ -1,0 +1,116 @@
+(import ./core)
+(import ./error)
+(import ./number)
+(import ./range)
+(import ./stream)
+(import ./string)
+
+(type + (of TypeInfo Subject)
+  (fn-to-expr + String
+    (str "[TypeInfo " name "]")
+  )
+  (fn-expr + (infix this == (param other _)) _
+    false
+  )
+  (fn-expr + (infix this > (param other _)) _
+    false
+  )
+  (fn-expr + (infix this < (param other _)) _
+    false
+  )
+  (fn-expr + compare _
+    (param other _)
+    false
+  )
+  (fn-expr + compare-unified _
+    (param other _)
+    false
+  )
+)
+
+(type + PropertyList (is Tuple)
+  (prop + table Pointer)
+  (fn-expr + length Size :get
+    (if-expr (== table null) 0 (as ([] (as table (of CPointer U64)) 0) Size))
+  )
+  (fn-expr + (index-get this (param index Index)) PropertyInfo
+    (before
+      (throw (call OutOfBoundsError (str "Property index " index " out of range")) (if (or (< index 0) (>= index length))))
+    )
+    (call PropertyInfo (+ table (+ 8 (* index 40))))
+  )
+  (fn-to-do + (of Iterable PropertyInfo)
+    (for (in index (..< 0 length))
+      (yield ([] this index))
+    )
+  )
+  (fn-do + named (? PropertyInfo)
+    (param name String)
+    (for (in index (..< 0 length))
+      (let property ([] this index))
+      (return-if property (if (== (. property name) name)))
+    )
+    (return null)
+  )
+)
+
+(type + PropertyInfo (is Tuple)
+  (prop + entry Pointer)
+  (fn-expr + name String :get
+    ([] (as entry (of CPointer String)) 0)
+  )
+  (fn-expr + type-name String :get
+    ([] (as descriptor (of CPointer String)) 0)
+  )
+  (fn-expr + type-key String :get
+    ([] (as descriptor (of CPointer String)) 1)
+  )
+  (fn-expr + offset Size :get
+    (as ([] (as entry (of CPointer U64)) 2) Size)
+  )
+  (fn-expr + size Size :get
+    (as ([] (as entry (of CPointer U64)) 3) Size)
+  )
+  (fn-expr + is-aggregate Bool :get
+    (== kind 0)
+  )
+  (fn-expr + is-float Bool :get
+    (== kind 1)
+  )
+  (fn-expr + is-signed Bool :get
+    (== kind 2)
+  )
+  (fn-expr + is-unsigned Bool :get
+    (== kind 3)
+  )
+  (fn-expr + is-boolean Bool :get
+    (== kind 4)
+  )
+  (fn-expr + is-reference Bool :get
+    (== kind 5)
+  )
+  (fn-expr + properties PropertyList :get
+    (call PropertyList ([] (as descriptor (of CPointer Pointer)) 2))
+  )
+  (fn-expr _ kind U64 :get
+    ([] (as entry (of CPointer U64)) 4)
+  )
+  (fn-expr _ descriptor Pointer :get
+    ([] (as entry (of CPointer Pointer)) 1)
+  )
+)
+
+(type + TypeRelation
+  (fn-expr + cast _
+    (param other _)
+    false
+  )
+  (fn-expr + unify _
+    (param other _)
+    false
+  )
+)
+
+(fn-expr + (of type-identity T) _
+  (=> (object) (is object T))
+)

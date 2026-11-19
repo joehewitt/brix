@@ -1,0 +1,30 @@
+; benchmark.meta description: Streams a 600-word Markdown reply into the end of a 300-message chat transcript, framing every delta.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: gui,compile-timing
+(blank)
+(import /gui/bench/fixtures/chat-transcript-bench-fixture)
+(blank)
+
+(main
+  (let checksum (call run-chat-transcript-stream 4))
+  (blank)
+  (print (str "bench-result gui/chat-transcript-stream checksum=" checksum))
+)
+
+(fn-do + run-chat-transcript-stream Size
+  (param replies Size)
+  (let bench (call ChatTranscriptBench chat-bench-long-turns))
+  (let checksum (call (. bench show) (. bench chat)))
+  (for (in reply (..< 0 replies))
+    (call (. bench chat begin-turn) (str "Stream reply " (+ reply 1)))
+    (+= checksum (call (. bench frame)))
+    (for (in word (call (. (call chat-bench-reply (* reply 4)) split) " "))
+      (call append-chat-bench-reply (. bench chat) (str word " "))
+      (+= checksum (call (. bench frame)))
+    )
+    (call (. bench chat finish-reply))
+    (+= checksum (call (. bench frame)))
+  )
+  (call (. bench close))
+  (return checksum)
+)

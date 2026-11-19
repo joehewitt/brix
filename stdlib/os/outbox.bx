@@ -1,0 +1,60 @@
+(import /data)
+
+(type + Outbox
+  (prop + target WritableData)
+  (prop + has-failed _ (= false))
+  (prop + on-drained (? Doer))
+  (prop _ queued (list ([] Byte)))
+  (prop _ is-flushing _ (= false))
+  (fn-do + This _
+    (param target _)
+  )
+  (fn-expr + is-idle Bool :get
+    (not is-flushing)
+  )
+  (fn-do + send _
+    (param bytes ([] Byte))
+    (return-if (if (or has-failed (== (. bytes size) 0))))
+    (+= queued bytes)
+    (return-if (if is-flushing))
+    (= is-flushing true)
+    (do-new
+      (call flush)
+    )
+  )
+  (fn-do + clear _
+    (call (. queued clear))
+  )
+  (fn-do _ flush _
+    (while (and (> (. queued length) 0) (not has-failed))
+      (let next ([] queued 0))
+      (call (. queued remove) 0)
+      (let offset Size 0)
+      (while (and (< offset (. next size)) (not has-failed))
+        (let written (catch (call (. target write) (+ next offset) (- (. next size) offset))))
+        (match written
+          (case (: count Size)
+            (if (> count 0)
+              (+= offset count)
+              (else
+                (= has-failed true)
+              )
+            )
+          )
+          (case Error
+            (= has-failed true)
+          )
+        )
+      )
+      (if has-failed
+        (call (. queued clear))
+      )
+    )
+    (= is-flushing false)
+    (let drained on-drained)
+    (= on-drained null)
+    (if drained
+      (call drained)
+    )
+  )
+)

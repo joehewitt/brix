@@ -1,130 +1,115 @@
 # Inline interfaces
 
-```yumi
-/core
--- interface-caller(InlineInterfacePair(20, 22))
--- interface-join-caller(InlineInterfacePair(20, 22), InlineInterfacePair(3, 4), true)
--- interface-join-caller(InlineInterfacePair(20, 22), InlineInterfacePair(3, 4), false)
--- interface-mixed-caller(InlineInterfacePair(20, 22), InlineInterfaceSingle(9), true)
--- interface-mixed-caller(InlineInterfacePair(20, 22), InlineInterfaceSingle(9), false)
--- inline-type-name(InlineInterfacePair(20, 22))
--- inline-concrete-name(InlineInterfacePair(20, 22))
--- inline-concrete-name(choose-interface(InlineInterfacePair(20, 22), InlineInterfaceSingle(9), true))
--- inline-concrete-name(choose-interface(InlineInterfacePair(20, 22), InlineInterfaceSingle(9), false))
--- inline-inlined-name(InlineInterfacePair(20, 22))
--- inline-inlined-name(choose-interface(InlineInterfacePair(20, 22), InlineInterfaceSingle(9), true))
--- inline-inlined-name(choose-interface(InlineInterfacePair(20, 22), InlineInterfaceSingle(9), false))
--- ordinary-inlined-name(InlineInterfacePair(20, 22))
--- unknown-inlined-name(InlineInterfacePair(20, 22))
--- (type-of 42).inlined-name
--- partly-known-inlined-name(InlineInterfacePair(20, 22), InlineInterfaceSingle(9), true)
--- partly-known-inlined-name(InlineInterfacePair(20, 22), InlineInterfaceSingle(9), false)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call interface-caller (call InlineInterfacePair 20 22)))
+  (print (call interface-join-caller (call InlineInterfacePair 20 22) (call InlineInterfacePair 3 4) true))
+  (print (call interface-join-caller (call InlineInterfacePair 20 22) (call InlineInterfacePair 3 4) false))
+  (print (call interface-mixed-caller (call InlineInterfacePair 20 22) (call InlineInterfaceSingle 9) true))
+  (print (call interface-mixed-caller (call InlineInterfacePair 20 22) (call InlineInterfaceSingle 9) false))
+  (print (call inline-type-name (call InlineInterfacePair 20 22)))
+  (print (call inline-concrete-name (call InlineInterfacePair 20 22)))
+  (print (call inline-concrete-name (call choose-interface (call InlineInterfacePair 20 22) (call InlineInterfaceSingle 9) true)))
+  (print (call inline-concrete-name (call choose-interface (call InlineInterfacePair 20 22) (call InlineInterfaceSingle 9) false)))
+  (print (call inline-inlined-name (call InlineInterfacePair 20 22)))
+  (print (call inline-inlined-name (call choose-interface (call InlineInterfacePair 20 22) (call InlineInterfaceSingle 9) true)))
+  (print (call inline-inlined-name (call choose-interface (call InlineInterfacePair 20 22) (call InlineInterfaceSingle 9) false)))
+  (print (call ordinary-inlined-name (call InlineInterfacePair 20 22)))
+  (print (call unknown-inlined-name (call InlineInterfacePair 20 22)))
+  (print (. (type-of 42) inlined-name))
+  (print (call partly-known-inlined-name (call InlineInterfacePair 20 22) (call InlineInterfaceSingle 9) true))
+  (print (call partly-known-inlined-name (call InlineInterfacePair 20 22) (call InlineInterfaceSingle 9) false))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is Tuple
-    is InlineMeasure
+(type + InlineInterfacePair (is Tuple)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (prop + b Int)
+  (fn-expr + total Int @inline
+    (+ a b)
+  )
+)
 
-+ a Int
-+ b Int
+(type + InlineInterfaceSingle (is Tuple)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (fn-expr + total Int @inline
+    a
+  )
+)
 
-────────────────────
-+ total Int @inline
+(fn-expr + interface-total Int @inline
+  (param value InlineMeasure)
+  (call (. value total))
+)
 
-a + b
+(fn-expr + interface-caller Int
+  (param value InlineInterfacePair)
+  (call interface-total value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfaceSingle is Tuple
-    is InlineMeasure
+(fn-do + choose-interface InlineMeasure @inline
+  (param first InlineMeasure)
+  (param second InlineMeasure)
+  (param choose Bool)
+  (let result first)
+  (if choose
+    (= result second)
+  )
+  (return result)
+)
 
-+ a Int
+(fn-expr + interface-join-caller Int
+  (param first InlineInterfacePair)
+  (param second InlineInterfacePair)
+  (param choose Bool)
+  (call interface-total (call choose-interface first second choose))
+)
 
-────────────────────
-+ total Int @inline
+(fn-expr + inline-type-name String @inline
+  (param value InlineMeasure)
+  (. (type-of value) name)
+)
 
-a
+(fn-expr + inline-concrete-name String @inline
+  (param value InlineMeasure)
+  (. (type-of value) concrete-name)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ interface-total Int @inline
-    - value InlineMeasure
+(fn-expr + inline-inlined-name String @inline
+  (param value InlineMeasure)
+  (. (type-of value) inlined-name)
+)
 
-value.total()
+(fn-expr + unknown-inlined-name String
+  (param value InlineMeasure)
+  (call inline-inlined-name value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ interface-caller Int
-    - value InlineInterfacePair
+(fn-expr + partly-known-inlined-name String
+  (param first InlineInterfacePair)
+  (param second InlineMeasure)
+  (param choose Bool)
+  (call inline-inlined-name (call choose-interface first second choose))
+)
 
-interface-total(value)
+(fn-expr + ordinary-inlined-name String
+  (param value InlineMeasure)
+  (. (type-of value) inlined-name)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do choose-interface InlineMeasure @inline
-    - first InlineMeasure
-    - second InlineMeasure
-    - choose Bool
-
-. result = first
-if choose
-    result = second
-= result
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-join-caller Int
-    - first InlineInterfacePair
-    - second InlineInterfacePair
-    - choose Bool
-
-interface-total(choose-interface(first, second, choose))
-
-━━━━━━━━━━━━━━━━━━━━
-+ inline-type-name String @inline
-    - value InlineMeasure
-
-(type-of value).name
-
-━━━━━━━━━━━━━━━━━━━━
-+ inline-concrete-name String @inline
-    - value InlineMeasure
-
-(type-of value).concrete-name
-
-━━━━━━━━━━━━━━━━━━━━
-+ inline-inlined-name String @inline
-    - value InlineMeasure
-
-(type-of value).inlined-name
-
-━━━━━━━━━━━━━━━━━━━━
-+ unknown-inlined-name String
-    - value InlineMeasure
-
-inline-inlined-name(value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ partly-known-inlined-name String
-    - first InlineInterfacePair
-    - second InlineMeasure
-    - choose Bool
-
-inline-inlined-name(choose-interface(first, second, choose))
-
-━━━━━━━━━━━━━━━━━━━━
-+ ordinary-inlined-name String
-    - value InlineMeasure
-
-(type-of value).inlined-name
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-mixed-caller Int
-    - first InlineInterfacePair
-    - second InlineInterfaceSingle
-    - choose Bool
-
-interface-total(choose-interface(first, second, choose))
+(fn-expr + interface-mixed-caller Int
+  (param first InlineInterfacePair)
+  (param second InlineInterfaceSingle)
+  (param choose Bool)
+  (call interface-total (call choose-interface first second choose))
+)
 ```
 
 ```output
@@ -147,46 +132,41 @@ InlineMeasure
 InlineInterfacePair
 ```
 
-```yumi
-/core
--- interface-caller(InlineInterfacePair(20, 22))
--- inline-inlined-name(InlineInterfacePair(20, 22))
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call interface-caller (call InlineInterfacePair 20 22)))
+  (print (call inline-inlined-name (call InlineInterfacePair 20 22)))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is Struct
-    is InlineMeasure
+(type + InlineInterfacePair (is Struct)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (prop + b Int)
+  (fn-expr + total Int @inline
+    (+ a b)
+  )
+)
 
-+ a Int
-+ b Int
+(fn-expr + interface-total Int @inline
+  (param value InlineMeasure)
+  (call (. value total))
+)
 
-────────────────────
-+ total Int @inline
+(fn-expr + interface-caller Int
+  (param value InlineInterfacePair)
+  (call interface-total value)
+)
 
-a + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-total Int @inline
-    - value InlineMeasure
-
-value.total()
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-caller Int
-    - value InlineInterfacePair
-
-interface-total(value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ inline-inlined-name String @inline
-    - value InlineMeasure
-
-(type-of value).inlined-name
+(fn-expr + inline-inlined-name String @inline
+  (param value InlineMeasure)
+  (. (type-of value) inlined-name)
+)
 ```
 
 ```output
@@ -194,45 +174,44 @@ interface-total(value)
 InlineInterfacePair
 ```
 
-```yumi
-/core
-. pair = InlineInterfacePair(20, 22)
--- interface-caller(pair)
--- pair.a
--- interface-total(pair)
--- pair.a
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (let pair (call InlineInterfacePair 20 22))
+  (print (call interface-caller pair))
+  (print (. pair a))
+  (print (call interface-total pair))
+  (print (. pair a))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is Struct
-    is InlineMeasure
+(type + InlineInterfacePair (is Struct)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (prop + b Int)
+  (fn-expr + total Int @inline
+    (before
+      (do
+        (+= a 1)
+      )
+    )
+    (+ a b)
+  )
+)
 
-+ a Int
-+ b Int
+(fn-expr + interface-total Int @inline
+  (param value InlineMeasure)
+  (+ (call (. value total)) (call (. value total)))
+)
 
-────────────────────
-+ total Int @inline
-
-do
-    a += 1
-a + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-total Int @inline
-    - value InlineMeasure
-
-value.total() + value.total()
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-caller Int
-    - value InlineInterfacePair
-
-interface-total(value)
+(fn-expr + interface-caller Int
+  (param value InlineInterfacePair)
+  (call interface-total value)
+)
 ```
 
 ```output
@@ -242,54 +221,49 @@ interface-total(value)
 20
 ```
 
-```yumi
-/core
--- saved-info-name(InlineInterfacePair(20, 22))
--- returned-info-name(InlineInterfacePair(20, 22))
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call saved-info-name (call InlineInterfacePair 20 22)))
+  (print (call returned-info-name (call InlineInterfacePair 20 22)))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is Tuple
-    is InlineMeasure
+(type + InlineInterfacePair (is Tuple)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (prop + b Int)
+  (fn-expr + total Int @inline
+    (+ a b)
+  )
+)
 
-+ a Int
-+ b Int
+(fn-expr + inline-saved-name String @inline
+  (param value InlineMeasure)
+  (. info inlined-name)
+  (where
+    (lazy info (type-of value))
+  )
+)
 
-────────────────────
-+ total Int @inline
+(fn-expr + inline-type-info _ @inline
+  (param value InlineMeasure)
+  (type-of value)
+)
 
-a + b
+(fn-expr + saved-info-name String
+  (param value InlineInterfacePair)
+  (call inline-saved-name value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ inline-saved-name String @inline
-    - value InlineMeasure
-
-info.inlined-name
-
-.. info = type-of value
-
-━━━━━━━━━━━━━━━━━━━━
-+ inline-type-info @inline
-    - value InlineMeasure
-
-type-of value
-
-━━━━━━━━━━━━━━━━━━━━
-+ saved-info-name String
-    - value InlineInterfacePair
-
-inline-saved-name(value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ returned-info-name String
-    - value InlineInterfacePair
-
-(inline-type-info(value)).inlined-name
+(fn-expr + returned-info-name String
+  (param value InlineInterfacePair)
+  (. (call inline-type-info value) inlined-name)
+)
 ```
 
 ```output
@@ -297,98 +271,89 @@ InlineInterfacePair
 InlineInterfacePair
 ```
 
-```yumi crash
-/core
--- interface-caller(InlineInterfacePair(20, 22))
+```brix crash
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call interface-caller (call InlineInterfacePair 20 22)))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is Tuple
-    is InlineMeasure
+(type + InlineInterfacePair (is Tuple)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (prop + b Int)
+  (fn-expr + total Int @inline
+    (+ a b)
+  )
+  (fn-expr + only-concrete Int
+    a
+  )
+)
 
-+ a Int
-+ b Int
+(fn-expr + interface-total Int @inline
+  (param value InlineMeasure)
+  (call (. value only-concrete))
+)
 
-────────────────────
-+ total Int @inline
-
-a + b
-
-────────────────────
-+ only-concrete Int
-
-a
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-total Int @inline
-    - value InlineMeasure
-
-value.only-concrete()
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-caller Int
-    - value InlineInterfacePair
-
-interface-total(value)
+(fn-expr + interface-caller Int
+  (param value InlineInterfacePair)
+  (call interface-total value)
+)
 ```
 
 ```output
 Exception: InlineMeasure has no method "only-concrete"
-<no file:32>
-    value.only-concrete()
-    ^^^^^^^^^^^^^^^^^^^^^
+<no file:26>
+      (call (. value only-concrete))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-/core
--- mixed-use-caller(InlineInterfacePair(20, 22), false)
--- mixed-use-caller(InlineInterfacePair(20, 22), true)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call mixed-use-caller (call InlineInterfacePair 20 22) false))
+  (print (call mixed-use-caller (call InlineInterfacePair 20 22) true))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is Tuple
-    is InlineMeasure
+(type + InlineInterfacePair (is Tuple)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (prop + b Int)
+  (fn-expr + total Int @inline
+    (+ a b)
+  )
+)
 
-+ a Int
-+ b Int
+(fn-expr + mixed-use-caller Int
+  (param value InlineInterfacePair)
+  (param escape Bool)
+  (call mixed-interface-use value escape)
+)
 
-────────────────────
-+ total Int @inline
+(fn-expr + mixed-interface-use Int @inline
+  (param value InlineMeasure)
+  (param escape Bool)
+  (case? escape
+    (+ (call opaque-interface value) (call opaque-interface value))
+  )
+  (default
+    (call (. value total))
+  )
+)
 
-a + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ mixed-use-caller Int
-    - value InlineInterfacePair
-    - escape Bool
-
-mixed-interface-use(value, escape)
-
-━━━━━━━━━━━━━━━━━━━━
-+ mixed-interface-use Int @inline
-    - value InlineMeasure
-    - escape Bool
-
-|? escape
-    opaque-interface(value) + opaque-interface(value)
-??
-    value.total()
-
-━━━━━━━━━━━━━━━━━━━━
-+ opaque-interface Int
-    - value InlineMeasure
-
-value.total()
+(fn-expr + opaque-interface Int
+  (param value InlineMeasure)
+  (call (. value total))
+)
 ```
 
 ```output
@@ -396,51 +361,48 @@ value.total()
 84
 ```
 
-```yumi
-/core
--- mixed-use-caller(InlineInterfacePair(20, 22), false)
--- mixed-use-caller(InlineInterfacePair(20, 22), true)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call mixed-use-caller (call InlineInterfacePair 20 22) false))
+  (print (call mixed-use-caller (call InlineInterfacePair 20 22) true))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is Struct
-    is InlineMeasure
+(type + InlineInterfacePair (is Struct)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (prop + b Int)
+  (fn-expr + total Int @inline
+    (+ a b)
+  )
+)
 
-+ a Int
-+ b Int
+(fn-expr + mixed-use-caller Int
+  (param value InlineInterfacePair)
+  (param escape Bool)
+  (call mixed-interface-use value escape)
+)
 
-────────────────────
-+ total Int @inline
+(fn-expr + mixed-interface-use Int @inline
+  (param value InlineMeasure)
+  (param escape Bool)
+  (case? escape
+    (+ (call opaque-interface value) (call opaque-interface value))
+  )
+  (default
+    (call (. value total))
+  )
+)
 
-a + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ mixed-use-caller Int
-    - value InlineInterfacePair
-    - escape Bool
-
-mixed-interface-use(value, escape)
-
-━━━━━━━━━━━━━━━━━━━━
-+ mixed-interface-use Int @inline
-    - value InlineMeasure
-    - escape Bool
-
-|? escape
-    opaque-interface(value) + opaque-interface(value)
-??
-    value.total()
-
-━━━━━━━━━━━━━━━━━━━━
-+ opaque-interface Int
-    - value InlineMeasure
-
-value.total()
+(fn-expr + opaque-interface Int
+  (param value InlineMeasure)
+  (call (. value total))
+)
 ```
 
 ```output
@@ -448,64 +410,57 @@ value.total()
 84
 ```
 
-```yumi
-/core
--- interface-mixed-caller(InlineInterfacePair(20, 22), InlineInterfaceSingle(9), true)
--- interface-mixed-caller(InlineInterfacePair(20, 22), InlineInterfaceSingle(9), false)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call interface-mixed-caller (call InlineInterfacePair 20 22) (call InlineInterfaceSingle 9) true))
+  (print (call interface-mixed-caller (call InlineInterfacePair 20 22) (call InlineInterfaceSingle 9) false))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is Tuple
-    is InlineMeasure
+(type + InlineInterfacePair (is Tuple)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (prop + b Int)
+  (fn-expr + total Int @inline
+    (+ a b)
+  )
+)
 
-+ a Int
-+ b Int
+(type + InlineInterfaceSingle (is Tuple)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (fn-expr + total Int @inline
+    a
+  )
+)
 
-────────────────────
-+ total Int @inline
+(fn-expr + interface-total Int @inline
+  (param value InlineMeasure)
+  (call (. value total))
+)
 
-a + b
+(fn-do + choose-interface InlineMeasure @inline
+  (param first InlineMeasure)
+  (param second InlineMeasure)
+  (param choose Bool)
+  (let result first)
+  (if choose
+    (= result second)
+  )
+  (return result)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfaceSingle is Tuple
-    is InlineMeasure
-
-+ a Int
-
-────────────────────
-+ total Int @inline
-
-a
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-total Int @inline
-    - value InlineMeasure
-
-value.total()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do choose-interface InlineMeasure @inline
-    - first InlineMeasure
-    - second InlineMeasure
-    - choose Bool
-
-. result = first
-if choose
-    result = second
-= result
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-mixed-caller Int
-    - first InlineInterfacePair
-    - second InlineMeasure
-    - choose Bool
-
-interface-total(choose-interface(first, second, choose))
+(fn-expr + interface-mixed-caller Int
+  (param first InlineInterfacePair)
+  (param second InlineMeasure)
+  (param choose Bool)
+  (call interface-total (call choose-interface first second choose))
+)
 ```
 
 ```output
@@ -513,57 +468,53 @@ interface-total(choose-interface(first, second, choose))
 42
 ```
 
-```yumi
-/core
--- interface-caller(42 as InlineInterfacePair)
--- interface-join-caller(42 as InlineInterfacePair, 7 as InlineInterfacePair, true)
--- interface-join-caller(42 as InlineInterfacePair, 7 as InlineInterfacePair, false)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call interface-caller (as 42 InlineInterfacePair)))
+  (print (call interface-join-caller (as 42 InlineInterfacePair) (as 7 InlineInterfacePair) true))
+  (print (call interface-join-caller (as 42 InlineInterfacePair) (as 7 InlineInterfacePair) false))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is I32
-    is InlineMeasure
+(type + InlineInterfacePair (is I32)
+  (implements InlineMeasure)
+  (fn-expr + total Int @inline
+    (as this Int)
+  )
+)
 
-────────────────────
-+ total Int @inline
+(fn-expr + interface-total Int @inline
+  (param value InlineMeasure)
+  (call (. value total))
+)
 
-this as Int
+(fn-expr + interface-caller Int
+  (param value InlineInterfacePair)
+  (call interface-total value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ interface-total Int @inline
-    - value InlineMeasure
+(fn-do + choose-interface InlineMeasure @inline
+  (param first InlineMeasure)
+  (param second InlineMeasure)
+  (param choose Bool)
+  (let result first)
+  (if choose
+    (= result second)
+  )
+  (return result)
+)
 
-value.total()
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-caller Int
-    - value InlineInterfacePair
-
-interface-total(value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do choose-interface InlineMeasure @inline
-    - first InlineMeasure
-    - second InlineMeasure
-    - choose Bool
-
-. result = first
-if choose
-    result = second
-= result
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-join-caller Int
-    - first InlineInterfacePair
-    - second InlineInterfacePair
-    - choose Bool
-
-interface-total(choose-interface(first, second, choose))
+(fn-expr + interface-join-caller Int
+  (param first InlineInterfacePair)
+  (param second InlineInterfacePair)
+  (param choose Bool)
+  (call interface-total (call choose-interface first second choose))
+)
 ```
 
 ```output
@@ -572,65 +523,59 @@ interface-total(choose-interface(first, second, choose))
 42
 ```
 
-```yumi
-/core
--- interface-caller(InlineInterfacePair(20, 22))
--- interface-join-caller(InlineInterfacePair(20, 22), InlineInterfacePair(3, 4), true)
--- interface-join-caller(InlineInterfacePair(20, 22), InlineInterfacePair(3, 4), false)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call interface-caller (call InlineInterfacePair 20 22)))
+  (print (call interface-join-caller (call InlineInterfacePair 20 22) (call InlineInterfacePair 3 4) true))
+  (print (call interface-join-caller (call InlineInterfacePair 20 22) (call InlineInterfacePair 3 4) false))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair
-    is InlineMeasure
+(type + InlineInterfacePair
+  (implements InlineMeasure)
+  (prop + a Int)
+  (prop + b Int)
+  (fn-do + This _
+    (param a _)
+    (param b _)
+  )
+  (fn-expr + total Int @inline
+    (+ a b)
+  )
+)
 
-+ a Int
-+ b Int
+(fn-expr + interface-total Int @inline
+  (param value InlineMeasure)
+  (call (. value total))
+)
 
-────────────────────
-+ This
-    - a
-    - b
+(fn-expr + interface-caller Int
+  (param value InlineInterfacePair)
+  (call interface-total value)
+)
 
-────────────────────
-+ total Int @inline
+(fn-do + choose-interface InlineMeasure @inline
+  (param first InlineMeasure)
+  (param second InlineMeasure)
+  (param choose Bool)
+  (let result first)
+  (if choose
+    (= result second)
+  )
+  (return result)
+)
 
-a + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-total Int @inline
-    - value InlineMeasure
-
-value.total()
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-caller Int
-    - value InlineInterfacePair
-
-interface-total(value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do choose-interface InlineMeasure @inline
-    - first InlineMeasure
-    - second InlineMeasure
-    - choose Bool
-
-. result = first
-if choose
-    result = second
-= result
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-join-caller Int
-    - first InlineInterfacePair
-    - second InlineInterfacePair
-    - choose Bool
-
-interface-total(choose-interface(first, second, choose))
+(fn-expr + interface-join-caller Int
+  (param first InlineInterfacePair)
+  (param second InlineInterfacePair)
+  (param choose Bool)
+  (call interface-total (call choose-interface first second choose))
+)
 ```
 
 ```output
@@ -639,60 +584,55 @@ interface-total(choose-interface(first, second, choose))
 42
 ```
 
-```yumi
-/core
--- interface-caller(InlineInterfacePair'Int(20, 22))
--- interface-join-caller(InlineInterfacePair'Int(20, 22), InlineInterfacePair'Int(3, 4), true)
--- interface-join-caller(InlineInterfacePair'Int(20, 22), InlineInterfacePair'Int(3, 4), false)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call interface-caller (call (of InlineInterfacePair Int) 20 22)))
+  (print (call interface-join-caller (call (of InlineInterfacePair Int) 20 22) (call (of InlineInterfacePair Int) 3 4) true))
+  (print (call interface-join-caller (call (of InlineInterfacePair Int) 20 22) (call (of InlineInterfacePair Int) 3 4) false))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair'T is Tuple
-    is InlineMeasure
+(type + (of InlineInterfacePair T) (is Tuple)
+  (implements InlineMeasure)
+  (prop + a T)
+  (prop + b T)
+  (fn-expr + total Int @inline
+    (+ a b)
+  )
+)
 
-+ a T
-+ b T
+(fn-expr + interface-total Int @inline
+  (param value InlineMeasure)
+  (call (. value total))
+)
 
-────────────────────
-+ total Int @inline
+(fn-expr + interface-caller Int
+  (param value (of InlineInterfacePair Int))
+  (call interface-total value)
+)
 
-a + b
+(fn-do + choose-interface InlineMeasure @inline
+  (param first InlineMeasure)
+  (param second InlineMeasure)
+  (param choose Bool)
+  (let result first)
+  (if choose
+    (= result second)
+  )
+  (return result)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ interface-total Int @inline
-    - value InlineMeasure
-
-value.total()
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-caller Int
-    - value InlineInterfacePair'Int
-
-interface-total(value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do choose-interface InlineMeasure @inline
-    - first InlineMeasure
-    - second InlineMeasure
-    - choose Bool
-
-. result = first
-if choose
-    result = second
-= result
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-join-caller Int
-    - first InlineInterfacePair'Int
-    - second InlineInterfacePair'Int
-    - choose Bool
-
-interface-total(choose-interface(first, second, choose))
+(fn-expr + interface-join-caller Int
+  (param first (of InlineInterfacePair Int))
+  (param second (of InlineInterfacePair Int))
+  (param choose Bool)
+  (call interface-total (call choose-interface first second choose))
+)
 ```
 
 ```output
@@ -701,61 +641,56 @@ interface-total(choose-interface(first, second, choose))
 42
 ```
 
-```yumi
-/core
--- interface-caller(InlineInterfacePair(20, 22))
--- interface-join-caller(InlineInterfacePair(20, 22), InlineInterfacePair(3, 4), true)
--- interface-join-caller(InlineInterfacePair(20, 22), InlineInterfacePair(3, 4), false)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call interface-caller (call InlineInterfacePair 20 22)))
+  (print (call interface-join-caller (call InlineInterfacePair 20 22) (call InlineInterfacePair 3 4) true))
+  (print (call interface-join-caller (call InlineInterfacePair 20 22) (call InlineInterfacePair 3 4) false))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is Tuple
-    is InlineMeasure
+(type + InlineInterfacePair (is Tuple)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (prop + b Int)
+  (prop + text String (= "rooted"))
+  (fn-expr + total Int @inline
+    (- (+ a b (. text size)) 6)
+  )
+)
 
-+ a Int
-+ b Int
-+ text String = "rooted"
+(fn-expr + interface-total Int @inline
+  (param value InlineMeasure)
+  (call (. value total))
+)
 
-────────────────────
-+ total Int @inline
+(fn-expr + interface-caller Int
+  (param value InlineInterfacePair)
+  (call interface-total value)
+)
 
-a + b + text.size - 6
+(fn-do + choose-interface InlineMeasure @inline
+  (param first InlineMeasure)
+  (param second InlineMeasure)
+  (param choose Bool)
+  (let result first)
+  (if choose
+    (= result second)
+  )
+  (return result)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ interface-total Int @inline
-    - value InlineMeasure
-
-value.total()
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-caller Int
-    - value InlineInterfacePair
-
-interface-total(value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do choose-interface InlineMeasure @inline
-    - first InlineMeasure
-    - second InlineMeasure
-    - choose Bool
-
-. result = first
-if choose
-    result = second
-= result
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-join-caller Int
-    - first InlineInterfacePair
-    - second InlineInterfacePair
-    - choose Bool
-
-interface-total(choose-interface(first, second, choose))
+(fn-expr + interface-join-caller Int
+  (param first InlineInterfacePair)
+  (param second InlineInterfacePair)
+  (param choose Bool)
+  (call interface-total (call choose-interface first second choose))
+)
 ```
 
 ```output
@@ -764,146 +699,140 @@ interface-total(choose-interface(first, second, choose))
 42
 ```
 
-```yumi
-/core
--- interface-caller(InlineInterfacePair(20, 22))
--- interface-join-caller(InlineInterfacePair(20, 22), InlineInterfacePair(3, 4), true)
--- interface-join-caller(InlineInterfacePair(20, 22), InlineInterfacePair(3, 4), false)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call interface-caller (call InlineInterfacePair 20 22)))
+  (print (call interface-join-caller (call InlineInterfacePair 20 22) (call InlineInterfacePair 3 4) true))
+  (print (call interface-join-caller (call InlineInterfacePair 20 22) (call InlineInterfacePair 3 4) false))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is Tuple
-    is InlineMeasure
+(type + InlineInterfacePair (is Tuple)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (prop + b Int)
+  (prop + nested InlineNested (= (call InlineNested 1)))
+  (fn-expr + total Int @inline
+    (- (+ a b (. nested last) (. nested field79)) 80)
+  )
+)
 
-+ a Int
-+ b Int
-+ nested InlineNested = InlineNested(1)
+(fn-expr + interface-total Int @inline
+  (param value InlineMeasure)
+  (call (. value total))
+)
 
-────────────────────
-+ total Int @inline
+(fn-expr + interface-caller Int
+  (param value InlineInterfacePair)
+  (call interface-total value)
+)
 
-a + b + nested.last + nested.field79 - 80
+(fn-do + choose-interface InlineMeasure @inline
+  (param first InlineMeasure)
+  (param second InlineMeasure)
+  (param choose Bool)
+  (let result first)
+  (if choose
+    (= result second)
+  )
+  (return result)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ interface-total Int @inline
-    - value InlineMeasure
+(fn-expr + interface-join-caller Int
+  (param first InlineInterfacePair)
+  (param second InlineInterfacePair)
+  (param choose Bool)
+  (call interface-total (call choose-interface first second choose))
+)
 
-value.total()
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-caller Int
-    - value InlineInterfacePair
-
-interface-total(value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do choose-interface InlineMeasure @inline
-    - first InlineMeasure
-    - second InlineMeasure
-    - choose Bool
-
-. result = first
-if choose
-    result = second
-= result
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-join-caller Int
-    - first InlineInterfacePair
-    - second InlineInterfacePair
-    - choose Bool
-
-interface-total(choose-interface(first, second, choose))
-
-━━━━━━━━━━━━━━━━━━━━
-+ InlineNested is Tuple
-
-+ last Int
-+ field0 Int = 0
-+ field1 Int = 1
-+ field2 Int = 2
-+ field3 Int = 3
-+ field4 Int = 4
-+ field5 Int = 5
-+ field6 Int = 6
-+ field7 Int = 7
-+ field8 Int = 8
-+ field9 Int = 9
-+ field10 Int = 10
-+ field11 Int = 11
-+ field12 Int = 12
-+ field13 Int = 13
-+ field14 Int = 14
-+ field15 Int = 15
-+ field16 Int = 16
-+ field17 Int = 17
-+ field18 Int = 18
-+ field19 Int = 19
-+ field20 Int = 20
-+ field21 Int = 21
-+ field22 Int = 22
-+ field23 Int = 23
-+ field24 Int = 24
-+ field25 Int = 25
-+ field26 Int = 26
-+ field27 Int = 27
-+ field28 Int = 28
-+ field29 Int = 29
-+ field30 Int = 30
-+ field31 Int = 31
-+ field32 Int = 32
-+ field33 Int = 33
-+ field34 Int = 34
-+ field35 Int = 35
-+ field36 Int = 36
-+ field37 Int = 37
-+ field38 Int = 38
-+ field39 Int = 39
-+ field40 Int = 40
-+ field41 Int = 41
-+ field42 Int = 42
-+ field43 Int = 43
-+ field44 Int = 44
-+ field45 Int = 45
-+ field46 Int = 46
-+ field47 Int = 47
-+ field48 Int = 48
-+ field49 Int = 49
-+ field50 Int = 50
-+ field51 Int = 51
-+ field52 Int = 52
-+ field53 Int = 53
-+ field54 Int = 54
-+ field55 Int = 55
-+ field56 Int = 56
-+ field57 Int = 57
-+ field58 Int = 58
-+ field59 Int = 59
-+ field60 Int = 60
-+ field61 Int = 61
-+ field62 Int = 62
-+ field63 Int = 63
-+ field64 Int = 64
-+ field65 Int = 65
-+ field66 Int = 66
-+ field67 Int = 67
-+ field68 Int = 68
-+ field69 Int = 69
-+ field70 Int = 70
-+ field71 Int = 71
-+ field72 Int = 72
-+ field73 Int = 73
-+ field74 Int = 74
-+ field75 Int = 75
-+ field76 Int = 76
-+ field77 Int = 77
-+ field78 Int = 78
-+ field79 Int = 79
+(type + InlineNested (is Tuple)
+  (prop + last Int)
+  (prop + field0 Int (= 0))
+  (prop + field1 Int (= 1))
+  (prop + field2 Int (= 2))
+  (prop + field3 Int (= 3))
+  (prop + field4 Int (= 4))
+  (prop + field5 Int (= 5))
+  (prop + field6 Int (= 6))
+  (prop + field7 Int (= 7))
+  (prop + field8 Int (= 8))
+  (prop + field9 Int (= 9))
+  (prop + field10 Int (= 10))
+  (prop + field11 Int (= 11))
+  (prop + field12 Int (= 12))
+  (prop + field13 Int (= 13))
+  (prop + field14 Int (= 14))
+  (prop + field15 Int (= 15))
+  (prop + field16 Int (= 16))
+  (prop + field17 Int (= 17))
+  (prop + field18 Int (= 18))
+  (prop + field19 Int (= 19))
+  (prop + field20 Int (= 20))
+  (prop + field21 Int (= 21))
+  (prop + field22 Int (= 22))
+  (prop + field23 Int (= 23))
+  (prop + field24 Int (= 24))
+  (prop + field25 Int (= 25))
+  (prop + field26 Int (= 26))
+  (prop + field27 Int (= 27))
+  (prop + field28 Int (= 28))
+  (prop + field29 Int (= 29))
+  (prop + field30 Int (= 30))
+  (prop + field31 Int (= 31))
+  (prop + field32 Int (= 32))
+  (prop + field33 Int (= 33))
+  (prop + field34 Int (= 34))
+  (prop + field35 Int (= 35))
+  (prop + field36 Int (= 36))
+  (prop + field37 Int (= 37))
+  (prop + field38 Int (= 38))
+  (prop + field39 Int (= 39))
+  (prop + field40 Int (= 40))
+  (prop + field41 Int (= 41))
+  (prop + field42 Int (= 42))
+  (prop + field43 Int (= 43))
+  (prop + field44 Int (= 44))
+  (prop + field45 Int (= 45))
+  (prop + field46 Int (= 46))
+  (prop + field47 Int (= 47))
+  (prop + field48 Int (= 48))
+  (prop + field49 Int (= 49))
+  (prop + field50 Int (= 50))
+  (prop + field51 Int (= 51))
+  (prop + field52 Int (= 52))
+  (prop + field53 Int (= 53))
+  (prop + field54 Int (= 54))
+  (prop + field55 Int (= 55))
+  (prop + field56 Int (= 56))
+  (prop + field57 Int (= 57))
+  (prop + field58 Int (= 58))
+  (prop + field59 Int (= 59))
+  (prop + field60 Int (= 60))
+  (prop + field61 Int (= 61))
+  (prop + field62 Int (= 62))
+  (prop + field63 Int (= 63))
+  (prop + field64 Int (= 64))
+  (prop + field65 Int (= 65))
+  (prop + field66 Int (= 66))
+  (prop + field67 Int (= 67))
+  (prop + field68 Int (= 68))
+  (prop + field69 Int (= 69))
+  (prop + field70 Int (= 70))
+  (prop + field71 Int (= 71))
+  (prop + field72 Int (= 72))
+  (prop + field73 Int (= 73))
+  (prop + field74 Int (= 74))
+  (prop + field75 Int (= 75))
+  (prop + field76 Int (= 76))
+  (prop + field77 Int (= 77))
+  (prop + field78 Int (= 78))
+  (prop + field79 Int (= 79))
+)
 ```
 
 ```output
@@ -912,60 +841,53 @@ interface-total(choose-interface(first, second, choose))
 42
 ```
 
-```yumi
-/core
--- inline-is(InlineInterfacePair(20, 22))
--- inline-is(InlineInterfaceSingle(9))
--- interface-caller(InlineInterfacePair(20, 22))
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call inline-is (call InlineInterfacePair 20 22)))
+  (print (call inline-is (call InlineInterfaceSingle 9)))
+  (print (call interface-caller (call InlineInterfacePair 20 22)))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is Tuple
-    is InlineMeasure
+(type + InlineInterfacePair (is Tuple)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (prop + b Int)
+  (fn-expr + total Int @inline
+    (+ a b)
+  )
+)
 
-+ a Int
-+ b Int
+(type + InlineInterfaceSingle (is Tuple)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (fn-expr + total Int @inline
+    a
+  )
+)
 
-────────────────────
-+ total Int @inline
+(fn-expr + inline-is Bool @inline
+  (param value InlineMeasure)
+  (is value InlineInterfacePair)
+)
 
-a + b
+(fn-expr + inline-downcast Int @inline
+  (param value InlineMeasure)
+  (+ (. point a) (. point b))
+  (where
+    (lazy point (as value InlineInterfacePair))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfaceSingle is Tuple
-    is InlineMeasure
-
-+ a Int
-
-────────────────────
-+ total Int @inline
-
-a
-
-━━━━━━━━━━━━━━━━━━━━
-+ inline-is Bool @inline
-    - value InlineMeasure
-
-value is InlineInterfacePair
-
-━━━━━━━━━━━━━━━━━━━━
-+ inline-downcast Int @inline
-    - value InlineMeasure
-
-point.a + point.b
-
-.. point = value as InlineInterfacePair
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-caller Int
-    - value InlineInterfacePair
-
-inline-downcast(value)
+(fn-expr + interface-caller Int
+  (param value InlineInterfacePair)
+  (call inline-downcast value)
+)
 ```
 
 ```output
@@ -974,66 +896,60 @@ false
 42
 ```
 
-```yumi
-/core
--- interface-caller(InlineInterfacePair(InlineInner(20, 22)))
--- interface-join-caller(InlineInterfacePair(InlineInner(20, 22)), InlineInterfacePair(InlineInner(3, 4)), true)
--- interface-join-caller(InlineInterfacePair(InlineInner(20, 22)), InlineInterfacePair(InlineInner(3, 4)), false)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call interface-caller (call InlineInterfacePair (call InlineInner 20 22))))
+  (print (call interface-join-caller (call InlineInterfacePair (call InlineInner 20 22)) (call InlineInterfacePair (call InlineInner 3 4)) true))
+  (print (call interface-join-caller (call InlineInterfacePair (call InlineInner 20 22)) (call InlineInterfacePair (call InlineInner 3 4)) false))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is Tuple
+(type + InlineInterfacePair (is Tuple)
+  (delegate InlineMeasure)
+  (prop + inner InlineInner)
+)
 
-as InlineMeasure for
-+ inner InlineInner
+(type + InlineInner (is Tuple)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (prop + b Int)
+  (fn-expr + total Int @inline
+    (+ a b)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInner is Tuple
-    is InlineMeasure
+(fn-expr + interface-total Int @inline
+  (param value InlineMeasure)
+  (call (. value total))
+)
 
-+ a Int
-+ b Int
+(fn-expr + interface-caller Int
+  (param value InlineInterfacePair)
+  (call interface-total value)
+)
 
-────────────────────
-+ total Int @inline
+(fn-do + choose-interface InlineMeasure @inline
+  (param first InlineMeasure)
+  (param second InlineMeasure)
+  (param choose Bool)
+  (let result first)
+  (if choose
+    (= result second)
+  )
+  (return result)
+)
 
-a + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-total Int @inline
-    - value InlineMeasure
-
-value.total()
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-caller Int
-    - value InlineInterfacePair
-
-interface-total(value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do choose-interface InlineMeasure @inline
-    - first InlineMeasure
-    - second InlineMeasure
-    - choose Bool
-
-. result = first
-if choose
-    result = second
-= result
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-join-caller Int
-    - first InlineInterfacePair
-    - second InlineInterfacePair
-    - choose Bool
-
-interface-total(choose-interface(first, second, choose))
+(fn-expr + interface-join-caller Int
+  (param first InlineInterfacePair)
+  (param second InlineInterfacePair)
+  (param choose Bool)
+  (call interface-total (call choose-interface first second choose))
+)
 ```
 
 ```output
@@ -1042,105 +958,97 @@ interface-total(choose-interface(first, second, choose))
 42
 ```
 
-```yumi
-/core
--- interface-caller(InlineInterfacePair(20, 22))
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call interface-caller (call InlineInterfacePair 20 22)))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineChild is Interface
-    is InlineMeasure
+(type + InlineChild (is Interface)
+  (implements InlineMeasure)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is Tuple
-    is InlineChild
+(type + InlineInterfacePair (is Tuple)
+  (implements InlineChild)
+  (prop + a Int)
+  (prop + b Int)
+  (fn-expr + total Int @inline
+    (+ a b)
+  )
+)
 
-+ a Int
-+ b Int
+(fn-expr + interface-total Int @inline
+  (param value InlineMeasure)
+  (call (. value total))
+)
 
-────────────────────
-+ total Int @inline
+(fn-expr + child-total Int @inline
+  (param value InlineChild)
+  (call interface-total (as value InlineMeasure))
+)
 
-a + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-total Int @inline
-    - value InlineMeasure
-
-value.total()
-
-━━━━━━━━━━━━━━━━━━━━
-+ child-total Int @inline
-    - value InlineChild
-
-interface-total(value as InlineMeasure)
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-caller Int
-    - value InlineInterfacePair
-
-child-total(value)
+(fn-expr + interface-caller Int
+  (param value InlineInterfacePair)
+  (call child-total value)
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-/core
--- interface-join-caller(InlineInterfacePair(20, 22), InlineInterfacePair(3, 4), true)
--- interface-join-caller(InlineInterfacePair(20, 22), InlineInterfacePair(3, 4), false)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call interface-join-caller (call InlineInterfacePair 20 22) (call InlineInterfacePair 3 4) true))
+  (print (call interface-join-caller (call InlineInterfacePair 20 22) (call InlineInterfacePair 3 4) false))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is Tuple
-    is InlineMeasure
+(type + InlineInterfacePair (is Tuple)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (prop + b Int)
+  (fn-expr + total Int @inline
+    (+ a b)
+  )
+)
 
-+ a Int
-+ b Int
+(fn-expr + interface-total Int @inline
+  (param value InlineMeasure)
+  (call (. value total))
+)
 
-────────────────────
-+ total Int @inline
+(fn-do + choose-interface InlineMeasure @inline
+  (param first InlineMeasure)
+  (param second InlineMeasure)
+  (param choose Bool)
+  (let result first)
+  (let count 0)
+  (while (< count 2)
+    (if choose
+      (= result second)
+    )
+    (+= count 1)
+  )
+  (return result)
+)
 
-a + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-total Int @inline
-    - value InlineMeasure
-
-value.total()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do choose-interface InlineMeasure @inline
-    - first InlineMeasure
-    - second InlineMeasure
-    - choose Bool
-
-. result = first
-. count = 0
-while count < 2
-    if choose
-        result = second
-    count += 1
-= result
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-join-caller Int
-    - first InlineInterfacePair
-    - second InlineInterfacePair
-    - choose Bool
-
-interface-total(choose-interface(first, second, choose))
+(fn-expr + interface-join-caller Int
+  (param first InlineInterfacePair)
+  (param second InlineInterfacePair)
+  (param choose Bool)
+  (call interface-total (call choose-interface first second choose))
+)
 ```
 
 ```output
@@ -1148,107 +1056,96 @@ interface-total(choose-interface(first, second, choose))
 42
 ```
 
-```yumi
-/core
-/BxGC/BxGC.h
+```brix
+(import /core)
+(import /BxGC/BxGC.h)
+(blank)
 
--- managed-caller(ManagedPayload(make-text(42)))
+(main
+  (print (call managed-caller (call ManagedPayload (call make-text 42))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Measured is Interface
+(type + Measured (is Interface)
+  (fn-expr + size Int)
+)
 
-────────────────────
-+ size Int
+(type + ManagedPayload (is Tuple)
+  (implements Measured)
+  (prop + text String)
+  (fn-do + size Int @inline
+    (call C:brixGCCollect)
+    (return (. text size))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ManagedPayload is Tuple
-    is Measured
+(fn-expr + make-text String
+  (param value Int)
+  (str "number " value)
+)
 
-+ text String
+(fn-expr + measured-size Int @inline
+  (param value Measured)
+  (call (. value size))
+)
 
-────────────────────
-+ do size Int @inline
-
-C:brixGCCollect()
-= text.size
-
-━━━━━━━━━━━━━━━━━━━━
-+ make-text String
-    - value Int
-
-"number $value"
-
-━━━━━━━━━━━━━━━━━━━━
-+ measured-size Int @inline
-    - value Measured
-
-value.size()
-
-━━━━━━━━━━━━━━━━━━━━
-+ managed-caller Int
-    - value ManagedPayload
-
-measured-size(value)
+(fn-expr + managed-caller Int
+  (param value ManagedPayload)
+  (call measured-size value)
+)
 ```
 
 ```output
 9
 ```
 
-```yumi
-/core
--- identity-caller(InlineInterfacePair(20, 22))
--- interface-caller(InlineInterfacePair(20, 22))
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call identity-caller (call InlineInterfacePair 20 22)))
+  (print (call interface-caller (call InlineInterfacePair 20 22)))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is Tuple
-    is InlineMeasure
+(type + InlineInterfacePair (is Tuple)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (prop + b Int)
+  (fn-expr + total Int @inline
+    (+ a b)
+  )
+)
 
-+ a Int
-+ b Int
+(fn-expr + interface-total Int @inline
+  (param value InlineMeasure)
+  (call (. value total))
+)
 
-────────────────────
-+ total Int @inline
+(type + InterfaceHolder (is Tuple)
+  (prop + value InlineMeasure)
+)
 
-a + b
+(fn-expr + same-interface Bool @inline
+  (param first InlineMeasure)
+  (param second InlineMeasure)
+  (== (as first Pointer) (as second Pointer))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ interface-total Int @inline
-    - value InlineMeasure
+(fn-expr + identity-caller Bool
+  (param value InlineInterfacePair)
+  (and (call same-interface saved saved) (not (call same-interface value value)))
+  (where
+    (lazy saved (as value InlineMeasure))
+  )
+)
 
-value.total()
-
-━━━━━━━━━━━━━━━━━━━━
-+ InterfaceHolder is Tuple
-
-+ value InlineMeasure
-
-━━━━━━━━━━━━━━━━━━━━
-+ same-interface Bool @inline
-    - first InlineMeasure
-    - second InlineMeasure
-
-first as Pointer == second as Pointer
-
-━━━━━━━━━━━━━━━━━━━━
-+ identity-caller Bool
-    - value InlineInterfacePair
-
-same-interface(saved, saved) && !same-interface(value, value)
-
-.. saved = value as InlineMeasure
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-caller Int
-    - value InlineInterfacePair
-
-interface-total(InterfaceHolder(value).value)
+(fn-expr + interface-caller Int
+  (param value InlineInterfacePair)
+  (call interface-total (. (call InterfaceHolder value) value))
+)
 ```
 
 ```output
@@ -1256,60 +1153,54 @@ true
 42
 ```
 
-```yumi
-/core
--- identity-caller(InlineInterfacePair(20, 22))
--- interface-caller(InlineInterfacePair(20, 22))
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call identity-caller (call InlineInterfacePair 20 22)))
+  (print (call interface-caller (call InlineInterfacePair 20 22)))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is Tuple
-    is InlineMeasure
+(type + InlineInterfacePair (is Tuple)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (prop + b Int)
+  (fn-expr + total Int @inline
+    (+ a b)
+  )
+)
 
-+ a Int
-+ b Int
+(fn-expr + interface-total Int @inline
+  (param value InlineMeasure)
+  (call (. value total))
+)
 
-────────────────────
-+ total Int @inline
+(type + InterfaceHolder (is Struct)
+  (prop + value InlineMeasure)
+)
 
-a + b
+(fn-expr + same-interface Bool @inline
+  (param first InlineMeasure)
+  (param second InlineMeasure)
+  (== (as first Pointer) (as second Pointer))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ interface-total Int @inline
-    - value InlineMeasure
+(fn-expr + identity-caller Bool
+  (param value InlineInterfacePair)
+  (and (call same-interface saved saved) (not (call same-interface value value)))
+  (where
+    (lazy saved (as value InlineMeasure))
+  )
+)
 
-value.total()
-
-━━━━━━━━━━━━━━━━━━━━
-+ InterfaceHolder is Struct
-
-+ value InlineMeasure
-
-━━━━━━━━━━━━━━━━━━━━
-+ same-interface Bool @inline
-    - first InlineMeasure
-    - second InlineMeasure
-
-first as Pointer == second as Pointer
-
-━━━━━━━━━━━━━━━━━━━━
-+ identity-caller Bool
-    - value InlineInterfacePair
-
-same-interface(saved, saved) && !same-interface(value, value)
-
-.. saved = value as InlineMeasure
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-caller Int
-    - value InlineInterfacePair
-
-interface-total(InterfaceHolder(value).value)
+(fn-expr + interface-caller Int
+  (param value InlineInterfacePair)
+  (call interface-total (. (call InterfaceHolder value) value))
+)
 ```
 
 ```output
@@ -1317,60 +1208,55 @@ true
 42
 ```
 
-```yumi
-/core
--- interface-caller(InlineInterfacePair(20, 22))
--- interface-join-caller(InlineInterfacePair(20, 22), InlineInterfacePair(3, 4), true)
--- interface-join-caller(InlineInterfacePair(20, 22), InlineInterfacePair(3, 4), false)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call interface-caller (call InlineInterfacePair 20 22)))
+  (print (call interface-join-caller (call InlineInterfacePair 20 22) (call InlineInterfacePair 3 4) true))
+  (print (call interface-join-caller (call InlineInterfacePair 20 22) (call InlineInterfacePair 3 4) false))
+)
 
-────────────────────
-+ get total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int :get)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is Tuple
-    is InlineMeasure
+(type + InlineInterfacePair (is Tuple)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (prop + b Int)
+  (fn-expr + total Int :get @inline
+    (+ a b)
+  )
+)
 
-+ a Int
-+ b Int
+(fn-expr + interface-total Int @inline
+  (param value InlineMeasure)
+  (. value total)
+)
 
-────────────────────
-+ get total Int @inline
+(fn-expr + interface-caller Int
+  (param value InlineInterfacePair)
+  (call interface-total value)
+)
 
-a + b
+(fn-do + choose-interface InlineMeasure @inline
+  (param first InlineMeasure)
+  (param second InlineMeasure)
+  (param choose Bool)
+  (let result first)
+  (if choose
+    (= result second)
+  )
+  (return result)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ interface-total Int @inline
-    - value InlineMeasure
-
-value.total
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-caller Int
-    - value InlineInterfacePair
-
-interface-total(value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do choose-interface InlineMeasure @inline
-    - first InlineMeasure
-    - second InlineMeasure
-    - choose Bool
-
-. result = first
-if choose
-    result = second
-= result
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-join-caller Int
-    - first InlineInterfacePair
-    - second InlineInterfacePair
-    - choose Bool
-
-interface-total(choose-interface(first, second, choose))
+(fn-expr + interface-join-caller Int
+  (param first InlineInterfacePair)
+  (param second InlineInterfacePair)
+  (param choose Bool)
+  (call interface-total (call choose-interface first second choose))
+)
 ```
 
 ```output
@@ -1379,92 +1265,89 @@ interface-total(choose-interface(first, second, choose))
 42
 ```
 
-```yumi
-/core
--- interface-caller(InlineInterfacePair(20, 22))
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (call interface-caller (call InlineInterfacePair 20 22)))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is Struct
-    is InlineMeasure
+(type + InlineInterfacePair (is Struct)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (prop + b Int)
+  (fn-expr + total Int @inline
+    (before
+      (do
+        (+= a 1)
+      )
+    )
+    (+ a b)
+  )
+)
 
-+ a Int
-+ b Int
+(fn-expr + interface-total Int @inline
+  (param value InlineMeasure)
+  (+ (call (. value total)) (call opaque-total value) (call (. value total)))
+)
 
-────────────────────
-+ total Int @inline
+(fn-expr + interface-caller Int
+  (param value InlineInterfacePair)
+  (call interface-total value)
+)
 
-do
-    a += 1
-a + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-total Int @inline
-    - value InlineMeasure
-
-value.total() + opaque-total(value) + value.total()
-
-━━━━━━━━━━━━━━━━━━━━
-+ interface-caller Int
-    - value InlineInterfacePair
-
-interface-total(value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do opaque-total Int
-    - value InlineMeasure
-
-if value is InlineInterfacePair
-    . point = value as InlineInterfacePair
-    point.a += 10
-= value.total()
+(fn-do + opaque-total Int
+  (param value InlineMeasure)
+  (if (is value InlineInterfacePair)
+    (let point (as value InlineInterfacePair))
+    (+= (. point a) 10)
+  )
+  (return (call (. value total)))
+)
 ```
 
 ```output
 129
 ```
 
-```yumi
-/core
--- catch checked-total(InlineInterfacePair(20, 22), true)
--- catch checked-total(InlineInterfacePair(20, 22), false)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineMeasure is Interface
+(main
+  (print (catch (call checked-total (call InlineInterfacePair 20 22) true)))
+  (print (catch (call checked-total (call InlineInterfacePair 20 22) false)))
+)
 
-────────────────────
-+ total Int
+(type + InlineMeasure (is Interface)
+  (fn-expr + total Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InlineInterfacePair is Tuple
-    is InlineMeasure
+(type + InlineInterfacePair (is Tuple)
+  (implements InlineMeasure)
+  (prop + a Int)
+  (prop + b Int)
+  (fn-expr + total Int @inline
+    (+ a b)
+  )
+)
 
-+ a Int
-+ b Int
+(type + InlineFailure (is Error))
 
-────────────────────
-+ total Int @inline
-
-a + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ InlineFailure is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ do checked-total Int ?! InlineFailure @inline
-    - value InlineMeasure
-    - succeeds Bool
-
-do finally
-    -- "cleanup ${value.total()}"
-if succeeds
-    = value.total()
-?! InlineFailure("failed")
+(fn-do + checked-total Int (?! InlineFailure) @inline
+  (param value InlineMeasure)
+  (param succeeds Bool)
+  (finally
+    (print (str "cleanup " (call (. value total))))
+  )
+  (if succeeds
+    (return (call (. value total)))
+  )
+  (throw (call InlineFailure "failed"))
+)
 ```
 
 ```output
@@ -1474,76 +1357,79 @@ cleanup 42
 failed
 ```
 
-```yumi
-/core
--- forwarded(0 .. < 0)
--- ordinary(0 .. < 0)
--- forwarded(2 .. 2)
--- ordinary(2 .. 2)
--- forwarded(2 .. < 7)
--- ordinary(2 .. < 7)
--- forwarded(7 .. < 2)
--- ordinary(7 .. < 2)
--- forwarded(2 .. 7 by 2)
--- ordinary(2 .. 7 by 2)
--- forwarded(7 .. 2 by 2)
--- ordinary(7 .. 2 by 2)
--- forwarded(2 .. < 7 by 2)
--- ordinary(2 .. < 7 by 2)
--- forwarded(7 .. < 2 by 2)
--- ordinary(7 .. < 2 by 2)
--- forwarded(-4 .. 3 by 2)
--- ordinary(-4 .. 3 by 2)
--- forwarded(2u64 .. 7u64 by 2u64)
--- ordinary(2u64 .. 7u64 by 2u64)
--- forwarded(7u64 .. < 2u64 by 2u64)
--- ordinary(7u64 .. < 2u64 by 2u64)
--- forwarded(2i64 .. 7i64 by 2i64)
--- ordinary(2i64 .. 7i64 by 2i64)
--- forwarded(0.0 .. < 1.0 by 0.25)
--- ordinary(0.0 .. < 1.0 by 0.25)
--- forwarded(0.0 .. < 1.0 by 0.1)
--- ordinary(0.0 .. < 1.0 by 0.1)
--- forwarded(0f32 .. < 1f32 by 0.1f32)
--- ordinary(0f32 .. < 1f32 by 0.1f32)
--- forwarded(2147483646 .. 2147483647)
--- ordinary(2147483646 .. 2147483647)
--- forwarded(-2147483647 .. -2147483648)
--- ordinary(-2147483647 .. -2147483648)
--- stop-early(1 .. 10)
+```brix
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do ordinary'T String
-    - source Indexable'T
+(main
+  (print (call forwarded (..< 0 0)))
+  (print (call ordinary (..< 0 0)))
+  (print (call forwarded (.. 2 2)))
+  (print (call ordinary (.. 2 2)))
+  (print (call forwarded (..< 2 7)))
+  (print (call ordinary (..< 2 7)))
+  (print (call forwarded (..< 7 2)))
+  (print (call ordinary (..< 7 2)))
+  (print (call forwarded (.. 2 7 (by: 2))))
+  (print (call ordinary (.. 2 7 (by: 2))))
+  (print (call forwarded (.. 7 2 (by: 2))))
+  (print (call ordinary (.. 7 2 (by: 2))))
+  (print (call forwarded (..< 2 7 (by: 2))))
+  (print (call ordinary (..< 2 7 (by: 2))))
+  (print (call forwarded (..< 7 2 (by: 2))))
+  (print (call ordinary (..< 7 2 (by: 2))))
+  (print (call forwarded (.. -4 3 (by: 2))))
+  (print (call ordinary (.. -4 3 (by: 2))))
+  (print (call forwarded (.. 2u64 7u64 (by: 2u64))))
+  (print (call ordinary (.. 2u64 7u64 (by: 2u64))))
+  (print (call forwarded (..< 7u64 2u64 (by: 2u64))))
+  (print (call ordinary (..< 7u64 2u64 (by: 2u64))))
+  (print (call forwarded (.. 2i64 7i64 (by: 2i64))))
+  (print (call ordinary (.. 2i64 7i64 (by: 2i64))))
+  (print (call forwarded (..< 0.0 1.0 (by: 0.25))))
+  (print (call ordinary (..< 0.0 1.0 (by: 0.25))))
+  (print (call forwarded (..< 0.0 1.0 (by: 0.1))))
+  (print (call ordinary (..< 0.0 1.0 (by: 0.1))))
+  (print (call forwarded (..< 0f32 1f32 (by: 0.1f32))))
+  (print (call ordinary (..< 0f32 1f32 (by: 0.1f32))))
+  (print (call forwarded (.. 2147483646 2147483647)))
+  (print (call ordinary (.. 2147483646 2147483647)))
+  (print (call forwarded (.. -2147483647 -2147483648)))
+  (print (call ordinary (.. -2147483647 -2147483648)))
+  (print (call stop-early (.. 1 10)))
+)
 
-. text = "["
-for item in source
-    text += "$item,"
-= text + "]"
+(fn-do + (of ordinary T) String
+  (param source (of Indexable T))
+  (let text "[")
+  (for (in item source)
+    (+= text (str item ","))
+  )
+  (return (+ text "]"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do specialized'T String @inline
-    - source Indexable'T
+(fn-do + (of specialized T) String @inline
+  (param source (of Indexable T))
+  (let text "[")
+  (for (in item source)
+    (+= text (str item ","))
+  )
+  (return (+ text "]"))
+)
 
-. text = "["
-for item in source
-    text += "$item,"
-= text + "]"
+(fn-expr + (of forwarded T) String @inline
+  (param source (of Indexable T))
+  (call specialized source)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ forwarded'T String @inline
-    - source Indexable'T
-
-specialized(source)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do stop-early Int @inline
-    - source Indexable'Int
-
-for item in source
-    if item == 3
-        = item
-= 0
+(fn-do + stop-early Int @inline
+  (param source (of Indexable Int))
+  (for (in item source)
+    (if (== item 3)
+      (return item)
+    )
+  )
+  (return 0)
+)
 ```
 
 ```output
@@ -1584,20 +1470,22 @@ for item in source
 3
 ```
 
-```yumi crash
-/core
--- hidden(0 .. 3)
+```brix crash
+(import /core)
 
-━━━━━━━━━━━━━━━━━━━━
-+ hidden @inline
-    - source Indexable'Int
+(main
+  (print (call hidden (.. 0 3)))
+)
 
-source.start
+(fn-expr + hidden _ @inline
+  (param source (of Indexable Int))
+  (. source start)
+)
 ```
 
 ```output
 Exception: Indexable'I64 has no property "start"
-<no file:9>
-    source.start
-    ^^^^^^^^^^^^
+<no file:10>
+      (. source start)
+      ^^^^^^^^^^^^^^^^
 ```

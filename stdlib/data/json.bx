@@ -1,0 +1,504 @@
+(import ./binary)
+(import /core/arena)
+(import /core/pattern-helpers)
+
+(type + JSON (is Union)
+  (variant Null)
+  (variant Bool)
+  (variant Int)
+  (variant Float)
+  (variant String)
+  (variant (list JSON))
+  (variant (map String JSON))
+  (fn-do + This _
+    (param text String)
+    (let scratch (use (call Arena)))
+    (return
+      (match text
+        (with (call JSONParser scratch (. text length)))
+        (~ \json-text)
+        (throw (call Panic "Invalid JSON"))
+      )
+    )
+  )
+  (fn-expr + This _ (over: Char)
+    (~ \value)
+    (where
+      (lazy nul
+        (pattern
+          (~ "null"
+            null
+          )
+        )
+      )
+      (lazy bool
+        (pattern
+          (~ "true"
+            true
+          )
+          (~ "false"
+            false
+          )
+        )
+      )
+      (lazy float Float
+        (pattern
+          (~ (seq (? "-") "." (+ (chars "0-9")) (? (seq (chars "eE") (? (chars "+-")) (+ (chars "0-9")))))
+            (call json-float it)
+          )
+          (~ (seq (? "-") (+ (chars "0-9")) (seq "." (+ (chars "0-9"))) (? (seq (chars "eE") (? (chars "+-")) (+ (chars "0-9")))))
+            (call json-float it)
+          )
+          (~ (seq (? "-") (+ (chars "0-9")) (chars "eE") (? (chars "+-")) (+ (chars "0-9")))
+            (call json-float it)
+          )
+        )
+      )
+      (lazy int JSON
+        (pattern
+          (~ (seq (? "-") "0" (! \number-tail))
+            0
+          )
+          (~ (seq (? "-") (chars "1-9") (* (chars "0-9")) (! \number-tail))
+            (call json-integer it)
+          )
+        )
+      )
+      (lazy number-tail
+        (pattern
+          (~ (| (chars "0-9") "." (chars "eE")))
+        )
+      )
+      (lazy string String
+        (pattern
+          (~ (seq "\"" (: head \plain) (: tail (? \escaped)) "\"")
+            (++ head (?? tail ""))
+          )
+        )
+      )
+      (lazy array
+        (pattern
+          (~ (seq "[" \s (: items (? (call \delimited (~ (seq \s "," \s)) (~ \value)))) \s "]")
+            (scope (?? items empty)
+              (lazy empty (list JSON))
+            )
+          )
+        )
+      )
+      (blank)
+      (lazy object
+        (pattern
+          (~ (seq "{" \s (: pairs (? (call \delimited (~ (seq \s "," \s)) (~ \pair)))) \s "}")
+            (scope (if-expr pairs (as pairs (map String JSON)) empty)
+              (lazy empty (map String JSON))
+            )
+          )
+        )
+      )
+      (blank)
+      (lazy value JSON
+        (pattern
+          (~ (| \string \int \float \object \array \bool \nul))
+        )
+      )
+      (blank)
+      (lazy pair
+        (pattern
+          (~ (seq (: left \string) \s ":" \s (: right \value))
+            (call KeyValuePair left right)
+          )
+        )
+      )
+      (blank)
+      (lazy plain String
+        (pattern
+          (~ (* (seq (! "\"") (! "\\") .)))
+        )
+      )
+      (blank)
+      (lazy escaped String
+        (pattern
+          (~ (: parts (+ \escaped-part))
+            (call (. "" join) parts)
+          )
+        )
+      )
+      (blank)
+      (lazy escaped-part String
+        (pattern
+          (~ (seq (: escape \escape) (: text \plain))
+            (++ escape text)
+          )
+        )
+      )
+      (blank)
+      (lazy escape String
+        (pattern
+          (~ (seq "\\u" (: high \high-surrogate) "\\u" (: low \low-surrogate))
+            (as (as (+ 0x10000 (* (- high 0xD800) 0x400) (- low 0xDC00)) Char) String)
+          )
+          (~ (seq "\\u" (| \high-surrogate \low-surrogate))
+            "�"
+          )
+          (~ (seq "\\u" (: unit \code-unit))
+            (as (as unit Char) String)
+          )
+          (~ (seq "\\" (: c \json-escape-character))
+            (call unescape c)
+          )
+        )
+      )
+      (blank)
+      (lazy high-surrogate U32
+        (pattern
+          (~ (: digits (seq (chars "dD") (chars "89abAB") ({} (chars "0-9a-fA-F") 2)))
+            (as (call Hex digits) U32)
+          )
+        )
+      )
+      (blank)
+      (lazy low-surrogate U32
+        (pattern
+          (~ (: digits (seq (chars "dD") (chars "c-fC-F") ({} (chars "0-9a-fA-F") 2)))
+            (as (call Hex digits) U32)
+          )
+        )
+      )
+      (blank)
+      (lazy code-unit U32
+        (pattern
+          (~ ({} (chars "0-9a-fA-F") 4)
+            (as (call Hex it) U32)
+          )
+        )
+      )
+      (blank)
+      (lazy json-escape-character
+        (pattern
+          (~ (chars "bfnrt\""))
+          (~ "/")
+          (~ "\\")
+        )
+      )
+      (blank)
+      (lazy s
+        (pattern
+          (~ (* \wsnl))
+        )
+      )
+    )
+  )
+  (fn-to-expr + String
+    (call to-json this)
+  )
+)
+
+(fn-expr + json-text JSON (over: Char)
+  (~ (seq (* \wsnl) (: value JSON) (* \wsnl))
+    value
+  )
+)
+
+(fn-do + to-json String
+  (param value _)
+  (let writer (call ByteWriter))
+  (call write-json writer value)
+  (return (call (. (call (. writer finish)) slice-string)))
+)
+
+(fn-do + json-quote String
+  (param value String)
+  (let writer (call ByteWriter))
+  (call write-json-text writer value)
+  (return (call (. (call (. writer finish)) slice-string)))
+)
+
+(fn-do _ write-json _
+  (param writer ByteWriter)
+  (param value _)
+  (match value
+    (case (exact Null)
+      (call (. writer bytes) (call byte-view "null"))
+    )
+    (case (similar Int)
+      (call (. writer bytes) (call byte-view (str value)))
+    )
+    (case (similar Float)
+      (call (. writer bytes) (call byte-view (str value)))
+    )
+    (case (: text String)
+      (call write-json-text writer text)
+    )
+    (case (: list List)
+      (call (. writer u8) (as '[' Byte))
+      (let separates false)
+      (for (in item list)
+        (if separates
+          (call (. writer bytes) (call byte-view ", "))
+        )
+        (= separates true)
+        (call write-json writer item)
+      )
+      (call (. writer u8) (as ']' Byte))
+    )
+    (case (: map Map)
+      (call (. writer u8) (as '{' Byte))
+      (let separates false)
+      (for (in (tuple key item) map)
+        (if separates
+          (call (. writer bytes) (call byte-view ", "))
+        )
+        (= separates true)
+        (call write-json-text writer key)
+        (call (. writer bytes) (call byte-view ": "))
+        (call write-json writer item)
+      )
+      (call (. writer u8) (as '}' Byte))
+    )
+    (case (all Bool ({} it))
+      (call (. writer bytes) (call byte-view "true"))
+    )
+    (case (all Bool ({} (== it false)))
+      (call (. writer bytes) (call byte-view "false"))
+    )
+    (default
+      (call (. writer bytes) (call byte-view "null"))
+    )
+  )
+)
+
+(fn-do _ write-json-text _
+  (param writer ByteWriter)
+  (param text String)
+  (let bytes (call byte-view text))
+  (let start Index 0)
+  (call (. writer u8) (as (char "\"") Byte))
+  (for (in index (..< 0 (. bytes size)))
+    (let byte ([] bytes index))
+    (if (or (< byte 0x20) (== byte (as (char "\"") Byte)) (== byte (as (char "\\") Byte)))
+      (call (. writer bytes) ([] bytes (..< start index)))
+      (call (. writer bytes) (call byte-view (call json-escaped (as byte Char))))
+      (= start (+ index 1))
+    )
+  )
+  (call (. writer bytes) ([] bytes (..< start (. bytes size))))
+  (call (. writer u8) (as (char "\"") Byte))
+)
+
+(fn-expr + json-escaped _
+  (param c Char)
+  (match c
+    (case= (char "\"")
+      "\\\""
+    )
+    (case= (char "\\")
+      "\\\\"
+    )
+    (case= (char "\n")
+      "\\n"
+    )
+    (case= (char "\r")
+      "\\r"
+    )
+    (case= (char "\t")
+      "\\t"
+    )
+    (case= (char "\x08")
+      "\\b"
+    )
+    (case= (char "\x0c")
+      "\\f"
+    )
+    (case? (< c (char " "))
+      (str "\\u00" ([] (as c U8 Hex) (..< 2 4)))
+    )
+    (default
+      (as c String)
+    )
+  )
+)
+
+(fn-expr _ unescape _
+  (param c _)
+  (match c
+    (case "t"
+      "\t"
+    )
+    (case "n"
+      "\n"
+    )
+    (case "r"
+      "\r"
+    )
+    (case "b"
+      "\x08"
+    )
+    (case "f"
+      "\x0c"
+    )
+    (case "/"
+      "/"
+    )
+    (case "\\"
+      "\\"
+    )
+    (case "\""
+      "\""
+    )
+    (default
+      ""
+    )
+  )
+)
+
+(fn-expr _ (of json-integer Token) JSON
+  (param digits (of CaptureSpan Token))
+  ; The Int that `digits` spell, or the nearest Float when they are past the range of an Int.
+  (case? (or (< (. digits length) 19) (== (str value) (as digits String)))
+    (as value JSON)
+  )
+  (default
+    (as (as digits Float) JSON)
+  )
+  (where
+    (lazy value (as digits Int))
+  )
+)
+
+(fn-expr _ (of json-float Token) Float
+  (param number (of CaptureSpan Token))
+  (as number Float)
+)
+
+(fn-expr _ json-integer JSON
+  (param digits String)
+  ; The Int that `digits` spell, or the nearest Float when they are past the range of an Int.
+  (case? (or (< (. digits length) 19) (== (str value) digits))
+    (as value JSON)
+  )
+  (default
+    (as (as digits Float) JSON)
+  )
+  (where
+    (lazy value (as digits Int))
+  )
+)
+
+(fn-expr _ json-float Float
+  (param number String)
+  (as number Float)
+)
+
+(fn-do + parse-json JSON (?! Error)
+  (param text String)
+  (let scratch (use (call Arena)))
+  (return
+    (match text
+      (with (call JSONParser scratch (. text length)))
+      (~ \json-text)
+      (throw (call Error "Invalid JSON"))
+    )
+  )
+)
+
+(type + JSONParser
+  (implements (of PatternMaterializationRoot String))
+  (implements (of PatternRollback Size))
+  (delegate (of PatternCollectorStorage ArenaBacking) PatternRecordBoundary)
+  (prop _ scratch PatternScratch)
+  (delegate (of PatternCaptureMaterializer Char String) (of PatternCaptureMaterializer Byte String))
+  (prop _ texts PatternTextMemo)
+  (fn-do + This _
+    (param source Arena)
+    (lazy scratch (call PatternScratch source))
+    (lazy texts (call PatternTextMemo))
+  )
+  (fn-do + This _
+    (param source Arena)
+    (param length Size)
+    (lazy scratch (call PatternScratch source))
+    (lazy texts (call PatternTextMemo length))
+  )
+  (fn-expr + mark Size
+    0
+  )
+  (fn-do + rewind _
+    (param mark Size)
+  )
+)
+
+(type + JSONReader (is Tuple)
+  (prop + label String)
+  (prop + value (? JSON))
+  (fn-expr + is-present _ :get
+    (and (!= value null) (not (is value Null)))
+  )
+  (fn-expr + object _ (?! Error)
+    (match value
+      (case (: fields (map String JSON))
+        (call JSONObjectReader label fields)
+      )
+      (throw (call Error (str label " must be an object")))
+    )
+  )
+  (fn-expr + items _ (?! Error)
+    (spread (call array))
+    (pipe *> (call JSONReader (str label " item") each))
+    (pipe |> List)
+  )
+  (fn-expr + array _ (?! Error)
+    (match value
+      (case (: values (list JSON))
+        values
+      )
+      (throw (call Error (str label " must be an array")))
+    )
+  )
+  (fn-expr + string _ (?! Error)
+    (match value
+      (case (: text String)
+        text
+      )
+      (throw (call Error (str label " must be a string")))
+    )
+  )
+  (fn-expr + number _ (?! Error)
+    (match value
+      (case (: number Float)
+        number
+      )
+      (case (: number Int)
+        (as number F64)
+      )
+      (throw (call Error (str label " must be a number")))
+    )
+  )
+  (fn-expr + int _ (?! Error)
+    (match value
+      (case (: number Int)
+        number
+      )
+      (throw (call Error (str label " must be an integer")))
+    )
+  )
+  (fn-expr + bool _ (?! Error)
+    (match value
+      (case (: result Bool)
+        result
+      )
+      (throw (call Error (str label " must be true or false")))
+    )
+  )
+)
+
+(type + JSONObjectReader (is Tuple)
+  (prop + label String)
+  (prop + fields (map String JSON))
+  (fn-expr + (index-get this (param key String)) _
+    (call JSONReader (str label "." key) ([] fields key))
+  )
+  (fn-expr + has _
+    (param key String)
+    (!= ([] fields key) null)
+  )
+)

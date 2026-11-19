@@ -1,0 +1,73 @@
+; benchmark.meta description: Scans Table union rows with inline and fixed-slot external payload fields.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core/table)
+(blank)
+
+(main
+  (let row-count (as 32768 Size))
+  (let pass-count (as 256 Size))
+  (let rows
+    (call (of Table Node) row-count
+      (:with
+        (=> (index) :do
+          (block
+            (if (== (% index 2) 0)
+              (return (call (. Node small) index (+ (* index 3) 1)))
+            )
+            (return
+              (call (. Node wide)
+                (block
+                  (arg index)
+                  (arg (+ (* index 5) 2))
+                  (arg (+ (* index 7) 3))
+                  (arg (+ (* index 11) 4))
+                  (arg (+ (* index 13) 5))
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in pass (..< 0 pass-count))
+    (for (in row rows)
+      (+= checksum
+        (match row
+          (case (call .small small)
+            (+ (. small value) pass)
+          )
+          (case (call .wide wide)
+            (+ (. wide inline-a) (. wide external-b) pass)
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (print (str "bench-result table/union-row-spill checksum=" checksum))
+)
+
+(type + Syntax (is Tuple)
+  (prop + id Size)
+)
+
+(type + Small (is Syntax)
+  (prop + value Size @hot)
+)
+
+(type + Wide (is Syntax)
+  (prop + inline-a Size @hot)
+  (prop + inline-b Size @hot)
+  (prop + external-a Size)
+  (prop + external-b Size)
+)
+
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)

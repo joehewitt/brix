@@ -1,54 +1,52 @@
 # Markup
 
-```yumi
-. direct = MarkupDefaults()
-. inherited = InheritedDefaults()
-. overridden = OverriddenDefaults()
-. configured = ConfiguredDefaults(900)
-. fallback = ConfiguredDefaults(null)
-. markup = OverriddenMarkupDefaults()
--- direct.width
--- inherited.width
--- overridden.width
--- configured.width
--- fallback.width
--- markup.width
+```brix
+(main
+  (let direct (call MarkupDefaults))
+  (let inherited (call InheritedDefaults))
+  (let overridden (call OverriddenDefaults))
+  (let configured (call ConfiguredDefaults 900))
+  (let fallback (call ConfiguredDefaults null))
+  (let markup (call OverriddenMarkupDefaults))
+  (print (. direct width))
+  (print (. inherited width))
+  (print (. overridden width))
+  (print (. configured width))
+  (print (. fallback width))
+  (print (. markup width))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ DefaultsBase
+(type + DefaultsBase
+  (prop + width _ (= 640))
+)
 
-+ width = 640
+(type + MarkupDefaults (is DefaultsBase)
+  (content
+    (<> This
+      (= width 1120)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupDefaults is DefaultsBase
+(type + InheritedDefaults (is MarkupDefaults))
 
-────────────────────
+(type + OverriddenDefaults (is MarkupDefaults)
+  (prop + width _ (= 800))
+)
 
-<This
-    width = 1120
+(type + ConfiguredDefaults (is MarkupDefaults)
+  (fn-do + This _
+    (param width (? I64))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InheritedDefaults is MarkupDefaults
-
-━━━━━━━━━━━━━━━━━━━━
-+ OverriddenDefaults is MarkupDefaults
-
-+ width = 800
-
-━━━━━━━━━━━━━━━━━━━━
-+ ConfiguredDefaults is MarkupDefaults
-
-────────────────────
-+ This
-    - width I64?
-
-━━━━━━━━━━━━━━━━━━━━
-+ OverriddenMarkupDefaults is MarkupDefaults
-
-────────────────────
-
-<This
-    width = 720
+(type + OverriddenMarkupDefaults (is MarkupDefaults)
+  (content
+    (<> This
+      (= width 720)
+    )
+  )
+)
 ```
 
 ```output
@@ -60,90 +58,84 @@
 720
 ```
 
-```yumi
-./defaults
+```brix
+(import ./defaults)
+(blank)
 
-. value = Derived()
--- value.width
+(main
+  (let value (call Derived))
+  (print (. value width))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is MarkupDefaults
-
-+ multiplier = 3
+(type + Derived (is MarkupDefaults)
+  (prop + multiplier _ (= 3))
+)
 ```
 
-```yumi file=defaults.yumi
+```brix file=defaults.bx
+(type + DefaultsBase
+  (prop + width _ (= 640))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ DefaultsBase
+(type + MarkupDefaults (is DefaultsBase)
+  (prop + multiplier _ (= 2))
+  (content
+    (<> This
+      (= width (* (call preferred-width) multiplier))
+    )
+  )
+)
 
-+ width = 640
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupDefaults is DefaultsBase
-
-+ multiplier = 2
-
-────────────────────
-
-<This
-    width = preferred-width() * multiplier
-
-━━━━━━━━━━━━━━━━━━━━
-_ preferred-width
-
-400
-
+(fn-expr _ preferred-width _
+  400
+)
 ```
 
 ```output
 1200
 ```
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. root = IdentityQueryRoot()
-markup-mount-root(root, root)
-. owner = EqualQueryHost()
-. first = EqualQueryHost()
-. middle = DifferentQueryHost()
-. last = EqualQueryHost()
-markup-append(root, owner)
-markup-append(root, DifferentQueryHost())
-markup-append(owner, first)
-markup-append(owner, middle)
-markup-append(owner, last)
-root.markup-batch-queue.checkpoint()
+(main
+  (let root (call IdentityQueryRoot))
+  (call markup-mount-root root root)
+  (let owner (call EqualQueryHost))
+  (let first (call EqualQueryHost))
+  (let middle (call DifferentQueryHost))
+  (let last (call EqualQueryHost))
+  (call markup-append root owner)
+  (call markup-append root (call DifferentQueryHost))
+  (call markup-append owner first)
+  (call markup-append owner middle)
+  (call markup-append owner last)
+  (call (. root markup-batch-queue checkpoint))
+  (blank)
+  (print (== (as (call markup-query-first-descendant-host owner) Pointer) (as first Pointer)))
+  (print (== (as (call markup-query-next-descendant-host owner first) Pointer) (as middle Pointer)))
+  (print (== (as (call markup-query-next-descendant-host owner middle) Pointer) (as last Pointer)))
+  (print (not (call markup-query-next-descendant-host owner last)))
+)
 
--- markup-query-first-descendant-host(owner) as Pointer == first as Pointer
--- markup-query-next-descendant-host(owner, first) as Pointer == middle as Pointer
--- markup-query-next-descendant-host(owner, middle) as Pointer == last as Pointer
--- !markup-query-next-descendant-host(owner, last)
+(type + EqualQueryHost (is Box)
+  (fn-expr + (infix this == (param other EqualQueryHost)) _
+    true
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ EqualQueryHost is Box
+(type + DifferentQueryHost (is Box))
 
-────────────────────
-+ this == other EqualQueryHost
-
-true
-
-━━━━━━━━━━━━━━━━━━━━
-+ DifferentQueryHost is Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ IdentityQueryRoot is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
+(type + IdentityQueryRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+)
 ```
 
 ```output
@@ -153,28 +145,29 @@ true
 true
 ```
 
-```yumi
-. x = foo()
--- x.a
--- x.contents
+```brix
+(main
+  (let x (call foo))
+  (print (. x a))
+  (print (. x contents))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
+(fn-do + foo _
+  (return
+    (<> Foo
+      (= a 10)
+      (<> Foo)
+    )
+  )
+)
 
-= <Foo
-    a = 10
-    <Foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ a = 0
-+ contents Foo?
-
-────────────────────
-+ do this += child Foo
-
-contents = child
+(type + Foo
+  (prop + a _ (= 0))
+  (prop + contents (? Foo))
+  (fn-do + (infix this += (param child Foo)) _
+    (= contents child)
+  )
+)
 ```
 
 ```output
@@ -184,49 +177,45 @@ contents = child
 
 ### Descendant queries see targets declared in a module that has no markup syntax of its own.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
-./lib/marker
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(import ./lib/marker)
+(blank)
 
-<MarkerRoot root
+(main
+  (<> MarkerRoot (id: root))
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (print (. root markers length))
+)
 
-root.markup-batch-queue.checkpoint()
--- root.markers.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkerRoot is Box
-    is MarkupRootElement
-
-+ markers Descendants'Marker
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-────────────────────
-
-<This
-    <Marker
-    <Box
-        <Marker
+(type + MarkerRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markers (of Descendants Marker))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+  (content
+    (<> This
+      (<> Marker)
+      (<> Box
+        (<> Marker)
+      )
+    )
+  )
+)
 ```
 
-```yumi file=lib/marker.yumi
+```brix file=lib/marker.bx
+(import /core/tests/support/markup-fixtures)
 
-/core/tests/support/markup-fixtures
-
-━━━━━━━━━━━━━━━━━━━━
-+ Marker is Box
-
+(type + Marker (is Box))
 ```
 
 ```output
@@ -235,82 +224,75 @@ markup-mount-root(this, this)
 
 ### Descendant queries stop at an explicit boundary when their owner is outside it, while a query owned by the boundary continues to observe its own structural subtree across target toggles.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BoundaryQueryRoot root
+(main
+  (<> BoundaryQueryRoot (id: root))
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (print (. root markers length))
+  (print (call boundary-marker-list (. root boundary markers)))
+  (blank)
+  (= (. root boundary show-extra) true)
+  (call (. root markup-batch-queue checkpoint))
+  (print (. root markers length))
+  (print (call boundary-marker-list (. root boundary markers)))
+  (blank)
+  (= (. root boundary show-extra) false)
+  (call (. root markup-batch-queue checkpoint))
+  (print (. root markers length))
+  (print (call boundary-marker-list (. root boundary markers)))
+)
 
-root.markup-batch-queue.checkpoint()
--- root.markers.length
--- boundary-marker-list(root.boundary.markers)
+(type + BoundaryMarker (is Box)
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-root.boundary.show-extra = true
-root.markup-batch-queue.checkpoint()
--- root.markers.length
--- boundary-marker-list(root.boundary.markers)
+(type + BoundaryQueryHost (is Box)
+  (prop + show-extra Bool (= false))
+  (prop + markers (of Descendants BoundaryMarker))
+  (fn-expr + markup-query-boundary Bool :get
+    true
+  )
+  (content
+    (<> This
+      (<> BoundaryMarker (value: "steady"))
+      (if #show-extra
+        (<> BoundaryMarker (value: "extra"))
+      )
+    )
+  )
+)
 
-root.boundary.show-extra = false
-root.markup-batch-queue.checkpoint()
--- root.markers.length
--- boundary-marker-list(root.boundary.markers)
+(type + BoundaryQueryRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + boundary BoundaryQueryHost)
+  (prop + markers (of Descendants BoundaryMarker))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+  (content
+    (<> This
+      (<> BoundaryQueryHost (id: boundary))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BoundaryMarker is Box
-
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoundaryQueryHost is Box
-
-+ show-extra Bool = false
-+ markers Descendants'BoundaryMarker
-
-────────────────────
-+ get markup-query-boundary Bool
-
-true
-
-────────────────────
-
-<This
-    <BoundaryMarker = "steady"
-    if #show-extra
-        <BoundaryMarker = "extra"
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoundaryQueryRoot is Box
-    is MarkupRootElement
-
-+ boundary BoundaryQueryHost
-+ markers Descendants'BoundaryMarker
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-────────────────────
-
-<This
-    <BoundaryQueryHost boundary
-
-━━━━━━━━━━━━━━━━━━━━
-+ do boundary-marker-list String
-    - markers [BoundaryMarker]
-
-= "|".join(each.text in markers)
+(fn-do + boundary-marker-list String
+  (param markers (list BoundaryMarker))
+  (return (call (. "|" join) (in (. each text) markers)))
+)
 ```
 
 ```output
@@ -324,69 +306,68 @@ steady
 
 ### A live owner keeps one markup attachment across ordinary unmount/remount. Dropping the mounted, parentless owner lets reclamation clear lane 3, and deterministic cleanup drain completes the detached cleanup token without firing a visible unmounted callback.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
-/BxGC/BxGC.h
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(import /BxGC/BxGC.h)
+(blank)
 
-. lane = C:brixGCMarkupAttachmentsSidePayloadLane()
-. root = MarkupCleanupRoot()
-markup-mount-root(root, root)
-root.markup-batch-queue.checkpoint()
-. opening = C:brixGCObjectSidePayloadCount(lane)
+(main
+  (let lane (call C:brixGCMarkupAttachmentsSidePayloadLane))
+  (let root (call MarkupCleanupRoot))
+  (call markup-mount-root root root)
+  (call (. root markup-batch-queue checkpoint))
+  (let opening (call C:brixGCObjectSidePayloadCount lane))
+  (blank)
+  (do
+    (inline (call exercise-markup-owner-lifetime root lane opening))
+  )
+  (call C:brixCollect)
+  (do
+    (inline (call C:brixGCDrainCleanups))
+  )
+  (blank)
+  (print (str "reclaimed=" (- (call C:brixGCObjectSidePayloadCount lane) opening)))
+)
 
-do exercise-markup-owner-lifetime(root, lane, opening)
-C:brixCollect()
-do C:brixGCDrainCleanups()
+(fn-do + exercise-markup-owner-lifetime _
+  (param root MarkupCleanupRoot)
+  (param lane U64)
+  (param opening U64)
+  (lazy child (? MarkupCleanupChild) (call MarkupCleanupChild))
+  (blank)
+  (call markup-adopt (!! child) null root)
+  (call (. root markup-batch-queue checkpoint))
+  (print (str "mounted=" (. (!! child) events) " lane=" (- (call C:brixGCObjectSidePayloadCount lane) opening)))
+  (blank)
+  (call markup-release (!! child))
+  (call (. root markup-batch-queue checkpoint))
+  (print (str "unmounted=" (. (!! child) events) " lane=" (- (call C:brixGCObjectSidePayloadCount lane) opening)))
+  (blank)
+  (call markup-adopt (!! child) null root)
+  (call (. root markup-batch-queue checkpoint))
+  (print (str "remounted=" (. (!! child) events) " lane=" (- (call C:brixGCObjectSidePayloadCount lane) opening)))
+  (blank)
+  (= child null)
+)
 
--- "reclaimed=${C:brixGCObjectSidePayloadCount(lane) - opening}"
+(type + MarkupCleanupRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do exercise-markup-owner-lifetime
-    - root MarkupCleanupRoot
-    - lane U64
-    - opening U64
-
-.. child MarkupCleanupChild? = MarkupCleanupChild()
-
-markup-adopt(child!, null, root)
-root.markup-batch-queue.checkpoint()
--- "mounted=${child!.events} lane=${C:brixGCObjectSidePayloadCount(lane) - opening}"
-
-markup-release(child!)
-root.markup-batch-queue.checkpoint()
--- "unmounted=${child!.events} lane=${C:brixGCObjectSidePayloadCount(lane) - opening}"
-
-markup-adopt(child!, null, root)
-root.markup-batch-queue.checkpoint()
--- "remounted=${child!.events} lane=${C:brixGCObjectSidePayloadCount(lane) - opening}"
-
-child = null
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupCleanupRoot is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupCleanupChild is Box
-
-+ events String = ""
-
-────────────────────
-+ do mounted
-
-events += "M"
-
-────────────────────
-+ do unmounted
-
-events += "U"
+(type + MarkupCleanupChild (is Box)
+  (prop + events String (= ""))
+  (fn-do + mounted _
+    (+= events "M")
+  )
+  (fn-do + unmounted _
+    (+= events "U")
+  )
+)
 ```
 
 ```output
@@ -396,139 +377,147 @@ remounted=MUM lane=1
 reclaimed=0
 ```
 
-```yumi crash
-<Foo
+```brix crash
+(main
+  (<> Foo
     "bar"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do this += child Foo
+(type + Foo
+  (fn-do + (infix this += (param child Foo)) _)
+)
 ```
 
 ```output
 Exception: Content not accepted
-<no file:3>
+<no file:4>
         "bar"
         ^^^^^
 ```
 
-```yumi
-. foo =
-    <Foo = "bar"
+```brix
+(main
+  (let foo
+    (block
+      (<> Foo (value: "bar"))
+    )
+  )
+  (blank)
+  (print foo)
+)
 
--- foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ content String
-
-────────────────────
-+ This
-    - content
-
-────────────────────
-+ to String
-
-"[Foo $content]"
+(type + Foo
+  (prop + content String)
+  (fn-do + This _
+    (param content _)
+  )
+  (fn-to-expr + String
+    (str "[Foo " content "]")
+  )
+)
 ```
 
 ```output
 [Foo bar]
 ```
 
-```yumi crash
-<Foo
-    b = 10
+```brix crash
+(main
+  (<> Foo
+    (= b 10)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ a = 0
+(type + Foo
+  (prop + a _ (= 0))
+)
 ```
 
 ```output
 Exception: Property "b" not found; an assignment in an element's body sets the element's property. To assign a local, put it in a do row: "do b = …"
-<no file:3>
-        b = 10
-        ^
+<no file:4>
+        (= b 10)
+           ^
 ```
 
-```yumi crash
-<Foo ""
-    text = "x"
+```brix crash
+(main
+  (<> Foo (text: "")
+    (= text "x")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ text String
-
-────────────────────
-+ This
-    - text String
+(type + Foo
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 ```
 
 ```output
 Exception: Parameter "text" is given twice, by the element's header and by this attribute; give it once
-<no file:3>
-        text = "x"
-        ^^^^^^^^^^
+<no file:4>
+        (= text "x")
+        ^^^^^^^^^^^^
 ```
 
 ### An attribute that fills a constructor parameter an earlier attribute filled.
 
-```yumi crash
-<Foo
-    text = "x"
-    text = "y"
+```brix crash
+(main
+  (<> Foo
+    (= text "x")
+    (= text "y")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ text String
-
-────────────────────
-+ This
-    - text String
+(type + Foo
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 ```
 
 ```output
 Exception: Parameter "text" is given twice, by an attribute above and by this one; remove one
-<no file:4>
-        text = "y"
-        ^^^^^^^^^^
+<no file:5>
+        (= text "y")
+        ^^^^^^^^^^^^
 ```
 
-```yumi
-<Foo foo
--- foo
+```brix
+(main
+  (<> Foo (id: foo))
+  (print foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo)
 ```
 
 ```output
 [Object __source__:Foo]
 ```
 
-```yumi
-<Foo foo
-    -- "inner $foo"
-    <Bar bar
-        -- "inner $bar"
--- foo
--- bar
+```brix
+(main
+  (<> Foo (id: foo)
+    (print (str "inner " foo))
+    (<> Bar (id: bar)
+      (print (str "inner " bar))
+    )
+  )
+  (print foo)
+  (print bar)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (fn-do + (infix this += (param child _)) _)
+)
 
-────────────────────
-+ do this += child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
+(type + Bar)
 ```
 
 ```output
@@ -540,123 +529,123 @@ inner [Object __source__:Bar]
 
 ### Names can be referenced out of order due to lazy declarations
 
-```yumi
-<Foo
-    -- foo
-    <Foo foo
+```brix
+(main
+  (<> Foo
+    (print foo)
+    (<> Foo (id: foo))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-────────────────────
-+ do this += child
+(type + Foo
+  (fn-do + (infix this += (param child _)) _)
+)
 ```
 
 ```output
 [Object __source__:Foo]
 ```
 
-```yumi
-<Window win
-    for text in ["foo", "bar", "baz"]
-        <Label = text
+```brix
+(main
+  (<> Window (id: win)
+    (for (in text (list "foo" "bar" "baz"))
+      (<> Label (value: text))
+    )
+  )
+  (blank)
+  (print (. win contents))
+)
 
--- win.contents
+(type + Window
+  (prop + contents (list Label))
+  (fn-do + (infix this += (param child Label)) _
+    (+= contents child)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Window
-
-+ contents [Label]
-
-────────────────────
-+ do this += child Label
-
-contents += child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label
-
-+ text String
-
-────────────────────
-+ This
-    - text
-
-────────────────────
-+ to String
-
-"[Label $text]"
+(type + Label
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+  (fn-to-expr + String
+    (str "[Label " text "]")
+  )
+)
 ```
 
 ```output
 [Label foo], [Label bar], [Label baz]
 ```
 
-```yumi
-<Window win
-    if true
-        <Label = "a"
-    if false
-        <Label = "b"
-    else if true
-        <Label = "c"
+```brix
+(main
+  (<> Window (id: win)
+    (if true
+      (<> Label (value: "a"))
+    )
+    (if false
+      (<> Label (value: "b"))
+      (else-if true
+        (<> Label (value: "c"))
+      )
+    )
+  )
+  (blank)
+  (print (. win contents))
+)
 
--- win.contents
+(type + Window
+  (prop + contents (list Label))
+  (fn-do + (infix this += (param child Label)) _
+    (+= contents child)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Window
-
-+ contents [Label]
-
-────────────────────
-+ do this += child Label
-
-contents += child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label
-
-+ text String
-
-────────────────────
-+ This
-    - text
-
-────────────────────
-+ to String
-
-"[Label $text]"
+(type + Label
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+  (fn-to-expr + String
+    (str "[Label " text "]")
+  )
+)
 ```
 
 ```output
 [Label a], [Label c]
 ```
 
-```yumi
--- test()
+```brix
+(main
+  (print (call test))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do test
+(fn-do + test _
+  (return (<> Window))
+)
 
-= <Window
-
-━━━━━━━━━━━━━━━━━━━━
-+ Window
+(type + Window)
 ```
 
 ```output
 [Object __source__:Window]
 ```
 
-```yumi
-<Window
-    -- "a"
-    do finally
-        -- "b"
-    -- "c"
+```brix
+(main
+  (<> Window
+    (print "a")
+    (finally
+      (print "b")
+    )
+    (print "c")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Window
+(type + Window)
 ```
 
 ```output
@@ -665,17 +654,19 @@ c
 b
 ```
 
-```yumi
-<Window window
-    a = b
-.. b = 42
+```brix
+(main
+  (<> Window (id: window)
+    (= a b)
+  )
+  (lazy b 42)
+  (blank)
+  (print (. window a))
+)
 
--- window.a
-
-━━━━━━━━━━━━━━━━━━━━
-+ Window
-
-+ a = 0
+(type + Window
+  (prop + a _ (= 0))
+)
 ```
 
 ```output
@@ -684,30 +675,30 @@ b
 
 ### Lazy variables accessible throughout the subtree (and not reevaluated obviously)
 
-```yumi
-<Foo foo
-    .. b = bar()
-    <Foo
-        a = b + 1
+```brix
+(main
+  (<> Foo (id: foo)
+    (lazy b (call bar))
+    (<> Foo
+      (= a (+ b 1))
+    )
+  )
+  (blank)
+  (print (?. (. foo child) a))
+)
 
--- foo.child?.a
+(type + Foo
+  (prop + a _ (= 0))
+  (prop + child (? Foo))
+  (fn-do + (infix this += (param foo _)) _
+    (= child foo)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ a = 0
-+ child Foo?
-
-────────────────────
-+ do this += foo
-
-child = foo
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bar
-
--- "called"
-= 42
+(fn-do + bar _
+  (print "called")
+  (return 42)
+)
 ```
 
 ```output
@@ -715,102 +706,121 @@ called
 43
 ```
 
-```yumi
-<Window
-    foo()
+```brix
+(main
+  (<> Window
+    (call foo)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Window
+(type + Window)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-
--- "foo"
+(fn-do + foo _
+  (print "foo")
+)
 ```
 
 ```output
 foo
 ```
 
-```yumi
-do new
-    <Window
-        foo()
-catch failure
-    -- failure
-━━━━━━━━━━━━━━━━━━━━
-+ Window
+```brix
+(main
+  (do-new
+    (<> Window
+      (call foo)
+    )
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
+(type + Window)
 
-?! Panic("fail")
+(fn-do + foo _
+  (throw (call Panic "fail"))
+)
 ```
 
 ```output
 fail
 ```
 
-```yumi crash
--- test()
+```brix crash
+(main
+  (print (call test))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ test
+(fn-expr + test _
+  (<> Window
+    (<> Window
+      (<> Window
+        (return 42)
+      )
+    )
+  )
+)
 
-<Window
-    <Window
-        <Window
-            = 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Window
-
-────────────────────
-+ do this += child
+(type + Window
+  (fn-do + (infix this += (param child _)) _)
+)
 ```
 
 ```output
-Exception: Function "test" is not declared with do, so its body is one expression and cannot return with "="; write "+ do test"
+Exception: Function "test" is not declared with fn-do, so its body is one expression and cannot return with "(return …)"; write "(fn-do + test _ …)"
 <no file:10>
-                = 42
-                ^^^^
+            (return 42)
+            ^^^^^^^^^^^
 ```
 
-```yumi
-<Window
-    <Window
-    do
-        <Window
+```brix
+(main
+  (<> Window
+    (<> Window)
+    (do
+      (<> Window)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Window
-
-────────────────────
-+ do this += child
-
--- child
+(type + Window
+  (fn-do + (infix this += (param child _)) _
+    (print child)
+  )
+)
 ```
 
 ```output
 [Object __source__:Window]
 ```
 
-```yumi
--- <List'Int
-    1
-    2
-    3
+```brix
+(main
+  (print
+    (<> (of List Int)
+      1
+      2
+      3
+    )
+  )
+)
 ```
 
 ```output
 1, 2, 3
 ```
 
-```yumi
--- <Map'String'Int
-    "a", 1
-    "b", 2
-    "c", 3
+```brix
+(main
+  (print
+    (<> (of Map String Int)
+      (tuple "a" 1)
+      (tuple "b" 2)
+      (tuple "c" 3)
+    )
+  )
+)
 ```
 
 ```output
@@ -819,20 +829,23 @@ Exception: Function "test" is not declared with do, so its body is one expressio
 
 ### Just verifying that closures work inside markup
 
-```yumi
-. clicks = 0
+```brix
+(main
+  (let clicks 0)
+  (blank)
+  (<> Foo (id: foo)
+    (for (on event click)
+      (+= clicks 1)
+    )
+  )
+  (blank)
+  (<- (. foo click) 1)
+  (print clicks)
+)
 
-<Foo foo
-    for event on click
-        clicks += 1
-
-foo.click <- 1
--- clicks
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ click AsyncChannel'Int
+(type + Foo
+  (prop + click (of AsyncChannel Int))
+)
 ```
 
 ```output
@@ -841,27 +854,25 @@ foo.click <- 1
 
 ### Class content
 
-```yumi
-<Window win
+```brix
+(main
+  (<> Window (id: win))
+  (blank)
+  (print (. win child))
+)
 
--- win.child
+(type + Window (is Box)
+  (content
+    (<> Box (id: box))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Window is Box
-
-────────────────────
-
-<Box box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ child Box?
-
-────────────────────
-+ do this += box Box
-
-child = box
+(type + Box
+  (prop + child (? Box))
+  (fn-do + (infix this += (param box Box)) _
+    (= child box)
+  )
+)
 ```
 
 ```output
@@ -870,67 +881,63 @@ child = box
 
 ### Class-level subscriptions can reference mounted class-content ids
 
-```yumi
-. exported = ExportedIdHost()
-exported.target.emits <- 1
-yield-once()
-yield-once()
--- "exported=${exported.count}"
+```brix
+(main
+  (let exported (call ExportedIdHost))
+  (<- (. exported target emits) 1)
+  (call yield-once)
+  (call yield-once)
+  (print (str "exported=" (. exported count)))
+  (blank)
+  (let hidden (call PrivateIdHost))
+  (<- (. hidden child emits) 1)
+  (call yield-once)
+  (call yield-once)
+  (print (str "private=" (. hidden count)))
+)
 
-. hidden = PrivateIdHost()
-hidden.child.emits <- 1
-yield-once()
-yield-once()
--- "private=${hidden.count}"
+(fn-do + yield-once _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do yield-once
+(type + EventNode
+  (prop + emits (of AsyncChannel Int))
+)
 
-. done = Semaphore()
-do new
-    done.post()
-done.wait()
+(type + Box
+  (prop + child _ (:= (call EventNode)))
+  (fn-do + (infix this += (param child EventNode)) _
+    (= (. this child) child)
+    (return child)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ EventNode
+(type + ExportedIdHost (is Box)
+  (prop + count _ (= 0))
+  (prop + target _ (:= (call EventNode)))
+  (content
+    (<> EventNode (id: target))
+    (blank)
+    (for (on n (. target emits))
+      (+= count n)
+    )
+  )
+)
 
-+ emits AsyncChannel'Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ child := EventNode()
-
-────────────────────
-+ do this += child EventNode
-
-this.child = child
-= child
-
-━━━━━━━━━━━━━━━━━━━━
-+ ExportedIdHost is Box
-
-+ count = 0
-+ target := EventNode()
-
-────────────────────
-
-<EventNode target
-
-for n on target.emits
-    count += n
-
-━━━━━━━━━━━━━━━━━━━━
-+ PrivateIdHost is Box
-
-+ count = 0
-
-────────────────────
-
-<EventNode node
-
-for n on node.emits
-    count += n
+(type + PrivateIdHost (is Box)
+  (prop + count _ (= 0))
+  (content
+    (<> EventNode (id: node))
+    (blank)
+    (for (on n (. node emits))
+      (+= count n)
+    )
+  )
+)
 ```
 
 ```output
@@ -940,42 +947,38 @@ private=1
 
 ### Closure binds to content
 
-```yumi
-<Window
+```brix
+(main
+  (<> Window)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Window is Box
+(type + Window (is Box)
+  (content
+    (<> Box
+      (<> Box (id: b)
+        (= cb (=> () (call foo)))
+        (blank)
+        (print (call (!! (. b cb))))
+      )
+    )
+  )
+  (fn-do + This _
+    ; foo()
+  )
+  (fn-do + foo _
+    (print "foo")
+    (print child)
+    (return 42)
+  )
+)
 
-────────────────────
-
-<Box
-    <Box b
-        cb = => foo()
-
-        -- (b.cb!)()
-
-────────────────────
-+ This
-
-`foo()
-
-────────────────────
-+ do foo
-
--- "foo"
--- child
-= 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ child Box?
-+ cb Getter'Int?
-
-────────────────────
-+ do this += box Box
-
-child = box
+(type + Box
+  (prop + child (? Box))
+  (prop + cb (? (of Getter Int)))
+  (fn-do + (infix this += (param box Box)) _
+    (= child box)
+  )
+)
 ```
 
 ```output
@@ -986,41 +989,37 @@ unknown
 
 ### Class content
 
-```yumi
-<Window
+```brix
+(main
+  (<> Window)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Window is Box
+(type + Window (is Box)
+  (content
+    (<> Box
+      (<> Box
+        (= b (call submit))
+        (print (call submit))
+      )
+    )
+  )
+  (fn-do + This _
+    ; foo()
+  )
+  (fn-do + submit _
+    (print (tuple "submit" child))
+    (blank)
+    (return 42)
+  )
+)
 
-────────────────────
-
-<Box
-    <Box
-        b = submit()
-        -- submit()
-
-────────────────────
-+ This
-
-`foo()
-
-────────────────────
-+ do submit
-
--- "submit", child
-
-= 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ child Box?
-+ b Int
-
-────────────────────
-+ do this += box Box
-
-child = box
+(type + Box
+  (prop + child (? Box))
+  (prop + b Int)
+  (fn-do + (infix this += (param box Box)) _
+    (= child box)
+  )
+)
 ```
 
 ```output
@@ -1029,56 +1028,53 @@ child = box
 42
 ```
 
-```yumi
-<Foo
-    bar = Bar("Joe")
+```brix
+(main
+  (<> Foo
+    (= bar (call Bar "Joe"))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + bar Bar)
+)
 
-+ bar Bar
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-+ name String
-
-────────────────────
-+ This
-
--- "create Bar"
-
-────────────────────
-+ This
-    - name
-
--- "create Bar $name"
+(type + Bar
+  (prop + name String)
+  (fn-do + This _
+    (print "create Bar")
+  )
+  (fn-do + This _
+    (param name _)
+    (print (str "create Bar " name))
+  )
+)
 ```
 
 ```output
 create Bar Joe
 ```
 
-```yumi
-<Foo foo
-    b = Bar("Joe")
+```brix
+(main
+  (<> Foo (id: foo)
+    (= b (call Bar "Joe"))
+  )
+  (blank)
+  (print (. foo a))
+)
 
--- foo.a
+(type + Foo
+  (prop + a _ (= (str (. b name) " Blow")))
+  (prop + b Bar)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ a = "$b.name Blow"
-+ b Bar
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-+ name String
-
-────────────────────
-+ This
-    - name
+(type + Bar
+  (prop + name String)
+  (fn-do + This _
+    (param name _)
+  )
+)
 ```
 
 ```output
@@ -1087,22 +1083,22 @@ Joe Blow
 
 ### A named element of top-level markup is made where it is written, so it reads the locals declared above it.
 
-```yumi
--- "before"
-. label = "local label"
-<Thing thing
-    name = label
--- thing.name
+```brix
+(main
+  (print "before")
+  (let label "local label")
+  (<> Thing (id: thing)
+    (= name label)
+  )
+  (print (. thing name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ name = "unnamed"
-
-────────────────────
-+ This
-
--- "constructed"
+(type + Thing
+  (prop + name _ (= "unnamed"))
+  (fn-do + This _
+    (print "constructed")
+  )
+)
 ```
 
 ```output
@@ -1111,27 +1107,26 @@ constructed
 local label
 ```
 
-```yumi
-<Foo a = 1
-    <Foo b = 2
-        <Foo c = 3
+```brix
+(main
+  (<> Foo (id: a) (value: 1)
+    (<> Foo (id: b) (value: 2)
+      (<> Foo (id: c) (value: 3))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ a = 0
-+ contents Foo?
-
-────────────────────
-+ This
-    - a
-
--- "create $a"
-
-────────────────────
-+ do this += child Foo
-
-contents = child
+(type + Foo
+  (prop + a _ (= 0))
+  (prop + contents (? Foo))
+  (fn-do + This _
+    (param a _)
+    (print (str "create " a))
+  )
+  (fn-do + (infix this += (param child Foo)) _
+    (= contents child)
+  )
+)
 ```
 
 ```output
@@ -1142,41 +1137,39 @@ create 3
 
 ### Nested named markup updates matching properties after mount
 
-```yumi
-<Demo demo
+```brix
+(main
+  (<> Demo (id: demo))
+  (blank)
+  (= (. demo child value) 7)
+  (let mounted (as (?. (. demo first) first) Child))
+  (print (== mounted (. demo child)))
+  (print (. mounted value))
+  (print (. demo child value))
+)
 
-demo.child.value = 7
-. mounted = demo.first?.first as Child
--- mounted == demo.child
--- mounted.value
--- demo.child.value
+(type + Box
+  (prop + first (? Box))
+  (fn-do + (infix this += (param child Box)) _
+    (if (not first)
+      (= first child)
+    )
+    (return child)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Demo (is Box)
+  (prop + child Child)
+  (content
+    (<> Box
+      (<> Child (id: child))
+    )
+  )
+)
 
-+ first Box?
-
-────────────────────
-+ do this += child Box
-
-if !first
-    first = child
-= child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ child Child
-
-────────────────────
-
-<Box
-    <Child child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Box
-
-+ value = 0
+(type + Child (is Box)
+  (prop + value _ (= 0))
+)
 ```
 
 ```output
@@ -1187,48 +1180,48 @@ true
 
 ### A named markup element nested in an element whose class has a member of the same name keeps its own identity instead of resolving to that member.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
--- demo.rows
-demo.items += "c"
--- demo.rows
--- demo.holder.list == null
+(main
+  (<> Demo (id: demo))
+  (print (. demo rows))
+  (+= (. demo items) "c")
+  (print (. demo rows))
+  (print (== (. demo holder list) null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
+(type + Holder (is Box)
+  (fn-expr + list (? Box) :get
+    null
+  )
+)
 
-────────────────────
-+ get list Box?
-
-null
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [String]
-
-────────────────────
-+ This
-
-items = List'String(["a", "b"])
-
-────────────────────
-
-<This
-    <Holder holder
-        <Box list
-            for item in #items
-                <TextBox = item
-
-────────────────────
-+ do get rows
-
-. count = 0
-for child in list.%first-child!.children
-    count += 1
-= count
+(type + Demo (is Box)
+  (prop + items (list String))
+  (fn-do + This _
+    (= items (call (of List String) (list "a" "b")))
+  )
+  (content
+    (<> This
+      (<> Holder (id: holder)
+        (<> Box (id: list)
+          (for (in item #items)
+            (<> TextBox (value: item))
+          )
+        )
+      )
+    )
+  )
+  (fn-do + rows _ :get
+    (let count 0)
+    (for (in child (. (!! (. list %first-child)) children))
+      (+= count 1)
+    )
+    (return count)
+  )
+)
 ```
 
 ```output
@@ -1239,65 +1232,60 @@ true
 
 ### Class-content markup ids are private properties that methods can read and assign through
 
-```yumi
-<Demo demo
+```brix
+(main
+  (<> Demo (id: demo))
+  (blank)
+  (call (. demo update) "hi")
+  (print (call (. demo read)))
+  (let panel (as (. (!! (. demo first)) first) Panel))
+  (print (call (. panel read)))
+)
 
-demo.update("hi")
--- demo.read()
-. panel = demo.first!.first as Panel
--- panel.read()
+(type + Box
+  (prop + first (? Box))
+  (fn-do + (infix this += (param child Box)) _
+    (if (not first)
+      (= first child)
+    )
+    (return child)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Label (is Box)
+  (prop + text _ (= ""))
+)
 
-+ first Box?
+(type + Panel (is Box)
+  (content
+    (<> Label (id: status)
+      (= text "inner")
+    )
+  )
+  (fn-expr + read String
+    (. status text)
+  )
+)
 
-────────────────────
-+ do this += child Box
-
-if !first
-    first = child
-= child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-
-+ text = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-────────────────────
-
-<Label status
-    text = "inner"
-
-────────────────────
-+ read String
-
-status.text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-────────────────────
-
-<Box
-    <Panel
-        <Label status
-            text = "outer"
-        -- status.text
-
-────────────────────
-+ do update
-    - text String
-
-status.text = text
-
-────────────────────
-+ read String
-
-status.text
+(type + Demo (is Box)
+  (content
+    (<> Box
+      (<> Panel
+        (<> Label (id: status)
+          (= text "outer")
+        )
+        (print (. status text))
+      )
+    )
+  )
+  (fn-do + update _
+    (param text String)
+    (= (. status text) text)
+  )
+  (fn-expr + read String
+    (. status text)
+  )
+)
 ```
 
 ```output
@@ -1308,47 +1296,43 @@ inner
 
 ### Class-content markup ids construct each named element once, in reference order
 
-```yumi
--- Demo().read()
+```brix
+(main
+  (print (call (. (call Demo) read)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (fn-do + (infix this += (param child Box)) _
+    (return child)
+  )
+)
 
-────────────────────
-+ do this += child Box
+(type + Label (is Box)
+  (prop + text _ (= ""))
+  (fn-do + This _
+    (print "constructed Label")
+  )
+)
 
-= child
+(type + Echo (is Box)
+  (prop + source (? Label))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-
-+ text = ""
-
-────────────────────
-+ This
-
--- "constructed Label"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Echo is Box
-
-+ source Label?
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-────────────────────
-
-<Box
-    <Echo echo
-        source = status
-    <Label status
-        text = "named"
-
-────────────────────
-+ read String
-
-"${status.text} ${echo.source?.text ?? "none"}"
+(type + Demo (is Box)
+  (content
+    (<> Box
+      (<> Echo (id: echo)
+        (= source status)
+      )
+      (<> Label (id: status)
+        (= text "named")
+      )
+    )
+  )
+  (fn-expr + read String
+    (str (. status text) " " (?? (?. (. echo source) text) "none"))
+  )
+)
 ```
 
 ```output
@@ -1358,31 +1342,29 @@ named named
 
 ### Property initializers that read class-content markup ids initialize after the markup constructs them
 
-```yumi
--- Demo().early
+```brix
+(main
+  (print (. (call Demo) early))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (fn-do + (infix this += (param child Box)) _
+    (return child)
+  )
+)
 
-────────────────────
-+ do this += child Box
+(type + Label (is Box)
+  (prop + text _ (= ""))
+)
 
-= child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-
-+ text = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ early = status.text
-
-────────────────────
-
-<Label status
-    text = "named"
+(type + Demo (is Box)
+  (prop + early _ (= (. status text)))
+  (content
+    (<> Label (id: status)
+      (= text "named")
+    )
+  )
+)
 ```
 
 ```output
@@ -1391,37 +1373,33 @@ named
 
 ### Deferred property initializers construct each named element once
 
-```yumi
-. demo = Demo()
--- demo.selected ?? "none"
+```brix
+(main
+  (let demo (call Demo))
+  (print (?? (. demo selected) "none"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (fn-do + (infix this += (param child Box)) _
+    (return child)
+  )
+)
 
-────────────────────
-+ do this += child Box
+(type + Label (is Box)
+  (prop + text _ (= ""))
+  (fn-do + This _
+    (print "constructed Label")
+  )
+)
 
-= child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-
-+ text = ""
-
-────────────────────
-+ This
-
--- "constructed Label"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ selected String? = status.text
-
-────────────────────
-
-<Label status
-    text = "named"
+(type + Demo (is Box)
+  (prop + selected (? String) (= (. status text)))
+  (content
+    (<> Label (id: status)
+      (= text "named")
+    )
+  )
+)
 ```
 
 ```output
@@ -1431,41 +1409,37 @@ named
 
 ### Tracked readers of a deferred property follow the named element it reads
 
-```yumi
-. demo = Demo()
--- demo.shout
-demo.rename()
--- demo.current ?? "none"
--- demo.shout
+```brix
+(main
+  (let demo (call Demo))
+  (print (. demo shout))
+  (call (. demo rename))
+  (print (?? (. demo current) "none"))
+  (print (. demo shout))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (fn-do + (infix this += (param child Box)) _
+    (return child)
+  )
+)
 
-────────────────────
-+ do this += child Box
+(type + Label (is Box)
+  (prop + text _ (= ""))
+)
 
-= child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-
-+ text = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ current String? = status.#text
-+ shout = "${#current ?? "none"}!"
-
-────────────────────
-
-<Label status
-    text = "named"
-
-────────────────────
-+ do rename
-
-status.text = "renamed"
+(type + Demo (is Box)
+  (prop + current (? String) (= (. status #text)))
+  (prop + shout _ (= (str (?? #current "none") "!")))
+  (content
+    (<> Label (id: status)
+      (= text "named")
+    )
+  )
+  (fn-do + rename _
+    (= (. status text) "renamed")
+  )
+)
 ```
 
 ```output
@@ -1476,32 +1450,30 @@ renamed!
 
 ### Initializers that read a deferred property initialize after it
 
-```yumi
--- Demo().echo
+```brix
+(main
+  (print (. (call Demo) echo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (fn-do + (infix this += (param child Box)) _
+    (return child)
+  )
+)
 
-────────────────────
-+ do this += child Box
+(type + Label (is Box)
+  (prop + text _ (= ""))
+)
 
-= child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-
-+ text = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ label String = status.text
-+ echo = label
-
-────────────────────
-
-<Label status
-    text = "named"
+(type + Demo (is Box)
+  (prop + label String (= (. status text)))
+  (prop + echo _ (= label))
+  (content
+    (<> Label (id: status)
+      (= text "named")
+    )
+  )
+)
 ```
 
 ```output
@@ -1510,35 +1482,33 @@ named
 
 ### Deferred property readers initialize after their sources regardless of declaration order
 
-```yumi
-. demo = Demo()
--- demo.loud
--- demo.echo
+```brix
+(main
+  (let demo (call Demo))
+  (print (. demo loud))
+  (print (. demo echo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (fn-do + (infix this += (param child Box)) _
+    (return child)
+  )
+)
 
-────────────────────
-+ do this += child Box
+(type + Label (is Box)
+  (prop + text _ (= ""))
+)
 
-= child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-
-+ text = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ loud = "${echo}!"
-+ echo = label
-+ label String = status.text
-
-────────────────────
-
-<Label status
-    text = "named"
+(type + Demo (is Box)
+  (prop + loud _ (= (str echo "!")))
+  (prop + echo _ (= label))
+  (prop + label String (= (. status text)))
+  (content
+    (<> Label (id: status)
+      (= text "named")
+    )
+  )
+)
 ```
 
 ```output
@@ -1548,33 +1518,32 @@ named
 
 ### Markup bindings that read a deferred property follow it once it is given
 
-```yumi
--- Demo().echo.text
+```brix
+(main
+  (print (. (call Demo) echo text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (fn-do + (infix this += (param child Box)) _
+    (return child)
+  )
+)
 
-────────────────────
-+ do this += child Box
+(type + Label (is Box)
+  (prop + text _ (= ""))
+)
 
-= child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-
-+ text = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ shout = "${status.#text}!"
-
-────────────────────
-
-<Label echo
-    text = #shout
-<Label status
-    text = "named"
+(type + Demo (is Box)
+  (prop + shout _ (= (str (. status #text) "!")))
+  (content
+    (<> Label (id: echo)
+      (= text #shout)
+    )
+    (<> Label (id: status)
+      (= text "named")
+    )
+  )
+)
 ```
 
 ```output
@@ -1583,38 +1552,36 @@ named!
 
 ### A value with locals of its own gives the properties it reads their values first
 
-```yumi
-<Demo demo
-    client = Client()
--- ", ".join(demo.names)
+```brix
+(main
+  (<> Demo (id: demo)
+    (= client (call Client))
+  )
+  (print (call (. ", " join) (. demo names)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (fn-do + (infix this += (param child Box)) _
+    (return child)
+  )
+)
 
-────────────────────
-+ do this += child Box
+(type + Base (is Box)
+  (prop + names (list String))
+)
 
-= child
+(type + Client
+  (prop + names _ (= (list "a" "b")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Box
-
-+ names [String]
-
-━━━━━━━━━━━━━━━━━━━━
-+ Client
-
-+ names = ["a", "b"]
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Base
-
-+ client Client
-
-────────────────────
-
-<This
-    names = List'String("<$each>" in client.names)
+(type + Demo (is Base)
+  (prop + client Client)
+  (content
+    (<> This
+      (= names (call (of List String) (in (str "<" each ">") (. client names))))
+    )
+  )
+)
 ```
 
 ```output
@@ -1623,114 +1590,106 @@ named!
 
 ### Properties that depend on each other through deferred properties are rejected
 
-```yumi compile-error
--- Demo().label
+```brix compile-error
+(main
+  (print (. (call Demo) label))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (fn-do + (infix this += (param child Box)) _
+    (return child)
+  )
+)
 
-────────────────────
-+ do this += child Box
+(type + Label (is Box)
+  (prop + text _ (= ""))
+)
 
-= child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-
-+ text = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ label String = "${status.text}${echo}"
-+ echo = label
-
-────────────────────
-
-<Label status
-    text = "named"
+(type + Demo (is Box)
+  (prop + label String (= (str (. status text) echo)))
+  (prop + echo _ (= label))
+  (content
+    (<> Label (id: status)
+      (= text "named")
+    )
+  )
+)
 ```
 
 ```output
 Exception: Property "label" depends on itself through properties that initialize after its markup
-<no file:20>
-    + label String = "${status.text}${echo}"
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:17>
+      (prop + label String (= (str (. status text) echo)))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Properties that initialize after their markup must have a type that has a value until then
 
-```yumi compile-error
--- Demo().words.length
+```brix compile-error
+(main
+  (print (. (call Demo) words length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (fn-do + (infix this += (param child Box)) _
+    (return child)
+  )
+)
 
-────────────────────
-+ do this += child Box
+(type + Label (is Box)
+  (prop + text _ (= ""))
+)
 
-= child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-
-+ text = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ label String? = status.text
-+ words = [label ?? ""]
-
-────────────────────
-
-<Label status
-    text = "named"
+(type + Demo (is Box)
+  (prop + label (? String) (= (. status text)))
+  (prop + words _ (= (list (?? label ""))))
+  (content
+    (<> Label (id: status)
+      (= text "named")
+    )
+  )
+)
 ```
 
 ```output
 Exception: Property "words" initializes after its markup, so its type must be optional
-<no file:21>
-    + words = [label ?? ""]
-    ^^^^^^^^^^^^^^^^^^^^^^^
+<no file:18>
+      (prop + words _ (= (list (?? label ""))))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### When rules that read a named markup element run after the markup constructs it
 
-```yumi
-. demo = Demo()
--- demo.runs
-demo.status.text = ""
-demo.status.text = "again"
--- demo.runs
+```brix
+(main
+  (let demo (call Demo))
+  (print (. demo runs))
+  (= (. demo status text) "")
+  (= (. demo status text) "again")
+  (print (. demo runs))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (fn-do + (infix this += (param child Box)) _
+    (return child)
+  )
+)
 
-────────────────────
-+ do this += child Box
+(type + Label (is Box)
+  (prop + text _ (= ""))
+)
 
-= child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-
-+ text = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ runs = 0
-
-────────────────────
-
-<Label status
-    text = "named"
-
-────────────────────
-when status.#text
-
-runs += 1
+(type + Demo (is Box)
+  (prop + runs _ (= 0))
+  (content
+    (<> Label (id: status)
+      (= text "named")
+    )
+  )
+  (when-rule (. status #text)
+    (+= runs 1)
+  )
+)
 ```
 
 ```output
@@ -1740,78 +1699,71 @@ runs += 1
 
 ### Constructor bodies cannot read class-content markup ids before the markup constructs them
 
-```yumi compile-error
-. demo = Demo()
+```brix compile-error
+(main
+  (let demo (call Demo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (fn-do + (infix this += (param child Box)) _
+    (return child)
+  )
+)
 
-────────────────────
-+ do this += child Box
+(type + Label (is Box)
+  (prop + text _ (= ""))
+)
 
-= child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-
-+ text = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-────────────────────
-
-<Label status
-    text = "named"
-
-────────────────────
-+ This
-
--- status.text
+(type + Demo (is Box)
+  (content
+    (<> Label (id: status)
+      (= text "named")
+    )
+  )
+  (fn-do + This _
+    (print (. status text))
+  )
+)
 ```
 
 ```output
 Exception: Named markup element "status" is read before its markup constructs it
-<no file:28>
-    -- status.text
-       ^^^^^^
+<no file:23>
+        (print (. status text))
+                  ^^^^^^
 ```
 
 ### A class-content markup id assigns an inherited property instead of declaring its own
 
-```yumi
--- Sub().read()
+```brix
+(main
+  (print (call (. (call Sub) read)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (fn-do + (infix this += (param child Box)) _
+    (return child)
+  )
+)
 
-────────────────────
-+ do this += child Box
+(type + Label (is Box)
+  (prop + text _ (= ""))
+)
 
-= child
+(type + Base (is Box)
+  (prop + status (? Label))
+  (fn-expr + read String
+    (?? (?. status text) "none")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-
-+ text = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Box
-
-+ status Label?
-
-────────────────────
-+ read String
-
-status?.text ?? "none"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub is Base
-
-────────────────────
-
-<Label status
-    text = "sub"
+(type + Sub (is Base)
+  (content
+    (<> Label (id: status)
+      (= text "sub")
+    )
+  )
+)
 ```
 
 ```output
@@ -1820,78 +1772,87 @@ sub
 
 ### A class-content markup id cannot share its name with a property of the class that cannot hold the element, where the element's body would read the element for the property.
 
-```yumi compile-error
-/core/tests/support/markup-fixtures
+```brix compile-error
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. status = Status()
--- status.activity
+(main
+  (let status (call Status))
+  (print (. status activity))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Status is Box
-
-+ activity = "busy"
-
-────────────────────
-
-<Label activity
-    text = #activity
+(type + Status (is Box)
+  (prop + activity _ (= "busy"))
+  (content
+    (<> Label (id: activity)
+      (= text #activity)
+    )
+  )
+)
 ```
 
 ```output
 Exception: Named markup element "activity" clashes with property "activity", which holds String, not Label; rename the element
-<no file:14>
-    <Label activity
-    ^^^^^^^^^^^^^^
+<no file:13>
+        (<> Label (id: activity)
+        ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A class-content markup id in a branch of the markup cannot share its name with a property of the class that cannot hold the element.
 
-```yumi compile-error
-/core/tests/support/markup-fixtures
+```brix compile-error
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. status = Status()
--- status.activity
+(main
+  (let status (call Status))
+  (print (. status activity))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Status is Box
-
-+ busy = true
-+ activity = "busy"
-
-────────────────────
-
-<This
-    if #busy
-        <Label activity
-            text = #activity
-    else
-        <Label
-            text = "idle"
+(type + Status (is Box)
+  (prop + busy _ (= true))
+  (prop + activity _ (= "busy"))
+  (content
+    (<> This
+      (if #busy
+        (<> Label (id: activity)
+          (= text #activity)
+        )
+        (else
+          (<> Label
+            (= text "idle")
+          )
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Named markup element "activity" clashes with property "activity", which holds String, not Label; rename the element
-<no file:17>
-            <Label activity
-            ^^^^^^^^^^^^^^
+<no file:16>
+            (<> Label (id: activity)
+            ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Property in content section
 
-```yumi
-<Thing foo
--- foo.bar
--- foo.baz
+```brix
+(main
+  (<> Thing (id: foo))
+  (print (. foo bar))
+  (print (. foo baz))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-
-+ bar = xxx
-+ baz = this
-
-.. xxx = 42
+(type + Thing
+  (content
+    (prop + bar _ (= xxx))
+    (prop + baz _ (= this))
+    (blank)
+    (lazy xxx 42)
+  )
+)
 ```
 
 ```output
@@ -1901,22 +1862,23 @@ Exception: Named markup element "activity" clashes with property "activity", whi
 
 ### Broadcaster property in content section
 
-```yumi
-<Thing foo
-for item on foo.bar
-    -- item
+```brix
+(main
+  (<> Thing (id: foo))
+  (for (on item (. foo bar))
+    (print item)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 99
-
-────────────────────
-
-+ bar = "hi $a $y $x" <* x on xxx
-
-.. xxx = [1, 2, 3]
-.. y = false
+(type + Thing
+  (prop + a _ (= 99))
+  (content
+    (prop + bar _ (= (on (select (str "hi " a " " y " " x) (<* x)) xxx)))
+    (blank)
+    (lazy xxx (list 1 2 3))
+    (lazy y false)
+  )
+)
 ```
 
 ```output
@@ -1927,23 +1889,21 @@ hi 99 false 3
 
 ### Class content
 
-```yumi
--- Foo()
+```brix
+(main
+  (print (call Foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (fn-do + (infix this += (param content _)) _
+    (print content)
+  )
+  (content
+    (<> Bar)
+  )
+)
 
-────────────────────
-+ do this += content
-
--- content
-
-────────────────────
-
-<Bar
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
+(type + Bar)
 ```
 
 ```output
@@ -1953,76 +1913,68 @@ hi 99 false 3
 
 ### Structural % reads are sidecar-backed and infer concrete MarkupParent child types.
 
-```yumi
-/core/markup
+```brix
+(import /core/markup)
+(blank)
 
-. root = Node("root")
-. a = Node("a")
-. b = Node("b")
-. c = Node("c")
+(main
+  (let root (call Node "root"))
+  (let a (call Node "a"))
+  (let b (call Node "b"))
+  (let c (call Node "c"))
+  (blank)
+  (call markup-append root a)
+  (call markup-append root b)
+  (call markup-append a c)
+  (blank)
+  (print (call (. root describe)))
+  (print (call (. a describe)))
+  (print (call (. b describe)))
+  (print (call (. c describe)))
+  (blank)
+  (call markup-release root)
+  (blank)
+  (print (call (. c describe)))
+  (blank)
+  (call markup-remove root a)
+  (blank)
+  (print (call (. root describe)))
+  (print (call (. a describe)))
+  (print (call (. c describe)))
+)
 
-markup-append(root, a)
-markup-append(root, b)
-markup-append(a, c)
-
--- root.describe()
--- a.describe()
--- b.describe()
--- c.describe()
-
-markup-release(root)
-
--- c.describe()
-
-markup-remove(root, a)
-
--- root.describe()
--- a.describe()
--- c.describe()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node
-    is MarkupParent'Node
-
-+ name String
-
-────────────────────
-+ This
-    - name
-
-────────────────────
-+ markup-content Node
-    - child Node
-
-child
-
-────────────────────
-+ do markup-attach-child
-    - child Node
-    - anchor Node?
-
-────────────────────
-+ do markup-detach-child
-    - child Node
-
-────────────────────
-+ do describe String
-
-. parent Node? = %parent
-. first Node? = this.%first-child
-. last Node? = %last-child
-. previous Node? = this.%previous-sibling
-. next Node? = %next-sibling
-
-= "$name parent=${name-of(parent)} first=${name-of(first)} last=${name-of(last)} previous=${name-of(previous)} next=${name-of(next)}"
-
-────────────────────
-+ do name-of String
-    - node Node?
-
-=? node.name
-    if node
-= "-"
+(type + Node
+  (implements (of MarkupParent Node))
+  (prop + name String)
+  (fn-do + This _
+    (param name _)
+  )
+  (fn-expr + markup-content Node
+    (param child Node)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child Node)
+    (param anchor (? Node))
+  )
+  (fn-do + markup-detach-child _
+    (param child Node)
+  )
+  (fn-do + describe String
+    (let parent (? Node) %parent)
+    (let first (? Node) (. this %first-child))
+    (let last (? Node) %last-child)
+    (let previous (? Node) (. this %previous-sibling))
+    (let next (? Node) %next-sibling)
+    (blank)
+    (return (str name " parent=" (call name-of parent) " first=" (call name-of first) " last=" (call name-of last) " previous=" (call name-of previous) " next=" (call name-of next)))
+  )
+  (fn-do + name-of String
+    (param node (? Node))
+    (return-if (. node name) (if node))
+    (return "-")
+  )
+)
 ```
 
 ```output
@@ -2038,97 +1990,83 @@ c parent=a first=- last=- previous=- next=-
 
 ### Mounted callbacks run after the committed structural tree is coherent.
 
-```yumi
-/core/markup
+```brix
+(import /core/markup)
+(blank)
 
-. log = MountLog()
-. root = MountNode("root", log)
-. parent = MountNode("parent", log)
-. child = MountNode("child", log)
+(main
+  (let log (call MountLog))
+  (let root (call MountNode "root" log))
+  (let parent (call MountNode "parent" log))
+  (let child (call MountNode "child" log))
+  (blank)
+  (call markup-append root parent)
+  (call markup-append parent child)
+  (print (str "before=" (. log text)))
+  (blank)
+  (call markup-mount-root root root)
+  (print (. log text))
+  (blank)
+  (call (. log clear))
+  (let late (call MountNode "late" log))
+  (let late-child (call MountNode "late-child" log))
+  (call markup-append late late-child)
+  (call markup-append root late)
+  (print (. log text))
+  (blank)
+  (call (. log clear))
+  (let replacement (call MountNode "replacement" log))
+  (call markup-replace root parent replacement)
+  (print (. log text))
+)
 
-markup-append(root, parent)
-markup-append(parent, child)
--- "before=${log.text}"
+(type + MountLog
+  (prop + text _ (= ""))
+  (fn-do + clear _
+    (= text "")
+  )
+  (fn-do + record _
+    (param line String)
+    (if (. text length)
+      (+= text " | ")
+    )
+    (+= text line)
+  )
+)
 
-markup-mount-root(root, root)
--- log.text
-
-log.clear()
-. late = MountNode("late", log)
-. late-child = MountNode("late-child", log)
-markup-append(late, late-child)
-markup-append(root, late)
--- log.text
-
-log.clear()
-. replacement = MountNode("replacement", log)
-markup-replace(root, parent, replacement)
--- log.text
-
-━━━━━━━━━━━━━━━━━━━━
-+ MountLog
-
-+ text = ""
-
-────────────────────
-+ do clear
-
-text = ""
-
-────────────────────
-+ do record
-    - line String
-
-if text.length
-    text += " | "
-text += line
-
-━━━━━━━━━━━━━━━━━━━━
-+ MountNode
-    is MarkupParent'MountNode
-    is MarkupRootElement
-
-+ name String
-+ log MountLog
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ This
-    - name
-    - log
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-────────────────────
-+ do markup-attach-child
-    - child MountNode
-    - anchor MountNode?
-
-────────────────────
-+ do markup-detach-child
-    - child MountNode
-
-────────────────────
-+ do mounted
-
-log.record(describe())
-
-────────────────────
-+ describe String
-
-"$name parent=${name-of(%parent)} first=${name-of(%first-child)} next=${name-of(%next-sibling)} root=${markup-batch-root != null}"
-
-────────────────────
-+ do name-of String
-    - node MountNode?
-
-=? node.name
-    if node
-= "-"
+(type + MountNode
+  (implements (of MarkupParent MountNode))
+  (implements MarkupRootElement)
+  (prop + name String)
+  (prop + log MountLog)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + This _
+    (param name _)
+    (param log _)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+  (fn-do + markup-attach-child _
+    (param child MountNode)
+    (param anchor (? MountNode))
+  )
+  (fn-do + markup-detach-child _
+    (param child MountNode)
+  )
+  (fn-do + mounted _
+    (call (. log record) (call describe))
+  )
+  (fn-expr + describe String
+    (str name " parent=" (call name-of %parent) " first=" (call name-of %first-child) " next=" (call name-of %next-sibling) " root=" (!= markup-batch-root null))
+  )
+  (fn-do + name-of String
+    (param node (? MountNode))
+    (return-if (. node name) (if node))
+    (return "-")
+  )
+)
 ```
 
 ```output
@@ -2140,90 +2078,85 @@ replacement parent=root first=- next=late root=true
 
 ### A host with hook-shaped methods but no MarkupParent conformance is rejected at the mutation site; the structural hooks are an interface contract, not duck typing.
 
-```yumi crash
-/core/markup
+```brix crash
+(import /core/markup)
+(blank)
 
-. host = DuckNode()
-markup-append(host, DuckNode())
+(main
+  (let host (call DuckNode))
+  (call markup-append host (call DuckNode))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ DuckNode
-    is MarkupElement
-
-────────────────────
-+ do markup-attach-child
-    - child DuckNode
-    - anchor DuckNode?
-
-────────────────────
-+ do markup-detach-child
-    - child DuckNode
+(type + DuckNode
+  (implements MarkupElement)
+  (fn-do + markup-attach-child _
+    (param child DuckNode)
+    (param anchor (? DuckNode))
+  )
+  (fn-do + markup-detach-child _
+    (param child DuckNode)
+  )
+)
 ```
 
 ```output
 Exception: No function "markup-append" accepts (DuckNode, DuckNode); it is declared as "markup-append(parent Host, child Child)"
-<no file:5>
-    markup-append(host, DuckNode())
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:7>
+      (call markup-append host (call DuckNode))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A root <This> in class content configures existing properties as construction defaults and lowers its body as normal content.
 
-```yumi
-. plain = Card()
-. child = ChildCard("Message")
-<Card custom
-    title = "Custom"
+```brix
+(main
+  (let plain (call Card))
+  (let child (call ChildCard "Message"))
+  (<> Card (id: custom)
+    (= title "Custom")
+  )
+  (blank)
+  (print (. plain title))
+  (print (. custom title))
+  (print (. child title))
+  (print (!! (. plain first)))
+  (print (!! (. child first)))
+)
 
--- plain.title
--- custom.title
--- child.title
--- plain.first!
--- child.first!
+(type + Box
+  (prop + first (? PanelLabel))
+  (fn-do + (infix this += (param child PanelLabel)) _
+    (= first child)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Label)
 
-+ first PanelLabel?
+(type + Card (is Box)
+  (prop + title _ (= "Default"))
+  (content
+    (<> This
+      (<> PanelLabel
+        (= title title)
+      )
+    )
+  )
+)
 
-────────────────────
-+ do this += child PanelLabel
+(type + PanelLabel (is Label)
+  (prop + title _ (= "Panel Default"))
+  (fn-to-expr + String
+    (str "[Label " title "]")
+  )
+)
 
-first = child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-+ title = "Default"
-
-────────────────────
-
-<This
-    <PanelLabel
-        title = title
-
-━━━━━━━━━━━━━━━━━━━━
-+ PanelLabel is Label
-
-+ title = "Panel Default"
-
-────────────────────
-+ to String
-
-"[Label $title]"
-
-━━━━━━━━━━━━━━━━━━━━
-+ ChildCard is Card
-
-+ message String
-+ title = "Child"
-
-────────────────────
-+ This
-    - message
+(type + ChildCard (is Card)
+  (prop + message String)
+  (prop + title _ (= "Child"))
+  (fn-do + This _
+    (param message _)
+  )
+)
 ```
 
 ```output
@@ -2236,55 +2169,51 @@ Child
 
 ### A root <This> property default that reads tracked state stays live, like a declared default.
 
-```yumi
-. source = Source()
-. card = Card(source)
-. child = ChildCard(source)
--- card.label
--- card.declared
--- child.label
-source.count = 5
--- card.label
--- card.declared
--- child.label
+```brix
+(main
+  (let source (call Source))
+  (let card (call Card source))
+  (let child (call ChildCard source))
+  (print (. card label))
+  (print (. card declared))
+  (print (. child label))
+  (= (. source count) 5)
+  (print (. card label))
+  (print (. card declared))
+  (print (. child label))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Source
+(type + Source
+  (prop + count _ (= 1))
+)
 
-+ count = 1
+(type + Box)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Card (is Box)
+  (prop + source Source)
+  (prop + label Int)
+  (prop + declared _ (= (* (. source #count) 10)))
+  (fn-do + This _
+    (param source _)
+  )
+  (content
+    (<> This
+      (= label (* (. source #count) 10))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-+ source Source
-+ label Int
-+ declared = source.#count * 10
-
-────────────────────
-+ This
-    - source
-
-────────────────────
-
-<This
-    label = source.#count * 10
-
-━━━━━━━━━━━━━━━━━━━━
-+ ChildCard is Card
-
-+ scale = 100
-
-────────────────────
-+ This
-    - source
-
-────────────────────
-
-<This
-    label = source.#count * scale
+(type + ChildCard (is Card)
+  (prop + scale _ (= 100))
+  (fn-do + This _
+    (param source _)
+  )
+  (content
+    (<> This
+      (= label (* (. source #count) scale))
+    )
+  )
+)
 ```
 
 ```output
@@ -2298,39 +2227,39 @@ source.count = 5
 
 ### A subclass default for a property overrides an inherited constructor argument's default, but an argument the caller passes still wins.
 
-```yumi
-. declared = DeclaredButton()
-. rooted = RootedButton()
-. given = RootedButton("Given")
-<RootedButton named
-    title = "Named"
+```brix
+(main
+  (let declared (call DeclaredButton))
+  (let rooted (call RootedButton))
+  (let given (call RootedButton "Given"))
+  (<> RootedButton (id: named)
+    (= title "Named")
+  )
+  (blank)
+  (print (. declared title))
+  (print (. rooted title))
+  (print (. given title))
+  (print (. named title))
+)
 
--- declared.title
--- rooted.title
--- given.title
--- named.title
+(type + Button
+  (prop + title _ (= ""))
+  (fn-do + This _
+    (param title _ (= ""))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Button
+(type + DeclaredButton (is Button)
+  (prop + title _ (= "Declared"))
+)
 
-+ title = ""
-
-────────────────────
-+ This
-    - title = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ DeclaredButton is Button
-
-+ title = "Declared"
-
-━━━━━━━━━━━━━━━━━━━━
-+ RootedButton is Button
-
-────────────────────
-
-<This
-    title = "Rooted"
+(type + RootedButton (is Button)
+  (content
+    (<> This
+      (= title "Rooted")
+    )
+  )
+)
 ```
 
 ```output
@@ -2342,50 +2271,44 @@ Named
 
 ### A lambda a line of a root <This> gives a property reads the object when it runs, as one the class's markup gives a child does: its members, its methods and the elements its markup names.
 
-```yumi
-. panel = Panel()
-panel.fire()
-panel.fire()
--- panel.seen
+```brix
+(main
+  (let panel (call Panel))
+  (call (. panel fire))
+  (call (. panel fire))
+  (print (. panel seen))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + run (? Doer))
+  (fn-do + (infix this += (param child Note)) _)
+  (fn-do + fire _
+    (let callback run)
+    (if callback
+      (call callback)
+    )
+  )
+)
 
-+ run Doer?
+(type + Note
+  (prop + text _ (= "note"))
+)
 
-────────────────────
-+ do this += child Note
-
-────────────────────
-+ do fire
-
-. callback = run
-if callback
-    callback()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Note
-
-+ text = "note"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ count = 0
-+ seen = ""
-
-────────────────────
-
-<This
-    run = => do bump(note.text)
-    <Note note
-
-────────────────────
-+ do bump
-    - text String
-
-count += 1
-seen = "$text $count"
+(type + Panel (is Box)
+  (prop + count _ (= 0))
+  (prop + seen _ (= ""))
+  (content
+    (<> This
+      (= run (=> () :do (call bump (. note text))))
+      (<> Note (id: note))
+    )
+  )
+  (fn-do + bump _
+    (param text String)
+    (+= count 1)
+    (= seen (str text " " count))
+  )
+)
 ```
 
 ```output
@@ -2394,38 +2317,37 @@ note 2
 
 ### An anonymous state machine may sit beside an explicit root <This> and runs after earlier markup.
 
-```yumi
-. card = Card()
+```brix
+(main
+  (let card (call Card))
+  (blank)
+  (print (!= (. card first) null))
+  (print (. card initialized))
+)
 
--- card.first != null
--- card.initialized
+(type + Box
+  (prop + first (? PanelLabel))
+  (fn-do + (infix this += (param child PanelLabel)) _
+    (= first child)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + PanelLabel)
 
-+ first PanelLabel?
-
-────────────────────
-+ do this += child PanelLabel
-
-first = child
-
-━━━━━━━━━━━━━━━━━━━━
-+ PanelLabel
-
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-+ initialized = false
-
-────────────────────
-
-<This
-    <PanelLabel
-
-~> ready
-    do
-        initialized = first != null
+(type + Card (is Box)
+  (prop + initialized _ (= false))
+  (content
+    (<> This
+      (<> PanelLabel)
+    )
+    (blank)
+    (state ready
+      (do
+        (= initialized (!= first null))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2435,19 +2357,20 @@ true
 
 ### An anonymous state machine may sit beside a root <This> with no lines.
 
-```yumi
-. knob = Knob()
+```brix
+(main
+  (let knob (call Knob))
+  (blank)
+  (print (. knob is-idle))
+)
 
--- knob.is-idle
-
-━━━━━━━━━━━━━━━━━━━━
-+ Knob
-
-────────────────────
-
-<This
-
-~> is-idle
+(type + Knob
+  (content
+    (<> This)
+    (blank)
+    (state is-idle)
+  )
+)
 ```
 
 ```output
@@ -2456,122 +2379,130 @@ true
 
 ### Root <This> must wrap all class content.
 
-```yumi crash
-<Card
+```brix crash
+(main
+  (<> Card)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Card
-
-────────────────────
-
-<This
-<Card
+(type + Card
+  (content
+    (<> This)
+    (<> Card)
+  )
+)
 ```
 
 ```output
 Exception: Root <This> must wrap all class content
-<no file:9>
-    <This
-    ^^^^^
+<no file:8>
+        (<> This)
+        ^^^^^^^^^
 ```
 
 ### Root <This> assignments do not declare new properties.
 
-```yumi crash
-<Card
+```brix crash
+(main
+  (<> Card)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Card
-
-────────────────────
-
-<This
-    missing = 1
+(type + Card
+  (content
+    (<> This
+      (= missing 1)
+    )
+  )
+)
 ```
 
 ```output
 Exception: Property "missing" not found
-<no file:10>
-        missing = 1
-        ^^^^^^^
+<no file:9>
+          (= missing 1)
+             ^^^^^^^
 ```
 
 ### Root <This> configures an existing object; it does not call a constructor.
 
-```yumi crash
-<Card
+```brix crash
+(main
+  (<> Card)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Card
-
-────────────────────
-
-<This = 1
+(type + Card
+  (content
+    (<> This (value: 1))
+  )
+)
 ```
 
 ```output
 Exception: Root <This> cannot pass constructor arguments
-<no file:9>
-    <This = 1
-            ^
+<no file:8>
+        (<> This (value: 1))
+                         ^
 ```
 
 ### Root <This> uses normal markup body rules: "when" belongs only inside style rules.
 
-```yumi crash
-<Card
+```brix crash
+(main
+  (<> Card)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Card
-
-+ is-on = false
-
-────────────────────
-
-<This
-    when #is-on
-        is-on = true
+(type + Card
+  (prop + is-on _ (= false))
+  (content
+    (<> This
+      (when-style #is-on
+        (= is-on true)
+      )
+    )
+  )
+)
 ```
 
 ```output
-Exception: "when" state branches are only allowed in style rule bodies
-<no file:12>
-        when #is-on
-        ^^^^^^^^^^
+Exception: (when-style …) cannot be a `row` of (<> …), which takes Child.
+<no file:10>
+          (when-style #is-on
+          ^
 ```
 
 ### Markup list properties materialize heterogeneous union feeds once before initial assignment.
 
-```yumi
-<MarkupListHost host
-    items =
-        * NumberItem(7)
-        * TextItem("seven")
+```brix
+(main
+  (<> MarkupListHost (id: host)
+    (= items
+      (block
+        (item (call NumberItem 7))
+        (item (call TextItem "seven"))
+      )
+    )
+  )
+  (blank)
+  (print (. host items length))
+  (print (is ([] (. host items) 0) NumberItem))
+  (print (is ([] (. host items) 1) TextItem))
+)
 
--- host.items.length
--- host.items[0] is NumberItem
--- host.items[1] is TextItem
+(type + NumberItem (is Tuple)
+  (prop + value Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ NumberItem is Tuple
+(type + TextItem (is Tuple)
+  (prop + value String)
+)
 
-+ value Int
+(type + MarkupListItem (is Union)
+  (variant NumberItem)
+  (variant TextItem)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TextItem is Tuple
-
-+ value String
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupListItem is Union
-
-| NumberItem
-| TextItem
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkupListHost
-
-+ items [MarkupListItem]
+(type + MarkupListHost
+  (prop + items (list MarkupListItem))
+)
 ```
 
 ```output
@@ -2580,258 +2511,243 @@ true
 true
 ```
 
-```yumi
--- null-stream().children.length
+```brix
+(main
+  (print (. (call null-stream) children length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ null-stream ChildHost
+(fn-expr + null-stream ChildHost
+  (<> ChildHost
+    (call no-children)
+  )
+)
 
-<ChildHost
-    no-children()
+(fn-do + no-children (? (of ImmutableArray ChildHost))
+  (return-if (if true))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do no-children ImmutableArray'ChildHost?
-
-=? if true
-
-━━━━━━━━━━━━━━━━━━━━
-+ ChildHost
-
-+ children [This]
-
-────────────────────
-+ do this += kids <This>?
-
-if kids
-    for kid in kids
-        children += kid as This
+(type + ChildHost
+  (prop + children (list This))
+  (fn-do + (infix this += (param kids (? (stream This)))) _
+    (if kids
+      (for (in kid kids)
+        (+= children (as kid This))
+      )
+    )
+  )
+)
 ```
 
 ```output
 0
 ```
 
-```yumi crash
-. sink = make-optional-stream-sink()
+```brix crash
+(main
+  (let sink (call make-optional-stream-sink))
+)
 
-━━━
-+ OptionalStreamSink
+(type + OptionalStreamSink
+  (prop + name String)
+  (prop + children (list This))
+  (fn-do + This _
+    (param name String)
+  )
+  (fn-do + (infix this += (param kids (stream This))) _
+    (for (in kid kids)
+      (+= children (as kid This))
+    )
+  )
+)
 
-+ name String
-+ children [This]
+(fn-expr + make-optional-stream-sink OptionalStreamSink
+  (<> OptionalStreamSink (text: "root")
+    (call no-optional-stream-children)
+  )
+)
 
-───
-+ This
-    - name String
-
-───
-+ do this += kids <This>
-
-for kid in kids
-    children += kid as This
-
-━━━
-+ make-optional-stream-sink OptionalStreamSink
-
-<OptionalStreamSink "root"
-    no-optional-stream-children()
-
-━━━
-+ do no-optional-stream-children ImmutableArray'OptionalStreamSink?
-
-=? if true
+(fn-do + no-optional-stream-children (? (of ImmutableArray OptionalStreamSink))
+  (return-if (if true))
+)
 ```
 
 ```output
 Exception: Content not accepted
-<no file:24>
-        no-optional-stream-children()
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:21>
+        (call no-optional-stream-children)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-/core/markup
+```brix crash
+(import /core/markup)
+(blank)
 
-. root = Node()
-. child = Node()
-markup-attach-new-child(root, child, null)
+(main
+  (let root (call Node))
+  (let child (call Node))
+  (call markup-attach-new-child root child null)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node
-    is MarkupParent'Node
-
-────────────────────
-+ markup-content Node
-    - child Node
-
-child
-
-────────────────────
-+ do markup-attach-child
-    - child Node
-    - anchor Node?
-
-=
-
-────────────────────
-+ do markup-detach-child
-    - child Node
-
-=
-```
-
-```output
-Exception: Function "markup-attach-new-child" is private, declared with _, so only its own module can call it
-<no file:6>
-    markup-attach-new-child(root, child, null)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-```
-
-```yumi crash
-/core/markup
-
-` @markup-runtime-internal
-
-. root = Node()
-. child = Node()
-markup-attach-new-child(root, child, null)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node
-    is MarkupParent'Node
-
-────────────────────
-+ markup-content Node
-    - child Node
-
-child
-
-────────────────────
-+ do markup-attach-child
-    - child Node
-    - anchor Node?
-
-=
-
-────────────────────
-+ do markup-detach-child
-    - child Node
-
-=
+(type + Node
+  (implements (of MarkupParent Node))
+  (fn-expr + markup-content Node
+    (param child Node)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child Node)
+    (param anchor (? Node))
+    (return)
+  )
+  (fn-do + markup-detach-child _
+    (param child Node)
+    (return)
+  )
+)
 ```
 
 ```output
 Exception: Function "markup-attach-new-child" is private, declared with _, so only its own module can call it
 <no file:8>
-    markup-attach-new-child(root, child, null)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      (call markup-attach-new-child root child null)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+```brix crash
+(import /core/markup)
+(blank)
+; @markup-runtime-internal
+(blank)
+
+(main
+  (let root (call Node))
+  (let child (call Node))
+  (call markup-attach-new-child root child null)
+)
+
+(type + Node
+  (implements (of MarkupParent Node))
+  (fn-expr + markup-content Node
+    (param child Node)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child Node)
+    (param anchor (? Node))
+    (return)
+  )
+  (fn-do + markup-detach-child _
+    (param child Node)
+    (return)
+  )
+)
+```
+
+```output
+Exception: Function "markup-attach-new-child" is private, declared with _, so only its own module can call it
+<no file:10>
+      (call markup-attach-new-child root child null)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Collection content goes through ++= when += takes a single child.
 
-```yumi
-. extra = [Label("b"), Label("c")]
-<Window win
-    <Label = "a"
+```brix
+(main
+  (let extra (list (call Label "b") (call Label "c")))
+  (<> Window (id: win)
+    (<> Label (value: "a"))
     extra
+  )
+  (blank)
+  (print (. win contents))
+)
 
--- win.contents
+(type + Window
+  (prop + contents (list Label))
+  (fn-do + (infix this += (param child Label)) _
+    (+= contents child)
+  )
+  (fn-do + (infix this ++= (param children (stream Label))) _
+    (++= contents children)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Window
-
-+ contents [Label]
-
-────────────────────
-+ do this += child Label
-
-contents += child
-
-────────────────────
-+ do this ++= children <Label>
-
-contents ++= children
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label
-
-+ text String
-
-────────────────────
-+ This
-    - text
-
-────────────────────
-+ to String
-
-"[Label $text]"
+(type + Label
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+  (fn-to-expr + String
+    (str "[Label " text "]")
+  )
+)
 ```
 
 ```output
 [Label a], [Label b], [Label c]
 ```
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<QueryRoot root
+(main
+  (<> QueryRoot (id: root))
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (print (. root summary))
+  (blank)
+  (= (. root show-extra) true)
+  (call (. root markup-batch-queue checkpoint))
+  (print (. root summary))
+  (blank)
+  (= (. root show-first) false)
+  (call (. root markup-batch-queue checkpoint))
+  (print (. root summary))
+  (blank)
+  (= (. root show-extra) false)
+  (call (. root markup-batch-queue checkpoint))
+  (print (. root summary))
+  (blank)
+  (= (. root show-first) true)
+  (call (. root markup-batch-queue checkpoint))
+  (print (. root summary))
+)
 
-root.markup-batch-queue.checkpoint()
--- root.summary
+(type + Marker (is Box)
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-root.show-extra = true
-root.markup-batch-queue.checkpoint()
--- root.summary
-
-root.show-first = false
-root.markup-batch-queue.checkpoint()
--- root.summary
-
-root.show-extra = false
-root.markup-batch-queue.checkpoint()
--- root.summary
-
-root.show-first = true
-root.markup-batch-queue.checkpoint()
--- root.summary
-
-━━━━━━━━━━━━━━━━━━━━
-+ Marker is Box
-
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ QueryRoot is Box
-    is MarkupRootElement
-
-+ show-first = true
-+ show-extra = false
-+ markers Descendants'Marker
-+ summary = "|".join(each.text in #markers)
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-────────────────────
-
-<This
-    if #show-first
-        <Marker = "first"
-    <Marker = "base"
-    if #show-extra
-        <Marker = "extra"
+(type + QueryRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + show-first _ (= true))
+  (prop + show-extra _ (= false))
+  (prop + markers (of Descendants Marker))
+  (prop + summary _ (= (call (. "|" join) (in (. each text) #markers))))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+  (content
+    (<> This
+      (if #show-first
+        (<> Marker (value: "first"))
+      )
+      (<> Marker (value: "base"))
+      (if #show-extra
+        (<> Marker (value: "extra"))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2842,50 +2758,50 @@ base
 first|base
 ```
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<QueryRoot root
-    <Box
-        <Mirror mirror
+(main
+  (<> QueryRoot (id: root)
+    (<> Box
+      (<> Mirror (id: mirror))
+    )
+  )
+  (blank)
+  (print (. mirror text))
+  (call (. root markup-batch-queue checkpoint))
+  (print (. mirror text))
+  (blank)
+  (= (. root title) "renamed")
+  (print (. mirror text))
+  (call (. root markup-batch-queue checkpoint))
+  (print (. mirror text))
+  (blank)
+  (= (. root suffix) "!")
+  (call (. root markup-batch-queue checkpoint))
+  (print (. mirror text))
+)
 
--- mirror.text
-root.markup-batch-queue.checkpoint()
--- mirror.text
+(type + Mirror (is Box)
+  (prop + owner (of Ancestor QueryRoot))
+  (prop + text _ (= (?? (?. #owner #label) "none")))
+)
 
-root.title = "renamed"
--- mirror.text
-root.markup-batch-queue.checkpoint()
--- mirror.text
-
-root.suffix = "!"
-root.markup-batch-queue.checkpoint()
--- mirror.text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mirror is Box
-
-+ owner Ancestor'QueryRoot
-+ text = #owner?.#label ?? "none"
-
-━━━━━━━━━━━━━━━━━━━━
-+ QueryRoot is Box
-    is MarkupRootElement
-
-+ title = "root"
-+ suffix = ""
-+ label = #title + #suffix
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + QueryRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + title _ (= "root"))
+  (prop + suffix _ (= ""))
+  (prop + label _ (= (+ #title #suffix)))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 ```
 
 ```output
@@ -2896,42 +2812,40 @@ renamed
 renamed!
 ```
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. root = ProbeRoot()
-. parent = Probe()
-. child = Probe()
-markup-append(root, parent)
-markup-append(parent, child)
--- "${parent.mounted-count} ${child.mounted-count}"
+(main
+  (let root (call ProbeRoot))
+  (let parent (call Probe))
+  (let child (call Probe))
+  (call markup-append root parent)
+  (call markup-append parent child)
+  (print (str (. parent mounted-count) " " (. child mounted-count)))
+  (blank)
+  (call markup-mount-root root root)
+  (print (str (. parent mounted-count) " " (. child mounted-count)))
+  (blank)
+  (call markup-mount-root root root)
+  (print (str (. parent mounted-count) " " (. child mounted-count)))
+)
 
-markup-mount-root(root, root)
--- "${parent.mounted-count} ${child.mounted-count}"
+(type + ProbeRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-markup-mount-root(root, root)
--- "${parent.mounted-count} ${child.mounted-count}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ ProbeRoot is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Probe is Box
-
-+ mounted-count = 0
-
-────────────────────
-+ do mounted
-
-mounted-count += 1
+(type + Probe (is Box)
+  (prop + mounted-count _ (= 0))
+  (fn-do + mounted _
+    (+= mounted-count 1)
+  )
+)
 ```
 
 ```output
@@ -2942,63 +2856,56 @@ mounted-count += 1
 
 ### An if line that matches a pattern runs its body as content of the element.
 
-```yumi
-. item Item = Note("one")
-<Window win
-    if | note Note = item
-        <Label = note.text
-    else if | mark Mark = item
-        <Label = "mark"
+```brix
+(main
+  (let item Item (call Note "one"))
+  (<> Window (id: win)
+    (if (= (| (: note Note)) item)
+      (<> Label (value: (. note text)))
+      (else-if (= (| (: mark Mark)) item)
+        (<> Label (value: "mark"))
+      )
+    )
+  )
+  (blank)
+  (print (. win contents))
+)
 
--- win.contents
+(type + Item (is Union)
+  (variant Note)
+  (variant Mark)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
+(type + Note
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-| Note
-| Mark
+(type + Mark
+  (prop + count Int)
+  (fn-do + This _
+    (param count _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Note
+(type + Window
+  (prop + contents (list Label))
+  (fn-do + (infix this += (param child Label)) _
+    (+= contents child)
+  )
+)
 
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mark
-
-+ count Int
-
-────────────────────
-+ This
-    - count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Window
-
-+ contents [Label]
-
-────────────────────
-+ do this += child Label
-
-contents += child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label
-
-+ text String
-
-────────────────────
-+ This
-    - text
-
-────────────────────
-+ to String
-
-"[Label $text]"
+(type + Label
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+  (fn-to-expr + String
+    (str "[Label " text "]")
+  )
+)
 ```
 
 ```output
@@ -3007,78 +2914,77 @@ contents += child
 
 ### Rejects a section of a class with nothing written in it, whether or not the class is used.
 
-```yumi crash
--- 1
+```brix crash
+(main
+  (print 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ count = 1
-
-────────────────────
-
-────────────────────
-+ get doubled
-
-count * 2
+(type + Thing
+  (prop + count _ (= 1))
+  (content)
+  (fn-expr + doubled _ :get
+    (* count 2)
+  )
+)
 ```
 
 ```output
 Exception: Empty content section not permitted
-<no file:9>
-    ────────────────────
-    ^^^^^^^^^^^^^^^^^^^
+<no file:8>
+      (content)
+      ^^^^^^^^^
 ```
 
 ### Rejects a second content section of a class, whether or not the class is used.
 
-```yumi crash
--- 1
+```brix crash
+(main
+  (print 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-
-<This
-
-────────────────────
-
-<This
+(type + Thing
+  (content
+    (<> This)
+  )
+  (content
+    (<> This)
+  )
+)
 ```
 
 ```output
 Exception: Only one content section permitted
-<no file:11>
-    ────────────────────
-    ^^^^^^^^^^^^^^^^^^^
+<no file:10>
+      (content
+      ^^^^^^^
 ```
 
 ### Reads a property a markup element's name declares from another module.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
-./meter
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(import ./meter)
+(blank)
 
-. meter = Meter()
-. fill = meter.fill
--- "read"
+(main
+  (let meter (call Meter))
+  (let fill (. meter fill))
+  (print "read")
+)
 ```
 
-```yumi file=meter.yumi
+```brix file=meter.bx
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
 
-/core/markup
-/core/tests/support/markup-fixtures
-
-━━━━━━━━━━━━━━━━━━━━
-+ Meter is Box
-
-────────────────────
-
-<This
-    <Box fill
-
+(type + Meter (is Box)
+  (content
+    (<> This
+      (<> Box (id: fill))
+    )
+  )
+)
 ```
 
 ```output
@@ -3087,36 +2993,43 @@ read
 
 ### An error the markup of a class raises as it fills an object goes to unhandled-error, and the lines before it stay.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-unhandled-error = :: error => do
-    -- "handled ${error.message}"
+(main
+  (= unhandled-error
+    (=> (error) :do
+      (block
+        (print (str "handled " (. error message)))
+      )
+    )
+  )
+  (blank)
+  (let panel (call Panel))
+  (print (is (!! (. panel %first-child)) Label))
+  (print "made")
+)
 
-. panel = Panel()
--- panel.%first-child! is Label
--- "made"
+(fn-do + parse Int
+  (param text String)
+  (throw (call SyntaxError "bad") (if (== text "x")))
+  (return (. text length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do parse Int
-    - text String
-
-?! SyntaxError("bad")
-    if text == "x"
-= text.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ value = "x"
-
-────────────────────
-
-<This
-    <Label
-        text = "a"
-    <Label
-        text = "${parse(value)}"
+(type + Panel (is Box)
+  (prop + value _ (= "x"))
+  (content
+    (<> This
+      (<> Label
+        (= text "a")
+      )
+      (<> Label
+        (= text (str (call parse value)))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3127,52 +3040,51 @@ made
 
 ### A closure an attribute of a markup element gives reads a member of an element around it through that element's name, from its object when it runs.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = Panel()
-. outer = panel.%first-child! as Item
-. inner = outer.%first-child! as Item
-inner.fire()
--- panel.seen
-outer.title = "changed"
-inner.fire()
--- panel.seen
+(main
+  (let panel (call Panel))
+  (let outer (as (!! (. panel %first-child)) Item))
+  (let inner (as (!! (. outer %first-child)) Item))
+  (call (. inner fire))
+  (print (. panel seen))
+  (= (. outer title) "changed")
+  (call (. inner fire))
+  (print (. panel seen))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Box
+(type + Item (is Box)
+  (prop + title _ (= ""))
+  (prop + run (? Doer))
+  (fn-do + This _
+    (param title _ (= ""))
+  )
+  (fn-do + fire _
+    (let callback run)
+    (if callback
+      (call callback)
+    )
+  )
+)
 
-+ title = ""
-+ run Doer?
-
-────────────────────
-+ This
-    - title = ""
-
-────────────────────
-+ do fire
-
-. callback = run
-if callback
-    callback()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ seen = ""
-
-────────────────────
-
-<This
-    <Item outer "outer"
-        <Item "inner"
-            run = => do note(outer.title)
-
-────────────────────
-+ do note
-    - text String
-
-seen = text
+(type + Panel (is Box)
+  (prop + seen _ (= ""))
+  (content
+    (<> This
+      (<> Item (id: outer) (text: "outer")
+        (<> Item (text: "inner")
+          (= run (=> () :do (call note (. outer title))))
+        )
+      )
+    )
+  )
+  (fn-do + note _
+    (param text String)
+    (= seen text)
+  )
+)
 ```
 
 ```output
@@ -3182,31 +3094,31 @@ changed
 
 ### A read of a markup link written after `?` reads from what the link before it holds, and gives nothing where that holds nothing.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = Panel()
--- panel.grandchild() != null
--- panel.great-grandchild() != null
+(main
+  (let panel (call Panel))
+  (print (!= (call (. panel grandchild)) null))
+  (print (!= (call (. panel great-grandchild)) null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-────────────────────
-
-<This
-    <Box
-        <Box
-
-────────────────────
-+ do grandchild Box?
-
-= %first-child?.%first-child
-
-────────────────────
-+ do great-grandchild Box?
-
-= %first-child?.%first-child?.%first-child
+(type + Panel (is Box)
+  (content
+    (<> This
+      (<> Box
+        (<> Box)
+      )
+    )
+  )
+  (fn-do + grandchild (? Box)
+    (return (?. %first-child %first-child))
+  )
+  (fn-do + great-grandchild (? Box)
+    (return (?. (?. %first-child %first-child) %first-child))
+  )
+)
 ```
 
 ```output
@@ -3216,46 +3128,50 @@ false
 
 ### A loop on a stream in the body of a markup element subscribes to the element's event, and reads the scope outside the element as its attributes do: the item of the loop around it, not the element's member of that name.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = Panel()
-. first = panel.%first-child! as Item
-. second = first.%next-sibling! as Item
-first.clicked <- 3
-second.clicked <- 4
-do new
-    -- panel.seen
-    second.tag = "changed"
-    second.clicked <- 5
-    do new
-        -- panel.seen
+(main
+  (let panel (call Panel))
+  (let first (as (!! (. panel %first-child)) Item))
+  (let second (as (!! (. first %next-sibling)) Item))
+  (<- (. first clicked) 3)
+  (<- (. second clicked) 4)
+  (do-new
+    (print (. panel seen))
+    (= (. second tag) "changed")
+    (<- (. second clicked) 5)
+    (do-new
+      (print (. panel seen))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Box
+(type + Item (is Box)
+  (prop + tag _ (= ""))
+  (event + clicked Int)
+)
 
-+ tag = ""
-+ event clicked Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ seen = ""
-
-────────────────────
-
-<This
-    for tag in ["a", "b"]
-        <Item
-            tag = tag ++ "!"
-            for n on clicked
-                note("$tag $n")
-
-────────────────────
-+ do note
-    - text String
-
-seen = seen ++ text ++ ";"
+(type + Panel (is Box)
+  (prop + seen _ (= ""))
+  (content
+    (<> This
+      (for (in tag (list "a" "b"))
+        (<> Item
+          (= tag (++ tag "!"))
+          (for (on n clicked)
+            (call note (str tag " " n))
+          )
+        )
+      )
+    )
+  )
+  (fn-do + note _
+    (param text String)
+    (= seen (++ seen text ";"))
+  )
+)
 ```
 
 ```output
@@ -3265,49 +3181,46 @@ a 3;b 4;b 5;
 
 ### A descendant query of a class with type parameters looks for its target for the parameters the object's class gives it.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<MarkerRoot'Int root
+(main
+  (<> (of MarkerRoot Int) (id: root))
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (print (. root markers length))
+  (print (call (. "|" join) (in (str (. each value)) (. root markers))))
+)
 
-root.markup-batch-queue.checkpoint()
--- root.markers.length
--- "|".join("${each.value}" in root.markers)
+(type + (of Marker T) (is Box)
+  (prop + value T)
+  (fn-do + This _
+    (param value T)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Marker'T is Box
-
-+ value T
-
-────────────────────
-+ This
-    - value T
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkerRoot'T is Box
-    is MarkupRootElement
-
-+ markers Descendants'(Marker'T)
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-────────────────────
-
-<This
-    <Marker'T = 1 as T
-    <Box
-        <Marker'T = 2 as T
+(type + (of MarkerRoot T) (is Box)
+  (implements MarkupRootElement)
+  (prop + markers (of Descendants (of Marker T)))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+  (content
+    (<> This
+      (<> (of Marker T) (value: (as 1 T)))
+      (<> Box
+        (<> (of Marker T) (value: (as 2 T)))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3317,43 +3230,41 @@ markup-mount-root(this, this)
 
 ### A descendant query of a class with type parameters, made by a call, finds the objects of a class whose constructor was compiled before the query's class was made for it.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. early = Leaf()
-. root = Finder'Leaf()
+(main
+  (let early (call Leaf))
+  (let root (call (of Finder Leaf)))
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (print (. root found length))
+)
 
-root.markup-batch-queue.checkpoint()
--- root.found.length
+(type + Leaf (is Box))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Finder'T is Box
-    is MarkupRootElement
-
-+ found Descendants'T
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-────────────────────
-
-<This
-    <Leaf
-    <Box
-        <Leaf
+(type + (of Finder T) (is Box)
+  (implements MarkupRootElement)
+  (prop + found (of Descendants T))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+  (content
+    (<> This
+      (<> Leaf)
+      (<> Box
+        (<> Leaf)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3362,96 +3273,93 @@ markup-mount-root(this, this)
 
 ### A tracked read in a closure an attribute gives is an error, as the closure runs outside the attribute's live value.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = Panel()
-. item = panel.%first-child! as Item
-item.fire()
--- panel.seen
-panel.count = 4
-item.fire()
--- panel.seen
-panel.count = 6
-item.fire()
--- panel.seen
+(main
+  (let panel (call Panel))
+  (let item (as (!! (. panel %first-child)) Item))
+  (call (. item fire))
+  (print (. panel seen))
+  (= (. panel count) 4)
+  (call (. item fire))
+  (print (. panel seen))
+  (= (. panel count) 6)
+  (call (. item fire))
+  (print (. panel seen))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Box
+(type + Item (is Box)
+  (prop + run (? Doer))
+  (fn-do + fire _
+    (let callback run)
+    (if callback
+      (call callback)
+    )
+  )
+)
 
-+ run Doer?
-
-────────────────────
-+ do fire
-
-. callback = run
-if callback
-    callback()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ seen = ""
-+ count = 1
-
-────────────────────
-
-<This
-    <Item
-        run = => do note("count ${#count}")
-
-────────────────────
-+ do note
-    - text String
-
-seen = text
+(type + Panel (is Box)
+  (prop + seen _ (= ""))
+  (prop + count _ (= 1))
+  (content
+    (<> This
+      (<> Item
+        (= run (=> () :do (call note (str "count " #count))))
+      )
+    )
+  )
+  (fn-do + note _
+    (param text String)
+    (= seen text)
+  )
+)
 ```
 
 ```output
 Exception: "#count" tracks nothing here: a read is followed only where it is written directly in a live value, such as markup, a derived property, a rule or a live statement. Write "count" to read it plainly, or read "#count" in the live value and pass it in as an argument
-<no file:37>
-            run = => do note("count ${#count}")
-                                      ^^^^^^
+<no file:34>
+            (= run (=> () :do (call note (str "count " #count))))
+                                                       ^^^^^^
 ```
 
 ### An attribute a setter answers is given again when the tracked state its value reads changes.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = Panel()
-. item = panel.%first-child! as Item
--- "${item.calls} ${item.last}"
-panel.count = 4
--- "${item.calls} ${item.last}"
+(main
+  (let panel (call Panel))
+  (let item (as (!! (. panel %first-child)) Item))
+  (print (str (. item calls) " " (. item last)))
+  (= (. panel count) 4)
+  (print (str (. item calls) " " (. item last)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Box
+(type + Item (is Box)
+  (prop + calls _ (= 0))
+  (prop + last _ (= 0))
+  (fn-expr + shown Int :get
+    last
+  )
+  (fn-do + shown _ :set (param value Int)
+    (+= calls 1)
+    (= last value)
+  )
+)
 
-+ calls = 0
-+ last = 0
-
-────────────────────
-+ get shown Int
-
-last
-
-────────────────────
-+ do shown = value Int
-
-calls += 1
-last = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ count = 1
-
-────────────────────
-
-<This
-    <Item
-        shown = #count * 10
+(type + Panel (is Box)
+  (prop + count _ (= 1))
+  (content
+    (<> This
+      (<> Item
+        (= shown (* #count 10))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3461,44 +3369,40 @@ last = value
 
 ### The body of a `whenever` rule on a value runs only once the value changes, after the markup has made the element it reads by name.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
--- "made ${demo.inner.count}"
-demo.owner.stamp = 5
--- "after ${demo.inner.count}"
+(main
+  (<> Demo (id: demo))
+  (print (str "made " (. demo inner count)))
+  (= (. demo owner stamp) 5)
+  (print (str "after " (. demo inner count)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Owner
+(type + Owner
+  (prop + stamp U64 (= 0))
+)
 
-+ stamp U64 = 0
+(type + Inner (is Box)
+  (prop + count _ (= 0))
+  (fn-do + reload _
+    (+= count 1)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Inner is Box
-
-+ count = 0
-
-────────────────────
-+ do reload
-
-count += 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ owner = Owner()
-
-────────────────────
-
-<This
-    <Inner inner
-
-────────────────────
-whenever owner.#stamp
-
--- "rule ran"
-inner.reload()
+(type + Demo (is Box)
+  (prop + owner _ (= (call Owner)))
+  (content
+    (<> This
+      (<> Inner (id: inner))
+    )
+  )
+  (whenever-rule (. owner #stamp)
+    (print "rule ran")
+    (call (. inner reload))
+  )
+)
 ```
 
 ```output
@@ -3509,31 +3413,31 @@ after 1
 
 ### A property a markup element sets that also names an untyped argument of the constructor of a class above the element's class is given to the constructor.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Row row
-    note = "first"
-    title = "hello"
+(main
+  (<> Row (id: row)
+    (= note "first")
+    (= title "hello")
+  )
+  (blank)
+  (print (str (. row note) " " (. row title)))
+)
 
--- "${row.note} ${row.title}"
+(type + Tag (is Box)
+  (prop + title String)
+  (fn-do + This _
+    (param title _ (= ""))
+    (= (. this title) title)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tag is Box
-
-+ title String
-
-────────────────────
-+ This
-    - title = ""
-
-this.title = title
-
-━━━━━━━━━━━━━━━━━━━━
-+ Row is Tag
-
-+ note String
+(type + Row (is Tag)
+  (prop + note String)
+)
 ```
 
 ```output
@@ -3542,316 +3446,339 @@ first hello
 
 ### An event of a markup element is no value: a handler in the element's body that declares a local of it is an error at the event.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = Panel()
+(main
+  (let panel (call Panel))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
+(type + Panel (is Box)
+  (prop + seen _ (= ""))
+  (content
+    (<> This
+      (<> Button (id: button)
+        (for (on event press)
+          (let pressed (. button press))
+          (= seen "pressed")
+        )
+      )
+    )
+  )
+)
 
-+ seen = ""
-
-────────────────────
-
-<This
-    <Button button
-        for event on press
-            . pressed = button.press
-            seen = "pressed"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Button is Box
-
-+ event press Int
+(type + Button (is Box)
+  (event + press Int)
+)
 ```
 
 ```output
 Exception: "press" is an event of Button; it cannot be used as a value
-<no file:16>
-                . pressed = button.press
-                            ^^^^^^^^^^^^
+<no file:15>
+              (let pressed (. button press))
+                           ^^^^^^^^^^^^^^^^
 ```
 
 ### An event of a markup element is no value: a handler in the element's body that prints it is an error at the event.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = Panel()
+(main
+  (let panel (call Panel))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
+(type + Panel (is Box)
+  (content
+    (<> This
+      (<> Button (id: button)
+        (for (on event press)
+          (print (. button press))
+        )
+      )
+    )
+  )
+)
 
-────────────────────
-
-<This
-    <Button button
-        for event on press
-            -- button.press
-
-━━━━━━━━━━━━━━━━━━━━
-+ Button is Box
-
-+ event press Int
+(type + Button (is Box)
+  (event + press Int)
+)
 ```
 
 ```output
 Exception: "press" is an event of Button; it cannot be used as a value
 <no file:14>
-                -- button.press
-                   ^^^^^^^^^^^^
+              (print (. button press))
+                     ^^^^^^^^^^^^^^^^
 ```
 
 ### An event given to a parameter of a type its endpoint is not, which only converting it as a value could give, is an error at the event.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. button = Button()
-button.describe()
+(main
+  (let button (call Button))
+  (call (. button describe))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Button is Box
-
-+ event press Int
-
-────────────────────
-+ do describe
-
-note(press)
-
-────────────────────
-+ do note
-    - items Iterable'Int
-
-for item in items
-    -- item
+(type + Button (is Box)
+  (event + press Int)
+  (fn-do + describe _
+    (call note press)
+  )
+  (fn-do + note _
+    (param items (of Iterable Int))
+    (for (in item items)
+      (print item)
+    )
+  )
+)
 ```
 
 ```output
 Exception: "press" is an event of Button; it cannot be used as a value
-<no file:15>
-    note(press)
-         ^^^^^
+<no file:13>
+        (call note press)
+                   ^^^^^
 ```
 
 ### An event of a markup element is no value: a handler in the element's body that assigns it to a property of another type is an error at the event.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = Panel()
+(main
+  (let panel (call Panel))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
+(type + Panel (is Box)
+  (prop + count _ (= 0))
+  (content
+    (<> This
+      (<> Button (id: button)
+        (for (on event press)
+          (= count (. button press))
+        )
+      )
+    )
+  )
+)
 
-+ count = 0
-
-────────────────────
-
-<This
-    <Button button
-        for event on press
-            count = button.press
-
-━━━━━━━━━━━━━━━━━━━━
-+ Button is Box
-
-+ event press Int
+(type + Button (is Box)
+  (event + press Int)
+)
 ```
 
 ```output
 Exception: "press" is an event of Button; it cannot be used as a value
-<no file:16>
-                count = button.press
-                        ^^^^^^^^^^^^
+<no file:15>
+              (= count (. button press))
+                       ^^^^^^^^^^^^^^^^
 ```
 
 ### An event of a markup element is no value: a handler in the element's body that makes it an item of a list is an error at the event.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = Panel()
+(main
+  (let panel (call Panel))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
+(type + Panel (is Box)
+  (prop + seen _ (= 0))
+  (content
+    (<> This
+      (<> Button (id: button)
+        (for (on event press)
+          (let all (list (. button press)))
+          (= seen (. all length))
+        )
+      )
+    )
+  )
+)
 
-+ seen = 0
-
-────────────────────
-
-<This
-    <Button button
-        for event on press
-            . all = [button.press]
-            seen = all.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ Button is Box
-
-+ event press Int
+(type + Button (is Box)
+  (event + press Int)
+)
 ```
 
 ```output
 Exception: "press" is an event of Button; it cannot be used as a value
-<no file:16>
-                . all = [button.press]
-                         ^^^^^^^^^^^^
+<no file:15>
+              (let all (list (. button press)))
+                             ^^^^^^^^^^^^^^^^
 ```
 
 ### An event is no value: one made a field of a tuple is an error at the event.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. button = Button()
-button.describe()
+(main
+  (let button (call Button))
+  (call (. button describe))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Button is Box
-
-+ event press Int
-
-────────────────────
-+ do describe
-
-. pair = (press, 1)
--- "made"
+(type + Button (is Box)
+  (event + press Int)
+  (fn-do + describe _
+    (let pair (tuple press 1))
+    (print "made")
+  )
+)
 ```
 
 ```output
 Exception: "press" is an event of Button; it cannot be used as a value
-<no file:15>
-    . pair = (press, 1)
-              ^^^^^
+<no file:13>
+        (let pair (tuple press 1))
+                         ^^^^^
 ```
 
 ### An event of a markup element is no value: a handler in the element's body that casts it to a type its endpoint is not is an error at the event.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = Panel()
+(main
+  (let panel (call Panel))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
+(type + Panel (is Box)
+  (prop + seen _ (= ""))
+  (content
+    (<> This
+      (<> Button (id: button)
+        (for (on event press)
+          (= seen (as (. button press) String))
+        )
+      )
+    )
+  )
+)
 
-+ seen = ""
-
-────────────────────
-
-<This
-    <Button button
-        for event on press
-            seen = button.press as String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Button is Box
-
-+ event press Int
+(type + Button (is Box)
+  (event + press Int)
+)
 ```
 
 ```output
 Exception: "press" is an event of Button; it cannot be used as a value
-<no file:16>
-                seen = button.press as String
-                       ^^^^^^^^^^^^
+<no file:15>
+              (= seen (as (. button press) String))
+                          ^^^^^^^^^^^^^^^^
 ```
 
 ### An event of a markup element is no value: a handler in the element's body that gives it to a parameter of a type its endpoint is not is an error at the event.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = Panel()
+(main
+  (let panel (call Panel))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
+(type + Panel (is Box)
+  (prop + seen _ (= ""))
+  (content
+    (<> This
+      (<> Button (id: button)
+        (for (on event press)
+          (call record (. button press))
+        )
+      )
+    )
+  )
+  (fn-do + record _
+    (param items (of Iterable Int))
+    (for (in item items)
+      (= seen (str item))
+    )
+  )
+)
 
-+ seen = ""
-
-────────────────────
-
-<This
-    <Button button
-        for event on press
-            record(button.press)
-
-────────────────────
-+ do record
-    - items Iterable'Int
-
-for item in items
-    seen = "$item"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Button is Box
-
-+ event press Int
+(type + Button (is Box)
+  (event + press Int)
+)
 ```
 
 ```output
 Exception: "press" is an event of Button; it cannot be used as a value
-<no file:16>
-                record(button.press)
-                       ^^^^^^^^^^^^
+<no file:15>
+              (call record (. button press))
+                           ^^^^^^^^^^^^^^^^
 ```
 
 ### An event is no value: an attribute of a markup element that gives it to a property of another type is an error at the event.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = Panel()
+(main
+  (let panel (call Panel))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
+(type + Panel (is Box)
+  (event + poke Int)
+  (content
+    (<> This
+      (<> Button
+        (= count poke)
+      )
+    )
+  )
+)
 
-+ event poke Int
-
-────────────────────
-
-<This
-    <Button
-        count = poke
-
-━━━━━━━━━━━━━━━━━━━━
-+ Button is Box
-
-+ count = 0
+(type + Button (is Box)
+  (prop + count _ (= 0))
+)
 ```
 
 ```output
 Exception: "poke" is an event of Panel; it cannot be used as a value
-<no file:15>
-            count = poke
-                    ^^^^
+<no file:14>
+            (= count poke)
+                     ^^^^
 ```
 
 ### A tracked property of the class, tested in an element nested in another, holds a value later in the same expression.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
+(main
+  (<> Demo (id: demo))
+  (blank)
+  (print (. (as (!! (. (!! (. demo %first-child)) %first-child)) TextBox) text))
+  (= (. demo limit) 1)
+  (print (. (as (!! (. (!! (. demo %first-child)) %first-child)) TextBox) text))
+)
 
--- (demo.%first-child!.%first-child! as TextBox).text
-demo.limit = 1
--- (demo.%first-child!.%first-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ limit Int?
-
-────────────────────
-
-<This
-    <Box
-        <TextBox
-            text = "${#limit != null && 2 >= #limit}"
+(type + Demo (is Box)
+  (prop + limit (? Int))
+  (content
+    (<> This
+      (<> Box
+        (<> TextBox
+          (= text (str (and (!= #limit null) (>= 2 #limit))))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3861,64 +3788,66 @@ true
 
 ### A markup element whose class declares only constructors that take arguments must give them; a name after the class names the element, even where a local of that name is in scope.
 
-```yumi compile-error
-Host()
+```brix compile-error
+(main
+  (call Host)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (fn-do + (infix this += (param child Box)) _
+    (return child)
+  )
+)
 
-────────────────────
-+ do this += child Box
+(type + Row (is Box)
+  (prop + index Int)
+  (fn-do + This _
+    (param index _)
+  )
+)
 
-= child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Row is Box
-
-+ index Int
-
-────────────────────
-+ This
-    - index
-
-━━━━━━━━━━━━━━━━━━━━
-+ Host is Box
-
-────────────────────
-
-<This
-    for index in 0 .. < 3
-        <Row index
+(type + Host (is Box)
+  (content
+    (<> This
+      (for (in index (..< 0 3))
+        (<> Row (id: index))
+      )
+    )
+  )
+)
 ```
 
 ```output
 Exception: Markup element <Row gives no value for "index", which the constructor of Row requires; "index" after <Row names the element
-<no file:28>
-            <Row index
-             ^^^
+<no file:23>
+            (<> Row (id: index))
+                ^^^
 ```
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. demo = Demo()
+(main
+  (let demo (call Demo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
+(type + Pane (is Box)
+  (prop + value Int (= 2))
+)
 
-+ value Int = 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ count => pane.value
-
-────────────────────
-
-<This
-    <Pane pane
-        for index in 0 .. < count
-            <Label "$index"
+(type + Demo (is Box)
+  (prop + count _ (=> (. pane value)))
+  (content
+    (<> This
+      (<> Pane (id: pane)
+        (for (in index (..< 0 count))
+          (<> Label (text: (str index)))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```stderr
@@ -3928,32 +3857,32 @@ Unhandled panic: Named markup element "pane" is read before its markup construct
 Task 1
 
 Stack trace:
-  0  __source__:Demo:count no file:14:12
-  1  __source__:content no file:20:29
-  2  __source__:Demo:Demo no file:12:1
-  3  __source__:main no file:4:10
+  0  __source__:Demo:count no file:14:26
+  1  __source__:content no file:18:31
+  2  __source__:Demo:Demo no file:13:1
+  3  __source__:main no file:6:13
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
 ### A statement above a named element that reads its name makes the element there, once.
 
-```yumi
--- "before"
--- thing.name
-<Thing thing
-    name = "made early"
--- thing.name
+```brix
+(main
+  (print "before")
+  (print (. thing name))
+  (<> Thing (id: thing)
+    (= name "made early")
+  )
+  (print (. thing name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ name = "unnamed"
-
-────────────────────
-+ This
-
--- "constructed"
+(type + Thing
+  (prop + name _ (= "unnamed"))
+  (fn-do + This _
+    (print "constructed")
+  )
+)
 ```
 
 ```output
@@ -3965,35 +3894,34 @@ made early
 
 ### A named element in a function body reads the locals declared above it, and so do the named lines of its body.
 
-```yumi
--- make().inner!.name
+```brix
+(main
+  (print (. (!! (. (call make) inner)) name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Holder
+(fn-do + make Holder
+  (let label "inner label")
+  (<> Holder (id: holder)
+    (= title label)
+    (<> Thing (id: inner)
+      (= name (str label "!"))
+    )
+  )
+  (print (. holder title))
+  (return holder)
+)
 
-. label = "inner label"
-<Holder holder
-    title = label
-    <Thing inner
-        name = "${label}!"
--- holder.title
-= holder
+(type + Holder
+  (prop + title _ (= ""))
+  (prop + inner (? Thing))
+  (fn-do + (infix this += (param item Thing)) _
+    (= inner item)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ title = ""
-+ inner Thing?
-
-────────────────────
-+ do this += item Thing
-
-inner = item
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ name = "unnamed"
+(type + Thing
+  (prop + name _ (= "unnamed"))
+)
 ```
 
 ```output
@@ -4003,37 +3931,36 @@ inner label!
 
 ### An optional chain reads a named element another class's markup declares.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. reader = Reader()
--- reader.inner-text()
-reader.holder = Holder()
--- reader.inner-text()
+(main
+  (let reader (call Reader))
+  (print (call (. reader inner-text)))
+  (= (. reader holder) (call Holder))
+  (print (call (. reader inner-text)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Inner is Box
+(type + Inner (is Box)
+  (prop + text _ (= "inner"))
+)
 
-+ text = "inner"
+(type + Holder (is Box)
+  (content
+    (<> This
+      (<> Inner (id: inner))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-────────────────────
-
-<This
-    <Inner inner
-
-━━━━━━━━━━━━━━━━━━━━
-+ Reader
-
-+ holder Holder?
-
-────────────────────
-+ do inner-text String
-
-= holder?.inner.text ?? "none"
+(type + Reader
+  (prop + holder (? Holder))
+  (fn-do + inner-text String
+    (return (?? (. (?. holder inner) text) "none"))
+  )
+)
 ```
 
 ```output
@@ -4043,39 +3970,40 @@ inner
 
 ### A live statement that sets a property of a markup element follows what its value reads: the element's action runs at once where the element has no batch root, and with its root's batch where it has one.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. counter = Counter()
-. loose = Label()
-loose.text = "loose ${counter.#count}"
+(main
+  (let counter (call Counter))
+  (let loose (call Label))
+  (= (. loose text) (str "loose " (. counter #count)))
+  (blank)
+  (<> Demo (id: demo)
+    (<> Label (id: label))
+  )
+  (blank)
+  (= (. label text) (str "held " (. counter #count)))
+  (call (. demo markup-batch-queue checkpoint))
+  (= (. counter count) 3)
+  (print (. loose text))
+  (print (. label text))
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. label text))
+)
 
-<Demo demo
-    <Label label
+(type + Counter
+  (prop + count Int)
+)
 
-label.text = "held ${counter.#count}"
-demo.markup-batch-queue.checkpoint()
-counter.count = 3
--- loose.text
--- label.text
-demo.markup-batch-queue.checkpoint()
--- label.text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
-
-+ count Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + Demo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 ```
 
 ```output
@@ -4086,41 +4014,42 @@ held 3
 
 ### A tracked read of each item of a pipeline that a call in an attribute works out is followed: the attribute is given again as an item changes.
 
-```yumi
-/core/tests/support/markup-fixtures
-/stream/aggregate
+```brix
+(import /core/tests/support/markup-fixtures)
+(import /stream/aggregate)
+(blank)
 
-. source = Source()
-<Counter c
-    value = count(each in source.#items when each.#is-pending)
+(main
+  (let source (call Source))
+  (<> Counter (id: c)
+    (= value (call count (in each (. source #items) (when (. each #is-pending)))))
+  )
+  (blank)
+  (print (. c value))
+  (= (. ([] (. source items) 0) is-pending) false)
+  (print (. c value))
+  (= (. ([] (. source items) 1) is-pending) false)
+  (print (. c value))
+  (let added (call Item))
+  (+= (. source items) added)
+  (print (. c value))
+  (= (. added is-pending) false)
+  (print (. c value))
+  (= (. ([] (. source items) 0) is-pending) true)
+  (print (. c value))
+)
 
--- c.value
-source.items[0].is-pending = false
--- c.value
-source.items[1].is-pending = false
--- c.value
-. added = Item()
-source.items += added
--- c.value
-added.is-pending = false
--- c.value
-source.items[0].is-pending = true
--- c.value
+(type + Item
+  (prop + is-pending _ (= true))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item
+(type + Source
+  (prop + items _ (= (list (call Item) (call Item))))
+)
 
-+ is-pending = true
-
-━━━━━━━━━━━━━━━━━━━━
-+ Source
-
-+ items = [Item(), Item()]
-
-━━━━━━━━━━━━━━━━━━━━
-+ Counter is Box
-
-+ value = 0
+(type + Counter (is Box)
+  (prop + value _ (= 0))
+)
 ```
 
 ```output
@@ -4134,39 +4063,47 @@ source.items[0].is-pending = true
 
 ### A closure in a function's markup reads a named element the function makes after it, a child of its own element included, when it runs. So does a task the closure starts.
 
-```yumi
-run()
+```brix
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (<> Box (id: tool)
+    (= run (=> () :do (print (str "tool reads " (. seed text)))))
+    (<> Box (id: seed)
+      (= text "seed")
+    )
+    (<> Box (id: go)
+      (= run
+        (=> () :do
+          (block
+            (do-new
+              (print (str "task reads " (. note text)))
+            )
+          )
+        )
+      )
+    )
+    (<> Box (id: note)
+      (= text "note")
+    )
+  )
+  (call (. tool fire))
+  (call (. go fire))
+)
 
-<Box tool
-    run = => do -- "tool reads ${seed.text}"
-    <Box seed
-        text = "seed"
-    <Box go
-        run = => do
-            do new
-                -- "task reads ${note.text}"
-    <Box note
-        text = "note"
-tool.fire()
-go.fire()
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ run Doer?
-+ text = "box"
-
-────────────────────
-+ do this += child Box
-
-────────────────────
-+ do fire
-
-. callback = run
-if callback
-    callback()
+(type + Box
+  (prop + run (? Doer))
+  (prop + text _ (= "box"))
+  (fn-do + (infix this += (param child Box)) _)
+  (fn-do + fire _
+    (let callback run)
+    (if callback
+      (call callback)
+    )
+  )
+)
 ```
 
 ```output
@@ -4176,36 +4113,37 @@ task reads note
 
 ### Two closures in a function's markup read each other's elements, and a closure reads the element it is an attribute of.
 
-```yumi
-run()
+```brix
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (<> Box
+    (<> Box (id: yes)
+      (= text "yes")
+      (= run (=> () :do (print (str "yes reads " (. no text)))))
+    )
+    (<> Box (id: no)
+      (= text "no")
+      (= run (=> () :do (print (str "no reads " (. yes text) " and " (. no text)))))
+    )
+  )
+  (call (. yes fire))
+  (call (. no fire))
+)
 
-<Box
-    <Box yes
-        text = "yes"
-        run = => do -- "yes reads ${no.text}"
-    <Box no
-        text = "no"
-        run = => do -- "no reads ${yes.text} and ${no.text}"
-yes.fire()
-no.fire()
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ run Doer?
-+ text = "box"
-
-────────────────────
-+ do this += child Box
-
-────────────────────
-+ do fire
-
-. callback = run
-if callback
-    callback()
+(type + Box
+  (prop + run (? Doer))
+  (prop + text _ (= "box"))
+  (fn-do + (infix this += (param child Box)) _)
+  (fn-do + fire _
+    (let callback run)
+    (if callback
+      (call callback)
+    )
+  )
+)
 ```
 
 ```output
@@ -4215,41 +4153,42 @@ no reads yes and no
 
 ### A closure in a function's markup that runs before the element it reads is made panics.
 
-```yumi crash
-run()
+```brix crash
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (<> Box
+    (<> Box (id: first)
+      (= run (=> () :do (print (str "first reads " (. second text)))))
+    )
+    (<> Box (id: middle)
+      (= text (call call-first first))
+    )
+    (<> Box (id: second)
+      (= text "second")
+    )
+  )
+)
 
-<Box
-    <Box first
-        run = => do -- "first reads ${second.text}"
-    <Box middle
-        text = call-first(first)
-    <Box second
-        text = "second"
+(fn-do + call-first String
+  (param box Box)
+  (call (. box fire))
+  (return "middle")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do call-first String
-    - box Box
-
-box.fire()
-= "middle"
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ run Doer?
-+ text = "box"
-
-────────────────────
-+ do this += child Box
-
-────────────────────
-+ do fire
-
-. callback = run
-if callback
-    callback()
+(type + Box
+  (prop + run (? Doer))
+  (prop + text _ (= "box"))
+  (fn-do + (infix this += (param child Box)) _)
+  (fn-do + fire _
+    (let callback run)
+    (if callback
+      (call callback)
+    )
+  )
+)
 ```
 
 ```stderr
@@ -4259,180 +4198,180 @@ Unhandled panic: Named markup element "second" is read before its markup constru
 Task 1
 
 Stack trace:
-  0  __source__:run no file:9:39
-  1  __source__:runCasting no file:9:9
-  2  __source__:Box:fire no file:35:5
-  3  __source__:call-first no file:19:1
-  4  __source__:run no file:11:16
-  5  __source__:main no file:2:1
+  0  __source__:run no file:9:55
+  1  __source__:runCasting no file:9:7
+  2  __source__:Box:fire no file:33:7
+  3  __source__:call-first no file:22:3
+  4  __source__:run no file:12:15
+  5  __source__:main no file:3:3
   6  __source__:init.__source__ no file
   7  __source__:brix.main no file
 ```
 
 ### A closure in class content that runs before the element it reads is made panics.
 
-```yumi crash
-. panel = Panel()
+```brix crash
+(main
+  (let panel (call Panel))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
+(type + Panel (is Box)
+  (content
+    (<> This
+      (<> Box (id: first)
+        (= run (=> () :do (print (str "first reads " (. second text)))))
+      )
+      (<> Box (id: middle)
+        (= text (call call-first first))
+      )
+      (<> Box (id: second)
+        (= text "second")
+      )
+    )
+  )
+)
 
-────────────────────
+(fn-do + call-first String
+  (param box Box)
+  (call (. box fire))
+  (return "middle")
+)
 
-<This
-    <Box first
-        run = => do -- "first reads ${second.text}"
-    <Box middle
-        text = call-first(first)
-    <Box second
-        text = "second"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do call-first String
-    - box Box
-
-box.fire()
-= "middle"
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ run Doer?
-+ text = "box"
-
-────────────────────
-+ do this += child Box
-
-────────────────────
-+ do fire
-
-. callback = run
-if callback
-    callback()
+(type + Box
+  (prop + run (? Doer))
+  (prop + text _ (= "box"))
+  (fn-do + (infix this += (param child Box)) _)
+  (fn-do + fire _
+    (let callback run)
+    (if callback
+      (call callback)
+    )
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: Named markup element "second" is read before its markup constructs it
-<no file:11>
+<no file:10>
 
 Task 1
 
 Stack trace:
-  0  __source__:run no file:11:39
-  1  __source__:runCasting no file:11:9
-  2  __source__:Box:fire no file:37:5
-  3  __source__:call-first no file:21:1
-  4  __source__:content no file:13:16
-  5  __source__:Panel:Panel no file:5:1
-  6  __source__:main no file:2:11
+  0  __source__:run no file:10:57
+  1  __source__:runCasting no file:10:9
+  2  __source__:Box:fire no file:35:7
+  3  __source__:call-first no file:24:3
+  4  __source__:content no file:13:17
+  5  __source__:Panel:Panel no file:6:1
+  6  __source__:main no file:3:14
   7  __source__:init.__source__ no file
   8  __source__:brix.main no file
 ```
 
 ### A task a function starts before its markup cannot read an element the markup makes, as the task keeps what it reads when it starts.
 
-```yumi compile-error
-run()
+```brix compile-error
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (do-new
+    (print (. note text))
+  )
+  (<> Box
+    (<> Box (id: note)
+      (= text "note")
+    )
+  )
+)
 
-do new
-    -- note.text
-<Box
-    <Box note
-        text = "note"
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ run Doer?
-+ text = "box"
-
-────────────────────
-+ do this += child Box
-
-────────────────────
-+ do fire
-
-. callback = run
-if callback
-    callback()
+(type + Box
+  (prop + run (? Doer))
+  (prop + text _ (= "box"))
+  (fn-do + (infix this += (param child Box)) _)
+  (fn-do + fire _
+    (let callback run)
+    (if callback
+      (call callback)
+    )
+  )
+)
 ```
 
 ```output
 Exception: Named markup element "note" is read in a task started before its markup constructs it, and a task keeps what it reads as it starts; start the task after the markup
 <no file:8>
-        -- note.text
-           ^^^^
+        (print (. note text))
+                  ^^^^
 ```
 
 ### A closure that reads an element made after it needs the element's type arguments written.
 
-```yumi compile-error
-run()
+```brix compile-error
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (<> Box
+    (<> Box (id: go)
+      (= run (=> () :do (print (str "go reads " (. held value)))))
+    )
+    (<> Holder (id: held) (value: 3))
+  )
+  (call (. go fire))
+)
 
-<Box
-    <Box go
-        run = => do -- "go reads ${held.value}"
-    <Holder held = 3
-go.fire()
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + run (? Doer))
+  (prop + text _ (= "box"))
+  (fn-do + (infix this += (param child Box)) _)
+  (fn-do + fire _
+    (let callback run)
+    (if callback
+      (call callback)
+    )
+  )
+)
 
-+ run Doer?
-+ text = "box"
-
-────────────────────
-+ do this += child Box
-
-────────────────────
-+ do fire
-
-. callback = run
-if callback
-    callback()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder'T is Box
-
-+ value T
-
-────────────────────
-+ This
-    - value T
+(type + (of Holder T) (is Box)
+  (prop + value T)
+  (fn-do + This _
+    (param value T)
+  )
+)
 ```
 
 ```output
 Exception: Named markup element "held" is read in a closure made before its markup constructs it, so it needs its type arguments written after "Holder"
 <no file:9>
-            run = => do -- "go reads ${held.value}"
-                                       ^^^^
+          (= run (=> () :do (print (str "go reads " (. held value)))))
+                                                       ^^^^
 ```
 
 ### A binding with no batch root stores back as the element changes, before the statement that changed it goes on. Its place may be a local.
 
-```yumi
-. level = 5
-<Knob knob
-    value <-> level
--- "${level} ${knob.value}"
-knob.turn(3)
--- "${level} ${knob.value}"
-level = 7
--- "${level} ${knob.value}"
+```brix
+(main
+  (let level 5)
+  (<> Knob (id: knob)
+    (<-> value level)
+  )
+  (print (str level " " (. knob value)))
+  (call (. knob turn) 3)
+  (print (str level " " (. knob value)))
+  (= level 7)
+  (print (str level " " (. knob value)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Knob
-
-+ value = 0
-
-────────────────────
-+ do turn
-    - next Int
-
-value = next
+(type + Knob
+  (prop + value _ (= 0))
+  (fn-do + turn _
+    (param next Int)
+    (= value next)
+  )
+)
 ```
 
 ```output
@@ -4443,78 +4382,70 @@ value = next
 
 ### A binding's place may be a member of another object. A binding converts each way, and where the element holds a number the conversion loses something of, the element is given back what the place holds.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. settings = Settings()
-. panel = Panel(settings)
--- "${settings.volume} ${panel.dial.value} ${panel.steps.n} ${panel.knob.value}"
-panel.dial.turn(3)
-panel.knob.turn(2.6)
--- "${settings.volume} ${panel.dial.value} ${panel.steps.n} ${panel.knob.value}"
-panel.knob.turn(2.2)
--- "${settings.volume} ${panel.dial.value} ${panel.steps.n} ${panel.knob.value}"
-settings.volume = 9
--- "${settings.volume} ${panel.dial.value} ${panel.steps.n} ${panel.knob.value}"
+(main
+  (let settings (call Settings))
+  (let panel (call Panel settings))
+  (print (str (. settings volume) " " (. panel dial value) " " (. panel steps n) " " (. panel knob value)))
+  (call (. panel dial turn) 3)
+  (call (. panel knob turn) 2.6)
+  (print (str (. settings volume) " " (. panel dial value) " " (. panel steps n) " " (. panel knob value)))
+  (call (. panel knob turn) 2.2)
+  (print (str (. settings volume) " " (. panel dial value) " " (. panel steps n) " " (. panel knob value)))
+  (= (. settings volume) 9)
+  (print (str (. settings volume) " " (. panel dial value) " " (. panel steps n) " " (. panel knob value)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Settings
+(type + Settings
+  (prop + volume _ (= 5))
+)
 
-+ volume = 5
+(type + Steps (is (tuple (: n Int)))
+  (fn-to-expr + F64
+    (as n F64)
+  )
+  (fn-from-expr + (: value F64)
+    (call Steps (as value Int))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Steps is (n Int)
+(type + Dial (is Box)
+  (prop + value _ (= 0))
+  (fn-do + turn _
+    (param next Int)
+    (= value next)
+  )
+)
 
-────────────────────
-+ to F64
+(type + Knob (is Box)
+  (prop + value _ (= 0.0))
+  (fn-do + turn _
+    (param next F64)
+    (= value next)
+  )
+)
 
-n as F64
-
-────────────────────
-+ from value F64
-
-Steps(value as Int)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Dial is Box
-
-+ value = 0
-
-────────────────────
-+ do turn
-    - next Int
-
-value = next
-
-━━━━━━━━━━━━━━━━━━━━
-+ Knob is Box
-
-+ value = 0.0
-
-────────────────────
-+ do turn
-    - next F64
-
-value = next
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ settings Settings
-+ steps = Steps(1)
-
-────────────────────
-+ This
-    - settings
-
-────────────────────
-
-<This
-    <Dial dial
-        value <-> settings.volume
-    <Knob knob
-        value <-> steps
+(type + Panel (is Box)
+  (prop + settings Settings)
+  (prop + steps _ (= (call Steps 1)))
+  (fn-do + This _
+    (param settings _)
+  )
+  (content
+    (<> This
+      (<> Dial (id: dial)
+        (<-> value (. settings volume))
+      )
+      (<> Knob (id: knob)
+        (<-> value steps)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -4526,70 +4457,67 @@ value = next
 
 ### A binding in a row of a keyed loop binds that row's item, also after the rows move.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. list = Mixer()
--- list.state()
-list.knob(1).turn(9)
--- list.state()
-list.tracks = list.tracks.reversed()
--- list.state()
-list.knob(0).turn(4)
--- list.state()
-list.tracks[1].level = 6
--- list.state()
+(main
+  (let list (call Mixer))
+  (print (call (. list state)))
+  (call (. (call (. list knob) 1) turn) 9)
+  (print (call (. list state)))
+  (= (. list tracks) (call (. list tracks reversed)))
+  (print (call (. list state)))
+  (call (. (call (. list knob) 0) turn) 4)
+  (print (call (. list state)))
+  (= (. ([] (. list tracks) 1) level) 6)
+  (print (call (. list state)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Track
+(type + Track
+  (prop + name String)
+  (prop + level _ (= 0))
+  (fn-do + This _
+    (param name _)
+    (param level _)
+  )
+)
 
-+ name String
-+ level = 0
+(type + Knob (is Box)
+  (prop + value _ (= 0))
+  (fn-do + turn _
+    (param next Int)
+    (= value next)
+  )
+)
 
-────────────────────
-+ This
-    - name
-    - level
-
-━━━━━━━━━━━━━━━━━━━━
-+ Knob is Box
-
-+ value = 0
-
-────────────────────
-+ do turn
-    - next Int
-
-value = next
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mixer is Box
-
-+ tracks = [Track("a", 1), Track("b", 2)]
-
-────────────────────
-+ do knob Knob
-    - index Int
-
-= (%first-child!.child-at(index))! as Knob
-
-────────────────────
-+ do state String
-
-. parts [String]
-for track in tracks
-    parts += "${track.name}=${track.level}"
-for index in 0 .. < 2
-    parts += "k${knob(index).value}"
-= " ".join(parts)
-
-────────────────────
-
-<This
-    for track in #tracks keyed by track.name
-        <Knob
-            value <-> track.level
+(type + Mixer (is Box)
+  (prop + tracks _ (= (list (call Track "a" 1) (call Track "b" 2))))
+  (fn-do + knob Knob
+    (param index Int)
+    (return (as (!! (call (. (!! %first-child) child-at) index)) Knob))
+  )
+  (fn-do + state String
+    (let parts (list String))
+    (for (in track tracks)
+      (+= parts (str (. track name) "=" (. track level)))
+    )
+    (for (in index (..< 0 2))
+      (+= parts (str "k" (. (call knob index) value)))
+    )
+    (return (call (. " " join) parts))
+  )
+  (content
+    (<> This
+      (for (in track #tracks (keyed-by (. track name)))
+        (<> Knob
+          (<-> value (. track level))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -4602,33 +4530,31 @@ b=4 a=6 k4 k6
 
 ### A non-optional place bound to an optional property stores back what the property holds, and nothing where it holds nothing.
 
-```yumi
-. miles = false
-<Picker picker
-    selected <-> miles
--- "${miles} ${picker.selected}"
-picker.pick(true)
--- "${miles} ${picker.selected}"
-picker.clear()
--- "${miles} ${picker.selected}"
-miles = false
--- "${miles} ${picker.selected}"
+```brix
+(main
+  (let miles false)
+  (<> Picker (id: picker)
+    (<-> selected miles)
+  )
+  (print (str miles " " (. picker selected)))
+  (call (. picker pick) true)
+  (print (str miles " " (. picker selected)))
+  (call (. picker clear))
+  (print (str miles " " (. picker selected)))
+  (= miles false)
+  (print (str miles " " (. picker selected)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Picker
-
-+ selected Bool?
-
-────────────────────
-+ do pick
-    - next Bool
-
-selected = next
-
-────────────────────
-+ do clear
-
-selected = null
+(type + Picker
+  (prop + selected (? Bool))
+  (fn-do + pick _
+    (param next Bool)
+    (= selected next)
+  )
+  (fn-do + clear _
+    (= selected null)
+  )
+)
 ```
 
 ```output
@@ -4640,42 +4566,40 @@ false false
 
 ### An optional property may bind a place that is a member of another object, and an optional place still takes nothing.
 
-```yumi
-. settings = Settings()
-. maybe Int? = 4
-<Chooser first
-    chosen <-> settings.size
-<Chooser second
-    chosen <-> maybe
-first.choose(7)
-second.choose(8)
--- "${settings.size} ${maybe}"
-first.clear()
-second.clear()
--- "${settings.size} ${maybe}"
-settings.size = 2
--- "${settings.size} ${first.chosen}"
+```brix
+(main
+  (let settings (call Settings))
+  (let maybe (? Int) 4)
+  (<> Chooser (id: first)
+    (<-> chosen (. settings size))
+  )
+  (<> Chooser (id: second)
+    (<-> chosen maybe)
+  )
+  (call (. first choose) 7)
+  (call (. second choose) 8)
+  (print (str (. settings size) " " maybe))
+  (call (. first clear))
+  (call (. second clear))
+  (print (str (. settings size) " " maybe))
+  (= (. settings size) 2)
+  (print (str (. settings size) " " (. first chosen)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Settings
+(type + Settings
+  (prop + size _ (= 3))
+)
 
-+ size = 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ Chooser
-
-+ chosen Int?
-
-────────────────────
-+ do choose
-    - next Int
-
-chosen = next
-
-────────────────────
-+ do clear
-
-chosen = null
+(type + Chooser
+  (prop + chosen (? Int))
+  (fn-do + choose _
+    (param next Int)
+    (= chosen next)
+  )
+  (fn-do + clear _
+    (= chosen null)
+  )
+)
 ```
 
 ```output
@@ -4686,186 +4610,200 @@ chosen = null
 
 ### A binding written outside a markup element's body is reported.
 
-```yumi crash
-. a = 1
-. b = 2
-a <-> b
--- a
+```brix crash
+(main
+  (let a 1)
+  (let b 2)
+  (<-> a b)
+  (print a)
+)
 ```
 
 ```output
-Exception: "<->" binds a property of a markup element to a place, so it is written in the element's body; to store a value here, write "="
-<no file:4>
-    a <-> b
-    ^^^^^^^
+Exception: (<-> …) cannot be a `row` of (main …), which takes Step. This body runs steps, and each row is a step: a statement form, a `call`, markup, or a value that `pipe` stages after it work on. To return a value, write `(return value)`. If the body is only a value, write `fn-expr`, or remove `:do` from a closure.
+<no file:5>
+      (<-> a b)
+      ^
 ```
 
 ### A root <This> cannot bind, since its attributes give the object's own properties their first values.
 
-```yumi crash
-/core/markup
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. p = Panel()
--- p.level
+(main
+  (let p (call Panel))
+  (print (. p level))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ level = 1
-+ other = 2
-
-────────────────────
-
-<This
-    level <-> other
+(type + Panel (is Box)
+  (prop + level _ (= 1))
+  (prop + other _ (= 2))
+  (content
+    (<> This
+      (<-> level other)
+    )
+  )
+)
 ```
 
 ```output
 Exception: A root <This> cannot bind with "<->", since its attributes give the object's own properties their first values; bind the property where the object is made
-<no file:17>
-        level <-> other
-        ^^^^^^^^^^^^^^^
+<no file:16>
+          (<-> level other)
+          ^^^^^^^^^^^^^^^^^
 ```
 
 ### A binding follows a property the element stores, so one a getter answers is reported, and so is a name of no property, as a parameter of the constructor alone is.
 
-```yumi crash
-. level = 1
-<Knob knob
-    shown <-> level
+```brix crash
+(main
+  (let level 1)
+  (<> Knob (id: knob)
+    (<-> shown level)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Knob
-
-+ stored = 0
-
-────────────────────
-+ get shown Int
-
-stored
+(type + Knob
+  (prop + stored _ (= 0))
+  (fn-expr + shown Int :get
+    stored
+  )
+)
 ```
 
 ```output
 Exception: "<->" binds a property the element stores, and Knob answers "shown" with a getter or a setter, which a binding cannot follow; bind a property Knob stores
-<no file:4>
-        shown <-> level
-        ^^^^^
+<no file:5>
+        (<-> shown level)
+             ^^^^^
 ```
 
-```yumi crash
-. level = 1
-<Knob knob
-    start <-> level
+```brix crash
+(main
+  (let level 1)
+  (<> Knob (id: knob)
+    (<-> start level)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Knob
-
-+ value = 0
-
-────────────────────
-+ This
-    - start Int
-
-value = start
+(type + Knob
+  (prop + value _ (= 0))
+  (fn-do + This _
+    (param start Int)
+    (= value start)
+  )
+)
 ```
 
 ```output
 Exception: "<->" binds a property of the element, and Knob has no property "start"
-<no file:4>
-        start <-> level
-        ^^^^^
+<no file:5>
+        (<-> start level)
+             ^^^^^
 ```
 
 ### A binding converts each way on its own, and a value that converts only when asked is reported where the binding is written, or where it names the property for the way back.
 
-```yumi crash
-. level = 1
-<Knob knob
-    value <-> level
+```brix crash
+(main
+  (let level 1)
+  (<> Knob (id: knob)
+    (<-> value level)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Knob
-
-+ value = 0.0
+(type + Knob
+  (prop + value _ (= 0.0))
+)
 ```
 
 ```output
 Exception: "<->" needs each side to become the other on its own, and I64 becomes F64 only when asked; bind a place of the property's type
-<no file:4>
-        value <-> level
-        ^^^^^^^^^^^^^^^
+<no file:5>
+        (<-> value level)
+        ^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-. level = 1i32
-<Knob knob
-    value <-> level
+```brix crash
+(main
+  (let level 1i32)
+  (<> Knob (id: knob)
+    (<-> value level)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Knob
-
-+ value = 0
+(type + Knob
+  (prop + value _ (= 0))
+)
 ```
 
 ```output
 Exception: "<->" needs each side to become the other on its own, and I64 becomes I32 only when asked; bind a place of the property's type
-<no file:4>
-        value <-> level
-        ^^^^^
+<no file:5>
+        (<-> value level)
+             ^^^^^
 ```
 
 ### A slot outlet cannot bind, since what fills the slot is made elsewhere.
 
-```yumi crash
-/core/markup
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. p = Panel()
+(main
+  (let p (call Panel))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ caption = "a"
-
-────────────────────
-+ <TextBox footer
-    text <-> caption
+(type + Panel (is Box)
+  (prop + caption _ (= "a"))
+  (content
+    (+<> TextBox (id: footer)
+      (<-> text caption)
+    )
+  )
+)
 ```
 
 ```output
 Exception: A slot outlet cannot bind with "<->", since what fills the slot is made elsewhere; bind the property in the element that fills it
 <no file:14>
-        text <-> caption
-        ^^^^^^^^^^^^^^^^
+          (<-> text caption)
+          ^^^^^^^^^^^^^^^^^^
 ```
 
 ### A handler in the body of a markup element reads and assigns the names around the element, though the element has members of those names, and reads the element through its name.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. panel = Panel()
-panel.button.press <- 1
--- "${panel.count} ${panel.button.count}"
+(main
+  (let panel (call Panel))
+  (<- (. panel button press) 1)
+  (print (str (. panel count) " " (. panel button count)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
+(type + Panel (is Box)
+  (prop + count _ (= 7))
+  (content
+    (<> This
+      (<> Button (id: button)
+        (for (on event press)
+          (= count (+ count (. button count)))
+        )
+      )
+    )
+  )
+)
 
-+ count = 7
-
-────────────────────
-
-<This
-    <Button button
-        for event on press
-            count = count + button.count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Button is Box
-
-+ count = 3
-+ event press Int
+(type + Button (is Box)
+  (prop + count _ (= 3))
+  (event + press Int)
+)
 ```
 
 ```output

@@ -1,0 +1,262 @@
+(import /ai)
+(import /graphics/canvas)
+(import /graphics/color)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /gui)
+(import /gui/chat)
+(import /gui/scene)
+(import /stream/aggregate)
+(blank)
+(prop + chat-bench-long-turns Size (= 150))
+(prop + chat-bench-visited-turns Size (= 40))
+(prop + chat-bench-wheel-step Length (= 120))
+
+(type + ChatTranscriptBench
+  (prop + window ChatTranscriptBenchWindow)
+  (prop + scene DisplayScene)
+  (prop + canvas RasterCanvas)
+  (prop + chat AIChatSession)
+  (prop + blank AIChatSession)
+  (fn-do + This _
+    (param turns Size)
+    (lazy window (call ChatTranscriptBenchWindow))
+    (call (. window open))
+    (call (. window layout))
+    (= scene (call DisplayScene 2 black))
+    (= canvas (call RasterCanvas 1080 760 2 black))
+    (= blank (. window store active))
+    (call add-chat-bench-turn blank "Hello" "Hi. What would you like to talk about?")
+    (= chat (call (. window store new-session)))
+    (call fill-chat-bench-session chat turns)
+    (call (. window store select) blank)
+    (call (. scene build) window)
+    (call (. scene commit))
+    (call (. scene frame) canvas)
+    (call frame)
+  )
+  (fn-expr + scroller Box :get
+    (. (!! (call chat-bench-find-transcript window)) rows)
+  )
+  (fn-do + show Size
+    (param session AIChatSession)
+    (call (. window store select) session)
+    (return (call frame))
+  )
+  (fn-do + frame Size
+    (let queue (. (!! (. window markup-batch-root)) markup-batch-queue))
+    (call (. queue checkpoint))
+    (let checkpoints Size 1)
+    (while (and (. queue actions) (< checkpoints 64))
+      (call (. queue checkpoint))
+      (+= checkpoints 1)
+    )
+    (call (. window layout))
+    (call (. scene update) window)
+    (call (. scene commit))
+    (call (. scene frame) canvas)
+    (return 1)
+  )
+  (fn-do + scroll Size
+    (param delta Length)
+    (let ignored (call (. scroller scroll-by) (call Point 0 delta) (. ScrollCause wheel)))
+    (return (call frame))
+  )
+  (fn-do + visit Size
+    (param step Length)
+    (let checksum Size)
+    (while (> (. scroller scroll-y) 0)
+      (+= checksum (call scroll (- step)))
+    )
+    (while (< (. scroller scroll-y) (. scroller scroll-max y))
+      (+= checksum (call scroll step))
+    )
+    (return checksum)
+  )
+  (fn-do + sweep Size
+    (param distance Length)
+    (param step Length)
+    (let checksum Size)
+    (let travelled Length 0)
+    (while (< travelled distance)
+      (+= checksum (call scroll (- step)))
+      (+= travelled step)
+    )
+    (= travelled 0)
+    (while (< travelled distance)
+      (+= checksum (call scroll step))
+      (+= travelled step)
+    )
+    (return checksum)
+  )
+  (fn-do + close _
+    (call (. scene close))
+    (call (. canvas close))
+    (call (. window close))
+  )
+)
+
+(fn-do + fill-chat-bench-session _
+  (param session AIChatSession)
+  (param turns Size)
+  (for (in turn (..< 0 turns))
+    (call add-chat-bench-turn
+      (block
+        (arg session)
+        (arg (str "Question " (+ turn 1) ": how does part " (+ (% turn 7) 1) " of the system behave under load?"))
+        (arg (call chat-bench-reply turn))
+      )
+    )
+  )
+)
+
+(fn-do + add-chat-bench-turn _
+  (param session AIChatSession)
+  (param prompt String)
+  (param reply String)
+  (call (. session begin-turn) prompt)
+  (call append-chat-bench-reply session reply)
+  (call (. session finish-reply))
+)
+
+(fn-do + append-chat-bench-reply _
+  (param session AIChatSession)
+  (param text String)
+  (if (. (!! (. session reply)) parts length)
+    (call (. session apply-event) (call AIPartDeltaEvent "text" (call AITextDelta text)))
+    (else
+      (call (. session apply-event) (call AIPartBeginEvent (call AITextPart "text" text)))
+    )
+  )
+)
+
+(fn-expr + chat-bench-reply _
+  (param turn Size)
+  (match (% turn 4)
+    (case 0
+      (call chat-bench-document turn)
+    )
+    (case 1
+      (str "Short answer for turn " (+ turn 1) ": it holds steady, and the queue drains within a few **milliseconds**.")
+    )
+    (case 2
+      (call chat-bench-steps turn)
+    )
+    (default
+      (call chat-bench-table turn)
+    )
+  )
+)
+
+(fn-expr _ chat-bench-document _
+  (param turn Size)
+  (paragraph
+    (str "## Behaviour under load, part " (+ (% turn 7) 1))
+    (blank)
+    "The scheduler keeps a *bounded* run queue per worker, so a burst of work spreads across workers instead of piling onto one. Each worker steals from its neighbours only when its own queue is empty, which keeps `steal` rare in the steady state."
+    (blank)
+    "### What changes as load rises"
+    (blank)
+    "- Queue depth grows until the **high-water mark** is reached"
+    "- New work is then admitted at the rate old work completes"
+    "- Latency rises smoothly rather than falling off a cliff"
+    (blank)
+    "1. Measure the baseline with one worker"
+    "2. Double the workers until throughput stops scaling"
+    "3. Record the point where latency doubles"
+    (blank)
+    "```yumi"
+    "+ admitted"
+    "    - depth Size"
+    "    - limit Size"
+    (blank)
+    "depth < limit"
+    "```"
+    (blank)
+    "| Workers | Throughput | Latency |"
+    "| :-- | --: | --: |"
+    "| 1 | 1,200 | 4 ms |"
+    "| 4 | 4,500 | 5 ms |"
+    "| 16 | 14,000 | 9 ms |"
+    (blank)
+    "> Past sixteen workers the shared allocator becomes the limit, not the scheduler."
+    (blank)
+    "In short, the system degrades gracefully: throughput flattens, latency climbs slowly, and nothing is dropped."
+  )
+)
+
+(fn-expr _ chat-bench-steps _
+  (param turn Size)
+  (paragraph
+    (str "There are three things to check for turn " (+ turn 1) ":")
+    (blank)
+    "1. Whether the queue depth stays under the limit"
+    "2. Whether any worker is starved for longer than a tick"
+    "3. Whether `steal` shows up in the profile at all"
+    (blank)
+    "```"
+    (str "depth=" (+ (* turn 3) 12) " limit=256 starved=0")
+    "```"
+    (blank)
+    "If all three look healthy, the part is behaving as designed and no tuning is needed."
+  )
+)
+
+(fn-expr _ chat-bench-table _
+  (param turn Size)
+  (paragraph
+    (str "Here is the summary for turn " (+ turn 1) ".")
+    (blank)
+    "| Metric | Before | After |"
+    "| :-- | --: | --: |"
+    (str "| Queue depth | " (+ turn 40) " | " (+ turn 12) " |")
+    "| Steals per second | 310 | 18 |"
+    (blank)
+    "The second column is what you should expect once the limit is in place. The first is what an *unbounded* queue looks like under the same burst."
+  )
+)
+
+(fn-expr _ chat-bench-find-transcript (? ChatTranscript)
+  (param node GuiNode)
+  (if-expr (is node ChatTranscript) (as node ChatTranscript) nested)
+  (where
+    (lazy nested
+      (block
+        (spread (. node children))
+        (pipe ?*> (call chat-bench-find-transcript each))
+        (pipe |> first)
+      )
+    )
+  )
+)
+
+(type + ChatTranscriptBenchWindow (is Window)
+  (prop + store _ (= (call AIChatStore (list (call AIChatService "bench" "Bench" (call AIProvider) "bench-model")))))
+  (prop + caches _ (:= (call ChatBlockCaches)))
+  (prop + branchings _ (:= (call ChatBranchings)))
+  (prop + active-branching _ (= (call (. branchings branching) (. #store #active))))
+  (content
+    (<> This (• flex-row)
+      (= title "Chat")
+      (= size (call Dimensions 1080 760))
+      (blank)
+      (<> ChatSidebar (• w 260)
+        (= store #store)
+        (= branching #active-branching)
+      )
+      (<> Box (• flex-col) (• flex 1)
+        (for (in session (list (. #store #active)) (keyed-by (. session id)))
+          (<> ChatWorkspace (• flex 1)
+            (= branching (call (. branchings branching) session))
+            (= services (. #store #services))
+            (= caches caches)
+          )
+        )
+      )
+    )
+  )
+  (fn-do + ensure-native _)
+  (fn-do + render Bool
+    (return false)
+  )
+)

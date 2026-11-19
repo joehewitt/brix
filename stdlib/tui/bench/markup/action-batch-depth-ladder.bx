@@ -1,0 +1,79 @@
+; benchmark.meta description: Holds distinct markup actions dirty across 1, 8, and 64 writes per checkpoint.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: markup-runtime,compile-timing
+(blank)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
+
+(main
+  (let row-count Size 64)
+  (blank)
+  (<> ActionBatchDepthRoot (id: root))
+  (blank)
+  (= (. root row-indexes) (call make-action-batch-depth-indexes row-count))
+  (call markup-mount-root root root)
+  (call (. root markup-batch-queue checkpoint))
+  (blank)
+  (let phase-1 (call run-action-batch-depth root 1))
+  (let phase-8 (call run-action-batch-depth root 8))
+  (let phase-64 (call run-action-batch-depth root 64))
+  (throw (call Panic "Depth-1 action batch did not reach its checkpoint") (if (!= phase-1 row-count)))
+  (throw (call Panic "Depth-8 action batch did not reach its checkpoint") (if (!= phase-8 row-count)))
+  (throw (call Panic "Depth-64 action batch did not reach its checkpoint") (if (!= phase-64 row-count)))
+  (let checksum (+ (. root source) phase-1 phase-8 phase-64))
+  (blank)
+  (print (str "bench-result markup/action-batch-depth-ladder checksum=" checksum))
+)
+
+(type + ActionBatchDepthRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + row-indexes (list ActionBatchDepthIndex))
+  (prop + source Size (= 0))
+  (prop + runs (list Bool))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (content
+    (<> This
+      (for (in row #row-indexes (keyed-by (. row value)))
+        (<> ActionBatchDepthRow
+          (= sink this)
+          (= value #source)
+        )
+      )
+    )
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
+
+(type + ActionBatchDepthRow (is Box)
+  (prop + sink ActionBatchDepthRoot)
+  (prop + value Size (= 0))
+  (whenever-rule #value
+    (+= (. sink runs) true)
+  )
+)
+
+(type + ActionBatchDepthIndex (is Tuple)
+  (prop + value Size)
+)
+
+(fn-do + run-action-batch-depth Size
+  (param root ActionBatchDepthRoot)
+  (param depth Size)
+  (call (. root runs clear))
+  (for (in write (..< 0 depth))
+    (+= (. root source) 1)
+    (probe-count markup.action.depth-ladder.writes)
+  )
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (blank)
+  (return (. root runs length))
+)
+
+(fn-expr + make-action-batch-depth-indexes (list ActionBatchDepthIndex)
+  (param count Size)
+  (in (call ActionBatchDepthIndex each) (..< 0 count))
+)

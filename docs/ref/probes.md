@@ -966,7 +966,7 @@ groups that never ended.
   someone choose keys:
 
   ```text
-  {"key": "io.dispatch", "path": "…/stdlib/core/_io.yumi", "kind": "log", "line": 220}
+  {"key": "io.dispatch", "path": "…/stdlib/core/_io.bx", "kind": "log", "line": 220}
   ```
 
 - **An inspector** can attach to a running program through `PROBES_CONTROL_PATH`, follow its trace

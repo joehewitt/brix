@@ -1,0 +1,216 @@
+; benchmark.meta description: Retained chunks drawn and frame time for a 40-visible-row scroll frame over a clipped 10k-row list.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: gui,compile-timing
+(blank)
+(import /BxGC/BxGC.h)
+(import /core/markup)
+(import /graphics/canvas)
+(import /graphics/color)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /gui/box)
+(import /gui/layout)
+(import /gui/primitives)
+(import /gui/scene)
+(import /stream/sort)
+(import /time/timer)
+(blank)
+(prop _ paint-visits Size (= 0))
+(prop _ sync-visits Size (= 0))
+(prop _ measure-calls Size (= 0))
+(prop _ layout-visits Size (= 0))
+(blank)
+
+(main
+  (let row-count Size 10000)
+  (let root (call CountingRoot))
+  (call markup-mount-root root root)
+  (let viewport (call ScrollViewport))
+  (call markup-append root viewport)
+  (for (in row-index (..< 0 row-count))
+    (call markup-append viewport (call CountingCell))
+  )
+  (call (. root markup-batch-queue checkpoint))
+  (call (. root layout) (call Rect 0 0 1200 320))
+  (blank)
+  (let checksum Size 0)
+  (let canvas (call RasterCanvas 1200 320 2))
+  (let scene (call DisplayScene 2 transparent))
+  (do-use canvas
+    ; Settle the packed scene and its persistent surface before scrolling.
+    (call (. scene build) root)
+    (call (. scene commit))
+    (call (. scene frame) canvas)
+    (blank)
+    ; counted scroll frame
+    (call (. viewport scroll-to) (call Point 0 1000))
+    (call reset-counters)
+    (call (. scene reset-frame-counters))
+    (let objects0 (call C:brixGCAllocatedObjectCount))
+    (let bytes0 (call C:brixGCRequestedByteCount))
+    (let first0 (call monotonic-time-nanoseconds))
+    (call (. scene update) root)
+    (call (. scene commit))
+    (call (. scene frame) canvas)
+    ; Legacy paint-visits output now carries the retained chunks-drawn count.
+    (= paint-visits (. scene chunks-drawn))
+    (let first1 (call monotonic-time-nanoseconds))
+    (let frame-objects (- (call C:brixGCAllocatedObjectCount) objects0))
+    (let frame-bytes (- (call C:brixGCRequestedByteCount) bytes0))
+    (let first-frame-us (/ (- first1 first0) 1000))
+    (let visible-rows (as (/ (. viewport content-bounds height) 8) Size))
+    (blank)
+    (probe-count gui.bench.scroll.paint-visits paint-visits)
+    (probe-count gui.bench.scroll.objects frame-objects)
+    (probe-count gui.bench.scroll.bytes frame-bytes)
+    (probe-count gui.bench.scroll.visible-rows visible-rows)
+    (probe-count gui.bench.scroll.rows row-count)
+    (probe-count gui.bench.scroll.first-frame-us first-frame-us)
+    (+= checksum (+ paint-visits visible-rows row-count))
+    (blank)
+    ; timed scroll frames
+    (let frames Size 30)
+    (let frame-ns (list U64))
+    (let offset F64 1000)
+    (for (in frame (..< 0 frames))
+      (+= offset 10)
+      (call (. viewport scroll-to) (call Point 0 offset))
+      (let t0 (call monotonic-time-nanoseconds))
+      (call (. scene update) root)
+      (call (. scene commit))
+      (call (. scene frame) canvas)
+      (let t1 (call monotonic-time-nanoseconds))
+      (+= frame-ns (- t1 t0))
+    )
+    (blank)
+    (let frame-p50 (call percentile-us frame-ns 50))
+    (let frame-p95 (call percentile-us frame-ns 95))
+    (let frame-p99 (call percentile-us frame-ns 99))
+    (let frame-min (call min-us frame-ns))
+    (probe-count gui.bench.scroll.frame-p50-us frame-p50)
+    (probe-count gui.bench.scroll.frame-p95-us frame-p95)
+    (probe-count gui.bench.scroll.frame-p99-us frame-p99)
+    (probe-count gui.bench.scroll.frame-min-us frame-min)
+  )
+  (call (. scene close))
+  (call (. root close))
+  (call markup-release root)
+  (blank)
+  (print (str "bench-result gui/scroll-clipped-10k checksum=" checksum))
+)
+
+(fn-do + reset-counters _
+  (= paint-visits 0)
+  (= sync-visits 0)
+  (= measure-calls 0)
+  (= layout-visits 0)
+)
+
+(fn-expr + percentile-us _
+  (param values (list U64))
+  (param percentile Size)
+  (case? (not values)
+    0
+  )
+  (default
+    (/ ([] sorted index) 1000)
+  )
+  (where
+    (lazy sorted (call sort values (:using (=> (left right) (if-expr (< left right) .lesser .greater)))))
+    (lazy index (/ (* (- (. sorted length) 1) percentile) 100))
+  )
+)
+
+(fn-expr + min-us _
+  (param values (list U64))
+  (case? (not values)
+    0
+  )
+  (default
+    (/ ([] sorted 0) 1000)
+  )
+  (where
+    (lazy sorted (call sort values (:using (=> (left right) (if-expr (< left right) .lesser .greater)))))
+  )
+)
+
+(type + CountingRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (blank)
+  (rule This
+    (= layout flow-col)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+  (fn-do + paint-traversal-visit _
+    (+= paint-visits 1)
+  )
+  (fn-do + sync-native-geometry-traversal-visit _
+    (+= sync-visits 1)
+  )
+  (fn-do + did-layout _
+    (+= layout-visits 1)
+    (call (. super did-layout))
+  )
+)
+
+(type + CountingRow (is Box)
+  (rule This
+    (= layout flow-row)
+  )
+  (fn-do + paint-traversal-visit _
+    (+= paint-visits 1)
+  )
+  (fn-do + sync-native-geometry-traversal-visit _
+    (+= sync-visits 1)
+  )
+  (fn-do + measure MeasureResult
+    (param query MeasureQuery (= (call measure-fit-query)))
+    (+= measure-calls 1)
+    (return (call (. super measure) query))
+  )
+  (fn-do + did-layout _
+    (+= layout-visits 1)
+    (call (. super did-layout))
+  )
+)
+
+(type + CountingCell (is Box)
+  (rule This (• bg "#8080e6")
+    (= min-width (call (. SizeSpec coord) 11))
+    (= min-height (call (. SizeSpec coord) 8))
+    (= max-width (call (. SizeSpec coord) 11))
+    (= max-height (call (. SizeSpec coord) 8))
+  )
+  (fn-do + paint-traversal-visit _
+    (+= paint-visits 1)
+  )
+  (fn-do + sync-native-geometry-traversal-visit _
+    (+= sync-visits 1)
+  )
+  (fn-do + measure MeasureResult
+    (param query MeasureQuery (= (call measure-fit-query)))
+    (+= measure-calls 1)
+    (return (call (. super measure) query))
+  )
+  (fn-do + did-layout _
+    (+= layout-visits 1)
+    (call (. super did-layout))
+  )
+)
+
+(type + ScrollViewport (is Box)
+  (rule This
+    (= layout flow-col)
+    (= overflow-y (. ScrollOverflow auto))
+    (= min-height (call (. SizeSpec coord) 320))
+    (= max-height (call (. SizeSpec coord) 320))
+    (= min-width (call (. SizeSpec coord) 1200))
+    (= max-width (call (. SizeSpec coord) 1200))
+  )
+  (fn-do + paint-traversal-visit _
+    (+= paint-visits 1)
+  )
+)

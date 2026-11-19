@@ -1,0 +1,53 @@
+; benchmark.meta description: Stresses repetition rollback when the final match fails.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+
+(main
+  (let groups
+    (match (call repetition-final-fail-source)
+      (~ \repetition-final-fail-document)
+      (throw (call Panic "repetition-final-fail did not parse"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in group groups)
+    (+= checksum group)
+  )
+  (blank)
+  (print (str "bench-result stream/repetition-final-fail checksum=" checksum))
+)
+
+(fn-expr + repetition-final-fail-document _ (over: Char)
+  (~ (: groups (+ \repetition-group))
+    groups
+  )
+  (where
+    (lazy repetition-group Size
+      (pattern
+        (~ (seq "items:" (: items (* \repetition-item)) "END\n")
+          (. items length)
+        )
+      )
+    )
+    (blank)
+    (lazy repetition-item
+      (pattern
+        (~ (seq (+ (chars "a-zA-Z0-9_")) ","))
+      )
+    )
+  )
+)
+
+(fn-expr _ repetition-final-fail-source _
+  (call (. "" join) (in (call repetition-final-fail-group each) (..< 0 80)))
+)
+
+(fn-expr _ repetition-final-fail-group String
+  (param group Int)
+  (str "items:" items "END\n")
+  (where
+    (lazy items (call (. "" join) (in (str "g" group "_item" each ",") (..< 0 24))))
+  )
+)

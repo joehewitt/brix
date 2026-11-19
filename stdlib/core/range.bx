@@ -1,0 +1,220 @@
+(import ./core)
+(import ./error)
+(import ./number)
+(import ./stream)
+(import ./string)
+(blank)
+(type-line + Size (is I64))
+(type-line + Index (is I64))
+(type-line + Increment (is I64))
+
+(type + (of Range Item) (is Tuple)
+  (implements (of CursorIterable Item (tuple Item Item Size Size)))
+  (implements (of Indexable Item))
+  (prop + start Item)
+  (prop + end Item)
+  (prop + increment Item (= (+ (call Item) 1)))
+  (prop + is-through _ (= false))
+  (fn-expr + initial-iterator-state (tuple Item Item Size Size) :get @inline
+    (scope (tuple start step 0 length)
+      (lazy step (if-expr (<= start end) step-size (- (call Item) step-size)))
+    )
+  )
+  (fn-do + next-iterator (tuple (tuple Item Item Size Size) (? Item)) @inline
+    (param state (tuple Item Item Size Size))
+    (if (== ([] state 3) 0)
+      (let none (? Item))
+      (return (tuple state none))
+    )
+    (if (. Item is-integer)
+      (return (tuple (tuple (+ ([] state 0) ([] state 1)) ([] state 1) ([] state 2) (- ([] state 3) 1)) ([] state 0)))
+      (else
+        (return (tuple (tuple ([] state 0) ([] state 1) (+ ([] state 2) 1) (- ([] state 3) 1)) (call item-at ([] state 2))))
+      )
+    )
+  )
+  (fn-expr + length Size :get @inline
+    (before
+      (throw (call Panic "A range cannot step by 0") (if (== increment (call Item))))
+    )
+    (case? (. Item is-integer)
+      (case? is-through
+        (as (+ (/ distance step) 1) Size)
+      )
+      (case? (== distance 0)
+        0
+      )
+      (default
+        (as (+ (/ (- distance 1) step) 1) Size)
+      )
+      (lazy distance (- (as new-end I64 U64) (as new-start I64 U64)))
+      (lazy step (as step-size U64))
+    )
+    (default
+      (+ whole-steps final-item-count)
+      (lazy whole-steps (as (/ delta step-size) Size))
+      (lazy final-item-count (if-expr includes-final-item 1 0))
+      (lazy includes-final-item (or is-through has-partial-step))
+      (lazy has-partial-step (< stepped-distance delta))
+      (lazy stepped-distance (* (as whole-steps Item) step-size))
+      (lazy delta (- new-end new-start))
+    )
+    (where
+      (lazy new-start (if-expr (> start end) end start))
+      (lazy new-end (if-expr (> start end) start end))
+    )
+  )
+  (fn-expr + (index-get this (param index Index)) Item @inline
+    (case? (and (>= index 0) (< index length))
+      (call item-at index)
+    )
+    (default
+      (call absent index)
+    )
+  )
+  (fn-expr + (index-get this (param range (of Range Index))) (of Indexable Item)
+    (before
+      (throw (call OutOfBoundsError (str "Range out of bounds (" out-index " / " length ")")) (if (or (< first 0) (> first length) (and (!= count 0) (>= last length)))))
+    )
+    (case? (== count 0)
+      (call (of Range Item) (call item-at first) (call item-at first) increment false)
+    )
+    (default
+      (call (of Range Item) (call item-at first) (call item-at last) (* step-size (as (. normal increment) Item)) true)
+    )
+    (where
+      (lazy normal (call (. range forward)))
+      (lazy first (. normal start))
+      (lazy count (. normal length))
+      (lazy last (+ first (* (- count 1) (. normal increment))))
+      (lazy out-index (if-expr (== count 0) first last))
+    )
+  )
+  (fn-expr + (index-get this (param pos Position)) _
+    ([] this (call (. pos normalize) this))
+  )
+  (fn-expr + forward _ @inline
+    ; The same items from the lowest to the highest, in a range that stops before its end, as
+    ; slices read one, unless one step past the highest item is not above it, as where the step
+    ; would wrap past the item type's limit: then it runs through the highest item.
+    (case? (== count 0)
+      (call This start start step-size false)
+    )
+    (case? (<= after high)
+      (call This low high step-size true)
+    )
+    (default
+      (call This low after step-size false)
+    )
+    (where
+      (lazy count length)
+      (lazy far (call item-at (- count 1)))
+      (lazy low (if-expr (> start end) far start))
+      (lazy high (if-expr (> start end) start far))
+      (lazy after (+ high step-size))
+    )
+  )
+  (fn-expr _ item-at Item @inline
+    (param index Index)
+    (case? (> start end)
+      (- start (* (as index Item) step-size))
+    )
+    (default
+      (+ start (* (as index Item) step-size))
+    )
+  )
+  (fn-do _ absent Item
+    (param index Index)
+    (throw (call OutOfBoundsError (str "Range index " index " out of range")))
+  )
+  (fn-expr _ step-size Item :get @inline
+    ; How far apart the items are: the increment, without its sign, since the range runs from its
+    ; start toward its end whichever way that is.
+    (if-expr (< increment (call Item)) (- (call Item) increment) increment)
+  )
+  (fn-expr + (of normalize SeqItem) _ @inline
+    (param seq (of Indexable SeqItem))
+    (call (of Range Index) s e i is-through)
+    (where
+      (lazy len (. seq length))
+      (lazy s (call normalize start (..< 0 len)))
+      (lazy e (call normalize end (..< 0 len)))
+      (lazy i (call normalize increment (..< 0 len)))
+    )
+  )
+  (fn-expr + this _
+    (param increment (fn-type Item (param item Item)))
+    (call Stepper this increment)
+  )
+  (fn-to-expr + String
+    (scope (str "[Range " start " " to-or-thru " " end " by " increment "]")
+      (lazy to-or-thru (if-expr is-through "thru" "to"))
+    )
+  )
+)
+
+(type + Position (is Union)
+  (variant first)
+  (variant middle)
+  (variant last)
+  (variant end)
+  (variant infinity)
+  (variant index Index)
+  (fn-expr + (of normalize Item) Index @inline
+    (param seq (of Indexable Item))
+    (call normalize (..< 0 (. seq length)))
+  )
+  (fn-expr + (of normalize SeqItem) Index
+    (param range (of Range SeqItem))
+    (match this
+      ;
+      (case (. Position first)
+        start
+      )
+      (case (. Position middle)
+        (/ length 2)
+      )
+      (case (. Position last)
+        (- length 1)
+      )
+      (case (. Position end)
+        length
+      )
+      (case (. Position infinity)
+        (. Index max)
+      )
+      (case (call (. Position index) n)
+        n
+      )
+      ;
+      (lazy start (. range start))
+      (lazy length (. range length))
+    )
+  )
+)
+
+(fn-expr + (of to RangeItem) _
+  (param start RangeItem)
+  (param end RangeItem)
+  (param increment (? RangeItem))
+  (call (of Range RangeItem) start end increment false)
+)
+
+(fn-expr + (of thru RangeItem) _
+  (param start RangeItem)
+  (param end RangeItem)
+  (param increment (? RangeItem))
+  (call (of Range RangeItem) start end increment true)
+)
+
+(fn-expr _ (of normalize T) _
+  (param n Int)
+  (param range (of Range T))
+  n
+)
+
+(fn-expr _ (of normalize T) _
+  (param n Position)
+  (param range (of Range T))
+  (call (. n normalize) range)
+)

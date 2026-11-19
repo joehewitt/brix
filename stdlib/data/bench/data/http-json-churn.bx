@@ -1,0 +1,60 @@
+; benchmark.meta description: Builds deterministic HTTP requests, parses their JSON bodies, and echoes JSON responses.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: gc-runtime,allocator,compile-timing
+(blank)
+(import /BxCore/BxCore.h)
+(import /data/json)
+(import /data/stream)
+(import /net/http)
+(import /net/url)
+(blank)
+
+(main
+  (let request-count 4000)
+  (let endpoint (call URL "http://bench.local/v1/items"))
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in index (..< 0 request-count))
+    (let body (call request-body index))
+    (let request
+      (call HTTPRequest (. HTTPMethod post) endpoint
+        (block
+          (:headers
+            (block
+              (item (tuple "Content-Type" "application/json"))
+              (item (tuple "X-Bench-Lane" (str (% index 17))))
+            )
+          )
+          (:body body)
+        )
+      )
+    )
+    (let wire (call (of DataStream Byte)))
+    (call write-http-message wire (. request start-line) (. request headers) (. request body))
+    (let root (as (call JSON (. request text)) (map String JSON)))
+    (let values (as (!! ([] root "values")) (list JSON)))
+    (let echoed (call to-json root))
+    (let request-id (as (!! ([] root "request")) Int))
+    (let name (as (!! ([] root "name")) String))
+    (blank)
+    (+= checksum (* (. wire length) (+ (% index 5) 1)))
+    (+= checksum (+ (. echoed length) request-id (. name length) (. values length)))
+  )
+  (blank)
+  (call C:brixBenchCollect)
+  (blank)
+  (print (str "bench-result data/http-json-churn checksum=" checksum))
+)
+
+(fn-expr _ request-body _
+  (param index Int)
+  (paragraph
+    "{"
+    (str "    \"request\": " index ",")
+    (str "    \"route\": \"/v1/items/" (% index 17) "\",")
+    (str "    \"name\": \"item-" index "\",")
+    (str "    \"values\": [" index ", " (+ index 1) ", " (+ index 2) ", " (+ index 3) "],")
+    "    \"flags\": {\"active\": true, \"retry\": false}"
+    "}"
+  )
+)

@@ -1,0 +1,44 @@
+; benchmark.meta description: Matches long literal runs in grammars.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+
+(main
+  (let rows
+    (match (call literal-long-runs-source)
+      (~ \literal-long-runs-document)
+      (throw (call Panic "literal-long-runs did not parse"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in row rows)
+    (+= checksum row)
+  )
+  (blank)
+  (print (str "bench-result stream/literal-long-runs checksum=" checksum))
+)
+
+(fn-expr + literal-long-runs-document _ (over: Char)
+  (~ (: rows (+ \literal-long-runs-row))
+    rows
+  )
+  (where
+    (lazy literal-long-runs-row Size
+      (pattern
+        (~ (seq "BEGIN|record|" (: key (+ (chars "a-z0-9_-"))) "|payload:" (: text (* (seq (! "|END|") .))) "|END|\n")
+          (+ (* (. key length) 17) (. text length))
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ literal-long-runs-source _
+  (call (. "" join) (in (str "BEGIN|record|item-" each "|payload:" (call literal-long-runs-payload each) "|END|\n") (..< 0 96)))
+)
+
+(fn-expr _ literal-long-runs-payload _
+  (param index Int)
+  (* (str "alpha beta gamma delta epsilon zeta eta theta " (% index 17) " ") 3)
+)

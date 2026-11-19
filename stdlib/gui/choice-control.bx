@@ -1,0 +1,28 @@
+(import ./box)
+(import ./events)
+
+(type + (of SelectionEvent T) (is GUIEvent)
+  (prop + old-value (? T))
+  (prop + value T)
+  (fn-do + This _
+    (param old-value _)
+    (param value _)
+    (param data PointerEventData (= (call PointerEventData)))
+  )
+)
+
+(type + (of ChoiceControl T) (is Box)
+  (prop + selected (? T))
+  (event + selection-changing (of SelectionEvent T))
+  (event + selection-changed (of SelectionEvent T))
+  (fn-do + choose _
+    (param value T)
+    (let old selected)
+    (return-if (if (== old value)))
+    (let change (call (of SelectionEvent T) old value))
+    (<- selection-changing change)
+    (return-if (if (. change is-canceled)))
+    (= selected value)
+    (<- selection-changed (call (of SelectionEvent T) old value))
+  )
+)

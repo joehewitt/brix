@@ -1,9 +1,5 @@
 # Expression match if
 
-```yumi
-foo if bar
-```
-
 ```brix
 (main
   (only-if foo (if bar))
@@ -15,10 +11,6 @@ foo if bar
     <Id name="foo"/>
     <Id name="bar"/>
 </BinaryExpression>
-```
-
-```yumi
-if foo then c2 else c1
 ```
 
 ```brix
@@ -37,10 +29,6 @@ if foo then c2 else c1
 </BinaryExpression>
 ```
 
-```yumi
-c2 ?? c1
-```
-
 ```brix
 (main
   (?? c2 c1)
@@ -52,10 +40,6 @@ c2 ?? c1
     <Id name="c2"/>
     <Id name="c1"/>
 </BinaryExpression>
-```
-
-```yumi
-if foo then c3 else if bar then c2 else c1
 ```
 
 ```brix
@@ -81,10 +65,6 @@ if foo then c3 else if bar then c2 else c1
 ```
 
 ### An `is` test against a list pattern ends before `then`, so it can be the condition of an if expression.
-
-```yumi
-if value is [String] then c2 else c1
-```
 
 ```brix
 (main

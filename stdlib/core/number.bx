@@ -1,0 +1,343 @@
+(import ./core)
+(import ./range)
+(import ./string)
+(import /BxCore/BxNumber.h)
+(import /BxCore/BxString.h)
+(import /math.h)
+(import /unistd.h)
+(blank)
+(prop + fnv-offset-basis U64 (= 14695981039346656037))
+(prop + fnv-prime U64 (= 1099511628211))
+
+(fn-do _ read-integer I64
+  (param text String)
+  (param low I64)
+  (param high I64)
+  (let end Pointer null)
+  (let value (call C:strtoll text &end 10))
+  (throw (call Panic (str "\"" text "\" is not a whole number")) (if (not (call reads-all text end))))
+  (return (if-expr (< value low) low (if-expr (> value high) high value)))
+)
+
+(fn-do _ read-unsigned U64
+  (param text String)
+  (let end Pointer null)
+  (let value (call C:strtoull text &end 10))
+  (throw (call Panic (str "\"" text "\" is not a whole number")) (if (not (call reads-all text end))))
+  (return (if-expr (and (!= value 0) (call (. (call (. text trim)) starts-with) "-")) 0 value))
+)
+
+(fn-do _ read-float F64
+  (param text String)
+  (let end Pointer null)
+  (let value (call C:strtod text &end))
+  (throw (call Panic (str "\"" text "\" is not a number")) (if (not (call reads-all text end))))
+  (return value)
+)
+
+(fn-do _ reads-all Bool
+  (param text String)
+  (param end Pointer)
+  (let start (as text Pointer))
+  (let read (as (- (. end address) (. start address)) Size))
+  (if (or (== end null) (== read 0))
+    (return false)
+  )
+  (let bytes (as start (of CPointer U8)))
+  (for (in offset (..< read (. text size)))
+    (let byte ([] bytes offset))
+    (if (and (!= byte 32) (or (< byte 9) (> byte 13)))
+      (return false)
+    )
+  )
+  (return true)
+)
+
+(type + Number
+  (fn-to-expr + UnitString
+    (str this unit)
+  )
+  (fn-to-do + Binary
+    (let output "")
+    (let bit-size (* (. (type-of this) size) 8))
+    (blank)
+    (for (in i (.. (- bit-size 1) 0))
+      (+= output (str (/and/ (/rshift/ this i) 1)))
+      (if (and (> i 0) (== (% i 8) 0))
+        (+= output " ")
+      )
+    )
+    (blank)
+    (return output)
+  )
+  (fn-expr + (infix this %% (param other _)) _
+    (as (call C:pow this other) This)
+    (blank)
+    ;  ------------------------------------------------------------------------------------------------
+    ;  + to Position
+    (blank)
+    ;  Position(this)
+  )
+)
+
+(type + I1 (alias Int1 i1) (is Number)
+  (fn-from-expr + (: str String)
+    (as (call C:strtol str null 1) This)
+  )
+  (fn-to-expr + String
+    (call C:brixIntToString this 0)
+  )
+  (fn-expr + pad _
+    (param n Int)
+    (call C:brixIntToString this n)
+  )
+)
+
+(type + I8 (alias Int8 i8) (is Number)
+  (fn-from-expr + (: str String)
+    (as (call read-integer str (. This min) (. This max)) This)
+  )
+  (fn-to-expr + String
+    (call C:brixIntToString this 0)
+  )
+  (fn-to-expr + Hex
+    (call C:brixToHex this 2)
+  )
+  (fn-expr + pad _
+    (param n Int)
+    (call C:brixIntToString this n)
+  )
+)
+
+(type + U8 (alias UInt8 Byte u8) (is Number)
+  (fn-from-expr + (: str String)
+    (as (call read-integer str (. This min) (. This max)) This)
+  )
+  (fn-to-expr + String
+    (call C:brixUintToString this 0)
+  )
+  (fn-to-expr + Hex
+    (call C:brixToHex this 2)
+  )
+  (fn-expr + pad _
+    (param n Int)
+    (call C:brixUintToString this n)
+  )
+)
+
+(type + Endian (is U8)
+  (variant big)
+  (variant little)
+)
+
+(type + I16 (alias Int16 Short i16) (is Number)
+  (fn-from-expr + (: str String)
+    (as (call read-integer str (. This min) (. This max)) This)
+  )
+  (fn-to-expr + String
+    (call C:brixIntToString this 0)
+  )
+  (fn-to-expr + Hex
+    (call C:brixToHex this 4)
+  )
+  (fn-expr + pad _
+    (param n Int)
+    (call C:brixIntToString this n)
+  )
+)
+
+(type + U16 (alias UInt16 UShort u16) (is Number)
+  (fn-from-expr + (: str String)
+    (as (call read-integer str (. This min) (. This max)) This)
+  )
+  (fn-to-expr + String
+    (call C:brixUintToString this 0)
+  )
+  (fn-to-expr + Hex
+    (call C:brixToHex this 4)
+  )
+  (fn-expr + pad _
+    (param n Int)
+    (call C:brixUintToString this n)
+  )
+)
+
+(type + I32 (alias Int32 i32) (is Number)
+  (fn-from-expr + (: str String)
+    (as (call read-integer str (. This min) (. This max)) This)
+  )
+  (fn-to-expr + String
+    (call C:brixIntToString this 0)
+  )
+  (fn-to-expr + Hex
+    (call C:brixToHex this 8)
+  )
+  (fn-expr + pad _
+    (param n Int)
+    (call C:brixIntToString this n)
+  )
+)
+
+(type + U32 (alias UInt32 u32) (is Number)
+  (fn-from-expr + (: str String)
+    (as (call read-integer str (. This min) (. This max)) This)
+  )
+  (fn-to-expr + String
+    (call C:brixUintToString this 0)
+  )
+  (fn-to-expr + Hex
+    (call C:brixToHex this 8)
+  )
+  (fn-expr + pad _
+    (param n Int)
+    (call C:brixUintToString this n)
+  )
+)
+
+(type + I64 (alias Int64 Int Long i64 l i) (is Number)
+  (fn-from-expr + (: str String)
+    (call read-integer str (. This min) (. This max))
+  )
+  (fn-to-expr + String
+    (call C:brixLonglongToString this 0)
+  )
+  (fn-to-expr + Hex
+    (call C:brixToHex this 16)
+  )
+  (fn-expr + pad _
+    (param n Int)
+    (call C:brixLonglongToString this n)
+  )
+)
+
+(type + U64 (alias UInt64 UInt ULong u64 ul u) (is Number)
+  (fn-from-expr + (: str String)
+    (call read-unsigned str)
+  )
+  (fn-to-expr + String
+    (call C:brixUlonglongToString this 0)
+  )
+  (fn-to-expr + Hex
+    (call C:brixToHex this 16)
+  )
+  (fn-expr + pad _
+    (param n Int)
+    (call C:brixUlonglongToString this n)
+  )
+)
+
+(type + F32 (alias Float32 f32) (is Number)
+  (fn-from-expr + (: str String)
+    (as (call read-float str) F32)
+  )
+  (fn-to-expr + String
+    (call C:brixFloatToString this)
+  )
+  (fn-expr + pad _
+    (param n Int)
+    (call C:brixDoubleToFixedString this n 0)
+  )
+  (fn-expr + places _
+    (param n Int)
+    (call C:brixDoubleToFixedString this n 1)
+  )
+)
+
+(type + F64 (alias Float64 Float f64 f) (is Number)
+  (fn-from-expr + (: str String)
+    (call read-float str)
+  )
+  (fn-to-expr + String
+    (call C:brixDoubleToString this)
+  )
+  (fn-expr + pad _
+    (param n Int)
+    (call C:brixDoubleToFixedString this n 0)
+  )
+  (fn-expr + places _
+    (param n Int)
+    (call C:brixDoubleToFixedString this n 1)
+  )
+)
+
+(type + Bool (alias b) (is Number)
+  (fn-to-expr + String
+    (case? this
+      "true"
+    )
+    (default
+      "false"
+    )
+  )
+)
+
+(type + F128 (alias Float128 f128) (is (tuple (: a F64) (: b F64))))
+
+(type + Char8 (alias c8) (is Number)
+  (fn-from-expr + (: str String)
+    ([] str 0)
+  )
+  (fn-to-expr + String
+    (call C:brixCharToString this)
+  )
+  (fn-expr + lowercase Char :get
+    (case? (and (>= this 65) (<= this 90))
+      (+ 97 (- this 65))
+    )
+    (default
+      this
+    )
+  )
+  (fn-expr + uppercase Char :get
+    (case? (and (>= this 97) (<= this 122))
+      (+ 65 (- this 97))
+    )
+    (default
+      this
+    )
+  )
+)
+
+(type + Char (alias c) (is Number)
+  (fn-from-expr + (: str String)
+    ([] str 0)
+  )
+  (fn-to-expr + String
+    (before
+      (throw (call Panic (str (as this U32) " is not a Unicode character")) (if (== (. (as made Pointer) address) 0)))
+    )
+    (as made String)
+    (where
+      (lazy made (call C:brixStringFromUtf8Codepoint this))
+    )
+  )
+  (fn-expr + category UTF8Category :get
+    (as (call C:brixCharGetCategory this) UTF8Category)
+  )
+  (fn-expr + display-width Size :get
+    (call C:brixCharGetDisplayWidth this)
+  )
+  (fn-expr + lowercase Char :get
+    (as (call C:brixCharToLowercase this) Char)
+  )
+  (fn-expr + uppercase Char :get
+    (as (call C:brixCharToUppercase this) Char)
+  )
+)
+
+(fn-expr + fnv-mix U64
+  (param hash U64)
+  (param value U64)
+  (* (/xor/ hash value) fnv-prime)
+)
+
+(fn-do + fnv-hash U64
+  (param data (of CPointer Byte))
+  (param length Size)
+  (param seed U64 (= fnv-offset-basis))
+  (let hash seed)
+  (for (in index (..< 0 length))
+    (= hash (call fnv-mix hash ([] data index)))
+  )
+  (return hash)
+)

@@ -1,68 +1,70 @@
 # Properties
 
-```yumi crash
--- Foo().foo
+```brix crash
+(main
+  (print (. (call Foo) foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ foo
+(type + Foo
+  (prop + foo _)
+)
 ```
 
 ```output
 Exception: Property 'foo' of 'Foo' needs either a type or a value
 <no file:7>
-    + foo
-    ^^^^^
+      (prop + foo _)
+      ^^^^^^^^^^^^^^
 ```
 
 ## Eager properties
 
-```yumi
-. x = Thing()
--- x.a
+```brix
+(main
+  (let x (call Thing))
+  (print (. x a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 42
+(type + Thing
+  (prop + a _ (= 42))
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-. x = Thing()
--- x.a
+```brix
+(main
+  (let x (call Thing))
+  (print (. x a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + a _ (= 2.0))
+)
 
-+ a = 2.0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Base
-
-+ a = 42
+(type + Thing (is Base)
+  (prop + a _ (= 42))
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
--- Thing().a
--- Thing(100).a
+```brix
+(main
+  (print (. (call Thing) a))
+  (print (. (call Thing 100) a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 42
-
-────────────────────
-+ This
-    - a
+(type + Thing
+  (prop + a _ (= 42))
+  (fn-do + This _
+    (param a _)
+  )
+)
 ```
 
 ```output
@@ -70,26 +72,23 @@ Exception: Property 'foo' of 'Foo' needs either a type or a value
 100
 ```
 
-```yumi
--- Thing(100.8).a
--- Thing(110i8).a
+```brix
+(main
+  (print (. (call Thing 100.8) a))
+  (print (. (call Thing 110i8) a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 42.0
-
-────────────────────
-+ This
-    - a Float
-
--- "float"
-
-────────────────────
-+ This
-    - a I8
-
--- "i8"
+(type + Thing
+  (prop + a _ (= 42.0))
+  (fn-do + This _
+    (param a Float)
+    (print "float")
+  )
+  (fn-do + This _
+    (param a I8)
+    (print "i8")
+  )
+)
 ```
 
 ```output
@@ -99,24 +98,23 @@ i8
 110
 ```
 
-```yumi
--- Thing().a
--- Thing(100).a
+```brix
+(main
+  (print (. (call Thing) a))
+  (print (. (call Thing 100) a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
+(fn-do + foo _
+  (print "called foo")
+  (return 42)
+)
 
--- "called foo"
-= 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = foo()
-
-────────────────────
-+ This
-    - a
+(type + Thing
+  (prop + a _ (= (call foo)))
+  (fn-do + This _
+    (param a _)
+  )
+)
 ```
 
 ```output
@@ -125,136 +123,133 @@ called foo
 100
 ```
 
-```yumi crash
-. x = Thing()
--- x.a
+```brix crash
+(main
+  (let x (call Thing))
+  (print (. x a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 42
-+ a = 42
+(type + Thing
+  (prop + a _ (= 42))
+  (prop + a _ (= 42))
+)
 ```
 
 ```output
 Exception: Thing declares "a" twice (first on line 8); remove one of them, or rename it
 <no file:9>
-    + a = 42
-    ^^^^^^^^
+      (prop + a _ (= 42))
+      ^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
--- Thing().a
+```brix crash
+(main
+  (print (. (call Thing) a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Int
-
-+ a = 1
+(type + Thing (is Int)
+  (prop + a _ (= 1))
+)
 ```
 
 ```output
 Exception: Property not supported
 <no file:7>
-    + a = 1
-    ^^^^^^^
+      (prop + a _ (= 1))
+      ^^^^^^^^^^^^^^^^^^
 ```
 
 ## Constructor assignments
 
-```yumi
--- Thing().a
+```brix
+(main
+  (print (. (call Thing) a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 0
-
-────────────────────
-+ This
-
-.. a = 42
+(type + Thing
+  (prop + a _ (= 0))
+  (fn-do + This _
+    (lazy a 42)
+  )
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
--- Thing()
+```brix
+(main
+  (print (call Thing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 0
-
-────────────────────
-+ This
-
-= b
-
-.. b = 42
+(type + Thing
+  (prop + a _ (= 0))
+  (fn-do + This _
+    (return b)
+    (blank)
+    (lazy b 42)
+  )
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
--- Thing(42).a
+```brix
+(main
+  (print (. (call Thing 42) a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 0
-
-────────────────────
-+ This
-    - x
-
-.. a = x + 1
+(type + Thing
+  (prop + a _ (= 0))
+  (fn-do + This _
+    (param x _)
+    (lazy a (+ x 1))
+  )
+)
 ```
 
 ```output
 43
 ```
 
-```yumi
--- Thing(42).a
+```brix
+(main
+  (print (. (call Thing 42) a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 0
-
-────────────────────
-+ This
-    - x
-
-.. b = x + 1
-.. a = b
+(type + Thing
+  (prop + a _ (= 0))
+  (fn-do + This _
+    (param x _)
+    (lazy b (+ x 1))
+    (lazy a b)
+  )
+)
 ```
 
 ```output
 43
 ```
 
-```yumi
-. thing = Thing(42)
--- thing.a
--- thing.b
+```brix
+(main
+  (let thing (call Thing 42))
+  (print (. thing a))
+  (print (. thing b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 0
-+ b = 0
-
-────────────────────
-+ This
-    - b
-
-.. c = b + 1
-.. a = c
+(type + Thing
+  (prop + a _ (= 0))
+  (prop + b _ (= 0))
+  (fn-do + This _
+    (param b _)
+    (lazy c (+ b 1))
+    (lazy a c)
+  )
+)
 ```
 
 ```output
@@ -262,25 +257,23 @@ Exception: Property not supported
 42
 ```
 
-```yumi
--- Thing().dependent
+```brix
+(main
+  (print (. (call Thing) dependent))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make-value
+(fn-do + make-value _
+  (print "called")
+  (return 42)
+)
 
--- "called"
-= 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ owner = make-value()
-+ dependent = 0
-
-────────────────────
-+ This
-
-.. dependent = owner
+(type + Thing
+  (prop + owner _ (= (call make-value)))
+  (prop + dependent _ (= 0))
+  (fn-do + This _
+    (lazy dependent owner)
+  )
+)
 ```
 
 ```output
@@ -290,84 +283,78 @@ called
 
 ### Constructor where clauses that first read another property inside a branch still initialize that property on every path, evaluating its expression once.
 
-```yumi
-. b = Labeled("width", "stroke")
--- "${b.label}|${b.key}"
-. c = Labeled("width", "")
--- "${c.label}|${c.key}"
-. d = Flagged("width", "stroke", true)
--- "${d.label}|${d.key}|${d.tag}|${d.note}|${d.wide}"
-. e = Flagged("width", "", false)
--- "${e.label}|${e.key}|${e.tag}|${e.note}|${e.wide}"
-. f = Computed("abc", "")
--- "${f.key}|${f.label}|${f.shout()}"
-. g = Computed("abc", "zz")
--- "${g.key}|${g.label}|${g.shout()}"
+```brix
+(main
+  (let b (call Labeled "width" "stroke"))
+  (print (str (. b label) "|" (. b key)))
+  (let c (call Labeled "width" ""))
+  (print (str (. c label) "|" (. c key)))
+  (let d (call Flagged "width" "stroke" true))
+  (print (str (. d label) "|" (. d key) "|" (. d tag) "|" (. d note) "|" (. d wide)))
+  (let e (call Flagged "width" "" false))
+  (print (str (. e label) "|" (. e key) "|" (. e tag) "|" (. e note) "|" (. e wide)))
+  (let f (call Computed "abc" ""))
+  (print (str (. f key) "|" (. f label) "|" (call (. f shout))))
+  (let g (call Computed "abc" "zz"))
+  (print (str (. g key) "|" (. g label) "|" (call (. g shout))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Labeled
+(type + Labeled
+  (prop + key String)
+  (prop + label String)
+  (fn-do + This _
+    (param label _)
+    (param name String)
+    (lazy key (if-expr (. name length) name label))
+  )
+)
 
-+ key String
-+ label String
+(type + Flagged
+  (prop + key String)
+  (prop + tag String)
+  (prop + note String)
+  (prop + wide Bool)
+  (prop + label String)
+  (fn-do + This _
+    (param label _)
+    (param name String)
+    (param flag Bool)
+    (lazy key (if-expr (. name length) name label))
+    (lazy tag (if-expr flag label "none"))
+    (lazy note (if-expr (and flag (> (. label length) 2)) "yes" label))
+    (lazy wide (or (not flag) (> (. label length) 3)))
+  )
+)
 
-────────────────────
-+ This
-    - label
-    - name String
+(type + Shouter (is (fn-type String)))
 
-.. key = if name.length then name else label
+(type + Computed
+  (prop + key String)
+  (prop + label String)
+  (prop + shouter Shouter)
+  (fn-do + This _
+    (param base String)
+    (param name String)
+    (lazy key (if-expr (. name length) name label))
+    (lazy label (call compute base))
+    (lazy shouter
+      (=> ()
+        (block
+          (str label "!")
+        )
+      )
+    )
+  )
+  (fn-expr + shout String
+    (call shouter)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Flagged
-
-+ key String
-+ tag String
-+ note String
-+ wide Bool
-+ label String
-
-────────────────────
-+ This
-    - label
-    - name String
-    - flag Bool
-
-.. key = if name.length then name else label
-.. tag = if flag then label else "none"
-.. note = if flag && label.length > 2 then "yes" else label
-.. wide = !flag || label.length > 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shouter is () String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Computed
-
-+ key String
-+ label String
-+ shouter Shouter
-
-────────────────────
-+ This
-    - base String
-    - name String
-
-.. key = if name.length then name else label
-.. label = compute(base)
-.. shouter = =>
-    "${label}!"
-
-────────────────────
-+ shout String
-
-shouter()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do compute String
-    - value String
-
--- "compute $value"
-= value + "-x"
+(fn-do + compute String
+  (param value String)
+  (print (str "compute " value))
+  (return (+ value "-x"))
+)
 ```
 
 ```output
@@ -383,88 +370,87 @@ zz|abc-x|abc-x!
 
 ## Lazy
 
-```yumi
--- Thing().a
+```brix
+(main
+  (print (. (call Thing) a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a := this.b + 1
-+ b = 42
+(type + Thing
+  (prop + a _ (:= (+ (. this b) 1)))
+  (prop + b _ (= 42))
+)
 ```
 
 ```output
 43
 ```
 
-```yumi
--- Thing().a
+```brix
+(main
+  (print (. (call Thing) a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
+(fn-do + foo _
+  (print "called foo")
+  (return 1)
+)
 
--- "called foo"
-= 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a := foo()
-
-────────────────────
-+ This
-
-.. a = 2
+(type + Thing
+  (prop + a _ (:= (call foo)))
+  (fn-do + This _
+    (lazy a 2)
+  )
+)
 ```
 
 ```output
 2
 ```
 
-```yumi
-. x = Thing()
--- x.a
+```brix
+(main
+  (let x (call Thing))
+  (print (. x a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + a _ (:= 42))
+)
 
-+ a := 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Base
-
-+ a := 43
+(type + Thing (is Base)
+  (prop + a _ (:= 43))
+)
 ```
 
 ```output
 43
 ```
 
-```yumi
-. thing = Thing()
--- thing.a
--- thing.j
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing a))
+  (print (. thing j))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + a _ (:= (call foo)))
+  (prop + b _ (:= (call foo)))
+  (prop + c _ (:= (call foo)))
+  (prop + d _ (:= (call foo)))
+  (prop + e _ (:= (call foo)))
+  (prop + f _ (:= (call foo)))
+  (prop + g _ (:= (call foo)))
+  (prop + h _ (:= (call foo)))
+  (blank)
+  (prop + i _ (:= (call foo)))
+  (prop + j _ (:= (call foo)))
+)
 
-+ a := foo()
-+ b := foo()
-+ c := foo()
-+ d := foo()
-+ e := foo()
-+ f := foo()
-+ g := foo()
-+ h := foo()
-
-+ i := foo()
-+ j := foo()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-
--- "called foo"
-= 42
+(fn-do + foo _
+  (print "called foo")
+  (return 42)
+)
 ```
 
 ```output
@@ -474,23 +460,23 @@ called foo
 42
 ```
 
-```yumi
-. thing = Thing()
--- thing.b
--- thing.c
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing b))
+  (print (. thing c))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + a _ (:= (call foo)))
+  (prop + b _ (:= a))
+  (prop + c _ (:= a))
+)
 
-+ a := foo()
-+ b := a
-+ c := a
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-
--- "called foo"
-= 42
+(fn-do + foo _
+  (print "called foo")
+  (return 42)
+)
 ```
 
 ```output
@@ -501,26 +487,28 @@ called foo
 
 ### Throwing an exception in lazy property
 
-```yumi
-. thing = Thing()
--- thing.a
--- thing.a
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing a))
+  (print (. thing a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + a _ (:= (call foo 1)))
+  (prop + b _ (= 42))
+)
 
-+ a := foo(1)
-+ b = 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - a
-
--- "call foo"
-if a == 0
-    ?! Panic("fail")
-else
-    = 42
+(fn-do + foo _
+  (param a _)
+  (print "call foo")
+  (if (== a 0)
+    (throw (call Panic "fail"))
+    (else
+      (return 42)
+    )
+  )
+)
 ```
 
 ```output
@@ -531,21 +519,21 @@ call foo
 
 ### Assignment prevents initializer from being called
 
-```yumi
-. thing = Thing()
-thing.a = 99
--- thing.a
+```brix
+(main
+  (let thing (call Thing))
+  (= (. thing a) 99)
+  (print (. thing a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
+(fn-do + tick _
+  (print "call tick")
+  (return 42)
+)
 
--- "call tick"
-= 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a := tick()
+(type + Thing
+  (prop + a _ (:= (call tick)))
+)
 ```
 
 ```output
@@ -554,24 +542,23 @@ thing.a = 99
 
 ### Constructor argument overrides lazy initializer
 
-```yumi
-. thing = Thing(99)
--- thing.a
+```brix
+(main
+  (let thing (call Thing 99))
+  (print (. thing a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
+(fn-do + tick _
+  (print "call tick")
+  (return 42)
+)
 
--- "call tick"
-= 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a := tick()
-
-────────────────────
-+ This
-    - a
+(type + Thing
+  (prop + a _ (:= (call tick)))
+  (fn-do + This _
+    (param a _)
+  )
+)
 ```
 
 ```output
@@ -580,25 +567,23 @@ thing.a = 99
 
 ### Constructor expression overrides lazy initializer
 
-```yumi
-. thing = Thing()
--- thing.a
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
+(fn-do + tick _
+  (print "call tick")
+  (return 42)
+)
 
--- "call tick"
-= 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a := tick()
-
-────────────────────
-+ This
-
-.. a = 99
+(type + Thing
+  (prop + a _ (:= (call tick)))
+  (fn-do + This _
+    (lazy a 99)
+  )
+)
 ```
 
 ```output
@@ -607,68 +592,67 @@ thing.a = 99
 
 ### Initial value cast three times since each assignment has a type
 
-```yumi crash
-. thing = Thing()
--- thing.a
+```brix crash
+(main
+  (let thing (call Thing))
+  (print (. thing a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + a Float)
+)
 
-+ a Float
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Base
-
-+ a Int
+(type + Thing (is Base)
+  (prop + a Int)
+)
 ```
 
 ```output
 Exception: "a" is inherited from Base, so it keeps the type it has there and cannot state its own; remove "Int"
-<no file:13>
-    + a Int
-    ^^^^^^^
+<no file:12>
+      (prop + a Int)
+      ^^^^^^^^^^^^^^
 ```
 
 ### Initializers are virtual methods
 
-```yumi
-. base = Thing() as Base
--- base.a
+```brix
+(main
+  (let base (as (call Thing) Base))
+  (print (. base a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + a _ (:= "Base"))
+)
 
-+ a := "Base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Base
-
-+ a := "Thing"
+(type + Thing (is Base)
+  (prop + a _ (:= "Thing"))
+)
 ```
 
 ```output
 Thing
 ```
 
-```yumi
-. thing = Thing()
--- thing.a
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing a))
+  (blank)
+  (let base (call Base))
+  (print (. base a))
+)
 
-. base = Base()
--- base.a
+(type + Base
+  (prop + a _ (= "Base"))
+  (blank)
+  (prop + b _ (:= 42))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-+ a = "Base"
-
-+ b := 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Base
-
-
-+ a = "Thing"
+(type + Thing (is Base)
+  (prop + a _ (= "Thing"))
+)
 ```
 
 ```output
@@ -676,100 +660,95 @@ Thing
 Base
 ```
 
-```yumi crash
-. base = Thing() as Base
--- base.a
+```brix crash
+(main
+  (let base (as (call Thing) Base))
+  (print (. base a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + a _ (= "Base"))
+)
 
-+ a = "Base"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Base
-
-+ a := "Thing"
+(type + Thing (is Base)
+  (prop + a _ (:= "Thing"))
+)
 ```
 
 ```output
 Exception: "a" is inherited from Base, which declares it with "=", so declare it with "=" here too, not with ":="
-<no file:13>
-    + a := "Thing"
-    ^^^^^^^^^^^^^^
+<no file:12>
+      (prop + a _ (:= "Thing"))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Inherited lazy property initializers use the declaring module's imports
 
-```yumi
-./lib/derived
+```brix
+(import ./lib/derived)
+(blank)
 
--- Child().value
+(main
+  (print (. (call Child) value))
+)
 ```
 
-```yumi file=lib/support.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ SupportThing
-
-────────────────────
-+ to String
-
-"from support"
-
+```brix file=lib/support.bx
+(type + SupportThing
+  (fn-to-expr + String
+    "from support"
+  )
+)
 ```
 
-```yumi file=lib/base.yumi
+```brix file=lib/base.bx
+(import ./support)
 
-./support
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-+ value := SupportThing() as String
-
+(type + Base
+  (prop + value _ (:= (as (call SupportThing) String)))
+)
 ```
 
-```yumi file=lib/derived.yumi
+```brix file=lib/derived.bx
+(import ./base)
 
-./base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
+(type + Child (is Base))
 ```
 
 ```output
 from support
 ```
 
-```yumi crash
--- Thing().a
+```brix crash
+(main
+  (print (. (call Thing) a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Int
-
-+ a := 1
+(type + Thing (is Int)
+  (prop + a _ (:= 1))
+)
 ```
 
 ```output
 Exception: Property not supported
 <no file:7>
-    + a := 1
-    ^^^^^^^^
+      (prop + a _ (:= 1))
+      ^^^^^^^^^^^^^^^^^^^
 ```
 
 ## Getters
 
-```yumi
-. thing = Thing()
--- thing.foo
--- thing.foo
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing foo))
+  (print (. thing foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 0
-+ foo => a += 1
+(type + Thing
+  (prop + a _ (= 0))
+  (prop + foo _ (=> (+= a 1)))
+)
 ```
 
 ```output
@@ -777,23 +756,22 @@ Exception: Property not supported
 2
 ```
 
-```yumi
-. thing = Thing()
--- thing.a
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
+(fn-do + foo _
+  (print "called foo")
+  (return 42)
+)
 
--- "called foo"
-= 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ get a
-
-foo()
+(type + Thing
+  (fn-expr + a _ :get
+    (call foo)
+  )
+)
 ```
 
 ```output
@@ -801,58 +779,56 @@ called foo
 42
 ```
 
-```yumi
-. thing = Thing()
--- thing.a
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Int
-
-────────────────────
-+ get a
-
-42
+(type + Thing (is Int)
+  (fn-expr + a _ :get
+    42
+  )
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-. thing = Thing()
--- thing
+```brix
+(main
+  (let thing (call Thing))
+  (print thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
-
-+ a Int
-+ c Int
-
-────────────────────
-+ get b
-
-42
+(type + Thing (is Tuple)
+  (prop + a Int)
+  (prop + c Int)
+  (fn-expr + b _ :get
+    42
+  )
+)
 ```
 
 ```output
 (0, 0)
 ```
 
-```yumi
-. thing = Thing(1, 2)
--- thing
--- thing.b
+```brix
+(main
+  (let thing (call Thing 1 2))
+  (print thing)
+  (print (. thing b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Tuple
-
-+ a Int
-+ c Int
-
-────────────────────
-+ get b
-
-42
+(type + Thing (is Tuple)
+  (prop + a Int)
+  (prop + c Int)
+  (fn-expr + b _ :get
+    42
+  )
+)
 ```
 
 ```output
@@ -860,215 +836,198 @@ called foo
 42
 ```
 
-```yumi crash
-. thing = Thing()
--- thing.a
+```brix crash
+(main
+  (let thing (call Thing))
+  (print (. thing a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + a _ (= 42))
+)
 
-+ a = 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Base
-
-────────────────────
-+ get a
-
-43
+(type + Thing (is Base)
+  (fn-expr + a _ :get
+    43
+  )
+)
 ```
 
 ```output
 Exception: "a" is inherited from Base, which declares it with "=", so declare it with "=" here too, not as a getter
-<no file:14>
-    + get a
-    ^^^^^^
+<no file:12>
+      (fn-expr + a _ :get
+      ^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-. thing = Thing()
--- thing.b
+```brix crash
+(main
+  (let thing (call Thing))
+  (print (. thing b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - x
--- "called foo"
-= x
+(fn-do + foo _
+  (param x _)
+  (print "called foo")
+  (return x)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ b = a
-
-────────────────────
-+ get a
-
-foo(this)
-```
-
-```output
-Exception: Illegal to reference getters in eager properties
-<no file:14>
-    + b = a
-          ^
-```
-
-```yumi crash
-. thing = Thing()
--- thing.b
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - x
--- "called foo"
-= 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ b = 0
-
-────────────────────
-+ get a
-
-foo(this)
-
-────────────────────
-+ This
-
-.. b = a
+(type + Thing
+  (prop + b _ (= a))
+  (fn-expr + a _ :get
+    (call foo this)
+  )
+)
 ```
 
 ```output
 Exception: Illegal to reference getters in eager properties
-<no file:24>
-    .. b = a
-           ^
+<no file:14>
+      (prop + b _ (= a))
+                     ^
 ```
 
-```yumi crash
-. thing = Thing()
--- thing.b
+```brix crash
+(main
+  (let thing (call Thing))
+  (print (. thing b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(fn-do + foo _
+  (param x _)
+  (print "called foo")
+  (return 42)
+)
 
-+ b = this
+(type + Thing
+  (prop + b _ (= 0))
+  (fn-expr + a _ :get
+    (call foo this)
+  )
+  (fn-do + This _
+    (lazy b a)
+  )
+)
+```
 
-────────────────────
-+ This
+```output
+Exception: Illegal to reference getters in eager properties
+<no file:19>
+        (lazy b a)
+                ^
+```
 
-────────────────────
-+ foo
+```brix crash
+(main
+  (let thing (call Thing))
+  (print (. thing b))
+)
 
-42
+(type + Thing
+  (prop + b _ (= this))
+  (fn-do + This _)
+  (fn-expr + foo _
+    42
+  )
+)
 ```
 
 ```output
 Exception: Illegal to reference 'this' in eager properties or properties referenced by them
 <no file:8>
-    + b = this
-          ^^^^
+      (prop + b _ (= this))
+                     ^^^^
 ```
 
-```yumi crash
-. thing = Thing()
--- thing.b
+```brix crash
+(main
+  (let thing (call Thing))
+  (print (. thing b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ b = this
-
-────────────────────
-+ This
-
-────────────────────
-+ foo
-
-42
+(type + Thing
+  (prop + b _ (= this))
+  (fn-do + This _)
+  (fn-expr + foo _
+    42
+  )
+)
 ```
 
 ```output
 Exception: Illegal to reference 'this' in eager properties or properties referenced by them
 <no file:8>
-    + b = this
-          ^^^^
+      (prop + b _ (= this))
+                     ^^^^
 ```
 
-```yumi crash
-. thing = Thing()
--- thing.b
+```brix crash
+(main
+  (let thing (call Thing))
+  (print (. thing b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ b = 0
-
-────────────────────
-+ This
-
-.. b = this
-
-────────────────────
-+ foo
-42
+(type + Thing
+  (prop + b _ (= 0))
+  (fn-do + This _
+    (lazy b this)
+  )
+  (fn-expr + foo _
+    42
+  )
+)
 ```
 
 ```output
 Exception: Illegal to reference 'this' in eager properties or properties referenced by them
-<no file:13>
-    .. b = this
-           ^^^^
+<no file:10>
+        (lazy b this)
+                ^^^^
 ```
 
-```yumi crash
-. thing = Thing()
--- thing.b
+```brix crash
+(main
+  (let thing (call Thing))
+  (print (. thing b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ b = 0
-
-────────────────────
-+ This
-
-.. b = foo()
-
-────────────────────
-+ foo
-42
+(type + Thing
+  (prop + b _ (= 0))
+  (fn-do + This _
+    (lazy b (call foo))
+  )
+  (fn-expr + foo _
+    42
+  )
+)
 ```
 
 ```output
 Exception: A ".." initializer runs before the object exists, so it cannot call "foo", a method of Thing; compute the value from the constructor's parameters, or assign it in the constructor's body
-<no file:13>
-    .. b = foo()
-           ^^^^^
+<no file:10>
+        (lazy b (call foo))
+                ^^^^^^^^^^
 ```
 
-```yumi
-. thing = Thing()
--- thing.prop
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing prop))
+  (blank)
+  (let proto Proto thing)
+  (print (. proto prop))
+)
 
-. proto Proto = thing
--- proto.prop
+(type + Thing
+  (implements Proto)
+  (prop + prop _ (= "Thing"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-+ prop = "Thing"
-
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ get prop String
-
-"Proto"
+(type + Proto (is Interface)
+  (fn-expr + prop String :get
+    "Proto"
+  )
+)
 ```
 
 ```output
@@ -1076,24 +1035,24 @@ Thing
 Thing
 ```
 
-```yumi
-. thing = Thing()
--- thing.prop
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing prop))
+  (blank)
+  (let proto Proto thing)
+  (print (. proto prop))
+)
 
-. proto Proto = thing
--- proto.prop
+(type + Thing
+  (implements Proto)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ get prop String
-
-"Proto"
+(type + Proto (is Interface)
+  (fn-expr + prop String :get
+    "Proto"
+  )
+)
 ```
 
 ```output
@@ -1101,35 +1060,32 @@ Proto
 Proto
 ```
 
-```yumi
-. thing = Thing()
--- thing.prop
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing prop))
+  (blank)
+  (let proto Proto thing)
+  (print (. proto prop))
+)
 
-. proto Proto = thing
--- proto.prop
+(type + Thing
+  (delegate Proto)
+  (prop + proto ProtoThing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + ProtoThing
+  (implements Proto)
+  (fn-expr + prop String :get
+    "ProtoThing"
+  )
+)
 
-as Proto for
-+ proto ProtoThing
-
-━━━━━━━━━━━━━━━━━━━━
-+ ProtoThing
-    is Proto
-
-────────────────────
-+ get prop String
-
-"ProtoThing"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ get prop String
-
-"Proto"
+(type + Proto (is Interface)
+  (fn-expr + prop String :get
+    "Proto"
+  )
+)
 ```
 
 ```output
@@ -1137,33 +1093,30 @@ ProtoThing
 ProtoThing
 ```
 
-```yumi
-. thing = Thing()
--- thing.prop
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing prop))
+  (blank)
+  (let proto Proto thing)
+  (print (. proto prop))
+)
 
-. proto Proto = thing
--- proto.prop
+(type + Thing
+  (delegate Proto)
+  (prop + proto ProtoThing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + ProtoThing
+  (implements Proto)
+  (prop + prop _ (= "ProtoThing"))
+)
 
-as Proto for
-+ proto ProtoThing
-
-━━━━━━━━━━━━━━━━━━━━
-+ ProtoThing
-    is Proto
-
-+ prop = "ProtoThing"
-
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ get prop String
-
-"Proto"
+(type + Proto (is Interface)
+  (fn-expr + prop String :get
+    "Proto"
+  )
+)
 ```
 
 ```output
@@ -1171,39 +1124,35 @@ ProtoThing
 ProtoThing
 ```
 
-```yumi
-. thing = Thing()
--- thing.prop
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing prop))
+  (blank)
+  (let proto Proto thing)
+  (print (. proto prop))
+)
 
-. proto Proto = thing
--- proto.prop
+(type + Thing
+  (delegate Proto)
+  (prop + proto ProtoThing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + ProtoThing
+  (delegate Proto)
+  (prop + proto ProtoThing2)
+)
 
-as Proto for
-+ proto ProtoThing
+(type + ProtoThing2
+  (implements Proto)
+  (prop + prop _ (= "ProtoThing2"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ProtoThing
-
-as Proto for
-+ proto ProtoThing2
-
-━━━━━━━━━━━━━━━━━━━━
-+ ProtoThing2
-    is Proto
-
-+ prop = "ProtoThing2"
-
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ get prop String
-
-"Proto"
+(type + Proto (is Interface)
+  (fn-expr + prop String :get
+    "Proto"
+  )
+)
 ```
 
 ```output
@@ -1213,38 +1162,32 @@ ProtoThing2
 
 ### Tracked property assignment inside an override keeps the base method's error contract
 
-```yumi
-. child = Child()
-child.hook()
--- child.status
--- child.count
+```brix
+(main
+  (let child (call Child))
+  (call (. child hook))
+  (print (. child status))
+  (print (. child count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + count _ (= 0))
+  (fn-do + hook _
+    (+= count 0)
+  )
+)
 
-+ count = 0
-
-────────────────────
-+ do hook
-
-count += 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-+ status = ""
-
-. mark < status
-
-────────────────────
-+ do hook
-
-status = "changed"
-
-────────────────────
-+ do mark
-
-count += 1
+(type + Child (is Base)
+  (prop + status _ (= ""))
+  (blank)
+  (depends mark status)
+  (fn-do + hook _
+    (= status "changed")
+  )
+  (fn-do + mark _
+    (+= count 1)
+  )
+)
 ```
 
 ```output
@@ -1254,48 +1197,43 @@ changed
 
 ## Setters
 
-```yumi
-. thing = Thing()
-thing.foo = 42
--- thing.foo
+```brix
+(main
+  (let thing (call Thing))
+  (= (. thing foo) 42)
+  (print (. thing foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ foos = 10
-
-────────────────────
-+ get foo
-
-foos
-
-────────────────────
-+ do foo = x
-
-foos = x
+(type + Thing
+  (prop + foos _ (= 10))
+  (fn-expr + foo _ :get
+    foos
+  )
+  (fn-do + foo _ :set (param x _)
+    (= foos x)
+  )
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-. thing = Thing(24)
--- thing.half
-thing.half = 2
+```brix
+(main
+  (let thing (call Thing 24))
+  (print (. thing half))
+  (= (. thing half) 2)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Int
-
-────────────────────
-+ get half
-
-this / 2
-
-────────────────────
-+ do half = x
-
--- "set $x"
+(type + Thing (is Int)
+  (fn-expr + half _ :get
+    (/ this 2)
+  )
+  (fn-do + half _ :set (param x _)
+    (print (str "set " x))
+  )
+)
 ```
 
 ```output
@@ -1305,18 +1243,17 @@ set 2
 
 ### Setter with eager property
 
-```yumi
-. thing = Thing()
-thing.foo = 42
--- thing.foo
+```brix
+(main
+  (let thing (call Thing))
+  (= (. thing foo) 42)
+  (print (. thing foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ foo = 42
-
-────────────────────
-+ do foo = x
+(type + Thing
+  (prop + foo _ (= 42))
+  (fn-do + foo _ :set (param x _))
+)
 ```
 
 ```output
@@ -1325,49 +1262,46 @@ thing.foo = 42
 
 ### Setter with no getter
 
-```yumi crash
-. thing = Thing()
-thing.foo = 42
--- thing.foo
+```brix crash
+(main
+  (let thing (call Thing))
+  (= (. thing foo) 42)
+  (print (. thing foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ do foo = x
+(type + Thing
+  (fn-do + foo _ :set (param x _))
+)
 ```
 
 ```output
 Exception: Thing has no property "foo"
-<no file:4>
-    -- thing.foo
-       ^^^^^^^^^
+<no file:5>
+      (print (. thing foo))
+             ^^^^^^^^^^^^^
 ```
 
 ### Setter with generic type
 
-```yumi
-. thing = Thing()
-thing.foo = 42.5
--- thing.foo
-thing.foo = 28u8
--- thing.foo
+```brix
+(main
+  (let thing (call Thing))
+  (= (. thing foo) 42.5)
+  (print (. thing foo))
+  (= (. thing foo) 28u8)
+  (print (. thing foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ foos = 10
-
-────────────────────
-+ get foo
-
-foos
-
-────────────────────
-+ do foo = x ''X
-
--- X
-foos = x as Int
+(type + Thing
+  (prop + foos _ (= 10))
+  (fn-expr + foo _ :get
+    foos
+  )
+  (fn-do + foo _ :set (param x ''X)
+    (print X)
+    (= foos (as x Int))
+  )
+)
 ```
 
 ```output
@@ -1379,49 +1313,40 @@ foos = x as Int
 
 ### An assigning operator on a property a getter and a setter answer reads the value through the getter and stores the new one through the setter, after an object, and named alone in a subclass.
 
-```yumi
-. box = Box()
-box.total += 2
--- box.total
-box.label ++= "!"
--- box.label
-Kid().grow()
+```brix
+(main
+  (let box (call Box))
+  (+= (. box total) 2)
+  (print (. box total))
+  (++= (. box label) "!")
+  (print (. box label))
+  (call (. (call Kid) grow))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop _ stored _ (= 1))
+  (prop _ text _ (= "a"))
+  (fn-expr + total Int :get
+    stored
+  )
+  (fn-do + total _ :set (param value Int)
+    (print (str "total = " value))
+    (= stored value)
+  )
+  (fn-expr + label String :get
+    text
+  )
+  (fn-do + label _ :set (param value String)
+    (= text value)
+  )
+)
 
-_ stored = 1
-_ text = "a"
-
-────────────────────
-+ get total Int
-
-stored
-
-────────────────────
-+ do total = value Int
-
--- "total = $value"
-stored = value
-
-────────────────────
-+ get label String
-
-text
-
-────────────────────
-+ do label = value String
-
-text = value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Kid is Box
-
-────────────────────
-+ do grow
-
-total *= 5
--- total
+(type + Kid (is Box)
+  (fn-do + grow _
+    (*= total 5)
+    (print total)
+  )
+)
 ```
 
 ```output
@@ -1434,38 +1359,38 @@ total = 5
 
 ### An inferred property can be read while its owner's types are still resolving
 
-```yumi
-. chooser = FruitPromptChooser()
-. palette = PromptPalette()
--- palette.prompt
-palette.chooser = chooser
--- palette.prompt
+```brix
+(main
+  (let chooser (call FruitPromptChooser))
+  (let palette (call PromptPalette))
+  (print (. palette prompt))
+  (= (. palette chooser) chooser)
+  (print (. palette prompt))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ PromptChooser
+(type + PromptChooser
+  (prop + palette (? PromptPalette))
+  (prop + prompt _ (= "Choose one"))
+)
 
-+ palette PromptPalette?
-+ prompt = "Choose one"
+(type + FruitPromptChooser (is PromptChooser)
+  (prop + chosen _ (= ""))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ FruitPromptChooser is PromptChooser
+(type + PromptPalette
+  (prop + chooser (? PromptChooser))
+  (prop + prompt _ (= (call prompt-of #chooser)))
+)
 
-+ chosen = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ PromptPalette
-
-+ chooser PromptChooser?
-+ prompt = prompt-of(#chooser)
-
-━━━━━━━━━━━━━━━━━━━━
-+ prompt-of String
-    - chooser PromptChooser?
-
-|? chooser
-    chooser.prompt
-??
+(fn-expr + prompt-of String
+  (param chooser (? PromptChooser))
+  (case? chooser
+    (. chooser prompt)
+  )
+  (default
     "Type a command"
+  )
+)
 ```
 
 ```output
@@ -1475,34 +1400,32 @@ Choose one
 
 ### A class is constructed while its types are still resolving, by the value of a property of a class one of its types names
 
-```yumi
-. chunk = Chunk(3)
--- chunk.sprites.length
--- chunk.phase
--- chunk.count
--- chunk.is-open
-chunk.sprites += Sprite()
--- chunk.sprites.length
--- chunk.sprites[0].chunk.phase
+```brix
+(main
+  (let chunk (call Chunk 3))
+  (print (. chunk sprites length))
+  (print (. chunk phase))
+  (print (. chunk count))
+  (print (. chunk is-open))
+  (+= (. chunk sprites) (call Sprite))
+  (print (. chunk sprites length))
+  (print (. ([] (. chunk sprites) 0) chunk phase))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Chunk
+(type + Chunk
+  (prop + phase U8)
+  (prop + count _ (= 7))
+  (prop + is-open _ (= false))
+  (prop + sprites (list Sprite))
+  (fn-do + This _
+    (param chunk-phase U8)
+    (= phase chunk-phase)
+  )
+)
 
-+ phase U8
-+ count = 7
-+ is-open = false
-+ sprites [Sprite]
-
-────────────────────
-+ This
-    - chunk-phase U8
-
-phase = chunk-phase
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sprite
-
-+ chunk = Chunk(1)
+(type + Sprite
+  (prop + chunk _ (= (call Chunk 1)))
+)
 ```
 
 ```output
@@ -1516,33 +1439,31 @@ false
 
 ### A property default reads its declared union type when several unions share the case.
 
-```yumi
-. a = Plain()
--- a.m is .none
-. b = Concrete()
--- b.m is .none
+```brix
+(main
+  (let a (call Plain))
+  (print (is (. a m) .none))
+  (let b (call Concrete))
+  (print (is (. b m) .none))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
+(type + Choice (is Union)
+  (variant some (tuple Int))
+  (variant none)
+)
 
-| some(Int)
-| none
+(type + (of Maybe T) (is Union)
+  (variant some (tuple T))
+  (variant none)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Maybe'T is Union
+(type + Plain
+  (prop + m Choice (= .none))
+)
 
-| some(T)
-| none
-
-━━━━━━━━━━━━━━━━━━━━
-+ Plain
-
-+ m Choice = .none
-
-━━━━━━━━━━━━━━━━━━━━
-+ Concrete
-
-+ m Maybe'Int = .none
+(type + Concrete
+  (prop + m (of Maybe Int) (= .none))
+)
 ```
 
 ```output
@@ -1552,29 +1473,28 @@ true
 
 ### A lazy property a subclass declares again takes the value of the object's class.
 
-```yumi
-. b Base = Child()
--- b.a
--- b.a
-. c Base = Base()
--- c.a
+```brix
+(main
+  (let b Base (call Child))
+  (print (. b a))
+  (print (. b a))
+  (let c Base (call Base))
+  (print (. c a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + a _ (:= (call say 1)))
+)
 
-+ a := say(1)
+(type + Child (is Base)
+  (prop + a _ (:= (call say 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-+ a := say(2)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do say Int
-    - v Int
-
--- "say $v"
-= v
+(fn-do + say Int
+  (param v Int)
+  (print (str "say " v))
+  (return v)
+)
 ```
 
 ```output
@@ -1587,33 +1507,30 @@ say 1
 
 ### A method of the base reads a lazy property the subclass declares again.
 
-```yumi
-. c = Child()
--- c.read()
-. b = Base()
--- b.read()
+```brix
+(main
+  (let c (call Child))
+  (print (call (. c read)))
+  (let b (call Base))
+  (print (call (. b read)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + a _ (:= (call say 1)))
+  (fn-expr + read Int
+    a
+  )
+)
 
-+ a := say(1)
+(type + Child (is Base)
+  (prop + a _ (:= (call say 2)))
+)
 
-────────────────────
-+ read Int
-
-a
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-+ a := say(2)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do say Int
-    - v Int
-
--- "say $v"
-= v
+(fn-do + say Int
+  (param v Int)
+  (print (str "say " v))
+  (return v)
+)
 ```
 
 ```output
@@ -1625,32 +1542,29 @@ say 1
 
 ### A lazy property a constructor's argument fills is never evaluated.
 
-```yumi
-. t = Thing(5)
--- "made"
--- t.a
-. u = Thing()
--- "made"
--- u.a
+```brix
+(main
+  (let t (call Thing 5))
+  (print "made")
+  (print (. t a))
+  (let u (call Thing))
+  (print "made")
+  (print (. u a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + a _ (:= (call say 1)))
+  (fn-do + This _)
+  (fn-do + This _
+    (param a _)
+  )
+)
 
-+ a := say(1)
-
-────────────────────
-+ This
-
-────────────────────
-+ This
-    - a
-
-━━━━━━━━━━━━━━━━━━━━
-+ do say Int
-    - v Int
-
--- "say $v"
-= v
+(fn-do + say Int
+  (param v Int)
+  (print (str "say " v))
+  (return v)
+)
 ```
 
 ```output
@@ -1663,24 +1577,24 @@ say 1
 
 ### A value that reads a lazy property evaluates it once, and a later read does not evaluate it again.
 
-```yumi
-. t = Thing()
--- "made"
--- t.b
--- t.a
+```brix
+(main
+  (let t (call Thing))
+  (print "made")
+  (print (. t b))
+  (print (. t a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + a _ (:= (call say 1)))
+  (prop + b _ (= (+ a (call say 10))))
+)
 
-+ a := say(1)
-+ b = a + say(10)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do say Int
-    - v Int
-
--- "say $v"
-= v
+(fn-do + say Int
+  (param v Int)
+  (print (str "say " v))
+  (return v)
+)
 ```
 
 ```output
@@ -1693,30 +1607,32 @@ made
 
 ### A task that reads a lazy property another task is evaluating waits for its value instead of evaluating it again.
 
-```yumi
-. box = Box()
-. values = SyncBufferedChannel'Int()
-do new
-    values <- box.value
-do new
-    values <- box.value
-do new
-    box.gate.close()
--- <- values
--- <- values
+```brix
+(main
+  (let box (call Box))
+  (let values (call (of SyncBufferedChannel Int)))
+  (do-new
+    (<- values (. box value))
+  )
+  (do-new
+    (<- values (. box value))
+  )
+  (do-new
+    (call (. box gate close))
+  )
+  (print (<- values))
+  (print (<- values))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ gate = SyncBufferedChannel'Int()
-+ value := make()
-
-────────────────────
-_ do make Int
-
--- "made"
-<- gate
-= 7
+(type + Box
+  (prop + gate _ (= (call (of SyncBufferedChannel Int))))
+  (prop + value _ (:= (call make)))
+  (fn-do _ make Int
+    (print "made")
+    (<- gate)
+    (return 7)
+  )
+)
 ```
 
 ```output
@@ -1727,41 +1643,45 @@ made
 
 ### A task that waits on a lazy property reads the value assigned while another task evaluated it, though that evaluation fails.
 
-```yumi
-. box = Box()
-. values = SyncBufferedChannel'Int()
-do new
-    . failed = catch? box.value
-    if !failed
-        values <- -1
-do new
-    . got = catch? box.value
-    if got
-        values <- got
-do new
-    box.value = 9
-    box.gate.close()
--- <- values
--- <- values
+```brix
+(main
+  (let box (call Box))
+  (let values (call (of SyncBufferedChannel Int)))
+  (do-new
+    (let failed (catch? (. box value)))
+    (if (not failed)
+      (<- values -1)
+    )
+  )
+  (do-new
+    (let got (catch? (. box value)))
+    (if got
+      (<- values got)
+    )
+  )
+  (do-new
+    (= (. box value) 9)
+    (call (. box gate close))
+  )
+  (print (<- values))
+  (print (<- values))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Failed is Error
+(type + Failed (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ fails = true
-+ gate = SyncBufferedChannel'Int()
-+ value := make()
-
-────────────────────
-_ do make Int ?! Failed
-
--- "made"
-<- gate
-if fails
-    ?! Failed("no")
-= 7
+(type + Box
+  (prop + fails _ (= true))
+  (prop + gate _ (= (call (of SyncBufferedChannel Int))))
+  (prop + value _ (:= (call make)))
+  (fn-do _ make Int (?! Failed)
+    (print "made")
+    (<- gate)
+    (if fails
+      (throw (call Failed "no"))
+    )
+    (return 7)
+  )
+)
 ```
 
 ```output
@@ -1772,28 +1692,27 @@ made
 
 ### An assigning operator assigns a property of a forced optional and of a cast object.
 
-```yumi
-. box Box? = Box()
-box!.size += 2
--- box!.size
-. thing Thing = Bucket()
-(thing as Bucket).fill += 1.5
--- (thing as Bucket).fill
+```brix
+(main
+  (let box (? Box) (call Box))
+  (+= (. (!! box) size) 2)
+  (print (. (!! box) size))
+  (let thing Thing (call Bucket))
+  (+= (. (as thing Bucket) fill) 1.5)
+  (print (. (as thing Bucket) fill))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + size Size (= 1))
+)
 
-+ size Size = 1
+(type + Thing
+  (prop + name _ (= "thing"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ name = "thing"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bucket is Thing
-
-+ fill F64 = 0
+(type + Bucket (is Thing)
+  (prop + fill F64 (= 0))
+)
 ```
 
 ```output
@@ -1803,25 +1722,25 @@ box!.size += 2
 
 ### An assigning operator evaluates a lazy property before it assigns.
 
-```yumi
-. t = Thing()
-t.a += 2
--- t.a
-. u = Thing()
-u.a = 9
--- u.a
+```brix
+(main
+  (let t (call Thing))
+  (+= (. t a) 2)
+  (print (. t a))
+  (let u (call Thing))
+  (= (. u a) 9)
+  (print (. u a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + a _ (:= (call say 1)))
+)
 
-+ a := say(1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do say Int
-    - v Int
-
--- "say $v"
-= v
+(fn-do + say Int
+  (param v Int)
+  (print (str "say " v))
+  (return v)
+)
 ```
 
 ```output
@@ -1832,66 +1751,65 @@ say 1
 
 ### A lazy property whose value panics: the trace names the property with its class.
 
-```yumi crash
-. t = Thing()
-show(t)
--- "after"
+```brix crash
+(main
+  (let t (call Thing))
+  (call show t)
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - t Thing
+(fn-do + show _
+  (param t Thing)
+  (print (. t a))
+  (print "not here")
+)
 
--- t.a
--- "not here"
+(type + Thing
+  (prop + a _ (:= (call boom)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a := boom()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do boom Int
-
-?! Panic("lazy boom")
-= 1
+(fn-do + boom Int
+  (throw (call Panic "lazy boom"))
+  (return 1)
+)
 ```
 
 ```stderr
 Unhandled panic: lazy boom
-<no file:21>
+<no file:19>
 
 Task 1
 
 Stack trace:
-  0  __source__:boom no file:21:1
-  1  __source__:Thing:a no file:16:8
-  2  __source__:show no file:10:4
-  3  __source__:main no file:3:1
+  0  __source__:boom no file:19:3
+  1  __source__:Thing:a no file:15:19
+  2  __source__:show no file:10:10
+  3  __source__:main no file:4:3
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
 ### A lazy property is evaluated where a value first reads it.
 
-```yumi
-. k = Thing()
--- "made"
--- k.a
--- k.b
+```brix
+(main
+  (let k (call Thing))
+  (print "made")
+  (print (. k a))
+  (print (. k b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + a _ (:= (call say 1)))
+  (prop + c _ (= (call say 5)))
+  (prop + b _ (= (+ a (call say 10))))
+)
 
-+ a := say(1)
-+ c = say(5)
-+ b = a + say(10)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do say Int
-    - v Int
-
--- "say $v"
-= v
+(fn-do + say Int
+  (param v Int)
+  (print (str "say " v))
+  (return v)
+)
 ```
 
 ```output
@@ -1905,40 +1823,37 @@ made
 
 ### `super(…)` evaluates again a lazy property that a value it stores again reads.
 
-```yumi
-. k = Kid(7)
--- "made"
--- k.a
--- k.b
--- k.c
+```brix
+(main
+  (let k (call Kid 7))
+  (print "made")
+  (print (. k a))
+  (print (. k b))
+  (print (. k c))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + z _ (= 0))
+  (prop + a _ (:= (+ (call say 1) z)))
+  (prop + c _ (= (+ (call say 5) z)))
+  (prop + b _ (= (+ a (call say 10))))
+  (fn-do + This _
+    (param z _)
+  )
+)
 
-+ z = 0
-+ a := say(1) + z
-+ c = say(5) + z
-+ b = a + say(10)
+(type + Kid (is Thing)
+  (fn-do + This _
+    (param n Int)
+    (call super n)
+  )
+)
 
-────────────────────
-+ This
-    - z
-
-━━━━━━━━━━━━━━━━━━━━
-+ Kid is Thing
-
-────────────────────
-+ This
-    - n Int
-
-super(n)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do say Int
-    - v Int
-
--- "say $v"
-= v
+(fn-do + say Int
+  (param v Int)
+  (print (str "say " v))
+  (return v)
+)
 ```
 
 ```output
@@ -1956,40 +1871,36 @@ made
 
 ### `super(…)` leaves a lazy property that no value it stores again reads.
 
-```yumi
-. k = Kid(7)
--- "made"
--- k.a
--- k.z
--- k.c
+```brix
+(main
+  (let k (call Kid 7))
+  (print "made")
+  (print (. k a))
+  (print (. k z))
+  (print (. k c))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + z _ (= 0))
+  (prop + a _ (:= (+ (call say 1) z)))
+  (fn-do + This _
+    (param z _)
+  )
+)
 
-+ z = 0
-+ a := say(1) + z
+(type + Kid (is Thing)
+  (prop + c _ (= (+ a 1)))
+  (fn-do + This _
+    (param n Int)
+    (call super n)
+  )
+)
 
-────────────────────
-+ This
-    - z
-
-━━━━━━━━━━━━━━━━━━━━
-+ Kid is Thing
-
-+ c = a + 1
-
-────────────────────
-+ This
-    - n Int
-
-super(n)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do say Int
-    - v Int
-
--- "say $v"
-= v
+(fn-do + say Int
+  (param v Int)
+  (print (str "say " v))
+  (return v)
+)
 ```
 
 ```output
@@ -2002,37 +1913,34 @@ made
 
 ### `super(…)` stores a lazy property its argument fills.
 
-```yumi
-. k = Kid(7)
--- "made"
--- k.a
--- k.b
+```brix
+(main
+  (let k (call Kid 7))
+  (print "made")
+  (print (. k a))
+  (print (. k b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + a _ (:= (call say 1)))
+  (prop + b _ (= (+ a 1)))
+  (fn-do + This _
+    (param a _)
+  )
+)
 
-+ a := say(1)
-+ b = a + 1
+(type + Kid (is Thing)
+  (fn-do + This _
+    (param n Int)
+    (call super n)
+  )
+)
 
-────────────────────
-+ This
-    - a
-
-━━━━━━━━━━━━━━━━━━━━
-+ Kid is Thing
-
-────────────────────
-+ This
-    - n Int
-
-super(n)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do say Int
-    - v Int
-
--- "say $v"
-= v
+(fn-do + say Int
+  (param v Int)
+  (print (str "say " v))
+  (return v)
+)
 ```
 
 ```output
@@ -2044,48 +1952,43 @@ made
 
 ### `super(…)` evaluates lazy properties through one another, with the values of the constructor's class.
 
-```yumi
-. k = Kid(7)
--- "made"
--- k.b
--- k.c
--- k.a
--- k.d
+```brix
+(main
+  (let k (call Kid 7))
+  (print "made")
+  (print (. k b))
+  (print (. k c))
+  (print (. k a))
+  (print (. k d))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + z _ (= 0))
+  (prop + d _ (:= (+ (call say 4) a)))
+  (prop + a _ (:= (+ (call say 1) z)))
+  (prop + b _ (= (+ (call say 2) d)))
+  (prop + c _ (:= (+ (call say 3) z)))
+  (fn-do + This _
+    (param z _)
+    (print (str "thing " z " " b))
+  )
+)
 
-+ z = 0
-+ d := say(4) + a
-+ a := say(1) + z
-+ b = say(2) + d
-+ c := say(3) + z
+(type + Kid (is Thing)
+  (prop + a _ (:= (+ (call say 6) z)))
+  (prop + e _ (= (+ c 1)))
+  (fn-do + This _
+    (param n Int)
+    (call super n)
+    (print (str "kid " e))
+  )
+)
 
-────────────────────
-+ This
-    - z
-
--- "thing $z $b"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Kid is Thing
-
-+ a := say(6) + z
-+ e = c + 1
-
-────────────────────
-+ This
-    - n Int
-
-super(n)
--- "kid $e"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do say Int
-    - v Int
-
--- "say $v"
-= v
+(fn-do + say Int
+  (param v Int)
+  (print (str "say " v))
+  (return v)
+)
 ```
 
 ```output
@@ -2107,33 +2010,31 @@ made
 
 ### A lazy property a class two below declares again does not share the flag of another.
 
-```yumi
-. l = Leaf()
--- l.a
--- l.c
--- l.a + l.c
+```brix
+(main
+  (let l (call Leaf))
+  (print (. l a))
+  (print (. l c))
+  (print (+ (. l a) (. l c)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + a _ (:= (call say 1)))
+)
 
-+ a := say(1)
+(type + Mid (is Base)
+  (prop + c _ (:= (call say 30)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Mid is Base
+(type + Leaf (is Mid)
+  (prop + a _ (:= (call say 100)))
+)
 
-+ c := say(30)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is Mid
-
-+ a := say(100)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do say Int
-    - v Int
-
--- "say $v"
-= v
+(fn-do + say Int
+  (param v Int)
+  (print (str "say " v))
+  (return v)
+)
 ```
 
 ```output
@@ -2146,23 +2047,24 @@ say 30
 
 ### The value of a property names a property of its class, not a local of the module's statements.
 
-```yumi
-. foo = Foo()
-. bar = 7
--- foo.a
--- foo.c
--- foo.d
--- bar
+```brix
+(main
+  (let foo (call Foo))
+  (let bar 7)
+  (print (. foo a))
+  (print (. foo c))
+  (print (. foo d))
+  (print bar)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ foo = 42
-+ bar = 1
-+ a => b
-+ b := foo
-+ c = foo + bar
-+ d := bar + 1
+(type + Foo
+  (prop + foo _ (= 42))
+  (prop + bar _ (= 1))
+  (prop + a _ (=> b))
+  (prop + b _ (:= foo))
+  (prop + c _ (= (+ foo bar)))
+  (prop + d _ (:= (+ bar 1)))
+)
 ```
 
 ```output
@@ -2174,66 +2076,58 @@ say 30
 
 ### A constructor argument is converted to the type of the property it fills.
 
-```yumi
-. own = Own(3)
--- own.a / 8
-. typed = Typed(3)
--- typed.a / 8
-. under = Under(3)
--- under.a / 8
-. again = Again(3)
--- again.a / 8
-. wide = Wide(3)
--- wide.a
--- (type-of wide.a).name
+```brix
+(main
+  (let own (call Own 3))
+  (print (/ (. own a) 8))
+  (let typed (call Typed 3))
+  (print (/ (. typed a) 8))
+  (let under (call Under 3))
+  (print (/ (. under a) 8))
+  (let again (call Again 3))
+  (print (/ (. again a) 8))
+  (let wide (call Wide 3))
+  (print (. wide a))
+  (print (. (type-of (. wide a)) name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Own
+(type + Own
+  (prop + a _ (= 42.0))
+  (fn-do + This _
+    (param a I32)
+  )
+)
 
-+ a = 42.0
+(type + Typed
+  (prop + a F64)
+  (fn-do + This _
+    (param a I32)
+  )
+)
 
-────────────────────
-+ This
-    - a I32
+(type + Base
+  (prop + a _ (= 42.0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Typed
+(type + Under (is Base)
+  (fn-do + This _
+    (param a I32)
+  )
+)
 
-+ a F64
+(type + Again (is Base)
+  (prop + a _ (= 99))
+  (fn-do + This _
+    (param a I32)
+  )
+)
 
-────────────────────
-+ This
-    - a I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-+ a = 42.0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Under is Base
-
-────────────────────
-+ This
-    - a I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Again is Base
-
-+ a = 99
-
-────────────────────
-+ This
-    - a I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide
-
-+ a = 42
-
-────────────────────
-+ This
-    - a I64
+(type + Wide
+  (prop + a _ (= 42))
+  (fn-do + This _
+    (param a I64)
+  )
+)
 ```
 
 ```output
@@ -2247,29 +2141,27 @@ I64
 
 ### A struct or tuple made by a constructor converts the argument that fills a field.
 
-```yumi
-. point = Point(3)
--- point.x / 8
-. pair = Pair(3)
--- pair.x / 8
+```brix
+(main
+  (let point (call Point 3))
+  (print (/ (. point x) 8))
+  (let pair (call Pair 3))
+  (print (/ (. pair x) 8))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(type + Point (is Struct)
+  (prop + x F64)
+  (fn-do + This _
+    (param x I32)
+  )
+)
 
-+ x F64
-
-────────────────────
-+ This
-    - x I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Tuple
-
-+ x F64
-
-────────────────────
-+ This
-    - x I32
+(type + Pair (is Tuple)
+  (prop + x F64)
+  (fn-do + This _
+    (param x I32)
+  )
+)
 ```
 
 ```output
@@ -2279,23 +2171,22 @@ I64
 
 ### A constructor's untyped parameter that fills a field with a written type takes that type, so its body reads the argument converted as the field holds it.
 
-```yumi
-. text Hex = "0a0b"
-. holder = Holder(text)
--- holder.size
--- holder.bytes.size
+```brix
+(main
+  (let text Hex "0a0b")
+  (let holder (call Holder text))
+  (print (. holder size))
+  (print (. holder bytes size))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ bytes Byte[]
-+ size Size = 0
-
-────────────────────
-+ This
-    - bytes
-
-size = bytes.size
+(type + Holder
+  (prop + bytes ([] Byte))
+  (prop + size Size (= 0))
+  (fn-do + This _
+    (param bytes _)
+    (= size (. bytes size))
+  )
+)
 ```
 
 ```output
@@ -2305,44 +2196,42 @@ size = bytes.size
 
 ### The value a class with a type parameter writes for a property is typed for each class that holds it.
 
-```yumi
-. a = Box'Int()
-. b = Box'Float()
-. c = Crate()
--- a.held
--- b.held
--- c.held
--- a.twice
--- b.twice
--- c.twice
--- c.more
-. p = Pair'Float()
--- p
-. q = Pair'Int()
--- q
+```brix
+(main
+  (let a (call (of Box Int)))
+  (let b (call (of Box Float)))
+  (let c (call Crate))
+  (print (. a held))
+  (print (. b held))
+  (print (. c held))
+  (print (. a twice))
+  (print (. b twice))
+  (print (. c twice))
+  (print (. c more))
+  (let p (call (of Pair Float)))
+  (print p)
+  (let q (call (of Pair Int)))
+  (print q)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ make'T T
-    - from Int
+(fn-expr + (of make T) T
+  (param from Int)
+  (/ (call T from) (call T 2))
+)
 
-T(from) / T(2)
+(type + (of Box T)
+  (prop + held _ (= (call (of make T) 5)))
+  (prop + twice _ (:= (+ held held)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box'T
+(type + Crate (is (of Box Float))
+  (prop + more _ (= (* held 3)))
+)
 
-+ held = make'T(5)
-+ twice := held + held
-
-━━━━━━━━━━━━━━━━━━━━
-+ Crate is Box'Float
-
-+ more = held * 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pair'T is Tuple
-
-+ first = make'T(7)
-+ second T
+(type + (of Pair T) (is Tuple)
+  (prop + first _ (= (call (of make T) 7)))
+  (prop + second T)
+)
 ```
 
 ```output
@@ -2359,33 +2248,30 @@ T(from) / T(2)
 
 ### A lazy local of a lazy property's name fills it where the constructor runs.
 
-```yumi
-. thing = Thing()
--- "made"
--- thing.a
--- thing.a
+```brix
+(main
+  (let thing (call Thing))
+  (print "made")
+  (print (. thing a))
+  (print (. thing a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
+(fn-do + tick _
+  (print "call tick")
+  (return 42)
+)
 
--- "call tick"
-= 42
+(fn-do + fill _
+  (print "call fill")
+  (return 7)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fill
-
--- "call fill"
-= 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a := tick()
-
-────────────────────
-+ This
-
-.. a = fill()
+(type + Thing
+  (prop + a _ (:= (call tick)))
+  (fn-do + This _
+    (lazy a (call fill))
+  )
+)
 ```
 
 ```output
@@ -2397,32 +2283,30 @@ made
 
 ### A lazy property a constructor fills from an argument, read by another and assigned.
 
-```yumi
-. thing = Thing(3)
--- "made"
--- thing.a
--- thing.b
-thing.a = 5
--- thing.a
+```brix
+(main
+  (let thing (call Thing 3))
+  (print "made")
+  (print (. thing a))
+  (print (. thing b))
+  (= (. thing a) 5)
+  (print (. thing a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tick
+(fn-do + tick _
+  (print "call tick")
+  (return 42)
+)
 
--- "call tick"
-= 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a := tick()
-+ b := a + 1
-
-────────────────────
-+ This
-    - n Int
-
--- "in"
-.. a = n * 2
+(type + Thing
+  (prop + a _ (:= (call tick)))
+  (prop + b _ (:= (+ a 1)))
+  (fn-do + This _
+    (param n Int)
+    (print "in")
+    (lazy a (* n 2))
+  )
+)
 ```
 
 ```output
@@ -2435,34 +2319,32 @@ made
 
 ### Lazy locals fill lazy properties in the order the properties are declared, before the body.
 
-```yumi
-. thing = Thing(3)
--- "made"
--- thing.a
--- thing.b
+```brix
+(main
+  (let thing (call Thing 3))
+  (print "made")
+  (print (. thing a))
+  (print (. thing b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fill
-    - n Int
+(fn-do + fill _
+  (param n Int)
+  (print (str "call fill " n))
+  (return n)
+)
 
--- "call fill $n"
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ c = fill(1)
-+ a := fill(2)
-+ b := fill(3)
-+ d = fill(4)
-
-────────────────────
-+ This
-    - n Int
-
--- "in"
-.. a = fill(n * 10)
--- "out"
+(type + Thing
+  (prop + c _ (= (call fill 1)))
+  (prop + a _ (:= (call fill 2)))
+  (prop + b _ (:= (call fill 3)))
+  (prop + d _ (= (call fill 4)))
+  (fn-do + This _
+    (param n Int)
+    (print "in")
+    (lazy a (call fill (* n 10)))
+    (print "out")
+  )
+)
 ```
 
 ```output
@@ -2479,27 +2361,26 @@ call fill 3
 
 ### A lazy property of a text filled by a lazy local that chooses.
 
-```yumi
-. thing = Thing("x")
--- "made"
--- thing.name
--- thing.size
-thing.name = "longer"
--- thing.size
-. bare = Thing("")
--- bare.name
+```brix
+(main
+  (let thing (call Thing "x"))
+  (print "made")
+  (print (. thing name))
+  (print (. thing size))
+  (= (. thing name) "longer")
+  (print (. thing size))
+  (let bare (call Thing ""))
+  (print (. bare name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ name String := "none"
-+ size := name.length
-
-────────────────────
-+ This
-    - given String
-
-.. name = if given.length then given else "empty"
+(type + Thing
+  (prop + name String (:= "none"))
+  (prop + size _ (:= (. name length)))
+  (fn-do + This _
+    (param given String)
+    (lazy name (if-expr (. given length) given "empty"))
+  )
+)
 ```
 
 ```output
@@ -2512,42 +2393,38 @@ empty
 
 ### A nested function a constructor keeps reads the lazy local that filled a property.
 
-```yumi
-. made = Box()
--- "made ${made.held}"
--- made.run()
--- made.run()
+```brix
+(main
+  (let made (call Box))
+  (print (str "made " (. made held)))
+  (print (call (. made run)))
+  (print (call (. made run)))
+)
 
-+ count = 0
+(blank)
+(prop + count _ (= 0))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tick Int
-    - name String
+(fn-do + tick Int
+  (param name String)
+  (+= count 1)
+  (print (str "tick " name " " count))
+  (return count)
+)
 
-count += 1
--- "tick $name $count"
-= count
+(type + Get (is (fn-type Int)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Get is () Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ held Int
-+ get Get
-
-────────────────────
-+ This
-
-.. held = tick("held")
-.. get = => held
--- "body"
-
-────────────────────
-+ run Int
-
-get()
+(type + Box
+  (prop + held Int)
+  (prop + get Get)
+  (fn-do + This _
+    (lazy held (call tick "held"))
+    (lazy get (=> () held))
+    (print "body")
+  )
+  (fn-expr + run Int
+    (call get)
+  )
+)
 ```
 
 ```output
@@ -2560,41 +2437,37 @@ made 1
 
 ### A lazy local only a kept nested function reads is evaluated when that first runs.
 
-```yumi
-. made = Box()
--- "made"
--- made.run()
--- made.run()
+```brix
+(main
+  (let made (call Box))
+  (print "made")
+  (print (call (. made run)))
+  (print (call (. made run)))
+)
 
-+ count = 0
+(blank)
+(prop + count _ (= 0))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tick Int
-    - name String
+(fn-do + tick Int
+  (param name String)
+  (+= count 1)
+  (print (str "tick " name " " count))
+  (return count)
+)
 
-count += 1
--- "tick $name $count"
-= count
+(type + Get (is (fn-type Int)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Get is () Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ get Get
-
-────────────────────
-+ This
-
-.. extra = tick("extra")
-.. get = => extra + 100
--- "body"
-
-────────────────────
-+ run Int
-
-get()
+(type + Box
+  (prop + get Get)
+  (fn-do + This _
+    (lazy extra (call tick "extra"))
+    (lazy get (=> () (+ extra 100)))
+    (print "body")
+  )
+  (fn-expr + run Int
+    (call get)
+  )
+)
 ```
 
 ```output
@@ -2607,43 +2480,39 @@ tick extra 1
 
 ### A nested function written in a constructor's body captures a local and an argument.
 
-```yumi
-. made = Box(4)
--- "made ${made.held}"
--- made.run()
+```brix
+(main
+  (let made (call Box 4))
+  (print (str "made " (. made held)))
+  (print (call (. made run)))
+)
 
-+ count = 0
+(blank)
+(prop + count _ (= 0))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tick Int
-    - name String
+(fn-do + tick Int
+  (param name String)
+  (+= count 1)
+  (print (str "tick " name " " count))
+  (return count)
+)
 
-count += 1
--- "tick $name $count"
-= count
+(type + Get (is (fn-type Int)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Get is () Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ held Int
-+ get Get
-
-────────────────────
-+ This
-    - seed Int
-
-.. held = tick("held") + seed
-. local = seed * 2
-get = => local + seed
--- "body $local"
-
-────────────────────
-+ run Int
-
-get()
+(type + Box
+  (prop + held Int)
+  (prop + get Get)
+  (fn-do + This _
+    (param seed Int)
+    (lazy held (+ (call tick "held") seed))
+    (let local (* seed 2))
+    (= get (=> () (+ local seed)))
+    (print (str "body " local))
+  )
+  (fn-expr + run Int
+    (call get)
+  )
+)
 ```
 
 ```output
@@ -2655,31 +2524,27 @@ made 5
 
 ### A nested function a constructor keeps reads the object it made.
 
-```yumi
-. made = Named("ann")
--- made.say()
-made.name = "bob"
--- made.say()
+```brix
+(main
+  (let made (call Named "ann"))
+  (print (call (. made say)))
+  (= (. made name) "bob")
+  (print (call (. made say)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Greet is () String
+(type + Greet (is (fn-type String)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named
-
-+ name String
-+ greet Greet
-
-────────────────────
-+ This
-    - name
-
-greet = => "hi ${this.name}"
-
-────────────────────
-+ say String
-
-greet()
+(type + Named
+  (prop + name String)
+  (prop + greet Greet)
+  (fn-do + This _
+    (param name _)
+    (= greet (=> () (str "hi " (. this name))))
+  )
+  (fn-expr + say String
+    (call greet)
+  )
+)
 ```
 
 ```output
@@ -2689,47 +2554,46 @@ hi bob
 
 ### Nested functions a constructor keeps capture its argument and a local of its body.
 
-```yumi
-. made = Named("ann")
--- made.say()
-made.name = "bob"
--- made.say()
--- made.count()
--- made.count()
+```brix
+(main
+  (let made (call Named "ann"))
+  (print (call (. made say)))
+  (= (. made name) "bob")
+  (print (call (. made say)))
+  (print (call (. made count)))
+  (print (call (. made count)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Greet is () String
+(type + Greet (is (fn-type String)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Count is () Int
+(type + Count (is (fn-type Int)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named
-
-+ name String
-+ greet Greet
-+ counter Count
-
-────────────────────
-+ This
-    - name
-
-. calls = 0
-greet = => "hi $name"
-counter = =>
-    do
-        calls += 1
-    calls
-
-────────────────────
-+ say String
-
-greet()
-
-────────────────────
-+ count Int
-
-counter()
+(type + Named
+  (prop + name String)
+  (prop + greet Greet)
+  (prop + counter Count)
+  (fn-do + This _
+    (param name _)
+    (let calls 0)
+    (= greet (=> () (str "hi " name)))
+    (= counter
+      (=> ()
+        (block
+          (do
+            (+= calls 1)
+          )
+          calls
+        )
+      )
+    )
+  )
+  (fn-expr + say String
+    (call greet)
+  )
+  (fn-expr + count Int
+    (call counter)
+  )
+)
 ```
 
 ```output
@@ -2741,37 +2605,33 @@ hi ann
 
 ### A property stored where the class delegates an interface: read from outside, by its name alone in a method, and through a value of the interface.
 
-```yumi
-. thing = Thing()
--- thing.prop
-thing.show()
-. proto Proto = thing
--- proto.prop
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing prop))
+  (call (. thing show))
+  (let proto Proto thing)
+  (print (. proto prop))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (delegate Proto)
+  (prop + proto ProtoThing)
+  (fn-do + show _
+    (print prop)
+  )
+)
 
-as Proto for
-+ proto ProtoThing
+(type + ProtoThing
+  (implements Proto)
+  (prop + prop _ (= "held"))
+)
 
-────────────────────
-+ do show
-
--- prop
-
-━━━━━━━━━━━━━━━━━━━━
-+ ProtoThing
-    is Proto
-
-+ prop = "held"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ get prop String
-
-"Proto"
+(type + Proto (is Interface)
+  (fn-expr + prop String :get
+    "Proto"
+  )
+)
 ```
 
 ```output
@@ -2782,38 +2642,35 @@ held
 
 ### A class derived from one that delegates reads the delegated property, held as itself, as the interface and as its base.
 
-```yumi
-. thing = Derived()
--- thing.prop
-. proto Proto = thing
--- proto.prop
-. base Base = thing
--- base.prop
+```brix
+(main
+  (let thing (call Derived))
+  (print (. thing prop))
+  (let proto Proto thing)
+  (print (. proto prop))
+  (let base Base thing)
+  (print (. base prop))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (delegate Proto)
+  (prop + proto ProtoThing)
+)
 
-as Proto for
-+ proto ProtoThing
+(type + Derived (is Base)
+  (prop + extra _ (= 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
+(type + ProtoThing
+  (implements Proto)
+  (prop + prop _ (= "held"))
+)
 
-+ extra = 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ ProtoThing
-    is Proto
-
-+ prop = "held"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ get prop String
-
-"Proto"
+(type + Proto (is Interface)
+  (fn-expr + prop String :get
+    "Proto"
+  )
+)
 ```
 
 ```output
@@ -2824,48 +2681,42 @@ held
 
 ### A class of one interface that delegates another: the delegate's stored properties answer both names, also through a value.
 
-```yumi
-. thing = Thing()
--- thing.prop
--- thing.other
-. proto Proto = thing
--- proto.prop
--- proto.other
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing prop))
+  (print (. thing other))
+  (let proto Proto thing)
+  (print (. proto prop))
+  (print (. proto other))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Other
+(type + Thing
+  (implements Other)
+  (delegate Proto)
+  (prop + proto ProtoThing)
+)
 
-as Proto for
-+ proto ProtoThing
+(type + ProtoThing
+  (implements Proto)
+  (prop + prop _ (= "held"))
+  (prop + other _ (= "held other"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ProtoThing
-    is Proto
+(type + Proto (is Interface)
+  (fn-expr + prop String :get
+    "Proto"
+  )
+  (fn-expr + other String :get
+    "Proto other"
+  )
+)
 
-+ prop = "held"
-+ other = "held other"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ get prop String
-
-"Proto"
-
-────────────────────
-+ get other String
-
-"Proto other"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Other is Interface
-
-────────────────────
-+ get other String
-
-"Other"
+(type + Other (is Interface)
+  (fn-expr + other String :get
+    "Other"
+  )
+)
 ```
 
 ```output
@@ -2877,45 +2728,40 @@ held other
 
 ### An interface of the base class answers a name before a property the derived class delegates to.
 
-```yumi
-. thing = Derived()
--- thing.prop
-. proto Proto = thing
--- proto.prop
+```brix
+(main
+  (let thing (call Derived))
+  (print (. thing prop))
+  (let proto Proto thing)
+  (print (. proto prop))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-    is Named
+(type + Base
+  (implements Named)
+  (prop + kept _ (= 1))
+)
 
-+ kept = 1
+(type + Derived (is Base)
+  (delegate Proto)
+  (prop + proto ProtoThing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
+(type + ProtoThing
+  (implements Proto)
+  (prop + prop _ (= "held"))
+)
 
-as Proto for
-+ proto ProtoThing
+(type + Proto (is Interface)
+  (fn-expr + prop String :get
+    "Proto"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ProtoThing
-    is Proto
-
-+ prop = "held"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ get prop String
-
-"Proto"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Named is Interface
-
-────────────────────
-+ get prop String
-
-"Named"
+(type + Named (is Interface)
+  (fn-expr + prop String :get
+    "Named"
+  )
+)
 ```
 
 ```output
@@ -2925,31 +2771,29 @@ Named
 
 ### A delegate held as the interface itself: the property is read from what it holds, and a value's slot runs the interface's getter.
 
-```yumi
-. thing = Thing()
--- thing.prop
-. proto Proto = thing
--- proto.prop
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing prop))
+  (let proto Proto thing)
+  (print (. proto prop))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (delegate Proto)
+  (prop + proto Proto (= (call ProtoThing)))
+)
 
-as Proto for
-+ proto Proto = ProtoThing()
+(type + ProtoThing
+  (implements Proto)
+  (prop + prop _ (= "held"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ProtoThing
-    is Proto
-
-+ prop = "held"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ get prop String
-
-"Proto"
+(type + Proto (is Interface)
+  (fn-expr + prop String :get
+    "Proto"
+  )
+)
 ```
 
 ```output
@@ -2959,35 +2803,31 @@ Proto
 
 ### Getters an interface declares with no body, answered by properties the delegate stores.
 
-```yumi
-. thing = Thing()
--- thing.prop
--- thing.size
-. proto Proto = thing
--- proto.prop
--- proto.size
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing prop))
+  (print (. thing size))
+  (let proto Proto thing)
+  (print (. proto prop))
+  (print (. proto size))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (delegate Proto)
+  (prop + proto ProtoThing)
+)
 
-as Proto for
-+ proto ProtoThing
+(type + ProtoThing
+  (implements Proto)
+  (prop + prop _ (= "held"))
+  (prop + size _ (= 4))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ProtoThing
-    is Proto
-
-+ prop = "held"
-+ size = 4
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ get prop String
-
-────────────────────
-+ get size Int
+(type + Proto (is Interface)
+  (fn-expr + prop String :get)
+  (fn-expr + size Int :get)
+)
 ```
 
 ```output
@@ -2999,31 +2839,29 @@ held
 
 ### A struct a class delegates to stores the property.
 
-```yumi
-. thing = Thing()
--- thing.prop
--- thing.pair.prop
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing prop))
+  (print (. thing pair prop))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (delegate Proto)
+  (prop + pair Pair)
+)
 
-as Proto for
-+ pair Pair
+(type + Pair (is Struct)
+  (implements Proto)
+  (prop + prop _ (= "in a struct"))
+  (prop + more _ (= 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Struct
-    is Proto
-
-+ prop = "in a struct"
-+ more = 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ get prop String
-
-"Proto"
+(type + Proto (is Interface)
+  (fn-expr + prop String :get
+    "Proto"
+  )
+)
 ```
 
 ```output
@@ -3033,31 +2871,29 @@ in a struct
 
 ### A delegate that stores no property of the name leaves the interface's getter to answer.
 
-```yumi
-. thing = Thing()
--- thing.prop
-. proto Proto = thing
--- proto.prop
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing prop))
+  (let proto Proto thing)
+  (print (. proto prop))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (delegate Proto)
+  (prop + proto ProtoThing)
+)
 
-as Proto for
-+ proto ProtoThing
+(type + ProtoThing
+  (implements Proto)
+  (prop + kept _ (= 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ProtoThing
-    is Proto
-
-+ kept = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ get prop String
-
-"Proto"
+(type + Proto (is Interface)
+  (fn-expr + prop String :get
+    "Proto"
+  )
+)
 ```
 
 ```output
@@ -3067,46 +2903,38 @@ Proto
 
 ### Properties of a delegate read by their names alone in a method, used in an operator and kept in a local, and one assigned through the delegate.
 
-```yumi
-. thing = Thing()
-thing.show()
-thing.change()
-thing.show()
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing show))
+  (call (. thing change))
+  (call (. thing show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (delegate Proto)
+  (prop + proto ProtoThing)
+  (fn-do + show _
+    (print prop)
+    (print (+ size 1))
+    (let kept prop)
+    (print (. kept length))
+  )
+  (fn-do + change _
+    (= (. proto prop) "changed")
+  )
+)
 
-as Proto for
-+ proto ProtoThing
+(type + ProtoThing
+  (implements Proto)
+  (prop + prop _ (= "held"))
+  (prop + size _ (= 4))
+)
 
-────────────────────
-+ do show
-
--- prop
--- size + 1
-. kept = prop
--- kept.length
-
-────────────────────
-+ do change
-
-proto.prop = "changed"
-
-━━━━━━━━━━━━━━━━━━━━
-+ ProtoThing
-    is Proto
-
-+ prop = "held"
-+ size = 4
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ get prop String
-
-────────────────────
-+ get size Int
+(type + Proto (is Interface)
+  (fn-expr + prop String :get)
+  (fn-expr + size Int :get)
+)
 ```
 
 ```output
@@ -3120,35 +2948,31 @@ changed
 
 ### A local declared after a delegated name is read shadows it from there on.
 
-```yumi
-. thing = Thing()
-thing.show()
--- thing.prop
+```brix
+(main
+  (let thing (call Thing))
+  (call (. thing show))
+  (print (. thing prop))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (delegate Proto)
+  (prop + proto ProtoThing)
+  (fn-do + show _
+    (print prop)
+    (let prop "shadow")
+    (print prop)
+  )
+)
 
-as Proto for
-+ proto ProtoThing
+(type + ProtoThing
+  (implements Proto)
+  (prop + prop _ (= "held"))
+)
 
-────────────────────
-+ do show
-
--- prop
-. prop = "shadow"
--- prop
-
-━━━━━━━━━━━━━━━━━━━━
-+ ProtoThing
-    is Proto
-
-+ prop = "held"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ get prop String
+(type + Proto (is Interface)
+  (fn-expr + prop String :get)
+)
 ```
 
 ```output
@@ -3159,50 +2983,43 @@ held
 
 ### A property two delegations deep, and a value of an interface the inner class delegates.
 
-```yumi
-. thing = Thing()
--- thing.prop
--- thing.size
-. proto Proto = thing
--- proto.prop
--- proto.size
-. deep Deep = thing.inner
--- deep.size
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing prop))
+  (print (. thing size))
+  (let proto Proto thing)
+  (print (. proto prop))
+  (print (. proto size))
+  (let deep Deep (. thing inner))
+  (print (. deep size))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (delegate Proto)
+  (prop + inner Inner)
+)
 
-as Proto for
-+ inner Inner
+(type + Inner
+  (delegate Proto Deep)
+  (prop + held Holder)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Inner
+(type + Holder
+  (implements Proto)
+  (implements Deep)
+  (prop + prop _ (= "two deep"))
+  (prop + size _ (= 9))
+)
 
-as Proto, Deep for
-+ held Holder
+(type + Proto (is Interface)
+  (fn-expr + prop String :get)
+  (fn-expr + size Int :get)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-    is Proto
-    is Deep
-
-+ prop = "two deep"
-+ size = 9
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ get prop String
-
-────────────────────
-+ get size Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Deep is Interface
-
-────────────────────
-+ get size Int
+(type + Deep (is Interface)
+  (fn-expr + size Int :get)
+)
 ```
 
 ```output
@@ -3215,36 +3032,32 @@ two deep
 
 ### A getter of a delegate reads the delegate's property when read from the class, and the class's own when a value of the interface runs it.
 
-```yumi
-. thing = Thing()
--- thing.size
-. proto Proto = thing
--- proto.size
+```brix
+(main
+  (let thing (call Thing))
+  (print (. thing size))
+  (let proto Proto thing)
+  (print (. proto size))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + size String :get)
+)
 
-────────────────────
-+ get size String
+(type + Foo
+  (implements Proto)
+  (prop + label _ (= "foo"))
+  (fn-expr + size String :get
+    label
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-    is Proto
-
-+ label = "foo"
-
-────────────────────
-+ get size String
-
-label
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-as Proto for
-+ foo Foo
-
-+ label = "thing"
+(type + Thing
+  (delegate Proto)
+  (prop + foo Foo)
+  (blank)
+  (prop + label _ (= "thing"))
+)
 ```
 
 ```output
@@ -3254,32 +3067,31 @@ thing
 
 ### A constructor body reads and writes the field its .. initializer made, evaluated once.
 
-```yumi
-+ made = 0
+```brix
+(prop + made _ (= 0))
+(blank)
 
-. foo = Foo(3)
-foo.values[2] = 9
--- foo.values[0], foo.values[1], foo.values[2], made
+(main
+  (let foo (call Foo 3))
+  (= ([] (. foo values) 2) 9)
+  (print (tuple ([] (. foo values) 0) ([] (. foo values) 1) ([] (. foo values) 2) made))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + values ([] I64))
+  (fn-do + This _
+    (param count Size)
+    (lazy values (call make-values count))
+    (= ([] values 0) 5)
+    (= ([] values 1) (+ ([] values 0) 2))
+  )
+)
 
-+ values I64[]
-
-────────────────────
-+ This
-    - count Size
-
-.. values = make-values(count)
-values[0] = 5
-values[1] = values[0] + 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make-values I64[]
-    - count Size
-
-made += 1
-= I64[count]
+(fn-do + make-values ([] I64)
+  (param count Size)
+  (+= made 1)
+  (return ([] I64 count))
+)
 ```
 
 ```output
@@ -3288,23 +3100,22 @@ made += 1
 
 ### A .. initializer written after the constructor body still runs before it.
 
-```yumi
-. foo = Foo()
--- foo.items.length, foo.first
+```brix
+(main
+  (let foo (call Foo))
+  (print (tuple (. foo items length) (. foo first)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ items [Int]
-+ first Int
-
-────────────────────
-+ This
-
-items += 4
-first = items[0]
-
-.. items = List'Int()
+(type + Foo
+  (prop + items (list Int))
+  (prop + first Int)
+  (fn-do + This _
+    (+= items 4)
+    (= first ([] items 0))
+    (blank)
+    (lazy items (call (of List Int)))
+  )
+)
 ```
 
 ```output
@@ -3313,28 +3124,25 @@ first = items[0]
 
 ### A base constructor body writes the field its .. initializer made.
 
-```yumi
-. bar = Bar()
--- bar.values[0]
+```brix
+(main
+  (let bar (call Bar))
+  (print ([] (. bar values) 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + values ([] I64))
+  (fn-do + This _
+    (lazy values ([] I64 2))
+    (= ([] values 0) 3)
+  )
+)
 
-+ values I64[]
-
-────────────────────
-+ This
-
-.. values = I64[2]
-values[0] = 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar is Foo
-
-────────────────────
-+ This
-
-super()
+(type + Bar (is Foo)
+  (fn-do + This _
+    (call super)
+  )
+)
 ```
 
 ```output
@@ -3343,50 +3151,47 @@ super()
 
 ### A .. initializer cannot read a field the constructor body assigns, since it runs first.
 
-```yumi crash
-. foo = Foo()
+```brix crash
+(main
+  (let foo (call Foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ base Int
-+ total Int
-
-────────────────────
-+ This
-
-base = 7
-.. total = base + 1
+(type + Foo
+  (prop + base Int)
+  (prop + total Int)
+  (fn-do + This _
+    (= base 7)
+    (lazy total (+ base 1))
+  )
+)
 ```
 
 ```output
 Exception: Initializer of total reads base before the constructor body assigns it; constructor .. initializers run before the body
-<no file:14>
-    .. total = base + 1
-               ^^^^
+<no file:11>
+        (lazy total (+ base 1))
+                       ^^^^
 ```
 
 ### A lazy property of a class no object of which is ever made reads as nothing through an optional that never holds one.
 
-```yumi
-. reader = Reader()
--- reader.value
+```brix
+(main
+  (let reader (call Reader))
+  (print (. reader value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
+(type + Holder
+  (prop + seed _ (= 4))
+  (prop + table _ (:= (* seed 2)))
+)
 
-+ seed = 4
-+ table := seed * 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Reader
-
-+ holder Holder?
-
-────────────────────
-+ get value Int
-
-holder?.table ?? 0
+(type + Reader
+  (prop + holder (? Holder))
+  (fn-expr + value Int :get
+    (?? (?. holder table) 0)
+  )
+)
 ```
 
 ```output
@@ -3395,42 +3200,41 @@ holder?.table ?? 0
 
 ### A property a value reads on one path of a condition alone gets its first value there, and on the other path in its own turn, once each, as a flag says; so does one a value so given reads.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. one = Tag(false)
--- one.text
-. two = Tag(true)
--- two.text
+(main
+  (let one (call Tag false))
+  (print (. one text))
+  (let two (call Tag true))
+  (print (. two text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do mark String
-    - text String
+(fn-do + mark String
+  (param text String)
+  (print (str "mark " text))
+  (return text)
+)
 
--- "mark $text"
-= text
+(type + Plain (is Box)
+  (prop + text _ (= (call mark "plain")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Plain is Box
-
-+ text = mark("plain")
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tag is Plain
-
-+ flag Bool
-+ suffix = mark("s") ++ "$count"
-+ count = mark("7")
-+ last = mark("last")
-
-────────────────────
-+ This
-    - flag
-
-────────────────────
-
-<This
-    text = (if flag then mark("a") else "b$suffix") ++ "$suffix$last"
+(type + Tag (is Plain)
+  (prop + flag Bool)
+  (prop + suffix _ (= (++ (call mark "s") (str count))))
+  (prop + count _ (= (call mark "7")))
+  (prop + last _ (= (call mark "last")))
+  (fn-do + This _
+    (param flag _)
+  )
+  (content
+    (<> This
+      (= text (++ (if-expr flag (call mark "a") (str "b" suffix)) (str suffix last)))
+    )
+  )
+)
 ```
 
 ```output
@@ -3447,23 +3251,26 @@ as7last
 
 ### A constructor gives a property the value of a lazy local that is a list of feeds reading an argument.
 
-```yumi
-. m = Message("hi")
-for part in m.parts
-    -- part
+```brix
+(main
+  (let m (call Message "hi"))
+  (for (in part (. m parts))
+    (print part)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Message
-
-+ parts [String]
-
-────────────────────
-+ This
-    - text String
-
-.. parts =
-    * "text: $text"
-    * "end"
+(type + Message
+  (prop + parts (list String))
+  (fn-do + This _
+    (param text String)
+    (lazy parts
+      (block
+        (item (str "text: " text))
+        (item "end")
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3473,40 +3280,35 @@ end
 
 ### A lambda a derived class gives as the value of a property its base declares is made where the object is, and captures nothing.
 
-```yumi
-. holder = Derived()
--- holder.keyed(Entry("a", 1))
--- holder.keyed(Entry("b", 2))
-. second = Derived()
--- second.keyed(Entry("c", 3))
+```brix
+(main
+  (let holder (call Derived))
+  (print (call (. holder keyed) (call Entry "a" 1)))
+  (print (call (. holder keyed) (call Entry "b" 2)))
+  (let second (call Derived))
+  (print (call (. second keyed) (call Entry "c" 3)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Entry is Tuple
+(type + Entry (is Tuple)
+  (prop + key String)
+  (prop + size I64)
+)
 
-+ key String
-+ size I64
+(type + KeyOf (is (fn-type String (param entry Entry))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ KeyOf is () String
-    - entry Entry
+(type + Base
+  (prop + prefix _ (= "p"))
+  (prop + key-builder (? KeyOf))
+  (fn-do + keyed String
+    (param entry Entry)
+    (let builder key-builder)
+    (return (if-expr builder (str prefix ":" (call builder entry)) "none"))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-+ prefix = "p"
-+ key-builder KeyOf?
-
-────────────────────
-+ do keyed String
-    - entry Entry
-
-. builder = key-builder
-= if builder then "$prefix:${builder(entry)}" else "none"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-+ key-builder = :: entry => entry.key
+(type + Derived (is Base)
+  (prop + key-builder _ (= (=> (entry) (. entry key))))
+)
 ```
 
 ```output
@@ -3517,28 +3319,27 @@ p:c
 
 ### A property with no written type holds a lambda that captures nothing, called through the object with an argument of a stated type and with one its parameter leaves open.
 
-```yumi
-. table = Table()
--- table.key-builder(Entry("a", 1))
--- table.wrap(Entry("b", 2))
--- table.wrap(7)
+```brix
+(main
+  (let table (call Table))
+  (print (call (. table key-builder) (call Entry "a" 1)))
+  (print (call (. table wrap) (call Entry "b" 2)))
+  (print (call (. table wrap) 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Entry
+(type + Entry
+  (prop + key String)
+  (prop + value Int)
+  (fn-do + This _
+    (param key _)
+    (param value _)
+  )
+)
 
-+ key String
-+ value Int
-
-────────────────────
-+ This
-    - key
-    - value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Table
-
-+ key-builder = :: entry Entry => entry.key
-+ wrap = :: item => "<$item>"
+(type + Table
+  (prop + key-builder _ (= (=> ((: entry Entry)) (. entry key))))
+  (prop + wrap _ (= (=> (item) (str "<" item ">"))))
+)
 ```
 
 ```output
@@ -3549,68 +3350,68 @@ a
 
 ### A getter of a name a property of its class took redefines the property, though nothing uses the class.
 
-```yumi crash
-print("ok")
+```brix crash
+(main
+  (call print "ok")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Lost
-
-+ a Int
-
-────────────────────
-+ get a Int
-
-3
+(type + Lost
+  (prop + a Int)
+  (fn-expr + a Int :get
+    3
+  )
+)
 ```
 
 ```output
 Exception: Lost declares "a" twice (first on line 7); remove one of them, or rename it
-<no file:10>
-    + get a Int
-    ^^^^^^^^^^
+<no file:8>
+      (fn-expr + a Int :get
+      ^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A class first used in a function called from the module's statements is checked where it is used.
 
-```yumi crash
-print(make())
+```brix crash
+(main
+  (call print (call make))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ make Int
+(fn-expr _ make Int
+  (. (call Holder) size)
+)
 
-Holder().size
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ size = 3
-+ a = b
-+ b = a
+(type + Holder
+  (prop + size _ (= 3))
+  (prop + a _ (= b))
+  (prop + b _ (= a))
+)
 ```
 
 ```output
 Exception: "a" depends on its own value, directly or through the values it reads; break the cycle
-<no file:13>
-    + a = b
-    ^^^^^^^
+<no file:12>
+      (prop + a _ (= b))
+      ^^^^^^^^^^^^^^^^^^
 ```
 
 ### A getter answers with a property an arm tests.
 
-```yumi
-. frame = Frame(Byte[2])
--- frame.body.length
+```brix
+(main
+  (let frame (call Frame ([] Byte 2)))
+  (print (. frame body length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Frame is Tuple
-
-+ payload Byte[]
-
-────────────────────
-+ get body Byte[]
-
-|? payload
-?? Byte[0]
+(type + Frame (is Tuple)
+  (prop + payload ([] Byte))
+  (fn-expr + body ([] Byte) :get
+    (case? payload)
+    (default
+      (inline ([] Byte 0))
+    )
+  )
+)
 ```
 
 ```output
@@ -3619,73 +3420,73 @@ Exception: "a" depends on its own value, directly or through the values it reads
 
 ### A property whose written type names nothing is an error where the type is written.
 
-```yumi crash
-. holder = Holder()
--- holder.count
+```brix crash
+(main
+  (let holder (call Holder))
+  (print (. holder count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ Holder
-
-+ count = 0
-_ missing Nonexistent?
+(type _ Holder
+  (prop + count _ (= 0))
+  (prop _ missing (? Nonexistent))
+)
 ```
 
 ```output
 Exception: Type "Nonexistent" not found
 <no file:9>
-    _ missing Nonexistent?
-              ^^^^^^^^^^^
+      (prop _ missing (? Nonexistent))
+                         ^^^^^^^^^^^
 ```
 
 ### A property with no value written holds what its class constructs with no argument. Where those constructions need one another in a cycle they never finish, so the property that starts the cycle is an error.
 
-```yumi compile-error
-. owner = Owner("x")
--- owner.name
+```brix compile-error
+(main
+  (let owner (call Owner "x"))
+  (print (. owner name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Owner
+(type + Owner
+  (prop + name String)
+  (prop + part Part)
+  (fn-do + This _
+    (param name _)
+  )
+)
 
-+ name String
-+ part Part
-
-────────────────────
-+ This
-    - name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Part
-
-+ owner Owner
-
-────────────────────
-+ This
-    - owner
+(type + Part
+  (prop + owner Owner)
+  (fn-do + This _
+    (param owner _)
+  )
+)
 ```
 
 ```output
 Exception: Default of part never finishes: Part.owner builds Owner, and Owner.part builds Part again. Give one of these fields a value, make it lazy with :=, or make it optional
 <no file:9>
-    + part Part
-    ^^^^^^^^^^^
+      (prop + part Part)
+      ^^^^^^^^^^^^^^^^^^
 ```
 
 ### A property's value can pipe a stream through a function
 
-```yumi
-. holder = Holder()
--- holder.large.length
--- holder.doubled[0]
-holder.values = [4, 5]
--- holder.doubled[0]
--- holder.doubled.length
+```brix
+(main
+  (let holder (call Holder))
+  (print (. holder large length))
+  (print ([] (. holder doubled) 0))
+  (= (. holder values) (list 4 5))
+  (print ([] (. holder doubled) 0))
+  (print (. holder doubled length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ values = [1, 2, 3]
-+ large [Int] = List((1 .. 6) ?> (each > 4))
-+ doubled [Int] = List(#values *> (each * 2))
+(type + Holder
+  (prop + values _ (= (list 1 2 3)))
+  (prop + large (list Int) (= (call List (?> (.. 1 6) (> each 4)))))
+  (prop + doubled (list Int) (= (call List (*> #values (* each 2)))))
+)
 ```
 
 ```output
@@ -3695,48 +3496,49 @@ holder.values = [4, 5]
 2
 ```
 
-```yumi
-. nodes = List'Node(Node())
-nodes[0].vx -= 2.0
-nodes[0].vx *= 3.0
--- nodes[0].vx
+```brix
+(main
+  (let nodes (call (of List Node) (call Node)))
+  (-= (. ([] nodes 0) vx) 2.0)
+  (*= (. ([] nodes 0) vx) 3.0)
+  (print (. ([] nodes 0) vx))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node
-
-+ vx Float = 4
+(type + Node
+  (prop + vx Float (= 4))
+)
 ```
 
 ```output
 6
 ```
 
-```yumi
-_ trace = ""
-. nodes = List'Node(Node())
-. original = nodes[0]
-nodes[index()].vx -= amount(nodes)
--- trace
--- original.vx, nodes[0].vx
+```brix
+(prop _ trace _ (= ""))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node
+(main
+  (let nodes (call (of List Node) (call Node)))
+  (let original ([] nodes 0))
+  (-= (. ([] nodes (call index)) vx) (call amount nodes))
+  (print trace)
+  (print (tuple (. original vx) (. ([] nodes 0) vx)))
+)
 
-+ vx Float = 4
+(type + Node
+  (prop + vx Float (= 4))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do index Int
+(fn-do + index Int
+  (+= trace "i")
+  (return 0)
+)
 
-trace += "i"
-= 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do amount Float
-    - nodes List'Node
-
-trace += "r"
-nodes[0] = Node()
-= 2
+(fn-do + amount Float
+  (param nodes (of List Node))
+  (+= trace "r")
+  (= ([] nodes 0) (call Node))
+  (return 2)
+)
 ```
 
 ```output

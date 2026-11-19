@@ -1,0 +1,83 @@
+(import ./crypto-error)
+(import /openssl/evp.h)
+(blank)
+(prop + chacha20-poly1305-key-size Size (= 32))
+(prop + chacha20-poly1305-nonce-size Size (= 12))
+(prop + chacha20-poly1305-tag-size Size (= 16))
+
+(type + ChaCha20Poly1305
+  (prop _ key ([] Byte))
+  (fn-do + This _
+    (param key _)
+    (throw (call Panic (str "A ChaCha20-Poly1305 key is " chacha20-poly1305-key-size " bytes, not " (. key size))) (if (!= (. key size) chacha20-poly1305-key-size)))
+  )
+  (fn-do + seal ([] Byte)
+    (param nonce ([] Byte))
+    (param plaintext ([] Byte))
+    (param aad _ (= ([] Byte 0)))
+    (call check-nonce nonce)
+    (let context (use (call CipherContext)))
+    (let sealed ([] Byte (+ (. plaintext size) chacha20-poly1305-tag-size)))
+    (let written I32)
+    (call C:EVP_EncryptInit_ex context (call C:EVP_chacha20_poly1305) null key nonce
+      (block
+        (throw (call Panic "ChaCha20-Poly1305 failed to start") (if (!= it 1)))
+      )
+    )
+    (if (> (. aad size) 0)
+      (call C:EVP_EncryptUpdate context null &written aad (. aad size))
+    )
+    (call C:EVP_EncryptUpdate context sealed &written plaintext (. plaintext size))
+    (call C:EVP_EncryptFinal_ex context (+ sealed written) &written)
+    (let tag (+ sealed (. plaintext size)))
+    (call C:EVP_CIPHER_CTX_ctrl context C:EVP_CTRL_AEAD_GET_TAG chacha20-poly1305-tag-size tag
+      (block
+        (throw (call Panic "ChaCha20-Poly1305 failed to give its tag") (if (!= it 1)))
+      )
+    )
+    (return sealed)
+  )
+  (fn-do + open ([] Byte) (?! CryptoError)
+    (param nonce ([] Byte))
+    (param sealed ([] Byte))
+    (param aad _ (= ([] Byte 0)))
+    (call check-nonce nonce)
+    (throw (call CryptoError "Sealed data is shorter than its tag") (if (< (. sealed size) chacha20-poly1305-tag-size)))
+    (let size (- (. sealed size) chacha20-poly1305-tag-size))
+    (let context (use (call CipherContext)))
+    (let plaintext ([] Byte size))
+    (let written I32)
+    (call C:EVP_DecryptInit_ex context (call C:EVP_chacha20_poly1305) null key nonce
+      (block
+        (throw (call Panic "ChaCha20-Poly1305 failed to start") (if (!= it 1)))
+      )
+    )
+    (if (> (. aad size) 0)
+      (call C:EVP_DecryptUpdate context null &written aad (. aad size))
+    )
+    (call C:EVP_DecryptUpdate context plaintext &written sealed size)
+    (let tag (+ sealed size))
+    (call C:EVP_CIPHER_CTX_ctrl context C:EVP_CTRL_AEAD_SET_TAG chacha20-poly1305-tag-size tag)
+    (call C:EVP_DecryptFinal_ex context (+ plaintext written) &written
+      (block
+        (throw (call CryptoError "ChaCha20-Poly1305 authentication failed") (if (!= it 1)))
+      )
+    )
+    (return plaintext)
+  )
+  (fn-do _ check-nonce _
+    (param nonce ([] Byte))
+    (throw (call Panic (str "A ChaCha20-Poly1305 nonce is " chacha20-poly1305-nonce-size " bytes, not " (. nonce size))) (if (!= (. nonce size) chacha20-poly1305-nonce-size)))
+  )
+)
+
+(type _ CipherContext
+  (implements (of Usable (of CPointer I8)))
+  (prop _ handle (of CPointer I8) (= (call C:EVP_CIPHER_CTX_new)))
+  (fn-expr + begin-using _
+    handle
+  )
+  (fn-do + end-using _
+    (call C:EVP_CIPHER_CTX_free handle)
+  )
+)

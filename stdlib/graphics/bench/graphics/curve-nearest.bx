@@ -1,0 +1,28 @@
+; benchmark.meta description: Measures finding the nearest point on a circle and on an ellipse from 16 points near them and far from them, most of them nearest to the inside of a curve, 20 times over.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/crossings)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /graphics/shapes)
+(import /math)
+(blank)
+
+(main
+  (let ring (call circle (tuple 120 115) 20))
+  (let oval (call ellipse (tuple 120 315) (call Dimensions 20 15)))
+  (let checksum Size 0)
+  (for (in pass (..< 0 20))
+    (for (in sample (..< 0 16))
+      (let spot (call Point (+ 143.0 (* sample 60) pass) (+ 122.0 (* sample 45))))
+      (let round-hit (call path-nearest ring spot))
+      (let oval-hit (call path-nearest oval spot))
+      (if (and round-hit oval-hit)
+        (+= checksum (as (call round (+ (. round-hit distance) (. oval-hit distance))) Size))
+      )
+    )
+  )
+  (print (str "bench-result graphics/curve-nearest checksum=" checksum))
+)

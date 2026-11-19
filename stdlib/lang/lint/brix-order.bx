@@ -1,0 +1,903 @@
+(import ./brix-source)
+(import ./format)
+(import ./method-order)
+(import ./source)
+(import /core/table)
+(import /data/source-tree)
+(import /lang/ast/ast)
+(import /lang/ast/ast-children)
+(import /lang/ast/ast-nodes)
+(import /lang/ast/operator)
+(import /lang/ast/row-range)
+(import /lang/brix/layout)
+(import /stream/aggregate)
+(import /stream/sort)
+
+(fn-do + brix-ordered (? String)
+  (param source LintSource)
+  (param tree AST)
+  (param index (? MethodOrderIndex))
+  (let read (call read-brix-source source))
+  (return-if null (if (not read)))
+  (let brix (use read))
+  (return (call (. (call BrixOrder brix tree index) ordered-text)))
+)
+
+(type + BrixOrder
+  (prop + brix BrixSource)
+  (prop + tree AST)
+  (prop + index (? MethodOrderIndex))
+  (prop _ store SourceStore)
+  (prop _ layout BrixLayout)
+  (prop _ module-order (map String OrderInfo))
+  (prop _ type-order (map String OrderInfo))
+  (prop _ sheet-order (map String OrderInfo))
+  (prop _ sheet-rule-order (map String OrderInfo))
+  (prop _ rule-order (map String OrderInfo))
+  (prop _ primary-names (map String Bool))
+  (fn-do + This _
+    (param brix _)
+    (param tree _)
+    (param index _)
+    (lazy store (. brix store))
+    (lazy layout (call BrixLayout (. brix store)))
+    (lazy module-order (call module-order-spec))
+    (lazy type-order (call type-member-order-spec))
+    (lazy sheet-order (call style-sheet-member-order-spec))
+    (lazy sheet-rule-order (call style-sheet-rule-body-order-spec))
+    (lazy rule-order (call style-rule-body-order-spec))
+    (lazy primary-names (call primary-type-names (. brix source path)))
+  )
+  (fn-do + ordered-text String
+    (let roots (list (of ImmutableTableRow SourceNode)) (in (call (. store node) each) (. brix roots)))
+    (return (call brix-file-text store (call arranged roots (call top-level-statements tree) .sequence-module 0)))
+  )
+  (fn-do _ arranged (list (of ImmutableTableRow SourceNode))
+    (param members (list (of ImmutableTableRow SourceNode)))
+    (param ids (list SyntaxId))
+    (param kind SequenceKind)
+    (param container U32)
+    (let positions (map U32 Index))
+    (for (in position (..< 0 (. members length)))
+      (= ([] positions (. ([] members position) id)) position)
+    )
+    (let rebuilt (list (of ImmutableTableRow SourceNode)))
+    (++= rebuilt members)
+    (let places (map SyntaxId Index))
+    (for (in id ids)
+      (let place (call member-of id container positions))
+      (if (!= place null)
+        (= ([] places id) place)
+        (let inner (call nested ([] members place) id kind))
+        (if inner
+          (= ([] rebuilt place) inner)
+        )
+      )
+    )
+    (return (?? (call reordered members rebuilt ids places kind) rebuilt))
+  )
+  (fn-do _ member-of (? Index)
+    (param id SyntaxId)
+    (param container U32)
+    (param positions (map U32 Index))
+    (let begin (. ([] (. tree nodes loc) id) begin))
+    (let found (call (. brix form-at) (. begin line) (. begin column)))
+    (return-if null (if (not found)))
+    (let current found)
+    (let parent (call (. brix parent-of) current))
+    (while (and parent (!= (. parent id) container))
+      (= current parent)
+      (= parent (call (. brix parent-of) current))
+    )
+    (return-if null (if (and (not parent) (!= container 0))))
+    (return ([] positions (. current id)))
+  )
+  (fn-do _ nested (? (of ImmutableTableRow SourceNode))
+    (param item (of ImmutableTableRow SourceNode))
+    (param id SyntaxId)
+    (param kind SequenceKind)
+    (let is-module (== kind .sequence-module))
+    (let in-sheet (or (== kind .sequence-sheet) (== kind .sequence-sheet-rule-body)))
+    (let is-rule-body (or (== kind .sequence-sheet-rule-body) (== kind .sequence-rule-body)))
+    (match? ([] (. tree nodes) id)
+      (case (call .node-class-block row)
+        (return-if null (if (not is-module)))
+        (return
+          (call within
+            (block
+              (arg item)
+              (arg ([] (. tree children) (. row members)))
+              (arg (if-expr (. row is-style-sheet) .sequence-sheet .sequence-type))
+            )
+          )
+        )
+      )
+      (case (call .node-style-sheet-extension row)
+        (return-if null (if (not is-module)))
+        (return (call within item ([] (. tree children) (. row body)) .sequence-sheet))
+      )
+      (case (call .node-extension row)
+        (return-if null (if (not is-module)))
+        (return (call within item ([] (. tree children) (. row body)) .sequence-type))
+      )
+      (case (call .node-rule-syntax row)
+        (return-if null (if is-module))
+        (return (call within-block item (. row body) in-sheet))
+      )
+      (case (call .node-style-when row)
+        (return-if null (if (not is-rule-body)))
+        (return (call within-block item (. row body) in-sheet))
+      )
+    )
+    (return null)
+  )
+  (fn-do _ within-block (? (of ImmutableTableRow SourceNode))
+    (param item (of ImmutableTableRow SourceNode))
+    (param body SyntaxId)
+    (param in-sheet Bool)
+    (return-if null (if (== body 0)))
+    (match? ([] (. tree nodes) body)
+      (case (call .node-block block)
+        (return
+          (call within
+            (block
+              (arg item)
+              (arg ([] (. tree children) (. block body)))
+              (arg (if-expr in-sheet .sequence-sheet-rule-body .sequence-rule-body))
+            )
+          )
+        )
+      )
+    )
+    (return null)
+  )
+  (fn-do _ within (? (of ImmutableTableRow SourceNode))
+    (param item (of ImmutableTableRow SourceNode))
+    (param ids (list SyntaxId))
+    (param kind SequenceKind)
+    (return-if null (if (== (. ids length) 0)))
+    (let found (call (. layout header-count) item))
+    (return-if null (if (== found null)))
+    (let count (as found Index))
+    (let items (call (. store listed) item))
+    (let members (list (of ImmutableTableRow SourceNode)))
+    (for (in position (..< count (. items length)))
+      (+= members ([] items position))
+    )
+    (let made (call arranged members ids kind (. item id)))
+    (return-if null (if (call is-same made members)))
+    (let whole (list (of ImmutableTableRow SourceNode)))
+    (for (in position (..< 0 count))
+      (+= whole ([] items position))
+    )
+    (++= whole made)
+    (return (call (. store with-items) item whole))
+  )
+  (fn-do _ reordered (? (list (of ImmutableTableRow SourceNode)))
+    (param members (list (of ImmutableTableRow SourceNode)))
+    (param rebuilt (list (of ImmutableTableRow SourceNode)))
+    (param ids (list SyntaxId))
+    (param places (map SyntaxId Index))
+    (param kind SequenceKind)
+    (let order (call order-of kind))
+    (let found (call anchors-of members ids places kind))
+    (return-if null (if (or (not found) (== (. found length) 0))))
+    (let chunks (call chunks-of members found order))
+    (let output (list (of ImmutableTableRow SourceNode)))
+    (for (in slot (..< 0 (. ([] chunks 0) start)))
+      (+= output ([] rebuilt slot))
+    )
+    (let index Index 0)
+    (while (< index (. chunks length))
+      (if (call is-sortable ([] chunks index) order)
+        (let first index)
+        (while (and (< index (. chunks length)) (call is-sortable ([] chunks index) order))
+          (+= index 1)
+        )
+        (++= output (call region members rebuilt ([] chunks (..< first index))))
+        (else
+          (for (in slot (..< (. ([] chunks index) start) (. ([] chunks index) end)))
+            (+= output ([] rebuilt slot))
+          )
+          (+= index 1)
+        )
+      )
+    )
+    (for (in slot (..< (. ([] chunks (- (. chunks length) 1)) end) (. members length)))
+      (+= output ([] rebuilt slot))
+    )
+    (return output)
+  )
+  (fn-do _ anchors-of (? (list ChunkAnchor))
+    (param members (list (of ImmutableTableRow SourceNode)))
+    (param ids (list SyntaxId))
+    (param places (map SyntaxId Index))
+    (param kind SequenceKind)
+    (let anchors (list ChunkAnchor))
+    (let position Index 0)
+    (while (< position (. ids length))
+      (let id ([] ids position))
+      (if (call is-skipped-member id)
+        (+= position 1)
+        (continue)
+      )
+      (let first ([] places id))
+      (return-if null (if (== first null)))
+      (if (and (== kind .sequence-type) (call is-delegates id))
+        (let end position)
+        (while (and (< end (. ids length)) (call is-delegates ([] ids end)))
+          (+= end 1)
+        )
+        (return-if null (if (or (>= end (. ids length)) (not (call is-property ([] ids end))))))
+        (let property ([] ids end))
+        (let last ([] places property))
+        (return-if null (if (or (== last null) (< last first))))
+        (let bucket "delegates-for-properties")
+        (let anchor
+          (call ChunkAnchor
+            (block
+              (arg property)
+              (arg bucket)
+              (arg (. anchors length))
+              (arg (call sort-priority property bucket kind))
+              (arg false)
+              (arg first)
+              (arg last)
+            )
+          )
+        )
+        (return-if null (if (not (call push-anchor anchors anchor))))
+        (= position (+ end 1))
+        (continue)
+      )
+      (let bucket (call classify id ([] members first) kind))
+      (let anchor
+        (call ChunkAnchor
+          (block
+            (arg id)
+            (arg bucket)
+            (arg (. anchors length))
+            (arg (call sort-priority id bucket kind))
+            (arg false)
+            (arg first)
+            (arg first)
+          )
+        )
+      )
+      (return-if null (if (not (call push-anchor anchors anchor))))
+      (+= position 1)
+    )
+    (return anchors)
+  )
+  (fn-do _ push-anchor Bool
+    (param anchors (list ChunkAnchor))
+    (param anchor ChunkAnchor)
+    (if (!= (. anchors length) 0)
+      (let previous ([] anchors (- (. anchors length) 1)))
+      (let merges (and (== (. anchor bucket) (. previous bucket)) (call is-opaque-bucket (. anchor bucket))))
+      (if merges
+        (if (> (. anchor end-line) (. previous end-line))
+          (= (. previous end-line) (. anchor end-line))
+        )
+        (return true)
+      )
+      (return-if false (if (<= (. anchor start-line) (. previous end-line))))
+    )
+    (+= anchors anchor)
+    (return true)
+  )
+  (fn-do _ chunks-of (list Chunk)
+    (param members (list (of ImmutableTableRow SourceNode)))
+    (param anchors (list ChunkAnchor))
+    (param order (map String OrderInfo))
+    (let starts (list Index))
+    (for (in position (..< 0 (. anchors length)))
+      (let floor (if-expr (> position 0) (+ (. ([] anchors (- position 1)) end-line) 1) 0))
+      (+= starts (call attached-start members (. ([] anchors position) start-line) floor))
+    )
+    (let chunks (list Chunk))
+    (for (in position (..< 0 (. anchors length)))
+      (let anchor ([] anchors position))
+      (let end (if-expr (< (+ position 1) (. anchors length)) ([] starts (+ position 1)) (+ (. anchor end-line) 1)))
+      (let info (only-if ([] order (. anchor bucket)) (if (!= (. anchor bucket length) 0))))
+      (+= chunks
+        (call Chunk
+          (block
+            (arg ([] starts position))
+            (arg end)
+            (arg (. anchor bucket))
+            (arg (. anchor original-index))
+            (arg (. anchor sort-priority))
+            (arg false)
+            (arg "")
+            (arg (if-expr info (. info index) -1))
+            (arg (if-expr info (. info section) -1))
+            (arg (call is-member-function-bucket (. anchor bucket)))
+          )
+        )
+      )
+    )
+    (return chunks)
+  )
+  (fn-do _ attached-start Index
+    (param members (list (of ImmutableTableRow SourceNode)))
+    (param first Index)
+    (param floor Index)
+    (let start first)
+    (while (and (> start floor) (call (. store is-comment) ([] members (- start 1))))
+      (-= start 1)
+    )
+    (return start)
+  )
+  (fn-do _ region (list (of ImmutableTableRow SourceNode))
+    (param members (list (of ImmutableTableRow SourceNode)))
+    (param rebuilt (list (of ImmutableTableRow SourceNode)))
+    (param chunks (list Chunk))
+    (let sorted (call sort chunks (:using compare-chunks)))
+    (let made (list (of ImmutableTableRow SourceNode)))
+    (for (in position (..< 0 (. sorted length)))
+      (let chunk ([] sorted position))
+      (let core (call core-end members chunk))
+      (let start (call lead members chunk core))
+      (for (in slot (..< start core))
+        (+= made (call shown ([] rebuilt slot) (. chunk bucket)))
+      )
+      (if (== (+ position 1) (. sorted length))
+        (let held ([] chunks position))
+        (for (in slot (..< (call core-end members held) (. held end)))
+          (+= made ([] rebuilt slot))
+        )
+        (else-if (call is-spaced members chunk ([] sorted (+ position 1)))
+          (+= made (call (. store blank)))
+        )
+      )
+    )
+    (return made)
+  )
+  (fn-expr _ is-spaced Bool
+    (param members (list (of ImmutableTableRow SourceNode)))
+    (param left Chunk)
+    (param right Chunk)
+    (case? (call (. store is-comment) last)
+      true
+    )
+    (case? (call is-divided last (. left bucket))
+      false
+    )
+    (case? (call (. store is-comment) first)
+      true
+    )
+    (case? (call is-divided first (. right bucket))
+      false
+    )
+    (default
+      (or (!= (. left section) (. right section)) (and (call is-style-rule-bucket (. left bucket)) is-right-style-rule))
+    )
+    (where
+      (lazy last ([] members (- (call core-end members left) 1)))
+      (lazy first ([] members (call lead members right (call core-end members right))))
+      (lazy is-right-style-rule (call is-style-rule-bucket (. right bucket)))
+    )
+  )
+  (fn-expr _ is-divided Bool
+    (param node (of ImmutableTableRow SourceNode))
+    (param bucket String)
+    (and (not (call is-one-line-type-bucket bucket)) (or (call (. layout is-apart) node) is-machine))
+    (where
+      (lazy count (call (. store count) node))
+      (lazy is-machine (and (call (. store is-form) node "prop") (> count 4) (call (. store is-form) (call (. store item) node (- count 1)) "machine")))
+    )
+  )
+  (fn-do _ shown (of ImmutableTableRow SourceNode)
+    (param node (of ImmutableTableRow SourceNode))
+    (param bucket String)
+    (return-if node (if (or (not (call is-one-line-type-bucket bucket)) (not (call (. store is-form) node "type")))))
+    (let items (call (. store listed) node))
+    (= ([] items 0) (call (. store atom) "type-line"))
+    (return (call (. store with-items) node items))
+  )
+  (fn-do _ lead Index
+    (param members (list (of ImmutableTableRow SourceNode)))
+    (param chunk Chunk)
+    (param end Index)
+    (return-if (. chunk start) (if (not (call is-one-line-type-bucket (. chunk bucket)))))
+    (let position (. chunk start))
+    (while (and (< position end) (call (. store is-blank) ([] members position)))
+      (+= position 1)
+    )
+    (return position)
+  )
+  (fn-do _ core-end Index
+    (param members (list (of ImmutableTableRow SourceNode)))
+    (param chunk Chunk)
+    (let end (. chunk end))
+    (while (and (> end (. chunk start)) (call (. store is-blank) ([] members (- end 1))))
+      (-= end 1)
+    )
+    (return end)
+  )
+  (fn-do _ is-same Bool
+    (param left (list (of ImmutableTableRow SourceNode)))
+    (param right (list (of ImmutableTableRow SourceNode)))
+    (return-if false (if (!= (. left length) (. right length))))
+    (return (call all (..< 0 (. left length)) (:where (call is-same-item ([] left each) ([] right each)))))
+  )
+  (fn-expr _ is-same-item Bool
+    (param left (of ImmutableTableRow SourceNode))
+    (param right (of ImmutableTableRow SourceNode))
+    (or (== (. left index) (. right index)) (and (call (. store is-blank) left) (call (. store is-blank) right)) is-same-comment)
+    (where
+      (lazy is-same-comment (and (call (. store is-comment) left) (call (. store is-comment) right) (== (call (. store comment-text) left) (call (. store comment-text) right))))
+    )
+  )
+  (fn-expr _ is-sortable Bool
+    (param chunk Chunk)
+    (param order (map String OrderInfo))
+    (and (!= (. chunk bucket length) 0) (!= ([] order (. chunk bucket)) null))
+  )
+  (fn-expr _ order-of (map String OrderInfo)
+    (param kind SequenceKind)
+    (match kind
+      (case= .sequence-module
+        module-order
+      )
+      (case= .sequence-type
+        type-order
+      )
+      (case= .sequence-sheet
+        sheet-order
+      )
+      (case= .sequence-sheet-rule-body
+        sheet-rule-order
+      )
+      (default
+        rule-order
+      )
+    )
+  )
+  (fn-do _ classify String
+    (param id SyntaxId)
+    (param item (of ImmutableTableRow SourceNode))
+    (param kind SequenceKind)
+    (match kind
+      (case= .sequence-module
+        (return (call module-bucket id item))
+      )
+      (case= .sequence-type
+        (return (call type-bucket id item))
+      )
+      (case= .sequence-sheet
+        (return (call sheet-bucket id))
+      )
+      (case= .sequence-sheet-rule-body
+        (return (call sheet-rule-bucket id))
+      )
+      (default
+        (return (call rule-bucket id))
+      )
+    )
+  )
+  (fn-do _ module-bucket String
+    (param id SyntaxId)
+    (param item (of ImmutableTableRow SourceNode))
+    (match ([] (. tree nodes) id)
+      (case .node-import-syntax
+        (return "imports")
+      )
+      (case (call .node-property-syntax row)
+        (if (and (!= (. row value) 0) is-machine-value (call (. (?? (call (. store head) item) "") starts-with) "fn"))
+          (return (str (call access-prefix (. row access)) "-functions"))
+        )
+        (lazy is-machine-value (call is-state-machine (. row value)))
+        (return (call property-bucket row "globals"))
+      )
+      (case (call .node-class-block row)
+        (if (. row is-style-sheet)
+          (return "style-sheets")
+        )
+        (if (!= (. row aliases count) 0)
+          (return "")
+        )
+        (let prefix (call access-prefix (. row access)))
+        (return (if-expr (call is-one-line-type row item) (str prefix "-one-line-types") (str prefix "-types")))
+      )
+      (case .node-style-sheet-extension
+        (return "style-sheet-extensions")
+      )
+      (case .node-subscriber-syntax
+        (return "module-subscriptions")
+      )
+      (case (call .node-extension row)
+        (return (str (call access-prefix (. row access)) "-extensions"))
+      )
+      (case (call .node-function-syntax row)
+        (return (call module-function-bucket (. row access) (. row return-type)))
+      )
+      (case .node-unit-declaration
+        (return "")
+      )
+      (case .node-converter-syntax
+        (return "")
+      )
+      (case .node-fromverter-syntax
+        (return "")
+      )
+      (case .node-when-rule-syntax
+        (return "")
+      )
+      (case .node-whenever-rule-syntax
+        (return "")
+      )
+      (default
+        (return "module-main-body")
+      )
+    )
+  )
+  (fn-do _ is-one-line-type Bool
+    (param row ASTClassBlock)
+    (param item (of ImmutableTableRow SourceNode))
+    (return-if false (if (or (call is-function-type (. row base)) (!= (. row members count) 0))))
+    (return-if false (if (and (== (. row base) 0) (== (. row or-bases count) 0))))
+    (return-if false (if (or (!= (. row param-constraints count) 0) (!= (. row param-assignments count) 0))))
+    (let header (call (. layout header-count) item))
+    (return-if false (if (and (!= header null) (< (as header Size) (call (. store count) item)))))
+    (return (call some (call (. store items) item) (:where (call (. store is-form) each "is"))))
+  )
+  (fn-expr _ module-function-bucket String
+    (param access Access)
+    (param return-type SyntaxId)
+    (case? (not (call is-tests-path (. brix source path)))
+      (str prefix "-functions")
+    )
+    (case? (== name "testrender")
+      (str prefix "-test-render-functions")
+    )
+    (case? (== name "testcase")
+      (str prefix "-test-case-functions")
+    )
+    (case? (== prefix "public")
+      "test-public-functions"
+    )
+    (default
+      (str prefix "-functions")
+    )
+    (where
+      (lazy prefix (call access-prefix access))
+      (lazy name (call normalized-name (call type-name return-type)))
+    )
+  )
+  (fn-expr _ type-name String
+    (param id SyntaxId)
+    (if-expr (== id 0) "" declared)
+    (where
+      (lazy declared
+        (match ([] (. tree nodes) id)
+          (case (call .node-type-identifier row)
+            (. row name text)
+          )
+          (case (call .node-core-type-identifier row)
+            (. row name text)
+          )
+          (default
+            ""
+          )
+        )
+      )
+    )
+  )
+  (fn-do _ type-bucket String
+    (param id SyntaxId)
+    (param item (of ImmutableTableRow SourceNode))
+    (match ([] (. tree nodes) id)
+      (case .node-enum-declaration
+        (return "enum-cases")
+      )
+      (case (call .node-property-syntax row)
+        (return (call property-bucket row "properties"))
+      )
+      (case .node-dependency-declaration
+        (return "dependencies")
+      )
+      (case .node-style-annotation
+        (return "style-annotations")
+      )
+      (case .node-rule-syntax
+        (return "style-rules")
+      )
+      (case .node-content-block
+        (return "content-block")
+      )
+      (case (call .node-fromverter-syntax row)
+        (return (if-expr (== (. row access) .public-access) "public-fromverters" ""))
+      )
+      (case (call .node-converter-syntax row)
+        (return (if-expr (== (. row access) .public-access) "public-converters" ""))
+      )
+      (case .node-subscriber-syntax
+        (return "subscriptions")
+      )
+      (case .node-when-rule-syntax
+        (return "when-rules")
+      )
+      (case .node-whenever-rule-syntax
+        (return "whenever-rules")
+      )
+      (case (call .node-function-syntax row)
+        (return (call function-bucket row item))
+      )
+      (default
+        (return "")
+      )
+    )
+  )
+  (fn-expr _ function-bucket String
+    (param row ASTFunction)
+    (param item (of ImmutableTableRow SourceNode))
+    (case? (and (== (. row names count) 1) (== (. ([] (. tree atoms) (. row names start)) text) "This"))
+      (str prefix "-constructors")
+    )
+    (case? (and (. row is-getter) (call (. store is-form) item "prop"))
+      (str prefix "-inline-getter-properties")
+    )
+    (case? (. row is-getter)
+      (str prefix "-getters")
+    )
+    (case? (. row is-setter)
+      (str prefix "-setters")
+    )
+    (case? (== (. operator length) 0)
+      (str prefix "-methods")
+    )
+    (case? (== operator "[]")
+      (str prefix "-indexers")
+    )
+    (case? (== operator "[]=")
+      (str prefix "-index-setters")
+    )
+    (case? (== operator "-=[]")
+      (str prefix "-index-deleters")
+    )
+    (case? (call is-prefix-operator operator)
+      (str prefix "-prefix-operators")
+    )
+    (default
+      (str prefix "-operators")
+    )
+    (where
+      (lazy prefix (call access-prefix (. row access)))
+      (lazy operator (call operator-token row item))
+    )
+  )
+  (fn-expr _ operator-token String
+    (param row ASTFunction)
+    (param item (of ImmutableTableRow SourceNode))
+    (case? (!= (. row names count) 1)
+      ""
+    )
+    (case? (== name "()")
+      ""
+    )
+    (case? (or (== name "[]") (== name "[]=") (== name "-=[]"))
+      name
+    )
+    (case? (< (call (. store count) item) 3)
+      ""
+    )
+    (case? (call (. store is-form) key "infix")
+      name
+    )
+    (case? (not (call (. store is-form) key "prefix"))
+      ""
+    )
+    (case? (== name "-=")
+      "-=del"
+    )
+    (default
+      name
+    )
+    (where
+      (lazy name (. ([] (. tree atoms) (. row names start)) text))
+      (lazy key (call (. store item) item 2))
+    )
+  )
+  (fn-expr _ property-bucket String
+    (param row ASTProperty)
+    (param scope String)
+    (case? (and (!= (. row value) 0) (call is-state-machine (. row value)))
+      (str prefix "-state-machine-" scope)
+    )
+    (case? (and (== scope "properties") (!= (. row annotations count) 0))
+      (str prefix "-style-properties")
+    )
+    (case? (. row is-lazy)
+      (str prefix "-lazy-" scope)
+    )
+    (default
+      (str prefix "-" scope)
+    )
+    (where
+      (lazy prefix (call access-prefix (. row access)))
+    )
+  )
+  (fn-do _ sheet-bucket String
+    (param id SyntaxId)
+    (match ([] (. tree nodes) id)
+      (case (call .node-property-syntax row)
+        (let lazy (if-expr (. row is-lazy) "lazy-" ""))
+        (return (str (call access-prefix (. row access)) "-" lazy "slots"))
+      )
+      (case .node-rule-syntax
+        (return "style-rules")
+      )
+      (default
+        (return "")
+      )
+    )
+  )
+  (fn-expr _ sheet-rule-bucket String
+    (param id SyntaxId)
+    (match ([] (. tree nodes) id)
+      (case .node-assign
+        "style-declarations"
+      )
+      (case .node-style-when
+        "style-when-blocks"
+      )
+      (case .node-rule-syntax
+        "nested-style-rules"
+      )
+      (default
+        ""
+      )
+    )
+  )
+  (fn-expr _ rule-bucket String
+    (param id SyntaxId)
+    (match ([] (. tree nodes) id)
+      (case .node-assign
+        "style-declarations"
+      )
+      (case .node-style-when
+        "style-when-blocks"
+      )
+      (case .node-markup-slot-forward
+        "generated-content-slots"
+      )
+      (case (call .node-markup row)
+        (if-expr (!= (. row slot-binding) 0) "generated-content-slots" "content-body")
+      )
+      (case .node-rule-syntax
+        "nested-style-rules"
+      )
+      (default
+        "content-body"
+      )
+    )
+  )
+  (fn-do _ sort-priority Int
+    (param id SyntaxId)
+    (param bucket String)
+    (param kind SequenceKind)
+    (if (== kind .sequence-module)
+      (return-if 0 (if (or (!= bucket "public-types") (not (call is-type-class id)))))
+      (return (if-expr ([] primary-names (call normalized-name (call class-name id))) -1 0))
+    )
+    (return-if 0 (if (or (!= kind .sequence-type) (not (call is-semantic-callable id bucket)))))
+    (let found ([] (?. index metadata) id))
+    (return (if-expr found (. found priority) 0))
+  )
+  (fn-expr _ is-semantic-callable Bool
+    (param id SyntaxId)
+    (param bucket String)
+    (and (call is-semantic-callable-bucket bucket) is-callable)
+    (where
+      (lazy is-callable
+        (match ([] (. tree nodes) id)
+          (case .node-function-syntax
+            true
+          )
+          (case .node-converter-syntax
+            true
+          )
+          (case .node-fromverter-syntax
+            true
+          )
+          (default
+            false
+          )
+        )
+      )
+    )
+  )
+  (fn-expr _ is-skipped-member Bool
+    (param id SyntaxId)
+    (match ([] (. tree nodes) id)
+      (case .node-noop
+        true
+      )
+      (case .node-implements-declaration
+        true
+      )
+      (case .node-using-declaration
+        true
+      )
+      (case .node-sees-declaration
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr _ is-delegates Bool
+    (param id SyntaxId)
+    (match ([] (. tree nodes) id)
+      (case .node-delegate-declaration
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr _ is-property Bool
+    (param id SyntaxId)
+    (match ([] (. tree nodes) id)
+      (case .node-property-syntax
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr _ is-state-machine Bool
+    (param id SyntaxId)
+    (match ([] (. tree nodes) id)
+      (case .node-state-machine
+        true
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr _ is-type-class Bool
+    (param id SyntaxId)
+    (match ([] (. tree nodes) id)
+      (case (call .node-class-block row)
+        (not (. row is-style-sheet))
+      )
+      (default
+        false
+      )
+    )
+  )
+  (fn-expr _ is-function-type Bool
+    (param id SyntaxId)
+    (and (!= id 0) is-type-function)
+    (where
+      (lazy is-type-function
+        (match ([] (. tree nodes) id)
+          (case .node-type-function
+            true
+          )
+          (default
+            false
+          )
+        )
+      )
+    )
+  )
+  (fn-expr _ class-name String
+    (param id SyntaxId)
+    (match ([] (. tree nodes) id)
+      (case (call .node-class-block row)
+        (. row name text)
+      )
+      (default
+        ""
+      )
+    )
+  )
+)

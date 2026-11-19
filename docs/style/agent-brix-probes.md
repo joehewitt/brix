@@ -33,7 +33,7 @@ compiles in only when a selector names it, so it costs nothing otherwise.
 ## Running With Probes
 
 ```text
-brix x.yumi [-o build/x] --probes [selectors] [--timeout 30s] [--quiet-probes] [-- args]
+brix x.bx [-o build/x] --probes [selectors] [--timeout 30s] [--quiet-probes] [-- args]
 ```
 
 - **Without `-o`**, `--probes` builds the executable at `.tmp/build/probes/bin/x` and runs it.
@@ -70,7 +70,7 @@ above the current one that holds `.git`, or else a `.brix` folder, or else the c
 brix probes run [--timeout 30s] [--quiet] [--trace path.trace] -- build/x args
 ```
 
-The executable must have been built with probes, as `brix x.yumi -o build/x --compile --probes`
+The executable must have been built with probes, as `brix x.bx -o build/x --compile --probes`
 builds it. Each build with `-o build/x` also writes the catalog `build/x.probes.json`, which names
 each site's fields. Use the runner for a program you build once and run many times, for an app the
 user runs, and for a run whose trace should go somewhere other than `.tmp/build/probes/`.
@@ -104,7 +104,7 @@ Filters work with every command that reads records:
 - `--where 'ms > 4 && frame < 10'`, over fields and `duration`, `time`, `depth`, `index`, `key`,
   `label`, `text` and `location`, with durations written as `5ms`;
 - `--text`;
-- `--source file.yumi:12`;
+- `--source file.bx:12`;
 - `--since 100ms` and `--until 2s`;
 - `--kind log,event,group,open`, where `open` is a group that never ended.
 
@@ -126,7 +126,7 @@ stuck, and `brix probes around <index>` shows what led up to it.
 its own, so another build cannot replace it:
 
 ```text
-brix app.yumi -o .tmp/build/app-probes/app --compile --probes 'app.sync app.save'
+brix app.bx -o .tmp/build/app-probes/app --compile --probes 'app.sync app.save'
 ```
 
 For an app with a bundle, this also builds the bundle and the catalog `app.probes.json` beside the

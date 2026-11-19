@@ -1425,7 +1425,7 @@ A facet is declared with `facet-of`, as in `(type + BoxScroll (facet-of Box))`{.
   arguments has no facets`.
 - **Where.** A facet is declared in its owner's file or in a file of its family, named after it,
   as `box.scroll.bx` is beside `box.bx`; see Modules. Anywhere else it is an error: `Extra is a
-  facet of Box, so it is declared in the file family of box.yumi, in a module named after it`.
+  facet of Box, so it is declared in the file family of box.bx, in a module named after it`.
 - **One object.** A facet's stored properties are stored in the owner's objects, after the
   owner's own. Each constructor of the owner, and of the classes derived from it, gives them
   their first values: the owner's first, then each facet's, in the order of the names of the

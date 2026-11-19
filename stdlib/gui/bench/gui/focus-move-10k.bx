@@ -1,0 +1,192 @@
+; benchmark.meta description: Focus candidate collection, advance, reverse-order, and wrap costs over 10k focusable rows.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: gui,compile-timing
+(blank)
+(import /BxGC/BxGC.h)
+(import /core/markup)
+(import /graphics/canvas)
+(import /graphics/color)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /gui/box)
+(import /gui/events)
+(import /gui/layout)
+(import /gui/primitives)
+(import /stream/sort)
+(import /time/timer)
+(blank)
+(prop _ checksum Size (= 0))
+(blank)
+
+(main
+  (let row-count Size 10000)
+  (let root (call FocusRoot))
+  (call markup-mount-root root root)
+  (let viewport (call FocusViewport))
+  (call markup-append root viewport)
+  (for (in row-index (..< 0 row-count))
+    (call markup-append viewport (call FocusRow row-index))
+  )
+  (call (. root markup-batch-queue checkpoint))
+  (call (. root layout) (call Rect 0 0 1200 320))
+  (blank)
+  ; Keep one materialized list outside the measured regions to select stable midpoint and
+  ; endpoint probes. Every reported metric below measures the production successor walk.
+  (let warm (call (. root focus-candidates)))
+  (let middle ([] warm (/ (. warm length) 2)))
+  (let last ([] warm (- (. warm length) 1)))
+  (blank)
+  (let objects0 (call C:brixGCAllocatedObjectCount))
+  (let bytes0 (call C:brixGCRequestedByteCount))
+  (let counted (call focus-advance root middle))
+  (let candidate-objects (- (call C:brixGCAllocatedObjectCount) objects0))
+  (let candidate-bytes (- (call C:brixGCRequestedByteCount) bytes0))
+  (blank)
+  (let reps Size 30)
+  (let candidate-times (list U64))
+  (for (in rep (..< 0 reps))
+    (let t0 (call monotonic-time-nanoseconds))
+    (let candidate (call focus-advance root middle))
+    (let t1 (call monotonic-time-nanoseconds))
+    (+= candidate-times (- t1 t0))
+  )
+  (blank)
+  (probe-count gui.bench.focus.candidates-objects candidate-objects)
+  (probe-count gui.bench.focus.candidates-bytes candidate-bytes)
+  (probe-count gui.bench.focus.candidates-p50-us (call percentile-us candidate-times 50))
+  (probe-count gui.bench.focus.candidates-p95-us (call percentile-us candidate-times 95))
+  (probe-count gui.bench.focus.candidates-min-us (call min-us candidate-times))
+  (blank)
+  (let advance-times (list U64))
+  (for (in rep (..< 0 reps))
+    (let t0 (call monotonic-time-nanoseconds))
+    (let next (call focus-advance root middle false))
+    (let t1 (call monotonic-time-nanoseconds))
+    (+= advance-times (- t1 t0))
+  )
+  (blank)
+  (probe-count gui.bench.focus.advance-p50-ns (call percentile-ns advance-times 50))
+  (probe-count gui.bench.focus.advance-min-ns (call min-ns advance-times))
+  (blank)
+  (let wrap-times (list U64))
+  (for (in rep (..< 0 reps))
+    (let t0 (call monotonic-time-nanoseconds))
+    (let wrapped (call focus-advance root last false))
+    (let t1 (call monotonic-time-nanoseconds))
+    (+= wrap-times (- t1 t0))
+  )
+  (blank)
+  (probe-count gui.bench.focus.wrap-p50-us (call percentile-us wrap-times 50))
+  (blank)
+  ; Stable order checksum: one forward and backward move from the midpoint, then last-to-first wrap.
+  (let forward (as (call focus-advance root middle false) (? FocusRow)))
+  (let backward (as (call focus-advance root middle true) (? FocusRow)))
+  (let wrapped (as (call focus-advance root last false) (? FocusRow)))
+  (+= checksum (+ (. (!! forward) row-index) (. (!! backward) row-index) (. (!! wrapped) row-index)))
+  (blank)
+  (call (. root close))
+  (call markup-release root)
+  (blank)
+  (print (str "bench-result gui/focus-move-10k checksum=" checksum))
+)
+
+(fn-expr + focus-advance Box
+  (param root Box)
+  (param current Box)
+  (param going-backward _ (= false))
+  (?? (call (. root focus-candidate-after) current going-backward) (!! (call (. root focus-candidate-at-edge) going-backward)))
+)
+
+(fn-expr + percentile-us _
+  (param values (list U64))
+  (param percentile Size)
+  (case? (not values)
+    0
+  )
+  (default
+    (/ ([] sorted index) 1000)
+  )
+  (where
+    (lazy sorted (call sort values (:using (=> (left right) (if-expr (< left right) .lesser .greater)))))
+    (lazy index (/ (* (- (. sorted length) 1) percentile) 100))
+  )
+)
+
+(fn-expr + min-us _
+  (param values (list U64))
+  (case? (not values)
+    0
+  )
+  (default
+    (/ ([] sorted 0) 1000)
+  )
+  (where
+    (lazy sorted (call sort values (:using (=> (left right) (if-expr (< left right) .lesser .greater)))))
+  )
+)
+
+(fn-expr + percentile-ns _
+  (param values (list U64))
+  (param percentile Size)
+  (case? (not values)
+    0
+  )
+  (default
+    ([] sorted index)
+  )
+  (where
+    (lazy sorted (call sort values (:using (=> (left right) (if-expr (< left right) .lesser .greater)))))
+    (lazy index (/ (* (- (. sorted length) 1) percentile) 100))
+  )
+)
+
+(fn-expr + min-ns _
+  (param values (list U64))
+  (case? (not values)
+    0
+  )
+  (default
+    ([] sorted 0)
+  )
+  (where
+    (lazy sorted (call sort values (:using (=> (left right) (if-expr (< left right) .lesser .greater)))))
+  )
+)
+
+(type + FocusRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (blank)
+  (rule This
+    (= layout flow-col)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
+
+(type + FocusViewport (is Box)
+  (rule This
+    (= layout flow-col)
+    (= overflow-y (. ScrollOverflow auto))
+    (= min-height (call (. SizeSpec coord) 320))
+    (= max-height (call (. SizeSpec coord) 320))
+    (= min-width (call (. SizeSpec coord) 1200))
+    (= max-width (call (. SizeSpec coord) 1200))
+  )
+)
+
+(type + FocusRow (is Box)
+  (prop + row-index Size)
+  (blank)
+  (rule This
+    (= focus-mode (. FocusMode press))
+    (= min-width (call (. SizeSpec coord) 1200))
+    (= max-width (call (. SizeSpec coord) 1200))
+    (= min-height (call (. SizeSpec coord) 8))
+    (= max-height (call (. SizeSpec coord) 8))
+  )
+  (fn-do + This _
+    (param row-index _)
+  )
+)

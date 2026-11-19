@@ -1,0 +1,198 @@
+(import /units)
+(blank)
+(type-line + AnsiColor (is U8))
+(type-line + KeyCode (is U8))
+(type-line + Coord (alias tx) (is I16))
+(type-line + Flex (is U8))
+(type-line + AxisQuery (is (tuple (: mode AxisMeasureMode) (: min Coord) (: available (? Coord)) (: max (? Coord)))))
+(type-line + MeasureQuery (is (tuple (: inline AxisQuery) (: block AxisQuery))))
+(type-line + PositionPin (is (tuple (: source AnchorPoint) (: target AnchorPoint))))
+(type-line + PSize (is (tuple (: width Coord) (: height Coord))))
+
+(type + Display (is Union)
+  (variant visible)
+  (variant invisible)
+  (variant hidden)
+)
+
+(type + AxisMeasureMode (is Union)
+  (variant min-content)
+  (variant max-content)
+  (variant fit)
+  (variant exact)
+)
+
+(type + LayoutParticipation (is Tuple)
+  (prop + contributes-to-measure _ (= true))
+  (prop + arranged-by-parent-layout _ (= true))
+  (prop + arranged-after-parent-layout _ (= false))
+)
+
+(type + Anchor (is Union)
+  (variant parent)
+  (variant screen)
+  (variant style-target)
+)
+
+(type + AnchorPoint (is Union)
+  (variant start)
+  (variant center)
+  (variant end)
+  (fn-expr + fraction Ratio :get
+    (match this
+      (case (. AnchorPoint center)
+        0.5%%
+      )
+      (case (. AnchorPoint end)
+        1%%
+      )
+      (default
+        0%%
+      )
+    )
+  )
+)
+
+(type + Orientation (is Union)
+  (variant horizontal)
+  (variant vertical)
+)
+
+(type + ScrollAlignment (is Union)
+  (variant nearest)
+  (variant start)
+  (variant center)
+  (variant end)
+)
+
+(type + Direction (is Union)
+  (variant up)
+  (variant down)
+  (variant left)
+  (variant right)
+  (fn-to-expr + String
+    (match this
+      (case (. Direction up)
+        "up"
+      )
+      (case (. Direction down)
+        "down"
+      )
+      (case (. Direction left)
+        "left"
+      )
+      (case (. Direction right)
+        "right"
+      )
+      (default
+        ""
+      )
+    )
+  )
+)
+
+(type + SizeSpec (is Union)
+  (variant auto)
+  (variant coord Coord)
+  (variant percent Percent)
+)
+
+(type + MeasureResult (is Tuple)
+  (prop + content-size PSize)
+  (prop + border-size PSize)
+  (prop + outer-size PSize)
+  (prop + min-content-size (? PSize) (= null))
+  (prop + max-content-size (? PSize) (= null))
+  (prop + overflow-size (? PSize) (= null))
+  (prop + baseline (? Coord) (= null))
+)
+
+(type + PositionOffset (is Union)
+  (variant coord Coord)
+  (variant percent Percent)
+  (variant anchor-start)
+  (variant anchor-center)
+  (variant anchor-end)
+  (variant pin PositionPin)
+)
+
+(type + Insets (is (tuple (: top Coord) (: right Coord) (: bottom Coord) (: left Coord)))
+  (prop + horizontal _ (=> (+ left right)))
+  (prop + vertical _ (=> (+ top bottom)))
+  (fn-expr + clamped _ :get
+    (call Insets safe-top safe-right safe-bottom safe-left)
+    (where
+      (lazy safe-top (if-expr (> top 0) top 0))
+      (lazy safe-right (if-expr (> right 0) right 0))
+      (lazy safe-bottom (if-expr (> bottom 0) bottom 0))
+      (lazy safe-left (if-expr (> left 0) left 0))
+    )
+  )
+)
+
+(type + Point (is (tuple (: x Coord) (: y Coord)))
+  (fn-expr + (infix this + (param other Point)) _
+    (call Point (+ x (. other x)) (+ y (. other y)))
+  )
+)
+
+(type + Rect (is (tuple (: x Coord) (: y Coord) (: width Coord) (: height Coord)))
+  (prop + point _ (=> (call Point x y)))
+  (prop + center _ (=> (call Point (+ x (/ width 2)) (+ y (/ height 2)))))
+  (prop + size _ (=> (call PSize width height)))
+  (prop + right _ (=> (+ x width)))
+  (prop + bottom _ (=> (+ y height)))
+  (fn-do + This _
+    (param width Coord)
+    (param height Coord)
+    (param point Point)
+    (= x (. point x))
+    (= y (. point y))
+  )
+  (fn-expr + contains _
+    (param point Point)
+    (and (>= (. point x) x) (>= (. point y) y) (< (. point x) (+ x width)) (< (. point y) (+ y height)))
+  )
+  (fn-expr + inset _
+    (param edges Insets)
+    (call Rect (+ x (. safe left)) (+ y (. safe top)) safe-width safe-height)
+    (where
+      (lazy safe (. edges clamped))
+      (lazy safe-width (if-expr (> width (. safe horizontal)) (- width (. safe horizontal)) 0))
+      (lazy safe-height (if-expr (> height (. safe vertical)) (- height (. safe vertical)) 0))
+    )
+  )
+  (fn-expr + outset _
+    (param edges Insets)
+    (call Rect (- x (. safe left)) (- y (. safe top)) (+ width (. safe horizontal)) (+ height (. safe vertical)))
+    (where
+      (lazy safe (. edges clamped))
+    )
+  )
+)
+
+(fn-expr + fit-axis-query _
+  (param available (? Coord) (= null))
+  (call AxisQuery (. AxisMeasureMode fit) 0 available null)
+)
+
+(fn-expr + exact-axis-query _
+  (param size Coord)
+  (call AxisQuery (. AxisMeasureMode exact) size size size)
+)
+
+(fn-expr + measure-fit-query _
+  (param inline (? Coord) (= null))
+  (param block (? Coord) (= null))
+  (call MeasureQuery (call fit-axis-query inline) (call fit-axis-query block))
+)
+
+(fn-expr + zero-measure-result _
+  (call MeasureResult (call PSize 0 0) (call PSize 0 0) (call PSize 0 0))
+)
+
+(fn-expr + position-pin PositionOffset
+  (param source AnchorPoint)
+  (param target AnchorPoint)
+  (call (. PositionOffset pin) (call PositionPin source target))
+)

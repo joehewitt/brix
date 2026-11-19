@@ -1,0 +1,294 @@
+(import ./box)
+(import ./primitives)
+(import ./shape)
+(import /graphics/canvas)
+(import /graphics/color)
+(import /graphics/gradient)
+(import /graphics/image)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /graphics/roundedrect)
+(import /graphics/shader)
+(import /math)
+(import /stream/aggregate)
+(import /units)
+(blank)
+(prop _ bevel-glow (list (tuple Length Float)) (= (list (tuple 0 1) (tuple 1 0.6) (tuple 1.5 0.45) (tuple 2 0.35) (tuple 3 0.2) (tuple 4 0.15) (tuple 5 0.1) (tuple 6 0.05) (tuple 7 0))))
+(prop _ bevel-gloss-shader _ (:= (call Shader (str (call bevel-shape-source) "\n" (call bevel-gloss-source)))))
+(prop _ bevel-edge-shader _ (:= (call Shader (str (call bevel-shape-source) "\n" (call bevel-edge-source)))))
+
+(type + Painter
+  (fn-expr + clips-to-shape Bool :get
+    true
+  )
+  (fn-do + paint _
+    (param node Box)
+    (param rect Rect)
+    (param canvas Canvas)
+  )
+)
+
+(type + DefaultBackgroundPainter (is Painter)
+  (fn-do + paint _
+    (param node Box)
+    (param rect Rect)
+    (param canvas Canvas)
+    (call paint-default-background node rect canvas)
+  )
+)
+
+(type + BevelPainter (is Painter)
+  (prop + edge RGBA)
+  (prop + sheen RGBA)
+  (prop + bounce RGBA)
+  (prop + rim RGBA)
+  (prop + gloss RGBA)
+  (fn-do + This _
+    (param edge _)
+    (param sheen _ (= transparent))
+    (param bounce _ (= transparent))
+    (param rim _ (= transparent))
+    (param gloss _ (= transparent))
+  )
+  (fn-expr + clips-to-shape _ :get
+    false
+  )
+  (fn-do + paint _
+    (param node Box)
+    (param rect Rect)
+    (param canvas Canvas)
+    (let width (. node effective-border-widths top))
+    (let face (call (. rect pad) width))
+    (return-if (if (or (<= (. face width) 0) (<= (. face height) 0))))
+    (let radius (. node effective-corner-radius))
+    (let outer (call bevel-outline rect radius))
+    (do-use (. canvas saved-state)
+      (call (. outer clip) canvas)
+      (call paint-default-background node rect canvas)
+      (call paint-bevel-fill
+        (block
+          (arg face)
+          (arg (call bevel-mirror (. face top-center) (. face bottom-center) (. face height) bevel-glow sheen bounce))
+          (arg canvas)
+        )
+      )
+    )
+    (let half (/ width 2))
+    (call paint-bevel-ring
+      (block
+        (arg outer)
+        (arg (call bevel-outline (call (. rect pad) half) (- radius half)))
+        (arg
+          (call LinearGradient
+            (block
+              (arg (. rect top-center))
+              (arg (. rect bottom-center))
+              (arg (list (call GradientStop 0% rim) (call GradientStop 100% rim)))
+            )
+          )
+        )
+        (arg canvas)
+      )
+    )
+    (call paint-bevel-shader rect radius gloss bevel-gloss-shader canvas)
+    (call paint-bevel-shader rect radius edge bevel-edge-shader canvas)
+  )
+)
+
+(fn-expr _ bevel-outline RoundedRect
+  (param rect Rect)
+  (param radius Length)
+  (call RoundedRect rect (call max 0 radius) (call max 0 radius) (call max 0 radius) (call max 0 radius))
+)
+
+(fn-do _ bevel-mirror LinearGradient
+  (param start Point)
+  (param end Point)
+  (param extent Length)
+  (param profile (list (tuple Length Float)))
+  (param near RGBA)
+  (param far RGBA)
+  (let stops (call (of List GradientStop)))
+  (for (in (tuple reach strength) profile)
+    (let at Ratio (call min 0.5 (/ reach extent)))
+    (+= stops (call GradientStop at (call (. near with-alpha) (* (. near alpha) strength))))
+  )
+  (for (in (tuple reach strength) (call (. profile reversed)))
+    (let at Ratio (call max 0.5 (- 1 (/ reach extent))))
+    (+= stops (call GradientStop at (call (. far with-alpha) (* (. far alpha) strength))))
+  )
+  (return (call LinearGradient start end stops))
+)
+
+(fn-do _ paint-bevel-shader _
+  (param rect Rect)
+  (param radius Length)
+  (param color RGBA)
+  (param shader Shader)
+  (param canvas Canvas)
+  (return-if (if (<= (. color alpha) 0)))
+  (let pixel (if-expr (> gui-pixel-scale 0) (/ 1 gui-pixel-scale) 0.5))
+  (call (. canvas fill-shader) rect shader (list radius pixel (. color red) (. color green) (. color blue) (. color alpha)))
+)
+
+(fn-expr _ bevel-shape-source _
+  (paragraph
+    "float2 bevelNormal(float2 position, float2 size, float radius, thread float& depth) {"
+    "    float2 extent = size * 0.5;"
+    "    float2 q = abs(position - extent) - (extent - radius);"
+    "    float2 corner = max(q, 0.0);"
+    "    float span = length(corner);"
+    "    depth = radius - span - min(max(q.x, q.y), 0.0);"
+    "    if (span > 0.0001) {"
+    "        return corner / span;"
+    "    }"
+    "    return q.x > q.y ? float2(1.0, 0.0) : float2(0.0, 1.0);"
+    "}"
+  )
+)
+
+(fn-expr _ bevel-gloss-source _
+  (paragraph
+    "float4 shade(float2 position, float2 size, ShaderArgs args) {"
+    "    float depth;"
+    "    float2 normal = bevelNormal(position, size, args[0], depth);"
+    "    float cover = saturate(0.5 + depth / args[1]);"
+    "    float spread = max(depth - 0.25, 0.0) / 0.22;"
+    "    float outer = cover * pow(normal.y, 5.0) / (1.0 + spread * spread);"
+    "    float band = (depth - 0.67) / 0.27;"
+    "    float inner = 0.53 * normal.y * exp(-0.5 * band * band);"
+    "    return float4(brixDecodeSRGB(float3(args[2], args[3], args[4])), args[5] * saturate(outer + inner));"
+    "}"
+  )
+)
+
+(fn-expr _ bevel-edge-source _
+  (paragraph
+    "float4 shade(float2 position, float2 size, ShaderArgs args) {"
+    "    float depth;"
+    "    float2 normal = bevelNormal(position, size, args[0], depth);"
+    "    float band = (depth - 0.2) / 0.255;"
+    "    float strength = pow(normal.x, 1.5) * exp(-0.5 * band * band);"
+    "    return float4(brixDecodeSRGB(float3(args[2], args[3], args[4])), args[5] * saturate(strength));"
+    "}"
+  )
+)
+
+(fn-do _ paint-bevel-fill _
+  (param rect Rect)
+  (param gradient LinearGradient)
+  (param canvas Canvas)
+  (return-if (if (call all (. gradient stops) (:where (<= (. each color alpha) 0)))))
+  (call (. canvas fill-gradient) rect gradient)
+)
+
+(fn-do _ paint-bevel-ring _
+  (param outer RoundedRect)
+  (param inner RoundedRect)
+  (param gradient LinearGradient)
+  (param canvas Canvas)
+  (return-if (if (call all (. gradient stops) (:where (<= (. each color alpha) 0)))))
+  (do-use (. canvas saved-state)
+    (call (. canvas begin))
+    (call (. outer outline) canvas)
+    (call (. inner outline) canvas)
+    (call (. canvas clip-path) (. FillRule even-odd))
+    (call paint-bevel-fill (. outer bounds) gradient canvas)
+  )
+)
+
+(fn-do + paint-gui-box-background _
+  (param node Box)
+  (param rect Rect)
+  (param canvas Canvas)
+  (let painter (. node $background))
+  (if painter
+    (call paint-background-painter painter node rect canvas)
+    (else
+      (call paint-default-background node rect canvas)
+    )
+  )
+)
+
+(fn-do _ paint-background-painter _
+  (param painter Painter)
+  (param node Box)
+  (param rect Rect)
+  (param canvas Canvas)
+  (call (. painter paint) node rect canvas)
+)
+
+(fn-do + paint-default-background _
+  (param node Box)
+  (param rect Rect)
+  (param canvas Canvas)
+  (return-if (if (or (<= (. rect width) 0) (<= (. rect height) 0))))
+  (let color (. node $background-color))
+  (let fill (. node $background-fill))
+  (let image (. node $background-image))
+  (return-if (if (and (not color) (not fill) (not image))))
+  (let area (?? (call (?. (. node $shape) extent) node rect) rect))
+  (if (or color fill)
+    (do-use (. canvas saved-state)
+      (= (. canvas fill-color) color)
+      (= (. canvas shape-fill) fill)
+      (= (. canvas stroke-color) null)
+      (call (. canvas rect) area)
+    )
+  )
+  (if image
+    (call paint-background-image node image area canvas)
+  )
+)
+
+(fn-do + paint-background-image _
+  (param node Box)
+  (param image Image)
+  (param area Rect)
+  (param canvas Canvas)
+  (return-if (if (. image is-released)))
+  (let tile
+    (call image-fit-rect
+      (block
+        (arg (. image size))
+        (arg area)
+        (arg (. node $background-fit))
+        (arg (. node $background-align-x))
+        (arg (. node $background-align-y))
+      )
+    )
+  )
+  (return-if (if (or (<= (. tile width) 0) (<= (. tile height) 0))))
+  (let repeat (. node $background-repeat))
+  (let visible (call image-repeat-rect area tile repeat))
+  (return-if (if (or (<= (. visible width) 0) (<= (. visible height) 0))))
+  (let sampling (. node $background-sampling))
+  (if (!= repeat (. ImageRepeat none))
+    (call (. image fill) (:destination canvas)
+      (block
+        (arg visible)
+        (arg tile)
+        (arg sampling)
+      )
+    )
+    (else-if (== visible tile)
+      (call (. image draw) (:destination canvas)
+        (block
+          (arg tile)
+          (arg sampling)
+        )
+      )
+    )
+    (else
+      (do-use (. canvas saved-state)
+        (call (. canvas clip) visible)
+        (call (. image draw) (:destination canvas)
+          (block
+            (arg tile)
+            (arg sampling)
+          )
+        )
+      )
+    )
+  )
+)

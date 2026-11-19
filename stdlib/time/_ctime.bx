@@ -1,0 +1,40 @@
+(import ./clock)
+(import /BxCore/BxTime.h)
+(blank)
+; Represents time_t
+(type-line + CSeconds (alias csec) (is Long))
+(type-line + CNanoseconds (alias cnsec) (is Long))
+
+(type + CTime (is (tuple (: sec I32) (: min I32) (: hour I32) (: mday I32) (: mon I32) (: year I32) (: wday I32) (: yday I32) (: isdst I32) (: gmtoff Long) (: zone (of CPointer Char8))))
+  ; Represents "struct tm"
+)
+
+(type + CTimeSpec (is (tuple (: sec CSeconds) (: nsec CNanoseconds)))
+  ; Represents "struct timespec"
+)
+
+(fn-expr + get-utc-time CSeconds (door time)
+  (as (call C:brixGetUTCTime) CSeconds)
+)
+
+(fn-expr + break-down-utc-time _
+  (param secs CSeconds)
+  tm
+  (where
+    (lazy buf CTime)
+    (lazy breakdown (as (call C:brixBreakDownUTCTime secs &buf) (of CPointer CTime)))
+    (lazy tm ([] breakdown 0))
+  )
+)
+
+(fn-do + make-time _
+  (param second I32)
+  (param minute I32)
+  (param hour I32)
+  (param day I32)
+  (param month I32)
+  (param year I32)
+  (let tm (call CTime second minute hour day month year 0 0 -1))
+  (let t (call C:brixMakeTime &tm))
+  (return t)
+)

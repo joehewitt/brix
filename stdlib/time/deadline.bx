@@ -1,0 +1,33 @@
+(import ./clock)
+(import ./duration)
+(import ./timer)
+(import /BxEvents/BxEvents.h)
+
+(type + Deadline (is Tuple)
+  (prop + nanoseconds U64)
+  (fn-do + This _
+    (param after Nanoseconds)
+    (return (call This (as (+ (call monotonic-time-nanoseconds) after) U64)))
+  )
+  (fn-expr + has-passed _ :get
+    (>= (call monotonic-time-nanoseconds) nanoseconds)
+  )
+  (fn-expr + remaining Nanoseconds :get
+    (if-expr (> nanoseconds now) (as (- nanoseconds now) Nanoseconds) 0ns)
+    (where
+      (lazy now (call monotonic-time-nanoseconds))
+    )
+  )
+)
+
+(fn-expr + wait-for-handle U32 (door time)
+  (param fd I32)
+  (param writable Bool)
+  (param deadline Deadline)
+  (case? writable
+    (call C:brixSuspendActiveTaskUntilWritable fd (. deadline nanoseconds))
+  )
+  (default
+    (call C:brixSuspendActiveTaskUntilReadable fd (. deadline nanoseconds))
+  )
+)

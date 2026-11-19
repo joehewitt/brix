@@ -202,9 +202,9 @@ def install_command(launcher, home):
 
 def check_command(command):
     with tempfile.TemporaryDirectory(prefix='brix-install-') as directory:
-        source = os.path.join(directory, 'hello.yumi')
+        source = os.path.join(directory, 'hello.bx')
         with open(source, 'w') as file:
-            file.write('-- "Brix compiled and ran this"\n')
+            file.write('(main\n  (print "Brix compiled and ran this")\n)\n')
         result = subprocess.run([command, source, '-o', os.path.join(directory, 'hello')], cwd=directory,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
         if result.returncode != 0 or 'Brix compiled and ran this' not in result.stdout:

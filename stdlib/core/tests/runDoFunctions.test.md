@@ -2,18 +2,21 @@
 
 ### Expression functions return their final expression
 
-```yumi
--- label(1)
--- label(2)
+```brix
+(main
+  (print (call label 1))
+  (print (call label 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ label String
-    - n Int
-
-|? n == 1
+(fn-expr + label String
+  (param n Int)
+  (case? (== n 1)
     "one"
-??
+  )
+  (default
     "other"
+  )
+)
 ```
 
 ```output
@@ -23,21 +26,23 @@ other
 
 ### Non-optional do returns accept an infinite loop whose reachable paths return.
 
-```yumi
--- always()
--- always-boolean()
+```brix
+(main
+  (print (call always))
+  (print (call always-boolean))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do always String
+(fn-do + always String
+  (while 1
+    (return "returned")
+  )
+)
 
-while 1
-    = "returned"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do always-boolean String
-
-while true
-    = "boolean returned"
+(fn-do + always-boolean String
+  (while true
+    (return "boolean returned")
+  )
+)
 ```
 
 ```output
@@ -47,167 +52,177 @@ boolean returned
 
 ### Declared non-optional do returns cannot silently fall through to a null object.
 
-```yumi crash
--- missing().value
+```brix crash
+(main
+  (print (. (call missing) value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item
+(type + Item
+  (prop + value Int (= 1))
+)
 
-+ value Int = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do missing Item
-
-Item()
+(fn-do + missing Item
+  (call Item)
+)
 ```
 
 ```output
 Exception: Function missing ends with a value it does not return; return it with "= value", or remove it
-<no file:12>
-    Item()
-    ^^^^^^
+<no file:11>
+      (call Item)
+      ^^^^^^^^^^^
 ```
 
 ### Expression functions reject explicit return
 
-```yumi crash
--- foo()
+```brix crash
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-= 1
+(fn-expr + foo _
+  (return 1)
+)
 ```
 
 ```output
-Exception: Function "foo" is not declared with do, so its body is one expression and cannot return with "="; write "+ do foo"
-<no file:6>
-    = 1
-    ^^^
+Exception: (return …) cannot be the `body` of (fn-expr …), which takes Value. This body is a value, and a statement cannot stand in it. To run steps, write `fn-do`, or `:do` in a closure, and return with `(return value)`; an expression function can also run them first in a `(do …)` in `(before …)`. Otherwise replace the statement with a value.
+<no file:7>
+      (return 1)
+      ^
 ```
 
 ### Expression functions reject return-if
 
-```yumi crash
--- foo()
+```brix crash
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-=? 1
-    if true
-2
+(fn-expr + foo _
+  (return-if 1 (if true))
+  2
+)
 ```
 
 ```output
-Exception: Function "foo" is not declared with do, so its body is one expression and cannot return with "="; write "+ do foo"
-<no file:6>
-    =? 1
-    ^^^
+Exception: (return-if …) cannot be the `body` of (fn-expr …), which takes Value. This body is a value, and a statement cannot stand in it. To run steps, write `fn-do`, or `:do` in a closure, and return with `(return value)`; an expression function can also run them first in a `(do …)` in `(before …)`. Otherwise replace the statement with a value.
+<no file:7>
+      (return-if 1 (if true))
+      ^
 ```
 
 ### Expression functions reject condition-only return-if
 
-```yumi crash
--- foo()
+```brix crash
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-=? if true
-2
+(fn-expr + foo _
+  (return-if (if true))
+  2
+)
 ```
 
 ```output
-Exception: Function "foo" is not declared with do, so its body is one expression and cannot return with "="; write "+ do foo"
-<no file:6>
-    =? if true
-    ^^^^^^^^^^
+Exception: (return-if …) cannot be the `body` of (fn-expr …), which takes Value. This body is a value, and a statement cannot stand in it. To run steps, write `fn-do`, or `:do` in a closure, and return with `(return value)`; an expression function can also run them first in a `(do …)` in `(before …)`. Otherwise replace the statement with a value.
+<no file:7>
+      (return-if (if true))
+      ^
 ```
 
 ### Expression functions reject immediate declarations
 
-```yumi crash
--- foo()
+```brix crash
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-. value = 1
-value
+(fn-expr + foo _
+  (let value 1)
+  value
+)
 ```
 
 ```output
-Exception: Function "foo" is not declared with do, so its body is one expression and cannot hold ". name = value" declarations; write "+ do foo" and return its value with "= value"
-<no file:6>
-    . value = 1
-    ^^^^^^^^^^^
+Exception: (let …) cannot be the `body` of (fn-expr …), which takes Value. This body is a value, and a statement cannot stand in it. To run steps, write `fn-do`, or `:do` in a closure, and return with `(return value)`; an expression function can also run them first in a `(do …)` in `(before …)`. Otherwise replace the statement with a value.
+<no file:7>
+      (let value 1)
+      ^
 ```
 
 ### Expression return-mode validation reaches helpers used by streamed constructors
 
-```yumi crash
-for item in items()
-    -- item.value
-    break
+```brix crash
+(main
+  (for (in item (call items))
+    (print (. item value))
+    (break)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item
+(type + Item
+  (prop + value (? String))
+  (fn-do + This _
+    (= value (call invalid-helper))
+  )
+)
 
-+ value String?
+(fn-expr _ invalid-helper _
+  (let result "hello")
+  result
+)
 
-────────────────────
-+ This
-
-value = invalid-helper()
-
-━━━━━━━━━━━━━━━━━━━━
-_ invalid-helper
-
-. result = "hello"
-result
-
-━━━━━━━━━━━━━━━━━━━━
-+ do items <Item>
-
-<= Item()
+(fn-do + items (stream Item)
+  (yield (call Item))
+)
 ```
 
 ```output
-Exception: Function "invalid-helper" is not declared with do, so its body is one expression and cannot hold ". name = value" declarations; write "_ do invalid-helper" and return its value with "= value"
-<no file:19>
-    . result = "hello"
-    ^^^^^^^^^^^^^^^^^^
+Exception: (let …) cannot be the `body` of (fn-expr …), which takes Value. This body is a value, and a statement cannot stand in it. To run steps, write `fn-do`, or `:do` in a closure, and return with `(return value)`; an expression function can also run them first in a `(do …)` in `(before …)`. Otherwise replace the statement with a value.
+<no file:17>
+      (let result "hello")
+      ^
 ```
 
 ### Expression functions reject assignments outside a do block
 
-```yumi crash
--- foo(1)
+```brix crash
+(main
+  (print (call foo 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n Int
-
-n = 2
-n
+(fn-expr + foo _
+  (param n Int)
+  (= n 2)
+  n
+)
 ```
 
 ```output
-Exception: Function "foo" is not declared with do, so its body is one expression and cannot hold assignments; put the assignment in a "do" block, or write "+ do foo" and return its value with "= value"
+Exception: (= …) takes (| …) here, and `n` stands in its place. Its shape is (= (| pattern:Pattern+) value:Expr).
 <no file:8>
-    n = 2
-    ^^^^^
+      (= n 2)
+         ^
 ```
 
 ### Expression functions run assignments in a do block before their value
 
-```yumi
--- foo(1)
+```brix
+(main
+  (print (call foo 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n Int
-
-do
-    n = 2
-n
+(fn-expr + foo _
+  (param n Int)
+  (before
+    (do
+      (= n 2)
+    )
+  )
+  n
+)
 ```
 
 ```output
@@ -216,124 +231,136 @@ n
 
 ### Expression functions reject for loops
 
-```yumi crash
--- foo()
+```brix crash
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-
-for n in 0 .. < 1
-    -- n
-0
+(fn-expr + foo _
+  (for (in n (..< 0 1))
+    (print n)
+  )
+  0
+)
 ```
 
 ```output
-Exception: Function "foo" is not declared with do, so its body is one expression and cannot hold loops; write "+ do foo" and return its value with "= value"
+Exception: (for …) cannot be the `body` of (fn-expr …), which takes Value. This body is a value, and a statement cannot stand in it. To run steps, write `fn-do`, or `:do` in a closure, and return with `(return value)`; an expression function can also run them first in a `(do …)` in `(before …)`. Otherwise replace the statement with a value.
 <no file:7>
-    for n in 0 .. < 1
-       ^^^^^^^^^^^^^
+      (for (in n (..< 0 1))
+      ^
 ```
 
 ### Expression functions reject while loops
 
-```yumi crash
--- foo()
+```brix crash
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-
-while false
-    -- "never"
-0
+(fn-expr + foo _
+  (while false
+    (print "never")
+  )
+  0
+)
 ```
 
 ```output
-Exception: Function "foo" is not declared with do, so its body is one expression and cannot hold loops; write "+ do foo" and return its value with "= value"
+Exception: (while …) cannot be the `body` of (fn-expr …), which takes Value. This body is a value, and a statement cannot stand in it. To run steps, write `fn-do`, or `:do` in a closure, and return with `(return value)`; an expression function can also run them first in a `(do …)` in `(before …)`. Otherwise replace the statement with a value.
 <no file:7>
-    while false
-    ^^^^^^^^^^
+      (while false
+      ^
 ```
 
 ### Expression functions reject if statements
 
-```yumi crash
--- foo(3)
+```brix crash
+(main
+  (print (call foo 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo Int
-    - n Int
-
-if n > 5
-    -- "big"
-n
+(fn-expr + foo Int
+  (param n Int)
+  (if (> n 5)
+    (print "big")
+  )
+  n
+)
 ```
 
 ```output
-Exception: Function "foo" is not declared with do, so its body is one expression and cannot hold "if" statements; write a check as "?! error if condition", put other steps in a "do" block, or write "+ do foo Int" and return its value with "= value"
+Exception: (if …) cannot be the `body` of (fn-expr …), which takes Value. To give one value or another, write `(if-expr condition value otherwise)`. To run steps, write `(if condition step … (else step …))` in a `fn-do` body.
 <no file:8>
-    if n > 5
-    ^^^^^^^
+      (if (> n 5)
+      ^
 ```
 
 ### Expression functions reject calls before their value
 
-```yumi crash
--- foo()
+```brix crash
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo Int
+(fn-expr + foo Int
+  (call touch)
+  42
+)
 
-touch()
-42
-
-━━━━━━━━━━━━━━━━━━━━
-+ do touch
-
--- "touched"
+(fn-do + touch _
+  (print "touched")
+)
 ```
 
 ```output
-Exception: Function "foo" is not declared with do, so its body is one expression and cannot run calls before its value; put the call in a "do" block, or write "+ do foo Int" and return its value with "= value"
-<no file:7>
-    touch()
-    ^^^^^^^
+Exception: A `fn-expr` body has one value, and `42` follows the value (call …). Put checks, prints, probes and `do` forms in `(before …)`, other steps in a `(do …)` there, and lazies in `(where …)`, or write `fn-do` and return with `(return value)`.
+<no file:8>
+      42
+      ^
 ```
 
 ### Expression functions name lazies after their value
 
-```yumi crash
--- foo()
+```brix crash
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo Int
-
-.. base = 40
-base + 2
+(fn-expr + foo Int
+  (lazy base 40)
+  (+ base 2)
+)
 ```
 
 ```output
-Exception: Function "foo" is not declared with do, so its body is one expression and cannot name lazies before its value; move the lazy below the value, or write "+ do foo Int" and return its value with "= value"
-<no file:7>
-    .. base = 40
-    ^^^^^^^^^^^^
+Exception: (+ …) cannot be a `row` of (fn-expr …), which takes Lazy. Only lazies follow a lazy, and a body of only lazies gives no value. Put the value before the lazies, which in an expression function go in `(where …)`.
+<no file:8>
+      (+ base 2)
+      ^
 ```
 
 ### Expression functions run checks, prints and do forms before their value
 
-```yumi
--- foo(3)
+```brix
+(main
+  (print (call foo 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo Int
-    - n Int
-
-?! Panic("big") if n > 5
-do
-    -- "first"
-do finally
-    -- "last"
--- "printed"
-n
+(fn-expr + foo Int
+  (param n Int)
+  (before
+    (throw (call Panic "big") (if (> n 5)))
+    (do
+      (print "first")
+    )
+    (finally
+      (print "last")
+    )
+    (print "printed")
+  )
+  n
+)
 ```
 
 ```output
@@ -345,39 +372,44 @@ last
 
 ### Expression functions reject yield
 
-```yumi crash
--- foo()
+```brix crash
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-
-<= 1
-0
+(fn-expr + foo _
+  (yield 1)
+  0
+)
 ```
 
 ```output
-Exception: Function "foo" is not declared with do, so its body is one expression and cannot yield; write "+ do foo" and return its value with "= value"
+Exception: (yield …) cannot be the `body` of (fn-expr …), which takes Value. This body is a value, and a statement cannot stand in it. To run steps, write `fn-do`, or `:do` in a closure, and return with `(return value)`; an expression function can also run them first in a `(do …)` in `(before …)`. Otherwise replace the statement with a value.
 <no file:7>
-    <= 1
-    ^^^^
+      (yield 1)
+      ^
 ```
 
 ### Expression functions allow prep statements
 
-```yumi
--- foo()
+```brix
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-
-?! Panic("bad")
-    if false
-do
-    -- "prep"
-do finally
-    -- "cleanup"
--- "before"
-42
+(fn-expr + foo _
+  (before
+    (throw (call Panic "bad") (if false))
+    (do
+      (print "prep")
+    )
+    (finally
+      (print "cleanup")
+    )
+    (print "before")
+  )
+  42
+)
 ```
 
 ```output
@@ -389,17 +421,19 @@ cleanup
 
 ### Imperative do functions return explicitly
 
-```yumi
--- choose(true)
--- choose(false)
+```brix
+(main
+  (print (call choose true))
+  (print (call choose false))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do choose
-    - flag Bool
-
-if flag
-    = 1
-= 2
+(fn-do + choose _
+  (param flag Bool)
+  (if flag
+    (return 1)
+  )
+  (return 2)
+)
 ```
 
 ```output
@@ -409,16 +443,18 @@ if flag
 
 ### Imperative do functions infer optional return on fallthrough
 
-```yumi
--- maybe(true)
--- maybe(false)
+```brix
+(main
+  (print (call maybe true))
+  (print (call maybe false))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do maybe
-    - flag Bool
-
-if flag
-    = 7
+(fn-do + maybe _
+  (param flag Bool)
+  (if flag
+    (return 7)
+  )
+)
 ```
 
 ```output
@@ -428,186 +464,180 @@ unknown
 
 ### Do functions reject a value as their last step
 
-```yumi crash
-foo()
--- "done"
+```brix crash
+(main
+  (call foo)
+  (print "done")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-
-42
+(fn-do + foo _
+  42
+)
 ```
 
 ```output
-Exception: A value cannot stand alone as a step; use it, or remove it
+Exception: `42` cannot be a `row` of (fn-do …), which takes Step. This body runs steps, and each row is a step: a statement form, a `call`, markup, or a value that `pipe` stages after it work on. To return a value, write `(return value)`. If the body is only a value, write `fn-expr`, or remove `:do` from a closure.
 <no file:8>
-    42
-    ^^
+      42
+      ^
 ```
 
 ### Bool do functions reject an unreturned final value
 
-```yumi crash
--- either(true, false)
+```brix crash
+(main
+  (print (call either true false))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do either Bool
-    - left Bool
-    - right Bool
-
-. together = left && right
-=? true if together
-left || right
+(fn-do + either Bool
+  (param left Bool)
+  (param right Bool)
+  (let together (and left right))
+  (return-if true (if together))
+  (or left right)
+)
 ```
 
 ```output
-Exception: Function either ends with a value it does not return; return it with "= value", or remove it
+Exception: (or …) cannot be a `row` of (fn-do …), which takes Step. This body runs steps, and each row is a step: a statement form, a `call`, markup, or a value that `pipe` stages after it work on. To return a value, write `(return value)`. If the body is only a value, write `fn-expr`, or remove `:do` from a closure.
 <no file:11>
-    left || right
-    ^^^^^^^^^^^^^
+      (or left right)
+      ^
 ```
 
 ### Optional do functions reject an unreturned final call
 
-```yumi crash
--- first-even(4)
+```brix crash
+(main
+  (print (call first-even 4))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do first-even Int?
-    - n Int
+(fn-do + first-even (? Int)
+  (param n Int)
+  (return-if null (if (< n 0)))
+  (call evens n)
+)
 
-=? null if n < 0
-evens(n)
-
-━━━━━━━━━━━━━━━━━━━━
-+ evens Int
-    - n Int
-
-n * 2
+(fn-expr + evens Int
+  (param n Int)
+  (* n 2)
+)
 ```
 
 ```output
 Exception: Function first-even ends with a value it does not return; return it with "= value", or remove it
 <no file:9>
-    evens(n)
-    ^^^^^^^^
+      (call evens n)
+      ^^^^^^^^^^^^^^
 ```
 
 ### Interface overrides of Bool methods reject an unreturned final value
 
-```yumi crash
--- ready-of(Probe())
+```brix crash
+(main
+  (print (call ready-of (call Probe)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Readiness is Interface
+(type + Readiness (is Interface)
+  (fn-expr + is-ready Bool :get)
+)
 
-────────────────────
-+ get is-ready Bool
+(type + Probe
+  (implements Readiness)
+  (prop + ready _ (= true))
+  (fn-do + is-ready _ :get
+    ready
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Probe
-    is Readiness
-
-+ ready = true
-
-────────────────────
-+ do get is-ready
-
-ready
-
-━━━━━━━━━━━━━━━━━━━━
-+ ready-of
-    - readiness Readiness
-
-readiness.is-ready
+(fn-expr + ready-of _
+  (param readiness Readiness)
+  (. readiness is-ready)
+)
 ```
 
 ```output
-Exception: Function is-ready ends with a value it does not return; return it with "= value", or remove it
-<no file:19>
-    ready
-    ^^^^^
+Exception: `ready` cannot be a `row` of (fn-do …), which takes Step. This body runs steps, and each row is a step: a statement form, a `call`, markup, or a value that `pipe` stages after it work on. To return a value, write `(return value)`. If the body is only a value, write `fn-expr`, or remove `:do` from a closure.
+<no file:14>
+        ready
+        ^
 ```
 
 ### Class overrides of Bool methods reject an unreturned final value
 
-```yumi crash
-. check Checker = StrictChecker()
--- check.passes
+```brix crash
+(main
+  (let check Checker (call StrictChecker))
+  (print (. check passes))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Checker
+(type + Checker
+  (fn-do + passes Bool :get
+    (return false)
+  )
+)
 
-────────────────────
-+ do get passes Bool
-
-= false
-
-━━━━━━━━━━━━━━━━━━━━
-+ StrictChecker is Checker
-
-+ strict = true
-
-────────────────────
-+ do get passes
-
-strict
+(type + StrictChecker (is Checker)
+  (prop + strict _ (= true))
+  (fn-do + passes _ :get
+    strict
+  )
+)
 ```
 
 ```output
-Exception: Function passes ends with a value it does not return; return it with "= value", or remove it
-<no file:21>
-    strict
-    ^^^^^^
+Exception: `strict` cannot be a `row` of (fn-do …), which takes Step. This body runs steps, and each row is a step: a statement form, a `call`, markup, or a value that `pipe` stages after it work on. To return a value, write `(return value)`. If the body is only a value, write `fn-expr`, or remove `:do` from a closure.
+<no file:16>
+        strict
+        ^
 ```
 
 ### Inferred do returns reject an unreturned final value
 
-```yumi crash
--- pick(true)
+```brix crash
+(main
+  (print (call pick true))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick
-    - flag Bool
-
-if flag
-    = 7
-8
+(fn-do + pick _
+  (param flag Bool)
+  (if flag
+    (return 7)
+  )
+  8
+)
 ```
 
 ```output
-Exception: Function pick ends with a value it does not return; return it with "= value", or remove it
-<no file:10>
-    8
-    ^
+Exception: `8` cannot be a `row` of (fn-do …), which takes Step. This body runs steps, and each row is a step: a statement form, a `call`, markup, or a value that `pipe` stages after it work on. To return a value, write `(return value)`. If the body is only a value, write `fn-expr`, or remove `:do` from a closure.
+<no file:11>
+      8
+      ^
 ```
 
 ### Bool and optional do functions fall through after final statements without values
 
-```yumi
-. counter = Counter()
--- counter.bump()
--- counter.last-even() ?? "none"
--- counter.count
+```brix
+(main
+  (let counter (call Counter))
+  (print (call (. counter bump)))
+  (print (?? (call (. counter last-even)) "none"))
+  (print (. counter count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
-
-+ count Int
-+ label String?
-
-────────────────────
-+ do bump Bool
-
-=? true if count > 3
-count += 1
-
-────────────────────
-+ do last-even String?
-
-=? label if count > 3
-label = "odd"
-count = count + 1
+(type + Counter
+  (prop + count Int)
+  (prop + label (? String))
+  (fn-do + bump Bool
+    (return-if true (if (> count 3)))
+    (+= count 1)
+  )
+  (fn-do + last-even (? String)
+    (return-if label (if (> count 3)))
+    (= label "odd")
+    (= count (+ count 1))
+  )
+)
 ```
 
 ```output
@@ -618,12 +648,13 @@ none
 
 ### Empty imperative do functions are concrete no-op Void bodies
 
-```yumi
-empty-noop()
--- "done"
+```brix
+(main
+  (call empty-noop)
+  (print "done")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do empty-noop
+(fn-do + empty-noop _)
 ```
 
 ```output
@@ -632,71 +663,74 @@ done
 
 ### Empty non-do functions reject inferred Void
 
-```yumi crash
-empty-noop()
+```brix crash
+(main
+  (call empty-noop)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ empty-noop
+(fn-expr + empty-noop _)
 ```
 
 ```output
 Exception: Non-do function must return a non-void value
-<no file:5>
-    + empty-noop
-    ^^^^^^^^^^^
+<no file:6>
+    (fn-expr + empty-noop _)
+    ^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Non-do functions reject explicit Void
 
-```yumi crash
-explicit-void()
+```brix crash
+(main
+  (call explicit-void)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ explicit-void Void
+(fn-expr + explicit-void Void)
 ```
 
 ```output
 Exception: Non-do function must return a non-void value
-<no file:5>
-    + explicit-void Void
-    ^^^^^^^^^^^^^^^^^^^
+<no file:6>
+    (fn-expr + explicit-void Void)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Non-do functions with a declared return reject a body that produces no value
 
-```yumi crash
--- stored(1)
+```brix crash
+(main
+  (print (call stored 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ stored Int
-    - n Int
-
-do
-    n = 4
+(fn-expr + stored Int
+  (param n Int)
+  (do
+    (= n 4)
+  )
+)
 ```
 
 ```output
-Exception: Non-do function must return a non-void value
-<no file:5>
-    + stored Int
-    ^^^^^^^^^^^
+Exception: (do …) cannot be the `body` of (fn-expr …), which takes Value. This body is a value, and a statement cannot stand in it. To run steps, write `fn-do`, or `:do` in a closure, and return with `(return value)`; an expression function can also run them first in a `(do …)` in `(before …)`. Otherwise replace the statement with a value.
+<no file:8>
+      (do
+      ^
 ```
 
 ### This constructors are implicitly imperative
 
-```yumi
--- Thing(5).value
+```brix
+(main
+  (print (. (call Thing 5) value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ value Int
-
-────────────────────
-+ This
-    - value Int
-
-this.value = value
+(type + Thing
+  (prop + value Int)
+  (fn-do + This _
+    (param value Int)
+    (= (. this value) value)
+  )
+)
 ```
 
 ```output
@@ -705,24 +739,21 @@ this.value = value
 
 ### Constructors ignore unused method results
 
-```yumi
--- Thing().value
+```brix
+(main
+  (print (. (call Thing) value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ value = 0
-
-────────────────────
-+ This
-
-initialize()
-
-────────────────────
-_ do initialize Int
-
-value = 5
-= 42
+(type + Thing
+  (prop + value _ (= 0))
+  (fn-do + This _
+    (call initialize)
+  )
+  (fn-do _ initialize Int
+    (= value 5)
+    (return 42)
+  )
+)
 ```
 
 ```output
@@ -731,11 +762,18 @@ value = 5
 
 ### Imperative closures return explicitly
 
-```yumi
-. fn = => do
-    = 9
-
--- fn()
+```brix
+(main
+  (let fn
+    (=> () :do
+      (block
+        (return 9)
+      )
+    )
+  )
+  (blank)
+  (print (call fn))
+)
 ```
 
 ```output
@@ -744,52 +782,75 @@ value = 5
 
 ### Expression closures reject explicit return
 
-```yumi crash
-. fn = =>
-    = 9
-
--- fn()
+```brix crash
+(main
+  (let fn
+    (=> ()
+      (block
+        (return 9)
+      )
+    )
+  )
+  (blank)
+  (print (call fn))
+)
 ```
 
 ```output
-Exception: A closure without do is one expression and cannot return with "="; write "=> do"
-<no file:3>
-        = 9
-        ^^^
+Exception: (return …) cannot be the `body` of (block …), which takes Answer. A function value without `:do` is a value, and a statement cannot stand in it. To run steps, write `:do` and return with `(return value)`, or run them first in a `(do …)`. Otherwise replace the statement with a value.
+<no file:6>
+            (return 9)
+            ^
 ```
 
 ### Expression closures reject assignments before their value
 
-```yumi crash
-. calls = 0
-. counter = =>
-    calls += 1
-    calls
-
--- counter()
+```brix crash
+(main
+  (let calls 0)
+  (let counter
+    (=> ()
+      (block
+        (+= calls 1)
+        calls
+      )
+    )
+  )
+  (blank)
+  (print (call counter))
+)
 ```
 
 ```output
-Exception: A closure without do is one expression and cannot hold assignments; put the assignment in a "do" block, or write "=> do" and return its value with "= value"
-<no file:4>
-        calls += 1
-        ^^^^^^^^^^
+Exception: (+= …) cannot be the `body` of (block …), which takes Answer. A function value without `:do` is a value, and a statement cannot stand in it. To run steps, write `:do` and return with `(return value)`, or run them first in a `(do …)`. Otherwise replace the statement with a value.
+<no file:7>
+            (+= calls 1)
+            ^
 ```
 
 ### Expression closures run checks, prints and do forms before their value
 
-```yumi
-. calls = 0
-. counter = :: n Int =>
-    ?! Panic("big") if n > 5
-    do
-        calls += 1
-    do finally
-        -- "last"
-    -- "printed"
-    calls + n
-
--- counter(3)
+```brix
+(main
+  (let calls 0)
+  (let counter
+    (=> ((: n Int))
+      (block
+        (throw (call Panic "big") (if (> n 5)))
+        (do
+          (+= calls 1)
+        )
+        (finally
+          (print "last")
+        )
+        (print "printed")
+        (+ calls n)
+      )
+    )
+  )
+  (blank)
+  (print (call counter 3))
+)
 ```
 
 ```output
@@ -800,42 +861,48 @@ last
 
 ### Module top-level rejects explicit return
 
-```yumi crash
-= 1
+```brix crash
+(main
+  (return 1)
+)
 ```
 
 ```output
-Exception: The top level of a module cannot return a value with "="; remove the "=", or print the value with "--"
-<no file:2>
-    = 1
-    ^^^
+Exception: The top level of a module cannot return a value with "return"; remove the "return", or print the value with "print"
+<no file:3>
+      (return 1)
+      ^^^^^^^^^^
 ```
 
 ### Module top-level rejects value-return-if
 
-```yumi crash
-=? 1
-    if true
+```brix crash
+(main
+  (return-if 1 (if true))
+)
 ```
 
 ```output
-Exception: The top level of a module cannot return a value with "="; remove the "=", or print the value with "--"
-<no file:2>
-    =? 1
-    ^^^
+Exception: The top level of a module cannot return a value with "return"; remove the "return", or print the value with "print"
+<no file:3>
+      (return-if 1 (if true))
+      ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
--- choose-size'Int()
--- choose-size'(Int, Int, Int, Int, Int)()
+```brix
+(main
+  (print (call (of choose-size Int)))
+  (print (call (of choose-size (tuple Int Int Int Int Int))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do choose-size'Item Int
-
-if Item.size <= 16
-    = 1
-else
-    = 2
+(fn-do + (of choose-size Item) Int
+  (if (<= (. Item size) 16)
+    (return 1)
+    (else
+      (return 2)
+    )
+  )
+)
 ```
 
 ```output
@@ -845,29 +912,28 @@ else
 
 ### A Void function can return a Void call
 
-```yumi
-check("abc")
-check("a")
-finish("done")
+```brix
+(main
+  (call check "abc")
+  (call check "a")
+  (call finish "done")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do noted
-    - text String
+(fn-do + noted _
+  (param text String)
+  (print (str "noted " text))
+)
 
--- "noted $text"
+(fn-do + check _
+  (param text String)
+  (return-if (call noted text) (if (> (. text length) 2)))
+  (print (str "short " text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do check
-    - text String
-
-=? noted(text) if text.length > 2
--- "short $text"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do finish
-    - text String
-
-= noted(text)
+(fn-do + finish _
+  (param text String)
+  (return (call noted text))
+)
 ```
 
 ```output
@@ -878,46 +944,47 @@ noted done
 
 ### The returns of a `do` function: a value, nothing, a value under a condition, and the condition alone.
 
-```yumi
--- pick(true)
--- pick(false)
--- small(1)
--- small(50)
-show(1)
-show(5)
--- first-over(3)
+```brix
+(main
+  (print (call pick true))
+  (print (call pick false))
+  (print (call small 1))
+  (print (call small 50))
+  (call show 1)
+  (call show 5)
+  (print (call first-over 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick Int
-    - flag Bool
+(fn-do + pick Int
+  (param flag Bool)
+  (return-if 1 (if flag))
+  (return 2)
+)
 
-=? 1 if flag
-= 2
+(fn-do + small Bool
+  (param n Int)
+  (return-if (if (> n 10)))
+  (return true)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do small Bool
-    - n Int
+(fn-do + show _
+  (param n Int)
+  (if (> n 3)
+    (return)
+  )
+  (print n)
+)
 
-=? if n > 10
-= true
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - n Int
-
-if n > 3
-    =
--- n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do first-over Int
-    - limit Int
-
-. i = 0
-while true
-    i += 1
-    if i > limit
-        = i
+(fn-do + first-over Int
+  (param limit Int)
+  (let i 0)
+  (while true
+    (+= i 1)
+    (if (> i limit)
+      (return i)
+    )
+  )
+)
 ```
 
 ```output
@@ -931,24 +998,25 @@ false
 
 ### A `do` function that runs off its end returns nothing, or false when it returns a Bool.
 
-```yumi
--- found(8)
--- found(2)
-quiet(1)
--- "end"
+```brix
+(main
+  (print (call found 8))
+  (print (call found 2))
+  (call quiet 1)
+  (print "end")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do found Bool
-    - n Int
+(fn-do + found Bool
+  (param n Int)
+  (if (> n 5)
+    (return true)
+  )
+)
 
-if n > 5
-    = true
-
-━━━━━━━━━━━━━━━━━━━━
-+ do quiet
-    - n Int
-
-n += 1
+(fn-do + quiet _
+  (param n Int)
+  (+= n 1)
+)
 ```
 
 ```output
@@ -959,29 +1027,28 @@ end
 
 ### A returned value is converted to the type the function declares.
 
-```yumi
-. x I32 = 3
--- f()
--- g(x)
--- h(x)
+```brix
+(main
+  (let x I32 3)
+  (print (call f))
+  (print (call g x))
+  (print (call h x))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do f Float
+(fn-do + f Float
+  (return 1)
+)
 
-= 1
+(fn-do + g I64
+  (param n I32)
+  (return n)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do g I64
-    - n I32
-
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do h Int
-    - n I32
-
-=? 200 if n > 2
-= n
+(fn-do + h Int
+  (param n I32)
+  (return-if 200 (if (> n 2)))
+  (return n)
+)
 ```
 
 ```output
@@ -992,17 +1059,19 @@ end
 
 ### A `do` function with no return type returns the type its returns promote to.
 
-```yumi
--- pick(true)
--- pick(false)
+```brix
+(main
+  (print (call pick true))
+  (print (call pick false))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick
-    - flag Bool
-
-if flag
-    = 1
-= 2.5
+(fn-do + pick _
+  (param flag Bool)
+  (if flag
+    (return 1)
+  )
+  (return 2.5)
+)
 ```
 
 ```output
@@ -1012,33 +1081,37 @@ if flag
 
 ### The body of a `do` function has locals, branches and loops.
 
-```yumi
--- spin(3)
--- spin(100000)
--- label(7)
+```brix
+(main
+  (print (call spin 3))
+  (print (call spin 100000))
+  (print (call label 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do spin Int
-    - n Int
+(fn-do + spin Int
+  (param n Int)
+  (let total 0)
+  (for (in i (..< 0 n))
+    (+= total (% i 7))
+  )
+  (return total)
+)
 
-. total = 0
-for i in 0 .. < n
-    total += i % 7
-= total
-
-━━━━━━━━━━━━━━━━━━━━
-+ do label String
-    - n Int
-
-. text = ""
-. left = n
-while left > 0
-    if left % 2 == 0
-        text ++= "e"
-    else
-        text ++= "o"
-    left -= 1
-= text
+(fn-do + label String
+  (param n Int)
+  (let text "")
+  (let left n)
+  (while (> left 0)
+    (if (== (% left 2) 0)
+      (++= text "e")
+      (else
+        (++= text "o")
+      )
+    )
+    (-= left 1)
+  )
+  (return text)
+)
 ```
 
 ```output
@@ -1049,73 +1122,79 @@ oeoeoeo
 
 ### A `do` function that declares a value to return cannot run off its end.
 
-```yumi crash
--- missing()
+```brix crash
+(main
+  (print (call missing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do missing Int
-
-. a = 1
+(fn-do + missing Int
+  (let a 1)
+)
 ```
 
 ```output
 Exception: Function missing can fall through without returning I64
-<no file:5>
-    + do missing Int
-    ^^^^^^^^^^^^^^^
+<no file:6>
+    (fn-do + missing Int
+    ^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A branch that does not return leaves the end of its function in reach.
 
-```yumi crash
--- part(3)
+```brix crash
+(main
+  (print (call part 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do part Float
-    - n Int
-
-if n > 2
-    = 1.5
+(fn-do + part Float
+  (param n Int)
+  (if (> n 2)
+    (return 1.5)
+  )
+)
 ```
 
 ```output
 Exception: Function part can fall through without returning F64
-<no file:5>
-    + do part Float
-    ^^^^^^^^^^^^^^
+<no file:6>
+    (fn-do + part Float
+    ^^^^^^^^^^^^^^^^^^
 ```
 
 ### The end of a function is out of reach after a return, an endless loop, or an `if` on the constant true.
 
-```yumi
--- after(3)
--- endless(3)
--- always(3)
+```brix
+(main
+  (print (call after 3))
+  (print (call endless 3))
+  (print (call always 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do after Int
-    - n Int
+(fn-do + after Int
+  (param n Int)
+  (if (> n 5)
+    (return 1)
+  )
+  (return 2)
+  (+= n 1)
+)
 
-if n > 5
-    = 1
-= 2
-n += 1
+(fn-do + endless Int
+  (param n Int)
+  (while true
+    (+= n 1)
+    (if (> n 5)
+      (return n)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do endless Int
-    - n Int
-
-while true
-    n += 1
-    if n > 5
-        = n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do always Int
-    - n Int
-
-if true
-    = n
+(fn-do + always Int
+  (param n Int)
+  (if true
+    (return n)
+  )
+)
 ```
 
 ```output
@@ -1126,37 +1205,39 @@ if true
 
 ### A function may end on a match that must match: no arm matching is a panic, so the end is not in reach.
 
-```yumi
--- pick(Item.left(1))
--- pick(Item.right(2))
+```brix
+(main
+  (print (call pick (call (. Item left) 1)))
+  (print (call pick (call (. Item right) 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value I32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 
-+ value I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pick Int
-    - item Item
-
-match item
-    | .left(row)
-        if row.value == 1
-            = 10
-        = 11
-    | .right(row)
-        = 20
+(fn-do + pick Int
+  (param item Item)
+  (match item
+    (case (call .left row)
+      (if (== (. row value) 1)
+        (return 10)
+      )
+      (return 11)
+    )
+    (case (call .right row)
+      (return 20)
+    )
+  )
+)
 ```
 
 ```output
@@ -1166,19 +1247,23 @@ match item
 
 ### A match written as a step, whose value nothing uses, runs its arms as steps, so an arm may only print.
 
-```yumi
-step(3)
-step(4)
+```brix
+(main
+  (call step 3)
+  (call step 4)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do step
-    - n Int
-
-match n
-    |= 3
-        -- "three"
-    ??
-        -- "other"
+(fn-do + step _
+  (param n Int)
+  (match n
+    (case= 3
+      (print "three")
+    )
+    (default
+      (print "other")
+    )
+  )
+)
 ```
 
 ```output
@@ -1273,69 +1358,67 @@ main blue
 
 ### A loop on the constant true can be left by a break in an arm of a match, so what follows it is in reach.
 
-```yumi crash
--- pick(Item.left(1))
+```brix crash
+(main
+  (print (call pick (call (. Item left) 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value I32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
+(type + Item (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 
-+ value I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
-
-| left Left
-| right Right
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pick Int
-    - item Item
-
-while true
-    match? item
-        | .left(row)
-            break
-    = 3
+(fn-do + pick Int
+  (param item Item)
+  (while true
+    (match? item
+      (case (call .left row)
+        (break)
+      )
+    )
+    (return 3)
+  )
+)
 ```
 
 ```output
 Exception: Function pick can fall through without returning I64
-<no file:21>
-    + do pick Int
-    ^^^^^^^^^^^^
+<no file:19>
+    (fn-do + pick Int
+    ^^^^^^^^^^^^^^^^
 ```
 
 ### A function an interface requires and gives no body has no end to run off.
 
-```yumi
-. thing = Thing()
-foo(thing)
+```brix
+(main
+  (let thing (call Thing))
+  (call foo thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-do + bar Int)
+)
 
-────────────────────
-+ do bar Int
+(type + Thing
+  (implements Proto)
+  (fn-do + bar Int
+    (return 42)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-────────────────────
-+ do bar Int
-
-= 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - p Proto
-
--- p.bar()
+(fn-do + foo _
+  (param p Proto)
+  (print (call (. p bar)))
+)
 ```
 
 ```output
@@ -1344,31 +1427,34 @@ foo(thing)
 
 ### A condition that is the constant false is its else, and a return under the constant true ends the function.
 
-```yumi
--- first()
--- second()
--- third()
+```brix
+(main
+  (print (call first))
+  (print (call second))
+  (print (call third))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do first Int
+(fn-do + first Int
+  (if false
+    (print 0)
+    (else
+      (return 1)
+    )
+  )
+)
 
-if false
-    -- 0
-else
-    = 1
+(fn-do + second Int
+  (return-if 4 (if true))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do second Int
-
-=? 4 if true
-
-━━━━━━━━━━━━━━━━━━━━
-+ do third Int
-
-if 0
-    -- 5
-else
-    = 6
+(fn-do + third Int
+  (if 0
+    (print 5)
+    (else
+      (return 6)
+    )
+  )
+)
 ```
 
 ```output
@@ -1379,67 +1465,67 @@ else
 
 ### A condition that is the constant false and has no else leaves the end in reach.
 
-```yumi crash
--- pick()
+```brix crash
+(main
+  (print (call pick))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick Int
-
-if false
-    = 1
+(fn-do + pick Int
+  (if false
+    (return 1)
+  )
+)
 ```
 
 ```output
 Exception: Function pick can fall through without returning I64
-<no file:5>
-    + do pick Int
-    ^^^^^^^^^^^^
+<no file:6>
+    (fn-do + pick Int
+    ^^^^^^^^^^^^^^^^
 ```
 
 ### A return of a call that returns nothing leaves the function returning nothing, and a conditional return of a value makes it optional.
 
-```yumi
-check("abc")
-check("a")
-finish("done")
--- pick(1)
--- pick(0) ?? 9
-both(true)
-both(false)
+```brix
+(main
+  (call check "abc")
+  (call check "a")
+  (call finish "done")
+  (print (call pick 1))
+  (print (?? (call pick 0) 9))
+  (call both true)
+  (call both false)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do noted
-    - text String
+(fn-do + noted _
+  (param text String)
+  (print (str "noted " text))
+)
 
--- "noted $text"
+(fn-do + check _
+  (param text String)
+  (return-if (call noted text) (if (> (. text length) 2)))
+  (print (str "short " text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do check
-    - text String
+(fn-do + finish _
+  (param text String)
+  (return (call noted text))
+)
 
-=? noted(text) if text.length > 2
--- "short $text"
+(fn-do + pick _
+  (param n Int)
+  (return-if (* n 2) (if (> n 0)))
+  (print "none")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do finish
-    - text String
-
-= noted(text)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pick
-    - n Int
-
-=? n * 2 if n > 0
--- "none"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do both
-    - loud Bool
-
-if loud
-    = noted("loud")
-noted("quiet")
+(fn-do + both _
+  (param loud Bool)
+  (if loud
+    (return (call noted "loud"))
+  )
+  (call noted "quiet")
+)
 ```
 
 ```output
@@ -1455,39 +1541,28 @@ noted quiet
 
 ### A method written with no body gives what the type it returns makes with nothing written.
 
-```yumi
-. h = Holder()
--- "[${h.text()}]"
--- h.maybe()
--- h.point()
--- h.flag()
--- h.ratio()
--- h.items().length
--- "end"
+```brix
+(main
+  (let h (call Holder))
+  (print (str "[" (call (. h text)) "]"))
+  (print (call (. h maybe)))
+  (print (call (. h point)))
+  (print (call (. h flag)))
+  (print (call (. h ratio)))
+  (print (. (call (. h items)) length))
+  (print "end")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is (x Int, y Int)
+(type + Point (is (tuple (: x Int) (: y Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-────────────────────
-+ text String
-
-────────────────────
-+ maybe Int?
-
-────────────────────
-+ point Point
-
-────────────────────
-+ flag Bool
-
-────────────────────
-+ ratio Float
-
-────────────────────
-+ items [Int]
+(type + Holder
+  (fn-expr + text String)
+  (fn-expr + maybe (? Int))
+  (fn-expr + point Point)
+  (fn-expr + flag Bool)
+  (fn-expr + ratio Float)
+  (fn-expr + items (list Int))
+)
 ```
 
 ```output
@@ -1502,36 +1577,37 @@ end
 
 ### A function declared outside any type with no body, which no compiler intrinsic answers, has nothing to give.
 
-```yumi compile-error
--- twice(2.0)
+```brix compile-error
+(main
+  (print (call twice 2.0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ twice F64
-    - n F64
+(fn-expr + twice F64
+  (param n F64)
+)
 ```
 
 ```output
 Exception: Function "twice" has no body, and no compiler intrinsic supplies one
-<no file:5>
-    + twice F64
-    ^^^^^^^^^^
+<no file:6>
+    (fn-expr + twice F64
+    ^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A generic method written with no body gives an object of the type it names.
 
-```yumi
-. d = Holder()
--- d.get-foo'Int()
--- "after"
+```brix
+(main
+  (let d (call Holder))
+  (print (call (of (. d get-foo) Int)))
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T
+(type + (of Foo T))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-────────────────────
-+ get-foo'Other Foo'Other
+(type + Holder
+  (fn-expr + (of get-foo Other) (of Foo Other))
+)
 ```
 
 ```output
@@ -1541,111 +1617,106 @@ after
 
 ### Non-do functions reject a call before their value even when the body can fail
 
-```yumi crash
--- catch pair(1)
+```brix crash
+(main
+  (print (catch (call pair 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pair Int ?! Failure
-    - n Int
+(fn-expr + pair Int (?! Failure)
+  (param n Int)
+  (call checked n)
+  (call checked (+ n 1))
+)
 
-checked(n)
-checked(n + 1)
+(fn-do + checked Int (?! Failure)
+  (param n Int)
+  (throw (call Failure "negative") (if (< n 0)))
+  (return n)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do checked Int ?! Failure
-    - n Int
-
-?! Failure("negative")
-    if n < 0
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Failure is Error
+(type + Failure (is Error))
 ```
 
 ```output
-Exception: Function "pair" is not declared with do, so its body is one expression and cannot run calls before its value; put the call in a "do" block, or write "+ do pair Int ?! Failure" and return its value with "= value"
-<no file:8>
-    checked(n)
-    ^^^^^^^^^^
+Exception: A `fn-expr` body has one value, and (call …) follows the value (call …). Put checks, prints, probes and `do` forms in `(before …)`, other steps in a `(do …)` there, and lazies in `(where …)`, or write `fn-do` and return with `(return value)`.
+<no file:9>
+      (call checked (+ n 1))
+      ^
 ```
 
 ### Expression functions reject explicit return where they are declared, though nothing calls them
 
-```yumi crash
--- "never"
+```brix crash
+(main
+  (print "never")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-= 1
+(fn-expr + foo _
+  (return 1)
+)
 ```
 
 ```output
-Exception: Function "foo" is not declared with do, so its body is one expression and cannot return with "="; write "+ do foo"
-<no file:6>
-    = 1
-    ^^^
+Exception: (return …) cannot be the `body` of (fn-expr …), which takes Value. This body is a value, and a statement cannot stand in it. To run steps, write `fn-do`, or `:do` in a closure, and return with `(return value)`; an expression function can also run them first in a `(do …)` in `(before …)`. Otherwise replace the statement with a value.
+<no file:7>
+      (return 1)
+      ^
 ```
 
 ### Getters that are not do reject immediate declarations
 
-```yumi crash
--- Holder().name
+```brix crash
+(main
+  (print (. (call Holder) name))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ value Int = 1
-
-────────────────────
-+ get name String
-
-. text = "held"
-text
+(type + Holder
+  (prop + value Int (= 1))
+  (fn-expr + name String :get
+    (let text "held")
+    text
+  )
+)
 ```
 
 ```output
-Exception: Function "name" is not declared with do, so its body is one expression and cannot hold ". name = value" declarations; write "+ do get name String" and return its value with "= value"
-<no file:12>
-    . text = "held"
-    ^^^^^^^^^^^^^^^
+Exception: (let …) cannot be the `body` of (fn-expr …), which takes Value. This body is a value, and a statement cannot stand in it. To run steps, write `fn-do`, or `:do` in a closure, and return with `(return value)`; an expression function can also run them first in a `(do …)` in `(before …)`. Otherwise replace the statement with a value.
+<no file:9>
+        (let text "held")
+        ^
 ```
 
 ### A `do` function that returns from inside a `do use` block returns what it gives there.
 
-```yumi
--- make(3).size
+```brix
+(main
+  (print (. (call make 3) size))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make
-    - size U32
+(fn-do + make _
+  (param size U32)
+  (let res (call Res))
+  (do-use res
+    (return (call Box size))
+  )
+)
 
-. res = Res()
-do use res
-    = Box(size)
+(type + Res
+  (implements (of Usable Void))
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (print "end")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Res
-    is Usable'Void
-
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
--- "end"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ size U32
-
-────────────────────
-+ This
-    - size U32
+(type + Box
+  (prop + size U32)
+  (fn-do + This _
+    (param size U32)
+  )
+)
 ```
 
 ```output
@@ -1655,46 +1726,53 @@ end
 
 ### A `do` function that ends in a loop returns an optional, as though it could run past the loop, even where the loop never ends.
 
-```yumi crash
--- find(3) + 1
+```brix crash
+(main
+  (print (+ (call find 3) 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do find
-    - n Int
-
-. i = 0
-while true
-    if i == n
-        = i
-    i += 1
+(fn-do + find _
+  (param n Int)
+  (let i 0)
+  (while true
+    (if (== i n)
+      (return i)
+    )
+    (+= i 1)
+  )
+)
 ```
 
 ```output
 Exception: Operator "+" is not defined for I64? and I64
-<no file:2>
-    -- find(3) + 1
-       ^^^^^^^^^^^
+<no file:3>
+      (print (+ (call find 3) 1))
+             ^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A `do` function that ends in a match that must match returns what its arms return when each arm returns.
 
-```yumi
--- size(Shape.circle(2)) + 1
+```brix
+(main
+  (print (+ (call size (call (. Shape circle) 2)) 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
-| circle(r Int)
-| square(s Int)
+(type + Shape (is Union)
+  (variant circle (tuple (: r Int)))
+  (variant square (tuple (: s Int)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do size
-    - shape Shape
-
-match shape
-    | .circle(r)
-        = r
-    | .square(s)
-        = s * 2
+(fn-do + size _
+  (param shape Shape)
+  (match shape
+    (case (call .circle r)
+      (return r)
+    )
+    (case (call .square s)
+      (return (* s 2))
+    )
+  )
+)
 ```
 
 ```output
@@ -1703,14 +1781,15 @@ match shape
 
 ### Statements after one that returns are never reached, and are not typed.
 
-```yumi
--- value()
+```brix
+(main
+  (print (call value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do value Int
-
-= 1
-*> each
+(fn-do + value Int
+  (return 1)
+  (pipe *> each)
+)
 ```
 
 ```output
@@ -1719,17 +1798,18 @@ match shape
 
 ### `=? value` of an optional returns only where the optional holds a value, so the statements after it run where it holds none.
 
-```yumi
--- first(null)
--- first(2)
+```brix
+(main
+  (print (call first null))
+  (print (call first 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do first Int
-    - value Int?
-
-=? value
--- "none"
-= 0
+(fn-do + first Int
+  (param value (? Int))
+  (return? value)
+  (print "none")
+  (return 0)
+)
 ```
 
 ```output
@@ -1740,37 +1820,38 @@ none
 
 ### Statements after one that leaves are never bound either, so the names they use need not exist: after a return, a `continue`, and a raise under no condition.
 
-```yumi
--- value()
--- skipped()
--- failing()
+```brix
+(main
+  (print (call value))
+  (print (call skipped))
+  (print (call failing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do value Int
+(fn-do + value Int
+  (return 1)
+  (print missing-name)
+  (let x (call missing-function))
+)
 
-= 1
--- missing-name
-. x = missing-function()
+(fn-do + skipped Int
+  (let total 0)
+  (for (in item (list 1 2))
+    (if (== item 1)
+      (continue)
+      (print unknown-name)
+    )
+    (+= total item)
+  )
+  (return total)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do skipped Int
-
-. total = 0
-for item in [1, 2]
-    if item == 1
-        continue
-        -- unknown-name
-    total += item
-= total
-
-━━━━━━━━━━━━━━━━━━━━
-+ do failing Int
-
-. maybe Int? = 3
-=? maybe
-?! Panic("never")
--- after-panic
-= 0
+(fn-do + failing Int
+  (let maybe (? Int) 3)
+  (return? maybe)
+  (throw (call Panic "never"))
+  (print after-panic)
+  (return 0)
+)
 ```
 
 ```output

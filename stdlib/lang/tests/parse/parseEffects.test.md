@@ -2,13 +2,6 @@
 
 ### An effect claims the C functions only its doors may call.
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ effect network
-    - C:socket
-    - C:connect
-```
-
 ```brix
 (effect + network
   (claim C:socket)
@@ -22,10 +15,6 @@
 
 ### An effect may claim no C function.
 
-```yumi
-+ effect paid-calls
-```
-
 ```brix
 (effect + paid-calls)
 ```
@@ -35,14 +24,6 @@
 ```
 
 ### A door names its effect.
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ do connect-to I32 @inline @door(network)
-    - port I32
-
-= C:connect(port)
-```
 
 ```brix
 (fn-do + connect-to I32 @inline
@@ -76,13 +57,6 @@
 
 ### A name after without that is no restriction bans the effect of that name.
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ parse-document Int without network, heap
-
-1
-```
-
 ```brix
 (fn-expr + parse-document Int (without network heap) 1)
 ```
@@ -94,11 +68,6 @@
         <Integer value="1"/>
     </Block>
 </Function>
-```
-
-```yumi
-do without network, files
-    a()
 ```
 
 ```brix
@@ -117,34 +86,4 @@ do without network, files
         </CallExpression>
     </Block>
 </Do>
-```
-
-### A door is a function.
-
-```yumi crash
-do @door(network)
-    a()
-```
-
-```output
-Exception: '@door' is only for a function
-<no file:2>
-    do @door(network)
-    ^^^^^^^^^^^^^^^^
-```
-
-### A function is the door of one effect.
-
-```yumi crash
-━━━━━━━━━━━━━━━━━━━━
-+ do connect-to @door(network) @door(files)
-
-a()
-```
-
-```output
-Exception: A function is the door of one effect
-<no file:3>
-    + do connect-to @door(network) @door(files)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```

@@ -7,31 +7,33 @@ TableSpan'T / TableField'T behavior from JOE-52.
 
 ### Table(size) zero-initializes stored fields and exposes row/span/column view types.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Particle(3)
--- table.size
--- table.length
--- table[0].id
--- table[1].mass
--- table[2].alive
+(main
+  (let table (call (of Table Particle) 3))
+  (print (. table size))
+  (print (. table length))
+  (print (. ([] table 0) id))
+  (print (. ([] table 1) mass))
+  (print (. ([] table 2) alive))
+  (blank)
+  (= (. ([] table 1) id) 7)
+  (= (. ([] table 1) mass) 2.5)
+  (= (. ([] table 1) alive) true)
+  (print (as ([] table 1) Particle))
+  (blank)
+  (print (type-of ([] table 1)))
+  (print (type-of ([] table (..< 0 2))))
+  (print (type-of (. table id)))
+)
 
-table[1].id = 7
-table[1].mass = 2.5
-table[1].alive = true
--- table[1] as Particle
-
--- type-of table[1]
--- type-of table[0 .. < 2]
--- type-of table.id
-
-━━━━━━━━━━━━━━━━━━━━
-+ Particle is Struct
-
-+ id I32
-+ mass Float
-+ alive Bool
+(type + Particle (is Struct)
+  (prop + id I32)
+  (prop + mass Float)
+  (prop + alive Bool)
+)
 ```
 
 ```output
@@ -46,35 +48,37 @@ false
 [TypeInfo TableField'I32]
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'LoopRow(3) • with LoopRow((each + 5) as U32, 2)
-. store = LoopTableStore(table)
+(main
+  (let table (call (of Table LoopRow) 3 (:with (call LoopRow (as (+ each 5) U32) 2))))
+  (let store (call LoopTableStore table))
+  (blank)
+  (for (in offset (..< 0 2u32))
+    (let row ([] (. store rows) (as (+ 1u32 offset) Index)))
+    (print (. row value))
+  )
+  (blank)
+  (let cursor ([] (. store rows) 0))
+  (for (in offset (..< 0 (. cursor count)))
+    (let row ([] (. store rows) (as (- (+ (. cursor value) offset) 4) Index)))
+    (print (. row value))
+  )
+)
 
-for offset in 0 .. < 2u32
-    . row = store.rows[(1u32 + offset) as Index]
-    -- row.value
+(type + LoopRow (is Struct)
+  (prop + value U32)
+  (prop + count U32)
+)
 
-. cursor = store.rows[0]
-for offset in 0 .. < cursor.count
-    . row = store.rows[(cursor.value + offset - 4) as Index]
-    -- row.value
-
-━━━━━━━━━━━━━━━━━━━━
-+ LoopRow is Struct
-
-+ value U32
-+ count U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ LoopTableStore
-
-+ rows Table'LoopRow
-
-────────────────────
-+ This
-    - rows Table'LoopRow
+(type + LoopTableStore
+  (prop + rows (of Table LoopRow))
+  (fn-do + This _
+    (param rows (of Table LoopRow))
+  )
+)
 ```
 
 ```output
@@ -84,78 +88,91 @@ for offset in 0 .. < cursor.count
 7
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 16384))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Node) arena 2))
+  (call (. rows append) (call (. Node wide) 1 10 20 30 40))
+  (call (. rows append) (call (. Node wide) 2 50 60 70 80))
+  (let take-external false)
+  (blank)
+  (match ([] rows 0)
+    (case (call .small small)
+      (call show-scalar-spill (. small value))
+    )
+    (case (call .wide wide)
+      (call show-scalar-spill (+ (. wide external-a) (. wide external-b)))
+      (+= (. wide external-a) 5)
+      (call show-scalar-spill (+ (. wide external-a) (. wide external-b)))
+      (call show-scalar-spill (+ (. wide inline-a) (. wide inline-b)))
+      (if take-external
+        (call show-scalar-spill (. wide external-a))
+      )
+    )
+  )
+  (blank)
+  (match ([] rows 0)
+    (case (call .small small)
+      (call show-scalar-spill (. small value))
+    )
+    (case (call .wide wide)
+      (let first (. wide external-a))
+      (call (. rows reserve) 32)
+      (call show-scalar-spill (+ first (. wide external-b)))
+    )
+  )
+  (blank)
+  (match ([] rows 0)
+    (case (call .small small)
+      (call show-scalar-spill (. small value))
+    )
+    (case (call .wide wide)
+      (call show-scalar-spill (. wide external-a))
+    )
+  )
+  (blank)
+  (match ([] rows 1)
+    (case (call .small small)
+      (call show-scalar-spill (. small value))
+    )
+    (case (call .wide wide)
+      (call show-scalar-spill (. wide external-b))
+    )
+  )
+)
 
-. arena = Arena(16384)
-do finally arena.release()
-. rows = Table'Node(arena, 2)
-rows.append(Node.wide(1, 10, 20, 30, 40))
-rows.append(Node.wide(2, 50, 60, 70, 80))
-. take-external = false
+(fn-do + show-scalar-spill _
+  (param value U64)
+  (print value)
+)
 
-match rows[0]
-    | .small(small)
-        show-scalar-spill(small.value)
-    | .wide(wide)
-        show-scalar-spill(wide.external-a + wide.external-b)
-        wide.external-a += 5
-        show-scalar-spill(wide.external-a + wide.external-b)
-        show-scalar-spill(wide.inline-a + wide.inline-b)
-        if take-external
-            show-scalar-spill(wide.external-a)
+(type + Syntax (is Tuple)
+  (prop + source U64)
+)
 
-match rows[0]
-    | .small(small)
-        show-scalar-spill(small.value)
-    | .wide(wide)
-        . first = wide.external-a
-        rows.reserve(32)
-        show-scalar-spill(first + wide.external-b)
+(type + Small (is Syntax)
+  (prop + value U64)
+)
 
-match rows[0]
-    | .small(small)
-        show-scalar-spill(small.value)
-    | .wide(wide)
-        show-scalar-spill(wide.external-a)
+(type + Wide (is Syntax)
+  (prop + inline-a U64 @hot)
+  (prop + inline-b U64 @hot)
+  (prop + external-a U64)
+  (prop + external-b U64)
+)
 
-match rows[1]
-    | .small(small)
-        show-scalar-spill(small.value)
-    | .wide(wide)
-        show-scalar-spill(wide.external-b)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-scalar-spill
-    - value U64
-
--- value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
-
-+ source U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
-
-+ value U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ @hot inline-a U64
-+ @hot inline-b U64
-+ external-a U64
-+ external-b U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 ```
 
 ```output
@@ -167,74 +184,77 @@ match rows[1]
 80
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Node) arena 1))
+  (call (. rows append) (call (. Node wide) 1 10 20 30 40))
+  (blank)
+  (match ([] rows 0)
+    (case (call .small small)
+      (call show-table-case-call (. small value))
+    )
+    (case (call .wide wide)
+      (call show-table-case-call (call pair-table-cases wide wide))
+      (call show-table-case-call (call unsafe-table-case wide rows))
+    )
+  )
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Node(arena, 1)
-rows.append(Node.wide(1, 10, 20, 30, 40))
+(fn-do + show-table-case-call _
+  (param value U64)
+  (print value)
+)
 
-match rows[0]
-    | .small(small)
-        show-table-case-call(small.value)
-    | .wide(wide)
-        show-table-case-call(pair-table-cases(wide, wide))
-        show-table-case-call(unsafe-table-case(wide, rows))
+(fn-expr + pair-table-cases U64
+  (param left Wide)
+  (param right Wide)
+  (+ (. left external-a) (. right external-b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show-table-case-call
-    - value U64
+(fn-expr + unsafe-table-case U64
+  (param wide Wide)
+  (param rows (of Table Node))
+  (before
+    (do
+      (call mutate-table-case-source rows)
+    )
+  )
+  (. wide external-a)
+)
 
--- value
+(fn-do + mutate-table-case-source _
+  (param rows (of Table Node))
+  (= ([] rows 0) (call (. Node wide) 2 100 200 300 400))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pair-table-cases U64
-    - left Wide
-    - right Wide
+(type + Syntax (is Tuple)
+  (prop + source U64)
+)
 
-left.external-a + right.external-b
+(type + Small (is Syntax)
+  (prop + value U64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ unsafe-table-case U64
-    - wide Wide
-    - rows Table'Node
+(type + Wide (is Syntax)
+  (prop + inline-a U64 @hot)
+  (prop + inline-b U64 @hot)
+  (prop + external-a U64)
+  (prop + external-b U64)
+)
 
-do
-    mutate-table-case-source(rows)
-wide.external-a
-
-━━━━━━━━━━━━━━━━━━━━
-+ do mutate-table-case-source
-    - rows Table'Node
-
-rows[0] = Node.wide(2, 100, 200, 300, 400)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
-
-+ source U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
-
-+ value U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ @hot inline-a U64
-+ @hot inline-b U64
-+ external-a U64
-+ external-b U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 ```
 
 ```output
@@ -242,167 +262,188 @@ rows[0] = Node.wide(2, 100, 200, 300, 400)
 30
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 4096))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Node) arena 1))
+  (call (. rows append) (call (. Node wide) 10 1 2 200 300))
+  (print (call read-wide ([] rows 0) false))
+)
 
-. arena = Arena(4096)
-do finally arena.release()
-. rows = Table'Node(arena, 1)
-rows.append(Node.wide(10, 1, 2, 200, 300))
--- read-wide(rows[0], false)
+(type + Syntax (is Tuple)
+  (prop + source U32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
+(type + Wide (is Syntax)
+  (prop + inline-a U64 @hot)
+  (prop + inline-b U64 @hot)
+  (prop + external-a U64)
+  (prop + external-b U64)
+)
 
-+ source U32
+(type + Small (is Syntax)
+  (prop + value U8)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 
-+ @hot inline-a U64
-+ @hot inline-b U64
-+ external-a U64
-+ external-b U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
-
-+ value U8
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
-
-━━━━━━━━━━━━━━━━━━━━
-+ do read-wide U64
-    - row TableRow'Node
-    - include-first Bool
-
-= match row
-    | .small
+(fn-do + read-wide U64
+  (param row (of TableRow Node))
+  (param include-first Bool)
+  (return
+    (match row
+      (case .small
         0u64
-    | .wide(wide)
-        . first = 0u64
-        if include-first
-            first = wide.external-a
-        first + wide.external-b
+      )
+      (case (call .wide wide)
+        (let first 0u64)
+        (if include-first
+          (= first (. wide external-a))
+        )
+        (+ first (. wide external-b))
+      )
+    )
+  )
+)
 ```
 
 ```output
 300
 ```
 
-```yumi compile-error
-/core/table
+```brix compile-error
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Point) arena 1))
+  (call (. rows append) (call Point 1 2))
+  (let fixed (call (. rows finish)))
+  (= ([] ([] fixed (..< 0 1)) 0) (call Point 3 4))
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Point(arena, 1)
-rows.append(Point(1, 2))
-. fixed = rows.finish()
-fixed[0 .. < 1][0] = Point(3, 4)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
 Exception: ImmutableTableSpan is read-only
-<no file:11>
-    fixed[0 .. < 1][0] = Point(3, 4)
-    ^^^^^^^^^^^^^^^^^^
+<no file:15>
+      (= ([] ([] fixed (..< 0 1)) 0) (call Point 3 4))
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi compile-error
-/core/table
+```brix compile-error
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Point) arena 1))
+  (call (. rows append) (call Point 1 2))
+  (let fixed (call (. rows finish)))
+  (= ([] (. fixed x) 0) 3)
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Point(arena, 1)
-rows.append(Point(1, 2))
-. fixed = rows.finish()
-fixed.x[0] = 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
 Exception: ImmutableTableField is read-only
-<no file:11>
-    fixed.x[0] = 3
-    ^^^^^^^^^^
+<no file:15>
+      (= ([] (. fixed x) 0) 3)
+         ^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi compile-error
-/core/table
+```brix compile-error
+(import /core/table)
+(blank)
 
-. fixed = ImmutableTable'Point()
--- fixed.length
+(main
+  (let fixed (call (of ImmutableTable Point)))
+  (print (. fixed length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
 Exception: No constructor of ImmutableTable matches these arguments; its constructors are private, declared with _, so only its own module can call them
-<no file:4>
-    . fixed = ImmutableTable'Point()
-              ^^^^^^^^^^^^^^
+<no file:6>
+      (let fixed (call (of ImmutableTable Point)))
+                           ^^^^^^^^^^^^^^
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Point) arena 1))
+  (call (. rows append) (call Point 10 20))
+  (call (. rows append) (call Point 30 40))
+  (let fixed (call (. rows finish)))
+  (blank)
+  (print (type-of fixed))
+  (print (type-of ([] fixed 0)))
+  (print (type-of ([] fixed (..< 0 1))))
+  (print (type-of (. fixed x)))
+  (print (str (. fixed length) "/" (. fixed size)))
+  (print (as ([] fixed 0) Point))
+  (print (as ([] fixed 1) Point))
+  (print (call (. "," join) (. fixed x)))
+  (print (as ([] ([] fixed (..< 1 2)) 0) Point))
+  (blank)
+  (let total 0)
+  (for (in row fixed)
+    (+= total (+ (. row x) (. row y)))
+  )
+  (print total)
+  (blank)
+  (let empty (call (. (call (of Table Point) arena) finish)))
+  (print (str (. empty length) "/" (. empty size)))
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Point(arena, 1)
-rows.append(Point(10, 20))
-rows.append(Point(30, 40))
-. fixed = rows.finish()
-
--- type-of fixed
--- type-of fixed[0]
--- type-of fixed[0 .. < 1]
--- type-of fixed.x
--- "${fixed.length}/${fixed.size}"
--- fixed[0] as Point
--- fixed[1] as Point
--- ",".join(fixed.x)
--- fixed[1 .. < 2][0] as Point
-
-. total = 0
-for row in fixed
-    total += row.x + row.y
--- total
-
-. empty = Table'Point(arena).finish()
--- "${empty.length}/${empty.size}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -419,42 +460,49 @@ for row in fixed
 0/0
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(import /core/array-builder)
+(blank)
 
-/core/arena
-/core/array-builder
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Point) arena 2))
+  (call (. rows append) (call Point 10 20))
+  (call (. rows append) (call Point 30 40))
+  (call (. rows append) (call Point 50 60))
+  (let fixed (call (. rows finish)))
+  (let ids (call (of Array U32) (list 2u32 0u32 2u32)))
+  (let selected ([] fixed ids))
+  (print (type-of selected))
+  (print (type-of ([] selected 0)))
+  (print (. selected length))
+  (for (in row selected)
+    (print (as row Point))
+  )
+  (let middle ([] selected (..< 1 3)))
+  (for (in row middle)
+    (print (as row Point))
+  )
+  (let sequence (. ids immutable))
+  (print (as ([] ([] fixed sequence) 1) Point))
+  (let builder (call (of ArrayBuilder U32) arena))
+  (call (. builder append) 1u32)
+  (call (. builder append) 0u32)
+  (for (in row ([] fixed builder))
+    (print (as row Point))
+  )
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Point(arena, 2)
-rows.append(Point(10, 20))
-rows.append(Point(30, 40))
-rows.append(Point(50, 60))
-. fixed = rows.finish()
-. ids = Array'U32([2u32, 0u32, 2u32])
-. selected = fixed[ids]
--- type-of selected
--- type-of selected[0]
--- selected.length
-for row in selected
-    -- row as Point
-. middle = selected[1 .. < 3]
-for row in middle
-    -- row as Point
-. sequence = ids.immutable
--- fixed[sequence][1] as Point
-. builder = ArrayBuilder'U32(arena)
-builder.append(1u32)
-builder.append(0u32)
-for row in fixed[builder]
-    -- row as Point
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -471,109 +519,132 @@ for row in fixed[builder]
 (10, 20)
 ```
 
-```yumi compile-error
-/core/table
+```brix compile-error
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Point) arena 1))
+  (call (. rows append) (call Point 1 2))
+  (let fixed (call (. rows finish)))
+  (= (. ([] ([] fixed (call (of Array U32) (list 0u32))) 0) x) 3)
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Point(arena, 1)
-rows.append(Point(1, 2))
-. fixed = rows.finish()
-fixed[Array'U32([0u32])][0].x = 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
 Exception: ImmutableTableRow is read-only
-<no file:11>
-    fixed[Array'U32([0u32])][0].x = 3
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:15>
+      (= (. ([] ([] fixed (call (of Array U32) (list 0u32))) 0) x) 3)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Point) arena 1))
+  (call (. rows append) (call Point 1 2))
+  (let alias rows)
+  (let old-row ([] rows 0))
+  (let old-span ([] rows (..< 0 1)))
+  (let old-field (. rows x))
+  (let fixed (call (. rows finish)))
+  (blank)
+  (call show-sealed-table alias)
+  (call show-sealed-row old-row)
+  (call show-sealed-span old-span)
+  (call show-sealed-field old-field)
+  (call show-sealed-finish alias)
+  (print (as ([] fixed 0) Point))
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Point(arena, 1)
-rows.append(Point(1, 2))
-. alias = rows
-. old-row = rows[0]
-. old-span = rows[0 .. < 1]
-. old-field = rows.x
-. fixed = rows.finish()
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 
-show-sealed-table(alias)
-show-sealed-row(old-row)
-show-sealed-span(old-span)
-show-sealed-field(old-field)
-show-sealed-finish(alias)
--- fixed[0] as Point
+(fn-do + show-sealed-table _
+  (param table (of Table Point))
+  (let attempt
+    (do-new
+      (call (. table append) (call Point 3 4))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(fn-do + show-sealed-row _
+  (param row (of TableRow Point))
+  (let attempt
+    (do-new
+      (= (. row x) 3)
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-+ x I32
-+ y I32
+(fn-do + show-sealed-span _
+  (param span (of TableSpan Point))
+  (let attempt
+    (do-new
+      (= ([] span 0) (call Point 3 4))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show-sealed-table
-    - table Table'Point
+(fn-do + show-sealed-field _
+  (param field (of TableField I32))
+  (let attempt
+    (do-new
+      (= ([] field 0) 3)
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. attempt = do new
-    table.append(Point(3, 4))
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-sealed-row
-    - row TableRow'Point
-
-. attempt = do new
-    row.x = 3
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-sealed-span
-    - span TableSpan'Point
-
-. attempt = do new
-    span[0] = Point(3, 4)
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-sealed-field
-    - field TableField'I32
-
-. attempt = do new
-    field[0] = 3
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-sealed-finish
-    - table Table'Point
-
-. attempt = do new
-    . discarded = table.finish()
-catch failure
-    -- failure
-attempt.wait()
+(fn-do + show-sealed-finish _
+  (param table (of Table Point))
+  (let attempt
+    (do-new
+      (let discarded (call (. table finish)))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -585,106 +656,121 @@ Table is sealed
 (1, 2)
 ```
 
-```yumi compile-error
-/core/table
+```brix compile-error
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Point) arena 1))
+  (call (. rows append) (call Point 1 2))
+  (let fixed (call (. rows finish)))
+  (= ([] fixed 0) (call Point 3 4))
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Point(arena, 1)
-rows.append(Point(1, 2))
-. fixed = rows.finish()
-fixed[0] = Point(3, 4)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
 Exception: ImmutableTable is read-only
-<no file:11>
-    fixed[0] = Point(3, 4)
-    ^^^^^^^^
+<no file:15>
+      (= ([] fixed 0) (call Point 3 4))
+         ^^^^^^^^^^^^
 ```
 
-```yumi compile-error
-/core/table
+```brix compile-error
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Point) arena 1))
+  (call (. rows append) (call Point 1 2))
+  (let fixed (call (. rows finish)))
+  (= (. ([] fixed 0) x) 3)
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Point(arena, 1)
-rows.append(Point(1, 2))
-. fixed = rows.finish()
-fixed[0].x = 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
 Exception: ImmutableTableRow is read-only
-<no file:11>
-    fixed[0].x = 3
-    ^^^^^^^^^^
+<no file:15>
+      (= (. ([] fixed 0) x) 3)
+         ^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Node) arena 1))
+  (call (. rows append) (call (. Node small) 10 100))
+  (call (. rows append) (call (. Node wide) 20 1 2 300 400))
+  (let fixed (call (. rows finish)))
+  (blank)
+  (print (type-of fixed))
+  (print (type-of (. fixed source)))
+  (print (call (. "," join) (. fixed source)))
+  (print (as ([] fixed 0) Node))
+  (print (as ([] ([] fixed (..< 1 2)) 0) Node))
+  (blank)
+  (for (in row fixed)
+    (print
+      (match row
+        (case (call .small small)
+          (. small value)
+        )
+        (case (call .wide wide)
+          (+ (. wide inline-a) (. wide external-b))
+        )
+      )
+    )
+  )
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Node(arena, 1)
-rows.append(Node.small(10, 100))
-rows.append(Node.wide(20, 1, 2, 300, 400))
-. fixed = rows.finish()
+(type + Syntax (is Tuple)
+  (prop + source U32)
+)
 
--- type-of fixed
--- type-of fixed.source
--- ",".join(fixed.source)
--- fixed[0] as Node
--- fixed[1 .. < 2][0] as Node
+(type + Small (is Syntax)
+  (prop + value U64 @hot)
+)
 
-for row in fixed
-    -- match row
-        | .small(small)
-            small.value
-        | .wide(wide)
-            wide.inline-a + wide.external-b
+(type + Wide (is Syntax)
+  (prop + inline-a U64 @hot)
+  (prop + inline-b U64 @hot)
+  (prop + external-a U64)
+  (prop + external-b U64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
-
-+ source U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
-
-+ @hot value U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ @hot inline-a U64
-+ @hot inline-b U64
-+ external-a U64
-+ external-b U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 ```
 
 ```output
@@ -697,90 +783,113 @@ for row in fixed
 401
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. rows = Table'Node(4)
-rows[0] = Node.low(10, Pair(1, 2))
-rows[1] = Node.middle(20, Pair(2, 3))
-rows[2] = Node.high(30, Pair(3, 4))
-rows[3] = Node.other(40, Pair(4, 5))
-
--- match rows[0]
-    | .low(low)
-        low.value
-    | .middle(middle)
-        middle.value
-    | .high(high)
-        high.value
-    ??
+(main
+  (let rows (call (of Table Node) 4))
+  (= ([] rows 0) (call (. Node low) 10 (call Pair 1 2)))
+  (= ([] rows 1) (call (. Node middle) 20 (call Pair 2 3)))
+  (= ([] rows 2) (call (. Node high) 30 (call Pair 3 4)))
+  (= ([] rows 3) (call (. Node other) 40 (call Pair 4 5)))
+  (blank)
+  (print
+    (match ([] rows 0)
+      (case (call .low low)
+        (. low value)
+      )
+      (case (call .middle middle)
+        (. middle value)
+      )
+      (case (call .high high)
+        (. high value)
+      )
+      (default
         -1
-
--- match rows[1]
-    | .low(low)
-        low.value
-    | .middle(middle) { middle.pair.right == 3 }
-        middle.value + middle.pair.right
-    | .high(high)
-        high.value
-    ??
+      )
+    )
+  )
+  (blank)
+  (print
+    (match ([] rows 1)
+      (case (call .low low)
+        (. low value)
+      )
+      (case (all (call .middle middle) ({} (== (. middle pair right) 3)))
+        (+ (. middle value) (. middle pair right))
+      )
+      (case (call .high high)
+        (. high value)
+      )
+      (default
         -1
+      )
+    )
+  )
+  (blank)
+  (let span ([] rows (..< 1 4)))
+  (for (in row span)
+    (print
+      (match row
+        (case (call .low low)
+          (. low value)
+        )
+        (case (call .middle middle)
+          (+ (. middle value) (. middle pair right))
+        )
+        (case (call .high high)
+          (. high value)
+        )
+        (default
+          -1
+        )
+      )
+    )
+  )
+  (blank)
+  (let selected 0)
+  (match ([] rows 2)
+    (case (call .low low)
+      (= selected (. low value))
+    )
+    (case (call .middle middle)
+      (= selected (. middle value))
+    )
+    (case (call .high high)
+      (= selected (. high value))
+    )
+    (default
+      (= selected -1)
+    )
+  )
+  (print selected)
+)
 
-. span = rows[1 .. < 4]
-for row in span
-    -- match row
-        | .low(low)
-            low.value
-        | .middle(middle)
-            middle.value + middle.pair.right
-        | .high(high)
-            high.value
-        ??
-            -1
+(type + Pair (is Tuple)
+  (prop + left I64)
+  (prop + right I64)
+)
 
-. selected = 0
-match rows[2]
-    | .low(low)
-        selected = low.value
-    | .middle(middle)
-        selected = middle.value
-    | .high(high)
-        selected = high.value
-    ??
-        selected = -1
--- selected
+(type + Base (is Tuple)
+  (prop + value I64)
+  (prop + pair Pair)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Tuple
+(type + Low (is Base))
 
-+ left I64
-+ right I64
+(type + Middle (is Base))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Tuple
+(type + High (is Base))
 
-+ value I64
-+ pair Pair
+(type + Other (is Base))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Low is Base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Middle is Base
-
-━━━━━━━━━━━━━━━━━━━━
-+ High is Base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Other is Base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| low Low
-| middle Middle
-| high High
-| other Other
+(type + Node (is Union)
+  (variant low Low)
+  (variant middle Middle)
+  (variant high High)
+  (variant other Other)
+)
 ```
 
 ```output
@@ -794,23 +903,35 @@ match rows[2]
 
 ### Table(size) with filler(index) gathers each row value and scatters it into columns.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. calls = ""
-. table = Table'Point(4) • with :: each => do
-    calls += "$each"
-    = Point(each as I32, (each * each) as I32)
+(main
+  (let calls "")
+  (let table
+    (call (of Table Point) 4
+      (:with
+        (=> (each) :do
+          (block
+            (+= calls (str each))
+            (return (call Point (as each I32) (as (* each each) I32)))
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (print calls)
+  (for (in i (..< 0 (. table length)))
+    (print (as ([] table i) Point))
+  )
+)
 
--- calls
-for i in 0 .. < table.length
-    -- table[i] as Point
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -823,26 +944,28 @@ for i in 0 .. < table.length
 
 ### A stored TableRow is a live row cursor; row as T gathers a stable value snapshot.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(1)
-table[0] = Point(1, 2)
+(main
+  (let table (call (of Table Point) 1))
+  (= ([] table 0) (call Point 1 2))
+  (blank)
+  (let row ([] table 0))
+  (let snapshot (as row Point))
+  (= (. row x) 9)
+  (= (. snapshot y) 8)
+  (blank)
+  (print (as ([] table 0) Point))
+  (print (as row Point))
+  (print snapshot)
+)
 
-. row = table[0]
-. snapshot = row as Point
-row.x = 9
-snapshot.y = 8
-
--- table[0] as Point
--- row as Point
--- snapshot
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -853,25 +976,27 @@ snapshot.y = 8
 
 ### Assigning table[i] scatters a real T into every column and copies the source value.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Particle(2)
-. value = Particle(1, 2, 3)
-table[0] = value
-value.x = 99
-table[1] = Particle(4, 5, 6)
+(main
+  (let table (call (of Table Particle) 2))
+  (let value (call Particle 1 2 3))
+  (= ([] table 0) value)
+  (= (. value x) 99)
+  (= ([] table 1) (call Particle 4 5 6))
+  (blank)
+  (print (as ([] table 0) Particle))
+  (print (as ([] table 1) Particle))
+  (print value)
+)
 
--- table[0] as Particle
--- table[1] as Particle
--- value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Particle is Struct
-
-+ x I32
-+ y I32
-+ z I32
+(type + Particle (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+  (prop + z I32)
+)
 ```
 
 ```output
@@ -882,32 +1007,33 @@ table[1] = Particle(4, 5, 6)
 
 ### Struct-valued fields are column values; assigning the field column writes the table.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Entity(1)
-table[0] = Entity(1, Point(2, 3), Point(4, 5))
+(main
+  (let table (call (of Table Entity) 1))
+  (= ([] table 0) (call Entity 1 (call Point 2 3) (call Point 4 5)))
+  (blank)
+  (let copied-position (. ([] table 0) position))
+  (= (. copied-position y) 30)
+  (print (as ([] table 0) Entity))
+  (print copied-position)
+  (blank)
+  (= ([] (. table position) 0) (call Point 7 8))
+  (print (as ([] table 0) Entity))
+)
 
-. copied-position = table[0].position
-copied-position.y = 30
--- table[0] as Entity
--- copied-position
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 
-table.position[0] = Point(7, 8)
--- table[0] as Entity
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Entity is Struct
-
-+ id I32
-+ position Point
-+ velocity Point
+(type + Entity (is Struct)
+  (prop + id I32)
+  (prop + position Point)
+  (prop + velocity Point)
+)
 ```
 
 ```output
@@ -918,26 +1044,28 @@ table.position[0] = Point(7, 8)
 
 ### table.field returns a writable TableField over one contiguous field buffer.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(3) • with Point(each as I32, (each + 10) as I32)
--- ", ".join(table.x)
--- ", ".join(table.y)
--- table.x.length
+(main
+  (let table (call (of Table Point) 3 (:with (call Point (as each I32) (as (+ each 10) I32)))))
+  (print (call (. ", " join) (. table x)))
+  (print (call (. ", " join) (. table y)))
+  (print (. table x length))
+  (blank)
+  (= ([] (. table x) 1) 42)
+  (call (. table y fill) 7)
+  (print (as ([] table 0) Point))
+  (print (as ([] table 1) Point))
+  (print (as ([] table 2) Point))
+  (print (call (. ", " join) (. table y)))
+)
 
-table.x[1] = 42
-table.y.fill(7)
--- table[0] as Point
--- table[1] as Point
--- table[2] as Point
--- ", ".join(table.y)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -952,30 +1080,32 @@ table.y.fill(7)
 
 ### TableField.data exposes the contiguous field buffer, proving struct-of-arrays layout.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(3) • with Point((each + 1) as I32, (each + 10) as I32)
-. xs = table.x.data
-. ys = table.y.data
+(main
+  (let table (call (of Table Point) 3 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (let xs (. table x data))
+  (let ys (. table y data))
+  (blank)
+  (print ([] xs 0))
+  (print ([] xs 1))
+  (print ([] xs 2))
+  (print ([] ys 0))
+  (print ([] ys 1))
+  (print ([] ys 2))
+  (blank)
+  (= ([] xs 1) 42)
+  (= ([] ys 2) 77)
+  (print (as ([] table 1) Point))
+  (print (as ([] table 2) Point))
+)
 
--- xs[0]
--- xs[1]
--- xs[2]
--- ys[0]
--- ys[1]
--- ys[2]
-
-xs[1] = 42
-ys[2] = 77
--- table[1] as Point
--- table[2] as Point
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -991,34 +1121,37 @@ ys[2] = 77
 
 ### TableField columns zip into a typed TableSpan with live writable rows.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(3) • with Point((each + 1) as I32, (each + 10) as I32)
-. points TableSpan'Point = table.x + table.y
+(main
+  (let table (call (of Table Point) 3 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (let points (of TableSpan Point) (+ (. table x) (. table y)))
+  (blank)
+  (print (. points length))
+  (print (type-of points))
+  (print (as ([] points 0) Point))
+  (print (as ([] points 2) Point))
+  (blank)
+  (= (. ([] points 1) x) 42)
+  (= (. ([] points 2) y) 77)
+  (print (as ([] table 1) Point))
+  (print (as ([] table 2) Point))
+  (blank)
+  (for (in point points)
+    (+= (. point y) (. point x))
+  )
+  (blank)
+  (print (as ([] table 0) Point))
+  (print (as ([] table 1) Point))
+  (print (as ([] table 2) Point))
+)
 
--- points.length
--- type-of points
--- points[0] as Point
--- points[2] as Point
-
-points[1].x = 42
-points[2].y = 77
--- table[1] as Point
--- table[2] as Point
-
-for point in points
-    point.y += point.x
-
--- table[0] as Point
--- table[1] as Point
--- table[2] as Point
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -1035,28 +1168,30 @@ for point in points
 
 ### Sliced TableField columns zip as zero-copy span-relative rows.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(5) • with Point((each + 1) as I32, (each + 10) as I32)
-. middle TableSpan'Point = table.x[1 .. < 4] + table.y[1 .. < 4]
+(main
+  (let table (call (of Table Point) 5 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (let middle (of TableSpan Point) (+ ([] (. table x) (..< 1 4)) ([] (. table y) (..< 1 4))))
+  (blank)
+  (print (. middle length))
+  (print (as ([] middle 0) Point))
+  (print (as ([] middle 2) Point))
+  (blank)
+  (= (. ([] middle 0) x) 22)
+  (= (. ([] middle 2) y) 99)
+  (print (as ([] table 0) Point))
+  (print (as ([] table 1) Point))
+  (print (as ([] table 3) Point))
+  (print (as ([] table 4) Point))
+)
 
--- middle.length
--- middle[0] as Point
--- middle[2] as Point
-
-middle[0].x = 22
-middle[2].y = 99
--- table[0] as Point
--- table[1] as Point
--- table[3] as Point
--- table[4] as Point
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -1071,25 +1206,27 @@ middle[2].y = 99
 
 ### Chained TableField zip maps columns to row fields in destination field order.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Particle(2) • with Particle((each + 1) as I32, (each + 10) as I32, (each + 100) as I32)
-. particles TableSpan'Particle = table.id + table.x + table.y
+(main
+  (let table (call (of Table Particle) 2 (:with (call Particle (as (+ each 1) I32) (as (+ each 10) I32) (as (+ each 100) I32)))))
+  (let particles (of TableSpan Particle) (+ (. table id) (. table x) (. table y)))
+  (blank)
+  (print (. particles length))
+  (print (as ([] particles 0) Particle))
+  (print (as ([] particles 1) Particle))
+  (blank)
+  (= (. ([] particles 0) y) 500)
+  (print (as ([] table 0) Particle))
+)
 
--- particles.length
--- particles[0] as Particle
--- particles[1] as Particle
-
-particles[0].y = 500
--- table[0] as Particle
-
-━━━━━━━━━━━━━━━━━━━━
-+ Particle is Struct
-
-+ id I32
-+ x I32
-+ y I32
+(type + Particle (is Struct)
+  (prop + id I32)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -1101,41 +1238,43 @@ particles[0].y = 500
 
 ### Destructuring TableSpan and Table unzips live field views.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(4) • with Point((each + 1) as I32, (each + 10) as I32)
-. span = table[1 .. < 3]
-. xs, ys = span
+(main
+  (let table (call (of Table Point) 4 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (let span ([] table (..< 1 3)))
+  (let (tuple xs ys) span)
+  (blank)
+  (print (type-of xs))
+  (print (. xs length))
+  (print (call (. ", " join) xs))
+  (print (call (. ", " join) ys))
+  (blank)
+  (= ([] xs 0) 40)
+  (= ([] ys 1) 90)
+  (print (as ([] table 1) Point))
+  (print (as ([] table 2) Point))
+  (blank)
+  (let (tuple all-x all-y) table)
+  (= ([] all-x 0) 70)
+  (= ([] all-y 3) 120)
+  (print (as ([] table 0) Point))
+  (print (as ([] table 3) Point))
+  (blank)
+  (let (tuple (: typed-x (of TableField I32)) (: typed-y (of TableField I32))) span)
+  (= ([] typed-x 0) 400)
+  (= ([] typed-y 1) 900)
+  (print (type-of typed-y))
+  (print (as ([] table 1) Point))
+  (print (as ([] table 2) Point))
+)
 
--- type-of xs
--- xs.length
--- ", ".join(xs)
--- ", ".join(ys)
-
-xs[0] = 40
-ys[1] = 90
--- table[1] as Point
--- table[2] as Point
-
-. all-x, all-y = table
-all-x[0] = 70
-all-y[3] = 120
--- table[0] as Point
--- table[3] as Point
-
-. typed-x TableField'I32, typed-y TableField'I32 = span
-typed-x[0] = 400
-typed-y[1] = 900
--- type-of typed-y
--- table[1] as Point
--- table[2] as Point
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -1154,44 +1293,54 @@ typed-y[1] = 900
 
 ### TableField zip rejects columns with different lengths.
 
-```yumi crash
-/core/table
+```brix crash
+(import /core/table)
+(blank)
 
-. table = Table'Point(4) • with Point((each + 1) as I32, (each + 10) as I32)
-. bad TableSpan'Point = table.x[0 .. < 2] + table.y[0 .. < 3]
--- bad.length
+(main
+  (let table (call (of Table Point) 4 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (let bad (of TableSpan Point) (+ ([] (. table x) (..< 0 2)) ([] (. table y) (..< 0 3))))
+  (print (. bad length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ### TableField zip rejects columns of a table that grows, whose storage a span could not follow.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (blank)
+  (let table (call (of Table Point) arena 1))
+  (call (. table append) (call Point 1 10))
+  (let zipped
+    (do-new
+      (let points (of TableSpan Point) (+ (. table x) (. table y)))
+      (print (. points length))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. zipped wait))
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-
-. table = Table'Point(arena, 1)
-table.append(Point(1, 10))
-. zipped = do new
-    . points TableSpan'Point = table.x + table.y
-    -- points.length
-catch failure
-    -- failure
-zipped.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -1200,28 +1349,30 @@ Table column zip requires columns of tables that do not grow
 
 ### table[range] returns a span; span rows and span columns are relative to the range.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(5) • with Point(each as I32, (each + 10) as I32)
-. span = table[1 .. < 4]
+(main
+  (let table (call (of Table Point) 5 (:with (call Point (as each I32) (as (+ each 10) I32)))))
+  (let span ([] table (..< 1 4)))
+  (blank)
+  (print (. span length))
+  (print (as ([] span 0) Point))
+  (print (as ([] span 2) Point))
+  (print (call (. ", " join) (. span x)))
+  (blank)
+  (= ([] (. span x) 1) 99)
+  (= (. ([] span 2) y) 77)
+  (print (as ([] table 1) Point))
+  (print (as ([] table 2) Point))
+  (print (as ([] table 3) Point))
+)
 
--- span.length
--- span[0] as Point
--- span[2] as Point
--- ", ".join(span.x)
-
-span.x[1] = 99
-span[2].y = 77
--- table[1] as Point
--- table[2] as Point
--- table[3] as Point
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -1236,28 +1387,30 @@ span[2].y = 77
 
 ### Table, span, and column Position ranges normalize before the compiler table slice path.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(4) • with Point((each + 1) as I32, (each + 10) as I32)
-. full = table[Position.first .. < Position.end]
-. tail = full[Position.middle .. Position.last]
-. xs = table.x[Position.first .. Position.last]
+(main
+  (let table (call (of Table Point) 4 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (let full ([] table (..< (. Position first) (. Position end))))
+  (let tail ([] full (.. (. Position middle) (. Position last))))
+  (let xs ([] (. table x) (.. (. Position first) (. Position last))))
+  (blank)
+  (print (. full length))
+  (print (as ([] full 0) Point))
+  (print (as ([] full 3) Point))
+  (print (. tail length))
+  (print (as ([] tail 0) Point))
+  (print (as ([] tail 1) Point))
+  (print (. xs length))
+  (print ([] xs 2))
+)
 
--- full.length
--- full[0] as Point
--- full[3] as Point
--- tail.length
--- tail[0] as Point
--- tail[1] as Point
--- xs.length
--- xs[2]
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -1273,24 +1426,26 @@ span[2].y = 77
 
 ### Indexable witnesses call the Table slice overloads without recursive slow-path crashes.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(4) • with Point((each + 1) as I32, (each + 10) as I32)
-. rows Indexable'(TableRow'Point) = table
-. span-rows Indexable'(TableRow'Point) = table[1 .. < 4]
-. xs Indexable'I32 = table.x
+(main
+  (let table (call (of Table Point) 4 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (let rows (of Indexable (of TableRow Point)) table)
+  (let span-rows (of Indexable (of TableRow Point)) ([] table (..< 1 4)))
+  (let xs (of Indexable I32) (. table x))
+  (blank)
+  (print (as ([] rows 1) Point))
+  (print (as ([] ([] rows (..< 1 3)) 0) Point))
+  (print (as ([] ([] span-rows (.. (. Position first) (. Position last))) 2) Point))
+  (print ([] ([] xs (..< 1 3)) 1))
+)
 
--- rows[1] as Point
--- (rows[1 .. < 3])[0] as Point
--- (span-rows[Position.first .. Position.last])[2] as Point
--- (xs[1 .. < 3])[1]
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -1302,23 +1457,26 @@ span[2].y = 77
 
 ### Column range assignment and table span assignment copy selected columns/rows.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. source = Table'Point(4) • with Point((each + 1) as I32, (each + 10) as I32)
-. target = Table'Point(4)
+(main
+  (let source (call (of Table Point) 4 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (let target (call (of Table Point) 4))
+  (blank)
+  (= ([] (. target x) (..< 1 3)) ([] (. source x) (..< 0 2)))
+  (= ([] target (..< 0 2)) ([] source (..< 2 4)))
+  (blank)
+  (for (in i (..< 0 (. target length)))
+    (print (as ([] target i) Point))
+  )
+)
 
-target.x[1 .. < 3] = source.x[0 .. < 2]
-target[0 .. < 2] = source[2 .. < 4]
-
-for i in 0 .. < target.length
-    -- target[i] as Point
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -1330,39 +1488,48 @@ for i in 0 .. < target.length
 
 ### A table range must step by one and lie within the table, span or column it indexes.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(5) • with Point(each as I32, (each + 10) as I32)
-. target = Table'Point(3)
--- (table[3 .. 1][0] as Point)
--- table[5 .. < 5].length
-attempt(=> table[0 .. < 4 by 2].length)
-attempt(=> table[1 .. < 3][0 .. < 3].length)
-attempt(=> table.x[1 .. < 3][2 .. < 4].length)
-attempt(=> table[-1 .. < 2].length)
-. stored = do new
-    target[2 .. < 4] = table[0 .. < 2]
-catch failure
-    -- failure
-stored.wait()
--- target[2] as Point
+(main
+  (let table (call (of Table Point) 5 (:with (call Point (as each I32) (as (+ each 10) I32)))))
+  (let target (call (of Table Point) 3))
+  (print (as ([] ([] table (.. 3 1)) 0) Point))
+  (print (. ([] table (..< 5 5)) length))
+  (call attempt (=> () (. ([] table (..< 0 4 (by: 2))) length)))
+  (call attempt (=> () (. ([] ([] table (..< 1 3)) (..< 0 3)) length)))
+  (call attempt (=> () (. ([] ([] (. table x) (..< 1 3)) (..< 2 4)) length)))
+  (call attempt (=> () (. ([] table (..< -1 2)) length)))
+  (let stored
+    (do-new
+      (= ([] target (..< 2 4)) ([] table (..< 0 2)))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. stored wait))
+  (print (as ([] target 2) Point))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 
-+ x I32
-+ y I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ do attempt
-    - count () Size
-
-. task = do new
-    -- count()
-catch failure
-    -- failure
-task.wait()
+(fn-do + attempt _
+  (param count (fn-type Size))
+  (let task
+    (do-new
+      (print (call count))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. task wait))
+)
 ```
 
 ```output
@@ -1378,50 +1545,62 @@ Table range is out of bounds
 
 ### A range assignment needs a source at least as long as the range, and copies a prefix of a longer one.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. source = Table'Point(5) • with Point(each as I32, (each + 10) as I32)
-. target = Table'Point(3)
-. values = Table'Value(3)
-values[0] = Value.left(Left(1))
-values[1] = Value.right(Left(2))
-. rows = do new
-    target[0 .. < 3] = source[1 .. < 5][0 .. < 2]
-catch failure
-    -- failure
-rows.wait()
-. items = do new
-    target.x[0 .. < 3] = source.x[0 .. < 2]
-catch failure
-    -- failure
-items.wait()
-. cases = do new
-    values[0 .. < 3] = values[1 .. < 3][0 .. < 1]
-catch failure
-    -- failure
-cases.wait()
--- target[0] as Point
--- values[0] as Value
-target.y[1 .. < 3] = source.y
--- target[2] as Point
+(main
+  (let source (call (of Table Point) 5 (:with (call Point (as each I32) (as (+ each 10) I32)))))
+  (let target (call (of Table Point) 3))
+  (let values (call (of Table Value) 3))
+  (= ([] values 0) (call (. Value left) (call Left 1)))
+  (= ([] values 1) (call (. Value right) (call Left 2)))
+  (let rows
+    (do-new
+      (= ([] target (..< 0 3)) ([] ([] source (..< 1 5)) (..< 0 2)))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. rows wait))
+  (let items
+    (do-new
+      (= ([] (. target x) (..< 0 3)) ([] (. source x) (..< 0 2)))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. items wait))
+  (let cases
+    (do-new
+      (= ([] values (..< 0 3)) ([] ([] values (..< 1 3)) (..< 0 1)))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. cases wait))
+  (print (as ([] target 0) Point))
+  (print (as ([] values 0) Value))
+  (= ([] (. target y) (..< 1 3)) (. source y))
+  (print (as ([] target 2) Point))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 
-+ x I32
-+ y I32
+(type + Left (is Struct)
+  (prop + value I32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Struct
-
-+ value I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| left Left
-| right Left
+(type + Value (is Union)
+  (variant left Left)
+  (variant right Left)
+)
 ```
 
 ```output
@@ -1435,23 +1614,27 @@ Table range source is too short
 
 ### Iterating a table yields live row cursors without forcing row struct materialization.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(3) • with Point(each as I32, (each + 1) as I32)
+(main
+  (let table (call (of Table Point) 3 (:with (call Point (as each I32) (as (+ each 1) I32)))))
+  (blank)
+  (for (in row table)
+    (+= (. row x) 10)
+    (print (as row Point))
+  )
+  (blank)
+  (for (in i (..< 0 (. table length)))
+    (print (as ([] table i) Point))
+  )
+)
 
-for row in table
-    row.x += 10
-    -- row as Point
-
-for i in 0 .. < table.length
-    -- table[i] as Point
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -1465,26 +1648,30 @@ for i in 0 .. < table.length
 
 ### Repeated hot field reads in row and indexed loops preserve table values.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(4) • with Point(each as Size, (each + 10) as Size)
-. row-sum = 0 as Size
-. index-sum = 0 as Size
+(main
+  (let table (call (of Table Point) 4 (:with (call Point (as each Size) (as (+ each 10) Size)))))
+  (let row-sum (as 0 Size))
+  (let index-sum (as 0 Size))
+  (blank)
+  (for (in row table)
+    (+= row-sum (+ (. row x) (. row x) (. row y)))
+  )
+  (blank)
+  (for (in i (..< 0 (. table length)))
+    (+= index-sum (+ (. ([] table i) x) (. ([] table i) x) (. ([] table i) y)))
+  )
+  (blank)
+  (print (str row-sum " " index-sum))
+)
 
-for row in table
-    row-sum += row.x + row.x + row.y
-
-for i in 0 .. < table.length
-    index-sum += table[i].x + table[i].x + table[i].y
-
--- "$row-sum $index-sum"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x Size
-+ y Size
+(type + Point (is Struct)
+  (prop + x Size)
+  (prop + y Size)
+)
 ```
 
 ```output
@@ -1493,24 +1680,28 @@ for i in 0 .. < table.length
 
 ### Iterating a span yields live row cursors with span-relative indexes.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(4) • with Point(each as I32, (each + 10) as I32)
-. span = table[1 .. < 3]
+(main
+  (let table (call (of Table Point) 4 (:with (call Point (as each I32) (as (+ each 10) I32)))))
+  (let span ([] table (..< 1 3)))
+  (blank)
+  (for (in row span)
+    (+= (. row y) 100)
+    (print (as row Point))
+  )
+  (blank)
+  (for (in i (..< 0 (. table length)))
+    (print (as ([] table i) Point))
+  )
+)
 
-for row in span
-    row.y += 100
-    -- row as Point
-
-for i in 0 .. < table.length
-    -- table[i] as Point
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -1524,23 +1715,27 @@ for i in 0 .. < table.length
 
 ### Reassigning a table local inside an indexed loop does not reuse stale column bases.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. first = Table'Point(2) • with Point((each + 1) as I32, (each + 10) as I32)
-. second = Table'Point(2) • with Point((each + 101) as I32, (each + 110) as I32)
-. table = first
+(main
+  (let first (call (of Table Point) 2 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (let second (call (of Table Point) 2 (:with (call Point (as (+ each 101) I32) (as (+ each 110) I32)))))
+  (let table first)
+  (blank)
+  (for (in i (..< 0 2))
+    (if (== i 1)
+      (= table second)
+    )
+    (print (. ([] table i) x))
+  )
+)
 
-for i in 0 .. < 2
-    if i == 1
-        table = second
-    -- table[i].x
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -1550,36 +1745,39 @@ for i in 0 .. < 2
 
 ### A table held by a loop variable is read after the loop binds it, never from before the loop.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. one = Table'Point(1) • with Point((each + 1) as I32, (each + 10) as I32)
-. two = Table'Point(2) • with Point((each + 21) as I32, (each + 30) as I32)
-. three = Table'Point(3) • with Point((each + 41) as I32, (each + 50) as I32)
-. tables [Table'Point]
-tables += one
-tables += two
-tables += three
+(main
+  (let one (call (of Table Point) 1 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (let two (call (of Table Point) 2 (:with (call Point (as (+ each 21) I32) (as (+ each 30) I32)))))
+  (let three (call (of Table Point) 3 (:with (call Point (as (+ each 41) I32) (as (+ each 50) I32)))))
+  (let tables (list (of Table Point)))
+  (+= tables one)
+  (+= tables two)
+  (+= tables three)
+  (blank)
+  (for (in table tables)
+    (print (str (. table length) " " (. ([] table 0) x)))
+  )
+  (print (call (. ", " join) (in (str (. each length)) tables)))
+  (print (call total-rows tables))
+)
 
-for table in tables
-    -- "${table.length} ${table[0].x}"
--- ", ".join("${each.length}" in tables)
--- total-rows(tables)
+(fn-do _ total-rows Size
+  (param tables (list (of Table Point)))
+  (let total Size 0)
+  (for (in table tables)
+    (+= total (. table length))
+  )
+  (return total)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do total-rows Size
-    - tables [Table'Point]
-
-. total Size = 0
-for table in tables
-    total += table.length
-= total
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -1592,25 +1790,27 @@ for table in tables
 
 ### copy creates independent fixed-size column storage.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. original = Table'Point(2) • with Point((each + 1) as I32, (each + 10) as I32)
-. copied = original.copy()
+(main
+  (let original (call (of Table Point) 2 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (let copied (call (. original copy)))
+  (blank)
+  (= (. ([] copied 0) x) 99)
+  (= (. ([] original 1) y) 88)
+  (blank)
+  (print (as ([] original 0) Point))
+  (print (as ([] original 1) Point))
+  (print (as ([] copied 0) Point))
+  (print (as ([] copied 1) Point))
+)
 
-copied[0].x = 99
-original[1].y = 88
-
--- original[0] as Point
--- original[1] as Point
--- copied[0] as Point
--- copied[1] as Point
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -1622,34 +1822,39 @@ original[1].y = 88
 
 ### Function arguments materialize TableRow cursors as live row views.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(4) • with Point((each + 1) as I32, (each + 10) as I32)
+(main
+  (let table (call (of Table Point) 4 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (blank)
+  (print (call bump ([] table 1)))
+  (for (in row table (when (== (. row x) 1)))
+    (print (call bump row))
+  )
+  (for (in table (when (== (. each x) 3)))
+    (print (call bump each))
+  )
+  (for (in table (when (== (. it x) 4)))
+    (print (call bump it))
+  )
+  (blank)
+  (for (in i (..< 0 (. table length)))
+    (print (as ([] table i) Point))
+  )
+)
 
--- bump(table[1])
-for row in table when row.x == 1
-    -- bump(row)
-for in table when each.x == 3
-    -- bump(each)
-for in table when it.x == 4
-    -- bump(it)
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 
-for i in 0 .. < table.length
-    -- table[i] as Point
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bump Point
-    - row TableRow'Point
-
-row.x += 10
-= row as Point
+(fn-do + bump Point
+  (param row (of TableRow Point))
+  (+= (. row x) 10)
+  (return (as row Point))
+)
 ```
 
 ```output
@@ -1665,31 +1870,33 @@ row.x += 10
 
 ### Passing rows to a struct parameter gathers stable snapshots.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(2) • with Point((each + 1) as I32, (each + 10) as I32)
+(main
+  (let table (call (of Table Point) 2 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (blank)
+  (print (call move ([] table 0)))
+  (for (in row table (when (== (. row x) 2)))
+    (print (call move row))
+  )
+  (blank)
+  (print (as ([] table 0) Point))
+  (print (as ([] table 1) Point))
+)
 
--- move(table[0])
-for row in table when row.x == 2
-    -- move(row)
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 
--- table[0] as Point
--- table[1] as Point
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ do move Point
-    - point Point
-
-point.x += 100
-point.y += 1000
-= point
+(fn-do + move Point
+  (param point Point)
+  (+= (. point x) 100)
+  (+= (. point y) 1000)
+  (return point)
+)
 ```
 
 ```output
@@ -1701,27 +1908,29 @@ point.y += 1000
 
 ### Escaped TableRows stay live, while gathered row values are snapshots.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(1)
-table[0] = Point(1, 2)
+(main
+  (let table (call (of Table Point) 1))
+  (= ([] table 0) (call Point 1 2))
+  (blank)
+  (let row ([] table 0))
+  (let snapshot (as ([] table 0) Point))
+  (= (. ([] table 0) x) 7)
+  (= (. row y) 8)
+  (= (. snapshot x) 9)
+  (blank)
+  (print (as row Point))
+  (print snapshot)
+  (print (as ([] table 0) Point))
+)
 
-. row = table[0]
-. snapshot = table[0] as Point
-table[0].x = 7
-row.y = 8
-snapshot.x = 9
-
--- row as Point
--- snapshot
--- table[0] as Point
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -1732,42 +1941,43 @@ snapshot.x = 9
 
 ### Returning table[i] or a loop row materializes a live TableRow value.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(2) • with Point((each + 1) as I32, (each + 10) as I32)
-. direct = row-at(table, 1)
-. first = first-row(table)
+(main
+  (let table (call (of Table Point) 2 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (let direct (call row-at table 1))
+  (let first (call first-row table))
+  (blank)
+  (= (. ([] table 1) x) 50)
+  (= (. direct y) 60)
+  (= (. first x) 70)
+  (blank)
+  (print (as direct Point))
+  (print (as first Point))
+  (print (as ([] table 0) Point))
+  (print (as ([] table 1) Point))
+)
 
-table[1].x = 50
-direct.y = 60
-first.x = 70
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 
--- direct as Point
--- first as Point
--- table[0] as Point
--- table[1] as Point
+(fn-expr + row-at (of TableRow Point)
+  (param table (of Table Point))
+  (param index Index)
+  ([] table index)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ row-at TableRow'Point
-    - table Table'Point
-    - index Index
-
-table[index]
-
-━━━━━━━━━━━━━━━━━━━━
-+ do first-row TableRow'Point
-    - table Table'Point
-
-for row in table
-    = row
-?! Panic("Expected a non-empty table")
+(fn-do + first-row (of TableRow Point)
+  (param table (of Table Point))
+  (for (in row table)
+    (return row)
+  )
+  (throw (call Panic "Expected a non-empty table"))
+)
 ```
 
 ```output
@@ -1779,36 +1989,38 @@ for row in table
 
 ### Yielding table[i] and row materializes live TableRow values.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(2) • with Point((each + 1) as I32, (each + 10) as I32)
-. stream = rows(table)
-. direct = stream()!
-. looped = stream()!
+(main
+  (let table (call (of Table Point) 2 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (let stream (call rows table))
+  (let direct (!! (call stream)))
+  (let looped (!! (call stream)))
+  (blank)
+  (= (. ([] table 1) x) 50)
+  (= (. direct y) 60)
+  (= (. looped x) 70)
+  (blank)
+  (print (as direct Point))
+  (print (as looped Point))
+  (print (as ([] table 0) Point))
+  (print (as ([] table 1) Point))
+)
 
-table[1].x = 50
-direct.y = 60
-looped.x = 70
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 
--- direct as Point
--- looped as Point
--- table[0] as Point
--- table[1] as Point
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ do rows
-    - table Table'Point
-
-<= table[1]
-for row in table
-    <= row
+(fn-do + rows _
+  (param table (of Table Point))
+  (yield ([] table 1))
+  (for (in row table)
+    (yield row)
+  )
+)
 ```
 
 ```output
@@ -1820,43 +2032,43 @@ for row in table
 
 ### Arrays, lists, and object fields can store live TableRow values.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(2) • with Point((each + 1) as I32, (each + 10) as I32)
-. array = [table[0], table[1]]
-. rows = List'(TableRow'Point)()
-rows += table[0]
-rows += table[1]
-. holder = Holder(table[0])
+(main
+  (let table (call (of Table Point) 2 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (let array (list ([] table 0) ([] table 1)))
+  (let rows (call (of List (of TableRow Point))))
+  (+= rows ([] table 0))
+  (+= rows ([] table 1))
+  (let holder (call Holder ([] table 0)))
+  (blank)
+  (= (. ([] table 0) x) 30)
+  (= (. ([] array 1) y) 40)
+  (= (. ([] rows 0) y) 50)
+  (= (. holder row x) 60)
+  (blank)
+  (print (as ([] array 0) Point))
+  (print (as ([] array 1) Point))
+  (print (as ([] rows 0) Point))
+  (print (as ([] rows 1) Point))
+  (print (as (. holder row) Point))
+  (print (as ([] table 0) Point))
+  (print (as ([] table 1) Point))
+)
 
-table[0].x = 30
-array[1].y = 40
-rows[0].y = 50
-holder.row.x = 60
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 
--- array[0] as Point
--- array[1] as Point
--- rows[0] as Point
--- rows[1] as Point
--- holder.row as Point
--- table[0] as Point
--- table[1] as Point
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ row TableRow'Point
-
-────────────────────
-+ This
-    - row TableRow'Point
+(type + Holder
+  (prop + row (of TableRow Point))
+  (fn-do + This _
+    (param row (of TableRow Point))
+  )
+)
 ```
 
 ```output
@@ -1871,34 +2083,35 @@ holder.row.x = 60
 
 ### A lazy table[i] alias captured by a closure is evaluated at call time.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(2) • with Point((each + 1) as I32, (each + 10) as I32)
-. getter = make-getter(table)
+(main
+  (let table (call (of Table Point) 2 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (let getter (call make-getter table))
+  (blank)
+  (= (. ([] table 0) x) 8)
+  (= (. ([] table 1) x) 9)
+  (print (as (call getter) Point))
+  (= (. (call getter) y) 77)
+  (print (as ([] table 0) Point))
+  (print (as ([] table 1) Point))
+)
 
-table[0].x = 8
-table[1].x = 9
--- getter() as Point
-getter().y = 77
--- table[0] as Point
--- table[1] as Point
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make-getter Getter'(TableRow'Point)
-    - table Table'Point
-
-. index = 0
-.. row = table[index]
-. getter = => row
-index = 1
-= getter
+(fn-do + make-getter (of Getter (of TableRow Point))
+  (param table (of Table Point))
+  (let index 0)
+  (lazy row ([] table index))
+  (let getter (=> () row))
+  (= index 1)
+  (return getter)
+)
 ```
 
 ```output
@@ -1909,174 +2122,180 @@ index = 1
 
 ### Whole-row address-taking cannot pass table[i] as a contiguous row struct pointer.
 
-```yumi crash
-/core/table
+```brix crash
+(import /core/table)
+(blank)
+(import /JaCore/tests.h)
+(blank)
 
-/JaCore/tests.h
+(main
+  (let table (call (of Table Thing) 1))
+  (call C:ctest15 ([] &table 0))
+)
 
-. table = Table'Thing(1)
-C:ctest15(&table[0])
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Struct
-
-+ a Int
-+ b String
+(type + Thing (is Struct)
+  (prop + a Int)
+  (prop + b String)
+)
 ```
 
 ```output
 Exception: No C function "ctest15" accepts (Table'Thing); it is declared as "ctest15(CPointer'I8)"
-<no file:7>
-    C:ctest15(&table[0])
-    ^^^^^^^^^^^^^^^^^^^^
+<no file:9>
+      (call C:ctest15 ([] &table 0))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Table row types must be concrete fixed-layout structs, not class/object types.
 
-```yumi crash
-/core/table
+```brix crash
+(import /core/table)
+(blank)
 
-. table = Table'Thing(1)
--- table.length
+(main
+  (let table (call (of Table Thing) 1))
+  (print (. table length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ value I32 = 0
+(type + Thing
+  (prop + value I32 (= 0))
+)
 ```
 
 ```output
 Exception: Table row types must be concrete fixed-layout structs
-<no file:8>
-    + Thing
-    ^^^^^^
+<no file:10>
+    (type + Thing
+    ^^^^^^^^^^^^
 ```
 
 ### Table row types cannot include getter or lazy row fields in v1.
 
-```yumi crash
-/core/table
+```brix crash
+(import /core/table)
+(blank)
 
-. getter-table = Table'GetterRow(1)
-. lazy-table = Table'LazyRow(1)
--- getter-table.length + lazy-table.length
+(main
+  (let getter-table (call (of Table GetterRow) 1))
+  (let lazy-table (call (of Table LazyRow) 1))
+  (print (+ (. getter-table length) (. lazy-table length)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ GetterRow is Struct
+(type + GetterRow (is Struct)
+  (prop + stored I32)
+  (fn-expr + derived _ :get
+    (+ stored 1)
+  )
+)
 
-+ stored I32
-
-────────────────────
-+ get derived
-
-stored + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ LazyRow is Struct
-
-+ stored I32
-+ cached := stored + 1
+(type + LazyRow (is Struct)
+  (prop + stored I32)
+  (prop + cached _ (:= (+ stored 1)))
+)
 ```
 
 ```output
 Exception: Table row fields must be eager stored fields
-<no file:14>
-    + get derived
-    ^^^^^^^^^^^^
+<no file:13>
+      (fn-expr + derived _ :get
+      ^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Table row types cannot rely on delegated interface-shaped behavior in v1.
 
-```yumi crash
-/core/table
+```brix crash
+(import /core/table)
+(blank)
 
-. table = Table'DelegatingRow(1)
--- table.length
+(main
+  (let table (call (of Table DelegatingRow) 1))
+  (print (. table length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-────────────────────
-+ act
+(type + Delegate
+  (fn-expr + act _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Delegate
-
-────────────────────
-+ act
-
-━━━━━━━━━━━━━━━━━━━━
-+ DelegatingRow is Struct
-
-as Proto for
-+ delegate Delegate
+(type + DelegatingRow (is Struct)
+  (delegate Proto)
+  (prop + delegate Delegate)
+)
 ```
 
 ```output
 Exception: Table row types cannot use delegated interface behavior
-<no file:20>
-    + DelegatingRow is Struct
-    ^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:18>
+    (type + DelegatingRow (is Struct)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Table row types must be named structs, not tuple aliases.
 
-```yumi crash
-/core/table
+```brix crash
+(import /core/table)
+(blank)
 
-. table = Table'Thing(1)
--- table.length
+(main
+  (let table (call (of Table Thing) 1))
+  (print (. table length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is (a Int, b String)
+(type + Thing (is (tuple (: a Int) (: b String))))
 ```
 
 ```output
 Exception: Table row types must be concrete fixed-layout structs
-<no file:8>
-    + Thing is (a Int, b String)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:10>
+    (type + Thing (is (tuple (: a Int) (: b String))))
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Pointerful scalar row field stores emit barriers during concurrent marking.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /BxCore/BxCore.h)
+(import /BxGC/BxGCTest.h)
+(blank)
 
-/BxCore/BxCore.h
-/BxGC/BxGCTest.h
+(main
+  (let table (call (of Table Cell) 1))
+  (= ([] table 0) (call Cell (call GCNode 1) (call GCNode 2)))
+  (blank)
+  (let barrier-count-before (call C:brixGCBarrierCount))
+  (call C:brixGCStartConcurrentMark)
+  (= (. ([] table 0) left) (call GCNode 3))
+  (call C:brixGCFinishConcurrentMark)
+  (let barrier-count-after (call C:brixGCBarrierCount))
+  (call C:brixCollect)
+  (blank)
+  (if (<= barrier-count-after barrier-count-before)
+    (print "barrier-missing")
+    (else-if (not (call C:brixGCVerifyObject (as (. ([] table 0) left) Pointer)))
+      (print "left-missing")
+    )
+    (else
+      (print (str "barrier-ok " (. ([] table 0) left value)))
+    )
+  )
+)
 
-. table = Table'Cell(1)
-table[0] = Cell(GCNode(1), GCNode(2))
+(type + Cell (is Struct)
+  (prop + left GCNode)
+  (prop + right GCNode)
+)
 
-. barrier-count-before = C:brixGCBarrierCount()
-C:brixGCStartConcurrentMark()
-table[0].left = GCNode(3)
-C:brixGCFinishConcurrentMark()
-. barrier-count-after = C:brixGCBarrierCount()
-C:brixCollect()
-
-if barrier-count-after <= barrier-count-before
-    -- "barrier-missing"
-else if !C:brixGCVerifyObject(table[0].left as Pointer)
-    -- "left-missing"
-else
-    -- "barrier-ok ${table[0].left.value}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Cell is Struct
-
-+ left GCNode
-+ right GCNode
-
-━━━━━━━━━━━━━━━━━━━━
-+ GCNode
-
-+ value = 0
-
-────────────────────
-+ This
-    - value Int
+(type + GCNode
+  (prop + value _ (= 0))
+  (fn-do + This _
+    (param value Int)
+  )
+)
 ```
 
 ```output
@@ -2085,46 +2304,50 @@ barrier-ok 3
 
 ### Pointerful row scatter keeps newly stored row objects alive.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /BxCore/BxCore.h)
+(import /BxGC/BxGCTest.h)
+(blank)
 
-/BxCore/BxCore.h
-/BxGC/BxGCTest.h
+(main
+  (let table (call (of Table Cell) 2))
+  (= ([] table 0) (call Cell (call GCNode 10) (call GCNode 20)))
+  (blank)
+  (let barrier-count-before (call C:brixGCBarrierCount))
+  (call C:brixGCStartConcurrentMark)
+  (= ([] table 1) (call Cell (call GCNode 30) (call GCNode 40)))
+  (call C:brixGCFinishConcurrentMark)
+  (let barrier-count-after (call C:brixGCBarrierCount))
+  (blank)
+  (call C:brixCollect)
+  (blank)
+  (if (<= barrier-count-after barrier-count-before)
+    (print "scatter-barrier-missing")
+    (else-if (not (call C:brixGCVerifyObject (as (. ([] table 1) left) Pointer)))
+      (print "left-missing")
+    )
+    (else-if (not (call C:brixGCVerifyObject (as (. ([] table 1) right) Pointer)))
+      (print "right-missing")
+    )
+    (else
+      (print (str "scatter-ok " (. ([] table 1) left value) " " (. ([] table 1) right value)))
+    )
+  )
+)
 
-. table = Table'Cell(2)
-table[0] = Cell(GCNode(10), GCNode(20))
+(type + Cell (is Struct)
+  (prop + left GCNode)
+  (prop + right GCNode)
+)
 
-. barrier-count-before = C:brixGCBarrierCount()
-C:brixGCStartConcurrentMark()
-table[1] = Cell(GCNode(30), GCNode(40))
-C:brixGCFinishConcurrentMark()
-. barrier-count-after = C:brixGCBarrierCount()
-
-C:brixCollect()
-
-if barrier-count-after <= barrier-count-before
-    -- "scatter-barrier-missing"
-else if !C:brixGCVerifyObject(table[1].left as Pointer)
-    -- "left-missing"
-else if !C:brixGCVerifyObject(table[1].right as Pointer)
-    -- "right-missing"
-else
-    -- "scatter-ok ${table[1].left.value} ${table[1].right.value}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Cell is Struct
-
-+ left GCNode
-+ right GCNode
-
-━━━━━━━━━━━━━━━━━━━━
-+ GCNode
-
-+ value = 0
-
-────────────────────
-+ This
-    - value Int
+(type + GCNode
+  (prop + value _ (= 0))
+  (fn-do + This _
+    (param value Int)
+  )
+)
 ```
 
 ```output
@@ -2133,45 +2356,49 @@ scatter-ok 30 40
 
 ### Pointerful range copy emits barriers and preserves copied objects.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /BxCore/BxCore.h)
+(import /BxGC/BxGCTest.h)
+(blank)
 
-/BxCore/BxCore.h
-/BxGC/BxGCTest.h
+(main
+  (let source (call (of Table Cell) 3 (:with (call Cell (call GCNode (as (+ each 1) Int)) (call GCNode (as (+ each 10) Int))))))
+  (let target (call (of Table Cell) 3))
+  (blank)
+  (let barrier-count-before (call C:brixGCBarrierCount))
+  (call C:brixGCStartConcurrentMark)
+  (= ([] target (..< 0 2)) ([] source (..< 1 3)))
+  (call C:brixGCFinishConcurrentMark)
+  (let barrier-count-after (call C:brixGCBarrierCount))
+  (call C:brixCollect)
+  (blank)
+  (if (<= barrier-count-after barrier-count-before)
+    (print "range-copy-barrier-missing")
+    (else-if (not (call C:brixGCVerifyObject (as (. ([] target 0) left) Pointer)))
+      (print "target-left-missing")
+    )
+    (else-if (not (call C:brixGCVerifyObject (as (. ([] target 1) right) Pointer)))
+      (print "target-right-missing")
+    )
+    (else
+      (print (str "range-copy-ok " (. ([] target 0) left value) " " (. ([] target 1) right value)))
+    )
+  )
+)
 
-. source = Table'Cell(3) • with Cell(GCNode((each + 1) as Int), GCNode((each + 10) as Int))
-. target = Table'Cell(3)
+(type + Cell (is Struct)
+  (prop + left GCNode)
+  (prop + right GCNode)
+)
 
-. barrier-count-before = C:brixGCBarrierCount()
-C:brixGCStartConcurrentMark()
-target[0 .. < 2] = source[1 .. < 3]
-C:brixGCFinishConcurrentMark()
-. barrier-count-after = C:brixGCBarrierCount()
-C:brixCollect()
-
-if barrier-count-after <= barrier-count-before
-    -- "range-copy-barrier-missing"
-else if !C:brixGCVerifyObject(target[0].left as Pointer)
-    -- "target-left-missing"
-else if !C:brixGCVerifyObject(target[1].right as Pointer)
-    -- "target-right-missing"
-else
-    -- "range-copy-ok ${target[0].left.value} ${target[1].right.value}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Cell is Struct
-
-+ left GCNode
-+ right GCNode
-
-━━━━━━━━━━━━━━━━━━━━
-+ GCNode
-
-+ value = 0
-
-────────────────────
-+ This
-    - value Int
+(type + GCNode
+  (prop + value _ (= 0))
+  (fn-do + This _
+    (param value Int)
+  )
+)
 ```
 
 ```output
@@ -2180,24 +2407,26 @@ range-copy-ok 2 12
 
 ### Table field reads are invalidated by stores through aliased table values.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(1)
-table[0] = Point(1, 2)
+(main
+  (let table (call (of Table Point) 1))
+  (= ([] table 0) (call Point 1 2))
+  (blank)
+  (let other table)
+  (let b (. ([] table 0) x))
+  (= (. ([] other 0) x) 7)
+  (let a (. ([] table 0) x))
+  (blank)
+  (print (str b " " a " " (. ([] other 0) x)))
+)
 
-. other = table
-. b = table[0].x
-other[0].x = 7
-. a = table[0].x
-
--- "$b $a ${other[0].x}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -2206,30 +2435,34 @@ other[0].x = 7
 
 ### Growing a table does not reuse a column base read before the growth.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Point) arena 2))
+  (call (. rows append) (call Point 1 2))
+  (call (. rows append) (call Point 3 4))
+  (let b (. ([] rows 0) x))
+  (call (. rows append) (call Point 5 6))
+  (call (. rows append) (call Point 7 8))
+  (call (. rows append) (call Point 9 10))
+  (= (. ([] rows 0) x) 70)
+  (let column (. rows x))
+  (blank)
+  (print (str b " " (. ([] rows 0) x) " " ([] column 0)))
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Point(arena, 2)
-rows.append(Point(1, 2))
-rows.append(Point(3, 4))
-. b = rows[0].x
-rows.append(Point(5, 6))
-rows.append(Point(7, 8))
-rows.append(Point(9, 10))
-rows[0].x = 70
-. column = rows.x
-
--- "$b ${rows[0].x} ${column[0]}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -2238,34 +2471,38 @@ rows[0].x = 70
 
 ### A call that grows a table does not leave the caller with a stale column base.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Point) arena 1))
+  (call (. rows append) (call Point 1 2))
+  (let b (. ([] rows 0) x))
+  (call grow rows)
+  (= (. ([] rows 0) x) 70)
+  (let column (. rows x))
+  (blank)
+  (print (str b " " (. ([] rows 0) x) " " ([] column 0) " " (. rows length)))
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Point(arena, 1)
-rows.append(Point(1, 2))
-. b = rows[0].x
-grow(rows)
-rows[0].x = 70
-. column = rows.x
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 
--- "$b ${rows[0].x} ${column[0]} ${rows.length}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ do grow
-    - rows Table'Point
-
-for index in 0 .. < 20
-    rows.append(Point(index as I32, 0))
+(fn-do + grow _
+  (param rows (of Table Point))
+  (for (in index (..< 0 20))
+    (call (. rows append) (call Point (as index I32) 0))
+  )
+)
 ```
 
 ```output
@@ -2274,29 +2511,33 @@ for index in 0 .. < 20
 
 ### Growing a table through an aliased value does not leave a stale column base.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Point) arena 1))
+  (call (. rows append) (call Point 1 2))
+  (let other rows)
+  (let b (. ([] rows 0) x))
+  (call (. other append) (call Point 3 4))
+  (call (. other append) (call Point 5 6))
+  (= (. ([] rows 0) x) 70)
+  (let column (. other x))
+  (blank)
+  (print (str b " " (. ([] rows 0) x) " " ([] column 0)))
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Point(arena, 1)
-rows.append(Point(1, 2))
-. other = rows
-. b = rows[0].x
-other.append(Point(3, 4))
-other.append(Point(5, 6))
-rows[0].x = 70
-. column = other.x
-
--- "$b ${rows[0].x} ${column[0]}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -2305,82 +2546,74 @@ rows[0].x = 70
 
 ### A method that grows a table held by another object does not leave a stale column base.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let holder (call Holder))
+  (finally
+    (inline (call (. holder arena release)))
+  )
+  (let adder (call Adder holder))
+  (for (in (: index U32) (..< 0 7))
+    (call (. adder add) index)
+  )
+  (let pass (call Pass adder))
+  (call (. pass run))
+  (print (str (. ([] (. holder rows) 0) count) " " (. ([] (. holder rows) 4) count) " " (. holder rows length)))
+)
 
-. holder = Holder()
-do finally holder.arena.release()
-. adder = Adder(holder)
-for index U32 in 0 .. < 7
-    adder.add(index)
-. pass = Pass(adder)
-pass.run()
--- "${holder.rows[0].count} ${holder.rows[4].count} ${holder.rows.length}"
+(type + Row (is Struct)
+  (prop + name U32)
+  (prop + count U32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Row is Struct
+(type + Holder
+  (prop + arena Arena)
+  (prop + rows (of Table Row))
+  (fn-do + This _
+    (lazy rows (call (of Table Row) arena 8))
+  )
+)
 
-+ name U32
-+ count U32
+(type + Adder
+  (prop + holder Holder)
+  (fn-do + This _
+    (param holder Holder)
+  )
+  (fn-do + add U32
+    (param name U32)
+    (let row (as (. holder rows length) U32))
+    (call (. holder rows append) (call Row name 1))
+    (return row)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ arena Arena
-+ rows Table'Row
-
-────────────────────
-+ This
-
-.. rows = Table'Row(arena, 8)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Adder
-
-+ holder Holder
-
-────────────────────
-+ This
-    - holder Holder
-
-────────────────────
-+ do add U32
-    - name U32
-
-. row = holder.rows.length as U32
-holder.rows.append(Row(name, 1))
-= row
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pass
-
-_ adder Adder
-_ holder Holder
-
-────────────────────
-+ This
-    - adder Adder
-
-.. holder = adder.holder
-
-────────────────────
-+ do run
-
-for position U32 in 0 .. < 7
-    . previous = holder.rows[position].count
-    adder.add(100 + position)
-    adder.add(200 + position)
-    holder.rows[position].count = 0
-    bump(position, previous + 4)
-
-────────────────────
-_ do bump
-    - row U32
-    - amount U32
-
-holder.rows[row].count = holder.rows[row].count + amount
+(type + Pass
+  (prop _ adder Adder)
+  (prop _ holder Holder)
+  (fn-do + This _
+    (param adder Adder)
+    (lazy holder (. adder holder))
+  )
+  (fn-do + run _
+    (for (in (: position U32) (..< 0 7))
+      (let previous (. ([] (. holder rows) position) count))
+      (call (. adder add) (+ 100 position))
+      (call (. adder add) (+ 200 position))
+      (= (. ([] (. holder rows) position) count) 0)
+      (call bump position (+ previous 4))
+    )
+  )
+  (fn-do _ bump _
+    (param row U32)
+    (param amount U32)
+    (= (. ([] (. holder rows) row) count) (+ (. ([] (. holder rows) row) count) amount))
+  )
+)
 ```
 
 ```output
@@ -2389,21 +2622,24 @@ holder.rows[row].count = holder.rows[row].count + amount
 
 ### Captured row aliases materialize before entering closures.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(2) • with Point(each as I32, (each + 10) as I32)
+(main
+  (let table (call (of Table Point) 2 (:with (call Point (as each I32) (as (+ each 10) I32)))))
+  (blank)
+  (for (in row table)
+    (let fn (=> () (as row Point)))
+    (+= (. row x) 20)
+    (print (call fn))
+  )
+)
 
-for row in table
-    . fn = => row as Point
-    row.x += 20
-    -- fn()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -2413,22 +2649,25 @@ for row in table
 
 ### Captured indexed row aliases materialize with the current loop index.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(2) • with Point(each as I32, (each + 10) as I32)
+(main
+  (let table (call (of Table Point) 2 (:with (call Point (as each I32) (as (+ each 10) I32)))))
+  (blank)
+  (for (in i (..< 0 (. table length)))
+    (let row ([] table i))
+    (let fn (=> () (as row Point)))
+    (+= (. row x) 30)
+    (print (call fn))
+  )
+)
 
-for i in 0 .. < table.length
-    . row = table[i]
-    . fn = => row as Point
-    row.x += 30
-    -- fn()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -2438,75 +2677,101 @@ for i in 0 .. < table.length
 
 ### Table union rows use common columns, inline and external payloads, live narrowing, and snapshots.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. nodes = Table'Node(3) • with :: index => do
-    if index == 0
-        = Node.literal(10, 42)
-    = Node.call(index as U32, 7, 8, 9, 10)
+(main
+  (let nodes
+    (call (of Table Node) 3
+      (:with
+        (=> (index) :do
+          (block
+            (if (== index 0)
+              (return (call (. Node literal) 10 42))
+            )
+            (return (call (. Node call) (as index U32) 7 8 9 10))
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (= ([] nodes 2) (call Literal 30 100))
+  (blank)
+  (print (. nodes layout))
+  (print (call (. "," join) (. nodes source)))
+  (blank)
+  (for (in node nodes)
+    (match node
+      (case (call .literal literal)
+        (+= (. literal value) 1)
+      )
+      (case (call .call call)
+        (+= (. call arg2) 100)
+      )
+    )
+  )
+  (blank)
+  (print (as ([] nodes 0) Node))
+  (print (as ([] nodes 1) Node))
+  (print (as ([] nodes 2) Node))
+  (blank)
+  (let snapshot Node (as ([] nodes 1) Node))
+  (= ([] (. nodes source) 1) 50)
+  (match ([] nodes 1)
+    (case (call .literal literal)
+      (+= (. literal value) 0)
+    )
+    (case (call .call call)
+      (+= (. call arg2) 1)
+    )
+  )
+  (blank)
+  (print
+    (match snapshot
+      (case (call .literal literal)
+        (str "snapshot literal " (. literal source) " " (. literal value))
+      )
+      (case (call .call call)
+        (str "snapshot call " (. call source) " " (. call arg0) " " (. call arg2))
+      )
+    )
+  )
+  (print
+    (match (as ([] nodes 1) Node)
+      (case (call .literal literal)
+        (str "current literal " (. literal source) " " (. literal value))
+      )
+      (case (call .call call)
+        (str "current call " (. call source) " " (. call arg0) " " (. call arg2))
+      )
+    )
+  )
+  (blank)
+  (print (type-of ([] nodes 0)))
+  (print (type-of (. nodes source)))
+)
 
-nodes[2] = Literal(30, 100)
+(type + Syntax (is Tuple)
+  (prop + source U32)
+)
 
--- nodes.layout
--- ",".join(nodes.source)
+(type + Literal (is Syntax)
+  (prop + value I64)
+)
 
-for node in nodes
-    match node
-        | .literal(literal)
-            literal.value += 1
-        | .call(call)
-            call.arg2 += 100
+(type + Call (is Syntax)
+  (prop + callee U32)
+  (prop + arg0 U64)
+  (prop + arg1 U64)
+  (prop + arg2 U64)
+)
 
--- nodes[0] as Node
--- nodes[1] as Node
--- nodes[2] as Node
-
-. snapshot Node = nodes[1] as Node
-nodes.source[1] = 50
-match nodes[1]
-    | .literal(literal)
-        literal.value += 0
-    | .call(call)
-        call.arg2 += 1
-
--- match snapshot
-    | .literal(literal)
-        "snapshot literal ${literal.source} ${literal.value}"
-    | .call(call)
-        "snapshot call ${call.source} ${call.arg0} ${call.arg2}"
--- match nodes[1] as Node
-    | .literal(literal)
-        "current literal ${literal.source} ${literal.value}"
-    | .call(call)
-        "current call ${call.source} ${call.arg0} ${call.arg2}"
-
--- type-of nodes[0]
--- type-of nodes.source
-
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
-
-+ source U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Literal is Syntax
-
-+ value I64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Call is Syntax
-
-+ callee U32
-+ arg0 U64
-+ arg1 U64
-+ arg2 U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| literal Literal
-| call Call
+(type + Node (is Union)
+  (variant literal Literal)
+  (variant call Call)
+)
 ```
 
 ```output
@@ -2538,57 +2803,53 @@ current call 50 8 111
 
 ### The inline payload column is only as wide as the widest case when every case fits under the budget.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. nodes = Table'Node(2)
-nodes[0] = Node.leaf(1, 7)
-nodes[1] = Node.pair(2, 3, 4)
--- nodes.layout
--- nodes[0] as Node
--- nodes[1] as Node
+(main
+  (let nodes (call (of Table Node) 2))
+  (= ([] nodes 0) (call (. Node leaf) 1 7))
+  (= ([] nodes 1) (call (. Node pair) 2 3 4))
+  (print (. nodes layout))
+  (print (as ([] nodes 0) Node))
+  (print (as ([] nodes 1) Node))
+  (blank)
+  (let flags (call (of Table Flag) 2))
+  (= ([] flags 1) (call (. Flag on) 5 true))
+  (print (. flags layout))
+  (print (as ([] flags 0) Flag))
+  (print (as ([] flags 1) Flag))
+)
 
-. flags = Table'Flag(2)
-flags[1] = Flag.on(5, true)
--- flags.layout
--- flags[0] as Flag
--- flags[1] as Flag
+(type + Base (is Tuple)
+  (prop + id U32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Tuple
+(type + Leaf (is Base)
+  (prop + value U64)
+)
 
-+ id U32
+(type + Pair (is Base)
+  (prop + start U32)
+  (prop + count U32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Leaf is Base
+(type + Node (is Union)
+  (variant leaf Leaf)
+  (variant pair Pair)
+)
 
-+ value U64
+(type + Off (is Base))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Base
+(type + On (is Base)
+  (prop + is-lit Bool)
+)
 
-+ start U32
-+ count U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| leaf Leaf
-| pair Pair
-
-━━━━━━━━━━━━━━━━━━━━
-+ Off is Base
-
-━━━━━━━━━━━━━━━━━━━━
-+ On is Base
-
-+ is-lit Bool
-
-━━━━━━━━━━━━━━━━━━━━
-+ Flag is Union
-
-| off Off
-| on On
+(type + Flag (is Union)
+  (variant off Off)
+  (variant on On)
+)
 ```
 
 ```output
@@ -2622,76 +2883,84 @@ case 1 on On
 
 ### @hot switches a complete union to controlled packing while preserving common columns, canonical field order, wide aligned inline layouts, cold-only cases, typed mutation, and gathering.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. rows = Table'Node(3)
-rows[0] = Node.literal(10, 40, 7)
-rows[1] = Node.call(20, 1, 2, 3, 4, 5)
-rows[2] = Node.cold(30, 9, 1)
+(main
+  (let rows (call (of Table Node) 3))
+  (= ([] rows 0) (call (. Node literal) 10 40 7))
+  (= ([] rows 1) (call (. Node call) 20 1 2 3 4 5))
+  (= ([] rows 2) (call (. Node cold) 30 9 1))
+  (blank)
+  (print (. rows layout))
+  (blank)
+  (for (in row rows)
+    (match row
+      (case (call .literal literal)
+        (+= (. literal value) 1)
+      )
+      (case (call .call call)
+        (+= (. call callee) 10)
+      )
+      (case (call .cold cold)
+        (+= (. cold payload) 1000)
+      )
+    )
+  )
+  (blank)
+  (for (in row rows)
+    (match row
+      (case (call .literal literal)
+        (+= (. literal text-id) 10)
+      )
+      (case (call .call call)
+        (+= (. call diagnostic-id) 100)
+      )
+      (case (call .cold cold)
+        (+= (. cold cold-id) 100)
+      )
+    )
+  )
+  (blank)
+  (for (in row rows)
+    (print (as row Node))
+  )
+  (blank)
+  (= ([] rows 0) (call (. Node call) 50 6 7 8 9 10))
+  (print (as ([] rows 0) Node))
+)
 
--- rows.layout
+(type + Syntax (is Tuple)
+  (prop + source U32)
+)
 
-for row in rows
-    match row
-        | .literal(literal)
-            literal.value += 1
-        | .call(call)
-            call.callee += 10
-        | .cold(cold)
-            cold.payload += 1000
+(type + HotSyntax (is Syntax)
+  (prop + value U64 @hot)
+)
 
-for row in rows
-    match row
-        | .literal(literal)
-            literal.text-id += 10
-        | .call(call)
-            call.diagnostic-id += 100
-        | .cold(cold)
-            cold.cold-id += 100
+(type + Literal (is HotSyntax)
+  (prop + text-id U32)
+)
 
-for row in rows
-    -- row as Node
+(type + Call (is Syntax)
+  (prop + callee U64 @hot)
+  (prop + first-argument U64 @hot)
+  (prop + argument-count U16 @hot)
+  (prop + flags U16)
+  (prop + diagnostic-id U32)
+)
 
-rows[0] = Node.call(50, 6, 7, 8, 9, 10)
--- rows[0] as Node
+(type + Cold (is Syntax)
+  (prop + payload U64)
+  (prop + cold-id U32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
-
-+ source U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ HotSyntax is Syntax
-
-+ @hot value U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Literal is HotSyntax
-
-+ text-id U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Call is Syntax
-
-+ @hot callee U64
-+ @hot first-argument U64
-+ @hot argument-count U16
-+ flags U16
-+ diagnostic-id U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Cold is Syntax
-
-+ payload U64
-+ cold-id U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| literal Literal
-| call Call
-| cold Cold
+(type + Node (is Union)
+  (variant literal Literal)
+  (variant call Call)
+  (variant cold Cold)
+)
 ```
 
 ```output
@@ -2721,31 +2990,31 @@ case 2 cold Cold
 (50, 6, 7, 8, 9, 10)
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. rows = Table'Choice(1)
--- rows.layout
+(main
+  (let rows (call (of Table Choice) 1))
+  (print (. rows layout))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Hot is Tuple
+(type + Hot (is Tuple)
+  (prop + key U32 @hot)
+  (prop + wide U64)
+  (prop + left U32)
+  (prop + right U32)
+)
 
-+ @hot key U32
-+ wide U64
-+ left U32
-+ right U32
+(type + Cold (is Tuple)
+  (prop + first U64)
+  (prop + second U64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Cold is Tuple
-
-+ first U64
-+ second U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| hot Hot
-| cold Cold
+(type + Choice (is Union)
+  (variant hot Hot)
+  (variant cold Cold)
+)
 ```
 
 ```output
@@ -2767,44 +3036,43 @@ case 1 cold Cold
 
 ### Marking every case-specific field removes spill storage, while @hot remains inert for struct-backed tables and ordinary typed field access.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. values = Table'Value(2)
-values[0] = Value.alpha(1, 2)
-values[1] = Value.beta(3)
--- values.layout
--- values[0] as Value
--- values[1] as Value
+(main
+  (let values (call (of Table Value) 2))
+  (= ([] values 0) (call (. Value alpha) 1 2))
+  (= ([] values 1) (call (. Value beta) 3))
+  (print (. values layout))
+  (print (as ([] values 0) Value))
+  (print (as ([] values 1) Value))
+  (blank)
+  (let points (call (of Table Point) 1))
+  (= ([] points 0) (call Point 4 5))
+  (+= (. ([] points 0) x) 1)
+  (print (. points layout))
+  (print (as ([] points 0) Point))
+)
 
-. points = Table'Point(1)
-points[0] = Point(4, 5)
-points[0].x += 1
--- points.layout
--- points[0] as Point
+(type + Alpha (is Tuple)
+  (prop + x I32 @hot)
+  (prop + y I64 @hot)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Alpha is Tuple
+(type + Beta (is Tuple)
+  (prop + z U16 @hot)
+)
 
-+ @hot x I32
-+ @hot y I64
+(type + Value (is Union)
+  (variant alpha Alpha)
+  (variant beta Beta)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Beta is Tuple
-
-+ @hot z U16
-
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| alpha Alpha
-| beta Beta
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ @hot x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32 @hot)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -2826,65 +3094,69 @@ storage fixed
 
 ### Arena-backed controlled unions use the same placement descriptor through growth and rewind, with compact external storage for unmarked fields.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 16384))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let nodes (call (of Table Node) arena 1))
+  (blank)
+  (call (. nodes append) (call (. Node small) 10 1 2))
+  (let mark (. nodes mark))
+  (call (. nodes append) (call (. Node wide) 20 3 4 5 6))
+  (call (. nodes reserve) 8)
+  (call (. nodes append) (call (. Node small) 30 7 8))
+  (call (. nodes append) (call (. Node wide) 40 9 10 11 12))
+  (call (. nodes append) (call (. Node wide) 50 13 14 15 16))
+  (blank)
+  (match ([] nodes 1)
+    (case (call .small small)
+      (+= (. small value) 0)
+      (+= (. small cold) 0)
+    )
+    (case (call .wide wide)
+      (+= (. wide inline-a) 100)
+      (+= (. wide external-b) 1000)
+    )
+  )
+  (blank)
+  (print (. nodes layout))
+  (print (str "grown " (. nodes length) "/" (. nodes capacity)))
+  (print (as ([] nodes 1) Node))
+  (blank)
+  (call (. nodes rewind) mark)
+  (call (. nodes append) (call (. Node wide) 60 17 18 19 20))
+  (print (str "rewound " (. nodes length) "/" (. nodes capacity)))
+  (print (as ([] nodes 0) Node))
+  (print (as ([] nodes 1) Node))
+)
 
-. arena = Arena(16384)
-do finally arena.release()
-. nodes = Table'Node(arena, 1)
+(type + Syntax (is Tuple)
+  (prop + source U32)
+)
 
-nodes.append(Node.small(10, 1, 2))
-. mark = nodes.mark
-nodes.append(Node.wide(20, 3, 4, 5, 6))
-nodes.reserve(8)
-nodes.append(Node.small(30, 7, 8))
-nodes.append(Node.wide(40, 9, 10, 11, 12))
-nodes.append(Node.wide(50, 13, 14, 15, 16))
+(type + Small (is Syntax)
+  (prop + value U64 @hot)
+  (prop + cold U32)
+)
 
-match nodes[1]
-    | .small(small)
-        small.value += 0
-        small.cold += 0
-    | .wide(wide)
-        wide.inline-a += 100
-        wide.external-b += 1000
+(type + Wide (is Syntax)
+  (prop + inline-a U64 @hot)
+  (prop + inline-b U64 @hot)
+  (prop + external-a U64)
+  (prop + external-b U64)
+)
 
--- nodes.layout
--- "grown ${nodes.length}/${nodes.capacity}"
--- nodes[1] as Node
-
-nodes.rewind(mark)
-nodes.append(Node.wide(60, 17, 18, 19, 20))
--- "rewound ${nodes.length}/${nodes.capacity}"
--- nodes[0] as Node
--- nodes[1] as Node
-
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
-
-+ source U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
-
-+ @hot value U64
-+ cold U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ @hot inline-a U64
-+ @hot inline-b U64
-+ external-a U64
-+ external-b U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 ```
 
 ```output
@@ -2915,60 +3187,72 @@ rewound 2/8
 (60, 17, 18, 19, 20)
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 4096))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Node) arena 1))
+  (let valid true)
+  (for (in index (..< 0 64))
+    (call (. rows append) (call (. Node item) (as index U64) (call SpanData (as index U32) 1) null))
+  )
+  (for (in index (..< 0 (. rows length)))
+    (match ([] rows index)
+      (case (call .item row)
+        (do
+          (= ([] rows index) (call (. Node item) (. row name) (. row range) (as (+ 305419896u64 index) U64)))
+          (= valid (and valid (== (. row range start) (as index U32)) (== (. row range count) 1)))
+        )
+        0
+      )
+      (default
+        0
+      )
+    )
+  )
+  (for (in index (..< 0 (. rows length)))
+    (match ([] rows index)
+      (case (call .item row)
+        (do
+          (= valid (and valid (== (. row range start) (as index U32)) (== (. row range count) 1)))
+          (= valid (and valid (== (!! (. row owner)) (as (+ 305419896u64 index) U64))))
+        )
+        0
+      )
+      (default
+        0
+      )
+    )
+  )
+  (print valid)
+)
 
-. arena = Arena(4096)
-do finally arena.release()
-. rows = Table'Node(arena, 1)
-. valid = true
-for index in 0 .. < 64
-    rows.append(Node.item(index as U64, SpanData(index as U32, 1), null))
-for index in 0 .. < rows.length
-    match rows[index]
-        | .item(row)
-            do
-                rows[index] = Node.item(row.name, row.range, 305419896u64 + index as U64)
-                valid = valid && row.range.start == index as U32 && row.range.count == 1
-            0
-        ??
-            0
-for index in 0 .. < rows.length
-    match rows[index]
-        | .item(row)
-            do
-                valid = valid && row.range.start == index as U32 && row.range.count == 1
-                valid = valid && row.owner! == 305419896u64 + index as U64
-            0
-        ??
-            0
--- valid
+(type + SpanData (is Tuple)
+  (prop + start U32)
+  (prop + count U32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ SpanData is Tuple
+(type + Item (is Tuple)
+  (prop + name U64 @hot)
+  (prop + range SpanData)
+  (prop + owner (? U64) @hot)
+)
 
-+ start U32
-+ count U32
+(type + Other (is Tuple)
+  (prop + value U8)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Tuple
-
-+ @hot name U64
-+ range SpanData
-+ @hot owner U64?
-
-━━━━━━━━━━━━━━━━━━━━
-+ Other is Tuple
-
-+ value U8
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| item Item
-| other Other
+(type + Node (is Union)
+  (variant item Item)
+  (variant other Other)
+)
 ```
 
 ```output
@@ -2977,280 +3261,285 @@ true
 
 ### @hot on a field that becomes common is rejected when the union-table descriptor is formed.
 
-```yumi crash
-/core/table
+```brix crash
+(import /core/table)
+(blank)
 
-. rows = Table'Value(1)
+(main
+  (let rows (call (of Table Value) 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Tuple
+(type + Base (is Tuple)
+  (prop + id U32 @hot)
+)
 
-+ @hot id U32
+(type + Left (is Base)
+  (prop + left I32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Base
+(type + Right (is Base)
+  (prop + right I32)
+)
 
-+ left I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Base
-
-+ right I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| left Left
-| right Right
+(type + Value (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```output
 Exception: Table union 'Value' common field 'id' cannot be @hot because it already has a dedicated common column
-<no file:9>
-    + @hot id U32
-    ^^^^^^^^^^^^^
+<no file:10>
+      (prop + id U32 @hot)
+      ^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Managed case-specific fields remain illegal even when @hot requests inline placement.
 
-```yumi crash
-/core/table
+```brix crash
+(import /core/table)
+(blank)
 
-. rows = Table'Value(1)
+(main
+  (let rows (call (of Table Value) 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Managed is Tuple
+(type + Managed (is Tuple)
+  (prop + text String @hot)
+)
 
-+ @hot text String
+(type + Plain (is Tuple)
+  (prop + value I32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Plain is Tuple
-
-+ value I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| managed Managed
-| plain Plain
+(type + Value (is Union)
+  (variant managed Managed)
+  (variant plain Plain)
+)
 ```
 
 ```output
 Exception: Table union case 'managed' field 'text' contains managed pointers through String
-<no file:9>
-    + @hot text String
-    ^^^^^^^^^^^^^^^^^^
+<no file:10>
+      (prop + text String @hot)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### @hot is rejected outside eager tuple storage.
 
-```yumi crash
-. box = Box()
+```brix crash
+(main
+  (let box (call Box))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ @hot value I32 = 1
+(type + Box
+  (prop + value I32 @hot (= 1))
+)
 ```
 
 ```output
 Exception: Property annotation "@hot" requires an eager stored field on a tuple-layout type
 <no file:7>
-    + @hot value I32 = 1
-    ^^^^^^^^^^^^^^^^^^^^
+      (prop + value I32 @hot (= 1))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### @hot is rejected on lazy tuple properties.
 
-```yumi crash
-. value = LazyValue()
+```brix crash
+(main
+  (let value (call LazyValue))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ LazyValue is Tuple
-
-+ @hot value := 1
+(type + LazyValue (is Tuple)
+  (prop + value _ @hot (:= 1))
+)
 ```
 
 ```output
 Exception: Property annotation "@hot" requires an eager stored field on a tuple-layout type
 <no file:7>
-    + @hot value := 1
-    ^^^^^^^^^^^^^^^^^
+      (prop + value _ @hot (:= 1))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### @hot is rejected on tuple getters instead of being discarded by the seed parser.
 
-```yumi crash
-. value = GetterValue()
+```brix crash
+(main
+  (let value (call GetterValue))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ GetterValue is Tuple
-
-+ @hot value I32 => 1
+(type + GetterValue (is Tuple)
+  (prop + value I32 @hot (=> 1))
+)
 ```
 
 ```output
 Exception: Property annotation "@hot" requires an eager stored field on a tuple-layout type
 <no file:7>
-    + @hot value I32 => 1
-           ^^^^^^^^^
+      (prop + value I32 @hot (=> 1))
+      ^^^^^^^^^^^^^^^^^
 ```
 
 ### @hot is rejected on globals.
 
-```yumi crash
-+ @hot value I32 = 1
--- value
+```brix crash
+(prop + value I32 @hot (= 1))
+
+(main
+  (print value)
+)
 ```
 
 ```output
 Exception: Property annotation "@hot" requires an eager stored field on a tuple-layout type
 <no file:2>
-    + @hot value I32 = 1
-    ^^^^^^^^^^^^^^^^^^^^
+    (prop + value I32 @hot (= 1))
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### @hot is rejected on delegated tuple storage.
 
-```yumi crash
-. value = DelegatingValue(Delegate())
+```brix crash
+(main
+  (let value (call DelegatingValue (call Delegate)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + act _)
+)
 
-────────────────────
-+ act
+(type + Delegate
+  (implements Proto)
+  (fn-expr + act _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Delegate
-    is Proto
-
-────────────────────
-+ act
-
-━━━━━━━━━━━━━━━━━━━━
-+ DelegatingValue is Tuple
-
-as Proto for
-+ @hot delegate Delegate
+(type + DelegatingValue (is Tuple)
+  (delegate Proto)
+  (prop + delegate Delegate @hot)
+)
 ```
 
 ```output
 Exception: Property annotation "@hot" requires an eager stored field on a tuple-layout type
-<no file:21>
-    + @hot delegate Delegate
-    ^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:17>
+      (prop + delegate Delegate @hot)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Unknown non-style property annotations name the supported tuple annotation.
 
-```yumi crash
-. value = Value(1)
+```brix crash
+(main
+  (let value (call Value 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Tuple
-
-+ @cold field I32
+(type + Value (is Tuple)
+  (prop + field I32 @cold)
+)
 ```
 
 ```output
 Exception: Unknown property annotation "@cold"; only "@hot" is supported on eager tuple fields
 <no file:7>
-    + @cold field I32
-    ^^^^^^^^^^^^^^^^^
+      (prop + field I32 @cold)
+      ^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### @hot is rejected on interface properties.
 
-```yumi crash
-. proto Proto = Thing()
--- proto.value
+```brix crash
+(main
+  (let proto Proto (call Thing))
+  (print (. proto value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (prop + value I32 @hot)
+)
 
-+ @hot value I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-+ value I32 = 1
+(type + Thing
+  (implements Proto)
+  (prop + value I32 (= 1))
+)
 ```
 
 ```output
 Exception: Property annotation "@hot" requires an eager stored field on a tuple-layout type
 <no file:8>
-    + @hot value I32
-    ^^^^^^^^^^^^^^^^
+      (prop + value I32 @hot)
+      ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### @hot is rejected on style properties while @inherited retains the style-specific path.
 
-```yumi crash
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Label
-        ink = 9
+(main
+  (<> BatchDemo (id: demo)
+    (<> Label
+      (= ink 9)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using TextStyle
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using TextStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + TextStyle (is Style)
+  (prop + ink I64 @hot (= 7))
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ @hot ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
+(type + Label (is Box)
+  (using TextStyle)
+)
 ```
 
 ```output
 Exception: Property annotation "@hot" requires an eager stored field on a tuple-layout type
-<no file:24>
-    + @hot ink I64 = 7
-    ^^^^^^^^^^^^^^^^^^
+<no file:25>
+      (prop + ink I64 @hot (= 7))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Size-only union tables initialize every row to the first declared case's default value.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. nodes = Table'Node(2)
--- (nodes[0] as Node).case
--- nodes[0] as Node
--- nodes[1] as Node
+(main
+  (let nodes (call (of Table Node) 2))
+  (print (. (as ([] nodes 0) Node) case))
+  (print (as ([] nodes 0) Node))
+  (print (as ([] nodes 1) Node))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Literal is Tuple
+(type + Literal (is Tuple)
+  (prop + source U32 (= 12))
+  (prop + value I64 (= 34))
+)
 
-+ source U32 = 12
-+ value I64 = 34
+(type + Call (is Tuple)
+  (prop + source U32)
+  (prop + callee U32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Call is Tuple
-
-+ source U32
-+ callee U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| literal Literal
-| call Call
+(type + Node (is Union)
+  (variant literal Literal)
+  (variant call Call)
+)
 ```
 
 ```output
@@ -3261,48 +3550,50 @@ Exception: Property annotation "@hot" requires an eager stored field on a tuple-
 
 ### Whole-row union assignment changes cases repeatedly and clears or restores spill handles.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. nodes = Table'Node(1)
-nodes[0] = Call(1, 2, 3, 4, 5)
--- nodes[0] as Node
-nodes[0] = Literal(6, 7)
--- nodes[0] as Node
-nodes[0] = Node.call(8, 9, 10, 11, 12)
--- nodes[0] as Node
+(main
+  (let nodes (call (of Table Node) 1))
+  (= ([] nodes 0) (call Call 1 2 3 4 5))
+  (print (as ([] nodes 0) Node))
+  (= ([] nodes 0) (call Literal 6 7))
+  (print (as ([] nodes 0) Node))
+  (= ([] nodes 0) (call (. Node call) 8 9 10 11 12))
+  (print (as ([] nodes 0) Node))
+  (blank)
+  (let row ([] nodes 0))
+  (match row
+    (case (call .literal literal)
+      (+= (. literal value) 0)
+    )
+    (case (call .call call)
+      (+= (. call arg1) 100)
+    )
+  )
+  (print (as row Node))
+)
 
-. row = nodes[0]
-match row
-    | .literal(literal)
-        literal.value += 0
-    | .call(call)
-        call.arg1 += 100
--- row as Node
+(type + Syntax (is Tuple)
+  (prop + source U32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
+(type + Literal (is Syntax)
+  (prop + value I64)
+)
 
-+ source U32
+(type + Call (is Syntax)
+  (prop + callee U32)
+  (prop + arg0 U64)
+  (prop + arg1 U64)
+  (prop + arg2 U64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Literal is Syntax
-
-+ value I64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Call is Syntax
-
-+ callee U32
-+ arg0 U64
-+ arg1 U64
-+ arg2 U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| literal Literal
-| call Call
+(type + Node (is Union)
+  (variant literal Literal)
+  (variant call Call)
+)
 ```
 
 ```output
@@ -3314,78 +3605,78 @@ match row
 
 ### Equal field names on unrelated cases do not become common columns.
 
-```yumi crash
-/core/table
+```brix crash
+(import /core/table)
+(blank)
 
-. rows = Table'Value(1)
--- rows.layout
--- rows[0].value
+(main
+  (let rows (call (of Table Value) 1))
+  (print (. rows layout))
+  (print (. ([] rows 0) value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value I32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| left Left
-| right Right
+(type + Value (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```output
 Exception: TableRow'Value has no property "value"
-<no file:6>
-    -- rows[0].value
-       ^^^^^^^^^^^^^
+<no file:8>
+      (print (. ([] rows 0) value))
+             ^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Union table spans support slicing, common-column projection, indexing, and iteration.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. rows = Table'Value(4)
-rows[0] = Value.left(10, 1)
-rows[1] = Value.right(20, 2)
-rows[2] = Value.left(30, 3)
-rows[3] = Value.right(40, 4)
+(main
+  (let rows (call (of Table Value) 4))
+  (= ([] rows 0) (call (. Value left) 10 1))
+  (= ([] rows 1) (call (. Value right) 20 2))
+  (= ([] rows 2) (call (. Value left) 30 3))
+  (= ([] rows 3) (call (. Value right) 40 4))
+  (blank)
+  (let span ([] rows (..< 1 4)))
+  (let nested ([] span (..< 1 3)))
+  (print (type-of span))
+  (print (str (. span length) "/" (. span size)))
+  (print (call (. "," join) (. span source)))
+  (print (as ([] nested 0) Value))
+  (blank)
+  (for (in row span)
+    (print (as row Value))
+  )
+)
 
-. span = rows[1 .. < 4]
-. nested = span[1 .. < 3]
--- type-of span
--- "${span.length}/${span.size}"
--- ",".join(span.source)
--- nested[0] as Value
+(type + Base (is Tuple)
+  (prop + source U32)
+)
 
-for row in span
-    -- row as Value
+(type + Left (is Base)
+  (prop + value I32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Tuple
+(type + Right (is Base)
+  (prop + value I64)
+)
 
-+ source U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Base
-
-+ value I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Base
-
-+ value I64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| left Left
-| right Right
+(type + Value (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```output
@@ -3400,75 +3691,83 @@ for row in span
 
 ### Managed pointers remain valid in common typed columns but are rejected in byte payload regions.
 
-```yumi crash
-/core/table
+```brix crash
+(import /core/table)
+(blank)
 
-. rows = Table'Value(1)
+(main
+  (let rows (call (of Table Value) 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Tuple
+(type + Base (is Tuple)
+  (prop + source U32)
+)
 
-+ source U32
+(type + TextValue (is Base)
+  (prop + text String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TextValue is Base
+(type + NumberValue (is Base)
+  (prop + number I64)
+)
 
-+ text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ NumberValue is Base
-
-+ number I64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| text TextValue
-| number NumberValue
+(type + Value (is Union)
+  (variant text TextValue)
+  (variant number NumberValue)
+)
 ```
 
 ```output
 Exception: Table union case 'text' field 'text' contains managed pointers through String
 <no file:14>
-    + text String
-    ^^^^^^^^^^^^^
+      (prop + text String)
+      ^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Common managed fields retain typed-column storage and survive union scatter and gather.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. rows = Table'Value(2) • with :: index => do
-    if index == 0
-        = Value.left("first", 10)
-    = Value.right("second", 20)
+(main
+  (let rows
+    (call (of Table Value) 2
+      (:with
+        (=> (index) :do
+          (block
+            (if (== index 0)
+              (return (call (. Value left) "first" 10))
+            )
+            (return (call (. Value right) "second" 20))
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (print (call (. ", " join) (. rows name)))
+  (= ([] (. rows name) 1) "changed")
+  (print (as ([] rows 0) Value))
+  (print (as ([] rows 1) Value))
+)
 
--- ", ".join(rows.name)
-rows.name[1] = "changed"
--- rows[0] as Value
--- rows[1] as Value
+(type + Base (is Tuple)
+  (prop + name String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Tuple
+(type + Left (is Base)
+  (prop + value I32)
+)
 
-+ name String
+(type + Right (is Base)
+  (prop + value I64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Base
-
-+ value I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Base
-
-+ value I64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| left Left
-| right Right
+(type + Value (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```output
@@ -3479,34 +3778,34 @@ first, second
 
 ### Whole-row union view assignment copies the active logical value and keeps later mutations independent.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. rows = Table'Value(2)
-rows[0] = Value.left(7)
-rows[1] = Value.right(8)
-rows[1] = rows[0]
-rows[0] = Value.right(9)
-rows[1] = rows[1]
+(main
+  (let rows (call (of Table Value) 2))
+  (= ([] rows 0) (call (. Value left) 7))
+  (= ([] rows 1) (call (. Value right) 8))
+  (= ([] rows 1) ([] rows 0))
+  (= ([] rows 0) (call (. Value right) 9))
+  (= ([] rows 1) ([] rows 1))
+  (blank)
+  (print (as ([] rows 0) Value))
+  (print (as ([] rows 1) Value))
+)
 
--- rows[0] as Value
--- rows[1] as Value
+(type + Left (is Tuple)
+  (prop + value I32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Right (is Tuple)
+  (prop + value I64)
+)
 
-+ value I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value I64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| left Left
-| right Right
+(type + Value (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```output
@@ -3516,62 +3815,63 @@ rows[1] = rows[1]
 
 ### Controlled union row and range copies preserve active inline and spill fields, overlap order, and independent immutable-table clones.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. rows = Table'Node(5)
-rows[0] = Node.small(10, 1, 100, 1000)
-rows[1] = Node.wide(20, 2, 200, 2000, 2001)
-rows[2] = Node.small(30, 3, 300, 3000)
-rows[3] = Node.wide(40, 4, 400, 4000, 4001)
-rows[4] = Node.small(50, 5, 500, 5000)
+(main
+  (let rows (call (of Table Node) 5))
+  (= ([] rows 0) (call (. Node small) 10 1 100 1000))
+  (= ([] rows 1) (call (. Node wide) 20 2 200 2000 2001))
+  (= ([] rows 2) (call (. Node small) 30 3 300 3000))
+  (= ([] rows 3) (call (. Node wide) 40 4 400 4000 4001))
+  (= ([] rows 4) (call (. Node small) 50 5 500 5000))
+  (blank)
+  (let span ([] rows (..< 1 4)))
+  (let (tuple sources flags) span)
+  (print (call (. "," join) sources))
+  (print (call (. "," join) flags))
+  (blank)
+  (= ([] span 1) ([] rows 0))
+  (= ([] rows 4) ([] span 0))
+  (= ([] rows (..< 1 5)) ([] rows (..< 0 4)))
+  (blank)
+  (for (in row rows)
+    (print (as row Node))
+  )
+  (blank)
+  (let clone (call (. rows copy)))
+  (= ([] rows 2) (call (. Node small) 99 9 900 9000))
+  (print (as ([] clone 2) Node))
+  (blank)
+  (let lower (call (of Table Node) 5))
+  (= ([] lower (..< 0 5)) ([] clone (..< 0 5)))
+  (= ([] lower (..< 0 4)) ([] lower (..< 1 5)))
+  (for (in row lower)
+    (print (as row Node))
+  )
+)
 
-. span = rows[1 .. < 4]
-. sources, flags = span
--- ",".join(sources)
--- ",".join(flags)
+(type + Syntax (is Tuple)
+  (prop + source U32)
+  (prop + flags U16)
+)
 
-span[1] = rows[0]
-rows[4] = span[0]
-rows[1 .. < 5] = rows[0 .. < 4]
+(type + Small (is Syntax)
+  (prop + value U64 @hot)
+  (prop + cold U32)
+)
 
-for row in rows
-    -- row as Node
+(type + Wide (is Syntax)
+  (prop + value U64 @hot)
+  (prop + external-a U64)
+  (prop + external-b U64)
+)
 
-. clone = rows.copy()
-rows[2] = Node.small(99, 9, 900, 9000)
--- clone[2] as Node
-
-. lower = Table'Node(5)
-lower[0 .. < 5] = clone[0 .. < 5]
-lower[0 .. < 4] = lower[1 .. < 5]
-for row in lower
-    -- row as Node
-
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
-
-+ source U32
-+ flags U16
-
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
-
-+ @hot value U64
-+ cold U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ @hot value U64
-+ external-a U64
-+ external-b U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 ```
 
 ```output
@@ -3592,36 +3892,35 @@ for row in lower
 
 ### Returning a union row cursor preserves a live base view that observes later case changes.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. rows = Table'Value(1)
-rows[0] = Value.left(3)
-. row = first-row(rows)
-rows[0] = Value.right(4)
--- row as Value
+(main
+  (let rows (call (of Table Value) 1))
+  (= ([] rows 0) (call (. Value left) 3))
+  (let row (call first-row rows))
+  (= ([] rows 0) (call (. Value right) 4))
+  (print (as row Value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value I64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
+(type + Value (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 
-+ value I64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| left Left
-| right Right
-
-━━━━━━━━━━━━━━━━━━━━
-+ do first-row TableRow'Value
-    - rows Table'Value
-
-= rows[0]
+(fn-do + first-row (of TableRow Value)
+  (param rows (of Table Value))
+  (return ([] rows 0))
+)
 ```
 
 ```output
@@ -3630,31 +3929,31 @@ rows[0] = Value.right(4)
 
 ### A captured union row alias remains live and rematches the current active case at use.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. rows = Table'Value(1)
-rows[0] = Value.left(5)
-. row = rows[0]
-. getter = => row
-rows[0] = Value.right(6)
--- getter() as Value
+(main
+  (let rows (call (of Table Value) 1))
+  (= ([] rows 0) (call (. Value left) 5))
+  (let row ([] rows 0))
+  (let getter (=> () row))
+  (= ([] rows 0) (call (. Value right) 6))
+  (print (as (call getter) Value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Tuple
+(type + Left (is Tuple)
+  (prop + value I32)
+)
 
-+ value I32
+(type + Right (is Tuple)
+  (prop + value I64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Tuple
-
-+ value I64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| left Left
-| right Right
+(type + Value (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 ```
 
 ```output
@@ -3663,138 +3962,135 @@ rows[0] = Value.right(6)
 
 ### Union base row views pass, return, yield, capture, and store as live cursors, while ordinary-union and narrowed-case boundaries gather snapshots.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. rows = Table'Node(3)
-rows[0] = Node.left(10, 100)
-rows[1] = Node.right(20, 200)
-rows[2] = Node.left(30, 300)
+(main
+  (let rows (call (of Table Node) 3))
+  (= ([] rows 0) (call (. Node left) 10 100))
+  (= ([] rows 1) (call (. Node right) 20 200))
+  (= ([] rows 2) (call (. Node left) 30 300))
+  (blank)
+  (let direct (call row-at rows 0))
+  (let passed (call pass-row ([] rows 1)))
+  (let stream (call yielded-rows rows))
+  (let yielded-direct (!! (call stream)))
+  (let yielded-loop (!! (call stream)))
+  (let tuple (tuple ([] rows 0) ([] rows 2)))
+  (let (tuple tuple-first tuple-last) tuple)
+  (let array (list ([] rows 0) ([] rows 1)))
+  (let list (call (of List (of TableRow Node))))
+  (+= list ([] rows 1))
+  (let holder (call Holder ([] rows 2)))
+  (let captured ([] rows 2))
+  (let getter (=> () captured))
+  (let lazy-getter (call make-lazy-getter rows))
+  (let case-snapshot (call snapshot-left ([] rows 0)))
+  (let widened (call widen-left ([] rows 0)))
+  (let union-snapshot (call pass-value ([] rows 2)))
+  (blank)
+  (= ([] rows 0) (call (. Node right) 11 110))
+  (= ([] rows 1) (call (. Node left) 21 210))
+  (= ([] rows 2) (call (. Node right) 31 310))
+  (blank)
+  (print (as direct Node))
+  (print (as passed Node))
+  (print (as yielded-direct Node))
+  (print (as yielded-loop Node))
+  (print (as tuple-first Node))
+  (print (as tuple-last Node))
+  (print (as ([] array 0) Node))
+  (print (as ([] array 1) Node))
+  (print (as ([] list 0) Node))
+  (print (as (. holder row) Node))
+  (print (as (call getter) Node))
+  (print (as (call lazy-getter) Node))
+  (print case-snapshot)
+  (print (as widened Node))
+  (print union-snapshot)
+)
 
-. direct = row-at(rows, 0)
-. passed = pass-row(rows[1])
-. stream = yielded-rows(rows)
-. yielded-direct = stream()!
-. yielded-loop = stream()!
-. tuple = (rows[0], rows[2])
-. tuple-first, tuple-last = tuple
-. array = [rows[0], rows[1]]
-. list = List'(TableRow'Node)()
-list += rows[1]
-. holder = Holder(rows[2])
-. captured = rows[2]
-. getter = => captured
-. lazy-getter = make-lazy-getter(rows)
-. case-snapshot = snapshot-left(rows[0])
-. widened = widen-left(rows[0])
-. union-snapshot = pass-value(rows[2])
+(type + Base (is Tuple)
+  (prop + source U32)
+)
 
-rows[0] = Node.right(11, 110)
-rows[1] = Node.left(21, 210)
-rows[2] = Node.right(31, 310)
+(type + Left (is Base)
+  (prop + value I32)
+)
 
--- direct as Node
--- passed as Node
--- yielded-direct as Node
--- yielded-loop as Node
--- tuple-first as Node
--- tuple-last as Node
--- array[0] as Node
--- array[1] as Node
--- list[0] as Node
--- holder.row as Node
--- getter() as Node
--- lazy-getter() as Node
--- case-snapshot
--- widened as Node
--- union-snapshot
+(type + Right (is Base)
+  (prop + value I64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Tuple
+(type + Node (is Union)
+  (variant left Left)
+  (variant right Right)
+)
 
-+ source U32
+(type + Holder
+  (prop + row (of TableRow Node))
+  (fn-do + This _
+    (param row (of TableRow Node))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Left is Base
+(fn-expr + row-at (of TableRow Node)
+  (param rows (of Table Node))
+  (param index Index)
+  ([] rows index)
+)
 
-+ value I32
+(fn-expr + pass-row (of TableRow Node)
+  (param row (of TableRow Node))
+  row
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Right is Base
+(fn-do + yielded-rows _
+  (param rows (of Table Node))
+  (yield ([] rows 1))
+  (for (in row rows)
+    (yield row)
+  )
+)
 
-+ value I64
+(fn-do + make-lazy-getter (of Getter (of TableRow Node))
+  (param rows (of Table Node))
+  (let index 0)
+  (lazy row ([] rows index))
+  (let getter (=> () row))
+  (= index 1)
+  (return getter)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
+(fn-expr + snapshot-left Left
+  (param row (of TableRow Node))
+  (match row
+    (case (call .left left)
+      left
+    )
+    (case .right
+      (call Left 0 0)
+    )
+  )
+)
 
-| left Left
-| right Right
+(fn-expr + widen-left (of TableRow Node)
+  (param row (of TableRow Node))
+  (match row
+    (case (call .left left)
+      (as left (of TableRow Node))
+    )
+    (case .right
+      row
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ row TableRow'Node
-
-────────────────────
-+ This
-    - row TableRow'Node
-
-━━━━━━━━━━━━━━━━━━━━
-+ row-at TableRow'Node
-    - rows Table'Node
-    - index Index
-
-rows[index]
-
-━━━━━━━━━━━━━━━━━━━━
-+ pass-row TableRow'Node
-    - row TableRow'Node
-
-row
-
-━━━━━━━━━━━━━━━━━━━━
-+ do yielded-rows
-    - rows Table'Node
-
-<= rows[1]
-for row in rows
-    <= row
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make-lazy-getter Getter'(TableRow'Node)
-    - rows Table'Node
-
-. index = 0
-.. row = rows[index]
-. getter = => row
-index = 1
-= getter
-
-━━━━━━━━━━━━━━━━━━━━
-+ snapshot-left Left
-    - row TableRow'Node
-
-match row
-    | .left(left)
-        left
-    | .right
-        Left(0, 0)
-
-━━━━━━━━━━━━━━━━━━━━
-+ widen-left TableRow'Node
-    - row TableRow'Node
-
-match row
-    | .left(left)
-        left as TableRow'Node
-    | .right
-        row
-
-━━━━━━━━━━━━━━━━━━━━
-+ pass-value Node
-    - node Node
-
-node
+(fn-expr + pass-value Node
+  (param node Node)
+  node
+)
 ```
 
 ```output
@@ -3817,21 +4113,24 @@ node
 
 ### Row field reads inside closures do not drive table loop cursor planning.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(2) • with Point(each as Size, (each + 10) as Size)
+(main
+  (let table (call (of Table Point) 2 (:with (call Point (as each Size) (as (+ each 10) Size)))))
+  (blank)
+  (for (in row table)
+    (let fn (=> () (+ (. row x) (. row x))))
+    (+= (. row x) 5)
+    (print (call fn))
+  )
+)
 
-for row in table
-    . fn = => row.x + row.x
-    row.x += 5
-    -- fn()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x Size
-+ y Size
+(type + Point (is Struct)
+  (prop + x Size)
+  (prop + y Size)
+)
 ```
 
 ```output
@@ -3841,50 +4140,55 @@ for row in table
 
 ### Arena-backed Table grows while aliases and pre-growth views keep resolving current storage.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (blank)
+  (let table (call (of Table Point) arena 1))
+  (let alias table)
+  (print (str "initial " (. table length) "/" (. table capacity)))
+  (blank)
+  (let first (call (. table append) (call Point 1 10)))
+  (let row ([] table first))
+  (let xs (. table x))
+  (let span ([] table (..< 0 1)))
+  (blank)
+  (call (. table reserve) 8)
+  (let more (call (of Array Point) (list (call Point 2 20) (call Point 3 30))))
+  (call (. table extend) more)
+  (print (str "grown " (. alias length) "/" (. alias capacity)))
+  (print (as row Point))
+  (print ([] xs 0))
+  (print (as ([] span 0) Point))
+  (for (in current alias)
+    (print (str "loop " (as current Point)))
+  )
+  (blank)
+  (let mark (. table mark))
+  (call (. table append) (call Point 4 40))
+  (print (str "appended " (. table length) "/" (. table capacity)))
+  (call (. table rewind) mark)
+  (print (str "rewound " (. table length) "/" (. table capacity)))
+  (print (as ([] table 2) Point))
+  (blank)
+  (call (. table truncate) 2)
+  (print (str "truncated " (. table length) "/" (. table capacity)))
+  (call (. table clear))
+  (print (str "cleared " (. alias length) "/" (. alias capacity)))
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-
-. table = Table'Point(arena, 1)
-. alias = table
--- "initial ${table.length}/${table.capacity}"
-
-. first = table.append(Point(1, 10))
-. row = table[first]
-. xs = table.x
-. span = table[0 .. < 1]
-
-table.reserve(8)
-. more = Array'Point([Point(2, 20), Point(3, 30)])
-table.extend(more)
--- "grown ${alias.length}/${alias.capacity}"
--- row as Point
--- xs[0]
--- span[0] as Point
-for current in alias
-    -- "loop ${current as Point}"
-
-. mark = table.mark
-table.append(Point(4, 40))
--- "appended ${table.length}/${table.capacity}"
-table.rewind(mark)
--- "rewound ${table.length}/${table.capacity}"
--- table[2] as Point
-
-table.truncate(2)
--- "truncated ${table.length}/${table.capacity}"
-table.clear()
--- "cleared ${alias.length}/${alias.capacity}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -3905,57 +4209,58 @@ cleared 0/8
 
 ### Arena-backed union tables share row growth and recycle compact spill storage through table marks.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 16384))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let nodes (call (of Table Node) arena 1))
+  (blank)
+  (call (. nodes append) (call (. Node literal) 10 42))
+  (let mark (. nodes mark))
+  (let first ([] nodes 0))
+  (call (. nodes append) (call (. Node call) 20 1 2 3 4))
+  (call (. nodes append) (call (. Node literal) 30 43))
+  (call (. nodes append) (call (. Node call) 40 5 6 7 8))
+  (call (. nodes append) (call (. Node call) 50 9 10 11 12))
+  (blank)
+  (print (str "grown " (. nodes length) "/" (. nodes capacity)))
+  (print (as first Node))
+  (print (as ([] nodes 1) Node))
+  (print (as ([] nodes 4) Node))
+  (blank)
+  (call (. nodes rewind) mark)
+  (print (str "rewound " (. nodes length) "/" (. nodes capacity)))
+  (call (. nodes append) (call (. Node call) 60 13 14 15 16))
+  (print (as ([] nodes 0) Node))
+  (print (as ([] nodes 1) Node))
+)
 
-. arena = Arena(16384)
-do finally arena.release()
-. nodes = Table'Node(arena, 1)
+(type + Syntax (is Tuple)
+  (prop + source U32)
+)
 
-nodes.append(Node.literal(10, 42))
-. mark = nodes.mark
-. first = nodes[0]
-nodes.append(Node.call(20, 1, 2, 3, 4))
-nodes.append(Node.literal(30, 43))
-nodes.append(Node.call(40, 5, 6, 7, 8))
-nodes.append(Node.call(50, 9, 10, 11, 12))
+(type + Literal (is Syntax)
+  (prop + value I64)
+)
 
--- "grown ${nodes.length}/${nodes.capacity}"
--- first as Node
--- nodes[1] as Node
--- nodes[4] as Node
+(type + Call (is Syntax)
+  (prop + callee U32)
+  (prop + arg0 U64)
+  (prop + arg1 U64)
+  (prop + arg2 U64)
+)
 
-nodes.rewind(mark)
--- "rewound ${nodes.length}/${nodes.capacity}"
-nodes.append(Node.call(60, 13, 14, 15, 16))
--- nodes[0] as Node
--- nodes[1] as Node
-
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
-
-+ source U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Literal is Syntax
-
-+ value I64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Call is Syntax
-
-+ callee U32
-+ arg0 U64
-+ arg1 U64
-+ arg2 U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| literal Literal
-| call Call
+(type + Node (is Union)
+  (variant literal Literal)
+  (variant call Call)
+)
 ```
 
 ```output
@@ -3970,49 +4275,52 @@ rewound 1/8
 
 ### Arena-backed union rows keep their latest case and fields when replaced repeatedly.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 16384))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let nodes (call (of Table Node) arena 4))
+  (call (. nodes append) (call (. Node call) 1 2 3 4 5))
+  (call (. nodes append) (call (. Node literal) 6 7))
+  (call (. nodes append) (call (. Node call) 8 9 10 11 12))
+  (for (in pass (..< 0 3))
+    (= ([] nodes 0) (call (. Node call) (as pass U32) 20 21 22 23))
+    (= ([] nodes 2) (call (. Node literal) (as pass U32) 30))
+    (= ([] nodes 2) (call (. Node call) (as pass U32) 40 41 42 43))
+  )
+  (= ([] nodes 1) (as ([] nodes 0) Node))
+  (= ([] nodes 0) (call (. Node literal) 50 51))
+  (for (in position (..< 0 (. nodes length)))
+    (print (as ([] nodes position) Node))
+  )
+)
 
-. arena = Arena(16384)
-do finally arena.release()
-. nodes = Table'Node(arena, 4)
-nodes.append(Node.call(1, 2, 3, 4, 5))
-nodes.append(Node.literal(6, 7))
-nodes.append(Node.call(8, 9, 10, 11, 12))
-for pass in 0 .. < 3
-    nodes[0] = Node.call(pass as U32, 20, 21, 22, 23)
-    nodes[2] = Node.literal(pass as U32, 30)
-    nodes[2] = Node.call(pass as U32, 40, 41, 42, 43)
-nodes[1] = nodes[0] as Node
-nodes[0] = Node.literal(50, 51)
-for position in 0 .. < nodes.length
-    -- nodes[position] as Node
+(type + Syntax (is Tuple)
+  (prop + source U32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
+(type + Literal (is Syntax)
+  (prop + value I64)
+)
 
-+ source U32
+(type + Call (is Syntax)
+  (prop + callee U32)
+  (prop + arg0 U64)
+  (prop + arg1 U64)
+  (prop + arg2 U64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Literal is Syntax
-
-+ value I64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Call is Syntax
-
-+ callee U32
-+ arg0 U64
-+ arg1 U64
-+ arg2 U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| literal Literal
-| call Call
+(type + Node (is Union)
+  (variant literal Literal)
+  (variant call Call)
+)
 ```
 
 ```output
@@ -4023,21 +4331,27 @@ for position in 0 .. < nodes.length
 
 ### Fixed-size constructors keep their source-compatible shape and reject grow-only operations.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(1)
-. attempt = do new
-    table.append(Point(1, 2))
-catch failure
-    -- failure
-attempt.wait()
+(main
+  (let table (call (of Table Point) 1))
+  (let attempt
+    (do-new
+      (call (. table append) (call Point 1 2))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -4046,76 +4360,92 @@ Table.append requires an Arena-backed growable table
 
 ### Arena reset and table shrink invalidate every previously captured table, row, span, and field view.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let table (call (of Table Point) arena))
+  (call (. table append) (call Point 1 2))
+  (let row ([] table 0))
+  (let span ([] table (..< 0 1)))
+  (let field (. table x))
+  (blank)
+  (call (. arena reset))
+  (call show-stale-table table)
+  (call show-stale-row row)
+  (call show-stale-span span)
+  (call show-stale-field field)
+  (blank)
+  (let current (call (of Table Point) arena))
+  (call (. current append) (call Point 3 4))
+  (let current-row ([] current 0))
+  (call (. current truncate) 0)
+  (call show-stale-row current-row)
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-. table = Table'Point(arena)
-table.append(Point(1, 2))
-. row = table[0]
-. span = table[0 .. < 1]
-. field = table.x
+(fn-do + show-stale-table _
+  (param table (of Table Point))
+  (let attempt
+    (do-new
+      (print (. table length))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-arena.reset()
-show-stale-table(table)
-show-stale-row(row)
-show-stale-span(span)
-show-stale-field(field)
+(fn-do + show-stale-row _
+  (param row (of TableRow Point))
+  (let attempt
+    (do-new
+      (print (. row x))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. current = Table'Point(arena)
-current.append(Point(3, 4))
-. current-row = current[0]
-current.truncate(0)
-show-stale-row(current-row)
+(fn-do + show-stale-span _
+  (param span (of TableSpan Point))
+  (let attempt
+    (do-new
+      (print (. span length))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show-stale-table
-    - table Table'Point
+(fn-do + show-stale-field _
+  (param field (of TableField I32))
+  (let attempt
+    (do-new
+      (print ([] field 0))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. attempt = do new
-    -- table.length
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-stale-row
-    - row TableRow'Point
-
-. attempt = do new
-    -- row.x
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-stale-span
-    - span TableSpan'Point
-
-. attempt = do new
-    -- span.length
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-stale-field
-    - field TableField'I32
-
-. attempt = do new
-    -- field[0]
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -4128,57 +4458,67 @@ TableRow was invalidated by table shrink
 
 ### A table of a released arena is stale, and stays stale once a new arena takes the slot.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 8192))
+  (let table (call (of Table Point) arena))
+  (call (. table append) (call Point 1 2))
+  (let row ([] table 0))
+  (call (. arena release))
+  (call show-stale-table table)
+  (call show-stale-row row)
+  (blank)
+  (let again (call Arena 8192))
+  (finally
+    (inline (call (. again release)))
+  )
+  (let fresh (call (of Table Point) again))
+  (call (. fresh append) (call Point 5 6))
+  (call show-stale-table table)
+  (call show-stale-row row)
+  (print (. ([] fresh 0) x))
+  (call (. again reset))
+  (call show-stale-table fresh)
+  (let later (call (of Table Point) again))
+  (call (. later append) (call Point 7 8))
+  (print (. ([] later 0) y))
+)
 
-. arena = Arena(8192)
-. table = Table'Point(arena)
-table.append(Point(1, 2))
-. row = table[0]
-arena.release()
-show-stale-table(table)
-show-stale-row(row)
+(fn-do + show-stale-table _
+  (param table (of Table Point))
+  (let attempt
+    (do-new
+      (print (. table length))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. again = Arena(8192)
-do finally again.release()
-. fresh = Table'Point(again)
-fresh.append(Point(5, 6))
-show-stale-table(table)
-show-stale-row(row)
--- fresh[0].x
-again.reset()
-show-stale-table(fresh)
-. later = Table'Point(again)
-later.append(Point(7, 8))
--- later[0].y
+(fn-do + show-stale-row _
+  (param row (of TableRow Point))
+  (let attempt
+    (do-new
+      (print (. row x))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show-stale-table
-    - table Table'Point
-
-. attempt = do new
-    -- table.length
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-stale-row
-    - row TableRow'Point
-
-. attempt = do new
-    -- row.x
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -4193,44 +4533,51 @@ Table is stale after Arena reset
 
 ### Table marks reject foreign tables and in-place row mutations without disturbing either table.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let left (call (of Table Point) arena))
+  (let right (call (of Table Point) arena))
+  (call (. left append) (call Point 1 2))
+  (call (. right append) (call Point 3 4))
+  (blank)
+  (let foreign (. left mark))
+  (call show-rejected-rewind right foreign)
+  (blank)
+  (let mutated (. left mark))
+  (= (. ([] left 0) x) 9)
+  (call show-rejected-rewind left mutated)
+  (blank)
+  (print (as ([] left 0) Point))
+  (print (as ([] right 0) Point))
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-. left = Table'Point(arena)
-. right = Table'Point(arena)
-left.append(Point(1, 2))
-right.append(Point(3, 4))
+(fn-do + show-rejected-rewind _
+  (param table (of Table Point))
+  (param mark TableMark)
+  (let attempt
+    (do-new
+      (call (. table rewind) mark)
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. foreign = left.mark
-show-rejected-rewind(right, foreign)
-
-. mutated = left.mark
-left[0].x = 9
-show-rejected-rewind(left, mutated)
-
--- left[0] as Point
--- right[0] as Point
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-rejected-rewind
-    - table Table'Point
-    - mark TableMark
-
-. attempt = do new
-    table.rewind(mark)
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -4242,21 +4589,25 @@ Table mark is stale or belongs to another table
 
 ### Arena-backed tables accept ordinary String leaves with developer-managed Arena lifetime.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 1024))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Managed) arena))
+  (call (. rows append) (call Managed (call (. arena copy-string) "arena text")))
+  (print (as ([] rows 0) Managed))
+)
 
-. arena = Arena(1024)
-do finally arena.release()
-. rows = Table'Managed(arena)
-rows.append(Managed(arena.copy-string("arena text")))
--- rows[0] as Managed
-
-━━━━━━━━━━━━━━━━━━━━
-+ Managed is Struct
-
-+ text String
+(type + Managed (is Struct)
+  (prop + text String)
+)
 ```
 
 ```output
@@ -4265,71 +4616,82 @@ rows.append(Managed(arena.copy-string("arena text")))
 
 ### Arena-backed tables reject arbitrary managed containers.
 
-```yumi crash
-/core/table
+```brix crash
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 1024))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table ManagedList) arena))
+)
 
-. arena = Arena(1024)
-do finally arena.release()
-. rows = Table'ManagedList(arena)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ManagedList is Struct
-
-+ values List'String
+(type + ManagedList (is Struct)
+  (prop + values (of List String))
+)
 ```
 
 ```output
 Exception: Arena type ManagedList contains managed pointers through ManagedList.values
-<no file:11>
-    + ManagedList is Struct
-    ^^^^^^^^^^^^^^^^^^^^^^
+<no file:15>
+    (type + ManagedList (is Struct)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Storage checkpoint validation rejects foreign and pre-mark-mutated tables before Arena rewind.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let left (call (of Table Point) arena))
+  (let right (call (of Table Point) arena))
+  (call (. left append) (call Point 1 2))
+  (call (. right append) (call Point 3 4))
+  (let mark (. arena mark))
+  (let checkpoint (call (. left storage-checkpoint) arena mark))
+  (let retained (call (of (. arena allocate) U64) 1))
+  (= ([] retained 0) 77u64)
+  (blank)
+  (call show-rejected-storage-restore right checkpoint arena mark)
+  (= (. ([] left 0) x) 9)
+  (call show-rejected-storage-restore left checkpoint arena mark)
+  (print (as ([] left 0) Point))
+  (print (as ([] right 0) Point))
+  (print ([] retained 0))
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-. left = Table'Point(arena)
-. right = Table'Point(arena)
-left.append(Point(1, 2))
-right.append(Point(3, 4))
-. mark = arena.mark
-. checkpoint = left.storage-checkpoint(arena, mark)
-. retained = arena.allocate'U64(1)
-retained[0] = 77u64
+(fn-do + show-rejected-storage-restore _
+  (param table (of Table Point))
+  (param checkpoint TableStorageCheckpoint)
+  (param arena Arena)
+  (param mark ArenaMark)
+  (let attempt
+    (do-new
+      (call (. table validate-storage-restore) checkpoint arena mark)
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-show-rejected-storage-restore(right, checkpoint, arena, mark)
-left[0].x = 9
-show-rejected-storage-restore(left, checkpoint, arena, mark)
--- left[0] as Point
--- right[0] as Point
--- retained[0]
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-rejected-storage-restore
-    - table Table'Point
-    - checkpoint TableStorageCheckpoint
-    - arena Arena
-    - mark ArenaMark
-
-. attempt = do new
-    table.validate-storage-restore(checkpoint, arena, mark)
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -4342,20 +4704,23 @@ Table storage checkpoint is stale or belongs to another table
 
 ### Fixed column-zipped spans retain their read path inside optimized loops.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(2) • with Point((each + 1) as I32, (each + 10) as I32)
-. points TableSpan'Point = table.x + table.y
-for point in points
-    -- point.x
-    -- point.y
+(main
+  (let table (call (of Table Point) 2 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (let points (of TableSpan Point) (+ (. table x) (. table y)))
+  (for (in point points)
+    (print (. point x))
+    (print (. point y))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -4367,77 +4732,83 @@ for point in points
 
 ### Controlled union rows copy between Arena-backed and fixed tables, fixed clones outlive Arena reset, and a shrink invalidates previously captured union row views.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let source-arena (call Arena 16384))
+  (finally
+    (inline (call (. source-arena release)))
+  )
+  (let source (call (of Table Node) source-arena 1))
+  (call (. source append) (call (. Node wide) 10 1 100 1000 1001))
+  (call (. source append) (call (. Node small) 20 2 200 2000))
+  (let live ([] source 0))
+  (call (. source reserve) 8)
+  (print (as live Node))
+  (blank)
+  (let fixed (call (. source copy)))
+  (call (. source-arena reset))
+  (print (as ([] fixed 0) Node))
+  (print (as ([] fixed 1) Node))
+  (blank)
+  (let target-arena (call Arena 16384))
+  (finally
+    (inline (call (. target-arena release)))
+  )
+  (let target (call (of Table Node) target-arena 1))
+  (call (. target append) (call (. Node small) 0 0 0 0))
+  (call (. target append) (call (. Node small) 0 0 0 0))
+  (= ([] target (..< 0 2)) ([] fixed (..< 0 2)))
+  (= ([] fixed 0) (call (. Node small) 99 9 900 9000))
+  (print (as ([] target 0) Node))
+  (print (as ([] target 1) Node))
+  (blank)
+  (let target-fixed (call (. target copy)))
+  (let stale ([] target 0))
+  (call (. target truncate) 1)
+  (call show-stale-node stale)
+  (call (. target-arena reset))
+  (print (as ([] target-fixed 0) Node))
+  (print (as ([] target-fixed 1) Node))
+)
 
-. source-arena = Arena(16384)
-do finally source-arena.release()
-. source = Table'Node(source-arena, 1)
-source.append(Node.wide(10, 1, 100, 1000, 1001))
-source.append(Node.small(20, 2, 200, 2000))
-. live = source[0]
-source.reserve(8)
--- live as Node
+(fn-do + show-stale-node _
+  (param row (of TableRow Node))
+  (let attempt
+    (do-new
+      (print (as row Node))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. fixed = source.copy()
-source-arena.reset()
--- fixed[0] as Node
--- fixed[1] as Node
+(type + Syntax (is Tuple)
+  (prop + source U32)
+  (prop + flags U16)
+)
 
-. target-arena = Arena(16384)
-do finally target-arena.release()
-. target = Table'Node(target-arena, 1)
-target.append(Node.small(0, 0, 0, 0))
-target.append(Node.small(0, 0, 0, 0))
-target[0 .. < 2] = fixed[0 .. < 2]
-fixed[0] = Node.small(99, 9, 900, 9000)
--- target[0] as Node
--- target[1] as Node
+(type + Small (is Syntax)
+  (prop + value U64 @hot)
+  (prop + cold U32)
+)
 
-. target-fixed = target.copy()
-. stale = target[0]
-target.truncate(1)
-show-stale-node(stale)
-target-arena.reset()
--- target-fixed[0] as Node
--- target-fixed[1] as Node
+(type + Wide (is Syntax)
+  (prop + value U64 @hot)
+  (prop + external-a U64)
+  (prop + external-b U64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show-stale-node
-    - row TableRow'Node
-
-. attempt = do new
-    -- row as Node
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
-
-+ source U32
-+ flags U16
-
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
-
-+ @hot value U64
-+ cold U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ @hot value U64
-+ external-a U64
-+ external-b U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 ```
 
 ```output
@@ -4453,165 +4824,160 @@ TableRow was invalidated by table shrink
 
 ### Union, shared-base, and narrowed-case extensions retain live Table row storage while ordinary union, common-base, and concrete-case results snapshot it.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(blank)
 
-/core/arena
+(main
+  (let rows (call (of Table Node) 2))
+  (= ([] rows 0) (call (. Node small) 10 1 100))
+  (= ([] rows 1) (call (. Node wide) 20 2 3 200 300))
+  (blank)
+  (let union-snapshot (call (. ([] rows 0) snapshot)))
+  (let common-snapshot (call (. ([] rows 0) common-snapshot)))
+  (let returned (call (. ([] rows 0) live)))
+  (let assigned (of TableRow Node) (call (. ([] rows 0) live)))
+  (let captured (call (. ([] rows 0) live)))
+  (let getter (=> () captured))
+  (let stored (call (of List (of TableRow Node))))
+  (+= stored (call (. ([] rows 0) live)))
+  (blank)
+  (match ([] rows 0)
+    (case (call .small small)
+      (let case-snapshot (call (. small case-snapshot)))
+      (call (. small lower) 5)
+      (print case-snapshot)
+      (print "bumped")
+    )
+    (case .wide
+      (print "unexpected")
+    )
+  )
+  (blank)
+  (call (. ([] rows 0) bump-source) 1)
+  (call (. ([] rows 0) lower) 10)
+  (call (. ([] rows 1) lower) 20)
+  (blank)
+  (print union-snapshot)
+  (print common-snapshot)
+  (print (as returned Node))
+  (print (as assigned Node))
+  (print (as (call getter) Node))
+  (print (as ([] stored 0) Node))
+  (print (as ([] rows 1) Node))
+  (blank)
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let arena-rows (call (of Table Node) arena 1))
+  (call (. arena-rows append) (call (. Node wide) 30 4 5 400 500))
+  (let arena-live (call (. ([] arena-rows 0) live)))
+  (call (. arena-rows reserve) 8)
+  (call (. ([] arena-rows 0) lower) 7)
+  (print (as arena-live Node))
+  (blank)
+  (let stale (call (. ([] arena-rows 0) live)))
+  (call (. arena reset))
+  (call show-stale stale)
+)
 
-. rows = Table'Node(2)
-rows[0] = Node.small(10, 1, 100)
-rows[1] = Node.wide(20, 2, 3, 200, 300)
+(type + Syntax (is Tuple)
+  (prop + source U32)
+)
 
-. union-snapshot = rows[0].snapshot()
-. common-snapshot = rows[0].common-snapshot()
-. returned = rows[0].live()
-. assigned TableRow'Node = rows[0].live()
-. captured = rows[0].live()
-. getter = => captured
-. stored = List'(TableRow'Node)()
-stored += rows[0].live()
+(type + Small (is Syntax)
+  (prop + value U64 @hot)
+  (prop + cold U32)
+)
 
-match rows[0]
-    | .small(small)
-        . case-snapshot = small.case-snapshot()
-        small.lower(5)
-        -- case-snapshot
-        -- "bumped"
-    | .wide
-        -- "unexpected"
+(type + Wide (is Syntax)
+  (prop + inline-a U64 @hot)
+  (prop + inline-b U64 @hot)
+  (prop + spill-a U64)
+  (prop + spill-b U64)
+)
 
-rows[0].bump-source(1)
-rows[0].lower(10)
-rows[1].lower(20)
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 
--- union-snapshot
--- common-snapshot
--- returned as Node
--- assigned as Node
--- getter() as Node
--- stored[0] as Node
--- rows[1] as Node
+(extend + Node
+  (fn-do + lower _
+    (param delta U64)
+    (match this
+      (case (call .small small)
+        (call (. small lower) delta)
+      )
+      (case (call .wide wide)
+        (call (. wide lower) delta)
+      )
+    )
+  )
+  (fn-expr + snapshot Node
+    this
+  )
+  (fn-expr + common-snapshot Syntax
+    this
+  )
+  (fn-expr + live (of TableRow Node)
+    this
+  )
+  (fn-expr + describe U32
+    (match this
+      (case (call .small small)
+        (. small source)
+      )
+      (case (call .wide wide)
+        (. wide source)
+      )
+    )
+  )
+)
 
-. arena = Arena(8192)
-do finally arena.release()
-. arena-rows = Table'Node(arena, 1)
-arena-rows.append(Node.wide(30, 4, 5, 400, 500))
-. arena-live = arena-rows[0].live()
-arena-rows.reserve(8)
-arena-rows[0].lower(7)
--- arena-live as Node
+(extend + Syntax
+  (fn-do + bump-source _
+    (param delta U32)
+    (+= (. this source) delta)
+  )
+)
 
-. stale = arena-rows[0].live()
-arena.reset()
-show-stale(stale)
+(extend + Small
+  (fn-do + lower _
+    (param delta U64)
+    (+= (. this source) (as delta U32))
+    (+= (. this value) delta)
+    (+= (. this cold) (as delta U32))
+  )
+  (fn-expr + case-snapshot Small
+    this
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
+(extend + Wide
+  (fn-do + lower _
+    (param delta U64)
+    (+= (. this source) (as delta U32))
+    (+= (. this inline-a) delta)
+    (+= (. this spill-a) delta)
+  )
+)
 
-+ source U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
-
-+ @hot value U64
-+ cold U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ @hot inline-a U64
-+ @hot inline-b U64
-+ spill-a U64
-+ spill-b U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Node
-
-────────────────────
-+ do lower
-    - delta U64
-
-match this
-    | .small(small)
-        small.lower(delta)
-    | .wide(wide)
-        wide.lower(delta)
-
-────────────────────
-+ snapshot Node
-
-this
-
-────────────────────
-+ common-snapshot Syntax
-
-this
-
-────────────────────
-+ live TableRow'Node
-
-this
-
-────────────────────
-+ describe U32
-
-match this
-    | .small(small)
-        small.source
-    | .wide(wide)
-        wide.source
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Syntax
-
-────────────────────
-+ do bump-source
-    - delta U32
-
-this.source += delta
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Small
-
-────────────────────
-+ do lower
-    - delta U64
-
-this.source += delta as U32
-this.value += delta
-this.cold += delta as U32
-
-────────────────────
-+ case-snapshot Small
-
-this
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Wide
-
-────────────────────
-+ do lower
-    - delta U64
-
-this.source += delta as U32
-this.inline-a += delta
-this.spill-a += delta
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-stale
-    - row TableRow'Node
-
-. attempt = do new
-    -- row.describe()
-catch failure
-    -- failure
-attempt.wait()
+(fn-do + show-stale _
+  (param row (of TableRow Node))
+  (let attempt
+    (do-new
+      (print (call (. row describe)))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -4630,144 +4996,159 @@ TableRow is stale after Arena reset
 
 ### Arena table and side-builder checkpoints restore String-bearing union storage in constant-size steps.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(import /core/array-builder)
+(blank)
 
-/core/arena
-/core/array-builder
+(main
+  (let arena (call Arena 65536))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Node) arena 1))
+  (let side (call (of ArrayBuilder String) arena))
+  (call (. rows append) (call (. Node literal) (call (. arena copy-string) "root") (call (. arena copy-string) "token") (call (. arena copy-string) "detail")))
+  (call (. side append) (call (. arena copy-string) "kept"))
+  (blank)
+  (let arena-mark (. arena mark))
+  (let rows-checkpoint (call (. rows storage-checkpoint) arena arena-mark))
+  (let side-checkpoint (call (. side storage-checkpoint) arena arena-mark))
+  (call (. rows append) (call (. Node call) (call (. arena copy-string) "post") (call (. arena copy-string) "callee") (call (. arena copy-string) "diagnostic")))
+  (let post-row ([] rows 1))
+  (let post-span ([] rows (..< 1 2)))
+  (let post-field (. rows source))
+  (let post-id 1)
+  (for (in index (..< 0 100))
+    (call (. rows append) (call (. Node call) (call (. arena copy-string) (str "source-" index)) (call (. arena copy-string) (str "call-" index)) (call (. arena copy-string) (str "diagnostic-" index))))
+    (call (. side append) (call (. arena copy-string) (str "side-" index)))
+  )
+  (blank)
+  (call (. rows validate-storage-restore) rows-checkpoint arena arena-mark)
+  (call (. side validate-storage-restore) side-checkpoint arena arena-mark)
+  (call (. arena rewind) arena-mark)
+  (call (. rows restore-storage) rows-checkpoint arena arena-mark)
+  (call (. side restore-storage) side-checkpoint arena arena-mark)
+  (blank)
+  (print (as ([] rows 0) Node))
+  (call show-restored-row post-row)
+  (call show-restored-span post-span)
+  (call show-restored-field post-field)
+  (call show-restored-id rows post-id)
+  (blank)
+  (call (. rows append) (call (. Node call) (call (. arena copy-string) "again") (call (. arena copy-string) "regrown") null))
+  (call (. side append) (call (. arena copy-string) "regrown"))
+  (print (as ([] rows 1) Node))
+  (let restored-side (call (. side finish-immutable)))
+  (print (str ([] restored-side 0) "/" ([] restored-side 1)))
+  (blank)
+  (let standalone-mark (. rows mark))
+  (let standalone-capacity (. rows capacity))
+  (call (. rows reserve) 256)
+  (call (. rows append) (call (. Node literal) (call (. arena copy-string) "temporary") (call (. arena copy-string) "temporary") null))
+  (call (. rows rewind) standalone-mark)
+  (print (str (. rows length) "/" (> (. rows capacity) standalone-capacity)))
+  (blank)
+  (let operations 0)
+  (for (in round (..< 0 100))
+    (let repeat-arena-mark (. arena mark))
+    (let repeat-rows-checkpoint (call (. rows storage-checkpoint) arena repeat-arena-mark))
+    (call (. rows append) (call (. Node call) (call (. arena copy-string) "repeat") (call (. arena copy-string) "repeat") null))
+    (call (. rows validate-storage-restore) repeat-rows-checkpoint arena repeat-arena-mark)
+    (call (. arena rewind) repeat-arena-mark)
+    (call (. rows restore-storage) repeat-rows-checkpoint arena repeat-arena-mark)
+    (+= operations 1)
+  )
+  (print (str "repeat " operations " " (. rows length) "/" (. restored-side length)))
+  (blank)
+  (let empty-rows (call (of Table Node) arena))
+  (let empty-side (call (of ArrayBuilder String) arena))
+  (let empty-mark (. arena mark))
+  (let empty-rows-checkpoint (call (. empty-rows storage-checkpoint) arena empty-mark))
+  (let empty-side-checkpoint (call (. empty-side storage-checkpoint) arena empty-mark))
+  (call (. empty-rows append) (call (. Node literal) (call (. arena copy-string) "discard") (call (. arena copy-string) "discard") null))
+  (call (. empty-side append) (call (. arena copy-string) "discard"))
+  (call (. empty-rows validate-storage-restore) empty-rows-checkpoint arena empty-mark)
+  (call (. empty-side validate-storage-restore) empty-side-checkpoint arena empty-mark)
+  (call (. arena rewind) empty-mark)
+  (call (. empty-rows restore-storage) empty-rows-checkpoint arena empty-mark)
+  (call (. empty-side restore-storage) empty-side-checkpoint arena empty-mark)
+  (print (str "empty " (. empty-rows length) "/" (. empty-side length)))
+)
 
-. arena = Arena(65536)
-do finally arena.release()
-. rows = Table'Node(arena, 1)
-. side = ArrayBuilder'String(arena)
-rows.append(Node.literal(arena.copy-string("root"), arena.copy-string("token"), arena.copy-string("detail")))
-side.append(arena.copy-string("kept"))
+(type + Syntax (is Tuple)
+  (prop + source String)
+)
 
-. arena-mark = arena.mark
-. rows-checkpoint = rows.storage-checkpoint(arena, arena-mark)
-. side-checkpoint = side.storage-checkpoint(arena, arena-mark)
-rows.append(Node.call(arena.copy-string("post"), arena.copy-string("callee"), arena.copy-string("diagnostic")))
-. post-row = rows[1]
-. post-span = rows[1 .. < 2]
-. post-field = rows.source
-. post-id = 1
-for index in 0 .. < 100
-    rows.append(Node.call(arena.copy-string("source-$index"), arena.copy-string("call-$index"), arena.copy-string("diagnostic-$index")))
-    side.append(arena.copy-string("side-$index"))
+(type + Literal (is Syntax)
+  (prop + token String @hot)
+  (prop + detail (? String))
+)
 
-rows.validate-storage-restore(rows-checkpoint, arena, arena-mark)
-side.validate-storage-restore(side-checkpoint, arena, arena-mark)
-arena.rewind(arena-mark)
-rows.restore-storage(rows-checkpoint, arena, arena-mark)
-side.restore-storage(side-checkpoint, arena, arena-mark)
+(type + Call (is Syntax)
+  (prop + callee String @hot)
+  (prop + diagnostic (? String))
+)
 
--- rows[0] as Node
-show-restored-row(post-row)
-show-restored-span(post-span)
-show-restored-field(post-field)
-show-restored-id(rows, post-id)
+(type + Node (is Union)
+  (variant literal Literal)
+  (variant call Call)
+)
 
-rows.append(Node.call(arena.copy-string("again"), arena.copy-string("regrown"), null))
-side.append(arena.copy-string("regrown"))
--- rows[1] as Node
-. restored-side = side.finish-immutable()
--- "${restored-side[0]}/${restored-side[1]}"
+(fn-do + show-restored-row _
+  (param row (of TableRow Node))
+  (let attempt
+    (do-new
+      (print (. row source))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. standalone-mark = rows.mark
-. standalone-capacity = rows.capacity
-rows.reserve(256)
-rows.append(Node.literal(arena.copy-string("temporary"), arena.copy-string("temporary"), null))
-rows.rewind(standalone-mark)
--- "${rows.length}/${rows.capacity > standalone-capacity}"
+(fn-do + show-restored-span _
+  (param span (of TableSpan Node))
+  (let attempt
+    (do-new
+      (print (. span length))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. operations = 0
-for round in 0 .. < 100
-    . repeat-arena-mark = arena.mark
-    . repeat-rows-checkpoint = rows.storage-checkpoint(arena, repeat-arena-mark)
-    rows.append(Node.call(arena.copy-string("repeat"), arena.copy-string("repeat"), null))
-    rows.validate-storage-restore(repeat-rows-checkpoint, arena, repeat-arena-mark)
-    arena.rewind(repeat-arena-mark)
-    rows.restore-storage(repeat-rows-checkpoint, arena, repeat-arena-mark)
-    operations += 1
--- "repeat $operations ${rows.length}/${restored-side.length}"
+(fn-do + show-restored-field _
+  (param field (of TableField String))
+  (let attempt
+    (do-new
+      (print ([] field 0))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. empty-rows = Table'Node(arena)
-. empty-side = ArrayBuilder'String(arena)
-. empty-mark = arena.mark
-. empty-rows-checkpoint = empty-rows.storage-checkpoint(arena, empty-mark)
-. empty-side-checkpoint = empty-side.storage-checkpoint(arena, empty-mark)
-empty-rows.append(Node.literal(arena.copy-string("discard"), arena.copy-string("discard"), null))
-empty-side.append(arena.copy-string("discard"))
-empty-rows.validate-storage-restore(empty-rows-checkpoint, arena, empty-mark)
-empty-side.validate-storage-restore(empty-side-checkpoint, arena, empty-mark)
-arena.rewind(empty-mark)
-empty-rows.restore-storage(empty-rows-checkpoint, arena, empty-mark)
-empty-side.restore-storage(empty-side-checkpoint, arena, empty-mark)
--- "empty ${empty-rows.length}/${empty-side.length}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
-
-+ source String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Literal is Syntax
-
-+ @hot token String
-+ detail String?
-
-━━━━━━━━━━━━━━━━━━━━
-+ Call is Syntax
-
-+ @hot callee String
-+ diagnostic String?
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| literal Literal
-| call Call
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-restored-row
-    - row TableRow'Node
-
-. attempt = do new
-    -- row.source
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-restored-span
-    - span TableSpan'Node
-
-. attempt = do new
-    -- span.length
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-restored-field
-    - field TableField'String
-
-. attempt = do new
-    -- field[0]
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-restored-id
-    - rows Table'Node
-    - index Index
-
-. attempt = do new
-    -- rows[index].source
-catch failure
-    -- failure
-attempt.wait()
+(fn-do + show-restored-id _
+  (param rows (of Table Node))
+  (param index Index)
+  (let attempt
+    (do-new
+      (print (. ([] rows index) source))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -4783,96 +5164,112 @@ repeat 100 2/2
 empty 0/0
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /BxGC/BxGC.h)
+(blank)
 
-/BxGC/BxGC.h
+(main
+  (let table (call (of Table Point) 4 (:with (call Point (as each I32) (as (+ each 10) I32)))))
+  (let ids (call (of Array U32) (list 3u32 1u32 1u32 0u32)))
+  (let selected ([] table ids))
+  (print (type-of selected))
+  (print (. selected length))
+  (print (as ([] selected 0) Point))
+  (print (as ([] selected 3) Point))
+  (for (in row selected)
+    (print (as row Point))
+  )
+  (blank)
+  (let middle ([] selected (..< 1 3)))
+  (print (. middle length))
+  (for (in row middle)
+    (print (as row Point))
+  )
+  (blank)
+  (= ([] ids 0) 2u32)
+  (print (as ([] selected 0) Point))
+  (= (. ([] selected 1) y) 77)
+  (print (as ([] table 1) Point))
+  (blank)
+  (let span (call (of IndexSpan U32) ids (..< 1 3)))
+  (print (type-of span))
+  (print (. span length))
+  (print ([] span 0))
+  (for (in index span)
+    (print index)
+  )
+  (for (in row ([] table span))
+    (print (as row Point))
+  )
+  (blank)
+  (let sequence (. ids immutable))
+  (for (in row ([] table ([] sequence (..< 0 2))))
+    (print (as row Point))
+  )
+  (blank)
+  (print (. ([] table (call (of Array U32))) length))
+  (print (as ([] ([] table (call (of Array I8) (list (as 3 I8)))) 0) Point))
+  (print (as ([] ([] table (call (of Array U8) (list (as 3 U8)))) 0) Point))
+  (print (as ([] ([] table (call (of Array I16) (list (as 2 I16)))) 0) Point))
+  (print (as ([] ([] table (call (of Array U16) (list (as 2 U16)))) 0) Point))
+  (print (as ([] ([] table (call (of Array I32) (list (as 1 I32)))) 0) Point))
+  (print (as ([] ([] table (call (of Array I64) (list (as 0 I64)))) 0) Point))
+  (print (as ([] ([] table (call (of Array U64) (list (as 0 U64)))) 0) Point))
+  (blank)
+  (call show-invalid-i32 ([] table (call (of Array I32) (list (as -1 I32)))))
+  (call show-invalid-u32 ([] table (call (of Array U32) (list 4u32))))
+  (call show-invalid-span ids)
+  (= ids (call (of Array U32)))
+  (call C:brixGCCollect)
+  (print (as ([] selected 0) Point))
+)
 
-. table = Table'Point(4) • with Point(each as I32, (each + 10) as I32)
-. ids = Array'U32([3u32, 1u32, 1u32, 0u32])
-. selected = table[ids]
--- type-of selected
--- selected.length
--- selected[0] as Point
--- selected[3] as Point
-for row in selected
-    -- row as Point
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 
-. middle = selected[1 .. < 3]
--- middle.length
-for row in middle
-    -- row as Point
+(fn-do + show-invalid-i32 _
+  (param selection (of TableSelection Point I32))
+  (let attempt
+    (do-new
+      (print (. ([] selection 0) x))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-ids[0] = 2u32
--- selected[0] as Point
-selected[1].y = 77
--- table[1] as Point
+(fn-do + show-invalid-u32 _
+  (param selection (of TableSelection Point U32))
+  (let attempt
+    (do-new
+      (print (. ([] selection 0) x))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. span = IndexSpan'U32(ids, 1 .. < 3)
--- type-of span
--- span.length
--- span[0]
-for index in span
-    -- index
-for row in table[span]
-    -- row as Point
-
-. sequence = ids.immutable
-for row in table[sequence[0 .. < 2]]
-    -- row as Point
-
--- table[Array'U32()].length
--- table[Array'I8([3 as I8])][0] as Point
--- table[Array'U8([3 as U8])][0] as Point
--- table[Array'I16([2 as I16])][0] as Point
--- table[Array'U16([2 as U16])][0] as Point
--- table[Array'I32([1 as I32])][0] as Point
--- table[Array'I64([0 as I64])][0] as Point
--- table[Array'U64([0 as U64])][0] as Point
-
-show-invalid-i32(table[Array'I32([-1 as I32])])
-show-invalid-u32(table[Array'U32([4u32])])
-show-invalid-span(ids)
-ids = Array'U32()
-C:brixGCCollect()
--- selected[0] as Point
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-invalid-i32
-    - selection TableSelection'Point'I32
-
-. attempt = do new
-    -- selection[0].x
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-invalid-u32
-    - selection TableSelection'Point'U32
-
-. attempt = do new
-    -- selection[0].x
-catch failure
-    -- failure
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-invalid-span
-    - ids Array'U32
-
-. attempt = do new
-    . invalid = IndexSpan'U32(ids, 0 .. < 5)
-    -- invalid.length
-catch failure
-    -- failure
-attempt.wait()
+(fn-do + show-invalid-span _
+  (param ids (of Array U32))
+  (let attempt
+    (do-new
+      (let invalid (call (of IndexSpan U32) ids (..< 0 5)))
+      (print (. invalid length))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -4912,100 +5309,113 @@ IndexSpan range is out of bounds
 (2, 12)
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
+(import /core/arena)
+(import /core/array-builder)
+(blank)
 
-/core/arena
-/core/array-builder
+(main
+  (let table (call (of Table Point) 4 (:with (call Point (as each I32) (as (+ each 10) I32)))))
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (blank)
+  (let growing (call (of ArrayBuilder U32) arena))
+  (call (. growing append) 0u32)
+  (call (. growing append) 2u32)
+  (let growing-selection ([] table growing))
+  (for (in value (..< 0 100))
+    (call (. growing append) (as (% value 4) U32))
+  )
+  (print (. growing-selection length))
+  (for (in row growing-selection)
+    (print (as row Point))
+  )
+  (= ([] growing 0) 3u32)
+  (print (as ([] growing-selection 0) Point))
+  (blank)
+  (let moving (call (of ArrayBuilder U32) arena))
+  (call (. moving append) 0u32)
+  (call (. moving append) 1u32)
+  (let moving-selection ([] table moving))
+  (let moving-position 0)
+  (for (in row moving-selection)
+    (print (as row Point))
+    (if (== moving-position 0)
+      (for (in value (..< 0 100))
+        (call (. moving append) (as (% value 4) U32))
+      )
+      (= ([] moving 1) 3u32)
+    )
+    (+= moving-position 1)
+  )
+  (blank)
+  (let empty-builder (call (of ArrayBuilder U32) arena))
+  (let empty-selection ([] table empty-builder))
+  (print (. empty-selection length))
+  (call (. empty-builder append) 1u32)
+  (print (. empty-selection length))
+  (blank)
+  (let growable-table (call (of Table Point) arena))
+  (call (. growable-table append) (call Point 5 15))
+  (call (. growable-table append) (call Point 6 16))
+  (let growable-selection ([] growable-table (call (of Array U32) (list 1u32))))
+  (for (in value (..< 0 32))
+    (call (. growable-table append) (call Point (as value I32) (as (+ value 20) I32)))
+  )
+  (print (as ([] growable-selection 0) Point))
+  (call (. growable-table truncate) 1)
+  (call show-stale-selection growable-selection)
+  (blank)
+  (let rewind-builder (call (of ArrayBuilder U32) arena))
+  (call (. rewind-builder append) 1u32)
+  (let rewind-selection ([] table rewind-builder))
+  (let rewind-mark (. rewind-builder mark))
+  (call (. rewind-builder append) 2u32)
+  (call (. rewind-builder rewind) rewind-mark)
+  (call show-stale-selection rewind-selection)
+  (blank)
+  (let finish-builder (call (of ArrayBuilder U32) arena))
+  (call (. finish-builder append) 2u32)
+  (let finish-selection ([] table finish-builder))
+  (let finished (call (. finish-builder finish-immutable)))
+  (print ([] finished 0))
+  (call show-stale-selection finish-selection)
+  (blank)
+  (let arena-mark (. arena mark))
+  (let rewind-arena-builder (call (of ArrayBuilder U32) arena))
+  (call (. rewind-arena-builder append) 0u32)
+  (let rewind-arena-selection ([] table rewind-arena-builder))
+  (call (. arena rewind) arena-mark)
+  (call show-stale-selection rewind-arena-selection)
+  (blank)
+  (let reset-builder (call (of ArrayBuilder U32) arena))
+  (call (. reset-builder append) 1u32)
+  (let reset-selection ([] table reset-builder))
+  (call (. arena reset))
+  (call show-stale-selection reset-selection)
+)
 
-. table = Table'Point(4) • with Point(each as I32, (each + 10) as I32)
-. arena = Arena(8192)
-do finally arena.release()
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 
-. growing = ArrayBuilder'U32(arena)
-growing.append(0u32)
-growing.append(2u32)
-. growing-selection = table[growing]
-for value in 0 .. < 100
-    growing.append((value % 4) as U32)
--- growing-selection.length
-for row in growing-selection
-    -- row as Point
-growing[0] = 3u32
--- growing-selection[0] as Point
-
-. moving = ArrayBuilder'U32(arena)
-moving.append(0u32)
-moving.append(1u32)
-. moving-selection = table[moving]
-. moving-position = 0
-for row in moving-selection
-    -- row as Point
-    if moving-position == 0
-        for value in 0 .. < 100
-            moving.append((value % 4) as U32)
-        moving[1] = 3u32
-    moving-position += 1
-
-. empty-builder = ArrayBuilder'U32(arena)
-. empty-selection = table[empty-builder]
--- empty-selection.length
-empty-builder.append(1u32)
--- empty-selection.length
-
-. growable-table = Table'Point(arena)
-growable-table.append(Point(5, 15))
-growable-table.append(Point(6, 16))
-. growable-selection = growable-table[Array'U32([1u32])]
-for value in 0 .. < 32
-    growable-table.append(Point(value as I32, (value + 20) as I32))
--- growable-selection[0] as Point
-growable-table.truncate(1)
-show-stale-selection(growable-selection)
-
-. rewind-builder = ArrayBuilder'U32(arena)
-rewind-builder.append(1u32)
-. rewind-selection = table[rewind-builder]
-. rewind-mark = rewind-builder.mark
-rewind-builder.append(2u32)
-rewind-builder.rewind(rewind-mark)
-show-stale-selection(rewind-selection)
-
-. finish-builder = ArrayBuilder'U32(arena)
-finish-builder.append(2u32)
-. finish-selection = table[finish-builder]
-. finished = finish-builder.finish-immutable()
--- finished[0]
-show-stale-selection(finish-selection)
-
-. arena-mark = arena.mark
-. rewind-arena-builder = ArrayBuilder'U32(arena)
-rewind-arena-builder.append(0u32)
-. rewind-arena-selection = table[rewind-arena-builder]
-arena.rewind(arena-mark)
-show-stale-selection(rewind-arena-selection)
-
-. reset-builder = ArrayBuilder'U32(arena)
-reset-builder.append(1u32)
-. reset-selection = table[reset-builder]
-arena.reset()
-show-stale-selection(reset-selection)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show-stale-selection
-    - selection TableSelection'Point'U32
-
-. attempt = do new
-    -- selection[0].x
-catch failure
-    -- failure
-attempt.wait()
+(fn-do + show-stale-selection _
+  (param selection (of TableSelection Point U32))
+  (let attempt
+    (do-new
+      (print (. ([] selection 0) x))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -5026,58 +5436,67 @@ IndexSpan was invalidated by Arena rewind
 IndexSpan is stale after Arena reset
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. rows = Table'Node(4)
-rows[0] = Node.small(10, 100)
-rows[1] = Node.wide(20, 1, 2, 200, 300)
-rows[2] = Node.small(30, 700)
-rows[3] = Node.wide(40, 3, 4, 800, 900)
-. ids = Array'U32([2u32, 1u32, 2u32, 3u32])
-. selected = rows[ids]
+(main
+  (let rows (call (of Table Node) 4))
+  (= ([] rows 0) (call (. Node small) 10 100))
+  (= ([] rows 1) (call (. Node wide) 20 1 2 200 300))
+  (= ([] rows 2) (call (. Node small) 30 700))
+  (= ([] rows 3) (call (. Node wide) 40 3 4 800 900))
+  (let ids (call (of Array U32) (list 2u32 1u32 2u32 3u32)))
+  (let selected ([] rows ids))
+  (blank)
+  (for (in row selected)
+    (print
+      (match row
+        (case (call .small small)
+          (. small value)
+        )
+        (case (call .wide wide)
+          (+ (. wide inline-a) (. wide external-b))
+        )
+      )
+    )
+  )
+  (blank)
+  (for (in row selected)
+    (match row
+      (case (call .small small)
+        (+= (. small value) 1)
+      )
+      (case (call .wide wide)
+        (= (. wide external-a) (+ (. wide external-a) (. wide external-b)))
+      )
+    )
+  )
+  (blank)
+  (print (as ([] rows 2) Node))
+  (print (as ([] rows 1) Node))
+  (print (as ([] rows 3) Node))
+)
 
-for row in selected
-    -- match row
-        | .small(small)
-            small.value
-        | .wide(wide)
-            wide.inline-a + wide.external-b
+(type + Syntax (is Tuple)
+  (prop + source U32)
+)
 
-for row in selected
-    match row
-        | .small(small)
-            small.value += 1
-        | .wide(wide)
-            wide.external-a = wide.external-a + wide.external-b
+(type + Small (is Syntax)
+  (prop + value U64 @hot)
+)
 
--- rows[2] as Node
--- rows[1] as Node
--- rows[3] as Node
+(type + Wide (is Syntax)
+  (prop + inline-a U64 @hot)
+  (prop + inline-b U64 @hot)
+  (prop + external-a U64)
+  (prop + external-b U64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
-
-+ source U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
-
-+ @hot value U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ @hot inline-a U64
-+ @hot inline-b U64
-+ external-a U64
-+ external-b U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 ```
 
 ```output
@@ -5090,63 +5509,68 @@ for row in selected
 (40, 3, 4, 1700, 900)
 ```
 
-```yumi
-/core/table
-/core/arena
-/core/array-builder
+```brix
+(import /core/table)
+(import /core/arena)
+(import /core/array-builder)
+(blank)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Node(arena, 2)
-rows.append(Node.small((1, 2)))
-rows.append(Node.wide((3, 4), 4, 5, 6, 7))
--- snapshot(NodeStore(rows))
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Node) arena 2))
+  (call (. rows append) (call (. Node small) (tuple 1 2)))
+  (call (. rows append) (call (. Node wide) (tuple 3 4) 4 5 6 7))
+  (print (call snapshot (call NodeStore rows)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ NodeStore
+(type + NodeStore
+  (prop + nodes (of Table Node))
+  (fn-do + This _
+    (param nodes (of Table Node))
+  )
+)
 
-+ nodes Table'Node
+(fn-do _ snapshot _
+  (param store NodeStore)
+  (let parts (call (of ArrayBuilder String)))
+  (for (in node (. store nodes))
+    (call (. parts append)
+      (block
+        (match node
+          (case (call .small row)
+            (str "row: " row)
+          )
+          (case (call .wide row)
+            (str "row: " row)
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (return (call (. "\n" join) (call (. parts finish-immutable))))
+)
 
-────────────────────
-+ This
-    - nodes Table'Node
+(type + Syntax (is Tuple)
+  (prop + source (tuple (: start U64) (: end U64)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do snapshot
-    - store NodeStore
+(type + Small (is Syntax))
 
-. parts = ArrayBuilder'String()
-for node in store.nodes
-    parts.append
-        match node
-            | .small(row)
-                "row: $row"
-            | .wide(row)
-                "row: $row"
+(type + Wide (is Syntax)
+  (prop + inline-a U64 @hot)
+  (prop + inline-b U64 @hot)
+  (prop + external-a U64)
+  (prop + external-b U64)
+)
 
-= "\n".join(parts.finish-immutable())
-
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
-
-+ source (start U64, end U64)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ @hot inline-a U64
-+ @hot inline-b U64
-+ external-a U64
-+ external-b U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 ```
 
 ```output
@@ -5156,70 +5580,73 @@ row: ((3, 4), 4, 5, 6, 7)
 
 ### copy-from replaces an Arena-backed table's rows with another table's rows, growing, shrinking, and copying union spill storage.
 
-```yumi
-/core/arena
-/core/table
+```brix
+(import /core/arena)
+(import /core/table)
+(blank)
 
-. arena = Arena(8192)
-do finally arena.release()
-. live = Table'Point(arena, 2)
-. saved = Table'Point(arena, 1)
-live.append(Point(1, 10))
-live.append(Point(2, 20))
-live.append(Point(3, 30))
-saved.copy-from(live)
-live[1].y = 99
-live.append(Point(4, 40))
--- "saved=${saved.length} live=${live.length} y=${saved[1].y}"
-live.copy-from(saved)
--- "restored=${live.length} y=${live[1].y} x=${live[2].x}"
-live.copy-from(live)
--- "self=${live.length}"
-. fixed = Table'Point(1) • with Point(each + 7, 70)
-saved.copy-from(fixed)
--- "fixed=${saved.length} ${saved[0] as Point}"
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let live (call (of Table Point) arena 2))
+  (let saved (call (of Table Point) arena 1))
+  (call (. live append) (call Point 1 10))
+  (call (. live append) (call Point 2 20))
+  (call (. live append) (call Point 3 30))
+  (call (. saved copy-from) live)
+  (= (. ([] live 1) y) 99)
+  (call (. live append) (call Point 4 40))
+  (print (str "saved=" (. saved length) " live=" (. live length) " y=" (. ([] saved 1) y)))
+  (call (. live copy-from) saved)
+  (print (str "restored=" (. live length) " y=" (. ([] live 1) y) " x=" (. ([] live 2) x)))
+  (call (. live copy-from) live)
+  (print (str "self=" (. live length)))
+  (let fixed (call (of Table Point) 1 (:with (call Point (+ each 7) 70))))
+  (call (. saved copy-from) fixed)
+  (print (str "fixed=" (. saved length) " " (as ([] saved 0) Point)))
+  (blank)
+  (let nodes (call (of Table Node) arena 1))
+  (let backup (call (of Table Node) arena 1))
+  (call (. nodes append) (call (. Node small) 1))
+  (call (. nodes append) (call (. Node wide) 2 3 4 5 6))
+  (call (. backup copy-from) nodes)
+  (match ([] nodes 1)
+    (case (call .small small)
+      (+= (. small source) 0)
+    )
+    (case (call .wide wide)
+      (= (. wide external-a) 500)
+    )
+  )
+  (call (. nodes copy-from) backup)
+  (print (as ([] nodes 1) Node))
+  (print (as ([] backup 0) Node))
+)
 
-. nodes = Table'Node(arena, 1)
-. backup = Table'Node(arena, 1)
-nodes.append(Node.small(1))
-nodes.append(Node.wide(2, 3, 4, 5, 6))
-backup.copy-from(nodes)
-match nodes[1]
-    | .small(small)
-        small.source += 0
-    | .wide(wide)
-        wide.external-a = 500
-nodes.copy-from(backup)
--- nodes[1] as Node
--- backup[0] as Node
+(type + Point (is Struct)
+  (prop + x I64)
+  (prop + y I64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(type + Syntax (is Tuple)
+  (prop + source U64)
+)
 
-+ x I64
-+ y I64
+(type + Small (is Syntax))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
+(type + Wide (is Syntax)
+  (prop + inline-a U64 @hot)
+  (prop + inline-b U64 @hot)
+  (prop + external-a U64)
+  (prop + external-b U64)
+)
 
-+ source U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ @hot inline-a U64
-+ @hot inline-b U64
-+ external-a U64
-+ external-b U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 ```
 
 ```output
@@ -5233,37 +5660,39 @@ fixed=1 (7, 70)
 
 ### A table loop's row variable shadows a local of the same name.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'ShadowRow(3) • with ShadowRow((each + 5) as U32)
--- row-sum(table)
--- index-sum(table)
+(main
+  (let table (call (of Table ShadowRow) 3 (:with (call ShadowRow (as (+ each 5) U32)))))
+  (print (call row-sum table))
+  (print (call index-sum table))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ShadowRow is Struct
+(type + ShadowRow (is Struct)
+  (prop + value U32)
+)
 
-+ value U32
+(fn-do + row-sum U32
+  (param rows (of Table ShadowRow))
+  (let total U32 0)
+  (let row ([] rows 0))
+  (for (in row rows)
+    (+= total (. row value))
+  )
+  (return (+ total (* (. row value) 100)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do row-sum U32
-    - rows Table'ShadowRow
-
-. total U32 = 0
-. row = rows[0]
-for row in rows
-    total += row.value
-= total + row.value * 100
-
-━━━━━━━━━━━━━━━━━━━━
-+ do index-sum U32
-    - rows Table'ShadowRow
-
-. total U32 = 0
-. index U32 = 9
-for index in 0 .. < rows.length
-    total += rows[index].value
-= total + index * 100
+(fn-do + index-sum U32
+  (param rows (of Table ShadowRow))
+  (let total U32 0)
+  (let index U32 9)
+  (for (in index (..< 0 (. rows length)))
+    (+= total (. ([] rows index) value))
+  )
+  (return (+ total (* index 100)))
+)
 ```
 
 ```output
@@ -5273,42 +5702,44 @@ for index in 0 .. < rows.length
 
 ### A row read through an index does not outlive an assignment to the index.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'StepRow(3) • with StepRow((each * 2 + 7) as I32)
--- step(table)
--- walk(table, 3)
+(main
+  (let table (call (of Table StepRow) 3 (:with (call StepRow (as (+ (* each 2) 7) I32)))))
+  (print (call step table))
+  (print (call walk table 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ StepRow is Struct
+(type + StepRow (is Struct)
+  (prop + offset I32)
+)
 
-+ offset I32
+(fn-do + step I32
+  (param rows (of Table StepRow))
+  (let index U32 0)
+  (let first (. ([] rows index) offset))
+  (+= index 1)
+  (let second (. ([] rows index) offset))
+  (= index (+ index 1))
+  (return (+ (* first 10000) (* second 100) (. ([] rows index) offset)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do step I32
-    - rows Table'StepRow
-
-. index U32 = 0
-. first = rows[index].offset
-index += 1
-. second = rows[index].offset
-index = index + 1
-= first * 10000 + second * 100 + rows[index].offset
-
-━━━━━━━━━━━━━━━━━━━━
-+ do walk I32
-    - rows Table'StepRow
-    - count U32
-
-. total I32 = 0
-. index U32 = 0
-while index < count
-    . first = rows[index].offset
-    index += 1
-    if index < count
-        total += rows[index].offset - first
-= total
+(fn-do + walk I32
+  (param rows (of Table StepRow))
+  (param count U32)
+  (let total I32 0)
+  (let index U32 0)
+  (while (< index count)
+    (let first (. ([] rows index) offset))
+    (+= index 1)
+    (if (< index count)
+      (+= total (- (. ([] rows index) offset) first))
+    )
+  )
+  (return total)
+)
 ```
 
 ```output
@@ -5316,86 +5747,82 @@ while index < count
 4
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. rows = Table'Node(2)
-rows[0] = Node.low(10, Pair(1, 2))
-rows[1] = Node.high(30, Pair(3, 4))
-. reader = Reader()
-reader.offset = 100
-match rows[0]
-    | .low(low)
-        -- reader.total(low)
-    ??
-        -- -1
--- reader.pick(rows)
--- free-total(rows)
+(main
+  (let rows (call (of Table Node) 2))
+  (= ([] rows 0) (call (. Node low) 10 (call Pair 1 2)))
+  (= ([] rows 1) (call (. Node high) 30 (call Pair 3 4)))
+  (let reader (call Reader))
+  (= (. reader offset) 100)
+  (match ([] rows 0)
+    (case (call .low low)
+      (print (call (. reader total) low))
+    )
+    (default
+      (print -1)
+    )
+  )
+  (print (call (. reader pick) rows))
+  (print (call free-total rows))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do free-total I64
-    - rows Table'Node
+(fn-do + free-total I64
+  (param rows (of Table Node))
+  (match? ([] rows 0)
+    (case (call .low low)
+      (return (call sum low))
+    )
+  )
+  (return -1)
+)
 
-match? rows[0]
-    | .low(low)
-        = sum(low)
-= -1
+(fn-expr + sum I64
+  (param base Low)
+  (+ (. base value) (. base pair left))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ sum I64
-    - base Low
+(type + Reader
+  (prop + offset I64)
+  (fn-expr + total I64
+    (param base Low)
+    (+ offset (. base value) (. base pair right))
+  )
+  (fn-do + pick I64
+    (param rows (of Table Node))
+    (match? ([] rows 1)
+      (case (call .high high)
+        (return (call total-high high))
+      )
+    )
+    (return -1)
+  )
+  (fn-expr _ total-high I64
+    (param base High)
+    (+ offset (. base value) (. base pair left))
+  )
+)
 
-base.value + base.pair.left
+(type + Pair (is Tuple)
+  (prop + left I64)
+  (prop + right I64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Reader
+(type + Base (is Tuple)
+  (prop + value I64)
+  (prop + pair Pair)
+)
 
-+ offset I64
+(type + Low (is Base))
 
-────────────────────
-+ total I64
-    - base Low
+(type + High (is Base))
 
-offset + base.value + base.pair.right
-
-────────────────────
-+ do pick I64
-    - rows Table'Node
-
-match? rows[1]
-    | .high(high)
-        = total-high(high)
-= -1
-
-────────────────────
-_ total-high I64
-    - base High
-
-offset + base.value + base.pair.left
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Tuple
-
-+ left I64
-+ right I64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Tuple
-
-+ value I64
-+ pair Pair
-
-━━━━━━━━━━━━━━━━━━━━
-+ Low is Base
-
-━━━━━━━━━━━━━━━━━━━━
-+ High is Base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| low Low
-| high High
+(type + Node (is Union)
+  (variant low Low)
+  (variant high High)
+)
 ```
 
 ```output
@@ -5406,67 +5833,82 @@ offset + base.value + base.pair.left
 
 ### Cases with the same field shape stay distinct when a table row is matched, and positional case fields read from the row.
 
-```yumi
-/core/arena
-/core/table
+```brix
+(import /core/arena)
+(import /core/table)
+(blank)
 
-. arena = Arena()
-do finally arena.release()
-. build = Table'Shape(arena, 4)
-build.append(Shape.wide(1, 7))
-build.append(Shape.tall(2, 9))
-build.append(Shape.flat(3, 1))
-for index in 0 .. < build.length
-    -- describe(build, index)
-. shapes = build.finish()
-for index in 0 .. < shapes.length
-    -- name(shapes, index)
--- pair(shapes)
+(main
+  (let arena (call Arena))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let build (call (of Table Shape) arena 4))
+  (call (. build append) (call (. Shape wide) 1 7))
+  (call (. build append) (call (. Shape tall) 2 9))
+  (call (. build append) (call (. Shape flat) 3 1))
+  (for (in index (..< 0 (. build length)))
+    (print (call describe build index))
+  )
+  (let shapes (call (. build finish)))
+  (for (in index (..< 0 (. shapes length)))
+    (print (call name shapes index))
+  )
+  (print (call pair shapes))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do describe String
-    - shapes Table'Shape
-    - index Index
+(fn-do _ describe String
+  (param shapes (of Table Shape))
+  (param index Index)
+  (match ([] shapes index)
+    (case (call .tall _ size)
+      (return (str "tall " size))
+    )
+    (case (call .wide _ size)
+      (return (str "wide " size))
+    )
+    (case (call .flat id _)
+      (return (str "flat " id))
+    )
+  )
+)
 
-match shapes[index]
-    | .tall(_, size)
-        = "tall $size"
-    | .wide(_, size)
-        = "wide $size"
-    | .flat(id, _)
-        = "flat $id"
+(fn-expr _ name String
+  (param shapes (of ImmutableTable Shape))
+  (param index Index)
+  (match ([] shapes (..< index (+ index 1)))
+    (case (list (call .tall id _))
+      (str "tall " id)
+    )
+    (case (list (call .wide id _))
+      (str "wide " id)
+    )
+    (default
+      "other"
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ name String
-    - shapes ImmutableTable'Shape
-    - index Index
+(fn-expr _ pair String
+  (param shapes (of ImmutableTable Shape))
+  (match ([] shapes (..< 0 (. shapes length)))
+    (case (list (call .tall _ first) (call .wide _ second) ...)
+      (str "tall " first " then wide " second)
+    )
+    (case (list (call .wide _ first) (call .tall _ second) ...)
+      (str "wide " first " then tall " second)
+    )
+    (default
+      "other"
+    )
+  )
+)
 
-match shapes[index .. < index + 1]
-    | [.tall(id, _)]
-        "tall $id"
-    | [.wide(id, _)]
-        "wide $id"
-    ??
-        "other"
-
-━━━━━━━━━━━━━━━━━━━━
-_ pair String
-    - shapes ImmutableTable'Shape
-
-match shapes[0 .. < shapes.length]
-    | [.tall(_, first), .wide(_, second), ...]
-        "tall $first then wide $second"
-    | [.wide(_, first), .tall(_, second), ...]
-        "wide $first then tall $second"
-    ??
-        "other"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
-
-| wide(id U32, size U32)
-| tall(id U32, size U32)
-| flat(id U32, depth U8)
+(type + Shape (is Union)
+  (variant wide (tuple (: id U32) (: size U32)))
+  (variant tall (tuple (: id U32) (: size U32)))
+  (variant flat (tuple (: id U32) (: depth U8)))
+)
 ```
 
 ```output
@@ -5481,30 +5923,35 @@ wide 7 then tall 9
 
 ### A view reads the rows appended so far without sealing the table, and stays readable after the table grows.
 
-```yumi
-/core/arena
-/core/table
+```brix
+(import /core/arena)
+(import /core/table)
+(blank)
 
-. arena = Arena()
-do finally arena.release()
-. table = Table'Entry(arena, 2)
-table.append(Entry(1, 10))
-table.append(Entry(2, 20))
-. early = table.view()
-for count in 0 .. < 40
-    table.append(Entry(3 + (count as U32), 30 + (count as U32)))
-. late = table.view()
--- "${early.length} ${late.length} ${table.length}"
--- "${early[1].key} ${early[1].value}"
--- "${late[1].key} ${late[41].key} ${late[41].value}"
-table.append(Entry(99, 990))
--- "${late.length} ${table.view().length} ${table.view()[42].value}"
+(main
+  (let arena (call Arena))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let table (call (of Table Entry) arena 2))
+  (call (. table append) (call Entry 1 10))
+  (call (. table append) (call Entry 2 20))
+  (let early (call (. table view)))
+  (for (in count (..< 0 40))
+    (call (. table append) (call Entry (+ 3 (as count U32)) (+ 30 (as count U32))))
+  )
+  (let late (call (. table view)))
+  (print (str (. early length) " " (. late length) " " (. table length)))
+  (print (str (. ([] early 1) key) " " (. ([] early 1) value)))
+  (print (str (. ([] late 1) key) " " (. ([] late 41) key) " " (. ([] late 41) value)))
+  (call (. table append) (call Entry 99 990))
+  (print (str (. late length) " " (. (call (. table view)) length) " " (. ([] (call (. table view)) 42) value)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Entry is Struct
-
-+ key U32
-+ value U32
+(type + Entry (is Struct)
+  (prop + key U32)
+  (prop + value U32)
+)
 ```
 
 ```output
@@ -5516,42 +5963,52 @@ table.append(Entry(99, 990))
 
 ### An immutable row reports its position, whether it was indexed, iterated, or bound by a pattern.
 
-```yumi
-/core/arena
-/core/table
+```brix
+(import /core/arena)
+(import /core/table)
+(blank)
 
-. arena = Arena()
-do finally arena.release()
-. build = Table'Part(arena, 4)
-build.append(Part.leaf(1, 7))
-build.append(Part.leaf(2, 9))
-build.append(Part.pair(3, 0, 2))
-. parts = build.finish()
--- "${parts[0].index} ${parts[2].index}"
-for part in parts[1 .. < 3]
-    -- part.index
--- second(parts, parts[2])
+(main
+  (let arena (call Arena))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let build (call (of Table Part) arena 4))
+  (call (. build append) (call (. Part leaf) 1 7))
+  (call (. build append) (call (. Part leaf) 2 9))
+  (call (. build append) (call (. Part pair) 3 0 2))
+  (let parts (call (. build finish)))
+  (print (str (. ([] parts 0) index) " " (. ([] parts 2) index)))
+  (for (in part ([] parts (..< 1 3)))
+    (print (. part index))
+  )
+  (print (call second parts ([] parts 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ second String
-    - parts ImmutableTable'Part
-    - part ImmutableTableRow'Part
+(fn-expr _ second String
+  (param parts (of ImmutableTable Part))
+  (param part (of ImmutableTableRow Part))
+  (match part
+    (case (call .pair _ start count)
+      (match ([] parts (..< start (+ start count)))
+        (case (list _ held ...)
+          (str "second child is row " (. held index))
+        )
+        (default
+          "short"
+        )
+      )
+    )
+    (default
+      "leaf"
+    )
+  )
+)
 
-match part
-    | .pair(_, start, count)
-        match parts[start .. < start + count]
-            | [_, held, ...]
-                "second child is row ${held.index}"
-            ??
-                "short"
-    ??
-        "leaf"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Part is Union
-
-| leaf(id U32, value U32)
-| pair(id U32, start U32, count U32)
+(type + Part (is Union)
+  (variant leaf (tuple (: id U32) (: value U32)))
+  (variant pair (tuple (: id U32) (: start U32) (: count U32)))
+)
 ```
 
 ```output
@@ -5563,63 +6020,72 @@ second child is row 1
 
 ### A row taken from a loop can be passed, stored, assigned, or returned where an optional row is expected.
 
-```yumi
-/core/arena
-/core/table
+```brix
+(import /core/arena)
+(import /core/table)
+(blank)
 
-. arena = Arena()
-do finally arena.release()
-. build = Table'Entry(arena, 4)
-build.append(Entry(1, 2))
-build.append(Entry(3, 4))
-build.append(Entry(5, 6))
-. entries = build.finish()
-for entry in entries[0 .. < 2]
-    show(entry)
-. kept [ImmutableTableRow'Entry?]
-for entry in entries
-    kept += entry
-for entry in kept
-    show(entry)
-show(last-below(entries, 4))
-show(last-below(entries, 0))
-show(first-above(entries, 3))
-show(first-above(entries, 9))
+(main
+  (let arena (call Arena))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let build (call (of Table Entry) arena 4))
+  (call (. build append) (call Entry 1 2))
+  (call (. build append) (call Entry 3 4))
+  (call (. build append) (call Entry 5 6))
+  (let entries (call (. build finish)))
+  (for (in entry ([] entries (..< 0 2)))
+    (call show entry)
+  )
+  (let kept (list (? (of ImmutableTableRow Entry))))
+  (for (in entry entries)
+    (+= kept entry)
+  )
+  (for (in entry kept)
+    (call show entry)
+  )
+  (call show (call last-below entries 4))
+  (call show (call last-below entries 0))
+  (call show (call first-above entries 3))
+  (call show (call first-above entries 9))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do show
-    - entry ImmutableTableRow'Entry?
+(fn-do _ show _
+  (param entry (? (of ImmutableTableRow Entry)))
+  (if entry
+    (print (str (. entry key) " " (. entry value)))
+    (else
+      (print "none")
+    )
+  )
+)
 
-if entry
-    -- "${entry.key} ${entry.value}"
-else
-    -- "none"
+(fn-do _ last-below (? (of ImmutableTableRow Entry))
+  (param entries (of ImmutableTable Entry))
+  (param limit U32)
+  (let found (? (of ImmutableTableRow Entry)) null)
+  (for (in entry entries)
+    (if (< (. entry key) limit)
+      (= found entry)
+    )
+  )
+  (return found)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do last-below ImmutableTableRow'Entry?
-    - entries ImmutableTable'Entry
-    - limit U32
+(fn-do _ first-above (? (of ImmutableTableRow Entry))
+  (param entries (of ImmutableTable Entry))
+  (param limit U32)
+  (for (in entry entries)
+    (return-if entry (if (> (. entry key) limit)))
+  )
+  (return null)
+)
 
-. found ImmutableTableRow'Entry? = null
-for entry in entries
-    if entry.key < limit
-        found = entry
-= found
-
-━━━━━━━━━━━━━━━━━━━━
-_ do first-above ImmutableTableRow'Entry?
-    - entries ImmutableTable'Entry
-    - limit U32
-
-for entry in entries
-    =? entry if entry.key > limit
-= null
-
-━━━━━━━━━━━━━━━━━━━━
-+ Entry is Struct
-
-+ key U32
-+ value U32
+(type + Entry (is Struct)
+  (prop + key U32)
+  (prop + value U32)
+)
 ```
 
 ```output
@@ -5634,27 +6100,29 @@ none
 none
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. rows = Table'Point(1) • with Point((each + 7) as I32, (each + 9) as I32)
-for row in rows
-    -- sum-row(row, true)
-    -- sum-row(row, false)
+(main
+  (let rows (call (of Table Point) 1 (:with (call Point (as (+ each 7) I32) (as (+ each 9) I32)))))
+  (for (in row rows)
+    (print (call sum-row row true))
+    (print (call sum-row row false))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do sum-row I32
-    - row TableRow'Point
-    - use-x Bool
+(fn-do + sum-row I32
+  (param row (of TableRow Point))
+  (param use-x Bool)
+  (let first (if-expr use-x (. row x) (. row y)))
+  (return (+ first (. row y)))
+)
 
-. first = if use-x then row.x else row.y
-= first + row.y
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -5662,264 +6130,276 @@ for row in rows
 18
 ```
 
-```yumi
-/core/arena
-/core/table
-/core/array-builder
+```brix
+(import /core/arena)
+(import /core/table)
+(import /core/array-builder)
+(blank)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Point(arena)
-. values = ArrayBuilder'U64(arena)
-rows.append(Point(7u64, 9u64))
-values.append(11u64)
-fail-rows(rows, Size.max)
-fail-rows(rows, 1152921504606846976 as Size)
-fail-values(values, Size.max)
-fail-values(values, 1152921504606846976 as Size)
-rows.append(Point(13u64, 15u64))
-values.append(17u64)
--- rows[0] as Point
--- rows[1] as Point
--- values[0], values[1]
--- rows.length, values.length
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Point) arena))
+  (let values (call (of ArrayBuilder U64) arena))
+  (call (. rows append) (call Point 7u64 9u64))
+  (call (. values append) 11u64)
+  (call fail-rows rows (. Size max))
+  (call fail-rows rows (as 1152921504606846976 Size))
+  (call fail-values values (. Size max))
+  (call fail-values values (as 1152921504606846976 Size))
+  (call (. rows append) (call Point 13u64 15u64))
+  (call (. values append) 17u64)
+  (print (as ([] rows 0) Point))
+  (print (as ([] rows 1) Point))
+  (print (tuple ([] values 0) ([] values 1)))
+  (print (tuple (. rows length) (. values length)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fail-rows
-    - rows Table'Point
-    - needed Size
+(fn-do + fail-rows _
+  (param rows (of Table Point))
+  (param needed Size)
+  (let attempt
+    (do-new
+      (call (. rows reserve) needed)
+      (on-failure failure
+        (print (str (. failure message) ": " (?. (. failure source) line) ":" (?. (. failure source) column)))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. attempt = do new
-    rows.reserve(needed)
-catch failure
-    -- "${failure.message}: ${failure.source?.line}:${failure.source?.column}"
-attempt.wait()
+(fn-do + fail-values _
+  (param values (of ArrayBuilder U64 ArenaBacking))
+  (param needed Size)
+  (let attempt
+    (do-new
+      (call (. values reserve) needed)
+      (on-failure failure
+        (print (str (. failure message) ": " (?. (. failure source) line) ":" (?. (. failure source) column)))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fail-values
-    - values ArrayBuilder'U64'ArenaBacking
-    - needed Size
-
-. attempt = do new
-    values.reserve(needed)
-catch failure
-    -- "${failure.message}: ${failure.source?.line}:${failure.source?.column}"
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x U64
-+ y U64
+(type + Point (is Struct)
+  (prop + x U64)
+  (prop + y U64)
+)
 ```
 
 ```output
-Table x capacity overflow: 29:5
-Arena allocation failed while growing Table: 29:5
-ArrayBuilder capacity overflow: 40:5
-Arena allocation failed while growing ArrayBuilder: 40:5
+Table x capacity overflow: 33:7
+Arena allocation failed while growing Table: 33:7
+ArrayBuilder capacity overflow: 47:7
+Arena allocation failed while growing ArrayBuilder: 47:7
 (7, 9)
 (13, 15)
 (11, 17)
 (2, 2)
 ```
 
-```yumi crash
-/core/arena
-/core/table
-/core/array-builder
+```brix crash
+(import /core/arena)
+(import /core/table)
+(import /core/array-builder)
+(blank)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Point(arena)
-. values = ArrayBuilder'U64(arena)
-rows.append(Point(7u64, 9u64))
-values.append(11u64)
-fail-rows(rows, Size.max)
-fail-rows(rows, 1152921504606846976 as Size)
-fail-values(values, Size.max)
-fail-values(values, 1152921504606846976 as Size)
-rows.append(Point(13u64, 15u64))
-values.append(17u64)
--- rows[0] as Point
--- rows[1] as Point
--- values[0], values[1]
--- rows.length, values.length
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Point) arena))
+  (let values (call (of ArrayBuilder U64) arena))
+  (call (. rows append) (call Point 7u64 9u64))
+  (call (. values append) 11u64)
+  (call fail-rows rows (. Size max))
+  (call fail-rows rows (as 1152921504606846976 Size))
+  (call fail-values values (. Size max))
+  (call fail-values values (as 1152921504606846976 Size))
+  (call (. rows append) (call Point 13u64 15u64))
+  (call (. values append) 17u64)
+  (print (as ([] rows 0) Point))
+  (print (as ([] rows 1) Point))
+  (print (tuple ([] values 0) ([] values 1)))
+  (print (tuple (. rows length) (. values length)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fail-rows
-    - rows Table'Point
-    - needed Size
+(fn-do + fail-rows _
+  (param rows (of Table Point))
+  (param needed Size)
+  (call (. rows reserve) needed)
+)
 
-rows.reserve(needed)
+(fn-do + fail-values _
+  (param values (of ArrayBuilder U64 ArenaBacking))
+  (param needed Size)
+  (call (. values reserve) needed)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fail-values
-    - values ArrayBuilder'U64'ArenaBacking
-    - needed Size
-
-values.reserve(needed)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x U64
-+ y U64
+(type + Point (is Struct)
+  (prop + x U64)
+  (prop + y U64)
+)
 ```
 
 ```stderr
 Unhandled panic: Table x capacity overflow
-<no file:28>
+<no file:31>
 
 Task 1
 
 Stack trace:
-  0  __source__:fail-rows no file:28:1
-  1  __source__:main no file:12:1
+  0  __source__:fail-rows no file:31:3
+  1  __source__:main no file:16:3
   2  __source__:init.__source__ no file
   3  __source__:brix.main no file
 ```
 
-```yumi
-/BxGC/BxGC.h
-/core/table
+```brix
+(import /BxGC/BxGC.h)
+(import /core/table)
+(blank)
 
-. rows = Table'Node(1) • with :: index => Node.wide(1, 10, 20, 30, 40)
+(main
+  (let rows (call (of Table Node) 1 (:with (=> (index) (call (. Node wide) 1 10 20 30 40)))))
+  (blank)
+  (match ([] rows 0)
+    (case (call .small small)
+      (print (. small value))
+    )
+    (case (call .wide wide)
+      (print (call collect-table-case wide))
+    )
+  )
+)
 
-match rows[0]
-    | .small(small)
-        -- small.value
-    | .wide(wide)
-        -- collect-table-case(wide)
+(fn-do + collect-table-case U64
+  (param wide Wide)
+  (call C:brixGCCollect)
+  (return (. wide external-a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do collect-table-case U64
-    - wide Wide
+(type + Syntax (is Tuple)
+  (prop + source U64)
+)
 
-C:brixGCCollect()
-= wide.external-a
+(type + Small (is Syntax)
+  (prop + value U64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
+(type + Wide (is Syntax)
+  (prop + inline-a U64 @hot)
+  (prop + inline-b U64 @hot)
+  (prop + external-a U64)
+  (prop + external-b U64)
+)
 
-+ source U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
-
-+ value U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ @hot inline-a U64
-+ @hot inline-b U64
-+ external-a U64
-+ external-b U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 ```
 
 ```output
 30
 ```
 
-```yumi crash
-/core/table
+```brix crash
+(import /core/table)
+(blank)
 
-. rows = Table'Node(2)
-rows[0] = Node.small(10, 2)
-match rows[0]
-    | .small(small)
-        -- small.pick(9)
-    | .wide
-        -- "no"
+(main
+  (let rows (call (of Table Node) 2))
+  (= ([] rows 0) (call (. Node small) 10 2))
+  (match ([] rows 0)
+    (case (call .small small)
+      (print (call (. small pick) 9))
+    )
+    (case .wide
+      (print "no")
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
+(type + Syntax (is Tuple)
+  (prop + source U32)
+)
 
-+ source U32
+(type + Small (is Syntax)
+  (prop + value U32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
+(type + Wide (is Syntax)
+  (prop + target U32)
+)
 
-+ value U32
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ target U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Small
-
-────────────────────
-+ do pick String
-    - at U32
-
-. part = "${this.value}"
-?! Panic("too far $at")
-    if at > 5
-= "$part ${this.source}"
+(extend + Small
+  (fn-do + pick String
+    (param at U32)
+    (let part (str (. this value)))
+    (throw (call Panic (str "too far " at)) (if (> at 5)))
+    (return (str part " " (. this source)))
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: too far 9
-<no file:41>
+<no file:39>
 
 Task 1
 
 Stack trace:
-  0  __source__:pick no file:41:1
-  1  __source__:pick-table-row-receiver-bridge no file:37:1
-  2  __source__:main no file:8:12
+  0  __source__:pick no file:39:5
+  1  __source__:pick-table-row-receiver-bridge no file:36:3
+  2  __source__:main no file:10:14
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. rows = Table'Node(2)
-rows[0] = Node.small(10, 2)
-rows[1] = Node.wide(20, 3)
--- rows[0] is .small
--- rows[1] is .small
-. held TableRow'Node? = rows[1]
--- held is .wide
-if held
-    -- held is .wide
+(main
+  (let rows (call (of Table Node) 2))
+  (= ([] rows 0) (call (. Node small) 10 2))
+  (= ([] rows 1) (call (. Node wide) 20 3))
+  (print (is ([] rows 0) .small))
+  (print (is ([] rows 1) .small))
+  (let held (? (of TableRow Node)) ([] rows 1))
+  (print (is held .wide))
+  (if held
+    (print (is held .wide))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
+(type + Syntax (is Tuple)
+  (prop + source U32)
+)
 
-+ source U32
+(type + Small (is Syntax)
+  (prop + value U32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
+(type + Wide (is Syntax)
+  (prop + target U32)
+)
 
-+ value U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ target U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 ```
 
 ```output
@@ -5929,341 +6409,333 @@ false
 true
 ```
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. rows = Table'Node(2)
-rows[0] = Node.small(10, 2)
-rows[1] = Node.wide(20, 3)
-for row in rows
-    match? row
-        | .small(small)
-            -- small.pick(rows)
+(main
+  (let rows (call (of Table Node) 2))
+  (= ([] rows 0) (call (. Node small) 10 2))
+  (= ([] rows 1) (call (. Node wide) 20 3))
+  (for (in row rows)
+    (match? row
+      (case (call .small small)
+        (print (call (. small pick) rows))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do overwrite
-    - rows Table'Node
+(fn-do + overwrite _
+  (param rows (of Table Node))
+  (= ([] rows 0) (call (. Node small) 99 77))
+)
 
-rows[0] = Node.small(99, 77)
+(extend + Small
+  (fn-do + pick String
+    (param rows (of Table Node))
+    (let first (. this value))
+    (call overwrite rows)
+    (return (str first " " (. this value)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ extend Small
+(type + Syntax (is Tuple)
+  (prop + source U32)
+)
 
-────────────────────
-+ do pick String
-    - rows Table'Node
+(type + Small (is Syntax)
+  (prop + value U32)
+)
 
-. first = this.value
-overwrite(rows)
-= "$first ${this.value}"
+(type + Wide (is Syntax)
+  (prop + target U32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
-
-+ source U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
-
-+ value U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ target U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 ```
 
 ```output
 2 2
 ```
 
-```yumi crash
-/core/table
-/core/arena
+```brix crash
+(import /core/table)
+(import /core/arena)
+(blank)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Node(arena, 1)
-rows.append(Node.small(10, 2))
-. row = rows[0]
-arena.reset()
--- row.cheap
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Node) arena 1))
+  (call (. rows append) (call (. Node small) 10 2))
+  (let row ([] rows 0))
+  (call (. arena reset))
+  (print (. row cheap))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ extend Syntax
+(extend + Syntax
+  (fn-expr + cheap U32 :get
+    7
+  )
+)
 
-────────────────────
-+ get cheap U32
+(type + Syntax (is Tuple)
+  (prop + source U32)
+)
 
-7
+(type + Small (is Syntax)
+  (prop + value U32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
+(type + Wide (is Syntax)
+  (prop + target U32)
+)
 
-+ source U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
-
-+ value U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ target U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 ```
 
 ```stderr
 Unhandled panic: TableRow is stale after Arena reset
+<no file:15>
+
+Task 1
+
+Stack trace:
+  0  __source__:union-dispatch-1 no file:15:10
+  1  __source__:main no file:15:10
+  2  __source__:init.__source__ no file
+  3  __source__:brix.main no file
+```
+
+```brix crash
+(import /core/table)
+(blank)
+
+(main
+  (let rows (call (of Table Node) 2))
+  (= ([] rows 0) (call (. Node small) 10 2))
+  (= ([] rows 1) (call (. Node wide) 20 3))
+  (print (call (. ([] rows 0) check) 1))
+  (call (. ([] rows 0) bump) 3)
+  (print (as ([] rows 0) Node))
+  (print (call (. ([] rows 1) check) 9))
+)
+
+(extend + Small
+  (fn-do + bump _
+    (param by I32)
+    (+= value by)
+  )
+  (fn-do + check String
+    (param limit I32)
+    (return (str "small " value))
+  )
+)
+
+(extend + Wide
+  (fn-do + bump _
+    (param by I32)
+    (+= target by)
+  )
+  (fn-do + check String
+    (param limit I32)
+    (throw (call Panic (str "over " limit)) (if (> limit 5)))
+    (return (str "wide " target))
+  )
+)
+
+(type + Syntax (is Tuple)
+  (prop + source U32)
+)
+
+(type + Small (is Syntax)
+  (prop + value I32)
+)
+
+(type + Wide (is Syntax)
+  (prop + target I32)
+)
+
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
+```
+
+```stderr
+Unhandled panic: over 9
+<no file:33>
+
+Task 1
+
+Stack trace:
+  0  __source__:check no file:33:5
+  1  __source__:check-table-row-receiver-bridge no file:31:3
+  2  __source__:union-dispatch-1 no file:9:10
+  3  __source__:main no file:12:10
+  4  __source__:init.__source__ no file
+  5  __source__:brix.main no file
+```
+
+```brix crash
+(import /core/table)
+(blank)
+
+(main
+  (let rows (call (of Table Node) 2))
+  (= ([] rows 0) (call (. Node small) 10 2))
+  (match? ([] rows 0)
+    (case (call .small small)
+      (print (call (. small pick) 9))
+    )
+  )
+)
+
+(extend + Small
+  (fn-do + pick String
+    (param at U32)
+    (let first (. this value))
+    (let made (call Small 1 2))
+    (throw (call Panic (str "p " at " " (. made value))) (if (> at 5)))
+    (return (str first " " (. this source)))
+  )
+)
+
+(type + Syntax (is Tuple)
+  (prop + source U32)
+)
+
+(type + Small (is Syntax)
+  (prop + value U32)
+)
+
+(type + Wide (is Syntax)
+  (prop + target U32)
+)
+
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
+```
+
+```stderr
+Unhandled panic: p 9 2
+<no file:20>
+
+Task 1
+
+Stack trace:
+  0  __source__:pick no file:20:5
+  1  __source__:pick-table-row-receiver-bridge no file:16:3
+  2  __source__:main no file:10:14
+  3  __source__:init.__source__ no file
+  4  __source__:brix.main no file
+```
+
+```brix crash
+(import /core/table)
+(blank)
+
+(main
+  (let filled
+    (call (of Table Point) 3
+      (:with
+        (=> (index) :do
+          (block
+            (throw (call Panic (str "bad " index)) (if (== index 2)))
+            (return (call Point (as index I32) 0))
+          )
+        )
+      )
+    )
+  )
+  (print (. filled length))
+)
+
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
+```
+
+```stderr
+Unhandled panic: bad 2
 <no file:11>
 
 Task 1
 
 Stack trace:
-  0  __source__:union-dispatch-1 no file:11:4
-  1  __source__:main no file:11:4
-  2  __source__:init.__source__ no file
-  3  __source__:brix.main no file
-```
-
-```yumi crash
-/core/table
-
-. rows = Table'Node(2)
-rows[0] = Node.small(10, 2)
-rows[1] = Node.wide(20, 3)
--- rows[0].check(1)
-rows[0].bump(3)
--- rows[0] as Node
--- rows[1].check(9)
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Small
-
-────────────────────
-+ do bump
-    - by I32
-
-value += by
-
-────────────────────
-+ do check String
-    - limit I32
-
-= "small $value"
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Wide
-
-────────────────────
-+ do bump
-    - by I32
-
-target += by
-
-────────────────────
-+ do check String
-    - limit I32
-
-?! Panic("over $limit")
-    if limit > 5
-= "wide $target"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
-
-+ source U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
-
-+ value I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ target I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
-```
-
-```stderr
-Unhandled panic: over 9
-<no file:40>
-
-Task 1
-
-Stack trace:
-  0  __source__:check no file:40:1
-  1  __source__:check-table-row-receiver-bridge no file:37:1
-  2  __source__:union-dispatch-1 no file:7:4
-  3  __source__:main no file:10:4
+  0  __source__:filled no file:11:13
+  1  __source__:filledCasting no file:8:7
+  2  core/table:Table:Table core/table.bx
+  3  __source__:main no file:7:5
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
-```yumi crash
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. rows = Table'Node(2)
-rows[0] = Node.small(10, 2)
-match? rows[0]
-    | .small(small)
-        -- small.pick(9)
+(main
+  (= ([] (. store rows) 0) (call (. Node small) 10 1))
+  (= ([] (. store rows) 1) (call (. Node wide) 20 2))
+  (print (. ([] (. store rows) 0) twice))
+  (= ([] (. store rows) 0) (call (. Node small) 30 3))
+  (match? ([] (. store rows) 0)
+    (case (call .small small)
+      (print (call (. small again)))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ extend Small
+(blank)
+(prop + store _ (= (call Store)))
 
-────────────────────
-+ do pick String
-    - at U32
+(type + Store
+  (prop + rows _ (= (call (of Table Node) 2)))
+)
 
-. first = this.value
-. made = Small(1, 2)
-?! Panic("p $at ${made.value}")
-    if at > 5
-= "$first ${this.source}"
+(fn-do + mutate U32
+  (= ([] (. store rows) 0) (call (. Node small) 99 9))
+  (return 0)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
+(extend + Syntax
+  (fn-expr + twice String :get
+    (str (. this source) " " (call mutate) " " (. this source))
+  )
+  (fn-do + again String
+    (return (str (. this source) " " (call mutate) " " (. this source)))
+  )
+)
 
-+ source U32
+(type + Syntax (is Tuple)
+  (prop + source U32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
+(type + Small (is Syntax)
+  (prop + value U64)
+)
 
-+ value U32
+(type + Wide (is Syntax)
+  (prop + target U64)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ target U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
-```
-
-```stderr
-Unhandled panic: p 9 2
-<no file:19>
-
-Task 1
-
-Stack trace:
-  0  __source__:pick no file:19:1
-  1  __source__:pick-table-row-receiver-bridge no file:14:1
-  2  __source__:main no file:8:12
-  3  __source__:init.__source__ no file
-  4  __source__:brix.main no file
-```
-
-```yumi crash
-/core/table
-
-. filled = Table'Point(3) • with :: index => do
-    ?! Panic("bad $index")
-        if index == 2
-    = Point(index as I32, 0)
--- filled.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
-```
-
-```stderr
-Unhandled panic: bad 2
-<no file:5>
-
-Task 1
-
-Stack trace:
-  0  __source__:filled no file:5:5
-  1  __source__:filledCasting no file:4:26
-  2  core/table:Table:Table core/table.yumi
-  3  __source__:main no file:4:12
-  4  __source__:init.__source__ no file
-  5  __source__:brix.main no file
-```
-
-```yumi
-/core/table
-
-store.rows[0] = Node.small(10, 1)
-store.rows[1] = Node.wide(20, 2)
--- store.rows[0].twice
-store.rows[0] = Node.small(30, 3)
-match? store.rows[0]
-    | .small(small)
-        -- small.again()
-
-+ store = Store()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Store
-
-+ rows = Table'Node(2)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do mutate U32
-
-store.rows[0] = Node.small(99, 9)
-= 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Syntax
-
-────────────────────
-+ get twice String
-
-"${this.source} ${mutate()} ${this.source}"
-
-────────────────────
-+ do again String
-
-= "${this.source} ${mutate()} ${this.source}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
-
-+ source U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
-
-+ value U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ target U64
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 ```
 
 ```output
@@ -6273,33 +6745,32 @@ store.rows[0] = Node.small(99, 9)
 
 ### A table an arena holds may have union rows whose cases hold managed fields, and the `ImmutableTable` it finishes as is made over its storage, which is not laid out again.
 
-```yumi
-/core/arena
-/core/table
+```brix
+(import /core/arena)
+(import /core/table)
+(blank)
 
+(main
+  (let arena (use (call Arena)))
+  (let table (call (of Table Value) arena))
+  (call (. table append) (call Plain 4))
+  (call (. table append) (call Named "five"))
+  (let rows (call (. table finish)))
+  (print (str "rows " (. rows length)))
+)
 
-. arena = use Arena()
-. table = Table'Value(arena)
-table.append(Plain(4))
-table.append(Named("five"))
-. rows = table.finish()
--- "rows ${rows.length}"
+(type + Named (is Tuple)
+  (prop + text String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Named is Tuple
+(type + Plain (is Tuple)
+  (prop + value I32)
+)
 
-+ text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Plain is Tuple
-
-+ value I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| named Named
-| plain Plain
+(type + Value (is Union)
+  (variant named Named)
+  (variant plain Plain)
+)
 ```
 
 ```output
@@ -6308,48 +6779,51 @@ rows 2
 
 ### An optional field of the case of a row a match finds, once a test finds it holds a value, is read as what it holds.
 
-```yumi
-/core/arena
-/core/table
+```brix
+(import /core/arena)
+(import /core/table)
+(blank)
 
+(main
+  (let arena (use (call Arena)))
+  (let table (call (of Table Shape) arena))
+  (call (. table append) (call Square "box"))
+  (call (. table append) (call Square null))
+  (call (. table append) (call Dot 1))
+  (let rows (call (. table finish)))
+  (print (str (call is-box rows 0) " " (call is-box rows 1) " " (call is-box rows 2)))
+)
 
-. arena = use Arena()
-. table = Table'Shape(arena)
-table.append(Square("box"))
-table.append(Square(null))
-table.append(Dot(1))
-. rows = table.finish()
--- "${is-box(rows, 0)} ${is-box(rows, 1)} ${is-box(rows, 2)}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ is-box Bool
-    - rows ImmutableTable'Shape
-    - index U32
-
-match rows[index]
-    | .square(row)
-        |? !row.name
-            false
-        ??
-            row.name == "box"
-    ??
+(fn-expr + is-box Bool
+  (param rows (of ImmutableTable Shape))
+  (param index U32)
+  (match ([] rows index)
+    (case (call .square row)
+      (case? (not (. row name))
         false
+      )
+      (default
+        (== (. row name) "box")
+      )
+    )
+    (default
+      false
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Square is Tuple
+(type + Square (is Tuple)
+  (prop + name (? String))
+)
 
-+ name String?
+(type + Dot (is Tuple)
+  (prop + size U32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Dot is Tuple
-
-+ size U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
-
-| square Square
-| dot Dot
+(type + Shape (is Union)
+  (variant square Square)
+  (variant dot Dot)
+)
 ```
 
 ```output
@@ -6358,22 +6832,23 @@ true false false
 
 ### A field of a row named as a private member of the table's row is read from the row, as no module but the table's may use that member.
 
-```yumi
-/core/arena
-/core/table
+```brix
+(import /core/arena)
+(import /core/table)
+(blank)
 
+(main
+  (let arena (use (call Arena)))
+  (let table (call (of Table Grid) arena))
+  (call (. table append) (call Grid 3 4))
+  (call (. table append) (call Grid 5 6))
+  (print (str (. ([] table 0) columns) " " (. ([] table 1) columns) " " (. ([] table 1) rows)))
+)
 
-. arena = use Arena()
-. table = Table'Grid(arena)
-table.append(Grid(3, 4))
-table.append(Grid(5, 6))
--- "${table[0].columns} ${table[1].columns} ${table[1].rows}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Grid is Struct
-
-+ columns U32
-+ rows U32
+(type + Grid (is Struct)
+  (prop + columns U32)
+  (prop + rows U32)
+)
 ```
 
 ```output
@@ -6382,53 +6857,57 @@ table.append(Grid(5, 6))
 
 ### An assignment to a field of a table's row gives the value stored, so it may be an arm's value in a match or a choice.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
+(main
+  (let table (call (of Table Flags) 1))
+  (call set-flag table .flag-a)
+  (call set-flag table .flag-c)
+  (print (str (. ([] table 0) a) " " (. ([] table 0) b) " " (. ([] table 0) c)))
+  (print (str (call pick table true) " " (call pick table false) " " (. ([] table 0) count)))
+)
 
-. table = Table'Flags(1)
-set-flag(table, .flag-a)
-set-flag(table, .flag-c)
--- "${table[0].a} ${table[0].b} ${table[0].c}"
--- "${pick(table, true)} ${pick(table, false)} ${table[0].count}"
+(type + Flags (is Struct)
+  (prop + a Bool)
+  (prop + b Bool)
+  (prop + c Bool)
+  (prop + count U32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Flags is Struct
+(type + Flag (is U32)
+  (variant flag-a (= 0))
+  (variant flag-b (= 1))
+  (variant flag-c (= 2))
+)
 
-+ a Bool
-+ b Bool
-+ c Bool
-+ count U32
+(fn-do + set-flag _
+  (param table (of Table Flags))
+  (param flag Flag)
+  (match flag
+    (case= .flag-a
+      (= (. ([] table 0) a) true)
+    )
+    (case= .flag-b
+      (= (. ([] table 0) b) true)
+    )
+    (default
+      (= (. ([] table 0) c) true)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Flag is U32
-
-| flag-a = 0
-| flag-b = 1
-| flag-c = 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do set-flag
-    - table Table'Flags
-    - flag Flag
-
-match flag
-    |= .flag-a
-        table[0].a = true
-    |= .flag-b
-        table[0].b = true
-    ??
-        table[0].c = true
-
-━━━━━━━━━━━━━━━━━━━━
-+ pick U32
-    - table Table'Flags
-    - wide Bool
-
-|? wide
-    table[0].count = 40
-??
-    table[0].count = 2
+(fn-expr + pick U32
+  (param table (of Table Flags))
+  (param wide Bool)
+  (case? wide
+    (= (. ([] table 0) count) 40)
+  )
+  (default
+    (= (. ([] table 0) count) 2)
+  )
+)
 ```
 
 ```output
@@ -6438,49 +6917,46 @@ true false true
 
 ### A table a property holds is finished as a local one is, and is empty after it.
 
-```yumi
-/core/table
-/core/arena
+```brix
+(import /core/table)
+(import /core/arena)
+(blank)
 
-. arena = Arena(8192)
-do finally arena.release()
-. keeper = Keeper(arena)
-keeper.rows.append(Point(1, 2))
-keeper.rows.append(Point(3, 4))
-. fixed = keeper.rows.finish()
--- "${fixed.length} ${keeper.rows.length}"
-keeper.add(5)
-. again = keeper.seal()
--- "${again.length} ${keeper.rows.length} ${again[0].x}"
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let keeper (call Keeper arena))
+  (call (. keeper rows append) (call Point 1 2))
+  (call (. keeper rows append) (call Point 3 4))
+  (let fixed (call (. keeper rows finish)))
+  (print (str (. fixed length) " " (. keeper rows length)))
+  (call (. keeper add) 5)
+  (let again (call (. keeper seal)))
+  (print (str (. again length) " " (. keeper rows length) " " (. ([] again 0) x)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(type + Point (is Struct)
+  (prop + x Int)
+  (prop + y Int)
+)
 
-+ x Int
-+ y Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Keeper
-
-+ rows Table'Point
-
-────────────────────
-+ This
-    - arena Arena
-
-.. rows = Table'Point(arena, 1)
-
-────────────────────
-+ do add
-    - x Int
-
-rows = Table'Point(Arena(1024), 1)
-rows.append(Point(x, x))
-
-────────────────────
-+ do seal ImmutableTable'Point
-
-= rows.finish()
+(type + Keeper
+  (prop + rows (of Table Point))
+  (fn-do + This _
+    (param arena Arena)
+    (lazy rows (call (of Table Point) arena 1))
+  )
+  (fn-do + add _
+    (param x Int)
+    (= rows (call (of Table Point) (call Arena 1024) 1))
+    (call (. rows append) (call Point x x))
+  )
+  (fn-do + seal (of ImmutableTable Point)
+    (return (call (. rows finish)))
+  )
+)
 ```
 
 ```output
@@ -6490,26 +6966,29 @@ rows.append(Point(x, x))
 
 ### A loop over a range of a table's rows reads the rows the range named while the loop appends more.
 
-```yumi
-/core/arena
-/core/table
+```brix
+(import /core/arena)
+(import /core/table)
+(blank)
 
-. arena = Arena()
-. cases = Table'Case(arena, 4)
-cases.append(Case(1, 2))
-cases.append(Case(3, 4))
-cases.append(Case(5, 6))
-. total = 0
-for fact in cases[1 .. < 3]
-    total += fact.a
-    cases.append(Case(7, 8))
--- "direct $total ${cases.length}"
+(main
+  (let arena (call Arena))
+  (let cases (call (of Table Case) arena 4))
+  (call (. cases append) (call Case 1 2))
+  (call (. cases append) (call Case 3 4))
+  (call (. cases append) (call Case 5 6))
+  (let total 0)
+  (for (in fact ([] cases (..< 1 3)))
+    (+= total (. fact a))
+    (call (. cases append) (call Case 7 8))
+  )
+  (print (str "direct " total " " (. cases length)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Case is Struct
-
-+ a Int
-+ b Int
+(type + Case (is Struct)
+  (prop + a Int)
+  (prop + b Int)
+)
 ```
 
 ```output
@@ -6518,28 +6997,32 @@ direct 8 5
 
 ### An optional field of a table's row is tested and read as a local's is.
 
-```yumi
-/core/arena
-/core/atom-pool
-/core/table
+```brix
+(import /core/arena)
+(import /core/atom-pool)
+(import /core/table)
+(blank)
 
-. pool = AtomPool()
-. arena = Arena()
-. cases = Table'Case(arena, 4)
-cases.append(Case(pool.store("first"), 1))
-cases.append(Case(null, 2))
-for offset in 0 .. < cases.length
-    . fact = cases[offset]
-    if fact.name && fact.name! == pool.store("first")
-        -- "match ${fact.value}"
-    . name = if fact.name then fact.name!.text else "-"
-    -- name
+(main
+  (let pool (call AtomPool))
+  (let arena (call Arena))
+  (let cases (call (of Table Case) arena 4))
+  (call (. cases append) (call Case (call (. pool store) "first") 1))
+  (call (. cases append) (call Case null 2))
+  (for (in offset (..< 0 (. cases length)))
+    (let fact ([] cases offset))
+    (if (and (. fact name) (== (!! (. fact name)) (call (. pool store) "first")))
+      (print (str "match " (. fact value)))
+    )
+    (let name (if-expr (. fact name) (. (!! (. fact name)) text) "-"))
+    (print name)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Case is Struct
-
-+ name Atom?
-+ value Int
+(type + Case (is Struct)
+  (prop + name (? Atom))
+  (prop + value Int)
+)
 ```
 
 ```output
@@ -6550,58 +7033,59 @@ first
 
 ### A method called on a field of a union case of a table row is called on that field.
 
-```yumi
-/core/arena
-/core/atom-pool
-/core/table
+```brix
+(import /core/arena)
+(import /core/atom-pool)
+(import /core/table)
+(blank)
 
--- check()
+(main
+  (print (call check))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Tuple
+(type + Base (is Tuple)
+  (prop + id U32)
+)
 
-+ id U32
+(type + Word (is Base)
+  (prop + text String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Word is Base
+(type + Group (is Base)
+  (prop + count U32)
+)
 
-+ text String
+(type + Node (is Union)
+  (variant atom Word)
+  (variant list Group)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Group is Base
+(fn-do _ check String
+  (let arena (call Arena))
+  (let names (call AtomPool))
+  (let table (call (of Table Node) arena 16))
+  (call (. table append) (call (. Node atom) 1 (. (call (. names store) "@x") text)))
+  (call (. table append) (call (. Node list) 2 3))
+  (call (. table append) (call (. Node atom) 3 (. (call (. names store) "y") text)))
+  (let nodes (call (. table view)))
+  (let shown (list String))
+  (for (in position (..< 0 3))
+    (+= shown (str (call is-attribute ([] nodes position))))
+  )
+  (return (call (. " " join) shown))
+)
 
-+ count U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| atom Word
-| list Group
-
-━━━━━━━━━━━━━━━━━━━━
-_ do check String
-
-. arena = Arena()
-. names = AtomPool()
-. table = Table'Node(arena, 16)
-table.append(Node.atom(1, names.store("@x").text))
-table.append(Node.list(2, 3))
-table.append(Node.atom(3, names.store("y").text))
-. nodes = table.view()
-. shown [String]
-for position in 0 .. < 3
-    shown += "${is-attribute(nodes[position])}"
-= " ".join(shown)
-
-━━━━━━━━━━━━━━━━━━━━
-_ is-attribute Bool
-    - node ImmutableTableRow'Node
-
-match node
-    | .atom(_, text)
-        text.starts-with("@")
-    ??
-        false
+(fn-expr _ is-attribute Bool
+  (param node (of ImmutableTableRow Node))
+  (match node
+    (case (call .atom _ text)
+      (call (. text starts-with) "@")
+    )
+    (default
+      false
+    )
+  )
+)
 ```
 
 ```output
@@ -6610,49 +7094,49 @@ true false false
 
 ### A getter of a union case that a row of a table holds is the case's own extension's, over its base's.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. rows = Table'Piece(3)
-rows[0] = Piece.plain(1)
-rows[1] = Piece.stop(2)
-for position in 0 .. < 2
-    print(rows[position].label)
-match rows[1]
-    | .stop(stop)
-        print(stop.label)
-    | .plain
-        print("no")
+(main
+  (let rows (call (of Table Piece) 3))
+  (= ([] rows 0) (call (. Piece plain) 1))
+  (= ([] rows 1) (call (. Piece stop) 2))
+  (for (in position (..< 0 2))
+    (call print (. ([] rows position) label))
+  )
+  (match ([] rows 1)
+    (case (call .stop stop)
+      (call print (. stop label))
+    )
+    (case .plain
+      (call print "no")
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Empty is Tuple
+(type + Empty (is Tuple)
+  (prop + body U32)
+)
 
-+ body U32
+(type + Stop (is Empty))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Stop is Empty
+(type + Piece (is Union)
+  (variant plain Empty)
+  (variant stop Stop)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Piece is Union
+(extend + Empty
+  (fn-expr + label String :get
+    (str "empty " body)
+  )
+)
 
-| plain Empty
-| stop Stop
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Empty
-
-────────────────────
-+ get label String
-
-"empty $body"
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Stop
-
-────────────────────
-+ get label String
-
-"stop $body"
+(extend + Stop
+  (fn-expr + label String :get
+    (str "stop " body)
+  )
+)
 ```
 
 ```output
@@ -6663,93 +7147,99 @@ stop 2
 
 ### A member with a loop that may move a row's storage is run through the case gathered from the row.
 
-```yumi crash
-/core/table
+```brix crash
+(import /core/table)
+(blank)
 
-. rows = Table'Node(2)
-rows[0] = Node.small(10, 2)
-match rows[0]
-    | .small(small)
-        print(small.pick(9))
-    | .wide
-        print("no")
+(main
+  (let rows (call (of Table Node) 2))
+  (= ([] rows 0) (call (. Node small) 10 2))
+  (match ([] rows 0)
+    (case (call .small small)
+      (call print (call (. small pick) 9))
+    )
+    (case .wide
+      (call print "no")
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
+(type + Syntax (is Tuple)
+  (prop + source U32)
+)
 
-+ source U32
+(type + Small (is Syntax)
+  (prop + value U32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
+(type + Wide (is Syntax)
+  (prop + target U32)
+)
 
-+ value U32
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ target U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Small
-
-────────────────────
-+ do pick String
-    - at U32
-
-. parts [String]
-for index in 0 .. < at
-    parts += "${this.value + index}"
-?! Panic("too far $at")
-    if at > 5
-= "${parts.length} ${this.source}"
+(extend + Small
+  (fn-do + pick String
+    (param at U32)
+    (let parts (list String))
+    (for (in index (..< 0 at))
+      (+= parts (str (+ (. this value) index)))
+    )
+    (throw (call Panic (str "too far " at)) (if (> at 5)))
+    (return (str (. parts length) " " (. this source)))
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: too far 9
-<no file:43>
+<no file:42>
 
 Task 1
 
 Stack trace:
-  0  __source__:pick no file:43:1
-  1  __source__:pick-table-row-receiver-bridge no file:37:1
-  2  __source__:main no file:8:15
+  0  __source__:pick no file:42:5
+  1  __source__:pick-table-row-receiver-bridge no file:36:3
+  2  __source__:main no file:10:19
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### A loop over a table whose body grows it reads and writes the table's storage as it is after the growth, and visits only the rows the table had when the loop began.
 
-```yumi
-/core/table
-/core/arena
+```brix
+(import /core/table)
+(import /core/arena)
+(blank)
 
-. arena = Arena(16384)
-do finally arena.release()
-. rows = Table'Point(arena, 2)
-rows.append(Point(1, 10))
-rows.append(Point(2, 20))
-. turns = 0
-for row in rows
-    turns += 1
-    rows.append(Point(9, 90))
-    rows.reserve(64 * turns)
-    row.x += 100
--- "turns $turns length ${rows.length}"
-for row in rows
-    -- row as Point
+(main
+  (let arena (call Arena 16384))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Point) arena 2))
+  (call (. rows append) (call Point 1 10))
+  (call (. rows append) (call Point 2 20))
+  (let turns 0)
+  (for (in row rows)
+    (+= turns 1)
+    (call (. rows append) (call Point 9 90))
+    (call (. rows reserve) (* 64 turns))
+    (+= (. row x) 100)
+  )
+  (print (str "turns " turns " length " (. rows length)))
+  (for (in row rows)
+    (print (as row Point))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -6762,27 +7252,29 @@ turns 2 length 4
 
 ### A column of a table row read in one branch is read again in the other branch, not reused.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. rows = Table'Point(1) • with Point((each + 7) as I32, (each + 9) as I32)
-for row in rows
-    -- sum-row(row, true)
-    -- sum-row(row, false)
+(main
+  (let rows (call (of Table Point) 1 (:with (call Point (as (+ each 7) I32) (as (+ each 9) I32)))))
+  (for (in row rows)
+    (print (call sum-row row true))
+    (print (call sum-row row false))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do sum-row I32
-    - row TableRow'Point
-    - use-x Bool
+(fn-do + sum-row I32
+  (param row (of TableRow Point))
+  (param use-x Bool)
+  (let first (if-expr use-x (. row x) (. row y)))
+  (return (+ first (. row y)))
+)
 
-. first = if use-x then row.x else row.y
-= first + row.y
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -6792,38 +7284,39 @@ for row in rows
 
 ### An unsuffixed number in one branch takes the type of a union table row's common field in the other.
 
-```yumi
-/core/table
-/core/arena
+```brix
+(import /core/table)
+(import /core/arena)
+(blank)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Node(arena)
-rows.append(Node.word(Word(5, 7)))
-. position = 1
-. above U32 = if position > 0 then rows[0].id else 0
--- above
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Node) arena))
+  (call (. rows append) (call (. Node word) (call Word 5 7)))
+  (let position 1)
+  (let above U32 (if-expr (> position 0) (. ([] rows 0) id) 0))
+  (print above)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base is Tuple
+(type + Base (is Tuple)
+  (prop + id U32)
+)
 
-+ id U32
+(type + Word (is Base)
+  (prop + text U32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Word is Base
+(type + Group (is Base)
+  (prop + count U32)
+)
 
-+ text U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Group is Base
-
-+ count U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| word Word
-| group Group
+(type + Node (is Union)
+  (variant word Word)
+  (variant group Group)
+)
 ```
 
 ```output
@@ -6832,41 +7325,42 @@ rows.append(Node.word(Word(5, 7)))
 
 ### A row of a table passed to a function beside a call that takes the same row is passed whole.
 
-```yumi
-/core/arena
-/core/table
+```brix
+(import /core/arena)
+(import /core/table)
+(blank)
 
-. arena = Arena()
-do finally arena.release()
-. rows = Table'Point(arena, 2)
-rows.append(Point(1))
-rows.append(Point(2))
-show(rows.view()[0 .. < 2])
+(main
+  (let arena (call Arena))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Point) arena 2))
+  (call (. rows append) (call Point 1))
+  (call (. rows append) (call Point 2))
+  (call show ([] (call (. rows view)) (..< 0 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(type + Point (is Struct)
+  (prop + x U32)
+)
 
-+ x U32
+(fn-do + show _
+  (param span (of ImmutableTableSpan Point))
+  (call named ([] span 1) (call same ([] span 1) span))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - span ImmutableTableSpan'Point
+(fn-expr + same (of ImmutableTableSpan Point)
+  (param point (of ImmutableTableRow Point))
+  (param span (of ImmutableTableSpan Point))
+  span
+)
 
-named(span[1], same(span[1], span))
-
-━━━━━━━━━━━━━━━━━━━━
-+ same ImmutableTableSpan'Point
-    - point ImmutableTableRow'Point
-    - span ImmutableTableSpan'Point
-
-span
-
-━━━━━━━━━━━━━━━━━━━━
-+ do named
-    - point ImmutableTableRow'Point
-    - span ImmutableTableSpan'Point
-
--- "${point.x}:${span.length}"
+(fn-do + named _
+  (param point (of ImmutableTableRow Point))
+  (param span (of ImmutableTableSpan Point))
+  (print (str (. point x) ":" (. span length)))
+)
 ```
 
 ```output
@@ -6875,23 +7369,24 @@ span
 
 ### A comprehension over a span of a table yields the rows of the span.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'LoopRow(3) • with LoopRow((each + 5) as U32, 2)
--- spanned(table).length
+(main
+  (let table (call (of Table LoopRow) 3 (:with (call LoopRow (as (+ each 5) U32) 2))))
+  (print (. (call spanned table) length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ LoopRow is Struct
+(type + LoopRow (is Struct)
+  (prop + value U32)
+  (prop + count U32)
+)
 
-+ value U32
-+ count U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ spanned [U32]
-    - table Table'LoopRow
-
-each.value in table[1 .. < 3]
+(fn-expr + spanned (list U32)
+  (param table (of Table LoopRow))
+  (in (. each value) ([] table (..< 1 3)))
+)
 ```
 
 ```output
@@ -6900,27 +7395,31 @@ each.value in table[1 .. < 3]
 
 ### A comprehension over a table finds its rows where its loop begins, not where it is written.
 
-```yumi
-/core/table
-/core/arena
+```brix
+(import /core/table)
+(import /core/arena)
+(blank)
 
-. arena = Arena(8192)
-do finally arena.release()
-. rows = Table'Point(arena, 2)
-rows.append(Point(1, 10))
-rows.append(Point(2, 20))
-. xs = each.x in rows
-. ys = each.y in rows[1 .. < 2]
-rows.append(Point(3, 30))
-rows.reserve(64)
--- List(xs)
--- List(ys)
+(main
+  (let arena (call Arena 8192))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (let rows (call (of Table Point) arena 2))
+  (call (. rows append) (call Point 1 10))
+  (call (. rows append) (call Point 2 20))
+  (let xs (in (. each x) rows))
+  (let ys (in (. each y) ([] rows (..< 1 2))))
+  (call (. rows append) (call Point 3 30))
+  (call (. rows reserve) 64)
+  (print (call List xs))
+  (print (call List ys))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output

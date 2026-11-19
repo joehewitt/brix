@@ -1,0 +1,1188 @@
+(import ./binding)
+(import ./error-sets)
+(import ./facts)
+(import ./instances)
+(import ./narrowing-key)
+(import ./session)
+(import ./type-env)
+(import ./type-relation)
+(import ./type-store)
+(import ./types)
+(import ./typing-scratch)
+(import /core/arena)
+(import /core/scratch)
+(import /lang/ast/ast)
+(import /lang/ast/ast-children)
+(import /lang/ast/ast-nodes)
+(import /lang/ast/decl)
+(import /lang/ast/module)
+(import /lang/ast/program)
+(import /lang/ast/row-range)
+
+(type + Demander (is Interface)
+  (fn-do + demand _
+    (param callee InstanceId)
+  )
+  (fn-do + demand-errors _
+    (param callee InstanceId)
+  )
+  (fn-do + note-live-call _
+    (param id SyntaxId)
+    (param name Atom)
+  )
+  (fn-do + note-given _
+    (param call SyntaxId)
+    (param given SyntaxId)
+    (param callee InstanceId)
+    (param position U32)
+  )
+  (fn-do + type-default _
+    (param callee InstanceId)
+    (param position U32)
+  )
+  (fn-expr + demand-lambda InstanceId
+    (param closure TypeId)
+    (param args (of ImmutableArray TypeId ArenaBacking))
+  )
+  (fn-expr + lambda-fit TypeId
+    (param closure TypeId)
+    (param args (of ImmutableArray TypeId ArenaBacking))
+  )
+  (fn-expr + binding-return BoundReturn
+    (param binding TypeId)
+    (param args (of ImmutableArray TypeId ArenaBacking))
+    (param asked Bool (= false))
+  )
+  (fn-expr + whole-answer TypeId
+    (param callable TypeId)
+    (param returned TypeId)
+    (param args (of ImmutableArray TypeId ArenaBacking))
+    (param declared (of RowRange TypeId))
+    (param bound InstanceId)
+  )
+  (fn-expr + misused-endpoint Bool
+    (param syntax SyntaxId)
+  )
+  (fn-expr + default-type TypeId
+    (param module ModuleId)
+    (param decl DeclId)
+    (param receiver TypeId)
+    (param syntax SyntaxId)
+    (param params (of ImmutableArray TypeId ArenaBacking))
+  )
+  (fn-expr + demand-member TypeId
+    (param fact TypeProperty)
+    (param receiver TypeId)
+    (param name Atom)
+  )
+  (fn-expr + truth-callee InstanceId
+    (param type TypeId)
+  )
+  (fn-expr + tuple-arity U32
+    (param value TypeId)
+  )
+  (fn-expr + field-of TypeId
+    (param value TypeId)
+    (param position U32)
+  )
+  (fn-expr + has-items Bool
+    (param type TypeId)
+  )
+  (fn-do + note-enum-case _
+    (param about TypeId)
+    (param name Atom)
+    (param site SyntaxId)
+    (param settles Bool (= true))
+  )
+  (fn-do + note-symbol-choice _
+    (param about TypeId)
+    (param expr SyntaxId)
+  )
+  (fn-do + note-enum-number _
+    (param site SyntaxId)
+    (param about TypeId)
+  )
+  (fn-do + record-witness _
+    (param from TypeId)
+    (param to TypeId)
+  )
+  (fn-do + demand-union-error _)
+  (fn-do + note-outgoing _
+    (param error TypeId)
+    (param syntax SyntaxId)
+  )
+  (fn-do + defer-outgoing _
+    (param callee InstanceId)
+    (param syntax SyntaxId)
+  )
+)
+
+(type + BoundReturn (is Tuple)
+  ; What a binding returns for the argument types it is given, and the function, the method or the
+  ; constructor it calls with them, where it calls one.
+  (blank)
+  (prop + type TypeId (= invalid-type))
+  (prop + callee InstanceId (= no-instance))
+)
+
+(fn-do + lambda-return TypeId
+  (param host Demander)
+  (param instances Instances)
+  (param closure TypeId)
+  (param args (of ImmutableArray TypeId ArenaBacking))
+  ; The type a closure returns for these argument types, which the host types it for, or the invalid
+  ; type where it has none yet.
+  (let callee (call (. host demand-lambda) closure args))
+  (if (== callee no-instance)
+    (return invalid-type)
+  )
+  (let signature ([] (. instances signatures) callee))
+  (if (== (. signature return-state) .return-pending)
+    (return invalid-type)
+  )
+  (return (. signature returns))
+)
+
+(fn-do + property-subtree SyntaxRange
+  (param program Program)
+  (param module ModuleId)
+  (param property DeclId)
+  ; The syntax of a property's declaration, or of an enum's case, which holds its type and its
+  ; value, or of a rule or a style rule of a class. An initializer instance keeps its facts over
+  ; these nodes alone, though it is typed in its main's frame.
+  (let tree (. ([] (. program modules) module) tree))
+  (let syntax 0u32)
+  (match? ([] (. ([] (. program modules) module) decls) property)
+    (case (call .decl-property row)
+      (= syntax (. row syntax))
+    )
+    (case (call .decl-case row)
+      (= syntax (. row syntax))
+    )
+    (case (call .decl-rule row)
+      (= syntax (. row syntax))
+    )
+    (case (call .decl-style-rule row)
+      (= syntax (. row syntax))
+    )
+  )
+  (if (== syntax 0)
+    (return (call SyntaxRange 0 0))
+  )
+  (let start (call (. tree subtree-start) syntax))
+  (return (call SyntaxRange start (+ (- syntax start) 1)))
+)
+
+(fn-do + equality-site SyntaxId
+  (param types Types)
+  (param program Program)
+  (param value TypeId)
+  ; The node the comparison of two values of a type keeps its facts at: the declaration of the
+  ; type.
+  (let owner (call class-ref types value))
+  (match? ([] (. ([] (. program modules) (. owner module)) decls) (. owner decl))
+    (case (call .decl-class row)
+      (return (. row syntax))
+    )
+  )
+  (return 0)
+)
+
+(type + MemberState (is Struct)
+  ; What a frame knows of properties at a place: whether anything is known, and whether it
+  ; may differ from what the reference knows there, and the first narrowing that may hold.
+  (blank)
+  (prop + narrowed Bool)
+  (prop + unsure Bool)
+  (prop + floor ScratchMark)
+)
+
+(type + Surround (is Tuple)
+  ; What the code being checked runs under: the compilation effects in force, the statement that
+  ; entered the zone it is in, and how many `catch`es and error transformers hold it.
+  (blank)
+  (prop + effects EffectMask (= 0))
+  (prop + zone-site SyntaxId (= 0))
+  (prop + catch-depth U32)
+  (prop + transformer-depth U32)
+)
+
+(type + Frame
+  (prop + session Session)
+  (prop + types Types)
+  (prop + relations Relations)
+  (prop + scratch TypingScratch)
+  (prop + program Program)
+  (prop + bindings Bindings)
+  (prop + instances Instances)
+  (prop + facts Facts)
+  (prop + instance InstanceId)
+  (prop + module ModuleId)
+  (prop + decl DeclId)
+  (prop + tree AST)
+  (prop + declaration CheckedDecl)
+  (prop + binding BindingId (= no-binding))
+  (prop + outer (? Frame) (= null))
+  (prop + nested-scope ScopeId (= 0))
+  (prop _ captures (of RowRange Capture))
+  (prop + slots (of RowRange Slot))
+  (prop _ slot-start ScratchMark (= 0))
+  (prop _ narrow-start ScratchMark (= 0))
+  (prop + returns-start ScratchMark (= 0))
+  (prop + yields-start ScratchMark (= 0))
+  (prop + outgoing-start ScratchMark (= 0))
+  (prop + assigned-syntax (list SyntaxId))
+  (prop + assigned-slots (list SlotId))
+  (prop + assigned-types (list TypeId))
+  (prop + self-type TypeId (= no-type))
+  (prop + surround Surround (= (call Surround)))
+  (prop + members-narrowed Bool)
+  (prop + forgotten U32)
+  (prop _ members-floor ScratchMark (= 0))
+  (prop _ members-doubted Bool)
+  (prop + member-reads U32)
+  (prop _ members-calls Size (= 0))
+  (prop _ members-conversions Size (= 0))
+  (prop + narrowed-members (list NarrowingKey))
+  (prop + member-declared (list TypeId))
+  (prop _ kept-members (list NarrowingKey))
+  (prop _ shared-slots (list SlotId))
+  (prop + transforms (list ErrorTransform))
+  (prop _ transform-chains (list TypeId))
+  (prop _ transform-starts (list Size))
+  (prop + trial-range SyntaxRange (= (call SyntaxRange 0 0)))
+  (prop _ path-bases (list NarrowingKey))
+  (prop _ path-names (list Atom))
+  (prop _ path-declared (list TypeId))
+  (prop + path-stable (list Bool))
+  (prop + env TypeEnv)
+  (prop _ env-open Bool)
+  (fn-do + This _
+    (param session Session)
+    (lazy types (. session types))
+    (lazy relations (. session relations))
+    (lazy scratch (. session scratch))
+    (lazy program (. session program))
+    (lazy bindings (. session bindings))
+    (lazy instances (. session instances))
+    (lazy facts (. session facts))
+    (lazy instance no-instance)
+    (lazy module 0)
+    (lazy decl 0)
+    (lazy tree (. ([] (. program modules) 0) tree))
+  )
+  (fn-do + begin _
+    (param checked InstanceId)
+    ; A frame is reused from one instance to the next, so beginning one sets every field an
+    ; earlier instance could have left.
+    (let row ([] (. instances rows) checked))
+    (let no-declaration CheckedDecl)
+    (let no-env TypeEnv)
+    (= instance checked)
+    (= module (. row module))
+    (= decl (. row decl))
+    (= tree (. ([] (. program modules) module) tree))
+    (= declaration no-declaration)
+    (= binding no-binding)
+    (= outer null)
+    (= nested-scope 0)
+    (= captures (call (of RowRange Capture)))
+    (= slots (call (of RowRange Slot)))
+    (= slot-start 0)
+    (= narrow-start 0)
+    (= returns-start 0)
+    (= yields-start 0)
+    (= outgoing-start 0)
+    (call (. assigned-syntax clear))
+    (call (. assigned-slots clear))
+    (call (. assigned-types clear))
+    (= self-type (if-expr (!= (. row initializer) 0) no-type (. row self-type)))
+    (= surround (call Surround (. row effects)))
+    (= members-narrowed false)
+    (= members-floor 0)
+    (= members-doubted false)
+    (= member-reads 0)
+    (call (. narrowed-members clear))
+    (call (. member-declared clear))
+    (call (. kept-members clear))
+    (call (. shared-slots clear))
+    (call (. transforms clear))
+    (call (. transform-chains clear))
+    (call (. transform-starts clear))
+    (call (. path-bases clear))
+    (call (. path-names clear))
+    (call (. path-declared clear))
+    (call (. path-stable clear))
+    (= env no-env)
+    (= env-open false)
+  )
+  (fn-do + adopt _
+    (param enclosing Frame)
+    (= outer enclosing)
+    (= binding (. enclosing binding))
+    (= self-type (. enclosing self-type))
+    (let row ([] (. bindings bindings) binding))
+    (for (in offset (..< 0 (. row nested count)))
+      (let nested ([] (. bindings nested) (+ (. row nested start) offset)))
+      (if (== (. nested decl) decl)
+        (= nested-scope (. nested scope))
+        (= captures (. nested captures))
+        (return)
+      )
+    )
+  )
+  (fn-do _ reaching-getters SyntaxRange
+    (param range SyntaxRange)
+    ; A range of a body widened back to hold the value of each row local read as a getter that
+    ; a node in it reads, and so on through the getters those values read.
+    (let start (. range start))
+    (let low (. range start))
+    (let high (+ (. range start) (. range count)))
+    (while (< low high)
+      (let scanned start)
+      (for (in node (..< low high))
+        (let resolution (call (. bindings resolution-of) binding node))
+        (if (and (== (. resolution kind) .resolve-slot) (!= (. ([] (. bindings slots) (. resolution slot)) getter) 0))
+          (let written (call (. tree subtree-start) (. ([] (. bindings slots) (. resolution slot)) getter)))
+          (if (< written start)
+            (= start written)
+          )
+        )
+      )
+      (= high scanned)
+      (= low start)
+    )
+    (return (call SyntaxRange start (- (+ (. range start) (. range count)) start)))
+  )
+  (fn-do _ reaching-match SyntaxRange
+    (param range SyntaxRange)
+    (param body SyntaxId)
+    ; A range of the body of a function that builds an arm of a markup match region widened to hold
+    ; the subject of the match and the arm's pattern, which may follow the body, through the arm;
+    ; that of any other body as it is.
+    (let arm (call (. tree body-arm) body))
+    (if (== arm 0)
+      (return range)
+    )
+    (let start (. range start))
+    (let end (+ (. range start) (. range count)))
+    (match? ([] (. tree nodes) (call (. tree arm-match) arm))
+      (case (call .node-match-expression row)
+        (if (and (!= (. row subject) 0) (< (call (. tree subtree-start) (. row subject)) start))
+          (= start (call (. tree subtree-start) (. row subject)))
+        )
+      )
+    )
+    (match? ([] (. tree nodes) arm)
+      (case (call .node-type-transform row)
+        (if (and (!= (. row pattern) 0) (< (call (. tree subtree-start) (. row pattern)) start))
+          (= start (call (. tree subtree-start) (. row pattern)))
+        )
+      )
+    )
+    (if (> (+ arm 1) end)
+      (= end (+ arm 1))
+    )
+    (return (call SyntaxRange start (- end start)))
+  )
+  (fn-do + open _
+    (param opened BindingId)
+    (param reach SyntaxId (= 0))
+    ; Opens the frame of a body over its binding, reserving the facts of its nodes. A nested body
+    ; whose facts sit at a node of the enclosing one past its own, as a feed list's sit at the
+    ; pipeline that consumes it, reserves them through that node, and one that reads a row local
+    ; as a getter reserves the getter's value too, which is typed where it is read. One that builds
+    ; an arm of a markup match region reserves the subject and the arm's pattern too, which it
+    ; reads again and matches. A frame that types one part of a body on trial reserves only that
+    ; part's.
+    (= binding opened)
+    (let row ([] (. bindings bindings) binding))
+    (let reserved (if-expr outer (. declaration subtree) (. row subtree)))
+    (if (and outer (>= reach (+ (. reserved start) (. reserved count))))
+      (= reserved (call SyntaxRange (. reserved start) (+ (- reach (. reserved start)) 1)))
+    )
+    (if outer
+      (= reserved (call reaching-getters reserved))
+    )
+    (if (and outer (== (. declaration kind) .branch-arm-decl))
+      (= reserved (call reaching-match reserved (. declaration syntax)))
+    )
+    (if (!= (. trial-range count) 0)
+      (= reserved trial-range)
+    )
+    (let initializer (. ([] (. instances rows) instance) initializer))
+    (= slots (. row slots))
+    (if (!= initializer 0)
+      (= reserved (call property-subtree program module initializer))
+      (= slots (call (. bindings window-of) binding (- (+ (. reserved start) (. reserved count)) 1)))
+      (else-if (. ([] (. instances rows) instance) compares)
+        (= reserved (call SyntaxRange (call equality-site types program (. ([] (. instances rows) instance) self-type)) 1))
+        (= slots (call (of RowRange Slot) (. slots start) 0))
+      )
+      (else-if (!= (. ([] (. instances rows) instance) root-values) 0)
+        (let application (. ([] (. instances rows) instance) root-values))
+        (let start (call (. ([] (. program modules) module) tree subtree-start) application))
+        (= reserved (call SyntaxRange start (+ (- application start) 1)))
+        (= slots (call (. bindings window-of) binding application))
+      )
+    )
+    (call (. facts reserve-nodes) instance binding reserved)
+    (= slot-start (. scratch slots mark))
+    (for (in _ (..< 0 (. slots count)))
+      (call (. scratch slots push) no-type)
+    )
+    (= narrow-start (. scratch narrowings mark))
+    (= returns-start (. scratch returns mark))
+    (= yields-start (. scratch yields mark))
+    (= outgoing-start (. scratch outgoing mark))
+  )
+  (fn-do + close _
+    (if (!= (. slots count) 0)
+      (= (. ([] (. instances rows) instance) slot-base) (- (. slots start) (. ([] (. bindings bindings) binding) slots start)))
+    )
+    (for (in offset (..< 0 (. slots count)))
+      (call (. facts retain-slot) instance (. slots count) offset ([] (. scratch slots) (+ slot-start offset)))
+    )
+    (call close-env)
+    (call (. scratch outgoing rewind) outgoing-start)
+    (call (. scratch yields rewind) yields-start)
+    (call (. scratch returns rewind) returns-start)
+    (call (. scratch rewind-narrowings) narrow-start)
+    (call (. scratch slots rewind) slot-start)
+  )
+  (fn-do + open-env _
+    (param opened TypeEnv)
+    (= env opened)
+    (= env-open true)
+  )
+  (fn-do + close-env _
+    (if env-open
+      (call (. types env-release) env)
+      (= env-open false)
+    )
+  )
+  (fn-do + is-captured Bool
+    (param slot SlotId)
+    (for (in offset (..< 0 (. captures count)))
+      (if (== (. ([] (. bindings captures) (+ (. captures start) offset)) slot) slot)
+        (return true)
+      )
+    )
+    (return false)
+  )
+  (fn-do + holds-copy Bool
+    (param slot SlotId)
+    ; Whether the function captures a slot by value, as a task's body does, keeping a copy of its own.
+    (for (in offset (..< 0 (. captures count)))
+      (let capture ([] (. bindings captures) (+ (. captures start) offset)))
+      (if (== (. capture slot) slot)
+        (return (!= (/and/ (. capture flags) (. CaptureFlag capture-by-value)) 0))
+      )
+    )
+    (return false)
+  )
+  (fn-expr + known TypeId
+    (param slot SlotId)
+    (case? (< index (. slots count))
+      ([] (. scratch slots) (+ slot-start index))
+    )
+    (default
+      invalid-type
+    )
+    (where
+      (lazy index (- slot (. slots start)))
+    )
+  )
+  (fn-expr + slot-type TypeId
+    (param slot SlotId)
+    (case? (and outer (call is-captured slot))
+      (call (. outer slot-type) slot)
+    )
+    (case? (!= narrowed no-type)
+      narrowed
+    )
+    (default
+      (call known slot)
+    )
+    (where
+      (lazy narrowed (call (. scratch narrowed-since) narrow-start (call slot-key slot)))
+    )
+  )
+  (fn-expr + key-type TypeId
+    (param key NarrowingKey)
+    (case? (!= slot no-slot)
+      (call slot-type slot)
+    )
+    (case? (!= narrowed no-type)
+      narrowed
+    )
+    (default
+      invalid-type
+    )
+    (where
+      (lazy slot (call key-slot key))
+      (lazy narrowed (call (. scratch narrowed-since) narrow-start key))
+    )
+  )
+  (fn-do + note-member _
+    (param key NarrowingKey)
+    (param declared TypeId)
+    ; A property the flow comes to know something of, `declared` before it does. The reference
+    ; comes to know it here too: where no other property is known, the two agree from here.
+    (let live false)
+    (for (in known narrowed-members)
+      (if (call is-live known)
+        (= live true)
+      )
+    )
+    (if (not live)
+      (call settle-members false)
+    )
+    (if (or (not members-narrowed) (> members-floor (. scratch narrowings mark)))
+      (= members-floor (. scratch narrowings mark))
+    )
+    (= members-narrowed true)
+    (if (== (call (. narrowed-members find) key) null)
+      (+= narrowed-members key)
+      (+= member-declared declared)
+    )
+    (let kept (call (. kept-members find) key))
+    (if (!= kept null)
+      (-= ([] kept-members (..< kept (+ kept 1))))
+    )
+  )
+  (fn-do + forget-members _
+    ; Something ran that ends what is known of every property, here and in the reference: a
+    ; call this pass settled, a call of a function value or a nested function, a print, a loop
+    ; begun. Each time is counted (`forgotten`).
+    (= members-narrowed false)
+    (+= forgotten 1)
+    (call forget-shared)
+  )
+  (fn-do + forget-escaped _
+    (param key NarrowingKey)
+    ; A value stored where the reference no longer follows it ends what is known of what it is
+    ; read from and of what is reached through that: a property or a path from one is left as it
+    ; was before it was known, as an assignment of it leaves it, and so is every path from what
+    ; the value is read from. What is known of a local itself the reference keeps.
+    (if (call is-member-key key)
+      (let index (call (. narrowed-members find) key))
+      (if (and (!= index null) (call is-live key))
+        (call push-assigned key ([] member-declared index))
+      )
+    )
+    (call reset-unstable-paths key)
+  )
+  (fn-do + forget-receiver _
+    ; The receiver stored where the reference no longer follows it ends what is known of every
+    ; property of it and of every path from one (`forget-escaped`).
+    (for (in position (..< 0 (. narrowed-members length)))
+      (let key ([] narrowed-members position))
+      (if (and (not (call is-path-key key)) (call is-live key))
+        (call push-assigned key ([] member-declared position))
+      )
+    )
+    (for (in index (..< 0 (. path-bases length)))
+      (if (and (call is-member-key ([] path-bases index)) (not (call is-path-key ([] path-bases index))))
+        (call push-assigned (call path-key-at (as index U32)) ([] path-declared index))
+        (call reset-paths (call path-key-at (as index U32)))
+      )
+    )
+  )
+  (fn-do + forget-shared _
+    ; A call ran. It ends what is known of a local this function assigns that a nested
+    ; function typed by now captures, here and in the reference, where what is known is that
+    ; an optional holds a value. Anything else known the reference keeps, so it is kept here,
+    ; and a read of the local wavers.
+    (for (in index (..< 0 (. path-bases length)))
+      (let base ([] path-bases index))
+      (if (and ([] path-stable index) (not (call is-member-key base)) (call is-changed-elsewhere (call key-slot base)))
+        (let key (call path-key-at (as index U32)))
+        (if (call is-narrowed-path key)
+          (call push-assigned key ([] path-declared index))
+        )
+        (call reset-stable-paths key)
+      )
+    )
+    (for (in slot shared-slots)
+      (if (or (== (/and/ (. ([] (. bindings slots) slot) flags) (. SlotFlag slot-assigned-own)) 0) (not (call is-narrowed slot)))
+        (continue)
+      )
+      (let held (call known slot))
+      (let found (call (. scratch narrowed-since) narrow-start (call slot-key slot)))
+      (if (and (call (. types is-optional) held) (== (call (. types optional-inner) held) found))
+        (call push-assigned (call slot-key slot) held)
+      )
+    )
+  )
+  (fn-do + share _
+    (param slot SlotId)
+    ; A nested function that captures a local of this frame is typed: from here the local may
+    ; change wherever anything runs.
+    (if (== (call (. shared-slots find) slot) null)
+      (+= shared-slots slot)
+    )
+  )
+  (fn-expr + is-narrowed Bool
+    (param slot SlotId)
+    (and (!= narrowed no-type) (!= narrowed (call known slot)))
+    (where
+      (lazy narrowed (call (. scratch narrowed-since) narrow-start (call slot-key slot)))
+    )
+  )
+  (fn-expr + is-tested Bool
+    (param slot SlotId)
+    ; Whether what is known of a local beyond its type is what a test found, not what an
+    ; assignment left.
+    (and (call is-narrowed slot) (not (call (. scratch was-assigned) narrow-start (call slot-key slot))))
+  )
+  (fn-expr + wavers Bool
+    (param slot SlotId)
+    ; Whether the flow knows more of a local than its type where a nested function may have
+    ; assigned it since. The reference then forgets at the calls it emits, or reads what the
+    ; local held when it was tested.
+    (and (!= (call (. shared-slots find) slot) null) (call is-narrowed slot))
+  )
+  (fn-do + knows-properties Bool
+    ; Whether the flow knows anything a call ends: of a property, or of a local a nested function
+    ; may assign.
+    (for (in key narrowed-members)
+      (if (call is-live key)
+        (return true)
+      )
+    )
+    (for (in slot shared-slots)
+      (if (call is-narrowed slot)
+        (return true)
+      )
+    )
+    (return false)
+  )
+  (fn-do + doubt-members _
+    ; Something ran that the reference may forget properties at, where this pass does not.
+    (= members-doubted true)
+  )
+  (fn-do + doubt-members-at _
+    (param narrowed Bool)
+    ; Doubts the members as `doubt-members` does, with whether any is narrowed put back to
+    ; `narrowed`, as it was before the value just typed.
+    (= members-narrowed narrowed)
+    (= members-doubted true)
+  )
+  (fn-do + keep-members _
+    (param known (list NarrowingKey))
+    ; Properties were forgotten where the reference may still know them: in an arm of a match
+    ; that goes on, those `known` before the arm. What its own test found of one the reference
+    ; forgets past the match.
+    (for (in key known)
+      (if (== (call (. kept-members find) key) null)
+        (+= kept-members key)
+      )
+    )
+  )
+  (fn-expr + live-members (list NarrowingKey)
+    ; The properties a test's finding holds of here (`is-live`).
+    (in each narrowed-members (when (call is-live each)))
+  )
+  (fn-expr + is-doubted Bool
+    (param key NarrowingKey)
+    ; Whether what this pass knows of a property may differ from what the reference knows of
+    ; it. The reference forgets every property at each call it emits but a probe's and each
+    ; conversion that is one there, and this pass at the calls it settles: a call or a conversion
+    ; that may be a call there (`converts-since`) recorded since the property was known, with
+    ; nothing forgotten, leaves the two in doubt.
+    (and (not (call is-stable-path key)) (or (!= (call (. kept-members find) key) null) (and (call is-live key) is-unsure)))
+  )
+  (fn-expr + is-stable-path Bool
+    (param key NarrowingKey)
+    (and (call is-path-key key) ([] path-stable (call path-index key)))
+  )
+  (fn-expr + knows-member Bool
+    (param key NarrowingKey)
+    (or members-narrowed (call is-stable-path key))
+  )
+  (fn-expr _ is-live Bool
+    (param key NarrowingKey)
+    ; Whether a test's finding of a property holds here. An assignment leaves a property as it
+    ; is declared, here and in the reference.
+    (and members-narrowed (!= (call (. scratch narrowed-since) member-start key) no-type) unassigned)
+    (where
+      (lazy unassigned (not (call (. scratch was-assigned) member-start key)))
+    )
+  )
+  (fn-expr _ member-start ScratchMark :get
+    ; The first narrowing of a property that may hold here: none from before the flow last knew
+    ; nothing of properties holds again when it comes to know one.
+    (case? (> members-floor narrow-start)
+      members-floor
+    )
+    (default
+      narrow-start
+    )
+  )
+  (fn-expr _ is-unsure Bool :get
+    (or members-doubted (call calls-since members-calls) (call converts-since members-conversions))
+  )
+  (fn-do _ calls-since Bool
+    (param start Size)
+    ; Whether a call this frame's instance makes was recorded since `start`, but for one the
+    ; compiler answers with no call of its own (`answers-in-place`) and one a probe makes of the
+    ; probes module, which changes no property here or in the reference. The calls of other
+    ; functions typed meanwhile, as what a conversion or a call demands, are not this one's.
+    (let position (call (. facts latest-call-of) instance))
+    (while (and (!= position no-fact) (>= (as position Size) start))
+      (let call ([] (. facts calls) position))
+      (let probes
+        (scope (or plain-probe (== (. call form) .call-probe-metric))
+          (lazy plain-probe (or (== (. call form) .call-probe) (== (. call form) .call-probe-head)))
+        )
+      )
+      (if (and (not probes) (not (call (. facts answers-in-place) instance (. call syntax))))
+        (return true)
+      )
+      (= position (call (. facts prior-call) position))
+    )
+    (return false)
+  )
+  (fn-do _ converts-since Bool
+    (param start Size)
+    ; Whether a conversion recorded since `start` may be a call in the reference: any but one that
+    ; takes a value as what it is, as a class it derives from or an optional of it, or as a
+    ; number, a truth value or a pointer, which the reference makes in place, and one that takes
+    ; a function named as a C function's, whose value is the address of its code. The
+    ; conversions of other functions typed meanwhile are not this one's.
+    (let position (call (. facts latest-conversion-of) instance))
+    (while (and (!= position no-fact) (>= (as position Size) start))
+      (let fact ([] (. facts conversions) position))
+      (let kind (. fact kind))
+      (let casts
+        (scope (and (== kind .relation-side-cast) runs-code)
+          (lazy runs-code (or (. fact casts) (!= (. fact callee) no-instance) (!= (. fact runs) no-instance)))
+        )
+      )
+      (let in-place
+        (scope (or plain (== kind .relation-wrap-cast) (and (== kind .relation-side-cast) (not casts)))
+          (lazy plain (or (== kind .relation-same) (== kind .relation-equal) (== kind .relation-up-cast)))
+        )
+      )
+      (if (and (not in-place) (not (call is-code-address fact)))
+        (return true)
+      )
+      (= position (call (. facts prior-conversion) position))
+    )
+    (return false)
+  )
+  (fn-expr _ is-code-address Bool
+    (param fact ConversionFact)
+    (and known-from (call is-c-function types (. fact to)) (== (. ([] (. types completions) (. fact from)) intrinsic) .binding))
+    (where
+      (lazy known-from (and (!= (. fact from) no-type) (!= (. fact from) invalid-type)))
+    )
+  )
+  (fn-do _ settle-members _
+    (param unsure Bool)
+    (= members-doubted unsure)
+    (= members-calls (. facts calls length))
+    (= members-conversions (. facts conversions length))
+  )
+  (fn-expr + save-members MemberState
+    (call MemberState members-narrowed is-unsure members-floor)
+  )
+  (fn-do + restore-members _
+    (param state MemberState)
+    ; What was known of properties at a place holds again after a branch from it that leaves:
+    ; nothing the branch did reaches what follows.
+    (= members-narrowed (. state narrowed))
+    (= members-floor (. state floor))
+    (call settle-members (. state unsure))
+  )
+  (fn-do + merge-members _
+    (param other MemberState)
+    ; What is known of properties where two branches meet: what both know, in doubt where
+    ; either is, and nothing either forgot.
+    (let unsure (or is-unsure (. other unsure)))
+    (= members-narrowed (and members-narrowed (. other narrowed)))
+    (if (> (. other floor) members-floor)
+      (= members-floor (. other floor))
+    )
+    (call settle-members unsure)
+  )
+  (fn-expr + narrowed-slot TypeId
+    (param slot SlotId)
+    ; What the flow knows a local of this frame to hold, where that is more than its type, or
+    ; no type.
+    (call (. scratch narrowed-since) narrow-start (call slot-key slot))
+  )
+  (fn-do + assign _
+    (param slot SlotId)
+    (param assigned TypeId)
+    (let index (- slot (. slots start)))
+    (if (< index (. slots count))
+      (= ([] (. scratch slots) (+ slot-start index)) assigned)
+    )
+  )
+  (fn-do + narrowed-member TypeId
+    (param key NarrowingKey)
+    ; What the flow knows a property or a path to hold here, or no type. Each read that finds
+    ; something is counted (`member-reads`); the flow's own joins ask `held-member`, which is not.
+    (let narrowed (call held-member key))
+    (if (!= narrowed no-type)
+      (+= member-reads 1)
+    )
+    (return narrowed)
+  )
+  (fn-expr + held-member TypeId
+    (param key NarrowingKey)
+    (call (. scratch narrowed-since) (if-expr (call is-stable-path key) narrow-start member-start) key)
+  )
+  (fn-do + path-key NarrowingKey
+    (param base NarrowingKey)
+    (param name Atom)
+    (param declared TypeId)
+    (param stable Bool)
+    (let found (call find-path-key base name))
+    (if found
+      (return found)
+    )
+    (+= path-bases base)
+    (+= path-names name)
+    (+= path-declared declared)
+    (+= path-stable stable)
+    (return (call path-key-at (as (- (. path-bases length) 1) U32)))
+  )
+  (fn-do + find-path-key (? NarrowingKey)
+    (param base NarrowingKey)
+    (param name Atom)
+    (for (in index (..< 0 (. path-bases length)))
+      (if (and (== ([] path-bases index) base) (== ([] path-names index) name))
+        (return (call path-key-at (as index U32)))
+      )
+    )
+    (return null)
+  )
+  (fn-expr + path-declared-type TypeId
+    (param key NarrowingKey)
+    ([] path-declared (call path-index key))
+  )
+  (fn-do + reset-paths _
+    (param base NarrowingKey)
+    ; Leaves every path from a key as it was before it was known, and every path from those.
+    (for (in index (..< 0 (. path-bases length)))
+      (if (== ([] path-bases index) base)
+        (call push-assigned (call path-key-at (as index U32)) ([] path-declared index))
+        (call reset-paths (call path-key-at (as index U32)))
+      )
+    )
+  )
+  (fn-do + reset-unstable-paths _
+    (param base NarrowingKey)
+    (for (in index (..< 0 (. path-bases length)))
+      (if (== ([] path-bases index) base)
+        (let key (call path-key-at (as index U32)))
+        (if ([] path-stable index)
+          (call reset-unstable-paths key)
+          (else
+            (call push-assigned key ([] path-declared index))
+            (call reset-paths key)
+          )
+        )
+      )
+    )
+  )
+  (fn-do + reset-stable-paths _
+    (param base NarrowingKey)
+    (for (in index (..< 0 (. path-bases length)))
+      (if (and (== ([] path-bases index) base) ([] path-stable index))
+        (let key (call path-key-at (as index U32)))
+        (if (call is-narrowed-path key)
+          (call push-assigned key ([] path-declared index))
+        )
+        (call reset-stable-paths key)
+      )
+    )
+  )
+  (fn-expr _ is-narrowed-path Bool
+    (param key NarrowingKey)
+    (and (!= held no-type) (!= held ([] path-declared (call path-index key))))
+    (where
+      (lazy held (call (. scratch narrowed-since) narrow-start key))
+    )
+  )
+  (fn-expr _ is-changed-elsewhere Bool
+    (param slot SlotId)
+    (and assigned (or (!= (call (. shared-slots find) slot) null) (call is-captured slot)))
+    (where
+      (lazy assigned (!= (/and/ (. ([] (. bindings slots) slot) flags) (. SlotFlag slot-assigned)) 0))
+    )
+  )
+  (fn-do + push-narrowing ScratchMark
+    (param key NarrowingKey)
+    (param projected TypeId)
+    (param cases U64 (= 0))
+    (let mark (. scratch narrowings mark))
+    (call (. scratch push-narrowing) (call Narrowed key projected cases))
+    (return mark)
+  )
+  (fn-do + push-assigned _
+    (param key NarrowingKey)
+    (param projected TypeId)
+    (param cases U64 (= 0))
+    ; What an assignment leaves a key as, which holds past the end of the region it is made in.
+    (call (. scratch push-narrowing) (call Narrowed key projected cases true))
+  )
+  (fn-expr + is-evaluated Bool
+    (param slot SlotId)
+    ; Whether every way here passed a read of a lazy local kept behind a flag, so that the local
+    ; has its value here and a read of it evaluates nothing.
+    (!= (call (. scratch narrowed-since) narrow-start (call evaluated-key slot)) no-type)
+  )
+  (fn-do + note-evaluated _
+    (param slot SlotId)
+    ; A read of a lazy local kept behind a flag gave it its value: what follows in the region the
+    ; read is in, and no further, has it.
+    (if (not (call is-evaluated slot))
+      (call (. scratch push-narrowing) (call Narrowed (call evaluated-key slot) (. types bool-type)))
+    )
+  )
+  (fn-do + tested-locals (list SlotId)
+    ; The locals of this frame that a test, not an assignment, last found something of, each once.
+    (let found (list SlotId))
+    (let seen (list NarrowingKey))
+    (let position (. scratch narrowings length))
+    (while (> position narrow-start)
+      (-= position 1)
+      (let row ([] (. scratch narrowings) position))
+      (if (or (call is-member-key (. row key)) (call is-evaluated-key (. row key)) (!= (call (. seen find) (. row key)) null))
+        (continue)
+      )
+      (+= seen (. row key))
+      (if (not (. row assigned))
+        (+= found (call key-slot (. row key)))
+      )
+    )
+    (return found)
+  )
+  (fn-expr + assigned-since (list Narrowed)
+    (param mark ScratchMark)
+    (call (. scratch assigned-since) mark)
+  )
+  (fn-expr + assigned-in-frame (list Narrowed) :get
+    ; What each key an assignment settled in this frame is narrowed to now (`assigned-since`).
+    (call (. scratch assigned-since) narrow-start)
+  )
+  (fn-do + keep-assigned _
+    (param settled (list Narrowed))
+    ; Makes what assignments left their keys as known again, after the region they were made in
+    ; ended and took it back: the region always runs before what follows it.
+    (let position (. settled length))
+    (while (!= position 0)
+      (-= position 1)
+      (let row ([] settled position))
+      (call push-assigned (. row key) (. row type) (. row cases))
+    )
+  )
+  (fn-expr + narrowed-cases U64
+    (param key NarrowingKey)
+    (call (. scratch narrowed-cases-since) narrow-start key)
+  )
+  (fn-do + note-assignment _
+    (param syntax SyntaxId)
+    (param slot SlotId)
+    (param settled TypeId)
+    (+= assigned-syntax syntax)
+    (+= assigned-slots slot)
+    (+= assigned-types settled)
+  )
+  (fn-do + forget-assignments _
+    (param mark ScratchMark)
+    (-= ([] assigned-syntax (..< mark (. assigned-syntax length))))
+    (-= ([] assigned-slots (..< mark (. assigned-slots length))))
+    (-= ([] assigned-types (..< mark (. assigned-types length))))
+  )
+  (fn-do + pop-narrowing _
+    (param mark ScratchMark)
+    (call (. scratch rewind-narrowings) mark)
+  )
+  (fn-do + note-return _
+    (param returned TypeId)
+    (param syntax SyntaxId)
+    (call (. scratch returns push) (call TypedSite returned syntax))
+  )
+  (fn-do + note-yielded _
+    (param yielded TypeId)
+    (param syntax SyntaxId)
+    ; Keeps where a yield is written with the type of what it yields, until the function's
+    ; items have their type and each yield is converted to it.
+    (call (. scratch yields push) (call TypedSite yielded syntax))
+  )
+  (fn-do + note-outgoing _
+    (param error TypeId)
+    (param syntax SyntaxId)
+    ; An error leaving the function is tried with the transformers declared for it, in the order
+    ; TypeScript tries them, and leaves as what each raises, or as itself where none takes it.
+    (if (== (. transforms length) 0)
+      (call (. scratch outgoing push) (call Outgoing error syntax))
+      (return)
+    )
+    (let tried (list U32))
+    (call order-transforms relations error transforms tried)
+    (let leaving (list TypeId))
+    (call transform-leaving facts types instance syntax error transforms tried leaving true)
+    (for (in type leaving)
+      (call (. scratch outgoing push) (call Outgoing type syntax))
+    )
+  )
+  (fn-do + defer-outgoing _
+    (param callee InstanceId)
+    (param syntax SyntaxId)
+    ; A call lets its callee's errors out of the function before they are known. Its place among
+    ; the errors that leave is kept, with the call's fact and the transformers declared so far.
+    (let call (call (. facts latest-call) instance syntax))
+    (let declared U32 (as (. transforms length) U32))
+    (call (. scratch outgoing push) (call Outgoing no-type syntax callee call declared))
+  )
+  (fn-do + add-transform _
+    (param source TypeId)
+    (param raised TypeId)
+    (param chain (list TypeId))
+    (param site SyntaxId)
+    (param fact U32)
+    (+= transforms (call ErrorTransform source raised site fact (!= (. chain length) 0)))
+    (+= transform-starts (. transform-chains length))
+    (for (in link chain)
+      (+= transform-chains link)
+    )
+  )
+  (fn-do + has-transform Bool
+    (param source TypeId)
+    (param chain (list TypeId))
+    ; Whether a transformer is already declared for an error reached through the same chain of
+    ; earlier errors.
+    (for (in index (..< 0 (. transforms length)))
+      (if (!= (. ([] transforms index) source) source)
+        (continue)
+      )
+      (let start ([] transform-starts index))
+      (let next (+ index 1))
+      (let end
+        (scope (if-expr (< next (. transform-starts length)) next-start (. transform-chains length))
+          (lazy next-start ([] transform-starts next))
+        )
+      )
+      (if (!= (- end start) (. chain length))
+        (continue)
+      )
+      (let same true)
+      (for (in offset (..< 0 (. chain length)))
+        (if (!= ([] transform-chains (+ start offset)) ([] chain offset))
+          (= same false)
+        )
+      )
+      (if same
+        (return true)
+      )
+    )
+    (return false)
+  )
+  (fn-do + names-type-param Bool
+    (param type SyntaxId)
+    ; Whether a type as written names a type parameter of the function being typed, or of its
+    ; class.
+    (for (in id (..< (call (. tree subtree-start) type) (+ type 1)))
+      (match? ([] (. tree nodes) id)
+        (case (call .node-type-identifier row)
+          (if (!= (call (. types env-lookup) env (. row name)) null)
+            (return true)
+          )
+        )
+      )
+    )
+    (return false)
+  )
+  (fn-do + diagnose _
+    (param syntax SyntaxId)
+    (param kind TypeDiagnosticKind)
+    (param name (? Atom) (= null))
+    (param source TypeId (= no-type))
+    (param target TypeId (= no-type))
+    (call (. facts record-diagnostic) instance module syntax kind name source target)
+  )
+  (fn-do + mention _
+    (param mentioned (list TypeId))
+    (call (. facts mention-types) mentioned)
+  )
+  (fn-do + check-suspends _
+    (param site SyntaxId)
+    ; Code that may not suspend does not yield or call a runtime function that suspends the task,
+    ; reported where it does: in a GC-free zone, naming where it is entered, or under `without suspend`
+    ; or `without safepoints`.
+    (let effects (call dispatch-effects (. surround effects)))
+    (return-if (if (== (/and/ effects (. CompilationEffect no-suspend)) 0)))
+    (if (!= (/and/ effects (. CompilationEffect gc-free)) 0)
+      (call diagnose site .restricted (call (. program store-atom) (str "cannot suspend inside a GC-free zone (entered at " (call zone-entry) ")")))
+      (return)
+    )
+    (call diagnose site .restricted (call (. program store-atom) (str "cannot suspend under " (call suspend-restriction effects))))
+  )
+  (fn-do + check-allocates _
+    (param site SyntaxId)
+    ; Code that may not use the heap allocates nothing from the collector, reported where it does:
+    ; in a GC-free zone, naming where it is entered, or under `without heap`. A raise is typed with no
+    ; such effect, as an error is raised outside the zone.
+    (let effects (call dispatch-effects (. surround effects)))
+    (return-if (if (== (/and/ effects (. CompilationEffect no-heap)) 0)))
+    (if (!= (/and/ effects (. CompilationEffect gc-free)) 0)
+      (call diagnose site .restricted (call (. program store-atom) (str "allocation is not allowed in a GC-free zone (entered at " (call zone-entry) ")")))
+      (return)
+    )
+    (call diagnose site .restricted (call (. program store-atom) "allocation is not allowed under 'without heap'"))
+  )
+  (fn-do + check-lazy-read _
+    (param site SyntaxId)
+    (param name String)
+    ; A lazy global's first read runs its value, and waits while another task runs it, so code that
+    ; may not use the heap or suspend does not read one.
+    (let effects (call dispatch-effects (. surround effects)))
+    (return-if (if (== (/and/ effects (/or/ (. CompilationEffect no-heap) (. CompilationEffect no-suspend))) 0)))
+    (let restriction (if-expr (!= (/and/ effects (. CompilationEffect no-heap)) 0) "'without heap'" (call suspend-restriction effects)))
+    (let place (if-expr (!= (/and/ effects (. CompilationEffect gc-free)) 0) (str "inside a GC-free zone (entered at " (call zone-entry) ")") (str "under " restriction)))
+    (call diagnose site .restricted (call (. program store-atom) (str "cannot read lazy global '" name "' " place ", since its first read runs its value")))
+  )
+  (fn-do _ suspend-restriction String
+    (param effects EffectMask)
+    ; The restriction that keeps code from suspending, as it is written: `without safepoints` keeps
+    ; it from suspending too.
+    (return-if "'without safepoints'" (if (!= (/and/ effects (. CompilationEffect no-safepoint)) 0)))
+    (return "'without suspend'")
+  )
+  (fn-expr + zone-entry String
+    ; Where the zone being typed in is entered, as TypeScript names it: the file, line and column
+    ; of the `do` block that entered it, of the zone the function was first called in, or else of
+    ; the function's declaration.
+    (str shown ":" (+ (. begin line) 1) ":" (+ (. begin column) 1))
+    (where
+      (lazy zone (call entered-zone))
+      (lazy begin (. ([] (. ([] (. program modules) (. zone module)) tree nodes loc) (. zone site)) begin))
+      (lazy path (. ([] (. program modules) (. zone module)) path))
+      (lazy shown (if-expr (!= (. path length) 0) path "no file"))
+    )
+  )
+  (fn-expr + zone ZoneEntry
+    ; The zone code being typed is in, which a function it calls is typed in: none outside one.
+    (if-expr (== (/and/ (. surround effects) (. CompilationEffect gc-free)) 0) (call ZoneEntry) (call entered-zone))
+  )
+  (fn-expr _ entered-zone ZoneEntry
+    (case? (!= (. surround zone-site) 0)
+      (call ZoneEntry module (. surround zone-site))
+    )
+    (case? (!= (. held site) 0)
+      held
+    )
+    (default
+      (call ZoneEntry module (. declaration syntax))
+    )
+    (where
+      (lazy held (. ([] (. instances rows) instance) zone))
+    )
+  )
+)

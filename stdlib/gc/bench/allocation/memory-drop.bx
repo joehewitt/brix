@@ -1,0 +1,42 @@
+; benchmark.meta description: Holds and drops a known live byte set before explicit collection and scavenging.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: gc-runtime,allocator,compile-timing
+(blank)
+(import /BxGC/BxGC.h)
+(blank)
+
+(main
+  (call C:brixGCSetHeapGoal 1073741824)
+  (blank)
+  (let checksum (call allocate-and-drop 96 1048576))
+  (blank)
+  (call C:brixGCCollect)
+  (call C:brixGCScavenge)
+  (blank)
+  (let rebound (list ([] Byte)))
+  (for (in index (..< 0 8))
+    (let bytes ([] Byte 1048576))
+    (= ([] bytes index) (as (+ index 17) U8))
+    (+= checksum (as ([] bytes index) Size))
+    (+= rebound bytes)
+  )
+  (blank)
+  (print (str "bench-result allocation/memory-drop checksum=" checksum))
+)
+
+(fn-do + allocate-and-drop Size
+  (param chunk-count Size)
+  (param chunk-size Size)
+  (let held (list ([] Byte)))
+  (let checksum (as 0 Size))
+  (for (in index (..< 0 chunk-count))
+    (let bytes ([] Byte chunk-size))
+    (= ([] bytes 0) (as (% index 251) U8))
+    (= ([] bytes (- chunk-size 1)) (as (% (* index 3) 251) U8))
+    (+= checksum (+ (as ([] bytes 0) Size) (as ([] bytes (- chunk-size 1)) Size) index))
+    (+= held bytes)
+  )
+  (blank)
+  (+= checksum (* (. held length) chunk-size))
+  (return checksum)
+)

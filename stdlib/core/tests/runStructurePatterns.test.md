@@ -4,34 +4,55 @@ JOE-32 ImmutableArray Patterns
 
 ### List patterns cover empty, exact slots, wildcard slots, bare rest, and captured rest.
 
-```yumi
-. empty = List'Int()
-. numbers = [1, 2, 3, 4]
-
--- match empty
-    | []
+```brix
+(main
+  (let empty (call (of List Int)))
+  (let numbers (list 1 2 3 4))
+  (blank)
+  (print
+    (match empty
+      (case (list)
         "empty"
-    ??
+      )
+      (default
         "not empty"
-
--- match numbers
-    | [first, _, third, ...]
-        "$first/$third"
-    ??
+      )
+    )
+  )
+  (blank)
+  (print
+    (match numbers
+      (case (list first _ third ...)
+        (str first "/" third)
+      )
+      (default
         "no"
-
-. middle = match numbers
-    | [first, ...rest, last]
+      )
+    )
+  )
+  (blank)
+  (let middle
+    (match numbers
+      (case (list first ...rest last)
         rest
-
--- type-of middle
--- middle
-
--- match [1, 2]
-    | [_, _, _]
+      )
+    )
+  )
+  (blank)
+  (print (type-of middle))
+  (print middle)
+  (blank)
+  (print
+    (match (list 1 2)
+      (case (list _ _ _)
         "bad"
-    ??
+      )
+      (default
         "short"
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -44,27 +65,43 @@ short
 
 ### Array patterns keep concrete slice types for captured remainders.
 
-```yumi
-. values = Array'Int([10, 20, 30, 40])
-. tail = match values
-    | [head, ...rest]
+```brix
+(main
+  (let values (call (of Array Int) (list 10 20 30 40)))
+  (let tail
+    (match values
+      (case (list head ...rest)
         rest
-
--- type-of tail
--- tail.length
--- ", ".join(tail)
-
--- match values
-    | [10, ..., 40]
+      )
+    )
+  )
+  (blank)
+  (print (type-of tail))
+  (print (. tail length))
+  (print (call (. ", " join) tail))
+  (blank)
+  (print
+    (match values
+      (case (list 10 ... 40)
         "edge"
-    ??
+      )
+      (default
         "miss"
-
--- match values
-    | [10, 99, ...]
+      )
+    )
+  )
+  (blank)
+  (print
+    (match values
+      (case (list 10 99 ...)
         "bad"
-    ??
+      )
+      (default
         "mismatch"
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -77,42 +114,39 @@ mismatch
 
 ### Concrete user-defined Indexable patterns lower through static length/index/slice operations.
 
-```yumi
-. window = IntWindow([5, 6, 7, 8])
-. rest = match window
-    | [first, ...middle, last]
+```brix
+(main
+  (let window (call IntWindow (list 5 6 7 8)))
+  (let rest
+    (match window
+      (case (list first ...middle last)
         middle
+      )
+    )
+  )
+  (blank)
+  (print (type-of rest))
+  (print (. rest length))
+  (print (call (. ", " join) rest))
+)
 
--- type-of rest
--- rest.length
--- ", ".join(rest)
-
-━━━━━━━━━━━━━━━━━━━━
-+ IntWindow
-    is Indexable'Int
-
-_ values List'Int
-
-────────────────────
-+ This
-    - items [Int]
-
-values = items
-
-────────────────────
-+ get length Size
-
-values.length
-
-────────────────────
-+ this[index Index] Int
-
-values[index]
-
-────────────────────
-+ this[range Range'Index] IntWindow
-
-IntWindow(values[range])
+(type + IntWindow
+  (implements (of Indexable Int))
+  (prop _ values (of List Int))
+  (fn-do + This _
+    (param items (list Int))
+    (= values items)
+  )
+  (fn-expr + length Size :get
+    (. values length)
+  )
+  (fn-expr + (index-get this (param index Index)) Int
+    ([] values index)
+  )
+  (fn-expr + (index-get this (param range (of Range Index))) IntWindow
+    (call IntWindow ([] values range))
+  )
+)
 ```
 
 ```output
@@ -123,42 +157,39 @@ IntWindow(values[range])
 
 ### Erased Indexable captures return Indexable'T instead of the concrete source type.
 
-```yumi
-. source Indexable'Int = IntWindow([5, 6, 7, 8])
-. rest = match source
-    | [_, ...tail]
+```brix
+(main
+  (let source (of Indexable Int) (call IntWindow (list 5 6 7 8)))
+  (let rest
+    (match source
+      (case (list _ ...tail)
         tail
+      )
+    )
+  )
+  (blank)
+  (print (type-of rest))
+  (print (. rest length))
+  (print (call (. ", " join) rest))
+)
 
--- type-of rest
--- rest.length
--- ", ".join(rest)
-
-━━━━━━━━━━━━━━━━━━━━
-+ IntWindow
-    is Indexable'Int
-
-_ values List'Int
-
-────────────────────
-+ This
-    - items [Int]
-
-values = items
-
-────────────────────
-+ get length Size
-
-values.length
-
-────────────────────
-+ this[index Index] Int
-
-values[index]
-
-────────────────────
-+ this[range Range'Index] IntWindow
-
-IntWindow(values[range])
+(type + IntWindow
+  (implements (of Indexable Int))
+  (prop _ values (of List Int))
+  (fn-do + This _
+    (param items (list Int))
+    (= values items)
+  )
+  (fn-expr + length Size :get
+    (. values length)
+  )
+  (fn-expr + (index-get this (param index Index)) Int
+    ([] values index)
+  )
+  (fn-expr + (index-get this (param range (of Range Index))) IntWindow
+    (call IntWindow ([] values range))
+  )
+)
 ```
 
 ```output
@@ -169,30 +200,40 @@ IntWindow(values[range])
 
 ### Table-backed Indexable objects use their concrete slice types too.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(3) • with Point((each + 1) as I32, (each + 10) as I32)
-. rows = match table
-    | [first, ...rest]
+(main
+  (let table (call (of Table Point) 3 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (let rows
+    (match table
+      (case (list first ...rest)
         rest
-
-. xs = match table.x
-    | [_, ...tail]
+      )
+    )
+  )
+  (blank)
+  (let xs
+    (match (. table x)
+      (case (list _ ...tail)
         tail
+      )
+    )
+  )
+  (blank)
+  (print (type-of rows))
+  (print (. rows length))
+  (print (as ([] rows 0) Point))
+  (print (type-of xs))
+  (print (. xs length))
+  (print (call (. ", " join) xs))
+)
 
--- type-of rows
--- rows.length
--- rows[0] as Point
--- type-of xs
--- xs.length
--- ", ".join(xs)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -206,8 +247,10 @@ IntWindow(values[range])
 
 ### String is excluded from bracket sequence matching; text patterns handle strings instead.
 
-```yumi
--- "abc" is ["a", ...]
+```brix
+(main
+  (print (is "abc" (list "a" ...)))
+)
 ```
 
 ```output
@@ -216,26 +259,34 @@ false
 
 ### match?, is, and declaration contexts use the same sequence profile.
 
-```yumi
-. maybe = match? [1, 2, 3]
-    | [1, ...tail]
-        tail.length
-
--- type-of maybe
--- maybe ?? 0
-
--- [1, 2, 3] is [1, _, 3]
--- [1, 2] is [1, _, 3]
-
-. [head, _, ...tail] = [10, 20, 30, 40]
--- head
--- tail
-
-if | [_, second, ...rest] = [5, 6, 7, 8]
-    -- second
-    -- rest
-else
-    -- "no"
+```brix
+(main
+  (let maybe
+    (match? (list 1 2 3)
+      (case (list 1 ...tail)
+        (. tail length)
+      )
+    )
+  )
+  (blank)
+  (print (type-of maybe))
+  (print (?? maybe 0))
+  (blank)
+  (print (is (list 1 2 3) (list 1 _ 3)))
+  (print (is (list 1 2) (list 1 _ 3)))
+  (blank)
+  (let (list head _ ...tail) (list 10 20 30 40))
+  (print head)
+  (print tail)
+  (blank)
+  (if (= (| (list _ second ...rest)) (list 5 6 7 8))
+    (print second)
+    (print rest)
+    (else
+      (print "no")
+    )
+  )
+)
 ```
 
 ```output
@@ -251,19 +302,26 @@ false
 
 ### `is` tests the conditions inside a pattern of items or of keys, each reading `it` as the value it tests.
 
-```yumi
-. counts = Map'String'Int()
-counts["a"] = 4
-
--- [1, 2] is [Int {it > 0}, ...]
--- [1, 2] is [Int {it > 1}, ...]
--- counts is ["a" = {it > 3}]
--- counts is not ["a" = Int {it > 4}]
-
-for group in [[1, 5], [0, 2]]
-    -- match group
-        | [first, ...]
-            "$first ${group is [{it > 0}, {it > 0}]} ${it[1]}"
+```brix
+(main
+  (let counts (call (of Map String Int)))
+  (= ([] counts "a") 4)
+  (blank)
+  (print (is (list 1 2) (list (all Int ({} (> it 0))) ...)))
+  (print (is (list 1 2) (list (all Int ({} (> it 1))) ...)))
+  (print (is counts (map "a" ({} (> it 3)))))
+  (print (is-not counts (map "a" (all Int ({} (> it 4))))))
+  (blank)
+  (for (in group (list (list 1 5) (list 0 2)))
+    (print
+      (match group
+        (case (list first ...)
+          (str first " " (is group (list ({} (> it 0)) ({} (> it 0)))) " " ([] it 1))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -279,35 +337,57 @@ true
 
 ### Map patterns match required keys, allow extra entries, and reject missing or mismatched values.
 
-```yumi
-. settings = Map'String'Int()
-settings["a"] = 1
-settings["b"] = 2
-settings["c"] = 3
-
--- match settings
-    | ["a" = one]
-        "a=$one"
-    ??
+```brix
+(main
+  (let settings (call (of Map String Int)))
+  (= ([] settings "a") 1)
+  (= ([] settings "b") 2)
+  (= ([] settings "c") 3)
+  (blank)
+  (print
+    (match settings
+      (case (map "a" one)
+        (str "a=" one)
+      )
+      (default
         "no"
-
--- match settings
-    | ["missing" = value]
+      )
+    )
+  )
+  (blank)
+  (print
+    (match settings
+      (case (map "missing" value)
         "bad"
-    ??
+      )
+      (default
         "missing"
-
--- match settings
-    | ["a" = 9]
+      )
+    )
+  )
+  (blank)
+  (print
+    (match settings
+      (case (map "a" 9)
         "bad"
-    ??
+      )
+      (default
         "mismatch"
-
--- match settings
-    | ["a" = _, ...]
+      )
+    )
+  )
+  (blank)
+  (print
+    (match settings
+      (case (list (= "a" _) ...)
         "open"
-    ??
+      )
+      (default
         "closed"
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -319,21 +399,27 @@ open
 
 ### Map remainder capture returns unmatched entries with the same key/value types.
 
-```yumi
-. settings = Map'String'Int()
-settings["a"] = 1
-settings["b"] = 2
-settings["c"] = 3
-
-. rest = match settings
-    | ["a" = _, ...tail]
+```brix
+(main
+  (let settings (call (of Map String Int)))
+  (= ([] settings "a") 1)
+  (= ([] settings "b") 2)
+  (= ([] settings "c") 3)
+  (blank)
+  (let rest
+    (match settings
+      (case (list (= "a" _) ...tail)
         tail
-
--- type-of rest
--- rest.length
--- rest["a"]
--- rest["b"]
--- rest["c"]
+      )
+    )
+  )
+  (blank)
+  (print (type-of rest))
+  (print (. rest length))
+  (print ([] rest "a"))
+  (print ([] rest "b"))
+  (print ([] rest "c"))
+)
 ```
 
 ```output
@@ -346,35 +432,49 @@ unknown
 
 ### Map keys support string, numeric, and existing-key equality lookup forms.
 
-```yumi
-. key = "b"
-. settings = Map'String'Int()
-settings["a"] = 1
-settings["b"] = 2
-
-. numeric = Map'Int'String()
-numeric[7] = "seven"
-
--- match settings
-    | [$key = two]
-        "b=$two"
-    ??
+```brix
+(main
+  (let key "b")
+  (let settings (call (of Map String Int)))
+  (= ([] settings "a") 1)
+  (= ([] settings "b") 2)
+  (blank)
+  (let numeric (call (of Map Int String)))
+  (= ([] numeric 7) "seven")
+  (blank)
+  (print
+    (match settings
+      (case (map $key two)
+        (str "b=" two)
+      )
+      (default
         "no"
-
--- match numeric
-    | [7 = word]
+      )
+    )
+  )
+  (blank)
+  (print
+    (match numeric
+      (case (map 7 word)
         word
-    ??
+      )
+      (default
         "no"
-
--- settings is ["a" = 1, ...]
--- settings is ["a" = 9, ...]
-
-if | ["b" = two, ...rest] = settings
-    -- two
-    -- rest["a"]
-else
-    -- "no"
+      )
+    )
+  )
+  (blank)
+  (print (is settings (list (= "a" 1) ...)))
+  (print (is settings (list (= "a" 9) ...)))
+  (blank)
+  (if (= (| (list (= "b" two) ...rest)) settings)
+    (print two)
+    (print ([] rest "a"))
+    (else
+      (print "no")
+    )
+  )
+)
 ```
 
 ```output
@@ -388,24 +488,29 @@ false
 
 ### Nested sequence patterns narrow union-valued fields before typed element captures.
 
-```yumi
-. choice [String = Payload]
-choice["content"] = "hello"
-. root [String = Payload]
-root["choices"] = [choice as Payload]
+```brix
+(main
+  (let choice (map String Payload))
+  (= ([] choice "content") "hello")
+  (let root (map String Payload))
+  (= ([] root "choices") (list (as choice Payload)))
+  (blank)
+  (let found
+    (match? root
+      (case (list (= "choices" (list (: first (map String Payload)) ...)) ...)
+        ([] first "content")
+      )
+    )
+  )
+  (blank)
+  (print (as (!! found) String))
+)
 
-. found = match? root
-    | ["choices" = [first [String = Payload], ...], ...]
-        first["content"]
-
--- found! as String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Payload is Union
-
-| String
-| [Payload]
-| [String = Payload]
+(type + Payload (is Union)
+  (variant String)
+  (variant (list Payload))
+  (variant (map String Payload))
+)
 ```
 
 ```output
@@ -414,47 +519,46 @@ hello
 
 ### Nested map patterns narrow optional subjects and union-valued fields in streamed constructors.
 
-```yumi
-. delta [String = String]
-delta["content"] = "hello"
-. choice [String = Payload]
-choice["delta"] = delta
-. maybe-choice [String = Payload]? = choice
+```brix
+(main
+  (let delta (map String String))
+  (= ([] delta "content") "hello")
+  (let choice (map String Payload))
+  (= ([] choice "delta") delta)
+  (let maybe-choice (? (map String Payload)) choice)
+  (blank)
+  (for (in event (call events maybe-choice))
+    (print (?? (. event content) "missing"))
+    (break)
+  )
+)
 
-for event in events(maybe-choice)
-    -- event.content ?? "missing"
-    break
+(type + Payload (is Union)
+  (variant String)
+  (variant (map String String))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Payload is Union
+(type + Event
+  (prop + content (? String))
+  (fn-do + This _
+    (param choice (? (map String Payload)))
+    (= content (call event-content choice))
+  )
+)
 
-| String
-| [String = String]
+(fn-expr _ event-content _
+  (param choice (? (map String Payload)))
+  (match? choice
+    (case (list (= "delta" (list (= "content" content) ...)) ...)
+      content
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Event
-
-+ content String?
-
-────────────────────
-+ This
-    - choice [String = Payload]?
-
-content = event-content(choice)
-
-━━━━━━━━━━━━━━━━━━━━
-_ event-content
-    - choice [String = Payload]?
-
-match? choice
-    | ["delta" = ["content" = content, ...], ...]
-        content
-
-━━━━━━━━━━━━━━━━━━━━
-+ do events <Event>
-    - choice [String = Payload]?
-
-<= Event(choice)
+(fn-do + events (stream Event)
+  (param choice (? (map String Payload)))
+  (yield (call Event choice))
+)
 ```
 
 ```output
@@ -463,75 +567,91 @@ hello
 
 ### Impossible nested patterns reached through streamed constructors fail during compilation.
 
-```yumi crash
-. choice [String = Payload]
-choice["delta"] = "text"
+```brix crash
+(main
+  (let choice (map String Payload))
+  (= ([] choice "delta") "text")
+  (blank)
+  (for (in event (call invalid-events choice))
+    (print (?? (. event content) "missing"))
+    (break)
+  )
+)
 
-for event in invalid-events(choice)
-    -- event.content ?? "missing"
-    break
+(type + Payload (is Union)
+  (variant String)
+  (variant (map String String))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Payload is Union
+(type + InvalidEvent
+  (prop + content (? String))
+  (fn-do + This _
+    (param choice (map String Payload))
+    (= content (call invalid-event-content choice))
+  )
+)
 
-| String
-| [String = String]
+(fn-expr _ invalid-event-content _
+  (param choice (map String Payload))
+  (match? choice
+    (case (list (= "delta" (tuple first second)) ...)
+      (str first " " second)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InvalidEvent
-
-+ content String?
-
-────────────────────
-+ This
-    - choice [String = Payload]
-
-content = invalid-event-content(choice)
-
-━━━━━━━━━━━━━━━━━━━━
-_ invalid-event-content
-    - choice [String = Payload]
-
-match? choice
-    | ["delta" = (first, second), ...]
-        "$first $second"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do invalid-events <InvalidEvent>
-    - choice [String = Payload]
-
-<= InvalidEvent(choice)
+(fn-do + invalid-events (stream InvalidEvent)
+  (param choice (map String Payload))
+  (yield (call InvalidEvent choice))
+)
 ```
 
 ```output
 Exception: Pattern has no possible matches
-<no file:31>
-        | ["delta" = (first, second), ...]
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:28>
+        (case (list (= "delta" (tuple first second)) ...)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ## JOE-32 Text Patterns
 
 ### Text patterns match whole strings with anchored literals and optional captured gaps.
 
-```yumi
--- match "foobar"
-    | "foo" ...middle "bar"
-        middle.length
-    ??
+```brix
+(main
+  (print
+    (match "foobar"
+      (case (all "foo" ...middle "bar")
+        (. middle length)
+      )
+      (default
         99
-
--- match "fooxbar"
-    | f "foo" ...middle b "bar"
-        "$f|$middle|$b"
-    ??
+      )
+    )
+  )
+  (blank)
+  (print
+    (match "fooxbar"
+      (case (all (: f "foo") ...middle (: b "bar"))
+        (str f "|" middle "|" b)
+      )
+      (default
         "no"
-
--- match "foobaz"
-    | "foo" ... "bar"
+      )
+    )
+  )
+  (blank)
+  (print
+    (match "foobaz"
+      (case (all "foo" ... "bar")
         "bad"
-    ??
+      )
+      (default
         "no"
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -542,18 +662,30 @@ no
 
 ### Text matching is left-to-right and non-greedy while preserving later anchors.
 
-```yumi
--- match "fooafooend"
-    | "foo" ...middle "fooend"
+```brix
+(main
+  (print
+    (match "fooafooend"
+      (case (all "foo" ...middle "fooend")
         middle
-    ??
+      )
+      (default
         "no"
-
--- match "foofooend"
-    | "foo" ...middle "fooend"
+      )
+    )
+  )
+  (blank)
+  (print
+    (match "foofooend"
+      (case (all "foo" ...middle "fooend")
         middle
-    ??
+      )
+      (default
         "no"
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -562,24 +694,32 @@ a
 
 ### Text patterns participate in match?, is, and declaration contexts.
 
-```yumi
-. maybe = match? "fooxbar"
-    | "foo" ...middle "bar"
+```brix
+(main
+  (let maybe
+    (match? "fooxbar"
+      (case (all "foo" ...middle "bar")
         middle
-
--- type-of maybe
--- maybe ?? "missing"
-
--- "fooxbar" is "foo" ... "bar"
--- "foobaz" is "foo" ... "bar"
-
-. "foo" ...decl-middle "bar" = "foozbar"
--- decl-middle
-
-if | "foo" ...if-middle "bar" = "fooybar"
-    -- if-middle
-else
-    -- "no"
+      )
+    )
+  )
+  (blank)
+  (print (type-of maybe))
+  (print (?? maybe "missing"))
+  (blank)
+  (print (is "fooxbar" (all "foo" ... "bar")))
+  (print (is "foobaz" (all "foo" ... "bar")))
+  (blank)
+  (let (all "foo" ...decl-middle "bar") "foozbar")
+  (print decl-middle)
+  (blank)
+  (if (= (| (all "foo" ...if-middle "bar")) "fooybar")
+    (print if-middle)
+    (else
+      (print "no")
+    )
+  )
+)
 ```
 
 ```output
@@ -595,30 +735,43 @@ y
 
 ### _ is a catchall for closed domains and still binds nothing.
 
-```yumi
-. bool-result = match true
-    | _
+```brix
+(main
+  (let bool-result
+    (match true
+      (case _
         1
-
-. value Int?
-. optional-result = match value
-    | _
+      )
+    )
+  )
+  (blank)
+  (let value (? Int))
+  (let optional-result
+    (match value
+      (case _
         2
-
-. choice = Choice.no
-. union-result = match choice
-    | _
+      )
+    )
+  )
+  (blank)
+  (let choice (. Choice no))
+  (let union-result
+    (match choice
+      (case _
         3
+      )
+    )
+  )
+  (blank)
+  (print bool-result)
+  (print optional-result)
+  (print union-result)
+)
 
--- bool-result
--- optional-result
--- union-result
-
-━━━━━━━━━━━━━━━━━━━━
-+ Choice is Union
-
-| yes
-| no
+(type + Choice (is Union)
+  (variant yes)
+  (variant no)
+)
 ```
 
 ```output
@@ -629,19 +782,30 @@ y
 
 ### Structure patterns are conditional and do not make open sequence domains exhaustive.
 
-```yumi
-. fallback = match [2]
-    | [1, ...]
+```brix
+(main
+  (let fallback
+    (match (list 2)
+      (case (list 1 ...)
         1
-    ??
+      )
+      (default
         0
-
-. maybe = match? [2]
-    | [1, ...]
+      )
+    )
+  )
+  (blank)
+  (let maybe
+    (match? (list 2)
+      (case (list 1 ...)
         1
-
--- fallback
--- maybe ?? 99
+      )
+    )
+  )
+  (blank)
+  (print fallback)
+  (print (?? maybe 99))
+)
 ```
 
 ```output
@@ -653,17 +817,22 @@ y
 
 ### _ covers one destructured slot in tuple-shaped subjects.
 
-```yumi
-. first, _, third = (1, 2, 3)
--- first, third
-
-. pair = Pair(4, 5)
--- match pair
-    | left, _
+```brix
+(main
+  (let (tuple first _ third) (tuple 1 2 3))
+  (print (tuple first third))
+  (blank)
+  (let pair (call Pair 4 5))
+  (print
+    (match pair
+      (case (tuple left _)
         left
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (left Int, right Int)
+(type + Pair (is (tuple (: left Int) (: right Int))))
 ```
 
 ```output
@@ -673,25 +842,31 @@ y
 
 ### _ works with Table and TableSpan destructuring.
 
-```yumi
-/core/table
+```brix
+(import /core/table)
+(blank)
 
-. table = Table'Point(2) • with Point((each + 1) as I32, (each + 10) as I32)
-. xs, _ = table
-. span = table[0 .. < 2]
+(main
+  (let table (call (of Table Point) 2 (:with (call Point (as (+ each 1) I32) (as (+ each 10) I32)))))
+  (let (tuple xs _) table)
+  (let span ([] table (..< 0 2)))
+  (blank)
+  (print (type-of xs))
+  (print (call (. ", " join) xs))
+  (blank)
+  (print
+    (match span
+      (case (tuple _ ys)
+        (call (. ", " join) ys)
+      )
+    )
+  )
+)
 
--- type-of xs
--- ", ".join(xs)
-
--- match span
-    | _, ys
-        ", ".join(ys)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -702,18 +877,20 @@ y
 
 ### Old collection type annotations still bind the whole subject, not a one-item pattern.
 
-```yumi
-. values = [1, 2]
-. request [Int] = values
-
-. source = Map'String'Int()
-source["a"] = 1
-source["b"] = 2
-. settings [String = Int] = source
-
--- request.length
--- settings.length
--- settings["b"]
+```brix
+(main
+  (let values (list 1 2))
+  (let request (list Int) values)
+  (blank)
+  (let source (call (of Map String Int)))
+  (= ([] source "a") 1)
+  (= ([] source "b") 2)
+  (let settings (map String Int) source)
+  (blank)
+  (print (. request length))
+  (print (. settings length))
+  (print ([] settings "b"))
+)
 ```
 
 ```output
@@ -724,26 +901,26 @@ source["b"] = 2
 
 ### Declarations that take a tuple apart and skip fields
 
-```yumi
-. pair = Pair(4, "four")
-. a, _ = pair
-. _, b = (1, "x")
-. _, _, c = (1, 2, 3)
--- a
--- b
--- c
--- sum(pair)
+```brix
+(main
+  (let pair (call Pair 4 "four"))
+  (let (tuple a _) pair)
+  (let (tuple _ b) (tuple 1 "x"))
+  (let (tuple _ _ c) (tuple 1 2 3))
+  (print a)
+  (print b)
+  (print c)
+  (print (call sum pair))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do sum Int
-    - pair Pair
+(fn-do + sum Int
+  (param pair Pair)
+  (let (tuple count _) pair)
+  (let (tuple _ name) pair)
+  (return (+ count (. name length)))
+)
 
-. count, _ = pair
-. _, name = pair
-= count + name.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (count Int, name String)
+(type + Pair (is (tuple (: count Int) (: name String))))
 ```
 
 ```output
@@ -755,15 +932,19 @@ x
 
 ### Pattern of items against a text never matches
 
-```yumi
-. text = "abc"
--- text is ["a", ...]
--- text is not ["a", ...]
--- "abc" is [first, second, third]
-if text is ["a", "b", "c"]
-    -- "items"
-else
-    -- "no items"
+```brix
+(main
+  (let text "abc")
+  (print (is text (list "a" ...)))
+  (print (is-not text (list "a" ...)))
+  (print (is "abc" (list first second third)))
+  (if (is text (list "a" "b" "c"))
+    (print "items")
+    (else
+      (print "no items")
+    )
+  )
+)
 ```
 
 ```output
@@ -775,24 +956,41 @@ no items
 
 ### Items of a list by place, a rest between two ends, and an end that is a value
 
-```yumi
-. numbers = [1, 2, 3, 4]
--- match numbers
-    | [first, _, third, ...]
-        "$first/$third"
-    ??
+```brix
+(main
+  (let numbers (list 1 2 3 4))
+  (print
+    (match numbers
+      (case (list first _ third ...)
+        (str first "/" third)
+      )
+      (default
         "no"
-. middle = match numbers
-    | [first, ...rest, last]
+      )
+    )
+  )
+  (let middle
+    (match numbers
+      (case (list first ...rest last)
         rest
--- middle
--- match numbers
-    | []
+      )
+    )
+  )
+  (print middle)
+  (print
+    (match numbers
+      (case (list)
         "empty"
-    | [7, ..., 4]
+      )
+      (case (list 7 ... 4)
         "edge"
-    ??
+      )
+      (default
         "other"
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -803,27 +1001,33 @@ other
 
 ### A pattern of items in an if, and in a function that returns from it
 
-```yumi
-if | [_, second, ...rest] = [5, 6, 7, 8]
-    -- second
-    -- rest
-else
-    -- "no"
-if | [_, second, ...rest] = [5]
-    -- second
-else
-    -- "no"
-. made = show([1, 2, 3])
--- made
--- show([9])
+```brix
+(main
+  (if (= (| (list _ second ...rest)) (list 5 6 7 8))
+    (print second)
+    (print rest)
+    (else
+      (print "no")
+    )
+  )
+  (if (= (| (list _ second ...rest)) (list 5))
+    (print second)
+    (else
+      (print "no")
+    )
+  )
+  (let made (call show (list 1 2 3)))
+  (print made)
+  (print (call show (list 9)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show Int
-    - items [Int]
-
-if | [first, ..., last] = items
-    = first + last
-= -1
+(fn-do + show Int
+  (param items (list Int))
+  (if (= (| (list first ... last)) items)
+    (return (+ first last))
+  )
+  (return -1)
+)
 ```
 
 ```output
@@ -836,21 +1040,33 @@ no
 
 ### Patterns of items inside patterns of items
 
-```yumi
-. grid = [[1, 2], [3, 4], [5]]
--- match grid
-    | [[a, b], ..., [last]]
-        a + b + last
-    ??
+```brix
+(main
+  (let grid (list (list 1 2) (list 3 4) (list 5)))
+  (print
+    (match grid
+      (case (list (list a b) ... (list last))
+        (+ a b last)
+      )
+      (default
         -1
--- match grid
-    | [[a], ...]
+      )
+    )
+  )
+  (print
+    (match grid
+      (case (list (list a) ...)
         a
-    ??
+      )
+      (default
         -1
-. [[x, ...], ...others] = grid
--- x
--- others.length
+      )
+    )
+  )
+  (let (list (list x ...) ...others) grid)
+  (print x)
+  (print (. others length))
+)
 ```
 
 ```output
@@ -862,26 +1078,44 @@ no
 
 ### Items that are values of text and of a float
 
-```yumi
-. words = ["a", "b", "c"]
--- match words
-    | ["a", second, ...]
+```brix
+(main
+  (let words (list "a" "b" "c"))
+  (print
+    (match words
+      (case (list "a" second ...)
         second
-    ??
+      )
+      (default
         "no"
--- match words
-    | ["z", ...]
+      )
+    )
+  )
+  (print
+    (match words
+      (case (list "z" ...)
         "z"
-    | [..., "c"]
+      )
+      (case (list ... "c")
         "ends c"
-    ??
+      )
+      (default
         "no"
-. halves = [0.5, 1.5]
--- match halves
-    | [0.5, other]
+      )
+    )
+  )
+  (let halves (list 0.5 1.5))
+  (print
+    (match halves
+      (case (list 0.5 other)
         other
-    ??
+      )
+      (default
         0.0
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -892,25 +1126,31 @@ ends c
 
 ### Arms of none, one, two and many items in a function
 
-```yumi
--- kind(List'Int())
--- kind([7])
--- kind([7, 8])
--- kind([1, 2, 3, 4])
+```brix
+(main
+  (print (call kind (call (of List Int))))
+  (print (call kind (list 7)))
+  (print (call kind (list 7 8)))
+  (print (call kind (list 1 2 3 4)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ kind String
-    - items [Int]
-
-match items
-    | []
-        "none"
-    | [only]
-        "one $only"
-    | [first, second]
-        "two $first $second"
-    | [first, ...middle, last]
-        "many $first ${middle.length} $last"
+(fn-expr + kind String
+  (param items (list Int))
+  (match items
+    (case (list)
+      "none"
+    )
+    (case (list only)
+      (str "one " only)
+    )
+    (case (list first second)
+      (str "two " first " " second)
+    )
+    (case (list first ...middle last)
+      (str "many " first " " (. middle length) " " last)
+    )
+  )
+)
 ```
 
 ```output
@@ -922,60 +1162,75 @@ many 1 2 4
 
 ### What a pattern of items reads of a class, and in what order
 
-```yumi
-. loud = Loud([1, 2, 3, 4, 5])
--- match loud
-    | [first, _, ..., last]
-        first + last
-    ??
+```brix
+(main
+  (let loud (call Loud (list 1 2 3 4 5)))
+  (print
+    (match loud
+      (case (list first _ ... last)
+        (+ first last)
+      )
+      (default
         0
--- "next"
-. kept = match loud
-    | [_, ...rest, 5]
-        rest.length
-    ??
+      )
+    )
+  )
+  (print "next")
+  (let kept
+    (match loud
+      (case (list _ ...rest 5)
+        (. rest length)
+      )
+      (default
         0
--- kept
--- "next"
--- loud is [1, ...tail]
--- "next"
--- match loud
-    | [9, _, ...]
+      )
+    )
+  )
+  (print kept)
+  (print "next")
+  (print (is loud (list 1 ...tail)))
+  (print "next")
+  (print
+    (match loud
+      (case (list 9 _ ...)
         "nine"
-    | [1, 2, 3]
+      )
+      (case (list 1 2 3)
         "three"
-    ??
+      )
+      (default
         "other"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Loud
-    is Indexable'Int
-
-_ values List'Int
-
-────────────────────
-+ This
-    - items [Int]
-
-values = items
-
-────────────────────
-+ get length Size
-
--- "length"
-values.length
-
-────────────────────
-+ this[index Index] Int
-
--- "read $index"
-values[index]
-
-────────────────────
-+ this[range Range'Index] Loud
-
--- "slice ${range.start} ${range.end}"
-Loud(values[range])
+(type + Loud
+  (implements (of Indexable Int))
+  (prop _ values (of List Int))
+  (fn-do + This _
+    (param items (list Int))
+    (= values items)
+  )
+  (fn-expr + length Size :get
+    (before
+      (print "length")
+    )
+    (. values length)
+  )
+  (fn-expr + (index-get this (param index Index)) Int
+    (before
+      (print (str "read " index))
+    )
+    ([] values index)
+  )
+  (fn-expr + (index-get this (param range (of Range Index))) Loud
+    (before
+      (print (str "slice " (. range start) " " (. range end)))
+    )
+    (call Loud ([] values range))
+  )
+)
 ```
 
 ```output
@@ -1004,26 +1259,44 @@ other
 
 ### Items that are tuples, typed names and tests
 
-```yumi
-. pairs = [(1, "a"), (2, "b")]
--- match pairs
-    | [(n, s), ...]
-        "$n $s"
-    ??
+```brix
+(main
+  (let pairs (list (tuple 1 "a") (tuple 2 "b")))
+  (print
+    (match pairs
+      (case (list (tuple n s) ...)
+        (str n " " s)
+      )
+      (default
         "no"
-. typed = match [1, 2, 3]
-    | [first Int, ...rest]
-        first + rest.length
-    ??
+      )
+    )
+  )
+  (let typed
+    (match (list 1 2 3)
+      (case (list (: first Int) ...rest)
+        (+ first (. rest length))
+      )
+      (default
         0
--- typed
--- match [5, 6]
-    | [{it > 4}, {it > 9}]
+      )
+    )
+  )
+  (print typed)
+  (print
+    (match (list 5 6)
+      (case (list ({} (> it 4)) ({} (> it 9)))
         "both"
-    | [{it > 4}, _]
+      )
+      (case (list ({} (> it 4)) _)
         "first"
-    ??
+      )
+      (default
         "none"
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1034,24 +1307,37 @@ first
 
 ### Patterns of items under the keys of a map
 
-```yumi
-. settings [String = [String]]
-settings["mode"] = ["a", "b"]
-settings["other"] = ["c"]
--- match settings
-    | ["mode" = [first, ...], "other" = [only]]
-        "$first $only"
-    ??
+```brix
+(main
+  (let settings (map String (list String)))
+  (= ([] settings "mode") (list "a" "b"))
+  (= ([] settings "other") (list "c"))
+  (print
+    (match settings
+      (case (list (= "mode" (list first ...)) (= "other" (list only)))
+        (str first " " only)
+      )
+      (default
         "no"
--- match settings
-    | ["mode" = [_], ...]
+      )
+    )
+  )
+  (print
+    (match settings
+      (case (list (= "mode" (list _)) ...)
         "one"
-    | ["mode" = [_, second], ...]
+      )
+      (case (list (= "mode" (list _ second)) ...)
         second
-    ??
+      )
+      (default
         "no"
--- settings is ["other" = ["c"], ...]
--- settings is ["missing" = _, ...]
+      )
+    )
+  )
+  (print (is settings (list (= "other" (list "c")) ...)))
+  (print (is settings (list (= "missing" _) ...)))
+)
 ```
 
 ```output
@@ -1063,19 +1349,23 @@ false
 
 ### A pattern of items in a generic function
 
-```yumi
--- total([1, 2, 3])
--- total(["a"])
+```brix
+(main
+  (print (call total (list 1 2 3)))
+  (print (call total (list "a")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ total'T Size
-    - items [T]
-
-match items
-    | [_, ...rest]
-        rest.length
-    ??
-        99
+(fn-expr + (of total T) Size
+  (param items (list T))
+  (match items
+    (case (list _ ...rest)
+      (. rest length)
+    )
+    (default
+      99
+    )
+  )
+)
 ```
 
 ```output
@@ -1085,14 +1375,21 @@ match items
 
 ### A match of items over a text takes the arm that is left
 
-```yumi
-. text = "abc"
--- match text
-    | [first, ...]
+```brix
+(main
+  (let text "abc")
+  (print
+    (match text
+      (case (list first ...)
         "items"
-    ??
+      )
+      (default
         "text"
--- text is [_, _, _]
+      )
+    )
+  )
+  (print (is text (list _ _ _)))
+)
 ```
 
 ```output
@@ -1102,21 +1399,28 @@ false
 
 ### Items compared with text, whole numbers and floats, and a declared first item
 
-```yumi
-. names = ["ann", "bob"]
-. counts = [3, 4]
--- match names
-    | ["ann", "bob"]
+```brix
+(main
+  (let names (list "ann" "bob"))
+  (let counts (list 3 4))
+  (print
+    (match names
+      (case (list "ann" "bob")
         "both"
-    ??
+      )
+      (default
         "no"
--- names is ["ann", _]
--- counts is [3, 4]
--- counts is [3, 5]
-. floats = [1.5, 2.5]
--- floats is [1.5, _]
-. [n, ...] = counts
--- n
+      )
+    )
+  )
+  (print (is names (list "ann" _)))
+  (print (is counts (list 3 4)))
+  (print (is counts (list 3 5)))
+  (let floats (list 1.5 2.5))
+  (print (is floats (list 1.5 _)))
+  (let (list n ...) counts)
+  (print n)
+)
 ```
 
 ```output
@@ -1130,20 +1434,23 @@ true
 
 ### A pattern of items over an optional list in a function that may give none
 
-```yumi
-. none [Int]?
-. some [Int]? = [4, 5]
--- first-of(none) ?? -1
--- first-of(some) ?? -1
--- first-of(List'Int()) ?? -1
+```brix
+(main
+  (let none (? (list Int)))
+  (let some (? (list Int)) (list 4 5))
+  (print (?? (call first-of none) -1))
+  (print (?? (call first-of some) -1))
+  (print (?? (call first-of (call (of List Int))) -1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ first-of Int?
-    - items [Int]?
-
-match? items
-    | [first, ...]
-        first
+(fn-expr + first-of (? Int)
+  (param items (? (list Int)))
+  (match? items
+    (case (list first ...)
+      first
+    )
+  )
+)
 ```
 
 ```output
@@ -1154,26 +1461,28 @@ match? items
 
 ### A pattern of items over the list case of a union
 
-```yumi
-. inner [Doc]
-inner += "x" as Doc
-inner += "y" as Doc
--- size(inner as Doc) ?? 0
--- size("text" as Doc) ?? 0
+```brix
+(main
+  (let inner (list Doc))
+  (+= inner (as "x" Doc))
+  (+= inner (as "y" Doc))
+  (print (?? (call size (as inner Doc)) 0))
+  (print (?? (call size (as "text" Doc)) 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ size Size?
-    - doc Doc
+(fn-expr + size (? Size)
+  (param doc Doc)
+  (match? doc
+    (case (list _ ...rest)
+      (+ (. rest length) 1)
+    )
+  )
+)
 
-match? doc
-    | [_, ...rest]
-        rest.length + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Doc is Union
-
-| String
-| [Doc]
+(type + Doc (is Union)
+  (variant String)
+  (variant (list Doc))
+)
 ```
 
 ```output
@@ -1183,17 +1492,23 @@ match? doc
 
 ### A pattern of items in an if over an optional list
 
-```yumi
-. some [String]? = ["a", "b"]
-if | [first, second] = some
-    -- "$first $second"
-else
-    -- "no"
-. none [String]?
-if | [first, ...] = none
-    -- first
-else
-    -- "no"
+```brix
+(main
+  (let some (? (list String)) (list "a" "b"))
+  (if (= (| (list first second)) some)
+    (print (str first " " second))
+    (else
+      (print "no")
+    )
+  )
+  (let none (? (list String)))
+  (if (= (| (list first ...)) none)
+    (print first)
+    (else
+      (print "no")
+    )
+  )
+)
 ```
 
 ```output
@@ -1203,33 +1518,49 @@ no
 
 ### Keys of a map that are a local, a number and a text, in a match, an is and an if
 
-```yumi
-. key = "b"
-. settings [String = Int]
-settings["a"] = 1
-settings["b"] = 2
-. numeric [Int = String]
-numeric[7] = "seven"
--- match settings
-    | [$key = two]
-        "b=$two"
-    ??
+```brix
+(main
+  (let key "b")
+  (let settings (map String Int))
+  (= ([] settings "a") 1)
+  (= ([] settings "b") 2)
+  (let numeric (map Int String))
+  (= ([] numeric 7) "seven")
+  (print
+    (match settings
+      (case (map $key two)
+        (str "b=" two)
+      )
+      (default
         "no"
--- match numeric
-    | [7 = word]
+      )
+    )
+  )
+  (print
+    (match numeric
+      (case (map 7 word)
         word
-    ??
+      )
+      (default
         "no"
--- settings is ["a" = 1, ...]
--- settings is ["a" = 9, ...]
-if | ["b" = two, "a" = one] = settings
-    -- two + one
-else
-    -- "no"
-if | ["zz" = two] = settings
-    -- two
-else
-    -- "no"
+      )
+    )
+  )
+  (print (is settings (list (= "a" 1) ...)))
+  (print (is settings (list (= "a" 9) ...)))
+  (if (= (| (list (= "b" two) (= "a" one))) settings)
+    (print (+ two one))
+    (else
+      (print "no")
+    )
+  )
+  (if (= (| (map "zz" two)) settings)
+    (print two)
+    (else
+      (print "no")
+    )
+  )
+)
 ```
 
 ```output
@@ -1243,39 +1574,41 @@ no
 
 ### Patterns of items over the fields of an object, in its methods
 
-```yumi
-. box = Box(Array'String(["x", "y", "z"]), [1, 2])
--- box.edges()
--- box.second()
+```brix
+(main
+  (let box (call Box (call (of Array String) (list "x" "y" "z")) (list 1 2)))
+  (print (call (. box edges)))
+  (print (call (. box second)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ names Array'String
-+ counts [Int]
-
-────────────────────
-+ This
-    - names
-    - counts
-
-────────────────────
-+ edges String
-
-match names
-    | [first, ..., last]
-        "$first$last"
-    ??
+(type + Box
+  (prop + names (of Array String))
+  (prop + counts (list Int))
+  (fn-do + This _
+    (param names _)
+    (param counts _)
+  )
+  (fn-expr + edges String
+    (match names
+      (case (list first ... last)
+        (str first last)
+      )
+      (default
         "none"
-
-────────────────────
-+ second Int
-
-match this.counts
-    | [_, second, ...]
+      )
+    )
+  )
+  (fn-expr + second Int
+    (match (. this counts)
+      (case (list _ second ...)
         second
-    ??
+      )
+      (default
         0
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1285,23 +1618,35 @@ xz
 
 ### Patterns of items over each list of a loop
 
-```yumi
-. rows [[Int]] = [[1, 2], [3], [4, 5, 6], List'Int()]
-for row in rows
-    -- match row
-        | [a, b]
-            "pair ${a + b}"
-        | [a]
-            "one $a"
-        | [a, ...rest]
-            "more $a ${rest.length}"
-        ??
-            "none"
-. total = 0
-for row in rows
-    if | [first, ..., last] = row
-        total += first + last
--- total
+```brix
+(main
+  (let rows (list (list Int)) (list (list 1 2) (list 3) (list 4 5 6) (call (of List Int))))
+  (for (in row rows)
+    (print
+      (match row
+        (case (list a b)
+          (str "pair " (+ a b))
+        )
+        (case (list a)
+          (str "one " a)
+        )
+        (case (list a ...rest)
+          (str "more " a " " (. rest length))
+        )
+        (default
+          "none"
+        )
+      )
+    )
+  )
+  (let total 0)
+  (for (in row rows)
+    (if (= (| (list first ... last)) row)
+      (+= total (+ first last))
+    )
+  )
+  (print total)
+)
 ```
 
 ```output
@@ -1314,18 +1659,30 @@ none
 
 ### Items of a list of optionals
 
-```yumi
-. maybe [Int?] = [1, null, 3]
--- match maybe
-    | [first, second, ...]
-        "${first ?? 0} ${second ?? 0}"
-    ??
+```brix
+(main
+  (let maybe (list (? Int)) (list 1 null 3))
+  (print
+    (match maybe
+      (case (list first second ...)
+        (str (?? first 0) " " (?? second 0))
+      )
+      (default
         "no"
--- match maybe
-    | [1, ...]
+      )
+    )
+  )
+  (print
+    (match maybe
+      (case (list 1 ...)
         "one"
-    ??
+      )
+      (default
         "other"
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1335,21 +1692,31 @@ one
 
 ### A rest alone, a rest that is named alone, and a rest before one item
 
-```yumi
-. empty = List'Int()
-. full = [1, 2]
--- empty is [...]
--- full is [...]
--- empty is [..., _]
--- full is [..., _]
-. whole = match full
-    | [...all]
+```brix
+(main
+  (let empty (call (of List Int)))
+  (let full (list 1 2))
+  (print (is empty (list ...)))
+  (print (is full (list ...)))
+  (print (is empty (list ... _)))
+  (print (is full (list ... _)))
+  (let whole
+    (match full
+      (case (list ...all)
         all
--- whole
-. none = match empty
-    | [...all]
-        all.length
--- none
+      )
+    )
+  )
+  (print whole)
+  (let none
+    (match empty
+      (case (list ...all)
+        (. all length)
+      )
+    )
+  )
+  (print none)
+)
 ```
 
 ```output
@@ -1363,14 +1730,21 @@ true
 
 ### A named rest inside a pattern with a named rest
 
-```yumi
-. grid = [[1, 2, 3], [4], [5, 6]]
-. found = match grid
-    | [[_, ...inner], ...outer]
-        inner.length + outer.length
-    ??
+```brix
+(main
+  (let grid (list (list 1 2 3) (list 4) (list 5 6)))
+  (let found
+    (match grid
+      (case (list (list _ ...inner) ...outer)
+        (+ (. inner length) (. outer length))
+      )
+      (default
         0
--- found
+      )
+    )
+  )
+  (print found)
+)
 ```
 
 ```output
@@ -1379,20 +1753,24 @@ true
 
 ### Arms that give the rest they name
 
-```yumi
-. picked = pick([1, 2, 3])
--- picked
--- pick([9])
+```brix
+(main
+  (let picked (call pick (list 1 2 3)))
+  (print picked)
+  (print (call pick (list 9)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pick [Int]
-    - items [Int]
-
-match items
-    | [_, ...rest, _]
-        rest
-    | [...all]
-        all
+(fn-expr + pick (list Int)
+  (param items (list Int))
+  (match items
+    (case (list _ ...rest _)
+      rest
+    )
+    (case (list ...all)
+      all
+    )
+  )
+)
 ```
 
 ```output
@@ -1402,14 +1780,16 @@ match items
 
 ### A declared pattern of items that fails after one that holds
 
-```yumi crash
-. [head, _, ...tail] = [10, 20, 30, 40]
--- head
--- tail
-. [first, second] = [1]
--- first
--- second
--- "after"
+```brix crash
+(main
+  (let (list head _ ...tail) (list 10 20 30 40))
+  (print head)
+  (print tail)
+  (let (list first second) (list 1))
+  (print first)
+  (print second)
+  (print "after")
+)
 ```
 
 ```output
@@ -1419,190 +1799,209 @@ match items
 
 ### A declared pattern of two items over three leaves by a panic at the pattern
 
-```yumi crash
-. [first, second] = [1, 2, 3]
--- first
--- second
--- "after"
+```brix crash
+(main
+  (let (list first second) (list 1 2 3))
+  (print first)
+  (print second)
+  (print "after")
+)
 ```
 
 ```stderr
 Unhandled panic: Pattern match failed
-<no file:2>
+<no file:3>
 
 Task 1
 
 Stack trace:
-  0  __source__:main no file:2:3
+  0  __source__:main no file:3:8
   1  __source__:init.__source__ no file
   2  __source__:brix.main no file
 ```
 
 ### A panic in what a pattern of items reads of a class
 
-```yumi crash
-. bad = Bad()
--- match bad
-    | [first, second]
-        first + second
-    ??
+```brix crash
+(main
+  (let bad (call Bad))
+  (print
+    (match bad
+      (case (list first second)
+        (+ first second)
+      )
+      (default
         0
--- "after"
+      )
+    )
+  )
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bad
-    is Indexable'Int
-
-────────────────────
-+ get length Size
-
-2
-
-────────────────────
-+ this[index Index] Int
-
-[10][index]
+(type + Bad
+  (implements (of Indexable Int))
+  (fn-expr + length Size :get
+    2
+  )
+  (fn-expr + (index-get this (param index Index)) Int
+    ([] (list 10) index)
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: List index 1 out of range
-<core/list.yumi>
+<core/list.bx>
 
 Task 1
 
 Stack trace:
-  0  core/list:List:absent core/list.yumi
-  1  __source__:Bad:[] no file:22:1
-  2  __source__:main no file:4:15
+  0  core/list:List:absent core/list.bx
+  1  __source__:Bad:[] no file:23:5
+  2  __source__:main no file:6:25
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
 ### A declaration that names a derived class does not narrow: match the value, or write as.
 
-```yumi crash
-. foos = [Foo(), Foo2()]
-. b Foo2 = foos[1]
--- b
-. a Foo2 = foos[0]
--- a
+```brix crash
+(main
+  (let foos (list (call Foo) (call Foo2)))
+  (let b Foo2 ([] foos 1))
+  (print b)
+  (let a Foo2 ([] foos 0))
+  (print a)
+)
 
-+ Foo
-+ Foo2 is Foo
+(blank)
+(type-line + Foo)
+(type-line + Foo2 (is Foo))
 ```
 
 ```output
-Exception: Expected Foo2 here, but this is Foo, which is not always Foo2; match it with "| name Foo2", or write "as Foo2"
-<no file:3>
-    . b Foo2 = foos[1]
-        ^^^^
+Exception: Expected Foo2 here, but this is Foo, which is not always Foo2; match it with "(case (: name Foo2) …)", or write "(as ([] foos 1) Foo2)"
+<no file:4>
+      (let b Foo2 ([] foos 1))
+             ^^^^
 ```
 
 ### The trace of a cast to a class the value is not of
 
-```yumi crash
-. foos = [Foo(), Foo2()]
-. b = foos[1] as Foo2
--- b
-. a = foos[0] as Foo2
--- a
+```brix crash
+(main
+  (let foos (list (call Foo) (call Foo2)))
+  (let b (as ([] foos 1) Foo2))
+  (print b)
+  (let a (as ([] foos 0) Foo2))
+  (print a)
+)
 
-+ Foo
-+ Foo2 is Foo
+(blank)
+(type-line + Foo)
+(type-line + Foo2 (is Foo))
 ```
 
 ```stderr
 Unhandled panic: Invalid cast to [Object __source__:Foo2]
-<no file:5>
+<no file:6>
 
 Task 1
 
 Stack trace:
-  0  __source__:main no file:5:7
+  0  __source__:main no file:6:10
   1  __source__:init.__source__ no file
   2  __source__:brix.main no file
 ```
 
 ### The trace of a cast to a class a value of an interface does not hold
 
-```yumi crash
-. things [Thing] = [Foo() as Thing, Bar() as Thing]
-. b = things[1] as Bar
--- b
-. a = things[0] as Bar
--- a
+```brix crash
+(main
+  (let things (list Thing) (list (as (call Foo) Thing) (as (call Bar) Thing)))
+  (let b (as ([] things 1) Bar))
+  (print b)
+  (let a (as ([] things 0) Bar))
+  (print a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Interface
+(type + Thing (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-    is Thing
+(type + Foo
+  (implements Thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-    is Thing
+(type + Bar
+  (implements Thing)
+)
 ```
 
 ```stderr
 Unhandled panic: Invalid cast to [Object __source__:Bar]
-<no file:5>
+<no file:6>
 
 Task 1
 
 Stack trace:
-  0  __source__:main no file:5:7
+  0  __source__:main no file:6:10
   1  __source__:init.__source__ no file
   2  __source__:brix.main no file
 ```
 
 ### A one-item list pattern whose item is a case pattern matches by shape, not as a collection type.
 
-```yumi
-. blank = Tree.branch(1, List'Tree(Tree.leaf(2, "blank")))
-. sum = Tree.branch(3, List'Tree(Tree.leaf(4, "+"), Tree.leaf(5, "a")))
-. other = Tree.branch(6, List'Tree(Tree.leaf(7, "other")))
-. empty = Tree.branch(8, List'Tree())
+```brix
+(main
+  (let blank (call (. Tree branch) 1 (call (of List Tree) (call (. Tree leaf) 2 "blank"))))
+  (let sum (call (. Tree branch) 3 (call (of List Tree) (call (. Tree leaf) 4 "+") (call (. Tree leaf) 5 "a"))))
+  (let other (call (. Tree branch) 6 (call (of List Tree) (call (. Tree leaf) 7 "other"))))
+  (let empty (call (. Tree branch) 8 (call (of List Tree))))
+  (blank)
+  (print (str (call only blank) " " (call only sum) " " (call only other) " " (call only empty) " " (call only (call (. Tree leaf) 9 "blank"))))
+  (print (str (call is-blank blank) " " (call is-blank sum) " " (call is-blank other) " " (call is-blank empty)))
+  (print (str (call is-marked blank) " " (call is-marked sum) " " (call is-marked other) " " (call is-marked empty)))
+)
 
--- "${only(blank)} ${only(sum)} ${only(other)} ${only(empty)} ${only(Tree.leaf(9, "blank"))}"
--- "${is-blank(blank)} ${is-blank(sum)} ${is-blank(other)} ${is-blank(empty)}"
--- "${is-marked(blank)} ${is-marked(sum)} ${is-marked(other)} ${is-marked(empty)}"
+(type + Tree (is Union)
+  (variant leaf (tuple (: id Int) (: text String)))
+  (variant branch (tuple (: id Int) (: items (list Tree))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tree is Union
+(fn-expr _ only String
+  (param tree Tree)
+  (match tree
+    (case (call .branch _ (list (call .leaf _ name)))
+      name
+    )
+    (default
+      "-"
+    )
+  )
+)
 
-| leaf(id Int, text String)
-| branch(id Int, items [Tree])
+(fn-expr _ is-blank Bool
+  (param tree Tree)
+  (match tree
+    (case (call .branch _ (list (call .leaf _ "blank")))
+      true
+    )
+    (default
+      false
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ only String
-    - tree Tree
-
-match tree
-    | .branch(_, [.leaf(_, name)])
-        name
-    ??
-        "-"
-
-━━━━━━━━━━━━━━━━━━━━
-_ is-blank Bool
-    - tree Tree
-
-match tree
-    | .branch(_, [.leaf(_, "blank")])
-        true
-    ??
-        false
-
-━━━━━━━━━━━━━━━━━━━━
-_ is-marked Bool
-    - tree Tree
-
-match tree
-    | .branch(_, [.leaf(_, {it == "blank"})])
-        true
-    ??
-        false
+(fn-expr _ is-marked Bool
+  (param tree Tree)
+  (match tree
+    (case (call .branch _ (list (call .leaf _ ({} (== it "blank")))))
+      true
+    )
+    (default
+      false
+    )
+  )
+)
 ```
 
 ```output
@@ -1613,129 +2012,154 @@ true false false false
 
 ### Arms that repeat one union case keep their order while sharing its tag, list length, and first item.
 
-```yumi
-. imp = branch(1, List'Tree(leaf("import"), leaf("a")))
-. exp = branch(2, List'Tree(leaf("export"), leaf("a"), leaf("b"), leaf("c")))
-. pair = branch(3, List'Tree(leaf("let"), leaf("x"), leaf("y")))
-. triple = branch(4, List'Tree(leaf("let"), leaf("x"), leaf("y"), leaf("z")))
-. lone = branch(5, List'Tree(leaf("let")))
-. nested = branch(6, List'Tree(branch(0, List'Tree(leaf("in"))), leaf("tail")))
-. empty = branch(7, List'Tree())
-. other = branch(8, List'Tree(leaf("other"), leaf("a")))
+```brix
+(main
+  (let imp (call branch 1 (call (of List Tree) (call leaf "import") (call leaf "a"))))
+  (let exp (call branch 2 (call (of List Tree) (call leaf "export") (call leaf "a") (call leaf "b") (call leaf "c"))))
+  (let pair (call branch 3 (call (of List Tree) (call leaf "let") (call leaf "x") (call leaf "y"))))
+  (let triple (call branch 4 (call (of List Tree) (call leaf "let") (call leaf "x") (call leaf "y") (call leaf "z"))))
+  (let lone (call branch 5 (call (of List Tree) (call leaf "let"))))
+  (let nested (call branch 6 (call (of List Tree) (call branch 0 (call (of List Tree) (call leaf "in"))) (call leaf "tail"))))
+  (let empty (call branch 7 (call (of List Tree))))
+  (let other (call branch 8 (call (of List Tree) (call leaf "other") (call leaf "a"))))
+  (blank)
+  (print (str (call kind imp) " | " (call kind exp) " | " (call kind pair) " | " (call kind triple) " | " (call kind lone)))
+  (print (str (call kind nested) " | " (call kind empty) " | " (call kind other) " | " (call kind (call leaf "word"))))
+  (print (str (call headed imp) " | " (call headed pair) " | " (call headed lone) " | " (call headed nested) " | " (call headed empty)))
+  (print (str (call describe imp) " | " (call describe pair) " | " (call describe other) " | " (call describe (call leaf "word"))))
+  (print (str (?? (call target-of imp) "none") " | " (?? (call target-of pair) "none") " | " (?? (call target-of empty) "none")))
+  (print (str (call tagged empty) " | " (call tagged imp) " | " (call tagged nested) " | " (call tagged (call leaf "word"))))
+)
 
--- "${kind(imp)} | ${kind(exp)} | ${kind(pair)} | ${kind(triple)} | ${kind(lone)}"
--- "${kind(nested)} | ${kind(empty)} | ${kind(other)} | ${kind(leaf("word"))}"
--- "${headed(imp)} | ${headed(pair)} | ${headed(lone)} | ${headed(nested)} | ${headed(empty)}"
--- "${describe(imp)} | ${describe(pair)} | ${describe(other)} | ${describe(leaf("word"))}"
--- "${target-of(imp) ?? "none"} | ${target-of(pair) ?? "none"} | ${target-of(empty) ?? "none"}"
--- "${tagged(empty)} | ${tagged(imp)} | ${tagged(nested)} | ${tagged(leaf("word"))}"
+(type + Tree (is Union)
+  (variant leaf (tuple (: id Int) (: text String)))
+  (variant branch (tuple (: id Int) (: items (list Tree))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tree is Union
+(fn-expr _ leaf Tree
+  (param text String)
+  (call (. Tree leaf) 0 text)
+)
 
-| leaf(id Int, text String)
-| branch(id Int, items [Tree])
+(fn-expr _ branch Tree
+  (param id Int)
+  (param items (list Tree))
+  (call (. Tree branch) id items)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ leaf Tree
-    - text String
+(fn-expr _ text-of String
+  (param tree Tree)
+  (match tree
+    (case (call .leaf _ text)
+      text
+    )
+    (default
+      "?"
+    )
+  )
+)
 
-Tree.leaf(0, text)
+(fn-expr _ kind String
+  (param tree Tree)
+  (match tree
+    (case (call .leaf _ text)
+      (str "leaf " text)
+    )
+    (case (call .branch _ (list (call .leaf _ "import") path))
+      (str "import " (call text-of path))
+    )
+    (case (call .branch _ (list (call .leaf _ "export") first ...rest))
+      (str "export " (call text-of first) "+" (. rest length))
+    )
+    (case (call .branch _ (list (call .leaf _ "let") name value))
+      (str "let " (call text-of name) "=" (call text-of value))
+    )
+    (case (call .branch _ (list (call .leaf _ "let") ... last))
+      (str "let-rest " (call text-of last))
+    )
+    (case (call .branch _ (list (call .leaf _ ({} (== (. it length) 3))) ...))
+      "three"
+    )
+    (case (call .branch _ (list (call .branch _ inner) ...))
+      (str "nested " (. inner length))
+    )
+    (case (call .branch _ (list))
+      "empty"
+    )
+    (case (call .branch _ _)
+      "other"
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ branch Tree
-    - id Int
-    - items [Tree]
+(fn-expr _ headed String
+  (param tree Tree)
+  (match tree
+    (case (call .branch _ (list (call .leaf _ "import") ...))
+      "import"
+    )
+    (case (call .branch _ (list (call .branch _ (list (call .leaf _ name))) (call .leaf _ tail)))
+      (str "nested " name " " tail)
+    )
+    (case (call .branch _ (list (call .leaf _ "let") _ ...))
+      "let+"
+    )
+    (case (call .branch _ (list (call .leaf _ name)))
+      (str "only " name)
+    )
+    (default
+      "-"
+    )
+  )
+)
 
-Tree.branch(id, items)
+(fn-do _ describe String
+  (param tree Tree)
+  (match tree
+    (case (call .branch _ (list (call .leaf _ "import") path))
+      (return (str "import " (call text-of path)))
+    )
+    (case (call .branch _ (list (call .leaf _ "let") _ value))
+      (return (str "let " (call text-of value)))
+    )
+    (case (call .leaf _ _)
+      (return "leaf")
+    )
+    (default
+      (return "?")
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ text-of String
-    - tree Tree
+(fn-expr _ target-of (? String)
+  (param tree Tree)
+  (match? tree
+    (case (call .branch _ (list (call .leaf _ "import") path))
+      (call text-of path)
+    )
+    (case (call .branch _ (list (call .leaf _ "let") _ path))
+      (call text-of path)
+    )
+  )
+)
 
-match tree
-    | .leaf(_, text)
-        text
-    ??
-        "?"
-
-━━━━━━━━━━━━━━━━━━━━
-_ kind String
-    - tree Tree
-
-match tree
-    | .leaf(_, text)
-        "leaf $text"
-    | .branch(_, [.leaf(_, "import"), path])
-        "import ${text-of(path)}"
-    | .branch(_, [.leaf(_, "export"), first, ...rest])
-        "export ${text-of(first)}+${rest.length}"
-    | .branch(_, [.leaf(_, "let"), name, value])
-        "let ${text-of(name)}=${text-of(value)}"
-    | .branch(_, [.leaf(_, "let"), ..., last])
-        "let-rest ${text-of(last)}"
-    | .branch(_, [.leaf(_, {it.length == 3}), ...])
-        "three"
-    | .branch(_, [.branch(_, inner), ...])
-        "nested ${inner.length}"
-    | .branch(_, [])
-        "empty"
-    | .branch(_, _)
-        "other"
-
-━━━━━━━━━━━━━━━━━━━━
-_ headed String
-    - tree Tree
-
-match tree
-    | .branch(_, [.leaf(_, "import"), ...])
-        "import"
-    | .branch(_, [.branch(_, [.leaf(_, name)]), .leaf(_, tail)])
-        "nested $name $tail"
-    | .branch(_, [.leaf(_, "let"), _, ...])
-        "let+"
-    | .branch(_, [.leaf(_, name)])
-        "only $name"
-    ??
-        "-"
-
-━━━━━━━━━━━━━━━━━━━━
-_ do describe String
-    - tree Tree
-
-match tree
-    | .branch(_, [.leaf(_, "import"), path])
-        = "import ${text-of(path)}"
-    | .branch(_, [.leaf(_, "let"), _, value])
-        = "let ${text-of(value)}"
-    | .leaf(_, _)
-        = "leaf"
-    ??
-        = "?"
-
-━━━━━━━━━━━━━━━━━━━━
-_ target-of String?
-    - tree Tree
-
-match? tree
-    | .branch(_, [.leaf(_, "import"), path])
-        text-of(path)
-    | .branch(_, [.leaf(_, "let"), _, path])
-        text-of(path)
-
-━━━━━━━━━━━━━━━━━━━━
-_ tagged String
-    - tree Tree
-
-match tree
-    | .branch(7, [.leaf(_, name), ...])
-        "seven $name"
-    | .branch(id, [.leaf(_, "import"), ...])
-        "import#$id"
-    | .branch(id, _)
-        "branch#$id"
-    | .leaf(id, _)
-        "leaf#$id"
+(fn-expr _ tagged String
+  (param tree Tree)
+  (match tree
+    (case (call .branch 7 (list (call .leaf _ name) ...))
+      (str "seven " name)
+    )
+    (case (call .branch id (list (call .leaf _ "import") ...))
+      (str "import#" id)
+    )
+    (case (call .branch id _)
+      (str "branch#" id)
+    )
+    (case (call .leaf id _)
+      (str "leaf#" id)
+    )
+  )
+)
 ```
 
 ```output
@@ -1749,22 +2173,28 @@ branch#7 | import#1 | branch#6 | leaf#0
 
 ### A one-entry map pattern can hold a sequence pattern with a remainder.
 
-```yumi
-. root [String = Payload]
-root["items"] = ["a" as Payload, "b" as Payload]
-
--- match root
-    | ["items" = [first String, ...]]
+```brix
+(main
+  (let root (map String Payload))
+  (= ([] root "items") (list (as "a" Payload) (as "b" Payload)))
+  (blank)
+  (print
+    (match root
+      (case (map "items" (list (: first String) ...))
         first
-    ??
+      )
+      (default
         "none"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Payload is Union
-
-| String
-| [Payload]
-| [String = Payload]
+(type + Payload (is Union)
+  (variant String)
+  (variant (list Payload))
+  (variant (map String Payload))
+)
 ```
 
 ```output
@@ -1773,24 +2203,30 @@ a
 
 ### A one-entry map pattern can hold another one-entry map pattern.
 
-```yumi
-. inner [String = Payload]
-inner["id"] = "x"
-. root [String = Payload]
-root["message"] = inner
-
--- match root
-    | ["message" = ["id" = id String]]
+```brix
+(main
+  (let inner (map String Payload))
+  (= ([] inner "id") "x")
+  (let root (map String Payload))
+  (= ([] root "message") inner)
+  (blank)
+  (print
+    (match root
+      (case (map "message" (map "id" (: id String)))
         id
-    ??
+      )
+      (default
         "none"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Payload is Union
-
-| String
-| [Payload]
-| [String = Payload]
+(type + Payload (is Union)
+  (variant String)
+  (variant (list Payload))
+  (variant (map String Payload))
+)
 ```
 
 ```output
@@ -1799,14 +2235,21 @@ x
 
 ### A one-item sequence pattern can hold a sequence pattern with a remainder.
 
-```yumi
-. rows = [[1, 2, 3], [4, 5, 6]]
-
--- match rows[0 .. < 1]
-    | [[head, ...]]
+```brix
+(main
+  (let rows (list (list 1 2 3) (list 4 5 6)))
+  (blank)
+  (print
+    (match ([] rows (..< 0 1))
+      (case (list (list head ...))
         head
-    ??
+      )
+      (default
         0
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1815,24 +2258,30 @@ x
 
 ### A one-entry map pattern can hold a typed map capture inside a sequence pattern.
 
-```yumi
-. choice [String = Payload]
-choice["content"] = "hello"
-. root [String = Payload]
-root["choices"] = [choice as Payload]
-
--- match root
-    | ["choices" = [first [String = Payload], ...]]
-        first["content"]! as String
-    ??
+```brix
+(main
+  (let choice (map String Payload))
+  (= ([] choice "content") "hello")
+  (let root (map String Payload))
+  (= ([] root "choices") (list (as choice Payload)))
+  (blank)
+  (print
+    (match root
+      (case (map "choices" (list (: first (map String Payload)) ...))
+        (as (!! ([] first "content")) String)
+      )
+      (default
         "none"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Payload is Union
-
-| String
-| [Payload]
-| [String = Payload]
+(type + Payload (is Union)
+  (variant String)
+  (variant (list Payload))
+  (variant (map String Payload))
+)
 ```
 
 ```output
@@ -1841,21 +2290,33 @@ hello
 
 ### A one-item sequence pattern with a typed capture requires exactly one item.
 
-```yumi
-. one = [7]
-. two = [7, 8]
-
--- match one
-    | [only Int]
+```brix
+(main
+  (let one (list 7))
+  (let two (list 7 8))
+  (blank)
+  (print
+    (match one
+      (case (list (: only Int))
         only
-    ??
+      )
+      (default
         0
-
--- match two
-    | [only Int]
+      )
+    )
+  )
+  (blank)
+  (print
+    (match two
+      (case (list (: only Int))
         only
-    ??
+      )
+      (default
         0
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1865,32 +2326,45 @@ hello
 
 ### A one-entry bracket of plain types still names a collection type.
 
-```yumi
-. value Payload = ["a" as Payload]
-. table Payload = Map'String'Payload()
-
--- match value
-    | [Payload]
+```brix
+(main
+  (let value Payload (list (as "a" Payload)))
+  (let table Payload (call (of Map String Payload)))
+  (blank)
+  (print
+    (match value
+      (case (list Payload)
         "list"
-    | [String = Payload]
+      )
+      (case (map String Payload)
         "map"
-    ??
+      )
+      (default
         "other"
-
--- match table
-    | [Payload]
+      )
+    )
+  )
+  (blank)
+  (print
+    (match table
+      (case (list Payload)
         "list"
-    | [String = Payload]
+      )
+      (case (map String Payload)
         "map"
-    ??
+      )
+      (default
         "other"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Payload is Union
-
-| String
-| [Payload]
-| [String = Payload]
+(type + Payload (is Union)
+  (variant String)
+  (variant (list Payload))
+  (variant (map String Payload))
+)
 ```
 
 ```output
@@ -1900,18 +2374,20 @@ map
 
 ### A one-entry bracket of a named tuple still names a collection type.
 
-```yumi
-. stack [(uid U32, kind U16)] = [(1, 2)]
-. uid = 7
--- stack.length
--- stack[0].kind
--- uid
-
-. source [String = (uid U32, kind U16)]
-. table [String = (uid U32, kind U16)] = source
-. kind = 9
--- table.length
--- kind
+```brix
+(main
+  (let stack (list (tuple (: uid U32) (: kind U16))) (list (tuple 1 2)))
+  (let uid 7)
+  (print (. stack length))
+  (print (. ([] stack 0) kind))
+  (print uid)
+  (blank)
+  (let source (map String (tuple (: uid U32) (: kind U16))))
+  (let table (map String (tuple (: uid U32) (: kind U16))) source)
+  (let kind 9)
+  (print (. table length))
+  (print kind)
+)
 ```
 
 ```output
@@ -1924,31 +2400,34 @@ map
 
 ### A named capture typed as a base class covers every union member that derives from it.
 
-```yumi
-. shape Shape = Square()
--- match shape
-    | Null!
+```brix
+(main
+  (let shape Shape (call Square))
+  (print
+    (match shape
+      (case (exact Null)
         "none"
-    | base Base
-        base.label
+      )
+      (case (: base Base)
+        (. base label)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (prop + label _ (= "base"))
+)
 
-+ label = "base"
+(type + Circle (is Base))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Circle is Base
+(type + Square (is Base))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Square is Base
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
-
-| Null
-| Circle
-| Square
+(type + Shape (is Union)
+  (variant Null)
+  (variant Circle)
+  (variant Square)
+)
 ```
 
 ```output
@@ -1957,31 +2436,34 @@ base
 
 ### A match over an optional map can use a map pattern with literal keys.
 
-```yumi
-. present [String = Payload]? = Map'String'Payload()
-present!["kind"] = "path"
-present!["value"] = "/tmp"
-. absent [String = Payload]?
+```brix
+(main
+  (let present (? (map String Payload)) (call (of Map String Payload)))
+  (= ([] (!! present) "kind") "path")
+  (= ([] (!! present) "value") "/tmp")
+  (let absent (? (map String Payload)))
+  (blank)
+  (print (call describe present))
+  (print (call describe absent))
+)
 
--- describe(present)
--- describe(absent)
+(fn-expr + describe _
+  (param fields (? (map String Payload)))
+  (match fields
+    (case (list (= "kind" "path") (= "value" (: location String)))
+      (str "path " location)
+    )
+    (default
+      "other"
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe
-    - fields [String = Payload]?
-
-match fields
-    | ["kind" = "path", "value" = location String]
-        "path $location"
-    ??
-        "other"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Payload is Union
-
-| String
-| [Payload]
-| [String = Payload]
+(type + Payload (is Union)
+  (variant String)
+  (variant (list Payload))
+  (variant (map String Payload))
+)
 ```
 
 ```output
@@ -1991,36 +2473,41 @@ other
 
 ### A match over a union can mix literal arms with map and sequence patterns.
 
-```yumi
-. fields [String = Payload]
-fields["kind"] = "url"
-fields["value"] = "https://example.com"
+```brix
+(main
+  (let fields (map String Payload))
+  (= ([] fields "kind") "url")
+  (= ([] fields "value") "https://example.com")
+  (blank)
+  (print (call describe "stop"))
+  (print (call describe fields))
+  (print (call describe (list (as "a" Payload) (as "b" Payload))))
+  (print (call describe "else"))
+)
 
--- describe("stop")
--- describe(fields)
--- describe(["a" as Payload, "b" as Payload])
--- describe("else")
+(fn-expr + describe _
+  (param value Payload)
+  (match value
+    (case "stop"
+      "stopped"
+    )
+    (case (list (= "kind" "url") (= "value" (: address String)))
+      (str "url " address)
+    )
+    (case (list (: first String) ...)
+      (str "list " first)
+    )
+    (default
+      "other"
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe
-    - value Payload
-
-match value
-    | "stop"
-        "stopped"
-    | ["kind" = "url", "value" = address String]
-        "url $address"
-    | [first String, ...]
-        "list $first"
-    ??
-        "other"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Payload is Union
-
-| String
-| [Payload]
-| [String = Payload]
+(type + Payload (is Union)
+  (variant String)
+  (variant (list Payload))
+  (variant (map String Payload))
+)
 ```
 
 ```output

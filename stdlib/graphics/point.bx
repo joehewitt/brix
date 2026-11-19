@@ -1,0 +1,421 @@
+(import ./primitives)
+(import ./utils)
+(import /core/animatable)
+(import /math)
+(blank)
+
+(main
+  (let degrees (/ 180 π))
+  (let radians (/ π 180))
+)
+
+(type + Point (is Tuple)
+  (implements Animatable)
+  (prop + x Coord)
+  (prop + y Coord)
+  (fn-do + This _
+    (param vector (list F64))
+    (return (call This ([] vector 0) ([] vector 1)))
+  )
+  (fn-expr + angle _ :get
+    (call normalize-angle (call atan2 (- y) (- x)))
+  )
+  (fn-do + length _ :get
+    (probe-count graphics.point.lengths)
+    (return (call sqrt (+ (* x x) (* y y))))
+  )
+  (fn-expr + negated _ :get
+    (call Point (- x) (- y))
+  )
+  (fn-expr + point _ :get
+    (tuple angle length)
+    (where
+      (lazy angle (call (. (call Point 0 0) angle) (call Point (- x) (- y))))
+      (lazy length (call (. (call Point 0 0) distance) (call Point (- x) (- y))))
+    )
+  )
+  (fn-expr + is-zero _ :get
+    (and (== x 0) (== y 0))
+  )
+  (fn-expr + (infix this == (param other Point)) _
+    (and (== x (. other x)) (== y (. other y)))
+  )
+  (fn-expr + (infix this + (param other Dimensions)) _ @inline
+    (call Point
+      (block
+        (arg (+ x (. other width)))
+        (arg (+ y (. other height)))
+      )
+    )
+  )
+  (fn-expr + (infix this + (param n Length)) _ @inline
+    (+ this (call Point n n))
+  )
+  (fn-do + (infix this + (param other Point)) _ @inline
+    (probe-count graphics.point.ops)
+    (return
+      (call Point
+        (block
+          (arg (+ x (. other x)))
+          (arg (+ y (. other y)))
+        )
+      )
+    )
+  )
+  (fn-do + (infix this - (param other Point)) _ @inline
+    (probe-count graphics.point.ops)
+    (return
+      (call Point
+        (block
+          (arg (- x (. other x)))
+          (arg (- y (. other y)))
+        )
+      )
+    )
+  )
+  (fn-expr + (infix this > (param other Point)) _
+    (and (> x (. other x)) (> y (. other y)))
+  )
+  (fn-do + (infix this * (param q Float)) _ @inline
+    (probe-count graphics.point.ops)
+    (return
+      (call Point
+        (block
+          (arg (* x q))
+          (arg (* y q))
+        )
+      )
+    )
+  )
+  (fn-do + (infix this / (param q Float)) _ @inline
+    (probe-count graphics.point.ops)
+    (return
+      (call Point
+        (block
+          (arg (/ x q))
+          (arg (/ y q))
+        )
+      )
+    )
+  )
+  (fn-expr + (infix this / (param q Dimensions)) _ @inline
+    (call Point
+      (block
+        (arg (/ x (. q width)))
+        (arg (/ y (. q height)))
+      )
+    )
+  )
+  (fn-expr + (prefix - this) _ @inline
+    (call Point
+      (block
+        (arg (- x))
+        (arg (- y))
+      )
+    )
+  )
+  (fn-expr + nearly-equals _
+    (param other Point)
+    (and (call nearly-equals x (. other x)) (call nearly-equals y (. other y)))
+  )
+  (fn-expr + slope _
+    (param other Point)
+    (case? (== dx 0)
+      0
+    )
+    (default
+      (inline slope)
+    )
+    (where
+      (lazy dy (- (. other y) y))
+      (lazy dx (- (. other x) x))
+      (lazy slope (/ dy dx))
+    )
+  )
+  (fn-expr + slope-round _
+    (param other Point)
+    (case? (== dx 0)
+      0
+    )
+    (default
+      (inline slope)
+    )
+    (where
+      (lazy dy (call vecround (- (. other y) y)))
+      (lazy dx (call vecround (- (. other x) x)))
+      (lazy slope (/ dy dx))
+    )
+  )
+  (fn-expr + distance _
+    (param other Point)
+    (before
+      (probe-count graphics.point.distances)
+    )
+    (call sqrt (+ (* dx dx) (* dy dy)))
+    (where
+      (lazy dx (- (. other x) x))
+      (lazy dy (- (. other y) y))
+    )
+  )
+  (fn-expr + midpoint _
+    (param other Point)
+    (call Point
+      (block
+        (arg (+ x (/ (- (. other x) x) 2)))
+        (arg (+ y (/ (- (. other y) y) 2)))
+      )
+    )
+  )
+  (fn-expr + angle _
+    (param other Point)
+    (before
+      (probe-count graphics.point.angles)
+    )
+    (call normalize-angle (call atan2 dy dx))
+    (where
+      (lazy dx (- x (. other x)))
+      (lazy dy (- y (. other y)))
+    )
+  )
+  (fn-expr + direction _
+    (param other Point)
+    (- (call atan2 (- dy) (- dx)) π)
+    (where
+      (lazy dx (- x (. other x)))
+      (lazy dy (- y (. other y)))
+    )
+  )
+  (fn-expr + normal Point
+    (param other Point)
+    (param distance Length)
+    (case? distance
+      (tuple (+ x (* xa distance)) (+ y (* ya distance)))
+    )
+    (default
+      (inline (tuple xa ya))
+    )
+    (where
+      (lazy dx (- (. other x) x))
+      (lazy dy (- (. other y) y))
+      (lazy angle (call atan2 dx dy))
+      (lazy xa (call cos (- angle)))
+      (lazy ya (call sin (- angle)))
+    )
+  )
+  (fn-do + unit-normal Point
+    (param other Point)
+    (probe-count graphics.point.normals)
+    (let dx (- (. other x) x))
+    (let dy (- (. other y) y))
+    (if (and (== dx 0) (== dy 0))
+      (return (tuple 0 0))
+      (else
+        (let f (/ 1 (call sqrt (+ (* dx dx) (* dy dy)))))
+        (*= dx f)
+        (*= dy f)
+        (return (tuple dy (- dx)))
+      )
+    )
+  )
+  (fn-do + tangent Point
+    (param other Point)
+    (param distance Length)
+    (case? distance
+      (tuple (+ x (* xa distance)) (+ y (* ya distance)))
+    )
+    (default
+      (inline (tuple xa ya))
+    )
+    (blank)
+    (let dx (- (. other x) x))
+    (let dy (- (. other y) y))
+    (let angle (call atan2 dx dy))
+    (let xa (call sin angle))
+    (let ya (call cos angle))
+  )
+  (fn-expr + min _
+    (param other Point)
+    (call Point
+      (block
+        (arg (call min x (. other x)))
+        (arg (call min y (. other y)))
+      )
+    )
+  )
+  (fn-expr + max _
+    (param other Point)
+    (call Point
+      (block
+        (arg (call max x (. other x)))
+        (arg (call max y (. other y)))
+      )
+    )
+  )
+  (fn-expr + contained _
+    (param rect Rect)
+    (and (>= x (. rect x)) (>= y (. rect y)) (<= x (+ (. rect x) (. rect width))) (<= y (+ (. rect y) (. rect height))))
+  )
+  (fn-expr + rotate _
+    (param angle Radians)
+    (param center _ (= (call Point 0 0)))
+    (before
+      (probe-count graphics.point.rotations)
+    )
+    (call Point
+      (block
+        (arg (+ (- (* x1 c) (* y1 s)) (. center x)))
+        (arg (+ (+ (* y1 c) (* x1 s)) (. center y)))
+      )
+    )
+    (where
+      (lazy x1 (- x (. center x)))
+      (lazy y1 (- y (. center y)))
+      (lazy s (call sin angle))
+      (lazy c (call cos angle))
+    )
+  )
+  (fn-expr + scale _
+    (param scale-x Float)
+    (param scale-y Float (= scale-x))
+    (call Point
+      (block
+        (arg (* x scale-x))
+        (arg (* y scale-y))
+      )
+    )
+  )
+  (fn-expr + translate-towards _
+    (param amount Length)
+    (param center _ (= (call Point 0 0)))
+    (call translate-at-angle ang amount)
+    ; Point
+    ;     - x - (dx * amount)
+    ;     - y - (dy * amount)
+    (where
+      (lazy ang (call (. this angle) center))
+      ; .. dx = x - center.x
+      ; .. dy = y - center.y
+    )
+  )
+  (fn-expr + translate-at-angle _
+    (param angle Radians)
+    (param length Length)
+    (call Point
+      (block
+        (arg (+ x (* (call cos angle) length)))
+        (arg (+ y (* (call sin angle) length)))
+      )
+    )
+  )
+  (fn-expr + mirror-x _
+    (param cx Coord)
+    (call Point
+      (block
+        (arg (if-expr (< x cx) (- cx (- x cx)) (+ cx (- cx x))))
+        (arg y)
+      )
+    )
+  )
+  (fn-expr + mirror-y _
+    (param cy Coord)
+    (call Point
+      (block
+        (arg x)
+        (arg (if-expr (< y cy) (- cy (- y cy)) (+ cy (- cy y))))
+      )
+    )
+  )
+  (fn-expr + mirror _
+    (param center Point)
+    (call Point
+      (block
+        (arg (if-expr (< x (. center x)) (- (. center x) (- x (. center x))) (+ (. center x) (- (. center x) x))))
+        (arg (if-expr (< y (. center y)) (- (. center y) (- y (. center y))) (+ (. center y) (- (. center y) y))))
+      )
+    )
+  )
+  (fn-expr + dot _ @inline
+    (param other Point)
+    (+ (* x (. other x)) (* y (. other y)))
+  )
+  (fn-expr + cross _ @inline
+    (param other Point)
+    (- (* x (. other y)) (* y (. other x)))
+  )
+  (fn-expr + project _
+    (param other Point)
+    (case? (. other is-zero)
+      other
+    )
+    (default
+      (call Point (* (. other x) scale) (* (. other y) scale)
+        (block
+          (lazy scale (/ (call dot other) (call (. other dot) other)))
+        )
+      )
+    )
+  )
+  (fn-expr + motion-vector (list F64) :get
+    (list (as x F64) (as y F64))
+  )
+)
+
+(fn-do + intersect-lines (? Point)
+  (param start1 Point)
+  (param end1 Point)
+  (param start2 Point)
+  (param end2 Point)
+  (param as-infinity _ (= false))
+  (let den (- (* (- (. end2 y) (. start2 y)) (- (. end1 x) (. start1 x))) (* (- (. end2 x) (. start2 x)) (- (. end1 y) (. start1 y)))))
+  (return-if (if (== den 0)))
+  (blank)
+  (let start-dx (- (. start1 x) (. start2 x)))
+  (let start-dy (- (. start1 y) (. start2 y)))
+  (let ua (/ (- (* (- (. end2 x) (. start2 x)) start-dy) (* (- (. end2 y) (. start2 y)) start-dx)) den))
+  (let ub (/ (- (* (- (. end1 x) (. start1 x)) start-dy) (* (- (. end1 y) (. start1 y)) start-dx)) den))
+  (if (not as-infinity)
+    (return-if (if (< ua 0)))
+    (return-if (if (< ub 0)))
+    (return-if (if (> ua 1)))
+    (return-if (if (> ub 1)))
+  )
+  (blank)
+  (return
+    (call Point
+      (block
+        (arg (+ (. start1 x) (* ua (- (. end1 x) (. start1 x)))))
+        (arg (+ (. start1 y) (* ua (- (. end1 y) (. start1 y)))))
+      )
+    )
+  )
+)
+
+(fn-expr + vector _
+  (param length Length)
+  (param angle Radians)
+  (call Point
+    (block
+      (arg (* (call cos angle) length))
+      (arg (* (call sin angle) length))
+    )
+  )
+)
+
+(fn-expr + vecround _
+  (* (call round (/ x 0.001)) 0.001)
+)
+
+(fn-expr + is-concave _
+  (param angle-in Float)
+  (param angle-out Float)
+  (case? (> (call abs (- angle-in angle-out)) π)
+    (> normalized-in normalized-out)
+  )
+  (default
+    (> angle-in angle-out)
+  )
+  (where
+    (lazy normalized-in (call normalize-angle (+ angle-in π)))
+    (lazy normalized-out (call normalize-angle (+ angle-out π)))
+  )
+)

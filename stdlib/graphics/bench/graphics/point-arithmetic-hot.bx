@@ -1,0 +1,22 @@
+; benchmark.meta description: Repeats Point arithmetic, dot and cross products with varying coordinates.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /core)
+(import /graphics/point)
+(import /graphics/primitives)
+(blank)
+
+(main
+  (let checksum 0.0)
+  (for (in index (..< 0 5000000))
+    (let point (call Point (as (% index 97) F64) (as (% index 61) F64)))
+    (let other (call Point (+ (. point x) 3) (- (. point y) 2)))
+    (let shifted (- (+ point other) other))
+    (let scaled (/ (- (* shifted 2)) 2))
+    (let adjusted (/ (+ scaled (call Dimensions 2 4) 1) (call Dimensions 1 2)))
+    (+= checksum (+ 100000 (call (. adjusted dot) other) (call (. adjusted cross) point)))
+  )
+  (blank)
+  (print (str "bench-result graphics/point-arithmetic-hot checksum=" (as checksum Size)))
+)

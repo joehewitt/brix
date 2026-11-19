@@ -1,0 +1,84 @@
+(type + SemanticDefault (is Tuple)
+  ; A value written as the default of the type it is declared as, in one instance: where the value
+  ; begins, where it and its type end, just past their last characters, and the name of the type.
+  (prop + line U32)
+  (prop + column U32)
+  (prop + end-line U32)
+  (prop + end-column U32)
+  (prop + type-end-line U32)
+  (prop + type-end-column U32)
+  (prop + type-name String)
+)
+
+(type + SemanticOverwrite (is Tuple)
+  ; An assignment at the start of a constructor's body to a property whose value the constructor
+  ; built first, in one instance: where the assignment and its target begin, where the target ends,
+  ; just past its last character, the property, the name of its type, and whether a `..` initializer
+  ; can take the assignment's place.
+  (prop + line U32)
+  (prop + column U32)
+  (prop + target-line U32)
+  (prop + target-column U32)
+  (prop + target-end-column U32)
+  (prop + name String)
+  (prop + type-name String)
+  (prop + actionable Bool)
+)
+
+(type + SemanticCast (is Tuple)
+  ; A cast to the type its place already takes the value as, in one instance: where it begins, the
+  ; place (`context`), the name of the type cast to, the type as written, and whether the
+  ; instance's function or its class takes type parameters.
+  (prop + line U32)
+  (prop + column U32)
+  (prop + context String)
+  (prop + target String)
+  (prop + written String)
+  (prop + is-generic Bool)
+)
+
+(type + SemanticSuffix (is Tuple)
+  (prop + line U32)
+  (prop + column U32)
+  (prop + end-line U32)
+  (prop + end-column U32)
+  (prop + unit String)
+)
+
+(type + SemanticPayload (is Tuple)
+  ; The payload of an event that has effects, in one instance: where it is written, the event's
+  ; name, and its effects as the reference names them, the first one met first.
+  (prop + line U32)
+  (prop + column U32)
+  (prop + event String)
+  (prop + effects String)
+)
+
+(type + SemanticCaseOwner (is Tuple)
+  ; A case given to a call by its symbol alone that functions the call may choose take as a case of
+  ; more than one type, in one instance: where it is written, its name, the names of those types in
+  ; order, and the name of the one the function chosen takes.
+  (prop + line U32)
+  (prop + column U32)
+  (prop + name String)
+  (prop + owners (list String))
+  (prop + chosen String)
+)
+
+(type + SemanticFacts
+  ; What the semantic rules read of one target file, gathered from every instance the roots that
+  ; cover it typed.
+  (prop + defaults (list SemanticDefault))
+  (prop + overwrites (list SemanticOverwrite))
+  (prop + casts (list SemanticCast))
+  (prop + suffixes (list SemanticSuffix))
+  (prop + payloads (list SemanticPayload))
+  (prop + case-owners (list SemanticCaseOwner))
+  (fn-expr + trace-count Size
+    (+ (. defaults length) (. overwrites length) (. casts length) later)
+    (where
+      (lazy later (+ (. suffixes length) (. payloads length) (. case-owners length)))
+    )
+  )
+  (fn-do + This _)
+)

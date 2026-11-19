@@ -1,0 +1,164 @@
+(import /data/json)
+(import /os/env)
+(import /os/file)
+(import /os/path)
+(import /os/process)
+(blank)
+(prop + bundle-directory-mode FilePermissions (= 493))
+(prop + bundle-file-perms _ (= (/or/ user-read-perm user-write-perm group-read-perm other-read-perm)))
+(prop _ codesign _ (= "/usr/bin/codesign"))
+
+(fn-expr + plist-string String
+  (param text String)
+  (str "<string>" (call (. "" join) (in (call plist-escaped each) text)) "</string>")
+)
+
+(fn-expr _ plist-escaped String
+  (param c Char)
+  (match c
+    (case= '&'
+      "&amp;"
+    )
+    (case= '<'
+      "&lt;"
+    )
+    (case= '>'
+      "&gt;"
+    )
+    (default
+      (as c String)
+    )
+  )
+)
+
+(fn-do + make-directories _ (?! Error)
+  (param directory Path)
+  (if (or (not directory) (. directory is-dir))
+    (return)
+  )
+  (call make-directories (. directory dir))
+  (call (. directory make-directory) "" bundle-directory-mode)
+)
+
+(fn-do + prune _ (?! Error)
+  (param directory Path)
+  (param kept (list String))
+  (for (in entry (call listed directory))
+    (let path (/ directory (. entry name)))
+    (if (and (!= (. entry kind) (. PathKind link)) (has kept (as path String)))
+      (if (== (. entry kind) (. PathKind directory))
+        (call prune path kept)
+      )
+      (else
+        (call remove-tree path (. entry kind))
+      )
+    )
+  )
+)
+
+(fn-do + remove-tree _ (?! Error)
+  (param path Path)
+  (param kind PathKind)
+  (if (== kind (. PathKind directory))
+    (for (in entry (call listed path))
+      (call remove-tree (/ path (. entry name)) (. entry kind))
+    )
+  )
+  (call (. path delete))
+)
+
+(fn-expr + listed (list PathEntry) (?! Error)
+  (param directory Path)
+  (in each (. directory entries))
+)
+
+(fn-do + write-if-changed Bool (?! Error)
+  (param path Path)
+  (param text String)
+  (if (and (. path is-file) (== (call read-file-text path) text))
+    (return false)
+  )
+  (call write-file-atomically path text bundle-file-perms)
+  (return true)
+)
+
+(fn-do + sign _ (?! Error)
+  (param bundle Path)
+  (let identity (?? (call env "BRIX_SIGNING_IDENTITY") ""))
+  (call codesign-bundle bundle (if-expr (== identity "") "-" identity) null)
+)
+
+(fn-do + codesign-bundle _ (?! Error)
+  (param bundle Path)
+  (param identity String)
+  (param entitlements (? Path))
+  (let arguments (list String) (list "--force" "--timestamp=none" "--sign" identity))
+  (if entitlements
+    (+= arguments "--entitlements")
+    (+= arguments (as entitlements String))
+  )
+  (+= arguments (as bundle String))
+  (call run-tool codesign arguments)
+)
+
+(fn-do + run-tool _ (?! Error)
+  (param tool String)
+  (param arguments (list String))
+  (let process (use (call Process tool (. ProcessStderr capture) arguments)))
+  (let errors (!! (. process stderr)))
+  (let drained (call (of Semaphore String)))
+  (let group (call TaskGroup))
+  (let task
+    (do-new
+      (let text (as errors String))
+      (call (. drained post) text)
+      (on-failure failed
+        (call (. group keep) failed)
+        (call (. drained post) "")
+      )
+    )
+  )
+  (call (. group add) task)
+  (let output (as process String))
+  (let status (?? (call (. process wait) null) 1))
+  (let message (?? (call (. drained await)) ""))
+  (call (. group wait))
+  (throw (call Error (str (. (call Path tool) name) " failed with status " status "\n" (call (. (str output message) trim)))) (if (!= status 0)))
+)
+
+(fn-do + tool-output (? String) (?! Error)
+  (param tool String)
+  (param arguments (list String))
+  ; What a tool prints, or null when it fails.
+  (let process (use (call Process tool (. ProcessStderr discard) arguments)))
+  (let output (as process String))
+  (let status (?? (call (. process wait) null) 1))
+  (return-if null (if (!= status 0)))
+  (return output)
+)
+
+(fn-expr + json-field (? JSON)
+  (param name String)
+  (param object (? JSON))
+  (only-if ([] (as object (map String JSON)) name) (if (and object (is object (map String JSON)))))
+)
+
+(fn-expr + json-text String
+  (param name String)
+  (param object (? JSON))
+  (if-expr (and value (is value String)) (as value String) "")
+  (where
+    (lazy value (call json-field name object))
+  )
+)
+
+(fn-do + json-items (list JSON)
+  (param value (? JSON))
+  (let items (list JSON))
+  (if (and value (is value (list JSON)))
+    (for (in item (as value (list JSON)))
+      (+= items item)
+    )
+  )
+  (return items)
+)

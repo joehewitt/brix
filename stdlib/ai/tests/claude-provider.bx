@@ -1,0 +1,415 @@
+(import /ai)
+(import /ai/claude)
+(import /os/file)
+(import /os/path)
+(import /test)
+(import /time/deadline)
+(import /time/duration)
+(import /time/timer)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Claude Provider Turns"))
+  (call (. cases run) turn-tests)
+  (= cases (call (. cases then) "Claude Provider Tool Turn" tool-tests))
+  (= cases (call (. cases then) "Claude Provider Launch" launch-tests))
+  (= cases (call (. cases then) "Claude Provider Abandoned Stream" abandon-tests))
+  (= cases (call (. cases then) "Claude Provider Stopped Chat" stop-tests))
+  (= cases (call (. cases then) "Claude Provider Background Work" background-tests))
+  (= cases (call (. cases then) "Claude Provider Stop During Background Work" background-stop-tests))
+  (= cases (call (. cases then) "Claude Provider Report Taken Mid-Turn" absorbed-tests))
+  (= cases (call (. cases then) "Claude Provider Failures" failure-tests))
+  (return cases)
+)
+
+(fn-do _ turn-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeClaude))
+  (finally
+    (inline (call (. fake remove)))
+  )
+  (let claude (call (. fake provider)))
+  (let session (call AIChatSession (call AIChat "turns") (call AIChatService "claude" "Claude" claude "")))
+  (blank)
+  (call (. session ask) "hello")
+  (let first ([] (. session messages) 1))
+  (call (. t expect) "a new chat starts a new session" "hello back resumed=no" (call ai-parts-text (. first parts)))
+  (call await-idle claude)
+  (call (. t expect) "a finished turn without background work leaves no process" 0 (. claude running))
+  (blank)
+  (call (. session ask) "hello")
+  (call (. t expect)
+    (block
+      (arg "a later turn resumes the session")
+      (arg "hello back resumed=yes")
+      (arg (call ai-parts-text (. ([] (. session messages) 3) parts)))
+    )
+  )
+  (return t)
+)
+
+(fn-do _ tool-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeClaude))
+  (finally
+    (inline (call (. fake remove)))
+  )
+  (let claude (call (. fake provider)))
+  (let session (call AIChatSession (call AIChat "tools") (call AIChatService "claude" "Claude" claude "")))
+  (blank)
+  (call (. session ask) "browse")
+  (let reply ([] (. session messages) 1))
+  (call (. t check) "a tool turn finishes without an error" (== (. reply error) null))
+  (call (. t expect) "a tool turn keeps its parts in order" "extension, call, result, text" (call part-kinds reply))
+  (return t)
+)
+
+(fn-do _ launch-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeClaude))
+  (finally
+    (inline (call (. fake remove)))
+  )
+  (let claude (call (. fake provider)))
+  (= (. claude working-directory) "/usr")
+  (= (. claude tools) (list "Read" "Grep"))
+  (= (. claude is-safe-mode) true)
+  (= (. claude allowed-tools) (list "Read"))
+  (= (. claude permission-mode) "acceptEdits")
+  (blank)
+  (let messages (call (of List AIMessage)))
+  (+= messages (call AIMessage (. AIMessageRole system) "Be brief"))
+  (+= messages (call AIMessage (. AIMessageRole user) "report"))
+  (let request (call AIRequest "haiku" messages))
+  (let flags (call claude-arguments request (. claude tools) true (. claude allowed-tools) "acceptEdits"))
+  (let arguments (call (. " " join) flags))
+  (call (. t expect)
+    (block
+      (arg "the process gets its flags, directory and environment")
+      (arg (str arguments " /usr unset unset"))
+      (arg (call ai-response-text (call complete claude request)))
+    )
+  )
+  (return t)
+)
+
+(fn-do _ abandon-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeClaude))
+  (finally
+    (inline (call (. fake remove)))
+  )
+  (let claude (call (. fake provider)))
+  (blank)
+  (let seen (call (of List String)))
+  (for (in event (call (. claude stream) (call AIRequest "" (list (call AIMessage (. AIMessageRole user) "slow")))))
+    (if (is event AIPartDeltaEvent)
+      (+= seen "delta")
+      (call (. t expect) "a turn in flight has a process" 1 (. claude running))
+      (break)
+    )
+  )
+  (call (. t expect) "the stream delivered its first text" "delta" (call (. ", " join) seen))
+  (call await-idle claude)
+  (call (. t expect) "leaving a stream interrupts its turn and lets the idle process end" 0 (. claude running))
+  (return t)
+)
+
+(fn-do _ stop-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeClaude))
+  (finally
+    (inline (call (. fake remove)))
+  )
+  (let claude (call (. fake provider)))
+  (let session (call AIChatSession (call AIChat "stopped") (call AIChatService "claude" "Claude" claude "")))
+  (blank)
+  (call (. session send) "slow")
+  (call await-text session 1)
+  (call (. session stop))
+  (call await-idle claude)
+  (blank)
+  (call (. session ask) "hello")
+  (call (. t expect)
+    (block
+      (arg "the next turn resumes the stopped session")
+      (arg "hello back resumed=yes")
+      (arg (call ai-parts-text (. ([] (. session messages) 3) parts)))
+    )
+  )
+  (return t)
+)
+
+(fn-do _ background-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeClaude))
+  (finally
+    (inline (call (. fake remove)))
+  )
+  (let claude (call (. fake provider)))
+  (let session (call AIChatSession (call AIChat "background") (call AIChatService "claude" "Claude" claude "")))
+  (blank)
+  (call (. session ask) "spawn")
+  (call (. t check) "a reply ends while its background agent runs" (not (. session is-busy)))
+  (call (. t expect) "the process outlives the reply" 1 (. claude running))
+  (blank)
+  (call (. session ask) "hello")
+  (call (. t expect)
+    (block
+      (arg "a prompt during background work reuses the process")
+      (arg "hello back resumed=no")
+      (arg (call ai-parts-text (. ([] (. session messages) 3) parts)))
+    )
+  )
+  (blank)
+  (call await-replies session 5)
+  (call (. t check)
+    (block
+      (arg "the agent's result arrives without a prompt")
+      (arg (== (. ([] (. session messages) 4) role) (. AIMessageRole assistant)))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "the agent's result is its own reply")
+      (arg "agent finished")
+      (arg (call ai-parts-text (. ([] (. session messages) 4) parts)))
+    )
+  )
+  (call await-idle claude)
+  (call (. t expect) "the process ends once its agent is done" 0 (. claude running))
+  (return t)
+)
+
+(fn-do _ background-stop-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeClaude))
+  (finally
+    (inline (call (. fake remove)))
+  )
+  (let claude (call (. fake provider)))
+  (let session (call AIChatSession (call AIChat "background-stop") (call AIChatService "claude" "Claude" claude "")))
+  (blank)
+  (call (. session ask) "spawn")
+  (call (. session send) "slow")
+  (call await-text session 3)
+  (call (. session stop))
+  (call (. t check)
+    (block
+      (arg "the stopped reply is cancelled")
+      (arg (== (. ([] (. session messages) 3) finish-reason) (. AIFinishReason cancellation)))
+    )
+  )
+  (blank)
+  (call await-replies session 5)
+  (call (. t expect)
+    (block
+      (arg "the agent survives the stop and reports")
+      (arg "agent finished")
+      (arg (call ai-parts-text (. ([] (. session messages) 4) parts)))
+    )
+  )
+  (call await-idle claude)
+  (call (. t expect) "the process ends once its agent is done" 0 (. claude running))
+  (return t)
+)
+
+(fn-do _ absorbed-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeClaude))
+  (finally
+    (inline (call (. fake remove)))
+  )
+  (let claude (call (. fake provider)))
+  (let session (call AIChatSession (call AIChat "absorbed") (call AIChatService "claude" "Claude" claude "")))
+  (blank)
+  (call (. session ask) "absorb")
+  (call (. t expect)
+    (block
+      (arg "a reply takes in its agent's report")
+      (arg "absorbed")
+      (arg (call ai-parts-text (. ([] (. session messages) 1) parts)))
+    )
+  )
+  (call await-idle claude)
+  (call (. t expect) "the process ends once a reply took its agent's report in" 0 (. claude running))
+  (return t)
+)
+
+(fn-do _ failure-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeClaude))
+  (finally
+    (inline (call (. fake remove)))
+  )
+  (let claude (call (. fake provider)))
+  (blank)
+  (let crash (catch (call complete claude (call AIRequest "" (list (call AIMessage (. AIMessageRole user) "crash"))))))
+  (call (. t check) "a turn fails when the process exits" (is crash AIError))
+  (if (is crash AIError)
+    (call (. t expect)
+      (block
+        (arg "the failure carries the error output")
+        (arg "fake failure")
+        (arg (. (as crash AIError) service-message))
+      )
+    )
+  )
+  (blank)
+  (let garbage (catch (call complete claude (call AIRequest "" (list (call AIMessage (. AIMessageRole user) "garbage"))))))
+  (call (. t check) "output that is not JSON fails the turn" (is garbage AIError))
+  (blank)
+  (call await-idle claude)
+  (call (. t expect) "failed turns leave no process" 0 (. claude running))
+  (return t)
+)
+
+(fn-do _ await-idle _
+  (param claude ClaudeCode)
+  (let deadline (call Deadline 5s))
+  (while (and (not (. deadline has-passed)) (. claude running))
+    (call (. 1ms wait))
+  )
+)
+
+(fn-do _ await-replies _
+  (param session AIChatSession)
+  (param count Size)
+  (let deadline (call Deadline 5s))
+  (while (and (not (. deadline has-passed)) (or (< (. session messages length) count) (. session is-busy)))
+    (call (. 1ms wait))
+  )
+)
+
+(fn-do _ await-text _
+  (param session AIChatSession)
+  (param index Index)
+  (let deadline (call Deadline 5s))
+  (while (and (not (. deadline has-passed)) (or (<= (. session messages length) index) (not (. (call ai-parts-text (. ([] (. session messages) index) parts)) length))))
+    (call (. 1ms wait))
+  )
+)
+
+(fn-expr _ part-kinds _
+  (param message AIChatMessage)
+  (call (. ", " join) (in (call part-kind each) (. message parts)))
+)
+
+(fn-expr _ part-kind _
+  (param part AIMessagePart)
+  (match part
+    (case AITextPart
+      "text"
+    )
+    (case AIExtensionPart
+      "extension"
+    )
+    (case AIToolCallPart
+      "call"
+    )
+    (case AIToolResultPart
+      "result"
+    )
+    (default
+      "other"
+    )
+  )
+)
+
+(type _ FakeClaude
+  (prop + directory String)
+  (prop + program String)
+  (fn-do _ This _
+    (= directory (str "/tmp/brix-claude-" (call monotonic-time-nanoseconds)))
+    (= program (str directory "/claude"))
+    (call (. (call Path directory) make-directory))
+    (let flags (+ (. FileFlags write-mode) (. FileFlags create-mode) (. FileFlags truncate-mode)))
+    (let script (call (of File Byte) program flags user-rwx-perm))
+    (call (. script write) (call fake-claude-script))
+    (call (. script close))
+  )
+  (fn-do + provider _
+    (let claude (call ClaudeCode))
+    (= (. claude executable) program)
+    (return claude)
+  )
+  (fn-do + remove _
+    (call (. (call Path program) delete))
+    (call (. (call Path directory) delete))
+  )
+)
+
+(fn-expr _ fake-claude-script _
+  (paragraph
+    "#!/bin/sh"
+    "session=sess-1"
+    "resumed=no"
+    "previous="
+    "for argument in \"\$@\"; do"
+    "  if [ \"\$previous\" = \"--resume\" ]; then"
+    "    session=\$argument"
+    "    resumed=yes"
+    "  fi"
+    "  previous=\$argument"
+    "done"
+    "say() { printf '%s\\n' \"\$1\"; }"
+    "begin() { printf '{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"%s\",\"model\":\"fake-model\"}\\n' \"\$session\"; }"
+    "text() {"
+    "  printf '{\"type\":\"assistant\",\"message\":{\"id\":\"msg_1\",\"content\":[{\"type\":\"text\",\"text\":\"%s\"}]},\"parent_tool_use_id\":null}\\n' \"\$1\""
+    "}"
+    "finish() { say '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"stop_reason\":\"end_turn\",\"total_cost_usd\":0,\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}'; }"
+    "while IFS= read -r line; do"
+    "  case \"\$line\" in"
+    "    *'\"initialize\"'*) say '{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"brix-1\",\"response\":{}}}' ;;"
+    "    *'\"interrupt\"'*)"
+    "      say '{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"brix-2\",\"response\":{}}}'"
+    "      say '{\"type\":\"result\",\"subtype\":\"error_during_execution\",\"is_error\":true,\"terminal_reason\":\"aborted_streaming\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}' ;;"
+    "    *hello*) begin; text \"hello back resumed=\$resumed\"; finish ;;"
+    "    *spawn*)"
+    "      begin"
+    "      text \"started\""
+    "      say '{\"type\":\"system\",\"subtype\":\"task_started\",\"task_id\":\"t1\",\"description\":\"agent\",\"is_backgrounded\":true}'"
+    "      finish"
+    "      ( sleep 0.5"
+    "        say '{\"type\":\"system\",\"subtype\":\"task_notification\",\"task_id\":\"t1\",\"status\":\"completed\",\"output_file\":\"\",\"summary\":\"done\"}'"
+    "        begin"
+    "        text \"agent finished\""
+    "        finish ) & ;;"
+    "    *absorb*)"
+    "      begin"
+    "      say '{\"type\":\"system\",\"subtype\":\"task_started\",\"task_id\":\"t2\",\"description\":\"agent\",\"is_backgrounded\":true}'"
+    "      say '{\"type\":\"system\",\"subtype\":\"task_notification\",\"task_id\":\"t2\",\"status\":\"completed\",\"output_file\":\"\",\"summary\":\"done\"}'"
+    "      say '{\"type\":\"system\",\"subtype\":\"status\",\"status\":\"requesting\"}'"
+    "      text \"absorbed\""
+    "      finish ;;"
+    "    *report*) begin; text \"\$* \$(pwd) \${CLAUDECODE-unset} \${ANTHROPIC_API_KEY-unset}\"; finish ;;"
+    "    *slow*)"
+    "      begin"
+    "      say '{\"type\":\"stream_event\",\"event\":{\"type\":\"message_start\",\"message\":{\"id\":\"msg_slow\"}},\"parent_tool_use_id\":null}'"
+    "      say '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}},\"parent_tool_use_id\":null}'"
+    "      say '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"1\"}},\"parent_tool_use_id\":null}' ;;"
+    "    *browse*)"
+    "      begin"
+    "      say '{\"type\":\"stream_event\",\"event\":{\"type\":\"message_start\",\"message\":{\"id\":\"msg_tool\"}},\"parent_tool_use_id\":null}'"
+    "      say '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"Glob\",\"input\":{}}},\"parent_tool_use_id\":null}'"
+    "      say '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\"}},\"parent_tool_use_id\":null}'"
+    "      say '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"pattern\\\": \\\"*.yu\"}},\"parent_tool_use_id\":null}'"
+    "      say '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"mi\\\"}\"}},\"parent_tool_use_id\":null}'"
+    "      say '{\"type\":\"assistant\",\"message\":{\"id\":\"msg_tool\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"Glob\",\"input\":{\"pattern\":\"*.yumi\"}}]},\"parent_tool_use_id\":null}'"
+    "      say '{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_1\",\"content\":[{\"type\":\"text\",\"text\":\"main.yumi\\napp.yumi\"}]}]},\"parent_tool_use_id\":null}'"
+    "      say '{\"type\":\"stream_event\",\"event\":{\"type\":\"message_start\",\"message\":{\"id\":\"msg_answer\"}},\"parent_tool_use_id\":null}'"
+    "      say '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}},\"parent_tool_use_id\":null}'"
+    "      say '{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Two files.\"}},\"parent_tool_use_id\":null}'"
+    "      say '{\"type\":\"assistant\",\"message\":{\"id\":\"msg_answer\",\"content\":[{\"type\":\"text\",\"text\":\"Two files.\"}]},\"parent_tool_use_id\":null}'"
+    "      finish ;;"
+    "    *crash*) echo 'fake failure' >&2; exit 3 ;;"
+    "    *garbage*) say 'not json' ;;"
+    "  esac"
+    "done"
+    "wait"
+  )
+)

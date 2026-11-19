@@ -1,0 +1,216 @@
+(type + (of Accumulator Accum Item Result) (is (fn-type Result (param accum Accum) (param item Item))))
+
+(fn-do + (of scan-map Accum Item) (stream (tuple Accum Item)) @inline
+  (param seed Accum)
+  (param stream (stream Item))
+  (param using (of Accumulator Accum Item))
+  (let accum seed)
+  (for (in item stream)
+    (= accum (call using accum item))
+    (yield (tuple accum item))
+  )
+)
+
+(fn-do + (of scan Item) _ @inline
+  (param stream (stream Item))
+  (param using (of Accumulator Item Item))
+  (let accum (call Item))
+  (let started false)
+  (for (in item stream)
+    (= accum (if-expr started (call using accum item) item))
+    (= started true)
+    (yield accum)
+  )
+)
+
+(fn-do + (of scan Item) _ @inline
+  (param seed Item)
+  (param stream (stream Item))
+  (param using (of Accumulator Item Item))
+  (let accum seed)
+  (for (in item stream)
+    (= accum (call using accum item))
+    (yield accum)
+  )
+)
+
+(fn-do + (of reduce Item Result) _ @inline
+  (param seed Result)
+  (param stream (stream Item))
+  (param using (of Accumulator Result Item))
+  (let accum seed)
+  (for (in item stream)
+    (= accum (call using accum item))
+  )
+  (return accum)
+)
+
+(fn-do + (of reduce Item) _ @inline
+  (param stream (stream Item))
+  (param using (of Accumulator Item Item))
+  (let accum (call Item))
+  (let started false)
+  (for (in item stream)
+    (= accum (if-expr started (call using accum item) item))
+    (= started true)
+  )
+  (return accum)
+)
+
+(fn-expr + (of count Item) _ @inline
+  (param stream (stream Item))
+  ; for in stream: all + 1
+  (call (of reduce Item) 0 stream (:using (=> (accum item) (+ accum 1))))
+)
+
+(fn-expr + (of sum Item) _ @inline
+  (param stream (stream Item))
+  (call (of reduce Item) stream (:using (=> (accum item) (+ accum item))))
+)
+
+(fn-expr + (of min Item) _ @inline
+  (param stream (stream Item))
+  (call (of reduce Item) stream (:using (=> (accum item) (if-expr (> item accum) accum item))))
+)
+
+(fn-expr + (of max Item) _ @inline
+  (param stream (stream Item))
+  (call (of reduce Item) stream (:using (=> (accum item) (if-expr (< item accum) accum item))))
+)
+
+(fn-do + (of average Item) _ @inline
+  (param stream (stream Item))
+  (let total (call Item))
+  (let count (call Item))
+  (for (in item stream)
+    (+= total item)
+    (+= count 1)
+  )
+  (return (/ total count))
+)
+
+(fn-expr + (of headtail Item) (tuple (: head (? Item)) (: tail (of Indexable Item))) @inline
+  (param stream (of Indexable Item))
+  (tuple head tail)
+  (where
+    (lazy head (only-if ([] stream 0) (if l)))
+    (lazy tail
+      (block
+        (case? (> (. stream length) 1)
+          ([] stream (... 1))
+        )
+        (default
+          ([] stream (..< l l))
+        )
+      )
+    )
+    (lazy l (. stream length))
+  )
+)
+
+(fn-expr + (of headtail Item) (tuple (: head (? Item)) (: tail (of Iterable Item))) @inline
+  (param stream (of Iterable Item))
+  (tuple (<- stream) stream)
+)
+
+(fn-expr + (of first Item) (? Item) @inline
+  (param stream (of Indexable Item))
+  (only-if ([] stream 0) (if (> (. stream length) 0)))
+)
+
+(fn-expr + (of first Item) _ @inline
+  (param stream (of Iterable Item))
+  (<- stream)
+)
+
+(fn-do + (of last Item) (? Item) @inline
+  (param stream (stream Item))
+  (let result (? Item))
+  (for (in item stream)
+    (= result item)
+  )
+  (return result)
+)
+
+(fn-do + single _
+  (param stream (stream Item))
+  (yield
+    (scope first
+      (throw (call Error "More than one message found in stream.") (if second))
+    )
+  )
+)
+
+(fn-expr + is-empty _
+  (param stream (stream Item))
+  (not item)
+  (where
+    (lazy item (<- stream))
+  )
+)
+
+(fn-expr + is-single _
+  (param stream (stream Item))
+  (not second)
+  (where
+    (lazy first (<- stream))
+    (lazy second (and (<- stream) first))
+  )
+)
+
+(fn-expr + (of all Item) _ @inline
+  (param stream (stream Item))
+  (param where (of Predicate Item))
+  (not (call some stream (:where (not (call where each)))))
+)
+
+(fn-do + (of some Item) _ @inline
+  (param stream (stream Item))
+  (param where (of Predicate Item))
+  (for (in item stream)
+    (if (call where item)
+      (return true)
+    )
+  )
+  (return false)
+)
+
+(fn-expr + (of only-one Item) _ @inline
+  (param stream (stream Item))
+  (param where (of Predicate Item))
+  (== count 1)
+  (where
+    (lazy count (call how-many stream (:where where)))
+  )
+)
+
+(fn-expr + (of more-than-one Item) _ @inline
+  (param stream (stream Item))
+  (param where (of Predicate Item))
+  (> count 1)
+  (where
+    (lazy count (call how-many stream (:where where)))
+  )
+)
+
+(fn-expr + (of exactly Item) _ @inline
+  (param amount Int)
+  (param stream (stream Item))
+  (param where (of Predicate Item))
+  (== amount count)
+  (where
+    (lazy count (call how-many stream (:where where)))
+  )
+)
+
+(fn-expr + (of how-many Item) _ @inline
+  (param stream (stream Item))
+  (param where (of Predicate Item))
+  (call (of reduce Item) 0 stream (:using (=> (accum item) (if-expr (call where item) (+ accum 1) accum))))
+)
+
+(fn-expr + sum-reduce _
+  (param total _)
+  (param item _)
+  (+ total item)
+)

@@ -13,13 +13,12 @@ from common import ROOT, Failure, run_main, say, shown
 
 PACKAGE = 'lucide-static'
 OUTPUT = os.path.join(ROOT, 'stdlib', 'gui', 'icons', 'lucide')
-TAGS_OUTPUT = os.path.join(ROOT, 'stdlib', 'gui', 'icons', 'lucide-tags.yumi')
+TAGS_OUTPUT = os.path.join(ROOT, 'stdlib', 'gui', 'icons', 'lucide-tags.bx')
+EXTENSION = '.bx'
 GENERATOR = 'toolchain/codegen/lucide_icons.py'
 MANIFEST = 'manifest.json'
 LICENSE = 'LICENSE.txt'
 PROBLEM_LIMIT = 20
-MAJOR_DIVIDER = '━' * 20
-MINOR_DIVIDER = '─' * 20
 ROOT_ATTRIBUTES = {
     'class', 'fill', 'height', 'stroke', 'stroke-linecap', 'stroke-linejoin', 'stroke-width', 'viewBox', 'width',
     'xmlns',
@@ -96,7 +95,7 @@ def generated_files(prefix, version):
         owners[type_name] = source_name
         with open(os.path.join(icons, source_name), encoding='utf-8-sig') as file:
             icon = parse_svg(source_name, file.read())
-        files[icon_name + '.yumi'] = render_icon(icon_name, type_name, icon)
+        files[icon_name + EXTENSION] = render_icon(icon_name, type_name, icon)
     with open(os.path.join(prefix, 'LICENSE'), encoding='utf-8') as file:
         license = file.read()
     files[LICENSE] = license if license.endswith('\n') else license + '\n'
@@ -149,15 +148,15 @@ def write(files):
 def render_tags(prefix, files):
     with open(os.path.join(prefix, 'tags.json'), encoding='utf-8') as file:
         listed = json.load(file)
-    names = [name[:-len('.yumi')] for name in files if name.endswith('.yumi')]
+    names = [name[:-len(EXTENSION)] for name in files if name.endswith(EXTENSION)]
     lines = [
-        MAJOR_DIVIDER,
-        '+ " lucide-tag-lines',
-        '',
+        '(fn-expr + lucide-tag-lines _',
+        '  (paragraph',
     ]
     for name in names:
         kept = [tag for tag in listed.get(name, []) if plain_tag(tag)]
-        lines.append('%s|%s' % (name, ','.join(kept)) if kept else name)
+        lines.append('    %s' % quoted('%s|%s' % (name, ','.join(kept)) if kept else name))
+    lines += ['  )', ')']
     return '\n'.join(lines) + '\n'
 
 
@@ -178,7 +177,7 @@ def write_tags(content):
 
 
 def managed(name):
-    return name.endswith('.yumi') or name in (LICENSE, MANIFEST)
+    return name.endswith(EXTENSION) or name in (LICENSE, MANIFEST)
 
 
 def generated_names():
@@ -187,7 +186,7 @@ def generated_names():
 
 
 def guard(name, listed):
-    if name.endswith('.yumi') and name not in listed:
+    if name.endswith(EXTENSION) and name not in listed:
         raise Failure('Refusing to replace %s, which %s does not list' % (shown(os.path.join(OUTPUT, name)), MANIFEST))
 
 
@@ -595,31 +594,30 @@ def format_number(value):
 
 def render_icon(icon_name, type_name, icon):
     lines = [
-        '/graphics/primitives',
-        '/gui/icon',
-        '/gui/icons/lucide-icon',
-        '/gui/theme',
+        '(import /graphics/primitives)',
+        '(import /gui/icon)',
+        '(import /gui/icons/lucide-icon)',
+        '(import /gui/theme)',
         '',
-        MAJOR_DIVIDER,
-        '• extend GUIDefaultTheme',
+        '(style-extend GUIDefaultTheme',
+        '  (rule icon-%s' % icon_name,
+        '    (own-rule icon-host',
+        '      (<> LucideIcon (slot: first-child) (• icon)',
+        '        (= glyph (call lucide-glyph-program))',
+        '      )',
+        '    )',
+        '  )',
+        ')',
         '',
-        '• icon-%s' % icon_name,
-        '    • own icon-host',
-        '        <LucideIcon (first-child) • icon',
-        '            glyph = lucide-glyph-program()',
+        '(type + %s (is LucideIcon)' % type_name,
+        '  (fn-do + This _',
+        '    (= glyph (call lucide-glyph-program))',
+        '  )',
+        ')',
         '',
-        MAJOR_DIVIDER,
-        '+ %s is LucideIcon' % type_name,
-        '',
-        MINOR_DIVIDER,
-        '+ This',
-        '',
-        'glyph = lucide-glyph-program()',
-        '',
-        MAJOR_DIVIDER,
-        '_ lucide-glyph-program [Coord]',
-        '',
-        '[%s]' % ', '.join(map(format_number, glyph_program(icon_name, icon))),
+        '(fn-expr _ lucide-glyph-program (list Coord)',
+        '  (list %s)' % ' '.join(map(format_number, glyph_program(icon_name, icon))),
+        ')',
     ]
     return '\n'.join(lines) + '\n'
 
@@ -655,7 +653,7 @@ def render_manifest(version, files):
         'generator': GENERATOR,
         'source': '%s v%s' % (PACKAGE, version),
         'license': 'ISC, in %s' % LICENSE,
-        'icons': [name for name in files if name.endswith('.yumi')],
+        'icons': [name for name in files if name.endswith(EXTENSION)],
     }
     return json.dumps(manifest, indent=4, ensure_ascii=False) + '\n'
 

@@ -1,0 +1,32 @@
+; benchmark.meta description: Drains 4 subscription backlogs of 8192 messages each.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core/channel)
+(blank)
+
+(main
+  (let depth 8192)
+  (let channel (call (of AsyncChannel Int)))
+  (let checksum 0)
+  (for (on n channel)
+    (= checksum (% (+ (* checksum 31) n) 1000000007))
+  )
+  (blank)
+  (for (in batch (..< 0 4))
+    (for (in i (..< 0 depth))
+      (<- channel (+ (* batch depth) i))
+    )
+    (call drain)
+  )
+  (blank)
+  (print (str "bench-result tasks/subscription-backlog-8192 checksum=" checksum))
+)
+
+(fn-do + drain _
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)

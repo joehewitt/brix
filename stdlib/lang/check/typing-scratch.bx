@@ -1,0 +1,246 @@
+(import ./binding)
+(import ./narrowing-key)
+(import ./ranking-cache)
+(import ./signature-cache)
+(import ./types)
+(import /core/arena)
+(import /core/scratch)
+(import /lang/ast/ast-nodes)
+(import /lang/ast/decl)
+
+(type + Narrowed (is Tuple)
+  ; What is known of a key from some point on. `assigned` says an assignment left it so, and
+  ; no condition: it holds where the region it was made in ends, as far as that region ran.
+  (blank)
+  (prop + key NarrowingKey)
+  (prop + type TypeId)
+  (prop + cases U64)
+  (prop + assigned Bool)
+)
+
+(type + TypedSite (is Tuple)
+  (prop + type TypeId)
+  (prop + syntax SyntaxId)
+)
+
+(type + Outgoing (is Tuple)
+  ; An error on its way out of a function, at the syntax that lets it out. A call whose callee
+  ; has not settled its errors holds their place instead: it names the callee and the fact of the
+  ; call, and counts the function's transformers declared before it.
+  (prop + type TypeId)
+  (prop + syntax SyntaxId)
+  (prop + callee U32 (= (. U32 max)))
+  (prop + call U32 (= (. U32 max)))
+  (prop + transforms U32)
+)
+
+(type + OperatorQuery (is Tuple)
+  (implements Hashable)
+  ; What a module asks when it asks whether a type declares an operator: the type, the
+  ; operator's name, and the types of its arguments, the second none for one that takes one.
+  (blank)
+  (prop + caller U32)
+  (prop + receiver U32)
+  (prop + name Atom)
+  (prop + arg U32)
+  (prop + second U32)
+  (fn-expr + (infix this == (param other This)) _
+    (and same-receiver (== name (. other name)) (== arg (. other arg)) (== second (. other second)))
+    (where
+      (lazy same-receiver (and (== caller (. other caller)) (== receiver (. other receiver))))
+    )
+  )
+  (fn-do + hash Hash :get
+    (let fingerprint (* (/xor/ 2166136261 caller) 16777619))
+    (= fingerprint (* (/xor/ fingerprint receiver) 16777619))
+    (= fingerprint (* (/xor/ fingerprint arg) 16777619))
+    (= fingerprint (* (/xor/ fingerprint second) 16777619))
+    (return (/xor/ (call hash-for name) (call hash-for fingerprint)))
+  )
+)
+
+(type + TypingScratch
+  (implements (of Usable Void))
+  ; The working stacks of the type pass. Each is a Scratch whose finished runs become read-only
+  ; spans: a call's argument types, a hit's slot fills and relations, a signature's parameter
+  ; names. Runs are marked, pushed, sliced, and rewound in LIFO order; a span taken over a finished
+  ; run stays valid for the compile because the arena never reuses storage before release.
+  ; A narrowing is found by its key: `latest` holds the place of the last one pushed for each
+  ; key, and `links` the place of the one each narrowing followed. `using-types` holds the type
+  ; each `using` of a class or a style sheet names, by its module and syntax, once one is found.
+  ; `visible-styles` holds, by class or style sheet, the place and count in `visible-style-list`
+  ; of the styles it sees, once each of its usings is found, and whether it has any.
+  ; `missing-styles` holds, by class and interface, the first style the interface uses that the
+  ; class does not, or no type, once it is found (`Checker.conform-styles`). `missing-members`
+  ; holds, by type and interface, the module and declaration of the first function the interface
+  ; requires that the type does not answer, or 0, once it is found (`Checker.conform-members`).
+  ; `operators` holds whether a type declares an operator a module asks it for
+  ; (`Calls.has-operator`). `rankings` holds what ranking chose for calls ranked before
+  ; (`Ranking.recall`).
+  ; `nested-unshared` and `inline-runs` hold, for the instances being typed, what the instances typed
+  ; in turn changed that another pass cannot take in, and those typed only in another's run
+  ; (`Checker.run`); `nested-unretirable` holds what they changed that retiring them cannot undo.
+  (blank)
+  (prop + arena Arena)
+  (prop + types (of Scratch TypeId))
+  (prop + names (of Scratch Atom))
+  (prop + words (of Scratch U32))
+  (prop + relations (of Scratch Relation))
+  (prop + call-arguments (of Scratch CallArgument))
+  (prop + syntax (of Scratch SyntaxId))
+  (prop + narrowings (of Scratch Narrowed))
+  (prop _ links (of Scratch U32))
+  (prop _ latest (of Map NarrowingKey U32 ArenaBacking))
+  (prop + returns (of Scratch TypedSite))
+  (prop + yields (of Scratch TypedSite))
+  (prop + outgoing (of Scratch Outgoing))
+  (prop + slots (of Scratch TypeId))
+  (prop + signatures SignatureCache)
+  (prop + rankings RankingCache)
+  (prop + using-types (of Map Size U32 ArenaBacking))
+  (prop + visible-styles (of Map U32 U64 ArenaBacking))
+  (prop + visible-style-list (of List TypeId ArenaBacking))
+  (prop + missing-styles (of Map U64 U32 ArenaBacking))
+  (prop + missing-members (of Map U64 U64 ArenaBacking))
+  (prop + operators (of Map OperatorQuery Bool ArenaBacking))
+  (prop + runners (list Runner))
+  (prop + nested-unshared I64)
+  (prop + nested-unretirable I64)
+  (prop + inline-runs (list U32))
+  (prop + running (list U32))
+  (prop + idle (list IdleKit))
+  (prop + no-types (of ImmutableArray TypeId ArenaBacking))
+  (prop + no-names (of ImmutableArray Atom ArenaBacking))
+  (prop + no-fills (of ImmutableArray U32 ArenaBacking))
+  (prop + no-relations (of ImmutableArray Relation ArenaBacking))
+  (prop + no-shapes (of ImmutableArray CallArgument ArenaBacking))
+  (prop + no-syntax (of ImmutableArray SyntaxId ArenaBacking))
+  (fn-do + This _
+    (lazy types (call (of Scratch TypeId) arena 1024))
+    (lazy names (call (of Scratch Atom) arena 256))
+    (lazy words (call (of Scratch U32) arena 512))
+    (lazy relations (call (of Scratch Relation) arena 256))
+    (lazy call-arguments (call (of Scratch CallArgument) arena 256))
+    (lazy syntax (call (of Scratch SyntaxId) arena 256))
+    (lazy narrowings (call (of Scratch Narrowed) arena 256))
+    (lazy links (call (of Scratch U32) arena 256))
+    (lazy latest (call (of Map NarrowingKey U32) arena))
+    (lazy returns (call (of Scratch TypedSite) arena 256))
+    (lazy yields (call (of Scratch TypedSite) arena 64))
+    (lazy outgoing (call (of Scratch Outgoing) arena 256))
+    (lazy slots (call (of Scratch TypeId) arena 256))
+    (lazy signatures (call SignatureCache arena))
+    (lazy rankings (call RankingCache arena))
+    (lazy using-types (call (of Map Size U32) arena))
+    (lazy visible-styles (call (of Map U32 U64) arena))
+    (lazy visible-style-list (call (of List TypeId) arena))
+    (lazy missing-styles (call (of Map U64 U32) arena))
+    (lazy missing-members (call (of Map U64 U64) arena))
+    (lazy operators (call (of Map OperatorQuery Bool) arena))
+    (lazy no-types (call (. types since) 0))
+    (lazy no-names (call (. names since) 0))
+    (lazy no-fills (call (. words since) 0))
+    (lazy no-relations (call (. relations since) 0))
+    (lazy no-shapes (call (. call-arguments since) 0))
+    (lazy no-syntax (call (. syntax since) 0))
+  )
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (call release)
+  )
+  (fn-do + release _
+    (call (. signatures release))
+    (call (. rankings release))
+    (call (. arena release))
+  )
+  (fn-do + push-narrowing _
+    (param narrowed Narrowed)
+    ; Pushes a narrowing, which becomes the latest of its key.
+    (let position U32 (as (. narrowings length) U32))
+    (call (. links push) (?? ([] latest (. narrowed key)) (. U32 max)))
+    (= ([] latest (. narrowed key)) position)
+    (call (. narrowings push) narrowed)
+  )
+  (fn-do + rewind-narrowings _
+    (param mark ScratchMark)
+    ; Takes back the narrowings pushed since a mark. Each key's latest is again the one the
+    ; narrowing taken back followed.
+    (let position (. narrowings length))
+    (while (> position mark)
+      (-= position 1)
+      (= ([] latest (. ([] narrowings position) key)) ([] links position))
+    )
+    (call (. narrowings rewind) mark)
+    (call (. links rewind) mark)
+  )
+  (fn-do + assigned-since (list Narrowed)
+    (param mark ScratchMark)
+    ; What each key an assignment settled since a mark is narrowed to now: the latest narrowing
+    ; of each, in the order the keys were last settled, latest first.
+    (let found (list Narrowed))
+    (let position (. narrowings length))
+    (while (> position mark)
+      (-= position 1)
+      (let row ([] narrowings position))
+      (if (not (. row assigned))
+        (continue)
+      )
+      (let seen false)
+      (for (in known found)
+        (if (== (. known key) (. row key))
+          (= seen true)
+        )
+      )
+      (if (not seen)
+        (let now ([] narrowings (?? ([] latest (. row key)) position)))
+        (+= found (call Narrowed (. now key) (. now type) (. now cases) true))
+      )
+    )
+    (return found)
+  )
+  (fn-expr + narrowed-since TypeId
+    (param start ScratchMark)
+    (param key NarrowingKey)
+    ; The most recent narrowing of a slot pushed since the mark, or no type.
+    (case? (or (== position (. U32 max)) (< position start))
+      no-type
+    )
+    (default
+      (. ([] narrowings position) type)
+    )
+    (where
+      (lazy position (?? ([] latest key) (. U32 max)))
+    )
+  )
+  (fn-expr + was-assigned Bool
+    (param start ScratchMark)
+    (param key NarrowingKey)
+    ; Whether the most recent narrowing of a slot pushed since the mark is what an assignment
+    ; left it as.
+    (case? (or (== position (. U32 max)) (< position start))
+      false
+    )
+    (default
+      (. ([] narrowings position) assigned)
+    )
+    (where
+      (lazy position (?? ([] latest key) (. U32 max)))
+    )
+  )
+  (fn-expr + narrowed-cases-since U64
+    (param start ScratchMark)
+    (param key NarrowingKey)
+    ; The cases the most recent narrowing of a slot leaves its union, as a mask, or none.
+    (case? (or (== position (. U32 max)) (< position start))
+      0
+    )
+    (default
+      (. ([] narrowings position) cases)
+    )
+    (where
+      (lazy position (?? ([] latest key) (. U32 max)))
+    )
+  )
+)

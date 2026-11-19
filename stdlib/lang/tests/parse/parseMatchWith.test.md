@@ -2,10 +2,6 @@
 
 Apply without input
 
-```yumi
-result | binding
-```
-
 ```brix
 (main
   (select result (| binding))
@@ -24,12 +20,6 @@ result | binding
 ```
 
 ## Pattern helper clauses
-
-```yumi
-match input
-    with helper
-    ~ "x"
-```
 
 ```brix
 (main
@@ -50,39 +40,6 @@ match input
         <StreamString text="x"/>
     </StreamMatch>
 </Match>
-```
-
-```yumi crash
-match input
-    ~ "x"
-    with helper
-```
-
-```output
-Exception: with helper must be the first clause of a stream match
-<no file:4>
-        with helper
-        ^^^^^^^^^^^
-```
-
-```yumi crash
-match input
-    with first
-    with second
-    ~ "x"
-```
-
-```output
-Exception: Stream match has more than one helper
-<no file:2>
-    match input
-    ^^^^^^^^^^
-```
-
-```yumi
-match input
-    ~ "x" @rollback
-        1
 ```
 
 ```brix
@@ -109,10 +66,6 @@ match input
 </Match>
 ```
 
-```yumi
-result ~ Binding
-```
-
 ```brix
 (main
   (select result (~ Binding))
@@ -128,10 +81,6 @@ result ~ Binding
         <Id name="result"/>
     </StreamTransform>
 </StreamMatch>
-```
-
-```yumi
-source ~> \record with helper
 ```
 
 ```brix
@@ -150,12 +99,6 @@ source ~> \record with helper
         </PatternHelper>
     </StreamMatch>
 </BinaryExpression>
-```
-
-```yumi
-source
-~> item . with helper
-    item
 ```
 
 ```brix
@@ -188,10 +131,6 @@ source
 </Pipeline>
 ```
 
-```yumi
-source ~> \record with Helper(scratch)
-```
-
 ```brix
 (main
   (~> source \record (with (call Helper scratch)))
@@ -217,10 +156,6 @@ source ~> \record with Helper(scratch)
 
 ## Apply without binding
 
-```yumi
-result = input
-```
-
 ```brix
 (main
   (= result input)
@@ -232,11 +167,6 @@ result = input
     <Id name="result"/>
     <Id name="input"/>
 </AssignmentExpression>
-```
-
-```yumi
-result =
-    input
 ```
 
 ```brix
@@ -258,10 +188,6 @@ result =
 </AssignmentExpression>
 ```
 
-```yumi
-result in input
-```
-
 ```brix
 (main
   (in result input)
@@ -278,10 +204,6 @@ result in input
 ```
 
 ## Structural match with binding and input
-
-```yumi
-result | binding = input
-```
 
 ```brix
 (main
@@ -301,11 +223,6 @@ result | binding = input
         </TypeTransform>
     </StructureMatch>
 </Match>
-```
-
-```yumi
-result | binding =
-    input
 ```
 
 ```brix
@@ -334,10 +251,6 @@ result | binding =
 </Match>
 ```
 
-```yumi
-result | binding in input
-```
-
 ```brix
 (main
   (in (select result (| binding)) input)
@@ -363,10 +276,6 @@ result | binding in input
 
 ## Pattern match with binding and input
 
-```yumi
-result ~ Binding = input
-```
-
 ```brix
 (main
   (= (select result (~ Binding)) input)
@@ -385,11 +294,6 @@ result ~ Binding = input
         </StreamTransform>
     </StreamMatch>
 </Match>
-```
-
-```yumi
-result ~ Binding =
-    input
 ```
 
 ```brix
@@ -418,10 +322,6 @@ result ~ Binding =
 </Match>
 ```
 
-```yumi
-result ~ Binding in input
-```
-
 ```brix
 (main
   (in (select result (~ Binding)) input)
@@ -445,22 +345,6 @@ result ~ Binding in input
 
 ## Structural pattern first
 
-```yumi
-| binding
-```
-
-```output
-<StructureMatch>
-    <TypeCapture>
-        <Id name="binding"/>
-    </TypeCapture>
-</StructureMatch>
-```
-
-```yumi
-| binding = input
-```
-
 ```brix
 (main
   (case (= binding input))
@@ -476,10 +360,6 @@ result ~ Binding in input
         </TypeCapture>
     </StructureMatch>
 </Match>
-```
-
-```yumi
-<* binding in input
 ```
 
 ```brix
@@ -500,29 +380,6 @@ result ~ Binding in input
     </In>
     <Id name="each"/>
 </Iterator>
-```
-
-```yumi
-| binding
-    result
-```
-
-```output
-<StructureMatch>
-    <TypeTransform>
-        <TypeCapture>
-            <Id name="binding"/>
-        </TypeCapture>
-        <Block>
-            <Id name="result"/>
-        </Block>
-    </TypeTransform>
-</StructureMatch>
-```
-
-```yumi
-| binding = input
-    result
 ```
 
 ```brix
@@ -549,11 +406,6 @@ result ~ Binding in input
 </Match>
 ```
 
-```yumi
-<* binding in input
-    result
-```
-
 ```brix
 (main
   (case-each (in binding input)
@@ -578,10 +430,6 @@ result ~ Binding in input
 
 ## Grammar first
 
-```yumi
-~ Binding
-```
-
 ```brix
 (main
   (~ Binding)
@@ -594,10 +442,6 @@ result ~ Binding in input
         <TypeId name="Binding"/>
     </StreamType>
 </StreamMatch>
-```
-
-```yumi
-~ Binding = input
 ```
 
 ```brix
@@ -615,10 +459,6 @@ result ~ Binding in input
         </StreamType>
     </StreamMatch>
 </Match>
-```
-
-```yumi
-~ Binding in input
 ```
 
 ```brix
@@ -641,11 +481,6 @@ result ~ Binding in input
 </Iterator>
 ```
 
-```yumi
-~ Binding
-    result
-```
-
 ```brix
 (main
   (~ Binding
@@ -665,11 +500,6 @@ result ~ Binding in input
         </Block>
     </StreamTransform>
 </StreamMatch>
-```
-
-```yumi
-~ Binding = input
-    result
 ```
 
 ```brix
@@ -694,11 +524,6 @@ result ~ Binding in input
         </StreamTransform>
     </StreamMatch>
 </Match>
-```
-
-```yumi
-~ Binding in input
-    result
 ```
 
 ```brix
@@ -730,13 +555,6 @@ result ~ Binding in input
 
 ## Pattern matching
 
-```yumi
-match input
-    | binding
-        result
-    | binding
-```
-
 ```brix
 (main
   (match input
@@ -767,14 +585,6 @@ match input
         </TypeOr>
     </StructureMatch>
 </Match>
-```
-
-```yumi
-match input
-    ~ Binding
-        result
-    ~ Binding
-    ?? result
 ```
 
 ```brix
@@ -815,14 +625,6 @@ match input
         </StreamOr>
     </StreamMatch>
 </Match>
-```
-
-```yumi
-match input
-    |? binding
-        result
-    |? binding
-    ?? result
 ```
 
 ```brix
@@ -870,14 +672,6 @@ match input
 </Match>
 ```
 
-```yumi
-in input
-    | binding
-        result
-    | binding
-    ?? result
-```
-
 ```brix
 (main
   (iterate (in input)
@@ -923,14 +717,6 @@ in input
 </Iterator>
 ```
 
-```yumi
-in input
-    ~ Binding
-        result
-    ~ Binding
-    ?? result
-```
-
 ```brix
 (main
   (iterate (in input)
@@ -972,14 +758,6 @@ in input
     </In>
     <Id name="each"/>
 </Iterator>
-```
-
-```yumi
-in input
-    |? binding
-        result
-    |? binding
-    ?? result
 ```
 
 ```brix
@@ -1034,33 +812,6 @@ in input
 
 ## Function body match and iterator block header
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-
-match input
-    result
-```
-
-```output
-<Function names="foo" access="public-access">
-    <Block>
-        <Match>
-            <Id name="input"/>
-            <Id name="result"/>
-        </Match>
-    </Block>
-</Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    = in input
-
-result
-```
-
 ```brix
 (fn-expr + foo _
   (iterates in input)
@@ -1077,14 +828,6 @@ result
         <Id name="result"/>
     </Iterator>
 </Function>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-
-match input
-    ~ Binding
 ```
 
 ```brix
@@ -1110,14 +853,6 @@ match input
 </Function>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    = in input
-
-~ .
-```
-
 ```brix
 (fn-expr + foo _
   (iterates in input)
@@ -1138,20 +873,6 @@ match input
 ```
 
 ## "on" variations
-
-```yumi
-result on input
-result | binding on input
-<* binding on input
-on input
-    result
-
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    = on input
-
-x
-```
 
 ```brix
 (main

@@ -1,43 +1,48 @@
 # Markup branches
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    if demo.#flag
-        <TextBox = "on"
-    else
-        <TextBox = "off"
+(main
+  (<> Demo (id: demo)
+    (if (. demo #flag)
+      (<> TextBox (value: "on"))
+      (else
+        (<> TextBox (value: "off"))
+      )
+    )
+  )
+  (blank)
+  (print (call dump demo))
+  (= (. demo flag) false)
+  (print (call dump demo))
+  (= (. demo flag) true)
+  (print (call dump demo))
+)
 
--- dump(demo)
-demo.flag = false
--- dump(demo)
-demo.flag = true
--- dump(demo)
+(fn-expr + dump String
+  (param demo Demo)
+  (str count ":" text)
+  (where
+    (lazy region (!! (. demo %first-child)))
+    (lazy count (call count-children region))
+    (lazy text (. (as (!! (. region %first-child)) TextBox) text))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - demo Demo
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-"$count:$text"
-
-.. region = demo.%first-child!
-.. count = count-children(region)
-.. text = (region.%first-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ flag = true
+(type + Demo (is Box)
+  (prop + flag _ (= true))
+)
 ```
 
 ```output
@@ -46,43 +51,47 @@ for child in box.children
 1:on
 ```
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    if demo.#flag
-        <TextBox = "shown"
+(main
+  (<> Demo (id: demo)
+    (if (. demo #flag)
+      (<> TextBox (value: "shown"))
+    )
+  )
+  (blank)
+  (print (call dump demo))
+  (= (. demo flag) false)
+  (print (call dump demo))
+  (= (. demo flag) true)
+  (print (call dump demo))
+)
 
--- dump(demo)
-demo.flag = false
--- dump(demo)
-demo.flag = true
--- dump(demo)
+(fn-do + dump String
+  (param demo Demo)
+  (if (== count 0)
+    (return "0")
+  )
+  (return (str count ":" (. (as (!! (. region %first-child)) TextBox) text)))
+  (blank)
+  (lazy region (!! (. demo %first-child)))
+  (lazy count (call count-children region))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - demo Demo
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-if count == 0
-    = "0"
-= "$count:${(region.%first-child! as TextBox).text}"
-
-.. region = demo.%first-child!
-.. count = count-children(region)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ flag = true
+(type + Demo (is Box)
+  (prop + flag _ (= true))
+)
 ```
 
 ```output
@@ -91,159 +100,162 @@ for child in box.children
 1:shown
 ```
 
-```yumi
-. flag = true
-. cleanup-flag = true
-. holder = Holder(MarkText("live"))
+```brix
+(main
+  (let flag true)
+  (let cleanup-flag true)
+  (let holder (call Holder (call MarkText "live")))
+  (blank)
+  (<> MarkNode (id: root)
+    (if #flag
+      (<> MarkText (value: "yes"))
+      (else
+        (<> MarkText (value: "no"))
+      )
+    )
+  )
+  (blank)
+  (print (call dump root))
+  (= flag false)
+  (print (call dump root))
+  (= flag true)
+  (print (call dump root))
+  (blank)
+  (<> MarkNode (id: cleanup-root)
+    (if #cleanup-flag
+      (. holder #node)
+      (else
+        (<> MarkText (value: "off"))
+      )
+    )
+  )
+  (blank)
+  (print (call dump cleanup-root))
+  (= cleanup-flag false)
+  (print (call dump cleanup-root))
+  (= (. holder node) (call MarkText "stale"))
+  (print (call dump cleanup-root))
+)
 
-<MarkNode root
-    if #flag
-        <MarkText = "yes"
-    else
-        <MarkText = "no"
+(fn-expr + dump String
+  (param node MarkNode)
+  (str count ":" text)
+  (where
+    (lazy region (!! (. node first-child)))
+    (lazy count (call count-children region))
+    (lazy text (. (as (!! (. region first-child)) MarkText) text))
+  )
+)
 
--- dump(root)
-flag = false
--- dump(root)
-flag = true
--- dump(root)
+(fn-do + count-children _
+  (param node MarkNode)
+  (let count 0)
+  (for (in child (. node children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-<MarkNode cleanup-root
-    if #cleanup-flag
-        holder.#node
-    else
-        <MarkText = "off"
+(type + MarkNode
+  (implements (of MarkupParent MarkNode))
+  (prop + parent (? MarkNode))
+  (prop + first-child (? MarkNode))
+  (prop + last-child (? MarkNode))
+  (prop + previous (? MarkNode))
+  (prop + next (? MarkNode))
+  (fn-do + children _ :get
+    (let maybe-child first-child)
+    (if maybe-child
+      (let child maybe-child)
+      (while true
+        (yield child)
+        (if (not (. child next))
+          (break)
+        )
+        (= child (. child next))
+      )
+    )
+  )
+  (fn-expr + markup-content MarkNode
+    (param child MarkNode)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child MarkNode)
+    (param anchor (? MarkNode))
+    (= (. child parent) this)
+    (if (not anchor)
+      (if (not first-child)
+        (= first-child (= last-child child))
+        (else
+          (= (?. last-child next) child)
+          (= (. child previous) last-child)
+          (= last-child child)
+        )
+      )
+      (else
+        (let target anchor)
+        (= (. child previous) (. target previous))
+        (= (. child next) target)
+        (if (. target previous)
+          (= (. target previous next) child)
+          (else
+            (= first-child child)
+          )
+        )
+        (= (. target previous) child)
+      )
+    )
+  )
+  (fn-do + markup-detach-child _
+    (param child MarkNode)
+    (if (== (. child parent) this)
+      (= (. child parent) null)
+      (if (== first-child child)
+        (= first-child (. child next))
+      )
+      (if (== last-child child)
+        (= last-child (. child previous))
+      )
+      (= (?. (. child previous) next) (. child next))
+      (= (?. (. child next) previous) (. child previous))
+      (= (. child next) null)
+      (= (. child previous) null)
+    )
+  )
+  (fn-do + clear-children Void
+    (while true
+      (let maybe-child first-child)
+      (if (not maybe-child)
+        (break)
+      )
+      (let child maybe-child)
+      (call markup-remove this child)
+      (call (. child close))
+    )
+  )
+  (fn-do + close Void
+    (call markup-close-region this)
+    (call clear-children)
+  )
+  (fn-expr + markup-make-region (? MarkNode)
+    (call MarkNode)
+  )
+)
 
--- dump(cleanup-root)
-cleanup-flag = false
--- dump(cleanup-root)
-holder.node = MarkText("stale")
--- dump(cleanup-root)
+(type + MarkText (is MarkNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - node MarkNode
-
-"$count:$text"
-
-.. region = node.first-child!
-.. count = count-children(region)
-.. text = (region.first-child! as MarkText).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - node MarkNode
-
-. count = 0
-for child in node.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
-
-+ parent MarkNode?
-+ first-child MarkNode?
-+ last-child MarkNode?
-+ previous MarkNode?
-+ next MarkNode?
-
-────────────────────
-+ do get children
-
-. maybe-child = first-child
-if maybe-child
-    . child = maybe-child
-    while true
-        <= child
-        if !child.next
-            break
-        child = child.next
-
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
-
-child
-
-────────────────────
-+ do markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-child.parent = this
-if !anchor
-    if !first-child
-        first-child = last-child = child
-    else
-        last-child?.next = child
-        child.previous = last-child
-        last-child = child
-else
-    . target = anchor
-    child.previous = target.previous
-    child.next = target
-    if target.previous
-        target.previous.next = child
-    else
-        first-child = child
-    target.previous = child
-
-────────────────────
-+ do markup-detach-child
-    - child MarkNode
-
-if child.parent == this
-    child.parent = null
-    if first-child == child
-        first-child = child.next
-    if last-child == child
-        last-child = child.previous
-    child.previous?.next = child.next
-    child.next?.previous = child.previous
-    child.next = null
-    child.previous = null
-
-────────────────────
-+ do clear-children Void
-
-while true
-    . maybe-child = first-child
-    if !maybe-child
-        break
-    . child = maybe-child
-    markup-remove(this, child)
-    child.close()
-
-────────────────────
-+ do close Void
-
-markup-close-region(this)
-clear-children()
-
-────────────────────
-+ markup-make-region MarkNode?
-
-MarkNode()
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkText is MarkNode
-
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ node MarkNode
-
-────────────────────
-+ This
-    - node
+(type + Holder
+  (prop + node MarkNode)
+  (fn-do + This _
+    (param node _)
+  )
+)
 ```
 
 ```output
@@ -255,47 +267,54 @@ MarkNode()
 1:off
 ```
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    match demo.#state
-        |= "a"
-            <TextBox = "alpha"
-        |= "b"
-            <TextBox = "beta"
-        | _
-            <TextBox = "fallback"
+(main
+  (<> Demo (id: demo)
+    (match (. demo #state)
+      (case= "a"
+        (<> TextBox (value: "alpha"))
+      )
+      (case= "b"
+        (<> TextBox (value: "beta"))
+      )
+      (case _
+        (<> TextBox (value: "fallback"))
+      )
+    )
+  )
+  (blank)
+  (print (call dump demo))
+  (= (. demo state) "b")
+  (print (call dump demo))
+  (= (. demo state) "z")
+  (print (call dump demo))
+)
 
--- dump(demo)
-demo.state = "b"
--- dump(demo)
-demo.state = "z"
--- dump(demo)
+(fn-expr + dump String
+  (param demo Demo)
+  (str count ":" text)
+  (where
+    (lazy region (!! (. demo %first-child)))
+    (lazy count (call count-children region))
+    (lazy text (. (as (!! (. region %first-child)) TextBox) text))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - demo Demo
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-"$count:$text"
-
-.. region = demo.%first-child!
-.. count = count-children(region)
-.. text = (region.%first-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ state = "a"
+(type + Demo (is Box)
+  (prop + state _ (= "a"))
+)
 ```
 
 ```output
@@ -304,41 +323,46 @@ for child in box.children
 1:fallback
 ```
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    match demo.#state
-        | text String
-            <TextBox = text
+(main
+  (<> Demo (id: demo)
+    (match (. demo #state)
+      (case (: text String)
+        (<> TextBox (value: text))
+      )
+    )
+  )
+  (blank)
+  (print (call dump demo))
+  (= (. demo state) "changed")
+  (print (call dump demo))
+)
 
--- dump(demo)
-demo.state = "changed"
--- dump(demo)
+(fn-expr + dump String
+  (param demo Demo)
+  (str count ":" text)
+  (where
+    (lazy region (!! (. demo %first-child)))
+    (lazy count (call count-children region))
+    (lazy text (. (as (!! (. region %first-child)) TextBox) text))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - demo Demo
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-"$count:$text"
-
-.. region = demo.%first-child!
-.. count = count-children(region)
-.. text = (region.%first-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ state = "initial"
+(type + Demo (is Box)
+  (prop + state _ (= "initial"))
+)
 ```
 
 ```output
@@ -346,110 +370,115 @@ for child in box.children
 1:changed
 ```
 
-```yumi crash
-. flag = true
+```brix crash
+(main
+  (let flag true)
+  (blank)
+  (<> Plain (id: root)
+    (if #flag
+      (<> Plain)
+    )
+  )
+)
 
-<Plain root
-    if #flag
-        <Plain
-
-━━━━━━━━━━━━━━━━━━━━
-+ Plain
-
-────────────────────
-+ this += child Plain
+(type + Plain
+  (fn-expr + (infix this += (param child Plain)) _)
+)
 ```
 
 ```output
 Exception: Dynamic markup branch parent must implement MarkupElement
-<no file:5>
-        if #flag
-        ^^^^^^^
+<no file:6>
+        (if #flag
+        ^^^^^^^^
 ```
 
-```yumi crash
-. flag = true
+```brix crash
+(main
+  (let flag true)
+  (blank)
+  (<> MarkNode (id: root)
+    (if #flag
+      "bad"
+    )
+  )
+)
 
-<MarkNode root
-    if #flag
-        "bad"
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
-
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
-
-child
-
-────────────────────
-+ do markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-────────────────────
-+ do close
-
-markup-close-region(this)
-
-────────────────────
-+ markup-make-region MarkNode?
-
-MarkNode()
+(type + MarkNode
+  (implements (of MarkupParent MarkNode))
+  (fn-expr + markup-content MarkNode
+    (param child MarkNode)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child MarkNode)
+    (param anchor (? MarkNode))
+  )
+  (fn-do + close _
+    (call markup-close-region this)
+  )
+  (fn-expr + markup-make-region (? MarkNode)
+    (call MarkNode)
+  )
+)
 ```
 
 ```output
 Exception: Content not accepted
-<no file:6>
-            "bad"
-            ^^^^^
+<no file:7>
+          "bad"
+          ^^^^^
 ```
 
 ### Storing an equal tuple into a tracked property keeps branch children and keyed rows in place.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    if demo.#state.enabled
-        <TextBox branch = "on"
-    for index in 0 .. < demo.#state.count keyed by index
-        <TextBox = "row"
+(main
+  (<> Demo (id: demo)
+    (if (. demo #state enabled)
+      (<> TextBox (id: branch) (value: "on"))
+    )
+    (for (in index (..< 0 (. demo #state count)) (keyed-by index))
+      (<> TextBox (value: "row"))
+    )
+  )
+  (blank)
+  (let region (!! (. demo %first-child)))
+  (let original (!! (. region %first-child)))
+  (let original-rows (call (. demo row-pointers)))
+  (= (. demo state) (call DemoState true 2))
+  (print (== (as (!! (. region %first-child)) Pointer) (as original Pointer)))
+  (print (== (call (. demo row-pointers)) original-rows))
+  (= (. demo state) (call DemoState true 3))
+  (print (== (as (!! (. region %first-child)) Pointer) (as original Pointer)))
+)
 
-. region = demo.%first-child!
-. original = region.%first-child!
-. original-rows = demo.row-pointers()
-demo.state = DemoState(true, 2)
--- region.%first-child! as Pointer == original as Pointer
--- demo.row-pointers() == original-rows
-demo.state = DemoState(true, 3)
--- region.%first-child! as Pointer == original as Pointer
+(type + DemoState (is Tuple)
+  (prop + enabled Bool)
+  (prop + count I32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ DemoState is Tuple
-
-+ enabled Bool
-+ count I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ state = DemoState(true, 2)
-
-────────────────────
-+ do row-pointers [Pointer]
-
-. result [Pointer]
-. first = true
-for child in children
-    if first
-        first = false
-    else
-        for row in child.children
-            result += row as Pointer
-= result
+(type + Demo (is Box)
+  (prop + state _ (= (call DemoState true 2)))
+  (fn-do + row-pointers (list Pointer)
+    (let result (list Pointer))
+    (let first true)
+    (for (in child children)
+      (if first
+        (= first false)
+        (else
+          (for (in row (. child children))
+            (+= result (as row Pointer))
+          )
+        )
+      )
+    )
+    (return result)
+  )
+)
 ```
 
 ```output
@@ -460,53 +489,57 @@ true
 
 ### An if nested in another if's else arm follows its own condition while the outer arm is kept.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. demo = Demo()
--- demo.label()
-demo.visible = false
--- demo.label()
-demo.removing = true
--- demo.label()
-demo.removing = false
--- demo.label()
-demo.visible = true
--- demo.label()
+(main
+  (let demo (call Demo))
+  (print (call (. demo label)))
+  (= (. demo visible) false)
+  (print (call (. demo label)))
+  (= (. demo removing) true)
+  (print (call (. demo label)))
+  (= (. demo removing) false)
+  (print (call (. demo label)))
+  (= (. demo visible) true)
+  (print (call (. demo label)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ removing = false
-+ visible = true
-
-────────────────────
-
-<This
-    if #removing
-        <TextBox = "remove"
-    else
-        if #visible
-            <TextBox = "shown"
-        else
-            <TextBox = "hidden"
-
-────────────────────
-+ do label String
-
-. texts [String]
-collect(this, texts)
-= ",".join(texts)
-
-────────────────────
-+ do collect
-    - node Box
-    - texts [String]
-
-for child in node.children
-    if child is TextBox
-        texts += (child as TextBox).text
-    collect(child, texts)
+(type + Demo (is Box)
+  (prop + removing _ (= false))
+  (prop + visible _ (= true))
+  (content
+    (<> This
+      (if #removing
+        (<> TextBox (value: "remove"))
+        (else
+          (if #visible
+            (<> TextBox (value: "shown"))
+            (else
+              (<> TextBox (value: "hidden"))
+            )
+          )
+        )
+      )
+    )
+  )
+  (fn-do + label String
+    (let texts (list String))
+    (call collect this texts)
+    (return (call (. "," join) texts))
+  )
+  (fn-do + collect _
+    (param node Box)
+    (param texts (list String))
+    (for (in child (. node children))
+      (if (is child TextBox)
+        (+= texts (. (as child TextBox) text))
+      )
+      (call collect child texts)
+    )
+  )
+)
 ```
 
 ```output
@@ -519,45 +552,48 @@ shown
 
 ### An if nested in another if's then arm of class markup follows its own condition.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. demo = Demo()
--- demo.label()
-demo.visible = false
--- demo.label()
+(main
+  (let demo (call Demo))
+  (print (call (. demo label)))
+  (= (. demo visible) false)
+  (print (call (. demo label)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ shown = true
-+ visible = true
-
-────────────────────
-
-<This
-    if #shown
-        if #visible
-            <TextBox = "shown"
-        else
-            <TextBox = "hidden"
-
-────────────────────
-+ do label String
-
-. texts [String]
-collect(this, texts)
-= ",".join(texts)
-
-────────────────────
-+ do collect
-    - node Box
-    - texts [String]
-
-for child in node.children
-    if child is TextBox
-        texts += (child as TextBox).text
-    collect(child, texts)
+(type + Demo (is Box)
+  (prop + shown _ (= true))
+  (prop + visible _ (= true))
+  (content
+    (<> This
+      (if #shown
+        (if #visible
+          (<> TextBox (value: "shown"))
+          (else
+            (<> TextBox (value: "hidden"))
+          )
+        )
+      )
+    )
+  )
+  (fn-do + label String
+    (let texts (list String))
+    (call collect this texts)
+    (return (call (. "," join) texts))
+  )
+  (fn-do + collect _
+    (param node Box)
+    (param texts (list String))
+    (for (in child (. node children))
+      (if (is child TextBox)
+        (+= texts (. (as child TextBox) text))
+      )
+      (call collect child texts)
+    )
+  )
+)
 ```
 
 ```output
@@ -567,44 +603,49 @@ hidden
 
 ### An if nested in an else arm of top-level markup follows its own condition.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    if demo.#removing
-        <TextBox = "remove"
-    else
-        if demo.#visible
-            <TextBox = "shown"
-        else
-            <TextBox = "hidden"
+(main
+  (<> Demo (id: demo)
+    (if (. demo #removing)
+      (<> TextBox (value: "remove"))
+      (else
+        (if (. demo #visible)
+          (<> TextBox (value: "shown"))
+          (else
+            (<> TextBox (value: "hidden"))
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (print (call (. demo label)))
+  (= (. demo visible) false)
+  (print (call (. demo label)))
+)
 
--- demo.label()
-demo.visible = false
--- demo.label()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ removing = false
-+ visible = true
-
-────────────────────
-+ do label String
-
-. texts [String]
-collect(this, texts)
-= ",".join(texts)
-
-────────────────────
-+ do collect
-    - node Box
-    - texts [String]
-
-for child in node.children
-    if child is TextBox
-        texts += (child as TextBox).text
-    collect(child, texts)
+(type + Demo (is Box)
+  (prop + removing _ (= false))
+  (prop + visible _ (= true))
+  (fn-do + label String
+    (let texts (list String))
+    (call collect this texts)
+    (return (call (. "," join) texts))
+  )
+  (fn-do + collect _
+    (param node Box)
+    (param texts (list String))
+    (for (in child (. node children))
+      (if (is child TextBox)
+        (+= texts (. (as child TextBox) text))
+      )
+      (call collect child texts)
+    )
+  )
+)
 ```
 
 ```output
@@ -614,51 +655,53 @@ hidden
 
 ### An if inside a loop row follows the element's own property.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. demo = Demo()
--- demo.label()
-demo.visible = false
--- demo.label()
+(main
+  (let demo (call Demo))
+  (print (call (. demo label)))
+  (= (. demo visible) false)
+  (print (call (. demo label)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [String]
-+ visible = true
-
-────────────────────
-+ This
-
-items = List'String(["a", "b"])
-
-────────────────────
-
-<This
-    for item in #items
-        <Box
-            if #visible
-                <TextBox = "shown"
-            else
-                <TextBox = "hidden"
-
-────────────────────
-+ do label String
-
-. texts [String]
-collect(this, texts)
-= ",".join(texts)
-
-────────────────────
-+ do collect
-    - node Box
-    - texts [String]
-
-for child in node.children
-    if child is TextBox
-        texts += (child as TextBox).text
-    collect(child, texts)
+(type + Demo (is Box)
+  (prop + items (list String))
+  (prop + visible _ (= true))
+  (fn-do + This _
+    (= items (call (of List String) (list "a" "b")))
+  )
+  (content
+    (<> This
+      (for (in item #items)
+        (<> Box
+          (if #visible
+            (<> TextBox (value: "shown"))
+            (else
+              (<> TextBox (value: "hidden"))
+            )
+          )
+        )
+      )
+    )
+  )
+  (fn-do + label String
+    (let texts (list String))
+    (call collect this texts)
+    (return (call (. "," join) texts))
+  )
+  (fn-do + collect _
+    (param node Box)
+    (param texts (list String))
+    (for (in child (. node children))
+      (if (is child TextBox)
+        (+= texts (. (as child TextBox) text))
+      )
+      (call collect child texts)
+    )
+  )
+)
 ```
 
 ```output
@@ -668,35 +711,42 @@ hidden,hidden
 
 ### A named child inside an else-if or else branch is a property of its owner.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. picker = Picker()
-picker.mode = 1
--- picker.one-box.text
-picker.mode = 3
--- picker.three-box.text
-picker.mode = 4
--- picker.four-box.text
+(main
+  (let picker (call Picker))
+  (= (. picker mode) 1)
+  (print (. picker one-box text))
+  (= (. picker mode) 3)
+  (print (. picker three-box text))
+  (= (. picker mode) 4)
+  (print (. picker four-box text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Picker is Box
-
-+ mode = 0
-
-────────────────────
-
-<This
-    if #mode == 0
-        <TextBox zero-box = "zero"
-    else if #mode == 1
-        <TextBox one-box = "one"
-    else if #mode == 2
-        <TextBox two-box = "two"
-    else if #mode == 3
-        <TextBox three-box = "three"
-    else
-        <TextBox four-box = "four"
+(type + Picker (is Box)
+  (prop + mode _ (= 0))
+  (content
+    (<> This
+      (if (== #mode 0)
+        (<> TextBox (id: zero-box) (value: "zero"))
+        (else-if (== #mode 1)
+          (<> TextBox (id: one-box) (value: "one"))
+        )
+        (else-if (== #mode 2)
+          (<> TextBox (id: two-box) (value: "two"))
+        )
+        (else-if (== #mode 3)
+          (<> TextBox (id: three-box) (value: "three"))
+        )
+        (else
+          (<> TextBox (id: four-box) (value: "four"))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -707,49 +757,52 @@ four
 
 ### A named element in an if nested in another if's else arm is assigned to its host.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. demo = Demo()
--- demo.label()
-demo.editing = true
--- demo.label()
-demo.editing = false
--- demo.label()
+(main
+  (let demo (call Demo))
+  (print (call (. demo label)))
+  (= (. demo editing) true)
+  (print (call (. demo label)))
+  (= (. demo editing) false)
+  (print (call (. demo label)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ editing = false
-+ extra = true
-+ name = "row"
-
-────────────────────
-
-<This
-    if #editing
-        <TextBox = "entry ${#name}"
-    else
-        <TextBox = #name
-        if #extra
-            <TextBox extra-box = "extra ${#name}"
-
-────────────────────
-+ do label String
-
-. texts [String]
-collect(this, texts)
-= "${",".join(texts)}:${extra-box.text}"
-
-────────────────────
-+ do collect
-    - node Box
-    - texts [String]
-
-for child in node.children
-    if child is TextBox
-        texts += (child as TextBox).text
-    collect(child, texts)
+(type + Demo (is Box)
+  (prop + editing _ (= false))
+  (prop + extra _ (= true))
+  (prop + name _ (= "row"))
+  (content
+    (<> This
+      (if #editing
+        (<> TextBox (value: (str "entry " #name)))
+        (else
+          (<> TextBox (value: #name))
+          (if #extra
+            (<> TextBox (id: extra-box) (value: (str "extra " #name)))
+          )
+        )
+      )
+    )
+  )
+  (fn-do + label String
+    (let texts (list String))
+    (call collect this texts)
+    (return (str (call (. "," join) texts) ":" (. extra-box text)))
+  )
+  (fn-do + collect _
+    (param node Box)
+    (param texts (list String))
+    (for (in child (. node children))
+      (if (is child TextBox)
+        (+= texts (. (as child TextBox) text))
+      )
+      (call collect child texts)
+    )
+  )
+)
 ```
 
 ```output
@@ -760,40 +813,45 @@ row,extra row:extra row
 
 ### A local tracked by an if and again inside its arm keeps one subscriber list.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. note = Note("one")
+(main
+  (let note (call Note "one"))
+  (blank)
+  (<> Box (id: demo)
+    (if (> (. note #text size) 0)
+      (<> TextBox (value: (. note #text)))
+    )
+  )
+  (blank)
+  (print (call label demo))
+  (= (. note text) "")
+  (print (call label demo))
+  (= (. note text) "back")
+  (print (call label demo))
+)
 
-<Box demo
-    if note.#text.size > 0
-        <TextBox = note.#text
+(type + Note
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
--- label(demo)
-note.text = ""
--- label(demo)
-note.text = "back"
--- label(demo)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Note
-
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do label String
-    - node Box
-
-. texts [String]
-for child in node.children
-    for inner in child.children
-        if inner is TextBox
-            texts += (inner as TextBox).text
-= "${texts.length}:${",".join(texts)}"
+(fn-do + label String
+  (param node Box)
+  (let texts (list String))
+  (for (in child (. node children))
+    (for (in inner (. child children))
+      (if (is inner TextBox)
+        (+= texts (. (as inner TextBox) text))
+      )
+    )
+  )
+  (return (str (. texts length) ":" (call (. "," join) texts)))
+)
 ```
 
 ```output
@@ -804,75 +862,74 @@ for child in node.children
 
 ### An if nested in a match arm follows a property of the arm's binding.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. demo = Demo()
--- demo.label()
-(demo.item as Note).text = ""
--- demo.label()
-(demo.item as Note).text = "back"
--- demo.label()
-demo.item = Mark(5)
--- demo.label()
-demo.item = Note("again")
--- demo.label()
+(main
+  (let demo (call Demo))
+  (print (call (. demo label)))
+  (= (. (as (. demo item) Note) text) "")
+  (print (call (. demo label)))
+  (= (. (as (. demo item) Note) text) "back")
+  (print (call (. demo label)))
+  (= (. demo item) (call Mark 5))
+  (print (call (. demo label)))
+  (= (. demo item) (call Note "again"))
+  (print (call (. demo label)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
+(type + Item (is Union)
+  (variant Note)
+  (variant Mark)
+)
 
-| Note
-| Mark
+(type + Note
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Note
+(type + Mark
+  (prop + count Int)
+  (fn-do + This _
+    (param count _)
+  )
+)
 
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mark
-
-+ count Int
-
-────────────────────
-+ This
-    - count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ item Item = Note("one")
-
-────────────────────
-
-<This
-    match #item
-        | note Note
-            if note.#text.size > 0
-                <TextBox = note.#text
-        | mark Mark
-            <TextBox = "mark ${mark.#count}"
-
-────────────────────
-+ do label String
-
-. texts [String]
-collect(this, texts)
-= "${texts.length}:${",".join(texts)}"
-
-────────────────────
-+ do collect
-    - node Box
-    - texts [String]
-
-for child in node.children
-    if child is TextBox
-        texts += (child as TextBox).text
-    collect(child, texts)
+(type + Demo (is Box)
+  (prop + item Item (= (call Note "one")))
+  (content
+    (<> This
+      (match #item
+        (case (: note Note)
+          (if (> (. note #text size) 0)
+            (<> TextBox (value: (. note #text)))
+          )
+        )
+        (case (: mark Mark)
+          (<> TextBox (value: (str "mark " (. mark #count))))
+        )
+      )
+    )
+  )
+  (fn-do + label String
+    (let texts (list String))
+    (call collect this texts)
+    (return (str (. texts length) ":" (call (. "," join) texts)))
+  )
+  (fn-do + collect _
+    (param node Box)
+    (param texts (list String))
+    (for (in child (. node children))
+      (if (is child TextBox)
+        (+= texts (. (as child TextBox) text))
+      )
+      (call collect child texts)
+    )
+  )
+)
 ```
 
 ```output
@@ -885,71 +942,68 @@ for child in node.children
 
 ### A pattern condition binds its arm and follows the tracked subject.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. demo = Demo()
--- demo.label()
-(demo.item as Note).text = "mutated"
--- demo.label()
-demo.item = Note("replaced")
--- demo.label()
-demo.item = Mark(5)
--- demo.label()
+(main
+  (let demo (call Demo))
+  (print (call (. demo label)))
+  (= (. (as (. demo item) Note) text) "mutated")
+  (print (call (. demo label)))
+  (= (. demo item) (call Note "replaced"))
+  (print (call (. demo label)))
+  (= (. demo item) (call Mark 5))
+  (print (call (. demo label)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
+(type + Item (is Union)
+  (variant Note)
+  (variant Mark)
+)
 
-| Note
-| Mark
+(type + Note
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Note
+(type + Mark
+  (prop + count Int)
+  (fn-do + This _
+    (param count _)
+  )
+)
 
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mark
-
-+ count Int
-
-────────────────────
-+ This
-    - count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ item Item = Note("one")
-
-────────────────────
-
-<This
-    if | note Note = #item
-        <TextBox = note.#text
-    else if | mark Mark = #item
-        <TextBox = "mark ${mark.#count}"
-
-────────────────────
-+ do label String
-
-. texts [String]
-collect(this, texts)
-= "${texts.length}:${",".join(texts)}"
-
-────────────────────
-+ do collect
-    - node Box
-    - texts [String]
-
-for child in node.children
-    if child is TextBox
-        texts += (child as TextBox).text
-    collect(child, texts)
+(type + Demo (is Box)
+  (prop + item Item (= (call Note "one")))
+  (content
+    (<> This
+      (if (= (| (: note Note)) #item)
+        (<> TextBox (value: (. note #text)))
+        (else-if (= (| (: mark Mark)) #item)
+          (<> TextBox (value: (str "mark " (. mark #count))))
+        )
+      )
+    )
+  )
+  (fn-do + label String
+    (let texts (list String))
+    (call collect this texts)
+    (return (str (. texts length) ":" (call (. "," join) texts)))
+  )
+  (fn-do + collect _
+    (param node Box)
+    (param texts (list String))
+    (for (in child (. node children))
+      (if (is child TextBox)
+        (+= texts (. (as child TextBox) text))
+      )
+      (call collect child texts)
+    )
+  )
+)
 ```
 
 ```output
@@ -961,76 +1015,74 @@ for child in node.children
 
 ### A pattern condition shares a branch chain with plain conditions.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. demo = Demo()
--- demo.label()
-demo.is-hidden = true
--- demo.label()
-demo.item = Mark(1)
--- demo.label()
-demo.is-hidden = false
--- demo.label()
-demo.item = Note("back")
--- demo.label()
+(main
+  (let demo (call Demo))
+  (print (call (. demo label)))
+  (= (. demo is-hidden) true)
+  (print (call (. demo label)))
+  (= (. demo item) (call Mark 1))
+  (print (call (. demo label)))
+  (= (. demo is-hidden) false)
+  (print (call (. demo label)))
+  (= (. demo item) (call Note "back"))
+  (print (call (. demo label)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
+(type + Item (is Union)
+  (variant Note)
+  (variant Mark)
+)
 
-| Note
-| Mark
+(type + Note
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Note
+(type + Mark
+  (prop + count Int)
+  (fn-do + This _
+    (param count _)
+  )
+)
 
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mark
-
-+ count Int
-
-────────────────────
-+ This
-    - count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ item Item = Note("one")
-+ is-hidden = false
-
-────────────────────
-
-<This
-    if #is-hidden
-        <TextBox = "hidden"
-    else if | note Note = #item
-        <TextBox = note.#text
-    else
-        <TextBox = "other"
-
-────────────────────
-+ do label String
-
-. texts [String]
-collect(this, texts)
-= "${texts.length}:${",".join(texts)}"
-
-────────────────────
-+ do collect
-    - node Box
-    - texts [String]
-
-for child in node.children
-    if child is TextBox
-        texts += (child as TextBox).text
-    collect(child, texts)
+(type + Demo (is Box)
+  (prop + item Item (= (call Note "one")))
+  (prop + is-hidden _ (= false))
+  (content
+    (<> This
+      (if #is-hidden
+        (<> TextBox (value: "hidden"))
+        (else-if (= (| (: note Note)) #item)
+          (<> TextBox (value: (. note #text)))
+        )
+        (else
+          (<> TextBox (value: "other"))
+        )
+      )
+    )
+  )
+  (fn-do + label String
+    (let texts (list String))
+    (call collect this texts)
+    (return (str (. texts length) ":" (call (. "," join) texts)))
+  )
+  (fn-do + collect _
+    (param node Box)
+    (param texts (list String))
+    (for (in child (. node children))
+      (if (is child TextBox)
+        (+= texts (. (as child TextBox) text))
+      )
+      (call collect child texts)
+    )
+  )
+)
 ```
 
 ```output
@@ -1043,80 +1095,77 @@ for child in node.children
 
 ### A pattern condition over an untracked subject picks its arm once.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. first = Demo(Note("one"), false)
-. second = Demo(Mark(5), false)
-. third = Demo(Mark(5), true)
--- first.label()
--- second.label()
--- third.label()
-(first.item as Note).text = "mutated"
-first.item = Mark(7)
--- first.label()
+(main
+  (let first (call Demo (call Note "one") false))
+  (let second (call Demo (call Mark 5) false))
+  (let third (call Demo (call Mark 5) true))
+  (print (call (. first label)))
+  (print (call (. second label)))
+  (print (call (. third label)))
+  (= (. (as (. first item) Note) text) "mutated")
+  (= (. first item) (call Mark 7))
+  (print (call (. first label)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
+(type + Item (is Union)
+  (variant Note)
+  (variant Mark)
+)
 
-| Note
-| Mark
+(type + Note
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Note
+(type + Mark
+  (prop + count Int)
+  (fn-do + This _
+    (param count _)
+  )
+)
 
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mark
-
-+ count Int
-
-────────────────────
-+ This
-    - count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ item Item
-+ is-plain Bool
-
-────────────────────
-+ This
-    - item
-    - is-plain
-
-────────────────────
-
-<This
-    if is-plain
-        <TextBox = "plain"
-    else if | note Note = item
-        <TextBox = note.#text
-    else if | mark Mark = item
-        <TextBox = "mark ${mark.count}"
-
-────────────────────
-+ do label String
-
-. texts [String]
-collect(this, texts)
-= "${texts.length}:${",".join(texts)}"
-
-────────────────────
-+ do collect
-    - node Box
-    - texts [String]
-
-for child in node.children
-    if child is TextBox
-        texts += (child as TextBox).text
-    collect(child, texts)
+(type + Demo (is Box)
+  (prop + item Item)
+  (prop + is-plain Bool)
+  (fn-do + This _
+    (param item _)
+    (param is-plain _)
+  )
+  (content
+    (<> This
+      (if is-plain
+        (<> TextBox (value: "plain"))
+        (else-if (= (| (: note Note)) item)
+          (<> TextBox (value: (. note #text)))
+        )
+        (else-if (= (| (: mark Mark)) item)
+          (<> TextBox (value: (str "mark " (. mark count))))
+        )
+      )
+    )
+  )
+  (fn-do + label String
+    (let texts (list String))
+    (call collect this texts)
+    (return (str (. texts length) ":" (call (. "," join) texts)))
+  )
+  (fn-do + collect _
+    (param node Box)
+    (param texts (list String))
+    (for (in child (. node children))
+      (if (is child TextBox)
+        (+= texts (. (as child TextBox) text))
+      )
+      (call collect child texts)
+    )
+  )
+)
 ```
 
 ```output
@@ -1128,66 +1177,61 @@ for child in node.children
 
 ### A tracked member read through a cast follows the member and the cast subject.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. demo = Demo()
--- demo.label()
-(demo.item as Note).text = "mutated"
--- demo.label()
-demo.item = Note("replaced")
--- demo.label()
+(main
+  (let demo (call Demo))
+  (print (call (. demo label)))
+  (= (. (as (. demo item) Note) text) "mutated")
+  (print (call (. demo label)))
+  (= (. demo item) (call Note "replaced"))
+  (print (call (. demo label)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Union
+(type + Item (is Union)
+  (variant Note)
+  (variant Mark)
+)
 
-| Note
-| Mark
+(type + Note
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Note
+(type + Mark
+  (prop + count Int)
+  (fn-do + This _
+    (param count _)
+  )
+)
 
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mark
-
-+ count Int
-
-────────────────────
-+ This
-    - count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ item Item = Note("one")
-
-────────────────────
-
-<This
-    <TextBox = (#item as Note).#text
-
-────────────────────
-+ do label String
-
-. texts [String]
-collect(this, texts)
-= "${texts.length}:${",".join(texts)}"
-
-────────────────────
-+ do collect
-    - node Box
-    - texts [String]
-
-for child in node.children
-    if child is TextBox
-        texts += (child as TextBox).text
-    collect(child, texts)
+(type + Demo (is Box)
+  (prop + item Item (= (call Note "one")))
+  (content
+    (<> This
+      (<> TextBox (value: (. (as #item Note) #text)))
+    )
+  )
+  (fn-do + label String
+    (let texts (list String))
+    (call collect this texts)
+    (return (str (. texts length) ":" (call (. "," join) texts)))
+  )
+  (fn-do + collect _
+    (param node Box)
+    (param texts (list String))
+    (for (in child (. node children))
+      (if (is child TextBox)
+        (+= texts (. (as child TextBox) text))
+      )
+      (call collect child texts)
+    )
+  )
+)
 ```
 
 ```output
@@ -1198,44 +1242,44 @@ for child in node.children
 
 ### A class-level subscription follows a named element that a dynamic branch builds after mount, hearing each rebuilt element once and none that the branch removed.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-demo.shows = true
-. first = demo.pinger
-first.pinged <- 1
--- "late=${demo.pings}"
+(main
+  (<> Demo (id: demo))
+  (= (. demo shows) true)
+  (let first (. demo pinger))
+  (<- (. first pinged) 1)
+  (print (str "late=" (. demo pings)))
+  (blank)
+  (= (. demo shows) false)
+  (= (. demo shows) true)
+  (<- (. demo pinger pinged) 1)
+  (print (str "rebuilt=" (. demo pings)))
+  (blank)
+  (<- (. first pinged) 1)
+  (print (str "removed=" (. demo pings)))
+)
 
-demo.shows = false
-demo.shows = true
-demo.pinger.pinged <- 1
--- "rebuilt=${demo.pings}"
+(type + Pinger (is Box)
+  (event + pinged Int)
+)
 
-first.pinged <- 1
--- "removed=${demo.pings}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pinger is Box
-
-+ event pinged Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ shows = false
-+ pings = 0
-
-────────────────────
-
-<This
-    if #shows
-        <Pinger pinger
-
-────────────────────
-for event on pinger.pinged
-
-pings += 1
+(type + Demo (is Box)
+  (prop + shows _ (= false))
+  (prop + pings _ (= 0))
+  (content
+    (<> This
+      (if #shows
+        (<> Pinger (id: pinger))
+      )
+    )
+  )
+  (subscribe-for (on event (. pinger pinged))
+    (+= pings 1)
+  )
+)
 ```
 
 ```output
@@ -1246,34 +1290,37 @@ removed=2
 
 ### A named element a dynamic branch of a class's markup makes is given to the class's property of that name each time the branch makes it.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. section = Section()
--- section.header.title
-section.title = "B"
--- section.header.title
-section.title = ""
--- section.header.title
-section.title = "C"
--- section.header.title
+(main
+  (let section (call Section))
+  (print (. section header title))
+  (= (. section title) "B")
+  (print (. section header title))
+  (= (. section title) "")
+  (print (. section header title))
+  (= (. section title) "C")
+  (print (. section header title))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Titled is Box
+(type + Titled (is Box)
+  (prop + title _ (= ""))
+)
 
-+ title = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ Section is Box
-
-+ title = "A"
-
-────────────────────
-
-<This
-    if #title != ""
-        <Titled header
-            title = #title
+(type + Section (is Box)
+  (prop + title _ (= "A"))
+  (content
+    (<> This
+      (if (!= #title "")
+        (<> Titled (id: header)
+          (= title #title)
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1285,69 +1332,73 @@ C
 
 ### A named element of a branch the markup has not made panics where it is read.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. demo = Demo()
--- demo.panel.syncs
+(main
+  (let demo (call Demo))
+  (print (. demo panel syncs))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
+(type + Panel (is Box)
+  (prop + syncs Size (= 0))
+)
 
-+ syncs Size = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ shows = false
-
-────────────────────
-
-<This
-    if #shows
-        <Panel panel
+(type + Demo (is Box)
+  (prop + shows _ (= false))
+  (content
+    (<> This
+      (if #shows
+        (<> Panel (id: panel))
+      )
+    )
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: Named markup element "panel" is read before its markup constructs it
-<no file:5>
+<no file:7>
 
 Task 1
 
 Stack trace:
-  0  __source__:main no file:5:4
+  0  __source__:main no file:7:13
   1  __source__:init.__source__ no file
   2  __source__:brix.main no file
 ```
 
 ### A branch arm of top-level markup reads a property of the element around it by its name alone, and follows it while the arm is shown.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    if demo.#shown
-        <TextBox = demo.#label
+(main
+  (<> Demo (id: demo)
+    (if (. demo #shown)
+      (<> TextBox (value: (. demo #label)))
+    )
+  )
+  (blank)
+  (print (call (. demo text)))
+  (= (. demo label) "two")
+  (print (call (. demo text)))
+  (= (. demo shown) false)
+  (print (call (. demo text)))
+  (= (. demo shown) true)
+  (print (call (. demo text)))
+)
 
--- demo.text()
-demo.label = "two"
--- demo.text()
-demo.shown = false
--- demo.text()
-demo.shown = true
--- demo.text()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ shown = true
-+ label = "one"
-
-────────────────────
-+ do text String
-
-. region = this.%first-child!
-= if !region.%first-child then "none" else (region.%first-child! as TextBox).text
+(type + Demo (is Box)
+  (prop + shown _ (= true))
+  (prop + label _ (= "one"))
+  (fn-do + text String
+    (let region (!! (. this %first-child)))
+    (return (if-expr (not (. region %first-child)) "none" (. (as (!! (. region %first-child)) TextBox) text)))
+  )
+)
 ```
 
 ```output
@@ -1359,44 +1410,44 @@ two
 
 ### A class subscription to an element a branch removes ends when the branch removes it
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-demo.shows = true
-. first = demo.pinger
-first.pinged <- 1
--- "shown=${demo.pings}"
-demo.shows = false
-first.pinged <- 1
--- "hidden, old element pinged=${demo.pings}"
-demo.shows = true
-first.pinged <- 1
--- "rebuilt, old element pinged=${demo.pings}"
-demo.pinger.pinged <- 1
--- "rebuilt, new element pinged=${demo.pings}"
+(main
+  (<> Demo (id: demo))
+  (= (. demo shows) true)
+  (let first (. demo pinger))
+  (<- (. first pinged) 1)
+  (print (str "shown=" (. demo pings)))
+  (= (. demo shows) false)
+  (<- (. first pinged) 1)
+  (print (str "hidden, old element pinged=" (. demo pings)))
+  (= (. demo shows) true)
+  (<- (. first pinged) 1)
+  (print (str "rebuilt, old element pinged=" (. demo pings)))
+  (<- (. demo pinger pinged) 1)
+  (print (str "rebuilt, new element pinged=" (. demo pings)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pinger is Box
+(type + Pinger (is Box)
+  (event + pinged Int)
+)
 
-+ event pinged Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ shows = false
-+ pings = 0
-
-────────────────────
-
-<This
-    if #shows
-        <Pinger pinger
-
-────────────────────
-for event on pinger.pinged
-
-pings += 1
+(type + Demo (is Box)
+  (prop + shows _ (= false))
+  (prop + pings _ (= 0))
+  (content
+    (<> This
+      (if #shows
+        (<> Pinger (id: pinger))
+      )
+    )
+  )
+  (subscribe-for (on event (. pinger pinged))
+    (+= pings 1)
+  )
+)
 ```
 
 ```output
@@ -1408,35 +1459,35 @@ rebuilt, new element pinged=2
 
 ### A class loop on an event nothing publishes, of an element a branch builds, subscribes nothing
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. demo = Demo()
--- "constructed"
-demo.shows = true
--- "shown pings=${demo.pings}"
+(main
+  (let demo (call Demo))
+  (print "constructed")
+  (= (. demo shows) true)
+  (print (str "shown pings=" (. demo pings)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pinger is Box
+(type + Pinger (is Box)
+  (event + pinged Int)
+)
 
-+ event pinged Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ shows = false
-+ pings = 0
-
-────────────────────
-
-<This
-    if #shows
-        <Pinger pinger
-
-────────────────────
-for event on pinger.pinged
-
-pings += 1
+(type + Demo (is Box)
+  (prop + shows _ (= false))
+  (prop + pings _ (= 0))
+  (content
+    (<> This
+      (if #shows
+        (<> Pinger (id: pinger))
+      )
+    )
+  )
+  (subscribe-for (on event (. pinger pinged))
+    (+= pings 1)
+  )
+)
 ```
 
 ```output
@@ -1446,32 +1497,34 @@ shown pings=0
 
 ### A tracked property tested in a conditional expression holds a value in the branch that found it.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
+(main
+  (<> Demo (id: demo))
+  (blank)
+  (print (. (as (!! (. demo %first-child)) TextBox) text))
+  (let tag (call Tag))
+  (= (. tag label) "ada")
+  (= (. demo tag) tag)
+  (print (. (as (!! (. demo %first-child)) TextBox) text))
+)
 
--- (demo.%first-child! as TextBox).text
-. tag = Tag()
-tag.label = "ada"
-demo.tag = tag
--- (demo.%first-child! as TextBox).text
+(type + Tag
+  (prop + label _ (= ""))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tag
-
-+ label = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ tag Tag?
-
-────────────────────
-
-<This
-    <TextBox
-        text = if #tag then #tag.label else "none"
+(type + Demo (is Box)
+  (prop + tag (? Tag))
+  (content
+    (<> This
+      (<> TextBox
+        (= text (if-expr #tag (. #tag label) "none"))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1481,74 +1534,74 @@ ada
 
 ### A departing parent waits for its leaving child, then closes with it.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
+(prop + log _ (= (call (of List String))))
+(blank)
 
-+ log = List'String()
+(main
+  (<> Demo (id: demo)
+    (if (. demo #shown)
+      (<> Box
+        (for (in name (. demo #names) (keyed-by name))
+          (<> Leaver
+            (= name name)
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (call (. demo names remove) 0)
+  (print (call dump demo))
+  (= (. demo shown) false)
+  (print (call dump demo))
+  (call markup-departed (!! (. (!! (. (!! (. (!! (. demo %first-child)) %first-child)) %first-child)) %first-child)))
+  (print (call dump demo))
+  (print (call (. " " join) log))
+)
 
-<Demo demo
-    if demo.#shown
-        <Box
-            for name in demo.#names keyed by name
-                <Leaver
-                    name = name
+(fn-do + dump String
+  (param demo Demo)
+  (let branch (!! (. demo %first-child)))
+  (return-if "empty" (if (not (. branch %first-child))))
+  (let parts (call (of List String)))
+  (for (in child (. (!! (. (!! (. branch %first-child)) %first-child)) children))
+    (let leaver (as child Leaver))
+    (if (. leaver is-leaving)
+      (+= parts (str (. leaver name) "*"))
+      (else
+        (+= parts (. leaver name))
+      )
+    )
+  )
+  (let text (call (. " " join) parts))
+  (return-if (str "(" text ")") (if (call markup-is-departing (!! (. branch %first-child)))))
+  (return text)
+)
 
-demo.names.remove(0)
--- dump(demo)
-demo.shown = false
--- dump(demo)
-markup-departed(demo.%first-child!.%first-child!.%first-child!.%first-child!)
--- dump(demo)
--- " ".join(log)
+(type + Demo (is Box)
+  (prop + shown _ (= true))
+  (prop + names _ (= (call (of List String) (list "a" "b"))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - demo Demo
-
-. branch = demo.%first-child!
-=? "empty"
-    if !branch.%first-child
-. parts = List'String()
-for child in branch.%first-child!.%first-child!.children
-    . leaver = child as Leaver
-    if leaver.is-leaving
-        parts += "${leaver.name}*"
-    else
-        parts += leaver.name
-. text = " ".join(parts)
-=? "($text)"
-    if markup-is-departing(branch.%first-child!)
-= text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ shown = true
-+ names = List'String(["a", "b"])
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaver is Box
-
-+ name = ""
-+ is-leaving = false
-
-────────────────────
-+ do markup-depart Bool
-
-is-leaving = true
-= true
-
-────────────────────
-+ do markup-revive
-
-is-leaving = false
-
-────────────────────
-+ do close
-
-log += "close:$name"
-super.close()
+(type + Leaver (is Box)
+  (prop + name _ (= ""))
+  (prop + is-leaving _ (= false))
+  (fn-do + markup-depart Bool
+    (= is-leaving true)
+    (return true)
+  )
+  (fn-do + markup-revive _
+    (= is-leaving false)
+  )
+  (fn-do + close _
+    (+= log (str "close:" name))
+    (call (. super close))
+  )
+)
 ```
 
 ```output
@@ -1560,68 +1613,65 @@ close:a close:b
 
 ### A branch that is shown again while its old arm departs revives that arm instead of building it.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
+(prop + log _ (= (call (of List String))))
+(blank)
 
-+ log = List'String()
+(main
+  (<> Demo (id: demo)
+    (if (. demo #shown)
+      (<> Leaver)
+    )
+  )
+  (blank)
+  (= (. demo shown) false)
+  (print (call dump demo))
+  (= (. demo shown) true)
+  (print (call dump demo))
+  (= (. demo shown) false)
+  (call markup-departed (!! (. (!! (. demo %first-child)) %first-child)))
+  (print (call dump demo))
+  (print (call (. " " join) log))
+)
 
-<Demo demo
-    if demo.#shown
-        <Leaver
+(fn-do + dump String
+  (param demo Demo)
+  (let parts (call (of List String)))
+  (for (in child (. (!! (. demo %first-child)) children))
+    (if (. (as child Leaver) is-leaving)
+      (+= parts "leaving")
+      (else
+        (+= parts "shown")
+      )
+    )
+  )
+  (return (str "[" (call (. " " join) parts) "]"))
+)
 
-demo.shown = false
--- dump(demo)
-demo.shown = true
--- dump(demo)
-demo.shown = false
-markup-departed(demo.%first-child!.%first-child!)
--- dump(demo)
--- " ".join(log)
+(type + Demo (is Box)
+  (prop + shown _ (= true))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - demo Demo
-
-. parts = List'String()
-for child in demo.%first-child!.children
-    if (child as Leaver).is-leaving
-        parts += "leaving"
-    else
-        parts += "shown"
-= "[${" ".join(parts)}]"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ shown = true
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaver is Box
-
-+ is-leaving = false
-
-────────────────────
-+ This
-
-log += "build"
-
-────────────────────
-+ do markup-depart Bool
-
-is-leaving = true
-= true
-
-────────────────────
-+ do markup-revive
-
-is-leaving = false
-
-────────────────────
-+ do close
-
-log += "close"
-super.close()
+(type + Leaver (is Box)
+  (prop + is-leaving _ (= false))
+  (fn-do + This _
+    (+= log "build")
+  )
+  (fn-do + markup-depart Bool
+    (= is-leaving true)
+    (return true)
+  )
+  (fn-do + markup-revive _
+    (= is-leaving false)
+  )
+  (fn-do + close _
+    (+= log "close")
+    (call (. super close))
+  )
+)
 ```
 
 ```output
@@ -1633,69 +1683,67 @@ build close
 
 ### A branch shown again after only part of its old arm departed builds the arm again.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
+(prop + log _ (= (call (of List String))))
+(blank)
 
-+ log = List'String()
+(main
+  (<> Demo (id: demo)
+    (if (. demo #shown)
+      (<> Leaver)
+      (<> Plain)
+    )
+  )
+  (blank)
+  (= (. demo shown) false)
+  (print (call dump demo))
+  (= (. demo shown) true)
+  (print (call dump demo))
+  (print (call (. " " join) log))
+)
 
-<Demo demo
-    if demo.#shown
-        <Leaver
-        <Plain
+(fn-do + dump String
+  (param demo Demo)
+  (let parts (call (of List String)))
+  (for (in child (. (!! (. demo %first-child)) children))
+    (match child
+      (case (: leaver Leaver)
+        (+= parts (if-expr (. leaver is-leaving) "leaving" "leaver"))
+      )
+      (case _
+        (+= parts "plain")
+      )
+    )
+  )
+  (return (str "[" (call (. " " join) parts) "]"))
+)
 
-demo.shown = false
--- dump(demo)
-demo.shown = true
--- dump(demo)
--- " ".join(log)
+(type + Demo (is Box)
+  (prop + shown _ (= true))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - demo Demo
+(type + Leaver (is Box)
+  (prop + is-leaving _ (= false))
+  (fn-do + This _
+    (+= log "leaver")
+  )
+  (fn-do + markup-depart Bool
+    (= is-leaving true)
+    (return true)
+  )
+  (fn-do + markup-revive _
+    (= is-leaving false)
+  )
+)
 
-. parts = List'String()
-for child in demo.%first-child!.children
-    match child
-        | leaver Leaver
-            parts += if leaver.is-leaving then "leaving" else "leaver"
-        | _
-            parts += "plain"
-= "[${" ".join(parts)}]"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ shown = true
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaver is Box
-
-+ is-leaving = false
-
-────────────────────
-+ This
-
-log += "leaver"
-
-────────────────────
-+ do markup-depart Bool
-
-is-leaving = true
-= true
-
-────────────────────
-+ do markup-revive
-
-is-leaving = false
-
-━━━━━━━━━━━━━━━━━━━━
-+ Plain is Box
-
-────────────────────
-+ This
-
-log += "plain"
+(type + Plain (is Box)
+  (fn-do + This _
+    (+= log "plain")
+  )
+)
 ```
 
 ```output
@@ -1706,78 +1754,72 @@ leaver plain leaver plain
 
 ### Bindings in a departing arm hold still while it leaves, and catch up when it revives.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<HeldRoot root
-. demo = Demo()
-markup-adopt(demo, null, root)
-root.markup-batch-queue.checkpoint()
--- dump(demo)
-demo.item = null
-root.markup-batch-queue.checkpoint()
--- dump(demo)
-demo.item = Item("second")
-root.markup-batch-queue.checkpoint()
--- dump(demo)
+(main
+  (<> HeldRoot (id: root))
+  (let demo (call Demo))
+  (call markup-adopt demo null root)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call dump demo))
+  (= (. demo item) null)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call dump demo))
+  (= (. demo item) (call Item "second"))
+  (call (. root markup-batch-queue checkpoint))
+  (print (call dump demo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - demo Demo
+(fn-do + dump String
+  (param demo Demo)
+  (let leaver (as (!! (. (!! (. demo %first-child)) %first-child)) Leaver))
+  (let state (if-expr (. leaver is-leaving) "leaving" "shown"))
+  (return (str state " " (. (as (!! (. leaver %first-child)) TextBox) text)))
+)
 
-. leaver = demo.%first-child!.%first-child! as Leaver
-. state = if leaver.is-leaving then "leaving" else "shown"
-= "$state ${(leaver.%first-child! as TextBox).text}"
+(type + Item (is Tuple)
+  (prop + name String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Tuple
+(type + HeldRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-+ name String
+(type + Demo (is Box)
+  (prop + item (? Item) (= (call Item "first")))
+  (content
+    (<> This
+      (if (!= #item null)
+        (<> Leaver
+          (<> TextBox
+            (= text (. (!! #item) name))
+          )
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ HeldRoot is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ item Item? = Item("first")
-
-────────────────────
-
-<This
-    if #item != null
-        <Leaver
-            <TextBox
-                text = #item!.name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Leaver is Box
-
-+ is-leaving = false
-
-────────────────────
-+ do markup-depart Bool
-
-is-leaving = true
-= true
-
-────────────────────
-+ do markup-revive
-
-is-leaving = false
+(type + Leaver (is Box)
+  (prop + is-leaving _ (= false))
+  (fn-do + markup-depart Bool
+    (= is-leaving true)
+    (return true)
+  )
+  (fn-do + markup-revive _
+    (= is-leaving false)
+  )
+)
 ```
 
 ```output
@@ -1788,27 +1830,31 @@ shown second
 
 ### A line of an arm that forces a tracked optional gives the arm what it holds again as it changes.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Holder holder
-    item = Box()
+(main
+  (<> Holder (id: holder)
+    (= item (call Box))
+  )
+  (blank)
+  (let region (!! (. holder %first-child)))
+  (print (== (as (!! (. region %first-child)) Pointer) (as (!! (. holder item)) Pointer)))
+  (= (. holder item) (call Box))
+  (print (== (as (!! (. region %first-child)) Pointer) (as (!! (. holder item)) Pointer)))
+)
 
-. region = holder.%first-child!
--- region.%first-child! as Pointer == holder.item! as Pointer
-holder.item = Box()
--- region.%first-child! as Pointer == holder.item! as Pointer
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-+ item Box?
-
-────────────────────
-
-<This
-    if #item
-        #item!
+(type + Holder (is Box)
+  (prop + item (? Box))
+  (content
+    (<> This
+      (if #item
+        (!! #item)
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1818,44 +1864,46 @@ true
 
 ### With no batch to order them, an arm's binding that forces what the branch tests is not run once that is gone.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Holder holder
+(main
+  (<> Holder (id: holder))
+  (blank)
+  (print (call shown holder))
+  (= (. holder item) null)
+  (print (call shown holder))
+)
 
--- shown(holder)
-holder.item = null
--- shown(holder)
+(fn-expr + shown String
+  (param holder Holder)
+  (if-expr named (. (as named Named) name) "none")
+  (where
+    (lazy named (. (!! (. holder %first-child)) %first-child))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ shown String
-    - holder Holder
+(type + Item (is Tuple)
+  (prop + name String)
+)
 
-if named then (named as Named).name else "none"
+(type + Holder (is Box)
+  (prop + item (? Item) (= (call Item "first")))
+  (content
+    (<> This
+      (if (!= #item null)
+        (<> Named
+          (= name (. (!! #item) name))
+        )
+      )
+    )
+  )
+)
 
-.. named = holder.%first-child!.%first-child
-
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Tuple
-
-+ name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-+ item Item? = Item("first")
-
-────────────────────
-
-<This
-    if #item != null
-        <Named
-            name = #item!.name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Named is Box
-
-+ name = ""
+(type + Named (is Box)
+  (prop + name _ (= ""))
+)
 ```
 
 ```output
@@ -1865,133 +1913,138 @@ none
 
 ### A branch closes what its arm embedded when the arm leaves, so an arm that embeds a box held elsewhere panics when it is built again, though the box is still linked inside what closed.
 
-```yumi crash
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Holder holder
+(main
+  (<> Holder (id: holder))
+  (blank)
+  (= (. holder open) false)
+  (= (. holder open) true)
+)
 
-holder.open = false
-holder.open = true
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-
-+ open = true
-+ empty = Box()
-
-────────────────────
-<This
-    if #open
-        <Box
-            #empty
+(type + Holder (is Box)
+  (prop + open _ (= true))
+  (prop + empty _ (= (call Box)))
+  (content
+    (<> This
+      (if #open
+        (<> Box
+          #empty
+        )
+      )
+    )
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: Markup child was closed by the markup that embedded it and cannot be embedded again
-<core/markup.yumi>
+<core/markup.bx>
 
 Task 1
 
 Stack trace:
-  0  core/markup:markup-assert-structural-child-linkable core/markup.yumi
-  1  core/markup:markup-attach-new-child core/markup.yumi
-  2  core/markup:markup-append core/markup.yumi
-  3  __source__:markup-branch-arm no file:19:13
-  4  __source__:markup-branch-armCasting no file:17:5
-  5  core/markup:MarkupBranchController:select-markup-branch core/markup.yumi
-  6  core/markup:markup-select-branch-region core/markup.yumi
-  7  __source__:markup-branch no file:17:5
-  8  __source__:markup-branchCasting no file:17:5
-  9  core/tracker:LiveAction:refresh-trackers-into core/tracker.yumi
-  10  core/tracker:LiveAction:refresh-trackers core/tracker.yumi
-  11  core/markup:MarkupBatchAction:run-markup-batch-action-now core/markup.yumi
-  12  core/markup:MarkupBatchAction:run-markup-batch-action core/markup.yumi
-  13  core/markup:MarkupBatchAction:refresh-markup-batch-action core/markup.yumi
-  14  core/markup:MarkupBatchAction:run-now core/markup.yumi
-  15  core/tracker:LiveAction:run-queued core/tracker.yumi
-  16  core/tracker:LiveBatch:run core/tracker.yumi
-  17  core/tracker:LiveBatch:leave core/tracker.yumi
-  18  core/tracker:property-dispatch core/tracker.yumi
-  19  __source__:main no file:7:1
+  0  core/markup:markup-assert-structural-child-linkable core/markup.bx
+  1  core/markup:markup-attach-new-child core/markup.bx
+  2  core/markup:markup-append core/markup.bx
+  3  __source__:markup-branch-arm no file:19:11
+  4  __source__:markup-branch-armCasting no file:17:7
+  5  core/markup:MarkupBranchController:select-markup-branch core/markup.bx
+  6  core/markup:markup-select-branch-region core/markup.bx
+  7  __source__:markup-branch no file:17:7
+  8  __source__:markup-branchCasting no file:17:7
+  9  core/tracker:LiveAction:refresh-trackers-into core/tracker.bx
+  10  core/tracker:LiveAction:refresh-trackers core/tracker.bx
+  11  core/markup:MarkupBatchAction:run-markup-batch-action-now core/markup.bx
+  12  core/markup:MarkupBatchAction:run-markup-batch-action core/markup.bx
+  13  core/markup:MarkupBatchAction:refresh-markup-batch-action core/markup.bx
+  14  core/markup:MarkupBatchAction:run-now core/markup.bx
+  15  core/tracker:LiveAction:run-queued core/tracker.bx
+  16  core/tracker:LiveBatch:run core/tracker.bx
+  17  core/tracker:LiveBatch:leave core/tracker.bx
+  18  core/tracker:property-dispatch core/tracker.bx
+  19  __source__:main no file:9:3
   20  __source__:init.__source__ no file
   21  __source__:brix.main no file
 ```
 
 ### Making the arm a match selects is not tracked by the match's action. An element that reads a style-sheet slot while it is made does not run the match again when that read settles after mounting.
 
-```yumi
-/core/markup
-/core/style
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/style)
+(import /core/tests/support/markup-fixtures)
+(blank)
+(prop + builds _ (= 0))
+(blank)
 
-+ builds = 0
+(main
+  (<> Demo (id: demo))
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (= (. demo kind) 2)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (str "builds=" builds " pending=" (. demo markup-batch-queue actions length)))
+)
 
-<Demo demo
+(type + Demo (is Box)
+  (implements MarkupRootElement)
+  (using AppTheme)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (prop + kind _ (= 1))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+  (content
+    (<> This
+      (match #kind
+        (case 1
+          (<> Row
+            (= value 1)
+          )
+        )
+        (case _
+          (<> Row
+            (= value 2)
+          )
+        )
+      )
+    )
+  )
+)
 
-demo.markup-batch-queue.checkpoint()
-demo.kind = 2
-demo.markup-batch-queue.checkpoint()
--- "builds=$builds pending=${demo.markup-batch-queue.actions.length}"
+(style AppTheme
+  (prop + bright I64 (= 11))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-    is MarkupRootElement
-    using AppTheme
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
-+ kind = 1
+(fn-expr + row-ink I64
+  (param row Row)
+  (. row $bright)
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-────────────────────
-
-<This
-    match #kind
-        | 1
-            <Row
-                value = 1
-        | _
-            <Row
-                value = 2
-
-━━━━━━━━━━━━━━━━━━━━
-• AppTheme
-
-+ bright I64 = 11
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ row-ink I64
-    - row Row
-
-row.$bright
-
-━━━━━━━━━━━━━━━━━━━━
-+ Row is Box
-    using AppTheme
-    using TextStyle
-
-+ value I64
-+ bright-at-build I64
-
-────────────────────
-+ This
-
-builds += 1
-bright-at-build = $bright
-
-────────────────────
-
-<This
-    ink = row-ink(this) + #value
+(type + Row (is Box)
+  (using AppTheme)
+  (using TextStyle)
+  (prop + value I64)
+  (prop + bright-at-build I64)
+  (fn-do + This _
+    (+= builds 1)
+    (= bright-at-build $bright)
+  )
+  (content
+    (<> This
+      (= ink (+ (call row-ink this) #value))
+    )
+  )
+)
 ```
 
 ```output
@@ -2000,32 +2053,33 @@ builds=2 pending=0
 
 ### An object's `close` closes the live actions it owns before its body closes its children, so a child that changes what a branch reads as it closes does not select an arm of a region that has closed.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    if !panel.#is-open
-        <Box
-    <Panel panel
+(main
+  (<> Demo (id: demo)
+    (if (not (. panel #is-open))
+      (<> Box)
+    )
+    (<> Panel (id: panel))
+  )
+  (blank)
+  (= (. panel is-open) true)
+  (call (. demo close))
+  (print (str "closed " (. panel is-open)))
+)
 
-panel.is-open = true
-demo.close()
--- "closed ${panel.is-open}"
+(type + Demo (is Box))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ is-open = false
-
-────────────────────
-+ do close
-
-is-open = false
-super.close()
+(type + Panel (is Box)
+  (prop + is-open _ (= false))
+  (fn-do + close _
+    (= is-open false)
+    (call (. super close))
+  )
+)
 ```
 
 ```output
@@ -2034,42 +2088,50 @@ closed false
 
 ### A named element in an arm of a match that is a region is made by the arm, so a later line of the arm reads it.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. model = Model()
+(main
+  (let model (call Model))
+  (blank)
+  (<> Box (id: root)
+    (match (. model #name)
+      (case (: name String)
+        (<> TextBox (id: first) (value: name))
+        (<> TextBox (value: (str (. first text) "!")))
+      )
+      (case _
+        (<> TextBox (id: none) (value: "none"))
+        (<> TextBox (value: (str (. none text) "?")))
+      )
+    )
+  )
+  (blank)
+  (print (call dump root))
+  (= (. model name) null)
+  (print (call dump root))
+  (= (. model name) "back")
+  (print (call dump root))
+)
 
-<Box root
-    match model.#name
-        | name String
-            <TextBox first = name
-            <TextBox = "${first.text}!"
-        | _
-            <TextBox none = "none"
-            <TextBox = "${none.text}?"
+(fn-do + dump String
+  (param box Box)
+  (let parts (call (of List String)))
+  (for (in child (. box children))
+    (if (is child TextBox)
+      (+= parts (. (as child TextBox) text))
+      (else
+        (+= parts (str "[" (call dump child) "]"))
+      )
+    )
+  )
+  (return (call (. "," join) parts))
+)
 
--- dump(root)
-model.name = null
--- dump(root)
-model.name = "back"
--- dump(root)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - box Box
-
-. parts = List'String()
-for child in box.children
-    if child is TextBox
-        parts += (child as TextBox).text
-    else
-        parts += "[${dump(child)}]"
-= ",".join(parts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Model
-
-+ name String? = "on"
+(type + Model
+  (prop + name (? String) (= "on"))
+)
 ```
 
 ```output
@@ -2080,52 +2142,62 @@ for child in box.children
 
 ### A handler in a named element of an arm of a match in a keyed row reads the element by its name.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. heard = List'String()
-. places = List'Place([Place("a"), Place(null)])
+(main
+  (let heard (call (of List String)))
+  (let places (call (of List Place) (list (call Place "a") (call Place null))))
+  (blank)
+  (<> Box (id: root)
+    (for (in place #places (keyed-by place))
+      (match (. place name)
+        (case (: name String)
+          (<> Pinger (id: named)
+            (= label name)
+            (for (on event pinged)
+              (+= heard (str "named " (. named label)))
+            )
+          )
+        )
+        (case _
+          (<> Pinger (id: plain)
+            (= label "plain")
+            (for (on event pinged)
+              (+= heard (str "plain " (. plain label)))
+            )
+          )
+        )
+      )
+    )
+  )
+  (blank)
+  (call ping root)
+  (print (call (. "," join) heard))
+)
 
-<Box root
-    for place in #places keyed by place
-        match place.name
-            | name String
-                <Pinger named
-                    label = name
-                    for event on pinged
-                        heard += "named ${named.label}"
-            | _
-                <Pinger plain
-                    label = "plain"
-                    for event on pinged
-                        heard += "plain ${plain.label}"
+(fn-do + ping _
+  (param box Box)
+  (for (in child (. box children))
+    (if (is child Pinger)
+      (<- (. (as child Pinger) pinged) 1)
+    )
+    (call ping child)
+  )
+)
 
-ping(root)
--- ",".join(heard)
+(type + Pinger (is Box)
+  (prop + label _ (= ""))
+  (event + pinged Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do ping
-    - box Box
-
-for child in box.children
-    if child is Pinger
-        (child as Pinger).pinged <- 1
-    ping(child)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pinger is Box
-
-+ label = ""
-+ event pinged Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Place
-
-+ name String?
-
-────────────────────
-+ This
-    - name
+(type + Place
+  (prop + name (? String))
+  (fn-do + This _
+    (param name _)
+  )
+)
 ```
 
 ```output
@@ -2134,37 +2206,42 @@ named a,plain plain
 
 ### A named element an arm of a match in a class's markup makes is given to the class's property of that name each time the arm makes it.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. section = Section()
--- section.header.title
-section.title = "B"
--- section.header.title
-section.title = null
--- section.header.title
-section.title = "C"
--- section.header.title
+(main
+  (let section (call Section))
+  (print (. section header title))
+  (= (. section title) "B")
+  (print (. section header title))
+  (= (. section title) null)
+  (print (. section header title))
+  (= (. section title) "C")
+  (print (. section header title))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Titled is Box
+(type + Titled (is Box)
+  (prop + title _ (= ""))
+)
 
-+ title = ""
-
-━━━━━━━━━━━━━━━━━━━━
-+ Section is Box
-
-+ title String? = "A"
-
-────────────────────
-
-<This
-    match #title
-        | text String
-            <Titled header
-                title = text
-        | _
-            <Box
+(type + Section (is Box)
+  (prop + title (? String) (= "A"))
+  (content
+    (<> This
+      (match #title
+        (case (: text String)
+          (<> Titled (id: header)
+            (= title text)
+          )
+        )
+        (case _
+          (<> Box)
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output

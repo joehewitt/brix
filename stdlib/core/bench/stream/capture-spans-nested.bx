@@ -1,0 +1,53 @@
+; benchmark.meta description: Exercises nested stream captures and capture result construction.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+
+(main
+  (let groups
+    (match (call capture-spans-nested-source)
+      (~ \capture-spans-nested-document)
+      (throw (call Panic "capture-spans-nested did not parse"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in group groups)
+    (+= checksum group)
+  )
+  (blank)
+  (print (str "bench-result stream/capture-spans-nested checksum=" checksum))
+)
+
+(fn-expr + capture-spans-nested-document _ (over: Char)
+  (~ (: groups (+ \capture-spans-group))
+    groups
+  )
+  (where
+    (lazy capture-spans-group Size
+      (pattern
+        (~ (seq "group(" (: first \capture-word) (: rest (* (seq "," (: item \capture-word)))) ")" "\n")
+          (+ (* (. first length) 13) (* (. rest length) 17) (. item length))
+        )
+      )
+    )
+    (blank)
+    (lazy capture-word String
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_"))))
+      )
+    )
+  )
+)
+
+(fn-expr _ capture-spans-nested-source _
+  (call (. "" join) (in (call capture-spans-group each) (..< 0 90)))
+)
+
+(fn-expr _ capture-spans-group String
+  (param group Int)
+  (str "group(root_" group children ")\n")
+  (where
+    (lazy children (call (. "" join) (in (str ",child_" group "_" each) (..< 0 12))))
+  )
+)

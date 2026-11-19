@@ -1,0 +1,222 @@
+(import ./chat-memory)
+(import /ai)
+(import /stream/aggregate)
+
+(type + ChatBranching
+  (prop + root AIChatSession)
+  (prop + focus (? AIChatSession))
+  (prop + error (? String))
+  (prop + memory _ (= (call ChatViewMemory)))
+  (event + stopping AIChatSession)
+  (blank)
+  (prop _ queues _ (= (call (of Map String AIChatQueue))))
+  (prop + main _ (= (call chat-main-session root (. root document #revision) #focus)))
+  (fn-do + This _
+    (param root _)
+  )
+  (fn-expr + document _ :get
+    (. root document)
+  )
+  (fn-do + open _
+    (param branch-id String)
+    (= error null)
+    (if (== branch-id (. root branch-id))
+      (= focus null)
+      (return)
+    )
+    (let opened
+      (call (. document session) branch-id
+        (block
+          (on-error (: failure Error)
+            (= error (str failure))
+            (return)
+          )
+        )
+      )
+    )
+    (= focus opened)
+  )
+  (fn-do + close _
+    (= focus null)
+  )
+  (fn-do + send _
+    (param session AIChatSession)
+    (param prompt String)
+    (param images (list AIImage) (= (call (of List AIImage))))
+    (param context (? String) (= null))
+    (= error null)
+    (call (. session send) prompt context false images
+      (block
+        (on-error (: failure Error)
+          (= error (str failure))
+        )
+      )
+    )
+  )
+  (fn-do + steer Bool
+    (param session AIChatSession)
+    (param prompt String)
+    (let failure (catch (call (. session send) prompt null true)))
+    (return (is-not failure Error))
+  )
+  (fn-do + queue-for AIChatQueue
+    (param session AIChatSession)
+    (let found ([] queues (. session branch-id)))
+    (return-if found (if found))
+    (let made (call AIChatQueue session))
+    (= ([] queues (. session branch-id)) made)
+    (return made)
+  )
+  (fn-do + side-chat _
+    (param session AIChatSession)
+    (param prompt String)
+    (param images (list AIImage) (= (call (of List AIImage))))
+    (= error null)
+    (let anchor (call chat-latest-message session))
+    (if (not anchor)
+      (call send session prompt images)
+      (return)
+    )
+    (let side
+      (call (. document side-chat) (. session branch-id) anchor
+        (block
+          (on-error (: failure Error)
+            (= error (str failure))
+            (return)
+          )
+        )
+      )
+    )
+    (= focus side)
+    (call (. side send) prompt null false images
+      (block
+        (on-error (: failure Error)
+          (= error (str failure))
+        )
+      )
+    )
+  )
+  (fn-do + stop _
+    (param session AIChatSession)
+    (call (. session stop)
+      (block
+        (on-error (: failure Error)
+          (= error (str failure))
+        )
+      )
+    )
+  )
+  (fn-do + stop-all _
+    (param session AIChatSession)
+    (call (. session stop-all)
+      (block
+        (on-error (: failure Error)
+          (= error (str failure))
+        )
+      )
+    )
+  )
+  (fn-do + request-stop _
+    (param session AIChatSession)
+    (<- stopping session)
+  )
+  (fn-do + collapse _
+    (param session AIChatSession)
+    (param message-id String)
+    (= error null)
+    (call (. document collapse) (. session branch-id) message-id
+      (block
+        (on-error (: failure Error)
+          (= error (str failure))
+        )
+      )
+    )
+  )
+  (fn-do + unfold _
+    (param branch-id String)
+    (= error null)
+    (call (. document unfold) branch-id
+      (block
+        (on-error (: failure Error)
+          (= error (str failure))
+        )
+      )
+    )
+    (call settle-focus)
+  )
+  (fn-do + remove _
+    (param branch-id String)
+    (= error null)
+    (call (. document remove) branch-id
+      (block
+        (on-error (: failure Error)
+          (= error (str failure))
+        )
+      )
+    )
+    (call settle-focus)
+  )
+  (fn-do + dismiss _
+    (= error null)
+  )
+  (fn-do _ settle-focus _
+    (let current focus)
+    (if (and current (not (. current branch)))
+      (= focus null)
+    )
+  )
+)
+
+(type + ChatBranchings
+  (prop _ branchings _ (= (call (of Map String ChatBranching))))
+  (fn-do + branching ChatBranching
+    (param session AIChatSession)
+    (let found ([] branchings (. session id)))
+    (return-if found (if (!= found null)))
+    (let made (call ChatBranching session))
+    (= ([] branchings (. session id)) made)
+    (return made)
+  )
+)
+
+(fn-expr + chat-folds (list AIChatBranch)
+  (param branches (list AIChatBranch))
+  (spread branches)
+  (pipe ?> (. each is-collapsed))
+  (pipe |> List)
+)
+
+(fn-expr + chat-crumb-title _
+  (param session AIChatSession)
+  (param branch AIChatBranch)
+  (case? (not (. branch parent-branch-id))
+    (?? (. session document title) "Chat")
+  )
+  (default
+    (call chat-branch-title branch)
+  )
+)
+
+(fn-expr _ chat-main-session AIChatSession
+  (param root AIChatSession)
+  (param revision U64)
+  (param focus (? AIChatSession))
+  (match (?. (?. focus branch) parent-branch-id)
+    (case= null
+      root
+    )
+    (case? (== it (. root branch-id))
+      root
+    )
+    (case (: parent String)
+      (?? (catch? (call (. root document session) parent)) root)
+    )
+  )
+)
+
+(fn-do _ chat-latest-message (? String)
+  (param session AIChatSession)
+  (let transcript (catch? (call chat-transcript (. session chat) (. session branch-id))))
+  (return-if (if (or (not transcript) (not (. transcript length)))))
+  (return (. ([] transcript (- (. transcript length) 1)) id))
+)

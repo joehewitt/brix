@@ -1,0 +1,303 @@
+(import /ai)
+(import /ai/openai/completions)
+(import /data)
+(import /data/json)
+(import /data/stream)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "OpenAI Transcript Encoding"))
+  (call (. cases run) openai-transcript-tests)
+  (= cases (call (. cases then) "OpenAI Fragmented Stream" openai-stream-tests))
+  (= cases (call (. cases then) "OpenAI Search And Media" openai-search-media-tests))
+  (= cases (call (. cases then) "OpenAI Invalid Stream" openai-invalid-stream-tests))
+  (return cases)
+)
+
+(fn-do + openai-transcript-tests TestCase
+  (param t TestCase)
+  (let reply (list AIMessagePart))
+  (+= reply (call AIReasoningPart "thought" "considering"))
+  (+= reply (call AITextPart "text" "It is sunny."))
+  (+= reply (call AIToolCallPart "ran" "call-1" "Read" (call JSON "{}")))
+  (+= reply (call AIToolResultPart "ran:result" "call-1" "contents"))
+  (+= reply (call AIToolCallPart "asked" "call-2" "weather" (call JSON "{}")))
+  (+= reply (call AIExtensionPart "session" "elsewhere" "session" (call JSON "{}")))
+  (let marker (list AIMessagePart))
+  (+= marker (call AIExtensionPart "session" "elsewhere" "session" (call JSON "{}")))
+  (blank)
+  (let messages (list AIMessage))
+  (+= messages (call AIMessage (. AIMessageRole user) "weather"))
+  (+= messages (call AIMessage (. AIMessageRole assistant) reply))
+  (+= messages (call AIMessage (. AIMessageRole assistant) marker))
+  (+= messages (call AIMessage (. AIMessageRole user) "and tomorrow?"))
+  (let root (as (call openai-request-value (call AIRequest "gpt-test" messages)) (map String JSON)))
+  (let sent (as ([] root "messages") (list JSON)))
+  (blank)
+  (call (. t expect) "a reply with nothing to send is left out" 3 (. sent length))
+  (let answer (as ([] sent 1) (map String JSON)))
+  (call (. t expect) "a reply keeps its text" "It is sunny." (as ([] answer "content") String))
+  (let calls (as ([] answer "tool_calls") (list JSON)))
+  (call (. t expect) "a call the provider already answered is left out" 1 (. calls length))
+  (call (. t expect) "an open call is sent" "call-2" (as ([] (as ([] calls 0) (map String JSON)) "id") String))
+  (call (. t check) "another provider's data is left out" (== ([] answer "session") null))
+  (return t)
+)
+
+(fn-do + openai-stream-tests TestCase
+  (param t TestCase)
+  (let source (call FragmentedAIStream (call openai-tool-sse) 3))
+  (let lines (call collect-event-summaries source))
+  (blank)
+  (let expected
+    (paragraph
+      "begin:text"
+      "delta:Hel"
+      "delta:lo"
+      "begin:tool"
+      "delta:{\"x\":"
+      "delta:1}"
+      "usage:2"
+      "end:text:1"
+      "end:tool:weather:{\"x\": 1}"
+      "done:tool-calls:3"
+    )
+  )
+  (call (. t expect) "fragmented SSE event lifecycle" expected (call (. "\n" join) lines))
+  (blank)
+  (let null-source (call (of DataStream Byte) (call openai-null-tool-sse)))
+  (let null-lines (call collect-event-summaries null-source))
+  (call (. t expect) "JSON null tool arguments remain valid" true (call has-line null-lines "end:tool:none:null"))
+  (return t)
+)
+
+(fn-do + openai-search-media-tests TestCase
+  (param t TestCase)
+  (let source (call (of DataStream Byte) (call openai-search-audio-sse)))
+  (let lines (call collect-event-summaries source))
+  (blank)
+  (call (. t expect) "search is observed without inference" true (call has-line lines "end:search:brix ai"))
+  (call (. t expect) "audio part completes" true (call has-line lines "end:audio:foo"))
+  (call (. t expect) "stream completes" "done:stop:1" (. lines tail))
+  (return t)
+)
+
+(fn-do + openai-invalid-stream-tests TestCase
+  (param t TestCase)
+  (let source-text
+    (paragraph
+      (str "data: {\"id\":\"chat-3\",\"choices\":[{\"delta\":{\"content\":\"unfinished\"},\"finish_reason\":null}]}" (str "\n\n"))
+    )
+  )
+  (let source (call (of DataStream Byte) source-text))
+  (let provider (call OpenAIStreamProvider source))
+  (let result (catch (call complete provider (call AIRequest "mock"))))
+  (call (. t check) "missing terminal marker is invalid" (is result AIError))
+  (if (is result AIError)
+    (let error (as result AIError))
+    (call (. t expect) "missing terminal marker kind" (. AIErrorKind invalid-response) (. error kind))
+  )
+  (return t)
+)
+
+(fn-do _ has-line _
+  (param lines (list String))
+  (param expected String)
+  (for (in line lines)
+    (if (== line expected)
+      (return true)
+    )
+  )
+  (return false)
+)
+
+(fn-do _ collect-event-summaries _ (?! AIError)
+  (param source (of ReadableData Byte))
+  (let lines (list String))
+  (for (in event (call openai-stream-events source))
+    (+= lines (call ai-event-summary event))
+  )
+  (return lines)
+)
+
+(fn-expr _ ai-event-summary _
+  (param event AIEvent)
+  (match event
+    (case (: begin AIPartBeginEvent)
+      (str "begin:" (call ai-part-kind (. begin part)))
+    )
+    (case (: delta AIPartDeltaEvent)
+      (call ai-delta-summary (. delta delta))
+    )
+    (case (: usage AIUsageEvent)
+      (str "usage:" (?? (. usage usage input-tokens) 0))
+    )
+    (case (: end AIPartEndEvent)
+      (call ai-part-end-summary (. end part))
+    )
+    (case (: done AIDoneEvent)
+      (str "done:" (call finish-summary (. done finish-reason)) ":" (?? (?. (. done usage) total-tokens) 0))
+    )
+    (default
+      "other"
+    )
+  )
+)
+
+(fn-expr _ ai-delta-summary _
+  (param delta AIContentDelta)
+  (match delta
+    (case (: text AITextDelta)
+      (str "delta:" (. text text))
+    )
+    (case (: arguments AIToolArgumentsDelta)
+      (str "delta:" (. arguments text))
+    )
+    (case (: audio AIAudioDelta)
+      (str "audio-delta:" (. audio data size))
+    )
+    (default
+      "other"
+    )
+  )
+)
+
+(fn-expr _ ai-part-end-summary _
+  (param part AIMessagePart)
+  (match part
+    (case (: text AITextPart)
+      (str "end:text:" (. text citations length))
+    )
+    (case (: tool AIToolCallPart)
+      (str "end:tool:" (. tool tool-name) ":" (call to-json (. tool arguments)))
+    )
+    (case (: search AIWebSearchPart)
+      (str "end:search:" (. search query))
+    )
+    (case (: audio AIAudioPart)
+      (str "end:audio:" (?? (. audio audio transcript) ""))
+    )
+    (default
+      "other"
+    )
+  )
+)
+
+(fn-expr _ ai-part-kind _
+  (param part AIMessagePart)
+  (match part
+    (case AITextPart
+      "text"
+    )
+    (case AIToolCallPart
+      "tool"
+    )
+    (case AIWebSearchPart
+      "search"
+    )
+    (case AIAudioPart
+      "audio"
+    )
+    (default
+      "other"
+    )
+  )
+)
+
+(fn-expr _ finish-summary _
+  (param reason AIFinishReason)
+  (match reason
+    (case ({} (== it (. AIFinishReason stop)))
+      "stop"
+    )
+    (case ({} (== it (. AIFinishReason tool-calls)))
+      "tool-calls"
+    )
+    (default
+      "other"
+    )
+  )
+)
+
+(fn-expr _ openai-tool-sse _
+  (paragraph
+    "data: {\"id\":\"chat-1\",\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}],\"usage\":null}"
+    (blank)
+    "data: {\"id\":\"chat-1\",\"choices\":[{\"delta\":{\"content\":\"Hel\"},\"finish_reason\":null}],\"usage\":null}"
+    (blank)
+    "data: {\"id\":\"chat-1\",\"choices\":[{\"delta\":{\"content\":\"lo\",\"annotations\":[{\"type\":\"url_citation\",\"url_citation\":{\"title\":\"Example\",\"url\":\"https://example.com\",\"start_index\":0,\"end_index\":5}}]},\"finish_reason\":null}],\"usage\":null}"
+    (blank)
+    "data: {\"id\":\"chat-1\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-1\",\"function\":{\"name\":\"weather\",\"arguments\":\"{\\\"x\\\":\"}}]},\"finish_reason\":null}],\"usage\":null}"
+    (blank)
+    "data: {\"id\":\"chat-1\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"1}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}"
+    (blank)
+    "data: {\"id\":\"chat-1\",\"choices\":[],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":1,\"total_tokens\":3}}"
+    (blank)
+    (str "data: [DONE]" (str "\n\n"))
+  )
+)
+
+(fn-expr _ openai-null-tool-sse _
+  (paragraph
+    "data: {\"id\":\"chat-null\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call-null\",\"function\":{\"name\":\"none\",\"arguments\":\"null\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":null}"
+    (blank)
+    (str "data: [DONE]" (str "\n\n"))
+  )
+)
+
+(fn-expr _ openai-search-audio-sse _
+  (paragraph
+    "data: {\"id\":\"chat-2\",\"choices\":[{\"delta\":{\"web_search\":{\"id\":\"search-1\",\"query\":\"brix ai\"}},\"finish_reason\":null}],\"usage\":null}"
+    (blank)
+    "data: {\"id\":\"chat-2\",\"choices\":[{\"delta\":{\"audio\":{\"id\":\"audio-1\",\"data\":\"Zm9v\",\"transcript\":\"foo\"}},\"finish_reason\":\"stop\"}],\"usage\":null}"
+    (blank)
+    "data: {\"id\":\"chat-2\",\"choices\":[],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":0,\"total_tokens\":1}}"
+    (blank)
+    (str "data: [DONE]" (str "\n\n"))
+  )
+)
+
+(type _ OpenAIStreamProvider (is AIProvider)
+  (prop + source (of ReadableData Byte))
+  (fn-do _ This _
+    (param source _)
+    (call super)
+  )
+  (fn-do + stream (stream AIEvent)
+    (param request AIRequest)
+    (for (in event (call openai-stream-events source))
+      (yield event)
+    )
+  )
+)
+
+(type _ FragmentedAIStream
+  (implements (of ReadableData Byte))
+  (prop + data ([] Byte))
+  (prop + max-read Size)
+  (prop + cursor Index)
+  (fn-do _ This _
+    (param data _)
+    (param max-read _)
+  )
+  (fn-expr + is-encoded _ :get
+    false
+  )
+  (fn-do + read Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (let remaining (- (. data size) cursor))
+    (let wanted (if-expr (< size max-read) size max-read))
+    (let amount (if-expr (< remaining wanted) remaining wanted))
+    (if amount
+      (= ([] buffer (..< 0 amount)) ([] data (..< cursor (+ cursor amount))))
+      (+= cursor amount)
+    )
+    (return amount)
+  )
+)

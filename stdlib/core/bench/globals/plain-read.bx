@@ -1,0 +1,32 @@
+; benchmark.meta description: Reads a plain global in a hot loop, against which the reads of a @stack global are measured.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core/array)
+(blank)
+(prop + scale _ (= 3))
+(blank)
+
+(main
+  (let item-count (as 4096 Size))
+  (let pass-count (as 16384 Size))
+  (let checksum (as 0 Size))
+  (let values (call (of Array Size) item-count (:with (% each 251))))
+  (blank)
+  (+= checksum (call sum-scaled values pass-count))
+  (blank)
+  (print (str "bench-result globals/plain-read checksum=" checksum))
+)
+
+(fn-do _ sum-scaled Size
+  (param values (of Array Size))
+  (param passes Size)
+  (let checksum (as 0 Size))
+  (for (in pass (..< 0 passes))
+    (for (in index (..< 0 (. values length)))
+      (= ([] values index) (+ ([] values index) (as scale Size)))
+      (+= checksum ([] values index))
+    )
+  )
+  (return checksum)
+)

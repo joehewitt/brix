@@ -1,0 +1,168 @@
+(import /BxGC/BxGC.h)
+(import /core/core)
+(import /core/error)
+(import /core/function)
+(export /core/gc)
+(import /core/intrinsics)
+(import /core/number)
+(import /core/range)
+
+(type + (of CleanupFunction State) (is (fn-type Void (param state State))))
+
+(type + CleanupHandle
+  (prop _ native Size)
+  (fn-do _ This _)
+  (fn-expr + is-valid _ :get
+    (!= native 0)
+  )
+  (fn-do + cancel Bool
+    (return-if (if (not native)))
+    (let canceled (call C:brixGCCancelCleanup native))
+    (if canceled
+      (= native 0)
+    )
+    (return canceled)
+  )
+  (fn-do _ activate _
+    (param value Size)
+    (= native value)
+  )
+  (fn-do _ retire _
+    (= native 0)
+  )
+)
+
+(fn-do + (of on-reclaim Target State) CleanupHandle
+  (param target Target)
+  (param state State)
+  (param cleanup _)
+  (let handle (call CleanupHandle))
+  (let context (call CleanupContext (=> () (call gc-cleanup-succeeded cleanup state)) handle))
+  (let target-pointer (as target Pointer))
+  (let context-pointer (as context Pointer))
+  (let callback (as gc-cleanup-invoke GCManagedCleanupCallback))
+  (let native (call C:brixGCRegisterCleanup target-pointer context-pointer callback))
+  (if (not native)
+    (throw (call Error "Cleanup state must not retain its target"))
+  )
+  (call (. handle activate) (as native Size))
+  (return handle)
+)
+
+(fn-do + (of gc-register-managed-context-cleanup Context) Size
+  (param target-pointer Pointer)
+  (param context Context)
+  (param callback GCManagedCleanupCallback)
+  ; Internal zero-managed-allocation registration path for stdlib owners that already have a safe
+  ; managed context object. The runtime roots context and rejects any path from it back to target.
+  (blank)
+  (return (call C:brixGCRegisterCleanup target-pointer (as context Pointer) callback))
+)
+
+(fn-do + cancel Bool
+  (param handle CleanupHandle)
+  (return (call (. handle cancel)))
+)
+
+(fn-do + collect-garbage _
+  (call C:brixGCCollect)
+)
+
+(fn-do + return-free-memory _
+  (call C:brixGCScavenge)
+)
+
+(fn-do + set-minimum-heap-goal _
+  (param bytes Size)
+  (call C:brixGCSetMinimumHeapGoal bytes)
+)
+
+(fn-do + drain-reclaim-cleanups Size
+  (return (as (call C:brixGCDrainCleanups) Size))
+)
+
+(type + GCMemory (is Tuple)
+  (prop + live UInt)
+  (prop + goal UInt)
+  (prop + committed UInt)
+  (prop + in-spans UInt)
+  (prop + free UInt)
+  (prop + free-runs UInt)
+  (prop + largest-free-run UInt)
+  (prop + peak-demand UInt)
+  (prop + retention UInt)
+  (prop + debt UInt)
+  (prop + footprint UInt)
+  (prop + collections UInt)
+)
+
+(fn-expr + gc-memory GCMemory
+  (call GCMemory
+    (block
+      (arg live)
+      (arg goal)
+      (arg committed)
+      (arg in-spans)
+      (arg free)
+      (arg free-runs)
+      (arg largest-free-run)
+      (arg peak-demand)
+      (arg retention)
+      (arg debt)
+      (arg footprint)
+      (arg collections)
+    )
+  )
+  (where
+    (lazy live (call C:brixGCLiveByteCount))
+    (lazy goal (call C:brixGCHeapGoal))
+    (lazy committed (call C:brixGCCommittedBytes))
+    (lazy in-spans (call C:brixGCAllocatedPageBytes))
+    (lazy free (call C:brixGCFreeCommittedBytes))
+    (lazy free-runs (call C:brixGCFreeCommittedRunCount))
+    (lazy largest-free-run (call C:brixGCLargestFreeCommittedRunBytes))
+    (lazy peak-demand (call C:brixGCPeakDemandBytes))
+    (lazy retention (call C:brixGCRetentionTargetBytes))
+    (lazy debt (call C:brixGCScavengeDebtBytes))
+    (lazy footprint (call C:brixGCRssBytes))
+    (lazy collections (call C:brixGCCollectionCount))
+  )
+)
+
+(type _ CleanupContext
+  (prop _ callback (of Getter Size))
+  (prop _ handle CleanupHandle)
+  (fn-do _ This _
+    (param callback _)
+    (param handle _)
+  )
+)
+
+(type _ CleanupSuccess
+  (prop _ marker Size (= 1))
+)
+
+(fn-do _ gc-cleanup-invoke Size
+  (param context-pointer Pointer)
+  (let context (call (of gc-object-from-pointer CleanupContext) context-pointer))
+  (let callback (. context callback))
+  (call (. context handle retire))
+  (return (call callback))
+)
+
+(fn-do _ (of gc-cleanup-succeeded State) Size
+  (param cleanup _)
+  (param state State)
+  (let result (catch? (call gc-run-cleanup cleanup state)))
+  (if (not result)
+    (call C:brixGCReportCleanupException)
+  )
+  (return 1)
+)
+
+(fn-do _ (of gc-run-cleanup State) CleanupSuccess
+  (param cleanup _)
+  (param state State)
+  (call cleanup state)
+  (return (call CleanupSuccess))
+)

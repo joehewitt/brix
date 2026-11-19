@@ -1,0 +1,138 @@
+; benchmark.meta description: Exercises immutable tuple borrowing across sizes, depths, access counts, source storage, and copy fallbacks.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core/array)
+(blank)
+
+(main
+  (let iterations (as 2400000 Size))
+  (let local (call Wide8 1 2 3 4 5 6 7 8))
+  (let nested (call Nested4 (call Wide2 1 2) (call Wide2 3 4) (call Wide2 5 6) (call Wide2 7 8)))
+  (let excluded (call Wide10 1 2 3 4 5 6 7 8 9 10))
+  (let mutable (call Mutable8 1 2 3 4 5 6 7 8))
+  (let values (list local (call Wide8 8 7 6 5 4 3 2 1)))
+  (let checksum (+ (call sum-1 (call Wide1 1)) (call sum-2 (call Wide2 1 2)) (call sum-4 (call Wide4 1 2 3 4))))
+  (blank)
+  (for (in pass (..< 0 iterations))
+    (+= checksum (call sum-8 local))
+    (+= checksum (call deep-sum-8 local))
+    (+= checksum (call repeated-sum-8 local))
+    (+= checksum (call sum-nested nested))
+    (+= checksum (call sum-8 (call Wide8 1 2 3 4 5 6 7 8)))
+    (+= checksum (call sum-8 ([] values (% pass (. values length)))))
+    (+= checksum (call sum-10 excluded))
+    (+= checksum (call mutate-copy mutable))
+  )
+  (blank)
+  (print (str "bench-result compiler-shape/tuple-marshalling-ladder checksum=" (as checksum Size)))
+)
+
+(type + Wide1 (is Tuple)
+  (prop + a Float)
+)
+
+(type + Wide2 (is Tuple)
+  (prop + a Float)
+  (prop + b Float)
+)
+
+(type + Wide4 (is Tuple)
+  (prop + a Float)
+  (prop + b Float)
+  (prop + c Float)
+  (prop + d Float)
+)
+
+(type + Wide8 (is Tuple)
+  (prop + a Float)
+  (prop + b Float)
+  (prop + c Float)
+  (prop + d Float)
+  (prop + e Float)
+  (prop + f Float)
+  (prop + g Float)
+  (prop + h Float)
+)
+
+(type + Wide10 (is Tuple)
+  (prop + a Float)
+  (prop + b Float)
+  (prop + c Float)
+  (prop + d Float)
+  (prop + e Float)
+  (prop + f Float)
+  (prop + g Float)
+  (prop + h Float)
+  (prop + i Float)
+  (prop + j Float)
+)
+
+(type + Nested4 (is Tuple)
+  (prop + a Wide2)
+  (prop + b Wide2)
+  (prop + c Wide2)
+  (prop + d Wide2)
+)
+
+(type + Mutable8 (is Struct)
+  (prop + a Float)
+  (prop + b Float)
+  (prop + c Float)
+  (prop + d Float)
+  (prop + e Float)
+  (prop + f Float)
+  (prop + g Float)
+  (prop + h Float)
+)
+
+(fn-expr _ sum-1 Float
+  (param value Wide1)
+  (. value a)
+)
+
+(fn-expr _ sum-2 Float
+  (param value Wide2)
+  (+ (. value a) (. value b))
+)
+
+(fn-expr _ sum-4 Float
+  (param value Wide4)
+  (+ (. value a) (. value b) (. value c) (. value d))
+)
+
+(fn-expr _ sum-8 Float
+  (param value Wide8)
+  (+ (. value a) (. value b) (. value c) (. value d) (. value e) (. value f) (. value g) (. value h))
+)
+
+(fn-expr _ deep-sum-8 Float
+  (param value Wide8)
+  (call sum-8-forward value)
+)
+
+(fn-expr _ sum-8-forward Float
+  (param value Wide8)
+  (call sum-8 value)
+)
+
+(fn-expr _ repeated-sum-8 Float
+  (param value Wide8)
+  (+ (. value a) (. value b) (. value c) (. value d) (. value a) (. value b) (. value c) (. value d))
+)
+
+(fn-expr _ sum-nested Float
+  (param value Nested4)
+  (+ (call sum-2 (. value a)) (call sum-2 (. value b)) (call sum-2 (. value c)) (call sum-2 (. value d)))
+)
+
+(fn-expr _ sum-10 Float
+  (param value Wide10)
+  (+ (. value a) (. value b) (. value c) (. value d) (. value e) (. value f) (. value g) (. value h) (. value i) (. value j))
+)
+
+(fn-do _ mutate-copy Float
+  (param value Mutable8)
+  (+= (. value a) 1)
+  (return (+ (. value a) (. value b) (. value c) (. value d) (. value e) (. value f) (. value g) (. value h)))
+)

@@ -1,0 +1,82 @@
+; benchmark.meta description: Offsets line-heavy paths with square, miter, and round joins through the public API.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/graphic)
+(import /graphics/offset)
+(import /graphics/path)
+(import /graphics/path-set)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /graphics/stroke)
+(import /math)
+(blank)
+
+(main
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 240))
+    (let source (call offset-join-source pass))
+    (let layer (call offset-path (call PathSet (list source)) (+ 4.0 (% pass 7)) (call offset-join pass) 5))
+    (+= checksum (+ (. source count) (call layer-score layer)))
+  )
+  (blank)
+  (print (str "bench-result graphics/offset-polyline-joins checksum=" checksum))
+)
+
+(fn-do _ offset-join-source _
+  (param seed Int)
+  (let base (as seed Float))
+  (let path (call Path))
+  (call (. path move-to) 0 (+ 50 (% base 23)))
+  (for (in i (..< 1 18))
+    (let f (as i Float))
+    (call (. path line-to) (* f 12) (+ 50 (% (+ base (* f 17)) 80)))
+  )
+  (blank)
+  (if (== (% seed 5) 0)
+    (call (. path close))
+  )
+  (blank)
+  (return path)
+)
+
+(fn-expr _ offset-join _
+  (param seed Int)
+  (case? (== kind 0)
+    .square-join-type
+  )
+  (case? (== kind 1)
+    .miter-join-type
+  )
+  (default
+    .round-join-type
+  )
+  (where
+    (lazy kind (% seed 3))
+  )
+)
+
+(fn-do _ layer-score _
+  (param layer PathSet)
+  (let score Size)
+  (for (in path (. layer paths))
+    (+= score (call path-score path))
+  )
+  (return score)
+)
+
+(fn-expr _ path-score Size
+  (param path Path)
+  (case? (not (. path count))
+    0
+  )
+  (default
+    (+ (. path count) (call numeric-check (. path last-point x)) (call numeric-check (. path last-point y)))
+  )
+)
+
+(fn-expr _ numeric-check Size
+  (param value Coord)
+  (% (as (call abs (* value 1000)) Size) 1000003)
+)

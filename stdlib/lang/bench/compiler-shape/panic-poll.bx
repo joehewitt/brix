@@ -1,0 +1,27 @@
+; benchmark.meta description: Measures the hot-path cost of one generated panic poll per leaf call.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core)
+(blank)
+
+(main
+  (let iteration-count (as 50000000 Size))
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in index (..< 0 iteration-count))
+    (+= checksum (call panic-poll-leaf index))
+  )
+  (blank)
+  (throw (call Panic "panic-poll checksum mismatch") (if (!= checksum (/ (* iteration-count (+ iteration-count 1)) 2))))
+  (blank)
+  (print (str "bench-result compiler-shape/panic-poll checksum=" checksum))
+)
+
+(fn-expr _ panic-poll-leaf Size @inline
+  (param value Size)
+  (before
+    (throw (call Panic "panic-poll sentinel reached") (if (== value (. Size max))))
+  )
+  (+ value 1)
+)

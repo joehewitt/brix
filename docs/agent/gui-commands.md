@@ -23,8 +23,8 @@ bindings that only make sense inside another control. `enabled`, `when`, `repeat
 
 ## Commands
 
-Commands are markup-ready objects implementing `Command` (`stdlib/ui/command.yumi`).
-`CommandNode` (`stdlib/gui/command.yumi`) supplies the live properties that controls and palettes read: `title`,
+Commands are markup-ready objects implementing `Command` (`stdlib/ui/command.bx`).
+`CommandNode` (`stdlib/gui/command.bx`) supplies the live properties that controls and palettes read: `title`,
 `description`, `enabled`, `discoverable`, `is-on`, `running`, `stable-key`, and
 `unavailable-reason`. A command class inherits `CommandActionNode` and implements `execute`; the
 shared `run` checks `enabled`, owns the `running` lifetime, and invokes `execute`.
@@ -33,7 +33,7 @@ invocation recorded in a command log, described next.
 
 ## Command logs
 
-`stdlib/ui/command-log.yumi` holds the generic, editable record of what changed a document.
+`stdlib/ui/command-log.bx` holds the generic, editable record of what changed a document.
 
 - `ParameterizedCommand'Args` is a command whose arguments are one immutable value: `kind`,
   `title(args)`, `sentence(args)` (the parts a person reads and edits), `execute(args)`,
@@ -53,18 +53,18 @@ invocation recorded in a command log, described next.
   `step-sentence`, `step-failure`, `edit-parameter(id, key, value, phase)` and `cancel-edit`.
 
 Sentence parts (`CommandSentencePart`) carry typed parameters from
-`stdlib/ui/command-parameters.yumi`: numbers and points with a `ParameterUnit` (none, degrees,
+`stdlib/ui/command-parameters.bx`: numbers and points with a `ParameterUnit` (none, degrees,
 percent; `display-value` applies its scale), text with optional `options`, references to ids, and
 `CommandValueParameter` for app-defined values. A new value for one parameter is a
 `CommandParameterValue` (number, point, text, or ids).
 
-`InvocationCommand'Args` (`stdlib/gui/command.yumi`) is a `CommandActionNode` that performs a parameterized command with its
+`InvocationCommand'Args` (`stdlib/gui/command.bx`) is a `CommandActionNode` that performs a parameterized command with its
 `defaults` into a `log`. It is discoverable only when the command has defaults, so a command
 palette never has to ask for arguments.
 
 ### Edit transactions
 
-`EditTransaction'Step'State` (`stdlib/ui/edit-transaction.yumi`) is a gesture that builds one step
+`EditTransaction'Step'State` (`stdlib/ui/edit-transaction.bx`) is a gesture that builds one step
 while the pointer moves. `begin(label, log)` snapshots its `Snapshottable'State` document; `apply`
 or `record` holds the live step; `update(key, value)` replaces a parameter as the gesture moves;
 `replay` restores the snapshot and executes the live step again; `run` records it in the log with
@@ -90,7 +90,7 @@ is false exactly at it, and becomes permanently true when the saved state can no
 
 ## Undo routing
 
-`UndoTarget` (`stdlib/ui/undo-target.yumi`) is anything Undo and Redo can act on: `can-undo`,
+`UndoTarget` (`stdlib/ui/undo-target.bx`) is anything Undo and Redo can act on: `can-undo`,
 `can-redo`, `undo-title`, `redo-title`, `undo` and `redo`. `CommandHistory` is one. A GUI box
 offers one through `undo-target`. Cmd+Z and Cmd+Shift+Z go to the first target, from the focused box
 outward (from the window itself when nothing has focus), that can undo or redo, before key bindings see them, and the Edit menu's Undo and Redo
@@ -101,7 +101,7 @@ offer their session's history.
 
 ## History view
 
-`HistoryView` (`stdlib/gui/history-view.yumi`) shows an `EditableLog` as one row per step, its
+`HistoryView` (`stdlib/gui/history-view.bx`) shows an `EditableLog` as one row per step, its
 sentence laid out with editors for its parameters: `NumberField`s for numbers (in display units)
 and points, a `Select` for text with options, and text for the rest. A failed step shows its
 failure. Editing a field calls `edit-parameter` with the field's phase, so dragging replays live and
@@ -180,8 +180,8 @@ during deactivation, unmounting, disabling, or remapping never commits the value
 
 ## Keys
 
-`Key`, `PointerModifiers` and `PointerButton` (`stdlib/ui/input.yumi`) and `KeyCombo`
-(`stdlib/ui/key-combo.yumi`) are shared by both toolkits. A `KeyCombo` is modifiers plus a trigger:
+`Key`, `PointerModifiers` and `PointerButton` (`stdlib/ui/input.bx`) and `KeyCombo`
+(`stdlib/ui/key-combo.bx`) are shared by both toolkits. A `KeyCombo` is modifiers plus a trigger:
 a named `Key` or typed characters. `matches-key(key, characters, modifiers)` and
 `matches-text(text)` are toolkit-neutral; each toolkit extends `KeyCombo` with `matches(event)` for
 its own key events. The terminal decoder reports Ctrl+letter as the letter with `control` set and an
@@ -190,7 +190,7 @@ Terminals never report Cmd, so a Cmd combo never fires there.
 
 ## Key assignments
 
-`KeyAssignment` (`stdlib/ui/key-assignment.yumi`) is what gui `KeyBinding` and tui `Shortcut` share:
+`KeyAssignment` (`stdlib/ui/key-assignment.bx`) is what gui `KeyBinding` and tui `Shortcut` share:
 a key, a display title, a `stable-key`, an `enabled` flag, the `allow-while-input` and
 `allow-while-modal` flags, and the default that a mapping profile restores.
 `key-assignment-routable` is the shared routing rule. Outside a modal only `allow-while-modal`
@@ -214,7 +214,7 @@ and a terminal shortcut.
 
 ## Mapping profiles
 
-`KeyMapping`, `KeyMappingProfile`, and `apply-key-mapping-profile` live in `stdlib/ui/keymap.yumi`
+`KeyMapping`, `KeyMappingProfile`, and `apply-key-mapping-profile` live in `stdlib/ui/keymap.bx`
 and act on any list of key assignments. Every persistently remappable `KeyShortcut`, `KeyCommand`,
 `KeyMode`, or tui `Shortcut` has an explicit `stable-key`. A versioned `KeyMappingProfile` replaces keys or disables declarations without
 serializing commands, modes, contexts, or execution records.
@@ -237,7 +237,7 @@ change cannot leave a mode stuck. Persistence belongs to the application. `profi
 
 ## Palettes
 
-`Palette'Item` in `stdlib/gui/search-palette.yumi` is the search popup that the command palette and
+`Palette'Item` in `stdlib/gui/search-palette.bx` is the search popup that the command palette and
 other pickers are built on: a search field over a virtualized list of results, opened with `show()`.
 It owns the typeahead, the highlight, and the keys. Up and Down move the highlight and stop at the
 first and last result, Home and End jump to them, Page Up and Page Down move it a page, Enter or a
@@ -249,7 +249,7 @@ is the underlying switch, and it covers Up, Down, Left, Right, and Return.
 A palette gets its results in one of three ways:
 
 - Set `source`, a function from the query to the items. `fuzzy-ranked(items, query, text-of)` in
-  `stdlib/data/fuzzy.yumi` ranks a list; `match-spans(positions)` turns a `FuzzyQuery`'s matched
+  `stdlib/data/fuzzy.bx` ranks a list; `match-spans(positions)` turns a `FuzzyQuery`'s matched
   positions into `MatchLabel` highlights.
 - Bind `results` in a subclass to a computed list that reads `#query`.
 - Override `refresh()`, which runs when the query changes and when the palette opens, and assign
@@ -280,8 +280,8 @@ A palette's size, position, and row height are styles, so a theme sets them:
 `row-height` comes from `GUIVirtualRowStyle`. It is inherited, so a rule on any ancestor sets the row
 height of the lists inside it. `TreeBox` and `ColumnTree` take their row height the same way.
 
-`stdlib/gui/tests/search-palette.yumi` compiles complete examples.
-`stdlib/gui/file-browsing/file-palette.yumi` is a palette that browses the disk one folder at a
+`stdlib/gui/tests/search-palette.bx` compiles complete examples.
+`stdlib/gui/file-browsing/file-palette.bx` is a palette that browses the disk one folder at a
 time, starting at a file tree's root: it lists and filters the current folder, shows the end of that
 folder's path as its `scope`, steps into a folder on Right, Tab, or a typed `/`, and steps out on
 Left, or on Backspace when the query is empty, as far as `/`. It lists each folder itself and watches
@@ -309,5 +309,5 @@ dismisses the palette. Running it from a key binding or control opens its `palet
 choices. Backspace on an empty query returns to the command list, and Escape does too when the
 choices were opened from that list. `choices` may fail; a failure shows an empty list.
 
-The complete examples are compiled by `stdlib/ui/tests/commands.yumi` and
-`stdlib/gui/tests/shortcuts.yumi`.
+The complete examples are compiled by `stdlib/ui/tests/commands.bx` and
+`stdlib/gui/tests/shortcuts.bx`.

@@ -2,11 +2,6 @@
 
 While loops
 
-```yumi
-while true
-    indented()
-```
-
 ```brix
 (main
   (while true
@@ -24,11 +19,6 @@ while true
         </CallExpression>
     </Block>
 </While>
-```
-
-```yumi
-while | Foo = bar
-    body()
 ```
 
 ```brix
@@ -65,11 +55,6 @@ while | Foo = bar
 
 ## For iterators
 
-```yumi
-for a in b
-    indented()
-```
-
 ```brix
 (main
   (for (in a b)
@@ -92,11 +77,6 @@ for a in b
         </CallExpression>
     </Block>
 </For>
-```
-
-```yumi
-for a Foo in b
-    indented()
 ```
 
 ```brix
@@ -122,11 +102,6 @@ for a Foo in b
         </CallExpression>
     </Block>
 </For>
-```
-
-```yumi
-for a, b in b
-    indented()
 ```
 
 ```brix
@@ -156,11 +131,6 @@ for a, b in b
         </CallExpression>
     </Block>
 </For>
-```
-
-```yumi
-for a Foo, b Bar in c
-    indented()
 ```
 
 ```brix
@@ -194,11 +164,6 @@ for a Foo, b Bar in c
 </For>
 ```
 
-```yumi
-for a in x while b when c
-    indented()
-```
-
 ```brix
 (main
   (for (in a x (while b) (when c))
@@ -229,11 +194,6 @@ for a in x while b when c
 </For>
 ```
 
-```yumi
-for a in b while c
-    indented()
-```
-
 ```brix
 (main
   (for (in a b (while c))
@@ -262,13 +222,6 @@ for a in b while c
 ```
 
 ## Loop Logic
-
-```yumi
-for a in b
-    body1()
-or c in d
-    body2()
-```
 
 ```brix
 (main
@@ -310,39 +263,6 @@ or c in d
 </For>
 ```
 
-```yumi
-for a in b
-    body1
-or 99
-```
-
-```output
-Exception: Illegal loop section
-<no file:4>
-    or 99
-      ^^^
-```
-
-```yumi
-for a in b
-    body1
-or c
-    body2
-```
-
-```output
-Exception: Illegal loop section
-<no file:4>
-    or c
-      ^
-```
-
-```yumi
-for a in aa
-and b in bb
-    body1()
-```
-
 ```brix
 (main
   (for (in a aa)
@@ -373,14 +293,6 @@ and b in bb
         </CallExpression>
     </Block>
 </For>
-```
-
-```yumi
-for a in aa
-and b in bb
-    body1()
-or c in cc
-    body2()
 ```
 
 ```brix
@@ -431,14 +343,6 @@ or c in cc
 </For>
 ```
 
-```yumi
-for a in aa
-    body1()
-or c in cc
-and b in bb
-    body2()
-```
-
 ```brix
 (main
   (for (in a aa)
@@ -484,16 +388,6 @@ and b in bb
         </Block>
     </For>
 </For>
-```
-
-```yumi
-for a in aa
-    body1()
-or c in cc
-and b in bb
-    body2()
-or d in dd
-    body3()
 ```
 
 ```brix
@@ -559,11 +453,6 @@ or d in dd
 </For>
 ```
 
-```yumi
-for in stream
-    indented()
-```
-
 ```brix
 (main
   (for (in stream)
@@ -583,11 +472,6 @@ for in stream
         </CallExpression>
     </Block>
 </For>
-```
-
-```yumi
-for in stream when foo
-    indented()
 ```
 
 ```brix
@@ -612,13 +496,6 @@ for in stream when foo
         </CallExpression>
     </Block>
 </For>
-```
-
-```yumi
-for in xs when ok
-    f(each)
-for on s
-    g(each)
 ```
 
 ```brix
@@ -662,18 +539,6 @@ for on s
         </CallExpression>
     </Block>
 </For>
-```
-
-```yumi
-for in ["u", "v"]
-and in [1, 2]
-    f(each, it)
-for a in b
-    f(a)
-or in g
-    h(each)
-for _ in xs
-    k()
 ```
 
 ```brix
@@ -763,11 +628,6 @@ for _ in xs
 </For>
 ```
 
-```yumi
-for ~ "foo" in bar
-    --
-```
-
 ```brix
 (main
   (for (in (~ "foo") bar)
@@ -784,24 +644,6 @@ for ~ "foo" in bar
     </In>
     <Block/>
 </For>
-```
-
-```yumi crash
-. a Int? = 42
-while a?
-    -- a
-```
-
-```output
-Exception: Syntax error
-<no file:3>
-    while a?
-            ^
-```
-
-```yumi
-for item in #items keyed by item.id
-    item()
 ```
 
 ```brix

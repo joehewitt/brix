@@ -2,11 +2,6 @@
 
 If blocks
 
-```yumi
-if foo
-    body()
-```
-
 ```brix
 (main
   (if foo
@@ -26,13 +21,6 @@ if foo
         </CallExpression>
     </Block>
 </If>
-```
-
-```yumi
-if foo
-    body()
-else if bar
-    body2()
 ```
 
 ```brix
@@ -69,13 +57,6 @@ else if bar
 </If>
 ```
 
-```yumi
-if foo
-    body()
-else
-    body2()
-```
-
 ```brix
 (main
   (if foo
@@ -105,15 +86,6 @@ else
         </Block>
     </If>
 </If>
-```
-
-```yumi
-if foo
-    body()
-else if bar
-    body2()
-else
-    body3()
 ```
 
 ```brix
@@ -162,11 +134,6 @@ else
 
 ## Match/Bind Tests
 
-```yumi
-if | Foo = bar
-    body()
-```
-
 ```brix
 (main
   (if (= (| Foo) bar)
@@ -196,11 +163,6 @@ if | Foo = bar
         </StructureMatch>
     </Match>
 </If>
-```
-
-```yumi
-if ~ Foo = bar
-    body()
 ```
 
 ```brix
@@ -234,11 +196,6 @@ if ~ Foo = bar
         </StreamMatch>
     </Match>
 </If>
-```
-
-```yumi
-if ~ Foo = bar
-    f()
 ```
 
 ```brix
@@ -272,17 +229,4 @@ if ~ Foo = bar
         </StreamMatch>
     </Match>
 </If>
-```
-
-```yumi crash
-. a Int? = 42
-if a?
-    -- a
-```
-
-```output
-Exception: Syntax error
-<no file:3>
-    if a?
-         ^
 ```

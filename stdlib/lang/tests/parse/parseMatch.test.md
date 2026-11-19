@@ -2,10 +2,6 @@
 
 Inline match
 
-```yumi
-a if b
-```
-
 ```brix
 (main
   (only-if a (if b))
@@ -17,10 +13,6 @@ a if b
     <Id name="a"/>
     <Id name="b"/>
 </BinaryExpression>
-```
-
-```yumi
-if b then a else d
 ```
 
 ```brix
@@ -37,35 +29,6 @@ if b then a else d
     </BinaryExpression>
     <Id name="d"/>
 </BinaryExpression>
-```
-
-```yumi
-| foo
-    c2
-?? c1
-```
-
-```output
-<StructureMatch>
-    <TypeOr>
-        <TypeTransform>
-            <TypeCapture>
-                <Id name="foo"/>
-            </TypeCapture>
-            <Block>
-                <Id name="c2"/>
-            </Block>
-        </TypeTransform>
-        <TypeTransform>
-            <Id name="c1"/>
-        </TypeTransform>
-    </TypeOr>
-</StructureMatch>
-```
-
-```yumi
-|? c2
-?? c1
 ```
 
 ```brix
@@ -95,61 +58,7 @@ if b then a else d
 </StructureMatch>
 ```
 
-```yumi
-|? foo
-    c3
-| bar
-    c2
-|? c4
-?? c1
-```
-
-```output
-<StructureMatch>
-    <TypeOr>
-        <TypeOr>
-            <TypeOr>
-                <TypeTransform>
-                    <TypePredicate>
-                        <Id name="foo"/>
-                    </TypePredicate>
-                    <Block>
-                        <Id name="c3"/>
-                    </Block>
-                </TypeTransform>
-                <TypeTransform>
-                    <TypeCapture>
-                        <Id name="bar"/>
-                    </TypeCapture>
-                    <Block>
-                        <Id name="c2"/>
-                    </Block>
-                </TypeTransform>
-            </TypeOr>
-            <TypeTransform>
-                <TypePredicate>
-                    <Id name="c4"/>
-                </TypePredicate>
-                <UnaryExpression operator="!">
-                    <Id name="c4"/>
-                </UnaryExpression>
-            </TypeTransform>
-        </TypeOr>
-        <TypeTransform>
-            <Id name="c1"/>
-        </TypeTransform>
-    </TypeOr>
-</StructureMatch>
-```
-
 ## Anonymous match cases
-
-```yumi
-|? missing-email
-    ..invalid-email
-??
-    ..valid(email, password)
-```
 
 ```brix
 (main
@@ -185,13 +94,6 @@ if b then a else d
 </StructureMatch>
 ```
 
-```yumi
-~ "ok"
-    ..ok
-??
-    ..failed(code)
-```
-
 ```brix
 (main
   (~ "ok"
@@ -221,14 +123,6 @@ if b then a else d
         </StreamTransform>
     </StreamOr>
 </StreamMatch>
-```
-
-```yumi
-. result = match input
-    |? missing-email
-        ..invalid-email
-    ??
-        ..valid(email, password)
 ```
 
 ```brix
@@ -275,16 +169,6 @@ if b then a else d
         </StructureMatch>
     </Match>
 </Declaration>
-```
-
-```yumi
-.. login-submission = on submitted
-    |? !email-box.text
-        ..invalid-email
-    |? !password-box.text
-        ..invalid-password
-    ??
-        ..valid(email-box.text, password-box.text)
 ```
 
 ```brix
@@ -363,14 +247,6 @@ if b then a else d
 </Declaration>
 ```
 
-```yumi
-. event = match input
-    ~ "ok"
-        ..ok
-    ??
-        ..failed(code)
-```
-
 ```brix
 (main
   (let event
@@ -414,10 +290,6 @@ if b then a else d
 </Declaration>
 ```
 
-```yumi
-|? foo
-```
-
 ```brix
 (main
   (case? foo)
@@ -435,11 +307,6 @@ if b then a else d
         </UnaryExpression>
     </TypeTransform>
 </StructureMatch>
-```
-
-```yumi
-|? foo
-    c2
 ```
 
 ```brix
@@ -461,12 +328,6 @@ if b then a else d
         </Block>
     </TypeTransform>
 </StructureMatch>
-```
-
-```yumi
-|? foo
-    c2
-?? c1
 ```
 
 ```brix
@@ -498,43 +359,7 @@ if b then a else d
 </StructureMatch>
 ```
 
-```yumi
-| foo
-    c2
-?? c1
-```
-
-```output
-<StructureMatch>
-    <TypeOr>
-        <TypeTransform>
-            <TypeCapture>
-                <Id name="foo"/>
-            </TypeCapture>
-            <Block>
-                <Id name="c2"/>
-            </Block>
-        </TypeTransform>
-        <TypeTransform>
-            <Id name="c1"/>
-        </TypeTransform>
-    </TypeOr>
-</StructureMatch>
-```
-
 ## Other combinations
-
-```yumi
-|? foo
-    y
-    .. y = 2
-|? foo
-    y
-    .. y = 2
-??
-    y
-    .. y = 2
-```
 
 ```brix
 (main
@@ -601,11 +426,6 @@ if b then a else d
 </StructureMatch>
 ```
 
-```yumi
-|? first
-    foo • at bar
-```
-
 ```brix
 (main
   (case? first
@@ -630,124 +450,4 @@ if b then a else d
         </Block>
     </TypeTransform>
 </StructureMatch>
-```
-
-```yumi
-| a Bar
-    foo
-| a Bar!
-    foo
-| a Bar~
-    foo
-```
-
-```output
-<StructureMatch>
-    <TypeOr>
-        <TypeOr>
-            <TypeTransform>
-                <TypeCapture>
-                    <Id name="a"/>
-                    <TypeId name="Bar"/>
-                </TypeCapture>
-                <Block>
-                    <Id name="foo"/>
-                </Block>
-            </TypeTransform>
-            <TypeTransform>
-                <TypeCapture>
-                    <Id name="a"/>
-                    <TypeMatch op="exactly">
-                        <TypeId name="Bar"/>
-                    </TypeMatch>
-                </TypeCapture>
-                <Block>
-                    <Id name="foo"/>
-                </Block>
-            </TypeTransform>
-        </TypeOr>
-        <TypeTransform>
-            <TypeCapture>
-                <Id name="a"/>
-                <TypeMatch op="similar">
-                    <TypeId name="Bar"/>
-                </TypeMatch>
-            </TypeCapture>
-            <Block>
-                <Id name="foo"/>
-            </Block>
-        </TypeTransform>
-    </TypeOr>
-</StructureMatch>
-```
-
-## Unionized matches
-
-```yumi
-||= foo
-    1
-||? foo
-    1
-|| Type
-    1
-```
-
-```output
-<StructureMatch>
-    <TypeOr>
-        <TypeOr>
-            <TypeTransform isUnion="true">
-                <TypeEquality>
-                    <Id name="foo"/>
-                </TypeEquality>
-                <Block>
-                    <Integer value="1"/>
-                </Block>
-            </TypeTransform>
-            <TypeTransform isUnion="true">
-                <TypePredicate>
-                    <Id name="foo"/>
-                </TypePredicate>
-                <Block>
-                    <Integer value="1"/>
-                </Block>
-            </TypeTransform>
-        </TypeOr>
-        <TypeTransform isUnion="true">
-            <TypeId name="Type"/>
-            <Block>
-                <Integer value="1"/>
-            </Block>
-        </TypeTransform>
-    </TypeOr>
-</StructureMatch>
-```
-
-```yumi crash
-. found = match? n
-    |= 1
-        "one"
-    ??
-        "other"
-```
-
-```output
-Exception: "match?" differs from "match" only where no arm is taken, and this default arm is taken wherever no arm before it is; write "match"
-<no file:5>
-        ??
-        ^
-```
-
-```yumi crash
-match? n
-    |= 1
-        step()
-    ?! Panic("none")
-```
-
-```output
-Exception: "match?" differs from "match" only where no arm is taken, and this arm raises wherever no arm before it is taken; write "match"
-<no file:5>
-        ?! Panic("none")
-        ^^^^^^^^^^^^^^^
 ```

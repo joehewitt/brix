@@ -1,0 +1,62 @@
+(import ./duration)
+
+(type + DebouncedAction (is (fn-type Void)))
+
+(fn-do + debounced DebouncedAction
+  (param delay Duration)
+  (param action Doer)
+  ; A call while the action runs starts a new delay and does not cut the action short: the task
+  ; lets go of `pending` once its delay ends.
+  (let pending (? Task))
+  (return
+    (=> () :do
+      (block
+        (call (?. pending cancel-later))
+        (= pending
+          (do-new
+            (call (. delay wait))
+            (= pending null)
+            (call action
+              (block
+                (on-error (: error Error)
+                  (call unhandled-error error)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-do + throttled DebouncedAction
+  (param delay Duration)
+  (param action Doer)
+  (let is-pending false)
+  (let is-requested false)
+  (return
+    (=> () :do
+      (block
+        (= is-requested true)
+        (if (not is-pending)
+          (= is-pending true)
+          (do-new
+            (while is-requested
+              (call (. delay wait))
+              (= is-requested false)
+              (call action
+                (block
+                  (on-error (: error Error)
+                    (call unhandled-error error)
+                  )
+                )
+              )
+            )
+            (= is-pending false)
+          )
+        )
+      )
+    )
+  )
+)

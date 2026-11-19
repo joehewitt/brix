@@ -1,0 +1,594 @@
+(import ./box)
+(import ./commands)
+(import ./events)
+(import /core/function)
+(import /core/markup)
+(import /stream/aggregate)
+(import /time/deadline)
+(import /time/duration)
+(import /time/timer)
+(import /ui/command)
+(import /ui/input)
+(import /ui/key-assignment)
+(import /ui/key-combo)
+(import /ui/mode)
+(blank)
+(prop + cut-key _ (:= (call KeyCombo "Cmd+X")))
+(prop + copy-key _ (:= (call KeyCombo "Cmd+C")))
+(prop + paste-key _ (:= (call KeyCombo "Cmd+V")))
+(prop + undo-key _ (:= (call KeyCombo "Cmd+Z")))
+(prop + redo-key _ (:= (call KeyCombo "Cmd+Shift+Z")))
+
+(type + KeyPart (is Union)
+  (variant press)
+  (variant hold)
+  (variant tap)
+)
+
+(type + KeyBinding (is Box)
+  (implements KeyAssignment)
+  (prop + title _ (= ""))
+  (prop + key _ (= (call KeyCombo)))
+  (prop + stable-key _ (= ""))
+  (prop + enabled _ (= true))
+  (prop + when (? (of Getter Bool)))
+  (prop + allow-while-input _ (= false))
+  (prop + allow-while-modal _ (= false))
+  (prop + is-container-wide _ (= false))
+  (prop + is-markup-shadow _ (=> true))
+  (prop + mapping-default _ (:= (call KeyMappingDefault)))
+  (fn-expr + display-title String :get
+    title
+  )
+  (fn-expr + key-scope (? KeyScopeNode) :get
+    (call shortcut-scope-owner this)
+  )
+  (fn-expr + is-active Bool :get
+    (and is-effectively-enabled (call key-binding-predicate-enabled enabled when))
+  )
+  (fn-expr + command-target (? Command) :get
+    null
+  )
+  (fn-expr + part _ :get
+    (. KeyPart press)
+  )
+  (fn-expr + display-label _ :get
+    (. key display-label)
+  )
+  (fn-expr + symbol-label _ :get
+    (. key symbol-label)
+  )
+  (fn-expr + status-label _ :get
+    (call shortcut-status-label key display-title)
+  )
+  (fn-expr + is-routable Bool
+    (param focused (? Box))
+    (param modal (? Box))
+    (and is-input-visible (call key-assignment-routable this input-owned outside-modal))
+    (where
+      (lazy input-owned (and (== (?. focused $focus-mode) (. FocusMode input)) (call (. key is-text-input))))
+      (lazy outside-modal (and (!= modal null) (not (call is-within modal))))
+    )
+  )
+  (fn-do + set-binding-key _
+    (param next KeyCombo)
+    (call release-active)
+    (= key next)
+  )
+  (fn-do + set-binding-enabled _
+    (param next Bool)
+    (if (not next)
+      (call release-active)
+    )
+    (= enabled next)
+  )
+  (fn-do + press _
+    (param event KeyPressEvent)
+  )
+  (fn-do + press-shared _
+    (param event KeyPressEvent)
+    (call press event)
+  )
+  (fn-do + release _
+    (param event KeyReleaseEvent)
+  )
+  (fn-do + pointer-pressed _)
+  (fn-do + update-modifiers _
+    (param modifiers PointerModifiers)
+  )
+  (fn-do + release-active _)
+)
+
+(type + KeyBindingConflict (is Tuple)
+  (prop + key KeyCombo)
+  (prop + bindings (list KeyBinding))
+)
+
+(type + KeyShortcut (is KeyBinding)
+  (implements Command)
+  (prop + repeat _ (= true))
+  (prop + discoverable _ (= true))
+  (prop + description _ (= ""))
+  (prop + is-on _ (= false))
+  (prop + running _ (= false))
+  (prop + unavailable-reason _ (= ""))
+  (prop + action (? Doer))
+  (fn-do + This _
+    (param title _ (= ""))
+  )
+  (fn-expr + is-available _ :get
+    is-active
+  )
+  (fn-expr + identity Pointer :get
+    (as this Pointer)
+  )
+  (fn-do + run _
+    (return-if (if (not is-active)))
+    (let callback action)
+    (if callback
+      (call callback
+        (block
+          (on-error (: error Error)
+            (call unhandled-error error)
+          )
+        )
+      )
+    )
+  )
+  (fn-expr + command-target _ :get
+    (as this Command)
+  )
+  (fn-do + press _
+    (param event KeyPressEvent)
+    (return-if (if (and (. event is-repeat) (not repeat))))
+    (call run)
+  )
+)
+
+(type + KeyCommandActivation (is Union)
+  (variant press)
+  (variant tap)
+)
+
+(type + KeyCommand (is KeyBinding)
+  (prop + repeat _ (= true))
+  (prop + command (? Command))
+  (prop + activation _ (= (. KeyCommandActivation press)))
+  (prop + tap-threshold _ (= 200ms))
+  (blank)
+  (prop _ armed-native-key-code U32)
+  (prop _ tap-deadline (? Deadline))
+  (fn-do + This _
+    (param title _ (= ""))
+  )
+  (fn-expr + display-title _ :get
+    (?? (?. command title) title)
+  )
+  (fn-expr + is-active _ :get
+    (and is-effectively-enabled (call key-command-predicate-enabled enabled when command))
+  )
+  (fn-expr + command-target _ :get
+    command
+  )
+  (fn-expr + part _ :get
+    (case? (== activation (. KeyCommandActivation tap))
+      (. KeyPart tap)
+    )
+    (default
+      (. KeyPart press)
+    )
+  )
+  (fn-do + press _
+    (param event KeyPressEvent)
+    (if (== activation (. KeyCommandActivation tap))
+      (if (not (. event is-repeat))
+        (= armed-native-key-code (. event native-key-code))
+        (= tap-deadline (call Deadline tap-threshold))
+      )
+      (return)
+    )
+    (return-if (if (and (. event is-repeat) (not repeat))))
+    (call (?. command run))
+  )
+  (fn-do + release _
+    (param event KeyReleaseEvent)
+    (return-if (if (or (not tap-deadline) (!= (. event native-key-code) armed-native-key-code))))
+    (let is-tap (not (. tap-deadline has-passed)))
+    (= tap-deadline null)
+    (if (and is-tap is-active)
+      (call (?. command run))
+    )
+  )
+  (fn-do + pointer-pressed _
+    (= tap-deadline null)
+  )
+  (fn-do + release-active _
+    (= tap-deadline null)
+  )
+)
+
+(type + KeyModeActivation (is Union)
+  (variant persistent)
+  (variant held)
+  (variant tap-or-hold)
+)
+
+(type + KeyModeBinding (is KeyBinding)
+  (prop + represented-command (? Command))
+  (fn-expr + command-target _ :get
+    represented-command
+  )
+)
+
+(type + (of KeyMode T) (is KeyModeBinding)
+  (prop + mode (of Mode T))
+  (prop + value T)
+  (prop + activation _ (= (. KeyModeActivation persistent)))
+  (prop + hold-threshold _ (= 200ms))
+  (blank)
+  (prop _ lease (? ModeActivation))
+  (event _ key-pressed U32)
+  (event _ key-pressed-shared U32)
+  (event _ key-released U32)
+  (event _ modifiers-matched Bool)
+  (event _ modifiers-released Bool)
+  (event _ pointer-pressing Bool)
+  (event _ releasing Bool)
+  (fn-do + This _
+    (param title _ (= ""))
+  )
+  (fn-expr + part _ :get
+    (case? (== activation (. KeyModeActivation held))
+      (. KeyPart hold)
+    )
+    (default
+      (. KeyPart press)
+    )
+  )
+  (fn-do + press _
+    (param event KeyPressEvent)
+    (return-if (if (. event is-repeat)))
+    (if (== activation (. KeyModeActivation persistent))
+      (call (. mode set) value)
+      (else
+        (<- key-pressed (. event native-key-code))
+      )
+    )
+  )
+  (fn-do + press-shared _
+    (param event KeyPressEvent)
+    (if (!= activation (. KeyModeActivation held))
+      (call press event)
+      (return)
+    )
+    (return-if (if (. event is-repeat)))
+    (<- key-pressed-shared (. event native-key-code))
+  )
+  (fn-do + release _
+    (param event KeyReleaseEvent)
+    (<- key-released (. event native-key-code))
+  )
+  (fn-do + pointer-pressed _
+    (<- pointer-pressing true)
+  )
+  (fn-do + update-modifiers _
+    (param modifiers PointerModifiers)
+    (return-if (if (or (== activation (. KeyModeActivation persistent)) (not (call (. key is-modifier-only))))))
+    (if (call (. key matches-modifiers) modifiers)
+      (<- modifiers-matched true)
+      (else
+        (<- modifiers-released true)
+        (call release-active)
+      )
+    )
+  )
+  (fn-do + release-active _
+    (<- releasing true)
+  )
+  (prop _ hold _
+    (machine
+      (state idle
+        (then (call leased code) (trigger for code key-pressed))
+        (then (call pending code) (trigger for code key-pressed-shared))
+        (then (call leased null) (trigger on modifiers-matched))
+      )
+      (blank)
+      (state (call pending code)
+        (then (call leased code) (trigger on (call Timer hold-threshold)))
+        (then (call leased code) (trigger on pointer-pressing))
+        (then idle (trigger on key-released (== each code)))
+        (then idle (trigger on releasing))
+      )
+      (blank)
+      (state (call leased code)
+        (do
+          (inline (= lease (call (. mode acquire) value)))
+        )
+        (blank)
+        (finally
+          (call (?. lease close))
+          (= lease null)
+        )
+        (blank)
+        (state tapping
+          (then holding (trigger on (call Timer hold-threshold)))
+          (then tapped (trigger on key-released (== each code)))
+          (then tapped (trigger on modifiers-released))
+        )
+        (blank)
+        (state holding
+          (then idle (trigger on key-released (== each code)))
+        )
+        (blank)
+        (state tapped
+          (do
+            (if (== activation (. KeyModeActivation tap-or-hold))
+              (call (. mode set) value)
+            )
+          )
+          (blank)
+          (then idle)
+        )
+        (blank)
+        (then idle (trigger on releasing))
+      )
+    )
+  )
+  (fn-do + unmounted _
+    (call release-active)
+    (call (. super unmounted))
+  )
+)
+
+(fn-expr + active-bindings _
+  (param registered-bindings (list KeyBinding))
+  (param focused (? Box))
+  (param modal (? Box))
+  (case-each (in binding active (when (call (. binding is-routable) focused modal))))
+  (where
+    (lazy active (call active-key-assignments registered-bindings focused modal))
+  )
+)
+
+(fn-do + dispatch-key-binding-key-press _
+  (param bindings (list KeyBinding))
+  (param event KeyPressEvent)
+  (let matches (call matching-key-bindings bindings event))
+  (return-if false (if (== (. matches length) 0)))
+  (call (. event cancel))
+  (return-if true (if (call key-binding-parts-conflict matches)))
+  (let enabled (call (of List KeyBinding) (in each matches (when (. each is-active)))))
+  (for (in binding enabled)
+    (if (> (. enabled length) 1)
+      (call (. binding press-shared) event)
+      (else
+        (call (. binding press) event)
+      )
+    )
+  )
+  (return true)
+)
+
+(fn-do + dispatch-key-binding-key-release _
+  (param bindings (list KeyBinding))
+  (param event KeyReleaseEvent)
+  (for (in binding bindings)
+    (call (. binding release) event)
+  )
+)
+
+(fn-do + dispatch-key-binding-pointer-press _
+  (param bindings (list KeyBinding))
+  (for (in binding bindings)
+    (call (. binding pointer-pressed))
+  )
+)
+
+(fn-do + update-key-binding-modifiers _
+  (param registered (list KeyBinding))
+  (param active (list KeyBinding))
+  (param modifiers PointerModifiers)
+  (for (in binding registered)
+    (let key (. binding key))
+    (if (and (call (. key is-modifier-only)) (not (call (. key matches-modifiers) modifiers)))
+      (call (. binding update-modifiers) modifiers)
+      (call (. binding release-active))
+    )
+  )
+  (for (in binding active)
+    (let key (. binding key))
+    (if (or (not (call (. key is-modifier-only))) (call (. key matches-modifiers) modifiers))
+      (call (. binding update-modifiers) modifiers)
+    )
+  )
+)
+
+(fn-do + release-key-bindings _
+  (param bindings (list KeyBinding))
+  (for (in binding bindings)
+    (call (. binding release-active))
+  )
+)
+
+(fn-do + find-key-binding-conflicts (list KeyBindingConflict)
+  (param bindings (list KeyBinding))
+  (let conflicts (list KeyBindingConflict))
+  (for (in index (..< 0 (. bindings length)))
+    (let binding ([] bindings index))
+    (let key (. binding key))
+    (let owner (call shortcut-scope-owner binding))
+    (let already-grouped false)
+    (for (in earlier (..< 0 index))
+      (let previous ([] bindings earlier))
+      (if (== (. previous key) key)
+        (if (call same-shortcut-scope owner (call shortcut-scope-owner previous))
+          (= already-grouped true)
+          (break)
+        )
+      )
+    )
+    (if already-grouped
+      (continue)
+    )
+    (let matches (list KeyBinding))
+    (+= matches binding)
+    (for (in later (..< (+ index 1) (. bindings length)))
+      (let candidate ([] bindings later))
+      (if (== (. candidate key) key)
+        (if (call same-shortcut-scope owner (call shortcut-scope-owner candidate))
+          (+= matches candidate)
+        )
+      )
+    )
+    (if (call key-binding-parts-conflict matches)
+      (+= conflicts (call KeyBindingConflict key matches))
+    )
+  )
+  (return conflicts)
+)
+
+(fn-do _ key-binding-parts-conflict _
+  (param bindings (list KeyBinding))
+  (return-if false (if (< (. bindings length) 2)))
+  (let holds 0)
+  (let taps 0)
+  (for (in binding bindings)
+    (let claimed (. binding part))
+    (if (== claimed (. KeyPart hold))
+      (+= holds 1)
+      (else-if (== claimed (. KeyPart tap))
+        (+= taps 1)
+      )
+      (else
+        (return true)
+      )
+    )
+  )
+  (return (or (> holds 1) (> taps 1)))
+)
+
+(fn-expr _ matching-key-bindings (list KeyBinding)
+  (param bindings (list KeyBinding))
+  (param event KeyPressEvent)
+  (case? (> (. shift-exact length) 0)
+    shift-exact
+  )
+  (default
+    (call scoped-matching-key-bindings bindings event false)
+  )
+  (where
+    (lazy shift-exact (call scoped-matching-key-bindings bindings event true))
+  )
+)
+
+(fn-do _ scoped-matching-key-bindings (list KeyBinding)
+  (param bindings (list KeyBinding))
+  (param event KeyPressEvent)
+  (param shift-exact Bool)
+  (let result (list KeyBinding))
+  (let owner (? Box))
+  (for (in binding bindings)
+    (let key (. binding key))
+    (if (and (call (. key matches) event) (or (not shift-exact) (call (. key matches-shift) event)))
+      (if (== (. result length) 0)
+        (= owner (call shortcut-scope-owner binding))
+        (+= result binding)
+        (else-if (call same-shortcut-scope owner (call shortcut-scope-owner binding))
+          (+= result binding)
+        )
+      )
+    )
+  )
+  (return result)
+)
+
+(fn-expr _ same-shortcut-scope _
+  (param left (? Box))
+  (param right (? Box))
+  (case? left
+    (== right left)
+  )
+  (default
+    (not right)
+  )
+)
+
+(fn-expr + shortcut-summary String
+  (param shortcuts (list KeyBinding))
+  (match (. shortcuts length)
+    (case= 0
+      "No shortcuts"
+    )
+    (default
+      (call (. " | " join) (in (. each status-label) shortcuts))
+    )
+  )
+)
+
+(fn-expr _ shortcut-scope-owner _
+  (param shortcut KeyBinding)
+  (call (of (. shortcut ancestor) Box) (:where (call shortcut-scope-accepts shortcut (. each $focus-mode))))
+)
+
+(fn-expr _ shortcut-scope-accepts Bool
+  (param shortcut KeyBinding)
+  (param mode FocusMode)
+  (and (call focus-mode-contributes-shortcuts mode) (not (and (. shortcut is-container-wide) (== mode (. FocusMode press)))))
+)
+
+(fn-expr _ key-binding-predicate-enabled _
+  (param enabled Bool)
+  (param predicate (? (of Getter Bool)))
+  (case? (not enabled)
+    false
+  )
+  (case? predicate
+    (call predicate)
+  )
+  (default
+    true
+  )
+)
+
+(fn-expr _ key-command-predicate-enabled _
+  (param enabled Bool)
+  (param predicate (? (of Getter Bool)))
+  (param command (? Command))
+  (case? (or (not enabled) (not command))
+    false
+  )
+  (case? (and predicate (not (call predicate)))
+    false
+  )
+  (default
+    (. command is-available)
+  )
+)
+
+(extend + KeyCombo
+  (fn-expr + matches Bool
+    (param event KeyPressEvent)
+    (call matches-key (. event key) (. event characters) (. event modifiers))
+  )
+  (fn-expr + matches Bool
+    (param event KeyReleaseEvent)
+    (call matches-key (. event key) (. event characters) (. event modifiers))
+  )
+  (fn-expr + matches Bool
+    (param event KeyInputEvent)
+    (call matches-text (. event text))
+  )
+  (fn-expr + matches-shift Bool
+    (param event KeyPressEvent)
+    (== (. modifiers shift) (. event modifiers shift))
+  )
+)
+
+(fn-expr _ shortcut-status-label String
+  (param key KeyCombo)
+  (param title String)
+  (if-expr label (str label " " title) title)
+  (where
+    (lazy label (. key display-label))
+  )
+)

@@ -1,12 +1,5 @@
 # Enums
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-| bar
-```
-
 ```brix
 (type + Foo
   (variant bar)
@@ -17,14 +10,6 @@
 <Class name="Foo" access="public-access">
     <Enum name="bar"/>
 </Class>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-| foo = -1
-| bar = 1
 ```
 
 ```brix
@@ -43,14 +28,6 @@
         <Integer value="1"/>
     </Enum>
 </Class>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-| bar = foo • where
-    bar
 ```
 
 ```brix
@@ -84,14 +61,6 @@
 </Class>
 ```
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-| bar =
-    bar
-```
-
 ```brix
 (type + Foo
   (variant bar
@@ -112,17 +81,6 @@
         </Block>
     </Enum>
 </Class>
-```
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-| Type
-| name Type
-| name Type = 1
-| name(bar String)
-| name = 1
 ```
 
 ```brix

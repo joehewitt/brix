@@ -15,7 +15,7 @@ COMPILER = os.path.join(TOOLS, 'brix')
 OBJECT = COMPILER + '.o'
 INPUTS = COMPILER + '.inputs.json'
 LOCK = COMPILER + '.lock'
-SOURCE = os.path.join(ROOT, 'apps', 'compiler', 'brix-cli.yumi')
+SOURCE = os.path.join(ROOT, 'apps', 'compiler', 'brix-cli.bx')
 RUNTIME_BUILDER = os.path.join(ROOT, 'toolchain', 'runtime.py')
 INPUTS_VERSION = 5
 BUILDER_FILES = (
@@ -26,12 +26,12 @@ BUILDER_FILES = (
 )
 TOOL_SEED = 'compiler'
 TOOL_SOURCES = {
-    'probes': os.path.join(ROOT, 'apps', 'compiler', 'probes', 'probe-cli.yumi'),
-    'test': os.path.join(ROOT, 'apps', 'compiler', 'test', 'test-cli.yumi'),
-    'test-suite': os.path.join(ROOT, 'apps', 'compiler', 'test', 'test-suite.yumi'),
-    'bench': os.path.join(ROOT, 'apps', 'compiler', 'bench', 'bench-cli.yumi'),
-    'lint': os.path.join(ROOT, 'apps', 'compiler', 'lint', 'lint-cli.yumi'),
-    'brix': os.path.join(ROOT, 'apps', 'compiler', 'brix', 'brix-cli.yumi'),
+    'probes': os.path.join(ROOT, 'apps', 'compiler', 'probes', 'probe-cli.bx'),
+    'test': os.path.join(ROOT, 'apps', 'compiler', 'test', 'test-cli.bx'),
+    'test-suite': os.path.join(ROOT, 'apps', 'compiler', 'test', 'test-suite.bx'),
+    'bench': os.path.join(ROOT, 'apps', 'compiler', 'bench', 'bench-cli.bx'),
+    'lint': os.path.join(ROOT, 'apps', 'compiler', 'lint', 'lint-cli.bx'),
+    'brix': os.path.join(ROOT, 'apps', 'compiler', 'brix', 'brix-cli.bx'),
 }
 PROBED_COMPILER = os.path.join(TOOLS, 'brix-probed')
 SELECTOR_CHARACTERS = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.*:,-_ ')
@@ -40,12 +40,6 @@ NANOSECONDS = 1000000000
 
 def main(arguments):
     os.environ.setdefault('BRIX_BUILD_PATH', BUILD)
-    if arguments and arguments[0] == 'brix-sweep':
-        import brix_sweep
-        return brix_sweep.main(arguments[1:])
-    if arguments and arguments[0] == 'brix-tests':
-        import brix_tests
-        return brix_tests.main(arguments[1:])
     if arguments and arguments[0] in TOOL_SOURCES:
         ensure_compiler(seed_name())
         tool = ensure_tool(arguments[0])
@@ -85,7 +79,7 @@ def compiler_probes(arguments):
 
 
 def is_selector_list(text):
-    if not text or text.startswith('-') or text.endswith('.yumi'):
+    if not text or text.startswith('-') or text.endswith('.bx'):
         return False
     return all(character in SELECTOR_CHARACTERS for character in text)
 
@@ -310,7 +304,7 @@ def input_record(sources, started, seed, compiler):
     for path in sources:
         if not path.startswith(build_root):
             files.add(path)
-        if path.startswith(ROOT + os.sep) and path.endswith('.yumi'):
+        if path.startswith(ROOT + os.sep) and path.endswith('.bx'):
             directories.add(os.path.dirname(path))
     for name in BUILDER_FILES:
         files.add(os.path.join(ROOT, name))

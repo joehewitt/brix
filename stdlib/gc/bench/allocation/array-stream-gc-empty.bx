@@ -1,0 +1,39 @@
+; benchmark.meta description: Consumes streams into mutable and immutable gc arrays with four capacity hints.
+; benchmark.meta timing: not-recommended
+; benchmark.meta profiles: allocator
+(blank)
+(import /core)
+(import /core/arena)
+(import /core/array-builder)
+(blank)
+
+(main
+  (let checksum 0i64)
+  (for (in round (..< 0 100))
+    (for (in capacity (list 0 1 65 256))
+      (let mutable (call collect-mutable (?> (..< 0 32) (< each 0)) capacity))
+      (let immutable (call collect-immutable (?> (..< 0 32) (< each 0)) capacity))
+      (+= checksum (+ (. mutable length) (. immutable length)))
+      (for (in item mutable)
+        (+= checksum item)
+      )
+      (for (in item immutable)
+        (+= checksum item)
+      )
+    )
+  )
+  (blank)
+  (print (str "bench-result allocation/array-stream-gc-empty checksum=" checksum))
+)
+
+(fn-do + collect-mutable (of Array Int) @inline
+  (param items (stream Int))
+  (param capacity Size)
+  (return (call Array items capacity))
+)
+
+(fn-do + collect-immutable (of ImmutableArray Int) @inline
+  (param items (stream Int))
+  (param capacity Size)
+  (return (call ImmutableArray items capacity))
+)

@@ -1,39 +1,44 @@
 # Optionals
 
-```yumi
--- optional-middle(0, 42)
--- optional-middle(1, 42)
--- optional-middle(2, 42)
--- optional-middle(0, null)
--- optional-middle(1, null)
--- optional-middle(2, null)
--- optional-middle-with-fallthrough(0, 42)
--- optional-middle-with-fallthrough(1, 42)
--- optional-middle-with-fallthrough(2, 42)
--- optional-middle-with-fallthrough(3, 42)
+```brix
+(main
+  (print (call optional-middle 0 42))
+  (print (call optional-middle 1 42))
+  (print (call optional-middle 2 42))
+  (print (call optional-middle 0 null))
+  (print (call optional-middle 1 null))
+  (print (call optional-middle 2 null))
+  (print (call optional-middle-with-fallthrough 0 42))
+  (print (call optional-middle-with-fallthrough 1 42))
+  (print (call optional-middle-with-fallthrough 2 42))
+  (print (call optional-middle-with-fallthrough 3 42))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do optional-middle
-    - branch Int
-    - value Int?
+(fn-do + optional-middle _
+  (param branch Int)
+  (param value (? Int))
+  (if (== branch 0)
+    (return value)
+  )
+  (if (== branch 1)
+    (return 7)
+  )
+  (return value)
+)
 
-if branch == 0
-    = value
-if branch == 1
-    = 7
-= value
-
-━━━━━━━━━━━━━━━━━━━━
-+ do optional-middle-with-fallthrough
-    - branch Int
-    - value Int?
-
-if branch == 0
-    = value
-if branch == 1
-    = 7
-if branch == 2
-    = value
+(fn-do + optional-middle-with-fallthrough _
+  (param branch Int)
+  (param value (? Int))
+  (if (== branch 0)
+    (return value)
+  )
+  (if (== branch 1)
+    (return 7)
+  )
+  (if (== branch 2)
+    (return value)
+  )
+)
 ```
 
 ```output
@@ -49,22 +54,26 @@ unknown
 unknown
 ```
 
-```yumi
-. a I32?
--- a
+```brix
+(main
+  (let a (? I32))
+  (print a)
+)
 ```
 
 ```output
 unknown
 ```
 
-```yumi
-. a I32?
--- a
-a = 1
--- a
-a = Optional'I32()
--- a
+```brix
+(main
+  (let a (? I32))
+  (print a)
+  (= a 1)
+  (print a)
+  (= a (call (of Optional I32)))
+  (print a)
+)
 ```
 
 ```output
@@ -73,27 +82,37 @@ unknown
 unknown
 ```
 
-```yumi
-do new
-    . a I32?
-    -- a as I32
-catch failure
-    -- failure
+```brix
+(main
+  (do-new
+    (let a (? I32))
+    (print (as a I32))
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 ```
 
 ```output
 Optional'core/number:I32 is null
 ```
 
-```yumi
-. x Int?
-. y = 1
-. attempt = do new
-    y = x!
-catch failure
-    -- failure
-attempt.wait()
--- y
+```brix
+(main
+  (let x (? Int))
+  (let y 1)
+  (let attempt
+    (do-new
+      (= y (!! x))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+  (print y)
+)
 ```
 
 ```output
@@ -101,9 +120,11 @@ Optional'core/number:I64 is null
 1
 ```
 
-```yumi
-. a I32? = 1
--- a as I32
+```brix
+(main
+  (let a (? I32) 1)
+  (print (as a I32))
+)
 ```
 
 ```output
@@ -112,17 +133,18 @@ Optional'core/number:I64 is null
 
 ### Pass optional to function
 
-```yumi
-. a I32? = 1
-foo(a)
-. b I32?
-foo(b)
+```brix
+(main
+  (let a (? I32) 1)
+  (call foo a)
+  (let b (? I32))
+  (call foo b)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - a I32?
-
--- if a then 5 else 3
+(fn-do + foo _
+  (param a (? I32))
+  (print (if-expr a 5 3))
+)
 ```
 
 ```output
@@ -132,16 +154,17 @@ foo(b)
 
 ### A parameter that may be null can be left out when it is written with `= null`.
 
-```yumi
-. a I32? = 5
-foo(a)
-foo()
+```brix
+(main
+  (let a (? I32) 5)
+  (call foo a)
+  (call foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - a I32? = null
-
--- if a then 5 else 3
+(fn-do + foo _
+  (param a (? I32) (= null))
+  (print (if-expr a 5 3))
+)
 ```
 
 ```output
@@ -151,41 +174,43 @@ foo()
 
 ### A parameter that may be null and has no written default must be given, even as null.
 
-```yumi crash
-. a I32? = 5
-foo(a)
+```brix crash
+(main
+  (let a (? I32) 5)
+  (call foo a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - a I32?
-    - b I32?
-
--- if a then 5 else 3
+(fn-do + foo _
+  (param a (? I32))
+  (param b (? I32))
+  (print (if-expr a 5 3))
+)
 ```
 
 ```output
 Exception: No function "foo" accepts (I32?); it is declared as "foo(a I32?, b I32?)"; "b" may be null but has no default, so a call must give it: pass null, or declare "b I32? = null"
-<no file:3>
-    foo(a)
-    ^^^^^^
+<no file:4>
+      (call foo a)
+      ^^^^^^^^^^^^
 ```
 
 ### Parameters with written defaults, `= null` among them, can be left out.
 
-```yumi
-. a I32? = 5
-foo(a)
-foo()
+```brix
+(main
+  (let a (? I32) 5)
+  (call foo a)
+  (call foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - a I32? = null
-    - b = 1
-    - c I32? = null
-
--- if a then 5 else 3
--- b
--- if c then 4 else 2
+(fn-do + foo _
+  (param a (? I32) (= null))
+  (param b _ (= 1))
+  (param c (? I32) (= null))
+  (print (if-expr a 5 3))
+  (print b)
+  (print (if-expr c 4 2))
+)
 ```
 
 ```output
@@ -199,18 +224,19 @@ foo()
 
 ### A required parameter can follow one that may be null and has no written default.
 
-```yumi
-. a I32? = 5
-foo(a, 2)
-foo(null, 3)
+```brix
+(main
+  (let a (? I32) 5)
+  (call foo a 2)
+  (call foo null 3)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - a I32?
-    - b I32
-
--- a ?? 0
--- b
+(fn-do + foo _
+  (param a (? I32))
+  (param b I32)
+  (print (?? a 0))
+  (print b)
+)
 ```
 
 ```output
@@ -222,23 +248,23 @@ foo(null, 3)
 
 ### Optional arguments not required to be passed to call (if at the end)
 
-```yumi
-. a I32?
-foo(a)
+```brix
+(main
+  (let a (? I32))
+  (call foo a)
+  (blank)
+  (let b (? I32) 5)
+  (call foo b)
+)
 
-. b I32? = 5
-foo(b)
+(fn-do + foo _
+  (param a I32 (= 1))
+  (print a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - a I32 = 1
-
--- a
-
-━━━━━━━━━━━━━━━━━━━━
-+ bar
-
-1
+(fn-expr + bar _
+  1
+)
 ```
 
 ```output
@@ -246,20 +272,26 @@ foo(b)
 5
 ```
 
-```yumi
-. attempt = do new
-    -- foo(1) as I32
-catch failure
-    -- failure
-    -- foo(11) as I32
-attempt.wait()
+```brix
+(main
+  (let attempt
+    (do-new
+      (print (as (call foo 1) I32))
+      (on-failure failure
+        (print failure)
+        (print (as (call foo 11) I32))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - a
-
-if a > 10
-    = 5
+(fn-do + foo _
+  (param a _)
+  (if (> a 10)
+    (return 5)
+  )
+)
 ```
 
 ```output
@@ -267,31 +299,36 @@ Optional'core/number:I64 is null
 5
 ```
 
-```yumi
--- foo()
+```brix
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo String?
-
-if false
-    = "foo"
+(fn-do + foo (? String)
+  (if false
+    (return "foo")
+  )
+)
 ```
 
 ```output
 unknown
 ```
 
-```yumi
--- foo()
--- type-of foo()
+```brix
+(main
+  (print (call foo))
+  (print (type-of (call foo)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo String?
-
-|? true
+(fn-expr + foo (? String)
+  (case? true
     null
-??
+  )
+  (default
     "x"
+  )
+)
 ```
 
 ```output
@@ -299,31 +336,36 @@ unknown
 [TypeInfo Optional'String]
 ```
 
-```yumi
--- foo()
+```brix
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo Int?
-
-if false
-    = 42
+(fn-do + foo (? Int)
+  (if false
+    (return 42)
+  )
+)
 ```
 
 ```output
 unknown
 ```
 
-```yumi
--- foo()
--- type-of foo()
+```brix
+(main
+  (print (call foo))
+  (print (type-of (call foo)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo Int?
-
-if false
-    = Optional'Int(42)
-else
-    = 3
+(fn-do + foo (? Int)
+  (if false
+    (return (call (of Optional Int) 42))
+    (else
+      (return 3)
+    )
+  )
+)
 ```
 
 ```output
@@ -331,15 +373,17 @@ else
 [TypeInfo Optional'I64]
 ```
 
-```yumi
--- foo()
--- type-of foo()
+```brix
+(main
+  (print (call foo))
+  (print (type-of (call foo)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo Int?
-
-if false
-    = Optional'Int(42)
+(fn-do + foo (? Int)
+  (if false
+    (return (call (of Optional Int) 42))
+  )
+)
 ```
 
 ```output
@@ -347,15 +391,17 @@ unknown
 [TypeInfo Optional'I64]
 ```
 
-```yumi
--- foo()
--- type-of foo()
+```brix
+(main
+  (print (call foo))
+  (print (type-of (call foo)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo Int?
-
-if true
-    = Optional'Int(42)
+(fn-do + foo (? Int)
+  (if true
+    (return (call (of Optional Int) 42))
+  )
+)
 ```
 
 ```output
@@ -363,31 +409,36 @@ if true
 [TypeInfo Optional'I64]
 ```
 
-```yumi
--- foo(24)
+```brix
+(main
+  (print (call foo 24))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo'T
-    - x T?
-
-x
+(fn-expr + (of foo T) _
+  (param x (? T))
+  x
+)
 ```
 
 ```output
 24
 ```
 
-```yumi
--- Optional(24)
+```brix
+(main
+  (print (call Optional 24))
+)
 ```
 
 ```output
 24
 ```
 
-```yumi
-. a Int? = 42
--- a!
+```brix
+(main
+  (let a (? Int) 42)
+  (print (!! a))
+)
 ```
 
 ```output
@@ -396,87 +447,96 @@ x
 
 ### Force unwrap checks a null numeric optional.
 
-```yumi crash
-. value Int?
--- value!
+```brix crash
+(main
+  (let value (? Int))
+  (print (!! value))
+)
 ```
 
 ```stderr
 Unhandled panic: Optional'core/number:I64 is null
-<no file:3>
+<no file:4>
 
 Task 1
 
 Stack trace:
-  0  __source__:main no file:3:4
+  0  __source__:main no file:4:10
   1  __source__:init.__source__ no file
   2  __source__:brix.main no file
 ```
 
 ### Force unwrap checks a null class optional before dereferencing it.
 
-```yumi crash
-. value Foo?
--- value!.zing
+```brix crash
+(main
+  (let value (? Foo))
+  (print (. (!! value) zing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ zing = 100
+(type + Foo
+  (prop + zing _ (= 100))
+)
 ```
 
 ```stderr
 Unhandled panic: Optional'[Object __source__:Foo] is null
-<no file:3>
+<no file:4>
 
 Task 1
 
 Stack trace:
-  0  __source__:main no file:3:4
+  0  __source__:main no file:4:13
   1  __source__:init.__source__ no file
   2  __source__:brix.main no file
 ```
 
 ### Forcing a value that is never null is illegal.
 
-```yumi crash
-. count Int = 1
--- count!
+```brix crash
+(main
+  (let count Int 1)
+  (print (!! count))
+)
 ```
 
 ```output
-Exception: "count" is I64, which is never null here, so it needs no "!"
-<no file:3>
-    -- count!
-       ^^^^^^
+Exception: "count" is I64, which is never null here, so it needs no "!!"
+<no file:4>
+      (print (!! count))
+             ^^^^^^^^^^
 ```
 
 ### Forcing an optional the flow knows holds a value is illegal.
 
-```yumi crash
-. count Int? = 1
-if count
-    -- count!
+```brix crash
+(main
+  (let count (? Int) 1)
+  (if count
+    (print (!! count))
+  )
+)
 ```
 
 ```output
-Exception: "count" is I64, which is never null here, so it needs no "!"
-<no file:4>
-        -- count!
-           ^^^^^^
+Exception: "count" is I64, which is never null here, so it needs no "!!"
+<no file:5>
+        (print (!! count))
+               ^^^^^^^^^^
 ```
 
 ### A force in generic code is legal when its operand is optional in some instance.
 
-```yumi
--- first(3)
--- first(4 as Int?)
+```brix
+(main
+  (print (call first 3))
+  (print (call first (as 4 (? Int))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ first'T
-    - value T
-
-value!
+(fn-expr + (of first T) _
+  (param value T)
+  (!! value)
+)
 ```
 
 ```output
@@ -486,11 +546,14 @@ value!
 
 ### A force is legal where a local the flow knows holds a value is tested, as it tests the value.
 
-```yumi
-. count Int? = 0
-if count != null
-    -- if count && true then "present" else "absent"
-    -- if count! && true then "nonzero" else "zero"
+```brix
+(main
+  (let count (? Int) 0)
+  (if (!= count null)
+    (print (if-expr (and count true) "present" "absent"))
+    (print (if-expr (and (!! count) true) "nonzero" "zero"))
+  )
+)
 ```
 
 ```output
@@ -500,96 +563,102 @@ zero
 
 ### A typed declaration does not unwrap an optional: write ! or ?? to take what it holds.
 
-```yumi crash
-. value Int?
-. unwrapped Int = value
--- unwrapped
+```brix crash
+(main
+  (let value (? Int))
+  (let unwrapped Int value)
+  (print unwrapped)
+)
 ```
 
 ```output
-Exception: Expected I64 here, but this is I64?, which may hold nothing; write "!" after it to unwrap it, or "?? fallback" to give a value for nothing
-<no file:3>
-    . unwrapped Int = value
-                ^^^
+Exception: Expected I64 here, but this is I64?, which may hold nothing; write "(!! value)" to unwrap it, or "(?? value fallback)" to give a value for nothing
+<no file:4>
+      (let unwrapped Int value)
+                     ^^^
 ```
 
 ### An optional number on the right of an assigning operator is not unwrapped.
 
-```yumi crash
-. total = 1
-total += given(2)
+```brix crash
+(main
+  (let total 1)
+  (+= total (call given 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ given Int?
-    - value Int
-
-value
+(fn-expr + given (? Int)
+  (param value Int)
+  value
+)
 ```
 
 ```output
-Exception: Expected I64 here, but this is I64?, which may hold nothing; write "!" after it to unwrap it, or "?? fallback" to give a value for nothing
-<no file:3>
-    total += given(2)
-             ^^^^^^^^
+Exception: Expected I64 here, but this is I64?, which may hold nothing; write "(!! (call given 2))" to unwrap it, or "(?? (call given 2) fallback)" to give a value for nothing
+<no file:4>
+      (+= total (call given 2))
+                ^^^^^^^^^^^^^^
 ```
 
 ## Optional Chaining
 
 ### Optional chaining on a non-optional receiver is illegal.
 
-```yumi crash
-. foo = Foo()
--- foo?.zing
+```brix crash
+(main
+  (let foo (call Foo))
+  (print (?. foo zing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ zing = 100
+(type + Foo
+  (prop + zing _ (= 100))
+)
 ```
 
 ```output
-Exception: "foo" is Foo, which is never null, so it needs no "?"; write "foo.zing"
-<no file:3>
-    -- foo?.zing
-       ^^^^^^^^^
+Exception: "foo" is Foo, which is never null, so it needs no "?"; write "(. foo zing)"
+<no file:4>
+      (print (?. foo zing))
+             ^^^^^^^^^^^^^
 ```
 
 ### Optional chaining on a narrowed optional receiver is illegal.
 
-```yumi crash
-. foo Foo? = Foo()
-if foo
-    -- foo?.zing
+```brix crash
+(main
+  (let foo (? Foo) (call Foo))
+  (if foo
+    (print (?. foo zing))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ zing = 100
+(type + Foo
+  (prop + zing _ (= 100))
+)
 ```
 
 ```output
-Exception: "foo" is Foo, which is never null, so it needs no "?"; write "foo.zing"
-<no file:4>
-        -- foo?.zing
-           ^^^^^^^^^
+Exception: "foo" is Foo, which is never null, so it needs no "?"; write "(. foo zing)"
+<no file:5>
+        (print (?. foo zing))
+               ^^^^^^^^^^^^^
 ```
 
 ### A parameter written with no type needs `?` where one call gives it nothing, though another gives it a value that is never null.
 
-```yumi
--- size(Inner())
--- size(null)
+```brix
+(main
+  (print (call size (call Inner)))
+  (print (call size null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Inner
+(type + Inner
+  (prop + width Int (= 3))
+)
 
-+ width Int = 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ size Int
-    - inner
-
-inner?.width ?? 0
+(fn-expr + size Int
+  (param inner _)
+  (?? (?. inner width) 0)
+)
 ```
 
 ```output
@@ -597,17 +666,18 @@ inner?.width ?? 0
 0
 ```
 
-```yumi
-. foo Foo?
--- foo?.zing
--- type-of foo?.zing
-foo = Foo() as Foo?
--- foo?.zing
+```brix
+(main
+  (let foo (? Foo))
+  (print (?. foo zing))
+  (print (type-of (?. foo zing)))
+  (= foo (as (call Foo) (? Foo)))
+  (print (?. foo zing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ zing = 100
+(type + Foo
+  (prop + zing _ (= 100))
+)
 ```
 
 ```output
@@ -616,25 +686,25 @@ unknown
 100
 ```
 
-```yumi
-. foo Foo?
--- foo?.bar?.bing
--- type-of foo?.bar?.bing
-foo = Foo() as Foo?
--- foo?.bar?.bing
-. f = foo!
-f.bar = Bar()
--- foo?.bar?.bing
+```brix
+(main
+  (let foo (? Foo))
+  (print (?. (?. foo bar) bing))
+  (print (type-of (?. (?. foo bar) bing)))
+  (= foo (as (call Foo) (? Foo)))
+  (print (?. (?. foo bar) bing))
+  (let f (!! foo))
+  (= (. f bar) (call Bar))
+  (print (?. (?. foo bar) bing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + bar (? Bar))
+)
 
-+ bar Bar?
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-+ bing = 100
+(type + Bar
+  (prop + bing _ (= 100))
+)
 ```
 
 ```output
@@ -644,17 +714,18 @@ unknown
 100
 ```
 
-```yumi
-. foo Foo?
--- foo?.stuff.length
--- type-of foo?.stuff.length
-foo = Foo() as Foo?
--- foo?.stuff.length
+```brix
+(main
+  (let foo (? Foo))
+  (print (. (?. foo stuff) length))
+  (print (type-of (. (?. foo stuff) length)))
+  (= foo (as (call Foo) (? Foo)))
+  (print (. (?. foo stuff) length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ stuff = [1, 2, 3]
+(type + Foo
+  (prop + stuff _ (= (list 1 2 3)))
+)
 ```
 
 ```output
@@ -663,27 +734,26 @@ unknown
 3
 ```
 
-```yumi
-. foo Foo?
--- foo?.bing()
--- foo?.bing().boom
--- type-of foo?.bing().boom
-foo = Foo() as Foo?
--- foo?.bing()
--- foo?.bing().boom
+```brix
+(main
+  (let foo (? Foo))
+  (print (call (?. foo bing)))
+  (print (. (call (?. foo bing)) boom))
+  (print (type-of (. (call (?. foo bing)) boom)))
+  (= foo (as (call Foo) (? Foo)))
+  (print (call (?. foo bing)))
+  (print (. (call (?. foo bing)) boom))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (fn-expr + bing _
+    (call Bing)
+  )
+)
 
-────────────────────
-+ bing
-
-Bing()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bing
-
-+ boom = 99
+(type + Bing
+  (prop + boom _ (= 99))
+)
 ```
 
 ```output
@@ -696,19 +766,19 @@ unknown
 
 ### Optional void-returning method called as a statement
 
-```yumi
-. win Window?
-win?.focus()
-win = Window() as Window?
-win?.focus()
+```brix
+(main
+  (let win (? Window))
+  (call (?. win focus))
+  (= win (as (call Window) (? Window)))
+  (call (?. win focus))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Window
-
-────────────────────
-+ do focus
-
--- "focus"
+(type + Window
+  (fn-do + focus _
+    (print "focus")
+  )
+)
 ```
 
 ```output
@@ -717,55 +787,55 @@ focus
 
 ### Optional void-returning interface method called as a statement
 
-```yumi
-. thing Thing?
-thing?.focus()
-thing = Window() as Thing?
-thing?.focus()
+```brix
+(main
+  (let thing (? Thing))
+  (call (?. thing focus))
+  (= thing (as (call Window) (? Thing)))
+  (call (?. thing focus))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is Interface
+(type + Thing (is Interface)
+  (fn-expr + focus Void)
+)
 
-────────────────────
-+ focus Void
-
-━━━━━━━━━━━━━━━━━━━━
-+ Window
-    is Thing
-
-────────────────────
-+ do focus
-
--- "focus"
+(type + Window
+  (implements Thing)
+  (fn-do + focus _
+    (print "focus")
+  )
+)
 ```
 
 ```output
 focus
 ```
 
-```yumi
--- foo()?.bar
+```brix
+(main
+  (print (?. (call foo) bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo Foo?
+(fn-expr + foo (? Foo)
+  (call Foo)
+)
 
-Foo()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar = 42
+(type + Foo
+  (prop + bar _ (= 42))
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-. foo [Int]?
--- foo?[0]
-foo = [1, 2, 3] as [Int]?
--- foo?[0]
+```brix
+(main
+  (let foo (? (list Int)))
+  (print (?[] foo 0))
+  (= foo (as (list 1 2 3) (? (list Int))))
+  (print (?[] foo 0))
+)
 ```
 
 ```output
@@ -775,18 +845,19 @@ unknown
 
 ## Optional assignment elimination
 
-```yumi
-. foo Foo?
-foo?.bar = 42
--- foo?.bar
-foo = Foo() as Foo?
-foo?.bar = 42
--- foo?.bar
+```brix
+(main
+  (let foo (? Foo))
+  (= (?. foo bar) 42)
+  (print (?. foo bar))
+  (= foo (as (call Foo) (? Foo)))
+  (= (?. foo bar) 42)
+  (print (?. foo bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar Int
+(type + Foo
+  (prop + bar Int)
+)
 ```
 
 ```output
@@ -794,25 +865,25 @@ unknown
 42
 ```
 
-```yumi
-. foo Foo?
-foo?.bar?.bing = 42
--- foo?.bar?.bing
-foo = Foo() as Foo?
-foo?.bar = Bar()
--- foo?.bar?.bing
-foo?.bar?.bing = 42
--- foo?.bar?.bing
+```brix
+(main
+  (let foo (? Foo))
+  (= (?. (?. foo bar) bing) 42)
+  (print (?. (?. foo bar) bing))
+  (= foo (as (call Foo) (? Foo)))
+  (= (?. foo bar) (call Bar))
+  (print (?. (?. foo bar) bing))
+  (= (?. (?. foo bar) bing) 42)
+  (print (?. (?. foo bar) bing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + bar (? Bar))
+)
 
-+ bar Bar?
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-+ bing = 100
+(type + Bar
+  (prop + bing _ (= 100))
+)
 ```
 
 ```output
@@ -823,19 +894,20 @@ unknown
 
 ### Compound assignment through an optional chain updates a present target and skips an absent one.
 
-```yumi
-. foo Foo?
-foo?.bar += 1
--- foo?.bar
-foo = Foo() as Foo?
-foo?.bar += 2
-foo?.bar += 3
--- foo?.bar
+```brix
+(main
+  (let foo (? Foo))
+  (+= (?. foo bar) 1)
+  (print (?. foo bar))
+  (= foo (as (call Foo) (? Foo)))
+  (+= (?. foo bar) 2)
+  (+= (?. foo bar) 3)
+  (print (?. foo bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar Int = 10
+(type + Foo
+  (prop + bar Int (= 10))
+)
 ```
 
 ```output
@@ -843,34 +915,30 @@ unknown
 15
 ```
 
-```yumi
-. foo Foo
-foo.bar?[0] = 1
--- foo.bar?[0]
-foo.bar = Bar()
--- foo.bar?[0]
-foo.bar?[0] = 1
--- foo.bar?[0]
+```brix
+(main
+  (let foo Foo)
+  (= (?[] (. foo bar) 0) 1)
+  (print (?[] (. foo bar) 0))
+  (= (. foo bar) (call Bar))
+  (print (?[] (. foo bar) 0))
+  (= (?[] (. foo bar) 0) 1)
+  (print (?[] (. foo bar) 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + bar (? Bar))
+)
 
-+ bar Bar?
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-+ v = 42
-
-────────────────────
-+ this[index Index]
-
-v
-
-────────────────────
-+ do this[index Index] = item Int
-
-v = item
+(type + Bar
+  (prop + v _ (= 42))
+  (fn-expr + (index-get this (param index Index)) _
+    v
+  )
+  (fn-do + (index-set this (param index Index) (param item Int)) _
+    (= v item)
+  )
+)
 ```
 
 ```output
@@ -879,14 +947,16 @@ unknown
 1
 ```
 
-```yumi
-. foo [Int]?
-foo?[0] = 10
--- foo?[0]
-foo = [1, 2, 3] as [Int]?
--- foo?[0]
-foo?[0] = 10
--- foo?[0]
+```brix
+(main
+  (let foo (? (list Int)))
+  (= (?[] foo 0) 10)
+  (print (?[] foo 0))
+  (= foo (as (list 1 2 3) (? (list Int))))
+  (print (?[] foo 0))
+  (= (?[] foo 0) 10)
+  (print (?[] foo 0))
+)
 ```
 
 ```output
@@ -895,19 +965,20 @@ unknown
 10
 ```
 
-```yumi
-. foo Foo
-foo.bar?[0] = 1
--- foo.bar?[0]
-foo.bar = [1, 2, 3]
--- foo.bar?[0]
-foo.bar?[0] = 10
--- foo.bar?[0]
+```brix
+(main
+  (let foo Foo)
+  (= (?[] (. foo bar) 0) 1)
+  (print (?[] (. foo bar) 0))
+  (= (. foo bar) (list 1 2 3))
+  (print (?[] (. foo bar) 0))
+  (= (?[] (. foo bar) 0) 10)
+  (print (?[] (. foo bar) 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar [Int]?
+(type + Foo
+  (prop + bar (? (list Int)))
+)
 ```
 
 ```output
@@ -918,16 +989,17 @@ unknown
 
 ## Optional statement elimination
 
-```yumi
--- foo()
--- foo(42)
+```brix
+(main
+  (print (call foo))
+  (print (call foo 42))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - x Int? = null
-
-=? x
-= 99
+(fn-do + foo _
+  (param x (? Int) (= null))
+  (return? x)
+  (return 99)
+)
 ```
 
 ```output
@@ -935,19 +1007,22 @@ unknown
 42
 ```
 
-```yumi
-for v in foo()
-    -- v
-for v in foo(42)
-    -- v
+```brix
+(main
+  (for (in v (call foo))
+    (print v)
+  )
+  (for (in v (call foo 42))
+    (print v)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - x Int? = null
-
-<= 1
-<=? x
-<= 2
+(fn-do + foo _
+  (param x (? Int) (= null))
+  (yield 1)
+  (yield? x)
+  (yield 2)
+)
 ```
 
 ```output
@@ -960,17 +1035,18 @@ for v in foo(42)
 
 ### Early-null return optionalizes a value continuation
 
-```yumi
--- maybe(false)
--- maybe(true)
--- type-of maybe(true)
+```brix
+(main
+  (print (call maybe false))
+  (print (call maybe true))
+  (print (type-of (call maybe true)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do maybe
-    - keep Bool
-
-=? if !keep
-= 7
+(fn-do + maybe _
+  (param keep Bool)
+  (return-if (if (not keep)))
+  (return 7)
+)
 ```
 
 ```output
@@ -981,19 +1057,20 @@ unknown
 
 ### Early-null return does not nest optional continuation values
 
-```yumi
-. present Int? = 7
--- maybe(false, present)
--- maybe(true, present)
--- type-of maybe(true, present)
+```brix
+(main
+  (let present (? Int) 7)
+  (print (call maybe false present))
+  (print (call maybe true present))
+  (print (type-of (call maybe true present)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do maybe
-    - keep Bool
-    - value Int?
-
-=? if !keep
-= value
+(fn-do + maybe _
+  (param keep Bool)
+  (param value (? Int))
+  (return-if (if (not keep)))
+  (return value)
+)
 ```
 
 ```output
@@ -1004,16 +1081,17 @@ unknown
 
 ### Early-null return narrows optional continuations
 
-```yumi
--- add-one(41)
--- add-one(null)
+```brix
+(main
+  (print (call add-one 41))
+  (print (call add-one null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do add-one
-    - value Int?
-
-=? if !value
-= value + 1
+(fn-do + add-one _
+  (param value (? Int))
+  (return-if (if (not value)))
+  (return (+ value 1))
+)
 ```
 
 ```output
@@ -1023,16 +1101,17 @@ unknown
 
 ### Condition-only early return infers false in Bool continuations
 
-```yumi
--- maybe(true)
--- maybe(false)
+```brix
+(main
+  (print (call maybe true))
+  (print (call maybe false))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do maybe
-    - stop Bool
-
-=? if stop
-= true
+(fn-do + maybe _
+  (param stop Bool)
+  (return-if (if stop))
+  (return true)
+)
 ```
 
 ```output
@@ -1042,16 +1121,17 @@ true
 
 ### Two-line optional early return can return no value with null
 
-```yumi
-voidy(true)
-voidy(false)
+```brix
+(main
+  (call voidy true)
+  (call voidy false)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do voidy
-    - stop Bool
-
-=? if stop
--- "ran"
+(fn-do + voidy _
+  (param stop Bool)
+  (return-if (if stop))
+  (print "ran")
+)
 ```
 
 ```output
@@ -1060,16 +1140,17 @@ ran
 
 ### Shorthand optional early return can return no value
 
-```yumi
--- maybe(0)
--- maybe(7)
+```brix
+(main
+  (print (call maybe 0))
+  (print (call maybe 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do maybe
-    - value Int
-
-=? if value == 0
-= value
+(fn-do + maybe _
+  (param value Int)
+  (return-if (if (== value 0)))
+  (return value)
+)
 ```
 
 ```output
@@ -1079,16 +1160,17 @@ unknown
 
 ### Shorthand optional early return can return void
 
-```yumi
-voidy(true)
-voidy(false)
+```brix
+(main
+  (call voidy true)
+  (call voidy false)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do voidy
-    - stop Bool
-
-=? if stop
--- "ran"
+(fn-do + voidy _
+  (param stop Bool)
+  (return-if (if stop))
+  (print "ran")
+)
 ```
 
 ```output
@@ -1097,42 +1179,47 @@ ran
 
 ### Guard-only early-null functions remain Void
 
-```yumi crash
--- guard-only(false) ?? "optional"
+```brix crash
+(main
+  (print (?? (call guard-only false) "optional"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do guard-only
-    - keep Bool
-
-=? if !keep
+(fn-do + guard-only _
+  (param keep Bool)
+  (return-if (if (not keep)))
+)
 ```
 
 ```output
 Exception: Operator "??" is not defined for Void and String
-<no file:2>
-    -- guard-only(false) ?? "optional"
-       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:3>
+      (print (?? (call guard-only false) "optional"))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-. x Int?
---? x
-x = 1
---? x
+```brix
+(main
+  (let x (? Int))
+  (print? x)
+  (= x 1)
+  (print? x)
+)
 ```
 
 ```output
 1
 ```
 
-```yumi
-. x I32?
-. y Float = 1
--- y =? x
--- y
-x = 10
-y =? x
--- y
+```brix
+(main
+  (let x (? I32))
+  (let y Float 1)
+  (print (=? y x))
+  (print y)
+  (= x 10)
+  (=? y x)
+  (print y)
+)
 ```
 
 ```output
@@ -1141,14 +1228,16 @@ y =? x
 10
 ```
 
-```yumi
-. x Int?
-. y Float = 1
--- y +=? x
--- y
-x = 10
-y +=? x
--- y
+```brix
+(main
+  (let x (? Int))
+  (let y Float 1)
+  (print (+=? y x))
+  (print y)
+  (= x 10)
+  (+=? y x)
+  (print y)
+)
 ```
 
 ```output
@@ -1157,29 +1246,29 @@ y +=? x
 11
 ```
 
-```yumi
-. thing Thing?
-use? thing
-do use? thing
-    -- "using"
-thing = Thing() as Thing?
-use? thing
-do use? thing
-    -- "using"
+```brix
+(main
+  (let thing (? Thing))
+  (use? thing)
+  (do-use? thing
+    (print "using")
+  )
+  (= thing (as (call Thing) (? Thing)))
+  (use? thing)
+  (do-use? thing
+    (print "using")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ do begin-using
-
--- "begin"
-= this
-
-────────────────────
-+ do end-using
-
--- "end"
+(type + Thing
+  (fn-do + begin-using _
+    (print "begin")
+    (return this)
+  )
+  (fn-do + end-using _
+    (print "end")
+  )
+)
 ```
 
 ```output
@@ -1190,17 +1279,17 @@ end
 end
 ```
 
-## Assignment default values
-
 ## Comparison
 
-```yumi
-. foo Int?
--- foo == null
--- null == foo
-foo = 1 as Int?
--- foo == null
--- null == foo
+```brix
+(main
+  (let foo (? Int))
+  (print (== foo null))
+  (print (== null foo))
+  (= foo (as 1 (? Int)))
+  (print (== foo null))
+  (print (== null foo))
+)
 ```
 
 ```output
@@ -1210,17 +1299,19 @@ false
 false
 ```
 
-```yumi
-. foo Int?
-. bar Int?
--- foo == bar
--- foo != bar
-foo = 1 as Int?
--- foo == bar
--- foo != bar
-bar = 1
--- foo == bar
--- foo != bar
+```brix
+(main
+  (let foo (? Int))
+  (let bar (? Int))
+  (print (== foo bar))
+  (print (!= foo bar))
+  (= foo (as 1 (? Int)))
+  (print (== foo bar))
+  (print (!= foo bar))
+  (= bar 1)
+  (print (== foo bar))
+  (print (!= foo bar))
+)
 ```
 
 ```output
@@ -1232,17 +1323,19 @@ true
 false
 ```
 
-```yumi
-. foo Int?
--- foo == 2
--- foo != 2
--- 2 == foo
--- 2 != foo
-foo = 2
--- foo == 2
--- 2 == foo
--- foo == 3
--- 3 == foo
+```brix
+(main
+  (let foo (? Int))
+  (print (== foo 2))
+  (print (!= foo 2))
+  (print (== 2 foo))
+  (print (!= 2 foo))
+  (= foo 2)
+  (print (== foo 2))
+  (print (== 2 foo))
+  (print (== foo 3))
+  (print (== 3 foo))
+)
 ```
 
 ```output
@@ -1256,9 +1349,11 @@ false
 false
 ```
 
-```yumi
--- "" ?? "foo"
--- "bar" ?? "foo"
+```brix
+(main
+  (print (?? "" "foo"))
+  (print (?? "bar" "foo"))
+)
 ```
 
 ```output
@@ -1266,9 +1361,11 @@ foo
 bar
 ```
 
-```yumi
--- if false then 0.0 else 1.0
--- if false then 0 else 1.0
+```brix
+(main
+  (print (if-expr false 0.0 1.0))
+  (print (if-expr false 0 1.0))
+)
 ```
 
 ```output
@@ -1276,16 +1373,18 @@ bar
 1
 ```
 
-```yumi
-. a Int?
-. aa Int = 3
-. b = if a then 1 else aa
--- b
--- type-of b
-
-. c = if aa then 1 else a
--- c
--- type-of c
+```brix
+(main
+  (let a (? Int))
+  (let aa Int 3)
+  (let b (if-expr a 1 aa))
+  (print b)
+  (print (type-of b))
+  (blank)
+  (let c (if-expr aa 1 a))
+  (print c)
+  (print (type-of c))
+)
 ```
 
 ```output
@@ -1295,12 +1394,14 @@ bar
 [TypeInfo Optional'I64]
 ```
 
-```yumi
-. a Int?
-. aa Int? = 3
-. b = if a then 1 else aa
--- b
--- type-of b
+```brix
+(main
+  (let a (? Int))
+  (let aa (? Int) 3)
+  (let b (if-expr a 1 aa))
+  (print b)
+  (print (type-of b))
+)
 ```
 
 ```output
@@ -1308,12 +1409,14 @@ bar
 [TypeInfo Optional'I64]
 ```
 
-```yumi
-. a Int?
-. aa Int?
-. b = if a then 1 else aa
--- b
--- type-of b
+```brix
+(main
+  (let a (? Int))
+  (let aa (? Int))
+  (let b (if-expr a 1 aa))
+  (print b)
+  (print (type-of b))
+)
 ```
 
 ```output
@@ -1323,34 +1426,41 @@ unknown
 
 ### Conditional structure matches flatten optional transform results
 
-```yumi
--- type-of maybe(true, false)
-if maybe(true, false)
-    -- "inner false passed"
-else
-    -- "inner false failed"
-if maybe(false, false)
-    -- "outer false passed"
-else
-    -- "outer false failed"
-if maybe(true, true)
-    -- maybe(true, true)!
-else
-    -- "true failed"
+```brix
+(main
+  (print (type-of (call maybe true false)))
+  (if (call maybe true false)
+    (print "inner false passed")
+    (else
+      (print "inner false failed")
+    )
+  )
+  (if (call maybe false false)
+    (print "outer false passed")
+    (else
+      (print "outer false failed")
+    )
+  )
+  (if (call maybe true true)
+    (print (!! (call maybe true true)))
+    (else
+      (print "true failed")
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ maybe-inner
-    - flag Bool
+(fn-expr + maybe-inner _
+  (param flag Bool)
+  (only-if "ok" (if flag))
+)
 
-"ok" if flag
-
-━━━━━━━━━━━━━━━━━━━━
-+ maybe
-    - outer Bool
-    - inner Bool
-
-|? 1 if outer
-    maybe-inner(inner)
+(fn-expr + maybe _
+  (param outer Bool)
+  (param inner Bool)
+  (case? (only-if 1 (if outer))
+    (call maybe-inner inner)
+  )
+)
 ```
 
 ```output
@@ -1362,22 +1472,22 @@ ok
 
 ### An unwrapped optional converts to an alias of its type for dispatch
 
-```yumi
-. left I16? = 2i16
-. right I16? = 7i16
--- clip-for-dispatch(left!, right!, 0i16, 10i16)
+```brix
+(main
+  (let left (? I16) 2i16)
+  (let right (? I16) 7i16)
+  (print (call clip-for-dispatch (!! left) (!! right) 0i16 10i16))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Coord is I16
+(type + Coord (is I16))
 
-━━━━━━━━━━━━━━━━━━━━
-+ clip-for-dispatch
-    - left Coord
-    - right Coord
-    - min Coord
-    - max Coord
-
-left, right
+(fn-expr + clip-for-dispatch _
+  (param left Coord)
+  (param right Coord)
+  (param min Coord)
+  (param max Coord)
+  (tuple left right)
+)
 ```
 
 ```output
@@ -1386,57 +1496,61 @@ left, right
 
 ### A null match arm preserves absence when the other arm returns a tuple.
 
-```yumi
-. content TupleOptionalContent = .none
-. pair = tuple-content(content)
--- type-of pair
--- if pair then "present" else "absent"
-. present = tuple-content(.item("name", TupleOptionalItem(7)))
--- present!.name
--- present!.item.value
-. switch-pair = switch-tuple-content(.none)
--- if switch-pair then "present" else "absent"
-. switch-present = switch-tuple-content(.other("other", TupleOptionalItem(9)))
--- switch-present!.name
--- switch-present!.item.value
+```brix
+(main
+  (let content TupleOptionalContent .none)
+  (let pair (call tuple-content content))
+  (print (type-of pair))
+  (print (if-expr pair "present" "absent"))
+  (let present (call tuple-content (call .item "name" (call TupleOptionalItem 7))))
+  (print (. (!! present) name))
+  (print (. (!! present) item value))
+  (let switch-pair (call switch-tuple-content .none))
+  (print (if-expr switch-pair "present" "absent"))
+  (let switch-present (call switch-tuple-content (call .other "other" (call TupleOptionalItem 9))))
+  (print (. (!! switch-present) name))
+  (print (. (!! switch-present) item value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ tuple-content (name String, item TupleOptionalItem)?
-    - content TupleOptionalContent
+(fn-expr + tuple-content (? (tuple (: name String) (: item TupleOptionalItem)))
+  (param content TupleOptionalContent)
+  (match content
+    (case (call .item name item)
+      (tuple name item)
+    )
+    (default
+      null
+    )
+  )
+)
 
-match content
-    | .item(name, item)
-        (name, item)
-    ??
-        null
+(fn-expr + switch-tuple-content (? (tuple (: name String) (: item TupleOptionalItem)))
+  (param content TupleOptionalContent)
+  (match content
+    (case (call .item name item)
+      (tuple name item)
+    )
+    (case (call .other name item)
+      (tuple name item)
+    )
+    (default
+      null
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ switch-tuple-content (name String, item TupleOptionalItem)?
-    - content TupleOptionalContent
+(type + TupleOptionalContent (is Union)
+  (variant none)
+  (variant item (tuple (: name String) (: item TupleOptionalItem)))
+  (variant other (tuple (: name String) (: item TupleOptionalItem)))
+)
 
-match content
-    | .item(name, item)
-        (name, item)
-    | .other(name, item)
-        (name, item)
-    ??
-        null
-
-━━━━━━━━━━━━━━━━━━━━
-+ TupleOptionalContent is Union
-
-| none
-| item(name String, item TupleOptionalItem)
-| other(name String, item TupleOptionalItem)
-
-━━━━━━━━━━━━━━━━━━━━
-+ TupleOptionalItem
-
-+ value I32
-
-────────────────────
-+ This
-    - value
+(type + TupleOptionalItem
+  (prop + value I32)
+  (fn-do + This _
+    (param value _)
+  )
+)
 ```
 
 ```output
@@ -1451,35 +1565,39 @@ other
 
 ### A type pattern matches the present payload of an optional union without a prior null check.
 
-```yumi
-. items [DocValue]
-items += 1 as DocValue
--- describe(items as DocValue)
--- describe("text" as DocValue)
--- describe(null)
+```brix
+(main
+  (let items (list DocValue))
+  (+= items (as 1 DocValue))
+  (print (call describe (as items DocValue)))
+  (print (call describe (as "text" DocValue)))
+  (print (call describe null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - value DocValue?
+(fn-expr + describe String
+  (param value (? DocValue))
+  (match value
+    (case (: values (list DocValue))
+      (str "array " (. values length))
+    )
+    (case (: text String)
+      (str "string " text)
+    )
+    (default
+      "other"
+    )
+  )
+)
 
-match value
-    | values [DocValue]
-        "array ${values.length}"
-    | text String
-        "string $text"
-    ??
-        "other"
-
-━━━━━━━━━━━━━━━━━━━━
-+ DocValue is Union
-
-| Null
-| Bool
-| Int
-| Float
-| String
-| [DocValue]
-| [String = DocValue]
+(type + DocValue (is Union)
+  (variant Null)
+  (variant Bool)
+  (variant Int)
+  (variant Float)
+  (variant String)
+  (variant (list DocValue))
+  (variant (map String DocValue))
+)
 ```
 
 ```output
@@ -1490,27 +1608,27 @@ other
 
 ### An absent optional becomes a union's Null case with as.
 
-```yumi
-. values [String = DocValue]
-values["count"] = 2
-. count = values["count"] as DocValue
-. missing = values["missing"] as DocValue
--- describe(count)
--- describe(missing)
--- describe(values["missing"] as DocValue)
+```brix
+(main
+  (let values (map String DocValue))
+  (= ([] values "count") 2)
+  (let count (as ([] values "count") DocValue))
+  (let missing (as ([] values "missing") DocValue))
+  (print (call describe count))
+  (print (call describe missing))
+  (print (call describe (as ([] values "missing") DocValue)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - value DocValue
+(fn-expr + describe String
+  (param value DocValue)
+  (if-expr (is value Null) "null" "present")
+)
 
-if value is Null then "null" else "present"
-
-━━━━━━━━━━━━━━━━━━━━
-+ DocValue is Union
-
-| Null
-| Int
-| String
+(type + DocValue (is Union)
+  (variant Null)
+  (variant Int)
+  (variant String)
+)
 ```
 
 ```output
@@ -1521,40 +1639,43 @@ null
 
 ### An optional becomes a union with a Null case and a case its value becomes, as an argument, a declared local and a variadic item.
 
-```yumi
-. missing String? = null
-. present String? = "x"
-. count I32? = 4
-. held Cell = present
--- describe(missing)
--- describe(count)
--- describe(held)
--- all(missing, present, 3, count)
+```brix
+(main
+  (let missing (? String) null)
+  (let present (? String) "x")
+  (let count (? I32) 4)
+  (let held Cell present)
+  (print (call describe missing))
+  (print (call describe count))
+  (print (call describe held))
+  (print (call all missing present 3 count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Cell is Union
+(type + Cell (is Union)
+  (variant Null)
+  (variant I64)
+  (variant String)
+)
 
-| Null
-| I64
-| String
+(fn-expr + describe String
+  (param cell Cell)
+  (match cell
+    (case (exact Null)
+      "null"
+    )
+    (case (similar I64)
+      "int"
+    )
+    (case (similar String)
+      "text"
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - cell Cell
-
-match cell
-    | Null!
-        "null"
-    | I64~
-        "int"
-    | String~
-        "text"
-
-━━━━━━━━━━━━━━━━━━━━
-+ all String
-    ... cells [Cell]
-
-" ".join(describe(each) in cells)
+(fn-expr + all String
+  (param ... cells (list Cell))
+  (call (. " " join) (in (call describe each) cells))
+)
 ```
 
 ```output
@@ -1566,84 +1687,82 @@ null text int int
 
 ### An optional does not become a union with no Null case unasked.
 
-```yumi compile-error
-. present String? = "x"
--- describe(present)
+```brix compile-error
+(main
+  (let present (? String) "x")
+  (print (call describe present))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Cell is Union
+(type + Cell (is Union)
+  (variant I64)
+  (variant String)
+)
 
-| I64
-| String
-
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - cell Cell
-
-match cell
-    | I64~
-        "int"
-    | String~
-        "text"
+(fn-expr + describe String
+  (param cell Cell)
+  (match cell
+    (case (similar I64)
+      "int"
+    )
+    (case (similar String)
+      "text"
+    )
+  )
+)
 ```
 
 ```output
 Exception: No function "describe" accepts (String?); it is declared as "describe(cell Cell)"
-<no file:3>
-    -- describe(present)
-       ^^^^^^^^^^^^^^^^^
+<no file:4>
+      (print (call describe present))
+             ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Force unwrap can appear in the middle of member, call, and index chains.
 
-```yumi
-. holder = ChainHolder(ChainNode(ChainNode(null, 3), 5))
--- holder.node!.value
--- holder.node!.next!.value
--- holder.find(5)!.next!.value
--- chain-node(7)!.value
-. nodes [ChainNode?]
-nodes += holder.node
--- nodes[0]!.next!.value
--- holder.node!.value != 4
-. forced = holder.node!
--- forced.value
--- holder.node != null
--- holder.find(1) != null
+```brix
+(main
+  (let holder (call ChainHolder (call ChainNode (call ChainNode null 3) 5)))
+  (print (. (!! (. holder node)) value))
+  (print (. (!! (. (!! (. holder node)) next)) value))
+  (print (. (!! (. (!! (call (. holder find) 5)) next)) value))
+  (print (. (!! (call chain-node 7)) value))
+  (let nodes (list (? ChainNode)))
+  (+= nodes (. holder node))
+  (print (. (!! (. (!! ([] nodes 0)) next)) value))
+  (print (!= (. (!! (. holder node)) value) 4))
+  (let forced (!! (. holder node)))
+  (print (. forced value))
+  (print (!= (. holder node) null))
+  (print (!= (call (. holder find) 1) null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ chain-node ChainNode?
-    - value I32
+(fn-expr + chain-node (? ChainNode)
+  (param value I32)
+  (call ChainNode null value)
+)
 
-ChainNode(null, value)
+(type + ChainNode
+  (prop + next (? ChainNode))
+  (prop + value I32)
+  (fn-do + This _
+    (param next _)
+    (param value _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ChainNode
-
-+ next ChainNode?
-+ value I32
-
-────────────────────
-+ This
-    - next
-    - value
-
-━━━━━━━━━━━━━━━━━━━━
-+ ChainHolder
-
-+ node ChainNode?
-
-────────────────────
-+ This
-    - node
-
-────────────────────
-+ do find ChainNode?
-    - value I32
-
-. current = node
-=? current if current && current.value == value
-= null
+(type + ChainHolder
+  (prop + node (? ChainNode))
+  (fn-do + This _
+    (param node _)
+  )
+  (fn-do + find (? ChainNode)
+    (param value I32)
+    (let current node)
+    (return-if current (if (and current (== (. current value) value))))
+    (return null)
+  )
+)
 ```
 
 ```output
@@ -1660,31 +1779,30 @@ false
 
 ### Comparing an absent optional with custom equality does not unwrap it.
 
-```yumi
-. absent Point2? = null
-. present = Point2(1, 2)
--- absent != present
--- absent == present
--- present != absent
-. other Point2? = Point2(1, 2)
--- other != present
--- other == present
-. none Point2? = null
--- absent == none
-. name String? = null
--- name == "a"
--- name != "a"
+```brix
+(main
+  (let absent (? Point2) null)
+  (let present (call Point2 1 2))
+  (print (!= absent present))
+  (print (== absent present))
+  (print (!= present absent))
+  (let other (? Point2) (call Point2 1 2))
+  (print (!= other present))
+  (print (== other present))
+  (let none (? Point2) null)
+  (print (== absent none))
+  (let name (? String) null)
+  (print (== name "a"))
+  (print (!= name "a"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point2 is Tuple
-
-+ x Int
-+ y Int
-
-────────────────────
-+ this == other Point2
-
-x == other.x && y == other.y
+(type + Point2 (is Tuple)
+  (prop + x Int)
+  (prop + y Int)
+  (fn-expr + (infix this == (param other Point2)) _
+    (and (== x (. other x)) (== y (. other y)))
+  )
+)
 ```
 
 ```output
@@ -1700,54 +1818,50 @@ true
 
 ### A presence operand stays a presence test when the other side of a logical operator narrowed it.
 
-```yumi
-. a Pair2? = Pair2(1, 2)
-. b Pair2? = Pair2(1, 2)
-. c Pair2? = Pair2(3, 4)
-. none Pair2? = null
--- same(a, b)
--- same(a, c)
--- same(none, none)
--- same(a, none)
--- both(a, b)
--- both(a, none)
--- both(none, b)
-. zero Int? = 0
-. one Int? = 1
--- present-after(zero, one)
--- present-after(zero, null)
+```brix
+(main
+  (let a (? Pair2) (call Pair2 1 2))
+  (let b (? Pair2) (call Pair2 1 2))
+  (let c (? Pair2) (call Pair2 3 4))
+  (let none (? Pair2) null)
+  (print (call same a b))
+  (print (call same a c))
+  (print (call same none none))
+  (print (call same a none))
+  (print (call both a b))
+  (print (call both a none))
+  (print (call both none b))
+  (let zero (? Int) 0)
+  (let one (? Int) 1)
+  (print (call present-after zero one))
+  (print (call present-after zero null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ same Bool
-    - first Pair2?
-    - second Pair2?
+(fn-expr + same Bool
+  (param first (? Pair2))
+  (param second (? Pair2))
+  (or (and (not first) (not second)) (and first second (== first second)))
+)
 
-(!first && !second) || (first && second && first == second)
+(fn-expr + both Bool
+  (param first (? Pair2))
+  (param second (? Pair2))
+  (or (not first) (and first second))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ both Bool
-    - first Pair2?
-    - second Pair2?
+(fn-expr + present-after Bool
+  (param first (? Int))
+  (param second (? Int))
+  (or (not first) (and first second))
+)
 
-!first || (first && second)
-
-━━━━━━━━━━━━━━━━━━━━
-+ present-after Bool
-    - first Int?
-    - second Int?
-
-!first || (first && second)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pair2 is Tuple
-
-+ x Int
-+ y Int
-
-────────────────────
-+ this == other Pair2
-
-x == other.x && y == other.y
+(type + Pair2 (is Tuple)
+  (prop + x Int)
+  (prop + y Int)
+  (fn-expr + (infix this == (param other Pair2)) _
+    (and (== x (. other x)) (== y (. other y)))
+  )
+)
 ```
 
 ```output
@@ -1764,86 +1878,86 @@ false
 
 ### Unwrapping an optional text that holds nothing panics.
 
-```yumi crash
-. none String?
-. lost String = none!
--- lost
+```brix crash
+(main
+  (let none (? String))
+  (let lost String (!! none))
+  (print lost)
+)
 ```
 
 ```stderr
 Unhandled panic: Optional'core/string:String is null
-<no file:3>
+<no file:4>
 
 Task 1
 
 Stack trace:
-  0  __source__:main no file:3:17
+  0  __source__:main no file:4:20
   1  __source__:init.__source__ no file
   2  __source__:brix.main no file
 ```
 
 ### An optional argument given to a parameter with no default must be unwrapped.
 
-```yumi crash
-. a I32?
-strict(a)
+```brix crash
+(main
+  (let a (? I32))
+  (call strict a)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do strict
-    - a I32
-
--- a
+(fn-do + strict _
+  (param a I32)
+  (print a)
+)
 ```
 
 ```output
 Exception: No function "strict" accepts (I32?); it is declared as "strict(a I32)"
-<no file:3>
-    strict(a)
-    ^^^^^^^^^
+<no file:4>
+      (call strict a)
+      ^^^^^^^^^^^^^^^
 ```
 
 ### An optional argument that holds nothing takes the parameter's default, and one that holds a value is unwrapped.
 
-```yumi
-. a I32?
-. b I32? = 5
-foo(a)
-foo(b)
-bar("x", a)
-bar("y", b)
-zap(a)
-zap(b)
-Thing().go(a)
-Thing().go(b)
-foo(a ?? 9)
+```brix
+(main
+  (let a (? I32))
+  (let b (? I32) 5)
+  (call foo a)
+  (call foo b)
+  (call bar "x" a)
+  (call bar "y" b)
+  (call zap a)
+  (call zap b)
+  (call (. (call Thing) go) a)
+  (call (. (call Thing) go) b)
+  (call foo (?? a 9))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - a I32 = 1
+(fn-do + foo _
+  (param a I32 (= 1))
+  (print a)
+)
 
--- a
+(fn-do + bar _
+  (param s String)
+  (param a Float (= 2.5))
+  (print (tuple a s))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do bar
-    - s String
-    - a Float = 2.5
+(fn-do + zap _
+  (param a (? I32) (= 7))
+  (print a)
+)
 
--- a, s
-
-━━━━━━━━━━━━━━━━━━━━
-+ do zap
-    - a I32? = 7
-
--- a
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ do go
-    - n I32 = 3
-
--- n
+(type + Thing
+  (fn-do + go _
+    (param n I32 (= 3))
+    (print n)
+  )
+)
 ```
 
 ```output
@@ -1860,14 +1974,16 @@ foo(a ?? 9)
 
 ### An optional text that holds nothing prints and interpolates as unknown, and ! takes what one holds.
 
-```yumi
-. x String?
--- x
-. y String? = "hi"
--- y
--- "[$x]"
-. s String = y!
--- s
+```brix
+(main
+  (let x (? String))
+  (print x)
+  (let y (? String) "hi")
+  (print y)
+  (print (str "[" x "]"))
+  (let s String (!! y))
+  (print s)
+)
 ```
 
 ```output
@@ -1879,15 +1995,16 @@ hi
 
 ### An optional text that holds nothing is unknown as a field of a tuple.
 
-```yumi
-. x String?
--- (x, 1)
+```brix
+(main
+  (let x (? String))
+  (print (tuple x 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - s String
-
--- s
+(fn-do + show _
+  (param s String)
+  (print s)
+)
 ```
 
 ```output
@@ -1896,38 +2013,41 @@ hi
 
 ### A function that returns a value on some paths and nothing or null on others returns an optional.
 
-```yumi
--- maybe(true)
--- maybe(false)
--- pick(1)
--- pick(2)
--- pick(3)
--- name(true) ?? "none"
--- name(false) ?? "none"
+```brix
+(main
+  (print (call maybe true))
+  (print (call maybe false))
+  (print (call pick 1))
+  (print (call pick 2))
+  (print (call pick 3))
+  (print (?? (call name true) "none"))
+  (print (?? (call name false) "none"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do maybe
-    - flag Bool
+(fn-do + maybe _
+  (param flag Bool)
+  (if flag
+    (return 7)
+  )
+)
 
-if flag
-    = 7
+(fn-do + pick _
+  (param n Int)
+  (if (== n 1)
+    (return 10)
+  )
+  (if (== n 2)
+    (return null)
+  )
+  (return 30)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick
-    - n Int
-
-if n == 1
-    = 10
-if n == 2
-    = null
-= 30
-
-━━━━━━━━━━━━━━━━━━━━
-+ do name
-    - flag Bool
-
-if flag
-    = "set"
+(fn-do + name _
+  (param flag Bool)
+  (if flag
+    (return "set")
+  )
+)
 ```
 
 ```output
@@ -1942,42 +2062,41 @@ none
 
 ### A return and a print written with a question mark act only where their optional holds a value, and a conditional return gives the optional itself.
 
-```yumi
--- first(3, null)
--- first(3, 8)
--- late(1) ?? "none"
--- late(5) ?? "none"
-show(null)
-show("here")
-. n Int? = 4
---? n
-. m Int?
---? m
--- "end"
+```brix
+(main
+  (print (call first 3 null))
+  (print (call first 3 8))
+  (print (?? (call late 1) "none"))
+  (print (?? (call late 5) "none"))
+  (call show null)
+  (call show "here")
+  (let n (? Int) 4)
+  (print? n)
+  (let m (? Int))
+  (print? m)
+  (print "end")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do first Int
-    - b Int
-    - a Int?
+(fn-do + first Int
+  (param b Int)
+  (param a (? Int))
+  (return? a)
+  (return b)
+)
 
-=? a
-= b
+(fn-do + late (? String)
+  (param n Int)
+  (let label (? String) "big")
+  (return-if label (if (> n 3)))
+  (let none (? String))
+  (return-if none (if (> n 0)))
+  (return "small")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do late String?
-    - n Int
-
-. label String? = "big"
-=? label if n > 3
-. none String?
-=? none if n > 0
-= "small"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - s String?
-
---? s
+(fn-do + show _
+  (param s (? String))
+  (print? s)
+)
 ```
 
 ```output
@@ -1992,28 +2111,28 @@ end
 
 ### A conditional return of an optional returns it whether or not it holds a value.
 
-```yumi
--- pick(1) ?? 0
--- pick(5) ?? 0
--- pick(9) ?? 0
--- strict(5)
+```brix
+(main
+  (print (?? (call pick 1) 0))
+  (print (?? (call pick 5) 0))
+  (print (?? (call pick 9) 0))
+  (print (call strict 5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick
-    - n Int
+(fn-do + pick _
+  (param n Int)
+  (let held (? Int) n)
+  (let none (? Int))
+  (return-if none (if (== n 1)))
+  (return-if held (if (== n 5)))
+)
 
-. held Int? = n
-. none Int?
-=? none if n == 1
-=? held if n == 5
-
-━━━━━━━━━━━━━━━━━━━━
-+ do strict Int
-    - n Int
-
-. held Int? = n
-=? held! if n > 3
-= 0
+(fn-do + strict Int
+  (param n Int)
+  (let held (? Int) n)
+  (return-if (!! held) (if (> n 3)))
+  (return 0)
+)
 ```
 
 ```output
@@ -2025,28 +2144,33 @@ end
 
 ### An arm that is a test alone gives what the tested optional holds.
 
-```yumi
--- test()
--- test(2)
--- test(0)
--- word()
--- word("x")
+```brix
+(main
+  (print (call test))
+  (print (call test 2))
+  (print (call test 0))
+  (print (call word))
+  (print (call word "x"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ test
-    - t Int? = null
-
-|? 0 > 1
+(fn-expr + test _
+  (param t (? Int) (= null))
+  (case? (> 0 1)
     1
-|? t
-?? 3
+  )
+  (case? t)
+  (default
+    (inline 3)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ word
-    - w String? = null
-
-|? w
-?? "none"
+(fn-expr + word _
+  (param w (? String) (= null))
+  (case? w)
+  (default
+    (inline "none")
+  )
+)
 ```
 
 ```output
@@ -2059,19 +2183,22 @@ x
 
 ### An optional compares with null on either side, for equal and for not equal.
 
-```yumi
-. x Int? = 5
-. y Int?
--- x == null
--- null == y
--- x != null
--- null != y
-if y == null
-    -- "y is null"
-. s String?
--- s == null
-s = "set"
--- s != null
+```brix
+(main
+  (let x (? Int) 5)
+  (let y (? Int))
+  (print (== x null))
+  (print (== null y))
+  (print (!= x null))
+  (print (!= null y))
+  (if (== y null)
+    (print "y is null")
+  )
+  (let s (? String))
+  (print (== s null))
+  (= s "set")
+  (print (!= s null))
+)
 ```
 
 ```output
@@ -2086,10 +2213,12 @@ true
 
 ### A local that holds an optional known to hold a value is not equal to null.
 
-```yumi
-. n Int? = 0
-n = 0
--- n == null
+```brix
+(main
+  (let n (? Int) 0)
+  (= n 0)
+  (print (== n null))
+)
 ```
 
 ```output
@@ -2098,14 +2227,17 @@ false
 
 ### An optional local known to hold a value is unknown again after a branch that may assign it null.
 
-```yumi
-. flag = true
-. x Int?
-x = 5
-if flag
-    x = null
--- x
--- x == null
+```brix
+(main
+  (let flag true)
+  (let x (? Int))
+  (= x 5)
+  (if flag
+    (= x null)
+  )
+  (print x)
+  (print (== x null))
+)
 ```
 
 ```output
@@ -2115,21 +2247,25 @@ true
 
 ### A local assigned null under a branch is null where that is tested after the branch.
 
-```yumi
--- f(5)
--- f(2)
+```brix
+(main
+  (print (call f 5))
+  (print (call f 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do f String
-    - x Int?
-
-if x == null
-    = "null at start"
-if x > 3
-    x = null
-if x == null
-    = "null now"
-= "still $x"
+(fn-do + f String
+  (param x (? Int))
+  (if (== x null)
+    (return "null at start")
+  )
+  (if (> x 3)
+    (= x null)
+  )
+  (if (== x null)
+    (return "null now")
+  )
+  (return (str "still " x))
+)
 ```
 
 ```output
@@ -2139,32 +2275,43 @@ still 2
 
 ### An assignment of null under an else, a block, a loop or a nested branch ends what was known of the local after it.
 
-```yumi
-. x Int? = 5
-if x
-    if x > 30
-        -- "big"
-    else
-        x = null
-    -- x
-. y Int? = 5
-if y
-    do
-        y = null
-    -- y
-. z Int? = 5
-while z
-    if z > 3
-        z = null
-    -- z
-    z = null
-. a Int? = 5
-. b Int? = 6
-if a && b
-    if a > 3
-        b = null
-    -- a
-    -- b
+```brix
+(main
+  (let x (? Int) 5)
+  (if x
+    (if (> x 30)
+      (print "big")
+      (else
+        (= x null)
+      )
+    )
+    (print x)
+  )
+  (let y (? Int) 5)
+  (if y
+    (do
+      (= y null)
+    )
+    (print y)
+  )
+  (let z (? Int) 5)
+  (while z
+    (if (> z 3)
+      (= z null)
+    )
+    (print z)
+    (= z null)
+  )
+  (let a (? Int) 5)
+  (let b (? Int) 6)
+  (if (and a b)
+    (if (> a 3)
+      (= b null)
+    )
+    (print a)
+    (print b)
+  )
+)
 ```
 
 ```output
@@ -2177,24 +2324,27 @@ unknown
 
 ### A branch that assigns null and leaves, and one that assigns a value, both leave the local known to hold one.
 
-```yumi
--- keep(true)
--- keep(false)
+```brix
+(main
+  (print (call keep true))
+  (print (call keep false))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do keep Int
-    - flag Bool
-
-. x Int?
-x = 5
-if flag
-    x = null
-    = 0
-. y Int?
-y = 5
-if flag
-    y = 7
-= x + y
+(fn-do + keep Int
+  (param flag Bool)
+  (let x (? Int))
+  (= x 5)
+  (if flag
+    (= x null)
+    (return 0)
+  )
+  (let y (? Int))
+  (= y 5)
+  (if flag
+    (= y 7)
+  )
+  (return (+ x y))
+)
 ```
 
 ```output
@@ -2204,19 +2354,22 @@ if flag
 
 ### An optional struct assigned null under a nested branch is unknown after it.
 
-```yumi
-. p Point? = Point(1, 2)
-if p
-    if p.x == 1
-        p = null
-    -- p
-    -- p == null
+```brix
+(main
+  (let p (? Point) (call Point 1 2))
+  (if p
+    (if (== (. p x) 1)
+      (= p null)
+    )
+    (print p)
+    (print (== p null))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x I32
-+ y I32
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 ```
 
 ```output
@@ -2226,29 +2379,31 @@ true
 
 ### An optional property assigned null under a branch or a block is unknown after it.
 
-```yumi
-. box = Box()
-box.run(true)
+```brix
+(main
+  (let box (call Box))
+  (call (. box run) true)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ held Int?
-
-────────────────────
-+ do run
-    - flag Bool
-
-held = 5
-if flag
-    held = null
--- held
--- held == null
-this.held = 4
-if flag
-    do
-        this.held = null
--- this.held
+(type + Box
+  (prop + held (? Int))
+  (fn-do + run _
+    (param flag Bool)
+    (= held 5)
+    (if flag
+      (= held null)
+    )
+    (print held)
+    (print (== held null))
+    (= (. this held) 4)
+    (if flag
+      (do
+        (= (. this held) null)
+      )
+    )
+    (print (. this held))
+  )
+)
 ```
 
 ```output
@@ -2259,75 +2414,69 @@ unknown
 
 ### An operand read through `!` keeps what it held when an operand after it assigns the optional.
 
-```yumi
-+ g Point? = Point(1, 2)
+```brix
+(prop + g (? Point) (= (call Point 1 2)))
+(blank)
 
-. o Point? = Point(1, 2)
--- take(o!, o = Point(8, 9))
-. s String? = "a"
--- join(s!, s = "b")
-. n Int? = 1
--- add(n!, n = 5)
-. t (Int, Int)? = (1, 2)
--- pair(t!, t = (3, 4))
--- take(g!, change())
--- g
-. box = Box()
--- take(box.p!, box.change())
--- take(box.q, box.change())
+(main
+  (let o (? Point) (call Point 1 2))
+  (print (call take (!! o) (= o (call Point 8 9))))
+  (let s (? String) "a")
+  (print (call join (!! s) (= s "b")))
+  (let n (? Int) 1)
+  (print (call add (!! n) (= n 5)))
+  (let t (? (tuple Int Int)) (tuple 1 2))
+  (print (call pair (!! t) (= t (tuple 3 4))))
+  (print (call take (!! g) (call change)))
+  (print g)
+  (let box (call Box))
+  (print (call take (!! (. box p)) (call (. box change))))
+  (print (call take (. box q) (call (. box change))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 
-+ x I32
-+ y I32
+(type + Box
+  (prop + p (? Point) (= (call Point 1 2)))
+  (prop + q _ (= (call Point 3 4)))
+  (fn-do + change Point
+    (= p (call Point 8 9))
+    (= q (call Point 6 7))
+    (return (call Point 5 5))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(fn-do + change Point
+  (= g (call Point 8 9))
+  (return (call Point 5 5))
+)
 
-+ p Point? = Point(1, 2)
-+ q = Point(3, 4)
+(fn-expr + take _
+  (param p Point)
+  (param q Point)
+  (+ (* (. p x) 1000) (* (. p y) 100) (* (. q x) 10) (. q y))
+)
 
-────────────────────
-+ do change Point
+(fn-expr + join _
+  (param a String)
+  (param b String)
+  (++ a b)
+)
 
-p = Point(8, 9)
-q = Point(6, 7)
-= Point(5, 5)
+(fn-expr + add _
+  (param a Int)
+  (param b Int)
+  (+ (* a 10) b)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do change Point
-
-g = Point(8, 9)
-= Point(5, 5)
-
-━━━━━━━━━━━━━━━━━━━━
-+ take
-    - p Point
-    - q Point
-
-p.x * 1000 + p.y * 100 + q.x * 10 + q.y
-
-━━━━━━━━━━━━━━━━━━━━
-+ join
-    - a String
-    - b String
-
-a ++ b
-
-━━━━━━━━━━━━━━━━━━━━
-+ add
-    - a Int
-    - b Int
-
-a * 10 + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ pair
-    - a (Int, Int)
-    - b (Int, Int)
-
-a[0] * 1000 + a[1] * 100 + b[0] * 10 + b[1]
+(fn-expr + pair _
+  (param a (tuple Int Int))
+  (param b (tuple Int Int))
+  (+ (* ([] a 0) 1000) (* ([] a 1) 100) (* ([] b 0) 10) ([] b 1))
+)
 ```
 
 ```output
@@ -2343,43 +2492,42 @@ ab
 
 ### The value of an optional that holds nothing is what its type has with nothing written: no bits set, and the empty text for a text.
 
-```yumi
-. s String?
--- "[${s.value}] ${s.value.length}"
-. set String? = "a"
-set = null
--- "[${set.value}] ${set.value.length}"
-. given = none()
--- "[${given.value}] ${given.value.length}"
-. box = Box()
--- "[${box.s.value}] ${box.s.value.length}"
--- box.t
--- box.u[1] == null
--- box.q.value
-. t (Int, String)?
--- t.value
-. named (name String, age Int)?
--- named.value.name.length
-. n Int?
--- n.value
+```brix
+(main
+  (let s (? String))
+  (print (str "[" (. s value) "] " (. s value length)))
+  (let set (? String) "a")
+  (= set null)
+  (print (str "[" (. set value) "] " (. set value length)))
+  (let given (call none))
+  (print (str "[" (. given value) "] " (. given value length)))
+  (let box (call Box))
+  (print (str "[" (. box s value) "] " (. box s value length)))
+  (print (. box t))
+  (print (== ([] (. box u) 1) null))
+  (print (. box q value))
+  (let t (? (tuple Int String)))
+  (print (. t value))
+  (let named (? (tuple (: name String) (: age Int))))
+  (print (. named value name length))
+  (let n (? Int))
+  (print (. n value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do none String?
+(fn-do + none (? String)
+  (return null)
+)
 
-= null
+(type + Box
+  (prop + s (? String))
+  (prop + t (tuple Int String))
+  (prop + u (tuple Int (? Thing)))
+  (prop + q (? (tuple Int String)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ s String?
-+ t (Int, String)
-+ u (Int, Thing?)
-+ q (Int, String)?
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ n = 1
+(type + Thing
+  (prop + n _ (= 1))
+)
 ```
 
 ```output
@@ -2397,25 +2545,27 @@ true
 
 ### An optional returned as a Bool is whether it holds a value, also through a lazy local read once.
 
-```yumi
--- has(3)
--- has(0)
+```brix
+(main
+  (print (call has 3))
+  (print (call has 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ has Bool
-    - n Int
+(fn-expr + has Bool
+  (param n Int)
+  found
+  (where
+    (lazy found (call find n))
+  )
+)
 
-found
-
-.. found = find(n)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do find Index?
-    - n Int
-
-if n > 1
-    = 5
-= null
+(fn-do + find (? Index)
+  (param n Int)
+  (if (> n 1)
+    (return 5)
+  )
+  (return null)
+)
 ```
 
 ```output
@@ -2425,34 +2575,43 @@ false
 
 ### `!` of an optional is true when it holds no value, whatever value it holds.
 
-```yumi
-. none Int?
-. some Int? = 0
-. flag Bool? = false
--- !none, !some, !flag
-if !none
-    -- "none is empty"
-if !some
-    -- "some is empty"
-else
-    -- "some holds"
--- count(null), count(4)
+```brix
+(main
+  (let none (? Int))
+  (let some (? Int) 0)
+  (let flag (? Bool) false)
+  (print (tuple (not none) (not some) (not flag)))
+  (if (not none)
+    (print "none is empty")
+  )
+  (if (not some)
+    (print "some is empty")
+    (else
+      (print "some holds")
+    )
+  )
+  (print (tuple (call count null) (call count 4)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do count Int
-    - given Int?
-
-. first Index?
-. other Index?
-for round in 0 .. < 3
-    if !first
-        if given
-            first = round + 10
-    else if !other
-        other = round
-if !other
-    = 99
-= 1
+(fn-do + count Int
+  (param given (? Int))
+  (let first (? Index))
+  (let other (? Index))
+  (for (in round (..< 0 3))
+    (if (not first)
+      (if given
+        (= first (+ round 10))
+      )
+      (else-if (not other)
+        (= other round)
+      )
+    )
+  )
+  (if (not other)
+    (return 99)
+  )
+  (return 1)
+)
 ```
 
 ```output
@@ -2464,25 +2623,25 @@ some holds
 
 ### The value assigned through an optional chain is evaluated whatever the chain holds.
 
-```yumi
-. foo Foo?
-foo?.bar = side(1)
--- foo?.bar
-foo = Foo() as Foo?
-foo?.bar = side(2)
--- foo?.bar
+```brix
+(main
+  (let foo (? Foo))
+  (= (?. foo bar) (call side 1))
+  (print (?. foo bar))
+  (= foo (as (call Foo) (? Foo)))
+  (= (?. foo bar) (call side 2))
+  (print (?. foo bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do side Int
-    - n Int
+(fn-do + side Int
+  (param n Int)
+  (print (str "side " n))
+  (return n)
+)
 
--- "side $n"
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar Int
+(type + Foo
+  (prop + bar Int)
+)
 ```
 
 ```output
@@ -2494,23 +2653,23 @@ side 2
 
 ### A link written with no `?` after another link reads and stores through the one test.
 
-```yumi
-. foo Foo?
--- foo?.bar.bing
-foo = Foo() as Foo?
--- foo?.bar.bing
-foo?.bar.bing = 7
--- foo?.bar.bing
+```brix
+(main
+  (let foo (? Foo))
+  (print (. (?. foo bar) bing))
+  (= foo (as (call Foo) (? Foo)))
+  (print (. (?. foo bar) bing))
+  (= (. (?. foo bar) bing) 7)
+  (print (. (?. foo bar) bing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + bar _ (= (call Bar)))
+)
 
-+ bar = Bar()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-+ bing = 100
+(type + Bar
+  (prop + bing _ (= 100))
+)
 ```
 
 ```output
@@ -2521,25 +2680,27 @@ unknown
 
 ### A link of an optional chain that gives nothing gives an optional that holds nothing.
 
-```yumi
-. win Win?
-. a = win?.focus()
--- a == null
-win = Win() as Win?
-. b = win?.focus()
--- b == null
-if win?.focus()
-    -- "made"
-else
-    -- "not made"
+```brix
+(main
+  (let win (? Win))
+  (let a (call (?. win focus)))
+  (print (== a null))
+  (= win (as (call Win) (? Win)))
+  (let b (call (?. win focus)))
+  (print (== b null))
+  (if (call (?. win focus))
+    (print "made")
+    (else
+      (print "not made")
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Win
-
-────────────────────
-+ do focus
-
--- "focus"
+(type + Win
+  (fn-do + focus _
+    (print "focus")
+  )
+)
 ```
 
 ```output
@@ -2552,25 +2713,26 @@ not made
 
 ### An optional struct and an optional tuple are read through a link by name and by place.
 
-```yumi
-. p Point?
--- p?.x
--- p?[1]
-p = Point(3, 4) as Point?
--- p?.x
--- p?[1]
-. t (Int, String)?
--- t?[0]
--- t?[1]
-t = (5, "five") as (Int, String)?
--- t?[0]
--- t?[1]
+```brix
+(main
+  (let p (? Point))
+  (print (?. p x))
+  (print (?[] p 1))
+  (= p (as (call Point 3 4) (? Point)))
+  (print (?. p x))
+  (print (?[] p 1))
+  (let t (? (tuple Int String)))
+  (print (?[] t 0))
+  (print (?[] t 1))
+  (= t (as (tuple 5 "five") (? (tuple Int String))))
+  (print (?[] t 0))
+  (print (?[] t 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x Int
-+ y Int
+(type + Point (is Struct)
+  (prop + x Int)
+  (prop + y Int)
+)
 ```
 
 ```output
@@ -2586,47 +2748,45 @@ five
 
 ### The receiver of a chain is evaluated once, and the arguments of a link only where it holds a value.
 
-```yumi
--- make(false)?.bar
--- make(true)?.bar
--- make(true)?.twice(side(2))
--- make(false)?.twice(side(3))
--- make(true)?.maybe
--- make(true)?.other?.bar
--- make(true)?.name.length
--- make(false)?.name.length
-make(true)?.twice(side(4))
-make(false)?.twice(side(5))
+```brix
+(main
+  (print (?. (call make false) bar))
+  (print (?. (call make true) bar))
+  (print (call (?. (call make true) twice) (call side 2)))
+  (print (call (?. (call make false) twice) (call side 3)))
+  (print (?. (call make true) maybe))
+  (print (?. (?. (call make true) other) bar))
+  (print (. (?. (call make true) name) length))
+  (print (. (?. (call make false) name) length))
+  (call (?. (call make true) twice) (call side 4))
+  (call (?. (call make false) twice) (call side 5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do side Int
-    - n Int
+(fn-do + side Int
+  (param n Int)
+  (print (str "side " n))
+  (return n)
+)
 
--- "side $n"
-= n
+(fn-do + make (? Foo)
+  (param really Bool)
+  (print (str "make " really))
+  (if really
+    (return (call Foo))
+  )
+  (return null)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Foo?
-    - really Bool
-
--- "make $really"
-if really
-    = Foo()
-= null
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar = 42
-+ maybe Int?
-+ other Foo?
-+ name = "abc"
-
-────────────────────
-+ do twice Int
-    - n Int
-
-= n * 2
+(type + Foo
+  (prop + bar _ (= 42))
+  (prop + maybe (? Int))
+  (prop + other (? Foo))
+  (prop + name _ (= "abc"))
+  (fn-do + twice Int
+    (param n Int)
+    (return (* n 2))
+  )
+)
 ```
 
 ```output
@@ -2654,19 +2814,20 @@ make false
 
 ### A value assigned through a chain is stored only where the chain holds a value.
 
-```yumi
-. foo Foo?
-. none Int?
-foo?.bar = none ?? 5
--- foo?.bar
-foo = Foo() as Foo?
-foo?.bar = none ?? 5
--- foo?.bar
+```brix
+(main
+  (let foo (? Foo))
+  (let none (? Int))
+  (= (?. foo bar) (?? none 5))
+  (print (?. foo bar))
+  (= foo (as (call Foo) (? Foo)))
+  (= (?. foo bar) (?? none 5))
+  (print (?. foo bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar = 1
+(type + Foo
+  (prop + bar _ (= 1))
+)
 ```
 
 ```output
@@ -2676,33 +2837,29 @@ unknown
 
 ### A call written with no `?` after a link is made of what the link gives.
 
-```yumi
-. foo Foo?
--- foo?.bar.twice(2)
-foo = Foo() as Foo?
--- foo?.bar.twice(2)
-foo?.bar.poke()
+```brix
+(main
+  (let foo (? Foo))
+  (print (call (. (?. foo bar) twice) 2))
+  (= foo (as (call Foo) (? Foo)))
+  (print (call (. (?. foo bar) twice) 2))
+  (call (. (?. foo bar) poke))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + bar _ (= (call Bar)))
+)
 
-+ bar = Bar()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-+ bing = 100
-
-────────────────────
-+ do twice Int
-    - n Int
-
-= n * bing
-
-────────────────────
-+ do poke
-
--- "poke"
+(type + Bar
+  (prop + bing _ (= 100))
+  (fn-do + twice Int
+    (param n Int)
+    (return (* n bing))
+  )
+  (fn-do + poke _
+    (print "poke")
+  )
+)
 ```
 
 ```output
@@ -2713,21 +2870,22 @@ poke
 
 ### An index written with no `?` after a link reads and stores what the link gives.
 
-```yumi
-. foo Foo?
--- foo?.items[0]
--- foo?.items.length
-foo?.items[0] = 9
-foo = Foo() as Foo?
--- foo?.items[0]
--- foo?.items.length
-foo?.items[0] = 9
--- foo?.items[0]
+```brix
+(main
+  (let foo (? Foo))
+  (print ([] (?. foo items) 0))
+  (print (. (?. foo items) length))
+  (= ([] (?. foo items) 0) 9)
+  (= foo (as (call Foo) (? Foo)))
+  (print ([] (?. foo items) 0))
+  (print (. (?. foo items) length))
+  (= ([] (?. foo items) 0) 9)
+  (print ([] (?. foo items) 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ items = [1, 2, 3]
+(type + Foo
+  (prop + items _ (= (list 1 2 3)))
+)
 ```
 
 ```output
@@ -2740,45 +2898,41 @@ unknown
 
 ### A setter, a number converted, an optional and a field of a struct an object holds are assigned through a chain.
 
-```yumi
-. foo Foo?
-foo?.count = 5
--- foo?.count
-foo = Foo() as Foo?
-foo?.count = 5
--- foo?.count
-foo?.ratio = 2
--- foo?.ratio
-foo?.maybe = 3
--- foo?.maybe
-foo?.point.x = 8
--- foo?.point.x
--- foo?.point.y
+```brix
+(main
+  (let foo (? Foo))
+  (= (?. foo count) 5)
+  (print (?. foo count))
+  (= foo (as (call Foo) (? Foo)))
+  (= (?. foo count) 5)
+  (print (?. foo count))
+  (= (?. foo ratio) 2)
+  (print (?. foo ratio))
+  (= (?. foo maybe) 3)
+  (print (?. foo maybe))
+  (= (. (?. foo point) x) 8)
+  (print (. (?. foo point) x))
+  (print (. (?. foo point) y))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(type + Point (is Struct)
+  (prop + x Int)
+  (prop + y Int)
+)
 
-+ x Int
-+ y Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ held = 0
-+ ratio Float = 1
-+ maybe Int?
-+ point = Point(1, 2)
-
-────────────────────
-+ get count Int
-
-held
-
-────────────────────
-+ do count = value Int
-
--- "set $value"
-held = value
+(type + Foo
+  (prop + held _ (= 0))
+  (prop + ratio Float (= 1))
+  (prop + maybe (? Int))
+  (prop + point _ (= (call Point 1 2)))
+  (fn-expr + count Int :get
+    held
+  )
+  (fn-do + count _ :set (param value Int)
+    (print (str "set " value))
+    (= held value)
+  )
+)
 ```
 
 ```output
@@ -2793,39 +2947,39 @@ set 5
 
 ### An assignment through a chain evaluates its value, then the chain, then the key.
 
-```yumi
-make(true)?.bar = side(1)
-make(false)?.bar = side(2)
-make(true)?.other?.bar = side(3)
-make(true)?.items?[side(4)] = side(5)
-. foo = make(true)
-foo?.items = [1, 2, 3]
-foo?.items?[side(1)] = side(6)
--- foo?.items?[1]
--- foo?.items?[foo?.bar ?? 0]
+```brix
+(main
+  (= (?. (call make true) bar) (call side 1))
+  (= (?. (call make false) bar) (call side 2))
+  (= (?. (?. (call make true) other) bar) (call side 3))
+  (= (?[] (?. (call make true) items) (call side 4)) (call side 5))
+  (let foo (call make true))
+  (= (?. foo items) (list 1 2 3))
+  (= (?[] (?. foo items) (call side 1)) (call side 6))
+  (print (?[] (?. foo items) 1))
+  (print (?[] (?. foo items) (?? (?. foo bar) 0)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do side Int
-    - n Int
+(fn-do + side Int
+  (param n Int)
+  (print (str "side " n))
+  (return n)
+)
 
--- "side $n"
-= n
+(fn-do + make (? Foo)
+  (param really Bool)
+  (print (str "make " really))
+  (if really
+    (return (call Foo))
+  )
+  (return null)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Foo?
-    - really Bool
-
--- "make $really"
-if really
-    = Foo()
-= null
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar = 2
-+ other Foo?
-+ items [Int]?
+(type + Foo
+  (prop + bar _ (= 2))
+  (prop + other (? Foo))
+  (prop + items (? (list Int)))
+)
 ```
 
 ```output
@@ -2846,23 +3000,24 @@ side 1
 
 ### A field of an optional struct a local holds is assigned through a chain where it lies.
 
-```yumi
-. p Point?
-p?.x = 5
--- p?.x
-p = Point(1, 2) as Point?
-p?.x = 5
--- p?.x
--- p?.y
-. t (Int, Int)?
-t = (1, 2) as (Int, Int)?
--- t?[0]
+```brix
+(main
+  (let p (? Point))
+  (= (?. p x) 5)
+  (print (?. p x))
+  (= p (as (call Point 1 2) (? Point)))
+  (= (?. p x) 5)
+  (print (?. p x))
+  (print (?. p y))
+  (let t (? (tuple Int Int)))
+  (= t (as (tuple 1 2) (? (tuple Int Int))))
+  (print (?[] t 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x Int
-+ y Int
+(type + Point (is Struct)
+  (prop + x Int)
+  (prop + y Int)
+)
 ```
 
 ```output
@@ -2874,46 +3029,38 @@ unknown
 
 ### A property named alone is the receiver of a chain read and of one assigned.
 
-```yumi
-. box = Box()
--- box.peek()
-box.fill()
--- box.peek()
-box.poke(7)
--- box.peek()
-box.inner?.hello()
+```brix
+(main
+  (let box (call Box))
+  (print (call (. box peek)))
+  (call (. box fill))
+  (print (call (. box peek)))
+  (call (. box poke) 7)
+  (print (call (. box peek)))
+  (call (?. (. box inner) hello))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Inner
+(type + Inner
+  (prop + value _ (= 1))
+  (fn-do + hello _
+    (print (str "hello " value))
+  )
+)
 
-+ value = 1
-
-────────────────────
-+ do hello
-
--- "hello $value"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ inner Inner?
-
-────────────────────
-+ do fill
-
-inner = Inner()
-
-────────────────────
-+ do peek Int?
-
-= inner?.value
-
-────────────────────
-+ do poke
-    - n Int
-
-inner?.value = n
-this.inner?.value = n + 1
+(type + Box
+  (prop + inner (? Inner))
+  (fn-do + fill _
+    (= inner (call Inner))
+  )
+  (fn-do + peek (? Int)
+    (return (?. inner value))
+  )
+  (fn-do + poke _
+    (param n Int)
+    (= (?. inner value) n)
+    (= (?. (. this inner) value) (+ n 1))
+  )
+)
 ```
 
 ```output
@@ -2925,26 +3072,28 @@ hello 8
 
 ### An assignment of an optional after `?` gives what the place then holds, as the type of the place.
 
-```yumi
-. x I32?
-. y Float = 1.5
-. a = y =? x
--- a
--- type-of a
-x = 10
-. b = y =? x
--- b
--- type-of b
--- y
-. n Int?
-. c = y +=? n
--- c
--- type-of c
-n = 2
-. d = y +=? n
--- d
--- type-of d
--- y
+```brix
+(main
+  (let x (? I32))
+  (let y Float 1.5)
+  (let a (=? y x))
+  (print a)
+  (print (type-of a))
+  (= x 10)
+  (let b (=? y x))
+  (print b)
+  (print (type-of b))
+  (print y)
+  (let n (? Int))
+  (let c (+=? y n))
+  (print c)
+  (print (type-of c))
+  (= n 2)
+  (let d (+=? y n))
+  (print d)
+  (print (type-of d))
+  (print y)
+)
 ```
 
 ```output
@@ -2962,32 +3111,34 @@ n = 2
 
 ### An assignment after `?` of what a call gives stores only where it holds a value.
 
-```yumi
-. x Int?
-. y Float = 1.5
-. a = y =? pick(false)
--- a
--- type-of a
-. b = y =? pick(true)
--- b
--- type-of b
--- y
-. c = y +=? pick(false)
--- c
--- type-of c
-. d = y +=? pick(true)
--- d
--- type-of d
--- y
+```brix
+(main
+  (let x (? Int))
+  (let y Float 1.5)
+  (let a (=? y (call pick false)))
+  (print a)
+  (print (type-of a))
+  (let b (=? y (call pick true)))
+  (print b)
+  (print (type-of b))
+  (print y)
+  (let c (+=? y (call pick false)))
+  (print c)
+  (print (type-of c))
+  (let d (+=? y (call pick true)))
+  (print d)
+  (print (type-of d))
+  (print y)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick I32?
-    - really Bool
-
--- "pick $really"
-if really
-    = 9
-= null
+(fn-do + pick (? I32)
+  (param really Bool)
+  (print (str "pick " really))
+  (if really
+    (return 9)
+  )
+  (return null)
+)
 ```
 
 ```output
@@ -3009,77 +3160,78 @@ pick true
 
 ### A property, a field, a global and a text are assigned after `?` only where the value holds one.
 
-```yumi
-. foo = Foo()
-. x Int?
-foo.bar =? x
--- foo.bar
-foo.bar +=? x
--- foo.bar
-x = 4
-foo.bar =? x
--- foo.bar
-foo.bar +=? pick(true)
--- foo.bar
-foo.bar +=? pick(false)
--- foo.bar
-foo.ratio =? pick(true)
--- foo.ratio
-foo.maybe =? pick(false)
--- foo.maybe
-foo.maybe =? pick(true)
--- foo.maybe
-. p = Point(1, 2)
-p.x =? pick(false)
-p.y =? pick(true)
--- p.x
--- p.y
-total =? pick(false)
--- total
-total =? pick(true)
--- total
-total +=? pick(true)
--- total
-. t = "a"
-t =? word(false)
--- t
-t =? word(true)
--- t
-t +=? word(true)
--- t
-t +=? word(false)
--- t
-_ total = 100
+```brix
+(main
+  (let foo (call Foo))
+  (let x (? Int))
+  (=? (. foo bar) x)
+  (print (. foo bar))
+  (+=? (. foo bar) x)
+  (print (. foo bar))
+  (= x 4)
+  (=? (. foo bar) x)
+  (print (. foo bar))
+  (+=? (. foo bar) (call pick true))
+  (print (. foo bar))
+  (+=? (. foo bar) (call pick false))
+  (print (. foo bar))
+  (=? (. foo ratio) (call pick true))
+  (print (. foo ratio))
+  (=? (. foo maybe) (call pick false))
+  (print (. foo maybe))
+  (=? (. foo maybe) (call pick true))
+  (print (. foo maybe))
+  (let p (call Point 1 2))
+  (=? (. p x) (call pick false))
+  (=? (. p y) (call pick true))
+  (print (. p x))
+  (print (. p y))
+  (=? total (call pick false))
+  (print total)
+  (=? total (call pick true))
+  (print total)
+  (+=? total (call pick true))
+  (print total)
+  (let t "a")
+  (=? t (call word false))
+  (print t)
+  (=? t (call word true))
+  (print t)
+  (+=? t (call word true))
+  (print t)
+  (+=? t (call word false))
+  (print t)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick I32?
-    - really Bool
+(prop _ total _ (= 100))
 
--- "pick $really"
-if really
-    = 9
-= null
+(fn-do + pick (? I32)
+  (param really Bool)
+  (print (str "pick " really))
+  (if really
+    (return 9)
+  )
+  (return null)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do word String?
-    - really Bool
+(fn-do + word (? String)
+  (param really Bool)
+  (if really
+    (return "w")
+  )
+  (return null)
+)
 
-if really
-    = "w"
-= null
+(type + Point (is Struct)
+  (prop + x Int)
+  (prop + y Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x Int
-+ y Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar = 1
-+ ratio Float = 0.5
-+ maybe Int?
+(type + Foo
+  (prop + bar _ (= 1))
+  (prop + ratio Float (= 0.5))
+  (prop + maybe (? Int))
+)
 ```
 
 ```output
@@ -3114,19 +3266,20 @@ ww
 
 ### A list takes an item after `?` only where the item holds one, as from `catch?`.
 
-```yumi
-. found = List'Int()
-for n in [1, -2, 3]
-    found +=? catch? doubled(n)
--- found
+```brix
+(main
+  (let found (call (of List Int)))
+  (for (in n (list 1 -2 3))
+    (+=? found (catch? (call doubled n)))
+  )
+  (print found)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do doubled Int ?! Error
-    - n Int
-
-?! Error("negative")
-    if n < 0
-= n * 2
+(fn-do _ doubled Int (?! Error)
+  (param n Int)
+  (throw (call Error "negative") (if (< n 0)))
+  (return (* n 2))
+)
 ```
 
 ```output
@@ -3135,29 +3288,31 @@ _ do doubled Int ?! Error
 
 ### An assignment after `?` in a loop and as a value.
 
-```yumi
--- run(false)
--- run(true)
+```brix
+(main
+  (print (call run false))
+  (print (call run true))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int
-    - really Bool
+(fn-do + run Int
+  (param really Bool)
+  (let total 1)
+  (let n 0)
+  (while (< n 3)
+    (+=? total (call pick (and really (!= n 1))))
+    (+= n 1)
+  )
+  (let last (=? total (call pick really)))
+  (return (+ last total))
+)
 
-. total = 1
-. n = 0
-while n < 3
-    total +=? pick(really && n != 1)
-    n += 1
-. last = total =? pick(really)
-= last + total
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pick Int?
-    - really Bool
-
-if really
-    = 9
-= null
+(fn-do + pick (? Int)
+  (param really Bool)
+  (if really
+    (return 9)
+  )
+  (return null)
+)
 ```
 
 ```output
@@ -3167,50 +3322,50 @@ if really
 
 ### A link written with no `?` after a link that gives an optional reads no property of it.
 
-```yumi crash
-. foo Foo?
--- foo?.bar.bing
-foo = Foo() as Foo?
--- foo?.bar.bing
-foo!.bar = Bar()
--- foo?.bar.bing
+```brix crash
+(main
+  (let foo (? Foo))
+  (print (. (?. foo bar) bing))
+  (= foo (as (call Foo) (? Foo)))
+  (print (. (?. foo bar) bing))
+  (= (. (!! foo) bar) (call Bar))
+  (print (. (?. foo bar) bing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + bar (? Bar))
+)
 
-+ bar Bar?
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-+ bing = 100
+(type + Bar
+  (prop + bing _ (= 100))
+)
 ```
 
 ```output
-Exception: Property "bing" is read from Bar?, which may be null; unwrap it first with ! or ?.
-<no file:3>
-    -- foo?.bar.bing
-       ^^^^^^^^^^^^^
+Exception: Property "bing" is read from Bar?, which may be null; unwrap it first with "(!! …)" or "(?. …)"
+<no file:4>
+      (print (. (?. foo bar) bing))
+             ^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### An assigning operator updates a place after a link of an optional chain where the chain holds a value, and skips it where the chain holds none.
 
-```yumi
-. foo Foo?
-foo?.bar.bing += 1
-foo = Foo() as Foo?
-foo?.bar.bing += 1
--- foo?.bar.bing
+```brix
+(main
+  (let foo (? Foo))
+  (+= (. (?. foo bar) bing) 1)
+  (= foo (as (call Foo) (? Foo)))
+  (+= (. (?. foo bar) bing) 1)
+  (print (. (?. foo bar) bing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + bar _ (= (call Bar)))
+)
 
-+ bar = Bar()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-+ bing = 100
+(type + Bar
+  (prop + bing _ (= 100))
+)
 ```
 
 ```output
@@ -3219,17 +3374,18 @@ foo?.bar.bing += 1
 
 ### An assigning operator updates an index after a link of an optional chain where the chain holds a value, and skips it where the chain holds none.
 
-```yumi
-. foo Foo?
-foo?.items[0] += 1
-foo = Foo() as Foo?
-foo?.items[0] += 1
--- foo?.items[0]
+```brix
+(main
+  (let foo (? Foo))
+  (+= ([] (?. foo items) 0) 1)
+  (= foo (as (call Foo) (? Foo)))
+  (+= ([] (?. foo items) 0) 1)
+  (print ([] (?. foo items) 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ items = [1, 2, 3]
+(type + Foo
+  (prop + items _ (= (list 1 2 3)))
+)
 ```
 
 ```output
@@ -3238,82 +3394,85 @@ foo?.items[0] += 1
 
 ### An index written after `?` needs an optional to read from.
 
-```yumi crash
-. items = [1, 2, 3]
--- items?[0]
+```brix crash
+(main
+  (let items (list 1 2 3))
+  (print (?[] items 0))
+)
 ```
 
 ```output
-Exception: "items" is [I64], which is never null, so it needs no "?"; write "items[0]"
-<no file:3>
-    -- items?[0]
-       ^^^^^^^^^
+Exception: "items" is [I64], which is never null, so it needs no "?"; write "([] items 0)"
+<no file:4>
+      (print (?[] items 0))
+             ^^^^^^^^^^^^^
 ```
 
 ### A property assigned after `?` needs an optional to read from.
 
-```yumi crash
-. foo Foo
-foo?.bar = 2
--- foo.bar
+```brix crash
+(main
+  (let foo Foo)
+  (= (?. foo bar) 2)
+  (print (. foo bar))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ bar = 1
+(type + Foo
+  (prop + bar _ (= 1))
+)
 ```
 
 ```output
-Exception: "foo" is Foo, which is never null, so it needs no "?"; write "foo.bar"
-<no file:3>
-    foo?.bar = 2
-    ^^^^^^^^
+Exception: "foo" is Foo, which is never null, so it needs no "?"; write "(. foo bar)"
+<no file:4>
+      (= (?. foo bar) 2)
+         ^^^^^^^^^^^^
 ```
 
 ### An index assigned after `?` needs an optional to read from.
 
-```yumi crash
-. items = [1, 2, 3]
-items?[0] = 5
--- items[0]
+```brix crash
+(main
+  (let items (list 1 2 3))
+  (= (?[] items 0) 5)
+  (print ([] items 0))
+)
 ```
 
 ```output
-Exception: "items" is [I64], which is never null, so it needs no "?"; write "items[0]"
-<no file:3>
-    items?[0] = 5
-    ^^^^^^^^^
+Exception: "items" is [I64], which is never null, so it needs no "?"; write "([] items 0)"
+<no file:4>
+      (= (?[] items 0) 5)
+         ^^^^^^^^^^^^^
 ```
 
 ### Optional compared with a value by the == its class declares
 
-```yumi
-. a Foo? = null
-. b = Foo(1)
-. c Foo? = Foo(1)
-. d Foo? = Foo(2)
--- c == b
--- b == c
--- c != b
--- d == b
--- b != d
--- c == d
--- c == c
--- c != d
+```brix
+(main
+  (let a (? Foo) null)
+  (let b (call Foo 1))
+  (let c (? Foo) (call Foo 1))
+  (let d (? Foo) (call Foo 2))
+  (print (== c b))
+  (print (== b c))
+  (print (!= c b))
+  (print (== d b))
+  (print (!= b d))
+  (print (== c d))
+  (print (== c c))
+  (print (!= c d))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ x Int
-
-────────────────────
-+ This
-    - x
-
-────────────────────
-+ this == other Foo
-
-x == other.x
+(type + Foo
+  (prop + x Int)
+  (fn-do + This _
+    (param x _)
+  )
+  (fn-expr + (infix this == (param other Foo)) _
+    (== x (. other x))
+  )
+)
 ```
 
 ```output
@@ -3329,25 +3488,23 @@ true
 
 ### An optional that holds nothing is not equal to a value, whatever == its class declares
 
-```yumi
-. a Foo? = null
-. b = Foo(1)
--- "start"
--- a == b
+```brix
+(main
+  (let a (? Foo) null)
+  (let b (call Foo 1))
+  (print "start")
+  (print (== a b))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ x Int
-
-────────────────────
-+ This
-    - x
-
-────────────────────
-+ this == other Foo
-
-x == other.x
+(type + Foo
+  (prop + x Int)
+  (fn-do + This _
+    (param x _)
+  )
+  (fn-expr + (infix this == (param other Foo)) _
+    (== x (. other x))
+  )
+)
 ```
 
 ```output
@@ -3357,25 +3514,23 @@ false
 
 ### Two optionals that hold nothing are equal without the == their class declares
 
-```yumi
-. a Foo? = null
-. n Foo? = null
--- "start"
--- a == n
+```brix
+(main
+  (let a (? Foo) null)
+  (let n (? Foo) null)
+  (print "start")
+  (print (== a n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ x Int
-
-────────────────────
-+ This
-    - x
-
-────────────────────
-+ this == other Foo
-
-x == other.x
+(type + Foo
+  (prop + x Int)
+  (fn-do + This _
+    (param x _)
+  )
+  (fn-expr + (infix this == (param other Foo)) _
+    (== x (. other x))
+  )
+)
 ```
 
 ```output
@@ -3385,28 +3540,29 @@ true
 
 ### Optionals of a class compared as the objects they hold
 
-```yumi
-. box = Box()
-. other = Box()
-. a Box? = null
-. n Box? = null
-. p Box? = box
-. q Box? = other
--- a == n
--- a == box
--- box == a
--- p == box
--- box == p
--- p == q
--- p != q
--- p == p
--- a != p
--- p != a
+```brix
+(main
+  (let box (call Box))
+  (let other (call Box))
+  (let a (? Box) null)
+  (let n (? Box) null)
+  (let p (? Box) box)
+  (let q (? Box) other)
+  (print (== a n))
+  (print (== a box))
+  (print (== box a))
+  (print (== p box))
+  (print (== box p))
+  (print (== p q))
+  (print (!= p q))
+  (print (== p p))
+  (print (!= a p))
+  (print (!= p a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ value Int = 1
+(type + Box
+  (prop + value Int (= 1))
+)
 ```
 
 ```output
@@ -3424,27 +3580,29 @@ true
 
 ### Optionals of different numbers are compared as numbers and never both empty
 
-```yumi
-. a Int? = null
-. b I8? = null
-. c Int? = 5
-. d I8? = 5
-. f Float = 5.0
-. u U64? = 5
-. m Int? = -1
-. w U64? = 18446744073709551615
--- a == b
--- c == d
--- d == c
--- a == d
--- c == f
--- f == c
--- a == f
--- c == u
--- m == w
--- w == m
--- c != d
--- a != b
+```brix
+(main
+  (let a (? Int) null)
+  (let b (? I8) null)
+  (let c (? Int) 5)
+  (let d (? I8) 5)
+  (let f Float 5.0)
+  (let u (? U64) 5)
+  (let m (? Int) -1)
+  (let w (? U64) 18446744073709551615)
+  (print (== a b))
+  (print (== c d))
+  (print (== d c))
+  (print (== a d))
+  (print (== c f))
+  (print (== f c))
+  (print (== a f))
+  (print (== c u))
+  (print (== m w))
+  (print (== w m))
+  (print (!= c d))
+  (print (!= a b))
+)
 ```
 
 ```output
@@ -3464,33 +3622,35 @@ true
 
 ### Optionals of text and of atoms compared
 
-```yumi
-. a String? = null
-. n String? = null
-. s String? = "hi"
-. t String? = "h" ++ "i"
-. plain = "hi"
--- a == n
--- a == plain
--- plain == a
--- s == plain
--- plain == s
--- s == t
--- s != t
--- a != s
--- s == "hi"
--- "ho" == s
-. x Atom? = "name" as Atom
-. y Atom? = "name" as Atom
-. z Atom? = null
-. k = "name" as Atom
--- x == y
--- x != y
--- x == z
--- z == z
--- x == k
--- k == x
--- z == k
+```brix
+(main
+  (let a (? String) null)
+  (let n (? String) null)
+  (let s (? String) "hi")
+  (let t (? String) (++ "h" "i"))
+  (let plain "hi")
+  (print (== a n))
+  (print (== a plain))
+  (print (== plain a))
+  (print (== s plain))
+  (print (== plain s))
+  (print (== s t))
+  (print (!= s t))
+  (print (!= a s))
+  (print (== s "hi"))
+  (print (== "ho" s))
+  (let x (? Atom) (as "name" Atom))
+  (let y (? Atom) (as "name" Atom))
+  (let z (? Atom) null)
+  (let k (as "name" Atom))
+  (print (== x y))
+  (print (!= x y))
+  (print (== x z))
+  (print (== z z))
+  (print (== x k))
+  (print (== k x))
+  (print (== z k))
+)
 ```
 
 ```output
@@ -3515,18 +3675,20 @@ false
 
 ### Optionals of tuples compared field by field
 
-```yumi
-. a (Int, Int)? = null
-. n (Int, Int)? = null
-. p (Int, Int)? = (1, 2)
-. q = (1, 2)
--- a == n
--- a == p
--- p == q
--- q == p
--- p != q
--- a == q
--- q != a
+```brix
+(main
+  (let a (? (tuple Int Int)) null)
+  (let n (? (tuple Int Int)) null)
+  (let p (? (tuple Int Int)) (tuple 1 2))
+  (let q (tuple 1 2))
+  (print (== a n))
+  (print (== a p))
+  (print (== p q))
+  (print (== q p))
+  (print (!= p q))
+  (print (== a q))
+  (print (!= q a))
+)
 ```
 
 ```output
@@ -3541,28 +3703,27 @@ true
 
 ### Optional tuple that holds nothing compared with a tuple that declares ==
 
-```yumi
-. absent Point2? = null
-. present = Point2(1, 2)
--- "start"
--- absent != present
--- absent == present
--- present != absent
-. other Point2? = Point2(1, 2)
--- other != present
--- other == present
--- present == other
+```brix
+(main
+  (let absent (? Point2) null)
+  (let present (call Point2 1 2))
+  (print "start")
+  (print (!= absent present))
+  (print (== absent present))
+  (print (!= present absent))
+  (let other (? Point2) (call Point2 1 2))
+  (print (!= other present))
+  (print (== other present))
+  (print (== present other))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point2 is Tuple
-
-+ x Int
-+ y Int
-
-────────────────────
-+ this == other Point2
-
-x == other.x && y == other.y
+(type + Point2 (is Tuple)
+  (prop + x Int)
+  (prop + y Int)
+  (fn-expr + (infix this == (param other Point2)) _
+    (and (== x (. other x)) (== y (. other y)))
+  )
+)
 ```
 
 ```output
@@ -3577,35 +3738,33 @@ true
 
 ### A comparison with an optional is false where it holds nothing, and otherwise calls == on what it holds: on the right one's where both are optional
 
-```yumi
-. a Foo? = Foo(1)
-. b Foo? = Foo(2)
-. c = Foo(3)
-. n Foo? = null
--- a == b
--- b == a
--- a != b
--- a == c
--- c == a
--- c != a
--- n == a
--- a == n
--- n != n
+```brix
+(main
+  (let a (? Foo) (call Foo 1))
+  (let b (? Foo) (call Foo 2))
+  (let c (call Foo 3))
+  (let n (? Foo) null)
+  (print (== a b))
+  (print (== b a))
+  (print (!= a b))
+  (print (== a c))
+  (print (== c a))
+  (print (!= c a))
+  (print (== n a))
+  (print (== a n))
+  (print (!= n n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ x Int
-
-────────────────────
-+ This
-    - x
-
-────────────────────
-+ do this == other Foo
-
--- "eq $x with ${other.x}"
-= x == other.x
+(type + Foo
+  (prop + x Int)
+  (fn-do + This _
+    (param x _)
+  )
+  (fn-do + (infix this == (param other Foo)) _
+    (print (str "eq " x " with " (. other x)))
+    (return (== x (. other x)))
+  )
+)
 ```
 
 ```output
@@ -3628,41 +3787,45 @@ false
 
 ### An optional number is ordered against a number only once it is unwrapped
 
-```yumi compile-error
-. limit Int? = 3
-. count = 1
--- count < limit
+```brix compile-error
+(main
+  (let limit (? Int) 3)
+  (let count 1)
+  (print (< count limit))
+)
 ```
 
 ```output
 Exception: Operator "<" is not defined for I64 and I64?
-<no file:4>
-    -- count < limit
-       ^^^^^^^^^^^^^
+<no file:5>
+      (print (< count limit))
+             ^^^^^^^^^^^^^^^
 ```
 
 ### Floats of two widths compare in the wider of the two, whether or not either is optional
 
-```yumi
-. x F64 = 0.1
-. y F32? = 0.1
-. z F64? = 0.1
-. w F32 = 0.1
--- x == y
--- y == x
--- z == w
--- w == z
--- y == z
--- z == y
--- x != y
--- z != w
-. i Int? = 16777217
-. f F32 = 16777216.0
--- i == f
--- f == i
-. g F32? = 16777216.0
--- i == g
--- g == i
+```brix
+(main
+  (let x F64 0.1)
+  (let y (? F32) 0.1)
+  (let z (? F64) 0.1)
+  (let w F32 0.1)
+  (print (== x y))
+  (print (== y x))
+  (print (== z w))
+  (print (== w z))
+  (print (== y z))
+  (print (== z y))
+  (print (!= x y))
+  (print (!= z w))
+  (let i (? Int) 16777217)
+  (let f F32 16777216.0)
+  (print (== i f))
+  (print (== f i))
+  (let g (? F32) 16777216.0)
+  (print (== i g))
+  (print (== g i))
+)
 ```
 
 ```output
@@ -3682,56 +3845,52 @@ true
 
 ### Optional comparison evaluates each operand once in order
 
-```yumi
-. p = Pair(1, 2)
--- first() == second()
--- first() != second()
--- second() == first()
--- hold(p) == bump(p)
--- hold(p) == hold(p)
-. count = 0
-. o Int? = 1
--- o == step()
--- step() == o
--- o != step()
+```brix
+(main
+  (let p (call Pair 1 2))
+  (print (== (call first) (call second)))
+  (print (!= (call first) (call second)))
+  (print (== (call second) (call first)))
+  (print (== (call hold p) (call bump p)))
+  (print (== (call hold p) (call hold p)))
+  (let count 0)
+  (let o (? Int) 1)
+  (print (== o (call step)))
+  (print (== (call step) o))
+  (print (!= o (call step)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Struct
+(type + Pair (is Struct)
+  (prop + a Int)
+  (prop + b Int)
+)
 
-+ a Int
-+ b Int
+(fn-do + first (? Int)
+  (print "first")
+  (return 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do first Int?
+(fn-do + second (? Int)
+  (print "second")
+  (return null)
+)
 
--- "first"
-= 1
+(fn-do + hold (? Pair)
+  (param pair Pair)
+  (print "hold")
+  (return pair)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do second Int?
+(fn-do + bump (? Pair)
+  (param pair Pair)
+  (print "bump")
+  (return (call Pair (+ (. pair a) 1) (. pair b)))
+)
 
--- "second"
-= null
-
-━━━━━━━━━━━━━━━━━━━━
-+ do hold Pair?
-    - pair Pair
-
--- "hold"
-= pair
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bump Pair?
-    - pair Pair
-
--- "bump"
-= Pair(pair.a + 1, pair.b)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do step Int
-
--- "step"
-= 1
+(fn-do + step Int
+  (print "step")
+  (return 1)
+)
 ```
 
 ```output
@@ -3760,43 +3919,43 @@ false
 
 ### Optional enums and unions compared
 
-```yumi
-. a Level? = null
-. h Level? = Level.high
-. l = Level.low
--- a == h
--- h == Level.high
--- Level.low == h
--- a == l
--- a != l
--- h != l
--- h == h
--- a == a
-. t Shape? = Shape.round
-. u Shape? = null
-. v = Shape.square
--- t == u
--- t == v
--- t == .round
--- .round == t
--- u == .round
--- u != .round
--- t != v
--- u == u
--- t == t
+```brix
+(main
+  (let a (? Level) null)
+  (let h (? Level) (. Level high))
+  (let l (. Level low))
+  (print (== a h))
+  (print (== h (. Level high)))
+  (print (== (. Level low) h))
+  (print (== a l))
+  (print (!= a l))
+  (print (!= h l))
+  (print (== h h))
+  (print (== a a))
+  (let t (? Shape) (. Shape round))
+  (let u (? Shape) null)
+  (let v (. Shape square))
+  (print (== t u))
+  (print (== t v))
+  (print (== t .round))
+  (print (== .round t))
+  (print (== u .round))
+  (print (!= u .round))
+  (print (!= t v))
+  (print (== u u))
+  (print (== t t))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Level is Int
+(type + Level (is Int)
+  (variant low (= 1))
+  (variant high (= 2))
+)
 
-| low = 1
-| high = 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
-
-| butt
-| round
-| square
+(type + Shape (is Union)
+  (variant butt)
+  (variant round)
+  (variant square)
+)
 ```
 
 ```output
@@ -3821,62 +3980,54 @@ true
 
 ### Optional comparison through a declared != and a declared ==
 
-```yumi
-. a Foo? = Foo(1)
-. b Foo? = Foo(1)
-. n Foo? = null
--- a == b
--- a != b
--- n == a
--- n != a
--- n == n
--- n != n
-. c Bar? = Bar(1)
-. d Bar? = Bar(1)
-. e Bar? = Bar(2)
-. m Bar? = null
--- c == d
--- c != d
--- c == e
--- c != e
--- m != c
--- m == m
+```brix
+(main
+  (let a (? Foo) (call Foo 1))
+  (let b (? Foo) (call Foo 1))
+  (let n (? Foo) null)
+  (print (== a b))
+  (print (!= a b))
+  (print (== n a))
+  (print (!= n a))
+  (print (== n n))
+  (print (!= n n))
+  (let c (? Bar) (call Bar 1))
+  (let d (? Bar) (call Bar 1))
+  (let e (? Bar) (call Bar 2))
+  (let m (? Bar) null)
+  (print (== c d))
+  (print (!= c d))
+  (print (== c e))
+  (print (!= c e))
+  (print (!= m c))
+  (print (== m m))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo
+  (prop + x Int)
+  (fn-do + This _
+    (param x _)
+  )
+  (fn-do + (infix this != (param other Foo)) _
+    (print "ne")
+    (return (!= x (. other x)))
+  )
+)
 
-+ x Int
-
-────────────────────
-+ This
-    - x
-
-────────────────────
-+ do this != other Foo
-
--- "ne"
-= x != other.x
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bar
-
-+ x Int
-
-────────────────────
-+ This
-    - x
-
-────────────────────
-+ do this == other Bar
-
--- "bar eq"
-= x == other.x
-
-────────────────────
-+ do this != other Bar
-
--- "bar ne"
-= true
+(type + Bar
+  (prop + x Int)
+  (fn-do + This _
+    (param x _)
+  )
+  (fn-do + (infix this == (param other Bar)) _
+    (print "bar eq")
+    (return (== x (. other x)))
+  )
+  (fn-do + (infix this != (param other Bar)) _
+    (print "bar ne")
+    (return true)
+  )
+)
 ```
 
 ```output
@@ -3902,54 +4053,57 @@ true
 
 ### Optional comparison as a condition and of properties
 
-```yumi
-. a Int? = 3
-. b Int? = null
-. c Int? = 3
-if a == c
-    -- "a is c"
-if a == b
-    -- "a is b"
-else
-    -- "a is not b"
-if a != b && a == c && b != c
-    -- "chain"
-. same = a == c
-. differ = a != c
--- same
--- differ
--- check(a, c)
--- check(a, b)
--- check(b, b)
--- (if a == c then 1 else 2)
-while a != c
-    -- "never"
-. box = Box()
--- box.value == a
--- box.value != box.other
--- box.other == box.other
-box.other = 3
--- box.other == a
--- box.missing() == box.value
--- box.missing() == box.missing()
+```brix
+(main
+  (let a (? Int) 3)
+  (let b (? Int) null)
+  (let c (? Int) 3)
+  (if (== a c)
+    (print "a is c")
+  )
+  (if (== a b)
+    (print "a is b")
+    (else
+      (print "a is not b")
+    )
+  )
+  (if (and (!= a b) (== a c) (!= b c))
+    (print "chain")
+  )
+  (let same (== a c))
+  (let differ (!= a c))
+  (print same)
+  (print differ)
+  (print (call check a c))
+  (print (call check a b))
+  (print (call check b b))
+  (print (if-expr (== a c) 1 2))
+  (while (!= a c)
+    (print "never")
+  )
+  (let box (call Box))
+  (print (== (. box value) a))
+  (print (!= (. box value) (. box other)))
+  (print (== (. box other) (. box other)))
+  (= (. box other) 3)
+  (print (== (. box other) a))
+  (print (== (call (. box missing)) (. box value)))
+  (print (== (call (. box missing)) (call (. box missing))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ check String
-    - left Int?
-    - right Int?
+(fn-expr + check String
+  (param left (? Int))
+  (param right (? Int))
+  (if-expr (== left right) "same" "differ")
+)
 
-if left == right then "same" else "differ"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ value Int? = 3
-+ other Int? = null
-
-────────────────────
-+ missing Int?
-
-null
+(type + Box
+  (prop + value (? Int) (= 3))
+  (prop + other (? Int) (= null))
+  (fn-expr + missing (? Int)
+    null
+  )
+)
 ```
 
 ```output
@@ -3972,36 +4126,37 @@ true
 
 ### Optional structs and mixed optionals compared
 
-```yumi
-. a (Int, Int)? = (1, 2)
-. b (Int, String)? = (1, "2")
-. s Rec? = Rec(1, 2)
-. t Rec? = Rec(1, 2)
-. u Rec? = null
-. r = Rec(1, 3)
--- s == t
--- s != t
--- s == u
--- u == u
--- s == r
--- r == s
--- r != u
-. x String? = "a"
-. k Atom? = "a" as Atom
-. i Int? = 1
-. j I8? = 1
-. e U8? = null
-. o I8? = null
--- i == j
--- e == o
--- j == i
--- o != e
+```brix
+(main
+  (let a (? (tuple Int Int)) (tuple 1 2))
+  (let b (? (tuple Int String)) (tuple 1 "2"))
+  (let s (? Rec) (call Rec 1 2))
+  (let t (? Rec) (call Rec 1 2))
+  (let u (? Rec) null)
+  (let r (call Rec 1 3))
+  (print (== s t))
+  (print (!= s t))
+  (print (== s u))
+  (print (== u u))
+  (print (== s r))
+  (print (== r s))
+  (print (!= r u))
+  (let x (? String) "a")
+  (let k (? Atom) (as "a" Atom))
+  (let i (? Int) 1)
+  (let j (? I8) 1)
+  (let e (? U8) null)
+  (let o (? I8) null)
+  (print (== i j))
+  (print (== e o))
+  (print (== j i))
+  (print (!= o e))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Rec is Struct
-
-+ a Int
-+ b Int
+(type + Rec (is Struct)
+  (prop + a Int)
+  (prop + b Int)
+)
 ```
 
 ```output
@@ -4020,37 +4175,36 @@ true
 
 ### Optional compared by an == that takes an optional
 
-```yumi
-. a Foo? = null
-. b = Foo(1)
-. c Foo? = Foo(2)
--- b == a
--- a == b
--- a != b
--- c == b
--- b == c
--- a == c
--- c == a
--- c == c
--- a == a
+```brix
+(main
+  (let a (? Foo) null)
+  (let b (call Foo 1))
+  (let c (? Foo) (call Foo 2))
+  (print (== b a))
+  (print (== a b))
+  (print (!= a b))
+  (print (== c b))
+  (print (== b c))
+  (print (== a c))
+  (print (== c a))
+  (print (== c c))
+  (print (== a a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
-
-+ x Int
-
-────────────────────
-+ This
-    - x
-
-────────────────────
-+ do this == other Foo?
-
-if other
-    -- "eq $x with ${other.x}"
-    = x == other.x
--- "eq $x with nothing"
-= false
+(type + Foo
+  (prop + x Int)
+  (fn-do + This _
+    (param x _)
+  )
+  (fn-do + (infix this == (param other (? Foo))) _
+    (if other
+      (print (str "eq " x " with " (. other x)))
+      (return (== x (. other x)))
+    )
+    (print (str "eq " x " with nothing"))
+    (return false)
+  )
+)
 ```
 
 ```output
@@ -4073,50 +4227,46 @@ true
 
 ### Optional tuples compared by the == one declares for another
 
-```yumi
-. a Point? = null
-. b = Point(1, 2)
-. c Point? = Point(1, 2)
-. d Other? = Other(1, 2)
-. e Other? = null
--- a == b
--- b == a
--- c == b
--- c == c
--- a == a
--- c == d
--- d == c
--- a == e
--- e == a
--- a == d
--- c != e
--- b == d
--- d == b
--- b == e
+```brix
+(main
+  (let a (? Point) null)
+  (let b (call Point 1 2))
+  (let c (? Point) (call Point 1 2))
+  (let d (? Other) (call Other 1 2))
+  (let e (? Other) null)
+  (print (== a b))
+  (print (== b a))
+  (print (== c b))
+  (print (== c c))
+  (print (== a a))
+  (print (== c d))
+  (print (== d c))
+  (print (== a e))
+  (print (== e a))
+  (print (== a d))
+  (print (!= c e))
+  (print (== b d))
+  (print (== d b))
+  (print (== b e))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Tuple
+(type + Point (is Tuple)
+  (prop + x Int)
+  (prop + y Int)
+  (fn-do + (infix this == (param other Point)) _
+    (print "point eq")
+    (return (and (== x (. other x)) (== y (. other y))))
+  )
+  (fn-do + (infix this == (param other Other)) _
+    (print "point eq other")
+    (return (and (== x (. other x)) (== y (. other y))))
+  )
+)
 
-+ x Int
-+ y Int
-
-────────────────────
-+ do this == other Point
-
--- "point eq"
-= x == other.x && y == other.y
-
-────────────────────
-+ do this == other Other
-
--- "point eq other"
-= x == other.x && y == other.y
-
-━━━━━━━━━━━━━━━━━━━━
-+ Other is Tuple
-
-+ x Int
-+ y Int
+(type + Other (is Tuple)
+  (prop + x Int)
+  (prop + y Int)
+)
 ```
 
 ```output
@@ -4144,52 +4294,61 @@ false
 
 ### An optional number compared with text has no answer.
 
-```yumi crash
-. a Int? = null
-. c Int? = 5
--- c == "5"
+```brix crash
+(main
+  (let a (? Int) null)
+  (let c (? Int) 5)
+  (print (== c "5"))
+)
 ```
 
 ```output
 Exception: Operator "==" is not defined for I64 and String
-<no file:4>
-    -- c == "5"
-       ^^^^^^^^
+<no file:5>
+      (print (== c "5"))
+             ^^^^^^^^^^
 ```
 
 ### Equality pattern over an optional subject
 
-```yumi
-. a Int? = 3
-. n Int? = null
--- name(a)
--- name(n)
--- name(4)
--- text("a")
--- text(null)
--- text("b")
+```brix
+(main
+  (let a (? Int) 3)
+  (let n (? Int) null)
+  (print (call name a))
+  (print (call name n))
+  (print (call name 4))
+  (print (call text "a"))
+  (print (call text null))
+  (print (call text "b"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ name String
-    - value Int?
+(fn-expr + name String
+  (param value (? Int))
+  (match value
+    (case= 3
+      "three"
+    )
+    (case= 4
+      "four"
+    )
+    (default
+      "other"
+    )
+  )
+)
 
-match value
-    |= 3
-        "three"
-    |= 4
-        "four"
-    ??
-        "other"
-
-━━━━━━━━━━━━━━━━━━━━
-+ text String
-    - value String?
-
-match value
-    |= "a"
-        "is a"
-    ??
-        "other"
+(fn-expr + text String
+  (param value (? String))
+  (match value
+    (case= "a"
+      "is a"
+    )
+    (default
+      "other"
+    )
+  )
+)
 ```
 
 ```output
@@ -4203,24 +4362,28 @@ other
 
 ### Equality pattern of an optional over an optional subject
 
-```yumi
-. a Int? = 3
-. n Int? = null
--- pick(a, a)
--- pick(a, n)
--- pick(n, n)
--- pick(n, a)
+```brix
+(main
+  (let a (? Int) 3)
+  (let n (? Int) null)
+  (print (call pick a a))
+  (print (call pick a n))
+  (print (call pick n n))
+  (print (call pick n a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pick String
-    - value Int?
-    - wanted Int?
-
-match value
-    |= wanted
-        "wanted"
-    ??
-        "other"
+(fn-expr + pick String
+  (param value (? Int))
+  (param wanted (? Int))
+  (match value
+    (case= wanted
+      "wanted"
+    )
+    (default
+      "other"
+    )
+  )
+)
 ```
 
 ```output
@@ -4232,31 +4395,34 @@ other
 
 ### A table of conditions with no else holds nothing where no arm is taken
 
-```yumi
--- pick(1) ?? "none"
--- pick(2) ?? "none"
--- pick(3) ?? "none"
--- count(true) ?? -1
--- count(false) ?? -1
-. kept = pick(2)
--- kept!
--- type-of pick(1)
+```brix
+(main
+  (print (?? (call pick 1) "none"))
+  (print (?? (call pick 2) "none"))
+  (print (?? (call pick 3) "none"))
+  (print (?? (call count true) -1))
+  (print (?? (call count false) -1))
+  (let kept (call pick 2))
+  (print (!! kept))
+  (print (type-of (call pick 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pick
-    - n Int
-
-|? n == 1
+(fn-expr + pick _
+  (param n Int)
+  (case? (== n 1)
     "one"
-|? n == 2
+  )
+  (case? (== n 2)
     "two"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ count
-    - on Bool
-
-|? on
+(fn-expr + count _
+  (param on Bool)
+  (case? on
     5
+  )
+)
 ```
 
 ```output
@@ -4271,31 +4437,32 @@ two
 
 ### A table of conditions with no else gives an optional struct and an optional text
 
-```yumi
--- where(true)!.y
--- if !where(false) then "none" else "some"
--- named(true)!
--- named(false) ?? "anonymous"
+```brix
+(main
+  (print (. (!! (call where true)) y))
+  (print (if-expr (not (call where false)) "none" "some"))
+  (print (!! (call named true)))
+  (print (?? (call named false) "anonymous"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(type + Point (is Struct)
+  (prop + x I32)
+  (prop + y I32)
+)
 
-+ x I32
-+ y I32
+(fn-expr + where _
+  (param on Bool)
+  (case? on
+    (call Point 1 2)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ where
-    - on Bool
-
-|? on
-    Point(1, 2)
-
-━━━━━━━━━━━━━━━━━━━━
-+ named String?
-    - on Bool
-
-|? on
+(fn-expr + named (? String)
+  (param on Bool)
+  (case? on
     "name"
+  )
+)
 ```
 
 ```output
@@ -4307,37 +4474,36 @@ anonymous
 
 ### A local known to hold a value is tested by && for whether it holds one, not for what it holds
 
-```yumi
-. zero Int? = 0
-. one Int? = 1
--- present-after(zero, one)
--- present-after(zero, null)
--- present-after(null, one)
--- chain(zero)
--- chain(one)
--- chain(null)
--- text-after("", "x")
--- text-after(null, "x")
+```brix
+(main
+  (let zero (? Int) 0)
+  (let one (? Int) 1)
+  (print (call present-after zero one))
+  (print (call present-after zero null))
+  (print (call present-after null one))
+  (print (call chain zero))
+  (print (call chain one))
+  (print (call chain null))
+  (print (call text-after "" "x"))
+  (print (call text-after null "x"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ present-after Bool
-    - first Int?
-    - second Int?
+(fn-expr + present-after Bool
+  (param first (? Int))
+  (param second (? Int))
+  (or (not first) (and first second))
+)
 
-!first || (first && second)
+(fn-expr + chain String
+  (param first (? Int))
+  (if-expr (and first first) "present" "absent")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ chain String
-    - first Int?
-
-if first && first then "present" else "absent"
-
-━━━━━━━━━━━━━━━━━━━━
-+ text-after Bool
-    - first String?
-    - second String?
-
-!first || (first && second)
+(fn-expr + text-after Bool
+  (param first (? String))
+  (param second (? String))
+  (or (not first) (and first second))
+)
 ```
 
 ```output
@@ -4353,111 +4519,122 @@ true
 
 ### Where a local known to hold zero is tested for holding a value and where for the value
 
-```yumi
-. zero Int? = 0
--- "n1 ${n1(zero)}"
--- "n2 ${n2(zero)}"
--- "n3 ${n3(zero)}"
--- "n4 ${n4(zero)}"
--- "n5 ${n5(zero)}"
--- "n6 ${n6(zero)}"
--- "n7 ${n7(zero)}"
--- "n8 ${n8(zero)}"
--- "n9 ${n9(zero)}"
+```brix
+(main
+  (let zero (? Int) 0)
+  (print (str "n1 " (call n1 zero)))
+  (print (str "n2 " (call n2 zero)))
+  (print (str "n3 " (call n3 zero)))
+  (print (str "n4 " (call n4 zero)))
+  (print (str "n5 " (call n5 zero)))
+  (print (str "n6 " (call n6 zero)))
+  (print (str "n7 " (call n7 zero)))
+  (print (str "n8 " (call n8 zero)))
+  (print (str "n9 " (call n9 zero)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do n1 String
-    - first Int?
+(fn-do + n1 String
+  (param first (? Int))
+  (if first
+    (if first
+      (return "held")
+    )
+    (return "lost")
+  )
+  (return "none")
+)
 
-if first
-    if first
-        = "held"
-    = "lost"
-= "none"
+(fn-do + n2 String
+  (param first (? Int))
+  (if (not first)
+    (return "absent")
+  )
+  (if first
+    (return "held")
+  )
+  (return "lost")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do n2 String
-    - first Int?
+(fn-do + n3 String
+  (param first (? Int))
+  (if first
+    (if (and first true)
+      (return "held")
+    )
+    (return "lost")
+  )
+  (return "none")
+)
 
-if !first
-    = "absent"
-if first
-    = "held"
-= "lost"
+(fn-do + n4 String
+  (param first (? Int))
+  (if first
+    (if (not first)
+      (return "denied")
+    )
+    (return "kept")
+  )
+  (return "none")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do n3 String
-    - first Int?
+(fn-do + n5 String
+  (param first (? Int))
+  (if first
+    (if (not (not first))
+      (return "held")
+    )
+    (return "lost")
+  )
+  (return "none")
+)
 
-if first
-    if first && true
-        = "held"
-    = "lost"
-= "none"
+(fn-do + n6 String
+  (param first (? Int))
+  (if first
+    (let turns 0)
+    (while first
+      (+= turns 1)
+      (if (== turns 2)
+        (break)
+      )
+    )
+    (return (str "turns " turns))
+  )
+  (return "none")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do n4 String
-    - first Int?
+(fn-do + n7 String
+  (param first (? Int))
+  (if (not first)
+    (return "absent")
+  )
+  (let turns 0)
+  (while first
+    (+= turns 1)
+    (if (== turns 2)
+      (break)
+    )
+  )
+  (return (str "turns " turns))
+)
 
-if first
-    if !first
-        = "denied"
-    = "kept"
-= "none"
+(fn-do + n8 String
+  (param first (? Int))
+  (if first
+    (return-if "held" (if first))
+    (return "lost")
+  )
+  (return "none")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do n5 String
-    - first Int?
-
-if first
-    if !!first
-        = "held"
-    = "lost"
-= "none"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do n6 String
-    - first Int?
-
-if first
-    . turns = 0
-    while first
-        turns += 1
-        if turns == 2
-            break
-    = "turns $turns"
-= "none"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do n7 String
-    - first Int?
-
-if !first
-    = "absent"
-. turns = 0
-while first
-    turns += 1
-    if turns == 2
-        break
-= "turns $turns"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do n8 String
-    - first Int?
-
-if first
-    =? "held" if first
-    = "lost"
-= "none"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do n9 String
-    - first Int?
-
-if first
-    . kept = first || false
-    = "kept $kept"
-= "none"
+(fn-do + n9 String
+  (param first (? Int))
+  (if first
+    (let kept (or first false))
+    (return (str "kept " kept))
+  )
+  (return "none")
+)
 ```
 
 ```output
@@ -4474,100 +4651,111 @@ n9 kept true
 
 ### Conditions that test what a local known to hold a value holds
 
-```yumi
-. zero Int? = 0
-. five Int? = 5
--- "n1 ${n1(zero)} ${n1(five)}"
--- "n2 ${n2(zero)} ${n2(five)}"
--- "w1 ${w1(zero)} ${w1(five)}"
--- "a1 ${a1(zero)}"
-. raising = do new
-    -- "a1 ${a1(five)}"
-catch failure
-    -- "a1 $failure"
-raising.wait()
--- "t1 ${t1(zero)} ${t1(five)}"
--- "t2 ${t2(zero)} ${t2(five)}"
--- "e1 ${e1(zero)} ${e1(five)}"
--- "q1 ${q1(zero) ?? "none"} ${q1(five) ?? "none"}"
+```brix
+(main
+  (let zero (? Int) 0)
+  (let five (? Int) 5)
+  (print (str "n1 " (call n1 zero) " " (call n1 five)))
+  (print (str "n2 " (call n2 zero) " " (call n2 five)))
+  (print (str "w1 " (call w1 zero) " " (call w1 five)))
+  (print (str "a1 " (call a1 zero)))
+  (let raising
+    (do-new
+      (print (str "a1 " (call a1 five)))
+      (on-failure failure
+        (print (str "a1 " failure))
+      )
+    )
+  )
+  (call (. raising wait))
+  (print (str "t1 " (call t1 zero) " " (call t1 five)))
+  (print (str "t2 " (call t2 zero) " " (call t2 five)))
+  (print (str "e1 " (call e1 zero) " " (call e1 five)))
+  (print (str "q1 " (?? (call q1 zero) "none") " " (?? (call q1 five) "none")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do n1 String
-    - first Int?
+(fn-do + n1 String
+  (param first (? Int))
+  (if first
+    (if first
+      (return "held")
+    )
+    (return "lost")
+  )
+  (return "none")
+)
 
-if first
-    if first
-        = "held"
-    = "lost"
-= "none"
+(fn-do + n2 String
+  (param first (? Int))
+  (if (not first)
+    (return "absent")
+  )
+  (if first
+    (return "held")
+  )
+  (return "lost")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do n2 String
-    - first Int?
+(fn-do + w1 String
+  (param first (? Int))
+  (if first
+    (let wrapped (only-if "w" (if first)))
+    (return (?? wrapped "unwrapped"))
+  )
+  (return "none")
+)
 
-if !first
-    = "absent"
-if first
-    = "held"
-= "lost"
+(fn-do + a1 String
+  (param first (? Int))
+  (if first
+    (throw (call Panic "raised") (if first))
+    (return "passed")
+  )
+  (return "none")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do w1 String
-    - first Int?
+(fn-do + t1 String
+  (param first (? Int))
+  (if (not first)
+    (return "absent")
+  )
+  (case? first
+    (return "held")
+  )
+  (return "lost")
+)
 
-if first
-    . wrapped = "w" if first
-    = wrapped ?? "unwrapped"
-= "none"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do a1 String
-    - first Int?
-
-if first
-    ?! Panic("raised")
-        if first
-    = "passed"
-= "none"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do t1 String
-    - first Int?
-
-if !first
-    = "absent"
-|? first
-    = "held"
-= "lost"
-
-━━━━━━━━━━━━━━━━━━━━
-+ t2 String
-    - first Int?
-
-|? !first
+(fn-expr + t2 String
+  (param first (? Int))
+  (case? (not first)
     "absent"
-|? first
+  )
+  (case? first
     "held"
-??
+  )
+  (default
     "lost"
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do e1 String
-    - first Int?
+(fn-do + e1 String
+  (param first (? Int))
+  (if (not first)
+    (return "absent")
+    (else-if first
+      (return "held")
+    )
+  )
+  (return "lost")
+)
 
-if !first
-    = "absent"
-else if first
-    = "held"
-= "lost"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do q1 String?
-    - first Int?
-
-if first
-    = if first then null else "value"
-= "none"
+(fn-do + q1 (? String)
+  (param first (? Int))
+  (if first
+    (return (if-expr first null "value"))
+  )
+  (return "none")
+)
 ```
 
 ```output
@@ -4584,79 +4772,83 @@ q1 value none
 
 ### Operators that test whether a local known to hold a value holds one
 
-```yumi
-. zero Int? = 0
-. five Int? = 5
--- "f1 ${f1(zero)} ${f1(five)}"
--- "f2 ${f2(zero)} ${f2(five)}"
--- "f4 ${f4(zero)} ${f4(five)}"
--- "f5 ${f5(zero)} ${f5(five)}"
--- "f6 ${f6(zero) ?? "none"} ${f6(five) ?? "none"}"
--- "f7 ${f7(zero) ?? "none"} ${f7(five) ?? "none"}"
--- "m2 ${m2(zero)} ${m2(five)}"
+```brix
+(main
+  (let zero (? Int) 0)
+  (let five (? Int) 5)
+  (print (str "f1 " (call f1 zero) " " (call f1 five)))
+  (print (str "f2 " (call f2 zero) " " (call f2 five)))
+  (print (str "f4 " (call f4 zero) " " (call f4 five)))
+  (print (str "f5 " (call f5 zero) " " (call f5 five)))
+  (print (str "f6 " (?? (call f6 zero) "none") " " (?? (call f6 five) "none")))
+  (print (str "f7 " (?? (call f7 zero) "none") " " (?? (call f7 five) "none")))
+  (print (str "m2 " (call m2 zero) " " (call m2 five)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do f1 String
-    - first Int?
+(fn-do + f1 String
+  (param first (? Int))
+  (if (not first)
+    (return "absent")
+  )
+  (let denied (not first))
+  (return (str "denied " denied))
+)
 
-if !first
-    = "absent"
-. denied = !first
-= "denied $denied"
+(fn-do + f2 String
+  (param first (? Int))
+  (if (not first)
+    (return "absent")
+  )
+  (let either (or first false))
+  (return (str "either " either))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do f2 String
-    - first Int?
+(fn-do + f4 String
+  (param first (? Int))
+  (if (not first)
+    (return "absent")
+  )
+  (return (if-expr first "yes" "no"))
+)
 
-if !first
-    = "absent"
-. either = first || false
-= "either $either"
+(fn-do + f5 String
+  (param first (? Int))
+  (if (not first)
+    (return "absent")
+  )
+  (let pair (and first true))
+  (return (str "pair " pair))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do f4 String
-    - first Int?
+(fn-do + f6 (? String)
+  (param first (? Int))
+  (if (not first)
+    (return "absent")
+  )
+  (return (only-if "w" (if first)))
+)
 
-if !first
-    = "absent"
-= if first then "yes" else "no"
+(fn-do + f7 (? String)
+  (param first (? Int))
+  (if (not first)
+    (return "absent")
+  )
+  (return (if-expr first null "value"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do f5 String
-    - first Int?
-
-if !first
-    = "absent"
-. pair = first && true
-= "pair $pair"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do f6 String?
-    - first Int?
-
-if !first
-    = "absent"
-= "w" if first
-
-━━━━━━━━━━━━━━━━━━━━
-+ do f7 String?
-    - first Int?
-
-if !first
-    = "absent"
-= if first then null else "value"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do m2 String
-    - first Int?
-
-. seen = ""
-if first != null
-    if first
-        seen = "truthy"
-    else
-        seen = "falsy"
-= seen
+(fn-do + m2 String
+  (param first (? Int))
+  (let seen "")
+  (if (!= first null)
+    (if first
+      (= seen "truthy")
+      (else
+        (= seen "falsy")
+      )
+    )
+  )
+  (return seen)
+)
 ```
 
 ```output
@@ -4671,66 +4863,76 @@ m2 falsy truthy
 
 ### Arms that give null and a value under an optional the function declares, and a tuple held under other names
 
-```yumi
--- find(0) ?? -100
--- find(20) ?? -100
--- find(5) ?? -100
--- look(0) ?? -100
--- look(20) ?? -100
--- look(5) ?? -100
--- named(Kind.pair(3, "three"))!.label
--- named(Kind.pair(3, "three"))!.count
--- if !named(.empty) then "none" else "some"
--- loose(Kind.pair(4, "four"))!.label
--- if !loose(.empty) then "none" else "some"
+```brix
+(main
+  (print (?? (call find 0) -100))
+  (print (?? (call find 20) -100))
+  (print (?? (call find 5) -100))
+  (print (?? (call look 0) -100))
+  (print (?? (call look 20) -100))
+  (print (?? (call look 5) -100))
+  (print (. (!! (call named (call (. Kind pair) 3 "three"))) label))
+  (print (. (!! (call named (call (. Kind pair) 3 "three"))) count))
+  (print (if-expr (not (call named .empty)) "none" "some"))
+  (print (. (!! (call loose (call (. Kind pair) 4 "four"))) label))
+  (print (if-expr (not (call loose .empty)) "none" "some"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Kind is Union
+(type + Kind (is Union)
+  (variant empty)
+  (variant pair (tuple (: count Int) (: label String)))
+)
 
-| empty
-| pair(count Int, label String)
+(fn-expr + find (? Int)
+  (param n Int)
+  (match n
+    (case 0
+      null
+    )
+    (case ({} (> it 10))
+      it
+    )
+    (default
+      -1
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ find Int?
-    - n Int
+(fn-expr + look _
+  (param n Int)
+  (match n
+    (case 0
+      null
+    )
+    (case ({} (> it 10))
+      it
+    )
+    (default
+      -1
+    )
+  )
+)
 
-match n
-    | 0
-        null
-    | {it > 10}
-        it
-    ??
-        -1
+(fn-expr + named (? (tuple (: count Int) (: label String)))
+  (param kind Kind)
+  (match kind
+    (case .empty
+      null
+    )
+    (case (call .pair count label)
+      (tuple count label)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ look
-    - n Int
-
-match n
-    | 0
-        null
-    | {it > 10}
-        it
-    ??
-        -1
-
-━━━━━━━━━━━━━━━━━━━━
-+ named (count Int, label String)?
-    - kind Kind
-
-match kind
-    | .empty
-        null
-    | .pair(count, label)
-        (count, label)
-
-━━━━━━━━━━━━━━━━━━━━
-+ loose (count Int, label String)?
-    - kind Kind
-
-match? kind
-    | .pair(count, label)
-        (count, label)
+(fn-expr + loose (? (tuple (: count Int) (: label String)))
+  (param kind Kind)
+  (match? kind
+    (case (call .pair count label)
+      (tuple count label)
+    )
+  )
+)
 ```
 
 ```output
@@ -4749,31 +4951,33 @@ none
 
 ### An optional made with no value holds nothing
 
-```yumi
-. none = Optional'Int()
--- none ?? -1
-. some = Optional'Int(4)
--- some ?? -1
-. text = Optional'String()
--- text ?? "(no text)"
-. thing = Optional'Thing()
--- if thing then thing.n else 0
-. flags = [Optional'Bool(true), Optional'Bool(), Optional'Bool(false)]
-for flag in flags
-    -- if flag != null then "set" else "unset"
-for value in [Optional'Int(1), Optional'Int(), Optional'Int(3)] when value
-    -- value + 1
--- absent() ?? 9
+```brix
+(main
+  (let none (call (of Optional Int)))
+  (print (?? none -1))
+  (let some (call (of Optional Int) 4))
+  (print (?? some -1))
+  (let text (call (of Optional String)))
+  (print (?? text "(no text)"))
+  (let thing (call (of Optional Thing)))
+  (print (if-expr thing (. thing n) 0))
+  (let flags (list (call (of Optional Bool) true) (call (of Optional Bool)) (call (of Optional Bool) false)))
+  (for (in flag flags)
+    (print (if-expr (!= flag null) "set" "unset"))
+  )
+  (for (in value (list (call (of Optional Int) 1) (call (of Optional Int)) (call (of Optional Int) 3)) (when value))
+    (print (+ value 1))
+  )
+  (print (?? (call absent) 9))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + n _ (= 7))
+)
 
-+ n = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ absent Int?
-
-Optional'Int()
+(fn-expr + absent (? Int)
+  (call (of Optional Int))
+)
 ```
 
 ```output
@@ -4791,34 +4995,29 @@ set
 
 ### use? of an optional the flow knows holds a value uses it.
 
-```yumi
-. t Thing? = null
-. a = use? t
--- a == null
-t = Thing(4)
-. b = use? t
--- b!.n
+```brix
+(main
+  (let t (? Thing) null)
+  (let a (use? t))
+  (print (== a null))
+  (= t (call Thing 4))
+  (let b (use? t))
+  (print (. (!! b) n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ n = 0
-
-────────────────────
-+ This
-    - n
-
--- "hello $n"
-
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
--- "bye $n"
+(type + Thing
+  (prop + n _ (= 0))
+  (fn-do + This _
+    (param n _)
+    (print (str "hello " n))
+  )
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (print (str "bye " n))
+  )
+)
 ```
 
 ```output
@@ -4830,101 +5029,99 @@ bye 4
 
 ### A fallback on an optional already known to be present yields the optional's own value.
 
-```yumi
--- inline("-", "-")
--- inline("-", "+")
--- inline("", "")
--- bound("-", "-")
--- lazy("-", "-")
--- lazy("", "")
--- chosen("-")
--- chosen("")
--- passed("-")
--- widened("-") ?? "none"
--- counted(0)
--- counted(4)
+```brix
+(main
+  (print (call inline "-" "-"))
+  (print (call inline "-" "+"))
+  (print (call inline "" ""))
+  (print (call bound "-" "-"))
+  (print (call lazy "-" "-"))
+  (print (call lazy "" ""))
+  (print (call chosen "-"))
+  (print (call chosen ""))
+  (print (call passed "-"))
+  (print (?? (call widened "-") "none"))
+  (print (call counted 0))
+  (print (call counted 4))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ pick String?
-    - value String
+(fn-expr _ pick (? String)
+  (param value String)
+  value
+)
 
-value
+(fn-expr _ same String
+  (param value String)
+  value
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ same String
-    - value String
+(fn-expr _ number (? Int)
+  (param value Int)
+  value
+)
 
-value
+(fn-expr _ inline Bool
+  (param value String)
+  (param mark String)
+  (and (!= raw null) (== (?? raw "fallback") mark))
+  (where
+    (lazy raw (call pick value))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ number Int?
-    - value Int
+(fn-do _ bound Bool
+  (param value String)
+  (param mark String)
+  (let raw (call pick value))
+  (return (and (!= raw null) (== (?? raw "fallback") mark)))
+)
 
-value
+(fn-expr _ lazy Bool
+  (param value String)
+  (param mark String)
+  (and (!= raw null) (== text mark))
+  (where
+    (lazy raw (call pick value))
+    (lazy text (?? raw "fallback"))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ inline Bool
-    - value String
-    - mark String
+(fn-do _ chosen String
+  (param value String)
+  (let raw (call pick value))
+  (if (!= raw null)
+    (return (?? raw "fallback"))
+  )
+  (return "null")
+)
 
-raw != null && (raw ?? "fallback") == mark
+(fn-expr _ passed String
+  (param value String)
+  (if-expr (!= raw null) text "null")
+  (where
+    (lazy raw (call pick value))
+    (lazy text (call same (?? raw "fallback")))
+  )
+)
 
-.. raw = pick(value)
+(fn-do _ widened (? String)
+  (param value String)
+  (let raw (call pick value))
+  (let other (? String) null)
+  (if (!= raw null)
+    (return (?? raw other))
+  )
+  (return null)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do bound Bool
-    - value String
-    - mark String
-
-. raw = pick(value)
-= raw != null && (raw ?? "fallback") == mark
-
-━━━━━━━━━━━━━━━━━━━━
-_ lazy Bool
-    - value String
-    - mark String
-
-raw != null && text == mark
-
-.. raw = pick(value)
-.. text = raw ?? "fallback"
-
-━━━━━━━━━━━━━━━━━━━━
-_ do chosen String
-    - value String
-
-. raw = pick(value)
-if raw != null
-    = raw ?? "fallback"
-= "null"
-
-━━━━━━━━━━━━━━━━━━━━
-_ passed String
-    - value String
-
-if raw != null then text else "null"
-
-.. raw = pick(value)
-.. text = same(raw ?? "fallback")
-
-━━━━━━━━━━━━━━━━━━━━
-_ do widened String?
-    - value String
-
-. raw = pick(value)
-. other String? = null
-if raw != null
-    = raw ?? other
-= null
-
-━━━━━━━━━━━━━━━━━━━━
-_ do counted Int
-    - value Int
-
-. raw = number(value)
-if raw != null
-    = raw ?? 9
-= -1
+(fn-do _ counted Int
+  (param value Int)
+  (let raw (call number value))
+  (if (!= raw null)
+    (return (?? raw 9))
+  )
+  (return -1)
+)
 ```
 
 ```output
@@ -4944,23 +5141,27 @@ true
 
 ### A local declared as an optional atom with no value holds none.
 
-```yumi
-/core/atom-pool
+```brix
+(import /core/atom-pool)
+(blank)
 
-. pool = AtomPool()
--- pick(pool, ["a", "task", "b"])
--- pick(pool, ["a"])
+(main
+  (let pool (call AtomPool))
+  (print (call pick pool (list "a" "task" "b")))
+  (print (call pick pool (list "a")))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick String
-    - pool AtomPool
-    - names [String]
-
-. found Atom?
-for name in names
-    if name == "task"
-        found = pool.store(name)
-= found?.text ?? "none"
+(fn-do + pick String
+  (param pool AtomPool)
+  (param names (list String))
+  (let found (? Atom))
+  (for (in name names)
+    (if (== name "task")
+      (= found (call (. pool store) name))
+    )
+  )
+  (return (?? (?. found text) "none"))
+)
 ```
 
 ```output
@@ -4970,13 +5171,14 @@ none
 
 ### An optional object is cast to a pointer to the object it holds.
 
-```yumi
-. u = Thing()
-. t Thing? = u
--- t as Pointer == u as Pointer
+```brix
+(main
+  (let u (call Thing))
+  (let t (? Thing) u)
+  (print (== (as t Pointer) (as u Pointer)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing)
 ```
 
 ```output
@@ -4985,33 +5187,33 @@ true
 
 ### A `|?` line with no body gives what its condition tested, which is evaluated again for it.
 
-```yumi
-. counter = Counter()
--- kind(counter, "b") ?? 9
--- kind(counter, "z") ?? 9
--- counter.count
+```brix
+(main
+  (let counter (call Counter))
+  (print (?? (call kind counter "b") 9))
+  (print (?? (call kind counter "z") 9))
+  (print (. counter count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
+(type + Counter
+  (prop + count Index (= 0))
+  (fn-do + same Bool
+    (param left String)
+    (param right String)
+    (+= count 1)
+    (return (== left right))
+  )
+)
 
-+ count Index = 0
-
-────────────────────
-+ do same Bool
-    - left String
-    - right String
-
-count += 1
-= left == right
-
-━━━━━━━━━━━━━━━━━━━━
-+ kind U8?
-    - counter Counter
-    - name String
-
-|? 1 if name == "a"
-|? 2 if counter.same(name, "b")
-?? null
+(fn-expr + kind (? U8)
+  (param counter Counter)
+  (param name String)
+  (case? (only-if 1 (if (== name "a"))))
+  (case? (only-if 2 (if (call (. counter same) name "b"))))
+  (default
+    (inline null)
+  )
+)
 ```
 
 ```output
@@ -5022,34 +5224,36 @@ count += 1
 
 ### An optional atom field of a tuple, once a test finds it holds a value, is read as the atom it holds, and still is after it is compared with an optional atom.
 
-```yumi
-/core/atom-pool
+```brix
+(import /core/atom-pool)
+(blank)
 
+(main
+  (let pool (call AtomPool))
+  (let box (? Atom) (call (. pool store) "box"))
+  (let lid (? Atom) (call (. pool store) "lid"))
+  (let a (call check (call Square (call (. pool store) "box")) box lid))
+  (let b (call check (call Square null) box lid))
+  (let c (call check (call Square (call (. pool store) "lid")) box lid))
+  (let d (call check (call Square (call (. pool store) "cap")) box lid))
+  (print (str a " " b " " c " " d))
+)
 
-. pool = AtomPool()
-. box Atom? = pool.store("box")
-. lid Atom? = pool.store("lid")
-. a = check(Square(pool.store("box")), box, lid)
-. b = check(Square(null), box, lid)
-. c = check(Square(pool.store("lid")), box, lid)
-. d = check(Square(pool.store("cap")), box, lid)
--- "$a $b $c $d"
-
-━━━━━━━━━━━━━━━━━━━━
-+ check Bool
-    - row Square
-    - first Atom?
-    - second Atom?
-
-|? !row.name
+(fn-expr + check Bool
+  (param row Square)
+  (param first (? Atom))
+  (param second (? Atom))
+  (case? (not (. row name))
     false
-??
-    row.name == first || row.name == second
+  )
+  (default
+    (or (== (. row name) first) (== (. row name) second))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Square is Tuple
-
-+ name Atom?
+(type + Square (is Tuple)
+  (prop + name (? Atom))
+)
 ```
 
 ```output
@@ -5058,14 +5262,15 @@ true false true false
 
 ### `??` after a value that is always nothing gives the value after it.
 
-```yumi
--- pick(null)
+```brix
+(main
+  (print (call pick null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pick Int
-    - value
-
-value ?? 5
+(fn-expr + pick Int
+  (param value _)
+  (?? value 5)
+)
 ```
 
 ```output
@@ -5074,48 +5279,49 @@ value ?? 5
 
 ### A choice of two values gives the value its condition chooses even when that value is nothing; the other value is not tried in its place.
 
-```yumi
-show(7, get(3))
-show(7)
-show(9, get(-1))
-show(9, get(4))
-both(5, get(4))
-both(null, get(4))
-both(null, get(3))
-both(6)
+```brix
+(main
+  (call show 7 (call get 3))
+  (call show 7)
+  (call show 9 (call get -1))
+  (call show 9 (call get 4))
+  (call both 5 (call get 4))
+  (call both null (call get 4))
+  (call both null (call get 3))
+  (call both 6)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - owner Int
-    - variable Int? = null
+(fn-do + show _
+  (param owner Int)
+  (param variable (? Int) (= null))
+  (let bound (if-expr variable (call lookup variable) owner))
+  (print (str "bound " (?? bound -100)))
+)
 
-. bound = if variable then lookup(variable) else owner
--- "bound ${bound ?? -100}"
+(fn-expr + get (? Int)
+  (param n Int)
+  (only-if n (if (> n 0)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ get Int?
-    - n Int
-
-n if n > 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ lookup Int?
-    - n Int
-
-|? found && n != 4
-    n * 10
-??
+(fn-expr + lookup (? Int)
+  (param n Int)
+  (case? (and found (!= n 4))
+    (* n 10)
+  )
+  (default
     null
+  )
+  (where
+    (lazy found (> n 1))
+  )
+)
 
-.. found = n > 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do both
-    - owner Int?
-    - variable Int? = null
-
-. bound = if variable then lookup(variable) else owner
--- "both ${bound ?? -100}"
+(fn-do + both _
+  (param owner (? Int))
+  (param variable (? Int) (= null))
+  (let bound (if-expr variable (call lookup variable) owner))
+  (print (str "both " (?? bound -100)))
+)
 ```
 
 ```output
@@ -5131,112 +5337,113 @@ both 6
 
 ### `??` after a value written with `if` is refused, since it reads as a choice of two values without being one.
 
-```yumi crash
-. ready = true
--- 1 if ready ?? 2
+```brix crash
+(main
+  (let ready true)
+  (print (?? (only-if 1 (if ready)) 2))
+)
 ```
 
 ```output
-Exception: `value if condition ?? other` is not a choice of two values. Write `if condition then value else other`.
-<no file:3>
-    -- 1 if ready ?? 2
-       ^^^^^^^^^^^^^^^
+Exception: `(?? (only-if value guard) other)` is not a choice of two values. To give one value or another, write `(if-expr condition value other)`.
+<no file:4>
+      (print (?? (only-if 1 (if ready)) 2))
+             ^
 ```
 
 ### `??` after a value written with `if` is refused when parentheses hold the value.
 
-```yumi crash
-. ready = true
--- (1 if ready) ?? 2
+```brix crash
+(main
+  (let ready true)
+  (print (?? (only-if 1 (if ready)) 2))
+)
 ```
 
 ```output
-Exception: `value if condition ?? other` is not a choice of two values. Write `if condition then value else other`.
-<no file:3>
-    -- (1 if ready) ?? 2
-       ^^^^^^^^^^^^^^^^^
+Exception: `(?? (only-if value guard) other)` is not a choice of two values. To give one value or another, write `(if-expr condition value other)`.
+<no file:4>
+      (print (?? (only-if 1 (if ready)) 2))
+             ^
 ```
 
 ### `??` after a chain whose last value is written with `if` is refused.
 
-```yumi crash
-. ready = true
-. held Int? = null
--- held ?? 1 if ready ?? 2
+```brix crash
+(main
+  (let ready true)
+  (let held (? Int) null)
+  (print (?? held (only-if 1 (if ready)) 2))
+)
 ```
 
 ```output
-Exception: `value if condition ?? other` is not a choice of two values. Write `if condition then value else other`.
-<no file:4>
-    -- held ?? 1 if ready ?? 2
-       ^^^^^^^^^^^^^^^^^^^^^^^
+Exception: `(?? (only-if value guard) other)` is not a choice of two values. To give one value or another, write `(if-expr condition value other)`.
+<no file:5>
+      (print (?? held (only-if 1 (if ready)) 2))
+             ^
 ```
 
 ### Conditions alone with no else give an optional, which a function of a type that is no optional does not return.
 
-```yumi crash
--- name(2)
+```brix crash
+(main
+  (print (call name 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ name String
-    - n Int
-
-|? "two" if n == 2
-|? "three" if n == 3
+(fn-expr _ name String
+  (param n Int)
+  (case? (only-if "two" (if (== n 2))))
+  (case? (only-if "three" (if (== n 3))))
+)
 ```
 
 ```output
-Exception: Expected String here, but this is String?, which may hold nothing; write "!" after it to unwrap it, or "?? fallback" to give a value for nothing
+Exception: Expected String here, but this is String?, which may hold nothing; write "(!! (case? (only-if "two" (if (== n 2)))))" to unwrap it, or "(?? (case? (only-if "two" (if (== n 2)))) fallback)" to give a value for nothing
 <no file:8>
-    |? "two" if n == 2
-    ^^^^^^^^^^^^^^^^^^
+      (case? (only-if "two" (if (== n 2))))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A getter a condition tests for a value is called again where it is read after the test, and `!` takes what that call answers.
 
-```yumi
-. rock = Rock()
-rock.held-by = Pit()
--- rock.describe()
-rock.held-by = Rock()
--- rock.describe()
-rock.held-by = null
--- rock.describe()
+```brix
+(main
+  (let rock (call Rock))
+  (= (. rock held-by) (call Pit))
+  (print (call (. rock describe)))
+  (= (. rock held-by) (call Rock))
+  (print (call (. rock describe)))
+  (= (. rock held-by) null)
+  (print (call (. rock describe)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Hole is Interface
+(type + Hole (is Interface)
+  (fn-do + depth I32)
+)
 
-────────────────────
-+ do depth I32
+(type + Thing
+  (prop + held-by (? Thing))
+  (fn-do + holder (? Thing) :get
+    (return held-by)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Rock (is Thing)
+  (fn-do + describe String
+    (if (and (!= holder null) (is (!! holder) Hole))
+      (return (str "in a hole " (call (. (as (!! holder) Hole) depth))))
+    )
+    (return (if-expr (!= holder null) "held" "free"))
+  )
+)
 
-+ held-by Thing?
-
-────────────────────
-+ do get holder Thing?
-
-= held-by
-
-━━━━━━━━━━━━━━━━━━━━
-+ Rock is Thing
-
-────────────────────
-+ do describe String
-
-if holder != null && holder! is Hole
-    = "in a hole ${(holder! as Hole).depth()}"
-= if holder != null then "held" else "free"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pit is Thing
-    is Hole
-
-────────────────────
-+ do depth I32
-
-= 3
+(type + Pit (is Thing)
+  (implements Hole)
+  (fn-do + depth I32
+    (return 3)
+  )
+)
 ```
 
 ```output
@@ -5245,60 +5452,57 @@ held
 free
 ```
 
-```yumi
-. holder = Holder()
-holder.add(1)
-holder.run = Run()
-holder.add(2)
-holder.add(3)
--- holder.run!.reported.length
+```brix
+(main
+  (let holder (call Holder))
+  (call (. holder add) 1)
+  (= (. holder run) (call Run))
+  (call (. holder add) 2)
+  (call (. holder add) 3)
+  (print (. (!! (. holder run)) reported length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Run
+(type + Run
+  (prop + reported (list Int))
+)
 
-+ reported [Int]
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ run Run?
-
-────────────────────
-+ do add
-    - value Int
-
-run?.reported += value
+(type + Holder
+  (prop + run (? Run))
+  (fn-do + add _
+    (param value Int)
+    (+= (?. run reported) value)
+  )
+)
 ```
 
 ```output
 2
 ```
 
-```yumi
-. found = catch? load(true)
--- found?.name ?? "none"
-. missing = catch? load(false)
--- missing?.name ?? "none"
--- (catch? load(false)) == null
-. failed = catch? fail()
--- failed?.name ?? "failed"
+```brix
+(main
+  (let found (catch? (call load true)))
+  (print (?? (?. found name) "none"))
+  (let missing (catch? (call load false)))
+  (print (?? (?. missing name) "none"))
+  (print (== (catch? (call load false)) null))
+  (let failed (catch? (call fail)))
+  (print (?? (?. failed name) "failed"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Config
+(type + Config
+  (prop + name _ (= "config"))
+)
 
-+ name = "config"
+(fn-do + load (? Config) (?! Error)
+  (param exists Bool)
+  (return-if null (if (not exists)))
+  (return (call Config))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do load Config? ?! Error
-    - exists Bool
-
-=? null if !exists
-= Config()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fail Config? ?! Error
-
-?! Error("missing")
+(fn-do + fail (? Config) (?! Error)
+  (throw (call Error "missing"))
+)
 ```
 
 ```output
@@ -5308,32 +5512,47 @@ true
 failed
 ```
 
-```yumi
-. found = match? "[n]"
-    ~ value Val
+```brix
+(main
+  (let found
+    (match? "[n]"
+      (~ (: value Val)
         "matched"
+      )
+    )
+  )
+  (blank)
+  (print (?? found "none"))
+)
 
--- found ?? "none"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Val is Union
-
-| Null
-| [Val]
-
-────────────────────
-+ This ~ Char
-
-~ \value
-
-.. blank ~
-    ~ "n"
-        null
-.. array ~
-    ~ "[" items \delimited(~ ",", ~ \value) "]"
-        items
-.. value Val ~
-    ~ \blank | \array
+(type + Val (is Union)
+  (variant Null)
+  (variant (list Val))
+  (fn-expr + This _ (over: Char)
+    (~ \value)
+    (where
+      (lazy blank
+        (pattern
+          (~ "n"
+            null
+          )
+        )
+      )
+      (lazy array
+        (pattern
+          (~ (seq "[" (: items (call \delimited (~ ",") (~ \value))) "]")
+            items
+          )
+        )
+      )
+      (lazy value Val
+        (pattern
+          (~ (| \blank \array))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -5342,10 +5561,12 @@ matched
 
 ### A literal in an optional choice with null takes the declared optional type.
 
-```yumi
-. flag = true
-. chosen I32? = if flag then 5 else null
--- chosen ?? 0
+```brix
+(main
+  (let flag true)
+  (let chosen (? I32) (if-expr flag 5 null))
+  (print (?? chosen 0))
+)
 ```
 
 ```output

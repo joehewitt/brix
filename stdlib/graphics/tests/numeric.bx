@@ -1,0 +1,46 @@
+(import /graphics/_utils)
+(import /graphics/tests/support/geometry)
+(import /stream/aggregate)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-expr + tests TestRender
+  (header (call test "Numeric Utilities"))
+  (tuple true (call solve-quadratic-ok))
+  (tuple true (call solve-cubic-ok))
+)
+
+(fn-do _ solve-quadratic-ok _
+  (let roots (call solve-quadratic 1.0 -3.0 2.0 tolerance))
+  (return-if (if (!= (. roots count) 2)))
+  (return-if (if (not (call near 1 (. roots root1)))))
+  (return-if (if (not (call near 2 (. roots root2)))))
+  (blank)
+  (let linear-roots (call solve-quadratic 0.0 2.0 -4.0 tolerance))
+  (return-if (if (!= (. linear-roots count) 1)))
+  (return-if (if (not (call near 2 (. linear-roots root1)))))
+  (blank)
+  (let no-roots (call solve-quadratic 1.0 0.0 1.0 tolerance))
+  (return (== (. no-roots count) 0))
+)
+
+(fn-do _ solve-cubic-ok _
+  (let roots (call solve-cubic 1.0 -6.0 11.0 -6.0 tolerance))
+  (return-if (if (!= (. roots count) 3)))
+  (blank)
+  (return (and root1-ok root2-ok root3-ok))
+  (blank)
+  (lazy root1-ok (call has-root roots 1))
+  (lazy root2-ok (call has-root roots 2))
+  (lazy root3-ok (call has-root roots 3))
+)
+
+(fn-expr _ has-root _
+  (param roots CurveRoots)
+  (param value _)
+  (call some (..< 0 (. roots count)) (:where (call near value ([] roots each))))
+)

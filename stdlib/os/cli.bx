@@ -1,0 +1,1132 @@
+(import ./env)
+(import ./file)
+(import /BxCore/BxCore.h)
+(import /data/fuzzy)
+(import /math)
+(import /stream/aggregate)
+(blank)
+(prop _ cli-term-width Size (= 24))
+(prop _ cli-suggestion-distance Index (= 2))
+(blank)
+(type-line _ HelpRow (is (tuple (: term String) (: about String))))
+(type-line _ HelpSection (is (tuple (: title String) (: rows (list HelpRow)))))
+
+(type + CommandAction (is (fn-type Int (?! Error))))
+
+(type + (of ValueParser T) (is (fn-type (? T) (param text String))))
+
+(type + UsageError (is Error)
+  (prop + command (? Subcommand))
+  (fn-do + This _
+    (param message String)
+    (param command (? Subcommand) (= null))
+    (call super message)
+  )
+)
+
+(type + ParsedCommandLine (is Union)
+  (variant run (tuple (: command Subcommand)))
+  (variant help (tuple (: command Subcommand)))
+)
+
+(type + CommandOption
+  (prop + spelling String)
+  (prop + short (? String))
+  (prop + aliases (list String))
+  (prop + about _ (= ""))
+  (prop + env (? String))
+  (prop + required _ (= false))
+  (prop + needs-value _ (= true))
+  (prop + hidden _ (= false))
+  (prop + is-given _ (= false))
+  (fn-do + This _
+    (param spelling String)
+  )
+  (fn-expr + takes-value Bool :get
+    false
+  )
+  (fn-expr + repeats Bool :get
+    false
+  )
+  (fn-expr + value-label String :get
+    ""
+  )
+  (fn-expr + default-label (? String) :get
+    null
+  )
+  (fn-expr + expected (? String) :get
+    null
+  )
+  (fn-expr + label String :get
+    (str names value-part)
+    (where
+      (lazy names (if-expr short (str short ", " spelling) spelling))
+      (lazy value-part (if-expr takes-value (str " " value-text dots) ""))
+      (lazy value-text (if-expr needs-value value-label (str "[" value-label "]")))
+      (lazy dots (if-expr repeats "..." ""))
+    )
+  )
+  (fn-expr + description String :get
+    (call (. " " join) parts)
+    (where
+      (lazy parts (list String)
+        (block
+          (item? (only-if about (if (!= about ""))))
+          (item? (only-if (str "(default " (!! default-label) ")") (if (!= default-label null))))
+          (item? (only-if (str "(env " env ")") (if (!= env null))))
+        )
+      )
+    )
+  )
+  (fn-expr + is-spelled Bool
+    (param text String)
+    (or (== spelling text) (== short text) (has aliases text))
+  )
+  (fn-do + accept _
+    (= is-given true)
+  )
+  (fn-expr + accept-value Bool
+    (param text String)
+    false
+  )
+  (fn-expr + accept-env Bool
+    (param text String)
+    (call accept-value text)
+  )
+  (fn-do + reset _
+    (= is-given false)
+  )
+  (fn-do + settle _)
+)
+
+(type + Flag (is CommandOption)
+  (prop + value _ (= false))
+  (fn-do + This _
+    (param spelling String)
+    (call super spelling)
+  )
+  (fn-do + accept _
+    (= value true)
+    (= is-given true)
+  )
+  (fn-do + accept-env Bool
+    (param text String)
+    (= value (and (!= text "") (!= text "0") (!= text "false")))
+    (= is-given true)
+    (return true)
+  )
+  (fn-do + reset _
+    (= value false)
+    (= is-given false)
+  )
+)
+
+(type + (of Option T) (is CommandOption)
+  (prop + value (? T))
+  (prop + default (? T))
+  (prop + value-name (? String))
+  (prop + parser (? (of ValueParser T)))
+  (fn-do + This _
+    (param spelling String)
+    (call super spelling)
+  )
+  (fn-expr + takes-value _ :get
+    true
+  )
+  (fn-expr + value-label _ :get
+    (?? value-name "VALUE")
+  )
+  (fn-expr + default-label _ :get
+    (only-if (str default) (if (!= default null)))
+  )
+  (fn-do + accept-value Bool
+    (param text String)
+    (let parsed (call read-value text))
+    (return-if false (if (== parsed null)))
+    (= value parsed)
+    (= is-given true)
+    (return true)
+  )
+  (fn-do + reset _
+    (= value null)
+    (= is-given false)
+  )
+  (fn-do + settle _
+    (if (== value null)
+      (= value default)
+    )
+  )
+  (fn-expr + parse-value (? T)
+    (param text String)
+    (match text
+      (~ (: parsed T)
+        parsed
+      )
+      (default
+        (inline null)
+      )
+    )
+  )
+  (fn-expr _ read-value (? T)
+    (param text String)
+    (case? (not parser)
+      (call parse-value text)
+    )
+    (default
+      (call parse text)
+    )
+    (where
+      (lazy parse parser)
+    )
+  )
+)
+
+(type + Option (is (of Option String))
+  (prop + choices (list String))
+  (fn-do + This _
+    (param spelling String)
+    (call super spelling)
+  )
+  (fn-expr + expected _ :get
+    (only-if (str "one of " (call (. ", " join) choices)) (if (> (. choices length) 0)))
+  )
+  (fn-expr + parse-value (? String)
+    (param text String)
+    (only-if text (if (or (== (. choices length) 0) (has choices text))))
+  )
+  (fn-expr + value-label _ :get
+    (?? value-name (if-expr (> (. choices length) 0) (call (. "|" join) choices) "VALUE"))
+  )
+)
+
+(type + (of Options T) (is CommandOption)
+  (prop + values (list T))
+  (prop + value-name (? String))
+  (prop + parser (? (of ValueParser T)))
+  (fn-do + This _
+    (param spelling String)
+    (call super spelling)
+  )
+  (fn-expr + takes-value _ :get
+    true
+  )
+  (fn-expr + repeats _ :get
+    true
+  )
+  (fn-expr + value-label _ :get
+    (?? value-name "VALUE")
+  )
+  (fn-do + accept-value Bool
+    (param text String)
+    (let parsed (call read-value text))
+    (return-if false (if (== parsed null)))
+    (+= values parsed)
+    (= is-given true)
+    (return true)
+  )
+  (fn-do + reset _
+    (= values (call (of List T)))
+    (= is-given false)
+  )
+  (fn-expr + parse-value (? T)
+    (param text String)
+    (match text
+      (~ (: parsed T)
+        parsed
+      )
+      (default
+        (inline null)
+      )
+    )
+  )
+  (fn-expr _ read-value (? T)
+    (param text String)
+    (case? (not parser)
+      (call parse-value text)
+    )
+    (default
+      (call parse text)
+    )
+    (where
+      (lazy parse parser)
+    )
+  )
+)
+
+(type + Options (is (of Options String))
+  (fn-do + This _
+    (param spelling String)
+    (call super spelling)
+  )
+  (fn-expr + parse-value (? String)
+    (param text String)
+    text
+  )
+)
+
+(type + OptionGroup
+  (prop + title String)
+  (prop + options (list CommandOption))
+  (fn-do + This _
+    (param title String)
+  )
+  (fn-do + (infix this += (param option CommandOption)) _
+    (+= options option)
+    (return option)
+  )
+)
+
+(type + CommandArgument
+  (prop + name String)
+  (prop + about _ (= ""))
+  (prop + required _ (= false))
+  (fn-do + This _
+    (param name String)
+  )
+  (fn-expr + is-variadic _ :get
+    false
+  )
+  (fn-expr + is-filled _ :get
+    false
+  )
+  (fn-expr + default-label (? String) :get
+    null
+  )
+  (fn-expr + synopsis String :get
+    (if-expr required (str "<" name dots ">") (str "[" name dots "]"))
+    (where
+      (lazy dots (if-expr is-variadic "..." ""))
+    )
+  )
+  (fn-expr + description String :get
+    (call (. " " join) parts)
+    (where
+      (lazy parts (list String)
+        (block
+          (item? (only-if about (if (!= about ""))))
+          (item? (only-if (str "(default " (!! default-label) ")") (if (!= default-label null))))
+        )
+      )
+    )
+  )
+  (fn-expr + accept-value Bool
+    (param text String)
+    false
+  )
+  (fn-do + reset _)
+  (fn-do + settle _)
+)
+
+(type + (of Argument T) (is CommandArgument)
+  (prop + value (? T))
+  (prop + default (? T))
+  (fn-do + This _
+    (param name String)
+    (call super name)
+  )
+  (fn-expr + is-filled _ :get
+    (!= value null)
+  )
+  (fn-expr + default-label _ :get
+    (only-if (str default) (if (!= default null)))
+  )
+  (fn-do + accept-value Bool
+    (param text String)
+    (let parsed (call parse-value text))
+    (return-if false (if (== parsed null)))
+    (= value parsed)
+    (return true)
+  )
+  (fn-do + reset _
+    (= value null)
+  )
+  (fn-do + settle _
+    (if (== value null)
+      (= value default)
+    )
+  )
+  (fn-expr + parse-value (? T)
+    (param text String)
+    (match text
+      (~ (: parsed T)
+        parsed
+      )
+      (default
+        (inline null)
+      )
+    )
+  )
+)
+
+(type + Argument (is (of Argument String))
+  (fn-do + This _
+    (param name String)
+    (call super name)
+  )
+  (fn-expr + parse-value (? String)
+    (param text String)
+    text
+  )
+)
+
+(type + (of Arguments T) (is CommandArgument)
+  (prop + values (list T))
+  (fn-do + This _
+    (param name String)
+    (call super name)
+  )
+  (fn-expr + is-variadic _ :get
+    true
+  )
+  (fn-expr + is-filled _ :get
+    (> (. values length) 0)
+  )
+  (fn-do + accept-value Bool
+    (param text String)
+    (let parsed (call parse-value text))
+    (return-if false (if (== parsed null)))
+    (+= values parsed)
+    (return true)
+  )
+  (fn-do + reset _
+    (= values (call (of List T)))
+  )
+  (fn-expr + parse-value (? T)
+    (param text String)
+    (match text
+      (~ (: parsed T)
+        parsed
+      )
+      (default
+        (inline null)
+      )
+    )
+  )
+)
+
+(type + Arguments (is (of Arguments String))
+  (fn-do + This _
+    (param name String)
+    (call super name)
+  )
+  (fn-expr + parse-value (? String)
+    (param text String)
+    text
+  )
+)
+
+(type + HelpTopic
+  (prop + title String)
+  (prop + entries (list HelpEntry))
+  (fn-do + This _
+    (param title String)
+  )
+  (fn-expr _ rows (list HelpRow) :get
+    (in (call HelpRow (. each term) (. each about)) entries)
+  )
+  (fn-do + (infix this += (param entry HelpEntry)) _
+    (+= entries entry)
+    (return entry)
+  )
+)
+
+(type + HelpEntry
+  (prop + term String)
+  (prop + about _ (= ""))
+  (fn-do + This _
+    (param term String)
+  )
+)
+
+(type + Subcommand
+  (prop + name String)
+  (prop + about _ (= ""))
+  (prop + action (? CommandAction))
+  (prop + parent (? Subcommand))
+  (prop + options (list CommandOption))
+  (prop + groups (list OptionGroup))
+  (prop + positionals (list CommandArgument))
+  (prop + commands (list Subcommand))
+  (prop + topics (list HelpTopic))
+  (prop + hidden _ (= false))
+  (fn-do + This _
+    (param name String (= ""))
+  )
+  (fn-expr + path String :get
+    (if-expr parent (str (. parent path) " " name) name)
+  )
+  (fn-expr + synopsis String :get
+    (call (. " " join) parts)
+    (where
+      (lazy parts (list String)
+        (block
+          (item name)
+          (spread (in (. each synopsis) positionals))
+        )
+      )
+    )
+  )
+  (fn-expr + usage String :get
+    (str "usage: " path command-part argument-part " [options]")
+    (where
+      (lazy command-part (if-expr (> (. commands length) 0) " <command>" ""))
+      (lazy argument-part (if-expr (> (. positionals length) 0) (str " " (call (. " " join) (in (. each synopsis) positionals))) ""))
+    )
+  )
+  (fn-do + declared-options (list CommandOption) :get
+    (let declared (list CommandOption))
+    (++= declared options)
+    (for (in group groups)
+      (++= declared (. group options))
+    )
+    (return declared)
+  )
+  (fn-expr + visible-options (list CommandOption) :get
+    (spread (in each declared-options (when (not (. each hidden)))))
+    (spread inherited)
+    (where
+      (lazy inherited (if-expr parent (. parent visible-options) (call (of List CommandOption))))
+    )
+  )
+  (fn-do + loose-options (list CommandOption) :get
+    (let loose (list CommandOption))
+    (let scope (? Subcommand) this)
+    (while scope
+      (++= loose (. scope options))
+      (= scope (. scope parent))
+    )
+    (return loose)
+  )
+  (fn-do + option-groups (list OptionGroup) :get
+    (let found (list OptionGroup))
+    (let scope (? Subcommand) this)
+    (while scope
+      (++= found (. scope groups))
+      (= scope (. scope parent))
+    )
+    (return found)
+  )
+  (fn-expr + help-text String :get
+    (str (call (. "\n" join) lines) "\n")
+    (where
+      (lazy lines (list String)
+        (block
+          (item usage)
+          (spread about-lines)
+          (spread (call help-section "commands" command-rows width))
+          (spread (call help-section "arguments" argument-rows width))
+          (spread (call help-sections-lines sections width))
+        )
+      )
+      (lazy about-lines (list String) (if-expr (!= about "") (list "" about) (call (of List String))))
+      (lazy command-rows (list HelpRow) (in (call HelpRow (. each synopsis) (. each about)) commands (when (not (. each hidden)))))
+      (lazy argument-rows (list HelpRow) (in (call HelpRow (. each synopsis) (. each description)) positionals (when (!= (. each description) ""))))
+      (lazy loose-rows (list HelpRow)
+        (block
+          (spread (call option-rows loose-options))
+          (item (call HelpRow "-h, --help" "show this help"))
+        )
+      )
+      (lazy sections (list HelpSection)
+        (block
+          (item? (only-if (call HelpSection "options" loose-rows) (if has-loose)))
+          (spread (in (call HelpSection (. each title) (call option-rows (. each options))) option-groups))
+          (item? (only-if (call HelpSection "options" loose-rows) (if (not has-loose))))
+          (spread (in (call HelpSection (. each title) (. each rows)) topics))
+        )
+      )
+      (lazy has-loose (> (. loose-rows length) 1))
+      (lazy width (call help-width row-groups))
+      (lazy row-groups (list (list HelpRow))
+        (block
+          (item command-rows)
+          (item argument-rows)
+          (spread (in (. each rows) sections))
+        )
+      )
+    )
+  )
+  (fn-do + (infix this += (param option CommandOption)) _
+    (+= options option)
+    (return option)
+  )
+  (fn-do + (infix this += (param group OptionGroup)) _
+    (+= groups group)
+    (return group)
+  )
+  (fn-do + (infix this += (param positional CommandArgument)) _
+    (+= positionals positional)
+    (return positional)
+  )
+  (fn-do + (infix this += (param command Subcommand)) _
+    (= (. command parent) this)
+    (+= commands command)
+    (return command)
+  )
+  (fn-do + (infix this += (param topic HelpTopic)) _
+    (+= topics topic)
+    (return topic)
+  )
+  (fn-do + find-option (? CommandOption)
+    (param spelling String)
+    (for (in option declared-options)
+      (return-if option (if (call (. option is-spelled) spelling)))
+    )
+    (return-if (call (. parent find-option) spelling) (if parent))
+    (return null)
+  )
+  (fn-do + find-command (? Subcommand)
+    (param word String)
+    (for (in command commands)
+      (return-if command (if (== (. command name) word)))
+    )
+    (return null)
+  )
+  (fn-expr + positional-at (? CommandArgument)
+    (param slot Index)
+    (only-if ([] positionals slot) (if (< slot (. positionals length))))
+  )
+  (fn-do + reset-tree _
+    (for (in option declared-options)
+      (call (. option reset))
+    )
+    (for (in positional positionals)
+      (call (. positional reset))
+    )
+    (for (in command commands)
+      (call (. command reset-tree))
+    )
+  )
+)
+
+(type + CommandLine (is Subcommand)
+  (fn-do + parse ParsedCommandLine (?! UsageError)
+    (param arguments (list String))
+    (call reset-tree)
+    (return (call (. (call CommandLineParse arguments this) result)))
+  )
+  (fn-do + run Int
+    (let argv (call cmdline-args))
+    (let parsed
+      (call parse (if-expr (> (. argv length) 0) ([] argv (... 1)) argv)
+        (block
+          (on-error (: error UsageError)
+            (call report error this)
+            (call request-process-termination 2)
+            (throw (call TaskTerminationError))
+          )
+        )
+      )
+    )
+    (match parsed
+      (case (call .help command)
+        (<- stdout (. command help-text))
+        (call request-process-termination 0)
+        (throw (call TaskTerminationError))
+      )
+      (case (call .run command)
+        (return (call perform command))
+      )
+    )
+  )
+  (fn-do + respond Int
+    (param argv (list String))
+    (let parsed
+      (call parse (if-expr (> (. argv length) 0) ([] argv (... 1)) argv)
+        (block
+          (on-error (: error UsageError)
+            (call report error this)
+            (return 2)
+          )
+        )
+      )
+    )
+    (match parsed
+      (case (call .help command)
+        (<- stdout (. command help-text))
+        (return 0)
+      )
+      (case (call .run command)
+        (return (call perform command))
+      )
+    )
+  )
+  (fn-do + main Int (?! Error)
+    (if (> (. commands length) 0)
+      (<- stdout help-text)
+    )
+    (return 0)
+  )
+  (fn-do _ perform Int
+    (param command Subcommand)
+    (return
+      (call act command
+        (block
+          (on-error (: error TaskTerminationError)
+            (throw error)
+          )
+          (on-error (: error UsageError)
+            (call report error command)
+            (return 2)
+          )
+          (on-error (: error Error)
+            (<- stderr (str (. error message) "\n"))
+            (return 1)
+          )
+        )
+      )
+    )
+  )
+  (fn-do _ act Int (?! Error)
+    (param command Subcommand)
+    (return-if (call main) (if (not (. command action))))
+    (let action (. command action))
+    (return (call action))
+  )
+  (fn-do _ report _
+    (param error UsageError)
+    (param fallback Subcommand)
+    (let command (?? (. error command) fallback))
+    (<- stderr (str (. error message) "\nrun `" (. command path) " --help` for usage\n"))
+  )
+)
+
+(type + RawCommandLine
+  (prop + command String)
+  (prop + args (list String))
+  (prop + flags (list String))
+  (prop + options (map String String))
+  (fn-do + This _ (?! Error)
+    (param argv (list String))
+    (param value-options (list String) (= (call (of List String))))
+    (let (tuple head tail) (call headtail argv))
+    (let parts (call command-line-parts tail value-options))
+    (= command (?? head ""))
+    (= args
+      (block
+        (spread parts)
+        (pipe ?*>
+          (match? each
+            (case (call .argument value)
+              value
+            )
+          )
+        )
+        (pipe |> List)
+      )
+    )
+    (= flags
+      (block
+        (spread parts)
+        (pipe ?*>
+          (match? each
+            (case (call .flag name)
+              name
+            )
+          )
+        )
+        (pipe |> List)
+      )
+    )
+    (= options
+      (block
+        (spread parts)
+        (pipe ?*>
+          (match? each
+            (case (call .option name value)
+              (tuple name value)
+            )
+          )
+        )
+        (pipe |> Map)
+      )
+    )
+  )
+  (fn-expr + has-flag Bool
+    (param name String)
+    (has flags name)
+  )
+)
+
+(fn-expr + cmdline-args (list String)
+  (case-each (in index (..< 0 (call C:brixGetArgC)))
+    ([] argv index)
+  )
+  (where
+    (lazy argv (call C:brixGetArgV))
+  )
+)
+
+(fn-expr + cmdline RawCommandLine (?! Error)
+  (param value-options (list String) (= (call (of List String))))
+  (call RawCommandLine (call cmdline-args) value-options)
+)
+
+(type _ CommandToken (is Union)
+  (variant separator)
+  (variant long (tuple (: name String) (: value (? String))))
+  (variant short (tuple (: letters String)))
+  (variant word (tuple (: text String)))
+)
+
+(type _ CommandLineParse
+  (prop + arguments (list String))
+  (prop + command Subcommand)
+  (prop + index Index (= 0))
+  (prop + slot Index (= 0))
+  (prop + wants-help _ (= false))
+  (prop + ended _ (= false))
+  (fn-do + This _
+    (param arguments (list String))
+    (param command Subcommand)
+  )
+  (fn-do + result ParsedCommandLine (?! UsageError)
+    (while (< index (. arguments length))
+      (let text ([] arguments index))
+      (+= index 1)
+      (let token (if-expr ended (call (. CommandToken word) text) (call command-token text)))
+      (match token
+        (case .separator
+          (= ended true)
+        )
+        (case (call .long name inline)
+          (call take-long name inline)
+        )
+        (case (call .short letters)
+          (call take-shorts letters)
+        )
+        (case (call .word word)
+          (call take-word word)
+        )
+      )
+    )
+    (return-if (call (. ParsedCommandLine help) command) (if wants-help))
+    (call settle)
+    (return-if (call (. ParsedCommandLine help) command) (if (and (not (. command action)) (. command parent))))
+    (return (call (. ParsedCommandLine run) command))
+  )
+  (fn-do _ take-long _ (?! UsageError)
+    (param name String)
+    (param inline (? String))
+    (if (== name "help")
+      (= wants-help true)
+      (else
+        (let spelling (str "--" name))
+        (let option (call (. command find-option) spelling))
+        (throw (call unknown-option spelling) (if (not option)))
+        (call take-value option spelling inline)
+      )
+    )
+  )
+  (fn-do _ take-shorts _ (?! UsageError)
+    (param letters String)
+    (let position Index 0)
+    (while (< position (. letters length))
+      (let spelling (str "-" ([] letters position)))
+      (+= position 1)
+      (if (== spelling "-h")
+        (= wants-help true)
+        (else
+          (let option (call (. command find-option) spelling))
+          (throw (call unknown-option spelling) (if (not option)))
+          (if (and (. option takes-value) (< position (. letters length)))
+            (call take-value option spelling ([] letters (... position)))
+            (= position (. letters length))
+            (else
+              (call take-value option spelling null)
+            )
+          )
+        )
+      )
+    )
+  )
+  (fn-do _ take-value _ (?! UsageError)
+    (param option CommandOption)
+    (param spelling String)
+    (param inline (? String))
+    (if (not (. option takes-value))
+      (throw (call UsageError (str spelling " takes no value") command) (if (!= inline null)))
+      (call (. option accept))
+      (else-if (and (== inline null) (not (. option needs-value)))
+        (if (and has-argument (not (call (. ([] arguments index) starts-with) "-")) (call (. option accept-value) ([] arguments index)))
+          (+= index 1)
+          (else
+            (call (. option accept))
+          )
+        )
+        (lazy has-argument (< index (. arguments length)))
+      )
+      (else
+        (let text (?? inline (call next-argument spelling)))
+        (let expected (if-expr (. option expected) (str "; expected " (!! (. option expected))) ""))
+        (throw (call UsageError (str "invalid value \"" text "\" for " spelling expected) command) (if (not (call (. option accept-value) text))))
+      )
+    )
+  )
+  (fn-do _ next-argument String (?! UsageError)
+    (param spelling String)
+    (throw (call UsageError (str spelling " needs a value") command) (if (>= index (. arguments length))))
+    (+= index 1)
+    (return ([] arguments (- index 1)))
+  )
+  (fn-do _ take-word _ (?! UsageError)
+    (param word String)
+    (let dispatches (and (== slot 0) (not ended) (> (. command commands length) 0)))
+    (let chosen (only-if (call (. command find-command) word) (if dispatches)))
+    (if chosen
+      (= command chosen)
+      (else-if (and dispatches (== word "help"))
+        (= wants-help true)
+      )
+      (else
+        (let positional (call (. command positional-at) slot))
+        (if (not positional)
+          (throw (call unknown-command word) (if dispatches))
+          (throw (call UsageError (str "unexpected argument " word) command))
+        )
+        (throw (call UsageError (str "invalid value \"" word "\" for " (. positional name)) command) (if (not (call (. positional accept-value) word))))
+        (if (not (. positional is-variadic))
+          (+= slot 1)
+        )
+      )
+    )
+  )
+  (fn-do _ settle _ (?! UsageError)
+    (let scope (? Subcommand) command)
+    (while (!= scope null)
+      (for (in option (. scope declared-options))
+        (if (and (not (. option is-given)) (!= (. option env) null))
+          (let text (call env (. option env)))
+          (if (!= text null)
+            (throw (call UsageError (str "invalid value \"" text "\" in " (!! (. option env)) " for " (. option spelling)) command) (if (not (call (. option accept-env) text))))
+          )
+        )
+        (throw (call UsageError (str (. option spelling) " is required") command) (if (and (. option required) (not (. option is-given)))))
+        (call (. option settle))
+      )
+      (= scope (. scope parent))
+    )
+    (for (in positional (. command positionals))
+      (throw (call UsageError (str "missing " (. positional synopsis)) command) (if (and (. positional required) (not (. positional is-filled)))))
+      (call (. positional settle))
+    )
+  )
+  (fn-expr _ unknown-option UsageError
+    (param spelling String)
+    (call UsageError (str "unknown option " spelling (call suggestion spelling candidates)) command)
+    (where
+      (lazy candidates (list String)
+        (block
+          (item "--help")
+          (spread (in (. each spelling) (. command visible-options)))
+          (spread (in (. each short) (. command visible-options) (when (!= (. each short) null))))
+        )
+      )
+    )
+  )
+  (fn-expr _ unknown-command UsageError
+    (param word String)
+    (call UsageError (str "unknown command " word (call suggestion word candidates)) command)
+    (where
+      (lazy candidates (list String)
+        (block
+          (item "help")
+          (spread (in (. each name) (. command commands) (when (not (. each hidden)))))
+        )
+      )
+    )
+  )
+)
+
+(type _ Part (is Union)
+  (variant argument (tuple (: value String)))
+  (variant option (tuple (: name String) (: value String)))
+  (variant flag (tuple (: name String)))
+)
+
+(fn-expr _ command-token CommandToken
+  (param text String)
+  (match text
+    (~ "--"
+      .separator
+    )
+    (~ (seq "--" (: name (+ (seq (! "=") .))) "=" (: value (* .)))
+      (call .long name value)
+    )
+    (~ (seq "--" (: name (+ .)))
+      (call .long name null)
+    )
+    (~ (seq "-" (chars "0-9.") (* .))
+      (call .word text)
+    )
+    (~ (seq "-" (: letters (+ .)))
+      (call .short letters)
+    )
+    (default
+      (inline (call .word text))
+    )
+  )
+)
+
+(fn-expr _ help-section (list String)
+  (param title String)
+  (param rows (list HelpRow))
+  (param width Size)
+  (if-expr (> (. rows length) 0) lines (call (of List String)))
+  (where
+    (lazy lines (list String)
+      (block
+        (item "")
+        (item title)
+        (spread (in (call help-row-text each width) rows))
+      )
+    )
+  )
+)
+
+(fn-expr _ option-rows (list HelpRow)
+  (param options (list CommandOption))
+  (in (call HelpRow (. each label) (. each description)) options (when (not (. each hidden))))
+)
+
+(fn-do _ help-sections-lines (list String)
+  (param sections (list HelpSection))
+  (param width Size)
+  (let lines (list String))
+  (for (in section sections)
+    (++= lines (call help-section (. section title) (. section rows) width))
+  )
+  (return lines)
+)
+
+(fn-expr _ help-row-text String
+  (param row HelpRow)
+  (param width Size)
+  (case? (== (. row about) "")
+    (str "  " (. row term))
+  )
+  (case? (<= (+ (. row term length) 2) width)
+    (str "  " (. row term) (* " " (- width (. row term length))) (. row about))
+  )
+  (default
+    (str "  " (. row term) "\n  " (* " " width) (. row about))
+  )
+)
+
+(fn-do _ help-width Size
+  (param groups (list (list HelpRow)))
+  (let longest Size 0)
+  (for (in group groups)
+    (for (in row group)
+      (if (<= (. row term length) cli-term-width)
+        (= longest (call max longest (. row term length)))
+      )
+    )
+  )
+  (return (+ longest 2))
+)
+
+(fn-do _ suggestion String
+  (param word String)
+  (param candidates (list String))
+  (let best (? String) null)
+  (let best-distance (+ cli-suggestion-distance 1))
+  (for (in candidate candidates)
+    (let bare (call bare-name candidate))
+    (let distance (call edit-distance (call bare-name word) bare))
+    (if (and (< distance best-distance) (< (* distance 2) (. bare length)))
+      (= best candidate)
+      (= best-distance distance)
+    )
+  )
+  (return (if-expr best (str "; did you mean " best "?") ""))
+)
+
+(fn-expr _ bare-name String
+  (param text String)
+  (match text
+    (~ (seq (* "-") (: name (* .)))
+      name
+    )
+    (default
+      (inline text)
+    )
+  )
+)
+
+(fn-expr _ command-line-parts (list Part) (?! Error)
+  (param arguments (stream String))
+  (param value-options (list String))
+  (match arguments
+    (~ (seq (: parts (* \part)) (: operands \operands))
+      (spread parts)
+      (spread operands)
+    )
+    (throw (call Error "Invalid command line"))
+    (blank)
+    (lazy part Part
+      (pattern
+        (~ (seq (: name \value-option) (: value String))
+          (call .option name value)
+        )
+        (~ (seq (: name \value-option) (! .))
+          (call missing-value name)
+        )
+        (~ (: text (\{} (!= it "--")))
+          (?? (call option-part text) (call .argument text))
+        )
+      )
+    )
+    (blank)
+    (lazy value-option String
+      (pattern
+        (~ (: text (\{} (has value-options (?? (call option-name it) ""))))
+          (!! (call option-name text))
+        )
+      )
+    )
+    (blank)
+    (lazy operands (list Part)
+      (pattern
+        (~ (seq (\{} (== it "--")) (: values (* String)))
+          (in (call .argument each) values)
+        )
+        (~ (! .)
+          (call (of List Part))
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ option-part (? Part)
+  (param text String)
+  (match text
+    (~ (seq "-" (? "-") (: name (+ (seq (! "=") .))) "=" (: value (* .)))
+      (call .option name value)
+    )
+    (~ (seq "-" (? "-") (: name (+ .)))
+      (call .flag name)
+    )
+    (default
+      (inline null)
+    )
+  )
+)
+
+(fn-expr _ option-name (? String)
+  (param text String)
+  (match text
+    (~ (seq "-" (? "-") (: name (+ .)))
+      name
+    )
+    (default
+      (inline null)
+    )
+  )
+)
+
+(fn-do _ missing-value Part (?! Error)
+  (param name String)
+  (throw (call Error (str "Missing value for option " name)))
+)

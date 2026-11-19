@@ -1,0 +1,29 @@
+(import /stream/sort)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Sort"))
+  (call (. cases run) sort-tests)
+  (return cases)
+)
+
+(fn-do + sort-tests _
+  (param t TestCase)
+  (call (. t expect) "ascending" "1, 1, 2, 3, 5, 8" (call (. ", " join) (call sort (list 5 3 1 8 1 2))))
+  (call (. t expect) "descending" "8, 5, 3, 2, 1, 1" (call (. ", " join) (call sort (list 5 3 1 8 1 2) (:is-reverse true))))
+  (blank)
+  (let by-length (call (. ", " join) (call sort (list "bear" "ant" "cat" "ox") (:using compare-length))))
+  (call (. t expect) "custom comparator" "ox, ant, cat, bear" by-length)
+  (return t)
+)
+
+(fn-expr + compare-length _
+  (param left String)
+  (param right String)
+  (call compare-basic (. left length) (. right length))
+)

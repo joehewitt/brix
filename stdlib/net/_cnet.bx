@@ -1,0 +1,107 @@
+(import /BxCore/BxSystem.h)
+(import /netdb.h)
+
+(type + CAddrInfo (is Tuple)
+  (prop + family I32)
+  (prop + socktype I32)
+  (prop + protocol I32)
+  (prop + addrlen I32)
+  (prop + addr (of CPointer Char8))
+)
+
+(type + CSockAddrInet4 (is Tuple)
+  (prop + family I16)
+  (prop + port U16)
+  (prop + address U32)
+  (prop + zero (of CPointer Char8))
+)
+
+(type + DNSError (is Error)
+  (prop + error DNSErrorCode)
+  (fn-do + This _
+    (param error _)
+  )
+)
+
+(type + DNSErrorCode (is I32)
+  (variant addr-family (= C:EAI_ADDRFAMILY))
+  (variant again (= C:EAI_AGAIN))
+  (variant bad-flags (= C:EAI_BADFLAGS))
+  (variant fail (= C:EAI_FAIL))
+  (variant family (= C:EAI_FAMILY))
+  (variant memory (= C:EAI_MEMORY))
+  (variant no-data (= C:EAI_NODATA))
+  (variant no-name (= C:EAI_NONAME))
+  (variant service (= C:EAI_SERVICE))
+  (variant sock-type (= C:EAI_SOCKTYPE))
+  (variant system (= C:EAI_SYSTEM))
+  (fn-to-expr + String
+    (match this
+      (case= .addr-family
+        "No addresses in family"
+      )
+      (case= .again
+        "Try again later"
+      )
+      (case= .bad-flags
+        "Bad flags"
+      )
+      (case= .fail
+        "Permanent failure"
+      )
+      (case= .family
+        "Family not supported"
+      )
+      (case= .memory
+        "Out of memory"
+      )
+      (case= .no-data
+        "No addresses defined"
+      )
+      (case= .no-name
+        "Name not recognized"
+      )
+      (case= .service
+        "Service not available"
+      )
+      (case= .sock-type
+        "Socket type not supported"
+      )
+      (case= .system
+        "System error"
+      )
+    )
+  )
+)
+
+(fn-expr + get-addr-info _
+  (param host String)
+  (param port U16)
+  (param flags I32 (= (as (/or/ C:AI_ADDRCONFIG C:AI_V4MAPPED) I32)))
+  (before
+    ; The first IPv4 TCP address of a host. Its `addr` is the caller's to free.
+    (throw (call DNSError (as error DNSErrorCode)) (if (!= error 0)))
+  )
+  ([] buf 0)
+  (where
+    (lazy buf ([] CAddrInfo 1))
+    (lazy error
+      (call C:brixGetAddressInfo
+        (block
+          (arg host)
+          (arg (as port String))
+          (arg flags)
+          (arg C:AF_INET)
+          (arg C:SOCK_STREAM)
+          (arg C:IPPROTO_TCP)
+          (arg buf)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + network-to-host U16
+  (param value U16)
+  (/or/ (/lshift/ (/and/ value 0xff) 8) (/zrshift/ value 8))
+)

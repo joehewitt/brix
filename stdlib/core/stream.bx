@@ -1,0 +1,354 @@
+(import ./array)
+(import ./channel)
+(import ./core)
+(import ./error)
+(import ./function)
+(import ./io)
+(import ./list)
+(import ./number)
+(import ./range)
+(import ./string)
+(import ./task)
+(blank)
+(type-line + (of Stream T) (is (of CursorIterable T) (of Indexable T) (of Iterable T) (of Broadcastable T) (of ImmutableArray T)))
+
+(type + (of CursorIterable Item State) (is Interface)
+  (fn-to-do + (of Iterable ''T) @inline
+    (constraint =~ T (as Item T))
+    (for (in item this)
+      (yield (as item T))
+    )
+  )
+  (fn-expr + initial-iterator-state State :get)
+  (fn-do + next-iterator (tuple State (? Item))
+    (param state State)
+  )
+)
+
+(type + (of Readable Message) (is Interface)
+  (fn-expr + (prefix <- this) (? Message))
+)
+
+(type + (of Writable Message) (is Interface)
+  (fn-expr + (infix this <- (param item Message)) _)
+)
+
+(type + (of Indexable Item) (is Interface)
+  (fn-to-do + (of Iterable ''T)
+    (constraint =~ T (as Item T))
+    (for (in item this)
+      (yield (as item T))
+    )
+  )
+  (fn-expr + length Size :get)
+  (fn-expr + (index-get this (param index Position)) Item
+    ([] this (call (. index normalize) this))
+  )
+  (fn-expr + (index-get this (param index Index)) Item)
+  (fn-expr + (index-get this (param range (of Range Position))) (of Indexable Item)
+    ([] this (call (. range normalize) this))
+  )
+  (fn-expr + (index-get this (param range (of Range Index))) (of Indexable Item))
+  (fn-do + reversed _
+    (for (in offset (..< 0 length))
+      (yield ([] this (- length 1 offset)))
+    )
+  )
+)
+
+(type + (of Iterable Message) (is Interface)
+  (implements (of Readable Message))
+  (fn-to-expr + (of List ''T) @inline
+    (constraint =~ T (as Message T))
+    (call List this)
+  )
+  (fn-to-do + (of Iterable ''T)
+    (constraint =~ T (as Message T))
+    (for (in item this)
+      (yield (as item T))
+    )
+    (blank)
+    ;  -------------------------------------------------------------------------------------------------
+    ;  + to Broadcastable'Message @async-restarting
+    (blank)
+    ;  <<= this
+  )
+  (fn-to-do + (of Broadcastable Message)
+    (let chan (of AsyncChannel Message))
+    (do-new @detached
+      (finally
+        (inline (call (. chan close)))
+      )
+      (for (in message this)
+        (<- chan message)
+      )
+    )
+    (return chan)
+  )
+  (fn-do + begin-iterating _ (?! Error))
+  (fn-do + end-iterating _ (?! Error))
+)
+
+(type + (of Broadcastable Message) (is Interface)
+  (implements (of Readable Message))
+  (fn-to-expr + (of Iterable Message)
+    (call BroadcasterIterator this)
+    (blank)
+    ;  ----------------------------------------------------------------------------------------------------
+    ;  + to Iterable''T
+    ;      - T =~ Message as T
+    (blank)
+    ;  BroadcasterIterator'T(this)
+  )
+  (fn-do + (prefix <- this) (? Message)
+    (return-if (if is-closed))
+    (blank)
+    (let subscriber (call (of BroadcasterReader Message)))
+    (return-if (if (not (catch? (call subscribe subscriber)))))
+    (finally
+      (inline (catch (call unsubscribe subscriber)))
+    )
+    (blank)
+    (return (<- subscriber))
+  )
+  (fn-expr + is-closed Bool :get)
+  (fn-expr + subscribe _ (?! Error)
+    (param subscriber (of Subscriber Message))
+  )
+  (fn-expr + unsubscribe _ (?! Error)
+    (param subscriber (of Subscriber Message))
+  )
+  (fn-expr + subscribe _ (?! Error)
+    (param subscriber (of Subscribable Message))
+  )
+  (fn-expr + unsubscribe _ (?! Error)
+    (param subscriber (of Subscribable Message))
+  )
+)
+
+(type + Closable (is Interface)
+  (fn-expr + close _ (?! Error))
+)
+
+(type + (of Subscribable Message) (is Interface)
+  (fn-expr + event-arrival-only Bool :get
+    false
+  )
+  (fn-expr + event-is-machine Bool :get
+    false
+  )
+  (fn-do + event-bind-address _
+    (param address Pointer)
+    (param generation U64)
+  )
+  (fn-expr + (infix this == (param sub (of Subscriber Message))) _
+    false
+  )
+  (fn-expr + this _
+    (param message Message)
+    (param broadcaster (of Broadcastable Message))
+  )
+  (fn-do + unsubscribe _)
+  (fn-do + finish _
+    (param broadcaster (of Broadcastable Message))
+    (call (. broadcaster unsubscribe) this
+      (block
+        (on-error (: error Error)
+          (call unhandled-error error)
+        )
+      )
+    )
+  )
+)
+
+(type + (of Subscriber Message) (is (fn-type Void (?! Error) (param item Message) (param broadcaster (of Broadcastable Message)))))
+
+(type + (of Generator Item) (is (fn-type Item))
+  (implements (of Iterable Item))
+  (fn-to-expr + (of List Item) @inline
+    (call (of List Item) this)
+  )
+  (fn-to-do + (of Iterable ''T)
+    (constraint =~ T (as Item T))
+    (for (in item this)
+      (yield (as item T))
+    )
+  )
+  (fn-expr + (prefix <- this) (? Item)
+    (call this)
+  )
+  (fn-do + begin-iterating _)
+  (fn-do + end-iterating _)
+)
+
+(type + (of Subscription Message)
+  (implements (of Subscribable Message))
+  (prop _ queue _ (= (call (of IOBuffer Message))))
+  (prop _ broadcaster-queue _ (= (call (of IOBuffer (of Broadcastable Message)))))
+  (prop _ sub (of Subscriber Message))
+  (prop _ is-dispatching _ (= false))
+  (prop _ finishing (? (of Broadcastable Message)))
+  (prop _ home _ (= (call (. Worker current))))
+  (prop _ mutex _ (= (call Mutex)))
+  (fn-do + This _
+    (param sub (of Subscriber Message))
+  )
+  (fn-do + this _
+    (param message Message)
+    (param broadcaster (of Broadcastable Message))
+    (call (. mutex lock))
+    (call (. queue push) message)
+    (call (. broadcaster-queue push) broadcaster)
+    (let starts (not is-dispatching))
+    (= is-dispatching true)
+    (call (. mutex unlock))
+    (blank)
+    (if starts
+      (do-new (worker: home)
+        (call dispatch)
+      )
+    )
+  )
+  (fn-do + unsubscribe _
+    (call (. mutex lock))
+    (call (. queue clear))
+    (call (. broadcaster-queue clear))
+    (= finishing null)
+    (call (. mutex unlock))
+  )
+  (fn-do + finish _
+    (param broadcaster (of Broadcastable Message))
+    (call (. mutex lock))
+    (let waits is-dispatching)
+    (if waits
+      (= finishing broadcaster)
+    )
+    (call (. mutex unlock))
+    (if (not waits)
+      (call (. broadcaster unsubscribe) this
+        (block
+          (on-error (: error Error)
+            (call unhandled-error error)
+          )
+        )
+      )
+    )
+  )
+  (fn-expr + (infix this == (param other (of Subscriber Message))) _
+    (== sub other)
+  )
+  (fn-do + dispatch _
+    (call (. mutex lock))
+    (let count (. queue length))
+    (while (and count (. queue length))
+      (let message (call (. queue pop-first)))
+      (let broadcaster (call (. broadcaster-queue pop-first)))
+      (call (. mutex unlock))
+      (call sub message broadcaster
+        (block
+          (on-error (: error Error)
+            (call unhandled-error error)
+          )
+        )
+      )
+      (-= count 1)
+      (call (. mutex lock))
+    )
+    (blank)
+    (if (. queue length)
+      (call (. mutex unlock))
+      (do-new (worker: home)
+        (call dispatch)
+      )
+      (return)
+    )
+    (= is-dispatching false)
+    (let broadcaster finishing)
+    (= finishing null)
+    (call (. mutex unlock))
+    (if broadcaster
+      (call (. broadcaster unsubscribe) this
+        (block
+          (on-error (: error Error)
+            (call unhandled-error error)
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + (of publisher Item) _
+  (param stream (of Broadcastable Item))
+  stream
+)
+
+(fn-expr + (of publisher Item) _
+  (param stream (of Iterable Item))
+  (as stream (of Broadcastable Item))
+)
+
+(fn-expr + (of publisher Item) _
+  (param stream (of Indexable Item))
+  (as (as stream (of Iterable Item)) (of Broadcastable Item))
+)
+
+(fn-do + (of map-do From) _
+  (param stream (stream From))
+  (param with (of Statement From))
+  (for (in item stream)
+    (call with item)
+  )
+)
+
+(fn-do + (of map From To) _ @inline
+  (param stream (stream From))
+  (param with (of Mapper From To))
+  (for (in item stream)
+    (yield (call with item))
+  )
+)
+
+(fn-do + (of flat-map Item) (stream Item) @inline
+  (param streams (stream (stream Item)))
+  (for (in stream streams)
+    (for (in item stream)
+      (yield item)
+    )
+  )
+)
+
+(fn-do + (of flat-map Item Result) (stream Item) @inline
+  (param streams (stream (stream Item)))
+  (param with (of Selector Item Result))
+  (for (in stream streams)
+    (for (in item stream)
+      (yield (call with item))
+    )
+  )
+)
+
+(fn-do + (of tap From To) _ @inline
+  (param stream (stream From))
+  (param with (of Mapper From To))
+  (for (in item stream)
+    (call with item)
+    (yield item)
+  )
+)
+
+(fn-do + (of map-filter From To) _ @inline
+  (param stream (stream From))
+  (param with (of OptionalMapper From To))
+  (for (in item stream)
+    (yield? (call with item))
+  )
+)
+
+(fn-do + (of filter Item) _ @inline
+  (param stream (stream Item))
+  (param where (of Predicate Item))
+  (for (in item stream (when (call where item)))
+    (yield item)
+  )
+)

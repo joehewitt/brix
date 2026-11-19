@@ -1,0 +1,526 @@
+(import /graphics/boolean)
+(import /graphics/color)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /graphics/shapes)
+(import /math)
+(import /units)
+(blank)
+(prop + boolean-grid-cell-count Index (= 20))
+(prop + boolean-grid-cell-width I32 (= 266))
+(prop + boolean-grid-cell-height I32 (= 200))
+
+(fn-expr + boolean-grid-cell-name String
+  (param index _)
+  (case? (< index 10)
+    (str "0" index)
+  )
+  (default
+    (str index)
+  )
+)
+
+(fn-expr + boolean-grid-cell-source-a Path
+  (param index _)
+  (param cell Rect)
+  (case? (== operation 3)
+    (call boolean-grid-clip-source-a kind cell)
+  )
+  (case? (== kind 0)
+    (call boolean-grid-rect-a cell)
+  )
+  (case? (== kind 1)
+    (call boolean-grid-diamond-a cell)
+  )
+  (case? (== kind 2)
+    (call boolean-grid-curve-a cell)
+  )
+  (case? (== kind 3)
+    (call boolean-grid-contained-a cell)
+  )
+  (default
+    (call boolean-grid-shared-edge-a cell)
+  )
+  (where
+    (lazy operation (% index 4))
+    (lazy kind (call boolean-grid-case-index index))
+  )
+)
+
+(fn-expr + boolean-grid-cell-source-b Path
+  (param index _)
+  (param cell Rect)
+  (case? (== operation 3)
+    (call boolean-grid-clip-source-b kind cell)
+  )
+  (case? (== kind 0)
+    (call boolean-grid-rect-b cell)
+  )
+  (case? (== kind 1)
+    (call boolean-grid-diamond-b cell)
+  )
+  (case? (== kind 2)
+    (call boolean-grid-curve-b cell)
+  )
+  (case? (== kind 3)
+    (call boolean-grid-contained-b cell)
+  )
+  (default
+    (call boolean-grid-shared-edge-b cell)
+  )
+  (where
+    (lazy operation (% index 4))
+    (lazy kind (call boolean-grid-case-index index))
+  )
+)
+
+(fn-expr + boolean-grid-cell-result (? Path)
+  (param index _)
+  (param cell Rect)
+  (match operation
+    (case= 0
+      (call union a b)
+    )
+    (case= 1
+      (call intersect a b)
+    )
+    (case= 2
+      (call subtract a b)
+    )
+    (default
+      (call clip a b)
+    )
+  )
+  (where
+    (lazy a (call boolean-grid-cell-source-a index cell))
+    (lazy b (call boolean-grid-cell-source-b index cell))
+    (lazy operation (% index 4))
+  )
+)
+
+(fn-expr + boolean-grid-cell-result-fill-color RGBA
+  (param index _)
+  (match operation
+    (case= 0
+      (call RGBA 16% 56% 34% 62%)
+    )
+    (case= 1
+      (call RGBA 90% 55% 9% 64%)
+    )
+    (case= 2
+      (call RGBA 24% 45% 82% 62%)
+    )
+    (default
+      (call RGBA 3% 60% 66% 62%)
+    )
+  )
+  (where
+    (lazy operation (% index 4))
+  )
+)
+
+(fn-expr + boolean-grid-source-a-fill-color _
+  (call RGBA 12% 43% 78% 13%)
+)
+
+(fn-expr + boolean-grid-source-b-fill-color _
+  (call RGBA 86% 24% 35% 13%)
+)
+
+(fn-expr + boolean-grid-source-a-stroke-color _
+  (call RGBA 8% 34% 74% 68%)
+)
+
+(fn-expr + boolean-grid-source-b-stroke-color _
+  (call RGBA 78% 15% 27% 68%)
+)
+
+(fn-expr + boolean-grid-clip-source-a-fill-color _
+  (call RGBA 12% 43% 78% 10%)
+)
+
+(fn-expr + boolean-grid-clip-source-a-stroke-color _
+  (call RGBA 8% 34% 74% 52%)
+)
+
+(fn-expr + boolean-grid-clip-window-stroke-color _
+  (call RGBA 3% 7% 14% 76%)
+)
+
+(fn-expr + boolean-grid-cell-border-color _
+  (call RGBA 3% 7% 14% 10%)
+)
+
+(fn-expr _ boolean-grid-case-index _
+  (param index _)
+  (case? (< index 4)
+    0
+  )
+  (case? (< index 8)
+    1
+  )
+  (case? (< index 12)
+    2
+  )
+  (case? (< index 16)
+    3
+  )
+  (default
+    4
+  )
+)
+
+(fn-expr _ boolean-grid-rect-a _
+  (param cell Rect)
+  (call rectangle
+    (block
+      (arg
+        (call Rect
+          (block
+            (arg (. frame left))
+            (arg (+ (. frame top) (* (. frame height) 0.06)))
+            (arg (* (. frame width) 0.66))
+            (arg (* (. frame height) 0.72))
+          )
+        )
+      )
+    )
+  )
+  (where
+    (lazy frame (call (. cell pad) (* (. cell width) 0.19) (* (. cell height) 0.23)))
+  )
+)
+
+(fn-expr _ boolean-grid-rect-b _
+  (param cell Rect)
+  (call rectangle
+    (block
+      (arg
+        (call Rect
+          (block
+            (arg (+ (. frame left) (* (. frame width) 0.34)))
+            (arg (+ (. frame top) (* (. frame height) 0.22)))
+            (arg (* (. frame width) 0.66))
+            (arg (* (. frame height) 0.72))
+          )
+        )
+      )
+    )
+  )
+  (where
+    (lazy frame (call (. cell pad) (* (. cell width) 0.19) (* (. cell height) 0.23)))
+  )
+)
+
+(fn-do _ boolean-grid-diamond-a _
+  (param cell Rect)
+  (let center (+ (. cell center) (tuple (* (- (. cell width)) 0.08) 0)))
+  (let radius (* (call min (. cell width) (. cell height)) 0.34))
+  (let path (call Path))
+  (call (. path move-to) (+ center (tuple 0 (- radius))))
+  (call (. path line-to) (+ center (tuple radius 0)))
+  (call (. path line-to) (+ center (tuple 0 radius)))
+  (call (. path line-to) (+ center (tuple (- radius) 0)))
+  (call (. path close))
+  (return path)
+)
+
+(fn-do _ boolean-grid-diamond-b _
+  (param cell Rect)
+  (let center (+ (. cell center) (tuple (* (. cell width) 0.11) 0)))
+  (let radius (* (call min (. cell width) (. cell height)) 0.34))
+  (let path (call Path))
+  (call (. path move-to) (+ center (tuple 0 (- radius))))
+  (call (. path line-to) (+ center (tuple radius 0)))
+  (call (. path line-to) (+ center (tuple 0 radius)))
+  (call (. path line-to) (+ center (tuple (- radius) 0)))
+  (call (. path close))
+  (return path)
+)
+
+(fn-expr _ boolean-grid-curve-a _
+  (param cell Rect)
+  (call circle (+ (. cell center) (tuple (* (- (. cell width)) 0.09) (* (- (. cell height)) 0.01))) (* (call min (. cell width) (. cell height)) 0.29))
+)
+
+(fn-do _ boolean-grid-curve-b _
+  (param cell Rect)
+  (let center (+ (. cell center) (tuple (* (. cell width) 0.09) (* (. cell height) 0.02))))
+  (let radius (* (call min (. cell width) (. cell height)) 0.34))
+  (let path (call ellipse center (call Dimensions (* radius 0.98) (* radius 0.64))))
+  (call (. path rotate) -17deg (. cell center))
+  (return path)
+)
+
+(fn-expr _ boolean-grid-contained-a _
+  (param cell Rect)
+  (call circle (. cell center) (* (call min (. cell width) (. cell height)) 0.33))
+)
+
+(fn-expr _ boolean-grid-contained-b _
+  (param cell Rect)
+  (call circle (+ (. cell center) (tuple (* (. cell width) 0.05) (* (- (. cell height)) 0.03))) (* (call min (. cell width) (. cell height)) 0.16))
+)
+
+(fn-do _ boolean-grid-shared-edge-a _
+  (param cell Rect)
+  (let frame (call (. cell pad) (* (. cell width) 0.18) (* (. cell height) 0.19)))
+  (let step-x (+ (. frame x) (* (. frame width) 0.58)))
+  (let step-y (+ (. frame y) (* (. frame height) 0.42)))
+  (let path (call Path))
+  (call (. path move-to) (. frame left) (. frame top))
+  (call (. path line-to) step-x (. frame top))
+  (call (. path line-to) step-x step-y)
+  (call (. path line-to) (. frame right) step-y)
+  (call (. path line-to) (. frame right) (. frame bottom))
+  (call (. path line-to) (. frame left) (. frame bottom))
+  (call (. path close))
+  (return path)
+)
+
+(fn-expr _ boolean-grid-shared-edge-b _
+  (param cell Rect)
+  (call rectangle (call Rect step-x (+ (. frame y) (* (. frame height) 0.17)) (* (. frame width) 0.35) (* (. frame height) 0.66)))
+  (where
+    (lazy frame (call (. cell pad) (* (. cell width) 0.18) (* (. cell height) 0.19)))
+    (lazy step-x (+ (. frame x) (* (. frame width) 0.58)))
+  )
+)
+
+(fn-expr _ boolean-grid-clip-source-a Path
+  (param kind _)
+  (param cell Rect)
+  (match kind
+    (case= 0
+      (call boolean-grid-clip-ribbon-a cell)
+    )
+    (case= 1
+      (call boolean-grid-clip-circle-a cell)
+    )
+    (case= 2
+      (call boolean-grid-clip-blob-a cell)
+    )
+    (case= 3
+      (call boolean-grid-clip-compound-a cell)
+    )
+    (default
+      (call boolean-grid-clip-stepped-a cell)
+    )
+  )
+)
+
+(fn-expr _ boolean-grid-clip-source-b Path
+  (param kind _)
+  (param cell Rect)
+  (match kind
+    (case= 0
+      (call boolean-grid-clip-rect-b cell)
+    )
+    (case= 1
+      (call boolean-grid-clip-diamond-b cell)
+    )
+    (case= 2
+      (call boolean-grid-clip-slot-b cell)
+    )
+    (case= 3
+      (call boolean-grid-clip-circle-b cell)
+    )
+    (default
+      (call boolean-grid-clip-offset-rect-b cell)
+    )
+  )
+)
+
+(fn-do _ boolean-grid-clip-ribbon-a _
+  (param cell Rect)
+  (let path (call Path))
+  (call (. path move-to) (+ (. cell left) (* (. cell width) 0.06)) (- (. cell bottom) (* (. cell height) 0.16)))
+  (call (. path line-to) (+ (. cell left) (* (. cell width) 0.22)) (- (. cell bottom) (* (. cell height) 0.06)))
+  (call (. path line-to) (- (. cell right) (* (. cell width) 0.06)) (+ (. cell top) (* (. cell height) 0.16)))
+  (call (. path line-to) (- (. cell right) (* (. cell width) 0.22)) (+ (. cell top) (* (. cell height) 0.06)))
+  (call (. path close))
+  (return path)
+)
+
+(fn-expr _ boolean-grid-clip-rect-b _
+  (param cell Rect)
+  (call rectangle
+    (block
+      (arg
+        (call Rect
+          (block
+            (arg (+ (. cell x) (* (. cell width) 0.29)))
+            (arg (+ (. cell y) (* (. cell height) 0.25)))
+            (arg (* (. cell width) 0.42))
+            (arg (* (. cell height) 0.50))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ boolean-grid-clip-circle-a _
+  (param cell Rect)
+  (call circle (+ (. cell center) (tuple (* (- (. cell width)) 0.08) (* (. cell height) 0.02))) (* (call min (. cell width) (. cell height)) 0.39))
+)
+
+(fn-expr _ boolean-grid-clip-diamond-b _
+  (param cell Rect)
+  (call boolean-grid-clip-diamond (+ (. cell center) (tuple (* (. cell width) 0.02) 0)) (* (call min (. cell width) (. cell height)) 0.31))
+)
+
+(fn-do _ boolean-grid-clip-blob-a _
+  (param cell Rect)
+  (let center (+ (. cell center) (tuple (* (- (. cell width)) 0.02) (* (. cell height) 0.01))))
+  (let path (call Path))
+  (call (. path move-to) (+ center (tuple (* (- (. cell width)) 0.38) (* (- (. cell height)) 0.02))))
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* (- (. cell width)) 0.34) (* (- (. cell height)) 0.40))))
+      (arg (+ center (tuple (* (. cell width) 0.15) (* (- (. cell height)) 0.42))))
+      (arg (+ center (tuple (* (. cell width) 0.34) (* (- (. cell height)) 0.21))))
+    )
+  )
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* (. cell width) 0.44) (* (. cell height) 0.02))))
+      (arg (+ center (tuple (* (. cell width) 0.34) (* (. cell height) 0.40))))
+      (arg (+ center (tuple (* (- (. cell width)) 0.08) (* (. cell height) 0.39))))
+    )
+  )
+  (call (. path cubic-curve-to)
+    (block
+      (arg (+ center (tuple (* (- (. cell width)) 0.42) (* (. cell height) 0.38))))
+      (arg (+ center (tuple (* (- (. cell width)) 0.46) (* (. cell height) 0.14))))
+      (arg (+ center (tuple (* (- (. cell width)) 0.38) (* (- (. cell height)) 0.02))))
+    )
+  )
+  (call (. path close))
+  (return path)
+)
+
+(fn-expr _ boolean-grid-clip-slot-b _
+  (param cell Rect)
+  (call rectangle
+    (block
+      (arg
+        (call Rect
+          (block
+            (arg (+ (. cell x) (* (. cell width) 0.41)))
+            (arg (+ (. cell y) (* (. cell height) 0.15)))
+            (arg (* (. cell width) 0.18))
+            (arg (* (. cell height) 0.70))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-do _ boolean-grid-clip-compound-a _
+  (param cell Rect)
+  (let path (call Path))
+  (call (. path add-path) (call boolean-grid-clip-compound-left-a cell))
+  (call (. path add-path) (call boolean-grid-clip-compound-middle-a cell))
+  (call (. path add-path) (call boolean-grid-clip-compound-right-a cell))
+  (return path)
+)
+
+(fn-expr _ boolean-grid-clip-circle-b _
+  (param cell Rect)
+  (call circle (+ (. cell center) (tuple (* (. cell width) 0.02) (* (- (. cell height)) 0.01))) (* (call min (. cell width) (. cell height)) 0.34))
+)
+
+(fn-expr _ boolean-grid-clip-compound-left-a _
+  (param cell Rect)
+  (call rectangle
+    (block
+      (arg
+        (call Rect
+          (block
+            (arg (+ (. cell x) (* (. cell width) 0.20)))
+            (arg (+ (. cell y) (* (. cell height) 0.42)))
+            (arg (* (. cell width) 0.20))
+            (arg (* (. cell height) 0.16))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ boolean-grid-clip-compound-middle-a _
+  (param cell Rect)
+  (call boolean-grid-clip-diamond
+    (block
+      (arg (+ (. cell center) (tuple (* (- (. cell width)) 0.01) (* (- (. cell height)) 0.01))))
+      (arg (* (call min (. cell width) (. cell height)) 0.20))
+    )
+  )
+)
+
+(fn-expr _ boolean-grid-clip-compound-right-a _
+  (param cell Rect)
+  (call rectangle
+    (block
+      (arg
+        (call Rect
+          (block
+            (arg (+ (. cell x) (* (. cell width) 0.60)))
+            (arg (+ (. cell y) (* (. cell height) 0.42)))
+            (arg (* (. cell width) 0.20))
+            (arg (* (. cell height) 0.16))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-do _ boolean-grid-clip-stepped-a _
+  (param cell Rect)
+  (let frame (call (. cell pad) (* (. cell width) 0.09) (* (. cell height) 0.12)))
+  (let path (call Path))
+  (call (. path move-to) (. frame left) (+ (. frame top) (* (. cell height) 0.05)))
+  (call (. path line-to) (+ (. frame left) (* (. frame width) 0.44)) (+ (. frame top) (* (. cell height) 0.05)))
+  (call (. path line-to) (+ (. frame left) (* (. frame width) 0.44)) (+ (. frame top) (* (. frame height) 0.34)))
+  (call (. path line-to) (+ (. frame left) (* (. frame width) 0.68)) (+ (. frame top) (* (. frame height) 0.34)))
+  (call (. path line-to) (+ (. frame left) (* (. frame width) 0.68)) (+ (. frame top) (* (. frame height) 0.58)))
+  (call (. path line-to) (. frame right) (+ (. frame top) (* (. frame height) 0.58)))
+  (call (. path line-to) (. frame right) (+ (. frame bottom) (* (. cell height) 0.05)))
+  (call (. path line-to) (. frame left) (+ (. frame bottom) (* (. cell height) 0.05)))
+  (call (. path close))
+  (return path)
+)
+
+(fn-expr _ boolean-grid-clip-offset-rect-b _
+  (param cell Rect)
+  (call rectangle
+    (block
+      (arg
+        (call Rect
+          (block
+            (arg (+ (. cell x) (* (. cell width) 0.31)))
+            (arg (+ (. cell y) (* (. cell height) 0.28)))
+            (arg (* (. cell width) 0.49))
+            (arg (* (. cell height) 0.48))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-do _ boolean-grid-clip-diamond _
+  (param center Point)
+  (param radius _)
+  (let path (call Path))
+  (call (. path move-to) (+ center (tuple 0 (- radius))))
+  (call (. path line-to) (+ center (tuple radius 0)))
+  (call (. path line-to) (+ center (tuple 0 radius)))
+  (call (. path line-to) (+ center (tuple (- radius) 0)))
+  (call (. path close))
+  (return path)
+)

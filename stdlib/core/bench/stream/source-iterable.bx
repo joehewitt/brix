@@ -1,0 +1,54 @@
+; benchmark.meta description: Parses through an iterable stream source.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+(import /core/tokenstream)
+(blank)
+
+(main
+  (let stream (call (of ChunkedTokenStream Char) (. (call source-iterable-source) codepoints)))
+  (let rows
+    (match stream
+      (~ \source-iterable-document)
+      (throw (call Panic "source-iterable did not parse"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in row rows)
+    (+= checksum row)
+  )
+  (blank)
+  (print (str "bench-result stream/source-iterable checksum=" checksum))
+)
+
+(fn-expr + source-iterable-document _ (over: Char)
+  (~ (: rows (+ \source-iterable-row))
+    rows
+  )
+  (where
+    (lazy source-iterable-row Size
+      (pattern
+        (~ (seq "src:" (: name \source-iterable-word) ":" (: value \source-iterable-digits) "\n")
+          (+ (* (. name length) 37) (. value length))
+        )
+      )
+    )
+    (blank)
+    (lazy source-iterable-word String
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_"))))
+      )
+    )
+    (blank)
+    (lazy source-iterable-digits String
+      (pattern
+        (~ (+ (chars "0-9")))
+      )
+    )
+  )
+)
+
+(fn-expr _ source-iterable-source _
+  (call (. "" join) (in (str "src:name_" each ":" (* each 47) "\n") (..< 0 180)))
+)

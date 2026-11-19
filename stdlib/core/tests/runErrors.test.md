@@ -1,12 +1,13 @@
 # Errors
 
-```yumi crash
-read()
+```brix crash
+(main
+  (call read)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read ?! IOError
-
-?! IOError("bad")
+(fn-do + read _ (?! IOError)
+  (throw (call IOError "bad"))
+)
 ```
 
 ```stderr
@@ -16,64 +17,75 @@ Unhandled error: bad
 Task 1
 
 Stack trace:
-  0  __source__:read no file:7:1
-  1  __source__:main no file:2:1
+  0  __source__:read no file:7:3
+  1  __source__:main no file:3:3
   2  __source__:init.__source__ no file
   3  __source__:brix.main no file
 ```
 
 ### GC-free exceptional paths retain normal Error propagation, cleanup, and caught continuation.
 
-```yumi
--- gc-free-propagate(true)
--- catch gc-free-propagate(false)
--- gc-free-cleanups
--- gc-free-catch(false)
--- gc-free-catch(true)
--- catch gc-free-catch-replace(false)
--- gc-free-catch-replace(true)
+```brix
+(main
+  (print (call gc-free-propagate true))
+  (print (catch (call gc-free-propagate false)))
+  (print gc-free-cleanups)
+  (print (call gc-free-catch false))
+  (print (call gc-free-catch true))
+  (print (catch (call gc-free-catch-replace false)))
+  (print (call gc-free-catch-replace true))
+)
 
-_ gc-free-cleanups = 0
+(blank)
+(prop _ gc-free-cleanups _ (= 0))
 
-━━━━━━━━━━━━━━━━━━━━
-+ GCFreeFailure is Error
+(type + GCFreeFailure (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ GCFreeReplacement is Error
+(type + GCFreeReplacement (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gc-free-fallible Int ?! GCFreeFailure without gc
-    - succeeds Bool
+(fn-do + gc-free-fallible Int (?! GCFreeFailure) (without gc)
+  (param succeeds Bool)
+  (if succeeds
+    (return 7)
+  )
+  (throw (call GCFreeFailure "failed"))
+)
 
-if succeeds
-    = 7
-?! GCFreeFailure("failed")
+(fn-do + gc-free-propagate Int (?! GCFreeFailure) (without gc)
+  (param succeeds Bool)
+  (finally
+    (+= gc-free-cleanups 1)
+  )
+  (return (+ (call gc-free-fallible succeeds) 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gc-free-propagate Int ?! GCFreeFailure without gc
-    - succeeds Bool
+(fn-do + gc-free-catch Int (without gc)
+  (param succeeds Bool)
+  (let value
+    (call gc-free-fallible succeeds
+      (block
+        (on-error GCFreeFailure
+          40
+        )
+      )
+    )
+  )
+  (return (+ value 2))
+)
 
-do finally
-    gc-free-cleanups += 1
-= gc-free-fallible(succeeds) + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do gc-free-catch Int without gc
-    - succeeds Bool
-
-. value = gc-free-fallible(succeeds)
-    catch GCFreeFailure
-        40
-= value + 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do gc-free-catch-replace Int ?! GCFreeReplacement without gc
-    - succeeds Bool
-
-. value = gc-free-fallible(succeeds)
-    catch GCFreeFailure
-        ?! GCFreeReplacement("replaced")
-= value
+(fn-do + gc-free-catch-replace Int (?! GCFreeReplacement) (without gc)
+  (param succeeds Bool)
+  (let value
+    (call gc-free-fallible succeeds
+      (block
+        (on-error GCFreeFailure
+          (throw (call GCFreeReplacement "replaced"))
+        )
+      )
+    )
+  )
+  (return value)
+)
 ```
 
 ```output
@@ -88,43 +100,48 @@ replaced
 
 ### A held match join routes bare Errors through a marked Result channel.
 
-```yumi
--- inspect-joined(false)
--- inspect-joined(true)
+```brix
+(main
+  (print (call inspect-joined false))
+  (print (call inspect-joined true))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Config
+(type + Config
+  (prop + value String)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value String
+(type + FileNotFound (is Error))
 
-────────────────────
-+ This
-    - value
+(fn-expr + select-joined _
+  (param fail Bool)
+  (match fail
+    (case= true
+      (call FileNotFound "missing")
+    )
+    (default
+      (call Config "loaded")
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ FileNotFound is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ select-joined
-    - fail Bool
-
-match fail
-    |= true
-        FileNotFound("missing")
-    ??
-        Config("loaded")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do inspect-joined String
-    - fail Bool
-
-. joined = catch select-joined(fail)
-
-= match joined
-    | config Config
-        config.value
-    | FileNotFound
+(fn-do + inspect-joined String
+  (param fail Bool)
+  (let joined (catch (call select-joined fail)))
+  (blank)
+  (return
+    (match joined
+      (case (: config Config)
+        (. config value)
+      )
+      (case FileNotFound
         "file error"
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -134,32 +151,35 @@ file error
 
 ### An unheld match join auto-propagates its inferred Error channel.
 
-```yumi
--- catch? inspect-joined(false) ?? "propagated"
--- catch? inspect-joined(true) ?? "propagated"
+```brix
+(main
+  (print (?? (catch? (call inspect-joined false)) "propagated"))
+  (print (?? (catch? (call inspect-joined true)) "propagated"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Config
+(type + Config
+  (prop + value String)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value String
+(type + FileNotFound (is Error))
 
-────────────────────
-+ This
-    - value
-
-━━━━━━━━━━━━━━━━━━━━
-+ FileNotFound is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ do inspect-joined String ?! FileNotFound
-    - fail Bool
-
-. config = match fail
-    |= true
-        FileNotFound("missing")
-    ??
-        Config("loaded")
-= config.value
+(fn-do + inspect-joined String (?! FileNotFound)
+  (param fail Bool)
+  (let config
+    (match fail
+      (case= true
+        (call FileNotFound "missing")
+      )
+      (default
+        (call Config "loaded")
+      )
+    )
+  )
+  (return (. config value))
+)
 ```
 
 ```output
@@ -169,39 +189,45 @@ propagated
 
 ### Handling every original error with ordinary values produces an ordinary expression type.
 
-```yumi
-. config = read-config(2)
-    catch FileNotFound
-        Config("file default")
-    catch PermissionDenied
-        Config("permission default")
--- type-of config
--- config.value
+```brix
+(main
+  (let config
+    (call read-config 2
+      (block
+        (on-error FileNotFound
+          (call Config "file default")
+        )
+        (on-error PermissionDenied
+          (call Config "permission default")
+        )
+      )
+    )
+  )
+  (print (type-of config))
+  (print (. config value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Config
+(type + Config
+  (prop + value String)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value String
+(type + FileNotFound (is Error))
 
-────────────────────
-+ This
-    - value
+(type + PermissionDenied (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ FileNotFound is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ PermissionDenied is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ do read-config Config ?! FileNotFound ?! PermissionDenied
-    - outcome Int
-
-if outcome == 1
-    ?! FileNotFound("missing")
-if outcome == 2
-    ?! PermissionDenied("denied")
-= Config("loaded")
+(fn-do + read-config Config (?! FileNotFound) (?! PermissionDenied)
+  (param outcome Int)
+  (if (== outcome 1)
+    (throw (call FileNotFound "missing"))
+  )
+  (if (== outcome 2)
+    (throw (call PermissionDenied "denied"))
+  )
+  (return (call Config "loaded"))
+)
 ```
 
 ```output
@@ -211,43 +237,52 @@ permission default
 
 ### A Result-valued arm flattens into the inferred match Result.
 
-```yumi
--- inspect-flattened(true, false)
--- inspect-flattened(false, true)
--- inspect-flattened(false, false)
+```brix
+(main
+  (print (call inspect-flattened true false))
+  (print (call inspect-flattened false true))
+  (print (call inspect-flattened false false))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read Int ?! IOError
-    - ok Bool
+(fn-do + read Int (?! IOError)
+  (param ok Bool)
+  (if ok
+    (return 22)
+    (else
+      (throw (call IOError "disk"))
+    )
+  )
+)
 
-if ok
-    = 22
-else
-    ?! IOError("disk")
+(fn-expr + select-flattened _
+  (param outer Bool)
+  (param inner Bool)
+  (match outer
+    (case= true
+      11
+    )
+    (default
+      (catch (call read inner))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ select-flattened
-    - outer Bool
-    - inner Bool
-
-match outer
-    |= true
-        11
-    ??
-        catch read(inner)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do inspect-flattened String
-    - outer Bool
-    - inner Bool
-
-. joined = catch select-flattened(outer, inner)
-
-= match joined
-    | value Int
-        "$value"
-    | IOError
+(fn-do + inspect-flattened String
+  (param outer Bool)
+  (param inner Bool)
+  (let joined (catch (call select-flattened outer inner)))
+  (blank)
+  (return
+    (match joined
+      (case (: value Int)
+        (str value)
+      )
+      (case IOError
         "io error"
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -258,37 +293,43 @@ io error
 
 ### Bare-Error-only joins use Void success and need only Error arms when held.
 
-```yumi
--- inspect-errors(false)
--- inspect-errors(true)
+```brix
+(main
+  (print (call inspect-errors false))
+  (print (call inspect-errors true))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ FileNotFound is Error
+(type + FileNotFound (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ PermissionDenied is Error
+(type + PermissionDenied (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do select-error ?! FileNotFound ?! PermissionDenied
-    - denied Bool
+(fn-do + select-error _ (?! FileNotFound) (?! PermissionDenied)
+  (param denied Bool)
+  (match denied
+    (case= true
+      (call PermissionDenied "denied")
+    )
+    (default
+      (call FileNotFound "missing")
+    )
+  )
+)
 
-match denied
-    |= true
-        PermissionDenied("denied")
-    ??
-        FileNotFound("missing")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do inspect-errors String
-    - denied Bool
-
-. joined = catch select-error(denied)
-
-= match joined
-    | FileNotFound
+(fn-do + inspect-errors String
+  (param denied Bool)
+  (let joined (catch (call select-error denied)))
+  (blank)
+  (return
+    (match joined
+      (case FileNotFound
         "file error"
-    | PermissionDenied
+      )
+      (case PermissionDenied
         "permission error"
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -298,33 +339,36 @@ permission error
 
 ### A ?! arm returns immediately and contributes no type to the join.
 
-```yumi
--- catch? inspect-return(false) ?? "returned"
--- catch? inspect-return(true) ?? "returned"
+```brix
+(main
+  (print (?? (catch? (call inspect-return false)) "returned"))
+  (print (?? (catch? (call inspect-return true)) "returned"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Config
+(type + Config
+  (prop + value String)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value String
+(type + PermissionDenied (is Error))
 
-────────────────────
-+ This
-    - value
-
-━━━━━━━━━━━━━━━━━━━━
-+ PermissionDenied is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ do inspect-return String ?! PermissionDenied
-    - fail Bool
-
-. selected = match fail
-    |= true
-        ?! PermissionDenied("denied")
-    ??
-        Config("loaded")
--- type-of selected
-= selected.value
+(fn-do + inspect-return String (?! PermissionDenied)
+  (param fail Bool)
+  (let selected
+    (match fail
+      (case= true
+        (throw (call PermissionDenied "denied"))
+      )
+      (default
+        (call Config "loaded")
+      )
+    )
+  )
+  (print (type-of selected))
+  (return (. selected value))
+)
 ```
 
 ```output
@@ -335,48 +379,47 @@ returned
 
 ### Error results propagate through collection expressions and relayed generators.
 
-```yumi
-. list-result = catch list-values()
--- "list error ${list-result is StreamProblem}"
+```brix
+(main
+  (let list-result (catch (call list-values)))
+  (print (str "list error " (is list-result StreamProblem)))
+  (blank)
+  (let stream-result (catch (call stream-values)))
+  (print (str "stream error " (is stream-result StreamProblem)))
+)
 
-. stream-result = catch stream-values()
--- "stream error ${stream-result is StreamProblem}"
+(type + StreamProblem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ StreamProblem is Error
+(fn-do _ encode-value Int (?! StreamProblem)
+  (param value Int)
+  (if (== value 0)
+    (return value)
+  )
+  (throw (call StreamProblem "bad"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do encode-value Int ?! StreamProblem
-    - value Int
+(fn-expr _ list-values (list Int) (?! StreamProblem)
+  (in (call encode-value each) (list 1))
+)
 
-if value == 0
-    = value
-?! StreamProblem("bad")
+(fn-do _ failing-items (stream Int)
+  (yield 1)
+  (throw (call StreamProblem "bad"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ list-values [Int] ?! StreamProblem
+(fn-do _ relayed-items (stream Int)
+  (for (in item (call failing-items))
+    (yield item)
+  )
+)
 
-encode-value(each) in [1]
-
-━━━━━━━━━━━━━━━━━━━━
-_ do failing-items <Int>
-
-<= 1
-?! StreamProblem("bad")
-
-━━━━━━━━━━━━━━━━━━━━
-_ do relayed-items <Int>
-
-for item in failing-items()
-    <= item
-
-━━━━━━━━━━━━━━━━━━━━
-_ do stream-values [Int] ?! StreamProblem
-
-. values [Int] = List'Int()
-for item in relayed-items()
-    values += item
-= values
+(fn-do _ stream-values (list Int) (?! StreamProblem)
+  (let values (list Int) (call (of List Int)))
+  (for (in item (call relayed-items))
+    (+= values item)
+  )
+  (return values)
+)
 ```
 
 ```output
@@ -386,41 +429,49 @@ stream error true
 
 ### A fallible feed pipeline can be collected through a named tuple stream.
 
-```yumi
-. values = Map'String'Float
-    • one 1.0
-    • zero 0.0
-. answer = ProbabilityAnswer
-    - require-probabilities(values)
+```brix
+(main
+  (let values
+    (call (of Map String Float)
+      (block
+        (:one 1.0)
+        (:zero 0.0)
+      )
+    )
+  )
+  (let answer
+    (call ProbabilityAnswer
+      (block
+        (arg (call require-probabilities values))
+      )
+    )
+  )
+  (blank)
+  (print (. answer probabilities length))
+  (print ([] (. answer probabilities) "one"))
+  (print ([] (. answer probabilities) "zero"))
+)
 
--- answer.probabilities.length
--- answer.probabilities["one"]
--- answer.probabilities["zero"]
+(type + ProbabilityError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ProbabilityError is Error
+(type + ProbabilityAnswer (is Tuple)
+  (prop + probabilities (map String Float))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ProbabilityAnswer is Tuple
+(fn-expr _ require-probability Float (?! ProbabilityError)
+  (param value Float)
+  (before
+    (throw (call ProbabilityError "invalid") (if (or (< value 0) (> value 1))))
+  )
+  value
+)
 
-+ probabilities [String = Float]
-
-━━━━━━━━━━━━━━━━━━━━
-_ require-probability Float ?! ProbabilityError
-    - value Float
-
-?! ProbabilityError("invalid")
-    if value < 0 || value > 1
-
-value
-
-━━━━━━━━━━━━━━━━━━━━
-_ require-probabilities ?! ProbabilityError
-    - values [String = Float]
-
-** values
-*> each[0], require-probability(each[1])
-|> Map
+(fn-expr _ require-probabilities _ (?! ProbabilityError)
+  (param values (map String Float))
+  (spread values)
+  (pipe *> (tuple ([] each 0) (call require-probability ([] each 1))))
+  (pipe |> Map)
+)
 ```
 
 ```output
@@ -431,38 +482,37 @@ _ require-probabilities ?! ProbabilityError
 
 ### Error results propagate when a collection expression becomes a union's list case.
 
-```yumi
-. success = union-list-values(1)
--- "union list success ${success is [I32]}"
-. values = success as [I32]
--- "union list length ${values.length}"
--- "union list first ${values[0]}"
+```brix
+(main
+  (let success (call union-list-values 1))
+  (print (str "union list success " (is success (list I32))))
+  (let values (as success (list I32)))
+  (print (str "union list length " (. values length)))
+  (print (str "union list first " ([] values 0)))
+  (blank)
+  (let result (catch (call union-list-values 0)))
+  (print (str "union list error " (is result UnionListProblem)))
+)
 
-. result = catch union-list-values(0)
--- "union list error ${result is UnionListProblem}"
+(type + UnionListProblem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ UnionListProblem is Error
+(type + UnionListPayload (is Union)
+  (variant number I32)
+  (variant values (list I32))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ UnionListPayload is Union
+(fn-do _ union-list-value I32 (?! UnionListProblem)
+  (param value I32)
+  (if (== value 0)
+    (throw (call UnionListProblem "bad"))
+  )
+  (return value)
+)
 
-| number I32
-| values [I32]
-
-━━━━━━━━━━━━━━━━━━━━
-_ do union-list-value I32 ?! UnionListProblem
-    - value I32
-
-if value == 0
-    ?! UnionListProblem("bad")
-= value
-
-━━━━━━━━━━━━━━━━━━━━
-_ union-list-values UnionListPayload ?! UnionListProblem
-    - value I32
-
-union-list-value(each) in [value]
+(fn-expr _ union-list-values UnionListPayload (?! UnionListProblem)
+  (param value I32)
+  (in (call union-list-value each) (list value))
+)
 ```
 
 ```output
@@ -474,24 +524,26 @@ union list error true
 
 ### Returning a held Result fuses its success and Error into the caller-visible Result.
 
-```yumi
--- catch relay(true)
--- catch relay(false)
+```brix
+(main
+  (print (catch (call relay true)))
+  (print (catch (call relay false)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read Int ?! IOError
-    - ok Bool
+(fn-do + read Int (?! IOError)
+  (param ok Bool)
+  (if ok
+    (return 7)
+    (else
+      (throw (call IOError "read failed"))
+    )
+  )
+)
 
-if ok
-    = 7
-else
-    ?! IOError("read failed")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do relay
-    - ok Bool
-
-= catch read(ok)
+(fn-do + relay _
+  (param ok Bool)
+  (return (catch (call read ok)))
+)
 ```
 
 ```output
@@ -501,40 +553,46 @@ read failed
 
 ### Ordinary, direct-Error, and held-Result returns share one outgoing Result.
 
-```yumi
--- inspect-relay(0)
--- inspect-relay(1)
--- inspect-relay(2)
+```brix
+(main
+  (print (call inspect-relay 0))
+  (print (call inspect-relay 1))
+  (print (call inspect-relay 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ OuterError is Error
+(type + OuterError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read Int ?! IOError
+(fn-do + read Int (?! IOError)
+  (throw (call IOError "inner"))
+)
 
-?! IOError("inner")
+(fn-do + relay _
+  (param mode Int)
+  (if (== mode 0)
+    (return 42)
+  )
+  (if (== mode 1)
+    (throw (call OuterError "outer"))
+  )
+  (return (catch (call read)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do relay
-    - mode Int
-
-if mode == 0
-    = 42
-if mode == 1
-    ?! OuterError("outer")
-= catch read()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do inspect-relay String
-    - mode Int
-
-= match catch relay(mode)
-    | value Int
-        "$value"
-    | OuterError
+(fn-do + inspect-relay String
+  (param mode Int)
+  (return
+    (match (catch (call relay mode))
+      (case (: value Int)
+        (str value)
+      )
+      (case OuterError
         "outer error"
-    | IOError
+      )
+      (case IOError
         "inner error"
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -545,30 +603,34 @@ inner error
 
 ### Deferred cleanup runs exactly once for either case of a returned held Result.
 
-```yumi
-_ cleanups = 0
+```brix
+(prop _ cleanups _ (= 0))
+(blank)
 
--- catch relay(true)
--- cleanups
--- catch relay(false)
--- cleanups
+(main
+  (print (catch (call relay true)))
+  (print cleanups)
+  (print (catch (call relay false)))
+  (print cleanups)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read Int ?! IOError
-    - ok Bool
+(fn-do + read Int (?! IOError)
+  (param ok Bool)
+  (if ok
+    (return 7)
+    (else
+      (throw (call IOError "read failed"))
+    )
+  )
+)
 
-if ok
-    = 7
-else
-    ?! IOError("read failed")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do relay
-    - ok Bool
-
-do finally
-    cleanups += 1
-= catch read(ok)
+(fn-do + relay _
+  (param ok Bool)
+  (finally
+    (+= cleanups 1)
+  )
+  (return (catch (call read ok)))
+)
 ```
 
 ```output
@@ -580,24 +642,26 @@ read failed
 
 ### A declared success type validates against the fused Result success channel.
 
-```yumi
--- catch relay(true)
--- catch relay(false)
+```brix
+(main
+  (print (catch (call relay true)))
+  (print (catch (call relay false)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read Int ?! IOError
-    - ok Bool
+(fn-do + read Int (?! IOError)
+  (param ok Bool)
+  (if ok
+    (return 7)
+    (else
+      (throw (call IOError "read failed"))
+    )
+  )
+)
 
-if ok
-    = 7
-else
-    ?! IOError("read failed")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do relay Int ?! IOError
-    - ok Bool
-
-= catch read(ok)
+(fn-do + relay Int (?! IOError)
+  (param ok Bool)
+  (return (catch (call read ok)))
+)
 ```
 
 ```output
@@ -605,21 +669,22 @@ else
 read failed
 ```
 
-```yumi
--- catch foo(10)
--- catch foo(0)
+```brix
+(main
+  (print (catch (call foo 10)))
+  (print (catch (call foo 0)))
+  (blank)
+  (print (type-of (call foo 10)))
+  (print (type-of (catch (call foo 10))))
+)
 
--- type-of foo(10)
--- type-of catch foo(10)
-
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n
-
-?! Error("Divide by zero")
-    if n == 0
-
-n / 2
+(fn-expr + foo _
+  (param n _)
+  (before
+    (throw (call Error "Divide by zero") (if (== n 0)))
+  )
+  (/ n 2)
+)
 ```
 
 ```output
@@ -629,21 +694,22 @@ Divide by zero
 [TypeInfo Union]
 ```
 
-```yumi
--- catch? foo(10)
--- catch? foo(0)
+```brix
+(main
+  (print (catch? (call foo 10)))
+  (print (catch? (call foo 0)))
+  (blank)
+  (print (type-of (call foo 10)))
+  (print (type-of (catch? (call foo 10))))
+)
 
--- type-of foo(10)
--- type-of catch? foo(10)
-
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n
-
-?! Error("Divide by zero")
-    if n == 0
-
-n / 2
+(fn-expr + foo _
+  (param n _)
+  (before
+    (throw (call Error "Divide by zero") (if (== n 0)))
+  )
+  (/ n 2)
+)
 ```
 
 ```output
@@ -653,91 +719,105 @@ unknown
 [TypeInfo Optional'I64]
 ```
 
-```yumi
-catch? foo(0)
-catch? foo(10)
+```brix
+(main
+  (catch? (call foo 0))
+  (catch? (call foo 10))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - n
-
-?! Error("Divide by zero")
-    if n == 0
-
--- n / 2
+(fn-do + foo _
+  (param n _)
+  (throw (call Error "Divide by zero") (if (== n 0)))
+  (blank)
+  (print (/ n 2))
+)
 ```
 
 ```output
 5
 ```
 
-```yumi
-_ hits = 0
+```brix
+(prop _ hits _ (= 0))
+(blank)
 
-catch bump()
--- hits
+(main
+  (catch (call bump))
+  (print hits)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do bump
-
-hits += 1
+(fn-do + bump _
+  (+= hits 1)
+)
 ```
 
 ```output
 1
 ```
 
-```yumi
-_ hits = 0
+```brix
+(prop _ hits _ (= 0))
+(blank)
 
-catch bump()
--- hits
+(main
+  (catch (call bump))
+  (print hits)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do bump ?! IOError
-
-hits += 1
+(fn-do + bump _ (?! IOError)
+  (+= hits 1)
+)
 ```
 
 ```output
 1
 ```
 
-```yumi
---
-    |? catch? foo(0)
+```brix
+(main
+  (print
+    (block
+      (case? (catch? (call foo 0))
         1
-    |? catch? foo(10)
+      )
+      (case? (catch? (call foo 10))
         2
-    ??
+      )
+      (default
         3
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n
-
-?! Error("Divide by zero")
-    if n == 0
-
-n / 2
+(fn-expr + foo _
+  (param n _)
+  (before
+    (throw (call Error "Divide by zero") (if (== n 0)))
+  )
+  (/ n 2)
+)
 ```
 
 ```output
 2
 ```
 
-```yumi
--- catch? foo(1) ?? -1
--- catch? foo(0) ?? -1
+```brix
+(main
+  (print (?? (catch? (call foo 1)) -1))
+  (print (?? (catch? (call foo 0)) -1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - n
-
-if n > 0
-    = 42
-else
-    ?! Error("Bad news")
+(fn-do + foo _
+  (param n _)
+  (if (> n 0)
+    (return 42)
+    (else
+      (throw (call Error "Bad news"))
+    )
+  )
+)
 ```
 
 ```output
@@ -745,19 +825,20 @@ else
 -1
 ```
 
-```yumi
--- catch? set-mode(1, false)
--- catch? set-mode(0, true)
+```brix
+(main
+  (print (catch? (call set-mode 1 false)))
+  (print (catch? (call set-mode 0 true)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ set-mode
-    - code
-    - is-on
-
-?! Error("bad")
-    if code == 0
-
-is-on
+(fn-expr + set-mode _
+  (param code _)
+  (param is-on _)
+  (before
+    (throw (call Error "bad") (if (== code 0)))
+  )
+  is-on
+)
 ```
 
 ```output
@@ -765,68 +846,74 @@ false
 unknown
 ```
 
-```yumi
-do new
-    . foo Foo = Bar()
-    -- foo as Baz
-catch failure
-    -- failure
+```brix
+(main
+  (do-new
+    (let foo Foo (call Bar))
+    (print (as foo Baz))
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 
-+ Foo
-+ Bar is Foo
-+ Baz is Bar
-+ Other is Foo
+(blank)
+(type-line + Foo)
+(type-line + Bar (is Foo))
+(type-line + Baz (is Bar))
+(type-line + Other (is Foo))
 ```
 
 ```output
 Invalid cast to [Object __source__:Baz]
 ```
 
-```yumi crash
-. thing = Thing()
-. p = thing as Proto
--- p.foo()
+```brix crash
+(main
+  (let thing (call Thing))
+  (let p (as thing Proto))
+  (print (call (. p foo)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
+(type + Proto (is Interface)
+  (fn-expr + foo Int)
+)
 
-────────────────────
-+ foo Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-────────────────────
-+ foo
-
-?! Error("fooey")
+(type + Thing
+  (implements Proto)
+  (fn-expr + foo _
+    (throw (call Error "fooey"))
+  )
+)
 ```
 
 ```output
 Exception: "foo" can fail with Error, but the interface method it implements cannot; add "?! Error" to that method, or catch the error inside "foo"
-<no file:17>
-    + foo
-    ^^^^
+<no file:14>
+      (fn-expr + foo _
+      ^^^^^^^^^^^^^^^
 Interface:
-<no file:10>
-    + foo Int
+<no file:9>
+      (fn-expr + foo Int)
 ```
 
-```yumi
--- catch read(true)
--- catch read(false)
--- type-of read(true)
--- type-of catch read(true)
+```brix
+(main
+  (print (catch (call read true)))
+  (print (catch (call read false)))
+  (print (type-of (call read true)))
+  (print (type-of (catch (call read true))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read Int ?! IOError
-    - ok Bool
-
-if ok
-    = 7
-else
-    ?! IOError("read failed")
+(fn-do + read Int (?! IOError)
+  (param ok Bool)
+  (if ok
+    (return 7)
+    (else
+      (throw (call IOError "read failed"))
+    )
+  )
+)
 ```
 
 ```output
@@ -836,27 +923,31 @@ read failed
 [TypeInfo Union]
 ```
 
-```yumi
--- caller(true)
--- catch caller(false)
+```brix
+(main
+  (print (call caller true))
+  (print (catch (call caller false)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read Int ?! IOError
-    - ok Bool
+(fn-do + read Int (?! IOError)
+  (param ok Bool)
+  (if ok
+    (return 40)
+    (else
+      (throw (call IOError "disk missing"))
+    )
+  )
+)
 
-if ok
-    = 40
-else
-    ?! IOError("disk missing")
-
-━━━━━━━━━━━━━━━━━━━━
-+ caller Int ?! IOError
-    - ok Bool
-
-do finally
-    -- "cleanup"
-
-read(ok) + 2
+(fn-expr + caller Int (?! IOError)
+  (param ok Bool)
+  (before
+    (finally
+      (print "cleanup")
+    )
+  )
+  (+ (call read ok) 2)
+)
 ```
 
 ```output
@@ -866,27 +957,25 @@ cleanup
 disk missing
 ```
 
-```yumi
-. result = catch load()
-. app = result as AppError
--- app
--- app.previous
+```brix
+(main
+  (let result (catch (call load)))
+  (let app (as result AppError))
+  (print app)
+  (print (. app previous))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AppError is Error
+(type + AppError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read Int ?! IOError
+(fn-do + read Int (?! IOError)
+  (throw (call IOError "disk"))
+)
 
-?! IOError("disk")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do load Int ?! AppError
-
-?! AppError("load failed")
-    catch err IOError
-
-= read()
+(fn-do + load Int (?! AppError)
+  (throw (call AppError "load failed") (on-error (: err IOError)))
+  (blank)
+  (return (call read))
+)
 ```
 
 ```output
@@ -894,43 +983,37 @@ load failed
 disk
 ```
 
-```yumi
-. result = catch load()
-. app = result as AppError
-. config = app.previous! as ConfigError
--- app
--- config
--- config.previous
+```brix
+(main
+  (let result (catch (call load)))
+  (let app (as result AppError))
+  (let config (as (!! (. app previous)) ConfigError))
+  (print app)
+  (print config)
+  (print (. config previous))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ConfigError is Error
+(type + ConfigError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ AppError is Error
+(type + AppError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read Int ?! IOError
+(fn-do + read Int (?! IOError)
+  (throw (call IOError "disk"))
+)
 
-?! IOError("disk")
+(fn-do + parse Int (?! ConfigError)
+  (throw (call ConfigError "config") (on-error (: err IOError)))
+  (blank)
+  (return (call read))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do parse Int ?! ConfigError
-
-?! ConfigError("config")
-    catch err IOError
-
-= read()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do load Int ?! AppError
-
-?! AppError("from io")
-    catch err ConfigError <- io IOError
-
-?! AppError("from config")
-    catch err ConfigError
-
-= parse()
+(fn-do + load Int (?! AppError)
+  (throw (call AppError "from io") (on-error (caught (: err ConfigError) (: io IOError))))
+  (blank)
+  (throw (call AppError "from config") (on-error (: err ConfigError)))
+  (blank)
+  (return (call parse))
+)
 ```
 
 ```output
@@ -939,215 +1022,216 @@ config
 disk
 ```
 
-```yumi crash
-?! 42
+```brix crash
+(main
+  (throw 42)
+)
 ```
 
 ```output
 Exception: I64 cannot be returned with ?!; return an Error subtype or use ?! Panic(...) to end the task.
-<no file:2>
-    ?! 42
-    ^^^^^
+<no file:3>
+      (throw 42)
+      ^^^^^^^^^^
 ```
 
-```yumi crash
-foo()
+```brix crash
+(main
+  (call foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo Int ?! Int
-
-1
+(fn-expr + foo Int (?! Int)
+  1
+)
 ```
 
 ```output
 Exception: I64 is not a recoverable error type; only subclasses of Error may appear after ?!.
-<no file:5>
-    + foo Int ?! Int
-    ^^^^^^^^^^^^^^^
+<no file:6>
+    (fn-expr + foo Int (?! Int)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-foo()
+```brix crash
+(main
+  (call foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo Int ?! Panic
-
-1
+(fn-expr + foo Int (?! Panic)
+  1
+)
 ```
 
 ```output
 Exception: Panic cannot be returned as a recoverable error; use ?! Panic(...) to end the task, or convert it explicitly.
-<no file:5>
-    + foo Int ?! Panic
-    ^^^^^^^^^^^^^^^^^
+<no file:6>
+    (fn-expr + foo Int (?! Panic)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-foo()
+```brix crash
+(main
+  (call foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo Int ?! TypeError
-
-?! IOError("disk")
+(fn-do + foo Int (?! TypeError)
+  (throw (call IOError "disk"))
+)
 ```
 
 ```output
-Exception: IOError can leave "foo", which does not declare it; declare it, as in "+ do foo Int ?! TypeError ?! IOError"
+Exception: IOError can leave "foo", which does not declare it; declare it, as in "(fn-do + foo Int (?! TypeError) (?! IOError) …)"
 <no file:7>
-    ?! IOError("disk")
-    ^^^^^^^^^^^^^^^^^^
+      (throw (call IOError "disk"))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-foo()
+```brix crash
+(main
+  (call foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AppError is Error
+(type + AppError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read String ?! IOError
+(fn-do + read String (?! IOError)
+  (throw (call IOError "disk"))
+)
 
-?! IOError("disk")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo Int ?! AppError
-
-?! AppError(read())
-    catch err IOError
-
-?! IOError("source")
+(fn-do + foo Int (?! AppError)
+  (throw (call AppError (call read)) (on-error (: err IOError)))
+  (blank)
+  (throw (call IOError "source"))
+)
 ```
 
 ```output
 Exception: Error transformer expressions must not call result-returning functions
-<no file:15>
-    ?! AppError(read())
-                ^^^^^^
+<no file:13>
+      (throw (call AppError (call read)) (on-error (: err IOError)))
+                            ^^^^^^^^^^^
 ```
 
-```yumi crash
-foo()
+```brix crash
+(main
+  (call foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AppError is Error
+(type + AppError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo Int ?! AppError
-
-?! AppError("one")
-    catch err IOError
-
-?! AppError("two")
-    catch other IOError
-
-?! IOError("source")
+(fn-do + foo Int (?! AppError)
+  (throw (call AppError "one") (on-error (: err IOError)))
+  (blank)
+  (throw (call AppError "two") (on-error (: other IOError)))
+  (blank)
+  (throw (call IOError "source"))
+)
 ```
 
 ```output
 Exception: Ambiguous error transformer for IOError; only one transformer may match the same error chain.
-<no file:14>
-        catch other IOError
-        ^^^^^^^^^^^^^^^^^^^
+<no file:11>
+      (throw (call AppError "two") (on-error (: other IOError)))
+                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A transformer names the error it replaces: a name alone, or a type that is no error, is an error.
 
-```yumi compile-error
--- f()
+```brix compile-error
+(main
+  (print (call f))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AppError is Error
+(type + AppError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do f Int ?! AppError
-
-?! AppError("one")
-    catch err
-= 1
+(fn-do + f Int (?! AppError)
+  (throw (call AppError "one") (on-error err))
+  (return 1)
+)
 ```
 
 ```output
 Exception: Error transformer catch requires an error type
-<no file:11>
-        catch err
-        ^^^^^^^^^
+<no file:9>
+      (throw (call AppError "one") (on-error err))
+                                   ^^^^^^^^^^^^^^
 ```
 
 ### Inferred errors cannot retroactively change the ABI of a recursive function.
 
-```yumi crash
--- recurse(3)
+```brix crash
+(main
+  (print (call recurse 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do recurse Bool
-    - n I64
-
-?! IOError("disk")
-    if n == 99
-
-if n > 0
-    = recurse(n - 1)
-= true
+(fn-do + recurse Bool
+  (param n I64)
+  (throw (call IOError "disk") (if (== n 99)))
+  (blank)
+  (if (> n 0)
+    (return (call recurse (- n 1)))
+  )
+  (return true)
+)
 ```
 
 ```output
-Exception: IOError can leave "recurse", which calls itself, so its errors cannot be inferred; declare them on it, as in "+ do recurse Bool ?! IOError", or catch them here
+Exception: IOError can leave "recurse", which calls itself, so its errors cannot be inferred; declare them on it, as in "(fn-do + recurse Bool (?! IOError) …)", or catch them here
 <no file:8>
-    ?! IOError("disk")
-    ^^^^^^^^^^^^^^^^^
+      (throw (call IOError "disk") (if (== n 99)))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Inferred errors cannot retroactively change the ABI of a recursive Void function either.
 
-```yumi crash
--- "result=${catch? walk(99) ?? false}"
+```brix crash
+(main
+  (print (str "result=" (?? (catch? (call walk 99)) false)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do walk Bool
-    - n I64
+(fn-do + walk Bool
+  (param n I64)
+  (call visit n)
+  (return true)
+)
 
-visit(n)
-= true
-
-━━━━━━━━━━━━━━━━━━━━
-+ do visit
-    - n I64
-
-?! IOError("disk")
-    if n == 99
-if n > 0
-    visit(n - 1)
+(fn-do + visit _
+  (param n I64)
+  (throw (call IOError "disk") (if (== n 99)))
+  (if (> n 0)
+    (call visit (- n 1))
+  )
+)
 ```
 
 ```output
-Exception: IOError can leave "visit", which calls itself, so its errors cannot be inferred; declare them on it, as in "+ do visit ?! IOError", or catch them here
-<no file:15>
-    ?! IOError("disk")
-    ^^^^^^^^^^^^^^^^^
+Exception: IOError can leave "visit", which calls itself, so its errors cannot be inferred; declare them on it, as in "(fn-do + visit _ (?! IOError) …)", or catch them here
+<no file:14>
+      (throw (call IOError "disk") (if (== n 99)))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A recursive Void function with declared errors propagates them to its callers.
 
-```yumi
--- "direct=${catch? walk(99) ?? false}"
--- "nested=${catch? walk(100) ?? false}"
--- "clean=${catch? walk(3) ?? false}"
+```brix
+(main
+  (print (str "direct=" (?? (catch? (call walk 99)) false)))
+  (print (str "nested=" (?? (catch? (call walk 100)) false)))
+  (print (str "clean=" (?? (catch? (call walk 3)) false)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do walk Bool ?! IOError
-    - n I64
+(fn-do + walk Bool (?! IOError)
+  (param n I64)
+  (call visit n)
+  (return true)
+)
 
-visit(n)
-= true
-
-━━━━━━━━━━━━━━━━━━━━
-+ do visit ?! IOError
-    - n I64
-
-?! IOError("disk")
-    if n == 99
-if n > 0
-    visit(n - 1)
+(fn-do + visit _ (?! IOError)
+  (param n I64)
+  (throw (call IOError "disk") (if (== n 99)))
+  (if (> n 0)
+    (call visit (- n 1))
+  )
+)
 ```
 
 ```output
@@ -1158,20 +1242,21 @@ clean=true
 
 ### A recursive function with declared errors returns correct values through the result ABI.
 
-```yumi
--- "result=${catch? recurse(3) ?? false}"
--- "raised=${catch? recurse(99) ?? false}"
+```brix
+(main
+  (print (str "result=" (?? (catch? (call recurse 3)) false)))
+  (print (str "raised=" (?? (catch? (call recurse 99)) false)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do recurse Bool ?! IOError
-    - n I64
-
-?! IOError("disk")
-    if n == 99
-
-if n > 0
-    = recurse(n - 1)
-= true
+(fn-do + recurse Bool (?! IOError)
+  (param n I64)
+  (throw (call IOError "disk") (if (== n 99)))
+  (blank)
+  (if (> n 0)
+    (return (call recurse (- n 1)))
+  )
+  (return true)
+)
 ```
 
 ```output
@@ -1181,78 +1266,98 @@ raised=false
 
 ### Recursive local grammars tell authors to declare errors on the enclosing function.
 
-```yumi crash
--- catch? parse("a!") ?? "error"
+```brix crash
+(main
+  (print (?? (catch? (call parse "a!")) "error"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ParserError is Error
+(type + ParserError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ parse String
-    - text String
+(fn-expr + parse String
+  (param text String)
+  (match text
+    (~ \items)
+    (throw (call ParserError "invalid"))
+    (blank)
+    (lazy items String
+      (pattern
+        (~ (seq (: head \item) (: tail (? \items)))
+          (++ head (?? tail ""))
+        )
+        (~ ""
+          ""
+        )
+      )
+    )
+    (blank)
+    (lazy item String
+      (pattern
+        (~ "a"
+          "a"
+        )
+        (~ "!"
+          (call bad-item)
+        )
+      )
+    )
+  )
+)
 
-match text
-    ~ \items
-    ?! ParserError("invalid")
-
-    .. items String ~
-        ~ head \item tail \items?
-            head ++ (tail ?? "")
-        ~ ""
-            ""
-
-    .. item String ~
-        ~ "a"
-            "a"
-        ~ "!"
-            bad-item()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bad-item String ?! ParserError
-
-?! ParserError("bang")
+(fn-do + bad-item String (?! ParserError)
+  (throw (call ParserError "bang"))
+)
 ```
 
 ```output
 Exception: ParserError can leave recursive function items before its errors are inferred; For a local '.. name ~' grammar, declare ?! ParserError on the enclosing '+ name ~ ...' function so generated pattern helpers inherit the result ABI.
 <no file:16>
-            ~ head \item tail \items?
-                   ^^^^^
+            (~ (seq (: head \item) (: tail (? \items)))
+                            ^^^^^
 ```
 
 ### Recursive local grammars inherit declared result errors from the enclosing function.
 
-```yumi
--- catch? parse("aaa") ?? "error"
--- catch? parse("a!") ?? "error"
+```brix
+(main
+  (print (?? (catch? (call parse "aaa")) "error"))
+  (print (?? (catch? (call parse "a!")) "error"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ParserError is Error
+(type + ParserError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ parse String ?! ParserError
-    - text String
+(fn-expr + parse String (?! ParserError)
+  (param text String)
+  (match text
+    (~ \items)
+    (throw (call ParserError "invalid"))
+    (blank)
+    (lazy items String
+      (pattern
+        (~ (seq (: head \item) (: tail (? \items)))
+          (++ head (?? tail ""))
+        )
+        (~ ""
+          ""
+        )
+      )
+    )
+    (blank)
+    (lazy item String
+      (pattern
+        (~ "a"
+          "a"
+        )
+        (~ "!"
+          (call bad-item)
+        )
+      )
+    )
+  )
+)
 
-match text
-    ~ \items
-    ?! ParserError("invalid")
-
-    .. items String ~
-        ~ head \item tail \items?
-            head ++ (tail ?? "")
-        ~ ""
-            ""
-
-    .. item String ~
-        ~ "a"
-            "a"
-        ~ "!"
-            bad-item()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bad-item String ?! ParserError
-
-?! ParserError("bang")
+(fn-do + bad-item String (?! ParserError)
+  (throw (call ParserError "bang"))
+)
 ```
 
 ```output
@@ -1262,34 +1367,42 @@ error
 
 ### Acyclic local stream helpers preserve the enclosing function's declared result-error ABI.
 
-```yumi
--- catch? parse-pair("ok") ?? "error"
--- catch? parse-pair("o!") ?? "error"
+```brix
+(main
+  (print (?? (catch? (call parse-pair "ok")) "error"))
+  (print (?? (catch? (call parse-pair "o!")) "error"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ PairError is Error
+(type + PairError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ parse-pair String ?! PairError
-    - text String
+(fn-expr + parse-pair String (?! PairError)
+  (param text String)
+  (match text
+    (~ (seq (: left \prefix) (: right \suffix))
+      (++ left right)
+    )
+    (throw (call PairError "invalid"))
+    (blank)
+    (lazy prefix String
+      (pattern
+        (~ "o")
+      )
+    )
+    (blank)
+    (lazy suffix String
+      (pattern
+        (~ "k")
+        (~ "!"
+          (call bad-suffix)
+        )
+      )
+    )
+  )
+)
 
-match text
-    ~ left \prefix right \suffix
-        left ++ right
-    ?! PairError("invalid")
-
-    .. prefix String ~
-        ~ "o"
-
-    .. suffix String ~
-        ~ "k"
-        ~ "!"
-            bad-suffix()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bad-suffix String ?! PairError
-
-?! PairError("bad suffix")
+(fn-do + bad-suffix String (?! PairError)
+  (throw (call PairError "bad suffix"))
+)
 ```
 
 ```output
@@ -1299,44 +1412,48 @@ error
 
 ### Attached handlers recover selected errors and propagate unhandled original errors.
 
-```yumi
--- inspect-attached(0)
--- inspect-attached(1)
--- catch? inspect-attached(2) ?? "propagated"
+```brix
+(main
+  (print (call inspect-attached 0))
+  (print (call inspect-attached 1))
+  (print (?? (catch? (call inspect-attached 2)) "propagated"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Config
+(type + Config
+  (prop + value String)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value String
+(type + FileNotFound (is Error))
 
-────────────────────
-+ This
-    - value
+(type + PermissionDenied (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ FileNotFound is Error
+(fn-do + read-config Config (?! FileNotFound) (?! PermissionDenied)
+  (param outcome Int)
+  (if (== outcome 1)
+    (throw (call FileNotFound "missing"))
+  )
+  (if (== outcome 2)
+    (throw (call PermissionDenied "denied"))
+  )
+  (return (call Config "loaded"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ PermissionDenied is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ do read-config Config ?! FileNotFound ?! PermissionDenied
-    - outcome Int
-
-if outcome == 1
-    ?! FileNotFound("missing")
-if outcome == 2
-    ?! PermissionDenied("denied")
-= Config("loaded")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do inspect-attached String ?! PermissionDenied
-    - outcome Int
-
-. config = read-config(outcome)
-    catch FileNotFound
-        Config("default")
-= config.value
+(fn-do + inspect-attached String (?! PermissionDenied)
+  (param outcome Int)
+  (let config
+    (call read-config outcome
+      (block
+        (on-error FileNotFound
+          (call Config "default")
+        )
+      )
+    )
+  )
+  (return (. config value))
+)
 ```
 
 ```output
@@ -1347,34 +1464,35 @@ propagated
 
 ### An error-bearing module combinator preserves success and propagated error results while sharing the active frame through its static pattern argument.
 
-```yumi
--- catch? parse-combinator("ok?") ?? "error"
--- catch? parse-combinator("ok!") ?? "error"
+```brix
+(main
+  (print (?? (catch? (call parse-combinator "ok?")) "error"))
+  (print (?? (catch? (call parse-combinator "ok!")) "error"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CombinatorError is Error
+(type + CombinatorError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ guarded-pattern'Result ~ Char ?! CombinatorError
-    - pattern PatternFunc'Char'Result
-
-~ value $pattern "?"
+(fn-expr + (of guarded-pattern Result) _ (over: Char) (?! CombinatorError)
+  (param pattern (of PatternFunc Char Result))
+  (~ (seq (: value $pattern) "?")
     value
-~ $pattern "!"
-    fail-combinator()
+  )
+  (~ (seq $pattern "!")
+    (call fail-combinator)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ parse-combinator String ?! CombinatorError
-    - text String
+(fn-expr + parse-combinator String (?! CombinatorError)
+  (param text String)
+  (match text
+    (~ (call \guarded-pattern (~ (+ (chars "a-z")))))
+    (throw (call CombinatorError "invalid"))
+  )
+)
 
-match text
-    ~ \guarded-pattern(~ [a-z]+)
-    ?! CombinatorError("invalid")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fail-combinator String ?! CombinatorError
-
-?! CombinatorError("guarded failure")
+(fn-do + fail-combinator String (?! CombinatorError)
+  (throw (call CombinatorError "guarded failure"))
+)
 ```
 
 ```output
@@ -1384,32 +1502,32 @@ error
 
 ### A direct static module rule can use the cursor/result ABI with declared errors.
 
-```yumi
--- catch? parse-module-token("ok") ?? "error"
--- catch? parse-module-token("!") ?? "error"
+```brix
+(main
+  (print (?? (catch? (call parse-module-token "ok")) "error"))
+  (print (?? (catch? (call parse-module-token "!")) "error"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ModuleTokenError is Error
+(type + ModuleTokenError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ module-token ~ Char ?! ModuleTokenError
+(fn-expr + module-token _ (over: Char) (?! ModuleTokenError)
+  (~ "ok")
+  (~ "!"
+    (call bad-module-token)
+  )
+)
 
-~ "ok"
-~ "!"
-    bad-module-token()
+(fn-expr + parse-module-token String (?! ModuleTokenError)
+  (param text String)
+  (match text
+    (~ \module-token)
+    (throw (call ModuleTokenError "invalid"))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ parse-module-token String ?! ModuleTokenError
-    - text String
-
-match text
-    ~ \module-token
-    ?! ModuleTokenError("invalid")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do bad-module-token String ?! ModuleTokenError
-
-?! ModuleTokenError("bad module token")
+(fn-do + bad-module-token String (?! ModuleTokenError)
+  (throw (call ModuleTokenError "bad module token"))
+)
 ```
 
 ```output
@@ -1419,88 +1537,99 @@ error
 
 ### Prefix holding disables automatic propagation and requires every original Error case.
 
-```yumi crash
-. config = catch read-config()
-    catch FileNotFound
-        Config("default")
--- config.value
+```brix crash
+(main
+  (let config
+    (scope (catch (call read-config))
+      (on-error FileNotFound
+        (call Config "default")
+      )
+    )
+  )
+  (print (. config value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Config
+(type + Config
+  (prop + value String)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value String
+(type + FileNotFound (is Error))
 
-────────────────────
-+ This
-    - value
+(type + PermissionDenied (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ FileNotFound is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ PermissionDenied is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ do read-config Config ?! FileNotFound ?! PermissionDenied
-
-?! PermissionDenied("denied")
+(fn-do + read-config Config (?! FileNotFound) (?! PermissionDenied)
+  (throw (call PermissionDenied "denied"))
+)
 ```
 
 ```output
 Exception: This catch does not handle PermissionDenied; add a handler for it, or one for Error
-<no file:2>
-    . config = catch read-config()
-               ^^^^^^^^^^^^^^^^^^
+<no file:4>
+        (scope (catch (call read-config))
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A handler-produced bare Error stays in the expression, and an explicit return fuses it later.
 
-```yumi
--- catch relay-attached(0)
--- catch relay-attached(1)
--- catch relay-attached(2)
--- catch relay-held()
+```brix
+(main
+  (print (catch (call relay-attached 0)))
+  (print (catch (call relay-attached 1)))
+  (print (catch (call relay-attached 2)))
+  (print (catch (call relay-held)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ConvertedError is Error
+(type + ConvertedError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ FileNotFound is Error
+(type + FileNotFound (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ PermissionDenied is Error
+(type + PermissionDenied (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read-text String ?! FileNotFound ?! PermissionDenied
-    - outcome Int
+(fn-do + read-text String (?! FileNotFound) (?! PermissionDenied)
+  (param outcome Int)
+  (if (== outcome 1)
+    (throw (call FileNotFound "missing"))
+  )
+  (if (== outcome 2)
+    (throw (call PermissionDenied "denied"))
+  )
+  (return "loaded")
+)
 
-if outcome == 1
-    ?! FileNotFound("missing")
-if outcome == 2
-    ?! PermissionDenied("denied")
-= "loaded"
+(fn-do + relay-attached _
+  (param outcome Int)
+  (let handled
+    (call read-text outcome
+      (block
+        (on-error (: err FileNotFound)
+          (call ConvertedError (str "converted " (. err message)))
+        )
+        (on-error PermissionDenied
+          "permission default"
+        )
+      )
+    )
+  )
+  (print "after handler")
+  (return handled)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do relay-attached
-    - outcome Int
-
-. handled = read-text(outcome)
-    catch err FileNotFound
-        ConvertedError("converted ${err.message}")
-    catch PermissionDenied
+(fn-do + relay-held String (?! FileNotFound)
+  (let handled
+    (scope (catch (call read-text 1))
+      (on-error (: err FileNotFound)
+        (throw err)
+      )
+      (on-error PermissionDenied
         "permission default"
--- "after handler"
-= handled
-
-━━━━━━━━━━━━━━━━━━━━
-+ do relay-held String ?! FileNotFound
-
-. handled = catch read-text(1)
-    catch err FileNotFound
-        ?! err
-    catch PermissionDenied
-        "permission default"
-= handled
+      )
+    )
+  )
+  (return handled)
+)
 ```
 
 ```output
@@ -1515,51 +1644,57 @@ missing
 
 ### A side-effecting head evaluates exactly once on success and on each Error path.
 
-```yumi
-_ attached-head-count = 0
+```brix
+(prop _ attached-head-count _ (= 0))
+(blank)
 
--- inspect-once(0)
--- inspect-once(1)
--- inspect-once(2)
--- attached-head-count
+(main
+  (print (call inspect-once 0))
+  (print (call inspect-once 1))
+  (print (call inspect-once 2))
+  (print attached-head-count)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Config
+(type + Config
+  (prop + value String)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value String
+(type + FileNotFound (is Error))
 
-────────────────────
-+ This
-    - value
+(type + PermissionDenied (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ FileNotFound is Error
+(fn-do + counted-read Config (?! FileNotFound) (?! PermissionDenied)
+  (param outcome Int)
+  (+= attached-head-count 1)
+  (print (str "head " attached-head-count))
+  (if (== outcome 1)
+    (throw (call FileNotFound "missing"))
+  )
+  (if (== outcome 2)
+    (throw (call PermissionDenied "denied"))
+  )
+  (return (call Config "loaded"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ PermissionDenied is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ do counted-read Config ?! FileNotFound ?! PermissionDenied
-    - outcome Int
-
-attached-head-count += 1
--- "head $attached-head-count"
-if outcome == 1
-    ?! FileNotFound("missing")
-if outcome == 2
-    ?! PermissionDenied("denied")
-= Config("loaded")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do inspect-once String
-    - outcome Int
-
-. config = counted-read(outcome)
-    catch FileNotFound
-        Config("file default")
-    catch PermissionDenied
-        Config("permission default")
-= config.value
+(fn-do + inspect-once String
+  (param outcome Int)
+  (let config
+    (call counted-read outcome
+      (block
+        (on-error FileNotFound
+          (call Config "file default")
+        )
+        (on-error PermissionDenied
+          (call Config "permission default")
+        )
+      )
+    )
+  )
+  (return (. config value))
+)
 ```
 
 ```output
@@ -1574,19 +1709,23 @@ permission default
 
 ### Attached handlers pass a successful Void Result through without reading a Void value.
 
-```yumi
-exercise-void-handler()
--- "after"
+```brix
+(main
+  (call exercise-void-handler)
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do void-result ?! IOError
+(fn-do + void-result _ (?! IOError))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do exercise-void-handler
-
-void-result()
-    catch IOError
-        ?! Panic("converted")
+(fn-do + exercise-void-handler _
+  (call void-result
+    (block
+      (on-error IOError
+        (throw (call Panic "converted"))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1595,45 +1734,46 @@ after
 
 ### Attached-handler inference resolves implicit instance properties inside the Result head.
 
-```yumi
--- Holder(2).handled().value
+```brix
+(main
+  (print (. (call (. (call Holder 2) handled)) value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Config
+(type + Config
+  (prop + value String)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value String
+(type + FileNotFound (is Error))
 
-────────────────────
-+ This
-    - value
+(fn-do + read-holder-config Config (?! FileNotFound)
+  (param outcome Int)
+  (if (== outcome 1)
+    (throw (call FileNotFound "missing"))
+  )
+  (return (call Config (str "loaded " outcome)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ FileNotFound is Error
-
-━━━━━━━━━━━━━━━━━━━━
-+ do read-holder-config Config ?! FileNotFound
-    - outcome Int
-
-if outcome == 1
-    ?! FileNotFound("missing")
-= Config("loaded $outcome")
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ outcome Int
-
-────────────────────
-+ This
-    - outcome
-
-────────────────────
-+ do handled Config
-
-. handled = read-holder-config(outcome)
-    catch FileNotFound
-        Config("default")
-= handled
+(type + Holder
+  (prop + outcome Int)
+  (fn-do + This _
+    (param outcome _)
+  )
+  (fn-do + handled Config
+    (let handled
+      (call read-holder-config outcome
+        (block
+          (on-error FileNotFound
+            (call Config "default")
+          )
+        )
+      )
+    )
+    (return handled)
+  )
+)
 ```
 
 ```output
@@ -1642,50 +1782,57 @@ loaded 2
 
 ### Constructor Result declarations participate in attached-handler inference and lowering.
 
-```yumi
--- type-of Fallible(false)
--- type-of catch Fallible(false)
--- inspect-held-constructor(true)
--- inspect-constructor(false)
--- inspect-constructor(true)
+```brix
+(main
+  (print (type-of (call Fallible false)))
+  (print (type-of (catch (call Fallible false))))
+  (print (call inspect-held-constructor true))
+  (print (call inspect-constructor false))
+  (print (call inspect-constructor true))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Fallible
+(type + Fallible
+  (prop + label String)
+  (fn-do + This _
+    (= label "recovered")
+  )
+  (fn-do + This _ (?! IOError)
+    (param fail Bool)
+    (if fail
+      (throw (call IOError "failed"))
+    )
+    (= label "loaded")
+  )
+)
 
-+ label String
+(fn-do + inspect-constructor String
+  (param fail Bool)
+  (let value
+    (call Fallible fail
+      (block
+        (on-error IOError
+          (call Fallible)
+        )
+      )
+    )
+  )
+  (return (. value label))
+)
 
-────────────────────
-+ This
-
-label = "recovered"
-
-────────────────────
-+ This ?! IOError
-    - fail Bool
-
-if fail
-    ?! IOError("failed")
-label = "loaded"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do inspect-constructor String
-    - fail Bool
-
-. value = Fallible(fail)
-    catch IOError
-        Fallible()
-= value.label
-
-━━━━━━━━━━━━━━━━━━━━
-+ do inspect-held-constructor String
-    - fail Bool
-
-. held = catch Fallible(fail)
-= match held
-    | value Fallible
-        value.label
-    | IOError
+(fn-do + inspect-held-constructor String
+  (param fail Bool)
+  (let held (catch (call Fallible fail)))
+  (return
+    (match held
+      (case (: value Fallible)
+        (. value label)
+      )
+      (case IOError
         "held recovered"
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1698,45 +1845,56 @@ recovered
 
 ### Overlapping handlers use source order, while a narrow handler retains a broad residual.
 
-```yumi
--- inspect-overlap(true)
--- inspect-overlap(false)
--- inspect-residual(true)
--- catch? inspect-residual(false) ?? "propagated"
+```brix
+(main
+  (print (call inspect-overlap true))
+  (print (call inspect-overlap false))
+  (print (call inspect-residual true))
+  (print (?? (catch? (call inspect-residual false)) "propagated"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ParentError is Error
+(type + ParentError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ChildError is ParentError
+(type + ChildError (is ParentError))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fail-parent String ?! ParentError
-    - child Bool
+(fn-do + fail-parent String (?! ParentError)
+  (param child Bool)
+  (if child
+    (throw (call ChildError "child"))
+  )
+  (throw (call ParentError "parent"))
+)
 
-if child
-    ?! ChildError("child")
-?! ParentError("parent")
+(fn-do + inspect-overlap String
+  (param child Bool)
+  (let value
+    (call fail-parent child
+      (block
+        (on-error ChildError
+          "child first"
+        )
+        (on-error ParentError
+          "parent second"
+        )
+      )
+    )
+  )
+  (return value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do inspect-overlap String
-    - child Bool
-
-. value = fail-parent(child)
-    catch ChildError
-        "child first"
-    catch ParentError
-        "parent second"
-= value
-
-━━━━━━━━━━━━━━━━━━━━
-+ do inspect-residual String ?! ParentError
-    - child Bool
-
-. value = fail-parent(child)
-    catch ChildError
-        "child only"
-= value
+(fn-do + inspect-residual String (?! ParentError)
+  (param child Bool)
+  (let value
+    (call fail-parent child
+      (block
+        (on-error ChildError
+          "child only"
+        )
+      )
+    )
+  )
+  (return value)
+)
 ```
 
 ```output
@@ -1748,27 +1906,31 @@ propagated
 
 ### Attached handler bodies may explicitly propagate replacement errors.
 
-```yumi
--- catch? replace-error() ?? "replacement propagated"
+```brix
+(main
+  (print (?? (catch? (call replace-error)) "replacement propagated"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ SourceError is Error
+(type + SourceError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ReplacementError is Error
+(type + ReplacementError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fail-source String ?! SourceError
+(fn-do + fail-source String (?! SourceError)
+  (throw (call SourceError "source"))
+)
 
-?! SourceError("source")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do replace-error String ?! ReplacementError
-
-. value = fail-source()
-    catch SourceError
-        ?! ReplacementError("replacement")
-= value
+(fn-do + replace-error String (?! ReplacementError)
+  (let value
+    (call fail-source
+      (block
+        (on-error SourceError
+          (throw (call ReplacementError "replacement"))
+        )
+      )
+    )
+  )
+  (return value)
+)
 ```
 
 ```output
@@ -1777,19 +1939,19 @@ replacement propagated
 
 ### An optional error becomes text by the converter of its object's class, which may make text of its own.
 
-```yumi
-. made Error? = AppError("x")
-. none Error? = made!.previous
--- made
--- "${none}"
+```brix
+(main
+  (let made (? Error) (call AppError "x"))
+  (let none (? Error) (. (!! made) previous))
+  (print made)
+  (print (str none))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AppError is Error
-
-────────────────────
-+ to String
-
-"AppError: $message"
+(type + AppError (is Error)
+  (fn-to-expr + String
+    (str "AppError: " message)
+  )
+)
 ```
 
 ```output
@@ -1799,12 +1961,14 @@ unknown
 
 ### Prefix catch over a value that raises nothing gives the value, as it does over a call that cannot fail.
 
-```yumi
-. x = 3
--- catch 5
--- catch? 5
--- catch x + 1
--- catch? x + 1
+```brix
+(main
+  (let x 3)
+  (print (catch 5))
+  (print (catch? 5))
+  (print (catch (+ x 1)))
+  (print (catch? (+ x 1)))
+)
 ```
 
 ```output
@@ -1816,62 +1980,71 @@ unknown
 
 ### Attached handlers reject infallible heads with a direct Result diagnostic.
 
-```yumi crash
-. value = 42
-    catch IOError
+```brix crash
+(main
+  (let value
+    (scope 42
+      (on-error IOError
         0
--- value
+      )
+    )
+  )
+  (print value)
+)
 ```
 
 ```output
 Exception: "42" cannot fail, so the catch attached to it has nothing to handle; remove the catch, or attach it to a call that can fail
-<no file:2>
-    . value = 42
-              ^
+<no file:4>
+        (scope 42
+               ^
 ```
 
 ### Attached handlers hold only their head call; fallible arguments unwrap and propagate.
 
-```yumi
--- rejects(3)
--- rejects(20)
-. escaped = catch? rejects(-1)
--- escaped == null
+```brix
+(main
+  (print (call rejects 3))
+  (print (call rejects 20))
+  (let escaped (catch? (call rejects -1)))
+  (print (== escaped null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + value Int)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value Int
+(fn-do + make Box (?! Error)
+  (param value Int)
+  (if (< value 0)
+    (throw (call Error "negative"))
+  )
+  (return (call Box value))
+)
 
-────────────────────
-+ This
-    - value
+(fn-do + consume _ (?! Error)
+  (param box Box)
+  (param label String)
+  (if (> (. box value) 10)
+    (throw (call Error "large"))
+  )
+  (print (str label " " (. box value)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Box ?! Error
-    - value Int
-
-if value < 0
-    ?! Error("negative")
-= Box(value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do consume ?! Error
-    - box Box
-    - label String
-
-if box.value > 10
-    ?! Error("large")
--- "$label ${box.value}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do rejects Bool ?! Error
-    - value Int
-
-consume(make(value), "consumed")
-    catch Error
-        = true
-= false
+(fn-do + rejects Bool (?! Error)
+  (param value Int)
+  (call consume (call make value) "consumed"
+    (block
+      (on-error Error
+        (return true)
+      )
+    )
+  )
+  (return false)
+)
 ```
 
 ```output
@@ -1883,52 +2056,62 @@ true
 
 ### A call with a missing argument reports the missing function even when a catch handler is attached.
 
-```yumi crash
-. probe = Probe()
-probe.run()
-    catch err Error
-        ?! Panic(err as String)
+```brix crash
+(main
+  (let probe (call Probe))
+  (call (. probe run)
+    (block
+      (on-error (: err Error)
+        (throw (call Panic (as err String)))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Probe
-
-────────────────────
-+ do run ?! Error
-    - value Int
-
--- value
+(type + Probe
+  (fn-do + run _ (?! Error)
+    (param value Int)
+    (print value)
+  )
+)
 ```
 
 ```output
 Exception: No method "run" of Probe accepts (); it is declared as "run(value Int)"
-<no file:3>
-    probe.run()
-    ^^^^^^^^^^
+<no file:4>
+      (call (. probe run)
+      ^^^^^^^^^^^^^^^^^^
 ```
 
 ### A raise inside a loop branch of a fallible method without a result propagates to the caller.
 
-```yumi
-. probe = Probe()
-probe.run(["a", "b", "a"])
-    catch err Error
-        -- "caught $err"
--- probe.count
+```brix
+(main
+  (let probe (call Probe))
+  (call (. probe run) (list "a" "b" "a")
+    (block
+      (on-error (: err Error)
+        (print (str "caught " err))
+      )
+    )
+  )
+  (print (. probe count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Probe
-
-+ count = 0
-
-────────────────────
-+ do run ?! Error
-    - kinds [String]
-
-for kind in kinds
-    if kind == "a"
-        count += 1
-    else
-        ?! Error("unknown $kind")
+(type + Probe
+  (prop + count _ (= 0))
+  (fn-do + run _ (?! Error)
+    (param kinds (list String))
+    (for (in kind kinds)
+      (if (== kind "a")
+        (+= count 1)
+        (else
+          (throw (call Error (str "unknown " kind)))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1938,39 +2121,37 @@ caught unknown b
 
 ### An attached handler may call a function without a result when the guarded call has no result.
 
-```yumi
-. probe = Probe()
-probe.run(true)
--- probe.note
-probe.run(false)
--- probe.note
+```brix
+(main
+  (let probe (call Probe))
+  (call (. probe run) true)
+  (print (. probe note))
+  (call (. probe run) false)
+  (print (. probe note))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Probe
-
-+ note = "none"
-
-────────────────────
-+ do run
-    - fails Bool
-
-work(fails)
-    catch err Error
-        record("$err")
-
-────────────────────
-+ do record
-    - message String
-
-note = message
-
-────────────────────
-+ do work ?! Error
-    - fails Bool
-
-?! Error("broken")
-    if fails
-note = "worked"
+(type + Probe
+  (prop + note _ (= "none"))
+  (fn-do + run _
+    (param fails Bool)
+    (call work fails
+      (block
+        (on-error (: err Error)
+          (call record (str err))
+        )
+      )
+    )
+  )
+  (fn-do + record _
+    (param message String)
+    (= note message)
+  )
+  (fn-do + work _ (?! Error)
+    (param fails Bool)
+    (throw (call Error "broken") (if fails))
+    (= note "worked")
+  )
+)
 ```
 
 ```output
@@ -1980,25 +2161,30 @@ worked
 
 ### A handler that gives nothing may take the error of a call through a type parameter bound to a held Result with no value: returning the held Result raises its error, and the call has no value.
 
-```yumi
-relay(catch run(true))
--- "passed"
-relay(catch run(false))
-    catch failure IOError
-        do -- "raised ${failure.message}"
+```brix
+(main
+  (call relay (catch (call run true)))
+  (print "passed")
+  (call relay (catch (call run false))
+    (block
+      (on-error (: failure IOError)
+        (do
+          (inline (print (str "raised " (. failure message))))
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run ?! IOError
-    - ok Bool
+(fn-do + run _ (?! IOError)
+  (param ok Bool)
+  (throw (call IOError "run failed") (if (not ok)))
+)
 
-?! IOError("run failed")
-    if !ok
-
-━━━━━━━━━━━━━━━━━━━━
-+ do relay'Value Value
-    - held Value
-
-= held
+(fn-do + (of relay Value) Value
+  (param held Value)
+  (return held)
+)
 ```
 
 ```output
@@ -2008,29 +2194,35 @@ raised run failed
 
 ### A raise after an early return in a fallible method without a result propagates to the caller.
 
-```yumi
-. probe = Probe()
-probe.run(false, ["a", "b", "a"])
-    catch err Error
-        -- "caught $err"
--- probe.count
+```brix
+(main
+  (let probe (call Probe))
+  (call (. probe run) false (list "a" "b" "a")
+    (block
+      (on-error (: err Error)
+        (print (str "caught " err))
+      )
+    )
+  )
+  (print (. probe count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Probe
-
-+ count = 0
-
-────────────────────
-+ do run ?! Error
-    - skip Bool
-    - kinds [String]
-
-=? if skip
-for kind in kinds
-    if kind == "a"
-        count += 1
-    else
-        ?! Error("unknown $kind")
+(type + Probe
+  (prop + count _ (= 0))
+  (fn-do + run _ (?! Error)
+    (param skip Bool)
+    (param kinds (list String))
+    (return-if (if skip))
+    (for (in kind kinds)
+      (if (== kind "a")
+        (+= count 1)
+        (else
+          (throw (call Error (str "unknown " kind)))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2040,30 +2232,38 @@ caught unknown b
 
 ### A raise inside a loop branch still propagates when a finally block is pending.
 
-```yumi
-. probe = Probe()
-probe.run(["a", "b", "a"])
-    catch err Error
-        -- "caught $err"
--- probe.count
--- probe.finished
+```brix
+(main
+  (let probe (call Probe))
+  (call (. probe run) (list "a" "b" "a")
+    (block
+      (on-error (: err Error)
+        (print (str "caught " err))
+      )
+    )
+  )
+  (print (. probe count))
+  (print (. probe finished))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Probe
-
-+ count = 0
-+ finished = 0
-
-────────────────────
-+ do run ?! Error
-    - kinds [String]
-
-do finally finished += 1
-for kind in kinds
-    if kind == "a"
-        count += 1
-    else
-        ?! Error("unknown $kind")
+(type + Probe
+  (prop + count _ (= 0))
+  (prop + finished _ (= 0))
+  (fn-do + run _ (?! Error)
+    (param kinds (list String))
+    (finally
+      (inline (+= finished 1))
+    )
+    (for (in kind kinds)
+      (if (== kind "a")
+        (+= count 1)
+        (else
+          (throw (call Error (str "unknown " kind)))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2074,47 +2274,47 @@ caught unknown b
 
 ### An error raised while evaluating a constructor argument propagates instead of constructing the object.
 
-```yumi
--- describe(true)
--- describe(false)
+```brix
+(main
+  (print (call describe true))
+  (print (call describe false))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
+(type + Holder
+  (prop + items (list String) (= (call (of List String))))
+  (fn-do + This _)
+  (fn-do + This _
+    (param items _)
+  )
+)
 
-+ items [String] = List'String()
+(fn-do + make (list String) (?! Error)
+  (param fails Bool)
+  (throw (call Error "broken") (if fails))
+  (let result (list String))
+  (+= result "made")
+  (return result)
+)
 
-────────────────────
-+ This
+(fn-do + build Holder (?! Error)
+  (param fails Bool)
+  (let holder (call Holder (call make fails)))
+  (return holder)
+)
 
-────────────────────
-+ This
-    - items
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make [String] ?! Error
-    - fails Bool
-
-?! Error("broken")
-    if fails
-. result [String]
-result += "made"
-= result
-
-━━━━━━━━━━━━━━━━━━━━
-+ do build Holder ?! Error
-    - fails Bool
-
-. holder = Holder(make(fails))
-= holder
-
-━━━━━━━━━━━━━━━━━━━━
-+ do describe String
-    - fails Bool
-
-. holder = build(fails)
-    catch err Error
-        = "caught $err"
-= "built ${holder.items.length}"
+(fn-do + describe String
+  (param fails Bool)
+  (let holder
+    (call build fails
+      (block
+        (on-error (: err Error)
+          (return (str "caught " err))
+        )
+      )
+    )
+  )
+  (return (str "built " (. holder items length)))
+)
 ```
 
 ```output
@@ -2124,38 +2324,42 @@ built 1
 
 ### A raise inside a loop over a fallible iterator propagates through a recursive fallible method.
 
-```yumi
-. probe = Probe()
-probe.run(["a", "b", "a"], true)
-    catch err Error
-        -- "caught $err"
--- probe.count
+```brix
+(main
+  (let probe (call Probe))
+  (call (. probe run) (list "a" "b" "a") true
+    (block
+      (on-error (: err Error)
+        (print (str "caught " err))
+      )
+    )
+  )
+  (print (. probe count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Probe
-
-+ count = 0
-
-────────────────────
-+ do run ?! Error
-    - kinds [String]
-    - nested Bool
-
-for kind in checked(kinds)
-    if kind == "a"
-        count += 1
-    else if kind == "nested" && nested
-        run(kinds, false)
-    else
-        ?! Error("unknown $kind")
-
-────────────────────
-+ do checked [String] ?! Error
-    - kinds [String]
-
-?! Error("empty")
-    if !kinds.length
-= kinds
+(type + Probe
+  (prop + count _ (= 0))
+  (fn-do + run _ (?! Error)
+    (param kinds (list String))
+    (param nested Bool)
+    (for (in kind (call checked kinds))
+      (if (== kind "a")
+        (+= count 1)
+        (else-if (and (== kind "nested") nested)
+          (call run kinds false)
+        )
+        (else
+          (throw (call Error (str "unknown " kind)))
+        )
+      )
+    )
+  )
+  (fn-do + checked (list String) (?! Error)
+    (param kinds (list String))
+    (throw (call Error "empty") (if (not (. kinds length))))
+    (return kinds)
+  )
+)
 ```
 
 ```output
@@ -2163,35 +2367,43 @@ caught unknown b
 1
 ```
 
-```yumi
--- describe("Green")
--- describe("Purple")
+```brix
+(main
+  (print (call describe "Green"))
+  (print (call describe "Purple"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shade is Union
+(type + Shade (is Union)
+  (variant red)
+  (variant green)
+)
 
-| red
-| green
+(fn-expr + shade-named _ (?! Error)
+  (param name String)
+  (match name
+    (case= "Red"
+      (. Shade red)
+    )
+    (case= "Green"
+      (. Shade green)
+    )
+    (throw (call Error (str "Unknown shade '" name "'")))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ shade-named ?! Error
-    - name String
-
-match name
-    |= "Red"
-        Shade.red
-    |= "Green"
-        Shade.green
-    ?! Error("Unknown shade '$name'")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do describe String
-    - name String
-
-. shade = shade-named(name)
-    catch err Error
-        = "unknown"
-= if shade == Shade.green then "green" else "red"
+(fn-do + describe String
+  (param name String)
+  (let shade
+    (call shade-named name
+      (block
+        (on-error (: err Error)
+          (return "unknown")
+        )
+      )
+    )
+  )
+  (return (if-expr (== shade (. Shade green)) "green" "red"))
+)
 ```
 
 ```output
@@ -2201,49 +2413,52 @@ unknown
 
 ### A caught optional result matches its value arm only when a value is present.
 
-```yumi
--- spot-text(true)
--- spot-text(false)
--- spot-text-failing()
+```brix
+(main
+  (print (call spot-text true))
+  (print (call spot-text false))
+  (print (call spot-text-failing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Spot is Tuple
+(type + Spot (is Tuple)
+  (prop + number F64)
+  (prop + count F64)
+)
 
-+ number F64
-+ count F64
+(fn-do + spot-found (? Spot) (?! Error)
+  (param present Bool)
+  (param failing _ (= false))
+  (throw (call Error "lost") (if failing))
+  (return-if (call Spot 2 5) (if present))
+  (return null)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do spot-found Spot? ?! Error
-    - present Bool
-    - failing = false
+(fn-do + spot-text String
+  (param present Bool)
+  (let result (catch (call spot-found present)))
+  (match? result
+    (case (: error Error)
+      (return "error")
+    )
+    (case (: spot Spot)
+      (return (str "spot " (. spot number) " of " (. spot count)))
+    )
+  )
+  (return "none")
+)
 
-?! Error("lost")
-    if failing
-=? Spot(2, 5) if present
-= null
-
-━━━━━━━━━━━━━━━━━━━━
-+ do spot-text String
-    - present Bool
-
-. result = catch spot-found(present)
-match? result
-    | error Error
-        = "error"
-    | spot Spot
-        = "spot ${spot.number} of ${spot.count}"
-= "none"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do spot-text-failing String
-
-. result = catch spot-found(true, true)
-match? result
-    | error Error
-        = "error ${error.message}"
-    | spot Spot
-        = "spot ${spot.number}"
-= "none"
+(fn-do + spot-text-failing String
+  (let result (catch (call spot-found true true)))
+  (match? result
+    (case (: error Error)
+      (return (str "error " (. error message)))
+    )
+    (case (: spot Spot)
+      (return (str "spot " (. spot number)))
+    )
+  )
+  (return "none")
+)
 ```
 
 ```output
@@ -2254,61 +2469,57 @@ error lost
 
 ### A caught optional result from an interface method matches its value arm only when present.
 
-```yumi
--- located(Locator(true))
--- located(Locator(false))
--- located(Fallback())
+```brix
+(main
+  (print (call located (call Locator true)))
+  (print (call located (call Locator false)))
+  (print (call located (call Fallback)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Place is Tuple
+(type + Place (is Tuple)
+  (prop + number F64)
+  (prop + count F64)
+)
 
-+ number F64
-+ count F64
+(type + PlaceError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ PlaceError is Error
+(type + Finder (is Interface)
+  (fn-do + place (? Place) (?! PlaceError)
+    (param wanted Int)
+    (return null)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Finder is Interface
+(type + Locator
+  (implements Finder)
+  (prop + present Bool)
+  (fn-do + This _
+    (param present _)
+  )
+  (fn-do + place (? Place) (?! PlaceError)
+    (param wanted Int)
+    (return-if null (if (not present)))
+    (return (call Place (as wanted F64) 5))
+  )
+)
 
-────────────────────
-+ do place Place? ?! PlaceError
-    - wanted Int
+(type + Fallback
+  (implements Finder)
+)
 
-= null
-
-━━━━━━━━━━━━━━━━━━━━
-+ Locator
-    is Finder
-
-+ present Bool
-
-────────────────────
-+ This
-    - present
-
-────────────────────
-+ do place Place? ?! PlaceError
-    - wanted Int
-
-=? null if !present
-= Place(wanted as F64, 5)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Fallback
-    is Finder
-
-━━━━━━━━━━━━━━━━━━━━
-+ do located String
-    - finder Finder
-
-. result = catch finder.place(3)
-match? result
-    | error PlaceError
-        = "error"
-    | place Place
-        = "place ${place.number} of ${place.count}"
-= "none"
+(fn-do + located String
+  (param finder Finder)
+  (let result (catch (call (. finder place) 3)))
+  (match? result
+    (case (: error PlaceError)
+      (return "error")
+    )
+    (case (: place Place)
+      (return (str "place " (. place number) " of " (. place count)))
+    )
+  )
+  (return "none")
+)
 ```
 
 ```output
@@ -2319,38 +2530,32 @@ none
 
 ### A string literal converts in an override whose base raises no errors
 
-```yumi
-. base Base = Child()
--- base.code().width
+```brix
+(main
+  (let base Base (call Child))
+  (print (. (call (. base code)) width))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Code is Tuple
+(type + Code (is Tuple)
+  (prop + width _ (= 0))
+  (prop + height _ (= 0))
+  (fn-from-do + (: text String)
+    (throw (call SyntaxError "Invalid code") (if (!= (. text length) 3)))
+    (return (call Code (. text length) 1))
+  )
+)
 
-+ width = 0
-+ height = 0
+(type + Base
+  (fn-expr + code Code
+    (call Code 0 0)
+  )
+)
 
-────────────────────
-+ do from text String
-
-?! SyntaxError("Invalid code")
-    if text.length != 3
-= Code(text.length, 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-────────────────────
-+ code Code
-
-Code(0, 0)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ code Code
-
-"abc"
+(type + Child (is Base)
+  (fn-expr + code Code
+    "abc"
+  )
+)
 ```
 
 ```output
@@ -2359,38 +2564,32 @@ Code(0, 0)
 
 ### An explicit conversion of a string literal raises no errors
 
-```yumi
-. base Base = Child()
--- base.code().height
+```brix
+(main
+  (let base Base (call Child))
+  (print (. (call (. base code)) height))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Code is Tuple
+(type + Code (is Tuple)
+  (prop + width _ (= 0))
+  (prop + height _ (= 0))
+  (fn-from-do + (: text String)
+    (throw (call SyntaxError "Invalid code") (if (!= (. text length) 3)))
+    (return (call Code (. text length) 1))
+  )
+)
 
-+ width = 0
-+ height = 0
+(type + Base
+  (fn-expr + code Code
+    (call Code 0 0)
+  )
+)
 
-────────────────────
-+ do from text String
-
-?! SyntaxError("Invalid code")
-    if text.length != 3
-= Code(text.length, 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-────────────────────
-+ code Code
-
-Code(0, 0)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ code Code
-
-Code("xyz")
+(type + Child (is Base)
+  (fn-expr + code Code
+    (call Code "xyz")
+  )
+)
 ```
 
 ```output
@@ -2399,29 +2598,28 @@ Code("xyz")
 
 ### A string literal that fails its conversion panics
 
-```yumi
-do new
-    -- broken().width
-catch failure
-    -- failure
+```brix
+(main
+  (do-new
+    (print (. (call broken) width))
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Code is Tuple
+(type + Code (is Tuple)
+  (prop + width _ (= 0))
+  (prop + height _ (= 0))
+  (fn-from-do + (: text String)
+    (throw (call SyntaxError "Invalid code") (if (!= (. text length) 3)))
+    (return (call Code (. text length) 1))
+  )
+)
 
-+ width = 0
-+ height = 0
-
-────────────────────
-+ do from text String
-
-?! SyntaxError("Invalid code")
-    if text.length != 3
-= Code(text.length, 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ broken Code
-
-"toolong"
+(fn-expr + broken Code
+  "toolong"
+)
 ```
 
 ```output
@@ -2430,40 +2628,39 @@ Invalid code
 
 ### A runtime string that fails its conversion raises the conversion error
 
-```yumi
-. text = "toolong"
--- described(text)
+```brix
+(main
+  (let text "toolong")
+  (print (call described text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Code is Tuple
+(type + Code (is Tuple)
+  (prop + width _ (= 0))
+  (prop + height _ (= 0))
+  (fn-from-do + (: text String)
+    (throw (call SyntaxError "Invalid code") (if (!= (. text length) 3)))
+    (return (call Code (. text length) 1))
+  )
+)
 
-+ width = 0
-+ height = 0
+(fn-do + parse Code
+  (param text String)
+  (return text)
+)
 
-────────────────────
-+ do from text String
-
-?! SyntaxError("Invalid code")
-    if text.length != 3
-= Code(text.length, 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do parse Code
-    - text String
-
-= text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do described String
-    - text String
-
-. result = catch parse(text)
-match? result
-    | error SyntaxError
-        = "error ${error.message}"
-    | code Code
-        = "code ${code.width}"
-= "none"
+(fn-do + described String
+  (param text String)
+  (let result (catch (call parse text)))
+  (match? result
+    (case (: error SyntaxError)
+      (return (str "error " (. error message)))
+    )
+    (case (: code Code)
+      (return (str "code " (. code width)))
+    )
+  )
+  (return "none")
+)
 ```
 
 ```output
@@ -2472,39 +2669,33 @@ error Invalid code
 
 ### A conditional coalesce converts a string literal branch to the other branch's type
 
-```yumi
-. base Base = Child()
--- base.code().width
+```brix
+(main
+  (let base Base (call Child))
+  (print (. (call (. base code)) width))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Code is Tuple
+(type + Code (is Tuple)
+  (prop + width _ (= 0))
+  (prop + height _ (= 0))
+  (fn-from-do + (: text String)
+    (throw (call SyntaxError "Invalid code") (if (!= (. text length) 3)))
+    (return (call Code (. text length) 1))
+  )
+)
 
-+ width = 0
-+ height = 0
+(type + Base
+  (fn-expr + code Code
+    (call Code 0 0)
+  )
+)
 
-────────────────────
-+ do from text String
-
-?! SyntaxError("Invalid code")
-    if text.length != 3
-= Code(text.length, 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-────────────────────
-+ code Code
-
-Code(0, 0)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-
-────────────────────
-+ do code Code
-
-. fallback = Code(0, 0)
-= if fallback.width == 0 then "abc" else fallback
+(type + Child (is Base)
+  (fn-do + code Code
+    (let fallback (call Code 0 0))
+    (return (if-expr (== (. fallback width) 0) "abc" fallback))
+  )
+)
 ```
 
 ```output
@@ -2513,31 +2704,41 @@ Code(0, 0)
 
 ### A raw catch holds a value or its error, and catch? a value or nothing.
 
-```yumi
-. result = catch check(3)
--- match result
-    | Int
-        "value $it"
-    | IOError
-        "io ${it.message}"
-. other = catch check(-1)
--- match other
-    | Int
-        "value $it"
-    | IOError
-        "io ${it.message}"
-. maybe = catch? check(-1)
--- maybe ?? 99
-. sure = catch? check(5)
--- sure ?? 99
+```brix
+(main
+  (let result (catch (call check 3)))
+  (print
+    (match result
+      (case Int
+        (str "value " it)
+      )
+      (case IOError
+        (str "io " (. it message))
+      )
+    )
+  )
+  (let other (catch (call check -1)))
+  (print
+    (match other
+      (case Int
+        (str "value " it)
+      )
+      (case IOError
+        (str "io " (. it message))
+      )
+    )
+  )
+  (let maybe (catch? (call check -1)))
+  (print (?? maybe 99))
+  (let sure (catch? (call check 5)))
+  (print (?? sure 99))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do check Int
-    - value Int
-
-?! IOError("negative")
-    if value < 0
-= value + 1
+(fn-do + check Int
+  (param value Int)
+  (throw (call IOError "negative") (if (< value 0)))
+  (return (+ value 1))
+)
 ```
 
 ```output
@@ -2549,40 +2750,41 @@ io negative
 
 ### What a raw catch holds has no truth, even over a call that answers nothing: a condition over it is an error that says to test it with `is`.
 
-```yumi compile-error
-. failure = catch check(-1)
--- if failure then "failed" else "worked"
+```brix compile-error
+(main
+  (let failure (catch (call check -1)))
+  (print (if-expr failure "failed" "worked"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do check ?! IOError
-    - value Int
-
-?! IOError("negative") if value < 0
+(fn-do + check _ (?! IOError)
+  (param value Int)
+  (throw (call IOError "negative") (if (< value 0)))
+)
 ```
 
 ```output
 Exception: A value that may be an error, as "catch" gives, has no truth; test it with "is Error", or take it apart with "match"
-<no file:3>
-    -- if failure then "failed" else "worked"
-          ^^^^^^^
+<no file:4>
+      (print (if-expr failure "failed" "worked"))
+                      ^^^^^^^
 ```
 
 ### An error that leaves main is reported and ends the program.
 
-```yumi crash
--- "before"
-check(3)
--- "middle"
-check(-1)
--- "after"
+```brix crash
+(main
+  (print "before")
+  (call check 3)
+  (print "middle")
+  (call check -1)
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do check Int
-    - value Int
-
-?! IOError("negative")
-    if value < 0
-= value + 1
+(fn-do + check Int
+  (param value Int)
+  (throw (call IOError "negative") (if (< value 0)))
+  (return (+ value 1))
+)
 ```
 
 ```output
@@ -2592,26 +2794,25 @@ middle
 
 ### An error propagates through its callers to main.
 
-```yumi crash
--- outer(3)
--- outer(-1)
--- "after"
+```brix crash
+(main
+  (print (call outer 3))
+  (print (call outer -1))
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do outer Int
-    - value Int
+(fn-do + outer Int
+  (param value Int)
+  (let inner (call check value))
+  (print (str "inner " inner))
+  (return (* inner 2))
+)
 
-. inner = check(value)
--- "inner $inner"
-= inner * 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do check Int
-    - value Int
-
-?! IOError("negative")
-    if value < 0
-= value + 1
+(fn-do + check Int
+  (param value Int)
+  (throw (call IOError "negative") (if (< value 0)))
+  (return (+ value 1))
+)
 ```
 
 ```output
@@ -2621,82 +2822,97 @@ inner 4
 
 ### Results of nothing, text, a tuple and a float, with one error or two, and a relay that infers its errors.
 
-```yumi
--- catch save(1)
--- catch save(-1)
--- catch? name(2)
--- catch? name(-2)
--- (catch? pair(3)) ?? (0, "none")
--- (catch? pair(-3)) ?? (0, "none")
-. kept = catch wide(5)
--- match kept
-    | Float
-        "float $it"
-    | IOError
+```brix
+(main
+  (print (catch (call save 1)))
+  (print (catch (call save -1)))
+  (print (catch? (call name 2)))
+  (print (catch? (call name -2)))
+  (print (?? (catch? (call pair 3)) (tuple 0 "none")))
+  (print (?? (catch? (call pair -3)) (tuple 0 "none")))
+  (let kept (catch (call wide 5)))
+  (print
+    (match kept
+      (case Float
+        (str "float " it)
+      )
+      (case IOError
         "io"
-    | SyntaxError
+      )
+      (case SyntaxError
         "syntax"
--- match catch wide(-5)
-    | Float
+      )
+    )
+  )
+  (print
+    (match (catch (call wide -5))
+      (case Float
         "float"
-    | IOError
-        "io ${it.message}"
-    | SyntaxError
-        "syntax ${it.message}"
--- match catch wide(0)
-    | Float
+      )
+      (case IOError
+        (str "io " (. it message))
+      )
+      (case SyntaxError
+        (str "syntax " (. it message))
+      )
+    )
+  )
+  (print
+    (match (catch (call wide 0))
+      (case Float
         "float"
-    | IOError
-        "io ${it.message}"
-    | SyntaxError
-        "syntax ${it.message}"
--- match catch relay(0)
-    | Float
+      )
+      (case IOError
+        (str "io " (. it message))
+      )
+      (case SyntaxError
+        (str "syntax " (. it message))
+      )
+    )
+  )
+  (print
+    (match (catch (call relay 0))
+      (case Float
         "float"
-    | Error
-        "error ${it.message}"
--- catch? relay(4)
+      )
+      (case Error
+        (str "error " (. it message))
+      )
+    )
+  )
+  (print (catch? (call relay 4)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do save ?! IOError
-    - value Int
+(fn-do + save _ (?! IOError)
+  (param value Int)
+  (throw (call IOError "cannot save") (if (< value 0)))
+  (print (str "saved " value))
+)
 
-?! IOError("cannot save")
-    if value < 0
--- "saved $value"
+(fn-do + name String (?! IOError)
+  (param value Int)
+  (throw (call IOError "no name") (if (< value 0)))
+  (return (str "name" value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do name String ?! IOError
-    - value Int
+(fn-do + pair (tuple Int String) (?! SyntaxError)
+  (param value Int)
+  (throw (call SyntaxError "no pair") (if (< value 0)))
+  (return (tuple value "pair"))
+)
 
-?! IOError("no name")
-    if value < 0
-= "name$value"
+(fn-do + wide Float (?! IOError) (?! SyntaxError)
+  (param value Int)
+  (throw (call IOError "io") (if (< value 0)))
+  (throw (call SyntaxError "syntax") (if (== value 0)))
+  (return (+ (as value Float) 0.5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pair (Int, String) ?! SyntaxError
-    - value Int
-
-?! SyntaxError("no pair")
-    if value < 0
-= (value, "pair")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do wide Float ?! IOError ?! SyntaxError
-    - value Int
-
-?! IOError("io")
-    if value < 0
-?! SyntaxError("syntax")
-    if value == 0
-= (value as Float) + 0.5
-
-━━━━━━━━━━━━━━━━━━━━
-+ do relay Float
-    - value Int
-
-. first = wide(value + 1)
-= first + wide(value)
+(fn-do + relay Float
+  (param value Int)
+  (let first (call wide (+ value 1)))
+  (return (+ first (call wide value)))
+)
 ```
 
 ```output
@@ -2716,35 +2932,37 @@ error syntax
 
 ### The cleanups of each function run as an error leaves it.
 
-```yumi crash
--- catch? outer(1)
--- catch? outer(-1)
--- total
-outer(-7)
--- "unreached"
+```brix crash
+(main
+  (print (catch? (call outer 1)))
+  (print (catch? (call outer -1)))
+  (print total)
+  (call outer -7)
+  (print "unreached")
+)
 
-_ total = 0
+(blank)
+(prop _ total _ (= 0))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do outer Int
-    - value Int
+(fn-do + outer Int
+  (param value Int)
+  (finally
+    (+= total 1)
+    (print "outer done")
+  )
+  (let first (call inner value))
+  (let second (+ (call inner (+ value 1)) (call inner (+ value 2))))
+  (return (+ first second))
+)
 
-do finally
-    total += 1
-    -- "outer done"
-. first = inner(value)
-. second = inner(value + 1) + inner(value + 2)
-= first + second
-
-━━━━━━━━━━━━━━━━━━━━
-+ do inner Int
-    - value Int
-
-do finally
-    total += 10
-?! IOError("inner $value")
-    if value < 0
-= value * 2
+(fn-do + inner Int
+  (param value Int)
+  (finally
+    (+= total 10)
+  )
+  (throw (call IOError (str "inner " value)) (if (< value 0)))
+  (return (* value 2))
+)
 ```
 
 ```output
@@ -2758,55 +2976,51 @@ outer done
 
 ### A method raises an error of a class the program declares.
 
-```yumi crash
-. box = Box(3)
--- catch? box.take(2)
--- catch? box.take(5)
--- match catch box.take(9)
-    | Int
-        "took $it"
-    | BoxError
-        "box ${it.message} ${it.wanted}"
--- catch? box.drain()
-box.take(100)
--- "unreached"
+```brix crash
+(main
+  (let box (call Box 3))
+  (print (catch? (call (. box take) 2)))
+  (print (catch? (call (. box take) 5)))
+  (print
+    (match (catch (call (. box take) 9))
+      (case Int
+        (str "took " it)
+      )
+      (case BoxError
+        (str "box " (. it message) " " (. it wanted))
+      )
+    )
+  )
+  (print (catch? (call (. box drain))))
+  (call (. box take) 100)
+  (print "unreached")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BoxError is Error
+(type + BoxError (is Error)
+  (prop + wanted Int)
+  (fn-do + This _
+    (param count Int)
+    (lazy message "empty")
+    (lazy wanted count)
+  )
+)
 
-+ wanted Int
-
-────────────────────
-+ This
-    - count Int
-
-.. message = "empty"
-.. wanted = count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ held Int
-
-────────────────────
-+ This
-    - count Int
-
-.. held = count
-
-────────────────────
-+ do take Int
-    - count Int
-
-?! BoxError(count)
-    if count > held
-held -= count
-= held
-
-────────────────────
-+ do drain Int
-
-= take(held) + take(1)
+(type + Box
+  (prop + held Int)
+  (fn-do + This _
+    (param count Int)
+    (lazy held count)
+  )
+  (fn-do + take Int
+    (param count Int)
+    (throw (call BoxError count) (if (> count held)))
+    (-= held count)
+    (return held)
+  )
+  (fn-do + drain Int
+    (return (+ (call take held) (call take 1)))
+  )
+)
 ```
 
 ```output
@@ -2818,38 +3032,46 @@ unknown
 
 ### An error of a function that states Error is held as the case of Error.
 
-```yumi crash
--- catch? stated(1)
--- match catch stated(-1)
-    | Int
+```brix crash
+(main
+  (print (catch? (call stated 1)))
+  (print
+    (match (catch (call stated -1))
+      (case Int
         "value"
-    | Error
-        "error ${it.message}"
--- match catch stated(0)
-    | Int
+      )
+      (case Error
+        (str "error " (. it message))
+      )
+    )
+  )
+  (print
+    (match (catch (call stated 0))
+      (case Int
         "value"
-    | Error
-        "error ${it.message}"
-. kept = catch chain(-1)
--- kept is Error
--- kept is Int
-stated(-1)
+      )
+      (case Error
+        (str "error " (. it message))
+      )
+    )
+  )
+  (let kept (catch (call chain -1)))
+  (print (is kept Error))
+  (print (is kept Int))
+  (call stated -1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do stated Int ?! Error
-    - value Int
+(fn-do + stated Int (?! Error)
+  (param value Int)
+  (throw (call IOError "io") (if (< value 0)))
+  (throw (call SyntaxError "syntax") (if (== value 0)))
+  (return value)
+)
 
-?! IOError("io")
-    if value < 0
-?! SyntaxError("syntax")
-    if value == 0
-= value
-
-━━━━━━━━━━━━━━━━━━━━
-+ do chain Int ?! Error
-    - value Int
-
-= stated(value) + 1
+(fn-do + chain Int (?! Error)
+  (param value Int)
+  (return (+ (call stated value) 1))
+)
 ```
 
 ```output
@@ -2862,34 +3084,37 @@ false
 
 ### Errors leave from inside blocks and loops, with the cleanups of each.
 
-```yumi crash
--- catch? deep(3)
--- catch? deep(-3)
-deep(-1)
+```brix crash
+(main
+  (print (catch? (call deep 3)))
+  (print (catch? (call deep -3)))
+  (call deep -1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do deep Int
-    - value Int
+(fn-do + deep Int
+  (param value Int)
+  (if (> value 0)
+    (finally
+      (print "leaving block")
+    )
+    (let inner (call check value))
+    (return inner)
+  )
+  (while true
+    (finally
+      (print "leaving loop")
+    )
+    (call check value)
+    (break)
+  )
+  (return 0)
+)
 
-if value > 0
-    do finally
-        -- "leaving block"
-    . inner = check(value)
-    = inner
-while true
-    do finally
-        -- "leaving loop"
-    check(value)
-    break
-= 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do check Int
-    - value Int
-
-?! IOError("negative")
-    if value < 0
-= value + 1
+(fn-do + check Int
+  (param value Int)
+  (throw (call IOError "negative") (if (< value 0)))
+  (return (+ value 1))
+)
 ```
 
 ```output
@@ -2902,34 +3127,38 @@ leaving loop
 
 ### A held Result is copied, tested, passed to a function and named Union.
 
-```yumi
-. first = catch check(1)
-. second = catch check(-1)
--- type-of first
--- first
--- second
-. third = second
--- third is IOError
-show(first)
-show(second)
+```brix
+(main
+  (let first (catch (call check 1)))
+  (let second (catch (call check -1)))
+  (print (type-of first))
+  (print first)
+  (print second)
+  (let third second)
+  (print (is third IOError))
+  (call show first)
+  (call show second)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - result
-
--- match result
-    | Int
-        "int $it"
-    | IOError
+(fn-do + show _
+  (param result _)
+  (print
+    (match result
+      (case Int
+        (str "int " it)
+      )
+      (case IOError
         "error"
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do check Int
-    - value Int
-
-?! IOError("negative")
-    if value < 0
-= value + 1
+(fn-do + check Int
+  (param value Int)
+  (throw (call IOError "negative") (if (< value 0)))
+  (return (+ value 1))
+)
 ```
 
 ```output
@@ -2943,84 +3172,112 @@ error
 
 ### Handlers capture the error, are tried in the order written, and let the errors they do not take leave.
 
-```yumi crash
--- named(1)
--- named(-1)
--- named(0)
--- broad(-1)
--- broad(0)
--- catch? narrow(-1)
--- catch? narrow(0)
--- catch? narrow(5)
--- total
-stated(0)
-    catch IOError
-        do -- "main io"
+```brix crash
+(main
+  (print (call named 1))
+  (print (call named -1))
+  (print (call named 0))
+  (print (call broad -1))
+  (print (call broad 0))
+  (print (catch? (call narrow -1)))
+  (print (catch? (call narrow 0)))
+  (print (catch? (call narrow 5)))
+  (print total)
+  (call stated 0
+    (block
+      (on-error IOError
+        (do
+          (inline (print "main io"))
+        )
         0
--- "main after"
-stated(-1)
-    catch SyntaxError
-        do -- "main syntax"
+      )
+    )
+  )
+  (print "main after")
+  (call stated -1
+    (block
+      (on-error SyntaxError
+        (do
+          (inline (print "main syntax"))
+        )
         0
--- "unreached"
+      )
+    )
+  )
+  (print "unreached")
+)
 
-_ total = 0
+(blank)
+(prop _ total _ (= 0))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do stated Int ?! Error
-    - value Int
+(fn-do + stated Int (?! Error)
+  (param value Int)
+  (throw (call IOError (str "io " value)) (if (< value 0)))
+  (throw (call SyntaxError (str "syntax " value)) (if (== value 0)))
+  (return value)
+)
 
-?! IOError("io $value")
-    if value < 0
-?! SyntaxError("syntax $value")
-    if value == 0
-= value
+(fn-do + bump Int
+  (param by Int)
+  (+= total by)
+  (return (- 0 by))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do bump Int
-    - by Int
+(fn-do + named String
+  (param value Int)
+  (let got
+    (call stated value
+      (block
+        (on-error (: failure IOError)
+          (call bump (. failure message length))
+        )
+        (on-error (: other Error)
+          (call bump 10)
+        )
+      )
+    )
+  )
+  (return (str "got " got))
+)
 
-total += by
-= 0 - by
+(fn-do + broad String
+  (param value Int)
+  (finally
+    (+= total 100)
+  )
+  (let text
+    (call stated value
+      (block
+        (on-error (: failure Error)
+          (. failure message length)
+        )
+      )
+    )
+  )
+  (return (str "broad " text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do named String
-    - value Int
+(fn-do + narrow Int
+  (param value Int)
+  (finally
+    (+= total 1000)
+  )
+  (let got
+    (call stated value
+      (block
+        (on-error SyntaxError
+          (call relay value)
+        )
+      )
+    )
+  )
+  (return (+ got 1))
+)
 
-. got = stated(value)
-    catch failure IOError
-        bump(failure.message.length)
-    catch other Error
-        bump(10)
-= "got $got"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do broad String
-    - value Int
-
-do finally
-    total += 100
-. text = stated(value)
-    catch failure Error
-        failure.message.length
-= "broad $text"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do narrow Int
-    - value Int
-
-do finally
-    total += 1000
-. got = stated(value)
-    catch SyntaxError
-        relay(value)
-= got + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do relay Int
-    - value Int
-
-= stated(value - 1)
+(fn-do + relay Int
+  (param value Int)
+  (return (call stated (- value 1)))
+)
 ```
 
 ```output
@@ -3037,22 +3294,28 @@ unknown
 
 ### A match whose arms all give errors raises the error of the arm taken.
 
-```yumi
--- catch? pick(1)
--- catch? pick(2)
--- "after"
+```brix
+(main
+  (print (catch? (call pick 1)))
+  (print (catch? (call pick 2)))
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick String
-    - kind Int
-
-. chosen = match kind
-    |= 1
-        IOError("one")
-    ??
-        SyntaxError("other")
--- type-of chosen
-= "picked"
+(fn-do + pick String
+  (param kind Int)
+  (let chosen
+    (match kind
+      (case= 1
+        (call IOError "one")
+      )
+      (default
+        (call SyntaxError "other")
+      )
+    )
+  )
+  (print (type-of chosen))
+  (return "picked")
+)
 ```
 
 ```output
@@ -3063,23 +3326,29 @@ after
 
 ### An arm that gives an error beside arms that give values raises it at the arm.
 
-```yumi crash
--- catch? pick(1)
--- catch? pick(2)
-pick(1)
--- "after"
+```brix crash
+(main
+  (print (catch? (call pick 1)))
+  (print (catch? (call pick 2)))
+  (call pick 1)
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick String
-    - kind Int
-
-. chosen = match kind
-    |= 1
-        IOError("one")
-    ??
+(fn-do + pick String
+  (param kind Int)
+  (let chosen
+    (match kind
+      (case= 1
+        (call IOError "one")
+      )
+      (default
         "plain"
--- type-of chosen
-= chosen
+      )
+    )
+  )
+  (print (type-of chosen))
+  (return chosen)
+)
 ```
 
 ```output
@@ -3090,57 +3359,65 @@ plain
 
 ### An arm that gives an error its declared type holds gives the error as a value, and an arm whose error the declared type cannot hold raises it.
 
-```yumi
--- by-match(0)?.message ?? "none"
--- by-match(1)?.message ?? "none"
--- by-table(-1)?.message ?? "none"
--- by-table(1)?.message ?? "none"
--- named(0).message
--- named(1).message
--- catch? text(0) ?? "raised"
--- catch? text(1) ?? "raised"
+```brix
+(main
+  (print (?? (?. (call by-match 0) message) "none"))
+  (print (?? (?. (call by-match 1) message) "none"))
+  (print (?? (?. (call by-table -1) message) "none"))
+  (print (?? (?. (call by-table 1) message) "none"))
+  (print (. (call named 0) message))
+  (print (. (call named 1) message))
+  (print (?? (catch? (call text 0)) "raised"))
+  (print (?? (catch? (call text 1)) "raised"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Oops is Error
+(type + Oops (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ by-match Oops?
-    - flag Int
+(fn-expr + by-match (? Oops)
+  (param flag Int)
+  (match flag
+    (case= 0
+      (call Oops "zero")
+    )
+    (default
+      null
+    )
+  )
+)
 
-match flag
-    |= 0
-        Oops("zero")
-    ??
-        null
-
-━━━━━━━━━━━━━━━━━━━━
-+ by-table Error?
-    - value Int
-
-|? value < 0
-    Oops("below")
-??
+(fn-expr + by-table (? Error)
+  (param value Int)
+  (case? (< value 0)
+    (call Oops "below")
+  )
+  (default
     null
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ named Oops
-    - flag Int
+(fn-expr + named Oops
+  (param flag Int)
+  (match flag
+    (case= 0
+      (call Oops "zero")
+    )
+    (default
+      (call Oops "other")
+    )
+  )
+)
 
-match flag
-    |= 0
-        Oops("zero")
-    ??
-        Oops("other")
-
-━━━━━━━━━━━━━━━━━━━━
-+ text String
-    - flag Int
-
-match flag
-    |= 0
-        Oops("zero")
-    ??
-        "plain"
+(fn-expr + text String
+  (param flag Int)
+  (match flag
+    (case= 0
+      (call Oops "zero")
+    )
+    (default
+      "plain"
+    )
+  )
+)
 ```
 
 ```output
@@ -3156,32 +3433,37 @@ plain
 
 ### An arm of a table with no subject raises where its condition holds, and the arms after it are tested where it does not.
 
-```yumi
--- describe(3, false)
--- describe(3, true)
--- describe(200, false)
+```brix
+(main
+  (print (call describe 3 false))
+  (print (call describe 3 true))
+  (print (call describe 200 false))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ f Int ?! Error
-    - n Int
-    - flag Bool
-
-|? flag
+(fn-expr + f Int (?! Error)
+  (param n Int)
+  (param flag Bool)
+  (case? flag
     1
-?! Error("too big") if n > 100
-??
-    n * 2
+  )
+  (throw (call Error "too big") (if (> n 100)))
+  (default
+    (* n 2)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - n Int
-    - flag Bool
-
-match catch f(n, flag)
-    | value Int
-        "$value"
-    | error Error
-        error.message
+(fn-expr + describe String
+  (param n Int)
+  (param flag Bool)
+  (match (catch (call f n flag))
+    (case (: value Int)
+      (str value)
+    )
+    (case (: error Error)
+      (. error message)
+    )
+  )
+)
 ```
 
 ```output
@@ -3192,66 +3474,75 @@ too big
 
 ### An arm of a table with no subject panics where its condition holds.
 
-```yumi crash
--- f(3, true)
--- f(200, false)
+```brix crash
+(main
+  (print (call f 3 true))
+  (print (call f 200 false))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ f Int
-    - n Int
-    - flag Bool
-
-|? flag
+(fn-expr + f Int
+  (param n Int)
+  (param flag Bool)
+  (case? flag
     1
-?! Panic("too big: $n") if n > 100
-??
-    n * 2
+  )
+  (throw (call Panic (str "too big: " n)) (if (> n 100)))
+  (default
+    (* n 2)
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: too big: 200
-<no file:12>
+<no file:13>
 
 Task 1
 
 Stack trace:
-  0  __source__:f no file:12:1
-  1  __source__:main no file:3:4
+  0  __source__:f no file:13:3
+  1  __source__:main no file:4:10
   2  __source__:init.__source__ no file
   3  __source__:brix.main no file
 ```
 
 ### An arm of a table with no subject whose body ends in a raise leaves the function where it is taken.
 
-```yumi
--- describe(1)
--- describe(20)
--- describe(5)
+```brix
+(main
+  (print (call describe 1))
+  (print (call describe 20))
+  (print (call describe 5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ f Int ?! Error
-    - n Int
-
-|? n > 10
-    ?! Error("big $doubled")
-
-    .. doubled = n * 2
-|? n < 3
+(fn-expr + f Int (?! Error)
+  (param n Int)
+  (case? (> n 10)
+    (throw (call Error (str "big " doubled)))
+    (blank)
+    (lazy doubled (* n 2))
+  )
+  (case? (< n 3)
     n
-??
-    ?! Error("bad $tripled")
+  )
+  (default
+    (throw (call Error (str "bad " tripled)))
+    (blank)
+    (lazy tripled (* n 3))
+  )
+)
 
-    .. tripled = n * 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ describe String
-    - n Int
-
-match catch f(n)
-    | value Int
-        "$value"
-    | error Error
-        error.message
+(fn-expr + describe String
+  (param n Int)
+  (match (catch (call f n))
+    (case (: value Int)
+      (str value)
+    )
+    (case (: error Error)
+      (. error message)
+    )
+  )
+)
 ```
 
 ```output
@@ -3262,42 +3553,44 @@ bad 15
 
 ### A choice between an error and a text has no type in common.
 
-```yumi crash
--- catch? pick(1)
--- catch? pick(2)
--- "after"
+```brix crash
+(main
+  (print (catch? (call pick 1)))
+  (print (catch? (call pick 2)))
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick String
-    - kind Int
-
-. chosen = if kind == 1 then IOError("one") else "plain"
--- type-of chosen
-= chosen
+(fn-do + pick String
+  (param kind Int)
+  (let chosen (if-expr (== kind 1) (call IOError "one") "plain"))
+  (print (type-of chosen))
+  (return chosen)
+)
 ```
 
 ```output
 Exception: The two sides of this "if" are IOError and String, which have no common type; convert them to one type
 <no file:10>
-    . chosen = if kind == 1 then IOError("one") else "plain"
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      (let chosen (if-expr (== kind 1) (call IOError "one") "plain"))
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### An error constructed as a statement or held in a local is not raised.
 
-```yumi
--- catch? pick(1)
--- "after"
+```brix
+(main
+  (print (catch? (call pick 1)))
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do pick String
-    - kind Int
-
-. made = IOError("one")
--- type-of made
-IOError("dropped")
--- "still here"
-= made.message
+(fn-do + pick String
+  (param kind Int)
+  (let made (call IOError "one"))
+  (print (type-of made))
+  (call IOError "dropped")
+  (print "still here")
+  (return (. made message))
+)
 ```
 
 ```output
@@ -3309,35 +3602,41 @@ after
 
 ### An arm that raises an error, and a match on conditions whose arms give errors.
 
-```yumi crash
--- catch? shade("Red")
--- catch? shade("Blue")
--- catch? level(1)
--- catch? level(5)
--- catch? level(-5)
-shade("Blue")
+```brix crash
+(main
+  (print (catch? (call shade "Red")))
+  (print (catch? (call shade "Blue")))
+  (print (catch? (call level 1)))
+  (print (catch? (call level 5)))
+  (print (catch? (call level -5)))
+  (call shade "Blue")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ shade ?! Error
-    - name String
+(fn-expr + shade _ (?! Error)
+  (param name String)
+  (match name
+    (case= "Red"
+      1
+    )
+    (case= "Green"
+      2
+    )
+    (throw (call Error (str "Unknown shade '" name "'")))
+  )
+)
 
-match name
-    |= "Red"
-        1
-    |= "Green"
-        2
-    ?! Error("Unknown shade '$name'")
-
-━━━━━━━━━━━━━━━━━━━━
-+ level
-    - value Int
-
-|? value < 0
-    IOError("below")
-|? value > 3
-    SyntaxError("above")
-??
+(fn-expr + level _
+  (param value Int)
+  (case? (< value 0)
+    (call IOError "below")
+  )
+  (case? (> value 3)
+    (call SyntaxError "above")
+  )
+  (default
     value
+  )
+)
 ```
 
 ```output
@@ -3350,47 +3649,49 @@ unknown
 
 ### A returned Result returns the error it holds in its place.
 
-```yumi crash
--- catch relay(true)
--- catch relay(false)
--- catch? widen(true)
--- catch? widen(false)
--- catch? guarded(true)
--- catch? guarded(false)
--- total
-relay(false)
+```brix crash
+(main
+  (print (catch (call relay true)))
+  (print (catch (call relay false)))
+  (print (catch? (call widen true)))
+  (print (catch? (call widen false)))
+  (print (catch? (call guarded true)))
+  (print (catch? (call guarded false)))
+  (print total)
+  (call relay false)
+)
 
-_ total = 0
+(blank)
+(prop _ total _ (= 0))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read I32 ?! IOError
-    - ok Bool
+(fn-do + read I32 (?! IOError)
+  (param ok Bool)
+  (if ok
+    (return 7)
+    (else
+      (throw (call IOError "read failed"))
+    )
+  )
+)
 
-if ok
-    = 7
-else
-    ?! IOError("read failed")
+(fn-do + relay Int (?! IOError)
+  (param ok Bool)
+  (return (catch (call read ok)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do relay Int ?! IOError
-    - ok Bool
+(fn-do + widen Float (?! Error)
+  (param ok Bool)
+  (return (catch (call read ok)))
+)
 
-= catch read(ok)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do widen Float ?! Error
-    - ok Bool
-
-= catch read(ok)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do guarded Int
-    - ok Bool
-
-do finally
-    total += 1
-. kept = catch read(ok)
-= kept
+(fn-do + guarded Int
+  (param ok Bool)
+  (finally
+    (+= total 1)
+  )
+  (let kept (catch (call read ok)))
+  (return kept)
+)
 ```
 
 ```output
@@ -3405,85 +3706,99 @@ unknown
 
 ### Errors leave through nested calls, loops and conditional returns.
 
-```yumi
--- catch? chain(1)
--- catch? chain(-1)
--- catch? looped(3)
--- catch? looped(-3)
--- catch? early(0)
--- catch? early(4)
-. raw = catch nested(2)
--- match raw
-    | String
-        "text $it"
-    | IOError
-        "io ${it.message}"
-    | SyntaxError
+```brix
+(main
+  (print (catch? (call chain 1)))
+  (print (catch? (call chain -1)))
+  (print (catch? (call looped 3)))
+  (print (catch? (call looped -3)))
+  (print (catch? (call early 0)))
+  (print (catch? (call early 4)))
+  (let raw (catch (call nested 2)))
+  (print
+    (match raw
+      (case String
+        (str "text " it)
+      )
+      (case IOError
+        (str "io " (. it message))
+      )
+      (case SyntaxError
         "syntax"
--- match catch nested(-2)
-    | String
-        "text $it"
-    | IOError
-        "io ${it.message}"
-    | SyntaxError
+      )
+    )
+  )
+  (print
+    (match (catch (call nested -2))
+      (case String
+        (str "text " it)
+      )
+      (case IOError
+        (str "io " (. it message))
+      )
+      (case SyntaxError
         "syntax"
--- match catch nested(0)
-    | String
-        "text $it"
-    | IOError
-        "io ${it.message}"
-    | SyntaxError
-        "syntax ${it.message}"
+      )
+    )
+  )
+  (print
+    (match (catch (call nested 0))
+      (case String
+        (str "text " it)
+      )
+      (case IOError
+        (str "io " (. it message))
+      )
+      (case SyntaxError
+        (str "syntax " (. it message))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do check Int
-    - value Int
+(fn-do + check Int
+  (param value Int)
+  (throw (call IOError (str "negative " value)) (if (< value 0)))
+  (return (+ value 1))
+)
 
-?! IOError("negative $value")
-    if value < 0
-= value + 1
+(fn-do + parse String
+  (param value Int)
+  (throw (call SyntaxError "zero") (if (== value 0)))
+  (return (str "parsed " value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do parse String
-    - value Int
+(fn-do + chain Int
+  (param value Int)
+  (return (call check (call check (call check value))))
+)
 
-?! SyntaxError("zero")
-    if value == 0
-= "parsed $value"
+(fn-do + looped Int
+  (param count Int)
+  (let total 0)
+  (let index 0)
+  (while (< index 3)
+    (+= total (call check (+ count index)))
+    (+= index 1)
+  )
+  (return total)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do chain Int
-    - value Int
+(fn-do + early Int
+  (param value Int)
+  (if (== value 0)
+    (return (call check -9))
+  )
+  (let doubled (* (call check value) 2))
+  (return-if doubled (if (> doubled 100)))
+  (return (call check doubled))
+)
 
-= check(check(check(value)))
-
-━━━━━━━━━━━━━━━━━━━━
-+ do looped Int
-    - count Int
-
-. total = 0
-. index = 0
-while index < 3
-    total += check(count + index)
-    index += 1
-= total
-
-━━━━━━━━━━━━━━━━━━━━
-+ do early Int
-    - value Int
-
-if value == 0
-    = check(-9)
-. doubled = check(value) * 2
-=? doubled if doubled > 100
-= check(doubled)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do nested String
-    - value Int
-
-. checked = check(value)
-= parse(checked - 1)
+(fn-do + nested String
+  (param value Int)
+  (let checked (call check value))
+  (return (call parse (- checked 1)))
+)
 ```
 
 ```output
@@ -3500,48 +3815,55 @@ syntax zero
 
 ### A handler that gives an error beside handlers that give values keeps the error as a value
 
-```yumi
--- catch pick(0)
--- catch pick(1)
--- catch pick(2)
--- catch pick(3)
-. kept = catch? pick(1)
--- kept == null
-. held = catch? pick(0)
--- held == null
+```brix
+(main
+  (print (catch (call pick 0)))
+  (print (catch (call pick 1)))
+  (print (catch (call pick 2)))
+  (print (catch (call pick 3)))
+  (let kept (catch? (call pick 1)))
+  (print (== kept null))
+  (let held (catch? (call pick 0)))
+  (print (== held null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Missing is Error
+(type + Missing (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Denied is Error
+(type + Denied (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wrapped is Error
+(type + Wrapped (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read Int ?! Missing ?! Denied ?! IOError
-    - outcome Int
+(fn-do + read Int (?! Missing) (?! Denied) (?! IOError)
+  (param outcome Int)
+  (if (== outcome 1)
+    (throw (call Missing "missing"))
+  )
+  (if (== outcome 2)
+    (throw (call Denied "denied"))
+  )
+  (if (== outcome 3)
+    (throw (call IOError "io"))
+  )
+  (return 7)
+)
 
-if outcome == 1
-    ?! Missing("missing")
-if outcome == 2
-    ?! Denied("denied")
-if outcome == 3
-    ?! IOError("io")
-= 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ do pick
-    - outcome Int
-
-. handled = read(outcome)
-    catch err Missing
-        Wrapped("wrapped ${err.message}")
-    catch Denied
-        40 + 2
--- "after $outcome"
-= handled
+(fn-do + pick _
+  (param outcome Int)
+  (let handled
+    (call read outcome
+      (block
+        (on-error (: err Missing)
+          (call Wrapped (str "wrapped " (. err message)))
+        )
+        (on-error Denied
+          (+ 40 2)
+        )
+      )
+    )
+  )
+  (print (str "after " outcome))
+  (return handled)
+)
 ```
 
 ```output
@@ -3560,44 +3882,49 @@ false
 
 ### Two handlers that each give an error of their own class
 
-```yumi
--- catch both(0)
--- catch both(1)
--- catch both(2)
+```brix
+(main
+  (print (catch (call both 0)))
+  (print (catch (call both 1)))
+  (print (catch (call both 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Missing is Error
+(type + Missing (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Denied is Error
+(type + Denied (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ First is Error
+(type + First (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Second is Error
+(type + Second (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read String ?! Missing ?! Denied
-    - outcome Int
+(fn-do + read String (?! Missing) (?! Denied)
+  (param outcome Int)
+  (if (== outcome 1)
+    (throw (call Missing "missing"))
+  )
+  (if (== outcome 2)
+    (throw (call Denied "denied"))
+  )
+  (return "read")
+)
 
-if outcome == 1
-    ?! Missing("missing")
-if outcome == 2
-    ?! Denied("denied")
-= "read"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do both
-    - outcome Int
-
-. handled = read(outcome)
-    catch err Missing
-        First("first ${err.message}")
-    catch err Denied
-        Second("second ${err.message}")
--- "after"
-= handled
+(fn-do + both _
+  (param outcome Int)
+  (let handled
+    (call read outcome
+      (block
+        (on-error (: err Missing)
+          (call First (str "first " (. err message)))
+        )
+        (on-error (: err Denied)
+          (call Second (str "second " (. err message)))
+        )
+      )
+    )
+  )
+  (print "after")
+  (return handled)
+)
 ```
 
 ```output
@@ -3611,42 +3938,50 @@ second denied
 
 ### A handler that gives an error for a call that gives nothing, returned and left unhandled in the module
 
-```yumi crash
-all(0)
-. seen = catch all(1)
-match seen
-    | err Wrapped
-        -- "wrapped: ${err.message}"
-    | Void
-        -- "nothing"
-. other = catch? all(1)
--- other == null
-all(1)
--- "unreached"
+```brix crash
+(main
+  (call all 0)
+  (let seen (catch (call all 1)))
+  (match seen
+    (case (: err Wrapped)
+      (print (str "wrapped: " (. err message)))
+    )
+    (case Void
+      (print "nothing")
+    )
+  )
+  (let other (catch? (call all 1)))
+  (print (== other null))
+  (call all 1)
+  (print "unreached")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Missing is Error
+(type + Missing (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wrapped is Error
+(type + Wrapped (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read ?! Missing
-    - outcome Int
+(fn-do + read _ (?! Missing)
+  (param outcome Int)
+  (if (== outcome 1)
+    (throw (call Missing "missing"))
+  )
+  (print "read ran")
+)
 
-if outcome == 1
-    ?! Missing("missing")
--- "read ran"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do all
-    - outcome Int
-
-. handled = read(outcome)
-    catch err Missing
-        Wrapped("wrapped ${err.message}")
--- "after"
-= handled
+(fn-do + all _
+  (param outcome Int)
+  (let handled
+    (call read outcome
+      (block
+        (on-error (: err Missing)
+          (call Wrapped (str "wrapped " (. err message)))
+        )
+      )
+    )
+  )
+  (print "after")
+  (return handled)
+)
 ```
 
 ```output
@@ -3661,53 +3996,58 @@ after
 
 ### An argument under catch raises past the catch, which holds only the errors of the call
 
-```yumi crash
--- outer(1)
--- outer(20)
-. got = catch? outer(-5)
--- got == null
-. other = catch outer(-1)
-match other
-    | err Small
-        -- "main ${err.message}"
-    | number Int
-        -- number
--- outer(-1)
+```brix crash
+(main
+  (print (call outer 1))
+  (print (call outer 20))
+  (let got (catch? (call outer -5)))
+  (print (== got null))
+  (let other (catch (call outer -1)))
+  (match other
+    (case (: err Small)
+      (print (str "main " (. err message)))
+    )
+    (case (: number Int)
+      (print number)
+    )
+  )
+  (print (call outer -1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Error
+(type + Small (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Large is Error
+(type + Large (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Int ?! Small
-    - value Int
+(fn-do + make Int (?! Small)
+  (param value Int)
+  (if (< value 0)
+    (throw (call Small (str "small " value)))
+  )
+  (return (* value 2))
+)
 
-if value < 0
-    ?! Small("small $value")
-= value * 2
+(fn-do + take Int (?! Large)
+  (param value Int)
+  (param extra Int)
+  (if (> value 10)
+    (throw (call Large (str "large " value)))
+  )
+  (return (+ value extra))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do take Int ?! Large
-    - value Int
-    - extra Int
-
-if value > 10
-    ?! Large("large $value")
-= value + extra
-
-━━━━━━━━━━━━━━━━━━━━
-+ do outer Int ?! Small
-    - value Int
-
-. held = catch take(make(value), make(1))
-match held
-    | err Large
-        -- "caught ${err.message}"
-        = -1
-    | number Int
-        = number
+(fn-do + outer Int (?! Small)
+  (param value Int)
+  (let held (catch (call take (call make value) (call make 1))))
+  (match held
+    (case (: err Large)
+      (print (str "caught " (. err message)))
+      (return -1)
+    )
+    (case (: number Int)
+      (return number)
+    )
+  )
+)
 ```
 
 ```output
@@ -3720,53 +4060,50 @@ main small -1
 
 ### An argument of a method call under an optional catch raises past the catch
 
-```yumi crash
--- run(1)
--- run(20)
-. lost = catch? run(-1)
--- lost == null
--- run(-1)
+```brix crash
+(main
+  (print (call run 1))
+  (print (call run 20))
+  (let lost (catch? (call run -1)))
+  (print (== lost null))
+  (print (call run -1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Error
+(type + Small (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Large is Error
+(type + Large (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + value Int)
+  (fn-do + This _
+    (param value _)
+  )
+  (fn-do + grow Int (?! Large)
+    (param by Int)
+    (if (> (+ value by) 10)
+      (throw (call Large "large"))
+    )
+    (return (+ value by))
+  )
+)
 
-+ value Int
+(fn-do + make Int (?! Small)
+  (param value Int)
+  (if (< value 0)
+    (throw (call Small "small"))
+  )
+  (return value)
+)
 
-────────────────────
-+ This
-    - value
-
-────────────────────
-+ do grow Int ?! Large
-    - by Int
-
-if value + by > 10
-    ?! Large("large")
-= value + by
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Int ?! Small
-    - value Int
-
-if value < 0
-    ?! Small("small")
-= value
-
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int ?! Small
-    - value Int
-
-. box = Box(1)
-. grown = catch? box.grow(make(value))
-if grown == null
-    = -1
-= 0
+(fn-do + run Int (?! Small)
+  (param value Int)
+  (let box (call Box 1))
+  (let grown (catch? (call (. box grow) (call make value))))
+  (if (== grown null)
+    (return -1)
+  )
+  (return 0)
+)
 ```
 
 ```output
@@ -3777,44 +4114,49 @@ true
 
 ### Handlers in order where a later class is the base of an earlier one, joined with a number of another kind
 
-```yumi
--- catch chain(0)
--- catch chain(1)
--- catch chain(2)
+```brix
+(main
+  (print (catch (call chain 0)))
+  (print (catch (call chain 1)))
+  (print (catch (call chain 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Missing is Error
+(type + Missing (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Denied is Missing
+(type + Denied (is Missing))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wrapped is Error
+(type + Wrapped (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Deep is Wrapped
+(type + Deep (is Wrapped))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read Float ?! Missing
-    - outcome Int
+(fn-do + read Float (?! Missing)
+  (param outcome Int)
+  (if (== outcome 1)
+    (throw (call Missing "missing"))
+  )
+  (if (== outcome 2)
+    (throw (call Denied "denied"))
+  )
+  (return 1.5)
+)
 
-if outcome == 1
-    ?! Missing("missing")
-if outcome == 2
-    ?! Denied("denied")
-= 1.5
-
-━━━━━━━━━━━━━━━━━━━━
-+ do chain
-    - outcome Int
-
-. handled = read(outcome)
-    catch err Denied
-        Deep("deep ${err.message}")
-    catch err Missing
-        3i32
--- "after"
-= handled
+(fn-do + chain _
+  (param outcome Int)
+  (let handled
+    (call read outcome
+      (block
+        (on-error (: err Denied)
+          (call Deep (str "deep " (. err message)))
+        )
+        (on-error (: err Missing)
+          3i32
+        )
+      )
+    )
+  )
+  (print "after")
+  (return handled)
+)
 ```
 
 ```output
@@ -3828,37 +4170,55 @@ deep denied
 
 ### A handler in a module that gives an error, matched after it
 
-```yumi
-. first = inner(1)
-    catch err Missing
-        Wrapped("top ${err.message}")
-match first
-    | err Wrapped
-        -- "is wrapped ${err.message}"
-    | number Int
-        -- "is number $number"
-. second = inner(0)
-    catch err Missing
-        Wrapped("top ${err.message}")
-match second
-    | err Wrapped
-        -- "is wrapped ${err.message}"
-    | number Int
-        -- "is number $number"
+```brix
+(main
+  (let first
+    (call inner 1
+      (block
+        (on-error (: err Missing)
+          (call Wrapped (str "top " (. err message)))
+        )
+      )
+    )
+  )
+  (match first
+    (case (: err Wrapped)
+      (print (str "is wrapped " (. err message)))
+    )
+    (case (: number Int)
+      (print (str "is number " number))
+    )
+  )
+  (let second
+    (call inner 0
+      (block
+        (on-error (: err Missing)
+          (call Wrapped (str "top " (. err message)))
+        )
+      )
+    )
+  )
+  (match second
+    (case (: err Wrapped)
+      (print (str "is wrapped " (. err message)))
+    )
+    (case (: number Int)
+      (print (str "is number " number))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Missing is Error
+(type + Missing (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wrapped is Error
+(type + Wrapped (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do inner Int ?! Missing
-    - outcome Int
-
-if outcome == 1
-    ?! Missing("missing")
-= 9
+(fn-do + inner Int (?! Missing)
+  (param outcome Int)
+  (if (== outcome 1)
+    (throw (call Missing "missing"))
+  )
+  (return 9)
+)
 ```
 
 ```output
@@ -3868,53 +4228,56 @@ is number 9
 
 ### A pattern and a test of a class on a caught value that may be null or an error
 
-```yumi
--- name(0)
--- name(1)
--- name(2)
--- size(0)
--- size(1)
--- size(2)
+```brix
+(main
+  (print (call name 0))
+  (print (call name 1))
+  (print (call name 2))
+  (print (call size 0))
+  (print (call size 1))
+  (print (call size 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + label String)
+  (fn-do + This _
+    (param label _)
+  )
+)
 
-+ label String
+(fn-do + find (? Box) (?! IOError)
+  (param kind Int)
+  (if (== kind 0)
+    (throw (call IOError "io"))
+  )
+  (if (== kind 1)
+    (return (call Box "held"))
+  )
+  (return null)
+)
 
-────────────────────
-+ This
-    - label
+(fn-do + name String
+  (param kind Int)
+  (let held (catch (call find kind)))
+  (match? held
+    (case (: box Box)
+      (return (. box label))
+    )
+    (case (: err IOError)
+      (return (str "error " (. err message)))
+    )
+  )
+  (return "empty")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do find Box? ?! IOError
-    - kind Int
-
-if kind == 0
-    ?! IOError("io")
-if kind == 1
-    = Box("held")
-= null
-
-━━━━━━━━━━━━━━━━━━━━
-+ do name String
-    - kind Int
-
-. held = catch find(kind)
-match? held
-    | box Box
-        = box.label
-    | err IOError
-        = "error ${err.message}"
-= "empty"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do size Int
-    - kind Int
-
-. held = catch find(kind)
-if held is Box
-    = 1
-= 0
+(fn-do + size Int
+  (param kind Int)
+  (let held (catch (call find kind)))
+  (if (is held Box)
+    (return 1)
+  )
+  (return 0)
+)
 ```
 
 ```output
@@ -3928,52 +4291,61 @@ empty
 
 ### A constructor of a tuple that raises, handled, held, made optional and left unhandled
 
-```yumi crash
--- made(3)
--- made(-3)
--- kept(4)
--- kept(-4)
-. lost = catch? Pair(-1)
--- lost == null
-. found = catch? Pair(6)
--- found == null
--- Pair(-9).left
--- "unreached"
+```brix crash
+(main
+  (print (call made 3))
+  (print (call made -3))
+  (print (call kept 4))
+  (print (call kept -4))
+  (let lost (catch? (call Pair -1)))
+  (print (== lost null))
+  (let found (catch? (call Pair 6)))
+  (print (== found null))
+  (print (. (call Pair -9) left))
+  (print "unreached")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Tuple
+(type + Pair (is Tuple)
+  (prop + left Int)
+  (prop + right Int)
+  (fn-do + This _ (?! IOError)
+    (param seed Int)
+    (if (< seed 0)
+      (throw (call IOError (str "negative " seed)))
+    )
+    (= left seed)
+    (= right (* seed 2))
+  )
+)
 
-+ left Int
-+ right Int
+(fn-do + made Int
+  (param seed Int)
+  (let pair
+    (call Pair seed
+      (block
+        (on-error IOError
+          (call Pair 1)
+        )
+      )
+    )
+  )
+  (return (+ (. pair left) (. pair right)))
+)
 
-────────────────────
-+ This ?! IOError
-    - seed Int
-
-if seed < 0
-    ?! IOError("negative $seed")
-left = seed
-right = seed * 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do made Int
-    - seed Int
-
-. pair = Pair(seed)
-    catch IOError
-        Pair(1)
-= pair.left + pair.right
-
-━━━━━━━━━━━━━━━━━━━━
-+ do kept String
-    - seed Int
-
-. held = catch Pair(seed)
-= match held
-    | pair Pair
-        "pair ${pair.right}"
-    | err IOError
-        "error ${err.message}"
+(fn-do + kept String
+  (param seed Int)
+  (let held (catch (call Pair seed)))
+  (return
+    (match held
+      (case (: pair Pair)
+        (str "pair " (. pair right))
+      )
+      (case (: err IOError)
+        (str "error " (. err message))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -3987,66 +4359,68 @@ false
 
 ### A constructor of a class that raises and propagates, as a handled value and as an argument under catch
 
-```yumi crash
--- built(2)
--- built(-2)
--- built(50)
--- deep(1)
--- deep(-1)
-Holder(Part(-7))
--- "unreached"
+```brix crash
+(main
+  (print (call built 2))
+  (print (call built -2))
+  (print (call built 50))
+  (print (call deep 1))
+  (print (call deep -1))
+  (call Holder (call Part -7))
+  (print "unreached")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Part
+(type + Part
+  (prop + size Int)
+  (fn-do + This _ (?! IOError) (?! SyntaxError)
+    (param wanted Int)
+    (if (< wanted 0)
+      (throw (call IOError "negative"))
+    )
+    (call check wanted)
+    (= size wanted)
+  )
+)
 
-+ size Int
+(type + Holder
+  (prop + part Part)
+  (prop + note _ (= "none"))
+  (fn-do + This _
+    (param part _)
+    (= note (str "holds " (. part size)))
+  )
+)
 
-────────────────────
-+ This ?! IOError ?! SyntaxError
-    - wanted Int
+(fn-do + check _ (?! SyntaxError)
+  (param wanted Int)
+  (if (> wanted 10)
+    (throw (call SyntaxError "too large"))
+  )
+)
 
-if wanted < 0
-    ?! IOError("negative")
-check(wanted)
-size = wanted
+(fn-do + built String
+  (param wanted Int)
+  (let part
+    (call Part wanted
+      (block
+        (on-error (: err IOError)
+          (return (str "io " (. err message)))
+        )
+        (on-error (: err SyntaxError)
+          (return (str "syntax " (. err message)))
+        )
+      )
+    )
+  )
+  (return (str "size " (. part size)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ part Part
-+ note = "none"
-
-────────────────────
-+ This
-    - part
-
-note = "holds ${part.size}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do check ?! SyntaxError
-    - wanted Int
-
-if wanted > 10
-    ?! SyntaxError("too large")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do built String
-    - wanted Int
-
-. part = Part(wanted)
-    catch err IOError
-        = "io ${err.message}"
-    catch err SyntaxError
-        = "syntax ${err.message}"
-= "size ${part.size}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do deep String
-    - wanted Int
-
-. holder = catch? Holder(Part(wanted))
-=? "lost" if holder == null
-= holder.note
+(fn-do + deep String
+  (param wanted Int)
+  (let holder (catch? (call Holder (call Part wanted))))
+  (return-if "lost" (if (== holder null)))
+  (return (. holder note))
+)
 ```
 
 ```output
@@ -4058,60 +4432,68 @@ holds 1
 
 ### Constructors that raise beside a return of nothing and a value of their own
 
-```yumi
--- count(1)
--- count(-1)
--- own(2)
--- own(-2)
+```brix
+(main
+  (print (call count 1))
+  (print (call count -1))
+  (print (call own 2))
+  (print (call own -2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counted
+(type + Counted
+  (prop + label _ (= "plain"))
+  (fn-do + This _ (?! IOError)
+    (param seed Int)
+    (if (< seed 0)
+      (throw (call IOError "negative"))
+    )
+    (if (> seed 100)
+      (return)
+    )
+    (= label "seeded")
+  )
+)
 
-+ label = "plain"
+(type + Code (is Tuple)
+  (prop + width _ (= 0))
+  (prop + height _ (= 0))
+  (fn-do + This _ (?! IOError)
+    (param seed Int)
+    (if (< seed 0)
+      (throw (call IOError "no code"))
+    )
+    (return (call Code seed (+ seed 1)))
+  )
+)
 
-────────────────────
-+ This ?! IOError
-    - seed Int
+(fn-do + count String
+  (param seed Int)
+  (let held (catch (call Counted seed)))
+  (return
+    (match held
+      (case (: counted Counted)
+        (. counted label)
+      )
+      (case (: err IOError)
+        (. err message)
+      )
+    )
+  )
+)
 
-if seed < 0
-    ?! IOError("negative")
-if seed > 100
-    =
-label = "seeded"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Code is Tuple
-
-+ width = 0
-+ height = 0
-
-────────────────────
-+ This ?! IOError
-    - seed Int
-
-if seed < 0
-    ?! IOError("no code")
-= Code(seed, seed + 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count String
-    - seed Int
-
-. held = catch Counted(seed)
-= match held
-    | counted Counted
-        counted.label
-    | err IOError
-        err.message
-
-━━━━━━━━━━━━━━━━━━━━
-+ do own String
-    - seed Int
-
-. code = Code(seed)
-    catch err IOError
-        = err.message
-= "code ${code.width} ${code.height}"
+(fn-do + own String
+  (param seed Int)
+  (let code
+    (call Code seed
+      (block
+        (on-error (: err IOError)
+          (return (. err message))
+        )
+      )
+    )
+  )
+  (return (str "code " (. code width) " " (. code height)))
+)
 ```
 
 ```output
@@ -4123,73 +4505,76 @@ no code
 
 ### A value converted by a function that raises: the error leaves from a declaration, a return and a cast, and a text written in source panics
 
-```yumi
--- width("abc")
--- declared(true)
--- held("toolong")
--- held("abc")
-. lost = catch? parse("x")
--- lost == null
--- cast("abc")
-. attempt = do new
-    -- declared(false)
-    -- "unreached"
-catch failure
-    -- failure
-attempt.wait()
+```brix
+(main
+  (print (call width "abc"))
+  (print (call declared true))
+  (print (call held "toolong"))
+  (print (call held "abc"))
+  (let lost (catch? (call parse "x")))
+  (print (== lost null))
+  (print (call cast "abc"))
+  (let attempt
+    (do-new
+      (print (call declared false))
+      (print "unreached")
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Code is Tuple
+(type + Code (is Tuple)
+  (prop + width _ (= 0))
+  (prop + height _ (= 0))
+  (fn-from-do + (: text String)
+    (throw (call SyntaxError (str "Invalid code " text)) (if (!= (. text length) 3)))
+    (return (call Code (. text length) 1))
+  )
+)
 
-+ width = 0
-+ height = 0
+(fn-do + width Int
+  (param text String)
+  (let code Code text)
+  (return (. code width))
+)
 
-────────────────────
-+ do from text String
+(fn-do + cast Int
+  (param text String)
+  (return (. (as text Code) width))
+)
 
-?! SyntaxError("Invalid code $text")
-    if text.length != 3
-= Code(text.length, 1)
+(fn-do + declared Int
+  (param good Bool)
+  (if good
+    (let code Code "abc")
+    (return (. code width))
+  )
+  (let code Code "toolong")
+  (return (. code height))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do width Int
-    - text String
+(fn-do + parse Code
+  (param text String)
+  (return text)
+)
 
-. code Code = text
-= code.width
-
-━━━━━━━━━━━━━━━━━━━━
-+ do cast Int
-    - text String
-
-= (text as Code).width
-
-━━━━━━━━━━━━━━━━━━━━
-+ do declared Int
-    - good Bool
-
-if good
-    . code Code = "abc"
-    = code.width
-. code Code = "toolong"
-= code.height
-
-━━━━━━━━━━━━━━━━━━━━
-+ do parse Code
-    - text String
-
-= text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do held String
-    - text String
-
-. result = catch parse(text)
-= match result
-    | err SyntaxError
-        "error ${err.message}"
-    | code Code
-        "code ${code.width}"
+(fn-do + held String
+  (param text String)
+  (let result (catch (call parse text)))
+  (return
+    (match result
+      (case (: err SyntaxError)
+        (str "error " (. err message))
+      )
+      (case (: code Code)
+        (str "code " (. code width))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -4204,70 +4589,73 @@ Invalid code toolong
 
 ### An argument and an assignment converted by a function that raises, caught by a caller and left unhandled
 
-```yumi crash
--- size("abc")
--- taken("abc")
--- described("abc")
--- described("toolong")
--- made("abc")
--- made("no")
--- size("toolong")
--- "unreached"
+```brix crash
+(main
+  (print (call size "abc"))
+  (print (call taken "abc"))
+  (print (call described "abc"))
+  (print (call described "toolong"))
+  (print (call made "abc"))
+  (print (call made "no"))
+  (print (call size "toolong"))
+  (print "unreached")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Code is Tuple
+(type + Code (is Tuple)
+  (prop + width _ (= 0))
+  (prop + height _ (= 0))
+  (fn-from-do + (: text String)
+    (throw (call SyntaxError (str "Invalid code " text)) (if (!= (. text length) 3)))
+    (return (call Code (. text length) 1))
+  )
+)
 
-+ width = 0
-+ height = 0
+(fn-do + take Int
+  (param code Code)
+  (return (+ (. code width) (. code height)))
+)
 
-────────────────────
-+ do from text String
+(fn-do + size Int
+  (param text String)
+  (return (call take text))
+)
 
-?! SyntaxError("Invalid code $text")
-    if text.length != 3
-= Code(text.length, 1)
+(fn-do + taken Int
+  (param text String)
+  (let code Code (call Code 0 0))
+  (= code text)
+  (return (call take code))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do take Int
-    - code Code
+(fn-do + described String
+  (param text String)
+  (let result (catch (call size text)))
+  (return
+    (match result
+      (case (: err SyntaxError)
+        (str "error " (. err message))
+      )
+      (case (: total Int)
+        (str "total " total)
+      )
+    )
+  )
+)
 
-= code.width + code.height
-
-━━━━━━━━━━━━━━━━━━━━
-+ do size Int
-    - text String
-
-= take(text)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do taken Int
-    - text String
-
-. code Code = Code(0, 0)
-code = text
-= take(code)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do described String
-    - text String
-
-. result = catch size(text)
-= match result
-    | err SyntaxError
-        "error ${err.message}"
-    | total Int
-        "total $total"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do made String
-    - text String
-
-. result = catch Code(text)
-= match result
-    | err SyntaxError
-        "error ${err.message}"
-    | code Code
-        "code ${code.width}"
+(fn-do + made String
+  (param text String)
+  (let result (catch (call Code text)))
+  (return
+    (match result
+      (case (: err SyntaxError)
+        (str "error " (. err message))
+      )
+      (case (: code Code)
+        (str "code " (. code width))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -4281,51 +4669,51 @@ error Invalid code no
 
 ### A call of a type that converts a value raises from the function, and gives its error under catch
 
-```yumi crash
--- direct("abc")
--- optional("abc")
--- optional("toolong")
--- literal()
--- direct("toolong")
--- "unreached"
+```brix crash
+(main
+  (print (call direct "abc"))
+  (print (call optional "abc"))
+  (print (call optional "toolong"))
+  (print (call literal))
+  (print (call direct "toolong"))
+  (print "unreached")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Code is Tuple
+(type + Code (is Tuple)
+  (prop + width _ (= 0))
+  (prop + height _ (= 0))
+  (fn-from-do + (: text String)
+    (throw (call SyntaxError (str "Invalid code " text)) (if (!= (. text length) 3)))
+    (return (call Code (. text length) 1))
+  )
+)
 
-+ width = 0
-+ height = 0
+(fn-do + direct Int
+  (param text String)
+  (let code (call Code text))
+  (return (. code width))
+)
 
-────────────────────
-+ do from text String
+(fn-do + optional Int
+  (param text String)
+  (let code (catch? (call Code text)))
+  (return-if -1 (if (== code null)))
+  (return (. code width))
+)
 
-?! SyntaxError("Invalid code $text")
-    if text.length != 3
-= Code(text.length, 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do direct Int
-    - text String
-
-. code = Code(text)
-= code.width
-
-━━━━━━━━━━━━━━━━━━━━
-+ do optional Int
-    - text String
-
-. code = catch? Code(text)
-=? -1 if code == null
-= code.width
-
-━━━━━━━━━━━━━━━━━━━━
-+ do literal String
-
-. result = catch Code("toolong")
-= match result
-    | err SyntaxError
-        "error ${err.message}"
-    | code Code
-        "code ${code.width}"
+(fn-do + literal String
+  (let result (catch (call Code "toolong")))
+  (return
+    (match result
+      (case (: err SyntaxError)
+        (str "error " (. err message))
+      )
+      (case (: code Code)
+        (str "code " (. code width))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -4337,29 +4725,26 @@ error Invalid code toolong
 
 ### A join of a text written in source with another text, both converted by a function that raises
 
-```yumi
--- mixed(true, "abc").width
--- mixed(false, "abc").width
+```brix
+(main
+  (print (. (call mixed true "abc") width))
+  (print (. (call mixed false "abc") width))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Code is Tuple
+(type + Code (is Tuple)
+  (prop + width _ (= 0))
+  (prop + height _ (= 0))
+  (fn-from-do + (: text String)
+    (throw (call SyntaxError (str "Invalid code " text)) (if (!= (. text length) 3)))
+    (return (call Code (. text length) 1))
+  )
+)
 
-+ width = 0
-+ height = 0
-
-────────────────────
-+ do from text String
-
-?! SyntaxError("Invalid code $text")
-    if text.length != 3
-= Code(text.length, 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do mixed Code
-    - good Bool
-    - text String
-
-= if good then "abc" else text
+(fn-do + mixed Code
+  (param good Bool)
+  (param text String)
+  (return (if-expr good "abc" text))
+)
 ```
 
 ```output
@@ -4369,40 +4754,40 @@ error Invalid code toolong
 
 ### A text written in source on either side of a conditional panics where its conversion fails
 
-```yumi
--- joined(false).width
--- other(true).width
-. attempt = do new
-    -- joined(true).width
-    -- "unreached"
-catch failure
-    -- failure
-attempt.wait()
+```brix
+(main
+  (print (. (call joined false) width))
+  (print (. (call other true) width))
+  (let attempt
+    (do-new
+      (print (. (call joined true) width))
+      (print "unreached")
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Code is Tuple
+(type + Code (is Tuple)
+  (prop + width _ (= 0))
+  (prop + height _ (= 0))
+  (fn-from-do + (: text String)
+    (throw (call SyntaxError (str "Invalid code " text)) (if (!= (. text length) 3)))
+    (return (call Code (. text length) 1))
+  )
+)
 
-+ width = 0
-+ height = 0
+(fn-do + joined Code
+  (param bad Bool)
+  (return (if-expr bad "toolong" (call Code 9 9)))
+)
 
-────────────────────
-+ do from text String
-
-?! SyntaxError("Invalid code $text")
-    if text.length != 3
-= Code(text.length, 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do joined Code
-    - bad Bool
-
-= if bad then "toolong" else Code(9, 9)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do other Code
-    - good Bool
-
-= if good then Code(8, 8) else "toolong"
+(fn-do + other Code
+  (param good Bool)
+  (return (if-expr good (call Code 8 8) "toolong"))
+)
 ```
 
 ```output
@@ -4413,54 +4798,53 @@ Invalid code toolong
 
 ### A text written in source as an argument, a property's value and an assignment, converted by a function that raises
 
-```yumi
--- take("abc")
--- stored().width
-. attempt = do new
-    -- take("toolong")
-    -- "unreached"
-catch failure
-    -- failure
-attempt.wait()
+```brix
+(main
+  (print (call take "abc"))
+  (print (. (call stored) width))
+  (let attempt
+    (do-new
+      (print (call take "toolong"))
+      (print "unreached")
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Code is Tuple
+(type + Code (is Tuple)
+  (prop + width _ (= 0))
+  (prop + height _ (= 0))
+  (fn-from-do + (: text String)
+    (throw (call SyntaxError (str "Invalid code " text)) (if (!= (. text length) 3)))
+    (return (call Code (. text length) 1))
+  )
+)
 
-+ width = 0
-+ height = 0
+(type + Holder
+  (prop + code Code (= "abc"))
+)
 
-────────────────────
-+ do from text String
+(fn-do + sum Int
+  (param code Code)
+  (return (+ (. code width) (. code height)))
+)
 
-?! SyntaxError("Invalid code $text")
-    if text.length != 3
-= Code(text.length, 1)
+(fn-do + take Int
+  (param label String)
+  (if (== label "abc")
+    (return (call sum "abc"))
+  )
+  (return (call sum "toolong"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ code Code = "abc"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do sum Int
-    - code Code
-
-= code.width + code.height
-
-━━━━━━━━━━━━━━━━━━━━
-+ do take Int
-    - label String
-
-if label == "abc"
-    = sum("abc")
-= sum("toolong")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do stored Code
-
-. holder = Holder()
-holder.code = "xyz"
-= holder.code
+(fn-do + stored Code
+  (let holder (call Holder))
+  (= (. holder code) "xyz")
+  (return (. holder code))
+)
 ```
 
 ```output
@@ -4471,34 +4855,30 @@ Invalid code toolong
 
 ### A call of a type with a text written in source panics where the conversion fails and nothing recovers
 
-```yumi crash
--- made().width
--- broken().width
--- "unreached"
+```brix crash
+(main
+  (print (. (call made) width))
+  (print (. (call broken) width))
+  (print "unreached")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Code is Tuple
+(type + Code (is Tuple)
+  (prop + width _ (= 0))
+  (prop + height _ (= 0))
+  (fn-from-do + (: text String)
+    (throw (call SyntaxError (str "Invalid code " text)) (if (!= (. text length) 3)))
+    (return (call Code (. text length) 1))
+  )
+)
 
-+ width = 0
-+ height = 0
+(fn-expr + made Code
+  (call Code "abc")
+)
 
-────────────────────
-+ do from text String
-
-?! SyntaxError("Invalid code $text")
-    if text.length != 3
-= Code(text.length, 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ made Code
-
-Code("abc")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do broken Code
-
-. code = Code("toolong")
-= code
+(fn-do + broken Code
+  (let code (call Code "toolong"))
+  (return code)
+)
 ```
 
 ```output
@@ -4507,38 +4887,40 @@ Code("abc")
 
 ### A function whose value is a raise, and a table of conditions that ends in one
 
-```yumi
--- catch? fail() ?? "caught"
--- catch? digit(10) ?? -1
--- catch? digit(40) ?? -1
--- catch? digit(99) ?? -1
--- catch? later(1) ?? "caught"
--- catch? later(2) ?? "caught"
+```brix
+(main
+  (print (?? (catch? (call fail)) "caught"))
+  (print (?? (catch? (call digit 10)) -1))
+  (print (?? (catch? (call digit 40)) -1))
+  (print (?? (catch? (call digit 99)) -1))
+  (print (?? (catch? (call later 1)) "caught"))
+  (print (?? (catch? (call later 2)) "caught"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Broken is Error
+(type + Broken (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ fail String ?! Broken
+(fn-expr + fail String (?! Broken)
+  (throw (call Broken "always"))
+)
 
-?! Broken("always")
+(fn-expr + digit Int (?! Broken)
+  (param code Int)
+  (case? (and (>= code 0) (<= code 25))
+    (+ code 100)
+  )
+  (case? (and (>= code 26) (<= code 51))
+    (+ code 200)
+  )
+  (throw (call Broken "no digit"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ digit Int ?! Broken
-    - code Int
-
-|? code >= 0 && code <= 25
-    code + 100
-|? code >= 26 && code <= 51
-    code + 200
-?! Broken("no digit")
-
-━━━━━━━━━━━━━━━━━━━━
-+ later String ?! Broken
-    - step Int
-
--- "step $step"
-?! Broken("after printing")
+(fn-expr + later String (?! Broken)
+  (param step Int)
+  (before
+    (print (str "step " step))
+  )
+  (throw (call Broken "after printing"))
+)
 ```
 
 ```output
@@ -4554,27 +4936,30 @@ caught
 
 ### A catch attached to a call that answers nothing may call a function that answers nothing.
 
-```yumi
-run()
--- "after"
+```brix
+(main
+  (call run)
+  (print "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (call fail
+    (block
+      (on-error (: error IOError)
+        (call note error)
+      )
+    )
+  )
+)
 
-fail()
-    catch error IOError
-        note(error)
+(fn-do + note _
+  (param error Error)
+  (print (str "noted " (. error message)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do note
-    - error Error
-
--- "noted ${error.message}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fail
-
-?! IOError("bad")
+(fn-do + fail _
+  (throw (call IOError "bad"))
+)
 ```
 
 ```output
@@ -4584,78 +4969,90 @@ after
 
 ### unhandled-error prints an error as an unhandled error prints, and the program goes on.
 
-```yumi crash
-report(fail)
--- "after"
-?! IOError("last")
+```brix crash
+(main
+  (call report fail)
+  (print "after")
+  (throw (call IOError "last"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do report
-    - action Doer
+(fn-do + report _
+  (param action Doer)
+  (call action
+    (block
+      (on-error (: error Error)
+        (call unhandled-error error)
+      )
+    )
+  )
+)
 
-action()
-    catch error Error
-        unhandled-error(error)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fail
-
-?! IOError("first")
+(fn-do + fail _
+  (throw (call IOError "first"))
+)
 ```
 
 ```stderr
 Unhandled error: first
-<no file:17>
+<no file:20>
 
 Task 1
 
 Stack trace:
-  0  __source__:fail no file:17:1
-  1  __source__:failCasting no file:2:8
-  2  __source__:report no file:10:1
-  3  __source__:main no file:2:1
+  0  __source__:fail no file:20:3
+  1  __source__:failCasting no file:3:16
+  2  __source__:report no file:10:3
+  3  __source__:main no file:3:3
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 
 Unhandled error: last
-<no file:4>
+<no file:5>
 
 Task 1
 
 Stack trace:
-  0  __source__:main no file:4:1
+  0  __source__:main no file:5:3
   1  __source__:init.__source__ no file
   2  __source__:brix.main no file
 ```
 
 ### A program replaces unhandled-error, and an error handed to it goes there.
 
-```yumi
-. count = 0
-unhandled-error = :: error => do
-    count += 1
-    -- "handled ${error.message}"
-report(fail)
-report(succeed)
--- count
+```brix
+(main
+  (let count 0)
+  (= unhandled-error
+    (=> (error) :do
+      (block
+        (+= count 1)
+        (print (str "handled " (. error message)))
+      )
+    )
+  )
+  (call report fail)
+  (call report succeed)
+  (print count)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do report
-    - action Doer
+(fn-do + report _
+  (param action Doer)
+  (call action
+    (block
+      (on-error (: error Error)
+        (call unhandled-error error)
+      )
+    )
+  )
+)
 
-action()
-    catch error Error
-        unhandled-error(error)
+(fn-do + fail _
+  (throw (call IOError "failed"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fail
-
-?! IOError("failed")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do succeed
-
--- "succeeded"
+(fn-do + succeed _
+  (print "succeeded")
+)
 ```
 
 ```output
@@ -4666,34 +5063,33 @@ succeeded
 
 ### An index that a function answers and that raises lets its error out, or a catch holds it.
 
-```yumi
-. t = Indexed()
--- catch? t[2] ?? -1
--- catch? t[8] ?? -1
-. r = catch t[9]
--- r is Problem
--- read(t, 1)
--- catch read(t, 5)
+```brix
+(main
+  (let t (call Indexed))
+  (print (?? (catch? ([] t 2)) -1))
+  (print (?? (catch? ([] t 8)) -1))
+  (let r (catch ([] t 9)))
+  (print (is r Problem))
+  (print (call read t 1))
+  (print (catch (call read t 5)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Problem is Error
+(type + Problem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Indexed
+(type + Indexed
+  (fn-do + (index-get this (param index Int)) Int (?! Problem)
+    (if (> index 3)
+      (throw (call Problem (str "index " index)))
+    )
+    (return (* index 2))
+  )
+)
 
-────────────────────
-+ do this[index Int] Int ?! Problem
-
-if index > 3
-    ?! Problem("index $index")
-= index * 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do read Int ?! Problem
-    - t Indexed
-    - i Int
-
-= t[i] + 1
+(fn-do + read Int (?! Problem)
+  (param t Indexed)
+  (param i Int)
+  (return (+ ([] t i) 1))
+)
 ```
 
 ```output
@@ -4706,80 +5102,87 @@ index 5
 
 ### An error an index raises that nothing handles names the index function in its trace.
 
-```yumi crash
-. t = Indexed()
--- t[1]
--- t[9]
+```brix crash
+(main
+  (let t (call Indexed))
+  (print ([] t 1))
+  (print ([] t 9))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Problem is Error
+(type + Problem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Indexed
-
-────────────────────
-+ do this[index Int] Int ?! Problem
-
-if index > 3
-    ?! Problem("index $index")
-= index * 2
+(type + Indexed
+  (fn-do + (index-get this (param index Int)) Int (?! Problem)
+    (if (> index 3)
+      (throw (call Problem (str "index " index)))
+    )
+    (return (* index 2))
+  )
+)
 ```
 
 ```stderr
 Unhandled error: index 9
-<no file:16>
+<no file:13>
 
 Task 1
 
 Stack trace:
-  0  __source__:Indexed:[] no file:16:5
-  1  __source__:main no file:4:4
+  0  __source__:Indexed:[] no file:13:7
+  1  __source__:main no file:5:10
   2  __source__:init.__source__ no file
   3  __source__:brix.main no file
 ```
 
 ### A handler given as a value is a block of its own: a use read in it ends where it does.
 
-```yumi
-. r = make(true)
-    catch err Error
-        t.n + 10
-        .. t = use Thing(1)
--- "r $r"
-. s = make(false)
-    catch err Error
-        t.n
-        .. t = use Thing(2)
--- "s $s"
+```brix
+(main
+  (let r
+    (call make true
+      (block
+        (on-error (: err Error)
+          (+ (. t n) 10)
+          (lazy t (use (call Thing 1)))
+        )
+      )
+    )
+  )
+  (print (str "r " r))
+  (let s
+    (call make false
+      (block
+        (on-error (: err Error)
+          (. t n)
+          (lazy t (use (call Thing 2)))
+        )
+      )
+    )
+  )
+  (print (str "s " s))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Int ?! Error
-    - fails Bool
+(fn-do + make Int (?! Error)
+  (param fails Bool)
+  (if fails
+    (throw (call Error "bad"))
+  )
+  (return 5)
+)
 
-if fails
-    ?! Error("bad")
-= 5
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ n = 0
-
-────────────────────
-+ This
-    - n
-
--- "hello $n"
-
-────────────────────
-+ begin-using
-
-this
-
-────────────────────
-+ do end-using
-
--- "bye $n"
+(type + Thing
+  (prop + n _ (= 0))
+  (fn-do + This _
+    (param n _)
+    (print (str "hello " n))
+  )
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _
+    (print (str "bye " n))
+  )
+)
 ```
 
 ```output
@@ -4791,33 +5194,34 @@ s 5
 
 ### A cast out of a union that may hold an error takes the case it holds.
 
-```yumi
-. a = catch List'Int(items(true))
--- a is Problem
-. b = catch List'Int(items(false))
--- (b as [Int]).length
-. c = catch first(items(true))
--- c
+```brix
+(main
+  (let a (catch (call (of List Int) (call items true))))
+  (print (is a Problem))
+  (let b (catch (call (of List Int) (call items false))))
+  (print (. (as b (list Int)) length))
+  (let c (catch (call first (call items true))))
+  (print c)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Problem is Error
+(type + Problem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do items
-    - fail Bool
+(fn-do + items _
+  (param fail Bool)
+  (yield 1)
+  (if fail
+    (throw (call Problem "bad"))
+  )
+  (yield 2)
+)
 
-<= 1
-if fail
-    ?! Problem("bad")
-<= 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do first Int
-    - stream <Int>
-
-for item in stream
-    = item
-= 0
+(fn-do + first Int
+  (param stream (stream Int))
+  (for (in item stream)
+    (return item)
+  )
+  (return 0)
+)
 ```
 
 ```output
@@ -4828,46 +5232,43 @@ true
 
 ### A transformer whose catcher names a chain of `previous` takes only an error whose chain matches, and sets the `previous` of what it raises.
 
-```yumi
-. a = catch load(0)
--- a
--- (a as AppError).previous
-. b = catch load(1)
--- b
+```brix
+(main
+  (let a (catch (call load 0)))
+  (print a)
+  (print (. (as a AppError) previous))
+  (let b (catch (call load 1)))
+  (print b)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AppError is Error
+(type + AppError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ConfigError is Error
+(type + ConfigError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read Int ?! IOError
-    - n Int
+(fn-do + read Int (?! IOError)
+  (param n Int)
+  (if (== n 0)
+    (throw (call IOError "disk"))
+  )
+  (return n)
+)
 
-if n == 0
-    ?! IOError("disk")
-= n
+(fn-do + parse Int (?! ConfigError)
+  (param n Int)
+  (throw (call ConfigError "config") (on-error (: err IOError)))
+  (blank)
+  (if (== n 1)
+    (throw (call ConfigError "plain"))
+  )
+  (return (call read n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do parse Int ?! ConfigError
-    - n Int
-
-?! ConfigError("config")
-    catch err IOError
-
-if n == 1
-    ?! ConfigError("plain")
-= read(n)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do load Int ?! AppError ?! ConfigError
-    - n Int
-
-?! AppError("from io")
-    catch err ConfigError <- io IOError
-
-= parse(n)
+(fn-do + load Int (?! AppError) (?! ConfigError)
+  (param n Int)
+  (throw (call AppError "from io") (on-error (caught (: err ConfigError) (: io IOError))))
+  (blank)
+  (return (call parse n))
+)
 ```
 
 ```output
@@ -4878,48 +5279,44 @@ plain
 
 ### Transformers are tried in the order written: one whose chain matches, else one that takes the error whole.
 
-```yumi
-. a = catch load(0)
--- a
-. b = catch load(1)
--- b
+```brix
+(main
+  (let a (catch (call load 0)))
+  (print a)
+  (let b (catch (call load 1)))
+  (print b)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AppError is Error
+(type + AppError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ConfigError is Error
+(type + ConfigError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read Int ?! IOError
-    - n Int
+(fn-do + read Int (?! IOError)
+  (param n Int)
+  (if (== n 0)
+    (throw (call IOError "disk"))
+  )
+  (return n)
+)
 
-if n == 0
-    ?! IOError("disk")
-= n
+(fn-do + parse Int (?! ConfigError)
+  (param n Int)
+  (throw (call ConfigError "config") (on-error (: err IOError)))
+  (blank)
+  (if (== n 1)
+    (throw (call ConfigError "plain"))
+  )
+  (return (call read n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do parse Int ?! ConfigError
-    - n Int
-
-?! ConfigError("config")
-    catch err IOError
-
-if n == 1
-    ?! ConfigError("plain")
-= read(n)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do load Int ?! AppError
-    - n Int
-
-?! AppError("wrapped ${err.message}")
-    catch err ConfigError <- io IOError
-
-?! AppError("plain ${other.message}")
-    catch other ConfigError
-
-= parse(n)
+(fn-do + load Int (?! AppError)
+  (param n Int)
+  (throw (call AppError (str "wrapped " (. err message))) (on-error (caught (: err ConfigError) (: io IOError))))
+  (blank)
+  (throw (call AppError (str "plain " (. other message))) (on-error (: other ConfigError)))
+  (blank)
+  (return (call parse n))
+)
 ```
 
 ```output
@@ -4929,47 +5326,46 @@ plain plain
 
 ### A transformer takes the errors raised after it, and not those raised before it.
 
-```yumi
--- catch load(0)
--- catch load(7)
+```brix
+(main
+  (print (catch (call load 0)))
+  (print (catch (call load 7)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AppError is Error
+(type + AppError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ConfigError is Error
+(type + ConfigError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read Int ?! IOError
-    - n Int
+(fn-do + read Int (?! IOError)
+  (param n Int)
+  (if (== n 0)
+    (throw (call IOError "disk"))
+  )
+  (return n)
+)
 
-if n == 0
-    ?! IOError("disk")
-= n
+(fn-do + parse Int (?! ConfigError)
+  (param n Int)
+  (throw (call ConfigError "config") (on-error (: err IOError)))
+  (blank)
+  (if (== n 1)
+    (throw (call ConfigError "plain"))
+  )
+  (return (call read n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do parse Int ?! ConfigError
-    - n Int
-
-?! ConfigError("config")
-    catch err IOError
-
-if n == 1
-    ?! ConfigError("plain")
-= read(n)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do load Int ?! AppError ?! IOError
-    - n Int
-
-if n == 7
-    ?! IOError("early")
-?! AppError("late")
-    catch err IOError
-
-if n == 0
-    ?! IOError("raised")
-= n
+(fn-do + load Int (?! AppError) (?! IOError)
+  (param n Int)
+  (if (== n 7)
+    (throw (call IOError "early"))
+  )
+  (throw (call AppError "late") (on-error (: err IOError)))
+  (blank)
+  (if (== n 0)
+    (throw (call IOError "raised"))
+  )
+  (return n)
+)
 ```
 
 ```output
@@ -4979,51 +5375,48 @@ early
 
 ### A transformer makes its exception before the cleanups open where the error leaves run.
 
-```yumi
--- catch load(0)
+```brix
+(main
+  (print (catch (call load 0)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AppError is Error
+(type + AppError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ ConfigError is Error
+(type + ConfigError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read Int ?! IOError
-    - n Int
+(fn-do + read Int (?! IOError)
+  (param n Int)
+  (if (== n 0)
+    (throw (call IOError "disk"))
+  )
+  (return n)
+)
 
-if n == 0
-    ?! IOError("disk")
-= n
+(fn-do + parse Int (?! ConfigError)
+  (param n Int)
+  (throw (call ConfigError "config") (on-error (: err IOError)))
+  (blank)
+  (if (== n 1)
+    (throw (call ConfigError "plain"))
+  )
+  (return (call read n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do parse Int ?! ConfigError
-    - n Int
+(fn-do + note String
+  (param text String)
+  (print text)
+  (return text)
+)
 
-?! ConfigError("config")
-    catch err IOError
-
-if n == 1
-    ?! ConfigError("plain")
-= read(n)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do note String
-    - text String
-
--- text
-= text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do load Int ?! AppError
-    - n Int
-
-do finally
-    -- "cleanup"
-?! AppError(note("making"))
-    catch err IOError
-
-= read(n)
+(fn-do + load Int (?! AppError)
+  (param n Int)
+  (finally
+    (print "cleanup")
+  )
+  (throw (call AppError (call note "making")) (on-error (: err IOError)))
+  (blank)
+  (return (call read n))
+)
 ```
 
 ```output
@@ -5034,34 +5427,31 @@ making
 
 ### A transformer in a method takes the error of a call and the error a raise gives where it is written.
 
-```yumi
--- catch Loader().load(0)
--- catch Loader().load(4)
+```brix
+(main
+  (print (catch (call (. (call Loader) load) 0)))
+  (print (catch (call (. (call Loader) load) 4)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AppError is Error
+(type + AppError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read Int ?! IOError
-    - n Int
+(fn-do + read Int (?! IOError)
+  (param n Int)
+  (if (== n 0)
+    (throw (call IOError "disk"))
+  )
+  (return n)
+)
 
-if n == 0
-    ?! IOError("disk")
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ Loader
-
-────────────────────
-+ do load Int ?! AppError
-    - n Int
-
-?! AppError("method ${err.message}")
-    catch err IOError
-
-?! IOError("conditional")
-    if n == 4
-= read(n)
+(type + Loader
+  (fn-do + load Int (?! AppError)
+    (param n Int)
+    (throw (call AppError (str "method " (. err message))) (on-error (: err IOError)))
+    (blank)
+    (throw (call IOError "conditional") (if (== n 4)))
+    (return (call read n))
+  )
+)
 ```
 
 ```output
@@ -5071,37 +5461,36 @@ method conditional
 
 ### A transformer in a generator takes the error an item raises.
 
-```yumi
--- catch collect()
+```brix
+(main
+  (print (catch (call collect)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AppError is Error
+(type + AppError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do read Int ?! IOError
-    - n Int
+(fn-do + read Int (?! IOError)
+  (param n Int)
+  (if (== n 0)
+    (throw (call IOError "disk"))
+  )
+  (return n)
+)
 
-if n == 0
-    ?! IOError("disk")
-= n
+(fn-do + numbers (stream Int) (?! AppError)
+  (throw (call AppError "gen") (on-error (: err IOError)))
+  (blank)
+  (yield 1)
+  (yield (call read 0))
+  (yield 3)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do numbers <Int> ?! AppError
-
-?! AppError("gen")
-    catch err IOError
-
-<= 1
-<= read(0)
-<= 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ do collect [Int] ?! AppError
-
-. values [Int] = List'Int()
-for value in numbers()
-    values += value
-= values
+(fn-do + collect (list Int) (?! AppError)
+  (let values (list Int) (call (of List Int)))
+  (for (in value (call numbers))
+    (+= values value)
+  )
+  (return values)
+)
 ```
 
 ```output
@@ -5110,35 +5499,44 @@ gen
 
 ### A named handler for a base error type covers every error type of its call.
 
-```yumi
-. text = "none"
-risky(1)
-    catch failure Error
-        text = "$failure"
--- text
-risky(2)
-    catch failure Error
-        text = "$failure"
--- text
-risky(3)
-    catch failure Error
-        text = "$failure"
--- text
+```brix
+(main
+  (let text "none")
+  (call risky 1
+    (block
+      (on-error (: failure Error)
+        (= text (str failure))
+      )
+    )
+  )
+  (print text)
+  (call risky 2
+    (block
+      (on-error (: failure Error)
+        (= text (str failure))
+      )
+    )
+  )
+  (print text)
+  (call risky 3
+    (block
+      (on-error (: failure Error)
+        (= text (str failure))
+      )
+    )
+  )
+  (print text)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ FirstError is Error
+(type + FirstError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ SecondError is Error
+(type + SecondError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do risky ?! FirstError ?! SecondError
-    - value Int
-
-?! FirstError("first")
-    if value == 1
-?! SecondError("second")
-    if value == 2
+(fn-do + risky _ (?! FirstError) (?! SecondError)
+  (param value Int)
+  (throw (call FirstError "first") (if (== value 1)))
+  (throw (call SecondError "second") (if (== value 2)))
+)
 ```
 
 ```output
@@ -5149,40 +5547,37 @@ second
 
 ### A named handler for a base error type can update a local inside a method.
 
-```yumi
-. holder = Holder()
-holder.run(2)
--- holder.text
+```brix
+(main
+  (let holder (call Holder))
+  (call (. holder run) 2)
+  (print (. holder text))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ FirstError is Error
+(type + FirstError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ SecondError is Error
+(type + SecondError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ text = "none"
-
-────────────────────
-+ do run
-    - value Int
-
-. problem String?
-risky(value)
-    catch failure Error
-        problem = "$failure"
-text = problem ?? "fine"
-
-────────────────────
-_ do risky ?! FirstError ?! SecondError
-    - value Int
-
-?! FirstError("first")
-    if value == 1
-?! SecondError("second")
-    if value == 2
+(type + Holder
+  (prop + text _ (= "none"))
+  (fn-do + run _
+    (param value Int)
+    (let problem (? String))
+    (call risky value
+      (block
+        (on-error (: failure Error)
+          (= problem (str failure))
+        )
+      )
+    )
+    (= text (?? problem "fine"))
+  )
+  (fn-do _ risky _ (?! FirstError) (?! SecondError)
+    (param value Int)
+    (throw (call FirstError "first") (if (== value 1)))
+    (throw (call SecondError "second") (if (== value 2)))
+  )
+)
 ```
 
 ```output
@@ -5191,29 +5586,31 @@ second
 
 ### A held result can be matched with one named pattern for a base error type.
 
-```yumi
-. result = catch risky(2)
--- match result
-    | value Int
-        "value $value"
-    | failure Error
-        "failed $failure"
+```brix
+(main
+  (let result (catch (call risky 2)))
+  (print
+    (match result
+      (case (: value Int)
+        (str "value " value)
+      )
+      (case (: failure Error)
+        (str "failed " failure)
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ FirstError is Error
+(type + FirstError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ SecondError is Error
+(type + SecondError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do risky Int ?! FirstError ?! SecondError
-    - value Int
-
-?! FirstError("first")
-    if value == 1
-?! SecondError("second")
-    if value == 2
-= value
+(fn-do + risky Int (?! FirstError) (?! SecondError)
+  (param value Int)
+  (throw (call FirstError "first") (if (== value 1)))
+  (throw (call SecondError "second") (if (== value 2)))
+  (return value)
+)
 ```
 
 ```output
@@ -5222,27 +5619,30 @@ failed second
 
 ### A named handler for a base error type can replace the value of its call.
 
-```yumi
-. text = risky(2)
-    catch failure Error
-        "failed $failure"
--- text
+```brix
+(main
+  (let text
+    (call risky 2
+      (block
+        (on-error (: failure Error)
+          (str "failed " failure)
+        )
+      )
+    )
+  )
+  (print text)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ FirstError is Error
+(type + FirstError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ SecondError is Error
+(type + SecondError (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do risky String ?! FirstError ?! SecondError
-    - value Int
-
-?! FirstError("first")
-    if value == 1
-?! SecondError("second")
-    if value == 2
-= "fine"
+(fn-do + risky String (?! FirstError) (?! SecondError)
+  (param value Int)
+  (throw (call FirstError "first") (if (== value 1)))
+  (throw (call SecondError "second") (if (== value 2)))
+  (return "fine")
+)
 ```
 
 ```output
@@ -5251,30 +5651,34 @@ failed second
 
 ### An action of a match that may panic raises an error its function states.
 
-```yumi
-for input in ["12", "9", "x"]
-    -- catch parse(input)
+```brix
+(main
+  (for (in input (list "12" "9" "x"))
+    (print (catch (call parse input)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ parse Int ?! SyntaxError
-    - text String
+(fn-expr + parse Int (?! SyntaxError)
+  (param text String)
+  (match text
+    (~ (: digits (+ (chars "0-9")))
+      (+ (call check ([] (. digits codepoints) 0)) (. digits length))
+    )
+    (default
+      (inline 0)
+    )
+  )
+)
 
-match text
-    ~ digits [0-9]+
-        check(digits.codepoints[0]) + digits.length
-    ?? 0
+(fn-expr + check Int (?! SyntaxError)
+  (param char Char)
+  (if-expr (!= char '9') (as char Int) (call reject "Nine"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ check Int ?! SyntaxError
-    - char Char
-
-if char != '9' then (char as Int) else reject("Nine")
-
-━━━━━━━━━━━━━━━━━━━━
-+ reject Int ?! SyntaxError
-    - message String
-
-?! SyntaxError(message)
+(fn-expr + reject Int (?! SyntaxError)
+  (param message String)
+  (throw (call SyntaxError message))
+)
 ```
 
 ```output
@@ -5285,27 +5689,31 @@ Nine
 
 ### Statement-level calls with attached guards each bind their own `it`.
 
-```yumi
--- checked(2)
--- catch checked(-1)
+```brix
+(main
+  (print (call checked 2))
+  (print (catch (call checked -1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do checked String ?! Error
-    - second Int
+(fn-do + checked String (?! Error)
+  (param second Int)
+  (call step 1
+    (block
+      (throw (call Error "first") (if (== it -1)))
+    )
+  )
+  (call step second
+    (block
+      (throw (call Error "second") (if (== it -1)))
+    )
+  )
+  (return "ok")
+)
 
-step(1)
-    ?! Error("first")
-        if it == -1
-step(second)
-    ?! Error("second")
-        if it == -1
-= "ok"
-
-━━━━━━━━━━━━━━━━━━━━
-+ step
-    - value Int
-
-value
+(fn-expr + step _
+  (param value Int)
+  value
+)
 ```
 
 ```output
@@ -5315,20 +5723,24 @@ second
 
 ### An attached catch handles errors from a throwing getter as it does from a call.
 
-```yumi
-. box = Box()
-. value = box.text
-    catch error IOError
-        "caught $error"
--- value
+```brix
+(main
+  (let box (call Box))
+  (let value
+    (scope (. box text)
+      (on-error (: error IOError)
+        (str "caught " error)
+      )
+    )
+  )
+  (print value)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-────────────────────
-+ do get text String
-
-?! IOError("boom")
+(type + Box
+  (fn-do + text String :get
+    (throw (call IOError "boom"))
+  )
+)
 ```
 
 ```output
@@ -5337,22 +5749,27 @@ caught boom
 
 ### An attached catch passes through a null returned by a fallible function with an optional result.
 
-```yumi
-. found = find(false)
-    catch Error
-        null
--- "${found == null}"
+```brix
+(main
+  (let found
+    (call find false
+      (block
+        (on-error Error
+          null
+        )
+      )
+    )
+  )
+  (print (str (== found null)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do find Box? ?! Error
-    - fails Bool
-
-?! Error("lost")
-    if fails
-= null
+(fn-do + find (? Box) (?! Error)
+  (param fails Bool)
+  (throw (call Error "lost") (if fails))
+  (return null)
+)
 ```
 
 ```output
@@ -5361,36 +5778,54 @@ true
 
 ### A call through an optional chain may fail, and a catch attached to it takes its errors. Where the chain makes no call nothing is raised, and the chain gives nothing.
 
-```yumi
-. gate Gate? = Gate()
-. none Gate? = null
-gate?.shut()
-    catch failure Error
-        -- "caught ${failure.message}"
-none?.shut()
-    catch failure Error
-        -- "caught ${failure.message}"
-. count = gate?.count()
-    catch Error
-        -1
--- "$count"
-. missing = none?.count()
-    catch Error
-        -1
--- "${missing == null}"
+```brix
+(main
+  (let gate (? Gate) (call Gate))
+  (let none (? Gate) null)
+  (call (?. gate shut)
+    (block
+      (on-error (: failure Error)
+        (print (str "caught " (. failure message)))
+      )
+    )
+  )
+  (call (?. none shut)
+    (block
+      (on-error (: failure Error)
+        (print (str "caught " (. failure message)))
+      )
+    )
+  )
+  (let count
+    (call (?. gate count)
+      (block
+        (on-error Error
+          -1
+        )
+      )
+    )
+  )
+  (print (str count))
+  (let missing
+    (call (?. none count)
+      (block
+        (on-error Error
+          -1
+        )
+      )
+    )
+  )
+  (print (str (== missing null)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Gate
-
-────────────────────
-+ do shut ?! Error
-
-?! Error("stuck")
-
-────────────────────
-+ do count Int ?! Error
-
-?! Error("bad")
+(type + Gate
+  (fn-do + shut _ (?! Error)
+    (throw (call Error "stuck"))
+  )
+  (fn-do + count Int (?! Error)
+    (throw (call Error "bad"))
+  )
+)
 ```
 
 ```output
@@ -5401,27 +5836,27 @@ true
 
 ### A function that states an error may let out an error of a class above it, which converts to the error it states.
 
-```yumi
-. found = catch open-it(3)
--- found is I64
+```brix
+(main
+  (let found (catch (call open-it 3)))
+  (print (is found I64))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BadPath is Error
+(type + BadPath (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do open-it I64 ?! BadPath
-    - seed I64
+(fn-do + open-it I64 (?! BadPath)
+  (param seed I64)
+  (let found (call risky seed))
+  (return (+ found 1))
+)
 
-. found = risky(seed)
-= found + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do risky I64
-    - seed I64
-
-if seed < 0
-    ?! Error("negative")
-= seed
+(fn-do + risky I64
+  (param seed I64)
+  (if (< seed 0)
+    (throw (call Error "negative"))
+  )
+  (return seed)
+)
 ```
 
 ```output
@@ -5430,40 +5865,45 @@ true
 
 ### A handler whose class can match neither the value nor an error of the call is passed over.
 
-```yumi
-for n in events(false)
-    -- n
-. failed = catch first-event(true)
--- failed is Wrapped
+```brix
+(main
+  (for (in n (call events false))
+    (print n)
+  )
+  (let failed (catch (call first-event true)))
+  (print (is failed Wrapped))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wrapped is Error
+(type + Wrapped (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do fetch Int ?! Wrapped
-    - fail Bool
+(fn-do + fetch Int (?! Wrapped)
+  (param fail Bool)
+  (throw (call Wrapped "bad") (if fail))
+  (return 4)
+)
 
-?! Wrapped("bad")
-    if fail
-= 4
+(fn-do + first-event Int (?! Wrapped)
+  (param fail Bool)
+  (for (in n (call events fail))
+    (return n)
+  )
+  (return 0)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do first-event Int ?! Wrapped
-    - fail Bool
-
-for n in events(fail)
-    = n
-= 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do events <Int>
-    - fail Bool
-
-. response = fetch(fail)
-    catch canceled TaskCancelationError
-        ?! Wrapped("$canceled")
-<= response
-<= response + 1
+(fn-do + events (stream Int)
+  (param fail Bool)
+  (let response
+    (call fetch fail
+      (block
+        (on-error (: canceled TaskCancelationError)
+          (throw (call Wrapped (str canceled)))
+        )
+      )
+    )
+  )
+  (yield response)
+  (yield (+ response 1))
+)
 ```
 
 ```output
@@ -5474,25 +5914,29 @@ true
 
 ### An error of a class above the one a function states is cast to that one as it leaves, once the cleanups open have run.
 
-```yumi
-do new
-    -- catch? risky(1) ?? -1
-    -- catch? risky(0) ?? -1
-catch failure
-    -- failure
+```brix
+(main
+  (do-new
+    (print (?? (catch? (call risky 1)) -1))
+    (print (?? (catch? (call risky 0)) -1))
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Failed is Error
+(type + Failed (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do risky I32 ?! Failed
-    - count I32
-
-do finally
-    -- "cleanup ${count}"
-if count == 0
-    ?! Error("plain")
-= count
+(fn-do + risky I32 (?! Failed)
+  (param count I32)
+  (finally
+    (print (str "cleanup " count))
+  )
+  (if (== count 0)
+    (throw (call Error "plain"))
+  )
+  (return count)
+)
 ```
 
 ```output
@@ -5504,42 +5948,43 @@ Invalid cast to [Object __source__:Failed]
 
 ### A function that raises errors may return an error as its value.
 
-```yumi
--- catch? describe(3) ?? "failed"
--- catch? describe(-1) ?? "failed"
--- catch? describe(0) ?? "failed"
+```brix
+(main
+  (print (?? (catch? (call describe 3)) "failed"))
+  (print (?? (catch? (call describe -1)) "failed"))
+  (print (?? (catch? (call describe 0)) "failed"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CodeError is Error
+(type + CodeError (is Error)
+  (prop + code I64)
+  (fn-do + This _
+    (param code _)
+    (= message (str "code " code))
+  )
+)
 
-+ code I64
+(fn-expr _ count-of I64 (?! CodeError)
+  (param n I64)
+  (before
+    (throw (call CodeError n) (if (< n 0)))
+  )
+  (* n 2)
+)
 
-────────────────────
-+ This
-    - code
+(fn-expr _ make _ (?! CodeError)
+  (param n I64)
+  (call CodeError
+    (block
+      (arg (call count-of n))
+    )
+  )
+)
 
-message = "code $code"
-
-━━━━━━━━━━━━━━━━━━━━
-_ count-of I64 ?! CodeError
-    - n I64
-
-?! CodeError(n) if n < 0
-n * 2
-
-━━━━━━━━━━━━━━━━━━━━
-_ make ?! CodeError
-    - n I64
-
-CodeError
-    - count-of(n)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do describe String ?! CodeError
-    - n I64
-
-. made = make(n)
-= "${made.message} ${made.code}"
+(fn-do _ describe String (?! CodeError)
+  (param n I64)
+  (let made (call make n))
+  (return (str (. made message) " " (. made code)))
+)
 ```
 
 ```output
@@ -5550,42 +5995,46 @@ code 0 0
 
 ### An error of a class above those a function raises leaves it cast to the first of them below it, in their order, not as written.
 
-```yumi
--- describe(0)
--- describe(1)
+```brix
+(main
+  (print (call describe 0))
+  (print (call describe 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AErr is Error
+(type + AErr (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ BErr is Error
+(type + BErr (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-_ do raises ?! Error
-    - n I64
+(fn-do _ raises _ (?! Error)
+  (param n I64)
+  (if (== n 1)
+    (throw (call AErr "a"))
+  )
+)
 
-if n == 1
-    ?! AErr("a")
+(fn-do _ relay String (?! BErr) (?! AErr)
+  (param n I64)
+  (call raises n)
+  (return (str "ok " n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do relay String ?! BErr ?! AErr
-    - n I64
-
-raises(n)
-= "ok $n"
-
-━━━━━━━━━━━━━━━━━━━━
-_ do describe String
-    - n I64
-
-. got = catch relay(n)
-= match got
-    | AErr
+(fn-do _ describe String
+  (param n I64)
+  (let got (catch (call relay n)))
+  (return
+    (match got
+      (case AErr
         "A"
-    | BErr
+      )
+      (case BErr
         "B"
-    | text String
+      )
+      (case (: text String)
         text
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -5595,36 +6044,38 @@ A
 
 ### A conditional return of null from a function that returns a union with a Null case converts the null to the union.
 
-```yumi
--- describe(pick(0))
--- describe(pick(1))
--- describe(pick(2))
+```brix
+(main
+  (print (call describe (call pick 0)))
+  (print (call describe (call pick 1)))
+  (print (call describe (call pick 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Reading is Union
+(type + Reading (is Union)
+  (variant Null)
+  (variant I64)
+  (variant String)
+)
 
-| Null
-| I64
-| String
+(fn-do _ pick Reading
+  (param n I64)
+  (return-if null (if (== n 0)))
+  (return-if "text" (if (== n 1)))
+  (return n)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do pick Reading
-    - n I64
-
-=? null if n == 0
-=? "text" if n == 1
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-_ describe String
-    - value Reading
-
-|? value is Null
+(fn-expr _ describe String
+  (param value Reading)
+  (case? (is value Null)
     "nothing"
-|? value is String
-    "text ${value as String}"
-??
-    "number ${value as I64}"
+  )
+  (case? (is value String)
+    (str "text " (as value String))
+  )
+  (default
+    (str "number " (as value I64))
+  )
+)
 ```
 
 ```output
@@ -5635,18 +6086,18 @@ number 2
 
 ### A raise guarded by a condition is typed under what the condition finds: an optional error the condition tests is raised as the error it holds.
 
-```yumi
-. outcome = catch checked(Error("boom"))
--- outcome is Error
--- checked(null)
+```brix
+(main
+  (let outcome (catch (call checked (call Error "boom"))))
+  (print (is outcome Error))
+  (print (call checked null))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do checked I64 ?! Error
-    - failure Error?
-
-?! failure
-    if failure
-= 1
+(fn-do _ checked I64 (?! Error)
+  (param failure (? Error))
+  (throw failure (if failure))
+  (return 1)
+)
 ```
 
 ```output
@@ -5656,83 +6107,101 @@ true
 
 ### A handler whose body is a block of two statements that give values, such as an assignment followed by a value, gives no value, so it can not stand for an expression that gives one.
 
-```yumi crash
-. problem = ""
-. value = parse(-1)
-    catch failure Error
-        problem = failure.message
-        0
--- "$value $problem"
+```brix crash
+(main
+  (let problem "")
+  (let value
+    (call parse -1
+      (block
+        (on-error (: failure Error)
+          (= problem (. failure message))
+          0
+        )
+      )
+    )
+  )
+  (print (str value " " problem))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do parse I64 ?! Error
-    - n I64
-
-?! Error("negative")
-    if n < 0
-= n
+(fn-do _ parse I64 (?! Error)
+  (param n I64)
+  (throw (call Error "negative") (if (< n 0)))
+  (return n)
+)
 ```
 
 ```output
 Exception: Illegal statement
-<no file:4>
-        catch failure Error
+<no file:1>
+    
+    ^
 ```
 
 ### A handler names the error type it takes, so a name alone is not a handler
 
-```yumi crash
--- run(true)
+```brix crash
+(main
+  (print (call run true))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run String
-    - fails Bool
+(fn-do + run String
+  (param fails Bool)
+  (let items
+    (call read fails
+      (block
+        (on-error other
+          (return (str "other " (. other message)))
+        )
+      )
+    )
+  )
+  (return (str "read " (. items length)))
+)
 
-. items = read(fails)
-    catch other
-        = "other ${other.message}"
-= "read ${items.length}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do read [Int] ?! Error
-    - fails Bool
-
-?! Error("nope")
-    if fails
-= [1, 2]
+(fn-do + read (list Int) (?! Error)
+  (param fails Bool)
+  (throw (call Error "nope") (if fails))
+  (return (list 1 2))
+)
 ```
 
 ```output
 Exception: Attached catch handler type must be an Error subtype
-<no file:9>
-        catch other
-              ^^^^^
+<no file:11>
+            (on-error other
+                      ^^^^^
 ```
 
 ### A getter can declare an error it raises, which a read of the property handles.
 
-```yumi
--- Box(-1).size
-    catch error TypeError
+```brix
+(main
+  (print
+    (scope (. (call Box -1) size)
+      (on-error (: error TypeError)
         -1
--- Box(3).size
-    catch error TypeError
+      )
+    )
+  )
+  (print
+    (scope (. (call Box 3) size)
+      (on-error (: error TypeError)
         -1
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ raw Int
-
-────────────────────
-+ This
-    - raw Int
-
-────────────────────
-+ do get size Int ?! TypeError
-
-?! TypeError() if raw < 0
-= raw
+(type + Box
+  (prop + raw Int)
+  (fn-do + This _
+    (param raw Int)
+  )
+  (fn-do + size Int :get (?! TypeError)
+    (throw (call TypeError) (if (< raw 0)))
+    (return raw)
+  )
+)
 ```
 
 ```output

@@ -1,0 +1,90 @@
+(import ./combine)
+
+(fn-do + (of any Item) (stream Bool) @inline
+  (param stream (stream Item))
+  (param where (of Predicate Item))
+  (let ok false)
+  (for (in item stream (when (call where item)))
+    (= ok true)
+    (break)
+  )
+  (yield ok)
+)
+
+(fn-do + (of all Item) _ @inline
+  (param stream (stream Item))
+  (param where (of Predicate Item))
+  (let ok true)
+  (for (in item stream (when (not (call where item))))
+    (= ok false)
+    (break)
+  )
+  (yield ok)
+)
+
+(fn-expr + (of contains Item) (stream Bool)
+  (param contained Item)
+  (param stream (stream Item))
+  (call any stream (:where (== each contained)))
+)
+
+(fn-do + (of flat-map-latest Item Result) (stream Result)
+  (param streams (stream (stream Item)))
+  (param with (of Selector Item Result))
+  (let sources (of SyncChannel (of SyncBufferedChannel Item)))
+  (let switcher
+    (do-new
+      (let latest (? Task))
+      (finally
+        (do (without cancel)
+          (call (?. latest close))
+        )
+      )
+      (for (in stream streams)
+        (call (?. latest cancel))
+        (let output (call (of SyncBufferedChannel Item)))
+        (= latest
+          (do-new
+            (finally
+              (inline (call (. output close)))
+            )
+            (for (in item stream)
+              (<- output item)
+            )
+          )
+        )
+        (<- sources output)
+      )
+      (call (. sources close))
+      (call (?. latest wait))
+    )
+  )
+  (finally
+    (inline (call (. switcher close)))
+  )
+  (blank)
+  (for (in source sources)
+    (for (in item source)
+      (yield (call with item))
+    )
+  )
+)
+
+(fn-do + (of forever Thing) _
+  (param thing Thing)
+  (while true
+    (yield thing)
+  )
+)
+
+(fn-do + (of forever Result) _
+  (param where (of Getter Result))
+  (while true
+    (yield where)
+  )
+)
+
+(fn-expr + (of reversed Item) _ @inline
+  (param stream (stream Item))
+  (call (. (call List stream) reversed))
+)

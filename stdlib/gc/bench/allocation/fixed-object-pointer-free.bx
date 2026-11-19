@@ -1,0 +1,29 @@
+; benchmark.meta description: Allocates fixed-size pointer-free objects through the object allocator.
+; benchmark.meta timing: not-recommended
+; benchmark.meta profiles: gc-runtime,allocator
+(blank)
+
+(main
+  (let iterations 60000)
+  (let checksum (as 0 Size))
+  (for (in i (..< 0 iterations))
+    (let thing (call FixedWord i (+ i 1) (+ i 2)))
+    (+= checksum (+ (. thing a) (. thing b) (. thing c)))
+  )
+  (blank)
+  (print (str "bench-result allocation/fixed-object-pointer-free checksum=" checksum))
+)
+
+(type + FixedWord
+  (prop + a _ (= 0))
+  (prop + b _ (= 0))
+  (prop + c _ (= 0))
+  (fn-do + This _
+    (param x _)
+    (param y _)
+    (param z _)
+    (= a x)
+    (= b y)
+    (= c z)
+  )
+)

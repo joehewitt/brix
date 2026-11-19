@@ -1,0 +1,90 @@
+; benchmark.meta description: Reads JSON Lines through a pipe-sized byte source: short lines, one long string, and one large array.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: allocator,stream,compile-timing
+(blank)
+(import /core/arena)
+(import /data)
+(import /data/json)
+(import /data/jsonl)
+(blank)
+(prop _ pipe-capacity Size (= 65536))
+(blank)
+
+(main
+  (let source (call PipeSource (call byte-view (call json-lines-source))))
+  (let checksum (as 0 Size))
+  (let index (as 1 Size))
+  (blank)
+  (let scratch (use (call Arena)))
+  (for (in value (~> source \json-line (with (call JSONParser scratch))))
+    (+= checksum (* (call json-weight value) index))
+    (+= index 1)
+  )
+  (blank)
+  (print (str "bench-result data/json-lines checksum=" checksum))
+)
+
+(fn-do _ json-lines-source String
+  (let lines (call (of List String)))
+  (for (in index (..< 0 4000))
+    (+= lines (call short-line index))
+  )
+  (+= lines (str "\"" (* "x" 100000) "\""))
+  (for (in index (..< 4000 6000))
+    (+= lines (call short-line index))
+  )
+  (let items (call (of List String)))
+  (for (in index (..< 0 2000))
+    (+= items (str "{\"id\": " index ", \"name\": \"item\", \"ok\": true}"))
+  )
+  (+= lines (str "[" (call (. ", " join) items) "]"))
+  (for (in index (..< 6000 8000))
+    (+= lines (call short-line index))
+  )
+  (let text (call (. "\n" join) lines))
+  (return (++ text "\n"))
+)
+
+(fn-expr _ short-line _
+  (param index Size)
+  (str "{\"type\": \"delta\", \"index\": " index ", \"text\": \"chunk-" index " alpha\\nbeta\"}")
+)
+
+(fn-expr _ json-weight Size
+  (param value JSON)
+  (match value
+    (case (: text String)
+      (. text length)
+    )
+    (case (: list List)
+      (. list length)
+    )
+    (case (: map Map)
+      (. map length)
+    )
+    (default
+      1
+    )
+  )
+)
+
+(type _ PipeSource
+  (implements (of ReadableData Char))
+  (prop + data (of ImmutableArray Byte))
+  (prop + cursor Index)
+  (fn-do _ This _
+    (param data _)
+  )
+  (fn-do + read Size
+    (param size Size)
+    (param buffer ([] Byte))
+    (let remaining (- (. data size) cursor))
+    (let wanted (if-expr (< size pipe-capacity) size pipe-capacity))
+    (let amount (if-expr (< remaining wanted) remaining wanted))
+    (if amount
+      (= ([] buffer (..< 0 amount)) ([] data (..< cursor (+ cursor amount))))
+      (+= cursor amount)
+    )
+    (return amount)
+  )
+)

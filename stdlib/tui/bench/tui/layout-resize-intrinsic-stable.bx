@@ -1,0 +1,64 @@
+; benchmark.meta description: Resizes a stable TUI layout while intrinsic content is unchanged.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: tui,tui-fps,compile-timing
+(blank)
+(import /core/markup)
+(import /tui/box)
+(import /tui/layout)
+(import /tui/primitives)
+(import /tui/text)
+(blank)
+
+(main
+  (let root (call BenchResizeStableRoot))
+  (call markup-mount-root root root)
+  (blank)
+  (for (in row-index (..< 0 28))
+    (let row (call BenchResizeStableRow))
+    (call markup-append root row)
+    (for (in cell-index (..< 0 10))
+      (let cell (call BenchResizeStableCell))
+      (call markup-append row cell)
+      (call markup-append cell (call Label (str "stable-" row-index "-" cell-index)))
+    )
+  )
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (blank)
+  (let checksum Size 0)
+  (for (in frame (..< 0 144))
+    (= (. root bounds) (call Rect 0 0 (+ 80 (* (call Coord (% frame 9)) 4)) (+ 24 (call Coord (% frame 7)))))
+    (call (. root invalidate-layout))
+    (call (. root update-layout))
+    (probe-count tui.bench.frames)
+    (+= checksum (+ (. root inner-width) (. root inner-height) frame))
+  )
+  (blank)
+  (print (str "bench-result tui/layout-resize-intrinsic-stable checksum=" checksum))
+)
+
+(type + BenchResizeStableRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (blank)
+  (rule This
+    (= layout flex-col)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
+
+(type + BenchResizeStableRow (is Box)
+  (rule This
+    (= layout flex-row)
+    (= flex 1)
+  )
+)
+
+(type + BenchResizeStableCell (is Box)
+  (rule This
+    (= layout flow-col)
+    (= flex 1)
+  )
+)

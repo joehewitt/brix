@@ -2,78 +2,79 @@
 
 ### A style activates on a node when any of its properties is authored there by an enabled declaration; nodes with no authored declarations activate nothing. Dynamically authoring a property of a previously inactive style flips it active and raises the changed property's declared domain.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Label
-        ink = 9
-    <Label
-        gap = 4
-    <Label
+(main
+  (<> BatchDemo (id: demo)
+    (<> Label
+      (= ink 9)
+    )
+    (<> Label
+      (= gap 4)
+    )
+    (<> Label)
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  ; Clear the container bits Box raised imperatively while children were appended, so the
+  ; snapshots below show only style-driven pending state.
+  (= (. demo $is-paint-invalid) false)
+  (= (. demo $is-layout-invalid) false)
+  (blank)
+  (let inked (!! (. demo %first-child)))
+  (let gapped (!! (. inked %next-sibling)))
+  (let plain (!! (. gapped %next-sibling)))
+  (blank)
+  (print (call style-activation-snapshot inked))
+  (print (call style-activation-snapshot gapped))
+  (print (call style-activation-snapshot plain))
+  (print (call style-pending-snapshot demo))
+  (blank)
+  (= (. inked $is-paint-invalid) false)
+  (= (. gapped $is-layout-invalid) false)
+  (print (call style-pending-snapshot demo))
+  (blank)
+  (call style-author-dynamic inked (!! (call style-info-named "Spacing")) 0 (. StyleLayer inline) 99 -1 4 false)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (print (call style-activation-snapshot inked))
+  (print (call style-pending-snapshot demo))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using TextStyle)
+  (using Spacing)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-` Clear the container bits Box raised imperatively while children were appended, so the
-` snapshots below show only style-driven pending state.
-demo.$is-paint-invalid = false
-demo.$is-layout-invalid = false
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
-. inked = demo.%first-child!
-. gapped = inked.%next-sibling!
-. plain = gapped.%next-sibling!
+(type + Spacing (is Style)
+  (prop + gap I64 (= 0))
+  (blank)
+  (style-domains gap (domain layout))
+)
 
--- style-activation-snapshot(inked)
--- style-activation-snapshot(gapped)
--- style-activation-snapshot(plain)
--- style-pending-snapshot(demo)
+(type + Label (is Box)
+  (using TextStyle)
+  (using Spacing)
+)
 
-inked.$is-paint-invalid = false
-gapped.$is-layout-invalid = false
--- style-pending-snapshot(demo)
-
-style-author-dynamic(inked, style-info-named("Spacing")!, 0, StyleLayer.inline, 99, -1, 4, false)
-demo.markup-batch-queue.checkpoint()
-
--- style-activation-snapshot(inked)
--- style-pending-snapshot(demo)
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using TextStyle
-    using Spacing
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ Spacing is Style
-
-+ gap I64 = 0
-
-. gap -> layout
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
-    using Spacing
-
-━━━━━━━━━━━━━━━━━━━━
-+ Plain is Box
+(type + Plain (is Box))
 ```
 
 ```output
@@ -88,71 +89,73 @@ paint=0 layout=1
 
 ### An activation flip alone invalidates the flipped style's declared domains: authoring the property's initial value leaves computed state unchanged, but the activation change still raises the style's property domains on the node.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Label
-        ink = 9
-    <Label
+(main
+  (<> BatchDemo (id: demo)
+    (<> Label
+      (= ink 9)
+    )
+    (<> Label)
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  ; Clear the container bits Box raised imperatively while children were appended.
+  (= (. demo $is-paint-invalid) false)
+  (= (. demo $is-layout-invalid) false)
+  (blank)
+  (let colored (!! (. demo %first-child)))
+  (let plain (!! (. colored %next-sibling)))
+  (blank)
+  (print (call style-activation-snapshot plain))
+  (blank)
+  (= (. colored $is-paint-invalid) false)
+  (print (call style-pending-snapshot demo))
+  (blank)
+  (call style-author-dynamic plain (!! (call style-info-named "TextStyle")) 0 (. StyleLayer inline) 0 -1 7 false)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (print (call style-activation-snapshot plain))
+  (print (call style-pending-snapshot demo))
+  (print (str "plain-paint=" (. plain $is-paint-invalid) " colored-paint=" (. colored $is-paint-invalid)))
+  (blank)
+  (= (. plain $is-paint-invalid) false)
+  (call style-author-dynamic plain (!! (call style-info-named "TextStyle")) 0 (. StyleLayer inline) 0 -1 7 false)
+  (print (str "identical " (call style-drain-dirty-queue demo)))
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-pending-snapshot demo))
+  (print (call style-computed-snapshot plain))
+  (blank)
+  (call style-author-dynamic plain (!! (call style-info-named "TextStyle")) 0 (. StyleLayer inline) 0 -1 9 false)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (+ "changed " (call style-pending-snapshot demo)))
+  (print (call style-computed-snapshot plain))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using TextStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-` Clear the container bits Box raised imperatively while children were appended.
-demo.$is-paint-invalid = false
-demo.$is-layout-invalid = false
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
-. colored = demo.%first-child!
-. plain = colored.%next-sibling!
-
--- style-activation-snapshot(plain)
-
-colored.$is-paint-invalid = false
--- style-pending-snapshot(demo)
-
-style-author-dynamic(plain, style-info-named("TextStyle")!, 0, StyleLayer.inline, 0, -1, 7, false)
-demo.markup-batch-queue.checkpoint()
-
--- style-activation-snapshot(plain)
--- style-pending-snapshot(demo)
--- "plain-paint=${plain.$is-paint-invalid} colored-paint=${colored.$is-paint-invalid}"
-
-plain.$is-paint-invalid = false
-style-author-dynamic(plain, style-info-named("TextStyle")!, 0, StyleLayer.inline, 0, -1, 7, false)
--- "identical ${style-drain-dirty-queue(demo)}"
-demo.markup-batch-queue.checkpoint()
--- style-pending-snapshot(demo)
--- style-computed-snapshot(plain)
-
-style-author-dynamic(plain, style-info-named("TextStyle")!, 0, StyleLayer.inline, 0, -1, 9, false)
-demo.markup-batch-queue.checkpoint()
--- "changed " + style-pending-snapshot(demo)
--- style-computed-snapshot(plain)
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using TextStyle
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
+(type + Label (is Box)
+  (using TextStyle)
+)
 ```
 
 ```output
@@ -170,98 +173,90 @@ node TextStyle seg=owned gen=1 mask=1 ink=9
 
 ### A node whose settle changes several styles reports its domains to the host once, with every raised self domain in one mask and every raised parent domain in another.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Probe
-        ink = 9
-        gap = 4
-        flex = 2
+(main
+  (<> BatchDemo (id: demo)
+    (<> Probe
+      (= ink 9)
+      (= gap 4)
+      (= flex 2)
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (let probe (as (!! (. demo %first-child)) Probe))
+  (print (. probe report))
+  (blank)
+  (call (. probe reset))
+  (call style-author-dynamic probe (!! (call style-info-named "TextStyle")) 0 (. StyleLayer inline) 99 -1 5 false)
+  (call style-author-dynamic probe (!! (call style-info-named "Spacing")) 0 (. StyleLayer inline) 99 -1 6 false)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. probe report))
+  (blank)
+  (call (. probe reset))
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. probe report))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-. probe = demo.%first-child! as Probe
--- probe.report
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
-probe.reset()
-style-author-dynamic(probe, style-info-named("TextStyle")!, 0, StyleLayer.inline, 99, -1, 5, false)
-style-author-dynamic(probe, style-info-named("Spacing")!, 0, StyleLayer.inline, 99, -1, 6, false)
-demo.markup-batch-queue.checkpoint()
--- probe.report
+(type + Spacing (is Style)
+  (prop + gap I64 (= 0))
+  (blank)
+  (style-domains gap (domain layout))
+)
 
-probe.reset()
-demo.markup-batch-queue.checkpoint()
--- probe.report
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ Spacing is Style
-
-+ gap I64 = 0
-
-. gap -> layout
-
-━━━━━━━━━━━━━━━━━━━━
-+ Probe is Box
-    using TextStyle
-    using Spacing
-
-+ self-calls Size
-+ self-mask U32
-+ parent-calls Size
-+ parent-mask U32
-
-────────────────────
-+ do reset
-
-self-calls = 0
-self-mask = 0
-parent-calls = 0
-parent-mask = 0
-
-────────────────────
-+ do get report
-
-. paint U32 = 1u32 /lshift/ (style-domain-named("paint") as Size)
-. layout U32 = 1u32 /lshift/ (style-domain-named("layout") as Size)
-. self-paint = (self-mask /and/ paint) != 0
-. self-layout = (self-mask /and/ layout) != 0
-. parent-layout = (parent-mask /and/ layout) != 0
-= "self calls=$self-calls paint=$self-paint layout=$self-layout parent calls=$parent-calls layout=$parent-layout"
-
-────────────────────
-+ do markup-style-domains-changed
-    - mask U32
-
-self-calls += 1
-self-mask = self-mask /or/ mask
-
-────────────────────
-+ do markup-parent-style-domains-changed
-    - mask U32
-
-parent-calls += 1
-parent-mask = parent-mask /or/ mask
+(type + Probe (is Box)
+  (using TextStyle)
+  (using Spacing)
+  (prop + self-calls Size)
+  (prop + self-mask U32)
+  (prop + parent-calls Size)
+  (prop + parent-mask U32)
+  (fn-do + reset _
+    (= self-calls 0)
+    (= self-mask 0)
+    (= parent-calls 0)
+    (= parent-mask 0)
+  )
+  (fn-do + report _ :get
+    (let paint U32 (/lshift/ 1u32 (as (call style-domain-named "paint") Size)))
+    (let layout U32 (/lshift/ 1u32 (as (call style-domain-named "layout") Size)))
+    (let self-paint (!= (/and/ self-mask paint) 0))
+    (let self-layout (!= (/and/ self-mask layout) 0))
+    (let parent-layout (!= (/and/ parent-mask layout) 0))
+    (return (str "self calls=" self-calls " paint=" self-paint " layout=" self-layout " parent calls=" parent-calls " layout=" parent-layout))
+  )
+  (fn-do + markup-style-domains-changed _
+    (param mask U32)
+    (+= self-calls 1)
+    (= self-mask (/or/ self-mask mask))
+  )
+  (fn-do + markup-parent-style-domains-changed _
+    (param mask U32)
+    (+= parent-calls 1)
+    (= parent-mask (/or/ parent-mask mask))
+  )
+)
 ```
 
 ```output
@@ -272,153 +267,161 @@ self calls=0 paint=false layout=false parent calls=0 layout=false
 
 ### `inherit` is an authored-layer keyword reserved for @inherited properties: assigning it to a non-inherited style property is a compile error at the authoring site.
 
-```yumi crash
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Label
-        ink = inherit
+(main
+  (<> BatchDemo (id: demo)
+    (<> Label
+      (= ink inherit)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using TextStyle
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using TextStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
+(type + Label (is Box)
+  (using TextStyle)
+)
 ```
 
 ```output
 Exception: Style property "ink" is not @inherited, so it cannot be assigned "inherit"
-<no file:8>
-            ink = inherit
-            ^^^^^^^^^^^^^
+<no file:10>
+          (= ink inherit)
+          ^^^^^^^^^^^^^^^
 ```
 
 ### Unknown inline style property annotations are a compile error.
 
-```yumi crash
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Label
-        ink = 9
+(main
+  (<> BatchDemo (id: demo)
+    (<> Label
+      (= ink 9)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using TextStyle
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using TextStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + TextStyle (is Style)
+  (prop + ink I64 @glowing (= 7))
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ @glowing ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
+(type + Label (is Box)
+  (using TextStyle)
+)
 ```
 
 ```output
 Exception: Unknown style property annotation "@glowing"; only "@inherited" is supported
-<no file:24>
-    + @glowing ink I64 = 7
-    ^^^^^^^^^^^^^^^^^^^^^^
+<no file:25>
+      (prop + ink I64 @glowing (= 7))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Property annotations are reserved for style properties; ordinary class properties reject them.
 
-```yumi crash
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Label
-        ink = 9
+(main
+  (<> BatchDemo (id: demo)
+    (<> Label
+      (= ink 9)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using TextStyle
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using TextStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
-
-+ @inherited glow I64 = 0
+(type + Label (is Box)
+  (using TextStyle)
+  (prop + glow I64 @inherited (= 0))
+)
 ```
 
 ```output
 Exception: Unknown property annotation "@inherited"; only "@hot" is supported on eager tuple fields
 <no file:30>
-    + @inherited glow I64 = 0
-    ^^^^^^^^^^^^^^^^^^^^^^^^^
+      (prop + glow I64 @inherited (= 0))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Inherited computed values activate the style on descendants even when the descendant authored no declaration itself.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
-/core/tests/support/markup-colors
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(import /core/tests/support/markup-colors)
+(blank)
 
-<BatchDemo demo
-    <Box host
-        color = yellow
+(main
+  (<> BatchDemo (id: demo)
+    (<> Box (id: host)
+      (= color yellow)
+    )
+  )
+  (blank)
+  (let child (call Label "x"))
+  (call markup-append host child)
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (print (call style-computed-snapshot child))
+  (print (call style-activation-snapshot child))
+)
 
-. child = Label("x")
-markup-append(host, child)
-
-demo.markup-batch-queue.checkpoint()
-
--- style-computed-snapshot(child)
--- style-activation-snapshot(child)
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 ```
 
 ```output
@@ -428,50 +431,56 @@ node=TextPaint
 
 ### Style rule gates must be tracked Bool properties; tracked integers do not silently truth-test.
 
-```yumi crash
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
-/core/tests/support/markup-colors
+```brix crash
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(import /core/tests/support/markup-colors)
+(blank)
 
-.. selected = 1
+(main
+  (lazy selected 1)
+  (blank)
+  (<> BatchDemo (id: demo)
+    (<> Label (id: a) (text: "x") (• bg red (if: #selected)))
+  )
+)
 
-<BatchDemo demo
-    <Label a "x" • bg:red = #selected
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 ```
 
 ```output
 Exception: Style rule conditions must be Bool, but this condition is I64
-<no file:10>
-        <Label a "x" • bg:red = #selected
-                                ^^^^^^^^^
+<no file:12>
+        (<> Label (id: a) (text: "x") (• bg red (if: #selected)))
+                                                     ^^^^^^^^^
 ```
 
 ### The runtime permits more style indexes than fit in one U64 record mask.
 
-```yumi
-/core/style
+```brix
+(import /core/style)
+(blank)
 
-. index Size = 0
-while index < 64
-    style-register(StyleInfo("s$index", "S$index", 0))
-    index += 1
-
-. overflow = style-register(StyleInfo("overflow", "Overflow", 0))
-. fetched = style-info-at(64)
-
--- overflow.name
--- fetched!.name
+(main
+  (let index Size 0)
+  (while (< index 64)
+    (call style-register (call StyleInfo (str "s" index) (str "S" index) 0))
+    (+= index 1)
+  )
+  (blank)
+  (let overflow (call style-register (call StyleInfo "overflow" "Overflow" 0)))
+  (let fetched (call style-info-at 64))
+  (blank)
+  (print (. overflow name))
+  (print (. (!! fetched) name))
+)
 ```
 
 ```output
@@ -481,17 +490,25 @@ Overflow
 
 ### The runtime rejects style property offsets that do not fit in per-segment U64 masks.
 
-```yumi
-/core/style
+```brix
+(import /core/style)
+(blank)
 
-. attempt = do new
-    . info = StyleInfo("too-many", "TooMany", 65)
-    style-register-property(info, 64, "p64", 0, false, 0, 0, 0)
-catch failure
-    . panic Panic? = failure
-    if panic
-        -- "recovered $panic"
-attempt.wait()
+(main
+  (let attempt
+    (do-new
+      (let info (call StyleInfo "too-many" "TooMany" 65))
+      (call style-register-property info 64 "p64" 0 false 0 0 0)
+      (on-failure failure
+        (let panic (? Panic) failure)
+        (if panic
+          (print (str "recovered " panic))
+        )
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -500,123 +517,116 @@ recovered Style property offset exceeds the mask cap
 
 ### Past the 32 domains of invalidation the runtime holds, the error names the 33rd in the order the program first writes them, by line and then by place in the line, whatever order the program uses them in.
 
-```yumi crash
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Late
-<Early
+(main
+  (<> Late)
+  (<> Early)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ First is Style
+(type + First (is Style)
+  (prop + size I64 (= 0))
+  (blank)
+  (style-domains size (domain a01) (domain a02) (domain a03) (domain a04) (domain a05) (domain a06) (domain a07) (domain a08) (domain a09) (domain a10) (domain a11) (domain a12) (domain a13) (domain a14) (domain a15) (domain a16) (domain a17) (domain a18) (domain a19) (domain a20))
+)
 
-+ size I64 = 0
+(type + Second (is Style)
+  (prop + size I64 (= 0))
+  (blank)
+  (style-domains size (domain b02) (domain b01) (domain b03) (domain b04) (domain b05) (domain b06) (domain b07) (domain b08) (domain b09) (domain b11) (domain b10) (domain b12) (domain b13) (domain b14) (domain b15) (domain b16) (domain b17) (domain b18) (domain b19) (domain b20))
+)
 
-. size -> a01, a02, a03, a04, a05, a06, a07, a08, a09, a10, a11, a12, a13, a14, a15, a16, a17, a18, a19, a20
+(type + Early (is Box)
+  (using First)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Second is Style
-
-+ size I64 = 0
-
-. size -> b02, b01, b03, b04, b05, b06, b07, b08, b09, b11, b10, b12, b13, b14, b15, b16, b17, b18, b19, b20
-
-━━━━━━━━━━━━━━━━━━━━
-+ Early is Box
-    using First
-
-━━━━━━━━━━━━━━━━━━━━
-+ Late is Box
-    using Second
+(type + Late (is Box)
+  (using Second)
+)
 ```
 
 ```output
 Exception: Too many style invalidation domains (32 maximum); cannot intern "b13"
 <no file:21>
-    . size -> b02, b01, b03, b04, b05, b06, b07, b08, b09, b11, b10, b12, b13, b14, b15, b16, b17, b18, b19, b20
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      (style-domains size (domain b02) (domain b01) (domain b03) (domain b04) (domain b05) (domain b06) (domain b07) (domain b08) (domain b09) (domain b11) (domain b10) (domain b12) (domain b13) (domain b14) (domain b15) (domain b16) (domain b17) (domain b18) (domain b19) (domain b20))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### An activation flip raises the domains of the style's properties that are declared on the node or differ from their initial values, not those of every property the style holds: authoring only the paint property of a style that also holds a parent-layout property flips the style active and raises paint on the node and nothing on its parent.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Probe
+(main
+  (<> BatchDemo (id: demo)
+    (<> Probe)
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (let probe (as (!! (. demo %first-child)) Probe))
+  (call (. probe reset))
+  (call style-author-dynamic probe (!! (call style-info-named "Frame")) 0 (. StyleLayer inline) 99 -1 7 false)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-activation-snapshot probe))
+  (print (. probe report))
+)
 
-demo.markup-batch-queue.checkpoint()
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-. probe = demo.%first-child! as Probe
-probe.reset()
-style-author-dynamic(probe, style-info-named("Frame")!, 0, StyleLayer.inline, 99, -1, 7, false)
-demo.markup-batch-queue.checkpoint()
--- style-activation-snapshot(probe)
--- probe.report
+(type + Frame (is Style)
+  (prop + ink I64 (= 7))
+  (prop + edge I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+  (style-domains edge (domain layout) (domain layout parent))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Frame is Style
-
-+ ink I64 = 7
-+ edge I64 = 0
-
-. ink -> paint
-. edge -> layout, layout on parent
-
-━━━━━━━━━━━━━━━━━━━━
-+ Probe is Box
-    using Frame
-
-+ self-calls Size
-+ self-mask U32
-+ parent-calls Size
-+ parent-mask U32
-
-────────────────────
-+ do reset
-
-self-calls = 0
-self-mask = 0
-parent-calls = 0
-parent-mask = 0
-
-────────────────────
-+ do get report
-
-. paint U32 = 1u32 /lshift/ (style-domain-named("paint") as Size)
-. layout U32 = 1u32 /lshift/ (style-domain-named("layout") as Size)
-. self-paint = (self-mask /and/ paint) != 0
-. self-layout = (self-mask /and/ layout) != 0
-. parent-layout = (parent-mask /and/ layout) != 0
-= "self calls=$self-calls paint=$self-paint layout=$self-layout parent calls=$parent-calls layout=$parent-layout"
-
-────────────────────
-+ do markup-style-domains-changed
-    - mask U32
-
-self-calls += 1
-self-mask = self-mask /or/ mask
-
-────────────────────
-+ do markup-parent-style-domains-changed
-    - mask U32
-
-parent-calls += 1
-parent-mask = parent-mask /or/ mask
+(type + Probe (is Box)
+  (using Frame)
+  (prop + self-calls Size)
+  (prop + self-mask U32)
+  (prop + parent-calls Size)
+  (prop + parent-mask U32)
+  (fn-do + reset _
+    (= self-calls 0)
+    (= self-mask 0)
+    (= parent-calls 0)
+    (= parent-mask 0)
+  )
+  (fn-do + report _ :get
+    (let paint U32 (/lshift/ 1u32 (as (call style-domain-named "paint") Size)))
+    (let layout U32 (/lshift/ 1u32 (as (call style-domain-named "layout") Size)))
+    (let self-paint (!= (/and/ self-mask paint) 0))
+    (let self-layout (!= (/and/ self-mask layout) 0))
+    (let parent-layout (!= (/and/ parent-mask layout) 0))
+    (return (str "self calls=" self-calls " paint=" self-paint " layout=" self-layout " parent calls=" parent-calls " layout=" parent-layout))
+  )
+  (fn-do + markup-style-domains-changed _
+    (param mask U32)
+    (+= self-calls 1)
+    (= self-mask (/or/ self-mask mask))
+  )
+  (fn-do + markup-parent-style-domains-changed _
+    (param mask U32)
+    (+= parent-calls 1)
+    (= parent-mask (/or/ parent-mask mask))
+  )
+)
 ```
 
 ```output

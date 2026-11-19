@@ -1,9 +1,12 @@
 # Cursor streams
 
-```yumi
-. values = 1 .. 3
-for item in values
-    -- item
+```brix
+(main
+  (let values (.. 1 3))
+  (for (in item values)
+    (print item)
+  )
+)
 ```
 
 ```output
@@ -12,53 +15,53 @@ for item in values
 3
 ```
 
-```yumi
--- List(Steps(3))
+```brix
+(main
+  (print (call List (call Steps 3)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Steps is Tuple
-    is CursorIterable'Int'Int
-
-+ limit Int
-
-────────────────────
-+ get initial-iterator-state Int @inline
-
-0
-
-────────────────────
-+ do next-iterator (Int, Int?) @inline
-    - state Int
-
-. none Int?
-if state >= limit
-    = (state, none)
-= (state + 1, 2 + state * 3)
+(type + Steps (is Tuple)
+  (implements (of CursorIterable Int Int))
+  (prop + limit Int)
+  (fn-expr + initial-iterator-state Int :get @inline
+    0
+  )
+  (fn-do + next-iterator (tuple Int (? Int)) @inline
+    (param state Int)
+    (let none (? Int))
+    (if (>= state limit)
+      (return (tuple state none))
+    )
+    (return (tuple (+ state 1) (+ 2 (* state 3))))
+  )
+)
 ```
 
 ```output
 2, 5, 8
 ```
 
-```yumi
--- (0 .. < 0).length
--- (0 .. 0).length
--- (0 .. < 6 by 3).length
--- (0 .. 6 by 3).length
--- (0 .. < 7 by 3).length
--- (0 .. 7 by 3).length
--- (7 .. < 0 by 3).length
--- (7 .. 0 by 3).length
--- (-5 .. < 5 by 3).length
--- (-5 .. 5 by 3).length
--- (-120i8 .. 120i8 by 3i8).length
--- (250u8 .. < 0u8 by 3u8).length
--- (-2147483648 .. < 2147483647).length
--- (-2147483648 .. 2147483647).length
--- (0.0 .. < 1.0 by 0.25).length
--- (0.0 .. 1.0 by 0.25).length
--- (0.0 .. < 1.0 by 0.3).length
--- (0.0 .. 1.0 by 0.3).length
+```brix
+(main
+  (print (. (..< 0 0) length))
+  (print (. (.. 0 0) length))
+  (print (. (..< 0 6 (by: 3)) length))
+  (print (. (.. 0 6 (by: 3)) length))
+  (print (. (..< 0 7 (by: 3)) length))
+  (print (. (.. 0 7 (by: 3)) length))
+  (print (. (..< 7 0 (by: 3)) length))
+  (print (. (.. 7 0 (by: 3)) length))
+  (print (. (..< -5 5 (by: 3)) length))
+  (print (. (.. -5 5 (by: 3)) length))
+  (print (. (.. -120i8 120i8 (by: 3i8)) length))
+  (print (. (..< 250u8 0u8 (by: 3u8)) length))
+  (print (. (..< -2147483648 2147483647) length))
+  (print (. (.. -2147483648 2147483647) length))
+  (print (. (..< 0.0 1.0 (by: 0.25)) length))
+  (print (. (.. 0.0 1.0 (by: 0.25)) length))
+  (print (. (..< 0.0 1.0 (by: 0.3)) length))
+  (print (. (.. 0.0 1.0 (by: 0.3)) length))
+)
 ```
 
 ```output
@@ -84,30 +87,29 @@ if state >= limit
 
 ### A loop over a struct that steps a cursor.
 
-```yumi
-. values = CursorRange(3)
-for value in values
-    -- value
+```brix
+(main
+  (let values (call CursorRange 3))
+  (for (in value values)
+    (print value)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CursorRange is Struct
-    is CursorIterable'I32'I32
-
-+ limit I32
-
-────────────────────
-+ get initial-iterator-state I32
-
-0
-
-────────────────────
-+ do next-iterator (I32, I32?)
-    - state I32
-
-. none I32?
-if state >= limit
-    = (state, none)
-= (state + 1, state + 1)
+(type + CursorRange (is Struct)
+  (implements (of CursorIterable I32 I32))
+  (prop + limit I32)
+  (fn-expr + initial-iterator-state I32 :get
+    0
+  )
+  (fn-do + next-iterator (tuple I32 (? I32))
+    (param state I32)
+    (let none (? I32))
+    (if (>= state limit)
+      (return (tuple state none))
+    )
+    (return (tuple (+ state 1) (+ state 1)))
+  )
+)
 ```
 
 ```output
@@ -118,46 +120,44 @@ if state >= limit
 
 ### An error a cursor raises as it steps leaves the function looping over it, as a call's does.
 
-```yumi crash
-show(CursorRange(3))
+```brix crash
+(main
+  (call show (call CursorRange 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - values CursorRange
+(fn-do + show _
+  (param values CursorRange)
+  (for (in value values)
+    (print value)
+  )
+)
 
-for value in values
-    -- value
-
-━━━━━━━━━━━━━━━━━━━━
-+ CursorRange is Struct
-    is CursorIterable'I32'I32
-
-+ limit I32
-
-────────────────────
-+ get initial-iterator-state I32
-
-0
-
-────────────────────
-+ do next-iterator (I32, I32?) ?! Error
-    - state I32
-
-if state >= 2
-    ?! Error("stop")
-= (state + 1, state + 1)
+(type + CursorRange (is Struct)
+  (implements (of CursorIterable I32 I32))
+  (prop + limit I32)
+  (fn-expr + initial-iterator-state I32 :get
+    0
+  )
+  (fn-do + next-iterator (tuple I32 (? I32)) (?! Error)
+    (param state I32)
+    (if (>= state 2)
+      (throw (call Error "stop"))
+    )
+    (return (tuple (+ state 1) (+ state 1)))
+  )
+)
 ```
 
 ```stderr
 Unhandled error: stop
-<no file:27>
+<no file:22>
 
 Task 1
 
 Stack trace:
-  0  __source__:CursorRange:next-iterator no file:27:5
-  1  __source__:show no file:8:4
-  2  __source__:main no file:2:1
+  0  __source__:CursorRange:next-iterator no file:22:7
+  1  __source__:show no file:8:8
+  2  __source__:main no file:3:3
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```

@@ -1,0 +1,49 @@
+; benchmark.meta description: Intersects line-heavy path grids to isolate pairwise line-line work.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/intersection)
+(import /graphics/path)
+(import /graphics/point)
+(import /math)
+(blank)
+
+(main
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 240))
+    (let a (call polyline-a pass))
+    (let b (call polyline-b pass))
+    (let results (call intersect-paths a b false))
+    (+= checksum (. results length))
+    (for (in result results)
+      (+= checksum (+ (. result intersections length) pass))
+    )
+  )
+  (blank)
+  (print (str "bench-result graphics/intersect-line-line-grid checksum=" checksum))
+)
+
+(fn-do _ polyline-a _
+  (param seed Int)
+  (let path (call Path))
+  (let base (as seed Float))
+  (call (. path move-to) 0 (% base 31))
+  (for (in i (..< 0 24))
+    (let f (as i Float))
+    (call (. path line-to) (* f 8) (% (+ base (* f 13)) 180))
+  )
+  (return path)
+)
+
+(fn-do _ polyline-b _
+  (param seed Int)
+  (let path (call Path))
+  (let base (as seed Float))
+  (call (. path move-to) (% base 29) 0)
+  (for (in i (..< 0 24))
+    (let f (as i Float))
+    (call (. path line-to) (% (+ base (* f 17)) 180) (* f 8))
+  )
+  (return path)
+)

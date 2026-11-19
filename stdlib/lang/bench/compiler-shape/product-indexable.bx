@@ -1,0 +1,25 @@
+; benchmark.meta description: Product over integer ranges, stream helper.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator
+(blank)
+(import /stream/combine)
+(blank)
+
+(main
+  (let checksum (call range-checksum 100000 24 32))
+  (throw (call Panic "range checksum mismatch") (if (!= checksum 58022400000)))
+  (print (str "bench-result compiler-shape/product-indexable checksum=" checksum))
+)
+
+(fn-do + range-checksum I64
+  (param rounds Int)
+  (param rows Int)
+  (param columns Int)
+  (let total 0i64)
+  (for (in round (..< 0 rounds))
+    (for (in (tuple index cell) (call indexed (call product (..< 0 rows) (..< 0 columns))))
+      (+= total (+ index (* ([] cell 0) 31) ([] cell 1)))
+    )
+  )
+  (return total)
+)

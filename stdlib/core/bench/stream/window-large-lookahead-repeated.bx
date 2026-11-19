@@ -1,0 +1,43 @@
+; benchmark.meta description: Repeats large stream lookahead parsing to dominate process startup.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+
+(main
+  (let source (call window-large-lookahead-source))
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in iteration (..< 0 300))
+    (let rows
+      (match source
+        (~ \window-large-lookahead-document)
+        (throw (call Panic "window-large-lookahead-repeated did not parse"))
+      )
+    )
+    (blank)
+    (for (in row rows)
+      (+= checksum row)
+    )
+  )
+  (blank)
+  (print (str "bench-result stream/window-large-lookahead-repeated checksum=" checksum))
+)
+
+(fn-expr + window-large-lookahead-document _ (over: Char)
+  (~ (: rows (+ \window-large-row))
+    rows
+  )
+  (where
+    (lazy window-large-row Size
+      (pattern
+        (~ (seq (& (seq "block:" (* (seq (! "\n") .)) "\n")) "block:" (: text (* (seq (! "\n") .))) "\n")
+          (. text length)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ window-large-lookahead-source _
+  (call (. "" join) (in (str "block:" (* "abcdefghijklmnopqrstuvwxyz-" 24) each "\n") (..< 0 70)))
+)

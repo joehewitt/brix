@@ -1,0 +1,39 @@
+; benchmark.meta description: Repeats distance and parameter path queries after point tables are warm.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/path)
+(import /graphics/primitives)
+(import /math)
+(blank)
+
+(main
+  (let path (call line-path))
+  (let path-length (. path length))
+  (let checksum (call numeric-check path-length))
+  (blank)
+  (for (in pass (..< 0 900))
+    (let f (as pass Float))
+    (let distance (% f path-length))
+    (let t (call (. path get-parameter-at-distance) distance))
+    (let point (call (. path get-point-at-distance) distance))
+    (+= checksum (+ (call numeric-check t) (call numeric-check (. point x)) (call numeric-check (. point y))))
+  )
+  (blank)
+  (print (str "bench-result graphics/path-distance-hot checksum=" checksum))
+)
+
+(fn-do _ line-path _
+  (let path (call Path))
+  (call (. path move-to) 0 0)
+  (for (in i (..< 0 160))
+    (let f (as i Float))
+    (call (. path line-to) (+ (* f 2) 1) (+ 30 (% f 17)))
+  )
+  (return path)
+)
+
+(fn-expr _ numeric-check Size
+  (param value Coord)
+  (% (as (call abs (* value 1000)) Size) 1000003)
+)

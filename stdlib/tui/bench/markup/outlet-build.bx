@@ -1,0 +1,56 @@
+; benchmark.meta description: Builds components whose slot outlets have fallback content and attributes, unfilled and filled.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: markup-runtime,compile-timing
+(blank)
+(import /core/markup)
+(import /tui/box)
+(import /tui/text)
+(blank)
+
+(main
+  (let count Size 20000)
+  (let checksum Size 0)
+  (for (in index (..< 0 count))
+    (+= checksum (+ (call outlet-children (call plain-card)) (call outlet-children (call filled-card index))))
+  )
+  (print (str "bench-result markup/outlet-build checksum=" checksum))
+)
+
+(fn-do + plain-card OutletCard
+  (<> OutletCard (id: card))
+  (return card)
+)
+
+(fn-do + filled-card OutletCard
+  (param index Size)
+  (<> OutletCard (id: card)
+    (<> Label (slot: heading) (value: (str "title " index)))
+    (<> Label (value: "body"))
+  )
+  (return card)
+)
+
+(fn-do + outlet-children Size
+  (param box Box)
+  (let total Size 0)
+  (for (in child (. box structural-children))
+    (+= total (+ 1 (call outlet-children child)))
+  )
+  (return total)
+)
+
+(type + OutletCard (is Box)
+  (prop + title _ (= "card"))
+  (content
+    (<> This
+      (+<> Label (id: heading)
+        (= text #title)
+      )
+      (+<> Box
+        (<> Label (value: "empty"))
+        (<> Label (value: "card"))
+      )
+      (+<> Label (id: footer))
+    )
+  )
+)

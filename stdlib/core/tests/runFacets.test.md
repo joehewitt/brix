@@ -2,32 +2,29 @@
 
 ### A module named after another beside it belongs to that module's file family, and is built for every platform
 
-```yumi
-./lib/box
+```brix
+(import ./lib/box)
+(blank)
 
--- box-name()
+(main
+  (print (call box-name))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.scroll)
 
-./box.scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ box-name String
-
-"box ${scroll-name()}"
-
+(fn-expr + box-name String
+  (str "box " (call scroll-name))
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ scroll-name String
-
-"scroll"
-
+(fn-expr + scroll-name String
+  "scroll"
+)
 ```
 
 ```output
@@ -36,66 +33,65 @@ box scroll
 
 ### Only a module's file family can import the family's modules
 
-```yumi compile-error
-./lib/box.scroll
+```brix compile-error
+(import ./lib/box.scroll)
+(blank)
 
--- 1
+(main
+  (print 1)
+)
 ```
 
-```yumi file=lib/box.yumi
-
--- 2
+```brix file=lib/box.bx
+(main
+  (print 2)
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
-
--- 3
+```brix file=lib/box.scroll.bx
+(main
+  (print 3)
+)
 ```
 
 ```output
-Exception: Module "./lib/box.scroll" belongs to the file family of box.yumi, so only that family can import it
+Exception: Module "./lib/box.scroll" belongs to the file family of box.bx, so only that family can import it
 <no file:2>
-    ./lib/box.scroll
-    ^^^^^^^^^^^^^^^^
+    (import ./lib/box.scroll)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### One module of a family can import another
 
-```yumi
-./lib/box
+```brix
+(import ./lib/box)
+(blank)
 
--- box-name()
+(main
+  (print (call box-name))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.scroll)
 
-./box.scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ box-name String
-
-scroll-name()
-
+(fn-expr + box-name String
+  (call scroll-name)
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box.focus)
 
-./box.focus
-
-━━━━━━━━━━━━━━━━━━━━
-+ scroll-name String
-
-"scroll ${focus-name()}"
-
+(fn-expr + scroll-name String
+  (str "scroll " (call focus-name))
+)
 ```
 
-```yumi file=lib/box.focus.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ focus-name String
-
-"focus"
-
+```brix file=lib/box.focus.bx
+(fn-expr + focus-name String
+  "focus"
+)
 ```
 
 ```output
@@ -104,41 +100,36 @@ scroll focus
 
 ### A facet's stored property is held in its class's objects, with the value the facet writes for it, and its methods are the class's
 
-```yumi
-./lib/box
+```brix
+(import ./lib/box)
+(blank)
 
-. box = Box()
--- box.offset
-box.scroll-to(5)
--- box.offset
+(main
+  (let box (call Box))
+  (print (. box offset))
+  (call (. box scroll-to) 5)
+  (print (. box offset))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.scroll)
 
-./box.scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ width = 10
-
+(type + Box
+  (prop + width _ (= 10))
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-+ offset = 3
-
-────────────────────
-+ do scroll-to
-    - point Int
-
-offset = point + width
-
+(type + BoxScroll (facet-of Box)
+  (prop + offset _ (= 3))
+  (fn-do + scroll-to _
+    (param point Int)
+    (= offset (+ point width))
+  )
+)
 ```
 
 ```output
@@ -148,51 +139,42 @@ offset = point + width
 
 ### The class's own code uses its facets' public members by name, as its own
 
-```yumi
-./lib/box
+```brix
+(import ./lib/box)
+(blank)
 
-. box = Box()
-box.grow()
--- box.describe()
+(main
+  (let box (call Box))
+  (call (. box grow))
+  (print (call (. box describe)))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.scroll)
 
-./box.scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ width = 10
-
-────────────────────
-+ describe String
-
-"width $width offset $offset"
-
-────────────────────
-+ do grow
-
-scroll-to(2)
-this.offset += 1
-
+(type + Box
+  (prop + width _ (= 10))
+  (fn-expr + describe String
+    (str "width " width " offset " offset)
+  )
+  (fn-do + grow _
+    (call scroll-to 2)
+    (+= (. this offset) 1)
+  )
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-+ offset = 3
-
-────────────────────
-+ do scroll-to
-    - point Int
-
-offset = point + width
-
+(type + BoxScroll (facet-of Box)
+  (prop + offset _ (= 3))
+  (fn-do + scroll-to _
+    (param point Int)
+    (= offset (+ point width))
+  )
+)
 ```
 
 ```output
@@ -201,55 +183,47 @@ width 10 offset 13
 
 ### A class derived from one with facets has their properties, given their values by its constructors, after the class's own and before its own
 
-```yumi
-./lib/panel
+```brix
+(import ./lib/panel)
+(blank)
 
-. panel = Panel()
--- panel.offset
--- panel.title
-panel.scroll-to(1)
--- panel.offset
--- panel.area
+(main
+  (let panel (call Panel))
+  (print (. panel offset))
+  (print (. panel title))
+  (call (. panel scroll-to) 1)
+  (print (. panel offset))
+  (print (. panel area))
+)
 ```
 
-```yumi file=lib/panel.yumi
+```brix file=lib/panel.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ title = "main"
-
+(type + Panel (is Box)
+  (prop + title _ (= "main"))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.scroll)
 
-./box.scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ width = 10
-
+(type + Box
+  (prop + width _ (= 10))
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-+ offset = 3
-+ area := width * 2
-
-────────────────────
-+ do scroll-to
-    - point Int
-
-offset = point + width
-
+(type + BoxScroll (facet-of Box)
+  (prop + offset _ (= 3))
+  (prop + area _ (:= (* width 2)))
+  (fn-do + scroll-to _
+    (param point Int)
+    (= offset (+ point width))
+  )
+)
 ```
 
 ```output
@@ -261,41 +235,36 @@ main
 
 ### A facet reaches its class's private members and its module's private declarations, which the class's module does not reach of the facet's
 
-```yumi
-./lib/box
+```brix
+(import ./lib/box)
+(blank)
 
--- Box().measure()
+(main
+  (print (call (. (call Box) measure)))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.scroll)
 
-./box.scroll
+(type + Box
+  (prop _ width _ (= 10))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-_ width = 10
-
-━━━━━━━━━━━━━━━━━━━━
-_ doubled Int
-    - value Int
-
-value * 2
-
+(fn-expr _ doubled Int
+  (param value Int)
+  (* value 2)
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-────────────────────
-+ measure Int
-
-doubled(width)
-
+(type + BoxScroll (facet-of Box)
+  (fn-expr + measure Int
+    (call doubled width)
+  )
+)
 ```
 
 ```output
@@ -304,51 +273,43 @@ doubled(width)
 
 ### A facet can be part of another facet, and reaches its members and its class's
 
-```yumi
-./lib/box
+```brix
+(import ./lib/box)
+(blank)
 
-. box = Box()
--- box.indicator-text()
+(main
+  (let box (call Box))
+  (print (call (. box indicator-text)))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.scroll)
+(import ./box.scroll.indicator)
 
-./box.scroll
-./box.scroll.indicator
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ width = 10
-
+(type + Box
+  (prop + width _ (= 10))
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-+ offset = 3
-
+(type + BoxScroll (facet-of Box)
+  (prop + offset _ (= 3))
+)
 ```
 
-```yumi file=lib/box.scroll.indicator.yumi
+```brix file=lib/box.scroll.indicator.bx
+(import ./box)
+(import ./box.scroll)
 
-./box
-./box.scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScrollIndicator is facet of BoxScroll
-
-+ shown = true
-
-────────────────────
-+ indicator-text String
-
-"$shown $offset $width"
-
+(type + BoxScrollIndicator (facet-of BoxScroll)
+  (prop + shown _ (= true))
+  (fn-expr + indicator-text String
+    (str shown " " offset " " width)
+  )
+)
 ```
 
 ```output
@@ -357,74 +318,56 @@ true 3 10
 
 ### Facets of one class name their private members as they like, and each module reaches its own
 
-```yumi
-./lib/box
+```brix
+(import ./lib/box)
+(blank)
 
-. box = Box()
--- box.scroll-text()
--- box.focus-text()
+(main
+  (let box (call Box))
+  (print (call (. box scroll-text)))
+  (print (call (. box focus-text)))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.focus)
+(import ./box.scroll)
 
-./box.focus
-./box.scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
+(type + Box)
 ```
 
-```yumi file=lib/box.focus.yumi
+```brix file=lib/box.focus.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxFocus is facet of Box
-
-_ cursor = "focus"
-
-────────────────────
-_ get marker String
-
-"focus marker"
-
-────────────────────
-_ helper String
-
-"focus helper"
-
-────────────────────
-+ focus-text String
-
-"$cursor $marker ${helper()}"
-
+(type + BoxFocus (facet-of Box)
+  (prop _ cursor _ (= "focus"))
+  (fn-expr _ marker String :get
+    "focus marker"
+  )
+  (fn-expr _ helper String
+    "focus helper"
+  )
+  (fn-expr + focus-text String
+    (str cursor " " marker " " (call helper))
+  )
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-_ cursor = 7
-
-────────────────────
-_ get marker Int
-
-cursor + 1
-
-────────────────────
-_ helper String
-
-"scroll helper"
-
-────────────────────
-+ scroll-text String
-
-"$cursor $marker ${helper()}"
-
+(type + BoxScroll (facet-of Box)
+  (prop _ cursor _ (= 7))
+  (fn-expr _ marker Int :get
+    (+ cursor 1)
+  )
+  (fn-expr _ helper String
+    "scroll helper"
+  )
+  (fn-expr + scroll-text String
+    (str cursor " " marker " " (call helper))
+  )
+)
 ```
 
 ```output
@@ -434,53 +377,45 @@ focus focus marker focus helper
 
 ### A facet reaches the public members of the facets it sees, on its own object and on any other of its class, and code outside the family reaches every facet's
 
-```yumi
-./lib/box
+```brix
+(import ./lib/box)
+(blank)
 
-. box = Box()
-. other = Box()
--- box.scroll-text(other)
--- box.focused
--- box.offset
+(main
+  (let box (call Box))
+  (let other (call Box))
+  (print (call (. box scroll-text) other))
+  (print (. box focused))
+  (print (. box offset))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.focus)
+(import ./box.scroll)
 
-./box.focus
-./box.scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
+(type + Box)
 ```
 
-```yumi file=lib/box.focus.yumi
+```brix file=lib/box.focus.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxFocus is facet of Box
-
-+ focused = true
-
+(type + BoxFocus (facet-of Box)
+  (prop + focused _ (= true))
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-    sees BoxFocus
-
-+ offset = 3
-
-────────────────────
-+ scroll-text String
-    - other Box
-
-"$focused ${other.focused} ${other.offset}"
-
+(type + BoxScroll (facet-of Box)
+  (sees BoxFocus)
+  (prop + offset _ (= 3))
+  (fn-expr + scroll-text String
+    (param other Box)
+    (str focused " " (. other focused) " " (. other offset))
+  )
+)
 ```
 
 ```output
@@ -491,173 +426,138 @@ true
 
 ### A facet does not reach a sibling it does not see, on its own object or on another of its class
 
-```yumi compile-error
-./lib/box
+```brix compile-error
+(import ./lib/box)
+(blank)
 
--- Box().scroll-text(Box())
--- Box().focused-text(Box())
--- Box().ring-text(Box())
+(main
+  (print (call (. (call Box) scroll-text) (call Box)))
+  (print (call (. (call Box) focused-text) (call Box)))
+  (print (call (. (call Box) ring-text) (call Box)))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.focus)
+(import ./box.scroll)
 
-./box.focus
-./box.scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
+(type + Box)
 ```
 
-```yumi file=lib/box.focus.yumi
+```brix file=lib/box.focus.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxFocus is facet of Box
-
-+ focused = true
-
-────────────────────
-^ ring Int
-
-2
-
+(type + BoxFocus (facet-of Box)
+  (prop + focused _ (= true))
+  (fn-expr ^ ring Int
+    2
+  )
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-────────────────────
-+ scroll-text String
-    - other Box
-
-"$focused"
-
-────────────────────
-+ focused-text String
-    - other Box
-
-"${other.focused}"
-
-────────────────────
-+ ring-text String
-    - other Box
-
-"${other.ring()}"
-
+(type + BoxScroll (facet-of Box)
+  (fn-expr + scroll-text String
+    (param other Box)
+    (str focused)
+  )
+  (fn-expr + focused-text String
+    (param other Box)
+    (str (. other focused))
+  )
+  (fn-expr + ring-text String
+    (param other Box)
+    (str (call (. other ring)))
+  )
+)
 ```
 
 ```output
 Exception: Name "focused" not found; facet BoxFocus declares it, and only the facets a facet sees are in reach. Write "sees BoxFocus" under the facet that uses it
-<lib/box.scroll.yumi:11>
-    "$focused"
-      ^^^^^^^
+<lib/box.scroll.bx:6>
+        (str focused)
+             ^^^^^^^
 
 Exception: Box has no property "focused" here; facet BoxFocus declares it, and only the facets a facet sees are in reach. Write "sees BoxFocus" under the facet that uses it
-<lib/box.scroll.yumi:17>
-    "${other.focused}"
-       ^^^^^
+<lib/box.scroll.bx:10>
+        (str (. other focused))
+             ^^^^^^^^^^^^^^^^^
 
 Exception: Box has no method "ring" here; facet BoxFocus declares it, and only the facets a facet sees are in reach. Write "sees BoxFocus" under the facet that uses it
-<lib/box.scroll.yumi:23>
-    "${other.ring()}"
-       ^^^^^^^^^^^^
+<lib/box.scroll.bx:14>
+        (str (call (. other ring)))
+             ^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A member declared with ^ is shared with its class's file family: the class's own code, the facets that see its facet and the family's other modules reach it, on any object of the class
 
-```yumi
-./lib/box
+```brix
+(import ./lib/box)
+(blank)
 
-. box = Box()
-box.grow()
--- box.describe()
--- Box().describe()
+(main
+  (let box (call Box))
+  (call (. box grow))
+  (print (call (. box describe)))
+  (print (call (. (call Box) describe)))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.focus)
+(import ./box.scroll)
+(import ./box.tools)
 
-./box.focus
-./box.scroll
-./box.tools
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-^ width = 10
-
-────────────────────
-+ This
-
-────────────────────
-^ This
-    - start Int
-
-width = start
-
-────────────────────
-+ describe String
-
-"$offset ${focus-text()} ${tools-text(this)}"
-
-────────────────────
-+ do grow
-
-keep-end()
-
+(type + Box
+  (prop ^ width _ (= 10))
+  (fn-do + This _)
+  (fn-do ^ This _
+    (param start Int)
+    (= width start)
+  )
+  (fn-expr + describe String
+    (str offset " " (call focus-text) " " (call tools-text this))
+  )
+  (fn-do + grow _
+    (call keep-end)
+  )
+)
 ```
 
-```yumi file=lib/box.focus.yumi
+```brix file=lib/box.focus.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxFocus is facet of Box
-    sees BoxScroll
-
-────────────────────
-+ focus-text String
-
-"${pinned()} $width"
-
+(type + BoxFocus (facet-of Box)
+  (sees BoxScroll)
+  (fn-expr + focus-text String
+    (str (call pinned) " " width)
+  )
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-^ offset = 3
-
-────────────────────
-^ pinned Bool
-
-offset > 3
-
-────────────────────
-^ do keep-end
-
-offset = width + 1
-
+(type + BoxScroll (facet-of Box)
+  (prop ^ offset _ (= 3))
+  (fn-expr ^ pinned Bool
+    (> offset 3)
+  )
+  (fn-do ^ keep-end _
+    (= offset (+ width 1))
+  )
+)
 ```
 
-```yumi file=lib/box.tools.yumi
+```brix file=lib/box.tools.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ tools-text String
-    - box Box
-
-"${box.offset} ${box.pinned()} ${box.width} ${Box(4).width}"
-
+(fn-expr + tools-text String
+  (param box Box)
+  (str (. box offset) " " (call (. box pinned)) " " (. box width) " " (. (call Box 4) width))
+)
 ```
 
 ```output
@@ -667,286 +567,243 @@ offset = width + 1
 
 ### Code outside a class's file family can't use a member declared with ^, nor can a class below it there, and a module declares its own values, functions and types with + or _
 
-```yumi compile-error
-./lib/other
+```brix compile-error
+(import ./lib/other)
+(blank)
 
-keep()
--- other-text()
+(main
+  (call keep)
+  (print (call other-text))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.scroll)
 
-./box.scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-^ width = 10
-
-────────────────────
-+ This
-
-────────────────────
-^ This
-    - start Int
-
-width = start
-
+(type + Box
+  (prop ^ width _ (= 10))
+  (fn-do + This _)
+  (fn-do ^ This _
+    (param start Int)
+    (= width start)
+  )
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-^ offset = 3
-
-────────────────────
-^ do keep-end
-
-offset = width + 1
-
+(type + BoxScroll (facet-of Box)
+  (prop ^ offset _ (= 3))
+  (fn-do ^ keep-end _
+    (= offset (+ width 1))
+  )
+)
 ```
 
-```yumi file=lib/other.yumi
+```brix file=lib/other.bx
+(import ./box)
+(import ./helper)
+(import ./kinds)
+(blank)
+(prop ^ limit _ (= 3))
 
-./box
-./helper
-./kinds
+(fn-expr + other-text String
+  (str (call width) " " (call offset) " " (call made) " " (call (. (call Panel) panel-text)))
+)
 
-^ limit = 3
+(fn-do + keep _
+  (call (. (call Box) keep-end))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ other-text String
+(fn-expr + width Int
+  (. (call Box) width)
+)
 
-"${width()} ${offset()} ${made()} ${Panel().panel-text()}"
+(fn-expr + offset Int
+  (. (call Box) offset)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do keep
+(fn-expr + made Int
+  (. (call Box 5) width)
+)
 
-Box().keep-end()
-
-━━━━━━━━━━━━━━━━━━━━
-+ width Int
-
-Box().width
-
-━━━━━━━━━━━━━━━━━━━━
-+ offset Int
-
-Box().offset
-
-━━━━━━━━━━━━━━━━━━━━
-+ made Int
-
-Box(5).width
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-────────────────────
-+ panel-text String
-
-"${this.width}"
-
+(type + Panel (is Box)
+  (fn-expr + panel-text String
+    (str (. this width))
+  )
+)
 ```
 
-```yumi file=lib/helper.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-^ helper Int
-
-1
-
+```brix file=lib/helper.bx
+(fn-expr ^ helper Int
+  1
+)
 ```
 
-```yumi file=lib/kinds.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-^ Kind
-
+```brix file=lib/kinds.bx
+(type ^ Kind)
 ```
 
 ```output
 Exception: Only a member can be shared with its file family; declare this + or _
-<lib/helper.yumi:3>
-    ^ helper Int
-    ^^^^^^^^^^^
+<lib/helper.bx:1>
+    (fn-expr ^ helper Int
+    ^^^^^^^^^^^^^^^^^^^^
 
 Exception: Only a member can be shared with its file family; declare this + or _
-<lib/kinds.yumi:3>
-    ^ Kind
-    ^^^^^
+<lib/kinds.bx:1>
+    (type ^ Kind)
+    ^^^^^^^^^^^^^
 
 Exception: Only a member can be shared with its file family; declare this + or _
-<lib/other.yumi:6>
-    ^ limit = 3
-    ^^^^^^^^^^^
+<lib/other.bx:5>
+    (prop ^ limit _ (= 3))
+    ^^^^^^^^^^^^^^^^^^^^^^
 
 Exception: Method "keep-end" of Box is shared, declared with ^, so only its own file family can call it
-<lib/other.yumi:16>
-    Box().keep-end()
-    ^^^^^^^^^^^^^^^^
+<lib/other.bx:12>
+      (call (. (call Box) keep-end))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Exception: Property "width" is shared, declared with ^, so only its own file family can use it
-<lib/other.yumi:21>
-    Box().width
-    ^^^^^^^^^^^
+<lib/other.bx:16>
+      (. (call Box) width)
+      ^^^^^^^^^^^^^^^^^^^^
 
 Exception: Property "offset" is shared, declared with ^, so only its own file family can use it
-<lib/other.yumi:26>
-    Box().offset
-    ^^^^^^^^^^^^
+<lib/other.bx:20>
+      (. (call Box) offset)
+      ^^^^^^^^^^^^^^^^^^^^^
 
 Exception: No constructor of Box accepts (I64); its declared constructors are "Box()"; "Box(start Int)" is shared with its file family
-<lib/other.yumi:31>
-    Box(5).width
-    ^^^
+<lib/other.bx:24>
+      (. (call Box 5) width)
+               ^^^
 
 Exception: Property "width" is shared, declared with ^, so only its own file family can use it
-<lib/other.yumi:39>
-    "${this.width}"
-       ^^^^
+<lib/other.bx:29>
+        (str (. this width))
+             ^^^^^^^^^^^^^^
 ```
 
 ### A member declared with ^ takes its name as a public one does: no two facets of a class declare it, and a class below the class declares it only as a public one's
 
-```yumi compile-error
-./lib/panel
+```brix compile-error
+(import ./lib/panel)
+(blank)
 
--- 1
+(main
+  (print 1)
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.focus)
+(import ./box.scroll)
 
-./box.focus
-./box.scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
+(type + Box)
 ```
 
-```yumi file=lib/box.focus.yumi
+```brix file=lib/box.focus.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxFocus is facet of Box
-
-^ step = 1
-
+(type + BoxFocus (facet-of Box)
+  (prop ^ step _ (= 1))
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-+ step = 2
-
+(type + BoxScroll (facet-of Box)
+  (prop + step _ (= 2))
+)
 ```
 
-```yumi file=lib/panel.yumi
+```brix file=lib/panel.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-_ step => 3
-
+(type + Panel (is Box)
+  (prop _ step _ (=> 3))
+)
 ```
 
 ```output
 Exception: Facets BoxFocus and BoxScroll of Box both declare step; a facet's members that are not private are its class's, so a name is one facet's
-<lib/box.focus.yumi:7>
-    ^ step = 1
-    ^^^^^^^^^^
+<lib/box.focus.bx:4>
+      (prop ^ step _ (= 1))
+      ^^^^^^^^^^^^^^^^^^^^^
 
 Exception: Facets BoxScroll and BoxFocus of Box both declare step; a facet's members that are not private are its class's, so a name is one facet's
-<lib/box.scroll.yumi:7>
-    + step = 2
-    ^^^^^^^^^^
+<lib/box.scroll.bx:4>
+      (prop + step _ (= 2))
+      ^^^^^^^^^^^^^^^^^^^^^
 
 Exception: Panel can't declare step, since facet BoxFocus of Box declares it
-<lib/panel.yumi:7>
-    _ step => 3
-    ^^^^^^^^^^^
+<lib/panel.bx:4>
+      (prop _ step _ (=> 3))
+      ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A facet declares events, which its class's objects publish: the facet, the class and the facets that see it name one alone, and other code reaches it on the object
 
-```yumi
-./lib/box
+```brix
+(import ./lib/box)
+(blank)
 
-. box = Box()
-. other = Box()
-box.watch(other)
-for value on box.scrolled
-    -- "heard $value"
-box.scroll-by(3)
-box.jump()
-box.nudge()
-other.scroll-by(7)
+(main
+  (let box (call Box))
+  (let other (call Box))
+  (call (. box watch) other)
+  (for (on value (. box scrolled))
+    (print (str "heard " value))
+  )
+  (call (. box scroll-by) 3)
+  (call (. box jump))
+  (call (. box nudge))
+  (call (. other scroll-by) 7)
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.focus)
+(import ./box.scroll)
 
-./box.focus
-./box.scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-────────────────────
-+ do jump
-
-scrolled <- 10
-
+(type + Box
+  (fn-do + jump _
+    (<- scrolled 10)
+  )
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-+ event scrolled Int
-
-────────────────────
-+ do scroll-by
-    - amount Int
-
-scrolled <- amount
-
+(type + BoxScroll (facet-of Box)
+  (event + scrolled Int)
+  (fn-do + scroll-by _
+    (param amount Int)
+    (<- scrolled amount)
+  )
+)
 ```
 
-```yumi file=lib/box.focus.yumi
+```brix file=lib/box.focus.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxFocus is facet of Box
-    sees BoxScroll
-
-────────────────────
-+ do nudge
-
-scrolled <- 1
-
-────────────────────
-+ do watch
-    - other Box
-
-for value on other.scrolled
-    -- "focus heard $value"
-
+(type + BoxFocus (facet-of Box)
+  (sees BoxScroll)
+  (fn-do + nudge _
+    (<- scrolled 1)
+  )
+  (fn-do + watch _
+    (param other Box)
+    (for (on value (. other scrolled))
+      (print (str "focus heard " value))
+    )
+  )
+)
 ```
 
 ```output
@@ -958,65 +815,58 @@ focus heard 7
 
 ### A facet's private event is its own file's and its shared one its class's family's, and closing an object ends what subscribes to its facets' events
 
-```yumi
-./lib/box
+```brix
+(import ./lib/box)
+(blank)
 
-. box = Box()
-box.listen()
-box.track()
-for value on box.scrolled
-    -- "heard $value"
-box.scroll-by(1)
-box.close()
-box.scroll-by(2)
--- "done"
+(main
+  (let box (call Box))
+  (call (. box listen))
+  (call (. box track))
+  (for (on value (. box scrolled))
+    (print (str "heard " value))
+  )
+  (call (. box scroll-by) 1)
+  (call (. box close))
+  (call (. box scroll-by) 2)
+  (print "done")
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.scroll)
 
-./box.scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-────────────────────
-+ do listen
-
-for value on pinned
-    -- "pinned $value"
-
-────────────────────
-+ do close
-
--- "closed"
-
+(type + Box
+  (fn-do + listen _
+    (for (on value pinned)
+      (print (str "pinned " value))
+    )
+  )
+  (fn-do + close _
+    (print "closed")
+  )
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-+ event scrolled Int
-^ event pinned Bool
-_ event moved Int
-
-────────────────────
-+ do track
-
-for value on moved
-    -- "moved $value"
-
-────────────────────
-+ do scroll-by
-    - amount Int
-
-moved <- amount
-pinned <- (amount > 1)
-scrolled <- amount
-
+(type + BoxScroll (facet-of Box)
+  (event + scrolled Int)
+  (event ^ pinned Bool)
+  (event _ moved Int)
+  (fn-do + track _
+    (for (on value moved)
+      (print (str "moved " value))
+    )
+  )
+  (fn-do + scroll-by _
+    (param amount Int)
+    (<- moved amount)
+    (<- pinned (> amount 1))
+    (<- scrolled amount)
+  )
+)
 ```
 
 ```output
@@ -1029,63 +879,52 @@ done
 
 ### A facet's public event bubbles on an EventNode class, and an ancestor outside the family names it by its class
 
-```yumi
-./lib/picker
+```brix
+(import ./lib/picker)
+(blank)
 
-. root = Panel("root")
-. inner = Picker("inner", root)
-inner.pick("a")
+(main
+  (let root (call Panel "root"))
+  (let inner (call Picker "inner" root))
+  (call (. inner pick) "a")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Node
-
-────────────────────
-for value on Picker.picked
-
--- "$name heard $value"
+(type + Panel (is Node)
+  (subscribe-for (on value (. Picker picked))
+    (print (str name " heard " value))
+  )
+)
 ```
 
-```yumi file=lib/picker.yumi
+```brix file=lib/picker.bx
+(import ./picker.pick)
 
-./picker.pick
+(type + Node
+  (implements EventNode)
+  (prop + name String)
+  (prop + up (? Node))
+  (fn-do + This _
+    (param name _)
+    (param up _ (= null))
+  )
+  (fn-expr + event-parent (? EventNode) :get
+    up
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Node
-    is EventNode
-
-+ name String
-+ up Node?
-
-────────────────────
-+ This
-    - name
-    - up = null
-
-────────────────────
-+ get event-parent EventNode?
-
-up
-
-━━━━━━━━━━━━━━━━━━━━
-+ Picker is Node
-
+(type + Picker (is Node))
 ```
 
-```yumi file=lib/picker.pick.yumi
+```brix file=lib/picker.pick.bx
+(import ./picker)
 
-./picker
-
-━━━━━━━━━━━━━━━━━━━━
-+ PickerPick is facet of Picker
-
-+ event picked String
-
-────────────────────
-+ do pick
-    - text String
-
-picked <- text
-
+(type + PickerPick (facet-of Picker)
+  (event + picked String)
+  (fn-do + pick _
+    (param text String)
+    (<- picked text)
+  )
+)
 ```
 
 ```output
@@ -1094,242 +933,206 @@ root heard a
 
 ### Code reaches a facet's events as it reaches its other members, an event's name is its class's alone, and a facet's event carries a value
 
-```yumi compile-error
-./lib/box
-./lib/other
-./lib/panel
+```brix compile-error
+(import ./lib/box)
+(import ./lib/other)
+(import ./lib/panel)
+(blank)
 
-. box = Box()
-box.peek()
-box.nudge()
-box.watch(box)
-hear(box)
+(main
+  (let box (call Box))
+  (call (. box peek))
+  (call (. box nudge))
+  (call (. box watch) box)
+  (call hear box)
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.blink)
+(import ./box.focus)
+(import ./box.held)
+(import ./box.scroll)
 
-./box.blink
-./box.focus
-./box.held
-./box.scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-────────────────────
-+ do peek
-
-for value on this.moved
-    -- value
-
+(type + Box
+  (fn-do + peek _
+    (for (on value (. this moved))
+      (print value)
+    )
+  )
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-+ event scrolled Int
-^ event pinned Bool
-_ event moved Int
-_ event shaken Int
-
+(type + BoxScroll (facet-of Box)
+  (event + scrolled Int)
+  (event ^ pinned Bool)
+  (event _ moved Int)
+  (event _ shaken Int)
+)
 ```
 
-```yumi file=lib/box.focus.yumi
+```brix file=lib/box.focus.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxFocus is facet of Box
-
-_ event shaken Int
-
-────────────────────
-+ do nudge
-
-scrolled <- 1
-
-────────────────────
-+ do watch
-    - other Box
-
-for value on other.scrolled
-    -- value
-
+(type + BoxFocus (facet-of Box)
+  (event _ shaken Int)
+  (fn-do + nudge _
+    (<- scrolled 1)
+  )
+  (fn-do + watch _
+    (param other Box)
+    (for (on value (. other scrolled))
+      (print value)
+    )
+  )
+)
 ```
 
-```yumi file=lib/box.blink.yumi
+```brix file=lib/box.blink.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxBlink is facet of Box
-
-+ event blinked Void
-
+(type + BoxBlink (facet-of Box)
+  (event + blinked Void)
+)
 ```
 
-```yumi file=lib/box.held.yumi
+```brix file=lib/box.held.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxHeld is facet of Box
-
-_ held = 1
-_ event held Int
-
+(type + BoxHeld (facet-of Box)
+  (prop _ held _ (= 1))
+  (event _ held Int)
+)
 ```
 
-```yumi file=lib/other.yumi
+```brix file=lib/other.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ do hear
-    - box Box
-
-for value on box.pinned
-    -- value
-
+(fn-do + hear _
+  (param box Box)
+  (for (on value (. box pinned))
+    (print value)
+  )
+)
 ```
 
-```yumi file=lib/panel.yumi
+```brix file=lib/panel.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ event scrolled Int
-
+(type + Panel (is Box)
+  (event + scrolled Int)
+)
 ```
 
 ```output
 Exception: An event gives each subscriber a value, so it cannot carry Void; an event that only signals carries Bool, as in "+ event blinked Bool"
-<lib/box.blink.yumi:7>
-    + event blinked Void
-                    ^^^^
+<lib/box.blink.bx:4>
+      (event + blinked Void)
+                       ^^^^
 
 Exception: Facets BoxFocus and BoxScroll of Box both declare shaken; an event's name is its class's alone, private or not
-<lib/box.focus.yumi:7>
-    _ event shaken Int
-    ^^^^^^^^^^^^^^^^^^
+<lib/box.focus.bx:4>
+      (event _ shaken Int)
+      ^^^^^^^^^^^^^^^^^^^^
 
 Exception: Name "scrolled" not found; facet BoxScroll declares it, and only the facets a facet sees are in reach. Write "sees BoxScroll" under the facet that uses it
-<lib/box.focus.yumi:12>
-    scrolled <- 1
-    ^^^^^^^^
+<lib/box.focus.bx:6>
+        (<- scrolled 1)
+            ^^^^^^^^
 
 Exception: Box has no property "scrolled" here; facet BoxScroll declares it, and only the facets a facet sees are in reach. Write "sees BoxScroll" under the facet that uses it
-<lib/box.focus.yumi:18>
-    for value on other.scrolled
-                 ^^^^^^^^^^^^^^
+<lib/box.focus.bx:10>
+        (for (on value (. other scrolled))
+                       ^^^^^^^^^^^^^^^^^^
 
 Exception: Redefinition of class member
-<lib/box.held.yumi:8>
-    _ event held Int
-    ^^^^^^^^^^^^^^^^
+<lib/box.held.bx:5>
+      (event _ held Int)
+      ^^^^^^^^^^^^^^^^^^
 
 Exception: Event "pinned" is shared, declared with ^, so only its own file family can use it
-<lib/box.scroll.yumi:8>
-    ^ event pinned Bool
-    ^^^^^^^^^^^^^^^^^^^
+<lib/box.scroll.bx:5>
+      (event ^ pinned Bool)
+      ^^^^^^^^^^^^^^^^^^^^^
 
 Exception: Event "moved" is private
-<lib/box.scroll.yumi:9>
-    _ event moved Int
-    ^^^^^^^^^^^^^^^^^
+<lib/box.scroll.bx:6>
+      (event _ moved Int)
+      ^^^^^^^^^^^^^^^^^^^
 
 Exception: Facets BoxScroll and BoxFocus of Box both declare shaken; an event's name is its class's alone, private or not
-<lib/box.scroll.yumi:10>
-    _ event shaken Int
-    ^^^^^^^^^^^^^^^^^^
+<lib/box.scroll.bx:7>
+      (event _ shaken Int)
+      ^^^^^^^^^^^^^^^^^^^^
 
 Exception: Panel can't declare scrolled, since facet BoxScroll of Box declares it
-<lib/panel.yumi:7>
-    + event scrolled Int
-    ^^^^^^^^^^^^^^^^^^^^
+<lib/panel.bx:4>
+      (event + scrolled Int)
+      ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A class below one with facets overrides a facet's methods, computed properties and setters, which code calls through the owner's type and the facet through this, and its override reaches the facet's own through super
 
-```yumi
-./lib/box
-./lib/panel
+```brix
+(import ./lib/box)
+(import ./lib/panel)
+(blank)
 
-. box Box = Panel()
-box.title = "a"
--- box.describe()
--- box.label
--- box.shout()
--- box.last
-. plain = Box()
-plain.title = "b"
--- plain.describe()
--- plain.label
--- plain.shout()
--- plain.last
+(main
+  (let box Box (call Panel))
+  (= (. box title) "a")
+  (print (call (. box describe)))
+  (print (. box label))
+  (print (call (. box shout)))
+  (print (. box last))
+  (let plain (call Box))
+  (= (. plain title) "b")
+  (print (call (. plain describe)))
+  (print (. plain label))
+  (print (call (. plain shout)))
+  (print (. plain last))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.text)
 
-./box.text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
+(type + Box)
 ```
 
-```yumi file=lib/box.text.yumi
+```brix file=lib/box.text.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxText is facet of Box
-
-+ last = ""
-+ label => "box"
-
-────────────────────
-+ describe String
-
-"plain $label"
-
-────────────────────
-+ shout String
-
-"${describe()}!"
-
-────────────────────
-+ do title = value String
-
-last = "box $value"
-
+(type + BoxText (facet-of Box)
+  (prop + last _ (= ""))
+  (prop + label _ (=> "box"))
+  (fn-expr + describe String
+    (str "plain " label)
+  )
+  (fn-expr + shout String
+    (str (call describe) "!")
+  )
+  (fn-do + title _ :set (param value String)
+    (= last (str "box " value))
+  )
+)
 ```
 
-```yumi file=lib/panel.yumi
+```brix file=lib/panel.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ label => "panel"
-
-────────────────────
-+ describe String
-
-"fancy ${super.describe()}"
-
-────────────────────
-+ do title = value String
-
-last = "panel $value"
-
+(type + Panel (is Box)
+  (prop + label _ (=> "panel"))
+  (fn-expr + describe String
+    (str "fancy " (call (. super describe)))
+  )
+  (fn-do + title _ :set (param value String)
+    (= last (str "panel " value))
+  )
+)
 ```
 
 ```output
@@ -1345,91 +1148,73 @@ box b
 
 ### A constructor's argument named after a facet's property gives it its value, a class below gives a facet's stored and lazy properties new values, which the facet's own code reads, and a facet's private property takes no argument's value outside its file
 
-```yumi
-./lib/box
-./lib/panel
+```brix
+(import ./lib/box)
+(import ./lib/panel)
+(blank)
 
-. box = Box(3, 4, 5, 6)
--- box.reach()
--- box.cached
--- box.secret()
--- Box().offset
--- Box().cached
--- Panel(8).offset
--- Panel().offset
--- Panel().reach()
--- Panel().cached
--- Tab().offset
--- Tab().cached
+(main
+  (let box (call Box 3 4 5 6))
+  (print (call (. box reach)))
+  (print (. box cached))
+  (print (call (. box secret)))
+  (print (. (call Box) offset))
+  (print (. (call Box) cached))
+  (print (. (call Panel 8) offset))
+  (print (. (call Panel) offset))
+  (print (call (. (call Panel) reach)))
+  (print (. (call Panel) cached))
+  (print (. (call Tab) offset))
+  (print (. (call Tab) cached))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.scroll)
 
-./box.scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ size = 1
-
-────────────────────
-+ This
-    - offset Int
-    - limit Int
-    - cached Int
-    - hidden Int
-
-size = hidden
-
-────────────────────
-+ This
-
+(type + Box
+  (prop + size _ (= 1))
+  (fn-do + This _
+    (param offset Int)
+    (param limit Int)
+    (param cached Int)
+    (param hidden Int)
+    (= size hidden)
+  )
+  (fn-do + This _)
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-+ offset = 0
-^ limit = 1
-+ cached := size * 100
-_ hidden = 2
-
-────────────────────
-+ reach Int
-
-offset + limit
-
-────────────────────
-+ secret Int
-
-hidden + size
-
+(type + BoxScroll (facet-of Box)
+  (prop + offset _ (= 0))
+  (prop ^ limit _ (= 1))
+  (prop + cached _ (:= (* size 100)))
+  (prop _ hidden _ (= 2))
+  (fn-expr + reach Int
+    (+ offset limit)
+  )
+  (fn-expr + secret Int
+    (+ hidden size)
+  )
+)
 ```
 
-```yumi file=lib/panel.yumi
+```brix file=lib/panel.bx
+(import ./box)
 
-./box
+(type + Panel (is Box)
+  (prop + offset _ (= 9))
+  (prop + cached _ (:= (* size 7)))
+  (fn-do + This _
+    (param offset Int)
+  )
+  (fn-do + This _)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ offset = 9
-+ cached := size * 7
-
-────────────────────
-+ This
-    - offset Int
-
-────────────────────
-+ This
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tab is Panel
-
+(type + Tab (is Panel))
 ```
 
 ```output
@@ -1448,70 +1233,65 @@ hidden + size
 
 ### A facet uses styles as its class would: the class's objects have them wherever the class is, the facet reads them as its own, and markup writes them on the class's elements
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
-./lib/card
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(import ./lib/card)
+(blank)
 
-<Deck demo
-    <Card
-        ink = 9
-        margin = 3
+(main
+  (<> Deck (id: demo)
+    (<> Card
+      (= ink 9)
+      (= margin 3)
+    )
+  )
+  (blank)
+  (let card (as (!! (. demo %first-child)) Card))
+  (print (call (. card describe)))
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call (. card describe)))
+  (print (. card $ink))
+)
 
-. card = demo.%first-child! as Card
--- card.describe()
-demo.markup-batch-queue.checkpoint()
--- card.describe()
--- card.$ink
-
-━━━━━━━━━━━━━━━━━━━━
-+ Deck is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + Deck (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 ```
 
-```yumi file=lib/card.yumi
+```brix file=lib/card.bx
+(import /core/style)
+(import /core/tests/support/markup-fixtures)
+(import ./card.paint)
 
-/core/style
-/core/tests/support/markup-fixtures
-./card.paint
+(type + Card (is Box))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Card is Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ CardStyle is Style
-
-+ @inherited ink I64 = 7
-+ margin I64 = 0
-
-. ink -> paint
-. margin -> layout
-
+(type + CardStyle (is Style)
+  (prop + ink I64 @inherited (= 7))
+  (prop + margin I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+  (style-domains margin (domain layout))
+)
 ```
 
-```yumi file=lib/card.paint.yumi
+```brix file=lib/card.paint.bx
+(import /core/style)
+(import ./card)
 
-/core/style
-./card
-
-━━━━━━━━━━━━━━━━━━━━
-+ CardPaint is facet of Card
-    using CardStyle
-
-────────────────────
-+ do describe String
-
-. ink = $ink
-. margin = $margin
-= "ink=$ink margin=$margin"
-
+(type + CardPaint (facet-of Card)
+  (using CardStyle)
+  (fn-do + describe String
+    (let ink $ink)
+    (let margin $margin)
+    (return (str "ink=" ink " margin=" margin))
+  )
+)
 ```
 
 ```output
@@ -1522,101 +1302,78 @@ ink=9 margin=3
 
 ### A facet's sections, when and whenever rules and dependencies run for its class's objects, after the class's own and before those of a class below
 
-```yumi
-./lib/box
-./lib/panel
+```brix
+(import ./lib/box)
+(import ./lib/panel)
+(blank)
 
-. box = Box()
-box.move(3)
-box.nudge(4)
--- ", ".join(box.log)
--- box.seen
-. panel = Panel()
-panel.move(5)
--- ", ".join(panel.log)
+(main
+  (let box (call Box))
+  (call (. box move) 3)
+  (call (. box nudge) 4)
+  (print (call (. ", " join) (. box log)))
+  (print (. box seen))
+  (let panel (call Panel))
+  (call (. panel move) 5)
+  (print (call (. ", " join) (. panel log)))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.watch)
 
-./box.watch
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ event moved Int
-+ log = List'String()
-
-────────────────────
-for value on moved
-
-log += "box $value"
-
-────────────────────
-+ do move
-    - amount Int
-
-moved <- amount
-
+(type + Box
+  (event + moved Int)
+  (prop + log _ (= (call (of List String))))
+  (subscribe-for (on value moved)
+    (+= log (str "box " value))
+  )
+  (fn-do + move _
+    (param amount Int)
+    (<- moved amount)
+  )
+)
 ```
 
-```yumi file=lib/box.watch.yumi
+```brix file=lib/box.watch.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxWatch is facet of Box
-
-+ event nudged Int
-+ seen = 0
-
-. seen-changed < seen
-
-────────────────────
-for value on moved
-
-log += "watch $value"
-seen += value
-
-────────────────────
-for value on nudged
-
-log += "nudged $value"
-
-────────────────────
-+ do nudge
-    - amount Int
-
-nudged <- amount
-
-────────────────────
-whenever #seen
-
-log += "seen $seen"
-
-────────────────────
-when #seen > 4
-
-log += "big"
-
-────────────────────
-+ do seen-changed
-
-log += "changed $seen"
-
+(type + BoxWatch (facet-of Box)
+  (event + nudged Int)
+  (prop + seen _ (= 0))
+  (blank)
+  (depends seen-changed seen)
+  (subscribe-for (on value moved)
+    (+= log (str "watch " value))
+    (+= seen value)
+  )
+  (subscribe-for (on value nudged)
+    (+= log (str "nudged " value))
+  )
+  (fn-do + nudge _
+    (param amount Int)
+    (<- nudged amount)
+  )
+  (whenever-rule #seen
+    (+= log (str "seen " seen))
+  )
+  (when-rule (> #seen 4)
+    (+= log "big")
+  )
+  (fn-do + seen-changed _
+    (+= log (str "changed " seen))
+  )
+)
 ```
 
-```yumi file=lib/panel.yumi
+```brix file=lib/panel.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-────────────────────
-for value on moved
-
-log += "panel $value"
-
+(type + Panel (is Box)
+  (subscribe-for (on value moved)
+    (+= log (str "panel " value))
+  )
+)
 ```
 
 ```output
@@ -1627,529 +1384,439 @@ box 5, watch 5, changed 5, seen 5, big, panel 5
 
 ### A facet is part of a class or of another facet of it, declared in the class's file family, and sees only other facets of the class
 
-```yumi compile-error
-./lib/box
-./lib/other
+```brix compile-error
+(import ./lib/box)
+(import ./lib/other)
+(blank)
 
--- 1
+(main
+  (print 1)
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.focus)
+(import ./box.proto)
+(import ./box.ring)
+(import ./box.scroll)
+(import ./box.view)
 
-./box.focus
-./box.proto
-./box.ring
-./box.scroll
-./box.view
+(type + Box)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
+(type + Proto (is Interface))
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Bxo
-
+(type + BoxScroll (facet-of Bxo))
 ```
 
-```yumi file=lib/box.focus.yumi
+```brix file=lib/box.focus.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxFocus is facet of Box
-    sees Box
-
+(type + BoxFocus (facet-of Box)
+  (sees Box)
+)
 ```
 
-```yumi file=lib/box.view.yumi
+```brix file=lib/box.view.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxView is facet of Box
-    sees BoxNothing
-
+(type + BoxView (facet-of Box)
+  (sees BoxNothing)
+)
 ```
 
-```yumi file=lib/box.ring.yumi
+```brix file=lib/box.ring.bx
+(import ./box)
 
-./box
+(type + RingA (facet-of RingB))
 
-━━━━━━━━━━━━━━━━━━━━
-+ RingA is facet of RingB
-
-━━━━━━━━━━━━━━━━━━━━
-+ RingB is facet of RingA
-
+(type + RingB (facet-of RingA))
 ```
 
-```yumi file=lib/box.proto.yumi
+```brix file=lib/box.proto.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ ProtoPart is facet of Proto
-
+(type + ProtoPart (facet-of Proto))
 ```
 
-```yumi file=lib/other.yumi
+```brix file=lib/other.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Extra is facet of Box
-
+(type + Extra (facet-of Box))
 ```
 
 ```output
 Exception: "Box" is no other facet of Box, so BoxFocus can't see it
-<lib/box.focus.yumi:6>
-        sees Box
-             ^^^
+<lib/box.focus.bx:4>
+      (sees Box)
+            ^^^
 
 Exception: ProtoPart can't be part of Proto, since only a class has facets
-<lib/box.proto.yumi:5>
-    + ProtoPart is facet of Proto
-                            ^^^^^
+<lib/box.proto.bx:3>
+    (type + ProtoPart (facet-of Proto))
+                                ^^^^^
 
 Exception: RingA is part of itself, through the facets it is part of
-<lib/box.ring.yumi:5>
-    + RingA is facet of RingB
-                        ^^^^^
+<lib/box.ring.bx:3>
+    (type + RingA (facet-of RingB))
+                            ^^^^^
 
 Exception: "Bxo" names no class or facet that BoxScroll can be part of
-<lib/box.scroll.yumi:5>
-    + BoxScroll is facet of Bxo
-                            ^^^
+<lib/box.scroll.bx:3>
+    (type + BoxScroll (facet-of Bxo))
+                                ^^^
 
 Exception: "BoxNothing" is no other facet of Box, so BoxView can't see it
-<lib/box.view.yumi:6>
-        sees BoxNothing
-             ^^^^^^^^^^
+<lib/box.view.bx:4>
+      (sees BoxNothing)
+            ^^^^^^^^^^
 
-Exception: Extra is a facet of Box, so it is declared in the file family of box.yumi, in a module named after it
-<lib/other.yumi:5>
-    + Extra is facet of Box
-                        ^^^
+Exception: Extra is a facet of Box, so it is declared in the file family of box.bx, in a module named after it
+<lib/other.bx:3>
+    (type + Extra (facet-of Box))
+                            ^^^
 ```
 
 ### A facet holds what a class body may but for what only a class has, and markup, and its stored properties have values
 
-```yumi compile-error
-./lib/box
+```brix compile-error
+(import ./lib/box)
+(blank)
 
--- 1
+(main
+  (print 1)
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.base)
+(import ./box.count)
+(import ./box.make)
+(import ./box.markup)
+(import ./box.params)
+(import ./box.static)
 
-./box.base
-./box.count
-./box.make
-./box.markup
-./box.params
-./box.static
+(type + Box)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
+(type + Proto (is Interface))
 ```
 
-```yumi file=lib/box.params.yumi
+```brix file=lib/box.params.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxParams'T is facet of Box
-
+(type + (of BoxParams T) (facet-of Box))
 ```
 
-```yumi file=lib/box.base.yumi
+```brix file=lib/box.base.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxBase is facet of Box is Proto
-
+(type + BoxBase (facet-of Box) (is Proto))
 ```
 
-```yumi file=lib/box.count.yumi
+```brix file=lib/box.count.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxCount is facet of Box
-
-+ label String? = null
-+ parent Box?
-
-+ count Int
-
+(type + BoxCount (facet-of Box)
+  (prop + label (? String) (= null))
+  (prop + parent (? Box))
+  (blank)
+  (prop + count Int)
+)
 ```
 
-```yumi file=lib/box.make.yumi
+```brix file=lib/box.make.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxMake is facet of Box
-
-────────────────────
-+ This
-
+(type + BoxMake (facet-of Box)
+  (fn-do + This _)
+)
 ```
 
-```yumi file=lib/box.markup.yumi
+```brix file=lib/box.markup.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxMarkup is facet of Box
-
-────────────────────
-
-<This
-
+(type + BoxMarkup (facet-of Box)
+  (content
+    (<> This)
+  )
+)
 ```
 
-```yumi file=lib/box.static.yumi
+```brix file=lib/box.static.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxStatic is facet of Box
-
-────────────────────
-+ static make Int
-
-1
-
+(type + BoxStatic (facet-of Box)
+  (fn-expr + make Int :static
+    1
+  )
+)
 ```
 
 ```output
 Exception: BoxBase is a facet, part of its owner, so it derives from no class
-<lib/box.base.yumi:5>
-    + BoxBase is facet of Box is Proto
-                                 ^^^^^
+<lib/box.base.bx:3>
+    (type + BoxBase (facet-of Box) (is Proto))
+                                       ^^^^^
 
 Exception: count needs a value or an optional type, since BoxCount is a facet and no constructor gives it one
-<lib/box.count.yumi:10>
-    + count Int
-    ^^^^^^^^^^^
+<lib/box.count.bx:7>
+      (prop + count Int)
+      ^^^^^^^^^^^^^^^^^^
 
 Exception: BoxMake is a facet, so it has no constructors; its owner's give its properties their first values
-<lib/box.make.yumi:8>
-    + This
-    ^^^^^
+<lib/box.make.bx:4>
+      (fn-do + This _)
+      ^^^^^^^^^^^^^^^^
 
 Exception: BoxMarkup is a facet, so it writes no markup; a content section is its owner's alone
-<lib/box.markup.yumi:7>
-    ────────────────────
-    ^^^^^^^^^^^^^^^^^^^
+<lib/box.markup.bx:4>
+      (content
+      ^^^^^^^
 
 Exception: BoxParams is a facet, so it takes no type parameters
-<lib/box.params.yumi:5>
-    + BoxParams'T is facet of Box
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<lib/box.params.bx:3>
+    (type + (of BoxParams T) (facet-of Box))
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Exception: BoxStatic is a facet, so it has no static functions
-<lib/box.static.yumi:8>
-    + static make Int
-    ^^^^^^^^^^^^^^^^
+<lib/box.static.bx:4>
+      (fn-expr + make Int :static
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A facet's member may not take a name its class answers, nor a public name another facet of the class declares
 
-```yumi compile-error
-./lib/box
+```brix compile-error
+(import ./lib/box)
+(blank)
 
-Box()
+(main
+  (call Box)
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.depth)
+(import ./box.focus)
+(import ./box.scroll)
+(import ./box.width)
 
-./box.depth
-./box.focus
-./box.scroll
-./box.width
+(type + Base
+  (prop + depth _ (= 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
-+ depth = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box is Base
-
-_ width = 10
-
+(type + Box (is Base)
+  (prop _ width _ (= 10))
+)
 ```
 
-```yumi file=lib/box.width.yumi
+```brix file=lib/box.width.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxWidth is facet of Box
-
-_ width = 1
-
+(type + BoxWidth (facet-of Box)
+  (prop _ width _ (= 1))
+)
 ```
 
-```yumi file=lib/box.depth.yumi
+```brix file=lib/box.depth.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxDepth is facet of Box
-
-────────────────────
-+ depth Int
-
-2
-
+(type + BoxDepth (facet-of Box)
+  (fn-expr + depth Int
+    2
+  )
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-+ shared = 3
-
+(type + BoxScroll (facet-of Box)
+  (prop + shared _ (= 3))
+)
 ```
 
-```yumi file=lib/box.focus.yumi
+```brix file=lib/box.focus.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxFocus is facet of Box
-
-+ shared = 4
-
+(type + BoxFocus (facet-of Box)
+  (prop + shared _ (= 4))
+)
 ```
 
 ```output
 Exception: depth is already a member of Box, so facet BoxDepth can't declare it
-<lib/box.depth.yumi:8>
-    + depth Int
-    ^^^^^^^^^^
+<lib/box.depth.bx:4>
+      (fn-expr + depth Int
+      ^^^^^^^^^^^^^^^^^^^
 
 Exception: Facets BoxFocus and BoxScroll of Box both declare shared; a facet's members that are not private are its class's, so a name is one facet's
-<lib/box.focus.yumi:7>
-    + shared = 4
-    ^^^^^^^^^^^^
+<lib/box.focus.bx:4>
+      (prop + shared _ (= 4))
+      ^^^^^^^^^^^^^^^^^^^^^^^
 
 Exception: Facets BoxScroll and BoxFocus of Box both declare shared; a facet's members that are not private are its class's, so a name is one facet's
-<lib/box.scroll.yumi:7>
-    + shared = 3
-    ^^^^^^^^^^^^
+<lib/box.scroll.bx:4>
+      (prop + shared _ (= 3))
+      ^^^^^^^^^^^^^^^^^^^^^^^
 
 Exception: width is already a member of Box, so facet BoxWidth can't declare it
-<lib/box.width.yumi:7>
-    _ width = 1
-    ^^^^^^^^^^^
+<lib/box.width.bx:4>
+      (prop _ width _ (= 1))
+      ^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A class below one with facets can't declare a name a facet declares but to override a method, getter or setter of the facet with one of its kind or to give a property it stores a new value, and a constructor's argument can't give a facet's private property its value in the facet's file
 
-```yumi compile-error
-./lib/box
-./lib/pane
-./lib/panel
+```brix compile-error
+(import ./lib/box)
+(import ./lib/pane)
+(import ./lib/panel)
+(blank)
 
--- Box().tab().width
+(main
+  (print (. (call (. (call Box) tab)) width))
+)
 ```
 
-```yumi file=lib/panel.yumi
+```brix file=lib/panel.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ offset => 9
-
+(type + Panel (is Box)
+  (prop + offset _ (=> 9))
+)
 ```
 
-```yumi file=lib/pane.yumi
+```brix file=lib/pane.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pane is Box
-
-+ nudge => 2
-
+(type + Pane (is Box)
+  (prop + nudge _ (=> 2))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.scroll)
 
-./box.scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ width = 10
-
+(type + Box
+  (prop + width _ (= 10))
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
+(type + BoxScroll (facet-of Box)
+  (prop + offset _ (= 3))
+  (prop _ hidden _ (= 2))
+  (fn-expr + nudge Int
+    1
+  )
+  (fn-expr + tab Box
+    (call Tab 1)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-+ offset = 3
-_ hidden = 2
-
-────────────────────
-+ nudge Int
-
-1
-
-────────────────────
-+ tab Box
-
-Tab(1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Tab is Box
-
-────────────────────
-+ This
-    - hidden Int
-
+(type + Tab (is Box)
+  (fn-do + This _
+    (param hidden Int)
+  )
+)
 ```
 
 ```output
 Exception: hidden is private to facet BoxScroll, so a constructor's argument can't give it a value
-<lib/box.scroll.yumi:25>
-        - hidden Int
-          ^^^^^^^^^^
+<lib/box.scroll.bx:16>
+        (param hidden Int)
+        ^^^^^^^^^^^^^
 
 Exception: Pane can't declare nudge, since facet BoxScroll of Box declares it
-<lib/pane.yumi:7>
-    + nudge => 2
-    ^^^^^^^^^^^^
+<lib/pane.bx:4>
+      (prop + nudge _ (=> 2))
+      ^^^^^^^^^^^^^^^^^^^^^^^
 
 Exception: Panel can't declare offset, since facet BoxScroll of Box declares it
-<lib/panel.yumi:7>
-    + offset => 9
-    ^^^^^^^^^^^^^
+<lib/panel.bx:4>
+      (prop + offset _ (=> 9))
+      ^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A facet declares lazy and computed properties, getters and setters, operators and conversions, and reaches the private values, types, functions and constructors of its class's module
 
-```yumi
-./lib/box
+```brix
+(import ./lib/box)
+(blank)
 
-. box = Box()
--- box.cached
--- box.twice
-box.label = "abcde"
--- box.total
--- box.label
--- box + 10
--- box as String
--- box.reached()
--- box.copy().size-text()
+(main
+  (let box (call Box))
+  (print (. box cached))
+  (print (. box twice))
+  (= (. box label) "abcde")
+  (print (. box total))
+  (print (. box label))
+  (print (+ box 10))
+  (print (as box String))
+  (print (call (. box reached)))
+  (print (call (. (call (. box copy)) size-text)))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.extra)
+(blank)
+(prop _ secret _ (= 7))
 
-./box.extra
+(type + Box
+  (prop _ size _ (= 4))
+  (fn-do + This _)
+  (fn-do _ This _
+    (param start Int)
+    (= size start)
+  )
+  (fn-expr + size-text String
+    (str "size " size)
+  )
+)
 
-_ secret = 7
+(type _ Hidden (is Tuple)
+  (prop + n Int)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-_ size = 4
-
-────────────────────
-+ This
-
-────────────────────
-_ This
-    - start Int
-
-size = start
-
-────────────────────
-+ size-text String
-
-"size $size"
-
-━━━━━━━━━━━━━━━━━━━━
-_ Hidden is Tuple
-
-+ n Int
-
-━━━━━━━━━━━━━━━━━━━━
-_ helper Int
-    - n Int
-
-n * 10
-
+(fn-expr _ helper Int
+  (param n Int)
+  (* n 10)
+)
 ```
 
-```yumi file=lib/box.extra.yumi
+```brix file=lib/box.extra.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxExtra is facet of Box
-
-+ total = 1
-+ cached := size * 3
-+ twice => total * 2
-
-────────────────────
-+ get label String
-
-"label $total"
-
-────────────────────
-+ do label = value String
-
-total = value.length
-
-────────────────────
-+ this + more Int
-
-total + more
-
-────────────────────
-+ to String
-
-"box of $size"
-
-────────────────────
-+ reached Int
-
-helper(Hidden(secret).n)
-
-────────────────────
-+ copy Box
-
-Box(size + 1)
-
+(type + BoxExtra (facet-of Box)
+  (prop + total _ (= 1))
+  (prop + cached _ (:= (* size 3)))
+  (prop + twice _ (=> (* total 2)))
+  (fn-expr + label String :get
+    (str "label " total)
+  )
+  (fn-do + label _ :set (param value String)
+    (= total (. value length))
+  )
+  (fn-expr + (infix this + (param more Int)) _
+    (+ total more)
+  )
+  (fn-to-expr + String
+    (str "box of " size)
+  )
+  (fn-expr + reached Int
+    (call helper (. (call Hidden secret) n))
+  )
+  (fn-expr + copy Box
+    (call Box (+ size 1))
+  )
+)
 ```
 
 ```output
@@ -2165,55 +1832,48 @@ size 5
 
 ### A class's constructors give its own properties their values first, then each facet's, by the name of the facet's module and in declaration order within it, whatever order the modules are imported in
 
-```yumi
-./lib/box
+```brix
+(import ./lib/box)
+(blank)
 
-. box = Box()
--- " ".join(order)
+(main
+  (let box (call Box))
+  (print (call (. " " join) order))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.zeta)
+(import ./box.alpha)
+(blank)
+(prop + order _ (= (call (of List String))))
 
-./box.zeta
-./box.alpha
+(type + Box
+  (prop + own _ (= (call note "own")))
+)
 
-+ order = List'String()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ own = note("own")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do note Int
-    - name String
-
-order += name
-= 0
-
+(fn-do + note Int
+  (param name String)
+  (+= order name)
+  (return 0)
+)
 ```
 
-```yumi file=lib/box.zeta.yumi
+```brix file=lib/box.zeta.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxZeta is facet of Box
-
-+ z1 = note("zeta 1")
-+ z2 = note("zeta 2")
-
+(type + BoxZeta (facet-of Box)
+  (prop + z1 _ (= (call note "zeta 1")))
+  (prop + z2 _ (= (call note "zeta 2")))
+)
 ```
 
-```yumi file=lib/box.alpha.yumi
+```brix file=lib/box.alpha.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxAlpha is facet of Box
-
-+ a = note("alpha")
-
+(type + BoxAlpha (facet-of Box)
+  (prop + a _ (= (call note "alpha")))
+)
 ```
 
 ```output
@@ -2222,40 +1882,35 @@ own alpha zeta 1 zeta 2
 
 ### A facet may be declared in its class's own module, whose code reaches every facet of the class, as code outside the facets' modules does
 
-```yumi
-./lib/box
+```brix
+(import ./lib/box)
+(blank)
 
--- Box().both()
+(main
+  (print (call (. (call Box) both)))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.focus)
 
-./box.focus
+(type + Box
+  (fn-expr + both String
+    (str offset " " focused)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-────────────────────
-+ both String
-
-"$offset $focused"
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-+ offset = 3
-
+(type + BoxScroll (facet-of Box)
+  (prop + offset _ (= 3))
+)
 ```
 
-```yumi file=lib/box.focus.yumi
+```brix file=lib/box.focus.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxFocus is facet of Box
-
-+ focused = true
-
+(type + BoxFocus (facet-of Box)
+  (prop + focused _ (= true))
+)
 ```
 
 ```output
@@ -2264,146 +1919,127 @@ own alpha zeta 1 zeta 2
 
 ### A facet of a class below one with facets can't take the name of a public member of a facet of a class above, which its class already has
 
-```yumi compile-error
-./lib/window
+```brix compile-error
+(import ./lib/window)
+(blank)
 
--- Window().offset
+(main
+  (print (. (call Window) offset))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.scroll)
 
-./box.scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
+(type + Box)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-+ offset = 3
-
+(type + BoxScroll (facet-of Box)
+  (prop + offset _ (= 3))
+)
 ```
 
-```yumi file=lib/window.yumi
+```brix file=lib/window.bx
+(import ./box)
+(import ./window.pane)
 
-./box
-./window.pane
-
-━━━━━━━━━━━━━━━━━━━━
-+ Window is Box
-
+(type + Window (is Box))
 ```
 
-```yumi file=lib/window.pane.yumi
+```brix file=lib/window.pane.bx
+(import ./window)
 
-./window
-
-━━━━━━━━━━━━━━━━━━━━
-+ WindowPane is facet of Window
-
-+ offset = 8
-
+(type + WindowPane (facet-of Window)
+  (prop + offset _ (= 8))
+)
 ```
 
 ```output
 Exception: offset is already a member of Window, so facet WindowPane can't declare it
-<lib/window.pane.yumi:7>
-    + offset = 8
-    ^^^^^^^^^^^^
+<lib/window.pane.bx:4>
+      (prop + offset _ (= 8))
+      ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A facet's name is a type. A value of its class or of a class below becomes one unasked, as does a facet's value the facets it is part of, and has the members of its facet and of those, which a class below that declares one again answers for. It becomes its class again only when asked, is tested for a class below as its class is, and its type information is its class's
 
-```yumi
-./lib/box
+```brix
+(import ./lib/box)
+(blank)
 
--- describe(Panel())
--- describe(Box())
+(main
+  (print (call describe (call Panel)))
+  (print (call describe (call Box)))
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.scroll)
+(import ./box.scroll.bar)
 
-./box.scroll
-./box.scroll.bar
+(type + Box
+  (prop + width _ (= 10))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Panel (is Box)
+  (prop + height _ (= 4))
+  (fn-do + scroll-to _
+    (param point Int)
+    (= offset (* point 100))
+  )
+)
 
-+ width = 10
+(fn-expr + height-of Int
+  (param scroll BoxScroll)
+  (match scroll
+    (case (: panel Panel)
+      (. panel height)
+    )
+    (default
+      0
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ height = 4
-
-────────────────────
-+ do scroll-to
-    - point Int
-
-offset = point * 100
-
-━━━━━━━━━━━━━━━━━━━━
-+ height-of Int
-    - scroll BoxScroll
-
-match scroll
-    | panel Panel
-        panel.height
-    ??
-        0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do describe String
-    - box Box
-
-. bar BoxScrollBar = box
-. scroll BoxScroll = bar
-scroll.scroll-to(2)
-bar.shown = true
-. maybe BoxScroll? = if bar.shown then scroll else null
-. either = if scroll.offset > 100 then box else scroll
-. all [BoxScroll] = [scroll, box]
-. owner = scroll as Box
-. shown = "${scroll.offset} ${scroll.doubled} ${scroll.area} ${bar.offset} ${bar.shown} ${maybe!.offset}"
-= "$shown ${either.offset} ${all.length} ${owner.width} ${scroll is Panel} ${height-of(scroll)} ${type-of scroll}"
-
+(fn-do + describe String
+  (param box Box)
+  (let bar BoxScrollBar box)
+  (let scroll BoxScroll bar)
+  (call (. scroll scroll-to) 2)
+  (= (. bar shown) true)
+  (let maybe (? BoxScroll) (if-expr (. bar shown) scroll null))
+  (let either (if-expr (> (. scroll offset) 100) box scroll))
+  (let all (list BoxScroll) (list scroll box))
+  (let owner (as scroll Box))
+  (let shown (str (. scroll offset) " " (. scroll doubled) " " (. scroll area) " " (. bar offset) " " (. bar shown) " " (. (!! maybe) offset)))
+  (return (str shown " " (. either offset) " " (. all length) " " (. owner width) " " (is scroll Panel) " " (call height-of scroll) " " (type-of scroll)))
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-+ offset = 3
-+ doubled => offset * 2
-+ area := width * 2
-
-────────────────────
-+ do scroll-to
-    - point Int
-
-offset = point + width
-
+(type + BoxScroll (facet-of Box)
+  (prop + offset _ (= 3))
+  (prop + doubled _ (=> (* offset 2)))
+  (prop + area _ (:= (* width 2)))
+  (fn-do + scroll-to _
+    (param point Int)
+    (= offset (+ point width))
+  )
+)
 ```
 
-```yumi file=lib/box.scroll.bar.yumi
+```brix file=lib/box.scroll.bar.bx
+(import ./box)
+(import ./box.scroll)
 
-./box
-./box.scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScrollBar is facet of BoxScroll
-
-+ shown = false
-
+(type + BoxScrollBar (facet-of BoxScroll)
+  (prop + shown _ (= false))
+)
 ```
 
 ```output
@@ -2413,36 +2049,32 @@ offset = point + width
 
 ### Code outside a class's file family names the class's facets by importing the class's module, which brings their names and nothing else of their modules
 
-```yumi
-./lib/box
+```brix
+(import ./lib/box)
+(blank)
 
--- offset-of(Box())
+(main
+  (print (call offset-of (call Box)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ offset-of Int
-    - scroll BoxScroll
-
-scroll.offset
+(fn-expr + offset-of Int
+  (param scroll BoxScroll)
+  (. scroll offset)
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.scroll)
 
-./box.scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
+(type + Box)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-+ offset = 3
-
+(type + BoxScroll (facet-of Box)
+  (prop + offset _ (= 3))
+)
 ```
 
 ```output
@@ -2451,264 +2083,229 @@ scroll.offset
 
 ### A facet's value becomes its class only when asked and has no members of its class or of facets it is not part of, a value is not tested for a facet, a facet has no constructor, a stored property of a facet's type needs a value, a facet's value reaches no member of a facet the module's facet does not see, and code that does not import the class's module can't name its facets
 
-```yumi compile-error
-./lib/box
-./lib/other
+```brix compile-error
+(import ./lib/box)
+(import ./lib/other)
+(blank)
 
-Holder()
-widen(Box())
-owned(Box())
-sibling(Box())
-tested(Box())
-matched(Box())
-made()
-Box().peek()
-other-offset()
+(main
+  (call Holder)
+  (call widen (call Box))
+  (call owned (call Box))
+  (call sibling (call Box))
+  (call tested (call Box))
+  (call matched (call Box))
+  (call made)
+  (call (. (call Box) peek))
+  (call other-offset)
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.focus)
+(import ./box.scroll)
 
-./box.focus
-./box.scroll
+(type + Box
+  (prop + width _ (= 10))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Holder
+  (prop + held BoxScroll)
+)
 
-+ width = 10
+(fn-expr + scrolled BoxScroll
+  (param box Box)
+  box
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
+(fn-expr + widen Box
+  (param scroll BoxScroll)
+  scroll
+)
 
-+ held BoxScroll
+(fn-expr + owned Int
+  (param scroll BoxScroll)
+  (. scroll width)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ scrolled BoxScroll
-    - box Box
+(fn-expr + sibling Bool
+  (param scroll BoxScroll)
+  (. scroll focused)
+)
 
-box
+(fn-expr + tested Bool
+  (param box Box)
+  (is box BoxScroll)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ widen Box
-    - scroll BoxScroll
+(fn-expr + matched Int
+  (param box Box)
+  (match box
+    (case BoxScroll
+      1
+    )
+    (default
+      2
+    )
+  )
+)
 
-scroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ owned Int
-    - scroll BoxScroll
-
-scroll.width
-
-━━━━━━━━━━━━━━━━━━━━
-+ sibling Bool
-    - scroll BoxScroll
-
-scroll.focused
-
-━━━━━━━━━━━━━━━━━━━━
-+ tested Bool
-    - box Box
-
-box is BoxScroll
-
-━━━━━━━━━━━━━━━━━━━━
-+ matched Int
-    - box Box
-
-match box
-    | BoxScroll
-        1
-    ??
-        2
-
-━━━━━━━━━━━━━━━━━━━━
-+ made BoxScroll
-
-BoxScroll()
-
+(fn-expr + made BoxScroll
+  (call BoxScroll)
+)
 ```
 
-```yumi file=lib/box.focus.yumi
+```brix file=lib/box.focus.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxFocus is facet of Box
-
-+ focused = false
-
-────────────────────
-+ peek Int
-
-scrolled(this).offset
-
+(type + BoxFocus (facet-of Box)
+  (prop + focused _ (= false))
+  (fn-expr + peek Int
+    (. (call scrolled this) offset)
+  )
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-
-+ offset = 3
-
+(type + BoxScroll (facet-of Box)
+  (prop + offset _ (= 3))
+)
 ```
 
-```yumi file=lib/other.yumi
-
-━━━━━━━━━━━━━━━━━━━━
-+ do other-offset Int
-
-. scroll BoxScroll? = null
-= 0
-
+```brix file=lib/other.bx
+(fn-do + other-offset Int
+  (let scroll (? BoxScroll) null)
+  (return 0)
+)
 ```
 
 ```output
-Exception: BoxScroll has no property "offset" here; facet BoxScroll declares it, and only the facets a facet sees are in reach. Write "sees BoxScroll" under the facet that uses it
-<lib/box.focus.yumi:12>
-    scrolled(this).offset
-    ^^^^^^^^^^^^^^^^^^^^^
-
 Exception: held is a BoxScroll, a facet of Box, which has no constructor to give it its first value; give it a value, or make it optional
-<lib/box.yumi:13>
-    + held BoxScroll
-    ^^^^^^^^^^^^^^^^
+<lib/box.bx:9>
+      (prop + held BoxScroll)
+      ^^^^^^^^^^^^^^^^^^^^^^^
 
-Exception: Expected Box here, but this is BoxScroll, which becomes Box only when asked; write "as Box"
-<lib/box.yumi:25>
-    scroll
-    ^^^^^^
+Exception: Expected Box here, but this is BoxScroll, which becomes Box only when asked; write "(as scroll Box)"
+<lib/box.bx:19>
+      scroll
+      ^^^^^^
 
-Exception: BoxScroll has no property "width"; a facet's value has only its facet's members and those of the facets it is part of. Write "as Box" to reach the rest of Box
-<lib/box.yumi:31>
-    scroll.width
-    ^^^^^^^^^^^^
+Exception: BoxScroll has no property "width"; a facet's value has only its facet's members and those of the facets it is part of. Write "(as … Box)" to reach the rest of Box
+<lib/box.bx:24>
+      (. scroll width)
+      ^^^^^^^^^^^^^^^^
 
-Exception: BoxScroll has no property "focused"; a facet's value has only its facet's members and those of the facets it is part of. Write "as Box" to reach the rest of Box
-<lib/box.yumi:37>
-    scroll.focused
-    ^^^^^^^^^^^^^^
-
-Exception: BoxScroll is a facet, which every Box has, so no value is tested for it
-<lib/box.yumi:43>
-    box is BoxScroll
-           ^^^^^^^^^
+Exception: BoxScroll has no property "focused"; a facet's value has only its facet's members and those of the facets it is part of. Write "(as … Box)" to reach the rest of Box
+<lib/box.bx:29>
+      (. scroll focused)
+      ^^^^^^^^^^^^^^^^^^
 
 Exception: BoxScroll is a facet, which every Box has, so no value is tested for it
-<lib/box.yumi:50>
-        | BoxScroll
-          ^^^^^^^^^
+<lib/box.bx:34>
+      (is box BoxScroll)
+              ^^^^^^^^^
+
+Exception: BoxScroll is a facet, which every Box has, so no value is tested for it
+<lib/box.bx:40>
+        (case BoxScroll
+              ^^^^^^^^^
 
 Exception: BoxScroll is a facet of Box, so it has no constructor; a Box is a BoxScroll
-<lib/box.yumi:58>
-    BoxScroll()
-    ^^^^^^^^^
+<lib/box.bx:50>
+      (call BoxScroll)
+            ^^^^^^^^^
+
+Exception: BoxScroll has no property "offset" here; facet BoxScroll declares it, and only the facets a facet sees are in reach. Write "sees BoxScroll" under the facet that uses it
+<lib/box.focus.bx:6>
+        (. (call scrolled this) offset)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Exception: Type "BoxScroll" not found; BoxScroll is a facet of Box, whose name comes with Box's module. Import that module to name it
-<lib/other.yumi:5>
-    . scroll BoxScroll? = null
-             ^^^^^^^^^
+<lib/other.bx:2>
+      (let scroll (? BoxScroll) null)
+                     ^^^^^^^^^
 ```
 
 ### A facet that names an interface makes its class and the classes below implement it through the facet's members, which a class below may override, and a class that names an interface may answer it with its facets' members
 
-```yumi
-./lib/box
-./lib/kinds
+```brix
+(import ./lib/box)
+(import ./lib/kinds)
+(blank)
 
-. box = Box()
-. scroll Scrollable = box
-scroll.scroll-by(4)
--- scroll.position
-. panel Scrollable = Panel()
-panel.scroll-by(1)
--- panel.position
-. named Named = box
--- named.label
-. part BoxScroll = box
-. again Scrollable = part as Box
--- again.position
+(main
+  (let box (call Box))
+  (let scroll Scrollable box)
+  (call (. scroll scroll-by) 4)
+  (print (. scroll position))
+  (let panel Scrollable (call Panel))
+  (call (. panel scroll-by) 1)
+  (print (. panel position))
+  (let named Named box)
+  (print (. named label))
+  (let part BoxScroll box)
+  (let again Scrollable (as part Box))
+  (print (. again position))
+)
 ```
 
-```yumi file=lib/kinds.yumi
+```brix file=lib/kinds.bx
+(type + Scrollable (is Interface)
+  (fn-expr + position Int :get)
+  (fn-do + scroll-by _
+    (param amount Int)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Scrollable is Interface
-
-────────────────────
-+ get position Int
-
-────────────────────
-+ do scroll-by
-    - amount Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Named is Interface
-
-────────────────────
-+ get label String
-
+(type + Named (is Interface)
+  (fn-expr + label String :get)
+)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.focus)
+(import ./box.scroll)
+(import ./kinds)
 
-./box.focus
-./box.scroll
-./kinds
+(type + Box
+  (implements Named)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-    is Named
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-────────────────────
-+ do scroll-by
-    - amount Int
-
-offset = amount * 10
-
+(type + Panel (is Box)
+  (fn-do + scroll-by _
+    (param amount Int)
+    (= offset (* amount 10))
+  )
+)
 ```
 
-```yumi file=lib/box.focus.yumi
+```brix file=lib/box.focus.bx
+(import ./box)
 
-./box
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxFocus is facet of Box
-
-────────────────────
-+ get label String
-
-"box"
-
+(type + BoxFocus (facet-of Box)
+  (fn-expr + label String :get
+    "box"
+  )
+)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
+(import ./kinds)
 
-./box
-./kinds
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-    is Scrollable
-
-+ offset = 3
-
-────────────────────
-+ get position Int
-
-offset
-
-────────────────────
-+ do scroll-by
-    - amount Int
-
-offset += amount
-
+(type + BoxScroll (facet-of Box)
+  (implements Scrollable)
+  (prop + offset _ (= 3))
+  (fn-expr + position Int :get
+    offset
+  )
+  (fn-do + scroll-by _
+    (param amount Int)
+    (+= offset amount)
+  )
+)
 ```
 
 ```output
@@ -2720,74 +2317,65 @@ box
 
 ### A facet names only interfaces, answers each with its members, and its value becomes an interface only as its class
 
-```yumi compile-error
-./lib/box
-./lib/kinds
+```brix compile-error
+(import ./lib/box)
+(import ./lib/kinds)
+(blank)
 
-. part BoxScroll = Box()
-. scroll Scrollable = part
-. whole Scrollable = Box()
+(main
+  (let part BoxScroll (call Box))
+  (let scroll Scrollable part)
+  (let whole Scrollable (call Box))
+)
 ```
 
-```yumi file=lib/kinds.yumi
+```brix file=lib/kinds.bx
+(type + Scrollable (is Interface)
+  (fn-expr + position Int :get)
+  (fn-do + scroll-by _
+    (param amount Int)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Scrollable is Interface
-
-────────────────────
-+ get position Int
-
-────────────────────
-+ do scroll-by
-    - amount Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-
+(type + Base)
 ```
 
-```yumi file=lib/box.yumi
+```brix file=lib/box.bx
+(import ./box.scroll)
+(import ./kinds)
 
-./box.scroll
-./kinds
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
+(type + Box)
 ```
 
-```yumi file=lib/box.scroll.yumi
+```brix file=lib/box.scroll.bx
+(import ./box)
+(import ./kinds)
 
-./box
-./kinds
-
-━━━━━━━━━━━━━━━━━━━━
-+ BoxScroll is facet of Box
-    is Scrollable
-    is Base
-
-────────────────────
-+ do scroll-by
-    - amount Int
-
+(type + BoxScroll (facet-of Box)
+  (implements Scrollable)
+  (implements Base)
+  (fn-do + scroll-by _
+    (param amount Int)
+  )
+)
 ```
 
 ```output
-Exception: "scroll" is declared Scrollable, but its value is BoxScroll, a facet's value, which becomes only the facets it is part of unasked; write "as Box" to convert its class
-<no file:6>
-    . scroll Scrollable = part
-      ^^^^^^^^^^^^^^^^^
-
-Exception: BoxScroll cannot implement Base, which is not an interface; a facet is part of its class and is built on no type
-<lib/box.scroll.yumi:8>
-        is Base
-           ^^^^
+Exception: "scroll" is declared Scrollable, but its value is BoxScroll, a facet's value, which becomes only the facets it is part of unasked; write "(as … Box)" to convert its class
+<no file:8>
+      (let scroll Scrollable part)
+           ^^^^^^^^^^^^^^^^^
 
 Exception: Box does not implement "position", which Scrollable declares without a body; declare "position" in BoxScroll
-<lib/box.yumi:6>
-    + Box
-    ^^^^
+<lib/box.bx:4>
+    (type + Box)
+    ^^^^^^^^^^^^
 Interface:
-<lib/kinds.yumi:6>
-    + get position Int
+<lib/kinds.bx:2>
+      (fn-expr + position Int :get)
+
+Exception: BoxScroll cannot implement Base, which is not an interface; a facet is part of its class and is built on no type
+<lib/box.scroll.bx:6>
+      (implements Base)
+                  ^^^^
 ```

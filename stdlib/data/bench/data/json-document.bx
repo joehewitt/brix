@@ -1,0 +1,57 @@
+; benchmark.meta description: Parses one 1.7 MB JSON document of 5,000 nested records with strings, escapes, ints and floats.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator
+(blank)
+(import /data/json)
+(blank)
+
+(main
+  (let text (call json-document 5000))
+  (let value (call JSON text))
+  (print (str "bench-result data/json-document checksum=" (call json-weight value)))
+)
+
+(fn-expr _ json-document String
+  (param count Size)
+  (str "{\"version\": 3, \"generated\": \"2026-11-11T00:00:00Z\", \"records\": [\n" (call (. ",\n" join) (in (call record each) (..< 0 count))) "\n]}")
+)
+
+(fn-expr _ record String
+  (param index Size)
+  (str "  {\"id\": " index ", \"name\": \"user-" index "\", \"email\": \"user" index "@example.com\", \"active\": " (if-expr (== (% index 3) 0) "true" "false") ", \"score\": " index ".25, \"ratio\": -0." (% index 97) "e-3, \"tags\": [\"alpha\", \"beta\", \"g" index "\"], \"address\": {\"street\": \"" index " Main St\", \"city\": \"Springfield\", \"zip\": \"0" (% index 9999) "\", \"geo\": [" (% index 180) ".5, -" (% index 90) ".25]}, \"bio\": \"Line one\\nLine \\\"two\\\" \\u00e9t\\u00e9 \\ud83d\\ude00\", \"parent\": null}")
+)
+
+(fn-do _ json-weight Size
+  (param value JSON)
+  (match value
+    (case (: text String)
+      (return (. text length))
+    )
+    (case (: list (list JSON))
+      (let sum (as 1 Size))
+      (for (in item list)
+        (+= sum (call json-weight item))
+      )
+      (return sum)
+    )
+    (case (: map (map String JSON))
+      (let sum (as 1 Size))
+      (for (in (tuple key item) map)
+        (+= sum (+ (. key length) (call json-weight item)))
+      )
+      (return sum)
+    )
+    (case (: number Int)
+      (return (% (as number Size) 1000))
+    )
+    (case (: number Float)
+      (return (if-expr (< number 0.0) 2 3))
+    )
+    (case (: flag Bool)
+      (return (if-expr flag 5 7))
+    )
+    (default
+      (return 1)
+    )
+  )
+)

@@ -1,0 +1,510 @@
+(import /BxSyntax/BxSyntax.h)
+(import /core/array-builder)
+(import /math)
+(blank)
+(prop _ syntax-language-table _ (:= (call load-syntax-languages)))
+
+(type + SyntaxPoint (is Tuple)
+  (prop + row Size)
+  (prop + column Size)
+)
+
+(type + SyntaxSpan (is Tuple)
+  (prop + start Size)
+  (prop + end Size)
+  (prop + capture Size)
+)
+
+(type + SyntaxFold (is Tuple)
+  (prop + start Size)
+  (prop + end Size)
+)
+
+(type + SyntaxRole (is Union)
+  (variant plain)
+  (variant comment)
+  (variant keyword)
+  (variant operator)
+  (variant punctuation)
+  (variant string)
+  (variant escape)
+  (variant number)
+  (variant constant)
+  (variant function)
+  (variant type-name)
+  (variant variable)
+  (variant parameter)
+  (variant builtin)
+  (variant property)
+  (variant attribute)
+  (variant tag)
+  (variant label)
+  (variant namespace)
+  (variant invalid)
+)
+
+(type + SyntaxStyledRun (is Tuple)
+  (prop + text String)
+  (prop + role SyntaxRole)
+  (prop + is-marked _ (= false))
+)
+
+(type + SyntaxLanguage
+  (prop + id I32)
+  (prop + name String)
+  (prop + title String)
+  (prop + extensions (list String))
+  (blank)
+  (prop _ capture-list (? (list String)))
+  (prop _ role-list (? (list SyntaxRole)))
+  (fn-do + This _
+    (param id I32)
+    (= (. this id) id)
+    (= name (as (call C:brixSyntaxLanguageName id) String))
+    (= title (as (call C:brixSyntaxLanguageTitle id) String))
+    (= extensions (call (. (as (call C:brixSyntaxLanguageExtensions id) String) split) " "))
+  )
+  (fn-do + captures (list String) :get
+    (let cached capture-list)
+    (return-if cached (if cached))
+    (let loaded (list String))
+    (for (in index (..< 0 (call C:brixSyntaxCaptureCount id)))
+      (+= loaded (call C:brixSyntaxCaptureName id index))
+    )
+    (= capture-list loaded)
+    (return loaded)
+  )
+  (fn-do + roles (list SyntaxRole) :get
+    (let cached role-list)
+    (return-if cached (if cached))
+    (let made (call (of List SyntaxRole) (in (call syntax-role each) captures)))
+    (= role-list made)
+    (return made)
+  )
+  (fn-expr + comment-marker (? String) :get
+    (case? (or (== name "python") (== name "bash"))
+      "# "
+    )
+    (case? (or (== name "json") (== name "css") (== name "html") (== name "markdown"))
+      null
+    )
+    (default
+      "// "
+    )
+  )
+  (fn-expr + query-error String :get
+    (as (call C:brixSyntaxQueryError id) String)
+  )
+  (fn-expr + fold-query-error String :get
+    (as (call C:brixSyntaxFoldQueryError id) String)
+  )
+)
+
+(fn-expr + syntax-languages (list SyntaxLanguage)
+  syntax-language-table
+)
+
+(fn-do + syntax-language-named (? SyntaxLanguage)
+  (param name String)
+  (for (in language syntax-language-table)
+    (return-if language (if (== (. language name) name)))
+  )
+  (return null)
+)
+
+(fn-expr + syntax-comment-marker (? String)
+  (param file-name String)
+  (if-expr (call (. file-name ends-with) ".yumi") "` " (?. (call syntax-language-for-file file-name) comment-marker))
+)
+
+(fn-do + syntax-language-for-file (? SyntaxLanguage)
+  (param file-name String)
+  (let dot (call (. file-name find-reverse) "."))
+  (return-if null (if (or (not dot) (== dot 0))))
+  (let extension (. ([] file-name (... (+ dot 1))) lowercased))
+  (for (in language syntax-language-table)
+    (for (in candidate (. language extensions))
+      (return-if language (if (== candidate extension)))
+    )
+  )
+  (return null)
+)
+
+(type + SyntaxDocument
+  (implements Closable)
+  (prop + language SyntaxLanguage)
+  (blank)
+  (prop _ native (? Pointer))
+  (prop _ span-buffer ([] U32) (= ([] U32 768)))
+  (prop _ fold-buffer ([] U32) (= ([] U32 512)))
+  (prop _ is-closing Bool)
+  (fn-do + This _
+    (param language _)
+    (= native (call C:brixSyntaxDocumentCreate (. language id)))
+  )
+  (fn-expr + has-tree Bool :get
+    (if-expr native (call C:brixSyntaxDocumentHasTree (!! native)) false)
+  )
+  (fn-expr + has-error Bool :get
+    (if-expr native (call C:brixSyntaxDocumentHasError native) false)
+  )
+  (fn-expr + is-parsing Bool :get
+    (if-expr native (call C:brixSyntaxDocumentIsParsing native) false)
+  )
+  (fn-do + edit _
+    (param start Size)
+    (param old-end Size)
+    (param new-end Size)
+    (param start-point SyntaxPoint)
+    (param old-end-point SyntaxPoint)
+    (param new-end-point SyntaxPoint)
+    (return-if (if (not native)))
+    (call C:brixSyntaxDocumentEdit
+      (block
+        (arg native)
+        (arg start)
+        (arg old-end)
+        (arg new-end)
+        (arg (. start-point row))
+        (arg (. start-point column))
+        (arg (. old-end-point row))
+        (arg (. old-end-point column))
+        (arg (. new-end-point row))
+        (arg (. new-end-point column))
+      )
+    )
+  )
+  (fn-do + parse Bool
+    (param text ([] Byte))
+    (param length Size)
+    (param budget-microseconds U32 (= 0))
+    (return-if false (if (or (not native) is-closing)))
+    (return (== (call C:brixSyntaxDocumentParse native text length budget-microseconds) 0))
+  )
+  (fn-do + continue-parse Bool
+    (return-if false (if (not native)))
+    (return (call C:brixSyntaxDocumentContinueParse native))
+  )
+  (fn-do + finish-parse Bool
+    (return-if false (if (not native)))
+    (let edited (call C:brixSyntaxDocumentFinishParse native))
+    (if is-closing
+      (call release)
+      (return false)
+    )
+    (return edited)
+  )
+  (fn-do + highlight (list SyntaxSpan)
+    (param text ([] Byte))
+    (param length Size)
+    (param start Size)
+    (param end Size)
+    (let spans (list SyntaxSpan))
+    (let count (call fill text length start end))
+    (for (in index (..< 0 count))
+      (let base (* index 3))
+      (+= spans (call SyntaxSpan ([] span-buffer base) ([] span-buffer (+ base 1)) ([] span-buffer (+ base 2))))
+    )
+    (return spans)
+  )
+  (fn-do + highlight-ranges _
+    (param text ([] Byte))
+    (param ranges (list (of Range Index)))
+    (let output (call (of ArrayBuilder U32)))
+    (for (in range ranges)
+      (let count (call fill text (. text length) (. range start) (. range end)))
+      (for (in index (..< 0 (* count 3)))
+        (call (. output append) ([] span-buffer index))
+      )
+    )
+    (return (call (. output finish-immutable)))
+  )
+  (fn-do + folds (list SyntaxFold)
+    (param text ([] Byte))
+    (param length Size)
+    (param first Size (= 0))
+    (param last Size (= (. U32 max)))
+    (let found (list SyntaxFold))
+    (return-if found (if (not native)))
+    (let capacity (/ (. fold-buffer size) 2))
+    (let count (call C:brixSyntaxDocumentFolds native text length first last fold-buffer capacity))
+    (if (> count capacity)
+      (= fold-buffer ([] U32 (* count 2)))
+      (= count (call C:brixSyntaxDocumentFolds (!! native) text length first last fold-buffer count))
+    )
+    (for (in index (..< 0 count))
+      (+= found (call SyntaxFold ([] fold-buffer (* index 2)) ([] fold-buffer (+ (* index 2) 1))))
+    )
+    (return found)
+  )
+  (fn-do + close _
+    (return-if (if (or (not native) is-closing)))
+    (if is-parsing
+      (call C:brixSyntaxDocumentCancelParse (!! native))
+      (= is-closing true)
+      (return)
+    )
+    (call release)
+  )
+  (fn-do _ fill Size
+    (param text ([] Byte))
+    (param length Size)
+    (param start Size)
+    (param end Size)
+    (return-if 0 (if (not native)))
+    (let capacity (/ (. span-buffer size) 3))
+    (let count (call C:brixSyntaxDocumentHighlight native text length start end span-buffer capacity))
+    (if (> count capacity)
+      (= span-buffer ([] U32 (* count 3)))
+      (= count (call C:brixSyntaxDocumentHighlight (!! native) text length start end span-buffer count))
+    )
+    (return count)
+  )
+  (fn-do _ release _
+    (if native
+      (call C:brixSyntaxDocumentRelease native)
+      (= native null)
+    )
+  )
+)
+
+(type + SyntaxHighlights
+  (prop + spans (of ImmutableArray U32))
+  (fn-do + This _
+    (param spans _)
+  )
+  (fn-expr + count Size :get
+    (/ (. spans length) 3)
+  )
+  (fn-do + spans-in _
+    (param start Size)
+    (param end Size)
+    (let found (list SyntaxSpan))
+    (let low Size 0)
+    (let high count)
+    (while (< low high)
+      (let middle (+ low (/ (- high low) 2)))
+      (if (<= (as ([] spans (+ (* middle 3) 1)) Size) start)
+        (= low (+ middle 1))
+        (else
+          (= high middle)
+        )
+      )
+    )
+    (let index low)
+    (while (and (< index count) (< (as ([] spans (* index 3)) Size) end))
+      (let first (as ([] spans (* index 3)) Size))
+      (let last (as ([] spans (+ (* index 3) 1)) Size))
+      (+= found
+        (call SyntaxSpan
+          (block
+            (arg (if-expr (> first start) first start))
+            (arg (if-expr (< last end) last end))
+            (arg ([] spans (+ (* index 3) 2)))
+          )
+        )
+      )
+      (+= index 1)
+    )
+    (return found)
+  )
+)
+
+(fn-do + syntax-highlight-ranges _
+  (param language SyntaxLanguage)
+  (param text ([] Byte))
+  (param ranges (list (of Range Index)))
+  (return-if (call SyntaxHighlights (call (. (call (of ArrayBuilder U32)) finish-immutable))) (if (== (. ranges length) 0)))
+  (let document (use (call SyntaxDocument language)))
+  (return-if (call SyntaxHighlights (call (. (call (of ArrayBuilder U32)) finish-immutable))) (if (not (call (. document parse) text (. text length) 0))))
+  (return (call SyntaxHighlights (call (. document highlight-ranges) text ranges)))
+)
+
+(fn-do + syntax-role SyntaxRole
+  (param capture String)
+  (let current capture)
+  (while true
+    (let role (call syntax-role-named current))
+    (return-if role (if role))
+    (let dot (call (. current find-reverse) "."))
+    (return-if (. SyntaxRole plain) (if (not dot)))
+    (= current ([] current (..< 0 dot)))
+  )
+  (return (. SyntaxRole plain))
+)
+
+(fn-expr _ syntax-role-named (? SyntaxRole)
+  (param name String)
+  (match? name
+    (case= "comment"
+      (. SyntaxRole comment)
+    )
+    (case= "keyword"
+      (. SyntaxRole keyword)
+    )
+    (case= "operator"
+      (. SyntaxRole operator)
+    )
+    (case= "punctuation.special"
+      (. SyntaxRole operator)
+    )
+    (case= "punctuation"
+      (. SyntaxRole punctuation)
+    )
+    (case= "delimiter"
+      (. SyntaxRole punctuation)
+    )
+    (case= "string.special.key"
+      (. SyntaxRole property)
+    )
+    (case= "string.special"
+      (. SyntaxRole escape)
+    )
+    (case= "string.escape"
+      (. SyntaxRole escape)
+    )
+    (case= "string"
+      (. SyntaxRole string)
+    )
+    (case= "escape"
+      (. SyntaxRole escape)
+    )
+    (case= "number"
+      (. SyntaxRole number)
+    )
+    (case= "float"
+      (. SyntaxRole number)
+    )
+    (case= "boolean"
+      (. SyntaxRole constant)
+    )
+    (case= "constant.builtin"
+      (. SyntaxRole constant)
+    )
+    (case= "constant"
+      (. SyntaxRole constant)
+    )
+    (case= "function.builtin"
+      (. SyntaxRole builtin)
+    )
+    (case= "function"
+      (. SyntaxRole function)
+    )
+    (case= "method"
+      (. SyntaxRole function)
+    )
+    (case= "constructor"
+      (. SyntaxRole type-name)
+    )
+    (case= "type"
+      (. SyntaxRole type-name)
+    )
+    (case= "variable.builtin"
+      (. SyntaxRole builtin)
+    )
+    (case= "variable.parameter"
+      (. SyntaxRole parameter)
+    )
+    (case= "parameter"
+      (. SyntaxRole parameter)
+    )
+    (case= "variable"
+      (. SyntaxRole variable)
+    )
+    (case= "property"
+      (. SyntaxRole property)
+    )
+    (case= "attribute"
+      (. SyntaxRole attribute)
+    )
+    (case= "tag.error"
+      (. SyntaxRole invalid)
+    )
+    (case= "tag"
+      (. SyntaxRole tag)
+    )
+    (case= "label"
+      (. SyntaxRole label)
+    )
+    (case= "namespace"
+      (. SyntaxRole namespace)
+    )
+    (case= "module"
+      (. SyntaxRole namespace)
+    )
+    (case= "text.title"
+      (. SyntaxRole keyword)
+    )
+    (case= "text.literal"
+      (. SyntaxRole string)
+    )
+    (case= "text.uri"
+      (. SyntaxRole string)
+    )
+    (case= "text.reference"
+      (. SyntaxRole label)
+    )
+    (case= "embedded"
+      (. SyntaxRole plain)
+    )
+    (case= "error"
+      (. SyntaxRole invalid)
+    )
+  )
+)
+
+(fn-do + syntax-styled-runs (list SyntaxStyledRun)
+  (param text ([] Byte))
+  (param start Size)
+  (param end Size)
+  (param spans (list SyntaxSpan))
+  (param roles (list SyntaxRole))
+  (param marks (list (of Range Index)) (= (call (of List (of Range Index)))))
+  (let pieces (list SyntaxRolePiece))
+  (let position start)
+  (for (in span spans)
+    (let low (call max (. span start) position))
+    (if (> low position)
+      (+= pieces (call SyntaxRolePiece position low (. SyntaxRole plain)))
+    )
+    (if (> (. span end) low)
+      (+= pieces
+        (call SyntaxRolePiece
+          (block
+            (arg low)
+            (arg (. span end))
+            (arg (if-expr (< (. span capture) (. roles length)) ([] roles (. span capture)) (. SyntaxRole plain)))
+          )
+        )
+      )
+      (= position (. span end))
+    )
+  )
+  (if (> end position)
+    (+= pieces (call SyntaxRolePiece position end (. SyntaxRole plain)))
+  )
+  (let runs (list SyntaxStyledRun))
+  (let mark Index 0)
+  (for (in piece pieces)
+    (= position (. piece start))
+    (while (< position (. piece end))
+      (while (and (< mark (. marks length)) (<= (. ([] marks mark) end) position))
+        (+= mark 1)
+      )
+      (let is-marked (and (< mark (. marks length)) (<= (. ([] marks mark) start) position)))
+      (let stop (. piece end))
+      (if (< mark (. marks length))
+        (= stop (call min stop (if-expr is-marked (. ([] marks mark) end) (. ([] marks mark) start))))
+      )
+      (+= runs (call SyntaxStyledRun (call (. text slice-string) (..< position stop)) (. piece role) is-marked))
+      (= position stop)
+    )
+  )
+  (return runs)
+)
+
+(type _ SyntaxRolePiece (is (tuple (: start Size) (: end Size) (: role SyntaxRole))))
+
+(fn-expr _ load-syntax-languages (list SyntaxLanguage)
+  (in (call SyntaxLanguage each) (..< 0 (call C:brixSyntaxLanguageCount)))
+)

@@ -1,0 +1,88 @@
+; benchmark.meta description: Boolean operations over high-intersection polygon pairs to track arrangement scaling.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/boolean)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /graphics/shapes)
+(import /math)
+(blank)
+
+(main
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 90))
+    (let a (call many-intersection-source-a pass))
+    (let b (call many-intersection-source-b pass))
+    (for (in operation (..< 0 4))
+      (let result (call boolean-operation operation a b))
+      (+= checksum (+ (call path-score result) pass operation))
+    )
+  )
+  (blank)
+  (print (str "bench-result graphics/boolean-many-intersections checksum=" checksum))
+)
+
+(fn-do _ many-intersection-source-a _
+  (param pass Int)
+  (let path (call polygon 28 118 (call Point 90 90)))
+  (call (. path rotate) (* (as pass Float) 0.11deg) (call Point 90 90))
+  (return path)
+)
+
+(fn-do _ many-intersection-source-b _
+  (param pass Int)
+  (let path (call polygon 28 116 (call Point 98 90)))
+  (call (. path rotate) (+ 6deg (* (as pass Float) -0.09deg)) (call Point 98 90))
+  (return path)
+)
+
+(fn-expr _ boolean-operation _
+  (param operation _)
+  (param a Path)
+  (param b Path)
+  (case? (== operation 0)
+    (call union a b)
+  )
+  (case? (== operation 1)
+    (call intersect a b)
+  )
+  (case? (== operation 2)
+    (call subtract a b)
+  )
+  (default
+    (call clip a b)
+  )
+)
+
+(fn-expr _ path-score _
+  (param path (? Path))
+  (case? path
+    (call solid-path-score path)
+  )
+  (default
+    0
+  )
+)
+
+(fn-expr _ solid-path-score Size
+  (param path Path)
+  (case? (not (. path count))
+    0
+  )
+  (default
+    (+ box-score (call numeric-check (. path last-point x)) (call numeric-check (. path last-point y)))
+  )
+  (where
+    (lazy bounds (. path bounding-box))
+    (lazy box-score (+ origin-score (call numeric-check (. bounds width)) (call numeric-check (. bounds height))))
+    (lazy origin-score (+ (. path count) (call numeric-check (. bounds x)) (call numeric-check (. bounds y))))
+  )
+)
+
+(fn-expr _ numeric-check Size
+  (param value Coord)
+  (% (as (call abs (* value 1000)) Size) 1000003)
+)

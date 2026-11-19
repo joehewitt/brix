@@ -1,0 +1,120 @@
+; benchmark.meta description: Compiles many small grammars to stress generated compiler shape.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+
+(main
+  (let checksum
+    (match (call compiler-shape-source)
+      (~ \many-pattern-root)
+      (throw (call Panic "many-patterns did not parse"))
+    )
+  )
+  (blank)
+  (print (str "bench-result compiler-shape/many-patterns checksum=" checksum))
+)
+
+(fn-expr _ many-pattern-root _ (over: Char)
+  (~ (seq (: a \segment01) (: b \segment02) (: c \segment03) (: d \segment04) (: e \segment05) (: f \segment06) (: g \segment07) (: h \segment08) (: i \segment09) (: j \segment10))
+    (+ a b c d e f g h i j)
+  )
+)
+
+(fn-expr _ segment01 _ (over: Char)
+  (~ (seq "s01(" (: value \word) "," (: number \digits) ")" \gap)
+    (+ (. value length) (. number length))
+  )
+)
+
+(fn-expr _ segment02 _ (over: Char)
+  (~ (seq "s02[" (: left \word) ":" (: right \word) "]" \gap)
+    (+ (* (. left length) 2) (. right length))
+  )
+)
+
+(fn-expr _ segment03 _ (over: Char)
+  (~ (seq "s03{" (: first \word) "|" (: second \word) "|" (: third \word) "}" \gap)
+    (+ (. first length) (. second length) (. third length))
+  )
+)
+
+(fn-expr _ segment04 _ (over: Char)
+  (~ (seq "s04<" \word "-" (: value \digits) ">" \gap)
+    (* (. value length) 4)
+  )
+)
+
+(fn-expr _ segment05 _ (over: Char)
+  (~ (seq "s05:" (: items (call \delimited "," (~ \word))) ";" \gap)
+    (* (. items length) 5)
+  )
+)
+
+(fn-expr _ segment06 _ (over: Char)
+  (~ (seq "s06:" (: items (call \delimited "|" (~ \digits))) ";" \gap)
+    (* (. items length) 6)
+  )
+)
+
+(fn-expr _ segment07 _ (over: Char)
+  (~ (seq "s07(" (: head \word) (: tail (* \tail-word)) ")" \gap)
+    (+ (. head length) (* (. tail length) 7))
+  )
+)
+
+(fn-expr _ segment08 _ (over: Char)
+  (~ (seq "s08(" "true" "," (: name \word) ")" \gap)
+    (+ (. name length) 32)
+  )
+  (~ (seq "s08(" "false" "," (: name \word) ")" \gap)
+    (+ (. name length) 40)
+  )
+)
+
+(fn-expr _ segment09 _ (over: Char)
+  (~ (seq "s09:" (: quoted-text \quoted) "@" (: path-text \path) ";" \gap)
+    (+ (. quoted-text length) (* (. path-text length) 2))
+  )
+)
+
+(fn-expr _ segment10 _ (over: Char)
+  (~ (seq "s10:" (: key \word) "=" (: value \digits) ";" (? \gap))
+    (+ (. key length) (* (. value length) 10))
+  )
+)
+
+(fn-expr _ tail-word _ (over: Char)
+  (~ (seq "." \word))
+)
+
+(fn-expr _ path _ (over: Char)
+  (~ (seq "/" (: parts (call \delimited "/" (~ \word))))
+    (call (. "/" join) parts)
+  )
+)
+
+(fn-expr _ quoted _ (over: Char)
+  (~ (seq "\"" (: text (* (seq (! "\"") .))) "\"")
+    text
+  )
+)
+
+(fn-expr _ word _ (over: Char)
+  (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_"))))
+)
+
+(fn-expr _ digits _ (over: Char)
+  (~ (+ (chars "0-9")))
+)
+
+(fn-expr _ gap _ (over: Char)
+  (~ (+ (| " " "\n" "\t")))
+)
+
+(fn-expr _ compiler-shape-source _
+  (paragraph
+    "s01(alpha,123) s02[left:right] s03{one|two|three} s04<word-456>"
+    "s05:a,b,c,d; s06:1|2|3|4|5; s07(root.branch.leaf) s08(true,name)"
+    "s09:\"quoted text\"@/alpha/beta/gamma; s10:key=98765;"
+  )
+)

@@ -1,0 +1,53 @@
+; benchmark.meta description: Exercises basic stream lookahead.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+
+(main
+  (let entries
+    (match (call lookahead-basic-source)
+      (~ \lookahead-basic-document)
+      (throw (call Panic "lookahead-basic did not parse"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in entry entries)
+    (+= checksum entry)
+  )
+  (blank)
+  (print (str "bench-result stream/lookahead-basic checksum=" checksum))
+)
+
+(fn-expr + lookahead-basic-document _ (over: Char)
+  (~ (: entries (+ \lookahead-entry))
+    entries
+  )
+  (where
+    (lazy lookahead-entry Size
+      (pattern
+        (~ (seq (& "name:") "name:" (: name \lookahead-word) "\n")
+          (* (. name length) 3)
+        )
+        (~ (seq (! "name:") "note:" (: text (* (seq (! "\n") .))) "\n")
+          (* (. text length) 5)
+        )
+      )
+    )
+    (blank)
+    (lazy lookahead-word String
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_"))))
+      )
+    )
+  )
+)
+
+(fn-expr _ lookahead-basic-source _
+  (call (. "" join) (in (call lookahead-basic-line each) (..< 0 140)))
+)
+
+(fn-expr _ lookahead-basic-line String
+  (param index Int)
+  (if-expr (== (% index 3) 0) (str "note:deterministic lookahead note " index "\n") (str "name:alpha_" index "\n"))
+)

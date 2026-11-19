@@ -1,9 +1,5 @@
 # Assign
 
-```yumi
-foo = bar
-```
-
 ```brix
 (main
   (= foo bar)
@@ -15,10 +11,6 @@ foo = bar
     <Id name="foo"/>
     <Id name="bar"/>
 </AssignmentExpression>
-```
-
-```yumi
-foo =? bar
 ```
 
 ```brix
@@ -34,10 +26,6 @@ foo =? bar
         <Id name="bar"/>
     </OptionalChain>
 </AssignmentExpression>
-```
-
-```yumi
-a = b = c
 ```
 
 ```brix
@@ -56,10 +44,6 @@ a = b = c
 </AssignmentExpression>
 ```
 
-```yumi
-foo += bar
-```
-
 ```brix
 (main
   (+= foo bar)
@@ -71,10 +55,6 @@ foo += bar
     <Id name="foo"/>
     <Id name="bar"/>
 </AssignmentExpression>
-```
-
-```yumi
-foo = bar += bar
 ```
 
 ```brix
@@ -93,10 +73,6 @@ foo = bar += bar
 </AssignmentExpression>
 ```
 
-```yumi
-foo.bar = baz
-```
-
 ```brix
 (main
   (= (. foo bar) baz)
@@ -110,10 +86,6 @@ foo.bar = baz
     </Get>
     <Id name="baz"/>
 </AssignmentExpression>
-```
-
-```yumi
-foo.bar.baz = z
 ```
 
 ```brix
@@ -133,10 +105,6 @@ foo.bar.baz = z
 </AssignmentExpression>
 ```
 
-```yumi
-foo[0] = baz
-```
-
 ```brix
 (main
   (= ([] foo 0) baz)
@@ -151,11 +119,6 @@ foo[0] = baz
     </Index>
     <Id name="baz"/>
 </AssignmentExpression>
-```
-
-```yumi
-foo =
-    bar
 ```
 
 ```brix
@@ -175,10 +138,6 @@ foo =
         <Id name="bar"/>
     </Block>
 </AssignmentExpression>
-```
-
-```yumi
-foo <-* bar
 ```
 
 ```brix
@@ -202,10 +161,6 @@ foo <-* bar
 </For>
 ```
 
-```yumi
-foo <-* ~ "f" in "ff"
-```
-
 ```brix
 (main
   (<-* foo (~ "f" (in: "ff")))
@@ -225,11 +180,6 @@ foo <-* ~ "f" in "ff"
         <Id name="each"/>
     </BinaryExpression>
 </For>
-```
-
-```yumi
-x = foo =
-    bar
 ```
 
 ```brix
@@ -254,21 +204,6 @@ x = foo =
         </Block>
     </AssignmentExpression>
 </AssignmentExpression>
-```
-
-```yumi
-x = -- foo
-```
-
-```output
-Exception: A print is a step and gives no value; print on a line of its own, or after ":" as a one-step body
-<no file:2>
-    x = -- foo
-          ^
-```
-
-```yumi
-x, y = b
 ```
 
 ```brix

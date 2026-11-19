@@ -1,0 +1,218 @@
+(import ./clock)
+(import ./duration)
+(import /BxEvents/BxEvents.h)
+
+(type + (of Timer Interval)
+  (implements (of Usable Void))
+  (prop + start-time Interval)
+  (prop + end-time Interval)
+  (prop + increment Interval)
+  (blank)
+  (prop _ lock Semaphore)
+  (prop _ ticker (? Task))
+  (blank)
+  (delegate (of Broadcastable Interval))
+  (prop _ channel _ (:= (call (of AsyncOnDemandChannel Interval) this)))
+  (fn-do + This _
+    (param increment Interval)
+    (param start-time Interval (= 0))
+    (param end-time Interval (= 0))
+  )
+  (fn-do + begin-using _
+    ; XXXjoe Create a unique timer id and save it! Don't be casting the semaphore ptr to a uid!!
+    (blank)
+    (call (?. ticker cancel-later))
+    (= ticker
+      (do-new
+        (let elapsed (call Interval 0))
+        (if (> start-time 0)
+          (let us (as start-time Microseconds))
+          (return-if (if (call wait-for-duration us lock)))
+          (blank)
+          (= elapsed start-time)
+          (<- channel elapsed)
+        )
+        (blank)
+        (let us (as increment Microseconds))
+        (while true
+          (if (call wait-for-duration us lock)
+            (break)
+          )
+          (blank)
+          (+= elapsed increment)
+          (if (and end-time (>= elapsed end-time))
+            (break)
+            (else
+              (<- channel elapsed)
+            )
+          )
+        )
+      )
+    )
+  )
+  (fn-do + end-using _
+    (call (?. ticker cancel-later))
+    (= ticker null)
+    (call cancel-timer-event-listener lock)
+  )
+)
+
+(type + TimerLoop
+  (prop _ sem _ (= (call Semaphore)))
+  (prop _ is-canceled _ (= false))
+  (fn-do + loop _
+    (param duration Microseconds)
+    (param fn Doer)
+    (let t1 (call clock))
+    (let t duration)
+    (while (not is-canceled)
+      (if (call wait-for-duration t sem)
+        (break)
+      )
+      (blank)
+      (call fn)
+      (let diff (call (of (. t1 elapsed) Microseconds)))
+      (let place (% diff duration))
+      (= t (- duration (% diff duration)))
+    )
+  )
+  (fn-do + cancel _
+    (= is-canceled true)
+    (call cancel-timer-event-listener sem)
+  )
+)
+
+(type + AnimationLoop
+  (prop + interval-ns U64)
+  (prop + callback (? Doer))
+  (blank)
+  (prop _ dirty _ (= false))
+  (prop _ painting _ (= false))
+  (prop _ waiter (? Task))
+  (prop _ waiting-deadline-ns U64)
+  (prop _ last-deadline-ns U64)
+  (prop _ sem _ (:= (call Semaphore)))
+  (fn-do + This _
+    (param interval Nanoseconds)
+    (param callback _)
+    (= interval-ns (as interval U64))
+  )
+  (fn-do + request-now _
+    (call request (call monotonic-time-nanoseconds))
+  )
+  (fn-do + request-next _
+    (call request (call next-deadline (call monotonic-time-nanoseconds)))
+  )
+  (fn-do + cancel _
+    (= callback null)
+    (= dirty false)
+    (call stop-waiting)
+  )
+  (fn-do _ request _
+    (param deadline-ns U64)
+    (return-if (if (not callback)))
+    (blank)
+    (= dirty true)
+    (if (and is-waiting (< deadline-ns waiting-deadline-ns))
+      (call stop-waiting)
+    )
+    (if (and (not is-waiting) (not painting))
+      (call wait-then-fire deadline-ns)
+    )
+  )
+  (fn-do _ wait-then-fire _
+    (param deadline-ns U64)
+    (return-if (if is-waiting))
+    (blank)
+    (= waiting-deadline-ns deadline-ns)
+    (= waiter
+      (do-new
+        (return-if (if (not callback)))
+        (return-if (if (call wait-until-absolute-time deadline-ns sem)))
+        ; A deadline already passed is not waited for, so the wait may not have seen a cancel.
+        (return-if (if (. (call Task) is-canceled)))
+        (= waiter null)
+        (call fire deadline-ns)
+      )
+    )
+  )
+  (fn-expr _ is-waiting _ :get
+    ; Whether a task waits to fire. Once its wait ends it lets go of `waiter`, so that a cancel does
+    ; not cut the callback short.
+    (and (!= waiter null) (not (. waiter is-finished)))
+  )
+  (fn-do _ stop-waiting _
+    (call (?. waiter cancel-later))
+    (= waiter null)
+    (call cancel-timer-event-listener sem)
+  )
+  (fn-do _ fire _
+    (param deadline-ns U64)
+    (return-if (if (not callback)))
+    (return-if (if (not dirty)))
+    (blank)
+    (= dirty false)
+    (= painting true)
+    (= last-deadline-ns deadline-ns)
+    (finally
+      (= painting false)
+    )
+    (blank)
+    (call callback
+      (block
+        (on-error (: error Error)
+          (call unhandled-error error)
+        )
+      )
+    )
+    (blank)
+    (if (and callback dirty)
+      (call wait-then-fire (call next-deadline (call monotonic-time-nanoseconds)))
+    )
+  )
+  (fn-expr _ next-deadline _
+    (param now U64)
+    (case? (or (not last-deadline-ns) (not interval-ns))
+      now
+    )
+    (case? (> next now)
+      next
+    )
+    (default
+      (+ last-deadline-ns (* (+ (/ (- now last-deadline-ns) interval-ns) 1) interval-ns))
+    )
+    (where
+      (lazy next (+ last-deadline-ns interval-ns))
+    )
+  )
+)
+
+(fn-expr + monotonic-time-nanoseconds U64 (door time)
+  (call C:brixMonotonicTimeNanoseconds)
+)
+
+(fn-do + wait-until-absolute-time _
+  (param deadline-ns U64)
+  (param sem Semaphore)
+  ; Keep absolute deadlines at the API boundary, but sleep through the relative timer path; repeated
+  ; native absolute waits can miss their resume.
+  (let now (call monotonic-time-nanoseconds))
+  (return-if (if (<= deadline-ns now)))
+  (blank)
+  (let delay-ns (- deadline-ns now))
+  (let delay (as (as delay-ns Nanoseconds) Microseconds))
+  (return-if (if (<= delay 0)))
+  (blank)
+  (return (call wait-for-duration delay sem))
+)
+
+(fn-expr + wait-for-duration Bool (door time)
+  (param delay Microseconds)
+  (param sem Semaphore)
+  (call C:brixSuspendActiveTaskUntilTime delay (. sem native-pointer))
+)
+
+(fn-do + cancel-timer-event-listener _ (door time)
+  (param sem Semaphore)
+  (call C:brixCancelTimerEventListener (. sem native-pointer))
+)

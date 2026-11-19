@@ -5,13 +5,13 @@ The code editor is split across two libraries. Brix has an editor of its own, wh
 | Concern | Where | Notes |
 | --- | --- | --- |
 | Text and editing | `stdlib/code` | `CodeText`, `CodeSession` (caret, selection, undo, parse, highlights), `CodeDocument` (a session bound to a file) |
-| Find and replace | `stdlib/code/code-find.yumi` | `CodeFind` searches a `CodeFindTarget` with case, whole-word and regex options, and replaces one hit or all |
-| Folding | `stdlib/code/code-folds.yumi` | `CodeFolds`, the collapsed ranges of a session (`CodeSession.folds`) |
-| Parsing and roles | `stdlib/code/syntax.yumi` | tree-sitter documents and queries, `SyntaxRole`, `syntax-styled-runs` |
+| Find and replace | `stdlib/code/code-find.bx` | `CodeFind` searches a `CodeFindTarget` with case, whole-word and regex options, and replaces one hit or all |
+| Folding | `stdlib/code/code-folds.bx` | `CodeFolds`, the collapsed ranges of a session (`CodeSession.folds`) |
+| Parsing and roles | `stdlib/code/syntax.bx` | tree-sitter documents and queries, `SyntaxRole`, `syntax-styled-runs` |
 | View | `stdlib/gui/code-editor` | `CodeEditor`, `CodeGutter`, `CodeOverview`, `CodeLinkCard`, `CodeSyntaxStyle` |
-| Find bar | `stdlib/gui/code-editor/code-find-bar.yumi` | `FindBar` runs a `CodeFind` over its `target`; `FindOptions` keeps the case, word and regex toggles in an `AppState` |
+| Find bar | `stdlib/gui/code-editor/code-find-bar.bx` | `FindBar` runs a `CodeFind` over its `target`; `FindOptions` keeps the case, word and regex toggles in an `AppState` |
 | Brix rows | `stdlib/gui/source-editor` | `SourceEditor` shows a `SourceSession` as rows, `SourceListingPane` shows the forms beside it, and `SourceSurface` paints the boxes behind them |
-| Soft wrap | `stdlib/gui/source-editor/source-wrap.yumi` | `source-wrap` breaks a row into visual lines, `SourceWrap` maps columns to and from them, and `SourceWrapRows` gives each shown row its height |
+| Soft wrap | `stdlib/gui/source-editor/source-wrap.bx` | `source-wrap` breaks a row into visual lines, `SourceWrap` maps columns to and from them, and `SourceWrapRows` gives each shown row its height |
 
 `CodeEditor.show(session, scroll)` displays a `CodeSession`; several editors may show one session.
 The editor never reads or writes files. It publishes `save-requested`, and the owner saves, usually
@@ -82,7 +82,7 @@ menu item or command for it. Wrapping changes only how rows are laid out, never 
 
 ## Highlighting
 
-`stdlib/code/syntax.yumi` wraps the C shim in `libs/syntax`, which runs tree-sitter 0.27.1. Each session keeps
+`stdlib/code/syntax.bx` wraps the C shim in `libs/syntax`, which runs tree-sitter 0.27.1. Each session keeps
 its tree; edits call `ts_tree_edit` and reparse incrementally. A reparse runs on the UI thread with
 a 4 ms budget, or 40 ms when a session opens. A parse that runs over resumes on a worker thread from
 a private copy of the text, while highlighting uses the edited previous tree; edits made in the
@@ -115,7 +115,7 @@ predicates are ignored. Capture names map to `SyntaxRole`s through `syntax-role`
 
 Tree-sitter is an external dependency, like utf8proc. `libs/build.json` names it `treesitter`,
 which `brixsyntax` requires, so only programs that import `/BxSyntax/` headers, through
-`stdlib/code/syntax.yumi`, link it. The entry points at `build/deps/tree-sitter`, which resolves to
+`stdlib/code/syntax.bx`, link it. The entry points at `build/deps/tree-sitter`, which resolves to
 `.tmp/build/deps/tree-sitter` and holds `include/tree_sitter/api.h`, `lib/libtree-sitter.a`, and
 one `lib/libtree-sitter-<language>.a` per grammar. Each grammar archive also defines its highlight queries as strings named
 `tree_sitter_<language>_query_<file>`, such as `tree_sitter_javascript_query_highlights_jsx`. These

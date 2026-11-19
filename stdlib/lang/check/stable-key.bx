@@ -1,0 +1,25 @@
+(type-line + StableKey (is U64))
+(blank)
+(prop + stable-key-seed StableKey (= 14695981039346656037))
+
+(fn-expr + mixed StableKey
+  (param key StableKey)
+  (param word U64)
+  ; A stable key is hashed from what a type or an instance is, never from its id, so two runs
+  ; that intern the same rows in different orders give each row the same key.
+  (/xor/ scrambled (/zrshift/ scrambled 32))
+  (where
+    (lazy scrambled (* (/xor/ key word) 11400714819323198485))
+  )
+)
+
+(fn-do + mixed-text StableKey
+  (param key StableKey)
+  (param text String)
+  (let bytes (as text (of CPointer Byte)))
+  (let result (call mixed key (as (. text size) U64)))
+  (for (in index (..< 0 (. text size)))
+    (= result (* (/xor/ result ([] bytes index)) 1099511628211))
+  )
+  (return result)
+)

@@ -1,118 +1,119 @@
 # Comprehension indexing
 
-```yumi
-. items = List'String("a", "b", "c")
-. picked = List'String(items[each] in 1 .. < 3)
--- " ".join((each in picked))
+```brix
+(main
+  (let items (call (of List String) "a" "b" "c"))
+  (let picked (call (of List String) (in ([] items each) (..< 1 3))))
+  (print (call (. " " join) (in each picked)))
+)
 ```
 
 ```output
 b c
 ```
 
-```yumi
-. bag = Bag()
-bag.items += "a"
-bag.items += "b"
-bag.items += "c"
--- " ".join((each in bag.middle(0, 2)))
+```brix
+(main
+  (let bag (call Bag))
+  (+= (. bag items) "a")
+  (+= (. bag items) "b")
+  (+= (. bag items) "c")
+  (print (call (. " " join) (in each (call (. bag middle) 0 2))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bag
-
-+ items [String] = List'String()
-
-────────────────────
-+ do middle [String]
-    - start Index
-    - end Index
-
-= List'String(items[each] in start .. < end)
+(type + Bag
+  (prop + items (list String) (= (call (of List String))))
+  (fn-do + middle (list String)
+    (param start Index)
+    (param end Index)
+    (return (call (of List String) (in ([] items each) (..< start end))))
+  )
+)
 ```
 
 ```output
 a b
 ```
 
-```yumi
-. bag = Bag()
-bag.items += "a"
-bag.items += "b"
-bag.items += "c"
--- " ".join((each in bag.upto(2)))
+```brix
+(main
+  (let bag (call Bag))
+  (+= (. bag items) "a")
+  (+= (. bag items) "b")
+  (+= (. bag items) "c")
+  (print (call (. " " join) (in each (call (. bag upto) 2))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bag
-
-+ items [String] = List'String()
-
-────────────────────
-+ do upto [String]
-    - index Index
-
-= List'String(items[each] in 0 .. < index)
+(type + Bag
+  (prop + items (list String) (= (call (of List String))))
+  (fn-do + upto (list String)
+    (param index Index)
+    (return (call (of List String) (in ([] items each) (..< 0 index))))
+  )
+)
 ```
 
 ```output
 a b
 ```
 
-```yumi
-. bag = Bag()
-bag.items += "a"
-bag.items += "b"
-bag.items += "c"
--- " ".join((each in bag.upto(2)))
+```brix
+(main
+  (let bag (call Bag))
+  (+= (. bag items) "a")
+  (+= (. bag items) "b")
+  (+= (. bag items) "c")
+  (print (call (. " " join) (in each (call (. bag upto) 2))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bag
-
-+ items [String] = List'String()
-
-────────────────────
-+ do upto [String]
-    - count Index
-
-for item in items
-    if item.length > 0
-        = List'String(items[each] in 0 .. < count)
-= List'String()
+(type + Bag
+  (prop + items (list String) (= (call (of List String))))
+  (fn-do + upto (list String)
+    (param count Index)
+    (for (in item items)
+      (if (> (. item length) 0)
+        (return (call (of List String) (in ([] items each) (..< 0 count))))
+      )
+    )
+    (return (call (of List String)))
+  )
+)
 ```
 
 ```output
 a b
 ```
 
-```yumi
-. bag = Bag()
-bag.items += "a"
-bag.items += "b"
-bag.items += "c"
-bag.ranges += Stretch(1, 3)
--- " ".join((each in bag.stretch(0)))
+```brix
+(main
+  (let bag (call Bag))
+  (+= (. bag items) "a")
+  (+= (. bag items) "b")
+  (+= (. bag items) "c")
+  (+= (. bag ranges) (call Stretch 1 3))
+  (print (call (. " " join) (in each (call (. bag stretch) 0))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Stretch is Tuple
+(type + Stretch (is Tuple)
+  (prop + start Index)
+  (prop + end Index)
+)
 
-+ start Index
-+ end Index
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bag
-
-+ items [String] = List'String()
-+ ranges [Stretch] = List'Stretch()
-
-────────────────────
-+ do stretch [String]
-    - index Index
-
-for range in ranges
-    if range.end > 0
-        . picked = List'String(items[each] in ranges[index].start .. < ranges[index].end)
-        picked += "!"
-        = picked
-= List'String()
+(type + Bag
+  (prop + items (list String) (= (call (of List String))))
+  (prop + ranges (list Stretch) (= (call (of List Stretch))))
+  (fn-do + stretch (list String)
+    (param index Index)
+    (for (in range ranges)
+      (if (> (. range end) 0)
+        (let picked (call (of List String) (in ([] items each) (..< (. ([] ranges index) start) (. ([] ranges index) end)))))
+        (+= picked "!")
+        (return picked)
+      )
+    )
+    (return (call (of List String)))
+  )
+)
 ```
 
 ```output

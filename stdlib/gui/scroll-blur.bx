@@ -1,0 +1,187 @@
+(import /graphics/point)
+(import /graphics/primitives)
+(import /graphics/shader)
+(import /graphics/shader-declarations)
+(import /math)
+(blank)
+(prop + gui-scroll-blur-stills Size (= 4))
+(prop _ scroll-blur-slack Length (= 0.5))
+(prop _ scroll-blur-half-span F64 (= 8))
+(prop _ scroll-blur-quarter-span F64 (= 32))
+
+(type + ScrollBlur (is LayerShader)
+  (prop + motion Point)
+  (prop + still-count F64)
+  (prop + still-0 Rect)
+  (prop + still-1 Rect)
+  (prop + still-2 Rect)
+  (prop + still-3 Rect)
+  (fn-do + This _
+    (param motion Point)
+    (param stills (list Rect))
+    (let merged (call scroll-blur-merged stills))
+    (= (. this motion) motion)
+    (= still-count (as (call min (. merged length) gui-scroll-blur-stills) F64))
+    (= still-0 (call scroll-blur-still merged 0))
+    (= still-1 (call scroll-blur-still merged 1))
+    (= still-2 (call scroll-blur-still merged 2))
+    (= still-3 (call scroll-blur-still merged 3))
+  )
+  (fn-expr + metal _
+    (paragraph
+      "static bool scrollBlurHeld(float2 p, ScrollBlurArgs args) {"
+      "    float4 stills[4] = {args.still_0, args.still_1, args.still_2, args.still_3};"
+      "    int count = int(args.still_count);"
+      "    for (int i = 0; i < count; ++i) {"
+      "        float4 r = stills[i];"
+      "        if (p.x >= r.x && p.y >= r.y && p.x < r.x + r.z && p.y < r.y + r.w) {"
+      "            return true;"
+      "        }"
+      "    }"
+      "    return false;"
+      "}"
+      (blank)
+      "static bool scrollBlurNear(float2 low, float2 high, ScrollBlurArgs args) {"
+      "    float4 stills[4] = {args.still_0, args.still_1, args.still_2, args.still_3};"
+      "    int count = int(args.still_count);"
+      "    for (int i = 0; i < count; ++i) {"
+      "        float4 r = stills[i];"
+      "        if (high.x >= r.x && high.y >= r.y && low.x < r.x + r.z && low.y < r.y + r.w) {"
+      "            return true;"
+      "        }"
+      "    }"
+      "    return false;"
+      "}"
+      (blank)
+      "static float3 scrollBlurMixed(float4 color) {"
+      "    float3 magnitude = abs(color.rgb) / max(color.a, 1.0e-5);"
+      "    return color.rgb * (0.045 + magnitude * (0.55 + magnitude * 0.405));"
+      "}"
+      (blank)
+      "static float3 scrollBlurUnmixed(float3 mixed) {"
+      "    float3 target = abs(mixed);"
+      "    float3 color = abs(brixEncodeSRGB(target));"
+      "    color -= (color * (0.045 + color * (0.55 + color * 0.405)) - target) / (0.045 + color * (1.1 + color * 1.215));"
+      "    return sign(mixed) * color;"
+      "}"
+      (blank)
+      "float4 filter(float2 position, ShaderLayer layer, ScrollBlurArgs args) {"
+      "    float span = length(args.motion);"
+      "    bool reduced = layer.resolution.x < 1.0 || layer.resolution.y < 1.0;"
+      "    if (span <= 0.0 || (!reduced && scrollBlurHeld(position, args))) {"
+      "        return layer.sample(position);"
+      "    }"
+      "    constexpr sampler pixels(coord::pixel, address::clamp_to_edge, filter::linear);"
+      "    float2 low = layer.origin + 0.5;"
+      "    float2 high = layer.origin + layer.size * layer.scale - 0.5;"
+      "    float2 base = layer.origin + position * layer.scale;"
+      "    float2 travel = args.motion * layer.scale;"
+      "    int taps = clamp(int(ceil(span * layer.scale * 0.5)), 2, 24);"
+      "    float2 reach = abs(args.motion) * 0.5;"
+      "    bool near = scrollBlurNear(position - reach, position + reach, args);"
+      "    float4 sum = float4(0.0);"
+      "    float weight = 0.0;"
+      "    for (int i = 0; i < taps; ++i) {"
+      "        float t = (float(i) + 0.5) / float(taps) - 0.5;"
+      "        float2 q = clamp(base + t * travel, low, high);"
+      "        if (near && scrollBlurHeld((q - layer.origin) / layer.scale, args)) {"
+      "            continue;"
+      "        }"
+      "        float4 color = layer.texture.sample(pixels, q);"
+      "        sum += float4(scrollBlurMixed(color), color.a);"
+      "        weight += 1.0;"
+      "    }"
+      "    if (weight <= 0.0) {"
+      "        return layer.sample(position);"
+      "    }"
+      "    if (sum.a <= 0.0) {"
+      "        return float4(0.0);"
+      "    }"
+      "    float3 color = scrollBlurUnmixed(sum.rgb / sum.a);"
+      "    return float4(brixLinearColor(color, layer.space, layer.space), sum.a / weight);"
+      "}"
+    )
+  )
+)
+
+(fn-do + scroll-blur-pass ShaderFilter
+  (param motion Point)
+  (param stills (list Rect))
+  (param scale F64)
+  (let kept (call (of List Rect)))
+  (for (in still (call scroll-blur-merged stills))
+    (if (< (. kept length) gui-scroll-blur-stills)
+      (+= kept still)
+    )
+  )
+  (let base ShaderFilter (call ScrollBlur motion kept))
+  (let pixels (* (call sqrt (+ (* (. motion x) (. motion x)) (* (. motion y) (. motion y)))) scale))
+  (let share (if-expr (>= pixels scroll-blur-quarter-span) 0.25 (if-expr (>= pixels scroll-blur-half-span) 0.5 1.0)))
+  (let resolution (if-expr (>= (call abs (. motion y)) (call abs (. motion x))) (call Point 1 share) (call Point share 1)))
+  (return (call ShaderFilter (. base shader) (. base args) (. base images) (. base is-live) (. base frame-rate) (. base time) (. base arg-kinds) resolution kept))
+)
+
+(fn-do + scroll-blur-merged (list Rect)
+  (param stills (list Rect))
+  (let merged (call (of List Rect)))
+  (for (in still stills)
+    (let current still)
+    (let index 0)
+    (while (< index (. merged length))
+      (let joined (call scroll-blur-joined ([] merged index) current))
+      (if joined
+        (= current joined)
+        (call (. merged remove) index)
+        (= index 0)
+        (else
+          (+= index 1)
+        )
+      )
+    )
+    (if (and (> (. current width) 0) (> (. current height) 0))
+      (+= merged current)
+    )
+  )
+  (return merged)
+)
+
+(fn-expr _ scroll-blur-joined (? Rect)
+  (param a Rect)
+  (param b Rect)
+  (case? (call scroll-blur-holds a b)
+    a
+  )
+  (case? (call scroll-blur-holds b a)
+    b
+  )
+  (case? (and same-columns (<= (. b top) (+ (. a bottom) scroll-blur-slack)) (>= (. b bottom) (- (. a top) scroll-blur-slack)))
+    (call Rect (. a x) (call min (. a top) (. b top)) (. a width) (- (call max (. a bottom) (. b bottom)) (call min (. a top) (. b top))))
+  )
+  (case? (and same-rows (<= (. b left) (+ (. a right) scroll-blur-slack)) (>= (. b right) (- (. a left) scroll-blur-slack)))
+    (call Rect (call min (. a left) (. b left)) (. a y) (- (call max (. a right) (. b right)) (call min (. a left) (. b left))) (. a height))
+  )
+  (default
+    null
+  )
+  (where
+    (lazy same-columns (and (<= (call abs (- (. a x) (. b x))) scroll-blur-slack) (<= (call abs (- (. a width) (. b width))) scroll-blur-slack)))
+    (lazy same-rows (and (<= (call abs (- (. a y) (. b y))) scroll-blur-slack) (<= (call abs (- (. a height) (. b height))) scroll-blur-slack)))
+  )
+)
+
+(fn-expr _ scroll-blur-holds Bool
+  (param outer Rect)
+  (param inner Rect)
+  (and (>= (. inner left) (- (. outer left) slack)) (<= (. inner right) (+ (. outer right) slack)) top bottom)
+  (where
+    (lazy slack scroll-blur-slack)
+    (lazy top (>= (. inner top) (- (. outer top) slack)))
+    (lazy bottom (<= (. inner bottom) (+ (. outer bottom) slack)))
+  )
+)
+
+(fn-expr _ scroll-blur-still Rect
+  (param stills (list Rect))
+  (param index Size)
+  (if-expr (< index (. stills length)) ([] stills index) (call Rect 0 0 0 0))
+)

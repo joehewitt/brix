@@ -1,0 +1,62 @@
+(import /os/process)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Process wait yields"))
+  (call (. cases run) wait-tests)
+  (= cases (call (. cases then) "Process input closes" input-tests))
+  (= cases (call (. cases then) "Process signals" signal-tests))
+  (return cases)
+)
+
+(fn-do _ wait-tests TestCase
+  (param t TestCase)
+  (let process (call Process "/bin/sleep" "0.02"))
+  (finally
+    (inline (call (. process close)))
+  )
+  (call (. process wait) null)
+  (let done (call (of Semaphore Bool)))
+  (do-new-thread
+    (call (. done post) true)
+  )
+  (call (. t expect) "process exit does not wake an unrelated receive" true (call (. done await)))
+  (return t)
+)
+
+(fn-do _ input-tests TestCase
+  (param t TestCase)
+  (let first (call Process "/bin/cat"))
+  (finally
+    (inline (call (. first close)))
+  )
+  (let second (call Process "/bin/cat"))
+  (finally
+    (inline (call (. second close)))
+  )
+  (call (. first write) "echoed")
+  (call (. first close-input))
+  (let output (as first String))
+  (call (. t expect) "closing input ends the child's input" "echoed" output)
+  (call (. t expect) "the child exits once its input ends" 0 (call (. first wait) null))
+  (call (. second close-input))
+  (call (. t expect) "a sibling keeps its own input" 0 (call (. second wait) null))
+  (return t)
+)
+
+(fn-do _ signal-tests TestCase
+  (param t TestCase)
+  (let defaults (call Process "/bin/sh" "-c" "kill -PIPE \$\$; printf survived"))
+  (finally
+    (inline (call (. defaults close)))
+  )
+  (let output (as defaults String))
+  (call (. t expect) "an ignored signal is not inherited" "" output)
+  (call (. t expect) "the default disposition ends the child" 141 (call (. defaults wait) null))
+  (return t)
+)

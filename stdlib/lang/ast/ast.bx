@@ -1,0 +1,229 @@
+(import ./ast-nodes)
+(import /core/arena)
+(import /core/array-builder)
+(import /core/atom-pool)
+(import /core/table)
+
+(type + AST
+  (implements (of Usable Void))
+  (prop + source String)
+  (prop + source-path String)
+  (prop + nodes (of ImmutableTable Syntax))
+  (prop + children (of ImmutableArray SyntaxId ArenaBacking))
+  (prop + atoms (of ImmutableArray Atom ArenaBacking))
+  (prop + stored-atoms (of ImmutableArray Atom ArenaBacking))
+  (prop + child-links (of ImmutableArray SyntaxId ArenaBacking))
+  (prop + child-ends (of Array U32 ArenaBacking))
+  (prop + subtree-starts (of Array SyntaxId ArenaBacking))
+  (prop + root SyntaxId)
+  (prop _ text-arena Arena)
+  (prop _ storage-arena Arena)
+  (prop _ local-atoms AtomPool)
+  (prop _ borrowed Bool)
+  (fn-do + This _
+    (param text-arena Arena)
+    (param storage-arena Arena)
+    (param local-atoms AtomPool)
+    (param source String)
+    (param source-path String)
+    (param nodes (of ImmutableTable Syntax))
+    (param children (of ImmutableArray SyntaxId ArenaBacking))
+    (param atoms (of ImmutableArray Atom ArenaBacking))
+    (param stored-atoms (of ImmutableArray Atom ArenaBacking))
+    (param child-links (of ImmutableArray SyntaxId ArenaBacking))
+    (param child-ends (of Array U32 ArenaBacking))
+    (param subtree-starts (of Array SyntaxId ArenaBacking))
+    (param root SyntaxId)
+  )
+  (fn-expr + begin-using _
+    this
+  )
+  (fn-do + end-using _ (without gc)
+    (call release)
+  )
+  (fn-expr + is-lent Bool :get
+    borrowed
+  )
+  (fn-do + lend AST
+    (let lent
+      (call AST
+        (block
+          (arg text-arena)
+          (arg storage-arena)
+          (arg local-atoms)
+          (arg source)
+          (arg source-path)
+          (arg nodes)
+          (arg children)
+          (arg atoms)
+          (arg stored-atoms)
+          (arg child-links)
+          (arg child-ends)
+          (arg subtree-starts)
+          (arg root)
+        )
+      )
+    )
+    (= (. lent borrowed) true)
+    (return lent)
+  )
+  (fn-do + release _ (without gc)
+    (return-if (if borrowed))
+    (call (. local-atoms release))
+    (call (. text-arena release))
+    (call (. storage-arena release))
+  )
+)
+
+(fn-expr + is-declaration-syntax Bool
+  (param tree AST)
+  (param id SyntaxId)
+  (match ([] (. tree nodes) id)
+    (case .node-import-syntax
+      true
+    )
+    (case .node-function-syntax
+      true
+    )
+    (case .node-getter-syntax
+      true
+    )
+    (case .node-setter-syntax
+      true
+    )
+    (case .node-class-block
+      true
+    )
+    (case .node-extension
+      true
+    )
+    (case .node-style-sheet-extension
+      true
+    )
+    (case .node-property-syntax
+      true
+    )
+    (case .node-event-declaration
+      true
+    )
+    (case .node-effect-declaration
+      true
+    )
+    (case .node-unit-declaration
+      true
+    )
+    (case .node-enum-declaration
+      true
+    )
+    (case .node-delegate-declaration
+      true
+    )
+    (case .node-implements-declaration
+      true
+    )
+    (case .node-using-declaration
+      true
+    )
+    (case .node-sees-declaration
+      true
+    )
+    (case .node-dependency-declaration
+      true
+    )
+    (case .node-style-domain-item
+      true
+    )
+    (case .node-style-annotation
+      true
+    )
+    (case .node-rule-syntax
+      true
+    )
+    (case .node-when-rule-syntax
+      true
+    )
+    (case .node-whenever-rule-syntax
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-expr + is-type-syntax Bool
+  (param tree AST)
+  (param id SyntaxId)
+  (match ([] (. tree nodes) id)
+    (case .node-type-identifier
+      true
+    )
+    (case .node-core-type-identifier
+      true
+    )
+    (case .node-type-arguments
+      true
+    )
+    (case .node-type-associated
+      true
+    )
+    (case .node-type-optional
+      true
+    )
+    (case .node-type-tuple
+      true
+    )
+    (case .node-type-function
+      true
+    )
+    (case .node-type-iterable
+      true
+    )
+    (case .node-type-or
+      true
+    )
+    (case .node-type-and
+      true
+    )
+    (case .node-type-numeric
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-expr + is-comment-syntax Bool
+  (param tree AST)
+  (param id SyntaxId)
+  ; A `//` line that names no probe: text for the reader, which no pass compiles.
+  (match ([] (. tree nodes) id)
+    (case (call .node-probe row)
+      (and (== (. row object) 0) (not (. row key)))
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-do + source-line String
+  (param source String)
+  (param line U32)
+  ; The text of a line of a source, counted from zero, without its end.
+  (let bytes (call byte-view source))
+  (let cursor Index 0)
+  (let current U32)
+  (while (and (< cursor (. bytes size)) (< current line))
+    (if (== ([] bytes cursor) 10)
+      (+= current 1)
+    )
+    (+= cursor 1)
+  )
+  (let start cursor)
+  (while (and (< cursor (. bytes size)) (!= ([] bytes cursor) 10))
+    (+= cursor 1)
+  )
+  (return (call (. bytes slice-string) (..< start cursor)))
+)

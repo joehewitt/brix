@@ -1,0 +1,42 @@
+; benchmark.meta description: Tessellates self-crossing polygons such as stars and bowties.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/point)
+(import /graphics/polygon)
+(import /math)
+(blank)
+
+(main
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 260))
+    (let poly (call star-polygon pass))
+    (let pieces (call (. poly tessellate)))
+    (+= checksum (+ (. pieces length) (call numeric-check (. poly area))))
+    (for (in piece pieces)
+      (+= checksum (+ (. piece points length) (call numeric-check (. piece area))))
+    )
+  )
+  (blank)
+  (print (str "bench-result graphics/polygon-tessellate-self-crossing checksum=" checksum))
+)
+
+(fn-do _ star-polygon _
+  (param seed Int)
+  (let points (list Point))
+  (let base (as seed Float))
+  (for (in i (..< 0 10))
+    (let f (as i Float))
+    (let radius (if-expr (== (% i 2) 0) 70 24))
+    (let angle (+ (/ (* f π 2) 10) (/ base 100)))
+    (+= points (call Point (+ 100 (* (call cos angle) radius)) (+ 100 (* (call sin angle) radius))))
+  )
+  (+= points ([] points 0))
+  (return (call Polygon points true))
+)
+
+(fn-expr _ numeric-check Size
+  (param value Float)
+  (% (as (call abs (* value 1000)) Size) 1000003)
+)

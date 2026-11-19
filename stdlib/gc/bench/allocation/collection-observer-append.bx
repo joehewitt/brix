@@ -1,0 +1,46 @@
+; benchmark.meta description: Appends to a single-observer list to expose collection observer dispatch allocation.
+; benchmark.meta timing: not-recommended
+; benchmark.meta profiles: allocator
+(blank)
+(import /core)
+(import /core/collection)
+(import /tui/box)
+(import /tui/text)
+(blank)
+
+(main
+  (let iterations 12000)
+  (let gate-items (call (of List String) (list "gate")))
+  (<> Box (id: gate-box)
+    (for (in item #gate-items)
+      (<> TextBox (value: item))
+    )
+  )
+  (blank)
+  (let items (list Int))
+  (for (in i (..< 0 iterations))
+    (+= items i)
+  )
+  (call (. items clear))
+  (blank)
+  (let recorder (call Recorder))
+  (call observe-collection items (. recorder record))
+  (for (in i (..< 0 iterations))
+    (+= items i)
+  )
+  (call unobserve-collection items (. recorder record))
+  (blank)
+  (print (str "bench-result allocation/collection-observer-append checksum=" (+ (. recorder index-total) (. recorder calls) (. items length) (. recorder last-index))))
+)
+
+(type + Recorder
+  (prop + calls Size (= 0))
+  (prop + index-total Index (= 0))
+  (prop + last-index Index (= 0))
+  (fn-do + record _
+    (param mutation CollectionMutation)
+    (+= calls 1)
+    (+= index-total (. mutation index))
+    (= last-index (. mutation index))
+  )
+)

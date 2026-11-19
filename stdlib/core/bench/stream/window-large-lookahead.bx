@@ -1,0 +1,39 @@
+; benchmark.meta description: Exercises large stream lookahead windows.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+
+(main
+  (let rows
+    (match (call window-large-lookahead-source)
+      (~ \window-large-lookahead-document)
+      (throw (call Panic "window-large-lookahead did not parse"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in row rows)
+    (+= checksum row)
+  )
+  (blank)
+  (print (str "bench-result stream/window-large-lookahead checksum=" checksum))
+)
+
+(fn-expr + window-large-lookahead-document _ (over: Char)
+  (~ (: rows (+ \window-large-row))
+    rows
+  )
+  (where
+    (lazy window-large-row Size
+      (pattern
+        (~ (seq (& (seq "block:" (* (seq (! "\n") .)) "\n")) "block:" (: text (* (seq (! "\n") .))) "\n")
+          (. text length)
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ window-large-lookahead-source _
+  (call (. "" join) (in (str "block:" (* "abcdefghijklmnopqrstuvwxyz-" 24) each "\n") (..< 0 70)))
+)

@@ -1,0 +1,32 @@
+; benchmark.meta description: Runs line-path intersections with many emitted intersections.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/intersection)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/shapes)
+(import /math)
+(blank)
+
+(main
+  (let path (call circle (tuple 120 120) 55))
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 900))
+    (let f (as pass Float))
+    (let y (+ 70 (% f 100)))
+    (let hits (call intersect-path-line path (tuple 20 y) (tuple 220 y)))
+    (+= checksum (. hits length))
+    (for (in hit hits)
+      (+= checksum (+ (call numeric-check (. hit t1)) (call numeric-check (. hit t2))))
+    )
+  )
+  (blank)
+  (print (str "bench-result graphics/intersect-line-path-hit checksum=" checksum))
+)
+
+(fn-expr _ numeric-check Size
+  (param value Float)
+  (% (as (call abs (* value 1000)) Size) 1000003)
+)

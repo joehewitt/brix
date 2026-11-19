@@ -1,0 +1,53 @@
+(import ./core)
+(import ./error)
+(import ./number)
+(import ./range)
+(import /BxCore/BxCore.h)
+
+(type + ArrayStorageProvider (is Interface)
+  (prop + _ (of Backing Item))
+)
+
+(type + StorageBacking (is Interface)
+  (prop + _ Context)
+  (prop + _ (of Storage Item))
+  (fn-expr + (of allocate Item) (. This (of Storage Item)) :static
+    (param context (. This Context))
+    (param capacity Size)
+  )
+  (fn-expr + (of load Item) Item :static
+    (param storage (. This (of Storage Item)))
+    (param index Index)
+  )
+  (fn-expr + (of store Item) Void :static
+    (param storage (. This (of Storage Item)))
+    (param item Item)
+    (param index Index)
+  )
+)
+
+(type + GCBacking
+  (implements StorageBacking)
+  (prop + _ Context (= Void))
+  (prop + _ (of Storage Item) (= (of CPointer Item)))
+  (fn-do + (of allocate Item) (of CPointer Item) :static
+    (param context Void)
+    (param capacity Size)
+    (throw (call Panic "Array size overflow") (if (and (!= capacity 0) (> capacity (/ (. Size max) (. Item size))))))
+    (throw (call Panic "Array allocation failed") (if (and (!= capacity 0) (== (. storage address) 0))))
+    (return (as storage (of CPointer Item)))
+    (blank)
+    (lazy storage (call C:brixAllocBuffer (. Item size) capacity))
+  )
+  (fn-expr + (of load Item) Item :static @inline
+    (param storage (of CPointer Item))
+    (param index Index)
+    ([] storage index)
+  )
+  (fn-do + (of store Item) Void :static @inline
+    (param storage (of CPointer Item))
+    (param item Item)
+    (param index Index)
+    (= ([] storage index) item)
+  )
+)

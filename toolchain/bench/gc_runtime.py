@@ -75,7 +75,7 @@ RUNTIME_ARCHIVES = (
 GC_ARCHIVE = 'brix/libs/gc/libbrixgc.a'
 SUPPORT_FILES = (
     '.brix/benchmarks.json',
-    'apps/compiler/bench/bench-launch.yumi',
+    'apps/compiler/bench/bench-launch.bx',
     'libs/build.json',
     'toolchain/bench/compile.py',
     'toolchain/bench/gc_runtime.py',
@@ -388,7 +388,7 @@ def measure_variants(harness, arguments):
     manifest = read_json(artifact + '.gc-runtime.json')
     if not isinstance(manifest, dict) or manifest.get('schemaVersion') != 2 or manifest.get('harness') != HARNESS:
         harness.fail('gc-runtime manifest is not a supported six-artifact manifest')
-    source = next((argument for argument in manifest['compilerArgs'] if argument.lower().endswith('.yumi')), '')
+    source = next((argument for argument in manifest['compilerArgs'] if argument.lower().endswith('.bx')), '')
     if not source or digest(source) != manifest['sourceSha256']:
         harness.fail('gc-runtime source changed after the six variant artifacts were compiled')
     identity = manifest['benchmarkId']
@@ -768,7 +768,7 @@ def output_path(arguments):
 
 def source_path(arguments):
     return next((argument for argument in arguments
-                 if not argument.startswith('-') and argument.lower().endswith(('.yumi', '.bx'))), '')
+                 if not argument.startswith('-') and argument.lower().endswith('.bx')), '')
 
 
 def benchmark_identity(source):

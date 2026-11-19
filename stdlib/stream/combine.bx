@@ -1,0 +1,211 @@
+(import ./inspect)
+
+(fn-do + (of or Item) _
+  (param stream1 (stream Item))
+  (param stream2 (stream Item))
+  ;  for item in stream1
+  ;      <= item
+  ;  or for item in stream2
+  ;      <= item
+  (blank)
+  (let combined (of SyncChannel Item))
+  (let closer (call AutoCloser combined))
+  (do-new
+    (use closer)
+    (for (in item stream1)
+      (<- combined item)
+    )
+  )
+  (do-new
+    (use closer)
+    (for (in item stream2)
+      (<- combined item)
+    )
+  )
+  (return combined)
+)
+
+(fn-do + (of and Item1 Item2) _ @inline
+  (param stream1 (stream Item1))
+  (param stream2 (stream Item2))
+  (for (in item stream1)
+    (yield item)
+  )
+  (for (in item stream2)
+    (yield item)
+  )
+)
+
+(fn-do + (of zip Item1 Item2) _ @inline
+  (param stream1 (stream Item1))
+  (param stream2 (stream Item2))
+  (for (in item1 stream1)
+    (and-for (in item2 stream2)
+      (yield (tuple item1 item2))
+    )
+  )
+)
+
+(fn-do + (of product Item1 Item2 Cursor) _ @inline
+  (param stream1 (stream Item1))
+  (param stream2 (of CursorIterable Item2 Cursor))
+  (for (in item1 stream1)
+    (for (in item2 stream2)
+      (yield (tuple item1 item2))
+    )
+  )
+)
+
+(fn-do + (of product Item1 Item2) _ @inline
+  (param stream1 (stream Item1))
+  (param stream2 (of Indexable Item2))
+  (for (in item1 stream1)
+    (for (in item2 stream2)
+      (yield (tuple item1 item2))
+    )
+  )
+)
+
+(fn-do + (of product Item1 Item2 Backing) _ @inline
+  (param stream1 (stream Item1))
+  (param stream2 (of ImmutableArray Item2 Backing))
+  (for (in item1 stream1)
+    (for (in item2 stream2)
+      (yield (tuple item1 item2))
+    )
+  )
+)
+
+(fn-do + (of product Item1 Item2) _ @inline
+  (param stream1 (stream Item1))
+  (param stream2 (stream Item2))
+  (for (in item1 stream1)
+    (for (in item2 items2)
+      (yield (tuple item1 item2))
+    )
+  )
+  (blank)
+  (lazy items2 (call List stream2))
+)
+
+(fn-do + (of indexed Item) _ @inline
+  (param stream (stream Item))
+  (let i Index 0)
+  (for (in item stream)
+    (yield (tuple i item))
+    (+= i 1)
+  )
+)
+
+(fn-do + (of repeat Item Cursor) _ @inline
+  (param count Int)
+  (param stream (of CursorIterable Item Cursor))
+  (if (!= count 0)
+    (for (in repetition (.. 1 count))
+      (for (in item stream)
+        (yield item)
+      )
+    )
+  )
+)
+
+(fn-do + (of repeat Item) _ @inline
+  (param count Int)
+  (param stream (of Indexable Item))
+  (if (!= count 0)
+    (for (in repetition (.. 1 count))
+      (for (in item stream)
+        (yield item)
+      )
+    )
+  )
+)
+
+(fn-do + (of repeat Item Backing) _ @inline
+  (param count Int)
+  (param stream (of ImmutableArray Item Backing))
+  (if (!= count 0)
+    (for (in repetition (.. 1 count))
+      (for (in item stream)
+        (yield item)
+      )
+    )
+  )
+)
+
+(fn-do + (of repeat Item) _ @inline
+  (param count Int)
+  (param stream (stream Item))
+  (if (== count 1)
+    (for (in item stream)
+      (yield item)
+    )
+    (else-if (!= count 0)
+      (let contents (call List stream))
+      (for (in repetition (.. 1 count))
+        (for (in item contents)
+          (yield item)
+        )
+      )
+    )
+  )
+)
+
+(fn-do + toggle _
+  (param default Bool)
+  (param stream1 (stream ''Item1))
+  (param stream2 (stream ''Item2))
+  (yield default)
+  (while true
+    (let a (<- stream1))
+    (if (not a)
+      (break)
+    )
+    (yield (not default))
+    (let b (<- stream2))
+    (if (not b)
+      (break)
+    )
+    (yield default)
+    (blank)
+    ; toggle item variant sketch
+    ; + toggle'Item
+    ;     - default Item
+    ;     from stream1 <Item>
+    ;     to stream2 <Item>
+    ;
+    ; <= default
+    ; while true
+    ;     . a = <- stream1
+    ;     if !a
+    ;         break
+    ;     <= a
+    ;     . b = <- stream2
+    ;     if !b
+    ;         break
+    ;     <= b
+    (blank)
+    ; + merge'Item(streams: <Item>...) do {
+    ;     if streams.length == 0 {
+    ;         = Item<>
+    ;     } else if streams.length == 1 {
+    ;         = streams[0]
+    ;     } else {
+    ;         * item1 in streams.pop() {
+    ;             >> item1
+    ;         } & item2 in merge(streams) {
+    ;             >> item2
+    ;         }
+    ;     }
+    ; }
+    (blank)
+    ; + flatMapLatest() {
+    ; }
+    ;
+    ; + combineLatest() {
+    ; }
+    ;
+    ; + ambiguous() {
+    ; }
+  )
+)

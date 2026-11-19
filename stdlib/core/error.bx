@@ -1,0 +1,135 @@
+(import ./core)
+(import ./number)
+(import ./string)
+(import /BxCore/BxPanic.h)
+(import /BxCore/BxTrace.h)
+(import /stdlib.h)
+(blank)
+(prop + unhandled-error UnhandledErrorHandler (:= print-unhandled-error))
+
+(type + UnhandledErrorHandler (is (fn-type Void (param error Error))))
+
+(fn-do + print-unhandled-error _
+  (param error Error)
+  (let source (. error source))
+  (call C:brixPrintUnhandledError (as error String) (if-expr source (as source String) "") (. error trace))
+)
+
+(type + Error
+  (prop + message _ (= ""))
+  (prop + source (? ErrorSource))
+  (prop + previous (? Error))
+  (blank)
+  (prop _ trace Pointer)
+  (blank)
+  ;  ────────────────────
+  ;  + This
+  (blank)
+  ;  -- "Error", this
+  (fn-do + This _
+    (param message String)
+    (param source (? ErrorSource) (= null))
+    ;  -- "Error", message
+  )
+  (fn-to-expr + String
+    message
+  )
+  (fn-expr + stack (? String) :get
+    ; The stack the error was raised on, as text, after the task it ran in, as the report of one no
+    ; caller handles prints them; or none where it was never raised or stack traces are off.
+    (call stack-text trace)
+  )
+  (fn-expr + raised-at (? F64) :get
+    ; When the error was raised, in seconds since 1970 began in UTC; or none where it was never
+    ; raised or stack traces are off.
+    (if-expr (!= (. trace address) 0) (call C:brixStackTraceTime trace) null)
+  )
+)
+
+(fn-do _ stack-text (? String)
+  (param trace Pointer)
+  (let text (call C:brixFormatStackTrace trace))
+  (return-if null (if (not text)))
+  (let stack (as text String))
+  (call C:free text)
+  (return stack)
+)
+
+(type + ErrorSource (is (tuple (: file String) (: line U64) (: column U64)))
+  (fn-to-expr + String
+    (str file ":" line ":" column)
+  )
+)
+
+(type + Panic (is Error)
+  (prop + message _ (= "Panic"))
+  (fn-do + This _
+    (param message String)
+    (param source (? ErrorSource) (= null))
+  )
+  (fn-to-expr + String
+    (?? message "Panic")
+  )
+)
+
+(type + OutOfBoundsError (is Panic)
+  (prop + message _ (= "Out of bounds"))
+  (fn-to-expr + String
+    (?? message "Out of bounds")
+  )
+)
+
+(type + IOError (is Error)
+  (fn-to-expr + String
+    (?? message "IO error")
+  )
+)
+
+(type + TimeoutError (is IOError)
+  (fn-to-expr + String
+    (?? message "Timed out")
+  )
+)
+
+(type + SizeLimitError (is Error)
+  (fn-to-expr + String
+    (?? message "Size limit exceeded")
+  )
+)
+
+(type + SyntaxError (is Error)
+  (fn-to-expr + String
+    (?? message "Syntax error")
+  )
+)
+
+(type + TypeError (is Error)
+  (fn-to-expr + String
+    (?? message "Invalid type")
+  )
+)
+
+(type + UnionError (is Error)
+  (fn-to-expr + String
+    (?? message "Invalid union cast")
+  )
+)
+
+(type + TaskCancelationError (is Panic)
+  (prop + message _ (= "Task cancelled"))
+  (blank)
+  ;  -------------------------------------------------------------------------------------------------
+  ;  + This
+  (blank)
+  ;  -- "Canceled"
+  (fn-to-expr + String
+    (?? message "Task cancelled")
+  )
+)
+
+(type + TaskTerminationError (is Panic)
+  (prop + message _ (= "Task terminated"))
+  (fn-to-expr + String
+    (?? message "Task terminated")
+  )
+)

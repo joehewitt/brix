@@ -1,0 +1,148 @@
+(import ./box)
+(import ./primitives)
+(import /core/markup)
+(import /graphics/canvas)
+(import /graphics/document)
+(import /graphics/document-paths)
+(import /graphics/document-render)
+(import /graphics/matrix)
+(import /graphics/primitives)
+(import /graphics/vectorgeometry)
+(import /math)
+
+(type + VectorDocumentView (is Box)
+  (prop + document (? VectorDocument))
+  (prop + paths (? VectorDocumentPaths))
+  (prop + embeds (? VectorDocumentEmbedPainter))
+  (prop + images (? VectorDocumentImagePainter))
+  (prop + fit _ (= (. ImageFit contain)))
+  (prop + align-x _ (= (. AnchorPoint center)))
+  (prop + align-y _ (= (. AnchorPoint center)))
+  (prop + revision Size (= 0))
+  (blank)
+  (prop _ renderer (? VectorDocumentRenderer))
+  (prop _ table (? VectorGeometryTable))
+  (blank)
+  (rule This
+    (= overflow-x (. ScrollOverflow clip))
+    (= overflow-y (. ScrollOverflow clip))
+  )
+  (fn-expr + document-renderer _ :get
+    renderer
+  )
+  (whenever-rule #document
+    (call release-renderer)
+    (call invalidate-paint)
+  )
+  (whenever-rule #paths
+    (call release-renderer)
+    (call invalidate-paint)
+  )
+  (whenever-rule #embeds
+    (call invalidate-paint)
+  )
+  (whenever-rule #images
+    (call invalidate-paint)
+  )
+  (whenever-rule #fit
+    (call invalidate-paint)
+  )
+  (whenever-rule #align-x
+    (call invalidate-paint)
+  )
+  (whenever-rule #align-y
+    (call invalidate-paint)
+  )
+  (whenever-rule #revision
+    (call invalidate-paint)
+  )
+  (fn-do + document-changed _
+    (+= revision 1)
+  )
+  (fn-expr + view-transform Matrix
+    (match current
+      (case= null
+        (call Matrix)
+      )
+      (default
+        (case? (or (<= (. view width) 0) (<= (. view height) 0))
+          (call matrix-from-translation (. content top-left))
+        )
+        (default
+          (call vector-view-transform view (call image-fit-rect (. view size) content fit align-x align-y))
+        )
+        (blank)
+        (lazy view (call (. current view-box) (. current root)))
+      )
+    )
+    (where
+      (lazy current document)
+      (lazy content content-bounds)
+    )
+  )
+  (fn-do + sync-document Bool
+    (let current document)
+    (return (if-expr current (call (. (call ensure-renderer current) sync)) false))
+  )
+  (fn-do + unmounted _
+    (call release-renderer)
+    (call (. super unmounted))
+  )
+  (fn-do + close _
+    (call release-renderer)
+    (call (. super close))
+  )
+  (fn-expr + measured-content-size _
+    (param query MeasureQuery)
+    (match current
+      (case= null
+        (call Dimensions 0 0)
+      )
+      (default
+        (call Dimensions (call max (. view width) 0) (call max (. view height) 0))
+        (blank)
+        (lazy view (call (. current view-box) (. current root)))
+      )
+    )
+    (where
+      (lazy current document)
+    )
+  )
+  (fn-do + paint-self _
+    (param canvas Canvas)
+    (let current document)
+    (return-if (if (not current)))
+    (let content content-bounds)
+    (return-if (if (or (<= (. content width) 0) (<= (. content height) 0))))
+    (let active (call ensure-renderer current))
+    (call (. active sync))
+    (let geometry-table (call vector-geometry-table-for markup-batch-root))
+    (if (and table (!= (as table Pointer) (as geometry-table Pointer)))
+      (call (. active release))
+      (call (. active sync))
+    )
+    (= table geometry-table)
+    (call (. active paint) canvas (call view-transform) geometry-table embeds null images)
+  )
+  (fn-do _ ensure-renderer _
+    (param current VectorDocument)
+    (let existing renderer)
+    (return-if existing (if (and existing (== (as (. existing document) Pointer) (as current Pointer)))))
+    (call release-renderer)
+    (let given paths)
+    (let created
+      (scope (if-expr given (call VectorDocumentRenderer current given) standalone)
+        (lazy standalone (call VectorDocumentRenderer current))
+      )
+    )
+    (= renderer created)
+    (return created)
+  )
+  (fn-do _ release-renderer _
+    (let existing renderer)
+    (if existing
+      (call (. existing release))
+    )
+    (= renderer null)
+  )
+)

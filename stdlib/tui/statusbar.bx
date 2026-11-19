@@ -1,0 +1,58 @@
+(import ./box)
+(import ./colors)
+(import ./primitives)
+(import ./shortcuts)
+(import ./styles)
+(import ./text)
+(import ./theme)
+(import ./window)
+(import /core/markup)
+
+(style-extend TUIDefaultTheme
+  (using BoxPaint)
+  (using TextPaint)
+  (rule StatusBar
+    (= background-color (call AnsiColor 8))
+    (= color (call AnsiColor 255))
+  )
+)
+
+(type + StatusBar (is Label)
+  (prop + message _ (= ""))
+  (prop + text _ (= (call status-bar-text #message (?? (?. #window #shortcuts) (call (of List Shortcut))))))
+  (blank)
+  (prop _ window (of Ancestor Window))
+)
+
+(fn-expr _ status-bar-text _
+  (param message String)
+  (param shortcuts (list Shortcut) (= (call (of List Shortcut))))
+  (case? (and message shortcuts)
+    (str " " message " | " shortcut-text)
+  )
+  (case? message
+    (str " " message " ")
+  )
+  (default
+    (str " " shortcut-text)
+  )
+  (where
+    (lazy shortcut-text (call (. " • " join) (call status-bar-labels shortcuts)))
+  )
+)
+
+(fn-do _ status-bar-labels (list String)
+  (param shortcuts (list Shortcut))
+  (let labels (list String))
+  (for (in shortcut shortcuts)
+    (if (and (. shortcut show-in-status) (not (. shortcut key-scope)))
+      (+= labels (. shortcut status-label))
+    )
+  )
+  (for (in shortcut shortcuts)
+    (if (and (. shortcut show-in-status) (. shortcut key-scope))
+      (+= labels (. shortcut status-label))
+    )
+  )
+  (return labels)
+)

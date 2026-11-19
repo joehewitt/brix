@@ -1,0 +1,139 @@
+(import ./diagnostics)
+(import ./source)
+(import /data/json)
+(import /lang/ast/ast)
+(import /lang/ast/ast-children)
+(import /lang/ast/ast-nodes)
+
+(type + RuleContext
+  (prop + path String)
+  (prop + options (map String JSON))
+  (prop + diagnostics (list LintDiagnostic))
+  (prop + is-fixing Bool)
+  (prop _ rule-id String)
+  (fn-do + This _
+    (param path String)
+    (param rule-id String)
+    (param options (map String JSON))
+    (param is-fixing Bool (= false))
+  )
+  (fn-do + report _
+    (param message String)
+    (param line U32)
+    (param column U32)
+    (param status String (= "actionable"))
+    (param fix (? LintFix) (= null))
+    (+= diagnostics (call LintDiagnostic path rule-id status message line column fix))
+  )
+)
+
+(fn-expr + counted String
+  (param count Int)
+  (param singular String)
+  (param plural String)
+  (str count " " (if-expr (== count 1) singular plural))
+)
+
+(fn-expr + is-function-node Bool
+  (param tree AST)
+  (param id SyntaxId)
+  (match ([] (. tree nodes) id)
+    (case .node-function-syntax
+      true
+    )
+    (case .node-getter-syntax
+      true
+    )
+    (case .node-setter-syntax
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-expr + single-statement SyntaxId
+  (param tree AST)
+  (param body SyntaxId)
+  (match ([] (. tree nodes) body)
+    (case (call .node-block row)
+      (if-expr (== (. row body count) 1) ([] (. tree children) (. row body start)) 0)
+    )
+    (default
+      body
+    )
+  )
+)
+
+(fn-do + attached-nodes (list Bool)
+  (param tree AST)
+  ; Which nodes the root of a tree reaches; the parser leaves nodes it replaced in its table.
+  (let attached (list Bool))
+  (for (in _ (..< 0 (. tree nodes length)))
+    (+= attached false)
+  )
+  (let pending (list SyntaxId))
+  (+= pending (. tree root))
+  (= ([] attached (. tree root)) true)
+  (while (!= (. pending length) 0)
+    (let id (call (. pending pop)))
+    (for (in child (call (. tree children-of) id))
+      (if (not ([] attached child))
+        (= ([] attached child) true)
+        (+= pending child)
+      )
+    )
+  )
+  (return attached)
+)
+
+(fn-expr + node-start Index
+  (param source LintSource)
+  (param tree AST)
+  (param id SyntaxId)
+  (call (. source offset-of) (. begin line) (. begin column))
+  (where
+    (lazy begin (. ([] (. tree nodes loc) id) begin))
+  )
+)
+
+(fn-expr + node-end Index
+  (param source LintSource)
+  (param tree AST)
+  (param id SyntaxId)
+  (call (. source offset-of) (. end line) (+ (. end column) 1))
+  (where
+    (lazy end (. ([] (. tree nodes loc) id) end))
+  )
+)
+
+(fn-expr + node-text String
+  (param source LintSource)
+  (param tree AST)
+  (param id SyntaxId)
+  (call (. source slice) (call node-start source tree id) (call node-end source tree id))
+)
+
+(fn-expr + text-edit LintTextEdit
+  (param source LintSource)
+  (param start Index)
+  (param end Index)
+  (param replacement String)
+  ; An edit of the text between two character offsets, given in UTF-16 units.
+  (call LintTextEdit (call (. source utf16-of) start) (call (. source utf16-of) end) replacement (call (. source slice) start end))
+)
+
+(fn-expr + is-named Bool
+  (param tree AST)
+  (param id SyntaxId)
+  (param name String)
+  (match ([] (. tree nodes) id)
+    (case (call .node-identifier row)
+      (== (. row name text) name)
+    )
+    (default
+      false
+    )
+  )
+)

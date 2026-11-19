@@ -1,0 +1,49 @@
+; benchmark.meta description: Fills the default heap goal twice with short-lived small objects over a small live set, so that each collection finds almost every span empty.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: gc-runtime,allocator,compile-timing
+(blank)
+(import /BxGC/BxGC.h)
+(blank)
+
+(main
+  (let live (list DeadHeapNode))
+  (for (in index (..< 0 60000))
+    (let node (call DeadHeapNode index))
+    (= (. node payload) ([] Byte (+ (% index 61) 24)))
+    (+= live node)
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in round (..< 0 240))
+    (+= checksum (call churn live round))
+  )
+  (blank)
+  (print (str "bench-result allocation/dead-heap-churn checksum=" checksum))
+)
+
+(fn-do _ churn Size
+  (param live (list DeadHeapNode))
+  (param round Size)
+  (let total (as 0 Size))
+  (let chain (? DeadHeapNode) null)
+  (for (in index (..< 0 20000))
+    (let node (call DeadHeapNode (+ (* round 20000) index)))
+    (= (. node payload) ([] Byte (+ (% index 61) 24)))
+    (= (. node next) chain)
+    (= (. node peer) ([] live (% (+ (* index 7) round) (. live length))))
+    (= chain node)
+    (+= total (+ (. node payload length) (% (?? (?. (. node peer) value) 0) 3)))
+  )
+  (return total)
+)
+
+(type + DeadHeapNode
+  (prop + value Size (= 0))
+  (prop + next (? DeadHeapNode))
+  (prop + peer (? DeadHeapNode))
+  (prop + payload ([] Byte))
+  (fn-do + This _
+    (param v Size)
+    (= value v)
+  )
+)

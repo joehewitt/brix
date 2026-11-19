@@ -1,0 +1,1120 @@
+(import /ai/images)
+(import /ai/media)
+(import /ai/model)
+(import /data/json)
+(import /data/jsonrpc)
+(import /stream/aggregate)
+(blank)
+(prop + codex-provider-id _ (= "codex"))
+(prop + codex-command-tool _ (= "commandExecution"))
+(prop + codex-patch-tool _ (= "fileChange"))
+(prop + codex-agent-tool _ (= "collabAgent"))
+(prop + codex-image-tool _ (= "imageView"))
+(prop _ codex-thread-part _ (= "thread"))
+(prop _ codex-own-tools _ (= (list "view_image")))
+(prop _ codex-signed-out-text _ (= "Codex is not signed in. Run \"codex login\" in a terminal, then try again."))
+(prop _ codex-api-account-text _ (= "Codex is signed in with an API key, which bills an API account. Run \"codex login\" in a terminal and sign in with ChatGPT."))
+(prop _ codex-client-name _ (= "brix"))
+(prop _ codex-client-title _ (= "Brix"))
+(prop _ codex-client-version _ (= "0.1.0"))
+(prop _ codex-quiet-methods _ (= (list "remoteControl/status/changed" "thread/status/changed" "turn/diff/updated" "item/fileChange/patchUpdated" "item/commandExecution/outputDelta")))
+
+(type + CodexPoint (is Tuple)
+  (prop + thread String)
+  (prop + turn (? String) (= null))
+)
+
+(type + CodexMark (is Tuple)
+  (prop + point CodexPoint)
+  (prop + parent (? CodexPoint) (= null))
+)
+
+(type + CodexResume (is Tuple)
+  (prop + point (? CodexPoint) (= null))
+  (prop + forks _ (= false))
+  (prop + is-merged _ (= false))
+)
+
+(type + CodexOpen (is Tuple)
+  (prop + method String)
+  (prop + params (map String JSON))
+)
+
+(type + CodexDecoder
+  (prop + thread (? String))
+  (prop + turn (? String))
+  (prop + model _ (= ""))
+  (prop + parent (? CodexPoint))
+  (blank)
+  (prop _ begun _ (= (call (of Map String Bool))))
+  (prop _ sections _ (= (call (of Map String Index))))
+  (prop _ hosted _ (= (call (of Map String (list AIPartEndEvent)))))
+  (prop _ compactions Size)
+  (prop _ usage (? AIUsage))
+  (fn-do + open (stream AIEvent)
+    (param thread String)
+    (param model String)
+    (= (. this thread) thread)
+    (= (. this model) model)
+    (yield (call AIPartEndEvent (call mark-part thread)))
+  )
+  (fn-do + decode (stream AIEvent) (?! AIError)
+    (param method String)
+    (param params JSON)
+    (let fields (call json-object params))
+    (let thread (. this thread))
+    (return-if (if (or (not fields) (not thread) (!= (call json-string ([] fields "threadId")) thread))))
+    (match? method
+      (case= "turn/started"
+        (= turn (?? (call json-string (?[] (call json-object ([] fields "turn")) "id")) turn))
+        (yield (call AIPartEndEvent (call mark-part thread)))
+      )
+      (case= "item/started"
+        (yield-all (call decode-started (call json-object ([] fields "item"))))
+      )
+      (case= "item/completed"
+        (yield-all (call decode-completed (call json-object ([] fields "item"))))
+      )
+      (case= "item/agentMessage/delta"
+        (yield-all (call decode-text fields))
+      )
+      (case= "item/reasoning/summaryTextDelta"
+        (yield-all (call decode-reasoning fields))
+      )
+      (case= "thread/tokenUsage/updated"
+        (let counted (call codex-usage (call json-object (?[] (call json-object ([] fields "tokenUsage")) "last"))))
+        (= usage counted)
+        (yield (call AIUsageEvent counted))
+      )
+      (case= "turn/completed"
+        (yield (call decode-done (call json-object ([] fields "turn"))))
+      )
+    )
+  )
+  (fn-do + host _
+    (param id String)
+    (param events (list AIPartEndEvent))
+    (= ([] hosted id) events)
+  )
+  (fn-expr + ends-turn Bool
+    (param method String)
+    (param params JSON)
+    (and is-completed (!= thread null) (== (call json-string (?[] (call json-object params) "threadId")) thread))
+    (where
+      (lazy is-completed (== method "turn/completed"))
+    )
+  )
+  (fn-do + end-turn _
+    (= turn null)
+    (= parent null)
+    (= usage null)
+    (= begun (call (of Map String Bool)))
+    (= sections (call (of Map String Index)))
+    (= hosted (call (of Map String (list AIPartEndEvent))))
+  )
+  (fn-expr _ mark-part _
+    (param thread String)
+    (call codex-mark-part (call CodexMark (call CodexPoint thread turn) parent) model)
+  )
+  (fn-do _ decode-started (stream AIEvent)
+    (param item (? (map String JSON)))
+    (let part (call codex-begun-part item))
+    (return-if (if (not part)))
+    (= ([] begun (call ai-part-id part)) true)
+    (yield (call AIPartBeginEvent part))
+  )
+  (fn-do _ decode-completed (stream AIEvent)
+    (param item (? (map String JSON)))
+    (return-if (if (not item)))
+    (let id (?? (call json-string ([] item "id")) ""))
+    (-= ([] begun id))
+    (-= ([] sections id))
+    (match item
+      (case (list (= "type" "agentMessage") (= "text" (: text String)))
+        (yield (call AIPartEndEvent (call AITextPart id text)))
+      )
+      (case (list (= "type" "plan") (= "text" (: text String)))
+        (yield (call AIPartEndEvent (call AITextPart id text)))
+      )
+      (case (map "type" "reasoning")
+        (yield (call AIPartEndEvent (call AIReasoningPart id (call codex-reasoning-text item))))
+      )
+      (case (list (= "type" "webSearch") (= "query" (: query String)))
+        (yield (call AIPartEndEvent (call AIWebSearchPart id query (. AIWebSearchStatus completed))))
+      )
+      (case (map "type" "contextCompaction")
+        (+= compactions 1)
+        (let part
+          (call AIExtensionPart
+            (block
+              (arg (str ai-compaction-part ":" compactions))
+              (arg codex-provider-id)
+              (arg ai-compaction-part)
+              (arg null)
+            )
+          )
+        )
+        (yield (call AIPartBeginEvent part))
+        (yield (call AIPartEndEvent part))
+      )
+      (case (map "type" "imageGeneration")
+        (yield-all (call decode-image id item))
+      )
+      (default
+        (let call (call codex-tool-call item))
+        (if call
+          (yield (call AIPartEndEvent call))
+          (let served ([] hosted id))
+          (if served
+            (-= ([] hosted id))
+            (for (in event served)
+              (yield event)
+            )
+            (else
+              (let result (call codex-tool-result item (. call call-id)))
+              (yield (call AIPartBeginEvent result))
+              (yield (call AIPartEndEvent result))
+            )
+          )
+        )
+      )
+    )
+  )
+  (fn-do _ decode-image (stream AIEvent)
+    (param id String)
+    (param item (map String JSON))
+    (let call (call codex-tool-call item))
+    (return-if (if (not call)))
+    (yield (call AIPartEndEvent call))
+    (let made (call codex-generated-image item))
+    (let saved (call json-string ([] item "savedPath")))
+    (let output
+      (call (of Map String JSON)
+        (block
+          (:file? saved)
+        )
+      )
+    )
+    (let result
+      (call AIToolResultPart
+        (block
+          (arg (str id ":result"))
+          (arg id)
+          (arg output)
+          (arg (if-expr made null (call codex-image-failure item)))
+          (arg (== made null))
+        )
+      )
+    )
+    (yield (call AIPartBeginEvent result))
+    (yield (call AIPartEndEvent result))
+    (if made
+      (yield (call AIPartEndEvent (call AIImagePart (str id ":image") made)))
+    )
+  )
+  (fn-do _ decode-text (stream AIEvent)
+    (param fields (map String JSON))
+    (let id (call json-string ([] fields "itemId")))
+    (let text (call json-string ([] fields "delta")))
+    (return-if (if (or (not id) (not text) (not (has begun id)))))
+    (yield (call AIPartDeltaEvent id (call AITextDelta text)))
+  )
+  (fn-do _ decode-reasoning (stream AIEvent)
+    (param fields (map String JSON))
+    (let id (call json-string ([] fields "itemId")))
+    (let text (call json-string ([] fields "delta")))
+    (return-if (if (or (not id) (not text) (not (has begun id)))))
+    (let section (?? (call json-size ([] fields "summaryIndex")) 0))
+    (let previous ([] sections id))
+    (= ([] sections id) section)
+    (let joined (if-expr (and (!= previous null) (!= previous section)) (str "\n\n" text) text))
+    (yield (call AIPartDeltaEvent id (call AIReasoningDelta joined)))
+  )
+  (fn-do _ decode-done AIEvent (?! AIError)
+    (param turn (? (map String JSON)))
+    (let status (call json-string (?[] turn "status")))
+    (return-if (call AIDoneEvent (. AIFinishReason stop) usage) (if (== status "completed")))
+    (return-if (call AIDoneEvent (. AIFinishReason cancellation) usage) (if (== status "interrupted")))
+    (throw (call codex-turn-error (call json-object (?[] turn "error"))))
+  )
+)
+
+(fn-expr + codex-resume CodexResume
+  (param request AIRequest)
+  (case? (not (. marks length))
+    (call CodexResume)
+  )
+  (case? (call codex-marks-chain marks)
+    (call CodexResume (. ([] marks (- (. marks length) 1)) point) (. request forks))
+  )
+  (default
+    (call CodexResume null false true)
+  )
+  (where
+    (lazy marks (call codex-marks (. request messages)))
+  )
+)
+
+(fn-do + codex-marks (list CodexMark)
+  (param messages (list AIMessage))
+  (let marks (call (of List CodexMark)))
+  (for (in message messages)
+    (for (in part (. message parts))
+      (let mark (call codex-part-mark part))
+      (if mark
+        (+= marks mark)
+      )
+    )
+  )
+  (return marks)
+)
+
+(fn-do + codex-marks-chain Bool
+  (param marks (list CodexMark))
+  (for (in index (..< 1 (. marks length)))
+    (let mark ([] marks index))
+    (let parent (?? (. mark parent) (call CodexPoint (. mark point thread))))
+    (return-if false (if (not (call codex-same-point parent (. ([] marks (- index 1)) point)))))
+  )
+  (return true)
+)
+
+(fn-expr + codex-same-point _
+  (param first CodexPoint)
+  (param second CodexPoint)
+  (and same-thread (or (== (. first turn) null) (== (. second turn) null) (== (. first turn) (. second turn))))
+  (where
+    (lazy same-thread (== (. first thread) (. second thread)))
+  )
+)
+
+(fn-expr + codex-mark-part AIExtensionPart
+  (param mark CodexMark)
+  (param model String)
+  (call AIExtensionPart
+    (block
+      (arg codex-thread-part)
+      (arg codex-provider-id)
+      (arg codex-thread-part)
+      (arg (call codex-mark-data mark model))
+    )
+  )
+)
+
+(fn-expr + codex-mark-data JSON
+  (param mark CodexMark)
+  (param model String)
+  (call (of Map String JSON)
+    (block
+      (entry "thread_id" (. mark point thread))
+      (:model model)
+      (entry? "turn_id" (. mark point turn))
+      (:parent? (call codex-parent-data mark))
+    )
+  )
+)
+
+(fn-expr _ codex-parent-data (? JSON)
+  (param mark CodexMark)
+  (case? (== (. mark parent) null)
+    null
+  )
+  (default
+    (call (of Map String JSON)
+      (block
+        (entry "thread_id" (. mark parent thread))
+        (entry? "turn_id" (. mark parent turn))
+      )
+    )
+  )
+)
+
+(fn-do + codex-part-mark (? CodexMark)
+  (param part AIMessagePart)
+  (return-if (if (is-not part AIExtensionPart)))
+  (let extension (as part AIExtensionPart))
+  (return-if (if (or (!= (. extension provider-id) codex-provider-id) (!= (. extension part-type) codex-thread-part))))
+  (let fields (call json-object (. extension data)))
+  (let id (call json-string (?[] fields "thread_id")))
+  (return-if (if (or (not fields) (not id))))
+  (let point (call CodexPoint id (call json-string ([] fields "turn_id"))))
+  (let parent (call json-object ([] fields "parent")))
+  (let parent-id (call json-string (?[] parent "thread_id")))
+  (return-if (call CodexMark point) (if (or (not parent) (not parent-id))))
+  (return (call CodexMark point (call CodexPoint parent-id (call json-string ([] parent "turn_id")))))
+)
+
+(fn-expr + codex-part-thread (? String)
+  (param part AIMessagePart)
+  (. (?. (call codex-part-mark part) point) thread)
+)
+
+(fn-expr + codex-parts-thread (? String)
+  (param parts (list AIMessagePart))
+  (call last (?*> parts (call codex-part-thread each)))
+)
+
+(fn-expr + codex-instructions (? String)
+  (param request AIRequest)
+  (only-if text (if (. text length)))
+  (where
+    (lazy text (call (. "\n\n" join) (in (call ai-parts-text (. each parts)) (. request messages) (when (call codex-instructs each)))))
+  )
+)
+
+(fn-do + codex-input (list JSON) (?! AIError)
+  (param request AIRequest)
+  (throw (call AIError (. AIErrorKind invalid-request) "Codex runs its own tools") (if (. request tools length)))
+  (blank)
+  (let prompts (call (of List String)))
+  (let images (call (of List AIImage)))
+  (for (in message (. request messages))
+    (if (call codex-instructs message)
+      (continue)
+    )
+    (if (== (. message role) (. AIMessageRole user))
+      (call codex-prompt-images message images)
+      (let text (call ai-parts-text (. message parts)))
+      (if (. text length)
+        (+= prompts text)
+      )
+      (else-if (call codex-parts-thread (. message parts))
+        (= prompts (call (of List String)))
+        (= images (call (of List AIImage)))
+      )
+      (else
+        (throw (call AIError (. AIErrorKind invalid-request) "Codex can only continue its own replies"))
+      )
+    )
+  )
+  (blank)
+  (throw (call AIError (. AIErrorKind invalid-request) "Codex needs a prompt") (if (and (not (. prompts length)) (not (. images length)))))
+  (let input (call (of List JSON)))
+  (let text (call (. "\n\n" join) prompts))
+  (if (. text length)
+    (+= input (call codex-text-input text))
+  )
+  (for (in image images)
+    (+= input (call codex-image-input image))
+  )
+  (return input)
+)
+
+(fn-expr + codex-initialize-params JSON
+  (param is-experimental _ (= false))
+  (call (of Map String JSON)
+    (block
+      (entry "clientInfo"
+        (call (of Map String JSON)
+          (block
+            (:name codex-client-name)
+            (:title codex-client-title)
+            (:version codex-client-version)
+          )
+        )
+      )
+      (:capabilities
+        (call (of Map String JSON)
+          (block
+            (entry "experimentalApi" is-experimental)
+            (entry "requestAttestation" false)
+            (entry "optOutNotificationMethods" (call (of List JSON) (in (as each JSON) codex-quiet-methods)))
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + codex-thread-settings (map String JSON)
+  (param request AIRequest)
+  (param directory (? String))
+  (param sandbox (? String))
+  (param approval-policy (? String))
+  (param approvals-reviewer (? String))
+  (call (of Map String JSON)
+    (block
+      (:model? (only-if (. request model) (if (. request model length))))
+      (:cwd? directory)
+      (:sandbox? sandbox)
+      (entry? "approvalPolicy" approval-policy)
+      (entry? "approvalsReviewer" approvals-reviewer)
+      (entry? "developerInstructions" (call codex-instructions request))
+    )
+  )
+)
+
+(fn-do + codex-open CodexOpen
+  (param plan CodexResume)
+  (param settings (map String JSON))
+  (param is-persistent _ (= true))
+  (param toolkits _ (= (call (of List AIToolkit))))
+  (let params (call (of Map String JSON)))
+  (for (in (tuple key value) settings)
+    (= ([] params key) value)
+  )
+  (let point (. plan point))
+  (if (not point)
+    (if (not is-persistent)
+      (= ([] params "ephemeral") true)
+    )
+    (let offered (call codex-dynamic-tools toolkits))
+    (if offered
+      (= ([] params "dynamicTools") offered)
+    )
+    (return (call CodexOpen "thread/start" params))
+  )
+  (= ([] params "threadId") (. point thread))
+  (if (not (. plan forks))
+    (= ([] params "excludeTurns") true)
+    (return (call CodexOpen "thread/resume" params))
+  )
+  (if (. point turn)
+    (= ([] params "lastTurnId") (. point turn))
+  )
+  (if (not is-persistent)
+    (= ([] params "ephemeral") true)
+  )
+  (return (call CodexOpen "thread/fork" params))
+)
+
+(fn-do + codex-dynamic-tools (list JSON)
+  (param toolkits (list AIToolkit))
+  (let offered (call (of List JSON)))
+  (for (in kit toolkits)
+    (for (in tool (?> (call (. kit tools)) (not (has codex-own-tools (. each name)))))
+      (+= offered
+        (call (of Map String JSON)
+          (block
+            (:type "function")
+            (:name (. tool name))
+            (:description (. tool description))
+            (entry "inputSchema" (. tool parameters))
+          )
+        )
+      )
+    )
+  )
+  (return offered)
+)
+
+(fn-do + codex-tool-content (list JSON) (?! AIError)
+  (param result AIToolkitResult)
+  (let content (call (of List JSON)))
+  (+= content (call codex-output-item (call to-json (. result output))))
+  (for (in image (. result images))
+    (if (= (| (: kept AIPathSource)) (. image file source))
+      (+= content
+        (call codex-output-item
+          (block
+            (arg (str "Image file: " (. kept path) ". Call view_image with this path to see it."))
+          )
+        )
+      )
+      (else
+        (+= content
+          (call (of Map String JSON)
+            (block
+              (:type "inputImage")
+              (entry "imageUrl" (str "data:" (. image file mime-type) ";base64," (call codex-image-data (. image file))))
+            )
+          )
+        )
+      )
+    )
+  )
+  (return content)
+)
+
+(fn-expr + codex-tool-reply JSON
+  (param content (list JSON))
+  (param success Bool)
+  (call (of Map String JSON)
+    (block
+      (entry "contentItems" content)
+      (:success success)
+    )
+  )
+)
+
+(fn-expr + codex-output-item JSON
+  (param text String)
+  (call (of Map String JSON)
+    (block
+      (:type "inputText")
+      (:text text)
+    )
+  )
+)
+
+(fn-expr + codex-turn-settings (map String JSON)
+  (param effort (? String))
+  (param summary (? String))
+  (param schema (? JSON))
+  (call (of Map String JSON)
+    (block
+      (:effort? effort)
+      (:summary? summary)
+      (entry? "outputSchema" schema)
+    )
+  )
+)
+
+(fn-do + codex-turn-params (map String JSON)
+  (param thread String)
+  (param input (list JSON))
+  (param settings (map String JSON))
+  (let params
+    (call (of Map String JSON)
+      (block
+        (entry "threadId" thread)
+        (entry "input" (as input JSON))
+      )
+    )
+  )
+  (for (in (tuple key value) settings)
+    (= ([] params key) value)
+  )
+  (return params)
+)
+
+(fn-expr + codex-steer-params (map String JSON)
+  (param thread String)
+  (param turn String)
+  (param prompt String)
+  (call (of Map String JSON)
+    (block
+      (entry "threadId" thread)
+      (entry "expectedTurnId" turn)
+      (:input (call (of List JSON) (list (call codex-text-input prompt))))
+    )
+  )
+)
+
+(fn-expr + codex-interrupt-params (map String JSON)
+  (param thread String)
+  (param turn String)
+  (call (of Map String JSON)
+    (block
+      (entry "threadId" thread)
+      (entry "turnId" turn)
+    )
+  )
+)
+
+(fn-expr + codex-server-answer (? JSON)
+  (param method String)
+  (match? method
+    (case? (or (== it "item/commandExecution/requestApproval") (== it "item/fileChange/requestApproval"))
+      (call (of Map String JSON)
+        (block
+          (:decision "decline")
+        )
+      )
+    )
+    (case= "item/permissions/requestApproval"
+      (call (of Map String JSON)
+        (block
+          (:permissions (call (of Map String JSON)))
+          (:scope "turn")
+        )
+      )
+    )
+    (case= "item/tool/requestUserInput"
+      (call (of Map String JSON)
+        (block
+          (:answers (call (of Map String JSON)))
+        )
+      )
+    )
+    (case= "mcpServer/elicitation/request"
+      (call (of Map String JSON)
+        (block
+          (:action "decline")
+          (:content (as null JSON))
+          (entry "_meta" (as null JSON))
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + codex-account AIAccount
+  (param answer (? JSON))
+  (match answer
+    (case (map "account" (: account (map String JSON)))
+      (call AIAccount
+        (block
+          (:status (. AIAccountStatus signed-in))
+          (:billing (call codex-billing (call json-string ([] account "type"))))
+          (:email (call json-string ([] account "email")))
+          (:plan (call json-string ([] account "planType")))
+          (:organization (call json-string ([] account "workspaceName")))
+        )
+      )
+    )
+    (default
+      (call AIAccount (. AIAccountStatus signed-out))
+    )
+  )
+)
+
+(fn-expr + codex-response-key (? String)
+  (param response JSONRPCResponse)
+  (match? (. response id)
+    (case String)
+  )
+)
+
+(fn-expr _ codex-billing AIAccountBilling
+  (param kind (? String))
+  (match kind
+    (case= null
+      (. AIAccountBilling unknown)
+    )
+    (case= "chatgpt"
+      (. AIAccountBilling subscription)
+    )
+    (default
+      (. AIAccountBilling api)
+    )
+  )
+)
+
+(fn-do + codex-check-account _ (?! AIError)
+  (param account (? (map String JSON)))
+  (throw (call AIError (. AIErrorKind authentication) codex-signed-out-text) (if (not account)))
+  (throw (call AIError (. AIErrorKind authentication) codex-api-account-text) (if (!= (call json-string ([] account "type")) "chatgpt")))
+)
+
+(fn-expr + codex-turn-error AIError
+  (param error (? (map String JSON)))
+  (call AIError kind message)
+  (where
+    (lazy name (call codex-error-name (?[] error "codexErrorInfo")))
+    (lazy kind (call codex-error-kind name))
+    (lazy message
+      (block
+        (case? (== kind (. AIErrorKind authentication))
+          codex-signed-out-text
+        )
+        (default
+          (?? (call json-string (?[] error "message")) "Codex did not finish the turn")
+        )
+      )
+    )
+  )
+)
+
+(fn-expr + codex-exit-reason _
+  (param status Int)
+  (param errors String)
+  (case? (> (. errors length) 0)
+    errors
+  )
+  (default
+    (str "Codex exited with status " status)
+  )
+)
+
+(fn-expr _ codex-instructs _
+  (param message AIMessage)
+  (or (== (. message role) (. AIMessageRole system)) (== (. message role) (. AIMessageRole developer)))
+)
+
+(fn-do _ codex-prompt-images _ (?! AIError)
+  (param message AIMessage)
+  (param images (list AIImage))
+  (for (in part (. message parts))
+    (if (= (| (: image AIImagePart)) part)
+      (+= images (. image image))
+      (else
+        (throw (call AIError (. AIErrorKind invalid-request) "Codex prompts hold only text and images") (if (is-not part AITextPart)))
+      )
+    )
+  )
+)
+
+(fn-expr _ codex-text-input JSON
+  (param text String)
+  (call (of Map String JSON)
+    (block
+      (:type "text")
+      (:text text)
+      (entry "text_elements" (call (of List JSON)))
+    )
+  )
+)
+
+(fn-do _ codex-image-input JSON (?! AIError)
+  (param image AIImage)
+  (let file (. image file))
+  (match? (. file source)
+    (case (: stored AIPathSource)
+      (return
+        (call (of Map String JSON)
+          (block
+            (:type "localImage")
+            (:path (. stored path))
+          )
+        )
+      )
+    )
+    (case (: remote AIURLSource)
+      (return
+        (call (of Map String JSON)
+          (block
+            (:type "image")
+            (:url (. remote url))
+          )
+        )
+      )
+    )
+  )
+  (return
+    (call (of Map String JSON)
+      (block
+        (:type "image")
+        (:url (str "data:" (. file mime-type) ";base64," (call codex-image-data file)))
+      )
+    )
+  )
+)
+
+(fn-do _ codex-image-data Base64 (?! AIError)
+  (param file AIFile)
+  (match? (. file source)
+    (case (: encoded AIBase64Source)
+      (return (. encoded data))
+    )
+    (case (: held AIBytesSource)
+      (return (as (. held data) Base64))
+    )
+  )
+  (throw (call AIError (. AIErrorKind invalid-request) "Codex cannot read this image"))
+)
+
+(fn-expr _ codex-begun-part (? AIMessagePart)
+  (param item (? (map String JSON)))
+  (match item
+    (case (list (= "type" "agentMessage") (= "id" (: id String)))
+      (call AITextPart id "")
+    )
+    (case (list (= "type" "plan") (= "id" (: id String)))
+      (call AITextPart id "")
+    )
+    (case (list (= "type" "reasoning") (= "id" (: id String)))
+      (call AIReasoningPart id "")
+    )
+    (case (list (= "type" "webSearch") (= "id" (: id String)))
+      (call AIWebSearchPart id "" (. AIWebSearchStatus searching))
+    )
+    (default
+      (call codex-tool-call item)
+    )
+  )
+)
+
+(fn-expr + codex-tool-call (? AIToolCallPart)
+  (param item (? (map String JSON)))
+  (match? item
+    (case (list (= "type" "commandExecution") (= "id" (: id String)) (= "command" (: command String)))
+      (call AIToolCallPart id id codex-command-tool arguments)
+      (blank)
+      (lazy arguments
+        (call (of Map String JSON)
+          (block
+            (:command command)
+            (:cwd (?? ([] (!! item) "cwd") (as null JSON)))
+            (:actions (?? ([] (!! item) "commandActions") (as null JSON)))
+          )
+        )
+      )
+    )
+    (case (list (= "type" "fileChange") (= "id" (: id String)) (= "changes" changes))
+      (call AIToolCallPart id id codex-patch-tool arguments)
+      (blank)
+      (lazy arguments
+        (call (of Map String JSON)
+          (block
+            (:changes changes)
+          )
+        )
+      )
+    )
+    (case (list (= "type" "mcpToolCall") (= "id" (: id String)) (= "server" (: server String)) (= "tool" (: tool String)))
+      (call AIToolCallPart id id (str "mcp__" server "__" tool) (?? ([] (!! item) "arguments") (as null JSON)))
+    )
+    (case (list (= "type" "dynamicToolCall") (= "id" (: id String)) (= "tool" (: tool String)))
+      (call AIToolCallPart id id tool (?? ([] (!! item) "arguments") (as null JSON)))
+    )
+    (case (list (= "type" "imageGeneration") (= "id" (: id String)))
+      (call AIToolCallPart id id ai-image-tool-name arguments)
+      (blank)
+      (lazy arguments
+        (call (of Map String JSON)
+          (block
+            (:prompt? (call json-string ([] (!! item) "revisedPrompt")))
+          )
+        )
+      )
+    )
+    (case (list (= "type" "collabAgentToolCall") (= "id" (: id String)) (= "tool" (: tool String)))
+      (call AIToolCallPart id id codex-agent-tool arguments)
+      (blank)
+      (lazy arguments
+        (call (of Map String JSON)
+          (block
+            (:action tool)
+            (:prompt (?? ([] (!! item) "prompt") (as null JSON)))
+            (:model (?? ([] (!! item) "model") (as null JSON)))
+            (:threads (?? ([] (!! item) "receiverThreadIds") (as null JSON)))
+          )
+        )
+      )
+    )
+    (case (list (= "type" "imageView") (= "id" (: id String)) (= "path" (: path String)))
+      (call AIToolCallPart id id codex-image-tool arguments)
+      (blank)
+      (lazy arguments
+        (call (of Map String JSON)
+          (block
+            (:path path)
+          )
+        )
+      )
+    )
+  )
+)
+
+(fn-expr _ codex-generated-image (? AIImage)
+  (param item (map String JSON))
+  (case? (!= (call json-string ([] item "status")) "completed")
+    null
+  )
+  (case? saved
+    (call AIImage (call AIFile (call AIPathSource saved) "image/png") width height)
+  )
+  (case? (or (not bytes) (not (. bytes length)))
+    null
+  )
+  (default
+    (call AIImage (call AIFile (call AIBytesSource bytes) "image/png") width height)
+  )
+  (where
+    (lazy data (?? (call json-string ([] item "result")) ""))
+    (lazy width (call codex-png-side data 16))
+    (lazy height (call codex-png-side data 20))
+    (lazy saved (call json-string ([] item "savedPath")))
+    (lazy bytes (catch? (call decode-base64 data)))
+  )
+)
+
+(fn-do _ codex-png-side Size
+  (param data String)
+  (param offset Index)
+  (return-if 0 (if (or (< (. data length) 32) (not (call (. data starts-with) "iVBORw0KGgo")))))
+  (let head (catch? (call decode-base64 ([] data (..< 0 32)))))
+  (return-if 0 (if (not head)))
+  (let side Size 0)
+  (for (in index (..< offset (+ offset 4)))
+    (= side (+ (* side 256) (as ([] head index) Size)))
+  )
+  (return side)
+)
+
+(fn-expr _ codex-image-failure String
+  (param item (map String JSON))
+  (match ([] item "failure")
+    (case (map "type" "usageLimitExceeded")
+      "You've reached your ChatGPT plan's image limit for now."
+    )
+    (default
+      "Codex could not make the image."
+    )
+  )
+)
+
+(fn-expr _ codex-tool-result AIToolResultPart
+  (param item (map String JSON))
+  (param call-id String)
+  (call AIToolResultPart (str call-id ":result") call-id text text (call codex-is-failure item))
+  (where
+    (lazy text (?? (call codex-result-text item) ""))
+  )
+)
+
+(fn-expr _ codex-result-text (? String)
+  (param item (map String JSON))
+  (match? item
+    (case (list (= "type" "commandExecution") (= "aggregatedOutput" (: output String)))
+      output
+    )
+    (case (list (= "type" "fileChange") (= "changes" (: changes (list JSON))))
+      (call (. "\n\n" join) (in (call codex-change-text each) changes))
+    )
+    (case (list (= "type" "mcpToolCall") (= "error" (map "message" (: message String))))
+      message
+    )
+    (case (list (= "type" "mcpToolCall") (= "result" (map "content" (: blocks (list JSON)))))
+      (call (. "" join) (in (?? (call codex-block-text each) "") blocks))
+    )
+    (case (list (= "type" "dynamicToolCall") (= "contentItems" (: blocks (list JSON))))
+      (call (. "" join) (in (?? (call codex-block-text each) "") blocks))
+    )
+  )
+)
+
+(fn-expr _ codex-is-failure Bool
+  (param item (map String JSON))
+  (or (!= status "completed") (!= exit 0) has-error (== (call json-bool ([] item "success")) false))
+  (where
+    (lazy status (?? (call json-string ([] item "status")) "completed"))
+    (lazy exit (?? (call json-int ([] item "exitCode")) 0))
+    (lazy has-error (is ([] item "error") (map String JSON)))
+  )
+)
+
+(fn-expr _ codex-change-text String
+  (param change JSON)
+  (match change
+    (case (list (= "path" (: path String)) (= "diff" (: diff String)))
+      (str path "\n" diff)
+    )
+    (case (map "path" (: path String))
+      path
+    )
+    (default
+      ""
+    )
+  )
+)
+
+(fn-expr _ codex-block-text (? String)
+  (param block JSON)
+  (match? block
+    (case (list (= "type" "text") (= "text" (: text String)))
+      text
+    )
+    (case (list (= "type" "inputText") (= "text" (: text String)))
+      text
+    )
+  )
+)
+
+(fn-expr _ codex-reasoning-text String
+  (param item (map String JSON))
+  (if-expr (. summary length) summary content)
+  (where
+    (lazy summary (call codex-joined ([] item "summary")))
+    (lazy content (call codex-joined ([] item "content")))
+  )
+)
+
+(fn-expr _ codex-joined String
+  (param value (? JSON))
+  (match value
+    (case (: lines (list JSON))
+      (call (. "\n\n" join) (in (?? (call json-string each) "") lines))
+    )
+    (default
+      ""
+    )
+  )
+)
+
+(fn-do _ codex-error-name (? String)
+  (param info (? JSON))
+  (match? info
+    (case (: name String)
+      (return name)
+    )
+    (case (: fields (map String JSON))
+      (for (in (tuple key _) fields)
+        (return key)
+      )
+    )
+  )
+  (return null)
+)
+
+(fn-expr _ codex-error-kind AIErrorKind
+  (param name (? String))
+  (match name
+    (case= "unauthorized"
+      (. AIErrorKind authentication)
+    )
+    (case? (or (== it "usageLimitExceeded") (== it "rateLimitExceeded") (== it "sessionBudgetExceeded"))
+      (. AIErrorKind rate-limit)
+    )
+    (case= "contextWindowExceeded"
+      (. AIErrorKind context-length)
+    )
+    (case? (or (== it "serverOverloaded") (== it "internalServerError") (== it "httpConnectionFailed"))
+      (. AIErrorKind server)
+    )
+    (case? (or (== it "responseStreamConnectionFailed") (== it "responseStreamDisconnected") (== it "responseTooManyFailedAttempts"))
+      (. AIErrorKind server)
+    )
+    (case? (or (== it "badRequest") (== it "modelNotFound"))
+      (. AIErrorKind invalid-request)
+    )
+    (default
+      (. AIErrorKind unknown)
+    )
+  )
+)
+
+(fn-expr _ codex-usage AIUsage
+  (param value (? (map String JSON)))
+  (case? (not value)
+    (call AIUsage)
+  )
+  (default
+    (call AIUsage
+      (block
+        (:input-tokens (call json-size ([] value "inputTokens")))
+        (:output-tokens (call json-size ([] value "outputTokens")))
+        (:total-tokens (call json-size ([] value "totalTokens")))
+        (:cached-input-tokens (call json-size ([] value "cachedInputTokens")))
+        (:cache-creation-tokens (call json-size ([] value "cacheWriteInputTokens")))
+        (:reasoning-tokens (call json-size ([] value "reasoningOutputTokens")))
+      )
+    )
+  )
+)
+
+(fn-expr _ json-string _
+  (param value (? JSON))
+  (match? value
+    (case String)
+  )
+)
+
+(fn-expr _ json-object _
+  (param value (? JSON))
+  (match? value
+    (case (map String JSON))
+  )
+)
+
+(fn-expr _ json-int (? Int)
+  (param value (? JSON))
+  (match? value
+    (case Int)
+  )
+)
+
+(fn-expr _ json-size (? Size)
+  (param value (? JSON))
+  (match? value
+    (case (all Int ({} (>= it 0))))
+  )
+)
+
+(fn-expr _ json-bool _
+  (param value (? JSON))
+  (match? value
+    (case Bool)
+  )
+)

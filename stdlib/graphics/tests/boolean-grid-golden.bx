@@ -1,0 +1,108 @@
+(import /test)
+(import /os/file)
+(import /graphics/boolean)
+(import /graphics/canvas)
+(import /graphics/path)
+(import /graphics/primitives)
+(import /os/path)
+(import ./support/boolean-grid-cells)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Boolean Grid SVG Goldens"))
+  (call (. cases run) boolean-grid-svg-golden-tests)
+  (return cases)
+)
+
+(fn-do + boolean-grid-svg-golden-tests _
+  (param t TestCase)
+  (for (in index (..< 0 20))
+    (let name (call boolean-grid-cell-name index))
+    (let actual (call (. (call boolean-grid-cell-svg index) trim)))
+    (let expected (call (. (call boolean-grid-cell-golden-svg index) trim)))
+    (let result (call boolean-grid-cell-direct-result index (call Rect 0 0 266 200)))
+    (call (. t check) (str "cell " name " golden svg exists") (!= (call (. expected find) "<svg") null))
+    (call (. t expect) (str "cell " name " svg") expected actual)
+    (call (. t check) (str "cell " name " nonzero fill") (== (call (. actual find) "fill-rule=\"evenodd\"") null))
+    (call (. t check) (str "cell " name " closed path") (call boolean-grid-result-is-closed result))
+  )
+  (blank)
+  (return t)
+)
+
+(fn-do _ boolean-grid-cell-golden-svg _
+  (param index _)
+  (let file (call File (call boolean-grid-cell-golden-path index) (. FileFlags read-mode)))
+  (let svg (as file String))
+  (call (. file close))
+  (return svg)
+)
+
+(fn-do _ boolean-grid-cell-golden-path _
+  (param index _)
+  (let local (str "cell-" (call boolean-grid-cell-name index) ".svg"))
+  (if (. (call Path local) is-file)
+    (return local)
+  )
+  (blank)
+  (return (str "stdlib/graphics/tests/fixtures/boolean-grid-golden/" local))
+)
+
+(fn-do _ boolean-grid-cell-svg _
+  (param index _)
+  (let path (str "/private/tmp/brix-boolean-grid-cell-" (call boolean-grid-cell-name index) ".svg"))
+  (call write-boolean-grid-cell-svg index path)
+  (let file (call File path (. FileFlags read-mode)))
+  (let svg (as file String))
+  (call (. file close))
+  (return svg)
+)
+
+(fn-do _ write-boolean-grid-cell-svg _
+  (param index _)
+  (param path String)
+  (let canvas (call SVGCanvas 266 200))
+  (= (. canvas fill-color) (call boolean-grid-cell-result-fill-color index))
+  (= (. canvas stroke-color) null)
+  (let result (call boolean-grid-cell-direct-result index (call Rect 0 0 266 200)))
+  (if result
+    (call (. result outline) canvas)
+  )
+  (call (. canvas write) path)
+)
+
+(fn-expr _ boolean-grid-cell-direct-result _
+  (param index _)
+  (param cell Rect)
+  (case? (== operation 0)
+    (call union a b)
+  )
+  (case? (== operation 1)
+    (call intersect a b)
+  )
+  (case? (== operation 2)
+    (call subtract a b)
+  )
+  (default
+    (call clip a b)
+  )
+  (where
+    (lazy a (call boolean-grid-cell-source-a index cell))
+    (lazy b (call boolean-grid-cell-source-b index cell))
+    (lazy operation (% index 4))
+  )
+)
+
+(fn-expr _ boolean-grid-result-is-closed _
+  (param result (? Path))
+  (case? (and result (!= (. result count) 0))
+    (. result is-closed)
+  )
+  (default
+    true
+  )
+)

@@ -36,15 +36,13 @@ def toolchain_path(*parts):
 
 SNAPSHOT_PATHS = tuple(toolchain_path(path) for path in ('stdlib', 'apps/compiler', 'examples'))
 COMPILER_PATHS = tuple(toolchain_path(path) for path in ('stdlib', 'apps/compiler'))
-COMPILER_SOURCE = toolchain_path('apps', 'compiler', 'brix-cli.yumi')
+COMPILER_SOURCE = toolchain_path('apps', 'compiler', 'brix-cli.bx')
 STDLIB = toolchain_path('stdlib')
-APP_PATTERNS = ('*-app.yumi', '*-app.bx')
+APP_PATTERNS = ('*-app.bx',)
 FULL = 'ir'
 QUICK = 'emitted'
 EXAMPLE_PATTERNS = tuple(toolchain_path('examples', pattern) for pattern in (
-    '*/*.yumi',
     '*/*.bx',
-    '*/*/*-app.yumi',
     '*/*/*-app.bx',
 ))
 FUNCTION_START = re.compile(rb'^function (.+?) kind=', re.MULTILINE)

@@ -1,10 +1,13 @@
 # Loops
 
-```yumi
-. a = 3
-while a > 1
-    -- a
-    a = a - 1
+```brix
+(main
+  (let a 3)
+  (while (> a 1)
+    (print a)
+    (= a (- a 1))
+  )
+)
 ```
 
 ```output
@@ -12,14 +15,18 @@ while a > 1
 2
 ```
 
-```yumi
-. a = 4
-while a > 1
-    -- a
-    if a == 3
-        break
-    a -= 1
--- "done"
+```brix
+(main
+  (let a 4)
+  (while (> a 1)
+    (print a)
+    (if (== a 3)
+      (break)
+    )
+    (-= a 1)
+  )
+  (print "done")
+)
 ```
 
 ```output
@@ -28,16 +35,20 @@ while a > 1
 done
 ```
 
-```yumi
-. a = 4
-while a > 1
-    if a == 3
-        a -= 1
-        continue
-
-    -- a
-    a -= 1
--- "done"
+```brix
+(main
+  (let a 4)
+  (while (> a 1)
+    (if (== a 3)
+      (-= a 1)
+      (continue)
+    )
+    (blank)
+    (print a)
+    (-= a 1)
+  )
+  (print "done")
+)
 ```
 
 ```output
@@ -46,19 +57,24 @@ while a > 1
 done
 ```
 
-```yumi
-. r = 0 .. < 3
--- r.length
+```brix
+(main
+  (let r (..< 0 3))
+  (print (. r length))
+)
 ```
 
 ```output
 3
 ```
 
-```yumi
-for i in 0 .. < 3
-    -- i
--- "done"
+```brix
+(main
+  (for (in i (..< 0 3))
+    (print i)
+  )
+  (print "done")
+)
 ```
 
 ```output
@@ -70,36 +86,43 @@ done
 
 ### A `for` with no body runs its loop for what reading its items does
 
-```yumi
-. counter = Counter()
-for _ in ticks(counter, 3)
-for item in [1, 2]
-for i in 0 .. < 2
--- counter.value
+```brix
+(main
+  (let counter (call Counter))
+  (for (in _ (call ticks counter 3)))
+  (for (in item (list 1 2)))
+  (for (in i (..< 0 2)))
+  (print (. counter value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
+(type + Counter
+  (prop + value _ (= 0))
+)
 
-+ value = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do ticks <Int>
-    - counter Counter
-    - n Int
-
-for i in 0 .. < n
-    counter.value += 1
-    <= i
+(fn-do + ticks (stream Int)
+  (param counter Counter)
+  (param n Int)
+  (for (in i (..< 0 n))
+    (+= (. counter value) 1)
+    (yield i)
+  )
+)
 ```
 
 ```output
 3
 ```
 
-```yumi
-for i in 0 .. < 4
-    -- value
-        .. value = i * 2
+```brix
+(main
+  (for (in i (..< 0 4))
+    (print
+      (scope value
+        (lazy value (* i 2))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -109,48 +132,50 @@ for i in 0 .. < 4
 6
 ```
 
-```yumi crash
-for item in 42
-    -- item
+```brix crash
+(main
+  (for (in item 42)
+    (print item)
+  )
+)
 ```
 
 ```output
 Exception: A for loop cannot iterate over I64; to count, loop over a range, as in "0 .. < 42"
-<no file:2>
-    for item in 42
-                ^^
+<no file:3>
+      (for (in item 42)
+                    ^^
 ```
 
 ### Cursor iterables keep traversal state outside immutable Brix values
 
-```yumi
-. values = CursorRange(3)
-. total = 0
-for value in values
-    -- value
-    total += value
--- total
+```brix
+(main
+  (let values (call CursorRange 3))
+  (let total 0)
+  (for (in value values)
+    (print value)
+    (+= total value)
+  )
+  (print total)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CursorRange is Struct
-    is CursorIterable'I32'I32
-
-+ limit I32
-
-────────────────────
-+ get initial-iterator-state I32
-
-0
-
-────────────────────
-+ do next-iterator (I32, I32?)
-    - state I32
-
-. none I32?
-if state >= limit
-    = (state, none)
-
-= (state + 1, state + 1)
+(type + CursorRange (is Struct)
+  (implements (of CursorIterable I32 I32))
+  (prop + limit I32)
+  (fn-expr + initial-iterator-state I32 :get
+    0
+  )
+  (fn-do + next-iterator (tuple I32 (? I32))
+    (param state I32)
+    (let none (? I32))
+    (if (>= state limit)
+      (return (tuple state none))
+    )
+    (blank)
+    (return (tuple (+ state 1) (+ state 1)))
+  )
+)
 ```
 
 ```output
@@ -160,12 +185,16 @@ if state >= limit
 6
 ```
 
-```yumi
-for i in 0 .. < 3
-    -- i
-    if i == 1
-        break
--- "done"
+```brix
+(main
+  (for (in i (..< 0 3))
+    (print i)
+    (if (== i 1)
+      (break)
+    )
+  )
+  (print "done")
+)
 ```
 
 ```output
@@ -174,12 +203,16 @@ for i in 0 .. < 3
 done
 ```
 
-```yumi
-for i in 0 .. < 3
-    if i == 1
-        continue
-    -- i
--- "done"
+```brix
+(main
+  (for (in i (..< 0 3))
+    (if (== i 1)
+      (continue)
+    )
+    (print i)
+  )
+  (print "done")
+)
 ```
 
 ```output
@@ -190,9 +223,12 @@ done
 
 ## Clauses
 
-```yumi
-for i in 0 .. < 10 when i == 3 || i == 5
-    -- i
+```brix
+(main
+  (for (in i (..< 0 10) (when (or (== i 3) (== i 5))))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -200,9 +236,12 @@ for i in 0 .. < 10 when i == 3 || i == 5
 5
 ```
 
-```yumi
-for i in 0 .. < 10 while i < 3
-    -- i
+```brix
+(main
+  (for (in i (..< 0 10) (while (< i 3)))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -211,9 +250,12 @@ for i in 0 .. < 10 while i < 3
 2
 ```
 
-```yumi
-for i in 0 .. < 10 until i == 3
-    -- i
+```brix
+(main
+  (for (in i (..< 0 10) (until (== i 3)))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -224,10 +266,14 @@ for i in 0 .. < 10 until i == 3
 
 ## Combination iterators
 
-```yumi
-for i in 0 .. < 3
-and j in 10 .. < 13
-    -- i, j
+```brix
+(main
+  (for (in i (..< 0 3))
+    (and-for (in j (..< 10 13))
+      (print (tuple i j))
+    )
+  )
+)
 ```
 
 ```output
@@ -236,10 +282,14 @@ and j in 10 .. < 13
 (2, 12)
 ```
 
-```yumi
-for i in 0 .. < 10 when i > 5
-and j in 10 .. < 13
-    -- i, j
+```brix
+(main
+  (for (in i (..< 0 10) (when (> i 5)))
+    (and-for (in j (..< 10 13))
+      (print (tuple i j))
+    )
+  )
+)
 ```
 
 ```output
@@ -248,10 +298,14 @@ and j in 10 .. < 13
 (8, 12)
 ```
 
-```yumi
-for i in 0 .. < 3
-and j in 10 .. < 20 when j > 15
-    -- i, j
+```brix
+(main
+  (for (in i (..< 0 3))
+    (and-for (in j (..< 10 20) (when (> j 15)))
+      (print (tuple i j))
+    )
+  )
+)
 ```
 
 ```output
@@ -260,10 +314,14 @@ and j in 10 .. < 20 when j > 15
 (2, 18)
 ```
 
-```yumi
-for i in 0 .. < 10 when i > 5
-and j in 10 .. < 20 when j > 15
-    -- i, j
+```brix
+(main
+  (for (in i (..< 0 10) (when (> i 5)))
+    (and-for (in j (..< 10 20) (when (> j 15)))
+      (print (tuple i j))
+    )
+  )
+)
 ```
 
 ```output
@@ -275,10 +333,14 @@ and j in 10 .. < 20 when j > 15
 
 ### Show that loop breaks when either of streams end
 
-```yumi
-for i in 0 .. < 10
-and j in 10 .. < 13
-    -- i, j
+```brix
+(main
+  (for (in i (..< 0 10))
+    (and-for (in j (..< 10 13))
+      (print (tuple i j))
+    )
+  )
+)
 ```
 
 ```output
@@ -287,18 +349,22 @@ and j in 10 .. < 13
 (2, 12)
 ```
 
-```yumi
-for pair in zip([1,2,3], [4,5,6])
-    -- pair
+```brix
+(main
+  (for (in pair (call zip (list 1 2 3) (list 4 5 6)))
+    (print pair)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do zip'T1'T2
-    - stream1 <T1>
-    - stream2 <T2>
-
-for item1 in stream1
-and item2 in stream2
-    <= item1, item2
+(fn-do + (of zip T1 T2) _
+  (param stream1 (stream T1))
+  (param stream2 (stream T2))
+  (for (in item1 stream1)
+    (and-for (in item2 stream2)
+      (yield (tuple item1 item2))
+    )
+  )
+)
 ```
 
 ```output
@@ -309,11 +375,17 @@ and item2 in stream2
 
 ## Iterator expressions
 
-```yumi
-. iter = <* n in 1 .. 3
-    n * 2
-for i in iter
-    -- i
+```brix
+(main
+  (let iter
+    (case-each (in n (.. 1 3))
+      (* n 2)
+    )
+  )
+  (for (in i iter)
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -322,11 +394,17 @@ for i in iter
 6
 ```
 
-```yumi
-. iter = <* n in 1 .. 6 when n % 2 == 0
-    n * 2
-for i in iter
-    -- i
+```brix
+(main
+  (let iter
+    (case-each (in n (.. 1 6) (when (== (% n 2) 0)))
+      (* n 2)
+    )
+  )
+  (for (in i iter)
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -335,11 +413,17 @@ for i in iter
 12
 ```
 
-```yumi
-. iter = <* n in 1 .. 6 while n < 3
-    n * 2
-for i in iter
-    -- i
+```brix
+(main
+  (let iter
+    (case-each (in n (.. 1 6) (while (< n 3)))
+      (* n 2)
+    )
+  )
+  (for (in i iter)
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -347,11 +431,17 @@ for i in iter
 4
 ```
 
-```yumi
-. iter = <* n in 1 .. 6 until n == 3
-    n * 2
-for i in iter
-    -- i
+```brix
+(main
+  (let iter
+    (case-each (in n (.. 1 6) (until (== n 3)))
+      (* n 2)
+    )
+  )
+  (for (in i iter)
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -361,10 +451,13 @@ for i in iter
 
 ## Iterator closures
 
-```yumi
-. iter = :: ns => each * 2 in ns
-for i in iter([1,2,3])
-    -- i
+```brix
+(main
+  (let iter (=> (ns) (in (* each 2) ns)))
+  (for (in i (call iter (list 1 2 3)))
+    (print i)
+  )
+)
 ```
 
 ```output
@@ -373,10 +466,13 @@ for i in iter([1,2,3])
 6
 ```
 
-```yumi
-. iter = :: ns => each in ns when each % 2
-for n in iter(0 .. < 8)
-    -- n
+```brix
+(main
+  (let iter (=> (ns) (in each ns (when (% each 2)))))
+  (for (in n (call iter (..< 0 8)))
+    (print n)
+  )
+)
 ```
 
 ```output
@@ -386,16 +482,21 @@ for n in iter(0 .. < 8)
 7
 ```
 
-```yumi
-for i in 0 .. < 3
-    do finally
-        -- "iter"
-
-    -- i
-
-    if i == 1
-        break
--- "done"
+```brix
+(main
+  (for (in i (..< 0 3))
+    (finally
+      (print "iter")
+    )
+    (blank)
+    (print i)
+    (blank)
+    (if (== i 1)
+      (break)
+    )
+  )
+  (print "done")
+)
 ```
 
 ```output
@@ -406,19 +507,24 @@ iter
 done
 ```
 
-```yumi
-. a = 4
-while a > 1
-    do finally
-        -- "iter"
-
-    if a == 3
-        a -= 1
-        continue
-
-    -- a
-    a -= 1
--- "done"
+```brix
+(main
+  (let a 4)
+  (while (> a 1)
+    (finally
+      (print "iter")
+    )
+    (blank)
+    (if (== a 3)
+      (-= a 1)
+      (continue)
+    )
+    (blank)
+    (print a)
+    (-= a 1)
+  )
+  (print "done")
+)
 ```
 
 ```output
@@ -430,8 +536,10 @@ iter
 done
 ```
 
-```yumi
--- List: each * 2 in 0 .. < 5
+```brix
+(main
+  (print (call List (inline (in (* each 2) (..< 0 5)))))
+)
 ```
 
 ```output
@@ -440,36 +548,47 @@ done
 
 ### A loop header that names a derived class does not narrow its items: match them, or write as.
 
-```yumi crash
-for a Foo2 in [Foo(), Foo2(), Foo()]
-    -- a
+```brix crash
+(main
+  (for (in (: a Foo2) (list (call Foo) (call Foo2) (call Foo)))
+    (print a)
+  )
+)
 
-+ Foo
-+ Foo2 is Foo
+(blank)
+(type-line + Foo)
+(type-line + Foo2 (is Foo))
 ```
 
 ```output
-Exception: Expected Foo2 here, but this is Foo, which is not always Foo2; match it with "| name Foo2", or write "as Foo2"
-<no file:2>
-    for a Foo2 in [Foo(), Foo2(), Foo()]
-          ^^^^
+Exception: Expected Foo2 here, but this is Foo, which is not always Foo2; match it with "(case (: name Foo2) …)", or write "(as Foo2 Foo2)"
+<no file:3>
+      (for (in (: a Foo2) (list (call Foo) (call Foo2) (call Foo)))
+                    ^^^^
 ```
 
-```yumi
-for | a Foo2 in [Foo(), Foo2(), Foo()]
-    -- a
+```brix
+(main
+  (for (in (| (: a Foo2)) (list (call Foo) (call Foo2) (call Foo)))
+    (print a)
+  )
+)
 
-+ Foo
-+ Foo2 is Foo
+(blank)
+(type-line + Foo)
+(type-line + Foo2 (is Foo))
 ```
 
 ```output
 [Object __source__:Foo2]
 ```
 
-```yumi
-for | a {it >= 2} in [1, 2, 3, 1, 2]
-    -- a
+```brix
+(main
+  (for (in (| (: a ({} (>= it 2)))) (list 1 2 3 1 2))
+    (print a)
+  )
+)
 ```
 
 ```output
@@ -478,9 +597,11 @@ for | a {it >= 2} in [1, 2, 3, 1, 2]
 2
 ```
 
-```yumi
-. a = <* {it % 2} in 0 .. < 10
--- ", "(a)
+```brix
+(main
+  (let a (case-each (in ({} (% it 2)) (..< 0 10))))
+  (print (call ", " a))
+)
 ```
 
 ```output
@@ -489,43 +610,49 @@ for | a {it >= 2} in [1, 2, 3, 1, 2]
 
 ### An operand that does not convert is reported at the operand, even when it reads the loop's `it`.
 
-```yumi crash
--- nested([[1, 2], [3]])
+```brix crash
+(main
+  (print (call nested (list (list 1 2) (list 3))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do nested I32
-    - rows [[I32]]
-
-. total = 0
-for row in rows
-    for cell in row
-        total += cell + it
-= total
+(fn-do + nested I32
+  (param rows (list (list I32)))
+  (let total 0)
+  (for (in row rows)
+    (for (in cell row)
+      (+= total (+ cell it))
+    )
+  )
+  (return total)
+)
 ```
 
 ```output
 Exception: Expected I32 here, but this is [I32]?, and there is no conversion between them
 <no file:11>
-            total += cell + it
+          (+= total (+ cell it))
                             ^^
 ```
 
 ### A range loop's variable shadows a local of the same name.
 
-```yumi
--- sum(4)
+```brix
+(main
+  (print (call sum 4))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do sum U32
-    - limit U32
-
-. total U32 = 0
-. index = limit
-while index > 2
-    index -= 1
-for index in 0 .. < limit
-    total += index
-= total + index * 100
+(fn-do + sum U32
+  (param limit U32)
+  (let total U32 0)
+  (let index limit)
+  (while (> index 2)
+    (-= index 1)
+  )
+  (for (in index (..< 0 limit))
+    (+= total index)
+  )
+  (return (+ total (* index 100)))
+)
 ```
 
 ```output
@@ -534,26 +661,25 @@ for index in 0 .. < limit
 
 ### A range loop's variable shadows a member of the same name.
 
-```yumi
--- Counter(7).sum(4)
+```brix
+(main
+  (print (call (. (call Counter 7) sum) 4))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
-
-+ index U32
-
-────────────────────
-+ This
-    - index U32
-
-────────────────────
-+ do sum U32
-    - limit U32
-
-. total U32 = 0
-for index in 0 .. < limit
-    total += index
-= total + index * 100
+(type + Counter
+  (prop + index U32)
+  (fn-do + This _
+    (param index U32)
+  )
+  (fn-do + sum U32
+    (param limit U32)
+    (let total U32 0)
+    (for (in index (..< 0 limit))
+      (+= total index)
+    )
+    (return (+ total (* index 100)))
+  )
+)
 ```
 
 ```output
@@ -562,42 +688,53 @@ for index in 0 .. < limit
 
 ### The item of a loop is not known after the loop.
 
-```yumi crash
-for i in 0 .. < 2
-    -- i
--- i
+```brix crash
+(main
+  (for (in i (..< 0 2))
+    (print i)
+  )
+  (print i)
+)
 ```
 
 ```output
 Exception: Name "i" not found
-<no file:4>
-    -- i
-       ^
+<no file:6>
+      (print i)
+             ^
 ```
 
 ### `while` runs its body for as long as its condition holds. `continue` goes to the next pass and `break` leaves the nearest loop.
 
-```yumi
-. a = 0
-. s = 0
-while a < 10
-    a += 1
-    if a % 2 == 0
-        continue
-    if a > 7
-        break
-    s += a
--- s
--- a
-. b = 0
-while a < 14
-    b = 0
-    while true
-        b += 1
-        if b > 2
-            break
-    a += b
--- a
+```brix
+(main
+  (let a 0)
+  (let s 0)
+  (while (< a 10)
+    (+= a 1)
+    (if (== (% a 2) 0)
+      (continue)
+    )
+    (if (> a 7)
+      (break)
+    )
+    (+= s a)
+  )
+  (print s)
+  (print a)
+  (let b 0)
+  (while (< a 14)
+    (= b 0)
+    (while true
+      (+= b 1)
+      (if (> b 2)
+        (break)
+      )
+    )
+    (+= a b)
+  )
+  (print a)
+)
 ```
 
 ```output
@@ -608,14 +745,18 @@ while a < 14
 
 ### A `while` tests a text as its condition.
 
-```yumi
-. s = "abc"
-. n = 0
-while s
-    n += 1
-    if n == 3
-        s = ""
--- n
+```brix
+(main
+  (let s "abc")
+  (let n 0)
+  (while s
+    (+= n 1)
+    (if (== n 3)
+      (= s "")
+    )
+  )
+  (print n)
+)
 ```
 
 ```output
@@ -624,12 +765,15 @@ while s
 
 ### What follows `break` in its block never runs.
 
-```yumi
-for i in 0 .. < 3
-    -- i
-    break
-    -- "never"
--- "end"
+```brix
+(main
+  (for (in i (..< 0 3))
+    (print i)
+    (break)
+    (print "never")
+  )
+  (print "end")
+)
 ```
 
 ```output
@@ -639,16 +783,21 @@ end
 
 ### A loop polls on every pass, however long it runs.
 
-```yumi
-. a = 0
-while a < 100000
-    a += 1
--- a
-. s I64 = 0
-for i in 0 .. < 400
-    for j in 0 .. < 400
-        s += j
--- s
+```brix
+(main
+  (let a 0)
+  (while (< a 100000)
+    (+= a 1)
+  )
+  (print a)
+  (let s I64 0)
+  (for (in i (..< 0 400))
+    (for (in j (..< 0 400))
+      (+= s j)
+    )
+  )
+  (print s)
+)
 ```
 
 ```output
@@ -658,12 +807,15 @@ for i in 0 .. < 400
 
 ### A local that holds text is kept through the collections a long loop causes.
 
-```yumi
-. s = ""
-for i in 0 .. < 200000
-    s = "a" ++ "b"
-    s ++= "c"
--- s
+```brix
+(main
+  (let s "")
+  (for (in i (..< 0 200000))
+    (= s (++ "a" "b"))
+    (++= s "c")
+  )
+  (print s)
+)
 ```
 
 ```output
@@ -672,22 +824,28 @@ abc
 
 ### A condition that joins texts with && or ||, or that a call makes, is tested as each text is.
 
-```yumi
-. s = "a"
-. t = ""
-. ok = true
-while s && ok
-    -- s
-    ok = false
-. n = 0
-while t ++ "x" && n < 2
-    n += 1
--- n
-for i in 0 .. < 3 when s || t
-    -- i
-for i in 0 .. < 3 until t || i == 1
-    -- i
--- "done"
+```brix
+(main
+  (let s "a")
+  (let t "")
+  (let ok true)
+  (while (and s ok)
+    (print s)
+    (= ok false)
+  )
+  (let n 0)
+  (while (and (++ t "x") (< n 2))
+    (+= n 1)
+  )
+  (print n)
+  (for (in i (..< 0 3) (when (or s t)))
+    (print i)
+  )
+  (for (in i (..< 0 3) (until (or t (== i 1))))
+    (print i)
+  )
+  (print "done")
+)
 ```
 
 ```output
@@ -702,18 +860,24 @@ done
 
 ### A clause that is a text is tested as the text is: when, until and while.
 
-```yumi
-. s = "a"
-. t = ""
-for i in 0 .. < 3 when t
-    -- i
-for i in 0 .. < 3 when s
-    -- i
-for i in 0 .. < 3 until s
-    -- i
-for i in 0 .. < 3 while t
-    -- i
--- "done"
+```brix
+(main
+  (let s "a")
+  (let t "")
+  (for (in i (..< 0 3) (when t))
+    (print i)
+  )
+  (for (in i (..< 0 3) (when s))
+    (print i)
+  )
+  (for (in i (..< 0 3) (until s))
+    (print i)
+  )
+  (for (in i (..< 0 3) (while t))
+    (print i)
+  )
+  (print "done")
+)
 ```
 
 ```output
@@ -725,51 +889,59 @@ done
 
 ### A clause of a loop tests whether an optional holds a value, also one a test found to hold one.
 
-```yumi
-count(0)
-count(5)
-count(null)
-words("")
-words("x")
+```brix
+(main
+  (call count 0)
+  (call count 5)
+  (call count null)
+  (call words "")
+  (call words "x")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do count
-    - value Int?
+(fn-do + count _
+  (param value (? Int))
+  (if (not value)
+    (print "none")
+    (return)
+  )
+  (let turns 0)
+  (for (in at-turn (..< 0 3) (while value))
+    (+= turns 1)
+  )
+  (print (str "while " turns))
+  (= turns 0)
+  (for (in at-turn (..< 0 3) (when value))
+    (+= turns 1)
+  )
+  (print (str "when " turns))
+  (= turns 0)
+  (for (in at-turn (..< 0 3) (until value))
+    (+= turns 1)
+  )
+  (print (str "until " turns))
+)
 
-if !value
-    -- "none"
-    =
-. turns = 0
-for at-turn in 0 .. < 3 while value
-    turns += 1
--- "while $turns"
-turns = 0
-for at-turn in 0 .. < 3 when value
-    turns += 1
--- "when $turns"
-turns = 0
-for at-turn in 0 .. < 3 until value
-    turns += 1
--- "until $turns"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do words
-    - value String?
-
-if !value
-    =
-. turns = 0
-for at-turn in 0 .. < 3 while value
-    turns += 1
--- "while $turns"
-turns = 0
-for at-turn in 0 .. < 3 when value
-    turns += 1
--- "when $turns"
-turns = 0
-for at-turn in 0 .. < 3 until value
-    turns += 1
--- "until $turns"
+(fn-do + words _
+  (param value (? String))
+  (if (not value)
+    (return)
+  )
+  (let turns 0)
+  (for (in at-turn (..< 0 3) (while value))
+    (+= turns 1)
+  )
+  (print (str "while " turns))
+  (= turns 0)
+  (for (in at-turn (..< 0 3) (when value))
+    (+= turns 1)
+  )
+  (print (str "when " turns))
+  (= turns 0)
+  (for (in at-turn (..< 0 3) (until value))
+    (+= turns 1)
+  )
+  (print (str "until " turns))
+)
 ```
 
 ```output
@@ -790,27 +962,31 @@ until 0
 
 ### A clause of a loop over an optional no test narrowed tests whether it holds a value.
 
-```yumi
-count(0)
-count(5)
-count(null)
+```brix
+(main
+  (call count 0)
+  (call count 5)
+  (call count null)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do count
-    - value Int?
-
-. turns = 0
-for at-turn in 0 .. < 3 while value
-    turns += 1
--- "while $turns"
-turns = 0
-for at-turn in 0 .. < 3 when value
-    turns += 1
--- "when $turns"
-turns = 0
-for at-turn in 0 .. < 3 until value
-    turns += 1
--- "until $turns"
+(fn-do + count _
+  (param value (? Int))
+  (let turns 0)
+  (for (in at-turn (..< 0 3) (while value))
+    (+= turns 1)
+  )
+  (print (str "while " turns))
+  (= turns 0)
+  (for (in at-turn (..< 0 3) (when value))
+    (+= turns 1)
+  )
+  (print (str "when " turns))
+  (= turns 0)
+  (for (in at-turn (..< 0 3) (until value))
+    (+= turns 1)
+  )
+  (print (str "until " turns))
+)
 ```
 
 ```output
@@ -827,18 +1003,23 @@ until 3
 
 ### A loop over a list: of texts, of tuples, and one that is empty.
 
-```yumi
-. names = ["ann", "bob", "cy"]
-for name in names
-    -- name
-. pairs = [(1, "one"), (2, "two")]
-for pair in pairs
-    -- pair[0]
-    -- pair[1]
-. empty [Int]
-for item in empty
-    -- item
--- "done"
+```brix
+(main
+  (let names (list "ann" "bob" "cy"))
+  (for (in name names)
+    (print name)
+  )
+  (let pairs (list (tuple 1 "one") (tuple 2 "two")))
+  (for (in pair pairs)
+    (print ([] pair 0))
+    (print ([] pair 1))
+  )
+  (let empty (list Int))
+  (for (in item empty)
+    (print item)
+  )
+  (print "done")
+)
 ```
 
 ```output
@@ -854,20 +1035,28 @@ done
 
 ### A loop over a list with `continue` and `break` in its body, and with `when`, `while` and `until` in its header.
 
-```yumi
-. items = [1, 2, 3, 4, 5, 6]
-for item in items
-    if item == 2
-        continue
-    if item == 5
-        break
-    -- item
-for item in items when item % 2 == 0
-    -- item
-for item in items while item < 3
-    -- item
-for item in items until item == 4
-    -- item
+```brix
+(main
+  (let items (list 1 2 3 4 5 6))
+  (for (in item items)
+    (if (== item 2)
+      (continue)
+    )
+    (if (== item 5)
+      (break)
+    )
+    (print item)
+  )
+  (for (in item items (when (== (% item 2) 0)))
+    (print item)
+  )
+  (for (in item items (while (< item 3)))
+    (print item)
+  )
+  (for (in item items (until (== item 4)))
+    (print item)
+  )
+)
 ```
 
 ```output
@@ -886,18 +1075,24 @@ for item in items until item == 4
 
 ### A list that grows while a loop reads it is read to the length it had, and two loops nested over one list.
 
-```yumi
-. items = [1, 2, 3]
-for item in items
-    if item == 1
-        items += 9
-    -- item
--- items.length
-. total = 0
-for a in items
-    for b in items
-        total += a * b
--- total
+```brix
+(main
+  (let items (list 1 2 3))
+  (for (in item items)
+    (if (== item 1)
+      (+= items 9)
+    )
+    (print item)
+  )
+  (print (. items length))
+  (let total 0)
+  (for (in a items)
+    (for (in b items)
+      (+= total (* a b))
+    )
+  )
+  (print total)
+)
 ```
 
 ```output
@@ -910,51 +1105,49 @@ for a in items
 
 ### A loop over a list a function is given, over one a property holds, and in a getter.
 
-```yumi
--- sum([1, 2, 3])
--- longest(["a", "abc", "ab"])
-. box = Box([4, 5])
--- box.total
-box.show()
+```brix
+(main
+  (print (call sum (list 1 2 3)))
+  (print (call longest (list "a" "abc" "ab")))
+  (let box (call Box (list 4 5)))
+  (print (. box total))
+  (call (. box show))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do sum Int
-    - items [Int]
+(fn-do + sum Int
+  (param items (list Int))
+  (let total 0)
+  (for (in item items)
+    (+= total item)
+  )
+  (return total)
+)
 
-. total = 0
-for item in items
-    total += item
-= total
+(fn-do + longest String
+  (param names (list String))
+  (let best "")
+  (for (in name names)
+    (if (> (. name length) (. best length))
+      (= best name)
+    )
+  )
+  (return best)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do longest String
-    - names [String]
-
-. best = ""
-for name in names
-    if name.length > best.length
-        best = name
-= best
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ items [Int]
-
-────────────────────
-+ This
-    - items [Int]
-
-────────────────────
-+ get total Int
-
-sum(items)
-
-────────────────────
-+ do show
-
-for item in items
-    -- item
+(type + Box
+  (prop + items (list Int))
+  (fn-do + This _
+    (param items (list Int))
+  )
+  (fn-expr + total Int :get
+    (call sum items)
+  )
+  (fn-do + show _
+    (for (in item items)
+      (print item)
+    )
+  )
+)
 ```
 
 ```output
@@ -967,37 +1160,42 @@ abc
 
 ### A loop over a list of structs, of optionals, of objects and of floats.
 
-```yumi
-. points = [Point(1, 2), Point(3, 4)]
-for point in points
-    -- point.x + point.y
-. maybe [Int?] = [1, null, 3]
-for item in maybe
-    if item
-        -- item
-    else
-        -- "none"
-. things = [Thing("a"), Thing("b")]
-for thing in things
-    -- thing.name
-. floats = [1.5, 2.5]
-for f in floats
-    -- f
+```brix
+(main
+  (let points (list (call Point 1 2) (call Point 3 4)))
+  (for (in point points)
+    (print (+ (. point x) (. point y)))
+  )
+  (let maybe (list (? Int)) (list 1 null 3))
+  (for (in item maybe)
+    (if item
+      (print item)
+      (else
+        (print "none")
+      )
+    )
+  )
+  (let things (list (call Thing "a") (call Thing "b")))
+  (for (in thing things)
+    (print (. thing name))
+  )
+  (let floats (list 1.5 2.5))
+  (for (in f floats)
+    (print f)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(type + Point (is Struct)
+  (prop + x Int)
+  (prop + y Int)
+)
 
-+ x Int
-+ y Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ name String
-
-────────────────────
-+ This
-    - name String
+(type + Thing
+  (prop + name String)
+  (fn-do + This _
+    (param name String)
+  )
+)
 ```
 
 ```output
@@ -1014,12 +1212,16 @@ b
 
 ### A list emptied while a loop reads it panics at the next read.
 
-```yumi crash
-. items = [1, 2, 3]
-for item in items
-    if item == 2
-        items.clear()
-    -- item
+```brix crash
+(main
+  (let items (list 1 2 3))
+  (for (in item items)
+    (if (== item 2)
+      (call (. items clear))
+    )
+    (print item)
+  )
+)
 ```
 
 ```output
@@ -1029,19 +1231,26 @@ for item in items
 
 ### A loop over the characters of a text, with `when`, and nested in a loop over a range.
 
-```yumi
-. text = "héllo"
-for char in text
-    -- char
-for char in text when char != 'l'
-    -- char
-. count = 0
-for c in "abc"
-    count += 1
--- count
-for i in 0 .. < 3
-    for c in "xy"
-        -- "$i$c"
+```brix
+(main
+  (let text "héllo")
+  (for (in char text)
+    (print char)
+  )
+  (for (in char text (when (!= char 'l')))
+    (print char)
+  )
+  (let count 0)
+  (for (in c "abc")
+    (+= count 1)
+  )
+  (print count)
+  (for (in i (..< 0 3))
+    (for (in c "xy")
+      (print (str i c))
+    )
+  )
+)
 ```
 
 ```output
@@ -1064,20 +1273,24 @@ o
 
 ### A loop over what a call gives, over a list written in its header, and over a slice of a list.
 
-```yumi
-. items = [3, 1, 2]
-for item in make()
-    -- item
-for item in [10, 20]
-    -- item
-for item in items[1 .. < 3]
-    -- item
+```brix
+(main
+  (let items (list 3 1 2))
+  (for (in item (call make))
+    (print item)
+  )
+  (for (in item (list 10 20))
+    (print item)
+  )
+  (for (in item ([] items (..< 1 3)))
+    (print item)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make [String]
-
--- "made"
-= ["x", "y"]
+(fn-do + make (list String)
+  (print "made")
+  (return (list "x" "y"))
+)
 ```
 
 ```output
@@ -1092,23 +1305,23 @@ y
 
 ### An error raised in the body of a loop over a list leaves the function.
 
-```yumi crash
-run([1, 0, 3])
+```brix crash
+(main
+  (call run (list 1 0 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
-    - items [Int]
+(fn-do + run _
+  (param items (list Int))
+  (for (in item items)
+    (print item)
+    (call check item)
+  )
+)
 
-for item in items
-    -- item
-    check(item)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do check
-    - item Int
-
-?! Error("zero")
-    if item == 0
+(fn-do + check _
+  (param item Int)
+  (throw (call Error "zero") (if (== item 0)))
+)
 ```
 
 ```output
@@ -1118,34 +1331,44 @@ for item in items
 
 ### A loop over a list of unions matched in its body, of texts with a loop over each, and of optional texts.
 
-```yumi
-. shapes = [Shape.circle(2), Shape.square(3), Shape.none]
-for shape in shapes
-    match shape
-        | .circle(r)
-            -- "circle $r"
-        | .square(side)
-            -- "square $side"
-        | .none
-            -- "none"
-. words = ["a", "bb"]
-for word in words
-    . doubled = "$word$word"
-    -- doubled
-    for letter in doubled
-        -- letter
-. opts [String?] = ["x", null]
-for opt in opts
-    -- opt ?? "nothing"
-    if opt
-        -- opt.length
+```brix
+(main
+  (let shapes (list (call (. Shape circle) 2) (call (. Shape square) 3) (. Shape none)))
+  (for (in shape shapes)
+    (match shape
+      (case (call .circle r)
+        (print (str "circle " r))
+      )
+      (case (call .square side)
+        (print (str "square " side))
+      )
+      (case .none
+        (print "none")
+      )
+    )
+  )
+  (let words (list "a" "bb"))
+  (for (in word words)
+    (let doubled (str word word))
+    (print doubled)
+    (for (in letter doubled)
+      (print letter)
+    )
+  )
+  (let opts (list (? String)) (list "x" null))
+  (for (in opt opts)
+    (print (?? opt "nothing"))
+    (if opt
+      (print (. opt length))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Union
-
-| circle Int
-| square Int
-| none
+(type + Shape (is Union)
+  (variant circle Int)
+  (variant square Int)
+  (variant none)
+)
 ```
 
 ```output
@@ -1167,35 +1390,31 @@ nothing
 
 ### An error a stream raises where a loop begins to read it is a panic at the loop.
 
-```yumi crash
-. bad Iterable'Int = Bad()
-show(bad)
+```brix crash
+(main
+  (let bad (of Iterable Int) (call Bad))
+  (call show bad)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - stream <Int>
+(fn-do + show _
+  (param stream (stream Int))
+  (for (in item stream)
+    (print item)
+  )
+)
 
-for item in stream
-    -- item
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bad
-    is Iterable'Int
-
-────────────────────
-+ <- this Int?
-
-null
-
-────────────────────
-+ do begin-iterating ?! Error
-
-?! Error("no start")
-
-────────────────────
-+ do end-iterating ?! Error
-
--- "ended"
+(type + Bad
+  (implements (of Iterable Int))
+  (fn-expr + (prefix <- this) (? Int)
+    null
+  )
+  (fn-do + begin-iterating _ (?! Error)
+    (throw (call Error "no start"))
+  )
+  (fn-do + end-iterating _ (?! Error)
+    (print "ended")
+  )
+)
 ```
 
 ```stderr
@@ -1205,50 +1424,46 @@ Unhandled panic: no start
 Task 1
 
 Stack trace:
-  0  __source__:show no file:9:4
-  1  __source__:main no file:3:1
+  0  __source__:show no file:9:8
+  1  __source__:main no file:4:3
   2  __source__:init.__source__ no file
   3  __source__:brix.main no file
 ```
 
 ### An error a stream raises where a loop has read it to its end is a panic at the loop.
 
-```yumi crash
-. feed Iterable'Int = Feed()
-show(feed)
+```brix crash
+(main
+  (let feed (of Iterable Int) (call Feed))
+  (call show feed)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - stream <Int>
+(fn-do + show _
+  (param stream (stream Int))
+  (for (in item stream)
+    (print item)
+  )
+  (print "after")
+)
 
-for item in stream
-    -- item
--- "after"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Feed
-    is Iterable'Int
-
-_ left = 3
-
-────────────────────
-+ do <- this Int?
-
-if left == 0
-    = null
-left -= 1
-= left
-
-────────────────────
-+ do begin-iterating ?! Error
-
--- "begun"
-
-────────────────────
-+ do end-iterating ?! Error
-
--- "ended"
-?! Error("no end")
+(type + Feed
+  (implements (of Iterable Int))
+  (prop _ left _ (= 3))
+  (fn-do + (prefix <- this) (? Int)
+    (if (== left 0)
+      (return null)
+    )
+    (-= left 1)
+    (return left)
+  )
+  (fn-do + begin-iterating _ (?! Error)
+    (print "begun")
+  )
+  (fn-do + end-iterating _ (?! Error)
+    (print "ended")
+    (throw (call Error "no end"))
+  )
+)
 ```
 
 ```stderr
@@ -1258,25 +1473,31 @@ Unhandled panic: no end
 Task 1
 
 Stack trace:
-  0  __source__:show no file:9:4
-  1  __source__:main no file:3:1
+  0  __source__:show no file:9:8
+  1  __source__:main no file:4:3
   2  __source__:init.__source__ no file
   3  __source__:brix.main no file
 ```
 
 ### A loop whose pattern takes a tuple apart: written in parentheses and without, with a type written for a name, and with a name left out.
 
-```yumi
-. pairs = [(1i32, "a"), (2i32, "b")]
-for (n, s) in pairs
-    -- n
-    -- s
-for n, s in pairs
-    -- "$n $s"
-for (n Float, s) in pairs
-    -- n
-for (_, s) in pairs
-    -- s
+```brix
+(main
+  (let pairs (list (tuple 1i32 "a") (tuple 2i32 "b")))
+  (for (in (tuple n s) pairs)
+    (print n)
+    (print s)
+  )
+  (for (in (tuple n s) pairs)
+    (print (str n " " s))
+  )
+  (for (in (tuple (: n Float) s) pairs)
+    (print n)
+  )
+  (for (in (tuple _ s) pairs)
+    (print s)
+  )
+)
 ```
 
 ```output
@@ -1294,36 +1515,42 @@ b
 
 ### A loop that takes apart the pairs of a map, a list of tuples a function is given, and what a generator yields.
 
-```yumi
-. ages = Map'String'Int()
-ages["ann"] = 3
-ages["bob"] = 5
-for key, value in ages
-    -- "$key $value"
-for (key, value) in ages
-    -- key
-. total = 0
-for _, value in ages
-    total += value
--- total
--- pairs-of([(1, 2), (3, 4)])
-for a, b in walk()
-    -- a + b
+```brix
+(main
+  (let ages (call (of Map String Int)))
+  (= ([] ages "ann") 3)
+  (= ([] ages "bob") 5)
+  (for (in (tuple key value) ages)
+    (print (str key " " value))
+  )
+  (for (in (tuple key value) ages)
+    (print key)
+  )
+  (let total 0)
+  (for (in (tuple _ value) ages)
+    (+= total value)
+  )
+  (print total)
+  (print (call pairs-of (list (tuple 1 2) (tuple 3 4))))
+  (for (in (tuple a b) (call walk))
+    (print (+ a b))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do pairs-of Int
-    - list [(Int, Int)]
+(fn-do _ pairs-of Int
+  (param list (list (tuple Int Int)))
+  (let sum 0)
+  (for (in (tuple a b) list)
+    (+= sum (* a b))
+  )
+  (return sum)
+)
 
-. sum = 0
-for (a, b) in list
-    sum += a * b
-= sum
-
-━━━━━━━━━━━━━━━━━━━━
-_ do walk <(Int, Int)>
-
-for i in 1 .. 3
-    <= (i, i * 10)
+(fn-do _ walk (stream (tuple Int Int))
+  (for (in i (.. 1 3))
+    (yield (tuple i (* i 10)))
+  )
+)
 ```
 
 ```output
@@ -1340,21 +1567,27 @@ bob
 
 ### A loop that names fewer fields than the tuple has, one over tuples of three, and one whose field is itself a tuple.
 
-```yumi
-. triples = [(1, 2.5, "x"), (2, 3.5, "y")]
-for a, b in triples
-    -- a + b
-for (a, b, c) in triples
-    -- "$a $b $c"
-. kept = 0
-for (a Int64, _, c) in triples
-    kept += a
-    -- c
--- kept
-. nested = [((1, 2), 3)]
-for (p, q) in nested
-    -- p
-    -- q
+```brix
+(main
+  (let triples (list (tuple 1 2.5 "x") (tuple 2 3.5 "y")))
+  (for (in (tuple a b) triples)
+    (print (+ a b))
+  )
+  (for (in (tuple a b c) triples)
+    (print (str a " " b " " c))
+  )
+  (let kept 0)
+  (for (in (tuple (: a Int64) _ c) triples)
+    (+= kept a)
+    (print c)
+  )
+  (print kept)
+  (let nested (list (tuple (tuple 1 2) 3)))
+  (for (in (tuple p q) nested)
+    (print p)
+    (print q)
+  )
+)
 ```
 
 ```output
@@ -1371,32 +1604,34 @@ y
 
 ### A loop that takes apart tuples of objects and of structs.
 
-```yumi
-. boxes = [(Box(1), 2), (Box(3), 4)]
-for (box, n) in boxes
-    box.size += n
-    -- box.size
-for (box, n) in boxes
-    -- box.size * n
-. points = [(Point(1, 2), "p"), (Point(3, 4), "q")]
-for (point, name) in points
-    -- point.x + point.y
-    -- name
+```brix
+(main
+  (let boxes (list (tuple (call Box 1) 2) (tuple (call Box 3) 4)))
+  (for (in (tuple box n) boxes)
+    (+= (. box size) n)
+    (print (. box size))
+  )
+  (for (in (tuple box n) boxes)
+    (print (* (. box size) n))
+  )
+  (let points (list (tuple (call Point 1 2) "p") (tuple (call Point 3 4) "q")))
+  (for (in (tuple point name) points)
+    (print (+ (. point x) (. point y)))
+    (print name)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + size Int)
+  (fn-do + This _
+    (param size Int)
+  )
+)
 
-+ size Int
-
-────────────────────
-+ This
-    - size Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x Int
-+ y Int
+(type + Point (is Struct)
+  (prop + x Int)
+  (prop + y Int)
+)
 ```
 
 ```output
@@ -1412,45 +1647,51 @@ q
 
 ### A loop that takes a tuple apart with `break` and `continue`, with a type written for a name, and nested in another over a generator.
 
-```yumi
-. total = 0
-for (a, b) in three()
-    total += a
-    if b == "stop"
-        break
-    if a == 1
-        continue
-    -- b
--- total
--- sums([(1, 2.5), (2, 4.5)])
-. words = ["one", "two"]
-for (index, word) in tagged(words)
-    for (inner, other) in tagged(words)
-        -- "$index$inner $word $other"
+```brix
+(main
+  (let total 0)
+  (for (in (tuple a b) (call three))
+    (+= total a)
+    (if (== b "stop")
+      (break)
+    )
+    (if (== a 1)
+      (continue)
+    )
+    (print b)
+  )
+  (print total)
+  (print (call sums (list (tuple 1 2.5) (tuple 2 4.5))))
+  (let words (list "one" "two"))
+  (for (in (tuple index word) (call tagged words))
+    (for (in (tuple inner other) (call tagged words))
+      (print (str index inner " " word " " other))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do three <(Int, String)>
+(fn-do _ three (stream (tuple Int String))
+  (yield (tuple 1 "a"))
+  (yield (tuple 2 "b"))
+  (yield (tuple 3 "stop"))
+  (yield (tuple 4 "never"))
+)
 
-<= (1, "a")
-<= (2, "b")
-<= (3, "stop")
-<= (4, "never")
+(fn-do _ sums Float
+  (param rows (list (tuple I32 Float)))
+  (let sum 0.0)
+  (for (in (tuple (: count Float) each-value) rows)
+    (+= sum (* count each-value))
+  )
+  (return sum)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do sums Float
-    - rows [(I32, Float)]
-
-. sum = 0.0
-for (count Float, each-value) in rows
-    sum += count * each-value
-= sum
-
-━━━━━━━━━━━━━━━━━━━━
-_ do tagged <(Int, String)>
-    - items [String]
-
-for index in 0 .. < items.length
-    <= (index, items[index])
+(fn-do _ tagged (stream (tuple Int String))
+  (param items (list String))
+  (for (in index (..< 0 (. items length)))
+    (yield (tuple index ([] items index)))
+  )
+)
 ```
 
 ```output
@@ -1465,23 +1706,28 @@ b
 
 ### A loop that takes a tuple apart in a function that yields, and one with a clause that tests a name it takes.
 
-```yumi
-. pairs = [(1, "a"), (2, "b")]
-for (n, s) in pairs
-    -- n + 1
-    -- s
-for (n, s) in each()
-    -- "$n$s"
-for (n, s) in pairs when n > 1
-    -- s
+```brix
+(main
+  (let pairs (list (tuple 1 "a") (tuple 2 "b")))
+  (for (in (tuple n s) pairs)
+    (print (+ n 1))
+    (print s)
+  )
+  (for (in (tuple n s) (call each))
+    (print (str n s))
+  )
+  (for (in (tuple n s) pairs (when (> n 1)))
+    (print s)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do each <(Int, String)>
-
-. pairs = [(1, "a"), (2, "b")]
-for (n, s) in pairs
-    <= (n * 2, s)
-    <= (n * 3, s + s)
+(fn-do _ each (stream (tuple Int String))
+  (let pairs (list (tuple 1 "a") (tuple 2 "b")))
+  (for (in (tuple n s) pairs)
+    (yield (tuple (* n 2) s))
+    (yield (tuple (* n 3) (+ s s)))
+  )
+)
 ```
 
 ```output
@@ -1498,29 +1744,33 @@ b
 
 ### Generators of tuples, read by loops that take each apart: one that pairs two lists, one that numbers a list.
 
-```yumi
-for (a, b) in zip([1, 2, 3], ["x", "y", "z"])
-    -- "$a$b"
-for index, item in numbered(["p", "q"])
-    -- "$index:$item"
+```brix
+(main
+  (for (in (tuple a b) (call zip (list 1 2 3) (list "x" "y" "z")))
+    (print (str a b))
+  )
+  (for (in (tuple index item) (call numbered (list "p" "q")))
+    (print (str index ":" item))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do zip <(Int, String)>
-    - left [Int]
-    - right [String]
+(fn-do _ zip (stream (tuple Int String))
+  (param left (list Int))
+  (param right (list String))
+  (for (in i (..< 0 (. left length)))
+    (let (tuple l r) (tuple ([] left i) ([] right i)))
+    (yield (tuple l r))
+  )
+)
 
-for i in 0 .. < left.length
-    . (l, r) = (left[i], right[i])
-    <= (l, r)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do numbered <(Int, String)>
-    - items [String]
-
-. index = 0
-for item in items
-    <= (index, item)
-    index += 1
+(fn-do _ numbered (stream (tuple Int String))
+  (param items (list String))
+  (let index 0)
+  (for (in item items)
+    (yield (tuple index item))
+    (+= index 1)
+  )
+)
 ```
 
 ```output
@@ -1533,45 +1783,53 @@ for item in items
 
 ### A panic under a loop that takes a tuple apart.
 
-```yumi crash
-. pairs = [(1, 1), (2, 0)]
-for (n, d) in pairs
-    -- n / check(d)
+```brix crash
+(main
+  (let pairs (list (tuple 1 1) (tuple 2 0)))
+  (for (in (tuple n d) pairs)
+    (print (/ n (call check d)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do check Int
-    - d Int
-
-if d == 0
-    ?! Panic("zero")
-= d
+(fn-do _ check Int
+  (param d Int)
+  (if (== d 0)
+    (throw (call Panic "zero"))
+  )
+  (return d)
+)
 ```
 
 ```stderr
 Unhandled panic: zero
-<no file:11>
+<no file:12>
 
 Task 1
 
 Stack trace:
-  0  __source__:check no file:11:5
-  1  __source__:main no file:4:12
+  0  __source__:check no file:12:5
+  1  __source__:main no file:5:17
   2  __source__:init.__source__ no file
   3  __source__:brix.main no file
 ```
 
 ### A loop over the characters of a text, and over a map by its entries and by key and value.
 
-```yumi
-for ch in "héy"
-    -- ch
-. map = Map'String'Int()
-map["a"] = 1
-map["b"] = 2
-for entry in map
-    -- entry
-for key, value in map
-    -- "$key=$value"
+```brix
+(main
+  (for (in ch "héy")
+    (print ch)
+  )
+  (let map (call (of Map String Int)))
+  (= ([] map "a") 1)
+  (= ([] map "b") 2)
+  (for (in entry map)
+    (print entry)
+  )
+  (for (in (tuple key value) map)
+    (print (str key "=" value))
+  )
+)
 ```
 
 ```output
@@ -1586,15 +1844,18 @@ a=1
 
 ### A loop over an array held in a local reads the local at each item: an array assigned to it in the body is read from there on.
 
-```yumi
-. arr = Array'Int(3)
-. other = Array'Int(3)
-other[0] = 7
-other[1] = 8
-other[2] = 9
-for a in arr
-    -- a
-    arr = other
+```brix
+(main
+  (let arr (call (of Array Int) 3))
+  (let other (call (of Array Int) 3))
+  (= ([] other 0) 7)
+  (= ([] other 1) 8)
+  (= ([] other 2) 9)
+  (for (in a arr)
+    (print a)
+    (= arr other)
+  )
+)
 ```
 
 ```output
@@ -1605,11 +1866,14 @@ for a in arr
 
 ### A loop over a range of floats held in a local steps through the range the local holds at each item.
 
-```yumi
-. r = 0.0 .. 1.0 by 0.5
-for x in r
-    -- x
-    r = 10.0 .. 11.0 by 0.5
+```brix
+(main
+  (let r (.. 0.0 1.0 (by: 0.5)))
+  (for (in x r)
+    (print x)
+    (= r (.. 10.0 11.0 (by: 0.5)))
+  )
+)
 ```
 
 ```output
@@ -1620,31 +1884,30 @@ for x in r
 
 ### A loop that steps a cursor through a struct sees a field of the struct assigned in its body.
 
-```yumi
-. c = Cur(2)
-for v in c
-    -- v
-    c.limit = 4
+```brix
+(main
+  (let c (call Cur 2))
+  (for (in v c)
+    (print v)
+    (= (. c limit) 4)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Cur is Struct
-    is CursorIterable'Int'Int
-
-+ limit Int
-
-────────────────────
-+ get initial-iterator-state Int
-
-0
-
-────────────────────
-+ do next-iterator (Int, Int?)
-    - state Int
-
-. none Int?
-if state >= limit
-    = (state, none)
-= (state + 1, state * 10)
+(type + Cur (is Struct)
+  (implements (of CursorIterable Int Int))
+  (prop + limit Int)
+  (fn-expr + initial-iterator-state Int :get
+    0
+  )
+  (fn-do + next-iterator (tuple Int (? Int))
+    (param state Int)
+    (let none (? Int))
+    (if (>= state limit)
+      (return (tuple state none))
+    )
+    (return (tuple (+ state 1) (* state 10)))
+  )
+)
 ```
 
 ```output
@@ -1656,44 +1919,42 @@ if state >= limit
 
 ### A loop over a struct that is a property of an object sees the property's field assigned, and the property assigned whole.
 
-```yumi
-. box = Holder(Cur(2))
-for v in box.cur
-    -- v
-    box.cur.limit = 4
-. other = Holder(Cur(2))
-for v in other.cur
-    -- v
-    other.cur = Cur(4)
+```brix
+(main
+  (let box (call Holder (call Cur 2)))
+  (for (in v (. box cur))
+    (print v)
+    (= (. box cur limit) 4)
+  )
+  (let other (call Holder (call Cur 2)))
+  (for (in v (. other cur))
+    (print v)
+    (= (. other cur) (call Cur 4))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Cur is Struct
-    is CursorIterable'Int'Int
+(type + Cur (is Struct)
+  (implements (of CursorIterable Int Int))
+  (prop + limit Int)
+  (fn-expr + initial-iterator-state Int :get
+    0
+  )
+  (fn-do + next-iterator (tuple Int (? Int))
+    (param state Int)
+    (let none (? Int))
+    (if (>= state limit)
+      (return (tuple state none))
+    )
+    (return (tuple (+ state 1) (* state 10)))
+  )
+)
 
-+ limit Int
-
-────────────────────
-+ get initial-iterator-state Int
-
-0
-
-────────────────────
-+ do next-iterator (Int, Int?)
-    - state Int
-
-. none Int?
-if state >= limit
-    = (state, none)
-= (state + 1, state * 10)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ cur Cur
-
-────────────────────
-+ This
-    - cur Cur
+(type + Holder
+  (prop + cur Cur)
+  (fn-do + This _
+    (param cur Cur)
+  )
+)
 ```
 
 ```output
@@ -1709,32 +1970,28 @@ if state >= limit
 
 ### A loop that counts through a tuple reads the tuple assigned in its body, with the length it had when the loop began.
 
-```yumi
-. s = Span(2)
-for item in s
-    -- item
-    s = Span(4)
+```brix
+(main
+  (let s (call Span 2))
+  (for (in item s)
+    (print item)
+    (= s (call Span 4))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Span is Tuple
-    is Indexable'Int
-
-+ size Int
-
-────────────────────
-+ get length Size
-
-size
-
-────────────────────
-+ this[index Index] Int
-
-index * 10 + size
-
-────────────────────
-+ this[range Range'Index] Indexable'Int
-
-this
+(type + Span (is Tuple)
+  (implements (of Indexable Int))
+  (prop + size Int)
+  (fn-expr + length Size :get
+    size
+  )
+  (fn-expr + (index-get this (param index Index)) Int
+    (+ (* index 10) size)
+  )
+  (fn-expr + (index-get this (param range (of Range Index))) (of Indexable Int)
+    this
+  )
+)
 ```
 
 ```output
@@ -1744,22 +2001,24 @@ this
 
 ### A loop over an array that is an argument reads the argument assigned in its body.
 
-```yumi
--- run(Array'Int(3))
+```brix
+(main
+  (print (call run (call (of Array Int) 3)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int
-    - arr Array'Int
-
-. other = Array'Int(4)
-other[1] = 8
-other[2] = 9
-other[3] = 10
-. sum = 0
-for a in arr
-    sum += a
-    arr = other
-= sum
+(fn-do + run Int
+  (param arr (of Array Int))
+  (let other (call (of Array Int) 4))
+  (= ([] other 1) 8)
+  (= ([] other 2) 9)
+  (= ([] other 3) 10)
+  (let sum 0)
+  (for (in a arr)
+    (+= sum a)
+    (= arr other)
+  )
+  (return sum)
+)
 ```
 
 ```output
@@ -1768,15 +2027,19 @@ for a in arr
 
 ### A loop over a range of whole numbers held in a local is not changed by an assignment to the local.
 
-```yumi
-. r = 0 .. 2
-for x in r
-    -- x
-    r = 10 .. 12
-. q = 0 .. < 3
-for x in q
-    -- x
-    q = 5 .. < 9
+```brix
+(main
+  (let r (.. 0 2))
+  (for (in x r)
+    (print x)
+    (= r (.. 10 12))
+  )
+  (let q (..< 0 3))
+  (for (in x q)
+    (print x)
+    (= q (..< 5 9))
+  )
+)
 ```
 
 ```output
@@ -1790,39 +2053,37 @@ for x in q
 
 ### A loop over an array a class stores, read by its name alone and through `this`, reads the property assigned in its body.
 
-```yumi
-. box = Box()
-box.run()
-box.swap()
+```brix
+(main
+  (let box (call Box))
+  (call (. box run))
+  (call (. box swap))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + items _ (= (call make 1)))
+  (fn-do + run _
+    (for (in item items)
+      (print item)
+      (= items (call make 7))
+    )
+  )
+  (fn-do + swap _
+    (for (in item (. this items))
+      (print item)
+      (= (. this items) (call make 20))
+    )
+  )
+)
 
-+ items = make(1)
-
-────────────────────
-+ do run
-
-for item in items
-    -- item
-    items = make(7)
-
-────────────────────
-+ do swap
-
-for item in this.items
-    -- item
-    this.items = make(20)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -1836,31 +2097,33 @@ made[2] = first + 2
 
 ### A loop over an array of another object reads the property assigned in its body, and stays with the object it began with where the local is assigned another.
 
-```yumi
-. box = Box()
-for item in box.items
-    -- item
-    box.items = make(7)
-. second = Box()
-for item in second.items
-    -- item
-    second = Box()
-    second.items = make(30)
+```brix
+(main
+  (let box (call Box))
+  (for (in item (. box items))
+    (print item)
+    (= (. box items) (call make 7))
+  )
+  (let second (call Box))
+  (for (in item (. second items))
+    (print item)
+    (= second (call Box))
+    (= (. second items) (call make 30))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + items _ (= (call make 1)))
+)
 
-+ items = make(1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -1874,31 +2137,33 @@ made[2] = first + 2
 
 ### A loop over an array that is a field of a struct sees the field assigned, and the struct assigned whole.
 
-```yumi
-. s = Wrap(make(1), 0)
-for item in s.items
-    -- item
-    s.items = make(7)
-. t = Wrap(make(1), 0)
-for item in t.items
-    -- item
-    t = Wrap(make(40), 1)
+```brix
+(main
+  (let s (call Wrap (call make 1) 0))
+  (for (in item (. s items))
+    (print item)
+    (= (. s items) (call make 7))
+  )
+  (let t (call Wrap (call make 1) 0))
+  (for (in item (. t items))
+    (print item)
+    (= t (call Wrap (call make 40) 1))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wrap is Struct
+(type + Wrap (is Struct)
+  (prop + items (of Array Int))
+  (prop + tag Int)
+)
 
-+ items Array'Int
-+ tag Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -1912,28 +2177,34 @@ made[2] = first + 2
 
 ### A loop over an array a closure assigns reads what the closure stored.
 
-```yumi
-run()
+```brix
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (let arr (call make 1))
+  (let set
+    (=> () :do
+      (block
+        (= arr (call make 60))
+      )
+    )
+  )
+  (for (in item arr)
+    (print item)
+    (call set)
+  )
+)
 
-. arr = make(1)
-. set = => do
-    arr = make(60)
-for item in arr
-    -- item
-    set()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -1944,27 +2215,29 @@ made[2] = first + 2
 
 ### A loop over an optional argument known to hold an array reads the argument assigned in its body.
 
-```yumi
-run(make(1))
+```brix
+(main
+  (call run (call make 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
-    - arr Array'Int?
+(fn-do + run _
+  (param arr (? (of Array Int)))
+  (if arr
+    (for (in item arr)
+      (print item)
+      (= arr (call make 80))
+    )
+  )
+)
 
-if arr
-    for item in arr
-        -- item
-        arr = make(80)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -1975,15 +2248,19 @@ made[2] = first + 2
 
 ### A loop over a text or a list held in a local is not changed by an assignment to the local.
 
-```yumi
-. text = "abc"
-for ch in text
-    -- ch
-    text = "xyz"
-. list = [1, 2, 3]
-for item in list
-    -- item
-    list = [7, 8, 9]
+```brix
+(main
+  (let text "abc")
+  (for (in ch text)
+    (print ch)
+    (= text "xyz")
+  )
+  (let list (list 1 2 3))
+  (for (in item list)
+    (print item)
+    (= list (list 7 8 9))
+  )
+)
 ```
 
 ```output
@@ -1997,27 +2274,29 @@ c
 
 ### In a function that yields, a loop over an array keeps the array it began with.
 
-```yumi
-for v in gen()
-    -- v
+```brix
+(main
+  (for (in v (call gen))
+    (print v)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen <Int>
+(fn-do + gen (stream Int)
+  (let arr (call make 1))
+  (for (in item arr)
+    (yield item)
+    (= arr (call make 90))
+  )
+)
 
-. arr = make(1)
-for item in arr
-    <= item
-    arr = make(90)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2028,23 +2307,30 @@ made[2] = first + 2
 
 ### A loop in a closure's body over the closure's own array reads the local assigned in its body.
 
-```yumi
-. run = => do
-    . arr = make(1)
-    for item in arr
-        -- item
-        arr = make(100)
-run()
+```brix
+(main
+  (let run
+    (=> () :do
+      (block
+        (let arr (call make 1))
+        (for (in item arr)
+          (print item)
+          (= arr (call make 100))
+        )
+      )
+    )
+  )
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2055,25 +2341,28 @@ made[2] = first + 2
 
 ### A loop over an array changed in place, and over an array that is a field of a tuple assigned whole in the body.
 
-```yumi
-. arr = make(1)
-for item in arr
-    -- item
-    arr[2] = 99
-. pair = (make(1), 5)
-for item in pair[0]
-    -- item
-    pair = (make(30), 6)
+```brix
+(main
+  (let arr (call make 1))
+  (for (in item arr)
+    (print item)
+    (= ([] arr 2) 99)
+  )
+  (let pair (tuple (call make 1) 5))
+  (for (in item ([] pair 0))
+    (print item)
+    (= pair (tuple (call make 30) 6))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2087,13 +2376,17 @@ made[2] = first + 2
 
 ### A loop over a cast reads the array the cast gives.
 
-```yumi
-. text = "a\nb"
-. count = 0
-for byte in text as Byte[]
-    if byte == 10u8
-        count += 1
--- count
+```brix
+(main
+  (let text "a\nb")
+  (let count 0)
+  (for (in byte (as text ([] Byte)))
+    (if (== byte 10u8)
+      (+= count 1)
+    )
+  )
+  (print count)
+)
 ```
 
 ```output
@@ -2102,25 +2395,28 @@ for byte in text as Byte[]
 
 ### Loops over arrays one in another, each assigned in the inner body.
 
-```yumi
-. arr = make(1)
-. other = make(10)
-for item in arr when item > 0
-    -- item
-    for inner in other
-        -- inner
-        other = make(20)
-    arr = other
+```brix
+(main
+  (let arr (call make 1))
+  (let other (call make 10))
+  (for (in item arr (when (> item 0)))
+    (print item)
+    (for (in inner other)
+      (print inner)
+      (= other (call make 20))
+    )
+    (= arr other)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2140,53 +2436,54 @@ made[2] = first + 2
 
 ### A loop over an array of an object with `continue` and `break`, refilled by a method in its body, and loops over a property of an object a call makes, which is called once.
 
-```yumi
-. box = Box()
-for item in box.items
-    if item == 9
-        continue
-    -- item
-    box.refill(8)
-    if item == 10
-        break
-for item in fresh().items
-    -- item
-for item in fresh().wrap.items
-    -- item
+```brix
+(main
+  (let box (call Box))
+  (for (in item (. box items))
+    (if (== item 9)
+      (continue)
+    )
+    (print item)
+    (call (. box refill) 8)
+    (if (== item 10)
+      (break)
+    )
+  )
+  (for (in item (. (call fresh) items))
+    (print item)
+  )
+  (for (in item (. (call fresh) wrap items))
+    (print item)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + items _ (= (call make 1)))
+  (prop + wrap _ (= (call Wrap (call make 100) 0)))
+  (fn-do + refill _
+    (param first Int)
+    (= items (call make first))
+  )
+)
 
-+ items = make(1)
-+ wrap = Wrap(make(100), 0)
+(type + Wrap (is Struct)
+  (prop + items (of Array Int))
+  (prop + tag Int)
+)
 
-────────────────────
-+ do refill
-    - first Int
+(fn-do + fresh Box
+  (print "made a box")
+  (return (call Box))
+)
 
-items = make(first)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wrap is Struct
-
-+ items Array'Int
-+ tag Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fresh Box
-
--- "made a box"
-= Box()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2204,59 +2501,57 @@ made a box
 
 ### A loop over an array of an object the local no longer names, while its body allocates enough for collections to run.
 
-```yumi
-. second = Box()
-. total = 0
-for item in second.items
-    total += item
-    second = Box()
-    second.items = make(30)
-    for round in 0 .. < 2000
-        . junk = [round, item, total]
-        total += junk.length - 3
-    force-collection()
--- total
+```brix
+(main
+  (let second (call Box))
+  (let total 0)
+  (for (in item (. second items))
+    (+= total item)
+    (= second (call Box))
+    (= (. second items) (call make 30))
+    (for (in round (..< 0 2000))
+      (let junk (list round item total))
+      (+= total (- (. junk length) 3))
+    )
+    (call force-collection)
+  )
+  (print total)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do force-collection
+(fn-do + force-collection _
+  (let keep (list (list Int)))
+  (for (in n (..< 0 3000))
+    (+= keep (list n n n n))
+  )
+)
 
-. keep [[Int]]
-for n in 0 .. < 3000
-    keep += [n, n, n, n]
+(type + Box
+  (prop + items _ (= (call make 1)))
+  (prop + wrap _ (= (call Wrap (call make 100) 0)))
+  (fn-do + refill _
+    (param first Int)
+    (= items (call make first))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Wrap (is Struct)
+  (prop + items (of Array Int))
+  (prop + tag Int)
+)
 
-+ items = make(1)
-+ wrap = Wrap(make(100), 0)
+(fn-do + fresh Box
+  (print "made a box")
+  (return (call Box))
+)
 
-────────────────────
-+ do refill
-    - first Int
-
-items = make(first)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wrap is Struct
-
-+ items Array'Int
-+ tag Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ do fresh Box
-
--- "made a box"
-= Box()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2265,16 +2560,19 @@ made[2] = first + 2
 
 ### A loop that names the fields of pairs in an array, with a clause, reads the array assigned in its body.
 
-```yumi
-. pairs = Array'(Int, String)(2)
-pairs[0] = (1, "one")
-pairs[1] = (2, "two")
-. other = Array'(Int, String)(2)
-other[0] = (7, "seven")
-other[1] = (8, "eight")
-for (number, name) in pairs when number > 0
-    -- "$number $name"
-    pairs = other
+```brix
+(main
+  (let pairs (call (of Array (tuple Int String)) 2))
+  (= ([] pairs 0) (tuple 1 "one"))
+  (= ([] pairs 1) (tuple 2 "two"))
+  (let other (call (of Array (tuple Int String)) 2))
+  (= ([] other 0) (tuple 7 "seven"))
+  (= ([] other 1) (tuple 8 "eight"))
+  (for (in (tuple number name) pairs (when (> number 0)))
+    (print (str number " " name))
+    (= pairs other)
+  )
+)
 ```
 
 ```output
@@ -2284,32 +2582,39 @@ for (number, name) in pairs when number > 0
 
 ### A closure in a function that yields loops over an array of that function and reads it assigned.
 
-```yumi
-for v in gen()
-    -- v
+```brix
+(main
+  (for (in v (call gen))
+    (print v)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gen <Int>
+(fn-do + gen (stream Int)
+  (let arr (call make 1))
+  (let each-one
+    (=> () :do
+      (block
+        (let total 0)
+        (for (in item arr)
+          (+= total item)
+          (= arr (call make 10))
+        )
+        (return total)
+      )
+    )
+  )
+  (yield (call each-one))
+  (yield ([] arr 0))
+)
 
-. arr = make(1)
-. each-one = => do
-    . total = 0
-    for item in arr
-        total += item
-        arr = make(10)
-    = total
-<= each-one()
-<= arr[0]
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2319,27 +2624,28 @@ made[2] = first + 2
 
 ### A loop over a lazy local that one read evaluates keeps what the read gave: the body assigns the local it was declared with, and the loop does not see it.
 
-```yumi
-run()
+```brix
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (let other (call make 1))
+  (lazy arr other)
+  (for (in item arr)
+    (print item)
+    (= other (call make 70))
+  )
+)
 
-. other = make(1)
-.. arr = other
-for item in arr
-    -- item
-    other = make(70)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2350,27 +2656,28 @@ made[2] = first + 2
 
 ### A loop over a lazy local the body assigns reads what was assigned at the next item.
 
-```yumi
-run()
+```brix
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (lazy arr (call make 1))
+  (for (in item arr)
+    (print item)
+    (= arr (call make 70))
+  )
+  (print ([] arr 0))
+)
 
-.. arr = make(1)
-for item in arr
-    -- item
-    arr = make(70)
--- arr[0]
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2382,29 +2689,31 @@ made[2] = first + 2
 
 ### A loop over a lazy local declared in a loop and read twice keeps the value its first read stored.
 
-```yumi
-run()
+```brix
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (for (in turn (..< 0 2))
+    (let other (call make (* turn 10)))
+    (lazy arr other)
+    (for (in item arr)
+      (print item)
+      (= other (call make 70))
+    )
+    (print ([] arr 0))
+  )
+)
 
-for turn in 0 .. < 2
-    . other = make(turn * 10)
-    .. arr = other
-    for item in arr
-        -- item
-        other = make(70)
-    -- arr[0]
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2420,27 +2729,28 @@ made[2] = first + 2
 
 ### A loop over a lazy local a closure assigns reads what the closure stored.
 
-```yumi
-run()
+```brix
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (lazy arr (call make 1))
+  (let change (=> () (= arr (call make 70))))
+  (for (in item arr)
+    (print item)
+    (call change)
+  )
+)
 
-.. arr = make(1)
-. change = => arr = make(70)
-for item in arr
-    -- item
-    change()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2451,32 +2761,32 @@ made[2] = first + 2
 
 ### A loop over a lazy local declared as a property of an object keeps the value: the body assigns the property, and the loop does not see it.
 
-```yumi
-run()
+```brix
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (let holder (call Holder))
+  (lazy arr (. holder items))
+  (for (in item arr)
+    (print item)
+    (= (. holder items) (call make 70))
+  )
+)
 
-. holder = Holder()
-.. arr = holder.items
-for item in arr
-    -- item
-    holder.items = make(70)
+(type + Holder
+  (prop + items _ (= (call make 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ items = make(1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2487,17 +2797,19 @@ made[2] = first + 2
 
 ### A loop over a lazy range of numbers the body assigns keeps the range it began with.
 
-```yumi
-run()
+```brix
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
-
-.. r = 0 .. < 3
-for x in r
-    -- x
-    r = 5 .. < 9
--- r.start
+(fn-do + run _
+  (lazy r (..< 0 3))
+  (for (in x r)
+    (print x)
+    (= r (..< 5 9))
+  )
+  (print (. r start))
+)
 ```
 
 ```output
@@ -2509,34 +2821,34 @@ for x in r
 
 ### A loop over a lazy local read again after it evaluates the value once.
 
-```yumi
-run()
+```brix
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (let count 0)
+  (lazy arr (call noisy 1))
+  (for (in item arr)
+    (print item)
+  )
+  (print ([] arr 1))
+)
 
-. count = 0
-.. arr = noisy(1)
-for item in arr
-    -- item
--- arr[1]
+(fn-do + noisy (of Array Int)
+  (param first Int)
+  (print "made")
+  (return (call make first))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do noisy Array'Int
-    - first Int
-
--- "made"
-= make(first)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2549,34 +2861,35 @@ made
 
 ### A loop over a lazy local declared in a loop evaluates the value once in each turn.
 
-```yumi
-run()
+```brix
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (for (in turn (..< 0 2))
+    (lazy arr (call noisy (* turn 10)))
+    (for (in item arr)
+      (print item)
+    )
+    (print ([] arr 1))
+  )
+)
 
-for turn in 0 .. < 2
-    .. arr = noisy(turn * 10)
-    for item in arr
-        -- item
-    -- arr[1]
+(fn-do + noisy (of Array Int)
+  (param first Int)
+  (print "made")
+  (return (call make first))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do noisy Array'Int
-    - first Int
-
--- "made"
-= make(first)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2594,67 +2907,67 @@ made
 
 ### A lazy local whose value panics is evaluated where a loop over it begins, and the program ends by the panic.
 
-```yumi crash
-run()
+```brix crash
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (lazy arr (call boom 1))
+  (for (in item arr)
+    (print item)
+  )
+  (print ([] arr 0))
+)
 
-.. arr = boom(1)
-for item in arr
-    -- item
--- arr[0]
+(fn-do + boom (of Array Int)
+  (param first Int)
+  (let items (list 1 2 3))
+  (print ([] items 5))
+  (return (call make first))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do boom Array'Int
-    - first Int
-
-. items = [1, 2, 3]
--- items[5]
-= make(first)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ### A loop over a lazy local a closure reads evaluates the value once, for the loop and the closure.
 
-```yumi
-run()
+```brix
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (lazy arr (call noisy 1))
+  (let peek (=> () ([] arr 1)))
+  (for (in item arr)
+    (print item)
+    (print (call peek))
+  )
+  (print (call peek))
+)
 
-.. arr = noisy(1)
-. peek = => arr[1]
-for item in arr
-    -- item
-    -- peek()
--- peek()
+(fn-do + noisy (of Array Int)
+  (param first Int)
+  (print "made")
+  (return (call make first))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do noisy Array'Int
-    - first Int
-
--- "made"
-= make(first)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2670,35 +2983,35 @@ made
 
 ### A loop over a lazy local read before it finds the value evaluated, and reads what its body assigns.
 
-```yumi
-run()
+```brix
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (lazy arr (call noisy 1))
+  (print ([] arr 0))
+  (for (in item arr)
+    (print item)
+    (= arr (call make 30))
+  )
+  (print ([] arr 0))
+)
 
-.. arr = noisy(1)
--- arr[0]
-for item in arr
-    -- item
-    arr = make(30)
--- arr[0]
+(fn-do + noisy (of Array Int)
+  (param first Int)
+  (print "made")
+  (return (call make first))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do noisy Array'Int
-    - first Int
-
--- "made"
-= make(first)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2712,28 +3025,30 @@ made
 
 ### A loop over a lazy local whose body reads and assigns it.
 
-```yumi
-run()
+```brix
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (lazy arr (call make 1))
+  (for (in item arr)
+    (print item)
+    (print ([] arr 2))
+    (if (== item 1)
+      (= arr (call make 30))
+    )
+  )
+)
 
-.. arr = make(1)
-for item in arr
-    -- item
-    -- arr[2]
-    if item == 1
-        arr = make(30)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2747,27 +3062,29 @@ made[2] = first + 2
 
 ### A loop over a lazy optional local a test found a value in reads what its body assigns.
 
-```yumi
-run()
+```brix
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (lazy arr (? (of Array Int)) (call make 1))
+  (if arr
+    (for (in item arr)
+      (print item)
+      (= arr (call make 80))
+    )
+  )
+)
 
-.. arr Array'Int? = make(1)
-if arr
-    for item in arr
-        -- item
-        arr = make(80)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2778,27 +3095,29 @@ made[2] = first + 2
 
 ### Two loops over one lazy local, one in the other, each read what the outer body assigns.
 
-```yumi
-run()
+```brix
+(main
+  (call run)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
+(fn-do + run _
+  (lazy arr (call make 1))
+  (for (in item arr)
+    (for (in other arr)
+      (print (+ (* item 100) other))
+    )
+    (= arr (call make 5))
+  )
+)
 
-.. arr = make(1)
-for item in arr
-    for other in arr
-        -- item * 100 + other
-    arr = make(5)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2815,36 +3134,36 @@ made[2] = first + 2
 
 ### A loop over a lazy local declared as a property keeps its value where the property is assigned, and reads what is assigned to the local.
 
-```yumi
-. box = Box()
-box.run()
+```brix
+(main
+  (let box (call Box))
+  (call (. box run))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + items _ (= (call make 1)))
+  (fn-do + run _
+    (lazy mine items)
+    (for (in item mine)
+      (print item)
+      (= items (call make 20))
+    )
+    (lazy kept items)
+    (for (in item kept)
+      (print item)
+      (= kept (call make 90))
+    )
+  )
+)
 
-+ items = make(1)
-
-────────────────────
-+ do run
-
-.. mine = items
-for item in mine
-    -- item
-    items = make(20)
-.. kept = items
-for item in kept
-    -- item
-    kept = make(90)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2858,37 +3177,38 @@ made[2] = first + 2
 
 ### A loop over a lazy local a branch may have read evaluates the value where it was not.
 
-```yumi
-run(true)
-run(false)
+```brix
+(main
+  (call run true)
+  (call run false)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run
-    - early Bool
+(fn-do + run _
+  (param early Bool)
+  (lazy arr (call noisy 1))
+  (if early
+    (print ([] arr 0))
+  )
+  (for (in item arr)
+    (print item)
+    (= arr (call make 30))
+  )
+)
 
-.. arr = noisy(1)
-if early
-    -- arr[0]
-for item in arr
-    -- item
-    arr = make(30)
+(fn-do + noisy (of Array Int)
+  (param first Int)
+  (print "made")
+  (return (call make first))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do noisy Array'Int
-    - first Int
-
--- "made"
-= make(first)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make Array'Int
-    - first Int
-
-. made = Array'Int(3)
-made[0] = first
-made[1] = first + 1
-made[2] = first + 2
-= made
+(fn-do + make (of Array Int)
+  (param first Int)
+  (let made (call (of Array Int) 3))
+  (= ([] made 0) first)
+  (= ([] made 1) (+ first 1))
+  (= ([] made 2) (+ first 2))
+  (return made)
+)
 ```
 
 ```output
@@ -2905,11 +3225,15 @@ made
 
 ### A second header with a clause of its own, over a list and a range
 
-```yumi
-. names = ["a", "b", "c"]
-for name in names when name != "b"
-and count in 5 .. 9 when count != 6
-    -- "$name $count"
+```brix
+(main
+  (let names (list "a" "b" "c"))
+  (for (in name names (when (!= name "b")))
+    (and-for (in count (.. 5 9) (when (!= count 6)))
+      (print (str name " " count))
+    )
+  )
+)
 ```
 
 ```output
@@ -2919,22 +3243,32 @@ c 7
 
 ### Three headers with continue and break, a range that counts down, and clauses that end the loop
 
-```yumi
-for i in 0 .. < 6
-and j in 10 .. < 20
-and k in ["a", "b", "c", "d", "e"]
-    if i == 1
-        continue
-    if i == 4
-        break
-    -- "$i $j $k"
--- "done"
-for i in 5 .. 1
-and j in 1 .. 3
-    -- i, j
-for i in 0 .. < 4 until i == 2
-and j in 0 .. < 9 while j < 5
-    -- i, j
+```brix
+(main
+  (for (in i (..< 0 6))
+    (and-for (in j (..< 10 20)))
+    (and-for (in k (list "a" "b" "c" "d" "e"))
+      (if (== i 1)
+        (continue)
+      )
+      (if (== i 4)
+        (break)
+      )
+      (print (str i " " j " " k))
+    )
+  )
+  (print "done")
+  (for (in i (.. 5 1))
+    (and-for (in j (.. 1 3))
+      (print (tuple i j))
+    )
+  )
+  (for (in i (..< 0 4) (until (== i 2)))
+    (and-for (in j (..< 0 9) (while (< j 5)))
+      (print (tuple i j))
+    )
+  )
+)
 ```
 
 ```output
@@ -2951,44 +3285,43 @@ done
 
 ### What a loop of two headers reads of its containers, and in what order
 
-```yumi
-. loud = Loud("a", [1, 2, 3])
-. other = Loud("b", [10, 20, 30, 40])
-for x in loud
-and y in other when y != 20
-    -- "$x $y"
--- "end"
+```brix
+(main
+  (let loud (call Loud "a" (list 1 2 3)))
+  (let other (call Loud "b" (list 10 20 30 40)))
+  (for (in x loud)
+    (and-for (in y other (when (!= y 20)))
+      (print (str x " " y))
+    )
+  )
+  (print "end")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Loud
-    is Indexable'Int
-
-_ name String
-_ values List'Int
-
-────────────────────
-+ This
-    - name
-    - items [Int]
-
-values = items
-
-────────────────────
-+ get length Size
-
--- "$name length"
-values.length
-
-────────────────────
-+ this[index Index] Int
-
--- "$name read $index"
-values[index]
-
-────────────────────
-+ this[range Range'Index] Loud
-
-Loud(name, values[range])
+(type + Loud
+  (implements (of Indexable Int))
+  (prop _ name String)
+  (prop _ values (of List Int))
+  (fn-do + This _
+    (param name _)
+    (param items (list Int))
+    (= values items)
+  )
+  (fn-expr + length Size :get
+    (before
+      (print (str name " length"))
+    )
+    (. values length)
+  )
+  (fn-expr + (index-get this (param index Index)) Int
+    (before
+      (print (str name " read " index))
+    )
+    ([] values index)
+  )
+  (fn-expr + (index-get this (param range (of Range Index))) Loud
+    (call Loud name ([] values range))
+  )
+)
 ```
 
 ```output
@@ -3009,49 +3342,49 @@ end
 
 ### A loop of two headers over streams begins and ends each in order
 
-```yumi
-. first = Counter("a", 3)
-. second = Counter("b", 5)
-for x in first
-and y in second
-    -- "$x $y"
-    if x == 2
-        break
--- "after"
-for x in Counter("c", 2)
-and y in [7, 8, 9]
-    -- "$x $y"
--- "end"
+```brix
+(main
+  (let first (call Counter "a" 3))
+  (let second (call Counter "b" 5))
+  (for (in x first)
+    (and-for (in y second)
+      (print (str x " " y))
+      (if (== x 2)
+        (break)
+      )
+    )
+  )
+  (print "after")
+  (for (in x (call Counter "c" 2))
+    (and-for (in y (list 7 8 9))
+      (print (str x " " y))
+    )
+  )
+  (print "end")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
-    is Iterable'Int
-
-_ name String
-_ limit Int
-_ at = 0
-
-────────────────────
-+ This
-    - name
-    - limit
-
-────────────────────
-+ do begin-iterating
-
--- "$name begins"
-
-────────────────────
-+ do end-iterating
-
--- "$name ends"
-
-────────────────────
-+ do <- this
-
-if at < limit
-    at += 1
-    = at
+(type + Counter
+  (implements (of Iterable Int))
+  (prop _ name String)
+  (prop _ limit Int)
+  (prop _ at _ (= 0))
+  (fn-do + This _
+    (param name _)
+    (param limit _)
+  )
+  (fn-do + begin-iterating _
+    (print (str name " begins"))
+  )
+  (fn-do + end-iterating _
+    (print (str name " ends"))
+  )
+  (fn-do + (prefix <- this) _
+    (if (< at limit)
+      (+= at 1)
+      (return at)
+    )
+  )
+)
 ```
 
 ```output
@@ -3071,20 +3404,29 @@ end
 
 ### Closures, a tuple taken apart and the item unnamed in loops of two headers
 
-```yumi
-. made = List'(Getter'String)()
-for name in ["a", "b", "c"]
-and count in [1, 2, 3] when count != 2
-    made += => "$name$count"
-for make in made
-    -- make()
-. pairs = [(1, "x"), (2, "y")]
-for letter in ["p", "q"]
-and number, word in pairs
-    -- "$letter $number $word"
-for in ["u", "v"]
-and n in 0 .. < 5
-    -- "$each $it $n"
+```brix
+(main
+  (let made (call (of List (of Getter String))))
+  (for (in name (list "a" "b" "c"))
+    (and-for (in count (list 1 2 3) (when (!= count 2)))
+      (+= made (=> () (str name count)))
+    )
+  )
+  (for (in make made)
+    (print (call make))
+  )
+  (let pairs (list (tuple 1 "x") (tuple 2 "y")))
+  (for (in letter (list "p" "q"))
+    (and-for (in (tuple number word) pairs)
+      (print (str letter " " number " " word))
+    )
+  )
+  (for (in (list "u" "v"))
+    (and-for (in n (..< 0 5))
+      (print (str each " " it " " n))
+    )
+  )
+)
 ```
 
 ```output
@@ -3098,47 +3440,51 @@ v v 1
 
 ### Loops that match pass over what does not fit: a class, an optional, a tuple, a list
 
-```yumi
-. mixed [Shape] = [Circle(1) as Shape, Square(2) as Shape, Circle(3) as Shape]
-for | c Circle in mixed
-    -- c.radius
-for | s Square in mixed when s.side > 1
-    -- s.side
-. maybe [Int?] = [1, null, 3]
-for | n Int in maybe
-    -- n
-. pairs = [(1, "a"), (2, "b"), (3, "c")]
-for | n {it != 2}, word in pairs
-    -- "$n $word"
-. lists = [[1, 2], [3], List'Int(), [4, 5, 6]]
-for | [first, ...rest] in lists
-    -- "$first ${rest.length}"
-for | [_, second, ...] in lists
-and tag in ["x", "y", "z"]
-    -- "$second $tag"
+```brix
+(main
+  (let mixed (list Shape) (list (as (call Circle 1) Shape) (as (call Square 2) Shape) (as (call Circle 3) Shape)))
+  (for (in (| (: c Circle)) mixed)
+    (print (. c radius))
+  )
+  (for (in (| (: s Square)) mixed (when (> (. s side) 1)))
+    (print (. s side))
+  )
+  (let maybe (list (? Int)) (list 1 null 3))
+  (for (in (| (: n Int)) maybe)
+    (print n)
+  )
+  (let pairs (list (tuple 1 "a") (tuple 2 "b") (tuple 3 "c")))
+  (for (in (| (tuple (: n ({} (!= it 2))) word)) pairs)
+    (print (str n " " word))
+  )
+  (let lists (list (list 1 2) (list 3) (call (of List Int)) (list 4 5 6)))
+  (for (in (| (list first ...rest)) lists)
+    (print (str first " " (. rest length)))
+  )
+  (for (in (| (list _ second ...)) lists)
+    (and-for (in tag (list "x" "y" "z"))
+      (print (str second " " tag))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Interface
+(type + Shape (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Circle
-    is Shape
+(type + Circle
+  (implements Shape)
+  (prop + radius Int)
+  (fn-do + This _
+    (param radius _)
+  )
+)
 
-+ radius Int
-
-────────────────────
-+ This
-    - radius
-
-━━━━━━━━━━━━━━━━━━━━
-+ Square
-    is Shape
-
-+ side Int
-
-────────────────────
-+ This
-    - side
+(type + Square
+  (implements Shape)
+  (prop + side Int)
+  (fn-do + This _
+    (param side _)
+  )
+)
 ```
 
 ```output
@@ -3158,28 +3504,33 @@ and tag in ["x", "y", "z"]
 
 ### Loops of two headers and loops that match in functions that yield
 
-```yumi
-for total in sums([1, 2, 3], [10, 20, 30, 40])
-    -- total
-for word in picked(["a", "bb", "ccc", "dd"])
-    -- word
--- ", ".join(each * 2 in [1, 2, 3] when each != 2)
+```brix
+(main
+  (for (in total (call sums (list 1 2 3) (list 10 20 30 40)))
+    (print total)
+  )
+  (for (in word (call picked (list "a" "bb" "ccc" "dd")))
+    (print word)
+  )
+  (print (call (. ", " join) (in (* each 2) (list 1 2 3) (when (!= each 2)))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do sums <Int>
-    - left [Int]
-    - right [Int]
+(fn-do + sums (stream Int)
+  (param left (list Int))
+  (param right (list Int))
+  (for (in a left)
+    (and-for (in b right (when (!= b 20)))
+      (yield (+ a b))
+    )
+  )
+)
 
-for a in left
-and b in right when b != 20
-    <= a + b
-
-━━━━━━━━━━━━━━━━━━━━
-+ do picked <String>
-    - words [String]
-
-for | word {it.length == 2} in words
-    <= word
+(fn-do + picked (stream String)
+  (param words (list String))
+  (for (in (| (: word ({} (== (. it length) 2)))) words)
+    (yield word)
+  )
+)
 ```
 
 ```output
@@ -3193,44 +3544,46 @@ dd
 
 ### Closures made in a loop of two headers and in a loop that matches keep their turn
 
-```yumi
-. seen = List'String()
-. callbacks = List'Doer()
-for item in ["a", "b", "c"]
-and size in [1, 2, 3]
-    callbacks += => do seen += "$item$size"
-for callback in callbacks
-    callback()
--- ", ".join(seen)
-. shapes [Shape] = [Circle(1) as Shape, Square(2) as Shape, Circle(3) as Shape]
-. getters = List'(Getter'Int)()
-for | c Circle in shapes
-    getters += => c.radius
-for getter in getters
-    -- getter()
+```brix
+(main
+  (let seen (call (of List String)))
+  (let callbacks (call (of List Doer)))
+  (for (in item (list "a" "b" "c"))
+    (and-for (in size (list 1 2 3))
+      (+= callbacks (=> () :do (+= seen (str item size))))
+    )
+  )
+  (for (in callback callbacks)
+    (call callback)
+  )
+  (print (call (. ", " join) seen))
+  (let shapes (list Shape) (list (as (call Circle 1) Shape) (as (call Square 2) Shape) (as (call Circle 3) Shape)))
+  (let getters (call (of List (of Getter Int))))
+  (for (in (| (: c Circle)) shapes)
+    (+= getters (=> () (. c radius)))
+  )
+  (for (in getter getters)
+    (print (call getter))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Interface
+(type + Shape (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Circle
-    is Shape
+(type + Circle
+  (implements Shape)
+  (prop + radius Int)
+  (fn-do + This _
+    (param radius _)
+  )
+)
 
-+ radius Int
-
-────────────────────
-+ This
-    - radius
-
-━━━━━━━━━━━━━━━━━━━━
-+ Square
-    is Shape
-
-+ side Int
-
-────────────────────
-+ This
-    - side
+(type + Square
+  (implements Shape)
+  (prop + side Int)
+  (fn-do + This _
+    (param side _)
+  )
+)
 ```
 
 ```output
@@ -3241,22 +3594,32 @@ a1, b2, c3
 
 ### A header over nothing ends a loop of two, and headers of other integer types
 
-```yumi
-. empty = List'Int()
-for a in empty
-and b in [1, 2]
-    -- "never"
-for a in [1, 2]
-and b in empty
-    -- "never"
-. words = ["x", "y"]
-for i U8 in 0 .. < 3
-and j I64 in 5 .. 7
-    -- i + 0, j
-for word in words
-and index in 0 .. < words.length
-    -- "$index $word"
--- "end"
+```brix
+(main
+  (let empty (call (of List Int)))
+  (for (in a empty)
+    (and-for (in b (list 1 2))
+      (print "never")
+    )
+  )
+  (for (in a (list 1 2))
+    (and-for (in b empty)
+      (print "never")
+    )
+  )
+  (let words (list "x" "y"))
+  (for (in (: i U8) (..< 0 3))
+    (and-for (in (: j I64) (.. 5 7))
+      (print (tuple (+ i 0) j))
+    )
+  )
+  (for (in word words)
+    (and-for (in index (..< 0 (. words length)))
+      (print (str index " " word))
+    )
+  )
+  (print "end")
+)
 ```
 
 ```output
@@ -3270,42 +3633,49 @@ end
 
 ### The trace of a cast in a loop to a class an item is not of
 
-```yumi crash
-for item in [Foo2(), Foo(), Foo2()]
-    -- item as Foo2
+```brix crash
+(main
+  (for (in item (list (call Foo2) (call Foo) (call Foo2)))
+    (print (as item Foo2))
+  )
+)
 
-+ Foo
-+ Foo2 is Foo
+(blank)
+(type-line + Foo)
+(type-line + Foo2 (is Foo))
 ```
 
 ```stderr
 Unhandled panic: Invalid cast to [Object __source__:Foo2]
-<no file:3>
+<no file:4>
 
 Task 1
 
 Stack trace:
-  0  __source__:main no file:3:8
+  0  __source__:main no file:4:12
   1  __source__:init.__source__ no file
   2  __source__:brix.main no file
 ```
 
 ### A comprehension that keeps the items a pattern fits gives the items themselves
 
-```yumi
-. odd = <* {it % 2} in 0 .. < 10
--- type-of odd
--- ", ".join(odd)
-. big = <* {it > 2} in [1, 2, 3, 4]
--- type-of big
-for item in big
-    -- item
-. words = <* {it.length > 1} in ["a", "bb", "", "ccc"]
--- type-of words
--- "/".join(words)
-. none = <* {it > 9} in [1, 2, 3]
--- ", ".join(none)
--- "end"
+```brix
+(main
+  (let odd (case-each (in ({} (% it 2)) (..< 0 10))))
+  (print (type-of odd))
+  (print (call (. ", " join) odd))
+  (let big (case-each (in ({} (> it 2)) (list 1 2 3 4))))
+  (print (type-of big))
+  (for (in item big)
+    (print item)
+  )
+  (let words (case-each (in ({} (> (. it length) 1)) (list "a" "bb" "" "ccc"))))
+  (print (type-of words))
+  (print (call (. "/" join) words))
+  (let none (case-each (in ({} (> it 9)) (list 1 2 3))))
+  (print (call (. ", " join) none))
+  (print "end")
+)
 ```
 
 ```output
@@ -3322,27 +3692,40 @@ end
 
 ### A comprehension that keeps what fits, written over lines, in a function that yields, and read by a loop
 
-```yumi
-. kept = in [5, 1, 7, 2, 9]
-    <* {it > 4}
--- type-of kept
-. total = 0
-for item in kept
-    total += item
--- total
-. names = in ["ann", "bo", "cy", "dee"]
-    <* {it.length == 3}
--- ", ".join(names)
--- ", ".join(picked([3, 8, 4, 10], 5))
+```brix
+(main
+  (let kept
+    (iterate (in (list 5 1 7 2 9))
+      (block
+        (<* ({} (> it 4)))
+      )
+    )
+  )
+  (print (type-of kept))
+  (let total 0)
+  (for (in item kept)
+    (+= total item)
+  )
+  (print total)
+  (let names
+    (iterate (in (list "ann" "bo" "cy" "dee"))
+      (block
+        (<* ({} (== (. it length) 3)))
+      )
+    )
+  )
+  (print (call (. ", " join) names))
+  (print (call (. ", " join) (call picked (list 3 8 4 10) 5)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do picked <Int>
-    - items [Int]
-    - floor Int
-
-. passing = <* {it > floor} in items
-for item in passing
-    <= item * 2
+(fn-do + picked (stream Int)
+  (param items (list Int))
+  (param floor Int)
+  (let passing (case-each (in ({} (> it floor)) items)))
+  (for (in item passing)
+    (yield (* item 2))
+  )
+)
 ```
 
 ```output
@@ -3354,47 +3737,40 @@ ann, dee
 
 ### Loop over a base class begins and ends by the derived class
 
-```yumi
-. base Base = Derived()
-for a in base
-    -- a
+```brix
+(main
+  (let base Base (call Derived))
+  (for (in a base)
+    (print a)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-    is Iterable'Int
+(type + Base
+  (implements (of Iterable Int))
+  (prop _ at _ (= 0))
+  (fn-do + begin-iterating _
+    (print "base begins")
+  )
+  (fn-do + end-iterating _
+    (print "base ends")
+  )
+  (fn-do + (prefix <- this) (? Int)
+    (if (< at 2)
+      (+= at 1)
+      (return at)
+    )
+    (return null)
+  )
+)
 
-_ at = 0
-
-────────────────────
-+ do begin-iterating
-
--- "base begins"
-
-────────────────────
-+ do end-iterating
-
--- "base ends"
-
-────────────────────
-+ do <- this Int?
-
-if at < 2
-    at += 1
-    = at
-= null
-
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-────────────────────
-+ do begin-iterating
-
--- "derived begins"
-
-────────────────────
-+ do end-iterating
-
--- "derived ends"
+(type + Derived (is Base)
+  (fn-do + begin-iterating _
+    (print "derived begins")
+  )
+  (fn-do + end-iterating _
+    (print "derived ends")
+  )
+)
 ```
 
 ```output
@@ -3406,40 +3782,39 @@ derived ends
 
 ### Cursor loop over a base class steps by the derived class
 
-```yumi
-. base Base = Derived()
-for a in base
-    -- a
+```brix
+(main
+  (let base Base (call Derived))
+  (for (in a base)
+    (print a)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-    is CursorIterable'Int'Int
+(type + Base
+  (implements (of CursorIterable Int Int))
+  (fn-expr + initial-iterator-state Int :get
+    0
+  )
+  (fn-do + next-iterator (tuple Int (? Int))
+    (param state Int)
+    (let none (? Int))
+    (if (>= state 2)
+      (return (tuple state none))
+    )
+    (return (tuple (+ state 1) (+ state 1)))
+  )
+)
 
-────────────────────
-+ get initial-iterator-state Int
-
-0
-
-────────────────────
-+ do next-iterator (Int, Int?)
-    - state Int
-
-. none Int?
-if state >= 2
-    = (state, none)
-= (state + 1, state + 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-────────────────────
-+ do next-iterator (Int, Int?)
-    - state Int
-
-. none Int?
-if state >= 3
-    = (state, none)
-= (state + 1, state * 100)
+(type + Derived (is Base)
+  (fn-do + next-iterator (tuple Int (? Int))
+    (param state Int)
+    (let none (? Int))
+    (if (>= state 3)
+      (return (tuple state none))
+    )
+    (return (tuple (+ state 1) (* state 100)))
+  )
+)
 ```
 
 ```output
@@ -3450,37 +3825,32 @@ if state >= 3
 
 ### Index loop over a base class reads by the derived class
 
-```yumi
-. base Base = Derived()
-for a in base
-    -- a
+```brix
+(main
+  (let base Base (call Derived))
+  (for (in a base)
+    (print a)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-    is Indexable'Int
+(type + Base
+  (implements (of Indexable Int))
+  (fn-expr + length Size :get
+    2
+  )
+  (fn-expr + (index-get this (param index Index)) Int
+    (+ index 1)
+  )
+  (fn-expr + (index-get this (param range (of Range Index))) Base
+    this
+  )
+)
 
-────────────────────
-+ get length Size
-
-2
-
-────────────────────
-+ this[index Index] Int
-
-index + 1
-
-────────────────────
-+ this[range Range'Index] Base
-
-this
-
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-────────────────────
-+ this[index Index] Int
-
-index * 100 + 5
+(type + Derived (is Base)
+  (fn-expr + (index-get this (param index Index)) Int
+    (+ (* index 100) 5)
+  )
+)
 ```
 
 ```output
@@ -3490,10 +3860,14 @@ index * 100 + 5
 
 ### each and it are the first header's item
 
-```yumi
-for in ["u", "v"]
-and in [1, 2]
-    -- "$each $it"
+```brix
+(main
+  (for (in (list "u" "v"))
+    (and-for (in (list 1 2))
+      (print (str each " " it))
+    )
+  )
+)
 ```
 
 ```output
@@ -3503,11 +3877,15 @@ v v
 
 ### each and it of the first of three headers
 
-```yumi
-for in ["u", "v"]
-and b in [1, 2]
-and in [true, false]
-    -- "$each $it $b"
+```brix
+(main
+  (for (in (list "u" "v"))
+    (and-for (in b (list 1 2)))
+    (and-for (in (list true false))
+      (print (str each " " it " " b))
+    )
+  )
+)
 ```
 
 ```output
@@ -3517,128 +3895,134 @@ v v 2
 
 ### A panic under the read of a loop's second header is placed at the first header, where the loop reads every header.
 
-```yumi crash
-drain()
+```brix crash
+(main
+  (call drain)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do a
+(fn-do + a _
+  (yield 1)
+  (yield 2)
+  (yield 3)
+)
 
-<= 1
-<= 2
-<= 3
+(fn-do + b _
+  (yield 10)
+  (throw (call Panic "zip panic"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do b
-
-<= 10
-?! Panic("zip panic")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do drain
-
-for x in a()
-and y in b()
-    -- x + y
+(fn-do + drain _
+  (for (in x (call a))
+    (and-for (in y (call b))
+      (print (+ x y))
+    )
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: zip panic
-<no file:15>
+<no file:14>
 
 Task 1
 
 Stack trace:
-  0  __source__:b no file:15:1
-  1  core/stream:Generator:<-read core/stream.yumi
-  2  __source__:drain no file:20:4
-  3  __source__:main no file:2:1
+  0  __source__:b no file:14:3
+  1  core/stream:Generator:<-read core/stream.bx
+  2  __source__:drain no file:18:8
+  3  __source__:main no file:3:3
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
 ### An error raised under the read of a loop's second header leaves the loop at the first header.
 
-```yumi crash
-drain()
+```brix crash
+(main
+  (call drain)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Problem is Error
+(type + Problem (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do b
+(fn-do + b _
+  (yield 10)
+  (throw (call Problem "zip same line"))
+)
 
-<= 10
-?! Problem("zip same line")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do drain
-
-for x in 0 .. < 5
-and y in b()
-    -- x + y
+(fn-do + drain _
+  (for (in x (..< 0 5))
+    (and-for (in y (call b))
+      (print (+ x y))
+    )
+  )
+)
 ```
 
 ```stderr
 Unhandled error: zip same line
-<no file:11>
+<no file:10>
 
 Task 1
 
 Stack trace:
-  0  __source__:b no file:11:1
-  1  core/stream:Generator:<-read core/stream.yumi
-  2  __source__:drain no file:16:4
-  3  __source__:main no file:2:1
+  0  __source__:b no file:10:3
+  1  core/stream:Generator:<-read core/stream.bx
+  2  __source__:drain no file:14:8
+  3  __source__:main no file:3:3
   4  __source__:init.__source__ no file
   5  __source__:brix.main no file
 ```
 
 ### A generator read by a loop's second header that panics on a bad index is placed at the first header.
 
-```yumi crash
-drain()
+```brix crash
+(main
+  (call drain)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do b
+(fn-do + b _
+  (yield 10)
+  (let list (list 1))
+  (yield ([] list 3))
+)
 
-<= 10
-. list = [1]
-<= list[3]
-
-━━━━━━━━━━━━━━━━━━━━
-+ do drain
-
-for x in 0 .. < 5
-and y in b()
-    -- x + y
+(fn-do + drain _
+  (for (in x (..< 0 5))
+    (and-for (in y (call b))
+      (print (+ x y))
+    )
+  )
+)
 ```
 
 ```stderr
 Unhandled panic: List index 3 out of range
-<core/list.yumi>
+<core/list.bx>
 
 Task 1
 
 Stack trace:
-  0  core/list:List:absent core/list.yumi
-  1  __source__:b no file:9:4
-  2  core/stream:Generator:<-read core/stream.yumi
-  3  __source__:drain no file:14:4
-  4  __source__:main no file:2:1
+  0  core/list:List:absent core/list.bx
+  1  __source__:b no file:9:10
+  2  core/stream:Generator:<-read core/stream.bx
+  3  __source__:drain no file:13:8
+  4  __source__:main no file:3:3
   5  __source__:init.__source__ no file
   6  __source__:brix.main no file
 ```
 
-```yumi
-. input = [1, 2, 3]
-. items-0 [Int] = <* value in input when value > 0
--- items-0.length
-. items-1 [Int] = <* value in input when value > 1
--- items-1.length
-. items-2 [Int] = <* value in input when value > 2
--- items-2.length
-. items-3 [Int] = <* value in input when value > 3
--- items-3.length
+```brix
+(main
+  (let input (list 1 2 3))
+  (let items-0 (list Int) (case-each (in value input (when (> value 0)))))
+  (print (. items-0 length))
+  (let items-1 (list Int) (case-each (in value input (when (> value 1)))))
+  (print (. items-1 length))
+  (let items-2 (list Int) (case-each (in value input (when (> value 2)))))
+  (print (. items-2 length))
+  (let items-3 (list Int) (case-each (in value input (when (> value 3)))))
+  (print (. items-3 length))
+)
 ```
 
 ```output
@@ -3648,33 +4032,46 @@ Stack trace:
 0
 ```
 
-```yumi
-sequence([1, 2, 3])
+```brix
+(main
+  (call sequence (list 1 2 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do sequence
-    - input [Int]
+(fn-do + sequence _
+  (param input (list Int))
+  (let items-0 (list Int)
+    (case-each (in value input)
+      (call checked value)
+    )
+  )
+  (print (. items-0 length))
+  (let items-1 (list Int)
+    (case-each (in value input)
+      (call checked value)
+    )
+  )
+  (print (. items-1 length))
+  (let items-2 (list Int)
+    (case-each (in value input)
+      (call checked value)
+    )
+  )
+  (print (. items-2 length))
+  (let items-3 (list Int)
+    (case-each (in value input)
+      (call checked value)
+    )
+  )
+  (print (. items-3 length))
+)
 
-. items-0 [Int] = <* value in input
-    checked(value)
--- items-0.length
-. items-1 [Int] = <* value in input
-    checked(value)
--- items-1.length
-. items-2 [Int] = <* value in input
-    checked(value)
--- items-2.length
-. items-3 [Int] = <* value in input
-    checked(value)
--- items-3.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ do checked Int
-    - value Int
-
-if value < 0
-    ?! Error("negative")
-= value
+(fn-do + checked Int
+  (param value Int)
+  (if (< value 0)
+    (throw (call Error "negative"))
+  )
+  (return value)
+)
 ```
 
 ```output
@@ -3684,60 +4081,82 @@ if value < 0
 3
 ```
 
-```yumi crash
-sequence([-1])
+```brix crash
+(main
+  (call sequence (list -1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do sequence
-    - input [Int]
+(fn-do + sequence _
+  (param input (list Int))
+  (let items-0 (list Int)
+    (case-each (in value input)
+      (call checked value)
+    )
+  )
+  (print (. items-0 length))
+  (let items-1 (list Int)
+    (case-each (in value input)
+      (call checked value)
+    )
+  )
+  (print (. items-1 length))
+  (let items-2 (list Int)
+    (case-each (in value input)
+      (call checked value)
+    )
+  )
+  (print (. items-2 length))
+  (let items-3 (list Int)
+    (case-each (in value input)
+      (call checked value)
+    )
+  )
+  (print (. items-3 length))
+)
 
-. items-0 [Int] = <* value in input
-    checked(value)
--- items-0.length
-. items-1 [Int] = <* value in input
-    checked(value)
--- items-1.length
-. items-2 [Int] = <* value in input
-    checked(value)
--- items-2.length
-. items-3 [Int] = <* value in input
-    checked(value)
--- items-3.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ do checked Int
-    - value Int
-
-if value < 0
-    ?! Error("negative")
-= value
+(fn-do + checked Int
+  (param value Int)
+  (if (< value 0)
+    (throw (call Error "negative"))
+  )
+  (return value)
+)
 ```
 
 ```stderr
 Unhandled error: negative
-<no file:26>
+<no file:37>
 
 Task 1
 
 Stack trace:
-  0  __source__:checked no file:26:5
-  1  __source__:sequence no file:9:5
-  2  __source__:main no file:2:1
+  0  __source__:checked no file:37:5
+  1  __source__:sequence no file:10:7
+  2  __source__:main no file:3:3
   3  __source__:init.__source__ no file
   4  __source__:brix.main no file
 ```
 
-```yumi
-for i in 0 .. < 5
-    . v = match i
-        |= 1
-            -- "skip"
-            continue
-        |= 3
-            break
-        ??
-            i * 10
-    -- v
+```brix
+(main
+  (for (in i (..< 0 5))
+    (let v
+      (match i
+        (case= 1
+          (print "skip")
+          (continue)
+        )
+        (case= 3
+          (break)
+        )
+        (default
+          (* i 10)
+        )
+      )
+    )
+    (print v)
+  )
+)
 ```
 
 ```output
@@ -3748,21 +4167,24 @@ skip
 
 ### A loop's pattern that names `each` binds the name itself, not the loop's item.
 
-```yumi
-. pairs [(String, Stored)]
-pairs += ("a", Stored("first", 1))
-for key, each in pairs
-    -- "$key ${each.label} ${each.count}"
-. stored [String = Stored]
-stored["b"] = Stored("second", 2)
-for key, each in stored
-    -- "$key ${each.label}"
+```brix
+(main
+  (let pairs (list (tuple String Stored)))
+  (+= pairs (tuple "a" (call Stored "first" 1)))
+  (for (in (tuple key each) pairs)
+    (print (str key " " (. each label) " " (. each count)))
+  )
+  (let stored (map String Stored))
+  (= ([] stored "b") (call Stored "second" 2))
+  (for (in (tuple key each) stored)
+    (print (str key " " (. each label)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Stored is Tuple
-
-+ label String
-+ count I64
+(type + Stored (is Tuple)
+  (prop + label String)
+  (prop + count I64)
+)
 ```
 
 ```output
@@ -3772,14 +4194,19 @@ b second
 
 ### The clauses of a loop are tested in the order written, and the first that decides wins
 
-```yumi
-for i in 0 .. < 10 when i % 2 == 0 while i < 7
-    -- "range $i"
-for i in 0 .. < 6 when i != 2 until i == 2
-    -- "skip $i"
-. names = ["a", "bb", "ccc", "dddd", "e"]
-for name in names while name.length < 4 when name.length != 2
-    -- "list $name"
+```brix
+(main
+  (for (in i (..< 0 10) (when (== (% i 2) 0)) (while (< i 7)))
+    (print (str "range " i))
+  )
+  (for (in i (..< 0 6) (when (!= i 2)) (until (== i 2)))
+    (print (str "skip " i))
+  )
+  (let names (list "a" "bb" "ccc" "dddd" "e"))
+  (for (in name names (while (< (. name length) 4)) (when (!= (. name length) 2)))
+    (print (str "list " name))
+  )
+)
 ```
 
 ```output
@@ -3798,49 +4225,60 @@ list ccc
 
 ### A `break` outside a loop is an error
 
-```yumi crash
-break
--- 1
+```brix crash
+(main
+  (break)
+  (print 1)
+)
 ```
 
 ```output
 Exception: `break` outside a loop
-<no file:2>
-    break
-    ^^^^^
+<no file:3>
+      (break)
+      ^^^^^^^
 ```
 
 ### A `continue` outside a loop is an error
 
-```yumi crash
--- f()
+```brix crash
+(main
+  (print (call f))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do f Int
-
-continue
-= 7
+(fn-do + f Int
+  (continue)
+  (return 7)
+)
 ```
 
 ```output
 Exception: `continue` outside a loop
 <no file:7>
-    continue
-    ^^^^^^^^
+      (continue)
+      ^^^^^^^^^^
 ```
 
 ### A function written in a loop is a function: a `break` in it is outside a loop
 
-```yumi crash
-for i in 0 .. < 3
-    . leave = => do
-        break
-    leave()
+```brix crash
+(main
+  (for (in i (..< 0 3))
+    (let leave
+      (=> () :do
+        (block
+          (break)
+        )
+      )
+    )
+    (call leave)
+  )
+)
 ```
 
 ```output
 Exception: `break` outside a loop
-<no file:4>
-            break
-            ^^^^^
+<no file:7>
+              (break)
+              ^^^^^^^
 ```

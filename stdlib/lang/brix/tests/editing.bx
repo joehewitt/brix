@@ -1,0 +1,787 @@
+(import /code/structure/document)
+(import /code/structure/session)
+(import /lang/brix/brix)
+(import /lang/brix/convert)
+(import /test)
+(blank)
+(prop _ thick _ (= "━━━━━━━━━━━━━━━━━━━━"))
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Brix Copy And Paste Round Trip"))
+  (call (. cases run) round-trip-tests)
+  (= cases (call (. cases then) "Brix Copy" copy-tests))
+  (= cases (call (. cases then) "Brix Paste Placement" placement-tests))
+  (= cases (call (. cases then) "Brix Paste Indentation" indentation-tests))
+  (= cases (call (. cases then) "Brix Line Deletion" deletion-tests))
+  (= cases (call (. cases then) "Brix Unparsed Text" unparsed-tests))
+  (= cases (call (. cases then) "Brix Conversion" conversion-tests))
+  (= cases (call (. cases then) "Brix Task Arms" arm-tests))
+  (return cases)
+)
+
+(fn-do + round-trip-tests TestCase
+  (param t TestCase)
+  (let source (call (. (call walk-source) trim)))
+  (call (. t expect) "the fixture reads back as written" source (=> () (call shown (call opened source))))
+  (call (. t expect) "statements in a body" source (=> () (call pasted-back ". a = 1" ". x = 2" false)))
+  (call (. t expect)
+    (block
+      (arg "whole lines through the start of the next")
+      (arg source)
+      (arg (=> () (call pasted-back ". a = 1" ". c = 3" true)))
+    )
+  )
+  (call (. t expect) "whole lines up to an indented row" source (=> () (call pasted-back ". a = 1" ". x = 2" true)))
+  (call (. t expect) "a first line deeper than the next" source (=> () (call pasted-back ". y = 3" ". c = 3" false)))
+  (call (. t expect) "a header through its body" source (=> () (call pasted-back "+ do walk Int" "if b" false)))
+  (call (. t expect) "lines across two functions" source (=> () (call pasted-back "if b" "+ do other Int" false)))
+  (call (. t expect) "a whole function from its divider" source (=> () (call pasted-back thick "= a" false)))
+  (call (. t expect)
+    (block
+      (arg "one undo restores a paste across functions")
+      (arg source)
+      (arg (=> () (call undone-paste "if b" "+ do other Int")))
+    )
+  )
+  (return t)
+)
+
+(fn-do + copy-tests TestCase
+  (param t TestCase)
+  (call (. t expect) "whole lines keep the first line's indentation" "    . x = 2\n    . y = 3\n" (=> () (call copied ". x = 2" 0 ". c = 3" 0)))
+  (call (. t expect) "a selection from mid-line starts there" "b\n    . x = 2" (=> () (call copied "if b" 3 ". x = 2" 1000)))
+  (return t)
+)
+
+(fn-do + placement-tests TestCase (?! Error)
+  (param t TestCase)
+  (call (. t expect)
+    (block
+      (arg "a block pasted at a line start keeps its nesting")
+      (arg (call (. (call block-pasted) trim)))
+      (arg (=> () (call pasted-at ". c = 3" "if c\n    . z = 4\n")))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "a declaration pasted into a body splits it")
+      (arg (call (. (call body-split) trim)))
+      (arg (=> () (call pasted-at ". c = 3" (str thick "\n+ do mid Int\n\n. m = 1\n"))))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "a block pasted on a divider goes above it")
+      (arg (call (. (call divider-pasted) trim)))
+      (arg (=> () (call pasted-on-divider (str thick "\n+ do mid Int\n\n. m = 1"))))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "a block pasted on the last row goes after the last declaration")
+      (arg (call (. (call end-pasted) trim)))
+      (arg (=> () (call pasted-at-end (str thick "\n+ do last Int\n\n. n = 1"))))
+    )
+  )
+  (blank)
+  (let session (call opened (call walk-source)))
+  (call (. session place) (call row-of session ". c = 3") 0)
+  (call (. session paste) "if c\n    . z = 4\n")
+  (call (. t expect) "the caret ends at the start of the line after the block" ". c = 3" (. (call (. session row-at) (. session row)) content))
+  (call (. t check)
+    (block
+      (arg "the caret is at the line's first column")
+      (arg (== (. session column) (. (call (. session row-at) (. session row)) content-start)))
+    )
+  )
+  (return t)
+)
+
+(fn-do + indentation-tests TestCase
+  (param t TestCase)
+  (call (. t expect)
+    (block
+      (arg "whole lines move to the caret's depth")
+      (arg (call (. (call moved-in) trim)))
+      (arg (=> () (call pasted-at ". y = 3" "if c\n    . z = 4\n")))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "a line shallower than the first leaves the block")
+      (arg (call (. (call moved-out) trim)))
+      (arg (=> () (call pasted-at ". y = 3" "    . q = 5\nif r\n    . s = 6\n")))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "two-space code becomes four-space levels")
+      (arg (call (. (call two-space) trim)))
+      (arg (=> () (call pasted-at ". c = 3" "if c\n  . z = 4\n  if d\n    . w = 5\n")))
+    )
+  )
+  (call (. t expect) "a tab is one level" (call (. (call block-pasted) trim)) (=> () (call pasted-at ". c = 3" "if c\n\t. z = 4\n")))
+  (return t)
+)
+
+(fn-do + deletion-tests TestCase
+  (param t TestCase)
+  (call (. t expect)
+    (block
+      (arg "whole lines go and the next keeps its indentation")
+      (arg (call (. (call line-deleted) trim)))
+      (arg (=> () (call deleted ". y = 3" 0 ". c = 3" 0)))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "a selection from mid-line to mid-line joins the rest")
+      (arg (call (. (call lines-joined) trim)))
+      (arg (=> () (call deleted ". a = 1" 3 ". c = 3" 3)))
+    )
+  )
+  (call (. t expect) "a whole function from its divider goes" (call (. (call function-deleted) trim)) (=> () (call deleted-function)))
+  (return t)
+)
+
+(fn-do + unparsed-tests TestCase (?! Error)
+  (param t TestCase)
+  (let broken (call opened (call walk-source)))
+  (call (. broken place) (call row-of broken ". c = 3") 0)
+  (call (. broken paste) "if c\n    . z = )\n. w = 4\n")
+  (call (. t expect) "a broken line keeps its place in the structure" (call (. (call line-broken) trim)) (call shown broken))
+  (call (. t expect) "only the broken line is invalid" "    . z = )" (call invalid-rows broken))
+  (let typo (call row-of broken ". z = )"))
+  (call (. broken place) typo 1000)
+  (call (. broken delete-backward))
+  (call (. broken insert) "5")
+  (call (. broken place) (call row-of broken ". a = 1") 0)
+  (call (. t check) "fixing the broken line leaves no invalid rows" (== (. (call invalid-rows broken) length) 0))
+  (blank)
+  (let header (call opened (call walk-source)))
+  (call (. header place) (call row-of header thick 1) 0)
+  (call (. header paste) (str thick "\n+ do (\n    - by Int\n\n. q = 1"))
+  (call (. t expect) "a broken header keeps its declaration as written" (call (. (call header-broken) trim)) (call shown header))
+  (call (. t expect) "every line of that declaration is invalid" (str thick "|+ do (|    - by Int||. q = 1") (call invalid-rows header))
+  (let head (call row-of header "+ do ("))
+  (call (. header place) head 5)
+  (call (. header delete-forward))
+  (call (. header insert) "fix Int")
+  (call (. header place) (call row-of header ". a = 1") 0)
+  (call (. t expect) "fixing the header reads the declaration again" (call (. (call header-fixed) trim)) (call shown header))
+  (call (. t check) "the fixed declaration has no invalid rows" (== (. (call invalid-rows header) length) 0))
+  (return t)
+)
+
+(fn-do + conversion-tests TestCase
+  (param t TestCase)
+  (let source (call (. (call nested-arguments) trim)))
+  (call (. t expect) "nested type arguments are written in parentheses" (call (. (call nested-text) trim)) (=> () (call brix-yumi-text source)))
+  (call (. t expect) "nested type arguments read back nested" source (=> () (call (. (call brix-convert (call brix-yumi-text source)) trim))))
+  (let facet (call (. (call facet-brix) trim)))
+  (call (. t expect) "a facet's owner, sees and shared members are written in rows" (call (. (call facet-text) trim)) (=> () (call (. (call brix-yumi-text facet) trim))))
+  (call (. t expect) "a facet's owner, sees and shared members read back" facet (=> () (call (. (call brix-convert (call brix-yumi-text facet)) trim))))
+  (let scoped (call (. (call scoped-brix) trim)))
+  (call (. t expect) "with and without parts are written on the header" (call (. (call scoped-text) trim)) (=> () (call (. (call brix-yumi-text scoped) trim))))
+  (call (. t expect) "with and without parts read back" scoped (=> () (call (. (call brix-convert (call brix-yumi-text scoped)) trim))))
+  (return t)
+)
+
+(fn-do + arm-tests TestCase (?! Error)
+  (param t TestCase)
+  (call (. t expect)
+    (block
+      (arg "a catch typed after a task's rows is the task's on-failure arm")
+      (arg (call (. (call brix-convert (call caught-task)) trim)))
+      (arg (=> () (call typed-catch "do new\n    work()\n" true)))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "a catch typed after the rows of a task kept in a local is that task's arm")
+      (arg (call (. (call brix-convert (call caught-kept-task)) trim)))
+      (arg (=> () (call typed-catch ". t = do new\n    work()\n" true)))
+    )
+  )
+  (call (. t expect)
+    (block
+      (arg "a catch typed after a call handles the call's errors")
+      (arg (call (. (call brix-convert (call caught-call)) trim)))
+      (arg (=> () (call typed-catch "work()\n" false)))
+    )
+  )
+  (return t)
+)
+
+(fn-do _ typed-catch String (?! Error)
+  (param rows String)
+  (param nested Bool)
+  (let session (call opened (str thick "\n+ do walk Int\n\n. a = 1\n" rows ". c = 3\n= a\n")))
+  (let last (call row-of session "work()"))
+  (call (. session place) last (. (call (. session row-at) last) text length))
+  (call (. session split))
+  (if nested
+    (call (. session outdent))
+  )
+  (call (. session insert) "catch failed")
+  (call (. session split))
+  (call (. session indent))
+  (call (. session insert) "print(failed)")
+  (call (. session commit))
+  (return (call (. (call (. session document written)) text trim)))
+)
+
+(fn-expr _ opened SourceSession (?! Error)
+  (param source String)
+  (call SourceSession (call source-document-read (call BrixLanguage) (call brix-convert source)))
+)
+
+(fn-do _ shown String
+  (param session SourceSession)
+  (let lines (list String))
+  (for (in index (..< 0 (- (. session document row-count) 1)))
+    (+= lines (. (call (. session row-at) index) text))
+  )
+  (return (call (. (call (. "\n" join) lines) trim)))
+)
+
+(fn-do _ invalid-rows String
+  (param session SourceSession)
+  (let lines (list String))
+  (for (in index (..< 0 (. session document row-count)))
+    (let row (call (. session row-at) index))
+    (if (. row is-invalid)
+      (+= lines (. row text))
+    )
+  )
+  (return (call (. "|" join) lines))
+)
+
+(fn-do _ row-of Size
+  (param session SourceSession)
+  (param content String)
+  (param skipped Size (= 0))
+  (let seen Size 0)
+  (for (in index (..< 0 (. session document row-count)))
+    (if (== (. (call (. session row-at) index) content) content)
+      (return-if index (if (== seen skipped)))
+      (+= seen 1)
+    )
+  )
+  (throw (call Panic (str "No row reads " content)))
+)
+
+(fn-do _ selected SourceSession (?! Error)
+  (param first String)
+  (param start Size)
+  (param last String)
+  (param end Size)
+  (let session (call opened (call walk-source)))
+  (call (. session place) (call row-of session first) start)
+  (call (. session place) (call row-of session last) end true)
+  (return session)
+)
+
+(fn-expr _ copied String (?! Error)
+  (param first String)
+  (param start Size)
+  (param last String)
+  (param end Size)
+  (call (. (call selected first start last end) selected-text))
+)
+
+(fn-do _ pasted-back String (?! Error)
+  (param first String)
+  (param last String)
+  (param is-whole Bool)
+  (let session (call selected first 0 last (if-expr is-whole 0 1000)))
+  (call (. session paste) (call (. session selected-text)))
+  (return (call shown session))
+)
+
+(fn-do _ undone-paste String (?! Error)
+  (param first String)
+  (param last String)
+  (let session (call selected first 0 last 1000))
+  (call (. session paste) (call (. session selected-text)))
+  (call (. session undo))
+  (return (call shown session))
+)
+
+(fn-do _ pasted-at String (?! Error)
+  (param line String)
+  (param text String)
+  (let session (call opened (call walk-source)))
+  (call (. session place) (call row-of session line) 0)
+  (call (. session paste) text)
+  (return (call shown session))
+)
+
+(fn-do _ pasted-on-divider String (?! Error)
+  (param text String)
+  (let session (call opened (call walk-source)))
+  (call (. session place) (call row-of session thick 1) 0)
+  (call (. session paste) text)
+  (return (call shown session))
+)
+
+(fn-do _ pasted-at-end String (?! Error)
+  (param text String)
+  (let session (call opened (call walk-source)))
+  (call (. session place) (- (. session document row-count) 1) 0)
+  (call (. session paste) text)
+  (return (call shown session))
+)
+
+(fn-do _ deleted String (?! Error)
+  (param first String)
+  (param start Size)
+  (param last String)
+  (param end Size)
+  (let session (call selected first start last end))
+  (call (. session delete-selection))
+  (return (call shown session))
+)
+
+(fn-do _ deleted-function String (?! Error)
+  (let session (call opened (call walk-source)))
+  (call (. session place) (call row-of session thick 1) 0)
+  (call (. session place) (call row-of session "= d") 1000 true)
+  (call (. session delete-selection))
+  (return (call shown session))
+)
+
+(fn-expr _ walk-source _
+  (paragraph
+    (str thick)
+    "+ do walk Int"
+    "    - by Int"
+    (blank)
+    ". a = 1"
+    "if b"
+    "    . x = 2"
+    "    . y = 3"
+    ". c = 3"
+    "= a"
+    (blank)
+    (str thick)
+    "+ do other Int"
+    (blank)
+    ". d = 4"
+    "= d"
+  )
+)
+
+(fn-expr _ block-pasted _
+  (paragraph
+    (str thick)
+    "+ do walk Int"
+    "    - by Int"
+    (blank)
+    ". a = 1"
+    "if b"
+    "    . x = 2"
+    "    . y = 3"
+    "if c"
+    "    . z = 4"
+    ". c = 3"
+    "= a"
+    (blank)
+    (str thick)
+    "+ do other Int"
+    (blank)
+    ". d = 4"
+    "= d"
+  )
+)
+
+(fn-expr _ body-split _
+  (paragraph
+    (str thick)
+    "+ do walk Int"
+    "    - by Int"
+    (blank)
+    ". a = 1"
+    "if b"
+    "    . x = 2"
+    "    . y = 3"
+    (blank)
+    (str thick)
+    "+ do mid Int"
+    (blank)
+    ". m = 1"
+    ". c = 3"
+    "= a"
+    (blank)
+    (str thick)
+    "+ do other Int"
+    (blank)
+    ". d = 4"
+    "= d"
+  )
+)
+
+(fn-expr _ divider-pasted _
+  (paragraph
+    (str thick)
+    "+ do walk Int"
+    "    - by Int"
+    (blank)
+    ". a = 1"
+    "if b"
+    "    . x = 2"
+    "    . y = 3"
+    ". c = 3"
+    "= a"
+    (blank)
+    (str thick)
+    "+ do mid Int"
+    (blank)
+    ". m = 1"
+    (blank)
+    (str thick)
+    "+ do other Int"
+    (blank)
+    ". d = 4"
+    "= d"
+  )
+)
+
+(fn-expr _ end-pasted _
+  (paragraph
+    (str thick)
+    "+ do walk Int"
+    "    - by Int"
+    (blank)
+    ". a = 1"
+    "if b"
+    "    . x = 2"
+    "    . y = 3"
+    ". c = 3"
+    "= a"
+    (blank)
+    (str thick)
+    "+ do other Int"
+    (blank)
+    ". d = 4"
+    "= d"
+    (blank)
+    (str thick)
+    "+ do last Int"
+    (blank)
+    ". n = 1"
+  )
+)
+
+(fn-expr _ moved-in _
+  (paragraph
+    (str thick)
+    "+ do walk Int"
+    "    - by Int"
+    (blank)
+    ". a = 1"
+    "if b"
+    "    . x = 2"
+    "    if c"
+    "        . z = 4"
+    "    . y = 3"
+    ". c = 3"
+    "= a"
+    (blank)
+    (str thick)
+    "+ do other Int"
+    (blank)
+    ". d = 4"
+    "= d"
+  )
+)
+
+(fn-expr _ moved-out _
+  (paragraph
+    (str thick)
+    "+ do walk Int"
+    "    - by Int"
+    (blank)
+    ". a = 1"
+    "if b"
+    "    . x = 2"
+    "    . q = 5"
+    "if r"
+    "    . s = 6"
+    "    . y = 3"
+    ". c = 3"
+    "= a"
+    (blank)
+    (str thick)
+    "+ do other Int"
+    (blank)
+    ". d = 4"
+    "= d"
+  )
+)
+
+(fn-expr _ two-space _
+  (paragraph
+    (str thick)
+    "+ do walk Int"
+    "    - by Int"
+    (blank)
+    ". a = 1"
+    "if b"
+    "    . x = 2"
+    "    . y = 3"
+    "if c"
+    "    . z = 4"
+    "    if d"
+    "        . w = 5"
+    ". c = 3"
+    "= a"
+    (blank)
+    (str thick)
+    "+ do other Int"
+    (blank)
+    ". d = 4"
+    "= d"
+  )
+)
+
+(fn-expr _ line-deleted _
+  (paragraph
+    (str thick)
+    "+ do walk Int"
+    "    - by Int"
+    (blank)
+    ". a = 1"
+    "if b"
+    "    . x = 2"
+    ". c = 3"
+    "= a"
+    (blank)
+    (str thick)
+    "+ do other Int"
+    (blank)
+    ". d = 4"
+    "= d"
+  )
+)
+
+(fn-expr _ lines-joined _
+  (paragraph
+    (str thick)
+    "+ do walk Int"
+    "    - by Int"
+    (blank)
+    ". a = 3"
+    "= a"
+    (blank)
+    (str thick)
+    "+ do other Int"
+    (blank)
+    ". d = 4"
+    "= d"
+  )
+)
+
+(fn-expr _ function-deleted _
+  (paragraph
+    (str thick)
+    "+ do walk Int"
+    "    - by Int"
+    (blank)
+    ". a = 1"
+    "if b"
+    "    . x = 2"
+    "    . y = 3"
+    ". c = 3"
+    "= a"
+  )
+)
+
+(fn-expr _ line-broken _
+  (paragraph
+    (str thick)
+    "+ do walk Int"
+    "    - by Int"
+    (blank)
+    ". a = 1"
+    "if b"
+    "    . x = 2"
+    "    . y = 3"
+    "if c"
+    "    . z = )"
+    ". w = 4"
+    ". c = 3"
+    "= a"
+    (blank)
+    (str thick)
+    "+ do other Int"
+    (blank)
+    ". d = 4"
+    "= d"
+  )
+)
+
+(fn-expr _ header-broken _
+  (paragraph
+    (str thick)
+    "+ do walk Int"
+    "    - by Int"
+    (blank)
+    ". a = 1"
+    "if b"
+    "    . x = 2"
+    "    . y = 3"
+    ". c = 3"
+    "= a"
+    (blank)
+    (str thick)
+    "+ do ("
+    "    - by Int"
+    (blank)
+    ". q = 1"
+    (str thick)
+    "+ do other Int"
+    (blank)
+    ". d = 4"
+    "= d"
+  )
+)
+
+(fn-expr _ header-fixed _
+  (paragraph
+    (str thick)
+    "+ do walk Int"
+    "    - by Int"
+    (blank)
+    ". a = 1"
+    "if b"
+    "    . x = 2"
+    "    . y = 3"
+    ". c = 3"
+    "= a"
+    (blank)
+    (str thick)
+    "+ do fix Int"
+    "    - by Int"
+    (blank)
+    ". q = 1"
+    (blank)
+    (str thick)
+    "+ do other Int"
+    (blank)
+    ". d = 4"
+    "= d"
+  )
+)
+
+(fn-expr _ nested-arguments _
+  (paragraph
+    "(main"
+    "  (let readers (call (of List (of Getter Int))))"
+    ")"
+  )
+)
+
+(fn-expr _ nested-text _
+  (paragraph
+    ". readers = List'(Getter'Int)()"
+    (blank)
+    (str thick)
+  )
+)
+
+(fn-expr _ facet-brix _
+  (paragraph
+    "(type + BoxScroll (facet-of Box)"
+    "  (sees BoxMeasure)"
+    "  (sees BoxFocus)"
+    "  (prop _ offset _ (= 0))"
+    "  (prop ^ pinned _ (= false))"
+    ")"
+  )
+)
+
+(fn-expr _ facet-text _
+  (paragraph
+    (str thick)
+    "+ BoxScroll is facet of Box"
+    "    sees BoxMeasure"
+    "    sees BoxFocus"
+    (blank)
+    "_ offset = 0"
+    "^ pinned = false"
+    (blank)
+    (str thick)
+  )
+)
+
+(fn-expr _ scoped-brix _
+  (paragraph
+    "(fn-do + step _ @inline (without heap suspend) (with depth 2) (with scope \"step\")"
+    "  (do (without gc) (with depth 3)"
+    "    (call tick)"
+    "  )"
+    ")"
+  )
+)
+
+(fn-expr _ scoped-text _
+  (paragraph
+    (str thick)
+    "+ do step @inline without heap, suspend with depth = 2, scope = \"step\""
+    (blank)
+    "do without gc with depth = 3"
+    "    tick()"
+    (blank)
+    (str thick)
+  )
+)
+
+(fn-expr _ caught-task _
+  (paragraph
+    (str thick)
+    "+ do walk Int"
+    (blank)
+    ". a = 1"
+    "do new"
+    "    work()"
+    "catch failed"
+    "    print(failed)"
+    ". c = 3"
+    "= a"
+  )
+)
+
+(fn-expr _ caught-kept-task _
+  (paragraph
+    (str thick)
+    "+ do walk Int"
+    (blank)
+    ". a = 1"
+    ". t = do new"
+    "    work()"
+    "catch failed"
+    "    print(failed)"
+    ". c = 3"
+    "= a"
+  )
+)
+
+(fn-expr _ caught-call _
+  (paragraph
+    (str thick)
+    "+ do walk Int"
+    (blank)
+    ". a = 1"
+    "work()"
+    "catch failed"
+    "    print(failed)"
+    ". c = 3"
+    "= a"
+  )
+)

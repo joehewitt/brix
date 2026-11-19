@@ -1,0 +1,44 @@
+; benchmark.meta description: Measures natural layout for many declarative dialogs.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: tui,compile-timing
+(blank)
+(import /core/markup)
+(import /tui)
+(blank)
+
+(main
+  (<> BenchDialogHost (id: host))
+  (call markup-mount-root host host)
+  (= (. host bounds) (call Rect 0 0 100 32))
+  (blank)
+  (call (. host markup-batch-queue checkpoint))
+  (blank)
+  (let checksum Size 0)
+  (for (in frame (..< 0 40))
+    (call (. host update-layout))
+    (+= checksum (+ (. host inner-height) (. host inner-width) frame))
+  )
+  (blank)
+  (print (str "bench-result tui/layout-dialogs checksum=" checksum))
+)
+
+(type + BenchDialogHost (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (blank)
+  (rule This
+    (= layout flow-col)
+  )
+  (content
+    (<> This
+      (for (in index (..< 0 80))
+        (<> AlertDialog
+          (= message (str "message-" index))
+        )
+      )
+    )
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)

@@ -1,16 +1,18 @@
 # Lists
 
-```yumi
-. list = List'I32()
--- list.length
-
-list.add(10)
--- list.length
--- list[0]
-
-list.add(12)
--- list.length
--- list[1]
+```brix
+(main
+  (let list (call (of List I32)))
+  (print (. list length))
+  (blank)
+  (call (. list add) 10)
+  (print (. list length))
+  (print ([] list 0))
+  (blank)
+  (call (. list add) 12)
+  (print (. list length))
+  (print ([] list 1))
+)
 ```
 
 ```output
@@ -21,17 +23,19 @@ list.add(12)
 12
 ```
 
-```yumi
-. list = List'I32()
--- list.length
-
-list += 10
--- list.length
--- list[0]
-
-list += 12
--- list.length
--- list[1]
+```brix
+(main
+  (let list (call (of List I32)))
+  (print (. list length))
+  (blank)
+  (+= list 10)
+  (print (. list length))
+  (print ([] list 0))
+  (blank)
+  (+= list 12)
+  (print (. list length))
+  (print ([] list 1))
+)
 ```
 
 ```output
@@ -42,20 +46,22 @@ list += 12
 12
 ```
 
-```yumi
-. list = List'Float()
--- list.length
-
-list.add(10.5)
--- list.length
--- list[0]
-
-list.add(12.5)
--- list.length
--- list[1]
-
-list[1] = 15.5
--- list[1]
+```brix
+(main
+  (let list (call (of List Float)))
+  (print (. list length))
+  (blank)
+  (call (. list add) 10.5)
+  (print (. list length))
+  (print ([] list 0))
+  (blank)
+  (call (. list add) 12.5)
+  (print (. list length))
+  (print ([] list 1))
+  (blank)
+  (= ([] list 1) 15.5)
+  (print ([] list 1))
+)
 ```
 
 ```output
@@ -67,24 +73,23 @@ list[1] = 15.5
 15.5
 ```
 
-```yumi
-. thing = Thing(10)
-. list = List'Thing()
--- list.length
-list.add(thing)
--- list.length
--- list[0].a
+```brix
+(main
+  (let thing (call Thing 10))
+  (let list (call (of List Thing)))
+  (print (. list length))
+  (call (. list add) thing)
+  (print (. list length))
+  (print (. ([] list 0) a))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ a = 0
-
-────────────────────
-+ This
-    - v
-
-a = v
+(type + Thing
+  (prop + a _ (= 0))
+  (fn-do + This _
+    (param v _)
+    (= a v)
+  )
+)
 ```
 
 ```output
@@ -93,11 +98,13 @@ a = v
 10
 ```
 
-```yumi
-. list = [1,2,3]
--- list[0]
--- list[1]
--- list[2]
+```brix
+(main
+  (let list (list 1 2 3))
+  (print ([] list 0))
+  (print ([] list 1))
+  (print ([] list 2))
+)
 ```
 
 ```output
@@ -106,11 +113,13 @@ a = v
 3
 ```
 
-```yumi
-. list = [true, false, true]
--- list[0]
--- list[1]
--- list[2]
+```brix
+(main
+  (let list (list true false true))
+  (print ([] list 0))
+  (print ([] list 1))
+  (print ([] list 2))
+)
 ```
 
 ```output
@@ -121,11 +130,13 @@ true
 
 ### One float in the list makes the whole list floats
 
-```yumi
-. list = [1, 2.5, 3]
--- list[0]
--- list[1]
--- list[2]
+```brix
+(main
+  (let list (list 1 2.5 3))
+  (print ([] list 0))
+  (print ([] list 1))
+  (print ([] list 2))
+)
 ```
 
 ```output
@@ -134,35 +145,31 @@ true
 3
 ```
 
-```yumi
-. list = [ListSourceA(), ListSourceB()]
--- list[0].value
--- list[1].value
+```brix
+(main
+  (let list (list (call ListSourceA) (call ListSourceB)))
+  (print (. ([] list 0) value))
+  (print (. ([] list 1) value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ListSourceA
+(type + ListSourceA
+  (fn-to-expr + ListConverted
+    (call ListConverted 17)
+  )
+)
 
-────────────────────
-+ to ListConverted
+(type + ListSourceB
+  (fn-to-expr + ListConverted
+    (call ListConverted 29)
+  )
+)
 
-ListConverted(17)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ListSourceB
-
-────────────────────
-+ to ListConverted
-
-ListConverted(29)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ListConverted
-
-+ value I32
-
-────────────────────
-+ This
-    - value
+(type + ListConverted
+  (prop + value I32)
+  (fn-do + This _
+    (param value _)
+  )
+)
 ```
 
 ```output
@@ -170,18 +177,19 @@ ListConverted(29)
 29
 ```
 
-```yumi
-. seed = list-runtime-value()
-. list = [seed + 3, seed * 2, seed - 4]
--- list.length
--- list[0]
--- list[1]
--- list[2]
+```brix
+(main
+  (let seed (call list-runtime-value))
+  (let list (list (+ seed 3) (* seed 2) (- seed 4)))
+  (print (. list length))
+  (print ([] list 0))
+  (print ([] list 1))
+  (print ([] list 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ list-runtime-value I32
-
-11
+(fn-expr _ list-runtime-value I32
+  11
+)
 ```
 
 ```output
@@ -191,38 +199,34 @@ _ list-runtime-value I32
 7
 ```
 
-```yumi
-. list = [Sub1(), Sub2(), Base()]
--- list[0]
--- list[0].a()
--- list[1]
--- list[1].a()
--- list[2]
--- list[2].a()
+```brix
+(main
+  (let list (list (call Sub1) (call Sub2) (call Base)))
+  (print ([] list 0))
+  (print (call (. ([] list 0) a)))
+  (print ([] list 1))
+  (print (call (. ([] list 1) a)))
+  (print ([] list 2))
+  (print (call (. ([] list 2) a)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (fn-expr + a _
+    0
+  )
+)
 
-────────────────────
-+ a
+(type + Sub1 (is Base)
+  (fn-expr + a _
+    1
+  )
+)
 
-0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub1 is Base
-
-────────────────────
-+ a
-
-1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub2 is Base
-
-────────────────────
-+ a
-
-2
+(type + Sub2 (is Base)
+  (fn-expr + a _
+    2
+  )
+)
 ```
 
 ```output
@@ -234,44 +238,38 @@ _ list-runtime-value I32
 0
 ```
 
-```yumi
-. list = [Sub1(), Sub2()]
--- list[0]
--- list[0].a()
--- list[1]
--- list[1].a()
+```brix
+(main
+  (let list (list (call Sub1) (call Sub2)))
+  (print ([] list 0))
+  (print (call (. ([] list 0) a)))
+  (print ([] list 1))
+  (print (call (. ([] list 1) a)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base1
+(type + Base1
+  (fn-expr + a _
+    0
+  )
+)
 
-────────────────────
-+ a
+(type + Base2 (is Base1)
+  (fn-expr + a _
+    1
+  )
+)
 
-0
+(type + Sub1 (is Base2)
+  (fn-expr + a _
+    2
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base2 is Base1
-
-────────────────────
-+ a
-
-1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub1 is Base2
-
-────────────────────
-+ a
-
-2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub2 is Base2
-
-────────────────────
-+ a
-
-3
+(type + Sub2 (is Base2)
+  (fn-expr + a _
+    3
+  )
+)
 ```
 
 ```output
@@ -281,46 +279,40 @@ _ list-runtime-value I32
 3
 ```
 
-```yumi
-. list = [Sub1(), Sub2(), Base1()]
--- list[0]
--- list[0].a()
--- list[1]
--- list[1].a()
--- list[2]
--- list[2].a()
+```brix
+(main
+  (let list (list (call Sub1) (call Sub2) (call Base1)))
+  (print ([] list 0))
+  (print (call (. ([] list 0) a)))
+  (print ([] list 1))
+  (print (call (. ([] list 1) a)))
+  (print ([] list 2))
+  (print (call (. ([] list 2) a)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base1
+(type + Base1
+  (fn-expr + a _
+    0
+  )
+)
 
-────────────────────
-+ a
+(type + Base2 (is Base1)
+  (fn-expr + a _
+    1
+  )
+)
 
-0
+(type + Sub1 (is Base2)
+  (fn-expr + a _
+    2
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base2 is Base1
-
-────────────────────
-+ a
-
-1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub1 is Base2
-
-────────────────────
-+ a
-
-2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub2 is Base2
-
-────────────────────
-+ a
-
-3
+(type + Sub2 (is Base2)
+  (fn-expr + a _
+    3
+  )
+)
 ```
 
 ```output
@@ -332,11 +324,13 @@ _ list-runtime-value I32
 0
 ```
 
-```yumi
-. list = [1,2]
--- !list
-list = List'I32()
--- !list
+```brix
+(main
+  (let list (list 1 2))
+  (print (not list))
+  (= list (call (of List I32)))
+  (print (not list))
+)
 ```
 
 ```output
@@ -344,9 +338,12 @@ false
 true
 ```
 
-```yumi
-for a in [1,2,3]
-    -- a
+```brix
+(main
+  (for (in a (list 1 2 3))
+    (print a)
+  )
+)
 ```
 
 ```output
@@ -355,10 +352,13 @@ for a in [1,2,3]
 3
 ```
 
-```yumi
-. iter = [1,2,3] as <Int>
-for a in iter
-    -- a
+```brix
+(main
+  (let iter (as (list 1 2 3) (stream Int)))
+  (for (in a iter)
+    (print a)
+  )
+)
 ```
 
 ```output
@@ -367,41 +367,49 @@ for a in iter
 3
 ```
 
-```yumi
-. l = [1]
-l += 2
--- l
+```brix
+(main
+  (let l (list 1))
+  (+= l 2)
+  (print l)
+)
 ```
 
 ```output
 1, 2
 ```
 
-```yumi
-. l = [1]
-l <-* [2,3]
--- l
+```brix
+(main
+  (let l (list 1))
+  (<-* l (list 2 3))
+  (print l)
+)
 ```
 
 ```output
 1, 2, 3
 ```
 
-```yumi
-. l = [1,2,3,4]
--- l.find(3)
+```brix
+(main
+  (let l (list 1 2 3 4))
+  (print (call (. l find) 3))
+)
 ```
 
 ```output
 2
 ```
 
-```yumi
-. l = [1,2,3,4]
--- l has 3
--- l has not 3
--- l has 5
--- l has not 5
+```brix
+(main
+  (let l (list 1 2 3 4))
+  (print (has l 3))
+  (print (has-not l 3))
+  (print (has l 5))
+  (print (has-not l 5))
+)
 ```
 
 ```output
@@ -411,18 +419,20 @@ false
 true
 ```
 
-```yumi
-. list = [1,2,3,4]
-list.slide(-1)
--- list
-
-list = [1,2,3,4]
-list.slide(-3)
--- list
-
-list = [1,2,3,4]
-list.slide(1)
--- list
+```brix
+(main
+  (let list (list 1 2 3 4))
+  (call (. list slide) -1)
+  (print list)
+  (blank)
+  (= list (list 1 2 3 4))
+  (call (. list slide) -3)
+  (print list)
+  (blank)
+  (= list (list 1 2 3 4))
+  (call (. list slide) 1)
+  (print list)
+)
 ```
 
 ```output
@@ -431,30 +441,36 @@ list.slide(1)
 1, 1, 2, 3, 4
 ```
 
-```yumi
-. list1 = [1, 2, 3]
-. list2 = List(list1)
--- list2
+```brix
+(main
+  (let list1 (list 1 2 3))
+  (let list2 (call List list1))
+  (print list2)
+)
 ```
 
 ```output
 1, 2, 3
 ```
 
-```yumi
-. list = [1, 2, 3, 4, 5, 6]
-list[0, 4, 5] = 8
--- list
+```brix
+(main
+  (let list (list 1 2 3 4 5 6))
+  (= ([] list (tuple 0 4 5)) 8)
+  (print list)
+)
 ```
 
 ```output
 8, 2, 3, 4, 8, 8
 ```
 
-```yumi
-. x = [1,2,3,4,5,6]
--= x[3 .. < Position.end]
--- x
+```brix
+(main
+  (let x (list 1 2 3 4 5 6))
+  (-= ([] x (..< 3 (. Position end))))
+  (print x)
+)
 ```
 
 ```output
@@ -463,14 +479,20 @@ list[0, 4, 5] = 8
 
 ### Assigning past the end of a list panics, as reading past it does, and leaves no empty slots.
 
-```yumi
-. names = ["a"]
-. attempt = do new
-    names[2] = "c"
-catch failure
-    -- failure
-attempt.wait()
--- names
+```brix
+(main
+  (let names (list "a"))
+  (let attempt
+    (do-new
+      (= ([] names 2) "c")
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+  (print names)
+)
 ```
 
 ```output
@@ -478,84 +500,107 @@ List index 2 out of range
 a
 ```
 
-```yumi
-. attempt = do new
-    . list = [1,2,3]
-    -- list[3]
-catch failure
-    . err Panic? = failure
-    -- "Caught '$err'"
-attempt.wait()
+```brix
+(main
+  (let attempt
+    (do-new
+      (let list (list 1 2 3))
+      (print ([] list 3))
+      (on-failure failure
+        (let err (? Panic) failure)
+        (print (str "Caught '" err "'"))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
 Caught 'List index 3 out of range'
 ```
 
-```yumi
-. list = ["a", "b"]
+```brix
+(main
+  (let list (list "a" "b"))
+  (blank)
+  (call try-read list -1)
+  (call try-write list -5)
+  (call try-replace list -1)
+  (call try-insert list -1)
+  (call try-remove list -1)
+  (print list)
+)
 
-try-read(list, -1)
-try-write(list, -5)
-try-replace(list, -1)
-try-insert(list, -1)
-try-remove(list, -1)
--- list
+(fn-do _ try-read _
+  (param list (list String))
+  (param index Index)
+  (let attempt
+    (do-new
+      (print ([] list index))
+      (on-failure failure
+        (print (str "read: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do try-read
-    - list [String]
-    - index Index
+(fn-do _ try-write _
+  (param list (list String))
+  (param index Index)
+  (let attempt
+    (do-new
+      (= ([] list index) "z")
+      (on-failure failure
+        (print (str "write: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. attempt = do new
-    -- list[index]
-catch failure
-    -- "read: $failure"
-attempt.wait()
+(fn-do _ try-replace _
+  (param list (list String))
+  (param index Index)
+  (let attempt
+    (do-new
+      (call (. list replace) index "z")
+      (on-failure failure
+        (print (str "replace: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do try-write
-    - list [String]
-    - index Index
+(fn-do _ try-insert _
+  (param list (list String))
+  (param index Index)
+  (let attempt
+    (do-new
+      (call (. list insert) "z" index)
+      (on-failure failure
+        (print (str "insert: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. attempt = do new
-    list[index] = "z"
-catch failure
-    -- "write: $failure"
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-_ do try-replace
-    - list [String]
-    - index Index
-
-. attempt = do new
-    list.replace(index, "z")
-catch failure
-    -- "replace: $failure"
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-_ do try-insert
-    - list [String]
-    - index Index
-
-. attempt = do new
-    list.insert("z", index)
-catch failure
-    -- "insert: $failure"
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-_ do try-remove
-    - list [String]
-    - index Index
-
-. attempt = do new
-    -= list[index]
-catch failure
-    -- "remove: $failure"
-attempt.wait()
+(fn-do _ try-remove _
+  (param list (list String))
+  (param index Index)
+  (let attempt
+    (do-new
+      (-= ([] list index))
+      (on-failure failure
+        (print (str "remove: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -567,32 +612,40 @@ remove: List range at index -1 with count 1 out of range
 a, b
 ```
 
-```yumi
-. list = [1,2,3]
+```brix
+(main
+  (let list (list 1 2 3))
+  (blank)
+  (call try-counted-remove list)
+  (call try-range-remove list)
+  (print list)
+)
 
-try-counted-remove(list)
-try-range-remove(list)
--- list
+(fn-do + try-counted-remove _
+  (param list (list Int))
+  (let attempt
+    (do-new
+      (call (. list remove) 1 5)
+      (on-failure failure
+        (print (str "counted: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do try-counted-remove
-    - list [Int]
-
-. attempt = do new
-    list.remove(1, 5)
-catch failure
-    -- "counted: $failure"
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do try-range-remove
-    - list [Int]
-
-. attempt = do new
-    -= list[2 .. < 5]
-catch failure
-    -- "range: $failure"
-attempt.wait()
+(fn-do + try-range-remove _
+  (param list (list Int))
+  (let attempt
+    (do-new
+      (-= ([] list (..< 2 5)))
+      (on-failure failure
+        (print (str "range: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -603,51 +656,55 @@ range: List range at index 2 with count 3 out of range
 
 ### Removing a range removes the items reading it selects, and reports where they started.
 
-```yumi
-/core/collection
+```brix
+(import /core/collection)
+(blank)
 
-. recorder = Recorder()
-. list = [0, 1, 2, 3, 4]
-observe-collection(list, recorder.record)
--= list[2 .. 1]
--- list
--- recorder.last
-. attempt = do new
-    -= list[0 .. 2 by 2]
-catch failure
-    -- failure
-attempt.wait()
--- list
--- recorder.count
-unobserve-collection(list, recorder.record)
-. named = [0, 1, 2, 3, 4]
-named.remove(2 .. 1)
--- named
-. ascending = [0, 1, 2, 3, 4]
--= ascending[1 .. < 3]
--- ascending
-. exclusive = [0, 1, 2, 3, 4]
--= exclusive[3 .. < 1]
--- exclusive
-. positions = [0, 1, 2, 3, 4]
--= positions[Position.last .. Position.middle]
--- positions
-. empty = [0, 1, 2]
--= empty[3 .. < 3]
--- empty
+(main
+  (let recorder (call Recorder))
+  (let list (list 0 1 2 3 4))
+  (call observe-collection list (. recorder record))
+  (-= ([] list (.. 2 1)))
+  (print list)
+  (print (. recorder last))
+  (let attempt
+    (do-new
+      (-= ([] list (.. 0 2 (by: 2))))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+  (print list)
+  (print (. recorder count))
+  (call unobserve-collection list (. recorder record))
+  (let named (list 0 1 2 3 4))
+  (call (. named remove) (.. 2 1))
+  (print named)
+  (let ascending (list 0 1 2 3 4))
+  (-= ([] ascending (..< 1 3)))
+  (print ascending)
+  (let exclusive (list 0 1 2 3 4))
+  (-= ([] exclusive (..< 3 1)))
+  (print exclusive)
+  (let positions (list 0 1 2 3 4))
+  (-= ([] positions (.. (. Position last) (. Position middle))))
+  (print positions)
+  (let empty (list 0 1 2))
+  (-= ([] empty (..< 3 3)))
+  (print empty)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Recorder
-
-+ count Size = 0
-+ last String = ""
-
-────────────────────
-+ do record Void
-    - mutation CollectionMutation
-
-count += 1
-last = "${mutation.kind}:${mutation.index}:${mutation.count}"
+(type + Recorder
+  (prop + count Size (= 0))
+  (prop + last String (= ""))
+  (fn-do + record Void
+    (param mutation CollectionMutation)
+    (+= count 1)
+    (= last (str (. mutation kind) ":" (. mutation index) ":" (. mutation count)))
+  )
+)
 ```
 
 ```output
@@ -663,34 +720,42 @@ Only increments of 1 are currently supported
 0, 1, 2
 ```
 
-```yumi
-. list = [1,2,3]
+```brix
+(main
+  (let list (list 1 2 3))
+  (blank)
+  (call (. list remove) 3 0)
+  (call (. list move) 3 3 0)
+  (call try-zero-remove list)
+  (call try-zero-move list)
+  (print list)
+)
 
-list.remove(3, 0)
-list.move(3, 3, 0)
-try-zero-remove(list)
-try-zero-move(list)
--- list
+(fn-do + try-zero-remove _
+  (param list (list Int))
+  (let attempt
+    (do-new
+      (call (. list remove) 99 0)
+      (on-failure failure
+        (print (str "remove: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do try-zero-remove
-    - list [Int]
-
-. attempt = do new
-    list.remove(99, 0)
-catch failure
-    -- "remove: $failure"
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do try-zero-move
-    - list [Int]
-
-. attempt = do new
-    list.move(99, 99, 0)
-catch failure
-    -- "move: $failure"
-attempt.wait()
+(fn-do + try-zero-move _
+  (param list (list Int))
+  (let attempt
+    (do-new
+      (call (. list move) 99 99 0)
+      (on-failure failure
+        (print (str "move: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -699,10 +764,12 @@ move: List range at index 99 with count 0 out of range
 1, 2, 3
 ```
 
-```yumi
--- [1,2,3] is List'Float
--- [1,2,3] is! List'Float
--- [1,2,3] is~ List'Float
+```brix
+(main
+  (print (is (list 1 2 3) (of List Float)))
+  (print (is! (list 1 2 3) (of List Float)))
+  (print (is~ (list 1 2 3) (of List Float)))
+)
 ```
 
 ```output
@@ -713,42 +780,45 @@ true
 
 ### List capacity policy
 
-```yumi
-. empty = List'I32()
--- empty.length
--- empty.capacity
-
-. ints = List'I32()
-ints += 1
--- ints.capacity
-ints += 2
-ints += 3
-ints += 4
--- ints.capacity
-ints += 5
--- ints.capacity
-
-. large = List'I32()
-for i I32 in 0 .. < 1025
-    large += i
--- large.capacity
-
-. bytes = List'Byte()
-bytes += 1u8
--- bytes.capacity
-
-. one = [42]
--- one.capacity
-
-. three = [1,2,3]
--- three.capacity
-
-. many = [1,2,3,4,5,6]
--- many.capacity
-
-. copy = List(three)
--- copy
--- copy.capacity
+```brix
+(main
+  (let empty (call (of List I32)))
+  (print (. empty length))
+  (print (. empty capacity))
+  (blank)
+  (let ints (call (of List I32)))
+  (+= ints 1)
+  (print (. ints capacity))
+  (+= ints 2)
+  (+= ints 3)
+  (+= ints 4)
+  (print (. ints capacity))
+  (+= ints 5)
+  (print (. ints capacity))
+  (blank)
+  (let large (call (of List I32)))
+  (for (in (: i I32) (..< 0 1025))
+    (+= large i)
+  )
+  (print (. large capacity))
+  (blank)
+  (let bytes (call (of List Byte)))
+  (+= bytes 1u8)
+  (print (. bytes capacity))
+  (blank)
+  (let one (list 42))
+  (print (. one capacity))
+  (blank)
+  (let three (list 1 2 3))
+  (print (. three capacity))
+  (blank)
+  (let many (list 1 2 3 4 5 6))
+  (print (. many capacity))
+  (blank)
+  (let copy (call List three))
+  (print copy)
+  (print (. copy capacity))
+)
 ```
 
 ```output
@@ -768,40 +838,44 @@ bytes += 1u8
 
 ### List growth, replacement, removal, truncation, and clear only copy or drop Arena pointers.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. first = Arena()
-. second = Arena()
-. first-pointer = first.allocate'U32(1)
-first-pointer[0] = 10u32
-. second-pointer = second.allocate'U32(1)
-second-pointer[0] = 20u32
-
-. arenas = List'Arena()
-arenas += first
-arenas += second
-arenas.replace(0, second)
-arenas.remove(1)
-arenas.clear()
-. first-next = first.allocate'U32(1)
-first-next[0] = 11u32
--- first-next[0]
-. second-next = second.allocate'U32(1)
-second-next[0] = 21u32
--- second-next[0]
-
-. pointers = List'(CPointer'U32)()
-for index in 0 .. < 16
-    pointers += first-pointer
-pointers.replace(0, second-pointer)
-pointers.remove(1, pointers.length - 1)
--- pointers[0][0]
-pointers.clear()
--- first-pointer[0]
-
-first.release()
-second.release()
+(main
+  (let first (call Arena))
+  (let second (call Arena))
+  (let first-pointer (call (of (. first allocate) U32) 1))
+  (= ([] first-pointer 0) 10u32)
+  (let second-pointer (call (of (. second allocate) U32) 1))
+  (= ([] second-pointer 0) 20u32)
+  (blank)
+  (let arenas (call (of List Arena)))
+  (+= arenas first)
+  (+= arenas second)
+  (call (. arenas replace) 0 second)
+  (call (. arenas remove) 1)
+  (call (. arenas clear))
+  (let first-next (call (of (. first allocate) U32) 1))
+  (= ([] first-next 0) 11u32)
+  (print ([] first-next 0))
+  (let second-next (call (of (. second allocate) U32) 1))
+  (= ([] second-next 0) 21u32)
+  (print ([] second-next 0))
+  (blank)
+  (let pointers (call (of List (of CPointer U32))))
+  (for (in index (..< 0 16))
+    (+= pointers first-pointer)
+  )
+  (call (. pointers replace) 0 second-pointer)
+  (call (. pointers remove) 1 (- (. pointers length) 1))
+  (print ([] ([] pointers 0) 0))
+  (call (. pointers clear))
+  (print ([] first-pointer 0))
+  (blank)
+  (call (. first release))
+  (call (. second release))
+)
 ```
 
 ```output
@@ -813,48 +887,49 @@ second.release()
 
 ### Reserving capacity preserves contents and does not notify observers.
 
-```yumi
-/core
-/core/collection
-/core/tests/support/markup-fixtures
+```brix
+(import /core)
+(import /core/collection)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<Demo demo
-    for item in demo.#items
-        <TextBox = item
+(main
+  (<> Demo (id: demo)
+    (for (in item (. demo #items))
+      (<> TextBox (value: item))
+    )
+  )
+  (blank)
+  (+= (. demo items) "a")
+  (+= (. demo items) "b")
+  (blank)
+  (let recorder (call Recorder))
+  (call observe-collection (. demo items) (. recorder record))
+  (call (. demo items reserve) 1)
+  (call (. demo items reserve) 16)
+  (print (. demo items length))
+  (print (. demo items capacity))
+  (print (. demo items))
+  (print (. recorder count))
+  (+= (. demo items) "c")
+  (print (. recorder count))
+  (print (. recorder last))
+  (call unobserve-collection (. demo items) (. recorder record))
+)
 
-demo.items += "a"
-demo.items += "b"
+(type + Demo (is Box)
+  (prop + items (list String))
+)
 
-. recorder = Recorder()
-observe-collection(demo.items, recorder.record)
-demo.items.reserve(1)
-demo.items.reserve(16)
--- demo.items.length
--- demo.items.capacity
--- demo.items
--- recorder.count
-demo.items += "c"
--- recorder.count
--- recorder.last
-unobserve-collection(demo.items, recorder.record)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Demo is Box
-
-+ items [String]
-
-━━━━━━━━━━━━━━━━━━━━
-+ Recorder
-
-+ count Size = 0
-+ last String = ""
-
-────────────────────
-+ do record Void
-    - mutation CollectionMutation
-
-count += 1
-last = "${mutation.kind}:${mutation.index}:${mutation.count}"
+(type + Recorder
+  (prop + count Size (= 0))
+  (prop + last String (= ""))
+  (fn-do + record Void
+    (param mutation CollectionMutation)
+    (+= count 1)
+    (= last (str (. mutation kind) ":" (. mutation index) ":" (. mutation count)))
+  )
+)
 ```
 
 ```output
@@ -868,55 +943,61 @@ append:2:1
 
 ### Arena-backed Lists retain one algorithm and preserve their backing through results and copies.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-do finally
-    arena.release()
-
-. list = List'U32(arena)
-for index in 0 .. < 10
-    list += index as U32
-
-. alias = list
-alias[0] = 100u32
-alias += 10u32
-
-. slice = list[2 .. < 5]
-slice[0] = 22u32
-. plus = list + 11u32
-. joined = list ++ [11u32, 12u32]
-
-. copy = List(list)
-copy[0] = 200u32
-. from-items = List'U32(arena, [7u32, 8u32])
-
--- type-of List'U32()
--- type-of list
--- type-of slice
--- type-of plus
--- type-of joined
--- type-of copy
--- type-of from-items
--- list.length, list[0], list[2], list.tail
--- plus.length, plus.tail
--- joined.length, joined.tail
--- copy[0], list[0]
--- from-items[0], from-items[1]
-
-list.remove(0, list.length)
-list += 42u32
-. sum = 0u32
-for item in list
-    sum += item
--- sum
-
-list.release()
--- list.length, list.capacity
-list += 5u32
--- list[0]
--- GCBacking.Context.size, ArenaBacking.Context.size
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (blank)
+  (let list (call (of List U32) arena))
+  (for (in index (..< 0 10))
+    (+= list (as index U32))
+  )
+  (blank)
+  (let alias list)
+  (= ([] alias 0) 100u32)
+  (+= alias 10u32)
+  (blank)
+  (let slice ([] list (..< 2 5)))
+  (= ([] slice 0) 22u32)
+  (let plus (+ list 11u32))
+  (let joined (++ list (list 11u32 12u32)))
+  (blank)
+  (let copy (call List list))
+  (= ([] copy 0) 200u32)
+  (let from-items (call (of List U32) arena (list 7u32 8u32)))
+  (blank)
+  (print (type-of (call (of List U32))))
+  (print (type-of list))
+  (print (type-of slice))
+  (print (type-of plus))
+  (print (type-of joined))
+  (print (type-of copy))
+  (print (type-of from-items))
+  (print (tuple (. list length) ([] list 0) ([] list 2) (. list tail)))
+  (print (tuple (. plus length) (. plus tail)))
+  (print (tuple (. joined length) (. joined tail)))
+  (print (tuple ([] copy 0) ([] list 0)))
+  (print (tuple ([] from-items 0) ([] from-items 1)))
+  (blank)
+  (call (. list remove) 0 (. list length))
+  (+= list 42u32)
+  (let sum 0u32)
+  (for (in item list)
+    (+= sum item)
+  )
+  (print sum)
+  (blank)
+  (call (. list release))
+  (print (tuple (. list length) (. list capacity)))
+  (+= list 5u32)
+  (print ([] list 0))
+  (print (tuple (. GCBacking Context size) (. ArenaBacking Context size)))
+)
 ```
 
 ```output
@@ -938,29 +1019,29 @@ list += 5u32
 (0, 16)
 ```
 
-```yumi
-. entries = List'QueueEntry()
-entries += (41 as Size, 9u32)
--- entries.length
-if entries
-    -- entries[0].address
-    -- entries[0].generation
+```brix
+(main
+  (let entries (call (of List QueueEntry)))
+  (+= entries (tuple (as 41 Size) 9u32))
+  (print (. entries length))
+  (if entries
+    (print (. ([] entries 0) address))
+    (print (. ([] entries 0) generation))
+  )
+  (blank)
+  (let stack (list (tuple (: uid U32) (: class-type U16))) (list (tuple 0 0)))
+  (let uid EntryUID 1010)
+  (let class-type EntryClassId 17)
+  (+= stack (tuple uid class-type))
+  (print (. stack length))
+  (print (tuple (. ([] stack 1) uid) (. ([] stack 1) class-type)))
+)
 
-. stack [(uid U32, class-type U16)] = [(0, 0)]
-. uid EntryUID = 1010
-. class-type EntryClassId = 17
-stack += (uid, class-type)
--- stack.length
--- stack[1].uid, stack[1].class-type
+(type + QueueEntry (is (tuple (: address Size) (: generation U32))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ QueueEntry is (address Size, generation U32)
+(type + EntryUID (is U32))
 
-━━━━━━━━━━━━━━━━━━━━
-+ EntryUID is U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ EntryClassId is U16
+(type + EntryClassId (is U16))
 ```
 
 ```output
@@ -973,34 +1054,40 @@ stack += (uid, class-type)
 
 ### += and append add a collection as one item.
 
-```yumi
-. nested = List'[Int]()
-nested += [1, 2]
-nested.append([3])
--- nested.length
--- nested[0]
+```brix
+(main
+  (let nested (call (of List (list Int))))
+  (+= nested (list 1 2))
+  (call (. nested append) (list 3))
+  (print (. nested length))
+  (print ([] nested 0))
+  (blank)
+  (let values (call (of List Value)))
+  (let inner (call (of List Value)))
+  (+= inner 1)
+  (+= inner 2)
+  (+= values inner)
+  (call (. values append) inner)
+  (print (. values length))
+  (blank)
+  (let entries (call (of List Value)))
+  (let entry
+    (call (of Map String Value)
+      (block
+        (entry "count" 1)
+      )
+    )
+  )
+  (+= entries entry)
+  (print (. entries length))
+)
 
-. values = List'Value()
-. inner = List'Value()
-inner += 1
-inner += 2
-values += inner
-values.append(inner)
--- values.length
-
-. entries = List'Value()
-. entry = Map'String'Value
-    • "count" 1
-entries += entry
--- entries.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| Bool
-| Int
-| [Value]
-| [String = Value]
+(type + Value (is Union)
+  (variant Bool)
+  (variant Int)
+  (variant (list Value))
+  (variant (map String Value))
+)
 ```
 
 ```output
@@ -1012,27 +1099,28 @@ entries += entry
 
 ### ++= and append-all add each item in place.
 
-```yumi
-. items = [1]
-. alias = items
-items ++= [2, 3]
-items.append-all(4 .. 5)
--- alias
+```brix
+(main
+  (let items (list 1))
+  (let alias items)
+  (++= items (list 2 3))
+  (call (. items append-all) (.. 4 5))
+  (print alias)
+  (blank)
+  (let values (call (of List Value)))
+  (let inner (call (of List Value)))
+  (+= inner 1)
+  (+= inner 2)
+  (++= values inner)
+  (call (. values append-all) inner)
+  (print (. values length))
+)
 
-. values = List'Value()
-. inner = List'Value()
-inner += 1
-inner += 2
-values ++= inner
-values.append-all(inner)
--- values.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| Bool
-| Int
-| [Value]
+(type + Value (is Union)
+  (variant Bool)
+  (variant Int)
+  (variant (list Value))
+)
 ```
 
 ```output
@@ -1042,17 +1130,19 @@ values.append-all(inner)
 
 ### reversed yields items last to first and nothing for an empty collection.
 
-```yumi
-. items = [1, 2, 3]
--- ", ".join(items.reversed())
-. empty = List'Int()
--- List'Int(empty.reversed()).length
-. buffer = Int[3]
-buffer[0] = 4
-buffer[2] = 6
--- ", ".join(buffer.reversed())
-. none = Int[0]
--- List'Int(none.reversed()).length
+```brix
+(main
+  (let items (list 1 2 3))
+  (print (call (. ", " join) (call (. items reversed))))
+  (let empty (call (of List Int)))
+  (print (. (call (of List Int) (call (. empty reversed))) length))
+  (let buffer ([] Int 3))
+  (= ([] buffer 0) 4)
+  (= ([] buffer 2) 6)
+  (print (call (. ", " join) (call (. buffer reversed))))
+  (let none ([] Int 0))
+  (print (. (call (of List Int) (call (. none reversed))) length))
+)
 ```
 
 ```output
@@ -1064,17 +1154,19 @@ buffer[2] = 6
 
 ### A list written holds its items in the order written, each converted to the type they join in.
 
-```yumi
-. a = [1, 2, 3]
--- a.size
--- a[0], a[1], a[2]
-. b = [1.5, 2, 3]
--- b[1]
-. small U8 = 4
-. c = [small, 300]
--- c[0], c[1]
-. one = [7]
--- one.size, one[0]
+```brix
+(main
+  (let a (list 1 2 3))
+  (print (. a size))
+  (print (tuple ([] a 0) ([] a 1) ([] a 2)))
+  (let b (list 1.5 2 3))
+  (print ([] b 1))
+  (let small U8 4)
+  (let c (list small 300))
+  (print (tuple ([] c 0) ([] c 1)))
+  (let one (list 7))
+  (print (tuple (. one size) ([] one 0)))
+)
 ```
 
 ```output
@@ -1087,31 +1179,30 @@ buffer[2] = 6
 
 ### A list of text, of tuples, of structs or of objects gives each item by its index, and the members of an item read that way.
 
-```yumi
-. names = ["one", "two", "three"]
--- names.size, names[1]
-. pairs = [(1, "a"), (2, "b")]
--- pairs[1]
-. points = [Point(1, 2), Point(5, 6)]
--- points[1].x, points[0].y
-. boxes = [Box("left"), Box("right")]
--- boxes[1].name
--- boxes[0].name.size
+```brix
+(main
+  (let names (list "one" "two" "three"))
+  (print (tuple (. names size) ([] names 1)))
+  (let pairs (list (tuple 1 "a") (tuple 2 "b")))
+  (print ([] pairs 1))
+  (let points (list (call Point 1 2) (call Point 5 6)))
+  (print (tuple (. ([] points 1) x) (. ([] points 0) y)))
+  (let boxes (list (call Box "left") (call Box "right")))
+  (print (. ([] boxes 1) name))
+  (print (. ([] boxes 0) name size))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(type + Point (is Struct)
+  (prop + x Int)
+  (prop + y Int)
+)
 
-+ x Int
-+ y Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ name String
-
-────────────────────
-+ This
-    - name String
+(type + Box
+  (prop + name String)
+  (fn-do + This _
+    (param name String)
+  )
+)
 ```
 
 ```output
@@ -1124,19 +1215,22 @@ right
 
 ### The items of a list written are evaluated in the order written.
 
-```yumi
-. list = [note("first", 1), note("second", 2), note("third", 3)]
--- list[0], list[1], list[2]
-. texts = ["a${note("fourth", 4)}", "b${note("fifth", 5)}"]
--- texts[1], texts[0]
+```brix
+(main
+  (let list (list (call note "first" 1) (call note "second" 2) (call note "third" 3)))
+  (print (tuple ([] list 0) ([] list 1) ([] list 2)))
+  (let texts (list (str "a" (call note "fourth" 4)) (str "b" (call note "fifth" 5))))
+  (print (tuple ([] texts 1) ([] texts 0)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ note Int
-    - text String
-    - n Int
-
--- text
-n
+(fn-expr + note Int
+  (param text String)
+  (param n Int)
+  (before
+    (print text)
+  )
+  n
+)
 ```
 
 ```output
@@ -1151,49 +1245,49 @@ fifth
 
 ### A list written keeps its items, and what they hold, across collections.
 
-```yumi
-/BxGC/BxGC.h
+```brix
+(import /BxGC/BxGC.h)
+(blank)
+(prop + counted _ (= 0))
+(blank)
 
-+ counted = 0
+(main
+  (let names (list (str "a" (call note)) (str "b" (call note))))
+  (let boxes (list (call Box (str "left" (call note))) (call Box (str "right" (call note)))))
+  (let pairs (list (call Pair 1 (str "one" (call note))) (call Pair 2 (str "two" (call note)))))
+  (call C:brixGCCollect)
+  (let total 0)
+  (for (in round (..< 0 2000))
+    (let made (list (str "x" round) (str "y" round) (str "z" round)))
+    (+= total (. ([] made 1) size))
+    (let more (list (call Pair round (str "p" round))))
+    (+= total (. ([] more 0) name size))
+    (let box (call Box (str "b" round)))
+    (+= total (. box name size))
+  )
+  (call C:brixGCCollect)
+  (print total)
+  (print (tuple ([] names 0) ([] names 1)))
+  (print (tuple (. ([] boxes 0) name) (. ([] boxes 1) name) (. boxes size)))
+  (print (tuple (. ([] pairs 0) name) (. ([] pairs 1) name) (. ([] pairs 1) id)))
+)
 
-. names = ["a${note()}", "b${note()}"]
-. boxes = [Box("left${note()}"), Box("right${note()}")]
-. pairs = [Pair(1, "one${note()}"), Pair(2, "two${note()}")]
-C:brixGCCollect()
-. total = 0
-for round in 0 .. < 2000
-    . made = ["x$round", "y$round", "z$round"]
-    total += made[1].size
-    . more = [Pair(round, "p$round")]
-    total += more[0].name.size
-    . box = Box("b$round")
-    total += box.name.size
-C:brixGCCollect()
--- total
--- names[0], names[1]
--- boxes[0].name, boxes[1].name, boxes.size
--- pairs[0].name, pairs[1].name, pairs[1].id
+(fn-do + note Int
+  (+= counted 1)
+  (return counted)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do note Int
+(type + Box
+  (prop + name String)
+  (fn-do + This _
+    (param name String)
+  )
+)
 
-counted += 1
-= counted
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ name String
-
-────────────────────
-+ This
-    - name String
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Struct
-
-+ id Int
-+ name String
+(type + Pair (is Struct)
+  (prop + id Int)
+  (prop + name String)
+)
 ```
 
 ```output
@@ -1205,35 +1299,39 @@ counted += 1
 
 ### An index of a list is read with the list evaluated before the key, and assigned with the value evaluated before both. The assignment has the value assigned.
 
-```yumi
-+ a = [10, 20, 30]
+```brix
+(prop + a _ (= (list 10 20 30)))
+(blank)
 
--- a[next()]
--- a[0], a[2]
-a[key("key")] = value("value")
--- a[0], a[1], a[2]
--- (a[1] = 44)
--- a[1]
+(main
+  (print ([] a (call next)))
+  (print (tuple ([] a 0) ([] a 2)))
+  (= ([] a (call key "key")) (call value "value"))
+  (print (tuple ([] a 0) ([] a 1) ([] a 2)))
+  (print (= ([] a 1) 44))
+  (print ([] a 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do next Int
+(fn-do + next Int
+  (= a (list 7 8 9))
+  (return 1)
+)
 
-a = [7, 8, 9]
-= 1
+(fn-expr + key Int
+  (param text String)
+  (before
+    (print text)
+  )
+  0
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ key Int
-    - text String
-
--- text
-0
-
-━━━━━━━━━━━━━━━━━━━━
-+ value Int
-    - text String
-
--- text
-55
+(fn-expr + value Int
+  (param text String)
+  (before
+    (print text)
+  )
+  55
+)
 ```
 
 ```output
@@ -1248,89 +1346,90 @@ key
 
 ### A list of items of two classes that share nothing is refused
 
-```yumi crash
-. list = [Thing(), Other()]
--- list.size
+```brix crash
+(main
+  (let list (list (call Thing) (call Other)))
+  (print (. list size))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Other
+(type + Other)
 ```
 
 ```output
 Exception: This list mixes Thing and Other, which have no common type; convert the items to one type
-<no file:2>
-    . list = [Thing(), Other()]
-             ^^^^^^^^^^^^^^^^^^
+<no file:3>
+      (let list (list (call Thing) (call Other)))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A list written with no items is refused, whatever is expected of it
 
-```yumi crash
-. list [Int] = []
--- list.size
+```brix crash
+(main
+  (let list (list Int) (list))
+  (print (. list size))
+)
 ```
 
 ```output
 Exception: Incompatible types in list
-<no file:2>
-    . list [Int] = []
-                   ^^
+<no file:3>
+      (let list (list Int) (list))
+                           ^^^^^^
 ```
 
 ### A list of a struct and a number is refused
 
-```yumi crash
-. list = [Point(1, 2), 5]
--- list.size
+```brix crash
+(main
+  (let list (list (call Point 1 2) 5))
+  (print (. list size))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x Int
-+ y Int
+(type + Point (is Struct)
+  (prop + x Int)
+  (prop + y Int)
+)
 ```
 
 ```output
 Exception: This list mixes Point and I64, which have no common type; convert the items to one type
-<no file:2>
-    . list = [Point(1, 2), 5]
-             ^^^^^^^^^^^^^^^^
+<no file:3>
+      (let list (list (call Point 1 2) 5))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A list printed whole: one that is empty, of one item, of texts, of floats, of lists, of objects and of tuples, and in a text.
 
-```yumi
-. empty [Int]
--- empty
-. one = [7]
--- one
-. words = ["a", "b", "c"]
--- words
--- [1.5, 2.5]
-. nested = [[1, 2], [3]]
--- nested
--- "list: $words"
-. things = [Thing(1), Thing(2)]
--- things
-. mixed = [(1, "a"), (2, "b")]
--- mixed
+```brix
+(main
+  (let empty (list Int))
+  (print empty)
+  (let one (list 7))
+  (print one)
+  (let words (list "a" "b" "c"))
+  (print words)
+  (print (list 1.5 2.5))
+  (let nested (list (list 1 2) (list 3)))
+  (print nested)
+  (print (str "list: " words))
+  (let things (list (call Thing 1) (call Thing 2)))
+  (print things)
+  (let mixed (list (tuple 1 "a") (tuple 2 "b")))
+  (print mixed)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-+ n Int
-
-────────────────────
-+ This
-    - n
-
-────────────────────
-+ to String
-
-"T$n"
+(type + Thing
+  (prop + n Int)
+  (fn-do + This _
+    (param n _)
+  )
+  (fn-to-expr + String
+    (str "T" n)
+  )
+)
 ```
 
 ```output
@@ -1345,20 +1444,24 @@ T1, T2
 
 ### Slices of a list by ranges with a side left open, printed and looped over.
 
-```yumi
-. list = [1, 2, 3, 4, 5]
--- list[1 ...]
--- list[... 2]
--- list[1 .. 3]
--- list[1 .. < 3]
-. tail = list[2 ...]
--- tail.length
-for item in tail
-    -- item
-. total = 0
-for item in list
-    total += item
--- total
+```brix
+(main
+  (let list (list 1 2 3 4 5))
+  (print ([] list (... 1)))
+  (print ([] list (... _ 2)))
+  (print ([] list (.. 1 3)))
+  (print ([] list (..< 1 3)))
+  (let tail ([] list (... 2)))
+  (print (. tail length))
+  (for (in item tail)
+    (print item)
+  )
+  (let total 0)
+  (for (in item list)
+    (+= total item)
+  )
+  (print total)
+)
 ```
 
 ```output
@@ -1375,33 +1478,38 @@ for item in list
 
 ### A slice ends at most at the list's last item, whatever room the list has reserved or kept after removing items.
 
-```yumi
-. empty = List'Int()
-empty.reserve(4)
--- empty[0 .. < 0].length
-try-slice(empty, 0 .. < 2)
-. list = [1, 2, 3]
-list.reserve(8)
--- list[3 .. < 3].length
--- list[1 .. < 3]
--- list[2 .. 0]
-try-slice(list, 1 .. < 4)
-try-slice(list, 4 .. 2)
-list.pop()
--- list[0 .. < 2]
-try-slice(list, 0 .. < 3)
-try-slice(list, 3 .. 1)
+```brix
+(main
+  (let empty (call (of List Int)))
+  (call (. empty reserve) 4)
+  (print (. ([] empty (..< 0 0)) length))
+  (call try-slice empty (..< 0 2))
+  (let list (list 1 2 3))
+  (call (. list reserve) 8)
+  (print (. ([] list (..< 3 3)) length))
+  (print ([] list (..< 1 3)))
+  (print ([] list (.. 2 0)))
+  (call try-slice list (..< 1 4))
+  (call try-slice list (.. 4 2))
+  (call (. list pop))
+  (print ([] list (..< 0 2)))
+  (call try-slice list (..< 0 3))
+  (call try-slice list (.. 3 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do try-slice
-    - list [Int]
-    - range Range'Int
-
-. attempt = do new
-    -- list[range]
-catch failure
-    -- failure
-attempt.wait()
+(fn-do + try-slice _
+  (param list (list Int))
+  (param range (of Range Int))
+  (let attempt
+    (do-new
+      (print ([] list range))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -1419,32 +1527,34 @@ Range out of bounds (3 / 2)
 
 ### Adding to a list whose storage a slice shares never writes over the other's items, even after either has removed items.
 
-```yumi
-. one = [1]
-. first = one[0 .. < 1]
-first += 2
-one += 9
--- first
-. list = [1, 2, 3]
-. head = list[0 .. < 2]
-head.pop()
-head += 7
--- list
-. middle = [1, 2, 3, 4]
-. inner = middle[1 .. < 3]
-inner.pop()
-inner += 8
--- middle
-. parent = [1, 2]
-. kept = parent[0 .. < 2]
-parent.pop()
-parent += 9
--- kept
-. cleared = [1, 2, 3]
-. tail = cleared[1 .. < 3]
-cleared.clear()
-cleared += 5
--- tail
+```brix
+(main
+  (let one (list 1))
+  (let first ([] one (..< 0 1)))
+  (+= first 2)
+  (+= one 9)
+  (print first)
+  (let list (list 1 2 3))
+  (let head ([] list (..< 0 2)))
+  (call (. head pop))
+  (+= head 7)
+  (print list)
+  (let middle (list 1 2 3 4))
+  (let inner ([] middle (..< 1 3)))
+  (call (. inner pop))
+  (+= inner 8)
+  (print middle)
+  (let parent (list 1 2))
+  (let kept ([] parent (..< 0 2)))
+  (call (. parent pop))
+  (+= parent 9)
+  (print kept)
+  (let cleared (list 1 2 3))
+  (let tail ([] cleared (..< 1 3)))
+  (call (. cleared clear))
+  (+= cleared 5)
+  (print tail)
+)
 ```
 
 ```output
@@ -1457,22 +1567,25 @@ cleared += 5
 
 ### A list as a stream: looped over, joined, and given to a function that takes a stream of any item.
 
-```yumi
-. words = ["x", "y"]
-. stream = words as <String>
-for word in stream
-    -- word
--- ", ".join(words)
--- "-".join([1, 2, 3])
-show(words)
-show([1, 2])
+```brix
+(main
+  (let words (list "x" "y"))
+  (let stream (as words (stream String)))
+  (for (in word stream)
+    (print word)
+  )
+  (print (call (. ", " join) words))
+  (print (call (. "-" join) (list 1 2 3)))
+  (call show words)
+  (call show (list 1 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do show'T
-    - items <T>
-
-for item in items
-    -- "item $item"
+(fn-do + (of show T) _
+  (param items (stream T))
+  (for (in item items)
+    (print (str "item " item))
+  )
+)
 ```
 
 ```output
@@ -1488,19 +1601,24 @@ item 2
 
 ### A list seen as an iterable and as an indexable, looped over through each.
 
-```yumi
-. list = [3, 4, 5]
-. items Iterable'Int = list
-for item in items
-    -- item
-. more Indexable'Int = list
-for item in more
-    -- item
--- more.length, more[1]
-. sum = 0
-for item in list as Iterable'Int
-    sum += item
--- sum
+```brix
+(main
+  (let list (list 3 4 5))
+  (let items (of Iterable Int) list)
+  (for (in item items)
+    (print item)
+  )
+  (let more (of Indexable Int) list)
+  (for (in item more)
+    (print item)
+  )
+  (print (tuple (. more length) ([] more 1)))
+  (let sum 0)
+  (for (in item (as list (of Iterable Int)))
+    (+= sum item)
+  )
+  (print sum)
+)
 ```
 
 ```output
@@ -1516,18 +1634,20 @@ for item in list as Iterable'Int
 
 ### A function of a stream of any item, given a list of numbers and one of floats.
 
-```yumi
-. list = [3, 4, 5]
--- total(list), total([1.5, 2.5])
+```brix
+(main
+  (let list (list 3 4 5))
+  (print (tuple (call total list) (call total (list 1.5 2.5))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do total'T T
-    - items <T>
-
-. sum T
-for item in items
-    sum += item
-= sum
+(fn-do + (of total T) T
+  (param items (stream T))
+  (let sum T)
+  (for (in item items)
+    (+= sum item)
+  )
+  (return sum)
+)
 ```
 
 ```output
@@ -1536,33 +1656,32 @@ for item in items
 
 ### A list a property holds, filled in a loop, printed, sliced and read in reverse.
 
-```yumi
-. box = Box()
--- box.size
-box.fill(4)
--- box.size
--- box.items
-. slice = box.items[1 .. 2]
--- slice
-for item in box.items.reversed()
-    -- item
+```brix
+(main
+  (let box (call Box))
+  (print (. box size))
+  (call (. box fill) 4)
+  (print (. box size))
+  (print (. box items))
+  (let slice ([] (. box items) (.. 1 2)))
+  (print slice)
+  (for (in item (call (. box items reversed)))
+    (print item)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ items [Int]
-
-────────────────────
-+ get size
-
-items.length
-
-────────────────────
-+ do fill
-    - n Int
-
-for i in 0 .. < n
-    items += i * i
+(type + Box
+  (prop + items (list Int))
+  (fn-expr + size _ :get
+    (. items length)
+  )
+  (fn-do + fill _
+    (param n Int)
+    (for (in i (..< 0 n))
+      (+= items (* i i))
+    )
+  )
+)
 ```
 
 ```output
@@ -1576,218 +1695,199 @@ for i in 0 .. < n
 0
 ```
 
-```yumi
-/core
+```brix
+(import /core)
+(blank)
 
-. log = Log()
-. counter = Counter()
--- literal-has("using")
--- literal-has("zeta")
--- literal-has-not("using")
--- literal-has-not("zeta")
--- literal-is-in("using")
--- literal-is-in("zeta")
--- literal-not-in("using")
--- literal-not-in("zeta")
--- number-has(8)
--- number-has(9)
--- folded-has()
--- computed-has(log, "b")
--- log.text
--- key-has(counter, 2)
--- counter.count
--- key-has(counter, 9)
--- counter.count
--- listed-has(counter, 2)
--- counter.count
--- tag-has(Tag("b"))
--- constant-has("using")
--- constant-has("zeta")
--- named-has("entry")
--- named-has("trace")
--- named-has("zeta")
--- named-is-in(7)
--- named-is-in(8)
--- measured-has("zeta")
--- grown-has("zeta")
--- count-below(4)
--- count-toward(4)
--- count-toward(-3)
+(main
+  (let log (call Log))
+  (let counter (call Counter))
+  (print (call literal-has "using"))
+  (print (call literal-has "zeta"))
+  (print (call literal-has-not "using"))
+  (print (call literal-has-not "zeta"))
+  (print (call literal-is-in "using"))
+  (print (call literal-is-in "zeta"))
+  (print (call literal-not-in "using"))
+  (print (call literal-not-in "zeta"))
+  (print (call number-has 8))
+  (print (call number-has 9))
+  (print (call folded-has))
+  (print (call computed-has log "b"))
+  (print (. log text))
+  (print (call key-has counter 2))
+  (print (. counter count))
+  (print (call key-has counter 9))
+  (print (. counter count))
+  (print (call listed-has counter 2))
+  (print (. counter count))
+  (print (call tag-has (call Tag "b")))
+  (print (call constant-has "using"))
+  (print (call constant-has "zeta"))
+  (print (call named-has "entry"))
+  (print (call named-has "trace"))
+  (print (call named-has "zeta"))
+  (print (call named-is-in 7))
+  (print (call named-is-in 8))
+  (print (call measured-has "zeta"))
+  (print (call grown-has "zeta"))
+  (print (call count-below 4))
+  (print (call count-toward 4))
+  (print (call count-toward -3))
+)
 
-_ heads = ["param", "constraint", "iterates", "implements", "using"]
+(blank)
+(prop _ heads _ (= (list "param" "constraint" "iterates" "implements" "using")))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Log
+(type + Log
+  (prop + text _ (= ""))
+)
 
-+ text = ""
+(type + Counter
+  (prop + count _ (= 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
+(type + Key
+  (prop + counter Counter)
+  (prop + value Int)
+  (fn-do + This _
+    (param counter _)
+    (param value _)
+  )
+  (fn-do + (infix this == (param other Key)) _
+    (+= (. counter count) 1)
+    (return (== value (. other value)))
+  )
+)
 
-+ count = 0
+(type + Tag
+  (prop + name String)
+  (fn-do + This _
+    (param name _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Key
+(extend + Tag
+  (fn-expr + (infix this == (param other Tag)) _
+    (== name (. other name))
+  )
+)
 
-+ counter Counter
-+ value Int
+(fn-expr _ literal-has Bool
+  (param word String)
+  (has (list "param" "constraint" "iterates" "implements" "using") word)
+)
 
-────────────────────
-+ This
-    - counter
-    - value
+(fn-expr _ literal-has-not Bool
+  (param word String)
+  (has-not (list "param" "constraint" "iterates" "implements" "using") word)
+)
 
-────────────────────
-+ do this == other Key
+(fn-expr _ literal-is-in Bool
+  (param word String)
+  (is-in word (list "param" "using"))
+)
 
-counter.count += 1
-= value == other.value
+(fn-expr _ literal-not-in Bool
+  (param word String)
+  (not-in word (list "param" "using"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tag
+(fn-expr _ number-has Bool
+  (param number Int)
+  (has (list 3 5 8 13 21) number)
+)
 
-+ name String
+(fn-expr _ folded-has Bool
+  (has (list 3 5 8) 5)
+)
 
-────────────────────
-+ This
-    - name
+(fn-expr _ computed-has Bool
+  (param log Log)
+  (param word String)
+  (has (list (call tick log "a") (call tick log "b") (call tick log "c")) (call tick log word))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ extend Tag
+(fn-expr _ key-has Bool
+  (param counter Counter)
+  (param value Int)
+  (has (list (call Key counter 1) (call Key counter 2) (call Key counter 3)) (call Key counter value))
+)
 
-────────────────────
-+ this == other Tag
+(fn-do _ listed-has Bool
+  (param counter Counter)
+  (param value Int)
+  (let keys (list (call Key counter 1) (call Key counter 2) (call Key counter 3)))
+  (return (has keys (call Key counter value)))
+)
 
-name == other.name
+(fn-expr _ tag-has Bool
+  (param tag Tag)
+  (has (list (call Tag "a") (call Tag "b")) tag)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ literal-has Bool
-    - word String
+(fn-expr _ constant-has Bool
+  (param word String)
+  (has heads word)
+)
 
-["param", "constraint", "iterates", "implements", "using"] has word
+(fn-expr _ named-has Bool
+  (param head String)
+  (and (or (has heads head) (has probes head)) (has-not probes "zeta"))
+  (where
+    (lazy heads (list "prop" "entry" "return"))
+    (lazy probes (list "probe" "trace"))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ literal-has-not Bool
-    - word String
+(fn-expr _ named-is-in Bool
+  (param number Int)
+  (is-in number primes)
+  (where
+    (lazy primes (list 2 3 5 7))
+  )
+)
 
-["param", "constraint", "iterates", "implements", "using"] has not word
+(fn-expr _ measured-has Bool
+  (param word String)
+  (or (has words word) (== (. words length) 2))
+  (where
+    (lazy words (list "a" "b"))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ literal-is-in Bool
-    - word String
+(fn-do _ grown-has Bool
+  (param word String)
+  (+= words word)
+  (return (has words word))
+  (blank)
+  (lazy words (list "a" "b"))
+)
 
-word is in (["param", "using"])
+(fn-do _ count-below Int
+  (param limit Size)
+  (let total 0)
+  (for (in index (..< 0 limit))
+    (+= total 1)
+  )
+  (return total)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ literal-not-in Bool
-    - word String
+(fn-do _ count-toward Int
+  (param limit Int)
+  (let total 0)
+  (for (in index (..< 0 limit))
+    (+= total 1)
+  )
+  (return total)
+)
 
-word not in (["param", "using"])
-
-━━━━━━━━━━━━━━━━━━━━
-_ number-has Bool
-    - number Int
-
-[3, 5, 8, 13, 21] has number
-
-━━━━━━━━━━━━━━━━━━━━
-_ folded-has Bool
-
-[3, 5, 8] has 5
-
-━━━━━━━━━━━━━━━━━━━━
-_ computed-has Bool
-    - log Log
-    - word String
-
-[tick(log, "a"), tick(log, "b"), tick(log, "c")] has tick(log, word)
-
-━━━━━━━━━━━━━━━━━━━━
-_ key-has Bool
-    - counter Counter
-    - value Int
-
-[Key(counter, 1), Key(counter, 2), Key(counter, 3)] has Key(counter, value)
-
-━━━━━━━━━━━━━━━━━━━━
-_ do listed-has Bool
-    - counter Counter
-    - value Int
-
-. keys = [Key(counter, 1), Key(counter, 2), Key(counter, 3)]
-= keys has Key(counter, value)
-
-━━━━━━━━━━━━━━━━━━━━
-_ tag-has Bool
-    - tag Tag
-
-[Tag("a"), Tag("b")] has tag
-
-━━━━━━━━━━━━━━━━━━━━
-_ constant-has Bool
-    - word String
-
-heads has word
-
-━━━━━━━━━━━━━━━━━━━━
-_ named-has Bool
-    - head String
-
-(heads has head || probes has head) && probes has not "zeta"
-
-.. heads = ["prop", "entry", "return"]
-.. probes = ["probe", "trace"]
-
-━━━━━━━━━━━━━━━━━━━━
-_ named-is-in Bool
-    - number Int
-
-number is in primes
-
-.. primes = [2, 3, 5, 7]
-
-━━━━━━━━━━━━━━━━━━━━
-_ measured-has Bool
-    - word String
-
-words has word || words.length == 2
-
-.. words = ["a", "b"]
-
-━━━━━━━━━━━━━━━━━━━━
-_ do grown-has Bool
-    - word String
-
-words += word
-= words has word
-
-.. words = ["a", "b"]
-
-━━━━━━━━━━━━━━━━━━━━
-_ do count-below Int
-    - limit Size
-
-. total = 0
-for index in 0 .. < limit
-    total += 1
-= total
-
-━━━━━━━━━━━━━━━━━━━━
-_ do count-toward Int
-    - limit Int
-
-. total = 0
-for index in 0 .. < limit
-    total += 1
-= total
-
-━━━━━━━━━━━━━━━━━━━━
-_ do tick String
-    - log Log
-    - name String
-
-log.text = "${log.text}$name"
-= name
+(fn-do _ tick String
+  (param log Log)
+  (param name String)
+  (= (. log text) (str (. log text) name))
+  (return name)
+)
 ```
 
 ```output
@@ -1825,31 +1925,30 @@ true
 3
 ```
 
-```yumi
-/core
+```brix
+(import /core)
+(blank)
 
--- loose-has-not("zeta")
--- loose-has("using")
+(main
+  (print (call loose-has-not "zeta"))
+  (print (call loose-has "using"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ extend List''Item''Backing
+(extend + (of List ''Item ''Backing)
+  (fn-do + (infix this has-not (param item Item)) _
+    (return false)
+  )
+)
 
-────────────────────
-+ do this has not item Item
+(fn-expr _ loose-has-not Bool
+  (param word String)
+  (has-not (list "param" "using") word)
+)
 
-= false
-
-━━━━━━━━━━━━━━━━━━━━
-_ loose-has-not Bool
-    - word String
-
-["param", "using"] has not word
-
-━━━━━━━━━━━━━━━━━━━━
-_ loose-has Bool
-    - word String
-
-["param", "using"] has word
+(fn-expr _ loose-has Bool
+  (param word String)
+  (has (list "param" "using") word)
+)
 ```
 
 ```output
@@ -1859,13 +1958,15 @@ true
 
 ### `has not` and `not in` take an integer written with no suffix as `has` does, as the item type of a list of a narrower integer type.
 
-```yumi
-. bytes = [1u8, 2u8]
--- bytes has not 3
--- bytes has not 2
--- 3 not in bytes
--- [1u8, 2u8] has not 3
--- 2 not in [1u8, 2u8]
+```brix
+(main
+  (let bytes (list 1u8 2u8))
+  (print (has-not bytes 3))
+  (print (has-not bytes 2))
+  (print (not-in 3 bytes))
+  (print (has-not (list 1u8 2u8) 3))
+  (print (not-in 2 (list 1u8 2u8)))
+)
 ```
 
 ```output
@@ -1878,21 +1979,21 @@ false
 
 ### A class of the program named List leaves the list type `[I64]` and `List'I64` the core one's, since it takes no type arguments.
 
-```yumi
-. xs [I64] = [1, 2]
-. ys = List'I64()
-ys.add(3)
--- xs[1]
--- ys[0]
--- Thing().size
+```brix
+(main
+  (let xs (list I64) (list 1 2))
+  (let ys (call (of List I64)))
+  (call (. ys add) 3)
+  (print ([] xs 1))
+  (print ([] ys 0))
+  (print (. (call Thing) size))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ List
+(type + List
+  (prop + size I64 (= 4))
+)
 
-+ size I64 = 4
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing is List
+(type + Thing (is List))
 ```
 
 ```output
@@ -1903,27 +2004,30 @@ ys.add(3)
 
 ### An item given a value its operator makes from the one it holds is found by a field of a tuple local, read once.
 
-```yumi
--- count([1, 2, 1, 3, 1])
+```brix
+(main
+  (print (call count (list 1 2 1 3 1)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item is Tuple
+(type + Item (is Tuple)
+  (prop + crossing Index)
+)
 
-+ crossing Index
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count String
-    - values [Index]
-
-. items [Item] = List'Item()
-for value in values
-    items += Item(value)
-. counts [Size] = List'Size()
-for item in items
-    while counts.length <= item.crossing
-        counts += 0
-    counts[item.crossing] += 1
-= "$counts"
+(fn-do + count String
+  (param values (list Index))
+  (let items (list Item) (call (of List Item)))
+  (for (in value values)
+    (+= items (call Item value))
+  )
+  (let counts (list Size) (call (of List Size)))
+  (for (in item items)
+    (while (<= (. counts length) (. item crossing))
+      (+= counts 0)
+    )
+    (+= ([] counts (. item crossing)) 1)
+  )
+  (return (str counts))
+)
 ```
 
 ```output
@@ -1932,25 +2036,24 @@ for item in items
 
 ### A key that calls something is evaluated for the read and again for the store.
 
-```yumi
-. counter = Counter()
-. values [Index] = [10, 20, 30]
-values[values.length - 1] += 1
--- values
-values[counter.next()] += 5
--- values
--- counter.count
+```brix
+(main
+  (let counter (call Counter))
+  (let values (list Index) (list 10 20 30))
+  (+= ([] values (- (. values length) 1)) 1)
+  (print values)
+  (+= ([] values (call (. counter next))) 5)
+  (print values)
+  (print (. counter count))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Counter
-
-+ count Index = 0
-
-────────────────────
-+ do next Index
-
-count += 1
-= count - 1
+(type + Counter
+  (prop + count Index (= 0))
+  (fn-do + next Index
+    (+= count 1)
+    (return (- count 1))
+  )
+)
 ```
 
 ```output
@@ -1961,11 +2064,13 @@ count += 1
 
 ### A key cast to the type of the list's index is evaluated for the read and again for the store.
 
-```yumi
-. counts [Int] = [0, 0]
-. position = 1u16
-counts[position as Index] += 1
--- counts
+```brix
+(main
+  (let counts (list Int) (list 0 0))
+  (let position 1u16)
+  (+= ([] counts (as position Index)) 1)
+  (print counts)
+)
 ```
 
 ```output
@@ -1974,31 +2079,29 @@ counts[position as Index] += 1
 
 ### An item of a list given more by `+=`: a list item takes it by its own `+=`, and nothing is stored; an object item that answers only `+` is given the new object by `[]=`.
 
-```yumi
-. groups [[Index]] = [List'Index(), List'Index()]
-. first Index? = 1
-groups[first!] += 7
-groups[0] += 3
-groups[first!] += 8
--- groups[0]
--- groups[1]
-. tallies [Tally] = [Tally(1), Tally(2)]
-tallies[1] += 5
--- tallies[0].count, tallies[1].count
+```brix
+(main
+  (let groups (list (list Index)) (list (call (of List Index)) (call (of List Index))))
+  (let first (? Index) 1)
+  (+= ([] groups (!! first)) 7)
+  (+= ([] groups 0) 3)
+  (+= ([] groups (!! first)) 8)
+  (print ([] groups 0))
+  (print ([] groups 1))
+  (let tallies (list Tally) (list (call Tally 1) (call Tally 2)))
+  (+= ([] tallies 1) 5)
+  (print (tuple (. ([] tallies 0) count) (. ([] tallies 1) count)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tally
-
-+ count Index
-
-────────────────────
-+ This
-    - count
-
-────────────────────
-+ this + more Index
-
-Tally(count + more)
+(type + Tally
+  (prop + count Index)
+  (fn-do + This _
+    (param count _)
+  )
+  (fn-expr + (infix this + (param more Index)) _
+    (call Tally (+ count more))
+  )
+)
 ```
 
 ```output
@@ -2009,54 +2112,56 @@ Tally(count + more)
 
 ### A list of pointers keeps its storage across a collection: the collector follows the storage of an array on the collected heap whatever its items are, so lists made after the collection do not take the storage over.
 
-```yumi
-/BxGC/BxGC.h
+```brix
+(import /BxGC/BxGC.h)
+(blank)
 
-. registry = Registry()
-. kept [Thing]
-for index in 0 .. < 64
-    . thing = Thing(index)
-    kept += thing
-    registry.register(thing)
-C:brixGCCollect()
-. fillers [[U64]]
-for round in 0 .. < 200
-    . filler [U64]
-    for index in 0 .. < 64
-        filler += 7
-    fillers += filler
--- registry.matching(kept)
+(main
+  (let registry (call Registry))
+  (let kept (list Thing))
+  (for (in index (..< 0 64))
+    (let thing (call Thing index))
+    (+= kept thing)
+    (call (. registry register) thing)
+  )
+  (call C:brixGCCollect)
+  (let fillers (list (list U64)))
+  (for (in round (..< 0 200))
+    (let filler (list U64))
+    (for (in index (..< 0 64))
+      (+= filler 7)
+    )
+    (+= fillers filler)
+  )
+  (print (call (. registry matching) kept))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (prop + value Size)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value Size
-
-────────────────────
-+ This
-    - value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Registry
-
-_ identities [Pointer] = List'Pointer()
-
-────────────────────
-+ do register
-    - thing Thing
-
-identities += thing as Pointer
-
-────────────────────
-+ do matching Size
-    - kept [Thing]
-
-. found Size = 0
-for identity in identities
-    for thing in kept
-        if thing as Pointer == identity
-            found += 1
-= found
+(type + Registry
+  (prop _ identities (list Pointer) (= (call (of List Pointer))))
+  (fn-do + register _
+    (param thing Thing)
+    (+= identities (as thing Pointer))
+  )
+  (fn-do + matching Size
+    (param kept (list Thing))
+    (let found Size 0)
+    (for (in identity identities)
+      (for (in thing kept)
+        (if (== (as thing Pointer) identity)
+          (+= found 1)
+        )
+      )
+    )
+    (return found)
+  )
+)
 ```
 
 ```output
@@ -2065,13 +2170,16 @@ for identity in identities
 
 ### A list written with null alone is a list of Null, which is iterated, and converted to a list of optionals.
 
-```yumi
-. nulls = [null]
-for item in nulls
-    -- item == null
-. names [String?] = nulls
-names += "a"
--- names.length
+```brix
+(main
+  (let nulls (list null))
+  (for (in item nulls)
+    (print (== item null))
+  )
+  (let names (list (? String)) nulls)
+  (+= names "a")
+  (print (. names length))
+)
 ```
 
 ```output
@@ -2081,18 +2189,19 @@ true
 
 ### A list of a union that can hold a list is made from a list or a stream of its items, one item for each, rather than holding the whole list as one item.
 
-```yumi
-. numbers = [1, 2]
-. listed = List'Value(numbers)
--- listed.length
-. streamed = List'Value(each in numbers)
--- streamed.length
+```brix
+(main
+  (let numbers (list 1 2))
+  (let listed (call (of List Value) numbers))
+  (print (. listed length))
+  (let streamed (call (of List Value) (in each numbers)))
+  (print (. streamed length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
-
-| Int
-| [Value]
+(type + Value (is Union)
+  (variant Int)
+  (variant (list Value))
+)
 ```
 
 ```output
@@ -2102,15 +2211,16 @@ true
 
 ### An integer written with no suffix that is appended to a list of a named integer type is appended in place, so another name for the list sees it.
 
-```yumi
-. ids [Id]
-. alias = ids
-ids += 7
--- alias.length
--- alias[0]
+```brix
+(main
+  (let ids (list Id))
+  (let alias ids)
+  (+= ids 7)
+  (print (. alias length))
+  (print ([] alias 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Id is U32
+(type + Id (is U32))
 ```
 
 ```output
@@ -2120,10 +2230,12 @@ ids += 7
 
 ### An unsuffixed number among a variadic list's items takes the type of the other items.
 
-```yumi
-. value F64 = 2.5
-. items = List'F64(value, 7)
--- items
+```brix
+(main
+  (let value F64 2.5)
+  (let items (call (of List F64) value 7))
+  (print items)
+)
 ```
 
 ```output
@@ -2132,57 +2244,71 @@ ids += 7
 
 ### An index below zero is out of range, for a list and for the array under it, as is the last item of an empty list.
 
-```yumi
-. list = [1, 2, 3]
-. below Index = -1
-try-read(list, below)
-try-write(list, below)
-try-last(List'Int())
-try-array(Array'Int(3), below)
--- list
+```brix
+(main
+  (let list (list 1 2 3))
+  (let below Index -1)
+  (call try-read list below)
+  (call try-write list below)
+  (call try-last (call (of List Int)))
+  (call try-array (call (of Array Int) 3) below)
+  (print list)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do try-read
-    - list [Int]
-    - index Index
+(fn-do + try-read _
+  (param list (list Int))
+  (param index Index)
+  (let attempt
+    (do-new
+      (print ([] list index))
+      (on-failure failure
+        (print (str "read: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. attempt = do new
-    -- list[index]
-catch failure
-    -- "read: $failure"
-attempt.wait()
+(fn-do + try-write _
+  (param list (list Int))
+  (param index Index)
+  (let attempt
+    (do-new
+      (= ([] list index) 9)
+      (on-failure failure
+        (print (str "write: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do try-write
-    - list [Int]
-    - index Index
+(fn-do + try-last _
+  (param list (list Int))
+  (let attempt
+    (do-new
+      (print ([] list (. Position last)))
+      (on-failure failure
+        (print (str "last: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. attempt = do new
-    list[index] = 9
-catch failure
-    -- "write: $failure"
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do try-last
-    - list [Int]
-
-. attempt = do new
-    -- list[Position.last]
-catch failure
-    -- "last: $failure"
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do try-array
-    - array Array'Int
-    - index Index
-
-. attempt = do new
-    array[index] = 9
-catch failure
-    -- "array: $failure"
-attempt.wait()
+(fn-do + try-array _
+  (param array (of Array Int))
+  (param index Index)
+  (let attempt
+    (do-new
+      (= ([] array index) 9)
+      (on-failure failure
+        (print (str "array: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -2195,22 +2321,27 @@ array: Set out of bounds (-1 / 3)
 
 ### Popping an item off an empty list panics, and leaves the list empty.
 
-```yumi
-. list = [1]
--- list.pop()
-try-pop(list)
-list += 2
--- list
+```brix
+(main
+  (let list (list 1))
+  (print (call (. list pop)))
+  (call try-pop list)
+  (+= list 2)
+  (print list)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do try-pop
-    - list [Int]
-
-. attempt = do new
-    list.pop()
-catch failure
-    -- "pop: $failure"
-attempt.wait()
+(fn-do + try-pop _
+  (param list (list Int))
+  (let attempt
+    (do-new
+      (call (. list pop))
+      (on-failure failure
+        (print (str "pop: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -2221,33 +2352,41 @@ pop: Can't pop the last item of an empty list
 
 ### The head and tail of a list are its first and last items, never items cleared out of it.
 
-```yumi
-. list = [1, 2, 3]
-list.pop()
--- "${list.head} ${list.tail}"
-list.clear()
-try-head(list)
-try-tail(list)
+```brix
+(main
+  (let list (list 1 2 3))
+  (call (. list pop))
+  (print (str (. list head) " " (. list tail)))
+  (call (. list clear))
+  (call try-head list)
+  (call try-tail list)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do try-head
-    - list [Int]
+(fn-do + try-head _
+  (param list (list Int))
+  (let attempt
+    (do-new
+      (print (. list head))
+      (on-failure failure
+        (print (str "head: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 
-. attempt = do new
-    -- list.head
-catch failure
-    -- "head: $failure"
-attempt.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do try-tail
-    - list [Int]
-
-. attempt = do new
-    -- list.tail
-catch failure
-    -- "tail: $failure"
-attempt.wait()
+(fn-do + try-tail _
+  (param list (list Int))
+  (let attempt
+    (do-new
+      (print (. list tail))
+      (on-failure failure
+        (print (str "tail: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -2258,55 +2397,53 @@ tail: List index -1 out of range
 
 ### A list releases the items it removes unless a slice sharing its storage still holds them.
 
-```yumi
-/core/gc
+```brix
+(import /core/gc)
+(blank)
+(import /BxGC/BxGC.h)
+(blank)
 
-/BxGC/BxGC.h
+(main
+  (let emptied (call emptied-list))
+  (let sliced (call sliced-list))
+  (call C:brixCollect)
+  (print (tuple (. ([] emptied 0) length) (== (. ([] emptied 1) get) null) (== (. ([] emptied 2) get) null) (== (. ([] emptied 3) get) null)))
+  (print (tuple (. ([] sliced 0) length) (. ([] ([] sliced 1) 0) value)))
+)
 
-. emptied = emptied-list()
-. sliced = sliced-list()
-C:brixCollect()
--- emptied[0].length, emptied[1].get == null, emptied[2].get == null, emptied[3].get == null
--- sliced[0].length, sliced[1][0].value
+(fn-do + emptied-list _
+  (let list (call (of List Cell)))
+  (for (in i (..< 0 4))
+    (+= list (call Cell i))
+  )
+  (let popped (call Weak ([] list 3)))
+  (let ranged (call Weak ([] list 2)))
+  (let cleared (call Weak ([] list 0)))
+  (call (. list pop))
+  (call (. list remove) (..< 1 3))
+  (call (. list clear))
+  (return (tuple list popped ranged cleared))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do emptied-list
+(fn-do + sliced-list _
+  (let list (call (of List Cell)))
+  (+= list (call Cell 1))
+  (+= list (call Cell 2))
+  (let slice ([] list (..< 1 2)))
+  (call (. list clear))
+  (return (tuple list slice))
+)
 
-. list = List'Cell()
-for i in 0 .. < 4
-    list += Cell(i)
-. popped = Weak(list[3])
-. ranged = Weak(list[2])
-. cleared = Weak(list[0])
-list.pop()
-list.remove(1 .. < 3)
-list.clear()
-= (list, popped, ranged, cleared)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do sliced-list
-
-. list = List'Cell()
-list += Cell(1)
-list += Cell(2)
-. slice = list[1 .. < 2]
-list.clear()
-= (list, slice)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Cell
-
-+ value = 0
-
-────────────────────
-+ This
-    - v Int
-
-value = v
+(type + Cell
+  (prop + value _ (= 0))
+  (fn-do + This _
+    (param v Int)
+    (= value v)
+  )
+)
 ```
 
 ```output
 (0, true, true, true)
 (0, 2)
 ```
-

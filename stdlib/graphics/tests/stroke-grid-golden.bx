@@ -1,0 +1,82 @@
+(import ./support/stroke-grid-cells)
+(import /graphics/canvas)
+(import /graphics/primitives)
+(import /os/file)
+(import /test)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Stroke Grid SVG Goldens"))
+  (call (. cases run) stroke-grid-svg-golden-tests)
+  (return cases)
+)
+
+(fn-do + stroke-grid-svg-golden-tests _
+  (param t TestCase)
+  (for (in index (..< 0 12))
+    (let name (call stroke-grid-cell-name index))
+    (let actual (call (. (call stroke-grid-cell-svg index) trim)))
+    (let expected (call (. (call stroke-grid-cell-golden-svg index) trim)))
+    (call (. t expect) (str "cell " name " svg") expected actual)
+    (call (. t check) (str "cell " name " one path") (== (call count-substring actual "<path ") 1))
+    (call (. t check) (str "cell " name " fill only") (!= (call (. actual find) "stroke=\"none\"") null))
+    (call (. t check) (str "cell " name " nonzero fill") (== (call (. actual find) "fill-rule=\"evenodd\"") null))
+  )
+  (blank)
+  (return t)
+)
+
+(fn-do _ stroke-grid-cell-golden-svg _
+  (param index _)
+  (let file (call File (call stroke-grid-cell-golden-path index) (. FileFlags read-mode)))
+  (let svg (as file String))
+  (call (. file close))
+  (return svg)
+)
+
+(fn-expr _ stroke-grid-cell-golden-path _
+  (param index _)
+  (str "cell-" (call stroke-grid-cell-name index) ".svg")
+)
+
+(fn-do _ stroke-grid-cell-svg _
+  (param index _)
+  (let path (str "/private/tmp/brix-stroke-grid-cell-" (call stroke-grid-cell-name index) ".svg"))
+  (call write-stroke-grid-cell-svg index path)
+  (let file (call File path (. FileFlags read-mode)))
+  (let svg (as file String))
+  (call (. file close))
+  (return svg)
+)
+
+(fn-do _ write-stroke-grid-cell-svg _
+  (param index _)
+  (param path String)
+  (let canvas (call SVGCanvas 251 248))
+  (= (. canvas fill-color) (call stroke-grid-cell-fill-color index))
+  (= (. canvas stroke-color) null)
+  (call (. (call stroke-grid-cell-stroked-path index (call Rect 0 0 251 248)) outline) canvas)
+  (call (. canvas write) path)
+)
+
+(fn-do _ count-substring _
+  (param text String)
+  (param needle String)
+  (let count 0)
+  (let start Index 0)
+  (while (< start (. text length))
+    (let found (call (. text find) needle start))
+    (if (not found)
+      (break)
+    )
+    (blank)
+    (+= count 1)
+    (= start (+ found (. needle length)))
+  )
+  (blank)
+  (return count)
+)

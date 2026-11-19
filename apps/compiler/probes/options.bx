@@ -1,0 +1,31 @@
+(import ./output)
+(import ./query)
+(import ./stats)
+(import /stream/aggregate)
+
+(type + ProbeQuery
+  (prop + positionals (list String))
+  (prop + catalog (? String))
+  (prop + filter _ (= (call RowFilter)))
+  (prop + output _ (= (call Output)))
+  (fn-expr + trace-name String
+    (param position Size (= 0))
+    (if-expr (< position (. positionals length)) ([] positionals position) "last")
+  )
+)
+
+(fn-do + stat-names (list String) (?! Error)
+  (param text String)
+  (let names (call split-list text))
+  (for (in name names)
+    (throw (call Error (str "Unknown statistic " name " (use count, sum, min, max, mean, median or pNN such as p95)")) (if (not (call is-stat-name name))))
+  )
+  (return names)
+)
+
+(fn-do + is-stat-list Bool
+  (param text String)
+  (let names (call split-list text))
+  (return-if false (if (== (. names length) 0)))
+  (return (call all names (:where (call is-stat-name each))))
+)

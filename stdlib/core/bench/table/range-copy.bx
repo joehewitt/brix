@@ -1,0 +1,32 @@
+; benchmark.meta description: Slices table rows, assigns row ranges and copies column ranges, four rows at a time.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core/table)
+(blank)
+
+(main
+  (let row-count (as 68 Size))
+  (let start-count 64)
+  (let pass-count 4096)
+  (let source (call (of Table Point) row-count (:with (call Point (as each Size) (as (+ (* each 7) 3) Size)))))
+  (let target (call (of Table Point) row-count))
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in pass (..< 0 pass-count))
+    (for (in start (..< 0 start-count))
+      (= ([] target (..< start (+ start 4))) ([] source (..< (+ start 1) (+ start 5))))
+      (= ([] (. target y) (..< start (+ start 4))) ([] (. source x) (..< start (+ start 4))))
+      (for (in row ([] target (..< start (+ start 4))))
+        (+= checksum (+ (. row x) (. row y) (as pass Size)))
+      )
+    )
+  )
+  (blank)
+  (print (str "bench-result table/range-copy checksum=" checksum))
+)
+
+(type + Point (is Struct)
+  (prop + x Size)
+  (prop + y Size)
+)

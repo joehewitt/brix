@@ -1,28 +1,30 @@
 # Gcfree
 
-```yumi
-/BxEvents/BxGCHandshake.h
-/BxGC/BxGC.h
+```brix
+(import /BxEvents/BxGCHandshake.h)
+(import /BxGC/BxGC.h)
+(blank)
 
--- C:brixGCActiveTaskCanUseFastAllocation()
--- zone-state(4)
--- C:brixGCActiveTaskCanUseFastAllocation()
-zone-collection-boundary()
--- C:brixGCActiveTaskCanUseFastAllocation()
+(main
+  (print (call C:brixGCActiveTaskCanUseFastAllocation))
+  (print (call zone-state 4))
+  (print (call C:brixGCActiveTaskCanUseFastAllocation))
+  (call zone-collection-boundary)
+  (print (call C:brixGCActiveTaskCanUseFastAllocation))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do zone-state Bool without gc
-    - count Int
+(fn-do + zone-state Bool (without gc)
+  (param count Int)
+  (let total 0)
+  (for (in index (..< 0 count))
+    (+= total index)
+  )
+  (return (call C:brixGCActiveTaskCanUseFastAllocation))
+)
 
-. total = 0
-for index in 0 .. < count
-    total += index
-= C:brixGCActiveTaskCanUseFastAllocation()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do zone-collection-boundary without gc
-
-C:brixCollect()
+(fn-do + zone-collection-boundary _ (without gc)
+  (call C:brixCollect)
+)
 ```
 
 ```output
@@ -32,53 +34,63 @@ true
 true
 ```
 
-```yumi
-/BxEvents/BxGCHandshake.h
+```brix
+(import /BxEvents/BxGCHandshake.h)
+(blank)
 
--- catch gc-free-propagate(false)
--- C:brixGCActiveTaskCanUseFastAllocation()
--- gc-free-catch(false)
--- C:brixGCActiveTaskCanUseFastAllocation()
--- catch gc-free-catch-replace(false)
--- C:brixGCActiveTaskCanUseFastAllocation()
+(main
+  (print (catch (call gc-free-propagate false)))
+  (print (call C:brixGCActiveTaskCanUseFastAllocation))
+  (print (call gc-free-catch false))
+  (print (call C:brixGCActiveTaskCanUseFastAllocation))
+  (print (catch (call gc-free-catch-replace false)))
+  (print (call C:brixGCActiveTaskCanUseFastAllocation))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ GCFreeFailure is Error
+(type + GCFreeFailure (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ GCFreeReplacement is Error
+(type + GCFreeReplacement (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gc-free-fallible Int ?! GCFreeFailure without gc
-    - succeeds Bool
+(fn-do + gc-free-fallible Int (?! GCFreeFailure) (without gc)
+  (param succeeds Bool)
+  (if succeeds
+    (return 7)
+  )
+  (throw (call GCFreeFailure "failed"))
+)
 
-if succeeds
-    = 7
-?! GCFreeFailure("failed")
+(fn-do + gc-free-propagate Int (?! GCFreeFailure) (without gc)
+  (param succeeds Bool)
+  (return (+ (call gc-free-fallible succeeds) 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do gc-free-propagate Int ?! GCFreeFailure without gc
-    - succeeds Bool
+(fn-do + gc-free-catch Int (without gc)
+  (param succeeds Bool)
+  (let value
+    (call gc-free-fallible succeeds
+      (block
+        (on-error GCFreeFailure
+          40
+        )
+      )
+    )
+  )
+  (return (+ value 2))
+)
 
-= gc-free-fallible(succeeds) + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do gc-free-catch Int without gc
-    - succeeds Bool
-
-. value = gc-free-fallible(succeeds)
-    catch GCFreeFailure
-        40
-= value + 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do gc-free-catch-replace Int ?! GCFreeReplacement without gc
-    - succeeds Bool
-
-. value = gc-free-fallible(succeeds)
-    catch GCFreeFailure
-        ?! GCFreeReplacement("replaced")
-= value
+(fn-do + gc-free-catch-replace Int (?! GCFreeReplacement) (without gc)
+  (param succeeds Bool)
+  (let value
+    (call gc-free-fallible succeeds
+      (block
+        (on-error GCFreeFailure
+          (throw (call GCFreeReplacement "replaced"))
+        )
+      )
+    )
+  )
+  (return value)
+)
 ```
 
 ```output
@@ -90,42 +102,52 @@ replaced
 true
 ```
 
-```yumi
-/BxEvents/BxGCHandshake.h
+```brix
+(import /BxEvents/BxGCHandshake.h)
+(blank)
 
--- managed-catch-then-allocate(true)
--- C:brixGCActiveTaskCanUseFastAllocation()
--- managed-catch-value(false)
--- C:brixGCActiveTaskCanUseFastAllocation()
+(main
+  (print (call managed-catch-then-allocate true))
+  (print (call C:brixGCActiveTaskCanUseFastAllocation))
+  (print (call managed-catch-value false))
+  (print (call C:brixGCActiveTaskCanUseFastAllocation))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ManagedFailure is Error
+(type + ManagedFailure (is Error))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do managed-fallible Int ?! ManagedFailure
-    - succeeds Bool
+(fn-do + managed-fallible Int (?! ManagedFailure)
+  (param succeeds Bool)
+  (if succeeds
+    (return 7)
+  )
+  (throw (call ManagedFailure "failed"))
+)
 
-if succeeds
-    = 7
-?! ManagedFailure("failed")
+(fn-do + managed-catch-then-allocate Size
+  (param succeeds Bool)
+  (let value
+    (call managed-fallible succeeds
+      (block
+        (on-error ManagedFailure
+          (throw (call Panic "managed failure"))
+        )
+      )
+    )
+  )
+  (let values (list value))
+  (return (. values length))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do managed-catch-then-allocate Size
-    - succeeds Bool
-
-. value = managed-fallible(succeeds)
-    catch ManagedFailure
-        ?! Panic("managed failure")
-. values = [value]
-= values.length
-
-━━━━━━━━━━━━━━━━━━━━
-+ managed-catch-value Int
-    - succeeds Bool
-
-managed-fallible(succeeds)
-    catch ManagedFailure
+(fn-expr + managed-catch-value Int
+  (param succeeds Bool)
+  (call managed-fallible succeeds
+    (block
+      (on-error ManagedFailure
         3
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -135,666 +157,653 @@ true
 true
 ```
 
-```yumi
-. seed = 5
-do without gc
-    . value = seed + 7
-    value += 1
--- seed
+```brix
+(main
+  (let seed 5)
+  (do (without gc)
+    (let value (+ seed 7))
+    (+= value 1)
+  )
+  (print seed)
+)
 ```
 
 ```output
 5
 ```
 
-```yumi crash
-. seed = 5
-do without gc
-    . box = Box()
--- seed
+```brix crash
+(main
+  (let seed 5)
+  (do (without gc)
+    (let box (call Box))
+  )
+  (print seed)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ value Int = 0
+(type + Box
+  (prop + value Int (= 0))
+)
 ```
 
 ```output
-Exception: allocation is not allowed in a GC-free zone (entered at no file:3:1): main (do without gc) → Box()
-<no file:4>
-        . box = Box()
-                ^^^^^
+Exception: allocation is not allowed in a GC-free zone (entered at no file:4:3): main (do without gc) → (call Box)
+<no file:5>
+        (let box (call Box))
+                 ^^^^^^^^^^
 ```
 
-```yumi crash
--- allocate-in-zone()
+```brix crash
+(main
+  (print (call allocate-in-zone))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + value Int (= 0))
+)
 
-+ value Int = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do allocate-in-zone Int without gc
-
-. box = Box()
-= box.value
-```
-
-```output
-Exception: allocation is not allowed in a GC-free zone (entered at no file:10:1): allocate-in-zone (without gc) → Box()
-<no file:12>
-    . box = Box()
-            ^^^^^
-```
-
-```yumi crash
-. holder = Holder()
-holder.replace("after")
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ value String = "before"
-
-────────────────────
-+ do replace without gc
-    - next String
-
-value = next
+(fn-do + allocate-in-zone Int (without gc)
+  (let box (call Box))
+  (return (. box value))
+)
 ```
 
 ```output
-Exception: storing a managed pointer is not allowed in a GC-free zone (entered at no file:11:1); compute into a zone buffer and publish after the zone exits: Holder.replace (without gc) → value = next
-<no file:14>
-    value = next
-    ^^^^^^^^^^^^
+Exception: allocation is not allowed in a GC-free zone (entered at no file:10:1): allocate-in-zone (without gc) → (call Box)
+<no file:11>
+      (let box (call Box))
+               ^^^^^^^^^^
 ```
 
-```yumi crash
-. generator = suspended-values()
--- generator()
+```brix crash
+(main
+  (let holder (call Holder))
+  (call (. holder replace) "after")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do suspended-values without gc
-
-<= 1
+(type + Holder
+  (prop + value String (= "before"))
+  (fn-do + replace _ (without gc)
+    (param next String)
+    (= value next)
+  )
+)
 ```
 
 ```output
-Exception: allocation is not allowed in a GC-free zone (entered at no file:6:1): suspended-values (without gc)
-<no file:6>
-    + do suspended-values without gc
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Exception: storing a managed pointer is not allowed in a GC-free zone (entered at no file:9:3); compute into a zone buffer and publish after the zone exits: Holder.replace (without gc) → (= value next)
+<no file:11>
+        (= value next)
+        ^^^^^^^^^^^^^^
+```
 
-Exception: cannot suspend inside a GC-free zone (entered at no file:6:1): suspended-values (without gc) → <= 1
+```brix crash
+(main
+  (let generator (call suspended-values))
+  (print (call generator))
+)
+
+(fn-do + suspended-values _ (without gc)
+  (yield 1)
+)
+```
+
+```output
+Exception: allocation is not allowed in a GC-free zone (entered at no file:7:1): suspended-values (without gc)
+<no file:7>
+    (fn-do + suspended-values _ (without gc)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Exception: cannot suspend inside a GC-free zone (entered at no file:7:1): suspended-values (without gc) → (yield 1)
 <no file:8>
-    <= 1
-    ^^^^
+      (yield 1)
+      ^^^^^^^^^
 ```
 
-```yumi crash
-conflict()
+```brix crash
+(main
+  (call conflict)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ conflict without gc, heap
+(fn-expr + conflict _ (without gc heap))
 ```
 
 ```output
 Exception: Conflicting compilation effect 'no-heap'
-<no file:4>
-    ━━━━━━━━━━━━━━━━━━━━
-    ^^^^^^^^^^^^^^^^^^^
+<no file:6>
+    (fn-expr + conflict _ (without gc heap))
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-. generator = suspended-values()
--- generator()
+```brix crash
+(main
+  (let generator (call suspended-values))
+  (print (call generator))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do suspended-values without safepoints
-
-<= 1
+(fn-do + suspended-values _ (without safepoints)
+  (yield 1)
+)
 ```
 
 ```output
-Exception: cannot suspend under 'without safepoints': suspended-values (without safepoints) → <= 1
+Exception: cannot suspend under 'without safepoints': suspended-values (without safepoints) → (yield 1)
 <no file:8>
-    <= 1
-    ^^^^
+      (yield 1)
+      ^^^^^^^^^
 ```
 
-```yumi
-/core/arena
-/core/table
+```brix
+(import /core/arena)
+(import /core/table)
+(blank)
 
-. span-source = "span-owned".codepoints
--- arena-cycle(span-source)
+(main
+  (let span-source (. "span-owned" codepoints))
+  (print (call arena-cycle span-source))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do arena-cycle U64 without gc
-    - span-source Char[]
+(fn-do + arena-cycle U64 (without gc)
+  (param span-source ([] Char))
+  (let arena (call Arena 4096))
+  (finally
+    (call (. arena release))
+  )
+  (let alias arena)
+  (let checksum 0u64)
+  (let copied (call arena-copy-string alias))
+  (+= checksum (as (. copied length) U64))
+  (let copied-span (call arena-copy-codepoint-span alias span-source))
+  (+= checksum (as (. copied-span length) U64))
+  (for (in index (..< 0 16))
+    (let value (call (of (. alias allocate) U64) 1))
+    (= ([] value 0) (as index U64))
+    (+= checksum ([] value 0))
+  )
+  (let mark (. alias mark))
+  (let discarded (call (of (. alias allocate) U64) 1))
+  (= ([] discarded 0) 99u64)
+  (call (. alias rewind) mark)
+  (let rows (call (of Table ArenaBenchRow) arena 1))
+  (call (. rows append) (call ArenaBenchRow 10u64 20u64))
+  (let table-mark (. rows mark))
+  (call (. rows append) (call ArenaBenchRow 30u64 40u64))
+  (+= checksum (+ (. ([] rows 0) left) (. ([] rows 1) right)))
+  (call (. rows rewind) table-mark)
+  (call (. rows clear))
+  (call (. arena reset))
+  (return checksum)
+)
 
-. arena = Arena(4096)
-do finally
-    arena.release()
-. alias = arena
-. checksum = 0u64
-. copied = arena-copy-string(alias)
-checksum += copied.length as U64
-. copied-span = arena-copy-codepoint-span(alias, span-source)
-checksum += copied-span.length as U64
-for index in 0 .. < 16
-    . value = alias.allocate'U64(1)
-    value[0] = index as U64
-    checksum += value[0]
-. mark = alias.mark
-. discarded = alias.allocate'U64(1)
-discarded[0] = 99u64
-alias.rewind(mark)
-. rows = Table'ArenaBenchRow(arena, 1)
-rows.append(ArenaBenchRow(10u64, 20u64))
-. table-mark = rows.mark
-rows.append(ArenaBenchRow(30u64, 40u64))
-checksum += rows[0].left + rows[1].right
-rows.rewind(table-mark)
-rows.clear()
-arena.reset()
-= checksum
+(fn-do + arena-copy-string String (without gc)
+  (param arena Arena)
+  (return (call (. arena copy-string) "arena-owned"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do arena-copy-string String without gc
-    - arena Arena
+(fn-do + arena-copy-codepoint-span String (without gc)
+  (param arena Arena)
+  (param source ([] Char))
+  (return (call (. arena copy-span) source 0 (. source length)))
+)
 
-= arena.copy-string("arena-owned")
-
-━━━━━━━━━━━━━━━━━━━━
-+ do arena-copy-codepoint-span String without gc
-    - arena Arena
-    - source Char[]
-
-= arena.copy-span(source, 0, source.length)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ArenaBenchRow is Struct
-
-+ left U64
-+ right U64
+(type + ArenaBenchRow (is Struct)
+  (prop + left U64)
+  (prop + right U64)
+)
 ```
 
 ```output
 191
 ```
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena(256)
-do finally arena.release()
--- arena-cycle(arena)
+(main
+  (let arena (call Arena 256))
+  (finally
+    (inline (call (. arena release)))
+  )
+  (print (call arena-cycle arena))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ManagedBacking'Value
+(type + (of ManagedBacking Value)
+  (prop + marker Value)
+)
 
-+ marker Value
+(type + (of ArenaBacking Value) (is Tuple)
+  (prop + arena Arena)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ArenaBacking'Value is Tuple
+(type + (of Storage Value Backing) (is Tuple)
+  (constraint = Backing (of ManagedBacking Value))
+  (prop + storage Backing)
+  (prop + value Value)
+  (fn-do + This _
+    (param value Value)
+    (= storage (call (of ManagedBacking Value)))
+  )
+  (fn-do + This _
+    (param arena Arena)
+    (param value Value)
+    (constraint = Backing (of ArenaBacking Value))
+    (= storage (call (of ArenaBacking Value) arena))
+  )
+)
 
-+ arena Arena
-
-━━━━━━━━━━━━━━━━━━━━
-+ Storage'Value'Backing is Tuple
-    - Backing = ManagedBacking'Value
-
-+ storage Backing
-+ value Value
-
-────────────────────
-+ This
-    - value Value
-
-storage = ManagedBacking'Value()
-
-────────────────────
-+ This
-    - arena Arena
-    - value Value
-    - Backing = ArenaBacking'Value
-
-storage = ArenaBacking'Value(arena)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do arena-cycle U32 without gc
-    - arena Arena
-
-. storage Storage'U32'(ArenaBacking'U32) = Storage'U32(arena, 41u32)
-= storage.value
+(fn-do + arena-cycle U32 (without gc)
+  (param arena Arena)
+  (let storage (of Storage U32 (of ArenaBacking U32)) (call (of Storage U32) arena 41u32))
+  (return (. storage value))
+)
 ```
 
 ```output
 41
 ```
 
-```yumi
-/core/arena
-/core/table
+```brix
+(import /core/arena)
+(import /core/table)
+(blank)
 
--- controlled-union-cycle()
+(main
+  (print (call controlled-union-cycle))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do controlled-union-cycle U64 without gc
+(fn-do + controlled-union-cycle U64 (without gc)
+  (let arena (call Arena 8192))
+  (finally
+    (call (. arena release))
+  )
+  (let rows (call (of Table Node) arena 1))
+  (call (. rows append) (call (. Node small) 1u32 1u64 2u32))
+  (call (. rows reserve) 8)
+  (call (. rows append) (call (. Node wide) 2u32 3u64 4u32 5u32))
+  (call (. rows append) (call (. Node small) 3u32 6u64 7u32))
+  (blank)
+  (call (. ([] rows 0) lower) 2u64)
+  (call (. ([] rows 1) lower) 3u64)
+  (let extension-checksum (+ (as (. ([] rows 0) source-plus) U64) (call (. ([] rows 0) score)) (call (. ([] rows 1) score))))
+  (blank)
+  (match ([] rows 1)
+    (case (call .small small)
+      (+= (. small value) 1u64)
+    )
+    (case (call .wide wide)
+      (+= (. wide hot) 1u64)
+    )
+  )
+  (match ([] rows 1)
+    (case (call .small small)
+      (+= (. small cold) 1u32)
+    )
+    (case (call .wide wide)
+      (+= (. wide cold) 1u32)
+    )
+  )
+  (blank)
+  (let live ([] rows 1))
+  (= ([] rows 0) live)
+  (let span ([] rows (..< 0 2)))
+  (= ([] rows (..< 1 3)) span)
+  (blank)
+  (let snapshot Node (as ([] rows 1) Node))
+  (let checksum
+    (match snapshot
+      (case (call .small small)
+        (+ (. small value) (as (. small cold) U64))
+      )
+      (case (call .wide wide)
+        (+ (. wide hot) (as (. wide cold) U64) (as (. wide other) U64))
+      )
+    )
+  )
+  (call (. rows clear))
+  (return (+ checksum extension-checksum))
+)
 
-. arena = Arena(8192)
-do finally
-    arena.release()
-. rows = Table'Node(arena, 1)
-rows.append(Node.small(1u32, 1u64, 2u32))
-rows.reserve(8)
-rows.append(Node.wide(2u32, 3u64, 4u32, 5u32))
-rows.append(Node.small(3u32, 6u64, 7u32))
+(type + Syntax (is Tuple)
+  (prop + source U32)
+)
 
-rows[0].lower(2u64)
-rows[1].lower(3u64)
-. extension-checksum = (rows[0].source-plus as U64) + rows[0].score() + rows[1].score()
+(type + Small (is Syntax)
+  (prop + value U64 @hot)
+  (prop + cold U32)
+)
 
-match rows[1]
-    | .small(small)
-        small.value += 1u64
-    | .wide(wide)
-        wide.hot += 1u64
-match rows[1]
-    | .small(small)
-        small.cold += 1u32
-    | .wide(wide)
-        wide.cold += 1u32
+(type + Wide (is Syntax)
+  (prop + hot U64 @hot)
+  (prop + cold U32)
+  (prop + other U32)
+)
 
-. live = rows[1]
-rows[0] = live
-. span = rows[0 .. < 2]
-rows[1 .. < 3] = span
+(type + Node (is Union)
+  (variant small Small)
+  (variant wide Wide)
+)
 
-. snapshot Node = rows[1] as Node
-. checksum = match snapshot
-    | .small(small)
-        small.value + (small.cold as U64)
-    | .wide(wide)
-        wide.hot + (wide.cold as U64) + (wide.other as U64)
-rows.clear()
-= checksum + extension-checksum
+(extend + Node
+  (fn-do + lower _
+    (param delta U64)
+    (match this
+      (case (call .small small)
+        (call (. small lower) delta)
+      )
+      (case (call .wide wide)
+        (call (. wide lower) delta)
+      )
+    )
+  )
+  (fn-expr + score U64
+    (match this
+      (case (call .small small)
+        (+ (. small value) (as (. small cold) U64))
+      )
+      (case (call .wide wide)
+        (+ (. wide hot) (as (. wide cold) U64) (as (. wide other) U64))
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Syntax is Tuple
+(extend + Small
+  (fn-do + lower _
+    (param delta U64)
+    (+= (. this value) delta)
+    (+= (. this cold) (as delta U32))
+    (+= (. this source) (as delta U32))
+  )
+)
 
-+ source U32
+(extend + Wide
+  (fn-do + lower _
+    (param delta U64)
+    (+= (. this hot) delta)
+    (+= (. this cold) (as delta U32))
+    (+= (. this source) (as delta U32))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Small is Syntax
-
-+ @hot value U64
-+ cold U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Wide is Syntax
-
-+ @hot hot U64
-+ cold U32
-+ other U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ Node is Union
-
-| small Small
-| wide Wide
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Node
-
-────────────────────
-+ do lower
-    - delta U64
-
-match this
-    | .small(small)
-        small.lower(delta)
-    | .wide(wide)
-        wide.lower(delta)
-
-────────────────────
-+ score U64
-
-match this
-    | .small(small)
-        small.value + (small.cold as U64)
-    | .wide(wide)
-        wide.hot + (wide.cold as U64) + (wide.other as U64)
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Small
-
-────────────────────
-+ do lower
-    - delta U64
-
-this.value += delta
-this.cold += delta as U32
-this.source += delta as U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Wide
-
-────────────────────
-+ do lower
-    - delta U64
-
-this.hot += delta
-this.cold += delta as U32
-this.source += delta as U32
-
-━━━━━━━━━━━━━━━━━━━━
-+ extend Syntax
-
-────────────────────
-+ get source-plus U64
-
-this.source as U64
+(extend + Syntax
+  (fn-expr + source-plus U64 :get
+    (as (. this source) U64)
+  )
+)
 ```
 
 ```output
 48
 ```
 
-```yumi crash
-. value = Pair(1, 2) as View
--- equal(value, value)
+```brix crash
+(main
+  (let value (as (call Pair 1 2) View))
+  (print (call equal value value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (first I32, second I32)
-    is View
+(type + Pair (is (tuple (: first I32) (: second I32)))
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do equal without gc
-    - left View
-    - right View
-
-= left == right
+(fn-do + equal _ (without gc)
+  (param left View)
+  (param right View)
+  (return (== left right))
+)
 ```
 
 ```output
-Exception: Interface equality requires unrestricted effects: equal (without gc) → left == right
-<no file:17>
-    = left == right
-      ^^^^^^^^^^^^^
+Exception: Interface equality requires unrestricted effects: equal (without gc) → (== left right)
+<no file:16>
+      (return (== left right))
+              ^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-. value = Pair(1, 2) as View
--- equal(value, value)
+```brix crash
+(main
+  (let value (as (call Pair 1 2) View))
+  (print (call equal value value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (first I32, second I32)
-    is View
+(type + Pair (is (tuple (: first I32) (: second I32)))
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do equal without heap
-    - left View
-    - right View
-
-= left == right
-```
-
-```output
-Exception: Interface equality requires unrestricted effects: equal (without heap) → left == right
-<no file:17>
-    = left == right
-      ^^^^^^^^^^^^^
-```
-
-```yumi crash
-. value = Pair(1, 2) as View
--- equal(value, value)
-
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (first I32, second I32)
-    is View
-
-━━━━━━━━━━━━━━━━━━━━
-+ do equal without safepoints
-    - left View
-    - right View
-
-= left == right
+(fn-do + equal _ (without heap)
+  (param left View)
+  (param right View)
+  (return (== left right))
+)
 ```
 
 ```output
-Exception: Interface equality requires unrestricted effects: equal (without safepoints) → left == right
-<no file:17>
-    = left == right
-      ^^^^^^^^^^^^^
+Exception: Interface equality requires unrestricted effects: equal (without heap) → (== left right)
+<no file:16>
+      (return (== left right))
+              ^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-. value = Pair(1, 2) as View
--- equal(value, value)
+```brix crash
+(main
+  (let value (as (call Pair 1 2) View))
+  (print (call equal value value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ View is Interface
+(type + View (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is (first I32, second I32)
-    is View
+(type + Pair (is (tuple (: first I32) (: second I32)))
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do equal without suspend
-    - left View
-    - right View
-
-= left == right
+(fn-do + equal _ (without safepoints)
+  (param left View)
+  (param right View)
+  (return (== left right))
+)
 ```
 
 ```output
-Exception: Interface equality requires unrestricted effects: equal (without suspend) → left == right
-<no file:17>
-    = left == right
-      ^^^^^^^^^^^^^
+Exception: Interface equality requires unrestricted effects: equal (without safepoints) → (== left right)
+<no file:16>
+      (return (== left right))
+              ^^^^^^^^^^^^^^^
 ```
 
-```yumi
-. shape Shape = Square(3)
-. base Base = Derived()
--- measure(shape, base)
+```brix crash
+(main
+  (let value (as (call Pair 1 2) View))
+  (print (call equal value value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Interface
+(type + View (is Interface))
 
-────────────────────
-+ do area Int
+(type + Pair (is (tuple (: first I32) (: second I32)))
+  (implements View)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Square
-    is Shape
+(fn-do + equal _ (without suspend)
+  (param left View)
+  (param right View)
+  (return (== left right))
+)
+```
 
-+ side Int
+```output
+Exception: Interface equality requires unrestricted effects: equal (without suspend) → (== left right)
+<no file:16>
+      (return (== left right))
+              ^^^^^^^^^^^^^^^
+```
 
-────────────────────
-+ This
-    - side
+```brix
+(main
+  (let shape Shape (call Square 3))
+  (let base Base (call Derived))
+  (print (call measure shape base))
+)
 
-────────────────────
-+ do area Int
+(type + Shape (is Interface)
+  (fn-do + area Int)
+)
 
-= side * side
+(type + Square
+  (implements Shape)
+  (prop + side Int)
+  (fn-do + This _
+    (param side _)
+  )
+  (fn-do + area Int
+    (return (* side side))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (fn-do + This _)
+  (fn-do + area Int
+    (return 0)
+  )
+)
 
-────────────────────
-+ This
+(type + Derived (is Base)
+  (fn-do + This _)
+  (fn-do + area Int
+    (return 7)
+  )
+)
 
-────────────────────
-+ do area Int
-
-= 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-────────────────────
-+ This
-
-────────────────────
-+ do area Int
-
-= 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ do measure Int without gc
-    - shape Shape
-    - base Base
-
-= shape.area() + base.area()
+(fn-do + measure Int (without gc)
+  (param shape Shape)
+  (param base Base)
+  (return (+ (call (. shape area)) (call (. base area))))
+)
 ```
 
 ```output
 16
 ```
 
-```yumi crash
-. shape Shape = Square(3)
--- measure(shape)
+```brix crash
+(main
+  (let shape Shape (call Square 3))
+  (print (call measure shape))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Shape is Interface
+(type + Shape (is Interface)
+  (fn-do + area Int)
+)
 
-────────────────────
-+ do area Int
+(type + Square
+  (implements Shape)
+  (prop + side Int)
+  (fn-do + This _
+    (param side _)
+  )
+  (fn-do + area Int
+    (let box (call Box))
+    (return (* side side))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Square
-    is Shape
+(type + Box
+  (prop + value Int (= 0))
+)
 
-+ side Int
-
-────────────────────
-+ This
-    - side
-
-────────────────────
-+ do area Int
-
-. box = Box()
-= side * side
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ value Int = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do measure Int without gc
-    - shape Shape
-
-= shape.area()
+(fn-do + measure Int (without gc)
+  (param shape Shape)
+  (return (call (. shape area)))
+)
 ```
 
 ```output
-Exception: allocation is not allowed in a GC-free zone (entered at no file:33:1): measure (without gc) → Shape.area → Square.area → Box()
-<no file:24>
-    . box = Box()
-            ^^^^^
+Exception: allocation is not allowed in a GC-free zone (entered at no file:27:1): measure (without gc) → Shape.area → Square.area → (call Box)
+<no file:18>
+        (let box (call Box))
+                 ^^^^^^^^^^
 ```
 
-```yumi crash
-. base Base = Derived()
--- measure(base)
+```brix crash
+(main
+  (let base Base (call Derived))
+  (print (call measure base))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (fn-do + This _)
+  (fn-do + area Int
+    (return 0)
+  )
+)
 
-────────────────────
-+ This
+(type + Derived (is Base)
+  (fn-do + This _)
+  (fn-do + area Int
+    (let box (call Box))
+    (return 7)
+  )
+)
 
-────────────────────
-+ do area Int
+(type + Box
+  (prop + value Int (= 0))
+)
 
-= 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Derived is Base
-
-────────────────────
-+ This
-
-────────────────────
-+ do area Int
-
-. box = Box()
-= 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ value Int = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ do measure Int without gc
-    - base Base
-
-= base.area()
+(fn-do + measure Int (without gc)
+  (param base Base)
+  (return (call (. base area)))
+)
 ```
 
 ```output
-Exception: allocation is not allowed in a GC-free zone (entered at no file:34:1): measure (without gc) → Base.area → Derived.area → Box()
-<no file:25>
-    . box = Box()
-            ^^^^^
+Exception: allocation is not allowed in a GC-free zone (entered at no file:26:1): measure (without gc) → Base.area → Derived.area → (call Box)
+<no file:17>
+        (let box (call Box))
+                 ^^^^^^^^^^
 ```
 
-```yumi crash
--- run(:: n Int => n + 1)
+```brix crash
+(main
+  (print (call run (=> ((: n Int)) (+ n 1))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run Int without suspend
-    - action () Int
-        - Int
-
-= action(4)
+(fn-do + run Int (without suspend)
+  (param action (fn-type Int (param _ Int)))
+  (return (call action 4))
+)
 ```
 
 ```output
-Exception: Function value call requires unrestricted effects: run (without suspend) → action(4)
-<no file:9>
-    = action(4)
-      ^^^^^^^^^
+Exception: Function value call requires unrestricted effects: run (without suspend) → (call action 4)
+<no file:8>
+      (return (call action 4))
+              ^^^^^^^^^^^^^^^
 ```
 
 ### A GC-free block assigns a local declared outside it, at the top level and in a function
 
-```yumi
-. seed = 5
-. total = 0
-do without gc
-    total = seed + 8
--- total
--- run(5)
+```brix
+(main
+  (let seed 5)
+  (let total 0)
+  (do (without gc)
+    (= total (+ seed 8))
+  )
+  (print total)
+  (print (call run 5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run I64
-    - seed I64
-
-. total = 0
-do without gc
-    total = seed + 8
-= total
+(fn-do + run I64
+  (param seed I64)
+  (let total 0)
+  (do (without gc)
+    (= total (+ seed 8))
+  )
+  (return total)
+)
 ```
 
 ```output
@@ -804,19 +813,21 @@ do without gc
 
 ### A GC-free block assigns fields of an outer struct local
 
-```yumi
-. point = Point(1, 2)
-do without gc
-    point.x = 10
-    point.y += 5
--- point.x
--- point.y
+```brix
+(main
+  (let point (call Point 1 2))
+  (do (without gc)
+    (= (. point x) 10)
+    (+= (. point y) 5)
+  )
+  (print (. point x))
+  (print (. point y))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
-
-+ x Int
-+ y Int
+(type + Point (is Struct)
+  (prop + x Int)
+  (prop + y Int)
+)
 ```
 
 ```output
@@ -826,18 +837,24 @@ do without gc
 
 ### A loop in a GC-free block, and a nested GC-free block, update outer locals
 
-```yumi
-. sum = 0
-do without gc
-    for index in 0 .. < 5
-        sum += index
--- sum
-. outer = 1
-do without gc
-    outer += 10
-    do without gc
-        outer += 100
--- outer
+```brix
+(main
+  (let sum 0)
+  (do (without gc)
+    (for (in index (..< 0 5))
+      (+= sum index)
+    )
+  )
+  (print sum)
+  (let outer 1)
+  (do (without gc)
+    (+= outer 10)
+    (do (without gc)
+      (+= outer 100)
+    )
+  )
+  (print outer)
+)
 ```
 
 ```output
@@ -847,43 +864,47 @@ do without gc
 
 ### A GC-free block assigns a global, arguments, and locals taken apart into
 
-```yumi
-+ counter = 1
+```brix
+(prop + counter _ (= 1))
+(blank)
 
-counter = 2
-do without gc
-    counter += 40
--- counter
--- bump(5)
--- shift(Point(1, 2))
-. left = 1
-. right = 2
-do without gc
-    (left, right) = (right, left)
--- left
--- right
+(main
+  (= counter 2)
+  (do (without gc)
+    (+= counter 40)
+  )
+  (print counter)
+  (print (call bump 5))
+  (print (call shift (call Point 1 2)))
+  (let left 1)
+  (let right 2)
+  (do (without gc)
+    (= (tuple left right) (tuple right left))
+  )
+  (print left)
+  (print right)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(type + Point (is Struct)
+  (prop + x Int)
+  (prop + y Int)
+)
 
-+ x Int
-+ y Int
+(fn-do + bump I64
+  (param seed I64)
+  (do (without gc)
+    (+= seed 10)
+  )
+  (return seed)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do bump I64
-    - seed I64
-
-do without gc
-    seed += 10
-= seed
-
-━━━━━━━━━━━━━━━━━━━━
-+ do shift Int
-    - point Point
-
-do without gc
-    point.x += 100
-= point.x
+(fn-do + shift Int
+  (param point Point)
+  (do (without gc)
+    (+= (. point x) 100)
+  )
+  (return (. point x))
+)
 ```
 
 ```output
@@ -896,24 +917,31 @@ do without gc
 
 ### A GC-free block narrows outer locals as a plain block does
 
-```yumi
-. known Int? = 4
-. seen = 0
-if known
-    do without gc
-        seen = known + 1
-        known = 9
-    -- seen
-    -- known + 1
-. unset Int? = null
-do without gc
-    unset = 7
--- unset + 1
-. cleared I64? = 3
-if cleared
-    do without gc
-        cleared = null
-    -- cleared ?? -1
+```brix
+(main
+  (let known (? Int) 4)
+  (let seen 0)
+  (if known
+    (do (without gc)
+      (= seen (+ known 1))
+      (= known 9)
+    )
+    (print seen)
+    (print (+ known 1))
+  )
+  (let unset (? Int) null)
+  (do (without gc)
+    (= unset 7)
+  )
+  (print (+ unset 1))
+  (let cleared (? I64) 3)
+  (if cleared
+    (do (without gc)
+      (= cleared null)
+    )
+    (print (?? cleared -1))
+  )
+)
 ```
 
 ```output
@@ -925,20 +953,24 @@ if cleared
 
 ### A GC-free block leaves the fields of an outer struct it assigns as a plain block does
 
-```yumi
-. holder = Holder(3)
-if holder.value
-    do without gc
-        holder.value = null
-    -- holder.value ?? -1
-do without gc
-    holder.value = 7
--- holder.value ?? -1
+```brix
+(main
+  (let holder (call Holder 3))
+  (if (. holder value)
+    (do (without gc)
+      (= (. holder value) null)
+    )
+    (print (?? (. holder value) -1))
+  )
+  (do (without gc)
+    (= (. holder value) 7)
+  )
+  (print (?? (. holder value) -1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Struct
-
-+ value Int?
+(type + Holder (is Struct)
+  (prop + value (? Int))
+)
 ```
 
 ```output
@@ -946,478 +978,470 @@ do without gc
 7
 ```
 
-```yumi crash
-. name = "before"
-. other = "after"
-do without gc
-    name = other
--- name
+```brix crash
+(main
+  (let name "before")
+  (let other "after")
+  (do (without gc)
+    (= name other)
+  )
+  (print name)
+)
 ```
 
 ```output
-Exception: storing a managed pointer is not allowed in a GC-free zone (entered at no file:4:1); compute into a zone buffer and publish after the zone exits: main (do without gc) → name = other
-<no file:5>
-        name = other
-        ^^^^^^^^^^^^
+Exception: storing a managed pointer is not allowed in a GC-free zone (entered at no file:5:3); compute into a zone buffer and publish after the zone exits: main (do without gc) → (= name other)
+<no file:6>
+        (= name other)
+        ^^^^^^^^^^^^^^
 ```
 
 ### A runtime function that suspends the task, called where the code may not suspend
 
-```yumi compile-error
-/BxEvents/BxEvents.h
+```brix compile-error
+(import /BxEvents/BxEvents.h)
+(blank)
 
--- direct(C:brixNewMutex())
+(main
+  (print (call direct (call C:brixNewMutex)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do direct Int without suspend
-    - native CPointer'Char8
+(fn-do + direct Int (without suspend)
+  (param native (of CPointer Char8))
+  (call lock native)
+  (return 1)
+)
 
-lock(native)
-= 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do lock
-    - native CPointer'Char8
-
-C:brixLockMutex(native)
+(fn-do + lock _
+  (param native (of CPointer Char8))
+  (call C:brixLockMutex native)
+)
 ```
 
 ```output
-Exception: cannot suspend under 'without suspend': direct (without suspend) → lock → C:brixLockMutex(native)
+Exception: cannot suspend under 'without suspend': direct (without suspend) → lock → (call C:brixLockMutex native)
 <no file:17>
-    C:brixLockMutex(native)
-    ^^^^^^^^^^^^^^^^^^^^^^^
+      (call C:brixLockMutex native)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### An interface member whose implementation suspends the task, called where the code may not suspend
 
-```yumi compile-error
-/BxEvents/BxEvents.h
+```brix compile-error
+(import /BxEvents/BxEvents.h)
+(blank)
 
-. source = Impl() as Source
--- direct(source)
+(main
+  (let source (as (call Impl) Source))
+  (print (call direct source))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Source is Interface
+(type + Source (is Interface)
+  (fn-do + take Int)
+)
 
-────────────────────
-+ do take Int
+(type + Impl
+  (implements Source)
+  (prop _ native (of CPointer Char8) (= (call C:brixNewMutex)))
+  (fn-do + take Int
+    (call C:brixLockMutex native)
+    (return 1)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Impl
-    is Source
-
-_ native CPointer'Char8 = C:brixNewMutex()
-
-────────────────────
-+ do take Int
-
-C:brixLockMutex(native)
-= 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do direct Int without suspend
-    - source Source
-
-= source.take()
+(fn-do + direct Int (without suspend)
+  (param source Source)
+  (return (call (. source take)))
+)
 ```
 
 ```output
-Exception: cannot suspend under 'without suspend': direct (without suspend) → Source.take → Impl.take → C:brixLockMutex(native)
-<no file:22>
-    C:brixLockMutex(native)
-    ^^^^^^^^^^^^^^^^^^^^^^^
+Exception: cannot suspend under 'without suspend': direct (without suspend) → Source.take → Impl.take → (call C:brixLockMutex native)
+<no file:18>
+        (call C:brixLockMutex native)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A runtime function that makes text allocates
 
-```yumi compile-error
-/BxCore/BxNumber.h
+```brix compile-error
+(import /BxCore/BxNumber.h)
+(blank)
 
--- outer(3)
+(main
+  (print (call outer 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do outer Int without heap
-    - n Int
-
-. text = C:brixIntToString(n, 0)
-= n
+(fn-do + outer Int (without heap)
+  (param n Int)
+  (let text (call C:brixIntToString n 0))
+  (return n)
+)
 ```
 
 ```output
-Exception: allocation is not allowed under 'without heap': outer (without heap) → C:brixIntToString(n, 0)
-<no file:10>
-    . text = C:brixIntToString(n, 0)
-             ^^^^^^^^^^^^^^^^^^^^^^^
+Exception: allocation is not allowed under 'without heap': outer (without heap) → (call C:brixIntToString n 0)
+<no file:11>
+      (let text (call C:brixIntToString n 0))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A lambda that captures a local allocates its environment
 
-```yumi compile-error
--- outer(3)
+```brix compile-error
+(main
+  (print (call outer 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do apply Int
-    - action
+(fn-do + apply Int
+  (param action _)
+  (return (call action))
+)
 
-= action()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do outer Int without heap
-    - n Int
-
-= apply(=> n + 1)
+(fn-do + outer Int (without heap)
+  (param n Int)
+  (return (call apply (=> () (+ n 1))))
+)
 ```
 
 ```output
-Exception: allocation is not allowed under 'without heap': outer (without heap) → => n + 1
-<no file:14>
-    = apply(=> n + 1)
-            ^^^^^^^^
+Exception: allocation is not allowed under 'without heap': outer (without heap) → (=> () (+ n 1))
+<no file:13>
+      (return (call apply (=> () (+ n 1))))
+                          ^^^^^^^^^^^^^^^
 ```
 
 ### A converter an implicit conversion runs is typed under the caller's restriction
 
-```yumi compile-error
-. label = Label(3)
--- outer(label)
+```brix compile-error
+(main
+  (let label (call Label 3))
+  (print (call outer label))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + value Int (= 0))
+)
 
-+ value Int = 0
+(type + Label
+  (prop + count Int)
+  (fn-do + This _
+    (param count _)
+  )
+  (fn-to-expr + Box
+    (call Box)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Label
-
-+ count Int
-
-────────────────────
-+ This
-    - count
-
-────────────────────
-+ to Box
-
-Box()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do outer Int without heap
-    - label Label
-
-. box = label as Box
-= label.count
+(fn-do + outer Int (without heap)
+  (param label Label)
+  (let box (as label Box))
+  (return (. label count))
+)
 ```
 
 ```output
-Exception: allocation is not allowed under 'without heap': outer (without heap) → the converter of Label → Box()
-<no file:22>
-    Box()
-    ^^^^^
+Exception: allocation is not allowed under 'without heap': outer (without heap) → the converter of Label → (call Box)
+<no file:17>
+        (call Box)
+        ^^^^^^^^^^
 ```
 
 ### Every allocation is reported, each with the chain from the restricted function
 
-```yumi compile-error
--- outer(3)
+```brix compile-error
+(main
+  (print (call outer 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(type + Box
+  (prop + value Int (= 0))
+)
 
-+ value Int = 0
+(fn-do + helper Int
+  (param n Int)
+  (let box (call Box))
+  (return (+ (. box value) n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do helper Int
-    - n Int
-
-. box = Box()
-= box.value + n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do outer Int without heap
-    - n Int
-
-. first = Box()
-. second = Box()
-= helper(n) + first.value + second.value
+(fn-do + outer Int (without heap)
+  (param n Int)
+  (let first (call Box))
+  (let second (call Box))
+  (return (+ (call helper n) (. first value) (. second value)))
+)
 ```
 
 ```output
-Exception: allocation is not allowed under 'without heap': outer (without heap) → helper → Box()
-<no file:13>
-    . box = Box()
-            ^^^^^
+Exception: allocation is not allowed under 'without heap': outer (without heap) → helper → (call Box)
+<no file:12>
+      (let box (call Box))
+               ^^^^^^^^^^
 
-Exception: allocation is not allowed under 'without heap': outer (without heap) → Box()
-<no file:20>
-    . first = Box()
-              ^^^^^
+Exception: allocation is not allowed under 'without heap': outer (without heap) → (call Box)
+<no file:18>
+      (let first (call Box))
+                 ^^^^^^^^^^
 
-Exception: allocation is not allowed under 'without heap': outer (without heap) → Box()
-<no file:21>
-    . second = Box()
-               ^^^^^
+Exception: allocation is not allowed under 'without heap': outer (without heap) → (call Box)
+<no file:19>
+      (let second (call Box))
+                  ^^^^^^^^^^
 ```
 
 ### A struct made a value of an interface is boxed; an enum is not
 
-```yumi compile-error
--- outer(3)
+```brix compile-error
+(main
+  (print (call outer 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Weighted is Interface
+(type + Weighted (is Interface)
+  (fn-expr + weight Int :get)
+)
 
-────────────────────
-+ get weight Int
+(type + Fill (is U32)
+  (implements Weighted)
+  (variant empty (= 0))
+  (variant full (= 1))
+  (fn-expr + weight Int :get
+    1
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Fill is U32
-    is Weighted
+(type + Pair (is Struct)
+  (implements Weighted)
+  (prop + a Int)
+  (fn-expr + weight Int :get
+    a
+  )
+)
 
-| empty = 0
-| full = 1
+(fn-do + weigh Int
+  (param item Weighted)
+  (return (. item weight))
+)
 
-────────────────────
-+ get weight Int
-
-1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Struct
-    is Weighted
-
-+ a Int
-
-────────────────────
-+ get weight Int
-
-a
-
-━━━━━━━━━━━━━━━━━━━━
-+ do weigh Int
-    - item Weighted
-
-= item.weight
-
-━━━━━━━━━━━━━━━━━━━━
-+ do outer Int without heap
-    - n Int
-
-. total = weigh(Fill.full)
-= total + weigh(Pair(n))
+(fn-do + outer Int (without heap)
+  (param n Int)
+  (let total (call weigh (. Fill full)))
+  (return (+ total (call weigh (call Pair n))))
+)
 ```
 
 ```output
-Exception: allocation is not allowed under 'without heap': outer (without heap) → Pair(n)
-<no file:44>
-    = total + weigh(Pair(n))
-                    ^^^^^^^
+Exception: allocation is not allowed under 'without heap': outer (without heap) → (call Pair n)
+<no file:35>
+      (return (+ total (call weigh (call Pair n))))
+                                   ^^^^^^^^^^^^^
 ```
 
 ### A view of an array's rows makes the owner the runtime tracks it by
 
-```yumi compile-error
-. items = Array'Point(2)
--- outer(items)
+```brix compile-error
+(main
+  (let items (call (of Array Point) 2))
+  (print (call outer items))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Point is Struct
+(type + Point (is Struct)
+  (prop + x Int)
+)
 
-+ x Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ do outer Int without heap
-    - items Array'Point
-
-. rows = items.rows
-= 0
+(fn-do + outer Int (without heap)
+  (param items (of Array Point))
+  (let rows (. items rows))
+  (return 0)
+)
 ```
 
 ```output
-Exception: allocation is not allowed under 'without heap': outer (without heap) → items.rows
-<no file:14>
-    . rows = items.rows
-             ^^^^^^^^^^
+Exception: allocation is not allowed under 'without heap': outer (without heap) → (. items rows)
+<no file:13>
+      (let rows (. items rows))
+                ^^^^^^^^^^^^^^
 ```
 
 ### A generator makes its frame where it is called
 
-```yumi compile-error
-. made = outer(3)
--- made
+```brix compile-error
+(main
+  (let made (call outer 3))
+  (print made)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do counted
-    - n Int
+(fn-do + counted _
+  (param n Int)
+  (yield n)
+)
 
-<= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do outer Generator'Int without heap
-    - n Int
-
-= counted(n)
+(fn-do + outer (of Generator Int) (without heap)
+  (param n Int)
+  (return (call counted n))
+)
 ```
 
 ```output
 Exception: allocation is not allowed under 'without heap': outer (without heap) → counted
-<no file:6>
-    + do counted
-    ^^^^^^^^^^^
+<no file:7>
+    (fn-do + counted _
+    ^^^^^^^^^^^^^^^^^
 ```
 
 ### A task or a GC-free block that captures a local is given a capture the collector owns
 
-```yumi compile-error
--- outer(3)
+```brix compile-error
+(main
+  (print (call outer 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do outer Int without heap
-    - n Int
-
-. total = n
-do new
-    total += 1
-do without gc
-    total += 1
-= total
+(fn-do + outer Int (without heap)
+  (param n Int)
+  (let total n)
+  (do-new
+    (+= total 1)
+  )
+  (do (without gc)
+    (+= total 1)
+  )
+  (return total)
+)
 ```
 
 ```output
-Exception: allocation is not allowed under 'without heap': outer (without heap) → do new
+Exception: allocation is not allowed under 'without heap': outer (without heap) → (do-new …)
 <no file:9>
-    do new
-    ^^^^^
+      (do-new
+      ^^^^^^
 
-Exception: allocation is not allowed under 'without heap': outer (without heap) → do without gc
-<no file:11>
-    do without gc
-    ^^^^^^^^^^^^
+Exception: allocation is not allowed under 'without heap': outer (without heap) → (do (without gc) …)
+<no file:12>
+      (do (without gc)
+      ^^^^^^^^^^^^^^^
 ```
 
 ### A method bound to its object and made a function value is copied; a function is not
 
-```yumi compile-error
-. made = outer(Adder())
--- made(2)
+```brix compile-error
+(main
+  (let made (call outer (call Adder)))
+  (print (call made 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Maker is () Int
-    - n Int
+(type + Maker (is (fn-type Int (param n Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Adder
+(type + Adder
+  (prop + base Int (= 1))
+  (fn-do + add Int
+    (param n Int)
+    (return (+ base n))
+  )
+)
 
-+ base Int = 1
+(fn-do + twice Int
+  (param n Int)
+  (return (* n 2))
+)
 
-────────────────────
-+ do add Int
-    - n Int
-
-= base + n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do twice Int
-    - n Int
-
-= n * 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do outer Maker without heap
-    - adder Adder
-
-. plain Maker = twice
-= adder.add
+(fn-do + outer Maker (without heap)
+  (param adder Adder)
+  (let plain Maker twice)
+  (return (. adder add))
+)
 ```
 
 ```output
-Exception: allocation is not allowed under 'without heap': outer (without heap) → adder.add
-<no file:31>
-    = adder.add
-      ^^^^^^^^^
+Exception: allocation is not allowed under 'without heap': outer (without heap) → (. adder add)
+<no file:25>
+      (return (. adder add))
+              ^^^^^^^^^^^^^
 ```
 
 ### A lazy global's first read runs its value, and may wait for another task; a plain global is set when its module starts
 
-```yumi compile-error
--- heavy(3)
--- waits(1)
+```brix compile-error
+(main
+  (print (call heavy 3))
+  (print (call waits 1))
+)
 
-_ names [String] := ["a", "b"]
-_ plain [String] = ["c"]
+(blank)
+(prop _ names (list String) (:= (list "a" "b")))
+(prop _ plain (list String) (= (list "c")))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do heavy Int without heap
-    - n Int
+(fn-do + heavy Int (without heap)
+  (param n Int)
+  (return (+ (. names length) (. plain length) n))
+)
 
-= names.length + plain.length + n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do waits Int without suspend
-    - n Int
-
-= names.length + n
+(fn-do + waits Int (without suspend)
+  (param n Int)
+  (return (+ (. names length) n))
+)
 ```
 
 ```output
 Exception: cannot read lazy global 'names' under 'without heap', since its first read runs its value: heavy (without heap) → names
-<no file:12>
-    = names.length + plain.length + n
-      ^^^^^
+<no file:13>
+      (return (+ (. names length) (. plain length) n))
+                    ^^^^^
 
 Exception: cannot read lazy global 'names' under 'without suspend', since its first read runs its value: waits (without suspend) → names
 <no file:18>
-    = names.length + n
-      ^^^^^
+      (return (+ (. names length) n))
+                    ^^^^^
 ```
 
 ### A C function that polls the collector and has no claim is taken to suspend; slicing text allocates
 
-```yumi compile-error
-/BxCore/BxCore.h
-/BxCore/BxString.h
+```brix compile-error
+(import /BxCore/BxCore.h)
+(import /BxCore/BxString.h)
+(blank)
 
--- idle(3)
--- slices("abc")
+(main
+  (print (call idle 3))
+  (print (call slices "abc"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do idle Int without suspend
-    - n Int
+(fn-do + idle Int (without suspend)
+  (param n Int)
+  (let collected (call C:brixGCRuntimeIdleCollect 0u64))
+  (return n)
+)
 
-. collected = C:brixGCRuntimeIdleCollect(0u64)
-= n
-
-━━━━━━━━━━━━━━━━━━━━
-+ do slices String without heap
-    - text String
-
-= C:brixStringSlice(text, 0, 1) as String
+(fn-do + slices String (without heap)
+  (param text String)
+  (return (as (call C:brixStringSlice text 0 1) String))
+)
 ```
 
 ```output
-Exception: cannot suspend under 'without suspend': idle (without suspend) → C:brixGCRuntimeIdleCollect(0u64)
-<no file:12>
-    . collected = C:brixGCRuntimeIdleCollect(0u64)
-                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Exception: cannot suspend under 'without suspend': idle (without suspend) → (call C:brixGCRuntimeIdleCollect 0u64)
+<no file:13>
+      (let collected (call C:brixGCRuntimeIdleCollect 0u64))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Exception: allocation is not allowed under 'without heap': slices (without heap) → C:brixStringSlice(text, 0, 1)
+Exception: allocation is not allowed under 'without heap': slices (without heap) → (call C:brixStringSlice text 0 1)
 <no file:19>
-    = C:brixStringSlice(text, 0, 1) as String
-      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      (return (as (call C:brixStringSlice text 0 1) String))
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A task that captures nothing is spawned with no allocation from the collector
 
-```yumi
--- outer(3)
+```brix
+(main
+  (print (call outer 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do outer Int without heap
-    - n Int
-
-do new
-    . unused = 1
-= n
+(fn-do + outer Int (without heap)
+  (param n Int)
+  (do-new
+    (let unused 1)
+  )
+  (return n)
+)
 ```
 
 ```output
@@ -1426,43 +1450,49 @@ do new
 
 ### A task's handler takes the panic it handles into the collector's heap
 
-```yumi compile-error
--- outer(3)
+```brix compile-error
+(main
+  (print (call outer 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do outer Int without heap
-    - n Int
-
-do new
-    . unused = 1
-catch Panic
-    . handled = 2
-= n
+(fn-do + outer Int (without heap)
+  (param n Int)
+  (do-new
+    (let unused 1)
+    (on-failure Panic
+      (let handled 2)
+    )
+  )
+  (return n)
+)
 ```
 
 ```output
-Exception: allocation is not allowed under 'without heap': outer (without heap) → do new
+Exception: allocation is not allowed under 'without heap': outer (without heap) → (do-new …)
 <no file:8>
-    do new
-    ^^^^^
+      (do-new
+      ^^^^^^
 ```
 
 ### A without section restricts a block or a function's header, and code that keeps to it runs.
 
-```yumi
-. seed = 5
-do without gc
-    . value = seed + 7
--- total(3)
+```brix
+(main
+  (let seed 5)
+  (do (without gc)
+    (let value (+ seed 7))
+  )
+  (print (call total 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do total Int without heap, suspend
-    - count Int
-
-. sum = 0
-for value in 1 .. count
-    sum += value
-= sum
+(fn-do + total Int (without heap suspend)
+  (param count Int)
+  (let sum 0)
+  (for (in value (.. 1 count))
+    (+= sum value)
+  )
+  (return sum)
+)
 ```
 
 ```output
@@ -1471,32 +1501,40 @@ for value in 1 .. count
 
 ### A do block kept from the heap, from suspending, from safepoints or from the probes runs in place.
 
-```yumi
-. count = 4
-. sum = 0
-do without heap
-    for value in 1 .. count
-        sum += value
--- sum
-do without suspend
-    sum += total(count)
--- sum
-do without safepoints, probe-safepoints
-    for value in 1 .. count
-        sum += value
--- sum
-do without heap, suspend
-    sum += total(2)
--- sum
+```brix
+(main
+  (let count 4)
+  (let sum 0)
+  (do (without heap)
+    (for (in value (.. 1 count))
+      (+= sum value)
+    )
+  )
+  (print sum)
+  (do (without suspend)
+    (+= sum (call total count))
+  )
+  (print sum)
+  (do (without safepoints probe-safepoints)
+    (for (in value (.. 1 count))
+      (+= sum value)
+    )
+  )
+  (print sum)
+  (do (without heap suspend)
+    (+= sum (call total 2))
+  )
+  (print sum)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do total Int
-    - count Int
-
-. sum = 0
-for value in 1 .. count
-    sum += value
-= sum
+(fn-do + total Int
+  (param count Int)
+  (let sum 0)
+  (for (in value (.. 1 count))
+    (+= sum value)
+  )
+  (return sum)
+)
 ```
 
 ```output
@@ -1508,22 +1546,29 @@ for value in 1 .. count
 
 ### A cleanup opened outside a do block runs as it was opened, where the block is left.
 
-```yumi
--- early(1)
--- early(0)
+```brix
+(main
+  (print (call early 1))
+  (print (call early 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do early Int
-    - flag Int
-
-do finally
-    . task = do new
-        -- flag
-    task.wait()
-do without heap
-    if flag == 1
-        = 3
-= 4
+(fn-do + early Int
+  (param flag Int)
+  (finally
+    (let task
+      (do-new
+        (print flag)
+      )
+    )
+    (call (. task wait))
+  )
+  (do (without heap)
+    (if (== flag 1)
+      (return 3)
+    )
+  )
+  (return 4)
+)
 ```
 
 ```output
@@ -1535,126 +1580,142 @@ do without heap
 
 ### Waiting for a task suspends
 
-```yumi compile-error
-/BxEvents/BxEvents.h
+```brix compile-error
+(import /BxEvents/BxEvents.h)
+(blank)
 
-do without suspend
-    C:brixWaitForTask(0)
+(main
+  (do (without suspend)
+    (call C:brixWaitForTask 0)
+  )
+)
 ```
 
 ```output
-Exception: cannot suspend under 'without suspend': main (do without suspend) → C:brixWaitForTask(0)
-<no file:5>
-        C:brixWaitForTask(0)
-        ^^^^^^^^^^^^^^^^^^^^
+Exception: cannot suspend under 'without suspend': main (do without suspend) → (call C:brixWaitForTask 0)
+<no file:7>
+        (call C:brixWaitForTask 0)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Cancelling a task yields to it, so it suspends
 
-```yumi compile-error
-/BxEvents/BxEvents.h
+```brix compile-error
+(import /BxEvents/BxEvents.h)
+(blank)
 
-do without suspend
-    C:brixCancelTask(0)
+(main
+  (do (without suspend)
+    (call C:brixCancelTask 0)
+  )
+)
 ```
 
 ```output
-Exception: cannot suspend under 'without suspend': main (do without suspend) → C:brixCancelTask(0)
+Exception: cannot suspend under 'without suspend': main (do without suspend) → (call C:brixCancelTask 0)
+<no file:7>
+        (call C:brixCancelTask 0)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+```brix compile-error
+(main
+  (let sum 0)
+  (do (without heap)
+    (= sum (. (call Box) value))
+  )
+  (print sum)
+)
+
+(type + Box
+  (prop + value Int (= 0))
+)
+```
+
+```output
+Exception: allocation is not allowed under 'without heap': main (do without heap) → (call Box)
 <no file:5>
-        C:brixCancelTask(0)
-        ^^^^^^^^^^^^^^^^^^^
+        (= sum (. (call Box) value))
+                  ^^^^^^^^^^
 ```
 
-```yumi compile-error
-. sum = 0
-do without heap
-    sum = Box().value
--- sum
+```brix compile-error
+(main
+  (print (call boxed))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box
+(fn-do + boxed Int (without heap)
+  (return (. (call Box) value))
+)
 
-+ value Int = 0
-```
-
-```output
-Exception: allocation is not allowed under 'without heap': main (do without heap) → Box()
-<no file:4>
-        sum = Box().value
-              ^^^^^
-```
-
-```yumi compile-error
--- boxed()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do boxed Int without heap
-= Box().value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Box
-
-+ value Int = 0
+(type + Box
+  (prop + value Int (= 0))
+)
 ```
 
 ```output
-Exception: allocation is not allowed under 'without heap': boxed (without heap) → Box()
-<no file:6>
-    = Box().value
-      ^^^^^
+Exception: allocation is not allowed under 'without heap': boxed (without heap) → (call Box)
+<no file:7>
+      (return (. (call Box) value))
+                 ^^^^^^^^^^
 ```
 
-```yumi compile-error
-do without heap, network
-    . one = 1
+```brix compile-error
+(main
+  (do (without heap network)
+    (let one 1)
+  )
+)
 ```
 
 ```output
 Exception: Unknown name 'network' after without
-<no file:2>
-    do without heap, network
-    ^^^^^^^^^^^^^^^^^^^^^^^
+<no file:3>
+      (do (without heap network)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi compile-error
--- 1
+```brix compile-error
+(main
+  (print 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do run without cancel
--- 2
+(fn-do + run _ (without cancel)
+  (print 2)
+)
 ```
 
 ```output
 Exception: 'without cancel' is only for a do block
-<no file:5>
-    + do run without cancel
-    ^^^^^^^^^^^^^^^^^^^^^^
+<no file:6>
+    (fn-do + run _ (without cancel)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### A task an object owns allocates the record the object keeps of it, so a method under without heap cannot start one, though it can start a task marked @detached that captures nothing
 
-```yumi compile-error
-. holder = Holder()
-holder.start()
+```brix compile-error
+(main
+  (let holder (call Holder))
+  (call (. holder start))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-────────────────────
-+ do start without heap
-
-do new
-    -- "owned"
-do new @detached
-    -- "detached"
-
-────────────────────
-+ do close
+(type + Holder
+  (fn-do + start _ (without heap)
+    (do-new
+      (print "owned")
+    )
+    (do-new @detached
+      (print "detached")
+    )
+  )
+  (fn-do + close _)
+)
 ```
 
 ```output
-Exception: allocation is not allowed under 'without heap': Holder.start (without heap) → do new
-<no file:11>
-    do new
-    ^^^^^
+Exception: allocation is not allowed under 'without heap': Holder.start (without heap) → (do-new …)
+<no file:9>
+        (do-new
+        ^^^^^^
 ```

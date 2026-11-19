@@ -1,0 +1,185 @@
+(import ./type-store)
+(import ./type-text)
+(import ./types)
+(import /lang/ast/decl)
+(import /lang/ast/module)
+(import /lang/ast/program)
+
+(type + ProbeCast (is U8)
+  ; How a probe writes a value of a type (see `probe-cast`).
+  (blank)
+  (variant probe-number (= 0))
+  (variant probe-text (= 1))
+  (variant probe-object (= 2))
+  (variant probe-array (= 3))
+  (variant probe-converted (= 4))
+)
+
+(fn-expr + probe-cast ProbeCast
+  (param types Types)
+  (param type TypeId)
+  ; How a probe writes a value of a type, as the reference casts one: a scalar number, a truth or a
+  ; character, and a text, as they are; an object of a class, and a tuple that is an `Array` or is
+  ; `Inspectable`, by the id the probes module gives it, an array with the type of its items; and
+  ; any other value as its text.
+  (case? (and (call intrinsic-is-numeric kind) (!= kind .number) (!= kind .cpointer))
+    .probe-number
+  )
+  (case? (== type (. types string-type))
+    .probe-text
+  )
+  (case? (== kind .class)
+    .probe-object
+  )
+  (case? (not (call intrinsic-is-tuple-like kind))
+    .probe-converted
+  )
+  (case? (call is-probe-array types type)
+    .probe-array
+  )
+  (case? (call is-inspectable types type)
+    .probe-object
+  )
+  (default
+    .probe-converted
+  )
+  (where
+    (lazy kind (call (. types intrinsic-of) type))
+  )
+)
+
+(fn-expr + probe-data-type U8
+  (param types Types)
+  (param type TypeId)
+  ; The probe data type a value of a type is written as, which the probes module reads it by.
+  (match (call probe-cast types type)
+    (case= .probe-object
+      15
+    )
+    (case= .probe-array
+      14
+    )
+    (case= .probe-number
+      (call number-data-type (call (. types intrinsic-of) type))
+    )
+    (default
+      13
+    )
+  )
+)
+
+(fn-do + probe-class-name String
+  (param types Types)
+  (param type TypeId)
+  ; The name the probes module declares the class of an object or an array by: its module's name
+  ; and its own.
+  (let program (. types program))
+  (match? ([] (. types rows) type)
+    (case (call .type-class row)
+      (return (str (. ([] (. program modules) (. row module)) name) ":" (call class-name program (. row module) (. row decl))))
+    )
+  )
+  (return "")
+)
+
+(fn-expr + probe-preview-text String
+  (param types Types)
+  (param type TypeId)
+  ; What a preview of a value that a probe would write as its text writes instead: the name of its
+  ; type, in brackets.
+  (str "[" (call type-runtime-name types type) "]")
+)
+
+(fn-expr _ number-data-type U8
+  (param kind IntrinsicKind)
+  (match kind
+    (case= .bool
+      1
+    )
+    (case= .int1
+      1
+    )
+    (case= .char
+      2
+    )
+    (case= .int8
+      3
+    )
+    (case= .uint8
+      4
+    )
+    (case= .int16
+      5
+    )
+    (case= .uint16
+      6
+    )
+    (case= .int32
+      7
+    )
+    (case= .uint32
+      8
+    )
+    (case= .int64
+      9
+    )
+    (case= .uint64
+      10
+    )
+    (case= .float32
+      11
+    )
+    (case= .float64
+      12
+    )
+    (default
+      13
+    )
+  )
+)
+
+(fn-do _ is-probe-array Bool
+  (param types Types)
+  (param type TypeId)
+  ; Whether a type is the core `Array`, or a class below it.
+  (let current (? TypeId) type)
+  (while current
+    (if (call is-named types current "core/array" "Array")
+      (return true)
+    )
+    (= current (call (. types base-of) current))
+  )
+  (return false)
+)
+
+(fn-do _ is-inspectable Bool
+  (param types Types)
+  (param type TypeId)
+  ; Whether a type is `Inspectable`: it, an interface it has, or a class above it, has the interface.
+  (for (in interface (call (. types interfaces-of) type))
+    (if (or (call is-named types interface "core" "Inspectable") (call is-inspectable types interface))
+      (return true)
+    )
+  )
+  (let base (call (. types base-of) type))
+  (if base
+    (return (call is-inspectable types base))
+  )
+  (return false)
+)
+
+(fn-expr _ is-named Bool
+  (param types Types)
+  (param type TypeId)
+  (param module-name String)
+  (param name String)
+  (match ([] (. types rows) type)
+    (case (call .type-class row)
+      (and (== (. ([] (. types program modules) (. row module)) name) module-name) same-name)
+      (lazy same-name (== (call class-name (. types program) (. row module) (. row decl)) name))
+    )
+    (default
+      false
+    )
+  )
+)

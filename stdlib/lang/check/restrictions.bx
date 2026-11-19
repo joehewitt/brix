@@ -1,0 +1,376 @@
+(import ./call-paths)
+(import ./facts)
+(import ./instances)
+(import ./session)
+(import ./type-text)
+(import ./types)
+(import /lang/ast/ast)
+(import /lang/ast/ast-children)
+(import /lang/ast/ast-nodes)
+(import /lang/ast/decl)
+(import /lang/ast/module)
+(import /lang/ast/program)
+
+(fn-expr + restricting-effects EffectMask
+  (/or/ (. CompilationEffect gc-free) (. CompilationEffect no-heap) (. CompilationEffect no-safepoint) (. CompilationEffect no-suspend))
+)
+
+(type + Restrictions
+  ; A restriction broken is reported with the chain from where it is placed to where it is broken,
+  ; once typing has found every call: from a function that declares it, or from one whose `do` block
+  ; enters it, through each function typed again under it, to the code that breaks it. The report
+  ; is then `reached`: stated with its chain, and shown however many its function has. A ban is
+  ; broken where a door of the effect it bans is reached under it, which is reported at each call of
+  ; the door, or at each call of an interface member a door answers, with the same chain. A door a
+  ; fake answers under a `do with` is no door reached, and one the fake cannot answer is reported in
+  ; the same way, with the chain from the `do with`; where only a door reached outside every binding
+  ; calls it, as code a function value runs is, that is a panic where it runs.
+  (blank)
+  (prop _ session Session)
+  (prop _ paths CallPaths)
+  (fn-do + This _
+    (param session _)
+    (param paths _)
+  )
+  (fn-do + chain-reports _
+    (let facts (. session facts))
+    (for (in position (..< 0 (. facts diagnostics length)))
+      (let row ([] (. facts diagnostics) position))
+      (if (== (. row kind) .restricted)
+        (let name (. row name))
+        (if name
+          (let need (/and/ (call dispatch-effects (. ([] (. session instances rows) (. row instance)) effects)) (call restricting-effects)))
+          (let chain (call chain-text (. row instance) (. row module) (. row syntax) need (call restricting-effects)))
+          (let text (if-expr (== (. chain length) 0) (. name text) (str (. name text) ": " chain)))
+          (= (. ([] (. facts diagnostics) position) name) (call (. session program store-atom) text))
+        )
+        (= (. ([] (. facts diagnostics) position) kind) .reached)
+      )
+    )
+    (call report-bans)
+    (call report-swaps)
+  )
+  (fn-do _ report-bans _
+    (let table (. session program effects))
+    (return-if (if (== (. table count) 0)))
+    (let instances (. session instances))
+    (for (in position (..< 0 (. instances length)))
+      (let id (as position InstanceId))
+      (if (!= id (. instances dead))
+        (let row ([] (. instances rows) id))
+        (let door (call (. table door-of) (. row module) (. row decl)))
+        (if (and door (< door (call most-effects)) (!= (/and/ (call dispatch-effects (. row effects)) (call ban-bit door)) 0) real)
+          (let reported false)
+          (for (in edge (call (. paths edges-into) id))
+            (= reported (or (call report-door edge id door 0) reported))
+          )
+          (if (not reported)
+            (call report-unreached id door)
+          )
+        )
+        (lazy real (or (not door) (== (call (. instances fake-of) (. row effects) door) no-type)))
+      )
+    )
+  )
+  (fn-do _ report-swaps _
+    (for (in forward (. session facts swap-forwards))
+      (if (and (!= (. forward instance) (. session instances dead)) (!= (. forward miss) .swap-answered))
+        (let reported false)
+        (let dispatched false)
+        (for (in edge (call (. paths edges-into) (. forward instance)))
+          (if (call (. session facts dispatches-to) (. edge caller) (. forward instance))
+            (= dispatched true)
+            (else
+              (= reported (or (call report-swap edge forward 0) reported))
+            )
+          )
+        )
+        (if (and (not reported) (not dispatched))
+          (let row ([] (. session instances rows) (. forward instance)))
+          (let text (call swap-text forward ""))
+          (call (. session facts record-diagnostic) (. forward instance) (. row module) 0 .reached (call (. session program store-atom) text))
+        )
+      )
+    )
+  )
+  (fn-do _ report-swap Bool
+    (param edge CallEdge)
+    (param forward SwapForward)
+    (param depth Size)
+    ; Reports a door a fake cannot answer where the edge reaches it, with the chain from the `do with`
+    ; that binds the fake: at a call, or at each call of the interface member it answers.
+    (return-if false (if (> depth 8)))
+    (let instances (. session instances))
+    (if (== (. edge syntax) 0)
+      (let reported false)
+      (for (in outer (call (. paths edges-into) (. edge caller)))
+        (= reported (or (call report-swap outer forward (+ depth 1)) reported))
+      )
+      (return reported)
+    )
+    (let caller ([] (. instances rows) (. edge caller)))
+    (let need (/and/ (call dispatch-effects (. caller effects)) (call swap-bits)))
+    (let found (if-expr (== need 0) null (call (. paths chain-to) (. edge caller) (=> ((: link CallEdge)) (call step link need)))))
+    (let parts (list String))
+    (let bound (. ([] (. session program effects names) (. forward effect)) text))
+    (if (and found (!= (. found length) 0))
+      (+= parts (str (call (. paths name-of) (. ([] found 0) caller)) " (with " bound ")"))
+      (++= parts (call (. paths names) found))
+      (else
+        (+= parts (str (call (. paths name-of) (. edge caller)) " (with " bound ")"))
+      )
+    )
+    (let shown (call site-text (. caller module) (. edge syntax)))
+    (if (!= (. shown length) 0)
+      (+= parts shown)
+    )
+    (if (!= depth 0)
+      (+= parts (call (. paths name-of) (. forward instance)))
+    )
+    (let text (call swap-text forward (call (. " → " join) parts)))
+    (call (. session facts record-diagnostic) (. edge caller) (. caller module) (. edge syntax) .reached (call (. session program store-atom) text))
+    (return true)
+  )
+  (fn-do _ swap-text String
+    (param forward SwapForward)
+    (param chain String)
+    ; What a fake lacks to answer a door, with the chain to the door.
+    (let effects (. session program effects))
+    (let name (. ([] (. effects names) (. forward effect)) text))
+    (let row ([] (. session instances rows) (. forward instance)))
+    (let fake (call (. session instances fake-of) (. row effects) (. forward effect)))
+    (let fake-name (call type-short-name (. session types) fake))
+    (let door (call (. paths name-of) (. forward instance)))
+    (let said
+      (match (. forward miss)
+        (case= .swap-missing
+          (str fake-name " has no method '" door "' to answer the door of '" name "'")
+        )
+        (case= .swap-mismatched
+          (str fake-name "." door " does not take and give what the door of '" name "' does")
+        )
+        (default
+          (str "a fake answers only a door of '" name "' that is a function of its module, and " door " is not")
+        )
+      )
+    )
+    (return-if said (if (== (. chain length) 0)))
+    (return (str said ": " chain))
+  )
+  (fn-do _ report-unreached _
+    (param door InstanceId)
+    (param effect U32)
+    ; Reports a door held under a ban of its effect that no recorded call reaches, at the door, with
+    ; the chain to it, so that no way of reaching one lets it pass.
+    (let row ([] (. session instances rows) door))
+    (let bit (call ban-bit effect))
+    (let at
+      (match ([] (. ([] (. session program modules) (. row module)) decls) (. row decl))
+        (case (call .decl-function fn)
+          (. fn syntax)
+        )
+        (default
+          0u32
+        )
+      )
+    )
+    (let chain (call chain-text door (. row module) 0 (/and/ (call dispatch-effects (. row effects)) bit) bit))
+    (let name (. ([] (. session program effects names) effect) text))
+    (let text (str "cannot reach a door of '" name "' under 'without " name "': " chain))
+    (call (. session facts record-diagnostic) door (. row module) at .reached (call (. session program store-atom) text))
+  )
+  (fn-do _ report-door Bool
+    (param edge CallEdge)
+    (param door InstanceId)
+    (param effect U32)
+    (param depth Size)
+    ; Reports a door of an effect reached under a ban of it where the edge reaches it: at a call, or
+    ; at each call of the interface member it answers. A door of the effect that calls the door is
+    ; reached under the ban itself, which is reported where it is. Answers whether it is reported.
+    (let instances (. session instances))
+    (let table (. session program effects))
+    (let caller ([] (. instances rows) (. edge caller)))
+    (return-if true (if (== (call (. table door-of) (. caller module) (. caller decl)) effect)))
+    (return-if false (if (> depth 8)))
+    (if (== (. edge syntax) 0)
+      (let reported false)
+      (for (in outer (call (. paths edges-into) (. edge caller)))
+        (= reported (or (call report-door outer door effect (+ depth 1)) reported))
+      )
+      (return reported)
+    )
+    (let bit (call ban-bit effect))
+    (let need (/and/ (call dispatch-effects (. caller effects)) bit))
+    (let chain (call chain-text (. edge caller) (. caller module) (. edge syntax) need bit))
+    (let reached (if-expr (== depth 0) "" (str " → " (call (. paths name-of) door))))
+    (let name (. ([] (. table names) effect) text))
+    (let text (str "cannot reach a door of '" name "' under 'without " name "': " chain reached))
+    (call (. session facts record-diagnostic) (. edge caller) (. caller module) (. edge syntax) .reached (call (. session program store-atom) text))
+    (return true)
+  )
+  (fn-do _ chain-text String
+    (param broken InstanceId)
+    (param module ModuleId)
+    (param site SyntaxId)
+    (param need EffectMask)
+    (param placing EffectMask)
+    ; The chain from where what `need` names is placed to the site that breaks it: the function that
+    ; breaks it, where its own header writes what `placing` names or it holds none of `need` and a
+    ; `do` block of its own places it.
+    (let parts (list String))
+    (if (or (== need 0) (!= (/and/ (call written-effects broken) placing) 0))
+      (+= parts (call placed broken site))
+      (else
+        (let found (call (. paths chain-to) broken (=> ((: edge CallEdge)) (call step edge need))))
+        (return-if "" (if (or (not found) (== (. found length) 0))))
+        (+= parts (call placed (. ([] found 0) caller) (. ([] found 0) syntax)))
+        (++= parts (call (. paths names) found))
+      )
+    )
+    (let shown (call site-text module site))
+    (if (!= (. shown length) 0)
+      (+= parts shown)
+    )
+    (return (call (. " → " join) parts))
+  )
+  (fn-do _ step EdgeStep
+    (param edge CallEdge)
+    (param need EffectMask)
+    ; Each function a restriction reaches is typed again under it, so the walk goes back through
+    ; those that have it and stops at the one that places it.
+    (let held (/and/ (call dispatch-effects (. ([] (. session instances rows) (. edge caller)) effects)) need))
+    (return-if .step-reach (if (or (!= held need) (!= (/and/ (call written-effects (. edge caller)) need) 0))))
+    (return .step-follow)
+  )
+  (fn-do _ placed String
+    (param root InstanceId)
+    (param at SyntaxId)
+    ; A function that places a restriction, with what it writes: its own `without` section, or that of
+    ; the `do` block around where the chain leaves it. The body of a `do without gc` block is the
+    ; function it is written in.
+    (let row ([] (. session instances rows) root))
+    (let written (/and/ (call written-effects root) (call shown-effects)))
+    (let names (. session program effects names))
+    (if (and (call is-region root) (!= (. row enclosing) no-instance))
+      (return (str (call (. paths name-of) (. row enclosing)) " (do " (call without-text written names) ")"))
+    )
+    (if (!= written 0)
+      (return (str (call (. paths name-of) root) " (" (call without-text written names) ")"))
+    )
+    (let block (call block-effects root at))
+    (return-if (str (call (. paths name-of) root) " (do " (call without-text block names) ")") (if (!= block 0)))
+    (return (call (. paths name-of) root))
+  )
+  (fn-do _ written-effects EffectMask
+    (param instance InstanceId)
+    (let row ([] (. session instances rows) instance))
+    (match? ([] (. ([] (. session program modules) (. row module)) decls) (. row decl))
+      (case (call .decl-function fn)
+        (return (/or/ (. fn effects) (call (. session program effects bans-of) (. row module) (. row decl))))
+      )
+    )
+    (return 0)
+  )
+  (fn-expr _ shown-effects EffectMask
+    ; What a chain shows of a `without` section: the restrictions, and the bans.
+    (/or/ (call restricting-effects) (call ban-bits))
+  )
+  (fn-do _ is-region Bool
+    (param instance InstanceId)
+    (let row ([] (. session instances rows) instance))
+    (match? ([] (. ([] (. session program modules) (. row module)) decls) (. row decl))
+      (case (call .decl-function fn)
+        (return (== (. fn kind) .region-decl))
+      )
+    )
+    (return false)
+  )
+  (fn-do _ block-effects EffectMask
+    (param instance InstanceId)
+    (param at SyntaxId)
+    ; What the innermost `do` block of an instance that restricts code writes, among those around a
+    ; node.
+    (return-if 0 (if (== at 0)))
+    (let row ([] (. session instances rows) instance))
+    (let tree (. ([] (. session program modules) (. row module)) tree))
+    (let found EffectMask 0)
+    (let narrowest SyntaxId 0)
+    (for (in offset (..< 0 (. row subtree count)))
+      (let id (as (+ (. row subtree start) offset) SyntaxId))
+      (match? ([] (. tree nodes) id)
+        (case (call .node-do-block block)
+          (let written (/or/ (as (. block compilation-effects) EffectMask) (call (. session program bans-named) (. row module) (. block bans))))
+          (let effects (/and/ written (call shown-effects)))
+          (if (and (!= effects 0) (<= (call (. tree subtree-start) id) at) (<= at id) (or (== narrowest 0) (< id narrowest)))
+            (= found effects)
+            (= narrowest id)
+          )
+        )
+      )
+    )
+    (return found)
+  )
+  (fn-do _ site-text String
+    (param module ModuleId)
+    (param site SyntaxId)
+    ; The code that breaks a restriction as written, where it is short and on one line, or the first
+    ; line of a block that does, closed with an ellipsis where it opens a form.
+    (return-if "" (if (== site 0)))
+    (let tree (. ([] (. session program modules) module) tree))
+    (let loc ([] (. tree nodes loc) site))
+    (let line (call source-line (. tree source) (. loc begin line)))
+    (let first (as (. loc begin column) Size))
+    (if (and (!= (. loc begin line) (. loc end line)) (call is-block ([] (. tree nodes) site)))
+      (return-if "" (if (> (- (. line length) first) 40)))
+      (let opening (call (. ([] line (... first)) trim)))
+      (return (if-expr (call (. opening starts-with) "(") (str opening " …)") opening))
+    )
+    (return-if "" (if (or (!= (. loc begin line) (. loc end line)) (< (. loc end column) (. loc begin column)))))
+    (let last (+ (as (. loc end column) Size) 1))
+    (return-if "" (if (or (> last (. line length)) (> (- last first) 40))))
+    (return ([] line (..< first last)))
+  )
+)
+
+(fn-expr _ is-block Bool
+  (param node Syntax)
+  (match node
+    (case .node-do-block
+      true
+    )
+    (case .node-do-task-block
+      true
+    )
+    (default
+      false
+    )
+  )
+)
+
+(fn-do _ without-text String
+  (param effects EffectMask)
+  (param names (list Atom))
+  ; Restrictions and bans as a `without` section writes them, leaving out the names another one
+  ; implies, the bans after the restrictions.
+  (let parts (list String))
+  (if (!= (/and/ effects (. CompilationEffect gc-free)) 0)
+    (+= parts "gc")
+    (else
+      (if (!= (/and/ effects (. CompilationEffect no-heap)) 0)
+        (+= parts "heap")
+      )
+      (if (!= (/and/ effects (. CompilationEffect no-safepoint)) 0)
+        (+= parts "safepoints")
+        (else-if (!= (/and/ effects (. CompilationEffect no-suspend)) 0)
+          (+= parts "suspend")
+        )
+      )
+    )
+  )
+  (for (in index (..< 0 (. names length)))
+    (if (and (< index (call most-effects)) (!= (/and/ effects (call ban-bit (as index U32))) 0))
+      (+= parts (. ([] names index) text))
+    )
+  )
+  (return (str "without " (call (. ", " join) parts)))
+)

@@ -1,0 +1,320 @@
+(import ./box)
+(import ./primitives)
+(import ./shape)
+(import /graphics/point)
+(import /graphics/primitives)
+(import /math)
+
+(type + Corner (is Union)
+  (variant top-left)
+  (variant top-right)
+  (variant bottom-left)
+  (variant bottom-right)
+)
+
+(type + PlacementRequest (is Tuple)
+  (prop + popup Box)
+  (prop + anchor Rect)
+  (prop + boundary Rect)
+  (prop + window Rect)
+  (prop + pointer Point)
+  (prop + focus (? Rect) (= null))
+)
+
+(type + PlacementResult (is Tuple)
+  (prop + bounds Rect)
+  (prop + side (? Side) (= null))
+  (prop + arrow-offset Length (= 0))
+)
+
+(type + Placement
+  (fn-expr + tracks-pointer _ :get
+    false
+  )
+  (fn-expr + place PlacementResult
+    (param request PlacementRequest)
+    (call PlacementResult (call Rect (. request anchor x) (. request anchor bottom) (. size width) (. size height)))
+    (where
+      (lazy size (call placement-natural-size (. request popup) (. request boundary)))
+    )
+  )
+)
+
+(type + AnchoredPlacement (is Placement)
+  (prop + side Side)
+  (prop + align AnchorPoint)
+  (prop + gap Length)
+  (prop + offset Length)
+  (prop + flip _ (= true))
+  (prop + shift _ (= true))
+  (prop + fit _ (= true))
+  (prop + match-width _ (= false))
+  (prop + arrow-margin Length (= 12))
+  (fn-do + This _
+    (param side _ (= (. Side bottom)))
+    (param align _ (= (. AnchorPoint start)))
+    (param gap _ (= 4))
+    (param offset _ (= 0))
+    (param match-width _ (= false))
+  )
+  (fn-expr + place PlacementResult
+    (param request PlacementRequest)
+    (case? (. chosen is-vertical)
+      (call PlacementResult (call Rect cross-start (. main start) cross-size (. main span)) chosen arrow)
+    )
+    (default
+      (call PlacementResult (call Rect (. main start) cross-start (. main span) cross-size) chosen arrow)
+    )
+    (where
+      (lazy anchor (. request anchor))
+      (lazy boundary (. request boundary))
+      (lazy natural (call placement-natural-size (. request popup) boundary))
+      (lazy reach (+ gap (. request popup effective-shape anchor-gap)))
+      (lazy chosen (call placement-choose-side side flip anchor boundary reach natural))
+      (lazy main (call placement-main-axis chosen anchor boundary reach natural fit))
+      (lazy matched-width (if-expr match-width (call max (. natural width) (. anchor width)) (. natural width)))
+      (lazy cross-natural (if-expr (. chosen is-vertical) matched-width (. natural height)))
+      (lazy cross-anchor-start (if-expr (. chosen is-vertical) (. anchor x) (. anchor y)))
+      (lazy cross-anchor-span (if-expr (. chosen is-vertical) (. anchor width) (. anchor height)))
+      (lazy cross-bound-start (if-expr (. chosen is-vertical) (. boundary x) (. boundary y)))
+      (lazy cross-bound-span (if-expr (. chosen is-vertical) (. boundary width) (. boundary height)))
+      (lazy cross-size (call placement-fit-span cross-natural cross-bound-span fit))
+      (lazy aligned (call placement-align align cross-anchor-start cross-anchor-span cross-size offset))
+      (lazy cross-start (if-expr shift clamped aligned))
+      (lazy clamped (call placement-clamp aligned cross-bound-start cross-bound-span cross-size))
+      (lazy anchor-center (+ cross-anchor-start (/ cross-anchor-span 2)))
+      (lazy arrow (call placement-clamp-arrow (- anchor-center cross-start) cross-size arrow-margin))
+    )
+  )
+)
+
+(type + PointPlacement (is Placement)
+  (prop + offset Point)
+  (prop + follows-pointer _ (= false))
+  (fn-do + This _
+    (param offset _ (= (call Point 0 0)))
+    (param follows-pointer _ (= false))
+  )
+  (fn-expr + tracks-pointer _ :get
+    follows-pointer
+  )
+  (fn-expr + place PlacementResult
+    (param request PlacementRequest)
+    (call PlacementResult (call Rect x y width height) (. Side bottom))
+    (where
+      (lazy origin (if-expr follows-pointer (. request pointer) (. request anchor top-left)))
+      (lazy boundary (. request boundary))
+      (lazy natural (call placement-natural-size (. request popup) boundary))
+      (lazy width (call min (. natural width) (. boundary width)))
+      (lazy height (call min (. natural height) (. boundary height)))
+      (lazy forward-x (+ (. origin x) (. offset x)))
+      (lazy forward-y (+ (. origin y) (. offset y)))
+      (lazy fits-x (<= (+ forward-x width) (. boundary right)))
+      (lazy fits-y (<= (+ forward-y height) (. boundary bottom)))
+      (lazy x (call placement-clamp preferred-x (. boundary x) (. boundary width) width))
+      (lazy y (call placement-clamp preferred-y (. boundary y) (. boundary height) height))
+      (lazy preferred-x (if-expr fits-x forward-x (- (. origin x) (. offset x) width)))
+      (lazy preferred-y (if-expr fits-y forward-y (- (. origin y) (. offset y) height)))
+    )
+  )
+)
+
+(type + CoverPlacement (is Placement)
+  (fn-expr + place PlacementResult
+    (param request PlacementRequest)
+    (call PlacementResult (call Rect x y width height))
+    (where
+      (lazy anchor (. request anchor))
+      (lazy boundary (. request boundary))
+      (lazy focus (?? (. request focus) (call Rect 0 0 (. anchor width) (. anchor height))))
+      (lazy natural (call placement-natural-size (. request popup) boundary))
+      (lazy width (call min (call max (. natural width) (+ (. anchor width) (* (. focus x) 2))) (. boundary width)))
+      (lazy height (call min (. natural height) (. boundary height)))
+      (lazy x (call placement-clamp (- (. anchor x) (. focus x)) (. boundary x) (. boundary width) width))
+      (lazy y (call placement-clamp centered-y (. boundary y) (. boundary height) height))
+      (lazy centered-y (+ (- (. anchor y) (. focus y)) (/ (- (. anchor height) (. focus height)) 2)))
+    )
+  )
+)
+
+(type + CenteredPlacement (is Placement)
+  (prop + top (? Length))
+  (fn-do + This _
+    (param top (? Length) (= null))
+  )
+  (fn-expr + place PlacementResult
+    (param request PlacementRequest)
+    (call PlacementResult (call Rect x y width height))
+    (where
+      (lazy frame (. request window))
+      (lazy natural (call placement-natural-size (. request popup) frame))
+      (lazy width (call min (. natural width) (. frame width)))
+      (lazy height (call min (. natural height) (. frame height)))
+      (lazy x (+ (. frame x) (/ (- (. frame width) width) 2)))
+      (lazy y (+ (. frame y) (?? top (/ (- (. frame height) height) 2))))
+    )
+  )
+)
+
+(type + FillPlacement (is Placement)
+  (fn-expr + place PlacementResult
+    (param request PlacementRequest)
+    (call PlacementResult (. request window))
+  )
+)
+
+(type + CornerPlacement (is Placement)
+  (prop + corner Corner)
+  (prop + inset Length)
+  (fn-do + This _
+    (param corner _ (= (. Corner bottom-right)))
+    (param inset _ (= 16))
+  )
+  (fn-expr + place PlacementResult
+    (param request PlacementRequest)
+    (call PlacementResult (call Rect x y width height))
+    (where
+      (lazy frame (. request window))
+      (lazy natural (call placement-natural-size (. request popup) frame))
+      (lazy width (call min (. natural width) (call gui-safe-span (- (. frame width) (* inset 2)))))
+      (lazy height (call min (. natural height) (call gui-safe-span (- (. frame height) (* inset 2)))))
+      (lazy is-left (or (== corner (. Corner top-left)) (== corner (. Corner bottom-left))))
+      (lazy is-top (or (== corner (. Corner top-left)) (== corner (. Corner top-right))))
+      (lazy x (if-expr is-left (+ (. frame x) inset) (- (. frame right) inset width)))
+      (lazy y (if-expr is-top (+ (. frame y) inset) (- (. frame bottom) inset height)))
+    )
+  )
+)
+
+(fn-expr + placement-natural-size _
+  (param popup Box)
+  (param boundary Rect)
+  (. (call (. popup measure) (call measure-fit-query (. boundary width) (. boundary height))) border-size)
+)
+
+(fn-expr + placement-clamp _
+  (param start Length)
+  (param bound-start Length)
+  (param bound-span Length)
+  (param size Length)
+  (case? (>= size bound-span)
+    bound-start
+  )
+  (default
+    (call min (call max start bound-start) (- (+ bound-start bound-span) size))
+  )
+)
+
+(fn-expr + placement-fit-span _
+  (param size Length)
+  (param available Length)
+  (param fit Bool)
+  (if-expr fit (call min size (call gui-safe-span available)) size)
+)
+
+(fn-expr + placement-align _
+  (param align AnchorPoint)
+  (param anchor-start Length)
+  (param anchor-span Length)
+  (param size Length)
+  (param offset Length)
+  (match align
+    (case (. AnchorPoint center)
+      (+ anchor-start (/ (- anchor-span size) 2))
+    )
+    (case (. AnchorPoint end)
+      (- (+ anchor-start anchor-span) size offset)
+    )
+    (default
+      (+ anchor-start offset)
+    )
+  )
+)
+
+(fn-expr + placement-clamp-arrow _
+  (param offset Length)
+  (param size Length)
+  (param margin Length)
+  (case? (<= size (* margin 2))
+    (/ size 2)
+  )
+  (default
+    (call min (call max offset margin) (- size margin))
+  )
+)
+
+(fn-expr + placement-available _
+  (param side Side)
+  (param anchor Rect)
+  (param boundary Rect)
+  (param gap Length)
+  (match side
+    (case (. Side top)
+      (- (. anchor top) gap (. boundary top))
+    )
+    (case (. Side bottom)
+      (- (. boundary bottom) (. anchor bottom) gap)
+    )
+    (case (. Side left)
+      (- (. anchor left) gap (. boundary left))
+    )
+    (default
+      (- (. boundary right) (. anchor right) gap)
+    )
+  )
+)
+
+(fn-expr + placement-choose-side _
+  (param side Side)
+  (param flip Bool)
+  (param anchor Rect)
+  (param boundary Rect)
+  (param gap Length)
+  (param natural Dimensions)
+  (case? (or preferred-fits (not flip))
+    side
+  )
+  (case? (or opposite-fits (> opposite-room preferred-room))
+    (. side opposite)
+  )
+  (default
+    side
+  )
+  (where
+    (lazy needed (if-expr (. side is-vertical) (. natural height) (. natural width)))
+    (lazy preferred-room (call placement-available side anchor boundary gap))
+    (lazy opposite-room (call placement-available (. side opposite) anchor boundary gap))
+    (lazy preferred-fits (<= needed preferred-room))
+    (lazy opposite-fits (<= needed opposite-room))
+  )
+)
+
+(type _ PlacementAxis (is (tuple (: start Length) (: span Length))))
+
+(fn-expr _ placement-main-axis _
+  (param side Side)
+  (param anchor Rect)
+  (param boundary Rect)
+  (param gap Length)
+  (param natural Dimensions)
+  (param fit Bool)
+  (match side
+    (case (. Side top)
+      (call PlacementAxis (- (. anchor top) gap height) height)
+    )
+    (case (. Side bottom)
+      (call PlacementAxis (+ (. anchor bottom) gap) height)
+    )
+    (case (. Side left)
+      (call PlacementAxis (- (. anchor left) gap width) width)
+    )
+    (default
+      (call PlacementAxis (+ (. anchor right) gap) width)
+    )
+  )
+  (where
+    (lazy room (call gui-safe-span (call placement-available side anchor boundary gap)))
+    (lazy height (call placement-fit-span (. natural height) room fit))
+    (lazy width (call placement-fit-span (. natural width) room fit))
+  )
+)

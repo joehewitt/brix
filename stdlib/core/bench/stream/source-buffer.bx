@@ -1,0 +1,54 @@
+; benchmark.meta description: Parses through a buffered stream source.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: stream,compile-timing
+(blank)
+(import /data/stream)
+(blank)
+
+(main
+  (let stream (call (of DataStream Char) (. (call source-buffer-source) codepoints)))
+  (let rows
+    (match stream
+      (~ \source-buffer-document)
+      (throw (call Panic "source-buffer did not parse"))
+    )
+  )
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in row rows)
+    (+= checksum row)
+  )
+  (blank)
+  (print (str "bench-result stream/source-buffer checksum=" checksum))
+)
+
+(fn-expr + source-buffer-document _ (over: Char)
+  (~ (: rows (+ \source-buffer-row))
+    rows
+  )
+  (where
+    (lazy source-buffer-row Size
+      (pattern
+        (~ (seq "src:" (: name \source-buffer-word) ":" (: value \source-buffer-digits) "\n")
+          (+ (* (. name length) 41) (. value length))
+        )
+      )
+    )
+    (blank)
+    (lazy source-buffer-word String
+      (pattern
+        (~ (seq (chars "a-zA-Z_") (* (chars "a-zA-Z0-9_"))))
+      )
+    )
+    (blank)
+    (lazy source-buffer-digits String
+      (pattern
+        (~ (+ (chars "0-9")))
+      )
+    )
+  )
+)
+
+(fn-expr _ source-buffer-source _
+  (call (. "" join) (in (str "src:name_" each ":" (* each 53) "\n") (..< 0 50)))
+)

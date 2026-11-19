@@ -1,0 +1,26 @@
+; benchmark.meta description: Repeatedly reads cached byte and codepoint lengths at 16 B, 1 KiB, 1 MiB, and mixed UTF-8 scales.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator
+(blank)
+
+(main
+  (let small "0123456789abcdef")
+  (let medium (* small 64))
+  (let large (* medium 1024))
+  (let mixed (* "Aé漢😀" 256))
+  (let passes 512)
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 passes))
+    (+= checksum (+ (. small size) (. small length)))
+    (+= checksum (+ (. medium size) (. medium length)))
+    (+= checksum (+ (. large size) (. large length)))
+    (+= checksum (+ (. mixed size) (. mixed length)))
+  )
+  (blank)
+  (if (!= checksum 1076641792)
+    (throw (call Panic "metadata-lookup-scaling benchmark produced the wrong checksum"))
+  )
+  (blank)
+  (print (str "bench-result string/metadata-lookup-scaling checksum=" checksum))
+)

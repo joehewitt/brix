@@ -1,27 +1,33 @@
 # Strings
 
-```yumi
--- "foo"
+```brix
+(main
+  (print "foo")
+)
 ```
 
 ```output
 foo
 ```
 
-```yumi
--- "foo".length
+```brix
+(main
+  (print (. "foo" length))
+)
 ```
 
 ```output
 3
 ```
 
-```yumi
--- "foo".display-width
--- "é".display-width
--- "📁".length
--- "📁".display-width
--- "📁x".display-width
+```brix
+(main
+  (print (. "foo" display-width))
+  (print (. "é" display-width))
+  (print (. "📁" length))
+  (print (. "📁" display-width))
+  (print (. "📁x" display-width))
+)
 ```
 
 ```output
@@ -32,8 +38,10 @@ foo
 3
 ```
 
-```yumi
--- "foo" + "bar"
+```brix
+(main
+  (print (+ "foo" "bar"))
+)
 ```
 
 ```output
@@ -42,39 +50,47 @@ foobar
 
 ### A number added to a text makes no text of it: write it inside the text.
 
-```yumi crash
--- "foo" + 3
+```brix crash
+(main
+  (print (+ "foo" 3))
+)
 ```
 
 ```output
 Exception: Operator "+" is not defined for String and I64
-<no file:2>
-    -- "foo" + 3
-       ^^^^^^^^^
+<no file:3>
+      (print (+ "foo" 3))
+             ^^^^^^^^^^^
 ```
 
-```yumi
-. n = "bar"
--- "foo$n"
+```brix
+(main
+  (let n "bar")
+  (print (str "foo" n))
+)
 ```
 
 ```output
 foobar
 ```
 
-```yumi
-. n = 3
--- "foo$n"
+```brix
+(main
+  (let n 3)
+  (print (str "foo" n))
+)
 ```
 
 ```output
 foo3
 ```
 
-```yumi
-. n = 3
--- type-of "$n"
--- "$n"
+```brix
+(main
+  (let n 3)
+  (print (type-of (str n)))
+  (print (str n))
+)
 ```
 
 ```output
@@ -82,58 +98,70 @@ foo3
 3
 ```
 
-```yumi
-. n = 3.5f64
--- "foo$n"
+```brix
+(main
+  (let n 3.5f64)
+  (print (str "foo" n))
+)
 ```
 
 ```output
 foo3.5
 ```
 
-```yumi crash
--- "foo" - 4
+```brix crash
+(main
+  (print (- "foo" 4))
+)
 ```
 
 ```output
 Exception: Operator "-" is not defined for String and I64
-<no file:2>
-    -- "foo" - 4
-       ^^^^^^^^^
+<no file:3>
+      (print (- "foo" 4))
+             ^^^^^^^^^^^
 ```
 
-```yumi
--- "foo" ++ "bar"
-```
-
-```output
-foobar
-```
-
-```yumi
-. a = "foo"
-a ++= "bar"
--- a
+```brix
+(main
+  (print (++ "foo" "bar"))
+)
 ```
 
 ```output
 foobar
 ```
 
-```yumi
-. a = "foo"
-a += "bar"
--- a
+```brix
+(main
+  (let a "foo")
+  (++= a "bar")
+  (print a)
+)
 ```
 
 ```output
 foobar
 ```
 
-```yumi
-. a = "ABC"
--- a[0]
--- a[0] as Int
+```brix
+(main
+  (let a "foo")
+  (+= a "bar")
+  (print a)
+)
+```
+
+```output
+foobar
+```
+
+```brix
+(main
+  (let a "ABC")
+  (print ([] a 0))
+  (print (as ([] a 0) Int))
+)
 ```
 
 ```output
@@ -141,11 +169,13 @@ A
 65
 ```
 
-```yumi
-. a = ""
--- !a
-. b = "x"
--- !b
+```brix
+(main
+  (let a "")
+  (print (not a))
+  (let b "x")
+  (print (not b))
+)
 ```
 
 ```output
@@ -155,21 +185,24 @@ false
 
 ### String representation metadata for literals and all UTF-8 scalar widths.
 
-```yumi
-/BxCore/BxString.h
+```brix
+(import /BxCore/BxString.h)
+(blank)
 
-. empty = ""
-. ascii = "hello"
-. scalars = "Aé漢😀"
--- empty.size
--- empty.length
--- C:brixStringGetFlags(empty)
--- ascii.size
--- ascii.length
--- C:brixStringGetFlags(ascii)
--- scalars.size
--- scalars.length
--- C:brixStringGetFlags(scalars)
+(main
+  (let empty "")
+  (let ascii "hello")
+  (let scalars "Aé漢😀")
+  (print (. empty size))
+  (print (. empty length))
+  (print (call C:brixStringGetFlags empty))
+  (print (. ascii size))
+  (print (. ascii length))
+  (print (call C:brixStringGetFlags ascii))
+  (print (. scalars size))
+  (print (. scalars length))
+  (print (call C:brixStringGetFlags scalars))
+)
 ```
 
 ```output
@@ -186,11 +219,13 @@ false
 
 ### String literals keep NUL bytes across metadata and concatenation.
 
-```yumi
-. value = "a\0b"
--- value.size
--- value.length
--- ("x" ++ value).size
+```brix
+(main
+  (let value "a\x00b")
+  (print (. value size))
+  (print (. value length))
+  (print (. (++ "x" value) size))
+)
 ```
 
 ```output
@@ -201,29 +236,32 @@ false
 
 ### Char conversion, interpolation, comparison, search, iteration, indexing, case mapping, slicing, and map keys use the byte length, not the first NUL.
 
-```yumi
-. value = "x\0y"
-. nul = String(0 as Char)
--- nul.size
--- "a${0 as Char}b".length
--- ("a" ++ nul ++ "b").length
--- value == "x"
--- value == "x\0y"
--- "x" < value
--- value > "x"
--- value.find("y")
-. count = 0
-for char in value
-    count += 1
--- count
--- (value[1] as U32)
--- value.uppercased.size
--- value[1 .. < 3].size
-. map = Map'String'Int()
-map["x"] = 1
-map["x\0y"] = 2
--- map["x"]
--- map["x\0y"]
+```brix
+(main
+  (let value "x\x00y")
+  (let nul (call String (as 0 Char)))
+  (print (. nul size))
+  (print (. (str "a" (as 0 Char) "b") length))
+  (print (. (++ "a" nul "b") length))
+  (print (== value "x"))
+  (print (== value "x\x00y"))
+  (print (< "x" value))
+  (print (> value "x"))
+  (print (call (. value find) "y"))
+  (let count 0)
+  (for (in char value)
+    (+= count 1)
+  )
+  (print count)
+  (print (as ([] value 1) U32))
+  (print (. value uppercased size))
+  (print (. ([] value (..< 1 3)) size))
+  (let map (call (of Map String Int)))
+  (= ([] map "x") 1)
+  (= ([] map "x\x00y") 2)
+  (print ([] map "x"))
+  (print ([] map "x\x00y"))
+)
 ```
 
 ```output
@@ -245,14 +283,15 @@ true
 
 ### A character literal is a Char whatever a module declares, even a class named Char.
 
-```yumi
--- 'a'
--- 'a' < 'b'
+```brix
+(main
+  (print 'a')
+  (print (< 'a' 'b'))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Char
-
-+ x = 1
+(type + Char
+  (prop + x _ (= 1))
+)
 ```
 
 ```output
@@ -262,10 +301,12 @@ true
 
 ### An empty search String matches at the start.
 
-```yumi
--- "abc".find("")
--- "abc".starts-with("")
--- "".find("")
+```brix
+(main
+  (print (call (. "abc" find) ""))
+  (print (call (. "abc" starts-with) ""))
+  (print (call (. "" find) ""))
+)
 ```
 
 ```output
@@ -276,28 +317,31 @@ true
 
 ### Runtime construction paths initialize equivalent metadata.
 
-```yumi
-/BxCore/BxString.h
+```brix
+(import /BxCore/BxString.h)
+(blank)
 
-. concatenated = "ab" ++ "é"
-. sliced = "Aé漢😀"[1 .. 2]
-. formatted = "value=${42}"
-. repeated = "é" * 3
-. upper = "aé".uppercased
-. lower = "AÉ".lowercased
--- concatenated.size
--- concatenated.length
--- C:brixStringGetFlags(concatenated)
--- sliced
--- sliced.size
--- sliced.length
--- formatted.size
--- formatted.length
--- C:brixStringGetFlags(formatted)
--- repeated.size
--- repeated.length
--- upper.length
--- lower.length
+(main
+  (let concatenated (++ "ab" "é"))
+  (let sliced ([] "Aé漢😀" (.. 1 2)))
+  (let formatted (str "value=" 42))
+  (let repeated (* "é" 3))
+  (let upper (. "aé" uppercased))
+  (let lower (. "AÉ" lowercased))
+  (print (. concatenated size))
+  (print (. concatenated length))
+  (print (call C:brixStringGetFlags concatenated))
+  (print sliced)
+  (print (. sliced size))
+  (print (. sliced length))
+  (print (. formatted size))
+  (print (. formatted length))
+  (print (call C:brixStringGetFlags formatted))
+  (print (. repeated size))
+  (print (. repeated length))
+  (print (. upper length))
+  (print (. lower length))
+)
 ```
 
 ```output
@@ -318,20 +362,23 @@ true
 
 ### Codepoint slices preserve exact-fit ASCII, scalar widths, embedded NUL, and emptiness.
 
-```yumi
-/BxCore/BxString.h
+```brix
+(import /BxCore/BxString.h)
+(blank)
 
-. ascii = Array'Char("exact")
-. scalars = Array'Char("Aé漢😀")
-. embedded = Array'Char(["a"[0], 0 as Char, "b"[0]])
-. empty = Char[0]
-. empty-string String = C:brixStringFromUtf8Codepoints(empty.data, 0, 0)
--- ascii.slice-string()
--- scalars.slice-string()
--- (embedded.slice-string()[1] as U32)
--- embedded.slice-string().size
--- empty-string == ""
--- empty-string.size
+(main
+  (let ascii (call (of Array Char) "exact"))
+  (let scalars (call (of Array Char) "Aé漢😀"))
+  (let embedded (call (of Array Char) (list ([] "a" 0) (as 0 Char) ([] "b" 0))))
+  (let empty ([] Char 0))
+  (let empty-string String (call C:brixStringFromUtf8Codepoints (. empty data) 0 0))
+  (print (call (. ascii slice-string)))
+  (print (call (. scalars slice-string)))
+  (print (as ([] (call (. embedded slice-string)) 1) U32))
+  (print (. (call (. embedded slice-string)) size))
+  (print (== empty-string ""))
+  (print (. empty-string size))
+)
 ```
 
 ```output
@@ -345,34 +392,37 @@ true
 
 ### Foreign adoption preserves NUL termination and never marks malformed UTF-8 as ASCII.
 
-```yumi
-/JaCore/tests.h
-/BxCore/BxString.h
+```brix
+(import /JaCore/tests.h)
+(import /BxCore/BxString.h)
+(blank)
 
-. foreign = C:ctest4d() as String
-. embedded-bytes = Byte[4]
-embedded-bytes[0] = 97u8
-embedded-bytes[1] = 0u8
-embedded-bytes[2] = 98u8
-embedded-bytes[3] = 0u8
-. embedded = (embedded-bytes.data as CPointer'Char8) as String
-. malformed-bytes = Byte[2]
-malformed-bytes[0] = 255u8
-malformed-bytes[1] = 0u8
-. malformed = (malformed-bytes.data as CPointer'Char8) as String
-. malformed-empty = malformed[0 .. < 0]
--- foreign
--- foreign.size
--- foreign.length
--- C:brixStringGetFlags(foreign)
--- embedded
--- embedded.size
--- embedded.length
--- C:brixStringGetFlags(embedded)
--- malformed.size
--- malformed.length
--- C:brixStringGetFlags(malformed)
--- malformed-empty.size
+(main
+  (let foreign (as (call C:ctest4d) String))
+  (let embedded-bytes ([] Byte 4))
+  (= ([] embedded-bytes 0) 97u8)
+  (= ([] embedded-bytes 1) 0u8)
+  (= ([] embedded-bytes 2) 98u8)
+  (= ([] embedded-bytes 3) 0u8)
+  (let embedded (as (as (. embedded-bytes data) (of CPointer Char8)) String))
+  (let malformed-bytes ([] Byte 2))
+  (= ([] malformed-bytes 0) 255u8)
+  (= ([] malformed-bytes 1) 0u8)
+  (let malformed (as (as (. malformed-bytes data) (of CPointer Char8)) String))
+  (let malformed-empty ([] malformed (..< 0 0)))
+  (print foreign)
+  (print (. foreign size))
+  (print (. foreign length))
+  (print (call C:brixStringGetFlags foreign))
+  (print embedded)
+  (print (. embedded size))
+  (print (. embedded length))
+  (print (call C:brixStringGetFlags embedded))
+  (print (. malformed size))
+  (print (. malformed length))
+  (print (call C:brixStringGetFlags malformed))
+  (print (. malformed-empty size))
+)
 ```
 
 ```output
@@ -392,15 +442,18 @@ a
 
 ### Large ASCII metadata stays exact and powers byte-offset find/slice paths.
 
-```yumi
-/BxCore/BxString.h
+```brix
+(import /BxCore/BxString.h)
+(blank)
 
-. large = "0123456789abcdef" * 65536
--- large.size
--- large.length
--- C:brixStringGetFlags(large)
--- large.find("abcdef", 1048560)
--- large[1048560 .. < 1048576]
+(main
+  (let large (* "0123456789abcdef" 65536))
+  (print (. large size))
+  (print (. large length))
+  (print (call C:brixStringGetFlags large))
+  (print (call (. large find) "abcdef" 1048560))
+  (print ([] large (..< 1048560 1048576)))
+)
 ```
 
 ```output
@@ -411,9 +464,11 @@ a
 0123456789abcdef
 ```
 
-```yumi
-. a = "ABC"
--- a[2] as Int
+```brix
+(main
+  (let a "ABC")
+  (print (as ([] a 2) Int))
+)
 ```
 
 ```output
@@ -422,19 +477,22 @@ a
 
 ### ASCII indexing preserves signed positive indexes and rejects signed negative indexes.
 
-```yumi
-do new
-    -- read-character("abc", 1)
-    -- read-character("abc", 0 - 1)
-catch failure
-    -- failure
+```brix
+(main
+  (do-new
+    (print (call read-character "abc" 1))
+    (print (call read-character "abc" (- 0 1)))
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ read-character Char
-    - text String
-    - index I64
-
-text[index]
+(fn-expr + read-character Char
+  (param text String)
+  (param index I64)
+  ([] text index)
+)
 ```
 
 ```output
@@ -442,33 +500,43 @@ b
 Index out of bounds (-1 / 3)
 ```
 
-```yumi
-do new
-    . a = "ABC"
-    -- a[3] as Int
-catch failure
-    -- failure
+```brix
+(main
+  (do-new
+    (let a "ABC")
+    (print (as ([] a 3) Int))
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 ```
 
 ```output
 Index out of bounds (3 / 3)
 ```
 
-```yumi
-do new
-    . a = "é"
-    -- a[1] as Int
-catch failure
-    -- failure
+```brix
+(main
+  (do-new
+    (let a "é")
+    (print (as ([] a 1) Int))
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 ```
 
 ```output
 Index out of bounds (1 / 1)
 ```
 
-```yumi
--- 65c
--- 65c as Int
+```brix
+(main
+  (print 65c)
+  (print (as 65c Int))
+)
 ```
 
 ```output
@@ -476,11 +544,13 @@ A
 65
 ```
 
-```yumi
--- 'A'
--- 'A' as Int
--- '\n' as Int
--- '\u20AC' as Int
+```brix
+(main
+  (print 'A')
+  (print (as 'A' Int))
+  (print (as (char "\n") Int))
+  (print (as (char "€") Int))
+)
 ```
 
 ```output
@@ -490,11 +560,13 @@ A
 8364
 ```
 
-```yumi
-. a = "foo"
-. b = "$a+"
--- b == "foo+"
--- b == "foo-"
+```brix
+(main
+  (let a "foo")
+  (let b (str a "+"))
+  (print (== b "foo+"))
+  (print (== b "foo-"))
+)
 ```
 
 ```output
@@ -502,11 +574,13 @@ true
 false
 ```
 
-```yumi
-. a = "bar"
--- a[Position.first]
--- a[Position.middle]
--- a[Position.last]
+```brix
+(main
+  (let a "bar")
+  (print ([] a (. Position first)))
+  (print ([] a (. Position middle)))
+  (print ([] a (. Position last)))
+)
 ```
 
 ```output
@@ -515,11 +589,13 @@ a
 r
 ```
 
-```yumi
-. a = "foobarbaz"
--- a[0 .. < 5]
--- a[0 .. 5]
--- a[5 .. 0]
+```brix
+(main
+  (let a "foobarbaz")
+  (print ([] a (..< 0 5)))
+  (print ([] a (.. 0 5)))
+  (print ([] a (.. 5 0)))
+)
 ```
 
 ```output
@@ -528,11 +604,13 @@ foobar
 foobar
 ```
 
-```yumi
-. a = "foo bar baz"
--- a[Position.first .. < Position.end]
--- a[Position.last .. Position.first]
--- a[0 .. < Position.middle]
+```brix
+(main
+  (let a "foo bar baz")
+  (print ([] a (..< (. Position first) (. Position end))))
+  (print ([] a (.. (. Position last) (. Position first))))
+  (print ([] a (..< 0 (. Position middle))))
+)
 ```
 
 ```output
@@ -541,27 +619,33 @@ foo bar baz
 foo b
 ```
 
-```yumi
-. a = "bar"
--- a[1] = Char(65)
+```brix
+(main
+  (let a "bar")
+  (print (= ([] a 1) (call Char 65)))
+)
 ```
 
 ```output
 bAr
 ```
 
-```yumi
-. a = "foo bar baz"
--- a[4 .. < 7] = "BAR"
+```brix
+(main
+  (let a "foo bar baz")
+  (print (= ([] a (..< 4 7)) "BAR"))
+)
 ```
 
 ```output
 foo BAR baz
 ```
 
-```yumi
-. a = "foo bar baz"
--- a[4 .. 6] = "BAR"
+```brix
+(main
+  (let a "foo bar baz")
+  (print (= ([] a (.. 4 6)) "BAR"))
+)
 ```
 
 ```output
@@ -570,26 +654,27 @@ foo BAR baz
 
 ### An index assignment stores the setter's new string back into its variable, property or element.
 
-```yumi
-. a = "hello"
-a[0] = "J"
-a[.last] = "!"
-a[.first .. 1] = "Y"
--- a
-. h = Holder("abc")
-h.name[1] = "X"
--- h.name
-. names = ["abc", "def"]
-names[1][0] = "Z"
--- names[1]
+```brix
+(main
+  (let a "hello")
+  (= ([] a 0) "J")
+  (= ([] a .last) "!")
+  (= ([] a (.. .first 1)) "Y")
+  (print a)
+  (let h (call Holder "abc"))
+  (= ([] (. h name) 1) "X")
+  (print (. h name))
+  (let names (list "abc" "def"))
+  (= ([] ([] names 1) 0) "Z")
+  (print ([] names 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ name String
-────────────────────
-+ This
-    - name
+(type + Holder
+  (prop + name String)
+  (fn-do + This _
+    (param name _)
+  )
+)
 ```
 
 ```output
@@ -598,9 +683,11 @@ aXc
 Zef
 ```
 
-```yumi
--- "=" * 5
--- "foo" * 5
+```brix
+(main
+  (print (* "=" 5))
+  (print (* "foo" 5))
+)
 ```
 
 ```output
@@ -608,15 +695,19 @@ Zef
 foofoofoofoofoo
 ```
 
-```yumi
--- text()
+```brix
+(main
+  (print (call text))
+)
 
-+ bar = "BAR"
+(blank)
+(prop + bar _ (= "BAR"))
 
-━━━━━━━━━━━━━━━━━━━━
-+ " text
-
-Foo $bar baz
+(fn-expr + text _
+  (paragraph
+    (str "Foo " bar " baz")
+  )
+)
 ```
 
 ```output
@@ -625,16 +716,19 @@ Foo BAR baz
 
 ### Lines that start with a backtick inside a paragraph body are text, not comments.
 
-````yumi
--- fenced()
+```brix
+(main
+  (print (call fenced))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ " fenced
-
-```yumi
-`quoted`
+(fn-expr + fenced _
+  (paragraph
+    "```yumi"
+    "`quoted`"
+    "```"
+  )
+)
 ```
-````
 
 ````output
 ```yumi
@@ -644,31 +738,47 @@ Foo BAR baz
 
 ### A text block is a text written on the rows below a row that ends in a quote that opens it, one line for each row, joined with line feeds. A blank row between lines is an empty line, and blank rows after the last line belong to the code below. Spaces past the block's margin are kept, and inserts and escapes work as in a text body.
 
-```yumi
-. name = "Ann"
-. letter = "
-    Dear $name,
+```brix
+(main
+  (let name "Ann")
+  (let letter
+    (paragraph
+      (str "Dear " name ",")
+      (blank)
+      (str "  Your total is \$" (+ 2 3) ".")
+      "` not a comment"
+      "━━━━━━━━━━━━━━━━━━━━"
+    )
+  )
+  (let empty (paragraph))
+  (print letter)
+  (print (str "[" empty "]"))
+  (print
+    (call shout
+      (block
+        (arg
+          (paragraph
+            (blank)
+            "two"
+          )
+        )
+      )
+    )
+  )
+  (print
+    (++ "joined: "
+      (paragraph
+        "a"
+        "b"
+      )
+    )
+  )
+)
 
-      Your total is \$${2 + 3}.
-    ` not a comment
-    ━━━━━━━━━━━━━━━━━━━━
-
-. empty = "
--- letter
--- "[$empty]"
--- shout
-    - "
-
-        two
--- "joined: " ++ "
-    a
-    b
-
-━━━━━━━━━━━━━━━━━━━━
-+ shout String
-    - text String
-
-"<$text>"
+(fn-expr + shout String
+  (param text String)
+  (str "<" text ">")
+)
 ```
 
 ```output
@@ -686,29 +796,29 @@ b
 
 ### A paragraph with no body is empty, and the member after its divider stays a member.
 
-```yumi
--- "[${Base().text()}]"
--- "[${Sub().text()}]"
--- Base().other()
+```brix
+(main
+  (print (str "[" (call (. (call Base) text)) "]"))
+  (print (str "[" (call (. (call Sub) text)) "]"))
+  (print (call (. (call Base) other)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Base
+(type + Base
+  (fn-expr + text _
+    (paragraph)
+  )
+  (fn-expr + other Int
+    1
+  )
+)
 
-────────────────────
-+ " text
-
-────────────────────
-+ other Int
-
-1
-
-━━━━━━━━━━━━━━━━━━━━
-+ Sub is Base
-
-────────────────────
-+ " text
-
-sub text
+(type + Sub (is Base)
+  (fn-expr + text _
+    (paragraph
+      "sub text"
+    )
+  )
+)
 ```
 
 ```output
@@ -717,99 +827,130 @@ sub text
 1
 ```
 
-```yumi
---
-    "ñßéåøñţğşž"
-    *> each.uppercase
-    |> join
+```brix
+(main
+  (print
+    (block
+      "ñßéåøñţğşž"
+      (pipe *> (. each uppercase))
+      (pipe |> join)
+    )
+  )
+)
 ```
 
 ```output
 ÑẞÉÅØÑŢĞŞŽ
 ```
 
-```yumi
---
-    "ÑßÉÅØÑŢĞŞŽ"
-    *> each.lowercase
-    |> join
+```brix
+(main
+  (print
+    (block
+      "ÑßÉÅØÑŢĞŞŽ"
+      (pipe *> (. each lowercase))
+      (pipe |> join)
+    )
+  )
+)
 ```
 
 ```output
 ñßéåøñţğşž
 ```
 
-```yumi
--- "ñßéåøñţğşž".uppercased
+```brix
+(main
+  (print (. "ñßéåøñţğşž" uppercased))
+)
 ```
 
 ```output
 ÑẞÉÅØÑŢĞŞŽ
 ```
 
-```yumi
--- "ÑẞÉÅØÑŢĞŞŽ".lowercased
+```brix
+(main
+  (print (. "ÑẞÉÅØÑŢĞŞŽ" lowercased))
+)
 ```
 
 ```output
 ñßéåøñţğşž
 ```
 
-```yumi
--- "ñßéåøñţğşž".decomposed == "ñßéåøñţğşž"
+```brix
+(main
+  (print (== (. "ñßéåøñţğşž" decomposed) "ñßéåøñţğşž"))
+)
 ```
 
 ```output
 false
 ```
 
-```yumi
--- "ñßéåøñţğşž".decomposed.normalized == "ñßéåøñţğşž"
+```brix
+(main
+  (print (== (. "ñßéåøñţğşž" decomposed normalized) "ñßéåøñţğşž"))
+)
 ```
 
 ```output
 true
 ```
 
-```yumi
---
-    "ñéåñţğşž".decomposed
-    ?> each.category != .mark-nonspacing
-    |> join
+```brix
+(main
+  (print
+    (block
+      (. "ñéåñţğşž" decomposed)
+      (pipe ?> (!= (. each category) .mark-nonspacing))
+      (pipe |> join)
+    )
+  )
+)
 ```
 
 ```output
 neantgsz
 ```
 
-```yumi
--- "ñßéåøñţğşž"[1 .. 3]
+```brix
+(main
+  (print ([] "ñßéåøñţğşž" (.. 1 3)))
+)
 ```
 
 ```output
 ßéå
 ```
 
-```yumi
--- "━a━a━━b"[1 .. 5]
+```brix
+(main
+  (print ([] "━a━a━━b" (.. 1 5)))
+)
 ```
 
 ```output
 a━a━━
 ```
 
-```yumi
-. n = "a.b.c".find-reverse(".")
--- n
+```brix
+(main
+  (let n (call (. "a.b.c" find-reverse) "."))
+  (print n)
+)
 ```
 
 ```output
 3
 ```
 
-```yumi
--- "e\u0301".normalized == "\u00E9"
--- "\u1EAF".decomposed.normalized == "\u1EAF"
+```brix
+(main
+  (print (== (. "é" normalized) "é"))
+  (print (== (. "ắ" decomposed normalized) "ắ"))
+)
 ```
 
 ```output
@@ -817,10 +958,12 @@ true
 true
 ```
 
-```yumi
--- "".trim() == ""
--- " \t\n".trim() == ""
--- "\t hello \n".trim()
+```brix
+(main
+  (print (== (call (. "" trim)) ""))
+  (print (== (call (. " \t\n" trim)) ""))
+  (print (call (. "\t hello \n" trim)))
+)
 ```
 
 ```output
@@ -829,60 +972,76 @@ true
 hello
 ```
 
-```yumi
--- "|".join("a--b--".split("--"))
+```brix
+(main
+  (print (call (. "|" join) (call (. "a--b--" split) "--")))
+)
 ```
 
 ```output
 a|b|
 ```
 
-```yumi
-do new
-    -- ",".join("abc".split(""))
-catch failure
-    -- failure
+```brix
+(main
+  (do-new
+    (print (call (. "," join) (call (. "abc" split) "")))
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 ```
 
 ```output
 String split delimiter must not be empty
 ```
 
-```yumi
-do new
-    . data = Byte[1]
-    data[0] = 195u8
-    . output = Char[1]
-    . decoded, bytes = decode-utf8-buffer(data, data.size, output)
-    -- decoded
-catch failure
-    -- failure
+```brix
+(main
+  (do-new
+    (let data ([] Byte 1))
+    (= ([] data 0) 195u8)
+    (let output ([] Char 1))
+    (let (tuple decoded bytes) (call decode-utf8-buffer data (. data size) output))
+    (print decoded)
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 ```
 
 ```output
 Unable to read UTF8 content
 ```
 
-```yumi
-. count = 0
-for char in ""
-    count += 1
--- count
+```brix
+(main
+  (let count 0)
+  (for (in char "")
+    (+= count 1)
+  )
+  (print count)
+)
 ```
 
 ```output
 0
 ```
 
-```yumi
-. source = "Aé漢😀e\u0301"
-. count = 0
-. checksum = 0 as Size
-for char in source
-    count += 1
-    checksum += char as Size
--- count
--- checksum
+```brix
+(main
+  (let source "Aé漢😀é")
+  (let count 0)
+  (let checksum (as 0 Size))
+  (for (in char source)
+    (+= count 1)
+    (+= checksum (as char Size))
+  )
+  (print count)
+  (print checksum)
+)
 ```
 
 ```output
@@ -890,15 +1049,18 @@ for char in source
 158130
 ```
 
-```yumi
-. source = "Aé漢😀e\u0301" * 100
-. count = 0
-. checksum = 0 as Size
-for char in source
-    count += 1
-    checksum += char as Size
--- count
--- checksum
+```brix
+(main
+  (let source (* "Aé漢😀é" 100))
+  (let count 0)
+  (let checksum (as 0 Size))
+  (for (in char source)
+    (+= count 1)
+    (+= checksum (as char Size))
+  )
+  (print count)
+  (print checksum)
+)
 ```
 
 ```output
@@ -906,16 +1068,20 @@ for char in source
 15813000
 ```
 
-```yumi
-. source = "Aé😀"
-. first = 0 as Size
-. second = 0 as Size
-for char in source
-    first += char as Size
-for char in source
-    second += char as Size
--- first
--- second
+```brix
+(main
+  (let source "Aé😀")
+  (let first (as 0 Size))
+  (let second (as 0 Size))
+  (for (in char source)
+    (+= first (as char Size))
+  )
+  (for (in char source)
+    (+= second (as char Size))
+  )
+  (print first)
+  (print second)
+)
 ```
 
 ```output
@@ -923,15 +1089,19 @@ for char in source
 128810
 ```
 
-```yumi
-. pairs = 0
-. checksum = 0 as Size
-for outer in "Aé"
-    for inner in "漢😀"
-        pairs += 1
-        checksum += (outer as Size) + (inner as Size)
--- pairs
--- checksum
+```brix
+(main
+  (let pairs 0)
+  (let checksum (as 0 Size))
+  (for (in outer "Aé")
+    (for (in inner "漢😀")
+      (+= pairs 1)
+      (+= checksum (+ (as outer Size) (as inner Size)))
+    )
+  )
+  (print pairs)
+  (print checksum)
+)
 ```
 
 ```output
@@ -939,18 +1109,23 @@ for outer in "Aé"
 314520
 ```
 
-```yumi
-. count = 0
-for char in "abcdef"
-    count += 1
-    if count == 3
-        break
--- count
-
-. repeated = 0
-for char in "abcdef"
-    repeated += 1
--- repeated
+```brix
+(main
+  (let count 0)
+  (for (in char "abcdef")
+    (+= count 1)
+    (if (== count 3)
+      (break)
+    )
+  )
+  (print count)
+  (blank)
+  (let repeated 0)
+  (for (in char "abcdef")
+    (+= repeated 1)
+  )
+  (print repeated)
+)
 ```
 
 ```output
@@ -958,14 +1133,17 @@ for char in "abcdef"
 6
 ```
 
-```yumi
-. count = 0
-. checksum = 0 as Size
-for char in ("Aé😀" as Iterable'Char)
-    count += 1
-    checksum += char as Size
--- count
--- checksum
+```brix
+(main
+  (let count 0)
+  (let checksum (as 0 Size))
+  (for (in char (as "Aé😀" (of Iterable Char)))
+    (+= count 1)
+    (+= checksum (as char Size))
+  )
+  (print count)
+  (print checksum)
+)
 ```
 
 ```output
@@ -973,15 +1151,18 @@ for char in ("Aé😀" as Iterable'Char)
 128810
 ```
 
-```yumi
-. source = "Aé😀"
-. checksum = 0 as Size
-for char in source
-    checksum += char as Size
--- checksum
--- source[0] as Size
--- source[1] as Size
--- source[2] as Size
+```brix
+(main
+  (let source "Aé😀")
+  (let checksum (as 0 Size))
+  (for (in char source)
+    (+= checksum (as char Size))
+  )
+  (print checksum)
+  (print (as ([] source 0) Size))
+  (print (as ([] source 1) Size))
+  (print (as ([] source 2) Size))
+)
 ```
 
 ```output
@@ -991,14 +1172,19 @@ for char in source
 128512
 ```
 
-```yumi
-do new
-    . source = "Aé😀"
-    for char in source
-        . seen = char
-    -- source[3]
-catch failure
-    -- failure
+```brix
+(main
+  (do-new
+    (let source "Aé😀")
+    (for (in char source)
+      (let seen char)
+    )
+    (print ([] source 3))
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 ```
 
 ```output
@@ -1007,57 +1193,61 @@ Index out of bounds (3 / 3)
 
 ### Arena String copies preserve the 16-byte String ABI, UTF-8 metadata, NUL termination, and ordinary String behavior while allocating only from the selected Arena.
 
-```yumi
-/core/arena
-/BxCore/BxCore.h
-/BxCore/BxString.h
-/string.h
+```brix
+(import /core/arena)
+(import /BxCore/BxCore.h)
+(import /BxCore/BxString.h)
+(import /string.h)
+(blank)
 
-. empty-arena = Arena(64)
-. ascii-arena = Arena(64)
-. scalar-arena = Arena(64)
-. managed-before = C:brixArenaManagedAllocationCount()
-. empty = empty-arena.copy-string("")
-. ascii = ascii-arena.copy-string("hello")
-. scalars = scalar-arena.copy-string("Aé漢😀")
-. managed-after = C:brixArenaManagedAllocationCount()
-
--- empty == ""
--- empty.size
--- empty.length
--- C:brixStringGetFlags(empty)
--- C:strlen(empty)
--- empty-arena.active-bytes
--- empty-arena.owns(empty as Pointer)
--- C:brixStringHash(empty, empty.size) == C:brixStringHash("", 0)
--- ascii == "hello"
--- ascii.size
--- ascii.length
--- C:brixStringGetFlags(ascii)
--- C:strlen(ascii)
--- ascii-arena.active-bytes
--- ascii-arena.owns(ascii as Pointer)
--- C:brixStringHash(ascii, ascii.size) == C:brixStringHash("hello", 5)
--- scalars == "Aé漢😀"
--- scalars.size
--- scalars.length
--- C:brixStringGetFlags(scalars)
--- C:strlen(scalars)
--- scalar-arena.active-bytes
--- scalar-arena.owns(scalars as Pointer)
--- C:brixStringHash(scalars, scalars.size) == C:brixStringHash("Aé漢😀", 10)
--- scalars[1 .. 2]
--- "copy=$scalars"
--- managed-after == managed-before
-
-. checksum = 0 as Size
-for char in scalars
-    checksum += char as Size
--- checksum
-
-empty-arena.release()
-ascii-arena.release()
-scalar-arena.release()
+(main
+  (let empty-arena (call Arena 64))
+  (let ascii-arena (call Arena 64))
+  (let scalar-arena (call Arena 64))
+  (let managed-before (call C:brixArenaManagedAllocationCount))
+  (let empty (call (. empty-arena copy-string) ""))
+  (let ascii (call (. ascii-arena copy-string) "hello"))
+  (let scalars (call (. scalar-arena copy-string) "Aé漢😀"))
+  (let managed-after (call C:brixArenaManagedAllocationCount))
+  (blank)
+  (print (== empty ""))
+  (print (. empty size))
+  (print (. empty length))
+  (print (call C:brixStringGetFlags empty))
+  (print (call C:strlen empty))
+  (print (. empty-arena active-bytes))
+  (print (call (. empty-arena owns) (as empty Pointer)))
+  (print (== (call C:brixStringHash empty (. empty size)) (call C:brixStringHash "" 0)))
+  (print (== ascii "hello"))
+  (print (. ascii size))
+  (print (. ascii length))
+  (print (call C:brixStringGetFlags ascii))
+  (print (call C:strlen ascii))
+  (print (. ascii-arena active-bytes))
+  (print (call (. ascii-arena owns) (as ascii Pointer)))
+  (print (== (call C:brixStringHash ascii (. ascii size)) (call C:brixStringHash "hello" 5)))
+  (print (== scalars "Aé漢😀"))
+  (print (. scalars size))
+  (print (. scalars length))
+  (print (call C:brixStringGetFlags scalars))
+  (print (call C:strlen scalars))
+  (print (. scalar-arena active-bytes))
+  (print (call (. scalar-arena owns) (as scalars Pointer)))
+  (print (== (call C:brixStringHash scalars (. scalars size)) (call C:brixStringHash "Aé漢😀" 10)))
+  (print ([] scalars (.. 1 2)))
+  (print (str "copy=" scalars))
+  (print (== managed-after managed-before))
+  (blank)
+  (let checksum (as 0 Size))
+  (for (in char scalars)
+    (+= checksum (as char Size))
+  )
+  (print checksum)
+  (blank)
+  (call (. empty-arena release))
+  (call (. ascii-arena release))
+  (call (. scalar-arena release))
+)
 ```
 
 ```output
@@ -1093,49 +1283,52 @@ true
 
 ### Arena codepoint-span materialization writes ordinary Strings directly from scalar arrays without creating a managed String.
 
-```yumi
-/core/arena
-/BxCore/BxCore.h
-/BxCore/BxString.h
-/string.h
+```brix
+(import /core/arena)
+(import /BxCore/BxCore.h)
+(import /BxCore/BxString.h)
+(import /string.h)
+(blank)
 
-. source = "zAé漢😀q".codepoints
-. arena = Arena(64)
-. managed-before = C:brixArenaManagedAllocationCount()
-. empty = source[0 .. < 0].slice-string(arena)
-. scalars = source[1 .. < 5].slice-string(arena)
-. managed-after = C:brixArenaManagedAllocationCount()
-
--- empty == ""
--- empty.size
--- empty.length
--- C:brixStringGetFlags(empty)
--- C:strlen(empty)
--- arena.owns(empty as Pointer)
--- scalars == "Aé漢😀"
--- scalars.size
--- scalars.length
--- C:brixStringGetFlags(scalars)
--- C:strlen(scalars)
--- arena.owns(scalars as Pointer)
--- C:brixStringHash(scalars, scalars.size) == C:brixStringHash("Aé漢😀", 10)
--- scalars[1 .. 2]
--- "direct=$scalars"
--- managed-after == managed-before
--- arena.copy-span(source, 1, 5) == scalars
--- source[1 .. < 5].slice-string() == scalars
--- ("zAé漢😀q" as Byte[])[1 .. < 11].slice-string() == scalars
--- source[0 .. < 6].slice-string(1 .. < 5) == scalars
-source[2] = 0 as Char
-. truncated = source[1 .. < 5].slice-string(arena)
--- truncated == "A"
--- truncated.length == 1
--- C:brixStringGetFlags(truncated) == 3
-source[1] = 0 as Char
--- source[1 .. < 5].slice-string(arena) == ""
--- scalars == "Aé漢😀"
-
-arena.release()
+(main
+  (let source (. "zAé漢😀q" codepoints))
+  (let arena (call Arena 64))
+  (let managed-before (call C:brixArenaManagedAllocationCount))
+  (let empty (call (. ([] source (..< 0 0)) slice-string) arena))
+  (let scalars (call (. ([] source (..< 1 5)) slice-string) arena))
+  (let managed-after (call C:brixArenaManagedAllocationCount))
+  (blank)
+  (print (== empty ""))
+  (print (. empty size))
+  (print (. empty length))
+  (print (call C:brixStringGetFlags empty))
+  (print (call C:strlen empty))
+  (print (call (. arena owns) (as empty Pointer)))
+  (print (== scalars "Aé漢😀"))
+  (print (. scalars size))
+  (print (. scalars length))
+  (print (call C:brixStringGetFlags scalars))
+  (print (call C:strlen scalars))
+  (print (call (. arena owns) (as scalars Pointer)))
+  (print (== (call C:brixStringHash scalars (. scalars size)) (call C:brixStringHash "Aé漢😀" 10)))
+  (print ([] scalars (.. 1 2)))
+  (print (str "direct=" scalars))
+  (print (== managed-after managed-before))
+  (print (== (call (. arena copy-span) source 1 5) scalars))
+  (print (== (call (. ([] source (..< 1 5)) slice-string)) scalars))
+  (print (== (call (. ([] (as "zAé漢😀q" ([] Byte)) (..< 1 11)) slice-string)) scalars))
+  (print (== (call (. ([] source (..< 0 6)) slice-string) (..< 1 5)) scalars))
+  (= ([] source 2) (as 0 Char))
+  (let truncated (call (. ([] source (..< 1 5)) slice-string) arena))
+  (print (== truncated "A"))
+  (print (== (. truncated length) 1))
+  (print (== (call C:brixStringGetFlags truncated) 3))
+  (= ([] source 1) (as 0 Char))
+  (print (== (call (. ([] source (..< 1 5)) slice-string) arena) ""))
+  (print (== scalars "Aé漢😀"))
+  (blank)
+  (call (. arena release))
+)
 ```
 
 ```output
@@ -1168,18 +1361,26 @@ true
 
 ### Arena codepoint-span materialization rejects reversed bounds.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena(64)
-do finally
-    arena.release()
-. attempt = do new
-    . source = "abc".codepoints
-    . invalid = arena.copy-span(source, 2, 1)
-catch failure
-    -- "error: $failure"
-attempt.wait()
+(main
+  (let arena (call Arena 64))
+  (finally
+    (call (. arena release))
+  )
+  (let attempt
+    (do-new
+      (let source (. "abc" codepoints))
+      (let invalid (call (. arena copy-span) source 2 1))
+      (on-failure failure
+        (print (str "error: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -1188,18 +1389,26 @@ error: Arena codepoint span materialization failed
 
 ### Arena codepoint-span materialization rejects non-scalar Char values.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena(64)
-do finally
-    arena.release()
-. attempt = do new
-    . source = Array'Char([55296 as Char])
-    . invalid = arena.copy-span(source, 0, 1)
-catch failure
-    -- "error: $failure"
-attempt.wait()
+(main
+  (let arena (call Arena 64))
+  (finally
+    (call (. arena release))
+  )
+  (let attempt
+    (do-new
+      (let source (call (of Array Char) (list (as 55296 Char))))
+      (let invalid (call (. arena copy-span) source 0 1))
+      (on-failure failure
+        (print (str "error: " failure))
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -1208,24 +1417,23 @@ error: Arena codepoint span materialization failed
 
 ### Interpolation converts each piece to String before evaluating the next piece.
 
-```yumi
-. t = Tag()
--- "${t}${next()} x"
+```brix
+(main
+  (let t (call Tag))
+  (print (str t (call next) " x"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tag
+(type + Tag
+  (fn-to-do + String
+    (print "converting tag")
+    (return "tag")
+  )
+)
 
-────────────────────
-+ do to String
-
--- "converting tag"
-= "tag"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do next String
-
--- "evaluating next"
-= "next"
+(fn-do + next String
+  (print "evaluating next")
+  (return "next")
+)
 ```
 
 ```output
@@ -1234,12 +1442,14 @@ evaluating next
 tagnext x
 ```
 
-```yumi
--- "toString"
--- "constructor"
--- "__proto__"
--- "hasOwnProperty"
--- "valueOf"
+```brix
+(main
+  (print "toString")
+  (print "constructor")
+  (print "__proto__")
+  (print "hasOwnProperty")
+  (print "valueOf")
+)
 ```
 
 ```output
@@ -1252,18 +1462,20 @@ valueOf
 
 ### An operator on two strings is answered by a function of String, or by the opposite of one.
 
-```yumi
--- "a" == "a"
--- "a" == "b"
--- "a" != "a"
--- "a" != "b"
--- "a" < "b"
--- "b" < "a"
--- "a" > "b"
--- "b" > "a"
--- !"x"
--- !""
--- !!"x"
+```brix
+(main
+  (print (== "a" "a"))
+  (print (== "a" "b"))
+  (print (!= "a" "a"))
+  (print (!= "a" "b"))
+  (print (< "a" "b"))
+  (print (< "b" "a"))
+  (print (> "a" "b"))
+  (print (> "b" "a"))
+  (print (not "x"))
+  (print (not ""))
+  (print (not (not "x")))
+)
 ```
 
 ```output
@@ -1282,14 +1494,16 @@ true
 
 ### `++=` joins a value onto the text of a local.
 
-```yumi
-. s = "a"
-s ++= "b"
-s ++= 5
--- s
-. e String
-e ++= "x"
--- e
+```brix
+(main
+  (let s "a")
+  (++= s "b")
+  (++= s 5)
+  (print s)
+  (let e String)
+  (++= e "x")
+  (print e)
+)
 ```
 
 ```output
@@ -1299,19 +1513,22 @@ x
 
 ### A text literal keeps a NUL byte: in its size, its length and what follows it.
 
-```yumi
-/string.h
+```brix
+(import /string.h)
+(blank)
 
-. value = "a\0b"
--- value.size
--- value.length
--- ("x" ++ value).size
--- value ++ "c" == "a\0bc"
--- value == "a"
--- value != "a\0c"
--- C:strlen(value)
--- "\0".size
--- "${value}!".size
+(main
+  (let value "a\x00b")
+  (print (. value size))
+  (print (. value length))
+  (print (. (++ "x" value) size))
+  (print (== (++ value "c") "a\x00bc"))
+  (print (== value "a"))
+  (print (!= value "a\x00c"))
+  (print (call C:strlen value))
+  (print (. "\x00" size))
+  (print (. (str value "!") size))
+)
 ```
 
 ```output
@@ -1328,25 +1545,20 @@ true
 
 ### A line continuation in text adds no character.
 
-```yumi
-. n = 4
-. a = "abc\
-def"
--- a
--- a.size
-. b = "\
-x${n}\
-"
--- b
--- b.size
-. c = "\
-"
--- c.size
-. d = "p\
-\
-q${n}\
-r"
--- d
+```brix
+(main
+  (let n 4)
+  (let a "abcdef")
+  (print a)
+  (print (. a size))
+  (let b (str "x" n ""))
+  (print b)
+  (print (. b size))
+  (let c "")
+  (print (. c size))
+  (let d (str "pq" n "r"))
+  (print d)
+)
 ```
 
 ```output
@@ -1360,17 +1572,17 @@ pq4r
 
 ### A line continuation in a paragraph body adds no character.
 
-```yumi
--- text()
--- text().size
+```brix
+(main
+  (print (call text))
+  (print (. (call text) size))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ " text
-
-Foo \
-\
- baz \
-end
+(fn-expr + text _
+  (paragraph
+    "Foo  baz end"
+  )
+)
 ```
 
 ```output
@@ -1380,20 +1592,20 @@ Foo  baz end
 
 ### Interpolation makes a piece text by its converter, and never by a `++` its type declares.
 
-```yumi
-. n = 4
--- "${n} x"
--- "$n x"
--- "${n}"
--- n ++ " x"
+```brix
+(main
+  (let n 4)
+  (print (str n " x"))
+  (print (str n " x"))
+  (print (str n))
+  (print (++ n " x"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ extend Int
-
-────────────────────
-+ this ++ other String
-
-"over"
+(extend + Int
+  (fn-expr + (infix this ++ (param other String)) _
+    "over"
+  )
+)
 ```
 
 ```output
@@ -1405,50 +1617,49 @@ over
 
 ### `++` makes no text of a value that is not text: write it inside a text.
 
-```yumi crash
-. t = Tag()
--- t ++ next()
+```brix crash
+(main
+  (let t (call Tag))
+  (print (++ t (call next)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Tag
+(type + Tag
+  (fn-to-do + String
+    (print "converting tag")
+    (return "tag")
+  )
+)
 
-────────────────────
-+ do to String
-
--- "converting tag"
-= "tag"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do next String
-
--- "evaluating next"
-= "next"
+(fn-do + next String
+  (print "evaluating next")
+  (return "next")
+)
 ```
 
 ```output
 Exception: Operator "++" is not defined for Tag and String
-<no file:3>
-    -- t ++ next()
-       ^^^^^^^^^^^
+<no file:4>
+      (print (++ t (call next)))
+             ^^^^^^^^^^^^^^^^^^
 ```
 
 ### Interpolation joins a piece whose class is String as text, without the class's `++`; `++` written calls it.
 
-```yumi
-. l Loud = "quiet"
--- l ++ "x"
--- "${l}x"
--- "$l x"
--- "x" ++ l
--- "x${l}"
+```brix
+(main
+  (let l Loud "quiet")
+  (print (++ l "x"))
+  (print (str l "x"))
+  (print (str l " x"))
+  (print (++ "x" l))
+  (print (str "x" l))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Loud is String
-
-────────────────────
-+ this ++ other String
-
-"LOUD"
+(type + Loud (is String)
+  (fn-expr + (infix this ++ (param other String)) _
+    "LOUD"
+  )
+)
 ```
 
 ```output
@@ -1461,15 +1672,17 @@ xquiet
 
 ### A hex escape takes two digits and a unicode escape four.
 
-```yumi
--- "a\x41b"
--- "a\x41b".size
--- "\x41\x42g"
--- "a\u0041f"
--- "\u00e9e"
--- "a\x00b" == "a\0b"
--- "a\x00b".size
--- "a\u0000b" == "a\0b"
+```brix
+(main
+  (print "aAb")
+  (print (. "aAb" size))
+  (print "ABg")
+  (print "aAf")
+  (print "ée")
+  (print (== "a\x00b" "a\x00b"))
+  (print (. "a\x00b" size))
+  (print (== "a\x00b" "a\x00b"))
+)
 ```
 
 ```output
@@ -1485,40 +1698,36 @@ true
 
 ### Interpolation makes each piece text as it comes.
 
-```yumi
--- "${a()}${b()}"
--- "--"
--- "x${a()}y${b()}z"
+```brix
+(main
+  (print (str (call a) (call b)))
+  (print "--")
+  (print (str "x" (call a) "y" (call b) "z"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TagA (ta) is I32
+(type + TagA (alias ta) (is I32)
+  (fn-to-do + String
+    (print "conv a")
+    (return "<a>")
+  )
+)
 
-────────────────────
-+ do to String
+(type + TagB (alias tb) (is I32)
+  (fn-to-do + String
+    (print "conv b")
+    (return "<b>")
+  )
+)
 
--- "conv a"
-= "<a>"
+(fn-do + a TagA
+  (print "eval a")
+  (return 1ta)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TagB (tb) is I32
-
-────────────────────
-+ do to String
-
--- "conv b"
-= "<b>"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do a TagA
-
--- "eval a"
-= 1ta
-
-━━━━━━━━━━━━━━━━━━━━
-+ do b TagB
-
--- "eval b"
-= 1tb
+(fn-do + b TagB
+  (print "eval b")
+  (return 1tb)
+)
 ```
 
 ```output
@@ -1537,12 +1746,14 @@ x<a>y<b>z
 
 ### A text is sliced by a range of positions and by ranges with a side left open.
 
-```yumi
-. text = "hello world"
--- text[Position.first .. < 5]
--- text[6 ...]
--- text[... 5]
--- text[Position.middle .. < Position.end]
+```brix
+(main
+  (let text "hello world")
+  (print ([] text (..< (. Position first) 5)))
+  (print ([] text (... 6)))
+  (print ([] text (... _ 5)))
+  (print ([] text (..< (. Position middle) (. Position end))))
+)
 ```
 
 ```output
@@ -1554,13 +1765,19 @@ hello
 
 ### A slice of a text past its end panics, as a slice of a list does.
 
-```yumi
-. attempt = do new
-    . text = "héllo"
-    -- text[2 .. < 9]
-catch failure
-    -- failure
-attempt.wait()
+```brix
+(main
+  (let attempt
+    (do-new
+      (let text "héllo")
+      (print ([] text (..< 2 9)))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -1569,14 +1786,20 @@ Range out of bounds (8 / 5)
 
 ### A slice of a text that starts below zero panics rather than make a text of any size.
 
-```yumi
-. attempt = do new
-    . text = "héllo"
-    . start = -1
-    -- text[start .. < 2]
-catch failure
-    -- failure
-attempt.wait()
+```brix
+(main
+  (let attempt
+    (do-new
+      (let text "héllo")
+      (let start -1)
+      (print ([] text (..< start 2)))
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -1585,17 +1808,19 @@ Range out of bounds (1 / 5)
 
 ### Items and ranges of a text are assigned: the text is stored anew, a copy made before keeps the old one, and the assignment gives the new text.
 
-```yumi
-. a = "hello"
-. b = a
-a[0] = "J"
--- a, b
-a[1 .. 2] = ""
--- a
-a[.last] = " world"
--- a, a.length
--- (a[0] = "") + "!"
--- a
+```brix
+(main
+  (let a "hello")
+  (let b a)
+  (= ([] a 0) "J")
+  (print (tuple a b))
+  (= ([] a (.. 1 2)) "")
+  (print a)
+  (= ([] a .last) " world")
+  (print (tuple a (. a length)))
+  (print (+ (= ([] a 0) "") "!"))
+  (print a)
+)
 ```
 
 ```output
@@ -1608,35 +1833,32 @@ l world
 
 ### An item of a text held by a property is assigned from outside the object and inside it, and one of a local copy of an argument.
 
-```yumi
-. h = Holder("abc")
-h.name[1] = "X"
-h.rename()
--- h.name
-change("xyz")
+```brix
+(main
+  (let h (call Holder "abc"))
+  (= ([] (. h name) 1) "X")
+  (call (. h rename))
+  (print (. h name))
+  (call change "xyz")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
+(type + Holder
+  (prop + name String)
+  (fn-do + This _
+    (param name _)
+  )
+  (fn-do + rename _
+    (= ([] name 0) "Q")
+    (print (= ([] name 2) "R"))
+  )
+)
 
-+ name String
-
-────────────────────
-+ This
-    - name
-
-────────────────────
-+ do rename
-
-name[0] = "Q"
--- name[2] = "R"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do change
-    - text String
-
-. copy = text
-copy[1] = "-"
--- text, copy
+(fn-do + change _
+  (param text String)
+  (let copy text)
+  (= ([] copy 1) "-")
+  (print (tuple text copy))
+)
 ```
 
 ```output
@@ -1647,19 +1869,20 @@ QXR
 
 ### An item of a text that is an item of a list, and of one that is a field of a struct, is assigned.
 
-```yumi
-. names = ["abc", "def"]
-names[1][0] = "Z"
--- names[1], names[0]
-. pair = Pair("one", "two")
-pair.left[0] = "O"
--- pair.left, pair.right
+```brix
+(main
+  (let names (list "abc" "def"))
+  (= ([] ([] names 1) 0) "Z")
+  (print (tuple ([] names 1) ([] names 0)))
+  (let pair (call Pair "one" "two"))
+  (= ([] (. pair left) 0) "O")
+  (print (tuple (. pair left) (. pair right)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair is Struct
-
-+ left String
-+ right String
+(type + Pair (is Struct)
+  (prop + left String)
+  (prop + right String)
+)
 ```
 
 ```output
@@ -1669,23 +1892,26 @@ pair.left[0] = "O"
 
 ### Items of a text are assigned in a loop, in a local of each turn and by each index of the text.
 
-```yumi
-. lines [String]
-for word in ["ab", "cd"]
-    . copy = word
-    copy[1] = "!"
-    lines += copy
--- lines
--- shout("abc")
+```brix
+(main
+  (let lines (list String))
+  (for (in word (list "ab" "cd"))
+    (let copy word)
+    (= ([] copy 1) "!")
+    (+= lines copy)
+  )
+  (print lines)
+  (print (call shout "abc"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do shout String
-    - text String
-
-. loud = text
-for index in 0 .. < loud.length
-    loud[index] = "X"
-= loud
+(fn-do + shout String
+  (param text String)
+  (let loud text)
+  (for (in index (..< 0 (. loud length)))
+    (= ([] loud index) "X")
+  )
+  (return loud)
+)
 ```
 
 ```output
@@ -1695,14 +1921,20 @@ XXX
 
 ### Assigning an item past the end of a text panics, as reading one does.
 
-```yumi
-. attempt = do new
-    . a = "abc"
-    a[7] = "!"
-    -- a
-catch failure
-    -- failure
-attempt.wait()
+```brix
+(main
+  (let attempt
+    (do-new
+      (let a "abc")
+      (= ([] a 7) "!")
+      (print a)
+      (on-failure failure
+        (print failure)
+      )
+    )
+  )
+  (call (. attempt wait))
+)
 ```
 
 ```output
@@ -1711,26 +1943,25 @@ Index out of bounds (7 / 3)
 
 ### An item of a text in a list a property holds, and in a list of lists, is assigned.
 
-```yumi
-. h = Holder()
-h.items[1][1] = "!"
--- h.items
-h.mark(0)
--- h.items
-. grid = [["ab", "cd"], ["ef"]]
-grid[0][1][0] = "C"
--- grid
+```brix
+(main
+  (let h (call Holder))
+  (= ([] ([] (. h items) 1) 1) "!")
+  (print (. h items))
+  (call (. h mark) 0)
+  (print (. h items))
+  (let grid (list (list "ab" "cd") (list "ef")))
+  (= ([] ([] ([] grid 0) 1) 0) "C")
+  (print grid)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder
-
-+ items = ["ab", "cd"]
-
-────────────────────
-+ do mark
-    - at Int
-
-items[at][0] = "#"
+(type + Holder
+  (prop + items _ (= (list "ab" "cd")))
+  (fn-do + mark _
+    (param at Int)
+    (= ([] ([] items at) 0) "#")
+  )
+)
 ```
 
 ```output
@@ -1741,23 +1972,28 @@ ab, Cd, ef
 
 ### A text is split by loops, by steps taken in turn from two splits, and where nothing lies between delimiters
 
-```yumi
-for part in "a,b,,c".split(",")
-    -- "[$part]"
--- List("one--two--three".split("--")).length
-. left = "x y z".split(" ")
-. right = "1-2-3".split("-")
-. a = left()
-. b = right()
--- "${a ?? "?"}${b ?? "?"}"
-a = left()
-b = right()
--- "${a ?? "?"}${b ?? "?"}"
-for line in "p=1;q=2".split(";")
-    for side in line.split("=")
-        -- side
--- "|".join("".split(","))
--- "|".join(",".split(","))
+```brix
+(main
+  (for (in part (call (. "a,b,,c" split) ","))
+    (print (str "[" part "]"))
+  )
+  (print (. (call List (call (. "one--two--three" split) "--")) length))
+  (let left (call (. "x y z" split) " "))
+  (let right (call (. "1-2-3" split) "-"))
+  (let a (call left))
+  (let b (call right))
+  (print (str (?? a "?") (?? b "?")))
+  (= a (call left))
+  (= b (call right))
+  (print (str (?? a "?") (?? b "?")))
+  (for (in line (call (. "p=1;q=2" split) ";"))
+    (for (in side (call (. line split) "="))
+      (print side)
+    )
+  )
+  (print (call (. "|" join) (call (. "" split) ",")))
+  (print (call (. "|" join) (call (. "," split) ",")))
+)
 ```
 
 ```output
@@ -1776,23 +2012,25 @@ q
 |
 ```
 
-```yumi
-+ Tag is String
+```brix
+(type-line + Tag (is String))
+(blank)
 
-. tag Tag = "hello"
-. text String = tag
--- text
-. label Label = tag as String
--- label is String
-. named Label = text
--- named is String
--- "${label}/${named}"
+(main
+  (let tag Tag "hello")
+  (let text String tag)
+  (print text)
+  (let label Label (as tag String))
+  (print (is label String))
+  (let named Label text)
+  (print (is named String))
+  (print (str label "/" named))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Union
-
-| String
-| Int
+(type + Label (is Union)
+  (variant String)
+  (variant Int)
+)
 ```
 
 ```output
@@ -1802,9 +2040,11 @@ true
 hello/hello
 ```
 
-```yumi
--- "foobar".find("bob")
--- "foobar".find("bob") == null
+```brix
+(main
+  (print (call (. "foobar" find) "bob"))
+  (print (== (call (. "foobar" find) "bob") null))
+)
 ```
 
 ```output
@@ -1812,12 +2052,14 @@ unknown
 true
 ```
 
-```yumi
--- decode-base64("Zm9v").slice-string()
--- (catch decode-base64("abc")) is SyntaxError
--- (catch decode-base64("Zm=v")) is SyntaxError
--- catch decode-base64("abc")
--- catch decode-base64("Zm=v")
+```brix
+(main
+  (print (call (. (call decode-base64 "Zm9v") slice-string)))
+  (print (is (catch (call decode-base64 "abc")) SyntaxError))
+  (print (is (catch (call decode-base64 "Zm=v")) SyntaxError))
+  (print (catch (call decode-base64 "abc")))
+  (print (catch (call decode-base64 "Zm=v")))
+)
 ```
 
 ```output
@@ -1828,17 +2070,20 @@ Invalid Base64 length
 Invalid Base64 padding
 ```
 
-```yumi
-. empty = DisplayText("")
--- "${empty.is-single-cell} ${empty.codepoint-count} ${empty.display-width}"
-. ascii = DisplayText("abc")
--- "${ascii.is-single-cell} ${ascii.width-at(0)} ${ascii.width-at(2)}"
-. latin = DisplayText("\u00E9")
--- "${latin.is-single-cell} ${latin.codepoint-count} ${latin.width-at(0)}"
-. mixed = DisplayText("a界e\u0301📁")
--- "${mixed.is-single-cell} ${mixed.codepoint-count} ${mixed.display-width}"
-for index in 0 .. < mixed.codepoint-count
-    -- mixed.width-at(index)
+```brix
+(main
+  (let empty (call DisplayText ""))
+  (print (str (. empty is-single-cell) " " (. empty codepoint-count) " " (. empty display-width)))
+  (let ascii (call DisplayText "abc"))
+  (print (str (. ascii is-single-cell) " " (call (. ascii width-at) 0) " " (call (. ascii width-at) 2)))
+  (let latin (call DisplayText "é"))
+  (print (str (. latin is-single-cell) " " (. latin codepoint-count) " " (call (. latin width-at) 0)))
+  (let mixed (call DisplayText "a界é📁"))
+  (print (str (. mixed is-single-cell) " " (. mixed codepoint-count) " " (. mixed display-width)))
+  (for (in index (..< 0 (. mixed codepoint-count)))
+    (print (call (. mixed width-at) index))
+  )
+)
 ```
 
 ```output
@@ -1853,13 +2098,15 @@ false 5 6
 2
 ```
 
-```yumi
-. narrow = DisplayText("a") + DisplayText("b")
--- "${narrow.is-single-cell} ${narrow.width-at(1)}"
-. wide-last = DisplayText("a") + DisplayText("界")
--- "${wide-last.is-single-cell} ${wide-last.width-at(0)} ${wide-last.width-at(1)}"
-. wide-first = DisplayText("界") + DisplayText("a")
--- "${wide-first.is-single-cell} ${wide-first.width-at(0)} ${wide-first.width-at(1)}"
+```brix
+(main
+  (let narrow (+ (call DisplayText "a") (call DisplayText "b")))
+  (print (str (. narrow is-single-cell) " " (call (. narrow width-at) 1)))
+  (let wide-last (+ (call DisplayText "a") (call DisplayText "界")))
+  (print (str (. wide-last is-single-cell) " " (call (. wide-last width-at) 0) " " (call (. wide-last width-at) 1)))
+  (let wide-first (+ (call DisplayText "界") (call DisplayText "a")))
+  (print (str (. wide-first is-single-cell) " " (call (. wide-first width-at) 0) " " (call (. wide-first width-at) 1)))
+)
 ```
 
 ```output
@@ -1868,36 +2115,30 @@ false 1 2
 false 2 1
 ```
 
-### An escape of half of a surrogate pair is no character, and is a syntax error.
-
-```yumi crash
--- "a\u00e9b"
--- "a\uD800b"
-```
-
-```output
-Exception: "\uD800" is half of a surrogate pair, which is no character by itself; write the character itself in the text
-<no file:3>
-    -- "a\uD800b"
-           ^
-```
-
 ### A Char that holds half of a surrogate pair or a number past the last character makes no text.
 
-```yumi
--- Array'Char(["a"[0], 0xD7FF as Char, 0xE000 as Char, 0x10FFFF as Char]).slice-string().size
-do new
-    -- "${0xD800 as Char}"
-catch failure
-    -- failure
-do new
-    -- "${0x110000 as Char}"
-catch failure
-    -- failure
-do new
-    -- Array'Char(["a"[0], 0xDC00 as Char, "b"[0]]).slice-string()
-catch failure
-    -- failure
+```brix
+(main
+  (print (. (call (. (call (of Array Char) (list ([] "a" 0) (as 0xD7FF Char) (as 0xE000 Char) (as 0x10FFFF Char))) slice-string)) size))
+  (do-new
+    (print (str (as 0xD800 Char)))
+    (on-failure failure
+      (print failure)
+    )
+  )
+  (do-new
+    (print (str (as 0x110000 Char)))
+    (on-failure failure
+      (print failure)
+    )
+  )
+  (do-new
+    (print (call (. (call (of Array Char) (list ([] "a" 0) (as 0xDC00 Char) ([] "b" 0))) slice-string)))
+    (on-failure failure
+      (print failure)
+    )
+  )
+)
 ```
 
 ```output
@@ -1909,15 +2150,18 @@ Array holds a Char that is not a Unicode character
 
 ### decode-utf8 makes text of UTF-8 bytes, and raises for a stray byte, an overlong form or a surrogate.
 
-```yumi
--- decode-utf8(Array'Byte("héllo"))
--- decode-utf8(Byte[0]).length
--- (catch? decode-utf8(Array'Byte([104u8, 255u8]))) ?? "stray byte"
--- (catch? decode-utf8(Array'Byte([192u8, 175u8]))) ?? "overlong"
--- (catch? decode-utf8(Array'Byte([237u8, 160u8, 128u8]))) ?? "surrogate"
-. failure = catch decode-utf8(Array'Byte([255u8]))
-if failure is SyntaxError
-    -- (failure as SyntaxError).message
+```brix
+(main
+  (print (call decode-utf8 (call (of Array Byte) "héllo")))
+  (print (. (call decode-utf8 ([] Byte 0)) length))
+  (print (?? (catch? (call decode-utf8 (call (of Array Byte) (list 104u8 255u8)))) "stray byte"))
+  (print (?? (catch? (call decode-utf8 (call (of Array Byte) (list 192u8 175u8)))) "overlong"))
+  (print (?? (catch? (call decode-utf8 (call (of Array Byte) (list 237u8 160u8 128u8)))) "surrogate"))
+  (let failure (catch (call decode-utf8 (call (of Array Byte) (list 255u8)))))
+  (if (is failure SyntaxError)
+    (print (. (as failure SyntaxError) message))
+  )
+)
 ```
 
 ```output
@@ -1931,10 +2175,13 @@ Invalid UTF-8
 
 ### A character written in Brix is a text of one character; a text of none is an error.
 
-```yumi crash
-./lib/glyph
+```brix crash
+(import ./lib/glyph)
+(blank)
 
--- glyph
+(main
+  (print glyph)
+)
 ```
 
 ```brix file=lib/glyph.bx
@@ -1950,10 +2197,13 @@ Exception: (char …) takes a text of one character, as in (char "a"), but this 
 
 ### An escape of half of a surrogate pair in Brix text is no character, and is an error.
 
-```yumi crash
-./lib/mark
+```brix crash
+(import ./lib/mark)
+(blank)
 
--- mark
+(main
+  (print mark)
+)
 ```
 
 ```brix file=lib/mark.bx
@@ -1969,35 +2219,40 @@ Exception: “\uDC00” at line 1, column 21 is half of a surrogate pair, which 
 
 ### An item of a text that no name holds cannot be assigned, since the new text it makes would be lost.
 
-```yumi crash
-. text = "abc"
-text[1] = 'Z'
--- text
-"abc"[1] = 'Z'
+```brix crash
+(main
+  (let text "abc")
+  (= ([] text 1) 'Z')
+  (print text)
+  (= ([] "abc" 1) 'Z')
+)
 ```
 
 ```output
 Exception: Assigning an item of a text makes a new text, and nothing holds this one, so the change is lost; assign the item of a text a name holds
-<no file:5>
-    "abc"[1] = 'Z'
-    ^^^^^^^^
+<no file:6>
+      (= ([] "abc" 1) 'Z')
+         ^^^^^^^^^^^^
 ```
 
 ### A copied text is new memory the collector owns, so it outlives the arena that held the original.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-. kept = arena.copy-string("café")
-. copied = kept.copied
--- arena.owns(kept as Pointer)
--- arena.owns(copied as Pointer)
--- copied == kept
--- copied.length
--- copied.size
-arena.release()
--- copied
+(main
+  (let arena (call Arena))
+  (let kept (call (. arena copy-string) "café"))
+  (let copied (. kept copied))
+  (print (call (. arena owns) (as kept Pointer)))
+  (print (call (. arena owns) (as copied Pointer)))
+  (print (== copied kept))
+  (print (. copied length))
+  (print (. copied size))
+  (call (. arena release))
+  (print copied)
+)
 ```
 
 ```output

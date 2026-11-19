@@ -1,0 +1,35 @@
+; benchmark.meta description: Consumes the direct generator benchmark through a feed spread.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core)
+(blank)
+
+(main
+  (let upper-bound (as 5000000 Size))
+  (let checksum (call generator-checksum upper-bound))
+  (throw (call Panic "generator checksum mismatch") (if (!= checksum (/ (* upper-bound (+ upper-bound 1)) 2))))
+  (blank)
+  (print (str "bench-result compiler-shape/generator-feed checksum=" checksum))
+)
+
+(fn-do _ generator-checksum Size
+  (param upper-bound Size)
+  (let total (as 0 Size))
+  (let values
+    (block
+      (spread (call generator-values upper-bound))
+    )
+  )
+  (for (in value values)
+    (+= total value)
+  )
+  (return total)
+)
+
+(fn-do _ generator-values _ @inline
+  (param upper-bound Size)
+  (for (in index (..< 0 upper-bound))
+    (yield (+ (as index Size) 1))
+  )
+)

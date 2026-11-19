@@ -1,0 +1,29 @@
+; benchmark.meta description: Direct map/filter calls matching the feed-loop workload.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator
+(blank)
+(import /core)
+(blank)
+
+(main
+  (let rounds 40000)
+  (let upper-bound 256)
+  (let checksum (call feed-checksum rounds upper-bound))
+  (throw (call Panic "feed checksum mismatch") (if (!= checksum (* rounds 3 128 129))))
+  (blank)
+  (print (str "bench-result compiler-shape/generator-pipeline checksum=" checksum))
+)
+
+(fn-do _ feed-checksum Int
+  (param rounds Int)
+  (param upper-bound Int)
+  (let total 0)
+  (for (in round (..< 0 rounds))
+    (let mapped (call map (.. 1 upper-bound) (:with (* each 3))))
+    (let values (call filter mapped (:where (== (% each 2) 0))))
+    (for (in value values)
+      (+= total value)
+    )
+  )
+  (return total)
+)

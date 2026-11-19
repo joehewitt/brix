@@ -1,27 +1,29 @@
 # Math
 
-```yumi
--- 1 + 1
+```brix
+(main
+  (print (+ 1 1))
+)
 ```
 
 ```output
 2
 ```
 
-```yumi
--- local-sqrt(9.0)
+```brix
+(main
+  (print (call local-sqrt 9.0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ sqrt F64
-    - value F64
+(fn-expr + sqrt F64
+  (param value F64)
+  (+ value 1.0)
+)
 
-value + 1.0
-
-━━━━━━━━━━━━━━━━━━━━
-+ local-sqrt F64
-    - value F64
-
-sqrt(value)
+(fn-expr + local-sqrt F64
+  (param value F64)
+  (call sqrt value)
+)
 ```
 
 ```output

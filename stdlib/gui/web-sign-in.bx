@@ -1,0 +1,56 @@
+(import ./window)
+(import /BxWebKit/BxWebKit.h)
+(import /core/intrinsics)
+(import /core/task)
+(blank)
+(type-line + WebSignInError (is Error))
+
+(type + WebSignInCallback (is (c-fn-type Void (param request-pointer Pointer) (param status U32) (param text (of CPointer Char8)))))
+
+(fn-do + web-sign-in (? String)
+  (param window Window)
+  (param url String)
+  (param callback-scheme String)
+  (param is-ephemeral _ (= false))
+  (call (. window ensure-native))
+  (throw (call WebSignInError "The window is not open") (if (not (. window native))))
+  (let completion (call (of Completion WebSignInResult)))
+  (let session
+    (call C:brixWebSignInStart
+      (block
+        (arg (!! (. window native)))
+        (arg url)
+        (arg callback-scheme)
+        (arg is-ephemeral)
+        (arg (as web-sign-in-finished WebSignInCallback))
+        (arg (as completion Pointer))
+      )
+    )
+  )
+  (finally
+    (inline (call C:brixWebSignInRelease session))
+  )
+  (let result (!! (call (. completion await))))
+  (return-if null (if (== (. result status) (. WebSignInStatus canceled))))
+  (throw (call WebSignInError (. result text)) (if (== (. result status) (. WebSignInStatus failed))))
+  (return (. result text))
+)
+
+(type _ WebSignInStatus (is U32)
+  (variant succeeded (= 0))
+  (variant canceled (= 1))
+  (variant failed (= 2))
+)
+
+(type _ WebSignInResult (is Tuple)
+  (prop + status WebSignInStatus)
+  (prop + text String)
+)
+
+(fn-do _ web-sign-in-finished _
+  (param request-pointer Pointer)
+  (param status U32)
+  (param text (of CPointer Char8))
+  (let completion (call (of gc-object-from-pointer (of Completion WebSignInResult)) request-pointer))
+  (call (. completion finish) (call WebSignInResult (as status WebSignInStatus) text))
+)

@@ -1,0 +1,45 @@
+; benchmark.meta description: Intersects multi-subpath paths and aggregates intersection results.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/intersection)
+(import /graphics/path)
+(import /graphics/point)
+(import /graphics/shapes)
+(blank)
+
+(main
+  (let checksum (as 0 Size))
+  (let a (call Path))
+  (let b (call Path))
+  (let results (list PathIntersection))
+  (let workspace (call IntersectionWorkspace))
+  (blank)
+  ; Grow every caller-owned buffer before the measured repeated-query shape.
+  (call reset-sources a b 259)
+  (call intersect-paths-reusing results workspace a b false)
+  (blank)
+  (for (in pass (..< 0 260))
+    (call reset-sources a b pass)
+    (call intersect-paths-reusing results workspace a b false)
+    (+= checksum (. results length))
+    (for (in result results)
+      (+= checksum (+ (. result intersections length) pass))
+    )
+  )
+  (blank)
+  (print (str "bench-result graphics/intersect-compound-paths checksum=" checksum))
+)
+
+(fn-do _ reset-sources _
+  (param a Path)
+  (param b Path)
+  (param pass Int)
+  (let f (as pass Float))
+  (call (. a clear))
+  (call (. a append-circle) (call Point (+ 80 (% f 11)) 80) 40)
+  (call (. a append-rectangle) (tuple 40 40 80 80))
+  (call (. b clear))
+  (call (. b append-circle) (call Point 95 (+ 80 (% f 13))) 38)
+  (call (. b append-rectangle) (tuple 70 30 70 90))
+)

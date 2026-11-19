@@ -1,87 +1,98 @@
 # Inline warnings
 
-```yumi warn
-/core
+```brix warn
+(import /core)
+(blank)
 
--- recursive-warning(2)
+(main
+  (print (call recursive-warning 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ recursive-warning Int @inline
-    - value Int
-
-match value
-    | 0
-        0
-    ??
-        recursive-warning(value - 1) + 1
+(fn-expr + recursive-warning Int @inline
+  (param value Int)
+  (match value
+    (case 0
+      0
+    )
+    (default
+      (+ (call recursive-warning (- value 1)) 1)
+    )
+  )
+)
 ```
 
 ```stderr
-Warning: Cannot inline __source__:recursive-warning: recursive function; @inline declaration at no file:7
-<no file:14>
-            recursive-warning(value - 1) + 1
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Warning: Cannot inline __source__:recursive-warning: recursive function; @inline declaration at no file:7
-<no file:4>
-    -- recursive-warning(2)
-       ^^^^^^^^^^^^^^^^^^^^
+Warning: Cannot inline __source__:recursive-warning: recursive function; @inline declaration at no file:9
+<no file:16>
+          (+ (call recursive-warning (- value 1)) 1)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Warning: Cannot inline __source__:recursive-warning: recursive function; @inline declaration at no file:9
+<no file:6>
+      (print (call recursive-warning 2))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ```output
 2
 ```
 
-```yumi warn
-/core
+```brix warn
+(import /core)
+(blank)
 
--- even-warning(2)
+(main
+  (print (call even-warning 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do even-warning Bool @inline
-    - value Int
+(fn-do + even-warning Bool @inline
+  (param value Int)
+  (if (== value 0)
+    (return true)
+  )
+  (return (call odd-warning (- value 1)))
+)
 
-if value == 0
-    = true
-= odd-warning(value - 1)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do odd-warning Bool @inline
-    - value Int
-
-if value == 0
-    = false
-= even-warning(value - 1)
+(fn-do + odd-warning Bool @inline
+  (param value Int)
+  (if (== value 0)
+    (return false)
+  )
+  (return (call even-warning (- value 1)))
+)
 ```
 
 ```stderr
-Warning: Cannot inline __source__:even-warning: recursive function; @inline declaration at no file:7
-<no file:20>
-    = even-warning(value - 1)
-      ^^^^^^^^^^^^^^^^^^^^^^^
-Warning: Cannot inline __source__:odd-warning: recursive function; @inline declaration at no file:15
-<no file:12>
-    = odd-warning(value - 1)
-      ^^^^^^^^^^^^^^^^^^^^^^
-Warning: Cannot inline __source__:even-warning: recursive function; @inline declaration at no file:7
-<no file:4>
-    -- even-warning(2)
-       ^^^^^^^^^^^^^^^
+Warning: Cannot inline __source__:even-warning: recursive function; @inline declaration at no file:9
+<no file:22>
+      (return (call even-warning (- value 1)))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Warning: Cannot inline __source__:odd-warning: recursive function; @inline declaration at no file:17
+<no file:14>
+      (return (call odd-warning (- value 1)))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Warning: Cannot inline __source__:even-warning: recursive function; @inline declaration at no file:9
+<no file:6>
+      (print (call even-warning 2))
+             ^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ```output
 true
 ```
 
-```yumi warn
-/core
+```brix warn
+(import /core)
+(blank)
 
-for value in generator-warning()
-    -- value
+(main
+  (for (in value (call generator-warning))
+    (print value)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do generator-warning @inline
-
-<= 7
+(fn-do + generator-warning _ @inline
+  (yield 7)
+)
 ```
 
 ```stderr
@@ -91,55 +102,59 @@ for value in generator-warning()
 7
 ```
 
-```yumi warn
-/core
--- dispatch(Child())
-━━━━━━━━━━━━━━━━━━━━
-+ Base
-────────────────────
-+ value Int @inline
+```brix warn
+(import /core)
 
-1
-━━━━━━━━━━━━━━━━━━━━
-+ Child is Base
-────────────────────
-+ value Int
+(main
+  (print (call dispatch (call Child)))
+)
 
-2
-━━━━━━━━━━━━━━━━━━━━
-+ dispatch Int
-    - object Base
+(type + Base
+  (fn-expr + value Int @inline
+    1
+  )
+)
 
-object.value()
+(type + Child (is Base)
+  (fn-expr + value Int
+    2
+  )
+)
+
+(fn-expr + dispatch Int
+  (param object Base)
+  (call (. object value))
+)
 ```
 
 ```stderr
-Warning: Cannot inline __source__:Base:value: unresolved target: virtual dispatch; @inline declaration at no file:7
-<no file:20>
-    object.value()
-    ^^^^^^^^^^^^^^
+Warning: Cannot inline __source__:Base:value: unresolved target: virtual dispatch; @inline declaration at no file:9
+<no file:22>
+      (call (. object value))
+      ^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ```output
 2
 ```
 
-```yumi warn
-/core
+```brix warn
+(import /core)
+(blank)
 
--- successful-warning(2)
+(main
+  (print (call successful-warning 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ successful-warning Int @inline
-    - value Int
+(fn-expr + successful-warning Int @inline
+  (param value Int)
+  (+ value 1)
+)
 
-value + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ unused-warning Int @inline
-    - value Int
-
-unused-warning(value)
+(fn-expr + unused-warning Int @inline
+  (param value Int)
+  (call unused-warning value)
+)
 ```
 
 ```stderr

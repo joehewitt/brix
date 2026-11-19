@@ -2,10 +2,6 @@
 
 Types
 
-```yumi
-. foo
-```
-
 ```brix
 (main
   (let foo)
@@ -18,10 +14,6 @@ Types
         <Id name="foo"/>
     </TypeCapture>
 </Declaration>
-```
-
-```yumi
-. $foo
 ```
 
 ```brix
@@ -38,10 +30,6 @@ Types
 </Declaration>
 ```
 
-```yumi
-. foo Bar
-```
-
 ```brix
 (main
   (let foo Bar)
@@ -55,10 +43,6 @@ Types
         <TypeId name="Bar"/>
     </TypeCapture>
 </Declaration>
-```
-
-```yumi
-. foo Bar?
 ```
 
 ```brix
@@ -79,10 +63,6 @@ Types
 </Declaration>
 ```
 
-```yumi
-. Foo'Bar?
-```
-
 ```brix
 (main
   (let (? (of Foo Bar)))
@@ -101,10 +81,6 @@ Types
 </Declaration>
 ```
 
-```yumi
-[Foo]
-```
-
 ```brix
 (main
   (list Foo)
@@ -115,11 +91,6 @@ Types
 <List>
     <TypeId name="Foo"/>
 </List>
-```
-
-```yumi
-. [foo, bar]
-[foo, bar] = 1
 ```
 
 ```brix
@@ -149,10 +120,6 @@ Types
 </AssignmentExpression>
 ```
 
-```yumi
-. [foo, _, ...rest, bar]
-```
-
 ```brix
 (main
   (let (list foo _ ...rest bar))
@@ -174,11 +141,6 @@ Types
         </TypeCapture>
     </TypeList>
 </Declaration>
-```
-
-```yumi
-. [foo Foo, bar]
-[foo, bar] = 1
 ```
 
 ```brix
@@ -209,10 +171,6 @@ Types
 </AssignmentExpression>
 ```
 
-```yumi
-. [Foo = Bar]
-```
-
 ```brix
 (main
   (let (map Foo Bar))
@@ -228,11 +186,6 @@ Types
         </MapItem>
     </TypeMap>
 </Declaration>
-```
-
-```yumi
-. [foo = bar, baz = boo]
-[foo = bar, baz = boo] = 1
 ```
 
 ```brix
@@ -278,10 +231,6 @@ Types
 </AssignmentExpression>
 ```
 
-```yumi
-. []
-```
-
 ```brix
 (main
   (let (list))
@@ -294,10 +243,6 @@ Types
 </Declaration>
 ```
 
-```yumi
-. _
-```
-
 ```brix
 (main
   (let _)
@@ -308,10 +253,6 @@ Types
 <Declaration>
     <TypeWildcard/>
 </Declaration>
-```
-
-```yumi
-. [first, ..., last]
 ```
 
 ```brix
@@ -332,10 +273,6 @@ Types
         </TypeCapture>
     </TypeList>
 </Declaration>
-```
-
-```yumi
-. ["id" = value, $key = expected, ...rest]
 ```
 
 ```brix
@@ -370,10 +307,6 @@ Types
 </Declaration>
 ```
 
-```yumi
-. ['x' = value]
-```
-
 ```brix
 (main
   (let (map 'x' value))
@@ -393,10 +326,6 @@ Types
         </MapItem>
     </TypeMap>
 </Declaration>
-```
-
-```yumi
-. f "foo" ...middle b "bar"
 ```
 
 ```brix
@@ -429,100 +358,7 @@ Types
 </Declaration>
 ```
 
-### Double-underscore is not a pattern.
-
-```yumi crash
-. [foo, __, bar]
-```
-
-```output
-Exception: Syntax error
-<no file:2>
-    . [foo, __, bar]
-             ^
-```
-
-### Remainders are only legal inside sequence, map, and text pattern profiles.
-
-```yumi crash
-. ...
-```
-
-```output
-Exception: Remainder pattern is only valid inside sequence, map, or text patterns
-<no file:2>
-    . ...
-      ^^^
-```
-
-### ImmutableArray and map bracket forms cannot be mixed.
-
-```yumi crash
-. [first, "id" = value]
-```
-
-```output
-Exception: Cannot mix sequence and map items in one bracket pattern
-<no file:2>
-    . [first, "id" = value]
-              ^^^^^^^^^^^^
-```
-
-### Each structure profile can contain at most one remainder.
-
-```yumi crash
-. [first, ...middle, ..., last]
-```
-
-```output
-Exception: Pattern may contain only one remainder
-<no file:2>
-    . [first, ...middle, ..., last]
-                         ^^^
-```
-
-### Map patterns can contain at most one unmatched-entry remainder.
-
-```yumi crash
-. ["a" = a, ...rest, ...]
-```
-
-```output
-Exception: Pattern may contain only one remainder
-<no file:2>
-    . ["a" = a, ...rest, ...]
-                         ^^^
-```
-
-### Text patterns can contain at most one substring remainder.
-
-```yumi crash
-. "a" ...middle "b" ...tail
-```
-
-```output
-Exception: Pattern may contain only one remainder
-<no file:2>
-    . "a" ...middle "b" ...tail
-                        ^^^^^^^
-```
-
 ### Double-underscore is not a captured pattern.
-
-```yumi crash
-. rest __
-```
-
-```output
-Exception: Syntax error
-<no file:2>
-    . rest __
-            ^
-```
-
-```yumi
-. <Foo>
-```
 
 ```brix
 (main
@@ -539,10 +375,6 @@ Exception: Syntax error
 </Declaration>
 ```
 
-```yumi
-. Foo[]
-```
-
 ```brix
 (main
   (let ([] Foo))
@@ -556,10 +388,6 @@ Exception: Syntax error
         <TypeId name="Foo"/>
     </TypeArguments>
 </Declaration>
-```
-
-```yumi
-. Foo[]?
 ```
 
 ```brix
@@ -580,10 +408,6 @@ Exception: Syntax error
 </Declaration>
 ```
 
-```yumi
-. {1}
-```
-
 ```brix
 (main
   (let ({} 1))
@@ -596,10 +420,6 @@ Exception: Syntax error
         <Integer value="1"/>
     </TypePredicate>
 </Declaration>
-```
-
-```yumi
-. Foo {bar}
 ```
 
 ```brix
@@ -617,10 +437,6 @@ Exception: Syntax error
         </TypePredicate>
     </TypeAnd>
 </Declaration>
-```
-
-```yumi
-. foo {bar}
 ```
 
 ```brix
@@ -642,10 +458,6 @@ Exception: Syntax error
 
 ## Type relations
 
-```yumi
-. Foo / Bar
-```
-
 ```brix
 (main
   (let (/ Foo Bar))
@@ -659,10 +471,6 @@ Exception: Syntax error
         <TypeId name="Bar"/>
     </TypeRelation>
 </Declaration>
-```
-
-```yumi
-. Foo \ Bar
 ```
 
 ```brix
@@ -680,10 +488,6 @@ Exception: Syntax error
 </Declaration>
 ```
 
-```yumi
-. Foo */ Bar
-```
-
 ```brix
 (main
   (let (*/ Foo Bar))
@@ -697,10 +501,6 @@ Exception: Syntax error
         <TypeId name="Bar"/>
     </TypeRelation>
 </Declaration>
-```
-
-```yumi
-. Foo *\ Bar
 ```
 
 ```brix
@@ -718,10 +518,6 @@ Exception: Syntax error
 </Declaration>
 ```
 
-```yumi
-. Foo -- Bar
-```
-
 ```brix
 (main
   (let (-- Foo Bar))
@@ -735,10 +531,6 @@ Exception: Syntax error
         <TypeId name="Bar"/>
     </TypeRelation>
 </Declaration>
-```
-
-```yumi
-. Foo ++ Bar
 ```
 
 ```brix
@@ -758,10 +550,6 @@ Exception: Syntax error
 
 ## Operator precedence
 
-```yumi
-. Foo / Bar -- Baz
-```
-
 ```brix
 (main
   (let (/ Foo (-- Bar Baz)))
@@ -778,10 +566,6 @@ Exception: Syntax error
         </TypeRelation>
     </TypeRelation>
 </Declaration>
-```
-
-```yumi
-. Foo \ Bar ++ Baz
 ```
 
 ```brix
@@ -804,10 +588,6 @@ Exception: Syntax error
 
 ## And patterns
 
-```yumi
-. Foo Bar
-```
-
 ```brix
 (main
   (let (all Foo Bar))
@@ -825,10 +605,6 @@ Exception: Syntax error
 
 ## Or patterns
 
-```yumi
-. Foo | Bar
-```
-
 ```brix
 (main
   (let (| Foo Bar))
@@ -842,10 +618,6 @@ Exception: Syntax error
         <TypeId name="Bar"/>
     </TypeOr>
 </Declaration>
-```
-
-```yumi
-. Foo | Bar | Baz
 ```
 
 ```brix
@@ -866,10 +638,6 @@ Exception: Syntax error
 </Declaration>
 ```
 
-```yumi
-. Foo | Foo'Bar
-```
-
 ```brix
 (main
   (let (| Foo (of Foo Bar)))
@@ -888,10 +656,6 @@ Exception: Syntax error
 </Declaration>
 ```
 
-```yumi
-. Foo | (Foo'Bar)
-```
-
 ```brix
 (main
   (let (| Foo (of Foo Bar)))
@@ -908,10 +672,6 @@ Exception: Syntax error
         </TypeArguments>
     </TypeOr>
 </Declaration>
-```
-
-```yumi
-. Foo | Bar?
 ```
 
 ```brix
@@ -934,10 +694,6 @@ Exception: Syntax error
 
 ## Tuple types
 
-```yumi
-. (Foo)
-```
-
 ```brix
 (main
   (let Foo)
@@ -948,10 +704,6 @@ Exception: Syntax error
 <Declaration>
     <TypeId name="Foo"/>
 </Declaration>
-```
-
-```yumi
-. (foo Foo)
 ```
 
 ```brix
@@ -969,11 +721,6 @@ Exception: Syntax error
 </Declaration>
 ```
 
-```yumi
-. foo, bar
-foo, bar = 1
-```
-
 ```brix
 (main
   (let (tuple foo bar))
@@ -1001,11 +748,6 @@ foo, bar = 1
 </AssignmentExpression>
 ```
 
-```yumi
-. (foo, bar)
-(foo, bar) = 1
-```
-
 ```brix
 (main
   (let (tuple foo bar))
@@ -1031,10 +773,6 @@ foo, bar = 1
     </Tuple>
     <Integer value="1"/>
 </AssignmentExpression>
-```
-
-```yumi
-. foo, _, bar
 ```
 
 ```brix
@@ -1059,21 +797,6 @@ foo, bar = 1
 
 ### Remainders are invalid in tuple patterns.
 
-```yumi crash
-. foo, bar, ...
-```
-
-```output
-Exception: Remainder pattern is only valid inside sequence, map, or text patterns
-<no file:2>
-    . foo, bar, ...
-                ^^^
-```
-
-```yumi
-. (Foo, Bar)
-```
-
 ```brix
 (main
   (let (tuple Foo Bar))
@@ -1087,10 +810,6 @@ Exception: Remainder pattern is only valid inside sequence, map, or text pattern
         <TypeId name="Bar"/>
     </TypeTuple>
 </Declaration>
-```
-
-```yumi
-. (foo Foo, bar Bar, baz Baz)
 ```
 
 ```brix
@@ -1118,10 +837,6 @@ Exception: Remainder pattern is only valid inside sequence, map, or text pattern
 </Declaration>
 ```
 
-```yumi
-for foo {foo} in bar: 0
-```
-
 ```brix
 (main
   (for (in (: foo ({} foo)) bar)
@@ -1145,10 +860,6 @@ for foo {foo} in bar: 0
 </For>
 ```
 
-```yumi
-. foo Bar bar Baz
-```
-
 ```brix
 (main
   (let (all (: foo Bar) (: bar Baz)))
@@ -1170,10 +881,6 @@ for foo {foo} in bar: 0
 </Declaration>
 ```
 
-```yumi
-. ..foo = bar
-```
-
 ```brix
 (main
   (let ..foo bar)
@@ -1187,10 +894,6 @@ for foo {foo} in bar: 0
 </Declaration>
 ```
 
-```yumi
-. .foo = bar
-```
-
 ```brix
 (main
   (let .foo bar)
@@ -1202,10 +905,6 @@ for foo {foo} in bar: 0
     <TypeCase name="foo"/>
     <Id name="bar"/>
 </Declaration>
-```
-
-```yumi
-. .foo(x, y) = bar
 ```
 
 ```brix
@@ -1230,10 +929,6 @@ for foo {foo} in bar: 0
 </Declaration>
 ```
 
-```yumi
-. Object.foo = bar
-```
-
 ```brix
 (main
   (let (. Object foo) bar)
@@ -1247,10 +942,6 @@ for foo {foo} in bar: 0
     </TypeCase>
     <Id name="bar"/>
 </Declaration>
-```
-
-```yumi
-. Object.foo(x, y) = bar
 ```
 
 ```brix

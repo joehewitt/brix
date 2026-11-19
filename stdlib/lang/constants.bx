@@ -1,0 +1,258 @@
+(import ./host.linux)
+(import ./host.macos)
+(import /data/json)
+(import /os/env)
+(import /os/file)
+(import /os/path)
+(blank)
+(prop + brix-runtime-path Path (:= (call runtime-source-root)))
+(blank)
+(prop + brix-build-path Path (:= (call build-root)))
+(blank)
+(prop + toolchain-root Path (:= (call find-toolchain-root)))
+(blank)
+(prop + toolchain-config-name _ (= "libs/build.json"))
+(blank)
+(prop + project-folder-name _ (= ".brix"))
+(blank)
+(prop _ git-folder-name _ (= ".git"))
+(blank)
+(prop + project-root Path (:= (call find-project-root)))
+(blank)
+(prop + brix-probes-path Path (:= (/ project-root ".tmp/build/probes")))
+(blank)
+(prop + sdk-root Path (:= (call apple-sdk-path null)))
+(blank)
+(prop + diagnostic-status _ (= 2))
+(blank)
+(prop + diagnostic-limit Index (= 10))
+(blank)
+(prop + default-worker-count _ (= (call usable-core-count)))
+(blank)
+(prop + runtime-c-paths (map String (list Path)) (:= (call configured-c-paths)))
+(blank)
+; These modules are automatically imported into every C module
+(prop + builtin-c-module-names List
+  (block
+    (item "core")
+    (item "core/number")
+  )
+)
+(blank)
+; These modules are automatically imported into every Brix module
+(prop + builtin-module-names List
+  (block
+    (item "core")
+    (item "core/error")
+    (item "core/number")
+    (item "core/string")
+    (item "core/type")
+    (item "core/backing")
+    (item "core/array")
+    (item "core/function")
+    (item "core/collection")
+    (item "core/list")
+    (item "core/map")
+    (item "core/range")
+    (item "core/stream")
+    (item "core/channel")
+    (item "core/event")
+    (item "core/tracker")
+    (item "core/parsing")
+    (item "core/task")
+  )
+)
+(blank)
+; These modules are imported into every module that uses grammar syntax
+(prop + stream-module-names List
+  (block
+    (item "core/tokenstream")
+    (item "core/patterns")
+  )
+)
+(blank)
+; This module is imported into every module that writes markup
+(prop + markup-module-name _ (= "core/markup"))
+(blank)
+; This module is imported into every module that declares or extends a style sheet with `•`
+(prop + style-module-name _ (= "core/style"))
+(blank)
+; This module is imported into the entry module, and every module outside the core library that
+; writes a probe, where probes compile
+(prop + probes-module-name _ (= "core/probes"))
+(blank)
+; These modules have functions the compiler can call via brix.core.x
+(prop + core-module-names List
+  (block
+    (item "BxCore/BxCore.h")
+    (item "BxGC/BxGC.h")
+    (item "BxCore/BxBatchTest.h")
+    (item "BxCore/BxString.h")
+    (item "BxCore/BxPanic.h")
+    (item "BxEvents/BxEvents.h")
+    (item "math.h")
+  )
+)
+(blank)
+; The instrumented benchmark runtime builds into "bench" under the build root;
+; fall back to it when the root itself carries no runtime source tree.
+(fn-expr _ runtime-source-root Path
+  (case? (. root-sources is-dir)
+    root
+  )
+  (case? (. bench-sources is-dir)
+    bench-root
+  )
+  (default
+    root
+  )
+  (where
+    (lazy root brix-build-path)
+    (lazy root-sources (/ root "brix/libs/core"))
+    (lazy bench-root (/ root "bench"))
+    (lazy bench-sources (/ bench-root "brix/libs/core"))
+  )
+)
+
+(fn-expr _ build-root Path
+  (?? (call configured-build-root) (/ toolchain-root "build"))
+)
+
+(fn-expr _ configured-build-root (? Path)
+  (only-if (call Path (call resolved-path configured "")) (if (!= configured "")))
+  (where
+    (lazy configured (?? (call env "BRIX_BUILD_PATH") ""))
+  )
+)
+
+(fn-do _ find-toolchain-root Path
+  (let start (?? (call configured-build-root) (. (call executable-path) dir)))
+  (let found (call directory-holding start toolchain-config-name))
+  (throw (call Error (str "No " toolchain-config-name " above " start "; set BRIX_BUILD_PATH to a runtime build")) (if (not found)))
+  (return found)
+)
+
+(fn-do _ find-project-root Path
+  (let start (call Path (call cwd)))
+  (return (?? (call directory-holding start git-folder-name) (call directory-holding start project-folder-name (call toolchain-home)) start))
+)
+
+(fn-expr _ toolchain-home String
+  (. (call Path (?? (call env "BRIX_HOME") (str (?? (call env "HOME") "") "/.brix"))) normalized)
+)
+
+(fn-do _ directory-holding (? Path)
+  (param start Path)
+  (param name String)
+  (param except (? String) (= null))
+  (let directory start)
+  (while directory
+    (let entry (/ directory name))
+    (if (and (. entry exists) (!= (as entry String) except))
+      (return directory)
+    )
+    (let parent (. directory dir))
+    (if (== (as parent String) (as directory String))
+      (break)
+    )
+    (= directory parent)
+  )
+  (return null)
+)
+
+(fn-do + module-search-paths (list Path)
+  (let paths (list Path))
+  (let configured (?? (call env "BRIXPATH") ""))
+  (if (!= configured "")
+    (++= paths (call (. configured split) ":"))
+    (else
+      (+= paths (/ toolchain-root "stdlib"))
+    )
+  )
+  (return paths)
+)
+
+(fn-expr + resolved-path String
+  (param base Path)
+  (param name String)
+  (call resolved-path (as base String) name)
+)
+
+(fn-do + resolved-path String
+  (param base String)
+  (param name String)
+  ; The absolute path `name` names in the directory `base`, as TypeScript's `path.resolve` gives it:
+  ; a relative `base` is read from the current directory, and `.` and `..` segments are folded.
+  (let whole
+    (block
+      (case? (call (. base starts-with) separator)
+        (str base separator name)
+      )
+      (default
+        (str (call cwd) separator base separator name)
+      )
+    )
+  )
+  (let parts (list String))
+  (for (in part (call (. whole split) separator))
+    (if (== part "..")
+      (if (!= (. parts length) 0)
+        (call (. parts pop))
+      )
+      (else-if (and part (!= part "."))
+        (+= parts part)
+      )
+    )
+  )
+  (let joined (call (. separator join) parts))
+  (return (str separator joined))
+)
+
+(fn-do _ configured-c-paths (map String (list Path))
+  (let paths (map String (list Path)))
+  (let config-path (/ toolchain-root toolchain-config-name))
+  (let text (catch? (call read-file-text config-path)))
+  (throw (call Error (str "Unable to read " config-path)) (if (not text)))
+  (let config (call JSON text))
+  (if (is config (map String JSON))
+    (let fields (as config (map String JSON)))
+    (let projects ([] fields "runtimeProjects"))
+    (if (and projects (is projects (map String JSON)))
+      (for (in (tuple _ project) (as projects (map String JSON)))
+        (if (is project (map String JSON))
+          (let path ([] (as project (map String JSON)) "path"))
+          (if (and path (is path String))
+            (call add-export-roots paths project (/ brix-runtime-path "brix" (as path String)))
+          )
+        )
+      )
+    )
+    (let externals ([] fields "externalLibraries"))
+    (if (and externals (is externals (map String JSON)))
+      (for (in (tuple name external) (as externals (map String JSON)))
+        (call add-export-roots paths external (/ brix-runtime-path "external" name))
+      )
+    )
+  )
+  (return paths)
+)
+
+(fn-do _ add-export-roots _
+  (param paths (map String (list Path)))
+  (param component JSON)
+  (param root Path)
+  (if (is-not component (map String JSON))
+    (return)
+  )
+  (let exports ([] (as component (map String JSON)) "exports"))
+  (if (or (not exports) (is-not exports (map String JSON)))
+    (return)
+  )
+  (for (in (tuple _ shorthand) (as exports (map String JSON)))
+    (if (is shorthand String)
+      (let roots (?? ([] paths shorthand) (call (of List Path))))
+      (+= roots root)
+      (= ([] paths shorthand) roots)
+    )
+  )
+)

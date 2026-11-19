@@ -1,0 +1,28 @@
+; benchmark.meta description: Iterates 256 ASCII codepoints with fixed total work.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator,string-iteration
+(blank)
+
+(main
+  (let block "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+  (let source (* block 4))
+  (let passes 4096)
+  (let codepoints (as 0 Size))
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 passes))
+    (for (in char source)
+      (+= codepoints 1)
+      (+= checksum (as char Size))
+    )
+  )
+  (blank)
+  (if (or (!= codepoints 1048576) (!= checksum 73531392))
+    (throw (call Panic "ASCII-256 benchmark produced the wrong work"))
+  )
+  (blank)
+  (probe-count string-iteration.benchmark-passes passes)
+  (probe-count string-iteration.benchmark-codepoints codepoints)
+  (probe-count string-iteration.benchmark-checksum checksum)
+  (print (str "bench-result string/iterate-ascii-256 checksum=" checksum))
+)

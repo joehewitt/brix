@@ -4,71 +4,93 @@ A match that leaves cases out names the type in source form, the cases it leaves
 
 ### a match on Bool without false
 
-```yumi crash
-match true
-    |= true
-        -- "true"
+```brix crash
+(main
+  (match true
+    (case= true
+      (print "true")
+    )
+  )
+)
 ```
 
 ```output
-Exception: This match on Bool does not handle false; add "|= false", or "??" for the rest
-<no file:3>
-        |= true
-        ^^^^^^
+Exception: This match on Bool does not handle false; add "(case= false …)", or "(default …)" for the rest
+<no file:4>
+        (case= true
+        ^^^^^^^^^^
 ```
 
 ### a match on an optional without null
 
-```yumi crash
-. value I32? = 41
--- match value
-    | n I32
-        n + 1
+```brix crash
+(main
+  (let value (? I32) 41)
+  (print
+    (match value
+      (case (: n I32)
+        (+ n 1)
+      )
+    )
+  )
+)
 ```
 
 ```output
-Exception: This match on I32? does not handle null; add "|= null", or "??" for the rest
-<no file:4>
-        | n I32
-        ^^^^^^
+Exception: This match on I32? does not handle null; add "(case= null …)", or "(default …)" for the rest
+<no file:6>
+          (case (: n I32)
+          ^^^^^^^^^^^^^^
 ```
 
 ### a match on an optional that handles only null
 
-```yumi crash
-. value I32?
--- match value
-    |= null
+```brix crash
+(main
+  (let value (? I32))
+  (print
+    (match value
+      (case= null
         0
+      )
+    )
+  )
+)
 ```
 
 ```output
-Exception: This match on I32? handles only null; add a case for a present value, as in "| value I32", or "??" for the rest
-<no file:4>
-        |= null
-        ^^^^^^
+Exception: This match on I32? handles only null; add a case for a present value, as in "(case (: value I32) …)", or "(default …)" for the rest
+<no file:6>
+          (case= null
+          ^^^^^^^^^^
 ```
 
 ### a match on an enum that leaves out two cases
 
-```yumi crash
-. level = Level.low
--- match level
-    |= Level.low
+```brix crash
+(main
+  (let level (. Level low))
+  (print
+    (match level
+      (case= (. Level low)
         1
-━━━━━━━━━━━━━━━━━━━━
-+ Level is U32
+      )
+    )
+  )
+)
 
-| low = 0
-| mid = 1
-| high = 2
+(type + Level (is U32)
+  (variant low (= 0))
+  (variant mid (= 1))
+  (variant high (= 2))
+)
 ```
 
 ```output
-Exception: This match on Level does not handle Level.mid and Level.high; add "|= Level.mid" and "|= Level.high", or "??" for the rest
-<no file:4>
-        |= Level.low
-        ^^^^^^^^^^^
+Exception: This match on Level does not handle Level.mid and Level.high; add "(case= (. Level mid) …)" and "(case= (. Level high) …)", or "(default …)" for the rest
+<no file:6>
+          (case= (. Level low)
+          ^^^^^^^^^^^^^^^^^^^
 ```
 
 ### an arm that only prints, in a match whose value is kept

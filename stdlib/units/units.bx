@@ -1,0 +1,63 @@
+(export ./distance)
+(blank)
+; Used to convert a number from one range to another
+;
+; Examples:
+; 200px * Scale(100px, 500px) / percent = 25%
+; 200px * Scale(100px, 500px) / percent = 25%
+; 25% * Scale(100px, 500px) / percent = 200px
+(blank)
+(prop + percent _ (= (call Scale 0% 100%)))
+
+(type + (of Scalable Num) (is Interface)
+  (prop + scale _ (=> (call (of Scale Num))))
+  (fn-from-expr + (: ratio Ratio)
+    (* scale ratio)
+  )
+  (fn-to-expr + Ratio
+    (* scale this)
+  )
+  (fn-to-expr + (of Scalable ''OtherNum)
+    (* this (/ scale (. (of Scalable OtherNum) scale)))
+  )
+)
+
+(type + (of Scale Num) (is (tuple (: minimum Num) (: maximum Num)))
+  (fn-expr + (infix this / (param other _)) _
+    (call ScalePair this other)
+  )
+  (fn-expr + (infix this * (param value Num)) _
+    (/ positive (as value Float))
+  )
+  (fn-expr + (infix this * (param value Num)) Ratio
+    (/ positive total)
+    (where
+      (lazy positive (- (as value Float) minimum))
+      (lazy total (- maximum minimum))
+    )
+  )
+  (fn-expr + (infix this * (param ratio Ratio)) Num
+    (as (+ minimum (* ratio total)) Num)
+    (where
+      (lazy total (+ (- maximum minimum) 1))
+    )
+  )
+)
+
+(type + ScalePair (is (tuple (: scale1 (of Scale ''Num1)) (: scale2 (of Scale ''Num2))))
+  (fn-expr + (infix this * (param value Num2)) Num1
+    (* scale1 ratio)
+    (where
+      (lazy ratio (* scale2 value))
+    )
+  )
+  (fn-expr + (infix this * (param value Num1)) Num2
+    (* scale2 ratio)
+    (where
+      (lazy ratio (* scale1 value))
+    )
+  )
+)
+
+(type-line + Ratio (alias %%) (is F64))
+(type-line + Percent (alias %) (is 0.01%%))

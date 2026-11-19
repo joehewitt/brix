@@ -1,0 +1,137 @@
+(import ./key-combo)
+
+(type + KeyScopeNode (is Interface)
+  (fn-expr + key-scope-parent (? KeyScopeNode) :get)
+  (fn-expr + is-key-scope Bool :get)
+)
+
+(type + KeyAssignment (is Interface)
+  (implements KeyScopeNode)
+  (fn-expr + display-title String :get)
+  (fn-expr + key KeyCombo :get)
+  (fn-expr + stable-key String :get)
+  (fn-expr + enabled Bool :get)
+  (fn-expr + allow-while-input Bool :get)
+  (fn-expr + allow-while-modal Bool :get)
+  (fn-expr + mapping-default KeyMappingDefault :get)
+  (fn-do + key-scope (? KeyScopeNode) :get
+    (let cursor key-scope-parent)
+    (while cursor
+      (let node cursor)
+      (return-if node (if (. node is-key-scope)))
+      (= cursor (. node key-scope-parent))
+    )
+    (return null)
+  )
+  (fn-do + set-binding-key _
+    (param next KeyCombo)
+  )
+  (fn-do + set-binding-enabled _
+    (param next Bool)
+  )
+)
+
+(type + KeyMappingDefault
+  (prop _ key _ (= (call KeyCombo)))
+  (prop _ enabled _ (= false))
+  (prop _ is-captured _ (= false))
+  (fn-do + This _)
+  (fn-do + capture _
+    (param assignment KeyAssignment)
+    (return-if (if is-captured))
+    (= key (. assignment key))
+    (= enabled (. assignment enabled))
+    (= is-captured true)
+  )
+  (fn-do + restore _
+    (param assignment KeyAssignment)
+    (return-if (if (not is-captured)))
+    (call (. assignment set-binding-key) key)
+    (call (. assignment set-binding-enabled) enabled)
+  )
+)
+
+(fn-expr + key-assignment-routable Bool
+  (param assignment KeyAssignment)
+  (param input-owned Bool)
+  (param outside-modal Bool)
+  (case? (and outside-modal (not (. assignment allow-while-modal)))
+    false
+  )
+  (case? (call (. assignment key is-focus-navigation))
+    false
+  )
+  (case? (and input-owned (not (. assignment allow-while-input)))
+    false
+  )
+  (default
+    true
+  )
+)
+
+(fn-do + (of active-key-assignments Assignment) (list Assignment)
+  (param registered (list Assignment))
+  (param focused (? KeyScopeNode))
+  (param modal (? KeyScopeNode))
+  (constraint is Assignment KeyAssignment)
+  (let scopes (list (? KeyScopeNode)))
+  (for (in assignment registered)
+    (+= scopes (. assignment key-scope))
+  )
+  (blank)
+  (let active (list Assignment))
+  (let cursor focused)
+  (while cursor
+    (let node cursor)
+    (if (. node is-key-scope)
+      (for (in index (..< 0 (. registered length)))
+        (if (call same-key-scope ([] scopes index) node)
+          (+= active ([] registered index))
+        )
+      )
+    )
+    (= cursor (. node key-scope-parent))
+  )
+  (blank)
+  (let outside-modal (list Assignment))
+  (for (in index (..< 0 (. registered length)))
+    (if (not ([] scopes index))
+      (let assignment ([] registered index))
+      (if (and modal (not (call key-scope-contains modal assignment)))
+        (+= outside-modal assignment)
+        (else
+          (+= active assignment)
+        )
+      )
+    )
+  )
+  (for (in assignment outside-modal)
+    (+= active assignment)
+  )
+  (return active)
+)
+
+(fn-do + key-scope-contains Bool
+  (param ancestor KeyScopeNode)
+  (param node KeyScopeNode)
+  (let cursor (? KeyScopeNode) node)
+  (while cursor
+    (let current cursor)
+    (return-if true (if (== (as current Pointer) (as ancestor Pointer))))
+    (= cursor (. current key-scope-parent))
+  )
+  (return false)
+)
+
+(fn-expr _ same-key-scope Bool
+  (param scope (? KeyScopeNode))
+  (param node KeyScopeNode)
+  (match scope
+    (case (: found KeyScopeNode)
+      (== (as found Pointer) (as node Pointer))
+    )
+    (default
+      false
+    )
+  )
+)

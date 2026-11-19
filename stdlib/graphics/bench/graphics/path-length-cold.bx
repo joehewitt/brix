@@ -1,0 +1,36 @@
+; benchmark.meta description: Computes path length on fresh paths to measure point-table construction.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/path)
+(import /graphics/primitives)
+(import /math)
+(blank)
+
+(main
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in pass (..< 0 36))
+    (let path (call line-path pass))
+    (+= checksum (call numeric-check (. path length)))
+  )
+  (blank)
+  (print (str "bench-result graphics/path-length-cold checksum=" checksum))
+)
+
+(fn-do _ line-path _
+  (param seed Int)
+  (let path (call Path))
+  (let base (as seed Float))
+  (call (. path move-to) (% base 31) (% base 23))
+  (for (in i (..< 0 80))
+    (let f (as i Float))
+    (call (. path line-to) (+ base (* f 2)) (+ (* f 5) (% base 13)))
+  )
+  (return path)
+)
+
+(fn-expr _ numeric-check Size
+  (param value Coord)
+  (% (as (call abs (* value 1000)) Size) 1000003)
+)

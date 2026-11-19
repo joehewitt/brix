@@ -1,104 +1,101 @@
 # Markup batching
 
-```yumi
-/core/markup
-/core/task
+```brix
+(import /core/markup)
+(import /core/task)
+(blank)
 
-.. name = "bob"
-. done = Semaphore()
+(main
+  (lazy name "bob")
+  (let done (call Semaphore))
+  (blank)
+  (<> BatchRoot (id: root)
+    (<> MarkText
+      (= text #name)
+    )
+  )
+  (blank)
+  (print (call dump root))
+  (= name "tom")
+  (= name "fred")
+  (print (call dump root))
+  (print (. root flush-count))
+  (blank)
+  (do-new
+    (print (call dump root))
+    (print (. root flush-count))
+    (call (. done post))
+  )
+  (blank)
+  (call (. done wait))
+)
 
-<BatchRoot root
-    <MarkText
-        text = #name
+(fn-expr + dump String
+  (param root BatchRoot)
+  (. (as (!! (. root first-child)) MarkText) text)
+)
 
--- dump(root)
-name = "tom"
-name = "fred"
--- dump(root)
--- root.flush-count
+(type + MarkNode
+  (prop + parent (? MarkNode))
+  (prop + first-child (? MarkNode))
+  (prop + last-child (? MarkNode))
+  (prop + previous (? MarkNode))
+  (prop + next (? MarkNode))
+  (fn-do + (infix this += (param child MarkNode)) _
+    (= (. child parent) this)
+    (if (not first-child)
+      (= first-child (= last-child child))
+      (else
+        (= (?. last-child next) child)
+        (= (. child previous) last-child)
+        (= last-child child)
+      )
+    )
+    (return child)
+  )
+  (fn-do + (infix this -= (param child MarkNode)) _
+    (if (== (. child parent) this)
+      (= (. child parent) null)
+      (if (== first-child child)
+        (= first-child (. child next))
+      )
+      (if (== last-child child)
+        (= last-child (. child previous))
+      )
+      (= (?. (. child previous) next) (. child next))
+      (= (?. (. child next) previous) (. child previous))
+      (= (. child next) null)
+      (= (. child previous) null)
+    )
+  )
+  (fn-do + clear-children _
+    (while first-child
+      (let child (!! first-child))
+      (-= this child)
+      (call (. child close))
+    )
+  )
+  (fn-do + close _
+    (call clear-children)
+  )
+)
 
-do new
-    -- dump(root)
-    -- root.flush-count
-    done.post()
+(type + BatchRoot (is MarkNode)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (prop + flush-count Size (= 0))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (+= flush-count 1)
+  )
+)
 
-done.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - root BatchRoot
-
-(root.first-child! as MarkText).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-
-+ parent MarkNode?
-+ first-child MarkNode?
-+ last-child MarkNode?
-+ previous MarkNode?
-+ next MarkNode?
-
-────────────────────
-+ do this += child MarkNode
-
-child.parent = this
-if !first-child
-    first-child = last-child = child
-else
-    last-child?.next = child
-    child.previous = last-child
-    last-child = child
-= child
-
-────────────────────
-+ do this -= child MarkNode
-
-if child.parent == this
-    child.parent = null
-    if first-child == child
-        first-child = child.next
-    if last-child == child
-        last-child = child.previous
-    child.previous?.next = child.next
-    child.next?.previous = child.previous
-    child.next = null
-    child.previous = null
-
-────────────────────
-+ do clear-children
-
-while first-child
-    . child = first-child!
-    this -= child
-    child.close()
-
-────────────────────
-+ do close
-
-clear-children()
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchRoot is MarkNode
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-+ flush-count Size = 0
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-flush-count += 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkText is MarkNode
-
-+ text String
-
-────────────────────
-+ This
-    - text String
+(type + MarkText (is MarkNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 ```
 
 ```output
@@ -111,75 +108,72 @@ fred
 
 ### Mount/unmount callbacks retain their batching order across a live remount. Owner reclamation clears the attachment lane only after the final mounted owner is dropped and emits no synthetic unmounted callback.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
-/BxGC/BxGC.h
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(import /BxGC/BxGC.h)
+(blank)
 
-. lane = C:brixGCMarkupAttachmentsSidePayloadLane()
-. root = CleanupBatchRoot()
-markup-mount-root(root, root)
-root.markup-batch-queue.checkpoint()
-root.events.clear()
-. opening = C:brixGCObjectSidePayloadCount(lane)
+(main
+  (let lane (call C:brixGCMarkupAttachmentsSidePayloadLane))
+  (let root (call CleanupBatchRoot))
+  (call markup-mount-root root root)
+  (call (. root markup-batch-queue checkpoint))
+  (call (. root events clear))
+  (let opening (call C:brixGCObjectSidePayloadCount lane))
+  (blank)
+  (do
+    (inline (call exercise-cleanup-batch-order root lane opening))
+  )
+  (call C:brixCollect)
+  (do
+    (inline (call C:brixGCDrainCleanups))
+  )
+  (blank)
+  (print (str "events=" (call (. "|" join) (. root events))))
+  (print (str "reclaimed=" (- (call C:brixGCObjectSidePayloadCount lane) opening)))
+)
 
-do exercise-cleanup-batch-order(root, lane, opening)
-C:brixCollect()
-do C:brixGCDrainCleanups()
+(fn-do + exercise-cleanup-batch-order _
+  (param root CleanupBatchRoot)
+  (param lane U64)
+  (param opening U64)
+  (lazy child (? CleanupBatchChild) (call CleanupBatchChild root))
+  (blank)
+  (call markup-adopt (!! child) null root)
+  (call (. root markup-batch-queue checkpoint))
+  (+= (. root events) (str "lane:" (- (call C:brixGCObjectSidePayloadCount lane) opening)))
+  (blank)
+  (call markup-release (!! child))
+  (call (. root markup-batch-queue checkpoint))
+  (blank)
+  (call markup-adopt (!! child) null root)
+  (call (. root markup-batch-queue checkpoint))
+  (= child null)
+)
 
--- "events=${"|".join(root.events)}"
--- "reclaimed=${C:brixGCObjectSidePayloadCount(lane) - opening}"
+(type + CleanupBatchRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (prop + events (list String) (= (call (of List String))))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (+= events "flush")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do exercise-cleanup-batch-order
-    - root CleanupBatchRoot
-    - lane U64
-    - opening U64
-
-.. child CleanupBatchChild? = CleanupBatchChild(root)
-
-markup-adopt(child!, null, root)
-root.markup-batch-queue.checkpoint()
-root.events += "lane:${C:brixGCObjectSidePayloadCount(lane) - opening}"
-
-markup-release(child!)
-root.markup-batch-queue.checkpoint()
-
-markup-adopt(child!, null, root)
-root.markup-batch-queue.checkpoint()
-child = null
-
-━━━━━━━━━━━━━━━━━━━━
-+ CleanupBatchRoot is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-+ events [String] = List'String()
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-events += "flush"
-
-━━━━━━━━━━━━━━━━━━━━
-+ CleanupBatchChild is Box
-
-+ sink CleanupBatchRoot
-
-────────────────────
-+ This
-    - sink
-
-────────────────────
-+ do mounted
-
-sink.events += "mounted"
-
-────────────────────
-+ do unmounted
-
-sink.events += "unmounted"
+(type + CleanupBatchChild (is Box)
+  (prop + sink CleanupBatchRoot)
+  (fn-do + This _
+    (param sink _)
+  )
+  (fn-do + mounted _
+    (+= (. sink events) "mounted")
+  )
+  (fn-do + unmounted _
+    (+= (. sink events) "unmounted")
+  )
+)
 ```
 
 ```output
@@ -187,59 +181,56 @@ events=mounted|flush|lane:1|unmounted|mounted|flush
 reclaimed=0
 ```
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<EarlyMountedQueryRoot root
-    <QueryMirror mirror
+(main
+  (<> EarlyMountedQueryRoot (id: root)
+    (<> QueryMirror (id: mirror))
+  )
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call count-children root))
+  (print (. root nodes length))
+  (print (if-expr (. root nodes) (is ([] (. root nodes) 0) QueryMarker) false))
+  (print (== (. mirror owner) root))
+)
 
-root.markup-batch-queue.checkpoint()
--- count-children(root)
--- root.nodes.length
--- if root.nodes then (root.nodes[0] is QueryMarker) else false
--- mirror.owner == root
+(type + QueryMarker (is Box))
 
-━━━━━━━━━━━━━━━━━━━━
-+ QueryMarker is Box
+(type + QueryMirror (is Box)
+  (prop + owner (of Ancestor EarlyMountedQueryRoot))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ QueryMirror is Box
+(fn-do + count-children Size
+  (param box Box)
+  (let count Size 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-+ owner Ancestor'EarlyMountedQueryRoot
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children Size
-    - box Box
-
-. count Size = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ EarlyMountedQueryRoot is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-+ nodes Descendants'QueryMarker
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-markup-batch-queue.checkpoint()
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-────────────────────
-
-<This
-    <QueryMarker
+(type + EarlyMountedQueryRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (prop + nodes (of Descendants QueryMarker))
+  (fn-do + This _
+    (call markup-mount-root this this)
+    (call (. markup-batch-queue checkpoint))
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+  (content
+    (<> This
+      (<> QueryMarker)
+    )
+  )
+)
 ```
 
 ```output
@@ -251,151 +242,145 @@ true
 
 ### Keyed reconciliation preserves identity and duplicate-key order around the measured crossover.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
--- keyed-crossover-summary(31)
--- keyed-crossover-summary(32)
--- keyed-crossover-summary(33)
--- keyed-crossover-duplicate-summary()
+(main
+  (print (call keyed-crossover-summary 31))
+  (print (call keyed-crossover-summary 32))
+  (print (call keyed-crossover-summary 33))
+  (print (call keyed-crossover-duplicate-summary))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CrossoverItem is Tuple
+(type + CrossoverItem (is Tuple)
+  (prop + id String)
+  (prop + text String)
+)
 
-+ id String
-+ text String
+(type + CrossoverRow (is Label)
+  (prop + sink CrossoverRoot)
+  (prop + local-state Size (= 0))
+  (prop + focused _ (= false))
+  (prop + selected _ (= false))
+  (fn-do + mounted _
+    (+= (. sink events) (str "M" text))
+  )
+  (fn-do + unmounted _
+    (+= (. sink events) (str "U" text))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ CrossoverRow is Label
+(type + CrossoverRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + items (list CrossoverItem) (= (call (of List CrossoverItem))))
+  (prop + events (list String) (= (call (of List String))))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + This _
+    (param count Size)
+    (= items (call make-crossover-items count))
+  )
+  (fn-do + replace-with _
+    (param replacement (list CrossoverItem))
+    (= items replacement)
+    (call (. markup-batch-queue checkpoint))
+  )
+  (content
+    (<> This
+      (for (in item #items (keyed-by (call crossover-key item)))
+        (<> CrossoverRow
+          (= sink this)
+          (= text (. item text))
+        )
+      )
+    )
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-+ sink CrossoverRoot
-+ local-state Size = 0
-+ focused = false
-+ selected = false
+(fn-do + keyed-crossover-summary String
+  (param count Size)
+  (let root (call CrossoverRoot count))
+  (call markup-mount-root root root)
+  (call (. root markup-batch-queue checkpoint))
+  (let region (!! (. root %first-child)))
+  (let opening (list CrossoverRow))
+  (let index Index 0)
+  (for (in child (. region children))
+    (let row (as child CrossoverRow))
+    (= (. row local-state) (+ index 100))
+    (+= opening row)
+    (+= index 1)
+  )
+  (blank)
+  (let middle ([] opening (/ count 2)))
+  (= (. middle focused) true)
+  (= (. middle selected) true)
+  (call (. root replace-with) (call reverse-crossover-items (. root items)))
+  (blank)
+  (let identity-ok true)
+  (= index 0)
+  (for (in child (. region children))
+    (let row (as child CrossoverRow))
+    (let old-index (- count index 1))
+    (if (or (!= row ([] opening old-index)) (!= (. row local-state) (+ old-index 100)))
+      (= identity-ok false)
+    )
+    (+= index 1)
+  )
+  (blank)
+  (let current-middle (as (!! (call (. region child-at) (- count (/ count 2) 1))) CrossoverRow))
+  (let interaction-ok (and (== current-middle middle) (. current-middle focused) (. current-middle selected)))
+  (return (str count ":" identity-ok ":" interaction-ok))
+)
 
-────────────────────
-+ do mounted
+(fn-do + keyed-crossover-duplicate-summary String
+  (let root (call CrossoverRoot 33))
+  (= ([] (. root items) 0) (call CrossoverItem "duplicate" "first"))
+  (= ([] (. root items) 1) (call CrossoverItem "duplicate" "second"))
+  (call markup-mount-root root root)
+  (call (. root markup-batch-queue checkpoint))
+  (let region (!! (. root %first-child)))
+  (let first (!! (. region %first-child)))
+  (let second (!! (call (. region child-at) 1)))
+  (let replacement (call make-crossover-items 33))
+  (= ([] replacement 0) (call CrossoverItem "duplicate" "new-first"))
+  (= ([] replacement 1) (call CrossoverItem "duplicate" "new-second"))
+  (call (. root replace-with) replacement)
+  (let fifo (and (== first (!! (. region %first-child))) (== second (!! (call (. region child-at) 1)))))
+  (return (str "duplicate-fifo=" fifo))
+)
 
-sink.events += "M$text"
+(fn-do + make-crossover-items (list CrossoverItem)
+  (param count Size)
+  (let items (list CrossoverItem))
+  (for (in index (..< 0 count))
+    (+= items (call CrossoverItem (str "id-" index) (str "row-" index)))
+  )
+  (return items)
+)
 
-────────────────────
-+ do unmounted
+(fn-do + reverse-crossover-items (list CrossoverItem)
+  (param source (list CrossoverItem))
+  (let items (list CrossoverItem))
+  (let index (. source length))
+  (while (> index 0)
+    (-= index 1)
+    (+= items ([] source index))
+  )
+  (return items)
+)
 
-sink.events += "U$text"
-
-━━━━━━━━━━━━━━━━━━━━
-+ CrossoverRoot is Box
-    is MarkupRootElement
-
-+ items [CrossoverItem] = List'CrossoverItem()
-+ events [String] = List'String()
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ This
-    - count Size
-
-items = make-crossover-items(count)
-
-────────────────────
-+ do replace-with
-    - replacement [CrossoverItem]
-
-items = replacement
-markup-batch-queue.checkpoint()
-
-────────────────────
-
-<This
-    for item in #items keyed by crossover-key(item)
-        <CrossoverRow
-            sink = this
-            text = item.text
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ do keyed-crossover-summary String
-    - count Size
-
-. root = CrossoverRoot(count)
-markup-mount-root(root, root)
-root.markup-batch-queue.checkpoint()
-. region = root.%first-child!
-. opening [CrossoverRow]
-. index Index = 0
-for child in region.children
-    . row = child as CrossoverRow
-    row.local-state = index + 100
-    opening += row
-    index += 1
-
-. middle = opening[count / 2]
-middle.focused = true
-middle.selected = true
-root.replace-with(reverse-crossover-items(root.items))
-
-. identity-ok = true
-index = 0
-for child in region.children
-    . row = child as CrossoverRow
-    . old-index = count - index - 1
-    if row != opening[old-index] || row.local-state != old-index + 100
-        identity-ok = false
-    index += 1
-
-. current-middle = (region.child-at(count - (count / 2) - 1))! as CrossoverRow
-. interaction-ok = current-middle == middle && current-middle.focused && current-middle.selected
-= "$count:$identity-ok:$interaction-ok"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do keyed-crossover-duplicate-summary String
-
-. root = CrossoverRoot(33)
-root.items[0] = CrossoverItem("duplicate", "first")
-root.items[1] = CrossoverItem("duplicate", "second")
-markup-mount-root(root, root)
-root.markup-batch-queue.checkpoint()
-. region = root.%first-child!
-. first = region.%first-child!
-. second = (region.child-at(1))!
-. replacement = make-crossover-items(33)
-replacement[0] = CrossoverItem("duplicate", "new-first")
-replacement[1] = CrossoverItem("duplicate", "new-second")
-root.replace-with(replacement)
-. fifo = first == region.%first-child! && second == (region.child-at(1))!
-= "duplicate-fifo=$fifo"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make-crossover-items [CrossoverItem]
-    - count Size
-
-. items [CrossoverItem]
-for index in 0 .. < count
-    items += CrossoverItem("id-$index", "row-$index")
-= items
-
-━━━━━━━━━━━━━━━━━━━━
-+ do reverse-crossover-items [CrossoverItem]
-    - source [CrossoverItem]
-
-. items [CrossoverItem]
-. index = source.length
-while index > 0
-    index -= 1
-    items += source[index]
-= items
-
-━━━━━━━━━━━━━━━━━━━━
-+ do crossover-key String
-    - item CrossoverItem
-
-if item.id == "boom"
-    ?! Panic("key failure")
-= item.id
+(fn-do + crossover-key String
+  (param item CrossoverItem)
+  (if (== (. item id) "boom")
+    (throw (call Panic "key failure"))
+  )
+  (return (. item id))
+)
 ```
 
 ```output
@@ -405,67 +390,62 @@ if item.id == "boom"
 duplicate-fifo=true
 ```
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<QueryOrderRoot root
+(main
+  (<> QueryOrderRoot (id: root))
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (let first ([] (. root markers) 0))
+  (let second ([] (. root markers) 1))
+  (print (call marker-order root))
+  (call (. root items move) 1 0)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call marker-order root))
+  (print (if-expr (== second ([] (. root markers) 0)) "second-reused" "second-remounted"))
+  (print (if-expr (== first ([] (. root markers) 1)) "first-reused" "first-remounted"))
+)
 
-root.markup-batch-queue.checkpoint()
-. first = root.markers[0]
-. second = root.markers[1]
--- marker-order(root)
-root.items.move(1, 0)
-root.markup-batch-queue.checkpoint()
--- marker-order(root)
--- if second == root.markers[0] then "second-reused" else "second-remounted"
--- if first == root.markers[1] then "first-reused" else "first-remounted"
+(type + RowData (is Tuple)
+  (prop + id String)
+  (prop + text String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RowData is Tuple
+(type + MarkerBox (is Box)
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 
-+ id String
-+ text String
+(fn-expr + marker-order String
+  (param root QueryOrderRoot)
+  (call (. "|" join) (in (. each text) (. root markers)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MarkerBox is Box
-
-+ text String
-
-────────────────────
-+ This
-    - text String
-
-━━━━━━━━━━━━━━━━━━━━
-+ marker-order String
-    - root QueryOrderRoot
-
-"|".join(each.text in root.markers)
-
-━━━━━━━━━━━━━━━━━━━━
-+ QueryOrderRoot is Box
-    is MarkupRootElement
-
-+ items [RowData] = List'RowData([RowData("a", "A"), RowData("b", "B")])
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-+ markers Descendants'MarkerBox
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-────────────────────
-
-<This
-    for item in #items keyed by item.id
-        <MarkerBox = item.text
+(type + QueryOrderRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + items (list RowData) (= (call (of List RowData) (list (call RowData "a" "A") (call RowData "b" "B")))))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (prop + markers (of Descendants MarkerBox))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+  (content
+    (<> This
+      (for (in item #items (keyed-by (. item id)))
+        (<> MarkerBox (value: (. item text)))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -475,121 +455,111 @@ second-reused
 first-reused
 ```
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<QueryLifecycleRoot root
+(main
+  (<> QueryLifecycleRoot (id: root))
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call event-marker-list (. root markers)))
+  (print (call event-marker-list (. root left markers)))
+  (print (call event-marker-list (. root right markers)))
+  (blank)
+  (let branch (call QueryEventBranch "alpha"))
+  (call markup-append (. root left) branch)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call event-marker-list (. root markers)))
+  (print (call event-marker-list (. root left markers)))
+  (print (call event-marker-list (. root right markers)))
+  (blank)
+  (call markup-remove (. root left) branch)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call event-marker-list (. root markers)))
+  (print (call event-marker-list (. root left markers)))
+  (blank)
+  (call markup-append (. root left) branch)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call event-marker-list (. root markers)))
+  (print (call event-marker-list (. root left markers)))
+  (print (call event-marker-list (. root right markers)))
+  (blank)
+  (<> QuerySeedOwner (id: seeded)
+    (<> QueryEventBox
+      (<> QueryEventMarker (value: "seeded"))
+    )
+  )
+  (blank)
+  (call (. seeded markup-batch-queue checkpoint))
+  (print (call event-marker-list (. seeded markers)))
+)
 
-root.markup-batch-queue.checkpoint()
--- event-marker-list(root.markers)
--- event-marker-list(root.left.markers)
--- event-marker-list(root.right.markers)
+(type + QueryEventMarker (is Box)
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-. branch = QueryEventBranch("alpha")
-markup-append(root.left, branch)
-root.markup-batch-queue.checkpoint()
--- event-marker-list(root.markers)
--- event-marker-list(root.left.markers)
--- event-marker-list(root.right.markers)
+(type + QueryEventBox (is Box))
 
-markup-remove(root.left, branch)
-root.markup-batch-queue.checkpoint()
--- event-marker-list(root.markers)
--- event-marker-list(root.left.markers)
+(type + QueryEventBranch (is Box)
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+  (content
+    (<> This
+      (<> QueryEventBox
+        (<> QueryEventMarker (value: text))
+      )
+    )
+  )
+)
 
-markup-append(root.left, branch)
-root.markup-batch-queue.checkpoint()
--- event-marker-list(root.markers)
--- event-marker-list(root.left.markers)
--- event-marker-list(root.right.markers)
+(type + QueryEventPane (is Box)
+  (prop + markers (of Descendants QueryEventMarker))
+)
 
-<QuerySeedOwner seeded
-    <QueryEventBox
-        <QueryEventMarker = "seeded"
+(type + QueryLifecycleRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (prop + left _ (:= (call QueryEventPane)))
+  (prop + right _ (:= (call QueryEventPane)))
+  (prop + markers (of Descendants QueryEventMarker))
+  (fn-do + This _
+    (call markup-mount-root this this)
+    (call markup-append this left)
+    (call markup-append this right)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+)
 
-seeded.markup-batch-queue.checkpoint()
--- event-marker-list(seeded.markers)
+(type + QuerySeedOwner (is QueryEventPane)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ QueryEventMarker is Box
-
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ QueryEventBox is Box
-
-━━━━━━━━━━━━━━━━━━━━
-+ QueryEventBranch is Box
-
-+ text String
-
-────────────────────
-+ This
-    - text
-
-────────────────────
-
-<This
-    <QueryEventBox
-        <QueryEventMarker = text
-
-━━━━━━━━━━━━━━━━━━━━
-+ QueryEventPane is Box
-
-+ markers Descendants'QueryEventMarker
-
-━━━━━━━━━━━━━━━━━━━━
-+ QueryLifecycleRoot is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-+ left := QueryEventPane()
-+ right := QueryEventPane()
-+ markers Descendants'QueryEventMarker
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-markup-append(this, left)
-markup-append(this, right)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-━━━━━━━━━━━━━━━━━━━━
-+ QuerySeedOwner is QueryEventPane
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-━━━━━━━━━━━━━━━━━━━━
-+ do event-marker-list String
-    - markers [QueryEventMarker]
-
-if !markers
-    = "none"
-
-= "|".join(each.text in markers)
+(fn-do + event-marker-list String
+  (param markers (list QueryEventMarker))
+  (if (not markers)
+    (return "none")
+  )
+  (blank)
+  (return (call (. "|" join) (in (. each text) markers)))
+)
 ```
 
 ```output
@@ -607,110 +577,115 @@ none
 seeded
 ```
 
-```yumi compile-error
-/core/markup
-/core/tests/support/markup-fixtures
+```brix compile-error
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. root = QueryAssignmentRoot()
-root.markers = List'QueryAssignmentMarker()
+(main
+  (let root (call QueryAssignmentRoot))
+  (= (. root markers) (call (of List QueryAssignmentMarker)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ QueryAssignmentMarker is Box
+(type + QueryAssignmentMarker (is Box))
 
-━━━━━━━━━━━━━━━━━━━━
-+ QueryAssignmentRoot is Box
-
-+ markers Descendants'QueryAssignmentMarker
+(type + QueryAssignmentRoot (is Box)
+  (prop + markers (of Descendants QueryAssignmentMarker))
+)
 ```
 
 ```output
 Exception: Markup query properties are compiler-managed and cannot be assigned
-<no file:6>
-    root.markers = List'QueryAssignmentMarker()
-    ^^^^^^^^^^^^
+<no file:8>
+      (= (. root markers) (call (of List QueryAssignmentMarker)))
+         ^^^^^^^^^^^^^^^^
 ```
 
-```yumi compile-error
-/core/markup
-/core/tests/support/markup-fixtures
+```brix compile-error
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. child = QueryAncestorAssignmentChild()
-child.owner = null
+(main
+  (let child (call QueryAncestorAssignmentChild))
+  (= (. child owner) null)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ QueryAncestorAssignmentRoot is Box
+(type + QueryAncestorAssignmentRoot (is Box))
 
-━━━━━━━━━━━━━━━━━━━━
-+ QueryAncestorAssignmentChild is Box
-
-+ owner Ancestor'QueryAncestorAssignmentRoot
+(type + QueryAncestorAssignmentChild (is Box)
+  (prop + owner (of Ancestor QueryAncestorAssignmentRoot))
+)
 ```
 
 ```output
 Exception: Markup query properties are compiler-managed and cannot be assigned
-<no file:6>
-    child.owner = null
-    ^^^^^^^^^^^
+<no file:8>
+      (= (. child owner) null)
+         ^^^^^^^^^^^^^^^
 ```
 
-```yumi
-/core/markup
-/core/task
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/task)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. done = Semaphore()
+(main
+  (let done (call Semaphore))
+  (blank)
+  (<> BatchDemo (id: demo)
+    (for (in item (. demo #items))
+      (<> TextBox (value: item))
+    )
+  )
+  (blank)
+  (let plain (call Box))
+  (let region (!! (. demo %first-child)))
+  (call markup-remove demo region)
+  (call markup-append plain region)
+  (blank)
+  (+= (. demo items) "c")
+  (print (call dump region))
+  (print (. demo flush-count))
+  (blank)
+  (do-new
+    (print (call dump region))
+    (print (. demo flush-count))
+    (call (. done post))
+  )
+  (blank)
+  (call (. done wait))
+)
 
-<BatchDemo demo
-    for item in demo.#items
-        <TextBox = item
+(fn-expr + dump String
+  (param region Box)
+  (str count ":" last-text)
+  (where
+    (lazy count (call count-children region))
+    (lazy last-text (. (as (!! (. region %last-child)) TextBox) text))
+  )
+)
 
-. plain = Box()
-. region = demo.%first-child!
-markup-remove(demo, region)
-markup-append(plain, region)
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-demo.items += "c"
--- dump(region)
--- demo.flush-count
-
-do new
-    -- dump(region)
-    -- demo.flush-count
-    done.post()
-
-done.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - region Box
-
-"$count:$last-text"
-
-.. count = count-children(region)
-.. last-text = (region.%last-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ items [String] = List'String(["a", "b"])
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-+ flush-count Size = 0
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-flush-count += 1
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + items (list String) (= (call (of List String) (list "a" "b"))))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (prop + flush-count Size (= 0))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (+= flush-count 1)
+  )
+)
 ```
 
 The initial mount settle notifies demo once on the first task tick; the detached region's
@@ -723,63 +698,66 @@ mutation adds nothing.
 1
 ```
 
-```yumi
-/core/markup
-/core/task
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/task)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. done = Semaphore()
+(main
+  (let done (call Semaphore))
+  (blank)
+  (<> BatchDemo (id: demo)
+    (for (in item (. demo #items))
+      (<> TextBox (value: item))
+    )
+  )
+  (blank)
+  (print (call dump demo))
+  (+= (. demo items) "c")
+  (+= (. demo items) "d")
+  (print (call dump demo))
+  (print (. demo flush-count))
+  (blank)
+  (do-new
+    (print (call dump demo))
+    (print (. demo flush-count))
+    (call (. done post))
+  )
+  (blank)
+  (call (. done wait))
+)
 
-<BatchDemo demo
-    for item in demo.#items
-        <TextBox = item
+(fn-expr + dump String
+  (param demo BatchDemo)
+  (str count ":" first-text ":" last-text)
+  (where
+    (lazy region (!! (. demo %first-child)))
+    (lazy count (call count-children region))
+    (lazy first-text (. (as (!! (. region %first-child)) TextBox) text))
+    (lazy last-text (. (as (!! (. region %last-child)) TextBox) text))
+  )
+)
 
--- dump(demo)
-demo.items += "c"
-demo.items += "d"
--- dump(demo)
--- demo.flush-count
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-do new
-    -- dump(demo)
-    -- demo.flush-count
-    done.post()
-
-done.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - demo BatchDemo
-
-"$count:$first-text:$last-text"
-
-.. region = demo.%first-child!
-.. count = count-children(region)
-.. first-text = (region.%first-child! as TextBox).text
-.. last-text = (region.%last-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ items [String] = List'String(["a", "b"])
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-+ flush-count Size = 0
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-flush-count += 1
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + items (list String) (= (call (of List String) (list "a" "b"))))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (prop + flush-count Size (= 0))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (+= flush-count 1)
+  )
+)
 ```
 
 ```output
@@ -790,62 +768,65 @@ flush-count += 1
 1
 ```
 
-```yumi
-/core/markup
-/core/task
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/task)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. done = Semaphore()
+(main
+  (let done (call Semaphore))
+  (blank)
+  (<> BatchDemo (id: demo)
+    (for (in item (. demo #items))
+      (<> TextBox (value: item))
+    )
+  )
+  (blank)
+  (print (call dump demo))
+  (+= (. demo items) "c")
+  (-= (. demo items) "c")
+  (print (call dump demo))
+  (blank)
+  (do-new
+    (print (call dump demo))
+    (print (. demo flush-count))
+    (call (. done post))
+  )
+  (blank)
+  (call (. done wait))
+)
 
-<BatchDemo demo
-    for item in demo.#items
-        <TextBox = item
+(fn-expr + dump String
+  (param demo BatchDemo)
+  (str count ":" first-text ":" last-text)
+  (where
+    (lazy region (!! (. demo %first-child)))
+    (lazy count (call count-children region))
+    (lazy first-text (. (as (!! (. region %first-child)) TextBox) text))
+    (lazy last-text (. (as (!! (. region %last-child)) TextBox) text))
+  )
+)
 
--- dump(demo)
-demo.items += "c"
-demo.items -= "c"
--- dump(demo)
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-do new
-    -- dump(demo)
-    -- demo.flush-count
-    done.post()
-
-done.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - demo BatchDemo
-
-"$count:$first-text:$last-text"
-
-.. region = demo.%first-child!
-.. count = count-children(region)
-.. first-text = (region.%first-child! as TextBox).text
-.. last-text = (region.%last-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ items [String] = List'String(["a", "b"])
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-+ flush-count Size = 0
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-flush-count += 1
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + items (list String) (= (call (of List String) (list "a" "b"))))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (prop + flush-count Size (= 0))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (+= flush-count 1)
+  )
+)
 ```
 
 ```output
@@ -855,62 +836,65 @@ flush-count += 1
 1
 ```
 
-```yumi
-/core/markup
-/core/task
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/task)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. done = Semaphore()
+(main
+  (let done (call Semaphore))
+  (blank)
+  (<> BatchDemo (id: demo)
+    (for (in item (. demo #items))
+      (<> TextBox (value: item))
+    )
+  )
+  (blank)
+  (print (call dump demo))
+  (call (. demo items remove) 1)
+  (+= (. demo items) "c")
+  (print (call dump demo))
+  (blank)
+  (do-new
+    (print (call dump demo))
+    (print (. demo flush-count))
+    (call (. done post))
+  )
+  (blank)
+  (call (. done wait))
+)
 
-<BatchDemo demo
-    for item in demo.#items
-        <TextBox = item
+(fn-expr + dump String
+  (param demo BatchDemo)
+  (str count ":" first-text ":" last-text)
+  (where
+    (lazy region (!! (. demo %first-child)))
+    (lazy count (call count-children region))
+    (lazy first-text (. (as (!! (. region %first-child)) TextBox) text))
+    (lazy last-text (. (as (!! (. region %last-child)) TextBox) text))
+  )
+)
 
--- dump(demo)
-demo.items.remove(1)
-demo.items += "c"
--- dump(demo)
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-do new
-    -- dump(demo)
-    -- demo.flush-count
-    done.post()
-
-done.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - demo BatchDemo
-
-"$count:$first-text:$last-text"
-
-.. region = demo.%first-child!
-.. count = count-children(region)
-.. first-text = (region.%first-child! as TextBox).text
-.. last-text = (region.%last-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ items [String] = List'String(["a", "b"])
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-+ flush-count Size = 0
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-flush-count += 1
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + items (list String) (= (call (of List String) (list "a" "b"))))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (prop + flush-count Size (= 0))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (+= flush-count 1)
+  )
+)
 ```
 
 ```output
@@ -920,62 +904,65 @@ flush-count += 1
 1
 ```
 
-```yumi
-/core/markup
-/core/task
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/task)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. done = Semaphore()
+(main
+  (let done (call Semaphore))
+  (blank)
+  (<> BatchDemo (id: demo)
+    (for (in item (. demo #items))
+      (<> TextBox (value: (+ item (. demo #suffix))))
+    )
+  )
+  (blank)
+  (print (call dump demo))
+  (= (. demo suffix) "?")
+  (print (call dump demo))
+  (blank)
+  (do-new
+    (print (call dump demo))
+    (print (. demo flush-count))
+    (call (. done post))
+  )
+  (blank)
+  (call (. done wait))
+)
 
-<BatchDemo demo
-    for item in demo.#items
-        <TextBox = item + demo.#suffix
+(fn-expr + dump String
+  (param demo BatchDemo)
+  (str count ":" first-text ":" last-text)
+  (where
+    (lazy region (!! (. demo %first-child)))
+    (lazy count (call count-children region))
+    (lazy first-text (. (as (!! (. region %first-child)) TextBox) text))
+    (lazy last-text (. (as (!! (. region %last-child)) TextBox) text))
+  )
+)
 
--- dump(demo)
-demo.suffix = "?"
--- dump(demo)
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-do new
-    -- dump(demo)
-    -- demo.flush-count
-    done.post()
-
-done.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - demo BatchDemo
-
-"$count:$first-text:$last-text"
-
-.. region = demo.%first-child!
-.. count = count-children(region)
-.. first-text = (region.%first-child! as TextBox).text
-.. last-text = (region.%last-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ items [String] = List'String(["a", "b"])
-+ suffix = "!"
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-+ flush-count Size = 0
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-flush-count += 1
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + items (list String) (= (call (of List String) (list "a" "b"))))
+  (prop + suffix _ (= "!"))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (prop + flush-count Size (= 0))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (+= flush-count 1)
+  )
+)
 ```
 
 ```output
@@ -985,156 +972,156 @@ flush-count += 1
 1
 ```
 
-```yumi
-/core/markup
-/core/task
+```brix
+(import /core/markup)
+(import /core/task)
+(blank)
 
-. flag = false
-. done = Semaphore()
+(main
+  (let flag false)
+  (let done (call Semaphore))
+  (blank)
+  (<> BatchRoot (id: root)
+    (if #flag
+      (<> MarkText (value: "on"))
+      (else
+        (<> MarkText (value: "off"))
+      )
+    )
+  )
+  (blank)
+  (print (call dump root))
+  (= flag true)
+  (= flag false)
+  (print (call dump root))
+  (blank)
+  (do-new
+    (print (call dump root))
+    (print (. root flush-count))
+    (call (. done post))
+  )
+  (blank)
+  (call (. done wait))
+)
 
-<BatchRoot root
-    if #flag
-        <MarkText = "on"
-    else
-        <MarkText = "off"
+(fn-expr + dump String
+  (param root BatchRoot)
+  (str count ":" text)
+  (where
+    (lazy region (!! (. root first-child)))
+    (lazy count (call count-children region))
+    (lazy text (. (as (!! (. region first-child)) MarkText) text))
+  )
+)
 
--- dump(root)
-flag = true
-flag = false
--- dump(root)
+(fn-do + count-children _
+  (param node MarkNode)
+  (let count 0)
+  (for (in child (. node children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-do new
-    -- dump(root)
-    -- root.flush-count
-    done.post()
+(type + MarkNode
+  (implements (of MarkupParent MarkNode))
+  (prop + parent (? MarkNode))
+  (prop + first-child (? MarkNode))
+  (prop + last-child (? MarkNode))
+  (prop + previous (? MarkNode))
+  (prop + next (? MarkNode))
+  (fn-do + children _ :get
+    (let maybe-child first-child)
+    (if maybe-child
+      (let child maybe-child)
+      (while true
+        (yield child)
+        (if (not (. child next))
+          (break)
+        )
+        (= child (. child next))
+      )
+    )
+  )
+  (fn-expr + markup-content MarkNode
+    (param child MarkNode)
+    child
+  )
+  (fn-do + markup-attach-child _
+    (param child MarkNode)
+    (param anchor (? MarkNode))
+    (= (. child parent) this)
+    (if (not anchor)
+      (if (not first-child)
+        (= first-child (= last-child child))
+        (else
+          (= (?. last-child next) child)
+          (= (. child previous) last-child)
+          (= last-child child)
+        )
+      )
+      (else
+        (let target anchor)
+        (= (. child previous) (. target previous))
+        (= (. child next) target)
+        (if (. target previous)
+          (= (. target previous next) child)
+          (else
+            (= first-child child)
+          )
+        )
+        (= (. target previous) child)
+      )
+    )
+  )
+  (fn-do + markup-detach-child _
+    (param child MarkNode)
+    (if (== (. child parent) this)
+      (= (. child parent) null)
+      (if (== first-child child)
+        (= first-child (. child next))
+      )
+      (if (== last-child child)
+        (= last-child (. child previous))
+      )
+      (= (?. (. child previous) next) (. child next))
+      (= (?. (. child next) previous) (. child previous))
+      (= (. child next) null)
+      (= (. child previous) null)
+    )
+  )
+  (fn-do + clear-children _
+    (while first-child
+      (let child first-child)
+      (call markup-remove this child)
+      (call (. child close))
+    )
+  )
+  (fn-do + close _
+    (call markup-close-region this)
+    (call clear-children)
+  )
+  (fn-expr + markup-make-region (? MarkNode)
+    (call MarkNode)
+  )
+)
 
-done.wait()
+(type + BatchRoot (is MarkNode)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (prop + flush-count Size (= 0))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (+= flush-count 1)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - root BatchRoot
-
-"$count:$text"
-
-.. region = root.first-child!
-.. count = count-children(region)
-.. text = (region.first-child! as MarkText).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - node MarkNode
-
-. count = 0
-for child in node.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkNode
-    is MarkupParent'MarkNode
-
-+ parent MarkNode?
-+ first-child MarkNode?
-+ last-child MarkNode?
-+ previous MarkNode?
-+ next MarkNode?
-
-────────────────────
-+ do get children
-
-. maybe-child = first-child
-if maybe-child
-    . child = maybe-child
-    while true
-        <= child
-        if !child.next
-            break
-        child = child.next
-
-────────────────────
-+ markup-content MarkNode
-    - child MarkNode
-
-child
-
-────────────────────
-+ do markup-attach-child
-    - child MarkNode
-    - anchor MarkNode?
-
-child.parent = this
-if !anchor
-    if !first-child
-        first-child = last-child = child
-    else
-        last-child?.next = child
-        child.previous = last-child
-        last-child = child
-else
-    . target = anchor
-    child.previous = target.previous
-    child.next = target
-    if target.previous
-        target.previous.next = child
-    else
-        first-child = child
-    target.previous = child
-
-────────────────────
-+ do markup-detach-child
-    - child MarkNode
-
-if child.parent == this
-    child.parent = null
-    if first-child == child
-        first-child = child.next
-    if last-child == child
-        last-child = child.previous
-    child.previous?.next = child.next
-    child.next?.previous = child.previous
-    child.next = null
-    child.previous = null
-
-────────────────────
-+ do clear-children
-
-while first-child
-    . child = first-child
-    markup-remove(this, child)
-    child.close()
-
-────────────────────
-+ do close
-
-markup-close-region(this)
-clear-children()
-
-────────────────────
-+ markup-make-region MarkNode?
-
-MarkNode()
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchRoot is MarkNode
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-+ flush-count Size = 0
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-flush-count += 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ MarkText is MarkNode
-
-+ text String
-
-────────────────────
-+ This
-    - text String
+(type + MarkText (is MarkNode)
+  (prop + text String)
+  (fn-do + This _
+    (param text String)
+  )
+)
 ```
 
 ```output
@@ -1144,70 +1131,74 @@ flush-count += 1
 1
 ```
 
-```yumi
-/core/markup
-/core/task
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/task)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. done = Semaphore()
+(main
+  (let done (call Semaphore))
+  (blank)
+  (<> BatchDemo (id: left)
+    (for (in item (. left #items))
+      (<> TextBox (value: item))
+    )
+  )
+  (blank)
+  (let right (call BatchDemo))
+  (call markup-mount-root right (as right MarkupRootElement))
+  (let region (!! (. left %first-child)))
+  (blank)
+  (+= (. left items) "c")
+  (blank)
+  (do-new
+    (call markup-adopt region (!! (. region %parent)) (as right MarkupRootElement))
+    (+= (. left items) "d")
+    (blank)
+    (print (call dump region))
+    (print (. left flush-count))
+    (print (. right flush-count))
+    (blank)
+    (do-new
+      (print (call dump region))
+      (print (. left flush-count))
+      (print (. right flush-count))
+      (call (. done post))
+    )
+  )
+  (blank)
+  (call (. done wait))
+)
 
-<BatchDemo left
-    for item in left.#items
-        <TextBox = item
+(fn-expr + dump String
+  (param region Box)
+  (str count ":" last-text)
+  (where
+    (lazy count (call count-children region))
+    (lazy last-text (. (as (!! (. region %last-child)) TextBox) text))
+  )
+)
 
-. right = BatchDemo()
-markup-mount-root(right, right as MarkupRootElement)
-. region = left.%first-child!
+(fn-do + count-children _
+  (param box Box)
+  (let count 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-left.items += "c"
-
-do new
-    markup-adopt(region, region.%parent!, right as MarkupRootElement)
-    left.items += "d"
-
-    -- dump(region)
-    -- left.flush-count
-    -- right.flush-count
-
-    do new
-        -- dump(region)
-        -- left.flush-count
-        -- right.flush-count
-        done.post()
-
-done.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ dump String
-    - region Box
-
-"$count:$last-text"
-
-.. count = count-children(region)
-.. last-text = (region.%last-child! as TextBox).text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children
-    - box Box
-
-. count = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ items [String] = List'String(["a", "b"])
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-+ flush-count Size = 0
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-flush-count += 1
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + items (list String) (= (call (of List String) (list "a" "b"))))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (prop + flush-count Size (= 0))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (+= flush-count 1)
+  )
+)
 ```
 
 Each root is notified once for its initial mount settle: right's count starts at 1 before the
@@ -1223,70 +1214,64 @@ the right root, so left does not get a second flush.
 2
 ```
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<ChildTriggerRoot root
+(main
+  (<> ChildTriggerRoot (id: root))
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (let a (call ChildTriggerItem "a"))
+  (let b (call ChildTriggerItem "b"))
+  (call markup-append root a)
+  (call markup-append root b)
+  (print (call event-list (. root events)))
+  (call (. root markup-batch-queue checkpoint))
+  (print (call event-list (. root events)))
+  (blank)
+  (let nested (call ChildTriggerItem "nested"))
+  (call markup-append a nested)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call event-list (. root events)))
+  (blank)
+  (call markup-remove root b)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call event-list (. root events)))
+)
 
-root.markup-batch-queue.checkpoint()
-. a = ChildTriggerItem("a")
-. b = ChildTriggerItem("b")
-markup-append(root, a)
-markup-append(root, b)
--- event-list(root.events)
-root.markup-batch-queue.checkpoint()
--- event-list(root.events)
+(type + ChildTriggerItem (is Box)
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-. nested = ChildTriggerItem("nested")
-markup-append(a, nested)
-root.markup-batch-queue.checkpoint()
--- event-list(root.events)
+(type + ChildTriggerRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (prop + events (list String) (= (call (of List String))))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+  (whenever-rule (trigger children ChildTriggerItem)
+    (+= events "children")
+  )
+)
 
-markup-remove(root, b)
-root.markup-batch-queue.checkpoint()
--- event-list(root.events)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ChildTriggerItem is Box
-
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ ChildTriggerRoot is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-+ events [String] = List'String()
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-────────────────────
-whenever children ChildTriggerItem
-
-events += "children"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do event-list String
-    - events [String]
-
-if !events
-    = "none"
-
-= "|".join(events)
+(fn-do + event-list String
+  (param events (list String))
+  (if (not events)
+    (return "none")
+  )
+  (blank)
+  (return (call (. "|" join) events))
+)
 ```
 
 ```output
@@ -1296,74 +1281,68 @@ children
 children|children
 ```
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<ChangeTriggerRoot root
+(main
+  (<> ChangeTriggerRoot (id: root))
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (let a (call ChangeTriggerMarker "a"))
+  (let b (call ChangeTriggerMarker "b"))
+  (call markup-append root a)
+  (call markup-append root b)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call event-list (. root events)))
+  (blank)
+  (call markup-remove root a)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call event-list (. root events)))
+)
 
-root.markup-batch-queue.checkpoint()
-. a = ChangeTriggerMarker("a")
-. b = ChangeTriggerMarker("b")
-markup-append(root, a)
-markup-append(root, b)
-root.markup-batch-queue.checkpoint()
--- event-list(root.events)
+(type + ChangeTriggerMarker (is Box)
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-markup-remove(root, a)
-root.markup-batch-queue.checkpoint()
--- event-list(root.events)
+(type + ChangeTriggerRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (prop + events (list String) (= (call (of List String))))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+  (whenever-rule (trigger descendants ChangeTriggerMarker)
+    (param changes _)
+    (+= events (call change-summary changes))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ChangeTriggerMarker is Box
+(fn-expr + change-summary String
+  (param changes (of MarkupChangeSet ChangeTriggerMarker))
+  (str "added:" added " removed:" removed)
+  (where
+    (lazy added (call (. "|" join) (in (. each text) (. changes added))))
+    (lazy removed (call (. "|" join) (in (. each text) (. changes removed))))
+  )
+)
 
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ ChangeTriggerRoot is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-+ events [String] = List'String()
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-────────────────────
-whenever descendants ChangeTriggerMarker
-    - changes
-
-events += change-summary(changes)
-
-━━━━━━━━━━━━━━━━━━━━
-+ change-summary String
-    - changes MarkupChangeSet'ChangeTriggerMarker
-
-"added:$added removed:$removed"
-
-.. added = "|".join(each.text in changes.added)
-.. removed = "|".join(each.text in changes.removed)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do event-list String
-    - events [String]
-
-if !events
-    = "none"
-
-= ";".join(events)
+(fn-do + event-list String
+  (param events (list String))
+  (if (not events)
+    (return "none")
+  )
+  (blank)
+  (return (call (. ";" join) events))
+)
 ```
 
 ```output
@@ -1371,56 +1350,51 @@ added:a|b removed:
 added:a|b removed:;added: removed:a
 ```
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. root = MountTriggerRoot()
-. child = MountTriggerChild()
--- event-list(child.events)
-markup-mount-root(root, root)
-markup-append(root, child)
-root.markup-batch-queue.checkpoint()
--- event-list(child.events)
-markup-remove(root, child)
-root.markup-batch-queue.checkpoint()
--- event-list(child.events)
+(main
+  (let root (call MountTriggerRoot))
+  (let child (call MountTriggerChild))
+  (print (call event-list (. child events)))
+  (call markup-mount-root root root)
+  (call markup-append root child)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call event-list (. child events)))
+  (call markup-remove root child)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call event-list (. child events)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MountTriggerRoot is Box
-    is MarkupRootElement
+(type + MountTriggerRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
+(type + MountTriggerChild (is Box)
+  (prop + events (list String) (= (call (of List String))))
+  (fn-do + mounted _
+    (+= events "mounted")
+  )
+  (fn-do + unmounted _
+    (+= events "unmounted")
+  )
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-━━━━━━━━━━━━━━━━━━━━
-+ MountTriggerChild is Box
-
-+ events [String] = List'String()
-
-────────────────────
-+ do mounted
-
-events += "mounted"
-
-────────────────────
-+ do unmounted
-
-events += "unmounted"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do event-list String
-    - events [String]
-
-if !events
-    = "none"
-
-= "|".join(events)
+(fn-do + event-list String
+  (param events (list String))
+  (if (not events)
+    (return "none")
+  )
+  (blank)
+  (return (call (. "|" join) events))
+)
 ```
 
 ```output
@@ -1431,57 +1405,52 @@ mounted|unmounted
 
 ### whenever #node-name observes a class-content markup id when it mounts, not when it unmounts
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<InternalIdTriggerRoot root
+(main
+  (<> InternalIdTriggerRoot (id: root))
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call event-list (. root events)))
+  (call markup-remove root (!! (. root %first-child)))
+  (call (. root markup-batch-queue checkpoint))
+  (print (call event-list (. root events)))
+)
 
-root.markup-batch-queue.checkpoint()
--- event-list(root.events)
-markup-remove(root, root.%first-child!)
-root.markup-batch-queue.checkpoint()
--- event-list(root.events)
+(type + InternalIdTriggerNode (is Box))
 
-━━━━━━━━━━━━━━━━━━━━
-+ InternalIdTriggerNode is Box
+(type + InternalIdTriggerRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (prop + events (list String) (= (call (of List String))))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+  (whenever-rule #named-child
+    (+= events "named-child")
+  )
+  (content
+    (<> This
+      (<> InternalIdTriggerNode (id: named-child))
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ InternalIdTriggerRoot is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-+ events [String] = List'String()
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-────────────────────
-whenever #named-child
-
-events += "named-child"
-
-────────────────────
-
-<This
-    <InternalIdTriggerNode named-child
-
-━━━━━━━━━━━━━━━━━━━━
-+ do event-list String
-    - events [String]
-
-if !events
-    = "none"
-
-= "|".join(events)
+(fn-do + event-list String
+  (param events (list String))
+  (if (not events)
+    (return "none")
+  )
+  (blank)
+  (return (call (. "|" join) events))
+)
 ```
 
 ```output
@@ -1489,65 +1458,61 @@ named-child
 named-child
 ```
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. root = AncestorTriggerRoot("root")
-. child = AncestorTriggerChild()
-markup-mount-root(root, root)
-markup-append(root, child)
-root.markup-batch-queue.checkpoint()
--- event-list(child.events)
-markup-remove(root, child)
-root.markup-batch-queue.checkpoint()
--- event-list(child.events)
+(main
+  (let root (call AncestorTriggerRoot "root"))
+  (let child (call AncestorTriggerChild))
+  (call markup-mount-root root root)
+  (call markup-append root child)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call event-list (. child events)))
+  (call markup-remove root child)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call event-list (. child events)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ AncestorTriggerRoot is Box
-    is MarkupRootElement
+(type + AncestorTriggerRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + name String)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (fn-do + This _
+    (param name _)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+)
 
-+ name String
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
+(type + AncestorTriggerChild (is Box)
+  (prop + events (list String) (= (call (of List String))))
+  (whenever-rule (trigger ancestor AncestorTriggerRoot)
+    (param changes _)
+    (+= events (call ancestor-change-summary changes))
+  )
+)
 
-────────────────────
-+ This
-    - name
+(fn-expr + ancestor-change-summary String
+  (param changes (of MarkupChangeSet AncestorTriggerRoot))
+  (str "added:" added " removed:" removed)
+  (where
+    (lazy added (call (. "|" join) (in (. each name) (. changes added))))
+    (lazy removed (call (. "|" join) (in (. each name) (. changes removed))))
+  )
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-━━━━━━━━━━━━━━━━━━━━
-+ AncestorTriggerChild is Box
-
-+ events [String] = List'String()
-
-────────────────────
-whenever ancestor AncestorTriggerRoot
-    - changes
-
-events += ancestor-change-summary(changes)
-
-━━━━━━━━━━━━━━━━━━━━
-+ ancestor-change-summary String
-    - changes MarkupChangeSet'AncestorTriggerRoot
-
-"added:$added removed:$removed"
-
-.. added = "|".join(each.name in changes.added)
-.. removed = "|".join(each.name in changes.removed)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do event-list String
-    - events [String]
-
-if !events
-    = "none"
-
-= ";".join(events)
+(fn-do + event-list String
+  (param events (list String))
+  (if (not events)
+    (return "none")
+  )
+  (blank)
+  (return (call (. ";" join) events))
+)
 ```
 
 ```output
@@ -1557,109 +1522,99 @@ added:root removed:;added: removed:root
 
 ### Keyed set refresh preserves the mounted row and tracked content; changed keys and explicit replacement retain the remove/insert lifecycle.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<KeyedRefreshRoot root
+(main
+  (<> KeyedRefreshRoot (id: root))
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (let region (!! (. root %first-child)))
+  (let first-row (as (!! (. region %first-child)) KeyedRefreshRow))
+  (= (. first-row local-state) 41)
+  (= (. first-row focused) true)
+  (= (. first-row selected) true)
+  (print (call keyed-refresh-summary root first-row))
+  (blank)
+  (= ([] (. root items) 0) (call KeyedRefreshItem "a" "B"))
+  (call (. root markup-batch-queue checkpoint))
+  (let refreshed-row (as (!! (. region %first-child)) KeyedRefreshRow))
+  (print (if-expr (== refreshed-row first-row) "same-identity" "remounted"))
+  (print (call keyed-refresh-summary root refreshed-row))
+  (blank)
+  (= ([] (. root items) 0) (call KeyedRefreshItem "b" "C"))
+  (call (. root markup-batch-queue checkpoint))
+  (let changed-row (as (!! (. region %first-child)) KeyedRefreshRow))
+  (print (if-expr (!= changed-row first-row) "changed-identity" "reused"))
+  (print (call keyed-refresh-summary root changed-row))
+  (blank)
+  (call (. root items replace) 0 (call KeyedRefreshItem "b" "D"))
+  (call (. root markup-batch-queue checkpoint))
+  (let replaced-row (as (!! (. region %first-child)) KeyedRefreshRow))
+  (print (if-expr (!= replaced-row changed-row) "forced-identity" "reused"))
+  (print (call keyed-refresh-summary root replaced-row))
+)
 
-root.markup-batch-queue.checkpoint()
-. region = root.%first-child!
-. first-row = region.%first-child! as KeyedRefreshRow
-first-row.local-state = 41
-first-row.focused = true
-first-row.selected = true
--- keyed-refresh-summary(root, first-row)
+(type + KeyedRefreshItem
+  (prop + id String)
+  (prop + text String)
+  (fn-do + This _
+    (param id _)
+    (param text _)
+  )
+  (fn-expr + (infix this == (param other _)) _
+    (== id (. other id))
+  )
+)
 
-root.items[0] = KeyedRefreshItem("a", "B")
-root.markup-batch-queue.checkpoint()
-. refreshed-row = region.%first-child! as KeyedRefreshRow
--- if refreshed-row == first-row then "same-identity" else "remounted"
--- keyed-refresh-summary(root, refreshed-row)
+(type + KeyedRefreshRow (is Box)
+  (prop + sink KeyedRefreshRoot)
+  (prop + text String)
+  (prop + local-state Size (= 0))
+  (prop + focused _ (= false))
+  (prop + selected _ (= false))
+  (fn-do + mounted _
+    (+= (. sink events) "M")
+  )
+  (fn-do + unmounted _
+    (+= (. sink events) "U")
+  )
+)
 
-root.items[0] = KeyedRefreshItem("b", "C")
-root.markup-batch-queue.checkpoint()
-. changed-row = region.%first-child! as KeyedRefreshRow
--- if changed-row != first-row then "changed-identity" else "reused"
--- keyed-refresh-summary(root, changed-row)
+(type + KeyedRefreshRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + items (list KeyedRefreshItem) (= (call (of List KeyedRefreshItem) (list (call KeyedRefreshItem "a" "A")))))
+  (prop + events (list String) (= (call (of List String))))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+  (content
+    (<> This
+      (for (in item #items (keyed-by (. item id)))
+        (<> KeyedRefreshRow
+          (= sink this)
+          (= text (. item text))
+        )
+      )
+    )
+  )
+)
 
-root.items.replace(0, KeyedRefreshItem("b", "D"))
-root.markup-batch-queue.checkpoint()
-. replaced-row = region.%first-child! as KeyedRefreshRow
--- if replaced-row != changed-row then "forced-identity" else "reused"
--- keyed-refresh-summary(root, replaced-row)
-
-━━━━━━━━━━━━━━━━━━━━
-+ KeyedRefreshItem
-
-+ id String
-+ text String
-
-────────────────────
-+ This
-    - id
-    - text
-
-────────────────────
-+ this == other
-
-id == other.id
-
-━━━━━━━━━━━━━━━━━━━━
-+ KeyedRefreshRow is Box
-
-+ sink KeyedRefreshRoot
-+ text String
-+ local-state Size = 0
-+ focused = false
-+ selected = false
-
-────────────────────
-+ do mounted
-
-sink.events += "M"
-
-────────────────────
-+ do unmounted
-
-sink.events += "U"
-
-━━━━━━━━━━━━━━━━━━━━
-+ KeyedRefreshRoot is Box
-    is MarkupRootElement
-
-+ items [KeyedRefreshItem] = List'KeyedRefreshItem([KeyedRefreshItem("a", "A")])
-+ events [String] = List'String()
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-────────────────────
-
-<This
-    for item in #items keyed by item.id
-        <KeyedRefreshRow
-            sink = this
-            text = item.text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do keyed-refresh-summary String
-    - root KeyedRefreshRoot
-    - row KeyedRefreshRow
-
-. identity = "text=${row.text} state=${row.local-state}"
-. interaction = "focus=${row.focused} selected=${row.selected}"
-. events = "".join(root.events)
-= "$identity $interaction events=$events"
+(fn-do + keyed-refresh-summary String
+  (param root KeyedRefreshRoot)
+  (param row KeyedRefreshRow)
+  (let identity (str "text=" (. row text) " state=" (. row local-state)))
+  (let interaction (str "focus=" (. row focused) " selected=" (. row selected)))
+  (let events (call (. "" join) (. root events)))
+  (return (str identity " " interaction " events=" events))
+)
 ```
 
 ```output
@@ -1674,64 +1629,61 @@ text=D state=0 focus=false selected=false events=UMUM
 
 ### Keyed refresh evaluates a property binding in its original lexical scope when the loop variable and target property share a name.
 
-```yumi
-/core/collection
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/collection)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<SameNameRefreshRoot root
+(main
+  (<> SameNameRefreshRoot (id: root))
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (let region (!! (. root %first-child)))
+  (let first-row (as (!! (. region %first-child)) SameNameRefreshRow))
+  (print (. first-row item text))
+  (blank)
+  (= ([] (. root items) 0) (call SameNameRefreshItem "a" "after"))
+  (call (. root markup-batch-queue checkpoint))
+  (let refreshed-row (as (!! (. region %first-child)) SameNameRefreshRow))
+  (print (== refreshed-row first-row))
+  (print (. refreshed-row item text))
+)
 
-root.markup-batch-queue.checkpoint()
-. region = root.%first-child!
-. first-row = region.%first-child! as SameNameRefreshRow
--- first-row.item.text
+(type + SameNameRefreshItem
+  (prop + id String)
+  (prop + text String)
+  (fn-do + This _
+    (param id _)
+    (param text _)
+  )
+)
 
-root.items[0] = SameNameRefreshItem("a", "after")
-root.markup-batch-queue.checkpoint()
-. refreshed-row = region.%first-child! as SameNameRefreshRow
--- refreshed-row == first-row
--- refreshed-row.item.text
+(type + SameNameRefreshRow (is Box)
+  (prop + item SameNameRefreshItem)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ SameNameRefreshItem
-
-+ id String
-+ text String
-
-────────────────────
-+ This
-    - id
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ SameNameRefreshRow is Box
-
-+ item SameNameRefreshItem
-
-━━━━━━━━━━━━━━━━━━━━
-+ SameNameRefreshRoot is Box
-    is MarkupRootElement
-
-+ items [SameNameRefreshItem] = List'SameNameRefreshItem([SameNameRefreshItem("a", "before")])
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-────────────────────
-
-<This
-    for item in #items keyed by item.id
-        <SameNameRefreshRow
-            item = item
+(type + SameNameRefreshRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + items (list SameNameRefreshItem) (= (call (of List SameNameRefreshItem) (list (call SameNameRefreshItem "a" "before")))))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+  (content
+    (<> This
+      (for (in item #items (keyed-by (. item id)))
+        (<> SameNameRefreshRow
+          (= item item)
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1742,162 +1694,158 @@ after
 
 ### Unkeyed sets remount only their coalesced range while every unchanged row keeps identity, interaction state, and live subscriptions.
 
-```yumi
-/core/collection
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/collection)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<UnkeyedRangeRoot root
+(main
+  (<> UnkeyedRangeRoot (id: root))
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (let region (!! (. root %first-child)))
+  (let initial-rows (list UnkeyedRangeRow))
+  (for (in index (..< 0 (. root items length)))
+    (let row (as (!! (call (. region child-at) index)) UnkeyedRangeRow))
+    (= (. row local-state) (+ index 10))
+    (+= initial-rows row)
+  )
+  (blank)
+  (let tail ([] initial-rows 4))
+  (= (. tail local-state) 41)
+  (= (. tail focused) true)
+  (= (. tail selected) true)
+  (call (. root events clear))
+  (blank)
+  (call notify-collection-set (. root items) 2 0)
+  (call (. root markup-batch-queue checkpoint))
+  (print (str "empty-states=" (call unkeyed-range-states region)))
+  (print (str "empty-events=" (call (. "|" join) (. root events))))
+  (blank)
+  (= ([] (. root items) 2) (call UnkeyedRangeItem "C"))
+  (= ([] (. root items) 3) (call UnkeyedRangeItem "D"))
+  (= ([] (. root items) 2) (call UnkeyedRangeItem "E"))
+  (call (. root markup-batch-queue checkpoint))
+  (print (call unkeyed-range-texts region))
+  (print (str "middle-states=" (call unkeyed-range-states region)))
+  (let current-tail (as (!! (call (. region child-at) 4)) UnkeyedRangeRow))
+  (print (str "tail-state=" (. current-tail local-state) ":" (. current-tail focused) ":" (. current-tail selected) ":" (. current-tail shared)))
+  (print (str "middle-events=" (call (. "|" join) (. root events))))
+  (blank)
+  (= (. root source-shared) "after")
+  (call (. root markup-batch-queue checkpoint))
+  (print (str "tail-subscription=" (. current-tail shared)))
+  (blank)
+  (call (. root events clear))
+  (= ([] (. root items) 0) (call UnkeyedRangeItem "A"))
+  (call (. root markup-batch-queue checkpoint))
+  (print (str "first-states=" (call unkeyed-range-states region)))
+  (print (str "first-events=" (call (. "|" join) (. root events))))
+  (blank)
+  (call (. root events clear))
+  (= ([] (. root items) 5) (call UnkeyedRangeItem "F"))
+  (call (. root markup-batch-queue checkpoint))
+  (print (str "last-states=" (call unkeyed-range-states region)))
+  (print (str "last-events=" (call (. "|" join) (. root events))))
+  (blank)
+  (call (. root events clear))
+  (let current-index Index 0)
+  (for (in row (call unkeyed-range-rows region))
+    (= (. row local-state) (+ current-index 100))
+    (+= current-index 1)
+  )
+  (for (in index (..< 0 (. root items length)))
+    (= ([] (. root items) index) (call UnkeyedRangeItem (str "W" index)))
+  )
+  (call (. root markup-batch-queue checkpoint))
+  (print (call unkeyed-range-texts region))
+  (print (str "whole-states=" (call unkeyed-range-states region)))
+  (print (str "whole-events=" (call (. "|" join) (. root events))))
+)
 
-root.markup-batch-queue.checkpoint()
-. region = root.%first-child!
-. initial-rows [UnkeyedRangeRow]
-for index in 0 .. < root.items.length
-    . row = (region.child-at(index))! as UnkeyedRangeRow
-    row.local-state = index + 10
-    initial-rows += row
+(type + UnkeyedRangeItem
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-. tail = initial-rows[4]
-tail.local-state = 41
-tail.focused = true
-tail.selected = true
-root.events.clear()
+(type + UnkeyedRangeRow (is Box)
+  (prop + sink UnkeyedRangeRoot)
+  (prop + text String)
+  (prop + shared String)
+  (prop + local-state Size (= 0))
+  (prop + focused _ (= false))
+  (prop + selected _ (= false))
+  (fn-do + mounted _
+    (+= (. sink events) (str "M" text))
+  )
+  (fn-do + unmounted _
+    (+= (. sink events) (str "U" text))
+  )
+)
 
-notify-collection-set(root.items, 2, 0)
-root.markup-batch-queue.checkpoint()
--- "empty-states=${unkeyed-range-states(region)}"
--- "empty-events=${"|".join(root.events)}"
+(type + UnkeyedRangeRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + items (list UnkeyedRangeItem) (:= (call unkeyed-range-items)))
+  (prop + source-shared String (= "before"))
+  (prop + events (list String) (= (call (of List String))))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+  (content
+    (<> This
+      (for (in item #items)
+        (<> UnkeyedRangeRow
+          (= sink this)
+          (= text (. item text))
+          (= shared #source-shared)
+        )
+      )
+    )
+  )
+)
 
-root.items[2] = UnkeyedRangeItem("C")
-root.items[3] = UnkeyedRangeItem("D")
-root.items[2] = UnkeyedRangeItem("E")
-root.markup-batch-queue.checkpoint()
--- unkeyed-range-texts(region)
--- "middle-states=${unkeyed-range-states(region)}"
-. current-tail = (region.child-at(4))! as UnkeyedRangeRow
--- "tail-state=${current-tail.local-state}:${current-tail.focused}:${current-tail.selected}:${current-tail.shared}"
--- "middle-events=${"|".join(root.events)}"
+(fn-do + unkeyed-range-rows (list UnkeyedRangeRow)
+  (param region Box)
+  (let rows (list UnkeyedRangeRow))
+  (for (in child (. region children))
+    (+= rows (as child UnkeyedRangeRow))
+  )
+  (return rows)
+)
 
-root.source-shared = "after"
-root.markup-batch-queue.checkpoint()
--- "tail-subscription=${current-tail.shared}"
+(fn-do + unkeyed-range-texts String
+  (param region Box)
+  (let texts (list String))
+  (for (in row (call unkeyed-range-rows region))
+    (+= texts (. row text))
+  )
+  (return (call (. "|" join) texts))
+)
 
-root.events.clear()
-root.items[0] = UnkeyedRangeItem("A")
-root.markup-batch-queue.checkpoint()
--- "first-states=${unkeyed-range-states(region)}"
--- "first-events=${"|".join(root.events)}"
+(fn-do + unkeyed-range-states String
+  (param region Box)
+  (let states (list String))
+  (for (in row (call unkeyed-range-rows region))
+    (+= states (str (. row local-state)))
+  )
+  (return (call (. "|" join) states))
+)
 
-root.events.clear()
-root.items[5] = UnkeyedRangeItem("F")
-root.markup-batch-queue.checkpoint()
--- "last-states=${unkeyed-range-states(region)}"
--- "last-events=${"|".join(root.events)}"
-
-root.events.clear()
-. current-index Index = 0
-for row in unkeyed-range-rows(region)
-    row.local-state = current-index + 100
-    current-index += 1
-for index in 0 .. < root.items.length
-    root.items[index] = UnkeyedRangeItem("W$index")
-root.markup-batch-queue.checkpoint()
--- unkeyed-range-texts(region)
--- "whole-states=${unkeyed-range-states(region)}"
--- "whole-events=${"|".join(root.events)}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ UnkeyedRangeItem
-
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ UnkeyedRangeRow is Box
-
-+ sink UnkeyedRangeRoot
-+ text String
-+ shared String
-+ local-state Size = 0
-+ focused = false
-+ selected = false
-
-────────────────────
-+ do mounted
-
-sink.events += "M$text"
-
-────────────────────
-+ do unmounted
-
-sink.events += "U$text"
-
-━━━━━━━━━━━━━━━━━━━━
-+ UnkeyedRangeRoot is Box
-    is MarkupRootElement
-
-+ items [UnkeyedRangeItem] := unkeyed-range-items()
-+ source-shared String = "before"
-+ events [String] = List'String()
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-────────────────────
-
-<This
-    for item in #items
-        <UnkeyedRangeRow
-            sink = this
-            text = item.text
-            shared = #source-shared
-
-━━━━━━━━━━━━━━━━━━━━
-+ do unkeyed-range-rows [UnkeyedRangeRow]
-    - region Box
-
-. rows [UnkeyedRangeRow]
-for child in region.children
-    rows += child as UnkeyedRangeRow
-= rows
-
-━━━━━━━━━━━━━━━━━━━━
-+ do unkeyed-range-texts String
-    - region Box
-
-. texts [String]
-for row in unkeyed-range-rows(region)
-    texts += row.text
-= "|".join(texts)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do unkeyed-range-states String
-    - region Box
-
-. states [String]
-for row in unkeyed-range-rows(region)
-    states += "${row.local-state}"
-= "|".join(states)
-
-━━━━━━━━━━━━━━━━━━━━
-+ do unkeyed-range-items [UnkeyedRangeItem]
-
-. items [UnkeyedRangeItem]
-for text in ["a", "b", "c", "d", "e", "f"]
-    items += UnkeyedRangeItem(text)
-= items
+(fn-do + unkeyed-range-items (list UnkeyedRangeItem)
+  (let items (list UnkeyedRangeItem))
+  (for (in text (list "a" "b" "c" "d" "e" "f"))
+    (+= items (call UnkeyedRangeItem text))
+  )
+  (return items)
+)
 ```
 
 ```output
@@ -1919,48 +1867,47 @@ whole-events=UA|Ub|UE|UD|Ue|UF|MW0|MW1|MW2|MW3|MW4|MW5
 
 ### Keyed tuple reorder keeps exact item objects and row identity.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<KeyedTupleRoot root
+(main
+  (<> KeyedTupleRoot (id: root))
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (let region (!! (. root %first-child)))
+  (let first (!! (. region %first-child)))
+  (= (. root items) (call (of List KeyedTupleItem) (list ([] (. root items) 1) ([] (. root items) 0))))
+  (call (. root markup-batch-queue checkpoint))
+  (print (== (!! (call (. region child-at) 1)) first))
+)
 
-root.markup-batch-queue.checkpoint()
-. region = root.%first-child!
-. first = region.%first-child!
-root.items = List'KeyedTupleItem([root.items[1], root.items[0]])
-root.markup-batch-queue.checkpoint()
--- (region.child-at(1))! == first
+(type + KeyedTupleItem (is Tuple)
+  (prop + id String)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ KeyedTupleItem is Tuple
-
-+ id String
-
-━━━━━━━━━━━━━━━━━━━━
-+ KeyedTupleRoot is Box
-    is MarkupRootElement
-
-+ items [KeyedTupleItem] = List'KeyedTupleItem([KeyedTupleItem("a"), KeyedTupleItem("b")])
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-────────────────────
-
-<This
-    for item in #items keyed by item.id
-        <TextBox
-            text = item.id
+(type + KeyedTupleRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + items (list KeyedTupleItem) (= (call (of List KeyedTupleItem) (list (call KeyedTupleItem "a") (call KeyedTupleItem "b")))))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+  (content
+    (<> This
+      (for (in item #items (keyed-by (. item id)))
+        (<> TextBox
+          (= text (. item id))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1969,86 +1916,75 @@ true
 
 ### Markup-owned actions defer to their root checkpoint, deduplicate repeated writes, preserve first-dirtied order across reentrant passes, and cancel pending work on disposal.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<OwnerActionBatchRoot root
-. child = OwnerActionBatchChild()
-markup-adopt(child, null, root)
+(main
+  (<> OwnerActionBatchRoot (id: root))
+  (let child (call OwnerActionBatchChild))
+  (call markup-adopt child null root)
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (call (. child events clear))
+  (= (. child source) 1)
+  (= (. child source) 2)
+  (print (. child events length))
+  (call (. root markup-batch-queue checkpoint))
+  (print (call (. "|" join) (. child events)))
+  (call (. child events clear))
+  (= (. child source) 3)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call (. "|" join) (. child events)))
+  (call (. child events clear))
+  (= (. child source) 4)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call (. "|" join) (. child events)))
+  (call (. child events clear))
+  (= (. child source) 5)
+  (call (. child close))
+  (call (. root markup-batch-queue checkpoint))
+  (print (. child events length))
+  (let plain (call PlainActionOwner))
+  (= (. plain source) 7)
+  (print (. plain observed))
+)
 
-root.markup-batch-queue.checkpoint()
-child.events.clear()
-child.source = 1
-child.source = 2
--- child.events.length
-root.markup-batch-queue.checkpoint()
--- "|".join(child.events)
-child.events.clear()
-child.source = 3
-root.markup-batch-queue.checkpoint()
--- "|".join(child.events)
-child.events.clear()
-child.source = 4
-root.markup-batch-queue.checkpoint()
--- "|".join(child.events)
-child.events.clear()
-child.source = 5
-child.close()
-root.markup-batch-queue.checkpoint()
--- child.events.length
-. plain = PlainActionOwner()
-plain.source = 7
--- plain.observed
+(type + OwnerActionBatchRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ OwnerActionBatchRoot is Box
-    is MarkupRootElement
+(type + OwnerActionBatchChild (is Box)
+  (prop + source Size (= 0))
+  (prop + mirror Size (= 0))
+  (prop + events (list String) (= (call (of List String))))
+  (whenever-rule #source
+    (+= events (str "source-first:" source))
+    (= mirror source)
+  )
+  (whenever-rule #source
+    (+= events (str "source-second:" source))
+  )
+  (whenever-rule #mirror
+    (+= events (str "mirror:" mirror))
+  )
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-━━━━━━━━━━━━━━━━━━━━
-+ OwnerActionBatchChild is Box
-
-+ source Size = 0
-+ mirror Size = 0
-+ events [String] = List'String()
-
-────────────────────
-whenever #source
-
-events += "source-first:$source"
-mirror = source
-
-────────────────────
-whenever #source
-
-events += "source-second:$source"
-
-────────────────────
-whenever #mirror
-
-events += "mirror:$mirror"
-
-━━━━━━━━━━━━━━━━━━━━
-+ PlainActionOwner
-
-+ source Size = 0
-+ observed Size = 0
-
-────────────────────
-when #source
-
-observed = source
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + PlainActionOwner
+  (prop + source Size (= 0))
+  (prop + observed Size (= 0))
+  (when-rule #source
+    (= observed source)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 ```
 
 ```output
@@ -2062,55 +1998,53 @@ source-first:4|source-second:4|mirror:4
 
 ### Released markup holds its bindings until it is mounted again, and then catches up.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<HeldRoot root
-. panel = HeldPanel()
-markup-adopt(panel, null, root)
-root.markup-batch-queue.checkpoint()
--- text(panel)
-markup-release(panel)
-panel.names = List'String()
--- text(panel)
-panel.names = List'String("b")
--- text(panel)
-markup-adopt(panel, null, root)
-root.markup-batch-queue.checkpoint()
--- text(panel)
+(main
+  (<> HeldRoot (id: root))
+  (let panel (call HeldPanel))
+  (call markup-adopt panel null root)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call text panel))
+  (call markup-release panel)
+  (= (. panel names) (call (of List String)))
+  (print (call text panel))
+  (= (. panel names) (call (of List String) "b"))
+  (print (call text panel))
+  (call markup-adopt panel null root)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call text panel))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ text String
-    - panel HeldPanel
+(fn-expr + text String
+  (param panel HeldPanel)
+  (. (as (!! (. panel %first-child)) TextBox) text)
+)
 
-(panel.%first-child! as TextBox).text
+(type + HeldRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ HeldRoot is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ HeldPanel is Box
-
-+ names = List'String("a")
-
-────────────────────
-
-<This
-    <TextBox
-        text = #names[0]
+(type + HeldPanel (is Box)
+  (prop + names _ (= (call (of List String) "a")))
+  (content
+    (<> This
+      (<> TextBox
+        (= text ([] #names 0))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2122,154 +2056,137 @@ b
 
 ### Nested checkpoints remain ordered, late subscriptions begin with the next dispatch, and pass caps preserve reentrant work for a later checkpoint.
 
-```yumi
-/core/markup
-/core/tracker
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tracker)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. events = List'String()
-. inner = NestedActionInner(events)
-. outer = NestedActionOuter(inner, events)
-markup-mount-root(inner, inner)
-markup-mount-root(outer, outer)
-inner.markup-batch-queue.checkpoint()
-outer.markup-batch-queue.checkpoint()
-events.clear()
-outer.source = 1
-outer.markup-batch-queue.checkpoint()
--- "|".join(events)
+(main
+  (let events (call (of List String)))
+  (let inner (call NestedActionInner events))
+  (let outer (call NestedActionOuter inner events))
+  (call markup-mount-root inner inner)
+  (call markup-mount-root outer outer)
+  (call (. inner markup-batch-queue checkpoint))
+  (call (. outer markup-batch-queue checkpoint))
+  (call (. events clear))
+  (= (. outer source) 1)
+  (call (. outer markup-batch-queue checkpoint))
+  (print (call (. "|" join) events))
+  (blank)
+  (let subscribed (call SubscribeDuringBatchRoot))
+  (call markup-mount-root subscribed subscribed)
+  (call (. subscribed markup-batch-queue checkpoint))
+  (= (. subscribed early-runs) 0)
+  (= (. subscribed late-runs) 0)
+  (= (. subscribed armed) true)
+  (= (. subscribed source) 1)
+  (call (. subscribed markup-batch-queue checkpoint))
+  (print (str (. subscribed early-runs) ":" (. subscribed late-runs)))
+  (= (. subscribed source) 2)
+  (print (str (. subscribed early-runs) ":" (. subscribed late-runs)))
+  (call (. subscribed markup-batch-queue checkpoint))
+  (blank)
+  (let cycling (call CappedBatchRoot))
+  (call markup-mount-root cycling cycling)
+  (call (. cycling markup-batch-queue checkpoint))
+  (= (. cycling runs) 0)
+  (= (. cycling cycling) true)
+  (= (. cycling source) 1)
+  (call (. cycling markup-batch-queue checkpoint))
+  (print (. cycling runs))
+  (print (. cycling markup-batch-queue actions length))
+  (= (. cycling cycling) false)
+)
 
-. subscribed = SubscribeDuringBatchRoot()
-markup-mount-root(subscribed, subscribed)
-subscribed.markup-batch-queue.checkpoint()
-subscribed.early-runs = 0
-subscribed.late-runs = 0
-subscribed.armed = true
-subscribed.source = 1
-subscribed.markup-batch-queue.checkpoint()
--- "${subscribed.early-runs}:${subscribed.late-runs}"
-subscribed.source = 2
--- "${subscribed.early-runs}:${subscribed.late-runs}"
-subscribed.markup-batch-queue.checkpoint()
+(type + NestedActionInner (is Box)
+  (implements MarkupRootElement)
+  (prop + source Size (= 0))
+  (prop + events (list String))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (fn-do + This _
+    (param events _)
+  )
+  (when-rule #source
+    (+= events (str "inner:" source))
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-. cycling = CappedBatchRoot()
-markup-mount-root(cycling, cycling)
-cycling.markup-batch-queue.checkpoint()
-cycling.runs = 0
-cycling.cycling = true
-cycling.source = 1
-cycling.markup-batch-queue.checkpoint()
--- cycling.runs
--- cycling.markup-batch-queue.actions.length
-cycling.cycling = false
+(type + NestedActionOuter (is Box)
+  (implements MarkupRootElement)
+  (prop + source Size (= 0))
+  (prop + inner NestedActionInner)
+  (prop + events (list String))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (fn-do + This _
+    (param inner _)
+    (param events _)
+  )
+  (when-rule #source
+    (+= events (str "outer-before:" source))
+    (= (. inner source) source)
+    (call (. inner markup-batch-queue checkpoint))
+    (+= events (str "outer-after:" source))
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ NestedActionInner is Box
-    is MarkupRootElement
+(type + SubscribeDuringBatchRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + source Size (= 0))
+  (prop + early-runs Size (= 0))
+  (prop + late-runs Size (= 0))
+  (prop + armed _ (= false))
+  (prop + late-action (? LiveAction))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (when-rule #source
+    (+= early-runs 1)
+    (if armed
+      (if (not late-action)
+        (= late-action (call property-dependency-subscribe this "source" (. this run-late)))
+      )
+    )
+  )
+  (fn-do + run-late _
+    (+= late-runs 1)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-+ source Size = 0
-+ events [String]
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-
-────────────────────
-+ This
-    - events
-
-────────────────────
-when #source
-
-events += "inner:$source"
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ NestedActionOuter is Box
-    is MarkupRootElement
-
-+ source Size = 0
-+ inner NestedActionInner
-+ events [String]
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-
-────────────────────
-+ This
-    - inner
-    - events
-
-────────────────────
-when #source
-
-events += "outer-before:$source"
-inner.source = source
-inner.markup-batch-queue.checkpoint()
-events += "outer-after:$source"
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ SubscribeDuringBatchRoot is Box
-    is MarkupRootElement
-
-+ source Size = 0
-+ early-runs Size = 0
-+ late-runs Size = 0
-+ armed = false
-+ late-action LiveAction?
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-
-────────────────────
-when #source
-
-early-runs += 1
-if armed
-    if !late-action
-        late-action = property-dependency-subscribe(this, "source", this.run-late)
-
-────────────────────
-+ do run-late
-
-late-runs += 1
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ CappedBatchRoot is Box
-    is MarkupRootElement
-
-+ source Size = 0
-+ mirror Size = 0
-+ runs Size = 0
-+ cycling = false
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-
-────────────────────
-+ This
-
-markup-batch-queue.max-passes-per-checkpoint = 2
-
-────────────────────
-when #source
-
-runs += 1
-if cycling
-    mirror = source + 1
-
-────────────────────
-when #mirror
-
-runs += 1
-if cycling
-    source = mirror + 1
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + CappedBatchRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + source Size (= 0))
+  (prop + mirror Size (= 0))
+  (prop + runs Size (= 0))
+  (prop + cycling _ (= false))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (fn-do + This _
+    (= (. markup-batch-queue max-passes-per-checkpoint) 2)
+  )
+  (when-rule #source
+    (+= runs 1)
+    (if cycling
+      (= mirror (+ source 1))
+    )
+  )
+  (when-rule #mirror
+    (+= runs 1)
+    (if cycling
+      (= source (+ mirror 1))
+    )
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 ```
 
 ```output
@@ -2282,56 +2199,57 @@ outer-before:1|inner:1|outer-after:1
 
 ### Rebinding publishes address, key, and item as one settled batch, with generation observed last.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. values [String] = List'String()
-. generations [String] = List'String()
-<RebindPanel'RowData panel
-    items = List'RowData([RowData("a")])
-    <Box (row) - slot
-        <TextBox = observe-values(values, slot.#address, slot.#key, slot.#item)
-        <TextBox = observe-generation(generations, slot.#generation, slot)
+(main
+  (let values (list String) (call (of List String)))
+  (let generations (list String) (call (of List String)))
+  (<> (of RebindPanel RowData) (id: panel)
+    (= items (call (of List RowData) (list (call RowData "a"))))
+    (<> Box (slot: row) (param: slot)
+      (<> TextBox (value: (call observe-values values (. slot #address) (. slot #key) (. slot #item))))
+      (<> TextBox (value: (call observe-generation generations (. slot #generation) slot)))
+    )
+  )
+  (blank)
+  (print (call (. "|" join) values))
+  (print (call (. "|" join) generations))
+  (blank)
+  (call (. panel rebind) 0 7 70 (call RowData "b"))
+  (call (. panel markup-batch-queue checkpoint))
+  (blank)
+  (print (call (. "|" join) values))
+  (print (call (. "|" join) generations))
+  (print (. panel flush-count))
+)
 
--- "|".join(values)
--- "|".join(generations)
+(type + RowData
+  (prop + text String)
+  (fn-do + This _
+    (param text _)
+  )
+)
 
-panel.rebind(0, 7, 70, RowData("b"))
-panel.markup-batch-queue.checkpoint()
+(fn-do + observe-values String
+  (param events (list String))
+  (param address I64)
+  (param key I64)
+  (param item RowData)
+  (let value (str address ":" key ":" (. item text)))
+  (+= events value)
+  (return value)
+)
 
--- "|".join(values)
--- "|".join(generations)
--- panel.flush-count
-
-━━━━━━━━━━━━━━━━━━━━
-+ RowData
-
-+ text String
-
-────────────────────
-+ This
-    - text
-
-━━━━━━━━━━━━━━━━━━━━
-+ do observe-values String
-    - events [String]
-    - address I64
-    - key I64
-    - item RowData
-
-. value = "$address:$key:${item.text}"
-events += value
-= value
-
-━━━━━━━━━━━━━━━━━━━━
-+ do observe-generation String
-    - events [String]
-    - generation U64
-    - scope RebindRowScope'RowData
-
-. value = "$generation:${scope.address}:${scope.key}:${scope.item.text}"
-events += value
-= value
+(fn-do + observe-generation String
+  (param events (list String))
+  (param generation U64)
+  (param scope (of RebindRowScope RowData))
+  (let value (str generation ":" (. scope address) ":" (. scope key) ":" (. scope item text)))
+  (+= events value)
+  (return value)
+)
 ```
 
 ```output
@@ -2344,56 +2262,54 @@ events += value
 
 ### A mounted host's derived property is fresh when read before the checkpoint; its property handlers, of the derived property too, run as each write lands, and nothing runs after close
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<OwnRoot root
-    <Meter meter
+(main
+  (<> OwnRoot (id: root)
+    (<> Meter (id: meter))
+  )
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (print (str "start " (. meter double) " " (call (. "|" join) (. meter log))))
+  (blank)
+  (= (. meter level) 5)
+  (= (. meter level) 6)
+  (print (str "pending " (. meter double) " " (call (. "|" join) (. meter log))))
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (print (str "settled " (. meter double) " " (call (. "|" join) (. meter log))))
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (print (str "idle " (. meter double) " " (call (. "|" join) (. meter log))))
+  (blank)
+  (call (. meter close))
+  (= (. meter level) 9)
+  (call (. root markup-batch-queue checkpoint))
+  (print (str "closed " (. meter double) " " (call (. "|" join) (. meter log))))
+)
 
-root.markup-batch-queue.checkpoint()
--- "start ${meter.double} ${"|".join(meter.log)}"
+(type + OwnRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+)
 
-meter.level = 5
-meter.level = 6
--- "pending ${meter.double} ${"|".join(meter.log)}"
-
-root.markup-batch-queue.checkpoint()
--- "settled ${meter.double} ${"|".join(meter.log)}"
-
-root.markup-batch-queue.checkpoint()
--- "idle ${meter.double} ${"|".join(meter.log)}"
-
-meter.close()
-meter.level = 9
-root.markup-batch-queue.checkpoint()
--- "closed ${meter.double} ${"|".join(meter.log)}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ OwnRoot is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Meter is Box
-
-+ log [String] = List'String()
-+ level = 1
-+ double = #level * 2
-
-. level-changed < level
-. double-changed < double
-
-────────────────────
-+ do level-changed
-
-log += "level:$level"
-
-────────────────────
-+ do double-changed
-
-log += "double:$double"
+(type + Meter (is Box)
+  (prop + log (list String) (= (call (of List String))))
+  (prop + level _ (= 1))
+  (prop + double _ (= (* #level 2)))
+  (blank)
+  (depends level-changed level)
+  (depends double-changed double)
+  (fn-do + level-changed _
+    (+= log (str "level:" level))
+  )
+  (fn-do + double-changed _
+    (+= log (str "double:" double))
+  )
+)
 ```
 
 ```output
@@ -2406,47 +2322,46 @@ closed 12 double:10|level:5|double:12|level:6
 
 ### A host that moves to another batch root with a deferred own reaction settles in its new root, and the entry left behind in the old root does not run it again
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. first = OwnRoot()
-. second = OwnRoot()
-markup-mount-root(first, first)
-markup-mount-root(second, second)
-. meter = Meter()
-markup-adopt(meter, null, first)
-first.markup-batch-queue.checkpoint()
-second.markup-batch-queue.checkpoint()
+(main
+  (let first (call OwnRoot))
+  (let second (call OwnRoot))
+  (call markup-mount-root first first)
+  (call markup-mount-root second second)
+  (let meter (call Meter))
+  (call markup-adopt meter null first)
+  (call (. first markup-batch-queue checkpoint))
+  (call (. second markup-batch-queue checkpoint))
+  (blank)
+  (= (. meter level) 5)
+  (call markup-release meter)
+  (call markup-adopt meter null second)
+  (= (. meter level) 6)
+  (print (str "moved " (call (. "|" join) (. meter log))))
+  (blank)
+  (call (. second markup-batch-queue checkpoint))
+  (print (str "second " (call (. "|" join) (. meter log))))
+  (blank)
+  (call (. first markup-batch-queue checkpoint))
+  (print (str "first " (call (. "|" join) (. meter log))))
+)
 
-meter.level = 5
-markup-release(meter)
-markup-adopt(meter, null, second)
-meter.level = 6
--- "moved ${"|".join(meter.log)}"
+(type + OwnRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+)
 
-second.markup-batch-queue.checkpoint()
--- "second ${"|".join(meter.log)}"
-
-first.markup-batch-queue.checkpoint()
--- "first ${"|".join(meter.log)}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ OwnRoot is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Meter is Box
-
-+ log [String] = List'String()
-+ level = 1
-
-────────────────────
-whenever #level
-
-log += "level:$level"
+(type + Meter (is Box)
+  (prop + log (list String) (= (call (of List String))))
+  (prop + level _ (= 1))
+  (whenever-rule #level
+    (+= log (str "level:" level))
+  )
+)
 ```
 
 ```output
@@ -2457,105 +2372,102 @@ first level:6
 
 ### A batched branch tears down a nested loop before that loop's source reruns, whether the branch built the loop at mount or the loop's own dependency changed first.
 
-```yumi
-/core/tests/support/markup-fixtures
+```brix
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. guarded = Guarded(Item("a"))
-guarded.markup-batch-queue.checkpoint()
--- label(guarded)
-guarded.focus = null
-guarded.markup-batch-queue.checkpoint()
--- label(guarded)
+(main
+  (let guarded (call Guarded (call Item "a")))
+  (call (. guarded markup-batch-queue checkpoint))
+  (print (call label guarded))
+  (= (. guarded focus) null)
+  (call (. guarded markup-batch-queue checkpoint))
+  (print (call label guarded))
+  (blank)
+  (let shown (call Shown (call Item "b")))
+  (call (. shown markup-batch-queue checkpoint))
+  (print (call label shown))
+  (= (. shown focus) null)
+  (= (. shown shows) false)
+  (call (. shown markup-batch-queue checkpoint))
+  (print (call label shown))
+)
 
-. shown = Shown(Item("b"))
-shown.markup-batch-queue.checkpoint()
--- label(shown)
-shown.focus = null
-shown.shows = false
-shown.markup-batch-queue.checkpoint()
--- label(shown)
+(type + Item
+  (prop + name String)
+  (fn-do + This _
+    (param name _)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Item
+(type + Owner (is Box)
+  (implements MarkupRootElement)
+  (prop + focus (? Item))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (fn-do + This _
+    (param focus (? Item))
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+)
 
-+ name String
+(type + Guarded (is Owner)
+  (fn-do + This _
+    (param focus (? Item))
+    (call super focus)
+  )
+  (content
+    (<> This
+      (<> Box
+        (if (!= #focus null)
+          (for (in item (list (!! #focus)) (keyed-by (. item name)))
+            (<> TextBox (value: (. item name)))
+          )
+        )
+      )
+    )
+  )
+)
 
-────────────────────
-+ This
-    - name
+(type + Shown (is Owner)
+  (prop + shows _ (= true))
+  (fn-do + This _
+    (param focus (? Item))
+    (call super focus)
+  )
+  (content
+    (<> This
+      (<> Box
+        (if #shows
+          (for (in item (list (!! #focus)) (keyed-by (. item name)))
+            (<> TextBox (value: (. item name)))
+          )
+        )
+      )
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Owner is Box
-    is MarkupRootElement
+(fn-do + label String
+  (param node Box)
+  (let texts (list String))
+  (call collect node texts)
+  (return (str "[" (call (. "," join) texts) "]"))
+)
 
-+ focus Item?
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-
-────────────────────
-+ This
-    - focus Item?
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-━━━━━━━━━━━━━━━━━━━━
-+ Guarded is Owner
-
-────────────────────
-+ This
-    - focus Item?
-
-super(focus)
-
-────────────────────
-
-<This
-    <Box
-        if #focus != null
-            for item in [#focus!] keyed by item.name
-                <TextBox = item.name
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shown is Owner
-
-+ shows = true
-
-────────────────────
-+ This
-    - focus Item?
-
-super(focus)
-
-────────────────────
-
-<This
-    <Box
-        if #shows
-            for item in [#focus!] keyed by item.name
-                <TextBox = item.name
-
-━━━━━━━━━━━━━━━━━━━━
-+ do label String
-    - node Box
-
-. texts [String]
-collect(node, texts)
-= "[${",".join(texts)}]"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do collect
-    - node Box
-    - texts [String]
-
-for child in node.children
-    if child is TextBox
-        texts += (child as TextBox).text
-    collect(child, texts)
+(fn-do + collect _
+  (param node Box)
+  (param texts (list String))
+  (for (in child (. node children))
+    (if (is child TextBox)
+      (+= texts (. (as child TextBox) text))
+    )
+    (call collect child texts)
+  )
+)
 ```
 
 ```output
@@ -2567,60 +2479,59 @@ for child in node.children
 
 ### A lazy declaration in the markup of a class whose value reads something tracked is evaluated again through the batch of the element whose content first reads it.
 
-```yumi
-/core/markup
-/core/task
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/task)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. done = Semaphore()
+(main
+  (let done (call Semaphore))
+  (blank)
+  (<> Root (id: root)
+    (<> Host (id: h))
+  )
+  (blank)
+  (print (call (. h shown)))
+  (= (. h box text) "b")
+  (print "set")
+  (print (call (. h shown)))
+  (do-new
+    (print (call (. h shown)))
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 
-<Root root
-    <Host h
+(fn-do + noted String
+  (param text String)
+  (print (str "copy " text))
+  (return text)
+)
 
--- h.shown()
-h.box.text = "b"
--- "set"
--- h.shown()
-do new
-    -- h.shown()
-    done.post()
-done.wait()
+(type + Root (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (print "flushed")
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do noted String
-    - text String
-
--- "copy $text"
-= text
-
-━━━━━━━━━━━━━━━━━━━━
-+ Root is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
--- "flushed"
-
-━━━━━━━━━━━━━━━━━━━━
-+ Host is Box
-
-────────────────────
-+ shown String
-
-"${host-label.text}"
-
-────────────────────
-
-<Label box "a"
-
-<Label host-label
-    "got ${#copy}"
-
-.. copy = noted(box.#text)
+(type + Host (is Box)
+  (fn-expr + shown String
+    (str (. host-label text))
+  )
+  (content
+    (<> Label (id: box) (text: "a"))
+    (blank)
+    (<> Label (id: host-label)
+      (str "got " #copy)
+    )
+    (blank)
+    (lazy copy (call noted (. box #text)))
+  )
+)
 ```
 
 ```output
@@ -2635,66 +2546,67 @@ got b
 
 ### A rule a branch tests and a property inside the branch both follow one value. When the value clears, the branch closes before the property updates, so the property never reads the cleared value.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. root = Root()
-markup-mount-root(root, root)
-root.markup-batch-queue.checkpoint()
--- dump(root)
-root.source = 0
-root.markup-batch-queue.checkpoint()
--- dump(root)
-root.source = 2
-root.markup-batch-queue.checkpoint()
--- dump(root)
+(main
+  (let root (call Root))
+  (call markup-mount-root root root)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call dump root))
+  (= (. root source) 0)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call dump root))
+  (= (. root source) 2)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call dump root))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do dump String
-    - root Root
+(fn-do + dump String
+  (param root Root)
+  (let region (!! (. root %first-child)))
+  (let count (call count-children region))
+  (if (== count 0)
+    (return "0")
+  )
+  (return (str count ":" (. (as (!! (. region %first-child)) TextBox) text)))
+)
 
-. region = root.%first-child!
-. count = count-children(region)
-if count == 0
-    = "0"
-= "$count:${(region.%first-child! as TextBox).text}"
+(fn-do + count-children Size
+  (param box Box)
+  (let count Size 0)
+  (for (in child (. box children))
+    (+= count 1)
+  )
+  (return count)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do count-children Size
-    - box Box
+(type + Counts (is Tuple)
+  (prop + count Int)
+)
 
-. count Size = 0
-for child in box.children
-    count += 1
-= count
-
-━━━━━━━━━━━━━━━━━━━━
-+ Counts is Tuple
-
-+ count Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ Root is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-+ source = 1
-+ value = Counts(#source) if #source > 0
-+ has-value = (#value?.count ?? 0) > 0
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-────────────────────
-
-<This
-    if #has-value
-        <TextBox
-            text = "+${#value!.count}"
+(type + Root (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (prop + source _ (= 1))
+  (prop + value _ (= (only-if (call Counts #source) (if (> #source 0)))))
+  (prop + has-value _ (= (> (?? (?. #value count) 0) 0)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+  (content
+    (<> This
+      (if #has-value
+        (<> TextBox
+          (= text (str "+" (. (!! #value) count)))
+        )
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -2703,58 +2615,51 @@ for child in box.children
 1:+2
 ```
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<RegionTriggerRoot root
+(main
+  (<> RegionTriggerRoot (id: root))
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (let region (call RegionTriggerBlock))
+  (call markup-append root region)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call (. "|" join) (. root events)))
+  (let item (call RegionTriggerItem))
+  (call markup-append region item)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call (. "|" join) (. root events)))
+  (call markup-remove region item)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call (. "|" join) (. root events)))
+)
 
-root.markup-batch-queue.checkpoint()
-. region = RegionTriggerBlock()
-markup-append(root, region)
-root.markup-batch-queue.checkpoint()
--- "|".join(root.events)
-. item = RegionTriggerItem()
-markup-append(region, item)
-root.markup-batch-queue.checkpoint()
--- "|".join(root.events)
-markup-remove(region, item)
-root.markup-batch-queue.checkpoint()
--- "|".join(root.events)
+(type + RegionTriggerItem (is Box))
 
-━━━━━━━━━━━━━━━━━━━━
-+ RegionTriggerItem is Box
+(type + RegionTriggerBlock (is Box)
+  (fn-expr + markup-is-transparent-region _ :get
+    true
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ RegionTriggerBlock is Box
-
-────────────────────
-+ get markup-is-transparent-region
-
-true
-
-━━━━━━━━━━━━━━━━━━━━
-+ RegionTriggerRoot is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-+ events [String] = List'String()
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-. ignored = flush.applied
-
-────────────────────
-whenever children RegionTriggerItem
-
-events += "children"
+(type + RegionTriggerRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (prop + events (list String) (= (call (of List String))))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+    (let ignored (. flush applied))
+  )
+  (whenever-rule (trigger children RegionTriggerItem)
+    (+= events "children")
+  )
+)
 ```
 
 ```output
@@ -2764,57 +2669,56 @@ children|children
 
 ### A deferred action runs at the checkpoint with the cause that was current when its write landed.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
+(prop + scoped _ (= (call MarkupCause)))
+(blank)
 
-+ scoped = MarkupCause()
+(main
+  (<> OwnRoot (id: root)
+    (<> Meter (id: meter))
+  )
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (= (. meter level) 2)
+  (call (. root markup-batch-queue checkpoint))
+  (let outer (call swap-markup-cause scoped))
+  (= (. meter level) 3)
+  (call swap-markup-cause outer)
+  (call (. root markup-batch-queue checkpoint))
+  (let quiet (call swap-markup-cause markup-cause-none))
+  (= (. meter level) 4)
+  (call swap-markup-cause quiet)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call (. "|" join) (. meter log)))
+  (print (call cause-name (call current-markup-cause)))
+)
 
-<OwnRoot root
-    <Meter meter
+(fn-do + cause-name String
+  (param cause MarkupCause)
+  (return-if "scoped" (if (== (as cause Pointer) (as scoped Pointer))))
+  (return-if "none" (if (== (as cause Pointer) (as markup-cause-none Pointer))))
+  (return-if "write" (if (== (as cause Pointer) (as markup-cause-write Pointer))))
+  (return "other")
+)
 
-root.markup-batch-queue.checkpoint()
-meter.level = 2
-root.markup-batch-queue.checkpoint()
-. outer = swap-markup-cause(scoped)
-meter.level = 3
-swap-markup-cause(outer)
-root.markup-batch-queue.checkpoint()
-. quiet = swap-markup-cause(markup-cause-none)
-meter.level = 4
-swap-markup-cause(quiet)
-root.markup-batch-queue.checkpoint()
--- "|".join(meter.log)
--- cause-name(current-markup-cause())
+(type + OwnRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do cause-name String
-    - cause MarkupCause
-
-=? "scoped" if cause as Pointer == scoped as Pointer
-=? "none" if cause as Pointer == markup-cause-none as Pointer
-=? "write" if cause as Pointer == markup-cause-write as Pointer
-= "other"
-
-━━━━━━━━━━━━━━━━━━━━
-+ OwnRoot is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Meter is Box
-
-+ log [String] = List'String()
-+ level = 1
-+ double = #level * 2
-
-. double-changed < double
-
-────────────────────
-+ do double-changed
-
-log += "$double:${cause-name(current-markup-cause())}"
+(type + Meter (is Box)
+  (prop + log (list String) (= (call (of List String))))
+  (prop + level _ (= 1))
+  (prop + double _ (= (* #level 2)))
+  (blank)
+  (depends double-changed double)
+  (fn-do + double-changed _
+    (+= log (str double ":" (call cause-name (call current-markup-cause))))
+  )
+)
 ```
 
 ```output
@@ -2824,47 +2728,43 @@ write
 
 ### A derived property of a markup host is fresh when read before its batch runs, and its rule sees one consistent value.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<MemoRoot root
-. child = MemoChild()
-markup-adopt(child, null, root)
-root.markup-batch-queue.checkpoint()
-child.seen.clear()
-child.a = 2
--- "total=${child.total} b=${child.b}"
-root.markup-batch-queue.checkpoint()
--- "|".join(child.seen)
+(main
+  (<> MemoRoot (id: root))
+  (let child (call MemoChild))
+  (call markup-adopt child null root)
+  (call (. root markup-batch-queue checkpoint))
+  (call (. child seen clear))
+  (= (. child a) 2)
+  (print (str "total=" (. child total) " b=" (. child b)))
+  (call (. root markup-batch-queue checkpoint))
+  (print (call (. "|" join) (. child seen)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ MemoRoot is Box
-    is MarkupRootElement
+(type + MemoRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ MemoChild is Box
-
-+ a = 1
-+ total = #a + #b
-+ b = #a * 10
-+ seen [String] = List'String()
-
-────────────────────
-whenever #total
-
-seen += "total:$total"
+(type + MemoChild (is Box)
+  (prop + a _ (= 1))
+  (prop + total _ (= (+ #a #b)))
+  (prop + b _ (= (* #a 10)))
+  (prop + seen (list String) (= (call (of List String))))
+  (whenever-rule #total
+    (+= seen (str "total:" total))
+  )
+)
 ```
 
 ```output
@@ -2874,55 +2774,54 @@ total:22
 
 ### A rule on a derived property runs at the checkpoint with the cause that was current when the write it reads landed.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
+(prop + scoped _ (= (call MarkupCause)))
+(blank)
 
-+ scoped = MarkupCause()
+(main
+  (<> OwnRoot (id: root)
+    (<> Meter (id: meter))
+  )
+  (blank)
+  (call (. root markup-batch-queue checkpoint))
+  (= (. meter level) 2)
+  (call (. root markup-batch-queue checkpoint))
+  (let outer (call swap-markup-cause scoped))
+  (= (. meter level) 3)
+  (call swap-markup-cause outer)
+  (call (. root markup-batch-queue checkpoint))
+  (let quiet (call swap-markup-cause markup-cause-none))
+  (= (. meter level) 4)
+  (call swap-markup-cause quiet)
+  (call (. root markup-batch-queue checkpoint))
+  (print (call (. "|" join) (. meter log)))
+  (print (call cause-name (call current-markup-cause)))
+)
 
-<OwnRoot root
-    <Meter meter
+(fn-do + cause-name String
+  (param cause MarkupCause)
+  (return-if "scoped" (if (== (as cause Pointer) (as scoped Pointer))))
+  (return-if "none" (if (== (as cause Pointer) (as markup-cause-none Pointer))))
+  (return-if "write" (if (== (as cause Pointer) (as markup-cause-write Pointer))))
+  (return "other")
+)
 
-root.markup-batch-queue.checkpoint()
-meter.level = 2
-root.markup-batch-queue.checkpoint()
-. outer = swap-markup-cause(scoped)
-meter.level = 3
-swap-markup-cause(outer)
-root.markup-batch-queue.checkpoint()
-. quiet = swap-markup-cause(markup-cause-none)
-meter.level = 4
-swap-markup-cause(quiet)
-root.markup-batch-queue.checkpoint()
--- "|".join(meter.log)
--- cause-name(current-markup-cause())
+(type + OwnRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do cause-name String
-    - cause MarkupCause
-
-=? "scoped" if cause as Pointer == scoped as Pointer
-=? "none" if cause as Pointer == markup-cause-none as Pointer
-=? "write" if cause as Pointer == markup-cause-write as Pointer
-= "other"
-
-━━━━━━━━━━━━━━━━━━━━
-+ OwnRoot is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Meter is Box
-
-+ log [String] = List'String()
-+ level = 1
-+ double = #level * 2
-
-────────────────────
-whenever #double
-
-log += "$double:${cause-name(current-markup-cause())}"
+(type + Meter (is Box)
+  (prop + log (list String) (= (call (of List String))))
+  (prop + level _ (= 1))
+  (prop + double _ (= (* #level 2)))
+  (whenever-rule #double
+    (+= log (str double ":" (call cause-name (call current-markup-cause))))
+  )
+)
 ```
 
 ```output
@@ -2932,68 +2831,63 @@ write
 
 ### A binding gives the element the place's value as it is made and follows the place, and stores what the element holds back in the place as it changes: under a batch root, at the checkpoint, as the batch runs every action it holds.
 
-```yumi
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BindRoot root
-. panel = BindPanel()
-markup-adopt(panel, null, root)
--- state(panel, "adopted")
-root.markup-batch-queue.checkpoint()
--- state(panel, "checkpoint")
-panel.knob.turn(3)
--- state(panel, "turned 3")
-root.markup-batch-queue.checkpoint()
--- state(panel, "checkpoint")
-panel.level = 2
--- state(panel, "model 2")
-root.markup-batch-queue.checkpoint()
--- state(panel, "checkpoint")
+(main
+  (<> BindRoot (id: root))
+  (let panel (call BindPanel))
+  (call markup-adopt panel null root)
+  (print (call state panel "adopted"))
+  (call (. root markup-batch-queue checkpoint))
+  (print (call state panel "checkpoint"))
+  (call (. panel knob turn) 3)
+  (print (call state panel "turned 3"))
+  (call (. root markup-batch-queue checkpoint))
+  (print (call state panel "checkpoint"))
+  (= (. panel level) 2)
+  (print (call state panel "model 2"))
+  (call (. root markup-batch-queue checkpoint))
+  (print (call state panel "checkpoint"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do state String
-    - panel BindPanel
-    - step String
+(fn-do + state String
+  (param panel BindPanel)
+  (param step String)
+  (return (str step ": level " (. panel level) " knob " (. panel knob value)))
+)
 
-= "$step: level ${panel.level} knob ${panel.knob.value}"
+(type + BindRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue (as this MarkupRootElement))))
+  (fn-do + This _
+    (call markup-mount-root this this)
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BindRoot is Box
-    is MarkupRootElement
+(type + Knob (is Box)
+  (prop + value _ (= 0))
+  (fn-do + turn _
+    (param next Int)
+    (= value next)
+  )
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this as MarkupRootElement)
-
-────────────────────
-+ This
-
-markup-mount-root(this, this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Knob is Box
-
-+ value = 0
-
-────────────────────
-+ do turn
-    - next Int
-
-value = next
-
-━━━━━━━━━━━━━━━━━━━━
-+ BindPanel is Box
-
-+ level = 5
-
-────────────────────
-
-<This
-    <Knob knob
-        value <-> level
+(type + BindPanel (is Box)
+  (prop + level _ (= 5))
+  (content
+    (<> This
+      (<> Knob (id: knob)
+        (<-> value level)
+      )
+    )
+  )
+)
 ```
 
 ```output

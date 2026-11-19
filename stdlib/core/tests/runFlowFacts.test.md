@@ -4,21 +4,24 @@ Compiler flow facts
 
 ### Arena handles are ordinary copied arguments.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-do finally
-    arena.release()
--- borrow-arena(arena)
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (print (call borrow-arena arena))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do borrow-arena U32
-    - arena Arena
-
-. value = arena.allocate'U32(1)
-value[0] = 42u32
-= value[0]
+(fn-do + borrow-arena U32
+  (param arena Arena)
+  (let value (call (of (. arena allocate) U32) 1))
+  (= ([] value 0) 42u32)
+  (return ([] value 0))
+)
 ```
 
 ```output
@@ -27,16 +30,19 @@ value[0] = 42u32
 
 ### Arena handles may be copied into aliases.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-. alias = arena
-. value = alias.allocate'U32(1)
-value[0] = 17u32
--- value[0]
-alias.release()
-arena.release()
+(main
+  (let arena (call Arena))
+  (let alias arena)
+  (let value (call (of (. alias allocate) U32) 1))
+  (= ([] value 0) 17u32)
+  (print ([] value 0))
+  (call (. alias release))
+  (call (. arena release))
+)
 ```
 
 ```output
@@ -45,35 +51,36 @@ arena.release()
 
 ### Arena handles may be returned, reassigned, and ignored without ownership flow facts.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = make-arena(21u32)
-. cleanup = arena
-. first = arena.allocate'U32(1)
-first[0] = 22u32
--- first[0]
-arena = Arena()
-. second = arena.allocate'U32(1)
-second[0] = 23u32
--- second[0]
-ignored-arena()
-cleanup.release()
-arena.release()
+(main
+  (let arena (call make-arena 21u32))
+  (let cleanup arena)
+  (let first (call (of (. arena allocate) U32) 1))
+  (= ([] first 0) 22u32)
+  (print ([] first 0))
+  (= arena (call Arena))
+  (let second (call (of (. arena allocate) U32) 1))
+  (= ([] second 0) 23u32)
+  (print ([] second 0))
+  (call ignored-arena)
+  (call (. cleanup release))
+  (call (. arena release))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do make-arena Arena
-    - value U32
+(fn-do + make-arena Arena
+  (param value U32)
+  (let arena (call Arena))
+  (let stored (call (of (. arena allocate) U32) 1))
+  (= ([] stored 0) value)
+  (return arena)
+)
 
-. arena = Arena()
-. stored = arena.allocate'U32(1)
-stored[0] = value
-= arena
-
-━━━━━━━━━━━━━━━━━━━━
-+ do ignored-arena Arena
-
-= Arena()
+(fn-do + ignored-arena Arena
+  (return (call Arena))
+)
 ```
 
 ```output
@@ -83,20 +90,23 @@ stored[0] = value
 
 ### A copied Arena argument may explicitly reset its caller's storage.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-do finally
-    arena.release()
--- borrow-and-reset(arena)
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (print (call borrow-and-reset arena))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do borrow-and-reset Size
-    - arena Arena
-
-arena.reset()
-= arena.state
+(fn-do + borrow-and-reset Size
+  (param arena Arena)
+  (call (. arena reset))
+  (return (. arena state))
+)
 ```
 
 ```output
@@ -105,22 +115,25 @@ arena.reset()
 
 ### Arena allocation pointers may be returned from helpers.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-do finally
-    arena.release()
-. returned = returned-pointer(arena)
--- returned[0]
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (let returned (call returned-pointer arena))
+  (print ([] returned 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do returned-pointer CPointer'U32
-    - arena Arena
-
-. result = arena.allocate'U32(1)
-result[0] = 1u32
-= result
+(fn-do + returned-pointer (of CPointer U32)
+  (param arena Arena)
+  (let result (call (of (. arena allocate) U32) 1))
+  (= ([] result 0) 1u32)
+  (return result)
+)
 ```
 
 ```output
@@ -129,24 +142,26 @@ result[0] = 1u32
 
 ### Arena pointer returns require no unique input provenance.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. first = Arena()
-. second = Arena()
-. returned = ambiguous-pointer(first, second)
--- returned[0]
-first.release()
-second.release()
+(main
+  (let first (call Arena))
+  (let second (call Arena))
+  (let returned (call ambiguous-pointer first second))
+  (print ([] returned 0))
+  (call (. first release))
+  (call (. second release))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do ambiguous-pointer CPointer'U32
-    - first Arena
-    - second Arena
-
-. result = first.allocate'U32(1)
-result[0] = 1u32
-= result
+(fn-do + ambiguous-pointer (of CPointer U32)
+  (param first Arena)
+  (param second Arena)
+  (let result (call (of (. first allocate) U32) 1))
+  (= ([] result 0) 1u32)
+  (return result)
+)
 ```
 
 ```output
@@ -155,25 +170,29 @@ result[0] = 1u32
 
 ### A function may use copied and locally created Arena handles independently.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. borrowed = Arena()
-do finally
-    borrowed.release()
--- local-owner-lifecycle(borrowed)
+(main
+  (let borrowed (call Arena))
+  (finally
+    (call (. borrowed release))
+  )
+  (print (call local-owner-lifecycle borrowed))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do local-owner-lifecycle U32
-    - borrowed Arena
-
-. local = Arena()
-do finally
-    local.release()
-local.reset()
-. result = borrowed.allocate'U32(1)
-result[0] = 9u32
-= result[0]
+(fn-do + local-owner-lifecycle U32
+  (param borrowed Arena)
+  (let local (call Arena))
+  (finally
+    (call (. local release))
+  )
+  (call (. local reset))
+  (let result (call (of (. borrowed allocate) U32) 1))
+  (= ([] result 0) 9u32)
+  (return ([] result 0))
+)
 ```
 
 ```output
@@ -182,22 +201,25 @@ result[0] = 9u32
 
 ### Arena allocation pointers may be nested in storage owned by the same Arena.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. arena = Arena()
-do finally
-    arena.release()
-. item = arena.allocate'U32(1)
-item[0] = 7u32
-. holder = arena.allocate'ArenaHolder(1)
-holder[0] = ArenaHolder(item)
--- holder[0].item[0]
+(main
+  (let arena (call Arena))
+  (finally
+    (call (. arena release))
+  )
+  (let item (call (of (. arena allocate) U32) 1))
+  (= ([] item 0) 7u32)
+  (let holder (call (of (. arena allocate) ArenaHolder) 1))
+  (= ([] holder 0) (call ArenaHolder item))
+  (print ([] (. ([] holder 0) item) 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ArenaHolder is Tuple
-
-+ item CPointer'U32
+(type + ArenaHolder (is Tuple)
+  (prop + item (of CPointer U32))
+)
 ```
 
 ```output
@@ -206,24 +228,26 @@ holder[0] = ArenaHolder(item)
 
 ### Cross-Arena allocation pointers are legal pointer-free payload.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. first = Arena()
-. second = Arena()
-. item = second.allocate'U32(1)
-item[0] = 7u32
-. holder = first.allocate'ArenaHolder(1)
-holder[0] = ArenaHolder(item)
--- holder[0].item[0]
-first.release()
--- item[0]
-second.release()
+(main
+  (let first (call Arena))
+  (let second (call Arena))
+  (let item (call (of (. second allocate) U32) 1))
+  (= ([] item 0) 7u32)
+  (let holder (call (of (. first allocate) ArenaHolder) 1))
+  (= ([] holder 0) (call ArenaHolder item))
+  (print ([] (. ([] holder 0) item) 0))
+  (call (. first release))
+  (print ([] item 0))
+  (call (. second release))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ ArenaHolder is Tuple
-
-+ item CPointer'U32
+(type + ArenaHolder (is Tuple)
+  (prop + item (of CPointer U32))
+)
 ```
 
 ```output
@@ -233,108 +257,112 @@ second.release()
 
 ### Slot reuse changes the incarnation, so releasing a stale alias cannot affect its replacement.
 
-```yumi
-/core/arena
+```brix
+(import /core/arena)
+(blank)
 
-. original = Arena()
-. alias = original
-original.release()
-. replacement = Arena()
-alias.release()
-. value = replacement.allocate'U32(1)
-value[0] = 2u32
--- value[0]
-replacement.release()
+(main
+  (let original (call Arena))
+  (let alias original)
+  (call (. original release))
+  (let replacement (call Arena))
+  (call (. alias release))
+  (let value (call (of (. replacement allocate) U32) 1))
+  (= ([] value 0) 2u32)
+  (print ([] value 0))
+  (call (. replacement release))
+)
 ```
 
 ```output
 2
 ```
 
-```yumi
-. name Atom? = "name" as Atom
-. key Atom? = "key" as Atom
-if name && name != key
-    -- name.text
+```brix
+(main
+  (let name (? Atom) (as "name" Atom))
+  (let key (? Atom) (as "key" Atom))
+  (if (and name (!= name key))
+    (print (. name text))
+  )
+)
 ```
 
 ```output
 name
 ```
 
-```yumi
-. owner = Owner()
-owner.test()
--- "published"
+```brix
+(main
+  (let owner (call Owner))
+  (call (. owner test))
+  (print "published")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Owner
+(type + Owner
+  (prop _ target (? Target) (= (call Target)))
+  (fn-do + test _
+    (if target
+      (<- (. target changed) true)
+    )
+  )
+)
 
-_ target Target? = Target()
-
-────────────────────
-+ do test
-
-if target
-    target.changed <- true
-
-━━━━━━━━━━━━━━━━━━━━
-+ Target
-
-+ event changed Bool
+(type + Target
+  (event + changed Bool)
+)
 ```
 
 ```output
 published
 ```
 
-```yumi
-. owner = Owner()
-owner.test()
--- "released"
+```brix
+(main
+  (let owner (call Owner))
+  (call (. owner test))
+  (print "released")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Owner
+(type + Owner
+  (prop _ target (? Target) (= (call Target)))
+  (fn-do + test _
+    (if target
+      (call (. ([] (. target messages) 1) release))
+    )
+  )
+)
 
-_ target Target? = Target()
-
-────────────────────
-+ do test
-
-if target
-    target.messages[1].release()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Target
-
-+ event messages Int keyed by U64
+(type + Target
+  (event + messages Int U64)
+)
 ```
 
 ```output
 released
 ```
 
-```yumi
-. owner = Owner()
-if false
-    owner.test()
--- "rekeyed"
+```brix
+(main
+  (let owner (call Owner))
+  (if false
+    (call (. owner test))
+  )
+  (print "rekeyed")
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Owner
+(type + Owner
+  (prop _ target (? Target) (= (call Target)))
+  (fn-do + test _
+    (if target
+      (call (. ([] (. target messages) 1) rekey) 2)
+    )
+  )
+)
 
-_ target Target? = Target()
-
-────────────────────
-+ do test
-
-if target
-    target.messages[1].rekey(2)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Target
-
-+ event messages Int keyed by U64
+(type + Target
+  (event + messages Int U64)
+)
 ```
 
 ```output

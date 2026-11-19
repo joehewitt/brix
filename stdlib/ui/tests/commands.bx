@@ -1,0 +1,189 @@
+(import /test)
+(import /ui)
+(blank)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Command History"))
+  (call (. cases run) command-history-tests)
+  (= cases (call (. cases then) "Command History Redo" history-redo-tests))
+  (= cases (call (. cases then) "Valued Modes" mode-tests))
+  (return cases)
+)
+
+(fn-do _ command-history-tests _
+  (param t TestCase)
+  (let history (call CommandHistory))
+  (let target (call Counter))
+  (call bump history target)
+  (call bump history target)
+  (call (. history undo))
+  (call (. t expect) "newest record undoes independently" 1 (. target value))
+  (call (. history undo))
+  (call (. t expect) "older record remains independent" 0 (. target value))
+  (blank)
+  (let grouped-history (call CommandHistory))
+  (let first-target (call Counter))
+  (let second-target (call Counter))
+  (do-use (call (. grouped-history group) "Both")
+    (call bump grouped-history first-target)
+    (do-use (call (. grouped-history group) "Nested")
+      (call bump grouped-history second-target)
+    )
+  )
+  (call (. t expect) "a group records one history entry" 1 (. grouped-history undo-count))
+  (call (. grouped-history undo))
+  (call (. t check) "undoing a group undoes every entry" (and (== (. first-target value) 0) (== (. second-target value) 0)))
+  (call (. grouped-history redo))
+  (call (. t check) "redoing a group redoes every entry" (and (== (. first-target value) 1) (== (. second-target value) 1)))
+  (catch (call failed-history-group grouped-history))
+  (call (. t expect) "group scope records completed work on error" 2 (. grouped-history undo-count))
+  (call (. grouped-history record) "After error" (call PassiveHistoryEntry))
+  (call (. t expect) "group depth is restored after error" 3 (. grouped-history undo-count))
+  (blank)
+  (let unreliable-history (call CommandHistory))
+  (let unreliable-target (call Counter))
+  (let unreliable (call UnreliableEntry unreliable-target))
+  (= (. unreliable-target value) 1)
+  (call (. unreliable-history record) "Unreliable edit" unreliable)
+  (call expect-undo-failure t unreliable-history)
+  (= (. unreliable fail-undo) false)
+  (call (. unreliable-history undo))
+  (= (. unreliable fail-redo) true)
+  (call expect-redo-failure t unreliable-history)
+  (return t)
+)
+
+(fn-do _ expect-undo-failure _
+  (param t TestCase)
+  (param history CommandHistory)
+  (let attempt
+    (do-new
+      (call (. history undo))
+      (on-failure _
+        (print)
+      )
+    )
+  )
+  (call (. attempt wait))
+  (call (. t expect) "failing undo remains available" 1 (. history undo-count))
+  (call (. t expect) "failing undo does not create redo" 0 (. history redo-count))
+)
+
+(fn-do _ expect-redo-failure _
+  (param t TestCase)
+  (param history CommandHistory)
+  (let attempt
+    (do-new
+      (call (. history redo))
+      (on-failure _
+        (print)
+      )
+    )
+  )
+  (call (. attempt wait))
+  (call (. t expect) "failing redo remains available" 1 (. history redo-count))
+)
+
+(fn-do _ history-redo-tests _
+  (param t TestCase)
+  (let history (call CommandHistory))
+  (let target (call Counter))
+  (call bump history target)
+  (call bump history target)
+  (call (. history undo))
+  (call (. history undo))
+  (call bump history target)
+  (call (. history redo))
+  (call (. history redo))
+  (call (. t expect) "redoing after a new edit does nothing" 1 (. target value))
+  (return t)
+)
+
+(fn-do _ mode-tests _
+  (param t TestCase)
+  (let mode (call (of Mode Bool) false))
+  (let first (call (. mode acquire) true))
+  (let second (call (. mode acquire) false))
+  (call (. mode set) true)
+  (call (. t check) "persistent changes stay hidden under a held activation" (not (. mode effective-value)))
+  (call (. first close))
+  (call (. t check) "releasing a non-winning owner keeps the winner" (not (. mode effective-value)))
+  (call (. second close))
+  (call (. t check) "last release reveals the current persistent value" (. mode effective-value))
+  (return t)
+)
+
+(type _ Counter
+  (prop + value I32)
+)
+
+(fn-do _ bump _
+  (param history CommandHistory)
+  (param target Counter)
+  (let prior (. target value))
+  (+= (. target value) 1)
+  (call (. history record) "Increment" (call CounterEntry target prior))
+)
+
+(type _ CounterEntry (is Tuple)
+  (implements CommandHistoryEntry)
+  (prop + target Counter)
+  (prop + prior I32)
+  (fn-do + undo _
+    (= (. target value) prior)
+  )
+  (fn-do + redo _
+    (= (. target value) (+ prior 1))
+  )
+)
+
+(type _ UnreliableEntry
+  (implements CommandHistoryEntry)
+  (prop + fail-undo _ (= true))
+  (prop + fail-redo _ (= false))
+  (prop _ target Counter)
+  (fn-do _ This _
+    (param target _)
+  )
+  (fn-do + undo _
+    (if (not fail-undo)
+      (= (. target value) 0)
+      (return)
+    )
+    (let prior (. target value))
+    (finally
+      (inline (= (. target value) prior))
+    )
+    (= (. target value) 0)
+    (throw (call Panic "Expected undo failure"))
+  )
+  (fn-do + redo _
+    (if (not fail-redo)
+      (= (. target value) 1)
+      (return)
+    )
+    (let prior (. target value))
+    (finally
+      (inline (= (. target value) prior))
+    )
+    (= (. target value) 1)
+    (throw (call Panic "Expected redo failure"))
+  )
+)
+
+(type _ PassiveHistoryEntry
+  (implements CommandHistoryEntry)
+  (fn-do + undo _)
+  (fn-do + redo _)
+)
+
+(fn-do _ failed-history-group _
+  (param history CommandHistory)
+  (use (call (. history group) "Failed scope"))
+  (call (. history record) "Completed step" (call PassiveHistoryEntry))
+  (throw (call Error "scope failure"))
+)

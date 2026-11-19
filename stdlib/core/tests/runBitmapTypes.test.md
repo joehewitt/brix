@@ -1,11 +1,13 @@
 # Bitmap types
 
-```yumi
--- I1.bit-width
--- I8.bit-width
--- U16.bit-width
--- I32.bit-width
--- U64.bit-width
+```brix
+(main
+  (print (. I1 bit-width))
+  (print (. I8 bit-width))
+  (print (. U16 bit-width))
+  (print (. I32 bit-width))
+  (print (. U64 bit-width))
+)
 ```
 
 ```output
@@ -16,10 +18,12 @@
 64
 ```
 
-```yumi
--- Size.bit-width
--- Byte.bit-width
--- Bool.bit-width
+```brix
+(main
+  (print (. Size bit-width))
+  (print (. Byte bit-width))
+  (print (. Bool bit-width))
+)
 ```
 
 ```output
@@ -28,9 +32,11 @@
 1
 ```
 
-```yumi
--- I1.is-integer
--- F64.is-integer
+```brix
+(main
+  (print (. I1 is-integer))
+  (print (. F64 is-integer))
+)
 ```
 
 ```output
@@ -38,9 +44,11 @@ true
 false
 ```
 
-```yumi
--- I1.min
--- I1.max
+```brix
+(main
+  (print (. I1 min))
+  (print (. I1 max))
+)
 ```
 
 ```output
@@ -48,17 +56,20 @@ false
 1
 ```
 
-```yumi
-/core/bitmap
+```brix
+(import /core/bitmap)
+(blank)
 
-. narrow = Bitmap'I8()
--- narrow.capacity
--- (type-of narrow).size
--- narrow as I8
-. wide = Bitmap'U64()
--- wide.capacity
--- (type-of wide).size
--- wide as U64
+(main
+  (let narrow (call (of Bitmap I8)))
+  (print (. narrow capacity))
+  (print (. (type-of narrow) size))
+  (print (as narrow I8))
+  (let wide (call (of Bitmap U64)))
+  (print (. wide capacity))
+  (print (. (type-of wide) size))
+  (print (as wide U64))
+)
 ```
 
 ```output
@@ -70,16 +81,18 @@ false
 0
 ```
 
-```yumi
-/core/bitmap
+```brix
+(import /core/bitmap)
+(blank)
 
--- Bitmap'Char().capacity
--- Bitmap'Char8().capacity
--- Bitmap'Index().capacity
--- Bitmap'Flags().capacity
+(main
+  (print (. (call (of Bitmap Char)) capacity))
+  (print (. (call (of Bitmap Char8)) capacity))
+  (print (. (call (of Bitmap Index)) capacity))
+  (print (. (call (of Bitmap Flags)) capacity))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ Flags is U16
+(type _ Flags (is U16))
 ```
 
 ```output
@@ -89,59 +102,59 @@ _ Flags is U16
 16
 ```
 
-```yumi crash
-Bits'F32()
+```brix crash
+(main
+  (call (of Bits F32))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bits'Integer
-
-────────────────────
-+ This
-
-Integer.bit-width
+(type + (of Bits Integer)
+  (fn-do + This _
+    (. Integer bit-width)
+  )
+)
 ```
 
 ```output
 Exception: Integer type required for bit-width
-<no file:10>
-    Integer.bit-width
-    ^^^^^^^^^^^^^^^^^
+<no file:8>
+        (. Integer bit-width)
+        ^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi crash
-Bits'F64()
+```brix crash
+(main
+  (call (of Bits F64))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bits'Integer
-
-────────────────────
-+ This
-
-Integer.bit-width
-```
-
-```output
-Exception: Integer type required for bit-width
-<no file:10>
-    Integer.bit-width
-    ^^^^^^^^^^^^^^^^^
-```
-
-```yumi crash
-Bits'Float()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Bits'Integer
-
-────────────────────
-+ This
-
-Integer.bit-width
+(type + (of Bits Integer)
+  (fn-do + This _
+    (. Integer bit-width)
+  )
+)
 ```
 
 ```output
 Exception: Integer type required for bit-width
-<no file:10>
-    Integer.bit-width
-    ^^^^^^^^^^^^^^^^^
+<no file:8>
+        (. Integer bit-width)
+        ^^^^^^^^^^^^^^^^^^^^^
+```
+
+```brix crash
+(main
+  (call (of Bits Float))
+)
+
+(type + (of Bits Integer)
+  (fn-do + This _
+    (. Integer bit-width)
+  )
+)
+```
+
+```output
+Exception: Integer type required for bit-width
+<no file:8>
+        (. Integer bit-width)
+        ^^^^^^^^^^^^^^^^^^^^^
 ```

@@ -1,0 +1,25 @@
+; benchmark.meta description: Applies Boolean union, subtraction, and intersection effects to eight overlapping rectangles.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator
+(blank)
+(import /graphics/boolean)
+(import /graphics/path)
+(import /graphics/primitives)
+(import /graphics/shapes)
+(blank)
+
+(main
+  (let paths (list Path))
+  (for (in index (..< 0 8))
+    (+= paths (call rectangle (call Rect (* index 3.0) (* index 2.0) 60 60)))
+  )
+  (let checksum Size 0)
+  (for (in repeat (..< 0 100))
+    (for (in mode (list (. BooleanEffectMode union-effect) (. BooleanEffectMode subtract-effect) (. BooleanEffectMode intersect-effect)))
+      (for (in path (call (. (call BooleanEffect mode) apply) paths))
+        (+= checksum (. path count))
+      )
+    )
+  )
+  (print (str "bench-result graphics/boolean-effect-chain checksum=" checksum))
+)

@@ -1,0 +1,279 @@
+(type-line + URLPort (is U16))
+(blank)
+(prop _ url-unreserved-chars _ (= "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"))
+
+(type + URL (is Tuple)
+  (prop + scheme String)
+  (prop + has-slashes _ (= false))
+  (prop + auth (? URLAuth))
+  (prop + host String)
+  (prop + port URLPort (= 0))
+  (prop + paths (list String))
+  (prop + search (? URLQuery))
+  (prop + hash (? String))
+  (fn-do + This _
+    (param scheme String)
+    (param host String)
+    (param path String)
+    (lazy has-slashes true)
+    (lazy port (call port-for-scheme scheme))
+    (lazy paths (call (. path split) "/"))
+  )
+  (fn-expr + This _ (over: Char)
+    (~ (seq (: sc \scheme) ":" (: hs \slashes) (: au (? \auth)) (: ho URLHost) (: pa \path) (: se (? \search)) (: ha (? \hash)))
+      (call This sc hs au (. ho address) (as port URLPort) pa se ha
+        (block
+          (lazy port
+            (block
+              (case? (not (. ho port))
+                (call port-for-scheme sc)
+              )
+              (default
+                (. ho port)
+              )
+            )
+          )
+        )
+      )
+    )
+    (where
+      (lazy scheme
+        (pattern
+          (~ (+ \alphanumeric))
+        )
+      )
+      (lazy slashes
+        (pattern
+          (~ (* "/")
+            (> (. it length) 0)
+          )
+        )
+      )
+      (lazy auth
+        (pattern
+          (~ (seq (: au URLAuth) "@")
+            au
+          )
+        )
+      )
+      (lazy path
+        (pattern
+          (~ (seq "/" (: paths (call \delimited "/" (~ \segment))))
+            paths
+          )
+          (default
+            (call (of List String))
+          )
+        )
+      )
+      (lazy segment String
+        (pattern
+          (~ \url-chars)
+          (default
+            ""
+          )
+        )
+      )
+      (lazy search
+        (pattern
+          (~ (seq "?" (: s URLQuery))
+            s
+          )
+        )
+      )
+      (lazy hash
+        (pattern
+          (~ (seq "#" (: h (+ .)))
+            h
+          )
+        )
+      )
+      (blank)
+      (lazy url-chars String
+        (pattern
+          (~ (seq (: head \url-char) (: tail \url-chars))
+            (++ head tail)
+          )
+          (~ \url-char)
+        )
+      )
+      (blank)
+      (lazy url-char
+        (pattern
+          (~ (chars "A-Za-z0-9-_.~!\$&'()*+,;=@"))
+          (~ (seq "%" (: hx (of \hex Char8)))
+            (as (as hx Char) String)
+          )
+        )
+      )
+    )
+  )
+  (fn-from-expr + (: text String)
+    (match text
+      (~ This)
+      (throw (call SyntaxError "Invalid url"))
+    )
+  )
+  (fn-to-expr + String
+    (str scheme ":" slasher auths host aport "/" path searcher hasher)
+    (where
+      (lazy auths (if-expr auth (as auth String) ""))
+      (lazy slasher (if-expr has-slashes "//" ""))
+      (lazy searcher (if-expr search (str "?" search) ""))
+      (lazy hasher (if-expr hash (str "#" hash) ""))
+      (lazy path (call (. "/" join) paths))
+      (lazy aport (if-expr port (str ":" port) ""))
+    )
+  )
+  (fn-expr + is-secure Bool
+    (or (== scheme "https") (== scheme "wss"))
+  )
+  (fn-expr + (infix this / (param new-path String)) _
+    (call URL scheme has-slashes auth host port (+ paths new-path) search hash)
+  )
+)
+
+(type + URLAuth (is (tuple (: user String) (: pass String)))
+  (fn-expr + This _ (over: Char)
+    (~ (seq (: user (+ \alphanumeric)) ":" (: pass (+ \alphanumeric)))
+      (call This user pass)
+    )
+    (~ (: user (+ \alphanumeric))
+      (call This user "")
+    )
+  )
+  (fn-to-expr + String
+    (str user ":" pass "@")
+  )
+)
+
+(type + URLHost (is (tuple (: address String) (: port URLPort)))
+  (fn-expr + This _ (over: Char)
+    (~ (seq (: addr \address) ":" (: p \port))
+      (call This addr p)
+    )
+    (~ (: addr \address)
+      (call This addr 0)
+    )
+    (where
+      (lazy address String
+        (pattern
+          (~ (seq (+ \numeric) "." (+ \numeric) "." (+ \numeric) "." (+ \numeric)))
+          (~ (seq \name "." \address))
+          (~ \name)
+        )
+      )
+      (lazy name
+        (pattern
+          (~ (seq \alphanumeric (* (seq (* "-") \alphanumeric))))
+        )
+      )
+      (lazy port URLPort
+        (pattern
+          (~ (+ \numeric))
+        )
+      )
+    )
+  )
+  (fn-to-expr + String
+    (case? (> port 0)
+      (str address ":" port)
+    )
+    (default
+      address
+    )
+  )
+)
+
+(type + URLQuery (is Tuple)
+  (prop + pairs (list URLPair))
+  (fn-expr + This _ (over: Char)
+    (~ (: pairs (call \delimited "&" (~ URLPair)))
+      (call This pairs)
+    )
+  )
+  (fn-to-expr + String
+    (call (. "&" join) pairs)
+  )
+)
+
+(type + URLPair (is (tuple (: key String) (: value String)))
+  (fn-expr + This _ (over: Char)
+    (~ (seq (: key \parts) (: value \assignment))
+      (call This key value)
+    )
+    (where
+      (lazy assignment
+        (pattern
+          (~ (seq "=" (: value \parts))
+            value
+          )
+          (~ (: values (* \parts))
+            (as values String)
+          )
+        )
+      )
+      (blank)
+      (lazy parts String
+        (pattern
+          (~ (seq (: head \character) (: tail \parts))
+            (+ head tail)
+          )
+          (~ \character)
+        )
+      )
+      (blank)
+      (lazy character
+        (pattern
+          (~ (seq "%" (: hx (of \hex Char8)))
+            (as hx String)
+          )
+          (~ "\\%"
+            "%"
+          )
+          (~ (seq (! (chars "&#=")) .))
+        )
+      )
+    )
+  )
+  (fn-to-expr + String
+    (if-expr (. value length) (str key "=" value) key)
+  )
+)
+
+(fn-expr + port-for-scheme _
+  (param scheme String)
+  (match scheme
+    (case "http"
+      80
+    )
+    (case "ws"
+      80
+    )
+    (case "https"
+      443
+    )
+    (case "wss"
+      443
+    )
+    (default
+      0
+    )
+  )
+)
+
+(fn-do + url-encode String
+  (param text String)
+  (let bytes (call byte-view text))
+  (let encoded "")
+  (for (in i (..< 0 (. bytes size)))
+    (let piece (as ([] bytes i) Char String))
+    (if (!= (call (. url-unreserved-chars find) piece) null)
+      (+= encoded piece)
+      (else
+        (+= encoded (str "%" (. ([] (as ([] bytes i) Hex) (..< 2 4)) uppercased)))
+      )
+    )
+  )
+  (return encoded)
+)

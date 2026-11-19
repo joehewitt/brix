@@ -1,0 +1,76 @@
+; benchmark.meta description: Tokenizes the ascii-tokenizer-heavy workload with a hand-written cursor loop.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator
+(blank)
+
+(main
+  (let source (call ascii-tokenizer-cursor-source))
+  (let checksum (as 0 Size))
+  (blank)
+  (for (in iteration (..< 0 1600))
+    (for (in token (call ascii-tokenizer-cursor-tokens source))
+      (+= checksum token)
+    )
+  )
+  (blank)
+  (print (str "bench-result stream/ascii-tokenizer-cursor-heavy checksum=" checksum))
+)
+
+(fn-do _ ascii-tokenizer-cursor-tokens (list Size)
+  (param source String)
+  (let chars (. source codepoints))
+  (let count (. chars length))
+  (let tokens (list Size))
+  (let index Index 0)
+  (while (< index count)
+    (let c ([] chars index))
+    (let start index)
+    (+= index 1)
+    (if (call ascii-cursor-is-word-start c)
+      (while (and (< index count) (call ascii-cursor-is-word-part ([] chars index)))
+        (+= index 1)
+      )
+      (+= tokens (* (- index start) 2))
+      (else-if (call ascii-cursor-is-digit c)
+        (while (and (< index count) (call ascii-cursor-is-digit ([] chars index)))
+          (+= index 1)
+        )
+        (+= tokens (* (- index start) 3))
+      )
+      (else-if (call ascii-cursor-is-space c)
+        (while (and (< index count) (call ascii-cursor-is-space ([] chars index)))
+          (+= index 1)
+        )
+        (+= tokens 1)
+      )
+      (else
+        (+= tokens 5)
+      )
+    )
+  )
+  (return tokens)
+)
+
+(fn-expr _ ascii-cursor-is-word-start Bool
+  (param c Char)
+  (or (and (>= c 'a') (<= c 'z')) (and (>= c 'A') (<= c 'Z')) (== c '_'))
+)
+
+(fn-expr _ ascii-cursor-is-word-part Bool
+  (param c Char)
+  (or (call ascii-cursor-is-word-start c) (call ascii-cursor-is-digit c))
+)
+
+(fn-expr _ ascii-cursor-is-digit Bool
+  (param c Char)
+  (and (>= c '0') (<= c '9'))
+)
+
+(fn-expr _ ascii-cursor-is-space Bool
+  (param c Char)
+  (or (== c (char " ")) (== c (char "\n")) (== c (char "\t")))
+)
+
+(fn-expr _ ascii-tokenizer-cursor-source _
+  (call (. "" join) (in (str "fn alpha_" each "(x" (% each 9) ", y" (% each 13) ") { value = x + y * " (+ each 1) "; }\n") (..< 0 220)))
+)

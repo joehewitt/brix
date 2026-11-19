@@ -1,0 +1,31 @@
+; benchmark.meta description: Grows the heap with about 400 MB of live 64 KB arrays, drops them, collects once so the goal falls, then idles in the event loop for one second so the automatic scavenger can return the surplus before exit.
+; benchmark.meta timing: not-recommended
+; benchmark.meta profiles: memory,gc-runtime
+(blank)
+(import /BxGC/BxGC.h)
+(import /time/duration)
+(blank)
+
+(main
+  (let checksum (call allocate-and-drop 6000 65536))
+  (call C:brixGCCollect)
+  (call (. 1s wait))
+  (print (str "bench-result allocation/memory-return-idle checksum=" checksum))
+)
+
+(fn-do + allocate-and-drop Size
+  (param chunk-count Size)
+  (param chunk-size Size)
+  (let held (list ([] Byte)))
+  (let checksum (as 0 Size))
+  (for (in index (..< 0 chunk-count))
+    (let bytes ([] Byte chunk-size))
+    (= ([] bytes 0) (as (% index 251) U8))
+    (= ([] bytes (- chunk-size 1)) (as (% (* index 3) 251) U8))
+    (+= checksum (+ (as ([] bytes 0) Size) (as ([] bytes (- chunk-size 1)) Size) index))
+    (+= held bytes)
+  )
+  (blank)
+  (+= checksum (* (. held length) chunk-size))
+  (return checksum)
+)

@@ -1,0 +1,32 @@
+; benchmark.meta description: Exercises canvas state changes around small no-raster draws.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: graphics,compile-timing
+(blank)
+(import /graphics/canvas)
+(import /graphics/color)
+(blank)
+
+(main
+  (let canvas (call CountingCanvas 320 240))
+  (blank)
+  (for (in pass (..< 0 3000))
+    (let f (as pass Float))
+    (call (. canvas push))
+    (= (. canvas fill-color) (if-expr (== (% pass 2) 0) red blue))
+    (= (. canvas stroke-color) (if-expr (== (% pass 3) 0) blue red))
+    (= (. canvas stroke-width) (+ 1 (% f 5)))
+    (call (. canvas translate) (% f 17) (% (* f 3) 19))
+    (call (. canvas begin))
+    (call (. canvas move) (% f 100) (% (* f 2) 100))
+    (call (. canvas line) (% (* f 3) 100) (% (* f 5) 100))
+    (call (. canvas end))
+    (call (. canvas pop))
+  )
+  (blank)
+  (let checksum
+    (scope (+ state-checksum (. canvas path-command-count) (. canvas command-count))
+      (lazy state-checksum (+ (. canvas checksum) (. canvas state-command-count)))
+    )
+  )
+  (print (str "bench-result graphics/canvas-state-churn-counting checksum=" checksum))
+)

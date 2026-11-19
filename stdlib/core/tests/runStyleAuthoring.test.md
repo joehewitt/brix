@@ -2,38 +2,40 @@
 
 ### Inline style attributes lower to static authored template declarations on the node subject, in declaration order, on the inline layer. Vocabulary comes from the object's own usings.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Label
-        ink = 9
-        bold = true
+(main
+  (<> BatchDemo (id: demo)
+    (<> Label
+      (= ink 9)
+      (= bold true)
+    )
+  )
+  (blank)
+  (print (call style-authored-snapshot (!! (. demo %first-child))))
+)
 
--- style-authored-snapshot(demo.%first-child!)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+  (prop + bold Bool (= false))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-+ bold Bool = false
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
+(type + Label (is Box)
+  (using TextStyle)
+)
 ```
 
 ```output
@@ -43,36 +45,37 @@ node TextStyle.bold layer=5 order=1 kind=static bits=1
 
 ### A style vocabulary installed by an enclosing markup class is visible to nested markup whose own class declares no usings.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Plain
-        ink = 11
+(main
+  (<> BatchDemo (id: demo)
+    (<> Plain
+      (= ink 11)
+    )
+  )
+  (blank)
+  (print (call style-authored-snapshot (!! (. demo %first-child))))
+)
 
--- style-authored-snapshot(demo.%first-child!)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using TextStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using TextStyle
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Plain is Box
+(type + Plain (is Box))
 ```
 
 ```output
@@ -81,41 +84,43 @@ node TextStyle.ink layer=5 order=0 kind=static bits=11
 
 ### Style rule declarations lower to the rule layer, which inline attributes outrank.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Label • accent
-        ink = 9
+(main
+  (<> BatchDemo (id: demo)
+    (<> Label (• accent)
+      (= ink 9)
+    )
+  )
+  (blank)
+  (print (call style-authored-snapshot (!! (. demo %first-child))))
+)
 
--- style-authored-snapshot(demo.%first-child!)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+  (prop + bold Bool (= false))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-+ bold Bool = false
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
-
-• accent
-    ink = 13
-    bold = true
+(type + Label (is Box)
+  (using TextStyle)
+  (rule accent
+    (= ink 13)
+    (= bold true)
+  )
+)
 ```
 
 ```output
@@ -126,54 +131,57 @@ node TextStyle.ink layer=5 order=2 kind=static bits=9
 
 ### Conditional declarations outrank unconditional style-rule declarations, so component state styles can still apply when a named rule sets the same property.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Widget widget • themed
+(main
+  (<> BatchDemo (id: demo)
+    (<> Widget (id: widget) (• themed))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. widget $ink))
+  (blank)
+  (= (. widget is-hot) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (. widget $ink))
+  (print (call style-authored-snapshot widget))
+)
 
-demo.markup-batch-queue.checkpoint()
--- widget.$ink
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-widget.is-hot = true
-demo.markup-batch-queue.checkpoint()
--- widget.$ink
--- style-authored-snapshot(widget)
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 0))
+  (blank)
+  (style-domains ink (domain paint))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 0
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ Widget is Box
-    using TintStyle
-
-+ is-hot = false
-
-• This
-    ink = 1
-
-    when #is-hot
-        ink = 2
-
-• themed
-    ink = 9
+(type + Widget (is Box)
+  (using TintStyle)
+  (prop + is-hot _ (= false))
+  (blank)
+  (rule This
+    (= ink 1)
+    (blank)
+    (when-style #is-hot
+      (= ink 2)
+    )
+  )
+  (blank)
+  (rule themed
+    (= ink 9)
+  )
+)
 ```
 
 ```output
@@ -186,49 +194,52 @@ node TintStyle.ink layer=2 order=0 kind=static bits=9
 
 ### Tracked declaration expressions lower to dynamic batch actions that re-author the sidecar when their dependencies change, settling at batch flush.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/task
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/task)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-.. base = 12
-. done = Semaphore()
+(main
+  (lazy base 12)
+  (let done (call Semaphore))
+  (blank)
+  (<> BatchDemo (id: demo)
+    (<> Label
+      (= ink (+ #base 1))
+    )
+  )
+  (blank)
+  (let label (!! (. demo %first-child)))
+  (print (call style-authored-snapshot label))
+  (blank)
+  (= base 30)
+  (blank)
+  (do-new
+    (print (call style-authored-snapshot label))
+    (call (. done post))
+  )
+  (blank)
+  (call (. done wait))
+)
 
-<BatchDemo demo
-    <Label
-        ink = #base + 1
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-. label = demo.%first-child!
--- style-authored-snapshot(label)
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+)
 
-base = 30
-
-do new
-    -- style-authored-snapshot(label)
-    done.post()
-
-done.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
+(type + Label (is Box)
+  (using TextStyle)
+)
 ```
 
 ```output
@@ -238,46 +249,49 @@ node TextStyle.ink layer=5 order=0 kind=dynamic bits=31
 
 ### A dynamic declaration on a node inside a branch arm stops evaluating once the arm is removed. When one change both closes the arm and makes the declaration fail, the flush removes the node first and drops the declaration's queued update instead of evaluating it.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-.. value I64? = 3
+(main
+  (lazy value (? I64) 3)
+  (blank)
+  (<> BatchDemo (id: demo)
+    (if (!= #value null)
+      (<> Label
+        (= ink (!! #value))
+      )
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-authored-snapshot (!! (. (!! (. demo %first-child)) %first-child))))
+  (= value null)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (str (== (. (!! (. demo %first-child)) %first-child) null)))
+  (= value 5)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-authored-snapshot (!! (. (!! (. demo %first-child)) %first-child))))
+)
 
-<BatchDemo demo
-    if #value != null
-        <Label
-            ink = #value!
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-authored-snapshot(demo.%first-child!.%first-child!)
-value = null
-demo.markup-batch-queue.checkpoint()
--- "${demo.%first-child!.%first-child == null}"
-value = 5
-demo.markup-batch-queue.checkpoint()
--- style-authored-snapshot(demo.%first-child!.%first-child!)
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
+(type + Label (is Box)
+  (using TextStyle)
+)
 ```
 
 ```output
@@ -288,66 +302,65 @@ node TextStyle.ink layer=5 order=0 kind=dynamic bits=5
 
 ### An unmounted node stops observing the sources of its dynamic declarations. Remounting re-evaluates them against current values and observes the sources again.
 
-```yumi
-/core/style
-/core/markup
-/core/tracker
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tracker)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. source = Source()
+(main
+  (let source (call Source))
+  (blank)
+  (<> BatchDemo (id: demo))
+  (blank)
+  (call markup-mount-root demo demo)
+  (let label (call make-label source))
+  (call markup-append demo label)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (str "mounted ink=" (. label $ink) " observed=" (call property-observed (as source Pointer) "value")))
+  (blank)
+  (call markup-remove demo label)
+  (call (. demo markup-batch-queue checkpoint))
+  (= (. source value) 2)
+  (print (str "unmounted observed=" (call property-observed (as source Pointer) "value")))
+  (blank)
+  (call markup-append demo label)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (str "remounted ink=" (. label $ink) " observed=" (call property-observed (as source Pointer) "value")))
+  (blank)
+  (= (. source value) 3)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (str "changed ink=" (. label $ink)))
+)
 
-<BatchDemo demo
+(fn-do + make-label Label
+  (param source Source)
+  (<> Label (id: label)
+    (= ink (. source #value))
+  )
+  (return label)
+)
 
-markup-mount-root(demo, demo)
-. label = make-label(source)
-markup-append(demo, label)
-demo.markup-batch-queue.checkpoint()
--- "mounted ink=${label.$ink} observed=${property-observed(source as Pointer, "value")}"
+(type + Source
+  (prop + value I64 (= 1))
+)
 
-markup-remove(demo, label)
-demo.markup-batch-queue.checkpoint()
-source.value = 2
--- "unmounted observed=${property-observed(source as Pointer, "value")}"
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-markup-append(demo, label)
-demo.markup-batch-queue.checkpoint()
--- "remounted ink=${label.$ink} observed=${property-observed(source as Pointer, "value")}"
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+)
 
-source.value = 3
-demo.markup-batch-queue.checkpoint()
--- "changed ink=${label.$ink}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make-label Label
-    - source Source
-
-<Label label
-    ink = source.#value
-= label
-
-━━━━━━━━━━━━━━━━━━━━
-+ Source
-
-+ value I64 = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
+(type + Label (is Box)
+  (using TextStyle)
+)
 ```
 
 ```output
@@ -359,106 +372,99 @@ changed ink=3
 
 ### A live function in a dynamic declaration keeps its state across an unmount and remount. The state is detached while the node is unmounted, and the remount's run of the declaration finds it and attaches it again.
 
-```yumi
-/core/style
-/core/markup
-/core/tracker
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tracker)
+(import /core/tests/support/markup-fixtures)
+(blank)
+(prop _ made _ (= 0))
+(prop _ last-count (? Count))
+(blank)
 
-_ made = 0
-_ last-count Count?
+(main
+  (let source (call Source))
+  (blank)
+  (<> BatchDemo (id: demo))
+  (blank)
+  (call markup-mount-root demo demo)
+  (let label (call make-label source))
+  (call markup-append demo label)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (str "mounted ink=" (. label $ink) " " (call state)))
+  (blank)
+  (call markup-remove demo label)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (str "unmounted " (call state)))
+  (blank)
+  (call markup-append demo label)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (str "remounted ink=" (. label $ink) " " (call state)))
+  (blank)
+  (= (. source value) 2)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (str "changed ink=" (. label $ink) " " (call state)))
+)
 
-. source = Source()
+(fn-do + state String
+  (let count (!! last-count))
+  (return (str "made=" made " runs=" (. count runs) " attached=" (!= (. count action) null)))
+)
 
-<BatchDemo demo
+(fn-do + make-label Label
+  (param source Source)
+  (<> Label (id: label)
+    (= ink (call tallied (. source #value)))
+  )
+  (return label)
+)
 
-markup-mount-root(demo, demo)
-. label = make-label(source)
-markup-append(demo, label)
-demo.markup-batch-queue.checkpoint()
--- "mounted ink=${label.$ink} ${state()}"
+(fn-do + tallied I64 @live
+  (param value I64)
+  (let found (call (of live-state Count)))
+  (let count (?? found (call Count)))
+  (if (not found)
+    (call keep-live-state count)
+    (+= made 1)
+    (= last-count count)
+  )
+  (+= (. count runs) 1)
+  (return value)
+)
 
-markup-remove(demo, label)
-demo.markup-batch-queue.checkpoint()
--- "unmounted ${state()}"
+(type + Count
+  (implements Tracker)
+  (prop + runs _ (= 0))
+  (prop + action (? LiveAction))
+  (fn-do + attach _
+    (param action LiveAction)
+    (= (. this action) action)
+  )
+  (fn-do + detach _
+    (param action LiveAction)
+    (= (. this action) null)
+  )
+)
 
-markup-append(demo, label)
-demo.markup-batch-queue.checkpoint()
--- "remounted ink=${label.$ink} ${state()}"
+(type + Source
+  (prop + value I64 (= 1))
+)
 
-source.value = 2
-demo.markup-batch-queue.checkpoint()
--- "changed ink=${label.$ink} ${state()}"
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do state String
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+)
 
-. count = last-count!
-= "made=$made runs=${count.runs} attached=${count.action != null}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make-label Label
-    - source Source
-
-<Label label
-    ink = tallied(source.#value)
-= label
-
-━━━━━━━━━━━━━━━━━━━━
-+ do tallied I64 @live
-    - value I64
-
-. found = live-state'Count()
-. count = found ?? Count()
-if !found
-    keep-live-state(count)
-    made += 1
-    last-count = count
-count.runs += 1
-= value
-
-━━━━━━━━━━━━━━━━━━━━
-+ Count
-    is Tracker
-
-+ runs = 0
-+ action LiveAction?
-
-────────────────────
-+ do attach
-    - action LiveAction
-
-this.action = action
-
-────────────────────
-+ do detach
-    - action LiveAction
-
-this.action = null
-
-━━━━━━━━━━━━━━━━━━━━
-+ Source
-
-+ value I64 = 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
+(type + Label (is Box)
+  (using TextStyle)
+)
 ```
 
 ```output
@@ -470,38 +476,40 @@ changed ink=2 made=1 runs=4 attached=true
 
 ### All authored declarations land on the node record in authoring order, regardless of which style declares the property.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Label
-        ink = 9
-        margin = 3
+(main
+  (<> BatchDemo (id: demo)
+    (<> Label
+      (= ink 9)
+      (= margin 3)
+    )
+  )
+  (blank)
+  (print (call style-authored-snapshot (!! (. demo %first-child))))
+)
 
--- style-authored-snapshot(demo.%first-child!)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + PlaceStyle (is Style)
+  (prop + ink I64 (= 7))
+  (prop + margin I64 (= 0))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ PlaceStyle is Style
-
-+ ink I64 = 7
-+ margin I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using PlaceStyle
+(type + Label (is Box)
+  (using PlaceStyle)
+)
 ```
 
 ```output
@@ -511,36 +519,38 @@ node PlaceStyle.margin layer=5 order=1 kind=static bits=3
 
 ### Properties marked inherited accept the explicit inherit keyword, recorded as an inherit declaration rather than a value.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Label
-        ink = inherit
+(main
+  (<> BatchDemo (id: demo)
+    (<> Label
+      (= ink inherit)
+    )
+  )
+  (blank)
+  (print (call style-authored-snapshot (!! (. demo %first-child))))
+)
 
--- style-authored-snapshot(demo.%first-child!)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + TextStyle (is Style)
+  (prop + ink I64 @inherited (= 7))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ @inherited ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
+(type + Label (is Box)
+  (using TextStyle)
+)
 ```
 
 ```output
@@ -549,193 +559,199 @@ node TextStyle.ink layer=5 order=0 kind=inherit bits=0
 
 ### A property name that no visible style declares is a compile error.
 
-```yumi crash
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Label
-        glow = 1
+(main
+  (<> BatchDemo (id: demo)
+    (<> Label
+      (= glow 1)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
+(type + Label (is Box)
+  (using TextStyle)
+)
 ```
 
 ```output
 Exception: Property "glow" not found; an assignment in an element's body sets the element's property. To assign a local, put it in a do row: "do glow = …"
-<no file:8>
-            glow = 1
-            ^^^^
+<no file:10>
+          (= glow 1)
+             ^^^^
 ```
 
 ### Two visible styles declaring the same property name with different value types is a compile error at the authoring site.
 
-```yumi crash
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Label
-        ink = 9
+(main
+  (<> BatchDemo (id: demo)
+    (<> Label
+      (= ink 9)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using OtherStyle
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using OtherStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + OtherStyle (is Style)
+  (prop + ink Bool (= false))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ OtherStyle is Style
-
-+ ink Bool = false
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
+(type + Label (is Box)
+  (using TextStyle)
+)
 ```
 
 ```output
 Exception: Style property "ink" has conflicting types in visible styles TextStyle and OtherStyle
-<no file:8>
-            ink = 9
-            ^^^
+<no file:10>
+          (= ink 9)
+             ^^^
 ```
 
 ### Per-instance object-valued declarations keep stable append-only handles while their owner lives. Mounted reads survive unmount/remount, and once the owners leave scope a forced collection clears their weak registry entries instead of retaining them through a refcount/free-list protocol.
 
-```yumi
-/core/style
-/core/markup
-/core/task
-/core/tests/support/markup-fixtures
-/BxGC/BxGC.h
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/task)
+(import /core/tests/support/markup-fixtures)
+(import /BxGC/BxGC.h)
+(blank)
 
-. done = Semaphore()
+(main
+  (let done (call Semaphore))
+  (blank)
+  (<> BatchDemo (id: demo))
+  (blank)
+  (call markup-mount-root demo demo)
+  (call (. demo markup-batch-queue checkpoint))
+  (let base (call style-object-live-count))
+  (do
+    (inline (call churn-panels demo done base))
+  )
+  (blank)
+  (call C:brixCollect)
+  (do
+    (inline (call C:brixGCDrainCleanups))
+  )
+  (let reclaimed (- (call style-object-live-count) base))
+  (print (str "reclaimed=" reclaimed))
+)
 
-<BatchDemo demo
+(fn-do + churn-panels _
+  (param demo BatchDemo)
+  (param done Semaphore)
+  (param base Size)
+  (let a (call make-panel 7))
+  (let b (call make-panel 8))
+  (let c (call make-panel 9))
+  (blank)
+  (call markup-append demo a)
+  (do-new
+    (call (. demo markup-batch-queue checkpoint))
+    (let mounted (- (call style-object-live-count) base))
+    (print (str "mounted=" mounted))
+    (print (str "first=" (call panel-tag a)))
+    (call markup-remove demo a)
+    (call (. demo markup-batch-queue checkpoint))
+    (call markup-append demo a)
+    (call (. demo markup-batch-queue checkpoint))
+    (print (str "remounted=" (call panel-tag a)))
+    (call markup-remove demo a)
+    (call (. demo markup-batch-queue checkpoint))
+    (call markup-append demo b)
+    (call (. done post))
+  )
+  (call (. done wait))
+  (blank)
+  (do-new
+    (call (. demo markup-batch-queue checkpoint))
+    (call markup-remove demo b)
+    (call (. demo markup-batch-queue checkpoint))
+    (call markup-append demo c)
+    (call (. done post))
+  )
+  (call (. done wait))
+  (blank)
+  (do-new
+    (call (. demo markup-batch-queue checkpoint))
+    (call markup-remove demo c)
+    (call (. demo markup-batch-queue checkpoint))
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 
-markup-mount-root(demo, demo)
-demo.markup-batch-queue.checkpoint()
-. base = style-object-live-count()
-do churn-panels(demo, done, base)
+(fn-do + panel-tag I64
+  (param panel Panel)
+  (let decor (. panel $decor))
+  (return (. (!! decor) tag))
+)
 
-C:brixCollect()
-do C:brixGCDrainCleanups()
-. reclaimed = style-object-live-count() - base
--- "reclaimed=$reclaimed"
+(fn-do + make-panel Panel
+  (param tag I64)
+  (<> Panel (id: panel)
+    (= decor (call Decor tag))
+  )
+  (return panel)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do churn-panels
-    - demo BatchDemo
-    - done Semaphore
-    - base Size
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-. a = make-panel(7)
-. b = make-panel(8)
-. c = make-panel(9)
+(type + Decor
+  (prop + tag I64)
+  (fn-do + This _
+    (param tag _)
+  )
+)
 
-markup-append(demo, a)
-do new
-    demo.markup-batch-queue.checkpoint()
-    . mounted = style-object-live-count() - base
-    -- "mounted=$mounted"
-    -- "first=${panel-tag(a)}"
-    markup-remove(demo, a)
-    demo.markup-batch-queue.checkpoint()
-    markup-append(demo, a)
-    demo.markup-batch-queue.checkpoint()
-    -- "remounted=${panel-tag(a)}"
-    markup-remove(demo, a)
-    demo.markup-batch-queue.checkpoint()
-    markup-append(demo, b)
-    done.post()
-done.wait()
+(type + PanelStyle (is Style)
+  (prop + decor (? Decor) (= null))
+)
 
-do new
-    demo.markup-batch-queue.checkpoint()
-    markup-remove(demo, b)
-    demo.markup-batch-queue.checkpoint()
-    markup-append(demo, c)
-    done.post()
-done.wait()
-
-do new
-    demo.markup-batch-queue.checkpoint()
-    markup-remove(demo, c)
-    demo.markup-batch-queue.checkpoint()
-    done.post()
-done.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ do panel-tag I64
-    - panel Panel
-
-. decor = panel.$decor
-= decor!.tag
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make-panel Panel
-    - tag I64
-
-<Panel panel
-    decor = Decor(tag)
-= panel
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Decor
-
-+ tag I64
-
-────────────────────
-+ This
-    - tag
-
-━━━━━━━━━━━━━━━━━━━━
-+ PanelStyle is Style
-
-+ decor Decor? = null
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-    using PanelStyle
+(type + Panel (is Box)
+  (using PanelStyle)
+)
 ```
 
 ```output
@@ -747,236 +763,206 @@ reclaimed=0
 
 ### Regression: program-wide style indexes past 31 still author and settle correctly. The filler styles push TextStyle's interned index beyond the low 32 bits of the per-record masks, so a 32-bit wrap in any owned/active/candidate mask shift would leave the label stuck on its initial segment instead of the authored value.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
-
-<BatchDemo demo
-    <Filler
-    <Label
-        ink = 11
-
-demo.markup-batch-queue.checkpoint()
-
--- style-computed-snapshot(demo.%last-child!)
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ Filler is Box
-    using Pad1Style
-    using Pad2Style
-    using Pad3Style
-    using Pad4Style
-    using Pad5Style
-    using Pad6Style
-    using Pad7Style
-    using Pad8Style
-    using Pad9Style
-    using Pad10Style
-    using Pad11Style
-    using Pad12Style
-    using Pad13Style
-    using Pad14Style
-    using Pad15Style
-    using Pad16Style
-    using Pad17Style
-    using Pad18Style
-    using Pad19Style
-    using Pad20Style
-    using Pad21Style
-    using Pad22Style
-    using Pad23Style
-    using Pad24Style
-    using Pad25Style
-    using Pad26Style
-    using Pad27Style
-    using Pad28Style
-    using Pad29Style
-    using Pad30Style
-    using Pad31Style
-    using Pad32Style
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad1Style is Style
-
-+ pad1 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad2Style is Style
-
-+ pad2 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad3Style is Style
-
-+ pad3 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad4Style is Style
-
-+ pad4 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad5Style is Style
-
-+ pad5 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad6Style is Style
-
-+ pad6 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad7Style is Style
-
-+ pad7 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad8Style is Style
-
-+ pad8 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad9Style is Style
-
-+ pad9 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad10Style is Style
-
-+ pad10 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad11Style is Style
-
-+ pad11 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad12Style is Style
-
-+ pad12 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad13Style is Style
-
-+ pad13 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad14Style is Style
-
-+ pad14 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad15Style is Style
-
-+ pad15 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad16Style is Style
-
-+ pad16 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad17Style is Style
-
-+ pad17 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad18Style is Style
-
-+ pad18 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad19Style is Style
-
-+ pad19 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad20Style is Style
-
-+ pad20 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad21Style is Style
-
-+ pad21 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad22Style is Style
-
-+ pad22 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad23Style is Style
-
-+ pad23 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad24Style is Style
-
-+ pad24 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad25Style is Style
-
-+ pad25 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad26Style is Style
-
-+ pad26 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad27Style is Style
-
-+ pad27 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad28Style is Style
-
-+ pad28 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad29Style is Style
-
-+ pad29 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad30Style is Style
-
-+ pad30 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad31Style is Style
-
-+ pad31 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ Pad32Style is Style
-
-+ pad32 I64 = 0
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ @inherited ink I64 = 7
-
-. ink -> paint
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
+
+(main
+  (<> BatchDemo (id: demo)
+    (<> Filler)
+    (<> Label
+      (= ink 11)
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (print (call style-computed-snapshot (!! (. demo %last-child))))
+)
+
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
+
+(type + Filler (is Box)
+  (using Pad1Style)
+  (using Pad2Style)
+  (using Pad3Style)
+  (using Pad4Style)
+  (using Pad5Style)
+  (using Pad6Style)
+  (using Pad7Style)
+  (using Pad8Style)
+  (using Pad9Style)
+  (using Pad10Style)
+  (using Pad11Style)
+  (using Pad12Style)
+  (using Pad13Style)
+  (using Pad14Style)
+  (using Pad15Style)
+  (using Pad16Style)
+  (using Pad17Style)
+  (using Pad18Style)
+  (using Pad19Style)
+  (using Pad20Style)
+  (using Pad21Style)
+  (using Pad22Style)
+  (using Pad23Style)
+  (using Pad24Style)
+  (using Pad25Style)
+  (using Pad26Style)
+  (using Pad27Style)
+  (using Pad28Style)
+  (using Pad29Style)
+  (using Pad30Style)
+  (using Pad31Style)
+  (using Pad32Style)
+)
+
+(type + Pad1Style (is Style)
+  (prop + pad1 I64 (= 0))
+)
+
+(type + Pad2Style (is Style)
+  (prop + pad2 I64 (= 0))
+)
+
+(type + Pad3Style (is Style)
+  (prop + pad3 I64 (= 0))
+)
+
+(type + Pad4Style (is Style)
+  (prop + pad4 I64 (= 0))
+)
+
+(type + Pad5Style (is Style)
+  (prop + pad5 I64 (= 0))
+)
+
+(type + Pad6Style (is Style)
+  (prop + pad6 I64 (= 0))
+)
+
+(type + Pad7Style (is Style)
+  (prop + pad7 I64 (= 0))
+)
+
+(type + Pad8Style (is Style)
+  (prop + pad8 I64 (= 0))
+)
+
+(type + Pad9Style (is Style)
+  (prop + pad9 I64 (= 0))
+)
+
+(type + Pad10Style (is Style)
+  (prop + pad10 I64 (= 0))
+)
+
+(type + Pad11Style (is Style)
+  (prop + pad11 I64 (= 0))
+)
+
+(type + Pad12Style (is Style)
+  (prop + pad12 I64 (= 0))
+)
+
+(type + Pad13Style (is Style)
+  (prop + pad13 I64 (= 0))
+)
+
+(type + Pad14Style (is Style)
+  (prop + pad14 I64 (= 0))
+)
+
+(type + Pad15Style (is Style)
+  (prop + pad15 I64 (= 0))
+)
+
+(type + Pad16Style (is Style)
+  (prop + pad16 I64 (= 0))
+)
+
+(type + Pad17Style (is Style)
+  (prop + pad17 I64 (= 0))
+)
+
+(type + Pad18Style (is Style)
+  (prop + pad18 I64 (= 0))
+)
+
+(type + Pad19Style (is Style)
+  (prop + pad19 I64 (= 0))
+)
+
+(type + Pad20Style (is Style)
+  (prop + pad20 I64 (= 0))
+)
+
+(type + Pad21Style (is Style)
+  (prop + pad21 I64 (= 0))
+)
+
+(type + Pad22Style (is Style)
+  (prop + pad22 I64 (= 0))
+)
+
+(type + Pad23Style (is Style)
+  (prop + pad23 I64 (= 0))
+)
+
+(type + Pad24Style (is Style)
+  (prop + pad24 I64 (= 0))
+)
+
+(type + Pad25Style (is Style)
+  (prop + pad25 I64 (= 0))
+)
+
+(type + Pad26Style (is Style)
+  (prop + pad26 I64 (= 0))
+)
+
+(type + Pad27Style (is Style)
+  (prop + pad27 I64 (= 0))
+)
+
+(type + Pad28Style (is Style)
+  (prop + pad28 I64 (= 0))
+)
+
+(type + Pad29Style (is Style)
+  (prop + pad29 I64 (= 0))
+)
+
+(type + Pad30Style (is Style)
+  (prop + pad30 I64 (= 0))
+)
+
+(type + Pad31Style (is Style)
+  (prop + pad31 I64 (= 0))
+)
+
+(type + Pad32Style (is Style)
+  (prop + pad32 I64 (= 0))
+)
+
+(type + TextStyle (is Style)
+  (prop + ink I64 @inherited (= 7))
+  (blank)
+  (style-domains ink (domain paint))
+)
+
+(type + Label (is Box)
+  (using TextStyle)
+)
 ```
 
 ```output
@@ -985,109 +971,113 @@ node TextStyle seg=owned gen=1 mask=1 ink=11
 
 ### A subclass cannot use a style that redeclares a style property name its base class already sees, because inherited members resolve bare style names against their declaring class.
 
-```yumi crash
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix crash
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <FancyLabel
-        ink = 9
+(main
+  (<> BatchDemo (id: demo)
+    (<> FancyLabel
+      (= ink 9)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + OtherStyle (is Style)
+  (prop + ink I64 (= 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
+(type + Label (is Box)
+  (using TextStyle)
+)
 
-+ ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ OtherStyle is Style
-
-+ ink I64 = 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ FancyLabel is Label
-    using OtherStyle
+(type + FancyLabel (is Label)
+  (using OtherStyle)
+)
 ```
 
 ```output
 Exception: Style property "ink" is declared by both TextStyle and OtherStyle
 <no file:36>
-        using OtherStyle
-        ^^^^^^^^^^^^^^^^
+      (using OtherStyle)
+      ^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-/core/style
-/core/markup
-/core/task
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/task)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. done = Semaphore()
+(main
+  (let done (call Semaphore))
+  (blank)
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (str (. panel mover $ink) " " (. panel mover $tone)))
+  (blank)
+  (<- (. panel positions) 4)
+  (do-new
+    (call (. demo markup-batch-queue checkpoint))
+    (print (str (. panel mover $ink) " " (. panel mover $tone)))
+    (call (. done post))
+  )
+  (call (. done wait))
+  (blank)
+  (<- (. panel positions) 8)
+  (do-new
+    (call (. demo markup-batch-queue checkpoint))
+    (print (str (. panel mover $ink) " " (. panel mover $tone)))
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 
-<BatchDemo demo
-    <Panel panel
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-demo.markup-batch-queue.checkpoint()
--- "${panel.mover.$ink} ${panel.mover.$tone}"
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 1))
+  (prop + tone I64 (= 2))
+)
 
-panel.positions <- 4
-do new
-    demo.markup-batch-queue.checkpoint()
-    -- "${panel.mover.$ink} ${panel.mover.$tone}"
-    done.post()
-done.wait()
+(type + Mover (is Box)
+  (using TintStyle)
+)
 
-panel.positions <- 8
-do new
-    demo.markup-batch-queue.checkpoint()
-    -- "${panel.mover.$ink} ${panel.mover.$tone}"
-    done.post()
-done.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 1
-+ tone I64 = 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mover is Box
-    using TintStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ positions = AsyncChannel'I64()
-
-────────────────────
-
-<This
-    <Mover mover
-        ink = ##positions
+(type + Panel (is Box)
+  (prop + positions _ (= (call (of AsyncChannel I64))))
+  (content
+    (<> This
+      (<> Mover (id: mover)
+        (= ink (## positions))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1096,65 +1086,68 @@ done.wait()
 8 2
 ```
 
-```yumi
-/core/style
-/core/markup
-/core/task
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/task)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-. done = Semaphore()
+(main
+  (let done (call Semaphore))
+  (blank)
+  (<> BatchDemo (id: demo)
+    (<> Panel (id: panel))
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (str (. panel mover $ink) " " (. panel mover $tone)))
+  (blank)
+  (<- (. panel positions) 4)
+  (do-new
+    (call (. demo markup-batch-queue checkpoint))
+    (print (str (. panel mover $ink) " " (. panel mover $tone)))
+    (call (. done post))
+  )
+  (call (. done wait))
+  (blank)
+  (<- (. panel positions) 8)
+  (do-new
+    (call (. demo markup-batch-queue checkpoint))
+    (print (str (. panel mover $ink) " " (. panel mover $tone)))
+    (call (. done post))
+  )
+  (call (. done wait))
+)
 
-<BatchDemo demo
-    <Panel panel
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-demo.markup-batch-queue.checkpoint()
--- "${panel.mover.$ink} ${panel.mover.$tone}"
+(type + TintStyle (is Style)
+  (prop + ink I64 (= 1))
+  (prop + tone I64 (= 2))
+)
 
-panel.positions <- 4
-do new
-    demo.markup-batch-queue.checkpoint()
-    -- "${panel.mover.$ink} ${panel.mover.$tone}"
-    done.post()
-done.wait()
+(type + Mover (is Box)
+  (using TintStyle)
+)
 
-panel.positions <- 8
-do new
-    demo.markup-batch-queue.checkpoint()
-    -- "${panel.mover.$ink} ${panel.mover.$tone}"
-    done.post()
-done.wait()
-
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-━━━━━━━━━━━━━━━━━━━━
-+ TintStyle is Style
-
-+ ink I64 = 1
-+ tone I64 = 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ Mover is Box
-    using TintStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-+ positions = AsyncChannel'I64()
-
-────────────────────
-
-<This
-    <Mover mover
-        ink = ##positions
-        tone = (##positions) * 10 + 1
+(type + Panel (is Box)
+  (prop + positions _ (= (call (of AsyncChannel I64))))
+  (content
+    (<> This
+      (<> Mover (id: mover)
+        (= ink (## positions))
+        (= tone (+ (* (## positions) 10) 1))
+      )
+    )
+  )
+)
 ```
 
 ```output
@@ -1165,48 +1158,49 @@ done.wait()
 
 ### A component's own markup sees the styles of the markup that makes it, so an element there declares a style neither its class nor the component uses.
 
-```yumi
-/core/style
-/core/style-debug
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/style-debug)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Holder
-        <Panel panel
+(main
+  (<> BatchDemo (id: demo)
+    (<> Holder
+      (<> Panel (id: panel))
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call style-computed-snapshot (!! (. panel %first-child))))
+)
 
-demo.markup-batch-queue.checkpoint()
--- style-computed-snapshot(panel.%first-child!)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(type + Holder (is Box)
+  (using TextStyle)
+)
 
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
+(type + Panel (is Box)
+  (content
+    (<> Label
+      (= ink 3)
+    )
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-━━━━━━━━━━━━━━━━━━━━
-+ Holder is Box
-    using TextStyle
-
-━━━━━━━━━━━━━━━━━━━━
-+ Panel is Box
-
-────────────────────
-
-<Label
-    ink = 3
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
+(type + Label (is Box))
 ```
 
 ```output
@@ -1215,61 +1209,55 @@ node TextStyle seg=owned gen=1 mask=1 ink=3
 
 ### A style a section of a class declares for the object on its own event is set as the event is delivered, in a module that also declares the style.
 
-```yumi
-/core/style
-/core/markup
-/core/tests/support/markup-fixtures
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
 
-<BatchDemo demo
-    <Label
+(main
+  (<> BatchDemo (id: demo)
+    (<> Label)
+  )
+  (blank)
+  (let label (as (!! (. demo %first-child)) Label))
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call (. demo read-ink) label))
+  (call (. label emit) 5)
+  (call (. demo markup-batch-queue checkpoint))
+  (print (call (. demo read-ink) label))
+)
 
-. label = demo.%first-child! as Label
-demo.markup-batch-queue.checkpoint()
--- demo.read-ink(label)
-label.emit(5)
-demo.markup-batch-queue.checkpoint()
--- demo.read-ink(label)
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (using TextStyle)
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+  (fn-do + read-ink I64
+    (param label Box)
+    (return (. label $ink))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ BatchDemo is Box
-    is MarkupRootElement
-    using TextStyle
+(type + Label (is Box)
+  (using TextStyle)
+  (event + changed I64)
+  (subscribe-for (on value changed)
+    (= ink (* value 2))
+  )
+  (fn-do + emit _
+    (param value I64)
+    (<- changed value)
+  )
+)
 
-+ markup-batch-queue := MarkupBatchQueue(this)
-
-────────────────────
-+ do markup-batch-did-flush
-    - flush MarkupBatchFlush
-
-────────────────────
-+ do read-ink I64
-    - label Box
-
-= label.$ink
-
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Box
-    using TextStyle
-
-+ event changed I64
-
-────────────────────
-for value on changed
-
-ink = value * 2
-
-────────────────────
-+ do emit
-    - value I64
-
-changed <- value
-
-━━━━━━━━━━━━━━━━━━━━
-+ TextStyle is Style
-
-+ ink I64 = 7
-
-. ink -> paint
+(type + TextStyle (is Style)
+  (prop + ink I64 (= 7))
+  (blank)
+  (style-domains ink (domain paint))
+)
 ```
 
 ```output

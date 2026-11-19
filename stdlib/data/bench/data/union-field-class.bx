@@ -1,0 +1,49 @@
+; benchmark.meta description: Reads a plain class field, the reference cost for union shared-field access.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing,allocator
+(blank)
+
+(main
+  (let nodes (call union-field-class-nodes))
+  (let checksum U64)
+  (for (in iteration (..< 0 400000))
+    (for (in node nodes)
+      (+= checksum (. node id))
+    )
+  )
+  (blank)
+  (print (str "bench-result data/union-field-class checksum=" checksum))
+)
+
+(type _ UnionFieldClassNode
+  (prop + id U64)
+  (prop + kind Int)
+  (prop + text String)
+  (prop + items (list UnionFieldClassNode))
+  (fn-do + This _
+    (param id _)
+    (param kind _)
+    (param text _)
+    (param items _)
+  )
+)
+
+(fn-do _ union-field-class-nodes (list UnionFieldClassNode)
+  (let nodes (list UnionFieldClassNode))
+  (for (in index (..< 0 1000))
+    (let id (as index U64))
+    (if (== (% index 4) 0)
+      (+= nodes (call UnionFieldClassNode id 0 "atom" (call (of List UnionFieldClassNode))))
+      (else-if (== (% index 4) 1)
+        (+= nodes (call UnionFieldClassNode id 1 "string" (call (of List UnionFieldClassNode))))
+      )
+      (else-if (== (% index 4) 2)
+        (+= nodes (call UnionFieldClassNode id 2 "comment" (call (of List UnionFieldClassNode))))
+      )
+      (else
+        (+= nodes (call UnionFieldClassNode id 3 "" (call (of List UnionFieldClassNode))))
+      )
+    )
+  )
+  (return nodes)
+)

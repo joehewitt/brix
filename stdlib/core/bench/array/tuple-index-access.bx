@@ -1,0 +1,24 @@
+; benchmark.meta description: Repeatedly reads and replaces immutable pairs in a canonical Array.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: compile-timing
+(blank)
+(import /core/array)
+(blank)
+
+(main
+  (let values (call (of Array Pair) 1024 (:with (call Pair each (+ each 1)))))
+  (let checksum Size 0)
+  (for (in index (..< 0 50000000))
+    (let slot (% index (. values length)))
+    (let value ([] values slot))
+    (= ([] values slot) (call Pair (. value y) (+ (. value x) 1)))
+    (+= checksum (as (+ (. value x) (. value y)) Size))
+  )
+  (blank)
+  (print (str "bench-result array/tuple-index-access checksum=" checksum))
+)
+
+(type + Pair (is Tuple)
+  (prop + x Int)
+  (prop + y Int)
+)

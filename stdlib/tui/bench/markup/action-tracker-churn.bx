@@ -1,0 +1,112 @@
+; benchmark.meta description: Flips many tracked dynamic declarations between alternate dependency sets.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: gc-runtime,markup-runtime,compile-timing
+(blank)
+(import /BxCore/BxCore.h)
+(import /core/markup)
+(import /core/style)
+(import /tui/box)
+(import /tui/layout)
+(import /tui/primitives)
+(import /tui/text)
+(blank)
+
+(main
+  (let row-count Size 180)
+  (let step-count Size 120)
+  (blank)
+  (<> ActionTrackerRoot (id: root))
+  (blank)
+  (= (. root row-indexes) (call make-indexes row-count))
+  (call markup-mount-root root root)
+  (call (. root markup-batch-queue checkpoint))
+  (let subscriber-payloads-before (call C:brixGCObjectSidePayloadCount 0))
+  (blank)
+  (let checksum Size 0)
+  (for (in step (..< 0 step-count))
+    (= (. root mode) (% step 3))
+    (= (. root primary) (str "primary-" step))
+    (= (. root secondary) (str "secondary-" (% step 17)))
+    (= (. root tertiary) (str "tertiary-" (% step 31)))
+    (call (. root markup-batch-queue checkpoint))
+    (probe-count markup.bench.steps)
+    (+= checksum (+ (. root mode) (. root primary length) (. root sample-text length) step))
+  )
+  (blank)
+  (call C:brixBenchCollect)
+  (let subscriber-payloads-after (call C:brixGCObjectSidePayloadCount 0))
+  ; No-GC and never-collect variants intentionally retain side payloads, so only bound normal GC.
+  (if (== (call C:brixGCRuntimeMode) 2)
+    ; Each remounted keyed row has a refreshable row-item lane plus its dynamic declaration lane.
+    (let subscriber-payload-limit (+ subscriber-payloads-before (* row-count step-count 2)))
+    (throw (call Panic "Property subscriber lane growth exceeded the per-row churn bound") (if (> subscriber-payloads-after subscriber-payload-limit)))
+  )
+  (blank)
+  (print (str "bench-result markup/action-tracker-churn checksum=" checksum))
+)
+
+(type + ActionTrackerRoot (is Box)
+  (implements MarkupRootElement)
+  (prop + row-indexes (list SyntheticIndex))
+  (prop + mode Size (= 0))
+  (prop + primary _ (= "primary-0"))
+  (prop + secondary _ (= "secondary-0"))
+  (prop + tertiary _ (= "tertiary-0"))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (prop + sample-text _ (=> (call action-tracker-text mode primary secondary tertiary)))
+  (content
+    (<> This
+      (if (== #mode 0)
+        (for (in row #row-indexes (keyed-by (. row value)))
+          (<> Label
+            (= text (str (. row value) ":#primary"))
+          )
+        )
+        (else-if (== #mode 1)
+          (for (in row #row-indexes (keyed-by (. row value)))
+            (<> Label
+              (= text (str (. row value) ":#secondary"))
+            )
+          )
+        )
+        (else
+          (for (in row #row-indexes (keyed-by (. row value)))
+            (<> Label
+              (= text (str (. row value) ":#primary:#tertiary"))
+            )
+          )
+        )
+      )
+    )
+  )
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
+
+(type + SyntheticIndex (is Tuple)
+  (prop + value Size)
+)
+
+(fn-expr _ action-tracker-text _
+  (param mode Size)
+  (param primary String)
+  (param secondary String)
+  (param tertiary String)
+  (match mode
+    (case 0
+      primary
+    )
+    (case 1
+      secondary
+    )
+    (default
+      (str primary ":" tertiary)
+    )
+  )
+)
+
+(fn-expr _ make-indexes (list SyntheticIndex)
+  (param count Size)
+  (in (call SyntheticIndex each) (..< 0 count))
+)

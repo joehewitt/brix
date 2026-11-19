@@ -1,8 +1,10 @@
 # Infer
 
-```yumi
-. a = 1
--- a
+```brix
+(main
+  (let a 1)
+  (print a)
+)
 ```
 
 ```output
@@ -11,18 +13,21 @@
 
 ### A do block of void calls does not suppress the final expression
 
-```yumi
--- foo()
+```brix
+(main
+  (print (call foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do touch
+(fn-do + touch _)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo Int
-
-do
-    touch()
-42
+(fn-expr + foo Int
+  (before
+    (do
+      (call touch)
+    )
+  )
+  42
+)
 ```
 
 ```output
@@ -31,15 +36,16 @@ do
 
 ### Infer return type from argument
 
-```yumi
--- foo(1)
--- foo(1.5)
+```brix
+(main
+  (print (call foo 1))
+  (print (call foo 1.5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - a
-
-a
+(fn-expr + foo _
+  (param a _)
+  a
+)
 ```
 
 ```output
@@ -49,25 +55,24 @@ a
 
 ### Infer return type from type arguments
 
-```yumi
-. thing = bar()
--- foo(thing)
+```brix
+(main
+  (let thing (call bar))
+  (print (call foo thing))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo'T
-    - t Thing'T
+(fn-expr + (of foo T) _
+  (param t (of Thing T))
+  (. t a)
+)
 
-t.a
+(fn-expr + bar _
+  (call (of Thing Float))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ bar
-
-Thing'Float()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T
-
-+ a T = 0
+(type + (of Thing T)
+  (prop + a T (= 0))
+)
 ```
 
 ```output
@@ -76,18 +81,21 @@ Thing'Float()
 
 ### Infer return type with multiple returns of same type
 
-```yumi
--- foo(2)
--- foo(0)
+```brix
+(main
+  (print (call foo 2))
+  (print (call foo 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - x
-
-|? x > 1
+(fn-expr + foo _
+  (param x _)
+  (case? (> x 1)
     1
-??
+  )
+  (default
     2
+  )
+)
 ```
 
 ```output
@@ -95,18 +103,20 @@ Thing'Float()
 2
 ```
 
-```yumi
--- foo(2)
--- foo(0)
+```brix
+(main
+  (print (call foo 2))
+  (print (call foo 0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - x
-
-while x > 1
-    = 1
-
-= 2
+(fn-do + foo _
+  (param x _)
+  (while (> x 1)
+    (return 1)
+  )
+  (blank)
+  (return 2)
+)
 ```
 
 ```output
@@ -116,16 +126,18 @@ while x > 1
 
 ### Infer optional types from functions that do not always return
 
-```yumi
--- foo(1)
--- foo(2)
+```brix
+(main
+  (print (call foo 1))
+  (print (call foo 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - x
-
-if x > 1
-    = x
+(fn-do + foo _
+  (param x _)
+  (if (> x 1)
+    (return x)
+  )
+)
 ```
 
 ```output
@@ -135,19 +147,20 @@ unknown
 
 ### A conditional return of an optional makes the inferred return type optional
 
-```yumi
--- sooner(null, 0)
--- sooner(5, 2)
--- sooner(1, 2)
+```brix
+(main
+  (print (call sooner null 0))
+  (print (call sooner 5 2))
+  (print (call sooner 1 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do sooner
-    - first Int?
-    - position Int
-
-=? first if position == 0
-=? first if first != null && first <= position
-= position
+(fn-do + sooner _
+  (param first (? Int))
+  (param position Int)
+  (return-if first (if (== position 0)))
+  (return-if first (if (and (!= first null) (<= first position))))
+  (return position)
+)
 ```
 
 ```output
@@ -158,18 +171,21 @@ unknown
 
 ### Infer union types from return values of different types
 
-```yumi
--- foo(2)
--- foo(1)
+```brix
+(main
+  (print (call foo 2))
+  (print (call foo 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - x
-
-if x > 1
-    = 1
-else
-    = 2.5
+(fn-do + foo _
+  (param x _)
+  (if (> x 1)
+    (return 1)
+    (else
+      (return 2.5)
+    )
+  )
+)
 ```
 
 ```output
@@ -179,23 +195,22 @@ else
 
 ### Infer nested parameter via converter
 
-```yumi
-. thing = Thing()
-foo(thing)
+```brix
+(main
+  (let thing (call Thing))
+  (call foo thing)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (fn-to-do + (of Iterable String)
+    (yield "hi")
+  )
+)
 
-────────────────────
-+ do to Iterable'String
-
-<= "hi"
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo'T
-    - stream Iterable'T
-
--- <- stream
+(fn-do + (of foo T) _
+  (param stream (of Iterable T))
+  (print (<- stream))
+)
 ```
 
 ```output
@@ -204,25 +219,23 @@ hi
 
 ### Infer from fromverter
 
-```yumi
--- foo(Foo'Int'Float())
+```brix
+(main
+  (print (call foo (call (of Foo Int Float))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar'F'G
+(type + (of Bar F G)
+  (fn-from-expr + (: foo (of Foo Int Float))
+    (call (of This Int Float))
+  )
+)
 
-────────────────────
-+ from foo Foo'Int'Float
+(type + (of Foo T1 T2))
 
-This'Int'Float()
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T1'T2
-
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - x Bar''T''V
-
-x
+(fn-expr + foo _
+  (param x (of Bar ''T ''V))
+  x
+)
 ```
 
 ```output
@@ -231,47 +244,48 @@ x
 
 ### Try and fail to infer return type from incompatible types
 
-```yumi crash
--- foo(2)
--- foo(1)
+```brix crash
+(main
+  (print (call foo 2))
+  (print (call foo 1))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo
+(type + Foo)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo
-    - x
-
-if x > 1
-    = Foo()
-else
-    = 2.5
+(fn-do + foo _
+  (param x _)
+  (if (> x 1)
+    (return (call Foo))
+    (else
+      (return 2.5)
+    )
+  )
+)
 ```
 
 ```output
 Exception: Function "foo" returns Foo here and F64 elsewhere, which have no common type; return one type, or declare the return type
-<no file:13>
-        = Foo()
-        ^^^^^^^
+<no file:12>
+        (return (call Foo))
+        ^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-foo(Thing(), 42.5)
+```brix
+(main
+  (call foo (call Thing) 42.5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
+(type + Thing
+  (fn-to-expr + Float
+    99
+  )
+)
 
-────────────────────
-+ to Float
-
-99
-
-━━━━━━━━━━━━━━━━━━━━
-+ do foo'T
-    - a T
-    - b T
-
--- T, a, b
+(fn-do + (of foo T) _
+  (param a T)
+  (param b T)
+  (print (tuple T a b))
+)
 ```
 
 ```output
@@ -280,58 +294,60 @@ foo(Thing(), 42.5)
 
 ### Values of a type parameter that are a text and a number have no type in common.
 
-```yumi crash
-foo("10", 42.5)
+```brix crash
+(main
+  (call foo "10" 42.5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo'T
-    - a T
-    - b T
-
--- T, a, b
+(fn-do + (of foo T) _
+  (param a T)
+  (param b T)
+  (print (tuple T a b))
+)
 ```
 
 ```output
 Exception: No function "foo" accepts (String, F64); it is declared as "foo(a T, b T)"
-<no file:2>
-    foo("10", 42.5)
-    ^^^^^^^^^^^^^^^
+<no file:3>
+      (call foo "10" 42.5)
+      ^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### Values of a type parameter that are a Bool and a number have no type in common.
 
-```yumi crash
-foo(false, 42.5)
+```brix crash
+(main
+  (call foo false 42.5)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo'T
-    - a T
-    - b T
-
--- T, a, b
+(fn-do + (of foo T) _
+  (param a T)
+  (param b T)
+  (print (tuple T a b))
+)
 ```
 
 ```output
 Exception: No function "foo" accepts (Bool, F64); it is declared as "foo(a T, b T)"
-<no file:2>
-    foo(false, 42.5)
-    ^^^^^^^^^^^^^^^^
+<no file:3>
+      (call foo false 42.5)
+      ^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-. foo = Foo(Bar(1))
--- type-of foo
--- foo
+```brix
+(main
+  (let foo (call Foo (call Bar 1)))
+  (print (type-of foo))
+  (print foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar'T is Tuple
+(type + (of Bar T) (is Tuple)
+  (prop + b T)
+)
 
-+ b T
-
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T is Tuple
-
-+ a Bar'T
+(type + (of Foo T) (is Tuple)
+  (prop + a (of Bar T))
+)
 ```
 
 ```output
@@ -339,18 +355,20 @@ Exception: No function "foo" accepts (Bool, F64); it is declared as "foo(a T, b 
 ((1))
 ```
 
-```yumi
-foo(1foo, 2bar)
+```brix
+(main
+  (call foo 1foo 2bar)
+)
 
-+ Foo (foo) is Float
-+ Bar (bar) is 2foo
+(blank)
+(type-line + Foo (alias foo) (is Float))
+(type-line + Bar (alias bar) (is 2foo))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo'T
-    - a T
-    - b T
-
--- T, a, b
+(fn-do + (of foo T) _
+  (param a T)
+  (param b T)
+  (print (tuple T a b))
+)
 ```
 
 ```output
@@ -361,47 +379,44 @@ foo(1foo, 2bar)
 
 ### From static function binding
 
-```yumi
-get-funk(foo)
+```brix
+(main
+  (call get-funk foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Funk'T is () T
+(type + (of Funk T) (is (fn-type T)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
+(fn-expr + foo _
+  42
+)
 
-42
-
-━━━━━━━━━━━━━━━━━━━━
-+ do get-funk'T
-    - fn Funk'T
-
--- fn()
+(fn-do + (of get-funk T) _
+  (param fn (of Funk T))
+  (print (call fn))
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-get-funk(foo)
+```brix
+(main
+  (call get-funk foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Funk'T1'T2 is () T2
-    - n T1
+(type + (of Funk T1 T2) (is (fn-type T2 (param n T1))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n Float
+(fn-expr + foo _
+  (param n Float)
+  (+ n 42)
+)
 
-n + 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ do get-funk'T
-    - fn Funk'T
-
--- T
--- fn(1.5)
+(fn-do + (of get-funk T) _
+  (param fn (of Funk T))
+  (print T)
+  (print (call fn 1.5))
+)
 ```
 
 ```output
@@ -411,29 +426,26 @@ n + 42
 
 ### From method binding
 
-```yumi
-. thing = Thing()
-get-funk(thing.foo)
+```brix
+(main
+  (let thing (call Thing))
+  (call get-funk (. thing foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Funk'T1'T2 is () T2
-    - n T1
+(type + (of Funk T1 T2) (is (fn-type T2 (param n T1))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do get-funk'T
-    - fn Funk'T
+(fn-do + (of get-funk T) _
+  (param fn (of Funk T))
+  (print T)
+  (print (call fn 1.5))
+)
 
--- T
--- fn(1.5)
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-
-────────────────────
-+ foo
-    - n Float
-
-n + 42
+(type + Thing
+  (fn-expr + foo _
+    (param n Float)
+    (+ n 42)
+  )
+)
 ```
 
 ```output
@@ -443,37 +455,33 @@ n + 42
 
 ### From interface method binding
 
-```yumi
-. thing = Thing() as Proto
-get-funk(thing.foo)
+```brix
+(main
+  (let thing (as (call Thing) Proto))
+  (call get-funk (. thing foo))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Funk'T1'T2 is () T2
-    - n T1
+(type + (of Funk T1 T2) (is (fn-type T2 (param n T1))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do get-funk'T
-    - fn Funk'T
+(fn-do + (of get-funk T) _
+  (param fn (of Funk T))
+  (print T)
+  (print (call fn 1.5))
+)
 
--- T
--- fn(1.5)
+(type + Proto (is Interface)
+  (fn-expr + foo Float
+    (param n Float)
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Proto is Interface
-
-────────────────────
-+ foo Float
-    - n Float
-
-━━━━━━━━━━━━━━━━━━━━
-+ Thing
-    is Proto
-
-────────────────────
-+ foo
-    - n
-
-n + 42
+(type + Thing
+  (implements Proto)
+  (fn-expr + foo _
+    (param n _)
+    (+ n 42)
+  )
+)
 ```
 
 ```output
@@ -481,25 +489,23 @@ n + 42
 43.5
 ```
 
-```yumi
-get-funk(foo)
+```brix
+(main
+  (call get-funk foo)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Funk'T1'T2 is () T2
-    - n T1
+(type + (of Funk T1 T2) (is (fn-type T2 (param n T1))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ foo
-    - n
+(fn-expr + foo _
+  (param n _)
+  (+ n 42)
+)
 
-n + 42
-
-━━━━━━━━━━━━━━━━━━━━
-+ do get-funk'T
-    - fn Funk'Float'T
-
--- T
--- fn(1.5)
+(fn-do + (of get-funk T) _
+  (param fn (of Funk Float T))
+  (print T)
+  (print (call fn 1.5))
+)
 ```
 
 ```output
@@ -509,36 +515,35 @@ n + 42
 
 ## Inferring types from closures
 
-```yumi
-get-funk(=> 42)
+```brix
+(main
+  (call get-funk (=> () 42))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Funk'T is () T
+(type + (of Funk T) (is (fn-type T)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do get-funk'T
-    - fn Funk'T
-
--- fn()
+(fn-do + (of get-funk T) _
+  (param fn (of Funk T))
+  (print (call fn))
+)
 ```
 
 ```output
 42
 ```
 
-```yumi
-get-funk(:: n Float => n + 42)
+```brix
+(main
+  (call get-funk (=> ((: n Float)) (+ n 42)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Funk'TRet'TArg is () TRet
-    - n TArg
+(type + (of Funk TRet TArg) (is (fn-type TRet (param n TArg))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do get-funk'T
-    - fn Funk'T
-
--- T
--- fn(1.5)
+(fn-do + (of get-funk T) _
+  (param fn (of Funk T))
+  (print T)
+  (print (call fn 1.5))
+)
 ```
 
 ```output
@@ -546,19 +551,18 @@ get-funk(:: n Float => n + 42)
 43.5
 ```
 
-```yumi
-get-funk(:: n Float => n + 42)
+```brix
+(main
+  (call get-funk (=> ((: n Float)) (+ n 42)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Funk'T1'T2 is () T2
-    - n T1
+(type + (of Funk T1 T2) (is (fn-type T2 (param n T1))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do get-funk'T
-    - fn Funk'T
-
--- T
--- fn(1.5)
+(fn-do + (of get-funk T) _
+  (param fn (of Funk T))
+  (print T)
+  (print (call fn 1.5))
+)
 ```
 
 ```output
@@ -566,24 +570,22 @@ get-funk(:: n Float => n + 42)
 43.5
 ```
 
-```yumi
-get-funk(:: foo Foo'Float => foo.n + 42)
+```brix
+(main
+  (call get-funk (=> ((: foo (of Foo Float))) (+ (. foo n) 42)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T is Tuple
+(type + (of Foo T) (is Tuple)
+  (prop + n T)
+)
 
-+ n T
+(type + (of Funk T1 T2) (is (fn-type T1 (param n T2))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Funk'T1'T2 is () T1
-    - n T2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do get-funk'T
-    - fn Funk'T
-
--- T
--- fn(Foo(1.5))
+(fn-do + (of get-funk T) _
+  (param fn (of Funk T))
+  (print T)
+  (print (call fn (call Foo 1.5)))
+)
 ```
 
 ```output
@@ -591,24 +593,22 @@ get-funk(:: foo Foo'Float => foo.n + 42)
 43.5
 ```
 
-```yumi
-get-funk(:: foo Foo'Float => foo.n + 42)
+```brix
+(main
+  (call get-funk (=> ((: foo (of Foo Float))) (+ (. foo n) 42)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T is Tuple
+(type + (of Foo T) (is Tuple)
+  (prop + n T)
+)
 
-+ n T
+(type + (of Funk T1 T2) (is (fn-type T2 (param n T1))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Funk'T1'T2 is () T2
-    - n T1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do get-funk'T
-    - fn Funk'(Foo'T)
-
--- T
--- fn(Foo(1.5))
+(fn-do + (of get-funk T) _
+  (param fn (of Funk (of Foo T)))
+  (print T)
+  (print (call fn (call Foo 1.5)))
+)
 ```
 
 ```output
@@ -616,25 +616,23 @@ get-funk(:: foo Foo'Float => foo.n + 42)
 43.5
 ```
 
-```yumi
-get-funk(:: foo Foo => foo.n + 42)
-get-funk(:: foo Foo'Float => foo.n + 42)
+```brix
+(main
+  (call get-funk (=> ((: foo Foo)) (+ (. foo n) 42)))
+  (call get-funk (=> ((: foo (of Foo Float))) (+ (. foo n) 42)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T is Tuple
+(type + (of Foo T) (is Tuple)
+  (prop + n T)
+)
 
-+ n T
+(type + (of Funk TRet) (is (fn-type TRet (param n (of Foo Int)))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Funk'TRet is () TRet
-    - n Foo'Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ do get-funk
-    - fn Funk
-
--- type-of fn
--- fn(Foo(1))
+(fn-do + get-funk _
+  (param fn Funk)
+  (print (type-of fn))
+  (print (call fn (call Foo 1)))
+)
 ```
 
 ```output
@@ -644,19 +642,18 @@ get-funk(:: foo Foo'Float => foo.n + 42)
 43
 ```
 
-```yumi
-get-funk(:: n => n + 42)
+```brix
+(main
+  (call get-funk (=> (n) (+ n 42)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Funk'T1'T2 is () T2
-    - n T1
+(type + (of Funk T1 T2) (is (fn-type T2 (param n T1))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do get-funk'T
-    - fn Funk'Float'T
-
--- T
--- fn(1.5)
+(fn-do + (of get-funk T) _
+  (param fn (of Funk Float T))
+  (print T)
+  (print (call fn 1.5))
+)
 ```
 
 ```output
@@ -664,18 +661,18 @@ get-funk(:: n => n + 42)
 43.5
 ```
 
-```yumi
-get-funk(=> 42)
+```brix
+(main
+  (call get-funk (=> () 42))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Funk'T1 is () T1
+(type + (of Funk T1) (is (fn-type T1)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do get-funk'T
-    - fn Funk'T
-
--- T
--- fn()
+(fn-do + (of get-funk T) _
+  (param fn (of Funk T))
+  (print T)
+  (print (call fn))
+)
 ```
 
 ```output
@@ -683,24 +680,22 @@ get-funk(=> 42)
 42
 ```
 
-```yumi
-get-funk(:: n => Foo(n + 42))
+```brix
+(main
+  (call get-funk (=> (n) (call Foo (+ n 42))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T is Tuple
+(type + (of Foo T) (is Tuple)
+  (prop + n T)
+)
 
-+ n T
+(type + (of Funk T1 T2) (is (fn-type (of Foo T2) (param n T1))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Funk'T1'T2 is () Foo'T2
-    - n T1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do get-funk'T
-    - fn Funk'Float'T
-
--- T
--- fn(1.5)
+(fn-do + (of get-funk T) _
+  (param fn (of Funk Float T))
+  (print T)
+  (print (call fn 1.5))
+)
 ```
 
 ```output
@@ -708,24 +703,22 @@ get-funk(:: n => Foo(n + 42))
 (43.5)
 ```
 
-```yumi
-get-funk(:: n => Foo(n + 42))
+```brix
+(main
+  (call get-funk (=> (n) (call Foo (+ n 42))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T is Tuple
+(type + (of Foo T) (is Tuple)
+  (prop + n T)
+)
 
-+ n T
+(type + (of Funk T1 T2) (is (fn-type T2 (param n T1))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Funk'T1'T2 is () T2
-    - n T1
-
-━━━━━━━━━━━━━━━━━━━━
-+ do get-funk'T
-    - fn Funk'Float'(Foo'T)
-
--- T
--- fn(1.5)
+(fn-do + (of get-funk T) _
+  (param fn (of Funk Float (of Foo T)))
+  (print T)
+  (print (call fn 1.5))
+)
 ```
 
 ```output
@@ -735,17 +728,17 @@ get-funk(:: n => Foo(n + 42))
 
 ## Inferring function from another function
 
-```yumi
-get-funk(=> 42)
+```brix
+(main
+  (call get-funk (=> () 42))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Funk'T is () T
+(type + (of Funk T) (is (fn-type T)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ do get-funk'T
-    - fn Funk'T
-
--- fn()
+(fn-do + (of get-funk T) _
+  (param fn (of Funk T))
+  (print (call fn))
+)
 ```
 
 ```output
@@ -754,22 +747,21 @@ get-funk(=> 42)
 
 ## Inferring nested structures
 
-```yumi
-. case = TestCase()
-case.with(("foo", "bar"))
+```brix
+(main
+  (let case (call TestCase))
+  (call (. case with) (tuple "foo" "bar"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TestPair'T1'T2 is (expecting T1, actual T2)
+(type + (of TestPair T1 T2) (is (tuple (: expecting T1) (: actual T2))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ TestCase
-
-────────────────────
-+ do with'TA1'TA2
-    - pair TestPair'TA1'TA2
-
--- pair
-= this
+(type + TestCase
+  (fn-do + (of with TA1 TA2) _
+    (param pair (of TestPair TA1 TA2))
+    (print pair)
+    (return this)
+  )
+)
 ```
 
 ```output
@@ -778,23 +770,22 @@ case.with(("foo", "bar"))
 
 ### Unify as we infer
 
-```yumi
-. case = TestCase()
-case.with((24, 4.2))
+```brix
+(main
+  (let case (call TestCase))
+  (call (. case with) (tuple 24 4.2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TestPair'T is (expecting T, actual T)
+(type + (of TestPair T) (is (tuple (: expecting T) (: actual T))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ TestCase
-
-────────────────────
-+ do with'T1
-    - pair TestPair'T1
-
--- pair
--- type-of pair
-= this
+(type + TestCase
+  (fn-do + (of with T1) _
+    (param pair (of TestPair T1))
+    (print pair)
+    (print (type-of pair))
+    (return this)
+  )
+)
 ```
 
 ```output
@@ -802,26 +793,24 @@ case.with((24, 4.2))
 [TypeInfo TestPair'F64]
 ```
 
-```yumi
-. case = TestCase()
-case.with(("foo", Foo'Int()))
+```brix
+(main
+  (let case (call TestCase))
+  (call (. case with) (tuple "foo" (call (of Foo Int))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T
+(type + (of Foo T))
 
-━━━━━━━━━━━━━━━━━━━━
-+ TestPair'T1'T2 is (expecting T1, actual T2)
+(type + (of TestPair T1 T2) (is (tuple (: expecting T1) (: actual T2))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ TestCase
-
-────────────────────
-+ do with'TA1'TA2
-    - pair TestPair'TA1'(Foo'TA2)
-
--- TA2
--- pair
-= this
+(type + TestCase
+  (fn-do + (of with TA1 TA2) _
+    (param pair (of TestPair TA1 (of Foo TA2)))
+    (print TA2)
+    (print pair)
+    (return this)
+  )
+)
 ```
 
 ```output
@@ -829,29 +818,26 @@ case.with(("foo", Foo'Int()))
 (foo, [Object __source__:Foo'core/number:I64])
 ```
 
-```yumi
-. case = TestCase()
-case.with(("foo", ("bar", Foo'Int())))
+```brix
+(main
+  (let case (call TestCase))
+  (call (. case with) (tuple "foo" (tuple "bar" (call (of Foo Int)))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T
+(type + (of Foo T))
 
-━━━━━━━━━━━━━━━━━━━━
-+ TestPair'T1'T2 is (expecting T1, actual T2)
+(type + (of TestPair T1 T2) (is (tuple (: expecting T1) (: actual T2))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ TestThing'TT1'TT2 is (expecting TT1, actual TestPair'TT1'(Foo'TT2))
+(type + (of TestThing TT1 TT2) (is (tuple (: expecting TT1) (: actual (of TestPair TT1 (of Foo TT2))))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ TestCase
-
-────────────────────
-+ do with'TA1'TA2
-    - pair TestThing'TA1'TA2
-
--- TA2
--- pair
-= this
+(type + TestCase
+  (fn-do + (of with TA1 TA2) _
+    (param pair (of TestThing TA1 TA2))
+    (print TA2)
+    (print pair)
+    (return this)
+  )
+)
 ```
 
 ```output
@@ -859,29 +845,26 @@ case.with(("foo", ("bar", Foo'Int())))
 (foo, (bar, [Object __source__:Foo'core/number:I64]))
 ```
 
-```yumi
-. case = TestCase()
-case.with(("foo", ("bar", Foo'Int())))
+```brix
+(main
+  (let case (call TestCase))
+  (call (. case with) (tuple "foo" (tuple "bar" (call (of Foo Int)))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T
+(type + (of Foo T))
 
-━━━━━━━━━━━━━━━━━━━━
-+ TestPair'T1'T2 is (expecting T1, actual T2)
+(type + (of TestPair T1 T2) (is (tuple (: expecting T1) (: actual T2))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ TestThing'TT1'TT2 is (expecting TT1, actual TT2)
+(type + (of TestThing TT1 TT2) (is (tuple (: expecting TT1) (: actual TT2))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ TestCase
-
-────────────────────
-+ do with'TA1'TA2
-    - pair TestThing'TA1'(TestPair'TA1'(Foo'TA2))
-
--- TA2
--- pair
-= this
+(type + TestCase
+  (fn-do + (of with TA1 TA2) _
+    (param pair (of TestThing TA1 (of TestPair TA1 (of Foo TA2))))
+    (print TA2)
+    (print pair)
+    (return this)
+  )
+)
 ```
 
 ```output
@@ -889,33 +872,31 @@ case.with(("foo", ("bar", Foo'Int())))
 (foo, (bar, [Object __source__:Foo'core/number:I64]))
 ```
 
-```yumi
-. case = TestCase()
-. t = => "bar"
-case.with(("foo", t))
+```brix
+(main
+  (let case (call TestCase))
+  (let t (=> () "bar"))
+  (call (. case with) (tuple "foo" t))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ func
-    - c
-c
+(fn-expr + func _
+  (param c _)
+  c
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ TestFunc'TRet is () TRet
+(type + (of TestFunc TRet) (is (fn-type TRet)))
 
-━━━━━━━━━━━━━━━━━━━━
-+ TestFuncPair'T1 is (expecting T1, actual TestFunc'T1)
+(type + (of TestFuncPair T1) (is (tuple (: expecting T1) (: actual (of TestFunc T1)))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ TestCase
-
-────────────────────
-+ do with'T
-    - pair TestFuncPair'T
-
--- pair
-. fn = pair.actual
--- fn()
-= this
+(type + TestCase
+  (fn-do + (of with T) _
+    (param pair (of TestFuncPair T))
+    (print pair)
+    (let fn (. pair actual))
+    (print (call fn))
+    (return this)
+  )
+)
 ```
 
 ```output
@@ -923,17 +904,19 @@ c
 bar
 ```
 
-```yumi
-. a = [1, 2, 3]
-
--- a as List'Int
--- a as List
-
--- a as Iterable'Int
--- a as Iterable
-
--- a as Stream'Int
--- a as Stream
+```brix
+(main
+  (let a (list 1 2 3))
+  (blank)
+  (print (as a (of List Int)))
+  (print (as a List))
+  (blank)
+  (print (as a (of Iterable Int)))
+  (print (as a Iterable))
+  (blank)
+  (print (as a (of Stream Int)))
+  (print (as a Stream))
+)
 ```
 
 ```output
@@ -945,51 +928,49 @@ bar
 [Interface core/stream:Indexable'core/number:I64]
 ```
 
-```yumi
-. a = [1, 2, 3]
-. z = [a, a, a]
+```brix
+(main
+  (let a (list 1 2 3))
+  (let z (list a a a))
+  (blank)
+  (call dump (inline (as z List)))
+  (blank)
+  (call dump (inline (as z (of List List))))
+  (call dump (inline (as z (of List (of List Int)))))
+  (call dump (inline (as z (of List (of List String)))))
+  (blank)
+  (call dump (inline (as z (of List Iterable))))
+  (call dump (inline (as z (of List (of Iterable Int)))))
+  (call dump (inline (as z (of List (of Iterable String)))))
+  (blank)
+  (call dump (inline (as z (of List Stream))))
+  (call dump (inline (as z (of List (of Stream Int)))))
+  (call dump (inline (as z (of List (of Stream String)))))
+  (blank)
+  (call dump (inline (call foo z)))
+  (call dump (inline (call bar z)))
+  (call dump (inline (call baz z)))
+)
 
-dump: z as List
+(fn-expr + (of foo T) _
+  (param list (of List (of List T)))
+  list
+)
 
-dump: z as List'List
-dump: z as List'(List'Int)
-dump: z as List'(List'String)
+(fn-expr + (of bar T) _
+  (param list (of List (of Iterable T)))
+  list
+)
 
-dump: z as List'Iterable
-dump: z as List'(Iterable'Int)
-dump: z as List'(Iterable'String)
+(fn-expr + (of baz T) _
+  (param list (of List (of Stream T)))
+  list
+)
 
-dump: z as List'Stream
-dump: z as List'(Stream'Int)
-dump: z as List'(Stream'String)
-
-dump: foo(z)
-dump: bar(z)
-dump: baz(z)
-
-━━━━━━━━━━━━━━━━━━━━
-+ foo'T
-    - list List'(List'T)
-
-list
-
-━━━━━━━━━━━━━━━━━━━━
-+ bar'T
-    - list List'(Iterable'T)
-
-list
-
-━━━━━━━━━━━━━━━━━━━━
-+ baz'T
-    - list List'(Stream'T)
-
-list
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump
-    - x
-
--- type-of x
+(fn-do + dump _
+  (param x _)
+  (print (type-of x))
+)
 ```
 
 ```output
@@ -1008,53 +989,51 @@ list
 [TypeInfo List'Indexable'I64'GCBacking]
 ```
 
-```yumi
-. a = [1, 2, 3]
-. z = [a, a, a]
+```brix
+(main
+  (let a (list 1 2 3))
+  (let z (list a a a))
+  (blank)
+  (call dump (inline (as z Iterable)))
+  (blank)
+  (call dump (inline (as z (of Iterable List))))
+  (call dump (inline (as z (of Iterable (of List Int)))))
+  (call dump (inline (as z (of Iterable (of List String)))))
+  (blank)
+  (call dump (inline (as z (of Iterable Iterable))))
+  (call dump (inline (as z (of Iterable (of Iterable Int)))))
+  (call dump (inline (as z (of Iterable (of Iterable String)))))
+  (blank)
+  (call dump (inline (as z (of Iterable Stream))))
+  (call dump (inline (as z (of Iterable (of Stream Int)))))
+  (call dump (inline (as z (of Iterable (of Stream String)))))
+  (blank)
+  (call dump (inline (call foo z)))
+  (call dump (inline (call bar z)))
+  (call dump (inline (call baz z)))
+)
 
-dump: z as Iterable
+(fn-expr + (of foo T) _
+  (param list (of Iterable (of List T)))
+  list
+)
 
-dump: z as Iterable'List
-dump: z as Iterable'(List'Int)
-dump: z as Iterable'(List'String)
+(fn-expr + (of bar T) _
+  (param list (of Iterable (of Iterable T)))
+  list
+)
 
-dump: z as Iterable'Iterable
-dump: z as Iterable'(Iterable'Int)
-dump: z as Iterable'(Iterable'String)
+(fn-expr + (of baz T) _
+  (param list (of Iterable (of Stream T)))
+  list
+)
 
-dump: z as Iterable'Stream
-dump: z as Iterable'(Stream'Int)
-dump: z as Iterable'(Stream'String)
-
-dump: foo(z)
-dump: bar(z)
-dump: baz(z)
-
-━━━━━━━━━━━━━━━━━━━━
-+ foo'T
-    - list Iterable'(List'T)
-
-list
-
-━━━━━━━━━━━━━━━━━━━━
-+ bar'T
-    - list Iterable'(Iterable'T)
-
-list
-
-━━━━━━━━━━━━━━━━━━━━
-+ baz'T
-    - list Iterable'(Stream'T)
-
-list
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump
-    - x
-
--- type-of x
-` -- type-of x, joined
-`     .. joined = ", ".join of (flat-map of x)
+(fn-do + dump _
+  (param x _)
+  (print (type-of x))
+  ; -- type-of x, joined
+  ;     .. joined = ", ".join of (flat-map of x)
+)
 ```
 
 ```output
@@ -1073,53 +1052,51 @@ list
 [TypeInfo Iterable'Indexable'I64]
 ```
 
-```yumi
-. a = [1, 2, 3]
-. z = [a, a, a]
+```brix
+(main
+  (let a (list 1 2 3))
+  (let z (list a a a))
+  (blank)
+  (call dump (inline (as z Stream)))
+  (blank)
+  (call dump (inline (as z (of Stream List))))
+  (call dump (inline (as z (of Stream (of List Int)))))
+  (call dump (inline (as z (of Stream (of List String)))))
+  (blank)
+  (call dump (inline (as z (of Stream Iterable))))
+  (call dump (inline (as z (of Stream (of Iterable Int)))))
+  (call dump (inline (as z (of Stream (of Iterable String)))))
+  (blank)
+  (call dump (inline (as z (of Stream Stream))))
+  (call dump (inline (as z (of Stream (of Stream Int)))))
+  (call dump (inline (as z (of Stream (of Stream String)))))
+  (blank)
+  (call dump (inline (call foo z)))
+  (call dump (inline (call bar z)))
+  (call dump (inline (call baz z)))
+)
 
-dump: z as Stream
+(fn-expr + (of foo T) _
+  (param list (of Stream (of List T)))
+  list
+)
 
-dump: z as Stream'List
-dump: z as Stream'(List'Int)
-dump: z as Stream'(List'String)
+(fn-expr + (of bar T) _
+  (param list (of Stream (of Iterable T)))
+  list
+)
 
-dump: z as Stream'Iterable
-dump: z as Stream'(Iterable'Int)
-dump: z as Stream'(Iterable'String)
+(fn-expr + (of baz T) _
+  (param list (of Stream (of Stream T)))
+  list
+)
 
-dump: z as Stream'Stream
-dump: z as Stream'(Stream'Int)
-dump: z as Stream'(Stream'String)
-
-dump: foo(z)
-dump: bar(z)
-dump: baz(z)
-
-━━━━━━━━━━━━━━━━━━━━
-+ foo'T
-    - list Stream'(List'T)
-
-list
-
-━━━━━━━━━━━━━━━━━━━━
-+ bar'T
-    - list Stream'(Iterable'T)
-
-list
-
-━━━━━━━━━━━━━━━━━━━━
-+ baz'T
-    - list Stream'(Stream'T)
-
-list
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump
-    - x
-
--- type-of x
-` -- type-of x, joined
-`     .. joined = ", ".join of (flat-map of x)
+(fn-do + dump _
+  (param x _)
+  (print (type-of x))
+  ; -- type-of x, joined
+  ;     .. joined = ", ".join of (flat-map of x)
+)
 ```
 
 ```output
@@ -1138,71 +1115,68 @@ list
 [TypeInfo Indexable'Indexable'I64]
 ```
 
-```yumi
-. a = [1, 2, 3]
-. z = [a, a, a]
-. i = z as Iterable'Iterable
+```brix
+(main
+  (let a (list 1 2 3))
+  (let z (list a a a))
+  (let i (as z (of Iterable Iterable)))
+  (blank)
+  (call dump (inline (as i Iterable)))
+  (blank)
+  (call dump (inline (as i (of Iterable Iterable))))
+  (call dump (inline (as i (of Iterable (of Iterable Int)))))
+  (call dump (inline (as i (of Iterable (of Iterable String)))))
+  (blank)
+  (call dump (inline (as i (of Iterable Stream))))
+  (call dump (inline (as i (of Iterable (of Stream Int)))))
+  (call dump (inline (as i (of Iterable (of Stream String)))))
+  (blank)
+  (call dump (inline (call bar1 i)))
+  (call dump (inline (call baz1 i)))
+  (blank)
+  (call dump (inline (as i Stream)))
+  (blank)
+  (call dump (inline (as i (of Stream Iterable))))
+  (call dump (inline (as i (of Stream (of Iterable Int)))))
+  (call dump (inline (as i (of Stream (of Iterable String)))))
+  (blank)
+  (call dump (inline (as i (of Stream Stream))))
+  (call dump (inline (as i (of Stream (of Stream Int)))))
+  (call dump (inline (as i (of Stream (of Stream String)))))
+  (blank)
+  (call dump (inline (call bar2 i)))
+  (call dump (inline (call baz2 i)))
+)
 
-dump: i as Iterable
+(fn-expr + (of bar1 T) _
+  (param list (of Iterable (of Iterable T)))
+  list
+)
 
-dump: i as Iterable'Iterable
-dump: i as Iterable'(Iterable'Int)
-dump: i as Iterable'(Iterable'String)
+(fn-expr + (of baz1 T) _
+  (param list (of Iterable (of Stream T)))
+  list
+)
 
-dump: i as Iterable'Stream
-dump: i as Iterable'(Stream'Int)
-dump: i as Iterable'(Stream'String)
+(fn-expr + (of bar2 T) _
+  (param list (of Stream (of Iterable T)))
+  list
+)
 
-dump: bar1(i)
-dump: baz1(i)
+(fn-expr + (of baz2 T) _
+  (param list (of Stream (of Stream T)))
+  list
+)
 
-dump: i as Stream
-
-dump: i as Stream'Iterable
-dump: i as Stream'(Iterable'Int)
-dump: i as Stream'(Iterable'String)
-
-dump: i as Stream'Stream
-dump: i as Stream'(Stream'Int)
-dump: i as Stream'(Stream'String)
-
-dump: bar2(i)
-dump: baz2(i)
-
-━━━━━━━━━━━━━━━━━━━━
-+ bar1'T
-    - list Iterable'(Iterable'T)
-
-list
-
-━━━━━━━━━━━━━━━━━━━━
-+ baz1'T
-    - list Iterable'(Stream'T)
-
-list
-
-━━━━━━━━━━━━━━━━━━━━
-+ bar2'T
-    - list Stream'(Iterable'T)
-
-list
-
-━━━━━━━━━━━━━━━━━━━━
-+ baz2'T
-    - list Stream'(Stream'T)
-
-list
-
-━━━━━━━━━━━━━━━━━━━━
-+ do dump
-    - x
-
--- type-of x
-`  for list in x
-`      for item in list
-`          -- item
-`  -- type-of x, joined
-`    .. joined = ", ".join of (flat-map of x)
+(fn-do + dump _
+  (param x _)
+  (print (type-of x))
+  ;  for list in x
+  ;      for item in list
+  ;          -- item
+  ;  -- type-of x, joined
+  ;    .. joined = ", ".join of (flat-map of x)
+)
 ```
 
 ```output
@@ -1226,56 +1200,54 @@ list
 [TypeInfo Iterable'Iterable'I64]
 ```
 
-```yumi crash
-. thing = Thing'Int()
--- thing as Quack'String'Int
+```brix crash
+(main
+  (let thing (call (of Thing Int)))
+  (print (as thing (of Quack String Int)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T
-    is Bar'T
+(type + (of Thing T)
+  (implements (of Bar T))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T is Interface
+(type + (of Foo T) (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar'T is Interface
+(type + (of Bar T) (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Quack'A'B is Foo'B || Bar'A
+(type + (of Quack A B) (is (of Foo B) (of Bar A)))
 ```
 
 ```output
 Exception: Thing'I64 cannot be cast to Quack'String'I64; there is no conversion between them
-<no file:3>
-    -- thing as Quack'String'Int
-       ^^^^^^^^^^^^^^^^^^^^^^^^^
+<no file:4>
+      (print (as thing (of Quack String Int)))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
-```yumi
-. thing = Thing'Int()
--- thing as Quack'Int'Int
--- thing as Quack'Int'String
+```brix
+(main
+  (let thing (call (of Thing Int)))
+  (print (as thing (of Quack Int Int)))
+  (print (as thing (of Quack Int String)))
+  (blank)
+  (let wing (call (of Wing String)))
+  (print (as wing (of Quack Int String)))
+  (print (as wing (of Quack String String)))
+)
 
-. wing = Wing'String()
--- wing as Quack'Int'String
--- wing as Quack'String'String
+(type + (of Thing T)
+  (implements (of Bar T))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Thing'T
-    is Bar'T
+(type + (of Wing T)
+  (implements (of Foo T))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wing'T
-    is Foo'T
+(type + (of Foo T) (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T is Interface
+(type + (of Bar T) (is Interface))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Bar'T is Interface
-
-━━━━━━━━━━━━━━━━━━━━
-+ Quack'A'B is Foo'B || Bar'A
+(type + (of Quack A B) (is (of Foo B) (of Bar A)))
 ```
 
 ```output
@@ -1285,29 +1257,31 @@ Exception: Thing'I64 cannot be cast to Quack'String'I64; there is no conversion 
 [Interface __source__:Foo'core/string:String]
 ```
 
-```yumi
-foo((4, 5))
+```brix
+(main
+  (call foo (tuple 4 5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo'T'V
-    - n (x T, y V)
-
--- "hi", T, V
+(fn-do + (of foo T V) _
+  (param n (tuple (: x T) (: y V)))
+  (print (tuple "hi" T V))
+)
 ```
 
 ```output
 (hi, [TypeInfo I64], [TypeInfo I64])
 ```
 
-```yumi
-foo(([1,2,3], 4))
+```brix
+(main
+  (call foo (tuple (list 1 2 3) 4))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do foo'T
-    - n (x Stream'T, y T)
-
--- n.x
--- "hi", T
+(fn-do + (of foo T) _
+  (param n (tuple (: x (of Stream T)) (: y T)))
+  (print (. n x))
+  (print (tuple "hi" T))
+)
 ```
 
 ```output
@@ -1315,10 +1289,12 @@ foo(([1,2,3], 4))
 (hi, [TypeInfo I64])
 ```
 
-```yumi
-. (a Int, b Stream) = (42, [1,2,3])
--- type-of b
--- ",".join(b)
+```brix
+(main
+  (let (tuple (: a Int) (: b Stream)) (tuple 42 (list 1 2 3)))
+  (print (type-of b))
+  (print (call (. "," join) b))
+)
 ```
 
 ```output
@@ -1328,14 +1304,15 @@ foo(([1,2,3], 4))
 
 ### Constructor inference for ordinary generic tuple constructors stays concrete
 
-```yumi
-. pairs = [Pair("foo", 42)]
-. typed = pairs as [Pair'String'Int]
--- typed[0].key
--- typed[0].value
+```brix
+(main
+  (let pairs (list (call Pair "foo" 42)))
+  (let typed (as pairs (list (of Pair String Int))))
+  (print (. ([] typed 0) key))
+  (print (. ([] typed 0) value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Pair'Key'Value is (key Key, value Value)
+(type + (of Pair Key Value) (is (tuple (: key Key) (: value Value))))
 ```
 
 ```output
@@ -1345,24 +1322,24 @@ foo
 
 ### A declared list return type materializes a generator without recursively compiling that same converter while ranking the list constructors. Bool keeps the recursive union on the conversion path that exposed the incomplete converter body.
 
-```yumi
-. values = collect(["hello", "goodbye"])
--- values.length
--- values[0] as String
--- values[1] as String
+```brix
+(main
+  (let values (call collect (list "hello" "goodbye")))
+  (print (. values length))
+  (print (as ([] values 0) String))
+  (print (as ([] values 1) String))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Value is Union
+(type + Value (is Union)
+  (variant Bool)
+  (variant String)
+  (variant (list Value))
+)
 
-| Bool
-| String
-| [Value]
-
-━━━━━━━━━━━━━━━━━━━━
-_ collect [Value]
-    - source [String]
-
-each as Value in source
+(fn-expr _ collect (list Value)
+  (param source (list String))
+  (in (as each Value) source)
+)
 ```
 
 ```output
@@ -1373,65 +1350,64 @@ goodbye
 
 ### A table whose arms return sibling subclasses, one of them optional, joins to their optional common base class, both under a declared return type and when inferred.
 
-```yumi
--- describe(pick(0))
--- describe(pick(1))
--- describe(pick(2))
--- describe(pick-inferred(0))
--- describe(pick-inferred(1))
--- describe(pick-inferred(2))
+```brix
+(main
+  (print (call describe (call pick 0)))
+  (print (call describe (call pick 1)))
+  (print (call describe (call pick 2)))
+  (print (call describe (call pick-inferred 0)))
+  (print (call describe (call pick-inferred 1)))
+  (print (call describe (call pick-inferred 2)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Animal
+(type + Animal
+  (prop + name _ (= ""))
+)
 
-+ name = ""
+(type + Cat (is Animal))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Cat is Animal
+(type + Dog (is Animal))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Dog is Animal
-
-━━━━━━━━━━━━━━━━━━━━
-_ pick Animal?
-    - index Int
-
-|? index == 0
+(fn-expr _ pick (? Animal)
+  (param index Int)
+  (case? (== index 0)
     cat
-??
+  )
+  (default
     dog
+  )
+  (where
+    (lazy cat (call named-cat))
+    (lazy dog (only-if (call named-dog) (if (== index 1))))
+  )
+)
 
-.. cat = named-cat()
-.. dog = named-dog() if index == 1
+(fn-expr _ pick-inferred _
+  (param index Int)
+  (case? (== index 0)
+    (call named-cat)
+  )
+  (default
+    (only-if (call named-dog) (if (== index 1)))
+  )
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ pick-inferred
-    - index Int
+(fn-do _ named-cat _
+  (let cat (call Cat))
+  (= (. cat name) "tom")
+  (return cat)
+)
 
-|? index == 0
-    named-cat()
-??
-    named-dog() if index == 1
+(fn-do _ named-dog _
+  (let dog (call Dog))
+  (= (. dog name) "rex")
+  (return dog)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do named-cat
-
-. cat = Cat()
-cat.name = "tom"
-= cat
-
-━━━━━━━━━━━━━━━━━━━━
-_ do named-dog
-
-. dog = Dog()
-dog.name = "rex"
-= dog
-
-━━━━━━━━━━━━━━━━━━━━
-_ describe
-    - animal Animal?
-
-animal?.name ?? "none"
+(fn-expr _ describe _
+  (param animal (? Animal))
+  (?? (?. animal name) "none")
+)
 ```
 
 ```output
@@ -1445,29 +1421,27 @@ none
 
 ### A type parameter is bound by the plain argument, and a function given that takes a wider number and answers one the parameter holds is converted to it.
 
-```yumi
--- once(half, 5i32)
--- once(half, 5.0)
+```brix
+(main
+  (print (call once half 5i32))
+  (print (call once half 5.0))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ once'T
-    - fn () T
-        - n T
-    - value T
+(fn-expr + (of once T) _
+  (param fn (fn-type T (param n T)))
+  (param value T)
+  (call fn value)
+)
 
-fn(value)
+(fn-expr + half I32
+  (param n Float)
+  (as (/ n 2) I32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ half I32
-    - n Float
-
-(n / 2) as I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ double
-    - n Int
-
-n * 2
+(fn-expr + double _
+  (param n Int)
+  (* n 2)
+)
 ```
 
 ```output
@@ -1477,19 +1451,19 @@ n * 2
 
 ### A closure with and without a stated argument type given with a value of its number: the value binds the type parameter.
 
-```yumi
--- once(:: n => n / 2, 5)
--- once(:: n => n / 2, 5.0)
--- once(:: n Float => n / 2, 5.0)
--- once(:: n Int => n / 2, 5)
+```brix
+(main
+  (print (call once (=> (n) (/ n 2)) 5))
+  (print (call once (=> (n) (/ n 2)) 5.0))
+  (print (call once (=> ((: n Float)) (/ n 2)) 5.0))
+  (print (call once (=> ((: n Int)) (/ n 2)) 5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ once'T
-    - fn () T
-        - n T
-    - value T
-
-fn(value)
+(fn-expr + (of once T) _
+  (param fn (fn-type T (param n T)))
+  (param value T)
+  (call fn value)
+)
 ```
 
 ```output
@@ -1501,25 +1475,24 @@ fn(value)
 
 ### A function given with two values that bind a type parameter, of one number and of two.
 
-```yumi
--- first(half, 5i32, 7)
--- first(half, 5.5, 7)
--- first(half, 5, 7.5)
+```brix
+(main
+  (print (call first half 5i32 7))
+  (print (call first half 5.5 7))
+  (print (call first half 5 7.5))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ first'T
-    - fn () T
-        - n T
-    - a T
-    - b T
+(fn-expr + (of first T) _
+  (param fn (fn-type T (param n T)))
+  (param a T)
+  (param b T)
+  (+ (call fn a) (call fn b))
+)
 
-fn(a) + fn(b)
-
-━━━━━━━━━━━━━━━━━━━━
-+ half I32
-    - n Float
-
-(n / 2) as I32
+(fn-expr + half I32
+  (param n Float)
+  (as (/ n 2) I32)
+)
 ```
 
 ```output
@@ -1530,25 +1503,23 @@ fn(a) + fn(b)
 
 ### A function given where a generic function type is taken with a value of another number.
 
-```yumi
--- once(half, 5i32)
+```brix
+(main
+  (print (call once half 5i32))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ once'T
-    - fn Fn'T
-    - value T
+(fn-expr + (of once T) _
+  (param fn (of Fn T))
+  (param value T)
+  (call fn value)
+)
 
-fn(value)
+(type + (of Fn T) (is (fn-type T (param n T))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Fn'T is () T
-    - n T
-
-━━━━━━━━━━━━━━━━━━━━
-+ half I32
-    - n Float
-
-(n / 2) as I32
+(fn-expr + half I32
+  (param n Float)
+  (as (/ n 2) I32)
+)
 ```
 
 ```output
@@ -1557,24 +1528,23 @@ fn(value)
 
 ### A function and a closure given with a value that binds one type parameter beside another parameter.
 
-```yumi
--- pair(half, 5i32, "x")
--- pair(:: n Float => (n / 2) as I32, 5i32, "x")
+```brix
+(main
+  (print (call pair half 5i32 "x"))
+  (print (call pair (=> ((: n Float)) (as (/ n 2) I32)) 5i32 "x"))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pair'T'U
-    - fn () T
-        - n T
-    - value T
-    - other U
+(fn-expr + (of pair T U) _
+  (param fn (fn-type T (param n T)))
+  (param value T)
+  (param other U)
+  (str (call fn value) " " other)
+)
 
-"${fn(value)} $other"
-
-━━━━━━━━━━━━━━━━━━━━
-+ half I32
-    - n Float
-
-(n / 2) as I32
+(fn-expr + half I32
+  (param n Float)
+  (as (/ n 2) I32)
+)
 ```
 
 ```output
@@ -1584,42 +1554,36 @@ fn(value)
 
 ### Two overloads that take a function and a value in either order, and a function that takes two functions, with a value of another number.
 
-```yumi
--- apply(half, 5i32)
--- apply(5i32, half)
--- chain(half, half, 5i32)
+```brix
+(main
+  (print (call apply half 5i32))
+  (print (call apply 5i32 half))
+  (print (call chain half half 5i32))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ apply'T T
-    - fn () T
-        - n T
-    - value T
+(fn-expr + (of apply T) T
+  (param fn (fn-type T (param n T)))
+  (param value T)
+  (call fn value)
+)
 
-fn(value)
+(fn-expr + (of apply T) T
+  (param value T)
+  (param fn (fn-type T (param n T)))
+  (+ (call fn value) 1)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ apply'T T
-    - value T
-    - fn () T
-        - n T
+(fn-expr + (of chain T) T
+  (param a (fn-type T (param n T)))
+  (param b (fn-type T (param n T)))
+  (param value T)
+  (call a (call b value))
+)
 
-fn(value) + 1
-
-━━━━━━━━━━━━━━━━━━━━
-+ chain'T T
-    - a () T
-        - n T
-    - b () T
-        - n T
-    - value T
-
-a(b(value))
-
-━━━━━━━━━━━━━━━━━━━━
-+ half I32
-    - n Float
-
-(n / 2) as I32
+(fn-expr + half I32
+  (param n Float)
+  (as (/ n 2) I32)
+)
 ```
 
 ```output
@@ -1630,33 +1594,30 @@ a(b(value))
 
 ### Closures that state another number than the value given, and a function called twice on its own answer.
 
-```yumi
--- apply(:: n Int => (n + 1) as I32, 2i32)
--- apply(:: n Int => n + 1, 2)
--- twice(:: n Float => (n / 2) as I32, 5i32)
--- twice(half, 5i32)
+```brix
+(main
+  (print (call apply (=> ((: n Int)) (as (+ n 1) I32)) 2i32))
+  (print (call apply (=> ((: n Int)) (+ n 1)) 2))
+  (print (call twice (=> ((: n Float)) (as (/ n 2) I32)) 5i32))
+  (print (call twice half 5i32))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ apply'T T
-    - fn () T
-        - n T
-    - value T
+(fn-expr + (of apply T) T
+  (param fn (fn-type T (param n T)))
+  (param value T)
+  (call fn value)
+)
 
-fn(value)
+(fn-expr + (of twice T) T
+  (param fn (fn-type T (param n T)))
+  (param value T)
+  (call fn (call fn value))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ twice'T T
-    - fn () T
-        - n T
-    - value T
-
-fn(fn(value))
-
-━━━━━━━━━━━━━━━━━━━━
-+ half I32
-    - n Float
-
-(n / 2) as I32
+(fn-expr + half I32
+  (param n Float)
+  (as (/ n 2) I32)
+)
 ```
 
 ```output
@@ -1668,31 +1629,28 @@ fn(fn(value))
 
 ### Two functions of different numbers given with one value that binds the type parameter of both.
 
-```yumi
--- both(half, double, 5i32)
--- both(double, half, 5i32)
+```brix
+(main
+  (print (call both half double 5i32))
+  (print (call both double half 5i32))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ both'T
-    - first () T
-        - n T
-    - second () T
-        - n T
-    - value T
+(fn-expr + (of both T) _
+  (param first (fn-type T (param n T)))
+  (param second (fn-type T (param n T)))
+  (param value T)
+  (call second (call first value))
+)
 
-second(first(value))
+(fn-expr + half I32
+  (param n Float)
+  (as (/ n 2) I32)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ half I32
-    - n Float
-
-(n / 2) as I32
-
-━━━━━━━━━━━━━━━━━━━━
-+ double I32
-    - n Int
-
-(n * 2) as I32
+(fn-expr + double I32
+  (param n Int)
+  (as (* n 2) I32)
+)
 ```
 
 ```output
@@ -1702,30 +1660,28 @@ second(first(value))
 
 ### A type parameter only the function's answer names is bound by the function given.
 
-```yumi
--- shown(label, 5)
--- shown(half, 5i32)
--- shown(:: n Float => n / 2, 5i32)
+```brix
+(main
+  (print (call shown label 5))
+  (print (call shown half 5i32))
+  (print (call shown (=> ((: n Float)) (/ n 2)) 5i32))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ shown'T'U U
-    - fn () U
-        - n T
-    - value T
+(fn-expr + (of shown T U) U
+  (param fn (fn-type U (param n T)))
+  (param value T)
+  (call fn value)
+)
 
-fn(value)
+(fn-expr + label _
+  (param n Int)
+  (str "n " n)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ label
-    - n Int
-
-"n $n"
-
-━━━━━━━━━━━━━━━━━━━━
-+ half
-    - n Float
-
-n / 2
+(fn-expr + half _
+  (param n Float)
+  (/ n 2)
+)
 ```
 
 ```output
@@ -1736,33 +1692,29 @@ n 5
 
 ### A function of a generic class takes a function over its type parameter, given functions and closures of other numbers.
 
-```yumi
-. box = Box'I32(5)
--- box.through(half)
--- box.through(:: n Float => (n / 2) as I32)
--- box.through(:: n => n * 2)
+```brix
+(main
+  (let box (call (of Box I32) 5))
+  (print (call (. box through) half))
+  (print (call (. box through) (=> ((: n Float)) (as (/ n 2) I32))))
+  (print (call (. box through) (=> (n) (* n 2))))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Box'T
+(type + (of Box T)
+  (prop + held T)
+  (fn-do + This _
+    (param held _)
+  )
+  (fn-expr + through T
+    (param fn (fn-type T (param n T)))
+    (call fn held)
+  )
+)
 
-+ held T
-
-────────────────────
-+ This
-    - held
-
-────────────────────
-+ through T
-    - fn () T
-        - n T
-
-fn(held)
-
-━━━━━━━━━━━━━━━━━━━━
-+ half I32
-    - n Float
-
-(n / 2) as I32
+(fn-expr + half I32
+  (param n Float)
+  (as (/ n 2) I32)
+)
 ```
 
 ```output
@@ -1773,33 +1725,30 @@ fn(held)
 
 ### Closures and a function that take a tuple of other numbers than the function type gives
 
-```yumi
-get-funk(:: foo Foo'Float => foo.n + 42)
-get-funk(:: foo Foo'F32 => foo.n * 2)
-get-funk(wide)
+```brix
+(main
+  (call get-funk (=> ((: foo (of Foo Float))) (+ (. foo n) 42)))
+  (call get-funk (=> ((: foo (of Foo F32))) (* (. foo n) 2)))
+  (call get-funk wide)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T is Tuple
+(type + (of Foo T) (is Tuple)
+  (prop + n T)
+)
 
-+ n T
+(type + (of Funk TRet) (is (fn-type TRet (param n (of Foo Int)))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Funk'TRet is () TRet
-    - n Foo'Int
+(fn-do + wide Float
+  (param foo (of Foo Float))
+  (return (/ (. foo n) 2))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do wide Float
-    - foo Foo'Float
-
-= foo.n / 2
-
-━━━━━━━━━━━━━━━━━━━━
-+ do get-funk
-    - fn Funk
-
--- type-of fn
--- fn(Foo(1))
--- fn(Foo(7))
+(fn-do + get-funk _
+  (param fn Funk)
+  (print (type-of fn))
+  (print (call fn (call Foo 1)))
+  (print (call fn (call Foo 7)))
+)
 ```
 
 ```output
@@ -1816,29 +1765,26 @@ get-funk(wide)
 
 ### Closure that takes a tuple of tuples of other numbers than the function type gives
 
-```yumi
-show(:: both Both'Float => both.first.n + both.second.n + 0.5)
+```brix
+(main
+  (call show (=> ((: both (of Both Float))) (+ (. both first n) (. both second n) 0.5)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T is Tuple
+(type + (of Foo T) (is Tuple)
+  (prop + n T)
+)
 
-+ n T
+(type + (of Both T) (is Tuple)
+  (prop + first (of Foo T))
+  (prop + second (of Foo T))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Both'T is Tuple
+(type + (of Shower TRet) (is (fn-type TRet (param both (of Both Int)))))
 
-+ first Foo'T
-+ second Foo'T
-
-━━━━━━━━━━━━━━━━━━━━
-+ Shower'TRet is () TRet
-    - both Both'Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ do show
-    - fn Shower
-
--- fn(Both(Foo(1), Foo(2)))
+(fn-do + show _
+  (param fn Shower)
+  (print (call fn (call Both (call Foo 1) (call Foo 2))))
+)
 ```
 
 ```output
@@ -1847,30 +1793,26 @@ show(:: both Both'Float => both.first.n + both.second.n + 0.5)
 
 ### Function type converts a tuple its function returns to one of other numbers
 
-```yumi
-. make Maker = :: n Int => Foo(n)
--- make(3).n
-. wide Wider = make-int
--- wide(4).n
+```brix
+(main
+  (let make Maker (=> ((: n Int)) (call Foo n)))
+  (print (. (call make 3) n))
+  (let wide Wider make-int)
+  (print (. (call wide 4) n))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Foo'T is Tuple
+(type + (of Foo T) (is Tuple)
+  (prop + n T)
+)
 
-+ n T
+(type + Maker (is (fn-type (of Foo Float) (param n Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Maker is () Foo'Float
-    - n Int
+(type + Wider (is (fn-type (of Foo Float) (param n Int))))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Wider is () Foo'Float
-    - n Int
-
-━━━━━━━━━━━━━━━━━━━━
-+ do make-int Foo'Int
-    - n Int
-
-= Foo(n + 1)
+(fn-do + make-int (of Foo Int)
+  (param n Int)
+  (return (call Foo (+ n 1)))
+)
 ```
 
 ```output
@@ -1880,15 +1822,16 @@ show(:: both Both'Float => both.first.n + both.second.n + 0.5)
 
 ### A function that states no return type and returns `null` under a condition returns an optional of what it returns otherwise.
 
-```yumi
--- "${pick(1) ?? 0} ${pick(5) ?? 0}"
+```brix
+(main
+  (print (str (?? (call pick 1) 0) " " (?? (call pick 5) 0)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-_ do pick
-    - n Int
-
-=? null if n > 3
-= n
+(fn-do _ pick _
+  (param n Int)
+  (return-if null (if (> n 3)))
+  (return n)
+)
 ```
 
 ```output
@@ -1897,15 +1840,16 @@ _ do pick
 
 ### A null given for an optional of a type parameter tells nothing of the type, which another argument binds.
 
-```yumi
--- type-of pick(5, null)
+```brix
+(main
+  (print (type-of (call pick 5 null)))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ pick'T T
-    - a T
-    - b T?
-
-a
+(fn-expr + (of pick T) T
+  (param a T)
+  (param b (? T))
+  a
+)
 ```
 
 ```output
@@ -1914,27 +1858,26 @@ a
 
 ### An integer given for an optional of a type parameter that another argument binds to a float is that float.
 
-```yumi
-. holder = Holder'F64(2.5)
--- pick(holder, 0, 1)
--- pick(holder, null, 3)
+```brix
+(main
+  (let holder (call (of Holder F64) 2.5))
+  (print (call pick holder 0 1))
+  (print (call pick holder null 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder'Value
+(type + (of Holder Value)
+  (prop + value Value)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value Value
-
-────────────────────
-+ This
-    - value
-
-━━━━━━━━━━━━━━━━━━━━
-+ pick'Value String
-    - holder Holder'Value
-    - from Value?
-    - to Value?
-
-"$from .. $to of ${holder.value} ${type-of from}"
+(fn-expr + (of pick Value) String
+  (param holder (of Holder Value))
+  (param from (? Value))
+  (param to (? Value))
+  (str from " .. " to " of " (. holder value) " " (type-of from))
+)
 ```
 
 ```output
@@ -1944,38 +1887,37 @@ unknown .. 3 of 2.5 [TypeInfo Optional'F64]
 
 ### A float given for a type parameter that another argument binds to a unit of floats is that unit.
 
-```yumi
-. holder = Holder'Turns(1turn)
-. half = 0.5
--- pick(holder, 0, 2.5)
--- pick(holder, null, half * 3)
--- one(holder, half / 2)
+```brix
+(main
+  (let holder (call (of Holder Turns) 1turn))
+  (let half 0.5)
+  (print (call pick holder 0 2.5))
+  (print (call pick holder null (* half 3)))
+  (print (call one holder (/ half 2)))
+)
 
-+ Turns (turn) is F64
+(blank)
+(type-line + Turns (alias turn) (is F64))
 
-━━━━━━━━━━━━━━━━━━━━
-+ Holder'Value
+(type + (of Holder Value)
+  (prop + value Value)
+  (fn-do + This _
+    (param value _)
+  )
+)
 
-+ value Value
+(fn-expr + (of pick Value) String
+  (param holder (of Holder Value))
+  (param from (? Value))
+  (param to (? Value))
+  (str from " .. " to " " (type-of to))
+)
 
-────────────────────
-+ This
-    - value
-
-━━━━━━━━━━━━━━━━━━━━
-+ pick'Value String
-    - holder Holder'Value
-    - from Value?
-    - to Value?
-
-"$from .. $to ${type-of to}"
-
-━━━━━━━━━━━━━━━━━━━━
-+ one'Value String
-    - holder Holder'Value
-    - value Value
-
-"$value ${type-of value}"
+(fn-expr + (of one Value) String
+  (param holder (of Holder Value))
+  (param value Value)
+  (str value " " (type-of value))
+)
 ```
 
 ```output
@@ -1986,17 +1928,18 @@ unknown .. 1.5 [TypeInfo Optional'Turns]
 
 ### The arguments alone bind a type parameter, and the default of a parameter of that type is cast to what they bind.
 
-```yumi
--- scaled(2)
--- scaled(2.5)
--- scaled(2, 3)
+```brix
+(main
+  (print (call scaled 2))
+  (print (call scaled 2.5))
+  (print (call scaled 2 3))
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ scaled'T String
-    - a T
-    - b T = 0.5
-
-"$a $b"
+(fn-expr + (of scaled T) String
+  (param a T)
+  (param b T (= 0.5))
+  (str a " " b)
+)
 ```
 
 ```output
