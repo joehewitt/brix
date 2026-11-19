@@ -2,7 +2,7 @@
 (import /data/source-sexp)
 (import /data/source-tree)
 
-(type + BrixLayout
+(type + UBrixLayout
   (implements SexpLayout)
   (prop _ store SourceStore)
   (fn-do + This _
@@ -25,13 +25,13 @@
     (if (== head "keyframes")
       (return (if-expr (and (> (. items length) 2) (call (. store is-form) ([] items 2) "param")) 5 4))
     )
-    (let fixed (call brix-fixed-header head))
+    (let fixed (call ubrix-fixed-header head))
     (return-if fixed (if (!= fixed null)))
-    (let first (call brix-leading-header head))
+    (let first (call ubrix-leading-header head))
     (return-if null (if (== first null)))
     (let count first)
     (let is-type (or (== head "type") (== head "extend") (== head "style") (== head "style-extend")))
-    (let is-function (call brix-is-callable head))
+    (let is-function (call ubrix-is-callable head))
     (let is-setter false)
     (while (and (< count (. items length)) (call is-attribute ([] items count) is-type))
       (let item ([] items count))
@@ -45,11 +45,11 @@
   )
   (fn-expr + wrapper (? String)
     (param node (of ImmutableTableRow SourceNode))
-    (only-if "main" (if (not (or (call (. store is-comment) node) (call brix-is-top (?? (call (. store head) node) ""))))))
+    (only-if "main" (if (not (or (call (. store is-comment) node) (call ubrix-is-top (?? (call (. store head) node) ""))))))
   )
   (fn-expr + is-apart Bool
     (param node (of ImmutableTableRow SourceNode))
-    (call brix-is-divided (?? (call (. store head) node) ""))
+    (call ubrix-is-divided (?? (call (. store head) node) ""))
   )
   (fn-expr _ is-attribute Bool
     (param node (of ImmutableTableRow SourceNode))
@@ -80,29 +80,29 @@
   )
 )
 
-(fn-expr + brix-is-divided Bool
+(fn-expr + ubrix-is-divided Bool
   (param head String)
-  (or (call brix-is-callable head) (== head "content") (== head "effect") (has types head) (has rules head))
+  (or (call ubrix-is-callable head) (== head "content") (== head "effect") (has types head) (has rules head))
   (where
     (lazy types (list "type" "extend" "style" "style-extend"))
     (lazy rules (list "when-rule" "whenever-rule" "subscribe" "subscribe-for"))
   )
 )
 
-(fn-expr + brix-is-callable Bool
+(fn-expr + ubrix-is-callable Bool
   (param head String)
   (has (list "fn-do" "fn-expr" "fn-from-do" "fn-from-expr" "fn-to-do" "fn-to-expr") head)
 )
 
-(fn-expr + brix-is-top Bool
+(fn-expr + ubrix-is-top Bool
   (param head String)
-  (or (call brix-is-divided head) (has rows head))
+  (or (call ubrix-is-divided head) (has rows head))
   (where
     (lazy rows (list "import" "export" "prop" "type-line" "extend-line" "unit" "blank" "raw" "unparsed"))
   )
 )
 
-(fn-expr _ brix-fixed-header (? Int)
+(fn-expr _ ubrix-fixed-header (? Int)
   (param head String)
   (match? head
     (case= "block"
@@ -216,7 +216,7 @@
   )
 )
 
-(fn-expr _ brix-leading-header (? Int)
+(fn-expr _ ubrix-leading-header (? Int)
   (param head String)
   (match? head
     (case= "fn-do"

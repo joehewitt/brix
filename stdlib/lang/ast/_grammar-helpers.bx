@@ -160,7 +160,7 @@
   )
 )
 
-(fn-expr + character-literal-value String (over: Char) (?! YumiSyntaxError)
+(fn-expr + character-literal-value String (over: Char) (?! BrixSyntaxError)
   (param char Char)
   (~ ""
     (call character-literal-string location char)
@@ -240,11 +240,11 @@
   )
 )
 
-(fn-expr + character-literal-string String (?! YumiSyntaxError)
+(fn-expr + character-literal-string String (?! BrixSyntaxError)
   (param loc MatchLocation)
   (param char Char)
   (before
-    (throw (call YumiSyntaxError loc "Character literal must contain a valid Unicode scalar") (if (and (>= value 55296) (<= value 57343))))
+    (throw (call BrixSyntaxError loc "Character literal must contain a valid Unicode scalar") (if (and (>= value 55296) (<= value 57343))))
   )
   (str value)
   (where
@@ -509,7 +509,7 @@
   (return stripped)
 )
 
-(fn-do + auto-call SyntaxId (?! YumiSyntaxError)
+(fn-do + auto-call SyntaxId (?! BrixSyntaxError)
   (param tree ASTBuilder)
   (param location _)
   (param expr _)
@@ -577,7 +577,7 @@
   (return result)
 )
 
-(fn-do + refuse-repeated-labels _ (?! YumiSyntaxError)
+(fn-do + refuse-repeated-labels _ (?! BrixSyntaxError)
   (param tree ASTBuilder)
   (param args (of ImmutableArray SyntaxId))
   (for (in offset (..< 0 (. args length)))
@@ -995,7 +995,7 @@
   )
 )
 
-(fn-expr + reject-unmarked-state-machine SyntaxId (?! YumiSyntaxError)
+(fn-expr + reject-unmarked-state-machine SyntaxId (?! BrixSyntaxError)
   (param tree ASTBuilder)
   (param loc MatchLocation)
   (param value SyntaxId)
@@ -1253,11 +1253,11 @@
   (return (call scratch-items arguments (. expressions length)))
 )
 
-(fn-expr + reject-syntax SyntaxId (?! YumiSyntaxError)
+(fn-expr + reject-syntax SyntaxId (?! BrixSyntaxError)
   (param tree ASTBuilder)
   (param location MatchLocation)
   (param message String)
-  (throw (call YumiSyntaxError location message (. tree source) (. tree source-path)))
+  (throw (call BrixSyntaxError location message (. tree source) (. tree source-path)))
 )
 
 (fn-do + make-class-declaration SyntaxId
@@ -1437,7 +1437,7 @@
   (call MatchLocation (call TokenLocation (+ (. location begin line) 1) (. location begin column)) (. location end))
 )
 
-(fn-do + make-getter-function SyntaxId (?! YumiSyntaxError)
+(fn-do + make-getter-function SyntaxId (?! BrixSyntaxError)
   (param tree ASTBuilder)
   (param location MatchLocation)
   (param access Access)
@@ -1447,9 +1447,9 @@
   (param return-type (? SyntaxId))
   (param body (? SyntaxId))
   (param errors (of ImmutableArray SyntaxId) (= (call (of ImmutableArray SyntaxId))))
-  (throw (call YumiSyntaxError location "@rollback is only supported on grammar functions") (if (call has-annotation annotations "rollback")))
-  (throw (call YumiSyntaxError location "@live is not supported on getters") (if (call has-annotation annotations "live")))
-  (throw (call YumiSyntaxError location "@no-return is not supported on getters") (if (call has-annotation annotations "no-return")))
+  (throw (call BrixSyntaxError location "@rollback is only supported on grammar functions") (if (call has-annotation annotations "rollback")))
+  (throw (call BrixSyntaxError location "@live is not supported on getters") (if (call has-annotation annotations "live")))
+  (throw (call BrixSyntaxError location "@no-return is not supported on getters") (if (call has-annotation annotations "no-return")))
   (let node
     (call ASTFunction
       (block
@@ -1479,17 +1479,17 @@
   (return (call (. tree append) node))
 )
 
-(fn-expr + c-declaration-name (of ImmutableArray Atom) (?! YumiSyntaxError)
+(fn-expr + c-declaration-name (of ImmutableArray Atom) (?! BrixSyntaxError)
   (param tree ASTBuilder)
   (param location MatchLocation)
   (param symbol Atom)
   (before
-    (throw (call YumiSyntaxError location "C symbol names belong to header modules") (if (not (call (. tree source-path ends-with) ".h"))))
+    (throw (call BrixSyntaxError location "C symbol names belong to header modules") (if (not (call (. tree source-path ends-with) ".h"))))
   )
   (call sequence-singleton tree symbol)
 )
 
-(fn-do + make-function SyntaxId (?! YumiSyntaxError)
+(fn-do + make-function SyntaxId (?! BrixSyntaxError)
   (param tree ASTBuilder)
   (param location MatchLocation)
   (param access Access)
@@ -1505,10 +1505,10 @@
   (let variants (?? argument-variants (call (of ImmutableArray ArgumentVariant))))
   (let has-rollback (call has-annotation annotations "rollback"))
   (if (and has-rollback (not (. key pattern)))
-    (throw (call YumiSyntaxError location "@rollback is only supported on grammar functions"))
+    (throw (call BrixSyntaxError location "@rollback is only supported on grammar functions"))
   )
   (if (and is-imperative (. key pattern))
-    (throw (call YumiSyntaxError location "Grammar functions do not support do"))
+    (throw (call BrixSyntaxError location "Grammar functions do not support do"))
   )
   (let is-constructor (and (== (. key names length) 1) (== (. ([] (. key names) 0) text) "This") (not (. key pattern))))
   (let stream-argument (? SyntaxId))
@@ -1621,7 +1621,7 @@
   (return (call (. tree append) node))
 )
 
-(fn-do + argument-body (? SyntaxId) (?! YumiSyntaxError)
+(fn-do + argument-body (? SyntaxId) (?! BrixSyntaxError)
   (param tree ASTBuilder)
   (param variants (of ImmutableArray ArgumentVariant))
   (param body (? SyntaxId))
@@ -1837,7 +1837,7 @@
   )
 )
 
-(fn-expr + make-match-block SyntaxId (?! YumiSyntaxError)
+(fn-expr + make-match-block SyntaxId (?! BrixSyntaxError)
   (param tree ASTBuilder)
   (param loc MatchLocation)
   (param subject SyntaxId)
@@ -1868,7 +1868,7 @@
   (return id)
 )
 
-(fn-do _ checked-arm SyntaxId (?! YumiSyntaxError)
+(fn-do _ checked-arm SyntaxId (?! BrixSyntaxError)
   (param tree ASTBuilder)
   (param arm SyntaxId)
   (param is-optional Bool)
@@ -1901,7 +1901,7 @@
     )
     (let covering (call covering-arm tree last))
     (if covering
-      (throw (call YumiSyntaxError (call (. tree location) last) covering (. tree source) (. tree source-path)))
+      (throw (call BrixSyntaxError (call (. tree location) last) covering (. tree source) (. tree source-path)))
     )
     (= alternative next)
   )
@@ -1967,7 +1967,7 @@
   )
 )
 
-(fn-do _ make-match-block-from-body SyntaxId (?! YumiSyntaxError)
+(fn-do _ make-match-block-from-body SyntaxId (?! BrixSyntaxError)
   (param tree ASTBuilder)
   (param loc MatchLocation)
   (param subject SyntaxId)
@@ -1987,9 +1987,9 @@
           (throw (call Panic "Expected a pattern helper"))
         )
       )
-      (throw (call YumiSyntaxError loc "Stream match has more than one helper" source (. tree source-path)) (if helper))
+      (throw (call BrixSyntaxError loc "Stream match has more than one helper" source (. tree source-path)) (if helper))
       (lazy source (. tree source))
-      (throw (call YumiSyntaxError (call exclusive-end-location (. row loc)) "with helper must be the first clause of a stream match" (. tree source) (. tree source-path)) (if (!= offset 0)))
+      (throw (call BrixSyntaxError (call exclusive-end-location (. row loc)) "with helper must be the first clause of a stream match" (. tree source) (. tree source-path)) (if (!= offset 0)))
       (= helper (. row helper))
       (else-if (is ([] (. tree nodes) statement) .node-stream-match)
         (= has-stream-match true)
@@ -1998,7 +1998,7 @@
     )
   )
   (if helper
-    (throw (call YumiSyntaxError loc "with helper requires grammar arms" (. tree source) source-path) (if (not has-stream-match)))
+    (throw (call BrixSyntaxError loc "with helper requires grammar arms" (. tree source) source-path) (if (not has-stream-match)))
     (lazy source-path (. tree source-path))
   )
   (let skipped U32 (if-expr helper 1 0))
@@ -2076,11 +2076,11 @@
   )
 )
 
-(fn-expr + make-loop-or SyntaxId (?! YumiSyntaxError)
+(fn-expr + make-loop-or SyntaxId (?! BrixSyntaxError)
   (param tree ASTBuilder)
   (param id SyntaxId)
   (before
-    (throw (call YumiSyntaxError loop-end "Illegal loop section" (. tree source) (. tree source-path)) (if (not legal)))
+    (throw (call BrixSyntaxError loop-end "Illegal loop section" (. tree source) (. tree source-path)) (if (not legal)))
   )
   (scope id
     (lazy loop-end (call exclusive-end-location (call (. tree location) id)))
@@ -2328,7 +2328,7 @@
   (return (call (. tree append) (call ASTAssign loc (. Operator eq-op) property call)))
 )
 
-(fn-do + theme-tag-body SyntaxId (?! YumiSyntaxError)
+(fn-do + theme-tag-body SyntaxId (?! BrixSyntaxError)
   (param tree ASTBuilder)
   (param loc MatchLocation)
   (param type SyntaxId)
@@ -2340,7 +2340,7 @@
     (case (call .node-type-identifier named)
       (if (and (== (. named name text) "This") (not (. named is-declare)))
         (let message "Root <This> cannot bind theme tags; bind them with `for` on the element that makes the object")
-        (throw (call YumiSyntaxError (call (. tree location) ([] bindings 0)) message (. tree source) (. tree source-path)))
+        (throw (call BrixSyntaxError (call (. tree location) ([] bindings 0)) message (. tree source) (. tree source-path)))
       )
     )
   )
@@ -2568,7 +2568,7 @@
         (= last-clause arg)
       )
       (default
-        (throw (call YumiSyntaxError (call (. tree location) arg) "Redundant block") (if body))
+        (throw (call BrixSyntaxError (call (. tree location) arg) "Redundant block") (if body))
         (= body arg)
       )
     )
@@ -2949,7 +2949,7 @@
   (return probe)
 )
 
-(fn-do + link-statements (of ImmutableArray SyntaxId) (?! YumiSyntaxError)
+(fn-do + link-statements (of ImmutableArray SyntaxId) (?! BrixSyntaxError)
   (param tree ASTBuilder)
   (param statements (of ImmutableArray SyntaxId))
   (param allow-function-declarations _ (= true))
@@ -2963,7 +2963,7 @@
         (case (all (call .node-function-syntax row) ({} (> (. row names count) 0)))
           (let begin (call TokenLocation (- (. row loc begin line) 1) (. row loc begin column)))
           (let end (call TokenLocation (. begin line) (+ (. begin column) 1)))
-          (throw (call YumiSyntaxError (call MatchLocation begin end) (str nesting " " correction)))
+          (throw (call BrixSyntaxError (call MatchLocation begin end) (str nesting " " correction)))
         )
       )
     )
@@ -3058,7 +3058,7 @@
   (param patterns (of ImmutableArray SyntaxId))
   (for (in pattern patterns)
     (if (call (. tree is-type-remainder) pattern)
-      (throw (call YumiSyntaxError (call exclusive-end-location (call (. tree location) pattern)) "Remainder pattern is only valid inside sequence, map, or text patterns"))
+      (throw (call BrixSyntaxError (call exclusive-end-location (call (. tree location) pattern)) "Remainder pattern is only valid inside sequence, map, or text patterns"))
     )
   )
   (blank)
@@ -3096,7 +3096,7 @@
   )
   (blank)
   (if mixed
-    (throw (call YumiSyntaxError mixed-end "Cannot mix sequence and map items in one bracket pattern"))
+    (throw (call BrixSyntaxError mixed-end "Cannot mix sequence and map items in one bracket pattern"))
     (lazy mixed-end (call exclusive-end-location (call (. tree location) mixed)))
   )
   (blank)
@@ -3120,7 +3120,7 @@
   (for (in pattern patterns)
     (if (call (. tree is-type-remainder) pattern)
       (if found
-        (throw (call YumiSyntaxError pattern-end "Pattern may contain only one remainder"))
+        (throw (call BrixSyntaxError pattern-end "Pattern may contain only one remainder"))
         (lazy pattern-end (call exclusive-end-location (call (. tree location) pattern)))
       )
       (= found true)
@@ -3137,7 +3137,7 @@
     (:using
       (=> (left right)
         (block
-          (throw (call YumiSyntaxError (call exclusive-end-location (call (. tree location) right)) "Pattern may contain only one remainder") (if (and (call contains-pattern-remainder tree left) (call contains-pattern-remainder tree right))))
+          (throw (call BrixSyntaxError (call exclusive-end-location (call (. tree location) right)) "Pattern may contain only one remainder") (if (and (call contains-pattern-remainder tree left) (call contains-pattern-remainder tree right))))
           (call (. tree append) (call ASTTypeAnd loc left right))
         )
       )
@@ -3189,10 +3189,10 @@
         (case= "priority"
           .task-scheduling-priority
         )
-        (throw (call YumiSyntaxError loc (str "Unsupported do task annotation '" (. name text) "'")))
+        (throw (call BrixSyntaxError loc (str "Unsupported do task annotation '" (. name text) "'")))
       )
     )
-    (throw (call YumiSyntaxError loc (str "Conflicting do task scheduling annotation '" (. name text) "'")) (if (and found (!= scheduling requested))))
+    (throw (call BrixSyntaxError loc (str "Conflicting do task scheduling annotation '" (. name text) "'")) (if (and found (!= scheduling requested))))
     (= scheduling requested)
     (= found true)
   )
@@ -3224,7 +3224,7 @@
   (param body DoBody)
   (param kind String)
   (before
-    (throw (call YumiSyntaxError loc (str "Unsupported " kind " annotation '" (. ([] (. body annotations) 0) text) "'")) (if (> (. body annotations length) 0)))
+    (throw (call BrixSyntaxError loc (str "Unsupported " kind " annotation '" (. ([] (. body annotations) 0) text) "'")) (if (> (. body annotations length) 0)))
   )
   (. body body)
 )
@@ -3306,8 +3306,8 @@
       (continue)
     )
     (let effect (call compilation-effect-named (. name text)))
-    (throw (call YumiSyntaxError loc (str "Unknown compilation effect '" (. name text) "'")) (if (== effect (. CompilationEffect none))))
-    (throw (call YumiSyntaxError loc (str "Conflicting compilation effect '" (. name text) "'")) (if (call effects-conflict mask effect)))
+    (throw (call BrixSyntaxError loc (str "Unknown compilation effect '" (. name text) "'")) (if (== effect (. CompilationEffect none))))
+    (throw (call BrixSyntaxError loc (str "Conflicting compilation effect '" (. name text) "'")) (if (call effects-conflict mask effect)))
     (= mask (/or/ mask effect))
   )
   (return (call normalize-compilation-effects mask))
@@ -3323,26 +3323,26 @@
       (= features (/or/ features (. CompilerFeature collection-observers)))
       (continue)
     )
-    (throw (call YumiSyntaxError loc "'@door' is only for a function") (if (call (. name text starts-with) "door:")))
+    (throw (call BrixSyntaxError loc "'@door' is only for a function") (if (call (. name text starts-with) "door:")))
     (if (call (. name text starts-with) "without:")
       (continue)
     )
     (let effect (call compilation-effect-named (. name text)))
-    (throw (call YumiSyntaxError loc (str "Unknown do annotation '" (. name text) "'")) (if (== effect (. CompilationEffect none))))
-    (throw (call YumiSyntaxError loc (str "Conflicting do annotation '" (. name text) "'")) (if (call effects-conflict effects effect)))
+    (throw (call BrixSyntaxError loc (str "Unknown do annotation '" (. name text) "'")) (if (== effect (. CompilationEffect none))))
+    (throw (call BrixSyntaxError loc (str "Conflicting do annotation '" (. name text) "'")) (if (call effects-conflict effects effect)))
     (= effects (/or/ effects effect))
   )
   (return (call DoAnnotationMasks (call normalize-compilation-effects effects) features))
 )
 
-(fn-do + written-annotation Atom (?! YumiSyntaxError)
+(fn-do + written-annotation Atom (?! BrixSyntaxError)
   (param loc MatchLocation)
   (param name Atom)
   ; An annotation written with `@`. A restriction and a C function's label are written in a
   ; `without` section, and the names they lower to are refused here.
   (let meant (call restriction-name (. name text)))
   (if meant
-    (throw (call YumiSyntaxError loc (str "Write 'without " meant "' in place of '@" (. name text) "'")))
+    (throw (call BrixSyntaxError loc (str "Write 'without " meant "' in place of '@" (. name text) "'")))
   )
   (return name)
 )
@@ -3399,13 +3399,13 @@
   (or (call (. name text starts-with) "door:") (call (. name text starts-with) "without:"))
 )
 
-(fn-do + unlowered (of ImmutableArray Atom) (?! YumiSyntaxError)
+(fn-do + unlowered (of ImmutableArray Atom) (?! BrixSyntaxError)
   (param loc MatchLocation)
   (param names (of ImmutableArray Atom))
   ; The annotations of a conversion, which is no door and bans no effect.
   (for (in name names)
-    (throw (call YumiSyntaxError loc "A conversion cannot be a door") (if (call (. name text starts-with) "door:")))
-    (throw (call YumiSyntaxError loc (str "A conversion cannot ban an effect, as 'without " ([] (. name text) (... (. "without:" length))) "' does")) (if (call (. name text starts-with) "without:")))
+    (throw (call BrixSyntaxError loc "A conversion cannot be a door") (if (call (. name text starts-with) "door:")))
+    (throw (call BrixSyntaxError loc (str "A conversion cannot ban an effect, as 'without " ([] (. name text) (... (. "without:" length))) "' does")) (if (call (. name text starts-with) "without:")))
   )
   (return names)
 )
@@ -3427,7 +3427,7 @@
   (return (call (. tree store-atoms) (call scratch-items bans filled)))
 )
 
-(fn-do + lowered-door (? Atom) (?! YumiSyntaxError)
+(fn-do + lowered-door (? Atom) (?! BrixSyntaxError)
   (param tree ASTBuilder)
   (param loc MatchLocation)
   (param names (of ImmutableArray Atom))
@@ -3435,14 +3435,14 @@
   (let door (? Atom) null)
   (for (in name names)
     (if (call (. name text starts-with) "door:")
-      (throw (call YumiSyntaxError loc "A function is the door of one effect") (if door))
+      (throw (call BrixSyntaxError loc "A function is the door of one effect") (if door))
       (= door (call (. tree atom) ([] (. name text) (... (. "door:" length)))))
     )
   )
   (return door)
 )
 
-(fn-do + section-annotations (of ImmutableArray Atom) (?! YumiSyntaxError)
+(fn-do + section-annotations (of ImmutableArray Atom) (?! BrixSyntaxError)
   (param tree ASTBuilder)
   (param loc MatchLocation)
   (param annotations (of ImmutableArray Atom))
@@ -3464,10 +3464,10 @@
   (for (in name names)
     (let text (. name text))
     (if (== text "cancel")
-      (throw (call YumiSyntaxError loc "'without cancel' is only for a do block") (if (not is-block)))
+      (throw (call BrixSyntaxError loc "'without cancel' is only for a do block") (if (not is-block)))
       (continue)
     )
-    (throw (call YumiSyntaxError loc "'without blocking' is only for a C function") (if (and (== text "blocking") (not native))))
+    (throw (call BrixSyntaxError loc "'without blocking' is only for a C function") (if (and (== text "blocking") (not native))))
     (let meant
       (match text
         (case= "heap"
@@ -3493,9 +3493,9 @@
         )
       )
     )
-    (throw (call YumiSyntaxError loc (str "Unknown name '" text "' after without")) (if (== (. meant length) 0)))
+    (throw (call BrixSyntaxError loc (str "Unknown name '" text "' after without")) (if (== (. meant length) 0)))
     (for (in index (..< 0 filled))
-      (throw (call YumiSyntaxError loc (str "'" text "' is named twice")) (if (== (. ([] joined index) text) meant)))
+      (throw (call BrixSyntaxError loc (str "'" text "' is named twice")) (if (== (. ([] joined index) text) meant)))
     )
     (= ([] joined filled) (call (. tree atom) meant))
     (+= filled 1)
@@ -3520,7 +3520,7 @@
   (return inner)
 )
 
-(fn-do + sectioned-do SyntaxId (?! YumiSyntaxError)
+(fn-do + sectioned-do SyntaxId (?! BrixSyntaxError)
   (param tree ASTBuilder)
   (param loc MatchLocation)
   (param sections SectionsPartial)
@@ -3543,7 +3543,7 @@
   (return false)
 )
 
-(fn-do + sectioned-body (? SyntaxId) (?! YumiSyntaxError)
+(fn-do + sectioned-body (? SyntaxId) (?! BrixSyntaxError)
   (param tree ASTBuilder)
   (param loc MatchLocation)
   (param sections (? SectionsPartial))
@@ -3553,8 +3553,8 @@
   (return-if body (if (not sections)))
   (let bindings (. sections bindings))
   (return-if body (if (== (. bindings length) 0)))
-  (throw (call YumiSyntaxError loc "A 'with' section needs a do function") (if (not is-imperative)))
-  (throw (call YumiSyntaxError loc "A 'with' section needs a body") (if (not body)))
+  (throw (call BrixSyntaxError loc "A 'with' section needs a do function") (if (not is-imperative)))
+  (throw (call BrixSyntaxError loc "A 'with' section needs a body") (if (not body)))
   (return (call (. tree append) (call ASTBlock loc (call (. tree store-child) (call stack-bound tree loc bindings body)))))
 )
 
@@ -4581,7 +4581,7 @@
       )
     )
   )
-  (fn-do + finalize-syntax _ (?! YumiSyntaxError)
+  (fn-do + finalize-syntax _ (?! BrixSyntaxError)
     (let end (. nodes length))
     (for (in node ([] nodes (..< 1 end)))
       (match node
@@ -4598,8 +4598,8 @@
         )
         (case (call .node-slot-outlet row)
           (let loc (call exclusive-end-location (. row loc)))
-          (throw (call YumiSyntaxError loc "Slot type inference is not supported yet" source source-path) (if (call slot-type-declares-params (. row type-id))))
-          (throw (call YumiSyntaxError loc "Slot parameter requires a named slot" source source-path) (if (and (. row slot-parameter) (not (. row name)))))
+          (throw (call BrixSyntaxError loc "Slot type inference is not supported yet" source source-path) (if (call slot-type-declares-params (. row type-id))))
+          (throw (call BrixSyntaxError loc "Slot parameter requires a named slot" source source-path) (if (and (. row slot-parameter) (not (. row name)))))
         )
         (default
           (continue)
@@ -4633,7 +4633,7 @@
     )
     (return (call store-children (call (. builder finish-immutable))))
   )
-  (fn-do _ validate-state-fallbacks _ (?! YumiSyntaxError)
+  (fn-do _ validate-state-fallbacks _ (?! BrixSyntaxError)
     (param body (of RowRange SyntaxId))
     (let found false)
     (for (in item ([] nodes (call child-ids body)))
@@ -4641,7 +4641,7 @@
         (case (call .node-state-fallback row)
           (let loc (call exclusive-end-location (. row loc)))
           (let message "Multiple fallbacks in one state transition group")
-          (throw (call YumiSyntaxError loc message source source-path) (if found))
+          (throw (call BrixSyntaxError loc message source source-path) (if found))
           (= found true)
         )
       )

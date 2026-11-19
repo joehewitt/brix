@@ -13,7 +13,7 @@ standard library and these docs.
   - For markup, read [markup style](style/agent-brix-style-markup.md).
   - For a terminal app, read [TUI style](style/agent-brix-style-tui.md).
 - [Brix](style/agent-brix.md): Brix's S-expression form, written in `.bx` files. It lists each
-  form beside the Yumi it stands for.
+  form with its signature.
 
 ## Learning The Language
 

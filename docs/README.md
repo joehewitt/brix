@@ -14,7 +14,7 @@
   tagged as `` `(let name value)`{.brix} ``, which the website shows as rows; inside a table, a
   form's `|` is written `\|`. Only text about the rows view itself is written as rows, tagged
   `{.rows}`. The suite's "Inline forms" case for each document checks that every tagged form
-  prints as rows and reads back the same, through `brix-inline-view` in `/lang/brix/inline`.
+  prints as rows and reads back the same, through `ubrix-inline-view` in `/lang/ubrix/inline`.
 - `agent/` contains unofficial agent notes and working documents. Agents may create material here
   freely, and it may be deleted at any time.
 

@@ -1,4 +1,4 @@
-I made several unsual choices for Yumi's syntax:
+I made several unsual choices for UBrix's syntax:
 
 1. Significant dividers
 2. kebab case identifiers

@@ -6,7 +6,7 @@
 (import /data/source-tree)
 (import /stream/aggregate)
 (blank)
-(prop _ brix-keywords List
+(prop _ ubrix-keywords List
   (block
     (item "if")
     (item "else")
@@ -56,11 +56,11 @@
   )
 )
 
-(fn-expr + brix-highlight (list SourceSpan)
+(fn-expr + ubrix-highlight (list SourceSpan)
   (param text String)
   (match text
-    (~ (: spans (call \brix-highlight-grammar text false))
-      (call brix-joined (call List spans))
+    (~ (: spans (call \ubrix-highlight-grammar text false))
+      (call ubrix-joined (call List spans))
     )
     (default
       (inline (call (of List SourceSpan) (call SourceSpan .plain text)))
@@ -68,11 +68,11 @@
   )
 )
 
-(fn-expr + brix-highlight-line (list SourceSpan)
+(fn-expr + ubrix-highlight-line (list SourceSpan)
   (param text String)
   (match text
-    (~ (: spans (call \brix-highlight-grammar text true))
-      (call brix-joined (call List spans))
+    (~ (: spans (call \ubrix-highlight-grammar text true))
+      (call ubrix-joined (call List spans))
     )
     (default
       (inline (call (of List SourceSpan) (call SourceSpan .string text)))
@@ -80,7 +80,7 @@
   )
 )
 
-(fn-do + brix-joined (list SourceSpan)
+(fn-do + ubrix-joined (list SourceSpan)
   (param spans (list SourceSpan))
   (let is-next-joined false)
   (let index (- (. spans length) 1))
@@ -88,7 +88,7 @@
     (-= index 1)
     (let sigil (. ([] spans index) text))
     (let next ([] spans (+ index 1)))
-    (let is-joined (and (!= (. ([] spans index) kind) (. SourceSpanKind string)) (call brix-is-sigil sigil) (or is-next-joined (call brix-starts-name (. next text))) (call brix-is-prefix spans index)))
+    (let is-joined (and (!= (. ([] spans index) kind) (. SourceSpanKind string)) (call ubrix-is-sigil sigil) (or is-next-joined (call ubrix-starts-name (. next text))) (call ubrix-is-prefix spans index)))
     (if is-joined
       (let kind (if-expr (== sigil "#") (. SourceSpanKind tracked) (. next kind)))
       (= ([] spans index) (call SourceSpan kind sigil))
@@ -97,7 +97,7 @@
     (= is-next-joined is-joined)
   )
   (for (in at (..< 0 (. spans length)))
-    (if (call brix-is-optional spans at)
+    (if (call ubrix-is-optional spans at)
       (let span ([] spans at))
       (= ([] spans at) (call SourceSpan (. span kind) (. span text) true))
     )
@@ -105,7 +105,7 @@
   (return spans)
 )
 
-(fn-expr _ brix-is-sigil Bool
+(fn-expr _ ubrix-is-sigil Bool
   (param text String)
   (and (== (. text length) 1) (or (== first '#') (== first '@') (== first '$') (== first '%') (== first '&') (== first '!') (== first '.')))
   (where
@@ -113,27 +113,27 @@
   )
 )
 
-(fn-do _ brix-is-optional Bool
+(fn-do _ ubrix-is-optional Bool
   (param spans (list SourceSpan))
   (param index Index)
   (let span ([] spans index))
-  (return-if false (if (and (not (call brix-starts-name (. span text))) (!= (. span text) "?") (!= (. span text) "."))))
+  (return-if false (if (and (not (call ubrix-starts-name (. span text))) (!= (. span text) "?") (!= (. span text) "."))))
   (let before (if-expr (> index 0) ([] spans (- index 1)) (call SourceSpan .plain "")))
   (let next (if-expr (< (+ index 1) (. spans length)) (. ([] spans (+ index 1)) text) ""))
   (return-if (== (. span kind) (. SourceSpanKind identifier)) (if (== (. span text) "null")))
   (return-if (or (== (. before kind) (. SourceSpanKind type-name)) (== next ".") (== next "[")) (if (== (. span text) "?")))
   (return-if (== (. before text) "?") (if (== (. span text) ".")))
-  (return-if (or (call brix-is-chain spans (+ index 1)) (and (== next "?") (== (. span kind) (. SourceSpanKind type-name)))) (if (call brix-starts-name (. span text))))
+  (return-if (or (call ubrix-is-chain spans (+ index 1)) (and (== next "?") (== (. span kind) (. SourceSpanKind type-name)))) (if (call ubrix-starts-name (. span text))))
   (return false)
 )
 
-(fn-expr _ brix-is-chain Bool
+(fn-expr _ ubrix-is-chain Bool
   (param spans (list SourceSpan))
   (param index Index)
   (and (< index (. spans length)) (== (. ([] spans index) text) "?") (< (+ index 1) (. spans length)) (or (== (. ([] spans (+ index 1)) text) ".") (== (. ([] spans (+ index 1)) text) "[")))
 )
 
-(fn-expr _ brix-starts-name Bool
+(fn-expr _ ubrix-starts-name Bool
   (param text String)
   (and (> (. text length) 0) (or (and (>= first 'a') (<= first 'z')) (and (>= first 'A') (<= first 'Z'))))
   (where
@@ -141,23 +141,23 @@
   )
 )
 
-(fn-do _ brix-is-prefix Bool
+(fn-do _ ubrix-is-prefix Bool
   (param spans (list SourceSpan))
   (param index Index)
   (return-if true (if (or (== index 0) (== (. ([] spans index) text) "\$"))))
   (let before (. ([] spans (- index 1)) text))
   (return-if true (if (== (. before length) 0)))
   (let last ([] before (- (. before length) 1)))
-  (return-if false (if (or (call brix-starts-name (str last)) (and (>= last '0') (<= last '9')))))
+  (return-if false (if (or (call ubrix-starts-name (str last)) (and (>= last '0') (<= last '9')))))
   (return-if false (if (or (== last (char ")")) (== last ']') (== last '}') (== last (char "\"")) (== last (char "'")) (== last '_'))))
   (return (or (!= (. ([] spans index) text) ".") (not (or (== last '?') (== last '!') (== last '*')))))
 )
 
-(fn-do + brix-highlight-head (list SourceSpan)
+(fn-do + ubrix-highlight-head (list SourceSpan)
   (param text String)
   (let spans (list SourceSpan))
   (let is-named false)
-  (for (in span (call brix-head-spans text))
+  (for (in span (call ubrix-head-spans text))
     (let is-word (or (== (. span kind) (. SourceSpanKind identifier)) (== (. span kind) (. SourceSpanKind type-name))))
     (if (and is-word (not is-named))
       (+= spans (call SourceSpan (if-expr (== (. span kind) (. SourceSpanKind type-name)) (. SourceSpanKind type-definition) (. SourceSpanKind definition)) (. span text)))
@@ -170,14 +170,14 @@
   (return spans)
 )
 
-(fn-do _ brix-head-spans (list SourceSpan)
+(fn-do _ ubrix-head-spans (list SourceSpan)
   (param text String)
-  (let mark (call brix-text-body-mark text))
-  (return-if (call brix-highlight text) (if (not mark)))
-  (return (++ (call brix-highlight ([] text (..< 0 mark))) (call (of List SourceSpan) (call SourceSpan .string "\"")) (call brix-highlight ([] text (... (+ mark 1))))))
+  (let mark (call ubrix-text-body-mark text))
+  (return-if (call ubrix-highlight text) (if (not mark)))
+  (return (++ (call ubrix-highlight ([] text (..< 0 mark))) (call (of List SourceSpan) (call SourceSpan .string "\"")) (call ubrix-highlight ([] text (... (+ mark 1))))))
 )
 
-(fn-do _ brix-text-body-mark (? Index)
+(fn-do _ ubrix-text-body-mark (? Index)
   (param text String)
   (let at Index 0)
   (while (and (< at (. text length)) (== ([] text at) (char " ")))
@@ -193,7 +193,7 @@
   (return at)
 )
 
-(fn-expr _ brix-highlight-grammar (of ImmutableArray SourceSpan) (over: Char)
+(fn-expr _ ubrix-highlight-grammar (of ImmutableArray SourceSpan) (over: Char)
   (param source String)
   (param is-text Bool)
   (~ (seq (& (\{} is-text)) (* (| (: ...spans \text-run) (call \text-name (into spans)) (call \text-code (into spans)))) (! .))
@@ -338,7 +338,7 @@
     (lazy space SourceSpan
       (pattern
         (~ (+ " ")
-          (call brix-span source location .plain)
+          (call ubrix-span source location .plain)
         )
       )
     )
@@ -346,10 +346,10 @@
     (lazy joined SourceSpan
       (pattern
         (~ \numeral
-          (call brix-span source location .number)
+          (call ubrix-span source location .number)
         )
         (~ \word
-          (call brix-word-span source location .identifier)
+          (call ubrix-word-span source location .identifier)
         )
       )
     )
@@ -357,7 +357,7 @@
     (lazy tick SourceSpan
       (pattern
         (~ "'"
-          (call brix-span source location .punctuation)
+          (call ubrix-span source location .punctuation)
         )
       )
     )
@@ -365,7 +365,7 @@
     (lazy opener SourceSpan
       (pattern
         (~ (| "(" "[" "{")
-          (call brix-span source location .punctuation)
+          (call ubrix-span source location .punctuation)
         )
       )
     )
@@ -373,7 +373,7 @@
     (lazy closer SourceSpan
       (pattern
         (~ (| ")" "]" "}")
-          (call brix-span source location .punctuation)
+          (call ubrix-span source location .punctuation)
         )
       )
     )
@@ -381,16 +381,16 @@
     (lazy loose SourceSpan
       (pattern
         (~ \comment
-          (call brix-span source location .comment)
+          (call ubrix-span source location .comment)
         )
         (~ \character
-          (call brix-span source location .string)
+          (call ubrix-span source location .string)
         )
         (~ (| "," "." ":" "'")
-          (call brix-span source location .punctuation)
+          (call ubrix-span source location .punctuation)
         )
         (~ \symbol
-          (call brix-span source location .operator)
+          (call ubrix-span source location .operator)
         )
       )
     )
@@ -398,7 +398,7 @@
     (lazy pattern-word SourceSpan
       (pattern
         (~ (seq (! (seq (| "in" "on") (! (chars "a-zA-Z0-9_-")))) \word)
-          (call brix-word-span source location .capture)
+          (call ubrix-word-span source location .capture)
         )
       )
     )
@@ -406,7 +406,7 @@
     (lazy rule-name SourceSpan
       (pattern
         (~ (seq "\\" (? \word))
-          (call brix-span source location .rule)
+          (call ubrix-span source location .rule)
         )
       )
     )
@@ -414,22 +414,22 @@
     (lazy pattern-leaf SourceSpan
       (pattern
         (~ \character
-          (call brix-span source location .string)
+          (call ubrix-span source location .string)
         )
         (~ \class
-          (call brix-span source location .string)
+          (call ubrix-span source location .string)
         )
         (~ \numeral
-          (call brix-span source location .number)
+          (call ubrix-span source location .number)
         )
         (~ (| "//" "/")
-          (call brix-span source location .keyword)
+          (call ubrix-span source location .keyword)
         )
         (~ "..."
-          (call brix-span source location .operator)
+          (call ubrix-span source location .operator)
         )
         (~ (seq (! (chars "a-zA-Z)},=@`\\u005D")) .)
-          (call brix-span source location .operator)
+          (call ubrix-span source location .operator)
         )
       )
     )
@@ -437,7 +437,7 @@
     (lazy text-run SourceSpan
       (pattern
         (~ (+ (| (seq "\\" .) (seq (! (| "\${" (seq "\$" (chars "a-z")))) .)))
-          (call brix-span source location .string)
+          (call ubrix-span source location .string)
         )
       )
     )
@@ -445,7 +445,7 @@
     (lazy quoted-run SourceSpan
       (pattern
         (~ (+ (| (seq "\\" .) (seq (! (| "\"" "\${" (seq "\$" (chars "a-z")))) .)))
-          (call brix-span source location .string)
+          (call ubrix-span source location .string)
         )
       )
     )
@@ -453,7 +453,7 @@
     (lazy quote SourceSpan
       (pattern
         (~ "\""
-          (call brix-span source location .string)
+          (call ubrix-span source location .string)
         )
       )
     )
@@ -461,7 +461,7 @@
     (lazy text-mark SourceSpan
       (pattern
         (~ (| "\${" "\$" "}")
-          (call brix-span source location .operator)
+          (call ubrix-span source location .operator)
         )
       )
     )
@@ -469,7 +469,7 @@
     (lazy text-word SourceSpan
       (pattern
         (~ \word
-          (call brix-span source location .identifier)
+          (call ubrix-span source location .identifier)
         )
       )
     )
@@ -519,31 +519,31 @@
   )
 )
 
-(fn-expr _ brix-span SourceSpan
+(fn-expr _ ubrix-span SourceSpan
   (param source String)
   (param location MatchLocation)
   (param kind SourceSpanKind)
   (call SourceSpan kind ([] source (..< (. location begin column) (+ (. location end column) 1))))
 )
 
-(fn-expr _ brix-word-span SourceSpan
+(fn-expr _ ubrix-word-span SourceSpan
   (param source String)
   (param location MatchLocation)
   (param named SourceSpanKind)
   (call SourceSpan kind text)
   (where
     (lazy text ([] source (..< (. location begin column) (+ (. location end column) 1))))
-    (lazy word-kind (call brix-word-kind text))
+    (lazy word-kind (call ubrix-word-kind text))
     (lazy kind (if-expr (== word-kind (. SourceSpanKind identifier)) named word-kind))
   )
 )
 
-(fn-expr _ brix-word-kind SourceSpanKind
+(fn-expr _ ubrix-word-kind SourceSpanKind
   (param text String)
   (case? (or (== text "_") (== text "^"))
     (. SourceSpanKind operator)
   )
-  (case? (has brix-keywords text)
+  (case? (has ubrix-keywords text)
     (. SourceSpanKind keyword)
   )
   (case? (and (>= ([] text 0) 'A') (<= ([] text 0) 'Z'))
@@ -554,49 +554,49 @@
   )
 )
 
-(fn-do + brix-parse-text (of ImmutableTableRow SourceNode)
+(fn-do + ubrix-parse-text (of ImmutableTableRow SourceNode)
   (param text String)
   (param store SourceStore)
   (return-if (call (. store blank)) (if (== (. text length) 0)))
-  (let made (call brix-parse-prose text store))
+  (let made (call ubrix-parse-prose text store))
   (return-if (call (. store item) made 1) (if (and made (call (. store is-form) made "paragraph") (== (call (. store count) made) 2))))
   (return (call (. store string) text))
 )
 
-(fn-do + brix-is-import Bool
+(fn-do + ubrix-is-import Bool
   (param text String)
   (return-if false (if (not (or (call (. text starts-with) "/") (call (. text starts-with) "./") (call (. text starts-with) "../")))))
   (return (call all (. text codepoints) (:where (and (!= each (char " ")) (!= each (char "(")) (!= each (char "\""))))))
 )
 
-(fn-do + brix-parse-statement (? (of ImmutableTableRow SourceNode))
+(fn-do + ubrix-parse-statement (? (of ImmutableTableRow SourceNode))
   (param text String)
   (param store SourceStore)
-  (param scope BrixEntry)
-  (let body (call brix-trimmed text))
+  (param scope UBrixEntry)
+  (let body (call ubrix-trimmed text))
   (return-if (call (. store blank)) (if (== (. body length) 0)))
   (if (call (. body starts-with) "`")
     (let note ([] body (... 1)))
     (return (call (. store comment) (if-expr (call (. note starts-with) " ") ([] note (... 1)) note)))
   )
-  (let parsed (call brix-parse-row body store scope))
+  (let parsed (call ubrix-parse-row body store scope))
   (return-if null (if (not parsed)))
-  (return (call brix-prune store parsed))
+  (return (call ubrix-prune store parsed))
 )
 
-(fn-do + brix-parse-declaration (? (of ImmutableTableRow SourceNode))
+(fn-do + ubrix-parse-declaration (? (of ImmutableTableRow SourceNode))
   (param text String)
   (param store SourceStore)
-  (return (call brix-parse-row (call brix-trimmed text) store (. BrixEntry head-row)))
+  (return (call ubrix-parse-row (call ubrix-trimmed text) store (. UBrixEntry head-row)))
 )
 
-(fn-do + brix-parse-line (? (of ImmutableTableRow SourceNode))
+(fn-do + ubrix-parse-line (? (of ImmutableTableRow SourceNode))
   (param text String)
   (param store SourceStore)
-  (return (call brix-parse-row (call brix-trimmed text) store (. BrixEntry header-row)))
+  (return (call ubrix-parse-row (call ubrix-trimmed text) store (. UBrixEntry header-row)))
 )
 
-(fn-do + brix-trimmed String
+(fn-do + ubrix-trimmed String
   (param text String)
   (let chars (. text codepoints))
   (let start Index 0)
@@ -610,7 +610,7 @@
   (return ([] text (..< start last)))
 )
 
-(fn-expr + brix-takes-block Bool
+(fn-expr + ubrix-takes-block Bool
   (param store SourceStore)
   (param node (of ImmutableTableRow SourceNode))
   (or is-keyword (has heads head) (has probes head))
@@ -622,7 +622,7 @@
   )
 )
 
-(fn-do + brix-prune (of ImmutableTableRow SourceNode)
+(fn-do + ubrix-prune (of ImmutableTableRow SourceNode)
   (param store SourceStore)
   (param node (of ImmutableTableRow SourceNode))
   (param is-bare Bool (= false))
@@ -632,16 +632,16 @@
   (let last (call (. store item) node (- count 1)))
   (let is-binding (or (call (. store is-form) node "let") (call (. store is-form) node "lazy")))
   (if (not (and (call (. store is-form) last "block") (== (call (. store count) last) 1)))
-    (let next (call brix-prune store last is-bare))
+    (let next (call ubrix-prune store last is-bare))
     (return-if node (if (== (. next index) (. last index))))
     (let pruned (call (. store appended) (call (. store trimmed) node (- count 1)) next))
     (let is-named (and is-binding (== count 3) (call (. store is-atom) (call (. store item) node 1))))
-    (let becomes-type (and (call brix-is-type-form store next) (not (call brix-is-type-form store last))))
+    (let becomes-type (and (call ubrix-is-type-form store next) (not (call ubrix-is-type-form store last))))
     (return (if-expr (and is-named becomes-type) (call (. store inserted) pruned 2 (call (. store atom) "_")) pruned))
   )
   (return-if node (if (< count 2)))
   (return-if (call (. store trimmed) node 2) (if (and is-binding (== count 3))))
-  (return-if (call (. store trimmed) node (- count 1)) (if (call brix-takes-block store node)))
+  (return-if (call (. store trimmed) node (- count 1)) (if (call ubrix-takes-block store node)))
   (return-if node (if (not (call (. store is-form) node "call"))))
   (let target (call (. store item) node 1))
   (return-if (call (. store with-id) target (. node id)) (if (and (== count 3) is-bare (== (. target id) 0))))

@@ -13,24 +13,24 @@
   (variant dropped)
 )
 
-(type _ BrixWoven (is Tuple)
+(type _ UBrixWoven (is Tuple)
   (prop + slot Size)
   (prop + node (of ImmutableTableRow SourceNode))
 )
 
-(type + BrixTrivia
+(type + UBrixTrivia
   (prop _ store SourceStore)
-  (prop _ spans BrixSpans)
-  (prop _ layout BrixLayout)
+  (prop _ spans UBrixSpans)
+  (prop _ layout UBrixLayout)
   (prop _ kinds (list TriviaKind))
   (prop _ indents (list Size))
   (prop _ texts (list String))
-  (prop _ woven (map U32 (list BrixWoven)))
+  (prop _ woven (map U32 (list UBrixWoven)))
   (fn-do + This _
     (param store _)
     (param spans _)
     (param source String)
-    (lazy layout (call BrixLayout store))
+    (lazy layout (call UBrixLayout store))
     (for (in line (call (. source split) "\n"))
       (call scan line)
     )
@@ -326,7 +326,7 @@
       (let previous ([] items (- slot 1)))
       (let start (call (. spans start) previous))
       (let is-flat (or (not (call (. store is-list) previous)) (== start 0) (<= (call (. spans end) previous) start)))
-      (if (or is-flat (and (<= depth ([] indents (- start 1))) (not (call brix-is-arm store previous))))
+      (if (or is-flat (and (<= depth ([] indents (- start 1))) (not (call ubrix-is-arm store previous))))
         (break)
       )
       (let deeper (call holder-in previous))
@@ -342,9 +342,9 @@
     (call (. spans set) made line line)
     (let held ([] woven (. node id)))
     (if held
-      (call (. held append) (call BrixWoven slot made))
+      (call (. held append) (call UBrixWoven slot made))
       (else
-        (= ([] woven (. node id)) (call (of List BrixWoven) (call BrixWoven slot made)))
+        (= ([] woven (. node id)) (call (of List UBrixWoven) (call UBrixWoven slot made)))
       )
     )
   )

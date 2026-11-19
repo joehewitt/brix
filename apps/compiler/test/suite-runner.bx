@@ -5,7 +5,7 @@
 (import /lang/ast/ast-xml)
 (import /lang/ast/brix)
 (import /lang/ast/error)
-(import /lang/brix/convert)
+(import /lang/ubrix/convert)
 (import /lang/constants)
 (import /lang/target)
 (import /math)
@@ -440,7 +440,7 @@
   (let forms (call inline-forms text))
   (return-if (call (of List ParsedCase)) (if (== (. forms length) 0)))
   (let checked (call (. " " join) (in (str "(tuple " ([] each 0) " " (call brix-quoted ([] each 1)) ")") forms)))
-  (let source (str "(import /lang/brix/inline)\n\n(main\n  (for (in (tuple line form) (list " checked "))\n    (if (not (call brix-inline-view form))\n      (print (str line \": \" form))\n    )\n  )\n)"))
+  (let source (str "(import /lang/ubrix/inline)\n\n(main\n  (for (in (tuple line form) (list " checked "))\n    (if (not (call ubrix-inline-view form))\n      (print (str line \": \" form))\n    )\n  )\n)"))
   (return (list (call ParsedCase source 1 (call (of Map String String)) "Inline forms")))
 )
 
@@ -965,7 +965,7 @@
 
 (fn-do _ ubrix-round-trip String (?! Error)
   (param source String)
-  (return (call brix-convert (call brix-yumi-text (str source "\n"))))
+  (return (call ubrix-to-brix (call brix-to-ubrix (str source "\n"))))
 )
 
 (fn-do _ parse-compare _
@@ -985,8 +985,8 @@
       )
     )
     (call (. result compare) actual expected)
-    (else-if (is parsed YumiSyntaxError)
-      (call (. result compare) (. (as parsed YumiSyntaxError) exception-text) expected)
+    (else-if (is parsed BrixSyntaxError)
+      (call (. result compare) (. (as parsed BrixSyntaxError) exception-text) expected)
     )
     (else
       (= (. result status) "crashed")

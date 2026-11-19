@@ -3,7 +3,7 @@
 (import /core/table)
 (import /data/source-tree)
 
-(type + BrixEntry (is Union)
+(type + UBrixEntry (is Union)
   (variant whole-file)
   (variant statement-row)
   (variant member-row)
@@ -16,10 +16,10 @@
   (variant header-row)
 )
 
-(fn-expr + brix-grammar _ (over: Char)
-  (param bx BrixBuilder)
-  (param entry BrixEntry)
-  (~ (seq (! (\{} (!= entry (. BrixEntry whole-file)))) / (: v \statements) /)
+(fn-expr + ubrix-grammar _ (over: Char)
+  (param bx UBrixBuilder)
+  (param entry UBrixEntry)
+  (~ (seq (! (\{} (!= entry (. UBrixEntry whole-file)))) / (: v \statements) /)
     (call (. bx form) location "file" v)
   )
   (~ (seq / (: v \row))
@@ -28,31 +28,31 @@
   (where
     (lazy row (of ImmutableTableRow SourceNode)
       (pattern
-        (~ (seq (& (\{} (== entry (. BrixEntry statement-row)))) (: v \statement-row))
+        (~ (seq (& (\{} (== entry (. UBrixEntry statement-row)))) (: v \statement-row))
           v
         )
-        (~ (seq (& (\{} (== entry (. BrixEntry member-row)))) (: v \member-row))
+        (~ (seq (& (\{} (== entry (. UBrixEntry member-row)))) (: v \member-row))
           v
         )
-        (~ (seq (& (\{} (== entry (. BrixEntry rule-row)))) (: v \rule-row))
+        (~ (seq (& (\{} (== entry (. UBrixEntry rule-row)))) (: v \rule-row))
           v
         )
-        (~ (seq (& (\{} (== entry (. BrixEntry use-row)))) (: v \use-row))
+        (~ (seq (& (\{} (== entry (. UBrixEntry use-row)))) (: v \use-row))
           v
         )
-        (~ (seq (& (\{} (== entry (. BrixEntry state-row)))) (: v \state-row))
+        (~ (seq (& (\{} (== entry (. UBrixEntry state-row)))) (: v \state-row))
           v
         )
-        (~ (seq (& (\{} (== entry (. BrixEntry keyframe-row)))) (: v \keyframe-statement) \row-end)
+        (~ (seq (& (\{} (== entry (. UBrixEntry keyframe-row)))) (: v \keyframe-statement) \row-end)
           v
         )
-        (~ (seq (& (\{} (== entry (. BrixEntry prose-row)))) (: v \string-block) \row-end)
+        (~ (seq (& (\{} (== entry (. UBrixEntry prose-row)))) (: v \string-block) \row-end)
           v
         )
-        (~ (seq (& (\{} (== entry (. BrixEntry head-row)))) (: v \head-row))
+        (~ (seq (& (\{} (== entry (. UBrixEntry head-row)))) (: v \head-row))
           v
         )
-        (~ (seq (& (\{} (== entry (. BrixEntry header-row)))) (: v \header-row))
+        (~ (seq (& (\{} (== entry (. UBrixEntry header-row)))) (: v \header-row))
           v
         )
       )
@@ -189,7 +189,7 @@
     (blank)
     (lazy unwritten-block (of ImmutableTableRow SourceNode)
       (pattern
-        (~ (seq (& (\{} (!= entry (. BrixEntry whole-file)))) (& \row-end))
+        (~ (seq (& (\{} (!= entry (. UBrixEntry whole-file)))) (& \row-end))
           (call (. bx form) location "block")
         )
       )
@@ -357,7 +357,7 @@
     (lazy machine-row-block (of ImmutableTableRow SourceNode)
       (pattern
         (~ \state-machine-block)
-        (~ (seq (& (\{} (!= entry (. BrixEntry whole-file)))) (& \row-end))
+        (~ (seq (& (\{} (!= entry (. UBrixEntry whole-file)))) (& \row-end))
           (call (. bx form) location "machine")
         )
       )
@@ -923,7 +923,7 @@
         (~ (seq (: property \keyframe-property) (: bullets (* \bullet-argument-no-comma)) / \open (: stops (+ \keyframe-stop-line)) / \close)
           (call (. bx form) location "track" property (call (. bx many) bullets) (call (. bx some) stops))
         )
-        (~ (seq (& (\{} (== entry (. BrixEntry keyframe-row)))) (: property \keyframe-property) (: bullets (* \bullet-argument-no-comma)) (& \row-end))
+        (~ (seq (& (\{} (== entry (. UBrixEntry keyframe-row)))) (: property \keyframe-property) (: bullets (* \bullet-argument-no-comma)) (& \row-end))
           (call (. bx form) location "track" property (call (. bx many) bullets))
         )
       )
@@ -1045,7 +1045,7 @@
           statements
         )
         (~ \inline-block-expression)
-        (~ (seq (& (\{} (or (== entry (. BrixEntry rule-row)) (== entry (. BrixEntry use-row))))) (& \row-end))
+        (~ (seq (& (\{} (or (== entry (. UBrixEntry rule-row)) (== entry (. UBrixEntry use-row))))) (& \row-end))
           (call (. bx seq))
         )
       )
@@ -1128,7 +1128,7 @@
         (~ (seq / \nl (: statements \state-machine-statements) / \close)
           (call (. bx form) location "machine" statements)
         )
-        (~ (seq (& (\{} (!= entry (. BrixEntry whole-file)))) / (* \nl) / \close)
+        (~ (seq (& (\{} (!= entry (. UBrixEntry whole-file)))) / (* \nl) / \close)
           (call (. bx form) location "machine")
         )
       )
@@ -4636,7 +4636,7 @@
           (as 0 Char)
         )
         (~ (seq "\\" (: c \single-escape-character))
-          ([] (call brix-unescape c) 0)
+          ([] (call ubrix-unescape c) 0)
         )
         (~ (seq "\\" (: c \non-escape-character))
           c

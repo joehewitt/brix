@@ -250,7 +250,7 @@ Exception: `itemCount` is not a Brix name. A name is lowercase words joined by h
 ```
 
 ```output
-Exception: `in` is a Yumi keyword, and Brix cannot show it as this name. Choose another name.
+Exception: `in` is a UBrix keyword, and UBrix cannot show it as this name. Choose another name.
 <no file:3>
       (let in 3)
            ^

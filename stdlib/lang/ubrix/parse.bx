@@ -6,7 +6,7 @@
 (import /data/source-tree)
 (import /lang/ast/preparse)
 
-(type + BrixSyntaxError (is Error)
+(type + UBrixSyntaxError (is Error)
   (prop + line Size)
   (prop + column Size)
   (fn-do + This _
@@ -16,32 +16,32 @@
   )
 )
 
-(fn-do + brix-build (of ImmutableTableRow SourceNode) (?! BrixSyntaxError)
+(fn-do + ubrix-build (of ImmutableTableRow SourceNode) (?! UBrixSyntaxError)
   (param source String)
-  (param builder BrixBuilder)
+  (param builder UBrixBuilder)
   (let scratch (use (call Arena)))
   (let prepared (call preparse source scratch))
   (return
     (match prepared
-      (~ (: parsed (call \brix-grammar builder (. BrixEntry whole-file)))
+      (~ (: parsed (call \ubrix-grammar builder (. UBrixEntry whole-file)))
         parsed
       )
-      (throw (call BrixSyntaxError (+ (as (. location line) Size) 1) (+ (as (. location column) Size) 1)))
+      (throw (call UBrixSyntaxError (+ (as (. location line) Size) 1) (+ (as (. location column) Size) 1)))
     )
   )
 )
 
-(fn-do + brix-parse-row (? (of ImmutableTableRow SourceNode))
+(fn-do + ubrix-parse-row (? (of ImmutableTableRow SourceNode))
   (param text String)
   (param store SourceStore)
-  (param entry BrixEntry)
-  (let builder (call BrixBuilder store))
+  (param entry UBrixEntry)
+  (let builder (call UBrixBuilder store))
   (let scratch (use (call Arena)))
-  (let source (if-expr (== entry (. BrixEntry head-row)) (str "━━━━━━━━━━━━━━━━━━━━\n" text "\n") text))
+  (let source (if-expr (== entry (. UBrixEntry head-row)) (str "━━━━━━━━━━━━━━━━━━━━\n" text "\n") text))
   (let prepared (call preparse source scratch))
   (return
     (match prepared
-      (~ (: parsed (call \brix-grammar builder entry))
+      (~ (: parsed (call \ubrix-grammar builder entry))
         (call (. builder only) parsed)
       )
       (default
@@ -51,14 +51,14 @@
   )
 )
 
-(fn-do + brix-parse-prose (? (of ImmutableTableRow SourceNode))
+(fn-do + ubrix-parse-prose (? (of ImmutableTableRow SourceNode))
   (param text String)
   (param store SourceStore)
-  (let builder (call BrixBuilder store))
+  (let builder (call UBrixBuilder store))
   (let scratch (use (call Arena)))
   (return
-    (match (call brix-chars (str "Æ" (call (. "\ufdd0" join) (call (. text split) "≥")) "\n≥") scratch)
-      (~ (: parsed (call \brix-grammar builder (. BrixEntry prose-row)))
+    (match (call ubrix-chars (str "Æ" (call (. "\ufdd0" join) (call (. text split) "≥")) "\n≥") scratch)
+      (~ (: parsed (call \ubrix-grammar builder (. UBrixEntry prose-row)))
         (call (. builder only) parsed)
       )
       (default
@@ -68,7 +68,7 @@
   )
 )
 
-(fn-do _ brix-chars ([] Char)
+(fn-do _ ubrix-chars ([] Char)
   (param source String)
   (param scratch Arena)
   (let bytes (call byte-view source))

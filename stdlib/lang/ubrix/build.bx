@@ -3,9 +3,9 @@
 (import /data/source-tree)
 (import /stream/aggregate)
 
-(type + BrixSpans
+(type + UBrixSpans
   (prop _ base U32)
-  (prop _ entries (list BrixSpan))
+  (prop _ entries (list UBrixSpan))
   (fn-do + This _
     (param store SourceStore)
     (lazy base (. store latest-id))
@@ -32,12 +32,12 @@
     (return-if (if (<= id base)))
     (let slot (as (- id base 1) Index))
     (while (< (. entries length) slot)
-      (+= entries (call BrixSpan 0 0))
+      (+= entries (call UBrixSpan 0 0))
     )
     (if (== slot (. entries length))
-      (+= entries (call BrixSpan start end))
+      (+= entries (call UBrixSpan start end))
       (else
-        (= ([] entries slot) (call BrixSpan start end))
+        (= ([] entries slot) (call UBrixSpan start end))
       )
     )
   )
@@ -64,10 +64,10 @@
   )
 )
 
-(type + BrixBuilder
+(type + UBrixBuilder
   (prop + store SourceStore)
   (blank)
-  (prop _ spans (? BrixSpans))
+  (prop _ spans (? UBrixSpans))
   (fn-do + This _
     (param store _)
     (param spans _ (= null))
@@ -252,7 +252,7 @@
     (while (> index 0)
       (-= index 1)
       (let op ([] ops index))
-      (if (and (== op "-") (call (. store is-atom) result) (call brix-is-number (call (. store text) result)))
+      (if (and (== op "-") (call (. store is-atom) result) (call ubrix-is-number (call (. store text) result)))
         (= result (call atom location (str "-" (call (. store text) result))))
         (else
           (= result (call form location op result))
@@ -315,7 +315,7 @@
       (return (call place location (call (. store list) items)))
     )
     (let rows (only-if (call only args) (if (and (!= args null) (== (call count params) 0)))))
-    (return-if (call form location "scope" target (call body rows)) (if (and (!= rows null) (call brix-is-scope store rows))))
+    (return-if (call form location "scope" target (call body rows)) (if (and (!= rows null) (call ubrix-is-scope store rows))))
     (return (call call location target params args))
   )
   (fn-do + member (of ImmutableTableRow SourceNode)
@@ -474,11 +474,11 @@
   (fn-do + function-head String
     (param is-imperative Bool)
     (param key (of ImmutableTableRow SourceNode))
-    (return-if (call brix-callable-head store key is-imperative) (if (not (call is-spliced key))))
+    (return-if (call ubrix-callable-head store key is-imperative) (if (not (call is-spliced key))))
     (for (in item (call (. store items) key))
       (return-if (if-expr is-imperative "fn-do" "fn-expr") (if (call (. store is-form) item "over:")))
     )
-    (return (call brix-callable-head store (call (. store item) key 0) is-imperative))
+    (return (call ubrix-callable-head store (call (. store item) key 0) is-imperative))
   )
   (fn-do + declared (of ImmutableTableRow SourceNode)
     (param location MatchLocation)
@@ -486,9 +486,9 @@
     (param left (of ImmutableTableRow SourceNode))
     (param right (? (of ImmutableTableRow SourceNode)) (= null))
     (let parts (call (. store items) left))
-    (let is-typed (and (call (. store is-form) left ":") (== (. parts length) 3) (call (. store is-atom) ([] parts 1)) (not (call brix-is-pattern-form store ([] parts 2)))))
-    (return-if (call form location word ([] parts 1) ([] parts 2) right) (if (and is-typed (or (!= right null) (call brix-is-type-form store ([] parts 2))))))
-    (return-if (call form location word left (call atom location "_") right) (if (and right (call (. store is-atom) left) (call brix-is-type-form store right))))
+    (let is-typed (and (call (. store is-form) left ":") (== (. parts length) 3) (call (. store is-atom) ([] parts 1)) (not (call ubrix-is-pattern-form store ([] parts 2)))))
+    (return-if (call form location word ([] parts 1) ([] parts 2) right) (if (and is-typed (or (!= right null) (call ubrix-is-type-form store ([] parts 2))))))
+    (return-if (call form location word left (call atom location "_") right) (if (and right (call (. store is-atom) left) (call ubrix-is-type-form store right))))
     (return (call form location word left right))
   )
   (fn-do + capture (of ImmutableTableRow SourceNode)
@@ -767,7 +767,7 @@
   )
 )
 
-(fn-expr + brix-is-number Bool
+(fn-expr + ubrix-is-number Bool
   (param text String)
   (and (> (. bytes length) 0) (or is-digit is-fraction))
   (where
@@ -778,15 +778,15 @@
   )
 )
 
-(fn-do + brix-is-scope Bool
+(fn-do + ubrix-is-scope Bool
   (param store SourceStore)
   (param block (of ImmutableTableRow SourceNode))
   (return-if false (if (not (call (. store is-form) block "block"))))
   (let items (call (. store items) block))
-  (return (call all (..< 1 (. items length)) (:where (call brix-is-scope-row store ([] items each)))))
+  (return (call all (..< 1 (. items length)) (:where (call ubrix-is-scope-row store ([] items each)))))
 )
 
-(fn-expr + brix-is-arm Bool
+(fn-expr + ubrix-is-arm Bool
   (param store SourceStore)
   (param node (of ImmutableTableRow SourceNode))
   (or (== head "else-if") (== head "else") (== head "and-for") (== head "or-for") (== head "on-failure"))
@@ -795,7 +795,7 @@
   )
 )
 
-(fn-expr + brix-takes-arm Bool
+(fn-expr + ubrix-takes-arm Bool
   (param store SourceStore)
   (param node (of ImmutableTableRow SourceNode))
   (param arm (of ImmutableTableRow SourceNode))
@@ -817,7 +817,7 @@
   )
 )
 
-(fn-expr + brix-callable-head String
+(fn-expr + ubrix-callable-head String
   (param store SourceStore)
   (param name (of ImmutableTableRow SourceNode))
   (param is-imperative Bool)
@@ -828,7 +828,7 @@
   )
 )
 
-(fn-do + brix-is-type-form Bool
+(fn-do + ubrix-is-type-form Bool
   (param store SourceStore)
   (param node (of ImmutableTableRow SourceNode))
   (if (call (. store is-atom) node)
@@ -850,12 +850,12 @@
         (lazy is-named (call (. store is-atom) (call (. store item) item 1)))
       )
     )
-    (return-if false (if (not (call brix-is-type-form store (if-expr is-field (call (. store item) item 2) item)))))
+    (return-if false (if (not (call ubrix-is-type-form store (if-expr is-field (call (. store item) item 2) item)))))
   )
   (return true)
 )
 
-(fn-expr + brix-is-pattern-form Bool
+(fn-expr + ubrix-is-pattern-form Bool
   (param store SourceStore)
   (param node (of ImmutableTableRow SourceNode))
   (case? (call (. store is-atom) node)
@@ -866,7 +866,7 @@
   )
 )
 
-(fn-do + brix-iterate-body Size
+(fn-do + ubrix-iterate-body Size
   (param store SourceStore)
   (param node (of ImmutableTableRow SourceNode))
   (let items (call (. store items) node))
@@ -876,18 +876,18 @@
   (return (. items length))
 )
 
-(fn-do + brix-arm-start Size
+(fn-do + ubrix-arm-start Size
   (param store SourceStore)
   (param node (of ImmutableTableRow SourceNode))
   (let items (call (. store items) node))
   (let index (. items length))
-  (while (and (> index 0) (call brix-is-arm store ([] items (- index 1))) (call brix-takes-arm store node ([] items (- index 1))))
+  (while (and (> index 0) (call ubrix-is-arm store ([] items (- index 1))) (call ubrix-takes-arm store node ([] items (- index 1))))
     (-= index 1)
   )
   (return index)
 )
 
-(fn-expr + brix-is-scope-row Bool
+(fn-expr + ubrix-is-scope-row Bool
   (param store SourceStore)
   (param row (of ImmutableTableRow SourceNode))
   (or is-comment (call (. store is-blank) row) (== head "lazy") (== head "on-error") (== head "throw"))
@@ -897,7 +897,7 @@
   )
 )
 
-(fn-expr + brix-unescape String
+(fn-expr + ubrix-unescape String
   (param c Char)
   (match c
     (case= 't'
@@ -939,7 +939,7 @@
   )
 )
 
-(type _ BrixSpan (is Tuple)
+(type _ UBrixSpan (is Tuple)
   (prop + start Index)
   (prop + end Index)
 )

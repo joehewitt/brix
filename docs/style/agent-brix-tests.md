@@ -105,7 +105,7 @@ file, select it by its number or a line in it.
 - Run the file or single case for what you changed, and nothing broader.
 - After a compiler or runtime change, run `suite:core` once before handoff. After a change to the
   Brix reader, also run `suite:parse` once. After a change to the UBrix
-  grammar or printer in `stdlib/lang/brix`, run `suite:ubrix` once.
+  grammar or printer in `stdlib/lang/ubrix`, run `suite:ubrix` once.
 - Never run any other `suite:` selector, except `suite:scratch`, unless the user names it. This
   includes `suite:stdlib`, `suite:parity`, and `suite:other`, which holds the Python tests and the
   slow GC sanitizer runs.
