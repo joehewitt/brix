@@ -3167,7 +3167,7 @@ thing
 ```
 
 ```output
-Exception: Initializer of total reads base before the constructor body assigns it; constructor .. initializers run before the body
+Exception: Initializer of total reads base before the constructor body assigns it; constructor lazy bindings run before the body
 <no file:11>
         (lazy total (+ base 1))
                        ^^^^

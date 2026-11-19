@@ -539,7 +539,7 @@ body`. It runs before the body, too, so it cannot read a property the body assig
 ```
 
 ```output
-Exception: Initializer of size reads title before the constructor body assigns it; constructor .. initializers run before the body
+Exception: Initializer of size reads title before the constructor body assigns it; constructor lazy bindings run before the body
 <no file:13>
         (lazy size (. title length))
                       ^^^^^

@@ -1084,7 +1084,7 @@
 (fn-expr + is-local-value-proven Bool
   (param tree AST)
   (param id SyntaxId)
-  ; Whether moving a local to `..` keeps its value: a lazy one proven, an eager one direct.
+  ; Whether moving a local to a lazy keeps its value: a lazy one proven, an eager one direct.
   (if-expr (call is-lazy-local tree id) (call is-proven-value tree value) (call is-direct-value tree value))
   (where
     (lazy value (call local-value tree id))
@@ -1105,10 +1105,10 @@
     (str review-head "; " review-tail)
   )
   (where
-    (lazy actionable-head "Prefer an expression function: remove `do` and the explicit return,")
-    (lazy actionable-tail "keep assertions first, then the value, then `..` lazy dependencies.")
-    (lazy review-head "Review this single-result `do` function for expression form")
-    (lazy review-tail (str "keep `do` only when its value is an effect's result or " misplaced))
+    (lazy actionable-head "Prefer an expression function: write `fn-expr` without the explicit return,")
+    (lazy actionable-tail "keep assertions first, then the value, then lazy dependencies in `where`.")
+    (lazy review-head "Review this single-result `fn-do` function for expression form")
+    (lazy review-tail (str "keep `fn-do` only when its value is an effect's result or " misplaced))
     (lazy misplaced "a lazy's first read would come in the wrong place.")
     (lazy late-names (call listed (*> late (str "`" (call local-name tree each) "`"))))
   )
@@ -1116,7 +1116,7 @@
 
 (fn-expr + late-clause String
   (param names String)
-  (str "as `..` lazies, " names " would first be read after assertion work that makes calls, so " check)
+  (str "as lazies, " names " would first be read after assertion work that makes calls, so " check)
   (where
     (lazy check "check that each still reads the value it should")
   )
@@ -1151,7 +1151,7 @@
   (let prefix (str "Prefer an expression function: replace " paths " successful return paths with one "))
   (+= prefix (str "ordered " shape " match"))
   (if (!= status "actionable")
-    (= prefix (str "Review this multi-result `do` function for expression form: its " paths " successful "))
+    (= prefix (str "Review this multi-result `fn-do` function for expression form: its " paths " successful "))
     (+= prefix (str "return paths can become one ordered " shape " match"))
   )
   (blank)
@@ -1167,7 +1167,7 @@
     )
   )
   (if (!= (. function-level length) 0)
-    (+= clauses (str "move " (call listed-names function-level) " to function-level `..` lazies"))
+    (+= clauses (str "move " (call listed-names function-level) " to function-level lazies"))
   )
   (blank)
   (let keys (list String))
@@ -1186,7 +1186,7 @@
   )
   (for (in key keys)
     (let group (!! ([] groups key)))
-    (let kind (if-expr (== (. group length) 1) "a `..` lazy" "`..` lazies"))
+    (let kind (if-expr (== (. group length) 1) "a lazy" "lazies"))
     (let location (call path-description source tree (. ([] group 0) placement)))
     (+= clauses (str "place " (call listed-names group) " as " kind " in " location))
   )
@@ -1207,12 +1207,12 @@
     )
     (if (!= (. eager length) 0)
       (let names (call listed-names eager))
-      (let clause (str "verify eager order and effects: moving " names " to `..` defers evaluation "))
+      (let clause (str "verify eager order and effects: moving " names " to lazies defers evaluation "))
       (+= clause "and failure until first use")
       (+= clauses clause)
     )
     (if (and (== (. crossing length) 0) (== (. eager length) 0))
-      (+= clauses "verify guard and result evaluation order and effects before removing `do`")
+      (+= clauses "verify guard and result evaluation order and effects before replacing `fn-do`")
     )
   )
   (if (== (. clauses length) 0)
