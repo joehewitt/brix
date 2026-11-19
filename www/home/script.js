@@ -58,6 +58,7 @@ function initializeExamples(document) {
     const body = browser.querySelector('[data-example-body]');
     const label = browser.querySelector('[data-example-path]');
     const filesToggle = browser.querySelector('[data-files-toggle]');
+    const stacked = view.matchMedia('(max-width: 760px)');
     const links = new Map([...browser.querySelectorAll('[data-example]')].map((link) => [link.dataset.example, link]));
     const first = browser.dataset.current;
     const fragments = new Map([[first, body.innerHTML]]);
@@ -109,7 +110,8 @@ function initializeExamples(document) {
         link.setAttribute('aria-current', 'page');
         if (isLanding) {
             for (const folder of tree.querySelectorAll('details[open]')) folder.open = false;
-            document.getElementById('examples').scrollIntoView({ block: 'start' });
+            if (stacked.matches) document.getElementById('examples').scrollIntoView({ block: 'start' });
+            else view.scrollTo({ top: document.documentElement.scrollHeight });
         }
         for (let folder = link.closest('details'); folder; folder = folder.parentElement.closest('details')) folder.open = true;
         reveal(link);
@@ -131,8 +133,18 @@ function initializeExamples(document) {
         body.innerHTML = html;
         shown = loaded ? name : null;
         body.removeAttribute('aria-busy');
+        body.scrollTo(0, 0);
         if (file.getBoundingClientRect().top < 0) file.scrollIntoView({ block: 'start' });
     };
+
+    browser.addEventListener('wheel', (event) => {
+        if (stacked.matches || event.ctrlKey || event.deltaY <= 0) return;
+        const rest = browser.getBoundingClientRect().top - parseFloat(view.getComputedStyle(browser).top);
+        if (rest < 1) return;
+        event.preventDefault();
+        const unit = [1, 16, view.innerHeight][event.deltaMode];
+        view.scrollBy(0, Math.min(event.deltaY * unit, rest));
+    }, { passive: false });
 
     const hashName = () => {
         try {
