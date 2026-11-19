@@ -1631,6 +1631,22 @@
     )
     (return (call with-swap-set effects (call intern-swap-set entries)))
   )
+  (fn-do + unbound EffectMask
+    (param effects EffectMask)
+    ; A mask with each fake it binds taken off, keeping what it knows reaches its real doors.
+    (let set (call swap-set-of effects))
+    (return-if effects (if (== set 0)))
+    (blank)
+    (let entries (list U32))
+    (let start ([] swap-set-starts (- set 1)))
+    (for (in position (..< start (+ start ([] swap-set-counts (- set 1)))))
+      (let held ([] swap-set-entries position))
+      (if (== (. ([] swap-entries (- held 1)) fake) no-type)
+        (+= entries held)
+      )
+    )
+    (return (call with-swap-set effects (if-expr (== (. entries length) 0) 0u32 (call intern-swap-set entries))))
+  )
   (fn-do + bound-to EffectMask
     (param effects EffectMask)
     (param effect U32)

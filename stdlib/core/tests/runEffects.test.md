@@ -1231,3 +1231,40 @@ done
 5
 5
 ```
+
+### A fake's method that calls its door through a function value reaches the real door
+
+```brix
+(main
+  (do-with world (call Stub)
+    (print (call roll))
+  )
+)
+
+(type + Roller (is (fn-type Int)))
+
+(effect + world)
+
+(fn-do + roll Int (door world)
+  (return 10)
+)
+
+(fn-do + real-roll Int
+  (return (call roll))
+)
+
+(fn-do + through Int
+  (param f Roller)
+  (return (call f))
+)
+
+(type + Stub
+  (fn-do + roll Int
+    (return (+ (call through real-roll) 1))
+  )
+)
+```
+
+```output
+11
+```
