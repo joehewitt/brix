@@ -76,6 +76,8 @@
 (prop _ gui-stagger-steps Size (= 8))
 (prop _ gui-retained-paint-clear-generation U64 (= 1))
 (prop _ gui-retained-dirty-child-limit Size (= 32))
+(prop _ gui-paint-recording-depth Size (= 0))
+(prop _ gui-paint-recorded (list Box))
 (prop _ gui-native-artifact-peer U8 (= 1))
 (prop _ gui-native-artifact-clip U8 (= 2))
 (prop _ gui-native-artifact-material U8 (= 4))
@@ -3743,7 +3745,21 @@
     (= retained-paint-self-invalid true)
     (call mark-retained-paint-path)
   )
+  (fn-do + replay-paint-invalidation _
+    (return-if (if (and (not retained-paint-self-invalid) (not retained-presentation-invalid))))
+    (call mark-retained-paint-path)
+    (if retained-paint-self-invalid
+      (= $is-paint-invalid true)
+    )
+    (let paint-root root)
+    (= (. paint-root $is-paint-invalid) true)
+    (= (. paint-root $is-paint-invalid-below) true)
+    (call (?. window schedule-render))
+  )
   (fn-do _ mark-retained-paint-path _
+    (if (> gui-paint-recording-depth 0)
+      (+= gui-paint-recorded this)
+    )
     (return-if (if is-presentation-layer))
     (let generation (call gui-retained-paint-link-generation))
     (return-if (if (== retained-paint-link-generation generation)))
@@ -6037,6 +6053,20 @@
       (return)
     )
     (call (. run scrub) (call (. timeline progress) box))
+  )
+)
+
+(fn-do + gui-record-paint-invalidations _
+  (+= gui-paint-recording-depth 1)
+)
+
+(fn-do + gui-replay-paint-invalidations _
+  (-= gui-paint-recording-depth 1)
+  (return-if (if (or (> gui-paint-recording-depth 0) (== (. gui-paint-recorded length) 0))))
+  (let recorded gui-paint-recorded)
+  (= gui-paint-recorded (call (of List Box)))
+  (for (in box recorded)
+    (call (. box replay-paint-invalidation))
   )
 )
 
