@@ -1,8 +1,8 @@
 # The home page
 
-`home/build.bx` writes the home page of brix-lang.com: the name, the byline, a link to the
-reference, the install command, a prompt that asks an agent to install Brix and write an app, and a
-browser of `examples`.
+`home/build.bx` writes the home page of brix-lang.com: the name, the byline, links to the
+reference and the GitHub repository, the install command, a prompt that asks an agent to install
+Brix and write an app, and a browser of `examples`.
 
 Run it from the repository root with
 `bin/brix www/home/build.bx -o .tmp/build/build-home -- --output .tmp/site`. `--examples` names
