@@ -1,0 +1,32 @@
+; name: Error handling
+; category: basics
+; size: medium
+; summary: Errors are part of a function's type and pass on to the caller by themselves, and a handler on a call gives a value in place of an error.
+; examples: basics/errors/declared-errors.bx, basics/errors/catching.bx, basics/grammars/match-errors.bx
+(main
+  (print (call port-of "8080"))
+  (print (call port-of "eighty"))
+)
+
+(type + BadPort (is Error))
+
+(fn-expr + port-of Int
+  (param text String)
+  (call parse-port text
+    (block
+      (on-error BadPort
+        80
+      )
+    )
+  )
+)
+
+(fn-expr + parse-port Int (?! BadPort)
+  (param text String)
+  (match text
+    (~ (: port (of \num Int))
+      port
+    )
+    (throw (call BadPort text))
+  )
+)

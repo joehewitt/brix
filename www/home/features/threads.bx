@@ -1,0 +1,28 @@
+; name: Threads & workers
+; category: systems
+; size: medium
+; summary: `do-new-thread` runs a task in parallel on the shared thread pool, and a worker gives tasks threads of their own.
+; examples: basics/concurrency/threads-prime-count.bx
+(main
+  (let results (of SyncBufferedChannel Int))
+  (for (in part (..< 0 4))
+    (do-new-thread
+      (<- results (call squares-between (* part 100) (* (+ part 1) 100)))
+    )
+  )
+  (let total 0)
+  (for (in i (..< 0 4))
+    (+= total (!! (<- results)))
+  )
+  (print total)
+)
+
+(fn-do + squares-between Int
+  (param first Int)
+  (param last Int)
+  (let sum 0)
+  (for (in n (..< first last))
+    (+= sum (* n n))
+  )
+  (return sum)
+)

@@ -1,0 +1,19 @@
+; Search is a facet of Document. It sees DocumentHistory, so it can record the
+; text before a replacement and the replacement can be undone.
+(import ./document)
+(blank)
+
+(type + DocumentSearch (facet-of Document)
+  (sees DocumentHistory)
+  (prop + replaced Int (= 0))
+  (fn-do + replace-all _
+    (param word String)
+    (param replacement String)
+    (let pieces (call List (call (. text split) word)))
+    (return-if (if (< (. pieces length) 2)))
+    (blank)
+    (call record)
+    (+= replaced (- (. pieces length) 1))
+    (= text (call (. replacement join) pieces))
+  )
+)

@@ -1,0 +1,26 @@
+; Facets: a class can be written as several files, each a facet that adds stored
+; properties and methods of its own. Document keeps its text in document.bx, its
+; undo history in document.history.bx and its search in document.search.bx. Each
+; file's private state is its own, yet a Document is one object with every
+; facet's members, and a value of a facet's type, such as the DocumentHistory
+; that `rewind` takes, offers only that facet's.
+(import ./document)
+(blank)
+
+(main
+  (let draft (call Document "the cat sat on the mat"))
+  (call (. draft type-text) " with a hat")
+  (print (. draft text))
+  (call (. draft replace-all) "at" "og")
+  (print (str (. draft text) " (" (. draft replaced) " replaced)"))
+  (call rewind draft 2)
+  (print (. draft text))
+)
+
+(fn-do _ rewind _
+  (param history DocumentHistory)
+  (param steps Int)
+  (for (in (..< 0 steps))
+    (call (. history undo))
+  )
+)

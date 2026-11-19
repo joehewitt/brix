@@ -1,4 +1,5 @@
 (import ./../rows/rows)
+(import ./features)
 (import /data/markdown)
 (import /os/cli)
 (import /os/file)
@@ -10,7 +11,7 @@
   (call build-home (call home-build-options (call cmdline-args)))
 )
 
-(prop _ home-first-example String (= "basics/life.bx"))
+(prop _ home-first-example String (= "basics/classics/game-of-life.bx"))
 (prop _ home-install-command String (= "curl -fsSL https://brix-lang.com/install.py | python3 -"))
 (prop _ home-platforms String
   (=
@@ -19,7 +20,26 @@
     )
   )
 )
-(prop _ home-agent-prompt String (= (str "Install the Brix compiler with `curl -fsSL https://brix-lang.com/install.py | python3 - --yes`. " "The installer puts `brix` in `~/.brix/bin`. Run `brix --help` and read the guides it points to before " "writing any Brix. Then write a small sample app in Brix, build it and run it.")))
+(prop _ home-basics String
+  (=
+    (paragraph
+      "Brix is a statically typed, garbage-collected language with its own native compiler, written in"
+      "Brix with no LLVM underneath. It builds command-line tools, servers, terminal apps, and native"
+      "apps for macOS and iOS. The language has no religion - it mixes functional, object-oriented, and data-oriented programming techniques."
+    )
+  )
+)
+(prop _ home-syntaxes String
+  (=
+    (paragraph
+      "Brix has"
+      "<a href=\"#features\" class=\"feature-link\" role=\"button\" data-feature=\"two-syntaxes\" data-category=\"basics\" aria-controls=\"feature-card\" aria-expanded=\"false\">one syntax for agents and another for humans</a>."
+      "Agents write s-expressions, you read and write a more legible syntax in a structural editor. Brix"
+      "is absolutely not a Lisp, it just looks like one."
+    )
+  )
+)
+(prop _ home-agent-prompt String (= "Install the Brix compiler with `curl -fsSL https://brix-lang.com/install.py | python3 - --yes`. The installer puts `brix` in `~/.brix/bin`. Run `brix --help` and read the guides it points to before writing any Brix. Then write a small sample app in Brix, build it and run it."))
 
 (type _ HomeBuildOptions (is Tuple)
   (prop + examples Path)
@@ -42,13 +62,14 @@
       (= first fragment)
     )
   )
+  (let features (call home-features-html (call Path "www/home/features") names))
   (let rows-stylesheet (call read-file-text (call Path "www/rows/rows.css")))
   (let stylesheet (++ rows-stylesheet (call read-file-text (call Path "www/home/style.css"))))
   (let javascript (call read-file-text (call Path "www/home/script.js")))
   (let asset-version (as (call hash-for (++ stylesheet javascript)) Hex))
   (call write-file-atomically (/ (. options output) "home.css") stylesheet)
   (call write-file-atomically (/ (. options output) "home.js") javascript)
-  (call write-file-atomically (/ (. options output) "index.html") (call home-page (str asset-version) tree first))
+  (call write-file-atomically (/ (. options output) "index.html") (call home-page (str asset-version) features tree first))
   (for (in asset (list "icon.png" "robots.txt"))
     (call (. (call Path (str "www/home/" asset)) copy) (/ (. options output) asset))
   )
@@ -153,6 +174,7 @@
 
 (fn-expr _ home-page String
   (param asset-version String)
+  (param features String)
   (param tree String)
   (param first String)
   (paragraph
@@ -191,13 +213,15 @@
     (str "<div class=\"copyable prompt\"><p data-copy-text>" (call html-text home-agent-prompt) "</p>" copy-button "</div>")
     "</div>"
     "</section>"
+    (str "<p class=\"basics\">" home-basics "</p>")
+    (str "<p class=\"basics\">" home-syntaxes "</p>")
+    (str features)
     (str "<main class=\"examples\" data-examples data-current=\"" (call html-attribute home-first-example) "\" aria-labelledby=\"examples\">")
     "<h2 class=\"examples-heading\" id=\"examples\">Examples</h2>"
     (str "<nav class=\"example-tree\" id=\"example-tree\" aria-label=\"Example files\">" tree "</nav>")
     "<article class=\"example-file\">"
     "<div class=\"file-bar\">"
     "<button type=\"button\" class=\"files-toggle\" data-files-toggle aria-controls=\"example-tree\" aria-expanded=\"false\" hidden>Files</button>"
-    (str "<span class=\"file-path\" data-example-path>" (call html-text home-first-example) "</span>")
     "<button type=\"button\" class=\"source-toggle\" data-source-toggle aria-pressed=\"false\" hidden>Source</button>"
     "</div>"
     (str "<div class=\"file-body\" data-example-body>" first "</div>")

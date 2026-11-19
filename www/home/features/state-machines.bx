@@ -1,0 +1,32 @@
+; name: State machines
+; category: front-end
+; size: large
+; summary: A machine moves between states on events, channels and timers, and each state holds its own data and owns the timers and tasks it starts.
+; examples: basics/state-machines/vending-machine.bx, basics/state-machines/retry-timer.bx, tui/timer.bx
+(import /stream/timing)
+
+(main
+  (let kettle (call Kettle))
+  (<- (. kettle switches) 10.0)
+  (for (in i (..< 0 4))
+    (<- (. kettle ticks) 1.0)
+  )
+  (print (. kettle phase name))
+)
+
+(type + Kettle
+  (event + switches F64)
+  (event + ticks F64)
+  (prop + phase _
+    (machine
+      (state off)
+      (state (call heating rate) (trigger for rate switches)
+        (print (str "heating at " rate))
+        (then whistling (trigger on (call delayed ticks 3)))
+      )
+      (state whistling
+        (print "whistle!")
+      )
+    )
+  )
+)

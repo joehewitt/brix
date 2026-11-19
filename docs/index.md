@@ -44,8 +44,10 @@ print?". They are kept short to test one thing each, so take their constructs, n
 [`examples`](../examples) holds whole programs, all written in Brix, which each release builds and
 ships. Unlike the core tests, they show how complete programs are written.
 
-- [`examples/basics`](../examples/basics): programs that print, named for what they do, such
-  as `lisp.bx`, `vending.bx`, `search-query.bx`, `adventure.bx`, `sqlite.bx` and `diff.bx`.
+- [`examples/basics`](../examples/basics): programs that print, in a folder for each part of the
+  language they show, such as `patterns`, `grammars`, `pipelines` and `state-machines`, and named
+  for what they show and what they do, as `patterns/tuples-fizzbuzz.bx` is. `classics` holds
+  familiar programs, such as `lisp-interpreter.bx`, `game-of-life.bx` and `text-adventure.bx`.
 - [`examples/net`](../examples/net): an HTTP client and server, a WebSocket chat server for
   browsers with a client that joins it, and an MCP server. `chatgpt-mock-server.bx` stands in for
   the OpenAI API that `chatgpt.bx` talks to.

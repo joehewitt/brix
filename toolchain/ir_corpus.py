@@ -43,6 +43,7 @@ FULL = 'ir'
 QUICK = 'emitted'
 EXAMPLE_PATTERNS = tuple(toolchain_path('examples', pattern) for pattern in (
     '*/*.bx',
+    'basics/*/*.bx',
     '*/*/*-app.bx',
 ))
 FUNCTION_START = re.compile(rb'^function (.+?) kind=', re.MULTILINE)
