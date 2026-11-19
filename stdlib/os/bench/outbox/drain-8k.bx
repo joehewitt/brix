@@ -1,0 +1,41 @@
+; benchmark.meta description: Queues 8000 small buffers on an Outbox before it flushes, then drains them into a counting writer.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: timing
+(blank)
+(import /core/channel)
+(import /data)
+(import /os/outbox)
+(blank)
+
+(type _ CountingWriter
+  (implements WritableData)
+  (prop + checksum Int (= 0))
+  (prop + writes Int (= 0))
+  (fn-do + This _
+  )
+  (fn-do + write Size
+    (param buffer (of ImmutableArray Byte))
+    (param size Size)
+    (= checksum (% (+ (* checksum 31) ([] buffer 0) size) 1000000007))
+    (+= writes 1)
+    (return size)
+  )
+)
+
+(main
+  (let count 8000)
+  (let rounds 4)
+  (let total 0)
+  (for (in round (..< 0 rounds))
+    (let writer (call CountingWriter))
+    (let outbox (call Outbox writer))
+    (let done (call (of SyncBufferedChannel Int)))
+    (for (in i (..< 0 count))
+      (call (. outbox send) (call (of Array Byte) (list (as (% (+ i round) 251) Byte) 7 9)))
+    )
+    (= (. outbox on-drained) (=> () :do (<- done (. writer writes))))
+    (let drained (!! (<- done)))
+    (+= total (+ (. writer checksum) drained))
+  )
+  (print (str "bench-result outbox/drain-8k checksum=" total))
+)
