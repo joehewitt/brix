@@ -690,6 +690,11 @@ x
   `(of map Out)`{.brix} does, as functions can; see Functions.
 - **Sharing a name.** A type and a generic type, or two generic types with different numbers of
   parameters, may share a name. Each use picks the one whose number of type arguments matches.
+- **Using itself.** In its properties, cases, getters and base, a generic type uses itself with its
+  own type parameters or with types that hold none of them, never with larger ones. A case of
+  `(of Tree T)`{.brix} that holds a list of `(of Tree (list T))`{.brix} would need a separate type
+  for each depth, without end, and is an error,
+  `Tree uses itself in case ".nested" with type arguments that grow without end; use it with its own type parameters`.
 
 ## Tuples
 
@@ -836,7 +841,9 @@ grown to (2, 2)
   method that changes a field of `this`. A method that changes a struct gives the changed struct
   back, as in `(= size (call (. size widened) 1))`{.brix}.
 - **Stored inline.** A struct held by another struct, or by a class, is stored inside it, so
-  `(= (. line start x) 7)`{.brix} changes `line`.
+  `(= (. line start x) 7)`{.brix} changes `line`. So a struct or a tuple holds itself only through
+  a list or an object, never in a field, an optional or a union it stores:
+  `Node holds itself in field "next"; hold it through a list or an object`.
 - **Fixed layout.** A struct's fields cannot be added or removed. Lazy properties are not
   allowed: `Property not supported`.
 - **A struct nothing holds.** A field of a struct that no local, parameter or property holds, such

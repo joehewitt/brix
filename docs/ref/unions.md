@@ -78,7 +78,8 @@ a payload or a fixed value:
 The kinds of case can be mixed in one union. A union may take type parameters, as in
 `(type + (of Maybe Item) (is Union) (variant some (tuple Item)) (variant none))`{.brix}, and may
 hold itself through a list or an object, as in
-`(type + Tree (is Union) (variant branch (list Tree)))`{.brix}.
+`(type + Tree (is Union) (variant branch (list Tree)))`{.brix}, with its own type parameters where
+it has some; see [Generic types](types.md#generic-types).
 
 ## Making a union value
 

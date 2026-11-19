@@ -837,6 +837,12 @@ something else
 - **Each type makes a function.** The compiler makes a separate function for each set of type
   arguments a program uses. A parameter with no type works the same way: it is a type parameter of
   its own.
+- **Calling itself.** A generic function can call itself, directly or through other functions, but
+  not with type arguments that grow at each call, and neither can a method of a generic type on an
+  object of that type. A function `deep` whose parameter `x` has a type parameter for its type, and
+  that calls `(call deep (list x) (- n 1))`{.brix}, would need a separate function for each depth
+  of list, without end, and is an error,
+  `Function "deep" calls itself with type arguments that grow without end; call it with its own type parameters`.
 - **Types as values.** Inside the function, a type parameter is a value of its own, the type it
   stands for, and can be printed or passed.
 - **Defaults.** A type parameter can have a default type, which a call uses when it gives no type

@@ -889,6 +889,13 @@
   )
 )
 
+(type _ Wrapping (is Tuple)
+  (prop + union TypeId)
+  (prop + from TypeId)
+  (prop + converts Bool)
+  (prop + unnamed Bool)
+)
+
 (type + Relations
   (prop + types Types)
   (prop + program Program)
@@ -900,7 +907,9 @@
   (prop _ unify-cache (of Map Size U32 ArenaBacking))
   (prop _ extension-uses Size (= 0))
   (prop _ callable-uses Size (= 0))
+  (prop _ cut-wraps Size (= 0))
   (prop _ alternatives (of List U8 ArenaBacking))
+  (prop _ wrapping (of List Wrapping ArenaBacking))
   (prop _ arena Arena)
   (fn-do + This _
     (param types Types)
@@ -910,6 +919,7 @@
     (lazy compare-cache (call (of Map Size U32) arena))
     (lazy unify-cache (call (of Map Size U32) arena))
     (lazy alternatives (call (of List U8) arena))
+    (lazy wrapping (call (of List Wrapping) arena))
   )
   (fn-do + release _
     (call (. arena release))
@@ -1406,8 +1416,9 @@
     )
     (let uses-before extension-uses)
     (let fits-before callable-uses)
+    (let cuts-before cut-wraps)
     (let relation (call relate source target for-unify raw scope caller))
-    (if (and cacheable (or (not caller) (== extension-uses uses-before)) (== callable-uses fits-before))
+    (if (and cacheable (or (not caller) (== extension-uses uses-before)) (== callable-uses fits-before) (== cut-wraps cuts-before))
       (let position U32 (as (. memo length) U32))
       (call (. memo append) relation)
       (if for-unify
@@ -2916,6 +2927,21 @@
     ; one it does not, and among those the nearest. With `converts` the value may also be cast up to
     ; the case's class or to its interface, as when it is wrapped, and with `unnamed` only a case with
     ; no name holds it.
+    (let entry (call Wrapping union from converts unnamed))
+    (if (!= (call (. wrapping find) entry) null)
+      (+= cut-wraps 1)
+      (return no-case)
+    )
+    (+= wrapping entry)
+    (let chosen (call holding-case union from converts unnamed))
+    (call (. wrapping pop))
+    (return chosen)
+  )
+  (fn-do _ holding-case U32
+    (param union TypeId)
+    (param from TypeId)
+    (param converts Bool)
+    (param unnamed Bool)
     (let mark (. types scratch types mark))
     (call push-cases types union unnamed)
     (let count (/ (- (. types scratch types length) mark) 2))

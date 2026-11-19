@@ -26,6 +26,8 @@
 (import /lang/ast/viability)
 (import /stream/sort)
 
+(prop _ shared-nesting-limit U32 (= 32))
+
 (type + RowCapture (is Tuple)
   ; What a name a pattern binds to the case of a row of a table of unions stands for: the row's
   ; type, the number of the case, and whether TypeScript checked the row's storage where the
@@ -5141,12 +5143,43 @@
       )
     )
   )
+  (fn-do _ outgrown Bool
+    (param callee InstanceId)
+    (param call SyntaxId)
+    (if (or (. ([] (. instances rows) callee) grown) (!= (. ([] (. instances rows) callee) state) .instance-unstarted))
+      (return (. ([] (. instances rows) callee) grown))
+    )
+    (let shared (. frame session shared))
+    (if (not (or (call (. instances outgrows) (. frame instance) callee) (and shared (call (. instances nests-past) callee shared-nesting-limit))))
+      (return false)
+    )
+    (= (. ([] (. instances rows) callee) grown) true)
+    (if shared
+      (call (. shared diverge))
+      (return true)
+    )
+    (let name "")
+    (let module (. ([] (. instances rows) callee) module))
+    (match? ([] (. ([] (. program modules) module) decls) (. ([] (. instances rows) callee) decl))
+      (case (call .decl-function fn)
+        (if (. fn name)
+          (= name (. fn name text))
+        )
+      )
+    )
+    (let message (str "Function \"" name "\" calls itself with type arguments that grow without end; call it with its own type parameters"))
+    (call (. frame diagnose) call .stated (call (. program store-atom) message))
+    (return true)
+  )
   (fn-do _ demand-return TypeId
     (param callee InstanceId)
     (param call SyntaxId)
     ; A callee that has not settled its errors holds a place among those that leave the caller.
     ; A call whose type or report depends on them settles them first, and so does a call back to
     ; a function still being checked, which reads it as raising nothing so far.
+    (if (call outgrown callee call)
+      (return invalid-type)
+    )
     (call (. (!! host) demand) callee)
     (let deferred false)
     (if (not (call (. instances errors-known) callee))

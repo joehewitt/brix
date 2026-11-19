@@ -368,6 +368,51 @@ true
 false
 ```
 
+### A generic function that calls itself with type arguments that grow is an error at the call that does.
+
+```brix crash
+(main
+  (print (call deep 3 2))
+)
+
+(fn-expr + deep Int
+  (param x ''T)
+  (param n Int)
+  (if-expr (== n 0) 0 (call deep (list x) (- n 1)))
+)
+```
+
+```output
+Exception: Function "deep" calls itself with type arguments that grow without end; call it with its own type parameters
+<no file:9>
+      (if-expr (== n 0) 0 (call deep (list x) (- n 1)))
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+```brix crash
+(type + (of Box T)
+  (prop + item T)
+  (fn-do + This _
+    (param item T)
+  )
+  (fn-expr + depth Int
+    (param n Int)
+    (if-expr (== n 0) 0 (call (. (call Box (list item)) depth) (- n 1)))
+  )
+)
+
+(main
+  (print (call (. (call Box 3) depth) 2))
+)
+```
+
+```output
+Exception: Function "depth" calls itself with type arguments that grow without end; call it with its own type parameters
+<no file:9>
+        (if-expr (== n 0) 0 (call (. (call Box (list item)) depth) (- n 1)))
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
 ### A `do` function calls itself a hundred thousand deep.
 
 ```brix

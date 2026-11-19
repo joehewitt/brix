@@ -3442,6 +3442,49 @@ node
 10
 ```
 
+### A union that holds itself by value, not through a list or an object, is an error at the case that holds it.
+
+```brix compile-error
+(type + Expr (is Union)
+  (variant count Int)
+  (variant neg Expr)
+)
+
+(main
+  (let e Expr 5)
+  (print (. e name))
+  (print (== e e))
+)
+```
+
+```output
+Exception: Expr holds itself in case ".neg"; hold it through a list or an object
+<no file:4>
+      (variant neg Expr)
+      ^^^^^^^^^^^^^^^^^^
+```
+
+### A generic union that uses itself with type arguments that grow, even through a list, is an error at the case that does.
+
+```brix compile-error
+(type + (of Tree T) (is Union)
+  (variant leaf T)
+  (variant nested (list (of Tree (list T))))
+)
+
+(main
+  (let t (call (. (of Tree Int) leaf) 3))
+  (print (is t .leaf))
+)
+```
+
+```output
+Exception: Tree uses itself in case ".nested" with type arguments that grow without end; use it with its own type parameters
+<no file:4>
+      (variant nested (list (of Tree (list T))))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
 ### Objects and atoms held in tuples, structs and unions compare by identity
 
 ```brix

@@ -700,6 +700,37 @@ bar 1
 2
 ```
 
+### Units declared from a number type of the language join a family only by their equalities, so each converts by its own ratio.
+
+```brix
+(main
+  (print (as (+ 8hours 30minutes) UnitString))
+  (print (as (+ 30minutes 8hours) UnitString))
+  (print (as 2hour Minutes UnitString))
+  (print (as 120minute Hour UnitString))
+  (print (as 7200second Hour UnitString))
+)
+
+(blank)
+(type-line + Seconds (alias seconds) (is F64))
+(type-line + Minutes (alias minutes) (is 60seconds))
+(type-line + Hours (alias hours) (is 60minutes))
+(type-line + Second (alias second) (is U64))
+(type-line + Minute (alias minute) (is U64))
+(type-line + Hour (alias hour) (is U64))
+(unit + 1second 1seconds)
+(unit + 1minute 1minutes)
+(unit + 1hour 1hours)
+```
+
+```output
+8.5hours
+510minutes
+120minutes
+2hour
+2hour
+```
+
 ### Arithmetic between a unit and a plain number keeps the unit, on either side of a multiplication.
 
 ```brix
