@@ -23,6 +23,8 @@
     (return window)
   )
   (fn-do + window-closed _
+    (param window Window)
+    (-= windows window)
     (let waiting ending)
     (return-if (if (or (not waiting) (. waiting is-finished))))
     (return-if (if (call some windows (:where (not (. each is-closed))))))
@@ -46,12 +48,17 @@
     (return-if (if has-run))
     (call run)
   )
+  (fn-do _ window-snapshot (list Window)
+    (let snapshot (list Window))
+    (++= snapshot windows)
+    (return snapshot)
+  )
   (fn-do _ end-process _
     (call request-process-termination 0)
   )
   (fn-do + quit _
     (= is-quitting true)
-    (for (in window windows)
+    (for (in window (call window-snapshot))
       (call (. window close)
         (block
           (on-error (: error Error)
@@ -62,7 +69,7 @@
     )
   )
   (fn-do + close _
-    (for (in window windows)
+    (for (in window (call window-snapshot))
       (call (. window close)
         (block
           (on-error (: error Error)
