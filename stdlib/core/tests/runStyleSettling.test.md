@@ -815,6 +815,53 @@ cleared-own leaf-own=false leaf-below=false branch-own=false branch-below=true p
 cleared-below branch-own=false branch-below=false
 ```
 
+### An element a branch builds after mount is put under the batch before it is linked; once linked, the domain bits it and its children raised while it was built reach the rollup of every ancestor.
+
+```brix
+(import /core/style)
+(import /core/markup)
+(import /core/tests/support/markup-fixtures)
+(blank)
+
+(main
+  (<> BatchDemo (id: demo)
+    (if (. demo #shown)
+      (<> Box
+        (<> Box
+          (<> Box)
+        )
+      )
+    )
+  )
+  (blank)
+  (call (. demo markup-batch-queue checkpoint))
+  (= (. demo shown) true)
+  (call (. demo markup-batch-queue checkpoint))
+  (blank)
+  (let region (!! (. demo %first-child)))
+  (let built (!! (. region %first-child)))
+  (let inner (!! (. built %first-child)))
+  (print (str "region own=" (. region $is-layout-invalid) " below=" (. region $is-layout-invalid-below)))
+  (print (str "built own=" (. built $is-layout-invalid) " below=" (. built $is-layout-invalid-below)))
+  (print (str "inner own=" (. inner $is-layout-invalid) " below=" (. inner $is-layout-invalid-below)))
+)
+
+(type + BatchDemo (is Box)
+  (implements MarkupRootElement)
+  (prop + shown _ (= false))
+  (prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
+  (fn-do + markup-batch-did-flush _
+    (param flush MarkupBatchFlush)
+  )
+)
+```
+
+```output
+region own=true below=true
+built own=true below=true
+inner own=true below=false
+```
+
 ### Markup batch flush summaries expose ordinary domain booleans backed by the same domain indexes as node pending bits. Dynamic style changes report the domains still pending after settling.
 
 ```brix
