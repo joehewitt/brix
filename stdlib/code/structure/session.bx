@@ -414,7 +414,9 @@
     (let lines (call selected-lines))
     (let first first-selected-row)
     (let last last-selected-row)
-    (return-if (call (. "\n" join) lines) (if (or (< (. lines length) 2) (> selection-start (. (call row-at first) content-start)) (not (call is-block-head first)))))
+    (if (or (< (. lines length) 2) (> selection-start (. (call row-at first) content-start)) (not (call is-block-head first)))
+      (return (call (. "\n" join) lines))
+    )
     (let is-ended (<= selection-end (. (call row-at last) content-start)))
     (if (and is-ended (call is-block-head last))
       (call (. lines remove) (- (. lines length) 2))
@@ -528,7 +530,7 @@
         (-= last 1)
         (= end 0)
       )
-      (let outside (if-expr (and (== divider source-divider-thick) (not has-selection)) (call members-end first) null))
+      (let outside (only-if (call members-end first) (if (and (== divider source-divider-thick) (not has-selection)))))
       (if outside
         (= first outside)
         (= last first)
@@ -565,7 +567,19 @@
       )
     )
     (return-if (call splice-text first 0 last 0 (++ left placed)) (if is-lines))
-    (let written (if-expr (or is-closing (and is-blocks (not (call is-line-start first start)))) (++ "\n" placed) (if-expr is-ruled (++ placed "\n") placed)))
+    (let written
+      (block
+        (case? (or is-closing (and is-blocks (not (call is-line-start first start))))
+          (++ "\n" placed)
+        )
+        (case? is-ruled
+          (++ placed "\n")
+        )
+        (default
+          placed
+        )
+      )
+    )
     (return (call splice-text first start last end written))
   )
   (fn-do _ members-end (? Size)
@@ -733,7 +747,16 @@
     (let header (call (. language header-count) (. current node)))
     (let is-filled (and (!= header null) (> (call (. document store count) (call (. language detach) (. current node))) (as header Size))))
     (let is-open (and (!= header null) (== (call (. document store raw-text) (. current node)) null) (not is-filled)))
-    (let indent (if-expr (or holds is-open (call (. language opens) (. current node))) (+ (. current indent) 1) (. current indent)))
+    (let indent
+      (block
+        (case? (or holds is-open (call (. language opens) (. current node)))
+          (+ (. current indent) 1)
+        )
+        (default
+          (. current indent)
+        )
+      )
+    )
     (let slot (+ position 1))
     (call (. flow insert) (call SourceFlowRow added indent) slot)
     (call (. document replace) index (call lodge index owner ids flow slot true (== (. right length) 0) was-typed))
@@ -857,7 +880,14 @@
       (if (and (== ([] after spot) null) (call is-swallowed flow spot))
         (let node (. ([] flow spot) node))
         (let text (if-expr (== spot position) typed (call flow-content index (. owner id) (. node id))))
-        (= (. ([] flow spot) node) (call (. store with-id) (call (. store raw) text (call (of List (of ImmutableTableRow SourceNode)))) (. node id)))
+        (= (. ([] flow spot) node)
+          (call (. store with-id)
+            (block
+              (arg (call (. store raw) text (call (of List (of ImmutableTableRow SourceNode)))))
+              (arg (. node id))
+            )
+          )
+        )
         (= is-moved true)
       )
     )
@@ -1557,7 +1587,9 @@
       (-= above 1)
     )
     (if deeper
-      (return-if false (if (or (== above 0) (< (. ([] flow (- above 1)) indent) level) (not (call (. language can-hold) (. ([] flow (- above 1)) node))))))
+      (if (or (== above 0) (< (. ([] flow (- above 1)) indent) level) (not (call (. language can-hold) (. ([] flow (- above 1)) node))))
+        (return false)
+      )
       (else
         (return-if false (if (== level 0)))
       )
@@ -1731,9 +1763,9 @@
     (let store (. document store))
     (let body (call (. language children) old))
     (let read (call (. language parse) text mode))
-    (let parsed (if-expr read (call (. language recast) old read) null))
+    (let parsed (only-if (call (. language recast) old read) (if read)))
     (let next (only-if parsed (if (and (!= parsed null) (or (== (. body length) 0) (call (. language can-hold) parsed))))))
-    (let held (if-expr next (call (. language attach) (call (. language detach) next) body) null))
+    (let held (only-if (call (. language attach) (call (. language detach) next) body) (if next)))
     (if (and held (== (. held refused length) 0))
       (return-if null (if (call (. store same) (. held parent) old)))
       (return (call (. store with-id) (. held parent) (. old id)))

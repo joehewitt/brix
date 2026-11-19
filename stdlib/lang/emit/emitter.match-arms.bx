@@ -327,7 +327,14 @@
     (call (. ir start-block) failed)
     (call jump joined)
     (call (. ir start-block) joined)
-    (return (call Typed (call phi u8-layout (if-expr negated no yes) same (if-expr negated yes no) failed) (. types bool-type)))
+    (return
+      (call Typed
+        (block
+          (arg (call phi u8-layout (if-expr negated no yes) same (if-expr negated yes no) failed))
+          (arg (. types bool-type))
+        )
+      )
+    )
   )
   (fn-do + reads-machine Bool
     (param id SyntaxId)
@@ -418,7 +425,16 @@
     )
     (where
       (lazy binding (. ([] (. instances rows) (. unit reading)) binding))
-      (lazy resolution (if-expr (!= binding no-binding) (call (. bindings resolution-of) binding id) (call Resolution .resolve-none 0)))
+      (lazy resolution
+        (block
+          (case? (!= binding no-binding)
+            (call (. bindings resolution-of) binding id)
+          )
+          (default
+            (call Resolution .resolve-none 0)
+          )
+        )
+      )
     )
   )
   (fn-do _ first-arm SyntaxId
@@ -1049,7 +1065,16 @@
       (if sharing
         (call pass-or-fail
           (block
-            (arg (call compare (. head pattern) .compare-greater-equal (. length operand) (call integer .machine-u64 1)))
+            (arg
+              (call compare
+                (block
+                  (arg (. head pattern))
+                  (arg .compare-greater-equal)
+                  (arg (. length operand))
+                  (arg (call integer .machine-u64 1))
+                )
+              )
+            )
             (arg next)
           )
         )
@@ -1074,7 +1099,17 @@
         (let arm ([] arms position))
         (let step ([] match-steps (. arm first)))
         (let begin (as (. match-steps length) U32))
-        (call list-steps (. step pattern) (. head subject) (. head type) (. length operand) first first-type sharing)
+        (call list-steps
+          (block
+            (arg (. step pattern))
+            (arg (. head subject))
+            (arg (. head type))
+            (arg (. length operand))
+            (arg first)
+            (arg first-type)
+            (arg sharing)
+          )
+        )
         (call carry-steps arm 1)
         (let result (if-expr (. step carries) (. head subject) (. arm result)))
         (let result-type (if-expr (. step carries) (. head type) (. arm result-type)))
@@ -1294,7 +1329,19 @@
         (= result-type (. passed type))
       )
     )
-    (call arm-body site (. arm arm) (call (. tree transform-body) (. arm arm)) (call Typed result result-type) 0 given type joined slot)
+    (call arm-body
+      (block
+        (arg site)
+        (arg (. arm arm))
+        (arg (call (. tree transform-body) (. arm arm)))
+        (arg (call Typed result result-type))
+        (arg 0)
+        (arg given)
+        (arg type)
+        (arg joined)
+        (arg slot)
+      )
+    )
     (= matching own-matching)
     (call drop-bound named)
   )
@@ -1388,7 +1435,16 @@
     ; as. One that arrived in the type of the match already is left as it is.
     (let left value)
     (if (and (!= type given) (!= (. left type) type))
-      (= left (if-expr (== (call (. types optional-inner) type) given) (call wrap site (call Typed (. value operand) given) type) (call join site (call Typed (. value operand) given))))
+      (= left
+        (block
+          (case? (== (call (. types optional-inner) type) given)
+            (call wrap site (call Typed (. value operand) given) type)
+          )
+          (default
+            (call join site (call Typed (. value operand) given))
+          )
+        )
+      )
     )
     (call arrive site (. left operand) joined slot)
   )
@@ -2037,7 +2093,15 @@
       (if (== inner 0)
         (return (call Typed (. value operand) union))
       )
-      (return (call emit-pattern (call payload-part inner held) (call Typed (call load-local refined-payload pattern) held) failed))
+      (return
+        (call emit-pattern
+          (block
+            (arg (call payload-part inner held))
+            (arg (call Typed (call load-local refined-payload pattern) held))
+            (arg failed)
+          )
+        )
+      )
     )
     (let held value)
     (if (call (. types is-optional) (. held type))
@@ -2083,7 +2147,15 @@
       (call refuse .refused-expression pattern)
       (return (call Typed nothing no-type))
     )
-    (return (call emit-pattern (call payload-part inner (. field type)) (call Typed (call take (. held operand) field pattern) (. field type)) failed))
+    (return
+      (call emit-pattern
+        (block
+          (arg (call payload-part inner (. field type)))
+          (arg (call Typed (call take (. held operand) field pattern) (. field type)))
+          (arg failed)
+        )
+      )
+    )
   )
   (fn-do _ member-flag Typed
     (param lhs SyntaxId)
@@ -2465,7 +2537,13 @@
     )
     (for (in position (..< 0 (. fields count)))
       (let field (call (. tables layouts field) layout position))
-      (call emit-pattern ([] (. tree children) (+ (. fields start) position)) (call Typed (call take (. value operand) field pattern) (call field-type owner position)) failed)
+      (call emit-pattern
+        (block
+          (arg ([] (. tree children) (+ (. fields start) position)))
+          (arg (call Typed (call take (. value operand) field pattern) (call field-type owner position)))
+          (arg failed)
+        )
+      )
     )
     (return (call Typed (. value operand) owner))
   )
@@ -2622,7 +2700,17 @@
           )
         )
       )
-      (call match-rest rest (. value operand) type (call integer .machine-u64 (as (. prefix length) U64)) end false failed)
+      (call match-rest
+        (block
+          (arg rest)
+          (arg (. value operand))
+          (arg type)
+          (arg (call integer .machine-u64 (as (. prefix length) U64)))
+          (arg end)
+          (arg false)
+          (arg failed)
+        )
+      )
     )
     (return (call Typed (. value operand) type))
   )
@@ -2850,7 +2938,16 @@
     (let span (call make-fields range layout (. ([] (. facts calls) made) fills) mark 3 remainder))
     (call drop-given mark)
     (let sliced-type (. ([] (. instances signatures) (. ([] (. facts calls) sliced) callee)) returns))
-    (let read (if-expr views (call span-of remainder subject type span range 0 sliced-type) (call read-part remainder sliced subject type span range)))
+    (let read
+      (block
+        (case? views
+          (call span-of remainder subject type span range 0 sliced-type)
+        )
+        (default
+          (call read-part remainder sliced subject type span range)
+        )
+      )
+    )
     (call emit-pattern name read failed)
   )
   (fn-do _ match-keys Typed
@@ -2877,7 +2974,18 @@
         (case (call .node-type-map-item row)
           (let key (call convert (. row key) .reason-argument (call emit-expression (call (. tree key-of) (. row key)))))
           (let keyed (. key type))
-          (let read (call read-part item (call call-at item .call-item-read) (. subject operand) type (. key operand) keyed))
+          (let read
+            (call read-part
+              (block
+                (arg item)
+                (arg (call call-at item .call-item-read))
+                (arg (. subject operand))
+                (arg type)
+                (arg (. key operand))
+                (arg keyed)
+              )
+            )
+          )
           (if (call (. types is-optional) (. read type))
             (let maybe (. read type))
             (call pass-or-fail (. (call present item read) operand) failed)

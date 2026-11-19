@@ -1147,7 +1147,9 @@
   (param order Size)
   (param is-machine Bool)
   (param arrival-only Bool)
-  (return-if (if (not (call event-insert-descriptor event-descriptor-heads event-id matcher callback order is-machine))))
+  (if (not (call event-insert-descriptor event-descriptor-heads event-id matcher callback order is-machine))
+    (return)
+  )
   (if (not arrival-only)
     (let ignored
       (call event-insert-descriptor
@@ -1367,7 +1369,15 @@
     (return interested)
   )
   (= interested true)
-  (call (. (as entry (of EventEndpoint Payload)) dispatch-routed) payload routed is-target handlers (and machines (not (. sidecar machines-stopped))))
+  (call (. (as entry (of EventEndpoint Payload)) dispatch-routed)
+    (block
+      (arg payload)
+      (arg routed)
+      (arg is-target)
+      (arg handlers)
+      (arg (and machines (not (. sidecar machines-stopped))))
+    )
+  )
   (return interested)
 )
 

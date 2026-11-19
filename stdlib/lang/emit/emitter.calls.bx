@@ -74,7 +74,9 @@
     (param operands (of RowRange SyntaxId))
     (param piped SyntaxId (= 0))
     (let pulled (call (. facts pulls) (. unit reading) id))
-    (return-if (call emit-call id callable operands piped) (if (and (!= (call (. facts plan-of) (. unit reading) id) .plan-live-call) (not pulled))))
+    (if (and (!= (call (. facts plan-of) (. unit reading) id) .plan-live-call) (not pulled))
+      (return (call emit-call id callable operands piped))
+    )
     (let live (. instances live))
     (if (or (== (. live enter) no-instance) (== (. live leave) no-instance) (== (. live-actions length) 0))
       (call refuse .refused-expression id)
@@ -280,9 +282,25 @@
         )
       )
     )
-    (let array (if-expr (and (== fact no-fact) (== piped 0)) (call (. tables const-array-row) (. unit reading) id) (. U32 max)))
+    (let array
+      (block
+        (case? (and (== fact no-fact) (== piped 0))
+          (call (. tables const-array-row) (. unit reading) id)
+        )
+        (default
+          (. U32 max)
+        )
+      )
+    )
     (if (!= array (. U32 max))
-      (return (call Typed (call make-operand .operand-symbol (call (. tables const-array-symbol) array)) (. ([] (. facts const-arrays) array) type)))
+      (return
+        (call Typed
+          (block
+            (arg (call make-operand .operand-symbol (call (. tables const-array-symbol) array)))
+            (arg (. ([] (. facts const-arrays) array) type))
+          )
+        )
+      )
     )
     (call refuse .refused-expression id)
     (return (call Typed (call make-operand .operand-void 0) no-type))
@@ -521,7 +539,21 @@
     (let bits (. ([] (. types completions) (. value type)) bit-size))
     (let start U32 (. ir operands length))
     (call (. ir add-operand) (. value operand))
-    (return (call Typed (call make-operand .operand-value (call append .op-count-leading-zeros id (call Span start 1) bits layout)) type))
+    (return
+      (call Typed
+        (block
+          (arg
+            (call make-operand
+              (block
+                (arg .operand-value)
+                (arg (call append .op-count-leading-zeros id (call Span start 1) bits layout))
+              )
+            )
+          )
+          (arg type)
+        )
+      )
+    )
   )
   (fn-do _ emit-float-math Typed
     (param id SyntaxId)
@@ -583,7 +615,14 @@
         (= op .float-max)
       )
     )
-    (return (call Typed (call make-operand .operand-value (call append .op-float-math id (call Span start count) op layout)) type))
+    (return
+      (call Typed
+        (block
+          (arg (call make-operand .operand-value (call append .op-float-math id (call Span start count) op layout)))
+          (arg type)
+        )
+      )
+    )
   )
   (fn-do + emit-index-call Typed
     (param id SyntaxId)
@@ -677,7 +716,16 @@
     )
     (let ascii (call bitwise id .bitwise-and packed (call integer .machine-u64 0x100000000) u64-layout))
     (let count (call bitwise id .bitwise-and packed (call integer .machine-u64 0xffffffff) u64-layout))
-    (let extended (if-expr (== (. ([] (. tables layouts rows) key-layout) size) 8) key (call num-cast id key key-layout (if-expr (call is-signed key-layout) i64-layout u64-layout))))
+    (let extended
+      (block
+        (case? (== (. ([] (. tables layouts rows) key-layout) size) 8)
+          key
+        )
+        (default
+          (call num-cast id key key-layout (if-expr (call is-signed key-layout) i64-layout u64-layout))
+        )
+      )
+    )
     (let wide (if-expr (call is-signed key-layout) (call num-cast id extended i64-layout u64-layout) extended))
     (let checking (call (. ir reserve-block)))
     (let fast (call (. ir reserve-block)))
@@ -1130,7 +1178,14 @@
     (if (!= leading 0)
       (let follows (and (!= piped 0) (not (call is-inert piped))))
       (let lead-value (call emit-expression leading))
-      (+= given (call Typed (call apart (call Typed (call settled lead-value leading written 0) (. lead-value type)) leading follows) (. lead-value type)))
+      (+= given
+        (call Typed
+          (block
+            (arg (call apart (call Typed (call settled lead-value leading written 0) (. lead-value type)) leading follows))
+            (arg (. lead-value type))
+          )
+        )
+      )
     )
     (if (!= piped 0)
       (+= count 1)
@@ -1342,7 +1397,16 @@
     (lazy on-this (or (== object 0) (call names-slot object .slot-this)))
     (let raising (!= (. ([] (. instances signatures) callee) errors count) 0))
     (= takes-result raising)
-    (let answer (if-expr receives (call call-method callee id mark exact) (call call-instance callee id mark)))
+    (let answer
+      (block
+        (case? receives
+          (call call-method callee id mark exact)
+        )
+        (default
+          (call call-instance callee id mark)
+        )
+      )
+    )
     (= takes-result false)
     (if (and raising (. fact propagates))
       (= answer (call propagate id callee (. answer operand)))
@@ -1695,7 +1759,14 @@
     (call pass-filled id written start fills args (. tuple operand) held)
     (call drop-given start)
     (let answered (if-expr (== carried no-type) returns carried))
-    (let result (call Typed (call call code id mark .callee-value (call layout-of answered id) (not in-landing)) answered))
+    (let result
+      (call Typed
+        (block
+          (arg (call call code id mark .callee-value (call layout-of answered id) (not in-landing)))
+          (arg answered)
+        )
+      )
+    )
     (if (and (!= carried no-type) (!= fact no-fact) (. ([] (. facts calls) fact) propagates))
       (= result (call propagate-held id carried (. result operand)))
     )

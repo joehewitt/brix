@@ -120,7 +120,11 @@
       )
     )
     (if (not (. (call Path path) is-file))
-      (= trace-error "the program wrote no trace; it has no probes compiled in (check the --probes selectors)")
+      (= trace-error
+        (paragraph
+          "the program wrote no trace; it has no probes compiled in (check the --probes selectors)"
+        )
+      )
       (else-if (and (not (. reader is-done)) (not trace-error))
         (= trace-error "the program did not close its trace")
       )
@@ -248,7 +252,11 @@
     )
   )
   (return-if (if (< (. traces length) kept-traces)))
-  (let ordered (call sort traces (:using (=> (a b) (if-expr (< (call trace-stamp a) (call trace-stamp b)) .lesser .greater)))))
+  (let ordered
+    (block
+      (call sort traces (:using (=> (a b) (if-expr (< (call trace-stamp a) (call trace-stamp b)) .lesser .greater))))
+    )
+  )
   (for (in index (..< 0 (+ (- (. ordered length) kept-traces) 1)))
     (let trace (as (/ directory ([] ordered index)) String))
     (for (in path (list trace (call trace-sidecar trace "probes.json") (call trace-sidecar trace "run.json")))

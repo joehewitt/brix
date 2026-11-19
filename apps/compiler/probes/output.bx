@@ -156,8 +156,29 @@
     (lazy room (- 14 (. head length) (. stamp length)))
     (lazy padding (* " " (if-expr (> room 2) room 2)))
     (lazy indent (* "  " (. row depth)))
-    (lazy mark (if-expr (== (. row kind) (. TraceRowKind begin)) "+ " (if-expr (== (. row kind) (. TraceRowKind end)) "- " "")))
-    (lazy took (if-expr (and (== (. row kind) (. TraceRowKind end)) (. row duration)) (str " " (call duration-text (. row duration))) ""))
+    (lazy mark
+      (match (. row kind)
+        (case= (. TraceRowKind begin)
+          "+ "
+        )
+        (case= (. TraceRowKind end)
+          "- "
+        )
+        (default
+          ""
+        )
+      )
+    )
+    (lazy took
+      (block
+        (case? (and (== (. row kind) (. TraceRowKind end)) (. row duration))
+          (str " " (call duration-text (. row duration)))
+        )
+        (default
+          ""
+        )
+      )
+    )
     (lazy tag (if-expr (and (!= (. row key) "") (== (. row kind) (. TraceRowKind log))) (str "[" (. row key) "] ") ""))
     (lazy place (if-expr (!= (. row location) "") (str "  " (. row location)) ""))
   )

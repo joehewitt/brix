@@ -206,7 +206,16 @@
     ; A function or local rule a pattern on a String calls reads the stream's UTF-8 bytes, and its
     ; `CaptureResult` holds those bytes.
     (let stream (if-expr (!= (. rule-streaming stream) no-type) (. rule-streaming stream) (call scope-stream)))
-    (let texts (if-expr (!= (. rule-streaming stream) no-type) (. rule-streaming encoded) (. ([] (. instances rows) instance) encoded)))
+    (let texts
+      (block
+        (case? (!= (. rule-streaming stream) no-type)
+          (. rule-streaming encoded)
+        )
+        (default
+          (. ([] (. instances rows) instance) encoded)
+        )
+      )
+    )
     (if (or is-root (== stream no-type) (!= (. rule-streaming matched) 0) (!= (. helping helper) null))
       (if (and (== stream no-type) (== (. rule-streaming matched) 0) (== (. helping helper) null))
         (call (. frame diagnose) id .stated (call (. program store-atom) streamless-text))
@@ -215,7 +224,11 @@
         )
       )
       (return invalid-type)
-      (lazy streamless-text "This pattern has no stream to read; outside a rule, write it in a match whose arms are all ~ patterns")
+      (lazy streamless-text
+        (paragraph
+          "This pattern has no stream to read; outside a rule, write it in a match whose arms are all ~ patterns"
+        )
+      )
     )
     (let saved-rule rule-streaming)
     (= rule-streaming (= (. rule-streaming stream) no-type))
@@ -740,7 +753,11 @@
               (return false)
             )
             (if (and (!= known type) (not apart))
-              (let shown (str (call type-short-name types known) " in one alternative and " (call type-short-name types type) " in another"))
+              (let shown
+                (paragraph
+                  (str (call type-short-name types known) " in one alternative and " (call type-short-name types type) " in another")
+                )
+              )
               (call (. frame diagnose) id .stated (call (. program store-atom) (str "Capture " (call (. tree name-text) (. row name)) " holds " shown)))
               (return false)
             )
@@ -888,7 +905,25 @@
         (let first (call (. facts node-type) instance ([] capture-sites position)))
         (if (!= first list)
           (let given (call class-arg types first 0))
-          (call (. frame diagnose) id .stated (call (. program store-atom) (str "Accumulating capture " text " has incompatible contribution types " (call type-key types given) " and " (call type-key types inner))) given inner)
+          (call (. frame diagnose)
+            (block
+              (arg id)
+              (arg .stated)
+              (arg
+                (call (. program store-atom)
+                  (block
+                    (arg
+                      (paragraph
+                        (str "Accumulating capture " text " has incompatible contribution types " (call type-key types given) " and " (call type-key types inner))
+                      )
+                    )
+                  )
+                )
+              )
+              (arg given)
+              (arg inner)
+            )
+          )
           (return false)
         )
         (break)
@@ -1548,7 +1583,16 @@
       (call (. scratch types rewind) mark)
       (return false)
     )
-    (let stream (if-expr texts (call (. types class-with-args) (. made module) (. made decl) (. scratch types mark)) (call class-over made item)))
+    (let stream
+      (block
+        (case? texts
+          (call (. types class-with-args) (. made module) (. made decl) (. scratch types mark))
+        )
+        (default
+          (call class-over made item)
+        )
+      )
+    )
     (let constructs (call (. calls demand-constructor) stream mark))
     (call (. scratch types rewind) mark)
     (if (== constructs no-instance)
@@ -1714,7 +1758,16 @@
         (let recorded
           (scope (if-expr literal (call sliced-text id) (call record-source-text id wanted-text))
             (lazy literal (call (. tree literal-arm) id))
-            (lazy wanted-text (if-expr (!= (. rule-arming target) no-type) (. rule-arming target) (. types string-type)))
+            (lazy wanted-text
+              (block
+                (case? (!= (. rule-arming target) no-type)
+                  (. rule-arming target)
+                )
+                (default
+                  (. types string-type)
+                )
+              )
+            )
           )
         )
         (if (or untextual (not (call text-items)) (== recorded invalid-type))
@@ -1942,7 +1995,11 @@
         )
         (return invalid-type)
       )
-      (lazy within-matched (and (<= (call (. tree subtree-start) (. rule-streaming matched)) id) (< id (. rule-streaming matched))))
+      (lazy within-matched
+        (block
+          (and (<= (call (. tree subtree-start) (. rule-streaming matched)) id) (< id (. rule-streaming matched)))
+        )
+      )
       (if (and (== (. helping helper) null) (!= (. rule-streaming matched) 0))
         (call decline id)
         (return invalid-type)
@@ -1973,7 +2030,11 @@
     (if (and forwards-it non-text-target (!= (. (call source-candidates (. rule-arming target)) length) 0))
       (= it-wanted (. rule-arming target))
     )
-    (lazy non-text-target (and (!= (. rule-arming target) no-type) (!= (call peeled-optional (. rule-arming target)) (. types string-type))))
+    (lazy non-text-target
+      (block
+        (and (!= (. rule-arming target) no-type) (!= (call peeled-optional (. rule-arming target)) (. types string-type)))
+      )
+    )
     (let it-type (. types string-type))
     (let spans-it no-type)
     (if (!= pattern 0)
@@ -2013,7 +2074,16 @@
         (else
           (let held (call (. tree optional-operand) pattern))
           (if (and reads (!= held 0) (call text-items) (== matched (call (. types optional-of) (. types string-type))))
-            (let made (if-expr (is ([] (. tree nodes) held) .node-stream-string) (call sliced-text pattern) (call record-source-text pattern (. types string-type))))
+            (let made
+              (block
+                (case? (is ([] (. tree nodes) held) .node-stream-string)
+                  (call sliced-text pattern)
+                )
+                (default
+                  (call record-source-text pattern (. types string-type))
+                )
+              )
+            )
             (if (!= made (. types string-type))
               (call decline id)
               (return invalid-type)
@@ -2040,7 +2110,13 @@
         )
       )
       (else-if (call (. tree mentions) body "it")
-        (call (. frame diagnose) id .stated (call (. program store-atom) "An arm with no pattern has no \"it\"; read the subject by its name"))
+        (call (. frame diagnose)
+          (block
+            (arg id)
+            (arg .stated)
+            (arg (call (. program store-atom) "An arm with no pattern has no \"it\"; read the subject by its name"))
+          )
+        )
         (return invalid-type)
       )
     )
@@ -2100,8 +2176,24 @@
     )
     (let raise (if-expr (!= pattern 0) (call final-raise body) 0))
     (if (!= raise 0)
-      (let advice "call a function that raises it, or write \"?! error\" as the rule's last arm, which raises where no arm before it matches")
-      (call (. frame diagnose) raise .stated (call (. program store-atom) (str "An arm's action gives the arm's value, so it cannot be a raise; " advice)))
+      (let advice
+        (paragraph
+          "call a function that raises it, or write \"?! error\" as the rule's last arm, which raises where no arm before it matches"
+        )
+      )
+      (call (. frame diagnose)
+        (block
+          (arg raise)
+          (arg .stated)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg (str "An arm's action gives the arm's value, so it cannot be a raise; " advice))
+              )
+            )
+          )
+        )
+      )
       (return invalid-type)
     )
     (if (or (== value no-type) (call (. narrowing exits) body))
@@ -2204,7 +2296,16 @@
       (match? ([] (. tree nodes) node)
         (case .node-identifier
           (let slot (call capture-slot node))
-          (let position (if-expr (!= slot no-slot) (call capture-position slot (. pattern-arms arm)) (. U32 max)))
+          (let position
+            (block
+              (case? (!= slot no-slot)
+                (call capture-position slot (. pattern-arms arm))
+              )
+              (default
+                (. U32 max)
+              )
+            )
+          )
           (if (and (!= position (. U32 max)) (== (call (. seen find) slot) null))
             (+= seen slot)
             (let held (call (. facts node-type) instance ([] capture-sites position)))
@@ -2699,7 +2800,16 @@
       (match? ([] (. tree nodes) node)
         (case .node-identifier
           (let slot (call capture-slot node))
-          (let position (if-expr (!= slot no-slot) (call capture-position slot (. pattern-arms arm)) (. U32 max)))
+          (let position
+            (block
+              (case? (!= slot no-slot)
+                (call capture-position slot (. pattern-arms arm))
+              )
+              (default
+                (. U32 max)
+              )
+            )
+          )
           (if (and (!= position (. U32 max)) (== (call (. seen find) slot) null))
             (+= seen slot)
             (+= positions position)
@@ -2936,7 +3046,19 @@
     (if (!= trigger 0)
       (let subject (call (. tree trigger-subject) trigger))
       (let stream (call (. tree trigger-stream) trigger))
-      (let item (if-expr (!= subject 0) (call infer subject) (if-expr (!= stream 0) (call foreseen-item stream) no-type)))
+      (let item
+        (block
+          (case? (!= subject 0)
+            (call infer subject)
+          )
+          (case? (!= stream 0)
+            (call foreseen-item stream)
+          )
+          (default
+            no-type
+          )
+        )
+      )
       (if (and (!= stream 0) (!= item no-type) (!= item invalid-type))
         (for (in head (call (. tree group-heads) items))
           (if (!= (call (. (call (. tree group-transitions) items head) find) transition) null)
@@ -3175,7 +3297,20 @@
       (call decline id)
       (return false)
     )
-    (let growing (call (. calls protocol-call) collector (call (. program store-atom) "grow") id no-type false no-type no-type false))
+    (let growing
+      (call (. calls protocol-call)
+        (block
+          (arg collector)
+          (arg (call (. program store-atom) "grow"))
+          (arg id)
+          (arg no-type)
+          (arg false)
+          (arg no-type)
+          (arg no-type)
+          (arg false)
+        )
+      )
+    )
     (if (or (!= (. growing answer) (call grown-items collector)) (== (. growing fact) no-fact))
       (call decline id)
       (return false)
@@ -3221,7 +3356,14 @@
       (= result value)
       (let forwarded
         (scope (if-expr (!= (call (. tree forwarded-read) body) 0) forwarded-position (. U32 max))
-          (lazy forwarded-position (call capture-position (call capture-slot (call (. tree forwarded-read) body)) (. pattern-arms arm)))
+          (lazy forwarded-position
+            (call capture-position
+              (block
+                (arg (call capture-slot (call (. tree forwarded-read) body)))
+                (arg (. pattern-arms arm))
+              )
+            )
+          )
         )
       )
       (= natural
@@ -3362,7 +3504,20 @@
       (call decline site)
       (return false)
     )
-    (let growing (call (. calls protocol-call) collector (call (. program store-atom) "grow") site no-type false no-type no-type false))
+    (let growing
+      (call (. calls protocol-call)
+        (block
+          (arg collector)
+          (arg (call (. program store-atom) "grow"))
+          (arg site)
+          (arg no-type)
+          (arg false)
+          (arg no-type)
+          (arg no-type)
+          (arg false)
+        )
+      )
+    )
     (if (or (!= (. growing answer) (call grown-items collector)) (== (. growing fact) no-fact))
       (call decline site)
       (return false)
@@ -3434,7 +3589,16 @@
       (return (call sliced-text id))
     )
     (let made (call second-type-arg interface))
-    (return (if-expr (call record-material id .material-text no-slot made interface no-type) made invalid-type))
+    (return
+      (block
+        (case? (call record-material id .material-text no-slot made interface no-type)
+          made
+        )
+        (default
+          invalid-type
+        )
+      )
+    )
   )
   (fn-do _ sliced-text TypeId
     (param id SyntaxId)
@@ -3614,7 +3778,25 @@
       (let named (call (. ", " join) keys))
       (let wanted (if-expr (!= desired no-type) (call type-key types desired) "*"))
       (let capability (if-expr capture "PatternCaptureMaterializer" "PatternValueMaterializer"))
-      (call (. frame diagnose) site .stated (call (. program store-atom) (str "Pattern helper has ambiguous " capability " capabilities for input " (call type-key types input) ", output " wanted ": " named)) input desired)
+      (call (. frame diagnose)
+        (block
+          (arg site)
+          (arg .stated)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg
+                  (paragraph
+                    (str "Pattern helper has ambiguous " capability " capabilities for input " (call type-key types input) ", output " wanted ": " named)
+                  )
+                )
+              )
+            )
+          )
+          (arg input)
+          (arg desired)
+        )
+      )
       (call (. frame mention) chosen)
       (return invalid-type)
     )
@@ -3815,7 +3997,11 @@
         (return)
       )
       (let kept (if-expr (call is-integer-kind (call (. types intrinsic-of) held)) held (call (. types optional-of) held)))
-      (call (. facts add-rollback-body) (call RollbackBody instance (. helping body) mark-call rewind-call held kept))
+      (call (. facts add-rollback-body)
+        (block
+          (arg (call RollbackBody instance (. helping body) mark-call rewind-call held kept))
+        )
+      )
     )
     (if (and (!= rule-helper-site 0) (== (. helping site) rule-helper-site) (== (. helping body) rule-helper-site))
       (= (. ([] (. instances rows) instance) carries-mark) true)
@@ -4089,7 +4275,13 @@
           (return no-type)
         )
         (if (and (!= (. stream-view item) no-type) (not (call is-integer (. stream-view item))))
-          (call (. frame diagnose) id .stated (call (. program store-atom) "Text in a pattern can only match character or integer items"))
+          (call (. frame diagnose)
+            (block
+              (arg id)
+              (arg .stated)
+              (arg (call (. program store-atom) "Text in a pattern can only match character or integer items"))
+            )
+          )
           (return invalid-type)
         )
       )
@@ -4427,7 +4619,13 @@
     )
     (let capture (call (. tree first-capture) pattern))
     (if (!= capture 0)
-      (call (. frame diagnose) capture .stated (call (. program store-atom) "A pattern given as an argument can't capture names"))
+      (call (. frame diagnose)
+        (block
+          (arg capture)
+          (arg .stated)
+          (arg (call (. program store-atom) "A pattern given as an argument can't capture names"))
+        )
+      )
       (return invalid-type)
     )
     (if (not (call plain-argument pattern reads read-types))
@@ -4800,7 +4998,14 @@
         (return given)
       )
     )
-    (let type (call infer value (if-expr (is ([] (. tree nodes) value) .node-identifier) (call (. (call Want) adding) .want-pattern) (call Want))))
+    (let type
+      (call infer
+        (block
+          (arg value)
+          (arg (if-expr (is ([] (. tree nodes) value) .node-identifier) (call (. (call Want) adding) .want-pattern) (call Want)))
+        )
+      )
+    )
     (if (or (== type invalid-type) (== type no-type))
       (return invalid-type)
     )
@@ -4874,7 +5079,16 @@
     (if (. valuing unvalued)
       (return no-type)
     )
-    (let valued (if-expr (and (== item (. types string-type)) (call text-items)) (call ends-with-rule operand) (or (call stream-valued operand) (call takes-item operand))))
+    (let valued
+      (block
+        (case? (and (== item (. types string-type)) (call text-items))
+          (call ends-with-rule operand)
+        )
+        (default
+          (or (call stream-valued operand) (call takes-item operand))
+        )
+      )
+    )
     (let collector (if-expr valued (call collector-over item) invalid-type))
     (if (or (== collector invalid-type) (!= (. (call (. calls protocol-call) collector (call (. program store-atom) "grow") id) answer) (call grown-items collector)))
       (call decline id)
@@ -5370,7 +5584,23 @@
             )
           )
           (else-if (and (!= rule 0) (not plain))
-            (call (. frame diagnose) id .stated (call (. program store-atom) "A local rule takes no arguments or types; declare it at module level to give it some"))
+            (call (. frame diagnose)
+              (block
+                (arg id)
+                (arg .stated)
+                (arg
+                  (call (. program store-atom)
+                    (block
+                      (arg
+                        (paragraph
+                          "A local rule takes no arguments or types; declare it at module level to give it some"
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
           )
           (else-if (!= rule 0)
             (let recurs (and (not beside-rule) (!= (call (. rules find) rule) null)))
@@ -5619,7 +5849,23 @@
     )
     (for (in position (..< 0 (. sites length)))
       (if (not (call accumulates-in tree (. rule-arming capture-root) ([] callers position)))
-        (call (. frame diagnose) ([] sites position) .stated (call (. program store-atom) (str "Collector mapping target " ([] callers position) " is not an active accumulating capture")))
+        (call (. frame diagnose)
+          (block
+            (arg ([] sites position))
+            (arg .stated)
+            (arg
+              (call (. program store-atom)
+                (block
+                  (arg
+                    (paragraph
+                      (str "Collector mapping target " ([] callers position) " is not an active accumulating capture")
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
         (return false)
       )
     )
@@ -5805,7 +6051,16 @@
     (param plain Bool)
     ; A call of a pattern given to the rule, `\name`, as `$name` calls one. One given arguments
     ; or types, or that names a value of any other type, has no shape here.
-    (let type (if-expr plain (. (call infer-identifier call name (call (. (call Want) adding) .want-pattern)) type) invalid-type))
+    (let type
+      (block
+        (case? plain
+          (. (call infer-identifier call name (call (. (call Want) adding) .want-pattern)) type)
+        )
+        (default
+          invalid-type
+        )
+      )
+    )
     (let called (if-expr (!= type invalid-type) (call pattern-result type) no-type))
     (if (== called no-type)
       (call decline call)
@@ -6133,8 +6388,18 @@
       )
       (let missing (str "Rule \"" (. name text) "\" not found"))
       (let unruled (str "\"" (. name text) "\" is a function, not a rule; call it outside the pattern"))
-      (let unmatched (str "No rule \"" (. name text) "\" matches " (call type-short-name types (. stream-view item)) " items with these arguments"))
-      (let message (call (. program store-atom) (if-expr (not known) missing (if-expr (not ruled) unruled unmatched))))
+      (let unmatched
+        (paragraph
+          (str "No rule \"" (. name text) "\" matches " (call type-short-name types (. stream-view item)) " items with these arguments")
+        )
+      )
+      (let message
+        (call (. program store-atom)
+          (block
+            (arg (if-expr (not known) missing (if-expr (not ruled) unruled unmatched)))
+          )
+        )
+      )
       (call (. facts restate) diagnosed instance id .function-not-found .stated message)
     )
     (call (. scratch syntax rewind) syntax-start)
@@ -6443,8 +6708,28 @@
             )
           )
         )
-        (let advice "give it a \"~\" arm before its \"?!\" arm with any \"|?\" condition in its pattern, or raise from a function an action calls")
-        (call (. frame diagnose) id .stated (call (. program store-atom) (str "\"" named "\" raises, and a rule a pattern calls may raise only where its body is \"~\" arms, the last of which may be \"?!\"; " advice)))
+        (let advice
+          (paragraph
+            "give it a \"~\" arm before its \"?!\" arm with any \"|?\" condition in its pattern, or raise from a function an action calls"
+          )
+        )
+        (call (. frame diagnose)
+          (block
+            (arg id)
+            (arg .stated)
+            (arg
+              (call (. program store-atom)
+                (block
+                  (arg
+                    (paragraph
+                      (str "\"" named "\" raises, and a rule a pattern calls may raise only where its body is \"~\" arms, the last of which may be \"?!\"; " advice)
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
         (else
           (call decline id)
         )
@@ -6529,7 +6814,11 @@
     (let pattern (call (. tree local-rule-pattern) rule))
     (if (or (== pattern 0) (== (. rules length) 0) (!= ([] rules (- (. rules length) 1)) rule) (!= (. helping helper) null))
       (if (and (!= pattern 0) (!= (call (. rules find) rule) null) (== (. helping helper) null))
-        (let text "The local rules of a match cannot call one another in a cycle; declare them below a rule the module declares, whose local rules can")
+        (let text
+          (paragraph
+            "The local rules of a match cannot call one another in a cycle; declare them below a rule the module declares, whose local rules can"
+          )
+        )
         (call (. frame diagnose) id .stated (call (. program store-atom) text))
         (else
           (call decline id)
@@ -6813,7 +7102,11 @@
         (= name (. row name text))
       )
     )
-    (let text (str "\"" name "\" calls itself before reading any input, so it never ends; read input before this call, or write the repetition with \"*\""))
+    (let text
+      (paragraph
+        (str "\"" name "\" calls itself before reading any input, so it never ends; read input before this call, or write the repetition with \"*\"")
+      )
+    )
     (call (. frame diagnose) call .stated (call (. program store-atom) text))
   )
   (fn-do _ rule-type TypeId
@@ -6898,7 +7191,19 @@
     (+= typed-helpers (. helping site))
     (let own-arms rule-arming)
     (let base (. capture-sites length))
-    (= rule-arming (call RuleArms declared (call gives-source-span declared) true (== declared (. types string-type)) pattern base (. rule-arming casting)))
+    (= rule-arming
+      (call RuleArms
+        (block
+          (arg declared)
+          (arg (call gives-source-span declared))
+          (arg true)
+          (arg (== declared (. types string-type)))
+          (arg pattern)
+          (arg base)
+          (arg (. rule-arming casting))
+        )
+      )
+    )
     (let saved-explicit helping)
     (let saved-unvalued valuing)
     (= helping (= (. helping explicit) (or marked (and beside-rule (call (. tree holds-rollback) pattern)))))
@@ -6960,12 +7265,34 @@
     )
     (if (not (call is-integer-kind (call (. types intrinsic-of) type)))
       (let shown (call type-display types type))
-      (call (. frame diagnose) id .stated (call (. program store-atom) (str "A count in a pattern must be an integer, not " shown)))
+      (call (. frame diagnose)
+        (block
+          (arg id)
+          (arg .stated)
+          (arg (call (. program store-atom) (str "A count in a pattern must be an integer, not " shown)))
+        )
+      )
       (return false)
     )
     (if (and repeated (not (call steady id)))
       (let advice "compute it in a lazy local with \"..\" and count by its name")
-      (call (. frame diagnose) id .stated (call (. program store-atom) (str "A count in a pattern is read each time the part repeats, and this one may change between reads; " advice)))
+      (call (. frame diagnose)
+        (block
+          (arg id)
+          (arg .stated)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg
+                  (paragraph
+                    (str "A count in a pattern is read each time the part repeats, and this one may change between reads; " advice)
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
       (return false)
     )
     (return true)

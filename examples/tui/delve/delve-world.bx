@@ -87,9 +87,9 @@
   (fn-do + This _
     (param width _)
     (param height _)
-    (= tiles (call List (in (. Tile rock) (..< 0 (* width height)))))
-    (= light (call List (in 0.0 (..< 0 (* width height)))))
-    (= seen (call List (in false (..< 0 (* width height)))))
+    (lazy tiles (call List (in (. Tile rock) (..< 0 (* width height)))))
+    (lazy light (call List (in 0.0 (..< 0 (* width height)))))
+    (lazy seen (call List (in false (..< 0 (* width height)))))
   )
   (fn-expr + (index-get this (param at Spot)) Tile
     (if-expr (call holds at) ([] tiles (call slot at)) (. Tile rock))
@@ -185,7 +185,14 @@
   (let level (call Level width height))
   (for (in attempt (..< 0 120) (while (< (. level rooms length) 9)))
     (let room
-      (call Room (call (. dice random) 1 (- width 12)) (call (. dice random) 1 (- height 7)) (call (. dice random) 4 12) (call (. dice random) 3 6))
+      (call Room
+        (block
+          (arg (call (. dice random) 1 (- width 12)))
+          (arg (call (. dice random) 1 (- height 7)))
+          (arg (call (. dice random) 4 12))
+          (arg (call (. dice random) 3 6))
+        )
+      )
     )
     (if (not (call some (. level rooms) (:where (call (. room overlaps) each))))
       (call (. level dig) room)

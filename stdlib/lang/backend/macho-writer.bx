@@ -17,7 +17,13 @@
 (prop _ s-attr-some-instructions U32 (= 0x00000400))
 (prop _ n-ext U32 (= 1))
 (prop _ section-names (list String) (= (list "__text" "__cstring" "__const" "__brix_trace" "__brix_gcmap" "__brix_gcroots" "__brix_pads" "__bss")))
-(prop _ segment-names (list String) (= (list "__TEXT" "__TEXT" "__DATA" "__DATA" "__DATA" "__DATA" "__DATA" "__DATA")))
+(prop _ segment-names (list String)
+  (=
+    (block
+      (list "__TEXT" "__TEXT" "__DATA" "__DATA" "__DATA" "__DATA" "__DATA" "__DATA")
+    )
+  )
+)
 
 (fn-do + write-macho ByteSpan
   (param builder ObjectBuilder)
@@ -160,7 +166,16 @@
       (for (in position (..< 0 count))
         (let relocation ([] (. target relocations) (- count 1 position)))
         (let kind (. relocation kind))
-        (let pc-relative U32 (if-expr (or (call is-branch26-relocation kind) (== kind .page21-relocation)) 1 0))
+        (let pc-relative U32
+          (block
+            (case? (or (call is-branch26-relocation kind) (== kind .page21-relocation))
+              1
+            )
+            (default
+              0
+            )
+          )
+        )
         (call (. writer u32) (. relocation offset))
         (call (. writer u32)
           (block

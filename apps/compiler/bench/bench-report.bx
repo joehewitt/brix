@@ -126,7 +126,16 @@
   (call bench-sanitized bare)
   (where
     (lazy trimmed (call (. name trim)))
-    (lazy bare (if-expr (call (. trimmed lowercased ends-with) ".json") ([] trimmed (..< 0 (- (. trimmed length) 5))) trimmed))
+    (lazy bare
+      (block
+        (case? (call (. trimmed lowercased ends-with) ".json")
+          ([] trimmed (..< 0 (- (. trimmed length) 5)))
+        )
+        (default
+          trimmed
+        )
+      )
+    )
   )
 )
 
@@ -554,7 +563,11 @@
   (while (< (. fraction length) 3)
     (= fraction (str "0" fraction))
   )
-  (return (str (call (. time year pad) 4) "-" (call (. (+ (. time month number) 1) pad) 2) "-" (call (. (+ (. time day number) 1) pad) 2) "T" (call (. time hour pad) 2) ":" (call (. time minute pad) 2) ":" (call (. time second pad) 2) "." fraction "Z"))
+  (return
+    (paragraph
+      (str (call (. time year pad) 4) "-" (call (. (+ (. time month number) 1) pad) 2) "-" (call (. (+ (. time day number) 1) pad) 2) "T" (call (. time hour pad) 2) ":" (call (. time minute pad) 2) ":" (call (. time second pad) 2) "." fraction "Z")
+    )
+  )
 )
 
 (fn-do + bench-run-id String

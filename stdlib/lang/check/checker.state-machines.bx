@@ -431,7 +431,11 @@
         (if (not (call flagged node))
           (let name (call (. tree state-name) node))
           (let shown (if-expr name (. name text) ""))
-          (let message (str "A case of a machine in a class's markup is read as a property of its name, and the class declares \"" shown "\" already; rename the case or the property"))
+          (let message
+            (paragraph
+              (str "A case of a machine in a class's markup is read as a property of its name, and the class declares \"" shown "\" already; rename the case or the property")
+            )
+          )
           (call (. frame diagnose) node .stated (call (. program store-atom) message))
           (return false)
         )
@@ -1222,7 +1226,7 @@
       (if (and (!= body 0) (!= (call (. piece initial-case) (call (. piece state-items) (call (. piece state-body) body))) 0))
         (return true)
       )
-      (= above (if-expr (!= (. above refined) no-instance) (call (. facts machine-of) (. above refined)) null))
+      (= above (only-if (call (. facts machine-of) (. above refined)) (if (!= (. above refined) no-instance))))
     )
     (return false)
   )
@@ -1235,7 +1239,11 @@
       (let unresolved (and (== (. resolution kind) .resolve-unresolved) (== (. resolution slot) no-slot)))
       (if (and (is ([] (. tree nodes) target) .node-identifier) unresolved)
         (let name (!! (call (. tree state-name) initial)))
-        (let message (str "Initial state case '" (. name text) "' cannot take a payload, since nothing enters it to give it one; give it values, or write a case with no payload before it"))
+        (let message
+          (paragraph
+            (str "Initial state case '" (. name text) "' cannot take a payload, since nothing enters it to give it one; give it values, or write a case with no payload before it")
+          )
+        )
         (call (. frame diagnose) target .stated (call (. program store-atom) message))
         (return false)
       )
@@ -1323,13 +1331,39 @@
       (call decline head)
       (return)
     )
-    (let subscribing (call (. calls protocol-call) stream (call (. program store-atom) "subscribe") head subscriber false no-type no-type false))
+    (let subscribing
+      (call (. calls protocol-call)
+        (block
+          (arg stream)
+          (arg (call (. program store-atom) "subscribe"))
+          (arg head)
+          (arg subscriber)
+          (arg false)
+          (arg no-type)
+          (arg no-type)
+          (arg false)
+        )
+      )
+    )
     (if (== (. subscribing answer) invalid-type)
       (call decline head)
       (return)
     )
     (let subscribe (. subscribing fact))
-    (let unsubscribing (call (. calls protocol-call) stream (call (. program store-atom) "unsubscribe") head subscriber false no-type no-type false))
+    (let unsubscribing
+      (call (. calls protocol-call)
+        (block
+          (arg stream)
+          (arg (call (. program store-atom) "unsubscribe"))
+          (arg head)
+          (arg subscriber)
+          (arg false)
+          (arg no-type)
+          (arg no-type)
+          (arg false)
+        )
+      )
+    )
     (if (== (. unsubscribing answer) invalid-type)
       (call decline head)
       (return)
@@ -1372,7 +1406,11 @@
     (param trigger SyntaxId)
     (param written SyntaxId)
     (if (not (call (. tree tracks-reads) written))
-      (let message "A \"whenever\" trigger fires as what it reads with \"#\" changes, and this one reads nothing with \"#\", so it would never fire; write \"#\" before what it follows, as in \"whenever #feed\"")
+      (let message
+        (paragraph
+          "A \"whenever\" trigger fires as what it reads with \"#\" changes, and this one reads nothing with \"#\", so it would never fire; write \"#\" before what it follows, as in \"whenever #feed\""
+        )
+      )
       (call (. frame diagnose) trigger .stated (call (. program store-atom) message))
       (return no-type)
     )
@@ -1515,7 +1553,16 @@
       (call decline head)
       (return)
     )
-    (let endpoint (if-expr keyed (call event-call "event-keyed-endpoint" (. event payload) no-type 3) (call event-call "event-endpoint" (. event payload))))
+    (let endpoint
+      (block
+        (case? keyed
+          (call event-call "event-keyed-endpoint" (. event payload) no-type 3)
+        )
+        (default
+          (call event-call "event-endpoint" (. event payload))
+        )
+      )
+    )
     (let item (. event payload))
     (let subscriber (call (. types well-known-type-of) "core/stream" "Subscriber" item))
     (let broadcastable (call (. types well-known-type-of) "core/stream" "Broadcastable" item))
@@ -1557,7 +1604,16 @@
     (let held (call (. types optional-of) port-type))
     (let port (if-expr lowered (call port-call "event-machine-port" item subscriber stream) no-instance))
     (let post (if-expr lowered (call port-call "event-machine-post" item port-type item) no-instance))
-    (let attach (if-expr lowered no-instance (call port-call "event-machine-attach" item held subscriber stream)))
+    (let attach
+      (block
+        (case? lowered
+          no-instance
+        )
+        (default
+          (call port-call "event-machine-attach" item held subscriber stream)
+        )
+      )
+    )
     (let detach (if-expr lowered no-instance (call port-call "event-machine-detach" item held)))
     (let made
       (scope (if-expr lowered (and (!= port no-instance) (!= post no-instance)) attachable)

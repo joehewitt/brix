@@ -1010,8 +1010,52 @@
       )
     )
     (call connect block matched)
-    (let left (if-expr (== middle low) fail (call (. builder add-block) (call (. builder function add-local-name) .switch-tree-name no-string no-string (as (. builder function blocks length) U32)))))
-    (let right (if-expr (== (+ middle 1) high) fail (call (. builder add-block) (call (. builder function add-local-name) .switch-tree-name no-string no-string (as (. builder function blocks length) U32)))))
+    (let left
+      (match middle
+        (case= low
+          fail
+        )
+        (default
+          (call (. builder add-block)
+            (block
+              (arg
+                (call (. builder function add-local-name)
+                  (block
+                    (arg .switch-tree-name)
+                    (arg no-string)
+                    (arg no-string)
+                    (arg (as (. builder function blocks length) U32))
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (let right
+      (block
+        (case? (== (+ middle 1) high)
+          fail
+        )
+        (default
+          (call (. builder add-block)
+            (block
+              (arg
+                (call (. builder function add-local-name)
+                  (block
+                    (arg .switch-tree-name)
+                    (arg no-string)
+                    (arg no-string)
+                    (arg (as (. builder function blocks length) U32))
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
     (if (or (!= left fail) (!= right fail))
       (call (. builder asm)
         (block

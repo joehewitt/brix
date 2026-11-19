@@ -116,7 +116,26 @@
   )
   (fn-do + zoom-bounds ZoomBounds
     (let fitted (call (. content-bounds inset) fit-insets))
-    (return (call ZoomBounds pattern-sheet-size (call image-fit-rect pattern-sheet-size fitted (. ImageFit contain) (. AnchorPoint center) (. AnchorPoint center)) 0.25 3))
+    (return
+      (call ZoomBounds
+        (block
+          (arg pattern-sheet-size)
+          (arg
+            (call image-fit-rect
+              (block
+                (arg pattern-sheet-size)
+                (arg fitted)
+                (arg (. ImageFit contain))
+                (arg (. AnchorPoint center))
+                (arg (. AnchorPoint center))
+              )
+            )
+          )
+          (arg 0.25)
+          (arg 3)
+        )
+      )
+    )
   )
   (fn-expr _ view-transform Matrix :get
     (call Matrix scale 0 0 scale (. placed x) (. placed y))
@@ -126,7 +145,11 @@
     )
   )
   (fn-expr _ selection-transform Matrix :get
-    (call (. (call (. view-transform concatenate) (call repeat-transform design column row)) concatenate) (call motif-transform (. session motif) (call pattern-pitch design)))
+    (call (. (call (. view-transform concatenate) (call repeat-transform design column row)) concatenate)
+      (block
+        (arg (call motif-transform (. session motif) (call pattern-pitch design)))
+      )
+    )
     (where
       (lazy design (. session design))
     )
@@ -157,7 +180,18 @@
       (= column (. hit cell column))
       (= row (. hit cell row))
     )
-    (= gesture (call MotifGesture (. event pointer-id) handle point (. session motif) selection-transform (call RepeatCell column row (call repeat-transform (. session design) column row))))
+    (= gesture
+      (call MotifGesture
+        (block
+          (arg (. event pointer-id))
+          (arg handle)
+          (arg point)
+          (arg (. session motif))
+          (arg selection-transform)
+          (arg (call RepeatCell column row (call repeat-transform (. session design) column row)))
+        )
+      )
+    )
     (call drag-to point (. ValueChangePhase began))
   )
   (fn-do _ drag-to _
@@ -184,10 +218,22 @@
       (case= (. MotifHandle scale)
         (let center (call (. active transform transform) (call Point)))
         (let ratio (/ (call (. point distance) center) (call max 1 (call (. active start distance) center))))
-        (call (. session set-parameter) (. PatternParameter scale) (call clamp (* (. motif scale) ratio) 30.0 180.0) phase)
+        (call (. session set-parameter)
+          (block
+            (arg (. PatternParameter scale))
+            (arg (call clamp (* (. motif scale) ratio) 30.0 180.0))
+            (arg phase)
+          )
+        )
       )
       (case= (. MotifHandle shape)
-        (call (. session set-parameter) (. PatternParameter shape) (call clamp (+ (. motif shape) (/ (. delta x) (call (. framing effective-zoom)))) 0.0 100.0) phase)
+        (call (. session set-parameter)
+          (block
+            (arg (. PatternParameter shape))
+            (arg (call clamp (+ (. motif shape) (/ (. delta x) (call (. framing effective-zoom)))) 0.0 100.0))
+            (arg phase)
+          )
+        )
       )
     )
   )
@@ -222,7 +268,14 @@
     (call (. super unmounted))
   )
   (fn-expr _ visible-area Rect :get
-    (call Rect (/ (- (. area x) (. placed x)) scale) (/ (- (. area y) (. placed y)) scale) (/ (. area width) scale) (/ (. area height) scale))
+    (call Rect
+      (block
+        (arg (/ (- (. area x) (. placed x)) scale))
+        (arg (/ (- (. area y) (. placed y)) scale))
+        (arg (/ (. area width) scale))
+        (arg (/ (. area height) scale))
+      )
+    )
     (where
       (lazy area content-bounds)
       (lazy placed (call (. framing placed)))

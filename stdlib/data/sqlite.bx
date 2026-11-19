@@ -39,7 +39,16 @@
     (param is-read-only _ (= false))
     (param is-shared-across-threads _ (= false))
     (param busy-timeout Milliseconds (= 5000ms))
-    (let access (if-expr is-read-only C:SQLITE_OPEN_READONLY (/or/ C:SQLITE_OPEN_READWRITE C:SQLITE_OPEN_CREATE)))
+    (let access
+      (block
+        (case? is-read-only
+          C:SQLITE_OPEN_READONLY
+        )
+        (default
+          (/or/ C:SQLITE_OPEN_READWRITE C:SQLITE_OPEN_CREATE)
+        )
+      )
+    )
     (let locking (if-expr is-shared-across-threads C:SQLITE_OPEN_FULLMUTEX C:SQLITE_OPEN_NOMUTEX))
     (let opened (of CPointer I8))
     (let status (call C:sqlite3_open_v2 path &opened (/or/ access locking) null))

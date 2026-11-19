@@ -86,7 +86,19 @@
     (let connection (call json-field "connectionProperties" device))
     (let properties (call json-field "deviceProperties" device))
     (if (and (== (call json-text "platform" hardware) "iOS") is-paired has-tunnel)
-      (let found (call IOSDevice (call json-text "identifier" device) (call json-text "name" properties) (str (call json-text "marketingName" hardware) " · iOS " (call json-text "osVersionNumber" properties))))
+      (let found
+        (call IOSDevice
+          (block
+            (arg (call json-text "identifier" device))
+            (arg (call json-text "name" properties))
+            (arg
+              (paragraph
+                (str (call json-text "marketingName" hardware) " · iOS " (call json-text "osVersionNumber" properties))
+              )
+            )
+          )
+        )
+      )
       (if (== (call json-text "tunnelState" connection) "connected")
         (+= connected found)
         (else

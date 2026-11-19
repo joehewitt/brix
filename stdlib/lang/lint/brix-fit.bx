@@ -7,10 +7,10 @@
 (import /data/sexp)
 (import /data/source-sexp)
 (import /data/source-tree)
-(import /lang/ubrix/ubrix-print)
 (import /lang/ubrix/build)
 (import /lang/ubrix/convert)
 (import /lang/ubrix/layout)
+(import /lang/ubrix/ubrix-print)
 (import /stream/aggregate)
 (blank)
 (prop _ brix-fit-depth Size (= 5))
@@ -114,7 +114,7 @@
     (if call
       (+= made call)
     )
-    (let choice (if-expr decides (call decision value) null))
+    (let choice (only-if (call decision value) (if decides)))
     (if choice
       (+= made choice)
     )
@@ -172,7 +172,11 @@
       (lazy is-branch (or (== head "if") (== head "else-if") (== head "else") (call (. head starts-with) "match")))
       (lazy is-arm (or (call (. head starts-with) "case") (== head "default")))
       (lazy is-loop (or (== head "for") (== head "while") (call (. head starts-with) "subscribe")))
-      (lazy is-guarded (or (== head "do-use") (== head "do-new-thread") (== head "on-error") (== head "finally")))
+      (lazy is-guarded
+        (block
+          (or (== head "do-use") (== head "do-new-thread") (== head "on-error") (== head "finally"))
+        )
+      )
     )
   )
   (fn-expr _ declares Bool
@@ -180,7 +184,11 @@
     (param name String)
     (and is-binding (call (. store is-atom) target) (== (call (. store text) target) name))
     (where
-      (lazy is-binding (and (or (call (. store is-form) node "let") (call (. store is-form) node "param")) (>= (call (. store count) node) 2)))
+      (lazy is-binding
+        (block
+          (and (or (call (. store is-form) node "let") (call (. store is-form) node "param")) (>= (call (. store count) node) 2))
+        )
+      )
       (lazy target (call (. store item) node 1))
     )
   )
@@ -196,10 +204,10 @@
   (fn-expr _ slot (? Size)
     (param node (of ImmutableTableRow SourceNode))
     (case? (or (== head "let") (== head "lazy"))
-      (if-expr (or (== count 4) (and (== count 3) (not (call ubrix-is-type-form store (call (. store item) node 2))))) (- count 1) null)
+      (only-if (- count 1) (if (or (== count 4) (and (== count 3) (not (call ubrix-is-type-form store (call (. store item) node 2)))))))
     )
     (case? (or (== head "return") (== head "arg") (== head "item"))
-      (if-expr (== count 2) 1 null)
+      (only-if 1 (if (== count 2)))
     )
     (case? (and (== count 3) (== (call ubrix-precedence head) (call ubrix-precedence "=")))
       2
@@ -244,7 +252,15 @@
     (if (== (. items length) 3)
       (+= exit ([] items 1))
     )
-    (let made (call (of List (of ImmutableTableRow SourceNode)) (call (. store atom) "if") (call (. store item) test 1) (call (. store list) exit)))
+    (let made
+      (call (of List (of ImmutableTableRow SourceNode))
+        (block
+          (arg (call (. store atom) "if"))
+          (arg (call (. store item) test 1))
+          (arg (call (. store list) exit))
+        )
+      )
+    )
     (return (call (. store with-items) node made))
   )
   (fn-do _ text-block (? (of ImmutableTableRow SourceNode))
@@ -334,7 +350,21 @@
     )
     (for (in index (..< 0 (. tests length)))
       (let test (if-expr is-match (call (. store item) ([] tests index) 2) ([] tests index)))
-      (+= arms (call (. store list) (call (of List (of ImmutableTableRow SourceNode)) (call (. store atom) (if-expr is-match "case=" "case?")) test ([] results index))))
+      (+= arms
+        (call (. store list)
+          (block
+            (arg
+              (call (of List (of ImmutableTableRow SourceNode))
+                (block
+                  (arg (call (. store atom) (if-expr is-match "case=" "case?")))
+                  (arg test)
+                  (arg ([] results index))
+                )
+              )
+            )
+          )
+        )
+      )
     )
     (+= arms (call (. store list) (call (of List (of ImmutableTableRow SourceNode)) (call (. store atom) "default") rest)))
     (return (call (. store with-items) node arms))
@@ -493,7 +523,9 @@
   (return-if null (if (== (. fixed length) 0)))
   (let before (call unit-text store unit is-main))
   (let after (call unit-text store made is-main))
-  (return-if null (if (or (not (call brix-round-trips before)) (not (call brix-round-trips after)) (not (call is-better before after max depth)))))
+  (if (or (not (call brix-round-trips before)) (not (call brix-round-trips after)) (not (call is-better before after max depth)))
+    (return null)
+  )
   (return (call BrixFitted unit made fixed (. ([] held 0) id) is-main))
 )
 
@@ -575,7 +607,16 @@
   (param store SourceStore)
   (param node (of ImmutableTableRow SourceNode))
   (param is-main Bool)
-  (let shown (if-expr is-main (call (. store list) (call (of List (of ImmutableTableRow SourceNode)) (call (. store atom) "main") node)) node))
+  (let shown
+    (block
+      (case? is-main
+        (call (. store list) (call (of List (of ImmutableTableRow SourceNode)) (call (. store atom) "main") node))
+      )
+      (default
+        node
+      )
+    )
+  )
   (return (call sexp-nested-text store shown (call UBrixLayout store) 0))
 )
 

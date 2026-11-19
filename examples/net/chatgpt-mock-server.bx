@@ -55,7 +55,18 @@
           (call refuse (call Refusal (. HTTPStatus not-found) (str "No mock route for " (. request method) " " (. request path))))
         )
         (case= (. HTTPStatus method-not-allowed)
-          (call refuse (call Refusal (. HTTPStatus method-not-allowed) (str "Only " (. (!! (. request route)) allowed-methods) " is supported for " (. request path))))
+          (call refuse
+            (block
+              (arg
+                (call Refusal
+                  (block
+                    (arg (. HTTPStatus method-not-allowed))
+                    (arg (str "Only " (. (!! (. request route)) allowed-methods) " is supported for " (. request path)))
+                  )
+                )
+              )
+            )
+          )
         )
         (default
           response
@@ -120,7 +131,16 @@
     (let now (call clock))
     (let id (str "chatcmpl-mock-" (call base36 (as (- now (call ClockTime 0 0)) Int)) "-" (call base36 served)))
     (let completion (call Completion id (as (. now s) Int) chat))
-    (return (if-expr (. chat stream) (call stream-response completion) (call json-response (. HTTPStatus ok) (. completion reply))))
+    (return
+      (block
+        (case? (. chat stream)
+          (call stream-response completion)
+        )
+        (default
+          (call json-response (. HTTPStatus ok) (. completion reply))
+        )
+      )
+    )
   )
   (fn-expr _ stream-response HTTPResponse
     (param completion Completion)
@@ -294,9 +314,7 @@
     (case (list (= "model" (all String ({} (!= it "")))))
       (throw (call Refusal (. HTTPStatus bad-request) "Request body must include a messages array"))
     )
-    (default
-      (throw (call Refusal (. HTTPStatus bad-request) "Request body must include a string model"))
-    )
+    (throw (call Refusal (. HTTPStatus bad-request) "Request body must include a string model"))
   )
   (where
     (lazy stream (is body (list (= "stream" (all Bool ({} it))))))
@@ -322,9 +340,7 @@
     (case (list (= "role" String))
       (throw (call Refusal (. HTTPStatus bad-request) (str "messages[" index "].content must be a string or content array")))
     )
-    (default
-      (throw (call Refusal (. HTTPStatus bad-request) (str "messages[" index "].role must be a string")))
-    )
+    (throw (call Refusal (. HTTPStatus bad-request) (str "messages[" index "].role must be a string")))
   )
 )
 

@@ -97,7 +97,15 @@
     (if (== method "explain")
       (let name ([] fields "name"))
       (let line ([] fields "line"))
-      (return (call explained-text (call (. ([] fields "path") string)) (only-if (call (. name string)) (if (. name is-present))) (only-if (call (. line int)) (if (. line is-present)))))
+      (return
+        (call explained-text
+          (block
+            (arg (call (. ([] fields "path") string)))
+            (arg (only-if (call (. name string)) (if (. name is-present))))
+            (arg (only-if (call (. line int)) (if (. line is-present))))
+          )
+        )
+      )
     )
     (throw (call JSONRPCError .method-not-found (str "Unknown method " method)))
   )
@@ -120,7 +128,16 @@
           )
         )
       )
-      (return (call explain-function session module named (?? (call (. store text-of) (. ([] (. program modules) (. named module)) path)) "")))
+      (return
+        (call explain-function
+          (block
+            (arg session)
+            (arg module)
+            (arg named)
+            (arg (?? (call (. store text-of) (. ([] (. program modules) (. named module)) path)) ""))
+          )
+        )
+      )
     )
     (let at (call function-at-line program module (as (- (?? line 1) 1) U32)))
     (return-if (str "No function is written at " path ":" (?? line 0)) (if (not at)))

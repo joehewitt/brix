@@ -90,7 +90,7 @@
     (if closes
       (= outer-bottom (if-expr (not is-gap) height source-edge-offset))
     )
-    (let outer (call SourceReach (if-expr (== local 0) source-edge-offset null) outer-bottom))
+    (let outer (call SourceReach (only-if source-edge-offset (if (== local 0))) outer-bottom))
     (let in-member (and is-tray (call is-member-row index rows local)))
     (let member (? SourceReach) null)
     (let bottom outer-bottom)
@@ -101,7 +101,7 @@
         (let edge (if-expr is-gap source-edge-offset height))
         (= member-bottom (if-expr closes (- edge source-edge-step) edge))
       )
-      (= member (call SourceReach (if-expr (== local member-start) source-edge-offset null) member-bottom))
+      (= member (call SourceReach (only-if source-edge-offset (if (== local member-start))) member-bottom))
       (= bottom member-bottom)
     )
     (let opens (or (== local 0) (and in-member (== local member-start))))
@@ -117,7 +117,20 @@
       )
     )
     (let kind (if-expr in-member (. ([] rows member-start) block) (. ([] rows 0) block)))
-    (return (call SourceSlice surface outer member wash kind (. ([] rows 0) is-private) (and in-member (. ([] rows member-start) is-private)) (== (. current divider) source-divider-dashed)))
+    (return
+      (call SourceSlice
+        (block
+          (arg surface)
+          (arg outer)
+          (arg member)
+          (arg wash)
+          (arg kind)
+          (arg (. ([] rows 0) is-private))
+          (arg (and in-member (. ([] rows member-start) is-private)))
+          (arg (== (. current divider) source-divider-dashed))
+        )
+      )
+    )
   )
   (fn-do _ is-member-row Bool
     (param index Index)
@@ -195,7 +208,13 @@
       (let bottom (+ (. band y) (?? (. wash bottom) (+ (. band height) (* source-box-radius 2)))))
       (do-use (. canvas saved-state)
         (call (. canvas clip) (call Rect (. band x) top (. band width) (- bottom top)))
-        (let washed (call (. (call source-wash-fill (. slice kind) palette) over) (if-expr member member-fill fill)))
+        (let washed
+          (call (. (call source-wash-fill (. slice kind) palette) over)
+            (block
+              (arg (if-expr member member-fill fill))
+            )
+          )
+        )
         (= (. canvas fill-color) washed)
         (call (. canvas outline) (call Outline inner source-box-radius))
       )
@@ -203,7 +222,16 @@
     (let border (call source-surface-border (. slice surface) palette))
     (let rule (? RGBA) null)
     (if border
-      (let shown (if-expr (== (. slice surface) (. SourceSurface box)) (call source-kind-border (. slice kind) border palette) border))
+      (let shown
+        (match (. slice surface)
+          (case= (. SourceSurface box)
+            (call source-kind-border (. slice kind) border palette)
+          )
+          (default
+            border
+          )
+        )
+      )
       (let edge (call (. shown over) fill))
       (call stroke-source-edge canvas box band edge (. slice is-private))
       (= rule edge)
@@ -216,7 +244,14 @@
     (if (and (. slice is-ruled) rule)
       (= (. canvas stroke-color) null)
       (= (. canvas fill-color) rule)
-      (call paint-source-rule canvas (. inner x) (. inner right) (+ (. band y) (call floor (/ (- (. band height) source-border-width) 2))))
+      (call paint-source-rule
+        (block
+          (arg canvas)
+          (arg (. inner x))
+          (arg (. inner right))
+          (arg (+ (. band y) (call floor (/ (- (. band height) source-border-width) 2))))
+        )
+      )
     )
   )
 )
@@ -308,7 +343,11 @@
   (let period (/ (- right left source-private-dash) (- count 1)))
   (let dashes (as count Size))
   (for (in index (..< 0 dashes))
-    (call (. canvas rect) (call Rect (call round (+ left (* period (as index F64)))) y source-private-dash source-border-width))
+    (call (. canvas rect)
+      (block
+        (arg (call Rect (call round (+ left (* period (as index F64)))) y source-private-dash source-border-width))
+      )
+    )
   )
 )
 

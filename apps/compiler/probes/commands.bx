@@ -182,7 +182,11 @@
   (if (== (. trace source catalog) "")
     (+= warnings "no catalog for this trace; values are named value1, value2, …")
     (else-if (!= (. trace unnamed-sites) 0)
-      (+= warnings (str (. trace unnamed-sites) " sites do not match the catalog " (. trace source catalog) "; their values are named value1, value2, …"))
+      (+= warnings
+        (paragraph
+          (str (. trace unnamed-sites) " sites do not match the catalog " (. trace source catalog) "; their values are named value1, value2, …")
+        )
+      )
     )
   )
   (return warnings)
@@ -383,7 +387,11 @@
       )
     )
   )
-  (let metrics (call sort (. trace metrics) (:using (=> (a b) (if-expr (< (. a site key) (. b site key)) .lesser .greater)))))
+  (let metrics
+    (block
+      (call sort (. trace metrics) (:using (=> (a b) (if-expr (< (. a site key) (. b site key)) .lesser .greater))))
+    )
+  )
   (for (in metric metrics)
     (if (and (!= (. filter keys length) 0) (not (call key-selected filter (. metric site key))))
       (continue)
@@ -798,7 +806,16 @@
     (return 0)
   )
   (if (== (. found length) 0)
-    (let wanted (if-expr field (str "records with a number in " field) "ended groups (or pass --field NAME)"))
+    (let wanted
+      (block
+        (case? field
+          (str "records with a number in " field)
+        )
+        (default
+          "ended groups (or pass --field NAME)"
+        )
+      )
+    )
     (call (. out line) (str "no " wanted " match"))
     (return 0)
   )
@@ -806,7 +823,15 @@
     (let outlier ([] found position))
     (let value (call stat-text "value" (. outlier value) timed))
     (let median (call stat-text "value" (. outlier median) timed))
-    (call (. out line) (str (call ratio-text (call ratio outlier)) "× median (" value " vs " median ")  " (. outlier row label) "  #" (. outlier row index) " at " (call duration-text (. outlier row time)) "  " (. outlier row location)))
+    (call (. out line)
+      (block
+        (arg
+          (paragraph
+            (str (call ratio-text (call ratio outlier)) "× median (" value " vs " median ")  " (. outlier row label) "  #" (. outlier row index) " at " (call duration-text (. outlier row time)) "  " (. outlier row location))
+          )
+        )
+      )
+    )
     (for (in text (call context-lines trace (. outlier row) context))
       (call (. out line) (str "    " text))
     )

@@ -108,7 +108,9 @@
   (param block MarkdownBlock)
   (return-if (if (. block renders-runs)))
   (= (. block renders-runs) true)
-  (return-if (if (and (not (call markdown-runs-tagged (. block runs))) (not (call some (. block cells) (:where (call markdown-runs-tagged (. each runs))))))))
+  (if (and (not (call markdown-runs-tagged (. block runs))) (not (call some (. block cells) (:where (call markdown-runs-tagged (. each runs))))))
+    (return)
+  )
   (= (. block runs) (call markdown-rendered-runs renderer (. block runs)))
   (let cells (list MarkdownGridCell))
   (for (in cell (. block cells))
@@ -538,7 +540,18 @@
             (block
               (arg result)
               (arg (. code code))
-              (arg (call MarkdownRunStyle (. style is-strong) (. style is-em) true (. style url) (. style is-image) (. code language)))
+              (arg
+                (call MarkdownRunStyle
+                  (block
+                    (arg (. style is-strong))
+                    (arg (. style is-em))
+                    (arg true)
+                    (arg (. style url))
+                    (arg (. style is-image))
+                    (arg (. code language))
+                  )
+                )
+              )
             )
           )
         )

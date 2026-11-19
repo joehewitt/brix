@@ -110,7 +110,11 @@
     (if (call holds-object made held)
       (return false)
     )
-    (let message (str "Named markup element \"" (. (!! text) text) "\" clashes with property \"" (. (!! text) text) "\", which holds " (call type-source types held) ", not " (call type-source types made) "; rename the element"))
+    (let message
+      (paragraph
+        (str "Named markup element \"" (. (!! text) text) "\" clashes with property \"" (. (!! text) text) "\", which holds " (call type-source types held) ", not " (call type-source types made) "; rename the element")
+      )
+    )
     (call (. frame diagnose) element .stated (call (. program store-atom) message))
     (return true)
   )
@@ -1578,7 +1582,11 @@
                 (case (call .node-assign attribute)
                   (let name (call style-name tree (. attribute lhs)))
                   (if (== (. attribute op) .bind-op)
-                    (let message "A root <This> cannot bind with \"<->\", since its attributes give the object's own properties their first values; bind the property where the object is made")
+                    (let message
+                      (paragraph
+                        "A root <This> cannot bind with \"<->\", since its attributes give the object's own properties their first values; bind the property where the object is made"
+                      )
+                    )
                     (call (. frame diagnose) statement .stated (call (. program store-atom) message))
                     (return)
                   )
@@ -1627,7 +1635,11 @@
                   (match? ([] (. ([] (. program modules) module) decls) own)
                     (case (call .decl-property property)
                       (if (and (!= own 0) (not (. property defaults-root)) (!= (. property value) 0))
-                        (let message "Root <This> property default duplicates property declaration")
+                        (let message
+                          (paragraph
+                            "Root <This> property default duplicates property declaration"
+                          )
+                        )
                         (call (. frame diagnose)
                           (block
                             (arg (. attribute lhs))
@@ -1718,7 +1730,11 @@
     )
     (let name (. ([] (. bindings slots) slot) name))
     (let read (call type-source types ([] foreseen-types known)))
-    (let message (str "Named markup element \"" (. name text) "\" is read in a closure made before its markup constructs it, as " read ", but its markup makes " (call type-source types made) "; write its type in full"))
+    (let message
+      (paragraph
+        (str "Named markup element \"" (. name text) "\" is read in a closure made before its markup constructs it, as " read ", but its markup makes " (call type-source types made) "; write its type in full")
+      )
+    )
     (call (. frame diagnose) element .stated (call (. program store-atom) message))
   )
   (fn-do + infer-markup-read Found
@@ -1853,7 +1869,17 @@
           (block
             (arg (. row slot-binding))
             (arg .stated)
-            (arg (call (. program store-atom) "A slot is filled by a line of the element's body, or by a line of an arm of an if or match there"))
+            (arg
+              (call (. program store-atom)
+                (block
+                  (arg
+                    (paragraph
+                      "A slot is filled by a line of the element's body, or by a line of an arm of an if or match there"
+                    )
+                  )
+                )
+              )
+            )
           )
         )
         (else
@@ -1880,7 +1906,23 @@
     (let made (if-expr (and slot (not placed)) (call (. frame slot-type) slot) no-type))
     (if (and slot (not placed) (== made no-type))
       (let name (. ([] (. bindings slots) slot) name))
-      (call (. frame diagnose) id .stated (call (. program store-atom) (str "The compiler made no object for the markup element named \"" (. name text) "\" where the body that names it starts")))
+      (call (. frame diagnose)
+        (block
+          (arg id)
+          (arg .stated)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg
+                  (paragraph
+                    (str "The compiler made no object for the markup element named \"" (. name text) "\" where the body that names it starts")
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
       (return invalid-type)
     )
     (if placed
@@ -2185,7 +2227,11 @@
     (let shown (call type-source types made))
     (let message (str "Markup element <" shown " gives none of the arguments the constructors of " shown " require"))
     (if (and (== count 1) wanted)
-      (= message (str "Markup element <" shown " gives no value for \"" (. wanted text) "\", which the constructor of " shown " requires"))
+      (= message
+        (paragraph
+          (str "Markup element <" shown " gives no value for \"" (. wanted text) "\", which the constructor of " shown " requires")
+        )
+      )
     )
     (let named (only-if (call (. tree identifier-name) (. row id)) (if (!= (. row id) 0))))
     (if named
@@ -2280,7 +2326,19 @@
           (call decline statement)
           (return)
         )
-        (+= (. facts live-statements) (call LiveStatement instance (. row lhs) rerun 0 (. U32 max) (. given owned) (. given rooted)))
+        (+= (. facts live-statements)
+          (call LiveStatement
+            (block
+              (arg instance)
+              (arg (. row lhs))
+              (arg rerun)
+              (arg 0)
+              (arg (. U32 max))
+              (arg (. given owned))
+              (arg (. given rooted))
+            )
+          )
+        )
       )
     )
   )
@@ -2547,7 +2605,11 @@
     (let found (call attribute-accessor class (!! name)))
     (if (== op .bind-op)
       (let shown (call type-short-name types class))
-      (let message (str "\"<->\" binds a property the element stores, and " shown " answers \"" (. (!! name) text) "\" with a getter or a setter, which a binding cannot follow; bind a property " shown " stores"))
+      (let message
+        (paragraph
+          (str "\"<->\" binds a property the element stores, and " shown " answers \"" (. (!! name) text) "\" with a getter or a setter, which a binding cannot follow; bind a property " shown " stores")
+        )
+      )
       (call (. frame diagnose) target .stated (call (. program store-atom) message))
       (return false)
     )
@@ -2588,7 +2650,11 @@
   (fn-do + attribute-not-found _
     (param target SyntaxId)
     (param name Atom)
-    (let message (str "Property \"" (. name text) "\" not found; an assignment in an element's body sets the element's property. To assign a local, put it in a do row: \"do " (. name text) " = …\""))
+    (let message
+      (paragraph
+        (str "Property \"" (. name text) "\" not found; an assignment in an element's body sets the element's property. To assign a local, put it in a do row: \"do " (. name text) " = …\"")
+      )
+    )
     (call (. frame diagnose) target .stated (call (. program store-atom) message))
   )
   (fn-do + attribute-type TypeId
@@ -2612,7 +2678,11 @@
     (lazy generic (. ([] (. types completions) class) has-variables))
     (let place (call property-named class name))
     (if (and (== op .bind-op) (or (not place) (call is-hidden ([] (. types properties) place) name .setter-decl)))
-      (let message (str "\"<->\" binds a property of the element, and " (call type-short-name types class) " has no property \"" (. name text) "\""))
+      (let message
+        (paragraph
+          (str "\"<->\" binds a property of the element, and " (call type-short-name types class) " has no property \"" (. name text) "\"")
+        )
+      )
       (call (. frame diagnose) target .stated (call (. program store-atom) message))
       (return invalid-type)
     )
@@ -2715,8 +2785,16 @@
                       (let shown (str "Parameter \"" (. (!! name) text) "\" is given twice"))
                       (let text
                         (scope (if-expr (< fill (. args count)) from-header from-above)
-                          (lazy from-header (str shown ", by the element's header and by this attribute; give it once"))
-                          (lazy from-above (str shown ", by an attribute above and by this one; remove one"))
+                          (lazy from-header
+                            (paragraph
+                              (str shown ", by the element's header and by this attribute; give it once")
+                            )
+                          )
+                          (lazy from-above
+                            (paragraph
+                              (str shown ", by an attribute above and by this one; remove one")
+                            )
+                          )
                         )
                       )
                       (call (. frame diagnose) statement .stated (call (. program store-atom) text))
@@ -3053,7 +3131,16 @@
         (= name (. row id))
       )
     )
-    (let binder (if-expr (!= name 0) (call (. types well-known-type-of) "core/markup" "MarkupIdBinder" class) no-type))
+    (let binder
+      (block
+        (case? (!= name 0)
+          (call (. types well-known-type-of) "core/markup" "MarkupIdBinder" class)
+        )
+        (default
+          no-type
+        )
+      )
+    )
     (if (and (!= name 0) (not (call give-binder element name class)))
       (return false)
     )
@@ -3102,7 +3189,23 @@
     (param keeps-own Bool)
     (param seen (list Atom))
     (if keeps-own
-      (call (. frame diagnose) control .stated (call (. program store-atom) "A subclass fills its base's slots with lines of its content, not inside an if or match"))
+      (call (. frame diagnose)
+        (block
+          (arg control)
+          (arg .stated)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg
+                  (paragraph
+                    "A subclass fills its base's slots with lines of its content, not inside an if or match"
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
       (return false)
     )
     (let filled (list Atom))
@@ -3123,7 +3226,23 @@
       )
       (for (in line fills)
         (if (is ([] (. tree nodes) line) .node-markup-slot-forward)
-          (call (. frame diagnose) line .stated (call (. program store-atom) "A slot is not passed on with <+ inside an if or match; write <+ as a line of the element's body"))
+          (call (. frame diagnose)
+            (block
+              (arg line)
+              (arg .stated)
+              (arg
+                (call (. program store-atom)
+                  (block
+                    (arg
+                      (paragraph
+                        "A slot is not passed on with <+ inside an if or match; write <+ as a line of the element's body"
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
           (return false)
         )
       )
@@ -3133,11 +3252,39 @@
         (call (. tree pattern-names) pattern bound)
       )
       (if (and (!= pattern 0) (is ([] (. tree nodes) arm) .node-if-block))
-        (call (. frame diagnose) pattern .stated (call (. program store-atom) "An if that fills a slot tests a condition, not a pattern; write is or == instead"))
+        (call (. frame diagnose)
+          (block
+            (arg pattern)
+            (arg .stated)
+            (arg
+              (call (. program store-atom)
+                (block
+                  (arg "An if that fills a slot tests a condition, not a pattern; write is or == instead")
+                )
+              )
+            )
+          )
+        )
         (return false)
       )
       (if (!= (. bound length) 0)
-        (call (. frame diagnose) pattern .stated (call (. program store-atom) "A match arm that fills a slot binds no names; test the subject without binding, as |= value or a type alone does"))
+        (call (. frame diagnose)
+          (block
+            (arg pattern)
+            (arg .stated)
+            (arg
+              (call (. program store-atom)
+                (block
+                  (arg
+                    (paragraph
+                      "A match arm that fills a slot binds no names; test the subject without binding, as |= value or a type alone does"
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
         (return false)
       )
       (let arm-given (list Atom))
@@ -3145,7 +3292,25 @@
       (let arm-mark (. scratch narrowings mark))
       (let known (call (. frame save-members)))
       (call narrow-arm control arm)
-      (let gave (call give-lines fills names wanted items styles sheets levels arm-given arm-builders class scopes scoped keeps-own))
+      (let gave
+        (call give-lines
+          (block
+            (arg fills)
+            (arg names)
+            (arg wanted)
+            (arg items)
+            (arg styles)
+            (arg sheets)
+            (arg levels)
+            (arg arm-given)
+            (arg arm-builders)
+            (arg class)
+            (arg scopes)
+            (arg scoped)
+            (arg keeps-own)
+          )
+        )
+      )
       (call (. frame pop-narrowing) arm-mark)
       (call (. frame restore-members) known)
       (if (not gave)
@@ -3181,7 +3346,13 @@
       (+= seen name)
       (let position (!! (call (. names find) name)))
       (if (!= ([] items position) no-type)
-        (call (. frame diagnose) first .stated (call (. program store-atom) "A repeated slot cannot be filled inside an if or match"))
+        (call (. frame diagnose)
+          (block
+            (arg first)
+            (arg .stated)
+            (arg (call (. program store-atom) "A repeated slot cannot be filled inside an if or match"))
+          )
+        )
         (return false)
       )
       (let content ([] wanted position))
@@ -3196,13 +3367,33 @@
       (call (. scratch types push) content)
       (call (. scratch types push) selector)
       (call (. scratch types push) index)
-      (let create (call (. calls demand-runtime-call) markup no-type (call (. program store-atom) "markup-slot-choice") mark 1))
+      (let create
+        (call (. calls demand-runtime-call)
+          (block
+            (arg markup)
+            (arg no-type)
+            (arg (call (. program store-atom) "markup-slot-choice"))
+            (arg mark)
+            (arg 1)
+          )
+        )
+      )
       (call (. scratch types rewind) mark)
       (call (. scratch types push) content)
       (call (. scratch types push) choice)
       (call (. scratch types push) index)
       (call (. scratch types push) builder)
-      (let fill (call (. calls demand-runtime-call) markup no-type (call (. program store-atom) "markup-slot-arm") mark 1))
+      (let fill
+        (call (. calls demand-runtime-call)
+          (block
+            (arg markup)
+            (arg no-type)
+            (arg (call (. program store-atom) "markup-slot-arm"))
+            (arg mark)
+            (arg 1)
+          )
+        )
+      )
       (call (. scratch types rewind) mark)
       (if (or (== create no-instance) (== fill no-instance))
         (call decline first)
@@ -3674,7 +3865,21 @@
         )
       )
     )
-    (+= (. facts slot-outlets) (call SlotOutlet instance id argument fallback content held given no-instance picks))
+    (+= (. facts slot-outlets)
+      (call SlotOutlet
+        (block
+          (arg instance)
+          (arg id)
+          (arg argument)
+          (arg fallback)
+          (arg content)
+          (arg held)
+          (arg given)
+          (arg no-instance)
+          (arg picks)
+        )
+      )
+    )
     (let named (only-if (call declaring-slot (. row name)) (if (and (!= (. row name) 0) (not rebuilt)))))
     (if (and named (== (. ([] (. bindings slots) named) group) id))
       (call (. frame assign) named content)
@@ -3762,7 +3967,11 @@
     )
     (if (not (call makes-region parent))
       (call (. frame diagnose) id .stated (call (. program store-atom) message))
-      (lazy message (str "Markup branch host " (call type-source types parent) " must declare markup-make-region, or extend MarkupNode"))
+      (lazy message
+        (paragraph
+          (str "Markup branch host " (call type-source types parent) " must declare markup-make-region, or extend MarkupNode")
+        )
+      )
       (return invalid-type)
     )
     (let name (call outlet-name row))
@@ -3779,7 +3988,16 @@
     )
     (let alone (call (. tree builds-outlet-alone) id))
     (let builder (call (. types well-known-type-of) "core/markup" "MarkupBranchBuilder" content))
-    (let arm (if-expr (and alone (!= builder invalid-type)) (call check-chosen-arm id row content builder) no-type))
+    (let arm
+      (block
+        (case? (and alone (!= builder invalid-type))
+          (call check-chosen-arm id row content builder)
+        )
+        (default
+          no-type
+        )
+      )
+    )
     (if (and alone (or (== arm no-type) (== arm invalid-type)))
       (call decline id)
       (return invalid-type)
@@ -3811,7 +4029,22 @@
       (return invalid-type)
     )
     (let fallback (if-expr (and alone (call (. tree falls-back) row)) (. row body) 0))
-    (+= (. facts slot-outlets) (call SlotOutlet instance id argument fallback slot held 0 call no-type arm))
+    (+= (. facts slot-outlets)
+      (call SlotOutlet
+        (block
+          (arg instance)
+          (arg id)
+          (arg argument)
+          (arg fallback)
+          (arg slot)
+          (arg held)
+          (arg 0)
+          (arg call)
+          (arg no-type)
+          (arg arm)
+        )
+      )
+    )
     (let made (. ([] (. instances signatures) call) returns))
     (call (. facts set-node-type) instance id made)
     (return made)
@@ -4187,7 +4420,11 @@
     )
     (if (and (== (call (. types intrinsic-of) content) .class) (not (call makes-region parent)))
       (call (. frame diagnose) id .stated (call (. program store-atom) message))
-      (lazy message (str "Markup loop host " (call type-source types parent) " must declare markup-make-region, or extend MarkupNode"))
+      (lazy message
+        (paragraph
+          (str "Markup loop host " (call type-source types parent) " must declare markup-make-region, or extend MarkupNode")
+        )
+      )
       (return invalid-type)
     )
     (let regioned (call (. tree row-region) body))
@@ -4206,7 +4443,16 @@
         )
       )
     )
-    (let shaped (if-expr regioned (call (. types well-known-type-of) "core/markup" "MarkupRegionRowBuilder" given content) builder))
+    (let shaped
+      (block
+        (case? regioned
+          (call (. types well-known-type-of) "core/markup" "MarkupRegionRowBuilder" given content)
+        )
+        (default
+          builder
+        )
+      )
+    )
     (let decl (call nested-decl-of body))
     (if (or classless (== builder invalid-type) (== shaped invalid-type) (== given invalid-type) (== decl 0))
       (call decline id)
@@ -4275,7 +4521,11 @@
       (call (. scratch types push) keyer)
     )
     (call (. scratch types push) source)
-    (let creates (str "markup-create-" (if-expr optional "optional-" "") (if-expr (!= keyed 0) "keyed-" "") (. found kind) "-region"))
+    (let creates
+      (paragraph
+        (str "markup-create-" (if-expr optional "optional-" "") (if-expr (!= keyed 0) "keyed-" "") (. found kind) "-region")
+      )
+    )
     (let create (call (. calls demand-runtime-call) markup no-type (call (. program store-atom) creates) mark 4))
     (call (. scratch types rewind) mark)
     (let made (if-expr (!= create no-instance) (. ([] (. instances signatures) create) returns) no-type))
@@ -4791,7 +5041,11 @@
     (param name Atom)
     (param slot SlotId)
     (if (call starts-task slot)
-      (let message (str "Named markup element \"" (. name text) "\" is read in a task started before its markup constructs it, and a task keeps what it reads as it starts; start the task after the markup"))
+      (let message
+        (paragraph
+          (str "Named markup element \"" (. name text) "\" is read in a task started before its markup constructs it, and a task keeps what it reads as it starts; start the task after the markup")
+        )
+      )
       (call (. frame diagnose) id .stated (call (. program store-atom) message))
       (return invalid-type)
     )
@@ -4802,7 +5056,11 @@
     )
     (if (. ([] (. types completions) class) has-variables)
       (let written (call class-name-of (call class-ref types class)))
-      (let message (str "Named markup element \"" (. name text) "\" is read in a closure made before its markup constructs it, so it needs its type arguments written after \"" written "\""))
+      (let message
+        (paragraph
+          (str "Named markup element \"" (. name text) "\" is read in a closure made before its markup constructs it, so it needs its type arguments written after \"" written "\"")
+        )
+      )
       (call (. frame diagnose) id .stated (call (. program store-atom) message))
       (return invalid-type)
     )

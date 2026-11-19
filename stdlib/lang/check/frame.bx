@@ -1119,10 +1119,22 @@
     (let effects (call dispatch-effects (. surround effects)))
     (return-if (if (== (/and/ effects (. CompilationEffect no-suspend)) 0)))
     (if (!= (/and/ effects (. CompilationEffect gc-free)) 0)
-      (call diagnose site .restricted (call (. program store-atom) (str "cannot suspend inside a GC-free zone (entered at " (call zone-entry) ")")))
+      (call diagnose
+        (block
+          (arg site)
+          (arg .restricted)
+          (arg (call (. program store-atom) (str "cannot suspend inside a GC-free zone (entered at " (call zone-entry) ")")))
+        )
+      )
       (return)
     )
-    (call diagnose site .restricted (call (. program store-atom) (str "cannot suspend under " (call suspend-restriction effects))))
+    (call diagnose
+      (block
+        (arg site)
+        (arg .restricted)
+        (arg (call (. program store-atom) (str "cannot suspend under " (call suspend-restriction effects))))
+      )
+    )
   )
   (fn-do + check-allocates _
     (param site SyntaxId)
@@ -1132,7 +1144,19 @@
     (let effects (call dispatch-effects (. surround effects)))
     (return-if (if (== (/and/ effects (. CompilationEffect no-heap)) 0)))
     (if (!= (/and/ effects (. CompilationEffect gc-free)) 0)
-      (call diagnose site .restricted (call (. program store-atom) (str "allocation is not allowed in a GC-free zone (entered at " (call zone-entry) ")")))
+      (call diagnose
+        (block
+          (arg site)
+          (arg .restricted)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg (str "allocation is not allowed in a GC-free zone (entered at " (call zone-entry) ")"))
+              )
+            )
+          )
+        )
+      )
       (return)
     )
     (call diagnose site .restricted (call (. program store-atom) "allocation is not allowed under 'without heap'"))
@@ -1144,9 +1168,39 @@
     ; may not use the heap or suspend does not read one.
     (let effects (call dispatch-effects (. surround effects)))
     (return-if (if (== (/and/ effects (/or/ (. CompilationEffect no-heap) (. CompilationEffect no-suspend))) 0)))
-    (let restriction (if-expr (!= (/and/ effects (. CompilationEffect no-heap)) 0) "'without heap'" (call suspend-restriction effects)))
-    (let place (if-expr (!= (/and/ effects (. CompilationEffect gc-free)) 0) (str "inside a GC-free zone (entered at " (call zone-entry) ")") (str "under " restriction)))
-    (call diagnose site .restricted (call (. program store-atom) (str "cannot read lazy global '" name "' " place ", since its first read runs its value")))
+    (let restriction
+      (block
+        (case? (!= (/and/ effects (. CompilationEffect no-heap)) 0)
+          "'without heap'"
+        )
+        (default
+          (call suspend-restriction effects)
+        )
+      )
+    )
+    (let place
+      (block
+        (case? (!= (/and/ effects (. CompilationEffect gc-free)) 0)
+          (str "inside a GC-free zone (entered at " (call zone-entry) ")")
+        )
+        (default
+          (str "under " restriction)
+        )
+      )
+    )
+    (call diagnose
+      (block
+        (arg site)
+        (arg .restricted)
+        (arg
+          (call (. program store-atom)
+            (block
+              (arg (str "cannot read lazy global '" name "' " place ", since its first read runs its value"))
+            )
+          )
+        )
+      )
+    )
   )
   (fn-do _ suspend-restriction String
     (param effects EffectMask)

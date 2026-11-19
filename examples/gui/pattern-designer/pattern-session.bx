@@ -93,13 +93,31 @@
     (param slot Index)
     (param value RGBA)
     (param phase ValueChangePhase)
-    (let colors (call List (in (if-expr (== each slot) value ([] (. design colors) each)) (..< 0 (. design colors length)))))
+    (let colors
+      (call List
+        (block
+          (arg (in (if-expr (== each slot) value ([] (. design colors) each)) (..< 0 (. design colors length))))
+        )
+      )
+    )
     (call apply (call pattern-with-colors design colors) "Edit color" phase)
   )
   (fn-do + set-ink _
     (param ink Index)
     (let current motif)
-    (let next (call PatternMotif (. current id) (. current kind) (. current position) (. current scale) (. current rotation) (. current shape) ink))
+    (let next
+      (call PatternMotif
+        (block
+          (arg (. current id))
+          (arg (. current kind))
+          (arg (. current position))
+          (arg (. current scale))
+          (arg (. current rotation))
+          (arg (. current shape))
+          (arg ink)
+        )
+      )
+    )
     (call replace-motif next "Change motif color")
   )
   (fn-do + set-parameter _
@@ -107,7 +125,13 @@
     (param value Float)
     (param phase ValueChangePhase)
     (if (== parameter (. PatternParameter spacing))
-      (call apply (call PatternDesign (. design name) (. design motifs) (. design colors) (. design repeat) value) "Change spacing" phase)
+      (call apply
+        (block
+          (arg (call PatternDesign (. design name) (. design motifs) (. design colors) (. design repeat) value))
+          (arg "Change spacing")
+          (arg phase)
+        )
+      )
       (else
         (call replace-motif (call motif-with-parameter motif parameter value) "Transform motif" phase)
       )
@@ -136,7 +160,19 @@
   (fn-do + duplicate _
     (return-if (if (>= (. design motifs length) 24)))
     (let current motif)
-    (let next (call PatternMotif next-id (. current kind) (call pattern-wrapped-position design (+ (. current position) (call Point 0.12 0.12))) (. current scale) (. current rotation) (. current shape) (. current ink)))
+    (let next
+      (call PatternMotif
+        (block
+          (arg next-id)
+          (arg (. current kind))
+          (arg (call pattern-wrapped-position design (+ (. current position) (call Point 0.12 0.12))))
+          (arg (. current scale))
+          (arg (. current rotation))
+          (arg (. current shape))
+          (arg (. current ink))
+        )
+      )
+    )
     (+= next-id 1)
     (call apply (call pattern-with-motifs design (++ (. design motifs) (list next))) "Duplicate motif")
     (= selected (- (. design motifs length) 1))

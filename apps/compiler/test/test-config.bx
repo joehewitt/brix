@@ -117,7 +117,16 @@
     (= ([] claimed id) label)
     (let own (if-expr (call (. entry has) "env") (call target-variables ([] entry "env")) (call (of List TargetVariable))))
     (let variables (++ (. layer variables) (call rebased-variables own folder)))
-    (let timeout (if-expr (call (. entry has) "timeout") (as (call (. ([] entry "timeout") number)) Seconds) test-idle-timeout))
+    (let timeout
+      (block
+        (case? (call (. entry has) "timeout")
+          (as (call (. ([] entry "timeout") number)) Seconds)
+        )
+        (default
+          test-idle-timeout
+        )
+      )
+    )
     (if (call (. entry has) "modules")
       (let sources (call rebased-paths (call module-sources ([] entry "modules")) folder))
       (+= suites (call module-suite (. layer brix) id sources variables timeout))

@@ -611,7 +611,11 @@
     (if (and is-leading (!= byte 41))
       (let late (call sexp-stale-open open line indent))
       (if (!= late null)
-        (return (str "The " (call sexp-open-name bytes late) " opened on line " (. late line) " is still open on line " line ", which is indented no deeper. It probably needs its “)” before line " line "."))
+        (return
+          (paragraph
+            (str "The " (call sexp-open-name bytes late) " opened on line " (. late line) " is still open on line " line ", which is indented no deeper. It probably needs its “)” before line " line ".")
+          )
+        )
       )
     )
     (if (== byte 34)
@@ -629,10 +633,18 @@
         (return-if (str "The “)” on line " line " closes nothing.") (if (== (. open length) 0)))
         (let held ([] open (- (. open length) 1)))
         (if (and is-leading (!= (. held line) line) (> (. held indent) indent))
-          (return (str "The " (call sexp-open-name bytes held) " opened on line " (. held line) " is still open where line " line " closes a form that began further left. It probably needs its “)” before line " line "."))
+          (return
+            (paragraph
+              (str "The " (call sexp-open-name bytes held) " opened on line " (. held line) " is still open where line " line " closes a form that began further left. It probably needs its “)” before line " line ".")
+            )
+          )
         )
         (if (and is-leading (!= (. held line) line) (< (. held indent) indent))
-          (return (str "The “)” on line " line " closes the " (call sexp-open-name bytes held) " opened on line " (. held line) ", which began further left. A line before it probably has one “)” too many."))
+          (return
+            (paragraph
+              (str "The “)” on line " line " closes the " (call sexp-open-name bytes held) " opened on line " (. held line) ", which began further left. A line before it probably has one “)” too many.")
+            )
+          )
         )
         (-= ([] open (- (. open length) 1)))
       )
@@ -642,7 +654,11 @@
   )
   (return-if null (if (== (. open length) 0)))
   (let last ([] open (- (. open length) 1)))
-  (return (str "At the end of the file " (. open length) " forms are still open. The innermost is the " (call sexp-open-name bytes last) " opened on line " (. last line) "."))
+  (return
+    (paragraph
+      (str "At the end of the file " (. open length) " forms are still open. The innermost is the " (call sexp-open-name bytes last) " opened on line " (. last line) ".")
+    )
+  )
 )
 
 (type _ SexpClass (is U8)
@@ -804,7 +820,11 @@
   )
   (default
     (and (== (call sexp-hex-width bytes (+ index 1) last) 4) high)
-    (lazy high (and (or (== ([] bytes (+ index 2)) 68) (== ([] bytes (+ index 2)) 100)) (>= (call sexp-hex-value ([] bytes (+ index 3))) 8)))
+    (lazy high
+      (block
+        (and (or (== ([] bytes (+ index 2)) 68) (== ([] bytes (+ index 2)) 100)) (>= (call sexp-hex-value ([] bytes (+ index 3))) 8))
+      )
+    )
   )
 )
 

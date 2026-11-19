@@ -237,9 +237,32 @@
     (let given (or (== attributes 0) (call push-attributes attributes class)))
     (let missing (and given unresolved (call report-missing-params params)))
     (let params (call (. scratch types span) params-start param-count))
-    (let arguments (call arguments-since shapes-start types-start syntax-start params curried 0 slots builders context))
+    (let arguments
+      (call arguments-since
+        (block
+          (arg shapes-start)
+          (arg types-start)
+          (arg syntax-start)
+          (arg params)
+          (arg curried)
+          (arg 0)
+          (arg slots)
+          (arg builders)
+          (arg context)
+        )
+      )
+    )
     (= called-object object)
-    (let result (if-expr (and given (not missing)) (call infer-callable id callable arguments owner) (call Found invalid-type)))
+    (let result
+      (block
+        (case? (and given (not missing))
+          (call infer-callable id callable arguments owner)
+        )
+        (default
+          (call Found invalid-type)
+        )
+      )
+    )
     (call settle-kept-arguments kept-mark (. result type))
     (= called-object (call CalledObject))
     (call (. scratch syntax rewind) syntax-start)
@@ -268,7 +291,11 @@
     (let fact (call (. facts first-call) instance id))
     (while (!= fact no-fact)
       (if (== (. ([] (. facts calls) fact) form) .call-method)
-        (let text (str "\"" (. name text) "\" is a method, so \"#\" before it tracks nothing; track the properties it reads instead"))
+        (let text
+          (paragraph
+            (str "\"" (. name text) "\" is a method, so \"#\" before it tracks nothing; track the properties it reads instead")
+          )
+        )
         (call (. frame diagnose) callable .stated (call (. program store-atom) text))
         (return true)
       )
@@ -301,7 +328,11 @@
         )
         (let writes (and (== (. get name text) "<-write") (== count 1)))
         (let rekeys (and (== (. get name text) "rekey") (== count 1)))
-        (let asks-event (and (or writes rekeys (and (== (. get name text) "release") (== count 0))) (not (. get is-optional))))
+        (let asks-event
+          (block
+            (and (or writes rekeys (and (== (. get name text) "release") (== count 0))) (not (. get is-optional)))
+          )
+        )
         (let want (call (. (call Want) adding) .want-receiver))
         (let receiver (call infer-found (. get object) (if-expr asks-event (call (. want adding) .want-event) want)))
         (return (call CalledObject (. get object) (. receiver type) (. receiver link) (call found-event-of receiver)))
@@ -418,7 +449,19 @@
             (call (. facts set-node-type) instance callable value)
             (return (call Found (call call-value id callable value arguments)))
           )
-          (let answered (call (. calls method-call) id (. get object) receiver (. get name) arguments true (call row-capture-of (. get object))))
+          (let answered
+            (call (. calls method-call)
+              (block
+                (arg id)
+                (arg (. get object))
+                (arg receiver)
+                (arg (. get name))
+                (arg arguments)
+                (arg true)
+                (arg (call row-capture-of (. get object)))
+              )
+            )
+          )
           (if (and (!= answered invalid-type) (== (call (. types intrinsic-of) receiver) .table))
             (let op (call table-member (. get name text)))
             (if (and (!= op (. TableOp table-row)) (!= op (. TableOp table-mark)) not-capacity)

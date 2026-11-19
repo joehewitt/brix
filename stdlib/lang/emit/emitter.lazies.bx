@@ -302,7 +302,11 @@
       (= kept (== (. ([] lent-lazies position) slot) slot))
     )
     (let narrowed (and (!= held type) (call holds held type)))
-    (let typed (or (== held type) (and narrowed (or (== shared-depth 0) (call (. facts is-inside-read) (. unit reading) id)))))
+    (let typed
+      (block
+        (or (== held type) (and narrowed (or (== shared-depth 0) (call (. facts is-inside-read) (. unit reading) id))))
+      )
+    )
     (if (or (not typed) (== held no-type) (call (. bindings lazy-together) slot) (and (!= policy .lazy-inline) (not kept)))
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
@@ -630,7 +634,11 @@
     )
     (let wavers
       (scope (or (call (. facts lazy-wavers) owner slot) dominated-read)
-        (lazy dominated-read (and (== (. own-unit reading) (. unit instance)) (call (. facts is-dominated-read) (. unit instance) id)))
+        (lazy dominated-read
+          (block
+            (and (== (. own-unit reading) (. unit instance)) (call (. facts is-dominated-read) (. unit instance) id))
+          )
+        )
       )
     )
     (if wavers
@@ -738,7 +746,16 @@
     (let owner (if-expr (!= top 0) (. ([] content-hosts (- top 1)) operand) (. unit self)))
     (let holder
       (scope (if-expr (!= top 0) (. ([] content-hosts (- top 1)) type) own-holder)
-        (lazy own-holder (if-expr (and (. unit has-self) (call (. tables is-class) (. unit owner-type))) (. unit owner-type) no-type))
+        (lazy own-holder
+          (block
+            (case? (and (. unit has-self) (call (. tables is-class) (. unit owner-type)))
+              (. unit owner-type)
+            )
+            (default
+              no-type
+            )
+          )
+        )
       )
     )
     (if (and (!= holder (. live holder)) (!= holder no-type))
@@ -941,7 +958,16 @@
           (call refuse .refused-expression site)
         )
         (let layout (call layout-of type site))
-        (let initial (if-expr (== (. row right) 0) (call default-value annotation type layout site) (call declared-value name annotation (. row right) type)))
+        (let initial
+          (match (. row right)
+            (case= 0
+              (call default-value annotation type layout site)
+            )
+            (default
+              (call declared-value name annotation (. row right) type)
+            )
+          )
+        )
         (if (!= (. row right) 0)
           (call claim-lazy group (. initial operand) type)
         )

@@ -318,7 +318,22 @@
     (let members (list DeclRef))
     (let gates (list U64))
     (let entered (call enter-module (. ref module)))
-    (let (tuple status found missed) (call sheet-rules made name none declared sheets members gates (. U32 max) false true))
+    (let (tuple status found missed)
+      (call sheet-rules
+        (block
+          (arg made)
+          (arg name)
+          (arg none)
+          (arg declared)
+          (arg sheets)
+          (arg members)
+          (arg gates)
+          (arg (. U32 max))
+          (arg false)
+          (arg true)
+        )
+      )
+    )
     (call enter-module entered)
     (if (== status 1)
       (call decline site)
@@ -915,7 +930,13 @@
       (+= levels level)
     )
     (if (== (. sheets length) 0)
-      (call add-sheet-groups (if-expr (!= (. keying sheet-self) no-type) (. keying sheet-self) (. frame self-type)) sheets levels)
+      (call add-sheet-groups
+        (block
+          (arg (if-expr (!= (. keying sheet-self) no-type) (. keying sheet-self) (. frame self-type)))
+          (arg sheets)
+          (arg levels)
+        )
+      )
     )
   )
   (fn-do + defaults-apply-rules Bool
@@ -1049,7 +1070,11 @@
     (lazy self-property (call property-named (. frame self-type) name))
     (lazy self-class (and (!= (. frame self-type) no-type) (== (call (. types intrinsic-of) (. frame self-type)) .class)))
     (if clashes
-      (let text (str "\"" (. name text) "\" is ambiguous: it names both a StyleSheet slot of " (call type-short-name types found) " and a lexical value"))
+      (let text
+        (paragraph
+          (str "\"" (. name text) "\" is ambiguous: it names both a StyleSheet slot of " (call type-short-name types found) " and a lexical value")
+        )
+      )
       (call (. frame diagnose) value .stated (call (. program store-atom) text))
       (return 2)
     )
@@ -1114,10 +1139,32 @@
         (continue)
       )
       (if (not deferred)
-        (call report-at owner value (str "\"" (. name text) "\" is ambiguous: it names both a StyleSheet slot of " (call type-short-name types found) " and a lexical value"))
+        (call report-at
+          (block
+            (arg owner)
+            (arg value)
+            (arg
+              (paragraph
+                (str "\"" (. name text) "\" is ambiguous: it names both a StyleSheet slot of " (call type-short-name types found) " and a lexical value")
+              )
+            )
+          )
+        )
         (return false)
       )
-      (let (tuple number offset projection) (call slot-binding owner (. row site) (. row property) value name found id))
+      (let (tuple number offset projection)
+        (call slot-binding
+          (block
+            (arg owner)
+            (arg (. row site))
+            (arg (. row property))
+            (arg value)
+            (arg name)
+            (arg found)
+            (arg id)
+          )
+        )
+      )
       (if (== number (. U32 max))
         (return false)
       )
@@ -1247,7 +1294,23 @@
     )
     (if (and (!= theme-number (. U32 max)) (!= theme-number number))
       (let other (call type-short-name types (. ([] (. facts style-sheet-uses) theme-number) type)))
-      (call (. frame diagnose) id .stated (call (. program store-atom) (str "A style value reads slots of one StyleSheet: \"" (. name text) "\" is a slot of " (call type-short-name types (. use type)) ", and others it reads are slots of " other)))
+      (call (. frame diagnose)
+        (block
+          (arg id)
+          (arg .stated)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg
+                  (paragraph
+                    (str "A style value reads slots of one StyleSheet: \"" (. name text) "\" is a slot of " (call type-short-name types (. use type)) ", and others it reads are slots of " other)
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
       (return invalid-type)
     )
     (= theme-number number)
@@ -1308,7 +1371,23 @@
     (param number U32)
     (let property ([] (. facts style-properties) position))
     (if (or (call is-live-statement statement) (not (call theme-static value)))
-      (call (. frame diagnose) value .stated (call (. program store-atom) "A style value that reads StyleSheet slots may read no local, member, style or tracked value; read a slot as \"\$name\" to compute with one"))
+      (call (. frame diagnose)
+        (block
+          (arg value)
+          (arg .stated)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg
+                  (paragraph
+                    "A style value that reads StyleSheet slots may read no local, member, style or tracked value; read a slot as \"\$name\" to compute with one"
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
       (return false)
     )
     (if (not (call demand-themed-runtime))
@@ -1464,7 +1543,19 @@
       (call decline statement)
       (return 2)
     )
-    (let (tuple number offset projection) (call slot-binding module statement position value name found statement))
+    (let (tuple number offset projection)
+      (call slot-binding
+        (block
+          (arg module)
+          (arg statement)
+          (arg position)
+          (arg value)
+          (arg name)
+          (arg found)
+          (arg statement)
+        )
+      )
+    )
     (if (== number (. U32 max))
       (return 2)
     )
@@ -1524,14 +1615,34 @@
     (let projection (. U32 max))
     (if (!= (. slot type) (. property type))
       (if (not (call relation-legal (call (. relations compare) (. slot type) (. property type) false false null owner)))
-        (call report-at owner value (str "StyleSheet slot \"" (. name text) "\" has type " (call type-display types (. slot type)) ", which cannot be converted to style property \"" (. property name text) "\" type " (call type-display types (. property type))))
+        (call report-at
+          (block
+            (arg owner)
+            (arg value)
+            (arg
+              (paragraph
+                (str "StyleSheet slot \"" (. name text) "\" has type " (call type-display types (. slot type)) ", which cannot be converted to style property \"" (. property name text) "\" type " (call type-display types (. property type)))
+              )
+            )
+          )
+        )
         (call (. facts mention-types) (list (. slot type) (. property type)))
         (return (tuple (. U32 max) 0 0))
       )
       (= projection (call sheet-projection (. slot type) (. property type)))
       (if (== projection (- (. U32 max) 1))
         (let shown (call type-display types (. property type)))
-        (call report-at owner value (str "StyleSheet slot \"" (. name text) "\" can convert to " shown ", but not as a zero-allocation style-sheet projection; declare the slot as " shown " or assign a concrete value."))
+        (call report-at
+          (block
+            (arg owner)
+            (arg value)
+            (arg
+              (paragraph
+                (str "StyleSheet slot \"" (. name text) "\" can convert to " shown ", but not as a zero-allocation style-sheet projection; declare the slot as " shown " or assign a concrete value.")
+              )
+            )
+          )
+        )
         (call (. facts mention-types) (list (. property type)))
         (return (tuple (. U32 max) 0 0))
       )
@@ -1751,16 +1862,64 @@
             (case (call .node-style-annotation row)
               (let name (call (. tree identifier-name) (. row left)))
               (if (call is-sheet-type base)
-                (call (. frame diagnose) (. domains syntax) .stated (call (. program store-atom) (str "Derived StyleSheet \"" (. class name text) "\" names no domains; its slots raise those " (call type-short-name types (call family-root sheet)) " names")))
+                (call (. frame diagnose)
+                  (block
+                    (arg (. domains syntax))
+                    (arg .stated)
+                    (arg
+                      (call (. program store-atom)
+                        (block
+                          (arg
+                            (paragraph
+                              (str "Derived StyleSheet \"" (. class name text) "\" names no domains; its slots raise those " (call type-short-name types (call family-root sheet)) " names")
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
                 (else-if (or (not name) (not (call sheet-has-slot sheet name)))
-                  (call (. frame diagnose) (. row left) .stated (call (. program store-atom) (str "StyleSheet slot \"" (if-expr name (. name text) "") "\" does not exist")))
+                  (call (. frame diagnose)
+                    (block
+                      (arg (. row left))
+                      (arg .stated)
+                      (arg
+                        (call (. program store-atom)
+                          (block
+                            (arg
+                              (paragraph
+                                (str "StyleSheet slot \"" (if-expr name (. name text) "") "\" does not exist")
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
                 )
                 (else
                   (for (in item ([] (. tree children) (. row domains)))
                     (match? ([] (. tree nodes) item)
                       (case (call .node-style-domain-item domain)
                         (if (!= (. domain target) 0)
-                          (call (. frame diagnose) (. domain target) .stated (call (. program store-atom) "A StyleSheet slot raises its domains on the node that reads it, so they name no target"))
+                          (call (. frame diagnose)
+                            (block
+                              (arg (. domain target))
+                              (arg .stated)
+                              (arg
+                                (call (. program store-atom)
+                                  (block
+                                    (arg
+                                      (paragraph
+                                        "A StyleSheet slot raises its domains on the node that reads it, so they name no target"
+                                      )
+                                    )
+                                  )
+                                )
+                              )
+                            )
+                          )
                         )
                       )
                     )
@@ -2201,7 +2360,11 @@
               (if (!= owner module)
                 (call decline site)
                 (else
-                  (let message (str "Style property \"" (. name text) "\" is declared by both " (call type-short-name types other) " and " (call type-short-name types (. use type))))
+                  (let message
+                    (paragraph
+                      (str "Style property \"" (. name text) "\" is declared by both " (call type-short-name types other) " and " (call type-short-name types (. use type)))
+                    )
+                  )
                   (call (. frame diagnose) written .stated (call (. program store-atom) message))
                 )
               )
@@ -2385,7 +2548,11 @@
       (if (!= owner module)
         (call decline site)
         (else
-          (let message (str "Style property \"" (. name text) "\" cannot have a Style type; use an object-valued property with an ordinary descriptor class instead"))
+          (let message
+            (paragraph
+              (str "Style property \"" (. name text) "\" cannot have a Style type; use an object-valued property with an ordinary descriptor class instead")
+            )
+          )
           (call (. frame diagnose) (. property syntax) .stated (call (. program store-atom) message))
         )
       )
@@ -2401,7 +2568,11 @@
             (if (!= owner module)
               (call decline site)
               (else
-                (let message (str "Unknown style property annotation \"@" (. annotation text) "\"; only \"@inherited\" is supported"))
+                (let message
+                  (paragraph
+                    (str "Unknown style property annotation \"@" (. annotation text) "\"; only \"@inherited\" is supported")
+                  )
+                )
                 (call (. frame diagnose) (. property syntax) .stated (call (. program store-atom) message))
               )
             )
@@ -2591,7 +2762,11 @@
                   (+= (. facts property-domains) (call PropertyDomain position index true))
                 )
                 (else
-                  (let message (str "Unknown style invalidation target \"" (. target text) "\"; expected \"self\" or \"parent\""))
+                  (let message
+                    (paragraph
+                      (str "Unknown style invalidation target \"" (. target text) "\"; expected \"self\" or \"parent\"")
+                    )
+                  )
                   (call report-style id owner site message)
                   (return false)
                 )
@@ -2727,7 +2902,15 @@
                         (case (call .node-style-domain-item domain)
                           (let name (call (. owner tree identifier-name) (. domain domain)))
                           (if name
-                            (call place-style-domain name module site (. ref module) item)
+                            (call place-style-domain
+                              (block
+                                (arg name)
+                                (arg module)
+                                (arg site)
+                                (arg (. ref module))
+                                (arg item)
+                              )
+                            )
                           )
                         )
                       )
@@ -2954,7 +3137,17 @@
     (let owner ([] (. program modules) (. ref module)))
     (match? ([] (. owner decls) (. ref decl))
       (case (call .decl-class declared)
-        (let text (call (. program store-atom) (str (call type-short-name types class) " must use " (call type-short-name types missing) " to implement " (call type-short-name types interface))))
+        (let text
+          (call (. program store-atom)
+            (block
+              (arg
+                (paragraph
+                  (str (call type-short-name types class) " must use " (call type-short-name types missing) " to implement " (call type-short-name types interface))
+                )
+              )
+            )
+          )
+        )
         (call (. facts record-diagnostic)
           (block
             (arg instance)
@@ -3109,7 +3302,23 @@
         (= held type)
         (= owner level)
         (else-if (!= type held)
-          (call (. frame diagnose) written .stated (call (. program store-atom) (str "Style property \"" (. name text) "\" has conflicting types in visible styles " (call type-short-name types owner) " and " (call type-short-name types level))))
+          (call (. frame diagnose)
+            (block
+              (arg written)
+              (arg .stated)
+              (arg
+                (call (. program store-atom)
+                  (block
+                    (arg
+                      (paragraph
+                        (str "Style property \"" (. name text) "\" has conflicting types in visible styles " (call type-short-name types owner) " and " (call type-short-name types level))
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
           (return invalid-type)
         )
       )
@@ -3432,7 +3641,20 @@
         (let sheets (list TypeId))
         (let members (list DeclRef))
         (let gates (list U64))
-        (let (tuple status writes missed) (call sheet-rules made name none (call written-name type-id name) sheets members gates (. U32 max)))
+        (let (tuple status writes missed)
+          (call sheet-rules
+            (block
+              (arg made)
+              (arg name)
+              (arg none)
+              (arg (call written-name type-id name))
+              (arg sheets)
+              (arg members)
+              (arg gates)
+              (arg (. U32 max))
+            )
+          )
+        )
         (if (== status 1)
           (call decline id)
         )
@@ -3683,7 +3905,23 @@
     ; it (`check-gate-test`). The gate it makes alone is recorded once (`StyleGate`). None where it
     ; is reported or declined.
     (if (not (call (. tree is-condition-reference) condition))
-      (call (. frame diagnose) condition .stated (call (. program store-atom) "Style rule conditions must be a tracked boolean property reference (like #is-disabled)"))
+      (call (. frame diagnose)
+        (block
+          (arg condition)
+          (arg .stated)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg
+                  (paragraph
+                    "Style rule conditions must be a tracked boolean property reference (like #is-disabled)"
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
       (return null)
     )
     (let type (call infer condition))
@@ -3691,7 +3929,24 @@
       (return null)
     )
     (if (!= type (. types bool-type))
-      (call (. frame diagnose) condition .stated (call (. program store-atom) (str "Style rule conditions must be Bool, but this condition is " (call type-display types type))) type)
+      (call (. frame diagnose)
+        (block
+          (arg condition)
+          (arg .stated)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg
+                  (paragraph
+                    (str "Style rule conditions must be Bool, but this condition is " (call type-display types type))
+                  )
+                )
+              )
+            )
+          )
+          (arg type)
+        )
+      )
       (return null)
     )
     (let decl (call nested-decl-of condition))
@@ -3744,7 +3999,20 @@
           (+= members member)
           (+= gates (. U64 max))
           (else
-            (let (tuple status writes last) (call sheet-rules made (. applied name) given application levels members gates mismatch))
+            (let (tuple status writes last)
+              (call sheet-rules
+                (block
+                  (arg made)
+                  (arg (. applied name))
+                  (arg given)
+                  (arg application)
+                  (arg levels)
+                  (arg members)
+                  (arg gates)
+                  (arg mismatch)
+                )
+              )
+            )
             (if (== status 1)
               (call decline application)
             )
@@ -3755,7 +4023,18 @@
             (= missed last)
           )
         )
-        (let (tuple scoping found place-missed) (call scope-rules made (. applied name) given element-scopes scoped missed))
+        (let (tuple scoping found place-missed)
+          (call scope-rules
+            (block
+              (arg made)
+              (arg (. applied name))
+              (arg given)
+              (arg element-scopes)
+              (arg scoped)
+              (arg missed)
+            )
+          )
+        )
         (if (== scoping 1)
           (call decline application)
         )
@@ -3772,7 +4051,23 @@
           (return false)
         )
         (if (and (== (. levels length) 0) (== (. scoped length) 0) (not (call style-declared (. applied name))))
-          (call (. frame diagnose) application .stated (call (. program store-atom) (str "No style rule is named \"" (. applied name text) "\". Write one in a style sheet, or, where a library applies it for a theme to style, declare it there with an empty rule")))
+          (call (. frame diagnose)
+            (block
+              (arg application)
+              (arg .stated)
+              (arg
+                (call (. program store-atom)
+                  (block
+                    (arg
+                      (paragraph
+                        (str "No style rule is named \"" (. applied name text) "\". Write one in a style sheet, or, where a library applies it for a theme to style, declare it there with an empty rule")
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
           (return false)
         )
         (if (and several (!= (. given length) 0) (or (!= (. scoped length) 0) (not (call variants-alike levels members))))
@@ -3943,7 +4238,19 @@
         (let found-sheets (list TypeId))
         (let found-rules (list DeclRef))
         (let found-gates (list U64))
-        (let (tuple found kind writes last) (call family-rules family name given missed found-sheets found-rules found-gates))
+        (let (tuple found kind writes last)
+          (call family-rules
+            (block
+              (arg family)
+              (arg name)
+              (arg given)
+              (arg missed)
+              (arg found-sheets)
+              (arg found-rules)
+              (arg found-gates)
+            )
+          )
+        )
         (if writes
           (= named true)
         )
@@ -3970,7 +4277,11 @@
         (if (== at 0)
           (return (tuple 1 named missed))
         )
-        (let text (str "Style rule \"" (. name text) "\" is ambiguous between visible style sheets " (call type-short-name types best) " and " (call type-short-name types tied)))
+        (let text
+          (paragraph
+            (str "Style rule \"" (. name text) "\" is ambiguous between visible style sheets " (call type-short-name types best) " and " (call type-short-name types tied))
+          )
+        )
         (call (. frame diagnose) at .stated (call (. program store-atom) text))
         (call (. facts inset-diagnostic) 0 (as (. name text length) U32))
         (return (tuple 2 named missed))
@@ -4508,7 +4819,20 @@
           (let sheets (list TypeId))
           (let members (list DeclRef))
           (let gates (list U64))
-          (let (tuple status writes last) (call sheet-rules made (. inner name) given 0 sheets members gates (. U32 max)))
+          (let (tuple status writes last)
+            (call sheet-rules
+              (block
+                (arg made)
+                (arg (. inner name))
+                (arg given)
+                (arg 0)
+                (arg sheets)
+                (arg members)
+                (arg gates)
+                (arg (. U32 max))
+              )
+            )
+          )
           (if (or (!= status 0) (and (!= (. given length) 0) (if-expr (== (. sheets length) 0) writes (not (call sheet-values-alike (. row self-type) (. inner name) given sheets members)))))
             (call decline id)
             (return (. U32 max))
@@ -5327,7 +5651,16 @@
                     )
                   )
                 )
-                (= held (if-expr collecting (call when-cell cell id made (. row module) branch) (- (. U32 max) 1)))
+                (= held
+                  (block
+                    (case? collecting
+                      (call when-cell cell id made (. row module) branch)
+                    )
+                    (default
+                      (- (. U32 max) 1)
+                    )
+                  )
+                )
                 (= links (call outer-links held cell outer-cells))
               )
               (+= scopes
@@ -5839,7 +6172,27 @@
       (return null)
     )
     (if (!= declared (. types bool-type))
-      (call (. facts record-diagnostic) instance owner branch .stated (call (. program store-atom) (str "Style state \"" (. state text) "\" must be a boolean property, but " shown "." (. state text) " is " (call type-display types declared))) declared no-type)
+      (call (. facts record-diagnostic)
+        (block
+          (arg instance)
+          (arg owner)
+          (arg branch)
+          (arg .stated)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg
+                  (paragraph
+                    (str "Style state \"" (. state text) "\" must be a boolean property, but " shown "." (. state text) " is " (call type-display types declared))
+                  )
+                )
+              )
+            )
+          )
+          (arg declared)
+          (arg no-type)
+        )
+      )
       (return null)
     )
     (call (. instances mark-may-panic) instance)
@@ -6863,7 +7216,23 @@
                   (continue)
                 )
                 (if (call sheet-rule)
-                  (call (. frame diagnose) statement .stated (call (. program store-atom) "StyleSheet style rules may only contain style declarations and generated content"))
+                  (call (. frame diagnose)
+                    (block
+                      (arg statement)
+                      (arg .stated)
+                      (arg
+                        (call (. program store-atom)
+                          (block
+                            (arg
+                              (paragraph
+                                "StyleSheet style rules may only contain style declarations and generated content"
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
                   (return)
                 )
               )
@@ -7018,14 +7387,36 @@
     (if (== text "last-child")
       (return 3)
     )
-    (call (. frame diagnose) binding .stated (call (. program store-atom) (str "Unknown style content slot \"" text "\"; expected before, after, first-child, or last-child")))
+    (call (. frame diagnose)
+      (block
+        (arg binding)
+        (arg .stated)
+        (arg
+          (call (. program store-atom)
+            (block
+              (arg (str "Unknown style content slot \"" text "\"; expected before, after, first-child, or last-child"))
+            )
+          )
+        )
+      )
+    )
     (return (. U32 max))
   )
   (fn-do _ conditional-update Atom
     (param name Atom)
     ; The reference's error for a line of a style rule that sets a property of its class where the
     ; rule's declarations are gated by a `when`.
-    (return (call (. program store-atom) (str "Conditional style declarations may only set style properties, and \"" (. name text) "\" is an object property")))
+    (return
+      (call (. program store-atom)
+        (block
+          (arg
+            (paragraph
+              (str "Conditional style declarations may only set style properties, and \"" (. name text) "\" is an object property")
+            )
+          )
+        )
+      )
+    )
   )
   (fn-do _ type-applied-values _
     (param receiver TypeId)
@@ -7360,7 +7751,23 @@
     ; reference's error.
     (let property ([] (. facts style-properties) position))
     (if (== (/and/ (. property flags) 1) 0)
-      (call (. frame diagnose) statement .stated (call (. program store-atom) (str "Style property \"" (. property name text) "\" is not @inherited, so it cannot be assigned \"inherit\"")))
+      (call (. frame diagnose)
+        (block
+          (arg statement)
+          (arg .stated)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg
+                  (paragraph
+                    (str "Style property \"" (. property name text) "\" is not @inherited, so it cannot be assigned \"inherit\"")
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
       (return false)
     )
     (if (not (call demand-style-inherits))
@@ -7907,7 +8314,17 @@
       (if (not read)
         (for (in node (.. (call (. written subtree-start) value) value))
           (if (call (. facts theme-read-of) reader node)
-            (call report-at home node "A style rule takes a StyleSheet slot only alone, as in \"• bg:panel-color\", not in an expression")
+            (call report-at
+              (block
+                (arg home)
+                (arg node)
+                (arg
+                  (paragraph
+                    "A style rule takes a StyleSheet slot only alone, as in \"• bg:panel-color\", not in an expression"
+                  )
+                )
+              )
+            )
             (return false)
           )
         )
@@ -7947,7 +8364,19 @@
         (let read ([] reads found))
         (let use ([] (. facts style-sheet-uses) (. read sheet)))
         (let slot ([] (. facts sheet-slots) (+ (. use first) (. read slot))))
-        (let (tuple number offset projection) (call slot-binding (. row module) (. declared site) (. declared property) rhs (. slot name) (. use type) application))
+        (let (tuple number offset projection)
+          (call slot-binding
+            (block
+              (arg (. row module))
+              (arg (. declared site))
+              (arg (. declared property))
+              (arg rhs)
+              (arg (. slot name))
+              (arg (. use type))
+              (arg application)
+            )
+          )
+        )
         (if (== number (. U32 max))
           (return false)
         )
@@ -7977,7 +8406,17 @@
       (if (!= found null)
         (let read ([] reads found))
         (let slot ([] (. facts sheet-slots) (+ (. ([] (. facts style-sheet-uses) (. read sheet)) first) (. read slot))))
-        (call report-at home ([] values found) (str "Style rule \"" (. applied name text) "\" computes with what it is given, so it cannot take StyleSheet slot \"" (. slot name text) "\""))
+        (call report-at
+          (block
+            (arg home)
+            (arg ([] values found))
+            (arg
+              (paragraph
+                (str "Style rule \"" (. applied name text) "\" computes with what it is given, so it cannot take StyleSheet slot \"" (. slot name text) "\"")
+              )
+            )
+          )
+        )
         (return false)
       )
     )
@@ -8046,7 +8485,17 @@
       (let use ([] (. facts style-sheet-uses) (. read sheet)))
       (let slot ([] (. facts sheet-slots) (+ (. use first) (. read slot))))
       (if (and (!= sheet (. U32 max)) (!= sheet (. read sheet)))
-        (call report-at home ([] values found) (str "A style value reads slots of one StyleSheet: \"" (. slot name text) "\" is a slot of " (call type-short-name types (. use type)) ", and others it reads are slots of " (call type-short-name types (. ([] (. facts style-sheet-uses) sheet) type))))
+        (call report-at
+          (block
+            (arg home)
+            (arg ([] values found))
+            (arg
+              (paragraph
+                (str "A style value reads slots of one StyleSheet: \"" (. slot name text) "\" is a slot of " (call type-short-name types (. use type)) ", and others it reads are slots of " (call type-short-name types (. ([] (. facts style-sheet-uses) sheet) type)))
+              )
+            )
+          )
+        )
         (return false)
       )
       (= sheet (. read sheet))
@@ -8056,7 +8505,17 @@
         )
       )
       (if (!= wanted (. slot type))
-        (call report-at home ([] values found) (str "Style rule \"" (. name text) "\" takes " (call type-display types wanted) ", so it can compute only with a StyleSheet slot of that type, not \"" (. slot name text) "\" of type " (call type-display types (. slot type))))
+        (call report-at
+          (block
+            (arg home)
+            (arg ([] values found))
+            (arg
+              (paragraph
+                (str "Style rule \"" (. name text) "\" takes " (call type-display types wanted) ", so it can compute only with a StyleSheet slot of that type, not \"" (. slot name text) "\" of type " (call type-display types (. slot type)))
+              )
+            )
+          )
+        )
         (return false)
       )
       (let param ([] params found))
@@ -8442,7 +8901,23 @@
       (let root (call family-root sheet))
       (if (and (!= root found) (call sheet-has-slot root name))
         (if (!= found no-type)
-          (call (. frame diagnose) id .stated (call (. program store-atom) (str "\"" (. name text) "\" is a slot of both " (call type-short-name types found) " and " (call type-short-name types root))))
+          (call (. frame diagnose)
+            (block
+              (arg id)
+              (arg .stated)
+              (arg
+                (call (. program store-atom)
+                  (block
+                    (arg
+                      (paragraph
+                        (str "\"" (. name text) "\" is a slot of both " (call type-short-name types found) " and " (call type-short-name types root))
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
           (return (call Found invalid-type))
         )
         (= found root)
@@ -8603,7 +9078,11 @@
     (if (== value invalid-type)
       (return invalid-type)
     )
-    (let styled (only-if (call infer-style-assign id lhs (. frame self-type) name op rhs value) (if (!= (. frame self-type) no-type))))
+    (let styled
+      (block
+        (only-if (call infer-style-assign id lhs (. frame self-type) name op rhs value) (if (!= (. frame self-type) no-type)))
+      )
+    )
     (if styled
       (return styled)
     )
@@ -9025,7 +9504,23 @@
           )
         )
         (else-if (!= (. tags count) 0)
-          (call (. frame diagnose) (. class syntax) .stated (call (. program store-atom) (str "StyleSheet \"" (. class name text) "\" takes tags only where it derives from another StyleSheet")))
+          (call (. frame diagnose)
+            (block
+              (arg (. class syntax))
+              (arg .stated)
+              (arg
+                (call (. program store-atom)
+                  (block
+                    (arg
+                      (paragraph
+                        (str "StyleSheet \"" (. class name text) "\" takes tags only where it derives from another StyleSheet")
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
         )
       )
       (return)
@@ -9288,7 +9783,16 @@
             (if (== (. other name) (. rule name))
               (match? ([] (. owner tree nodes) (. other syntax))
                 (case (call .node-rule-syntax written)
-                  (let (tuple same known) (call same-signature (. owner tree) (. written args) tree (. rule args)))
+                  (let (tuple same known)
+                    (call same-signature
+                      (block
+                        (arg (. owner tree))
+                        (arg (. written args))
+                        (arg tree)
+                        (arg (. rule args))
+                      )
+                    )
+                  )
                   (if (or (not known) same)
                     (return (tuple same known))
                   )

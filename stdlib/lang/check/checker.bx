@@ -301,7 +301,26 @@
     (lazy outer around)
     (lazy probing probe)
     (lazy in-place nested)
-    (lazy machining (call Machining 0 .store-none no-instance null true (. parts machine-items) (. parts machine-cases) (. parts machine-kept) (. parts machine-payloads) (. parts machine-kept-types) (. parts machine-starts) (. parts machine-typed) (. parts machine-waiting) (. parts machine-groups-found)))
+    (lazy machining
+      (call Machining
+        (block
+          (arg 0)
+          (arg .store-none)
+          (arg no-instance)
+          (arg null)
+          (arg true)
+          (arg (. parts machine-items))
+          (arg (. parts machine-cases))
+          (arg (. parts machine-kept))
+          (arg (. parts machine-payloads))
+          (arg (. parts machine-kept-types))
+          (arg (. parts machine-starts))
+          (arg (. parts machine-typed))
+          (arg (. parts machine-waiting))
+          (arg (. parts machine-groups-found))
+        )
+      )
+    )
     (lazy endpoint-arguments (. parts endpoint-arguments))
     (lazy found-events (. parts found-events))
     (lazy endpoint-events (. parts endpoint-events))
@@ -876,7 +895,16 @@
               (for (in member ([] (. owner member-pool) (. class members)))
                 (match? ([] (. owner decls) member)
                   (case (call .decl-property property)
-                    (let query (if-expr (!= (. property type-syntax) 0) (call query-type ref (. property type-syntax)) no-type))
+                    (let query
+                      (block
+                        (case? (!= (. property type-syntax) 0)
+                          (call query-type ref (. property type-syntax))
+                        )
+                        (default
+                          no-type
+                        )
+                      )
+                    )
                     (if (and (!= query no-type) (not (call is-ancestor-query query)))
                       (let target (call query-target query))
                       (if (== (call (. facts query-targets find) target) null)
@@ -1101,8 +1129,12 @@
       )
     )
     (let fitting (if-expr expects (call expected-function expected) no-type))
-    (return-if (call infer expr (call (. want asking) .want-fitting expected)) (if (and (!= fitting no-type) (call (. tree is-conditional-value) expr))))
-    (return-if (call infer expr (call (. want asking) .want-items expected)) (if (and expects (is ([] (. tree nodes) expr) .node-list-syntax))))
+    (if (and (!= fitting no-type) (call (. tree is-conditional-value) expr))
+      (return (call infer expr (call (. want asking) .want-fitting expected)))
+    )
+    (if (and expects (is ([] (. tree nodes) expr) .node-list-syntax))
+      (return (call infer expr (call (. want asking) .want-items expected)))
+    )
     (return-if (call infer expr want) (if (or (not expects) (not (call (. tree calls-symbol) expr)))))
     (return (call infer expr (call (. want asking) .want-owner expected)))
   )
@@ -1698,7 +1730,16 @@
             (if (not (. declaration is-imperative))
               (call expect-feeds (. declaration body) declared)
             )
-            (= value (if-expr (== discarding-block (. declaration body)) (call check-steps (. declaration body)) (call check-statement (. declaration body))))
+            (= value
+              (match discarding-block
+                (case= (. declaration body)
+                  (call check-steps (. declaration body))
+                )
+                (default
+                  (call check-statement (. declaration body))
+                )
+              )
+            )
             (if (and (== discarding-block (. declaration body)) (not (is ([] (. tree nodes) (. declaration body)) .node-block)))
               (call check-called (. declaration body) value)
             )
@@ -2570,7 +2611,16 @@
                 (for (in member ([] (. owner member-pool) (. class members)))
                   (match? ([] (. owner decls) member)
                     (case (call .decl-property property)
-                      (let query (if-expr (!= (. property type-syntax) 0) (call query-type ref (. property type-syntax) current) no-type))
+                      (let query
+                        (block
+                          (case? (!= (. property type-syntax) 0)
+                            (call query-type ref (. property type-syntax) current)
+                          )
+                          (default
+                            no-type
+                          )
+                        )
+                      )
                       (let target
                         (scope (if-expr descends (call query-target query) no-type)
                           (lazy descends (and (!= query no-type) (not (call is-ancestor-query query))))
@@ -2635,7 +2685,16 @@
           (for (in member ([] (. owner member-pool) (. class members)))
             (match? ([] (. owner decls) member)
               (case (call .decl-property property)
-                (let query (if-expr (!= (. property type-syntax) 0) (call query-type ref (. property type-syntax) current) no-type))
+                (let query
+                  (block
+                    (case? (!= (. property type-syntax) 0)
+                      (call query-type ref (. property type-syntax) current)
+                    )
+                    (default
+                      no-type
+                    )
+                  )
+                )
                 (if (!= query no-type)
                   (let index
                     (call markup-query
@@ -3168,7 +3227,17 @@
       (for (in place (..< 0 (. sheets length)))
         (if (and (== ([] levels place) group) (call sheet-has-slot ([] sheets place) name))
           (if (!= found no-type)
-            (call report-at owner statement (str "StyleSheet slot \"" (. name text) "\" is ambiguous between visible style sheets " (call type-short-name types found) " and " (call type-short-name types ([] sheets place))))
+            (call report-at
+              (block
+                (arg owner)
+                (arg statement)
+                (arg
+                  (paragraph
+                    (str "StyleSheet slot \"" (. name text) "\" is ambiguous between visible style sheets " (call type-short-name types found) " and " (call type-short-name types ([] sheets place)))
+                  )
+                )
+              )
+            )
             (return (tuple no-type false))
           )
           (= found ([] sheets place))
@@ -3412,7 +3481,16 @@
         (let gates (list U64))
         (let scoped (list ScopeUse))
         (if (and typed (call choose-written-rule receiver application given levels members gates scoped) (!= (+ (. levels length) (. scoped length)) 0))
-          (let wanted (if-expr (!= (. levels length) 0) (?? (call rule-argument-types ([] members 0)) (call scope-argument-types (. ([] scoped 0) scope))) (call scope-argument-types (. ([] scoped 0) scope))))
+          (let wanted
+            (block
+              (case? (!= (. levels length) 0)
+                (?? (call rule-argument-types ([] members 0)) (call scope-argument-types (. ([] scoped 0) scope)))
+              )
+              (default
+                (call scope-argument-types (. ([] scoped 0) scope))
+              )
+            )
+          )
           (for (in position (..< 0 (. given length)))
             (let value ([] (. tree children) (+ (. applied args start) position)))
             (call (. conversions convert)
@@ -4056,7 +4134,11 @@
     (for (in position (..< 0 count))
       (let property ([] (. types properties) (+ (. range start) position)))
       (if (and ([] deferred position) (not (call has-empty-value (call eager-type receiver property) 0)))
-        (let message (str "Property \"" (. property name text) "\" initializes after its markup, so its type must be optional"))
+        (let message
+          (paragraph
+            (str "Property \"" (. property name text) "\" initializes after its markup, so its type must be optional")
+          )
+        )
         (call (. facts record-diagnostic)
           (block
             (arg instance)
@@ -4099,7 +4181,11 @@
     (let start (. ([] (. types completions) receiver) properties start))
     (if (== ([] states position) 1)
       (let name (. ([] (. types properties) (+ start position)) name))
-      (let message (str "Property \"" (. name text) "\" depends on itself through properties that initialize after its markup"))
+      (let message
+        (paragraph
+          (str "Property \"" (. name text) "\" depends on itself through properties that initialize after its markup")
+        )
+      )
       (call (. facts record-diagnostic)
         (block
           (arg instance)
@@ -4201,7 +4287,13 @@
     )
     (if (or (== pattern 0) (== item no-type) owned (not grows) (not (call lazies-beside (. declaration body) matched)))
       (if owned
-        (call (. frame diagnose) (. declaration syntax) .stated (call (. program store-atom) "A rule can't be a method; declare it at module level"))
+        (call (. frame diagnose)
+          (block
+            (arg (. declaration syntax))
+            (arg .stated)
+            (arg (call (. program store-atom) "A rule can't be a method; declare it at module level"))
+          )
+        )
         (else
           (call decline (. declaration syntax))
         )
@@ -4381,7 +4473,11 @@
     (match? ([] (. ([] (. program modules) module) decls) (. frame decl))
       (case (call .decl-function fn)
         (if (and (== (. fn owner) 0) (. fn name) (== (call (. calls intrinsic-plan) instance) .plan-none))
-          (let text (str "Function \"" (. fn name text) "\" has no body, and no compiler intrinsic supplies one"))
+          (let text
+            (paragraph
+              (str "Function \"" (. fn name text) "\" has no body, and no compiler intrinsic supplies one")
+            )
+          )
           (call (. frame diagnose) (. fn syntax) .stated (call (. program store-atom) text))
           (return true)
         )
@@ -5041,7 +5137,11 @@
     (let offset (call (. tree offset-of) (. unit number)))
     (let shifted (if-expr (!= offset 0) offset (call (. tree offset-of) (. unit value))))
     (if (!= shifted 0)
-      (let message "An equality relates two units by a ratio alone, so a number with no unit cannot be added to or taken from one; write the ratio as one number in the unit")
+      (let message
+        (paragraph
+          "An equality relates two units by a ratio alone, so a number with no unit cannot be added to or taken from one; write the ratio as one number in the unit"
+        )
+      )
       (call (. frame diagnose) shifted .stated (call (. program store-atom) message))
       (return)
     )
@@ -5058,7 +5158,11 @@
     (for (in side (list left right))
       (if (and (!= side invalid-type) (. ([] (. types completions) side) is-builtin))
         (let shown (call type-short-name types side))
-        (let message (str "An equality relates units a program declares, and " shown " is a number type of the language; write each side in a unit the program declares"))
+        (let message
+          (paragraph
+            (str "An equality relates units a program declares, and " shown " is a number type of the language; write each side in a unit the program declares")
+          )
+        )
         (call (. frame diagnose) (. unit syntax) .stated (call (. program store-atom) message))
         (return)
       )
@@ -5091,7 +5195,11 @@
       (if (or (> quotient 1.000000001) (< quotient 0.999999999))
         (let from (call type-short-name types left))
         (let to (call type-short-name types right))
-        (let message (str "Equalities between " from " and " to " disagree: one makes 1 " from " " ([] ratios 0) " " to ", another " ratio " " to "; keep one of them"))
+        (let message
+          (paragraph
+            (str "Equalities between " from " and " to " disagree: one makes 1 " from " " ([] ratios 0) " " to ", another " ratio " " to "; keep one of them")
+          )
+        )
         (call (. frame diagnose) id .stated (call (. program store-atom) message))
         (return)
       )
@@ -5122,7 +5230,11 @@
     (if (!= (as text F64) 0.0)
       (return false)
     )
-    (let message "A unit cannot be declared as zero of another, which no number of it would convert from; write a number other than zero")
+    (let message
+      (paragraph
+        "A unit cannot be declared as zero of another, which no number of it would convert from; write a number other than zero"
+      )
+    )
     (call (. frame diagnose) id .stated (call (. program store-atom) message))
     (return true)
   )
@@ -5651,7 +5763,11 @@
     )
     (if (== (. resolution kind) .resolve-global)
       (let first (call (. tree subtree-start) body))
-      (call (. facts stack-scopes append) (call StackScope instance first body (. resolution module) (. resolution decl) 0))
+      (call (. facts stack-scopes append)
+        (block
+          (arg (call StackScope instance first body (. resolution module) (. resolution decl) 0))
+        )
+      )
     )
     (= discarding-block body)
     (call check-steps body)
@@ -5667,11 +5783,27 @@
     (let value (call infer value-syntax))
     (let effect (call (. program effects index-of) module decl))
     (let saved (. frame surround))
-    (let entry U32 0)
+    (let entry U32)
     (if (and (!= value invalid-type) (or (not (call (. types is-class-type) value)) (call (. types is-optional) value)))
       (call (. frame diagnose) value-syntax .stated (call (. program store-atom) (call fake-class-text module decl value)))
       (else-if (and effect (>= effect (call most-effects)))
-        (call (. frame diagnose) id .stated (call (. program store-atom) (str "A program can bind at most " (call most-effects) " effects, and '" (. ([] (. program effects names) effect) text) "' is past them")))
+        (call (. frame diagnose)
+          (block
+            (arg id)
+            (arg .stated)
+            (arg
+              (call (. program store-atom)
+                (block
+                  (arg
+                    (paragraph
+                      (str "A program can bind at most " (call most-effects) " effects, and '" (. ([] (. program effects names) effect) text) "' is past them")
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
       )
       (else-if (and (!= value invalid-type) effect)
         (= (. frame surround) (= (. frame surround effects) (call (. instances bound-to) (. saved effects) effect value)))
@@ -5867,8 +5999,24 @@
       (if (or discards (!= statement last))
         (= want (call (. want adding) .want-unused))
       )
-      (let expects-row (and (!= valued no-type) (or (call (. tree calls-symbol) statement) (!= (call (. tree symbol-of) statement) null))))
-      (let produced (if-expr named (call infer-with-expected statement declared want) (if-expr expects-row (call infer-with-expected statement valued want) (call check-line statement parent want))))
+      (let expects-row
+        (block
+          (and (!= valued no-type) (or (call (. tree calls-symbol) statement) (!= (call (. tree symbol-of) statement) null)))
+        )
+      )
+      (let produced
+        (block
+          (case? named
+            (call infer-with-expected statement declared want)
+          )
+          (case? expects-row
+            (call infer-with-expected statement valued want)
+          )
+          (default
+            (call check-line statement parent want)
+          )
+        )
+      )
       (if stepped
         (= produced no-type)
       )
@@ -6057,7 +6205,11 @@
     (param word String)
     ; Reports a `break` or `continue` that would leave a cleanup, which runs however its block is
     ; left, for the loop around it.
-    (let text (str "A cleanup cannot \"" word "\" the loop around it, as it runs however its block is left; write \"" word "\" in the loop's body"))
+    (let text
+      (paragraph
+        (str "A cleanup cannot \"" word "\" the loop around it, as it runs however its block is left; write \"" word "\" in the loop's body")
+      )
+    )
     (call (. frame diagnose) id .stated (call (. program store-atom) text))
   )
   (fn-do _ check-finally _
@@ -7830,13 +7982,21 @@
       (return)
     )
     (if (and (!= handling 0) (!= expr 0))
-      (let text "A state machine's handler gives no value, so it cannot return one with \"=\"; end it early with \"= alone\"")
+      (let text
+        (paragraph
+          "A state machine's handler gives no value, so it cannot return one with \"=\"; end it early with \"= alone\""
+        )
+      )
       (call (. frame diagnose) id .stated (call (. program store-atom) text))
       (return)
     )
     (if (call is-rule-unit)
       (if (!= expr 0)
-        (let text "A rule gives no value, so its body cannot return one with \"=\"; end it early with \"= alone\"")
+        (let text
+          (paragraph
+            "A rule gives no value, so its body cannot return one with \"=\"; end it early with \"= alone\""
+          )
+        )
         (call (. frame diagnose) id .stated (call (. program store-atom) text))
       )
       (return)
@@ -7849,7 +8009,11 @@
       (let brix (call (. tree source-path ends-with) ".bx"))
       (let returning (if-expr brix "(return …)" "="))
       (let ending (if-expr brix "(return)" "= alone"))
-      (let text (str "A task gives no value, so its body cannot return one with \"" returning "\"; end it with \"" ending "\", or send the value on a channel"))
+      (let text
+        (paragraph
+          (str "A task gives no value, so its body cannot return one with \"" returning "\"; end it with \"" ending "\", or send the value on a channel")
+        )
+      )
       (call (. frame diagnose) id .stated (call (. program store-atom) text))
       (return)
     )
@@ -8008,7 +8172,11 @@
     (if (call (. types is-optional) declared)
       (return)
     )
-    (let message (str "Condition-only early return cannot return from " (call type-display types declared) "; use an optional, Bool, or Void return type"))
+    (let message
+      (paragraph
+        (str "Condition-only early return cannot return from " (call type-display types declared) "; use an optional, Bool, or Void return type")
+      )
+    )
     (call (. frame diagnose) statement .stated (call (. program store-atom) message) declared)
   )
   (fn-do _ returned-value TypeId
@@ -8448,7 +8616,16 @@
     (let hosted (. content-blocks length))
     (call host-content body parent)
     (let steps (call runs-content body))
-    (let want (if-expr steps (call (. (call (. (call Want) adding) .want-content-line) adding) .want-match-statement) (call (. (call Want) adding) .want-content-line)))
+    (let want
+      (block
+        (case? steps
+          (call (. (call (. (call Want) adding) .want-content-line) adding) .want-match-statement)
+        )
+        (default
+          (call (. (call Want) adding) .want-content-line)
+        )
+      )
+    )
     (let produced (call check-line body parent want))
     (while (!= (. content-blocks length) hosted)
       (call (. content-blocks pop))
@@ -8466,7 +8643,14 @@
   (fn-do _ check-steps TypeId
     (param body SyntaxId)
     (= steps-block body)
-    (let value (call check-statement body (if-expr (call runs-steps body) (call (. (call Want) adding) .want-match-statement) (call Want))))
+    (let value
+      (call check-statement
+        (block
+          (arg body)
+          (arg (if-expr (call runs-steps body) (call (. (call Want) adding) .want-match-statement) (call Want)))
+        )
+      )
+    )
     (= steps-block 0)
     (return value)
   )
@@ -8879,7 +9063,7 @@
   (fn-expr _ found-event-of (? NamedEvent)
     (param found Found)
     ; The event a node was found to name, or none.
-    (if-expr (!= (. found event) (. U32 max)) ([] found-events (. found event)) null)
+    (only-if ([] found-events (. found event)) (if (!= (. found event) (. U32 max))))
   )
   (fn-do _ unsettles Bool
     (param id SyntaxId)
@@ -9075,7 +9259,16 @@
       )
     )
     (let item (call first-arg stream))
-    (let tracking (if-expr (!= item no-type) (call (. types well-known-type-of) "core/tracker" "BroadcasterTracker" item) invalid-type))
+    (let tracking
+      (block
+        (case? (!= item no-type)
+          (call (. types well-known-type-of) "core/tracker" "BroadcasterTracker" item)
+        )
+        (default
+          invalid-type
+        )
+      )
+    )
     (let tracker (call (. types well-known-type) "core/tracker" "Tracker"))
     (if (or (== tracking invalid-type) (== tracker invalid-type) (== (. instances live add-tracker) no-instance))
       (call decline id)
@@ -9569,14 +9762,22 @@
           (if (and (. row is-tracked) name-plain name-live)
             (return false)
           )
-          (lazy name-plain (and (not (call in-live-statement node body)) (not (and rooted (call (. tree in-attribute) node body)))))
+          (lazy name-plain
+            (block
+              (and (not (call in-live-statement node body)) (not (and rooted (call (. tree in-attribute) node body))))
+            )
+          )
           (lazy name-live (and (not (call in-region node body)) (!= (call live-context node) .live-none)))
         )
         (case (call .node-get-expression row)
           (if (and (. row is-tracked) get-plain get-live)
             (return false)
           )
-          (lazy get-plain (and (not (call in-live-statement node body)) (not (and rooted (call (. tree in-attribute) node body)))))
+          (lazy get-plain
+            (block
+              (and (not (call in-live-statement node body)) (not (and rooted (call (. tree in-attribute) node body))))
+            )
+          )
           (lazy get-live (and (not (call in-region node body)) (!= (call live-context node) .live-none)))
         )
         (case .node-state-machine
@@ -9983,7 +10184,11 @@
       (let root (if-expr (== forwarding 0) (call keep-root line) no-slot))
       (let held (call (. given find) name))
       (if (and held keeps-own (!= (call chosen-slot ([] builders held)) no-type))
-        (let message (str "Slot \"" (. name text) "\" is filled inside an if or match where this object is made, so the class's content does not fill it too"))
+        (let message
+          (paragraph
+            (str "Slot \"" (. name text) "\" is filled inside an if or match where this object is made, so the class's content does not fill it too")
+          )
+        )
         (call (. frame diagnose) line .stated (call (. program store-atom) message))
         (return false)
       )
@@ -10000,7 +10205,23 @@
           (continue)
         )
         (if (call forwards-choice name)
-          (call (. frame diagnose) line .stated (call (. program store-atom) "A slot filled inside an if or match is not passed on with <+; give it content here instead"))
+          (call (. frame diagnose)
+            (block
+              (arg line)
+              (arg .stated)
+              (arg
+                (call (. program store-atom)
+                  (block
+                    (arg
+                      (paragraph
+                        "A slot filled inside an if or match is not passed on with <+; give it content here instead"
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
           (return false)
         )
         (if (or (== builder invalid-type) (not (call forward-slot line forwarding name builder)))
@@ -10207,7 +10428,11 @@
     (if (!= read 0)
       (match? ([] (. tree nodes) read)
         (case (call .node-get-expression row)
-          (let message (str "Rebindable slot scope reads must be tracked as " (. scope text) ".#" (. row name text) "; use an explicit snapshot inside do for a stable value"))
+          (let message
+            (paragraph
+              (str "Rebindable slot scope reads must be tracked as " (. scope text) ".#" (. row name text) "; use an explicit snapshot inside do for a stable value")
+            )
+          )
           (let object ([] (. tree nodes loc) (. row object)))
           (call (. frame diagnose) (. row object) .stated (call (. program store-atom) message))
           (call (. facts inset-diagnostic)
@@ -10230,7 +10455,11 @@
     (let escaping (call escaping-local line derived names held false))
     (if (!= escaping 0)
       (let name (call (. tree identifier-name) escaping))
-      (let message (str "Local " (. (!! name) text) " derived from rebindable slot scope " (. scope text) " cannot escape into a closure; read " (. scope text) " directly in the closure or take an explicit snapshot inside do"))
+      (let message
+        (paragraph
+          (str "Local " (. (!! name) text) " derived from rebindable slot scope " (. scope text) " cannot escape into a closure; read " (. scope text) " directly in the closure or take an explicit snapshot inside do")
+        )
+      )
       (call (. frame diagnose) escaping .stated (call (. program store-atom) message))
       (return false)
     )
@@ -10698,7 +10927,11 @@
     )
     (if (not (call makes-region parent))
       (call (. frame diagnose) id .stated (call (. program store-atom) message))
-      (lazy message (str "Markup branch host " (call type-source types parent) " must declare markup-make-region, or extend MarkupNode"))
+      (lazy message
+        (paragraph
+          (str "Markup branch host " (call type-source types parent) " must declare markup-make-region, or extend MarkupNode")
+        )
+      )
       (return invalid-type)
     )
     (let builder (call (. types well-known-type-of) "core/markup" "MarkupBranchBuilder" content))
@@ -10762,7 +10995,24 @@
         (lazy slot-parameter (is ([] (. tree nodes) id) .node-markup-slot-parameter))
       )
     )
-    (let keeps (if-expr matched no-instance (call (. calls demand-runtime-call) markup no-type (call (. program store-atom) "markup-branch-region-keeps-arm") mark 1)))
+    (let keeps
+      (block
+        (case? matched
+          no-instance
+        )
+        (default
+          (call (. calls demand-runtime-call)
+            (block
+              (arg markup)
+              (arg no-type)
+              (arg (call (. program store-atom) "markup-branch-region-keeps-arm"))
+              (arg mark)
+              (arg 1)
+            )
+          )
+        )
+      )
+    )
     (let select
       (call (. calls demand-runtime-call)
         (block
@@ -11152,7 +11402,23 @@
     (let optional (== (call (. types intrinsic-of) read) .optional))
     (let shape (if-expr optional (call (. types optional-inner) read) read))
     (if (and (== (call (. types intrinsic-of) shape) .interface) indexable)
-      (call (. frame diagnose) id .stated (call (. program store-atom) "Markup loop cannot observe Indexable sources because Indexable has no mutation events"))
+      (call (. frame diagnose)
+        (block
+          (arg id)
+          (arg .stated)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg
+                  (paragraph
+                    "Markup loop cannot observe Indexable sources because Indexable has no mutation events"
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
       (return none)
     )
     (lazy indexable (call same-decl (call class-ref types shape) (. types indexable-decl)))
@@ -11185,7 +11451,23 @@
       (if (or collection-shape broadcasts (!= (call supported shape (. types iterable-decl)) no-type))
         (call decline id)
         (else-if (!= (call supported shape (. types indexable-decl)) no-type)
-          (call (. frame diagnose) id .stated (call (. program store-atom) "Markup loop cannot observe Indexable sources because Indexable has no mutation events"))
+          (call (. frame diagnose)
+            (block
+              (arg id)
+              (arg .stated)
+              (arg
+                (call (. program store-atom)
+                  (block
+                    (arg
+                      (paragraph
+                        "Markup loop cannot observe Indexable sources because Indexable has no mutation events"
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
         )
         (else
           (call (. frame diagnose)
@@ -11873,8 +12155,12 @@
     (match? ([] (. tree nodes) task)
       (case (call .node-do-task-block row)
         (return-if false (if (. row detached)))
-        (return-if (== (call (. types intrinsic-of) ([] content-parents (- (. content-parents length) 1))) .class) (if (!= (. content-parents length) 0)))
-        (return-if true (if (!= (call (. bindings activation-tasks) (. frame binding) task (call (. program store-atom) "(tasks)")) no-slot)))
+        (if (!= (. content-parents length) 0)
+          (return (== (call (. types intrinsic-of) ([] content-parents (- (. content-parents length) 1))) .class))
+        )
+        (if (!= (call (. bindings activation-tasks) (. frame binding) task (call (. program store-atom) "(tasks)")) no-slot)
+          (return true)
+        )
         (return-if false (if (not (call is-owner))))
         (return (== (call (. types intrinsic-of) (. frame self-type)) .class))
       )
@@ -11918,7 +12204,11 @@
   (fn-do _ report-pattern-on _
     (param pattern SyntaxId)
     ; Reports a grammar written on a stream a subscription is given, which no match reads.
-    (let text "A grammar matches items it reads with \"in\", not items a subscription with \"on\" is given; write \"in\" in place of \"on\"")
+    (let text
+      (paragraph
+        "A grammar matches items it reads with \"in\", not items a subscription with \"on\" is given; write \"in\" in place of \"on\""
+      )
+    )
     (call (. frame diagnose) pattern .stated (call (. program store-atom) text))
   )
   (fn-do _ check-worker _
@@ -12062,7 +12352,11 @@
     (if (== used invalid-type)
       (if (== (call ending-member subject "close" id) invalid-type)
         (let shown (call type-short-name types subject))
-        (let text (str shown " cannot be used, as it has no \"begin-using\" and is not Closable; declare \"begin-using\" and \"end-using\", or implement Closable"))
+        (let text
+          (paragraph
+            (str shown " cannot be used, as it has no \"begin-using\" and is not Closable; declare \"begin-using\" and \"end-using\", or implement Closable")
+          )
+        )
         (call (. frame diagnose) id .stated (call (. program store-atom) text))
         (return invalid-type)
       )
@@ -12115,13 +12409,25 @@
           (match? ([] (. tree nodes) catcher)
             (case (call .node-catcher handler)
               (if (!= (. handler previous count) 0)
-                (call (. frame diagnose) catcher .stated (call (. program store-atom) "A task's handler replaces no errors"))
+                (call (. frame diagnose)
+                  (block
+                    (arg catcher)
+                    (arg .stated)
+                    (arg (call (. program store-atom) "A task's handler replaces no errors"))
+                  )
+                )
               )
               (let named (call (. tree handled-type) (. handler type)))
               (if (!= named 0)
                 (let handled (call (. types evaluate-type) module tree named (. frame env)))
                 (if (and (!= handled invalid-type) (not (call is-subtype types handled (. types panic-type))))
-                  (call (. frame diagnose) named .stated (call (. program store-atom) "A task's handler takes a panic"))
+                  (call (. frame diagnose)
+                    (block
+                      (arg named)
+                      (arg .stated)
+                      (arg (call (. program store-atom) "A task's handler takes a panic"))
+                    )
+                  )
                 )
               )
               (call check-pattern (. handler type) (. types panic-type))
@@ -12541,13 +12847,31 @@
     )
     (if (and (== (call (. types intrinsic-of) type) .union) (not (call all (call (. types cases-of) type) (:where (not (call is-raised (. each type)))))))
       (let advice "test it with \"is Error\", or take it apart with \"match\"")
-      (call (. frame diagnose) condition .stated (call (. program store-atom) (str "A value that may be an error, as \"catch\" gives, has no truth; " advice)))
+      (call (. frame diagnose)
+        (block
+          (arg condition)
+          (arg .stated)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg (str "A value that may be an error, as \"catch\" gives, has no truth; " advice))
+              )
+            )
+          )
+        )
+      )
       (return)
     )
     (let completion (call (. types completion-of) type))
     (if (== (. completion intrinsic) .interface)
       (let shown (call type-source types type))
-      (call (. frame diagnose) condition .stated (call (. program store-atom) (str shown " has no truth to test; read the values it gives instead")))
+      (call (. frame diagnose)
+        (block
+          (arg condition)
+          (arg .stated)
+          (arg (call (. program store-atom) (str shown " has no truth to test; read the values it gives instead")))
+        )
+      )
       (return)
     )
     (if (or (== (. completion intrinsic) .closure) (== (. completion intrinsic) .binding))
@@ -12689,7 +13013,7 @@
     (where
       (lazy chosen (call symbol-choice expr))
       (lazy symbol (if-expr (!= chosen 0) (call (. tree symbol-of) chosen) (call (. tree argument-symbol) expr)))
-      (lazy other (if-expr (!= chosen 0) (call (. tree symbol-of) (call (. tree other-side) expr)) null))
+      (lazy other (only-if (call (. tree symbol-of) (call (. tree other-side) expr)) (if (!= chosen 0))))
     )
   )
   (fn-do _ symbol-choice SyntaxId
@@ -12740,7 +13064,7 @@
     ; local as the instance left it, and runs nothing. A closure written in a closure has one
     ; for each instance out to the first that is still running.
     (let around (. ([] (. instances rows) enclosing) enclosing))
-    (let writer (if-expr (!= around no-instance) (?? (call definer around) (call settled around)) null))
+    (let writer (only-if (?? (call definer around) (call settled around)) (if (!= around no-instance))))
     (let stand (call checker-for session enclosing writer true))
     (call (. stand prepare))
     (for (in offset (..< 0 (. stand frame slots count)))
@@ -12805,7 +13129,11 @@
     (if (call is-integer-kind (call (. types intrinsic-of) number))
       (let shown (call type-short-name types target))
       (let held (if-expr (== number target) "" (str ", as " (call type-short-name types number) " does")))
-      (let message (str shown " holds whole numbers" held ", so " text (. unit text) " cannot be written; write a whole number"))
+      (let message
+        (paragraph
+          (str shown " holds whole numbers" held ", so " text (. unit text) " cannot be written; write a whole number")
+        )
+      )
       (call (. frame diagnose) id .stated (call (. program store-atom) message))
       (return invalid-type)
     )
@@ -12823,7 +13151,11 @@
     (if (and (call is-unit-class types unit-type) (not (call declares-constructor unit-type)))
       (if (not (call intrinsic-is-numeric (call (. types intrinsic-of) (call builtin-number types unit-type))))
         (let shown (call type-short-name types unit-type))
-        (let message (str shown " is no number and declares no constructor that takes one, so no number can be written in its unit; declare " shown " as a number type"))
+        (let message
+          (paragraph
+            (str shown " is no number and declares no constructor that takes one, so no number can be written in its unit; declare " shown " as a number type")
+          )
+        )
         (call (. frame diagnose) id .stated (call (. program store-atom) message))
         (return invalid-type)
       )
@@ -13321,7 +13653,11 @@
       )
     )
     (let owner-name (call type-short-name types owner))
-    (let message (str "\"" (. name text) "\" is an event of " owner-name ", which gives each value to its subscribers and keeps none to read with \"<-\"; hear the next one with \"for value on " written "\", and end the loop with \"break\""))
+    (let message
+      (paragraph
+        (str "\"" (. name text) "\" is an event of " owner-name ", which gives each value to its subscribers and keeps none to read with \"<-\"; hear the next one with \"for value on " written "\", and end the loop with \"break\"")
+      )
+    )
     (call (. frame diagnose) id .stated (call (. program store-atom) message))
   )
   (fn-do _ read-unmade TypeId
@@ -13417,14 +13753,22 @@
           (return (call Found (call read-getter id (. resolution slot))))
         )
         (if (and (call (. bindings is-placed) (. resolution slot)) (!= (call outlet-choice placed-group) no-type))
-          (let message (str "Outlet \"" (. name text) "\" is not read by its name where its slot is filled inside an if or match"))
+          (let message
+            (paragraph
+              (str "Outlet \"" (. name text) "\" is not read by its name where its slot is filled inside an if or match")
+            )
+          )
           (call (. frame diagnose) id .stated (call (. program store-atom) message))
           (return (call Found invalid-type))
         )
         (lazy placed-group (. ([] (. bindings slots) (. resolution slot)) group))
         (if (and (!= (. unbuilt length) 0) (!= (call (. unbuilt find) (. resolution slot)) null))
           (if (or (== (. resolution slot) building) (!= (call (. held find) (. resolution slot)) null))
-            (let message (str "Named markup element \"" (. name text) "\" is read before its markup constructs it"))
+            (let message
+              (paragraph
+                (str "Named markup element \"" (. name text) "\" is read before its markup constructs it")
+              )
+            )
             (call (. frame diagnose) id .stated (call (. program store-atom) message))
             (return (call Found invalid-type))
           )
@@ -13451,7 +13795,11 @@
           (return (call Found invalid-type))
         )
         (if (and (call (. bindings is-placed) (. resolution slot)) (call reads-before-made id (. resolution slot)))
-          (let message (str "Named markup element \"" (. name text) "\" is read before its markup constructs it"))
+          (let message
+            (paragraph
+              (str "Named markup element \"" (. name text) "\" is read before its markup constructs it")
+            )
+          )
           (call (. frame diagnose) id .stated (call (. program store-atom) message))
           (return (call Found invalid-type))
         )
@@ -13539,7 +13887,11 @@
           (return (call Found invalid-type))
         )
         (if (and (not outer) (call reads-unmade name) (not (call (. instances is-initializer) instance)))
-          (let message (str "Named markup element \"" (. name text) "\" is read before its markup constructs it"))
+          (let message
+            (paragraph
+              (str "Named markup element \"" (. name text) "\" is read before its markup constructs it")
+            )
+          )
           (call (. frame diagnose) id .stated (call (. program store-atom) message))
           (return (call Found invalid-type))
         )
@@ -13557,7 +13909,22 @@
         (if (and (call names-method (. resolution module) (. resolution decl)) (not (call lacks-self)))
           (return (call Found (call (. calls method-binding) (. frame self-type) name id)))
         )
-        (return (call Found (call (. types intern-binding) .bound-function (. frame module) (. resolution module) (. resolution decl))))
+        (return
+          (call Found
+            (block
+              (arg
+                (call (. types intern-binding)
+                  (block
+                    (arg .bound-function)
+                    (arg (. frame module))
+                    (arg (. resolution module))
+                    (arg (. resolution decl))
+                  )
+                )
+              )
+            )
+          )
+        )
       )
       (case= .resolve-type
         (return (call Found (call type-info-of id (call (. types type-named) module name (. frame env)))))
@@ -13750,7 +14117,11 @@
     (param id SyntaxId)
     (param name Atom)
     (let shown (. name text))
-    (let message (str "\"#" shown "\" is read for each item of a pipeline, which is followed only where the pipeline is given to a call in a live value, as in count(each in #items when each.#is-done); write \"" shown "\" to read it plainly"))
+    (let message
+      (paragraph
+        (str "\"#" shown "\" is read for each item of a pipeline, which is followed only where the pipeline is given to a call in a live value, as in count(each in #items when each.#is-done); write \"" shown "\" to read it plainly")
+      )
+    )
     (call (. frame diagnose) id .stated (call (. program store-atom) message))
   )
   (fn-do + note-given _
@@ -13880,8 +14251,8 @@
     (for (in index (..< 0 (. pulled-pipelines length)))
       (call follow-pipeline ([] pulled-pipelines index) ([] pulled-reads index) ([] pulled-names index))
     )
-    (let consumes U64 0)
-    (let hands-back U64 0)
+    (let consumes U64)
+    (let hands-back U64)
     (let position 0u32)
     (for (in offset (..< 0 (. frame slots count)))
       (let slot (+ (. frame slots start) offset))
@@ -13983,7 +14354,11 @@
     ; read changes. One that reads nothing tracked is reported, as it would never change; one written
     ; where a markup element is being made has no shape here yet.
     (if (not (call (. tree tracks-reads) expr))
-      (let message "A stream of a value follows the reads written with \"#\", and this one has none, so it would never change; write \"#\" before what it follows, as in \"<c.#count>\"")
+      (let message
+        (paragraph
+          "A stream of a value follows the reads written with \"#\", and this one has none, so it would never change; write \"#\" before what it follows, as in \"<c.#count>\""
+        )
+      )
       (call (. frame diagnose) id .stated (call (. program store-atom) message))
       (return invalid-type)
     )
@@ -14030,7 +14405,11 @@
       (= ([] (. facts live-statements) position) (call LiveStatement instance id rerun))
       (return channel)
     )
-    (let message "A stream of a value is made only by a statement in a function's body, as in \". values = <c.#count>\"; make it there, move a machine as a value changes with a \"whenever\" trigger, as in \"then loading whenever #feed\", or publish an event from a \"whenever\" rule and loop on it")
+    (let message
+      (paragraph
+        "A stream of a value is made only by a statement in a function's body, as in \". values = <c.#count>\"; make it there, move a machine as a value changes with a \"whenever\" trigger, as in \"then loading whenever #feed\", or publish an event from a \"whenever\" rule and loop on it"
+      )
+    )
     (call (. frame diagnose) id .stated (call (. program store-atom) message))
     (return invalid-type)
   )
@@ -14753,7 +15132,16 @@
         )
       )
       (if (and (== (. property storage-kind) .storage-getter) (not (call is-array-field receiver name)))
-        (let capture (if-expr held held (call row-capture-of (if-expr (!= object-syntax id) object-syntax 0))))
+        (let capture
+          (block
+            (case? held
+              held
+            )
+            (default
+              (call row-capture-of (if-expr (!= object-syntax id) object-syntax 0))
+            )
+          )
+        )
         (return (call Found (call (. calls getter-call) id object-syntax receiver name capture)))
       )
       (if (== (. property storage-kind) .storage-getter)
@@ -14811,7 +15199,16 @@
       )
     )
     (if (call (. calls has-getter) receiver name)
-      (let capture (if-expr held held (call row-capture-of (if-expr (!= object-syntax id) object-syntax 0))))
+      (let capture
+        (block
+          (case? held
+            held
+          )
+          (default
+            (call row-capture-of (if-expr (!= object-syntax id) object-syntax 0))
+          )
+        )
+      )
       (return (call Found (call (. calls getter-call) id object-syntax receiver name capture)))
     )
     (if (== receiver-kind .union)
@@ -15346,7 +15743,13 @@
             (match? ([] (. ([] (. program modules) home) decls) (. found decl))
               (case (call .decl-event event)
                 (if (not (call (. program reaches-access) module home (. event access)))
-                  (let message (call (. program store-atom) (call hidden-message "Event" name (. event access))))
+                  (let message
+                    (call (. program store-atom)
+                      (block
+                        (arg (call hidden-message "Event" name (. event access)))
+                      )
+                    )
+                  )
                   (call (. facts record-diagnostic) instance home (. event syntax) .stated message)
                   (return true)
                 )
@@ -15446,7 +15849,15 @@
       (call decline key-syntax)
       (return (call Found invalid-type))
     )
-    (return (call use-event id (call NamedEvent (. event owner) (. event name) (. event payload) (. event key) id (. event is-private)) want))
+    (return
+      (call use-event
+        (block
+          (arg id)
+          (arg (call NamedEvent (. event owner) (. event name) (. event payload) (. event key) id (. event is-private)))
+          (arg want)
+        )
+      )
+    )
   )
   (fn-do _ unaddressed Bool
     (param id SyntaxId)
@@ -15541,7 +15952,21 @@
     )
     (let keyed (!= (. event address) 0))
     (let node (if-expr keyed no-type (call event-node reference event)))
-    (let interest (if-expr keyed (call event-call "event-keyed-interest-generation" (. event payload) no-type 2) (call event-call (if-expr (!= node no-type) "event-has-route-interest" "event-has-interest") no-type)))
+    (let interest
+      (block
+        (case? keyed
+          (call event-call "event-keyed-interest-generation" (. event payload) no-type 2)
+        )
+        (default
+          (call event-call
+            (block
+              (arg (if-expr (!= node no-type) "event-has-route-interest" "event-has-interest"))
+              (arg no-type)
+            )
+          )
+        )
+      )
+    )
     (let publish no-instance)
     (if keyed
       (= publish (call event-call "event-publish-keyed" (. event payload) (. event payload) 3))
@@ -15781,7 +16206,16 @@
       )
       (return invalid-type)
     )
-    (let called (if-expr rekeys (call event-call "event-keyed-rekey" (. event payload) no-type 5) (call event-call "event-keyed-release" (. event payload) no-type 3)))
+    (let called
+      (block
+        (case? rekeys
+          (call event-call "event-keyed-rekey" (. event payload) no-type 5)
+        )
+        (default
+          (call event-call "event-keyed-release" (. event payload) no-type 3)
+        )
+      )
+    )
     (if (== called no-instance)
       (call decline id)
       (return invalid-type)
@@ -15896,11 +16330,24 @@
       (return)
     )
     (if (and (!= (. event address) 0) (not (call (. tree stable-key) (call (. tree index-key) (. event address)))))
-      (let message "A temporary keyed event address cannot escape; declare a stable address key and use that stable addressed lifetime")
+      (let message
+        (paragraph
+          "A temporary keyed event address cannot escape; declare a stable address key and use that stable addressed lifetime"
+        )
+      )
       (call (. frame diagnose) place .stated (call (. program store-atom) message))
       (return)
     )
-    (let adapter (if-expr (!= (. event address) 0) (call event-call "event-keyed-adapter" (. event payload) no-type 3) (call event-call "event-adapter" (. event payload))))
+    (let adapter
+      (block
+        (case? (!= (. event address) 0)
+          (call event-call "event-keyed-adapter" (. event payload) no-type 3)
+        )
+        (default
+          (call event-call "event-adapter" (. event payload))
+        )
+      )
+    )
     (if (== adapter no-instance)
       (call decline id)
       (return)
@@ -15938,7 +16385,11 @@
     ; closes it with the receiver. Says whether it is claimed; it is an error at `place` where
     ; there is no receiver.
     (if (not (call is-owner))
-      (let message "An addressed event subscription or adapter requires a stable target/address lifetime")
+      (let message
+        (paragraph
+          "An addressed event subscription or adapter requires a stable target/address lifetime"
+        )
+      )
       (call (. frame diagnose) place .stated (call (. program store-atom) message))
       (return false)
     )
@@ -16297,7 +16748,11 @@
     (let facet (. ([] (. types properties) found) facet))
     (if (and (!= facet (. U32 max)) (not (call declares-name ([] (. facets modules) facet) ([] (. facets decls) facet) name true)))
       (if (== ([] (. facets modules) facet) module)
-        (let message (str (. name text) " is private to facet " (call facet-name-of facet) ", so a constructor's argument can't give it a value"))
+        (let message
+          (paragraph
+            (str (. name text) " is private to facet " (call facet-name-of facet) ", so a constructor's argument can't give it a value")
+          )
+        )
         (call (. frame diagnose) value-syntax .stated (call (. program store-atom) message))
       )
       (return)
@@ -16594,12 +17049,18 @@
     (param fact TypeProperty)
     ; Whether a stored property with no value written is of a facet's type, which no constructor makes,
     ; and reports so.
-    (return-if false (if (or (call is-constructor-parameter (. fact name)) (!= (call (. instances fill-argument) instance (. fact name)) (. U32 max)))))
+    (if (or (call is-constructor-parameter (. fact name)) (!= (call (. instances fill-argument) instance (. fact name)) (. U32 max)))
+      (return false)
+    )
     (let facet (call (. types facet-of-type) (. fact type)))
     (return-if false (if (not facet)))
     (let shown (call type-short-name types (. fact type)))
     (let made (call type-short-name types (call (. types facet-owner) facet)))
-    (let message (str (. fact name text) " is a " shown ", a facet of " made ", which has no constructor to give it its first value; give it a value, or make it optional"))
+    (let message
+      (paragraph
+        (str (. fact name text) " is a " shown ", a facet of " made ", which has no constructor to give it its first value; give it a value, or make it optional")
+      )
+    )
     (call (. facts record-diagnostic) instance owner site .stated (call (. program store-atom) message))
     (return true)
   )
@@ -16624,7 +17085,11 @@
         )
       )
     )
-    (let message (str "Default of " (. fact name text) " never finishes: " (call (. ", and " join) steps) " again. Give one of these fields a value, make it lazy with :=, or make it optional"))
+    (let message
+      (paragraph
+        (str "Default of " (. fact name text) " never finishes: " (call (. ", and " join) steps) " again. Give one of these fields a value, make it lazy with :=, or make it optional")
+      )
+    )
     (call (. facts record-diagnostic) instance owner site .stated (call (. program store-atom) message))
     (return true)
   )
@@ -17766,7 +18231,11 @@
             (call report-missing-type item (. frame env))
           )
           (if (== (. facts diagnostics length) reported)
-            (let text "Only types may be written in parentheses after \"is\"; to test what the fields hold, match the value with an arm, as in \"| (3, name)\"")
+            (let text
+              (paragraph
+                "Only types may be written in parentheses after \"is\"; to test what the fields hold, match the value with an arm, as in \"| (3, name)\""
+              )
+            )
             (call (. frame diagnose) right .stated (call (. program store-atom) text))
           )
           (return)
@@ -17803,7 +18272,11 @@
     (let facet (call (. types facet-of-type) target))
     (return-if false (if (not facet)))
     (let owner (call (. types facet-owner) facet))
-    (let message (str (call type-short-name types target) " is a facet, which every " (call type-short-name types owner) " has, so no value is tested for it"))
+    (let message
+      (paragraph
+        (str (call type-short-name types target) " is a facet, which every " (call type-short-name types owner) " has, so no value is tested for it")
+      )
+    )
     (call (. frame diagnose) syntax .stated (call (. program store-atom) message))
     (return true)
   )
@@ -17972,7 +18445,16 @@
     ; test record what makes it (`want-member`).
     (if-expr (and tests (is ([] (. tree nodes) operand) .node-list-syntax)) (call (. (call Want) adding) .want-member) (call Want))
     (where
-      (lazy tests (if-expr is-right (or (== op .is-in-op) (== op .not-in-op)) (or (== op .has-op) (== op .has-not-op))))
+      (lazy tests
+        (block
+          (case? is-right
+            (or (== op .is-in-op) (== op .not-in-op))
+          )
+          (default
+            (or (== op .has-op) (== op .has-not-op))
+          )
+        )
+      )
     )
   )
   (fn-do _ compares-machine-case Bool
@@ -17991,7 +18473,11 @@
     )
     (let test (if-expr (== op .equals-op) "is" "is not"))
     (let written (str "." (. name text)))
-    (let message (str "A state machine's case is tested with \"is\" or \"is not\", which count the cases nested in it; write \"" test " " written "\" in place of \"" op " " written "\""))
+    (let message
+      (paragraph
+        (str "A state machine's case is tested with \"is\" or \"is not\", which count the cases nested in it; write \"" test " " written "\" in place of \"" op " " written "\"")
+      )
+    )
     (call (. frame diagnose) symbol .stated (call (. program store-atom) message))
     (return true)
   )
@@ -18931,7 +19417,9 @@
     (return-if false (if (is-not ([] (. tree nodes) written) .node-list-syntax)))
     (let callee (call operator-callee id))
     (return-if false (if (or (== callee no-instance) (!= (. ([] (. instances rows) callee) module) (. types list-decl module)))))
-    (return-if false (if (or (!= (. ([] (. instances rows) callee) self-type) list) (not (call same-decl (call class-ref types list) (. types list-decl))))))
+    (if (or (!= (. ([] (. instances rows) callee) self-type) list) (not (call same-decl (call class-ref types list) (. types list-decl))))
+      (return false)
+    )
     (let item (call first-arg list))
     (return-if false (if (or (== item no-type) (== item invalid-type))))
     (let kind (call (. types intrinsic-of) item))
@@ -19006,10 +19494,33 @@
     (param right SyntaxId)
     (param want Want)
     (if (call (. tree coalesces-condition) id left)
-      (call (. frame diagnose) id .stated (call (. program store-atom) "`value if condition ?? other` is not a choice of two values. Write `if condition then value else other`."))
+      (call (. frame diagnose)
+        (block
+          (arg id)
+          (arg .stated)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg
+                  (paragraph
+                    "`value if condition ?? other` is not a choice of two values. Write `if condition then value else other`."
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
       (return invalid-type)
     )
-    (let lhs (call infer-tested left (if-expr (call (. want asks) .want-fitting) (call (. (call Want) asking) .want-fitting (. want type)) (call Want))))
+    (let lhs
+      (call infer-tested
+        (block
+          (arg left)
+          (arg (if-expr (call (. want asks) .want-fitting) (call (. (call Want) asking) .want-fitting (. want type)) (call Want)))
+        )
+      )
+    )
     (call forget-carried left)
     (+= skippable-depth 1)
     (let rhs (if-expr (call shared-symbol right) (call infer right) (call infer-comparand right lhs)))
@@ -19253,15 +19764,24 @@
       (return (. types string-type))
     )
     (let operand
-      (scope (if-expr (and (== op .optional-force-op) (== operand-syntax (. arm-typing forced))) forced-type no-type)
-        (lazy forced-type (call (. facts node-type) instance operand-syntax))
+      (block
+        (scope (if-expr (and (== op .optional-force-op) (== operand-syntax (. arm-typing forced))) forced-type no-type)
+          (lazy forced-type (call (. facts node-type) instance operand-syntax))
+        )
       )
     )
     (let held false)
     (if (and (== operand no-type) (== op .not-op))
       (= operand (call infer-tested operand-syntax))
       (else-if (== operand no-type)
-        (let found (call infer-found operand-syntax (if-expr (== op .optional-force-op) (call (. (call Want) adding) .want-forced) (call Want))))
+        (let found
+          (call infer-found
+            (block
+              (arg operand-syntax)
+              (arg (if-expr (== op .optional-force-op) (call (. (call Want) adding) .want-forced) (call Want)))
+            )
+          )
+        )
         (= operand (. found type))
         (= held (. found held))
       )
@@ -19980,11 +20500,43 @@
     ; the object that owns the loop. An event that is not public, or one published by key, does not
     ; bubble, which is an error at the node.
     (if (. event is-private)
-      (call (. frame diagnose) id .stated (call (. program store-atom) (str "Event \"" (. event name text) "\" is not public, so it does not bubble and cannot be named by its class")))
+      (call (. frame diagnose)
+        (block
+          (arg id)
+          (arg .stated)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg
+                  (paragraph
+                    (str "Event \"" (. event name text) "\" is not public, so it does not bubble and cannot be named by its class")
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
       (return (call Found invalid-type))
     )
     (if (!= (. event key) no-type)
-      (call (. frame diagnose) id .stated (call (. program store-atom) (str "Keyed event \"" (. event name text) "\" does not bubble, so it cannot be named by its class")))
+      (call (. frame diagnose)
+        (block
+          (arg id)
+          (arg .stated)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg
+                  (paragraph
+                    (str "Keyed event \"" (. event name text) "\" does not bubble, so it cannot be named by its class")
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
       (return (call Found invalid-type))
     )
     (return (call use-event id event want))
@@ -20443,7 +20995,11 @@
     (let text
       (scope (if-expr byte over-bytes over-items)
         (lazy over-bytes "Characters in a pattern over bytes must be ASCII; match other bytes by number")
-        (lazy over-items (str "Characters in a pattern over " (call type-display types (. stream-view item)) " items must fit that type"))
+        (lazy over-items
+          (paragraph
+            (str "Characters in a pattern over " (call type-display types (. stream-view item)) " items must fit that type")
+          )
+        )
       )
     )
     (call (. frame diagnose) id .stated (call (. program store-atom) text))
@@ -20745,7 +21301,7 @@
   ; it that stands for it what it was asked.
   (blank)
   (prop + type TypeId (= no-type))
-  (prop + roles U32 (= 0))
+  (prop + roles U32)
   (prop + place SyntaxId (= 0))
   (fn-expr + asks Bool
     (param role WantRole)
@@ -20777,9 +21333,9 @@
   (prop + type TypeId)
   (prop + link TypeId (= no-type))
   (prop + event U32 (= (. U32 max)))
-  (prop + kept Bool (= false))
-  (prop + doubted Bool (= false))
-  (prop + held Bool (= false))
+  (prop + kept Bool)
+  (prop + doubted Bool)
+  (prop + held Bool)
   (fn-expr + typed Found
     (param type TypeId)
     (call Found type link event kept doubted held)

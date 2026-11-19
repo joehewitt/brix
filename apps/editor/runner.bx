@@ -46,7 +46,7 @@
   (prop _ is-serving _ (= false))
   (prop _ is-closed _ (= false))
   (fn-do + This _
-    (= session (call TerminalSession (?? (call env "HOME") "/")))
+    (lazy session (call TerminalSession (?? (call env "HOME") "/")))
     (= has-toolchain (call runner-finds-toolchain))
   )
   (fn-expr + is-busy Bool :get
@@ -123,7 +123,15 @@
     )
     (if (!= tools 0)
       (let ignored (call (. session execute) "/usr/bin/xcode-select" (list "--install") variables))
-      (call note "Brix needs Apple’s Command Line Tools to build programs. Install them in the window macOS opened, then choose Install Brix Toolchain again.")
+      (call note
+        (block
+          (arg
+            (paragraph
+              "Brix needs Apple’s Command Line Tools to build programs. Install them in the window macOS opened, then choose Install Brix Toolchain again."
+            )
+          )
+        )
+      )
       (= state (. RunState idle))
       (return)
     )
@@ -252,7 +260,15 @@
     (let compiler (call installed-compiler variables))
     (= has-toolchain (!= compiler null))
     (throw (call Error "Running a Brix program needs the Brix toolchain. Choose Install Brix Toolchain from the Run menu, then run again.") (if (not compiler)))
-    (return (call RunToolchain (?? ([] variables "HOME") "/") compiler (call BuildServiceCommand (list compiler "--serve") variables)))
+    (return
+      (call RunToolchain
+        (block
+          (arg (?? ([] variables "HOME") "/"))
+          (arg compiler)
+          (arg (call BuildServiceCommand (list compiler "--serve") variables))
+        )
+      )
+    )
   )
   (fn-do _ halt _
     (= state (. RunState stopped))

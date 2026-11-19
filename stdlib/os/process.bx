@@ -385,7 +385,16 @@
   (let capacity Size 64)
   (while true
     (let pids ([] I32 capacity))
-    (let count (if-expr by-group (call C:brixProcessGroupMembers value pids capacity) (call C:brixChildProcesses value pids capacity)))
+    (let count
+      (block
+        (case? by-group
+          (call C:brixProcessGroupMembers value pids capacity)
+        )
+        (default
+          (call C:brixChildProcesses value pids capacity)
+        )
+      )
+    )
     (return-if (call (of List Int)) (if (<= count 0)))
     (if (< count capacity)
       (let listed (list Int))

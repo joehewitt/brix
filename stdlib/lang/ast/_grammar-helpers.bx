@@ -590,7 +590,17 @@
             (match? ([] (. tree nodes) ([] args earlier-offset))
               (case (call .node-argument earlier)
                 (if (== (. earlier name) name)
-                  (call reject-syntax tree ([] (. tree nodes loc) arg) (str "\"" (. name text) "\" is given twice in one call; the bullets on a line all belong to one call, so give a nested call its bullets inside parentheses, as in \"• where (some(each.kids) • where each > 2)\""))
+                  (call reject-syntax
+                    (block
+                      (arg tree)
+                      (arg ([] (. tree nodes loc) arg))
+                      (arg
+                        (paragraph
+                          (str "\"" (. name text) "\" is given twice in one call; the bullets on a line all belong to one call, so give a nested call its bullets inside parentheses, as in \"• where (some(each.kids) • where each > 2)\"")
+                        )
+                      )
+                    )
+                  )
                 )
               )
             )
@@ -1337,7 +1347,16 @@
   (param derived (? SheetDerivation))
   (param header (? (of ImmutableArray ArgumentVariant)))
   (param body (? (of ImmutableArray SyntaxId)))
-  (let base (if-expr derived (. derived base) (call (. tree append) (call ASTTypeIdentifier location (call (. tree atom) "StyleSheet") false))))
+  (let base
+    (block
+      (case? derived
+        (. derived base)
+      )
+      (default
+        (call (. tree append) (call ASTTypeIdentifier location (call (. tree atom) "StyleSheet") false))
+      )
+    )
+  )
   (let inherits (call sequence-singleton tree base))
   (blank)
   (let no-type-args (call (of ImmutableArray SyntaxId)))
@@ -1947,8 +1966,16 @@
       )
     )
   )
-  (lazy defaulted "\"match?\" differs from \"match\" only where no arm is taken, and this default arm is taken wherever no arm before it is; write \"match\"")
-  (lazy raised "\"match?\" differs from \"match\" only where no arm is taken, and this arm raises wherever no arm before it is taken; write \"match\"")
+  (lazy defaulted
+    (paragraph
+      "\"match?\" differs from \"match\" only where no arm is taken, and this default arm is taken wherever no arm before it is; write \"match\""
+    )
+  )
+  (lazy raised
+    (paragraph
+      "\"match?\" differs from \"match\" only where no arm is taken, and this arm raises wherever no arm before it is taken; write \"match\""
+    )
+  )
 )
 
 (fn-expr _ unless-pattern SyntaxId
@@ -2134,7 +2161,11 @@
       )
     )
   )
-  (lazy beside-arms "A local rule holds only its arms; declare a lazy local it reads below the action of an arm, or beside the match")
+  (lazy beside-arms
+    (paragraph
+      "A local rule holds only its arms; declare a lazy local it reads below the action of an arm, or beside the match"
+    )
+  )
   (let value
     (match ([] (. tree nodes) checked)
       (case (all (call .node-block block) ({} is-pattern))
@@ -2319,11 +2350,19 @@
   (param name Atom)
   (param condition (? SyntaxId))
   (let given (call (of scratch-array SyntaxId) tree 2))
-  (= ([] given 1) (call (. tree make-argument) loc (?? condition (call (. tree append) (call ASTIdentifier loc (call (. tree atom) "true") false))) null))
+  (= ([] given 1)
+    (call (. tree make-argument)
+      (block
+        (arg loc)
+        (arg (?? condition (call (. tree append) (call ASTIdentifier loc (call (. tree atom) "true") false))))
+        (arg null)
+      )
+    )
+  )
   (= ([] given 0) (call (. tree make-argument) loc (call (. tree append) (call ASTString loc (call (. tree store-string) (. name text)))) null))
   (let callee (call (. tree append) (call ASTTypeIdentifier loc (call (. tree atom) "ThemeTag") false)))
   (let operands (call (. tree call-operands) (call (of RowRange SyntaxId)) (call (. tree store-children) (call scratch-items given 2))))
-  (let call (call (. tree append) (call ASTCallExpression loc callee operands 0u8 false)))
+  (let call (call (. tree append) (call ASTCallExpression loc callee operands 0 false)))
   (let property (call (. tree append) (call ASTIdentifier loc (call (. tree atom) "theme-tag") false)))
   (return (call (. tree append) (call ASTAssign loc (. Operator eq-op) property call)))
 )
@@ -2339,7 +2378,11 @@
   (match? ([] (. tree nodes) type)
     (case (call .node-type-identifier named)
       (if (and (== (. named name text) "This") (not (. named is-declare)))
-        (let message "Root <This> cannot bind theme tags; bind them with `for` on the element that makes the object")
+        (let message
+          (paragraph
+            "Root <This> cannot bind theme tags; bind them with `for` on the element that makes the object"
+          )
+        )
         (throw (call BrixSyntaxError (call (. tree location) ([] bindings 0)) message (. tree source) (. tree source-path)))
       )
     )
@@ -2418,7 +2461,18 @@
       (= ([] (. tree nodes) place) (call ASTIdentifier (call (. tree location) place) (. row name) true))
     )
     (case (call .node-get-expression row)
-      (= ([] (. tree nodes) place) (call ASTGetExpression (call (. tree location) place) (. row object) (. row name) true (. row is-optional) (. row is-loop)))
+      (= ([] (. tree nodes) place)
+        (call ASTGetExpression
+          (block
+            (arg (call (. tree location) place))
+            (arg (. row object))
+            (arg (. row name))
+            (arg true)
+            (arg (. row is-optional))
+            (arg (. row is-loop))
+          )
+        )
+      )
     )
   )
 )
@@ -3514,7 +3568,16 @@
   (while (> index 0)
     (-= index 1)
     (let binding ([] bindings index))
-    (let held (if-expr (== index (- (. bindings length) 1)) inner (call (. tree append) (call ASTBlock loc (call (. tree store-child) inner)))))
+    (let held
+      (match index
+        (case= (- (. bindings length) 1)
+          inner
+        )
+        (default
+          (call (. tree append) (call ASTBlock loc (call (. tree store-child) inner)))
+        )
+      )
+    )
     (= inner (call (. tree append) (call ASTStackLocalBindingBlock loc (. binding name) (. binding value) held)))
   )
   (return inner)
@@ -3528,9 +3591,28 @@
   (let annotations (call section-annotations tree loc (. body annotations) sections true))
   (let bindings (. sections bindings))
   (let holds (call names-cancel (. sections without)))
-  (return-if (call stack-bound tree loc bindings (. body body)) (if (and (== (. annotations length) 0) (> (. bindings length) 0) (not holds))))
+  (if (and (== (. annotations length) 0) (> (. bindings length) 0) (not holds))
+    (return (call stack-bound tree loc bindings (. body body)))
+  )
   (let masks (call do-annotation-masks loc annotations))
-  (let block (call (. tree append) (call ASTDoBlock loc (. body body) (. masks effects) (. masks features) holds (call lowered-bans tree annotations))))
+  (let block
+    (call (. tree append)
+      (block
+        (arg
+          (call ASTDoBlock
+            (block
+              (arg loc)
+              (arg (. body body))
+              (arg (. masks effects))
+              (arg (. masks features))
+              (arg holds)
+              (arg (call lowered-bans tree annotations))
+            )
+          )
+        )
+      )
+    )
+  )
   (return-if block (if (== (. bindings length) 0)))
   (return (call stack-bound tree loc bindings (call (. tree append) (call ASTBlock loc (call (. tree store-child) block)))))
 )

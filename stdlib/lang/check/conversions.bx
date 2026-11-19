@@ -100,7 +100,16 @@
       )
     )
     (let relation (call compare-held source target))
-    (let fitted (if-expr (. ([] (. types completions) target) has-variables) (?? (call (. relations complete-from) target source) target) target))
+    (let fitted
+      (block
+        (case? (. ([] (. types completions) target) has-variables)
+          (?? (call (. relations complete-from) target source) target)
+        )
+        (default
+          target
+        )
+      )
+    )
     (let asked
       (scope (or requested (== reason .reason-operator) (call fitting-literal value-syntax fitted) lowers)
         (lazy requested (or cast (== reason .reason-explicit) (== reason .reason-print)))
@@ -268,7 +277,15 @@
     ; the values it gives.
     (let shown (call type-source types (. relation from)))
     (let reason "it has no truth to test, and \"as\" does not read the values it gives")
-    (call (. frame diagnose) syntax .stated (call (. program store-atom) (str shown " cannot become Bool: " reason "; read them instead")) (. relation from) (. relation to))
+    (call (. frame diagnose)
+      (block
+        (arg syntax)
+        (arg .stated)
+        (arg (call (. program store-atom) (str shown " cannot become Bool: " reason "; read them instead")))
+        (arg (. relation from))
+        (arg (. relation to))
+      )
+    )
   )
   (fn-expr _ unasked TypeDiagnosticKind
     (param relation Relation)
@@ -302,7 +319,11 @@
       (call (. instances mark-may-panic) (. frame instance))
       (else-if (!= from-size to-size)
         (let named (str (call type-source types from) " cannot be cast to " (call type-source types to)))
-        (let message (str named "; their items are " from-size " and " to-size " bytes, and a cast keeps the count of items"))
+        (let message
+          (paragraph
+            (str named "; their items are " from-size " and " to-size " bytes, and a cast keeps the count of items")
+          )
+        )
         (call (. frame diagnose) syntax .stated (call (. program store-atom) message) from to)
       )
     )
@@ -1219,7 +1240,16 @@
       (= args (call (. scratch types since) mark))
     )
     (let decl (. relation converter-decl))
-    (let effects (if-expr restricted (call callee-effects frame (. relation converter-module) decl) (call declared-effects (. frame program) (. relation converter-module) decl)))
+    (let effects
+      (block
+        (case? restricted
+          (call callee-effects frame (. relation converter-module) decl)
+        )
+        (default
+          (call declared-effects (. frame program) (. relation converter-module) decl)
+        )
+      )
+    )
     (let callee
       (call (. instances intern)
         (block
@@ -1337,8 +1367,10 @@
     (if (and (!= wanted no-type) (!= wanted (. types void-type)))
       (let relation (call (. relations compare) returned wanted false false null (. frame module)))
       (let unasked
-        (scope (and implied (not (and (== wanted (. types bool-type)) (call is-filter-condition types program source))))
-          (lazy implied (!= reason .reason-explicit))
+        (block
+          (scope (and implied (not (and (== wanted (. types bool-type)) (call is-filter-condition types program source))))
+            (lazy implied (!= reason .reason-explicit))
+          )
         )
       )
       (if (or (not (call relation-legal relation)) (and unasked (not (call (. relations implicit) relation))))

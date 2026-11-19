@@ -548,8 +548,26 @@
       (+ (* min-size (call Coord count)) (* gap (call Coord (- count 1))))
     )
     (where
-      (lazy available (if-expr (== orient (. Orientation vertical)) (?? (. query inline available) (. query block available)) (. query block available)))
-      (lazy maximum (if-expr (== orient (. Orientation vertical)) (?? (. query inline max) (. query block max)) (. query block max)))
+      (lazy available
+        (match orient
+          (case= (. Orientation vertical)
+            (?? (. query inline available) (. query block available))
+          )
+          (default
+            (. query block available)
+          )
+        )
+      )
+      (lazy maximum
+        (match orient
+          (case= (. Orientation vertical)
+            (?? (. query inline max) (. query block max))
+          )
+          (default
+            (. query block max)
+          )
+        )
+      )
       (lazy count (?? (call explicit-track-count box) 1))
       (lazy min-size (call max 1 (call min-track-size box)))
       (lazy gap (call cross-gap box))

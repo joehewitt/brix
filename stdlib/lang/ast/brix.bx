@@ -138,7 +138,9 @@
   (let heads (call brix-form-heads tape scratch))
   (let checker (call BrixChecker brix-catalog tape heads))
   (call (. checker check))
-  (return-if (call List (in (call BrixReport (call (. tape token-location) (. each index)) (call (. checker message) each)) (. checker issues))) (if (!= (. checker issues length) 0)))
+  (if (!= (. checker issues length) 0)
+    (return (call List (in (call BrixReport (call (. tape token-location) (. each index)) (call (. checker message) each)) (. checker issues))))
+  )
   (let tree
     (call brix-reduced source "" tape heads scratch
       (block
@@ -391,7 +393,17 @@
                 (arg is-static)
                 (arg key)
                 (arg (call scratch-items errors error-filled))
-                (arg (call section-annotations tree loc (call scratch-items annotations annotation-filled) sections false))
+                (arg
+                  (call section-annotations
+                    (block
+                      (arg tree)
+                      (arg loc)
+                      (arg (call scratch-items annotations annotation-filled))
+                      (arg sections)
+                      (arg false)
+                    )
+                  )
+                )
                 (arg stream-item)
                 (arg (call scratch-items variants variant-filled))
                 (arg body)
@@ -503,7 +515,19 @@
         )
       )
     )
-    (let match-op (if-expr (call atom-is op "is!") (. TypeMatchOperator match-exactly) (if-expr (call atom-is op "is~") (. TypeMatchOperator match-similar) (. TypeMatchOperator match-convertible))))
+    (let match-op
+      (block
+        (case? (call atom-is op "is!")
+          (. TypeMatchOperator match-exactly)
+        )
+        (case? (call atom-is op "is~")
+          (. TypeMatchOperator match-similar)
+        )
+        (default
+          (. TypeMatchOperator match-convertible)
+        )
+      )
+    )
     (let constrained (call reduce-type left))
     (let bound (call reduce-type right))
     (return
@@ -900,7 +924,7 @@
           (let amount (call signed-amount (. numeric value)))
           (if amount
             (let lead (call access-text access))
-            (let suffix (? String) (if-expr (and aliases (!= (. aliases length) 0)) (. ([] aliases 0) text) null))
+            (let suffix (? String) (only-if (. ([] aliases 0) text) (if (and aliases (!= (. aliases length) 0)))))
             (throw (call BrixSyntaxError ([] (. tree nodes loc) (. numeric value)) (call signed-unit-advice lead (. name text) suffix amount)))
           )
         )
@@ -912,10 +936,10 @@
     ; A number in a unit written with a sign, as `-1foo` is, or none.
     (match ([] (. tree nodes) id)
       (case (call .node-integer-syntax row)
-        (if-expr (and (. row unit) (call (. row value starts-with) "-")) (str (. row value) (. row unit text)) null)
+        (only-if (str (. row value) (. row unit text)) (if (and (. row unit) (call (. row value starts-with) "-"))))
       )
       (case (call .node-float-syntax row)
-        (if-expr (and (. row unit) (call (. row value starts-with) "-")) (str (. row value) (. row unit text)) null)
+        (only-if (str (. row value) (. row unit text)) (if (and (. row unit) (call (. row value starts-with) "-"))))
       )
       (default
         null
@@ -983,8 +1007,12 @@
     (return-if (call constraint index) (if (== kind .constraint-head)))
     (let loc (call located (call begin-at index) index))
     (let type (call reduce-type (+ index 2)))
-    (return-if (call (. ArgumentVariant implements-declaration) (call (. tree append) (call ASTImplementsDeclaration loc type))) (if (== kind .implements-head)))
-    (return-if (call (. ArgumentVariant sees-declaration) (call (. tree append) (call ASTSeesDeclaration loc type))) (if (== kind .sees-head)))
+    (if (== kind .implements-head)
+      (return (call (. ArgumentVariant implements-declaration) (call (. tree append) (call ASTImplementsDeclaration loc type))))
+    )
+    (if (== kind .sees-head)
+      (return (call (. ArgumentVariant sees-declaration) (call (. tree append) (call ASTSeesDeclaration loc type))))
+    )
     (return (call (. ArgumentVariant using-declaration) (call (. tree append) (call ASTUsingDeclaration loc type))))
   )
   (fn-do _ extension SyntaxId (?! BrixSyntaxError)
@@ -1306,7 +1334,22 @@
       (+= filled 1)
       (= item (call (. tape after) item))
     )
-    (return (call (. tree append) (call ASTEffectDeclaration (call located begin index) (call access-at access-index) (call atom-at name-index 0) (call (. tree store-atoms) (call scratch-items claims filled)))))
+    (return
+      (call (. tree append)
+        (block
+          (arg
+            (call ASTEffectDeclaration
+              (block
+                (arg (call located begin index))
+                (arg (call access-at access-index))
+                (arg (call atom-at name-index 0))
+                (arg (call (. tree store-atoms) (call scratch-items claims filled)))
+              )
+            )
+          )
+        )
+      )
+    )
   )
   (fn-do _ style-sheet SyntaxId (?! BrixSyntaxError)
     (param index Index)
@@ -1359,7 +1402,16 @@
     (let loc (call located begin index))
     (let header (call scratch-items variants header-filled))
     (let body (call scratch-items members member-filled))
-    (return-if (call placed (call make-style-sheet-extension-declaration tree loc (call reduce-type named) header body) loc) (if (== (call head index) .style-extend-head)))
+    (if (== (call head index) .style-extend-head)
+      (return
+        (call placed
+          (block
+            (arg (call make-style-sheet-extension-declaration tree loc (call reduce-type named) header body))
+            (arg loc)
+          )
+        )
+      )
+    )
     (return (call placed (call make-style-sheet-declaration tree loc (call atom-at named 0) derived header body) loc))
   )
   (fn-do _ style-rule SyntaxId (?! BrixSyntaxError)
@@ -1657,7 +1709,16 @@
   )
   (fn-expr _ attribute-order-error BrixSyntaxError
     (param index Index)
-    (call BrixSyntaxError (call MatchLocation place place) (str "(" (call (. tape atom-text) (+ index 1)) " …) is out of order. An element's attributes follow its type in this order: (id: …), (slot: …), (param: …), (value: …) or (text: …), then its (• …) rules, then (for: …)."))
+    (call BrixSyntaxError
+      (block
+        (arg (call MatchLocation place place))
+        (arg
+          (paragraph
+            (str "(" (call (. tape atom-text) (+ index 1)) " …) is out of order. An element's attributes follow its type in this order: (id: …), (slot: …), (param: …), (value: …) or (text: …), then its (• …) rules, then (for: …).")
+          )
+        )
+      )
+    )
     (where
       (lazy place (call (. tape token-location) index))
     )
@@ -1676,7 +1737,16 @@
       (if (< value close)
         (= condition (call expression value))
       )
-      (= ([] bindings position) (call theme-tag-row tree (call located (call begin-at cursor) cursor) (call atom-at named 0) condition))
+      (= ([] bindings position)
+        (call theme-tag-row
+          (block
+            (arg tree)
+            (arg (call located (call begin-at cursor) cursor))
+            (arg (call atom-at named 0))
+            (arg condition)
+          )
+        )
+      )
       (= cursor (call (. tape after) cursor))
     )
     (return (call scratch-items bindings count))
@@ -1794,7 +1864,16 @@
   (fn-do _ probe-string (of ImmutableArray SyntaxId) (?! BrixSyntaxError)
     (param index Index)
     (let close (call (. tape close-of) index))
-    (return-if (call sequence-singleton tree (call (. tree append) (call ASTString (call located (call begin-at index) index) (call (. tree store-string) "")))) (if (>= (+ index 2) close)))
+    (if (>= (+ index 2) close)
+      (return
+        (call sequence-singleton
+          (block
+            (arg tree)
+            (arg (call (. tree append) (call ASTString (call located (call begin-at index) index) (call (. tree store-string) ""))))
+          )
+        )
+      )
+    )
     (return (call probe-items index))
   )
   (fn-do _ probe-part SyntaxId (?! BrixSyntaxError)
@@ -1913,7 +1992,9 @@
         )
       )
     )
-    (return-if (call (. tree append) (call ASTStateTrigger loc .state-trigger-if (call (. tree store-child) (call expression first)))) (if (call atom-is kind "if")))
+    (if (call atom-is kind "if")
+      (return (call (. tree append) (call ASTStateTrigger loc .state-trigger-if (call (. tree store-child) (call expression first)))))
+    )
     (if (call atom-is kind "whenever")
       (let closure (call make-closure tree loc false null (call expression first)))
       (return (call (. tree append) (call ASTStateTrigger loc .state-trigger-whenever (call (. tree store-child) closure))))
@@ -1932,7 +2013,16 @@
     (if (== kind .of-label-head)
       (let value (call expression (+ item 2)))
       (let body (call optional-block begin index (call (. tape after) item) close))
-      (let transformed (if-expr body (call (. tree append) (call ASTStreamTransform loc matched body false)) matched))
+      (let transformed
+        (block
+          (case? body
+            (call (. tree append) (call ASTStreamTransform loc matched body false))
+          )
+          (default
+            matched
+          )
+        )
+      )
       (return
         (call (. tree append)
           (block
@@ -1945,7 +2035,16 @@
       (let container (call expression (+ item 2)))
       (let clauses (call loop-clauses (call (. tape after) (+ item 2)) (call (. tape close-of) item)))
       (let body (call optional-block begin index (call (. tape after) item) close))
-      (let transformed (if-expr body (call (. tree append) (call ASTStreamTransform loc matched body false)) matched))
+      (let transformed
+        (block
+          (case? body
+            (call (. tree append) (call ASTStreamTransform loc matched body false))
+          )
+          (default
+            matched
+          )
+        )
+      )
       (let stream-match (call (. tree append) (call ASTStreamMatch loc transformed)))
       (return
         (call make-iterator-line
@@ -2103,7 +2202,9 @@
       )
     )
     (return-if (call stream-call index index index loc false) (if (== lead 92)))
-    (return-if (call (. tree append) (call ASTStreamEquality loc (call (. tree append) (call ASTIdentifier loc (call atom-at index 1) false)))) (if (== lead 36)))
+    (if (== lead 36)
+      (return (call (. tree append) (call ASTStreamEquality loc (call (. tree append) (call ASTIdentifier loc (call atom-at index 1) false)))))
+    )
     (return-if (call (. tree append) (call ASTStreamEquality loc (call number index loc))) (if (call is-number first last)))
     (return-if (call (. tree append) (call ASTStreamEquality loc (call atom-expression index))) (if (== lead 46)))
     (return-if (call (. tree append) (call ASTStreamEquality loc (call atom-expression index))) (if (and (== lead 39) (not is-doubled-quote))))
@@ -2147,7 +2248,22 @@
       (lazy lacks-second (>= second (call (. tape close-of) index)))
       (return (call (. tree append) (call ASTStreamCollectorMapping loc (call atom-at first 0) (call atom-at second 0))))
     )
-    (return-if (call (. tree append) (call ASTStreamCallExpressionArgument (call MatchLocation) (call (. tree append) (call ASTStreamMatch loc (call grammar (+ index 2)))))) (if (== kind .tilde-head)))
+    (if (== kind .tilde-head)
+      (return
+        (call (. tree append)
+          (block
+            (arg
+              (call ASTStreamCallExpressionArgument
+                (block
+                  (arg (call MatchLocation))
+                  (arg (call (. tree append) (call ASTStreamMatch loc (call grammar (+ index 2)))))
+                )
+              )
+            )
+          )
+        )
+      )
+    )
     (return (call (. tree append) (call ASTStreamCallExpressionArgument (call MatchLocation) (call expression index))))
   )
   (fn-do _ character-class SyntaxId (?! BrixSyntaxError)
@@ -2170,14 +2286,30 @@
       (let low-node
         (call (. tree append)
           (block
-            (arg (call ASTInteger loc (call (. tree store-string) (call character-literal-string loc low)) (call (. tree atom) "(char)")))
+            (arg
+              (call ASTInteger
+                (block
+                  (arg loc)
+                  (arg (call (. tree store-string) (call character-literal-string loc low)))
+                  (arg (call (. tree atom) "(char)"))
+                )
+              )
+            )
           )
         )
       )
       (let high-node
         (call (. tree append)
           (block
-            (arg (call ASTInteger loc (call (. tree store-string) (call character-literal-string loc high)) (call (. tree atom) "(char)")))
+            (arg
+              (call ASTInteger
+                (block
+                  (arg loc)
+                  (arg (call (. tree store-string) (call character-literal-string loc high)))
+                  (arg (call (. tree atom) "(char)"))
+                )
+              )
+            )
           )
         )
       )
@@ -2609,7 +2741,14 @@
     (let is-imperative (== (call head index) .fn-to-do-head))
     (let loc (call located begin index))
     (let sections (call scope-of flags variants-first))
-    (let names (call unlowered loc (call section-annotations tree loc (call annotation-atoms flags variants-first) sections false)))
+    (let names
+      (call unlowered
+        (block
+          (arg loc)
+          (arg (call section-annotations tree loc (call annotation-atoms flags variants-first) sections false))
+        )
+      )
+    )
     (let body (call sectioned-body tree loc sections is-imperative (call function-body item close)))
     (let constraints (call (. tree store-optional-children) (call parameter-constraints tree variants)))
     (let assignments (call (. tree store-optional-children) (call parameter-assignments tree variants)))
@@ -2922,7 +3061,16 @@
               )
             )
           )
-          (let transformed (if-expr body (call (. tree append) (call ASTStreamTransform loc matched body false)) matched))
+          (let transformed
+            (block
+              (case? body
+                (call (. tree append) (call ASTStreamTransform loc matched body false))
+              )
+              (default
+                matched
+              )
+            )
+          )
           (return
             (call (. tree append)
               (block
@@ -3070,7 +3218,16 @@
     (if (== (call head first) .assign-head)
       (let matched (call pattern (+ first 2)))
       (let subject (call expression (call (. tape after) (+ first 2))))
-      (let transformed (if-expr body (call (. tree append) (call ASTTypeTransform loc body matched is-union)) matched))
+      (let transformed
+        (block
+          (case? body
+            (call (. tree append) (call ASTTypeTransform loc body matched is-union))
+          )
+          (default
+            matched
+          )
+        )
+      )
       (return
         (call (. tree append)
           (block
@@ -3080,7 +3237,16 @@
       )
     )
     (let matched (call pattern first))
-    (let transformed (if-expr body (call (. tree append) (call ASTTypeTransform loc body matched is-union)) matched))
+    (let transformed
+      (block
+        (case? body
+          (call (. tree append) (call ASTTypeTransform loc body matched is-union))
+        )
+        (default
+          matched
+        )
+      )
+    )
     (return (call (. tree append) (call ASTStructureMatch loc transformed)))
   )
   (fn-do _ case-test SyntaxId (?! BrixSyntaxError)
@@ -3567,7 +3733,22 @@
     (param index Index)
     (param loc MatchLocation)
     (let kind (call head index))
-    (return-if (call (. tree append) (call ASTStreamMatch loc (call (. tree append) (call ASTStreamTransform loc (call grammar (+ index 2)) value false)))) (if (== kind .tilde-head)))
+    (if (== kind .tilde-head)
+      (return
+        (call (. tree append)
+          (block
+            (arg
+              (call ASTStreamMatch
+                (block
+                  (arg loc)
+                  (arg (call (. tree append) (call ASTStreamTransform loc (call grammar (+ index 2)) value false)))
+                )
+              )
+            )
+          )
+        )
+      )
+    )
     (throw (call unsupported-error index) (if (and (!= kind .alternative-head) (!= kind .every-match-head))))
     (return
       (call (. tree append)
@@ -3701,7 +3882,16 @@
     )
     (let sections (call scope-of scopes rows))
     (if sections
-      (return (call sectioned-do tree loc sections (call DoBody (call arm-body begin index rows close) (call annotation-atoms first scopes))))
+      (return
+        (call sectioned-do
+          (block
+            (arg tree)
+            (arg loc)
+            (arg sections)
+            (arg (call DoBody (call arm-body begin index rows close) (call annotation-atoms first scopes)))
+          )
+        )
+      )
     )
     (let body (call do-body first close begin index))
     (throw (call BrixSyntaxError loc "A plain `do` takes no match on its row; a match on a row of its own in a body of steps runs its arms as steps") (if (and (== (. body annotations length) 0) (is ([] (. tree nodes) (. body body)) .node-match-expression))))
@@ -3750,7 +3940,14 @@
           (= name (call (. tape after) name))
         )
         (else-if (call is-scope item)
-          (= ([] bindings bound-filled) (call StackBindingPartial (call atom-at (+ item 2) 0) (call expression (call (. tape after) (+ item 2)))))
+          (= ([] bindings bound-filled)
+            (call StackBindingPartial
+              (block
+                (arg (call atom-at (+ item 2) 0))
+                (arg (call expression (call (. tape after) (+ item 2))))
+              )
+            )
+          )
           (+= bound-filled 1)
         )
       )
@@ -3876,7 +4073,16 @@
       )
       (case= .default-head
         (let loc (call located begin index))
-        (let value (if-expr (and (< first close) (== (call (. tape after) first) close) (== (call head first) .inline-head)) (call expression (+ first 2)) (call located-block tree loc (call block-with-statements tree (call rows first close)))))
+        (let value
+          (block
+            (case? (and (< first close) (== (call (. tape after) first) close) (== (call head first) .inline-head))
+              (call expression (+ first 2))
+            )
+            (default
+              (call located-block tree loc (call block-with-statements tree (call rows first close)))
+            )
+          )
+        )
         (return (call (. tree append) (call ASTStructureMatch loc (call (. tree append) (call ASTTypeTransform loc value 0 false)))))
       )
       (case= .case-each-head
@@ -4262,11 +4468,32 @@
     (return-if (call (. tree append) (call ASTIdentifier loc (call (. tree atom-bytes) bytes (+ first 1) last) true)) (if (== lead 35)))
     (return-if (call (. tree append) (call ASTRefIdentifier loc (call (. tree atom-bytes) bytes (+ first 1) last))) (if (== lead 38)))
     (if (== lead 46)
-      (return-if (call (. tree append) (call ASTAnonymousCase loc (call (. tree atom-bytes) bytes (+ first 2) last) (call (of RowRange SyntaxId)) null)) (if (and (> (- last first) 2) (== ([] bytes (+ first 1)) 46))))
+      (if (and (> (- last first) 2) (== ([] bytes (+ first 1)) 46))
+        (return
+          (call (. tree append)
+            (block
+              (arg
+                (call ASTAnonymousCase
+                  (block
+                    (arg loc)
+                    (arg (call (. tree atom-bytes) bytes (+ first 2) last))
+                    (arg (call (of RowRange SyntaxId)))
+                    (arg null)
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
       (return (call (. tree append) (call ASTSymbol loc (call (. tree atom-bytes) bytes (+ first 1) last))))
     )
-    (return-if (call (. tree append) (call ASTStyleReadExpression loc 0 (call (. tree atom-bytes) bytes (+ first 1) last) false)) (if (== lead 36)))
-    (return-if (call (. tree append) (call ASTMarkupReadExpression loc 0 (call (. tree atom-bytes) bytes (+ first 1) last) false)) (if (== lead 37)))
+    (if (== lead 36)
+      (return (call (. tree append) (call ASTStyleReadExpression loc 0 (call (. tree atom-bytes) bytes (+ first 1) last) false)))
+    )
+    (if (== lead 37)
+      (return (call (. tree append) (call ASTMarkupReadExpression loc 0 (call (. tree atom-bytes) bytes (+ first 1) last) false)))
+    )
     (return-if (call (. tree append) (call ASTCIdentifier loc (call (. tree atom-bytes) bytes (+ first 2) last))) (if is-c-identifier))
     (lazy is-c-identifier (and (== lead 67) (> (- last first) 2) (== ([] bytes (+ first 1)) 58)))
     (return-if (call (. tree append) (call ASTTypeIdentifier loc (call (. tree atom-bytes) bytes first last) false)) (if is-capital))
@@ -4333,7 +4560,16 @@
     (while (and (< cursor last) (or (call is-digit ([] bytes cursor)) (== ([] bytes cursor) 39)))
       (+= cursor 1)
     )
-    (let integer (if-expr (== cursor integer-start) "0" (call strip-numeric-separators (call (. tree text-arena copy-span) bytes integer-start cursor))))
+    (let integer
+      (match cursor
+        (case= integer-start
+          "0"
+        )
+        (default
+          (call strip-numeric-separators (call (. tree text-arena copy-span) bytes integer-start cursor))
+        )
+      )
+    )
     (let tail (? String) null)
     (if (and (< cursor last) (== ([] bytes cursor) 46))
       (let fraction-start (+ cursor 1))
@@ -5079,7 +5315,23 @@
       (lazy is-property (and (> (- last first) 2) (== ([] bytes (+ first 1)) 46)))
       (return (call (. tree append) (call ASTTypeCase loc (call (. tree atom-bytes) bytes (+ first 1) last) 0 0)))
     )
-    (return-if (call (. tree append) (call ASTTypeEquality loc (call (. tree append) (call ASTIdentifier loc (call (. tree atom-bytes) bytes (+ first 1) last) false)) false)) (if (== lead 36)))
+    (if (== lead 36)
+      (return
+        (call (. tree append)
+          (block
+            (arg
+              (call ASTTypeEquality
+                (block
+                  (arg loc)
+                  (arg (call (. tree append) (call ASTIdentifier loc (call (. tree atom-bytes) bytes (+ first 1) last) false)))
+                  (arg false)
+                )
+              )
+            )
+          )
+        )
+      )
+    )
     (if (and (== lead 39) (not (and (> (- last first) 2) (== ([] bytes (+ first 1)) 39))))
       (return (call (. tree append) (call ASTTypeEquality loc (call atom-expression index) false)))
     )
@@ -5120,7 +5372,9 @@
       (let first (call (. tape start) index))
       (let last (call (. tape end) index))
       (let loc (call located begin index))
-      (return-if (call (. tree append) (call ASTTypeIdentifier loc (call (. tree atom-bytes) bytes (+ first 2) last) true)) (if (and (> (- last first) 2) (== ([] bytes first) 39) (== ([] bytes (+ first 1)) 39))))
+      (if (and (> (- last first) 2) (== ([] bytes first) 39) (== ([] bytes (+ first 1)) 39))
+        (return (call (. tree append) (call ASTTypeIdentifier loc (call (. tree atom-bytes) bytes (+ first 2) last) true)))
+      )
       (return (call (. tree append) (call ASTTypeIdentifier loc (call (. tree atom-bytes) bytes first last) false)))
     )
     (throw (call unsupported-error index) (if (not (call (. tape is-open) index))))
@@ -5383,7 +5637,16 @@
   )
   (fn-expr _ inline-markup-error BrixSyntaxError
     (param index Index)
-    (call BrixSyntaxError (call MatchLocation place place) "(<> …) cannot be written inside an expression. Give it as a row: an argument row, as in (call f (block (arg (<> …)))), a named argument, as in (call f (:name (<> …))), or an item, as in (item (<> …)); or name it with (let name (<> …)) first.")
+    (call BrixSyntaxError
+      (block
+        (arg (call MatchLocation place place))
+        (arg
+          (paragraph
+            "(<> …) cannot be written inside an expression. Give it as a row: an argument row, as in (call f (block (arg (<> …)))), a named argument, as in (call f (:name (<> …))), or an item, as in (item (<> …)); or name it with (let name (<> …)) first."
+          )
+        )
+      )
+    )
     (where
       (lazy place (call (. tape token-location) index))
     )
@@ -5440,7 +5703,16 @@
     (param form String)
     (param spelling String)
     (param hint String)
-    (call BrixSyntaxError (call MatchLocation place place) (str form " names no item, so its source is written `" spelling "`, and its rows read the item as `each`." hint))
+    (call BrixSyntaxError
+      (block
+        (arg (call MatchLocation place place))
+        (arg
+          (paragraph
+            (str form " names no item, so its source is written `" spelling "`, and its rows read the item as `each`." hint)
+          )
+        )
+      )
+    )
     (where
       (lazy place (call (. tape token-location) (+ index 2)))
     )

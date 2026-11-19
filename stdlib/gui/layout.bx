@@ -1011,7 +1011,16 @@
     (let filling fill)
     (return-if tracks (if (not filling)))
     (let span (call max (call gui-safe-span (. filling width)) 1))
-    (let count (if-expr (!= available null) (as (call max 1.0 (call floor (/ (+ available gap) (+ span gap)))) Size) (call max 1 cells)))
+    (let count
+      (block
+        (case? (!= available null)
+          (as (call max 1.0 (call floor (/ (+ available gap) (+ span gap)))) Size)
+        )
+        (default
+          (call max 1 cells)
+        )
+      )
+    )
     (let track (if-expr (. filling stretches) (call (. GridTrack flex) 1) (call (. GridTrack fixed) span)))
     (return
       (call (of List GridTrack)
@@ -1330,7 +1339,9 @@
   (param gap Length)
   (let child-query (call (. box derived-child-measure-query) query))
   (let available (. child-query inline available))
-  (return-if (call gui-layout-natural-size box orient query gap) (if (or (!= orient (. Orientation horizontal)) (not available))))
+  (if (or (!= orient (. Orientation horizontal)) (not available))
+    (return (call gui-layout-natural-size box orient query gap))
+  )
   (blank)
   (let fixed Length 0)
   (let shrinkable Length 0)

@@ -101,7 +101,11 @@
     (if (not held)
       (return)
     )
-    (let text (str "storing a managed pointer is not allowed in a GC-free zone (entered at " (call (. frame zone-entry)) "); compute into a zone buffer and publish after the zone exits"))
+    (let text
+      (paragraph
+        (str "storing a managed pointer is not allowed in a GC-free zone (entered at " (call (. frame zone-entry)) "); compute into a zone buffer and publish after the zone exits")
+      )
+    )
     (call (. frame diagnose) id .restricted (call (. program store-atom) text))
   )
   (fn-do + stored-interface-text String
@@ -121,7 +125,11 @@
     )
     (let machine (and (!= (. property value) 0) (is ([] (. tree nodes) (. property value)) .node-state-machine)))
     (if (or machine (is ([] (. tree nodes) (. property syntax)) .node-state-case))
-      (return (str shown " is an interface, so it cannot hold a state machine; declare the machine in the classes that are " shown))
+      (return
+        (paragraph
+          (str shown " is an interface, so it cannot hold a state machine; declare the machine in the classes that are " shown)
+        )
+      )
     )
     (let name (. (!! (. property name)) text))
     (let lead (str shown " is an interface, so it cannot store \"" name "\""))
@@ -135,7 +143,11 @@
     (let env (call (. types class-env) module (. property owner)))
     (let stated (call (. types evaluate-type) module tree (. property type-syntax) env))
     (call (. types env-release) env)
-    (return (str lead "; declare a getter for the types that are " shown " to answer, as in \"+ get " name " " (call type-source types stated) "\""))
+    (return
+      (paragraph
+        (str lead "; declare a getter for the types that are " shown " to answer, as in \"+ get " name " " (call type-source types stated) "\"")
+      )
+    )
   )
   (fn-expr _ assigns-early Bool
     (param lhs SyntaxId)
@@ -537,7 +549,11 @@
     (param id SyntaxId)
     (param subject String)
     ; Reports an assignment to a state machine or to one of its cases.
-    (let text (str subject " moves only by its transitions, so it cannot be assigned; add a transition that enters the case"))
+    (let text
+      (paragraph
+        (str subject " moves only by its transitions, so it cannot be assigned; add a transition that enters the case")
+      )
+    )
     (call (. frame diagnose) id .stated (call (. program store-atom) text))
     (return true)
   )
@@ -548,7 +564,11 @@
     (param rhs SyntaxId)
     (param want Want)
     (if (== op .bind-op)
-      (let message "\"<->\" binds a property of a markup element to a place, so it is written in the element's body; to store a value here, write \"=\"")
+      (let message
+        (paragraph
+          "\"<->\" binds a property of a markup element to a place, so it is written in the element's body; to store a value here, write \"=\""
+        )
+      )
       (call (. frame diagnose) id .stated (call (. program store-atom) message))
       (return invalid-type)
     )
@@ -560,7 +580,11 @@
       )
       (case .node-list-syntax
         (call infer rhs)
-        (let text "Names in brackets can be declared from a list, as in \". [x, y] = items\", but not assigned again; assign a tuple to them, as in \"x, y = items[0], items[1]\"")
+        (let text
+          (paragraph
+            "Names in brackets can be declared from a list, as in \". [x, y] = items\", but not assigned again; assign a tuple to them, as in \"x, y = items[0], items[1]\""
+          )
+        )
         (call (. frame diagnose) lhs .stated (call (. program store-atom) text))
         (return invalid-type)
       )
@@ -576,7 +600,21 @@
         (return (call chain-stored lhs stored))
       )
       (case (call .node-get-expression row)
-        (let stored (call infer-property-assign id lhs op (. row object) (. row name) rhs (. row is-optional) no-type want))
+        (let stored
+          (call infer-property-assign
+            (block
+              (arg id)
+              (arg lhs)
+              (arg op)
+              (arg (. row object))
+              (arg (. row name))
+              (arg rhs)
+              (arg (. row is-optional))
+              (arg no-type)
+              (arg want)
+            )
+          )
+        )
         (return (call chain-stored lhs stored))
       )
       (case (call .node-identifier row)
@@ -592,7 +630,13 @@
         )
         (lazy module-accessor (call names-module-accessor (. resolution module) (. resolution decl)))
         (if (== (. resolution kind) .resolve-function)
-          (call (. frame diagnose) id .stated (call (. program store-atom) (str "Function \"" (. row name text) "\" cannot be assigned")))
+          (call (. frame diagnose)
+            (block
+              (arg id)
+              (arg .stated)
+              (arg (call (. program store-atom) (str "Function \"" (. row name text) "\" cannot be assigned")))
+            )
+          )
           (return invalid-type)
         )
         (if (and (== (. resolution kind) .resolve-unresolved) styled)
@@ -626,7 +670,16 @@
     (let target (call target-of lhs (!= op .eq-op)))
     (let primed (and (== op .eq-op) (call expect-arms rhs target)))
     (= arms-given no-type)
-    (let written (if-expr (== op .eq-op) (call infer-with-expected rhs target (call (. (call Want) escaping) target rhs)) (call infer rhs)))
+    (let written
+      (match op
+        (case= .eq-op
+          (call infer-with-expected rhs target (call (. (call Want) escaping) target rhs))
+        )
+        (default
+          (call infer rhs)
+        )
+      )
+    )
     (let given (if-expr (and primed (!= arms-given no-type)) arms-given written))
     (if (or (== written invalid-type) (== target invalid-type))
       (return invalid-type)
@@ -696,7 +749,9 @@
     )
     (let result (call assign-into id lhs op target rhs value))
     (return-if invalid-type (if (== result invalid-type)))
-    (return-if invalid-type (if (== (call store-through-module-setter lhs name lhs target .call-store-setter) invalid-type)))
+    (if (== (call store-through-module-setter lhs name lhs target .call-store-setter) invalid-type)
+      (return invalid-type)
+    )
     (return result)
   )
   (fn-do _ store-through-module-setter TypeId
@@ -904,7 +959,16 @@
     (if (call is-batch-flush receiver)
       (let (tuple domain below) (call accessor-domain (. name text)))
       (let flag (and (!= (. domain length) 0) (not below)))
-      (let message (if-expr flag "Markup batch flush domain flags are immutable" "Markup batch flush summaries are immutable"))
+      (let message
+        (block
+          (case? flag
+            "Markup batch flush domain flags are immutable"
+          )
+          (default
+            "Markup batch flush summaries are immutable"
+          )
+        )
+      )
       (call (. frame diagnose) lhs .stated (call (. program store-atom) message))
       (return invalid-type)
     )
@@ -929,7 +993,11 @@
       )
     )
     (= assigns-plainly (== op .eq-op))
-    (let target (. (call read-property lhs (if-expr (!= object-syntax 0) object-syntax lhs) receiver name) type))
+    (let target
+      (block
+        (. (call read-property lhs (if-expr (!= object-syntax 0) object-syntax lhs) receiver name) type)
+      )
+    )
     (= assigns-plainly false)
     (if (== target invalid-type)
       (return invalid-type)
@@ -1162,7 +1230,11 @@
       (let stored (call property-named receiver name))
       (if (and stored (== (. ([] (. types properties) stored) storage-kind) .storage-eager))
         (let shown (call type-display types receiver))
-        (let message (str "Assigning " (. name text) " changes a " shown " struct that nothing holds, so the change is lost; assign " (. name text) " where the struct is held"))
+        (let message
+          (paragraph
+            (str "Assigning " (. name text) " changes a " shown " struct that nothing holds, so the change is lost; assign " (. name text) " where the struct is held")
+          )
+        )
         (call (. frame diagnose) id .stated (call (. program store-atom) message) receiver)
         (return true)
       )
@@ -1206,7 +1278,16 @@
     (return-if no-type (if (or (== receiver no-type) (== receiver invalid-type))))
     (let found (call property-named receiver name))
     (return-if no-type (if (not found)))
-    (return (if-expr (== (. ([] (. types properties) found) storage-kind) .storage-getter) no-type (. ([] (. types properties) found) type)))
+    (return
+      (block
+        (case? (== (. ([] (. types properties) found) storage-kind) .storage-getter)
+          no-type
+        )
+        (default
+          (. ([] (. types properties) found) type)
+        )
+      )
+    )
   )
   (fn-do _ forwards-setter Bool
     (param receiver TypeId)
@@ -1503,7 +1584,11 @@
       (return invalid-type)
     )
     (if (and (== object (. types string-type)) (not (call (. tree holds-text) object-syntax)))
-      (let message "Assigning an item of a text makes a new text, and nothing holds this one, so the change is lost; assign the item of a text a name holds")
+      (let message
+        (paragraph
+          "Assigning an item of a text makes a new text, and nothing holds this one, so the change is lost; assign the item of a text a name holds"
+        )
+      )
       (call (. frame diagnose) id .stated (call (. program store-atom) message))
       (return invalid-type)
     )

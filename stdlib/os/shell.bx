@@ -12,7 +12,11 @@
 (fn-do + login-shell-environment (map String String) (?! Error)
   (let shell (?? (call env "SHELL") "/bin/zsh"))
   (let script (str "printf " login-shell-marker "; /usr/bin/env -0; printf " login-shell-marker))
-  (let process (use (call Process shell (. ProcessStderr discard) (list "-l" "-i" "-c" script) (:group (. ProcessGroup own)))))
+  (let process
+    (block
+      (use (call Process shell (. ProcessStderr discard) (list "-l" "-i" "-c" script) (:group (. ProcessGroup own))))
+    )
+  )
   (call (. process close-input))
   (let watch (call LoginShellWatch process))
   (let output (call (. (call (of ChunkedTokenStream Byte) process) read)))

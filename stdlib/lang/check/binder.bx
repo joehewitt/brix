@@ -5,8 +5,8 @@
 (import /core/table)
 (import /lang/ast/ast)
 (import /lang/ast/ast-children)
-(import /lang/ast/ast-queries)
 (import /lang/ast/ast-nodes)
+(import /lang/ast/ast-queries)
 (import /lang/ast/decl)
 (import /lang/ast/module)
 (import /lang/ast/operator)
@@ -284,14 +284,63 @@
       (let name ([] (. tree atoms) (+ (. bans start) offset)))
       (let found (call (. program effect-named) module name))
       (if (not found)
-        (call (. bindings diagnostics append) (call Diagnostic module id .stated (call (. program store-atom) (str "Unknown name '" (. name text) "' after without"))))
+        (call (. bindings diagnostics append)
+          (block
+            (arg
+              (call Diagnostic
+                (block
+                  (arg module)
+                  (arg id)
+                  (arg .stated)
+                  (arg (call (. program store-atom) (str "Unknown name '" (. name text) "' after without")))
+                )
+              )
+            )
+          )
+        )
         (else-if (>= found (call most-effects))
-          (call (. bindings diagnostics append) (call Diagnostic module id .stated (call (. program store-atom) (str "A program can ban at most " (call most-effects) " effects, and '" (. name text) "' is past them"))))
+          (call (. bindings diagnostics append)
+            (block
+              (arg
+                (call Diagnostic
+                  (block
+                    (arg module)
+                    (arg id)
+                    (arg .stated)
+                    (arg
+                      (call (. program store-atom)
+                        (block
+                          (arg
+                            (paragraph
+                              (str "A program can ban at most " (call most-effects) " effects, and '" (. name text) "' is past them")
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
         )
       )
     )
     (if (and door (not (call (. program effect-named) module door)))
-      (call (. bindings diagnostics append) (call Diagnostic module id .stated (call (. program store-atom) (str "Unknown effect '" (. door text) "' in @door"))))
+      (call (. bindings diagnostics append)
+        (block
+          (arg
+            (call Diagnostic
+              (block
+                (arg module)
+                (arg id)
+                (arg .stated)
+                (arg (call (. program store-atom) (str "Unknown effect '" (. door text) "' in @door")))
+              )
+            )
+          )
+        )
+      )
     )
   )
   (fn-do _ reset _
@@ -1997,7 +2046,11 @@
     ; `it`, which an action reads for what its arm matched.
     (let name (call (. tree identifier-name) id))
     (if (and name (== (. name text) "it"))
-      (let message "A capture cannot be named \"it\", which names what the arm matched; choose another name")
+      (let message
+        (paragraph
+          "A capture cannot be named \"it\", which names what the arm matched; choose another name"
+        )
+      )
       (call (. bindings diagnostics append) (call Diagnostic module id .stated (call (. program store-atom) message)))
     )
     (let position (only-if (call lookup-position name) (if name)))
@@ -4543,8 +4596,16 @@
           (return ([] name-slots position))
         )
         (if (>= position pattern-floor)
-          (let message (str "\"" (. name text) "\" is bound twice in this pattern; give each place a name of its own"))
-          (call (. bindings diagnostics append) (call Diagnostic module syntax .stated (call (. program store-atom) message)))
+          (let message
+            (paragraph
+              (str "\"" (. name text) "\" is bound twice in this pattern; give each place a name of its own")
+            )
+          )
+          (call (. bindings diagnostics append)
+            (block
+              (arg (call Diagnostic module syntax .stated (call (. program store-atom) message)))
+            )
+          )
         )
       )
     )
@@ -5016,7 +5077,11 @@
       (let here (call lookup-position name))
       (let reached (if-expr here ([] name-slots here) no-slot))
       (if (!= reached ([] getter-slots position))
-        (let message (str "Markup row local " (. ([] (. bindings slots) slot) name text) " reads " (. name text) ", which is shadowed here; rename one of them"))
+        (let message
+          (paragraph
+            (str "Markup row local " (. ([] (. bindings slots) slot) name text) " reads " (. name text) ", which is shadowed here; rename one of them")
+          )
+        )
         (call (. bindings diagnostics append) (call Diagnostic module id .stated (call (. program store-atom) message)))
         (return)
       )
@@ -5589,9 +5654,27 @@
     (call (. bindings set-resolution) binding body (call Resolution .resolve-slot 0 given 0 0))
     (let regioned (call (. tree row-region) body))
     (if regioned
-      (let parent (call Slot .slot-argument branch-parent-name loop current-scope decl 0 (. SlotFlag slot-constant)))
+      (let parent
+        (call Slot
+          (block
+            (arg .slot-argument)
+            (arg branch-parent-name)
+            (arg loop)
+            (arg current-scope)
+            (arg decl)
+            (arg 0)
+            (arg (. SlotFlag slot-constant))
+          )
+        )
+      )
       (let region (as (call (. bindings slots append) parent) SlotId))
-      (call (. bindings set-resolution) binding loop (call Resolution .resolve-slot 0 region 0 (. ResolutionFlag resolution-declares)))
+      (call (. bindings set-resolution)
+        (block
+          (arg binding)
+          (arg loop)
+          (arg (call Resolution .resolve-slot 0 region 0 (. ResolutionFlag resolution-declares)))
+        )
+      )
     )
     (if (!= (. ([] (. bindings slots) given) name) each-name)
       (call alias each-name given)

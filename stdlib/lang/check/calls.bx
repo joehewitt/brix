@@ -91,7 +91,7 @@
   (prop + module ModuleId (= 0))
   (prop + decl DeclId (= 0))
   (prop + receiver TypeId (= no-type))
-  (prop + fills Bool (= false))
+  (prop + fills Bool)
   (prop + context U32 (= (. U32 max)))
   (prop + slots (of ImmutableArray Atom ArenaBacking) (= (call (of ImmutableArray Atom ArenaBacking))))
   (prop + builders (of ImmutableArray TypeId ArenaBacking) (= (call (of ImmutableArray TypeId ArenaBacking))))
@@ -169,7 +169,7 @@
     ; attached to type what it asks for.
     (let local (call Ranking (. frame session) module))
     (= (. local host) host)
-    (= (. local conversions) (if-expr host conversions null))
+    (= (. local conversions) (only-if conversions (if host)))
     (return local)
   )
   (fn-do + suspend-ranking (? Ranking)
@@ -213,7 +213,21 @@
       (let form (if-expr (== owner no-type) (. BindingForm bound-function) (. BindingForm bound-method)))
       (return (call bind-partial form owner arguments))
     )
-    (let callee (call resolve-hit id .call-function (. arguments syntax) .function-not-found hit name 0 (. frame self-type) (. arguments piped)))
+    (let callee
+      (call resolve-hit
+        (block
+          (arg id)
+          (arg .call-function)
+          (arg (. arguments syntax))
+          (arg .function-not-found)
+          (arg hit)
+          (arg name)
+          (arg 0)
+          (arg (. frame self-type))
+          (arg (. arguments piped))
+        )
+      )
+    )
     (call (. ranking release))
     (if (== callee no-instance)
       (return invalid-type)
@@ -437,7 +451,21 @@
       (return (call bind-partial .bound-c-function no-type arguments))
     )
     (= records-pairs (not (call (. name text starts-with) "brix")))
-    (let callee (call resolve-hit id .call-function (. arguments syntax) .function-not-found hit name 0 no-type (. arguments piped)))
+    (let callee
+      (call resolve-hit
+        (block
+          (arg id)
+          (arg .call-function)
+          (arg (. arguments syntax))
+          (arg .function-not-found)
+          (arg hit)
+          (arg name)
+          (arg 0)
+          (arg no-type)
+          (arg (. arguments piped))
+        )
+      )
+    )
     (= records-pairs true)
     (call (. ranking release))
     (if (== callee no-instance)
@@ -464,7 +492,19 @@
     (if contested
       (let first (. ([] (. table names) claimed) text))
       (let second (. ([] (. table names) contested) text))
-      (call (. frame diagnose) id .stated (call (. program store-atom) (str "'C:" (. name text) "' is claimed by both the '" first "' and the '" second "' effect")))
+      (call (. frame diagnose)
+        (block
+          (arg id)
+          (arg .stated)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg (str "'C:" (. name text) "' is claimed by both the '" first "' and the '" second "' effect"))
+              )
+            )
+          )
+        )
+      )
       (return)
     )
     (let outer (. frame instance))
@@ -474,7 +514,19 @@
     (let row ([] (. instances rows) outer))
     (return-if (if (== (call (. table door-of) (. row module) (. row decl)) claimed)))
     (let effect (. ([] (. table names) claimed) text))
-    (call (. frame diagnose) id .stated (call (. program store-atom) (str "'C:" (. name text) "' belongs to the '" effect "' effect, so only its doors may call it")))
+    (call (. frame diagnose)
+      (block
+        (arg id)
+        (arg .stated)
+        (arg
+          (call (. program store-atom)
+            (block
+              (arg (str "'C:" (. name text) "' belongs to the '" effect "' effect, so only its doors may call it"))
+            )
+          )
+        )
+      )
+    )
   )
   (fn-do _ check-zone-call _
     (param id SyntaxId)
@@ -907,7 +959,21 @@
       (= interning null)
       (return (call bind-partial .bound-method receiver arguments))
     )
-    (let callee (call resolve-hit id .call-method (. arguments syntax) .function-not-found hit name 0 receiver (. arguments piped)))
+    (let callee
+      (call resolve-hit
+        (block
+          (arg id)
+          (arg .call-method)
+          (arg (. arguments syntax))
+          (arg .function-not-found)
+          (arg hit)
+          (arg name)
+          (arg 0)
+          (arg receiver)
+          (arg (. arguments piped))
+        )
+      )
+    )
     (= interning null)
     (call (. ranking release))
     (if (== callee no-instance)
@@ -1100,7 +1166,16 @@
     (param name Atom)
     (str "Union case " shown " has " lack " for " member " '" (. name text) "'")
     (where
-      (lazy shown (if-expr (. fact name) (str "'" (. fact name text) "'") (str "#" index " (" (call type-display types (. fact type)) ")")))
+      (lazy shown
+        (block
+          (case? (. fact name)
+            (str "'" (. fact name text) "'")
+          )
+          (default
+            (str "#" index " (" (call type-display types (. fact type)) ")")
+          )
+        )
+      )
     )
   )
   (fn-do + case-types (list TypeId)
@@ -1136,7 +1211,7 @@
     (let results (list TypeId))
     (for (in index (..< 0 (. (call (. types cases-of) receiver) length)))
       (let payload (. ([] (call (. types cases-of) receiver) index) type))
-      (let capture (if-expr (!= row no-type) (call RowCapture row (as index U32) true) null))
+      (let capture (only-if (call RowCapture row (as index U32) true) (if (!= row no-type))))
       (let returned (call method-call id object-syntax payload name arguments false capture))
       (if (== returned invalid-type)
         (return invalid-type)
@@ -1236,7 +1311,16 @@
     (let hit (call (. ranking dispatch-method) receiver name))
     (let candidate (?? hit (. ranking partial)))
     (let result no-type)
-    (let leading (if-expr (and candidate (!= read 0)) (call leading-defaults (. candidate module) (. candidate decl)) 0u32))
+    (let leading
+      (block
+        (case? (and candidate (!= read 0))
+          (call leading-defaults (. candidate module) (. candidate decl))
+        )
+        (default
+          0u32
+        )
+      )
+    )
     (if (and candidate (== leading 0))
       (= result
         (call (. types intern-binding)
@@ -2027,7 +2111,21 @@
       (call (. ranking release))
       (return (call type-info-call id owner name arguments))
     )
-    (let callee (call resolve-hit id .call-static (. arguments syntax) .function-not-found hit name 0 no-type (. arguments piped)))
+    (let callee
+      (call resolve-hit
+        (block
+          (arg id)
+          (arg .call-static)
+          (arg (. arguments syntax))
+          (arg .function-not-found)
+          (arg hit)
+          (arg name)
+          (arg 0)
+          (arg no-type)
+          (arg (. arguments piped))
+        )
+      )
+    )
     (call (. ranking release))
     (if (== callee no-instance)
       (return invalid-type)
@@ -2056,7 +2154,21 @@
     (call (. ranking begin) (. arguments shapes) (. arguments types))
     (call (. ranking explicit-params) (. arguments params))
     (let hit (call (. ranking dispatch-method) info name))
-    (let callee (call resolve-hit id .call-method (. arguments syntax) .function-not-found hit name 0 no-type (. arguments piped)))
+    (let callee
+      (call resolve-hit
+        (block
+          (arg id)
+          (arg .call-method)
+          (arg (. arguments syntax))
+          (arg .function-not-found)
+          (arg hit)
+          (arg name)
+          (arg 0)
+          (arg no-type)
+          (arg (. arguments piped))
+        )
+      )
+    )
     (call (. ranking release))
     (if (== callee no-instance)
       (return invalid-type)
@@ -2373,7 +2485,21 @@
       )
     )
     (let diagnosed (. facts diagnostics length))
-    (let callee (call resolve-hit id form (. arguments syntax) .constructor-not-found hit null site no-type (. arguments piped)))
+    (let callee
+      (call resolve-hit
+        (block
+          (arg id)
+          (arg form)
+          (arg (. arguments syntax))
+          (arg .constructor-not-found)
+          (arg hit)
+          (arg null)
+          (arg site)
+          (arg no-type)
+          (arg (. arguments piped))
+        )
+      )
+    )
     (= constructing (call Construction))
     (call (. ranking release))
     (if (== callee no-instance)
@@ -2653,7 +2779,16 @@
     )
     (let mark (. scratch types mark))
     (call (. scratch types push) pointer)
-    (let callee (call demand-runtime-call (. (call class-ref types task) module) no-type (call (. program store-atom) "task-started") mark))
+    (let callee
+      (call demand-runtime-call
+        (block
+          (arg (. (call class-ref types task) module))
+          (arg no-type)
+          (arg (call (. program store-atom) "task-started"))
+          (arg mark)
+        )
+      )
+    )
     (call (. scratch types rewind) mark)
     (if (== callee no-instance)
       (return invalid-type)
@@ -2693,7 +2828,14 @@
     (let callee no-instance)
     (if (and hit (not (call (. local ambiguity))))
       (let declared (call declared-effects program (. hit module) (. hit decl)))
-      (= callee (call intern-settled hit (call dispatch-effects (/or/ (call exceptional-effects (. frame surround effects)) declared))))
+      (= callee
+        (call intern-settled
+          (block
+            (arg hit)
+            (arg (call dispatch-effects (/or/ (call exceptional-effects (. frame surround effects)) declared)))
+          )
+        )
+      )
     )
     (call (. local release))
     (call (. scratch call-arguments rewind) shapes-mark)
@@ -2730,7 +2872,11 @@
     (let effect-module (as ([] (. program effects modules) effect) ModuleId))
     (let effect-decl (as ([] (. program effects decls) effect) DeclId))
     (if (not name)
-      (call (. facts swap-forwards append) (call SwapForward own no-instance effect-module effect-decl effect .swap-unanswerable))
+      (call (. facts swap-forwards append)
+        (block
+          (arg (call SwapForward own no-instance effect-module effect-decl effect .swap-unanswerable))
+        )
+      )
       (call (. instances mark-may-panic) own)
       (return)
     )
@@ -2749,13 +2895,24 @@
     (let callee no-instance)
     (if (and hit (not (call (. local ambiguity))) (call is-own-method hit fake))
       (let handled (call (. instances handled-by) effects entry))
-      (= callee (call intern-settled hit (call dispatch-effects (/or/ handled (call declared-effects program (. hit module) (. hit decl))))))
+      (= callee
+        (call intern-settled
+          (block
+            (arg hit)
+            (arg (call dispatch-effects (/or/ handled (call declared-effects program (. hit module) (. hit decl)))))
+          )
+        )
+      )
     )
     (call (. local release))
     (call (. scratch call-arguments rewind) shapes-mark)
     (call (. scratch types rewind) mark)
     (if (== callee no-instance)
-      (call (. facts swap-forwards append) (call SwapForward own no-instance effect-module effect-decl effect .swap-missing))
+      (call (. facts swap-forwards append)
+        (block
+          (arg (call SwapForward own no-instance effect-module effect-decl effect .swap-missing))
+        )
+      )
       (call (. instances mark-may-panic) own)
       (return)
     )
@@ -2773,11 +2930,19 @@
       (= matches (call raises-within callee own))
     )
     (if (not matches)
-      (call (. facts swap-forwards append) (call SwapForward own no-instance effect-module effect-decl effect .swap-mismatched))
+      (call (. facts swap-forwards append)
+        (block
+          (arg (call SwapForward own no-instance effect-module effect-decl effect .swap-mismatched))
+        )
+      )
       (call (. instances mark-may-panic) own)
       (return)
     )
-    (call (. facts swap-forwards append) (call SwapForward own callee effect-module effect-decl effect .swap-answered))
+    (call (. facts swap-forwards append)
+      (block
+        (arg (call SwapForward own callee effect-module effect-decl effect .swap-answered))
+      )
+    )
     (call (. facts record-call) own syntax callee .call-method (. scratch no-fills) false false)
     (call (. facts stack-reads append) (call StackRead own syntax effect-module effect-decl))
   )
@@ -2905,7 +3070,16 @@
     (call note-interface-call receiver hit)
     (let result invalid-type)
     (if (and hit (not (call (. ranking ambiguity))))
-      (let effects (if-expr restricted (call callee-effects frame (. hit module) (. hit decl)) (call declared-effects program (. hit module) (. hit decl))))
+      (let effects
+        (block
+          (case? restricted
+            (call callee-effects frame (. hit module) (. hit decl))
+          )
+          (default
+            (call declared-effects program (. hit module) (. hit decl))
+          )
+        )
+      )
       (let callee (call intern-hit hit effects true))
       (call (. (!! host) demand) callee)
       (call (. (!! host) demand-errors) callee)
@@ -3591,12 +3765,20 @@
   (fn-do _ admits-value-call Bool
     (param id SyntaxId)
     (let restricted
-      (scope (/or/ heap-free (. CompilationEffect no-safepoint) (. CompilationEffect no-suspend) (call ban-bits))
-        (lazy heap-free (/or/ (. CompilationEffect gc-free) (. CompilationEffect no-heap)))
+      (block
+        (scope (/or/ heap-free (. CompilationEffect no-safepoint) (. CompilationEffect no-suspend) (call ban-bits))
+          (lazy heap-free (/or/ (. CompilationEffect gc-free) (. CompilationEffect no-heap)))
+        )
       )
     )
     (return-if true (if (== (/and/ (call dispatch-effects (. frame surround effects)) restricted) 0)))
-    (call (. frame diagnose) id .restricted (call (. program store-atom) "Function value call requires unrestricted effects"))
+    (call (. frame diagnose)
+      (block
+        (arg id)
+        (arg .restricted)
+        (arg (call (. program store-atom) "Function value call requires unrestricted effects"))
+      )
+    )
     (return false)
   )
   (fn-do _ note-interface-call _
@@ -4887,7 +5069,19 @@
     (let callee no-instance)
     (if hit
       (let declared (call declared-effects program (. hit module) (. hit decl)))
-      (let held (if-expr reported 0u32 (if-expr zoned (. frame surround effects) (call exceptional-effects (. frame surround effects)))))
+      (let held
+        (block
+          (case? reported
+            0u32
+          )
+          (case? zoned
+            (. frame surround effects)
+          )
+          (default
+            (call exceptional-effects (. frame surround effects))
+          )
+        )
+      )
       (= callee (call intern-settled hit (call dispatch-effects (/or/ held declared))))
       (let empty U32 (. ArgumentFill fill-empty))
       (for (in position (..< 0 (. hit fills length)))

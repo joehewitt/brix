@@ -499,7 +499,16 @@
   )
   (where
     (lazy first (if-expr (< (/rshift/ other 32) (/rshift/ span 32)) (/rshift/ other 32) (/rshift/ span 32)))
-    (lazy last (if-expr (> (/and/ other (as (. U32 max) U64)) (/and/ span (as (. U32 max) U64))) (/and/ other (as (. U32 max) U64)) (/and/ span (as (. U32 max) U64))))
+    (lazy last
+      (block
+        (case? (> (/and/ other (as (. U32 max) U64)) (/and/ span (as (. U32 max) U64)))
+          (/and/ other (as (. U32 max) U64))
+        )
+        (default
+          (/and/ span (as (. U32 max) U64))
+        )
+      )
+    )
   )
 )
 
@@ -656,8 +665,16 @@
   (for (in offset (..< 0 (. signature errors count)))
     (+= errors (str ([] (. instances signature-types) (+ (. signature errors start) offset))))
   )
-  (let flags (str (. row may-panic) " " (. row polls) " " (. row is-generator) " " (. row reads-self) " " (. row branches) " " (. row returns-own) " " (. row gives-unwritten) " " (. row casts-errors) " " (. row ends-generator) " " (. row quiet) " " (. row splits-yields) " " (. row fills-share) " " (. row uses-helper) " " (. row rolls-helper) " " (. row carries-mark) " " (. row is-live) " " (. row consumes) " " (. row hands-back)))
-  (return (str (. signature returns) " " (. signature declared-returns) " " (. signature return-state) " " (. signature error-state) " [" (call (. "," join) errors) "] " (. row makes) " " (. row yields) " " (. row materialized) " " (. row retyped) " " flags))
+  (let flags
+    (paragraph
+      (str (. row may-panic) " " (. row polls) " " (. row is-generator) " " (. row reads-self) " " (. row branches) " " (. row returns-own) " " (. row gives-unwritten) " " (. row casts-errors) " " (. row ends-generator) " " (. row quiet) " " (. row splits-yields) " " (. row fills-share) " " (. row uses-helper) " " (. row rolls-helper) " " (. row carries-mark) " " (. row is-live) " " (. row consumes) " " (. row hands-back))
+    )
+  )
+  (return
+    (paragraph
+      (str (. signature returns) " " (. signature declared-returns) " " (. signature return-state) " " (. signature error-state) " [" (call (. "," join) errors) "] " (. row makes) " " (. row yields) " " (. row materialized) " " (. row retyped) " " flags)
+    )
+  )
 )
 
 (fn-do _ same-decls Bool

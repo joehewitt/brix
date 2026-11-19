@@ -163,7 +163,16 @@
     ; evaluated, once, and its rows found, checked where the table grows; the first row is kept,
     ; and the count of rows. An index span is kept, and its length. Answers the container's type.
     ; The loop of a comprehension reads the container it was given from the slot after its item.
-    (let table (if-expr (== loop given-loop) (call state (+ slot loop-state-count) loop) (call convert container .reason-operand (call emit-expression container))))
+    (let table
+      (match loop
+        (case= given-loop
+          (call state (+ slot loop-state-count) loop)
+        )
+        (default
+          (call convert container .reason-operand (call emit-expression container))
+        )
+      )
+    )
     (let type (. table type))
     (if (or (== (call intrinsic type) .table-selection) (== (call intrinsic type) .immutable-table-selection))
       (call hold-selection loop (. table operand) type slot)
@@ -283,7 +292,13 @@
     (let item-layout (call layout-of item loop))
     (let row-layout (call layout-of row loop))
     (let inside (call (. ir reserve-block)))
-    (call branch (call compare loop .compare-less (. (call state (+ slot 2) loop) operand) (. (call state (+ slot 1) loop) operand)) inside done)
+    (call branch
+      (block
+        (arg (call compare loop .compare-less (. (call state (+ slot 2) loop) operand) (. (call state (+ slot 1) loop) operand)))
+        (arg inside)
+        (arg done)
+      )
+    )
     (call (. ir start-block) inside)
     (let count (call state (+ slot 2) loop))
     (call keep-state
@@ -297,7 +312,17 @@
     (let selection (call state slot loop))
     (let table (call part (. selection operand) layout 0 loop))
     (let span (call part (. selection operand) layout 1 loop))
-    (let index (call selected-index loop (call resolve-span loop (. span operand) span-layout) (. count operand) item item-layout))
+    (let index
+      (call selected-index
+        (block
+          (arg loop)
+          (arg (call resolve-span loop (. span operand) span-layout))
+          (arg (. count operand))
+          (arg item)
+          (arg item-layout)
+        )
+      )
+    )
     (call fail-if
       (block
         (arg loop)
@@ -325,7 +350,13 @@
     (let item (call viewed-item type))
     (let item-layout (call layout-of item loop))
     (let inside (call (. ir reserve-block)))
-    (call branch (call compare loop .compare-less (. (call state (+ slot 2) loop) operand) (. (call state (+ slot 1) loop) operand)) inside done)
+    (call branch
+      (block
+        (arg (call compare loop .compare-less (. (call state (+ slot 2) loop) operand) (. (call state (+ slot 1) loop) operand)))
+        (arg inside)
+        (arg done)
+      )
+    )
     (call (. ir start-block) inside)
     (let count (call state (+ slot 2) loop))
     (call keep-state
@@ -618,7 +649,12 @@
     ; does. They are open no longer.
     (while (> (. open-cleanups length) mark)
       (= landing caught)
-      (call run-cleanup (. ([] open-cleanups (- (. open-cleanups length) 1)) body) (. ([] open-cleanups (- (. open-cleanups length) 1)) cell))
+      (call run-cleanup
+        (block
+          (arg (. ([] open-cleanups (- (. open-cleanups length) 1)) body))
+          (arg (. ([] open-cleanups (- (. open-cleanups length) 1)) cell))
+        )
+      )
       (call (. open-cleanups pop))
     )
     (= landing caught)
@@ -654,7 +690,17 @@
     (if (call is-index-loop-plan plan)
       (let length (call Typed nothing no-type))
       (if (== (. ([] (. facts calls) begins) form) .call-getter)
-        (= length (call call-protocol loop begins (. (call container-of loop container slot) operand) type nothing))
+        (= length
+          (call call-protocol
+            (block
+              (arg loop)
+              (arg begins)
+              (arg (. (call container-of loop container slot) operand))
+              (arg type)
+              (arg nothing)
+            )
+          )
+        )
         (else
           (= length (call array-length loop (. (call container-of loop container slot) operand) type))
         )
@@ -672,7 +718,17 @@
         (call refuse .refused-statement loop)
         (return)
       )
-      (let started (call call-protocol loop begins (. (call container-of loop container slot) operand) type nothing))
+      (let started
+        (call call-protocol
+          (block
+            (arg loop)
+            (arg begins)
+            (arg (. (call container-of loop container slot) operand))
+            (arg type)
+            (arg nothing)
+          )
+        )
+      )
       (call keep-state (+ slot 1) (. started operand) (. started type) loop)
       (return)
     )
@@ -715,7 +771,13 @@
     (let inside (call (. ir reserve-block)))
     (if (call is-index-loop-plan plan)
       (let reads (if-expr (== (. ([] (. facts calls) begins) form) .call-getter) (. ([] (. facts calls) begins) next) begins))
-      (call branch (call compare loop .compare-less (. (call state (+ slot 2) loop) operand) (. (call state (+ slot 1) loop) operand)) inside done)
+      (call branch
+        (block
+          (arg (call compare loop .compare-less (. (call state (+ slot 2) loop) operand) (. (call state (+ slot 1) loop) operand)))
+          (arg inside)
+          (arg done)
+        )
+      )
       (call (. ir start-block) inside)
       (let index (call state (+ slot 2) loop))
       (let moved (call arithmetic loop .arithmetic-add (. index operand) (call integer .machine-u64 1) u64-layout))
@@ -766,7 +828,17 @@
       (call keep-state (+ slot 1) (call take (. stepped operand) (call (. tables layouts field) layout 0) loop) cursor loop)
       (= next (call take (. stepped operand) (call (. tables layouts field) layout 1) loop))
       (else
-        (let answered (call call-protocol place (. ([] (. facts calls) begins) next) (. (call state slot loop) operand) type nothing))
+        (let answered
+          (call call-protocol
+            (block
+              (arg place)
+              (arg (. ([] (. facts calls) begins) next))
+              (arg (. (call state slot loop) operand))
+              (arg type)
+              (arg nothing)
+            )
+          )
+        )
         (= next (. answered operand))
         (= given (. answered type))
       )
@@ -855,7 +927,13 @@
     )
     (let layout (call layout-of row loop))
     (let inside (call (. ir reserve-block)))
-    (call branch (call compare loop .compare-less (. (call state (+ slot 2) loop) operand) (. (call state (+ slot 1) loop) operand)) inside done)
+    (call branch
+      (block
+        (arg (call compare loop .compare-less (. (call state (+ slot 2) loop) operand) (. (call state (+ slot 1) loop) operand)))
+        (arg inside)
+        (arg done)
+      )
+    )
     (call (. ir start-block) inside)
     (let count (call state (+ slot 2) loop))
     (call keep-state
@@ -873,7 +951,17 @@
       (block
         (arg made)
         (arg (call (. tables layouts field) layout 1))
-        (arg (call arithmetic loop .arithmetic-add (. (call part (. first operand) layout 1 loop) operand) (. count operand) u64-layout))
+        (arg
+          (call arithmetic
+            (block
+              (arg loop)
+              (arg .arithmetic-add)
+              (arg (. (call part (. first operand) layout 1 loop) operand))
+              (arg (. count operand))
+              (arg u64-layout)
+            )
+          )
+        )
         (arg loop)
       )
     )
@@ -926,7 +1014,16 @@
     (if (== take .take-converted)
       (match? ([] (. tree nodes) pattern)
         (case (call .node-type-capture capture)
-          (let given (call convert (. capture type) .reason-declaration (call Typed (. held operand) type) (. capture id)))
+          (let given
+            (call convert
+              (block
+                (arg (. capture type))
+                (arg .reason-declaration)
+                (arg (call Typed (. held operand) type))
+                (arg (. capture id))
+              )
+            )
+          )
           (= matching (= (. matching declaring) true))
           (call bind-name (. capture id) given)
           (= matching own-matching)
@@ -1111,7 +1208,16 @@
     )
     (let wide (if-expr (>= (. ([] (. tables layouts rows) layout) size) 4) layout i32-layout))
     (let rising (and (not (call is-signed layout)) (call (. tree is-written-zero) first)))
-    (let falls (if-expr rising (call integer .machine-u8 0) (call compare loop .compare-greater (. start operand) (. end operand))))
+    (let falls
+      (block
+        (case? rising
+          (call integer .machine-u8 0)
+        )
+        (default
+          (call compare loop .compare-greater (. start operand) (. end operand))
+        )
+      )
+    )
     (let pace (call range-pace loop falls wide rising))
     (let index no-local)
     (let kept no-slot)
@@ -1149,7 +1255,16 @@
         (call (. ir start-block) down)
         (call branch
           (block
-            (arg (call compare loop (if-expr takes-end .compare-greater-equal .compare-greater) (. item operand) (. end operand)))
+            (arg
+              (call compare
+                (block
+                  (arg loop)
+                  (arg (if-expr takes-end .compare-greater-equal .compare-greater))
+                  (arg (. item operand))
+                  (arg (. end operand))
+                )
+              )
+            )
             (arg inside)
             (arg done)
           )

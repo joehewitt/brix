@@ -129,7 +129,12 @@
     (param link TerminalPathLink)
     (let line (. link line))
     (if (and (!= line null) (> line 0))
-      (call (. workspace open-path) (call Path (. link path) 0) (call EditorJump (- line 1) (if-expr (> (?? (. link column) 0) 0) (- (!! (. link column)) 1) null)))
+      (call (. workspace open-path)
+        (block
+          (arg (call Path (. link path) 0))
+          (arg (call EditorJump (- line 1) (only-if (- (!! (. link column)) 1) (if (> (?? (. link column) 0) 0)))))
+        )
+      )
       (else
         (call (. workspace open-path) (call Path (. link path) 0))
       )
@@ -138,7 +143,16 @@
   (fn-do _ open-probe _
     (param line ProbeLine)
     (return-if (if (== (. line path length) 0)))
-    (let path (if-expr (call (. line path starts-with) "/") (call Path (. line path) 0) (/ (?? (?. (. runner source) parent) (call Path "/" 0)) (. line path))))
+    (let path
+      (block
+        (case? (call (. line path starts-with) "/")
+          (call Path (. line path) 0)
+        )
+        (default
+          (/ (?? (?. (. runner source) parent) (call Path "/" 0)) (. line path))
+        )
+      )
+    )
     (call (. workspace open-path) path (call EditorJump (if-expr (> (. line line) 0) (as (- (. line line) 1) Size) 0) null))
   )
 )

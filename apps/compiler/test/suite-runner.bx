@@ -5,9 +5,9 @@
 (import /lang/ast/ast-xml)
 (import /lang/ast/brix)
 (import /lang/ast/error)
-(import /lang/ubrix/convert)
 (import /lang/constants)
 (import /lang/target)
+(import /lang/ubrix/convert)
 (import /math)
 (import /os/env)
 (import /os/file)
@@ -26,7 +26,13 @@
 (prop + scratch-suite _ (= "scratch"))
 (prop + docs-suite _ (= "docs"))
 (prop + ubrix-suite _ (= "ubrix"))
-(prop _ suite-names (list String) (= (list parse-suite core-suite diagnostics-suite scratch-suite docs-suite ubrix-suite)))
+(prop _ suite-names (list String)
+  (=
+    (block
+      (list parse-suite core-suite diagnostics-suite scratch-suite docs-suite ubrix-suite)
+    )
+  )
+)
 (prop _ batch-name-rounds Index (= 8))
 (prop _ spec-extension _ (= ".test.md"))
 (prop _ fence-flags (list String) (= (list "crash" "compile-error" "warn" "probes")))
@@ -440,7 +446,19 @@
   (let forms (call inline-forms text))
   (return-if (call (of List ParsedCase)) (if (== (. forms length) 0)))
   (let checked (call (. " " join) (in (str "(tuple " ([] each 0) " " (call brix-quoted ([] each 1)) ")") forms)))
-  (let source (str "(import /lang/ubrix/inline)\n\n(main\n  (for (in (tuple line form) (list " checked "))\n    (if (not (call ubrix-inline-view form))\n      (print (str line \": \" form))\n    )\n  )\n)"))
+  (let source
+    (paragraph
+      "(import /lang/ubrix/inline)"
+      (blank)
+      "(main"
+      (str "  (for (in (tuple line form) (list " checked "))")
+      "    (if (not (call ubrix-inline-view form))"
+      "      (print (str line \": \" form))"
+      "    )"
+      "  )"
+      ")"
+    )
+  )
   (return (list (call ParsedCase source 1 (call (of Map String String)) "Inline forms")))
 )
 
@@ -1499,8 +1517,29 @@
   (lazy errors-path (str directory "/stderr"))
   (lazy warnings-path (str directory "/compile-stderr"))
   (lazy switches (if-expr warns "--compile --warnings" "--compile"))
-  (lazy probing (if-expr (== probes "true") "--probes" (if-expr probes (str "--probes " (call shell-quoted probes)) "")))
-  (lazy tracing (if-expr probes (str "PROBES_ENABLED=" (call shell-quoted probes) " PROBES_PATH=" (call shell-quoted trace-path)) ""))
+  (lazy probing
+    (block
+      (case? (== probes "true")
+        "--probes"
+      )
+      (case? probes
+        (str "--probes " (call shell-quoted probes))
+      )
+      (default
+        ""
+      )
+    )
+  )
+  (lazy tracing
+    (block
+      (case? probes
+        (str "PROBES_ENABLED=" (call shell-quoted probes) " PROBES_PATH=" (call shell-quoted trace-path))
+      )
+      (default
+        ""
+      )
+    )
+  )
   (lazy trace-path (str directory "/probes.trace"))
   (lazy command
     (paragraph

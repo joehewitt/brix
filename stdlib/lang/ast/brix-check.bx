@@ -78,7 +78,11 @@
         (return (str "Every list starts with a form name. This one starts with " (call what (+ node 1)) "."))
       )
       (case= .raw-form
-        (return "(raw …) holds text that is not Brix, and a file that holds it does not compile. Write the row as forms.")
+        (return
+          (paragraph
+            "(raw …) holds text that is not Brix, and a file that holds it does not compile. Write the row as forms."
+          )
+        )
       )
       (case= .unknown-head
         (let head (call (. tape atom-text) (+ node 1)))
@@ -105,11 +109,19 @@
       )
       (case= .wrong-literal
         (let sense (!! (. issue sense)))
-        (return (str "(" (. sense head) " …) takes `" (!! (. (!! (. issue slot)) literal)) "` here, and " (call what node) " stands in its place. Its shape is " (. sense shape) "."))
+        (return
+          (paragraph
+            (str "(" (. sense head) " …) takes `" (!! (. (!! (. issue slot)) literal)) "` here, and " (call what node) " stands in its place. Its shape is " (. sense shape) ".")
+          )
+        )
       )
       (case= .wrong-form
         (let sense (!! (. issue sense)))
-        (return (str "(" (. sense head) " …) takes (" (. (!! (. (!! (. issue slot)) form)) head) " …) here, and " (call what node) " stands in its place. Its shape is " (. sense shape) "."))
+        (return
+          (paragraph
+            (str "(" (. sense head) " …) takes (" (. (!! (. (!! (. issue slot)) form)) head) " …) here, and " (call what node) " stands in its place. Its shape is " (. sense shape) ".")
+          )
+        )
       )
       (case= .surplus
         (return (call surplus-message issue))
@@ -202,7 +214,9 @@
     (let found (call (. catalog refusals-of) kind))
     (return-if null (if (== found null)))
     (for (in sense found)
-      (return-if (call BrixIssue node (call rank node) true .refused sense null place spot) (if (and (call (. place takes) sense) (call is-clean node sense))))
+      (if (and (call (. place takes) sense) (call is-clean node sense))
+        (return (call BrixIssue node (call rank node) true .refused sense null place spot))
+      )
     )
     (return null)
   )
@@ -277,7 +291,9 @@
         (continue)
       )
       (let is-over (or (not best) (and (. best is-own) (== (. best index) item))))
-      (return-if (call BrixIssue item (call rank item) false .surplus sense last null "" previous) (if (or (not best) (and is-over (call is-overflow item (>= cursor (. slots length)) last)))))
+      (if (or (not best) (and is-over (call is-overflow item (>= cursor (. slots length)) last)))
+        (return (call BrixIssue item (call rank item) false .surplus sense last null "" previous))
+      )
       (return-if best (if (and (call (. tape is-atom) item) (== ([] bytes (call (. tape start) item)) 58))))
       (let resume (call resumed slots cursor origin))
       (return-if best (if (== resume null)))
@@ -384,7 +400,16 @@
       (lazy parts (call List (call (. text split) ".")))
       (lazy is-type (<= ([] bytes (call (. tape start) node)) 90))
       (lazy fixed (if-expr is-type (call typed text) (call kebab text)))
-      (lazy rule (if-expr is-type "A type name is a capitalized word of letters and digits" "A name is lowercase words joined by hyphens"))
+      (lazy rule
+        (block
+          (case? is-type
+            "A type name is a capitalized word of letters and digits"
+          )
+          (default
+            "A name is lowercase words joined by hyphens"
+          )
+        )
+      )
       (lazy noun (if-expr is-type "type name" "name"))
     )
   )

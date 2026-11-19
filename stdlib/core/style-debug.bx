@@ -453,7 +453,16 @@
     (lazy none (if-expr (. declaration is-none) " none" ""))
     (lazy sheet (call sheet-label declaration))
     (lazy block (if-expr (>= (. declaration block) 0) (str " block=" (+ base (. declaration block))) ""))
-    (lazy gate (if-expr (. declaration family) (str " family=" (. declaration family name) "/" (. declaration members)) ""))
+    (lazy gate
+      (block
+        (case? (. declaration family)
+          (str " family=" (. declaration family name) "/" (. declaration members))
+        )
+        (default
+          ""
+        )
+      )
+    )
   )
 )
 
@@ -468,7 +477,16 @@
   (where
     (lazy style-sheet (. declaration style-sheet))
     (lazy name (. style-sheet name))
-    (lazy slot (if-expr (== (. declaration kind) (. StyleValueKind themed)) (str "value" (. declaration themed-site)) (str (. declaration sheet-offset))))
+    (lazy slot
+      (match (. declaration kind)
+        (case= (. StyleValueKind themed)
+          (str "value" (. declaration themed-site))
+        )
+        (default
+          (str (. declaration sheet-offset))
+        )
+      )
+    )
   )
 )
 

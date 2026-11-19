@@ -262,7 +262,7 @@
     (return-if (. WebSocketClose too-big) (if (> (. message payload size) limit)))
     (blank)
     (= pending (if-expr (. message is-fin) null message))
-    (return (if-expr (. message is-fin) (call deliver message) null))
+    (return (only-if (call deliver message) (if (. message is-fin))))
   )
   (fn-do _ deliver (? WebSocketClose)
     (param message Frame)
@@ -439,9 +439,9 @@
   (prop + op OpCode)
   (prop + is-fin _ (= true))
   (prop + payload ([] Byte))
-  (prop + reserved U8 (= 0))
+  (prop + reserved U8)
   (prop + is-masked _ (= false))
-  (prop + length U64 (= 0))
+  (prop + length U64)
   (fn-do + This _
     (param op OpCode)
     (param payload _ (= ([] Byte 0)))
@@ -464,7 +464,16 @@
     (param reason String)
     (return (call This (. OpCode close) payload))
     (blank)
-    (lazy payload (if-expr (== code (. WebSocketClose no-status)) ([] Byte 0) (call joined-bytes (list status (call (of Array Byte) reason)))))
+    (lazy payload
+      (match code
+        (case= (. WebSocketClose no-status)
+          ([] Byte 0)
+        )
+        (default
+          (call joined-bytes (list status (call (of Array Byte) reason)))
+        )
+      )
+    )
     (lazy status (call (of Array Byte) (list (as (/zrshift/ (as code U16) 8) Byte) (as (as code U16) Byte))))
   )
   (fn-to-expr + (of ReadableData Byte)

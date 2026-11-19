@@ -116,9 +116,35 @@
   )
   (let base ShaderFilter (call ScrollBlur motion kept))
   (let pixels (* (call sqrt (+ (* (. motion x) (. motion x)) (* (. motion y) (. motion y)))) scale))
-  (let share (if-expr (>= pixels scroll-blur-quarter-span) 0.25 (if-expr (>= pixels scroll-blur-half-span) 0.5 1.0)))
+  (let share
+    (block
+      (case? (>= pixels scroll-blur-quarter-span)
+        0.25
+      )
+      (case? (>= pixels scroll-blur-half-span)
+        0.5
+      )
+      (default
+        1.0
+      )
+    )
+  )
   (let resolution (if-expr (>= (call abs (. motion y)) (call abs (. motion x))) (call Point 1 share) (call Point share 1)))
-  (return (call ShaderFilter (. base shader) (. base args) (. base images) (. base is-live) (. base frame-rate) (. base time) (. base arg-kinds) resolution kept))
+  (return
+    (call ShaderFilter
+      (block
+        (arg (. base shader))
+        (arg (. base args))
+        (arg (. base images))
+        (arg (. base is-live))
+        (arg (. base frame-rate))
+        (arg (. base time))
+        (arg (. base arg-kinds))
+        (arg resolution)
+        (arg kept)
+      )
+    )
+  )
 )
 
 (fn-do + scroll-blur-merged (list Rect)

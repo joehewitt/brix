@@ -505,7 +505,22 @@
   (where
     (lazy metrics (list BenchMetric)
       (block
-        (item (call run-metric "runMs" "Run" "Median wall time of the benchmark process from creation to exit across warm launches, after one discarded launch." (. BenchFormat duration) "/metrics/process/wallMs" true))
+        (item
+          (call run-metric
+            (block
+              (arg "runMs")
+              (arg "Run")
+              (arg
+                (paragraph
+                  "Median wall time of the benchmark process from creation to exit across warm launches, after one discarded launch."
+                )
+              )
+              (arg (. BenchFormat duration))
+              (arg "/metrics/process/wallMs")
+              (arg true)
+            )
+          )
+        )
         (item
           (call run-metric
             (block
@@ -566,7 +581,22 @@
             )
           )
         )
-        (item (call run-metric "collectorAssistNanos" "Assist ns" "Nanoseconds the program spent assisting the collector, from its gc.assist.nanos probe counter." (. BenchFormat count) "/metrics/probeCounters/gc.assist.nanos" false))
+        (item
+          (call run-metric
+            (block
+              (arg "collectorAssistNanos")
+              (arg "Assist ns")
+              (arg
+                (paragraph
+                  "Nanoseconds the program spent assisting the collector, from its gc.assist.nanos probe counter."
+                )
+              )
+              (arg (. BenchFormat count))
+              (arg "/metrics/probeCounters/gc.assist.nanos")
+              (arg false)
+            )
+          )
+        )
       )
     )
   )
@@ -639,8 +669,10 @@
       )
     )
     (lazy collector (list BenchMetric)
-      (case-each (in key (list "runMs" "collectorCycles" "collectorPauses" "collectorAssistNanos"))
-        (!! ([] by-key key))
+      (block
+        (case-each (in key (list "runMs" "collectorCycles" "collectorPauses" "collectorAssistNanos"))
+          (!! ([] by-key key))
+        )
       )
     )
   )
@@ -807,7 +839,16 @@
   )
   (let setup (only-if (call (. ([] entry "setup") string)) (if (call (. entry has) "setup"))))
   (throw (call Error (str "Benchmark profile " name " names unknown setup command " setup)) (if (and setup (not ([] commands setup)))))
-  (let has-benchmark-metrics (if-expr (call (. entry has) "benchmarkMetrics") (call (. ([] entry "benchmarkMetrics") bool)) false))
+  (let has-benchmark-metrics
+    (block
+      (case? (call (. entry has) "benchmarkMetrics")
+        (call (. ([] entry "benchmarkMetrics") bool))
+      )
+      (default
+        false
+      )
+    )
+  )
   (throw (call Error (str "Benchmark profile " name " enables benchmarkMetrics but does not define setup")) (if (and has-benchmark-metrics (not setup))))
   (let probes (call bench-strings entry "probes"))
   (let runs (or has-benchmark-metrics (> (. probes length) 0)))

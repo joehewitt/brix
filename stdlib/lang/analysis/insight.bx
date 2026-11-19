@@ -11,8 +11,8 @@
 (import /lang/check/session)
 (import /lang/check/type-text)
 (import /lang/check/types)
-(import /lang/report/facts-text)
 (import /lang/report/explain)
+(import /lang/report/facts-text)
 (import /lang/report/header)
 
 (type + InsightKind (is Union)
@@ -247,9 +247,26 @@
       (if (and (!= callee no-instance) (not (. fact is-partial)) (!= (. fact form) .call-converter) (call is-written-form (. fact form)))
         (let count (. ([] (. instances signatures) callee) errors count))
         (if (!= count 0)
-          (let fate (if-expr (. fact propagates) "which leave this function" "which this function handles"))
+          (let fate
+            (block
+              (case? (. fact propagates)
+                "which leave this function"
+              )
+              (default
+                "which this function handles"
+              )
+            )
+          )
           (let given (if-expr (. fact propagates) (call error-names callee) (call (of List String))))
-          (call add (. fact syntax) (. InsightKind raise) (str (call callee-name callee) " can raise " (call errors-text callee) ", " fate) null given)
+          (call add
+            (block
+              (arg (. fact syntax))
+              (arg (. InsightKind raise))
+              (arg (str (call callee-name callee) " can raise " (call errors-text callee) ", " fate))
+              (arg null)
+              (arg given)
+            )
+          )
         )
       )
     )

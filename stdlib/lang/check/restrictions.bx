@@ -88,7 +88,15 @@
         (if (and (not reported) (not dispatched))
           (let row ([] (. session instances rows) (. forward instance)))
           (let text (call swap-text forward ""))
-          (call (. session facts record-diagnostic) (. forward instance) (. row module) 0 .reached (call (. session program store-atom) text))
+          (call (. session facts record-diagnostic)
+            (block
+              (arg (. forward instance))
+              (arg (. row module))
+              (arg 0)
+              (arg .reached)
+              (arg (call (. session program store-atom) text))
+            )
+          )
         )
       )
     )
@@ -110,7 +118,16 @@
     )
     (let caller ([] (. instances rows) (. edge caller)))
     (let need (/and/ (call dispatch-effects (. caller effects)) (call swap-bits)))
-    (let found (if-expr (== need 0) null (call (. paths chain-to) (. edge caller) (=> ((: link CallEdge)) (call step link need)))))
+    (let found
+      (match need
+        (case= 0
+          null
+        )
+        (default
+          (call (. paths chain-to) (. edge caller) (=> ((: link CallEdge)) (call step link need)))
+        )
+      )
+    )
     (let parts (list String))
     (let bound (. ([] (. session program effects names) (. forward effect)) text))
     (if (and found (!= (. found length) 0))
@@ -128,7 +145,15 @@
       (+= parts (call (. paths name-of) (. forward instance)))
     )
     (let text (call swap-text forward (call (. " → " join) parts)))
-    (call (. session facts record-diagnostic) (. edge caller) (. caller module) (. edge syntax) .reached (call (. session program store-atom) text))
+    (call (. session facts record-diagnostic)
+      (block
+        (arg (. edge caller))
+        (arg (. caller module))
+        (arg (. edge syntax))
+        (arg .reached)
+        (arg (call (. session program store-atom) text))
+      )
+    )
     (return true)
   )
   (fn-do _ swap-text String
@@ -205,7 +230,15 @@
     (let reached (if-expr (== depth 0) "" (str " → " (call (. paths name-of) door))))
     (let name (. ([] (. table names) effect) text))
     (let text (str "cannot reach a door of '" name "' under 'without " name "': " chain reached))
-    (call (. session facts record-diagnostic) (. edge caller) (. caller module) (. edge syntax) .reached (call (. session program store-atom) text))
+    (call (. session facts record-diagnostic)
+      (block
+        (arg (. edge caller))
+        (arg (. caller module))
+        (arg (. edge syntax))
+        (arg .reached)
+        (arg (call (. session program store-atom) text))
+      )
+    )
     (return true)
   )
   (fn-do _ chain-text String

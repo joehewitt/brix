@@ -284,7 +284,11 @@
   ; converted to it, nor a task spawned.
   (and unprobed (!= form .call-probe) (!= form .call-probe-head) (!= form .call-probe-metric))
   (where
-    (lazy made (or (== form .call-list-make) (== form .call-list-reserve) (== form .call-list-data) appends))
+    (lazy made
+      (block
+        (or (== form .call-list-make) (== form .call-list-reserve) (== form .call-list-data) appends)
+      )
+    )
     (lazy appends (== form .call-list-append))
     (lazy unprobed (and direct (!= form .call-view-range) (!= form .call-replaced)))
     (lazy direct (and (not made) (!= form .call-store-through) (!= form .call-enum-default) (not (call spawns-task form))))
@@ -745,9 +749,27 @@
       )
       (case= .error-not-carried
         (scope (str raised " can leave this function, and " carrier "; " advice)
-          (lazy carrier (if-expr (call is-c-function types target) "a C function cannot carry it" (str named " does not carry it")))
+          (lazy carrier
+            (block
+              (case? (call is-c-function types target)
+                "a C function cannot carry it"
+              )
+              (default
+                (str named " does not carry it")
+              )
+            )
+          )
           (lazy named (call type-short-name types target))
-          (lazy advice (if-expr (call is-c-function types target) "catch it here" (str "add ?! " raised " to " named ", or catch it here")))
+          (lazy advice
+            (block
+              (case? (call is-c-function types target)
+                "catch it here"
+              )
+              (default
+                (str "add ?! " raised " to " named ", or catch it here")
+              )
+            )
+          )
         )
       )
       (case= .non-void-return
@@ -800,7 +822,13 @@
   )
   (let loc ([] (. owner tree nodes loc) syntax))
   (let own (use (call ExcerptSources program)))
-  (return (str "Exception: " message "\n<" path ":" (+ (. loc begin line) 1) ">\n" (call (. (?? sources own) excerpt) module loc inset span)))
+  (return
+    (paragraph
+      (str "Exception: " message)
+      (str "<" path ":" (+ (. loc begin line) 1) ">")
+      (str (call (. (?? sources own) excerpt) module loc inset span))
+    )
+  )
 )
 
 (fn-do + related-text String
@@ -813,7 +841,13 @@
   (let owner ([] (. program modules) module))
   (let loc ([] (. owner tree nodes loc) syntax))
   (let own (use (call ExcerptSources program)))
-  (return (str label ":\n<" (call display-path (. owner path)) ":" (+ (. loc begin line) 1) ">\n" (call (. (?? sources own) line) module loc)))
+  (return
+    (paragraph
+      (str label ":")
+      (str "<" (call display-path (. owner path)) ":" (+ (. loc begin line) 1) ">")
+      (str (call (. (?? sources own) line) module loc))
+    )
+  )
 )
 
 (fn-expr + display-path String
@@ -919,7 +953,11 @@
     (let found (list String))
     (for (in fact (. facts overrides))
       (if (and (== (. fact base) instance) (== (. fact override) no-instance))
-        (+= found (str "override " label " " (call type-key types (. fact receiver)) " property " (. ([] (. types properties) (. fact property)) name text)))
+        (+= found
+          (paragraph
+            (str "override " label " " (call type-key types (. fact receiver)) " property " (. ([] (. types properties) (. fact property)) name text))
+          )
+        )
         (else-if (== (. fact base) instance)
           (+= found (str "override " label " " (call type-key types (. fact receiver)) " " (call call-text (. fact override))))
         )

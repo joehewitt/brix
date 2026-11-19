@@ -199,7 +199,15 @@
   (let cells (if-expr (== (. block kind) (. MarkdownBlockKind grid)) (. block cells length) 1))
   (let cell (call min (. point cell) (if-expr (> cells 0) (- cells 1) 0)))
   (let at (call MarkdownPoint index cell 0))
-  (return (call markdown-snap-point blocks (call MarkdownPoint index cell (call min (. point offset) (call markdown-slot-size blocks at))) null))
+  (return
+    (call markdown-snap-point
+      (block
+        (arg blocks)
+        (arg (call MarkdownPoint index cell (call min (. point offset) (call markdown-slot-size blocks at))))
+        (arg null)
+      )
+    )
+  )
 )
 
 (fn-do + markdown-snap-point MarkdownPoint
@@ -209,7 +217,15 @@
   (return-if point (if (>= (. point block) (. blocks length))))
   (let kind (. ([] blocks (. point block)) kind))
   (return-if point (if (or (== kind (. MarkdownBlockKind code)) (== kind (. MarkdownBlockKind exhibit)))))
-  (return (call MarkdownPoint (. point block) (. point cell) (call markdown-runs-snap (call markdown-slot-runs blocks point) (. point offset) forward)))
+  (return
+    (call MarkdownPoint
+      (block
+        (arg (. point block))
+        (arg (. point cell))
+        (arg (call markdown-runs-snap (call markdown-slot-runs blocks point) (. point offset) forward))
+      )
+    )
+  )
 )
 
 (fn-expr + markdown-first-point MarkdownPoint

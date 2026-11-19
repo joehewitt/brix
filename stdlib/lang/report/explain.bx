@@ -6,7 +6,6 @@
 (import /lang/ast/decl)
 (import /lang/ast/module)
 (import /lang/ast/program)
-(import /lang/ubrix/convert)
 (import /lang/check/call-paths)
 (import /lang/check/facts)
 (import /lang/check/instances)
@@ -14,6 +13,7 @@
 (import /lang/check/type-text)
 (import /lang/check/types)
 (import /lang/target)
+(import /lang/ubrix/convert)
 (import /os/path)
 (blank)
 (prop + explain-label-width Size (= 9))
@@ -276,7 +276,9 @@
       )
     )
     (let head (call header))
-    (return-if (str head "\n\nThe compiler typed no copy of this function: nothing it typed calls it.") (if (== (. copies length) 0)))
+    (if (== (. copies length) 0)
+      (return (str head "\n\nThe compiler typed no copy of this function: nothing it typed calls it."))
+    )
     (let chosen (call default-copy))
     (call raises chosen)
     (call needs chosen)
@@ -305,9 +307,30 @@
       (+= lines (call ExplainLine "differs" differs ""))
     )
     (for (in line lines)
-      (let label (if-expr (== (. line label) "differs") "differs" (if-expr (== (. line label) "copies") (str "copy " (. line item)) (str (. line label) " " (. line item)))))
+      (let label
+        (match (. line label)
+          (case= "differs"
+            "differs"
+          )
+          (case= "copies"
+            (str "copy " (. line item))
+          )
+          (default
+            (str (. line label) " " (. line item))
+          )
+        )
+      )
       (let lead (++ (. line label) (* " " (- explain-label-width (. line label length)))))
-      (let text (if-expr (== (. line path length) 0) (str lead (. line item)) (str lead (. line item) "  " (. line path))))
+      (let text
+        (match (. line path length)
+          (case= 0
+            (str lead (. line item))
+          )
+          (default
+            (str lead (. line item) "  " (. line path))
+          )
+        )
+      )
       (+= notes (call ExplainNote (. line label) label text))
     )
     (return notes)
@@ -390,12 +413,28 @@
   (fn-do _ raise-path String
     (param start InstanceId)
     (param error TypeId)
-    (let found (call (. paths chain-from) start (=> ((: edge CallEdge)) (call passes-error edge error)) (=> ((: instance InstanceId)) (!= (call raise-site instance error) null))))
+    (let found
+      (call (. paths chain-from)
+        (block
+          (arg start)
+          (arg (=> ((: edge CallEdge)) (call passes-error edge error)))
+          (arg (=> ((: instance InstanceId)) (!= (call raise-site instance error) null)))
+        )
+      )
+    )
     (if found
       (let end (if-expr (== (. found length) 0) start (. ([] found (- (. found length) 1)) callee)))
       (return (str (call path-text found) (!! (call raise-site end error))))
     )
-    (let through (call (. paths chain-from) start (=> ((: edge CallEdge)) (call passes-error edge error)) (=> ((: instance InstanceId)) (!= (call value-call instance) 0))))
+    (let through
+      (call (. paths chain-from)
+        (block
+          (arg start)
+          (arg (=> ((: edge CallEdge)) (call passes-error edge error)))
+          (arg (=> ((: instance InstanceId)) (!= (call value-call instance) 0)))
+        )
+      )
+    )
     (if through
       (let end (if-expr (== (. through length) 0) start (. ([] through (- (. through length) 1)) callee)))
       (return (str (call path-text through) "a call of a function value, at " (call place end (call value-call end))))
@@ -464,7 +503,15 @@
     (param chosen InstanceId)
     (for (in need (. session facts stack-needs))
       (if (== (. need instance) chosen)
-        (+= lines (call ExplainLine "needs" (call global-name (. need module) (. need decl)) (call read-path chosen (. need module) (. need decl))))
+        (+= lines
+          (call ExplainLine
+            (block
+              (arg "needs")
+              (arg (call global-name (. need module) (. need decl)))
+              (arg (call read-path chosen (. need module) (. need decl)))
+            )
+          )
+        )
       )
     )
   )
@@ -472,7 +519,15 @@
     (param chosen InstanceId)
     (for (in hold (. session facts stack-holds))
       (if (== (. hold instance) chosen)
-        (+= lines (call ExplainLine "holds" (call global-name (. hold module) (. hold decl)) (call read-path chosen (. hold module) (. hold decl))))
+        (+= lines
+          (call ExplainLine
+            (block
+              (arg "holds")
+              (arg (call global-name (. hold module) (. hold decl)))
+              (arg (call read-path chosen (. hold module) (. hold decl)))
+            )
+          )
+        )
       )
     )
   )
@@ -480,7 +535,15 @@
     (param start InstanceId)
     (param module ModuleId)
     (param decl DeclId)
-    (let found (call (. paths chain-from) start (=> ((: edge CallEdge)) (and (== (. edge kind) .edge-call) (call needs-global (. edge callee) module decl))) (=> ((: instance InstanceId)) (!= (call global-read instance module decl) 0))))
+    (let found
+      (call (. paths chain-from)
+        (block
+          (arg start)
+          (arg (=> ((: edge CallEdge)) (and (== (. edge kind) .edge-call) (call needs-global (. edge callee) module decl))))
+          (arg (=> ((: instance InstanceId)) (!= (call global-read instance module decl) 0)))
+        )
+      )
+    )
     (return-if "no read found" (if (not found)))
     (let end (if-expr (== (. found length) 0) start (. ([] found (- (. found length) 1)) callee)))
     (return (str (call path-text found) "at " (call place end (call global-read end module decl))))
@@ -654,7 +717,11 @@
   (param is-brix Bool)
   (if-expr is-brix (call (. (call (. line trim)) starts-with) "(param ") is-indented)
   (where
-    (lazy is-indented (and (!= (. line length) 0) (or (call (. line starts-with) " ") (call (. line starts-with) "\t")) (!= (. (call (. line trim)) length) 0)))
+    (lazy is-indented
+      (block
+        (and (!= (. line length) 0) (or (call (. line starts-with) " ") (call (. line starts-with) "\t")) (!= (. (call (. line trim)) length) 0))
+      )
+    )
   )
 )
 

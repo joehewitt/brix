@@ -1825,7 +1825,16 @@
       )
       (let hole (call (. (call (of List String) (in (. each id) (. parent kids))) find) (?? vacated "")))
       (let live (call (of List Index) (in each (..< 0 (. parent kids length)) (when (and (> (call (. parent size-at) each) 0) (not (. ([] (. parent kids) each) is-collapsed)))))))
-      (let even (if-expr (> (. live length) 0) (as (/ (call sum (in (call (. parent size-at) each) live)) (. live length)) Float) 1))
+      (let even
+        (block
+          (case? (> (. live length) 0)
+            (as (/ (call sum (in (call (. parent size-at) each) live)) (. live length)) Float)
+          )
+          (default
+            1
+          )
+        )
+      )
       (let share (if-expr (!= hole null) (call (. parent size-at) hole) even))
       (if (!= hole null)
         (= ([] (. parent sizes) hole) 0)
@@ -1956,7 +1965,14 @@
     (if remembered
       (+= (. remembered views) view)
       (else-if side
-        (+= (. (call (. owned dock) side) pages) (call PanePage (call make-id "page") (call pane-stack-node (call make-id "stack") (call (of List String) view))))
+        (+= (. (call (. owned dock) side) pages)
+          (call PanePage
+            (block
+              (arg (call make-id "page"))
+              (arg (call pane-stack-node (call make-id "stack") (call (of List String) view)))
+            )
+          )
+        )
       )
       (else
         (call insert-tree (call pane-stack-node (call make-id "stack") (call (of List String) view)) (. PaneTarget bottom) null view)

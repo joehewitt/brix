@@ -170,7 +170,7 @@
     (let index (call index-of document))
     (= documents (call (of List EditorDocument) (in each documents (when (!= (. each id) (. document id))))))
     (if (== (?. active id) (. document id))
-      (= active (if-expr (> (. documents length) 0) ([] documents (call min index (- (. documents length) 1))) null))
+      (= active (only-if ([] documents (call min index (- (. documents length) 1))) (if (> (. documents length) 0))))
       (call follow-active false)
     )
     (call (. document close))
@@ -242,9 +242,9 @@
   (fn-do + persist _
     (return-if (if is-restoring))
     (let open (call (of List JSON) (in (as (str (. each path)) JSON) documents)))
-    (let folder-text (? String) (if-expr folder (str folder) null))
-    (let active-text (? String) (if-expr active (str (. active path)) null))
-    (let last-text (? String) (if-expr last-path (str last-path) null))
+    (let folder-text (? String) (only-if (str folder) (if folder)))
+    (let active-text (? String) (only-if (str (. active path)) (if active)))
+    (let last-text (? String) (only-if (str last-path) (if last-path)))
     (let fields
       (call (of Map String JSON)
         (block
@@ -274,7 +274,7 @@
     (if active
       (= last-path (. active path))
     )
-    (let node (if-expr active (call (?. files find) (. active path)) null))
+    (let node (only-if (call (?. files find) (. active path)) (if active)))
     (= (. file-session current) node)
     (if (and node reveals)
       (<- (. file-session revealed) node)

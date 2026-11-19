@@ -198,7 +198,18 @@
     (param at I64 (= 0))
     (let handle next-handle)
     (+= next-handle 1)
-    (call send cue-play (as patch F64) level pan pitch handle (as (/ at cue-frame-split) F64) (as (% at cue-frame-split) F64))
+    (call send
+      (block
+        (arg cue-play)
+        (arg (as patch F64))
+        (arg level)
+        (arg pan)
+        (arg pitch)
+        (arg handle)
+        (arg (as (/ at cue-frame-split) F64))
+        (arg (as (% at cue-frame-split) F64))
+      )
+    )
     (return handle)
   )
   (fn-do + control _
@@ -438,7 +449,16 @@
     (for (in slot (..< 0 (. voices length)))
       (let voice ([] voices slot))
       (return-if voice (if (not (. voice is-active))))
-      (let level (if-expr (and (!= (. voice stage) (. VoiceState sustain)) (!= (. voice stage) (. VoiceState waiting))) (. voice loudness) 1000))
+      (let level
+        (block
+          (case? (and (!= (. voice stage) (. VoiceState sustain)) (!= (. voice stage) (. VoiceState waiting)))
+            (. voice loudness)
+          )
+          (default
+            1000
+          )
+        )
+      )
       (if (< level quietest-level)
         (= quietest voice)
         (= quietest-level level)
@@ -632,7 +652,16 @@
         (+= (. voice gain) gain-step)
         (+= (. voice pitch) (* (- (. voice pitch-end) (. voice pitch)) speed))
         (let sounding (and (!= (. voice stage) (. VoiceState waiting)) (!= (. voice stage) (. VoiceState gap))))
-        (let raw (if-expr sounding (call oscillate voice (. layer wave) (* (. voice pitch) vibrato) (. layer fm-ratio)) 0.0))
+        (let raw
+          (block
+            (case? sounding
+              (call oscillate voice (. layer wave) (* (. voice pitch) vibrato) (. layer fm-ratio))
+            )
+            (default
+              0.0
+            )
+          )
+        )
         (let shaped (call filter voice (. layer filter) raw a1 a2 a3 k))
         (let sample (* shaped (. voice envelope) (. voice gain)))
         (let frame (+ index offset))

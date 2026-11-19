@@ -12,7 +12,11 @@
 (fn-do + git-merge GitMergeResult (?! Error)
   (param directory String)
   (param revision String)
-  (let merged (catch (call git-output directory (list "merge" "--no-edit" "--quiet" "--end-of-options" revision))))
+  (let merged
+    (block
+      (catch (call git-output directory (list "merge" "--no-edit" "--quiet" "--end-of-options" revision)))
+    )
+  )
   (return-if (. GitMergeResult merged) (if (not (is merged Error))))
   (let paths (call git-unmerged-paths directory))
   (throw (as merged Error) (if (== (. paths length) 0)))

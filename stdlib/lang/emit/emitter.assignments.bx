@@ -442,7 +442,16 @@
         (call refuse .refused-statement id)
         (return (call Assignment))
       )
-      (= prior (if-expr (!= shared no-slot) (. (call read-captured shared id target) operand) (call load-local local id)))
+      (= prior
+        (block
+          (case? (!= shared no-slot)
+            (. (call read-captured shared id target) operand)
+          )
+          (default
+            (call load-local local id)
+          )
+        )
+      )
       (let held (call layout-of target id))
       (if (call (. tables layouts is-struct) held)
         (let saved (call frame held))
@@ -649,7 +658,19 @@
       (return (call Assignment))
     )
     (let assignment (call Assignment converted given))
-    (let base (if-expr (== object 0) (. unit self) (if-expr placed (. (call place-of object) operand) (. (call emit-expression object) operand))))
+    (let base
+      (block
+        (case? (== object 0)
+          (. unit self)
+        )
+        (case? placed
+          (. (call place-of object) operand)
+        )
+        (default
+          (. (call emit-expression object) operand)
+        )
+      )
+    )
     (if (call (. facts is-replacing) (. unit reading) id)
       (call replace-storage
         (block
@@ -765,7 +786,19 @@
       (return (call Assignment))
     )
     (let assignment (call Assignment converted given))
-    (let base (if-expr received (. (call received-object lhs (!! name)) operand) (if-expr (== object 0) (. unit self) (. (call emit-expression object) operand))))
+    (let base
+      (block
+        (case? received
+          (. (call received-object lhs (!! name)) operand)
+        )
+        (case? (== object 0)
+          (. unit self)
+        )
+        (default
+          (. (call emit-expression object) operand)
+        )
+      )
+    )
     (if (call (. facts is-replacing) (. unit reading) id)
       (if is-lazy
         (call refuse .refused-statement id)
@@ -911,7 +944,16 @@
     (if is-member
       (+= pending receiver)
     )
-    (let current (if-expr is-member (call call-method getter lhs read-mark) (call call-instance getter lhs read-mark)))
+    (let current
+      (block
+        (case? is-member
+          (call call-method getter lhs read-mark)
+        )
+        (default
+          (call call-instance getter lhs read-mark)
+        )
+      )
+    )
     (let current-type (. current type))
     (let value current)
     (if (== increment .concat-op)
@@ -927,7 +969,20 @@
         )
         (let given (call emit-expression rhs))
         (let given-type (. given type))
-        (= value (call call-operator id combined lhs (. current operand) current-type rhs (. given operand) given-type))
+        (= value
+          (call call-operator
+            (block
+              (arg id)
+              (arg combined)
+              (arg lhs)
+              (arg (. current operand))
+              (arg current-type)
+              (arg rhs)
+              (arg (. given operand))
+              (arg given-type)
+            )
+          )
+        )
       )
     )
     (let computed value)
@@ -1149,7 +1204,16 @@
         (return (call Typed nothing no-type))
       )
       (let stored (call layout-of type id))
-      (return (if-expr (call (. tables layouts is-struct) stored) (call Typed (call snapshot (. gives operand) stored id) type) gives))
+      (return
+        (block
+          (case? (call (. tables layouts is-struct) stored)
+            (call Typed (call snapshot (. gives operand) stored id) type)
+          )
+          (default
+            gives
+          )
+        )
+      )
     )
     (lazy places-store (or (call stores-place lhs) (and (== op .eq-op) (call stores-by-call lhs))))
     (let extends (and (== plan .plan-extend) (== op .add-eq-op)))
@@ -1176,7 +1240,16 @@
       (return (call Typed nothing no-type))
     )
     (if (or extends (!= plan .plan-truncate))
-      (let value (if-expr (or extends (== op .eq-op)) (call emit-expression rhs) (call emit-builtin id (!! increment) lhs rhs true)))
+      (let value
+        (block
+          (case? (or extends (== op .eq-op))
+            (call emit-expression rhs)
+          )
+          (default
+            (call emit-builtin id (!! increment) lhs rhs true)
+          )
+        )
+      )
       (if (not extends)
         (let site id)
         (match? ([] (. tree nodes) lhs)
@@ -1284,7 +1357,13 @@
     (= returns-type (. types void-type))
     (= (. ir returns) void-layout)
     (let previous (call (. ir add-local) managed-layout))
-    (call store-local previous (. (call call-instance (. live previous) (. default site) (. pending length)) operand) (. default site))
+    (call store-local
+      (block
+        (arg previous)
+        (arg (. (call call-instance (. live previous) (. default site) (. pending length)) operand))
+        (arg (. default site))
+      )
+    )
     (let next (call (. ir add-local) managed-layout))
     (call store-local next (. (call call-instance (. live next) (. default site) (. pending length)) operand) (. default site))
     (+= live-actions (call LiveTrackers previous next))
@@ -1488,7 +1567,16 @@
     (param syntax SyntaxId)
     ; Stores in a property of the object being made what the reference holds there before its
     ; first value: no bits set, but for the empty text wherever a text is held.
-    (let value (if-expr (== (. property type) (. types string-type)) (call make-operand .operand-constant (call (. ir add-string) "")) (call integer (call (. tables layouts kind-of) (. field layout)) 0)))
+    (let value
+      (match (. property type)
+        (case= (. types string-type)
+          (call make-operand .operand-constant (call (. ir add-string) ""))
+        )
+        (default
+          (call integer (call (. tables layouts kind-of) (. field layout)) 0)
+        )
+      )
+    )
     (if (call (. tables layouts is-struct) (. field layout))
       (= value (. (call null-value (. property type) (. field layout) syntax) operand))
     )
@@ -1588,7 +1676,14 @@
       (= argument (call Typed (. (call read-lazy-local (. fact slot) syntax held) operand) held))
       (else
         (let position (call argument-position (. fact slot)))
-        (= argument (call Typed (call make-operand .operand-argument (if-expr (. unit takes-self) (+ position 1) position)) (call (. instances argument-type) (. unit instance) position)))
+        (= argument
+          (call Typed
+            (block
+              (arg (call make-operand .operand-argument (if-expr (. unit takes-self) (+ position 1) position)))
+              (arg (call (. instances argument-type) (. unit instance) position))
+            )
+          )
+        )
         (if (call (. types is-optional) (. argument type))
           (call refuse .refused-function syntax)
         )
@@ -1678,7 +1773,16 @@
         )
       )
     )
-    (call store-converted object field property (. fact site) (call Typed value (call (. types optional-inner) given)) syntax)
+    (call store-converted
+      (block
+        (arg object)
+        (arg field)
+        (arg property)
+        (arg (. fact site))
+        (arg (call Typed value (call (. types optional-inner) given)))
+        (arg syntax)
+      )
+    )
     (call jump stored)
     (call (. ir start-block) stored)
   )
@@ -1721,7 +1825,16 @@
         (lazy live-unit (. ([] (. instances rows) unit-id) is-live))
       )
     )
-    (let opened (if-expr (and (!= (. filling count) 0) (>= place (. filling start)) (< (- place (. filling start)) (. filling count))) ([] (. filling trackers) (- place (. filling start))) no-local))
+    (let opened
+      (block
+        (case? (and (!= (. filling count) 0) (>= place (. filling start)) (< (- place (. filling start)) (. filling count)))
+          ([] (. filling trackers) (- place (. filling start)))
+        )
+        (default
+          no-local
+        )
+      )
+    )
     (let trackers no-local)
     (if live
       (= trackers (if-expr (!= opened no-local) opened (call open-trackers syntax)))
@@ -2243,7 +2356,16 @@
     (let data (call part (. receiver operand) layout 0 site))
     (let data-layout (call layout-of (. data type) site))
     (let proven (!= (call (. facts constant-of) (. unit reading) site) no-fact))
-    (let size (if-expr proven (call Typed (call integer .machine-u64 0) (. types size-type)) (call part (. receiver operand) layout 1 site)))
+    (let size
+      (block
+        (case? proven
+          (call Typed (call integer .machine-u64 0) (. types size-type))
+        )
+        (default
+          (call part (. receiver operand) layout 1 site)
+        )
+      )
+    )
     (let size-layout (if-expr proven u64-layout (call layout-of (. size type) site)))
     (if (or (not (call is-pointer data-layout)) (not (call is-integer size-layout)) (not (call is-integer key-layout)) struct-item)
       (call refuse .refused-type site)
@@ -2252,7 +2374,14 @@
     (lazy struct-item (call (. tables layouts is-struct) item-layout))
     (let wide (call num-cast site (. key operand) key-layout u64-layout))
     (let stride (call integer .machine-u64 (. ([] (. tables layouts rows) item-layout) size)))
-    (let assignment (call Assignment (call Typed (. stored operand) (call (. instances argument-type) callee 1)) (call Typed value given)))
+    (let assignment
+      (call Assignment
+        (block
+          (arg (call Typed (. stored operand) (call (. instances argument-type) callee 1)))
+          (arg (call Typed value given))
+        )
+      )
+    )
     (if proven
       (let moved
         (call moved-bytes
@@ -2479,7 +2608,20 @@
       (else
         (let given (call emit-expression rhs))
         (let given-type (. given type))
-        (= value (call call-operator site combined site (. current operand) current-type rhs (. given operand) given-type))
+        (= value
+          (call call-operator
+            (block
+              (arg site)
+              (arg combined)
+              (arg site)
+              (arg (. current operand))
+              (arg current-type)
+              (arg rhs)
+              (arg (. given operand))
+              (arg given-type)
+            )
+          )
+        )
       )
     )
     (let computed value)

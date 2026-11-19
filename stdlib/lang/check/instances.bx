@@ -528,7 +528,11 @@
       (= ([] key-scratch (+ spans-at spanning)) (- (. U32 max) 9))
       (lazy spans-at (+ 10 count filled slotted contexted inheriting redefaulting))
     )
-    (let tail-at (+ 10 count filled slotted contexted inheriting redefaulting spanning encoding))
+    (let tail-at
+      (block
+        (+ 10 count filled slotted contexted inheriting redefaulting spanning encoding)
+      )
+    )
     (if (!= high-effects 0)
       (= ([] key-scratch tail-at) (- (. U32 max) 10))
       (= ([] key-scratch (+ tail-at 1)) high-effects)
@@ -1487,7 +1491,7 @@
     ; The number a slot of an effect holds where a `do with` binds a fake of a class to it, counted
     ; from 1 among the classes fakes of the effect are bound as, in the order they are first bound,
     ; or 0 for none.
-    (let kind U32 0)
+    (let kind U32)
     (let seen (list TypeId))
     (for (in entry swap-entries)
       (if (and (== (. entry effect) effect) (!= (. entry fake) no-type) (== (call (. seen find) (. entry fake)) null))
@@ -1553,7 +1557,16 @@
     ; from the door's own: the effect as it was outside the `do with`, banned or not, and bound to
     ; what was bound there, or else known to reach its real doors. The rest is as at the door.
     (let held ([] swap-entries (- entry 1)))
-    (let outer (if-expr (!= (. held outer) 0) (. held outer) (call intern-swap-entry (call SwapEntry (. held effect) no-type 0 false))))
+    (let outer
+      (block
+        (case? (!= (. held outer) 0)
+          (. held outer)
+        )
+        (default
+          (call intern-swap-entry (call SwapEntry (. held effect) no-type 0 false))
+        )
+      )
+    )
     (let bit (call ban-bit (. held effect)))
     (let banned (if-expr (. held banned) (/or/ effects bit) (/and/ effects (/xor/ (. U64 max) bit))))
     (return (call swapped banned (. held effect) outer))
@@ -1576,8 +1589,8 @@
     (let held ([] swap-entries (- entry 1)))
     (let fake-key (if-expr (== (. held fake) no-type) 0u64 (call (. types key-of) (. held fake))))
     (let mixed-key (call mixed (call mixed (call mixed key (. held effect)) fake-key) (if-expr (. held banned) 1 0)))
-    (return-if (call mixed mixed-key 0u64) (if (== (. held outer) 0)))
-    (return (call mixed-swap-entry (call mixed mixed-key 1u64) (. held outer)))
+    (return-if (call mixed mixed-key 0) (if (== (. held outer) 0)))
+    (return (call mixed-swap-entry (call mixed mixed-key 1) (. held outer)))
   )
   (fn-do _ mixed-context StableKey
     (param key StableKey)

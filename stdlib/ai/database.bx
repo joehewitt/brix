@@ -22,11 +22,35 @@
 (prop _ ai-search-slots _ (= 65536))
 (prop _ ai-search-places (list (? AIChatPlace)) (= (list (. AIChatPlace active) (. AIChatPlace done) (. AIChatPlace archived))))
 (prop _ ai-database-shown _ (= "listed is not null and archived_at is null"))
-(prop _ ai-database-columns _ (= "id, title, service, owner, project, sent_at, replied_at, active_at, outcome, seen_at, done_at, archived_at"))
+(prop _ ai-database-columns _
+  (=
+    (paragraph
+      "id, title, service, owner, project, sent_at, replied_at, active_at, outcome, seen_at, done_at, archived_at"
+    )
+  )
+)
 (prop _ ai-database-summary _ (= (str "select " ai-database-columns " from chats")))
-(prop _ ai-database-place _ (= "(case when archived_at is not null then 2 when done_at is not null then 1 else 0 end)"))
-(prop _ ai-database-put-message _ (= "insert or replace into messages (chat, id, role, created_at, model, finish_reason, elapsed, usage, error) values (?, ?, ?, ?, ?, ?, ?, ?, ?)"))
-(prop _ ai-database-put-part _ (= "insert or replace into parts (chat, message, position, kind, id, ref, name, flags, text, data, media, signature) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"))
+(prop _ ai-database-place _
+  (=
+    (paragraph
+      "(case when archived_at is not null then 2 when done_at is not null then 1 else 0 end)"
+    )
+  )
+)
+(prop _ ai-database-put-message _
+  (=
+    (paragraph
+      "insert or replace into messages (chat, id, role, created_at, model, finish_reason, elapsed, usage, error) values (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    )
+  )
+)
+(prop _ ai-database-put-part _
+  (=
+    (paragraph
+      "insert or replace into parts (chat, message, position, kind, id, ref, name, flags, text, data, media, signature) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    )
+  )
+)
 
 (type + AIChatSummary (is Tuple)
   (prop + id String)
@@ -123,7 +147,15 @@
       )
     )
     (= ([] branches id) found)
-    (return (call (. database query-first) (str ai-database-summary " where id = ?1 and listed is not null") (=> (row) (call summary-row row branches)) id))
+    (return
+      (call (. database query-first)
+        (block
+          (arg (str ai-database-summary " where id = ?1 and listed is not null"))
+          (arg (=> (row) (call summary-row row branches)))
+          (arg id)
+        )
+      )
+    )
   )
   (fn-do + owners (list String) (?! Error)
     (param project String)
@@ -147,7 +179,15 @@
     (param id String)
     (let database (call opened false))
     (throw (call Error (str "There is no saved chat " id)) (if (not database)))
-    (let found (call (. database query-first) "select root_branch, title, is_kept from chats where id = ?" (=> (row) (call saved-chat row id)) id))
+    (let found
+      (call (. database query-first)
+        (block
+          (arg "select root_branch, title, is_kept from chats where id = ?")
+          (arg (=> (row) (call saved-chat row id)))
+          (arg id)
+        )
+      )
+    )
     (throw (call Error (str "There is no saved chat " id)) (if (not found)))
     (let parts (call (of Map String (list AIMessagePart))))
     (let part-rows (use (call (. database prepare) "select message, kind, id, ref, name, flags, text, data, media, signature from parts where chat = ? order by message, position")))
@@ -265,7 +305,12 @@
       (:body
         (=> () :do
           (block
-            (call (. database execute) "delete from search where rowid in (select id from search_rows where chat = ?1)" id)
+            (call (. database execute)
+              (block
+                (arg "delete from search where rowid in (select id from search_rows where chat = ?1)")
+                (arg id)
+              )
+            )
             (call (. database execute) "delete from search_rows where chat = ?1" id)
             (call (. database execute) "delete from parts where chat = ?1" id)
             (call (. database execute) "delete from messages where chat = ?1" id)
@@ -349,11 +394,53 @@
       (:body
         (=> () :do
           (block
-            (call (. database execute) "create temp table absorbed as select id from source.chats where listed is not null and id not in (select id from main.chats)")
-            (call (. database execute) "insert into main.chats (id, listed, owner, service, title, root_branch, is_kept, project) select id, listed + ?1, owner, service, title, root_branch, is_kept, ?2 from source.chats where id in (select id from temp.absorbed)" offset project)
-            (call (. database execute) "insert into main.branches (chat, id, position, parent, fork, title, forks, is_collapsed, prefix, messages) select chat, id, position, parent, fork, title, forks, is_collapsed, prefix, messages from source.branches where chat in (select id from temp.absorbed)")
-            (call (. database execute) "insert into main.messages (chat, id, role, created_at, model, finish_reason, elapsed, usage, error) select chat, id, role, created_at, model, finish_reason, elapsed, usage, error from source.messages where chat in (select id from temp.absorbed)")
-            (call (. database execute) "insert into main.parts (chat, message, position, kind, id, ref, name, flags, text, data, media, signature) select chat, message, position, kind, id, ref, name, flags, text, data, media, signature from source.parts where chat in (select id from temp.absorbed)")
+            (call (. database execute)
+              (block
+                (arg
+                  (paragraph
+                    "create temp table absorbed as select id from source.chats where listed is not null and id not in (select id from main.chats)"
+                  )
+                )
+              )
+            )
+            (call (. database execute)
+              (block
+                (arg
+                  (paragraph
+                    "insert into main.chats (id, listed, owner, service, title, root_branch, is_kept, project) select id, listed + ?1, owner, service, title, root_branch, is_kept, ?2 from source.chats where id in (select id from temp.absorbed)"
+                  )
+                )
+                (arg offset)
+                (arg project)
+              )
+            )
+            (call (. database execute)
+              (block
+                (arg
+                  (paragraph
+                    "insert into main.branches (chat, id, position, parent, fork, title, forks, is_collapsed, prefix, messages) select chat, id, position, parent, fork, title, forks, is_collapsed, prefix, messages from source.branches where chat in (select id from temp.absorbed)"
+                  )
+                )
+              )
+            )
+            (call (. database execute)
+              (block
+                (arg
+                  (paragraph
+                    "insert into main.messages (chat, id, role, created_at, model, finish_reason, elapsed, usage, error) select chat, id, role, created_at, model, finish_reason, elapsed, usage, error from source.messages where chat in (select id from temp.absorbed)"
+                  )
+                )
+              )
+            )
+            (call (. database execute)
+              (block
+                (arg
+                  (paragraph
+                    "insert into main.parts (chat, message, position, kind, id, ref, name, flags, text, data, media, signature) select chat, message, position, kind, id, ref, name, flags, text, data, media, signature from source.parts where chat in (select id from temp.absorbed)"
+                  )
+                )
+              )
+            )
             (call absorb-images database (/ source "images"))
             (let rows (use (call (. database prepare) "select id from temp.absorbed")))
             (while (call (. rows step))
@@ -396,7 +483,16 @@
       (+= summaries (call summary-row (. rows row) branches))
       (+= keys (?? (call (. rows row optional-int) 12) 0))
     )
-    (let snippets (if-expr (and has-terms (> (. keys length) 0)) (call search-snippets database terms keys) (call (of Map Int (list AIChatSnippet)))))
+    (let snippets
+      (block
+        (case? (and has-terms (> (. keys length) 0))
+          (call search-snippets database terms keys)
+        )
+        (default
+          (call (of Map Int (list AIChatSnippet)))
+        )
+      )
+    )
     (for (in index (..< 0 (. summaries length)))
       (+= found (call AIChatFound ([] summaries index) (?? ([] snippets ([] keys index)) (call (of List AIChatSnippet)))))
     )
@@ -418,7 +514,17 @@
       (let id (. file base-name))
       (let adopted (call (. store adopt) file))
       (if (and adopted (!= adopted id))
-        (call (. database execute) "update main.parts set media = replace(media, ?1, ?2) where chat in (select id from temp.absorbed) and instr(media, ?1) > 0" (str "\"" id "\"") (str "\"" adopted "\""))
+        (call (. database execute)
+          (block
+            (arg
+              (paragraph
+                "update main.parts set media = replace(media, ?1, ?2) where chat in (select id from temp.absorbed) and instr(media, ?1) > 0"
+              )
+            )
+            (arg (str "\"" id "\""))
+            (arg (str "\"" adopted "\""))
+          )
+        )
       )
     )
   )
@@ -473,7 +579,20 @@
       (-= ([] written id))
     )
     (let activity (call chat-activity chat))
-    (call (. database execute) "update chats set sent_at = ?2, replied_at = ?3, active_at = ?4, outcome = ?5, seen_at = coalesce(seen_at, ?3) where id = ?1" id (. activity sent-at) (. activity replied-at) (. activity active-at) (call encode-outcome (. activity outcome)))
+    (call (. database execute)
+      (block
+        (arg
+          (paragraph
+            "update chats set sent_at = ?2, replied_at = ?3, active_at = ?4, outcome = ?5, seen_at = coalesce(seen_at, ?3) where id = ?1"
+          )
+        )
+        (arg id)
+        (arg (. activity sent-at))
+        (arg (. activity replied-at))
+        (arg (. activity active-at))
+        (arg (call encode-outcome (. activity outcome)))
+      )
+    )
     (call index-text database id "" (call chat-search-title chat))
     (for (in message (call saved-chat-messages chat))
       (call index-text database id (. message id) (call message-search-text message))
@@ -648,7 +767,16 @@
   (param message-id String)
   (param text String)
   (let is-empty (not (. (call (. text trim)) length)))
-  (let known (call (. database query-first) "select id from search_rows where chat = ?1 and message = ?2" (=> (row) (call (. row int) 0)) chat-id message-id))
+  (let known
+    (call (. database query-first)
+      (block
+        (arg "select id from search_rows where chat = ?1 and message = ?2")
+        (arg (=> (row) (call (. row int) 0)))
+        (arg chat-id)
+        (arg message-id)
+      )
+    )
+  )
   (if (!= known null)
     (call (. database execute) "delete from search where rowid = ?1" known)
     (if is-empty
@@ -677,8 +805,25 @@
 (fn-do _ search-slot (? Int) (?! Error)
   (param database SQLite)
   (param chat-id String)
-  (call (. database execute) "update chats set key = (select coalesce(max(key), 0) + 1 from chats) where id = ?1 and key is null" chat-id)
-  (let key (call (. database query-first) "select key from chats where id = ?1 and key is not null" (=> (row) (call (. row int) 0)) chat-id))
+  (call (. database execute)
+    (block
+      (arg
+        (paragraph
+          "update chats set key = (select coalesce(max(key), 0) + 1 from chats) where id = ?1 and key is null"
+        )
+      )
+      (arg chat-id)
+    )
+  )
+  (let key
+    (call (. database query-first)
+      (block
+        (arg "select key from chats where id = ?1 and key is not null")
+        (arg (=> (row) (call (. row int) 0)))
+        (arg chat-id)
+      )
+    )
+  )
   (return-if null (if (== key null)))
   (let first (/lshift/ key ai-search-shift))
   (let last (- (+ first ai-search-slots) 1))
@@ -1184,7 +1329,11 @@
     (lazy output (. part output))
     (lazy is-same (and (!= (. part text-output) null) (is output String) (== (. part text-output) output)))
     (lazy flags (+ (call mark (. part is-error)) (call raw-flag output ai-part-raw-data) (if-expr is-same ai-part-same-text 0)))
-    (lazy media (only-if (call to-json (call (of List JSON) (in (call encode-image (?? (call (?. images referenced) each) each)) (. part images)))) (if (. part images))))
+    (lazy media
+      (block
+        (only-if (call to-json (call (of List JSON) (in (call encode-image (?? (call (?. images referenced) each) each)) (. part images)))) (if (. part images)))
+      )
+    )
   )
 )
 
@@ -1251,7 +1400,16 @@
     (lazy media (call json-value row 8 false))
     (lazy signature (call json-value row 9 (!= (/and/ flags ai-part-raw-signature) 0)))
     (lazy output (?? data (as null JSON)))
-    (lazy result-text (if-expr (!= (/and/ flags ai-part-same-text) 0) (call saved-text output) (call (. row optional-string) 6)))
+    (lazy result-text
+      (block
+        (case? (!= (/and/ flags ai-part-same-text) 0)
+          (call saved-text output)
+        )
+        (default
+          (call (. row optional-string) 6)
+        )
+      )
+    )
   )
 )
 

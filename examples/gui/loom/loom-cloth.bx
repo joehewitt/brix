@@ -52,8 +52,25 @@
       (match view
         (case= (. LoomView draft)
           (call paint-paper canvas area $loom-paper)
-          (call paint-marks canvas rows (. area top-left) cell (if-expr is-planned $loom-plan $loom-ink))
-          (call paint-rules canvas area (. draft ends) count cell (call Rules $loom-rule $loom-bold-rule false))
+          (call paint-marks
+            (block
+              (arg canvas)
+              (arg rows)
+              (arg (. area top-left))
+              (arg cell)
+              (arg (if-expr is-planned $loom-plan $loom-ink))
+            )
+          )
+          (call paint-rules
+            (block
+              (arg canvas)
+              (arg area)
+              (arg (. draft ends))
+              (arg count)
+              (arg cell)
+              (arg (call Rules $loom-rule $loom-bold-rule false))
+            )
+          )
         )
         (case= (. LoomView cloth)
           (if is-planned
@@ -176,7 +193,20 @@
   )
   (for (in row (.. 0 rows))
     (= (. canvas fill-color) (if-expr (== (% row 4) 0) (. rules bold) (. rules thin)))
-    (call (. canvas rect) (call Rect (. area x) (- (if-expr (. rules bottom-up) (- (+ (. area y) height) (* row cell)) (+ (. area y) (* row cell))) 0.5) width 1))
+    (call (. canvas rect)
+      (block
+        (arg
+          (call Rect
+            (block
+              (arg (. area x))
+              (arg (- (if-expr (. rules bottom-up) (- (+ (. area y) height) (* row cell)) (+ (. area y) (* row cell))) 0.5))
+              (arg width)
+              (arg 1)
+            )
+          )
+        )
+      )
+    )
   )
 )
 
@@ -212,7 +242,16 @@
     (for (in end (..< 0 (. threads length)))
       (let up ([] threads end))
       (let before (if-expr up (and (> row 0) ([] ([] rows (- row 1)) end)) (and (> end 0) (not ([] threads (- end 1))))))
-      (let after (if-expr up (and (< (+ row 1) (. rows length)) ([] ([] rows (+ row 1)) end)) (and (< (+ end 1) (. threads length)) (not ([] threads (+ end 1))))))
+      (let after
+        (block
+          (case? up
+            (and (< (+ row 1) (. rows length)) ([] ([] rows (+ row 1)) end))
+          )
+          (default
+            (and (< (+ end 1) (. threads length)) (not ([] threads (+ end 1))))
+          )
+        )
+      )
       (let place (call Rect (+ (. origin x) (* end cell)) (+ (. origin y) (* row cell)) cell cell))
       (call paint-crossing canvas place up (call (. draft warp-color) end) weft before after)
     )
@@ -248,10 +287,24 @@
   (let lead (if-expr before 0.0 gap))
   (let trail (if-expr after 0.0 gap))
   (let under
-    (if-expr warp-up (call Rect (. place x) (+ (. place y) side) (. place width) (- (. place height) (* side 2))) (call Rect (+ (. place x) side) (. place y) (- (. place width) (* side 2)) (. place height)))
+    (block
+      (case? warp-up
+        (call Rect (. place x) (+ (. place y) side) (. place width) (- (. place height) (* side 2)))
+      )
+      (default
+        (call Rect (+ (. place x) side) (. place y) (- (. place width) (* side 2)) (. place height))
+      )
+    )
   )
   (let over
-    (if-expr warp-up (call Rect (+ (. place x) side) (+ (. place y) lead) (- (. place width) (* side 2)) (- (. place height) lead trail)) (call Rect (+ (. place x) lead) (+ (. place y) side) (- (. place width) lead trail) (- (. place height) (* side 2))))
+    (block
+      (case? warp-up
+        (call Rect (+ (. place x) side) (+ (. place y) lead) (- (. place width) (* side 2)) (- (. place height) lead trail))
+      )
+      (default
+        (call Rect (+ (. place x) lead) (+ (. place y) side) (- (. place width) lead trail) (- (. place height) (* side 2)))
+      )
+    )
   )
   (= (. canvas fill-color) (call shaded (if-expr warp-up weft warp) 0.62))
   (call (. canvas rect) under)

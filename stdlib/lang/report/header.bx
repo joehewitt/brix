@@ -61,12 +61,20 @@
       (if (and (== (. shape type-syntax) 0) (== (. shape default-syntax) 0) (!= (. shape pattern) 0))
         (let type (call agreed (as position U32)))
         (if (!= type no-type)
-          (+= params (call InferredParam (as position U32) (. shape pattern) (call type-source (. session types) type)))
+          (+= params
+            (call InferredParam
+              (block
+                (arg (as position U32))
+                (arg (. shape pattern))
+                (arg (call type-source (. session types) type))
+              )
+            )
+          )
         )
       )
     )
     (let infers-return (and (== (. fn return-type) 0) (!= (. fn kind) .constructor-decl) (!= (. fn kind) .setter-decl)))
-    (let returns (if-expr infers-return (call returned chosen) null))
+    (let returns (only-if (call returned chosen) (if infers-return)))
     (let errors (list String))
     (let differs (list String))
     (if (== (. fn errors count) 0)
@@ -76,7 +84,11 @@
       )
       (let extra (call extra-errors shared))
       (if (!= (. extra length) 0)
-        (+= differs (str (if-expr (call varies) "Some uses" "Copies made for other callers") " also raise " (call (. " | " join) extra)))
+        (+= differs
+          (paragraph
+            (str (if-expr (call varies) "Some uses" "Copies made for other callers") " also raise " (call (. " | " join) extra))
+          )
+        )
       )
     )
     (if (and infers-return (not (call varies)) (call returns-differ chosen))

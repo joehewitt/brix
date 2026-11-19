@@ -724,7 +724,16 @@
     (let seconds (call (. cursor u64)))
     (let nanoseconds (call (. cursor u64)))
     (let site (call record-site id (if-expr is-event (. TraceSiteKind event) (. TraceSiteKind log))))
-    (let values (if-expr (call is-group-event site) (call read-group-values cursor (. site slots)) (call read-values cursor (. site slots))))
+    (let values
+      (block
+        (case? (call is-group-event site)
+          (call read-group-values cursor (. site slots))
+        )
+        (default
+          (call read-values cursor (. site slots))
+        )
+      )
+    )
     (let record
       (call TraceRecord
         (block

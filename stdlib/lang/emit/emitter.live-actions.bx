@@ -175,7 +175,13 @@
       (let mark (. pending length))
       (+= pending (call integer .machine-u32 (call (. tables state-key-number) (. held key))))
       (let local (call (. ir add-local) managed-layout))
-      (call store-local local (. (call call-instance (. facts style-runtime outlet-state) declared mark) operand) declared)
+      (call store-local
+        (block
+          (arg local)
+          (arg (. (call call-instance (. facts style-runtime outlet-state) declared mark) operand))
+          (arg declared)
+        )
+      )
       (+= state-cells (call StateCell (as index U32) local))
     )
   )
@@ -743,7 +749,15 @@
       (call refuse .refused-statement site)
       (return)
     )
-    (let subscriber (call convert-one site ([] (. facts conversions) made) (call Typed (call make-operand .operand-argument 0) closure)))
+    (let subscriber
+      (call convert-one
+        (block
+          (arg site)
+          (arg ([] (. facts conversions) made))
+          (arg (call Typed (call make-operand .operand-argument 0) closure))
+        )
+      )
+    )
     (let given (. subscriber type))
     (let stream (call make-operand .operand-argument 2))
     (let broadcaster (call (. instances argument-type) (. unit instance) 1))
@@ -859,7 +873,14 @@
     (for (in position (..< 0 (. filling count)))
       (for (in index (..< 0 (. place-trackers length)))
         (if (== (. ([] place-trackers index) place) (+ (. filling start) position))
-          (call subscribe-value (. ([] place-trackers index) place) (. ([] place-trackers index) trackers) (. filling type) site)
+          (call subscribe-value
+            (block
+              (arg (. ([] place-trackers index) place))
+              (arg (. ([] place-trackers index) trackers))
+              (arg (. filling type))
+              (arg site)
+            )
+          )
         )
       )
     )
@@ -1069,7 +1090,14 @@
       (else
         (match ([] (. tree nodes) statement)
           (case (call .node-assign row)
-            (let styled (call (. facts style-declaration-of) (. ([] (. instances rows) (. unit instance)) enclosing) statement))
+            (let styled
+              (call (. facts style-declaration-of)
+                (block
+                  (arg (. ([] (. instances rows) (. unit instance)) enclosing))
+                  (arg statement)
+                )
+              )
+            )
             (if styled
               (call author-again statement (. row rhs) styled)
               (else-if (or (!= (call (. tree attribute-element) statement) 0) rule-update)
@@ -1089,7 +1117,14 @@
                 (call emit-assign statement (. row op) (. row lhs) (. row rhs))
               )
             )
-            (lazy rule-update (call (. facts rule-update-of) (. ([] (. instances rows) (. unit instance)) enclosing) statement))
+            (lazy rule-update
+              (call (. facts rule-update-of)
+                (block
+                  (arg (. ([] (. instances rows) (. unit instance)) enclosing))
+                  (arg statement)
+                )
+              )
+            )
           )
           (case (call .node-property-syntax row)
             (call emit-assign statement .eq-op (call (. tree content-property-name) statement) (. row value))
@@ -1317,7 +1352,19 @@
       (if (!= (. given type) (. row taken))
         (call refuse .refused-conversion statement)
       )
-      (= kept (call call-protocol statement (. row call) (. object operand) (. row parent) (. given operand) (. row taken) false))
+      (= kept
+        (call call-protocol
+          (block
+            (arg statement)
+            (arg (. row call))
+            (arg (. object operand))
+            (arg (. row parent))
+            (arg (. given operand))
+            (arg (. row taken))
+            (arg false)
+          )
+        )
+      )
       (= kept-type (. kept type))
       (let mark (. pending length))
       (+= pending (. object operand))
@@ -1403,7 +1450,15 @@
     (call keep-captured slot (. value operand) (. field type) statement)
     (call settle-shared slot statement)
     (if watched
-      (call dispatch-local slot prior (. (call read-captured slot statement (. field type)) operand) (. field type) statement)
+      (call dispatch-local
+        (block
+          (arg slot)
+          (arg prior)
+          (arg (. (call read-captured slot statement (. field type)) operand))
+          (arg (. field type))
+          (arg statement)
+        )
+      )
     )
   )
   (fn-do _ declared-slot SlotId
@@ -1536,7 +1591,15 @@
           )
           (+= pending (call make-callback (call (. tables query-function-of) (. registration query)) (. unit self) site))
           (if (!= (. query target-id) 0)
-            (+= pending (call make-callback (call (. tables query-function-of) (. registration query) true) (. unit self) site))
+            (+= pending
+              (call make-callback
+                (block
+                  (arg (call (. tables query-function-of) (. registration query) true))
+                  (arg (. unit self))
+                  (arg site)
+                )
+              )
+            )
           )
         )
       )
@@ -1771,7 +1834,13 @@
     (let subscriber (call convert iterator .reason-argument (call Typed written closure)))
     (let tracker (call own-tracker iterator owned stream (. subscriber operand) (!= used null) (call arrives loop)))
     (let given (call convert iterator .reason-argument tracker))
-    (call add-tracker (call load-local (. ([] live-actions (- (. live-actions length) 1)) next) iterator) (. given operand) iterator)
+    (call add-tracker
+      (block
+        (arg (call load-local (. ([] live-actions (- (. live-actions length) 1)) next) iterator))
+        (arg (. given operand))
+        (arg iterator)
+      )
+    )
   )
   (fn-do _ subscribe-dependency _
     (param rule ClassRule)
@@ -1867,7 +1936,13 @@
       (call share-self (. rule syntax))
     )
     (let previous (call (. ir add-local) managed-layout))
-    (call store-local previous (. (call call-instance (. live previous) (. rule syntax) (. pending length)) operand) (. rule syntax))
+    (call store-local
+      (block
+        (arg previous)
+        (arg (. (call call-instance (. live previous) (. rule syntax) (. pending length)) operand))
+        (arg (. rule syntax))
+      )
+    )
     (let next (call (. ir add-local) managed-layout))
     (call store-local next (. (call call-instance (. live next) (. rule syntax) (. pending length)) operand) (. rule syntax))
     (+= live-actions (call LiveTrackers previous next))
@@ -1945,7 +2020,16 @@
       (return)
     )
     (if (and (== (. target kind) .style-gate) (. ([] (. facts style-gates) (. target place)) content))
-      (let answered (if-expr (!= (. live callback-result) no-type) (call layout-of (. live callback-result) site) no-layout))
+      (let answered
+        (block
+          (case? (!= (. live callback-result) no-type)
+            (call layout-of (. live callback-result) site)
+          )
+          (default
+            no-layout
+          )
+        )
+      )
       (if (== answered no-layout)
         (call refuse .refused-function site)
         (return)
@@ -2510,7 +2594,13 @@
     (let own (and (call is-own-slot slot) (call owns slot)))
     (if (and rerunning (not own))
       (let kept (call read-captured slot id tracking))
-      (call add-tracker (call load-local trackers id) (. (call convert id .reason-argument (call Typed (. kept operand) tracking)) operand) id)
+      (call add-tracker
+        (block
+          (arg (call load-local trackers id))
+          (arg (. (call convert id .reason-argument (call Typed (. kept operand) tracking)) operand))
+          (arg id)
+        )
+      )
       (return (call load-property id (. kept operand) tracking (call (. program store-atom) "latest") false item))
     )
     (if (or rerunning (not own))
@@ -2537,7 +2627,13 @@
     (+= pending (. latest operand))
     (let made (call call-instance (. row tracker) id making))
     (call keep-captured slot (. made operand) tracking id)
-    (call add-tracker (call load-local trackers id) (. (call convert id .reason-argument (call Typed (. made operand) tracking)) operand) id)
+    (call add-tracker
+      (block
+        (arg (call load-local trackers id))
+        (arg (. (call convert id .reason-argument (call Typed (. made operand) tracking)) operand))
+        (arg id)
+      )
+    )
     (return (call Typed (. latest operand) item))
   )
   (fn-do _ unit-machine (? MachineFact)

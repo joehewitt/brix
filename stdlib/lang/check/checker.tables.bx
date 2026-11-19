@@ -243,10 +243,40 @@
       (if (not (call note-view-range id object-syntax receiver key-syntax key))
         (return invalid-type)
       )
-      (return (if-expr (== kind 2) receiver (call (. types array-view-of) (. types array-row-range-decl) (call row-struct-of receiver) (call class-arg types receiver 1))))
+      (return
+        (match kind
+          (case= 2
+            receiver
+          )
+          (default
+            (call (. types array-view-of)
+              (block
+                (arg (. types array-row-range-decl))
+                (arg (call row-struct-of receiver))
+                (arg (call class-arg types receiver 1))
+              )
+            )
+          )
+        )
+      )
     )
     (call (. conversions convert) key-syntax key-syntax key (. types index-type) .reason-argument)
-    (return (if-expr (== kind 2) (call row-struct-of receiver) (call (. types array-view-of) (. types array-row-decl) (call row-struct-of receiver) (call class-arg types receiver 1))))
+    (return
+      (match kind
+        (case= 2
+          (call row-struct-of receiver)
+        )
+        (default
+          (call (. types array-view-of)
+            (block
+              (arg (. types array-row-decl))
+              (arg (call row-struct-of receiver))
+              (arg (call class-arg types receiver 1))
+            )
+          )
+        )
+      )
+    )
   )
   (fn-do + note-view-range Bool
     (param id SyntaxId)

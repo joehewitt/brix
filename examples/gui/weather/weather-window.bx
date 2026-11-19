@@ -322,7 +322,13 @@
         (= text #caption)
       )
       (<> Label (• headline-degrees)
-        (= text (call degrees-label (call animated (call shown-degrees (. #moment temperature) #uses-fahrenheit) (call spring 700ms))))
+        (= text
+          (call degrees-label
+            (block
+              (arg (call animated (call shown-degrees (. #moment temperature) #uses-fahrenheit) (call spring 700ms)))
+            )
+          )
+        )
       )
       (<> Label (• headline-condition)
         (= text (. #moment condition title))
@@ -423,7 +429,18 @@
     (let first (call strip-start forecast))
     (let now (. forecast current))
     (let hour ([] (. forecast hours) first))
-    (+= shown (call Hour (. hour time) (. now temperature) (. now condition) (. now cover) (. hour rain-chance) (. now is-day)))
+    (+= shown
+      (call Hour
+        (block
+          (arg (. hour time))
+          (arg (. now temperature))
+          (arg (. now condition))
+          (arg (. now cover))
+          (arg (. hour rain-chance))
+          (arg (. now is-day))
+        )
+      )
+    )
     (for (in index (..< (+ first 1) (call min (+ first strip-length) (. forecast hours length))))
       (+= shown ([] (. forecast hours) index))
     )
@@ -456,7 +473,11 @@
       (call Details
         (block
           (arg (call speed-label (. now wind) uses-fahrenheit))
-          (arg (str "Gusts " (call speed-label (. now gusts) uses-fahrenheit) " · from " (call compass-label (. now wind-from))))
+          (arg
+            (paragraph
+              (str "Gusts " (call speed-label (. now gusts) uses-fahrenheit) " · from " (call compass-label (. now wind-from)))
+            )
+          )
           (arg (. now wind-from))
           (arg (call percent-label (. now humidity)))
           (arg (/ (as (. now humidity) F64) 100))

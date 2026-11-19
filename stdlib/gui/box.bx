@@ -797,7 +797,15 @@
     (let span (call scroll-blur-span (. run shown)))
     (return-if null (if (< span gui-scroll-blur-least)))
     (let reach (* (/ (call min span gui-scroll-blur-most) span) (as (!! $scroll-blur) F64)))
-    (return (call scroll-blur-pass (call Point (* (. run shown x) reach) (* (. run shown y) reach)) (call scroll-blur-stills) device-scale))
+    (return
+      (call scroll-blur-pass
+        (block
+          (arg (call Point (* (. run shown x) reach) (* (. run shown y) reach)))
+          (arg (call scroll-blur-stills))
+          (arg device-scale)
+        )
+      )
+    )
   )
   (fn-do _ scroll-blur-span Length
     (param shown Point)
@@ -5669,7 +5677,16 @@
     (= travel (call Point 0 0))
     (let kept (call exp (/ (- (as (. tick delta) F64)) (as gui-scroll-blur-fade F64))))
     (let faded (call Point (* (. shown x) kept) (* (. shown y) kept)))
-    (let next (if-expr (>= (+ (* (. moved x) (. moved x)) (* (. moved y) (. moved y))) (+ (* (. faded x) (. faded x)) (* (. faded y) (. faded y)))) moved faded))
+    (let next
+      (block
+        (case? (>= (+ (* (. moved x) (. moved x)) (* (. moved y) (. moved y))) (+ (* (. faded x) (. faded x)) (* (. faded y) (. faded y))))
+          moved
+        )
+        (default
+          faded
+        )
+      )
+    )
     (if (and (== (. moved x) 0) (== (. moved y) 0) (< (call (. box scroll-blur-span) next) gui-scroll-blur-least))
       (= is-over true)
       (call (. box scroll-blur-ended) this)

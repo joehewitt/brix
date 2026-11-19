@@ -43,11 +43,30 @@
   )
   (let components (call link-components config program target platform))
   (let family (call config-string platform "family"))
-  (let linked (call LinkInputs config platform build-path components family (call (. variant omitted-archives) config build-path)))
+  (let linked
+    (call LinkInputs
+      (block
+        (arg config)
+        (arg platform)
+        (arg build-path)
+        (arg components)
+        (arg family)
+        (arg (call (. variant omitted-archives) config build-path))
+      )
+    )
+  )
   (let arguments
     (match (. target object-format)
       (case= .macho
-        (call apple-link-arguments linked target object-path executable-path (call sanitizer-library config variant))
+        (call apple-link-arguments
+          (block
+            (arg linked)
+            (arg target)
+            (arg object-path)
+            (arg executable-path)
+            (arg (call sanitizer-library config variant))
+          )
+        )
       )
       (case= .elf
         (call linux-link-arguments linked object-path executable-path)

@@ -245,7 +245,21 @@
         (lazy array-subject (call same-decl (call class-ref types subject-type) (. types array-decl)))
       )
     )
-    (let region-mark (if-expr regional (call make-operand .operand-value (call append .op-load-task-word matched (call Span) parse-region-mark-offset u64-layout)) nothing))
+    (let region-mark
+      (block
+        (case? regional
+          (call make-operand
+            (block
+              (arg .operand-value)
+              (arg (call append .op-load-task-word matched (call Span) parse-region-mark-offset u64-layout))
+            )
+          )
+        )
+        (default
+          nothing
+        )
+      )
+    )
     (let run (call open-stream matched (. value operand) subject-type made viewed extends regional))
     (let done (call (. ir reserve-block)))
     (let slot (if-expr is-statement nothing (call join-slot layout)))
@@ -347,8 +361,26 @@
       (return (call Typed nothing no-type))
     )
     (lazy unpaired-capture (!= (. ([] (. tables layouts rows) captured-layout) fields count) 2))
-    (let subject-type (if-expr coded-in (. streaming given-stream-type) (call (. instances argument-type) (. unit instance) 0)))
-    (let subject (if-expr coded-in (. streaming given-stream) (. (call slot-value given-slot id subject-type) operand)))
+    (let subject-type
+      (block
+        (case? coded-in
+          (. streaming given-stream-type)
+        )
+        (default
+          (call (. instances argument-type) (. unit instance) 0)
+        )
+      )
+    )
+    (let subject
+      (block
+        (case? coded-in
+          (. streaming given-stream)
+        )
+        (default
+          (. (call slot-value given-slot id subject-type) operand)
+        )
+      )
+    )
     (let own-streaming streaming)
     (= streaming (= (. streaming pattern-helper-type) no-type))
     (= streaming (= (. streaming given-stream-type) no-type))
@@ -422,7 +454,21 @@
       (else
         (call hold-captures run pattern)
         (call plan-choices pattern)
-        (= arrives (call emit-stream-arms run pattern result (. run start) whole end arms-joined arm-slot failed))
+        (= arrives
+          (call emit-stream-arms
+            (block
+              (arg run)
+              (arg pattern)
+              (arg result)
+              (arg (. run start))
+              (arg whole)
+              (arg end)
+              (arg arms-joined)
+              (arg arm-slot)
+              (arg failed)
+            )
+          )
+        )
       )
     )
     (if (or (not keeps) (not arrives))
@@ -1237,7 +1283,13 @@
         )
         (if (== (call (. facts plan-of) (. unit reading) id) .plan-stream-guard)
           (let missed (call failure-of run id cursor failed))
-          (return (call bare-part (call stream-guard id (. row operand) (== (. row op) .positive-lookahead-op) cursor missed)))
+          (return
+            (call bare-part
+              (block
+                (arg (call stream-guard id (. row operand) (== (. row op) .positive-lookahead-op) cursor missed))
+              )
+            )
+          )
         )
         (if (or (== (. row op) .positive-lookahead-op) (== (. row op) .negative-lookahead-op))
           (let looked
@@ -1259,7 +1311,16 @@
         (let most-at (if-expr (!= (. row max) 0) (. row max) (. row min)))
         (let least-at (if-expr (call (. tree literal-bound) (. row min)) 0 (. row min)))
         (let limit-at (if-expr (call (. tree literal-bound) most-at) 0 most-at))
-        (let short (if-expr (or (!= least-at 0) (!= (call (. tree stream-bound) (. row min)) 0)) (call failure-of run id cursor failed) failed))
+        (let short
+          (block
+            (case? (or (!= least-at 0) (!= (call (. tree stream-bound) (. row min)) 0))
+              (call failure-of run id cursor failed)
+            )
+            (default
+              failed
+            )
+          )
+        )
         (return
           (call stream-repeat
             (block
@@ -1321,7 +1382,16 @@
     ; Tells the helper that observes literal words to forget those it was told of that end past a
     ; cursor.
     (let row ([] (. facts observer-bodies) (. streaming observer-row)))
-    (call call-protocol site (. row rewind) (. streaming pattern-helper) (. streaming pattern-helper-type) cursor (. types index-type))
+    (call call-protocol
+      (block
+        (arg site)
+        (arg (. row rewind))
+        (arg (. streaming pattern-helper))
+        (arg (. streaming pattern-helper-type))
+        (arg cursor)
+        (arg (. types index-type))
+      )
+    )
   )
   (fn-do _ record-literals _
     (param run StreamRun)
@@ -1502,7 +1572,22 @@
     (= streaming (= (. streaming rollback-mark) no-local))
     (= streaming (= (. streaming rollback-row) (. U32 max)))
     (call plan-choices (. target pattern))
-    (let arrives (call emit-stream-arms run (. target pattern) result cursor false end joined slot missed spanned))
+    (let arrives
+      (call emit-stream-arms
+        (block
+          (arg run)
+          (arg (. target pattern))
+          (arg result)
+          (arg cursor)
+          (arg false)
+          (arg end)
+          (arg joined)
+          (arg slot)
+          (arg missed)
+          (arg spanned)
+        )
+      )
+    )
     (= unit own-unit)
     (= streaming own-streaming)
     (if (not arrives)
@@ -1688,7 +1773,16 @@
           (= expression (. named expr))
         )
       )
-      (let given (if-expr (is ([] (. tree nodes) expression) .node-stream-match) (call pattern-value expression) (call emit-expression expression)))
+      (let given
+        (block
+          (case? (is ([] (. tree nodes) expression) .node-stream-match)
+            (call pattern-value expression)
+          )
+          (default
+            (call emit-expression expression)
+          )
+        )
+      )
       (let value (call convert argument .reason-argument given))
       (if (!= (. value type) (call (. instances argument-type) callee (+ position 1)))
         (call refuse .refused-conversion argument)
@@ -1742,7 +1836,23 @@
     (if (!= carried no-type)
       (= answer (call propagate-held id carries (. answer operand)))
     )
-    (return (call take-rule-answer run id result cursor failed cells answer given-mark lendings mapped spanned))
+    (return
+      (call take-rule-answer
+        (block
+          (arg run)
+          (arg id)
+          (arg result)
+          (arg cursor)
+          (arg failed)
+          (arg cells)
+          (arg answer)
+          (arg given-mark)
+          (arg lendings)
+          (arg mapped)
+          (arg spanned)
+        )
+      )
+    )
   )
   (fn-do + adapter-call StreamPart
     (param run StreamRun)
@@ -2337,7 +2447,23 @@
       (= answer (. (call propagate-held id returned answer) operand))
     )
     (let answered (call Typed answer answer-type))
-    (return (call take-rule-answer run id result cursor failed cells answered given-mark lendings (!= (. mappings count) 0) spanned))
+    (return
+      (call take-rule-answer
+        (block
+          (arg run)
+          (arg id)
+          (arg result)
+          (arg cursor)
+          (arg failed)
+          (arg cells)
+          (arg answered)
+          (arg given-mark)
+          (arg lendings)
+          (arg (!= (. mappings count) 0))
+          (arg spanned)
+        )
+      )
+    )
   )
   (fn-do _ lend-collectors (list Lending)
     (param id SyntaxId)
@@ -2823,7 +2949,11 @@
               )
             )
           )
-          (lazy plan-matches (== (== (call (. facts plan-of) (. unit reading) (. row name)) .plan-stream-value) valued))
+          (lazy plan-matches
+            (block
+              (== (== (call (. facts plan-of) (. unit reading) (. row name)) .plan-stream-value) valued)
+            )
+          )
           (lazy open-capture (and (!= held (. U32 max)) (not (. ([] stream-captures held) accumulates))))
           (lazy value-differs (!= (!= (. ([] stream-captures held) value) no-local) valued))
         )
@@ -2870,7 +3000,11 @@
         (return (call bare-part cursor))
       )
       (lazy listed-or-helped (or (!= (. capture listed) 0) (!= (. streaming pattern-helper-type) no-type)))
-      (lazy retyped-or-partial (or (!= (call (. facts node-type) (. unit reading) name) (. capture type)) (call (. tree optional-part) pattern)))
+      (lazy retyped-or-partial
+        (block
+          (or (!= (call (. facts node-type) (. unit reading) name) (. capture type)) (call (. tree optional-part) pattern))
+        )
+      )
       (let part (call emit-stream-part run pattern cursor failed))
       (let text (call stream-text run name cursor (. part ending)))
       (call store-local (. capture value) (. text operand) id)
@@ -2913,7 +3047,14 @@
           (call clear-captures (. row operand) id)
           (call store-local (. capture present) (call integer .machine-u8 0) id)
           (call arrive id cursor joined (call make-operand .operand-void 0))
-          (return (call StreamPart (call close-joins joined mark (. run index-layout) (call make-operand .operand-void 0)) (. tried value)))
+          (return
+            (call StreamPart
+              (block
+                (arg (call close-joins joined mark (. run index-layout) (call make-operand .operand-void 0)))
+                (arg (. tried value))
+              )
+            )
+          )
         )
       )
     )
@@ -3275,7 +3416,11 @@
       (call refuse .refused-expression site)
       (return no-local)
     )
-    (lazy kept-differs (!= (. ([] (. facts rollback-bodies) body) kept) (. ([] (. facts rollback-bodies) (. streaming rollback-row)) kept)))
+    (lazy kept-differs
+      (block
+        (!= (. ([] (. facts rollback-bodies) body) kept) (. ([] (. facts rollback-bodies) (. streaming rollback-row)) kept))
+      )
+    )
     (let given (call (. ir add-local) (. ([] (. ir locals) (. streaming rollback-mark)) layout) true true))
     (+= pending
       (call make-operand
@@ -3479,7 +3624,23 @@
       )
     )
     (call (. ir start-block) holds)
-    (let text (if-expr spans (call text-span capture id (call (. types optional-inner) type)) (call stream-text (. capture run) (. capture site) (call load-local (. capture begin) id) (call load-local (. capture end) id))))
+    (let text
+      (block
+        (case? spans
+          (call text-span capture id (call (. types optional-inner) type))
+        )
+        (default
+          (call stream-text
+            (block
+              (arg (. capture run))
+              (arg (. capture site))
+              (arg (call load-local (. capture begin) id))
+              (arg (call load-local (. capture end) id))
+            )
+          )
+        )
+      )
+    )
     (call arrive id (. (call wrap id text type) operand) joined slot)
     (call (. ir start-block) empty)
     (call arrive id (. (call empty-optional type layout) operand) joined slot)
@@ -3620,7 +3781,19 @@
     (while (< position (. parts length))
       (let fused (call fused-length run parts position))
       (if (!= fused 0)
-        (= at (call stream-fused run parts position fused (. at ending) failed (and whole (== fused (. parts length)))))
+        (= at
+          (call stream-fused
+            (block
+              (arg run)
+              (arg parts)
+              (arg position)
+              (arg fused)
+              (arg (. at ending))
+              (arg failed)
+              (arg (and whole (== fused (. parts length))))
+            )
+          )
+        )
         (+= position fused)
         (else
           (= at (call emit-stream-part run ([] parts position) (. at ending) failed))
@@ -3821,7 +3994,18 @@
     (call (. ir start-block) test)
     (call branch (call compare id .compare-less (call load-local offset id) count) read matched)
     (call (. ir start-block) read)
-    (let decoded (call call-protocol id reads (. text operand) (. types string-type) (call load-local byte id) (. types size-type)))
+    (let decoded
+      (call call-protocol
+        (block
+          (arg id)
+          (arg reads)
+          (arg (. text operand))
+          (arg (. types string-type))
+          (arg (call load-local byte id))
+          (arg (. types size-type))
+        )
+      )
+    )
     (let decoded-type (. decoded type))
     (let decoded-layout (call layout-of decoded-type id))
     (let onward (call part (. decoded operand) decoded-layout 0 id))
@@ -5005,7 +5189,16 @@
     (for (in index (..< 0 (. listing length)))
       (let position ([] listing index))
       (let capture ([] stream-captures (. ([] capture-levels position) capture)))
-      (let element (if-expr (> ([] depths index) 1) (call level-list ([] capture-levels (- position 1)) id) (call captured-element capture position id)))
+      (let element
+        (block
+          (case? (> ([] depths index) 1)
+            (call level-list ([] capture-levels (- position 1)) id)
+          )
+          (default
+            (call captured-element capture position id)
+          )
+        )
+      )
       (call append-level ([] capture-levels position) element (. capture site))
     )
     (call store-local spot next id)
@@ -5053,7 +5246,13 @@
     (if (!= least-at 0)
       (let least-value (call count-of least-at))
       (let counted (call (. ir reserve-block)))
-      (call branch (call compare id .compare-greater-equal (call load-local taken id) (. least-value operand)) counted short)
+      (call branch
+        (block
+          (arg (call compare id .compare-greater-equal (call load-local taken id) (. least-value operand)))
+          (arg counted)
+          (arg short)
+        )
+      )
       (call cut-repeat entered saved gathered short failed id)
       (call (. ir start-block) counted)
       (call settle-repeat saved gathered id)
@@ -5385,7 +5584,15 @@
       (return)
     )
     (let row ([] (. facts storage-bodies) (. streaming storage-row)))
-    (let context (call read-through site (call Typed (. streaming pattern-helper) (. streaming pattern-helper-type)) (. row through)))
+    (let context
+      (call read-through
+        (block
+          (arg site)
+          (arg (call Typed (. streaming pattern-helper) (. streaming pattern-helper-type)))
+          (arg (. row through))
+        )
+      )
+    )
     (if (!= (call layout-of (. context type) site) (. ([] (. ir locals) (. level context)) layout))
       (call refuse .refused-expression site)
       (return)
@@ -5555,7 +5762,16 @@
     (and (== item char) (== (call class-arg types (. run buffer-type) 0) (call (. types type-row) .uint8)))
     (where
       (lazy char (call (. types type-row) .char))
-      (lazy item (if-expr (call same-decl (call class-ref types (. run stream-type)) (. types text-token-stream-decl)) char (call class-arg types (. run stream-type) 0)))
+      (lazy item
+        (block
+          (case? (call same-decl (call class-ref types (. run stream-type)) (. types text-token-stream-decl))
+            char
+          )
+          (default
+            (call class-arg types (. run stream-type) 0)
+          )
+        )
+      )
     )
   )
   (fn-do _ wide-ranges Bool
@@ -5825,7 +6041,17 @@
       (call refuse .refused-expression site)
       (return (call Typed nothing no-type))
     )
-    (return (call call-protocol site fact (. (call stream-slice run site begun ending) operand) (. run buffer-type) nothing))
+    (return
+      (call call-protocol
+        (block
+          (arg site)
+          (arg fact)
+          (arg (. (call stream-slice run site begun ending) operand))
+          (arg (. run buffer-type))
+          (arg nothing)
+        )
+      )
+    )
   )
   (fn-do + material-at U32
     (param site SyntaxId)
@@ -6126,7 +6352,19 @@
     ; The list a helper makes of a name captured in a repeat, as `material-items` makes it of the
     ; list its passes kept.
     (let source ([] capture-levels (- (+ (. capture levels) (. capture listed)) 1)))
-    (return (call material-items action row grower (. (call level-list source action) operand) (. source list) (. source item) run))
+    (return
+      (call material-items
+        (block
+          (arg action)
+          (arg row)
+          (arg grower)
+          (arg (. (call level-list source action) operand))
+          (arg (. source list))
+          (arg (. source item))
+          (arg run)
+        )
+      )
+    )
   )
   (fn-do _ material-items Typed
     (param action SyntaxId)
@@ -6200,7 +6438,16 @@
       (let ending (call take range (call (. tables layouts field) item-layout 1) action))
       (= element (call material-capture run action row begun ending))
       (else
-        (let given (if-expr (call (. tables layouts is-struct) item-layout) (call address place 0 item-layout action) (call load place 0 item-layout action)))
+        (let given
+          (block
+            (case? (call (. tables layouts is-struct) item-layout)
+              (call address place 0 item-layout action)
+            )
+            (default
+              (call load place 0 item-layout action)
+            )
+          )
+        )
         (= element (call material-value action row given item))
       )
     )
@@ -6604,7 +6851,15 @@
     (call open-environment declared)
     (call bind-arguments declared)
     (= rule-arguments true)
-    (let ruled (call rule-match program (. ([] (. instances rows) (. unit instance)) module) (. ([] (. instances rows) (. unit instance)) decl)))
+    (let ruled
+      (call rule-match
+        (block
+          (arg program)
+          (arg (. ([] (. instances rows) (. unit instance)) module))
+          (arg (. ([] (. instances rows) (. unit instance)) decl))
+        )
+      )
+    )
     (let views (call (. facts first-call) (. unit reading) ruled))
     (call match-direct
       (block

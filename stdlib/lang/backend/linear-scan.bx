@@ -830,7 +830,16 @@
     (if (and (> wide end) (!= wide-cost (. U32 max)))
       (let wide-gain (call gain-before uses first wide))
       (if (and (> wide-gain wide-cost) (> (- wide-gain wide-cost) narrow))
-        (let alternate (if-expr (!= narrow 0) (call note-stretch id start end mark narrowed narrow false) no-id))
+        (let alternate
+          (block
+            (case? (!= narrow 0)
+              (call note-stretch id start end mark narrowed narrow false)
+            )
+            (default
+              no-id
+            )
+          )
+        )
         (call note-stretch id start wide narrowed (. entries length) (- wide-gain wide-cost) true)
         (= ([] (. candidate-alternates data) (- (. candidate-alternates length) 1)) alternate)
         (return (if-expr (> wide high) wide high))

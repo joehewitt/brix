@@ -72,7 +72,20 @@
     (param right Int)
     (param bottom Int)
     (return-if (if (or (<= right left) (<= bottom top))))
-    (call (. canvas rect) (call Rect (/ (+ origin-x left) scale) (/ (+ origin-y top) scale) (/ (- right left) scale) (/ (- bottom top) scale)))
+    (call (. canvas rect)
+      (block
+        (arg
+          (call Rect
+            (block
+              (arg (/ (+ origin-x left) scale))
+              (arg (/ (+ origin-y top) scale))
+              (arg (/ (- right left) scale))
+              (arg (/ (- bottom top) scale))
+            )
+          )
+        )
+      )
+    )
   )
   (fn-do + lines _
     (param code U8)
@@ -181,7 +194,14 @@
       )
       (case= .double
         (call fill (if-expr (== up .double) v-light-right right-left) h-double-top width h-light-top)
-        (call fill (if-expr (== down .double) v-light-right right-left) h-light-bottom width h-double-bottom)
+        (call fill
+          (block
+            (arg (if-expr (== down .double) v-light-right right-left))
+            (arg h-light-bottom)
+            (arg width)
+            (arg h-double-bottom)
+          )
+        )
       )
     )
     (match? down
@@ -192,8 +212,22 @@
         (call fill v-heavy-left down-top v-heavy-right height)
       )
       (case= .double
-        (call fill v-double-left (if-expr (== left .double) h-light-bottom down-top) v-light-left height)
-        (call fill v-light-right (if-expr (== right .double) h-light-bottom down-top) v-double-right height)
+        (call fill
+          (block
+            (arg v-double-left)
+            (arg (if-expr (== left .double) h-light-bottom down-top))
+            (arg v-light-left)
+            (arg height)
+          )
+        )
+        (call fill
+          (block
+            (arg v-light-right)
+            (arg (if-expr (== right .double) h-light-bottom down-top))
+            (arg v-double-right)
+            (arg height)
+          )
+        )
       )
     )
     (match? left
@@ -205,7 +239,14 @@
       )
       (case= .double
         (call fill 0 h-double-top (if-expr (== up .double) v-light-left left-right) h-light-top)
-        (call fill 0 h-light-bottom (if-expr (== down .double) v-light-left left-right) h-double-bottom)
+        (call fill
+          (block
+            (arg 0)
+            (arg h-light-bottom)
+            (arg (if-expr (== down .double) v-light-left left-right))
+            (arg h-double-bottom)
+          )
+        )
       )
     )
   )

@@ -988,7 +988,27 @@
       (return false)
     )
     (if (!= declared (. types bool-type))
-      (call (. facts record-diagnostic) instance (. held module) (. held when) .stated (call (. program store-atom) (str "Style state \"" (. state text) "\" must be a boolean property, but " shown "." (. state text) " is " (call type-display types declared))) declared no-type)
+      (call (. facts record-diagnostic)
+        (block
+          (arg instance)
+          (arg (. held module))
+          (arg (. held when))
+          (arg .stated)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg
+                  (paragraph
+                    (str "Style state \"" (. state text) "\" must be a boolean property, but " shown "." (. state text) " is " (call type-display types declared))
+                  )
+                )
+              )
+            )
+          )
+          (arg declared)
+          (arg no-type)
+        )
+      )
       (return false)
     )
     (call (. instances mark-may-panic) instance)
@@ -1278,7 +1298,11 @@
         (return)
       )
       (if (== (. ([] (. types properties) place) storage-kind) .storage-getter)
-        (let text (str "\"" (. (!! name) text) "\" is a getter, which is never stored, so a dependency on it never runs; depend on the properties it reads"))
+        (let text
+          (paragraph
+            (str "\"" (. (!! name) text) "\" is a getter, which is never stored, so a dependency on it never runs; depend on the properties it reads")
+          )
+        )
         (call (. frame diagnose) name-syntax .stated (call (. program store-atom) text))
         (return)
       )
@@ -1297,7 +1321,11 @@
     )
     (let required (call required-argument receiver (!! method)))
     (if required
-      (let text (str "A dependency calls \"" (. (!! method) text) "\" with nothing, but it takes \"" (. required text) "\"; give \"" (. required text) "\" a default, or name a method that takes nothing"))
+      (let text
+        (paragraph
+          (str "A dependency calls \"" (. (!! method) text) "\" with nothing, but it takes \"" (. required text) "\"; give \"" (. required text) "\" a default, or name a method that takes nothing")
+        )
+      )
       (call (. frame diagnose) left .stated (call (. program store-atom) text))
       (return)
     )
@@ -1893,7 +1921,16 @@
     ; One at the address of a keyed event is claimed for the receiver at the loop (see
     ; `claim-endpoint`).
     (let keyed (!= (. event address) 0))
-    (let endpoint (if-expr keyed (call event-call "event-keyed-endpoint" (. event payload) no-type 3) (call event-call "event-endpoint" (. event payload))))
+    (let endpoint
+      (block
+        (case? keyed
+          (call event-call "event-keyed-endpoint" (. event payload) no-type 3)
+        )
+        (default
+          (call event-call "event-endpoint" (. event payload))
+        )
+      )
+    )
     (if (== endpoint no-instance)
       (call decline loop)
       (return no-type)
@@ -2184,7 +2221,11 @@
       (return (call Found invalid-type))
     )
     (if (== (. name text) "this")
-      (let message "\"#this\" tracks nothing, as only a property is tracked; track the properties the value reads, as in \"#count\"")
+      (let message
+        (paragraph
+          "\"#this\" tracks nothing, as only a property is tracked; track the properties the value reads, as in \"#count\""
+        )
+      )
       (call (. frame diagnose) id .stated (call (. program store-atom) message))
       (return (call Found invalid-type))
     )
@@ -2280,7 +2321,11 @@
     (if (and (== kind .key-decl) (call (. tree tests-row) (. frame declaration syntax)) (not plain))
       (let name (call (. tree identifier-name) id))
       (let shown (if-expr name (. name text) "it"))
-      (let message (str "The when clause of a markup loop that follows state tracks the row's item and properties, not a local; keep \"" shown "\" in a property and read it with \"#\""))
+      (let message
+        (paragraph
+          (str "The when clause of a markup loop that follows state tracks the row's item and properties, not a local; keep \"" shown "\" in a property and read it with \"#\"")
+        )
+      )
       (call (. frame diagnose) id .stated (call (. program store-atom) message))
       (return)
     )
@@ -2464,7 +2509,11 @@
     )
     (if valued
       (let shown (call type-short-name types receiver))
-      (let message (str "\"#" (. name text) "\" reads a field of " shown ", whose values are copied, so it cannot be tracked; track a property of a class"))
+      (let message
+        (paragraph
+          (str "\"#" (. name text) "\" reads a field of " shown ", whose values are copied, so it cannot be tracked; track a property of a class")
+        )
+      )
       (call (. frame diagnose) id .stated (call (. program store-atom) message))
       (return)
     )
@@ -2494,7 +2543,11 @@
       (return)
     )
     (if (and (== context .live-value) (call is-lazy-value))
-      (let message (str "A lazy property is worked out once, when it is first read, so it cannot follow \"#" (. name text) "\"; write \"=\" in place of \":=\" to keep it live, or read \"" (. name text) "\" without \"#\""))
+      (let message
+        (paragraph
+          (str "A lazy property is worked out once, when it is first read, so it cannot follow \"#" (. name text) "\"; write \"=\" in place of \":=\" to keep it live, or read \"" (. name text) "\" without \"#\"")
+        )
+      )
       (call (. frame diagnose) id .stated (call (. program store-atom) message))
       (return)
     )
@@ -2524,7 +2577,11 @@
     )
     (return-if (if (or (call (. tree in-applied-value) id) (call (. tree reads-slot-scope) id))))
     (let shown (. name text))
-    (let message (str "\"#" shown "\" tracks nothing here: a read is followed only where it is written directly in a live value, such as markup, a derived property, a rule or a live statement. Write \"" shown "\" to read it plainly, or read \"#" shown "\" in the live value and pass it in as an argument"))
+    (let message
+      (paragraph
+        (str "\"#" shown "\" tracks nothing here: a read is followed only where it is written directly in a live value, such as markup, a derived property, a rule or a live statement. Write \"" shown "\" to read it plainly, or read \"#" shown "\" in the live value and pass it in as an argument")
+      )
+    )
     (call (. frame diagnose) id .stated (call (. program store-atom) message))
   )
   (fn-do _ pulled Bool
@@ -2664,7 +2721,16 @@
             (let plain (or (== outer .live-none) (and (not nested) (== outer .live-rule))))
             (return (if-expr plain outer (. LiveContext live-other)))
           )
-          (return (if-expr (or (== outer .live-value) (== outer .live-statement)) outer (. LiveContext live-other)))
+          (return
+            (block
+              (case? (or (== outer .live-value) (== outer .live-statement))
+                outer
+              )
+              (default
+                (. LiveContext live-other)
+              )
+            )
+          )
         )
         (case .node-markup
           (if (and (not nested) (or (!= (call live-argument node id) 0) (!= (call live-line node id) 0)))

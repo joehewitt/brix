@@ -212,7 +212,14 @@
         (call (. frame assign) subject-slot subject)
       )
     )
-    (let result (call check-statement body (if-expr (call (. want asks) .want-match-statement) (call (. (call Want) adding) .want-match-statement) (call Want))))
+    (let result
+      (call check-statement
+        (block
+          (arg body)
+          (arg (if-expr (call (. want asks) .want-match-statement) (call (. (call Want) adding) .want-match-statement) (call Want)))
+        )
+      )
+    )
     (if (and (!= result invalid-type) (. helping rolls) (== (. (!! (. helping helper)) rollback) no-type))
       (call (. frame diagnose)
         (block
@@ -266,7 +273,21 @@
     (let as-statement (call (. want asks) .want-match-statement))
     (let own-arming arming)
     (let arms-mark (. scratch types mark))
-    (= arming (call Arming as-statement arms-mark expected false (. arming union) 0 (call (. tree is-alternative) pattern) no-slot 0))
+    (= arming
+      (call Arming
+        (block
+          (arg as-statement)
+          (arg arms-mark)
+          (arg expected)
+          (arg false)
+          (arg (. arming union))
+          (arg 0)
+          (arg (call (. tree is-alternative) pattern))
+          (arg no-slot)
+          (arg 0)
+        )
+      )
+    )
     (let narrow-mark (. scratch narrowings mark))
     (let first-arm (. arm-bodies length))
     (let first-value (. arm-values length))
@@ -493,7 +514,19 @@
             (= float type)
           )
           (if (is ([] (. tree nodes) syntax) .node-tuple-syntax)
-            (= places (if-expr (== offset 0) type (if-expr (!= places no-type) (call (. relations joined-places) places type) no-type)))
+            (= places
+              (block
+                (case? (== offset 0)
+                  type
+                )
+                (case? (!= places no-type)
+                  (call (. relations joined-places) places type)
+                )
+                (default
+                  no-type
+                )
+              )
+            )
             (else
               (= places no-type)
             )
@@ -820,7 +853,16 @@
         )
         (let silent (and (!= (. row expr) 0) (== (. facts diagnostics length) diagnosed)))
         (if (and silent (not (. arming statement)) (call lacks-value (. row expr) value) (not (call matches-row subject)))
-          (let stated (if-expr (call in-steps) "Match arm gives no value" "Match arm gives no value in a value body"))
+          (let stated
+            (block
+              (case? (call in-steps)
+                "Match arm gives no value"
+              )
+              (default
+                "Match arm gives no value in a value body"
+              )
+            )
+          )
           (call (. frame diagnose) (. row expr) .stated (call (. program store-atom) stated))
         )
         (+= arm-bodies (. row expr))
@@ -874,7 +916,9 @@
     ; Whether the value of an arm is a match that nothing in the arm runs before, which is of the
     ; type the arms are expected to give as a returned match is, so that its own arms convert to it.
     (let value (call (. tree arm-value) body))
-    (return-if false (if (or (== (. arming expected) no-type) (== (. arming expected) (. types void-type)) (not (call (. tree is-match-syntax) value)))))
+    (if (or (== (. arming expected) no-type) (== (. arming expected) (. types void-type)) (not (call (. tree is-match-syntax) value)))
+      (return false)
+    )
     (return-if false (if (call may-miss value (. arming expected))))
     (match? ([] (. tree nodes) body)
       (case (call .node-block block)
@@ -1310,13 +1354,33 @@
       (let slot ([] left-slots position))
       (let name (. ([] (. bindings slots) slot) name text))
       (if (== (call (. right-slots find) slot) null)
-        (call (. frame diagnose) right .stated (call (. program store-atom) (str "\"" name "\" is bound by the alternative before this one but not by this one; bind it in each alternative")))
+        (call (. frame diagnose)
+          (block
+            (arg right)
+            (arg .stated)
+            (arg
+              (call (. program store-atom)
+                (block
+                  (arg
+                    (paragraph
+                      (str "\"" name "\" is bound by the alternative before this one but not by this one; bind it in each alternative")
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
         (return)
       )
       (let before ([] left-types position))
       (let after (call (. frame known) slot))
       (if (and (call known-type before) (call known-type after) (!= before after))
-        (let text (str "\"" name "\" is " (call type-source types before) " in one alternative and " (call type-source types after) " in another; bind it to one type in each"))
+        (let text
+          (paragraph
+            (str "\"" name "\" is " (call type-source types before) " in one alternative and " (call type-source types after) " in another; bind it to one type in each")
+          )
+        )
         (call (. frame diagnose) right .stated (call (. program store-atom) text))
         (return)
       )
@@ -1324,7 +1388,23 @@
     (for (in slot right-slots)
       (if (== (call (. left-slots find) slot) null)
         (let name (. ([] (. bindings slots) slot) name text))
-        (call (. frame diagnose) left .stated (call (. program store-atom) (str "\"" name "\" is bound by the alternative after this one but not by this one; bind it in each alternative")))
+        (call (. frame diagnose)
+          (block
+            (arg left)
+            (arg .stated)
+            (arg
+              (call (. program store-atom)
+                (block
+                  (arg
+                    (paragraph
+                      (str "\"" name "\" is bound by the alternative after this one but not by this one; bind it in each alternative")
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
         (return)
       )
     )
@@ -1359,7 +1439,23 @@
     )
     (if (and (is ([] (. tree nodes) expr) .node-tuple-syntax) (not (call intrinsic-is-tuple-like (call (. types intrinsic-of) subject))))
       (let advice "to take any of several, write a condition, as in '|? it == .a || it == .b'")
-      (call (. frame diagnose) expr .stated (call (. program store-atom) (str "An arm written '|=' compares the subject with one value, and this lists several; " advice)))
+      (call (. frame diagnose)
+        (block
+          (arg expr)
+          (arg .stated)
+          (arg
+            (call (. program store-atom)
+              (block
+                (arg
+                  (paragraph
+                    (str "An arm written '|=' compares the subject with one value, and this lists several; " advice)
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
       (return)
     )
     (if (and (call (. narrowing is-null-syntax) expr) (call (. types is-optional) subject))
@@ -1610,7 +1706,16 @@
         (if (not (call pattern-possible (. row left) subject inside))
           (return false)
         )
-        (let passed (if-expr (call reads-name (. row left)) (call passed-type (. row left) subject) (call pattern-type (. row left) subject)))
+        (let passed
+          (block
+            (case? (call reads-name (. row left))
+              (call passed-type (. row left) subject)
+            )
+            (default
+              (call pattern-type (. row left) subject)
+            )
+          )
+        )
         (return (call pattern-possible (. row right) passed inside))
       )
       (case (call .node-type-capture row)
@@ -1704,7 +1809,16 @@
       (return)
     )
     (let shown (call type-short-name types subject))
-    (let message (if-expr (== (call (. types intrinsic-of) subject) .union) (str "Case \"." (. name text) "\" not found in " shown) (str "Case \"." (. name text) "\" not found: " shown " has no cases")))
+    (let message
+      (block
+        (case? (== (call (. types intrinsic-of) subject) .union)
+          (str "Case \"." (. name text) "\" not found in " shown)
+        )
+        (default
+          (str "Case \"." (. name text) "\" not found: " shown " has no cases")
+        )
+      )
+    )
     (call (. frame diagnose) pattern .stated (call (. program store-atom) message))
   )
   (fn-do _ names-nothing-case Bool
@@ -1935,7 +2049,11 @@
     (let shown (call type-short-name types subject))
     (let member (str (if-expr (!= type 0) shown "") "." (. name text)))
     (let written (if-expr (!= type 0) (str "(. " shown " " (. name text) ")") member))
-    (let message (str shown "." (. name text) " is an enum value, not a union case; match it with " (if-expr (call (. tree is-brix)) (str "\"(case= " written " …)\"") (str "'|= " member "'"))))
+    (let message
+      (paragraph
+        (str shown "." (. name text) " is an enum value, not a union case; match it with " (if-expr (call (. tree is-brix)) (str "\"(case= " written " …)\"") (str "'|= " member "'")))
+      )
+    )
     (call (. frame diagnose) pattern .stated (call (. program store-atom) message))
     (return true)
   )

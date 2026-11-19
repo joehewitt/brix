@@ -1571,7 +1571,7 @@
           (if (and ([] content id) (not (call (. tree fills-only) id)) (call is-branch-region tree id row-line))
             (call add-branch tree id owner named)
           )
-          (lazy row-line (if-expr ([] rows (call (. tree holder-of) id)) row-names null))
+          (lazy row-line (only-if row-names (if ([] rows (call (. tree holder-of) id)))))
         )
         (case .node-match-expression
           (if (and ([] attributes id) (call (. tree holds-fills) id))
@@ -1580,7 +1580,7 @@
           (if (and ([] content id) (not (call (. tree fills-only) id)) (call is-match-region tree id row-line))
             (call add-branch tree id owner named)
           )
-          (lazy row-line (if-expr ([] rows (call (. tree holder-of) id)) row-names null))
+          (lazy row-line (only-if row-names (if ([] rows (call (. tree holder-of) id)))))
         )
         (case (call .node-slot-outlet row)
           (if (call (. tree builds-outlet-alone) id)
@@ -1717,7 +1717,11 @@
             (= nested (call add-live tree id owner named))
           )
           (lazy is-unclaimed (and (not ([] attributes id)) (not ([] getters id))))
-          (lazy is-live (and (call reads-tracked tree (. row right)) (not (call in-property-value tree id parents)) (not attached)))
+          (lazy is-live
+            (block
+              (and (call reads-tracked tree (. row right)) (not (call in-property-value tree id parents)) (not attached))
+            )
+          )
           (lazy attached (call in-live-value id owners depth parents))
         )
         (case (call .node-iterable-expression row)
@@ -2391,7 +2395,7 @@
     ; a markup loop region, which builds each row and is no content, and its `keyed by` clause, which
     ; keys each row. The arms after the first of an `if` follow it in the tree, so they are reached by
     ; their links.
-    (let row-lines (if-expr ([] rows body) row-names null))
+    (let row-lines (only-if row-names (if ([] rows body))))
     (match? ([] (. tree nodes) body)
       (case (call .node-block block)
         (for (in line ([] (. tree children) (. block body)))
@@ -2405,7 +2409,17 @@
                 (match? ([] (. tree nodes) arm)
                   (case (call .node-if-block branch)
                     (= ([] arms (call (. tree arm-body) arm)) region)
-                    (call mark-content tree (call (. tree arm-body) arm) content arms rows keys row-names)
+                    (call mark-content
+                      (block
+                        (arg tree)
+                        (arg (call (. tree arm-body) arm))
+                        (arg content)
+                        (arg arms)
+                        (arg rows)
+                        (arg keys)
+                        (arg row-names)
+                      )
+                    )
                     (= next (. branch next))
                   )
                 )
@@ -2420,7 +2434,17 @@
                   (match? ([] (. tree nodes) arm)
                     (case (call .node-type-transform transform)
                       (= ([] arms (. transform expr)) true)
-                      (call mark-content tree (. transform expr) content arms rows keys row-names)
+                      (call mark-content
+                        (block
+                          (arg tree)
+                          (arg (. transform expr))
+                          (arg content)
+                          (arg arms)
+                          (arg rows)
+                          (arg keys)
+                          (arg row-names)
+                        )
+                      )
                     )
                   )
                 )

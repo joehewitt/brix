@@ -184,7 +184,7 @@
   (prop + class-rules (of Table ClassRule))
   (prop + task-local-size I64)
   (prop + task-init FunctionId (= no-function))
-  (prop + owns-tasks Bool (= false))
+  (prop + owns-tasks Bool)
   (prop + thread-local-size I64)
   (prop + thread-init FunctionId (= no-function))
   (prop + probe-setup FunctionId (= no-function))
@@ -5733,10 +5733,23 @@
       )
       (else-if (== (. function kind) .class-rule-updater)
         (let rule ([] class-rules (. function place)))
-        (let written (if-expr (is ([] (. ([] (. program modules) (. rule module)) tree nodes) (. rule syntax)) .node-whenever-rule-syntax) "whenever" "when"))
+        (let written
+          (block
+            (case? (is ([] (. ([] (. program modules) (. rule module)) tree nodes) (. rule syntax)) .node-whenever-rule-syntax)
+              "whenever"
+            )
+            (default
+              "when"
+            )
+          )
+        )
         (let shown (if-expr (call (. facts markup-trigger-of) (. rule unit)) (str written "-markup") written))
         (= display (str module-name ":" shown))
-        (= key (str module-name ":" (call type-short-name types (. function type)) ":" shown "." (. rule syntax) "." (call hex-text ([] (. instances stable-keys) (. rule unit)))))
+        (= key
+          (paragraph
+            (str module-name ":" (call type-short-name types (. function type)) ":" shown "." (. rule syntax) "." (call hex-text ([] (. instances stable-keys) (. rule unit))))
+          )
+        )
       )
       (else-if (or (== (. function kind) .markup-trigger-add) trigger-remove trigger-ancestor)
         (let rule ([] class-rules (. function place)))
@@ -5747,7 +5760,11 @@
           )
         )
         (= display (str module-name ":markup-trigger-" ending))
-        (= key (str module-name ":" (call type-short-name types (. function type)) ":markup-trigger-" ending "." (. rule syntax) "." (call hex-text ([] (. instances stable-keys) (. rule unit)))))
+        (= key
+          (paragraph
+            (str module-name ":" (call type-short-name types (. function type)) ":markup-trigger-" ending "." (. rule syntax) "." (call hex-text ([] (. instances stable-keys) (. rule unit))))
+          )
+        )
       )
       (else-if (== (. function kind) .idle-action)
         (= display (str module-name ":subscription"))
@@ -5766,7 +5783,11 @@
       )
       (else-if (== (. function kind) .machine-descriptor)
         (let head (. ([] (. facts machine-groups) (. function place)) head))
-        (= key (str (call instance-display (. function instance)) "." (call hex-text ([] (. instances stable-keys) (. function instance))) ".event.machine." (call type-key types (. function type)) "." head))
+        (= key
+          (paragraph
+            (str (call instance-display (. function instance)) "." (call hex-text ([] (. instances stable-keys) (. function instance))) ".event.machine." (call type-key types (. function type)) "." head)
+          )
+        )
         (= display (str module-name ":event machine descriptor " (call type-short-name types (. function type))))
       )
       (else-if (== (. function kind) .event-registrations)
@@ -5821,7 +5842,19 @@
         (let unit (. ([] (. facts style-applications) ([] given-applications (. function place))) unit))
         (let row (call (. facts style-declaration-of) unit ([] given-sites (. function place))))
         (let update (call (. facts rule-update-of) unit ([] given-sites (. function place))))
-        (let written (if-expr row (. ([] (. facts style-properties) (. row property)) name text) (if-expr update (. ([] (. types properties) (. update property)) name text) "")))
+        (let written
+          (block
+            (case? row
+              (. ([] (. facts style-properties) (. row property)) name text)
+            )
+            (case? update
+              (. ([] (. types properties) (. update property)) name text)
+            )
+            (default
+              ""
+            )
+          )
+        )
         (= display (str module-name ":style-" written))
         (= key (str module-name ":style-given." (. function number)))
       )
@@ -5834,7 +5867,11 @@
           )
         )
         (= display (str module-name ":markup-query-" written ending))
-        (= key (str module-name ":" (call type-short-name types (. function type)) ":markup-query-" written ending "." (call hex-text ([] (. types stable-keys) (. function type)))))
+        (= key
+          (paragraph
+            (str module-name ":" (call type-short-name types (. function type)) ":markup-query-" written ending "." (call hex-text ([] (. types stable-keys) (. function type))))
+          )
+        )
       )
       (else-if (== (. function kind) .live-adapter)
         (= display (str (call (. bundle text) (. ([] functions (. function place)) display)) "Casting"))
@@ -5873,7 +5910,11 @@
         (let number (?? ([] made-numbers handler) 1))
         (let shown (if-expr (< number 2) "" (str number)))
         (let head (. ([] (. facts machine-groups) (. function place)) head))
-        (= key (str (call instance-display (. function instance)) "." (call hex-text ([] (. instances stable-keys) (. function instance))) ".state-transition." head))
+        (= key
+          (paragraph
+            (str (call instance-display (. function instance)) "." (call hex-text ([] (. instances stable-keys) (. function instance))) ".state-transition." head)
+          )
+        )
         (= display (str module-name ":state-transition" shown))
         (if (== (. function kind) .machine-cast)
           (= key (str key ".cast"))
@@ -5903,14 +5944,22 @@
         (let number (?? ([] made-numbers id) 1))
         (let shown (if-expr (< number 2) "" (str number)))
         (= display (str module-name ":stream-action" shown))
-        (= key (str (call instance-display (. function instance)) "." (call hex-text ([] (. instances stable-keys) (. function instance))) ".stream-action." arm))
+        (= key
+          (paragraph
+            (str (call instance-display (. function instance)) "." (call hex-text ([] (. instances stable-keys) (. function instance))) ".stream-action." arm)
+          )
+        )
       )
       (else-if (== (. function kind) .pattern-helper)
         (let row ([] (. facts pattern-arguments) (. function place)))
         (let number (?? ([] made-numbers id) 1))
         (let shown (if-expr (< number 2) "" (str number)))
         (= display (str module-name ":static-inline-match" shown "-direct"))
-        (= key (str (call instance-display (. function instance)) "." (call hex-text ([] (. instances stable-keys) (. function instance))) ".pattern." (. row syntax)))
+        (= key
+          (paragraph
+            (str (call instance-display (. function instance)) "." (call hex-text ([] (. instances stable-keys) (. function instance))) ".pattern." (. row syntax))
+          )
+        )
       )
       (else-if (== (. function kind) .pattern-cast)
         (let row ([] (. facts pattern-arguments) (. function place)))
@@ -5923,7 +5972,11 @@
         (let number (?? ([] made-numbers id) 1))
         (let shown (if-expr (< number 2) "" (str number)))
         (= display (str module-name ":" (call lazy-rule-text function) "-direct" shown "-direct"))
-        (= key (str (call instance-display (. function instance)) "." (call hex-text ([] (. instances stable-keys) (. function instance))) ".lazy." (call lazy-rule-decl function)))
+        (= key
+          (paragraph
+            (str (call instance-display (. function instance)) "." (call hex-text ([] (. instances stable-keys) (. function instance))) ".lazy." (call lazy-rule-decl function))
+          )
+        )
         (if (== (. function kind) .rule-adapter)
           (= display (str module-name ":" (call lazy-rule-text function)))
           (= key (str key ".adapter"))
@@ -5942,13 +5995,21 @@
         (let number (?? ([] made-numbers id) 1))
         (let shown (if-expr (< number 2) "" (str number)))
         (= display (str module-name ":" (call callee-name (. function instance)) "-direct" shown "-direct"))
-        (= key (str (call instance-display (. function instance)) "." (call hex-text ([] (. instances stable-keys) (. function instance))) (call mapping-key (. ([] rule-mappings (. function place)) names))))
+        (= key
+          (paragraph
+            (str (call instance-display (. function instance)) "." (call hex-text ([] (. instances stable-keys) (. function instance))) (call mapping-key (. ([] rule-mappings (. function place)) names)))
+          )
+        )
       )
       (else-if (== (. function kind) .raising-rule)
         (let number (?? ([] made-numbers id) 1))
         (let shown (if-expr (< number 2) "" (str number)))
         (= display (str module-name ":" (call callee-name (. function instance)) "-direct" shown "-direct"))
-        (= key (str (call instance-display (. function instance)) "." (call hex-text ([] (. instances stable-keys) (. function instance))) ".raising." (. function place)))
+        (= key
+          (paragraph
+            (str (call instance-display (. function instance)) "." (call hex-text ([] (. instances stable-keys) (. function instance))) ".raising." (. function place))
+          )
+        )
       )
       (else-if (== (. function kind) .argument-default)
         (let kept ([] storage (. function place)))
@@ -5995,7 +6056,11 @@
         (let row ([] class-adapters (. function place)))
         (= display (str module-name ":" (call callee-name (. row proto)) "(class-accessor)"))
         (let written (call hex-text ([] (. instances stable-keys) (. row proto))))
-        (= key (str (call instance-display (. row proto)) "." written ".class-accessor." (call type-key types (. row receiver))))
+        (= key
+          (paragraph
+            (str (call instance-display (. row proto)) "." written ".class-accessor." (call type-key types (. row receiver)))
+          )
+        )
       )
       (else-if (== (. function kind) .class-adapter)
         (let row ([] class-adapters (. function place)))
@@ -7766,7 +7831,16 @@
     (if (!= unit no-instance)
       (= ([] class-rule-rows unit) index)
     )
-    (let kept (if-expr rebinds (call section-kept level unit iterator) (call class-rule-kept level module syntax unit)))
+    (let kept
+      (block
+        (case? rebinds
+          (call section-kept level unit iterator)
+        )
+        (default
+          (call class-rule-kept level module syntax unit)
+        )
+      )
+    )
     (call (. class-rules append) (call ClassRule level module decl syntax unit kept updater add remove))
     (return index)
   )
@@ -11100,7 +11174,16 @@
     (let made ([] class-override-heads type))
     (while (!= made no-fact)
       (let fact ([] (. facts overrides) made))
-      (let own (if-expr (!= (. fact override) no-instance) ([] instance-functions (. fact override)) ([] override-adapters made)))
+      (let own
+        (block
+          (case? (!= (. fact override) no-instance)
+            ([] instance-functions (. fact override))
+          )
+          (default
+            ([] override-adapters made)
+          )
+        )
+      )
       (= ([] replacing (. fact base)) (if-expr placed own no-function))
       (= ([] adapting (. fact base)) (if-expr placed ([] override-adapters made) no-function))
       (= made ([] class-override-links made))

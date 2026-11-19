@@ -428,7 +428,14 @@
           (let mark (. scratch types mark))
           (call (. scratch types push) wanted)
           (let target (call (. types class-named-with-args) module (!! (. types list-atom)) mark))
-          (return (call LoopContainer (call (. conversions convert) item item listed target .reason-explicit) no-type))
+          (return
+            (call LoopContainer
+              (block
+                (arg (call (. conversions convert) item item listed target .reason-explicit))
+                (arg no-type)
+              )
+            )
+          )
         )
       )
     )
@@ -862,7 +869,16 @@
       (call (. frame diagnose) right .stated (call (. program store-atom) (call optional-match-text "pipeline")))
       (return)
     )
-    (let release (if-expr (== (call supported container (. types token-stream-decl)) no-type) "pattern-release" "pattern-release-unmarked"))
+    (let release
+      (block
+        (case? (== (call supported container (. types token-stream-decl)) no-type)
+          "pattern-release"
+        )
+        (default
+          "pattern-release-unmarked"
+        )
+      )
+    )
     (call (. calls protocol-call) made (call (. program store-atom) release) id)
     (if (!= (call (. calls protocol-getter) made (call (. program store-atom) "has-more") id) (. types bool-type))
       (call decline id)
@@ -988,7 +1004,18 @@
     (call (. scratch types push) source)
     (call (. scratch syntax push) site)
     (let params (call (. scratch types span) params-start param-count))
-    (let arguments (call arguments-since shapes-start types-start syntax-start params false (if-expr (== site id) id 0)))
+    (let arguments
+      (call arguments-since
+        (block
+          (arg shapes-start)
+          (arg types-start)
+          (arg syntax-start)
+          (arg params)
+          (arg false)
+          (arg (if-expr (== site id) id 0))
+        )
+      )
+    )
     (= called-object object)
     (let result (. (call infer-callable id callable arguments) type))
     (= called-object (call CalledObject))
@@ -1027,7 +1054,11 @@
     )
     (if (and explicit (!= returned invalid-type) (!= returned (. types void-type)) (not (call (. types is-optional) returned)))
       (let shown (call type-short-name types returned))
-      (let message (str "The body of this \"?*>\" gives " shown ", which is never null, so it drops no item; write \"*>\""))
+      (let message
+        (paragraph
+          (str "The body of this \"?*>\" gives " shown ", which is never null, so it drops no item; write \"*>\"")
+        )
+      )
       (call (. frame diagnose) id .stated (call (. program store-atom) message))
       (return invalid-type)
     )
@@ -1046,7 +1077,18 @@
     (call (. scratch types push) closure)
     (call (. scratch syntax push) id)
     (let params (call (. scratch types span) params-start param-count))
-    (let arguments (call arguments-since shapes-start types-start syntax-start params false (if-expr (== site id) id 0)))
+    (let arguments
+      (call arguments-since
+        (block
+          (arg shapes-start)
+          (arg types-start)
+          (arg syntax-start)
+          (arg params)
+          (arg false)
+          (arg (if-expr (== site id) id 0))
+        )
+      )
+    )
     (let result (call (. calls function-call) id name arguments))
     (call (. scratch syntax rewind) syntax-start)
     (call (. scratch types rewind) params-start)
@@ -1212,7 +1254,11 @@
         (return)
       )
       (if (== given null)
-        (let message (str "\"#" shown "\" is read for each item of a pipeline that \"" (call callee-text handed) "\" hands back without working it through, and nothing works through what it hands back as the value is made; give that to a function that works it through, as count does, or write \"" shown "\" to read it plainly"))
+        (let message
+          (paragraph
+            (str "\"#" shown "\" is read for each item of a pipeline that \"" (call callee-text handed) "\" hands back without working it through, and nothing works through what it hands back as the value is made; give that to a function that works it through, as count does, or write \"" shown "\" to read it plainly")
+          )
+        )
         (call (. frame diagnose) read .stated (call (. program store-atom) message))
         (return)
       )
@@ -1222,7 +1268,11 @@
         (return)
       )
       (if (== use .generator-kept)
-        (let message (str "\"#" shown "\" is read for each item of a pipeline that \"" (call callee-text ([] given-callees given)) "\" keeps rather than working through as it is called, so the read would not be followed; give the pipeline to a function that works it through, as count does, or write \"" shown "\" to read it plainly"))
+        (let message
+          (paragraph
+            (str "\"#" shown "\" is read for each item of a pipeline that \"" (call callee-text ([] given-callees given)) "\" keeps rather than working through as it is called, so the read would not be followed; give the pipeline to a function that works it through, as count does, or write \"" shown "\" to read it plainly")
+          )
+        )
         (call (. frame diagnose) read .stated (call (. program store-atom) message))
         (return)
       )

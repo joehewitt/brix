@@ -190,14 +190,44 @@
     )
     (let prompt (call claude-prompt request))
     (let plan (call claude-resume request))
-    (let settings (call (. "\n" join) (call claude-arguments request tools is-safe-mode allowed-tools permission-mode (call ClaudeResume) is-persistent effort servers thinking-display)))
+    (let settings
+      (call (. "\n" join)
+        (block
+          (arg
+            (call claude-arguments
+              (block
+                (arg request)
+                (arg tools)
+                (arg is-safe-mode)
+                (arg allowed-tools)
+                (arg permission-mode)
+                (arg (call ClaudeResume))
+                (arg is-persistent)
+                (arg effort)
+                (arg servers)
+                (arg thinking-display)
+              )
+            )
+          )
+        )
+      )
+    )
     (let live (call reusable plan settings))
     (return-if (call (. live ask) prompt original) (if live))
     (let base (only-if (call variables) (if variables)))
     (let program (?? executable (call claude-executable)))
     (throw (call AIError (. AIErrorKind unknown) "Claude Code is not installed") (if (not program)))
     (let point (. plan point))
-    (let merges (if-expr (and point (call claude-is-stranded point working-directory)) (list (call ClaudeMark point)) (. plan merges)))
+    (let merges
+      (block
+        (case? (and point (call claude-is-stranded point working-directory))
+          (list (call ClaudeMark point))
+        )
+        (default
+          (. plan merges)
+        )
+      )
+    )
     (let resume (if-expr merges (call ClaudeResume (call claude-merge-history merges)) plan))
     (let origin (if-expr merges (. ([] merges (- (. merges length) 1)) point) (. plan point)))
     (let arguments

@@ -3,7 +3,11 @@
 (fn-do + git-resolve (? String) (?! Error)
   (param directory String)
   (param revision String)
-  (let output (catch (call git-text directory (list "rev-parse" "--verify" "--quiet" "--end-of-options" revision))))
+  (let output
+    (block
+      (catch (call git-text directory (list "rev-parse" "--verify" "--quiet" "--end-of-options" revision)))
+    )
+  )
   (if (is output Error)
     (let failure (as output Error))
     (return-if null (if (and (is failure GitError) (== (. (as failure GitError) status) 1))))

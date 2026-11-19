@@ -635,7 +635,16 @@
       (return)
     )
     (let mark (. scratch types mark))
-    (let callee (call (. calls demand-runtime-call) (as found ModuleId) no-type (call (. program store-atom) "end-main") mark))
+    (let callee
+      (call (. calls demand-runtime-call)
+        (block
+          (arg (as found ModuleId))
+          (arg no-type)
+          (arg (call (. program store-atom) "end-main"))
+          (arg mark)
+        )
+      )
+    )
     (call (. scratch types rewind) mark)
     (if (== callee no-instance)
       (call decline id)
@@ -743,7 +752,11 @@
           (return)
         )
         (let shape (if-expr (== kind .struct) "struct" "tuple"))
-        (let text (str "Only a class can declare an event, which belongs to an object, and " (. class name text) " is a " shape ", whose values are copied; declare " (. class name text) " as a class"))
+        (let text
+          (paragraph
+            (str "Only a class can declare an event, which belongs to an object, and " (. class name text) " is a " shape ", whose values are copied; declare " (. class name text) " as a class")
+          )
+        )
         (call (. frame diagnose) (. event syntax) .stated (call (. program store-atom) text))
       )
     )
@@ -816,7 +829,11 @@
       (if (and (!= ([] values start) 0) (call reads-itself class values start))
         (if (call puts-off-circle decl class values start)
           (let name (call default-name class start))
-          (let message (str "Property \"" (. name text) "\" depends on itself through properties that initialize after its markup"))
+          (let message
+            (paragraph
+              (str "Property \"" (. name text) "\" depends on itself through properties that initialize after its markup")
+            )
+          )
           (call (. frame diagnose) ([] sites start) .stated (call (. program store-atom) message))
           (else
             (call (. frame diagnose) ([] sites start) .circular-reference)
@@ -1083,8 +1100,18 @@
       (let alias ([] (. tree atoms) (+ (. class aliases start) offset)))
       (let earlier (?? ([] suffixes alias) (call imported-suffix alias)))
       (if earlier
-        (let message (str "\"" (. alias text) "\" already names " (. earlier text) "; give " (. class name text) " a suffix of its own"))
-        (call (. frame diagnose) (if-expr (!= (. class base) 0) (. class base) (. class syntax)) .stated (call (. program store-atom) message))
+        (let message
+          (paragraph
+            (str "\"" (. alias text) "\" already names " (. earlier text) "; give " (. class name text) " a suffix of its own")
+          )
+        )
+        (call (. frame diagnose)
+          (block
+            (arg (if-expr (!= (. class base) 0) (. class base) (. class syntax)))
+            (arg .stated)
+            (arg (call (. program store-atom) message))
+          )
+        )
         (else
           (= ([] suffixes alias) (. class name))
         )
@@ -1186,7 +1213,11 @@
       (if (== ([] (. facets sees) position) (. U32 max))
         (let written ([] (. ([] (. program modules) module) syntax-pool) (- (+ (. facet sees start) position) sees-start)))
         (let seen (?? (?. (call (. types type-syntax-name) tree written) text) "It"))
-        (let message (str "\"" seen "\" is no other facet of " (call class-name-of owner-ref) ", so " name " can't see it"))
+        (let message
+          (paragraph
+            (str "\"" seen "\" is no other facet of " (call class-name-of owner-ref) ", so " name " can't see it")
+          )
+        )
         (call (. frame diagnose) written .stated (call (. program store-atom) message))
       )
     )
@@ -1213,7 +1244,11 @@
           (let (tuple named _ site) (call (. target member-name) member))
           (let facet-module ([] (. facets modules) facet))
           (if (and named (call declares-name facet-module ([] (. facets decls) facet) named true) (not overriding))
-            (let message (str (. class name text) " can't declare " (. named text) ", since facet " (call facet-name-of facet) " of " (call class-name-of ref) " declares it"))
+            (let message
+              (paragraph
+                (str (. class name text) " can't declare " (. named text) ", since facet " (call facet-name-of facet) " of " (call class-name-of ref) " declares it")
+              )
+            )
             (call (. frame diagnose) site .stated (call (. program store-atom) message))
           )
           (lazy overriding (call overrides-facet ([] (. target decls) member) facet-module ([] (. facets decls) facet)))
@@ -1278,7 +1313,11 @@
         (let kind (if-expr (!= named invalid-type) (call (. types intrinsic-of) named) (. IntrinsicKind none)))
         (if (or (== kind .class) (== kind .struct) (== kind .tuple))
           (let shown (call type-short-name types named))
-          (let text (str name " cannot implement " shown ", which is not an interface; a facet is part of its class and is built on no type"))
+          (let text
+            (paragraph
+              (str name " cannot implement " shown ", which is not an interface; a facet is part of its class and is built on no type")
+            )
+          )
           (call (. frame diagnose) interface .stated (call (. program store-atom) text))
         )
       )
@@ -1321,7 +1360,11 @@
       (match? ([] (. target decls) member)
         (case (call .decl-function fn)
           (if (call is-constructor-kind (. fn kind))
-            (let message (str name " is a facet, so it has no constructors; its owner's give its properties their first values"))
+            (let message
+              (paragraph
+                (str name " is a facet, so it has no constructors; its owner's give its properties their first values")
+              )
+            )
             (call (. frame diagnose) (. fn syntax) .stated (call (. program store-atom) message))
             (else-if (. fn is-static)
               (let message (str name " is a facet, so it has no static functions"))
@@ -1331,7 +1374,11 @@
         )
         (case (call .decl-property property)
           (if (and (== (. property value) 0) (. property name) (not (call starts-empty (. property type-syntax))))
-            (let message (str (. property name text) " needs a value or an optional type, since " name " is a facet and no constructor gives it one"))
+            (let message
+              (paragraph
+                (str (. property name text) " needs a value or an optional type, since " name " is a facet and no constructor gives it one")
+              )
+            )
             (call (. frame diagnose) (. property syntax) .stated (call (. program store-atom) message))
           )
         )
@@ -1374,7 +1421,11 @@
         (= level (call (. types base-of) level))
       )
       (if taken
-        (let message (str (. declared text) " is already a member of " (call class-name-of owner-ref) ", so facet " name " can't declare it"))
+        (let message
+          (paragraph
+            (str (. declared text) " is already a member of " (call class-name-of owner-ref) ", so facet " name " can't declare it")
+          )
+        )
         (call (. frame diagnose) site .stated (call (. program store-atom) message))
         (continue)
       )
@@ -1388,7 +1439,11 @@
         (if (and (!= other index) shared)
           (let other-name (call facet-name-of other))
           (let reason (if-expr event "an event's name is its class's alone, private or not" "a facet's members that are not private are its class's, so a name is one facet's"))
-          (let message (str "Facets " name " and " other-name " of " (call class-name-of owner-ref) " both declare " (. declared text) "; " reason))
+          (let message
+            (paragraph
+              (str "Facets " name " and " other-name " of " (call class-name-of owner-ref) " both declare " (. declared text) "; " reason)
+            )
+          )
           (call (. frame diagnose) site .stated (call (. program store-atom) message))
         )
       )
@@ -1450,7 +1505,16 @@
         (if (or (== kind .class) (== kind .struct) (== kind .tuple))
           (let shown (call type-short-name types named))
           (let lead (str (. class name text) " cannot implement " shown ", which is not an interface"))
-          (let base (if-expr (!= (. class base) 0) (call (. types evaluate-type) module tree (. class base) env) no-type))
+          (let base
+            (block
+              (case? (!= (. class base) 0)
+                (call (. types evaluate-type) module tree (. class base) env)
+              )
+              (default
+                no-type
+              )
+            )
+          )
           (let text (if-expr (or (== base no-type) (== base invalid-type)) (str lead "; a type is built on one type, written in its header, as in \"+ " (. class name text) " is " shown "\"") (str lead "; " (. class name text) " is built on " (call type-short-name types base) ", and a type is built on one type")))
           (call (. frame diagnose) interface .stated (call (. program store-atom) text))
         )
@@ -1710,7 +1774,11 @@
       (return)
     )
     (if (== payload (. types void-type))
-      (let message (str "An event gives each subscriber a value, so it cannot carry Void; an event that only signals carries Bool, as in \"+ event " (. event name text) " Bool\""))
+      (let message
+        (paragraph
+          (str "An event gives each subscriber a value, so it cannot carry Void; an event that only signals carries Bool, as in \"+ event " (. event name text) " Bool\"")
+        )
+      )
       (call (. frame diagnose) (. event type-syntax) .stated (call (. program store-atom) message))
       (return)
     )
@@ -1725,7 +1793,11 @@
       (return)
     )
     (if (not (call event-key key))
-      (let message "Keyed event keys must conform to EventKey: integer, Char, Bool, interned identity, or an integer (index, generation) handle; Float and user-defined equality/hash keys are not supported")
+      (let message
+        (paragraph
+          "Keyed event keys must conform to EventKey: integer, Char, Bool, interned identity, or an integer (index, generation) handle; Float and user-defined equality/hash keys are not supported"
+        )
+      )
       (call (. frame diagnose) (. event syntax) .stated (call (. program store-atom) message))
     )
   )

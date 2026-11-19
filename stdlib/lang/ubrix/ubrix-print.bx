@@ -1814,7 +1814,11 @@
     (let is-tight (> minimum ubrix-level-named))
     (let last ([] items (- (. items length) 1)))
     (let is-flat (and (== extra 1) (not has-named) (or is-tight (not is-tail)) (call is-argued last)))
-    (let is-wrapped (and (not is-flat) (or (and has-named (or no-prep is-tight)) (and has-extra (not has-named) is-tight))))
+    (let is-wrapped
+      (block
+        (and (not is-flat) (or (and has-named (or no-prep is-tight)) (and has-extra (not has-named) is-tight)))
+      )
+    )
     (if is-wrapped
       (call put "(")
       (else-if (and is-tail (== tail null))
@@ -2766,7 +2770,13 @@
     (call put op)
     (for (in index (..< origin (. items length)))
       (call put " ")
-      (call expression ([] items index) (if-expr (call is-stream-source ([] items index)) 0 ubrix-level-select) false)
+      (call expression
+        (block
+          (arg ([] items index))
+          (arg (if-expr (call is-stream-source ([] items index)) 0 ubrix-level-select))
+          (arg false)
+        )
+      )
     )
     (if is-wrapped
       (call put ")")
@@ -2921,7 +2931,11 @@
         (lazy is-modulo (or (== head "%=") (== head "%%=")))
         (lazy is-guarded
           (scope (or is-guarded-update (== head "=?") (== head "++=?") (== head "<-*?"))
-            (lazy is-guarded-update (or (== head "+=?") (== head "-=?") (== head "*=?") (== head "/=?") is-guarded-modulo))
+            (lazy is-guarded-update
+              (block
+                (or (== head "+=?") (== head "-=?") (== head "*=?") (== head "/=?") is-guarded-modulo)
+              )
+            )
             (lazy is-guarded-modulo (or (== head "%=?") (== head "%%=?")))
           )
         )
@@ -3048,7 +3062,11 @@
   (param head String)
   (or (call ubrix-is-case head) (== head "case-each") (== head "default") is-plain)
   (where
-    (lazy is-plain (or (== head "throw") (== head "return") (== head "let") (== head "lazy") (== head "for")))
+    (lazy is-plain
+      (block
+        (or (== head "throw") (== head "return") (== head "let") (== head "lazy") (== head "for"))
+      )
+    )
   )
 )
 

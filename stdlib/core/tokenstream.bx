@@ -286,7 +286,16 @@
     )
     (blank)
     (let start location-scanned)
-    (let origin (if-expr start (call location-at start) (call TokenLocation (as origin-line U32) (as origin-column U32))))
+    (let origin
+      (block
+        (case? start
+          (call location-at start)
+        )
+        (default
+          (call TokenLocation (as origin-line U32) (as origin-column U32))
+        )
+      )
+    )
     (let data buffer)
     (let end length)
     (let lines Index 0)
@@ -792,7 +801,13 @@
     (let is-full (< (- (. buffer size) length) needed))
     (if (and released (>= released pending) (or is-full (> (. buffer size) release-capacity)))
       (call release-locations released)
-      (let capacity (call token-buffer-capacity (+ pending (if-expr (> needed chunk-size) needed chunk-size))))
+      (let capacity
+        (call token-buffer-capacity
+          (block
+            (arg (+ pending (if-expr (> needed chunk-size) needed chunk-size)))
+          )
+        )
+      )
       (let ramp (if-expr (< (. buffer size) release-capacity) (* (. buffer size) 2) release-capacity))
       (let retained ([] Token (if-expr (> capacity ramp) capacity ramp)))
       (if pending
@@ -1046,7 +1061,15 @@
             (= bytes-decodable (call utf8-decodable-prefix-size raw-buffer bytes-available))
           )
           (call reserve-tokens bytes-decodable)
-          (= (tuple decoded-count bytes-decoded) (call decode-utf8-buffer raw-buffer bytes-decodable ([] buffer (... length))))
+          (= (tuple decoded-count bytes-decoded)
+            (call decode-utf8-buffer
+              (block
+                (arg raw-buffer)
+                (arg bytes-decodable)
+                (arg ([] buffer (... length)))
+              )
+            )
+          )
           (else
             (= bytes-decoded (- bytes-available (% bytes-available (. Token size))))
             (= decoded-count (/ bytes-decoded (. Token size)))

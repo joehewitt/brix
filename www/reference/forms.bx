@@ -121,10 +121,18 @@
     (let row ([] shown index))
     (+= text (call reference-row-html row (. ([] sizes index) height)))
     (if (== (. row divider) source-divider-double)
-      (+= layers (str "<div class=\"ub-double\" style=\"top:" (+ ([] tops index) reference-double-offset) "px\"></div>"))
+      (+= layers
+        (paragraph
+          (str "<div class=\"ub-double\" style=\"top:" (+ ([] tops index) reference-double-offset) "px\"></div>")
+        )
+      )
     )
   )
-  (return (str "<div class=\"ubrix\"><div class=\"ubrix-sheet\">" layers "<div class=\"ubrix-text\">" text "</div></div></div>"))
+  (return
+    (paragraph
+      (str "<div class=\"ubrix\"><div class=\"ubrix-sheet\">" layers "<div class=\"ubrix-text\">" text "</div></div></div>")
+    )
+  )
 )
 
 (fn-do _ reference-sizes (list ReferenceSize)
@@ -161,7 +169,16 @@
         (+= sizes (call ReferenceSize (+ above reference-edge) (+ above reference-edge)))
       )
       (else-if (and is-gap is-last)
-        (let inside (if-expr (call reference-member-ends members local) reference-member-gap reference-edge))
+        (let inside
+          (block
+            (case? (call reference-member-ends members local)
+              reference-member-gap
+            )
+            (default
+              reference-edge
+            )
+          )
+        )
         (+= sizes (call ReferenceSize (+ inside below) inside))
       )
       (else-if (and is-gap (call reference-member-ends members (+ local 1)))
@@ -211,7 +228,11 @@
   (let style (if-expr (== height reference-row-height) "" (str " style=\"height:" height "px\"")))
   (return-if (str "<div class=\"ub-row\"" style "></div>") (if (or (. row is-divider) (== (. row spans length) 0))))
   (let preamble (if-expr (== (. row zone) (. SourceRowZone preamble)) " ub-preamble" ""))
-  (return (str "<div class=\"ub-row" preamble "\"" style ">" (* " " (. row content-start)) (call reference-spans-html (. row spans)) "</div>"))
+  (return
+    (paragraph
+      (str "<div class=\"ub-row" preamble "\"" style ">" (* " " (. row content-start)) (call reference-spans-html (. row spans)) "</div>")
+    )
+  )
 )
 
 (fn-do _ reference-spans-html String
@@ -359,11 +380,19 @@
   (if (and (< next (. rows length)) (== (. ([] rows next) node) null))
     (= bottom ([] (. layout tops) (+ base next)))
     (if (call reference-is-gap ([] rows next))
-      (let reach (?? (call reference-row-bottom rows base next end is-member layout) reference-wash-trail))
+      (let reach
+        (block
+          (?? (call reference-row-bottom rows base next end is-member layout) reference-wash-trail)
+        )
+      )
       (+= bottom (if-expr (< reach reference-wash-trail) reach reference-wash-trail))
     )
   )
-  (return (str "<div class=\"ub-wash ub-" (. ([] rows opener) block) "\" style=\"height:" (- bottom parent reference-border) "px\"></div>"))
+  (return
+    (paragraph
+      (str "<div class=\"ub-wash ub-" (. ([] rows opener) block) "\" style=\"height:" (- bottom parent reference-border) "px\"></div>")
+    )
+  )
 )
 
 (fn-expr _ reference-rule-html String

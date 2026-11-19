@@ -906,7 +906,9 @@
     (return-if null (if (not spot)))
     (let column (call (. spot wrap column-under) (. spot line) (as (call floor (/ x cell-width)) Size)))
     (let shown (call (. active row-at) (. spot row)))
-    (return-if null (if (or (== column null) (. shown is-divider) (< column (. shown content-start)) (>= column (. shown columns)))))
+    (if (or (== column null) (. shown is-divider) (< column (. shown content-start)) (>= column (. shown columns)))
+      (return null)
+    )
     (return (call SourcePoint (. spot row) column))
   )
   (fn-do _ track _
@@ -1160,8 +1162,20 @@
     (let resized (and (> wrapped-columns 0) (> wrap-columns 0) (!= wrap-columns wrapped-columns)))
     (= wrapped-stamp stamp)
     (= wrapped-columns wrap-columns)
-    (let next (call (. wrap-cache rows) active wrap-columns source-indent-columns source-row-height source-end-space))
-    (return-if (if (and (== (. next count) (. wrap-rows count)) (== (. next widest) (. wrap-rows widest)) (== (. next tops) (. wrap-rows tops)))))
+    (let next
+      (call (. wrap-cache rows)
+        (block
+          (arg active)
+          (arg wrap-columns)
+          (arg source-indent-columns)
+          (arg source-row-height)
+          (arg source-end-space)
+        )
+      )
+    )
+    (if (and (== (. next count) (. wrap-rows count)) (== (. next widest) (. wrap-rows widest)) (== (. next tops) (. wrap-rows tops)))
+      (return)
+    )
     (let scroll (call max (. region scroll-y) 0))
     (let anchor (call (. wrap-rows display-at) (as (call floor (/ scroll source-row-length)) Size)))
     (let within (- scroll (call row-top anchor)))
@@ -1206,7 +1220,12 @@
     (param active SourceSession)
     (param top Length)
     (param height Length)
-    (call min (call (. active folds row-count)) (+ (call (. wrap-rows display-at) (as (call ceil (/ (+ top height) source-row-length)) Size)) 1))
+    (call min
+      (block
+        (arg (call (. active folds row-count)))
+        (arg (+ (call (. wrap-rows display-at) (as (call ceil (/ (+ top height) source-row-length)) Size)) 1))
+      )
+    )
   )
   (fn-do _ spot-on SourceSpot
     (param active SourceSession)
@@ -1241,7 +1260,19 @@
       (lazy left (- (+ (. content x) source-text-inset) (. region scroll-x)))
       (lazy wrap (call row-wrap active (. active row)))
       (lazy line (call (. wrap line-of) (. active column)))
-      (lazy x (if-expr (call (. active is-open-end) (. active row)) (+ (call adder-left left) source-add-size source-add-caret-gap) (if-expr (call is-open-row active (. active row)) left (+ left (* (call (. wrap x-at) line (. active column)) cell-width)))))
+      (lazy x
+        (block
+          (case? (call (. active is-open-end) (. active row))
+            (+ (call adder-left left) source-add-size source-add-caret-gap)
+          )
+          (case? (call is-open-row active (. active row))
+            left
+          )
+          (default
+            (+ left (* (call (. wrap x-at) line (. active column)) cell-width))
+          )
+        )
+      )
       (lazy y (- (+ (. content y) (call row-top (call (. active folds shown) (. active row))) (* line source-row-length)) shown-top))
     )
   )
@@ -1340,7 +1371,7 @@
     (return-if null (if (or (not spot) (!= (. spot line) 0))))
     (let row (. spot row))
     (return-if null (if (not (call is-on-control point row))))
-    (return (if-expr (or (call is-adder active row) (call (. active folds is-folded) row) (call source-fold-head active row)) row null))
+    (return (only-if row (if (or (call is-adder active row) (call (. active folds is-folded) row) (call source-fold-head active row)))))
   )
   (fn-do _ press-control _
     (param row Size)
@@ -1373,7 +1404,17 @@
     (if is-lit
       (call paint-source-add canvas x y $source-add-lit-color null $source-add-lit-mark-color is-lazy)
       (else
-        (call paint-source-add canvas x y $source-add-color $source-add-border-color $source-add-mark-color is-lazy)
+        (call paint-source-add
+          (block
+            (arg canvas)
+            (arg x)
+            (arg y)
+            (arg $source-add-color)
+            (arg $source-add-border-color)
+            (arg $source-add-mark-color)
+            (arg is-lazy)
+          )
+        )
       )
     )
   )
@@ -1382,7 +1423,17 @@
     (param x Length)
     (param y Length)
     (param is-open Bool)
-    (call paint-source-fold canvas x y is-open $source-add-color $source-add-border-color $source-add-mark-color)
+    (call paint-source-fold
+      (block
+        (arg canvas)
+        (arg x)
+        (arg y)
+        (arg is-open)
+        (arg $source-add-color)
+        (arg $source-add-border-color)
+        (arg $source-add-mark-color)
+      )
+    )
   )
   (fn-expr _ is-open-row Bool
     (param active SourceSession)
@@ -1480,7 +1531,16 @@
     )
     (= wrap-columns (call wrap-width))
     (call sync-wrap active)
-    (let widest (if-expr (> wrap-columns 0) (. wrap-rows widest) (call max (. active document widest-columns) widest-columns)))
+    (let widest
+      (block
+        (case? (> wrap-columns 0)
+          (. wrap-rows widest)
+        )
+        (default
+          (call max (. active document widest-columns) widest-columns)
+        )
+      )
+    )
     (if (and (. active is-dirty) (== wrap-columns 0))
       (= widest (call max widest (. (call (. active row-at) (. active row)) columns)))
     )
@@ -1638,7 +1698,16 @@
         (let height (call row-height index))
         (if (or is-tinted is-current)
           (let band (call Rect (. whole x) y (. whole width) height))
-          (let shape (call source-slice-shape ([] slices (- index first)) (call Rect (. content x) y (. content width) height) (- left source-box-indent) right))
+          (let shape
+            (call source-slice-shape
+              (block
+                (arg ([] slices (- index first)))
+                (arg (call Rect (. content x) y (. content width) height))
+                (arg (- left source-box-indent))
+                (arg right)
+              )
+            )
+          )
           (do-use (. canvas saved-state)
             (call (. canvas clip) band)
             (if shape
@@ -1659,7 +1728,18 @@
         (let wrap (call source-row-wrap shown wrap-columns source-indent-columns))
         (let y (- (+ (. content y) (call row-top index)) top))
         (if (and known (not (and (. active is-dirty) (== row (. active row)))))
-          (call paint-washes canvas known shown wrap left y (call (. folds is-folded) row) (call lit-for active shown))
+          (call paint-washes
+            (block
+              (arg canvas)
+              (arg known)
+              (arg shown)
+              (arg wrap)
+              (arg left)
+              (arg y)
+              (arg (call (. folds is-folded) row))
+              (arg (call lit-for active shown))
+            )
+          )
         )
         (if (call (. folds is-folded) row)
           (let x (+ left (* (call (. wrap end-x) (. wrap last-line)) cell-width) code-chip-gap))
@@ -1675,14 +1755,35 @@
           )
         )
         (if (call (. active is-open-end) row)
-          (call paint-add-button canvas (call adder-left left) y (and (== row (. active row)) (not selects)) (== (. ([] slices (- index first)) kind) (. SourceRowBlock text)))
+          (call paint-add-button
+            (block
+              (arg canvas)
+              (arg (call adder-left left))
+              (arg y)
+              (arg (and (== row (. active row)) (not selects)))
+              (arg (== (. ([] slices (- index first)) kind) (. SourceRowBlock text)))
+            )
+          )
           (else-if (== (. shown divider) source-divider-double)
             (let start (call max (. content x) left))
             (let width (- rule-end start))
             (let rule-y (+ y (call floor (/ (- source-row-length source-double-divider-height) 2))))
             (= (. canvas fill-color) $source-thin-divider-color)
             (call (. canvas rect) (call Rect start rule-y width source-thin-divider-height))
-            (call (. canvas rect) (call Rect start (- (+ rule-y source-double-divider-height) source-thin-divider-height) width source-thin-divider-height))
+            (call (. canvas rect)
+              (block
+                (arg
+                  (call Rect
+                    (block
+                      (arg start)
+                      (arg (- (+ rule-y source-double-divider-height) source-thin-divider-height))
+                      (arg width)
+                      (arg source-thin-divider-height)
+                    )
+                  )
+                )
+              )
+            )
           )
         )
         (while (and (< next-hit (. hits length)) (< (. ([] hits next-hit) row) row))
@@ -1783,7 +1884,17 @@
     (param color RGBA)
     (for (in part (call (. wrap segments) (. mark start) (. mark end)))
       (let piece (call SourceMark (. part start) (. part end) (. mark kind) (. mark detail) (. mark caption) (. mark errors)))
-      (call paint-source-underline canvas piece left (+ y (* (. part line) source-row-length)) cell-width source-row-length color)
+      (call paint-source-underline
+        (block
+          (arg canvas)
+          (arg piece)
+          (arg left)
+          (arg (+ y (* (. part line) source-row-length)))
+          (arg cell-width)
+          (arg source-row-length)
+          (arg color)
+        )
+      )
     )
   )
   (fn-do _ lit-for (list String)
@@ -1816,7 +1927,16 @@
           (call paint-ink canvas "|" (+ left (* column cell-width)) y $source-inferred-color)
           (+= column 2)
         )
-        (let color (if-expr (!= (call (. lit find) name) null) $source-inferred-lit-color $source-inferred-color))
+        (let color
+          (block
+            (case? (!= (call (. lit find) name) null)
+              $source-inferred-lit-color
+            )
+            (default
+              $source-inferred-color
+            )
+          )
+        )
         (call paint-ink canvas name (+ left (* column cell-width)) y color)
         (+= column (+ (. name length) 1))
       )
@@ -1862,13 +1982,33 @@
     (return-if (if (or (not active) (< address 0) (>= address (as (call (. active folds row-count)) I64)))))
     (let scan (call SourceSliceScan active))
     (let left (- (+ (. band x) inset) source-box-indent))
-    (call paint-source-slice canvas (call (. scan slice) (as address Size) (. band height)) band left (- (. band right) box-clearance) (call surface-palette))
+    (call paint-source-slice
+      (block
+        (arg canvas)
+        (arg (call (. scan slice) (as address Size) (. band height)))
+        (arg band)
+        (arg left)
+        (arg (- (. band right) box-clearance))
+        (arg (call surface-palette))
+      )
+    )
     (let known insight)
     (let row (call (. active folds actual) (as address Size)))
     (if (and known (not (and (. active is-dirty) (== row (. active row)))))
       (let shown (call (. active row-at) row))
       (let wrap (call source-row-wrap shown wrap-columns source-indent-columns))
-      (call paint-washes canvas known shown wrap (+ (. band x) inset) (. band y) (call (. active folds is-folded) row) (call lit-for active shown))
+      (call paint-washes
+        (block
+          (arg canvas)
+          (arg known)
+          (arg shown)
+          (arg wrap)
+          (arg (+ (. band x) inset))
+          (arg (. band y))
+          (arg (call (. active folds is-folded) row))
+          (arg (call lit-for active shown))
+        )
+      )
     )
   )
   (fn-do _ paint-surfaces _
@@ -1980,7 +2120,16 @@
     (param known SourceInsight)
     (param shown SourceRow)
     (param is-folded Bool)
-    (let columns Size (if-expr is-folded (as (call ceil (/ (+ code-chip-gap code-chip-width) cell-width)) Size) 0))
+    (let columns Size
+      (block
+        (case? is-folded
+          (as (call ceil (/ (+ code-chip-gap code-chip-width) cell-width)) Size)
+        )
+        (default
+          0
+        )
+      )
+    )
     (let fill (call (. known fill-of) shown))
     (if fill
       (+= columns (+ (. fill type length) 1))
@@ -2012,7 +2161,22 @@
     (call (. canvas outline) (call Outline rect (/ height 2)))
     (= (. canvas stroke-color) null)
     (= (. canvas text-color) $source-caption-color)
-    (call (. canvas draw-text) layout (call Rect (+ (. rect x) source-pill-padding) (+ y (/ (- source-row-length (. layout height)) 2)) (. layout width) (. layout height)) (. TextAlignment left))
+    (call (. canvas draw-text)
+      (block
+        (arg layout)
+        (arg
+          (call Rect
+            (block
+              (arg (+ (. rect x) source-pill-padding))
+              (arg (+ y (/ (- source-row-length (. layout height)) 2)))
+              (arg (. layout width))
+              (arg (. layout height))
+            )
+          )
+        )
+        (arg (. TextAlignment left))
+      )
+    )
     (return rect)
   )
   (fn-do _ paint-caption _
@@ -2031,7 +2195,13 @@
     (let font (call Font $font-family $font-size $font-weight $font-slant))
     (let layout (call ink-layout text font))
     (= (. canvas text-color) color)
-    (call (. canvas draw-text) layout (call Rect left (+ y (/ (- source-row-length (. layout height)) 2)) (. layout width) (. layout height)) (. TextAlignment left))
+    (call (. canvas draw-text)
+      (block
+        (arg layout)
+        (arg (call Rect left (+ y (/ (- source-row-length (. layout height)) 2)) (. layout width) (. layout height)))
+        (arg (. TextAlignment left))
+      )
+    )
   )
   (fn-do + paint-overlay _
     (param canvas Canvas)
@@ -2059,7 +2229,11 @@
         (= (. canvas fill-color) null)
         (= (. canvas stroke-width) source-spacer-caret-stroke)
         (= (. canvas stroke-color) color)
-        (call (. canvas outline) (call (. (call Outline cell source-spacer-caret-radius) grow) (/ (- source-spacer-caret-stroke) 2)))
+        (call (. canvas outline)
+          (block
+            (arg (call (. (call Outline cell source-spacer-caret-radius) grow) (/ (- source-spacer-caret-stroke) 2)))
+          )
+        )
         (else
           (= (. canvas fill-color) color)
           (call (. canvas rect) caret)
@@ -2096,7 +2270,14 @@
         )
         (let actual (call (. active folds actual) (. row row)))
         (if (and (== actual hovered-row) (call source-fold-head active actual))
-          (call paint-fold-button canvas (call control-x left (!= (. (call (. scan slice) (. row row) (. row height)) member) null)) y true)
+          (call paint-fold-button
+            (block
+              (arg canvas)
+              (arg (call control-x left (!= (. (call (. scan slice) (. row row) (. row height)) member) null)))
+              (arg y)
+              (arg true)
+            )
+          )
         )
       )
       (let last ([] stuck (- (. stuck length) 1)))
@@ -2219,15 +2400,52 @@
     (call paint-source-dot canvas (+ middle-x (/ source-add-dot-gap 2)) middle-y)
     (return)
   )
-  (call (. canvas rect) (call Rect (- middle-x (/ source-add-arm 2)) (- middle-y (/ source-add-stroke 2)) source-add-arm source-add-stroke))
-  (call (. canvas rect) (call Rect (- middle-x (/ source-add-stroke 2)) (- middle-y (/ source-add-arm 2)) source-add-stroke source-add-arm))
+  (call (. canvas rect)
+    (block
+      (arg
+        (call Rect
+          (block
+            (arg (- middle-x (/ source-add-arm 2)))
+            (arg (- middle-y (/ source-add-stroke 2)))
+            (arg source-add-arm)
+            (arg source-add-stroke)
+          )
+        )
+      )
+    )
+  )
+  (call (. canvas rect)
+    (block
+      (arg
+        (call Rect
+          (block
+            (arg (- middle-x (/ source-add-stroke 2)))
+            (arg (- middle-y (/ source-add-arm 2)))
+            (arg source-add-stroke)
+            (arg source-add-arm)
+          )
+        )
+      )
+    )
+  )
 )
 
 (fn-do _ paint-source-dot _
   (param canvas Canvas)
   (param x Length)
   (param y Length)
-  (call (. canvas outline) (call Outline (call Rect (- x (/ source-add-dot 2)) (- y (/ source-add-dot 2)) source-add-dot source-add-dot) (/ source-add-dot 2)))
+  (call (. canvas outline)
+    (block
+      (arg
+        (call Outline
+          (block
+            (arg (call Rect (- x (/ source-add-dot 2)) (- y (/ source-add-dot 2)) source-add-dot source-add-dot))
+            (arg (/ source-add-dot 2))
+          )
+        )
+      )
+    )
+  )
 )
 
 (type + SourceGutter (is CodeChangeBox)
@@ -2261,7 +2479,16 @@
     (let y (+ (. event point y) scrolled))
     (if (and active (== (. event button) (. PointerButton primary)) (>= y 0) (>= (. event point y) covered))
       (let display (call display-of (as (call floor (/ y source-row-length)) Size)))
-      (let row (if-expr (< display (call (. active row-count))) (call (. active actual) display) (. active document row-count)))
+      (let row
+        (block
+          (case? (< display (call (. active row-count)))
+            (call (. active actual) display)
+          )
+          (default
+            (. active document row-count)
+          )
+        )
+      )
       (if (and (< display numbered) (or (call (. active is-folded) row) (and (!= session null) (call source-fold-head session row))))
         (<- toggled row)
         (call (. event cancel))
@@ -2321,7 +2548,14 @@
     (let active folds)
     (let shown-count (if-expr active (call (. active row-count)) (+ numbered 1)))
     (let low (if-expr (> scrolled 0) (call display-of (as (call floor (/ scrolled source-row-length)) Size)) 0))
-    (let high (call min shown-count (+ (call display-of (as (call ceil (/ (+ scrolled (. content height)) source-row-length)) Size)) 1)))
+    (let high
+      (call min
+        (block
+          (arg shown-count)
+          (arg (+ (call display-of (as (call ceil (/ (+ scrolled (. content height)) source-row-length)) Size)) 1))
+        )
+      )
+    )
     (return-if (if (<= high low)))
     (let rows (list Size))
     (let wanted (list Size))
@@ -2423,10 +2657,31 @@
       (if (and (> end from) (< position to))
         (let is-bold (and bolds (call source-is-bold (. span kind))))
         (let is-slanted (and italics (. span is-optional)))
-        (let shown (if-expr is-bold (if-expr is-slanted bold-italic bold) (if-expr is-slanted italic font)))
+        (let shown
+          (block
+            (case? is-bold
+              (if-expr is-slanted bold-italic bold)
+            )
+            (case? is-slanted
+              italic
+            )
+            (default
+              font
+            )
+          )
+        )
         (let color (if-expr is-preamble (call preamble-color (. span kind)) (call span-color (. span kind))))
         (let whole (and (>= position from) (<= end to)))
-        (let text (if-expr whole (. span text) ([] (. span text) (..< (- (call max from position) position) (- (call min to end) position)))))
+        (let text
+          (block
+            (case? whole
+              (. span text)
+            )
+            (default
+              ([] (. span text) (..< (- (call max from position) position) (- (call min to end) position)))
+            )
+          )
+        )
         (+= segments (call TextSegment 0 text shown color))
       )
       (= position end)
@@ -2573,7 +2828,13 @@
       (for (in line (..< 0 (. layouts length)))
         (let layout ([] layouts line))
         (let text-y (+ (. content y) (* line pitch) (/ (- pitch (. layout height)) 2)))
-        (call (. canvas draw-text) layout (call Rect (+ (. content x) inset) text-y (. layout width) (. layout height)) (. TextAlignment left))
+        (call (. canvas draw-text)
+          (block
+            (arg layout)
+            (arg (call Rect (+ (. content x) inset) text-y (. layout width) (. layout height)))
+            (arg (. TextAlignment left))
+          )
+        )
       )
     )
   )

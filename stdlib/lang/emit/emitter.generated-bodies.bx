@@ -116,7 +116,12 @@
     (let making (call (. ir reserve-block)))
     (call branch (. (call present site existing) operand) held making)
     (call (. ir start-block) held)
-    (call return-value (. (call payload site (call Typed (. existing operand) (. ([] (. instances signatures) (. runtime info-for)) returns))) operand) site)
+    (call return-value
+      (block
+        (arg (. (call payload site (call Typed (. existing operand) (. ([] (. instances signatures) (. runtime info-for)) returns))) operand))
+        (arg site)
+      )
+    )
     (call (. ir start-block) making)
     (= mark (. pending length))
     (+= pending (call make-operand .operand-constant (call (. ir add-string) key)))
@@ -136,7 +141,16 @@
       (let value (call take (. made operand) field site))
       (let none (call integer .machine-u8 0))
       (if (call (. types is-optional) (. property type))
-        (= none (call compare site .compare-equal (. (call present site (call Typed value (. property type))) operand) (call integer .machine-u8 0)))
+        (= none
+          (call compare
+            (block
+              (arg site)
+              (arg .compare-equal)
+              (arg (. (call present site (call Typed value (. property type))) operand))
+              (arg (call integer .machine-u8 0))
+            )
+          )
+        )
       )
       (let bits (call style-bits site (. property type) value))
       (= mark (. pending length))
@@ -201,7 +215,16 @@
       (let value (call take (. made operand) field site))
       (let none (call integer .machine-u8 0))
       (if (call (. types is-optional) (. slot type))
-        (= none (call compare site .compare-equal (. (call present site (call Typed value (. slot type))) operand) (call integer .machine-u8 0)))
+        (= none
+          (call compare
+            (block
+              (arg site)
+              (arg .compare-equal)
+              (arg (. (call present site (call Typed value (. slot type))) operand))
+              (arg (call integer .machine-u8 0))
+            )
+          )
+        )
       )
       (let bits (call style-bits site (. slot type) value))
       (= mark (. pending length))
@@ -293,7 +316,16 @@
       (let value (call take (. made operand) field site))
       (let none (call integer .machine-u8 0))
       (if (call (. types is-optional) (. slot type))
-        (= none (call compare site .compare-equal (. (call present site (call Typed value (. slot type))) operand) (call integer .machine-u8 0)))
+        (= none
+          (call compare
+            (block
+              (arg site)
+              (arg .compare-equal)
+              (arg (. (call present site (call Typed value (. slot type))) operand))
+              (arg (call integer .machine-u8 0))
+            )
+          )
+        )
       )
       (let bits (call style-bits site (. slot type) value))
       (= mark (. pending length))
@@ -587,7 +619,11 @@
     (if (and (!= (. row through count) 0) unrelated-value)
       (call refuse-instance (. row callee))
     )
-    (lazy unrelated-value (and (!= (. reached type) (. written self-type)) (not (call is-derived (. reached type) (. written self-type)))))
+    (lazy unrelated-value
+      (block
+        (and (!= (. reached type) (. written self-type)) (not (call is-derived (. reached type) (. written self-type))))
+      )
+    )
     (for (in position (..< 0 (. theirs args count)))
       (let own (call make-operand .operand-argument (+ position 1)))
       (let wanted (call (. instances argument-type) (. row callee) position))
@@ -600,7 +636,16 @@
     (= unit (= (. unit reading) (. row callee)))
     (for (in position (..< (. theirs args count) (. mine args count)))
       (let expected (call (. instances argument-type) (. row callee) position))
-      (let argumented (call default-argument kept (. row callee) (call parameter-default (. row callee) position) expected))
+      (let argumented
+        (call default-argument
+          (block
+            (arg kept)
+            (arg (. row callee))
+            (arg (call parameter-default (. row callee) position))
+            (arg expected)
+          )
+        )
+      )
       (+= pending (. argumented operand))
       (if (!= (. argumented type) expected)
         (call refuse .refused-conversion kept)
@@ -677,11 +722,26 @@
     (= returns-type (. theirs returns))
     (= (. ir returns) (call layout-of returns-type 0))
     (let holder (call read-through 0 (call Typed object (. row value)) (. row through)))
-    (let answer (call load-property 0 (. holder operand) (. holder type) (. ([] (. types properties) place) name) true returns-type))
+    (let answer
+      (call load-property
+        (block
+          (arg 0)
+          (arg (. holder operand))
+          (arg (. holder type))
+          (arg (. ([] (. types properties) place) name))
+          (arg true)
+          (arg returns-type)
+        )
+      )
+    )
     (if (and (!= (. answer type) returns-type) wraps-value)
       (= answer (call wrap 0 answer returns-type))
     )
-    (lazy wraps-value (and (call (. types is-optional) returns-type) (== (call (. types optional-inner) returns-type) (. answer type))))
+    (lazy wraps-value
+      (block
+        (and (call (. types is-optional) returns-type) (== (call (. types optional-inner) returns-type) (. answer type)))
+      )
+    )
     (if (!= (. answer type) returns-type)
       (call refuse-class (. row value))
       (return)

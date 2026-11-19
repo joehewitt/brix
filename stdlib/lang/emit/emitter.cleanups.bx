@@ -512,7 +512,16 @@
           (-= position 1)
           (if (== (. ([] pads position) block) landing)
             (if (== (. ([] pads position) site) 0)
-              (= ([] pads position) (call LandingPad landing (. ([] pads position) cleanups) site (. unit source-module)))
+              (= ([] pads position)
+                (call LandingPad
+                  (block
+                    (arg landing)
+                    (arg (. ([] pads position) cleanups))
+                    (arg site)
+                    (arg (. unit source-module))
+                  )
+                )
+              )
             )
             (break)
           )
@@ -630,7 +639,14 @@
     (call (. ir start-block) open)
     (let cancelation (. types cancelation-type))
     (if (and (!= cancelation invalid-type) (call (. tables is-class) cancelation))
-      (let raised (call make-operand .operand-value (call append .op-load-task-panic 0 (call Span) 0 managed-layout)))
+      (let raised
+        (call make-operand
+          (block
+            (arg .operand-value)
+            (arg (call append .op-load-task-panic 0 (call Span) 0 managed-layout))
+          )
+        )
+      )
       (call class-branch 0 raised cancelation reporting taking)
       (else
         (call jump taking)

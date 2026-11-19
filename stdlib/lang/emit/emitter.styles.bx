@@ -311,7 +311,14 @@
             (return conditions)
           )
           (let next (as (. style-conditions length) U32))
-          (+= style-conditions (call StyleCondition (call StyleWhen (. application module) (. applied condition) (. U32 max) (. live rerun)) conditions))
+          (+= style-conditions
+            (call StyleCondition
+              (block
+                (arg (call StyleWhen (. application module) (. applied condition) (. U32 max) (. live rerun)))
+                (arg conditions)
+              )
+            )
+          )
           (return next)
         )
       )
@@ -1247,7 +1254,15 @@
               (if (not now)
                 (let found (call around-place value))
                 (if found
-                  (+= rule-names (call RuleName (. (call (. bindings resolution-of) (. row binding) ([] names position)) slot) (. ([] around-values found) local) (. ([] around-values found) type)))
+                  (+= rule-names
+                    (call RuleName
+                      (block
+                        (arg (. (call (. bindings resolution-of) (. row binding) ([] names position)) slot))
+                        (arg (. ([] around-values found) local))
+                        (arg (. ([] around-values found) type))
+                      )
+                    )
+                  )
                   (continue)
                 )
               )
@@ -1271,7 +1286,15 @@
           (let layout (call layout-of (. converted type) value))
           (let local (call (. ir add-local) layout false))
           (call store-local local (. converted operand) value)
-          (+= rule-names (call RuleName (. (call (. bindings resolution-of) (. row binding) ([] names position)) slot) local (. converted type)))
+          (+= rule-names
+            (call RuleName
+              (block
+                (arg (. (call (. bindings resolution-of) (. row binding) ([] names position)) slot))
+                (arg local)
+                (arg (. converted type))
+              )
+            )
+          )
         )
         (return)
       )
@@ -1293,7 +1316,15 @@
         (call refuse .refused-statement site)
         (return)
       )
-      (+= rule-names (call RuleName (. (call (. bindings resolution-of) (. ([] (. instances rows) unit-id) binding) ([] names position)) slot) local type))
+      (+= rule-names
+        (call RuleName
+          (block
+            (arg (. (call (. bindings resolution-of) (. ([] (. instances rows) unit-id) binding) ([] names position)) slot))
+            (arg local)
+            (arg type)
+          )
+        )
+      )
     )
   )
   (fn-do _ root-value Typed
@@ -2081,7 +2112,14 @@
         (call wrap
           (block
             (arg (. row site))
-            (arg (call Typed (call make-operand .operand-symbol (call (. tables remap-symbol) (. row projection))) (call (. types optional-inner) (. runtime remap-tags))))
+            (arg
+              (call Typed
+                (block
+                  (arg (call make-operand .operand-symbol (call (. tables remap-symbol) (. row projection))))
+                  (arg (call (. types optional-inner) (. runtime remap-tags)))
+                )
+              )
+            )
             (arg (. runtime remap-tags))
           )
         )
@@ -2585,7 +2623,13 @@
       (let binding (. ([] (. instances rows) (. item instance)) binding))
       (let slot (. (call (. bindings resolution-of) binding (. item site)) slot))
       (let local (call (. ir add-local) managed-layout))
-      (call store-local local (call load kept (. (call (. tables layouts field) layout field) offset) managed-layout site) site)
+      (call store-local
+        (block
+          (arg local)
+          (arg (call load kept (. (call (. tables layouts field) layout field) offset) managed-layout site))
+          (arg site)
+        )
+      )
       (+= rule-names (call RuleName slot local (. item held)))
       (+= field 1)
     )
@@ -2764,7 +2808,16 @@
     (+= head (. info operand))
     (+= head (call integer .machine-u64 (- (. row property) (. ([] (. tables style-uses) index) first))))
     (if (call holds-style-handle (. property type))
-      (call author-value id (. property type) (. value operand) head (. runtime imperative) (. runtime imperative-object))
+      (call author-value
+        (block
+          (arg id)
+          (arg (. property type))
+          (arg (. value operand))
+          (arg head)
+          (arg (. runtime imperative))
+          (arg (. runtime imperative-object))
+        )
+      )
       (return)
     )
     (let none (call none-flag id (. property type) (. value operand)))
@@ -3024,7 +3077,16 @@
           (call refuse .refused-statement (. whenever expr))
           (return)
         )
-        (let prior (if-expr (call (. tables layouts is-struct) (. field layout)) (call snapshot (call field-value kept field (. whenever expr)) (. field layout) (. whenever expr)) (call load kept (. field offset) (. field layout) (. whenever expr))))
+        (let prior
+          (block
+            (case? (call (. tables layouts is-struct) (. field layout))
+              (call snapshot (call field-value kept field (. whenever expr)) (. field layout) (. whenever expr))
+            )
+            (default
+              (call load kept (. field offset) (. field layout) (. whenever expr))
+            )
+          )
+        )
         (let mark (. pending length))
         (+= pending prior)
         (+= pending (. latest operand))
@@ -3547,7 +3609,16 @@
     (if (!= object 0)
       (= subject (call emit-expression object))
     )
-    (let pointer (if-expr (and read (. read hosted)) (. subject operand) (call style-subject id (. subject operand) (. subject type))))
+    (let pointer
+      (block
+        (case? (and read (. read hosted))
+          (. subject operand)
+        )
+        (default
+          (call style-subject id (. subject operand) (. subject type))
+        )
+      )
+    )
     (if flag
       (let flagged (. pending length))
       (+= pending pointer)
@@ -3567,7 +3638,16 @@
     (if tracked
       (let watched pointer)
       (if (. (!! read) hosted)
-        (let held (if-expr (== (call intrinsic (. subject type)) .interface) (call load (. subject operand) 0 managed-layout id) (. subject operand)))
+        (let held
+          (block
+            (case? (== (call intrinsic (. subject type)) .interface)
+              (call load (. subject operand) 0 managed-layout id)
+            )
+            (default
+              (. subject operand)
+            )
+          )
+        )
         (= watched (call num-cast id held managed-layout pointer-layout))
       )
       (let tracking (. pending length))
@@ -3673,7 +3753,16 @@
     (for (in coding (. facts style-codings))
       (if (and (== (. coding type) type) (!= (. coding holder) no-instance))
         (let box (. ([] (. instances rows) (. coding holder)) self-type))
-        (let object (call num-cast site (. (call object-pointer site bits) operand) pointer-layout managed-layout))
+        (let object
+          (call num-cast
+            (block
+              (arg site)
+              (arg (. (call object-pointer site bits) operand))
+              (arg pointer-layout)
+              (arg managed-layout)
+            )
+          )
+        )
         (let value (call load-property site object box (call (. program store-atom) "value") true))
         (return (call Typed (. value operand) type))
       )

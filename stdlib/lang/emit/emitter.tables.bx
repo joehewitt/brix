@@ -714,7 +714,16 @@
     (let union ([] (. tables unions layouts) place))
     (let held ([] (. tables unions cases) (+ (. union cases start) case-index)))
     (let case-layout (call layout-of (. held type) site))
-    (let handle (if-expr (!= (. union handle-column) (. U32 max)) (call union-handle site place columns index) (call integer .machine-u32 0)))
+    (let handle
+      (block
+        (case? (!= (. union handle-column) (. U32 max))
+          (call union-handle site place columns index)
+        )
+        (default
+          (call integer .machine-u32 0)
+        )
+      )
+    )
     (let made (call frame case-layout))
     (for (in position (..< 0 (. held fields count)))
       (let field ([] (. tables unions fields) (+ (. held fields start) position)))
@@ -1101,7 +1110,18 @@
     (let arena-layout (call layout-of arena-type site))
     (let owner (call part arena arena-layout 0 site))
     (let incarnation (call part arena arena-layout 1 site))
-    (let header (call arena-reserve site (. owner operand) (. incarnation operand) (call integer .machine-u64 64) 8 true))
+    (let header
+      (call arena-reserve
+        (block
+          (arg site)
+          (arg (. owner operand))
+          (arg (. incarnation operand))
+          (arg (call integer .machine-u64 64))
+          (arg 8)
+          (arg true)
+        )
+      )
+    )
     (call fail-if
       (block
         (arg site)
@@ -1111,7 +1131,18 @@
     )
     (let count (call directory-slots row row-layout))
     (let slots U64 (if-expr (!= count 0) (as count U64) 1))
-    (let directory (call arena-reserve site (. owner operand) (. incarnation operand) (call integer .machine-u64 (* slots 8)) 8 true))
+    (let directory
+      (call arena-reserve
+        (block
+          (arg site)
+          (arg (. owner operand))
+          (arg (. incarnation operand))
+          (arg (call integer .machine-u64 (* slots 8)))
+          (arg 8)
+          (arg true)
+        )
+      )
+    )
     (call fail-if
       (block
         (arg site)
@@ -1760,7 +1791,17 @@
     (let owner (call part table layout 3 site))
     (let incarnation (call part table layout 4 site))
     (let generation (call part table layout 5 site))
-    (return (call TableMeta (. header operand) (. owner operand) (. incarnation operand) (. generation operand) (call header-or-zero site (. header operand) 3)))
+    (return
+      (call TableMeta
+        (block
+          (arg (. header operand))
+          (arg (. owner operand))
+          (arg (. incarnation operand))
+          (arg (. generation operand))
+          (arg (call header-or-zero site (. header operand) 3))
+        )
+      )
+    )
   )
   (fn-do _ row-meta TableMeta
     (param site SyntaxId)
@@ -2104,7 +2145,16 @@
     ; grows: the columns are the directory its table's header holds there, and the ones the span
     ; holds where it does not.
     (let columns (call span-columns site span layout meta))
-    (return (call TableSource columns (. (call part span layout 1 site) operand) (. (call part span layout 2 site) operand) meta))
+    (return
+      (call TableSource
+        (block
+          (arg columns)
+          (arg (. (call part span layout 1 site) operand))
+          (arg (. (call part span layout 2 site) operand))
+          (arg meta)
+        )
+      )
+    )
   )
   (fn-do _ span-meta TableMeta
     (param site SyntaxId)
@@ -2260,14 +2310,31 @@
       (call fail-if
         (block
           (arg id)
-          (arg (call compare id .compare-greater-equal (. position operand) (call word-at id (. held operand) layout 3)))
+          (arg
+            (call compare
+              (block
+                (arg id)
+                (arg .compare-greater-equal)
+                (arg (. position operand))
+                (arg (call word-at id (. held operand) layout 3))
+              )
+            )
+          )
           (arg "IndexSpan index is out of bounds")
         )
       )
       (let value (call span-item id (call resolve-span id (. held operand) layout) (. position operand) item-layout))
       (return (call Typed value item))
     )
-    (return (call row-value id (call selected-row id (. held operand) type layout (. position operand)) (call (. facts node-type) (. unit reading) id)))
+    (return
+      (call row-value
+        (block
+          (arg id)
+          (arg (call selected-row id (. held operand) type layout (. position operand)))
+          (arg (call (. facts node-type) (. unit reading) id))
+        )
+      )
+    )
   )
   (fn-do _ selection-cursor TableCursor
     (param id SyntaxId)
@@ -2315,7 +2382,17 @@
       )
     )
     (let table (call part selection layout 0 id))
-    (let index (call selected-index id (call resolve-span id (. span operand) span-layout) position item item-layout))
+    (let index
+      (call selected-index
+        (block
+          (arg id)
+          (arg (call resolve-span id (. span operand) span-layout))
+          (arg position)
+          (arg item)
+          (arg item-layout)
+        )
+      )
+    )
     (return (call row-place id (. table operand) table-type table-layout index))
   )
   (fn-do _ emit-span-range Typed
@@ -2435,7 +2512,18 @@
     ; The span or the view of type `span` a range that steps by one indexes a table or a view of
     ; one by at `id`, as `emit-table-span` says.
     (let none (call make-operand .operand-void 0))
-    (return (call range-span id held type (call TableRange range range-type none none false false true) object span))
+    (return
+      (call range-span
+        (block
+          (arg id)
+          (arg held)
+          (arg type)
+          (arg (call TableRange range range-type none none false false true))
+          (arg object)
+          (arg span)
+        )
+      )
+    )
   )
   (fn-do _ range-span Typed
     (param id SyntaxId)
@@ -2462,7 +2550,16 @@
     )
     (let source (call table-source id held type layout))
     (let bounds (call range-bounds id range held type object (. source length) (call source-name kind)))
-    (let start (if-expr (== kind .table) (. bounds start) (call arithmetic id .arithmetic-add (. source offset) (. bounds start) u64-layout)))
+    (let start
+      (match kind
+        (case= .table
+          (. bounds start)
+        )
+        (default
+          (call arithmetic id .arithmetic-add (. source offset) (. bounds start) u64-layout)
+        )
+      )
+    )
     (let made (call frame span-layout))
     (call put made (call (. tables layouts field) span-layout 0) (call view-columns id (. source meta) (. source columns)) id)
     (call put made (call (. tables layouts field) span-layout 1) start id)
@@ -2555,8 +2652,30 @@
     )
     (let meta (call column-meta id column layout))
     (let data (call column-data id column layout meta item-layout))
-    (let bounds (call range-bounds id range column type object (. (call part column layout 1 id) operand) "TableField"))
-    (let offset (call arithmetic id .arithmetic-add (. (call part column layout 5 id) operand) (. bounds start) u64-layout))
+    (let bounds
+      (call range-bounds
+        (block
+          (arg id)
+          (arg range)
+          (arg column)
+          (arg type)
+          (arg object)
+          (arg (. (call part column layout 1 id) operand))
+          (arg "TableField")
+        )
+      )
+    )
+    (let offset
+      (call arithmetic
+        (block
+          (arg id)
+          (arg .arithmetic-add)
+          (arg (. (call part column layout 5 id) operand))
+          (arg (. bounds start))
+          (arg u64-layout)
+        )
+      )
+    )
     (let made (call frame span-layout))
     (call put
       (block
@@ -2607,11 +2726,29 @@
     (let joined (call (. ir reserve-block)))
     (call branch (call compare id .compare-greater (. range start) (. range end)) falling rising)
     (call (. ir start-block) falling)
-    (let low (if-expr (. range through) (. range end) (call arithmetic id .arithmetic-add (. range end) one i64-layout)))
+    (let low
+      (block
+        (case? (. range through)
+          (. range end)
+        )
+        (default
+          (call arithmetic id .arithmetic-add (. range end) one i64-layout)
+        )
+      )
+    )
     (let top (call arithmetic id .arithmetic-add (. range start) one i64-layout))
     (call jump joined)
     (call (. ir start-block) rising)
-    (let high (if-expr (. range through) (call arithmetic id .arithmetic-add (. range end) one i64-layout) (. range end)))
+    (let high
+      (block
+        (case? (. range through)
+          (call arithmetic id .arithmetic-add (. range end) one i64-layout)
+        )
+        (default
+          (. range end)
+        )
+      )
+    )
     (call jump joined)
     (call (. ir start-block) joined)
     (let start (call phi i64-layout low falling (. range start) rising))
@@ -2641,7 +2778,19 @@
           (let start (call convert (. row left) .reason-element (call emit-expression (. row left))))
           (let end (call convert (. row right) .reason-element (call emit-expression (. row right))))
           (let through (== (. row op) .range-through-op))
-          (return (call TableRange none (call (. facts node-type) (. unit reading) key) (. start operand) (. end operand) through true true))
+          (return
+            (call TableRange
+              (block
+                (arg none)
+                (arg (call (. facts node-type) (. unit reading) key))
+                (arg (. start operand))
+                (arg (. end operand))
+                (arg through)
+                (arg true)
+                (arg true)
+              )
+            )
+          )
         )
         (let range (call emit-expression key))
         (return (call TableRange (. range operand) (. range type) none none false false (== (. row increment) 0)))
@@ -2716,7 +2865,16 @@
     (let layout (call layout-of type id))
     (let item (call viewed-item type))
     (let item-layout (call layout-of item id))
-    (let data (if-expr immutable (call part-address id column layout 0) (call column-data id column layout (call column-meta id column layout) item-layout)))
+    (let data
+      (block
+        (case? immutable
+          (call part-address id column layout 0)
+        )
+        (default
+          (call column-data id column layout (call column-meta id column layout) item-layout)
+        )
+      )
+    )
     (let named (if-expr immutable "ImmutableTableField" "TableField"))
     (call fail-if
       (block
@@ -2725,7 +2883,14 @@
         (arg (str named " index is out of bounds"))
       )
     )
-    (return (call Typed (call take (call item-cell id (. data operand) index item-layout) (call LayoutField 0 item-layout item) id) item))
+    (return
+      (call Typed
+        (block
+          (arg (call take (call item-cell id (. data operand) index item-layout) (call LayoutField 0 item-layout item) id))
+          (arg item)
+        )
+      )
+    )
   )
   (fn-do + emit-table-item-store _
     (param id SyntaxId)
@@ -2760,7 +2925,16 @@
     (call fail-if
       (block
         (arg id)
-        (arg (call compare id .compare-greater-equal (. index operand) (. (call part (. column operand) layout 1 id) operand)))
+        (arg
+          (call compare
+            (block
+              (arg id)
+              (arg .compare-greater-equal)
+              (arg (. index operand))
+              (arg (. (call part (. column operand) layout 1 id) operand))
+            )
+          )
+        )
         (arg "TableField index is out of bounds")
       )
     )
@@ -2997,7 +3171,16 @@
     (call jump testing)
     (call (. ir start-block) testing)
     (let current (call load-local counter site))
-    (let going (if-expr backward (call compare site .compare-greater current (call integer .machine-u64 0)) (call compare site .compare-less current count)))
+    (let going
+      (block
+        (case? backward
+          (call compare site .compare-greater current (call integer .machine-u64 0))
+        )
+        (default
+          (call compare site .compare-less current count)
+        )
+      )
+    )
     (call branch going copying copied)
     (call (. ir start-block) copying)
     (let row (call load-local counter site))
@@ -3072,7 +3255,19 @@
     (let item-layout (call layout-of (call viewed-item type) id))
     (let meta (call column-meta id column layout))
     (let data (call column-data id column layout meta item-layout))
-    (let bounds (call range-bounds id range column type object (. (call part column layout 1 id) operand) "TableField"))
+    (let bounds
+      (call range-bounds
+        (block
+          (arg id)
+          (arg range)
+          (arg column)
+          (arg type)
+          (arg object)
+          (arg (. (call part column layout 1 id) operand))
+          (arg "TableField")
+        )
+      )
+    )
     (let into (call item-cell id (. data operand) (. bounds start) item-layout))
     (let out (call column-data id source source-layout (call column-meta id source source-layout) item-layout))
     (call fail-if
@@ -3182,7 +3377,16 @@
     ; A field of a table or of a view of one that holds an address, as a plain pointer.
     (let held (. (call (. tables layouts field) layout position) layout))
     (let read (call part value layout position site))
-    (return (if-expr (== held pointer-layout) read (call Typed (call num-cast site (. read operand) held pointer-layout) (. read type))))
+    (return
+      (match held
+        (case= pointer-layout
+          read
+        )
+        (default
+          (call Typed (call num-cast site (. read operand) held pointer-layout) (. read type))
+        )
+      )
+    )
   )
   (fn-do + view-columns Operand
     (param site SyntaxId)
@@ -3263,7 +3467,16 @@
     (let held-layout (call layout-of pointer id))
     (let item-layout (call layout-of (call viewed-item type) id))
     (let data (call column-data id held layout (call column-meta id held layout) item-layout))
-    (return (if-expr (== held-layout pointer-layout) (call Typed (. data operand) pointer) (call Typed (call num-cast id (. data operand) pointer-layout held-layout) pointer)))
+    (return
+      (match held-layout
+        (case= pointer-layout
+          (call Typed (. data operand) pointer)
+        )
+        (default
+          (call Typed (call num-cast id (. data operand) pointer-layout held-layout) pointer)
+        )
+      )
+    )
   )
   (fn-do _ layout-text Typed
     (param id SyntaxId)
@@ -3311,7 +3524,11 @@
     )
     (for (in position (..< 0 (. ([] (. tables layouts rows) row-layout) fields count)))
       (let item ([] (. tables layouts rows) (. (call (. tables layouts field) row-layout position) layout)))
-      (+= lines (str "region column[" position "] " (call region-name row position) " width=" (. item size) " align=" (. item alignment)))
+      (+= lines
+        (paragraph
+          (str "region column[" position "] " (call region-name row position) " width=" (. item size) " align=" (. item alignment))
+        )
+      )
     )
     (return (call (. "\n" join) lines))
   )
@@ -3497,7 +3714,15 @@
     (let known (. U32 max))
     (for (in position (..< 0 (. written count)))
       (if (and unions (== op (. TableOp table-append)))
-        (= known (call wraps-case ([] (. tree children) (+ (. written start) position)) .reason-argument ([] passed-types position)))
+        (= known
+          (call wraps-case
+            (block
+              (arg ([] (. tree children) (+ (. written start) position)))
+              (arg .reason-argument)
+              (arg ([] passed-types position))
+            )
+          )
+        )
       )
       (let converted
         (call convert
@@ -3522,7 +3747,17 @@
       (let reserved (call require-growable id (. table operand) layout "reserve"))
       (call reserve-rows id row row-layout reserved ([] passed 0))
       (else-if (== op (. TableOp table-extend))
-        (call table-extend id (. table operand) layout row row-layout ([] passed 0) (call (. instances argument-type) callee 0))
+        (call table-extend
+          (block
+            (arg id)
+            (arg (. table operand))
+            (arg layout)
+            (arg row)
+            (arg row-layout)
+            (arg ([] passed 0))
+            (arg (call (. instances argument-type) callee 0))
+          )
+        )
       )
       (else-if (== op (. TableOp table-truncate))
         (call table-truncate id (. table operand) layout ([] passed 0))
@@ -4251,7 +4486,16 @@
     (+= pending (. owner operand))
     (+= pending (. incarnation operand))
     (let active (call call-runtime .runtime-arena-active-bytes site mark-at u64-layout))
-    (let stale (if-expr restores "Table storage checkpoint cannot be restored from the current Arena state" "Table storage checkpoint is stale or belongs to another table"))
+    (let stale
+      (block
+        (case? restores
+          "Table storage checkpoint cannot be restored from the current Arena state"
+        )
+        (default
+          "Table storage checkpoint is stale or belongs to another table"
+        )
+      )
+    )
     (call fail-if
       (block
         (arg site)
@@ -4405,7 +4649,16 @@
     (let row (call table-row-type type))
     (let view-layout (call layout-of view id))
     (let column (call shared-column id row slot))
-    (let row-layout (if-expr (== column (. U32 max)) (call layout-of row id) (call layout-of (. ([] (call (. types cases-of) row) 0) type) id)))
+    (let row-layout
+      (match column
+        (case= (. U32 max)
+          (call layout-of row id)
+        )
+        (default
+          (call layout-of (. ([] (call (. types cases-of) row) 0) type) id)
+        )
+      )
+    )
     (if (== column (. U32 max))
       (= column slot)
     )
@@ -4493,7 +4746,16 @@
     (match? ([] (. tree nodes) object)
       (case (call .node-index-expression row)
         (if (and (== (call (. facts plan-of) (. unit reading) object) .plan-table) (not (call is-link object)))
-          (let cursor (if-expr (== (call table-op object) (. TableOp selection-row)) (call selection-cursor object (. row object) (. row index)) (call table-cursor object (. row object) (. row index))))
+          (let cursor
+            (block
+              (case? (== (call table-op object) (. TableOp selection-row))
+                (call selection-cursor object (. row object) (. row index))
+              )
+              (default
+                (call table-cursor object (. row object) (. row index))
+              )
+            )
+          )
           (return
             (call TableCursor
               (block
@@ -4521,7 +4783,15 @@
     (let proven (call proven-item object))
     (if (and (!= proven (. U32 max)) (== (call intrinsic type) .table-row))
       (let layout (call layout-of type id))
-      (return (call TableCursor (. ([] proven-items proven) columns) (. (call part (. value operand) layout 1 id) operand) (call no-meta)))
+      (return
+        (call TableCursor
+          (block
+            (arg (. ([] proven-items proven) columns))
+            (arg (. (call part (. value operand) layout 1 id) operand))
+            (arg (call no-meta))
+          )
+        )
+      )
     )
     (return (call value-cursor id (. value operand) type))
   )
@@ -4582,7 +4852,16 @@
     (let cursor (call row-cursor id object))
     (let row (call table-row-type (call (. facts node-type) (. unit reading) object)))
     (let column (call shared-column id row (call table-slot id)))
-    (let row-layout (if-expr (== column (. U32 max)) (call layout-of row id) (call layout-of (. ([] (call (. types cases-of) row) 0) type) id)))
+    (let row-layout
+      (match column
+        (case= (. U32 max)
+          (call layout-of row id)
+        )
+        (default
+          (call layout-of (. ([] (call (. types cases-of) row) 0) type) id)
+        )
+      )
+    )
     (let field (call (. tables layouts field) row-layout (call table-slot id)))
     (let place (if-expr (== column (. U32 max)) (call table-slot id) column))
     (let proven (call proven-table object))
@@ -4636,7 +4915,16 @@
     (let cursor (call row-cursor lhs object))
     (let row (call table-row-type (call (. facts node-type) (. unit reading) object)))
     (let column (call shared-column lhs row (call table-slot lhs)))
-    (let row-layout (if-expr (== column (. U32 max)) (call layout-of row lhs) (call layout-of (. ([] (call (. types cases-of) row) 0) type) lhs)))
+    (let row-layout
+      (match column
+        (case= (. U32 max)
+          (call layout-of row lhs)
+        )
+        (default
+          (call layout-of (. ([] (call (. types cases-of) row) 0) type) lhs)
+        )
+      )
+    )
     (let field (call (. tables layouts field) row-layout (call table-slot lhs)))
     (let value (call convert id .reason-assignment given))
     (if (!= (. value type) (. field type))
@@ -4812,7 +5100,18 @@
       (return)
     )
     (let source (call value-cursor rhs given given-type))
-    (call copy-union-row id union (. place columns) (. place index) (. source columns) (. source index) (. place meta) true)
+    (call copy-union-row
+      (block
+        (arg id)
+        (arg union)
+        (arg (. place columns))
+        (arg (. place index))
+        (arg (. source columns))
+        (arg (. source index))
+        (arg (. place meta))
+        (arg true)
+      )
+    )
     (call invalidate-marks id (. place meta))
   )
   (fn-do + table-row-item Typed
@@ -4832,7 +5131,16 @@
     (if (== (call intrinsic from) .immutable-table-row)
       (let columns (call part-address site value layout 0))
       (let index (call part value layout 1 site))
-      (let held (if-expr (!= union (. U32 max)) (. (call gather-union site union (. columns operand) (. index operand)) operand) (call gather-row site row-layout (. columns operand) (. index operand))))
+      (let held
+        (block
+          (case? (!= union (. U32 max))
+            (. (call gather-union site union (. columns operand) (. index operand)) operand)
+          )
+          (default
+            (call gather-row site row-layout (. columns operand) (. index operand))
+          )
+        )
+      )
       (return (call Typed held row))
     )
     (let meta (call row-meta site value layout))
@@ -4852,7 +5160,16 @@
     (call (. ir start-block) joined)
     (let columns (call phi pointer-layout held from-growing own from-fixed))
     (let index (call part value layout 1 site))
-    (let gathered (if-expr (!= union (. U32 max)) (. (call gather-union site union columns (. index operand)) operand) (call gather-row site row-layout columns (. index operand))))
+    (let gathered
+      (block
+        (case? (!= union (. U32 max))
+          (. (call gather-union site union columns (. index operand)) operand)
+        )
+        (default
+          (call gather-row site row-layout columns (. index operand))
+        )
+      )
+    )
     (return (call Typed gathered row))
   )
   (fn-do + shared-base Typed

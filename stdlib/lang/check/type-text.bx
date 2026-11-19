@@ -76,7 +76,11 @@
   (let member (call written-member-name (. name text)))
   (let wanted (call type-short-name types interface))
   (let place (?? (call naming-facet types value wanted) shown))
-  (return (str shown " does not implement \"" member "\", which " wanted " declares without a body; declare \"" member "\" in " place))
+  (return
+    (paragraph
+      (str shown " does not implement \"" member "\", which " wanted " declares without a body; declare \"" member "\" in " place)
+    )
+  )
 )
 
 (fn-do _ naming-facet (? String)
@@ -360,7 +364,16 @@
       (if optional
         (return (str "(? " (call type-brix types (call (. types child-type) (. row args) 0)) ")"))
       )
-      (let count (if-expr (and (== (. row args count) 2) (call is-default-backing types row)) 1 (. row args count)))
+      (let count
+        (block
+          (case? (and (== (. row args count) 2) (call is-default-backing types row))
+            1
+          )
+          (default
+            (. row args count)
+          )
+        )
+      )
       (return-if (call type-source types id) (if (== count 0)))
       (let first (call type-brix types (call (. types child-type) (. row args) 0)))
       (if (call (. types list-decl refers-to) (. row module) (. row decl))

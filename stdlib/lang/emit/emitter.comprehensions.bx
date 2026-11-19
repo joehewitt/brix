@@ -70,7 +70,16 @@
       (return (call Typed nothing no-type))
     )
     (lazy other-channel (!= (. ([] (. instances signatures) (. ([] (. facts calls) made) callee)) returns) channel))
-    (let lone (if-expr (and (!= (. unit reading) (. unit instance)) (== (call shared-written id) no-slot)) (call lone-environment id slot) no-local))
+    (let lone
+      (block
+        (case? (and (!= (. unit reading) (. unit instance)) (== (call shared-written id) no-slot))
+          (call lone-environment id slot)
+        )
+        (default
+          no-local
+        )
+      )
+    )
     (let object (call call-instance (. ([] (. facts calls) made) callee) id (. pending length)))
     (let written (call Typed nothing no-type))
     (if (== lone no-local)
@@ -289,8 +298,8 @@
     (= built-item (call (. instances argument-type) built-append 0))
     (= built-reason reason)
     (= spreading 0)
-    (let count U32 0)
-    (let room U32 0)
+    (let count U32)
+    (let room U32)
     (let leading true)
     (let feed first)
     (while (!= feed 0)
@@ -315,7 +324,16 @@
     (for (in _ (..< 0 count))
       (match? ([] (. tree nodes) feed)
         (case (call .node-feed-expression row)
-          (let value (call convert-matched (. row item) .reason-explicit (call emit-expression (. row item)) no-type))
+          (let value
+            (call convert-matched
+              (block
+                (arg (. row item))
+                (arg .reason-explicit)
+                (arg (call emit-expression (. row item)))
+                (arg no-type)
+              )
+            )
+          )
           (let site (call (. facts feed-site) (. unit reading) feed))
           (let converted (call built-value site value))
           (if (!= (. converted type) built-item)
@@ -337,7 +355,16 @@
             (call emit-spread feed (. row item) (. row is-optional))
             (= spreading 0)
             (else
-              (let value (call convert-matched (. row item) .reason-explicit (call emit-expression (. row item)) no-type))
+              (let value
+                (call convert-matched
+                  (block
+                    (arg (. row item))
+                    (arg .reason-explicit)
+                    (arg (call emit-expression (. row item)))
+                    (arg no-type)
+                  )
+                )
+              )
               (if (and (. row is-optional) (not (call (. types is-optional) (. value type))) (== reason .reason-return))
                 (call refuse .refused-expression feed)
               )
@@ -737,7 +764,9 @@
       (call refuse .refused-expression id)
       (return (call Typed (call make-operand .operand-void 0) no-type))
     )
-    (return-if (call emit-listed-feeds id (call (. tree listed-feeds) id)) (if (== (call (. facts plan-of) (. unit reading) id) .plan-built-feeds)))
+    (if (== (call (. facts plan-of) (. unit reading) id) .plan-built-feeds)
+      (return (call emit-listed-feeds id (call (. tree listed-feeds) id)))
+    )
     (match? ([] (. tree nodes) left)
       (case (call .node-feed-expression row)
         (= piped-site (if-expr (!= (. row next) 0) (. row next) id))

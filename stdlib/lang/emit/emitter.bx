@@ -162,8 +162,8 @@
   (prop + source-module ModuleId (= 0))
   (prop + owner-type TypeId (= no-type))
   (prop + own-scope ScopeId (= no-scope))
-  (prop + slot-start U32 (= 0))
-  (prop + slot-count U32 (= 0))
+  (prop + slot-start U32)
+  (prop + slot-count U32)
   (prop + cells (of CPointer U32) (= (as 0 (of CPointer U32))))
   (prop + kept (of CPointer U32) (= (as 0 (of CPointer U32))))
   (prop + kept-types (of CPointer U32) (= (as 0 (of CPointer U32))))
@@ -172,15 +172,15 @@
   (prop + lazy-readers (of CPointer U32) (= (as 0 (of CPointer U32))))
   (prop + fill-flags (of CPointer U32) (= (as 0 (of CPointer U32))))
   (prop + fill-cells (of CPointer U32) (= (as 0 (of CPointer U32))))
-  (prop + inlines Bool (= false))
+  (prop + inlines Bool)
   (prop + self Operand (= 0))
   (prop + self-type TypeId (= no-type))
-  (prop + has-self Bool (= false))
-  (prop + takes-self Bool (= false))
-  (prop + running-rule Bool (= false))
+  (prop + has-self Bool)
+  (prop + takes-self Bool)
+  (prop + running-rule Bool)
   (prop + deferred-type TypeId (= no-type))
   (prop + environment LocalId (= no-local))
-  (prop + received Bool (= false))
+  (prop + received Bool)
   (prop + lender InstanceId (= no-instance))
   (prop + open-held U32 (= no-place))
 )
@@ -207,14 +207,14 @@
   ; expression a name is read from at once, or none.
   (blank)
   (prop + failing IRBlockId (= no-block))
-  (prop + exact-class Bool (= false))
-  (prop + testing Bool (= false))
+  (prop + exact-class Bool)
+  (prop + testing Bool)
   (prop + tested SyntaxId (= 0))
-  (prop + declaring Bool (= false))
+  (prop + declaring Bool)
   (prop + arm-it SlotId (= no-slot))
   (prop + read-in-place SyntaxId (= 0))
   (prop + case-subject SyntaxId (= 0))
-  (prop + checks-row Bool (= false))
+  (prop + checks-row Bool)
   (prop + checked-row Operand (= 0))
   (prop + checked-made U32 (= (. U32 max)))
 )
@@ -232,7 +232,7 @@
   (prop + layout LayoutId (= no-layout))
   (prop + site SyntaxId (= 0))
   (prop + mark Size (= 0))
-  (prop + own Bool (= false))
+  (prop + own Bool)
   (prop + callee InstanceId (= no-instance))
   (prop + default-holder InstanceId (= no-instance))
 )
@@ -251,7 +251,7 @@
   (prop + gate U32 (= (. U32 max)))
   (prop + action InstanceId (= no-instance))
   (prop + live U32 (= (. U32 max)))
-  (prop + family-gated Bool (= false))
+  (prop + family-gated Bool)
 )
 
 (type _ Scoping (is Tuple)
@@ -264,12 +264,12 @@
   ; cleanups open as the body began.
   (blank)
   (prop + block-base Size (= 0))
-  (prop + cleaning Bool (= false))
+  (prop + cleaning Bool)
   (prop + cleaning-open Size (= 0))
   (prop + cleaning-top Size (= 0))
   (prop + unwinding-from SyntaxId (= 0))
   (prop + rule-leaving IRBlockId (= no-block))
-  (prop + rule-cleanups U32 (= 0))
+  (prop + rule-cleanups U32)
 )
 
 (type _ Streaming (is Tuple)
@@ -286,8 +286,8 @@
   (blank)
   (prop + pattern-helper Operand (= 0))
   (prop + pattern-helper-type TypeId (= no-type))
-  (prop + helper-argument Bool (= false))
-  (prop + marks-argument Bool (= false))
+  (prop + helper-argument Bool)
+  (prop + marks-argument Bool)
   (prop + marked-argument Operand (= 0))
   (prop + rollback-mark LocalId (= no-local))
   (prop + rollback-row U32 (= (. U32 max)))
@@ -295,8 +295,8 @@
   (prop + observer-row U32 (= (. U32 max)))
   (prop + given-stream Operand (= 0))
   (prop + given-stream-type TypeId (= no-type))
-  (prop + capture-floor U32 (= 0))
-  (prop + classing Bool (= false))
+  (prop + capture-floor U32)
+  (prop + classing Bool)
 )
 
 (type _ Filling (is Tuple)
@@ -311,13 +311,13 @@
   ; (`hold-unit`).
   (blank)
   (prop + type TypeId (= no-type))
-  (prop + start U32 (= 0))
-  (prop + count U32 (= 0))
+  (prop + start U32)
+  (prop + count U32)
   (prop + root SyntaxId (= 0))
   (prop + filled (of CPointer Byte) (= (as 0 (of CPointer Byte))))
   (prop + checks (of CPointer U32) (= (as 0 (of CPointer U32))))
   (prop + trackers (of CPointer U32) (= (as 0 (of CPointer U32))))
-  (prop + storing Bool (= false))
+  (prop + storing Bool)
   (prop + held-unit InstanceId (= no-instance))
   (prop + held-environment LocalId (= no-local))
 )
@@ -1594,7 +1594,20 @@
     (lazy use-flags (. emitter lists use-flags))
     (lazy pads (. emitter lists pads))
     (lazy machine-entering (. emitter lists machine-entering))
-    (lazy machining (call Machining null null (. emitter lists machine-items) (. emitter lists machine-cases) (. emitter lists machine-kept) null 0 (. emitter lists machine-below)))
+    (lazy machining
+      (call Machining
+        (block
+          (arg null)
+          (arg null)
+          (arg (. emitter lists machine-items))
+          (arg (. emitter lists machine-cases))
+          (arg (. emitter lists machine-kept))
+          (arg null)
+          (arg 0)
+          (arg (. emitter lists machine-below))
+        )
+      )
+    )
     (lazy resumes (. emitter lists resumes))
     (lazy closings (. emitter lists closings))
     (lazy stream-loops (. emitter lists stream-loops))
@@ -2004,7 +2017,11 @@
     ; capture of each task's body.
     (scope (or homed copied)
       (lazy homed (and (!= ([] (. tables slot-homes) slot) no-scope) (not (and unshared (== ([] (. tables slot-homes) slot) (. unit own-scope))))))
-      (lazy copied (and (!= ([] (. tables slot-copied) slot) 0) (!= ([] (. tables slot-functions) slot) (. unit own-scope)) spawned))
+      (lazy copied
+        (block
+          (and (!= ([] (. tables slot-copied) slot) 0) (!= ([] (. tables slot-functions) slot) (. unit own-scope)) spawned)
+        )
+      )
       (lazy spawned (and (!= (. unit instance) no-instance) (!= ([] (. tables capture-rows) (. unit instance)) no-place)))
     )
   )
@@ -2525,7 +2542,16 @@
       )
     )
     (let layout (call layout-of type id))
-    (let cell (if-expr stepping (call UseCell no-local no-local type) (call UseCell (call (. ir add-local) u8-layout) (call (. ir add-local) layout) type)))
+    (let cell
+      (block
+        (case? stepping
+          (call UseCell no-local no-local type)
+        )
+        (default
+          (call UseCell (call (. ir add-local) u8-layout) (call (. ir add-local) layout) type)
+        )
+      )
+    )
     (if (not stepping)
       (+= use-flags (. cell flag))
     )
@@ -2694,7 +2720,12 @@
     )
     (if (== (. forward callee) no-instance)
       (let name (. ([] (. program effects names) (. forward effect)) text))
-      (call raise-text declared (str "The fake bound to '" name "' has no method '" (call paths-name row) "' to answer its door"))
+      (call raise-text
+        (block
+          (arg declared)
+          (arg (str "The fake bound to '" name "' has no method '" (call paths-name row) "' to answer its door"))
+        )
+      )
       (return)
     )
     (let slot (call (. tables storage-of) (. forward module) (. forward decl)))
@@ -2752,7 +2783,13 @@
         )
         (let chosen (call (. ir reserve-block)))
         (let next (call (. ir reserve-block)))
-        (call branch (call compare declared .compare-equal kind (call integer .machine-u8 (as (. dispatch kind) U64))) chosen next)
+        (call branch
+          (block
+            (arg (call compare declared .compare-equal kind (call integer .machine-u8 (as (. dispatch kind) U64))))
+            (arg chosen)
+            (arg next)
+          )
+        )
         (call (. ir start-block) chosen)
         (let mark (. pending length))
         (for (in position (..< 0 (. signature args count)))
@@ -2806,7 +2843,16 @@
     )
     (let kept ([] (. tables storage) row))
     (let fakes (is ([] (. ([] (. program modules) (. kept module)) decls) (. kept decl)) .decl-effect))
-    (let bound (if-expr fakes (call emit-expression value) (call convert id .reason-assignment (call emit-expression value))))
+    (let bound
+      (block
+        (case? fakes
+          (call emit-expression value)
+        )
+        (default
+          (call convert id .reason-assignment (call emit-expression value))
+        )
+      )
+    )
     (if (and (!= (. bound type) (. kept type)) (not fakes))
       (call refuse .refused-conversion id)
       (return)
@@ -2836,7 +2882,7 @@
     (param kept GlobalStorage)
     (param fake TypeId)
     (let effect (call (. program effects index-of) (. kept module) (. kept decl)))
-    (return (if-expr effect (call (. instances fake-kind) effect fake) 0u32))
+    (return (if-expr effect (call (. instances fake-kind) effect fake) 0))
   )
   (fn-expr _ stack-row U32
     (param id SyntaxId)
@@ -3001,7 +3047,15 @@
     (while (!= position 0)
       (-= position 1)
       (if (== (. ([] stack-bindings position) bind) row)
-        (call fill-stack target kept (call load-local (. ([] stack-bindings position) value) site) site (. ([] stack-bindings position) flag))
+        (call fill-stack
+          (block
+            (arg target)
+            (arg kept)
+            (arg (call load-local (. ([] stack-bindings position) value) site))
+            (arg site)
+            (arg (. ([] stack-bindings position) flag))
+          )
+        )
         (return)
       )
     )
@@ -4063,7 +4117,16 @@
           (return)
         )
         (let given (call Typed part (call field-type owner position)))
-        (let converted (if-expr declares (call convert annotation .reason-declaration given name) (call convert name .reason-assignment given)))
+        (let converted
+          (block
+            (case? declares
+              (call convert annotation .reason-declaration given name)
+            )
+            (default
+              (call convert name .reason-assignment given)
+            )
+          )
+        )
         (= part (. converted operand))
         (if (!= (. converted type) held)
           (call refuse .refused-conversion name)
@@ -4152,7 +4215,9 @@
       (return (call Typed (call integer (as layout MachineKind) 0) type))
     )
     (if (== type (. types null-type))
-      (return-if (call Typed (call integer (as layout MachineKind) 0) type) (if (or (== layout pointer-layout) (== layout managed-layout))))
+      (if (or (== layout pointer-layout) (== layout managed-layout))
+        (return (call Typed (call integer (as layout MachineKind) 0) type))
+      )
       (return (call Typed nothing type))
     )
     (if (or (call is-numeric-type type) (== type (. types bool-type)))
@@ -4282,7 +4347,15 @@
       (return)
     )
     (let made (call emit-expression rhs))
-    (let converted (call convert rhs .reason-argument (call Typed (call apart made rhs (and (!= object 0) (not (call is-inert object)))) (. made type))))
+    (let converted
+      (call convert
+        (block
+          (arg rhs)
+          (arg .reason-argument)
+          (arg (call Typed (call apart made rhs (and (!= object 0) (not (call is-inert object)))) (. made type)))
+        )
+      )
+    )
     (let value (. converted operand))
     (if (!= (. converted type) (call (. instances argument-type) callee 0))
       (call refuse .refused-conversion rhs)
@@ -4857,7 +4930,16 @@
       (call push-key (. key operand) (. key type) id)
     )
     (let answer (call call-instance (. used first) id asking))
-    (let interested (if-expr keyed (call compare id .compare-not-equal (. answer operand) (call integer .machine-u64 0)) (. answer operand)))
+    (let interested
+      (block
+        (case? keyed
+          (call compare id .compare-not-equal (. answer operand) (call integer .machine-u64 0))
+        )
+        (default
+          (. answer operand)
+        )
+      )
+    )
     (let publishing (call (. ir reserve-block)))
     (let done (call (. ir reserve-block)))
     (let missing done)
@@ -4869,7 +4951,16 @@
     (call count-event .payload-builds id)
     (let given ([] (. tree children) (. operands start)))
     (let payload (call convert given .reason-argument (call emit-expression (call (. tree argument-value) given))))
-    (let node (if-expr (. used bubbles) (. (call convert-from (. used reference) .reason-event-node (. owner operand)) operand) nothing))
+    (let node
+      (block
+        (case? (. used bubbles)
+          (. (call convert-from (. used reference) .reason-event-node (. owner operand)) operand)
+        )
+        (default
+          nothing
+        )
+      )
+    )
     (let mark (. pending length))
     (+= pending pointer)
     (+= pending (call integer .machine-u64 number))
@@ -5636,8 +5727,25 @@
           (call refuse .refused-function declared)
           (return)
         )
-        (let held (call convert (. row container) .reason-operand (call Typed (call make-operand .operand-argument 1) (call (. instances argument-type) (. unit instance) 0))))
-        (let kept (if-expr (== (call (. facts plan-of) (. unit reading) given-loop) .plan-table-loop) (+ slot loop-state-count) slot))
+        (let held
+          (call convert
+            (block
+              (arg (. row container))
+              (arg .reason-operand)
+              (arg (call Typed (call make-operand .operand-argument 1) (call (. instances argument-type) (. unit instance) 0)))
+            )
+          )
+        )
+        (let kept
+          (block
+            (case? (== (call (. facts plan-of) (. unit reading) given-loop) .plan-table-loop)
+              (+ slot loop-state-count)
+            )
+            (default
+              slot
+            )
+          )
+        )
         (call keep-state kept (. held operand) (. held type) given-loop)
         (return)
       )
@@ -5772,7 +5880,22 @@
       (= holder (. reached type))
     )
     (let derived (and (call (. tables is-class) holder) (call (. tables is-class) declared) (call (. tables derives) holder declared)))
-    (let count U32 (if-expr (== given no-type) 0 (if-expr (== second-given no-type) 1 (if-expr (== third-given no-type) 2 3))))
+    (let count U32
+      (block
+        (case? (== given no-type)
+          0
+        )
+        (case? (== second-given no-type)
+          1
+        )
+        (case? (== third-given no-type)
+          2
+        )
+        (default
+          3
+        )
+      )
+    )
     (if (or (and (!= declared holder) (not derived)) (!= (. signature args count) count))
       (call refuse .refused-statement site)
       (return (call Typed nothing no-type))
@@ -5968,7 +6091,16 @@
     ; it are kept from.
     (/or/ declared block-effects)
     (where
-      (lazy declared (if-expr (== (. unit instance) no-instance) 0u32 (call restrictions-of (call dispatch-effects (. ([] (. instances rows) (. unit instance)) effects)))))
+      (lazy declared
+        (match (. unit instance)
+          (case= no-instance
+            0u32
+          )
+          (default
+            (call restrictions-of (call dispatch-effects (. ([] (. instances rows) (. unit instance)) effects)))
+          )
+        )
+      )
     )
   )
   (fn-do _ emit-poll _
@@ -7384,8 +7516,8 @@
     ; the compiler makes, is given no place.
     (throw (call Panic "A panic is raised where no function raises it") (if (== raiser no-function)))
     (let path (. ([] (. program modules) (. unit source-module)) relative-path))
-    (let line U64 0)
-    (let column U64 0)
+    (let line U64)
+    (let column U64)
     (if (!= id 0)
       (let begin (. ([] (. tree nodes) id) loc begin))
       (= line (+ (. begin line) 1))
@@ -7393,11 +7525,26 @@
     )
     (let mark (. pending length))
     (+= pending value)
-    (+= pending (call make-operand .operand-constant (call (. ir add-string) (if-expr (!= (. path length) 0) path "no file"))))
+    (+= pending
+      (call make-operand
+        (block
+          (arg .operand-constant)
+          (arg (call (. ir add-string) (if-expr (!= (. path length) 0) path "no file")))
+        )
+      )
+    )
     (+= pending (call integer .machine-u64 line))
     (+= pending (call integer .machine-u64 column))
     (call (. ir depend) .callee-function raiser 0)
-    (call call (call make-operand .operand-symbol (. ([] (. tables functions) raiser) symbol)) id mark .callee-function void-layout)
+    (call call
+      (block
+        (arg (call make-operand .operand-symbol (. ([] (. tables functions) raiser) symbol)))
+        (arg id)
+        (arg mark)
+        (arg .callee-function)
+        (arg void-layout)
+      )
+    )
   )
   (fn-do _ raise-text _
     (param id SyntaxId)
@@ -7546,7 +7693,15 @@
     (+= pending line)
     (+= pending (call make-operand .operand-argument 3))
     (call (. ir depend) .callee-function helper 0)
-    (call call (call make-operand .operand-symbol (. ([] (. tables functions) helper) symbol)) 0 given .callee-function void-layout)
+    (call call
+      (block
+        (arg (call make-operand .operand-symbol (. ([] (. tables functions) helper) symbol)))
+        (arg 0)
+        (arg given)
+        (arg .callee-function)
+        (arg void-layout)
+      )
+    )
     (call jump raising)
     (call (. ir start-block) raising)
     (let report (. instances report))
@@ -8040,7 +8195,16 @@
     ; The batch the function that builds a row, or what a line gives a slot, is built under, read
     ; from the local the type pass found it kept in, or nothing.
     (let root (call (. facts region-root-of) (. unit reading) body))
-    (return (if-expr root (. (call read-captured (. root slot) body (. root batch)) operand) (call make-operand .operand-void 0)))
+    (return
+      (block
+        (case? root
+          (. (call read-captured (. root slot) body (. root batch)) operand)
+        )
+        (default
+          (call make-operand .operand-void 0)
+        )
+      )
+    )
   )
   (fn-do _ emit-filling _
     (param declared SyntaxId)
@@ -8144,7 +8308,14 @@
           (call refuse .refused-conversion declared)
         )
         (lazy callee-argument (call (. instances argument-type) callee (+ carried offset)))
-        (+= pending (call make-operand .operand-argument (if-expr (. unit takes-self) (+ argument 1) argument)))
+        (+= pending
+          (call make-operand
+            (block
+              (arg .operand-argument)
+              (arg (if-expr (. unit takes-self) (+ argument 1) argument))
+            )
+          )
+        )
         (continue)
       )
       (let line (call body-slot-line body name))
@@ -8519,7 +8690,14 @@
       (if (!= cell no-local)
         (return (call Typed (call load-local cell site) (call (. instances argument-type) (. unit instance) position)))
       )
-      (return (call Typed (call make-operand .operand-argument (if-expr (. unit takes-self) (+ position 1) position)) (call (. instances argument-type) (. unit instance) position)))
+      (return
+        (call Typed
+          (block
+            (arg (call make-operand .operand-argument (if-expr (. unit takes-self) (+ position 1) position)))
+            (arg (call (. instances argument-type) (. unit instance) position))
+          )
+        )
+      )
     )
     (call refuse .refused-expression site)
     (return (call Typed (call make-operand .operand-void 0) no-type))
@@ -9266,7 +9444,14 @@
       )
       (if (call is-captured (+ (. unit slot-start) offset))
         (let given (call (. instances argument-type) (. unit instance) (- position 1)))
-        (call keep-captured (+ (. unit slot-start) offset) (call make-operand .operand-argument index) given declared)
+        (call keep-captured
+          (block
+            (arg (+ (. unit slot-start) offset))
+            (arg (call make-operand .operand-argument index))
+            (arg given)
+            (arg declared)
+          )
+        )
         (continue)
       )
       (let layout (as ([] (. ir arguments) index) LayoutId))
@@ -9811,7 +9996,20 @@
     ; its type.
     (let range (. ([] (. types completions) type) properties))
     (let outer making)
-    (= making (call Making (. unit self) type returned declared (. made length) true (. making callee) (. making default-holder)))
+    (= making
+      (call Making
+        (block
+          (arg (. unit self))
+          (arg type)
+          (arg returned)
+          (arg declared)
+          (arg (. made length))
+          (arg true)
+          (arg (. making callee))
+          (arg (. making default-holder))
+        )
+      )
+    )
     (for (in _ (..< 0 (. range count)))
       (+= made 0)
     )
@@ -9898,7 +10096,16 @@
       (call refuse .refused-function site)
       (return (call make-operand .operand-void 0))
     )
-    (let owner (if-expr (!= (. content-hosts length) 0) (. ([] content-hosts (- (. content-hosts length) 1)) operand) (. unit self)))
+    (let owner
+      (block
+        (case? (!= (. content-hosts length) 0)
+          (. ([] content-hosts (- (. content-hosts length) 1)) operand)
+        )
+        (default
+          (. unit self)
+        )
+      )
+    )
     (let action (call make-action trackers code data site))
     (call attach-action owner (. action operand) site)
     (return (. action operand))
@@ -10033,7 +10240,16 @@
     ; again through the function written for it, given the environment in force here.
     (let nothing (call make-operand .operand-void 0))
     (let row (call (. tables live-statement-of) (. unit reading) id))
-    (let code (if-expr (and row (!= (. row rerun) no-instance)) ([] (. tables instance-functions) (. row rerun)) no-function))
+    (let code
+      (block
+        (case? (and row (!= (. row rerun) no-instance))
+          ([] (. tables instance-functions) (. row rerun))
+        )
+        (default
+          no-function
+        )
+      )
+    )
     (let slot (call channel-slot id))
     (let made (call stream-call id .call-constructor))
     (let write (call stream-call id .call-method))
@@ -10422,7 +10638,16 @@
     )
     (let prior (call make-operand .operand-void 0))
     (if tracked
-      (= prior (if-expr (call (. tables layouts is-struct) (. field layout)) (call snapshot (call field-value object field site) (. field layout) site) (call load object (. field offset) (. field layout) site)))
+      (= prior
+        (block
+          (case? (call (. tables layouts is-struct) (. field layout))
+            (call snapshot (call field-value object field site) (. field layout) site)
+          )
+          (default
+            (call load object (. field offset) (. field layout) site)
+          )
+        )
+      )
     )
     (if (call (. tables layouts is-struct) (. field layout))
       (call store-struct object field value site)
@@ -11325,7 +11550,16 @@
     (match? ([] (. tree nodes) value)
       (case (call .node-stream-call row)
         (let resolution (call (. bindings resolution-of) (. ([] (. instances rows) (. unit reading)) binding) value))
-        (let type (if-expr (== (. resolution kind) .resolve-slot) (call slot-held-type value (. resolution slot)) no-type))
+        (let type
+          (match (. resolution kind)
+            (case= .resolve-slot
+              (call slot-held-type value (. resolution slot))
+            )
+            (default
+              no-type
+            )
+          )
+        )
         (if (== type no-type)
           (call refuse .refused-expression value)
           (return (call Typed (call make-operand .operand-void 0) no-type))
@@ -11918,7 +12152,11 @@
             (= value (. (call read-enum id) operand))
           )
           (else
-            (let tracking (and (. row is-tracked) (or (!= (. live-actions length) 0) (call (. facts pulls) (. unit reading) id))))
+            (let tracking
+              (block
+                (and (. row is-tracked) (or (!= (. live-actions length) 0) (call (. facts pulls) (. unit reading) id)))
+              )
+            )
             (if tracking
               (call track-name id (. row name))
             )
@@ -12166,7 +12404,11 @@
         (= type (. listed type))
       )
       (case (call .node-anonymous-case row)
-        (= value (. (call emit-case id (. row args) (== (call (. facts plan-of) (. unit reading) id) .plan-case-fields)) operand))
+        (= value
+          (block
+            (. (call emit-case id (. row args) (== (call (. facts plan-of) (. unit reading) id) .plan-case-fields)) operand)
+          )
+        )
       )
       (case .node-state-machine
         (= value (. (call emit-machine-site id) operand))
@@ -12790,7 +13032,16 @@
         (call refuse .refused-expression id)
         (return)
       )
-      (= given (call make-union id type index (call Typed (. value operand) (. (call (. tables layouts case-field) layout index) type))))
+      (= given
+        (call make-union
+          (block
+            (arg id)
+            (arg type)
+            (arg index)
+            (arg (call Typed (. value operand) (. (call (. tables layouts case-field) layout index) type)))
+          )
+        )
+      )
       (else
         (let inner (. (call (. tables layouts case-field) layout 0) type))
         (if (!= (. given type) inner)
@@ -13231,7 +13482,11 @@
     (if (or (call (. tables owned-subscription-of) (. unit reading) site) claimed-or-read)
       (return true)
     )
-    (lazy claimed-or-read (or (call (. facts address-claim-of) (. unit reading) site) (call (. facts latest-read-of) (. unit reading) site)))
+    (lazy claimed-or-read
+      (block
+        (or (call (. facts address-claim-of) (. unit reading) site) (call (. facts latest-read-of) (. unit reading) site))
+      )
+    )
     (match? ([] (. tree nodes) site)
       (case (call .node-pipeline-expression row)
         (return (call pipes-stream (. row op)))
@@ -13302,7 +13557,15 @@
       (call refuse .refused-function site)
       (return (call Typed (. unit self) no-type))
     )
-    (return (call convert-one site ([] (. facts conversions) fact) (call Typed (. unit self) (. ([] (. instances rows) (. unit reading)) self-type))))
+    (return
+      (call convert-one
+        (block
+          (arg site)
+          (arg ([] (. facts conversions) fact))
+          (arg (call Typed (. unit self) (. ([] (. instances rows) (. unit reading)) self-type)))
+        )
+      )
+    )
   )
   (fn-do _ convert-from Typed
     (param site SyntaxId)
@@ -13446,7 +13709,17 @@
       (return (call down-cast (if-expr (== raised 0) site raised) (. value operand) (. row to) declared))
     )
     (if (and (== kind .relation-interface-down-cast) (call (. tables is-class) (. row from)))
-      (return (call subclass-interface (if-expr (== raised 0) site raised) (. value operand) (. row from) (. row to) declared))
+      (return
+        (call subclass-interface
+          (block
+            (arg (if-expr (== raised 0) site raised))
+            (arg (. value operand))
+            (arg (. row from))
+            (arg (. row to))
+            (arg declared)
+          )
+        )
+      )
     )
     (if (== kind .relation-interface-down-cast)
       (return (call held-as (if-expr (== raised 0) site raised) (. value operand) (. row to) declared))
@@ -13827,7 +14100,15 @@
     (let done (call (. ir reserve-block)))
     (call branch (. holds operand) filled empty)
     (call (. ir start-block) filled)
-    (let converted (call convert-one site ([] (. facts conversion-parts) (. row parts)) (call payload site (call Typed (. value operand) (. row from)))))
+    (let converted
+      (call convert-one
+        (block
+          (arg site)
+          (arg ([] (. facts conversion-parts) (. row parts)))
+          (arg (call payload site (call Typed (. value operand) (. row from))))
+        )
+      )
+    )
     (if (!= (. converted type) (. row to))
       (call refuse .refused-conversion site)
     )
@@ -13835,7 +14116,16 @@
     (call jump done)
     (call (. ir start-block) empty)
     (let none ([] (. tables layouts values) (. types null-type)))
-    (let nothing (if-expr (or (== none managed-layout) (== none pointer-layout)) (call integer (as none MachineKind) 0) (call make-operand .operand-void 0)))
+    (let nothing
+      (block
+        (case? (or (== none managed-layout) (== none pointer-layout))
+          (call integer (as none MachineKind) 0)
+        )
+        (default
+          (call make-operand .operand-void 0)
+        )
+      )
+    )
     (let union (call make-union site (. row to) (call (. types null-case) (. row to)) (call Typed nothing (. types null-type))))
     (call copy made (. union operand) layout false site)
     (call jump done)
@@ -14013,7 +14303,15 @@
         (= text (call make-operand .operand-constant (call (. ir add-string) (if-expr name (. name text) ""))))
         (else
           (let field (call (. tables layouts case-field) layout index))
-          (let converted (call convert-one site ([] (. facts conversion-parts) part) (call Typed (call take value field site) (. field type))))
+          (let converted
+            (call convert-one
+              (block
+                (arg site)
+                (arg ([] (. facts conversion-parts) part))
+                (arg (call Typed (call take value field site) (. field type)))
+              )
+            )
+          )
           (= text (. converted operand))
           (if (!= (. converted type) (. types string-type))
             (call refuse .refused-conversion site)
@@ -14059,7 +14357,15 @@
         (call (. ir start-block) taken)
       )
       (let field (call (. tables layouts case-field) layout index))
-      (let made (call convert-one site ([] (. facts conversion-parts) part) (call Typed (call take value field site) (. field type))))
+      (let made
+        (call convert-one
+          (block
+            (arg site)
+            (arg ([] (. facts conversion-parts) part))
+            (arg (call Typed (call take value field site) (. field type)))
+          )
+        )
+      )
       (if (!= (. made type) (. row to))
         (call refuse .refused-conversion site)
       )
@@ -14692,7 +14998,12 @@
       (call refuse .refused-conversion site)
       (return)
     )
-    (call raise-text site (str "An array of " from-size "-byte items cannot be cast to one of " to-size "-byte items"))
+    (call raise-text
+      (block
+        (arg site)
+        (arg (str "An array of " from-size "-byte items cannot be cast to one of " to-size "-byte items"))
+      )
+    )
     (call (. ir start-block) (call (. ir reserve-block)))
   )
   (fn-expr _ holds-items Bool
@@ -14749,7 +15060,15 @@
     (let wrapped (call frame layout))
     (call zero wrapped layout)
     (if (call (. tables layouts is-struct) (. inner layout))
-      (call copy (call address wrapped (. inner offset) (. inner layout) site) (. given operand) (. inner layout) false site)
+      (call copy
+        (block
+          (arg (call address wrapped (. inner offset) (. inner layout) site))
+          (arg (. given operand))
+          (arg (. inner layout))
+          (arg false)
+          (arg site)
+        )
+      )
       (else-if (!= (. inner layout) void-layout)
         (call store wrapped (. inner offset) (. given operand) false site)
       )
@@ -14837,7 +15156,15 @@
     (let done (call (. ir reserve-block)))
     (call branch (. holds operand) held done)
     (call (. ir start-block) held)
-    (let given (call convert-one site ([] (. facts conversion-parts) (. row parts)) (call payload site (call Typed (. value operand) source))))
+    (let given
+      (call convert-one
+        (block
+          (arg site)
+          (arg ([] (. facts conversion-parts) (. row parts)))
+          (arg (call payload site (call Typed (. value operand) source)))
+        )
+      )
+    )
     (let housed (call wrap site given target))
     (call copy made (. housed operand) layout false site)
     (call jump done)
@@ -14859,7 +15186,15 @@
     (let joined (call (. ir reserve-block)))
     (call branch (. holds operand) held other)
     (call (. ir start-block) held)
-    (let given (call convert-one site ([] (. facts conversion-parts) (. row parts)) (call payload site (call Typed (. value operand) source))))
+    (let given
+      (call convert-one
+        (block
+          (arg site)
+          (arg ([] (. facts conversion-parts) (. row parts)))
+          (arg (call payload site (call Typed (. value operand) source)))
+        )
+      )
+    )
     (let housed (call wrap site given target))
     (call arrive site (. housed operand) joined slot)
     (call (. ir start-block) other)
@@ -14873,7 +15208,14 @@
     ; the pointer points at something.
     (let layout (call layout-of (. value type) site))
     (if (call is-null-form (. value type))
-      (return (call Typed (call compare site .compare-not-equal (. value operand) (call integer (as layout MachineKind) 0)) (. types bool-type)))
+      (return
+        (call Typed
+          (block
+            (arg (call compare site .compare-not-equal (. value operand) (call integer (as layout MachineKind) 0)))
+            (arg (. types bool-type))
+          )
+        )
+      )
     )
     (if (or (not (call (. types is-optional) (. value type))) (not (call (. tables layouts is-struct) layout)))
       (call refuse .refused-type site)
@@ -14905,7 +15247,14 @@
       (call refuse .refused-type site)
       (return value)
     )
-    (return (call Typed (call take (. value operand) (call (. tables layouts field) layout 0) site) (call (. types optional-inner) (. value type))))
+    (return
+      (call Typed
+        (block
+          (arg (call take (. value operand) (call (. tables layouts field) layout 0) site))
+          (arg (call (. types optional-inner) (. value type)))
+        )
+      )
+    )
   )
   (fn-do _ unwrap Typed
     (param site SyntaxId)
@@ -16247,7 +16596,14 @@
     (if (and (or (== plan .plan-unlike) (== plan .plan-alike)) (or (== op .equals-op) (== op .not-equals-op)))
       (call emit-expression lhs)
       (call emit-expression rhs)
-      (return (call Typed (call integer .machine-u8 (if-expr (== (== op .not-equals-op) (== plan .plan-unlike)) 1 0)) (. types bool-type)))
+      (return
+        (call Typed
+          (block
+            (arg (call integer .machine-u8 (if-expr (== (== op .not-equals-op) (== plan .plan-unlike)) 1 0)))
+            (arg (. types bool-type))
+          )
+        )
+      )
     )
     (call refuse .refused-expression id)
     (return (call Typed (call make-operand .operand-void 0) no-type))
@@ -16318,7 +16674,20 @@
       (if machine
         (= equal (call compare item .compare-equal element (. value operand)))
         (else
-          (let answer (call call-operator written equality written element item-type written (. value operand) item-type))
+          (let answer
+            (call call-operator
+              (block
+                (arg written)
+                (arg equality)
+                (arg written)
+                (arg element)
+                (arg item-type)
+                (arg written)
+                (arg (. value operand))
+                (arg item-type)
+              )
+            )
+          )
           (if (!= (. answer type) (. types bool-type))
             (call refuse .refused-expression id)
           )
@@ -16385,7 +16754,14 @@
       (call (. ir start-block) empty)
       (if (. held alike)
         (let other (call present id (call Typed (. right operand) right-type)))
-        (call arrive id (. (if-expr negated other (call compare-zero id other .compare-equal)) operand) joined slot)
+        (call arrive
+          (block
+            (arg id)
+            (arg (. (if-expr negated other (call compare-zero id other .compare-equal)) operand))
+            (arg joined)
+            (arg slot)
+          )
+        )
         (else
           (call arrive id differs joined slot)
         )
@@ -16521,7 +16897,14 @@
     (call (. ir start-block) joined)
     (let yes (call integer .machine-u8 1))
     (let no (call integer .machine-u8 0))
-    (return (call Typed (call phi u8-layout (if-expr negated no yes) matched (if-expr negated yes no) missed) (. types bool-type)))
+    (return
+      (call Typed
+        (block
+          (arg (call phi u8-layout (if-expr negated no yes) matched (if-expr negated yes no) missed))
+          (arg (. types bool-type))
+        )
+      )
+    )
   )
   (fn-do _ class-branch _
     (param site SyntaxId)
@@ -16742,7 +17125,16 @@
         )
       )
       (let same (call bitwise id .bitwise-and same-code same-data u8-layout))
-      (return (if-expr negated (call compare-zero id (call Typed same (. types bool-type)) .compare-equal) (call Typed same (. types bool-type))))
+      (return
+        (block
+          (case? negated
+            (call compare-zero id (call Typed same (. types bool-type)) .compare-equal)
+          )
+          (default
+            (call Typed same (. types bool-type))
+          )
+        )
+      )
     )
     (let objects (and (call (. tables is-class) type) (call (. tables is-class) (. right type))))
     (if (or (and (!= (. right type) type) (not objects)) no-identity)
@@ -16750,7 +17142,14 @@
       (return (call Typed nothing no-type))
     )
     (lazy no-identity (and (not (call (. tables is-class) type)) (!= (call intrinsic type) .atom) (!= (call intrinsic type) .closure)))
-    (return (call Typed (call compare id (if-expr negated .compare-not-equal .compare-equal) left (. right operand)) (. types bool-type)))
+    (return
+      (call Typed
+        (block
+          (arg (call compare id (if-expr negated .compare-not-equal .compare-equal) left (. right operand)))
+          (arg (. types bool-type))
+        )
+      )
+    )
   )
   (fn-do _ emit-address-compare Typed
     (param id SyntaxId)
@@ -16813,7 +17212,14 @@
     (call (. ir start-block) joined)
     (let yes (call integer .machine-u8 1))
     (let no (call integer .machine-u8 0))
-    (return (call Typed (call phi u8-layout (if-expr negated no yes) same (if-expr negated yes no) differ) (. types bool-type)))
+    (return
+      (call Typed
+        (block
+          (arg (call phi u8-layout (if-expr negated no yes) same (if-expr negated yes no) differ))
+          (arg (. types bool-type))
+        )
+      )
+    )
   )
   (fn-do _ emit-interface-equal Typed
     (param id SyntaxId)
@@ -16837,7 +17243,16 @@
       (call refuse .refused-expression id)
     )
     (= field-call no-fact)
-    (return (if-expr negated (call compare-zero id (call Typed (. equal operand) (. types bool-type)) .compare-equal) (call Typed (. equal operand) (. types bool-type))))
+    (return
+      (block
+        (case? negated
+          (call compare-zero id (call Typed (. equal operand) (. types bool-type)) .compare-equal)
+        )
+        (default
+          (call Typed (. equal operand) (. types bool-type))
+        )
+      )
+    )
   )
   (fn-do _ emit-interface-unlike Typed
     (param id SyntaxId)
@@ -17434,7 +17849,13 @@
     ; index to lie within it.
     (call validate-view id view layout)
     (let size (call part view layout 2 id))
-    (call fail-view id (call compare id .compare-greater-equal index (. size operand)) "Array view index out of bounds")
+    (call fail-view
+      (block
+        (arg id)
+        (arg (call compare id .compare-greater-equal index (. size operand)))
+        (arg "Array view index out of bounds")
+      )
+    )
     (let moved
       (call moved-bytes
         (block
@@ -17571,7 +17992,13 @@
     (let end (call range-index id (. forward operand) forward-type forward-layout "end"))
     (let length (call arithmetic id .arithmetic-subtract (. end operand) (. start operand) u64-layout))
     (let size (call part view layout 2 id))
-    (call fail-view id (call compare id .compare-greater (. start operand) (. size operand)) "Array view range out of bounds")
+    (call fail-view
+      (block
+        (arg id)
+        (arg (call compare id .compare-greater (. start operand) (. size operand)))
+        (arg "Array view range out of bounds")
+      )
+    )
     (let left (call arithmetic id .arithmetic-subtract (. size operand) (. start operand) u64-layout))
     (call fail-view id (call compare id .compare-greater length left) "Array view range out of bounds")
     (let step (call range-part id (. forward operand) forward-type forward-layout "increment"))
@@ -17930,7 +18357,15 @@
       )
       (= result (call Typed (call compare id (call predicate-of op) (. left operand) (. right operand)) (. types bool-type)))
       (else
-        (= result (call convert id .reason-result (call Typed (call operate id op (. left operand) (. right operand) layout) (. right type))))
+        (= result
+          (call convert
+            (block
+              (arg id)
+              (arg .reason-result)
+              (arg (call Typed (call operate id op (. left operand) (. right operand) layout) (. right type)))
+            )
+          )
+        )
       )
     )
     (if (and (not assigns) (!= (. result type) (call (. facts node-type) (. unit reading) id)))
@@ -18002,7 +18437,16 @@
       (return (call Typed nothing no-type))
     )
     (let origin (call integer (call (. tables layouts kind-of) signed-layout) 0))
-    (let negative (call compare id .compare-less (. (if-expr is-left left-given right-given) operand) origin))
+    (let negative
+      (call compare
+        (block
+          (arg id)
+          (arg .compare-less)
+          (arg (. (if-expr is-left left-given right-given) operand))
+          (arg origin)
+        )
+      )
+    )
     (let compared (call (. ir reserve-block)))
     (let joined (call (. ir reserve-block)))
     (let tested (. ir current))
@@ -18102,7 +18546,16 @@
         )
       )
     )
-    (let tested (if-expr (== site 0) (call test condition (call emit-expression condition)) (call test site (call emit-expression condition) true is-right)))
+    (let tested
+      (match site
+        (case= 0
+          (call test condition (call emit-expression condition))
+        )
+        (default
+          (call test site (call emit-expression condition) true is-right)
+        )
+      )
+    )
     (call branch (. tested operand) when-true when-false)
   )
   (fn-expr _ passes-through Bool
@@ -18280,7 +18733,14 @@
         )
         (= answer (call Typed combined (. types bool-type)))
         (else
-          (= answer (call Typed (call bitwise id .bitwise-or (. answer operand) (. equal operand) u8-layout) (. equal type)))
+          (= answer
+            (call Typed
+              (block
+                (arg (call bitwise id .bitwise-or (. answer operand) (. equal operand) u8-layout))
+                (arg (. equal type))
+              )
+            )
+          )
         )
       )
     )
@@ -18346,7 +18806,15 @@
     (+= pending receiver)
     (if (!= rhs 0)
       (let site (if-expr (. row is-swapped) lhs rhs))
-      (let argument (call convert site .reason-argument (if-expr (. row is-swapped) (call Typed left left-type) (call Typed right right-type))))
+      (let argument
+        (call convert
+          (block
+            (arg site)
+            (arg .reason-argument)
+            (arg (if-expr (. row is-swapped) (call Typed left left-type) (call Typed right right-type)))
+          )
+        )
+      )
       (if (!= (. argument type) (call (. instances argument-type) callee 0))
         (call refuse .refused-conversion site)
       )
@@ -18521,7 +18989,16 @@
         (if (and outlined (!= remade (. U32 max)))
           (call refuse .refused-expression id)
         )
-        (let value (if-expr outlined (call action-call id result) (call arm-value id (. row right) result false no-type remade)))
+        (let value
+          (block
+            (case? outlined
+              (call action-call id result)
+            )
+            (default
+              (call arm-value id (. row right) result false no-type remade)
+            )
+          )
+        )
         (call drop-bound named)
         (if (call (. facts is-spanning-arm) (. unit reading) id)
           (= value (call source-span run id from finish result))
@@ -18604,14 +19081,43 @@
       )
       (return (call adapter-call run id adapter declaration result cursor failed))
     )
-    (let helper (if-expr (== adapter no-function) (call (. tables lazy-rule-of) (. unit reading) declaration) no-function))
+    (let helper
+      (match adapter
+        (case= no-function
+          (call (. tables lazy-rule-of) (. unit reading) declaration)
+        )
+        (default
+          no-function
+        )
+      )
+    )
     (if (and (!= helper no-function) mapped)
-      (let variant (call (. tables mapped-rule-of) (. unit reading) declaration (call (. tables mapping-names) tree mappings)))
+      (let variant
+        (call (. tables mapped-rule-of)
+          (block
+            (arg (. unit reading))
+            (arg declaration)
+            (arg (call (. tables mapping-names) tree mappings))
+          )
+        )
+      )
       (if (== variant no-function)
         (call refuse .refused-expression id)
         (return (call bare-part cursor))
       )
-      (return (call lazy-rule-call run id variant (call (. facts node-type) (. unit reading) pattern) cursor failed mappings))
+      (return
+        (call lazy-rule-call
+          (block
+            (arg run)
+            (arg id)
+            (arg variant)
+            (arg (call (. facts node-type) (. unit reading) pattern))
+            (arg cursor)
+            (arg failed)
+            (arg mappings)
+          )
+        )
+      )
     )
     (if (!= helper no-function)
       (return (call lazy-rule-call run id helper result cursor failed mappings spanned))
@@ -18645,7 +19151,22 @@
     (if (not (call observes-literals tree facts (. unit reading) pattern))
       (= streaming (= (. streaming observer-row) (. U32 max)))
     )
-    (let arrives (call emit-stream-arms run pattern result cursor false end joined slot missed (or mapped spanned)))
+    (let arrives
+      (call emit-stream-arms
+        (block
+          (arg run)
+          (arg pattern)
+          (arg result)
+          (arg cursor)
+          (arg false)
+          (arg end)
+          (arg joined)
+          (arg slot)
+          (arg missed)
+          (arg (or mapped spanned))
+        )
+      )
+    )
     (= streaming own-streaming)
     (call stop-inlining declaration)
     (call drop-bound held)
@@ -18717,7 +19238,16 @@
     (if (!= (. row kept) (. row held))
       (= given (. (call payload site (call Typed mark (. row kept))) operand))
     )
-    (call call-protocol site (. row rewind) (. streaming pattern-helper) (. streaming pattern-helper-type) given (. row held))
+    (call call-protocol
+      (block
+        (arg site)
+        (arg (. row rewind))
+        (arg (. streaming pattern-helper))
+        (arg (. streaming pattern-helper-type))
+        (arg given)
+        (arg (. row held))
+      )
+    )
     (call jump done)
     (call (. ir start-block) done)
   )
@@ -19472,7 +20002,14 @@
       (for (in operand ([] (. tree children) operands))
         (call run-type-operand (call (. tree argument-value) operand))
       )
-      (return (call Typed (call make-operand .operand-constant (call (. ir add-string) (. (!! (. ([] (. facts constants) constant) text)) text))) type))
+      (return
+        (call Typed
+          (block
+            (arg (call make-operand .operand-constant (call (. ir add-string) (. (!! (. ([] (. facts constants) constant) text)) text))))
+            (arg type)
+          )
+        )
+      )
     )
     (if (or (!= (. operands count) 1) (!= (call (. facts plan-of) (. unit reading) object) .plan-relation))
       (call refuse .refused-expression id)
@@ -19590,7 +20127,15 @@
     )
     (if (== planned .plan-through)
       (let whole (call emit-expression object))
-      (let held (call read-through id (call Typed (. whole operand) (call held-type object)) (call (. facts through-of) (. unit reading) id)))
+      (let held
+        (call read-through
+          (block
+            (arg id)
+            (arg (call Typed (. whole operand) (call held-type object)))
+            (arg (call (. facts through-of) (. unit reading) id))
+          )
+        )
+      )
       (return (call load-property id (. held operand) (. held type) name))
     )
     (let fact (call own-call id))
@@ -19650,7 +20195,23 @@
       (call refuse .refused-expression id)
       (return held)
     )
-    (return (call Typed (call load (. held operand) (. (call (. tables layouts field) ([] (. tables layouts objects) owner) 1) offset) u32-layout id) (call (. facts node-type) (. unit reading) id)))
+    (return
+      (call Typed
+        (block
+          (arg
+            (call load
+              (block
+                (arg (. held operand))
+                (arg (. (call (. tables layouts field) ([] (. tables layouts objects) owner) 1) offset))
+                (arg u32-layout)
+                (arg id)
+              )
+            )
+          )
+          (arg (call (. facts node-type) (. unit reading) id))
+        )
+      )
+    )
   )
   (fn-do _ emit-type-get Typed
     (param id SyntaxId)
@@ -19688,7 +20249,21 @@
       (let start U32 (. ir operands length))
       (call (. ir add-operand) (. descriptor operand))
       (call (. ir add-operand) (. fallback operand))
-      (return (call Typed (call make-operand .operand-value (call append .op-inlined-name id (call Span start 2) 0 managed-layout)) (. fallback type)))
+      (return
+        (call Typed
+          (block
+            (arg
+              (call make-operand
+                (block
+                  (arg .operand-value)
+                  (arg (call append .op-inlined-name id (call Span start 2) 0 managed-layout))
+                )
+              )
+            )
+            (arg (. fallback type))
+          )
+        )
+      )
     )
     (if (== plan .plan-type-properties)
       (return (call type-properties id object))
@@ -19698,7 +20273,23 @@
       (return (call Typed nothing no-type))
     )
     (let subject (call emit-expression object))
-    (return (call Typed (call load (. subject operand) (if-expr (== plan .plan-concrete-name) 0 table-slot-size) managed-layout id) (. types string-type)))
+    (return
+      (call Typed
+        (block
+          (arg
+            (call load
+              (block
+                (arg (. subject operand))
+                (arg (if-expr (== plan .plan-concrete-name) 0 table-slot-size))
+                (arg managed-layout)
+                (arg id)
+              )
+            )
+          )
+          (arg (. types string-type))
+        )
+      )
+    )
   )
   (fn-do _ type-properties Typed
     (param id SyntaxId)
@@ -19800,7 +20391,20 @@
     (let receiver-type (. receiver type))
     (let key (call convert index .reason-argument (call emit-expression index)))
     (let key-type (. key type))
-    (return (call array-item id (. ([] (. facts calls) fact) callee) (. receiver operand) receiver-type (. key operand) key-type reader name))
+    (return
+      (call array-item
+        (block
+          (arg id)
+          (arg (. ([] (. facts calls) fact) callee))
+          (arg (. receiver operand))
+          (arg receiver-type)
+          (arg (. key operand))
+          (arg key-type)
+          (arg reader)
+          (arg name)
+        )
+      )
+    )
   )
   (fn-do _ array-item Typed
     (param id SyntaxId)
@@ -19827,7 +20431,16 @@
     (let data (call part receiver layout 0 id))
     (let data-layout (call layout-of (. data type) id))
     (let proven (!= (call (. facts constant-of) (. unit reading) id) no-fact))
-    (let size (if-expr proven (call Typed (call integer .machine-u64 0) (. types size-type)) (call part receiver layout 1 id)))
+    (let size
+      (block
+        (case? proven
+          (call Typed (call integer .machine-u64 0) (. types size-type))
+        )
+        (default
+          (call part receiver layout 1 id)
+        )
+      )
+    )
     (let size-layout (if-expr proven u64-layout (call layout-of (. size type) id)))
     (let structured (call (. tables layouts is-struct) item-layout))
     (if (or (not (call is-pointer data-layout)) (not (call is-integer size-layout)) (not (call is-integer key-layout)) wrong-reader)
@@ -20003,7 +20616,21 @@
       (call refuse .refused-conversion id)
     )
     (if (or (!= count 0) (!= room 0))
-      (call fill-list id written (. list operand) list-type start reserves reads kept converts chain room)
+      (call fill-list
+        (block
+          (arg id)
+          (arg written)
+          (arg (. list operand))
+          (arg list-type)
+          (arg start)
+          (arg reserves)
+          (arg reads)
+          (arg kept)
+          (arg converts)
+          (arg chain)
+          (arg room)
+        )
+      )
     )
     (if (!= count 0)
       (let field (call held-field id list-type sized))
@@ -20357,7 +20984,19 @@
       (let held (call captured-base id))
       (return (call Typed held type))
     )
-    (let written (if-expr bare (call integer .machine-managed-pointer 0) (if-expr held (call load-local (. filling held-environment) id) (call written-environment id))))
+    (let written
+      (block
+        (case? bare
+          (call integer .machine-managed-pointer 0)
+        )
+        (case? held
+          (call load-local (. filling held-environment) id)
+        )
+        (default
+          (call written-environment id)
+        )
+      )
+    )
     (match? ([] (. types rows) type)
       (case (call .type-closure row)
         (call hold-stacks id (. row decl) written)
@@ -20730,7 +21369,14 @@
       (+= pending (. kept operand))
     )
     (for (in position (..< count (. ([] (. instances signatures) callee) args count)))
-      (let own (call Typed (call make-operand .operand-argument (- (+ first position) count)) (call own-type (. row to) (- position count))))
+      (let own
+        (call Typed
+          (block
+            (arg (call make-operand .operand-argument (- (+ first position) count)))
+            (arg (call own-type (. row to) (- position count)))
+          )
+        )
+      )
       (let taken (call (. instances argument-type) callee position))
       (if (!= (. own type) taken)
         (= own (call convert-passed callee .reason-argument site own taken))
@@ -21044,7 +21690,20 @@
     (let memory (call frame layout))
     (let range (. ([] (. types completions) type) properties))
     (let outer making)
-    (= making (call Making memory type layout syntax (. made length) false (. making callee) (. making default-holder)))
+    (= making
+      (call Making
+        (block
+          (arg memory)
+          (arg type)
+          (arg layout)
+          (arg syntax)
+          (arg (. made length))
+          (arg false)
+          (arg (. making callee))
+          (arg (. making default-holder))
+        )
+      )
+    )
     (for (in _ (..< 0 (. range count)))
       (+= made 0)
     )
@@ -21070,7 +21729,14 @@
       (if (or (>= fill count) (!= (. ([] given (+ start fill)) type) (. property type)))
         (call refuse .refused-conversion syntax)
         (else
-          (call put memory (call (. tables layouts field) layout (. property slot)) (. ([] given (+ start fill)) operand) syntax)
+          (call put
+            (block
+              (arg memory)
+              (arg (call (. tables layouts field) layout (. property slot)))
+              (arg (. ([] given (+ start fill)) operand))
+              (arg syntax)
+            )
+          )
           (= ([] made (+ (. making mark) offset)) 2)
           (+= placed 1)
         )
@@ -21181,7 +21847,14 @@
           (= given (call Typed (. (call read-lazy-local (. fact slot) site held) operand) held))
           (else
             (let position (call argument-position (. fact slot)))
-            (= given (call Typed (call make-operand .operand-argument position) (call (. instances argument-type) (. unit instance) position)))
+            (= given
+              (call Typed
+                (block
+                  (arg (call make-operand .operand-argument position))
+                  (arg (call (. instances argument-type) (. unit instance) position))
+                )
+              )
+            )
           )
         )
         (let given-value (call convert-fill (. fact site) given))
@@ -21485,8 +22158,10 @@
       (return made)
     )
     (let fact
-      (scope (if-expr (and (== (. unit reading) (. unit instance)) (!= (. unit instance) no-instance)) instance-call no-fact)
-        (lazy instance-call (call (. tables loose-call) (. unit instance) (. default site)))
+      (block
+        (scope (if-expr (and (== (. unit reading) (. unit instance)) (!= (. unit instance) no-instance)) instance-call no-fact)
+          (lazy instance-call (call (. tables loose-call) (. unit instance) (. default site)))
+        )
       )
     )
     (if (and (== fact no-fact) (!= builder no-instance) (== (. ([] (. instances rows) builder) self-type) owner))
@@ -22287,7 +22962,18 @@
         (return)
       )
       (let field (call (. tables layouts field) held (+ object-header-fields (. property slot))))
-      (call put-property object field property (call make-operand .operand-argument 1) 0 (. U32 max) false (call memo-flag-of (. row receiver) property))
+      (call put-property
+        (block
+          (arg object)
+          (arg field)
+          (arg property)
+          (arg (call make-operand .operand-argument 1))
+          (arg 0)
+          (arg (. U32 max))
+          (arg false)
+          (arg (call memo-flag-of (. row receiver) property))
+        )
+      )
       (call return-nothing)
       (return)
     )
@@ -22297,7 +22983,11 @@
     (if (and (!= (. answer type) returns-type) wraps-value)
       (= answer (call wrap 0 answer returns-type))
     )
-    (lazy wraps-value (and (call (. types is-optional) returns-type) (== (call (. types optional-inner) returns-type) (. answer type))))
+    (lazy wraps-value
+      (block
+        (and (call (. types is-optional) returns-type) (== (call (. types optional-inner) returns-type) (. answer type)))
+      )
+    )
     (if (!= (. answer type) returns-type)
       (call refuse-class (. row receiver))
       (return)

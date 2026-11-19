@@ -546,7 +546,7 @@
       (lazy named
         (match ([] (. tree nodes) id)
           (case (call .node-type-arguments row)
-            (scope (if-expr (and (== (. row args count) 1) shorthand) (call written-name tree (. row base)) null)
+            (scope (only-if (call written-name tree (. row base)) (if (and (== (. row args count) 1) shorthand)))
               (lazy shorthand (== (. ([] (. tree nodes loc) (. row base)) begin) (. ([] (. tree nodes loc) ([] (. tree children) (. row args start))) begin)))
             )
           )
@@ -1119,7 +1119,16 @@
     (let right (. diagnostic to))
     (if (and (== (?. (. diagnostic name) text) "!") (call known left) (not (call joins-conditions tree (. diagnostic syntax))))
       (let shown (call type-source types left))
-      (let reason (if-expr (call (. shown starts-with) "function ") "; it is a function, so call it first" ", since operator \"!\" is not defined for it"))
+      (let reason
+        (block
+          (case? (call (. shown starts-with) "function ")
+            "; it is a function, so call it first"
+          )
+          (default
+            ", since operator \"!\" is not defined for it"
+          )
+        )
+      )
       (return (str shown " cannot be tested as a condition" reason))
     )
     (match? ([] (. tree nodes) (. diagnostic syntax))
@@ -1348,7 +1357,11 @@
     (let viewed (only-if (call (. types facet-of-type) receiver) (if (and (!= receiver no-type) (!= receiver invalid-type)))))
     (let held (if-expr viewed (call (. types facet-owner) viewed) receiver))
     (for (in facet (..< 0 (. facets count)))
-      (let owned (or (== held no-type) (call is-of-class held ([] (. facets owner-modules) facet) ([] (. facets owner-decls) facet))))
+      (let owned
+        (block
+          (or (== held no-type) (call is-of-class held ([] (. facets owner-modules) facet) ([] (. facets owner-decls) facet)))
+        )
+      )
       (if (and owned (== ([] (. facets states) facet) .facet-bound) (not (call (. program sees-facet) module (as facet U32))))
         (let target ([] (. program modules) ([] (. facets modules) facet)))
         (match? ([] (. target decls) ([] (. facets decls) facet))
@@ -1443,7 +1456,11 @@
     (let viewed (call (. types facet-of-type) value))
     (if viewed
       (let owner (call type-source types (call (. types facet-owner) viewed)))
-      (return (str "\"" name "\" is declared " wanted ", but its value is " shown ", a facet's value, which becomes only the facets it is part of unasked; write \"" (call casting (. diagnostic module) owner) "\" to convert its class"))
+      (return
+        (paragraph
+          (str "\"" name "\" is declared " wanted ", but its value is " shown ", a facet's value, which becomes only the facets it is part of unasked; write \"" (call casting (. diagnostic module) owner) "\" to convert its class")
+        )
+      )
     )
     (let fix (str "convert the value, or declare \"" name "\" without a type"))
     (return (str "\"" name "\" is declared " wanted ", but its value is " shown ", which can never be " wanted "; " fix))
@@ -1513,9 +1530,36 @@
       (lazy is-brix (call is-brix-tree tree))
       (lazy held (call brix-held tree (. diagnostic syntax)))
       (lazy cast (if-expr is-brix (str "(as " held " " (call type-brix types (. diagnostic to)) ")") (str "as " target)))
-      (lazy unwrap (if-expr is-brix (str "write \"(!! " held ")\" to unwrap it, or \"(?? " held " fallback)\" to give a value for nothing") "write \"!\" after it to unwrap it, or \"?? fallback\" to give a value for nothing"))
-      (lazy texting (if-expr is-brix (str "write \"" cast "\", or put it in a \"(str …)\"") (str "write \"as " target "\", or write it inside a text, as in \"\$name\"")))
-      (lazy narrowing (if-expr is-brix (str "match it with \"(case (: name " (call type-brix types (. diagnostic to)) ") …)\", or write \"" cast "\"") (str "match it with \"| name " target "\", or write \"as " target "\"")))
+      (lazy unwrap
+        (block
+          (case? is-brix
+            (str "write \"(!! " held ")\" to unwrap it, or \"(?? " held " fallback)\" to give a value for nothing")
+          )
+          (default
+            "write \"!\" after it to unwrap it, or \"?? fallback\" to give a value for nothing"
+          )
+        )
+      )
+      (lazy texting
+        (block
+          (case? is-brix
+            (str "write \"" cast "\", or put it in a \"(str …)\"")
+          )
+          (default
+            (str "write \"as " target "\", or write it inside a text, as in \"\$name\"")
+          )
+        )
+      )
+      (lazy narrowing
+        (block
+          (case? is-brix
+            (str "match it with \"(case (: name " (call type-brix types (. diagnostic to)) ") …)\", or write \"" cast "\"")
+          )
+          (default
+            (str "match it with \"| name " target "\", or write \"as " target "\"")
+          )
+        )
+      )
     )
   )
   (fn-expr _ casting String
@@ -1601,7 +1645,16 @@
       (lazy fn (call enclosing-function-decl owner (. diagnostic syntax)))
       (lazy header (call (. (call line-at (. owner tree) (. fn syntax)) trim)))
       (lazy name (. (!! (. fn name)) text))
-      (lazy lead (if-expr (== (. fn kind) .closure-decl) (str "A closure without " (if-expr is-brix ":do" "do") " is one expression and " limit) (str "Function \"" name "\" is not declared with " doing ", so its body is one expression and " limit)))
+      (lazy lead
+        (match (. fn kind)
+          (case= .closure-decl
+            (str "A closure without " (if-expr is-brix ":do" "do") " is one expression and " limit)
+          )
+          (default
+            (str "Function \"" name "\" is not declared with " doing ", so its body is one expression and " limit)
+          )
+        )
+      )
       (lazy offered (if-expr remedy (str remedy ", or ") ""))
       (lazy returning
         (match (. diagnostic kind)
@@ -1695,7 +1748,9 @@
         (return (call function-at owner (. diagnostic syntax)))
       )
       (case= .stated
-        (return-if (call enclosing-function-decl owner (. diagnostic syntax)) (if (and (. diagnostic name) (== (. diagnostic name text) (call bare-value-text)))))
+        (if (and (. diagnostic name) (== (. diagnostic name text) (call bare-value-text)))
+          (return (call enclosing-function-decl owner (. diagnostic syntax)))
+        )
       )
     )
     (return null)
@@ -1911,7 +1966,16 @@
     (param diagnostic TypeDiagnostic)
     (str "This arm gives no value, and this body is a value, so a match gives the value of the arm it takes; to run its arms as steps, " fix)
     (where
-      (lazy fix (if-expr (call is-brix-tree (. ([] (. program modules) (. diagnostic module)) tree)) "write `fn-do`, or `:do` in a closure" "declare the function with `do`, or write `=> do` for a closure"))
+      (lazy fix
+        (block
+          (case? (call is-brix-tree (. ([] (. program modules) (. diagnostic module)) tree))
+            "write `fn-do`, or `:do` in a closure"
+          )
+          (default
+            "declare the function with `do`, or write `=> do` for a closure"
+          )
+        )
+      )
     )
   )
   (fn-do _ list-message String
@@ -2700,7 +2764,16 @@
       (lazy matching (str "This match on " (if-expr on-result "Result" (call type-source types (. diagnostic from)))))
       (lazy inner (call optional-inner (. diagnostic from)))
       (lazy is-brix (call is-brix-tree (. ([] (. program modules) (. diagnostic module)) tree)))
-      (lazy present (if-expr is-brix (str "(case (: value " (call type-brix types inner) ") …)") (str "| value " (call type-source types inner))))
+      (lazy present
+        (block
+          (case? is-brix
+            (str "(case (: value " (call type-brix types inner) ") …)")
+          )
+          (default
+            (str "| value " (call type-source types inner))
+          )
+        )
+      )
       (lazy labels (call List (call (. missing split) ", ")))
       (lazy cases (call List (*> labels (call plain-label each))))
       (lazy arms (call List (*> (?> labels (call is-literal-label each)) (if-expr is-brix (str "\"(case= " (call brix-label each) " …)\"") (str "\"|= " each "\"")))))
@@ -3324,7 +3397,22 @@
     (param name String)
     (param candidates (list String))
     (let folded-name (call folded name))
-    (let limit (if-expr (<= (. name length) 2) 0 (if-expr (<= (. name length) 4) 1 (if-expr (<= (. name length) 8) 2 3))))
+    (let limit
+      (block
+        (case? (<= (. name length) 2)
+          0
+        )
+        (case? (<= (. name length) 4)
+          1
+        )
+        (case? (<= (. name length) 8)
+          2
+        )
+        (default
+          3
+        )
+      )
+    )
     (let best (list String))
     (let best-distance (+ limit 1))
     (for (in candidate candidates)

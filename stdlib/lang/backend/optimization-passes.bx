@@ -664,7 +664,16 @@
     (param source OperandId)
     (param is-address Bool)
     (call (. function drop-uses) next)
-    (let replaced (if-expr is-address (call replace-address-base next vreg source) (call replace-vreg-uses next vreg source)))
+    (let replaced
+      (block
+        (case? is-address
+          (call replace-address-base next vreg source)
+        )
+        (default
+          (call replace-vreg-uses next vreg source)
+        )
+      )
+    )
     (call (. function add-uses) next)
     (if replaced
       (call (. function drop-uses) id)
@@ -8722,7 +8731,16 @@
           (+= extra 1)
         )
       )
-      (let rebuilt (if-expr (== extra 0) instructions (call new-id-list (. function arena) (+ (. instructions length) extra))))
+      (let rebuilt
+        (match extra
+          (case= 0
+            instructions
+          )
+          (default
+            (call new-id-list (. function arena) (+ (. instructions length) extra))
+          )
+        )
+      )
       (let kept U32)
       (for (in index (..< 0 (. instructions length)))
         (let id ([] instructions index))

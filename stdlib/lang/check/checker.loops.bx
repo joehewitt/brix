@@ -204,7 +204,11 @@
           (return)
         )
         (if (and (. row is-subscriber) (or (!= (. row next) 0) (!= next 0)))
-          (let text "A loop on a stream subscribes to one source, so it cannot be joined to another; write a loop for each source")
+          (let text
+            (paragraph
+              "A loop on a stream subscribes to one source, so it cannot be joined to another; write a loop for each source"
+            )
+          )
           (call (. frame diagnose) loop .stated (call (. program store-atom) text))
           (return)
         )
@@ -1605,13 +1609,32 @@
       (if (and (!= interface no-type) (!= (call (. types intrinsic-of) container) .interface))
         (call conform-members container interface)
       )
-      (let holder (if-expr (!= interface no-type) (call (. calls ranking interface-holder) container interface places) no-type))
+      (let holder
+        (block
+          (case? (!= interface no-type)
+            (call (. calls ranking interface-holder) container interface places)
+          )
+          (default
+            no-type
+          )
+        )
+      )
       (let receiver (if-expr (!= holder no-type) holder container))
-      (call (. calls keep-protocol-through) (. (call (. calls protocol-call) receiver (call (. program store-atom) "begin-iterating") site) fact) places)
+      (call (. calls keep-protocol-through)
+        (block
+          (arg (. (call (. calls protocol-call) receiver (call (. program store-atom) "begin-iterating") site) fact))
+          (arg places)
+        )
+      )
       (let read-call (call (. calls protocol-call) receiver (call (. program store-atom) "<-read") site no-type true))
       (call (. calls keep-protocol-through) (. read-call fact) places)
       (let read (. read-call answer))
-      (call (. calls keep-protocol-through) (. (call (. calls protocol-call) receiver (call (. program store-atom) "end-iterating") site) fact) places)
+      (call (. calls keep-protocol-through)
+        (block
+          (arg (. (call (. calls protocol-call) receiver (call (. program store-atom) "end-iterating") site) fact))
+          (arg places)
+        )
+      )
       (let item (if-expr (!= holder no-type) (call first-arg interface) no-type))
       (if (and (!= item no-type) (!= read invalid-type) (call (. types is-optional) read) other-item)
         (call (. conversions convert)

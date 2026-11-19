@@ -470,7 +470,16 @@
     (str "usage: " path command-part argument-part " [options]")
     (where
       (lazy command-part (if-expr (> (. commands length) 0) " <command>" ""))
-      (lazy argument-part (if-expr (> (. positionals length) 0) (str " " (call (. " " join) (in (. each synopsis) positionals))) ""))
+      (lazy argument-part
+        (block
+          (case? (> (. positionals length) 0)
+            (str " " (call (. " " join) (in (. each synopsis) positionals)))
+          )
+          (default
+            ""
+          )
+        )
+      )
     )
   )
   (fn-do + declared-options (list CommandOption) :get
@@ -520,7 +529,11 @@
       )
       (lazy about-lines (list String) (if-expr (!= about "") (list "" about) (call (of List String))))
       (lazy command-rows (list HelpRow) (in (call HelpRow (. each synopsis) (. each about)) commands (when (not (. each hidden)))))
-      (lazy argument-rows (list HelpRow) (in (call HelpRow (. each synopsis) (. each description)) positionals (when (!= (. each description) ""))))
+      (lazy argument-rows (list HelpRow)
+        (block
+          (in (call HelpRow (. each synopsis) (. each description)) positionals (when (!= (. each description) "")))
+        )
+      )
       (lazy loose-rows (list HelpRow)
         (block
           (spread (call option-rows loose-options))

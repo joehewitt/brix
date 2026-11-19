@@ -183,7 +183,7 @@
     (let begin (. ([] (. tree nodes) id) loc begin))
     (+= pending (call integer .machine-u32 (+ (. begin line) 1)))
     (+= pending (call integer .machine-u32 (+ (. begin column) 1)))
-    (let options U32 0)
+    (let options U32)
     (if priority
       (= options (/or/ options task-start-priority))
     )
@@ -197,7 +197,16 @@
       (= options (/or/ options task-start-handle))
     )
     (+= pending (call integer .machine-u32 options))
-    (let start (if-expr owned (. RuntimeFunction runtime-start-owned-task) (. RuntimeFunction runtime-start-task)))
+    (let start
+      (block
+        (case? owned
+          (. RuntimeFunction runtime-start-owned-task)
+        )
+        (default
+          (. RuntimeFunction runtime-start-task)
+        )
+      )
+    )
     (return (call call-runtime start id mark pointer-layout))
   )
   (fn-do _ is-owned-task Bool

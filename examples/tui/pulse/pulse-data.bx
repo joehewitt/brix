@@ -1,9 +1,9 @@
 (import /math)
-(import /os/process)
 (import /os/env)
-(import /stream/sort)
+(import /os/process)
 (import /stream/aggregate)
 (import /stream/combine)
+(import /stream/sort)
 (import /time)
 
 (type + PulseProcess (is Tuple)
@@ -36,8 +36,8 @@
   (prop + processes (list PulseProcess))
   (prop + host String (= "workstation"))
   (prop + cores Int)
-  (prop + stamp String (= ""))
-  (prop + failure String (= ""))
+  (prop + stamp String)
+  (prop + failure String)
 )
 
 (type + PulseCollector
@@ -230,7 +230,18 @@
     (if (>= (. parts length) 5)
       (let command (call (. " " join) ([] parts (... 4))))
       (let path (call (of List String) (call (. command split) "/")))
-      (+= result (call PulseProcess (as ([] parts 0) Int) ([] path (- (. path length) 1)) (as ([] parts 1) Float) (* (as ([] parts 2) Float) 1024) ([] parts 3) command))
+      (+= result
+        (call PulseProcess
+          (block
+            (arg (as ([] parts 0) Int))
+            (arg ([] path (- (. path length) 1)))
+            (arg (as ([] parts 1) Float))
+            (arg (* (as ([] parts 2) Float) 1024))
+            (arg ([] parts 3))
+            (arg command)
+          )
+        )
+      )
     )
   )
   (return result)
@@ -290,7 +301,18 @@
   (for (in index (..< 0 (. names length)))
     (let name ([] names index))
     (let cpu (/ (* (. sample cpu) (+ 2 (call sin (+ t (as index Float))))) (+ 1 (* (as index Float) 0.7))))
-    (+= (. sample processes) (call PulseProcess (+ 1042 (* index 137)) name cpu (* 1048576 (+ 48 (/ 1500 (+ 1 (as index Float))))) (if-expr (< index 3) "R" "S") (str "/usr/local/bin/" name)))
+    (+= (. sample processes)
+      (call PulseProcess
+        (block
+          (arg (+ 1042 (* index 137)))
+          (arg name)
+          (arg cpu)
+          (arg (* 1048576 (+ 48 (/ 1500 (+ 1 (as index Float))))))
+          (arg (if-expr (< index 3) "R" "S"))
+          (arg (str "/usr/local/bin/" name))
+        )
+      )
+    )
   )
   (return sample)
 )
