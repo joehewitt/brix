@@ -494,7 +494,14 @@
     (where
       (lazy shape ([] (. owner arg-pool) (+ (. fn args start) count)))
       (lazy label (if-expr (. shape name) (. shape name text) "?"))
-      (lazy typed (call written-type (. owner tree) ([] (. owner tree children) (call optional-inner-syntax (. owner tree) (. shape type-syntax)))))
+      (lazy typed
+        (call written-type
+          (block
+            (arg (. owner tree))
+            (arg ([] (. owner tree children) (call optional-inner-syntax (. owner tree) (. shape type-syntax))))
+          )
+        )
+      )
     )
   )
   (fn-expr _ is-optional-syntax Bool
@@ -1465,9 +1472,17 @@
       (lazy binds (call binding-site tree (. diagnostic syntax)))
       (lazy held (call brix-held tree (. diagnostic syntax)))
       (lazy cast (str "(as " held " " (call type-brix types (. diagnostic to)) ")"))
-      (lazy unwrap (str "write \"(!! " held ")\" to unwrap it, or \"(?? " held " fallback)\" to give a value for nothing"))
+      (lazy unwrap
+        (paragraph
+          (str "write \"(!! " held ")\" to unwrap it, or \"(?? " held " fallback)\" to give a value for nothing")
+        )
+      )
       (lazy texting (str "write \"" cast "\", or put it in a \"(str …)\""))
-      (lazy narrowing (str "match it with \"(case (: name " (call type-brix types (. diagnostic to)) ") …)\", or write \"" cast "\""))
+      (lazy narrowing
+        (paragraph
+          (str "match it with \"(case (: name " (call type-brix types (. diagnostic to)) ") …)\", or write \"" cast "\"")
+        )
+      )
     )
   )
   (fn-expr _ casting String

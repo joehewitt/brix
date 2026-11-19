@@ -169,7 +169,16 @@
           (let escaped false)
           (+= cursor 1)
           (while true
-            (throw (call SexpError first (str "Missing closing quote for the text opened at " (call sexp-place data first))) (if (>= cursor end)))
+            (if (>= cursor end)
+              (throw
+                (call SexpError
+                  (block
+                    (arg first)
+                    (arg (str "Missing closing quote for the text opened at " (call sexp-place data first)))
+                  )
+                )
+              )
+            )
             (let text-class ([] text-classes (as ([] data cursor) Index)))
             (if (== text-class (. SexpText plain))
               (+= cursor 1)
@@ -246,7 +255,15 @@
     (if (> depth 0)
       (let outer (as ([] open-data 0) Index))
       (let opened (as ([] start-data outer) Index))
-      (throw (call SexpError opened (str "Missing “)” for the form opened at " (call sexp-place data opened)) (call sexp-paren-hint data)))
+      (throw
+        (call SexpError
+          (block
+            (arg opened)
+            (arg (str "Missing “)” for the form opened at " (call sexp-place data opened)))
+            (arg (call sexp-paren-hint data))
+          )
+        )
+      )
     )
     (blank)
     (= length count)

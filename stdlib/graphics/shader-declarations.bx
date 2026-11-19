@@ -249,7 +249,19 @@
       )
       (else-if (. property is-aggregate)
         (let parts (call shader-parts (. property properties) (. property offset) (. property name)))
-        (throw (call Panic (str "Shader parameter " (. property name) " has " (. parts length) " numbers; at most 4 fit a vector")) (if (or (< (. parts length) 1) (> (. parts length) 4))))
+        (if (or (< (. parts length) 1) (> (. parts length) 4))
+          (throw
+            (call Panic
+              (block
+                (arg
+                  (paragraph
+                    (str "Shader parameter " (. property name) " has " (. parts length) " numbers; at most 4 fit a vector")
+                  )
+                )
+              )
+            )
+          )
+        )
         (let width (if-expr (== (. parts length) 1) "" (str (. parts length))))
         (+= members (str "    float" width " " member ";"))
         (let items (call (of List String)))

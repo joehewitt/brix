@@ -112,14 +112,43 @@
         (case (: text String)
           text
         )
-        (throw (call MCPProtocolError (. HTTPStatus bad-request) .invalid-params (str "Missing _meta \"" mcp-meta-version "\"") id))
+        (throw
+          (call MCPProtocolError
+            (block
+              (arg (. HTTPStatus bad-request))
+              (arg .invalid-params)
+              (arg (str "Missing _meta \"" mcp-meta-version "\""))
+              (arg id)
+            )
+          )
+        )
       )
     )
-    (throw (call MCPProtocolError (. HTTPStatus bad-request) .invalid-params (str "Missing _meta \"" mcp-meta-capabilities "\"") id) (if (not (has meta mcp-meta-capabilities))))
+    (if (not (has meta mcp-meta-capabilities))
+      (throw
+        (call MCPProtocolError
+          (block
+            (arg (. HTTPStatus bad-request))
+            (arg .invalid-params)
+            (arg (str "Missing _meta \"" mcp-meta-capabilities "\""))
+            (arg id)
+          )
+        )
+      )
+    )
     (blank)
     (let header-version (call (. request header) "MCP-Protocol-Version"))
     (throw (call header-mismatch "Missing MCP-Protocol-Version header" id) (if (not header-version)))
-    (throw (call header-mismatch (str "MCP-Protocol-Version header '" header-version "' does not match body '" body-version "'") id) (if (!= header-version body-version)))
+    (if (!= header-version body-version)
+      (throw
+        (call header-mismatch
+          (block
+            (arg (str "MCP-Protocol-Version header '" header-version "' does not match body '" body-version "'"))
+            (arg id)
+          )
+        )
+      )
+    )
     (throw (call unsupported-version body-version (list mcp-protocol-version) id) (if (!= body-version mcp-protocol-version)))
     (blank)
     (let header-method (call (. request header) "Mcp-Method"))
@@ -160,7 +189,18 @@
     (if (and version (not (has mcp-handshake-versions version)))
       (throw (call unsupported-version version mcp-handshake-versions (. rpc id)))
     )
-    (throw (call MCPProtocolError (. HTTPStatus not-found) .method-not-found (str "Method not found: " (. rpc method)) (. rpc id)) (if (not (call is-handshake-method (. rpc method)))))
+    (if (not (call is-handshake-method (. rpc method)))
+      (throw
+        (call MCPProtocolError
+          (block
+            (arg (. HTTPStatus not-found))
+            (arg .method-not-found)
+            (arg (str "Method not found: " (. rpc method)))
+            (arg (. rpc id))
+          )
+        )
+      )
+    )
   )
   (fn-do _ call-events (stream ServerSentEvent)
     (param rpc JSONRPCRequest)

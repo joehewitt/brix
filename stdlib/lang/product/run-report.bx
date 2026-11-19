@@ -61,7 +61,19 @@
   (param target Target)
   (param arguments (list String))
   (param device (? String))
-  (throw (call Error (str "A " (. target name) " program does not run on " (. (call host-target) name) "; build it with --compile -o PATH and run it on " (. target name))) (if (and (is (. target runner) .host) (not (. target runs-on-host)))))
+  (if (and (is (. target runner) .host) (not (. target runs-on-host)))
+    (throw
+      (call Error
+        (block
+          (arg
+            (paragraph
+              (str "A " (. target name) " program does not run on " (. (call host-target) name) "; build it with --compile -o PATH and run it on " (. target name))
+            )
+          )
+        )
+      )
+    )
+  )
   (let command (. run command))
   (if (is (. target runner) .simulator)
     (let simulator (call chosen-simulator device))
@@ -121,7 +133,17 @@
       )
     )
     (else
-      (throw (call Error (str "A " (. target name) " program runs on this machine; --list-devices lists the simulators or devices of an iOS target")))
+      (throw
+        (call Error
+          (block
+            (arg
+              (paragraph
+                (str "A " (. target name) " program runs on this machine; --list-devices lists the simulators or devices of an iOS target")
+              )
+            )
+          )
+        )
+      )
     )
   )
   (return records)

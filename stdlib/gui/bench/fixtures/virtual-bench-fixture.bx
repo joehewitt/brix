@@ -193,7 +193,19 @@
   (probe-count gui.virtual.lifetime.opening-live-bytes opening-live-bytes)
   (probe-count gui.virtual.lifetime.final-live-bytes final-live-bytes)
   (let live-byte-limit (+ opening-live-bytes gui-virtual-live-slack))
-  (throw (call Panic (str "gui/virtual-fixed-lifetime live memory grew from " opening-live-bytes " to " final-live-bytes ", beyond its unpainted dirty-list slack")) (if (and (not (call gui-virtual-has-runtime-probes)) (> final-live-bytes live-byte-limit))))
+  (if (and (not (call gui-virtual-has-runtime-probes)) (> final-live-bytes live-byte-limit))
+    (throw
+      (call Panic
+        (block
+          (arg
+            (paragraph
+              (str "gui/virtual-fixed-lifetime live memory grew from " opening-live-bytes " to " final-live-bytes ", beyond its unpainted dirty-list slack")
+            )
+          )
+        )
+      )
+    )
+  )
   (throw (call Panic "gui/virtual-fixed-lifetime exceeded the prewarmed pool capacity") (if (!= (. root region pool-size) gui-virtual-pool-high-water)))
   (blank)
   (call release-gui-virtual-kernel root)
@@ -511,7 +523,19 @@
       (call (. reference erase) white)
       (call (. root paint) reference)
       (let diff (call (. renderer diff) reference))
-      (throw (call Panic (str "gui/metal-virtual-scroll diverged from the CoreGraphics oracle in " (. diff differing-pixels) " pixels")) (if (!= (. diff differing-pixels) 0)))
+      (if (!= (. diff differing-pixels) 0)
+        (throw
+          (call Panic
+            (block
+              (arg
+                (paragraph
+                  (str "gui/metal-virtual-scroll diverged from the CoreGraphics oracle in " (. diff differing-pixels) " pixels")
+                )
+              )
+            )
+          )
+        )
+      )
       (let anchor-distance (as (* (. root region content-offset y) 1000) U64))
       (probe-count gui.bench.metal.virtual-scroll-p50-ns (call gui-virtual-percentile elapsed 50))
       (probe-count gui.bench.metal.virtual-scroll-p99-ns (call gui-virtual-percentile elapsed 99))
@@ -595,7 +619,19 @@
       (lazy bind-budget (* (. delta source-binds) gui-virtual-bind-object-budget))
     )
   )
-  (throw (call Panic (str "gui/virtual-fixed " scenario " allocated " allocated-objects " objects, over its budget of " budget)) (if (and (not (call gui-virtual-has-runtime-probes)) (> allocated-objects budget))))
+  (if (and (not (call gui-virtual-has-runtime-probes)) (> allocated-objects budget))
+    (throw
+      (call Panic
+        (block
+          (arg
+            (paragraph
+              (str "gui/virtual-fixed " scenario " allocated " allocated-objects " objects, over its budget of " budget)
+            )
+          )
+        )
+      )
+    )
+  )
 )
 
 (fn-expr _ gui-virtual-has-runtime-probes Bool

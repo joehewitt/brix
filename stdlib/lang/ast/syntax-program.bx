@@ -429,7 +429,22 @@
           (throw (call BrixSyntaxError loc platform-message (call source-of source-path) source-path) (if (not (call is-platform (!! suffix)))))
           (lazy platform-message (str "Module \"" name "\" ends in \"." (!! suffix) "\", which isn't a platform"))
           (let importer (call module-platform (. scope-module path)))
-          (throw (call BrixSyntaxError loc (str "Module \"" name "\" is never part of the same build as " (call file-name (. scope-module path))) (call source-of source-path) source-path) (if (not (call builds-together importer suffix))))
+          (if (not (call builds-together importer suffix))
+            (throw
+              (call BrixSyntaxError
+                (block
+                  (arg loc)
+                  (arg
+                    (paragraph
+                      (str "Module \"" name "\" is never part of the same build as " (call file-name (. scope-module path)))
+                    )
+                  )
+                  (arg (call source-of source-path))
+                  (arg source-path)
+                )
+              )
+            )
+          )
           (+= absent-imports (call AbsentImport (. scope-module name) (as module-path String)))
           (return null)
         )

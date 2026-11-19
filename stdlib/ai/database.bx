@@ -1286,19 +1286,41 @@
   (param images (? AIImageStore))
   (match part
     (case (: written AITextPart)
-      (call AIPartRow "text" (. written id) (. written source-id) (:text (. written text)) (:data (call citations-column (. written citations))))
+      (call AIPartRow
+        (block
+          (arg "text")
+          (arg (. written id))
+          (arg (. written source-id))
+          (:text (. written text))
+          (:data (call citations-column (. written citations)))
+        )
+      )
     )
     (case (: thought AIReasoningPart)
       (call AIPartRow "reasoning" (. thought id) (. thought source-id) (:flags (+ (call mark (. thought is-update)) (call raw-flag (. thought provider-signature) ai-part-raw-signature))) (:text (. thought text)) (:signature (call json-column (. thought provider-signature))))
     )
     (case (: search AIWebSearchPart)
-      (call AIPartRow "web-search" (. search id) (. search search-id) (call encode-search-status (. search status)) (:text (. search query)))
+      (call AIPartRow
+        (block
+          (arg "web-search")
+          (arg (. search id))
+          (arg (. search search-id))
+          (arg (call encode-search-status (. search status)))
+          (:text (. search query))
+        )
+      )
     )
     (case (: file AIFilePart)
       (call AIPartRow "file" (. file id) (:media (call to-json (call encode-file (. file file)))))
     )
     (case (: image AIImagePart)
-      (call AIPartRow "image" (. image id) (:media (call to-json (call encode-image (?? (call (?. images referenced) (. image image)) (. image image))))))
+      (call AIPartRow
+        (block
+          (arg "image")
+          (arg (. image id))
+          (:media (call to-json (call encode-image (?? (call (?. images referenced) (. image image)) (. image image)))))
+        )
+      )
     )
     (case (: audio AIAudioPart)
       (call AIPartRow "audio" (. audio id) (:media (call to-json (call encode-audio (. audio audio)))))
@@ -1316,7 +1338,16 @@
       (call AIPartRow "refusal" (. refusal id) (:text (. refusal text)))
     )
     (case (: extension AIExtensionPart)
-      (call AIPartRow "extension" (. extension id) (. extension provider-id) (. extension part-type) (:flags (call raw-flag (. extension data) ai-part-raw-data)) (:data (call json-column (. extension data))))
+      (call AIPartRow
+        (block
+          (arg "extension")
+          (arg (. extension id))
+          (arg (. extension provider-id))
+          (arg (. extension part-type))
+          (:flags (call raw-flag (. extension data) ai-part-raw-data))
+          (:data (call json-column (. extension data)))
+        )
+      )
     )
   )
 )
@@ -1324,7 +1355,17 @@
 (fn-expr _ result-row AIPartRow
   (param part AIToolResultPart)
   (param images (? AIImageStore))
-  (call AIPartRow "tool-result" (. part id) (. part call-id) (:flags flags) (:text (if-expr is-same null (. part text-output))) (:data (call json-column output)) (:media media))
+  (call AIPartRow
+    (block
+      (arg "tool-result")
+      (arg (. part id))
+      (arg (. part call-id))
+      (:flags flags)
+      (:text (if-expr is-same null (. part text-output)))
+      (:data (call json-column output))
+      (:media media)
+    )
+  )
   (where
     (lazy output (. part output))
     (lazy is-same (and (!= (. part text-output) null) (is output String) (== (. part text-output) output)))

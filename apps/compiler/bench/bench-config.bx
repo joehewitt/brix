@@ -176,7 +176,19 @@
     )
     (else
       (= suites (call found-bench-suites root))
-      (throw (call BenchUnconfiguredError (str root " has no benchmarks: no folder inside a " bench-folder-name " folder, and no " bench-config-path)) (if (and (== (. suites length) 0) (not (. path exists)) (== (. files length) 1))))
+      (if (and (== (. suites length) 0) (not (. path exists)) (== (. files length) 1))
+        (throw
+          (call BenchUnconfiguredError
+            (block
+              (arg
+                (paragraph
+                  (str root " has no benchmarks: no folder inside a " bench-folder-name " folder, and no " bench-config-path)
+                )
+              )
+            )
+          )
+        )
+      )
     )
   )
   (let metrics (call built-in-bench-metrics))
@@ -694,7 +706,19 @@
       (let name (. (call Path path) name))
       (let relative (if-expr (call (. path starts-with) (str root "/")) ([] path (... (+ (. root length) 1))) path))
       (let other ([] places name))
-      (throw (call Error (str "The bench folders " other " and " relative " both hold a suite named " name "; name the suites in " bench-config-path)) (if other))
+      (if other
+        (throw
+          (call Error
+            (block
+              (arg
+                (paragraph
+                  (str "The bench folders " other " and " relative " both hold a suite named " name "; name the suites in " bench-config-path)
+                )
+              )
+            )
+          )
+        )
+      )
       (= ([] places name) relative)
       (+= suites
         (call BenchSuite
@@ -878,7 +902,19 @@
   (param suites (list BenchSuite))
   (param metrics (list BenchMetric))
   (param profiles (list BenchProfile))
-  (throw (call Error (str root " has no benchmarks: no folder inside a " bench-folder-name " folder, and no suites in " bench-config-path)) (if (== (. suites length) 0)))
+  (if (== (. suites length) 0)
+    (throw
+      (call Error
+        (block
+          (arg
+            (paragraph
+              (str root " has no benchmarks: no folder inside a " bench-folder-name " folder, and no suites in " bench-config-path)
+            )
+          )
+        )
+      )
+    )
+  )
   (let names (map String Bool))
   (for (in suite suites)
     (call check-bench-identifier "suite" (. suite name))

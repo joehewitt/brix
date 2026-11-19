@@ -104,7 +104,18 @@
   )
   (let dollar (. tape first-dollar))
   (if dollar
-    (throw (call BrixSyntaxError (call brix-place bytes dollar) "Unescaped “\$” in Brix text. Write “\\\$” for a dollar sign, or build the text from its parts with (str …)."))
+    (throw
+      (call BrixSyntaxError
+        (block
+          (arg (call brix-place bytes dollar))
+          (arg
+            (paragraph
+              "Unescaped “\$” in Brix text. Write “\\\$” for a dollar sign, or build the text from its parts with (str …)."
+            )
+          )
+        )
+      )
+    )
   )
   (return tape)
 )
@@ -925,7 +936,14 @@
           (if amount
             (let lead (call access-text access))
             (let suffix (? String) (only-if (. ([] aliases 0) text) (if (and aliases (!= (. aliases length) 0)))))
-            (throw (call BrixSyntaxError ([] (. tree nodes loc) (. numeric value)) (call signed-unit-advice lead (. name text) suffix amount)))
+            (throw
+              (call BrixSyntaxError
+                (block
+                  (arg ([] (. tree nodes loc) (. numeric value)))
+                  (arg (call signed-unit-advice lead (. name text) suffix amount))
+                )
+              )
+            )
           )
         )
       )
@@ -3894,7 +3912,20 @@
       )
     )
     (let body (call do-body first close begin index))
-    (throw (call BrixSyntaxError loc "A plain `do` takes no match on its row; a match on a row of its own in a body of steps runs its arms as steps") (if (and (== (. body annotations length) 0) (is ([] (. tree nodes) (. body body)) .node-match-expression))))
+    (if (and (== (. body annotations length) 0) (is ([] (. tree nodes) (. body body)) .node-match-expression))
+      (throw
+        (call BrixSyntaxError
+          (block
+            (arg loc)
+            (arg
+              (paragraph
+                "A plain `do` takes no match on its row; a match on a row of its own in a body of steps runs its arms as steps"
+              )
+            )
+          )
+        )
+      )
+    )
     (let masks (call do-annotation-masks loc (. body annotations)))
     (return (call (. tree append) (call ASTDoBlock loc (. body body) (. masks effects) (. masks features))))
   )
@@ -4207,7 +4238,18 @@
       (let left (call expression first))
       (let right (call multi (call (. tape after) first)))
       (if (and (== assign-op .bind-op) (not (call is-place right)))
-        (throw (call BrixSyntaxError (call (. tree location) right) "The place of “<->” is a name or a chain of members, written without “#”, as in “(<-> value (. settings volume))”"))
+        (throw
+          (call BrixSyntaxError
+            (block
+              (arg (call (. tree location) right))
+              (arg
+                (paragraph
+                  "The place of “<->” is a name or a chain of members, written without “#”, as in “(<-> value (. settings volume))”"
+                )
+              )
+            )
+          )
+        )
       )
       (return (call make-assignment tree (call located begin index) assign-op left right (call is-optional index)))
     )

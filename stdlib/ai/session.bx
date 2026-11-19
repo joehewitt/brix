@@ -137,7 +137,16 @@
     (param branch-id String)
     (param message-id String)
     (throw (call AIError (. AIErrorKind invalid-request) "A reply is in progress") (if (call is-running branch-id)))
-    (throw (call AIError (. AIErrorKind invalid-request) "Messages before the chat was compacted cannot be collapsed") (if (not (call chat-can-collapse-at chat branch-id message-id))))
+    (if (not (call chat-can-collapse-at chat branch-id message-id))
+      (throw
+        (call AIError
+          (block
+            (arg (. AIErrorKind invalid-request))
+            (arg "Messages before the chat was compacted cannot be collapsed")
+          )
+        )
+      )
+    )
     (let child (call chat-next-branch-id chat))
     (call change (call collapse-chat-at chat branch-id message-id child))
     (call reload branch-id)
@@ -148,7 +157,16 @@
     (let parent-id (?. (call chat-branch chat branch-id) parent-branch-id))
     (throw (call AIError (. AIErrorKind invalid-request) "The root chat branch cannot be unfolded") (if (not parent-id)))
     (throw (call AIError (. AIErrorKind invalid-request) "A reply is in progress") (if (or (call is-running branch-id) (call is-running parent-id))))
-    (throw (call AIError (. AIErrorKind invalid-request) "This branch cannot be unfolded after the chat was compacted") (if (not (call chat-can-unfold chat branch-id))))
+    (if (not (call chat-can-unfold chat branch-id))
+      (throw
+        (call AIError
+          (block
+            (arg (. AIErrorKind invalid-request))
+            (arg "This branch cannot be unfolded after the chat was compacted")
+          )
+        )
+      )
+    )
     (call change (call unfold-chat-branch chat branch-id))
     (call prune)
     (call reload parent-id)

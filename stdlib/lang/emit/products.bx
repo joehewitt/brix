@@ -103,7 +103,27 @@
       (if (== type-id 0)
         (continue)
       )
-      (throw (call ProductError (call problem module type-id (str "A " class-name " is declared at the top level of the program's main module, where the compiler reads it to build the app bundle"))) (if (or (not (call is-root module)) (not (call is-statement tree element)))))
+      (if (or (not (call is-root module)) (not (call is-statement tree element)))
+        (throw
+          (call ProductError
+            (block
+              (arg
+                (call problem
+                  (block
+                    (arg module)
+                    (arg type-id)
+                    (arg
+                      (paragraph
+                        (str "A " class-name " is declared at the top level of the program's main module, where the compiler reads it to build the app bundle")
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
       (if (!= first 0)
         (let second (call problem module type-id (str "A program has one " class-name ", and this is its second")))
         (throw (call ProductError (str second "\n" first-place)))
@@ -202,10 +222,50 @@
               (throw (call ProductError (call problem module (. assignment lhs) (str class-name "'s " property " is set twice"))) (if is-set))
               (if (== property "id")
                 (= id (call string-value module tree (. assignment rhs) class-name property))
-                (throw (call ProductError (call problem module (. assignment rhs) (str class-name "'s id uses only letters, digits, hyphens and periods"))) (if (not (call is-bundle-id id))))
+                (if (not (call is-bundle-id id))
+                  (throw
+                    (call ProductError
+                      (block
+                        (arg
+                          (call problem
+                            (block
+                              (arg module)
+                              (arg (. assignment rhs))
+                              (arg
+                                (paragraph
+                                  (str class-name "'s id uses only letters, digits, hyphens and periods")
+                                )
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
                 (else-if (== property "name")
                   (= name (call string-value module tree (. assignment rhs) class-name property))
-                  (throw (call ProductError (call problem module (. assignment rhs) (str class-name "'s name names the app bundle, so it is not empty and has no /"))) (if (or (== (. name length) 0) (!= (call (. name find) "/") null))))
+                  (if (or (== (. name length) 0) (!= (call (. name find) "/") null))
+                    (throw
+                      (call ProductError
+                        (block
+                          (arg
+                            (call problem
+                              (block
+                                (arg module)
+                                (arg (. assignment rhs))
+                                (arg
+                                  (paragraph
+                                    (str class-name "'s name names the app bundle, so it is not empty and has no /")
+                                  )
+                                )
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
                 )
                 (else-if (== property "version")
                   (= version (call string-value module tree (. assignment rhs) class-name property))
@@ -227,7 +287,21 @@
                   )
                 )
                 (else
-                  (throw (call ProductError (call problem module (. assignment lhs) (str class-name " has no property " property))))
+                  (throw
+                    (call ProductError
+                      (block
+                        (arg
+                          (call problem
+                            (block
+                              (arg module)
+                              (arg (. assignment lhs))
+                              (arg (str class-name " has no property " property))
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
                 )
               )
               (continue)
@@ -237,7 +311,21 @@
               (continue)
             )
           )
-          (throw (call ProductError (call problem module statement (str "A " class-name " holds only property assignments and DocumentType elements"))))
+          (throw
+            (call ProductError
+              (block
+                (arg
+                  (call problem
+                    (block
+                      (arg module)
+                      (arg statement)
+                      (arg (str "A " class-name " holds only property assignments and DocumentType elements"))
+                    )
+                  )
+                )
+              )
+            )
+          )
         )
       )
     )
@@ -282,7 +370,13 @@
               (throw (call ProductError (call problem module (. assignment rhs) (str "DocumentType's rank is one of " (call (. ", " join) document-ranks)))) (if (not (is-in rank document-ranks))))
             )
             (else
-              (throw (call ProductError (call problem module (. assignment lhs) (str "DocumentType has no property " property))))
+              (throw
+                (call ProductError
+                  (block
+                    (arg (call problem module (. assignment lhs) (str "DocumentType has no property " property)))
+                  )
+                )
+              )
             )
           )
           (continue)
@@ -293,7 +387,23 @@
     (throw (call ProductError (call problem module (. row type-id) "A DocumentType needs a name")) (if (not name)))
     (let listed (?? extensions (call (of List String))))
     (let typed (?? content-types (call (of List String))))
-    (throw (call ProductError (call problem module (. row type-id) "A DocumentType needs at least one extension or content type")) (if (and (== (. listed length) 0) (== (. typed length) 0))))
+    (if (and (== (. listed length) 0) (== (. typed length) 0))
+      (throw
+        (call ProductError
+          (block
+            (arg
+              (call problem
+                (block
+                  (arg module)
+                  (arg (. row type-id))
+                  (arg "A DocumentType needs at least one extension or content type")
+                )
+              )
+            )
+          )
+        )
+      )
+    )
     (return (call AppDocumentType name listed typed rank))
   )
   (fn-do _ body-statements (of RowRange SyntaxId)
@@ -330,7 +440,25 @@
         (return (call owned (. literal text)))
       )
     )
-    (throw (call ProductError (call problem module value (str owner "'s " property " must be a literal: the compiler reads it to build the app bundle, and a computed value exists only when the program runs"))))
+    (throw
+      (call ProductError
+        (block
+          (arg
+            (call problem
+              (block
+                (arg module)
+                (arg value)
+                (arg
+                  (paragraph
+                    (str owner "'s " property " must be a literal: the compiler reads it to build the app bundle, and a computed value exists only when the program runs")
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
   )
   (fn-expr _ bool-value Bool (?! ProductError)
     (param module ModuleId)
@@ -345,7 +473,25 @@
       (case= "false"
         false
       )
-      (throw (call ProductError (call problem module value (str owner "'s " property " must be true or false: the compiler reads it to build the app bundle, and a computed value exists only when the program runs"))))
+      (throw
+        (call ProductError
+          (block
+            (arg
+              (call problem
+                (block
+                  (arg module)
+                  (arg value)
+                  (arg
+                    (paragraph
+                      (str owner "'s " property " must be true or false: the compiler reads it to build the app bundle, and a computed value exists only when the program runs")
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
     )
     (where
       (lazy identifier
@@ -372,7 +518,25 @@
         (return items)
       )
     )
-    (throw (call ProductError (call problem module value (str owner "'s " property " must be a list of literals: the compiler reads it to build the app bundle, and a computed value exists only when the program runs"))))
+    (throw
+      (call ProductError
+        (block
+          (arg
+            (call problem
+              (block
+                (arg module)
+                (arg value)
+                (arg
+                  (paragraph
+                    (str owner "'s " property " must be a list of literals: the compiler reads it to build the app bundle, and a computed value exists only when the program runs")
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
   )
   (fn-do _ icon-path Path (?! ProductError)
     (param module ModuleId)
@@ -386,7 +550,21 @@
       (call read-file-bytes path
         (block
           (on-error (: error Error)
-            (throw (call ProductError (call problem module value (str class-name "'s icon " (as path String) " cannot be read: " (. error message)))))
+            (throw
+              (call ProductError
+                (block
+                  (arg
+                    (call problem
+                      (block
+                        (arg module)
+                        (arg value)
+                        (arg (str class-name "'s icon " (as path String) " cannot be read: " (. error message)))
+                      )
+                    )
+                  )
+                )
+              )
+            )
           )
         )
       )
@@ -399,7 +577,23 @@
     (throw (call ProductError (call problem module value (str class-name "'s icon " (as path String) " is not a PNG image"))) (if (not (call is-png bytes))))
     (let width (call big-endian bytes 16))
     (let height (call big-endian bytes 20))
-    (throw (call ProductError (call problem module value (str class-name "'s icon is square, and " (as path String) " is " width "x" height))) (if (!= width height)))
+    (if (!= width height)
+      (throw
+        (call ProductError
+          (block
+            (arg
+              (call problem
+                (block
+                  (arg module)
+                  (arg value)
+                  (arg (str class-name "'s icon is square, and " (as path String) " is " width "x" height))
+                )
+              )
+            )
+          )
+        )
+      )
+    )
     (return path)
   )
   (fn-do _ is-bundle-id Bool

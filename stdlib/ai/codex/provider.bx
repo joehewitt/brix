@@ -99,7 +99,16 @@
     (param request AIRequest)
     (let input (call codex-input (if-expr toolkits (call ai-toolkit-request toolkits request) request)))
     (let plan (call codex-resume request))
-    (throw (call AIError (. AIErrorKind invalid-request) "Codex can't continue this chat because its branches were rearranged") (if (. plan is-merged)))
+    (if (. plan is-merged)
+      (throw
+        (call AIError
+          (block
+            (arg (. AIErrorKind invalid-request))
+            (arg "Codex can't continue this chat because its branches were rearranged")
+          )
+        )
+      )
+    )
     (let settings
       (call codex-thread-settings
         (block

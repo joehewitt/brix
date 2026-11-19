@@ -313,7 +313,20 @@
     (let saved (call (. chosen saved-style) named))
     (return-if saved (if saved))
     (let look (call ai-image-text ([] fields "style_description")))
-    (throw (call AIError (. AIErrorKind invalid-request) (str "There is no saved style with ID " named ". For a look that isn't saved, give its name in style and describe it in style_description.")) (if (not (. look length))))
+    (if (not (. look length))
+      (throw
+        (call AIError
+          (block
+            (arg (. AIErrorKind invalid-request))
+            (arg
+              (paragraph
+                (str "There is no saved style with ID " named ". For a look that isn't saved, give its name in style and describe it in style_description.")
+              )
+            )
+          )
+        )
+      )
+    )
     (return (call AIImageStyle named look))
   )
 )
@@ -447,7 +460,16 @@
   (param access (? AIAccess))
   (let needed access)
   (return-if (if (or (not needed) (. needed is-granted))))
-  (throw (call AIError (. AIErrorKind cancellation) (str "No image was made, because the user did not provide an " (. needed name) " API key.")) (if (not (call (. needed ask) (str "Generating images needs an " (. needed name) " API key.") ai-image-key-patience))))
+  (if (not (call (. needed ask) (str "Generating images needs an " (. needed name) " API key.") ai-image-key-patience))
+    (throw
+      (call AIError
+        (block
+          (arg (. AIErrorKind cancellation))
+          (arg (str "No image was made, because the user did not provide an " (. needed name) " API key."))
+        )
+      )
+    )
+  )
 )
 
 (fn-expr + ai-image-level (? AIImageLevel)
@@ -503,7 +525,11 @@
       (call (of Map String JSON)
         (block
           (:type "string")
-          (:description (str "The look of these images, which the app adds to prompt and remembers with them. " ai-image-default " follows the app: the style the user attached to their message, or else the style of the images you change. " ai-image-unstyled " draws them with no style. Otherwise pass the ID of a saved style, or a short name for a look the user asks for that isn't saved, described in style_description."))
+          (:description
+            (paragraph
+              (str "The look of these images, which the app adds to prompt and remembers with them. " ai-image-default " follows the app: the style the user attached to their message, or else the style of the images you change. " ai-image-unstyled " draws them with no style. Otherwise pass the ID of a saved style, or a short name for a look the user asks for that isn't saved, described in style_description.")
+            )
+          )
         )
       )
     )
@@ -511,7 +537,11 @@
       (call (of Map String JSON)
         (block
           (:type (call (of List JSON) (in each (list "string" "null"))))
-          (:description "When style names a look that isn't saved, the look alone in one to three sentences: medium, technique, palette, lighting, texture, line, and mood. Otherwise null.")
+          (:description
+            (paragraph
+              "When style names a look that isn't saved, the look alone in one to three sentences: medium, technique, palette, lighting, texture, line, and mood. Otherwise null."
+            )
+          )
         )
       )
     )
@@ -537,7 +567,11 @@
     (block
       (:type "string")
       (:enum names)
-      (:description "How much care, time, and cost go into the images, from the cheapest to the best. default follows the user's setting; use another value only when the user asks for a different quality.")
+      (:description
+        (paragraph
+          "How much care, time, and cost go into the images, from the cheapest to the best. default follows the user's setting; use another value only when the user asks for a different quality."
+        )
+      )
     )
   )
   (where
@@ -549,7 +583,11 @@
   (call (of Map String JSON)
     (block
       (:type "string")
-      (:description "A short, natural sentence to the user about what you are making, as a collaborator would say it. The user sees it while they wait.")
+      (:description
+        (paragraph
+          "A short, natural sentence to the user about what you are making, as a collaborator would say it. The user sees it while they wait."
+        )
+      )
     )
   )
 )
@@ -840,7 +878,11 @@
         (call (of Map String JSON)
           (block
             (:type "integer")
-            (:description (str "How many variations to make, or 1 for a single image. Up to " ai-image-quick-limit " when quick, else up to " ai-image-full-limit "."))
+            (:description
+              (paragraph
+                (str "How many variations to make, or 1 for a single image. Up to " ai-image-quick-limit " when quick, else up to " ai-image-full-limit ".")
+              )
+            )
           )
         )
       )
@@ -848,7 +890,11 @@
         (call (of Map String JSON)
           (block
             (:type "boolean")
-            (:description "Draw every variation as a small draft on one sheet in a single request: much cheaper and faster, at lower resolution. The user can ask for any draft at full size later. Use it for many variations or rough options to choose from; leave it false for a few finished images.")
+            (:description
+              (paragraph
+                "Draw every variation as a small draft on one sheet in a single request: much cheaper and faster, at lower resolution. The user can ask for any draft at full size later. Use it for many variations or rough options to choose from; leave it false for a few finished images."
+              )
+            )
           )
         )
       )
@@ -863,7 +909,11 @@
                 )
               )
             )
-            (:description "One short note per variation on how it differs, such as “at dusk” or “seen from above”, or an empty list to let them vary freely")
+            (:description
+              (paragraph
+                "One short note per variation on how it differs, such as “at dusk” or “seen from above”, or an empty list to let them vary freely"
+              )
+            )
           )
         )
       )
@@ -872,7 +922,11 @@
           (block
             (:type "string")
             (:enum (call (of List JSON) (in each ai-image-shapes)))
-            (:description "The image's shape. default follows the user's setting for new images and keeps the shape of images you change; use another value only when the user asks for one. auto lets the image model decide.")
+            (:description
+              (paragraph
+                "The image's shape. default follows the user's setting for new images and keeps the shape of images you change; use another value only when the user asks for one. auto lets the image model decide."
+              )
+            )
           )
         )
       )
@@ -881,7 +935,11 @@
           (block
             (:type "string")
             (:enum (call (of List JSON) (in each ai-image-backgrounds)))
-            (:description "transparent for artwork meant to sit on other things, such as logos, icons, stickers, and cutouts, and when changing a transparent image; opaque for a full scene; auto lets the image model decide. Only transparent makes a real transparent background; asking for one in prompt alone gets a painted checkerboard.")
+            (:description
+              (paragraph
+                "transparent for artwork meant to sit on other things, such as logos, icons, stickers, and cutouts, and when changing a transparent image; opaque for a full scene; auto lets the image model decide. Only transparent makes a real transparent background; asking for one in prompt alone gets a painted checkerboard."
+              )
+            )
           )
         )
       )

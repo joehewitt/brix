@@ -14,7 +14,13 @@
 
 (prop _ home-install-command String (= "curl -fsSL https://brix-lang.com/install.py | python3 -"))
 
-(prop _ home-platforms String (= "The compiler runs on macOS (Apple Silicon) and Linux (aarch64 only, x86 support planned)."))
+(prop _ home-platforms String
+  (=
+    (paragraph
+      "The compiler runs on macOS (Apple Silicon) and Linux (aarch64 only, x86 support planned)."
+    )
+  )
+)
 
 (prop _ home-agent-prompt String
   (=
@@ -67,7 +73,19 @@
   (while (< index (. command length))
     (let argument ([] command index))
     (let is-known (or (== argument "--examples") (== argument "--output")))
-    (throw (call Error (str "Unknown option " argument ". Usage: build-home [--examples directory] [--output directory]")) (if (not is-known)))
+    (if (not is-known)
+      (throw
+        (call Error
+          (block
+            (arg
+              (paragraph
+                (str "Unknown option " argument ". Usage: build-home [--examples directory] [--output directory]")
+              )
+            )
+          )
+        )
+      )
+    )
     (+= index 1)
     (throw (call Error (str argument " needs a directory")) (if (>= index (. command length))))
     (if (== argument "--examples")

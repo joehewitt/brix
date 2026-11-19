@@ -271,7 +271,15 @@
     (call process-pending)
     (if (and (. header is-done) at-end)
       (throw (call TraceError "Probe trace ended with incomplete committed records") (if (!= (. in-progress length) 0)))
-      (throw (call TraceError (str "Probe transport sequence gap: expected " expected-sequence ", got " (call first-pending))) (if (!= (. pending length) 0)))
+      (if (!= (. pending length) 0)
+        (throw
+          (call TraceError
+            (block
+              (arg (str "Probe transport sequence gap: expected " expected-sequence ", got " (call first-pending)))
+            )
+          )
+        )
+      )
       (= is-done true)
     )
     (return items)
@@ -359,7 +367,19 @@
     (let index (call (of word U64) bytes 32))
     (throw (call TraceError (str "Probe segment index mismatch: expected " segment-index ", got " index)) (if (!= index segment-index)))
     (throw (call TraceError (str "Invalid probe segment header size: " (. segment header-size))) (if (or (< (. segment header-size) segment-header-size) (> (. segment header-size) (. segment segment-size)))))
-    (throw (call TraceError (str "Probe segment size mismatch: expected " (. header segment-size) ", got " (. segment segment-size))) (if (!= (. segment segment-size) (. header segment-size))))
+    (if (!= (. segment segment-size) (. header segment-size))
+      (throw
+        (call TraceError
+          (block
+            (arg
+              (paragraph
+                (str "Probe segment size mismatch: expected " (. header segment-size) ", got " (. segment segment-size))
+              )
+            )
+          )
+        )
+      )
+    )
     (return segment)
   )
   (fn-expr _ segment-position U64
@@ -414,7 +434,19 @@
       (let state (call (of word U32) envelope 0))
       (let length (call (of word U64) envelope 8))
       (if (not (call is-valid-length header segment envelope length))
-        (throw (call TraceError (str "Invalid probe record length " length " at segment " segment-index " offset " segment-offset)) (if (. header is-done)))
+        (if (. header is-done)
+          (throw
+            (call TraceError
+              (block
+                (arg
+                  (paragraph
+                    (str "Invalid probe record length " length " at segment " segment-index " offset " segment-offset)
+                  )
+                )
+              )
+            )
+          )
+        )
         (return false)
       )
       (if (== state (. RecordState committed))
@@ -430,7 +462,15 @@
         (return-if false (if (>= (. items length) batch-size)))
         (continue)
       )
-      (throw (call TraceError (str "Invalid probe record state " state " at segment " segment-index " offset " segment-offset)) (if (and (!= state (. RecordState writing)) (!= state (. RecordState empty)))))
+      (if (and (!= state (. RecordState writing)) (!= state (. RecordState empty)))
+        (throw
+          (call TraceError
+            (block
+              (arg (str "Invalid probe record state " state " at segment " segment-index " offset " segment-offset))
+            )
+          )
+        )
+      )
       (= ([] in-progress position) (call TraceInProgress position length))
       (+= segment-offset length)
       (= advanced true)

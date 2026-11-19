@@ -228,7 +228,14 @@
     (case (all (: extension AIExtensionPart) ({} (== (. it provider-id) "openai")))
       (. extension data)
     )
-    (throw (call AIError (. AIErrorKind invalid-request) (str "OpenAI Responses cannot send " (type-of part) " from the user")))
+    (throw
+      (call AIError
+        (block
+          (arg (. AIErrorKind invalid-request))
+          (arg (str "OpenAI Responses cannot send " (type-of part) " from the user"))
+        )
+      )
+    )
   )
 )
 
@@ -368,7 +375,14 @@
         (+= items (. extension data))
       )
     )
-    (throw (call AIError (. AIErrorKind invalid-request) (str "OpenAI Responses cannot send " (type-of part) " from the assistant")))
+    (throw
+      (call AIError
+        (block
+          (arg (. AIErrorKind invalid-request))
+          (arg (str "OpenAI Responses cannot send " (type-of part) " from the assistant"))
+        )
+      )
+    )
   )
 )
 
@@ -516,7 +530,16 @@
     )
   )
   (blank)
-  (throw (call AIError (. AIErrorKind invalid-response) "OpenAI response stream ended before the response completed") (if (not (. state is-done))))
+  (if (not (. state is-done))
+    (throw
+      (call AIError
+        (block
+          (arg (. AIErrorKind invalid-response))
+          (arg "OpenAI response stream ended before the response completed")
+        )
+      )
+    )
+  )
 )
 
 (fn-do + openai-responses-events (stream AIEvent)

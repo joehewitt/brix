@@ -95,7 +95,14 @@
     (throw (call SQLiteError C:SQLITE_MISUSE (str "\"" sql "\" holds no statement")) (if (== prepared null)))
     (if (!= has-more 0)
       (call C:sqlite3_finalize prepared)
-      (throw (call SQLiteError C:SQLITE_MISUSE (str "\"" sql "\" holds more than one statement; run it with execute-script")))
+      (throw
+        (call SQLiteError
+          (block
+            (arg C:SQLITE_MISUSE)
+            (arg (str "\"" sql "\" holds more than one statement; run it with execute-script"))
+          )
+        )
+      )
     )
     (return (call SQLiteStatement this sql prepared))
   )

@@ -2016,7 +2016,18 @@
       )
       (throw (call BrixSyntaxError loc "Stream match has more than one helper" source (. tree source-path)) (if helper))
       (lazy source (. tree source))
-      (throw (call BrixSyntaxError (call exclusive-end-location (. row loc)) "with helper must be the first clause of a stream match" (. tree source) (. tree source-path)) (if (!= offset 0)))
+      (if (!= offset 0)
+        (throw
+          (call BrixSyntaxError
+            (block
+              (arg (call exclusive-end-location (. row loc)))
+              (arg "with helper must be the first clause of a stream match")
+              (arg (. tree source))
+              (arg (. tree source-path))
+            )
+          )
+        )
+      )
       (= helper (. row helper))
       (else-if (is ([] (. tree nodes) statement) .node-stream-match)
         (= has-stream-match true)
@@ -3112,7 +3123,14 @@
   (param patterns (of ImmutableArray SyntaxId))
   (for (in pattern patterns)
     (if (call (. tree is-type-remainder) pattern)
-      (throw (call BrixSyntaxError (call exclusive-end-location (call (. tree location) pattern)) "Remainder pattern is only valid inside sequence, map, or text patterns"))
+      (throw
+        (call BrixSyntaxError
+          (block
+            (arg (call exclusive-end-location (call (. tree location) pattern)))
+            (arg "Remainder pattern is only valid inside sequence, map, or text patterns")
+          )
+        )
+      )
     )
   )
   (blank)
@@ -3459,7 +3477,20 @@
   ; The annotations of a conversion, which is no door and bans no effect.
   (for (in name names)
     (throw (call BrixSyntaxError loc "A conversion cannot be a door") (if (call (. name text starts-with) "door:")))
-    (throw (call BrixSyntaxError loc (str "A conversion cannot ban an effect, as 'without " ([] (. name text) (... (. "without:" length))) "' does")) (if (call (. name text starts-with) "without:")))
+    (if (call (. name text starts-with) "without:")
+      (throw
+        (call BrixSyntaxError
+          (block
+            (arg loc)
+            (arg
+              (paragraph
+                (str "A conversion cannot ban an effect, as 'without " ([] (. name text) (... (. "without:" length))) "' does")
+              )
+            )
+          )
+        )
+      )
+    )
   )
   (return names)
 )

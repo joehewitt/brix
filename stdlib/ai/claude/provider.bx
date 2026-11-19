@@ -688,7 +688,16 @@
   (param directory (? String))
   (param has-task-tools _ (= false))
   (param base (? (map String String)) (= null))
-  (throw (call AIError (. AIErrorKind invalid-request) (str "Claude Code can't run in " directory " because it no longer exists")) (if (and directory (not (. (call Path directory 0) is-dir)))))
+  (if (and directory (not (. (call Path directory 0) is-dir)))
+    (throw
+      (call AIError
+        (block
+          (arg (. AIErrorKind invalid-request))
+          (arg (str "Claude Code can't run in " directory " because it no longer exists"))
+        )
+      )
+    )
+  )
   (throw (call AIError (. AIErrorKind unknown) (str "Claude Code did not start: " failure)) (on-error (: failure Error)))
   (blank)
   (let variables (call claude-environment base))

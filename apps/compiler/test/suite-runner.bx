@@ -333,7 +333,19 @@
     (param words (list String))
     (param name String)
     (let found current)
-    (throw (call Error (str path ":" (. fence line) ": A file fence must follow its case's program, before its expected output")) (if (or (not found) (> stage stage-file))))
+    (if (or (not found) (> stage stage-file))
+      (throw
+        (call Error
+          (block
+            (arg
+              (paragraph
+                (str path ":" (. fence line) ": A file fence must follow its case's program, before its expected output")
+              )
+            )
+          )
+        )
+      )
+    )
     (throw (call Error (str path ":" (. fence line) ": A file fence takes only its language and its file=")) (if (or (!= (. words length) 2) (not name))))
     (= ([] (. found files) name) (. fence content))
     (= (. found line-no-end) (. fence end))
@@ -345,7 +357,19 @@
     (param kind String)
     (let found current)
     (let latest (if-expr (== kind "stderr") stage-file stage-errors))
-    (throw (call Error (str path ":" (. fence line) ": The " kind " fence is out of order; a case is its program, files, stderr and output")) (if (or (not found) (> stage latest))))
+    (if (or (not found) (> stage latest))
+      (throw
+        (call Error
+          (block
+            (arg
+              (paragraph
+                (str path ":" (. fence line) ": The " kind " fence is out of order; a case is its program, files, stderr and output")
+              )
+            )
+          )
+        )
+      )
+    )
     (throw (call Error (str path ":" (. fence line) ": The " kind " fence takes no other words")) (if (!= (. words length) 1)))
     (if (== kind "stderr")
       (= (. found errors) (call (. fence content trim)))

@@ -387,7 +387,16 @@
     (throw (call UsageError "--trace and --quiet-probes need --probes" this) (if (and (not (. probes is-given)) (or (. trace-path value) (. quiet-probes value)))))
     (throw (call UsageError "--compile needs -o PATH for the executable" this) (if (and (. compiles value) (not (. executable value)) (not (. batch-path value)))))
     (throw (call UsageError "--object-only needs -o PATH for the object" this) (if (and (. stops-at-object value) (not (. executable value)))))
-    (throw (call UsageError "The build service builds with --compile or checks without -o, and runs no program" this) (if (and is-served runs-program)))
+    (if (and is-served runs-program)
+      (throw
+        (call UsageError
+          (block
+            (arg "The build service builds with --compile or checks without -o, and runs no program")
+            (arg this)
+          )
+        )
+      )
+    )
     (return-if (call list-devices) (if (. lists-devices value)))
     (return-if (call run-built-program (. built value) program-arguments chosen-device) (if (. built value)))
     (return (call check))

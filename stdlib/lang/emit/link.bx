@@ -35,7 +35,19 @@
   (let config (call runtime-config))
   (let platform (call target-config config target))
   (let variant (call runtime-variant config))
-  (throw (call Error (str "BRIX_GC_MODE, BRIX_SANITIZER and BRIX_BENCH_RUNTIME choose a runtime only for " (. (call host-target) name))) (if (and (!= (. target name) (. (call host-target) name)) (. variant is-chosen))))
+  (if (and (!= (. target name) (. (call host-target) name)) (. variant is-chosen))
+    (throw
+      (call Error
+        (block
+          (arg
+            (paragraph
+              (str "BRIX_GC_MODE, BRIX_SANITIZER and BRIX_BENCH_RUNTIME choose a runtime only for " (. (call host-target) name))
+            )
+          )
+        )
+      )
+    )
+  )
   (throw (call Error "BRIX_SANITIZER is supported only for Apple targets") (if (and (. variant sanitizer) (!= (. target object-format) .macho))))
   (let build-path (call (. variant build-path) (call target-build-path target platform)))
   (if (!= (. target name) (. (call host-target) name))
@@ -410,7 +422,19 @@
     (if (not ([] required name))
       (let component ([] components name))
       (throw (call Error (str "The runtime build config's " required-by " requires unknown " name)) (if (not component)))
-      (throw (call Error (str required-by " requires " name ", which the runtime build config does not build for " (. target name))) (if (and (!= (. target name) (. (call host-target) name)) (not builds-component))))
+      (if (and (!= (. target name) (. (call host-target) name)) (not builds-component))
+        (throw
+          (call Error
+            (block
+              (arg
+                (paragraph
+                  (str required-by " requires " name ", which the runtime build config does not build for " (. target name))
+                )
+              )
+            )
+          )
+        )
+      )
       (lazy builds-component (has (call config-strings platform "components") name))
       (= ([] required name) true)
       (for (in dependency (call config-strings component "requires"))
