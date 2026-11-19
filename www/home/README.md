@@ -25,12 +25,16 @@ sorted by name. Names that start with a dot are left out. The right pane shows o
   to one opens only that file's folders and scrolls to the browser.
 - A file whose forms cannot be shown as rows fails the build, with its path.
 
-On a wide screen the browser is one panel as tall as the window less the page's gutter above and
-below it, and it stays in place once the page has scrolled to it. The tree and the file scroll
-within it. A wheel over the panel scrolls the page until the panel is in place, then the pane under
-the pointer. Below 760px the page is one column that scrolls as a whole, the code runs to the edges
-of the screen, the file's bar stays at the top of the window, and a Files button in the bar opens
-the tree as a sheet from the bottom. Without JavaScript the page shows the tree and the first file.
+The browser is one panel as tall as the window less the page's gutter above and below it, and it
+stays in place once the page has scrolled to it. The tree and the file scroll within it. A wheel
+over the panel scrolls the page until the panel is in place, then the pane under the pointer. Below
+760px the header and the install boxes stack and the tree narrows, so a narrow desktop window keeps
+both columns.
+
+On a touch screen below 760px, and on any screen below 480px, the page is one column that scrolls
+as a whole, the code runs to the edges of the screen, the file's bar stays at the top of the window,
+and a Files button in the bar opens the tree as a sheet from the bottom. Without JavaScript the page
+shows the tree and the first file.
 
 ## Files
 

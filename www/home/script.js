@@ -58,7 +58,7 @@ function initializeExamples(document) {
     const body = browser.querySelector('[data-example-body]');
     const label = browser.querySelector('[data-example-path]');
     const filesToggle = browser.querySelector('[data-files-toggle]');
-    const stacked = view.matchMedia('(max-width: 760px)');
+    const stacked = view.matchMedia('(max-width: 480px), (max-width: 760px) and (pointer: coarse)');
     const links = new Map([...browser.querySelectorAll('[data-example]')].map((link) => [link.dataset.example, link]));
     const first = browser.dataset.current;
     const fragments = new Map([[first, body.innerHTML]]);
