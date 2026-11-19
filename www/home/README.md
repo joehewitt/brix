@@ -57,8 +57,9 @@ sorted by name. Names that start with a dot are left out. The right pane shows o
 - Each Markdown file is shown as rendered Markdown.
 - The pane takes the editor's light or dark colors to match the page.
 - The build writes every file's pane to `examples/<path>.html`, and the page loads one when its file
-  is chosen. The page holds the pane of `home-first-example`, `basics/classics/game-of-life.bx`, so
-  it shows code before its script runs.
+  is chosen. The page holds the pane of `home-first-example`, `basics/pipelines/sensor-to-screen.bx`,
+  so it shows code before its script runs. It is the one file that takes a value from a channel
+  through a grammar, a pipeline and a state machine to markup.
 - The URL's fragment names the file shown, as in `#tui/todo.bx`, so a file can be linked. A link
   to one opens only that file's folders and scrolls to the browser.
 - A file whose forms cannot be shown as rows fails the build, with its path.

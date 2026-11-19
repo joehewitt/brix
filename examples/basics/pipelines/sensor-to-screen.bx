@@ -1,0 +1,74 @@
+; One reading's trip through the language. A sensor sends text a character at a
+; time over a wire. A grammar turns it into readings as each line ends, stages
+; keep the server room's and take their degrees, each one moves the room's state
+; machine, and the markup that reads the machine with `#` follows it. Nothing is
+; marked async, and no line here redraws the screen.
+(import /core/patterns)
+(import /tui)
+(blank)
+
+(main
+  (let wire (channel Char))
+  (do-new
+    (<-* wire "server 22\nlobby 19\nserver 31\nserver 37\nlobby 20\nserver 33\nserver 24\n")
+    (call (. wire close))
+  )
+  (let room (call ServerRoom))
+  (<> Screen (id: screen) (• flex-col)
+    (<> Label (text: (str " Server room " (. room #degrees) " C")) (• text white)
+      (= background-color (if-expr (. room #is-normal) green red))
+    )
+    (if (. room #is-normal)
+      (<> Label (text: "All quiet."))
+    )
+    (if (. room #is-cooling)
+      (<> Label (text: "Extra fans on."))
+    )
+    (if (. room #is-alarm)
+      (<> Label (text: "Paging whoever is on call."))
+    )
+  )
+  (blank)
+  wire
+  (pipe ~> \reading)
+  (pipe ?> (== (. each place) "server"))
+  (pipe *> (. each degrees))
+  (pipe *|> (<- (. room readings) each))
+  ; The reading has moved the machine by now, so the frame shows where it went.
+  (pipe *> (call (. screen frame) 28 3))
+  (pipe |> print-all)
+)
+
+(type + Reading (is Tuple)
+  (prop + place String)
+  (prop + degrees Int)
+)
+
+(fn-expr + reading Reading (over: Char)
+  (~ (seq (: place (+ (chars "a-z"))) " " (: degrees (of \num Int)) \nl)
+    (call Reading place degrees)
+  )
+)
+
+(type + ServerRoom
+  ; The room knows nothing of wires, text or screens: it hears readings and
+  ; moves between three states.
+  (blank)
+  (event + readings Int)
+  (prop + degrees Int (= 0))
+  (subscribe-for (on reading readings)
+    (= degrees reading)
+  )
+  (content
+    (state is-normal
+      (then is-cooling (trigger on readings (> each 30)))
+    )
+    (state is-cooling
+      (then is-alarm (trigger on readings (> each 35)))
+      (then is-normal (trigger on readings (< each 25)))
+    )
+    (state is-alarm
+      (then is-cooling (trigger on readings (<= each 35)))
+    )
+  )
+)
