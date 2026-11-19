@@ -77,9 +77,9 @@ const uint32_t BX_TASK_START_PRIORITY = 1 << 0;
 const uint32_t BX_TASK_START_SPIN = 1 << 1;
 const uint32_t BX_TASK_START_LARGE_STACK = 1 << 2;
 const uint32_t BX_TASK_START_HANDLE = 1 << 3;
-extern "C" uint64_t brixStartTask(BxTaskQueue* queue, BxTaskStartFunc func, void* closure,
+extern "C" uint64_t brixStartTask(char* worker, BxTaskStartFunc func, void* closure,
     size_t localSize, const char* file, uint32_t line, uint32_t column, uint32_t options);
-extern "C" uint64_t brixStartOwnedTask(char* owner, BxTaskQueue* queue, BxTaskStartFunc func,
+extern "C" uint64_t brixStartOwnedTask(char* owner, char* worker, BxTaskStartFunc func,
     void* closure, size_t localSize, const char* file, uint32_t line, uint32_t column,
     uint32_t options);
 extern "C" void brixCancelOwnedTasks(char* owner);
@@ -186,8 +186,8 @@ extern "C" BRIX_WITHOUT_BLOCKING BxTaskMutex* brixNewMutex();
 extern "C" BRIX_WITHOUT_BLOCKING void brixLockMutex(BxTaskMutex* mutex);
 extern "C" void brixUnlockMutex(BxTaskMutex* mutex);
 
-extern "C" BxTaskQueue* brixNewWorker(int threadCount);
-extern "C" BxTaskQueue* brixActiveTaskQueue();
+extern "C" char* brixNewWorker(int threadCount);
+extern "C" char* brixActiveWorker();
 extern "C" BRIX_WITHOUT_GC int brixUsableCoreCount();
 extern "C" BRIX_WITHOUT_BLOCKING int brixClaimLazyGlobal(uint8_t* state);
 extern "C" void brixReleaseLazyGlobal(uint8_t* state);
@@ -196,7 +196,7 @@ extern "C" bool brixForkGCMarkTaskInWorker(
     BxTaskQueue* queue, BxTaskStartFunc func, void* closure);
 extern "C" bool brixForkGCCleanupTask(
     BxTaskStartFunc func, void* closure);
-extern "C" bool brixWorkerGetStatus(BxTaskQueue* queue);
-extern "C" void brixWorkerStop(BxTaskQueue* queue);
+extern "C" bool brixWorkerGetStatus(char* worker);
+extern "C" void brixWorkerStop(char* worker);
 
 #endif

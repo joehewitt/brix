@@ -7,6 +7,7 @@
 #include <BxEvents/BxMutex.h>
 #include <BxEvents/BxGCHandshake.h>
 #include <BxEvents/BxStack.h>
+#include <BxGC/BxGC.h>
 #include <signal.h>
 
 #include <cstdio>
@@ -26,6 +27,8 @@ static const int kPriorityFairnessLimit = 8;
 static const uint32_t kInjectedCheckInterval = 61;
 static const int kTaskBatchLimit = 32;
 static const long kIdleGCRetryNanos = 20000000L;
+
+static std::mutex gQueueTreeMutex;
 
 // *************************************************************************************************
 
@@ -78,7 +81,11 @@ BxTaskQueue::BxTaskQueue(BxTaskQueue* aParentQueue, int count):
     injectedCount(0),
     idleWorkerCount(0),
     searchingWorkerCount(0),
-    idleWorkers(NULL)
+    idleWorkers(NULL),
+    releasable(false),
+    unpinned(false),
+    ownerHandle(0),
+    pins(0)
 {
     pthread_mutex_init(&lock, 0);
     pthread_cond_init(&cond, 0);
@@ -117,6 +124,7 @@ BxTaskQueue::~BxTaskQueue() {
 void
 BxTaskQueue::start() {
     threads = new pthread_t[threadCount];
+    joinedThreads.assign(threadCount, false);
     if (workers) {
         return;
     }
@@ -183,11 +191,101 @@ BxTaskQueue::finishStopIfDrained() {
 
 void
 BxTaskQueue::join() {
+    std::lock_guard<std::mutex> guard(joinLock);
     int started = startedCount.load(std::memory_order_acquire);
+    pthread_t self = pthread_self();
     for (int i = 0; i < started; ++i) {
-        pthread_t thread = threads[i];
-        pthread_join(thread, NULL);
+        if (joinedThreads[i] || pthread_equal(threads[i], self)) {
+            continue;
+        }
+        pthread_join(threads[i], NULL);
+        joinedThreads[i] = true;
     }
+}
+
+char*
+BxTaskQueue::loadOwner() {
+    return brixGCOwnerWeakLoad(ownerHandle.load(std::memory_order_acquire));
+}
+
+char*
+BxTaskQueue::adoptOwner(char* owner, size_t handle) {
+    std::lock_guard<std::mutex> guard(ownerLock);
+    char* existing = brixGCOwnerWeakLoad(ownerHandle.load(std::memory_order_relaxed));
+    if (existing) {
+        return existing;
+    }
+    ownerHandle.store(handle, std::memory_order_release);
+    ++pins;
+    return owner;
+}
+
+void
+BxTaskQueue::pin() {
+    std::lock_guard<std::mutex> guard(ownerLock);
+    ++pins;
+}
+
+void
+BxTaskQueue::unpin() {
+    {
+        std::lock_guard<std::mutex> guard(ownerLock);
+        if (--pins) {
+            return;
+        }
+    }
+    if (!releasable) {
+        return;
+    }
+    if (isStopped() && !hasLiveTasks()) {
+        brixGCEnterRuntimeBlock();
+        join();
+        brixGCLeaveRuntimeBlock();
+    }
+    std::lock_guard<std::mutex> tree(gQueueTreeMutex);
+    unpinned = true;
+    BxTaskQueue* queue = this;
+    while (queue && queue->isUnusedLocked()) {
+        BxTaskQueue* parent = queue->parentQueue;
+        pthread_mutex_lock(&parent->lock);
+        std::vector<BxTaskQueue*>& siblings = parent->childQueues;
+        for (size_t i = 0; i < siblings.size(); ++i) {
+            if (siblings[i] == queue) {
+                siblings.erase(siblings.begin() + i);
+                break;
+            }
+        }
+        pthread_mutex_unlock(&parent->lock);
+        delete queue;
+        queue = parent;
+    }
+}
+
+bool
+BxTaskQueue::isUnusedLocked() {
+    if (!releasable || !unpinned || !parentQueue || brixProcessTerminationRequested() ||
+            !isStopped() || hasLiveTasks()) {
+        return false;
+    }
+    {
+        std::lock_guard<std::mutex> guard(ownerLock);
+        if (pins) {
+            return false;
+        }
+    }
+    {
+        std::lock_guard<std::mutex> guard(joinLock);
+        int started = startedCount.load(std::memory_order_acquire);
+        for (int i = 0; i < started; ++i) {
+            if (!joinedThreads[i]) {
+                return false;
+            }
+        }
+    }
+    pthread_mutex_lock(&lock);
+    bool hasChildren = !childQueues.empty();
+    pthread_mutex_unlock(&lock);
+    return !hasChildren;
 }
 
 BxTaskQueue*
@@ -406,6 +504,12 @@ BxTaskQueue::removeActivity() {
 
 void
 BxTaskQueue::requestTermination() {
+    std::lock_guard<std::mutex> tree(gQueueTreeMutex);
+    requestTerminationLocked();
+}
+
+void
+BxTaskQueue::requestTerminationLocked() {
     std::vector<BxTaskQueue*> children;
 
     pthread_mutex_lock(&lock);
@@ -415,7 +519,7 @@ BxTaskQueue::requestTermination() {
     wakeLiveTasks(true);
 
     for (BxTaskQueue* child : children) {
-        child->requestTermination();
+        child->requestTerminationLocked();
     }
 }
 

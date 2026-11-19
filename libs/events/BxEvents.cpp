@@ -699,6 +699,15 @@ unstartedEnding() {
     return new BxTaskEnding(0, 1, BX_TASK_END_CANCELLED);
 }
 
+struct BxWorkerOwner {
+    BxTaskQueue* queue;
+};
+
+static BxTaskQueue*
+workerQueue(char* owner) {
+    return owner ? reinterpret_cast<BxWorkerOwner*>(owner)->queue : NULL;
+}
+
 static uint64_t
 startTask(
     BxTaskQueue* queue,
@@ -750,7 +759,7 @@ startTask(
 
 extern "C" uint64_t
 brixStartTask(
-    BxTaskQueue* queue,
+    char* worker,
     BxTaskStartFunc func,
     void* closure,
     size_t localSize,
@@ -758,7 +767,8 @@ brixStartTask(
     uint32_t line,
     uint32_t column,
     uint32_t options) {
-    return startTask(queue, func, closure, localSize, file, line, column, options, nullptr);
+    return startTask(
+        workerQueue(worker), func, closure, localSize, file, line, column, options, nullptr);
 }
 
 struct BxTaskOwner {
@@ -841,7 +851,7 @@ addOwnedTask(BxTaskOwner* tasks, uint64_t handle) {
 extern "C" uint64_t
 brixStartOwnedTask(
     char* owner,
-    BxTaskQueue* queue,
+    char* worker,
     BxTaskStartFunc func,
     void* closure,
     size_t localSize,
@@ -850,8 +860,8 @@ brixStartOwnedTask(
     uint32_t column,
     uint32_t options) {
     uint64_t handle = 0;
-    uint64_t started =
-        startTask(queue, func, closure, localSize, file, line, column, options, &handle);
+    uint64_t started = startTask(
+        workerQueue(worker), func, closure, localSize, file, line, column, options, &handle);
     if (handle && owner) {
         if (BxTaskOwner* tasks = ensureOwnedTasks(owner)) {
             addOwnedTask(tasks, handle);
@@ -1618,16 +1628,14 @@ brixUnlockMutex(BxTaskMutex* mutex) {
 
 // =============================================================================================
 
-extern "C" BxTaskQueue*
+static char* workerOwnerOf(BxTaskQueue* queue);
+
+extern "C" char*
 brixNewWorker(int threadCount) {
     BxThread* thread = brixGetActiveThread();
-    BxTaskQueue* queue = thread->getTaskQueue();
-    return queue->createQueue(threadCount);
-}
-
-extern "C" BxTaskQueue*
-brixActiveTaskQueue() {
-    return brixGetActiveThread()->getTaskQueue();
+    BxTaskQueue* queue = thread->getTaskQueue()->createQueue(threadCount);
+    queue->setReleasable();
+    return workerOwnerOf(queue);
 }
 
 extern "C" int
@@ -1857,13 +1865,50 @@ brixForkGCCleanupTask(BxTaskStartFunc func, void* closure) {
     return true;
 }
 
+static size_t
+releaseWorkerOwner(void* context) {
+    static_cast<BxTaskQueue*>(context)->unpin();
+    return 1;
+}
+
+static char*
+workerOwnerOf(BxTaskQueue* queue) {
+    if (char* found = queue->loadOwner()) {
+        return found;
+    }
+    char* owner = brixAllocObject(sizeof(BxWorkerOwner));
+    void* root = brixAddTemporaryRoot(owner);
+    reinterpret_cast<BxWorkerOwner*>(owner)->queue = queue;
+    char* kept = owner;
+    size_t handle = brixGCRegisterOwnerWeak(owner, owner);
+    size_t cleanup = handle ? brixGCRegisterNativeCleanup(owner, queue, releaseWorkerOwner) : 0;
+    if (cleanup) {
+        kept = queue->adoptOwner(owner, handle);
+    }
+    if (kept != owner) {
+        brixGCCancelCleanup(cleanup);
+    }
+    if (kept != owner || (handle && !cleanup)) {
+        brixGCReleaseOwnerWeak(handle);
+    }
+    brixRemoveTemporaryRoot(root);
+    return kept;
+}
+
+extern "C" char*
+brixActiveWorker() {
+    return workerOwnerOf(brixGetActiveThread()->getTaskQueue());
+}
+
 extern "C" bool
-brixWorkerGetStatus(BxTaskQueue* queue) {
-    return queue->isStopped();
+brixWorkerGetStatus(char* owner) {
+    return workerQueue(owner)->isStopped();
 }
 
 extern "C" void
-brixWorkerStop(BxTaskQueue* queue) {
+brixWorkerStop(char* owner) {
+    BxTaskQueue* queue = workerQueue(owner);
+    queue->pin();
     queue->cancelTasks();
     BxThread* thread = brixGetActiveThread();
     BxTask* caller = thread ? thread->getActiveTask() : NULL;
@@ -1877,4 +1922,5 @@ brixWorkerStop(BxTaskQueue* queue) {
     brixGCEnterRuntimeBlock();
     queue->join();
     brixGCLeaveRuntimeBlock();
+    queue->unpin();
 }

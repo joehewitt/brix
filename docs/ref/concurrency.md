@@ -336,6 +336,9 @@ main thread calls 0
   called it is suspended, so other tasks on its own thread keep running and can answer a cleanup
   that waits on them. Called from a task on the worker itself, `stop` cancels without waiting for
   its tasks to end.
+- **Releasing.** Once a worker is stopped and no `Worker` value refers to it, the collector frees it.
+  `Worker.current` gives back the same worker as the value that made it, so a worker stays held
+  while any of its values is alive.
 - **Tasks within tasks.** A `do-new` form in a task on a worker starts the new task on the same
   worker.
 - **Idle workers** do not keep a program from exiting.

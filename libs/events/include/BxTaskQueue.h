@@ -5,6 +5,7 @@
 #include <BxEvents/BxTask.h>
 
 #include <atomic>
+#include <mutex>
 #include <BxEvents/BxLock.h>
 #include <BxEvents/BxMutex.h>
 #include <pthread.h>
@@ -61,6 +62,12 @@ public:
     void requestTermination();
     void cancelTasks();
 
+    void setReleasable() { releasable = true; }
+    char* loadOwner();
+    char* adoptOwner(char* owner, size_t handle);
+    void pin();
+    void unpin();
+
     void start();
     void stop();
     void stopAfterLiveTasks(BxThread* thread, BxTask* caller);
@@ -110,6 +117,8 @@ public:
     uint32_t drainHostedTasks(BxThread* thread, size_t taskBudget, uint64_t deadlineNanos);
 
 private:
+    void requestTerminationLocked();
+    bool isUnusedLocked();
     void wakeLiveTasks(bool terminating);
     void wakeTask(BxTask* task, bool forCancel);
     bool nextTask(BxTask** task);
@@ -176,6 +185,14 @@ private:
     std::atomic<int> idleWorkerCount;
     std::atomic<int> searchingWorkerCount;
     BxTaskWorker* idleWorkers;
+
+    bool releasable;
+    bool unpinned;
+    std::mutex ownerLock;
+    std::atomic<size_t> ownerHandle;
+    int pins;
+    std::mutex joinLock;
+    std::vector<bool> joinedThreads;
 };
 
 // *************************************************************************************************
