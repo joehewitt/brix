@@ -113,7 +113,7 @@ Correct:
 
 For a table without one subject, write bare arms rather than matching a dummy Boolean:
 
-```text
+```brix
 (case? (not is-enabled)
   "disabled"
 )
@@ -147,9 +147,9 @@ value first and then read its members directly:
 
 ## YS-04: Construct Pure Collections And Text As Values
 
-Use streams, comprehensions, filters, reducers, feed expressions, `join of`, and templates for
-pure collection and text construction. Use an imperative accumulator only when mutation or measured
-cost is the point of the code.
+Use streams, comprehensions, filters, reducers, feed expressions, `join`, and templates for pure
+collection and text construction. Use an imperative accumulator only when mutation or measured cost
+is the point of the code.
 
 Incorrect:
 
@@ -266,14 +266,14 @@ suffix takes the type it is used as, so it needs neither a suffix nor `as`.
 
 Incorrect:
 
-```text
+```brix
 ([] values (as id Index))
 (+= total 1u32)
 ```
 
 Correct:
 
-```text
+```brix
 ([] values id)
 (+= total 1)
 (let id SyntaxId (as (. nodes length) SyntaxId))
@@ -306,13 +306,13 @@ Correct:
 
 ## YS-09: Use Grammars For Structured Text
 
-When structured text is naturally described as a grammar, use a `~` grammar function rather
-than manual splitting, cursor movement, or indexing. Keep direct string operations when the input is
-not meaningfully grammatical.
+When structured text is naturally described as a grammar, use a grammar function, whose arms are
+`(~ …)` forms, rather than manual splitting, cursor movement, or indexing. Keep direct string
+operations when the input is not meaningfully grammatical.
 
 Incorrect:
 
-```text
+```brix
 (fn-do + parse-http-status-line HTTPStatusLine
   (param source String)
   (let parts (call (. source split) " "))
@@ -324,7 +324,7 @@ Incorrect:
 
 Correct:
 
-```text
+```brix
 (type-line + HTTPStatus (is I32))
 
 (type + HTTPStatusLine (is (tuple (: version String) (: status HTTPStatus) (: reason String)))
@@ -344,7 +344,7 @@ low-level code belongs only in the measured hot core; keep its boundaries idioma
 
 Incorrect:
 
-```text
+```brix
 (fn-expr + save-message _
   (param path String)
   (param contents String)
@@ -357,7 +357,7 @@ Incorrect:
 
 Correct:
 
-```text
+```brix
 (fn-do + save-message _
   (param path String)
   (param contents String)

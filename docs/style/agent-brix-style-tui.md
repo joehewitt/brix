@@ -6,25 +6,28 @@ justified exceptions are allowed when the rule's tradeoff does not fit the code.
 
 ## YT-01: Keep TUI Structure Declarative
 
-Build TUI applications from `<App>`, `<Window>`, markup nodes, style properties, tracked reads,
-and reactive streams. Do not replace rows, styles, DOM nodes, or compositing behavior with direct
-terminal drawing or custom paint loops unless the renderer itself is the subject.
+Build TUI applications from `(<> App …)`, `(<> Window …)`, markup nodes, style properties, tracked
+reads, and reactive streams. Do not replace rows, styles, DOM nodes, or compositing behavior with
+direct terminal drawing or custom paint loops unless the renderer itself is the subject.
 
 Incorrect:
 
-```text
-terminal.move-cursor(0, 0)
-terminal.write(status-message)
-terminal.clear-to-end()
+```brix
+(call (. terminal move-cursor) 0 0)
+(call (. terminal write) status-message)
+(call (. terminal clear-to-end))
 ```
 
 Correct:
 
-```text
-<App
-    <Window • flex-col bg:black
-        <StatusBar
-            message = #status-message
+```brix
+(<> App
+  (<> Window (• flex-col) (• bg black)
+    (<> StatusBar
+      (= message #status-message)
+    )
+  )
+)
 ```
 
 An `App` runs by itself where the main program's statements end, before the values main uses are
@@ -37,26 +40,29 @@ name.
 
 ## YT-02: Use Shortcut Nodes For Commands
 
-Register ordinary keyboard commands with declarative `<Shortcut>` nodes near the UI that owns the
-command. Use raw `key-press` or `key-input` handlers only for text editing, low-level controls, key
-repeats or sequences, cancellation-only behavior, or raw terminal data that shortcuts cannot
+Register ordinary keyboard commands with declarative `(<> Shortcut …)` nodes near the UI that owns
+the command. Use raw `key-press` or `key-input` handlers only for text editing, low-level controls,
+key repeats or sequences, cancellation-only behavior, or raw terminal data that shortcuts cannot
 represent.
 
 Incorrect:
 
-```text
-for event on key-press
-    if event.key == Key.escape
-        close()
-        event.cancel()
+```brix
+(for (on event key-press)
+  (if (== (. event key) (. Key escape))
+    (call close)
+    (call (. event cancel))
+  )
+)
 ```
 
 Correct:
 
-```text
-<Shortcut "Close"
-    key = .escape
-    action = => do close()
+```brix
+(<> Shortcut (text: "Close")
+  (= key .escape)
+  (= action (=> () :do (call close)))
+)
 ```
 
 Preferred key forms include `.escape`, `.enter`, `.space`, `.arrow-up`, `'q'`, `"Ctrl+K"`, and
@@ -65,32 +71,35 @@ Preferred key forms include `.escape`, `.enter`, `.space`, `.arrow-up`, `'q'`, `
 
 ## YT-03: Scope Shortcuts With Focus Ownership
 
-Set `focus-mode => FocusMode.keys` on a component whose shortcuts should be active only while that
-component owns keyboard focus. Mount and unmount conditional shortcuts with markup `if` branches.
-Keep genuinely global or window-level shortcuts beside the app node.
+Set `(prop + focus-mode _ (=> (. FocusMode keys)))` on a component whose shortcuts should be active
+only while that component owns keyboard focus. Mount and unmount conditional shortcuts with markup
+`if` branches. Keep genuinely global or window-level shortcuts beside the app node.
 
 Incorrect:
 
-```text
-<Window
-    <Shortcut "Delete selected row"
-        key = .delete
-        action = => do rows.delete-selection()
+```brix
+(<> Window
+  (<> Shortcut (text: "Delete selected row")
+    (= key .delete)
+    (= action (=> () :do (call (. rows delete-selection))))
+  )
+)
 ```
 
 Correct:
 
-```text
-━━━━━━━━━━━━━━━━━━━━
-+ RowList is Box
-
-+ focus-mode => FocusMode.keys
-
-────────────────────
-<This
-    <Shortcut "Delete selected row"
-        key = .delete
-        action = => do delete-selection()
+```brix
+(type + RowList (is Box)
+  (prop + focus-mode _ (=> (. FocusMode keys)))
+  (content
+    (<> This
+      (<> Shortcut (text: "Delete selected row")
+        (= key .delete)
+        (= action (=> () :do (call delete-selection)))
+      )
+    )
+  )
+)
 ```
 
 ## YT-04: Preserve Component Ownership
@@ -101,24 +110,30 @@ makes them independent controls.
 
 Incorrect:
 
-```text
-<ResultRow
-    result = result
-    for event on click
-        root.selected-index = result.index
-        root.preview.open(result)
+```brix
+(<> ResultRow
+  (= result result)
+  (for (on event click)
+    (= (. root selected-index) (. result index))
+    (call (. root preview open) result)
+  )
+)
 ```
 
 Correct:
 
-```text
-<ResultsPanel
-    for result in #results keyed by result.id
-        <ResultRow
-            result = result
-            for event on click
-                select-result(result)
-                event.cancel()
+```brix
+(<> ResultsPanel
+  (for (in result #results (keyed-by (. result id)))
+    (<> ResultRow
+      (= result result)
+      (for (on event click)
+        (call select-result result)
+        (call (. event cancel))
+      )
+    )
+  )
+)
 ```
 
 ## YT-05: Use Public Style And Runtime State
@@ -129,16 +144,18 @@ ordinary style-shorthand and reactive-markup rules.
 
 Incorrect:
 
-```text
-if row.$is-layout-invalid
-    row.invalidate-paint()
+```brix
+(if (. row $is-layout-invalid)
+  (call (. row invalidate-paint))
+)
 ```
 
 Correct:
 
-```text
-• This
-    background-color = if #is-focused then blue else black
+```brix
+(rule This
+  (= background-color (if-expr #is-focused blue black))
+)
 ```
 
 ## YT-06: Preserve Exact Rendering Semantics

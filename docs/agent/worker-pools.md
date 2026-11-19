@@ -4,7 +4,7 @@ Brix runs tasks in two ways.
 
 ## Default Queues
 
-`do new` puts a task on the queue of the task that spawned it. The main queue and a one-thread
+`(do-new …)` puts a task on the queue of the task that spawned it. The main queue and a one-thread
 `Worker` run one task at a time on one thread. A task runs until it suspends: on a channel, a
 socket, a timer or a `Mutex`. Code on a default queue never sees another task change shared data
 between two suspensions, so it needs no locks. GUI code depends on this.
@@ -17,8 +17,9 @@ task keeps running. The warning is off by default.
 
 ## Pools
 
-`Worker(n)` with `n` above 1 is a pool. `do (pool) new` starts a task in it, and `do new` inside a
-pool task starts another task in the same pool. `do new thread` uses the runtime's shared pool.
+`Worker(n)` with `n` above 1 is a pool. `(do-new (worker: pool) …)` starts a task in it, and
+`(do-new …)` inside a pool task starts another task in the same pool. `(do-new-thread …)` uses the
+runtime's shared pool.
 
 Pool tasks run on any of the pool's threads and move between them at every suspension. Each
 thread keeps its own run queue. A task woken on a pool thread is queued on that thread. An idle
@@ -42,7 +43,7 @@ Run only code written for threads in a pool. Pool tasks share memory with no imp
 Everything else is unsynchronized. Do not share these between pool tasks without a `Mutex`:
 
 - `AsyncChannel`, `AsyncBufferedChannel`, `AsyncOnDemandChannel` and `OneShotChannel`.
-- Broadcasters, subscriptions and `for … on` streams.
+- Broadcasters, subscriptions and `(for (on …) …)` streams.
 - Lists, maps, sets, tables and every other collection.
 - Objects whose fields more than one task writes.
 
@@ -53,9 +54,9 @@ Set `worker` to a pool before `start` to run the accept loop and every connectio
 server guards its connection list with a `Mutex` either way. With a pool, the service and every
 handler run on many threads at once, so they must follow the rules above.
 
-```text
-. pool = Worker(8)
-. server = HTTPServer()
-server.worker = pool
-server.start()
+```brix
+(let pool (call Worker 8))
+(let server (call HTTPServer))
+(= (. server worker) pool)
+(call (. server start))
 ```

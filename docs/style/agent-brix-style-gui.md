@@ -6,27 +6,28 @@ justified exceptions are allowed when the rule's tradeoff does not fit the code.
 
 ## YG-01: Keep GUI Structure Declarative
 
-Build applications from `<App>`, `<Window>`, controls, markup nodes, style properties, tracked
-reads, and reactive streams. Do not replace the GUI tree with direct native-window construction or
-manual child management unless the native host itself is the subject.
+Build applications from `(<> App …)`, `(<> Window …)`, controls, markup nodes, style properties,
+tracked reads, and reactive streams. Do not replace the GUI tree with direct native-window
+construction or manual child management unless the native host itself is the subject.
 
 Incorrect:
 
-```text
-. window = NativeWindow("Editor", (900, 600))
-window.add-label("Ready")
-window.show()
+```brix
+(let window (call NativeWindow "Editor" (tuple 900 600)))
+(call (. window add-label) "Ready")
+(call (. window show))
 ```
 
 Correct:
 
-```text
-<App
-    <Window
-        title = "Editor"
-        size = (900, 600)
-
-        <Label "Ready"
+```brix
+(<> App
+  (<> Window
+    (= title "Editor")
+    (= size (tuple 900 600))
+    (<> Label (text: "Ready"))
+  )
+)
 ```
 
 An `App` runs by itself where the main program's statements end, before the values main uses are
@@ -41,24 +42,27 @@ states. Do not use event handlers merely to copy interaction state into paint pr
 
 Incorrect:
 
-```text
-for event on focus
-    background-color = lightblue
-for event on blur
-    background-color = white
+```brix
+(for (on event focus)
+  (= background-color lightblue)
+)
+(for (on event blur)
+  (= background-color white)
+)
 ```
 
 Correct:
 
-```text
-• action-button
-    background-color = white
-
-    when #is-hovered
-        background-color = lightblue
-
-    when #is-pressed
-        background-color = blue
+```brix
+(rule action-button
+  (= background-color white)
+  (when-style #is-hovered
+    (= background-color lightblue)
+  )
+  (when-style #is-pressed
+    (= background-color blue)
+  )
+)
 ```
 
 Animate those changes with `motion` declarations in the same rules, not with timers or code that
@@ -67,111 +71,123 @@ steps values. `motion` covers every property that only repaints or re-composites
 the theme's `gui-motion-quick`, `gui-motion-smooth` and `gui-motion-bouncy`, so reduce motion
 applies.
 
-```text
-• action-button
-    motion = gui-motion-quick
-
-    when #is-pressed
-        background-color = blue
-        motion.background-color = instant
+```brix
+(rule action-button
+  (= motion gui-motion-quick)
+  (when-style #is-pressed
+    (= background-color blue)
+    (= (. motion background-color) instant)
+  )
+)
 ```
 
 A value that code computes moves with `animated(target, motion)`, written in the markup attribute
-that shows it. State that steps every frame loops `for tick on frames` in a state that runs only
-while it moves. Neither uses a `Timer`.
+that shows it. State that steps every frame loops `(for (on tick frames) …)` in a state that runs
+only while it moves. Neither uses a `Timer`.
 
-```text
-<Label • test-count
-    text = "${round(animated(#passed, gui-motion-smooth)) as Int} passed"
+```brix
+(<> Label (• test-count)
+  (= text (str (as (call round (call animated #passed gui-motion-smooth)) Int) " passed"))
+)
 ```
 
 Motion that plays on its own, such as a spinner, a shake or a pulse, is a keyframe animation that a
-theme declares and a rule names with `animation =`. Use the theme's `spin`, `shake:distance`,
-`pop-in` and `breathe` before declaring another, and declare it in the theme so reduce motion can
-restate it. Code plays one with `play($shake:4)` and can `wait()` for it.
+theme declares and a rule names with `(= animation …)`. Use the theme's `spin`,
+`(shape shake distance)`, `pop-in` and `breathe` before declaring another, and declare it in the
+theme so reduce motion can restate it. Code plays one with `(call play (shape $shake 4))` and can
+`wait` for it.
 
-```text
-• pulse animation 1200ms
-    repeat = Repeat.forever
-    opacity
-        at 0% = 1%%
-        at 50% = 0.2%% • easing Easing.ease-in-out
-        at 100% = 1%% • easing Easing.ease-in-out
-
-• find-bar
-    when #is-failing
-        • find-field
-            animation = shake:3
+```brix
+(keyframes pulse animation 1200ms
+  (= repeat (. Repeat forever))
+  (track opacity
+    (at 0% 1%%)
+    (at 50% 0.2%% (:easing (. Easing ease-in-out)))
+    (at 100% 1%% (:easing (. Easing ease-in-out)))
+  )
+)
+(rule find-bar
+  (when-style #is-failing
+    (rule find-field
+      (= animation (shape shake 3))
+    )
+  )
+)
 ```
 
 A node that appears or goes away animates through `#is-entering` and `#is-leaving` rules. Do not
 delay its removal in code. Remove it with `if` or a keyed `for`, or hide it with `display`, and it
 stays until its leave has played. The `#is-entering` rule gives the values it starts from and the
-`#is-leaving` rule the values it leaves toward. `enter-space = EnterSpace.expand` and
-`leave-space = LeaveSpace.collapse` move its siblings with it under `motion.size`. `motion-stagger`
-on a container staggers the children that enter together. A popup's `#anchor-origin` is its
-transform origin.
+`#is-leaving` rule the values it leaves toward. `(= enter-space (. EnterSpace expand))` and
+`(= leave-space (. LeaveSpace collapse))` move its siblings with it under `motion.size`.
+`motion-stagger` on a container staggers the children that enter together. A popup's
+`#anchor-origin` is its transform origin.
 
-```text
-• toast
-    motion = gui-motion-smooth
-    leave-space = LeaveSpace.collapse
-
-    when #is-entering
-        opacity = 0%%
-        translate = Point(32, 0)
-
-    when #is-leaving
-        opacity = 0%%
-        scale = 0.96
+```brix
+(rule toast
+  (= motion gui-motion-smooth)
+  (= leave-space (. LeaveSpace collapse))
+  (when-style #is-entering
+    (= opacity 0%%)
+    (= translate (call Point 32 0))
+  )
+  (when-style #is-leaving
+    (= opacity 0%%)
+    (= scale 0.96)
+  )
+)
 ```
 
 A node that layout moves or resizes animates there under `motion.position`, `motion.size`, or
 `motion.layout` for both. Do not step `max-height`, measured heights or offsets in code to imitate
 it. `resize-content` says what the content does while the size moves: `reveal`, the default, clips
 it to the moving frame, `reflow` lays it out at each size, and `scale` stretches it.
-`stack-motion = StackMotion.coupled` on a container keeps its children touching while one of them
-grows or shrinks. `scroll-anchor = ScrollAnchor.end` keeps a scroller at its end as its content
-changes, and `ScrollAnchor.content` keeps the rows in view still.
+`(= stack-motion (. StackMotion coupled))` on a container keeps its children touching while one of
+them grows or shrinks. `(= scroll-anchor (. ScrollAnchor end))` keeps a scroller at its end as its
+content changes, and `ScrollAnchor.content` keeps the rows in view still.
 
-```text
-• chat-stage • flex-col
-    justify = Justify.end
-    scroll-anchor = ScrollAnchor.end
-    stack-motion = StackMotion.coupled
-
-    • chat-turn
-        motion.size = gui-motion-smooth
-        leave-space = LeaveSpace.collapse
+```brix
+(rule chat-stage (• flex-col)
+  (= justify (. Justify end))
+  (= scroll-anchor (. ScrollAnchor end))
+  (= stack-motion (. StackMotion coupled))
+  (rule chat-turn
+    (= (. motion size) gui-motion-smooth)
+    (= leave-space (. LeaveSpace collapse))
+  )
+)
 ```
 
 To move one change that the elements don't declare motion for, write it inside
-`do use motion(gui-motion-smooth)`. An element's own motion still wins, and `motion(instant)` snaps
-everything the writes move. Writes made while handling a pointer drag or a `frames` tick are
-already instant. Under `instant`, nodes still enter and leave with their `#is-entering` and
-`#is-leaving` rules. To swap what a view shows with no motion at all, as when switching projects,
-make the writes inside `do use gui-still-cause`.
+`(do-use (call motion gui-motion-smooth) …)`. An element's own motion still wins, and
+`(call motion instant)` snaps everything the writes move. Writes made while handling a pointer drag
+or a `frames` tick are already instant. Under `instant`, nodes still enter and leave with their
+`#is-entering` and `#is-leaving` rules. To swap what a view shows with no motion at all, as when
+switching projects, make the writes inside `(do-use gui-still-cause …)`.
 
-```text
-do use motion(gui-motion-smooth)
-    files-sidebar.is-collapsed = true
-    dock.is-shown = false
+```brix
+(do-use (call motion gui-motion-smooth)
+  (= (. files-sidebar is-collapsed) true)
+  (= (. dock is-shown) false)
+)
 ```
 
-When one element should travel from where another was, as a thumbnail opens into a detail view,
-give both the same `match` key. If one goes and the other arrives in the same frame, the new one
-flies from the old one's place under its `motion.position` and `motion.size`, above any scroller
-or clip, and the old one hides. `match-content = MatchContent.crossfade` on the old one fades its
-content out during the flight. Do not measure frames or fly a copy by hand. A key read from
-tracked state is an assignment, since shorthand arguments are read once.
+When one element should travel from where another was, as a thumbnail opens into a detail view, give
+both the same `match` key. If one goes and the other arrives in the same frame, the new one flies
+from the old one's place under its `motion.position` and `motion.size`, above any scroller or clip,
+and the old one hides. `(= match-content (. MatchContent crossfade))` on the old one fades its
+content out during the flight. Do not measure frames or fly a copy by hand. A key read from tracked
+state is an assignment, since shorthand arguments are read once.
 
-```text
-• photo-card
-    motion.layout = gui-motion-smooth
-    match-content = MatchContent.crossfade
+```brix
+(rule photo-card
+  (= (. motion layout) gui-motion-smooth)
+  (= match-content (. MatchContent crossfade))
+)
 
-<PhotoCard • photo-card
-    match = "photo-${#photo.id}"
+(<> PhotoCard (• photo-card)
+  (= match (str "photo-" (. #photo id)))
+)
 ```
 
 To reorder by dragging, carry the item: start the drag with `event.carry(payload)` instead of
@@ -181,37 +197,42 @@ accepts. On drop, move the model to the item's `carry-slot`, its index among the
 It then lands there at the pointer's speed under its `motion.position`. Do not open gaps with
 margins, hide the item, or work out drop indexes by hand.
 
-```text
-• queue-row
-    motion.position = gui-motion-quick
+```brix
+(rule queue-row
+  (= (. motion position) gui-motion-quick)
+  (when-style #is-carried
+    (= shadow gui-lifted-shadow)
+  )
+)
 
-    when #is-carried
-        shadow = gui-lifted-shadow
-
-for event on drag-start
-    . ignored = event.carry(QueueDrag(this))
-
-for event on drop
-    . row = (event.payload as QueueDrag).row
-    . index = row.carry-slot
-    if index != null
-        queue.move(row.item.id, index)
+(for (on event drag-start)
+  (let ignored (call (. event carry) (call QueueDrag this)))
+)
+(for (on event drop)
+  (let row (. (as (. event payload) QueueDrag) row))
+  (let index (. row carry-slot))
+  (if (!= index null)
+    (call (. queue move) (. row item id) index)
+  )
+)
 ```
 
 To tie an animation to scrolling or to a value instead of time, give its element a `timeline`.
-`scroll-timeline(0 .. 80)` plays it over the first 80 points of the nearest scroller's offset, or
-of the scroller passed after the range. `progress-timeline(#amount)` plays it at a fraction from 0
-to 1 and follows tracked state when assigned in markup. Do not watch scrolling or step opacity,
-transforms or sizes in code to follow a position.
+`(call scroll-timeline (.. 0 80))` plays it over the first 80 points of the nearest scroller's
+offset, or of the scroller passed after the range. `(call progress-timeline #amount)` plays it at a
+fraction from 0 to 1 and follows tracked state when assigned in markup. Do not watch scrolling or
+step opacity, transforms or sizes in code to follow a position.
 
-```text
-• title-divider
-    animation = fade-in
-    timeline = scroll-timeline(0 .. 12)
+```brix
+(rule title-divider
+  (= animation fade-in)
+  (= timeline (call scroll-timeline (.. 0 12)))
+)
 
-<Sheet • sheet
-    animation = sheet-open
-    timeline = progress-timeline(#open-amount)
+(<> Sheet (• sheet)
+  (= animation sheet-open)
+  (= timeline (call progress-timeline #open-amount))
+)
 ```
 
 ## YG-03: Use Semantic Controls For Ordinary Interaction
@@ -222,22 +243,27 @@ plain `Box`. Raw pointer and key events are appropriate for genuinely custom dir
 
 Incorrect:
 
-```text
-<Box • action-button
-    for event on pointer-down
-        is-pressed = true
-    for event on pointer-up
-        save()
-        is-pressed = false
+```brix
+(<> Box (• action-button)
+  (for (on event pointer-down)
+    (= is-pressed true)
+  )
+  (for (on event pointer-up)
+    (call save)
+    (= is-pressed false)
+  )
+)
 ```
 
 Correct:
 
-```text
-<Button "Save" • action-button
-    for event on click
-        save()
-        event.cancel()
+```brix
+(<> Button (text: "Save") (• action-button)
+  (for (on event click)
+    (call save)
+    (call (. event cancel))
+  )
+)
 ```
 
 ## YG-04: Preserve Component Ownership
@@ -248,24 +274,30 @@ reach through the tree to mutate a window or application singleton.
 
 Incorrect:
 
-```text
-<ResultRow
-    result = result
-    for event on click
-        app.main-window.selected-result = result
-        app.main-window.open-preview()
+```brix
+(<> ResultRow
+  (= result result)
+  (for (on event click)
+    (= (. app main-window selected-result) result)
+    (call (. app main-window open-preview))
+  )
+)
 ```
 
 Correct:
 
-```text
-<ResultsPanel
-    for result in #results keyed by result.id
-        <ResultRow
-            result = result
-            for event on click
-                select-result(result)
-                event.cancel()
+```brix
+(<> ResultsPanel
+  (for (in result #results (keyed-by (. result id)))
+    (<> ResultRow
+      (= result result)
+      (for (on event click)
+        (call select-result result)
+        (call (. event cancel))
+      )
+    )
+  )
+)
 ```
 
 ## YG-05: Keep Layout And Scrolling In The Box System
@@ -276,19 +308,23 @@ layout or scrolling. Custom layout and painting belong in the relevant stdlib su
 
 Incorrect:
 
-```text
-for child in children
-    child.arrange-bounds(next-row-bounds())
-canvas.translate(0, -scroll-offset)
+```brix
+(for (in child children)
+  (call (. child arrange-bounds) (call next-row-bounds))
+)
+(call (. canvas translate) 0 (- scroll-offset))
 ```
 
 Correct:
 
-```text
-<Box • flex-row flex:1
-    <Box • viewport flex-col flex:1
-        for row in #rows keyed by row.id
-            <ResultRow = row
+```brix
+(<> Box (• flex-row) (• flex 1)
+  (<> Box (• viewport) (• flex-col) (• flex 1)
+    (for (in row #rows (keyed-by (. row id)))
+      (<> ResultRow (value: row))
+    )
+  )
+)
 ```
 
 ## YG-06: Keep Custom Painting Behind The Paint Boundary
@@ -299,28 +335,27 @@ Application event handlers must not draw directly into the window canvas.
 
 Incorrect:
 
-```text
-for event on value-changed
-    window.canvas.fill-color = event.color
-    window.canvas.circle(20, 20, 10)
+```brix
+(for (on event value-changed)
+  (= (. window canvas fill-color) (. event color))
+  (call (. window canvas circle) 20 20 10)
+)
 ```
 
 Correct:
 
-```text
-━━━━━━━━━━━━━━━━━━━━
-+ ColorSwatch is Box
-
-────────────────────
-+ do paint-self
-    to canvas Canvas
-
-canvas.push()
-. content = content-bounds
-canvas.translate(content.x, content.y)
-canvas.fill-color = $color
-canvas.circle(width / 2, height / 2, min(width, height) / 2)
-canvas.pop()
+```brix
+(type + ColorSwatch (is Box)
+  (fn-do + paint-self _
+    (param canvas Canvas)
+    (call (. canvas push))
+    (let content content-bounds)
+    (call (. canvas translate) (. content x) (. content y))
+    (= (. canvas fill-color) $color)
+    (call (. canvas circle) (/ width 2) (/ height 2) (/ (call min width height) 2))
+    (call (. canvas pop))
+  )
+)
 ```
 
 ## YG-07: Preserve Renderer And Native-Peer Boundaries

@@ -30,9 +30,9 @@ while a window is open.
 
 Illustrative window properties:
 
-```text
-titlebar-visible = false
-stoplight-offset = Point(12, 10)
+```brix
+(= titlebar-visible false)
+(= stoplight-offset (call Point 12 10))
 ```
 
 `window-stoplight-center` is the buttons' native vertical center, so an offset of
@@ -61,7 +61,7 @@ popups, drag images and the text-input caret are placed at their layout frames t
 native text fields use a font scaled by it. A zoom of zero or less behaves as `1`.
 
 `zoom-in`, `zoom-out` and `zoom-to-actual-size` step through `window-zoom-levels` (50% to 200%).
-Users get them only in windows that opt in with `allows-zoom = true`; it defaults to `false`, so
+Users get them only in windows that opt in with `(= allows-zoom true)`; it defaults to `false`, so
 apps whose canvases bind those keys keep them. An opted-in window zooms on ⌘= (or ⌘+), ⌘- and ⌘0
 when no key binding on the focus path or in the window claims the key first, and saves its zoom
 with its `state-key`. Put `MenuRole.zoom-in`, `MenuRole.zoom-out` and `MenuRole.actual-size` items in
@@ -73,8 +73,8 @@ The traffic lights keep their size and horizontal place under zoom, while their 
 follows it so they stay on the same content row. `Window.stoplight-inset` is
 `window-stoplight-inset` in the window's layout units, so content that starts there clears the
 buttons at any zoom; `TabBar` uses it when `is-beside-stoplights`. Read it from a component's own
-`• This` style block (`padding-left = #stoplight-inset`) or from markup; module-level theme rules
-cannot read it.
+`(rule This …)` style block (`(= padding-left #stoplight-inset)`) or from markup; module-level theme
+rules cannot read it.
 
 `SurfaceWindow` inherits the same zoom. Its `size` is the host's requested size, and a toy host can
 treat `zoom` as a camera scale over `viewport`.
@@ -89,12 +89,13 @@ Draggable content works with either titlebar setting.
 
 Illustrative component styles:
 
-```text
-• Header
-    window-draggable = true
-
-• HeaderButton
-    window-draggable = false
+```brix
+(rule Header
+  (= window-draggable true)
+)
+(rule HeaderButton
+  (= window-draggable false)
+)
 ```
 
 Normal hit testing applies, including clipping, stacking, modal boundaries, and native controls.

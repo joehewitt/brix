@@ -13,7 +13,7 @@ row checks equality, and a bare `Bool` checks truth.
 
 Incorrect:
 
-```text
+```brix
 (fn-do + tests TestRender
   (let cases (call TestCase "Rect"))
   (call (. cases run) rect-tests)
@@ -49,7 +49,7 @@ a panic ends only that case, and the runner continues with the next.
 
 Incorrect:
 
-```text
+```brix
 (fn-do + tests TestRender
   (let path (call Path))
   (call (. path move-to) 0 0)
@@ -94,14 +94,14 @@ and errors a case lets out, or panics that end its task, increment `caught`.
 
 Incorrect:
 
-```text
+```brix
 (call (. t check) "count" (== (. path count) 2))
 (call (. t expect) "first curve" expected-curve (call (. path get-curve) 0))
 ```
 
 Correct:
 
-```text
+```brix
 (call (. t expect) "count" 2 (. path count))
 (call (. t expect) "first curve" expected-curve (=> () (call (. path get-curve) 0)))
 (call (. t check) "closed" (. path is-closed))
@@ -116,14 +116,14 @@ form artificial.
 
 Incorrect:
 
-```text
+```brix
 (let cases (call TestCase "All Path Behavior"))
 (call (. cases run) all-path-tests)
 ```
 
 Correct:
 
-```text
+```brix
 (let cases (call TestCase "Path Mutation"))
 (call (. cases run) path-mutation-tests)
 (= cases (call (. cases then) "Path Recovery" path-recovery-tests))

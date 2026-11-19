@@ -66,15 +66,15 @@ exercise effectful payload diagnostics or lazy event behavior.
 
 Finding:
 
-```text
-submitted <- log-and-build()
+```brix
+(<- submitted (call log-and-build))
 ```
 
 Fix:
 
-```text
-. payload = log-and-build()
-submitted <- payload
+```brix
+(let payload (call log-and-build))
+(<- submitted payload)
 ```
 
 ### `imports/sort`
@@ -103,10 +103,10 @@ every row it makes fits:
 
 - a call that is the whole value of its row gets its arguments one to a row;
 - a quoted text, or the last operand of `++` when it is one, becomes a text block;
-- `=? value if condition` becomes `if condition` with `= value` below it;
-- an `if … then … else …` chain that compares one subject with `==` becomes a `match` of that
-  subject, and another chain becomes a decision table, in a `let`, a lazy, a property or global
-  declaration, a return, or an assignment to a local;
+- `(return-if value (if condition))` becomes `(if condition (return value))`;
+- an `if-expr` chain that compares one subject with `==` becomes a `match` of that subject, and
+  another chain becomes a decision table, in a `let`, a lazy, a property or global declaration, a
+  return, or an assignment to a local;
 - the value of a `let`, a lazy, a property or global declaration, or an assignment to a local moves
   to the row below.
 
@@ -114,28 +114,31 @@ An assignment is to a local when it names a local or parameter declared before i
 of statements, such as bodies, branches, arms and loops, hold it within the declaration's block.
 The fix leaves other assignments alone, such as those to a property, a setter, a member, an
 indexed element or a markup attribute, where a decision table or a value below can change how the
-value is typed. It also leaves a row holding `if … else null`, which
+value is typed. It also leaves a row holding `(if-expr condition value null)`, which
 `style/no-redundant-null-fallback` rewrites first, and rows that would start a new run nested past
 the `layout/depth` limit. Fix what remains by hand: name parts of a long condition,
 arithmetic or list with lazies, or move code into a function.
 
 Finding:
 
-```text
-render-card(name, email, status, theme, primary-action, secondary-action, accessibility-label)
+```brix
+(call render-card name email status theme primary-action secondary-action accessibility-label)
 ```
 
 Fix:
 
-```text
-render-card
-    - name
-    - email
-    - status
-    - theme
-    - primary-action
-    - secondary-action
-    - accessibility-label
+```brix
+(call render-card
+  (block
+    (arg name)
+    (arg email)
+    (arg status)
+    (arg theme)
+    (arg primary-action)
+    (arg secondary-action)
+    (arg accessibility-label)
+  )
+)
 ```
 
 ### `names/case-owner-conflict`
@@ -148,14 +151,14 @@ fixture that exercises owner order.
 
 Finding, where `describe` has overloads for `Key` and `Part`, both with an `enter` case:
 
-```text
-describe(.enter)
+```brix
+(call describe .enter)
 ```
 
 Fix:
 
-```text
-describe(Key.enter)
+```brix
+(call describe (. Key enter))
 ```
 
 The rule sees overloaded calls only. A bare case converted to an expected type through `from`
@@ -186,23 +189,28 @@ raising arms, written as its last cases. `--fix` makes this rewrite.
 
 Finding:
 
-```text
-match value
-    | text String
-        text
-    ??
-        ?! Error("bad") if value == "bad"
-        ?! Panic("unexpected")
+```brix
+(match value
+  (case (: text String)
+    text
+  )
+  (default
+    (throw (call Error "bad") (if (== value "bad")))
+    (throw (call Panic "unexpected"))
+  )
+)
 ```
 
 Fix:
 
-```text
-match value
-    | text String
-        text
-    ?! Error("bad") if value == "bad"
-    ?! Panic("unexpected")
+```brix
+(match value
+  (case (: text String)
+    text
+  )
+  (throw (call Error "bad") (if (== value "bad")))
+  (throw (call Panic "unexpected"))
+)
 ```
 
 ### `style/no-redundant-context-cast`
@@ -231,16 +239,16 @@ a function or class that takes type parameters.
 
 Finding:
 
-```text
-mask = flags /and/ 255u32
-total += 1u32
+```brix
+(= mask (/and/ flags 255u32))
+(+= total 1u32)
 ```
 
 Fix:
 
-```text
-mask = flags /and/ 255
-total += 1
+```brix
+(= mask (/and/ flags 255))
+(+= total 1)
 ```
 
 ### `style/no-redundant-default-initializer`
@@ -254,33 +262,36 @@ Generic declarations and defaults without equivalent construction evidence are l
 
 Finding:
 
-```text
-+ foo [Int] = List'Int()
-. count UInt64 = 0
+```brix
+(prop + foo (list Int) (= (call (of List Int))))
+
+(let count UInt64 0)
 ```
 
 Fix:
 
-```text
-+ foo [Int]
-. count UInt64
+```brix
+(prop + foo (list Int))
+
+(let count UInt64)
 ```
 
 ### `style/no-redundant-null-fallback`
 
-A value written with `if` is already null when its condition fails, so a choice whose other side is
-`null` says the same thing at more length. `--fix` rewrites the choice as a conditional value.
+A value written with `only-if` is already null when its condition fails, so a choice whose other
+side is `null` says the same thing at more length. `--fix` rewrites the choice as a conditional
+value.
 
 Finding:
 
-```text
-. label = if name.length then name else null
+```brix
+(let label (if-expr (. name length) name null))
 ```
 
 Fix:
 
-```text
-. label = name if name.length
+```brix
+(let label (only-if name (if (. name length))))
 ```
 
 ### `style/no-unused-catch-optional`
@@ -293,72 +304,81 @@ consume it explicitly instead. Ignore only in a focused parser or linter fixture
 A constructor that assigns a property with `=` first builds the property's default and then
 discards it. When that default constructs an object, the waste is real, and if the object owns an
 Arena or another native resource that nothing releases, it leaks. Initialize the property with
-`..` in the constructor instead: a `..` initializer replaces the default, so the default is never
-built.
+a `lazy` binding in the constructor instead: a lazy binding replaces the default, so the default is
+never built.
 
 An `actionable` finding is an assignment in the constructor's leading run of such assignments, to a
 property without an explicit initializer, whose value reads only constructor parameters and
 properties the body does not assign; `--fix` applies it. A `review` finding's value depends on
 earlier statements, follows other statements, calls a method of the object, reads a name that is
 also a getter or lazy property, replaces an explicit initializer, or targets a property with a
-setter or an observing `when` or `whenever` rule. A `..` initializer runs before the constructor
+setter or an observing `when` or `whenever` rule. A lazy binding runs before the constructor
 body and resolves names as properties first, so move the value there only when it can be computed
 from the parameters alone; otherwise restructure the constructor or declare a cheap or optional
 default.
 
 Finding:
 
-```text
-+ frames TransformFrames
-
-────────────────────
-+ This
-    - document
-
-frames = TransformFrames(document)
+```brix
+(prop + frames TransformFrames)
+(fn-do + This _
+  (param document _)
+  (= frames (call TransformFrames document))
+)
 ```
 
 Fix:
 
-```text
-.. frames = TransformFrames(document)
+```brix
+(prop + frames TransformFrames)
+(fn-do + This _
+  (param document _)
+  (lazy frames (call TransformFrames document))
+)
 ```
 
 ### `style/prefer-decision-table`
 
-Two or more `=?` lines that each return a value, followed directly by `=`, usually spell one
-decision as a series of returns. Decide with YS-02 in `agent-brix-style.md`: when the lines choose
-the function's result, write one `match` on their shared subject or one bare `|?`/`??` table. Keep
+Two or more `return-if` forms that each return a value, followed directly by `return`, usually
+spell one decision as a series of returns. Decide with YS-02 in `agent-brix-style.md`: when they
+choose the function's result, write one `match` on their shared subject or one decision table. Keep
 them when they are early exits ahead of real work. The rule skips functions that
 `style/prefer-expression-function` reports, since that rule's fix already makes the chain one
 match.
 
 Finding:
 
-```text
-record(count)
-=? "empty" if count == 0
-=? "low" if count < 3
-= "ready"
+```brix
+(call record count)
+(return-if "empty" (if (== count 0)))
+(return-if "low" (if (< count 3)))
+(return "ready")
 ```
 
 Fix:
 
-```text
-record(count)
-= match count
-    |= 0
-        "empty"
-    |? it < 3
-        "low"
-    ??
-        "ready"
+```brix
+(call record count)
+(return
+  (match count
+    (case= 0
+      "empty"
+    )
+    (case? (< it 3)
+      "low"
+    )
+    (default
+      "ready"
+    )
+  )
+)
 ```
 
 ### `style/prefer-expression-function`
 
-Remove `do` and explicit returns when the function selects a value. Put assertions first, the result
-expression next, and dependencies below as `..` lazies. Convert unless one of these holds:
+Write the function with `fn-expr`, without explicit returns, when it selects a value. Put assertions
+first, the result expression next, and dependencies after it as lazies in its `where`. Convert
+unless one of these holds:
 
 - The function's value is the result of an effect, such as a load, save, send, or write, or of
   buffer or cursor work. The linter cannot see effects, so check for one in every `review` finding.
@@ -376,20 +396,18 @@ inspection.
 
 Finding:
 
-```text
-━━━━━━━━━━━━━━━━━━━━
-+ do answer
-
-= 42
+```brix
+(fn-do + answer _
+  (return 42)
+)
 ```
 
 Fix:
 
-```text
-━━━━━━━━━━━━━━━━━━━━
-+ answer
-
-42
+```brix
+(fn-expr + answer _
+  42
+)
 ```
 
 ### `style/prefer-map-literal`
@@ -401,54 +419,70 @@ assignments that mutate an already constructed map.
 
 Finding:
 
-```text
-. item = Map'String'JSON()
-    - ("stableKey", mapping.stable-key as JSON)
-    - ("disabled", mapping.disabled as JSON)
-    - ("key", key)
+```brix
+(let item
+  (call (of Map String JSON)
+    (block
+      (arg (tuple "stableKey" (as (. mapping stable-key) JSON)))
+      (arg (tuple "disabled" (as (. mapping disabled) JSON)))
+      (arg (tuple "key" key))
+    )
+  )
+)
 ```
 
 Fix:
 
-```text
-. item = Map'String'JSON
-    • "stableKey" = mapping.stable-key as JSON
-    • "disabled" = mapping.disabled as JSON
-    • "key" = key
+```brix
+(let item
+  (call (of Map String JSON)
+    (block
+      (entry "stableKey" (as (. mapping stable-key) JSON))
+      (entry "disabled" (as (. mapping disabled) JSON))
+      (entry "key" key)
+    )
+  )
+)
 ```
 
 ### `style/prefer-optional-match`
 
-For an `actionable` finding, replace `match` with `match?` and remove the terminal `?? null` arm. For
-a `review` finding, first prove that the explicit fallback does not carry distinct `Result`, error,
-or null-only semantics. Keep the original form if that proof fails.
+For an `actionable` finding, replace `match` with `match?` and remove the terminal `(default null)`
+arm. For a `review` finding, first prove that the explicit fallback does not carry distinct
+`Result`, error, or null-only semantics. Keep the original form if that proof fails.
 
 Finding:
 
-```text
-match value
-    | text String
-        text
-    ??
-        null
+```brix
+(match value
+  (case (: text String)
+    text
+  )
+  (default
+    null
+  )
+)
 ```
 
 Fix:
 
-```text
-match? value
-    | text String
-        text
+```brix
+(match? value
+  (case (: text String)
+    text
+  )
+)
 ```
 
 ### `style/prefer-quantifier`
 
-Replace a loop that only searches, a `for` whose single statement is `=? true if …` followed by
-`= false`, with `some(items) • where …`. For `=? false if …` followed by `= true`, use
-`all(items) • where …` and negate the condition. Read the item as `each`; both quantifiers come from
-`/stream/aggregate`. Write `!(some(items) • where !p)` as `all(items) • where p`, and
-`!(all(items) • where !p)` as `some(items) • where p`. A loop that compares two lists element by
-element is `left == right`.
+Replace a loop that only searches, a `for` whose single statement is `(return-if true (if …))`
+followed by `(return false)`, with `(call some items (:where …))`. For `(return-if false (if …))`
+followed by `(return true)`, use `(call all items (:where …))` and negate the condition. Read the
+item as `each`; both quantifiers come from `/stream/aggregate`. Write
+`(not (call some items (:where (not p))))` as `(call all items (:where p))`, and
+`(not (call all items (:where (not p))))` as `(call some items (:where p))`. A loop that compares
+two lists element by element is `(== left right)`.
 
 The finding is `actionable` when the module already imports `/stream/aggregate` and the loop binds
 one plain name. Otherwise it is `review`: keep the loop where the module cannot import
@@ -457,16 +491,17 @@ effect that a predicate would hide (YS-10).
 
 Finding:
 
-```text
-for item in items
-    =? true if item.is-open
-= false
+```brix
+(for (in item items)
+  (return-if true (if (. item is-open)))
+)
+(return false)
 ```
 
 Fix:
 
-```text
-= some of items where each.is-open
+```brix
+(return (call some items (:where (. each is-open))))
 ```
 
 ### `style/prefer-shorthand`
@@ -478,76 +513,82 @@ would change which style wins.
 
 Finding:
 
-```text
-<Box
-    background-color = black
+```brix
+(<> Box
+  (= background-color black)
+)
 ```
 
 Fix after verifying the visible shorthand and precedence:
 
-```text
-<Box • bg:black
+```brix
+(<> Box (• bg black))
 ```
 
 ### `style/prefer-text-template`
 
 The rule reports a function that builds its text by appending to a string, by appending lines to a
-`[String]` and joining them, or by returning an interpolated string of 80 or more characters, or
-one holding `\n`, from a body of only locals. Under YS-04 in `agent-brix-style.md`, write it as a
-text body: the text is the body, and its values sit below the `════════════════════` boundary as
-`..` lazies. Write optional text as a lazy that falls back to `""`, and repeated lines as
-`"\n".join(item-line(each) in items)` with a smaller template for each line. Keep the
-accumulator for character-level work such as escaping, encoding, and parsing, and keep `do` where
-an effect or eager snapshot must run in order (YS-10). The rule takes precedence over
+`(list String)` and joining them, or by returning an interpolated string of 80 or more characters,
+or one holding `\n`, from a body of only locals. Under YS-04 in `agent-brix-style.md`, write it as a
+text body: the text is the body, a `paragraph` form, and its values are lazies in its `where`. Write
+optional text as a lazy that falls back to `""`, and repeated lines as
+`(call (. "\n" join) (in (call item-line each) items))` with a smaller template for each line. Keep
+the accumulator for character-level work such as escaping, encoding, and parsing, and keep `fn-do`
+where an effect or eager snapshot must run in order (YS-10). The rule takes precedence over
 `style/prefer-expression-function` for the functions it reports.
 
 Finding:
 
-```text
-_ do inherited-style-css String
-
-. size = $font-size
-. family = $font-family
-= ":root { --brix-font-size: ${size}px; --brix-font-family: $family; font: ${size}px $family }"
+```brix
+(fn-do _ inherited-style-css String
+  (let size $font-size)
+  (let family $font-family)
+  (return (str ":root { --brix-font-size: " size "px; --brix-font-family: " family "; font: " size "px " family " }"))
+)
 ```
 
 Fix:
 
-```text
-_ " inherited-style-css
-
-:root {
-    --brix-font-size: ${size}px;
-    --brix-font-family: $family;
-    font: ${size}px $family;
-}
-
-════════════════════
-.. size = $font-size
-.. family = $font-family
+```brix
+(fn-expr _ inherited-style-css _
+  (paragraph
+    ":root {"
+    (str "    --brix-font-size: " size "px;")
+    (str "    --brix-font-family: " family ";")
+    (str "    font: " size "px " family ";")
+    "}"
+  )
+  (where
+    (lazy size $font-size)
+    (lazy family $font-family)
+  )
+)
 ```
 
 ### `tui/prefer-shortcut-node`
 
-Replace raw `key-press` or `key-input` command dispatch with a declarative `<Shortcut>` when a
+Replace raw `key-press` or `key-input` command dispatch with a declarative `(<> Shortcut …)` when a
 compatible shortcut exists. Preserve focus and modal eligibility, cancellation, propagation,
 repeat and sequence behavior, and handler order. Keep the raw handler for text editing, low-level
 controls, raw terminal events, key repeats or sequences, cancellation-only behavior, or event data
-that `<Shortcut>` cannot represent.
+that a shortcut cannot represent.
 
 Finding:
 
-```text
-for event on key-press
-    if event.key == Key.escape
-        close()
-        event.cancel()
+```brix
+(for (on event key-press)
+  (if (== (. event key) (. Key escape))
+    (call close)
+    (call (. event cancel))
+  )
+)
 ```
 
 Fix when the handler is an ordinary command:
 
-```text
-<Shortcut "Close"
-    key = .escape
-    action = => do close()
+```brix
+(<> Shortcut (text: "Close")
+  (= key .escape)
+  (= action (=> () :do (call close)))
+)
 ```

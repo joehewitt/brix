@@ -11,7 +11,7 @@ that compile and run them, and `bin/brix bench` runs them. A folder can keep its
 defines the rest. Each benchmark is a normal `.bx` program in a suite directory. Every source file
 starts with benchmark metadata in comments:
 
-```text
+```brix
 ; benchmark.meta description: Exercises simple named stream captures over repeated rows.
 ; benchmark.meta timing: recommended
 ; benchmark.meta profiles: stream,compile-timing

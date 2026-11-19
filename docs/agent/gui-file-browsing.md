@@ -23,13 +23,15 @@ A view never creates its `FileTree`. The application creates one with `use` and 
 view that should show that folder. The app runs where main's statements end, and the `use` closes
 the tree, which stops its watcher, once the app quits.
 
-```text
-. files = use FileTree(Path(root, 0))
-
-<App
-    <Window
-        <FileTreeBox • flex:1
-            files = files
+```brix
+(let files (use (call FileTree (call Path root 0))))
+(<> App
+  (<> Window
+    (<> FileTreeBox (• flex 1)
+      (= files files)
+    )
+  )
+)
 ```
 
 Because several views can show one tree, everything a view asks the tree to keep is counted:
@@ -55,35 +57,38 @@ tree; the palette uses it.
 Each view works with only `files` set. A `FileView` has its own `FileSession` unless one is passed
 in, so a single view reports through `view.session`:
 
-```text
-<FileTreeBox tree • flex:1
-    files = files
-
-for node on tree.session.opened
-    open-document(node.path)
-
-for message on tree.session.failed
-    toaster.post(message)
+```brix
+(<> FileTreeBox (id: tree) (• flex 1)
+  (= files files)
+)
+(for (on node (. tree session opened))
+  (call open-document (. node path))
+)
+(for (on message (. tree session failed))
+  (call (. toaster post) message)
+)
 ```
 
 Views that should act as one browser share a session as well as a tree:
 
-```text
-+ session := FileSession()
+```brix
+(prop + session _ (:= (call FileSession)))
 
-<FileTreeBox • w:260
-    files = files
-    session = session
-<FileColumnTree • flex:1
-    files = files
-    session = session
+(<> FileTreeBox (• w 260)
+  (= files files)
+  (= session session)
+)
+(<> FileColumnTree (• flex 1)
+  (= files files)
+  (= session session)
+)
 ```
 
 - `session.current` is the selected item. A view sets it when the user selects a row, and every
   view highlights it whenever it changes, including a view mounted later. Setting it does not
   scroll or focus a view.
-- `session.revealed <- node` makes `node` current and asks every view on the session to show it
-  and take focus.
+- `(<- (. session revealed) node)` makes `node` current and asks every view on the session to show
+  it and take focus.
 - `session.opened` publishes an item a view activated.
 - `session.failed` publishes a message when a rename, create, move, or trash fails.
 - `session.expanded` lists the expanded folders as paths relative to the root. `FileTreeBox`

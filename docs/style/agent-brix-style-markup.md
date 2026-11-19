@@ -13,19 +13,22 @@ behavior, fix the responsible component, compiler feature, or stdlib API instead
 
 Incorrect:
 
-```text
-content.clear()
-for row in rows
-    content += Label(row.name)
-content.arrange-bounds(bounds)
+```brix
+(call (. content clear))
+(for (in row rows)
+  (+= content (call Label (. row name)))
+)
+(call (. content arrange-bounds) bounds)
 ```
 
 Correct:
 
-```text
-<Box
-    for row in #rows keyed by row.id
-        <Label row.name
+```brix
+(<> Box
+  (for (in row #rows (keyed-by (. row id)))
+    (<> Label (text: (. row name)))
+  )
+)
 ```
 
 ## YM-02: Bind Markup To Reactive State
@@ -36,16 +39,17 @@ assignments whose only purpose is to copy state into a node.
 
 Incorrect:
 
-```text
-status-label.text = status-message
-request-animation-frame(this.sync-status)
+```brix
+(= (. status-label text) status-message)
+(call request-animation-frame (. this sync-status))
 ```
 
 Correct:
 
-```text
-<Label status-label
-    text = #status-message
+```brix
+(<> Label (id: status-label)
+  (= text #status-message)
+)
 ```
 
 ## YM-03: Keep Interaction With Its Owner
@@ -56,47 +60,54 @@ through the tree to mutate application state directly.
 
 Incorrect:
 
-```text
-<Row
-    item = item
-    for event on click
-        root.selected-item = item
-        root.open-selection()
+```brix
+(<> Row
+  (= item item)
+  (for (on event click)
+    (= (. root selected-item) item)
+    (call (. root open-selection))
+  )
+)
 ```
 
 Correct:
 
-```text
-<Box
-    for item in #items keyed by item.id
-        <Row
-            item = item
-            for event on click
-                select(item)
-                event.cancel()
+```brix
+(<> Box
+  (for (in item #items (keyed-by (. item id)))
+    (<> Row
+      (= item item)
+      (for (on event click)
+        (call select item)
+        (call (. event cancel))
+      )
+    )
+  )
+)
 ```
 
 ## YM-04: Prefer Style Shorthands
 
-Put supported style shorthands after `•`. Use long property assignments inside shorthand or style
-definitions and for properties that have no shorthand. The Brix style-review procedure covers the
-mechanically detectable cases.
+Write supported style shorthands as `(• name …)` forms. Use long property assignments inside
+shorthand or style definitions and for properties that have no shorthand. The Brix style-review
+procedure covers the mechanically detectable cases.
 
 Incorrect:
 
-```text
-<Box
-    display = Display.flex
-    flex-direction = FlexDirection.column
-    flex = 1
-    background-color = black
-    padding = 1
+```brix
+(<> Box
+  (= display (. Display flex))
+  (= flex-direction (. FlexDirection column))
+  (= flex 1)
+  (= background-color black)
+  (= padding 1)
+)
 ```
 
 Correct:
 
-```text
-<Box • flex-col flex:1 bg:black p:1
+```brix
+(<> Box (• flex-col) (• flex 1) (• bg black) (• p 1))
 ```
 
 Common shorthand families include:
@@ -119,14 +130,14 @@ sidecars, or core-style implementation helpers.
 
 Incorrect:
 
-```text
-background-color = if focus-manager.focused-node == this then blue else black
+```brix
+(= background-color (if-expr (== (. focus-manager focused-node) this) blue black))
 ```
 
 Correct:
 
-```text
-background-color = if #is-focused then blue else black
+```brix
+(= background-color (if-expr #is-focused blue black))
 ```
 
 ## Related Rules

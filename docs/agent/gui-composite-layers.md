@@ -5,14 +5,16 @@ the hit test. Composite layers change that order by name. There is no numeric z-
 
 ## Declaring layers
 
-`Layer` is a non-rendering markup node. A box declares layers by containing `<Layer>` children.
+`Layer` is a non-rendering markup node. A box declares layers by containing `(<> Layer …)` children.
 Layers nest, and at most one should be marked `is-default`.
 
-```text
-<ListView
-    <Layer "rows"
-        is-default = true
-    <Layer "indicators"
+```brix
+(<> ListView
+  (<> Layer (text: "rows")
+    (= is-default true)
+  )
+  (<> Layer (text: "indicators"))
+)
 ```
 
 Every `Window` owns the root of the composite tree. It declares these layers, in this order:
@@ -34,9 +36,10 @@ The non-inherited `layer` style moves a box, with its subtree, into a named laye
 upward from the box's parent: the nearest ancestor that declares a layer with that name wins. An
 unknown name leaves the box where it was.
 
-```text
-• Resizer
-    layer = "handles"
+```brix
+(rule Resizer
+  (= layer "handles")
+)
 ```
 
 A box without `layer` stays with its parent. The unassigned children of a box with a default layer

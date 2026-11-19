@@ -200,10 +200,10 @@ fence.
 - Leaving out the `output` fence of a case that prints, which then fails because stdout is not
   empty.
 - Closing a four-backtick fence with three.
-- Assigning a script-level variable from inside a `do new` task. Task bodies capture a by-value
-  snapshot of script locals (unlike ordinary closures, which share), so the write mutates the
-  task's private copy — live/style actions re-evaluate against the unchanged main-task value and
-  appear stale. Drive all script-variable updates from the main task, and use a `Semaphore` plus
-  `do new` blocks only for checkpoint/observation, as in `runStyleAuthoring.test.md`. (Lazy `..`
-  script variables first touched inside a task now materialize at the spawn site; see the
-  "Capture scope" tests in `runTasks.test.md`.)
+- Assigning a script-level variable from inside a `(do-new …)` task. Task bodies capture a by-value
+  snapshot of script locals (unlike ordinary closures, which share), so the write mutates the task's
+  private copy — live/style actions re-evaluate against the unchanged main-task value and appear
+  stale. Drive all script-variable updates from the main task, and use a `Semaphore` plus
+  `(do-new …)` blocks only for checkpoint/observation, as in `runStyleAuthoring.test.md`. (`lazy`
+  script variables first touched inside a task now materialize at the spawn site; see the "Capture
+  scope" tests in `runTasks.test.md`.)
