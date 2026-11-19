@@ -372,19 +372,11 @@
     (call graphic-begin-update)
   )
   (fn-do + checkpoint _
-    (call ensure-vector-style-root)
-    (let batch markup-batch-root)
-    (if batch
-      (call (. batch markup-batch-queue checkpoint))
-    )
+    (call settle-markup-batch)
     (call graphic-checkpoint)
   )
   (fn-do + end-update _
-    (call ensure-vector-style-root)
-    (let batch markup-batch-root)
-    (if batch
-      (call (. batch markup-batch-queue checkpoint))
-    )
+    (call settle-markup-batch)
     (call graphic-end-update)
   )
   (fn-do + next-frame _
@@ -958,7 +950,7 @@
     )
     (return (!= vector-geometry-table null))
   )
-  (fn-do _ ensure-vector-style-root _
+  (fn-do _ adopt-vector-style-root _
     (let owner host)
     (if (and owner (not (. owner markup-batch-root)))
       (call markup-adopt owner null owner)
@@ -966,10 +958,32 @@
     (if (not markup-batch-root)
       (call markup-adopt this null this)
     )
-    (let root markup-batch-root)
-    (if root
-      (call (. root markup-batch-queue checkpoint))
+  )
+  (fn-do _ settle-markup-batch _
+    (call adopt-vector-style-root)
+    (let batch markup-batch-root)
+    (if batch
+      (call (. batch markup-batch-queue checkpoint))
     )
+  )
+  (fn-do _ ensure-vector-style-root _
+    (call adopt-vector-style-root)
+    (let batch markup-batch-root)
+    (if batch
+      (if (call owns-markup-batch batch)
+        (call (. batch markup-batch-queue checkpoint))
+      )
+    )
+  )
+  (fn-do _ owns-markup-batch Bool
+    (param batch MarkupRootElement)
+    (let top (call vector-root))
+    (return-if true (if (== (as batch Pointer) (as top Pointer))))
+    (let owner (. top host))
+    (if owner
+      (return (== (as batch Pointer) (as owner Pointer)))
+    )
+    (return false)
   )
 )
 
