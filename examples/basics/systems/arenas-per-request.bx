@@ -1,0 +1,28 @@
+; Arenas: memory the collector never sees, freed all at once. Each request does
+; its scratch work in arrays from one arena, and `reset` frees all of them when
+; the request is done, keeping the memory for the next one. The collector has
+; nothing of it to scan or free, however many requests come.
+(import /core/arena)
+(import /stream/aggregate)
+(blank)
+
+(main
+  (let arena (use (call Arena)))
+  (let requests
+    (list
+      "the cat sat on the mat"
+      "reset frees it all at once"
+      "an arena keeps scratch memory away from the collector"
+    )
+  )
+  (for (in text requests)
+    (let words (call List (call (. text split) " ")))
+    (let lengths (call (of Array I64) arena (. words length)))
+    (for (in i (..< 0 (. words length)))
+      (= ([] lengths i) (. ([] words i) length))
+    )
+    (print (str (. words length) " words, the longest " (call max lengths) " letters, " (. arena active-bytes) " bytes in the arena"))
+    (call (. arena reset))
+  )
+  (print (str "after the last reset: " (. arena active-bytes) " bytes in use"))
+)

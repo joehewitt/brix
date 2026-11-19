@@ -1,0 +1,45 @@
+; Stack values: a `@stack` property is given for a block with `do-with`, and
+; everything the block calls reads it, with no parameter passed down. This one has
+; no default, so every call path that reaches a read must give it: without the
+; `do-with` in `main`, the build fails and names the calls that reach `log`.
+(prop + request-id String @stack)
+(blank)
+
+(main
+  (for (in (tuple id path) (list (tuple "r-1" "/cart") (tuple "r-2" "/checkout")))
+    (do-with request-id id
+      (call handle path)
+    )
+  )
+)
+
+(fn-do + handle _
+  (param path String)
+  (call log (str "GET " path))
+  (if (== path "/checkout")
+    (call charge 42)
+  )
+  ; A task keeps the value it was started under, so its lines carry the same id.
+  (let mailer
+    (do-new
+      (call log "receipt sent")
+    )
+  )
+  (call (. mailer wait))
+  (call log "done")
+)
+
+(fn-do + charge _
+  (param amount Int)
+  ; An inner `do-with` gives the calls below it a value of their own, and the
+  ; old one is back once it ends.
+  (do-with request-id (str request-id ".payment")
+    (call log (str "charging " amount " euros"))
+  )
+  (call log "charged")
+)
+
+(fn-do + log _
+  (param text String)
+  (print (str "[" request-id "] " text))
+)
