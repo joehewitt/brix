@@ -101,9 +101,12 @@ value, and intentional golden input where physical line length is what the test 
 The core pass's `--fix` rewrites a long row only where the rewrite keeps the program's meaning and
 every row it makes fits:
 
-- a call that is the whole value of its row gets its arguments one to a row;
+- a call that is the whole value of its row, a thrown value or a named argument's value included,
+  gets its arguments one to a row, its named arguments among them;
 - a quoted text, or the last operand of `++` when it is one, becomes a text block;
-- `(return-if value (if condition))` becomes `(if condition (return value))`;
+- `(return-if value (if condition))` becomes `(if condition (return value))`, and
+  `(throw value (if condition))` becomes `(if condition (throw value))` in a function body, a
+  branch, a loop or a `:do` function value;
 - an `if-expr` chain that compares one subject with `==` becomes a `match` of that subject, and
   another chain becomes a decision table, in a `let`, a lazy, a property or global declaration, a
   return, or an assignment to a local;
@@ -116,8 +119,10 @@ The fix leaves other assignments alone, such as those to a property, a setter, a
 indexed element or a markup attribute, where a decision table or a value below can change how the
 value is typed. It also leaves a row holding `(if-expr condition value null)`, which
 `style/no-redundant-null-fallback` rewrites first, and rows that would start a new run nested past
-the `layout/depth` limit. Fix what remains by hand: name parts of a long condition,
-arithmetic or list with lazies, or move code into a function.
+the `layout/depth` limit. A `(list …)` literal always shows on one row, and the fix leaves it
+alone: `(block (item …))` rows make a generator whose items keep their own types, not a list.
+Fix what remains by hand: name parts of a long condition, arithmetic or list with lazies, or move
+code into a function.
 
 Finding:
 
