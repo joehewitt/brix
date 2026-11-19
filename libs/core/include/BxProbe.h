@@ -20,6 +20,7 @@ extern "C" size_t brixProbeFlushThreshold();
 extern "C" uint64_t brixProbeFlushIntervalNs();
 extern "C" void brixProbePublish(const void* data, size_t size, uint64_t nowNs);
 extern "C" BRIX_WITHOUT_GC uint64_t brixProbeMonotonicNowNs();
+extern "C" BRIX_WITHOUT_GC const char* brixProbeSetting(const char* name);
 extern "C" BRIX_WITHOUT_GC uint64_t brixProbeNowNs();
 extern "C" unsigned char brixProbeTracing;
 extern "C" BRIX_WITHOUT_GC void brixProbeCounterSetup(size_t slotCount);

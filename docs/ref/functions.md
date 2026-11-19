@@ -1086,3 +1086,8 @@ The standard library declares `random` in `/math`. Every draw from the system go
 doors: `random-seed`, which also seeds `Random()`, the draws of `random` and `random(min, max)`,
 and `random-bytes` in `/crypto`. A `Random` made from a seed draws without them. `FakeRandom`, in
 `/math/fake-random`, is a fake for `random` that draws what `Random` does from its seed.
+
+`environment`, in `/os/env`, has the reads and writes of environment variables as its doors, `env`,
+`set-env` and `environment`, and `executable-path` in `/os/path`. Probes read their own settings
+outside it. `FakeEnvironment`, in `/os/fake-environment`, starts with no variables unless it is
+given some, and keeps what is set under it.

@@ -412,6 +412,11 @@ brixProbeProfileTimerStackPop(uint16_t id, uint64_t* startNs) {
     return true;
 }
 
+extern "C" const char*
+brixProbeSetting(const char* name) {
+    return getenv(name);
+}
+
 extern "C" uint64_t
 brixProbeNowNs() {
     struct timespec t;

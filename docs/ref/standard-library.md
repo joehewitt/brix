@@ -159,7 +159,11 @@ Files, processes and the environment. There is no `/os` module; import each one.
 - **Files and paths:** `/os/path` (`Path`, with joining by `/`, file information, directory
   listings and change notifications), `/os/file` (`File`, standard input and output, and reading
   and writing whole files), `/os/file-tree` and `/os/file-session` (watched trees of files).
-- **The environment:** `/os/env` (environment variables and the working directory), `/os/cli`
+- **The environment:** `/os/env` (environment variables and the working directory, and the
+  `environment` effect, whose doors are `env`, `set-env`, `environment` and `/os/path`'s
+  `executable-path`), `/os/fake-environment` (`FakeEnvironment`, a fake for `environment` that
+  starts with no variables; a process started under it gets only the variables it holds, so
+  `PATH` too must be set or passed), `/os/cli`
   (command lines: `CommandLine`, subcommands, flags, options and arguments), `/os/shell` (the
   login shell's environment), `/os/bundle` and `/os/app-support` (an app's bundle and its
   application support folder).

@@ -1,0 +1,50 @@
+(import /os/env)
+(import /os/fake-environment)
+(import /os/path)
+(import /test)
+
+(main
+  (call tests)
+)
+
+(fn-do + tests TestRender
+  (let cases (call TestCase "Fake Environment Reads"))
+  (call (. cases run) read-tests)
+  (= cases (call (. cases then) "Fake Environment Writes" write-tests))
+  (= cases (call (. cases then) "Fake Environment Given Variables" given-tests))
+  (return cases)
+)
+
+(fn-do + read-tests TestCase
+  (param t TestCase)
+  (do-with environment (call FakeEnvironment)
+    (call (. t expect) "a fake starts with no variables" true (== (call env "HOME") null))
+    (call (. t expect) "the environment it lists is empty" 0 (. (call environment) length))
+    (call (. t expect) "the executable path is the fake's" "/fake/bin/program" (str (call executable-path)))
+  )
+  (return t)
+)
+
+(fn-do + write-tests TestCase
+  (param t TestCase)
+  (let before (call env "BRIX_FAKE_ENVIRONMENT_CASE"))
+  (let fake (call FakeEnvironment))
+  (do-with environment fake
+    (call set-env "BRIX_FAKE_ENVIRONMENT_CASE" "set")
+    (call (. t expect) "a variable set under the fake reads back" "set" (?? (call env "BRIX_FAKE_ENVIRONMENT_CASE") ""))
+  )
+  (call (. t expect) "the fake keeps what was set" "set" (?? ([] (. fake variables) "BRIX_FAKE_ENVIRONMENT_CASE") ""))
+  (call (. t expect) "the real environment is untouched" true (== (call env "BRIX_FAKE_ENVIRONMENT_CASE") before))
+  (return t)
+)
+
+(fn-do + given-tests TestCase
+  (param t TestCase)
+  (let variables (call (of Map String String)))
+  (= ([] variables "HOME") "/fake/home")
+  (do-with environment (call FakeEnvironment variables (call Path "/fake/bin/tool" 0))
+    (call (. t expect) "a fake reads the variables it is given" "/fake/home" (?? (call env "HOME") ""))
+    (call (. t expect) "a fake gives the executable it is given" "/fake/bin/tool" (str (call executable-path)))
+  )
+  (return t)
+)
