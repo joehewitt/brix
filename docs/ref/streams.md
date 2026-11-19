@@ -481,7 +481,8 @@ not do what their names suggest elsewhere:
 - **`scan`** with a seed gives each running value after the seed, without the seed itself.
 - **Empty streams.** `reduce` without a seed, `min` and `max` give the item type's zero for an
   empty stream. `first` gives `null`.
-- **`buffer n`** gives groups of `n` items and drops a last group that is not full.
+- **`buffer n`** gives groups of `n` items and drops a last group that is not full. An `n` of zero
+  or less panics before it reads the stream.
 - **`contains`** gives a stream of one `Bool`, not a `Bool`.
 - **Memory.** `distinct`, `pairwise`, `sort` and `repeat` keep items as they go.
 
