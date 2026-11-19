@@ -1551,6 +1551,56 @@ b
 1, 2
 ```
 
+### Feeds written as the value of a local of a list type, or assigned to a local or a property of one, are converted to it.
+
+```brix
+(main
+  (let wide (list Float)
+    (block
+      (item 1)
+      (item 2)
+    )
+  )
+  (print (+ ([] wide 0) 0.5))
+  (= wide
+    (block
+      (item 3)
+      (item 4)
+    )
+  )
+  (print (+ ([] wide 1) 0.5))
+  (let holder (call Holder))
+  (= (. holder values)
+    (block
+      (item 5)
+      (item 6)
+    )
+  )
+  (print (+ ([] (. holder values) 0) 0.5))
+  (call (. holder reset))
+  (print (+ ([] (. holder values) 1) 0.5))
+)
+
+(type + Holder
+  (prop + values (list Float) (= (list 0.0)))
+  (fn-do + reset _
+    (= values
+      (block
+        (item 7)
+        (item 8)
+      )
+    )
+  )
+)
+```
+
+```output
+1.5
+4.5
+5.5
+8.5
+```
+
 ### A list written after `**` where a list of a type is wanted is a list of that type.
 
 ```brix

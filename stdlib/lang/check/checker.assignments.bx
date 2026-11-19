@@ -1,6 +1,7 @@
 (import ./binding)
 (import ./calls)
 (import ./checker)
+(import ./checker.comprehensions)
 (import ./checker.live-actions)
 (import ./checker.styles)
 (import ./checker.tables)
@@ -48,6 +49,7 @@
 (import /stream/sort)
 
 (type _ Assignments (facet-of Checker)
+  (sees Comprehensions)
   (sees LiveActions)
   (sees Styles)
   (sees Tables)
@@ -667,6 +669,9 @@
       )
     )
     (let target (call target-of lhs (!= op .eq-op)))
+    (if (== op .eq-op)
+      (call expect-feeds rhs target)
+    )
     (let primed (and (== op .eq-op) (call expect-arms rhs target)))
     (= arms-given no-type)
     (let written
@@ -890,7 +895,8 @@
     ; as (`expect-arms`). An event stored is taken once the property is known, as `store-event`
     ; says.
     (let armed (and (== op .eq-op) (call (. tree is-arms-syntax) (call (. tree arms-value) rhs))))
-    (let object-first (and (or (!= op .eq-op) (is ([] (. tree nodes) rhs) .node-symbol) armed) (!= object-syntax 0)))
+    (let fed (and (== op .eq-op) (!= (call (. tree written-feeds) rhs) 0)))
+    (let object-first (and (or (!= op .eq-op) (is ([] (. tree nodes) rhs) .node-symbol) armed fed) (!= object-syntax 0)))
     (let early (if-expr object-first (call infer-found object-syntax) (call Found no-type)))
     (if (and object-first (== op .eq-op) (call writes-machine id (. early type) name))
       (return invalid-type)
@@ -898,6 +904,9 @@
     (let own-receiver (if-expr (!= owner no-type) owner (. frame self-type)))
     (if armed
       (call expect-arms rhs (call stored-type (if-expr (!= object-syntax 0) (. early type) own-receiver) name))
+    )
+    (if fed
+      (call expect-feeds rhs (call stored-type (if-expr (!= object-syntax 0) (. early type) own-receiver) name))
     )
     (let assigned (call infer-found rhs (if-expr (== op .eq-op) (call (. (call Want) adding) .want-store) (call Want))))
     (let value (call stored-value rhs (. assigned type)))
