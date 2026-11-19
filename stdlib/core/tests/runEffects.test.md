@@ -950,3 +950,80 @@ x
 xy
 x
 ```
+
+### A do-with name that reaches an effect and an imported @stack global of the same name is an error naming both
+
+```brix compile-error
+(import ./world)
+(import ./weather)
+(blank)
+
+(main
+  (do-with world (call Stub)
+    (print 1)
+  )
+)
+
+(type + Stub)
+```
+
+```brix file=world.bx
+(effect + world)
+```
+
+```brix file=weather.bx
+(prop + world _ @stack (= 1))
+```
+
+```output
+Exception: 'world' names more than one value a do-with can bind: the global in weather, the effect in world. Import only the one meant.
+<no file:7>
+      (do-with world (call Stub)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### A module's own global hides an imported effect of the same name from a do-with, and the error says so
+
+```brix compile-error
+(import ./world)
+(blank)
+(prop _ world _ @stack (= 1))
+
+(main
+  (do-with world (call Stub)
+    (print 1)
+  )
+)
+
+(type + Stub)
+```
+
+```brix file=world.bx
+(effect + world)
+```
+
+```output
+Exception: This module's global 'world' hides the effect in world. Rename the global to bind the effect.
+<no file:7>
+      (do-with world (call Stub)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### A do-with binds only a @stack global or an effect
+
+```brix compile-error
+(prop _ scale Int (= 1))
+
+(main
+  (do-with scale 2
+    (print scale)
+  )
+)
+```
+
+```output
+Exception: 'scale' is a global that is not @stack, so a do-with cannot bind it
+<no file:5>
+      (do-with scale 2
+      ^^^^^^^^^^^^^^^
+```
