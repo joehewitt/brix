@@ -13,20 +13,27 @@ ROLLOVER_RECORDS = 120
 RECORD_LIMIT = 1000000
 
 TAIL_SOURCE = '''
-for producer-id in 0 .. < %d
-    do new thread
-        // worker tail $producer-id
-
--- "done"
+(main
+  (for (in producer-id (..< 0 %d))
+    (do-new-thread
+      (probe-log _ (text: "worker tail " producer-id))
+    )
+  )
+  (print "done")
+)
 ''' % TAIL_PRODUCERS
 
 ROLLOVER_SOURCE = '''
-for producer-id in 0 .. < %d
-    do new thread
-        for i in 0 .. < %d
-            // producer $producer-id item $i
-
--- "done"
+(main
+  (for (in producer-id (..< 0 %d))
+    (do-new-thread
+      (for (in i (..< 0 %d))
+        (probe-log _ (text: "producer " producer-id " item " i))
+      )
+    )
+  )
+  (print "done")
+)
 ''' % (ROLLOVER_PRODUCERS, ROLLOVER_RECORDS)
 
 
