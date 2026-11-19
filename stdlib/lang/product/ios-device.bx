@@ -47,7 +47,22 @@
   (throw (call Error (str "The provisioning profile " (. profile path) " grants no entitlements")) (if (not extracted)))
   (call write-if-changed entitlements extracted)
   (if (not (. profile is-exact))
-    (call run-tool plutil (list "-replace" "application-identifier" "-string" (str (. profile team) "." bundle-id) (as entitlements String)))
+    (call run-tool
+      (block
+        (arg plutil)
+        (arg
+          (call List
+            (block
+              (item "-replace")
+              (item "application-identifier")
+              (item "-string")
+              (item (str (. profile team) "." bundle-id))
+              (item (as entitlements String))
+            )
+          )
+        )
+      )
+    )
   )
   (let identity (?? (call env "BRIX_SIGNING_IDENTITY") ""))
   (call codesign-bundle bundle (if-expr (== identity "") "Apple Development" identity) entitlements)
@@ -127,7 +142,20 @@
 (fn-expr + device-launch-command (list String)
   (param device String)
   (param bundle-id String)
-  (list xcrun "devicectl" "device" "process" "launch" "--console" "--terminate-existing" "--device" device bundle-id)
+  (call List
+    (block
+      (item xcrun)
+      (item "devicectl")
+      (item "device")
+      (item "process")
+      (item "launch")
+      (item "--console")
+      (item "--terminate-existing")
+      (item "--device")
+      (item device)
+      (item bundle-id)
+    )
+  )
 )
 
 (fn-do _ find-provisioning-profile ProvisioningProfile (?! Error)
@@ -164,7 +192,12 @@
 )
 
 (fn-expr _ profile-directories (list Path)
-  (list (/ home "Library/MobileDevice/Provisioning Profiles") (/ home "Library/Developer/Xcode/UserData/Provisioning Profiles"))
+  (call List
+    (block
+      (item (/ home "Library/MobileDevice/Provisioning Profiles"))
+      (item (/ home "Library/Developer/Xcode/UserData/Provisioning Profiles"))
+    )
+  )
   (where
     (lazy home (call Path (?? (call env "HOME") "")))
   )

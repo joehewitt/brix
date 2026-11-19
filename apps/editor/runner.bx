@@ -139,7 +139,27 @@
     (call (. caches make-directories))
     (let script (/ caches "install.py"))
     (call note (str "Downloading " runner-installer-url))
-    (let fetched (call (. session execute) "/usr/bin/curl" (list "--fail" "--silent" "--show-error" "--location" "--output" (str script) runner-installer-url) variables))
+    (let fetched
+      (call (. session execute)
+        (block
+          (arg "/usr/bin/curl")
+          (arg
+            (call List
+              (block
+                (item "--fail")
+                (item "--silent")
+                (item "--show-error")
+                (item "--location")
+                (item "--output")
+                (item (str script))
+                (item runner-installer-url)
+              )
+            )
+          )
+          (arg variables)
+        )
+      )
+    )
     (if (or (== fetched null) is-stop-requested)
       (call halt)
       (return)

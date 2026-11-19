@@ -33,7 +33,16 @@
   (let resources (/ contents "Resources"))
   (let icon (/ resources "AppIcon.icns"))
   (let signature (/ contents "_CodeSignature"))
-  (let kept (list String) (list (as contents String) (as info String) (as macos String) (as inner String) (as signature String) (as (/ signature "CodeResources") String)))
+  (let kept (list String)
+    (block
+      (item (as contents String))
+      (item (as info String))
+      (item (as macos String))
+      (item (as inner String))
+      (item (as signature String))
+      (item (as (/ signature "CodeResources") String))
+    )
+  )
   (if (. product icon)
     (+= kept (as resources String))
     (+= kept (as icon String))
@@ -207,7 +216,26 @@
   (param source Path)
   (param target Path)
   (param pixels Int)
-  (call run-tool sips (list "-s" "format" "png" "-z" (str pixels) (str pixels) (as source String) "--out" (as target String)))
+  (call run-tool
+    (block
+      (arg sips)
+      (arg
+        (call List
+          (block
+            (item "-s")
+            (item "format")
+            (item "png")
+            (item "-z")
+            (item (str pixels))
+            (item (str pixels))
+            (item (as source String))
+            (item "--out")
+            (item (as target String))
+          )
+        )
+      )
+    )
+  )
 )
 
 (fn-do _ install-file Bool (?! Error)

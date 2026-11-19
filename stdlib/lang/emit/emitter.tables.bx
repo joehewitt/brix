@@ -811,7 +811,21 @@
         (+= pending (call num-cast site (. state owner) u64-layout pointer-layout))
         (+= pending (. state incarnation))
         (let generation (call call-runtime .runtime-arena-generation site mark u64-layout))
-        (= words (list zero (. state identity) (. bounds start) (. bounds length) width (. state mutation) (. state owner) (. state incarnation) generation))
+        (= words
+          (call List
+            (block
+              (item zero)
+              (item (. state identity))
+              (item (. bounds start))
+              (item (. bounds length))
+              (item width)
+              (item (. state mutation))
+              (item (. state owner))
+              (item (. state incarnation))
+              (item generation)
+            )
+          )
+        )
       )
       (else
         (call refuse .refused-expression site)
@@ -3518,7 +3532,16 @@
     (param row-layout LayoutId)
     ; The text `.layout` gives for a table of struct rows that grows in an arena: a region for each
     ; field's column.
-    (let lines (list (str "Table'" (call type-runtime-name types row)) "storage arena-growable" "row-layout struct" "growth shared geometric"))
+    (let lines
+      (call List
+        (block
+          (item (str "Table'" (call type-runtime-name types row)))
+          (item "storage arena-growable")
+          (item "row-layout struct")
+          (item "growth shared geometric")
+        )
+      )
+    )
     (if (!= (call (. types intrinsic-of) row) .struct)
       (return (call (. "\n" join) lines))
     )

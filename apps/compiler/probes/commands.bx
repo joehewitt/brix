@@ -149,7 +149,20 @@
     (let table (call Table (list "records" "site" "fields" "location") (list true)))
     (for (in position (..< 0 (if-expr (< (. ranked length) 8) (. ranked length) 8)))
       (let site (!! ([] (. trace sites) ([] ranked position))))
-      (call (. table add) (list (str (call count-text (as (!! ([] busy ([] ranked position))) U64))) (call site-text trace site) (call (. ", " join) (call (. trace field-names) site)) (call (. trace location-of) site)))
+      (call (. table add)
+        (block
+          (arg
+            (call List
+              (block
+                (item (str (call count-text (as (!! ([] busy ([] ranked position))) U64))))
+                (item (call site-text trace site))
+                (item (call (. ", " join) (call (. trace field-names) site)))
+                (item (call (. trace location-of) site))
+              )
+            )
+          )
+        )
+      )
     )
     (for (in text (call (. table lines)))
       (call (. out line) (str "  " text))
@@ -272,7 +285,22 @@
       (call (. out record) (call site-json trace site records))
       (continue)
     )
-    (call (. table add) (list (str id) (call site-kind site) (call count-text (as records U64)) (call site-text trace site) (call (. ", " join) (call (. trace field-names) site)) (call (. trace location-of) site)))
+    (call (. table add)
+      (block
+        (arg
+          (call List
+            (block
+              (item (str id))
+              (item (call site-kind site))
+              (item (call count-text (as records U64)))
+              (item (call site-text trace site))
+              (item (call (. ", " join) (call (. trace field-names) site)))
+              (item (call (. trace location-of) site))
+            )
+          )
+        )
+      )
+    )
   )
   (if (. out is-text)
     (for (in text (call (. table lines)))
@@ -487,7 +515,24 @@
     (let item ([] summaries position))
     (let stats (. item stats))
     (let unended (if-expr (!= (. item unended) 0) (str " (+" (. item unended) " open)") ""))
-    (call (. table add) (list (. item label) (str (call count-text (as (. stats count) U64)) unended) (call nanoseconds-text (. stats sum)) (call nanoseconds-text (. stats mean)) (call nanoseconds-text (call (. stats percentile) 50.0)) (call nanoseconds-text (call (. stats percentile) 95.0)) (call nanoseconds-text (. stats max)) (. item location)))
+    (call (. table add)
+      (block
+        (arg
+          (call List
+            (block
+              (item (. item label))
+              (item (str (call count-text (as (. stats count) U64)) unended))
+              (item (call nanoseconds-text (. stats sum)))
+              (item (call nanoseconds-text (. stats mean)))
+              (item (call nanoseconds-text (call (. stats percentile) 50.0)))
+              (item (call nanoseconds-text (call (. stats percentile) 95.0)))
+              (item (call nanoseconds-text (. stats max)))
+              (item (. item location))
+            )
+          )
+        )
+      )
+    )
   )
   (return table)
 )
@@ -583,7 +628,20 @@
   (let table (call Table (list "total" "self" "count" "group") (list true true true)))
   (for (in position (call (. out page) (. kept length) 60))
     (let node ([] kept position))
-    (call (. table add) (list (call duration-text (. node total)) (call duration-text (. node own)) (call count-text (as (. node count) U64)) (str (* "  " (. node depth)) (. node label))))
+    (call (. table add)
+      (block
+        (arg
+          (call List
+            (block
+              (item (call duration-text (. node total)))
+              (item (call duration-text (. node own)))
+              (item (call count-text (as (. node count) U64)))
+              (item (str (* "  " (. node depth)) (. node label)))
+            )
+          )
+        )
+      )
+    )
   )
   (for (in text (call (. table lines)))
     (call (. out line) text)
@@ -927,7 +985,21 @@
   (let table (call Table (list "" "name" "a" "b" "change") (list false false true true true)))
   (for (in position (call (. out page) (. changes length) 30))
     (let change ([] changes position))
-    (call (. table add) (list (. change section) (. change name) (call change-value change (. change left)) (call change-value change (. change right)) (call change-text change)))
+    (call (. table add)
+      (block
+        (arg
+          (call List
+            (block
+              (item (. change section))
+              (item (. change name))
+              (item (call change-value change (. change left)))
+              (item (call change-value change (. change right)))
+              (item (call change-text change))
+            )
+          )
+        )
+      )
+    )
   )
   (for (in text (call (. table lines)))
     (call (. out line) text)
