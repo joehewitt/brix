@@ -8,86 +8,81 @@ the rule's tradeoff does not fit the test.
 ## YTEST-01: Use Declarative Tests For Independent Facts
 
 Use the declarative form when each assertion stands alone, setup fits in small lazy dependencies,
-and failure of one row should not prevent later rows from running. Each `expected, actual` row checks
-equality, and a bare `Bool` checks truth.
+and failure of one row should not prevent later rows from running. Each `(tuple expected actual)`
+row checks equality, and a bare `Bool` checks truth.
 
 Incorrect:
 
 ```text
-━━━━━━━━━━━━━━━━━━━━
-+ do tests TestRender
-
-. cases = TestCase("Rect")
-cases.run(rect-tests)
-= cases
+(fn-do + tests TestRender
+  (let cases (call TestCase "Rect"))
+  (call (. cases run) rect-tests)
+  (return cases)
+)
 ```
 
 Correct:
 
-```yumi
-/test
-/graphics/point
-/graphics/primitives
+```brix
+(import /test)
+(import /graphics/point)
+(import /graphics/primitives)
 
-tests()
+(main
+  (call tests)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ tests TestRender
-
-════════════════════
-test("Rect")
-
-Point(25, 40), Rect(10, 20, 30, 40).center
-60, Rect(10, 20, 30, 40).bottom
-true, Rect(10, 20, 30, 40).contains((20, 30))
+(fn-expr + tests TestRender
+  (header (call test "Rect"))
+  (tuple (call Point 25 40) (. (call Rect 10 20 30 40) center))
+  (tuple 60 (. (call Rect 10 20 30 40) bottom))
+  (tuple true (call (. (call Rect 10 20 30 40) contains) (tuple 20 30)))
+)
 ```
 
 ## YTEST-02: Isolate Imperative Cases Behind Runner Boundaries
 
 Use imperative cases for mutation, loops, early exits, multi-step setup, or assertions interleaved
-with state changes. Put each case in a separate `do` function that takes and returns a `TestCase`,
-then call it through `run` or `then`. The runner runs each case in a task of its own, so a panic
-ends only that case, and the runner continues with the next.
+with state changes. Put each case in a separate `fn-do` function that takes and returns a
+`TestCase`, then call it through `run` or `then`. The runner runs each case in a task of its own, so
+a panic ends only that case, and the runner continues with the next.
 
 Incorrect:
 
 ```text
-━━━━━━━━━━━━━━━━━━━━
-+ do tests TestRender
-
-. path = Path()
-path.move-to(0, 0)
-t.expect("after move", 1, path.count)
-= t
+(fn-do + tests TestRender
+  (let path (call Path))
+  (call (. path move-to) 0 0)
+  (call (. t expect) "after move" 1 (. path count))
+  (return t)
+)
 ```
 
 Correct:
 
-```yumi
-/test
-/graphics/path
-/graphics/point
+```brix
+(import /test)
+(import /graphics/path)
+(import /graphics/point)
 
-tests()
+(main
+  (call tests)
+)
 
-━━━━━━━━━━━━━━━━━━━━
-+ do tests TestRender
+(fn-do + tests TestRender
+  (let cases (call TestCase "Path Mutation"))
+  (call (. cases run) path-mutation-tests)
+  (return cases)
+)
 
-. cases = TestCase("Path Mutation")
-cases.run(path-mutation-tests)
-= cases
-
-━━━━━━━━━━━━━━━━━━━━
-+ do path-mutation-tests TestCase
-    - t TestCase
-
-. path = Path()
-t.expect("starts empty", 0, path.count)
-
-path.move-to(0, 0)
-t.expect("after move", 1, path.count)
-
-= t
+(fn-do + path-mutation-tests TestCase
+  (param t TestCase)
+  (let path (call Path))
+  (call (. t expect) "starts empty" 0 (. path count))
+  (call (. path move-to) 0 0)
+  (call (. t expect) "after move" 1 (. path count))
+  (return t)
+)
 ```
 
 ## YTEST-03: Use The Assertion That Describes The Fact
@@ -100,16 +95,16 @@ and errors a case lets out, or panics that end its task, increment `caught`.
 Incorrect:
 
 ```text
-t.check("count", path.count == 2)
-t.expect("first curve", expected-curve, path.get-curve(0))
+(call (. t check) "count" (== (. path count) 2))
+(call (. t expect) "first curve" expected-curve (call (. path get-curve) 0))
 ```
 
 Correct:
 
 ```text
-t.expect("count", 2, path.count)
-t.expect("first curve", expected-curve, => path.get-curve(0))
-t.check("closed", path.is-closed)
+(call (. t expect) "count" 2 (. path count))
+(call (. t expect) "first curve" expected-curve (=> () (call (. path get-curve) 0)))
+(call (. t check) "closed" (. path is-closed))
 ```
 
 ## YTEST-04: Keep Cases Small And Named
@@ -122,25 +117,25 @@ form artificial.
 Incorrect:
 
 ```text
-. cases = TestCase("All Path Behavior")
-cases.run(all-path-tests)
+(let cases (call TestCase "All Path Behavior"))
+(call (. cases run) all-path-tests)
 ```
 
 Correct:
 
 ```text
-. cases = TestCase("Path Mutation")
-cases.run(path-mutation-tests)
-cases = cases.then("Path Recovery", path-recovery-tests)
-cases = cases.then("Path Cache Invalidation", path-cache-tests)
+(let cases (call TestCase "Path Mutation"))
+(call (. cases run) path-mutation-tests)
+(= cases (call (. cases then) "Path Recovery" path-recovery-tests))
+(= cases (call (. cases then) "Path Cache Invalidation" path-cache-tests))
 ```
 
 ## YTEST-05: Lay Out A Module And Its Fixtures The Same Way
 
-Every test module imports `/test`, calls `tests()` at module scope, and defines
-`+ tests TestRender`. Put modules directly in a `tests` folder beside the code they test, and
-nothing else there. Put shared helpers in `tests/support/`, and put a module's fixture files in
-`tests/fixtures/<module name>/`, which a test run uses as its working folder.
+Every test module imports `/test`, calls `tests` from its `main`, and defines a public `tests`
+function that returns a `TestRender`. Put modules directly in a `tests` folder beside the code they
+test, and nothing else there. Put shared helpers in `tests/support/`, and put a module's fixture
+files in `tests/fixtures/<module name>/`, which a test run uses as its working folder.
 
 Incorrect:
 

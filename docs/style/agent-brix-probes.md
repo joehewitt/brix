@@ -2,26 +2,26 @@
 
 Probes are Brix's instrumentation. A probe is a line that records what the program did, and
 `--probes` compiles probes in, runs the program, and keeps its trace to query afterward. Reach for
-probes before `--` prints, before timers written by hand, and whenever a test or benchmark total
-cannot explain what happened. Probe output goes to stderr and to the trace, so stdout stays the
-program's own.
+probes before `print`, before timers written by hand, and whenever a test or benchmark total cannot
+explain what happened. Probe output goes to stderr and to the trace, so stdout stays the program's
+own.
 
 ## Writing Probes
 
 | Write | Records |
 | --- | --- |
-| `// paint frame $frame took $ms` | A log. Each `$value` keeps its name (`frame`, `ms`) for queries. |
-| `//gui.paint// painted $count` | A log under a key, which selectors and `--key` can pick. |
-| `//+gui.frame// frame $n` … `//-gui.frame// done` | A group: its begin, its end and the time between. Groups nest. |
-| `//+ setup $name` … `//- setup done` | A group with no key. |
-| `//+parse.pass` … `//-parse.pass` | A group with no text, kept only for its time. |
-| `//parse.tokens ++`, `//parse.bytes += size` | A counter. |
-| `//net.request -> url, status` | An event with values. |
-| `//status = value`, `//request:status = value` | A property set, of the object before `:`. |
-| `// queued $!item` | A log with a snapshot of `item`. `brix probes` counts snapshots but does not show them. |
-| `//!parse.debug -- dump(tree)` | A statement that runs only where the probe compiles. |
+| `(probe-log _ (text: "paint frame " frame " took " ms))` | A log. Each value keeps its name (`frame`, `ms`) for queries. |
+| `(probe-log gui.paint (text: "painted " count))` | A log under a key, which selectors and `--key` can pick. |
+| `(probe-group + gui.frame (text: "frame " n))` … `(probe-group - gui.frame (text: "done"))` | A group: its begin, its end and the time between. Groups nest. |
+| `(probe-group + _ (text: "setup " name))` … `(probe-group - _ (text: "setup done"))` | A group with no key. |
+| `(probe-group + parse.pass)` … `(probe-group - parse.pass)` | A group with no text, kept only for its time. |
+| `(probe-count parse.tokens)`, `(probe-count parse.bytes size)` | A counter. |
+| `(probe-log net.request (items: url status))` | An event with values. |
+| `(probe-assign status value)`, `(probe-assign (: request status) value)` | A property set, of the object `:` names first. |
+| `(probe-log _ (text: "queued " (snapshot item)))` | A log with a snapshot of `item`. `brix probes` counts snapshots but does not show them. |
+| `(probe parse.debug (print (call dump tree)))` | A statement that runs only where the probe compiles. |
 
-Code inside a probe, and code indented under one, runs only when that probe is compiled in. Never
+Code inside a probe runs only when that probe is compiled in. Never
 put work the program needs in a probe. Write probes where they explain the work, not gathered in
 one place.
 
@@ -110,9 +110,9 @@ Filters work with every command that reads records:
 
 ## Debugging
 
-**Seeing values.** Write `// state $state at $index` where you would have written `--`, then run
-with `--probes`. The lines carry times and locations, and `brix probes log --text state` finds them
-again after the run.
+**Seeing values.** Write `(probe-log _ (text: "state " state " at " index))` where you would have
+written `print`, then run with `--probes`. The lines carry times and locations, and `brix probes log
+--text state` finds them again after the run.
 
 **Why a check fails.** Put the failing code in a program of its own, add probes where its behavior
 is in doubt, and run it with `--probes`. Read `log`, then `around` the first record that looks
@@ -144,15 +144,18 @@ They reproduce the bug and quit the app. Read the trace like any other, as in
 
 **Where the time goes.** Put a group around one unit of work and log the values that vary:
 
-```yumi
-/time/duration
+```brix
+(import /time/duration)
 
-for frame in 0 .. < 20
-    //+app.frame// frame $frame
-    . ms = 1 + frame % 3
-    // paint frame $frame took $ms
-    (ms as Milliseconds).wait()
-    //-app.frame// frame $frame done
+(main
+  (for (in frame (..< 0 20))
+    (probe-group + app.frame (text: "frame " frame))
+    (let ms (+ 1 (% frame 3)))
+    (probe-log _ (text: "paint frame " frame " took " ms))
+    (call (. (as ms Milliseconds) wait))
+    (probe-group - app.frame (text: "frame " frame " done"))
+  )
+)
 ```
 
 Then:
@@ -163,10 +166,10 @@ Then:
 - `brix probes tree` shows where nested time goes;
 - `brix probes timeline` shows when the slow ones happened.
 
-**A hot loop.** Count the operations inside it with `//parse.tokens ++` and
-`//parse.bytes += size`, time each pass with `//+parse.pass` and `//-parse.pass`, and read
-`brix probes counters`. When the loop is too hot for a record per pass, run with
-`--probes profile:parse`. The counters and the pass time are then kept as metrics, such as
+**A hot loop.** Count the operations inside it with `(probe-count parse.tokens)` and `(probe-count
+parse.bytes size)`, time each pass with `(probe-group + parse.pass)` and `(probe-group -
+parse.pass)`, and read `brix probes counters`. When the loop is too hot for a record per pass, run
+with `--probes profile:parse`. The counters and the pass time are then kept as metrics, such as
 `parse.pass 20,000× 3.4ms`, and no records are written.
 
 **Collector pressure.** Count the operation and select the collector's counters too, as in

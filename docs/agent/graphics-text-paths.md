@@ -2,11 +2,13 @@
 
 Import `/graphics/text` to turn text into an editable `/graphics/path` `Path`:
 
-```yumi
-/graphics/text
+```brix
+(import /graphics/text)
 
-. lettering = text-path("RESONANCE", Font("Avenir Next", 78, FontWeight.heavy))
--- lettering.bounding-box
+(main
+  (let lettering (call text-path "RESONANCE" (call Font "Avenir Next" 78 (. FontWeight heavy))))
+  (print (. lettering bounding-box))
+)
 ```
 
 `text-path(text, font)` creates and closes a temporary text layout. The font defaults to

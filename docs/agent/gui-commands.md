@@ -10,14 +10,15 @@ commands, history, valued modes, a command palette, and persisted key mappings.
 
 `KeyShortcut` runs a closure for a key. Use it when an action needs no command class or history.
 
-```yumi
-<KeyShortcut "Refresh"
-    key = KeyCombo("Cmd+R")
-    stable-key = "example.refresh"
-    action = => do refresh()
+```brix
+(<> KeyShortcut (text: "Refresh")
+  (= key (call KeyCombo "Cmd+R"))
+  (= stable-key "example.refresh")
+  (= action (=> () :do (call refresh)))
+)
 ```
 
-Titled shortcuts are discoverable by a window's command palette. Set `discoverable = false` for
+Titled shortcuts are discoverable by a window's command palette. Set `(= discoverable false)` for
 bindings that only make sense inside another control. `enabled`, `when`, `repeat`,
 `allow-while-input`, and `allow-while-modal` use the same routing rules as other key bindings.
 
@@ -112,35 +113,34 @@ releasing records one undo step. Bind `revision` to the log's revision so rows f
 `CommandScope` is an optional markup container. It packages related command declarations and key
 bindings without becoming a history owner.
 
-```yumi
-_ DeleteCommand is CommandActionNode
+```brix
+(type _ DeleteCommand (is CommandActionNode)
+  (prop + editor Editor)
+  (prop + title _ (= (. editor #delete-label)))
+  (prop + enabled _ (= (. editor #has-selection)))
+  (prop + unavailable-reason _ (= "Select something to delete"))
+  (prop + stable-key _ (= "editor.delete"))
+  (fn-do + execute _
+    (call (. editor delete-selection))
+  )
+)
 
-+ editor Editor
-+ title = editor.#delete-label
-+ enabled = editor.#has-selection
-+ unavailable-reason = "Select something to delete"
-+ stable-key = "editor.delete"
-
-────────────────────
-+ do execute
-
-editor.delete-selection()
-
-━━━━━━━━━━━━━━━━━━━━
-+ EditorCommands is CommandScope
-
-+ editor Editor
-+ delete-command DeleteCommand
-
-────────────────────
-<This
-    <DeleteCommand delete-command
-        editor = editor
-
-    <KeyCommand
-        key = .backspace
-        stable-key = "editor.delete"
-        command = delete-command.id
+(type + EditorCommands (is CommandScope)
+  (prop + editor Editor)
+  (prop + delete-command DeleteCommand)
+  (content
+    (<> This
+      (<> DeleteCommand (id: delete-command)
+        (= editor editor)
+      )
+      (<> KeyCommand
+        (= key .backspace)
+        (= stable-key "editor.delete")
+        (= command (. delete-command id))
+      )
+    )
+  )
+)
 ```
 
 `KeyCommand` resolves the concrete command reference supplied by markup, rechecks its current
@@ -155,17 +155,18 @@ owned; the newest live activation wins, and releasing it reveals the next activa
 persistent value. `changed` reports persistent assignments, while `effective-changed` reports every
 effective-value update caused by either a persistent assignment or a temporary activation.
 
-```yumi
-+ tool-mode := Mode'DrawingTool(DrawingTool.pen)
-+ independent-handles := Mode'Bool(false)
+```brix
+(prop + tool-mode _ (:= (call (of Mode DrawingTool) (. DrawingTool pen))))
+(prop + independent-handles _ (:= (call (of Mode Bool) false)))
 
-<KeyMode'Bool
-    title = "Independent handles"
-    key = KeyCombo(.option)
-    stable-key = "editor.independent-handles"
-    mode = independent-handles
-    value = true
-    activation = KeyModeActivation.held
+(<> (of KeyMode Bool)
+  (= title "Independent handles")
+  (= key (call KeyCombo .option))
+  (= stable-key "editor.independent-handles")
+  (= mode independent-handles)
+  (= value true)
+  (= activation (. KeyModeActivation held))
+)
 ```
 
 Held modes activate once per physical press. Repeat events do not add leases. Release, window
@@ -219,14 +220,14 @@ and act on any list of key assignments. Every persistently remappable `KeyShortc
 `KeyMode`, or tui `Shortcut` has an explicit `stable-key`. A versioned `KeyMappingProfile` replaces keys or disables declarations without
 serializing commands, modes, contexts, or execution records.
 
-```yumi
-. mappings [KeyMapping] = List'KeyMapping()
-mappings += KeyMapping("editor.delete", KeyCombo("Cmd+Backspace"))
-mappings += KeyMapping("editor.independent-handles", null, true)
-. profile = KeyMappingProfile(mappings)
-. encoded = profile as String
-. loaded = load-key-mapping-profile(encoded)
-apply-key-mapping-profile(window.registered-key-bindings, loaded)
+```brix
+(let mappings (list KeyMapping) (call (of List KeyMapping)))
+(+= mappings (call KeyMapping "editor.delete" (call KeyCombo "Cmd+Backspace")))
+(+= mappings (call KeyMapping "editor.independent-handles" null true))
+(let profile (call KeyMappingProfile mappings))
+(let encoded (as profile String))
+(let loaded (call load-key-mapping-profile encoded))
+(call apply-key-mapping-profile (. window registered-key-bindings) loaded)
 ```
 
 Loading validates the profile version before applying it. Unknown stable keys remain in the loaded
@@ -271,10 +272,11 @@ such as staying open for a second step.
 
 A palette's size, position, and row height are styles, so a theme sets them:
 
-```text
-• FilePalette • w:498 h:338
-    placement = CenteredPlacement(56)
-    row-height = 25
+```brix
+(rule FilePalette (• w 498) (• h 338)
+  (= placement (call CenteredPlacement 56))
+  (= row-height 25)
+)
 ```
 
 `row-height` comes from `GUIVirtualRowStyle`. It is inherited, so a rule on any ancestor sets the row

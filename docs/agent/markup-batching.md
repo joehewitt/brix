@@ -103,9 +103,8 @@ The hooks:
 The structural hooks are members of the generic `MarkupParent'Child` interface, and a class
 with linked children **must declare conformance** with its own child type:
 
-```yumi
-+ Box
-    is MarkupParent'Box
+```brix
+(type-line + Box (implements (of MarkupParent Box)))
 ```
 
 The declaration is the parent's compliance witness: the core entry points require their parent to
@@ -162,17 +161,18 @@ A batch root is the object that owns a tree's queue and converts batch completio
 scheduled phase work (layout, paint, commit — whatever the domain's phases are). The contract:
 
 1. **Implement `MarkupRootElement`** — provide `markup-batch-queue` (typically
-   `:= MarkupBatchQueue(this)`). This half is witness-enforced: forgetting it is a compile
+   `(:= (call MarkupBatchQueue this))`). This half is witness-enforced: forgetting it is a compile
    error. `markup-batch-did-flush` is optional; a root with no phases to schedule leaves it out.
 2. **Translate did-flush into phase scheduling.** The flush summary carries pending-domain
    accessors; the root schedules exactly the phases whose domains raised:
 
-   ```yumi
-   + do markup-batch-did-flush
-       - flush MarkupBatchFlush
-
-   if flush.is-layout-invalid || flush.is-paint-invalid
-       catch schedule-paint()
+   ```brix
+   (fn-do + markup-batch-did-flush _
+     (param flush MarkupBatchFlush)
+     (if (or (. flush is-layout-invalid) (. flush is-paint-invalid))
+       (catch (call schedule-paint))
+     )
+   )
    ```
 
 3. **Checkpoint at phase boundaries.** Before running a phase that reads computed state, drain
@@ -242,7 +242,7 @@ The two paths handle this differently, on purpose:
   and contains failures.
 - A *synchronous* `checkpoint()` propagates client errors to its caller. Tests usually want
   propagation; phase controllers never do — a bad style callback must not kill the paint loop.
-  Phase controllers therefore call `catch markup-batch-queue.checkpoint()`.
+  Phase controllers therefore call `(catch (call (. markup-batch-queue checkpoint)))`.
 
 **Runaway protection.** Both checkpoint and the scheduled flush honor the queue caps:
 `max-actions-per-checkpoint` (4096) bounds total actions per flush, and
@@ -259,44 +259,44 @@ a batch action or a settle callback is re-entrant and will be absorbed by the in
 `stdlib/tui/window.bx` is the reference root implementation. The complete batching surface of
 a production root is three small pieces:
 
-```yumi
-+ Window is Box
-    is MarkupRootElement
+```brix
+(type-line + Window (is Box) (implements MarkupRootElement))
 
-+ markup-batch-queue := MarkupBatchQueue(this)
+(prop + markup-batch-queue _ (:= (call MarkupBatchQueue this)))
 ```
 
 1. **Mount** — once, when the terminal is ready. Adoption prunes already-mounted subtrees, so
    markup-constructed windows are unaffected:
 
-   ```yumi
-   on terminal.ready
-
-   markup-mount-root(this, this)
+   ```brix
+   (subscribe (on (. terminal ready))
+     (call markup-mount-root this this)
+   )
    ```
 
 2. **Push path** — settling raised persistent domain bits on the nodes whose declared properties
    changed; the summary tells the window whether a repaint is warranted at all:
 
-   ```yumi
-   + do markup-batch-did-flush
-       - flush MarkupBatchFlush
-
-   if flush.is-layout-invalid || flush.is-paint-invalid
-       catch schedule-paint()
+   ```brix
+   (fn-do + markup-batch-did-flush _
+     (param flush MarkupBatchFlush)
+     (if (or (. flush is-layout-invalid) (. flush is-paint-invalid))
+       (catch (call schedule-paint))
+     )
+   )
    ```
 
 3. **Phase boundary** — the paint event arrives on the terminal's schedule, not the queue's, so
    the window checkpoints before running its phases. Error containment keeps a throwing client
    action from killing the paint loop:
 
-   ```yumi
-   + paint
-       - canvas Canvas
-
-   catch markup-batch-queue.checkpoint()
-   update-layout()
-   ` ... paint children ...
+   ```brix
+   (fn-do + paint _
+     (param canvas Canvas)
+     (catch (call (. markup-batch-queue checkpoint)))
+     (call update-layout)
+     ; ... paint children ...
+   )
    ```
 
 Note what is *absent*: no settle calls, no root propagation, no per-node mount bookkeeping, no

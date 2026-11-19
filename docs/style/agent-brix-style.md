@@ -7,37 +7,37 @@ tradeoff does not fit the code.
 ## YS-01: Put The Result Or Primary Effect First
 
 In a pure function, state the result immediately after any guards or assertions. Put pure supporting
-values below it as `..` lazy dependencies, especially when they are expensive, fallible, or derived.
-In an imperative function, make the primary effect easy to find and keep setup subordinate to it.
+values in its `where` as `lazy` dependencies, especially when they are expensive, fallible, or
+derived. In an imperative function, make the primary effect easy to find and keep setup subordinate
+to it.
 
 Incorrect:
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ do display-name
-    - first String
-    - last String
-
-. full = "$first $last"
-= "[$full]"
+```brix
+(fn-do + display-name _
+  (param first String)
+  (param last String)
+  (let full (str first " " last))
+  (return (str "[" full "]"))
+)
 ```
 
 Correct:
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ display-name
-    - first String
-    - last String
-
-"[$full]"
-
-.. full = "$first $last"
+```brix
+(fn-expr + display-name _
+  (param first String)
+  (param last String)
+  (str "[" full "]")
+  (where
+    (lazy full (str first " " last))
+  )
+)
 ```
 
 ### Lazy dependencies and their cost
 
-A local `..` binding is demand-driven and memoized, not uniformly implemented as a heap thunk. Its
+A `lazy` binding is demand-driven and memoized, not uniformly implemented as a heap thunk. Its
 initializer runs when the value is first needed, at most once during that binding's lifetime. An
 unused lazy does not run. Both a successful value and a recoverable error result are memoized rather
 than recomputed. The lifetime is fresh for each function invocation, for each iteration of a loop
@@ -49,32 +49,32 @@ closure compiles like an eager local, and a new object it holds stays off the he
 unused, non-property lazy is eliminated. One shape still costs more: a lazy read inside a loop or
 comprehension body checks its memo flag on every element.
 
-So cost is rarely a reason to keep `do`. What a rewrite changes is when each initializer runs: at
+So cost is rarely a reason to keep `fn-do`. What a rewrite changes is when each initializer runs: at
 the lazy's first read, and not at all on a path that never reads it.
 
-- Keep `do` when the function's value is the result of an effect; see YS-10.
+- Keep `fn-do` when the function's value is the result of an effect; see YS-10.
 - Check that each lazy's first read is where its value should be taken. A first read after a call
   that changes what the initializer reads takes a different value, and lazy `<-` reads happen in the
   order of their first reads rather than their declarations. An initializer with a hidden effect,
   such as a call that fills a cache or index on first use, must also run before anything that reads
-  what it fills. Keep `do` when no arrangement of the expression form puts each first read in the
+  what it fills. Keep `fn-do` when no arrangement of the expression form puts each first read in the
   right place.
-- Keep `do` when a lazy would be read inside the body of a hot loop or comprehension.
-- Keep `do` when the expression form would nest a table inside an arm of another table instead of
+- Keep `fn-do` when a lazy would be read inside the body of a hot loop or comprehension.
+- Keep `fn-do` when the expression form would nest a table inside an arm of another table instead of
   becoming one ordered table; see YS-02.
-- `use`, `catch`, and tracked reads work in lazies and are no reason to keep `do`.
+- `use`, `catch`, and tracked reads work in lazies and are no reason to keep `fn-do`.
 
 ## YS-02: Keep One Decision In One Table
 
-When one subject drives a decision, use one `match subject`. When independent conditions drive it,
-use one bare `|?`/`??` table. Do not scatter one decision across early returns, nested conditionals,
-or helpers unless separating it clarifies genuinely independent work.
+When one subject drives a decision, use one `(match subject …)`. When independent conditions drive
+it, use one bare table of `case?` arms and a `default`. Do not scatter one decision across early
+returns, nested conditionals, or helpers unless separating it clarifies genuinely independent work.
 
-`=?` is the right form for an early exit, the counterpart to `?!`: it leaves a function whose real
-work follows, especially when several statements separate the exit from the result. Do not use a
-run of `=?` lines to return each case of the function's value; that is one decision scattered
-across returns. When a single exit sits directly before the result, the two may be combined as
-`if condition then value else fallback`.
+`return-if` is the right form for an early exit, the counterpart to `throw` with a condition: it
+leaves a function whose real work follows, especially when several statements separate the exit
+from the result. Do not use a run of `return-if` rows to return each case of the function's value;
+that is one decision scattered across returns. When a single exit sits directly before the result,
+the two may be combined as `(if-expr condition value fallback)`.
 
 Choose `match` or `match?` according to whether no arm matching is intentional, including for a
 match written as a step. Running its arms as steps does not make the match optional. Use `match?`
@@ -83,58 +83,66 @@ when the arms are exhaustive.
 
 Incorrect:
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ do stock-label
-    - count Int
-
-=? "empty" if count == 0
-=? "low" if count < 3
-= "ready"
+```brix
+(fn-do + stock-label _
+  (param count Int)
+  (return-if "empty" (if (== count 0)))
+  (return-if "low" (if (< count 3)))
+  (return "ready")
+)
 ```
 
 Correct:
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ stock-label
-    - count Int
-
-match count
-    |= 0
-        "empty"
-    |? it < 3
-        "low"
-    ??
-        "ready"
+```brix
+(fn-expr + stock-label _
+  (param count Int)
+  (match count
+    (case= 0
+      "empty"
+    )
+    (case? (< it 3)
+      "low"
+    )
+    (default
+      "ready"
+    )
+  )
+)
 ```
 
 For a table without one subject, write bare arms rather than matching a dummy Boolean:
 
 ```text
-|? !is-enabled
-    "disabled"
-|? is-pressed
-    "pressed"
-??
-    "ready"
+(case? (not is-enabled)
+  "disabled"
+)
+(case? is-pressed
+  "pressed"
+)
+(default
+  "ready"
+)
 ```
 
-A `|= null` arm narrows the subject in the arms after it, so a match can handle an absent value
-first and then read its members directly:
+A `(case= null …)` arm narrows the subject in the arms after it, so a match can handle an absent
+value first and then read its members directly:
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ stock-label
-    - item Item?
-
-match item
-    |= null
-        "missing"
-    |? item.count == 0
-        "empty"
-    ??
-        "${item.count} left"
+```brix
+(fn-expr + stock-label _
+  (param item (? Item))
+  (match item
+    (case= null
+      "missing"
+    )
+    (case? (== (. item count) 0)
+      "empty"
+    )
+    (default
+      (str (. item count) " left")
+    )
+  )
+)
 ```
 
 ## YS-04: Construct Pure Collections And Text As Values
@@ -145,80 +153,83 @@ cost is the point of the code.
 
 Incorrect:
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ do labels
-    - include-debug Bool
-    - extras [String]
-
-. result [String]
-result += "status"
-if include-debug
-    result += "debug"
-for extra in extras
-    result += extra
-result += "done"
-= result
+```brix
+(fn-do + labels _
+  (param include-debug Bool)
+  (param extras (list String))
+  (let result (list String))
+  (+= result "status")
+  (if include-debug
+    (+= result "debug")
+  )
+  (for (in extra extras)
+    (+= result extra)
+  )
+  (+= result "done")
+  (return result)
+)
 ```
 
 Correct:
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ labels
-    - include-debug Bool
-    - extras [String]
-
-* "status"
-*? "debug" if include-debug
-** extras
-* "done"
+```brix
+(fn-expr + labels _
+  (param include-debug Bool)
+  (param extras (list String))
+  (item "status")
+  (item? (only-if "debug" (if include-debug)))
+  (spread extras)
+  (item "done")
+)
 ```
 
 Text follows the same rule. Write a function whose job is to produce text as a text body: the
-literal text is the body, and its values sit below the `════════════════════` boundary as `..`
-lazies. Write optional text as a lazy such as `if draft then " (draft)" else ""`, and repeated lines as
-`"\n".join(item-line(each) in items)`, calling a smaller template for each line. Keep a string or
-line accumulator for character-level work such as escaping, encoding, and parsing (YS-10).
+literal text is the body, a `(paragraph …)`, and its values sit in its `where` as `lazy` bindings.
+Write optional text as a lazy such as `(if-expr draft " (draft)" "")`, and repeated lines as `(call
+(. "\n" join) (in (call item-line each) items))`, calling a smaller template for each line. Keep a
+string or line accumulator for character-level work such as escaping, encoding, and parsing (YS-10).
 
 Incorrect:
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ do summary
-    - title String
-    - items [Item]
-    - draft Bool
-
-. text = title
-if draft
-    text += " (draft)"
-for item in items
-    text += "\n${item.name}: ${item.count}"
-= text
+```brix
+(fn-do + summary _
+  (param title String)
+  (param items (list Item))
+  (param draft Bool)
+  (let text title)
+  (if draft
+    (+= text " (draft)")
+  )
+  (for (in item items)
+    (+= text (str "\n" (. item name) ": " (. item count)))
+  )
+  (return text)
+)
 ```
 
 Correct:
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ " summary
-    - title String
-    - items [Item]
-    - draft Bool
+```brix
+(fn-expr + summary _
+  (param title String)
+  (param items (list Item))
+  (param draft Bool)
+  (paragraph
+    (str title status)
+    (str lines)
+  )
+  (where
+    (lazy status (if-expr draft " (draft)" ""))
+    (lazy lines (call (. "\n" join) (in (call summary-line each) items)))
+  )
+)
 
-$title$status
-$lines
-
-════════════════════
-.. status = if draft then " (draft)" else ""
-.. lines = "\n".join(summary-line(each) in items)
-
-━━━━━━━━━━━━━━━━━━━━
-+ " summary-line
-    - item Item
-
-${item.name}: ${item.count}
+(fn-expr + summary-line _
+  (param item Item)
+  (paragraph
+    (str (. item name) ": " (. item count))
+  )
+)
 ```
 
 ## YS-06: Let Inference Carry Obvious Local Types
@@ -229,23 +240,21 @@ function return types: keep the return type a function declares.
 
 Incorrect:
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ do doubled Int
-    - value Int
-
-. result Int = value * 2
-= result
+```brix
+(fn-do + doubled Int
+  (param value Int)
+  (let result Int (* value 2))
+  (return result)
+)
 ```
 
 Correct:
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ doubled Int
-    - value Int
-
-value * 2
+```brix
+(fn-expr + doubled Int
+  (param value Int)
+  (* value 2)
+)
 ```
 
 ## YS-07: Cast Only Where A Number Narrows
@@ -258,16 +267,16 @@ suffix takes the type it is used as, so it needs neither a suffix nor `as`.
 Incorrect:
 
 ```text
-values[id as Index]
-total += 1u32
+([] values (as id Index))
+(+= total 1u32)
 ```
 
 Correct:
 
 ```text
-values[id]
-total += 1
-. id SyntaxId = nodes.length as SyntaxId
+([] values id)
+(+= total 1)
+(let id SyntaxId (as (. nodes length) SyntaxId))
 ```
 
 ## YS-08: Write Units In Numeric Literals
@@ -277,24 +286,22 @@ Do not obscure the unit with manual scaling arithmetic.
 
 Incorrect:
 
-```yumi
-/time/duration
+```brix
+(import /time/duration)
 
-━━━━━━━━━━━━━━━━━━━━
-+ retry-delay
-
-500 * 1000 * 1000ns
+(fn-expr + retry-delay _
+  (* 500 1000 1000ns)
+)
 ```
 
 Correct:
 
-```yumi
-/time/duration
+```brix
+(import /time/duration)
 
-━━━━━━━━━━━━━━━━━━━━
-+ retry-delay
-
-500ms
+(fn-expr + retry-delay _
+  500ms
+)
 ```
 
 ## YS-09: Use Grammars For Structured Text
@@ -306,72 +313,69 @@ not meaningfully grammatical.
 Incorrect:
 
 ```text
-━━━━━━━━━━━━━━━━━━━━
-+ do parse-http-status-line HTTPStatusLine
-    - source String
-
-. parts = source.split(" ")
-. version = parts[0]
-. status = parts[1] as I32
-= HTTPStatusLine(version, status, "")
+(fn-do + parse-http-status-line HTTPStatusLine
+  (param source String)
+  (let parts (call (. source split) " "))
+  (let version ([] parts 0))
+  (let status (as ([] parts 1) I32))
+  (return (call HTTPStatusLine version status ""))
+)
 ```
 
 Correct:
 
 ```text
-+ HTTPStatus is I32
+(type-line + HTTPStatus (is I32))
 
-━━━━━━━━━━━━━━━━━━━━
-+ HTTPStatusLine is (version String, status HTTPStatus, reason String)
-
-────────────────────
-+ This ~ Char
-
-~ version (!" " .)+ // status HTTPStatus / reason (!\nl .)*
-    This(version, status, reason)
+(type + HTTPStatusLine (is (tuple (: version String) (: status HTTPStatus) (: reason String)))
+  (fn-expr + This _ (over: Char)
+    (~ (seq (: version (+ (seq (! " ") .))) // (: status HTTPStatus) / (: reason (* (seq (! \nl) .))))
+      (call This version status reason)
+    )
+  )
+)
 ```
 
 ## YS-10: Keep Effects And Low-Level Work Imperative
 
-Use `do` and ordered statements for IO, mutation, buffers, cursors, cleanup, error paths, and other
-effects. Do not conceal an effect in a lazy or nominally value-shaped expression. Manual low-level
-code belongs only in the measured hot core; keep its boundaries idiomatic.
+Use `fn-do` and ordered statements for IO, mutation, buffers, cursors, cleanup, error paths, and
+other effects. Do not conceal an effect in a lazy or nominally value-shaped expression. Manual
+low-level code belongs only in the measured hot core; keep its boundaries idiomatic.
 
 Incorrect:
 
 ```text
-━━━━━━━━━━━━━━━━━━━━
-+ save-message
-    - path String
-    - contents String
-
-"saved"
-
-.. ignored = write-file(path, contents)
+(fn-expr + save-message _
+  (param path String)
+  (param contents String)
+  "saved"
+  (where
+    (lazy ignored (call write-file path contents))
+  )
+)
 ```
 
 Correct:
 
 ```text
-━━━━━━━━━━━━━━━━━━━━
-+ do save-message
-    - path String
-    - contents String
-
-write-file(path, contents)
-= "saved"
+(fn-do + save-message _
+  (param path String)
+  (param contents String)
+  (call write-file path contents)
+  (return "saved")
+)
 ```
 
 ## YS-11: Use `use` For Locally Owned Resources
 
-When a function acquires a resource and would unconditionally release it with `do finally`, make
-the resource type `Closable`, or `Usable` when using it does more than close it at the end, and do
-not write `begin-using` and `end-using` that only give the object and close it: `use` closes a
-`Closable` that has no `begin-using`. Use `use resource` when the resource should remain live for
-the rest of the scope. Use `do use resource` when its lifetime should end after a specific block,
-before the function continues; nest blocks when one resource must close before another. Keep
-`do finally` for conditional cleanup, ownership transfer, or restoration of surrounding state
-that is not intrinsic to the resource.
+When a function acquires a resource and would unconditionally release it with `finally`, make the
+resource type `Closable`, or `Usable` when using it does more than close it at the end, and do not
+write `begin-using` and `end-using` that only give the object and close it: `use` closes a
+`Closable` that has no `begin-using`. Use `(use resource)` when the resource should remain live for
+the rest of the scope. Use `(do-use resource …)` when its lifetime should end after a specific
+block, before the function continues; nest blocks when one resource must close before another. Keep
+`finally` for conditional cleanup, ownership transfer, or restoration of surrounding state that is
+not intrinsic to the resource.
 
 ## Domain-Specific Style Rules
 

@@ -15,12 +15,15 @@ When `PathWatchEvent.must-rescan` is true, the native service could not preserve
 per-path history. Rebuild the consumer's snapshot or index from the event root instead of trying to
 apply the individual event as a precise edit.
 
-```yumi
-for event on project-root.watch(true)
-    if event.must-rescan
-        rebuild-index(event.root)
-    else
-        refresh-path(event.path)
+```brix
+(for (on event (call (. project-root watch) true))
+  (if (. event must-rescan)
+    (call rebuild-index (. event root))
+    (else
+      (call refresh-path (. event path))
+    )
+  )
+)
 ```
 
 Event paths are real paths: the native service resolves the watched root before it starts. Resolve

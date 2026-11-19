@@ -10,86 +10,56 @@ imported by each non-builtin Brix module. Do not explicitly import these modules
 A builtin module is the exception. It must explicitly import every other builtin module it depends
 on so that dependencies within the builtin set remain explicit.
 
-## Declaration Dividers
-
-Dividers control declaration nesting:
-
-- Put a thick divider (`━`) before a module-level function or type with a body.
-- Put a thin divider (`─`) before a function inside a type body.
-- Do not use a thin divider for a module-level function. It will be parsed as a nested function.
-- Do not use a thick divider inside a type body. It ends the type.
-
-Use the repository's usual divider form when writing source:
-
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ Label is Tuple
-
-+ text String
-
-────────────────────
-+ to String
-
-text
-
-━━━━━━━━━━━━━━━━━━━━
-+ label-text String
-    - label Label
-
-label.text
-```
-
-Bodyless declarations such as type aliases do not need dividers.
-
 ## Function Bodies
 
-A function without `do` is an expression function. Its body must produce a non-`Void` value from
-its result expression. It cannot contain explicit returns (`=` or `=?`), immediate locals (`.`),
-loops, or yields. Lazy dependencies (`..`) are allowed below its value, never above it. Before its
-value it runs only checks (`?! error if condition`), prints, probes and `do` blocks such as `do`
-and `do finally`; an assignment, an `if` statement or a call goes inside a `do` block.
+A function declared with `fn-expr` is an expression function. Its body must produce a non-`Void`
+value from its result expression. It cannot contain explicit returns (`return` or `return-if`),
+immediate locals (`let`), loops, or yields. Lazy dependencies (`lazy`) go in its `(where …)`, after
+its value, never before it. Before its value, in a `(before …)`, it runs only checks (`(throw error
+(if condition))`), prints, probes and `do` forms such as `do` and `finally`; an assignment, an `if`
+statement or a call goes inside a `(do …)`.
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ label String
-    - name String
-
-"$open$name$close"
-.. open = "["
-.. close = "]"
+```brix
+(fn-expr + label String
+  (param name String)
+  (str open name close)
+  (where
+    (lazy open "[")
+    (lazy close "]")
+  )
+)
 ```
 
-A function with `do` is imperative. Use it for ordered statements, immediate locals, loops, yields,
-or early returns. Return a value explicitly with `=` or `=?`. When the function returns a value, a
-final expression it does not return is a compile error; otherwise a final call's result is
-discarded.
+A function declared with `fn-do` is imperative. Use it for ordered statements, immediate locals,
+loops, yields, or early returns. Return a value explicitly with `return` or `return-if`. When the
+function returns a value, a final expression it does not return is a compile error; otherwise a
+final call's result is discarded.
 
-A print is a step, never a value: it stands on a line of its own or after `:` as a one-step body,
-so `. a = -- 5` and `foo(-- 1)` are errors. A match on a row of its own in a body of steps runs
-its arms as steps, so they may print, and a block that gives a value, such as a `catch` arm or a pattern's action, runs a print before its value
-as `do -- text`. A value alone is not a step either: a row such as
-`count` or `x + 1` in a `do` body, in a loop or in a module's statements is an error, unless the
-lines below it are pipe stages that work on it.
+A print is a step, never a value: it stands on a row of its own, so `(let a (print 5))` and
+`(call foo (print 1))` are errors. A match on a row of its own in a body of steps runs its arms as
+steps, so they may print, and a block that gives a value, such as a `catch` arm or a pattern's
+action, runs a print before its value as `(do (print text))`. A value alone is not a step either: a
+row such as `count` or `(+ x 1)` in a `fn-do` body, in a loop or in a module's statements is an
+error, unless the rows below it are pipe stages that work on it.
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ do chosen-name String?
-    - should-use Bool
-    - primary String?
-
-=? primary if should-use
-= null
+```brix
+(fn-do + chosen-name (? String)
+  (param should-use Bool)
+  (param primary (? String))
+  (return-if primary (if should-use))
+  (return null)
+)
 ```
 
-Closures follow the same rules: a closure written `=>` is one expression, and one written `=> do`
-is imperative.
+Closures follow the same rules: a closure written `(=> (…) value)` is one expression, and one
+written `(=> (…) :do …)` is imperative.
 
 ## Parameters
 
-A parameter is optional only when it has a written default. `- primary String?` alone is required:
-a call must give it, though it may give `null`. Write `- primary String? = null` for a parameter
-calls may leave out. A required parameter may follow one that may be null, but not one with a
-written default.
+A parameter is optional only when it has a written default. `(param primary (? String))` alone is
+required: a call must give it, though it may give `null`. Write `(param primary (? String) (=
+null))` for a parameter calls may leave out. A required parameter may follow one that may be null,
+but not one with a written default.
 
 Every word except `in`, `on`, `and`, `or`, `do`, `for`, `while`, `if` and `else` may name a local or
 a parameter, including `from`, `to`, `at`, `before` and `after`. A grammar's capture is never
@@ -97,13 +67,12 @@ named `with`, which starts the helper of a pipe such as `source ~> \record with 
 
 ## Calls
 
-A call takes its arguments in parentheses, as in `sort(keys)`. A named argument is a bullet with the
-parameter's name and the value, as in `format(n) • width 4`, never `• width = 4`. Pass a callback
-whose body reads `each` as a named bullet, as in `some(items) • where each > 2`; a callback passed
-by position is a closure that names its inputs. The bullets on a line all belong to one call, so a
-nested call takes its bullets inside parentheses: `some(groups) • where (some(each.kids) • where
-each > 2)`. A bullet at the end of a line takes the indented block below as its value, except on an
-`if`, `else`, `while`, `match` or `for` line, whose block is the body.
+A call names the function and then its arguments, as in `(call sort keys)`. A named argument is the
+parameter's name after a colon and then the value, as in `(call format n (:width 4))`. Pass a
+callback whose body reads `each` as a named argument, as in `(call some items (:where (> each 2)))`;
+a callback passed by position is a closure that names its inputs. A nested call keeps its own named
+arguments inside its parentheses: `(call some groups (:where (call some (. each kids) (:where (>
+each 2)))))`.
 
 ## Numbers
 
@@ -185,21 +154,23 @@ Write every other conversion:
 These have no answer: `if ready then 1 else "none"`, `[1, "x"]`, `1 == true`, `"ab" == 'a'` and
 `[1, 2] ++ "x"`.
 
-```yumi
-. count = 3
-. ratio = 2.5
-. maybe Int? = 4
-. label String = "count is $count"
-. whole Int = ratio as Int
-. rounded = Int(ratio)
-. known Int = maybe ?? 0
-. present Bool = maybe
-. flag = count as Bool
-. small U8 = count as U8
--- label
--- whole + rounded + known
--- present && flag
--- small + 1
+```brix
+(main
+  (let count 3)
+  (let ratio 2.5)
+  (let maybe (? Int) 4)
+  (let label String (str "count is " count))
+  (let whole Int (as ratio Int))
+  (let rounded (call Int ratio))
+  (let known Int (?? maybe 0))
+  (let present Bool maybe)
+  (let flag (as count Bool))
+  (let small U8 (as count U8))
+  (print label)
+  (print (+ whole rounded known))
+  (print (and present flag))
+  (print (+ small 1))
+)
 ```
 
 ## Do Not Guess Syntax
@@ -219,5 +190,5 @@ restriction, with one call path that shows why. Name the function as `name`, `Ty
 
 ## Documentation Examples
 
-Compile-check complete fenced `yumi` examples. Mark incomplete or illustrative fragments as
+Compile-check complete fenced `brix` examples. Mark incomplete or illustrative fragments as
 `text` instead.

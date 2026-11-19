@@ -3,15 +3,14 @@
 Place `@inline` after a function's return type and declared errors, alongside its other
 trailing annotations. It requests expansion during ordinary compilation and does not change
 the function's effects, overload ranking, generic inference, visibility, or dispatch.
-Block getters accept the same trailing annotations, for example `+ get width @inline`.
-Conversion members accept them too, for example `+ to Int @inline`.
+Getters accept the same trailing annotations, for example `(fn-expr + width Int :get @inline …)`.
+Conversion members accept them too, for example `(fn-to-expr + Int @inline …)`.
 
-```yumi
-━━━━━━━━━━━━━━━━━━━━
-+ increment Int @inline without gc
-    - value Int
-
-value + 1
+```brix
+(fn-expr + increment Int @inline (without gc)
+  (param value Int)
+  (+ value 1)
+)
 ```
 
 The compiler expands statically resolved ordinary calls in typed IR after language semantics,
