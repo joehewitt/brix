@@ -270,7 +270,7 @@ extern "C" bool brixReadDirEntry(DIR* dir, char* buf, BxDirEntry* out);
 
 extern "C" BRIX_WITHOUT_GC int brixGetErrNo();
 
-extern "C" void brixPrint(const char* text);
+extern "C" BRIX_WITHOUT_GC void brixPrint(const char* text);
 extern "C" void brixTerminate();
 extern "C" BRIX_WITHOUT_GC void brixCrash();
 extern "C" unsigned char brixBenchMetricsEnabledFlag;

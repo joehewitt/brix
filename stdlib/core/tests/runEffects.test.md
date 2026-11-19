@@ -1268,3 +1268,69 @@ done
 ```output
 11
 ```
+
+### A print calls the print door of console, so a ban on console refuses it
+
+```brix compile-error
+(main
+  (call report 3)
+)
+
+(fn-do + label String
+  (param count Int)
+  (return (str "count " count))
+)
+
+(fn-do + report _ (without console)
+  (param count Int)
+  (print (call label count))
+)
+```
+
+```output
+Exception: cannot reach a door of 'console' under 'without console': report (without console) → (print (call label count))
+<no file:13>
+      (print (call label count))
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### A fake bound to console answers each print under the binding, whatever the function that prints is kept from
+
+```brix
+(main
+  (let fake (call Recorder))
+  (do-with console fake
+    (print "inside")
+    (call quiet)
+    (call apply shout)
+  )
+  (print "outside")
+  (print (str "recorded " (. fake count)))
+)
+
+(fn-do + quiet _ (without heap)
+  (print "quiet")
+)
+
+(fn-do + shout _
+  (print (tuple 1 2))
+)
+
+(fn-do + apply _
+  (param f (fn-type Void))
+  (call f)
+)
+
+(type + Recorder
+  (prop + count _ (= 0))
+  (fn-do + print _
+    (param text String)
+    (+= count 1)
+  )
+)
+```
+
+```output
+outside
+recorded 3
+```

@@ -1168,11 +1168,13 @@ hello Ada
 0
 ```
 
-`console`, in `/os/file`, has as its doors `standard-input`, `standard-output` and
-`standard-error`, which `stdin`, `stdout` and `stderr` call each time they are read, so a fake
-bound later is not missed. `--` and `print` are not doors yet. `FakeConsole`, in
-`/os/fake-console`, is a fake for `console` whose streams are pipes: `type-in` and `end-input`
-give code under it something to read, and `written` and `complained` give what it wrote:
+`console`, in `core`, has the door `print`, which every `--` calls with the text it writes, so
+`(without console)` refuses a print. `/os/file` gives it the doors `standard-input`,
+`standard-output` and `standard-error`, which `stdin`, `stdout` and `stderr` call each time they
+are read, so a fake bound later is not missed. The report of an error no one handles, and a panic,
+still print as they are. `FakeConsole`, in `/os/fake-console`, is a fake for `console` whose
+streams are pipes, and its `print` writes a line to the output: `type-in` and `end-input` give
+code under it something to read, and `written` and `complained` give what it wrote:
 
 ```brix
 (import /os/fake-console)
@@ -1181,6 +1183,7 @@ give code under it something to read, and `written` and `complained` give what i
 (main
   (let fake (call FakeConsole))
   (do-with console fake
+    (print "printed aside")
     (<- stdout "kept aside\n")
   )
   (print (call (. fake written)))
@@ -1188,6 +1191,7 @@ give code under it something to read, and `written` and `complained` give what i
 ```
 
 ```output
+printed aside
 kept aside
 
 ```
