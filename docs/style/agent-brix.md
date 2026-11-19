@@ -548,5 +548,7 @@ Run `brix lint file.bx`. Each mistake is reported as `file:line:column rule [sta
 - `--fix` rewrites the file with the safe fixes: canonical layout, declarations sorted by kind,
   `(main …)` around top-level code, `(if …)` moved to the end of a guarded form, `fn-do` for a
   `fn-expr` whose rows are all steps, `:do` added to a function value whose rows are all steps,
-  and each rule's own fix.
+  a `(blank)` after each run of `return`, `return?`, `return-if`, `throw`, `yield`, `yield?`,
+  `yield-all` and `yield-all?` rows in a `fn-do` or a `:do` function value, unless the run ends
+  its block or an arm or handler follows it, and each rule's own fix.
 - `--fix-rule syntax/parse-error --fix-rule layout/format` limits it to those first fixes.
