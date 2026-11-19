@@ -80,6 +80,9 @@
         (call progress "compile" (. plan roots length) (. root path) index)
       )
       (call type-batch batch)
+      (if (and (> (. batch length) 1) (call some batch (:where (!= (. each error) null))))
+        (call type-alone batch)
+      )
       (call progress "finish" (. batch length) (. ([] batch 0) path))
     )
     (for (in target (. plan targets))
@@ -262,6 +265,17 @@
     (call gather-casts session ranks)
     (call gather-payloads session ranks)
     (call gather-case-owners session ranks)
+  )
+  (fn-do _ type-alone _
+    (param batch (list SemanticRootPlan))
+    ; Types each root of a batch that failed as a program of its own. Roots typed together share
+    ; one program, so a fake one binds or an effect one declares can fail another that types alone.
+    (for (in root batch)
+      (= (. root error) null)
+      (let alone (list SemanticRootPlan))
+      (+= alone root)
+      (call type-batch alone)
+    )
   )
   (fn-do _ fail-batch _
     (param batch (list SemanticRootPlan))
