@@ -1,0 +1,284 @@
+(import ./_cfile)
+(import ./env)
+(import ./file)
+(import ./files)
+(import ./path)
+(import ./shared-memory)
+(import /sys/stat.h)
+
+(type + FakeFiles
+  (prop + root String)
+  (prop + folder String (= "/"))
+  (prop _ real-root String)
+  (fn-do + This _ (?! Error)
+    (param at Path)
+    (= root (call trimmed-root (as at String)))
+    (= real-root (call trimmed-root (call real-real-path root)))
+  )
+  (fn-do + inside String
+    (param path String)
+    (return (str root (call virtual-path path)))
+  )
+  (fn-do + outside String
+    (param path String)
+    (for (in prefix (list real-root root))
+      (if (== path prefix)
+        (return "/")
+      )
+      (if (call (. path starts-with) (str prefix "/"))
+        (return ([] path (... (. prefix length))))
+      )
+    )
+    (return path)
+  )
+  (fn-do + virtual-path String
+    (param path String)
+    (let absolute (if-expr (call (. path starts-with) "/") path (str folder "/" path)))
+    (let parts (list String))
+    (for (in part (call (. absolute split) "/"))
+      (if (or (== part "") (== part "."))
+        (continue)
+      )
+      (if (== part "..")
+        (if parts
+          (call (. parts pop))
+        )
+        (continue)
+      )
+      (+= parts part)
+    )
+    (return (str "/" (call (. "/" join) parts)))
+  )
+  (fn-do + open-path I32
+    (param path String)
+    (param mode I32)
+    (param perms FilePermissions)
+    (return (call real-open-path (call inside path) mode perms))
+  )
+  (fn-do + stat-path I32
+    (param path String)
+    (param follow Bool)
+    (param result (of CPointer FileStat))
+    (return (call real-stat-path (call inside path) follow result))
+  )
+  (fn-do + read-link (? String)
+    (param path String)
+    (let target (call real-read-link (call inside path)))
+    (return-if null (if (not target)))
+    (return (call outside target))
+  )
+  (fn-do + real-path String (?! Error)
+    (param path String)
+    (return (call outside (call real-real-path (call inside path))))
+  )
+  (fn-do + read-directory (list PathEntry) (?! Error)
+    (param path String)
+    (return (call real-read-directory (call inside path)))
+  )
+  (fn-do + glob-paths (list String) (?! Error)
+    (param pattern String)
+    (let found (list String))
+    (for (in each (call real-glob-paths (call inside pattern)))
+      (+= found (call outside each))
+    )
+    (return found)
+  )
+  (fn-do + rename-path I32
+    (param from String)
+    (param to String)
+    (param is-exclusive Bool)
+    (return (call real-rename-path (call inside from) (call inside to) is-exclusive))
+  )
+  (fn-do + clone-path I32
+    (param from String)
+    (param to String)
+    (return (call real-clone-path (call inside from) (call inside to)))
+  )
+  (fn-do + remove-path I32
+    (param path String)
+    (return (call real-remove-path (call inside path)))
+  )
+  (fn-do + make-link I32
+    (param target String)
+    (param link String)
+    (param is-symbolic Bool)
+    (let mapped (if-expr (or (not is-symbolic) (call (. target starts-with) "/")) (call inside target) target))
+    (return (call real-make-link mapped (call inside link) is-symbolic))
+  )
+  (fn-do + change-path-mode I32
+    (param path String)
+    (param mode FilePermissions)
+    (return (call real-change-path-mode (call inside path) mode))
+  )
+  (fn-do + make-directory-at I32
+    (param path String)
+    (param mode FilePermissions)
+    (return (call real-make-directory-at (call inside path) mode))
+  )
+  (fn-do + create-path-watch Pointer
+    (param root String)
+    (param is-recursive Bool)
+    (return (call real-create-path-watch (call inside root) is-recursive))
+  )
+  (fn-do + can-execute Bool
+    (param path String)
+    (return (call real-can-execute (call inside path)))
+  )
+  (fn-do + native-path String
+    (param path String)
+    (return (call inside path))
+  )
+  (fn-expr + cwd String
+    folder
+  )
+  (fn-expr + temporary-root Path
+    (call Path "/tmp" 0)
+  )
+  (fn-do + temporary-directory Path (?! Error)
+    (param prefix String (= "brix"))
+    (param parent (? String) (= null))
+    (let within (call inside (?? parent "/tmp")))
+    (if (not (call real-is-directory within))
+      (call real-make-directory-at within (as 448 FilePermissions))
+    )
+    (let made (call real-temporary-directory prefix within))
+    (return (call Path (call outside (as made String)) 0))
+  )
+  (fn-do + shared-memory-create I32
+    (param name String)
+    (param size Size)
+    (return (call real-shared-memory-create (call memory-name name) size))
+  )
+  (fn-do + shared-memory-open I32
+    (param name String)
+    (return (call real-shared-memory-open (call memory-name name)))
+  )
+  (fn-do + unlink-shared-memory _
+    (param name String)
+    (call real-unlink-shared-memory (call memory-name name))
+  )
+  (fn-expr _ memory-name String
+    (param name String)
+    (str "/fk-" (if-expr (call (. name starts-with) "/") ([] name (... 1)) name))
+  )
+)
+
+(fn-expr _ trimmed-root String
+  (param root String)
+  (case? (and (> (. root length) 1) (call (. root ends-with) "/"))
+    ([] root (..< 0 (- (. root length) 1)))
+  )
+  (default
+    root
+  )
+)
+
+(fn-do _ real-open-path I32
+  (param path String)
+  (param mode I32)
+  (param perms FilePermissions)
+  (return (call open-path path mode perms))
+)
+
+(fn-do _ real-stat-path I32
+  (param path String)
+  (param follow Bool)
+  (param result (of CPointer FileStat))
+  (return (call stat-path path follow result))
+)
+
+(fn-do _ real-is-directory Bool
+  (param path String)
+  (let result ([] FileStat 1))
+  (return (and (== (call stat-path path true result) 0) (== (/and/ (. ([] result 0) mode) (as C:S_IFMT U32)) C:S_IFDIR)))
+)
+
+(fn-do _ real-read-link (? String)
+  (param path String)
+  (return (call read-link path))
+)
+
+(fn-do _ real-real-path String (?! Error)
+  (param path String)
+  (return (call real-path path))
+)
+
+(fn-do _ real-read-directory (list PathEntry) (?! Error)
+  (param path String)
+  (return (call read-directory path))
+)
+
+(fn-do _ real-glob-paths (list String) (?! Error)
+  (param pattern String)
+  (return (call glob-paths pattern))
+)
+
+(fn-do _ real-rename-path I32
+  (param from String)
+  (param to String)
+  (param is-exclusive Bool)
+  (return (call rename-path from to is-exclusive))
+)
+
+(fn-do _ real-clone-path I32
+  (param from String)
+  (param to String)
+  (return (call clone-path from to))
+)
+
+(fn-do _ real-remove-path I32
+  (param path String)
+  (return (call remove-path path))
+)
+
+(fn-do _ real-make-link I32
+  (param target String)
+  (param link String)
+  (param is-symbolic Bool)
+  (return (call make-link target link is-symbolic))
+)
+
+(fn-do _ real-change-path-mode I32
+  (param path String)
+  (param mode FilePermissions)
+  (return (call change-path-mode path mode))
+)
+
+(fn-do _ real-make-directory-at I32
+  (param path String)
+  (param mode FilePermissions)
+  (return (call make-directory-at path mode))
+)
+
+(fn-do _ real-create-path-watch Pointer
+  (param root String)
+  (param is-recursive Bool)
+  (return (call create-path-watch root is-recursive))
+)
+
+(fn-do _ real-can-execute Bool
+  (param path String)
+  (return (call can-execute path))
+)
+
+(fn-do _ real-temporary-directory Path (?! Error)
+  (param prefix String)
+  (param parent String)
+  (return (call temporary-directory prefix parent))
+)
+
+(fn-do _ real-shared-memory-create I32
+  (param name String)
+  (param size Size)
+  (return (call shared-memory-create name size))
+)
+
+(fn-do _ real-shared-memory-open I32
+  (param name String)
+  (return (call shared-memory-open name))
+)
+
+(fn-do _ real-unlink-shared-memory _
+  (param name String)
+  (call unlink-shared-memory name)
+)

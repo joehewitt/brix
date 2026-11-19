@@ -1100,3 +1100,30 @@ given some, and keeps what is set under it.
 host and port meet through a socket pair, so a server and its client run in one program with no
 port, and it answers a secure connection with a plain one. It answers no resolving or finding
 door, so code that reaches one under it is refused.
+
+`files`, in `/os/files`, has as its doors each call that names a path on the disk: `open-path`,
+which `File(...)` calls, `stat-path`, which `exists`, `is-dir`, `stat` and the rest call,
+`read-link`, `real-path`, `read-directory`, `glob-paths`, `rename-path`, `clone-path`,
+`remove-path`, `make-link`, `change-path-mode`, `make-directory-at`, `create-path-watch`,
+`can-execute`, `temporary-root`, `temporary-directory` and `native-path` in `/os/path`, `cwd` in
+`/os/env`, and the shared memory calls in `/os/shared-memory`. A C library that opens a path
+itself, such as SQLite or an image decoder, is handed `native-path` of it. `FakeFiles`, in
+`/os/fake-files`, is a fake for `files` that maps each path into a real folder made for it, so
+code under it reads and writes there and sees paths as if that folder were `/`; a `..` cannot
+climb above it:
+
+```brix
+(import /os/fake-files)
+(import /os/file)
+(import /os/files)
+(import /os/path)
+
+(main
+  (let root (call temporary-directory "notes"))
+  (do-with files (call FakeFiles root)
+    (call write-file-atomically (call Path "/notes.txt" 0) "kept")
+  )
+  (print (call read-file-text (/ root "notes.txt")))
+  (call remove-tree root)
+)
+```

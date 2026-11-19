@@ -1,6 +1,7 @@
 (import ./cfile)
 (import ./env)
 (import ./file)
+(import ./files)
 (import /BxCore/BxCore.h)
 (import /BxCore/BxSystem.h)
 (import /BxEvents/BxEvents.h)
@@ -21,7 +22,7 @@
   (prop + exists _
     (=>
       (scope (== error 0)
-        (lazy error (call C:brixStat normalized &result))
+        (lazy error (call stat-path normalized true &result))
         (lazy result FileStat)
       )
     )
@@ -30,7 +31,7 @@
     (=> :do
       (block
         (let result FileStat)
-        (let error (call C:brixStat normalized &result))
+        (let error (call stat-path normalized true &result))
         (return (and (== error 0) (== (/and/ (. result mode) (as C:S_IFMT U32)) C:S_IFDIR)))
       )
     )
@@ -39,7 +40,7 @@
     (=> :do
       (block
         (let result FileStat)
-        (let error (call C:brixStat normalized &result))
+        (let error (call stat-path normalized true &result))
         (return (and (== error 0) (== (/and/ (. result mode) (as C:S_IFMT U32)) C:S_IFREG)))
       )
     )
@@ -48,7 +49,7 @@
     (=> :do
       (block
         (let result FileStat)
-        (let error (call C:brixLinkStat normalized &result))
+        (let error (call stat-path normalized false &result))
         (return (and (== error 0) (== (/and/ (. result mode) (as C:S_IFMT U32)) C:S_IFLNK)))
       )
     )
@@ -216,17 +217,10 @@
   )
   (fn-expr + original Path :get
     (case? is-link
-      (call (. buf slice-string) (..< 0 link-size))
+      (?? (call read-link path) path)
     )
     (default
       path
-    )
-    (where
-      ;  ?! current-file-error()
-      ;      if it == -1
-      (blank)
-      (lazy buf ([] Byte 4096))
-      (lazy link-size (call C:readlink path buf (. buf size)))
     )
   )
   (fn-do + normalized String :get
@@ -245,30 +239,14 @@
     )
     (return (str "/" (call (. "/" join) parts)))
     (blank)
-    (lazy absolute (if-expr (== ([] path 0) '/') path (str (call C:getcwd ([] Char 4096) 4096) "/" path)))
+    (lazy absolute (if-expr (== ([] path 0) '/') path (str (call cwd) "/" path)))
   )
   (fn-do + resolved Path :get
-    (let buf ([] Byte 4096))
-    (let found (call C:realpath normalized buf))
-    (throw (call current-file-error) (if (not found)))
-    (return (call Path (call (. buf slice-string) (..< 0 (call C:strlen buf))) 0))
+    (return (call Path (call real-path normalized) 0))
   )
   (fn-do + entries (stream PathEntry) :get
-    (let d
-      (call C:opendir path
-        (block
-          (throw (call current-file-error) (if (not it)))
-        )
-      )
-    )
-    (finally
-      (inline (call C:closedir d))
-    )
-    (blank)
-    (let buf ([] Byte 4096))
-    (let info BxDirEntry)
-    (while (call C:brixReadDirEntry d buf &info)
-      (yield (call PathEntry (call (. buf slice-string) (..< 0 (. info name-length))) (as (. info kind) PathKind) (. info inode)))
+    (for (in entry (call read-directory path))
+      (yield entry)
     )
   )
   (fn-do + contents (stream Path) :get
@@ -283,7 +261,7 @@
     ([] buf 0)
     (where
       (lazy buf ([] FileStat 1))
-      (lazy error (call C:brixStat path buf))
+      (lazy error (call stat-path path true buf))
     )
   )
   (fn-expr + components (list String) :get
@@ -297,7 +275,7 @@
     ([] buf 0)
     (where
       (lazy buf ([] FileStat 1))
-      (lazy error (call C:brixLinkStat path buf))
+      (lazy error (call stat-path path false buf))
     )
   )
   (fn-expr + (infix this / (param subpath Path)) _
@@ -342,21 +320,8 @@
   )
   (fn-do + match (stream Path)
     (param is-recursive _ (= false))
-    (let buf ([] Glob 1))
-    (let err
-      (call C:brixGlob path buf
-        (block
-          (throw (call Error "Invalid pattern") (if it))
-        )
-      )
-    )
-    (finally
-      (inline (call C:brixGlobFree buf))
-    )
-    (blank)
-    (let match ([] buf 0))
-    (for (in i (..< 0 (. match count)))
-      (yield (call Path (as ([] (. match paths) i) String)))
+    (for (in found (call glob-paths path))
+      (yield (call Path found))
     )
   )
   (fn-do + rename _
@@ -367,19 +332,19 @@
   )
   (fn-do + move _
     (param new-path Path)
-    (let status (call C:rename (as path String) (as new-path String)))
+    (let status (call rename-path (as path String) (as new-path String) false))
     (call handle-file-error status)
   )
   (fn-do + move-exclusive _
     (param new-path Path)
-    (let status (call C:brixRenameExclusive (as path String) (as new-path String)))
+    (let status (call rename-path (as path String) (as new-path String) true))
     (call handle-file-error status)
   )
   (fn-do + copy _
     (param new-path Path)
     (let source stat)
     (let target FileStat)
-    (return-if (if (and (== (call C:brixStat (as new-path String) &target) 0) (== (. target dev) (. source dev)) (== (. target ino) (. source ino)))))
+    (return-if (if (and (== (call stat-path (as new-path String) true &target) 0) (== (. target dev) (. source dev)) (== (. target ino) (. source ino)))))
     (blank)
     (let this-file (use (call (of File Byte) path)))
     (let flags (/or/ (. FileFlags create-mode) (. FileFlags write-mode) (. FileFlags truncate-mode)))
@@ -389,26 +354,26 @@
   )
   (fn-do + clone _
     (param new-path Path)
-    (let status (call C:brixCloneFile path (as new-path String)))
+    (let status (call clone-path path (as new-path String)))
     (call handle-file-error status)
   )
   (fn-do + delete _
-    (let status (call C:remove path))
+    (let status (call remove-path path))
     (call handle-file-error status)
   )
   (fn-do + hard-link _
     (param link-path Path)
-    (let status (call C:link path (as link-path String)))
+    (let status (call make-link path (as link-path String) false))
     (call handle-file-error status)
   )
   (fn-do + soft-link _
     (param link-path Path)
-    (let status (call C:symlink path (as link-path String)))
+    (let status (call make-link path (as link-path String) true))
     (call handle-file-error status)
   )
   (fn-do + change-mode _
     (param mode FilePermissions)
-    (let status (call C:chmod path mode))
+    (let status (call change-path-mode path mode))
     (call handle-file-error status)
   )
   (fn-expr + readable _
@@ -426,7 +391,7 @@
     (let actual-path (if-expr name (/ this name) this))
     (let above (?? (. actual-path parent) (call Path "." 0)))
     (let actual-mode (if-expr mode mode (as (. above mode) FilePermissions)))
-    (let status (call C:mkdir (as actual-path String) actual-mode))
+    (let status (call make-directory-at (as actual-path String) actual-mode))
     (call handle-file-error status)
   )
   (fn-do + make-directories _ (?! Error)
@@ -560,10 +525,25 @@
   (return listener)
 )
 
-(fn-do + temporary-directory _ (?! Error)
+(fn-do + remove-tree _ (?! Error)
+  (param path Path)
+  (param kind PathKind (= (. PathKind directory)))
+  (if (== kind (. PathKind directory))
+    (for (in entry (call read-directory (as path String)))
+      (call remove-tree (/ path (. entry name)) (. entry kind))
+    )
+  )
+  (call (. path delete))
+)
+
+(fn-do + temporary-root Path (door files)
+  (return (call Path (?? (call env "TMPDIR") "/tmp") 0))
+)
+
+(fn-do + temporary-directory Path (?! Error) (door files)
   (param prefix String (= "brix"))
   (param parent (? String) (= null))
-  (let root (?? parent (call env "TMPDIR") "/tmp"))
+  (let root (?? parent (as (call temporary-root) String)))
   (let folder (if-expr (call (. root ends-with) "/") ([] root (..< 0 (- (. root length) 1))) root))
   (let template (call byte-view (str folder "/" prefix ".XXXXXX")))
   (let buffer ([] Byte (+ (. template length) 1)))
@@ -606,7 +586,7 @@
     (param is-recursive Bool)
   )
   (fn-do + begin-using _
-    (= watcher (call C:brixPathWatchCreate (as root String) is-recursive))
+    (= watcher (call create-path-watch (as root String) is-recursive))
     (throw (call Error (str "Unable to watch path " root)) (if (not watcher)))
     (blank)
     (let active-watcher watcher)
@@ -670,4 +650,122 @@
     (call C:brixCancelFileChangeEventListener file change-type (. lock native-pointer))
     (call (. file close))
   )
+)
+
+(fn-do + stat-path I32 (door files)
+  (param path String)
+  (param follow Bool)
+  (param result (of CPointer FileStat))
+  (return (if-expr follow (call C:brixStat path result) (call C:brixLinkStat path result)))
+)
+
+(fn-do + read-link (? String) (door files)
+  (param path String)
+  (let buf ([] Byte 4096))
+  (let size (call C:readlink path buf (. buf size)))
+  (return-if null (if (< size 0)))
+  (return (call (. buf slice-string) (..< 0 size)))
+)
+
+(fn-do + real-path String (?! Error) (door files)
+  (param path String)
+  (let buf ([] Byte 4096))
+  (let found (call C:realpath path buf))
+  (throw (call current-file-error) (if (not found)))
+  (return (call (. buf slice-string) (..< 0 (call C:strlen buf))))
+)
+
+(fn-do + read-directory (list PathEntry) (?! Error) (door files)
+  (param path String)
+  (let d
+    (call C:opendir path
+      (block
+        (throw (call current-file-error) (if (not it)))
+      )
+    )
+  )
+  (finally
+    (inline (call C:closedir d))
+  )
+  (blank)
+  (let entries (list PathEntry))
+  (let buf ([] Byte 4096))
+  (let info BxDirEntry)
+  (while (call C:brixReadDirEntry d buf &info)
+    (+= entries (call PathEntry (call (. buf slice-string) (..< 0 (. info name-length))) (as (. info kind) PathKind) (. info inode)))
+  )
+  (return entries)
+)
+
+(fn-do + glob-paths (list String) (?! Error) (door files)
+  (param pattern String)
+  (let buf ([] Glob 1))
+  (call C:brixGlob pattern buf
+    (block
+      (throw (call Error "Invalid pattern") (if it))
+    )
+  )
+  (finally
+    (inline (call C:brixGlobFree buf))
+  )
+  (blank)
+  (let found (list String))
+  (let match ([] buf 0))
+  (for (in i (..< 0 (. match count)))
+    (+= found (as ([] (. match paths) i) String))
+  )
+  (return found)
+)
+
+(fn-do + rename-path I32 (door files)
+  (param from String)
+  (param to String)
+  (param is-exclusive Bool)
+  (return (if-expr is-exclusive (call C:brixRenameExclusive from to) (call C:rename from to)))
+)
+
+(fn-do + clone-path I32 (door files)
+  (param from String)
+  (param to String)
+  (return (call C:brixCloneFile from to))
+)
+
+(fn-do + remove-path I32 (door files)
+  (param path String)
+  (return (call C:remove path))
+)
+
+(fn-do + make-link I32 (door files)
+  (param target String)
+  (param link String)
+  (param is-symbolic Bool)
+  (return (if-expr is-symbolic (call C:symlink target link) (call C:link target link)))
+)
+
+(fn-do + change-path-mode I32 (door files)
+  (param path String)
+  (param mode FilePermissions)
+  (return (call C:chmod path mode))
+)
+
+(fn-do + make-directory-at I32 (door files)
+  (param path String)
+  (param mode FilePermissions)
+  (return (call C:mkdir path mode))
+)
+
+(fn-do + create-path-watch Pointer (door files)
+  (param root String)
+  (param is-recursive Bool)
+  (return (call C:brixPathWatchCreate root is-recursive))
+)
+
+(fn-do + can-execute Bool (door files)
+  (param path String)
+  (return (== (call C:access path C:X_OK) 0))
+)
+
+(fn-do + native-path String (door files)
+  (param path String)
+  (return path)
 )

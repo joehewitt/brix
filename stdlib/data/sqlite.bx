@@ -2,6 +2,7 @@
 (import /BxSQLite/BxSQLite.h)
 (import /sqlite/sqlite3.h)
 (import /string.h)
+(import /os/path)
 (import /time/duration)
 
 (type + SQLiteValue (is Union)
@@ -51,7 +52,7 @@
     )
     (let locking (if-expr is-shared-across-threads C:SQLITE_OPEN_FULLMUTEX C:SQLITE_OPEN_NOMUTEX))
     (let opened (of CPointer I8))
-    (let status (call C:sqlite3_open_v2 path &opened (/or/ access locking) null))
+    (let status (call C:sqlite3_open_v2 (call native-path path) &opened (/or/ access locking) null))
     (if (!= status C:SQLITE_OK)
       (let failure
         (scope (if-expr (== opened null) (call SQLiteError status (str "Unable to open " path)) last-error)
