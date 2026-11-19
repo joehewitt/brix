@@ -745,3 +745,54 @@ Invalid shade
 2
 1
 ```
+
+### Errors in the defaults a span's class writes in another module are reported where they are written, though the module that makes the span is larger
+
+```brix crash
+(import ./lib/card)
+(import /gui)
+
+(main
+  (let numbers (list 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
+    31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60))
+  (print (. numbers length))
+  (<> Text
+    (<> Card)
+  )
+)
+```
+
+```brix file=lib/card.bx
+(import /gui)
+
+(type + Card (is Span)
+  (prop + is-bold _ (= true))
+  (rule This
+    (when-style #is-bold
+      (= font-weight (. FontWeight bold))
+    )
+  )
+  (content
+    (<> This
+      (= color (call shade this))
+    )
+  )
+)
+
+(fn-expr _ shade RGBA
+  (param span Card)
+  (. span $gui-syntax-plain-color)
+)
+```
+
+```output
+Exception: Type "FontWeight" not found; it is declared in /graphics/text, which this module does not import. Add the import /graphics/text
+<lib/card.bx:7>
+          (= font-weight (. FontWeight bold))
+                            ^^^^^^^^^^
+
+Exception: Type "RGBA" not found; it is declared in /graphics/color, which this module does not import. Add the import /graphics/color
+<lib/card.bx:17>
+    (fn-expr _ shade RGBA
+                     ^^^^
+```
