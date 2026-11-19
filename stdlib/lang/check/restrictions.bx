@@ -1,3 +1,4 @@
+(import ./ban-sites)
 (import ./call-paths)
 (import ./facts)
 (import ./instances)
@@ -20,12 +21,12 @@
   ; once typing has found every call: from a function that declares it, or from one whose `do` block
   ; enters it, through each function typed again under it, to the code that breaks it. The report
   ; is then `reached`: stated with its chain, and shown however many its function has. A ban is
-  ; broken where a door of the effect it bans is reached under it through calls of one function
-  ; each, which is reported at each call of the door with the same chain; past any other call, the
-  ; door panics where it runs. A door a fake answers under a `do with` is no door reached, and one
-  ; the fake cannot answer is reported in the same way, with the chain from the `do with`; where
-  ; only a door reached outside every binding calls it, as code a function value runs is, that is a
-  ; panic where it runs.
+  ; broken where a door of the effect it bans is reached from it through calls of one function
+  ; each, found by walking the calls from where it is written, and reported at each call of the
+  ; door with the chain; past any other call, the door panics where it runs. A door a fake answers
+  ; under a `do with` is no door reached, and one the fake cannot answer is reported in the same
+  ; way, with the chain from the `do with`; where only a door reached outside every binding calls
+  ; it, as code a function value runs is, that is a panic where it runs.
   (blank)
   (prop _ session Session)
   (prop _ paths CallPaths)
@@ -41,7 +42,7 @@
         (let name (. row name))
         (if name
           (let need (/and/ (call dispatch-effects (. ([] (. session instances rows) (. row instance)) effects)) (call restricting-effects)))
-          (let chain (call chain-text (. row instance) (. row module) (. row syntax) need (call restricting-effects) false))
+          (let chain (call chain-text (. row instance) (. row module) (. row syntax) need (call restricting-effects)))
           (let text (if-expr (== (. chain length) 0) (. name text) (str (. name text) ": " chain)))
           (= (. ([] (. facts diagnostics) position) name) (call (. session program store-atom) text))
         )
@@ -52,27 +53,93 @@
     (call report-swaps)
   )
   (fn-do _ report-bans _
-    (let table (. session program effects))
-    (return-if (if (== (. table count) 0)))
+    (return-if (if (== (. session program effects count) 0)))
     (blank)
+    (let reported (map String Bool))
+    (for (in site (call ban-sites (. session program) (. session instances)))
+      (call walk-ban site reported)
+    )
+  )
+  (fn-do _ walk-ban _
+    (param site BanSite)
+    (param reported (map String Bool))
     (let instances (. session instances))
-    (for (in position (..< 0 (. instances length)))
-      (let id (as position InstanceId))
-      (if (!= id (. instances dead))
-        (let row ([] (. instances rows) id))
-        (let door (call (. table door-of) (. row module) (. row decl)))
-        (if (and door (< door (call most-effects)) (!= (/and/ (call dispatch-effects (. row effects)) (call ban-bit door)) 0) real)
-          (let reported false)
-          (for (in edge (call (. paths edges-into) id))
-            (= reported (or (call report-door edge id door) reported))
-          )
-          (if (and (not reported) (== (. (call (. paths edges-into) id) length) 0))
-            (call report-unreached id door)
-          )
-        )
-        (lazy real (or (not door) (== (call (. instances fake-of) (. row effects) door) no-type)))
+    (let table (. session program effects))
+    (let root ([] (. instances rows) (. site instance)))
+    (let tree (. ([] (. session program modules) (. root module)) tree))
+    (let low (if-expr (== (. site block) 0) 0u32 (call (. tree subtree-start) (. site block))))
+    (let high (if-expr (== (. site block) 0) (. U32 max) (. site block)))
+    (let edges (list CallEdge))
+    (let parents (list U32))
+    (let seen (map InstanceId Bool))
+    (= ([] seen (. site instance)) true)
+    (for (in edge (call (. paths edges-from) (. site instance)))
+      (if (and (call follows-ban edge) (>= (. edge syntax) low) (<= (. edge syntax) high))
+        (+= edges edge)
+        (+= parents (. U32 max))
       )
     )
+    (let next Size 0)
+    (while (< next (. edges length))
+      (let at next)
+      (+= next 1)
+      (let callee (. ([] edges at) callee))
+      (let row ([] (. instances rows) callee))
+      (let door (call (. table door-of) (. row module) (. row decl)))
+      (let expands true)
+      (if (and door (< door (call most-effects)) (!= (/and/ (. site bans) (call ban-bit door)) 0))
+        (if (== (call (. instances fake-of) (. row effects) door) no-type)
+          (call report-reached site edges parents at door reported)
+          (= expands false)
+          (else-if (== (call (. instances swap-entry-of) (. row effects) door) (call (. instances swap-entry-of) (. root effects) door))
+            (= expands false)
+          )
+        )
+      )
+      (if (and expands (not (?? ([] seen callee) false)))
+        (= ([] seen callee) true)
+        (for (in onward (call (. paths edges-from) callee))
+          (if (call follows-ban onward)
+            (+= edges onward)
+            (+= parents (as at U32))
+          )
+        )
+      )
+    )
+  )
+  (fn-expr _ follows-ban Bool
+    (param edge CallEdge)
+    (and (!= (. edge syntax) 0) (or (== (. edge kind) .edge-call) (== (. edge kind) .edge-convert) (== (. edge kind) .edge-made)))
+  )
+  (fn-do _ report-reached _
+    (param site BanSite)
+    (param edges (list CallEdge))
+    (param parents (list U32))
+    (param at Size)
+    (param effect U32)
+    (param reported (map String Bool))
+    (let door ([] edges at))
+    (let key (str (. door caller) ":" (. door syntax) ":" effect))
+    (return-if (if (?? ([] reported key) false)))
+    (blank)
+    (= ([] reported key) true)
+    (let chain (list CallEdge))
+    (let cursor ([] parents at))
+    (while (!= cursor (. U32 max))
+      (call (. chain insert) ([] edges cursor) 0)
+      (= cursor ([] parents cursor))
+    )
+    (let caller ([] (. session instances rows) (. door caller)))
+    (let parts (list String))
+    (+= parts (call placed (. site instance) (if-expr (== (. chain length) 0) (. door syntax) (. ([] chain 0) syntax))))
+    (++= parts (call (. paths names) chain))
+    (let shown (call site-text (. caller module) (. door syntax)))
+    (if (!= (. shown length) 0)
+      (+= parts shown)
+    )
+    (let name (. ([] (. session program effects names) effect) text))
+    (let text (str "cannot reach a door of '" name "' under 'without " name "': " (call (. " → " join) parts)))
+    (call (. session facts record-diagnostic) (. door caller) (. caller module) (. door syntax) .reached (call (. session program store-atom) text))
   )
   (fn-do _ report-swaps _
     (for (in forward (. session facts swap-forwards))
@@ -127,7 +194,7 @@
           null
         )
         (default
-          (call (. paths chain-to) (. edge caller) (=> ((: link CallEdge)) (call step link need false)))
+          (call (. paths chain-to) (. edge caller) (=> ((: link CallEdge)) (call step link need)))
         )
       )
     )
@@ -185,66 +252,12 @@
     (return-if said (if (== (. chain length) 0)))
     (return (str said ": " chain))
   )
-  (fn-do _ report-unreached _
-    (param door InstanceId)
-    (param effect U32)
-    ; Reports a door held under a ban of its effect that no recorded call reaches, at the door, with
-    ; the chain to it, so that no way of reaching one lets it pass.
-    (let row ([] (. session instances rows) door))
-    (let bit (call ban-bit effect))
-    (let at
-      (match ([] (. ([] (. session program modules) (. row module)) decls) (. row decl))
-        (case (call .decl-function fn)
-          (. fn syntax)
-        )
-        (default
-          0u32
-        )
-      )
-    )
-    (let chain (call chain-text door (. row module) 0 (/and/ (call dispatch-effects (. row effects)) bit) bit false))
-    (let name (. ([] (. session program effects names) effect) text))
-    (let text (str "cannot reach a door of '" name "' under 'without " name "': " chain))
-    (call (. session facts record-diagnostic) door (. row module) at .reached (call (. session program store-atom) text))
-  )
-  (fn-do _ report-door Bool
-    (param edge CallEdge)
-    (param door InstanceId)
-    (param effect U32)
-    ; Reports a door of an effect reached under a ban of it where the edge reaches it, at a call, when
-    ; calls of one function each lead from the ban to it. A door of the effect that calls the door is
-    ; reached under the ban itself, which is reported where it is. Answers whether it is reported.
-    (let instances (. session instances))
-    (let table (. session program effects))
-    (let caller ([] (. instances rows) (. edge caller)))
-    (return-if true (if (== (call (. table door-of) (. caller module) (. caller decl)) effect)))
-    (return-if false (if (or (== (. edge syntax) 0) (and (!= (. edge kind) .edge-call) (!= (. edge kind) .edge-convert)))))
-    (blank)
-    (let bit (call ban-bit effect))
-    (let need (/and/ (call dispatch-effects (. caller effects)) bit))
-    (let chain (call chain-text (. edge caller) (. caller module) (. edge syntax) need bit true))
-    (return-if false (if (== (. chain length) 0)))
-    (blank)
-    (let name (. ([] (. table names) effect) text))
-    (let text (str "cannot reach a door of '" name "' under 'without " name "': " chain))
-    (call (. session facts record-diagnostic)
-      (block
-        (arg (. edge caller))
-        (arg (. caller module))
-        (arg (. edge syntax))
-        (arg .reached)
-        (arg (call (. session program store-atom) text))
-      )
-    )
-    (return true)
-  )
   (fn-do _ chain-text String
     (param broken InstanceId)
     (param module ModuleId)
     (param site SyntaxId)
     (param need EffectMask)
     (param placing EffectMask)
-    (param direct Bool)
     ; The chain from where what `need` names is placed to the site that breaks it: the function that
     ; breaks it, where its own header writes what `placing` names or it holds none of `need` and a
     ; `do` block of its own places it.
@@ -252,7 +265,7 @@
     (if (or (== need 0) (!= (/and/ (call written-effects broken) placing) 0))
       (+= parts (call placed broken site))
       (else
-        (let found (call (. paths chain-to) broken (=> ((: edge CallEdge)) (call step edge need direct))))
+        (let found (call (. paths chain-to) broken (=> ((: edge CallEdge)) (call step edge need))))
         (return-if "" (if (or (not found) (== (. found length) 0))))
         (blank)
         (+= parts (call placed (. ([] found 0) caller) (. ([] found 0) syntax)))
@@ -268,10 +281,8 @@
   (fn-do _ step EdgeStep
     (param edge CallEdge)
     (param need EffectMask)
-    (param direct Bool)
     ; Each function a restriction reaches is typed again under it, so the walk goes back through
     ; those that have it and stops at the one that places it.
-    (return-if .step-skip (if (and direct (or (== (. edge kind) .edge-answer) (== (. edge kind) .edge-value)))))
     (let held (/and/ (call dispatch-effects (. ([] (. session instances rows) (. edge caller)) effects)) need))
     (return-if .step-reach (if (or (!= held need) (!= (/and/ (call written-effects (. edge caller)) need) 0))))
     (return .step-follow)

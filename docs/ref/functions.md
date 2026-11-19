@@ -1006,7 +1006,8 @@ which a program makes that contact, its doors, with a `(door …)` part after th
   libraries claim. A C function that no effect claims passes, and so does what native code does by
   itself, so a ban is a guard against reaching the outside world by mistake, not a sandbox. In a
   program that bans an effect, each of its doors checks at each call whether a ban is open, as a
-  door does in a program that binds the effect.
+  door does in a program that binds the effect. A ban compiles no copy of the code it reaches: it
+  is checked along the calls from it, and the code runs as it does anywhere else.
 
 `(with network net)` on a `do` or a `fn-do`, or a `do-with` form, binds a fake to an effect for
 the code under it and everything that code calls. Each door of `network` that code reaches calls

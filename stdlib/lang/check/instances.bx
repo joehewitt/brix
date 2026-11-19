@@ -1522,7 +1522,7 @@
       (if (and (== (. held effect) (. entry effect)) (== (. held fake) (. entry fake)) same-outer)
         (return (as (+ index 1) U32))
       )
-      (lazy same-outer (and (== (. held outer) (. entry outer)) (== (. held banned) (. entry banned))))
+      (lazy same-outer (== (. held outer) (. entry outer)))
     )
     (+= swap-entries entry)
     (return (as (. swap-entries length) U32))
@@ -1652,17 +1652,16 @@
     (param effect U32)
     (param fake TypeId)
     ; The mask of code under a `do with` that binds a fake of a class to an effect, which keeps what
-    ; was bound to the effect outside and whether it was banned there.
+    ; was bound to the effect outside.
     (let outer (call swap-entry-of effects effect))
-    (let banned (!= (/and/ effects (call ban-bit effect)) 0))
-    (return (call swapped effects effect (call intern-swap-entry (call SwapEntry effect fake outer banned))))
+    (return (call swapped effects effect (call intern-swap-entry (call SwapEntry effect fake outer))))
   )
   (fn-do + handled-by EffectMask
     (param effects EffectMask)
     (param entry U32)
     ; The mask a fake's method runs under where it answers a door of the effect an entry binds it to,
-    ; from the door's own: the effect as it was outside the `do with`, banned or not, and bound to
-    ; what was bound there, or else known to reach its real doors. The rest is as at the door.
+    ; from the door's own: the effect bound to what was bound outside the `do with`, or else known to
+    ; reach its real doors. The rest is as at the door.
     (let held ([] swap-entries (- entry 1)))
     (let outer
       (block
@@ -1670,13 +1669,11 @@
           (. held outer)
         )
         (default
-          (call intern-swap-entry (call SwapEntry (. held effect) no-type 0 false))
+          (call intern-swap-entry (call SwapEntry (. held effect) no-type 0))
         )
       )
     )
-    (let bit (call ban-bit (. held effect)))
-    (let banned (if-expr (. held banned) (/or/ effects bit) (/and/ effects (/xor/ (. U64 max) bit))))
-    (return (call swapped banned (. held effect) outer))
+    (return (call swapped effects (. held effect) outer))
   )
   (fn-do _ mixed-swaps StableKey
     (param key StableKey)
@@ -1695,7 +1692,7 @@
     (param entry U32)
     (let held ([] swap-entries (- entry 1)))
     (let fake-key (if-expr (== (. held fake) no-type) 0u64 (call (. types key-of) (. held fake))))
-    (let mixed-key (call mixed (call mixed (call mixed key (. held effect)) fake-key) (if-expr (. held banned) 1 0)))
+    (let mixed-key (call mixed (call mixed key (. held effect)) fake-key))
     (return-if (call mixed mixed-key 0) (if (== (. held outer) 0)))
     (return (call mixed-swap-entry (call mixed mixed-key 1) (. held outer)))
   )
@@ -1861,13 +1858,11 @@
 (type + SwapEntry (is Struct)
   ; A fake a `do with` binds to an effect: the effect's number, the class of the fake, or no type
   ; where the effect is known to reach its real doors, as in a fake's own methods; what was bound
-  ; to the effect outside, by its number among `swap-entries`, or 0 for nothing; and whether the
-  ; effect was banned there.
+  ; to the effect outside, by its number among `swap-entries`, or 0 for nothing.
   (blank)
   (prop + effect U32)
   (prop + fake TypeId)
   (prop + outer U32)
-  (prop + banned Bool)
 )
 
 (type + StateKey (is Struct)
@@ -2063,7 +2058,7 @@
   (if (!= (/and/ normalized (. CompilationEffect no-safepoint)) 0)
     (= normalized (/or/ normalized (. CompilationEffect no-suspend)))
   )
-  (return (/and/ normalized (/or/ dispatch-effect-bits (call ban-bits) (call swap-bits))))
+  (return (/and/ normalized (/or/ dispatch-effect-bits (call swap-bits))))
 )
 
 (fn-expr + runs-inline Bool

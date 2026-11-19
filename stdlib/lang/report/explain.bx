@@ -595,7 +595,7 @@
         )
         (let path (if-expr (== (. callers length) 0) "made by the compiler" (call caller-text callers)))
         (let parts (list String))
-        (let restricted (call restriction-text effects (. session program effects names)))
+        (let restricted (call restriction-text effects))
         (if (!= (. restricted length) 0)
           (+= parts restricted)
         )
@@ -704,7 +704,6 @@
 
 (fn-do _ restriction-text String
   (param effects EffectMask)
-  (param names (list Atom))
   (return-if "gc-free" (if (!= (/and/ effects (. CompilationEffect gc-free)) 0)))
   (blank)
   (let parts (list String))
@@ -719,11 +718,6 @@
   )
   (if (!= (/and/ effects (. CompilationEffect no-probe-safepoint)) 0)
     (+= parts "without probe safepoints")
-  )
-  (for (in index (..< 0 (. names length)))
-    (if (and (< index (call most-effects)) (!= (/and/ effects (call ban-bit (as index U32))) 0))
-      (+= parts (str "without " (. ([] names index) text)))
-    )
   )
   (return (call (. ", " join) parts))
 )

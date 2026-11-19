@@ -2717,7 +2717,13 @@
     ; its `close` at the node.
     (== (. ([] (. facts calls) begins) next) no-fact)
   )
-  (fn-do _ open-door SyntaxId
+  (fn-do _ emit-forwarder _
+    (param forward SwapForward)
+    ; A door a fake answers under a `do with`: it reads the fake from its effect's slot, where the
+    ; `do with` or what holds its state put it, and calls the fake's method with it and the door's
+    ; arguments, giving what that gives. Typed only under the binding, it finds the slot bound. Where
+    ; the fake's class has no method that answers it, which only a door a function value reaches
+    ; lets through, it panics.
     (let row ([] (. instances rows) (. unit instance)))
     (let declared
       (match ([] (. ([] (. program modules) (. row module)) decls) (. row decl))
@@ -2738,33 +2744,6 @@
     (if (!= (. own errors count) 0)
       (call return-results (. own result) declared)
     )
-    (return declared)
-  )
-  (fn-do _ banned-door (? U32)
-    (let row ([] (. instances rows) (. unit instance)))
-    (let door (call (. program effects door-of) (. row module) (. row decl)))
-    (return-if null (if (or (not door) (>= door (call most-effects)))))
-    (return-if null (if (== (/and/ (call dispatch-effects (. row effects)) (call ban-bit door)) 0)))
-    (return-if null (if (!= (call (. instances fake-of) (. row effects) door) no-type)))
-    (return door)
-  )
-  (fn-do _ emit-refusal _
-    (param effect U32)
-    (let row ([] (. instances rows) (. unit instance)))
-    (let declared (call open-door))
-    (let name (. ([] (. program effects names) effect) text))
-    (call raise-text declared (str (call paths-name row) " reached a door of '" name "' under 'without " name "'"))
-  )
-  (fn-do _ emit-forwarder _
-    (param forward SwapForward)
-    ; A door a fake answers under a `do with`: it reads the fake from its effect's slot, where the
-    ; `do with` or what holds its state put it, and calls the fake's method with it and the door's
-    ; arguments, giving what that gives. Typed only under the binding, it finds the slot bound. Where
-    ; the fake's class has no method that answers it, which only a door a function value reaches
-    ; lets through, it panics.
-    (let row ([] (. instances rows) (. unit instance)))
-    (let declared (call open-door))
-    (let own ([] (. instances signatures) (. unit instance)))
     (if (== (. forward callee) no-instance)
       (let name (. ([] (. program effects names) (. forward effect)) text))
       (call raise-text
@@ -2843,31 +2822,29 @@
     (param declared SyntaxId)
     (param bans EffectMask)
     (let mark (. open-cleanups length))
-    (call refuse-banned declared bans true)
-    (return mark)
-  )
-  (fn-do _ refuse-banned _
-    (param declared SyntaxId)
-    (param bans EffectMask)
-    (param restores Bool)
     (let effect U32 0)
     (while (< effect (call most-effects))
       (let slot (call refused-slot effect))
       (if (and (!= slot no-storage) (!= (/and/ bans (call ban-bit effect)) 0))
         (let kept ([] (. tables storage) slot))
         (let target (call stack-slot kept declared))
-        (let previous no-local)
-        (if restores
-          (= previous (call (. ir add-local) (. kept layout)))
-          (call store-local previous target declared)
-        )
+        (let previous (call (. ir add-local) (. kept layout)))
+        (call store-local previous target declared)
         (let flag (call (. tables layouts field) (. kept layout) 0))
         (call store target (. flag offset) (call integer .machine-u8 (as (call refused-kind) U64)) false declared)
-        (if restores
-          (call open-cleanup declared (call UseCell no-local previous no-type false slot))
-        )
+        (call open-cleanup declared (call UseCell no-local previous no-type false slot))
       )
       (+= effect 1)
+    )
+    (return mark)
+  )
+  (fn-do _ inherit-refusals _
+    (param declared SyntaxId)
+    (for (in row (call (. tables stack-holds) (. unit instance)))
+      (if (and (!= row no-storage) (call is-refused-row row))
+        (let kept ([] (. tables storage) row))
+        (call copy (call stack-slot kept declared) (call stack-state row declared) (. kept layout) (. ([] (. tables layouts rows) (. kept layout)) is-managed) declared)
+      )
     )
   )
   (fn-do _ emit-dispatch _
@@ -2878,7 +2855,6 @@
     ; door typed under a binding of that fake's class with its arguments and gives what that gives,
     ; which panics where that class has no method that answers it. It runs its body where the slot
     ; holds none.
-    (call emit-refused-branch declared)
     (let kind (call make-operand .operand-void 0))
     (let read false)
     (for (in dispatch (. facts swap-dispatches))
@@ -7887,11 +7863,6 @@
     ; carries the errors of whichever it compiles first. A door a fake answers under a `do with`
     ; calls the fake's method (`emit-forwarder`).
     (let row ([] (. instances rows) (. unit instance)))
-    (let banned (call banned-door))
-    (if banned
-      (call emit-refusal banned)
-      (return)
-    )
     (for (in forward (. facts swap-forwards))
       (if (== (. forward instance) (. unit instance))
         (call emit-forwarder forward)
@@ -8185,6 +8156,7 @@
     (if (and (!= (. signature errors count) 0) (!= (. function kind) .event-handler))
       (call return-results (. signature result) declared)
     )
+    (call emit-refused-branch declared)
     (if (and (not (. unit takes-self)) (not (. unit received)))
       (call emit-dispatch declared signature)
     )
@@ -8292,11 +8264,7 @@
       (call emit-built-feeds declared feeds)
       (return)
     )
-    (let entered (call (. program effects bans-of) (. row module) (. row decl)))
-    (if (== (. function kind) .task-body)
-      (= entered (/or/ entered (/and/ (call dispatch-effects (. row effects)) (call ban-bits))))
-    )
-    (let banned-from (call enter-bans declared entered))
+    (let banned-from (call enter-bans declared (call (. program effects bans-of) (. row module) (. row decl))))
     (if imperative
       (call emit-block body)
       (call close-cleanups banned-from)
