@@ -992,15 +992,21 @@ which a program makes that contact, its doors, with a `(door …)` part after th
   function written inside a door, such as a closure or a task's body. A call anywhere else is an
   error that names the effect. A C function two effects claim is an error where it is called.
 - **Bans.** `(without network)` on a function, or on a `(do …)`, keeps its code, and everything that
-  code calls, from reaching a door of `network`. Reaching one is an error that names the path from
-  the ban to the call of the door, as in
-  `parse-document (without network) → load-schema → connect-to(host, port)`. A ban follows calls
-  of interface members to each function that may answer them, and it holds in a task the code
-  starts. A call through a function value, or a comparison of interface values, is an error
-  under a ban, as it is under a restriction.
-- **What a ban promises.** A ban covers only what libraries claim. A C function that no effect
-  claims passes, and so does what native code does by itself, so a ban is a guard against
-  reaching the outside world by mistake, not a sandbox.
+  code calls, from reaching a door of `network`. Where calls of one function each lead from the ban
+  to a door, that is an error that names the path from the ban to the call of the door, as in
+  `parse-document (without network) → load-schema → connect-to(host, port)`. Past a call the
+  compiler cannot resolve to one function, a call through a function value, of an interface
+  member, or of a method a class declares again, a door the code reaches panics where it runs,
+  as in `connect-to reached a door of 'network' under 'without network'`, and the stack trace
+  gives the path. So a list's observers, which a ban cannot see past, pass until one of them
+  reaches the outside world. A ban holds in a task the code starts, and over a function value
+  wherever it was made. A fake bound inside the ban still answers its doors.
+- **What a ban promises.** Code under a ban never reaches a door of the effect: where the compiler
+  can show it would, that is an error, and anywhere else it panics instead. A ban covers only what
+  libraries claim. A C function that no effect claims passes, and so does what native code does by
+  itself, so a ban is a guard against reaching the outside world by mistake, not a sandbox. In a
+  program that bans an effect, each of its doors checks at each call whether a ban is open, as a
+  door does in a program that binds the effect.
 
 `(with network net)` on a `do` or a `fn-do`, or a `do-with` form, binds a fake to an effect for
 the code under it and everything that code calls. Each door of `network` that code reaches calls
@@ -1039,7 +1045,7 @@ gives:
   real doors once it ends. A closure made outside a binding reads what was
   bound where it was made, as it keeps a `@stack` property's value. In a program that never binds
   an effect, a call of one of its doors costs what a call of the door's body does. A program can
-  bind fakes of at most 255 classes to one effect.
+  bind fakes of at most 254 classes to one effect.
 - **Names.** An effect's name is seen as the file's other names are: a public effect from the files
   that import its file, and a private one only in its own. A program can ban or bind at most 32
   effects.

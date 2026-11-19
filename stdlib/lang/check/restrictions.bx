@@ -20,11 +20,12 @@
   ; once typing has found every call: from a function that declares it, or from one whose `do` block
   ; enters it, through each function typed again under it, to the code that breaks it. The report
   ; is then `reached`: stated with its chain, and shown however many its function has. A ban is
-  ; broken where a door of the effect it bans is reached under it, which is reported at each call of
-  ; the door, or at each call of an interface member a door answers, with the same chain. A door a
-  ; fake answers under a `do with` is no door reached, and one the fake cannot answer is reported in
-  ; the same way, with the chain from the `do with`; where only a door reached outside every binding
-  ; calls it, as code a function value runs is, that is a panic where it runs.
+  ; broken where a door of the effect it bans is reached under it through calls of one function
+  ; each, which is reported at each call of the door with the same chain; past any other call, the
+  ; door panics where it runs. A door a fake answers under a `do with` is no door reached, and one
+  ; the fake cannot answer is reported in the same way, with the chain from the `do with`; where
+  ; only a door reached outside every binding calls it, as code a function value runs is, that is a
+  ; panic where it runs.
   (blank)
   (prop _ session Session)
   (prop _ paths CallPaths)
@@ -40,7 +41,7 @@
         (let name (. row name))
         (if name
           (let need (/and/ (call dispatch-effects (. ([] (. session instances rows) (. row instance)) effects)) (call restricting-effects)))
-          (let chain (call chain-text (. row instance) (. row module) (. row syntax) need (call restricting-effects)))
+          (let chain (call chain-text (. row instance) (. row module) (. row syntax) need (call restricting-effects) false))
           (let text (if-expr (== (. chain length) 0) (. name text) (str (. name text) ": " chain)))
           (= (. ([] (. facts diagnostics) position) name) (call (. session program store-atom) text))
         )
@@ -63,9 +64,9 @@
         (if (and door (< door (call most-effects)) (!= (/and/ (call dispatch-effects (. row effects)) (call ban-bit door)) 0) real)
           (let reported false)
           (for (in edge (call (. paths edges-into) id))
-            (= reported (or (call report-door edge id door 0) reported))
+            (= reported (or (call report-door edge id door) reported))
           )
-          (if (not reported)
+          (if (and (not reported) (== (. (call (. paths edges-into) id) length) 0))
             (call report-unreached id door)
           )
         )
@@ -126,7 +127,7 @@
           null
         )
         (default
-          (call (. paths chain-to) (. edge caller) (=> ((: link CallEdge)) (call step link need)))
+          (call (. paths chain-to) (. edge caller) (=> ((: link CallEdge)) (call step link need false)))
         )
       )
     )
@@ -201,7 +202,7 @@
         )
       )
     )
-    (let chain (call chain-text door (. row module) 0 (/and/ (call dispatch-effects (. row effects)) bit) bit))
+    (let chain (call chain-text door (. row module) 0 (/and/ (call dispatch-effects (. row effects)) bit) bit false))
     (let name (. ([] (. session program effects names) effect) text))
     (let text (str "cannot reach a door of '" name "' under 'without " name "': " chain))
     (call (. session facts record-diagnostic) door (. row module) at .reached (call (. session program store-atom) text))
@@ -210,29 +211,22 @@
     (param edge CallEdge)
     (param door InstanceId)
     (param effect U32)
-    (param depth Size)
-    ; Reports a door of an effect reached under a ban of it where the edge reaches it: at a call, or
-    ; at each call of the interface member it answers. A door of the effect that calls the door is
+    ; Reports a door of an effect reached under a ban of it where the edge reaches it, at a call, when
+    ; calls of one function each lead from the ban to it. A door of the effect that calls the door is
     ; reached under the ban itself, which is reported where it is. Answers whether it is reported.
     (let instances (. session instances))
     (let table (. session program effects))
     (let caller ([] (. instances rows) (. edge caller)))
     (return-if true (if (== (call (. table door-of) (. caller module) (. caller decl)) effect)))
-    (return-if false (if (> depth 8)))
+    (return-if false (if (or (== (. edge syntax) 0) (and (!= (. edge kind) .edge-call) (!= (. edge kind) .edge-convert)))))
     (blank)
-    (if (== (. edge syntax) 0)
-      (let reported false)
-      (for (in outer (call (. paths edges-into) (. edge caller)))
-        (= reported (or (call report-door outer door effect (+ depth 1)) reported))
-      )
-      (return reported)
-    )
     (let bit (call ban-bit effect))
     (let need (/and/ (call dispatch-effects (. caller effects)) bit))
-    (let chain (call chain-text (. edge caller) (. caller module) (. edge syntax) need bit))
-    (let reached (if-expr (== depth 0) "" (str " → " (call (. paths name-of) door))))
+    (let chain (call chain-text (. edge caller) (. caller module) (. edge syntax) need bit true))
+    (return-if false (if (== (. chain length) 0)))
+    (blank)
     (let name (. ([] (. table names) effect) text))
-    (let text (str "cannot reach a door of '" name "' under 'without " name "': " chain reached))
+    (let text (str "cannot reach a door of '" name "' under 'without " name "': " chain))
     (call (. session facts record-diagnostic)
       (block
         (arg (. edge caller))
@@ -250,6 +244,7 @@
     (param site SyntaxId)
     (param need EffectMask)
     (param placing EffectMask)
+    (param direct Bool)
     ; The chain from where what `need` names is placed to the site that breaks it: the function that
     ; breaks it, where its own header writes what `placing` names or it holds none of `need` and a
     ; `do` block of its own places it.
@@ -257,7 +252,7 @@
     (if (or (== need 0) (!= (/and/ (call written-effects broken) placing) 0))
       (+= parts (call placed broken site))
       (else
-        (let found (call (. paths chain-to) broken (=> ((: edge CallEdge)) (call step edge need))))
+        (let found (call (. paths chain-to) broken (=> ((: edge CallEdge)) (call step edge need direct))))
         (return-if "" (if (or (not found) (== (. found length) 0))))
         (blank)
         (+= parts (call placed (. ([] found 0) caller) (. ([] found 0) syntax)))
@@ -273,8 +268,10 @@
   (fn-do _ step EdgeStep
     (param edge CallEdge)
     (param need EffectMask)
+    (param direct Bool)
     ; Each function a restriction reaches is typed again under it, so the walk goes back through
     ; those that have it and stops at the one that places it.
+    (return-if .step-skip (if (and direct (or (== (. edge kind) .edge-answer) (== (. edge kind) .edge-value)))))
     (let held (/and/ (call dispatch-effects (. ([] (. session instances rows) (. edge caller)) effects)) need))
     (return-if .step-reach (if (or (!= held need) (!= (/and/ (call written-effects (. edge caller)) need) 0))))
     (return .step-follow)

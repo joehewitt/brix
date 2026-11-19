@@ -72,9 +72,9 @@ Exception: cannot reach a door of 'probe-world' under 'without probe-world': run
               ^^^^^^^^^^^^
 ```
 
-### A ban reaches a door that answers an interface member
+### A door that answers an interface member under a ban panics where it runs
 
-```brix compile-error
+```brix crash
 (import /JaCore/tests.h)
 (blank)
 
@@ -100,15 +100,13 @@ Exception: cannot reach a door of 'probe-world' under 'without probe-world': run
 
 (fn-do + direct Int (without probe-world)
   (param source Source)
+  (print "before")
   (return (call (. source take)))
 )
 ```
 
 ```output
-Exception: cannot reach a door of 'probe-world' under 'without probe-world': direct (without probe-world) → (call (. source take)) → Impl.take
-<no file:27>
-      (return (call (. source take)))
-              ^^^^^^^^^^^^^^^^^^^^^^
+before
 ```
 
 ### A ban holds in a task started under it, and a constructor may be a door
@@ -193,18 +191,24 @@ Exception: cannot reach a door of 'probe-world' under 'without probe-world': run
               ^^^^^^^^^^^^
 ```
 
-### A call through a function value is an error under a ban
+### A call through a function value under a ban passes, and a door it reaches panics where it runs
 
-```brix compile-error
+```brix crash
 (import /JaCore/tests.h)
 (blank)
 
 (main
   (print (call run (=> () 1)))
+  (print (call probe))
+  (print (call run (=> () (call probe))))
 )
 
 (effect + probe-world
   (claim C:ctest4a)
+)
+
+(fn-do + probe Int (door probe-world)
+  (return (call C:ctest4a))
 )
 
 (fn-do + run Int (without probe-world)
@@ -214,10 +218,8 @@ Exception: cannot reach a door of 'probe-world' under 'without probe-world': run
 ```
 
 ```output
-Exception: Function value call requires unrestricted effects: run (without probe-world) → (call f)
-<no file:15>
-      (return (call f))
-              ^^^^^^^^
+1
+42
 ```
 
 ### A C function an effect claims is called only by its doors and the functions written in them
@@ -1333,4 +1335,214 @@ Exception: cannot reach a door of 'console' under 'without console': report (wit
 ```output
 outside
 recorded 3
+```
+
+### A ban holds on code that appends to a list and parses JSON, whose observers are function values
+
+```brix
+(import /JaCore/tests.h)
+(import /data/json)
+(blank)
+
+(main
+  (print (call tally "[1, 2, 3]"))
+)
+
+(effect + probe-world
+  (claim C:ctest4a)
+)
+
+(fn-do + tally Int (?! Error) (without probe-world)
+  (param text String)
+  (let items (list 1 2))
+  (+= items 3)
+  (let parsed (call parse-json text))
+  (return (+ (. items size) (. (as parsed (list JSON)) size)))
+)
+```
+
+```output
+6
+```
+
+### A lambda made outside a ban reaches no door under it, though the program binds a fake elsewhere
+
+```brix crash
+(import /JaCore/tests.h)
+(blank)
+
+(main
+  (let lam (=> () (call probe)))
+  (print (call faked))
+  (print (call lam))
+  (print (call run lam))
+)
+
+(effect + probe-world
+  (claim C:ctest4a)
+)
+
+(fn-do + probe Int (door probe-world)
+  (return (call C:ctest4a))
+)
+
+(type + Fixed
+  (fn-do + probe Int
+    (return 7)
+  )
+)
+
+(fn-do + faked Int
+  (let got 0)
+  (do-with probe-world (call Fixed)
+    (= got (call probe))
+  )
+  (return got)
+)
+
+(fn-do + run Int (without probe-world)
+  (param f (fn-type Int))
+  (print "inside")
+  (return (call f))
+)
+```
+
+```output
+7
+42
+inside
+```
+
+### A do block's ban refuses a door a function value reaches in it, and lets it through after
+
+```brix crash
+(import /JaCore/tests.h)
+(blank)
+
+(main
+  (call run probe)
+)
+
+(effect + probe-world
+  (claim C:ctest4a)
+)
+
+(fn-do + probe Int (door probe-world)
+  (return (call C:ctest4a))
+)
+
+(fn-do + run _
+  (param f (fn-type Int))
+  (do (without probe-world)
+    (print "inside")
+  )
+  (print (call f))
+  (do (without probe-world)
+    (print (call f))
+  )
+)
+```
+
+```output
+inside
+42
+```
+
+### A task started under a ban refuses a door a function value reaches in it
+
+```brix crash
+(import /JaCore/tests.h)
+(blank)
+
+(main
+  (call run probe)
+)
+
+(effect + probe-world
+  (claim C:ctest4a)
+)
+
+(fn-do + probe Int (door probe-world)
+  (return (call C:ctest4a))
+)
+
+(fn-do + run _ (without probe-world)
+  (param f (fn-type Int))
+  (let task (do-new
+    (print "in task")
+    (print (call f))
+  ))
+  (call (. task wait))
+)
+```
+
+```output
+in task
+```
+
+### A function that is an expression bans what a function value reaches in it
+
+```brix crash
+(import /JaCore/tests.h)
+(blank)
+
+(main
+  (print (call plus-one (=> () 1)))
+  (print (call plus-one probe))
+)
+
+(effect + probe-world
+  (claim C:ctest4a)
+)
+
+(fn-do + probe Int (door probe-world)
+  (return (call C:ctest4a))
+)
+
+(fn-expr + plus-one Int (without probe-world)
+  (param f (fn-type Int))
+  (+ (call f) 1)
+)
+```
+
+```output
+2
+```
+
+### A fake bound inside a ban answers a door a function value reaches
+
+```brix
+(import /JaCore/tests.h)
+(blank)
+
+(main
+  (print (call run probe))
+)
+
+(effect + probe-world
+  (claim C:ctest4a)
+)
+
+(fn-do + probe Int (door probe-world)
+  (return (call C:ctest4a))
+)
+
+(type + Fixed
+  (fn-do + probe Int
+    (return 7)
+  )
+)
+
+(fn-do + run Int (without probe-world)
+  (param f (fn-type Int))
+  (let got 0)
+  (do-with probe-world (call Fixed)
+    (= got (call f))
+  )
+  (return got)
+)
+```
+
+```output
+7
 ```

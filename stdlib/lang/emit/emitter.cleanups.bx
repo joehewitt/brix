@@ -329,6 +329,19 @@
     ; whose loop writes each item of one, the calls that end the iteration of its streams, for a
     ; `use` or `do use` the call that ends the use of its object, and for a `do without cancel`
     ; block the call that lets go of its hold on cancellation.
+    (if (!= (. cell refused-slot) no-storage)
+      (let kept ([] (. tables storage) (. cell refused-slot)))
+      (call copy
+        (block
+          (arg (call stack-slot kept body))
+          (arg (call load-local (. cell held) body))
+          (arg (. kept layout))
+          (arg (. ([] (. tables layouts rows) (. kept layout)) is-managed))
+          (arg body)
+        )
+      )
+      (return)
+    )
     (if (. cell is-live-call)
       (do
         (inline (call call-instance (. instances live leave) body (. pending length)))

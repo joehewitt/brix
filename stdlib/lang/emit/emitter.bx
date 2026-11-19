@@ -934,6 +934,7 @@
   (prop + held LocalId)
   (prop + type TypeId)
   (prop + is-live-call _ (= false))
+  (prop + refused-slot U32 (= no-storage))
 )
 
 (type _ Refused (is Error)
@@ -2425,6 +2426,7 @@
     (param id SyntaxId)
     (param body SyntaxId)
     (param effects CompilationEffect)
+    (param bans EffectMask)
     ; The body of a `do` block. One kept from the collector, written outside the zone, is a region
     ; of its own; any other runs in place, kept from what the block names as well.
     (if (and (!= (/and/ effects (. CompilationEffect gc-free)) 0) (not in-zone))
@@ -2433,13 +2435,24 @@
     )
     (let outer block-effects)
     (= block-effects (/or/ block-effects (call restrictions-of (call dispatch-effects effects))))
+    (let mark (call enter-bans id bans))
+    (if (== mark (. open-cleanups length))
+      (call emit-block body)
+      (= block-effects outer)
+      (return)
+    )
+    (let own-scoping scoping)
+    (= scoping (= (. scoping block-base) mark))
     (call emit-block body)
+    (call close-cleanups mark)
+    (= scoping own-scoping)
     (= block-effects outer)
   )
   (fn-do _ emit-cancel-held _
     (param id SyntaxId)
     (param body SyntaxId)
     (param effects CompilationEffect)
+    (param bans EffectMask)
     ; `do without cancel`: the task holds off its cancellation from where the block begins to where
     ; it is left, by any way out, as a cleanup the block opens lets go. In a cleanup being run, the
     ; hold is let go where the block ends, by a pad of its own that a check made in it lands on
@@ -2455,7 +2468,7 @@
     (= scoping (= (. scoping block-base) mark))
     (call open-cleanup id (call UseCell no-local no-local no-type))
     (if (not (. scoping cleaning))
-      (call emit-do-body id body effects)
+      (call emit-do-body id body effects bans)
       (call close-cleanups mark)
       (= scoping own-scoping)
       (return)
@@ -2463,7 +2476,7 @@
     (let pad (call (. ir reserve-block)))
     (let checks landings)
     (= landing pad)
-    (call emit-do-body id body effects)
+    (call emit-do-body id body effects bans)
     (let landed (!= landings checks))
     (call end-in-cleanup mark caught)
     (if landed
@@ -2704,13 +2717,7 @@
     ; its `close` at the node.
     (== (. ([] (. facts calls) begins) next) no-fact)
   )
-  (fn-do _ emit-forwarder _
-    (param forward SwapForward)
-    ; A door a fake answers under a `do with`: it reads the fake from its effect's slot, where the
-    ; `do with` or what holds its state put it, and calls the fake's method with it and the door's
-    ; arguments, giving what that gives. Typed only under the binding, it finds the slot bound. Where
-    ; the fake's class has no method that answers it, which only a door a function value reaches
-    ; lets through, it panics.
+  (fn-do _ open-door SyntaxId
     (let row ([] (. instances rows) (. unit instance)))
     (let declared
       (match ([] (. ([] (. program modules) (. row module)) decls) (. row decl))
@@ -2731,6 +2738,33 @@
     (if (!= (. own errors count) 0)
       (call return-results (. own result) declared)
     )
+    (return declared)
+  )
+  (fn-do _ banned-door (? U32)
+    (let row ([] (. instances rows) (. unit instance)))
+    (let door (call (. program effects door-of) (. row module) (. row decl)))
+    (return-if null (if (or (not door) (>= door (call most-effects)))))
+    (return-if null (if (== (/and/ (call dispatch-effects (. row effects)) (call ban-bit door)) 0)))
+    (return-if null (if (!= (call (. instances fake-of) (. row effects) door) no-type)))
+    (return door)
+  )
+  (fn-do _ emit-refusal _
+    (param effect U32)
+    (let row ([] (. instances rows) (. unit instance)))
+    (let declared (call open-door))
+    (let name (. ([] (. program effects names) effect) text))
+    (call raise-text declared (str (call paths-name row) " reached a door of '" name "' under 'without " name "'"))
+  )
+  (fn-do _ emit-forwarder _
+    (param forward SwapForward)
+    ; A door a fake answers under a `do with`: it reads the fake from its effect's slot, where the
+    ; `do with` or what holds its state put it, and calls the fake's method with it and the door's
+    ; arguments, giving what that gives. Typed only under the binding, it finds the slot bound. Where
+    ; the fake's class has no method that answers it, which only a door a function value reaches
+    ; lets through, it panics.
+    (let row ([] (. instances rows) (. unit instance)))
+    (let declared (call open-door))
+    (let own ([] (. instances signatures) (. unit instance)))
     (if (== (. forward callee) no-instance)
       (let name (. ([] (. program effects names) (. forward effect)) text))
       (call raise-text
@@ -2771,6 +2805,71 @@
       )
     )
   )
+  (fn-expr _ refused-kind U32
+    255
+  )
+  (fn-do _ refused-slot U32
+    (param effect U32)
+    (return-if no-storage (if (or (>= effect (call most-effects)) (== (/and/ (. tables refused-effects) (call ban-bit effect)) 0))))
+    (return (call (. tables storage-of) (as ([] (. program effects modules) effect) ModuleId) (as ([] (. program effects decls) effect) DeclId)))
+  )
+  (fn-do _ emit-refused-branch _
+    (param declared SyntaxId)
+    (let row ([] (. instances rows) (. unit instance)))
+    (let door (call (. program effects door-of) (. row module) (. row decl)))
+    (return-if (if (not door)))
+    (blank)
+    (let slot (call refused-slot door))
+    (return-if (if (== slot no-storage)))
+    (blank)
+    (let kept ([] (. tables storage) slot))
+    (let flag (call (. tables layouts field) (. kept layout) 0))
+    (let kind (call load (call stack-state slot declared) (. flag offset) (. flag layout) declared))
+    (let refused (call (. ir reserve-block)))
+    (let next (call (. ir reserve-block)))
+    (call branch (call compare declared .compare-equal kind (call integer .machine-u8 (as (call refused-kind) U64))) refused next)
+    (call (. ir start-block) refused)
+    (let name (. ([] (. program effects names) door) text))
+    (call raise-text declared (str (call paths-name row) " reached a door of '" name "' under 'without " name "'"))
+    (call (. ir start-block) next)
+  )
+  (fn-do _ is-refused-row Bool
+    (param row U32)
+    (let kept ([] (. tables storage) row))
+    (let effect (call (. program effects index-of) (. kept module) (. kept decl)))
+    (return (and effect (== (call refused-slot effect) row)))
+  )
+  (fn-do _ enter-bans Size
+    (param declared SyntaxId)
+    (param bans EffectMask)
+    (let mark (. open-cleanups length))
+    (call refuse-banned declared bans true)
+    (return mark)
+  )
+  (fn-do _ refuse-banned _
+    (param declared SyntaxId)
+    (param bans EffectMask)
+    (param restores Bool)
+    (let effect U32 0)
+    (while (< effect (call most-effects))
+      (let slot (call refused-slot effect))
+      (if (and (!= slot no-storage) (!= (/and/ bans (call ban-bit effect)) 0))
+        (let kept ([] (. tables storage) slot))
+        (let target (call stack-slot kept declared))
+        (let previous no-local)
+        (if restores
+          (= previous (call (. ir add-local) (. kept layout)))
+          (call store-local previous target declared)
+        )
+        (let flag (call (. tables layouts field) (. kept layout) 0))
+        (call store target (. flag offset) (call integer .machine-u8 (as (call refused-kind) U64)) false declared)
+        (if restores
+          (call open-cleanup declared (call UseCell no-local previous no-type false slot))
+        )
+      )
+      (+= effect 1)
+    )
+  )
   (fn-do _ emit-dispatch _
     (param declared SyntaxId)
     (param signature InstanceSignature)
@@ -2779,6 +2878,7 @@
     ; door typed under a binding of that fake's class with its arguments and gives what that gives,
     ; which panics where that class has no method that answers it. It runs its body where the slot
     ; holds none.
+    (call emit-refused-branch declared)
     (let kind (call make-operand .operand-void 0))
     (let read false)
     (for (in dispatch (. facts swap-dispatches))
@@ -2876,7 +2976,7 @@
     (let slot (call stack-slot kept id))
     (call store-local previous slot id)
     (let flag (if-expr fakes (call fake-kind kept (. bound type)) 1u32))
-    (if (or (== flag 0) (> flag 255))
+    (if (or (== flag 0) (>= flag (call refused-kind)))
       (call refuse .refused-statement id)
       (return)
     )
@@ -3200,10 +3300,11 @@
       )
       (case (call .node-do-block row)
         (let is-off (not (call (. tables compiles-features) (. row feature-gate-features))))
+        (let bans (call (. program bans-named) (. ([] (. instances rows) (. unit instance)) module) (. row bans)))
         (if (and (. row holds-cancel) (not is-off))
-          (call emit-cancel-held id (. row body) (. row compilation-effects))
+          (call emit-cancel-held id (. row body) (. row compilation-effects) bans)
           (else-if (not is-off)
-            (call emit-do-body id (. row body) (. row compilation-effects))
+            (call emit-do-body id (. row body) (. row compilation-effects) bans)
           )
         )
       )
@@ -7786,6 +7887,11 @@
     ; carries the errors of whichever it compiles first. A door a fake answers under a `do with`
     ; calls the fake's method (`emit-forwarder`).
     (let row ([] (. instances rows) (. unit instance)))
+    (let banned (call banned-door))
+    (if banned
+      (call emit-refusal banned)
+      (return)
+    )
     (for (in forward (. facts swap-forwards))
       (if (== (. forward instance) (. unit instance))
         (call emit-forwarder forward)
@@ -8186,8 +8292,14 @@
       (call emit-built-feeds declared feeds)
       (return)
     )
+    (let entered (call (. program effects bans-of) (. row module) (. row decl)))
+    (if (== (. function kind) .task-body)
+      (= entered (/or/ entered (/and/ (call dispatch-effects (. row effects)) (call ban-bits))))
+    )
+    (let banned-from (call enter-bans declared entered))
     (if imperative
       (call emit-block body)
+      (call close-cleanups banned-from)
       (if (. row ends-generator)
         (call end-generator declared)
       )
@@ -22803,6 +22915,15 @@
         (= local (call (. ir add-local) (. kept layout)))
         (let slot (call stack-slot kept site))
         (call store-local local slot site)
+        (let onward no-block)
+        (if (call is-refused-row row)
+          (let flag (call (. tables layouts field) (. kept layout) 0))
+          (let copying (call (. ir reserve-block)))
+          (= onward (call (. ir reserve-block)))
+          (let kind (call load slot (. flag offset) (. flag layout) site))
+          (call branch (call compare site .compare-equal kind (call integer .machine-u8 (as (call refused-kind) U64))) onward copying)
+          (call (. ir start-block) copying)
+        )
         (call copy
           (block
             (arg slot)
@@ -22811,6 +22932,10 @@
             (arg (. ([] (. tables layouts rows) (. kept layout)) is-managed))
             (arg site)
           )
+        )
+        (if (!= onward no-block)
+          (call jump onward)
+          (call (. ir start-block) onward)
         )
       )
       (+= saved (if-expr (== (. function kind) .task-body) no-local local))
