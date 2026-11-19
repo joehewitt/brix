@@ -1,0 +1,38 @@
+; benchmark.meta description: Registers 64 object subscribers on each of 64 channels and writes once to each.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: timing
+(blank)
+(import /core/channel)
+(blank)
+
+(main
+  (let tally (call RegisterTally))
+  (for (in batch (..< 0 64))
+    (let channel (call (of AsyncChannel Int)))
+    (for (in i (..< 0 64))
+      (call (. channel subscribe) (call RegisterCounter tally i))
+    )
+    (<- channel (+ batch 1))
+  )
+  (print (str "bench-result tasks/channel-register-64 checksum=" (. tally total)))
+)
+
+(type + RegisterTally
+  (prop + total _ (= 0))
+)
+
+(type + RegisterCounter
+  (implements (of Subscribable Int))
+  (prop _ tally RegisterTally)
+  (prop _ weight Int)
+  (fn-do + This _
+    (param tally _)
+    (param weight _)
+  )
+  (fn-do + this _
+    (param message Int)
+    (param broadcaster (of Broadcastable Int))
+    (+= (. tally total) (+ (* message weight) 1))
+  )
+  (fn-do + unsubscribe _)
+)

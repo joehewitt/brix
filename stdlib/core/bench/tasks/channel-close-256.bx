@@ -1,0 +1,39 @@
+; benchmark.meta description: Closes 4 channels that each hold 256 idle object subscribers.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: timing
+(blank)
+(import /core/channel)
+(blank)
+
+(main
+  (let tally (call CloseTally))
+  (for (in batch (..< 0 4))
+    (let channel (call (of AsyncChannel Int)))
+    (for (in i (..< 0 256))
+      (call (. channel subscribe) (call CloseCounter tally i))
+    )
+    (call (. channel close))
+  )
+  (print (str "bench-result tasks/channel-close-256 checksum=" (. tally total)))
+)
+
+(type + CloseTally
+  (prop + total _ (= 0))
+)
+
+(type + CloseCounter
+  (implements (of Subscribable Int))
+  (prop _ tally CloseTally)
+  (prop _ weight Int)
+  (fn-do + This _
+    (param tally _)
+    (param weight _)
+  )
+  (fn-do + this _
+    (param message Int)
+    (param broadcaster (of Broadcastable Int))
+  )
+  (fn-do + unsubscribe _
+    (+= (. tally total) (+ weight 1))
+  )
+)

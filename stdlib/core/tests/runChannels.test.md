@@ -630,3 +630,50 @@ drained
 pinged 3
 done
 ```
+
+### An AsyncChannel delivers to listeners added during a write from the next write, and closing finishes each listener once after its queued messages
+
+```brix
+(main
+  (let channel (call (of AsyncChannel Int)))
+  (call (. channel subscribe) (=> (n b) :do (print (str "queued " n))))
+  (call (. channel subscribe) (call ChannelJoiner channel))
+  (<- channel 1)
+  (<- channel 2)
+  (call (. channel close))
+  (let done (call Semaphore))
+  (do-new
+    (call (. done post))
+  )
+  (call (. done wait))
+)
+
+(type + ChannelJoiner
+  (implements (of Subscribable Int))
+  (prop _ channel (of AsyncChannel Int))
+  (fn-do + This _
+    (param channel _)
+  )
+  (fn-do + this _
+    (param message Int)
+    (param broadcaster (of Broadcastable Int))
+    (print (str "joiner " message))
+    (if (== message 1)
+      (call (. channel subscribe) (call ChannelJoiner channel))
+    )
+  )
+  (fn-do + unsubscribe _
+    (print "joiner finished")
+  )
+)
+```
+
+```output
+joiner 1
+joiner 2
+joiner 2
+joiner finished
+joiner finished
+queued 1
+queued 2
+```
