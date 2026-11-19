@@ -1,0 +1,18 @@
+; benchmark.meta description: Finds 2,000 word matches with two capture groups in one text.
+; benchmark.meta timing: recommended
+; benchmark.meta profiles: timing
+(blank)
+(import /regex)
+(blank)
+
+(main
+  (let regex (call Regex "(\\w)(\\w*)"))
+  (let text (* "alpha béta gamma délta " 500))
+  (let checksum Size 0)
+  (for (in _ (..< 0 40))
+    (for (in found (call (. regex find-all) text))
+      (+= checksum (+ (. found end) (. (!! (call (. found span) 2)) start)))
+    )
+  )
+  (print (str "bench-result regex/find-all-many checksum=" checksum))
+)

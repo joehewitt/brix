@@ -19,6 +19,13 @@
 #define BX_REGEX_REPLACE_GLOBAL 1
 #define BX_REGEX_REPLACE_ONLY 2
 
+#define BX_REGEX_STATE_OFFSET 0
+#define BX_REGEX_STATE_OPTIONS 1
+#define BX_REGEX_STATE_CURSOR_OFFSET 2
+#define BX_REGEX_STATE_CURSOR_INDEX 3
+#define BX_REGEX_STATE_FINISHED 4
+#define BX_REGEX_STATE_SIZE 5
+
 BX_REGEX_API int32_t brixRegexCompile(
     const char* pattern,
     uint32_t patternLength,
@@ -34,7 +41,17 @@ BX_REGEX_API int32_t brixRegexFind(
     const char* text,
     uint32_t textLength,
     uint32_t start,
-    uint32_t limit,
+    uint32_t* ranges,
+    uint32_t capacity
+);
+
+BX_REGEX_API int32_t brixRegexFindAll(
+    const char* pattern,
+    uint32_t patternLength,
+    uint32_t flags,
+    const char* text,
+    uint32_t textLength,
+    uint32_t* state,
     uint32_t* ranges,
     uint32_t capacity
 );

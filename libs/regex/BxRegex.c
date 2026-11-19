@@ -228,6 +228,25 @@ int32_t brixRegexCompile(
     return groupCount;
 }
 
+static void brixRegexRecord(
+    BxRegexCursor* cursor, pcre2_match_data* data, uint32_t groupCount, uint32_t* found
+) {
+    PCRE2_SIZE* vector = pcre2_get_ovector_pointer(data);
+    for (uint32_t group = 0; group <= groupCount; group++) {
+        PCRE2_SIZE first = vector[group * 2];
+        PCRE2_SIZE last = vector[group * 2 + 1];
+        if (first == PCRE2_UNSET) {
+            found[group * 2] = UINT32_MAX;
+            found[group * 2 + 1] = UINT32_MAX;
+            continue;
+        }
+        brixRegexSeek(cursor, (uint32_t)first);
+        found[group * 2] = cursor->index;
+        brixRegexSeek(cursor, (uint32_t)last);
+        found[group * 2 + 1] = cursor->index;
+    }
+}
+
 int32_t brixRegexFind(
     const char* pattern,
     uint32_t patternLength,
@@ -235,7 +254,46 @@ int32_t brixRegexFind(
     const char* text,
     uint32_t textLength,
     uint32_t start,
-    uint32_t limit,
+    uint32_t* ranges,
+    uint32_t capacity
+) {
+    int32_t error = 0;
+    uint32_t errorOffset = 0;
+    BxRegexCode* code = brixRegexAcquire(pattern, patternLength, flags, &error, &errorOffset);
+    if (!code) {
+        return PCRE2_ERROR_NOMEMORY;
+    }
+    pcre2_match_data* data = pcre2_match_data_create_from_pattern(code->code, NULL);
+    if (!data) {
+        brixRegexRelease(code);
+        return PCRE2_ERROR_NOMEMORY;
+    }
+    BxRegexCursor cursor = {text, textLength, 0, 0};
+    brixRegexAdvance(&cursor, start);
+    uint32_t stride = (code->groupCount + 1) * 2;
+    int status = pcre2_match(
+        code->code, (PCRE2_SPTR)text, textLength, cursor.offset, 0, data, brixRegexContext());
+    int32_t result = 0;
+    if (status >= 0) {
+        if (stride <= capacity) {
+            brixRegexRecord(&cursor, data, code->groupCount, ranges);
+        }
+        result = 1;
+    } else if (status != PCRE2_ERROR_NOMATCH) {
+        result = status;
+    }
+    pcre2_match_data_free(data);
+    brixRegexRelease(code);
+    return result;
+}
+
+int32_t brixRegexFindAll(
+    const char* pattern,
+    uint32_t patternLength,
+    uint32_t flags,
+    const char* text,
+    uint32_t textLength,
+    uint32_t* state,
     uint32_t* ranges,
     uint32_t capacity
 ) {
@@ -251,14 +309,15 @@ int32_t brixRegexFind(
         return PCRE2_ERROR_NOMEMORY;
     }
 
-    BxRegexCursor cursor = {text, textLength, 0, 0};
-    brixRegexAdvance(&cursor, start);
-    PCRE2_SIZE offset = cursor.offset;
-    uint32_t options = 0;
+    BxRegexCursor cursor = {text, textLength, state[BX_REGEX_STATE_CURSOR_OFFSET],
+        state[BX_REGEX_STATE_CURSOR_INDEX]};
+    PCRE2_SIZE offset = state[BX_REGEX_STATE_OFFSET];
+    uint32_t options = state[BX_REGEX_STATE_OPTIONS];
     uint32_t stride = (code->groupCount + 1) * 2;
     uint32_t count = 0;
     int32_t result = 0;
-    while (limit == 0 || count < limit) {
+    bool finished = true;
+    while ((uint64_t)(count + 1) * stride <= capacity) {
         int status = pcre2_match(
             code->code, (PCRE2_SPTR)text, textLength, offset, options, data, brixRegexContext());
         if (status == PCRE2_ERROR_NOMATCH) {
@@ -268,28 +327,20 @@ int32_t brixRegexFind(
             result = status;
             break;
         }
-        if ((uint64_t)(count + 1) * stride <= capacity) {
-            PCRE2_SIZE* vector = pcre2_get_ovector_pointer(data);
-            uint32_t* found = ranges + count * stride;
-            for (uint32_t group = 0; group <= code->groupCount; group++) {
-                PCRE2_SIZE first = vector[group * 2];
-                PCRE2_SIZE last = vector[group * 2 + 1];
-                if (first == PCRE2_UNSET) {
-                    found[group * 2] = UINT32_MAX;
-                    found[group * 2 + 1] = UINT32_MAX;
-                    continue;
-                }
-                brixRegexSeek(&cursor, (uint32_t)first);
-                found[group * 2] = cursor.index;
-                brixRegexSeek(&cursor, (uint32_t)last);
-                found[group * 2 + 1] = cursor.index;
-            }
-        }
+        brixRegexRecord(&cursor, data, code->groupCount, ranges + count * stride);
         count++;
         if (!pcre2_next_match(data, &offset, &options)) {
             break;
         }
+        if ((uint64_t)(count + 1) * stride > capacity) {
+            finished = false;
+        }
     }
+    state[BX_REGEX_STATE_OFFSET] = (uint32_t)offset;
+    state[BX_REGEX_STATE_OPTIONS] = options;
+    state[BX_REGEX_STATE_CURSOR_OFFSET] = cursor.offset;
+    state[BX_REGEX_STATE_CURSOR_INDEX] = cursor.index;
+    state[BX_REGEX_STATE_FINISHED] = finished ? 1 : 0;
     pcre2_match_data_free(data);
     brixRegexRelease(code);
     return result < 0 ? result : (int32_t)count;
