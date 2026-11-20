@@ -8,7 +8,8 @@ forms. The home page and the reference both use it.
 - `rows-html` draws a document as a block: each row's indent and the kind of each span come from
   the document, so the colors are the editor's. Each function stands in a rounded box, a type in a
   tray with a box for each of its methods, header rows on a wash, and a private declaration's
-  border is dashed.
+  border is dashed. A row the editor tucks away, the empty lead row of a block of markup or
+  states, is left out as it is in the editor.
 - `rows-inline-lines` gives a document's rows as lines of spans, for code in a line of text.
 - `html-text` and `html-attribute` escape text for HTML.
 
