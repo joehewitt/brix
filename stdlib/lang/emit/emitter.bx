@@ -21243,10 +21243,10 @@
     (param id SyntaxId)
     (param decl DeclId)
     (param written Operand)
-    ; Where a lambda or a comprehension is made, the function writes into its own environment the
-    ; state of each global `do with` binds that it holds, which one made again in the same run
-    ; writes over, as TypeScript keeps it. One made in a loop whose turn has an environment,
-    ; where TypeScript keeps the state, has no shape for it.
+    ; Where a lambda, a comprehension, a list of feeds or the right side of a pipe is made, the
+    ; function writes into its own environment the state of each global `do with` binds that it
+    ; holds, which one made again in the same run writes over, as TypeScript keeps it. One made in
+    ; a loop whose turn has an environment, where TypeScript keeps the state, has no shape for it.
     (if (not (call (. tables holds-stacks) (. unit instance)))
       (return)
     )
@@ -21264,22 +21264,15 @@
     )
   )
   (fn-do _ is-closure-body Bool
-    ; Whether the function emitted is the body of a lambda or a comprehension, or the steps of one
-    ; that yields.
+    ; Whether the function emitted is the body of a lambda, a comprehension, a list of feeds or the
+    ; right side of a pipe, or the steps of one that yields.
     (if (or (== (. unit instance) no-instance) (and (!= (. function kind) .instance-body) (!= (. function kind) .generator-body)))
       (return false)
     )
     (let row ([] (. instances rows) (. unit instance)))
     (match? ([] (. ([] (. program modules) (. row module)) decls) (. row decl))
       (case (call .decl-function fn)
-        (if (== (. fn kind) .iterator-decl)
-          (match? ([] (. ([] (. program modules) (. row module)) tree nodes) (. fn syntax))
-            (case .node-iterator-expression
-              (return true)
-            )
-          )
-        )
-        (return (== (. fn kind) .closure-decl))
+        (return (and (call (. tables is-generated-kind) (. fn kind)) (!= (. fn kind) .subscriber-decl)))
       )
     )
     (return false)

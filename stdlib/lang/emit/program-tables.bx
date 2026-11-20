@@ -754,8 +754,8 @@
   (fn-do + holds-unmade Bool
     (param instance InstanceId)
     ; Whether a nested function holds the state of a global `do with` binds where nothing writes
-    ; it: one that is neither a lambda, a comprehension nor a spawned task's body, a list of
-    ; feeds or the right side of a pipe, which has no shape for it. The body of a `do without gc`
+    ; it: one that is neither a lambda, a comprehension, a list of feeds, the right side of a
+    ; pipe nor a spawned task's body, which has no shape for it. The body of a `do without gc`
     ; block holding one is not built (`lay-capture`).
     (if (or (== (. facts stack-holds length) 0) (call copies-in instance))
       (return false)
@@ -763,20 +763,17 @@
     (let row ([] (. instances rows) instance))
     (match? ([] (. ([] (. program modules) (. row module)) decls) (. row decl))
       (case (call .decl-function fn)
-        (if (or (not (call is-nested-kind (. fn kind))) (== (. fn kind) .closure-decl) (== (. fn kind) .subscriber-decl))
+        (if (or (not (call is-nested-kind (. fn kind))) (call is-generated-kind (. fn kind)))
           (return false)
-        )
-        (if (== (. fn kind) .iterator-decl)
-          (match? ([] (. ([] (. program modules) (. row module)) tree nodes) (. fn syntax))
-            (case .node-iterator-expression
-              (return false)
-            )
-          )
         )
         (return (!= (. (call stack-holds instance) length) 0))
       )
     )
     (return false)
+  )
+  (fn-expr + is-generated-kind Bool
+    (param kind DeclKind)
+    (or (== kind .closure-decl) (== kind .subscriber-decl) (== kind .iterator-decl) (== kind .feed-decl) (== kind .pipeline-decl))
   )
   (fn-do + stack-holds (list U32)
     (param instance InstanceId)

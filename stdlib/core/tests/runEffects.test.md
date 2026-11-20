@@ -1797,3 +1797,63 @@ Exception: cannot reach a door of 'e1' under 'without outside': run (without out
       (return (call probe))
               ^^^^^^^^^^^^
 ```
+
+### A list of feeds and a stage piped in it reach the fake bound where they are made
+
+```brix
+(main
+  (call run)
+)
+
+(fn-do + run _ (with world (call Stub 5))
+  (print (call (. ", " join) (call fed)))
+  (print (call (. ", " join) (call staged)))
+)
+
+(fn-do + fed (list String)
+  (return
+    (call (of List String)
+      (block
+        (spread (call rolls))
+        (pipe ?> (> (. each length) 0))
+      )
+    )
+  )
+)
+
+(fn-do + staged (list String)
+  (return
+    (call (of List String)
+      (block
+        (spread (list 1 2))
+        (pipe *> (str (+ each (call roll))))
+      )
+    )
+  )
+)
+
+(fn-do + rolls (list String)
+  (return (list (str (call roll)) (str (call roll))))
+)
+
+(effect + world)
+
+(fn-do + roll Int (door world)
+  (return 10)
+)
+
+(type + Stub
+  (prop + base Int)
+  (fn-do + This _
+    (param base Int)
+  )
+  (fn-do + roll Int
+    (return base)
+  )
+)
+```
+
+```output
+5, 5
+6, 7
+```
