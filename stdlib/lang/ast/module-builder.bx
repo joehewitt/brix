@@ -753,15 +753,15 @@
     (param tree AST)
     (param owner DeclId)
     (param member DeclId)
-    ; The flags of the state machine a property of a class holds, as members before the property, as
-    ; the reference declares them: for each of its cases, in order, a private property of the object
-    ; no program names, which says whether the case is active; then for each group of its event
-    ; transitions at its root on a name alone or read from `this`, one that holds the group's
-    ; activation for the event runtime's table. A class derived from another may refine the machine
-    ; its base's property of that name holds, whose flags are then the base's where the cases are.
-    ; Two more, named after the class, hold the machine's part for the object, which the machines
-    ; that refine it call (`MachineComposite`), and the part of the machine that refines it for the
-    ; object, which it calls.
+    ; The flags of the state machine a property of a class holds, as members before the property:
+    ; for each of its cases, in order, a private property of the object no program names, which says
+    ; whether the case is active; then for each group of its event transitions at its root on a name
+    ; alone or read from `this`, one that holds the group's activation for the event runtime's
+    ; table. A class derived from another may refine the machine its base's property of that name
+    ; holds, whose flags are then the base's where the cases are. Two more, named after the class,
+    ; hold the machine's part for the object, which the machines that refine it call
+    ; (`MachineComposite`), and the part of the machine that refines it for the object, which it
+    ; calls.
     (match? ([] decls member)
       (case (call .decl-property row)
         (let machine (if-expr (and (. row name) (not (. row is-lazy))) (call (. tree declared-machine) (. row value)) 0))
@@ -798,15 +798,15 @@
     (param members (of RowRange DeclId))
     ; The flags of each state machine written as a line of a class's markup, as members after the
     ; others: for each of its cases, in order, a public property of the object named after the case,
-    ; which says whether it is active, or for a case that holds a value, projects it, as the
-    ; reference declares them, but where the class declares that name otherwise; then for each group
-    ; of its event transitions at its root on a name alone or read from `this`, a private one that
-    ; holds the group's activation for the event runtime's table. A class derived from another may
-    ; refine the machine of its base's markup that has a case of a name its machine has at its root,
-    ; whose flags and projections are then the base's where the cases are. Two more, named after
-    ; the class and the machine's place among those of its markup, hold the machine's part for the
-    ; object, which the machines that refine it call (`MachineComposite`), and the part of the
-    ; machine that refines it for the object, which it calls. How many there are.
+    ; which says whether it is active, or for a case that holds a value, projects it, but where the
+    ; class declares that name otherwise; then for each group of its event transitions at its root
+    ; on a name alone or read from `this`, a private one that holds the group's activation for the
+    ; event runtime's table. A class derived from another may refine the machine of its base's
+    ; markup that has a case of a name its machine has at its root, whose flags and projections are
+    ; then the base's where the cases are. Two more, named after the class and the machine's place
+    ; among those of its markup, hold the machine's part for the object, which the machines that
+    ; refine it call (`MachineComposite`), and the part of the machine that refines it for the
+    ; object, which it calls. How many there are.
     (let start (. member-pool length))
     (let added (as (+ (. members start) (. members count)) Size))
     (let position 0u32)
@@ -1169,44 +1169,44 @@
   (fn-do _ scan-nested _
     (param tree AST)
     (param main DeclId)
-    ; Lambdas and task bodies are nested functions. Walking ids downward visits every enclosing function
-    ; before the functions inside it, so a stack of the open subtrees names each owner; anything outside
-    ; every function, such as a lambda in a property initializer, belongs to main. A second stack holds
-    ; the declarations and assignments whose values are open, which name the nested functions written in
-    ; them. A feed a stream piped through a pattern reads alone is no function: the pipe's evaluates
-    ; what it writes. A `for` block on a stream with one header is the subscriber its body runs as, a
-    ; class's section of one too. An assignment whose value reads something tracked, which gives no
-    ; property of a root `<This` its value, is run again by a function of its own (`add-live`), as is a
-    ; lazy declaration, no attribute, of one name whose value does, but one in the value of a property
-    ; or of a statement run again so, which runs again with that value; so is an attribute of another
-    ; element, whose function stores in the element's property, and an argument of one given by
-    ; position, but a comprehension. The
+    ; Lambdas and task bodies are nested functions. Walking ids downward visits every enclosing
+    ; function before the functions inside it, so a stack of the open subtrees names each owner;
+    ; anything outside every function, such as a lambda in a property initializer, belongs to main.
+    ; A second stack holds the declarations and assignments whose values are open, which name the
+    ; nested functions written in them. A feed a stream piped through a pattern reads alone is no
+    ; function: the pipe's evaluates what it writes. A `for` block on a stream with one header is
+    ; the subscriber its body runs as, a class's section of one too. An assignment whose value reads
+    ; something tracked, which gives no property of a root `<This` its value, is run again by a
+    ; function of its own (`add-live`), as is a lazy declaration, no attribute, of one name whose
+    ; value does, but one in the value of a property or of a statement run again so, which runs
+    ; again with that value; so is an attribute of another element, whose function stores in the
+    ; element's property, and an argument of one given by position, but a comprehension. The
     ; `whenever` clause of a loop on a stream is tested again by one too (`add-whenever`). An `if`
     ; written as a line of markup content, or of a body that runs as content, whose conditions read
-    ; something tracked is a region: each arm is built by a function of its own, written at its body,
-    ; and one selects the arm again (`add-branch`), and so is a `match` written as such a line whose
-    ; subject does (`is-match-region`). So is a `for` written as such a line whose container reads
-    ; something tracked: each row is built by a function of its own, written at its body, one reads the
-    ; container again (`add-source`), and where the loop is keyed one keys each row, written at its
-    ; `keyed by` clause. The condition a style rule written on a markup element, but a root `<This`, is
-    ; applied under is tested again by a function of its own, written at the condition, where the
-    ; reference takes it (`add-gate`). In the row of a keyed loop, a read of the loop's item and of the
-    ; row's own declarations that read it is tracked (`RowNames`). A lazy declaration written as a line
-    ; of a row is read as a getter, never run again on its own. A markup element that binds a slot, but
-    ; a root `<This`, is built by a function of its own, which the constructor of the element it is a
-    ; line of is given. So is the one line of an element's body that is neither an attribute nor bound
-    ; to a slot, where the element's class is one of `default-hosts` and that line is a markup element:
-    ; it fills the default slot; and so is such a body whose lines all give the slot content, where the
-    ; reference builds them into a node of the slot's type (`mark-default`). The lines of the markup a
-    ; class writes fill so the default slot of the class it derives from. Each class name looked up so
-    ; is `consulted`. The body of a slot outlet is content, as an element's is, and so are the lines of
-    ; a class's markup section written with no root `<This`. An element written with a name whose body
-    ; gives slots content gives its constructor a function of its own, written at the name, that gives
-    ; the name the element's object before the markup of its class runs. A state machine is a function
-    ; of its own, but a named one written in a case of another, which is part of that one's. A line of
-    ; an element's body, or of the body of an arm of a region, that gives content and reads something
-    ; tracked is given again by a function of its own. A slot outlet that gives its slot's function a
-    ; name the row of a keyed loop reads tracked is a region of one arm (`rebuilds-outlet`).
+    ; something tracked is a region: each arm is built by a function of its own, written at its
+    ; body, and one selects the arm again (`add-branch`), and so is a `match` written as such a line
+    ; whose subject does (`is-match-region`). So is a `for` written as such a line whose container
+    ; reads something tracked: each row is built by a function of its own, written at its body, one
+    ; reads the container again (`add-source`), and where the loop is keyed one keys each row,
+    ; written at its `keyed by` clause. The condition a style rule written on a markup element, but
+    ; a root `<This`, is applied under is tested again by a function of its own, written at the
+    ; condition (`add-gate`). In the row of a keyed loop, a read of the loop's item and of the row's
+    ; own declarations that read it is tracked (`RowNames`). A lazy declaration written as a line of
+    ; a row is read as a getter, never run again on its own. A markup element that binds a slot, but
+    ; a root `<This`, is built by a function of its own, which the constructor of the element it is
+    ; a line of is given. So is the one line of an element's body that is neither an attribute nor
+    ; bound to a slot, where the element's class is one of `default-hosts` and that line is a markup
+    ; element: it fills the default slot; and so is such a body whose lines all give the slot
+    ; content (`mark-default`). The lines of the markup a class writes fill so the default slot of
+    ; the class it derives from. Each class name looked up so is `consulted`. The body of a slot
+    ; outlet is content, as an element's is, and so are the lines of a class's markup section
+    ; written with no root `<This`. An element written with a name whose body gives slots content
+    ; gives its constructor a function of its own, written at the name, that gives the name the
+    ; element's object before the markup of its class runs. A state machine is a function of its
+    ; own, but a named one written in a case of another, which is part of that one's. A line of an
+    ; element's body, or of the body of an arm of a region, that gives content and reads something
+    ; tracked is given again by a function of its own. A slot outlet that gives its slot's function
+    ; a name the row of a keyed loop reads tracked is a region of one arm (`rebuilds-outlet`).
     (let declared (list DeclId))
     (let inline (list Bool))
     (let chained (list Bool))
@@ -1889,9 +1889,8 @@
     (param defaulted (list Bool))
     ; Marks what fills the default slot of an element's class, and answers whether it marked
     ; anything: the one line of the body that gives the slot content, where that is an element or a
-    ; value the reference converts to the slot's type (`gives-value`); or the body itself, where
-    ; several of its lines give the slot content, or one that is an `if`, a `match` or a loop of
-    ; content, which the reference builds into a node of its own of those lines alone, whatever
+    ; value converted to the slot's type (`gives-value`); or the body itself, where several of its
+    ; lines give the slot content, or one that is an `if`, a `match` or a loop of content, whatever
     ; attributes and content bound to other slots the body holds too.
     (let lines 0)
     (let total 0)
@@ -1970,8 +1969,7 @@
   (fn-do _ is-control-line Bool
     (param tree AST)
     (param line SyntaxId)
-    ; Whether a line of markup content is an `if`, a `match`, or a loop of content, as the
-    ; reference's `isMarkupControlFlow` finds it.
+    ; Whether a line of markup content is an `if`, a `match`, or a loop of content.
     (match? ([] (. tree nodes) line)
       (case .node-if-block
         (return true)
@@ -2229,10 +2227,10 @@
     (param parameter SyntaxId)
     (param rows RowNames)
     ; Whether a slot outlet gives the function that builds its slot a name the row of a keyed markup
-    ; loop reads tracked (`RowNames`), which the reference reads as a getter: the outlet is then a
-    ; branch region of one arm, the outlet itself, built again whenever what the name reads changes,
-    ; as `markupRebuildingSlotOutlet` makes it. The function that selects the arm again is written at
-    ; the outlet's parameter, whose name it reads, and the arm at the outlet.
+    ; loop reads tracked (`RowNames`), which is read as a getter: the outlet is then a branch region
+    ; of one arm, the outlet itself, built again whenever what the name reads changes. The function
+    ; that selects the arm again is written at the outlet's parameter, whose name it reads, and the
+    ; arm at the outlet.
     (match? ([] (. tree nodes) parameter)
       (case (call .node-markup-slot-parameter row)
         (match? ([] (. tree nodes) (. row name))
@@ -2591,18 +2589,17 @@
   (fn-expr _ is-content-loop Bool
     (param tree AST)
     (param loop SyntaxId)
-    ; Whether a loop written as an expression with `in` as a line of markup content runs its body
-    ; as content, as a `for` does, and as the reference's `isMarkupControlFlow` finds one: it is no
-    ; loop on a stream. One whose container reads something tracked, which the reference makes a
-    ; region of, is none here: it has no shape yet.
+    ; Whether a loop written as an expression with `in` as a line of markup content runs its body as
+    ; content, as a `for` does: it is no loop on a stream. One whose container reads something
+    ; tracked is none: it has no shape yet.
     (and (not (call is-subscriber-loop tree loop)) (not (call is-markup-loop tree loop)))
   )
   (fn-do _ is-markup-loop Bool
     (param tree AST)
     (param loop SyntaxId)
-    ; Whether a `for` written as a line of markup content is a region whose rows functions of
-    ; their own build, as the reference's `markupLoopHeader` finds one: the container of one of
-    ; its headers reads something tracked, before any header on a stream.
+    ; Whether a `for` written as a line of markup content is a region whose rows functions of their
+    ; own build: the container of one of its headers reads something tracked, before any header on a
+    ; stream.
     (let header loop)
     (while (!= header 0)
       (let next SyntaxId 0)
@@ -2626,9 +2623,8 @@
     (param id SyntaxId)
     (param row-names (? RowNames))
     ; Whether an `if` written as a line of markup content is a region whose arm is selected again
-    ; when what its conditions read tracked changes, as the reference's `hasDynamicMarkupCondition`
-    ; finds one: one of its conditions reads something tracked, or of an arm written with a pattern,
-    ; `if | x = v`, its subject or its pattern (`pattern-arm`).
+    ; when what its conditions read tracked changes: one of its conditions reads something tracked,
+    ; or of an arm written with a pattern, `if | x = v`, its subject or its pattern (`pattern-arm`).
     (let tracked false)
     (let arm id)
     (while (!= arm 0)
@@ -2673,9 +2669,8 @@
     (param id SyntaxId)
     (param row-names (? RowNames))
     ; Whether a `match` written as a line of markup content is a region whose arm is selected again
-    ; when what its subject reads tracked changes, as the reference's `markupMatchBranch` compiles
-    ; one: its subject reads something tracked, and its arms are each a pattern with a body
-    ; (`match-arms`). One with a helper is no region here.
+    ; when what its subject reads tracked changes: its subject reads something tracked, and its arms
+    ; are each a pattern with a body (`match-arms`). One with a helper is no region.
     (match? ([] (. tree nodes) id)
       (case (call .node-match-expression row)
         (if (or (== (. row subject) 0) (!= (. row helper) 0) (not (call reads-tracked tree (. row subject) row-names)))
@@ -2722,9 +2717,8 @@
     (param id SyntaxId)
     (param owner DeclId)
     (param named SyntaxId)
-    ; A stream piped through a pattern, `s ~> p`, which the reference compiles as the comprehension
-    ; `~ p in s`: a generator closure given the stream, which yields what each match of the
-    ; pattern gives.
+    ; A stream piped through a pattern, `s ~> p`, compiled as the comprehension `~ p in s`: a
+    ; generator closure given the stream, which yields what each match of the pattern gives.
     (return
       (call add-nested-function
         (block
@@ -2800,9 +2794,9 @@
   (fn-do _ opens-region Bool
     (param effects CompilationEffect)
     (param owner DeclId)
-    ; Whether a `do` block with effects is the body of a function of its own, as the reference
-    ; outlines one: a block that makes the zone the collector never sees, written where code is not
-    ; in that zone already, in a function that makes it or in such a block.
+    ; Whether a `do` block with effects is the body of a function of its own: a block that makes the
+    ; zone the collector never sees, written where code is not in that zone already, in a function
+    ; that makes it or in such a block.
     (if (== (/and/ effects (. CompilationEffect gc-free)) 0)
       (return false)
     )
@@ -3079,12 +3073,12 @@
     (param tree AST)
     (param member-syntax (of RowRange SyntaxId))
     (param owner DeclId)
-    ; A member no row is made for is kept as one the module does not declare. The first section
-    ; with markup written in it is left in `written-content`, and so is a class's `• This` that
-    ; writes its markup (`defaults-content`), as the reference makes its lines the class's content.
-    ; A second is kept as any other member, and so is a section with nothing written in it. The
-    ; delegations written before a property or getter are all its own. A property of a class that
-    ; holds a state machine has its flags before it (`add-machine-members`).
+    ; A member no row is made for is kept as one the module does not declare. The first section with
+    ; markup written in it is left in `written-content`, and so is a class's `• This` that writes
+    ; its markup (`defaults-content`). A second is kept as any other member, and so is a section
+    ; with nothing written in it. The delegations written before a property or getter are all its
+    ; own. A property of a class that holds a state machine has its flags before it
+    ; (`add-machine-members`).
     (throw (call Panic "Module member pool exceeds U32 capacity") (if (>= (. member-pool length) (. U32 max))))
     (blank)
     (let start (. member-pool length))
@@ -3176,7 +3170,7 @@
     (param id SyntaxId)
     ; A section of a type whose lines are markup: none of them declares anything but a lazy local
     ; the markup reads or a property the markup gives its value (`content-property`), and a state
-    ; machine is written in it only as a line of its own, which the reference keeps on the object.
+    ; machine is written in it only as a line of its own.
     (match? ([] (. tree nodes) id)
       (case (call .node-content-block row)
         (match? ([] (. tree nodes) (. row body))
@@ -3450,11 +3444,10 @@
 )
 
 (type _ RowNames
-  ; The names the row of each keyed markup loop reads tracked, as the reference gives them: the
-  ; loop's item, by the name its header writes, `each` and `it`, and each declaration of the row's
-  ; body, in order, that is lazy or whose value reads one of the names before it, which the
-  ; reference reads again each time. Each loop's names hold in its body, from `starts` to
-  ; `ends`, from its first in `firsts`.
+  ; The names the row of each keyed markup loop reads tracked: the loop's item, by the name its
+  ; header writes, `each` and `it`, and each declaration of the row's body, in order, that is lazy
+  ; or whose value reads one of the names before it, which is read again each time. Each loop's
+  ; names hold in its body, from `starts` to `ends`, from its first in `firsts`.
   (blank)
   (prop _ starts (list SyntaxId))
   (prop _ ends (list SyntaxId))

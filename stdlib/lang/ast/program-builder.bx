@@ -419,11 +419,11 @@
   (fn-do _ build-ranks (of ImmutableArray U16 ArenaBacking)
     (param arena Arena)
     (param include-builtins Bool)
-    ; For each module, where each module it can name comes in the order the reference looks
-    ; through what they declare: itself, then the modules it imports, the import made last first,
-    ; each followed at once by those it exports in turn, a module where it is first reached. One
-    ; it cannot name has the most there is. The imports of each module are gathered first, in that
-    ; order, so a module reached reads only its own.
+    ; For each module, where each module it can name comes in the order a lookup goes through what
+    ; they declare: itself, then the modules it imports, the import made last first, each followed
+    ; at once by those it exports in turn, a module where it is first reached. One it cannot name
+    ; has the most there is. The imports of each module are gathered first, in that order, so a
+    ; module reached reads only its own.
     (let total (. modules length))
     (let edge-count (. edge-froms length))
     (let ranks (call (of Array U16) arena (* total total)))
@@ -572,12 +572,11 @@
   )
   (fn-do _ build-listing Listings
     (param arena Arena)
-    ; For each module, where each module it can name comes in the order the reference lists
-    ; what they declare: a module after the modules it imports, the builtin modules before the
-    ; others and of each the import made last first, and of a module that is itself imported
-    ; only what it exports. A module is listed where it first ends, and also by where it last
-    ; ends, as one that is not entered ends each time it is reached; one that cannot be named has
-    ; the most there is.
+    ; For each module, where each module it can name comes in the order what they declare is listed:
+    ; a module after the modules it imports, the builtin modules before the others and of each the
+    ; import made last first, and of a module that is itself imported only what it exports. A module
+    ; is listed where it first ends, and also by where it last ends, as one that is not entered ends
+    ; each time it is reached; one that cannot be named has the most there is.
     (let total (. modules length))
     (let edge-count (. edge-froms length))
     (let listing (call (of Array U16) arena (* total total)))
@@ -664,9 +663,8 @@
     ; The modules the entry module reaches, or each root of a batch in turn, in the order they
     ; initialize: each after the modules it imports, depth first, a module's imports of builtin
     ; modules before its others and each group in the order it is declared. Every other module
-    ; imports the builtin modules first; a builtin module imports only what it declares. In the order
-    ; TypeScript `declaring` declares them, an import that follows comes after the module that makes
-    ; it.
+    ; imports the builtin modules first; a builtin module imports only what it declares. With
+    ; `declaring`, an import that follows comes after the module that makes it.
     (let total (. modules length))
     (let is-builtin (call builtin-modules))
     (let visited (call (of Array Bool) scratch total))
@@ -1356,8 +1354,8 @@
 )
 
 (type _ Listings (is Tuple)
-  ; Where each module comes among those each module can name, as the reference lists them, where
-  ; it first ends and where it last ends.
+  ; Where each module comes among those each module can name as they are listed, where it first ends
+  ; and where it last ends.
   (blank)
   (prop + first (of ImmutableArray U16 ArenaBacking))
   (prop + last (of ImmutableArray U32 ArenaBacking))

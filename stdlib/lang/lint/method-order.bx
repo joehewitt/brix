@@ -22,9 +22,9 @@
 (prop _ bucket-stride _ (= 10000))
 
 (type + DeclarationStore
-  ; The declarations of modules as the reference's module store makes them for ordering: the builtin
-  ; modules first, which import nothing implicitly, and then each module the first time an import
-  ; reaches it, which also imports the builtin modules.
+  ; The declarations of modules for ordering: the builtin modules first, which import nothing
+  ; implicitly, and then each module the first time an import reaches it, which also imports the
+  ; builtin modules.
   (prop + resolver ModuleResolver)
   (prop _ atoms AtomPool)
   (prop _ modules (map String DeclaredModule))
@@ -52,8 +52,7 @@
   (fn-do + declare-source DeclaredModule (?! Error)
     (param source LintSource)
     (param tree AST)
-    ; A source declared as the reference declares it for ordering, as a module of its own apart from
-    ; any module at its path.
+    ; A source declared for ordering, as a module of its own apart from any module at its path.
     (call initialize)
     (let module (call new-module local-origin-name (. source path) false))
     (call declare module source tree)
@@ -205,8 +204,7 @@
 )
 
 (type + DeclaredModule
-  ; A module's classes and type aliases, and the modules it imports, as the reference declares a
-  ; module for finding classes by name.
+  ; A module's classes and type aliases, and the modules it imports, for finding classes by name.
   (prop + id Int)
   (prop + name String)
   (prop + path String)
@@ -247,8 +245,8 @@
   (fn-do + classes-named (list DeclaredClass)
     (param name String)
     ; The classes a name finds from this module: its own, and the public ones of the modules it
-    ; imports and those they export. As in the reference, a module that exports nothing counts again
-    ; each time an import reaches it.
+    ; imports and those they export. A module that exports nothing counts again each time an import
+    ; reaches it.
     (let found (list DeclaredClass))
     (let visited (map Int Bool))
     (call collect name true visited found)
@@ -293,8 +291,8 @@
 )
 
 (type + DeclaredClass
-  ; A class as the reference declares it: its type parameters, its bases in the order written, and
-  ; its public functions in the order of their buckets and then of where they are.
+  ; A declared class: its type parameters, its bases in the order written, and its public functions
+  ; in the order of their buckets and then of where they are.
   (prop + name String)
   (prop + module DeclaredModule)
   (prop + line U32)
@@ -345,8 +343,8 @@
 )
 
 (type + ClassDeclaration
-  ; The members of one class as the reference declares them, failing as it does on a member that
-  ; redefines another, and the public functions among them.
+  ; The members of one class, failing on a member that redefines another, and the public functions
+  ; among them.
   (prop + source LintSource)
   (prop + tree AST)
   (prop + declared DeclaredClass)
@@ -689,7 +687,7 @@
 (fn-do + declared-type-name String
   (param tree AST)
   (param type SyntaxId)
-  ; The name the reference gives a type as written.
+  ; The name of a type as written.
   (if (== type 0)
     (return "")
   )

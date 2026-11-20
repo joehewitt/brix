@@ -722,9 +722,9 @@
   )
   (fn-expr + gives-content Bool
     (param line SyntaxId)
-    ; Whether a line of a markup element's body is a value the element takes as content, which the
-    ; reference gives the element again where it reads something tracked: a text, a name, a member,
-    ; an index, a call, a latest item read or a value forced from an optional.
+    ; Whether a line of a markup element's body is a value the element takes as content, which is
+    ; given again where it reads something tracked: a text, a name, a member, an index, a call, a
+    ; latest item read or a value forced from an optional.
     (match ([] nodes line)
       (case (call .node-binary-expression row)
         (or (== (. row op) .concat-string-op) (== (. row op) .concat-op))
@@ -1063,8 +1063,8 @@
   )
   (fn-do + keyed-clause SyntaxId
     (param loop SyntaxId)
-    ; The last `keyed by` clause of a loop's header, which the reference keys a markup loop region
-    ; by, or none.
+    ; The last `keyed by` clause of a loop's header, which a markup loop region is keyed by, or
+    ; none.
     (let found SyntaxId 0)
     (match? ([] nodes loop)
       (case (call .node-loop-syntax row)
@@ -1087,8 +1087,8 @@
   )
   (fn-do + is-condition-reference Bool
     (param condition SyntaxId)
-    ; Whether the condition a style rule is applied under is one the reference takes: a name or a
-    ; member read tracked, or the latest value of a name or a member.
+    ; Whether the condition a style rule is applied under is one it takes: a name or a member read
+    ; tracked, or the latest value of a name or a member.
     (match? ([] nodes condition)
       (case (call .node-identifier row)
         (return (. row is-tracked))
@@ -1146,9 +1146,9 @@
   (fn-do + text-parts _
     (param id SyntaxId)
     (param parts (list SyntaxId))
-    ; Adds to `parts` the parts of a pattern of texts, in the order written, as the reference's
-    ; `textPatternParts` reads them: two or more joined by `and`, each a text written, a name given
-    ; one or a rest, and one at least a text. Where the pattern is not one, adds none.
+    ; Adds to `parts` the parts of a pattern of texts, in the order written: two or more joined by
+    ; `and`, each a text written, a name given one or a rest, and one at least a text. Where the
+    ; pattern is not one, adds none.
     (let start (. parts length))
     (let texts 0)
     (if (call gather-texts id parts)
@@ -1205,7 +1205,7 @@
     (param id SyntaxId)
     (param arms (list SyntaxId))
     ; Adds to `arms` the arms of a match, in the order written, where every one is a pattern with a
-    ; body, as the reference's `markupMatchBranchArms` gathers them; where one is not, adds none.
+    ; body; where one is not, adds none.
     (let pattern SyntaxId 0)
     (match? ([] nodes id)
       (case (call .node-match-expression row)
@@ -1423,12 +1423,11 @@
   )
   (fn-do + content-property-name SyntaxId
     (param statement SyntaxId)
-    ; The name of the property a line `+ name = value` of a class's markup declares, which the markup
-    ; gives its value where the line runs, as the reference's content declares one, or none: a public
-    ; name alone with no type, given a value, with no decoration, annotation or `:=`, on a line of a
-    ; section with no root `<This`, whose lines name it nowhere else. The reference holds it in a
-    ; lazy local, which a read before the line would evaluate early. Each line is searched within its
-    ; own subtree, apart from nodes the parser left between lines.
+    ; The name of the property a line `+ name = value` of a class's markup declares, which the
+    ; markup gives its value where the line runs, or none: a public name alone with no type, given a
+    ; value, with no decoration, annotation or `:=`, on a line of a section with no root `<This`,
+    ; whose lines name it nowhere else. Each line is searched within its own subtree, apart from
+    ; nodes the parser left between lines.
     (match? ([] nodes statement)
       (case (call .node-property-syntax row)
         (if (or (== (. row value) 0) (. row is-lazy) (. row decoration) is-annotated-or-private)
@@ -1579,8 +1578,8 @@
   (fn-do + defaults-content Bool
     (param rule SyntaxId)
     ; Whether a style rule is a class's `• This` that writes its markup: a line of its body that is
-    ; not the rule's own (`rule-part`). The reference makes those lines the class's markup and
-    ; drops the content the rule would generate, so one that generates some is not taken for it.
+    ; not the rule's own (`rule-part`). Those lines are the class's markup, so one that also
+    ; generates content is not taken for it.
     (match? ([] nodes rule)
       (case (call .node-rule-syntax row)
         (if (or (!= (. row name text) "This") (!= (. row args count) 0) (== (. row body) 0))
@@ -1613,9 +1612,9 @@
   )
   (fn-do + piped-feed SyntaxId
     (param pipe SyntaxId)
-    ; The feed a stream piped through a pattern reads, where it is one feed alone that gives
-    ; every item of what it writes: the reference evaluates what it writes inside the generator
-    ; the pipe is, at its first pull. None for any other pipe.
+    ; The feed a stream piped through a pattern reads, where it is one feed alone that gives every
+    ; item of what it writes: what it writes is evaluated inside the generator the pipe is, at its
+    ; first pull. None for any other pipe.
     (let left SyntaxId 0)
     (match? ([] nodes pipe)
       (case (call .node-pipeline-expression row)

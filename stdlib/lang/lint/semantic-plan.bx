@@ -49,12 +49,11 @@
 )
 
 (type + SemanticPlanner
-  ; Chooses the programs the semantic rules type, as the reference's `planSemanticCoverage` does:
-  ; every lint file of the project is read for its imports and for whether it runs code; the
-  ; roots given explicitly are the roots, and otherwise the configured roots, the tests, the
-  ; examples, the other programs, and the targets that run code are candidates, from which the
-  ; one covering the most targets not yet covered is taken, the higher priority first among
-  ; those tied, until no candidate covers one more.
+  ; Chooses the programs the semantic rules type: every lint file of the project is read for its
+  ; imports and for whether it runs code; the roots given explicitly are the roots, and otherwise
+  ; the configured roots, the tests, the examples, the other programs, and the targets that run code
+  ; are candidates, from which the one covering the most targets not yet covered is taken, the
+  ; higher priority first among those tied, until no candidate covers one more.
   (prop + project-root String)
   (prop + search-paths (list Path))
   (prop + resolver ModuleResolver)
@@ -126,9 +125,8 @@
   )
   (fn-do + module-name String
     (param path String)
-    ; The name of the module a file is, as the reference's `moduleNameForPath` gives it: its path in
-    ; the first search root that holds it, else in the project, else its file name, without
-    ; `.bx`.
+    ; The name of the module a file is: its path in the first search root that holds it, else in the
+    ; project, else its file name, without `.bx`.
     (for (in root search-paths)
       (let prefix (str root "/"))
       (return-if (call strip-extension ([] path (... (. prefix length)))) (if (call (. path starts-with) prefix)))
@@ -299,8 +297,8 @@
 
 (fn-do + semantic-root-batches (list (list SemanticRootPlan))
   (param roots (list SemanticRootPlan))
-  ; The roots typed together, in order, as the reference batches them: a root joins the batch
-  ; before it unless the files the batch and it reach would pass `semantic-batch-file-limit`.
+  ; The roots typed together, in order: a root joins the batch before it unless the files the batch
+  ; and it reach would pass `semantic-batch-file-limit`.
   (let batches (list (list SemanticRootPlan)))
   (let batch (list SemanticRootPlan))
   (let reachable (map String Bool))
@@ -436,9 +434,9 @@
 
 (fn-do _ has-executable-shape Bool
   (param tree AST)
-  ; Whether a module runs code of its own, as the reference's `hasExecutableShape` decides: a line
-  ; that is not an import, a declaration of a type, function, extension, unit or converter, a rule,
-  ; or a property, but for a property holding a state machine.
+  ; Whether a module runs code of its own: a line that is not an import, a declaration of a type,
+  ; function, extension, unit or converter, a rule, or a property, but for a property holding a
+  ; state machine.
   (match ([] (. tree nodes) (. tree root))
     (case (call .node-top-level-syntax root)
       (for (in id ([] (. tree children) (. root statements)))

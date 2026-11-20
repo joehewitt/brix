@@ -42,11 +42,11 @@
 )
 
 (type + SemanticAnalysis
-  ; The facts the semantic rules read, by target path, from typing the roots the plan chose, in the
-  ; batches the reference types them in, with the text of each file in `sources` in place of what is
-  ; on disk. A target is `compiled` where a root covering it typed with no error; the rules run
-  ; only on those. A root whose program does not parse or type has an error, which fails the run as
-  ; it fails the reference's. Progress names the semantic rules by `rule-label`.
+  ; The facts the semantic rules read, by target path, from typing the roots the plan chose, in
+  ; batches, with the text of each file in `sources` in place of what is on disk. A target is
+  ; `compiled` where a root covering it typed with no error; the rules run only on those. A root
+  ; whose program does not parse or type has an error, which fails the run. Progress names the
+  ; semantic rules by `rule-label`.
   (prop + project-root String)
   (prop + planner SemanticPlanner)
   (prop + plan SemanticCoveragePlan)
@@ -107,8 +107,7 @@
     )
   )
   (fn-expr + failure-message String
-    ; The message the run fails with, naming each root with an error and the error, as the
-    ; reference's does.
+    ; The message the run fails with, naming each root with an error and the error.
     (call (. "\n\n" join) parts)
     (where
       (lazy parts
@@ -127,9 +126,9 @@
     )
   )
   (fn-do + report JSON
-    ; The coverage report the reference gives: which roots were typed and what each covers, which
-    ; roots reach and cover each target and how many facts were gathered for it, the targets no root
-    ; covers, and the errors. A failed run reports no target covered.
+    ; The coverage report: which roots were typed and what each covers, which roots reach and cover
+    ; each target and how many facts were gathered for it, the targets no root covers, and the
+    ; errors. A failed run reports no target covered.
     (let failing (call failed))
     (let roots (list JSON))
     (for (in root (. plan roots))
@@ -308,8 +307,8 @@
   (fn-do _ gather-defaults _
     (param session Session)
     ; The values of the instances written in targets that are written as the default of the type
-    ; they are declared as, where the reference traces them for
-    ; `style/no-redundant-default-initializer` (`traces-default`, `writes-default`).
+    ; they are declared as, where they are traced for `style/no-redundant-default-initializer`
+    ; (`traces-default`, `writes-default`).
     (let program (. session program))
     (let scanned (list Bool))
     (for (in _ (..< 0 (. program modules length)))
@@ -372,11 +371,11 @@
     (param session Session)
     (param fact DeclaredValueFact)
     (param declares (map U64 SyntaxId))
-    ; Whether the reference traces a declared value for being the default of its type: a local of a
-    ; function no type parameters write, declared alone with its type written by name; a global that
-    ; is no local of a task, a thread or a stack; or a property a class that takes no type
-    ; parameters stores and writes without annotations, typed for that class, which takes no
-    ; property of its name from a class above it.
+    ; Whether a declared value is traced for being the default of its type: a local of a function no
+    ; type parameters write, declared alone with its type written by name; a global that is no local
+    ; of a task, a thread or a stack; or a property a class that takes no type parameters stores and
+    ; writes without annotations, typed for that class, which takes no property of its name from a
+    ; class above it.
     (let row ([] (. session instances rows) (. fact instance)))
     (let module ([] (. session program modules) (. row module)))
     (if (== (. fact property) 0)
@@ -468,9 +467,9 @@
   (fn-do _ writes-default Bool
     (param session Session)
     (param fact DeclaredValueFact)
-    ; Whether a declared value is written as the default of its type, as the reference reads it: an
-    ; unsigned zero with no unit for a number the compiler builds in, an empty string for its
-    ; string, `false` for its `Bool`, or a class's constructor called with nothing.
+    ; Whether a declared value is written as the default of its type: an unsigned zero with no unit
+    ; for a number the compiler builds in, an empty string for its string, `false` for its `Bool`,
+    ; or a class's constructor called with nothing.
     (let types (. session types))
     (let completion ([] (. types completions) (. fact declared)))
     (let tree (. ([] (. session program modules) (. ([] (. session instances rows) (. fact instance)) module)) tree))
@@ -531,8 +530,8 @@
   (fn-do _ gather-payloads _
     (param session Session)
     (param ranks (list U32))
-    ; The payloads of events with effects written in targets, in the order the reference compiles
-    ; the instances (`compile-ranks`), each with its effects in the order it met them.
+    ; The payloads of events with effects written in targets, in the order of `compile-ranks`, each
+    ; with its effects in the order typing met them.
     (let program (. session program))
     (let effects (. session lint payload-effects))
     (let keys (list U64))
@@ -565,7 +564,7 @@
   )
   (fn-expr _ effect-label String
     (param kind PayloadEffectKind)
-    ; An effect as the reference's message names it.
+    ; An effect as the rule's message names it.
     (match kind
       (case= .effect-call
         "an imperative do call"
@@ -582,8 +581,8 @@
     (param session Session)
     (param ranks (list U32))
     ; The cases given by their symbols alone written in targets that functions a call may choose
-    ; take as cases of more than one type, in the order the reference compiles the instances
-    ; (`compile-ranks`), each with the names of those types in order.
+    ; take as cases of more than one type, in the order of `compile-ranks`, each with the names of
+    ; those types in order.
     (let program (. session program))
     (let owners (. session lint case-owners))
     (let keys (list U64))
@@ -632,7 +631,7 @@
   (fn-do _ class-name String
     (param session Session)
     (param type TypeId)
-    ; The name a class is declared with, which the reference names a type of it by.
+    ; The name a class is declared with, which names a type of it.
     (match? ([] (. session types rows) type)
       (case (call .type-class row)
         (match? ([] (. ([] (. session program modules) (. row module)) decls) (. row decl))
@@ -649,7 +648,7 @@
     (param module ModuleId)
     (param decl DeclId)
     ; Whether the function an instance runs takes type parameters or is a member of a class that
-    ; does, as the reference counts them for a rule: a closure takes none of its own.
+    ; does, as a rule counts them: a closure takes none of its own.
     (match? ([] (. ([] (. session program modules) module) decls) decl)
       (case (call .decl-function row)
         (if (== (. row kind) .closure-decl)
@@ -663,7 +662,7 @@
     (param session Session)
     (param ranks (list U32))
     ; The casts of the instances written in targets to the type their place already takes the value
-    ; as, in the order the reference compiles the instances (`compile-ranks`).
+    ; as, in the order of `compile-ranks`.
     (let program (. session program))
     (let casts (. session lint context-casts))
     (let keys (list U64))
@@ -736,9 +735,9 @@
   (fn-do _ answered-by-reference Bool
     (param session Session)
     (param instance InstanceId)
-    ; Whether the reference answers what an instance computes without typing its body: a getter of
-    ; an array's storage, size or length, of the size or length of a table, a view of one or an index
-    ; span, of a table's capacity or mark, or of the length of an `ArrayBuilder` an arena backs.
+    ; Whether what an instance computes is answered without typing its body: a getter of an array's
+    ; storage, size or length, of the size or length of a table, a view of one or an index span, of
+    ; a table's capacity or mark, or of the length of an `ArrayBuilder` an arena backs.
     (let types (. session types))
     (let row ([] (. session instances rows) instance))
     (let name "")
@@ -777,7 +776,7 @@
   )
   (fn-expr _ cast-context String
     (param kind ContextCastKind)
-    ; The place a cast is written, as the reference's message names it.
+    ; The place a cast is written, as the rule's message names it.
     (match kind
       (case= .cast-argument
         "the call argument"
@@ -796,7 +795,7 @@
   (fn-do _ written-type (? String)
     (param tree AST)
     (param type SyntaxId)
-    ; A type as the reference names it as written: by its name, with the names of its arguments.
+    ; The name of a type as written: its name, with the names of its arguments.
     (match? ([] (. tree nodes) type)
       (case (call .node-type-identifier row)
         (return (. row name text))
@@ -826,8 +825,8 @@
     (param session Session)
     (param ranks (list U32))
     ; The assignments of the constructors written in targets that discard a value the constructor
-    ; built, as the reference traces them for `style/prefer-constructor-initializer`, from each
-    ; instance of a constructor in the order the reference compiles them (`trace-overwrites`).
+    ; built, traced for `style/prefer-constructor-initializer` from each instance of a constructor
+    ; in the order of `compile-ranks` (`trace-overwrites`).
     (let keys (list U64))
     (for (in position (..< 0 (. session instances length)))
       (+= keys (/or/ (/lshift/ (as ([] ranks position) U64) 32) (as position U64)))
@@ -855,12 +854,12 @@
     (param instance InstanceId)
     (param gathered SemanticFacts)
     ; The assignments a constructor's body writes among its statements that discard a value the
-    ; constructor built for a property, as the reference traces them: an assignment by name or
-    ; through `this` to a stored property the constructor is given no value for, whose value is built
-    ; by a call, or is a class or a tuple constructed with nothing given. One can be an initializer
-    ; where each statement before it is one too, the property has no value written, comes after the
-    ; properties of those before it, has no setter, and no rule reads it, and the value reads nothing
-    ; the body assigns or declares, no property a function answers, and not the object.
+    ; constructor built for a property: an assignment by name or through `this` to a stored property
+    ; the constructor is given no value for, whose value is built by a call, or is a class or a
+    ; tuple constructed with nothing given. One can be an initializer where each statement before it
+    ; is one too, the property has no value written, comes after the properties of those before it,
+    ; has no setter, and no rule reads it, and the value reads nothing the body assigns or declares,
+    ; no property a function answers, and not the object.
     (let types (. session types))
     (let row ([] (. session instances rows) instance))
     (let receiver (. row self-type))
@@ -1187,8 +1186,8 @@
   )
   (fn-expr _ is-tuple-kind Bool
     (param kind IntrinsicKind)
-    ; Whether a type is a tuple as the reference builds it: a tuple, a struct, an array builder, or a
-    ; table or a part of one.
+    ; Whether a type counts as a tuple: a tuple, a struct, an array builder, or a table or a part of
+    ; one.
     (or (== kind .tuple) (== kind .struct) (== kind .array-builder) (and (>= code first) (<= code last)))
     (where
       (lazy code (as kind U32))
@@ -1267,8 +1266,8 @@
     (param session Session)
     (param graph CallGraph)
     (param roots (list InstanceId))
-    ; The order the reference compiles the instances of a program in: from each of `roots`
-    ; (`compile-roots`), depth first through what each compiles, in the order of its body.
+    ; Ranks the instances of a program: from each of `roots` (`compile-roots`), depth first through
+    ; what each compiles, in the order of its body.
     (let ranks (list U32))
     (for (in _ (..< 0 (. session instances length)))
       (+= ranks (. U32 max))
@@ -1301,11 +1300,11 @@
   (fn-do _ compile-roots (list InstanceId)
     (param session Session)
     (param graph CallGraph)
-    ; The instances the reference begins compiling from, in order: the main of each module in the
-    ; order the modules initialize, then the instances of the functions nothing compiles, then the
-    ; rest, each in the order of the sealed instance table (`Instances.ordered`), as an id records
-    ; only which instance typing reached first, which depends on how many passes typed the program.
-    ; A function is reached where another instance compiles any of its instances (`function-key`).
+    ; The roots `compile-ranks` starts from, in order: the main of each module in the order the
+    ; modules initialize, then the instances of the functions nothing compiles, then the rest, each
+    ; in the order of the sealed instance table (`Instances.ordered`), as an id records only which
+    ; instance typing reached first, which depends on how many passes typed the program. A function
+    ; is reached where another instance compiles any of its instances (`function-key`).
     (let instances (. session instances))
     (let reached (map String Bool))
     (for (in position (..< 0 (. instances length)))
@@ -1337,9 +1336,9 @@
   (fn-expr _ function-key String
     (param instances Instances)
     (param instance InstanceId)
-    ; The function the reference compiles for an instance: its declaration, the type of its object,
-    ; the instance it is written in, and the types it takes, but not its effects or the row it reads
-    ; its object from, which the reference does not tell apart.
+    ; The key of the function an instance is of: its declaration, the type of its object, the
+    ; instance it is written in, and the types it takes, but not its effects or the row it reads its
+    ; object from.
     (str (. row module) ":" (. row decl) ":" (. row self-type) ":" (. row enclosing) taken)
     (where
       (lazy row ([] (. instances rows) instance))
@@ -1350,10 +1349,9 @@
   )
   (fn-do _ call-graph CallGraph
     (param session Session)
-    ; What the reference compiles while it compiles each instance's body, in the order of the body:
-    ; at each node, the closures written there, the instances its calls call, and what its
-    ; conversions compile (`add-conversion`). The reference compiles a closure where it is written,
-    ; and a function where a call, a conversion or a value of a function type first needs it.
+    ; What each instance's body compiles, in the order of the body: at each node, the closures
+    ; written there, the instances its calls call, and what its conversions compile
+    ; (`add-conversion`).
     (let instances (. session instances))
     (let facts (. session facts))
     (let closures (call closures-by-node session))

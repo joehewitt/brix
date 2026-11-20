@@ -189,7 +189,7 @@
   (fn-do + unevaluated-operation SyntaxId
     (param expr SyntaxId)
     ; The first operation of a side of an equality that gives no number, its operands before it and
-    ; the left before the right, as the reference evaluates them, or none.
+    ; the left before the right, or none.
     (match? ([] nodes expr)
       (case (call .node-binary-expression row)
         (let left (call unevaluated-operation (. row lhs)))
@@ -210,10 +210,9 @@
   (fn-do + first-unexpressed SyntaxId
     (param body SyntaxId)
     (param statements Bool)
-    ; The first node of a body, in the order the reference visits them, that a function written as
-    ; one expression may not hold: an explicit return or, with `statements`, an immediate
-    ; declaration, a loop or a yield outside a `do` block. Neither is looked for in the functions,
-    ; tasks and deferred blocks written in the body.
+    ; The first node of a body that a function written as one expression may not hold: an explicit
+    ; return or, with `statements`, an immediate declaration, a loop or a yield outside a `do`
+    ; block. Neither is looked for in the functions, tasks and deferred blocks written in the body.
     (let found SyntaxId 0)
     (let floor (call subtree-start body))
     (let node (+ body 1))
@@ -868,8 +867,8 @@
   )
   (fn-do + stable-key Bool
     (param key SyntaxId)
-    ; Whether a key names what lasts as long as the address it makes, as the reference decides:
-    ; a name, a number, a text or a case written alone, a name read from one, or a tuple of them.
+    ; Whether a key names what lasts as long as the address it makes: a name, a number, a text or a
+    ; case written alone, a name read from one, or a tuple of them.
     (match? ([] nodes key)
       (case .node-identifier
         (return true)
@@ -1244,8 +1243,8 @@
   (fn-expr + source-site SyntaxId
     (param left SyntaxId)
     (param id SyntaxId)
-    ; The reference converts a pipeline's left value where that value was produced: at the left
-    ; operand, which for a feed list is where its shifted first feed lands.
+    ; A pipeline's left value is converted where that value was produced: at the left operand, which
+    ; for a feed list is where its shifted first feed lands.
     (match ([] nodes left)
       (case .node-feed-expression
         (call feed-site left id)
@@ -1810,8 +1809,7 @@
   )
   (fn-do + is-control-line Bool
     (param line SyntaxId)
-    ; Whether a line of markup content is an `if`, a `match`, or a loop that is no loop on a stream,
-    ; as the reference's `isMarkupControlFlow` finds it.
+    ; Whether a line of markup content is an `if`, a `match`, or a loop that is no loop on a stream.
     (match? ([] nodes line)
       (case .node-if-block
         (return true)
@@ -1940,8 +1938,8 @@
   )
   (fn-do + gives-nothing Bool
     (param source StateSource)
-    ; Whether a source of a case's payload gives no value, as the reference finds none there: a
-    ; case one of whose names neither its trigger, if it has one, nor its owner's trigger captures.
+    ; Whether a source of a case's payload gives no value: a case one of whose names neither its
+    ; trigger, if it has one, nor its owner's trigger captures.
     (if (not (is ([] nodes (. source node)) .node-state-case))
       (return false)
     )
@@ -2000,8 +1998,8 @@
   )
   (fn-expr + char-bound Bool
     (param id SyntaxId)
-    ; Whether a bound of a range of characters is a character written, as the reference requires: a
-    ; character literal, whose unit is `(char)`, or a number with no unit or `Char`'s suffix.
+    ; Whether a bound of a range of characters is a character written: a character literal, whose
+    ; unit is `(char)`, or a number with no unit or `Char`'s suffix.
     (match ([] nodes id)
       (case (call .node-integer-syntax row)
         (or (not (. row unit)) (== (. row unit text) "(char)") (== (. row unit text) "c"))
@@ -2049,8 +2047,8 @@
   )
   (fn-do + forwarded-read SyntaxId
     (param body SyntaxId)
-    ; The name an action's expression is, where it is one name alone, as the reference finds a
-    ; capture an action forwards. None for any other expression.
+    ; The name an action's expression is, where it is one name alone, which is a capture the action
+    ; forwards. None for any other expression.
     (let inner body)
     (match? ([] nodes body)
       (case (call .node-block block)
@@ -2076,8 +2074,7 @@
   )
   (fn-do + holds-count Bool
     (param id SyntaxId)
-    ; Whether a part of a grammar counts a part, whose text the reference gives empty over
-    ; items that are no characters.
+    ; Whether a part of a grammar counts a part.
     (for (in node (..< (call subtree-start id) (+ id 1)))
       (if (is ([] nodes node) .node-stream-length)
         (return true)
@@ -2116,7 +2113,7 @@
   )
   (fn-do + literal-arm Bool
     (param id SyntaxId)
-    ; Whether an arm's pattern is one literal, whose text the reference gives as a constant.
+    ; Whether an arm's pattern is one literal.
     (match? ([] nodes id)
       (case .node-stream-string
         (return true)
@@ -2144,9 +2141,8 @@
   (fn-do + mentions Bool
     (param id SyntaxId)
     (param name String)
-    ; Whether a name is read anywhere in an expression, as the reference finds what an action
-    ; refers to. An `it` read in the action of an arm written within the expression is that arm's
-    ; own.
+    ; Whether a name is read anywhere in an expression. An `it` read in the action of an arm written
+    ; within the expression is that arm's own.
     (if (== id 0)
       (return false)
     )
@@ -2189,8 +2185,7 @@
   )
   (fn-do + trivial-action Bool
     (param body SyntaxId)
-    ; Whether an action is a name, a number or text written alone, which the reference keeps
-    ; inline.
+    ; Whether an action is a name, a number or text written alone, which is kept inline.
     (let single body)
     (match? ([] nodes body)
       (case (call .node-block row)
@@ -2581,8 +2576,8 @@
   )
   (fn-do + retest-site SyntaxId
     (param clause SyntaxId)
-    ; Where the reference places the loop whose `whenever` clause a function tests again: the
-    ; section of a class the loop is, or else the loop's header.
+    ; Where the loop whose `whenever` clause a function tests again is placed: the section of a
+    ; class the loop is, or else the loop's header.
     (let loop (call clause-loop clause))
     (for (in node (..< (+ loop 1) (as (. nodes length) SyntaxId)))
       (if (<= (call subtree-start node) loop)
@@ -3011,8 +3006,8 @@
   )
   (fn-do + observes Bool
     (param id SyntaxId)
-    ; Whether the reference takes a part of a pattern as one of its own: not a part that only
-    ; declares lazy locals around another, nor an arm that raises.
+    ; Whether a part of a pattern is taken as one of its own: not a part that only declares lazy
+    ; locals around another, nor an arm that raises.
     (match? ([] nodes id)
       (case (call .node-stream-transform row)
         (return (or (== (. row pattern) 0) (not (call lazies-only (. row right)))))

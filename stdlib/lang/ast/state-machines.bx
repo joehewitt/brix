@@ -13,8 +13,8 @@
 (extend + AST
   (fn-do + state-items (list SyntaxId)
     (param body (of RowRange SyntaxId))
-    ; The items of the body of a machine, a case or a continuation, with those of a machine
-    ; written among them in its place, as the reference joins them.
+    ; The items of the body of a machine, a case or a continuation, with those of a machine written
+    ; among them in its place.
     (let items (list SyntaxId))
     (for (in item ([] children body))
       (match? ([] nodes item)
@@ -101,8 +101,7 @@
   )
   (fn-expr + declared-machine SyntaxId
     (param value SyntaxId)
-    ; The state machine a declaration's value is, as the reference reads it, or none for any other
-    ; value.
+    ; The state machine a declaration's value is, or none for any other value.
     (case? (== value 0)
       0
     )
@@ -115,10 +114,9 @@
   )
   (fn-do + content-machines (list SyntaxId)
     (param content SyntaxId)
-    ; The state machines written as lines of a class's markup, each a line of its own, which the
-    ; reference keeps on the object, each case's flag a property named after the case, in the order
-    ; they run. Where a root `<This` holds the markup, those written beside it, before it and then
-    ; after it; the reference declares no type for one among the root's lines.
+    ; The state machines written as lines of a class's markup, each a line of its own, kept on the
+    ; object, each case's flag a property named after the case, in the order they run. Where a root
+    ; `<This` holds the markup, those written beside it, before it and then after it.
     (let found (list SyntaxId))
     (if (== content 0)
       (return found)
@@ -147,8 +145,7 @@
     (param content SyntaxId)
     (param after Bool)
     ; The state machines written in a class's section beside its root `<This`: those before the
-    ; root, or those `after` it. The reference runs them where they are written among the root's
-    ; lines.
+    ; root, or those `after` it.
     (let found (list SyntaxId))
     (let root (call root-this content))
     (if (== root 0)
@@ -316,7 +313,7 @@
   (fn-do + always-passes Bool
     (param items (list SyntaxId))
     ; Whether one of a body's immediate transitions is a continuation with no trigger, which always
-    ; passes, so that where its owner settles, the reference never enters its first case.
+    ; passes, so that where its owner settles, its first case is never entered.
     (for (in transition (call immediate-transitions items))
       (if (== (call state-trigger transition) 0)
         (return true)
@@ -441,10 +438,9 @@
     (param items (list SyntaxId))
     (param owner SyntaxId)
     ; Whether the first case of a machine's body, or of a case or a continuation written in it, is
-    ; entered and given what its own name is written with, as the reference enters it only where
-    ; its owner settles: the machine's root, a continuation, a case a trigger enters or a
-    ; continuation names, and the first case of an owner that settles. Where it gives nothing, the
-    ; reference's entry is the same either way.
+    ; entered and given what its own name is written with, only where its owner settles: the
+    ; machine's root, a continuation, a case a trigger enters or a continuation names, and the first
+    ; case of an owner that settles. Where it gives nothing, the entry is the same either way.
     (case? (== owner 0)
       true
     )
@@ -627,9 +623,8 @@
     (param items (list SyntaxId))
     (param source SyntaxId)
     (param target SyntaxId)
-    ; Where a move from one case of a body to another leaves the paths from the root down to them,
-    ; as the reference moves between them: past the cases the two share, but no further than the
-    ; last case of either.
+    ; Where a move from one case of a body to another leaves the paths from the root down to them:
+    ; past the cases the two share, but no further than the last case of either.
     (let leaving (call path-to items source))
     (let entering (call path-to items target))
     (let common 0)
@@ -648,9 +643,9 @@
     (param items (list SyntaxId))
     (param active SyntaxId)
     (param transition SyntaxId)
-    ; The cases an immediate transition of a case's body enters, as the reference passes it: a case
-    ; alone; for a continuation, the cases of the path down to the case it names below the active
-    ; case, or from where the two paths part, or the continuation alone where no case is written.
+    ; The cases an immediate transition of a case's body enters: a case alone; for a continuation,
+    ; the cases of the path down to the case it names below the active case, or from where the two
+    ; paths part, or the continuation alone where no case is written.
     (let path (list SyntaxId))
     (if (is ([] nodes transition) .node-state-case)
       (+= path transition)
@@ -775,9 +770,8 @@
   )
   (fn-do + misplaced-fallback SyntaxId
     (param items (list SyntaxId))
-    ; A second fallback written in one body, which the reference rejects as it joins the body, or
-    ; one written where no group of event transitions or immediate ones owns it, in a body or the
-    ; bodies of its cases; or none.
+    ; A second fallback written in one body, or one written where no group of event transitions or
+    ; immediate ones owns it, in a body or the bodies of its cases; or none.
     (let last-immediate false)
     (let last SyntaxId 0)
     (let seen false)
@@ -1021,8 +1015,8 @@
   (fn-do + pattern-names _
     (param pattern SyntaxId)
     (param names (list Atom))
-    ; The names a trigger's pattern captures, as the reference types them: a captured name, the
-    ; fields of a tuple, and the payload of a case.
+    ; The names a trigger's pattern captures: a captured name, the fields of a tuple, and the
+    ; payload of a case.
     (match? ([] nodes pattern)
       (case (call .node-structure-match row)
         (call pattern-names (. row pattern) names)
@@ -1109,8 +1103,8 @@
   (fn-do + inherits-owner Bool
     (param node SyntaxId)
     ; Whether the activation of a case entered by a transition sees the names the activation the
-    ; transition is written in sees, as the reference captures them: a case's does, and a
-    ; continuation's where its body writes transitions of its own.
+    ; transition is written in sees: a case's does, and a continuation's where its body writes
+    ; transitions of its own.
     (if (is ([] nodes node) .node-state-case)
       (return true)
     )
