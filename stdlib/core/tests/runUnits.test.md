@@ -2119,6 +2119,28 @@ Exception: No unit is declared as Seconds times Seconds; declare one with an equ
 2000meters
 ```
 
+### A square root a value is piped into gives the unit whose square it is, as one written as an argument does.
+
+```brix
+(import /math)
+(import /units)
+
+(main
+  (print (as (|> 9sqm (call sqrt)) UnitString))
+  (print (as (|> 4000000sqm (call sqrt)) UnitString))
+  (print (as (|> 25% (call sqrt)) UnitString))
+)
+
+(type-line + SquareMeters (alias sqm) (is F64))
+(unit + 1sqm (* 1meters 1meters))
+```
+
+```output
+3meters
+2000meters
+50%
+```
+
 ### A pure number raised to any power or rooted keeps its unit, worked out by its value as a number.
 
 ```brix

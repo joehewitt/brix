@@ -2707,6 +2707,38 @@ i64
 343
 ```
 
+### A function the compiler answers itself takes a value piped into it, evaluated before the arguments written.
+
+```brix
+(import /math)
+
+(main
+  (print (|> 9.0 (call sqrt)))
+  (print (|> -2.5 (call abs)))
+  (print (|> 4.0 (call min 7.0)))
+  (print (|> 4.0 (call max 7.0)))
+  (print (|> (call show 1.0) (call max (call show 2.0))))
+  (print (|> 16.0 (call sqrt) (call min 3.0)))
+)
+
+(fn-do + show F64
+  (param n F64)
+  (print n)
+  (return n)
+)
+```
+
+```output
+3
+2.5
+4
+7
+1
+2
+2
+3
+```
+
 ### A parameter with no type written that is given `null` keeps its place, and the arguments after it arrive as given.
 
 ```brix
