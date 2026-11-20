@@ -495,8 +495,9 @@ main still ends its rows
 ```
 
 - **Requesting the end.** `(call request-process-termination 3)`{.brix} asks the program to end
-  with that status; with no argument the status is 130. The task goes on until it next waits, and
-  the wait ends it. Tasks still running are not waited for.
+  with that status; with no argument the status is 130. The task goes on until it next waits, or
+  until a loop it runs next polls, and that ends it, running its cleanups. Tasks still running are
+  not waited for.
 
 | Status | Means |
 | --- | --- |

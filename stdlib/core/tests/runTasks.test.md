@@ -2876,37 +2876,7 @@ evaluated
 ok 3
 ```
 
-### A loop in a function that may not panic runs to its end when the task is being terminated, and the termination is raised later, where a function that may panic or the task's body checks.
-
-```brix crash
-(main
-  (let last (call count-up 1000000))
-  (if (== last 999999)
-    (print "counted to the end")
-    (else
-      (print "stopped early")
-    )
-  )
-)
-
-(fn-do + count-up Int
-  (param limit Int)
-  (let last 0)
-  (for (in index (..< 0 limit))
-    (if (== index 10)
-      (call request-process-termination 130)
-    )
-    (= last index)
-  )
-  (return last)
-)
-```
-
-```output
-counted to the end
-```
-
-### A loop in a function that may panic ends when the task is terminated.
+### A loop in a function ends at its next poll when the task is being terminated, and the termination leaves through the function's callers.
 
 ```brix crash
 (main
@@ -2920,6 +2890,7 @@ counted to the end
     )
   )
   (call count-up box 1000000)
+  (print "unexpected end")
 )
 
 (type + Box
@@ -2932,9 +2903,6 @@ counted to the end
   (for (in index (..< 0 limit))
     (if (== index 10)
       (call request-process-termination 130)
-    )
-    (if (< index 0)
-      (throw (call Panic "negative"))
     )
     (= (. box last) index)
   )
@@ -3423,6 +3391,35 @@ recent: true
 
 ```output
 cleanup counted 499500
+cleanup saw Task terminated
+```
+
+### Shutdown ends a busy loop in a function the task calls, which raises the termination panic to the task's cleanup.
+
+```brix crash
+(main
+  (let ready (call Semaphore))
+  (do-new-thread
+    (finally
+      (print (str "cleanup saw " (?? (?. (. (call Task) failure) message) "nothing")))
+    )
+    (call (. ready post))
+    (call spin-forever)
+    (print "unexpected end")
+  )
+  (call (. ready wait))
+  (call request-process-termination 130)
+)
+
+(fn-do _ spin-forever _
+  (let count 0)
+  (while true
+    (+= count 1)
+  )
+)
+```
+
+```output
 cleanup saw Task terminated
 ```
 
