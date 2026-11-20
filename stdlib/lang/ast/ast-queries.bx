@@ -186,69 +186,6 @@
       )
     )
   )
-  (fn-do + offset-of SyntaxId
-    (param expr SyntaxId)
-    ; The first number with no unit a side of an equality adds to or takes from a number in a unit
-    ; other than zero, which is no ratio, or none. Zero in a unit adds nothing, as in
-    ; `(1 / 3) + 0foo`, which writes a third of foo.
-    (match? ([] nodes expr)
-      (case (call .node-binary-expression row)
-        (let inner (call offset-of (. row lhs)))
-        (if (!= inner 0)
-          (return inner)
-        )
-        (let right (call offset-of (. row rhs)))
-        (if (!= right 0)
-          (return right)
-        )
-        (if (and (!= (. row op) .add-op) (!= (. row op) .subtract-op))
-          (return 0)
-        )
-        (let left-unit (call has-unit (. row lhs)))
-        (let right-unit (call has-unit (. row rhs)))
-        (if (and left-unit (not right-unit) (not (call zero-amount (. row lhs))))
-          (return (. row rhs))
-        )
-        (if (and right-unit (not left-unit) (not (call zero-amount (. row rhs))))
-          (return (. row lhs))
-        )
-      )
-    )
-    (return 0)
-  )
-  (fn-expr + has-unit Bool
-    (param expr SyntaxId)
-    ; Whether a side of an equality writes a number in a unit.
-    (match ([] nodes expr)
-      (case (call .node-integer-syntax row)
-        (!= (. row unit) null)
-      )
-      (case (call .node-float-syntax row)
-        (!= (. row unit) null)
-      )
-      (case (call .node-binary-expression row)
-        (or (call has-unit (. row lhs)) (call has-unit (. row rhs)))
-      )
-      (default
-        false
-      )
-    )
-  )
-  (fn-expr + zero-amount Bool
-    (param expr SyntaxId)
-    ; Whether a side of an equality is a number written as zero.
-    (match ([] nodes expr)
-      (case (call .node-integer-syntax row)
-        (== (as (. row value) F64) 0.0)
-      )
-      (case (call .node-float-syntax row)
-        (== (as (. row value) F64) 0.0)
-      )
-      (default
-        false
-      )
-    )
-  )
   (fn-do + unevaluated-operation SyntaxId
     (param expr SyntaxId)
     ; The first operation of a side of an equality that gives no number, its operands before it and

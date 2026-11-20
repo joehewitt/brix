@@ -78,7 +78,7 @@ Units
 (type-line + Foo (alias foo) (is F64))
 (type-line + Bar (alias bar) (is I32))
 (blank)
-(unit + 1bar (/ 1 3foo))
+(unit + 1bar (/ 1foo 3))
 ```
 
 ```output
@@ -98,12 +98,55 @@ Units
 (type-line + Foo (alias foo) (is F64))
 (type-line + Bar (alias bar) (is I32))
 (blank)
-(unit + 1bar (%% 2 3foo))
+(unit + 1bar (* (%% 2 3) 1foo))
 ```
 
 ```output
 3bar
 576foo
+```
+
+### A side that divides by a unit declares a unit per that unit, and one that raises a unit to a whole power declares that power of it.
+
+```brix
+(main
+  (print (as (* 6bar 2foo) UnitString))
+  (print (as (/ 2 1foo) UnitString))
+  (print (as (* 3foo 4foo) UnitString))
+)
+
+(blank)
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is F64))
+(type-line + Square (alias sq) (is F64))
+(blank)
+(unit + 1bar (/ 1 3foo))
+(unit + 1sq (%% 1foo 2))
+```
+
+```output
+4f
+6bar
+12sq
+```
+
+### A unit is raised only to a whole number with no unit.
+
+```brix compile-error
+(main
+  (print (as 1bar UnitString))
+)
+
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is F64))
+(unit + 1bar (%% 2 3foo))
+```
+
+```output
+Exception: A unit is raised only to a whole number with no unit, as in "(%% 1meters 2)"
+<no file:8>
+    (unit + 1bar (%% 2 3foo))
+                       ^^^^
 ```
 
 ### Negative unit
@@ -138,7 +181,7 @@ Units
 (type-line + Foo (alias foo) (is F64))
 (type-line + Bar (alias bar) (is I32))
 (blank)
-(unit + 1bar (+ (/ 1 3) 0foo))
+(unit + 1bar (+ (/ 1foo 3) 0foo))
 ```
 
 ```output
@@ -178,13 +221,13 @@ Exception: Ambiguous units
 (type-line + Foo (alias foo) (is F64))
 (type-line + Bar (alias bar) (is I32))
 (blank)
-(unit + 1.0bar (/ 1foo 3foo))
+(unit + 1.0bar (+ 1foo 3bar))
 ```
 
 ```output
 Exception: Conflicting units
 <no file:5>
-    (unit + 1.0bar (/ 1foo 3foo))
+    (unit + 1.0bar (+ 1foo 3bar))
                    ^^^^^^^^^^^^^
 ```
 
@@ -302,7 +345,7 @@ Exception: Foo cannot be cast to Bar; there is no conversion between them
   (print 3foo)
   (print 1.5foo)
   (print (as 3foo UnitString))
-  (print (* 3foo 2foo))
+  (print (* 3foo 2))
   (print (- 3foo 5foo))
   (print (/ 10foo 4foo))
   (print (as 5km M))
@@ -402,7 +445,7 @@ Exception: Invalid constant expression
 ```brix
 (main
   (print (as (+ 1foo 2bar 3foo) UnitString))
-  (print (* (+ 1foo 2bar) 2foo))
+  (print (* (+ 1foo 2bar) 2))
   (print (< (+ 1foo 2bar) 3foo))
   (print (== (+ 1foo 2bar) 2foo))
   (print (as (+ 2bar 1foo 2bar) UnitString))
@@ -444,7 +487,7 @@ true
   (print (as x UnitString))
   (+= x 1)
   (print (as x UnitString))
-  (*= x 2foo)
+  (*= x 2)
   (print (as x UnitString))
   (let f 1.5)
   (+= f 2bar)
@@ -696,13 +739,12 @@ bar 1
 1025q0
 ```
 
-### Subtracting or multiplying across units converts the right side to the unit of the left, and dividing gives a plain number.
+### Subtracting across units converts the right side to the unit of the left, and dividing gives a plain number.
 
 ```brix
 (main
   (print (as (- 8hours 30minutes) UnitString))
   (print (as (/ 8hours 120minutes) UnitString))
-  (print (as (* 4hours 120minutes) UnitString))
 )
 
 (blank)
@@ -713,7 +755,6 @@ bar 1
 ```output
 7.5hours
 4f
-8hours
 ```
 
 ### A unit declared on a number type of its own is one of that type, so a value held as the type keeps its size.
@@ -1742,4 +1783,235 @@ Exception: A unit cannot be declared as zero, which no number of it would conver
 51%
 0.25%
 0.25%%
+```
+
+### Multiplying or dividing units gives the unit an equality declares as their product or quotient, converted to its scale.
+
+```brix
+(import /time/duration)
+(import /units)
+
+(main
+  (print (as (* 50kph 2hours) UnitString))
+  (print (as (* 50kph 30minutes) UnitString))
+  (print (as (/ 100km 2hours) UnitString))
+  (print (as (/ 100meters 8s) UnitString))
+  (print (as (/ 100km 50kph) UnitString))
+  (print (as (* 2mps 1minutes) UnitString))
+  (print (as (* 50hz 2s) UnitString))
+  (print (as (/ 1 500ms) UnitString))
+)
+
+(type-line + Kph (alias kph) (is F64))
+(type-line + Mps (alias mps) (is F64))
+(type-line + Hertz (alias hz) (is F64))
+(unit + 1kph (/ 1km 1hours))
+(unit + 1mps (/ 1meters 1s))
+(unit + 1hz (/ 1 1s))
+```
+
+```output
+100km
+25km
+50kph
+12.5mps
+2hours
+120meters
+100f
+2hz
+```
+
+### Units declared as amounts of the same units are one family, whichever module declares each, and a quotient takes the one declared from its operands' units.
+
+```brix
+(import /time/duration)
+(import /units)
+(import ./lib/speeds)
+
+(main
+  (print (as (as 1mps Kph) UnitString))
+  (print (as (+ 1mps 36kph) UnitString))
+  (print (as (/ 100km 2hours) UnitString))
+  (print (as (/ 100meters 8s) UnitString))
+)
+
+(type-line + Kph (alias kph) (is F64))
+(unit + 1kph (/ 1km 1hours))
+```
+
+```brix file=lib/speeds/speeds.bx
+(import /time/duration)
+(import /units)
+
+(type-line + Mps (alias mps) (is F64))
+(unit + 1mps (/ 1meters 1s))
+```
+
+```output
+3.6kph
+11mps
+50kph
+12.5mps
+```
+
+### A product or a quotient in a unit stored as a whole number is a plain number.
+
+```brix
+(import /time/duration)
+(import /units)
+
+(main
+  (print (as (/ 30km 2hours) UnitString))
+)
+
+(type-line + Kmh (alias kmh) (is I32))
+(unit + 1kmh (/ 1km 1hours))
+```
+
+```output
+15f
+```
+
+### Multiplying two units of a family is rejected where no unit is declared as their product.
+
+```brix compile-error
+(import /time/duration)
+
+(main
+  (print (as (* 4hours 120minutes) UnitString))
+)
+```
+
+```output
+Exception: No unit is declared as Hours times Hours; declare one with an equality, or make one side a plain number
+<no file:5>
+      (print (as (* 4hours 120minutes) UnitString))
+                 ^^^^^^^^^^^^^^^^^^^^^
+```
+
+### Multiplying units of two families is rejected where no unit is declared as their product.
+
+```brix compile-error
+(import /time/duration)
+(import /units)
+
+(main
+  (print (as (* 3meters 2s) UnitString))
+)
+```
+
+```output
+Exception: No unit is declared as Meters times Seconds; declare one with an equality, or make one side a plain number
+<no file:6>
+      (print (as (* 3meters 2s) UnitString))
+                 ^^^^^^^^^^^^^^
+```
+
+### A quotient that two declared units measure, neither from its operands' units, is rejected.
+
+```brix compile-error
+(import /time/duration)
+(import /units)
+
+(main
+  (print (as (/ 1km 2s) UnitString))
+)
+
+(type-line + Kph (alias kph) (is F64))
+(type-line + Mps (alias mps) (is F64))
+(unit + 1kph (/ 1km 1hours))
+(unit + 1mps (/ 1meters 1s))
+```
+
+```output
+Exception: Kilometers per Seconds could be Kph or Mps; convert an operand to the units one of them is declared from
+<no file:6>
+      (print (as (/ 1km 2s) UnitString))
+                 ^^^^^^^^^^
+```
+
+### An assigning operator rejects a product or a quotient that its place's unit cannot hold.
+
+```brix compile-error
+(import /time/duration)
+(import /units)
+
+(main
+  (let distance Meters 100meters)
+  (/= distance 2s)
+)
+
+(type-line + Mps (alias mps) (is F64))
+(unit + 1mps (/ 1meters 1s))
+```
+
+```output
+Exception: Dividing Meters by Seconds gives Mps, which a place of Meters cannot hold
+<no file:7>
+      (/= distance 2s)
+                   ^^
+```
+
+### A unit declared from a unit of its own family is rejected.
+
+```brix compile-error
+(import /time/duration)
+(import /units)
+
+(main
+  (print (as 1mps UnitString))
+)
+
+(type-line + Mps (alias mps) (is F64))
+(unit + 1mps 1meters)
+(unit + 1mps (/ 1meters 1s))
+```
+
+```output
+Exception: Mps is declared from Meters, a unit of its own family; declare it from units of other families
+<no file:11>
+    (unit + 1mps (/ 1meters 1s))
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### Units declared from each other are rejected.
+
+```brix compile-error
+(import /units)
+
+(main
+  (print (as 1mps UnitString))
+)
+
+(type-line + Mps (alias mps) (is F64))
+(type-line + Kph (alias kph) (is F64))
+(unit + 1mps (/ 1meters 1kph))
+(unit + 1kph (/ 1km 1mps))
+```
+
+```output
+Exception: Mps is declared from units that are declared from Mps; declare one of them from units of other families
+<no file:10>
+    (unit + 1mps (/ 1meters 1kph))
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+```
+
+### An equality with no single unit on either side is rejected.
+
+```brix compile-error
+(import /time/duration)
+(import /units)
+
+(main
+  (print 1)
+)
+
+(unit + 2 (/ 1meters 1s))
+```
+
+```output
+Exception: An equality declares one unit, alone on one side, as an amount of others; write one side as a single unit, as in "(unit + 1mps (/ 1meters 1s))"
+<no file:9>
+    (unit + 2 (/ 1meters 1s))
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
 ```

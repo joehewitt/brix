@@ -108,6 +108,7 @@ that family.
 | `(type-line + Cents (alias cents) (is Money))`{.brix} | A unit of the family whose base type is `Money`. |
 | `(unit + 1inches 25.4mm)`{.brix} | An equality between two units, which joins their families. |
 | `(unit + 100pc 1)`{.brix} | An equality between a unit and plain numbers, which makes it a pure number. |
+| `(unit + 1kph (/ 1km 1hours))`{.brix} | An equality between a unit and a product or a quotient of others, which declares it as that amount of them. |
 
 - **Aliases.** A unit's type may have several aliases, and each is a unit. The last is the one
   `UnitString` prints. A suffix names one unit, so a unit cannot take one that a number type, an
@@ -161,19 +162,33 @@ true
 ```
 
 - **Sides.** Each side is a constant: a number with a unit, or numbers joined by arithmetic and
-  bitwise operators, as in `(unit + 1third (/ 1 3whole))`{.brix}. Each side has one unit, or one
-  side has none, which makes the other's unit a pure number.
+  bitwise operators. `*` and `/` multiply and divide units as they do amounts, so
+  `(unit + 1third (/ 1whole 3))`{.brix} makes a third of a whole, and `(unit + 1hz (/ 1 1s))`{.brix}
+  makes hertz one per second. `%%` raises a unit to a whole number, and `+`, `-` and `%` take two
+  amounts of one unit. One side is a single unit; the other is a unit, a plain number, which makes
+  the first a pure number, or a product or a quotient of units.
 - **Pure numbers.** An equality with a plain number on one side, as in `(unit + 100pc 1)`{.brix},
   puts the unit in the family of plain numbers: it is a ratio, such as a percentage, and it scales
   what it multiplies or divides; see [Pure numbers](#pure-numbers).
+- **Products and quotients.** An equality whose side multiplies or divides units declares the unit
+  on the other side as that amount of them, as in `(unit + 1kph (/ 1km 1hours))`{.brix}. Units
+  declared as amounts of the same units, such as `kph` and `mps`, are one family, whichever modules
+  declare them. A unit cannot be declared from one of its own family, `Mps is declared from Meters,
+  a unit of its own family; declare it from units of other families`, nor from units declared from
+  it: `Mps is declared from units that are declared from Mps; declare one of them from units of
+  other families`. See [Products and quotients](#products-and-quotients).
 - **Errors.** An equality must be public: `Equalities must be public`. An equality with no unit on
-  either side is `Ambiguous units`, a side with two is `Conflicting units`, and a side that is not a
-  constant is `Invalid constant expression`. A side's unit must be declared, `Unit "zz" not found`,
-  and must not be a number type's suffix: `An equality relates units a program declares, and F64 is
-  a number type of the language; write each side in a unit the program declares`. Neither side can
-  be zero: `A unit cannot be declared as zero of another, which no number of it would convert from;
-  write a number other than zero`, and the plain number of a pure one cannot either: `A unit cannot
-  be declared as zero, which no number of it would convert from; write a number other than zero`.
+  either side is `Ambiguous units`, a side that adds two units is `Conflicting units`, and a side
+  that is not a constant is `Invalid constant expression`. A unit raised to a unit is `A unit is
+  raised only to a whole number with no unit, as in "(%% 1meters 2)"`, and an equality with no
+  single unit on a side is `An equality declares one unit, alone on one side, as an amount of
+  others; write one side as a single unit, as in "(unit + 1mps (/ 1meters 1s))"`. A side's unit
+  must be declared, `Unit "zz" not found`, and must not be a number type's suffix: `An equality
+  relates units a program declares, and F64 is a number type of the language; write each side in a
+  unit the program declares`. Neither side can be zero: `A unit cannot be declared as zero of
+  another, which no number of it would convert from; write a number other than zero`, and the
+  plain number of a pure one cannot either: `A unit cannot be declared as zero, which no number of
+  it would convert from; write a number other than zero`.
 - **Agreeing.** Every path between two units must give the same ratio. An equality that
   disagrees with the declarations before it is an error at the equality, whether they relate the
   same two units, `Equalities between Bar and Foo disagree: one makes 1 Bar 2 Foo, another 3 Foo;
@@ -221,24 +236,25 @@ true
 true
 ```
 
-- **The left unit.** For `+`, `-`, `*` and `%`, the right operand converts to the left operand's
-  unit, and the result is in the left's unit.
+- **The left unit.** For `+`, `-` and `%`, the right operand converts to the left operand's unit,
+  and the result is in the left's unit.
 - **Quotients.** Dividing a unit by another of its family gives a plain number, how many of the
   right fit in the left: `(/ 2hours 30minutes)`{.brix} is `4`. Both convert to whichever of the two
   units holds the other with no fraction lost, so `(/ 3dollars 50cents)` is 6, and in integers the
   quotient drops its fraction as integer division does. `(/= wait 500ms)` keeps the unit of `wait`.
-- **No compound units.** Multiplying two units does not make a new unit: the right operand converts
-  as for `+`, so `(* 4hours 120minutes)` is `8hours`. Units are not dimensional analysis. A quantity such as a speed is a unit of its own, made by a
-  function that takes the two units, as in `(fn-expr + per Speed (param distance Length) (param
-  time Seconds) body)`.
+- **Products.** Multiplying two units gives the unit an equality declares as their product, and is
+  an error where none is, even within one family: `(* 4hours 120minutes)` is `No unit is declared
+  as Hours times Hours; declare one with an equality, or make one side a plain number`. See
+  [Products and quotients](#products-and-quotients).
 - **Two families.** `+`, `-` and `%` between units of two families that no equality joins are
   errors, as comparisons are: with `/units` and `/time/duration`, `(+ 100meters 20s)` is `Expected
   Meters here, but this is Seconds, and there is no conversion between them`. `*` and `/` between
-  them give a plain number, unless one is a [pure number](#pure-numbers).
+  them give the unit declared as their [product or quotient](#products-and-quotients), or scale by
+  a [pure number](#pure-numbers).
 - **Plain numbers.** A plain number on either side of `+`, `-` and `%` is taken in the other's
   unit: `(+ 90s 30)`{.brix} is `120seconds`, and `(- 100 1s)`{.brix} is `99seconds`. Multiplying a
   unit by a plain number on either side, or dividing it by one, keeps the unit, while a plain number
-  divided by a unit is a plain number.
+  divided by a unit is in the unit declared as one per it, or a plain number where none is.
 - **Comparisons** convert the same way, so `(< 500ms 1s)`{.brix} is true, but compare in the
   right's unit where the left's is stored as an integer and would drop the right's fraction:
   `(< 3dollars 350cents)`{.brix} is true. Comparing units of two families that no equality joins is
@@ -246,8 +262,9 @@ true
 - **Assignment.** `(+= total 30s)`{.brix} converts the value to the unit of `total`.
 - **Units on their own.** A unit that no declaration relates to another, such as `px`, is a family
   of its own: `(+ 3px 2px)`{.brix} is `5px` and `(* 3px 0.5)`{.brix} is `1.5px`, but `*` and `/`
-  between two of them give a plain number. One stored as an integer keeps its unit only where the
-  arithmetic stays in integers, so with `/tui/primitives`, `(* 3tx 0.5)` is the plain number `1.5`.
+  between two of them give a plain number, unless a unit is declared as their product or quotient.
+  One stored as an integer keeps its unit only where the arithmetic stays in integers, so with
+  `/tui/primitives`, `(* 3tx 0.5)` is the plain number `1.5`.
 - **Generic functions** keep the unit of what they are given. A function that takes a plain number
   type, such as `abs` from `/math`, takes the value in its own unit and gives a plain number.
 
@@ -295,6 +312,59 @@ scales by its value as a number.
   `/=` divides a plain number as `/` does.
 - **Integers.** Scaling a unit stored as an integer by a pure number gives a plain number, and an
   assigning multiply or divide into one is rejected.
+
+### Products and quotients
+
+A unit that an equality declares as a product or a quotient of others is what multiplying or
+dividing those units gives.
+
+```brix
+(import /time/duration)
+(import /units)
+
+(main
+  (print (as (* 50kph 2hours) UnitString))
+  (print (as (* 50kph 30minutes) UnitString))
+  (print (as (/ 100km 2hours) UnitString))
+  (print (as (/ 100meters 8s) UnitString))
+  (print (as (as 1mps Kph) UnitString))
+  (print (as (* 50hz 2s) UnitString))
+  (print (as (/ 1 500ms) UnitString))
+)
+
+(type-line + Kph (alias kph) (is F64))
+(type-line + Mps (alias mps) (is F64))
+(type-line + Hertz (alias hz) (is F64))
+(unit + 1kph (/ 1km 1hours))
+(unit + 1mps (/ 1meters 1s))
+(unit + 1hz (/ 1 1s))
+```
+
+```output
+100km
+25km
+50kph
+12.5mps
+3.6kph
+100f
+2hz
+```
+
+- **The result.** `*` and `/` between units give the unit declared as their product or quotient,
+  converted to its scale. Units that cancel give a plain number: `(* 50hz 2s)`{.brix} is `100`.
+- **Which unit.** Where one of the operands' units is left, the result is in it: `(* 50kph
+  30minutes)`{.brix} is `25km`, as `kph` is declared from `km`. Otherwise it is the unit declared
+  from the operands' units, as `mps` is for `(/ 100meters 8s)`{.brix}, or the one declared from the
+  most of them. Only units the module can name count, and two that tie are an error: with both of
+  the above, `(/ 1km 2s)` is `Kilometers per Seconds could be Kph or Mps; convert an operand to the
+  units one of them is declared from`.
+- **No declared unit.** Between units in families, a product or a quotient that no unit measures
+  is an error: `(* 3meters 2s)` is `No unit is declared as Meters times Seconds; declare one with an
+  equality, or make one side a plain number`. Units on their own, such as `px`, give a plain number.
+- **Integers.** A result in a unit stored as an integer is a plain number.
+- **Assignment.** `(*= place value)` and `(/= place value)` keep the place's unit, so one that
+  gives another is an error: `Dividing Meters by Seconds gives Mps, which a place of Meters cannot
+  hold`.
 
 ## Conversions
 
