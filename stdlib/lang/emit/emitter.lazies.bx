@@ -37,6 +37,7 @@
 (type _ Lazies (facet-of FunctionEmitter)
   (sees LiveActions)
   (prop _ lazy-claim _ (= (call LayoutField 0 no-layout)))
+  (prop _ lazy-global-claim (? Operand) (= null))
   (fn-do + clear-lazies _
     ; Gives each lazy local that is evaluated once in a run of the function the flag that says
     ; whether it has been, cleared here where the function starts, and notes whether any is
@@ -244,7 +245,9 @@
     ; The function that evaluates a lazy global, which a read calls while the global has no
     ; value. The runtime gives the global to one task to evaluate, and holds a task that reads it
     ; from elsewhere meanwhile until it has its value; a read from the task evaluating it is one
-    ; its own value made, and raises a panic. A value that panics leaves the global held so.
+    ; its own value made, and raises a panic. A value that panics, or lets out an error, gives up
+    ; the claim (`abandon-lazy`), so that a task the runtime holds on the global, or the next read,
+    ; evaluates it again.
     (let kept ([] (. tables storage) (. function place)))
     (let state (call make-operand .operand-symbol (. kept state)))
     (= unit (= (. unit source-module) (. kept module)))
@@ -267,6 +270,7 @@
         (call (. ir start-block) busy)
         (call raise-text syntax (str "Global '" (call (. tables global-name) kept) "' is read before it is initialized"))
         (call (. ir start-block) evaluate)
+        (= lazy-global-claim state)
         (call store-global kept (. (call global-value kept property) operand) syntax)
         (let released (. pending length))
         (+= pending state)
@@ -1113,9 +1117,17 @@
   )
   (fn-do + abandon-lazy _
     (param site SyntaxId)
-    ; Gives up the claim a lazy property's function took on its object (`emit-lazy`) where the
-    ; value panics or lets out an error, so that a task the runtime holds on the property, or the
-    ; next read, evaluates it again. The runtime does nothing where the property is not claimed.
+    ; Gives up the claim a lazy property's function took on its object (`emit-lazy`), or a lazy
+    ; global's function on the global (`emit-lazy-global`), where the value panics or lets out an
+    ; error, so that a task the runtime holds on it, or the next read, evaluates it again. The
+    ; runtime does nothing where it is not claimed.
+    (let global lazy-global-claim)
+    (if global
+      (let mark (. pending length))
+      (+= pending global)
+      (call call-runtime .runtime-abandon-lazy-global site mark)
+      (return)
+    )
     (return-if (if (== (. lazy-claim layout) no-layout)))
     (blank)
     (let mark (. pending length))

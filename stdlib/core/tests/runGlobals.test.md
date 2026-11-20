@@ -656,6 +656,36 @@ Stack trace:
   4  __source__:brix.main no file
 ```
 
+### A lazy global whose value panicked is evaluated again by its next read.
+
+```brix
+(main
+  (do-new
+    (print answer)
+    (on-failure failure
+      (print (str "first read: " (. failure message)))
+      (print answer)
+      (print tries)
+    )
+  )
+)
+
+(prop + tries _ (= 0))
+(prop + answer _ (:= (call fail)))
+
+(fn-do + fail Int
+  (+= tries 1)
+  (throw (call Panic "not yet") (if (== tries 1)))
+  (return 7)
+)
+```
+
+```output
+first read: not yet
+7
+2
+```
+
 ### A lazy global with a declared type converts its value, and an assigning operator evaluates it first.
 
 ```brix
