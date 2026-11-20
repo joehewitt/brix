@@ -1,60 +1,32 @@
-; Markup is not tied to windows. Here the tree is a vector drawing: groups and
-; circles written as markup, with loops over a list of rings, saved as an SVG file.
-(import /graphics/canvas)
+; Markup draws vectors as it draws windows. The flower is groups and circles
+; written as markup, with loops over a list of rings, inside a `VectorImage`
+; that fills the window. Each ring's group turns at its own speed with the frame
+; clock, and the petals inside it follow, since a transform is inherited.
 (import /graphics/color)
+(import /graphics/matrix)
 (import /graphics/point)
 (import /graphics/primitives)
 (import /graphics/style)
 (import /graphics/vector)
 (import /graphics/vector-group)
+(import /gui)
+(import /gui/vector-image)
 (import /math)
 (import /stream/aggregate)
+(import /time/duration)
 (import /units)
 (blank)
 (prop _ middle _ (= (call Point 200 200)))
-(blank)
-; Each ring is a count of petals, how far out they sit, their size and their color.
+
 (main
-  (let rings
-    (call List
-      (block
-        (item (call Ring 16 130 34px (call RGBA 96% 45% 25% 45%)))
-        (item (call Ring 10 80 30px (call RGBA 98% 70% 20% 55%)))
-        (item (call Ring 6 40 22px (call RGBA 100% 88% 40% 70%)))
-      )
+  (<> App
+    (<> Window (• flex-col)
+      (= title "Flower")
+      (= size (tuple 480 480))
+      (blank)
+      (<> Flower (• flex 1) (• bg "#f6efe3"))
     )
   )
-  (blank)
-  (<> VectorGroup (id: flower)
-    ; One group for each ring, and one circle for each petal in it.
-    (for (in ring rings)
-      (<> VectorGroup
-        ; `fill` is inherited, so setting it on the group colors every petal inside.
-        (= fill (. ring color))
-        (for (in index (..< 0 (. ring petals)))
-          (<> Circle
-            (= center (call (. ring petal-center) index))
-            (= radius (. ring size))
-          )
-        )
-      )
-    )
-    (<> Circle
-      (= center middle)
-      (= radius 18px)
-      (= fill (call RGBA 35% 20% 10%))
-    )
-  )
-  (blank)
-  ; The same tree could be painted to a window. Here it goes to a file.
-  (let path "flower.svg")
-  (let canvas (call SVGCanvas 400 400))
-  (do-use canvas
-    (call (. flower next-frame))
-    (call (. flower paint-vector) canvas null true null (call Rect 0 0 400 400))
-    (call (. canvas write) path)
-  )
-  (print (str "saved " (call sum (in (. each petals) rings)) " petals to " path))
 )
 
 (type + Ring (is Tuple)
@@ -62,12 +34,58 @@
   (prop + reach Float)
   (prop + size Length)
   (prop + color RGBA)
+  (prop + speed Float)
   (fn-expr + petal-center Point
     (param index Int)
-    ; Petals sit evenly around a circle, so each one's angle is a share of a full turn.
     (+ middle (call Point (* reach (call cos angle)) (* reach (call sin angle))))
     (where
       (lazy angle (as (/ (* 360deg index) petals) Radians))
+    )
+  )
+  (fn-expr + turned Matrix
+    (param turn Float)
+    (call matrix-from-rotation (as (* speed turn) Radians) middle)
+  )
+)
+
+(type + Flower (is VectorImage)
+  (prop + turn Float (= 0))
+  (prop + rings _
+    (=
+      (call List
+        (block
+          (item (call Ring 16 130 34px (call RGBA 96% 45% 25% 45%) 0.15))
+          (item (call Ring 10 80 30px (call RGBA 98% 70% 20% 55%) -0.25))
+          (item (call Ring 6 40 22px (call RGBA 100% 88% 40% 70%) 0.4))
+        )
+      )
+    )
+  )
+  (fn-do + This _
+    (= view-box (call Rect 0 0 400 400))
+  )
+  (subscribe-for (on tick frames)
+    (+= turn (as (as (. tick delta) Seconds) F64))
+  )
+  (content
+    (<> This
+      (for (in ring rings)
+        (<> VectorGroup
+          (= fill (. ring color))
+          (= transform (call (. ring turned) #turn))
+          (for (in index (..< 0 (. ring petals)))
+            (<> Circle
+              (= center (call (. ring petal-center) index))
+              (= radius (. ring size))
+            )
+          )
+        )
+      )
+      (<> Circle
+        (= center middle)
+        (= radius 18px)
+        (= fill (call RGBA 35% 20% 10%))
+      )
     )
   )
 )

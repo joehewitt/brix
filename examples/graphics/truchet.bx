@@ -1,8 +1,9 @@
 ; Truchet tiling: quarter-circle tiles cut from one circle path, set down in a grid
-; and turned by a seeded hash, so the same seed draws the same picture. It is
-; saved as `truchet.png` in the working directory.
+; and turned by a seeded hash, so the same seed draws the same picture. The tiles
+; are a `GeneratedVectorImage`, which runs its generator again whenever the window
+; changes size or a control changes the seed, the mix or the style. Click the
+; tiling for a new seed.
 (import /graphics/boolean)
-(import /graphics/canvas)
 (import /graphics/color)
 (import /graphics/intersection)
 (import /graphics/path)
@@ -12,32 +13,81 @@
 (import /graphics/style)
 (import /graphics/vector)
 (import /graphics/vector-group)
+(import /gui)
 (import /gui/generated-vector-image)
+(import /gui/vector-image)
 (import /math)
 (import /units)
 (blank)
+(prop _ paper RGBA (= (call RGBA "#12343b")))
+(prop _ ink RGBA (= (call RGBA "#e8d5b5")))
 
 (main
-  (let scene (call truchet-scene (call TruchetParams)))
-  (call (. scene render) "truchet.png")
+  (<> App
+    (<> Window (• flex-col)
+      (= title "Truchet")
+      (= size (tuple 760 640))
+      (blank)
+      (<> TruchetPanel (• flex 1))
+    )
+  )
 )
 
-(type + TruchetParams
-  (prop + size _ (= (call Dimensions 850 850)))
-  (prop + tile-radius Length (= 20px))
-  (prop + stroke-width Length (= 1))
+(type + TruchetPanel (is Box)
   (prop + seed U32 (= 17u32))
   (prop + mix F64 (= 0.5))
-  (prop + fill-color (? RGBA) (= "#000"))
-  (prop + stroke-color (? RGBA))
-  (prop + background (? RGBA) (= "#333333"))
+  (prop + filled Bool (= true))
+  (prop + tile-radius F64 (= 20))
+  (content
+    (<> This (• flex-col)
+      (<> Truchet (• flex 1) (• bg paper)
+        (= tiles (call TruchetTiles #seed #mix #tile-radius #filled))
+        (for (on event click)
+          (+= seed 1)
+          (call (. event cancel))
+        )
+      )
+      (<> Box (• flex-row) (• items-center) (• p 12)
+        (= gap 12)
+        (<> Label (text: "Mix"))
+        (<> Slider (• w 140)
+          (= minimum 0)
+          (= maximum 1)
+          (<-> value mix)
+        )
+        (<> Label (text: "Size"))
+        (<> Slider (• w 140)
+          (= minimum 8)
+          (= maximum 60)
+          (<-> value tile-radius)
+        )
+        (<> Switch (text: "Filled")
+          (<-> is-on filled)
+        )
+      )
+    )
+  )
 )
 
-(type + TruchetTiles
-  (prop + seed U32 (= 0u32))
-  (prop + mix F64 (= 0.5))
-  (prop + tile-radius Length (= 20px))
-  (prop + filled Bool (= true))
+(type + Truchet (is VectorImage)
+  (prop + tiles TruchetTiles)
+  (content
+    (<> This
+      (<> GeneratedVectorImage
+        (= generator (. #tiles generate))
+        (= fill (if-expr (. #tiles filled) ink (. Fill none)))
+        (= stroke (if-expr (. #tiles filled) (. Stroke none) ink))
+        (= stroke-width 2px)
+      )
+    )
+  )
+)
+
+(type + TruchetTiles (is Tuple)
+  (prop + seed U32)
+  (prop + mix F64)
+  (prop + tile-radius Length)
+  (prop + filled Bool)
   (fn-do + get-tiles-stroked _
     (param tile1 Path)
     (let bbox (. tile1 bounding-box))
@@ -152,61 +202,6 @@
     )
     (return (call VectorGroup paths))
   )
-)
-
-(type + VectorScene (is VectorGroup)
-  (prop + size Dimensions)
-  (prop + background (? RGBA))
-  (fn-do + render _
-    (param path String)
-    (let canvas
-      (block
-        (case? (call (. path ends-with) ".svg")
-          (call SVGCanvas (as (. size width) I32) (as (. size height) I32))
-        )
-        (default
-          (call RasterCanvas (as (. size width) I32) (as (. size height) I32))
-        )
-      )
-    )
-    (blank)
-    (do-use canvas
-      (call render canvas)
-      (call (. canvas write) path)
-    )
-    (blank)
-    (call print (str "Saved to " path))
-  )
-  (fn-do + render _
-    (param canvas Canvas)
-    (call next-frame)
-    (if background
-      (call (. canvas erase) background)
-    )
-    (let area (only-if (call Rect 0 0 (. size width) (. size height)) (if (and (> (. size width) 0) (> (. size height) 0)))))
-    (call paint-vector canvas null true null area)
-  )
-)
-
-(fn-do + truchet-scene _
-  (param params TruchetParams)
-  (let scene (call VectorScene))
-  (= (. scene size) (. params size))
-  (= (. scene background) (. params background))
-  (blank)
-  (let generator (call TruchetTiles))
-  (= (. generator seed) (. params seed))
-  (= (. generator mix) (. params mix))
-  (= (. generator tile-radius) (. params tile-radius))
-  (= (. generator filled) (not (not (. params fill-color))))
-  (blank)
-  (let tiles (call GeneratedVectorImage (. generator generate)))
-  (= (. tiles fill) (if-expr (. params fill-color) (. params fill-color) (. Fill none)))
-  (= (. tiles stroke) (?? (. params stroke-color) (. params fill-color) (. Stroke none)))
-  (= (. tiles stroke-width) (. params stroke-width))
-  (+= scene tiles)
-  (blank)
-  (return scene)
 )
 
 (fn-do + iterate-tiles _

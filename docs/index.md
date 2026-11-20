@@ -65,7 +65,9 @@ ships. Unlike the core tests, they show how complete programs are written.
   SVG export. `terminal` runs your shell in tabs and windows, with menus and key shortcuts.
 - [`examples/games`](../examples/games): three macOS games, `resonance`, `prism-break` and
   `clatter-hill`, a marble run with sound.
-- [`examples/graphics`](../examples/graphics): drawings written to image files, which need macOS.
+- [`examples/graphics`](../examples/graphics): macOS windows that draw with the graphics library:
+  vector markup in `vector-flower.bx`, a style sheet for a drawing in `vector-chart.bx`, and a
+  tiling generated again as the window resizes in `truchet.bx`.
 
 `examples/tui/chromatic` also needs macOS, since it draws with the graphics library, and so does
 `examples/tui/pulse` unless it runs with `--demo`.

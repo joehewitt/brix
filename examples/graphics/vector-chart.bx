@@ -1,57 +1,36 @@
-; A style sheet for a drawing. The chart is vector markup made from a list, and
-; it says nothing about color. The sheet holds the palette, and its rules give
-; each shape a fill or a stroke. The result is saved as an SVG file.
-(import /graphics/canvas)
+; A style sheet for a drawing. The chart is vector markup made from a tracked
+; list of days, and it says nothing about color. The sheet holds the palette,
+; and its rules give each shape a fill or a stroke, so when Next Week brings new
+; numbers, the bars move and the tallest one takes the accent on its own.
 (import /graphics/color)
 (import /graphics/point)
 (import /graphics/primitives)
 (import /graphics/style)
 (import /graphics/vector)
 (import /graphics/vector-group)
+(import /gui)
+(import /gui/vector-image)
+(import /math)
 (import /stream/aggregate)
 (import /units)
 (blank)
 
 (main
-  (let days
-    (call List
-      (block
-        (item (call Day 0 "Mon" 120))
-        (item (call Day 1 "Tue" 80))
-        (item (call Day 2 "Wed" 170))
-        (item (call Day 3 "Thu" 60))
-      )
-    )
-  )
-  (let top (call max (in (. each sales) days)))
-  (blank)
-  (<> Chart (id: chart)
-    (<> Rectangle (• backdrop)
-      (= rect (call Rect 0 0 400 240))
-    )
-    ; Each bar sits in a group of its own, which knows whether it is the tallest.
-    (for (in day days)
-      (<> Column
-        (= is-best (== (. day sales) top))
-        (<> Rectangle
-          (= rect (. day bar))
+  (<> App
+    (<> Window (• flex-col) (• p 16)
+      (= title "Sales")
+      (= size (tuple 520 380))
+      (= gap 12)
+      (blank)
+      (<> Chart (id: chart) (• flex 1))
+      (<> Box (• flex-row) (• justify-end)
+        (<> Button (text: "Next Week")
+          (= role (. ButtonRole default))
+          (= action (=> () :do (call (. chart next-week))))
         )
       )
     )
-    (<> Line (• axis)
-      (= start (call Point 30 220))
-      (= end (call Point 370 220))
-    )
   )
-  (blank)
-  (let path "chart.svg")
-  (let canvas (call SVGCanvas 400 240))
-  (do-use canvas
-    (call (. chart next-frame))
-    (call (. chart paint-vector) canvas null true null (call Rect 0 0 400 240))
-    (call (. canvas write) path)
-  )
-  (print (str "saved " (. days length) " bars to " path))
 )
 
 (type + Day (is Tuple)
@@ -59,17 +38,20 @@
   (prop + name String)
   (prop + sales Float)
   (fn-expr + bar Rect :get
-    ; A bar is 60 wide, stands on the line at 220, and is as tall as its sales.
     (call Rect (call Point (+ 45 (* 80 index)) (- 220 sales)) (call Point (+ 105 (* 80 index)) 220))
   )
 )
 
+(fn-expr + week (list Day)
+  (item (call Day 0 "Mon" (call random 40.0 190.0)))
+  (item (call Day 1 "Tue" (call random 40.0 190.0)))
+  (item (call Day 2 "Wed" (call random 40.0 190.0)))
+  (item (call Day 3 "Thu" (call random 40.0 190.0)))
+)
+
 (style ChartTheme
   (using VectorPaintStyle)
-  ; `using` names the style the rules set: the fill, stroke and the like that the
-  ; library's vector shapes take.
   (blank)
-  ; The palette is written once, as values of the sheet.
   (prop + paper RGBA (= (call RGBA "#f3ede2")))
   (prop + ink RGBA (= (call RGBA "#2b2622")))
   (prop + accent RGBA (= (call RGBA "#c2410c")))
@@ -83,12 +65,9 @@
     (= stroke-width 2px)
   )
   (blank)
-  ; A rule named for a type applies to every node of that type. `fill` is
-  ; inherited, so the group's fill is the fill of the bar inside it.
   (rule Column
     (= fill ink)
     (blank)
-    ; These values apply while the group's `is-best` is true.
     (when-style #is-best
       (= fill accent)
     )
@@ -99,7 +78,35 @@
   (prop + is-best _ (= false))
 )
 
-(type + Chart (is VectorGroup)
+(type + Chart (is VectorImage)
   (using ChartTheme)
-  ; The root of the drawing names the sheet for everything inside it.
+  (prop + days _ (= (call week)))
+  (prop + top _ (= (call max (in (. each sales) #days))))
+  (fn-do + This _
+    (= view-box (call Rect 0 0 400 240))
+  )
+  (fn-do + next-week _
+    (= days (call week))
+  )
+  (content
+    (<> This
+      (<> Rectangle (• backdrop)
+        (= rect (call Rect 0 0 400 240))
+      )
+      (<> VectorGroup
+        (for (in day #days)
+          (<> Column
+            (= is-best (== (. day sales) #top))
+            (<> Rectangle
+              (= rect (. day bar))
+            )
+          )
+        )
+      )
+      (<> Line (• axis)
+        (= start (call Point 30 220))
+        (= end (call Point 370 220))
+      )
+    )
+  )
 )
