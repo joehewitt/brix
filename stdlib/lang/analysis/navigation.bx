@@ -110,7 +110,7 @@
     (= syntax (call syntax-at tree source line (- column 1)))
   )
   (return-if null (if (== syntax 0)))
-  (return (call NamePlace (call Navigator store program module) syntax (!! (call navigable-span tree source syntax))))
+  (return (call NamePlace (call Navigator store program module) syntax (!! (call navigable-span tree syntax))))
 )
 
 (fn-do _ signature-of (? String)
@@ -157,7 +157,7 @@
   (let best SyntaxId 0)
   (let best-size (. U64 max))
   (for (in id (..< 1u32 (. tree nodes length)))
-    (let span (call navigable-span tree source (as id SyntaxId)))
+    (let span (call navigable-span tree (as id SyntaxId)))
     (if (and span (== (. span begin line) (. span end line)) (call covers span line column))
       (let size (call span-size span))
       (if (and (< size best-size) (call is-spelled tree source (as id SyntaxId) span))
@@ -209,7 +209,6 @@
 
 (fn-do _ navigable-span (? MatchLocation)
   (param tree AST)
-  (param source (list String))
   (param id SyntaxId)
   (let loc ([] (. tree nodes loc) id))
   (match? ([] (. tree nodes) id)
@@ -226,7 +225,10 @@
       (return loc)
     )
     (case (call .node-get-expression row)
-      (return (call member-span source (. ([] (. tree nodes loc) (. row object)) end) (. row name)))
+      (return-if null (if (not (. row name-at))))
+      (blank)
+      (let at (. row name-at))
+      (return (call name-span (. at line) (. at column) (. row name)))
     )
     (case (call .node-anonymous-case row)
       (let offset (if-expr (. row owner) (+ (as (. row owner text length) U32) 1) 1u32))
@@ -234,43 +236,6 @@
     )
   )
   (return null)
-)
-
-(fn-do _ member-span (? MatchLocation)
-  (param source (list String))
-  (param after TokenLocation)
-  (param name Atom)
-  ; Where a member's name is written after the end of the value it is read from: the first `.`
-  ; and the name on that line past it. The place recorded for the value can end before the value
-  ; as written, as in a member read of its own or inside parentheses.
-  (let row (as (. after line) Index))
-  (return-if null (if (>= row (as (. source length) Index))))
-  (blank)
-  (let text ([] source row))
-  (let dotted (str "." (. name text)))
-  (let length (as (. name text length) Index))
-  (let cursor (+ (as (. after column) Index) 1))
-  (while (< cursor (as (. text length) Index))
-    (let found (call (. ([] text (... cursor)) find) dotted))
-    (return-if null (if (not found)))
-    (blank)
-    (let begin (+ cursor found 1))
-    (let end (+ begin length))
-    (if (or (>= end (as (. text length) Index)) (not (call is-name-char ([] text end))))
-      (return (call name-span (. after line) (as begin U32) name))
-    )
-    (= cursor begin)
-  )
-  (return null)
-)
-
-(fn-expr _ is-name-char Bool
-  (param char Char)
-  (or letter digit (== char '-') (== char '_'))
-  (where
-    (lazy letter (or (and (>= char 'a') (<= char 'z')) (and (>= char 'A') (<= char 'Z'))))
-    (lazy digit (and (>= char '0') (<= char '9')))
-  )
 )
 
 (fn-expr _ name-span MatchLocation
