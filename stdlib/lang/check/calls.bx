@@ -1803,7 +1803,7 @@
       )
     )
     (if (and hit whole)
-      (let callee (call intern-settled hit (call (. instances unbound) (call callee-effects frame (. hit module) (. hit decl)))))
+      (let callee (call intern-settled hit (call callee-effects frame (. hit module) (. hit decl))))
       (call (. (!! host) demand) callee)
       (let signature ([] (. instances signatures) callee))
       (let returned (. signature returns))
@@ -2869,11 +2869,11 @@
     (param declared TypeId)
     ; Types a door under a `do with` that binds a fake to its effect as a call of the fake's method of
     ; the door's name that takes the door's arguments, with the fake its effect's slot holds, and
-    ; gives what the door gives. The method runs as at the `do with`, under what was bound to the
-    ; effect there, and so does what it calls (`Instances.handled-by`). A fake answers only a door
-    ; that is a function of its module. Where the door states its errors, the method raises only those,
-    ; or classes below them. One the fake cannot answer panics, where only a door a function value
-    ; reaches calls it; elsewhere that is reported (`Restrictions.report-swaps`).
+    ; gives what the door gives. The method is typed as code outside every binding: it runs with the
+    ; effect's slot as the `do with` found it (`Emitter.emit-forwarder`). A fake answers only a door
+    ; that is a function of its module. The method raises only the errors the door raises, stated or
+    ; not, or classes below them. One the fake cannot answer panics where it runs, and is reported where
+    ; the calls from the `do with` reach it (`Restrictions.walk-site`).
     (let module (. frame module))
     (let own (. frame instance))
     (let effects (. ([] (. instances rows) own) effects))
@@ -2913,12 +2913,11 @@
     (let hit (call (. local dispatch-method) fake name))
     (let callee no-instance)
     (if (and hit (not (call (. local ambiguity))) (call is-own-method hit fake))
-      (let handled (call (. instances handled-by) effects entry))
       (= callee
         (call intern-settled
           (block
             (arg hit)
-            (arg (call dispatch-effects (/or/ handled (call declared-effects program (. hit module) (. hit decl)))))
+            (arg (call dispatch-effects (/or/ (call with-swap-set effects 0) (call declared-effects program (. hit module) (. hit decl)))))
           )
         )
       )
@@ -2944,9 +2943,11 @@
     (if (and matches (!= (call demand-return callee syntax) declared))
       (= matches false)
     )
-    (if (and matches (== (. ([] (. instances signatures) own) error-state) .errors-stated))
+    (let door (call dispatching-door own))
+    (if (and matches (!= door no-instance))
       (call (. (!! host) demand-errors) callee)
-      (= matches (call raises-within callee own))
+      (call (. (!! host) demand-errors) door)
+      (= matches (call raises-within callee door))
     )
     (if (not matches)
       (call (. facts swap-forwards append)
@@ -2964,6 +2965,13 @@
     )
     (call (. facts record-call) own syntax callee .call-method (. scratch no-fills) false false)
     (call (. facts stack-reads append) (call StackRead own syntax effect-module effect-decl))
+  )
+  (fn-do _ dispatching-door InstanceId
+    (param forwarder InstanceId)
+    (for (in dispatch (. facts swap-dispatches))
+      (return-if (. dispatch instance) (if (== (. dispatch forwarder) forwarder)))
+    )
+    (return no-instance)
   )
   (fn-do _ raises-within Bool
     (param callee InstanceId)

@@ -21,6 +21,24 @@ PROGRAM = '''(import /data/json)
   (print (call guarded "[4, 5]"))
 )
 
+(effect + world)
+
+(fn-do + roll Int (door world)
+  (return 10)
+)
+
+(fn-do + real-roll Int
+  (let items (list 4 5))
+  (+= items 6)
+  (return (+ (call roll) (. items size)))
+)
+
+(type + Stub
+  (fn-do + roll Int
+    (return (+ (call real-roll) 1))
+  )
+)
+
 (type + Counter (is Interface)
   (fn-do + count Int)
 )
@@ -40,28 +58,31 @@ PROGRAM = '''(import /data/json)
   (let page (call Markdown "# title"))
   (let counter (as (call Fixed) Counter))
   (let doubled (=> ((: n Int)) (* n 2)))
-  (return (+ (. items size) (. (as parsed (list JSON)) size) (call (. counter count)) (call doubled 1)))
+  (return (+ (. items size) (. (as parsed (list JSON)) size) (call (. counter count)) (call doubled 1) (call roll)))
 )
 
-(fn-do + guarded Int (?! Error) BANNED
+(fn-do + guarded Int (?! Error) GUARD
   (param text String)
-  (return (call work text))
+  (return BODY)
 )
 '''
+SHARED = '(call work text)'
+TRIVIAL = '(. text size)'
+BINDING = '(with world (call Stub))'
 
 
-class BanCopies(unittest.TestCase):
+class EffectCopies(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.directory = tempfile.mkdtemp(prefix='brix-test-')
         cls.addClassCleanup(shutil.rmtree, cls.directory, True)
 
-    def functions(self, name, ban):
+    def functions(self, name, guard, body):
         folder = os.path.join(self.directory, name)
         os.makedirs(folder)
         source = os.path.join(folder, 'program.bx')
         with open(source, 'w', encoding='utf-8') as file:
-            file.write(PROGRAM.replace('BANNED', ban))
+            file.write(PROGRAM.replace('GUARD', guard).replace('BODY', body))
         result = subprocess.run([BRIX, source, '--inspect', 'emitted'], cwd=ROOT,
                                 env=support.environment(), stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True, timeout=COMPILE_SECONDS)
@@ -71,9 +92,14 @@ class BanCopies(unittest.TestCase):
         return sorted(found)
 
     def test_a_ban_compiles_no_copy_of_what_it_reaches(self):
-        free = self.functions('free', '')
-        banned = self.functions('banned', '(without clock)')
+        free = self.functions('free', '', SHARED)
+        banned = self.functions('banned', '(without clock)', SHARED)
         self.assertEqual(banned, free)
+
+    def test_a_binding_compiles_no_copy_of_what_it_reaches(self):
+        apart = self.functions('apart', BINDING, TRIVIAL)
+        around = self.functions('around', BINDING, SHARED)
+        self.assertEqual(around, apart)
 
 
 if __name__ == '__main__':

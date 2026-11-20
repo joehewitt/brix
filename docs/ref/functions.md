@@ -1000,7 +1000,8 @@ which a program makes that contact, its doors, with a `(door …)` part after th
   as in `connect-to reached a door of 'network' under 'without network'`, and the stack trace
   gives the path. So a list's observers, which a ban cannot see past, pass until one of them
   reaches the outside world. A ban holds in a task the code starts, and over a function value
-  wherever it was made. A fake bound inside the ban still answers its doors.
+  wherever it was made. A fake bound inside the ban still answers its doors, and a ban inside a
+  binding refuses them: the innermost of the two holds.
 - **What a ban promises.** Code under a ban never reaches a door of the effect: where the compiler
   can show it would, that is an error, and anywhere else it panics instead. A ban covers only what
   libraries claim. A C function that no effect claims passes, and so does what native code does by
@@ -1029,24 +1030,26 @@ gives:
 ```
 
 - **Fakes.** `net` is an object of a class, which must have a method for each door the code under
-  it reaches, taking and giving what the door does. A missing or different method is an error that
-  names the path from the binding to the door, as in
-  `fetch-offline (with network) → load-schema → connect-to(host, port)`. Only a door written as
-  a function of its file can be answered so.
+  it reaches, taking and giving what the door does, and raising only the errors the door raises,
+  or classes below them. A missing or different method is an error that names the path from the
+  binding to the door, as in `fetch-offline (with network) → load-schema → connect-to(host, port)`.
+  Only a door written as a function of its file can be answered so. Past a call the compiler
+  cannot resolve to one function, as for a ban, a door the fake cannot answer panics where it
+  runs.
 - **What a fake's methods reach.** A fake's method runs as the code around its binding does: a
-  door of the same effect it calls is the real door, or the fake of a binding outside, so a fake
-  can record what reaches the outside world and pass it on. Everything else is as where the door
-  was called. A ban outside a binding lets the fake's doors through and still bans the real doors
-  its methods reach.
-- **Tasks and function values.** A task started under a binding keeps it, and so does a closure
-  made under it. A named function made a value, under a binding or outside every one, is compiled
-  outside them all: in a program that binds the effect anywhere, its doors read at each call the
-  fake the running task has bound, and call that fake's method, or panic where it has none. So a
-  function given as a callback under a binding reaches the fake while the binding is open and the
-  real doors once it ends. A closure made outside a binding reads what was
-  bound where it was made, as it keeps a `@stack` property's value. In a program that never binds
-  an effect, a call of one of its doors costs what a call of the door's body does. A program can
-  bind fakes of at most 254 classes to one effect.
+  door of the same effect it calls, directly or through a function value, is the real door, or the
+  fake of a binding outside, so a fake can record what reaches the outside world and pass it on.
+  Everything else is as where the door was called. A ban outside a binding lets the fake's doors
+  through and still bans the real doors its methods reach.
+- **How a binding runs.** A binding compiles no copy of the code under it. In a program that binds
+  an effect anywhere, each of its doors reads at each call the fake the running task has bound, and
+  calls that fake's method, or runs its body where none is bound. A task started under a binding
+  keeps it, and so does a closure, a loop on a stream or any other function written under it; one
+  written outside a binding reaches what was bound where it was made. A named function made a
+  value holds nothing: a function given as a callback under a binding reaches the fake while the
+  binding is open and the real doors once it ends. In a program that never binds an effect, a call
+  of one of its doors costs what a call of the door's body does. A program can bind fakes of at
+  most 254 classes to one effect.
 - **Names.** An effect's name is seen as the file's other names are: a public effect from the files
   that import its file, and a private one only in its own. A program can ban or bind at most 32
   effects.

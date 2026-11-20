@@ -1546,3 +1546,100 @@ in task
 ```output
 7
 ```
+
+### A ban inside a binding refuses the door the fake would answer
+
+```brix compile-error
+(main
+  (do-with world (call Stub)
+    (print (call roll))
+    (do (without world)
+      (print (call twice))
+    )
+  )
+)
+
+(effect + world)
+
+(fn-do + roll Int (door world)
+  (return 10)
+)
+
+(fn-do + twice Int
+  (return (* (call roll) 2))
+)
+
+(type + Stub
+  (fn-do + roll Int
+    (return 1)
+  )
+)
+```
+
+```output
+Exception: cannot reach a door of 'world' under 'without world': main (do without world) → twice → (call roll)
+<no file:18>
+      (return (* (call roll) 2))
+                 ^^^^^^^^^^^
+```
+
+### A door that is a method panics where a function value reaches it under a fake
+
+```brix crash
+(main
+  (let read (of Getter I32) read-meter)
+  (print (call read))
+  (do-with world (call Stub)
+    (print (call read))
+  )
+)
+
+(type + Getter (is (fn-type I32)))
+
+(effect + world)
+
+(type + Meter
+  (fn-do + reading I32 :get (door world)
+    (return 4)
+  )
+)
+
+(fn-do + read-meter I32
+  (return (. (call Meter) reading))
+)
+
+(type + Stub)
+```
+
+```output
+4
+```
+
+### A fake's method raises only what its door raises
+
+```brix compile-error
+(main
+  (do-with world (call Stub)
+    (print (call roll))
+  )
+)
+
+(effect + world)
+
+(fn-do + roll Int (door world)
+  (return 10)
+)
+
+(type + Stub
+  (fn-do + roll Int
+    (throw (call Error "no dice"))
+  )
+)
+```
+
+```output
+Exception: Stub.roll does not take and give what the door of 'world' does: main (with world) → (call roll)
+<no file:4>
+        (print (call roll))
+               ^^^^^^^^^^^
+```

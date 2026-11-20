@@ -5839,10 +5839,10 @@
     (param module ModuleId)
     (param decl DeclId)
     ; `do with` an effect: the body runs with the fake bound to it, an object of a class whose methods
-    ; answer the effect's doors that the body reaches, each typed with the fake in its key.
+    ; answer the effect's doors that the body reaches. The body is typed as code outside every
+    ; binding: each door reads the fake from the effect's slot (`Restrictions` checks the class).
     (let value (call infer value-syntax))
     (let effect (call (. program effects index-of) module decl))
-    (let saved (. frame surround))
     (let entry U32)
     (if (and (!= value invalid-type) (or (not (call (. types is-class-type) value)) (call (. types is-optional) value)))
       (call (. frame diagnose) value-syntax .stated (call (. program store-atom) (call fake-class-text module decl value)))
@@ -5866,14 +5866,12 @@
         )
       )
       (else-if (and (!= value invalid-type) effect)
-        (= (. frame surround) (= (. frame surround effects) (call (. instances bound-to) (. saved effects) effect value)))
-        (= entry (call (. instances swap-entry-of) (. frame surround effects) effect))
+        (= entry (call (. instances intern-swap-entry) (call SwapEntry effect value)))
       )
     )
     (call (. facts stack-scopes append) (call StackScope instance (call (. tree subtree-start) body) body module decl entry))
     (= discarding-block body)
     (call check-steps body)
-    (= (. frame surround) saved)
   )
   (fn-do _ fake-class-text String
     (param module ModuleId)

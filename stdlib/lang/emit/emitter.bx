@@ -934,7 +934,7 @@
   (prop + held LocalId)
   (prop + type TypeId)
   (prop + is-live-call _ (= false))
-  (prop + refused-slot U32 (= no-storage))
+  (prop + restored-slot U32 (= no-storage))
 )
 
 (type _ Refused (is Error)
@@ -2721,9 +2721,10 @@
     (param forward SwapForward)
     ; A door a fake answers under a `do with`: it reads the fake from its effect's slot, where the
     ; `do with` or what holds its state put it, and calls the fake's method with it and the door's
-    ; arguments, giving what that gives. Typed only under the binding, it finds the slot bound. Where
-    ; the fake's class has no method that answers it, which only a door a function value reaches
-    ; lets through, it panics.
+    ; arguments, giving what that gives. The method runs with the slot as the `do with` found it,
+    ; put back as the method ends by any way out (`enter-outer`). Typed only under the binding, it
+    ; finds the slot bound. Where the fake's class has no method that answers it, which only a door
+    ; a function value reaches lets through, it panics.
     (let row ([] (. instances rows) (. unit instance)))
     (let declared
       (match ([] (. ([] (. program modules) (. row module)) decls) (. row decl))
@@ -2763,6 +2764,7 @@
     (let kept ([] (. tables storage) slot))
     (let state (call stack-state slot declared))
     (let fake (call take state (call (. tables layouts field) (. kept layout) 1) declared))
+    (let outside (call enter-outer slot declared))
     (let mark (. pending length))
     (+= pending fake)
     (for (in position (..< 0 (. own args count)))
@@ -2771,6 +2773,7 @@
     (let forwards (!= (. theirs errors count) 0))
     (= takes-result forwards)
     (let answer (call call-method (. forward callee) declared mark true))
+    (call close-cleanups outside)
     (if (and forwards (!= (. theirs result) (. own result)))
       (call return-recased (. answer operand) (. theirs result) declared no-instance declared)
       (else-if forwards
@@ -2783,6 +2786,33 @@
         (call return-value (. answer operand) 0)
       )
     )
+  )
+  (fn-do _ enter-outer Size
+    (param row U32)
+    (param site SyntaxId)
+    (let kept ([] (. tables storage) row))
+    (let target (call stack-slot kept site))
+    (let saved (call (. ir add-local) (. kept layout)))
+    (call store-local saved target site)
+    (let flag (call (. tables layouts field) (. kept layout) 0))
+    (let held (call (. tables layouts field) (. kept layout) 1))
+    (let link (call (. tables layouts field) (. kept layout) 2))
+    (let outer (call load target (. link offset) (. link layout) site))
+    (let unbound (call (. ir reserve-block)))
+    (let bound (call (. ir reserve-block)))
+    (let done (call (. ir reserve-block)))
+    (call branch (call compare site .compare-equal outer (call integer (as managed-layout MachineKind) 0)) unbound bound)
+    (call (. ir start-block) unbound)
+    (call store target (. flag offset) (call integer .machine-u8 0) false site)
+    (call store target (. held offset) (call integer (as managed-layout MachineKind) 0) true site)
+    (call jump done)
+    (call (. ir start-block) bound)
+    (call copy target outer (. kept layout) (. ([] (. tables layouts rows) (. kept layout)) is-managed) site)
+    (call jump done)
+    (call (. ir start-block) done)
+    (let mark (. open-cleanups length))
+    (call open-cleanup site (call UseCell no-local saved no-type false row))
+    (return mark)
   )
   (fn-expr _ refused-kind U32
     255
@@ -2850,11 +2880,10 @@
   (fn-do _ emit-dispatch _
     (param declared SyntaxId)
     (param signature InstanceSignature)
-    ; A door reached where no `do with` binds a fake to its effect, in a program that binds one
-    ; somewhere, as code a function value runs is: where the effect's slot holds a fake, it calls the
-    ; door typed under a binding of that fake's class with its arguments and gives what that gives,
-    ; which panics where that class has no method that answers it. It runs its body where the slot
-    ; holds none.
+    ; A door of an effect the program binds a fake to somewhere: where the effect's slot holds a
+    ; fake, it calls the door typed under a binding of that fake's class with its arguments and
+    ; gives what that gives, which panics where that class has no method that answers it. It runs
+    ; its body where the slot holds none.
     (let kind (call make-operand .operand-void 0))
     (let read false)
     (for (in dispatch (. facts swap-dispatches))
@@ -2884,10 +2913,15 @@
         (for (in position (..< 0 (. signature args count)))
           (+= pending (call make-operand .operand-argument position))
         )
-        (= takes-result (!= (. signature errors count) 0))
+        (let theirs ([] (. instances signatures) (. dispatch forwarder)))
+        (let forwards (!= (. theirs errors count) 0))
+        (= takes-result forwards)
         (let answer (call call-instance (. dispatch forwarder) declared mark))
-        (if (!= (. signature errors count) 0)
-          (call return-held (. answer operand))
+        (if (and forwards (!= (. theirs result) (. signature result)))
+          (call return-recased (. answer operand) (. theirs result) declared no-instance declared)
+          (else-if forwards
+            (call return-held (. answer operand))
+          )
           (else-if (== (. signature returns) (. types void-type))
             (call return-nothing)
           )
@@ -2896,6 +2930,30 @@
           )
         )
         (call (. ir start-block) next)
+      )
+    )
+  )
+  (fn-do _ emit-unanswered _
+    (param declared SyntaxId)
+    (for (in dispatch (. facts swap-dispatches))
+      (if (== (. dispatch instance) (. unit instance))
+        (let slot (call (. tables storage-of) (. dispatch module) (. dispatch decl)))
+        (if (== slot no-storage)
+          (call refuse .refused-function declared)
+          (return)
+        )
+        (let kept ([] (. tables storage) slot))
+        (let flag (call (. tables layouts field) (. kept layout) 0))
+        (let kind (call load (call stack-state slot declared) (. flag offset) (. flag layout) declared))
+        (let faked (call (. ir reserve-block)))
+        (let next (call (. ir reserve-block)))
+        (call branch (call compare declared .compare-equal kind (call integer .machine-u8 0)) next faked)
+        (call (. ir start-block) faked)
+        (let row ([] (. instances rows) (. unit instance)))
+        (let name (. ([] (. program effects names) (?? (call (. program effects index-of) (. dispatch module) (. dispatch decl)) 0)) text))
+        (call raise-text declared (str "The fake bound to '" name "' cannot answer " (call paths-name row) ", a door of it that is not a function of its module"))
+        (call (. ir start-block) next)
+        (return)
       )
     )
   )
@@ -2920,7 +2978,8 @@
     ; state is kept and the slot bound, and the body runs in a block of its own, whose reads of
     ; the global read the value, and which puts the slot back as it was where it is left, by any
     ; way out. One written where `do finally` has no shape has none. An effect is bound to a fake,
-    ; an object of any class, as it is.
+    ; an object of any class, as it is, and the slot keeps a copy of what it held before where that
+    ; was a fake or a ban (`outer-state`).
     (if (or (. scoping cleaning) builds initializes (call is-free (. unit instance)) (!= (. unit reading) (. unit instance)))
       (call refuse .refused-statement id)
       (return)
@@ -2957,6 +3016,10 @@
       (return)
     )
     (call fill-stack slot kept (call load-local held id) id flag)
+    (if fakes
+      (let link (call (. tables layouts field) (. kept layout) 2))
+      (call store slot (. link offset) (call outer-state previous kept id) true id)
+    )
     (let mark (. open-cleanups length))
     (let own-scoping scoping)
     (= scoping (= (. scoping block-base) mark))
@@ -2966,6 +3029,28 @@
     (call (. stack-bindings pop))
     (call close-cleanups mark)
     (= scoping own-scoping)
+  )
+  (fn-do _ outer-state Operand
+    (param previous LocalId)
+    (param kept GlobalStorage)
+    (param site SyntaxId)
+    (let outer (call (. ir add-local) managed-layout))
+    (call store-local outer (call integer (as managed-layout MachineKind) 0) site)
+    (let flag (call (. tables layouts field) (. kept layout) 0))
+    (let kind (call load (call load-local previous site) (. flag offset) (. flag layout) site))
+    (let boxing (call (. ir reserve-block)))
+    (let done (call (. ir reserve-block)))
+    (call branch (call compare site .compare-equal kind (call integer .machine-u8 0)) done boxing)
+    (call (. ir start-block) boxing)
+    (let mark (. pending length))
+    (+= pending (call integer .machine-u64 (. ([] (. tables layouts rows) (. kept layout)) size)))
+    (+= pending (call make-operand .operand-descriptor (. kept layout)))
+    (let made (call call-runtime .runtime-allocate-object site mark managed-layout))
+    (call copy made (call load-local previous site) (. kept layout) true site)
+    (call store-local outer made site)
+    (call jump done)
+    (call (. ir start-block) done)
+    (return (call load-local outer site))
   )
   (fn-do _ fake-kind U32
     (param kept GlobalStorage)
@@ -3084,22 +3169,19 @@
     ; Where the state of a global `do with` binds is read: in a spawned task's body, the capture
     ; it was given; in a lambda or a comprehension, the place that holds it in the environment it
     ; was given, as it was where it was made, which the steps of one that yields reach through the
-    ; link of their own; and anywhere else the slot of the task running.
+    ; link of their own, and so in any other nested function given one for an effect's slot; and
+    ; anywhere else the slot of the task running.
     (let kept ([] (. tables storage) row))
     (if (call is-closure-body)
-      (let owner (. ([] (. instances rows) (. unit instance)) enclosing))
-      (let place (call (. tables stack-place) owner (. ([] (. instances rows) (. unit instance)) decl) row))
-      (let held (if-expr (!= owner no-instance) ([] (. tables environments) owner) no-layout))
-      (if (and (!= place no-place) (!= held no-layout) (!= held unbuilt-environment))
-        (let field (call (. tables layouts field) held place))
-        (let held-environment (call given-environment site))
-        (if stepping
-          (= held-environment (call load held-environment 0 managed-layout site))
-        )
-        (return (call address held-environment (. field offset) (. field layout) site))
+      (let place (call made-place row))
+      (if (!= place no-place)
+        (return (call made-state place site))
       )
       (call refuse .refused-expression site)
       (return (call make-operand .operand-void 0))
+    )
+    (if (call reads-made-state row)
+      (return (call made-state (call made-place row) site))
     )
     (if (!= (. function kind) .task-body)
       (return (call stack-slot kept site))
@@ -3117,6 +3199,33 @@
     )
     (call refuse .refused-expression site)
     (return (call make-operand .operand-void 0))
+  )
+  (fn-do _ made-place U32
+    (param row U32)
+    (let owner (. ([] (. instances rows) (. unit instance)) enclosing))
+    (let held (if-expr (!= owner no-instance) ([] (. tables environments) owner) no-layout))
+    (return-if no-place (if (or (== held no-layout) (== held unbuilt-environment))))
+    (blank)
+    (return (call (. tables stack-place) owner (. ([] (. instances rows) (. unit instance)) decl) row))
+  )
+  (fn-do _ made-state Operand
+    (param place U32)
+    (param site SyntaxId)
+    (let owner (. ([] (. instances rows) (. unit instance)) enclosing))
+    (let field (call (. tables layouts field) ([] (. tables environments) owner) place))
+    (let held-environment (call given-environment site))
+    (if stepping
+      (= held-environment (call load held-environment 0 managed-layout site))
+    )
+    (return (call address held-environment (. field offset) (. field layout) site))
+  )
+  (fn-do _ reads-made-state Bool
+    (param row U32)
+    (let kept ([] (. tables storage) row))
+    (if (or (not (. unit received)) (and (!= (. function kind) .instance-body) (!= (. function kind) .generator-body)))
+      (return false)
+    )
+    (return (and (!= (call (. program effects index-of) (. kept module) (. kept decl)) null) (!= (call made-place row) no-place)))
   )
   (fn-do _ capture-stack _
     (param capture Operand)
@@ -8159,6 +8268,9 @@
     (call emit-refused-branch declared)
     (if (and (not (. unit takes-self)) (not (. unit received)))
       (call emit-dispatch declared signature)
+      (else
+        (call emit-unanswered declared)
+      )
     )
     (if (== (. function kind) .event-handler)
       (call open-handler)
@@ -22856,15 +22968,17 @@
     (param site SyntaxId)
     ; Before the body of a spawned task, a lambda or a comprehension calls a function that reads
     ; globals `do with` binds outside its bindings of them, each slot no binding around the call
-    ; holds is kept, and set to the state the body holds, as TypeScript does. The local each is
+    ; holds is kept, and set to the state the body holds, as TypeScript does, and so for an effect's
+    ; slot in any other nested function given the environment it was made in. The local each is
     ; kept in, or none. A spawned task's slot is its own, so it stays set after the call, for a
     ; generator the call made to read when it runs. As a read of one, a call in a cleanup a landing pad runs is refused where a
     ; `do with` after the cleanup binds it. A nested function called holds what it captured, and is
     ; given nothing, as TypeScript gives a closure nothing.
     (let saved (list LocalId))
-    (if (and (!= (. function kind) .task-body) (not (call is-closure-body)))
+    (if (and (!= (. function kind) .task-body) (not (call is-closure-body)) (not (. unit received)))
       (return saved)
     )
+    (let closes (or (== (. function kind) .task-body) (call is-closure-body)))
     (let called ([] (. instances rows) callee))
     (match? ([] (. ([] (. program modules) (. called module)) decls) (. called decl))
       (case (call .decl-function fn)
@@ -22875,10 +22989,11 @@
     )
     (for (in row (call (. tables stack-needs) callee))
       (let local no-local)
-      (if (and (!= row no-storage) (!= (. scoping unwinding-from) 0) (call binds-after row (. scoping unwinding-from)))
+      (let holds (and (!= row no-storage) (or closes (call reads-made-state row))))
+      (if (and holds (!= (. scoping unwinding-from) 0) (call binds-after row (. scoping unwinding-from)))
         (call refuse .refused-expression site)
       )
-      (if (and (!= row no-storage) (not (call stack-bound row)))
+      (if (and holds (not (call stack-bound row)))
         (let kept ([] (. tables storage) row))
         (= local (call (. ir add-local) (. kept layout)))
         (let slot (call stack-slot kept site))
