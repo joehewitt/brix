@@ -7,24 +7,18 @@
 (import /time/clock)
 (import /time/duration)
 (blank)
-(prop + completions-path _ (= "/v1/chat/completions"))
+(prop _ completions-path _ (= "/v1/chat/completions"))
 (blank)
 
 (fn-do + mock-chatgpt-server HTTPServer
   (param at-host String)
   (param at-port Port)
-  (param delay Milliseconds (= 25ms))
-  (param key String (= ""))
-  (let mock (call MockChatGPT delay key))
+  (let mock (call MockChatGPT))
   (<> HTTPServer (id: server)
     (= service mock)
     (= host at-host)
     (= port at-port)
     (= max-body-size 1000000)
-    (blank)
-    (<> Route (text: "/health")
-      (= get (. mock health))
-    )
     (blank)
     (<> Route (text: completions-path)
       (= post (. mock complete))
@@ -34,53 +28,21 @@
 )
 
 (type + MockChatGPT (is HTTPService)
-  (prop + delay Milliseconds)
-  (prop + key String)
+  (prop + delay Milliseconds (= 25ms))
   (prop _ served Int)
-  (fn-do + This _
-    (param delay _)
-    (param key _)
-  )
   (fn-do + respond HTTPResponse (?! Error)
     (param request HTTPRequest)
-    (return-if (call preflight) (if (== (. request method) (. HTTPMethod options))))
-    (blank)
     (let response (call (. super respond) request))
     (return
       (match (. response status)
         (case= (. HTTPStatus not-found)
-          (call refuse (call Refusal (. HTTPStatus not-found) (str "No mock route for " (. request method) " " (. request path))))
+          (. (call Refusal (. HTTPStatus not-found) (str "No mock route for " (. request method) " " (. request path))) response)
         )
         (case= (. HTTPStatus method-not-allowed)
-          (call refuse
-            (block
-              (arg
-                (call Refusal
-                  (block
-                    (arg (. HTTPStatus method-not-allowed))
-                    (arg (str "Only " (. (!! (. request route)) allowed-methods) " is supported for " (. request path)))
-                  )
-                )
-              )
-            )
-          )
+          (. (call Refusal (. HTTPStatus method-not-allowed) (str "Only " (. (!! (. request route)) allowed-methods) " is supported for " (. request path))) response)
         )
         (default
           response
-        )
-      )
-    )
-  )
-  (fn-expr + health HTTPResponse
-    (param request HTTPRequest)
-    (call json-response (. HTTPStatus ok) payload)
-    (where
-      (lazy payload
-        (call (of Map String JSON)
-          (block
-            (entry "ok" true)
-            (entry "server" "brix-chatgpt-mock")
-          )
         )
       )
     )
@@ -89,7 +51,7 @@
     (param request HTTPRequest)
     (match (catch (call read-chat request (. request text)))
       (case (: refusal Refusal)
-        (call refuse refusal)
+        (. refusal response)
       )
       (case (: chat ChatRequest)
         (call answer chat)
@@ -101,7 +63,6 @@
     (param text String)
     (before
       (throw (call Refusal (. HTTPStatus unauthorized) "Missing Authorization bearer token" "authentication_error") (if (not (call (. authorization starts-with) "Bearer "))))
-      (throw (call Refusal (. HTTPStatus unauthorized) "Authorization bearer token did not match MOCK_CHATGPT_API_KEY" "authentication_error") (if (and (!= key "") (!= authorization (str "Bearer " key)))))
       (throw (call Refusal (. HTTPStatus unsupported-media-type) "Content-Type must be application/json") (if (not (call (. content-type find) "application/json"))))
     )
     (call chat-request body)
@@ -121,9 +82,6 @@
   )
   (fn-do _ answer HTTPResponse
     (param chat ChatRequest)
-    (let count (. chat messages length))
-    (print (str "POST " completions-path "  " (. chat model) ", " count " message" (if-expr (== count 1) "" "s") (if-expr (. chat stream) ", streaming" "")))
-    (blank)
     (+= served 1)
     (let now (call clock))
     (let id (str "chatcmpl-mock-" (call base36 (as (- now (call ClockTime 0 0)) Int)) "-" (call base36 served)))
@@ -150,7 +108,6 @@
           (item (tuple "Connection" "keep-alive"))
           (item (tuple "X-Request-Id" (. completion id)))
           (item (tuple "OpenAI-Processing-Ms" "1"))
-          (item (tuple "Access-Control-Allow-Origin" "*"))
         )
       )
     )
@@ -168,13 +125,6 @@
       (call (. delay wait))
     )
     (yield (call ServerSentEvent "[DONE]"))
-    (blank)
-    (print (str "streamed " (. completion pieces length) " chunks for " (. completion id)))
-  )
-  (fn-do _ refuse HTTPResponse
-    (param refusal Refusal)
-    (print (str (. refusal status) " " (. refusal message)))
-    (return (. refusal response))
   )
 )
 
@@ -413,20 +363,6 @@
       (block
         (item (tuple "Content-Type" "application/json; charset=utf-8"))
         (item (tuple "Cache-Control" "no-store"))
-        (item (tuple "Access-Control-Allow-Origin" "*"))
-      )
-    )
-  )
-)
-
-(fn-expr _ preflight HTTPResponse
-  (call HTTPResponse (. HTTPStatus no-content) null headers)
-  (where
-    (lazy headers (list HTTPHeader)
-      (block
-        (item (tuple "Access-Control-Allow-Origin" "*"))
-        (item (tuple "Access-Control-Allow-Headers" "authorization, content-type"))
-        (item (tuple "Access-Control-Allow-Methods" "GET, POST, OPTIONS"))
       )
     )
   )

@@ -1,17 +1,16 @@
-; ChatGPT in the terminal. Type a message and press Enter, and the reply streams in as Markdown.
-; It talks to OpenAI with the key in OPENAI_API_KEY, the model in OPENAI_MODEL, and the address
-; in OPENAI_BASE_URL, if set. With no key it talks to a mock of the API instead, served inside this
-; program: under a fake network the mock listens at api.openai.com and the client connects there
-; as it would for real, with no port opened and nothing sent. The mock's log goes to a quiet fake
-; console, so the tasks that serve it print nothing over the chat, while the chat draws as usual.
-(import ./chatgpt-mock)
+; ChatGPT in the terminal, the counterpart of `gui/chat`. Type a message and press Enter, and the
+; reply streams in as Markdown. It talks to OpenAI with the key in OPENAI_API_KEY, the model in
+; OPENAI_MODEL, and the address in OPENAI_BASE_URL, if set. With no key it talks to the stand-in
+; for the API in `chat-mock.bx`, served inside this program: under a fake network the mock listens
+; at api.openai.com and the client connects there as it would for real, with no port opened and
+; nothing sent.
+(import ./chat-mock)
 (import /ai)
 (import /ai/openai/completions)
 (import /net/fake-network)
 (import /net/network)
 (import /net/url)
 (import /os/env)
-(import /os/file)
 (import /tui)
 (import /tui/colors)
 (import /tui/text)
@@ -24,10 +23,7 @@
     (call chat (call OpenAICompletions api-key (call base-url)) model model)
     (else
       (do-with network (call FakeNetwork)
-        (let server (call mock-chatgpt-server "api.openai.com" 443))
-        (do-with console (call QuietConsole)
-          (call (. server start))
-        )
+        (call (. (call mock-chatgpt-server "api.openai.com" 443) start))
         (call chat (call OpenAICompletions "mock-key") model (str model ", from the mock: OPENAI_API_KEY is not set"))
       )
     )
@@ -63,25 +59,6 @@
     )
   )
   (call (. app run))
-)
-
-(type + QuietConsole
-  (prop _ sink File)
-  (fn-do + This _ (?! Error)
-    (= sink (call File "/dev/null" (. FileFlags read-write-mode)))
-  )
-  (fn-do + print _
-    (param text String)
-  )
-  (fn-do + standard-input File
-    (return sink)
-  )
-  (fn-do + standard-output File
-    (return sink)
-  )
-  (fn-do + standard-error File
-    (return sink)
-  )
 )
 
 (type + ChatShell (is Form)
