@@ -256,7 +256,9 @@ true
 - **Plain numbers.** A plain number on either side of `+`, `-` and `%` is taken in the other's
   unit: `(+ 90s 30)`{.brix} is `120seconds`, and `(- 100 1s)`{.brix} is `99seconds`. Multiplying a
   unit by a plain number on either side, or dividing it by one, keeps the unit, while a plain number
-  divided by a unit is in the unit declared as one per it, or a plain number where none is.
+  divided by a unit is in the unit declared as one per it, or a plain number where none is. A unit
+  stored as an integer keeps its unit only where the arithmetic stays in integers:
+  `(* 3dollars 2)` is `6dollars`, but `(* 3dollars 0.5)` is the plain number `1.5`.
 - **Comparisons** convert the same way, so `(< 500ms 1s)`{.brix} is true, but compare in the
   right's unit where the left's is stored as an integer and would drop the right's fraction:
   `(< 3dollars 350cents)`{.brix} is true. Comparing units of two families that no equality joins is
@@ -265,8 +267,6 @@ true
 - **Units on their own.** A unit that no declaration relates to another, such as `px`, is a family
   of its own: `(+ 3px 2px)`{.brix} is `5px` and `(* 3px 0.5)`{.brix} is `1.5px`, but `*` and `/`
   between two of them give a plain number, unless a unit is declared as their product or quotient.
-  One stored as an integer keeps its unit only where the arithmetic stays in integers, so with
-  `/tui/primitives`, `(* 3tx 0.5)` is the plain number `1.5`.
 - **Generic functions** keep the unit of what they are given. A function that takes a plain number
   type, such as `abs` from `/math`, takes the value in its own unit and gives a plain number.
   `sqrt` is the exception; see [Powers and roots](#powers-and-roots).

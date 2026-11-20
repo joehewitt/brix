@@ -1440,6 +1440,32 @@ Exception: Expected Dollars here, but this is Cents, which becomes Dollars only 
 3f
 ```
 
+### A unit of a family stored as an integer keeps its unit only where the arithmetic stays in integers, so a plain fraction gives a plain number.
+
+```brix
+(main
+  (let half 0.5)
+  (print (as (+ 3dollars 0.5) UnitString))
+  (print (as (* 3dollars 0.5) UnitString))
+  (print (as (* 0.5 3dollars) UnitString))
+  (print (as (/ 3dollars half) UnitString))
+  (print (as (* 3dollars 2) UnitString))
+  (print (as (/ 3dollars 2) UnitString))
+)
+
+(type-line + Cents (alias cents) (is I64))
+(type-line + Dollars (alias dollars) (is 100cents))
+```
+
+```output
+3.5f
+1.5f
+1.5f
+6f
+6dollars
+1dollars
+```
+
 ### A plain number on the left of `+`, `-` or `%` is taken in the unit on the right.
 
 ```brix
