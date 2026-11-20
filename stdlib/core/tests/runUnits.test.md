@@ -2015,3 +2015,73 @@ Exception: An equality declares one unit, alone on one side, as an amount of oth
     (unit + 2 (/ 1meters 1s))
     ^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
+
+### A product or a quotient that two units are declared as alike is rejected.
+
+```brix compile-error
+(import /time/duration)
+(import /units)
+
+(main
+  (print (as (/ 100km 2hours) UnitString))
+)
+
+(type-line + Kph (alias kph) (is F64))
+(type-line + Kmh (alias kmh) (is F64))
+(unit + 1kph (/ 1km 1hours))
+(unit + 1kmh (/ 1km 1hours))
+```
+
+```output
+Exception: Kph and Kmh are both declared as Kilometers per Hours; keep one of them where both can be named
+<no file:6>
+      (print (as (/ 100km 2hours) UnitString))
+                 ^^^^^^^^^^^^^^^^
+```
+
+### An equality that disagrees with units an imported module declares as a quotient is rejected in the module that imports it.
+
+```brix compile-error
+(import ./lib/speeds)
+
+(main
+  (print 1)
+)
+
+(unit + 1mps 3kph)
+```
+
+```brix file=lib/speeds/speeds.bx
+(import /time/duration)
+(import /units)
+
+(type-line + Kph (alias kph) (is F64))
+(type-line + Mps (alias mps) (is F64))
+(unit + 1kph (/ 1km 1hours))
+(unit + 1mps (/ 1meters 1s))
+```
+
+```output
+Exception: Equalities between Mps and Kph disagree: one makes 1 Mps 3.6 Kph, another 3 Kph; keep one of them
+<no file:8>
+    (unit + 1mps 3kph)
+    ^^^^^^^^^^^^^^^^^^
+```
+
+### An assigning multiply by a unit of the place's family is rejected where no unit is declared as their product.
+
+```brix compile-error
+(import /time/duration)
+
+(main
+  (let wait Seconds 10s)
+  (*= wait 2s)
+)
+```
+
+```output
+Exception: No unit is declared as Seconds times Seconds; declare one with an equality, or make one side a plain number
+<no file:6>
+      (*= wait 2s)
+               ^^
+```
