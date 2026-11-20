@@ -242,8 +242,7 @@
   ; One function's IR: append-only tables in the arena of the worker emitting it, reset for each
   ; function. `order` lists the blocks as they started, `arguments` holds the layout of each
   ; argument, `locals` the cells of its frame, and `returns` the layout of the value the function
-  ; returns. `signals` says the function writes the panic signal on every return. `made-calls` lists
-  ; the rows after which this IR makes in place what a generated function makes.
+  ; returns. `signals` says the function writes the panic signal on every return.
   (blank)
   (prop + function FunctionId (= no-function))
   (prop + instructions (of Table IRInstruction))
@@ -258,7 +257,6 @@
   (prop + constants (of Table IRConstant))
   (prop + numbers (of Table IRNumber))
   (prop + dependencies (of Table IRDependency))
-  (prop + made-calls IdList)
   (prop + streams (of Table IRStream))
   (prop + notes (of Table IRNote))
   (prop _ depended IdMap)
@@ -290,16 +288,9 @@
     (= constants (call (of Table IRConstant) arena 4))
     (= numbers (call (of Table IRNumber) arena 4))
     (= dependencies (call (of Table IRDependency) arena 4))
-    (= made-calls (call IdList))
     (= streams (call (of Table IRStream) arena 4))
     (= notes (call (of Table IRNote) arena 2))
     (= depended (call IdMap))
-  )
-  (fn-do + note-made-call _
-    ; Notes that what a generated function makes is made in place after the last row so far.
-    (if (!= (. instructions length) 0)
-      (= made-calls (call (. made-calls appended) arena (as (- (. instructions length) 1) U32)))
-    )
   )
   (fn-do + reserve-block IRBlockId
     ; A block to jump to, before its rows exist.

@@ -158,12 +158,7 @@
   ; into the receiver, a frame, a local's memory or the function's result moves nothing. A call
   ; does, unless it is of one of the runtime's functions that allocate or poll, the check for a
   ; terminating task, or a function whose code was judged so: `verdicts` holds what each function of
-  ; `judged` was judged to do. So does each row `made-calls` lists.
-  (for (in position (..< 0 (. ir made-calls length)))
-    (if ([] (. reads ahead) ([] (. ir made-calls) position))
-      (return .unstable)
-    )
-  )
+  ; `judged` was judged to do.
   (let verdict (. Stability stable))
   (for (in id (..< 0 (. ir instructions length)))
     (if (not ([] (. reads ahead) id))
@@ -204,12 +199,8 @@
   (param instances Instances)
   (param program Program)
   ; What a function's own code may do to storage: any write outside the function's frame, its
-  ; locals' memory and its result moves storage, and so does any call that may, and each row
-  ; `made-calls` lists.
+  ; locals' memory and its result moves storage, and so does any call that may.
   (let callees (list U32))
-  (if (!= (. ir made-calls length) 0)
-    (return (call CalleeScan .unstable callees))
-  )
   (let roots (call frame-roots ir))
   (let none (list Bool))
   (for (in _ (..< 0 (. ir instructions length)))
