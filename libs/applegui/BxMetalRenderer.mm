@@ -742,6 +742,7 @@ static_assert(sizeof(FillSegmentGPU) == 48, "FillSegment layout");
 struct FillDrawGPU {
     float color[4];
     float mask[4];
+    float extent[4];
     float a, b, c, d, tx, ty;
     uint32_t segmentStart;
     uint32_t segmentCount;
@@ -762,7 +763,7 @@ struct FillDrawGPU {
     float dash;
     uint32_t paint;
 };
-static_assert(sizeof(FillDrawGPU) == 128, "FillDraw layout");
+static_assert(sizeof(FillDrawGPU) == 144, "FillDraw layout");
 
 struct FillPaintGPU {
     float a, b, c, d, tx, ty;
@@ -2109,6 +2110,7 @@ struct FillSegment {
 struct FillDraw {
     float4 color;
     float4 mask;
+    float4 extent;
     float a, b, c, d, tx, ty;
     uint segmentStart;
     uint segmentCount;
@@ -3494,8 +3496,10 @@ vertex FillVertexOut brixGuiMetalFillVertex(
     uint drawIndex = min(tileDraws[tile], params.drawCount - 1u);
     FillDraw draw = draws[drawIndex];
     float2 origin = tileOrigin(draw, tile);
-    float2 corner = float2(float(vertexId & 1u), float(vertexId >> 1u)) * kTile;
-    float2 pixel = origin + corner;
+    float2 low = max(origin, draw.extent.xy);
+    float2 high = max(min(origin + kTile, draw.extent.zw), low);
+    float2 corner = float2(float(vertexId & 1u), float(vertexId >> 1u));
+    float2 pixel = mix(low, high, corner);
     FillVertexOut out;
     out.position = float4(
         (pixel.x - params.originX) / params.viewportWidth * 2.0 - 1.0,
@@ -7027,10 +7031,13 @@ static uint32_t appendGradientPaint(
 }
 
 static const double kTinyPathPixels = 3.0;
+static const double kTinyOutlinePixels = 2.0;
 
-static bool emitTinyFill(ExpandState& state, const FrameFillDraw& draw, const FillPathRecord& path) {
+static bool tinyDeviceBounds(const FrameFillDraw& draw, double limit, double* bounds) {
     const double* device = draw.device;
-    if (!(path.area > 0) || draw.paint || draw.shader || draw.fillRule || device[1] != 0 || device[2] != 0) {
+    if (device[1] != 0 || device[2] != 0 ||
+            !((draw.bounds[2] - draw.bounds[0]) * std::fabs(device[0]) <= limit) ||
+            !((draw.bounds[3] - draw.bounds[1]) * std::fabs(device[3]) <= limit)) {
         return false;
     }
     double origin[6] = {
@@ -7041,17 +7048,24 @@ static bool emitTinyFill(ExpandState& state, const FrameFillDraw& draw, const Fi
         device[0] * draw.originX + device[4],
         device[3] * draw.originY + device[5],
     };
-    double bounds[4];
     transformBounds(origin, draw.bounds, bounds);
-    double width = bounds[2] - bounds[0];
-    double height = bounds[3] - bounds[1];
-    if (!(width <= kTinyPathPixels && height <= kTinyPathPixels)) {
-        return false;
-    }
-    double quadWidth = std::max(width, 1.0);
-    double quadHeight = std::max(height, 1.0);
-    double coverage = path.area * std::fabs(device[0] * device[3]) / (quadWidth * quadHeight + kQuadCornerInk);
+    return true;
+}
+
+static void emitCoverageQuad(
+    ExpandState& state,
+    const FrameFillDraw& draw,
+    const double* bounds,
+    double area,
+    double radius
+) {
+    double quadWidth = std::max(bounds[2] - bounds[0], 1.0);
+    double quadHeight = std::max(bounds[3] - bounds[1], 1.0);
+    double corner = std::min({radius, quadWidth * 0.5, quadHeight * 0.5});
+    double ink = quadWidth * quadHeight - (4 - M_PI) * corner * corner + kQuadCornerInk;
+    double coverage = area * std::fabs(draw.device[0] * draw.device[3]) / ink;
     Instance instance = {};
+    instance.params[0] = static_cast<float>(corner);
     memcpy(instance.contentMask, draw.mask, sizeof(instance.contentMask));
     instance.rect[0] = static_cast<float>((bounds[0] + bounds[2] - quadWidth) * 0.5);
     instance.rect[1] = static_cast<float>((bounds[1] + bounds[3] - quadHeight) * 0.5);
@@ -7061,6 +7075,34 @@ static bool emitTinyFill(ExpandState& state, const FrameFillDraw& draw, const Fi
     instance.kind = 0;
     instance.opacity = static_cast<float>(std::min(1.0, coverage));
     emitInstance(state, PipelineTier1, nil, instance);
+}
+
+static bool emitTinyFill(ExpandState& state, const FrameFillDraw& draw, const FillPathRecord& path) {
+    double bounds[4];
+    if (!(path.area > 0) || draw.paint || draw.shader || draw.fillRule ||
+            !tinyDeviceBounds(draw, kTinyPathPixels, bounds)) {
+        return false;
+    }
+    emitCoverageQuad(state, draw, bounds, path.area, 0);
+    return true;
+}
+
+static bool emitTinyStroke(ExpandState& state, const FrameFillDraw& draw, const FillPathRecord& path, double half) {
+    double bounds[4];
+    bool blob = path.width <= half * 2 && path.height <= half * 2;
+    if (draw.dash > 0 || !(path.length > 0) ||
+            !tinyDeviceBounds(draw, blob ? kTinyPathPixels : kTinyOutlinePixels, bounds)) {
+        return false;
+    }
+    const FillSegmentGPU* segments = state.renderer->fillSegments.data() + path.segmentStart;
+    uint32_t subpaths = 0;
+    for (uint32_t index = 0; index < path.segmentCount; ++index) {
+        subpaths += (segments[index].kind & FillSegmentStart) ? 1u : 0u;
+    }
+    double box = (path.width + half * 2) * (path.height + half * 2) - (4 - M_PI) * half * half;
+    double sweep = path.length * half * 2 + subpaths * M_PI * half * half;
+    double radius = half * std::min(std::fabs(draw.device[0]), std::fabs(draw.device[3]));
+    emitCoverageQuad(state, draw, bounds, std::min(box, sweep), radius);
     return true;
 }
 
@@ -7182,7 +7224,11 @@ static void emitSpanDraws(
         double extension = cap == FillStrokeCapButt ? 0 : half * 2;
         draw.color[3] *= static_cast<float>(std::min(1.0, (dash + extension) / (dash * 2)));
     }
-    emitFillDraw(state, draw, scissor);
+    bool eligible = !span.brush && span.strokeAlignment == FillAlignCenter && cap == FillStrokeCapRound &&
+        join == FillStrokeJoinRound;
+    if (!eligible || !emitTinyStroke(state, draw, path, half)) {
+        emitFillDraw(state, draw, scissor);
+    }
 }
 
 static void emitBrushDraw(
@@ -9501,6 +9547,17 @@ static bool fillPrepare(MetalRenderer* renderer, FrameStats& stats) {
         FillDrawGPU& draw = draws[visible];
         memcpy(draw.color, source.color, sizeof(draw.color));
         memcpy(draw.mask, source.mask, sizeof(draw.mask));
+        if (source.blend) {
+            draw.extent[0] = static_cast<float>(tileX * 16);
+            draw.extent[1] = static_cast<float>(tileY * 16);
+            draw.extent[2] = static_cast<float>((tileX + static_cast<int32_t>(tileW)) * 16);
+            draw.extent[3] = static_cast<float>((tileY + static_cast<int32_t>(tileH)) * 16);
+        } else {
+            draw.extent[0] = static_cast<float>(floor(extent[0]));
+            draw.extent[1] = static_cast<float>(floor(extent[1]));
+            draw.extent[2] = static_cast<float>(ceil(extent[2]));
+            draw.extent[3] = static_cast<float>(ceil(extent[3]));
+        }
         draw.a = static_cast<float>(device[0]);
         draw.b = static_cast<float>(device[1]);
         draw.c = static_cast<float>(device[2]);
