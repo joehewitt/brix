@@ -1,5 +1,6 @@
 (import ./binding)
 (import ./calls)
+(import ./checker-caches)
 (import ./checker.assignments)
 (import ./checker.calls)
 (import ./checker.comprehensions)
@@ -92,6 +93,7 @@
   (blank)
   (prop _ kit CheckerKit)
   (prop _ panics Panics)
+  (prop _ caches CheckerCaches)
   (prop _ scratch TypingScratch)
   (prop _ module ModuleId)
   (prop _ tree AST)
@@ -309,6 +311,7 @@
     (lazy instances (. session instances))
     (lazy facts (. session facts))
     (lazy panics (. session panics))
+    (lazy caches (. session caches))
     (lazy scratch (. session scratch))
     (lazy instance checked)
     (lazy tree (. frame tree))
@@ -2601,11 +2604,11 @@
       )
       (if (== (call (. types intrinsic-of) target) .class)
         (let key (. (call class-ref types target) key))
-        (if (== (call (. facts open-targets find) key) null)
-          (+= (. facts open-targets) key)
+        (if (== (call (. caches open-targets find) key) null)
+          (+= (. caches open-targets) key)
         )
         (else
-          (= (. facts opens-any-target) true)
+          (= (. caches opens-any-target) true)
         )
       )
     )
@@ -2757,12 +2760,12 @@
     ; before typing (`find-query-targets`), or one a class with type parameters may number as typing
     ; makes it for some (`note-open-targets`). Each class a class with type parameters may number is
     ; noted before typing, so this does not depend on the order instances are typed in.
-    (return-if true (if (. facts opens-any-target)))
+    (return-if true (if (. caches opens-any-target)))
     (blank)
     (let held (? TypeId) level)
     (while (and held (== (call (. types intrinsic-of) held) .class))
       (return-if true (if (!= (call (. facts query-targets find) held) null)))
-      (return-if true (if (!= (call (. facts open-targets find) (. (call class-ref types held) key)) null)))
+      (return-if true (if (!= (call (. caches open-targets find) (. (call class-ref types held) key)) null)))
       (blank)
       (= held (call (. types base-of) held))
     )
@@ -4025,11 +4028,11 @@
     (param name Atom)
     (param from ModuleId)
     ; Whether a module sees a name `scoping-names` lists: one a module it shares a case with writes.
-    (for (in position (..< 0 (. facts scoping-names length)))
-      (if (and (== ([] (. facts scoping-names) position) name) case-shared)
+    (for (in position (..< 0 (. caches scoping-names length)))
+      (if (and (== ([] (. caches scoping-names) position) name) case-shared)
         (return true)
       )
-      (lazy case-shared (call (. program shares-case) from ([] (. facts scoping-modules) position)))
+      (lazy case-shared (call (. program shares-case) from ([] (. caches scoping-modules) position)))
     )
     (return false)
   )
@@ -4040,7 +4043,7 @@
   )
   (fn-do _ scoping-any Bool
     ; Whether the module being typed sees any name `scoping-names` lists.
-    (for (in owner (. facts scoping-modules))
+    (for (in owner (. caches scoping-modules))
       (if (call (. program shares-case) module owner)
         (return true)
       )
@@ -4049,7 +4052,7 @@
   )
   (fn-do _ nested-any Bool
     ; Whether a module the module being typed shares a case with writes a rule in a rule.
-    (for (in owner (. facts nested-modules))
+    (for (in owner (. caches nested-modules))
       (if (call (. program shares-case) module owner)
         (return true)
       )
