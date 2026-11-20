@@ -41,7 +41,8 @@ covered here. The rest of the standard library is surveyed in its own chapter.
 18. [Reactivity](reactivity.md): tracked reads, derived properties, rules, live statements and
     events.
 19. [State machines](state-machines.md): cases, transitions, payloads and lifetimes.
-20. [Units](units.md): unit literals, unit families and conversions between them.
+20. [Units](units.md): unit literals, unit families, conversions between them, and the units that
+    products, quotients, powers and roots give.
 21. [Markup](markup.md): elements, attributes, children, slots, and markup that follows state.
 22. [Styles](styles.md): styles, style sheets, rules, states, themes and motion.
 23. [Probes](probes.md): recording what a program does, and reading what it recorded.

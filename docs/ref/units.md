@@ -3,7 +3,8 @@
 A unit is a name written straight after a number, as in `16ms`, `90°` or `25%`. It makes the
 number a value of the unit's type: `16ms` is a `Milliseconds`. Units of one family, such as the
 units of time, convert into one another by the ratios their declarations state, and arithmetic
-between them converts first.
+between them converts first. Multiplying and dividing units gives the units declared as their
+products and quotients, so a distance divided by a time can be a speed.
 
 A unit is declared as a number type with an alias. The standard library declares units for
 durations, angles, ratios, distances and more, and a program declares its own the same way.
@@ -242,10 +243,11 @@ true
   right fit in the left: `(/ 2hours 30minutes)`{.brix} is `4`. Both convert to whichever of the two
   units holds the other with no fraction lost, so `(/ 3dollars 50cents)` is 6, and in integers the
   quotient drops its fraction as integer division does. `(/= wait 500ms)` keeps the unit of `wait`.
-- **Products.** Multiplying two units gives the unit an equality declares as their product, and is
-  an error where none is, even within one family: `(* 4hours 120minutes)` is `No unit is declared
-  as Hours times Hours; declare one with an equality, or make one side a plain number`. See
-  [Products and quotients](#products-and-quotients).
+- **Products.** Multiplying two units in families gives the unit an equality declares as their
+  product, and is an error where none is, even within one family: `(* 4hours 120minutes)` is `No
+  unit is declared as Hours times Hours; declare one with an equality, or make one side a plain
+  number`. A [pure number](#pure-numbers) scales the other side instead, and units on their own
+  give a plain number. See [Products and quotients](#products-and-quotients).
 - **Two families.** `+`, `-` and `%` between units of two families that no equality joins are
   errors, as comparisons are: with `/units` and `/time/duration`, `(+ 100meters 20s)` is `Expected
   Meters here, but this is Seconds, and there is no conversion between them`. `*` and `/` between

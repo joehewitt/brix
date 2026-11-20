@@ -116,9 +116,10 @@ Durations, dates, clocks and timers. `/time` gathers every module except `/time/
 
 ### units
 
-`/units` declares `Percent` (`%`), `Ratio` and scaling, and passes on `/units/distance`, the
-lengths from `nm` to `miles`. Pixels are declared in `/graphics/primitives` and durations in
-`/time/duration`. Units explains how unit families are declared and converted.
+`/units` declares `Percent` (`%`) and `Ratio` (`%%`), pure numbers that scale what they multiply,
+and `Scale`, which maps a ratio onto a range. It passes on `/units/distance`, the lengths from `nm`
+to `miles`. Pixels are declared in `/graphics/primitives` and durations in `/time/duration`. Units
+explains how unit families are declared, converted and combined.
 
 ### data
 
