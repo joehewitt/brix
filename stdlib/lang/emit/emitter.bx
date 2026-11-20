@@ -3169,7 +3169,7 @@
     ; Where the state of a global `do with` binds is read: in a spawned task's body, the capture
     ; it was given; in a lambda or a comprehension, the place that holds it in the environment it
     ; was given, as it was where it was made, which the steps of one that yields reach through the
-    ; link of their own, and so in any other nested function given one for an effect's slot; and
+    ; link of their own, and so in the body of a loop on a stream for an effect's slot; and
     ; anywhere else the slot of the task running.
     (let kept ([] (. tables storage) row))
     (if (call is-closure-body)
@@ -3222,8 +3222,16 @@
   (fn-do _ reads-made-state Bool
     (param row U32)
     (let kept ([] (. tables storage) row))
-    (if (or (not (. unit received)) (and (!= (. function kind) .instance-body) (!= (. function kind) .generator-body)))
+    (if (or (not (. unit received)) (!= (. function kind) .instance-body))
       (return false)
+    )
+    (let made ([] (. instances rows) (. unit instance)))
+    (match? ([] (. ([] (. program modules) (. made module)) decls) (. made decl))
+      (case (call .decl-function fn)
+        (if (!= (. fn kind) .subscriber-decl)
+          (return false)
+        )
+      )
     )
     (return (and (!= (call (. program effects index-of) (. kept module) (. kept decl)) null) (!= (call made-place row) no-place)))
   )
@@ -22969,7 +22977,7 @@
     ; Before the body of a spawned task, a lambda or a comprehension calls a function that reads
     ; globals `do with` binds outside its bindings of them, each slot no binding around the call
     ; holds is kept, and set to the state the body holds, as TypeScript does, and so for an effect's
-    ; slot in any other nested function given the environment it was made in. The local each is
+    ; slot in the body of a loop on a stream. The local each is
     ; kept in, or none. A spawned task's slot is its own, so it stays set after the call, for a
     ; generator the call made to read when it runs. As a read of one, a call in a cleanup a landing pad runs is refused where a
     ; `do with` after the cleanup binds it. A nested function called holds what it captured, and is
