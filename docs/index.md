@@ -65,9 +65,15 @@ ships. Unlike the core tests, they show how complete programs are written.
   SVG export. `terminal` runs your shell in tabs and windows, with menus and key shortcuts.
 - [`examples/games`](../examples/games): three macOS games, `resonance`, `prism-break` and
   `clatter-hill`, a marble run with sound.
-- [`examples/graphics`](../examples/graphics): macOS windows that draw with the graphics library:
-  vector markup in `vector-flower.bx`, a style sheet for a drawing in `vector-chart.bx`, and a
-  tiling generated again as the window resizes in `truchet.bx`.
+- [`examples/graphics`](../examples/graphics): macOS windows that draw with the graphics library.
+  `vector-flower.bx` builds a drawing with vector markup, `vector-chart.bx` styles one with a style
+  sheet, and `truchet.bx` generates a tiling again as the window resizes. `boolean-shapes.bx`,
+  `lettering.bx` and `offset-contours.bx` make new paths from paths with booleans, strokes and
+  offsets, and `path-crossings.bx` finds where paths cross and which of their points is nearest.
+  `circle-packing.bx` packs circles into a shape, `woven-knot.bx` weaves strands over and under
+  each other, and `stained-glass.bx` finds the panes that crossing leads close off. `ink-sketch.bx`
+  draws tapered ink strokes, and `natural-media.bx` paints a landscape in watercolor, gouache,
+  crayon, charcoal, ink, marker and pencil.
 
 `examples/tui/chromatic` also needs macOS, since it draws with the graphics library, and so does
 `examples/tui/pulse` unless it runs with `--demo`.
