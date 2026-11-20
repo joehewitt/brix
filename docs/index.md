@@ -50,12 +50,12 @@ ships. Unlike the core tests, they show how complete programs are written.
   familiar programs, such as `lisp-interpreter.bx`, `game-of-life.bx` and `text-adventure.bx`.
 - [`examples/net`](../examples/net): an HTTP client and server, a WebSocket chat server for
   browsers with a client that joins it, and an MCP server.
-- [`examples/tui`](../examples/tui): terminal programs, from the small `order.bx`, `timer.bx` and
-  `todo.bx` to `chromatic`, a pixel animation studio, `pulse`, a system dashboard, and
-  `githistory`, a Git history browser with a commit graph, diffs and live updates, plus one program
-  per feature, such as `table.bx`, `dialogs.bx` and `scrolling.bx`. `chat` talks to OpenAI, or,
-  with no key, to the stand-in for its API in `chat/chat-mock.bx`, served inside the program under
-  a fake network.
+- [`examples/tui`](../examples/tui): terminal programs. `basics` holds small programs of one file
+  each, such as `order.bx`, `timer.bx` and `todo.bx`, and one program per feature, such as
+  `table.bx`, `dialogs.bx` and `scrolling.bx`. `chromatic` is a pixel animation studio, `pulse` a
+  system dashboard, and `githistory` a Git history browser with a commit graph, diffs and live
+  updates. `chat` talks to OpenAI, or, with no key, to the stand-in for its API in
+  `chat/chat-mock.bx`, served inside the program under a fake network.
 - [`examples/gui`](../examples/gui): macOS apps. `basics` holds small apps of one file each.
   `showcase/showcase-app.bx` gathers panels of components, effects and motion into one app, and
   opens the panel named after `--`, such as `menus` or `scrolling`.
@@ -70,7 +70,8 @@ ships. Unlike the core tests, they show how complete programs are written.
 `examples/tui/chromatic` also needs macOS, since it draws with the graphics library, and so does
 `examples/tui/pulse` unless it runs with `--demo`.
 
-To try one from your project, run `brix <toolchain root>/examples/tui/timer.bx -o .tmp/build/timer`.
+To try one from your project, run
+`brix <toolchain root>/examples/tui/basics/timer.bx -o .tmp/build/timer`.
 
 ## The Standard Library
 
