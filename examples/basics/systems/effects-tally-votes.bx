@@ -1,0 +1,36 @@
+; Effects: `tally-votes` is a filter, like the programs a shell pipes together:
+; it reads standard input to its end and prints how often each line came. Under
+; a `FakeConsole` the program types the input in and keeps what the filter
+; prints, so the filter runs with no terminal, and what it printed can be
+; checked, and shown framed.
+(import /os/fake-console)
+(import /os/file)
+(blank)
+
+(main
+  (let fake (call FakeConsole))
+  (call (. fake type-in) "tea\ncoffee\ntea\nwater\ntea\ncoffee\n")
+  (call (. fake end-input))
+  (do-with console fake
+    (call tally-votes)
+  )
+  (let written (call (. fake written)))
+  (for (in line (call (. (call (. written trim)) split) "\n"))
+    (print (str "| " line))
+  )
+  (print (str "as expected: " (== written "tea 3\ncoffee 2\nwater 1\n")))
+)
+
+(fn-do + tally-votes _
+  (let counts (call (of Map String Int)))
+  (let choices (call (of List String)))
+  (for (in vote (call (. (call (. (as stdin String) trim)) split) "\n"))
+    (if (not ([] counts vote))
+      (+= choices vote)
+    )
+    (= ([] counts vote) (+ (?? ([] counts vote) 0) 1))
+  )
+  (for (in choice choices)
+    (print (str choice " " (?? ([] counts choice) 0)))
+  )
+)

@@ -1,0 +1,59 @@
+; Effects: `summary` describes a Git repository with the `/git` library, which
+; runs the `git` program. Under a `FakeProcess`, a script written in Brix plays
+; git: it is handed the arguments the library passes and answers on the
+; program's output, so `summary` runs with no git and no repository. For a
+; folder that is not a repository the script fails as git does, and the
+; library raises its `GitError` as it would for the real one.
+(import /git)
+(import /os/fake-process)
+(import /os/process)
+(blank)
+
+(main
+  (do-with process (call FakeProcess fake-git)
+    (call show "/work/brix")
+    (call show "/tmp")
+  )
+)
+
+(fn-do + show _
+  (param directory String)
+  (match (catch (call summary directory))
+    (case (: error GitError)
+      (print (str directory ": git failed with status " (. error status) ", " (. error message)))
+    )
+    (case (: error Error)
+      (print (str directory ": " (. error message)))
+    )
+    (case (: text String)
+      (print text)
+    )
+  )
+)
+
+(fn-do + summary String (?! Error)
+  (param directory String)
+  (let remotes (call git-remotes directory))
+  (let count (call git-count-commits directory "HEAD"))
+  (return (str directory ": " count " commits, pushed to " (call (. ", " join) remotes)))
+)
+
+(fn-do + fake-git Int
+  (param run FakeProcessRun)
+  (if (!= (. run directory) "/work/brix")
+    (call (. run complain) "fatal: not a git repository (or any of the parent directories): .git")
+    (return 128)
+  )
+  (let command (call (. " " join) (. run arguments)))
+  (if (call (. command ends-with) " remote")
+    (call (. run say) "origin")
+    (call (. run say) "mirror")
+    (return 0)
+  )
+  (if (call (. command find) " rev-list --count ")
+    (call (. run say) "1207")
+    (return 0)
+  )
+  (call (. run complain) (str "git: '" command "' is not a git command"))
+  (return 1)
+)

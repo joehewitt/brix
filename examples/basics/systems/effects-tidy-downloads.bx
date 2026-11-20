@@ -1,0 +1,53 @@
+; Effects: `tidy-downloads` deletes the downloads in the user's home folder that
+; never finished. Under fakes it can do no harm. `environment` gives it a home
+; of `/home/ada`, and `files` maps every path it names into a fresh folder, so
+; it lists, writes and deletes there and sees paths as if that folder were `/`.
+; The program sets up the downloads through the fake too. Nothing in
+; `tidy-downloads` knows it is not running for real, and the real `/etc/hosts`
+; cannot be seen from inside.
+(import /os/env)
+(import /os/fake-environment)
+(import /os/fake-files)
+(import /os/file)
+(import /os/files)
+(import /os/path)
+(import /stream/sort)
+(blank)
+
+(main
+  (let root (call temporary-directory "tidy"))
+  (let variables (call (of Map String String)))
+  (= ([] variables "HOME") "/home/ada")
+  (do-with environment (call FakeEnvironment variables)
+    (do-with files (call FakeFiles root)
+      (call (. (call downloads) make-directories))
+      (for (in name (list "talk.mp4" "talk.mp4.part" "notes.txt" "photos.zip.part"))
+        (call write-file-atomically (/ (call downloads) name) name)
+      )
+      (call tidy-downloads)
+      (print (str "left in " (call downloads) ": " (call (. ", " join) (call names-in (call downloads)))))
+      (print (str "inside, /etc/hosts exists: " (. (call Path "/etc/hosts" 0) exists)))
+    )
+  )
+  (print (str "outside, /etc/hosts exists: " (. (call Path "/etc/hosts" 0) exists)))
+  (call remove-tree root)
+)
+
+(fn-expr + downloads Path
+  (/ (call Path (?? (call env "HOME") "/") 0) "Downloads")
+)
+
+(fn-do + tidy-downloads _
+  (for (in name (call names-in (call downloads)))
+    (if (call (. name ends-with) ".part")
+      (let path (/ (call downloads) name))
+      (call (. path delete))
+      (print (str "deleted " path))
+    )
+  )
+)
+
+(fn-do + names-in (list String)
+  (param folder Path)
+  (return (call sort (call List (in (. each name) (. folder entries)))))
+)
