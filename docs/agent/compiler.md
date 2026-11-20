@@ -6,7 +6,8 @@ that `.release.json` pins (`toolchain/compiler.py`).
 
 | Directory | Holds |
 |---|---|
-| `stdlib/lang/ast` | parser, AST tables, declarations, modules, the program and its name index |
+| `stdlib/lang/reader` | the Brix reader: the heads and shapes of forms, and the syntax tree it builds from them |
+| `stdlib/lang/ast` | AST tables, declarations, modules, the program and its name index |
 | `stdlib/lang/check` | binding, the type store and relations, typing, facts, diagnostics |
 | `stdlib/lang/report` | the text of facts, diagnostics and declarations, for reports and inspection |
 | `stdlib/lang/emit` | program tables, the emitter, the inliner, IR to MIR, the emission round, linking |
@@ -134,7 +135,7 @@ that `.release.json` pins (`toolchain/compiler.py`).
 
 **Binding**
 - The `with` and `without` sections of a block or a header never reach binding. Both readers
-  lower them (`section-annotations` and `stack-bound` in `ast/_grammar-helpers.bx`): a
+  lower them (`section-annotations` and `stack-bound` in `reader/_grammar-helpers.bx`): a
   `without` name becomes the annotation it stands for, and each binding an
   `ASTStackLocalBindingBlock`.
 - Binding reads syntax and declaration rows, never types. No type id appears in a binding table.
