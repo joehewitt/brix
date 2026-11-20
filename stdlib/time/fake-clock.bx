@@ -96,7 +96,13 @@
     (= monotonic point)
   )
   (fn-do _ settle _
-    (call check-task-cancelation (call real-wait-for-duration 0 (call Semaphore)))
+    (let result (call C:brixSuspendActiveTaskUntilIdle))
+    (if (== result C:BxIdleWaitUnsupported)
+      (call check-task-cancelation (call real-wait-for-duration 0 (call Semaphore)))
+      (else
+        (call check-task-cancelation (== result C:BxIdleWaitCanceled))
+      )
+    )
   )
   (fn-do _ add-waiter U64
     (param deadline U64)

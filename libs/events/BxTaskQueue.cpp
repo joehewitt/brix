@@ -27,6 +27,8 @@ static const int kPriorityFairnessLimit = 8;
 static const uint32_t kInjectedCheckInterval = 61;
 static const int kTaskBatchLimit = 32;
 static const long kIdleGCRetryNanos = 20000000L;
+static const long kIdleWaitRetryNanos = 100000L;
+static const uint64_t kIdleWaitPatienceNanos = 1000000000ull;
 
 static std::mutex gQueueTreeMutex;
 
@@ -811,6 +813,7 @@ BxTaskQueue::nextTask(BxTask** outTask) {
 
     bool checkedIdleGC = false;
     bool retriesIdleGC = false;
+    uint64_t pendingSince = 0;
     while (true) {
         if (takeNextTaskLocked(outTask)) {
             pthread_mutex_unlock(&lock);
@@ -820,6 +823,32 @@ BxTaskQueue::nextTask(BxTask** outTask) {
         if (isFinished) {
             pthread_mutex_unlock(&lock);
             return false;
+        }
+
+        if (!idleWaiters.empty()) {
+            pthread_mutex_unlock(&lock);
+            bool pending = brixHasPendingEventWork();
+            uint64_t now = brixMonotonicTimeNanoseconds();
+            pthread_mutex_lock(&lock);
+            if (hasRunnableTasksLocked() || idleWaiters.empty()) {
+                continue;
+            }
+            if (pending) {
+                if (!pendingSince) {
+                    pendingSince = now;
+                }
+                if (now - pendingSince < kIdleWaitPatienceNanos) {
+                    waitForPendingWorkLocked();
+                    continue;
+                }
+            }
+            pendingSince = 0;
+            BxTask* waiter = idleWaiters.back();
+            idleWaiters.pop_back();
+            pthread_mutex_unlock(&lock);
+            scheduleTask(waiter, true);
+            pthread_mutex_lock(&lock);
+            continue;
         }
 
         consecutivePriorityTasks = 0;
@@ -868,6 +897,60 @@ BxTaskQueue::nextTask(BxTask** outTask) {
         }
         --sleepingThreads;
     }
+}
+
+uint32_t
+BxTaskQueue::waitUntilIdle(BxThread* thread, BxTask* task) {
+    if (task->getCanceled()) {
+        return BxIdleWaitCanceled;
+    }
+
+    pthread_mutex_lock(&lock);
+    bool supported = !workers && !hostedTask && !pendingHostRun && !activeHostWake &&
+        thread->getTaskQueue() == this;
+    if (supported) {
+        idleWaiters.push_back(task);
+    }
+    pthread_mutex_unlock(&lock);
+    if (!supported) {
+        return BxIdleWaitUnsupported;
+    }
+
+    thread->suspendTask(task, NULL, BxTaskGCStateBlocked);
+
+    pthread_mutex_lock(&lock);
+    removeIdleWaiterLocked(task);
+    pthread_mutex_unlock(&lock);
+    return task->getCanceled() ? BxIdleWaitCanceled : BxIdleWaitIdle;
+}
+
+void
+BxTaskQueue::removeIdleWaiterLocked(BxTask* task) {
+    for (size_t index = idleWaiters.size(); index > 0; --index) {
+        if (idleWaiters[index - 1] == task) {
+            idleWaiters.erase(idleWaiters.begin() + static_cast<long>(index - 1));
+            return;
+        }
+    }
+}
+
+void
+BxTaskQueue::waitForPendingWorkLocked() {
+    ++sleepingThreads;
+#if defined(__APPLE__)
+    struct timespec retry = { 0, kIdleWaitRetryNanos };
+    pthread_cond_timedwait_relative_np(&cond, &lock, &retry);
+#else
+    struct timespec retry;
+    clock_gettime(CLOCK_MONOTONIC, &retry);
+    retry.tv_nsec += kIdleWaitRetryNanos;
+    if (retry.tv_nsec >= 1000000000L) {
+        retry.tv_sec += 1;
+        retry.tv_nsec -= 1000000000L;
+    }
+    pthread_cond_clockwait(&cond, &lock, CLOCK_MONOTONIC, &retry);
+#endif
+    --sleepingThreads;
 }
 
 bool

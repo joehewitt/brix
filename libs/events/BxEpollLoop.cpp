@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
 #include <sys/syscall.h>
@@ -76,7 +77,8 @@ BxEpollLoop::BxEpollLoop():
     signalDescriptor(-1),
     stopRequested(false),
     armedDeadlineNanoseconds(UINT64_MAX),
-    timerDeadlineNanoseconds(UINT64_MAX)
+    timerDeadlineNanoseconds(UINT64_MAX),
+    heldTaskCount(0)
 {
     pthread_mutex_init(&lock, 0);
 }
@@ -148,8 +150,9 @@ BxEpollLoop::beginWait(BxPollWaiter* waiter, uint64_t deadlineNanoseconds) {
         takeWaitersLocked(descriptor->readers, tasks);
         takeWaitersLocked(descriptor->writers, tasks);
     }
+    holdTasksLocked(tasks);
     pthread_mutex_unlock(&lock);
-    brixScheduleTasks(tasks);
+    scheduleHeldTasks(tasks);
     return BxPollWaitStartReady;
 }
 
@@ -175,9 +178,10 @@ BxEpollLoop::releaseDescriptor(int fd) {
         descriptors[fd] = NULL;
         delete descriptor;
     }
+    holdTasksLocked(tasks);
     pthread_mutex_unlock(&lock);
 
-    brixScheduleTasks(tasks);
+    scheduleHeldTasks(tasks);
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -346,8 +350,9 @@ BxEpollLoop::runEventLoop() {
         expireTimersLocked(now, tasks);
         uint64_t deadline = timers.empty() ? UINT64_MAX : timers.top()->deadlineNanoseconds;
         armedDeadlineNanoseconds = deadline;
+        holdTasksLocked(tasks);
         pthread_mutex_unlock(&lock);
-        brixScheduleTasks(tasks);
+        scheduleHeldTasks(tasks);
         armTimer(deadline);
 
         int count = epoll_wait(epoll, events, kBxEventBatchSize, -1);
@@ -382,8 +387,9 @@ BxEpollLoop::runEventLoop() {
                 break;
             }
         }
+        holdTasksLocked(tasks);
         pthread_mutex_unlock(&lock);
-        brixScheduleTasks(tasks);
+        scheduleHeldTasks(tasks);
         if (!exited.empty()) {
             for (int pid : exited) {
                 brixProcessExited(pid);
@@ -580,6 +586,50 @@ BxEpollLoop::watch(int fd, uint32_t events, uint64_t tag) {
         return 0;
     }
     return errno;
+}
+
+void
+BxEpollLoop::holdTasksLocked(std::vector<BxTask*>& tasks) {
+    heldTaskCount.fetch_add(tasks.size(), std::memory_order_acq_rel);
+}
+
+void
+BxEpollLoop::scheduleHeldTasks(std::vector<BxTask*>& tasks) {
+    size_t held = tasks.size();
+    brixScheduleTasks(tasks);
+    heldTaskCount.fetch_sub(held, std::memory_order_acq_rel);
+}
+
+bool
+BxEpollLoop::hasPendingWork() {
+    std::vector<struct pollfd> watched;
+    pthread_mutex_lock(&lock);
+    bool pending = heldTaskCount.load(std::memory_order_acquire) != 0 ||
+        (!timers.empty() && timers.top()->deadlineNanoseconds <= brixMonotonicTimeNanoseconds());
+    if (!pending) {
+        for (size_t fd = 0; fd < descriptors.size(); ++fd) {
+            BxEpollDescriptor* descriptor = descriptors[fd];
+            if (!descriptor || descriptor->unpollable) {
+                continue;
+            }
+            short events = (descriptor->readers.head ? POLLIN : 0) |
+                (descriptor->writers.head ? POLLOUT : 0);
+            if (events) {
+                watched.push_back({static_cast<int>(fd), events, 0});
+            }
+        }
+        if (!watched.empty() &&
+            poll(watched.data(), static_cast<nfds_t>(watched.size()), 0) > 0) {
+            for (const struct pollfd& entry : watched) {
+                if (entry.revents & (POLLIN | POLLOUT | POLLHUP | POLLERR)) {
+                    pending = true;
+                    break;
+                }
+            }
+        }
+    }
+    pthread_mutex_unlock(&lock);
+    return pending;
 }
 
 void

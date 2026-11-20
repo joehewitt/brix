@@ -96,6 +96,7 @@ public:
     void wakeCanceledTask(BxTask* task);
     void enqueueClaimedTask(BxTask* task, bool yielded);
     bool hasWaitingTasks();
+    uint32_t waitUntilIdle(BxThread* thread, BxTask* task);
 
     void taskTerminated(BxTask* task);
 
@@ -134,6 +135,8 @@ private:
     void finishStopIfDrained();
     void signalWaiters();
     bool runPendingHost();
+    void removeIdleWaiterLocked(BxTask* task);
+    void waitForPendingWorkLocked();
     bool startTaskImpl(
         BxTaskStartFunc func,
         void* closure,
@@ -172,6 +175,7 @@ private:
     bool stopDrained;
     std::vector<BxTask*> stopWaiters;
     BxTask* hostedTask;
+    std::vector<BxTask*> idleWaiters;
     BxTaskQueueHostRunFunc pendingHostRun;
     BxTaskQueueHostWakeFunc activeHostWake;
     void* hostContext;

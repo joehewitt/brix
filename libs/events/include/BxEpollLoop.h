@@ -48,6 +48,7 @@ public:
 
     void runEventLoop();
     uint64_t nextScheduledDeadlineNanoseconds();
+    bool hasPendingWork();
 
 private:
     BxEpollDescriptor* descriptorLocked(int fd);
@@ -63,6 +64,8 @@ private:
     void armTimer(uint64_t deadlineNanoseconds);
     int watch(int fd, uint32_t events, uint64_t tag);
     void wakeLoop();
+    void holdTasksLocked(std::vector<BxTask*>& tasks);
+    void scheduleHeldTasks(std::vector<BxTask*>& tasks);
 
 private:
     pthread_t tid;
@@ -79,6 +82,7 @@ private:
     std::unordered_map<int, BxTask*> signalWatches;
     uint64_t armedDeadlineNanoseconds;
     uint64_t timerDeadlineNanoseconds;
+    std::atomic<size_t> heldTaskCount;
 };
 
 // *************************************************************************************************

@@ -1099,6 +1099,10 @@ ring
   earliest first, with the clocks set to each wait's time, and lets the task and the tasks it makes
   ready run until they wait again before it takes the next. It leaves the clocks at the time it
   was given. `freeze` advances instead of stopping the thread.
+- **Ready.** A task waiting for a socket or a pipe that is already ready, or for a real timer that
+  is due, counts as ready to run, so `advance` waits for it as well. Tasks on other threads, such
+  as those `do-new-thread` starts, and waits for a terminal are not watched. Where the system runs
+  the main loop, as in an app, `advance` lets each ready task run one turn instead.
 - **Handles.** A wait for a handle with a deadline ends when the handle is ready, or as a timeout
   when `advance` reaches the deadline.
 

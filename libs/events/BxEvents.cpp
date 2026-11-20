@@ -1491,6 +1491,18 @@ brixNextScheduledWorkDeadlineNanoseconds() {
 }
 
 extern "C" bool
+brixHasPendingEventWork() {
+    return gPollLoop && gPollLoop->hasPendingWork();
+}
+
+extern "C" uint32_t
+brixSuspendActiveTaskUntilIdle() {
+    BxThread* thread = brixGetActiveThread();
+    BxTask* task = thread->getActiveTask();
+    return task->getTaskQueue()->waitUntilIdle(thread, task);
+}
+
+extern "C" bool
 brixSuspendActiveTaskUntilAbsoluteTime(uint64_t deadlineNs, BxSemaphore* sem) {
     BxThread* thread = brixGetActiveThread();
     BxTask* task = thread->getActiveTask();

@@ -42,6 +42,12 @@ enum BxWaitResult {
     BxWaitTimedOut = 2
 };
 
+enum BxIdleWaitResult {
+    BxIdleWaitIdle = 0,
+    BxIdleWaitCanceled = 1,
+    BxIdleWaitUnsupported = 2
+};
+
 // *************************************************************************************************
 
 BRIX_WITHOUT_GC BxThread* brixGetActiveThread();
@@ -144,6 +150,8 @@ extern "C" BRIX_WITHOUT_BLOCKING bool brixSuspendActiveTaskUntilSignal(int sig, 
 extern "C" BRIX_WITHOUT_BLOCKING bool brixSuspendActiveTaskUntilTime(long int us, BxSemaphore* sem);
 extern "C" uint64_t brixMonotonicTimeNanoseconds();
 extern "C" uint64_t brixNextScheduledWorkDeadlineNanoseconds();
+extern "C" bool brixHasPendingEventWork();
+extern "C" BRIX_WITHOUT_BLOCKING uint32_t brixSuspendActiveTaskUntilIdle();
 extern "C" BRIX_WITHOUT_BLOCKING bool brixSuspendActiveTaskUntilAbsoluteTime(
     uint64_t deadlineNs, BxSemaphore* sem);
 extern "C" void brixReleaseEventDescriptor(int fd);

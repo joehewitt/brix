@@ -6,6 +6,7 @@
 #include <BxEvents/BxPoll.h>
 
 #include <sys/event.h>
+#include <atomic>
 #include <pthread.h>
 #include <stdint.h>
 #include <unordered_map>
@@ -50,6 +51,7 @@ public:
 
     void runEventLoop();
     uint64_t nextScheduledDeadlineNanoseconds();
+    bool hasPendingWork();
 
 private:
     BxPollDescriptor* descriptorLocked(int fd);
@@ -63,6 +65,8 @@ private:
     int registerFilter(int fd, int16_t filter);
     void submit(struct kevent& change);
     void wakeLoop();
+    void holdTasksLocked(std::vector<BxTask*>& tasks);
+    void scheduleHeldTasks(std::vector<BxTask*>& tasks);
 
 private:
     pthread_t tid;
@@ -72,6 +76,7 @@ private:
     BxTimerHeap timers;
     std::unordered_map<uint64_t, BxTimerNode*> sleepTimers;
     uint64_t armedDeadlineNanoseconds;
+    std::atomic<size_t> heldTaskCount;
 };
 
 // *************************************************************************************************
