@@ -6,8 +6,9 @@
 (prop _ wave-limit _ (= 12))
 (prop _ wave-room _ (= 16))
 (prop _ wave-crossing _ (= 3.2))
-(prop _ wave-life _ (= 6.5))
-(prop _ wave-fade _ (= 1.5))
+(prop _ wave-span _ (= 1.6))
+(prop _ wave-life _ (= (+ (* wave-crossing wave-span) wave-reach)))
+(prop _ wave-fade _ (= 0.3))
 (prop _ hurried-fade _ (= 0.5))
 (prop _ shortest-gap _ (= 1.6))
 (prop _ longest-gap _ (= 3.4))
@@ -26,7 +27,7 @@
     )
     (let reach (/ (call sqrt (+ (* (. world width) (. world width)) (* (. world height) (. world height)))) 2))
     (let color (call palette-at wave-palette (call random)))
-    (+= waves (call FieldWave (. point x) (. point y) time (/ reach wave-crossing) (+ time wave-life) wave-fade color))
+    (+= waves (call FieldWave (. point x) (. point y) time (/ reach wave-crossing) (* reach wave-span) (+ time wave-life) wave-fade color))
   )
   (fn-do + advance _
     (param time F64)
@@ -74,7 +75,7 @@
 (fn-expr _ live-wave LiveWave
   (param wave FieldWave)
   (param time F64)
-  (call LiveWave (. wave x) (. wave y) (. wave start) (/ 1 (. wave speed)) strength (. wave color))
+  (call LiveWave (. wave x) (. wave y) (. wave start) (/ 1 (. wave speed)) (. wave span) strength (. wave color))
   (where
     (lazy strength (- 1 (call smooth-step (. wave ends) (+ (. wave ends) (. wave fade)) time)))
   )
