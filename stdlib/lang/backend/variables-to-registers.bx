@@ -31,12 +31,8 @@
   (prop _ view-count U32)
   (prop _ seen-vregs (of CPointer U32))
   (prop _ seen-mark U32)
-  (prop _ promotes-narrow Bool)
   (fn-do + This _
     (param builder MIRBuilder)
-    (param promotes-narrow Bool (= true))
-    ; Without `promotes-narrow`, an object a byte or half-word access reads or writes stays in the
-    ; frame, as the reference's backend leaves it.
     (lazy function (. builder function))
   )
   (fn-expr _ arena Arena :get @inline
@@ -209,7 +205,7 @@
           (if (or (== object no-frame-object) (== ([] promotable object) 0))
             (continue)
           )
-          (if (and (!= opcode .ldr) (!= opcode .str) (or (!= entry 1) (not promotes-narrow) (not is-narrow)))
+          (if (and (!= opcode .ldr) (!= opcode .str) (or (!= entry 1) (not is-narrow)))
             (= ([] promotable object) 0)
             (else-if (not (call has-compatible-register-class ([] operands 0) object))
               (= ([] promotable object) 0)
@@ -231,9 +227,7 @@
         )
       )
     )
-    (if promotes-narrow
-      (call widen-promoted-accesses)
-    )
+    (call widen-promoted-accesses)
   )
   (fn-expr _ is-narrow-access Bool
     (param opcode Opcode)

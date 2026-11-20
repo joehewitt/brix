@@ -59,7 +59,6 @@
 (type + MIRLocalCleanupPass
   (prop _ builder MIRBuilder)
   (prop _ function MIRFunction)
-  (prop _ knows-bits Bool)
   (prop _ tracked (of CPointer U32))
   (prop _ widths (of CPointer Byte))
   (prop _ definers (of CPointer U32))
@@ -69,7 +68,6 @@
   (prop _ sites IdList)
   (fn-do + This _
     (param builder MIRBuilder)
-    (param knows-bits Bool (= false))
     (lazy function (. builder function))
   )
   (fn-do + run Bool
@@ -438,7 +436,7 @@
       (call define vreg unknown-width id)
       (return pending)
     )
-    (if (and (== entry 0) (== (. ([] (. function vregs) row) hint) no-register) knows-bits (call is-bitwise-join id))
+    (if (and (== entry 0) (== (. ([] (. function vregs) row) hint) no-register) (call is-bitwise-join id))
       (call define vreg 0 id)
       (let joined (call join-source vreg ([] (. ([] (. function instructions) id) operands) 1) pending))
       (return (call join-source vreg ([] (. ([] (. function instructions) id) operands) 2) joined))
@@ -533,9 +531,6 @@
     )
     (if (== opcode .mov)
       (return (call value-width (call known-int function ([] operands 1))))
-    )
-    (if (not knows-bits)
-      (return unknown-width)
     )
     (let bits (* (call class-size (. ([] (. function vregs) defined) reg-class)) 8))
     (if (and (== opcode .and) (== (. operands length) 3))
@@ -5743,23 +5738,20 @@
 
 (type + MIRJumpThreadingPass
   ; Sends a block that jumps on to a conditional branch straight to the side that branch takes,
-  ; when the constants it leaves settle the branch. With `orders`, a compare of two constants
-  ; settles every condition a CSET reads after it; without, only whether they are equal.
+  ; when the constants it leaves settle the branch. A compare of two constants settles every
+  ; condition a CSET reads after it.
   (prop _ builder MIRBuilder)
   (prop _ function MIRFunction)
-  (prop _ orders Bool)
   (prop _ constants (of CPointer U64))
   (prop _ is-constant (of CPointer Byte))
   (prop _ constant-ids IdList)
   (prop _ constant-count U32)
   (prop _ is-compared Bool)
-  (prop _ is-equal Bool)
   (prop _ compared-left U64)
   (prop _ compared-right U64)
   (prop _ compared-width U64)
   (fn-do + This _
     (param builder MIRBuilder)
-    (param orders Bool (= true))
     (lazy function (. builder function))
   )
   (fn-do + run Bool
@@ -6048,8 +6040,7 @@
       (let left (call value-of dest))
       (let right (call value-of source))
       (let row (call vreg-row function dest))
-      (= is-compared (and (. left is-known) (. right is-known) (or (== (. operands length) 2) (not orders))))
-      (= is-equal (and (== (. left bits) (. right bits)) (== (. left is-negative) (. right is-negative))))
+      (= is-compared (and (. left is-known) (. right is-known) (== (. operands length) 2)))
       (= compared-left (. left bits))
       (= compared-right (. right bits))
       (= compared-width (if-expr is-narrow 32 64))
@@ -6106,21 +6097,11 @@
   )
   (fn-expr _ settles Bool
     (param code U32)
-    (case? orders
-      (<= code (. Condition always))
-    )
-    (default
-      (or (== code (. Condition equal)) (== code (. Condition unequal)))
-    )
+    (<= code (. Condition always))
   )
   (fn-expr _ holds Bool
     (param code U32)
-    (case? orders
-      (call holds-for code (call compare-flags compared-left compared-right compared-width))
-    )
-    (default
-      (== (== code (. Condition equal)) is-equal)
-    )
+    (call holds-for code (call compare-flags compared-left compared-right compared-width))
   )
   (fn-do _ condition-code U32
     (param operand OperandId)

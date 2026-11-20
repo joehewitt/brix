@@ -16,15 +16,10 @@
   (prop _ seen-roots (of CPointer U32))
   (prop _ seen-mask U32)
   (prop _ taken IdList)
-  (prop _ narrows-roots Bool)
   (fn-do + This _
     (param builder MIRBuilder)
     (param liveness MIRLiveness)
     (param flow MIRPointerFlow)
-    (param narrows-roots Bool (= true))
-    ; Without `narrows-roots`, every frame object that may hold a pointer stays a root, and every
-    ; one keeps its place in the frame, as the reference's backend keeps them (see
-    ; `derive-lifetimes`).
     (lazy function (. builder function))
   )
   (fn-expr _ arena Arena :get @inline
@@ -58,10 +53,10 @@
   )
   (fn-do _ derive-lifetimes _
     (param objects IdList)
-    ; Gives each frame object whose address does not escape the positions it lives over. With
-    ; `narrows-roots`, one that no code refers to, as a variable promoted to registers, leaves its
-    ; slot and takes no place in the frame. It and one that lives over no call where the collector
-    ; may run hold no root, and no safepoint lists them.
+    ; Gives each frame object whose address does not escape the positions it lives over. One that
+    ; no code refers to, as a variable promoted to registers, leaves its slot and takes no place in
+    ; the frame. It and one that lives over no call where the collector may run hold no root, and
+    ; no safepoint lists them.
     (call (. flow run-objects) (. liveness blocks) objects)
     (let candidates IdList)
     (for (in root (..< 0 (. objects length)))
@@ -70,7 +65,7 @@
       )
       (if (!= (. ([] (. flow references) root) length) 0)
         (= candidates (call (. candidates appended) arena root))
-        (else-if narrows-roots
+        (else
           (let object ([] objects root))
           (= (. ([] (. function frame-objects) object) gc-root) false)
           (= (. ([] (. function slots) (. ([] (. function frame-objects) object) slot)) objects) (call IdList))
@@ -159,9 +154,6 @@
       (= (. ([] (. function frame-objects) ([] objects ([] candidates id))) lifetime) (call Span first (. ranges length)))
     )
     (= (. function lifetimes) flat)
-    (if (not narrows-roots)
-      (return)
-    )
     (let safepoints (call safepoint-positions))
     (for (in id (..< 0 count))
       (if (not (call crosses-safepoint ([] lifetimes id) safepoints))

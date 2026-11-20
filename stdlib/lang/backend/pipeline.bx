@@ -118,15 +118,7 @@
 (type + FunctionPipeline
   ; One worker's path from a built MIR function to its compact record: the passes, register
   ; allocation and encoding, over one function arena that each function resets. A caller fills
-  ; `function` through `builder` or a decoder, then lowers and encodes it. With `reference`, it
-  ; runs the passes as the reference's backend does, without constant folding, value numbering,
-  ; if-conversion, the widths that known bits give, the promotion of narrow accesses, the
-  ; forwarding of frame stores, the folding of addresses, the combining of instructions, the
-  ; narrower roots, the threading of jumps through conditions other than equality, the coalescing
-  ; of copies and call registers, the loads and stores that copies of spilled values become, the
-  ; computing again of cheap values in place of spilling them, the registers spilled values are
-  ; given between calls or the folding of branches after allocation, so that a bundle the
-  ; reference captured lowers to the reference's object, as the backend comparison needs.
+  ; `function` through `builder` or a decoder, then lowers and encodes it.
   (blank)
   (prop + bundle Bundle)
   (prop + function MIRFunction)
@@ -160,16 +152,14 @@
   (prop _ stages (of Array StageHash))
   (prop _ stage-count U32)
   (prop _ keeps-text Bool)
-  (prop _ reference Bool)
   (fn-do + This _
     (param bundle Bundle)
     (param through Stage (= .record))
     (param dumps-stages Bool (= false))
-    (param reference Bool (= false))
     (= (. function pool-size) (. bundle string-count))
     (blank)
     (lazy builder (call MIRBuilder bundle function))
-    (lazy mem2reg (call MIRVariablesToRegisters builder (not reference)))
+    (lazy mem2reg (call MIRVariablesToRegisters builder))
     (lazy constant-folding (call MIRConstantFoldingPass builder))
     (lazy value-numbering (call MIRValueNumberingPass builder))
     (lazy if-conversion (call MIRIfConversionPass builder))
@@ -177,15 +167,15 @@
     (lazy edge-splitter (call MIRCriticalEdgeSplitter builder))
     (lazy phi-elimination (call MIRPhiElimination builder))
     (lazy block-layout (call MIRBlockLayoutPass builder))
-    (lazy local-cleanup (call MIRLocalCleanupPass builder (not reference)))
+    (lazy local-cleanup (call MIRLocalCleanupPass builder))
     (lazy cfg-cleanup (call MIRCFGCleanupPass builder))
-    (lazy jump-threading (call MIRJumpThreadingPass builder (not reference)))
+    (lazy jump-threading (call MIRJumpThreadingPass builder))
     (lazy compare-branch-fusion (call MIRCompareBranchFusionPass builder))
     (lazy branch-folding (call MIRBranchFoldingPass builder))
     (lazy address-folding (call MIRAddressFoldingPass builder))
     (lazy combining (call MIRInstructionCombiningPass builder))
     (lazy frame-forwarding (call MIRFrameForwardingPass builder))
-    (lazy allocator (call MIRRegisterAllocator builder (not reference) (not reference) (not reference) (not reference)))
+    (lazy allocator (call MIRRegisterAllocator builder))
     (lazy encoder (call FunctionEncoder bundle function results))
     (lazy text (call MIRText bundle function))
     (lazy stages (call (of Array StageHash) 32))
@@ -219,11 +209,9 @@
     (if (call ends .mem2reg)
       (return false)
     )
-    (if (not reference)
-      (call (. constant-folding run))
-      (call (. value-numbering run))
-      (call (. if-conversion run))
-    )
+    (call (. constant-folding run))
+    (call (. value-numbering run))
+    (call (. if-conversion run))
     (call (. barrier-lowering run))
     (if (call ends .write-barriers)
       (return false)
@@ -273,14 +261,12 @@
         (return false)
       )
     )
-    (if (not reference)
-      (if (call (. frame-forwarding run))
-        (call (. local-cleanup run))
-      )
-      (call (. address-folding run))
-      (if (call (. combining run))
-        (call (. local-cleanup run))
-      )
+    (if (call (. frame-forwarding run))
+      (call (. local-cleanup run))
+    )
+    (call (. address-folding run))
+    (if (call (. combining run))
+      (call (. local-cleanup run))
     )
     (call (. function forget-use-counts))
     (call (. allocator liveness run))
@@ -305,10 +291,8 @@
       (return false)
     )
     (call (. allocator remove-panic-check-fallthrough-branches))
-    (if (not reference)
-      (call (. branch-folding run))
-      (call (. block-layout rewrite-fallthrough-branches))
-    )
+    (call (. branch-folding run))
+    (call (. block-layout rewrite-fallthrough-branches))
     (if (call ends .register-allocation)
       (return false)
     )
