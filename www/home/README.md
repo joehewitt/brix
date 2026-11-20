@@ -2,8 +2,9 @@
 
 `home/build.bx` writes the home page of brix-lang.com: the name, the byline, a link to the GitHub
 repository, the install command, a prompt that asks an agent to install Brix and write an app, a
-note that links the reference and says it is written for agents, a paragraph on the basics, a cloud
-of the language's features, and a browser of `examples`.
+note that links the reference and says it is written for agents, three paragraphs on the basics,
+the two syntaxes and the language's themes, a cloud of the language's features, and a browser of
+`examples`.
 
 Run it from the repository root with
 `bin/brix www/home/build.bx -o .tmp/build/build-home -- --output .tmp/site`. `--examples` names
@@ -11,7 +12,7 @@ another folder of examples.
 
 ## The feature cloud
 
-Above the examples, a paragraph sums up what kind of language Brix is, and below it a cloud of
+Above the examples, three paragraphs sum up what kind of language Brix is, and below them a cloud of
 boxed terms names its headline features. Each term is one file in `features`, colored by its
 category and sized by its weight. Clicking a term opens a card with a one-sentence summary, a
 short program shown as rows, and links to the examples that use the feature most. The card floats
@@ -26,8 +27,9 @@ category's pop. While a card is open, the other terms turn gray.
 
 A feature with no size is left out of the cloud, and an element with its name in `data-feature`
 opens its card from elsewhere on the page. Its card leaves out the category, which only matches a
-term to the legend. The paragraph's link on "one syntax for agents and another for humans" opens `two-syntaxes`
-that way.
+term to the legend. The second paragraph's link on "one syntax for agents and another for humans"
+opens `two-syntaxes` that way, and the third paragraph's links open the cards of the terms they
+name. `home-feature-link` writes these links.
 
 Below 480px, and on a touch screen below 760px, the card is a sheet from the bottom of the window.
 
