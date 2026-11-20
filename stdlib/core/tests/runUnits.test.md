@@ -1078,6 +1078,31 @@ Exception: Equalities between Minute and Minutes disagree: this one makes 1 Minu
     ^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
+### A module's equalities are joined after those of the modules it imports, so an equality that disagrees with an imported one is rejected in the module that imports it.
+
+```brix compile-error
+(import ./lib/lengths)
+
+(unit + 1yard 1meter)
+
+(main
+  (print (as 1yard Meter UnitString))
+)
+```
+
+```brix file=lib/lengths/lengths.bx
+(type-line + Meter (alias meter) (is F64))
+(type-line + Yard (alias yard) (is F64))
+(unit + 1yard 0.9144meter)
+```
+
+```output
+Exception: Equalities between Yard and Meter disagree: one makes 1 Yard 0.9144 Meter, another 1 Meter; keep one of them
+<no file:4>
+    (unit + 1yard 1meter)
+    ^^^^^^^^^^^^^^^^^^^^^
+```
+
 ### An equality that adds a number with no unit to one in a unit is rejected, as it is no ratio.
 
 ```brix crash
