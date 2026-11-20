@@ -1,11 +1,11 @@
 ; Effects and doors: an effect is one kind of contact with the world outside the
-; program. `dice` claims the C function that draws a random number, so `roll`,
+; program. `dice` claims the C function that reads random bytes, so `roll`,
 ; its door, is the only function that may call it. `hand-name` is declared
 ; `(without dice)`, so a roll anywhere below it stops the build with the path to
 ; it, as in `hand-name (without dice) → throw-hand → (call roll)`. `do-with`
 ; puts loaded dice in place of real ones for the code under it. The first hand
 ; uses real dice, so it changes from run to run.
-(import /stdlib.h)
+(import /sys/random.h)
 (blank)
 
 (main
@@ -18,11 +18,21 @@
 )
 
 (effect + dice
-  (claim C:arc4random_uniform)
+  (claim C:getentropy)
 )
 
 (fn-do + roll Int (door dice)
-  (return (+ (as (call C:arc4random_uniform 6) Int) 1))
+  (let draw ([] Byte 1))
+  (while true
+    (call C:getentropy draw 1
+      (block
+        (throw (call Panic "The system's random source failed") (if (!= it 0)))
+      )
+    )
+    (if (< ([] draw 0) 252)
+      (return (+ (as (% ([] draw 0) 6) Int) 1))
+    )
+  )
 )
 
 (fn-do + throw-hand (list Int)
