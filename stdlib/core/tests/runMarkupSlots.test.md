@@ -2073,7 +2073,7 @@ Exception: Local text derived from rebindable slot scope slot cannot escape into
 4
 ```
 
-### A closure may refer to a slot host declared later in the same content; the reference reads the owning class property when the closure runs instead of constructing the host early.
+### A closure may refer to a slot host declared later in the same content; it reads the owning class property when the closure runs instead of constructing the host early.
 
 ```brix
 (import /core/tests/support/markup-fixtures)

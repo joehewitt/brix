@@ -4814,7 +4814,7 @@ twice 3
 6
 ```
 
-### A style state that is not Bool names the property's type as the reference prints types.
+### A style state that is not Bool names the property's type.
 
 ```brix crash
 (import /core/style)
