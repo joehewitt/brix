@@ -1557,6 +1557,58 @@ hello [Interface __source__:Proto]
 [TypeInfo Iterable'String]
 ```
 
+### An iterable of an interface delegated to a generic class gives the generic's items, its type parameter standing for the interface.
+
+```brix
+(main
+  (let holder (call Holder))
+  (for (in each (as holder (of Iterable Named)))
+    (print (call (. each name)))
+  )
+)
+
+(type + Named (is Interface)
+  (fn-expr + name String)
+)
+
+(type + Pet
+  (implements Named)
+  (prop + label String)
+  (fn-do + This _
+    (param label _)
+  )
+  (fn-expr + name String
+    label
+  )
+)
+
+(type + Holder
+  (delegate (of Iterable Named))
+  (prop _ box (of Box Named))
+  (fn-do + This _
+    (= box (call (of Box Named) (call Pet "rex")))
+  )
+)
+
+(type + (of Box Item)
+  (implements (of Iterable Item))
+  (prop _ item (? Item))
+  (fn-do + This _
+    (param first Item)
+    (= item first)
+  )
+  (fn-do + (prefix <- this) (? Item)
+    (let taken item)
+    (= item null)
+    (return taken)
+  )
+)
+```
+
+```output
+rex
+```
+
 ### Self-referential generic interface conformance (Node as TreeHost'Node) compiles without recursing infinitely during type creation, and constrained generic entry points dispatch the host's concretely typed hook statically.
 
 ```brix
