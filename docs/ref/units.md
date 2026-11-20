@@ -194,6 +194,7 @@ true
   (print (as (* 90s 2) UnitString))
   (print (as (* 2 90s) UnitString))
   (print (as (+ 90s 30) UnitString))
+  (print (as (- 100 1s) UnitString))
   (print (as (/ 2hours 30minutes) UnitString))
   (print (< 500ms 1s))
   (print (== 60s 1minutes))
@@ -207,6 +208,7 @@ true
 180seconds
 180seconds
 120seconds
+99seconds
 4hours
 true
 true
@@ -219,20 +221,23 @@ true
   Units are not dimensional analysis. A quantity such as a speed is a unit of its own, made by a
   function that takes the two units, as in `(fn-expr + per Speed (param distance Length) (param
   time Seconds) body)`.
-- **Two families.** `+`, `-`, `*`, `/` and `%` between units of two families that no equality
-  joins give a plain number: with `/units` and `/time/duration`, `(+ 100meters 20s)` is `120`.
-  Only comparisons between them are errors.
-- **Plain numbers.** A plain number on the right is taken in the left's unit:
-  `(+ 90s 30)`{.brix} is `120seconds`. A plain number on the left keeps the unit only for `*`; with
-  the other operators the result is a plain number.
+- **Two families.** `+`, `-` and `%` between units of two families that no equality joins are
+  errors, as comparisons are: with `/units` and `/time/duration`, `(+ 100meters 20s)` is `Expected
+  Meters here, but this is Seconds, and there is no conversion between them`. `*` and `/` between
+  them give a plain number.
+- **Plain numbers.** A plain number on either side of `+`, `-` and `%` is taken in the other's
+  unit: `(+ 90s 30)`{.brix} is `120seconds`, and `(- 100 1s)`{.brix} is `99seconds`. Multiplying a
+  unit by a plain number on either side, or dividing it by one, keeps the unit, while a plain number
+  divided by a unit is a plain number.
 - **Comparisons** convert the same way, so `(< 500ms 1s)`{.brix} is true, but compare in the
   right's unit where the left's is stored as an integer and would drop the right's fraction:
   `(< 3dollars 350cents)`{.brix} is true. Comparing units of two families that no equality joins is
   an error; see [Conversions](#conversions).
 - **Assignment.** `(+= total 30s)`{.brix} converts the value to the unit of `total`.
-- **Units on their own.** A unit that no declaration relates to another, such as `px`, is in no
-  family. Arithmetic on it gives a plain number, which becomes the unit again when it is stored as
-  one: `(let width Coord (+ 3px 2px))`{.brix} is `5px`.
+- **Units on their own.** A unit that no declaration relates to another, such as `px`, is a family
+  of its own: `(+ 3px 2px)`{.brix} is `5px` and `(* 3px 0.5)`{.brix} is `1.5px`, but `*` and `/`
+  between two of them give a plain number. One stored as an integer keeps its unit only where the
+  arithmetic stays in integers, so with `/tui/primitives`, `(* 3tx 0.5)` is the plain number `1.5`.
 - **Generic functions** keep the unit of what they are given. A function that takes a plain number
   type, such as `abs` from `/math`, takes the value in its own unit and gives a plain number.
 

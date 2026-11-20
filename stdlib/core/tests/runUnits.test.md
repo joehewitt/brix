@@ -1332,3 +1332,126 @@ Exception: Expected Dollars here, but this is Cents, which becomes Dollars only 
       amount
       ^^^^^^
 ```
+
+### A unit that no declaration relates to another keeps its unit through `+`, `-` and `%` and through scaling by a plain number, and one stored as an integer keeps it only where the arithmetic stays in integers.
+
+```brix
+(main
+  (print (as (+ 3em 2em) UnitString))
+  (print (as (- 3em 2em) UnitString))
+  (print (as (% 7em 2em) UnitString))
+  (print (as (* 3em 0.5) UnitString))
+  (print (as (* 2 3em) UnitString))
+  (print (as (/ 3em 2) UnitString))
+  (print (as (* 3em 2em) UnitString))
+  (print (as (+ 3tk 2tk) UnitString))
+  (print (as (* 3tk 2) UnitString))
+  (print (as (* 3tk 0.5) UnitString))
+  (let width Em 10em)
+  (+= width 5)
+  (print (as width UnitString))
+  (let scale F64 1.0)
+  (+= scale 2em)
+  (print (as scale UnitString))
+)
+
+(type-line + Em (alias em) (is F64))
+(type-line + Tk (alias tk) (is I32))
+```
+
+```output
+5em
+1em
+1em
+1.5em
+6em
+1.5em
+6f
+5tk
+6tk
+1.5f
+15em
+3f
+```
+
+### A plain number on the left of `+`, `-` or `%` is taken in the unit on the right.
+
+```brix
+(main
+  (print (as (+ 30 90secs) UnitString))
+  (print (as (- 100 1secs) UnitString))
+  (print (as (% 7 2secs) UnitString))
+  (print (as (/ 10 2secs) UnitString))
+  (print (as (+ 2 2dollars) UnitString))
+  (print (as (+ 1.5 2dollars) UnitString))
+)
+
+(type-line + Secs (alias secs) (is F64))
+(type-line + Cents (alias cents) (is I64))
+(type-line + Dollars (alias dollars) (is 100cents))
+```
+
+```output
+120secs
+99secs
+1secs
+5f
+4dollars
+3.5f
+```
+
+### Adding units of two families that no equality joins is rejected, as comparing them is.
+
+```brix compile-error
+(main
+  (print (+ 100meters 20secs))
+)
+
+(type-line + Meters (alias meters) (is F64))
+(type-line + Secs (alias secs) (is F64))
+```
+
+```output
+Exception: Expected Meters here, but this is Secs, and there is no conversion between them
+<no file:3>
+      (print (+ 100meters 20secs))
+                          ^^^^^^
+```
+
+### An assigning operator rejects a value in a unit of another family than its place's.
+
+```brix compile-error
+(main
+  (let width Em 1em)
+  (-= width 2tk)
+  (print width)
+)
+
+(type-line + Em (alias em) (is F64))
+(type-line + Tk (alias tk) (is I32))
+```
+
+```output
+Exception: Expected Em here, but this is Tk, and there is no conversion between them
+<no file:4>
+      (-= width 2tk)
+                ^^^
+```
+
+### Multiplying or dividing units of two families that no equality joins gives a plain number.
+
+```brix
+(main
+  (print (as (* 100meters 20secs) UnitString))
+  (print (as (/ 3em 2secs) UnitString))
+)
+
+(type-line + Meters (alias meters) (is F64))
+(type-line + Secs (alias secs) (is F64))
+(type-line + Em (alias em) (is F64))
+```
+
+```output
+2000f
+1.5f
+```
