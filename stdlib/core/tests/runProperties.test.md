@@ -3470,13 +3470,13 @@ Exception: Default of part never finishes: Part.owner builds Owner, and Owner.pa
       ^^^^^^^^^^^^^^^^^^
 ```
 
-### A comprehension in a property's value reads another property of the object for each item, also where the value is worked out again.
+### A comprehension in a property's value reads, for each item, a property of the object declared after it, which gets its value first, also where the value is worked out again.
 
 ```brix
 (type + Holder
   (prop + items (list Int) (= (list 1 2 3)))
-  (prop + scale Int (= 2))
   (prop + scaled _ (= (call List (in (* each scale) #items))))
+  (prop + scale Int (= 2))
 )
 
 (main

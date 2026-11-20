@@ -315,9 +315,9 @@
   ; whose value is stale. `checks` holds the flag of each one a value may first read on some of its
   ; paths alone, and `trackers` the trackers of each whose value runs in a live action of its own
   ; (`clear-checks`). `storing` says the constructor is storing them, and `root` is the value being
-  ; evaluated. Where that value is a line of a root `<This` whose closures read the object, `held-unit`
-  ; is the instance that types it and `held-environment` the environment its closures are given
-  ; (`hold-unit`).
+  ; evaluated. Where that value's closures read the object, as those of a line of a root `<This` do,
+  ; `held-unit` is the instance that types it and `held-environment` the environment its closures
+  ; are given (`hold-unit`).
   (blank)
   (prop + type TypeId (= no-type))
   (prop + start U32)
@@ -21215,9 +21215,9 @@
     ; declares the local, as `read-shared` evaluates it there, is the environment that holds
     ; the local, which is the one in force where it is written; any other made by a function it
     ; is not written in has no shape, but where the one it is written in keeps no environment, as
-    ; the value of a property is: it is given none. One written in a line of a root `<This` is given
-    ; the environment made for the line (`hold-unit`). One the type pass made of no written function
-    ; is `given` its type.
+    ; the value of a property is: it is given none. One written in the value of a property that
+    ; reads the object, such as a line of a root `<This`, is given the environment made for the value
+    ; (`hold-unit`). One the type pass made of no written function is `given` its type.
     (let type (if-expr (!= given no-type) given (call (. facts node-type) (. unit reading) id)))
     (let outside (!= (. unit reading) (. unit instance)))
     (let held (and outside (== (. unit reading) (. filling held-unit))))
@@ -22177,7 +22177,7 @@
       (let own-filling filling)
       (= unit (= (. unit source-module) (. default module)))
       (let holds (call holds-locals unit-id (. default value) (. default site)))
-      (if holds
+      (if (or holds (!= ([] (. tables environments) unit-id) no-layout))
         (call fill-value-reads unit-id)
       )
       (let run (only-if (call enter-unit unit-id) (if holds)))
@@ -22269,9 +22269,10 @@
   )
   (fn-do _ fill-value-reads _
     (param unit-id InstanceId)
-    ; Gives each stored property of the object being made that a value with locals of its own reads
-    ; its first value before the value runs, as a read gives it one (`read-filled`). The value runs as
-    ; an instance of its own (`enter-unit`), where a read cannot give the constructor's properties
+    ; Gives each stored property of the object being made that a value with locals of its own, or
+    ; with nested functions that read the object, reads its first value before the value runs, as a
+    ; read gives it one (`read-filled`). The value runs as an instance of its own (`enter-unit`), or
+    ; reads them in its nested functions, where a read cannot give the constructor's properties
     ; their values.
     (return-if (if (or (not (. filling storing)) (== (. filling count) 0))))
     (blank)
@@ -22298,10 +22299,10 @@
     (param unit-id InstanceId)
     (param property SyntaxId)
     (param syntax SyntaxId)
-    ; Makes the environment of a line of a root `<This` whose closures read the object, as those
-    ; the class's markup writes read it: no link, then the object being made, which the closures
-    ; written in the value are given while it is evaluated. One that keeps anything else has no
-    ; shape here.
+    ; Makes the environment of a property's value whose closures read the object, such as a line of a
+    ; root `<This`, as those the class's markup writes read it: no link, then the object being made,
+    ; which the closures written in the value are given while it is evaluated. One that keeps
+    ; anything else has no shape here.
     (let layout ([] (. tables environments) unit-id))
     (let binding (. ([] (. instances rows) unit-id) binding))
     (if (or (== layout unbuilt-environment) (== binding no-binding) (not (. unit has-self)) unpaired)
