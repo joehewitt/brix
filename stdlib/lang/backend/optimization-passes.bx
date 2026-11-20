@@ -76,10 +76,10 @@
     (let extensions (call simplify-extension-pairs))
     (let extended (call remove-redundant-extensions))
     (let forwarded (call forward-single-use-moves))
-    (let removed (call remove-dead-definitions function))
+    (let removed (call remove-dead-definitions function true))
     (let flags-removed (call remove-dead-comparisons function))
     (if flags-removed
-      (call remove-dead-definitions function)
+      (call remove-dead-definitions function true)
     )
     (return (or simplified extensions extended forwarded removed flags-removed))
   )
@@ -10114,8 +10114,10 @@
 
 (fn-do _ remove-dead-definitions Bool
   (param function MIRFunction)
-  ; Removes each definition whose vreg nothing reads: a pure one, a load, MOVK, ADRP or phi, and a
-  ; vreg that only its own definitions read, as the ADRP and ADD of a symbol's address.
+  (param pure-only Bool (= false))
+  ; Removes each definition whose vreg nothing reads. With `pure-only`, only a pure definition no
+  ; instruction reads goes. Otherwise a load, MOVK, ADRP or phi may go too, and so may a vreg that
+  ; only its own definitions read, as the ADRP and ADD of a symbol's address.
   (let arena (. function arena))
   (call (. function count-uses))
   (let instruction-count (. function instructions length))
@@ -10134,14 +10136,16 @@
     (let instructions (. ([] (. function blocks) ([] order position)) instructions))
     (for (in index (..< 0 (. instructions length)))
       (let id ([] instructions index))
-      (let vreg (call removable-definition function id))
+      (let vreg (call removable-definition function id pure-only))
       (if (== vreg no-id)
         (continue)
       )
       (= ([] (. chains vregs) id) vreg)
       (= ([] (. chains nexts) id) ([] (. chains firsts) vreg))
       (= ([] (. chains firsts) vreg) (+ id 1))
-      (= ([] (. chains own-reads) vreg) (+ ([] (. chains own-reads) vreg) (call own-reads function id vreg)))
+      (if (not pure-only)
+        (= ([] (. chains own-reads) vreg) (+ ([] (. chains own-reads) vreg) (call own-reads function id vreg)))
+      )
     )
   )
   (let pending (call IdList))
@@ -10161,7 +10165,9 @@
     )
     (= ([] removed id) 1)
     (= any true)
-    (= ([] (. chains own-reads) vreg) (- ([] (. chains own-reads) vreg) (call own-reads function id vreg)))
+    (if (not pure-only)
+      (= ([] (. chains own-reads) vreg) (- ([] (. chains own-reads) vreg) (call own-reads function id vreg)))
+    )
     (call (. function drop-uses) id)
     (match? ([] (. function instructions) id)
       (case (call .phi-instruction phi)
@@ -10200,9 +10206,13 @@
 (fn-do _ removable-definition U32
   (param function MIRFunction)
   (param id InstructionId)
+  (param pure-only Bool)
   (let row no-id)
   (let opcode (. ([] (. function instructions) id) opcode))
   (if (== opcode .phi)
+    (if pure-only
+      (return no-id)
+    )
     (match? ([] (. function instructions) id)
       (case (call .phi-instruction phi)
         (= row (call vreg-row function (. phi reg)))
@@ -10210,6 +10220,9 @@
     )
     (else-if (and (!= opcode .call) (!= opcode .comment))
       (if (not (call is-pure-def opcode))
+        (if pure-only
+          (return no-id)
+        )
         (let operands (. ([] (. function instructions) id) operands))
         (let is-load
           (scope (and loads (== (. operands length) 2) (not writes-back))
@@ -10224,7 +10237,7 @@
       (= row (call (. function def-with) id opcode))
     )
   )
-  (if (or (== row no-id) hinted)
+  (if (or (== row no-id) hinted (and pure-only (. ([] (. function vregs) row) gc-root)))
     (return no-id)
   )
   (lazy hinted (!= (. ([] (. function vregs) row) hint) no-register))
