@@ -189,9 +189,9 @@
 )
 
 (type + MemberState (is Struct)
-  ; What a frame knows of properties at a place: whether anything is known, and whether it
-  ; may differ from what the reference knows there, the first narrowing that may hold, and the
-  ; stores taken as running nothing that ran on the way there (`live-stores`).
+  ; What a frame knows of properties at a place: whether anything is known, and whether that is in
+  ; doubt, the first narrowing that may hold, and the stores taken as running nothing that ran on
+  ; the way there (`live-stores`).
   (blank)
   (prop + narrowed Bool)
   (prop + unsure Bool)
@@ -537,8 +537,7 @@
   (fn-do + note-member _
     (param key NarrowingKey)
     (param declared TypeId)
-    ; A property the flow comes to know something of, `declared` before it does. The reference
-    ; comes to know it here too: where no other property is known, the two agree from here.
+    ; A property the flow comes to know something of, `declared` before it does.
     (let live false)
     (for (in known narrowed-members)
       (if (call is-live known)
@@ -562,19 +561,19 @@
     )
   )
   (fn-do + forget-members _
-    ; Something ran that ends what is known of every property, here and in the reference: a
-    ; call this pass settled, a call of a function value or a nested function, a print, a loop
-    ; begun. Each time is counted (`forgotten`).
+    ; Something ran that ends what is known of every property: a call this pass settled, a call of a
+    ; function value or a nested function, a print, a loop begun. Each time is counted
+    ; (`forgotten`).
     (= members-narrowed false)
     (+= forgotten 1)
     (call forget-shared)
   )
   (fn-do + forget-escaped _
     (param key NarrowingKey)
-    ; A value stored where the reference no longer follows it ends what is known of what it is
-    ; read from and of what is reached through that: a property or a path from one is left as it
-    ; was before it was known, as an assignment of it leaves it, and so is every path from what
-    ; the value is read from. What is known of a local itself the reference keeps.
+    ; A value stored where the flow no longer follows it ends what is known of what it is read from
+    ; and of what is reached through that: a property or a path from one is left as it was before it
+    ; was known, as an assignment of it leaves it, and so is every path from what the value is read
+    ; from. What is known of a local itself is kept.
     (if (call is-member-key key)
       (let index (call (. narrowed-members find) key))
       (if (and (!= index null) (call is-live key))
@@ -584,8 +583,8 @@
     (call reset-unstable-paths key)
   )
   (fn-do + forget-receiver _
-    ; The receiver stored where the reference no longer follows it ends what is known of every
-    ; property of it and of every path from one (`forget-escaped`).
+    ; The receiver stored where the flow no longer follows it ends what is known of every property
+    ; of it and of every path from one (`forget-escaped`).
     (for (in position (..< 0 (. narrowed-members length)))
       (let key ([] narrowed-members position))
       (if (and (not (call is-path-key key)) (call is-live key))
@@ -600,10 +599,9 @@
     )
   )
   (fn-do + forget-shared _
-    ; A call ran. It ends what is known of a local this function assigns that a nested
-    ; function typed by now captures, here and in the reference, where what is known is that
-    ; an optional holds a value. Anything else known the reference keeps, so it is kept here,
-    ; and a read of the local wavers.
+    ; A call ran. It ends what is known of a local this function assigns that a nested function
+    ; typed by now captures, where what is known is that an optional holds a value. Anything else
+    ; known is kept, and a read of the local wavers.
     (for (in index (..< 0 (. path-bases length)))
       (let base ([] path-bases index))
       (if (and ([] path-stable index) (not (call is-member-key base)) (call is-changed-elsewhere (call key-slot base)))
@@ -648,9 +646,8 @@
   )
   (fn-expr + wavers Bool
     (param slot SlotId)
-    ; Whether the flow knows more of a local than its type where a nested function may have
-    ; assigned it since. The reference then forgets at the calls it emits, or reads what the
-    ; local held when it was tested.
+    ; Whether the flow knows more of a local than its type where a nested function may have assigned
+    ; it since.
     (and (!= (call (. shared-slots find) slot) null) (call is-narrowed slot))
   )
   (fn-do + knows-properties Bool
@@ -669,7 +666,7 @@
     (return false)
   )
   (fn-do + doubt-members _
-    ; Something ran that the reference may forget properties at, where this pass does not.
+    ; Something ran that may end what is known of properties, where this pass does not.
     (= members-doubted true)
   )
   (fn-do + doubt-members-at _
@@ -681,9 +678,8 @@
   )
   (fn-do + keep-members _
     (param known (list NarrowingKey))
-    ; Properties were forgotten where the reference may still know them: in an arm of a match
-    ; that goes on, those `known` before the arm. What its own test found of one the reference
-    ; forgets past the match.
+    ; Properties were forgotten where what is known of them is in doubt: in an arm of a match that
+    ; goes on, those `known` before the arm.
     (for (in key known)
       (if (== (call (. kept-members find) key) null)
         (+= kept-members key)
@@ -696,11 +692,9 @@
   )
   (fn-expr + is-doubted Bool
     (param key NarrowingKey)
-    ; Whether what this pass knows of a property may differ from what the reference knows of
-    ; it. The reference forgets every property at each call it emits but a probe's and each
-    ; conversion that is one there, and this pass at the calls it settles: a call or a conversion
-    ; that may be a call there (`converts-since`) recorded since the property was known, with
-    ; nothing forgotten, leaves the two in doubt.
+    ; Whether what this pass knows of a property is in doubt. This pass forgets properties at the
+    ; calls it settles: a call or a conversion that may be a call (`converts-since`) recorded since
+    ; the property was known, with nothing forgotten, leaves it in doubt.
     (and (not (call is-stable-path key)) (or (!= (call (. kept-members find) key) null) (and (call is-live key) is-unsure)))
   )
   (fn-expr + is-stable-path Bool
@@ -713,8 +707,8 @@
   )
   (fn-expr _ is-live Bool
     (param key NarrowingKey)
-    ; Whether a test's finding of a property holds here. An assignment leaves a property as it
-    ; is declared, here and in the reference.
+    ; Whether a test's finding of a property holds here. An assignment leaves a property as it is
+    ; declared.
     (and members-narrowed (!= (call (. scratch narrowed-since) member-start key) no-type) unassigned)
     (where
       (lazy unassigned (not (call (. scratch was-assigned) member-start key)))
@@ -737,8 +731,8 @@
     (param start Size)
     ; Whether a call this frame's instance makes was recorded since `start`, but for one the
     ; compiler answers with no call of its own (`answers-in-place`) and one a probe makes of the
-    ; probes module, which changes no property here or in the reference. The calls of other
-    ; functions typed meanwhile, as what a conversion or a call demands, are not this one's.
+    ; probes module, which changes no property. The calls of other functions typed meanwhile, as
+    ; what a conversion or a call demands, are not this one's.
     (let position (call (. facts latest-call-of) instance))
     (while (and (!= position no-fact) (>= (as position Size) start))
       (let call ([] (. facts calls) position))
@@ -756,12 +750,11 @@
   )
   (fn-do _ converts-since Bool
     (param start Size)
-    ; Whether a conversion recorded since `start` may be a call in the reference: any but one that
-    ; takes a value as what it is, as a class it derives from or an optional of it, or as a
-    ; number, a truth value or a pointer, which the reference makes in place, one that takes
-    ; a function named as a C function's, whose value is the address of its code, and one a
-    ; pattern tests a value by that runs no function. The conversions of other functions typed
-    ; meanwhile are not this one's.
+    ; Whether a conversion recorded since `start` may be a call: any but one that takes a value as
+    ; what it is, as a class it derives from or an optional of it, or as a number, a truth value or
+    ; a pointer, which is made in place, one that takes a function named as a C function's, whose
+    ; value is the address of its code, and one a pattern tests a value by that runs no function.
+    ; The conversions of other functions typed meanwhile are not this one's.
     (let position (call (. facts latest-conversion-of) instance))
     (while (and (!= position no-fact) (>= (as position Size) start))
       (let fact ([] (. facts conversions) position))
@@ -1059,7 +1052,8 @@
     (param error TypeId)
     (param syntax SyntaxId)
     ; An error leaving the function is tried with the transformers declared for it, in the order
-    ; TypeScript tries them, and leaves as what each raises, or as itself where none takes it.
+    ; `order-transforms` tries them, and leaves as what each raises, or as itself where none takes
+    ; it.
     (if (== (. transforms length) 0)
       (call (. scratch outgoing push) (call Outgoing error syntax))
       (return)
@@ -1253,9 +1247,9 @@
     (return "'without suspend'")
   )
   (fn-expr + zone-entry String
-    ; Where the zone being typed in is entered, as TypeScript names it: the file, line and column
-    ; of the `do` block that entered it, of the zone the function was first called in, or else of
-    ; the function's declaration.
+    ; Where the zone being typed in is entered: the file, line and column of the `do` block that
+    ; entered it, of the zone the function was first called in, or else of the function's
+    ; declaration.
     (str shown ":" (+ (. begin line) 1) ":" (+ (. begin column) 1))
     (where
       (lazy zone (call entered-zone))

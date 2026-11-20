@@ -728,11 +728,11 @@
   )
   (fn-do _ walk-initializers _
     (param id SyntaxId)
-    ; Property initializers of a class or extension are lowered in its constructor by the
-    ; TypeScript compiler, with `this` and the members in scope. They live inside main's range, so
-    ; main binds them under the declaring type, each in a scope of its own. The value of a
-    ; property, of a class or of the module, does not see the locals the module's statements
-    ; declare: the names in reach when it starts are out of reach until it ends.
+    ; Property initializers of a class or extension are lowered in its constructor, with `this` and
+    ; the members in scope. They live inside main's range, so main binds them under the declaring
+    ; type, each in a scope of its own. The value of a property, of a class or of the module, does
+    ; not see the locals the module's statements declare: the names in reach when it starts are out
+    ; of reach until it ends.
     (let members (call (of RowRange SyntaxId)))
     (let saved-floor value-floor)
     (match? ([] (. tree nodes) id)
@@ -965,8 +965,8 @@
     (param element SyntaxId)
     ; The function that builds the content a line of a style rule generates, a markup element that
     ; binds a slot: the element, made and given its content in a scope of its own, which captures
-    ; like a lambda, as the reference's `styleContentBuilderFunc` builds it, with no batch of markup
-    ; kept where it is written. A markup line that binds no slot generates nothing.
+    ; like a lambda, with no batch of markup kept where it is written. A markup line that binds no
+    ; slot generates nothing.
     (if (not (call is-slot-builder element))
       (return)
     )
@@ -1050,11 +1050,10 @@
     (param statements (of RowRange SyntaxId))
     (param raises Bool (= true))
     (param names Bool (= true))
-    ; Declares the lazy locals of a block before its statements are walked. Those of a block that
-    ; is one of the statements are declared with them, as the reference declares them, so the
-    ; statements beside that block read them. A match declares only an action's own for its
-    ; arms. A block that `names` declares the names its markup elements are given, and those of
-    ; its slot outlets, which hold the nodes they mount.
+    ; Declares the lazy locals of a block before its statements are walked. Those of a block that is
+    ; one of the statements are declared with them, so the statements beside that block read them. A
+    ; match declares only an action's own for its arms. A block that `names` declares the names its
+    ; markup elements are given, and those of its slot outlets, which hold the nodes they mount.
     (for (in statement ([] (. tree children) statements))
       (match? ([] (. tree nodes) statement)
         (case (call .node-declare row)
@@ -1116,10 +1115,10 @@
     (param statements (of RowRange SyntaxId))
     ; Walks, where a block of markup content starts, what makes the object of each markup element
     ; the block declares a name for: its type, its arguments and the values of its attributes, in
-    ; the order the elements are written. The reference makes these objects there, before any
-    ; line of the block, so a local the block declares is not in reach of them, and neither are
-    ; the members of an element they are written in. The local of each such name is marked
-    ; `slot-raised`, which tells the type pass to make the object there too.
+    ; the order the elements are written. These objects are made there, before any line of the
+    ; block, so a local the block declares is not in reach of them, and neither are the members of
+    ; an element they are written in. The local of each such name is marked `slot-raised`, which
+    ; tells the type pass to make the object there too.
     (for (in statement ([] (. tree children) statements))
       (call raise-element statement true true)
     )
@@ -1261,12 +1260,12 @@
   )
   (fn-do _ place-element Void
     (param element SyntaxId)
-    ; A markup element that is made where it is written, which no block makes where it starts:
-    ; one that gives slots of its class content (`supplies-slots`), as the reference makes it, and
-    ; with it every element written as a line of its body, one built as what an element gives a
-    ; slot, and one among the lines of a class's markup that give the default slot of the class
-    ; above (`declare-wrapped`); and a slot outlet, whose node is mounted where it is written. The
-    ; local declared for its name is marked, and is given the object there.
+    ; A markup element that is made where it is written, which no block makes where it starts: one
+    ; that gives slots of its class content (`supplies-slots`), and with it every element written as
+    ; a line of its body, one built as what an element gives a slot, and one among the lines of a
+    ; class's markup that give the default slot of the class above (`declare-wrapped`); and a slot
+    ; outlet, whose node is mounted where it is written. The local declared for its name is marked,
+    ; and is given the object there.
     (match? ([] (. tree nodes) element)
       (case (call .node-slot-outlet row)
         (let resolution (call (. bindings resolution-of) binding (. row name)))
@@ -1323,10 +1322,9 @@
   )
   (fn-do _ supplies-slots Bool
     (param element SyntaxId)
-    ; Whether a markup element's body gives slots of its class content, as the reference supplies
-    ; them: a line bound to a slot by name, or what the module builder took for the default slot,
-    ; which a function of its own builds. An element that gives none is made as any other is, its
-    ; lines content of its object.
+    ; Whether a markup element's body gives slots of its class content: a line bound to a slot by
+    ; name, or what the module builder took for the default slot, which a function of its own
+    ; builds. An element that gives none is made as any other is, its lines content of its object.
     (match? ([] (. tree nodes) element)
       (case (call .node-markup row)
         (if (call is-slot-builder (. row body))
@@ -1365,16 +1363,16 @@
     (param name SyntaxId)
     (param type SyntaxId)
     (param body SyntaxId)
-    ; The function that builds what a markup element gives a slot of the element whose body it is
-    ; a line of: the element itself, made and given its content in a scope of its own, or the value
-    ; the one line that gives the default slot content is, which captures like a lambda. The reference builds it before that element's own content is
-    ; written, so no name read there is a member of that element: the element is no receiver
-    ; of it, though one around that element still is. The item a slot that repeats gives each
-    ; row is its argument, by the name the element writes for it and by `each` and `it`. A name
-    ; nothing declares in what such a slot is given is not reported: the reference checks those
-    ; reads before it resolves them, and the type pass declines them. An element written with a
-    ; name captures the receiver, whose property of the name it may give the object. It captures
-    ; the local that keeps the batch in force where the element is written (`keep-root`).
+    ; The function that builds what a markup element gives a slot of the element whose body it is a
+    ; line of: the element itself, made and given its content in a scope of its own, or the value
+    ; the one line that gives the default slot content is, which captures like a lambda. It is built
+    ; before that element's own content is written, so no name read there is a member of that
+    ; element: the element is no receiver of it, though one around that element still is. The item a
+    ; slot that repeats gives each row is its argument, by the name the element writes for it and by
+    ; `each` and `it`. A name nothing declares in what such a slot is given is not reported: the
+    ; type pass declines it. An element written with a name captures the receiver, whose property
+    ; of the name it may give the object. It captures the local that keeps the batch in force where
+    ; the element is written (`keep-root`).
     (let held (. receiver-decls length))
     (let outer-module (if-expr (!= held 0) ([] receiver-modules (- held 1)) module))
     (let outer-decl (if-expr (!= held 0) ([] receiver-decls (- held 1)) 0u32))
@@ -1554,13 +1552,12 @@
     (param parameter SyntaxId)
     (param rules (of RowRange SyntaxId))
     (param body SyntaxId)
-    ; A slot outlet that is a markup branch region of one arm, as the reference's
-    ; `markupRebuildingSlotOutlet` makes it: the name its parameter gives is read where the outlet is
-    ; written, to select the arm, and the outlet is built by a function of its own, written at it,
-    ; which reads the name again with what it captures of what the name reads. The host, the region
-    ; and the batch in force are kept in three locals no name reaches, declared at the parameter, as
-    ; those of a match region are (`walk-match-region`); the function that selects the arm again,
-    ; written at the parameter, captures them with what the name reads.
+    ; A slot outlet that is a markup branch region of one arm: the name its parameter gives is read
+    ; where the outlet is written, to select the arm, and the outlet is built by a function of its
+    ; own, written at it, which reads the name again with what it captures of what the name reads.
+    ; The host, the region and the batch in force are kept in three locals no name reaches, declared
+    ; at the parameter, as those of a match region are (`walk-match-region`); the function that
+    ; selects the arm again, written at the parameter, captures them with what the name reads.
     (let given SyntaxId 0)
     (match? ([] (. tree nodes) parameter)
       (case (call .node-markup-slot-parameter row)
@@ -1628,11 +1625,11 @@
     (param body SyntaxId)
     ; What makes the object of a markup element: its type, its arguments, the values of the style
     ; rules it applies, and the values of the attributes its body gives it, which are read in the
-    ; scope outside the element, each value with the function that gives it again where it has
-    ; one. The condition a style rule is applied under reads a member of the element before a name
-    ; of the scope outside, as the reference reads it in the scope of the rule's class, and is
-    ; tested again by a function of its own (`walk-gates`). The slot an element binds, and the
-    ; parameter it names for a slot, are names of the class it is content of, and no reads.
+    ; scope outside the element, each value with the function that gives it again where it has one.
+    ; The condition a style rule is applied under reads a member of the element before a name of the
+    ; scope outside, and is tested again by a function of its own (`walk-gates`). The slot an
+    ; element binds, and the parameter it names for a slot, are names of the class it is content of,
+    ; and no reads.
     (let bound SyntaxId 0)
     (let parameter SyntaxId 0)
     (let type SyntaxId 0)
@@ -1726,10 +1723,9 @@
     (param element SyntaxId)
     (param args (of RowRange SyntaxId))
     ; The function that gives again each argument of a markup element, given by position, whose
-    ; value read something tracked, as the reference compiles it: the element's object is kept in
-    ; one local no name reaches, declared at the element, which each such function captures with
-    ; every local, argument and receiver the value reads and the list of subscribers of each local
-    ; it reads tracked.
+    ; value read something tracked: the element's object is kept in one local no name reaches,
+    ; declared at the element, which each such function captures with every local, argument and
+    ; receiver the value reads and the list of subscribers of each local it reads tracked.
     (let held no-slot)
     (for (in arg ([] (. tree children) args))
       (if (not (call is-live arg))
@@ -1763,10 +1759,9 @@
   (fn-do _ walk-stream Void
     (param id SyntaxId)
     ; The function that writes the value of a stream of a value as it changes, `<#value>`, again
-    ; when what it read tracked changes, as the reference compiles it: the channel is kept in a
-    ; local no name reaches, declared at the stream, which the function captures with every local,
-    ; argument and receiver the value reads and the list of subscribers of each local it reads
-    ; tracked.
+    ; when what it read tracked changes: the channel is kept in a local no name reaches, declared at
+    ; the stream, which the function captures with every local, argument and receiver the value
+    ; reads and the list of subscribers of each local it reads tracked.
     (if (== (call nested-decl-for id) 0)
       (return)
     )
@@ -1790,15 +1785,15 @@
   )
   (fn-do _ walk-attribute Void
     (param statement SyntaxId)
-    ; The function that gives an attribute of a markup element its value again when what the
-    ; value read tracked changes, or a line of its body that gives content the element takes again,
-    ; as the reference compiles it: the element's object is kept in a local no name reaches,
-    ; declared at the line, which the function captures with every local, argument and receiver
-    ; the value reads and the list of subscribers of each local it reads tracked. A line that gives
-    ; content, to the element or to the region an arm of which it is written in, keeps in the next
-    ; such local what that took, which the function replaces. Such a line may be a name alone, as
-    ; `#child` is, whose node resolves the name: the line resolves to neither local, they are found
-    ; by their names where they are declared, and what the line itself reads is captured too.
+    ; The function that gives an attribute of a markup element its value again when what the value
+    ; read tracked changes, or a line of its body that gives content the element takes again: the
+    ; element's object is kept in a local no name reaches, declared at the line, which the function
+    ; captures with every local, argument and receiver the value reads and the list of subscribers
+    ; of each local it reads tracked. A line that gives content, to the element or to the region an
+    ; arm of which it is written in, keeps in the next such local what that took, which the function
+    ; replaces. Such a line may be a name alone, as `#child` is, whose node resolves the name: the
+    ; line resolves to neither local, they are found by their names where they are declared, and
+    ; what the line itself reads is captured too.
     (if (== (call nested-decl-for statement) 0)
       (return)
     )
@@ -1877,9 +1872,9 @@
   )
   (fn-do _ note-borrowed Void
     (param id SyntaxId)
-    ; The name of a markup element that no block declares: where something else in reach
-    ; declared the name, the reference takes that thing's value for the element's object. What
-    ; the name finds is kept for the type pass, and nothing is reported where it finds nothing.
+    ; The name of a markup element that no block declares: where something else in reach declared
+    ; the name, that thing's value is taken for the element's object. What the name finds is kept
+    ; for the type pass, and nothing is reported where it finds nothing.
     (let name (call (. tree identifier-name) id))
     (if (not name)
       (return)
@@ -2013,7 +2008,7 @@
   (fn-do _ mark-initializers Void
     (param statements (of RowRange SyntaxId))
     ; A lazy declaration in a constructor that names a property of the owner gives the property its
-    ; value. The reference declares that value as a local at the property.
+    ; value. That value is declared as a local at the property.
     (let target ([] (. program modules) module))
     (for (in statement ([] (. tree children) statements))
       (match? ([] (. tree nodes) statement)
@@ -2070,9 +2065,9 @@
   )
   (fn-do _ declare-capture _
     (param id SyntaxId)
-    ; A name a grammar captures. A match keeps one slot for each name, which every place
-    ; that captures the name fills, as the reference's matchmaker keeps one. No capture is named
-    ; `it`, which an action reads for what its arm matched.
+    ; A name a grammar captures. A match keeps one slot for each name, which every place that
+    ; captures the name fills. No capture is named `it`, which an action reads for what its arm
+    ; matched.
     (let name (call (. tree identifier-name) id))
     (if (and name (== (. name text) "it"))
       (let message
@@ -2102,7 +2097,7 @@
   (fn-do _ hoist-lazies Void
     (param id SyntaxId)
     ; The lazy locals of a pattern's actions are declared where the match is, in reach of every
-    ; arm's pattern and action, as the reference declares a transform's where clause.
+    ; arm's pattern and action.
     (match? ([] (. tree nodes) id)
       (case (call .node-stream-transform row)
         (call hoist-lazies (. row pattern))
@@ -2217,7 +2212,7 @@
     (param syntax SyntaxId)
     ; The local no name reaches that keeps the batch of markup in force where the function that
     ; builds what a markup element gives a slot is made, declared there, at what the function
-    ; builds, which the function captures, as the reference captures the batch it finds.
+    ; builds, which the function captures.
     (let kept (/or/ (. SlotFlag slot-constant) (. SlotFlag slot-captured)))
     (return
       (scope (as (call (. bindings slots append) batch-root) SlotId)
@@ -2228,11 +2223,11 @@
   (fn-do _ walk-wrapped Void
     (param body SyntaxId)
     ; The lines of a markup element's body that give its class's default slot content, which a
-    ; function of its own builds into a node of the slot's type, as the reference builds them: the
-    ; function captures like a lambda, the element is no receiver in it, and those lines are the
-    ; content of that node (`gives-default`). The names of the elements among them are declared by
-    ; a block around the element. It captures the local that keeps the batch in force where the
-    ; element is written (`keep-root`).
+    ; function of its own builds into a node of the slot's type: the function captures like a
+    ; lambda, the element is no receiver in it, and those lines are the content of that node
+    ; (`gives-default`). The names of the elements among them are declared by a block around the
+    ; element. It captures the local that keeps the batch in force where the element is written
+    ; (`keep-root`).
     (let root (call keep-root body))
     (call push-scope .scope-nested body)
     (+= function-depth 1)
@@ -2267,9 +2262,8 @@
     (param body SyntaxId)
     ; Declares the names of the elements among the lines of a class's markup that give the default
     ; slot of the class above, in the function that fills the object, as a block around them would
-    ; declare them: the function that builds the lines reaches them there. No block of that
-    ; function makes them where it starts, so each is made where it is written, as the reference
-    ; makes them (`place-element`).
+    ; declare them: the function that builds the lines reaches them there. No block of that function
+    ; makes them where it starts, so each is made where it is written (`place-element`).
     (match? ([] (. tree nodes) body)
       (case (call .node-block row)
         (for (in statement ([] (. tree children) (. row body)))
@@ -2329,10 +2323,9 @@
     ; The level of the markup element a name is a member of, the element or one it is in, no lower
     ; than `lowest`, rather than what the scopes give it, or none: it is none where a local the body
     ; itself declares hides the member. The innermost element is asked first. A property the markup
-    ; of the element's class declares for an element is hidden there, as the reference hides it,
-    ; and the name is asked of what is around. An element whose class the binder cannot name by its
-    ; type may hold any member, so every name asked of it that is no local of the body is taken for
-    ; one.
+    ; of the element's class declares for an element is hidden there, and the name is asked of what
+    ; is around. An element whose class the binder cannot name by its type may hold any member, so
+    ; every name asked of it that is no local of the body is taken for one.
     (let level (. receiver-decls length))
     (while (> level lowest)
       (-= level 1)
@@ -2397,7 +2390,7 @@
   (fn-do _ walk-action Void
     (param body SyntaxId)
     ; An action, whose block declares no lazy local of its own: its match declared them. Nothing
-    ; after a statement that leaves the block is walked, as the reference compiles none of it.
+    ; after a statement that leaves the block is walked.
     (match? ([] (. tree nodes) body)
       (case (call .node-block row)
         (call push-scope .scope-block body)
@@ -3297,10 +3290,10 @@
   )
   (fn-do _ walk-nested-machine _
     (param item SyntaxId)
-    ; A named machine written in a case of another, as the reference builds it: part of the
-    ; function of the machine around it, whose environment holds what it keeps and the name the
-    ; property declares, which holds the machine's value, declared as a machine's is
-    ; (`declare-machine`), and whose parts are bound as that machine's are.
+    ; A named machine written in a case of another: part of the function of the machine around it,
+    ; whose environment holds what it keeps and the name the property declares, which holds the
+    ; machine's value, declared as a machine's is (`declare-machine`), and whose parts are bound as
+    ; that machine's are.
     (let id (call (. tree nested-machine) item))
     (let items (call (. tree state-items) (call (. tree state-body) id)))
     (let cases (call (. tree machine-cases) items))
@@ -3604,8 +3597,8 @@
   )
   (fn-expr _ is-owner-scanned-decl Bool
     (param decl DeclId)
-    ; A comprehension, feed list, or pipeline body closure row: the reference compiler scans its
-    ; body as part of its owner, so it gets an empty scan row of its own and no interval.
+    ; A comprehension, feed list, or pipeline body closure row: its body is scanned as part of its
+    ; owner, so it gets an empty scan row of its own and no interval.
     (match ([] (. ([] (. program modules) module) decls) decl)
       (case (call .decl-function fn)
         (or (== (. fn kind) .iterator-decl) (== (. fn kind) .feed-decl) (== (. fn kind) .pipeline-decl))
@@ -3721,12 +3714,11 @@
     (param by-value Bool)
     (param flags ResolutionMask (= 0))
     (param owner _ (= false))
-    ; Every open nested function between the reference and the declaring function records the
-    ; slot once, which is how the TypeScript compiler threads a value through chained closure
-    ; callbacks. Task bodies and `this` capture by value. A capture notes whether the function
-    ; assigns the slot. The body of a `do without gc` block runs where it is written, and takes the
-    ; address of each local and argument it captures there. A receiver captured for anything but the
-    ; `owner` of a task spawned inside is marked used, which a value of a struct cannot be.
+    ; Every open nested function between the reference and the declaring function records the slot
+    ; once. Task bodies and `this` capture by value. A capture notes whether the function assigns
+    ; the slot. The body of a `do without gc` block runs where it is written, and takes the address
+    ; of each local and argument it captures there. A receiver captured for anything but the `owner`
+    ; of a task spawned inside is marked used, which a value of a struct cannot be.
     (if (and (not owner) (== (. ([] (. bindings slots) slot) kind) .slot-this))
       (call (. bindings mark-slot) slot (. SlotFlag slot-self-used))
     )
@@ -4011,9 +4003,8 @@
   )
   (fn-do _ capture-self _
     (param owner _ (= false))
-    ; A member or method reached from a nested function needs `this`, which the TypeScript compiler
-    ; captures by value at every closure scope on the way out, as does a task spawned there that its
-    ; `owner` keeps.
+    ; A member or method reached from a nested function needs `this`, which every closure scope on
+    ; the way out captures by value, as does a task spawned there that its `owner` keeps.
     (let position (call lookup-position this-name))
     (if (not position)
       (return)
@@ -4070,11 +4061,10 @@
     (param id SyntaxId)
     (param loop SyntaxId)
     (param body SyntaxId)
-    ; A comprehension on a stream compiled as its subscriber, which writes what its body gives to
-    ; a channel the comprehension makes: the channel is a local no name reaches, declared at the
-    ; comprehension, which the subscriber captures before anything its loop reads, as the
-    ; reference's subscriber reads the channel from the scope it closes over. A `whenever` clause
-    ; binds outside too (see `walk-whenever`).
+    ; A comprehension on a stream compiled as its subscriber, which writes what its body gives to a
+    ; channel the comprehension makes: the channel is a local no name reaches, declared at the
+    ; comprehension, which the subscriber captures before anything its loop reads. A `whenever`
+    ; clause binds outside too (see `walk-whenever`).
     (match? ([] (. tree nodes) loop)
       (case (call .node-loop-syntax row)
         (call walk-source row)
@@ -4167,8 +4157,7 @@
     (param body SyntaxId)
     (param whole Bool)
     ; A map or filter body compiled as a closure taking `each`: the item binds inside the closure's
-    ; own scope with no declaring syntax, as the reference declares its argument. A closure pipe
-    ; takes the whole left value as `it`.
+    ; own scope with no declaring syntax. A closure pipe takes the whole left value as `it`.
     (call push-scope .scope-nested id)
     (+= function-depth 1)
     (call open-nested id)
@@ -4206,15 +4195,14 @@
     (param body SyntaxId)
     (param container-bound Bool (= false))
     (param chained Bool (= false))
-    ; A header of a loop, then the headers chained after it and the body. `each` and `it` are
-    ; the item of the first header: one chained after it declares neither, as the reference
-    ; binds them once for the loop, and neither is declared where its pattern declares the name
-    ; itself (`declares-name`). The `whenever` clause of a loop on a stream binds where the
-    ; loop is written, not here. A loop on a stream whose clause is `when arrival` or `when
-    ; bubbling` may be one on an event, where that is no test: the name is not reported here when
-    ; nothing declares it, and the type pass reports it where the loop is on no event. A header
-    ; whose container is evaluated where its closure is made has one slot more, after its item,
-    ; for the container it is given.
+    ; A header of a loop, then the headers chained after it and the body. `each` and `it` are the
+    ; item of the first header: one chained after it declares neither, and neither is declared where
+    ; its pattern declares the name itself (`declares-name`). The `whenever` clause of a loop on a
+    ; stream binds where the loop is written, not here. A loop on a stream whose clause is
+    ; `when arrival` or `when bubbling` may be one on an event, where that is no test: the name is
+    ; not reported here when nothing declares it, and the type pass reports it where the loop is on
+    ; no event. A header whose container is evaluated where its closure is made has one slot more,
+    ; after its item, for the container it is given.
     (match? ([] (. tree nodes) id)
       (case (call .node-loop-syntax row)
         (if (not container-bound)
@@ -4333,11 +4321,10 @@
   (fn-do _ walk-whenever Void
     (param loop SyntaxId)
     ; The `whenever` clause of a loop on a stream, which the function the loop is written in tests
-    ; before it subscribes, as the reference compiles it: its value binds there, beside three
-    ; locals no name reaches, declared at the clause, which hold what it last gave, the
-    ; subscription and the broadcaster. The function that tests it again captures them, and every
-    ; local, argument and receiver the value reads, and the list of subscribers of each local it
-    ; reads tracked.
+    ; before it subscribes: its value binds there, beside three locals no name reaches, declared at
+    ; the clause, which hold what it last gave, the subscription and the broadcaster. The function
+    ; that tests it again captures them, and every local, argument and receiver the value reads, and
+    ; the list of subscribers of each local it reads tracked.
     (let clause (call (. tree whenever-clause) loop))
     (if (or (== clause 0) (== (call nested-decl-for clause) 0))
       (return)
@@ -4450,9 +4437,8 @@
   (fn-do _ walk-transformer _
     (param body SyntaxId)
     (param catchers (of RowRange SyntaxId))
-    ; A raise that declares one error transformer: its exception sees the names its catcher
-    ; declares for the error it takes and for those in its chain, as the reference defines them
-    ; where it raises the exception in the error's place.
+    ; A raise that declares one error transformer: its exception sees the names its catcher declares
+    ; for the error it takes and for those in its chain.
     (for (in catcher ([] (. tree children) catchers))
       (match? ([] (. tree nodes) catcher)
         (case (call .node-catcher row)
@@ -4750,17 +4736,16 @@
     (param assignment SyntaxId (= 0))
     (param rule Bool (= false))
     ; Resolves a name to the slot, member, global, function or type it reads. `assignment` is the
-    ; plain assignment the name is the target of: one that nothing declares is reported there, as
-    ; a variable that is not declared, but where the function has `this` it may name a property of
-    ; a style the object sees, which the type pass decides. A `rule` a pattern calls is never a name
-    ; the match captures, as the reference calls rules by name and reads captures as values. A
-    ; function that reads the name of a markup element of the one it is written in captures the
-    ; receiver too, whose property of the name it reads where the element is not made yet. A name
-    ; is a member of a markup element only where it is the event a handler written in the element's
-    ; body subscribes to, or a name the condition of a style rule the element applies reads
-    ; (`received-level`); every other row of the body reads the scope outside the element. Such a
-    ; member read where the element's body is written notes the element, for a function that gives
-    ; the read again (`keep-received`).
+    ; plain assignment the name is the target of: one that nothing declares is reported there, as a
+    ; variable that is not declared, but where the function has `this` it may name a property of a
+    ; style the object sees, which the type pass decides. A `rule` a pattern calls is never a name
+    ; the match captures. A function that reads the name of a markup element of the one it is
+    ; written in captures the receiver too, whose property of the name it reads where the element is
+    ; not made yet. A name is a member of a markup element only where it is the event a handler
+    ; written in the element's body subscribes to, or a name the condition of a style rule the
+    ; element applies reads (`received-level`); every other row of the body reads the scope outside
+    ; the element. Such a member read where the element's body is written notes the element, for a
+    ; function that gives the read again (`keep-received`).
     (let position (if-expr rule (?? (call rule-position name) (call lookup-position name)) (call lookup-position name)))
     (if (and (!= coded-depth 0) (not rule))
       (= position (call coded-position position))
@@ -4886,9 +4871,9 @@
   (fn-do _ styles-name Bool
     (param name Atom)
     ; Whether a name nothing declares, read in the value a markup element's body gives one of its
-    ; attributes or a line of a style rule declares, may be one the reference reads where the line
-    ; names a style property: `inherit`, a slot of a style sheet, or a case of a union that holds
-    ; nothing, among the names gathered once (`list-style-names`). The type pass decides.
+    ; attributes or a line of a style rule declares, may be one read where the line names a style
+    ; property: `inherit`, a slot of a style sheet, or a case of a union that holds nothing, among
+    ; the names gathered once (`list-style-names`). The type pass decides.
     (return-if true (if (== name inherit-name)))
     (blank)
     (call list-style-names)
@@ -4982,11 +4967,11 @@
   (fn-do _ note-getters _
     (param loop SyntaxId)
     (param body SyntaxId)
-    ; Keeps the declarations written as lines of the row of a markup loop region that the reference
-    ; reads as getters, declaring each where it is written and evaluating its value again at each
-    ; read: a lazy one, and in the row of a loop keyed by a clause, one whose value reads the item by
-    ; a name the row gives it, or another such local. The reference's row of a keyed loop over
-    ; anything but a collection is no such row; that is declined where the row is typed.
+    ; Keeps the declarations written as lines of the row of a markup loop region that are read as
+    ; getters, declaring each where it is written and evaluating its value again at each read: a
+    ; lazy one, and in the row of a loop keyed by a clause, one whose value reads the item by a name
+    ; the row gives it, or another such local. A row of a keyed loop over anything but a collection
+    ; is no such row; that is declined where the row is typed.
     (let keyed (!= (call (. tree keyed-clause) loop) 0))
     (let dependent (list Atom))
     (if keyed
@@ -5083,10 +5068,10 @@
   (fn-do _ read-getter _
     (param id SyntaxId)
     (param slot SlotId)
-    ; A read of a row local the reference reads as a getter, which evaluates the local's value again
-    ; where it is read: each name the value reads is read here, so a function the read is in
-    ; captures it, and one that reaches another local here than where the value is written is the
-    ; reference's error, reported at the read.
+    ; A read of a row local read as a getter, which evaluates the local's value again where it is
+    ; read: each name the value reads is read here, so a function the read is in captures it, and
+    ; one that reaches another local here than where the value is written is an error, reported at
+    ; the read.
     (let getter (. ([] (. bindings slots) slot) getter))
     (let index (call (. getter-decls find) getter))
     (if (== index null)
@@ -5125,9 +5110,9 @@
   )
   (fn-do _ subscribers-of SlotId
     (param slot SlotId)
-    ; The hidden local that holds the list of subscribers of the function that declares a local
-    ; read tracked, which the reference makes where that function starts and every tracked read of
-    ; its locals goes through. It is declared once, in the function's own scope.
+    ; The hidden local that holds the list of subscribers of the function that declares a local read
+    ; tracked, which is made where that function starts and every tracked read of its locals goes
+    ; through. It is declared once, in the function's own scope.
     (let home (call function-of (. ([] (. bindings slots) slot) scope)))
     (for (in held subscriber-slots)
       (if (== (. ([] (. bindings slots) held) scope) home)
@@ -5168,7 +5153,7 @@
     (param id SyntaxId)
     ; The latest item of a stream, read in a live action: the tracker that holds it is kept in a
     ; local no name reaches, declared at the read, which the function that runs the action again
-    ; captures, as the reference keeps it in a constant of the scope the action is made in.
+    ; captures.
     (let kept (/or/ (. SlotFlag slot-constant) (. SlotFlag slot-captured)))
     (let slot
       (scope (as (call (. bindings slots append) tracker) SlotId)
@@ -5364,16 +5349,16 @@
   )
   (fn-do _ walk-branch Void
     (param id SyntaxId)
-    ; A markup branch region, as the reference compiles one: its conditions are read where the
-    ; `if` is written, to select the first arm, and each arm's body is built by a function of its
-    ; own (`walk-arm`). The host of the region and the region itself are kept in two locals no
-    ; name reaches, declared at the `if`, which the function that selects the arm again captures
-    ; with every local, argument and receiver the conditions read and the list of subscribers of
-    ; each local they read tracked. Each later arm, which follows the `if` in the tree, resolves to
-    ; the first of those locals too, which the `if` declares. A third such local keeps the batch
-    ; in force where the region is written, which each arm captures. An arm written with a pattern,
-    ; `if | x = v`, is read and built as an arm of a match region is (`walk-match-arm`): its subject
-    ; is read where the `if` is written, and again by the function that builds the arm.
+    ; A markup branch region: its conditions are read where the `if` is written, to select the first
+    ; arm, and each arm's body is built by a function of its own (`walk-arm`). The host of the
+    ; region and the region itself are kept in two locals no name reaches, declared at the `if`,
+    ; which the function that selects the arm again captures with every local, argument and receiver
+    ; the conditions read and the list of subscribers of each local they read tracked. Each later
+    ; arm, which follows the `if` in the tree, resolves to the first of those locals too, which the
+    ; `if` declares. A third such local keeps the batch in force where the region is written, which
+    ; each arm captures. An arm written with a pattern, `if | x = v`, is read and built as an arm of
+    ; a match region is (`walk-match-arm`): its subject is read where the `if` is written, and again
+    ; by the function that builds the arm.
     (let kept (/or/ (. SlotFlag slot-constant) (. SlotFlag slot-captured)))
     (let host
       (scope (as (call (. bindings slots append) host-slot) SlotId)
@@ -5444,12 +5429,12 @@
   (fn-do _ walk-match-region Void
     (param id SyntaxId)
     (param subject SyntaxId)
-    ; A markup match region, as the reference compiles one (`markupMatchBranch`): its subject is
-    ; read where the `match` is written and each arm's pattern tested against it, to select the
-    ; first arm, and each arm is built by a function of its own (`walk-match-arm`), which reads the
-    ; subject again. The host, the region and the batch in force are kept in three locals no name
-    ; reaches, declared at the `match`, as those of a branch region are (`walk-branch`); the
-    ; function that selects the arm again captures them with what the subject and the patterns read.
+    ; A markup match region: its subject is read where the `match` is written and each arm's pattern
+    ; tested against it, to select the first arm, and each arm is built by a function of its own
+    ; (`walk-match-arm`), which reads the subject again. The host, the region and the batch in force
+    ; are kept in three locals no name reaches, declared at the `match`, as those of a branch region
+    ; are (`walk-branch`); the function that selects the arm again captures them with what the
+    ; subject and the patterns read.
     (call walk subject)
     (let kept (/or/ (. SlotFlag slot-constant) (. SlotFlag slot-captured)))
     (let host
@@ -5593,14 +5578,13 @@
     (param id SyntaxId)
     (param loop SyntaxId)
     (param body SyntaxId)
-    ; A markup loop region, as the reference compiles one: its container is read where the `for`
-    ; is written, and each row is built by a function of its own (`walk-row`), and keyed by one
-    ; where the loop is keyed (`walk-key`). The host of the region and the region itself are kept
-    ; in two locals no name reaches, declared at the `for`,
-    ; which the function that reads the container again captures with every local, argument and
-    ; receiver the container reads and the list of subscribers of each local it reads tracked. A
-    ; third such local keeps the batch in force where the region is written, which the row's
-    ; function captures.
+    ; A markup loop region: its container is read where the `for` is written, and each row is built
+    ; by a function of its own (`walk-row`), and keyed by one where the loop is keyed (`walk-key`).
+    ; The host of the region and the region itself are kept in two locals no name reaches, declared
+    ; at the `for`, which the function that reads the container again captures with every local,
+    ; argument and receiver the container reads and the list of subscribers of each local it reads
+    ; tracked. A third such local keeps the batch in force where the region is written, which the
+    ; row's function captures.
     (let container SyntaxId 0)
     (match? ([] (. tree nodes) loop)
       (case (call .node-loop-syntax row)
@@ -5645,11 +5629,9 @@
     (param body SyntaxId)
     (param root SlotId)
     ; The function that builds a row of a markup loop region: its one argument is the row's item,
-    ; which the name the loop's header writes, `each` and `it` all reach, as the reference defines
-    ; each of them, and the loop's body gives the row. The argument resolves at the body. It
-    ; captures like a lambda, and captures the local that keeps the batch in force where the region
-    ; is written. The reference compiles neither the clauses of the header, which it refuses but
-    ; a `keyed by`, nor headers chained after it, which it refuses.
+    ; which the name the loop's header writes, `each` and `it` all reach, and the loop's body gives
+    ; the row. The argument resolves at the body. It captures like a lambda, and captures the local
+    ; that keeps the batch in force where the region is written.
     (call push-scope .scope-nested body)
     (+= function-depth 1)
     (call open-nested body)
@@ -6104,9 +6086,8 @@
   (fn-do _ note-lazy-use _
     (param slot SlotId)
     (param flags LazyUseMask)
-    ; The counts and context flags the emitter's lazy policy reads, mirroring the TypeScript
-    ; planner's use summary: which kind of use, and whether it sits in a loop, a nested function,
-    ; a branch, a subscription loop, or a state machine.
+    ; The counts and context flags the emitter's lazy policy reads: which kind of use, and whether
+    ; it sits in a loop, a nested function, a branch, a subscription loop, or a state machine.
     (let is-write (!= (/and/ flags (. ResolutionFlag resolution-write)) 0))
     (let is-ref (!= (/and/ flags (. ResolutionFlag resolution-ref)) 0))
     (let is-tracked (!= (/and/ flags (. ResolutionFlag resolution-tracked)) 0))
@@ -6178,9 +6159,9 @@
   (fn-do _ rule-position (? Size)
     (param name Atom)
     ; The place of the rule a pattern calls by a name: the name declared last in reach that no
-    ; grammar captures, nor any other pattern of the match being read, as the reference
-    ; calls rules by name and reads captures as values. A name an enclosing match captures is
-    ; passed over too, where an argument of a call or a local rule's body is a match of its own.
+    ; grammar captures, nor any other pattern of the match being read. A name an enclosing match
+    ; captures is passed over too, where an argument of a call or a local rule's body is a match of
+    ; its own.
     (let position (call lookup-position name))
     (while (and position (== (. ([] (. bindings slots) ([] name-slots position)) kind) .slot-pattern) (or (>= position capture-floor) (?? ([] stream-captures ([] name-slots position)) false)))
       (= position (call in-reach ([] name-links position)))
@@ -6189,10 +6170,9 @@
   )
   (fn-do _ coded-position (? Size)
     (param found (? Size))
-    ; The place of a name in reach of the code of a local rule whose body is code. The reference
-    ; compiles that code as a function where the rule is declared, so a name a match captured is
-    ; in its reach only while the match is being read: within an action of the match, and not
-    ; beside it.
+    ; The place of a name in reach of the code of a local rule whose body is code. A name a match
+    ; captured is in its reach only while the match is being read: within an action of the match,
+    ; and not beside it.
     (let position found)
     (while (and position (== (. ([] (. bindings slots) ([] name-slots position)) kind) .slot-pattern) (call is-closed (. ([] (. bindings slots) ([] name-slots position)) syntax)))
       (= position (call in-reach ([] name-links position)))
@@ -6344,8 +6324,7 @@
     (param name Atom)
     (param depth U32)
     ; A function declared on the owner chain or on an extension visible from this module that
-    ; applies to a class of the chain. The TypeScript compiler finds these through the class
-    ; scope's method lookup after every variable lookup fails.
+    ; applies to a class of the chain. They are found after every variable lookup fails.
     (if (> depth member-chain-limit)
       (return null)
     )

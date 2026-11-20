@@ -19,52 +19,47 @@
 (type-line + InstanceId (is U32))
 
 (type + Instance (is Struct)
-  ; `fills-share` says a constructor's properties, as it gives them their first values, read a
-  ; lazy local nested functions capture or make a nested function, where TypeScript keeps two
-  ; of each lazy local: one read then and one the body reads. A rule a pattern calls under a
-  ; helper is typed again as an instance of its own, given the `helper` it runs under, which
-  ; `uses-helper` where its pattern makes a value through the helper or calls a rule that needs
-  ; it to roll back, and `rolls-helper` where it needs the helper to roll back. A rule called for
-  ; the text it matched under a helper that observes literal words is typed for the helper as one
-  ; of its own that `spans`, which makes nothing through the helper. A rule a pattern on a String
-  ; calls is typed again as one of its own that is `encoded`, whose buffer holds the String's
-  ; UTF-8 bytes rather than its characters. A rule whose
-  ; pattern holds a rollback mark `carries-mark`, which it gives the pattern calling it. A
-  ; constructor a markup element calls with attributes is an instance of its own: it takes,
-  ; after its arguments, the value of each property in `fills`, and gives the property that
-  ; value in place of the one its class writes.
-  ; A constructor a markup element calls giving slots content is one too: it takes, after
-  ; those, the function that builds each slot in `slots`, which it gives the function that fills
-  ; the object with its class's markup, which is one of its own for those slots too. So is one a
-  ; markup element calls for a class whose markup is its content, for the styles and style
-  ; sheets the element sees, its `context` among `contexts`, and the function that fills it;
-  ; both take, after the values of properties and before the builders of slots, the `carried`
-  ; state cells the context gives (`context-values`). The values a rule applied on a root `<This`
-  ; is given are typed by an instance of their own, which types only the application
-  ; `root-values` (`intern-root-values`). An instance that `casts-errors` lets out an error of a
-  ; class above one it states, cast to that one. A style rule a style sheet writes is typed for
-  ; the class of the `element` it is applied to, whose styles answer its names with the sheet's.
-  ; A function typed in a GC-free zone names the `zone` it was first called in, as TypeScript
-  ; keeps where the zone is entered as it compiles the functions called there. The default of a
-  ; parameter written as a constant is typed with its function, and any other where a call first
-  ; takes it; `typed-defaults` keeps a bit for each of the first 64 typed (`type-default`).
-  ; A method that yields and states no errors, which a class's table holds in the place of a base's
+  ; `fills-share` says a constructor's properties, as it gives them their first values, read a lazy
+  ; local nested functions capture or make a nested function. A rule a pattern calls under a helper
+  ; is typed again as an instance of its own, given the `helper` it runs under, which `uses-helper`
+  ; where its pattern makes a value through the helper or calls a rule that needs it to roll back,
+  ; and `rolls-helper` where it needs the helper to roll back. A rule called for the text it matched
+  ; under a helper that observes literal words is typed for the helper as one of its own that
+  ; `spans`, which makes nothing through the helper. A rule a pattern on a String calls is typed
+  ; again as one of its own that is `encoded`, whose buffer holds the String's UTF-8 bytes rather
+  ; than its characters. A rule whose pattern holds a rollback mark `carries-mark`, which it gives
+  ; the pattern calling it. A constructor a markup element calls with attributes is an instance of
+  ; its own: it takes, after its arguments, the value of each property in `fills`, and gives the
+  ; property that value in place of the one its class writes. A constructor a markup element calls
+  ; giving slots content is one too: it takes, after those, the function that builds each slot in
+  ; `slots`, which it gives the function that fills the object with its class's markup, which is one
+  ; of its own for those slots too. So is one a markup element calls for a class whose markup is its
+  ; content, for the styles and style sheets the element sees, its `context` among `contexts`, and
+  ; the function that fills it; both take, after the values of properties and before the builders of
+  ; slots, the `carried` state cells the context gives (`context-values`). The values a rule applied
+  ; on a root `<This` is given are typed by an instance of their own, which types only the
+  ; application `root-values` (`intern-root-values`). An instance that `casts-errors` lets out an
+  ; error of a class above one it states, cast to that one. A style rule a style sheet writes is
+  ; typed for the class of the `element` it is applied to, whose styles answer its names with the
+  ; sheet's. A function typed in a GC-free zone names the `zone` it was first called in. The default
+  ; of a parameter written as a constant is typed with its function, and any other where a call
+  ; first takes it; `typed-defaults` keeps a bit for each of the first 64 typed (`type-default`). A
+  ; method that yields and states no errors, which a class's table holds in the place of a base's
   ; method whose generator carries errors, is typed again as an instance of its own that states
-  ; those errors, as the reference's method inherits them: it `inherits` them from the base's
-  ; instance, and the instance typed again names it as `retyped`. A constructor of a class above
-  ; the one it makes, called with no value for a parameter named as a property the class it makes
-  ; writes a default of its own for, is one of its own too: `redefaults` keeps a bit for each such
-  ; parameter, among the first 32, whose property it leaves to that default, as the reference's
-  ; `redefaultedArgNames` does. One typed on trial keeps the `probe` that numbers it. One made only
-  ; to type the default of a parameter (`Checker.default-type`) `holds-default`: it is never
-  ; typed, and no class's table holds it (`ClassTables.list-tables`). One whose
-  ; typing changed what another type pass cannot take in is `unshared` (`Checker.run`), and
-  ; `unretirable` where it changed more than rows retiring it removes (`Facts.retire`) and what an
-  ; edit typed again in place keeps (`Facts.kept-weight`). One whose typing another pass published,
-  ; which this pass took in in place of typing its body, is `imported` (`import-result`): its body
-  ; stays the other's. One written in another whose typing that one's depends on, by what it notes
-  ; there or keeps of it, is typed `with-enclosing`: no pass takes it in from another, and the merge
-  ; takes it from a pass only with the one it is written in (`merge-sessions`).
+  ; those errors: it `inherits` them from the base's instance, and the instance typed again names it
+  ; as `retyped`. A constructor of a class above the one it makes, called with no value for a
+  ; parameter named as a property the class it makes writes a default of its own for, is one of its
+  ; own too: `redefaults` keeps a bit for each such parameter, among the first 32, whose property it
+  ; leaves to that default. One typed on trial keeps the `probe` that numbers it. One made only to
+  ; type the default of a parameter (`Checker.default-type`) `holds-default`: it is never typed, and
+  ; no class's table holds it (`ClassTables.list-tables`). One whose typing changed what another
+  ; type pass cannot take in is `unshared` (`Checker.run`), and `unretirable` where it changed more
+  ; than rows retiring it removes (`Facts.retire`) and what an edit typed again in place keeps
+  ; (`Facts.kept-weight`). One whose typing another pass published, which this pass took in in place
+  ; of typing its body, is `imported` (`import-result`): its body stays the other's. One written in
+  ; another whose typing that one's depends on, by what it notes there or keeps of it, is typed
+  ; `with-enclosing`: no pass takes it in from another, and the merge takes it from a pass only with
+  ; the one it is written in (`merge-sessions`).
   (blank)
   (prop + module ModuleId)
   (prop + decl DeclId)
@@ -453,21 +448,20 @@
     (param redefaults U32 (= 0))
     (param spans Bool (= false))
     (param encoded Bool (= false))
-    ; Interns the instance of a declaration bound to its type parameters and argument types under
-    ; an effect mask, appending its signature row and scheduling it on first sight. A member of a
-    ; case of a union called on a row of a table of unions that holds that case is an instance of
-    ; its own: it takes the row, `row-receiver`, and its receiver is the case's cells, which it
-    ; reads with no check where `row-validated`, as TypeScript's `table-row-extension` does. A
-    ; `probe` numbers an instance of its own that a part of another is typed in on trial. A rule
-    ; typed for the `helper` a pattern calls it under is an instance of its own, and one that
-    ; `spans` too, and one that is `encoded`. So is a
-    ; constructor given the properties in `fills`, by their places among all properties: their
-    ; types are the last of `args`. So is one given the slots in `slots`, by their numbers as
-    ; `slot-id` gives them, whose builders' types are the last of `args`, after those of `fills`.
-    ; So is one for the styles and style sheets of a `context`. One interned in a GC-free zone keeps
-    ; the `zone` it is first called in. So is a method that states the errors a base's generator
-    ; carries, which it `inherits` from that base's instance. So is a constructor that leaves the
-    ; properties of the parameters in `redefaults` to the defaults the class it makes writes.
+    ; Interns the instance of a declaration bound to its type parameters and argument types under an
+    ; effect mask, appending its signature row and scheduling it on first sight. A member of a case
+    ; of a union called on a row of a table of unions that holds that case is an instance of its
+    ; own: it takes the row, `row-receiver`, and its receiver is the case's cells, which it reads
+    ; with no check where `row-validated`. A `probe` numbers an instance of its own that a part of
+    ; another is typed in on trial. A rule typed for the `helper` a pattern calls it under is an
+    ; instance of its own, and one that `spans` too, and one that is `encoded`. So is a constructor
+    ; given the properties in `fills`, by their places among all properties: their types are the
+    ; last of `args`. So is one given the slots in `slots`, by their numbers as `slot-id` gives
+    ; them, whose builders' types are the last of `args`, after those of `fills`. So is one for the
+    ; styles and style sheets of a `context`. One interned in a GC-free zone keeps the `zone` it is
+    ; first called in. So is a method that states the errors a base's generator carries, which it
+    ; `inherits` from that base's instance. So is a constructor that leaves the properties of the
+    ; parameters in `redefaults` to the defaults the class it makes writes.
     (let param-count U32 (as (. params length) U32))
     (let count (+ (. params length) (. args length)))
     (let filled (if-expr (== (. fills length) 0) 0 (+ (. fills length) 1)))
@@ -854,9 +848,8 @@
   (fn-expr + context-values U32
     (param context U32)
     ; How many values a context gives: the state cells of the `when`s around each rule written in a
-    ; rule that are given with it, then the values of the rules around them, as the reference gives the
-    ; values of the frames of each in turn. That of generated content gives none: its flags say
-    ; which rules are seen under a cell it is not given.
+    ; rule that are given with it, then the values of the rules around them. That of generated
+    ; content gives none: its flags say which rules are seen under a cell it is not given.
     (if-expr (or (== context (. U32 max)) (!= (. ([] contexts context) layer) 0)) 0 given)
     (where
       (lazy given (+ (call context-cell-count context) (. ([] contexts context) values)))
@@ -1411,8 +1404,8 @@
   )
   (fn-do + mark-quiet _
     (param instance InstanceId)
-    ; Says a call of an instance is never checked for a panic: the reference takes it for one
-    ; that raises none, whatever runs.
+    ; Says a call of an instance is never checked for a panic: it is taken for one that raises none,
+    ; whatever runs.
     (= (. ([] rows instance) quiet) true)
   )
   (fn-do + mark-casts-errors _
@@ -1441,8 +1434,8 @@
   (fn-do + mark-polls _
     (param instance InstanceId)
     ; Says a body has a loop that polls for the collector and for a terminating task. Such a
-    ; function returns the panic the poll can raise. It is not one that may panic: no caller
-    ; checks after it, as in the reference.
+    ; function returns the panic the poll can raise. It is not one that may panic: no caller checks
+    ; after it.
     (= (. ([] rows instance) polls) true)
   )
   (fn-do + mark-generator _
@@ -1459,11 +1452,11 @@
     (param makes TypeId)
     (param yields TypeId)
     (param splits Bool (= false))
-    ; Says what a function that yields makes where it is called, the generator of its items, and what
-    ; each step of its body gives: an optional of an item, which holds nothing once the body has
-    ; finished, or that or an error where a step raises. `splits` says the type of the items depends on
-    ; the order its yields are folded in, some of them in loops, where the reference folds them in the
-    ; order of its blocks: such a function has no shape.
+    ; Says what a function that yields makes where it is called, the generator of its items, and
+    ; what each step of its body gives: an optional of an item, which holds nothing once the body
+    ; has finished, or that or an error where a step raises. `splits` says the type of the items
+    ; depends on the order its yields are folded in, some of them in loops: such a function has no
+    ; shape.
     (= (. ([] rows instance) makes) makes)
     (= (. ([] rows instance) yields) yields)
     (= (. ([] rows instance) splits-yields) splits)
@@ -1780,20 +1773,19 @@
 )
 
 (type + StyleContext (is Struct)
-  ; The styles and style sheets markup sees where it makes an object of a class whose markup is
-  ; its content, as the reference's `MarkupStyleContext` holds them: `styles` styles from `first`
-  ; among `context-types`, the one that answers a name first first, then `sheets` style sheets,
-  ; each with its group among `context-levels`, numbered from 0, lowest first; the style rules
-  ; written in rules it sees, `scopes` of them from `scope-first` among `context-scopes`, each
-  ; with how many state cells of the `when`s around it are given with it (`context-cells`); and
-  ; for the content of a class above the object's, the object's class (`made`), or no type. The
-  ; context of the function that builds content a style rule generates holds the `layer` the
-  ; declarations of the markup it makes take, which no other does, and its `context-cells` say
-  ; which rules are seen under the state cell of a `when`, which it is not given. The values of the
-  ; rules around rules written in rules that it gives follow the cells, `values` of them of the
-  ; types from `value-first` among `context-value-types`; `context-valued` holds, for each rule,
-  ; the place among what the context gives of the first value of the rule around it that takes
-  ; some, or `U32.max`.
+  ; The styles and style sheets markup sees where it makes an object of a class whose markup is its
+  ; content: `styles` styles from `first` among `context-types`, the one that answers a name first
+  ; first, then `sheets` style sheets, each with its group among `context-levels`, numbered from 0,
+  ; lowest first; the style rules written in rules it sees, `scopes` of them from `scope-first`
+  ; among `context-scopes`, each with how many state cells of the `when`s around it are given with
+  ; it (`context-cells`); and for the content of a class above the object's, the object's class
+  ; (`made`), or no type. The context of the function that builds content a style rule generates
+  ; holds the `layer` the declarations of the markup it makes take, which no other does, and its
+  ; `context-cells` say which rules are seen under the state cell of a `when`, which it is not
+  ; given. The values of the rules around rules written in rules that it gives follow the cells,
+  ; `values` of them of the types from `value-first` among `context-value-types`; `context-valued`
+  ; holds, for each rule, the place among what the context gives of the first value of the rule
+  ; around it that takes some, or `U32.max`.
   (blank)
   (prop + first U32)
   (prop + styles U32)
@@ -1815,9 +1807,8 @@
 
 (type + StateKey (is Struct)
   ; Where the state cell of a `when` is made, which tells apart the cells a markup element and the
-  ; function that builds content its outlet mounts agree on, as the reference's `stateKey` numbers
-  ; one for a `when` at a site: the site, in `module`, a markup element, a root `<This`, or a class
-  ; for its rules `• This`, and the `when`, in `when-module`.
+  ; function that builds content its outlet mounts agree on: the site, in `module`, a markup
+  ; element, a root `<This`, or a class for its rules `• This`, and the `when`, in `when-module`.
   (blank)
   (prop + module ModuleId)
   (prop + site SyntaxId)
@@ -1827,12 +1818,12 @@
 
 (type + ScopeOwn (is U8)
   ; Whether a rule written in a rule reaches only the markup of an element's own class, as one
-  ; written `• own` does, and where it is, as the reference's `MarkupStyleRuleScope.own` says:
+  ; written `• own` does, and where it is:
   ; - `scope-plain`: it reaches all the markup under the element.
-  ; - `scope-pending`: it was brought into view at the element and matches nothing until the function
-  ;   that fills the element's object takes it.
-  ; - `scope-entered`: it matches in the markup of the class being filled, and the function that fills
-  ;   the object of an element there does not take it.
+  ; - `scope-pending`: it was brought into view at the element and matches nothing until the
+  ;   function that fills the element's object takes it.
+  ; - `scope-entered`: it matches in the markup of the class being filled, and the function that
+  ;   fills the object of an element there does not take it.
   (blank)
   (variant scope-plain (= 0))
   (variant scope-pending (= 1))
@@ -1840,12 +1831,11 @@
 )
 
 (type + RuleScope (is Struct)
-  ; A style rule written in another, which markup under an element the other is applied to sees,
-  ; as the reference's `MarkupStyleRuleScope` holds one: the rule; the class or style sheet that
-  ; holds it as the rule around it was matched (`owner`), which is a sheet for a rule of a sheet
-  ; and else the class whose element the rule around it was applied to, or the class that writes
-  ; it; the rules applied around it, the innermost among `frames`, or `U32.max` for none; and
-  ; whether it reaches only the markup of the element's own class (`own`).
+  ; A style rule written in another, which markup under an element the other is applied to sees: the
+  ; rule; the class or style sheet that holds it as the rule around it was matched (`owner`), which
+  ; is a sheet for a rule of a sheet and else the class whose element the rule around it was applied
+  ; to, or the class that writes it; the rules applied around it, the innermost among `frames`, or
+  ; `U32.max` for none; and whether it reaches only the markup of the element's own class (`own`).
   (blank)
   (prop + module ModuleId)
   (prop + decl DeclId)
@@ -1868,10 +1858,9 @@
 )
 
 (type + RuleFrame (is Struct)
-  ; One style rule applied around a rule written in a rule, as the reference's
-  ; `MarkupStyleRuleFrame` holds one: the rule, the class or style sheet it was matched for, the
-  ; `when` of it the inner rule is written in, or none, and the frames around it (`outer`), or
-  ; `U32.max`.
+  ; One style rule applied around a rule written in a rule: the rule, the class or style sheet it
+  ; was matched for, the `when` of it the inner rule is written in, or none, and the frames around
+  ; it (`outer`), or `U32.max`.
   (blank)
   (prop + outer U32)
   (prop + module ModuleId)

@@ -76,8 +76,8 @@
   (fn-do + check-gate-test _
     (param condition SyntaxId)
     ; The function that tests again the condition a style rule written on a markup element is
-    ; applied under, as the reference's gate evaluates it in its live action: the condition typed
-    ; again as the body of a closure that answers whether it holds, which must be a `Bool`.
+    ; applied under, as the gate evaluates it in its live action: the condition typed again as the
+    ; body of a closure that answers whether it holds, which must be a `Bool`.
     (call prepare)
     (call (. instances set-returns) instance (. types bool-type) (. types bool-type) .return-declared)
     (if (!= (call infer condition) (. types bool-type))
@@ -101,13 +101,12 @@
   (fn-do + demand-styles _
     (param receiver TypeId)
     (param site SyntaxId)
-    ; Registers the styles a class being made uses, and those the classes above it use, base
-    ; first, as the reference does as it compiles a constructor: each style is numbered as it is
-    ; first used, and its registration placed at the declaration of the constructor. No two styles
-    ; a class sees may name one property. Then the classes' defaults are applied
-    ; (`apply-style-defaults`). A using of a style sheet has no shape here, nor has one that is
-    ; wrong in a class of another module, nor a property of an optional of a type that queries the
-    ; markup the object is in.
+    ; Registers the styles a class being made uses, and those the classes above it use, base first:
+    ; each style is numbered as it is first used, and its registration placed at the declaration of
+    ; the constructor. No two styles a class sees may name one property. Then the classes' defaults
+    ; are applied (`apply-style-defaults`). A using of a style sheet has no shape here, nor has one
+    ; that is wrong in a class of another module, nor a property of an optional of a type that
+    ; queries the markup the object is in.
     (if (or (== receiver no-type) (== receiver invalid-type) (!= (call (. types intrinsic-of) receiver) .class))
       (return)
     )
@@ -159,19 +158,18 @@
   (fn-do _ apply-style-defaults _
     (param chain (list TypeId))
     (param site SyntaxId)
-    ; The defaults of the classes of an object being made, base first, as the reference applies
-    ; them once a constructor's body and the rules of each class have run: the rule `• This` each
-    ; class writes declares at the defaults layer, each class's at a site of its own, its orders
-    ; from a band of its own (`style-defaults-band`), the states its `when`s name the class's
-    ; (`gate-when`). A line whose value reads something tracked is declared again by the action
-    ; the object's class makes, as at an element. A rule `• This` that applies rules after its name
-    ; applies them as an element's would (`apply-rule`), at the defaults layer, under the style
-    ; sheets of the markup that made the object, as the reference's constructor applies them. Then
-    ; come the rules and style lines of the class's root `<This` (`apply-root-rules`), and the rules
-    ; of the style sheets the chain uses that the class's name answers (`apply-themed-defaults`). Each
-    ; application of the defaults is marked `made` by its class. A rule `• This` written in another
-    ; module is applied in that module (`enter-module`). A rule `• This` that takes values is
-    ; declined.
+    ; The defaults of the classes of an object being made, base first, applied once a constructor's
+    ; body and the rules of each class have run: the rule `• This` each class writes declares at the
+    ; defaults layer, each class's at a site of its own, its orders from a band of its own
+    ; (`style-defaults-band`), the states its `when`s name the class's (`gate-when`). A line whose
+    ; value reads something tracked is declared again by the action the object's class makes, as at
+    ; an element. A rule `• This` that applies rules after its name applies them as an element's
+    ; would (`apply-rule`), at the defaults layer, under the style sheets of the markup that made
+    ; the object. Then come the rules and style lines of the class's root `<This`
+    ; (`apply-root-rules`), and the rules of the style sheets the chain uses that the class's name
+    ; answers (`apply-themed-defaults`). Each application of the defaults is marked `made` by its
+    ; class. A rule `• This` written in another module is applied in that module (`enter-module`). A
+    ; rule `• This` that takes values is declined.
     (for (in position (..< 0 (. chain length)))
       (let level ([] chain (- (. chain length) 1 position)))
       (let order (* (as position U32) style-defaults-band))
@@ -294,14 +292,14 @@
     (param made TypeId)
     (param order U32)
     (param site SyntaxId)
-    ; Applies the rules taking no values that the style sheets the chain of an object being made uses
-    ; write by the name of its class `level`, among that class's defaults, as the reference's
-    ; `styleThemeClass` finds them: those `sheet-rules` finds in the sheets of the chain and their
-    ; variants, each as `apply-defaults-rules` applies a rule `• This`, in the module of the sheet
-    ; that writes it, at a site of its own, from `order`, the upper half of the class's band, under
-    ; the gates of the variants that write it (`gate-applications`). Where a class of the chain
-    ; writes a rule of the name, an element applies that one instead, and none is applied here.
-    ; Answers false where one is declined or reported.
+    ; Applies the rules taking no values that the style sheets the chain of an object being made
+    ; uses write by the name of its class `level`, among that class's defaults: those `sheet-rules`
+    ; finds in the sheets of the chain and their variants, each as `apply-defaults-rules` applies a
+    ; rule `• This`, in the module of the sheet that writes it, at a site of its own, from `order`,
+    ; the upper half of the class's band, under the gates of the variants that write it
+    ; (`gate-applications`). Where a class of the chain writes a rule of the name, an element
+    ; applies that one instead, and none is applied here. Answers false where one is declined or
+    ; reported.
     (let ref (call class-ref types level))
     (let named "")
     (let declared SyntaxId 0)
@@ -422,11 +420,11 @@
     (param order U32)
     ; Applies a rule `• This` that the class `level` of an object being made writes and applies
     ; rules, and the rules it applies, as an element's rules are applied (`apply-rule`) to an object
-    ; of that class, as the reference resolves them, but at the defaults layer, seeing the style
-    ; sheets of the markup that made the object, which the constructor is made for, before those of
-    ; the class, and the rules written in its rules, as the root's are seen (`apply-root-rules`),
-    ; generating no content. A declaration that reads something tracked is declared again
-    ; by the action of the object's class. Answers the order the next takes, or `U32.max`.
+    ; of that class, but at the defaults layer, seeing the style sheets of the markup that made the
+    ; object, which the constructor is made for, before those of the class, and the rules written in
+    ; its rules, as the root's are seen (`apply-root-rules`), generating no content. A declaration
+    ; that reads something tracked is declared again by the action of the object's class. Answers
+    ; the order the next takes, or `U32.max`.
     (let first (. facts style-applications length))
     (let context (. ([] (. instances rows) instance) context))
     (let sheeted (. markup-sheets length))
@@ -512,21 +510,20 @@
     (param order U32)
     (param site SyntaxId)
     ; Applies the style rules the root `<This` of the markup the class `level` of an object being
-    ; made writes after `•`, as the reference's constructor applies them once the class's rule
-    ; `• This` has (`compileRootThisStyleDefaults`): each as an element's would to an object of that
-    ; class (`apply-written-rules`), seeing none the others bring into view, at the defaults layer,
-    ; at one site of the root's, from an order, under the style sheets of the markup that made the
-    ; object and the rules written in its rules that no `when` or rule taking values holds. The
-    ; rules written in the rules they apply come into view in the class's content (`root-scopes`),
-    ; not here, so no state cell is kept for them, and a rule here that applies one under such a cell
-    ; is declined. The values an application gives are typed by an instance of their own for the
-    ; class, under the constructor's context (`check-root-values`), and those the rules it applies
-    ; give the rules they apply are evaluated once, as the reference's constructor evaluates them
-    ; (`values-once`). Then each line of the root that names no property of the class declares a
-    ; style there, typed as an instance of its own (`check-root-style`). Content the rules' lines
-    ; generate is declined (`content-refused`). A root written in another module is applied in that
-    ; module (`enter-module`). A declaration that reads something tracked is declared again by the
-    ; action of the object's class `made`. Answers the order the next takes, or `U32.max`.
+    ; made writes after `•`, once the class's rule `• This` has: each as an element's would to an
+    ; object of that class (`apply-written-rules`), seeing none the others bring into view, at the
+    ; defaults layer, at one site of the root's, from an order, under the style sheets of the markup
+    ; that made the object and the rules written in its rules that no `when` or rule taking values
+    ; holds. The rules written in the rules they apply come into view in the class's content
+    ; (`root-scopes`), not here, so no state cell is kept for them, and a rule here that applies one
+    ; under such a cell is declined. The values an application gives are typed by an instance of
+    ; their own for the class, under the constructor's context (`check-root-values`), and those the
+    ; rules it applies give the rules they apply are evaluated once (`values-once`). Then each line
+    ; of the root that names no property of the class declares a style there, typed as an instance
+    ; of its own (`check-root-style`). Content the rules' lines generate is declined
+    ; (`content-refused`). A root written in another module is applied in that module
+    ; (`enter-module`). A declaration that reads something tracked is declared again by the action
+    ; of the object's class `made`. Answers the order the next takes, or `U32.max`.
     (let owner ([] (. program modules) (. ref module)))
     (let content SyntaxId 0)
     (let members (call (of RowRange DeclId)))
@@ -742,9 +739,8 @@
     (param receiver TypeId)
     (param row PropertyDecl)
     ; Types a line of a root `<This` that names no property of its class as the declaration of a
-    ; style property of the object, as the reference's constructor declares it among the class's
-    ; defaults (`compileRootThisStyleDefaults`): as a line of the class's rule `• This` is
-    ; (`declare-unit-style`), with `this` bound, at the root.
+    ; style property of the object, among the class's defaults: as a line of the class's rule
+    ; `• This` is (`declare-unit-style`), with `this` bound, at the root.
     (= (. frame self-type) receiver)
     (call bind-this receiver)
     (call (. frame close-env))
@@ -796,7 +792,7 @@
     (param site SyntaxId)
     ; The style a class, or an extension of a style sheet, names in a using, or none where the using
     ; is declined or reported. One of a style sheet is no style (`using-sheet`); `StyleSheet` itself
-    ; is the reference's error.
+    ; is an error.
     (let used (call using-type ref using))
     (let root (and (== (call (. types intrinsic-of) used) .style-sheet) (== used (call (. types type-row) .style-sheet))))
     (if (or (== used invalid-type) (and (== (call (. types intrinsic-of) used) .style-sheet) (not root)))
@@ -857,10 +853,9 @@
     (param class TypeId)
     (param sheets (list TypeId))
     (param levels (list U32))
-    ; Adds the style sheets a class uses to those seen, each in its group, as the reference's
-    ; `visibleStyleSheetUsingGroups` and `addStyleSheetVocabularyGroup` add them: the classes of its
-    ; chain, base first, each a group of its own, higher than those before, each sheet only where it
-    ; is first seen. The sheets of each class of the chain are found once (`chain-sheets`).
+    ; Adds the style sheets a class uses to those seen, each in its group: the classes of its chain,
+    ; base first, each a group of its own, higher than those before, each sheet only where it is
+    ; first seen. The sheets of each class of the chain are found once (`chain-sheets`).
     (if (or (== class no-type) (== class invalid-type) (!= (call (. types intrinsic-of) class) .class))
       (return)
     )
@@ -917,14 +912,13 @@
     (return start)
   )
   (fn-expr + sheets-known Bool
-    ; Whether the style sheets markup written here sees are known here: in the main code of a module,
-    ; or a function or a property's getter or setter that is nested in none, as the reference starts
-    ; such a function with none; in the function that makes a class's content, which is one of its
-    ; own for those of the markup that makes the object (`load-context`); and in a function that
-    ; builds markup the markup around it gives them to (`sheets-given`); and in a constructor, whose
-    ; body the reference starts with none and whose defaults it applies under those of the markup
-    ; that makes the object (`apply-style-defaults`). Another nested in one sees those of the markup
-    ; around it.
+    ; Whether the style sheets markup written here sees are known here: in the main code of a
+    ; module, or a function or a property's getter or setter that is nested in none, which starts
+    ; with none; in the function that makes a class's content, which is one of its own for those of
+    ; the markup that makes the object (`load-context`); and in a function that builds markup the
+    ; markup around it gives them to (`sheets-given`); and in a constructor, whose body starts with
+    ; none and whose defaults are applied under those of the markup that makes the object
+    ; (`apply-style-defaults`). Another nested in one sees those of the markup around it.
     (case? (or (. frame declaration is-content) sheets-given)
       true
     )
@@ -959,8 +953,7 @@
   )
   (fn-do + defaults-apply-rules Bool
     (param class TypeId)
-    ; Whether the rule `• This` of a class of a chain applies rules, as the reference's
-    ; `styleDefaultsApplyRules` asks.
+    ; Whether the rule `• This` of a class of a chain applies rules.
     (let level (? TypeId) class)
     (while (and level (== (call (. types intrinsic-of) level) .class))
       (let ref (call class-ref types level))
@@ -1038,16 +1031,15 @@
     (param value SyntaxId)
     (param made TypeId)
     ; A style declaration whose value is a name alone that names a slot of a style sheet the element
-    ; sees, as the reference's `compileStyleDeclaration` takes one: the runtime reads the slot's
-    ; value as it settles. The sheets the element sees are in groups, lowest first: those the class
-    ; the markup is written in uses, those of the elements it is in, outermost first, then those of
-    ; the element's class (`add-sheet-groups`); the slot is that of the highest group that has one
-    ; of the name, and two in one group are the reference's error. A name that is also a local, a
-    ; global, or a member of the class the markup is written in or of an element it is in is the
-    ; reference's error. Answers 0 where the value names no such slot, 1 where it is declared, and 2
-    ; where it is reported or declined. Where the sheets the markup sees are not known here
-    ; (`sheets-known`), a name that is a slot of any style sheet is declined, as is a slot of another
-    ; type than the property's.
+    ; sees: the runtime reads the slot's value as it settles. The sheets the element sees are in
+    ; groups, lowest first: those the class the markup is written in uses, those of the elements it
+    ; is in, outermost first, then those of the element's class (`add-sheet-groups`); the slot is
+    ; that of the highest group that has one of the name, and two in one group are an error. A name
+    ; that is also a local, a global, or a member of the class the markup is written in or of an
+    ; element it is in is an error. Answers 0 where the value names no such slot, 1 where it is
+    ; declared, and 2 where it is reported or declined. Where the sheets the markup sees are not
+    ; known here (`sheets-known`), a name that is a slot of any style sheet is declined, as is a
+    ; slot of another type than the property's.
     (let name (? Atom) null)
     (match? ([] (. tree nodes) value)
       (case (call .node-identifier row)
@@ -1105,11 +1097,10 @@
     (param unit InstanceId)
     (param application U32)
     ; Resolves, where a style rule a class writes is applied to a markup element, each line whose
-    ; value is a name alone that a style sheet may answer against the sheets the element sees, as
-    ; the reference resolves it there (`resolve-slot`): a line whose name nothing else declares
-    ; takes that slot's value (`rule-slots`), and one whose name is also a value the rule sees is
-    ; the reference's error. Declined: such a name no sheet the element sees answers, and one
-    ; where the sheets are not known here.
+    ; value is a name alone that a style sheet may answer against the sheets the element sees
+    ; (`resolve-slot`): a line whose name nothing else declares takes that slot's value
+    ; (`rule-slots`), and one whose name is also a value the rule sees is an error. Declined: such a
+    ; name no sheet the element sees answers, and one where the sheets are not known here.
     (let owner (. ([] (. instances rows) unit) module))
     (let written (. ([] (. program modules) owner) tree))
     (let count (as (. facts style-declarations length) U32))
@@ -1208,11 +1199,10 @@
     (param made TypeId)
     (param sheets (list TypeId))
     (param levels (list U32))
-    ; The style sheets a markup element of a class sees, each in its group, lowest first, as the
-    ; reference's `styleSheetVocabularyGroupsFor` gives them: those of the markup the element is
-    ; in, or where there are none those the class the markup is written in uses, then those of the
-    ; element's class (`add-sheet-groups`), but at a slot outlet (`overlaying`), where the reference
-    ; adds none.
+    ; The style sheets a markup element of a class sees, each in its group, lowest first: those of
+    ; the markup the element is in, or where there are none those the class the markup is written in
+    ; uses, then those of the element's class (`add-sheet-groups`), but at a slot outlet
+    ; (`overlaying`), where none are added.
     (call seen-sheets sheets levels)
     (if (not (. preparing overlaying))
       (call add-sheet-groups made sheets levels)
@@ -1227,8 +1217,8 @@
     (param value SyntaxId)
     (param sheet TypeId)
     ; A line of a rule of a style sheet whose value is a name alone that names a slot of the sheet,
-    ; which the reference resolves against that sheet alone: declared as `declare-slot` says.
-    ; Answers as `declare-sheet-slot` does.
+    ; resolved against that sheet alone: declared as `declare-slot` says. Answers as
+    ; `declare-sheet-slot` does.
     (match? ([] (. tree nodes) value)
       (case (call .node-identifier row)
         (if (and (not (. row is-tracked)) (call sheet-has-slot sheet (. row name)))
@@ -1242,7 +1232,7 @@
     (param value SyntaxId)
     (param sheet TypeId)
     ; Whether a value a rule of a style sheet declares names `this` or a member of the sheet that is
-    ; no slot of it, which the reference compiles with no object of the sheet.
+    ; no slot of it.
     (let root (call family-root sheet))
     (for (in node (.. (call (. tree subtree-start) value) value))
       (match? ([] (. tree nodes) node)
@@ -1612,11 +1602,11 @@
     (param name Atom)
     (param found TypeId)
     (param at SyntaxId)
-    ; The number of the style sheet whose slot of a name a declaration of a style property takes
-    ; its value from, written at `statement` in a module, the slot's place among the sheet's, and
-    ; how its bits become the property's where their types differ (`sheet-projection`), or
-    ; `U32.max`; with the reference's errors where they cannot, and declined at `at`. The number is
-    ; `U32.max` where it is reported or declined.
+    ; The number of the style sheet whose slot of a name a declaration of a style property takes its
+    ; value from, written at `statement` in a module, the slot's place among the sheet's, and how
+    ; its bits become the property's where their types differ (`sheet-projection`), or `U32.max`;
+    ; with errors where they cannot, and declined at `at`. The number is `U32.max` where it is
+    ; reported or declined.
     (let number (call sheet-index (call family-root found) owner statement at))
     (if (== number (. U32 max))
       (return (tuple (. U32 max) 0 0))
@@ -1677,15 +1667,14 @@
     (param source TypeId)
     (param target TypeId)
     ; How the runtime makes the bits of a style property's value of those of a slot of a style sheet
-    ; of another type, as the reference's `styleSheetProjectionPlan` says, recorded among
-    ; `style-projections`: where the slot is no optional or the property is one, the bits of what an
-    ; optional slot holds are copied where the property's type takes them as they are, or wrapped as
-    ; the case of a union the property holds that takes them so (`reusable-case`), or of a union slot
-    ; whose every case's value a case of the property's union takes so, given that case's number
-    ; (`style-projection-union-remap`), whose table program tables number in source order
-    ; (`ProgramTables.remap-number`). A case wraps the slot's bits only where they fit above its
-    ; number: a whole number of at most 32 bits, or a handle; not a wider number such as a float.
-    ; `U32.max - 1` where there is no such way, the reference's error.
+    ; of another type, recorded among `style-projections`: where the slot is no optional or the
+    ; property is one, the bits of what an optional slot holds are copied where the property's type
+    ; takes them as they are, or wrapped as the case of a union the property holds that takes them
+    ; so (`reusable-case`), or of a union slot whose every case's value a case of the property's
+    ; union takes so, given that case's number (`style-projection-union-remap`), whose table program
+    ; tables number in source order (`ProgramTables.remap-number`). A case wraps the slot's bits
+    ; only where they fit above its number: a whole number of at most 32 bits, or a handle; not a
+    ; wider number such as a float. `U32.max - 1` where there is no such way, an error.
     (if (and (call (. types is-optional) source) (not (call (. types is-optional) target)))
       (return (- (. U32 max) 1))
     )
@@ -1742,9 +1731,8 @@
   (fn-expr _ reuses-style-bits Bool
     (param source TypeId)
     (param target TypeId)
-    ; Whether the bits of a style value of one type are those of another's, as the reference's
-    ; `styleProjectionCanReusePayloadBits` says: the same type, or an object of a class below the
-    ; other's.
+    ; Whether the bits of a style value of one type are those of another's: the same type, or an
+    ; object of a class below the other's.
     (case? (== source target)
       true
     )
@@ -1758,9 +1746,9 @@
   (fn-do _ reusable-case U32
     (param source TypeId)
     (param union TypeId)
-    ; The case of a union whose value takes the bits of a style value of another type as they are,
-    ; as the reference's `styleProjectionReusableUnionCase` chooses it: one of the same type before
-    ; one of a class above it, the first of each. None where no case does.
+    ; The case of a union whose value takes the bits of a style value of another type as they are:
+    ; one of the same type before one of a class above it, the first of each. None where no case
+    ; does.
     (let found (. U32 max))
     (let cases (call (. types cases-of) union))
     (for (in index (..< 0 (. cases length)))
@@ -2227,9 +2215,9 @@
   )
   (fn-do _ sheet-slot-flags U32
     (param type TypeId)
-    ; How the bits of a slot of a style sheet are flagged, as the reference's `styleEncodedFlagBits`
-    ; says: 2 where they encode a value of a union, or one boxed, else 0; the values are made bits
-    ; as those of a style's properties are. None for a type that has no such bits.
+    ; How the bits of a slot of a style sheet are flagged: 2 where they encode a value of a union,
+    ; or one boxed, else 0; the values are made bits as those of a style's properties are. None for
+    ; a type that has no such bits.
     (let held (if-expr (call (. types is-optional) type) (call (. types optional-inner) type) type))
     (let kind (call (. types intrinsic-of) held))
     (if (== kind .union)
@@ -2535,10 +2523,9 @@
     (param property PropertyDecl)
     (param owner ModuleId)
     (param site SyntaxId)
-    ; Adds a property of a style being registered. Its annotation says it is inherited; any other
-    ; is reported, as is a type written for it that names nothing, which the reference meets as it
-    ; registers. One that is not stored in the object, or whose type has no bits a slot holds,
-    ; is declined.
+    ; Adds a property of a style being registered. Its annotation says it is inherited; any other is
+    ; reported, as is a type written for it that names nothing. One that is not stored in the
+    ; object, or whose type has no bits a slot holds, is declined.
     (let name (!! (. property name)))
     (let found (call property-named used name))
     (if (not found)
@@ -2983,12 +2970,12 @@
     (param class TypeId)
     (param styles (list TypeId))
     (param site SyntaxId)
-    ; Adds to a vocabulary the styles a class sees, each once: those its bases use, base first,
-    ; then its own, as the reference's `visibleStyleUsings`, or those an interface and each it
-    ; extends use (`add-interface-styles`), or a style sheet uses (`add-sheet-styles`). A using of
-    ; a style sheet gives none. One that is wrong is declined or reported, and false. What a class
-    ; or a style sheet sees is kept once found (`visible-styles`), and added again as it was, with
-    ; the fault the type store gives cleared where reading its usings clears it.
+    ; Adds to a vocabulary the styles a class sees, each once: those its bases use, base first, then
+    ; its own, or those an interface and each it extends use (`add-interface-styles`), or a style
+    ; sheet uses (`add-sheet-styles`). A using of a style sheet gives none. One that is wrong is
+    ; declined or reported, and false. What a class or a style sheet sees is kept once found
+    ; (`visible-styles`), and added again as it was, with the fault the type store gives cleared
+    ; where reading its usings clears it.
     (if (and (!= class no-type) (== (call (. types intrinsic-of) class) .interface))
       (return (call add-interface-styles class styles site))
     )
@@ -3113,8 +3100,7 @@
     (param interface TypeId)
     (param styles (list TypeId))
     (param site SyntaxId)
-    ; Adds to a vocabulary the styles an interface uses, then those of each interface it extends,
-    ; as the reference's `visibleStyleUsings` of an interface.
+    ; Adds to a vocabulary the styles an interface uses, then those of each interface it extends.
     (let ref (call class-ref types interface))
     (let owner ([] (. program modules) (. ref module)))
     (match? ([] (. owner decls) (. ref decl))
@@ -3145,9 +3131,9 @@
     (param class TypeId)
     (param interface TypeId)
     ; A class whose objects are made values of an interface must use each style the interface and
-    ; those it extends use, as the reference checks as it makes the witness; the first it does not
-    ; is the reference's error, at the class's declaration. Each instance that makes the witness
-    ; reports it, so that it is reported whichever of them a type pass types.
+    ; those it extends use, checked as the witness is made; the first it does not is an error, at
+    ; the class's declaration. Each instance that makes the witness reports it, so that it is
+    ; reported whichever of them a type pass types.
     (let key (/or/ (/lshift/ (as class U64) 32) (as interface U64)))
     (let known ([] (. scratch missing-styles) key))
     (let missing (if-expr known known (call missing-style class interface)))
@@ -3211,8 +3197,7 @@
     (param site SyntaxId)
     ; The styles a name written for an object of a class in markup may be a property of, in the
     ; order they answer it: the class's own, those of the elements the markup is in, innermost
-    ; first, and those of the class the markup is written in, as the reference's
-    ; `styleVocabularyFor`. None where a using is declined.
+    ; first, and those of the class the markup is written in. None where a using is declined.
     (let styles (list TypeId))
     (if (not (call add-visible-styles class styles site))
       (return null)
@@ -3282,7 +3267,7 @@
     (param styles (list TypeId))
     (param name Atom)
     ; The style of a vocabulary that declares a property of a name: none where no style does, and
-    ; the invalid type where two do, which the reference resolves by their types.
+    ; the invalid type where two do, which are resolved by their types.
     (let found no-type)
     (for (in used styles)
       (if (call names-style-property used name)
@@ -3298,9 +3283,9 @@
     (param styles (list TypeId))
     (param name Atom)
     (param site SyntaxId)
-    ; The first style of a vocabulary that declares a property of a name where more than one does,
-    ; as the reference resolves it where they give it one type; where two give it different types,
-    ; the reference's error at the name `site` writes, and the invalid type.
+    ; The first style of a vocabulary that declares a property of a name where more than one does
+    ; and they give it one type; where two give it different types, an error at the name `site`
+    ; writes, and the invalid type.
     (let found no-type)
     (let held no-type)
     (let owner no-type)
@@ -3398,10 +3383,9 @@
     (param name Atom)
     (param site SyntaxId)
     ; The number of the style of a vocabulary whose property of a name answers it, and the
-    ; property's place in `style-properties`: the first style that declares one, as the reference
-    ; resolves it, numbered as it is first used, where all that do give it one type
-    ; (`first-answering`). Both are `U32.max` where no style declares one, and the place alone where
-    ; the property is declined or reported.
+    ; property's place in `style-properties`: the first style that declares one, numbered as it is
+    ; first used, where all that do give it one type (`first-answering`). Both are `U32.max` where
+    ; no style declares one, and the place alone where the property is declined or reported.
     (let found (call style-answering styles name))
     (if (== found invalid-type)
       (= found (call first-answering styles name site))
@@ -3430,20 +3414,20 @@
     (param made TypeId)
     (param body SyntaxId)
     (param first U32)
-    ; Types the attributes of a markup element that name a property of a style the element sees,
-    ; its vocabulary, not one of its class: each declares the property's value for the object at
-    ; the element's site, as the reference declares it after the constructor and before the
-    ; properties are stored, in the order written, at the layer `markup-layer` says. The value is
-    ; converted to the property's type as one assigned is. A name no style answers is the
-    ; reference's error. A value that reads something tracked is declared again as it changes by a
-    ; live action of the object's association with the site (`settle-attributes`). `inherit` takes
-    ; the value from the parent (`declare-inherit`). A value the runtime holds a handle to is held
-    ; by a holder of its own (`style-value-ready`), or where it reads nothing that differs from one
-    ; making to the next, evaluated once for every making (`note-static-value`). A name alone that
-    ; names a slot of a style sheet the element sees declares that slot (`declare-sheet-slot`).
-    ; Their orders follow the `first` the rules the element applies took.
-    ; The element is a site where any of them declares, where it applies a shared rule that
-    ; declares nothing (`empty-shared`), which the reference calls at a site all the same.
+    ; Types the attributes of a markup element that name a property of a style the element sees, its
+    ; vocabulary, not one of its class: each declares the property's value for the object at the
+    ; element's site, after the constructor and before the properties are stored, in the order
+    ; written, at the layer `markup-layer` says. The value is converted to the property's type as
+    ; one assigned is. A name no style answers is an error. A value that reads something tracked is
+    ; declared again as it changes by a live action of the object's association with the site
+    ; (`settle-attributes`). `inherit` takes the value from the parent (`declare-inherit`). A value
+    ; the runtime holds a handle to is held by a holder of its own (`style-value-ready`), or where
+    ; it reads nothing that differs from one making to the next, evaluated once for every making
+    ; (`note-static-value`). A name alone that names a slot of a style sheet the element sees
+    ; declares that slot (`declare-sheet-slot`). Their orders follow the `first` the rules the
+    ; element applies took.
+    ; The element is a site where any of them declares, and where it applies a shared rule that
+    ; declares nothing (`empty-shared`).
     (let order first)
     (let sited empty-shared)
     (= empty-shared false)
@@ -3578,25 +3562,23 @@
     (param id SyntaxId)
     (param made TypeId)
     (param row ASTMarkup)
-    ; The style rules a markup element applies, as the reference applies them once the object is
-    ; made: first those that take no values whose name a class of the element, the type written
-    ; or the element's id spelled as a selector matches (`implicit-names`), then those written
-    ; after `•`, in order. Each is the rule the element's class, or the nearest class above it,
-    ; writes by that name with no values; where none does, nothing is applied. Each is typed once
-    ; for the class that writes it (`check-style-unit`) and declares at the rule layer, from the
-    ; order the one before it ended at, with the rules it applies itself (`apply-rule`). Answers
-    ; how many declarations they make, or `U32.max` where one is declined or reported. Rules
-    ; apply without `core/style`, as their lines may set properties of the class. A rule matched
-    ; by name that the reference makes a function shared by every element it matches
-    ; (`shares-rule`) is marked `shared`. The values a written one is given are typed as they are
-    ; written, with nothing expected, and the rule is chosen by them (`match-style-rule`); each is
-    ; converted at its node to the type the rule takes it as. A written name some rule of the
-    ; chain has but none takes such values by is the reference's `Type mismatch`. A written one with
-    ; a condition is applied under it (`applied-gate`). Declined: a shared rule that declares
-    ; nothing, which the reference makes a site for anyway, a name a rule written in a rule may
-    ; answer (`overlay-rule`), and a
-    ; rule whose properties the element's vocabulary answers with other styles than its class's
-    ; does. Where no class of the chain answers a name, the style sheets the element sees may
+    ; The style rules a markup element applies, once the object is made: first those that take no
+    ; values whose name a class of the element, the type written or the element's id spelled as a
+    ; selector matches (`implicit-names`), then those written after `•`, in order. Each is the rule
+    ; the element's class, or the nearest class above it, writes by that name with no values; where
+    ; none does, nothing is applied. Each is typed once for the class that writes it
+    ; (`check-style-unit`) and declares at the rule layer, from the order the one before it ended
+    ; at, with the rules it applies itself (`apply-rule`). Answers how many declarations they make,
+    ; or `U32.max` where one is declined or reported. Rules apply without `core/style`, as their
+    ; lines may set properties of the class. A rule matched by name that is made a function shared
+    ; by every element it matches (`shares-rule`) is marked `shared`. The values a written one is
+    ; given are typed as they are written, with nothing expected, and the rule is chosen by them
+    ; (`match-style-rule`); each is converted at its node to the type the rule takes it as. A
+    ; written name some rule of the chain has but none takes such values by is a `Type mismatch`. A
+    ; written one with a condition is applied under it (`applied-gate`). Declined: a shared rule
+    ; that declares nothing, a name a rule written in a rule may answer (`overlay-rule`), and a rule
+    ; whose properties the element's vocabulary answers with other styles than its class's does.
+    ; Where no class of the chain answers a name, the style sheets the element sees may
     ; (`sheet-rules`), each group's rule applied in turn, lowest first. After those, each rule
     ; written in a rule that the element sees and that answers the name is applied over them
     ; (`scope-rules`), those the element's own rules applied before bring into view among them. The
@@ -3922,11 +3904,10 @@
     (param condition SyntaxId)
     (param made TypeId)
     ; The condition a style rule written after `•` on a markup element is applied under, which gates
-    ; what the rule declares and the rules it applies, as the reference's `compileStyleGatedBlock`
-    ; gates them: a name or a member read tracked, or the latest value of one, as the reference
-    ; reports, of type `Bool`, tested where each gate is made and again by the function written for
-    ; it (`check-gate-test`). The gate it makes alone is recorded once (`StyleGate`). None where it
-    ; is reported or declined.
+    ; what the rule declares and the rules it applies: a name or a member read tracked, or the
+    ; latest value of one, of type `Bool`, tested where each gate is made and again by the function
+    ; written for it (`check-gate-test`). The gate it makes alone is recorded once (`StyleGate`).
+    ; None where it is reported or declined.
     (if (not (call (. tree is-condition-reference) condition))
       (call (. frame diagnose)
         (block
@@ -3999,13 +3980,14 @@
     (param members (list DeclRef))
     (param gates (list U64))
     (param scoped (list ScopeUse))
-    ; The rules a style rule written after `•` applies by its name, for an object of the class `made`
-    ; and the types of the values it gives: the one the class's chain chooses, as the reference's
-    ; `resolveMatch` does, or else those the style sheets in view choose, each with the class that
-    ; writes it, in `levels` and `members`; then those of the rules written in rules in view
-    ; (`element-scopes`) in `scoped`. A name that some rule takes but none for those values is the
-    ; reference's error, and so is a name no module of the program declares (`style-declared`); more than one rule given values, a rule that matches ambiguously, and a
-    ; choice the sheets or the rules in view cannot make here are declined. False where one is.
+    ; The rules a style rule written after `•` applies by its name, for an object of the class
+    ; `made` and the types of the values it gives: the one the class's chain chooses, or else those
+    ; the style sheets in view choose, each with the class that writes it, in `levels` and
+    ; `members`; then those of the rules written in rules in view (`element-scopes`) in `scoped`. A
+    ; name that some rule takes but none for those values is an error, and so is a name no module of
+    ; the program declares (`style-declared`); more than one rule given values, a rule that matches
+    ; ambiguously, and a choice the sheets or the rules in view cannot make here are declined. False
+    ; where one is.
     (match? ([] (. tree nodes) application)
       (case (call .node-style-rule-application applied)
         (let (tuple level member taken mismatch) (call match-style-rule made (. applied name) given))
@@ -4130,7 +4112,7 @@
     (param type-id SyntaxId)
     (param name Atom)
     ; The type a markup element is written with where it is spelled as a style rule's name, at which
-    ; the reference reports an error of the rule it applies by that name; or none.
+    ; an error of the rule it applies by that name is reported; or none.
     (match? ([] (. tree nodes) (call written-base tree type-id))
       (case (call .node-type-identifier written)
         (if (and (not (. written is-declare)) (== (. written name) name))
@@ -4151,12 +4133,12 @@
     (param values U32 (= (. U32 max)))
     (param outer-cells U32 (= (. U32 max)))
     ; Applies a style rule taking no values that a markup element matches by name, written by a
-    ; class of its chain, a style sheet it sees or a rule within the `frames`, state cells and `values`
-    ; given, typed by the
-    ; instance `unit`, from an order, as `apply-style-rules` says, marked `shared` where the
-    ; reference makes it a function (`shares-rule`): one with no rules around it, which matches no
-    ; rule that has any as it applies its own. One that declares nothing makes the element a site
-    ; all the same (`empty-shared`). Answers the order the next rule takes, or `U32.max`.
+    ; class of its chain, a style sheet it sees or a rule within the `frames`, state cells and
+    ; `values` given, typed by the instance `unit`, from an order, as `apply-style-rules` says,
+    ; marked `shared` where it is made a function (`shares-rule`): one with no rules around it,
+    ; which matches no rule that has any as it applies its own. One that declares nothing makes the
+    ; element a site all the same (`empty-shared`). Answers the order the next rule takes, or
+    ; `U32.max`.
     (if (or (== unit no-instance) (not (call answers-alike unit made id)))
       (call decline id)
       (return (. U32 max))
@@ -4215,18 +4197,17 @@
     (param own Bool (= false))
     (param chained Bool (= false))
     ; The rules of the style sheets a markup element of a class sees that an application of a name
-    ; answers, where no class of its chain does, as the reference's `resolveMatch` adds them: in
-    ; each group, lowest first, the rule of each sheet that takes the values given most closely
-    ; (`match-rules-of`), and of those the one that takes them most closely, two alike being the
-    ; reference's error at `at`, or declined where `at` is none, and one whose types are written
-    ; wrong reported where it is written (`report-argument-types`). Each group's applies, the lowest
-    ; first. Answers 0, 1 where it is to be declined and 2 where it is reported; whether a sheet
-    ; it looks at writes a rule of the name; and the place of the last value found not to convert.
-    ; Where the sheets the markup sees are not known here (`sheets-known`), a name a rule of any
-    ; sheet has is declined. With `own`, the sheets are those the class uses alone, as a rule the
-    ; class writes chooses for the values it gives the rules it applies. With `chained`, they are
-    ; those the class's chain uses and their variants, as the defaults of a class find the rules of
-    ; its name (`apply-themed-defaults`).
+    ; answers, where no class of its chain does: in each group, lowest first, the rule of each sheet
+    ; that takes the values given most closely (`match-rules-of`), and of those the one that takes
+    ; them most closely, two alike being an error at `at`, or declined where `at` is none, and one
+    ; whose types are written wrong reported where it is written (`report-argument-types`). Each
+    ; group's applies, the lowest first. Answers 0, 1 where it is to be declined and 2 where it is
+    ; reported; whether a sheet it looks at writes a rule of the name; and the place of the last
+    ; value found not to convert. Where the sheets the markup sees are not known here
+    ; (`sheets-known`), a name a rule of any sheet has is declined. With `own`, the sheets are those
+    ; the class uses alone, as a rule the class writes chooses for the values it gives the rules it
+    ; applies. With `chained`, they are those the class's chain uses and their variants, as the
+    ; defaults of a class find the rules of its name (`apply-themed-defaults`).
     (if (not (call sheet-rule-name name))
       (return (tuple 0 false mismatch))
     )
@@ -4453,32 +4434,31 @@
     (param gives Bool (= false))
     (param outer-cells U32 (= (. U32 max)))
     ; Records a style rule applied to a markup element at the rule layer from an order, with the
-    ; rules it applies itself, as the reference applies them: each name the rule writes after its
-    ; own, then each the body of each of its `when`s does, is resolved for the element's class as
-    ; a name the element writes is, and applied in turn, recorded after this one with this one as
-    ; its `outer` and the `when` as its `within`. The values the rule gives one were typed and
-    ; converted with the rule (`type-applied-values`), for the rule its own class chooses, which
-    ; must be the one the element's class does. `gated` holds the `when`s the rule is applied
-    ; under, the outermost first, which gate its declarations as `gate-when` says; a rule so gated
-    ; that sets a property of its class is the reference's error. Answers the order the next rule
-    ; takes, or `U32.max` where one is declined or reported. A rule that comes to apply itself
-    ; again is the reference's error, at the application that would. `active` holds the rules
-    ; being applied, the outermost first, and `applied` gathers each rule applied. A rule with a
-    ; declaration whose value reads something tracked is given the constructor of the action of
-    ; the style runtime that declares it again for the element's object, and one with a line that
-    ; sets a property of its class again the function that makes that line's live action, chosen
-    ; where the rule is applied, as `owner-action` chooses one for an attribute. A line of a rule a
-    ; class writes whose value names a slot of a style sheet takes the slot the element sees
-    ; (`bind-rule-slots`). The rules applied around the rule are `frames`; with the rule they are
-    ; those around the rules it applies after its name, and around the rules written in it, which it
-    ; brings into view after those (`bring-scopes`). A rule written in the body of a `when` is
-    ; applied under the state cell of the `when` (`cell`), and those of the `when`s further out
-    ; (`outer-cells`), first of all the `when`s that gate it, unless they hold them already
-    ; (`cell-whens`). The content its lines generate follows its own
-    ; declarations, and that of each `when` its declarations, each taking an order
-    ; (`generate-content`). A rule written in a rule reads the `values` of the rule around it that
-    ; takes some; one the element `gives` values holds them for the rules written in it
-    ; (`scope-values`), but not within another that does.
+    ; rules it applies itself: each name the rule writes after its own, then each the body of each
+    ; of its `when`s does, is resolved for the element's class as a name the element writes is, and
+    ; applied in turn, recorded after this one with this one as its `outer` and the `when` as its
+    ; `within`. The values the rule gives one were typed and converted with the rule
+    ; (`type-applied-values`), for the rule its own class chooses, which must be the one the
+    ; element's class does. `gated` holds the `when`s the rule is applied under, the outermost
+    ; first, which gate its declarations as `gate-when` says; a rule so gated that sets a property
+    ; of its class is an error. Answers the order the next rule takes, or `U32.max` where one is
+    ; declined or reported. A rule that comes to apply itself again is an error, at the application
+    ; that would. `active` holds the rules being applied, the outermost first, and `applied` gathers
+    ; each rule applied. A rule with a declaration whose value reads something tracked is given the
+    ; constructor of the action of the style runtime that declares it again for the element's
+    ; object, and one with a line that sets a property of its class again the function that makes
+    ; that line's live action, chosen where the rule is applied, as `owner-action` chooses one for
+    ; an attribute. A line of a rule a class writes whose value names a slot of a style sheet takes
+    ; the slot the element sees (`bind-rule-slots`). The rules applied around the rule are `frames`;
+    ; with the rule they are those around the rules it applies after its name, and around the rules
+    ; written in it, which it brings into view after those (`bring-scopes`). A rule written in the
+    ; body of a `when` is applied under the state cell of the `when` (`cell`), and those of the
+    ; `when`s further out (`outer-cells`), first of all the `when`s that gate it, unless they hold
+    ; them already (`cell-whens`). The content its lines generate follows its own declarations, and
+    ; that of each `when` its declarations, each taking an order (`generate-content`). A rule
+    ; written in a rule reads the `values` of the rule around it that takes some; one the element
+    ; `gives` values holds them for the rules written in it (`scope-values`), but not within another
+    ; that does.
     (let row ([] (. instances rows) unit))
     (let owner ([] (. program modules) (. row module)))
     (let index (as (. facts style-applications length) U32))
@@ -4712,10 +4692,9 @@
     (param body SyntaxId)
     (param gates (list StyleWhen))
     ; Whether a style rule applied under the condition a rule written on a markup element gives
-    ; declares styles alone, as the reference requires of a rule so applied: its error is at the
-    ; first line of its body that is no declaration, `when`, rule or generated content, or else at
-    ; the first rule written in its body, or else in the body of one of its `when`s. True where no
-    ; such condition gates it.
+    ; declares styles alone, as a rule so applied must: its error is at the first line of its body
+    ; that is no declaration, `when`, rule or generated content, or else at the first rule written
+    ; in its body, or else in the body of one of its `when`s. True where no such condition gates it.
     (let conditioned false)
     (for (in held gates)
       (= conditioned (or conditioned (!= (. held test) no-instance)))
@@ -4791,17 +4770,16 @@
     ; as `apply-rule` says, those of the style sheets the element sees where no class of its chain
     ; answers the name (`sheet-rules`), within the rules applied `around` it, the state cells of the
     ; `when`s among them and the values of the one that takes some, and then those written in rules
-    ; that the markup sees (`scope-rules`), each within its own. Declined: one with a
-    ; condition, one a rule written in a rule may answer where those are not known, or that the
-    ; rules the element applied before bring into view, which the reference sees as it gathers them
-    ; but not as it applies them; a name some class or style sheet has but none takes the values
+    ; that the markup sees (`scope-rules`), each within its own. Declined: one with a condition, one
+    ; a rule written in a rule may answer where those are not known, or that the rules the element
+    ; applied before bring into view; a name some class or style sheet has but none takes the values
     ; given by, values given to rules of style sheets other than the one the rule's class chose for
-    ; them (`sheet-values-alike`) or to a rule written in a rule, and a value that calls a function where
-    ; the reference evaluates it once more but not here: it evaluates those the rules after the name
-    ; of a rule a markup element applies give as it prepares the element, and again as the rule is
-    ; applied, and the emitter does too (`prepared-rule`, marked on the rule's application). A
-    ; constructor applying its rule `• This` or the rules of its root `<This` (`values-once`)
-    ; evaluates them once.
+    ; them (`sheet-values-alike`) or to a rule written in a rule, and a value that calls a function
+    ; but for one evaluated once more as the element is prepared: those the rules after the name of
+    ; a rule a markup element applies give are evaluated as the element is prepared, and again as
+    ; the rule is applied (`prepared-rule`, marked on the rule's application). A constructor
+    ; applying its rule `• This` or the rules of its root `<This` (`values-once`) evaluates them
+    ; once.
     (let row ([] (. instances rows) unit))
     (let owner ([] (. program modules) (. row module)))
     (match? ([] (. owner tree nodes) nested)
@@ -4983,10 +4961,10 @@
     (param id SyntaxId)
     (param outer U32)
     (param within SyntaxId)
-    ; Whether a rule a style rule applies, by the application `outer`, is one the reference prepares
-    ; as it prepares the markup element `id` whose rules are being applied (`preparing.site`), before
-    ; its object is made (`nestedRuleScopesForPrepared`): one written after the name of a rule the
-    ; element applies, or after that of one so prepared, but not in the body of a `when`.
+    ; Whether a rule a style rule applies, by the application `outer`, is one prepared as the markup
+    ; element `id` whose rules are being applied is prepared (`preparing.site`), before its object
+    ; is made: one written after the name of a rule the element applies, or after that of one so
+    ; prepared, but not in the body of a `when`.
     (if (or (== (. preparing site) 0) (!= id (. preparing site)) (!= within 0))
       (return false)
     )
@@ -5111,10 +5089,10 @@
     (param cell U32 (= (. U32 max)))
     (param values U32 (= (. U32 max)))
     (param outer-cells U32 (= (. U32 max)))
-    ; Applies the rule a style rule applies at `nested` in a module, within the rules applied
-    ; around it (`frames`), the state cells of the `when`s around it and the values of the rule around
-    ; it that takes some, as `apply-rule` says, where the element's vocabulary answers its properties
-    ; as the rule's does and it does not come to apply itself again, the reference's error.
+    ; Applies the rule a style rule applies at `nested` in a module, within the rules applied around
+    ; it (`frames`), the state cells of the `when`s around it and the values of the rule around it
+    ; that takes some, as `apply-rule` says, where the element's vocabulary answers its properties
+    ; as the rule's does and it does not come to apply itself again, an error.
     (if (or (== unit no-instance) (not (call answers-alike unit made id)))
       (call decline id)
       (return (. U32 max))
@@ -5155,19 +5133,18 @@
     (param gates (list StyleWhen))
     ; Types the content the lines of a style rule given generate where the rule is applied to the
     ; markup element `id`, by the application `index` of `style-applications`, under the `when`s
-    ; `gates`, as the reference's `compileGuardedContent` makes it: each line is built by a function
-    ; of its own, typed in the rule's module for what the element sees (`demand-content`), which a
-    ; record of the style runtime holds for the element's object as a `MarkupElement`; under `when`s,
-    ; an action of its own enables the record as they hold (`demand-style-content`), first where the
-    ; element is made, where what enabling it raises leaves the function. None is
-    ; generated where the reference generates none: by the rule `• This` (`content-off`), and by the
-    ; rules the markup a function that builds generated content makes applies (`generating`).
-    ; Answers how many lines generate content, each taking an order, or `U32.max` where one is
-    ; declined or reported: by the rules a root `<This` applies in a constructor (`content-refused`),
-    ; at a slot outlet, and where the element's object takes no content through the markup protocol,
-    ; the reference's error. The values of the rules around rules written in rules the content sees
-    ; are those the element holds, which the function keeps (`content-view`), and so are the state
-    ; cells of the `when`s around them.
+    ; `gates`: each line is built by a function of its own, typed in the rule's module for what the
+    ; element sees (`demand-content`), which a record of the style runtime holds for the element's
+    ; object as a `MarkupElement`; under `when`s, an action of its own enables the record as they
+    ; hold (`demand-style-content`), first where the element is made, where what enabling it raises
+    ; leaves the function. None is generated by the rule `• This` (`content-off`), nor by the rules
+    ; the markup a function that builds generated content makes applies (`generating`). Answers how
+    ; many lines generate content, each taking an order, or `U32.max` where one is declined or
+    ; reported: by the rules a root `<This` applies in a constructor (`content-refused`), at a slot
+    ; outlet, and where the element's object takes no content through the markup protocol, an error.
+    ; The values of the rules around rules written in rules the content sees are those the element
+    ; holds, which the function keeps (`content-view`), and so are the state cells of the `when`s
+    ; around them.
     (if (and (!= (. lines length) 0) (. preparing content-refused))
       (call decline id)
       (return (. U32 max))
@@ -5260,9 +5237,8 @@
     (return (as (. lines length) U32))
   )
   (fn-do _ generating Bool
-    ; Whether the rules markup written here applies generate content, as the reference's
-    ; `markupStyleContentEnabled` says: not in a function that builds generated content, nor in one
-    ; it encloses.
+    ; Whether the rules markup written here applies generate content: not in a function that builds
+    ; generated content, nor in one it encloses.
     (let around instance)
     (while (!= around no-instance)
       (let context (. ([] (. instances rows) around) context))
@@ -5277,14 +5253,14 @@
     (param id SyntaxId)
     (param carried (list U32))
     (param cells (list U32))
-    ; The context of the function that builds content a style rule generates at a markup element,
-    ; as the reference's `markupStyleContext` gives it there: the styles the markup written here sees,
-    ; the first to answer a name first, the style sheets it sees in their groups, the rules written in
-    ; rules it sees, with those the element's own rules bring into view (`push-scopes`), each with
-    ; how many state cells of the `when`s around it it is seen under, which the function keeps, the
-    ; outermost first, as `cells` gathers them, and where the values of the rule around it that
-    ; takes some are among those it keeps, which are `carried` (`place-values`); and the layer its
-    ; declarations take. `U32.max` where those are not known here, or a cell is not carried here.
+    ; The context of the function that builds content a style rule generates at a markup element:
+    ; the styles the markup written here sees, the first to answer a name first, the style sheets it
+    ; sees in their groups, the rules written in rules it sees, with those the element's own rules
+    ; bring into view (`push-scopes`), each with how many state cells of the `when`s around it it is
+    ; seen under, which the function keeps, the outermost first, as `cells` gathers them, and where
+    ; the values of the rule around it that takes some are among those it keeps, which are `carried`
+    ; (`place-values`); and the layer its declarations take. `U32.max` where those are not known
+    ; here, or a cell is not carried here.
     (if (not (call sheets-known))
       (return (. U32 max))
     )
@@ -5470,15 +5446,14 @@
     (param matched (list ScopeUse))
     (param mismatch U32)
     ; The rules written in rules that markup sees (`rule-scopes`), and then those of `extra`, that
-    ; an application of a name answers at an element of a class, as the reference's `resolveMatch`
-    ; adds them after the rules of the classes and the style sheets, in the order they came into
-    ; view: each of the name taking as many values as are given, each convertible to the type the
-    ; rule takes it as, but none that reaches only the markup of an element not yet filled
-    ; (`scope-pending`). Answers 0, 1 where one is declined and 2 where one is reported: declined
-    ; where it has a rule around it that takes values, or around which the state cells of `when`s are
-    ; not carried (`plain-frames`), or whose types are not known here, and reported where those types
-    ; are written wrong (`report-argument-types`); whether one has the name; and the place of the
-    ; last value found not to convert, or `mismatch`.
+    ; an application of a name answers at an element of a class, after the rules of the classes and
+    ; the style sheets, in the order they came into view: each of the name taking as many values as
+    ; are given, each convertible to the type the rule takes it as, but none that reaches only the
+    ; markup of an element not yet filled (`scope-pending`). Answers 0, 1 where one is declined and
+    ; 2 where one is reported: declined where it has a rule around it that takes values, or around
+    ; which the state cells of `when`s are not carried (`plain-frames`), or whose types are not
+    ; known here, and reported where those types are written wrong (`report-argument-types`);
+    ; whether one has the name; and the place of the last value found not to convert, or `mismatch`.
     (let named false)
     (let missed mismatch)
     (let count (+ (. rule-scopes length) (. extra length)))
@@ -5580,10 +5555,9 @@
   (fn-do _ scope-unit InstanceId
     (param scope RuleScope)
     (param made TypeId)
-    ; The instance that types a rule written in a rule for an element of a class it is matched at,
-    ; as the reference matches it (`targetOwner`): for its style sheet and the element's class where
-    ; a sheet holds it, else for the element's class; typed now, or none where it is being typed
-    ; already.
+    ; The instance that types a rule written in a rule for an element of a class it is matched at:
+    ; for its style sheet and the element's class where a sheet holds it, else for the element's
+    ; class; typed now, or none where it is being typed already.
     (let sheet (== (call (. types intrinsic-of) (. scope owner)) .style-sheet))
     (let unit
       (call (. instances intern-initializer)
@@ -5611,13 +5585,12 @@
     (param cell U32)
     (param values U32)
     (param outer-cells U32)
-    ; Brings into view the rules written in a style rule applied to an element, which the markup
-    ; its object makes and its body see (`collected`), as the reference's `styleRuleNestedScopes`
-    ; gives them: those of its body, under the state cells the rule is applied under (`cell`, and
-    ; `outer-cells` further out), then those of each of its `when`s, under its own (`when-cell`)
-    ; within those (`outer-links`), each within the rules applied `around` them, under the `when` for
-    ; those of one, and reading the `values` of the one that takes some. A rule applied under a
-    ; `when` that is not a state cell may hold none, as the reference reports at the first.
+    ; Brings into view the rules written in a style rule applied to an element, which the markup its
+    ; object makes and its body see (`collected`): those of its body, under the state cells the rule
+    ; is applied under (`cell`, and `outer-cells` further out), then those of each of its `when`s,
+    ; under its own (`when-cell`) within those (`outer-links`), each within the rules applied
+    ; `around` them, under the `when` for those of one, and reading the `values` of the one that
+    ; takes some. A rule applied under a `when` that is not a state cell may hold none.
     (let row ([] (. instances rows) unit))
     (let owner ([] (. program modules) (. row module)))
     (let scopes (list ScopeUse))
@@ -5752,9 +5725,9 @@
     (param owner TypeId)
     (param module ModuleId)
     (param branch SyntaxId)
-    ; The state cell of a `when` of a style rule whose body holds rules written in it, made at a site
-    ; (`scope-cell`), as the reference binds the last frame around such a rule; `U32.max - 1`, a cell
-    ; not carried, where the rule is applied under the state cell of a `when` that is not carried.
+    ; The state cell of a `when` of a style rule whose body holds rules written in it, made at a
+    ; site (`scope-cell`); `U32.max - 1`, a cell not carried, where the rule is applied under the
+    ; state cell of a `when` that is not carried.
     (if (== cell (- (. U32 max) 1))
       (return (- (. U32 max) 1))
     )
@@ -5779,12 +5752,11 @@
     (param class TypeId)
     (param name Atom)
     (param content TypeId)
-    ; Brings into view the rules written in rules that the rules the outlet of the slot of a name of a
-    ; class applies after `•` bring to what the slot is given, as the reference's
-    ; `markupStyleRuleScopesForApplications` gathers them for the slot's type `content` there. Answers
-    ; 0; 3, bringing none, where one is under the state cell of a `when`, which the function that
-    ; builds the content binds to what it builds (`root-applications`); or 2 where one is declined:
-    ; one with values, and the rules of an outlet a line forwards.
+    ; Brings into view the rules written in rules that the rules the outlet of the slot of a name of
+    ; a class applies after `•` bring to what the slot is given, of the slot's type `content`.
+    ; Answers 0; 3, bringing none, where one is under the state cell of a `when`, which the function
+    ; that builds the content binds to what it builds (`root-applications`); or 2 where one is
+    ; declined: one with values, and the rules of an outlet a line forwards.
     (let (tuple owner outlet) (call slot-outlet class name))
     (if (== owner no-type)
       (return 0)
@@ -5894,11 +5866,11 @@
     (param cell U32)
     (param outer-cells U32)
     (param index U32)
-    ; The `when`s that gate a style rule applied under those given, as the reference's
-    ; `styleScopeStateConditions` puts the state cells of the `when`s around a rule written in a rule
-    ; before them, the outermost first, but those they hold already: its gate is recorded once
-    ; (`StyleGate`) and the application of the rule is marked with the cells, the innermost as its
-    ; `cell` and those further out as its `outer-cells`. None where it is declined.
+    ; The `when`s that gate a style rule applied under those given, with the state cells of the
+    ; `when`s around a rule written in a rule put before them, the outermost first, but those they
+    ; hold already: its gate is recorded once (`StyleGate`) and the application of the rule is
+    ; marked with the cells, the innermost as its `cell` and those further out as its `outer-cells`.
+    ; None where it is declined.
     (if (== cell (. U32 max))
       (return gated)
     )
@@ -5969,10 +5941,9 @@
   )
   (fn-do _ push-content-scopes _
     (param id SyntaxId)
-    ; Brings into view, for the content a style rule generates at a markup element, the rules written
-    ; in rules that the style rules the element applies do, those that reach only the markup of its
-    ; class's own matching there too (`scope-entered`), as the reference's
-    ; `enteredOwnStyleRuleScopes` gives them.
+    ; Brings into view, for the content a style rule generates at a markup element, the rules
+    ; written in rules that the style rules the element applies do, those that reach only the markup
+    ; of its class's own matching there too (`scope-entered`).
     (let (tuple start end) (call scopes-of id))
     (for (in position (..< start end))
       (+= rule-scopes (call entered-use ([] scoped-rows position)))
@@ -5994,13 +5965,12 @@
     (param outer-cells U32)
     ; Gathers the rules written in rules that a style rule matched for a class or style sheet
     ; (`holder`) brings into view, within `frames`, the state cells `cell` and `outer-cells` and the
-    ; `values` of the rules around, as the reference's `nestedRuleScopesForMatch` gathers them: those
-    ; the rules it applies after its name bring, within it, then its own (`bring-scopes`), with the
-    ; state cells of its `when`s made at `site` for an object read as of class `read`, within those
-    ; (`outer-links`), and the values the application `gives`, where one does (`scope-values`).
-    ; False where one is declined: an
-    ; application within it with a condition or values whose name has a rule that brings any, and
-    ; values given within a rule around that takes some.
+    ; `values` of the rules around: those the rules it applies after its name bring, within it, then
+    ; its own (`bring-scopes`), with the state cells of its `when`s made at `site` for an object
+    ; read as of class `read`, within those (`outer-links`), and the values the application `gives`,
+    ; where one does (`scope-values`). False where one is declined: an application within it with a
+    ; condition or values whose name has a rule that brings any, and values given within a rule
+    ; around that takes some.
     (let around (call (. instances intern-frame) frames owner decl holder 0))
     (let framed values)
     (if (!= gives 0)
@@ -6119,9 +6089,8 @@
   )
   (fn-do _ gates-updates Bool
     (param unit InstanceId)
-    ; Whether a style rule applied in the body of a `when` sets no property of its class, which
-    ; the reference reports at the first line that does: a gated block of declarations may only
-    ; declare styles.
+    ; Whether a style rule applied in the body of a `when` sets no property of its class, which is
+    ; reported at the first line that does: a gated block of declarations may only declare styles.
     (for (in update (. facts rule-updates))
       (if (== (. update instance) unit)
         (let row ([] (. instances rows) unit))
@@ -6159,9 +6128,9 @@
     (param gated (list StyleWhen))
     ; The `when`s that gate the declarations of the body of a `when` of a style rule applied to an
     ; object of a class, the outermost first: those the rule is applied under, then this one. Its
-    ; state must be a property of the class of type `Bool`, as the reference reports, which is
-    ; read tracked, and the gate is recorded once (`StyleGate`), with the constructor of the
-    ; action that runs it. None where it is reported or declined.
+    ; state must be a property of the class of type `Bool`, which is read tracked, and the gate is
+    ; recorded once (`StyleGate`), with the constructor of the action that runs it. None where it is
+    ; reported or declined.
     (let written (. ([] (. program modules) owner) tree))
     (let state (call (. program store-atom) ""))
     (match? ([] (. written nodes) branch)
@@ -6439,8 +6408,8 @@
     (param again InstanceId)
     (param owner ModuleId)
     (param at SyntaxId)
-    ; The reference's error for a style rule that comes to apply itself again: the names of the
-    ; rules from the first time it was applied on, then its own, at the application that would.
+    ; The error for a style rule that comes to apply itself again: the names of the rules from the
+    ; first time it was applied on, then its own, at the application that would.
     (let names "")
     (for (in position (..< start (. active length)))
       (+= names (str (call rule-name ([] active position)) " -> "))
@@ -6466,10 +6435,10 @@
     (param made TypeId)
     (param site SyntaxId)
     ; The instance that types a style rule a class or a style sheet writes, for the class or sheet
-    ; `level`, and for a sheet's, the class `made` of the element it is applied to, as the reference
-    ; resolves its names there; for a class's, under the styles of the element's vocabulary it
-    ; reads (`rule-context`), applied at `site`. Typed now, or none where it is being typed already.
-    ; The instance that applies it runs its code, and may panic where it does.
+    ; `level`, and for a sheet's, the class `made` of the element it is applied to; for a class's,
+    ; under the styles of the element's vocabulary it reads (`rule-context`), applied at `site`.
+    ; Typed now, or none where it is being typed already. The instance that applies it runs its
+    ; code, and may panic where it does.
     (let element (if-expr (== (call (. types intrinsic-of) level) .style-sheet) made no-type))
     (let context (if-expr (== element no-type) (call rule-context level member made site) (. U32 max)))
     (let unit (call (. instances intern-initializer) (. member module) (. member decl) level element context))
@@ -6488,8 +6457,7 @@
     ; The styles a style rule a class writes is typed under beside those the class sees, where it is
     ; applied at `site` to an element of a class: each style the element sees, as `answers-alike`
     ; lists them, that declares a name a line of the rule declares which no style the class sees
-    ; answers, in the order the element sees them, as the reference keys the function of a rule by
-    ; the styles of the element's vocabulary it reads (`keyForMarkupStyleReads`); or none.
+    ; answers, in the order the element sees them; or none.
     (if (!= (call (. types intrinsic-of) level) .class)
       (return (. U32 max))
     )
@@ -6583,10 +6551,9 @@
   (fn-do _ shares-rule Bool
     (param applied (list InstanceId))
     (param count U32)
-    ; Whether the reference compiles a rule matched by name into a function every element it
-    ; matches calls, as `styleRuleIsShareable` says: one whose weight, with the rules it applies,
-    ; is more than one, each style it declares and each `when` weighing one, and none of which
-    ; sets a property of its class or generates content.
+    ; Whether a rule matched by name is compiled into a function every element it matches calls: one
+    ; whose weight, with the rules it applies, is more than one, each style it declares and each
+    ; `when` weighing one, and none of which sets a property of its class or generates content.
     (let weight count)
     (for (in unit applied)
       (if (call (. facts updates-properties) unit)
@@ -6618,8 +6585,7 @@
     (param made TypeId)
     (param name Atom)
     ; The class of a chain, the most derived first, that writes a style rule of a name taking no
-    ; values, and the rule, as the reference resolves a rule an element applies; and whether some
-    ; class writes a rule of that name at all.
+    ; values, and the rule; and whether some class writes a rule of that name at all.
     (let named false)
     (let level (? TypeId) made)
     (while (and level (== (call (. types intrinsic-of) level) .class))
@@ -6649,15 +6615,14 @@
     (param made TypeId)
     (param name Atom)
     (param given (list TypeId))
-    ; The style rule a written application chooses by the types of its values, as the reference's
-    ; `resolveMatch` chooses among the rules the classes of a chain write: in each class, the
+    ; The style rule a written application chooses by the types of its values: in each class, the
     ; first rule of the name taking as many values, each convertible to the type the rule takes it
     ; as, that converts them most closely; then, of the classes, the most derived whose choice
     ; converts them most closely. Answers the class and the rule, or no type where none is chosen;
     ; whether some class writes a rule of the name; and the place of the last value found not to
-    ; convert, at which the reference reports the mismatch, or `U32.max`. A type a rule takes that
-    ; is not known here is answered as an invalid class with that rule, to be reported where it is
-    ; written wrong (`report-argument-types`) or else declined.
+    ; convert, at which the mismatch is reported, or `U32.max`. A type a rule takes that is not
+    ; known here is answered as an invalid class with that rule, to be reported where it is written
+    ; wrong (`report-argument-types`) or else declined.
     (let named false)
     (let mismatch (. U32 max))
     (let best no-type)
@@ -6688,12 +6653,11 @@
     (param given (list TypeId))
     (param mismatch U32)
     ; The rule of a name a class or a style sheet writes that a written application chooses by the
-    ; types of its values, as the reference's `matchRulesOf` chooses it: the first taking as many
-    ; values, each convertible to the type the rule takes it as, that converts them most closely.
-    ; A sheet writes the rules of its extensions after its own (`sheet-parts`). Answers whether
-    ; there is one, the rule and how closely, `U32.max` for a type a rule takes that is not known
-    ; here; whether the class writes a rule of the name; and the place of the last value found not
-    ; to convert, or `mismatch` where none is.
+    ; types of its values: the first taking as many values, each convertible to the type the rule
+    ; takes it as, that converts them most closely. A sheet writes the rules of its extensions after
+    ; its own (`sheet-parts`). Answers whether there is one, the rule and how closely, `U32.max` for
+    ; a type a rule takes that is not known here; whether the class writes a rule of the name; and
+    ; the place of the last value found not to convert, or `mismatch` where none is.
     (let found false)
     (let named false)
     (let chosen (call DeclRef 0 0))
@@ -6742,9 +6706,8 @@
   )
   (fn-do _ report-argument-types Bool
     (param member DeclRef)
-    ; Reports a value a style rule takes whose type is written wrong, where it is written, as the
-    ; reference's `resolveMatch` reports it as it matches the rule (`argument-type-error`). Says
-    ; whether one was reported.
+    ; Reports a value a style rule takes whose type is written wrong, where it is written
+    ; (`argument-type-error`). Says whether one was reported.
     (let owner ([] (. program modules) (. member module)))
     (match? ([] (. owner decls) (. member decl))
       (case (call .decl-style-rule rule)
@@ -6770,9 +6733,9 @@
     (param owner ModuleId)
     (param argument SyntaxId)
     (param env TypeEnv)
-    ; Where a value a style rule takes is written wrong, and the reference's error there: a name
-    ; written with no type, a type written that names nothing (`missing-type`), or a type written
-    ; with no name, which the reference refuses as the rule binds it. None where it is written right.
+    ; Where a value a style rule takes is written wrong, and the error there: a name written with no
+    ; type, a type written that names nothing (`missing-type`), or a type written with no name. None
+    ; where it is written right.
     (let written (. ([] (. program modules) owner) tree))
     (match? ([] (. written nodes) argument)
       (case (call .node-argument-decl row)
@@ -6797,8 +6760,8 @@
     (param name Atom)
     ; Whether a style rule of a name may be answered other than by a class of the element that
     ; applies it, a style sheet it sees, or a rule written in a rule that it sees where those are
-    ; known (`scopes-known`), as the reference also looks: by a rule written in a rule where they
-    ; are not, or by one written at the top of a module. What answers is not modeled.
+    ; known (`scopes-known`): by a rule written in a rule where they are not, or by one written at
+    ; the top of a module. What answers is not modeled.
     (if (and (not (call scopes-known)) (call nested-named name))
       (return true)
     )
@@ -6951,9 +6914,8 @@
     (param made TypeId)
     (param site SyntaxId)
     ; Whether each property a style rule declares, typed for the class that writes it, is answered
-    ; by the same style where the rule is applied to an element of a class: the reference resolves
-    ; the names there, in the element's vocabulary, with that of a style sheet that writes the
-    ; rule last.
+    ; by the same style where the rule is applied to an element of a class: the names are resolved
+    ; there, in the element's vocabulary, with that of a style sheet that writes the rule last.
     (let styles (list TypeId))
     (if (not (call add-visible-styles made styles site))
       (return false)
@@ -6983,18 +6945,17 @@
     (param receiver TypeId)
     (param syntax SyntaxId)
     (param writer DeclId)
-    ; Types a style rule for the class that writes it, as a rule of the class is typed, with
-    ; `this` bound and each value it takes of the type the class declares for it. Each line of its
-    ; body, in the order written, sets a property of the class (`update-unit-property`) or names a
-    ; property of a style the class sees and declares its value, typed and converted as an
-    ; element's declaration is. A name no style answers is the reference's error. The lines of
-    ; each `when` follow, which may only declare styles, as the reference reports. A declared
-    ; value that reads something tracked is declared again as it changes where the rule is applied
-    ; (`StyleAuthor`), and `inherit` takes the value from the parent (`declare-inherit`). A value the
-    ; runtime holds a handle to is declared as an element's is. Any other line, and a declared
-    ; value that reads a value the rule takes and something tracked, are declined. The rules a rule
-    ; applies are resolved where
-    ; it is applied. A rule answers nothing.
+    ; Types a style rule for the class that writes it, as a rule of the class is typed, with `this`
+    ; bound and each value it takes of the type the class declares for it. Each line of its body, in
+    ; the order written, sets a property of the class (`update-unit-property`) or names a property
+    ; of a style the class sees and declares its value, typed and converted as an element's
+    ; declaration is. A name no style answers is an error. The lines of each `when` follow, which
+    ; may only declare styles. A declared value that reads something tracked is declared again as it
+    ; changes where the rule is applied (`StyleAuthor`), and `inherit` takes the value from the
+    ; parent (`declare-inherit`). A value the runtime holds a handle to is declared as an element's
+    ; is. Any other line, and a declared value that reads a value the rule takes and something
+    ; tracked, are declined. The rules a rule applies are resolved where it is applied. A rule
+    ; answers nothing.
     (= (. frame self-type) receiver)
     (call bind-this receiver)
     (call (. frame close-env))
@@ -7148,8 +7109,7 @@
   (fn-do _ assign-outer-arguments Bool
     (param quiet Bool (= false))
     ; Gives each value the rules around a rule written in a rule take the type the class declares
-    ; for it, as the reference defines the values of the frames it is applied within
-    ; (`withStyleRuleLexicalFrames`), which the rule reads as the frame gives them.
+    ; for it, which the rule reads as the frame gives them.
     (let decls (. ([] (. program modules) module) decls))
     (let outer DeclId 0)
     (match? ([] decls (. ([] (. instances rows) instance) initializer))
@@ -7190,7 +7150,7 @@
   )
   (fn-do _ sheet-rule Bool
     ; Whether the style rule an instance types is written in a style sheet, whose lines may only
-    ; declare styles and generate content: any other line is the reference's error.
+    ; declare styles and generate content: any other line is an error.
     (let decl (. ([] (. instances rows) instance) initializer))
     (match? ([] (. ([] (. program modules) module) decls) decl)
       (case (call .decl-style-rule rule)
@@ -7205,8 +7165,7 @@
     ; Types the lines of a style rule's body, as `check-style-unit` says, for the class or style
     ; sheet that writes it. The names it declares are those of the styles the class sees, then those
     ; of the context it is typed under, or for a rule a style sheet writes, those the class of the
-    ; element it is typed for sees, then the sheet's, as the reference resolves them where the rule
-    ; is applied (`unit-vocabulary`).
+    ; element it is typed for sees, then the sheet's (`unit-vocabulary`).
     (match? ([] (. tree nodes) syntax)
       (case (call .node-rule-syntax rule)
         (call type-applied-values receiver rule)
@@ -7365,10 +7324,9 @@
   (fn-do _ content-slot U32
     (param line SyntaxId)
     ; The slot a line of a style rule that generates content fills, 0 to 3 for before, after,
-    ; first-child and last-child, as the reference's `styleContentTemplateFor` reads it. A line that
-    ; forwards a slot, one that names the item of a slot that repeats, and a slot of another name are
-    ; the reference's errors, and a markup line that binds no slot is declined; each answers
-    ; `U32.max`.
+    ; first-child and last-child. A line that forwards a slot, one that names the item of a slot
+    ; that repeats, and a slot of another name are errors, and a markup line that binds no slot is
+    ; declined; each answers `U32.max`.
     (let binding SyntaxId 0)
     (let parameter SyntaxId 0)
     (match? ([] (. tree nodes) line)
@@ -7434,8 +7392,8 @@
   )
   (fn-do _ conditional-update Atom
     (param name Atom)
-    ; The reference's error for a line of a style rule that sets a property of its class where the
-    ; rule's declarations are gated by a `when`.
+    ; The error for a line of a style rule that sets a property of its class where the rule's
+    ; declarations are gated by a `when`.
     (return
       (call (. program store-atom)
         (block
@@ -7776,9 +7734,8 @@
     (param position U32)
     (param layer U32)
     (param order U32)
-    ; A declaration of `inherit`, as the reference makes one: the runtime takes the property's value
-    ; from the parent as it settles, for a property that is `@inherited`; for any other it is the
-    ; reference's error.
+    ; A declaration of `inherit`: the runtime takes the property's value from the parent as it
+    ; settles, for a property that is `@inherited`; for any other it is an error.
     (let property ([] (. facts style-properties) position))
     (if (== (/and/ (. property flags) 1) 0)
       (call (. frame diagnose)
@@ -7889,9 +7846,8 @@
   )
   (fn-do _ holds-handle Bool
     (param type TypeId)
-    ; Whether the runtime holds a handle to a value of a style property's type, as the reference's
-    ; `styleValueNeedsHolder` says: an object, a value boxed, or a union with a case that is no
-    ; whole number of at most 32 bits.
+    ; Whether the runtime holds a handle to a value of a style property's type: an object, a value
+    ; boxed, or a union with a case that is no whole number of at most 32 bits.
     (let inner (if-expr (call (. types is-optional) type) (call (. types optional-inner) type) type))
     (if (call scalar-style inner)
       (return false)
@@ -7918,8 +7874,8 @@
   (fn-do _ declaration-static Bool
     (param value SyntaxId)
     ; Whether a style value reads nothing that differs from one making of the element, or one
-    ; application of the rule, to the next, as the reference's `styleExpressionIsDeclarationStatic`
-    ; says: no style, no name tracked, no `this`, and no local, argument or member.
+    ; application of the rule, to the next: no style, no name tracked, no `this`, and no local,
+    ; argument or member.
     (for (in node (.. (call (. tree subtree-start) value) value))
       (match? ([] (. tree nodes) node)
         (case .node-style-read-expression
@@ -7941,8 +7897,8 @@
   (fn-do _ note-static-value _
     (param statement SyntaxId)
     (param type TypeId)
-    ; A value the reference evaluates once for every making of the declaration that writes it,
-    ; which a function of its own evaluates (`Facts.note-static-value`).
+    ; A value evaluated once for every making of the declaration that writes it, which a function of
+    ; its own evaluates (`Facts.note-static-value`).
     (call (. facts note-static-value) module statement instance type)
   )
   (fn-do _ demand-style-holders Bool
@@ -8101,7 +8057,7 @@
   (fn-expr _ scalar-style Bool
     (param type TypeId)
     ; Whether a style property's value is kept in its slot as itself: a number, a truth or a
-    ; character, not optional, as the reference's `NumberType` is.
+    ; character, not optional.
     (scope (and (call intrinsic-is-numeric kind) (!= kind .cpointer) (!= kind .number))
       (lazy kind (call (. types intrinsic-of) type))
     )
@@ -8109,10 +8065,10 @@
   (fn-do _ style-value TypeId
     (param value SyntaxId)
     (param declared TypeId)
-    ; The type of the value a style declaration gives a property of a type, as the reference's
-    ; `compileStyleDeclarationExpression` reads it: a name alone, untracked, that names a case of the
-    ; property's union that holds nothing is that case, before anything else the name may be, and is
-    ; planned as `static-get` plans a case named on its union; any other value is typed as expected.
+    ; The type of the value a style declaration gives a property of a type: a name alone, untracked,
+    ; that names a case of the property's union that holds nothing is that case, before anything
+    ; else the name may be, and is planned as `static-get` plans a case named on its union; any
+    ; other value is typed as expected.
     (match? ([] (. tree nodes) value)
       (case (call .node-identifier row)
         (if (and (not (. row is-tracked)) (call bare-case declared (. row name)))
@@ -8145,8 +8101,8 @@
   (fn-do _ fixed-style-value Bool
     (param value SyntaxId)
     ; Whether a style value reads nothing that can differ from one making of the element to the
-    ; next, as the reference's `styleExpressionIsStatic` says: no style, no name tracked, no
-    ; `this`, and no local, member or global but `true`, `false` and `null`.
+    ; next: no style, no name tracked, no `this`, and no local, member or global but `true`, `false`
+    ; and `null`.
     (for (in node (.. (call (. tree subtree-start) value) value))
       (match? ([] (. tree nodes) node)
         (case .node-style-read-expression
@@ -8584,7 +8540,7 @@
   )
   (fn-do _ demand-style-sites Bool
     ; The functions of the style runtime a markup element that declares styles calls, typed once.
-    ; The element's object is given to them as the `Pointer` the reference casts it to.
+    ; The element's object is given to them cast to a `Pointer`.
     (if (not (call demand-style-runtime))
       (return false)
     )
@@ -8704,16 +8660,15 @@
     (param row ASTStyleReadExpression)
     ; A read of a style property, `$name`, of an object or of `this`: the value the style runtime
     ; holds for the object, resolved against the styles the subject's class sees and those of the
-    ; class the read is written in, as the reference resolves it, read by `style-read-bits` and
-    ; taken as the property's type, the subject cast to a `Pointer` as the reference casts it. An
-    ; optional is read with whether it holds nothing by `style-read-optional`, and a value the
-    ; runtime holds a handle to is resolved from it (`style-read-ready`). A name no style answers
-    ; that names the flag of a domain reads the flag; any other is the reference's error. A read
-    ; written after `?` is a link of an optional chain, read from what the optional holds, as the
-    ; reference's `pushChain` makes one. A read of an optional chain written in parentheses, of
-    ; an optional otherwise, and of no class or interface, are declined. A read with no object where
-    ; there is no `this` finds no property, the reference's error. The runtime's reader is a call,
-    ; which ends what is known of properties.
+    ; class the read is written in, read by `style-read-bits` and taken as the property's type, the
+    ; subject cast to a `Pointer`. An optional is read with whether it holds nothing by
+    ; `style-read-optional`, and a value the runtime holds a handle to is resolved from it
+    ; (`style-read-ready`). A name no style answers that names the flag of a domain reads the flag;
+    ; any other is an error. A read written after `?` is a link of an optional chain, read from what
+    ; the optional holds. A read of an optional chain written in parentheses, of an optional
+    ; otherwise, and of no class or interface, are declined. A read with no object where there is no
+    ; `this` finds no property, an error. The runtime's reader is a call, which ends what is known
+    ; of properties.
     (if (not (call (. program module-by-name) "core/style"))
       (call (. frame diagnose) id .stated (call (. program store-atom) "Style runtime is not loaded"))
       (return (call Found invalid-type))
@@ -9058,13 +9013,12 @@
     (param op Operator)
     (param rhs SyntaxId)
     (param value TypeId)
-    ; An assignment of a name no member of an object of a class or an interface answers that names
-    ; a property of a style the object sees, as the reference's `compileImperativeStyleWrite` makes
-    ; one: the value, converted to the property's type as one assigned is, is declared for the
-    ; object at the imperative layer, its bits by `style-author-imperative` or where the runtime
-    ; holds a handle to it by a holder, the object cast to a `Pointer`. It gives the value converted.
-    ; None where no style answers. Any operator but `=` is declined, as is a declaration that may
-    ; raise an error, which the reference reports as unhandled.
+    ; An assignment of a name no member of an object of a class or an interface answers that names a
+    ; property of a style the object sees: the value, converted to the property's type as one
+    ; assigned is, is declared for the object at the imperative layer, its bits by
+    ; `style-author-imperative` or where the runtime holds a handle to it by a holder, the object
+    ; cast to a `Pointer`. It gives the value converted. None where no style answers. Any operator
+    ; but `=` is declined, as is a declaration that may raise an error.
     (let kind (call (. types intrinsic-of) receiver))
     (if (or (and (!= kind .class) (!= kind .interface)) (call property-named receiver name) no-style)
       (return null)
@@ -9104,9 +9058,9 @@
     (param op Operator)
     (param name Atom)
     (param rhs SyntaxId)
-    ; An assignment of a name nothing declares in a function that has `this`, which the reference
-    ; makes a declaration of the property of a style the object sees that the name names, as
-    ; `infer-style-assign` says, and otherwise reports as a variable that is not declared.
+    ; An assignment of a name nothing declares in a function that has `this`, which is made a
+    ; declaration of the property of a style the object sees that the name names, as
+    ; `infer-style-assign` says, and otherwise reported as a variable that is not declared.
     (let value (call stored-value rhs (call infer rhs)))
     (if (== value invalid-type)
       (return invalid-type)
@@ -9273,11 +9227,11 @@
     (param lhs SyntaxId)
     (param row ASTStyleReadExpression)
     (param rhs SyntaxId)
-    ; A write of the flag of a domain, `$is-X-invalid = on`, of an object or of `this`, as the
-    ; reference writes it: the value, then the subject, given to the style runtime's writer. The
-    ; value is what the write answers. A write of any other name is the reference's error. An
-    ; assigning operator, a value that is no `Bool`, a value that reads something tracked, and a
-    ; subject chained on an optional, of an optional or of no class are declined.
+    ; A write of the flag of a domain, `$is-X-invalid = on`, of an object or of `this`: the value,
+    ; then the subject, given to the style runtime's writer. The value is what the write answers. A
+    ; write of any other name is an error. An assigning operator, a value that is no `Bool`, a value
+    ; that reads something tracked, and a subject chained on an optional, of an optional or of no
+    ; class are declined.
     (let written (call infer-with-expected rhs (. types bool-type)))
     (if (or (== written invalid-type) (== written no-type))
       (return invalid-type)
@@ -9593,8 +9547,8 @@
     (param ref DeclRef)
     ; The declarations whose members a class has: a class's own, then each facet bound to it in the
     ; order of its facets; those of a style sheet are the sheet's, then each extension of it the
-    ; program declares (`• extend Name`), as the reference declares them into the sheet: in the order
-    ; the modules are declared and, in one, in the order written.
+    ; program declares (`• extend Name`), in the order the modules are declared and, in one, in the
+    ; order written.
     (let parts (list DeclRef))
     (+= parts ref)
     (if (not (call is-sheet-decl (. ref module) (. ref decl)))
@@ -9685,11 +9639,10 @@
   (fn-do + check-sheet-extension _
     (param index DeclId)
     (param extension SheetExtensionDecl)
-    ; An extension of a style sheet, `• extend Name`, as the reference's `ASTStyleSheetExtension`
-    ; declares one: its target must be a style sheet, and each rule it adds may repeat none the
-    ; sheet has (`repeats-part`); it holds usings and rules alone, a slot being an error. The first
-    ; that is wrong is the reference's error. The usings and rules it adds are the sheet's
-    ; (`sheet-parts`).
+    ; An extension of a style sheet, `• extend Name`: its target must be a style sheet, and each
+    ; rule it adds may repeat none the sheet has (`repeats-part`); it holds usings and rules alone,
+    ; a slot being an error. The first that is wrong is an error. The usings and rules it adds are
+    ; the sheet's (`sheet-parts`).
     (let id (. extension syntax))
     (let row
       (match? ([] (. tree nodes) id)
@@ -9804,10 +9757,9 @@
     (param sheet DeclRef)
     (param extension DeclRef)
     (param rule ASTRule)
-    ; Whether a style rule an extension of a style sheet adds repeats one the sheet has before it, its
-    ; own or one an extension declared earlier adds (`sheet-parts`), as the reference finds a rule it
-    ; declares into the sheet again: of the same name, taking what it takes (`same-signature`); and
-    ; whether that is known.
+    ; Whether a style rule an extension of a style sheet adds repeats one the sheet has before it,
+    ; its own or one an extension declared earlier adds (`sheet-parts`): of the same name, taking
+    ; what it takes (`same-signature`); and whether that is known.
     (for (in part (call sheet-parts sheet))
       (if (and (== (. part module) (. extension module)) (== (. part decl) (. extension decl)))
         (return (tuple false true))
@@ -9863,10 +9815,9 @@
     (param left (of RowRange SyntaxId))
     (param right-tree AST)
     (param right (of RowRange SyntaxId))
-    ; Whether two style rules take the same values, as the reference's `hasSameSignature` tells rules
-    ; of one name apart: as many, each of a type written with the same name (`written-type-name`),
-    ; the first that differs telling them apart; and whether that is known, false where a type it
-    ; reaches is written in a way not named here.
+    ; Whether two style rules take the same values: as many, each of a type written with the same
+    ; name (`written-type-name`), the first that differs telling them apart; and whether that is
+    ; known, false where a type it reaches is written in a way not named here.
     (if (!= (. left count) (. right count))
       (return (tuple false true))
     )
@@ -9930,10 +9881,9 @@
     (param outlet SyntaxId)
     (param wanted TypeId)
     ; Brings into view, in the function that builds what a line gives a slot, the rules written in
-    ; rules that the rules the slot's outlet applies bring, as the reference's
-    ; `markupSlotContentNodeWithRuleScopes` binds them: under state cells this function makes before
-    ; it builds (at no element, `U32.max - 1`) and binds to what it built, read as of the slot's
-    ; type. False where one is declined.
+    ; rules that the rules the slot's outlet applies bring: under state cells this function makes
+    ; before it builds (at no element, `U32.max - 1`) and binds to what it built, read as of the
+    ; slot's type. False where one is declined.
     (let written (. ([] (. program modules) owner) tree))
     (match? ([] (. written nodes) outlet)
       (case (call .node-slot-outlet row)
@@ -9956,8 +9906,8 @@
     (param element SyntaxId)
     ; Whether a markup element other than a root `<This` is written in lines of markup alone, each
     ; an element of the body of the one around it, out to the markup of a class or to the body of
-    ; the arm of a markup region the instance builds, where the reference opens no live action as it
-    ; makes the element.
+    ; the arm of a markup region the instance builds, where no live action is open as the element is
+    ; made.
     (match? ([] (. tree nodes) element)
       (case (call .node-markup row)
         (if (call (. tree names-this) (. row type-id))
@@ -9998,9 +9948,9 @@
     (param receiver TypeId)
     (param name Atom)
     (param site SyntaxId)
-    ; Whether a name no member answers is one the reference reads or writes on an object as a
-    ; property of a style its class uses, or as the flag of a domain a `MarkupBatchFlush` reports,
-    ; neither of which has a shape here yet.
+    ; Whether a name no member answers is one read or written on an object as a property of a style
+    ; its class uses, or as the flag of a domain a `MarkupBatchFlush` reports, neither of which has
+    ; a shape here yet.
     (if (call is-batch-flush receiver)
       (let (tuple domain _) (call accessor-domain (. name text)))
       (return (!= (. domain length) 0))
@@ -10037,9 +9987,8 @@
 
 (fn-expr + accessor-domain (tuple String Bool)
   (param text String)
-  ; The domain whose flag a name of a style read names, `is-X-invalid` or `is-X-invalid-below`,
-  ; and whether it is the flag below, as the reference's `styleDomainAccessor` matches it: no
-  ; domain where the name is neither.
+  ; The domain whose flag a name of a style read names, `is-X-invalid` or `is-X-invalid-below`, and
+  ; whether it is the flag below: no domain where the name is neither.
   (case? (not (call (. text starts-with) "is-"))
     (tuple "" false)
   )

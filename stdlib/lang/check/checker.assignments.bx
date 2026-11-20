@@ -84,9 +84,9 @@
     (param lhs SyntaxId)
     (param rhs SyntaxId)
     (param value TypeId)
-    ; A GC-free zone stores no managed pointer anywhere but in a local of its own, which
-    ; TypeScript reports where the assignment is: a property, a global or a captured local
-    ; holds what the collector must be told of. A store of `null` holds nothing.
+    ; A GC-free zone stores no managed pointer anywhere but in a local of its own, which is reported
+    ; where the assignment is: a property, a global or a captured local holds what the collector
+    ; must be told of. A store of `null` holds nothing.
     (if (or outside-zone (call (. narrowing is-null-syntax) rhs) (not (call is-managed value 0)))
       (return)
     )
@@ -192,12 +192,12 @@
     (param condition SyntaxId)
     (param body SyntaxId)
     (param settled (list Narrowed))
-    ; After an `if` without an else whose body falls through and leaves an optional local holding
-    ; a present value, the local stays present when the condition's false branch narrows it the
-    ; same way: both paths agree, as the reference's flow facts merge them. What the body leaves a
-    ; local as is what the last of its assignments settled, so a match whose arms that fall through
-    ; agree counts, and an assignment in a nested branch that may not run, which was widened back,
-    ; does not. A local that holds a union stays known to hold the case both paths leave it as.
+    ; After an `if` without an else whose body falls through and leaves an optional local holding a
+    ; present value, the local stays present when the condition's false branch narrows it the same
+    ; way: both paths agree. What the body leaves a local as is what the last of its assignments
+    ; settled, so a match whose arms that fall through agree counts, and an assignment in a nested
+    ; branch that may not run, which was widened back, does not. A local that holds a union stays
+    ; known to hold the case both paths leave it as.
     (let seen (list NarrowingKey))
     (let position (. settled length))
     (while (!= position 0)
@@ -223,11 +223,10 @@
   )
   (fn-do + check-branch-update _
     (param id SyntaxId)
-    ; The function the action of a markup branch region runs: it reads the conditions again, where
-    ; a member of the region's host read by its name alone is read from the host, kept where the
-    ; region was made, as is the region, given to the markup runtime as the host's content. What
-    ; the markup runtime raises leaves the function, and the callback that runs it, as the
-    ; reference's does.
+    ; The function the action of a markup branch region runs: it reads the conditions again, where a
+    ; member of the region's host read by its name alone is read from the host, kept where the
+    ; region was made, as is the region, given to the markup runtime as the host's content. What the
+    ; markup runtime raises leaves the function, and the callback that runs it.
     (call prepare)
     (call (. instances set-returns) instance (. types void-type) (. types void-type) .return-declared)
     (let resolution (call (. bindings resolution-of) (. frame binding) id))
@@ -257,8 +256,8 @@
     ; read of a collection is no change the action follows and a member of the region's host read by
     ; its name alone is read from the host, kept where the region was made, and gives what it gives
     ; to the region, kept there too, by the markup runtime's replacer for the region's source, which
-    ; hands it to the region's controller. What that raises leaves the function, and the callback that
-    ; runs it, as the reference's does.
+    ; hands it to the region's controller. What that raises leaves the function, and the callback
+    ; that runs it.
     (call prepare)
     (call (. instances set-returns) instance (. types void-type) (. types void-type) .return-declared)
     (let resolution (call (. bindings resolution-of) (. frame binding) id))
@@ -426,13 +425,13 @@
   )
   (fn-do _ forget-store-root Bool
     (param object SyntaxId)
-    ; A store to a property of an object ends what the reference knows of every property of the
-    ; name the object is read from through properties, and of every path from it, and it ends
-    ; what it knows of every property of the receiver where that name is the receiver or one of
-    ; its properties. What is known of a local itself the reference keeps. A store through a row of
-    ; a table read in place (`answers-in-place`) ends what is known of every property, as the
-    ; reference checks the table there and its failure makes calls. Answers whether the object is
-    ; read from a local, the receiver or such a row, where the store ends just that.
+    ; A store to a property of an object ends what is known of every property of the name the object
+    ; is read from through properties, and of every path from it, and of every property of the
+    ; receiver where that name is the receiver or one of its properties. What is known of a local
+    ; itself is kept. A store through a row of a table read in place (`answers-in-place`) ends what
+    ; is known of every property, as the table is checked there and its failure makes calls. Answers
+    ; whether the object is read from a local, the receiver or such a row, where the store ends just
+    ; that.
     (let root object)
     (while (is ([] (. tree nodes) root) .node-get-expression)
       (match? ([] (. tree nodes) root)
@@ -831,9 +830,8 @@
   (fn-do + assigned-narrowing TypeId
     (param declared TypeId)
     (param value TypeId)
-    ; An optional local assigned a present value, or a union local assigned the value of one of
-    ; its cases, reads as that value until the next assignment, as the reference's flow facts
-    ; track it.
+    ; An optional local assigned a present value, or a union local assigned the value of one of its
+    ; cases, reads as that value until the next assignment.
     (if (or (== value invalid-type) (== value no-type) (== declared invalid-type) (== declared no-type))
       (return declared)
     )
@@ -882,22 +880,21 @@
     (param want Want (= (call Want)))
     ; What an assignment to a property gives as a value. A property named alone is the receiver's,
     ; or the `owner`'s where one is given, and gives the value assigned, as it was before the store
-    ; converted it. A field of a tuple gives the new tuple,
-    ; also by an assigning operator that assigns it (`updates-in-place`), which is not stored, and
-    ; any other place, of an object, a struct, a row or a builder, gives what it then holds. A
-    ; property written after `?` is that of what the optional before it holds, and the object of
-    ; a property written after a link of an optional chain is what that link gives by itself. A
-    ; store to a property some read tracks runs the actions that read it, which ends what is known
-    ; of every property. One no read typed so far tracks is taken as running nothing where that
-    ; matters, and the pass starts over knowing it tracked where a read typed later tracks it
-    ; (`Panics.typed-late`). A narrowed read stored after such a store is taken as declared where
-    ; that is what the place holds (`reads-as-declared`), and one in doubt that is stored any other
-    ; way is declined. The object of an assignment that applies an operator is typed before the
-    ; value, and that of a plain one after it, as the reference evaluates them, but before a case
-    ; named by its symbol alone, which evaluates nothing, so that a state machine is found before
-    ; the case is (`writes-machine`), and before arms, which take the type the property is declared
-    ; as (`expect-arms`). An event stored is taken once the property is known, as `store-event`
-    ; says.
+    ; converted it. A field of a tuple gives the new tuple, also by an assigning operator that
+    ; assigns it (`updates-in-place`), which is not stored, and any other place, of an object, a
+    ; struct, a row or a builder, gives what it then holds. A property written after `?` is that of
+    ; what the optional before it holds, and the object of a property written after a link of an
+    ; optional chain is what that link gives by itself. A store to a property some read tracks runs
+    ; the actions that read it, which ends what is known of every property. One no read typed so far
+    ; tracks is taken as running nothing where that matters, and the pass starts over knowing it
+    ; tracked where a read typed later tracks it (`Panics.typed-late`). A narrowed read stored after
+    ; such a store is taken as declared where that is what the place holds (`reads-as-declared`),
+    ; and one in doubt that is stored any other way is declined. The object of an assignment that
+    ; applies an operator is typed before the value, and that of a plain one after it, but before a
+    ; case named by its symbol alone, which evaluates nothing, so that a state machine is found
+    ; before the case is (`writes-machine`), and before arms, which take the type the property is
+    ; declared as (`expect-arms`). An event stored is taken once the property is known, as
+    ; `store-event` says.
     (let armed (and (== op .eq-op) (call (. tree is-arms-syntax) (call (. tree arms-value) rhs))))
     (let fed (and (== op .eq-op) (!= (call (. tree written-feeds) rhs) 0)))
     (let object-first
@@ -1147,8 +1144,8 @@
     (param value TypeId)
     (param rhs SyntaxId)
     ; Whether an assigning operator changes what a place holds without assigning the place: a
-    ; function of its own name on a type that is not a struct or a tuple, as the reference's
-    ; `increment` calls it and stores nothing.
+    ; function of its own name on a type that is not a struct or a tuple, which is called, and
+    ; nothing is stored.
     (let held (call (. types intrinsic-of) target))
     (if (or (== held .struct) (== held .tuple))
       (return false)
@@ -1226,8 +1223,8 @@
     (param want Want)
     ; A tuple is a value: assigning one of its fields, by `=` or by an assigning operator that
     ; assigns it (`updates-in-place`), gives a new tuple, which a statement that does nothing with
-    ; it loses, and its length changes only to a constant. A struct's layout does not change at all. A `length` the type declares is a
-    ; field like any other. As the reference has it, a statement loses the tuple in a `do`
+    ; it loses, and its length changes only to a constant. A struct's layout does not change at all.
+    ; A `length` the type declares is a field like any other. A statement loses the tuple in a `do`
     ; function or a module's main, and in the body of another function only as one of its own
     ; statements (`want-quasi`): the value of an arm or a block inside gives the tuple. A struct's
     ; field is changed in place, which loses the change where nothing holds the struct: a struct
@@ -1383,13 +1380,12 @@
     (param rhs SyntaxId)
     (param value TypeId)
     (param in-place Bool (= false))
-    ; `in-place` says the node is itself the place assigned, a field of a struct named by an
-    ; index, so an assigning operator is planned at it as it is at an assignment. The value of
-    ; an assignment is what was assigned, or what the function of an assigning operator answers.
-    ; A struct and a tuple are values, so what such a function answers for one is assigned to the
-    ; place, as the reference assigns it: the value is then what the place holds, but for a local
-    ; or a global, where it is the answer. A function of its own name answers before any rule for
-    ; numbers does.
+    ; `in-place` says the node is itself the place assigned, a field of a struct named by an index,
+    ; so an assigning operator is planned at it as it is at an assignment. The value of an
+    ; assignment is what was assigned, or what the function of an assigning operator answers. A
+    ; struct and a tuple are values, so what such a function answers for one is assigned to the
+    ; place: the value is then what the place holds, but for a local or a global, where it is the
+    ; answer. A function of its own name answers before any rule for numbers does.
     (if (== op .eq-op)
       (call (. conversions convert) id rhs value target .reason-assignment)
       (return value)
@@ -1505,10 +1501,10 @@
     (param statement SyntaxId)
     (param written SyntaxId)
     (param closure TypeId)
-    ; Says where the reference places the function a closure runs as a value of a function type
-    ; once the function that answers an assigning operator is given it: where the closure's
-    ; value is made. That is the statement for a closure written in a loop of its function,
-    ; whose turn holds it, and the line below the closure for any other.
+    ; Says where the function a closure runs as a value of a function type is placed once the
+    ; function that answers an assigning operator is given it: where the closure's value is made.
+    ; That is the statement for a closure written in a loop of its function, whose turn holds it,
+    ; and the line below the closure for any other.
     (if (or (== closure no-type) (== closure invalid-type) (!= (call (. types intrinsic-of) closure) .closure))
       (return)
     )
@@ -1607,11 +1603,11 @@
     (param is-optional Bool)
     ; An index assigned. An assigning operator reads the item by `[]` and gives the value its
     ; operator makes to `[]=`, but where the item holds no struct or tuple and a function of the
-    ; operator's own name answers it, as the reference compiles it for an object: that function is
-    ; called on the item, and nothing is stored (`plan-answer-item`). An item past a pointer is
-    ; read and stored by its plan, and the operator is planned at the assignment, as for a field.
-    ; A text's item assigned gives a new text, stored where the text is held, so one written where
-    ; nothing holds it, as a literal or what a call gives, is an error.
+    ; operator's own name answers it, that function is called on the item, and nothing is stored
+    ; (`plan-answer-item`). An item past a pointer is read and stored by its plan, and the operator
+    ; is planned at the assignment, as for a field. A text's item assigned gives a new text, stored
+    ; where the text is held, so one written where nothing holds it, as a literal or what a call
+    ; gives, is an error.
     (let value (call stored-value rhs (call infer rhs)))
     (let noted (. facts diagnostics length))
     (let object-found (call infer-found object-syntax))
@@ -1756,7 +1752,7 @@
     (param object TypeId)
     (param callee InstanceId)
     ; Whether an index assigned of a table or a span of one stores a row at a single index, which
-    ; TypeScript answers itself.
+    ; the compiler answers itself.
     (case? (or (and (!= kind .table) (!= kind .table-span)) (== callee no-instance))
       false
     )
@@ -1771,8 +1767,8 @@
   (fn-do _ copies-range Bool
     (param object TypeId)
     (param given TypeId)
-    ; Whether a range of a table, of a span of one or of a view of a field's column is assigned
-    ; from what TypeScript copies into it itself: the rows of a span or a table of struct or union
+    ; Whether a range of a table, of a span of one or of a view of a field's column is assigned from
+    ; what the compiler copies into it itself: the rows of a span or a table of struct or union
     ; rows, or the items of a view of the same field's type.
     (let kind (call (. types intrinsic-of) object))
     (let given-kind (call (. types intrinsic-of) given))

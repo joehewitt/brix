@@ -1723,9 +1723,9 @@
   )
   (fn-do + join TypeId
     (param mark ScratchMark)
-    ; The type several values become together, as the reference unifies them: each is unified
-    ; with the type the ones before it converted to, and the last of these says what all become.
-    ; Values that do not unify become nothing together, and the type is invalid.
+    ; The type several values become together: each is unified with the type the ones before it
+    ; converted to, and the last of these says what all become. Values that do not unify become
+    ; nothing together, and the type is invalid.
     (let count (- (. types scratch types length) mark))
     (if (== count 0)
       (return no-type)
@@ -1991,8 +1991,8 @@
   (fn-do + declared-converter TypeId
     (param from TypeId)
     (param decl DeclRef)
-    ; What a converter a type declares itself makes, where that is of a declaration, as TypeScript
-    ; reads a type's own converters to find a stream's. None where none is.
+    ; What a converter a type declares itself makes, where that is of a declaration. None where none
+    ; is.
     (let converters ([] (. types children) (. (call (. types completion-of) from) converters)))
     (for (in offset (..< 0 (/ (. converters length) converter-words)))
       (let target ([] converters (* offset converter-words)))
@@ -2228,10 +2228,10 @@
     (param from TypeId)
     (param to TypeId)
     (param caller (? ModuleId))
-    ; The converter a type gives a type by, as TypeScript's `dispatchConverter` finds it: of the
-    ; type's own, its extensions', its base's and its interfaces', in that order, the first whose
-    ; target is the type asked for, or else the first whose target binds to it. One that binds to a
-    ; pointer to anything but `Void` converts only when asked, as it reads the type as another.
+    ; The converter a type gives a type by: of the type's own, its extensions', its base's and its
+    ; interfaces', in that order, the first whose target is the type asked for, or else the first
+    ; whose target binds to it. One that binds to a pointer to anything but `Void` converts only
+    ; when asked, as it reads the type as another.
     (let mark (. types scratch types mark))
     (call push-converters from caller)
     (let count (/ (- (. types scratch types length) mark) converter-words))
@@ -2293,9 +2293,9 @@
   (fn-do _ is-alternative Bool
     (param target TypeId)
     (param to TypeId)
-    ; Whether a converter declared to give one of several types gives the one asked for: the
-    ; reference completes the type it declares against the one asked for, which takes the
-    ; alternative that is that type.
+    ; Whether a converter declared to give one of several types gives the one asked for: the type it
+    ; declares is completed against the one asked for, which takes the alternative that is that
+    ; type.
     (call (. types complete) target)
     (if (!= (. ([] (. types completions) target) intrinsic) .or)
       (return false)
@@ -3188,10 +3188,10 @@
     (param right TypeId)
     (param left-declared TypeId (= no-type))
     (param right-declared TypeId (= no-type))
-    ; Which of two tuples a tuple written with no name is better cast to, field by field: above
-    ; zero for the right one, under it for the left one, zero where the fields disagree. A
-    ; field one of the two declares as a parameter of its own loses to one the other declares
-    ; with a type, as the reference prefers; any other is the one of lower rank.
+    ; Which of two tuples a tuple written with no name is better cast to, field by field: above zero
+    ; for the right one, under it for the left one, zero where the fields disagree. A field one of
+    ; the two declares as a parameter of its own loses to one the other declares with a type; any
+    ; other is the one of lower rank.
     (if (not (call is-anonymous-fields types from))
       (return 0)
     )
@@ -3934,9 +3934,8 @@
   )
   (fn-do _ unraised TypeId
     (param id TypeId)
-    ; A class whose value raises errors of its own, as the generator of a function that yields
-    ; and raises does, without them: the reference chooses among alternatives by that type, and
-    ; the value keeps its own.
+    ; A class whose value raises errors of its own, as the generator of a function that yields and
+    ; raises does, without them: an alternative is chosen by that type, and the value keeps its own.
     (match? ([] (. types rows) id)
       (case (call .type-class row)
         (if (!= (. row errors count) 0)

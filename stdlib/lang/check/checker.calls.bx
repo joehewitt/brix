@@ -159,10 +159,10 @@
   (fn-do + infer-argument-value TypeId
     (param id SyntaxId)
     (param row ASTArgument)
-    ; An argument written where a value is wanted, as a line of a markup element's body, as the
-    ; reference compiles one: one with a name is the tuple of its name and its value, and one with a
-    ; bullet `•?` too is that tuple where the value tests as true, as a condition does, and nothing
-    ; where it does not; one with no name is its value.
+    ; An argument written where a value is wanted, as a line of a markup element's body: one with a
+    ; name is the tuple of its name and its value, and one with a bullet `•?` too is that tuple
+    ; where the value tests as true, as a condition does, and nothing where it does not; one with no
+    ; name is its value.
     (let value (call infer (. row expr)))
     (if (or (== value invalid-type) (== value no-type) (not (. row name)))
       (return value)
@@ -192,11 +192,12 @@
     (param slots (of ImmutableArray Atom ArenaBacking) (= (call (of ImmutableArray Atom ArenaBacking))))
     (param builders (of ImmutableArray TypeId ArenaBacking) (= (call (of ImmutableArray TypeId ArenaBacking))))
     (param context U32 (= (. U32 max)))
-    ; A call written with its arguments. A markup element gives, after them, the value of each
-    ; of the `attributes` its body writes for the `class` it makes, as an argument named as the
+    ; A call written with its arguments. A markup element gives, after them, the value of each of
+    ; the `attributes` its body writes for the `class` it makes, as an argument named as the
     ; property and marked as one, and its constructor the `slots` its body fills, each with the type
-    ; of its builder (`builders`), and the `context` of the styles it sees. The arguments of a call of a name nothing declares are typed as
-    ; the reference types them before it finds no function (`names-nothing`).
+    ; of its builder (`builders`), and the `context` of the styles it sees. The arguments of a call
+    ; of a name nothing declares are typed before the call is reported as no function found
+    ; (`names-nothing`).
     (let owner (if-expr (call (. want asks) .want-owner) (call held-type (. want type)) no-type))
     (let params-start (. scratch types mark))
     (let param-count 0)
@@ -316,8 +317,8 @@
   )
   (fn-do _ report-missing-params Bool
     (param params (of RowRange SyntaxId))
-    ; Reports the first type written after a call's name that names nothing, as the reference does
-    ; once it has typed the arguments. Says whether one was reported.
+    ; Reports the first type written after a call's name that names nothing, once the arguments are
+    ; typed. Says whether one was reported.
     (for (in param ([] (. tree children) params))
       (if (call report-missing-type param (. frame env))
         (return true)
@@ -328,10 +329,10 @@
   (fn-do + type-called-object CalledObject
     (param callable SyntaxId)
     (param count Size)
-    ; Types the object of a method a call names, which the reference evaluates before the call's
-    ; arguments, so that what the flow knows of it is what it knew before them. The call is
-    ; settled with it once its arguments are typed (`infer-callable`). A type a static method is
-    ; called on is no value, and nothing is typed of it here.
+    ; Types the object of a method a call names before the call's arguments, so that what the flow
+    ; knows of it is what it knew before them. The call is settled with it once its arguments are
+    ; typed (`infer-callable`). A type a static method is called on is no value, and nothing is
+    ; typed of it here.
     (match? ([] (. tree nodes) callable)
       (case (call .node-get-expression get)
         (if (!= (call static-owner (. get object)) no-type)
@@ -617,9 +618,9 @@
     (param receiver TypeId)
     (param name Atom)
     (param arguments Arguments)
-    ; Whether a call written as a method call reads a property and calls what it holds, as the
-    ; reference does where the receiver has no method of the name but a property or a getter of
-    ; it. A union, a type given as a value, and `super` are called only for their methods.
+    ; Whether a call written as a method call reads a property and calls what it holds, where the
+    ; receiver has no method of the name but a property or a getter of it. A union, a type given as
+    ; a value, and `super` are called only for their methods.
     (case? (call is-super-syntax object)
       false
     )
@@ -768,8 +769,8 @@
   (fn-do _ fold-const-item (? ConstItem)
     (param site SyntaxId)
     (param item TypeId)
-    ; An item of a ConstArray as TypeScript lays it down: a string literal, or a number folded
-    ; to its bits and cut to the width of an integer item. Nothing for any other.
+    ; An item of a ConstArray as the compiler lays it down: a string literal, or a number folded to
+    ; its bits and cut to the width of an integer item. Nothing for any other.
     (match? ([] (. tree nodes) site)
       (case (call .node-argument row)
         (return (call fold-const-item (. row expr) item))
@@ -846,7 +847,7 @@
     (param named DeclId)
     ; The class a callable written with type arguments makes: the one its name resolves to, or where
     ; that takes fewer type arguments than are written, the first class of the name this module sees
-    ; that takes as many or more, as the reference passes over one that takes fewer.
+    ; that takes as many or more.
     (match? ([] (. tree nodes) callable)
       (case (call .node-type-arguments row)
         (let given Size (. row args count))

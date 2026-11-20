@@ -1046,9 +1046,8 @@
     (param closure TypeId)
     (param site SyntaxId)
     (param below Bool)
-    ; Notes where the reference places the function a closure runs as a value of a function
-    ; type, for a closure given to the function that answers an assigning operator: at `site`,
-    ; or on the line below it.
+    ; Notes where the function a closure runs as a value of a function type is placed, for a closure
+    ; given to the function that answers an assigning operator: at `site`, or on the line below it.
     (let bits U64 site)
     (if below
       (+= bits 4294967296)
@@ -1375,7 +1374,7 @@
     (param id SyntaxId)
     (param env TypeEnv)
     ; The innermost type written by name, with its arguments, that names nothing, within a type
-    ; written, as TypeScript reports it; 0 where every name names a type.
+    ; written; 0 where every name names a type.
     (match? ([] (. ast nodes) id)
       (case .node-type-identifier
         (return (if-expr (== (call evaluate-type caller ast id env) invalid-type) id 0))
@@ -1461,8 +1460,8 @@
     (param name Atom)
     (param mark ScratchMark)
     ; The class of a name the caller sees given the type arguments from `mark`: the nearest that
-    ; takes as many or more, as the reference passes over one that takes fewer, and one known by the
-    ; name only as another name for it where no class is declared by the name.
+    ; takes as many or more, passing over one that takes fewer, and one known by the name only as
+    ; another name for it where no class is declared by the name.
     (let given (- (. scratch types length) mark))
     (let found (?? (call nearest-class caller name given false) (call nearest-class caller name given true)))
     (if found
@@ -1477,11 +1476,11 @@
     (param name Atom)
     (param given Size)
     (param aliased Bool)
-    ; The class the reference reaches first looking for a type written by name that takes `given`
-    ; type arguments or more: modules by where they last come among those the caller lists, from the
-    ; last to the first, so its own module first, and of a module's classes the last declared first.
-    ; Another module's private classes are not seen, but by a module that declares a facet of one of
-    ; its classes, and with `aliased` only other names are. A facet is the class of its name where the
+    ; The class reached first looking for a type written by name that takes `given` type arguments
+    ; or more: modules by where they last come among those the caller lists, from the last to the
+    ; first, so its own module first, and of a module's classes the last declared first. Another
+    ; module's private classes are not seen, but by a module that declares a facet of one of its
+    ; classes, and with `aliased` only other names are. A facet is the class of its name where the
     ; caller sees it (`sees-facet`) and reaches its access, and takes no type arguments.
     (let best (? DeclRef) null)
     (let best-place 0u32)
@@ -1634,8 +1633,8 @@
   (fn-expr + c-function-decl (? DeclRef)
     (param type TypeId)
     ; The class first declared as a C function type, which the type is, by module and then by
-    ; declaration: what the reference names the type by and places code made for it at. None for
-    ; one written where it is used.
+    ; declaration: what the type is named by and code made for it is placed at. None for one written
+    ; where it is used.
     (case? ([] c-function-decls type)
       (call DeclRef (as (/rshift/ (!! bits) 32) ModuleId) (as (/and/ (!! bits) 4294967295) DeclId))
     )
@@ -1964,7 +1963,7 @@
     (param name Atom)
     ; The class whose property of a name a tracked read of it is kept by: the topmost of the class
     ; that declares it and the classes above that declare it too, whose trackers an override in a
-    ; class below shares, as the reference keeps them by the object and the name.
+    ; class below shares.
     (let root owner)
     (while true
       (let base (. ([] completions root) base))
@@ -2199,10 +2198,9 @@
   (fn-do + declares-subclass-interface Bool
     (param id TypeId)
     (param interface TypeId)
-    ; Whether a class declared below a class, at any depth, declares an interface, or one it
-    ; may be derived from, as the reference's `declaresSubclassInterface` reads the declarations:
-    ; a class cast to such an interface is tested for it as the program runs. An interface a
-    ; class declares that names no type may be any.
+    ; Whether a class declared below a class, at any depth, declares an interface, or one it may be
+    ; derived from: a class cast to such an interface is tested for it as the program runs. An
+    ; interface a class declares that names no type may be any.
     (call scan-subclasses)
     (let target (call class-decl-key interface))
     (let keys (list Size))
@@ -2575,8 +2573,8 @@
   (fn-do _ query-held TypeId
     (param type TypeId)
     ; The type a property holds that is written with a type that queries the markup its object is
-    ; in, as the reference types it: `Ancestor'T` holds a `T?`, and `Descendants'T` holds a `[T]`.
-    ; Any other type is held as it is written.
+    ; in: `Ancestor'T` holds a `T?`, and `Descendants'T` holds a `[T]`. Any other type is held as it
+    ; is written.
     (match? ([] rows type)
       (case (call .type-class row)
         (if (and (== (. row args count) 1) (call (. ancestor-decl refers-to) (. row module) (. row decl)))
@@ -3338,9 +3336,8 @@
   )
   (fn-do _ make-properties _
     (param id TypeId)
-    ; Queues the types written in the properties of a class just completed, as the reference makes
-    ; each type a property of a class it makes is written with: the classes among them have tables,
-    ; and so do those their own properties are written with.
+    ; Queues the types written in the properties of a class just completed: the classes among them
+    ; have tables, and so do those their own properties are written with.
     (let completion ([] completions id))
     (if (or (!= (. completion completion) .completion-done) (. completion has-variables))
       (return)
@@ -4573,9 +4570,8 @@
   (fn-do _ note-bases _
     (param module ModuleId)
     (param decl DeclId)
-    ; Marks the class a class declares as its base as one with subclasses, from the base as written,
-    ; as the reference's `registerDeclaredSubclasses` does: the class declared is not made for it, so
-    ; a class nothing uses is never typed.
+    ; Marks the class a class declares as its base as one with subclasses, from the base as written:
+    ; the class declared is not made for it, so a class nothing uses is never typed.
     (let base-syntax SyntaxId 0)
     (match? ([] (. ([] (. program modules) module) decls) decl)
       (case (call .decl-class row)

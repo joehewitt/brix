@@ -489,10 +489,9 @@
     (= active false)
   )
   (fn-do _ open-symbols _
-    ; Lists, for each argument that is a case named by its symbol alone, the types it may be a
-    ; case of: first the one a symbol alone names, and then the others in their order. A call is
-    ; ranked with the first of each, and where nothing answers it, again with the next
-    ; combination, as the reference retries it.
+    ; Lists, for each argument that is a case named by its symbol alone, the types it may be a case
+    ; of: first the one a symbol alone names, and then the others in their order. A call is ranked
+    ; with the first of each, and where nothing answers it, again with the next combination.
     (call (. symbol-fills clear))
     (call (. symbol-starts clear))
     (call (. symbol-options clear))
@@ -564,8 +563,8 @@
     (param fills (of ImmutableArray U32 ArenaBacking))
     (param declared (of ImmutableArray TypeId ArenaBacking))
     ; Notes, for each argument that is a case named by its symbol alone, the types it may be a case
-    ; of that a candidate's parameters take, optional or not, as the reference notes them for each
-    ; candidate the arguments fit as it ranks the call with the type a symbol alone names.
+    ; of that a candidate's parameters take, optional or not, for each candidate the arguments fit
+    ; as the call is ranked with the type a symbol alone names.
     (if (or (not (. lint traces)) (!= symbol-attempts 0))
       (return)
     )
@@ -613,8 +612,8 @@
     (param noted (list CaseOwnerNote))
     ; Adds to `noted` the types candidates took each argument that is a case named by its symbol
     ; alone as a case of, where they took it as one of more than one, with whether the one `hit`
-    ; takes is that type, as the reference traces such a call it ranked with the type a symbol alone
-    ; names. Nothing is noted for an argument the hit takes as a case of none of them.
+    ; takes is that type, where the call was ranked with the type a symbol alone names. Nothing is
+    ; noted for an argument the hit takes as a case of none of them.
     (if (!= symbol-attempts 0)
       (return)
     )
@@ -1149,9 +1148,9 @@
   (fn-expr _ row-case-preference I32
     (param kept Hit)
     (param next Hit)
-    ; Which of two extensions' members a name that stands for the case of a row (`row-case`) takes,
-    ; as TypeScript's `preferNarrowedTableRowExtension` does: the one that extends the case itself
-    ; over one that extends a base of it, -1 for `kept`, 1 for `next`, or 0 for neither.
+    ; Which of two extensions' members a name that stands for the case of a row (`row-case`) takes:
+    ; the one that extends the case itself over one that extends a base of it, -1 for `kept`, 1 for
+    ; `next`, or 0 for neither.
     (case? (or (== row-case no-type) (== (== (. kept level) row-case) (== (. next level) row-case)))
       0
     )
@@ -1384,9 +1383,9 @@
     (param receiver TypeId)
     (param name Atom)
     (param kind DeclKind)
-    ; A table row over a union also answers the extension methods and getters of the union, and
-    ; the extension methods of each base all of its cases share, which run with the row itself as
-    ; the receiver, as TypeScript's rows answer them. A getter of such a base is each case's own.
+    ; A table row over a union also answers the extension methods and getters of the union, and the
+    ; extension methods of each base all of its cases share, which run with the row itself as the
+    ; receiver. A getter of such a base is each case's own.
     (let union (call class-arg types receiver 0))
     (if (or (== union no-type) (!= (call (. types intrinsic-of) union) .union) (== kind .setter-decl))
       (return)
@@ -2424,8 +2423,8 @@
     (param bindings TypeArguments)
     (param receiver TypeId)
     ; Notes the first type the parameters of a function a call may take write that names nothing,
-    ; where TypeScript stops the call with "Type not found" as it reads them (`missing-site`). The
-    ; types are read as the function's signature reads them, with its class's and its own.
+    ; where the call stops with "Type not found" (`missing-site`). The types are read as the
+    ; function's signature reads them, with its class's and its own.
     (let function (call function-env types module decl bindings receiver true))
     (match? ([] (. target decls) decl)
       (case (call .decl-function fn)
@@ -2708,8 +2707,8 @@
     (param receiver TypeId)
     (param signature Signature)
     ; What a generic candidate's arguments are under what the call's arguments have bound of its
-    ; type parameters, as the reference evaluates each argument's type in the scope it inferred
-    ; before it compares the argument to it. A parameter nothing has bound stays a variable.
+    ; type parameters, each argument's type evaluated in the scope inferred before the argument is
+    ; compared to it. A parameter nothing has bound stays a variable.
     (let mark (. scratch types mark))
     (for (in offset (..< 0 (. signature params length)))
       (let held (call (. relations scope-lookup) scope ([] (. signature params) offset)))
@@ -3021,10 +3020,9 @@
     (param position Size)
     (param module ModuleId)
     (param decl DeclId)
-    ; What an argument a call gives binds type parameters as: its own type, or, for a case named
-    ; by its symbol alone, the type whose case the default of an untyped parameter names by its
-    ; symbol, as the reference reads the symbol against the default, or else the type the
-    ; argument is ranked as a case of.
+    ; What an argument a call gives binds type parameters as: its own type, or, for a case named by
+    ; its symbol alone, the type whose case the default of an untyped parameter names by its symbol,
+    ; or else the type the argument is ranked as a case of.
     (let fill ([] fills position))
     (if (not (. ([] calls fill) symbol))
       (return ([] args fill))
@@ -3515,19 +3513,17 @@
     (param variadic-index U32)
     (param tails TailMatch)
     (param defaults (of ImmutableArray U32 ArenaBacking))
-    ; Relates every filled slot's argument to its expected type, recording the relation and the
-    ; type the slot settles on, and rejects the candidate as soon as one slot loses to the incumbent.
-    ; A generic candidate's slots relate to what its parameters are bound to, and two that tie
-    ; are told apart by what each declares, with its parameters unbound, as in the reference.
-    ; A parameter with no type written compares its argument to nothing, as in the reference: the
-    ; slot keeps what the candidate chosen so far compared there, and a later candidate that
-    ; writes a type takes the slot whatever its relation.
-    ; A variadic slot ranks as the reference ranks it, which relates one list to the list
-    ; declared. Where every parameter was known before the arguments were looked at, the tail
-    ; is typed as the list declared, and the slot ranks as the same type. Where the list
-    ; declared is known and a parameter is not, the tail is a list of what its arguments unify
-    ; to, and the slot ranks as that list related to the one declared. Where the list was
-    ; inferred from the tail, the slot ranks as the worst of the tail.
+    ; Relates every filled slot's argument to its expected type, recording the relation and the type
+    ; the slot settles on, and rejects the candidate as soon as one slot loses to the incumbent. A
+    ; generic candidate's slots relate to what its parameters are bound to, and two that tie are
+    ; told apart by what each declares, with its parameters unbound. A parameter with no type
+    ; written compares its argument to nothing: the slot keeps what the candidate chosen so far
+    ; compared there, and a later candidate that writes a type takes the slot whatever its relation.
+    ; A variadic slot ranks by relating one list to the list declared. Where every parameter was
+    ; known before the arguments were looked at, the tail is typed as the list declared, and the
+    ; slot ranks as the same type. Where the list declared is known and a parameter is not, the tail
+    ; is a list of what its arguments unify to, and the slot ranks as that list related to the one
+    ; declared. Where the list was inferred from the tail, the slot ranks as the worst of the tail.
     (let empty U32 (. ArgumentFill fill-empty))
     (let variadic U32 (. ArgumentFill fill-variadic))
     (let is-variadic (!= variadic-index (. U32 max)))
@@ -3682,11 +3678,10 @@
     (param is-variadic Bool)
     (param declared TypeId)
     ; Whether the relation of a candidate's slot keeps it in the running against the candidate
-    ; chosen so far, as the reference's `matchArg` decides. A candidate with fixed slots takes
-    ; the place of a variadic one where its relation ranks under a converter and narrows
-    ; nothing. Any other is kept where its relation is preferred, and where neither is
-    ; preferred unless it is variadic: of two that tie, the fixed one and the earlier variadic
-    ; one win.
+    ; chosen so far. A candidate with fixed slots takes the place of a variadic one where its
+    ; relation ranks under a converter and narrows nothing. Any other is kept where its relation is
+    ; preferred, and where neither is preferred unless it is variadic: of two that tie, the fixed
+    ; one and the earlier variadic one win.
     (case? (>= position (. incumbent length))
       true
     )
@@ -3714,12 +3709,12 @@
     (param relation Relation)
     (param position Size)
     (param declared TypeId)
-    ; Which of two relations of one argument is preferred, that of the candidate chosen so far
-    ; or a new one: above zero for the new one, under it for the chosen one, in the reference's
-    ; order. A lambda is given to a function type declared before a type parameter. Of two side
-    ; casts of one type, the one that lifts it to a base is. Else the lower rank is. Of two final
-    ; casts of one tuple, the one whose fields are, each field by what the two candidates
-    ; declare for it: `declared` is what the new one declares for the slot.
+    ; Which of two relations of one argument is preferred, that of the candidate chosen so far or a
+    ; new one: above zero for the new one, under it for the chosen one. A lambda is given to a
+    ; function type declared before a type parameter. Of two side casts of one type, the one that
+    ; lifts it to a base is. Else the lower rank is. Of two final casts of one tuple, the one whose
+    ; fields are, each field by what the two candidates declare for it: `declared` is what the new
+    ; one declares for the slot.
     (if (and (== (. relation from) (. current from)) (call is-closure-type (. relation from)))
       (let chosen (call incumbent-declared position))
       (if (and (call is-type-variable chosen) (!= (call function-row types declared) no-type))
@@ -3870,10 +3865,10 @@
   )
   (fn-do _ tail-given TypeId
     (param index U32)
-    ; What an argument of a variadic tail gives the list, as TypeScript gives it: its value, or
-    ; the tuple of its name and its value where it has a name. With a bullet `•?` it gives what
-    ; it holds where it is present: the value an optional holds, and of the tuple of a key and
-    ; a value, the key and what the value holds.
+    ; What an argument of a variadic tail gives the list: its value, or the tuple of its name and
+    ; its value where it has a name. With a bullet `•?` it gives what it holds where it is present:
+    ; the value an optional holds, and of the tuple of a key and a value, the key and what the value
+    ; holds.
     (let given ([] args index))
     (let shape ([] calls index))
     (if (and (. shape is-optional) (. shape name))
@@ -4002,9 +3997,9 @@
   (param expected TypeId)
   (param name Atom)
   (param home ModuleId)
-  ; The type a case named by its symbol alone is of where a type is expected of it, as the
-  ; reference settles it: the expected type where it has the case, else the type the name alone
-  ; gives where that converts, else the first other type with the case that converts.
+  ; The type a case named by its symbol alone is of where a type is expected of it: the expected
+  ; type where it has the case, else the type the name alone gives where that converts, else the
+  ; first other type with the case that converts.
   (if (or (== expected invalid-type) (== expected no-type))
     (return invalid-type)
   )

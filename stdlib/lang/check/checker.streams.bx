@@ -91,9 +91,9 @@
   (fn-do + type-helper Bool
     (param helper SyntaxId)
     ; Types the helper a stream match is given with `with`, after its subject, and resolves what it
-    ; can do as the reference does, reporting there what the reference reports. One that can do
-    ; nothing is reported; one that can is the helper of the match's pattern. One whose collector
-    ; storages disagree, or that is no object, has no shape here. False where the match has no shape.
+    ; can do, reporting its errors there. One that can do nothing is reported; one that can is the
+    ; helper of the match's pattern. One whose collector storages disagree, or that is no object,
+    ; has no shape here. False where the match has no shape.
     (let type (call infer helper))
     (if (== type invalid-type)
       (return false)
@@ -141,17 +141,16 @@
     (param id SyntaxId)
     (param pattern SyntaxId)
     (param is-root Bool)
-    ; A grammar a match runs on the String it is on. The String is read through a
-    ; `TextTokenStream`, whose buffer holds its UTF-8 bytes, by calls the type pass records at the
-    ; pattern, in the order `record-stream-protocol` makes them. Its arms are typed as the
-    ; reference declares them and joined, and its value is optional unless its last arm always
-    ; passes. Where an arm gives the text it matched, or an action reads it as `it`, the call
-    ; that slices it from the stream's buffer is recorded there. A match that is returned has the
-    ; type the function returns, as its arms do, even those that give an optional, or what that
-    ; type holds where it is optional. One that always passes panics where the stream defers its last arm, which no stream a
-    ; String is read through does. The names the pattern captures are typed before its arms. The
-    ; match `if` or `while` tests a pattern with gives true where its arm ran, and false where
-    ; none did.
+    ; A grammar a match runs on the String it is on. The String is read through a `TextTokenStream`,
+    ; whose buffer holds its UTF-8 bytes, by calls the type pass records at the pattern, in the
+    ; order `record-stream-protocol` makes them. Its arms are typed and joined, and its value is
+    ; optional unless its last arm always passes. Where an arm gives the text it matched, or an
+    ; action reads it as `it`, the call that slices it from the stream's buffer is recorded there. A
+    ; match that is returned has the type the function returns, as its arms do, even those that give
+    ; an optional, or what that type holds where it is optional. One that always passes panics where
+    ; the stream defers its last arm, which no stream a String is read through does. The names the
+    ; pattern captures are typed before its arms. The match `if` or `while` tests a pattern with
+    ; gives true where its arm ran, and false where none did.
     (if (!= id (. rule-streaming matched))
       (return (call infer-scoped-pattern id pattern is-root))
     )
@@ -193,19 +192,17 @@
     (param id SyntaxId)
     (param pattern SyntaxId)
     (param is-root Bool)
-    ; A grammar written in the code of a function declared over the items of a stream, as
-    ; the reference runs it: on the stream the function is given, from where the stream stands,
-    ; through the calls a match on that stream records at the pattern. Its arms are typed and
-    ; joined with no type to give but their own, and one that gives no value gives what its last
-    ; part gives where that is optional, as the reference gives it. It gives an optional
-    ; `CaptureResult` of the stream's items and what the arms give, which holds the items the
-    ; pattern read beside that, and nothing where no arm passed. One in the code of a local rule
-    ; runs on the stream the rule is called on, as `coded-rule-type` says. One in any other
-    ; function is an error, and one in the arms of another pattern or under a helper has no shape
-    ; here. Where the
-    ; metrics of grammars compile, each result it gives is counted, as the reference counts it.
-    ; A function or local rule a pattern on a String calls reads the stream's UTF-8 bytes, and its
-    ; `CaptureResult` holds those bytes.
+    ; A grammar written in the code of a function declared over the items of a stream: on the stream
+    ; the function is given, from where the stream stands, through the calls a match on that stream
+    ; records at the pattern. Its arms are typed and joined with no type to give but their own, and
+    ; one that gives no value gives what its last part gives where that is optional. It gives an
+    ; optional `CaptureResult` of the stream's items and what the arms give, which holds the items
+    ; the pattern read beside that, and nothing where no arm passed. One in the code of a local rule
+    ; runs on the stream the rule is called on, as `coded-rule-type` says. One in any other function
+    ; is an error, and one in the arms of another pattern or under a helper has no shape here. Where
+    ; the metrics of grammars compile, each result it gives is counted. A function or local rule a
+    ; pattern on a String calls reads the stream's UTF-8 bytes, and its `CaptureResult` holds those
+    ; bytes.
     (let stream (if-expr (!= (. rule-streaming stream) no-type) (. rule-streaming stream) (call scope-stream)))
     (let texts
       (block
@@ -304,14 +301,12 @@
     (param texts Bool)
     (param target TypeId (= no-type))
     (param lifts Bool (= true))
-    ; The arms of a grammar over the stream in force, typed as the reference declares them
-    ; and joined: the names it captures first, then each arm, the text it matched where it gives
-    ; no other value. Where the pattern `texts`, as the arms of a match, a pipe or a loop do, an arm
-    ; that gives no value gives its text though its last part is optional; elsewhere the reference
-    ; gives that part.
-    ; The arms are converted to the `target` where one is given, and else to the type they join
-    ; as; where an arm gives null or an optional and the target `lifts`, to the `target` as an
-    ; optional, which null is absent of.
+    ; The arms of a grammar over the stream in force, typed and joined: the names it captures first,
+    ; then each arm, the text it matched where it gives no other value. Where the pattern `texts`,
+    ; as the arms of a match, a pipe or a loop do, an arm that gives no value gives its text though
+    ; its last part is optional; elsewhere it gives that part. The arms are converted to the
+    ; `target` where one is given, and else to the type they join as; where an arm gives null or an
+    ; optional and the target `lifts`, to the `target` as an optional, which null is absent of.
     (if (and (not (call text-items)) (not (call is-integer (. stream-view item))))
       (let site (call class-error-site pattern))
       (if (== site (. U32 max))
@@ -359,16 +354,15 @@
     (param pattern SyntaxId)
     ; The arms of a grammar, typed after the names it captures and joined, with what
     ; `settle-captures` then records for those names, and what `results-assumed` settles of the
-    ; actions that took their own type for the one the arms give, which is the one they declare
-    ; or else join as, text where they give none. While they are typed, `pattern-arms` says whether
-    ; an action or a call of this pattern makes a value through the helper (`selects`), which arm is
-    ; being typed (`arm`), and that arms are scoped (`scoped`), each of which the
-    ; reference gives a scope of its own, so that one name may hold another type in another arm.
-    ; Where the arms declare no type and an action is `uninferred`, the reference
-    ; takes that arm to give none, so the arms have a shape here only where they give text, which
-    ; is what the reference takes them to give then. An arm that made the text it matched as the
-    ; type its last part gives, taking that for the type the arms join as, has a shape only where
-    ; they join as it.
+    ; actions that took their own type for the one the arms give, which is the one they declare or
+    ; else join as, text where they give none. While they are typed, `pattern-arms` says whether an
+    ; action or a call of this pattern makes a value through the helper (`selects`), which arm is
+    ; being typed (`arm`), and that arms are scoped (`scoped`), each of which is given a scope of
+    ; its own, so that one name may hold another type in another arm. Where the arms declare no type
+    ; and an action is `uninferred`, that arm is taken to give none, so the arms have a shape here
+    ; only where they give text, which is what they are taken to give then. An arm that made the
+    ; text it matched as the type its last part gives, taking that for the type the arms join as,
+    ; has a shape only where they join as it.
     (let saved pattern-arms)
     (= pattern-arms (= (. pattern-arms selects) false))
     (= pattern-arms (= (. pattern-arms uninferred) false))
@@ -435,9 +429,9 @@
   )
   (fn-do _ optional-text Bool
     (param id SyntaxId)
-    ; Whether a name captured over the text a part of a grammar matched may hold none, as
-    ; the reference types it: where the part is optional, or alternatives one of which is. A
-    ; sequence holds the text it matched, though the part it ends with may be optional.
+    ; Whether a name captured over the text a part of a grammar matched may hold none: where the
+    ; part is optional, or alternatives one of which is. A sequence holds the text it matched,
+    ; though the part it ends with may be optional.
     (match? ([] (. tree nodes) id)
       (case (call .node-stream-unary row)
         (return (== (. row op) .zero-or-one-op))
@@ -457,17 +451,16 @@
   (fn-do _ settle-captures Bool
     (param pattern SyntaxId)
     (param result TypeId)
-    ; Records what the reference makes through the helper where a part a name captures passes,
-    ; whether or not anything reads it, once the arms are typed. An optional part captured as a
-    ; whole that gives its text makes it, as the type it holds, but for one literal, whose text
-    ; the reference has as a constant, and one of text that actions read, but none for more than
-    ; its length, which the reference keeps as the span it matched. Where no action or call of the
-    ; pattern makes a value through the helper, a call of a rule that gives its text makes it
-    ; too, as the type the rule states, but for one whose name the reference keeps as the span
-    ; it matched: a name that holds text, so captured outside optional parts and repeats, and
-    ; does not accumulate. Each is made by the capture materializer `record-eager` selects, and
-    ; nothing where the helper has none. There, a call in a repeat that states another type
-    ; than text, a name an action reads for more than its length, a sequence that ends with
+    ; Records what is made through the helper where a part a name captures passes, whether or not
+    ; anything reads it, once the arms are typed. An optional part captured as a whole that gives
+    ; its text makes it, as the type it holds, but for one literal, whose text is a constant, and
+    ; one of text that actions read, but none for more than its length, which is kept as the span it
+    ; matched. Where no action or call of the pattern makes a value through the helper, a call of a
+    ; rule that gives its text makes it too, as the type the rule states, but for one whose name is
+    ; kept as the span it matched: a name that holds text, so captured outside optional parts and
+    ; repeats, and does not accumulate. Each is made by the capture materializer `record-eager`
+    ; selects, and nothing where the helper has none. There, a call in a repeat that states another
+    ; type than text, a name an action reads for more than its length, a sequence that ends with
     ; such a call, a count whose bounds are computed, and a helper that delegates what makes the
     ; type the arms give have no shape here. False where the pattern was declined.
     (if (or (== (. helping helper) null) (== (. helping helper captures length) 0))
@@ -532,11 +525,10 @@
   (fn-do _ record-eager Bool
     (param site SyntaxId)
     (param held TypeId)
-    ; Records at a part of a grammar the call of the capture materializer that makes a
-    ; type of the text the part matched, as the reference's implicit materialization selects it
-    ; among those that make that type from the stream's items, which the part makes where it
-    ; passes. Nothing where the helper has none. False where the part has no shape, as one over
-    ; items that are not characters has none.
+    ; Records at a part of a grammar the call of the capture materializer that makes a type of the
+    ; text the part matched, selected among those that make that type from the stream's items, which
+    ; the part makes where it passes. Nothing where the helper has none. False where the part has no
+    ; shape, as one over items that are not characters has none.
     (let candidates (call source-candidates held))
     (if (== (. candidates length) 0)
       (return true)
@@ -639,23 +631,21 @@
     (param depth U32)
     (param repeats U32 (= 0))
     (param held Bool (= false))
-    ; Types the names a grammar captures, as the reference's matchmaker types them: each
-    ; the text its part matched, or what a rule the part calls gives, optional within an optional
-    ; part, and within a repeat an `ImmutableArray` of what each pass captured. A name captured in
-    ; more than one place keeps one type, and its places must be alternatives of one another, so
-    ; that no way through the pattern passes two of them; a name may hold another type in
-    ; another arm, though, as the reference gives each arm a scope of its own, but for one
-    ; captured in a repeat. A name captured in a lookahead,
-    ; optional twice over, or in a repeat but for text no optional part holds, has no shape here,
-    ; nor has any name but one that accumulates where `held`. A name that accumulates is typed
-    ; wherever it is captured but in a count, whose names the reference never declares. A name
-    ; captured over a call of a rule that gives its text but states another type has that type,
-    ; and holds the text until an action makes it so: under a helper, optional where the call or
-    ; a part around it is, and in one repeat a list that keeps the range of each pass. Records
-    ; where each name holds text the call that makes it, and for one in a repeat the calls that
-    ; grow its lists; plans each that holds a rule's value so. A name captured over a sequence
-    ; that ends by testing an item against a value has no shape here: the reference converts the
-    ; text the sequence matched to the value's type. False where the pattern was declined.
+    ; Types the names a grammar captures: each the text its part matched, or what a rule the part
+    ; calls gives, optional within an optional part, and within a repeat an `ImmutableArray` of what
+    ; each pass captured. A name captured in more than one place keeps one type, and its places must
+    ; be alternatives of one another, so that no way through the pattern passes two of them; a name
+    ; may hold another type in another arm, though, as each arm has a scope of its own, but for one
+    ; captured in a repeat. A name captured in a lookahead, optional twice over, or in a repeat but
+    ; for text no optional part holds, has no shape here, nor has any name but one that accumulates
+    ; where `held`. A name that accumulates is typed wherever it is captured but in a count, whose
+    ; names are never declared. A name captured over a call of a rule that gives its text but states
+    ; another type has that type, and holds the text until an action makes it so: under a helper,
+    ; optional where the call or a part around it is, and in one repeat a list that keeps the range
+    ; of each pass. Records where each name holds text the call that makes it, and for one in a
+    ; repeat the calls that grow its lists; plans each that holds a rule's value so. A name captured
+    ; over a sequence that ends by testing an item against a value has no shape here. False where
+    ; the pattern was declined.
     (match? ([] (. tree nodes) id)
       (case (call .node-stream-capture row)
         (if (. row accumulating)
@@ -867,13 +857,13 @@
     (param id SyntaxId)
     (param name SyntaxId)
     (param pattern SyntaxId)
-    ; Types a name that accumulates what its part gives each time the part passes, wherever it
-    ; is captured, as the reference types one: an `ImmutableArray` of what the part gives, the
-    ; text it matched or what a rule it calls gives, which every place that captures the name
-    ; must give alike. Records where the part gives text the call that makes it, and the call
-    ; that grows the list the match keeps of them. A name captured both so and plainly is
-    ; TypeScript's error at the later place, as is a part that gives another type than the first.
-    ; One over items that are not characters, or whose part gives an optional, has no shape here.
+    ; Types a name that accumulates what its part gives each time the part passes, wherever it is
+    ; captured: an `ImmutableArray` of what the part gives, the text it matched or what a rule it
+    ; calls gives, which every place that captures the name must give alike. Records where the part
+    ; gives text the call that makes it, and the call that grows the list the match keeps of them. A
+    ; name captured both so and plainly is an error at the later place, as is a part that gives
+    ; another type than the first. One over items that are not characters, or whose part gives an
+    ; optional, has no shape here.
     (let inner (call stream-node-type pattern))
     (if (== inner invalid-type)
       (return false)
@@ -1016,11 +1006,11 @@
   )
   (fn-do _ collector-over TypeId
     (param item TypeId)
-    ; The `PatternCollector` a grammar keeps a list of items of a type in, as the
-    ; reference makes it: backed as the helper of the pattern keeps collectors, which the body
-    ; then reads the context of where it makes one, and else by the collector. A match without
-    ; such a helper in a rule whose own helper keeps collectors has no shape here, and the rule
-    ; is typed for its helper so that the call of it has none either.
+    ; The `PatternCollector` a grammar keeps a list of items of a type in: backed as the helper of
+    ; the pattern keeps collectors, which the body then reads the context of where it makes one, and
+    ; else by the collector. A match without such a helper in a rule whose own helper keeps
+    ; collectors has no shape here, and the rule is typed for its helper so that the call of it has
+    ; none either.
     (let decl (. types pattern-collector-decl))
     (if (== (. decl module) 0)
       (return invalid-type)
@@ -1207,10 +1197,10 @@
     (param pattern SyntaxId)
     (param body SyntaxId)
     ; Where an action reads a name the match captures that may hold no value on some way the
-    ; action's pattern passes, or none where each holds one: the reference leaves one that an
-    ; alternative not taken captures unset. A name that accumulates always holds its list. A
-    ; function the action makes reads only names that hold one value each, as `reads-captures`
-    ; says, and is where it reads another.
+    ; action's pattern passes, or none where each holds one: one that an alternative not taken
+    ; captures is left unset. A name that accumulates always holds its list. A function the action
+    ; makes reads only names that hold one value each, as `reads-captures` says, and is where it
+    ; reads another.
     (for (in node (..< (call (. tree subtree-start) body) (+ body 1)))
       (match? ([] (. tree nodes) node)
         (case .node-identifier
@@ -1230,10 +1220,9 @@
   )
   (fn-do _ unplain-slice SyntaxId
     (param body SyntaxId)
-    ; Where an action reads a name captured as a slice of a stream that holds no characters for
-    ; more than its length or an item of it, or none. The reference types the name as an
-    ; `ImmutableArray` but gives it the `Array` it reads, which shares the stream's buffer, and the
-    ; two agree only there.
+    ; Where an action reads a name captured as a slice of a stream that holds no characters for more
+    ; than its length or an item of it, or none. The name is typed as an `ImmutableArray` but given
+    ; the `Array` it reads, which shares the stream's buffer, and the two agree only there.
     (let receivers (list SyntaxId))
     (for (in node (..< (call (. tree subtree-start) body) (+ body 1)))
       (match? ([] (. tree nodes) node)
@@ -1297,15 +1286,14 @@
     (param pattern SyntaxId)
     (param body SyntaxId)
     (param value TypeId)
-    ; Whether the reference runs an action in a function of its own, `stream-action`, which a
-    ; panic in it would show: one with a pattern, whose value is not String and holds no function,
-    ; in a function with no type parameters, a rule's own item type aside, that is more than a
-    ; name, a number or text written alone, makes no function, and reads no local of the
-    ; functions it is in but the names its match captures, `it` and `location`, none of which
-    ; holds a function. The reference asks some of this by the names the action reads, so for an
-    ; action that reads a name a local of its function also has the answer is not sure, which
-    ; `outline-unsure` says. An action that names `This` is kept inline, as the reference finds
-    ; no such type in the module.
+    ; Whether an action runs in a function of its own, `stream-action`, which a panic in it would
+    ; show: one with a pattern, whose value is not String and holds no function, in a function with
+    ; no type parameters, a rule's own item type aside, that is more than a name, a number or text
+    ; written alone, makes no function, and reads no local of the functions it is in but the names
+    ; its match captures, `it` and `location`, none of which holds a function. Some of this is asked
+    ; by the names the action reads, so for an action that reads a name a local of its function also
+    ; has the answer is not sure, which `outline-unsure` says. An action that names `This` is kept
+    ; inline.
     (= outline-unsure false)
     (if (or (== pattern 0) (== value (. types string-type)) (call (. tree trivial-action) body))
       (return false)
@@ -1431,9 +1419,9 @@
     (param arm SyntaxId)
     (param body SyntaxId)
     (param it-type TypeId)
-    ; Records an action the reference runs in a function of its own, with the names it gives the
-    ; function: `location`, `it` and the names the match captures, in the order the action first
-    ; reads them, each of the type the arm gives it, which a helper may have made another.
+    ; Records an action that runs in a function of its own, with the names it gives the function:
+    ; `location`, `it` and the names the match captures, in the order the action first reads them,
+    ; each of the type the arm gives it, which a helper may have made another.
     (let start U32 (as (. facts action-slots length) U32))
     (for (in node (..< (call (. tree subtree-start) body) (+ body 1)))
       (match? ([] (. tree nodes) node)
@@ -1474,21 +1462,19 @@
     (param id SyntaxId)
     (param subject TypeId)
     (param encoded Bool (= false))
-    ; Records at a grammar the calls the reference makes to run it on the value a match is
-    ; on, in order: the stream it reads the value through, the stream's `pattern-view`, its
-    ; `pattern-commit` of where the pattern ended and how far it read, and its `pattern-extend`. What a value is is what it
-    ; is `supported` as. A value that is a stream
-    ; is read as the `TokenStream` it is, converted to that interface, through the view of its
-    ; UTF-8 bytes where it is a `TextTokenStream` or the stream given to a function a pattern on a
-    ; String calls, which is `encoded`. A String is read through a `TextTokenStream` of
-    ; it, whose buffer holds its UTF-8 bytes. A generator is read
-    ; through a `ChunkedTokenStream` of its items, which pulls them as the pattern needs them. So
-    ; is a stream of items a parameter is written as, `<T>`, which the reference passes as a
-    ; generator and which is the `CursorIterable` it is here, given its `Iterable`; and a value
-    ; that is `ByteReadable`, given it as that interface, whose items are what it is `Decodable`
-    ; as, else bytes. An Array is read as an `ArrayTokenStream` of its items, any other
-    ; value that is `Indexable` as an `IndexableTokenStream`, and one that is only `Iterable`
-    ; through a `ChunkedTokenStream`, each given it as that interface.
+    ; Records at a grammar the calls made to run it on the value a match is on, in order: the stream
+    ; it reads the value through, the stream's `pattern-view`, its `pattern-commit` of where the
+    ; pattern ended and how far it read, and its `pattern-extend`. What a value is is what it is
+    ; `supported` as. A value that is a stream is read as the `TokenStream` it is, converted to that
+    ; interface, through the view of its UTF-8 bytes where it is a `TextTokenStream` or the stream
+    ; given to a function a pattern on a String calls, which is `encoded`. A String is read through
+    ; a `TextTokenStream` of it, whose buffer holds its UTF-8 bytes. A generator is read through a
+    ; `ChunkedTokenStream` of its items, which pulls them as the pattern needs them. So is a stream
+    ; of items a parameter is written as, `<T>`, which is the `CursorIterable` it is, given its
+    ; `Iterable`; and a value that is `ByteReadable`, given it as that interface, whose items are
+    ; what it is `Decodable` as, else bytes. An Array is read as an `ArrayTokenStream` of its items,
+    ; any other value that is `Indexable` as an `IndexableTokenStream`, and one that is only
+    ; `Iterable` through a `ChunkedTokenStream`, each given it as that interface.
     (if (or (== subject invalid-type) (== subject no-type))
       (return false)
     )
@@ -1608,11 +1594,10 @@
     (param stream TypeId)
     (param item TypeId)
     (param encoded Bool)
-    ; Records at a grammar the calls the reference makes of the stream it runs on, in
-    ; order: its view of its buffer, which is its `pattern-text-view` of the UTF-8 bytes of its
-    ; characters where it is `encoded` and else its `pattern-view`, its `pattern-commit`, and its
-    ; `pattern-extend`, which a stream that may give more input is asked where the pattern reads
-    ; past the end of its buffer.
+    ; Records at a grammar the calls it makes of the stream it runs on, in order: its view of its
+    ; buffer, which is its `pattern-text-view` of the UTF-8 bytes of its characters where it is
+    ; `encoded` and else its `pattern-view`, its `pattern-commit`, and its `pattern-extend`, which a
+    ; stream that may give more input is asked where the pattern reads past the end of its buffer.
     (let view (call (. calls protocol-getter) stream (call view-name encoded) id .role-view))
     (if (not (call (. types is-optional) view))
       (return false)
@@ -1633,10 +1618,10 @@
     (param stream TypeId)
     (param id SyntaxId)
     (param encoded Bool)
-    ; Records at a pattern a function runs on a stream it is given the calls the reference makes of a
-    ; stream that may give more input where the pattern reads past the end of its buffer, in order:
-    ; the stream's view of its buffer, as `view-name` names it for a function that is `encoded`,
-    ; which gives the buffer it then holds, and its `pattern-extend`.
+    ; Records at a pattern a function runs on a stream it is given the calls made of a stream that
+    ; may give more input where the pattern reads past the end of its buffer, in order: the stream's
+    ; view of its buffer, as `view-name` names it for a function that is `encoded`, which gives the
+    ; buffer it then holds, and its `pattern-extend`.
     (if (not (call (. types is-optional) (call (. calls protocol-getter) stream (call view-name encoded) id .role-view)))
       (return false)
     )
@@ -1644,24 +1629,23 @@
   )
   (fn-do _ stream-arm-type TypeId
     (param id SyntaxId)
-    ; The type of the arms of a grammar, joined as the reference joins them, in the order
-    ; written. An arm that raises gives none. An arm with no expression, or one whose body only
-    ; declares lazy locals, gives the text its pattern matched, or what a rule its pattern calls
-    ; gives. One whose pattern is one literal gives that text as it is, which no helper makes. One
-    ; whose body only declares lazy locals and that would ask the helper for a rollback mark has
-    ; no shape here. In a rule that states the `CaptureSpan` of its stream's items, each arm gives
-    ; the span of the items it matched; elsewhere an arm that gives a span a rule gave, which the
-    ; reference reads as text, has no shape here. An arm with no expression that is a sequence of
-    ; parts gives the text it matched whatever its last part gives, made as the type the arms
-    ; give, where its rule has other arms, where that type is text, which leaves the last part's
-    ; value unmade where the arm is alone, where it is optional text and the arm has others or is
-    ; alone in arms that state no type and give their text, though not where the arms give their
-    ; text whatever their last part gives, or where the helper makes that type of
-    ; the stream's items; one that the reference would make of text as a type nothing makes of it
-    ; has no shape here. Where the arms state no type, that type is the one the arm's last part
-    ; gives, which `arms-type` holds the other arms to. An arm that only looks ahead gives the
-    ; text it matched, none, though it joins the other arms as the type of what it looks for, as
-    ; the reference declares it, where the arms state text or no type and those then join as text.
+    ; The type of the arms of a grammar, joined in the order written. An arm that raises gives none.
+    ; An arm with no expression, or one whose body only declares lazy locals, gives the text its
+    ; pattern matched, or what a rule its pattern calls gives. One whose pattern is one literal
+    ; gives that text as it is, which no helper makes. One whose body only declares lazy locals and
+    ; that would ask the helper for a rollback mark has no shape here. In a rule that states the
+    ; `CaptureSpan` of its stream's items, each arm gives the span of the items it matched;
+    ; elsewhere an arm that gives a span a rule gave has no shape here. An arm with no expression
+    ; that is a sequence of parts gives the text it matched whatever its last part gives, made as
+    ; the type the arms give, where its rule has other arms, where that type is text, which leaves
+    ; the last part's value unmade where the arm is alone, where it is optional text and the arm has
+    ; others or is alone in arms that state no type and give their text, though not where the arms
+    ; give their text whatever their last part gives, or where the helper makes that type of the
+    ; stream's items; one that would be made of text as a type nothing makes of it has no shape
+    ; here. Where the arms state no type, that type is the one the arm's last part gives, which
+    ; `arms-type` holds the other arms to. An arm that only looks ahead gives the text it matched,
+    ; none, though it joins the other arms as the type of what it looks for, where the arms state
+    ; text or no type and those then join as text.
     (call note-observer)
     (match? ([] (. tree nodes) id)
       (case (call .node-stream-or row)
@@ -1940,7 +1924,7 @@
     (param declared TypeId)
     ; Records each arm of a rule's pattern whose action gives a cast to the type the rule states
     ; (`note-context-cast`). A rule that states none takes its type from its arms, casts and all,
-    ; and one that states `String` has the text of each arm made by a call, as the reference makes it.
+    ; and one that states `String` has the text of each arm made by a call.
     (match? ([] (. tree nodes) id)
       (case (call .node-stream-or row)
         (call note-arm-casts (. row left) declared)
@@ -1956,32 +1940,30 @@
     (param pattern SyntaxId)
     (param body SyntaxId)
     ; An arm that runs an expression where its pattern matched, which gives the arm's value. The
-    ; expression sees as `it` the text its pattern matched, or what a rule its pattern calls gives where
-    ; the pattern is no sequence, as the reference gives it the pattern's value. The text of a sequence
-    ; of items that are no characters is what `slice-string` makes of them. Where the pattern is an
-    ; optional part that gives its text, `it` is that text as an optional, which the part makes where
-    ; its operand passes, a literal's by the slice and any other as `record-source-text` says. Any other
-    ; value a pattern has has no shape here, and `it` in an arm with no pattern, which the reference
-    ; types as the subject but gives empty text, is an error. Nothing reads the value of a pattern whose expression does
-    ; not read `it`. It reads as `location` where its pattern began and ended, or where it is tried
-    ; where it has none. One the reference runs in a function of its own is recorded, and is planned to
-    ; run so where it is not quiet and its own code may panic, which the panic would show; the panic
-    ; pass plans one whose calls may. Nor has an expression that leaves the function, one of a match's
-    ; local rule marked to roll back with no helper, or one that reads a name its pattern may pass
-    ; without capturing. One of a match's own arms marked to roll back where the match has no helper is
-    ; the reference's error, at the match's first arm. One of a rule's marked so with no helper still
-    ; asks for a mark, which the rule's function cannot give where a pattern calls it so. One under a
-    ; helper that cannot roll back makes the match need it to, and one under a helper that can asks it
-    ; for a mark before the expression runs, as does every arm of a rule whose pattern is marked so.
-    ; Under a helper, the names the expression reads, `it` and what it gives are made as
-    ; `materialize-captures` and `materialize-result` say; `it` alone, where a capture materializer
-    ; makes the type the arms give, is made as that type. One that reads a name the helper made as
-    ; another type than it is wanted as, which the reference does, has a shape only where it gives the
-    ; type it gives with the name as it was, as the reference then takes what it gives for that type. A
-    ; name that holds a `CaptureSpan` reads as text, as `observe-spans` says. In a rule that states a
-    ; `CaptureSpan` the arm gives the span of the items it matched, and its expression, whose value the
-    ; reference drops, has a shape only where it gives that type; elsewhere one that gives a span, or
-    ; reads `it` that holds one, which the reference reads as text, has none.
+    ; expression sees as `it` the text its pattern matched, or what a rule its pattern calls gives
+    ; where the pattern is no sequence. The text of a sequence of items that are no characters is
+    ; what `slice-string` makes of them. Where the pattern is an optional part that gives its text,
+    ; `it` is that text as an optional, which the part makes where its operand passes, a literal's
+    ; by the slice and any other as `record-source-text` says. Any other value a pattern has has no
+    ; shape here, and `it` in an arm with no pattern is an error. Nothing reads the value of a
+    ; pattern whose expression does not read `it`. It reads as `location` where its pattern began
+    ; and ended, or where it is tried where it has none. One that runs in a function of its own is
+    ; recorded, and is planned to run so where it is not quiet and its own code may panic, which the
+    ; panic would show; the panic pass plans one whose calls may. Nor has an expression that leaves
+    ; the function, one of a match's local rule marked to roll back with no helper, or one that
+    ; reads a name its pattern may pass without capturing. One of a match's own arms marked to roll
+    ; back where the match has no helper is an error, at the match's first arm. One of a rule's
+    ; marked so with no helper still asks for a mark, which the rule's function cannot give where a
+    ; pattern calls it so. One under a helper that cannot roll back makes the match need it to, and
+    ; one under a helper that can asks it for a mark before the expression runs, as does every arm
+    ; of a rule whose pattern is marked so. Under a helper, the names the expression reads, `it` and
+    ; what it gives are made as `materialize-captures` and `materialize-result` say; `it` alone,
+    ; where a capture materializer makes the type the arms give, is made as that type. One that
+    ; reads a name the helper made as another type than it is wanted as has a shape only where it
+    ; gives the type it gives with the name as it was. A name that holds a `CaptureSpan` reads as
+    ; text, as `observe-spans` says. In a rule that states a `CaptureSpan` the arm gives the span of
+    ; the items it matched, and its expression, whose value is dropped, has a shape only where it
+    ; gives that type; elsewhere one that gives a span, or reads `it` that holds one, has none.
     (let rolls-back (. helping explicit))
     (match? ([] (. tree nodes) id)
       (case (call .node-stream-transform row)
@@ -2249,11 +2231,10 @@
     (param pattern SyntaxId)
     (param body SyntaxId)
     (param slot SlotId)
-    ; The `CaptureSpan` an action that reads `it` sees it as, as the reference keeps it where the
-    ; action reads it only for numbers its span gives as its text does and `it` is the text of the
-    ; characters the arm's pattern matched: that of a sequence, or of a part that gives the text it
-    ; matched, which is not optional; none where it is anything else, and in a rule that states a
-    ; span.
+    ; The `CaptureSpan` an action that reads `it` sees it as, where the action reads it only for
+    ; numbers its span gives as its text does and `it` is the text of the characters the arm's
+    ; pattern matched: that of a sequence, or of a part that gives the text it matched, which is not
+    ; optional; none where it is anything else, and in a rule that states a span.
     (case? (or (== slot no-slot) (not (call text-items)) (. rule-arming span) (!= (call (. tree optional-operand) pattern) 0))
       no-type
     )
@@ -2269,8 +2250,8 @@
   )
   (fn-do _ reads-atom Bool
     (param body SyntaxId)
-    ; Whether an action reads a property of an `Atom`, which the reference finds no type for
-    ; where it infers what an action gives, and so takes the action to give none.
+    ; Whether an action reads a property of an `Atom`, for which no type is found where what an
+    ; action gives is inferred, so the action is taken to give none.
     (for (in node (..< (call (. tree subtree-start) body) (+ body 1)))
       (match? ([] (. tree nodes) node)
         (case (call .node-get-expression row)
@@ -2289,12 +2270,11 @@
     (param body SyntaxId)
     (param restores (list SlotId))
     (param restored (list TypeId))
-    ; Plans how an action reads the names that hold a `CaptureSpan`, as the reference makes them
-    ; where the action starts, with a helper or none: one that holds the span of the stream's
-    ; characters reads as their text, made by `slice-string` of the items it spans. One the helper
-    ; made as another type is left as that. One that holds a span of other items, or in an
-    ; optional or a list, has no shape here. Keeps the slots it retypes, and their types before.
-    ; False where an action has no shape.
+    ; Plans how an action reads the names that hold a `CaptureSpan`, made where the action starts,
+    ; with a helper or none: one that holds the span of the stream's characters reads as their text,
+    ; made by `slice-string` of the items it spans. One the helper made as another type is left as
+    ; that. One that holds a span of other items, or in an optional or a list, has no shape here.
+    ; Keeps the slots it retypes, and their types before. False where an action has no shape.
     (let seen (list SlotId))
     (for (in node (..< (call (. tree subtree-start) body) (+ body 1)))
       (match? ([] (. tree nodes) node)
@@ -2370,10 +2350,9 @@
     (param restores (list SlotId))
     (param restored (list TypeId))
     ; Keeps as the `CaptureSpan` of the characters it matched each name captured over text that an
-    ; action reads only for numbers its span gives as its text does, as the reference keeps such a
-    ; name, with a helper or none, where nothing made it otherwise: as an optional span, read only
-    ; through `?.`, where the name is captured over an optional part. Keeps the slots it retypes,
-    ; and their types before.
+    ; action reads only for numbers its span gives as its text does, with a helper or none, where
+    ; nothing made it otherwise: as an optional span, read only through `?.`, where the name is
+    ; captured over an optional part. Keeps the slots it retypes, and their types before.
     (if (not (call text-items))
       (return)
     )
@@ -2508,9 +2487,9 @@
     (param call ASTCallExpression)
     (param position U32)
     (param span TypeId)
-    ; Whether a call by a name alone reaches a function that states a `CaptureSpan` for the parameter
-    ; at a position, as the reference finds one among the functions of a module the name looks up:
-    ; one that is no method, takes no list of the rest, and is seen from here.
+    ; Whether a call by a name alone reaches a function that states a `CaptureSpan` for the
+    ; parameter at a position, among the functions of a module the name looks up: one that is no
+    ; method, takes no list of the rest, and is seen from here.
     (if (or (. call is-curried) (!= (. call param-count) 0))
       (return false)
     )
@@ -2577,8 +2556,8 @@
   )
   (fn-do _ observes-span Bool
     (param type TypeId)
-    ; Whether a value holds a `CaptureSpan`, itself or in an optional or a list, which the
-    ; reference has an action read, and give, as the text or the items it spans.
+    ; Whether a value holds a `CaptureSpan`, itself or in an optional or a list, which an action
+    ; reads, and gives, as the text or the items it spans.
     (if (or (== type no-type) (== type invalid-type))
       (return false)
     )
@@ -2618,8 +2597,8 @@
   (fn-expr + gives-source-span Bool
     (param type TypeId)
     ; Whether a type a rule states is the `CaptureSpan` of the items its stream holds, over the
-    ; buffer the stream reads. The reference then has each arm of the rule give the span of the
-    ; items it matched, whatever its pattern or its action gives.
+    ; buffer the stream reads. Each arm of the rule then gives the span of the items it matched,
+    ; whatever its pattern or its action gives.
     (case? (or (== type no-type) (== type invalid-type) (call (. types is-optional) type) (not (call spans-source type)))
       false
     )
@@ -2632,9 +2611,9 @@
   )
   (fn-do _ spans-source Bool
     (param type TypeId)
-    ; Whether a pattern is to give a `CaptureSpan`, optional or not. The reference then gives the
-    ; span of the items the pattern matched, whatever its actions give, which has a shape only
-    ; for the arms of a rule that `gives-source-span` says.
+    ; Whether a pattern is to give a `CaptureSpan`, optional or not. The pattern then gives the span
+    ; of the items it matched, whatever its actions give, which has a shape only for the arms of a
+    ; rule that `gives-source-span` says.
     (if (or (== type no-type) (== type invalid-type))
       (return false)
     )
@@ -2648,11 +2627,10 @@
   (fn-do _ ranged-capture (? Bool)
     (param id SyntaxId)
     (param slot SlotId)
-    ; Whether a name captured over text in a repeat keeps the ranges of its passes, as the
-    ; reference keeps one an action that reads it makes through a capture materializer, wanted as
-    ; a list of text or, where the action is that name alone, as what the arms give. A name some
-    ; actions make so and others read as text has no shape here; null where a choice is ambiguous
-    ; or the pattern has no shape.
+    ; Whether a name captured over text in a repeat keeps the ranges of its passes: one an action
+    ; that reads it makes through a capture materializer, wanted as a list of text or, where the
+    ; action is that name alone, as what the arms give. A name some actions make so and others read
+    ; as text has no shape here; null where a choice is ambiguous or the pattern has no shape.
     (let listed (call class-over (. types immutable-array-decl) (. types string-type)))
     (let made false)
     (let plain false)
@@ -2699,9 +2677,8 @@
     (param result TypeId)
     (param pattern SyntaxId)
     ; Whether the arms that a helper made values for, where the arms declare no type, chose as they
-    ; would have with the type they join as, which the reference takes. Where any did not, the
-    ; pattern has no shape here. An action taken to make its value again does so where the arms
-    ; give the type it took.
+    ; would have with the type they join as. Where any did not, the pattern has no shape here. An
+    ; action taken to make its value again does so where the arms give the type it took.
     (let agreed true)
     (for (in position (..< mark (. assumed-results length)))
       (let assumed ([] assumed-results position))
@@ -2724,13 +2701,13 @@
     (param assumed AssumedResult)
     (param result TypeId)
     ; Whether an action that took its own type for the type the arms give chose as it would have
-    ; with the type they join as: where the type is the same; else where it materializes with
-    ; both or with neither, a name it forwards wanted as the type it would be wanted as selects no
+    ; with the type they join as: where the type is the same; else where it materializes with both
+    ; or with neither, a name it forwards wanted as the type it would be wanted as selects no
     ; materializer, `it` forwarded would be no other text, and where the action materializes, the
     ; helper makes neither type. Where the helper makes the type it took and not the one the arms
-    ; give, the action's value is not made again, which is as the action chose but for the
-    ; function of its own the reference may then run it in: so only where it surely runs none, an
-    ; action with no pattern, one that gives text, or a name, a number or text written alone.
+    ; give, the action's value is not made again, which is as the action chose but for the function
+    ; of its own it may then run in: so only where it surely runs none, an action with no pattern,
+    ; one that gives text, or a name, a number or text written alone.
     (case? (== (. assumed value) result)
       true
     )
@@ -2785,12 +2762,12 @@
     (param restores (list SlotId))
     (param restored (list TypeId))
     ; Plans how the helper makes the names an action reads, in the order the expression first reads
-    ; them, as the reference materializes them where the action starts. Each is wanted as the type
-    ; `capture-wanted` says, or, where one could be made as another type and the expression is not
-    ; typed with the first, as the one choice of the others it is typed with, as the reference
-    ; chooses; two such choices are its error. Each is then made as `materialize-capture` says,
-    ; and the expression is typed with what it holds. Notes in `action-selects` whether any name
-    ; selects a materializer. Keeps the slots it retypes, and their types before.
+    ; them, where the action starts. Each is wanted as the type `capture-wanted` says, or, where one
+    ; could be made as another type and the expression is not typed with the first, as the one
+    ; choice of the others it is typed with; two such choices are an error. Each is then made as
+    ; `materialize-capture` says, and the expression is typed with what it holds. Notes in
+    ; `action-selects` whether any name selects a materializer. Keeps the slots it retypes, and
+    ; their types before.
     (= action-selects false)
     (call (. remade-positions clear))
     (call (. remade-types clear))
@@ -2843,14 +2820,14 @@
     (param position U32)
     (param forwards Bool)
     (param candidates (list TypeId))
-    ; The types a name an action reads may be wanted as, first the one the reference wants it as: what
-    ; it holds, or where the action is that name alone and the arms give a type a materializer makes,
-    ; that type; then each other type the materializers that apply to it make, put in what it holds past
-    ; optionals and lists, where one is selected for it. Under a helper with no materializer, only what
-    ; it holds, as is a name that accumulates what rules gave where no value materializer takes one, and
-    ; a name that holds the text of a rule that states another type, which the reference holds as that
-    ; type. Otherwise a name that accumulates, holds a part of the buffer, or holds what a rule gave
-    ; that is the text it matched has no shape here. False where the pattern has no shape.
+    ; The types a name an action reads may be wanted as, first what it holds, or where the action is
+    ; that name alone and the arms give a type a materializer makes, that type; then each other type
+    ; the materializers that apply to it make, put in what it holds past optionals and lists, where
+    ; one is selected for it. Under a helper with no materializer, only what it holds, as is a name
+    ; that accumulates what rules gave where no value materializer takes one, and a name that holds
+    ; the text of a rule that states another type, which is held as that type. Otherwise a name that
+    ; accumulates, holds a part of the buffer, or holds what a rule gave that is the text it matched
+    ; has no shape here. False where the pattern has no shape.
     (let name ([] capture-sites position))
     (let natural (call (. facts node-type) instance name))
     (if (and (== (. (!! (. helping helper)) captures length) 0) (== (. (!! (. helping helper)) values length) 0))
@@ -2897,13 +2874,12 @@
     (param positions (list U32))
     (param candidates (list TypeId))
     (param starts (list U32))
-    ; The types the names an action reads are wanted as, as the reference chooses them: each the
-    ; first it may be wanted as, where none may be wanted as another or the expression is typed
-    ; with those; else of the choices of the others, tried in order, that the expression is typed
-    ; with, the one that makes the most names as a materializer does, or the first where none is.
-    ; Two such choices that make as many are the reference's error at the action, which names the
-    ; first two. An action of a closure has no shape here where a choice must be tried. Null where
-    ; the pattern has no shape.
+    ; The types the names an action reads are wanted as: each the first it may be wanted as, where
+    ; none may be wanted as another or the expression is typed with those; else of the choices of
+    ; the others, tried in order, that the expression is typed with, the one that makes the most
+    ; names as a materializer does, or the first where none is. Two such choices that make as many
+    ; are an error at the action, which names the first two. An action of a closure has no shape
+    ; here where a choice must be tried. Null where the pattern has no shape.
     (let firsts (list TypeId))
     (let several false)
     (for (in offset (..< 0 (. positions length)))
@@ -3019,8 +2995,8 @@
     (param body SyntaxId)
     (param positions (list U32))
     (param wanted (list TypeId))
-    ; The type an action's expression gives with the names it reads holding the types given, as
-    ; the reference tries it, on trial (`trial-checker`). Invalid where it reports any.
+    ; The type an action's expression gives with the names it reads holding the types given, on
+    ; trial (`trial-checker`). Invalid where it reports any.
     (let checker (call trial-checker body))
     (for (in offset (..< 0 (. positions length)))
       (call (. checker frame assign) ([] capture-slots ([] positions offset)) ([] wanted offset))
@@ -3043,8 +3019,7 @@
     (param targets (list TypeId))
     ; A transition typed on trial as the group it is in runs it, without its guard: `each` and `it`
     ; are an item of its stream (`foreseen-item`), or what an `if | p = s` tests, which its pattern
-    ; matches, and then its targets are typed. Its guard is left out, as the reference leaves it
-    ; out where it infers what a case holds, since it may read the machine.
+    ; matches, and then its targets are typed. Its guard is left out, since it may read the machine.
     (let reported (. facts diagnostics length))
     (let trigger (call (. tree state-trigger) transition))
     (if (!= trigger 0)
@@ -3177,18 +3152,17 @@
     (param desired TypeId)
     (param restores (list SlotId))
     (param restored (list TypeId))
-    ; Plans how the helper makes a name an action reads, wanted as a type, as the reference does
-    ; where the action starts. A name captured over text is made by the capture materializer
-    ; selected for the stream's items and the type wanted, where one is, from its cursors; a name
-    ; that holds a value, by the value materializer selected for its type. An optional name is
-    ; made only where it holds a value; a list of text, one by one, from the ranges its passes
-    ; kept. A name the action reads only for its length, an optional one through `?.`, or gives
-    ; only to functions that take its span (`passes-spans-only`), is left as its text. A name no
-    ; materializer is selected for is left as it is, whatever type it is wanted as, but one that
-    ; holds text for another type has no shape here, nor has such a name the action reads only
-    ; for its length or its span. A name that
-    ; holds a value wanted as its own type, for which the reference selects a value materializer
-    ; that makes another, is made as that other all the same, and noted in `remade-positions`.
+    ; Plans how the helper makes a name an action reads, wanted as a type, where the action starts.
+    ; A name captured over text is made by the capture materializer selected for the stream's items
+    ; and the type wanted, where one is, from its cursors; a name that holds a value, by the value
+    ; materializer selected for its type. An optional name is made only where it holds a value; a
+    ; list of text, one by one, from the ranges its passes kept. A name the action reads only for
+    ; its length, an optional one through `?.`, or gives only to functions that take its span
+    ; (`passes-spans-only`), is left as its text. A name no materializer is selected for is left as
+    ; it is, whatever type it is wanted as, but one that holds text for another type has no shape
+    ; here, nor has such a name the action reads only for its length or its span. A name that holds
+    ; a value wanted as its own type, for which a value materializer that makes another is selected,
+    ; is made as that other all the same, and noted in `remade-positions`.
     (let helper (!! (. helping helper)))
     (let name ([] capture-sites position))
     (let slot ([] capture-slots position))
@@ -3338,19 +3312,19 @@
     (param value TypeId)
     (param selects Bool)
     (param forwards-it Bool)
-    ; What an action gives under a helper, as the reference materializes it: an action whose names
-    ; select a materializer, or whose arms give a type a value materializer's output converts to
-    ; better than down, materializes, and has the helper roll back where it implements
-    ; `PatternRollback`. Where the arms give a type a materializer makes, what such an action gives is
-    ; made again by the value materializer selected for it, and the action gives what that makes; but
-    ; not where the action is `it` alone, made as that type already. An optional value is made again
-    ; only where it holds one, where the arms give an optional too, and a list item by item, where
-    ; they give a list; an optional the arms give as what it holds, a list they give as none, and a
-    ; list of optionals or of lists have no shape here. Where the arms declare no type, the action's
-    ; own stands for theirs, as `results-assumed` then checks, and the value materializer selected is
-    ; only noted there, to be called once the arms are known to give that type. An action that
-    ; materializes where the arms give such a type `remakes-result`, which the reference runs where
-    ; its arm does, never in a function of its own.
+    ; What an action gives under a helper: an action whose names select a materializer, or whose
+    ; arms give a type a value materializer's output converts to better than down, materializes, and
+    ; has the helper roll back where it implements `PatternRollback`. Where the arms give a type a
+    ; materializer makes, what such an action gives is made again by the value materializer selected
+    ; for it, and the action gives what that makes; but not where the action is `it` alone, made as
+    ; that type already. An optional value is made again only where it holds one, where the arms
+    ; give an optional too, and a list item by item, where they give a list; an optional the arms
+    ; give as what it holds, a list they give as none, and a list of optionals or of lists have no
+    ; shape here. Where the arms declare no type, the action's own stands for theirs, as
+    ; `results-assumed` then checks, and the value materializer selected is only noted there, to be
+    ; called once the arms are known to give that type. An action that materializes where the arms
+    ; give such a type `remakes-result`, which runs where its arm does, never in a function of its
+    ; own.
     (let helper (!! (. helping helper)))
     (let result (. rule-arming target))
     (let assuming (== result no-type))
@@ -3535,8 +3509,7 @@
   )
   (fn-do _ values-select Bool
     (param type TypeId)
-    ; Whether what a value materializer of the helper makes converts to a type better than down,
-    ; as the reference finds an action that gives that type materializing.
+    ; Whether what a value materializer of the helper makes converts to a type better than down.
     (for (in materializer (. (!! (. helping helper)) values))
       (let relation (call (. relations compare) (call second-type-arg materializer) type))
       (if (and (call relation-legal relation) (< (. relation rank) (call down-cast-rank)))
@@ -3549,10 +3522,10 @@
     (param value TypeId)
     (param result TypeId)
     (param site SyntaxId)
-    ; Whether the reference makes what an action gives again as the type the arms give: where it
-    ; is optional and they are not, or a list and they are not, or what it holds past optionals
-    ; and lists is another type than theirs, or has a value materializer selected for it. 0 for
-    ; no, 1 for yes, 2 where the choice is ambiguous, reported at the site.
+    ; Whether what an action gives is made again as the type the arms give: where it is optional and
+    ; they are not, or a list and they are not, or what it holds past optionals and lists is another
+    ; type than theirs, or has a value materializer selected for it. 0 for no, 1 for yes, 2 where
+    ; the choice is ambiguous, reported at the site.
     (if (call (. types is-optional) value)
       (return
         (scope (if-expr (call (. types is-optional) result) (call result-requires inner-value inner-result site) 1)
@@ -3573,11 +3546,10 @@
   (fn-do _ record-source-text TypeId
     (param id SyntaxId)
     (param result TypeId)
-    ; Records where a part of a grammar gives the text it matched as a value, the call that
-    ; makes it: under a helper with a capture materializer that makes the type the value is
-    ; wanted as from the stream's items, that materializer's, as the reference's implicit
-    ; materialization; else the slice `record-stream-text` records. The type the text is given
-    ; as, or invalid where the part has no shape.
+    ; Records where a part of a grammar gives the text it matched as a value, the call that makes
+    ; it: under a helper with a capture materializer that makes the type the value is wanted as from
+    ; the stream's items, that materializer's; else the slice `record-stream-text` records. The type
+    ; the text is given as, or invalid where the part has no shape.
     (if (== (. helping helper) null)
       (return (call sliced-text id))
     )
@@ -3636,8 +3608,7 @@
   )
   (fn-expr _ desired-leaf TypeId
     (param type TypeId)
-    ; What a type a value is wanted as holds, past optionals and lists, as the reference selects a
-    ; materializer for it.
+    ; What a type a value is wanted as holds, past optionals and lists.
     (if-expr (call is-listed current) (call desired-leaf (call first-arg current)) current)
     (where
       (lazy current (call peeled-optional type))
@@ -3719,12 +3690,11 @@
     (param desired TypeId)
     (param capture Bool)
     (param site SyntaxId)
-    ; The materializer the reference selects among some for an input and a type wanted: of those
-    ; that take the input better than down, and a union only as itself, those that take it as it
-    ; is where any does; of those, the ones whose output
-    ; converts to what the wanted type holds better than down, or else all; the one whose
-    ; conversion ranks best, its output's to the wanted type or else to the input's own text. None
-    ; where none takes the input; a tie is the reference's error at the site.
+    ; The materializer selected among some for an input and a type wanted: of those that take the
+    ; input better than down, and a union only as itself, those that take it as it is where any
+    ; does; of those, the ones whose output converts to what the wanted type holds better than down,
+    ; or else all; the one whose conversion ranks best, its output's to the wanted type or else to
+    ; the input's own text. None where none takes the input; a tie is an error at the site.
     (let leaf (if-expr (!= desired no-type) (call desired-leaf desired) no-type))
     (let fallback input)
     (if capture
@@ -3822,8 +3792,7 @@
   )
   (fn-do _ unites Bool
     (param type TypeId)
-    ; Whether a type is a union as the reference holds one: one written of its cases, or one a
-    ; module declares.
+    ; Whether a type is a union: one written of its cases, or one a module declares.
     (match? ([] (. types rows) type)
       (case .type-union
         (return true)
@@ -4060,8 +4029,8 @@
   )
   (fn-do _ note-observed _
     (param pattern SyntaxId)
-    ; Notes that a pattern typed under a helper that observes literal words runs under it, as the
-    ; reference runs one that `observes-literals` says does, which needs the helper to roll back.
+    ; Notes that a pattern typed under a helper that observes literal words runs under it, where
+    ; `observes-literals` says it does, which needs the helper to roll back.
     (if (or unobserved (not (call observes-literals tree facts instance pattern)))
       (return)
     )
@@ -4074,8 +4043,7 @@
     (param body SyntaxId)
     (param optional Bool (= false))
     ; Whether an action reads a name only for its `length`, a number the span it captured has too,
-    ; as the reference keeps such a name as the span it captured; an `optional` name, only through
-    ; `?.`.
+    ; as such a name is kept as the span it captured; an `optional` name, only through `?.`.
     (let receivers (list SyntaxId))
     (for (in node (..< (call (. tree subtree-start) body) (+ body 1)))
       (match? ([] (. tree nodes) node)
@@ -4103,10 +4071,10 @@
     (param spans Bool)
     (param body SyntaxId)
     ; Types the `location` an arm of a grammar declares where its expression reads it: a
-    ; `MatchLocation` where the arm has a pattern, and else a `TokenLocation`. The call that
-    ; answers where in the input a cursor lies, the stream's `pattern-location-at`, is recorded at
-    ; the arm, as the reference makes it there before the expression runs. Only
-    ; the stream a match makes, and the one a rule a module declares is given, are known here.
+    ; `MatchLocation` where the arm has a pattern, and else a `TokenLocation`. The call that answers
+    ; where in the input a cursor lies, the stream's `pattern-location-at`, is recorded at the arm,
+    ; made there before the expression runs. Only the stream a match makes, and the one a rule a
+    ; module declares is given, are known here.
     (let slot (call arm-slot arm .slot-location))
     (if (or (== slot no-slot) (not (call reads-slot body slot)))
       (return true)
@@ -4245,28 +4213,27 @@
   )
   (fn-do _ stream-node-type TypeId
     (param id SyntaxId)
-    ; The type the reference declares for a part of a grammar that runs nothing: the text
-    ; it matched for a literal, a range of characters or any one, and for a repeat or a count of
-    ; a part; for a call of a rule, what the rule gives. Over integer items, a range of characters
-    ; gives the item it matched and a literal, where nothing reads it, none; each tests items
-    ; against code points they hold, and other text is an error, as is any text over items of
-    ; another type. A sequence has the type of its last part
-    ; and a lookahead that of its operand; an optional part is optional, and alternatives join.
-    ; An optional part whose operand gives an optional is one of that optional, as the reference
-    ; types it, only where nothing reads its value. A repeat or a count of a part gives its text only where the reference reckons the part
-    ; gives the text it matched; a repeat of a part that gives a value, neither text nor optional,
-    ; gives an `ImmutableArray` of the values, kept by a `PatternCollector` whose growing call is
-    ; recorded at the repeat, and so does a count of such a part, or of a `.`, over items that are
-    ; no characters. A count of another part that gives its text is text over any items, as the reference
-    ; types it, though over items that are no characters what it gives is empty, so nothing may
-    ; read it there. Alternatives that call rules are valued by their text only where each rule
-    ; gives its text; where each gives a value of one type that is not optional, they give the
-    ; value of the one that passed, and are planned so, as are alternatives that each test an item
-    ; against a value of one type. Nothing reads what the alternatives of a part that gives the
-    ; text it matched give, as the reference replaces it with that text. A repeat or a count whose value nothing
-    ; reads, of a part that gives neither its text nor a value, gives none, as the reference makes
-    ; none, and so do alternatives whose value nothing reads. Another count of a part that gives a
-    ; value, other alternatives that call rules, and any other part have no shape here.
+    ; The type of a part of a grammar that runs nothing: the text it matched for a literal, a range
+    ; of characters or any one, and for a repeat or a count of a part; for a call of a rule, what
+    ; the rule gives. Over integer items, a range of characters gives the item it matched and a
+    ; literal, where nothing reads it, none; each tests items against code points they hold, and
+    ; other text is an error, as is any text over items of another type. A sequence has the type of
+    ; its last part and a lookahead that of its operand; an optional part is optional, and
+    ; alternatives join. An optional part whose operand gives an optional is one of that optional,
+    ; only where nothing reads its value. A repeat or a count of a part gives its text only where
+    ; the part is reckoned to give the text it matched; a repeat of a part that gives a value,
+    ; neither text nor optional, gives an `ImmutableArray` of the values, kept by a
+    ; `PatternCollector` whose growing call is recorded at the repeat, and so does a count of such a
+    ; part, or of a `.`, over items that are no characters. A count of another part that gives its
+    ; text is text over any items, though over items that are no characters what it gives is empty,
+    ; so nothing may read it there. Alternatives that call rules are valued by their text only where
+    ; each rule gives its text; where each gives a value of one type that is not optional, they give
+    ; the value of the one that passed, and are planned so, as are alternatives that each test an
+    ; item against a value of one type. Nothing reads what the alternatives of a part that gives the
+    ; text it matched give. A repeat or a count whose value nothing reads, of a part that gives
+    ; neither its text nor a value, gives none, and so do alternatives whose value nothing reads.
+    ; Another count of a part that gives a value, other alternatives that call rules, and any other
+    ; part have no shape here.
     (match? ([] (. tree nodes) id)
       (case (call .node-stream-string row)
         (if (call text-items)
@@ -4436,12 +4403,12 @@
   )
   (fn-do _ class-error-site SyntaxId
     (param pattern SyntaxId)
-    ; Where the reference reports a range of characters in a pattern over items that are neither
-    ; characters nor integers, which it cannot test: at the first it meets as it emits the arms in
-    ; turn. Where the pattern has more than one arm and one of them may start with anything, the
-    ; reference first tests the item an arm starts with where the arm must start with one of
-    ; certain characters, and reports that test at the arm. None where no range is met; `U32.max`
-    ; where the pattern is shaped so that where the reference meets one first is not known here.
+    ; Where a range of characters in a pattern over items that are neither characters nor integers,
+    ; which cannot be tested, is reported: at the first met as the arms are emitted in turn. Where
+    ; the pattern has more than one arm and one of them may start with anything, the item an arm
+    ; starts with is first tested where the arm must start with one of certain characters, and that
+    ; test is reported at the arm. None where no range is met; `U32.max` where the pattern is shaped
+    ; so that where one is met first is not known here.
     (let arms (list SyntaxId))
     (call stream-arms pattern arms)
     (let ranged false)
@@ -4538,9 +4505,9 @@
   )
   (fn-do _ range-site SyntaxId
     (param id SyntaxId)
-    ; Where the reference reports the first range of characters it meets in a part of a pattern
-    ; over items that cannot be tested so: at the range, or at a repeat it scans for. None where
-    ; the part has none, and `U32.max` where one lies where the reference meets it otherwise.
+    ; Where the first range of characters met in a part of a pattern over items that cannot be
+    ; tested so is reported: at the range, or at a repeat scanned for. None where the part has none,
+    ; and `U32.max` where one lies where it is met otherwise.
     (match? ([] (. tree nodes) id)
       (case (call .node-stream-transform row)
         (return (if-expr (!= (. row pattern) 0) (call range-site (. row pattern)) 0))
@@ -4594,17 +4561,17 @@
   )
   (fn-do _ pattern-argument-type TypeId
     (param arg SyntaxId)
-    ; A pattern given to a rule as an argument, `~ p`, which the reference passes as a function
-    ; the rule calls with the stream: one that is a call of a rule a module declares written
-    ; alone passes the function made of that rule, and any other a function made of the pattern
-    ; where it is written. It is typed over the items of the stream the call reads, as a rule's
-    ; arms are, read as the `TokenStream` of those items the function is given, as a
-    ; `PatternFunc` of those items and what it gives, which asks the stream for more input through
-    ; the calls `record-growth` keeps. One that captures a name is an error, as nothing can read
-    ; it; one that runs an action has no shape here, nor one that reads a name or calls a local
-    ; rule but as `plain-argument` says, which keeps the names its function is given. Under a helper it is typed for the
-    ; helper as a pattern of its own, which holds a rollback mark where the helper can roll back,
-    ; and needs the helper to roll back where its parts do.
+    ; A pattern given to a rule as an argument, `~ p`, which is passed as a function the rule calls
+    ; with the stream: one that is a call of a rule a module declares written alone passes the
+    ; function made of that rule, and any other a function made of the pattern where it is written.
+    ; It is typed over the items of the stream the call reads, as a rule's arms are, read as the
+    ; `TokenStream` of those items the function is given, as a `PatternFunc` of those items and what
+    ; it gives, which asks the stream for more input through the calls `record-growth` keeps. One
+    ; that captures a name is an error, as nothing can read it; one that runs an action has no shape
+    ; here, nor one that reads a name or calls a local rule but as `plain-argument` says, which
+    ; keeps the names its function is given. Under a helper it is typed for the helper as a pattern
+    ; of its own, which holds a rollback mark where the helper can roll back, and needs the helper
+    ; to roll back where its parts do.
     (let known (call (. facts node-type) instance arg))
     (if (!= known no-type)
       (return known)
@@ -4744,19 +4711,18 @@
     (param read-types (list TypeId))
     (param quiet Bool (= false))
     ; Whether a pattern given to a rule runs no action and reads no name but a global or one
-    ; `reads-given` says the function made of it can be given, so that the function needs no more
-    ; of the function it is written in. It calls a local rule given no values, the ways the
-    ; reference compiles: written alone, a rule that is such a pattern itself and calls no rule,
-    ; which the function then runs where it calls it, as the reference's function of the rule shows
-    ; no frame where nothing it runs may panic, or a rule of a match in a function that is no rule
-    ; that runs actions and captures names but calls no rule, panics in no arm and reads no name
-    ; but a global, one it declares or one the function can be given; or anywhere in it, any rule
-    ; `gives-arguments` says
-    ; the function can run, as in a rule a module declares. The first is given the rule's arguments
-    ; too wherever it can be, as the rule runs in a function of its own where a helper it makes its
-    ; value through may panic. Keeps the names the function is given, each once, with its type.
-    ; A name the binder resolved nothing for is one the parser left where it tried another way to
-    ; read the text, and is no part of the pattern. One that is `quiet` declines nothing.
+    ; `reads-given` says the function made of it can be given, so that the function needs no more of
+    ; the function it is written in. It calls a local rule given no values, in the ways compiled
+    ; here: written alone, a rule that is such a pattern itself and calls no rule, which the
+    ; function then runs where it calls it, or a rule of a match in a function that is no rule that
+    ; runs actions and captures names but calls no rule, panics in no arm and reads no name but a
+    ; global, one it declares or one the function can be given; or anywhere in it, any rule
+    ; `gives-arguments` says the function can run, as in a rule a module declares. The first is
+    ; given the rule's arguments too wherever it can be, as the rule runs in a function of its own
+    ; where a helper it makes its value through may panic. Keeps the names the function is given,
+    ; each once, with its type. A name the binder resolved nothing for is one the parser left where
+    ; it tried another way to read the text, and is no part of the pattern. One that is `quiet`
+    ; declines nothing.
     (for (in node (..< (call (. tree subtree-start) pattern) (+ pattern 1)))
       (let plain true)
       (match? ([] (. tree nodes) node)
@@ -4883,10 +4849,9 @@
     (param node SyntaxId)
     (param reads (list SlotId))
     (param read-types (list TypeId))
-    ; Whether a name a pattern given to a rule reads is one the function made of the pattern can
-    ; be given where the pattern is passed: an argument of the function being typed, which
-    ; nothing tracks, narrowed or captured from a function around it. The reference finds no
-    ; local there. Keeps each once, with its type.
+    ; Whether a name a pattern given to a rule reads is one the function made of the pattern can be
+    ; given where the pattern is passed: an argument of the function being typed, which nothing
+    ; tracks, narrowed or captured from a function around it. Keeps each once, with its type.
     (let resolution (call (. bindings resolution-of) (. frame binding) node))
     (if (or (!= (. resolution kind) .resolve-slot) outer)
       (return false)
@@ -4950,9 +4915,9 @@
   )
   (fn-expr + names-given-pattern Bool
     (param slot SlotId)
-    ; Whether a name is a pattern a rule a module declares is given, which the reference reads
-    ; only as `$name` and `\name` call it, and reports as no name anywhere else: in an action, as
-    ; an action it cannot compile.
+    ; Whether a name is a pattern a rule a module declares is given, which is read only as `$name`
+    ; and `\name` call it, and reported as no name anywhere else: in an action, as an action that
+    ; cannot be compiled.
     (and (== (. ([] (. bindings slots) slot) kind) .slot-argument) (!= (call rule-match program (. row module) (. row decl)) 0))
     (where
       (lazy row ([] (. instances rows) instance))
@@ -4979,15 +4944,14 @@
     (param value SyntaxId)
     ; What `$value` matches as a pattern runs. A pattern given to the rule the part is in, a
     ; `PatternFunc` of the stream's items, is called as a rule is, and gives what it gives. Text
-    ; over a stream of characters gives the text it matched: the value is evaluated where the
-    ; part is tried, with the names captured before it in reach; its length is read checked, by
-    ; its `validated-length`, and its characters in turn by its `next-iterator`, as the reference
-    ; reads them, or where the buffer is `encoded`, its count of bytes by its `size`, which are
-    ; compared with the buffer's. A value of a type like the items', as the reference compares
-    ; them, is compared
-    ; with one item, and gives the value. A case of a union of the items named by its symbol alone,
-    ; as `.press`, tests one item for the case, by its number, and gives what the case holds, or the
-    ; item where it holds nothing. A value of any other type has no shape here.
+    ; over a stream of characters gives the text it matched: the value is evaluated where the part
+    ; is tried, with the names captured before it in reach; its length is read checked, by its
+    ; `validated-length`, and its characters in turn by its `next-iterator`, or where the buffer is
+    ; `encoded`, its count of bytes by its `size`, which are compared with the buffer's. A value of
+    ; a type like the items' is compared with one item, and gives the value. A case of a union of
+    ; the items named by its symbol alone, as `.press`, tests one item for the case, by its number,
+    ; and gives what the case holds, or the item where it holds nothing. A value of any other type
+    ; has no shape here.
     (let known (call (. facts node-type) instance id))
     (if (!= known no-type)
       (return known)
@@ -5073,9 +5037,9 @@
     (param operand SyntaxId)
     (param item TypeId)
     ; A repeat of a part that gives a value: an `ImmutableArray` of what each pass gave, whose
-    ; collector's growing call is recorded at the repeat, once. A part whose value is text gives
-    ; the text a rule it ends with gave. A repeat whose value is not read, as a part of a sequence
-    ; before its last is not, gives none and keeps no collector, as the reference makes none.
+    ; collector's growing call is recorded at the repeat, once. A part whose value is text gives the
+    ; text a rule it ends with gave. A repeat whose value is not read, as a part of a sequence
+    ; before its last is not, gives none and keeps no collector.
     (let known (call (. facts node-type) instance id))
     (if (!= known no-type)
       (return known)
@@ -5118,13 +5082,13 @@
     (param binding BindingId)
     (param owner InstanceId)
     (param id SyntaxId)
-    ; Whether a part of a grammar a function of a module writes gives the text it matched,
-    ; as the reference reckons it where it repeats or counts the part: a part that matches items,
-    ; a count, an arm that runs nothing, and a name captured over, a repeat or lookahead of, or a
-    ; sequence or alternatives of such parts. A call of a rule gives its text where the rule's
-    ; pattern does, and a rule met again while it is asked of does. The instance that runs the
-    ; pattern, where there is one, says what a test of a value matches, and a call of a pattern
-    ; given to the rule does not give its text; where none, one does not give its text.
+    ; Whether a part of a grammar a function of a module writes gives the text it matched, reckoned
+    ; for where it is repeated or counted: a part that matches items, a count, an arm that runs
+    ; nothing, and a name captured over, a repeat or lookahead of, or a sequence or alternatives of
+    ; such parts. A call of a rule gives its text where the rule's pattern does, and a rule met
+    ; again while it is asked of does. The instance that runs the pattern, where there is one, says
+    ; what a test of a value matches, and a call of a pattern given to the rule does not give its
+    ; text; where none, one does not give its text.
     (let source (. ([] (. program modules) module) tree))
     (let key (/or/ (/lshift/ (as binding U64) 32) (as id U64)))
     (for (in held spanning)
@@ -5278,14 +5242,13 @@
   )
   (fn-do _ stream-valued Bool
     (param id SyntaxId)
-    ; Whether a part of a grammar gives what a rule it calls gives rather than the text it
-    ; matched, as the reference's parts give their values: a call of a rule, a name captured over
-    ; one, an optional one, a repeat of one that gives no text or that ends with one, and a
-    ; sequence whose last part gives one that is no text, a test of an item, a type named, a call
-    ; of a pattern given to the rule, a test of a value like the items', and a count of a part
-    ; that gives a value, as a repeat of one does over characters; and alternatives
-    ; `stream-node-type` planned to give the value of the one that passed. A call given collectors
-    ; gives the text it matched, as does one that `span-call` says gives it.
+    ; Whether a part of a grammar gives what a rule it calls gives rather than the text it matched:
+    ; a call of a rule, a name captured over one, an optional one, a repeat of one that gives no
+    ; text or that ends with one, and a sequence whose last part gives one that is no text, a test
+    ; of an item, a type named, a call of a pattern given to the rule, a test of a value like the
+    ; items', and a count of a part that gives a value, as a repeat of one does over characters; and
+    ; alternatives `stream-node-type` planned to give the value of the one that passed. A call given
+    ; collectors gives the text it matched, as does one that `span-call` says gives it.
     (match? ([] (. tree nodes) id)
       (case (call .node-stream-call row)
         (return (and (== (. row collector-mappings count) 0) (or (not (call span-call id)) (call spans-valued id))))
@@ -5430,13 +5393,12 @@
   (fn-expr _ span-call Bool
     (param id SyntaxId)
     ; Whether a call of a rule under a helper gives the text it matched rather than what the rule
-    ; gives, as the reference calls a rule whose pattern gives its text for the span it matched,
-    ; which the pattern calling it makes through the helper only where it needs it; so does such
-    ; a call in a rule called so. Over items that are not characters, such a call has no shape. A
-    ; call written alone as a pattern given to a rule passes the rule's function, which makes its
-    ; text itself. A call of a local rule whose value its arm gives runs the rule for its value
-    ; where the rule states a type other than text that no capture materializer of the helper
-    ; makes, as the reference compiles such a call for the type the rule states.
+    ; gives, as a rule whose pattern gives its text is called for the span it matched, which the
+    ; pattern calling it makes through the helper only where it needs it; so does such a call in a
+    ; rule called so. Over items that are not characters, such a call has no shape. A call written
+    ; alone as a pattern given to a rule passes the rule's function, which makes its text itself. A
+    ; call of a local rule whose value its arm gives runs the rule for its value where the rule
+    ; states a type other than text that no capture materializer of the helper makes.
     (or (and helped (!= id (. rule-arming casting)) (call returns-span instance id) (not (call rule-valued id))) span-planned)
     (where
       (lazy helped (or (!= (. helping helper) null) (. helping span-typing)))
@@ -5482,10 +5444,10 @@
   )
   (fn-expr _ module-span Bool
     (param id SyntaxId)
-    ; Whether a call of a rule a module declares that gives text, with no helper in force, gives
-    ; the text it matched rather than what the rule makes, as the reference calls such a rule for
-    ; its span where the value it makes is not wanted: one whose value nothing reads, and one
-    ; captured alone in an arm whose action does not read `it`.
+    ; Whether a call of a rule a module declares that gives text, with no helper in force, gives the
+    ; text it matched rather than what the rule makes, as such a rule is called for its span where
+    ; the value it makes is not wanted: one whose value nothing reads, and one captured alone in an
+    ; arm whose action does not read `it`.
     (case? (or (!= (. helping helper) null) (. helping span-typing) (== id (. rule-arming casting)) (not (call returns-span instance id)))
       false
     )
@@ -5532,17 +5494,16 @@
   (fn-do _ stream-call-type TypeId
     (param id SyntaxId)
     ; A call of a rule: the type of what the rule gives. A local rule given no arguments is typed
-    ; where it is first called. A rule a module declares is called as its function is, and a
-    ; pattern a name holds as `$name` calls it; a local rule given arguments or types is an
-    ; error. A rule given collectors is typed as `mapped-call-type` says, where it can take
-    ; them, and is TypeScript's error where not; under a helper that makes text, one whose text is
-    ; read has no shape here. Under a helper, a local rule the match runs where it is called and a
-    ; rule a module declares have a shape here, and no other; one whose pattern gives its text is
-    ; typed as `span-call-type` says. A local rule a function of its own
-    ; runs has a shape only under its rule's own helper, the one the rule is typed for or given as
-    ; an argument. A local rule whose body is code is typed as `coded-rule-type` says, given
-    ; nothing. With no helper, a call of a
-    ; rule that gives text gives the text it matched where `bare-span` or `module-span` says.
+    ; where it is first called. A rule a module declares is called as its function is, and a pattern
+    ; a name holds as `$name` calls it; a local rule given arguments or types is an error. A rule
+    ; given collectors is typed as `mapped-call-type` says, where it can take them, and is an error
+    ; where not; under a helper that makes text, one whose text is read has no shape here. Under a
+    ; helper, a local rule the match runs where it is called and a rule a module declares have a
+    ; shape here, and no other; one whose pattern gives its text is typed as `span-call-type` says.
+    ; A local rule a function of its own runs has a shape only under its rule's own helper, the one
+    ; the rule is typed for or given as an argument. A local rule whose body is code is typed as
+    ; `coded-rule-type` says, given nothing. With no helper, a call of a rule that gives text gives
+    ; the text it matched where `bare-span` or `module-span` says.
     (let known (call (. facts node-type) instance id))
     (if (!= known no-type)
       (return known)
@@ -5656,17 +5617,16 @@
     (param name Atom)
     (param params (of RowRange SyntaxId))
     (param args (of RowRange SyntaxId))
-    ; A call of a rule under a helper that gives the text it matched, as the reference compiles
-    ; one: the rule is typed with no helper, a local rule as giving its text whatever type it
-    ; states, and the call has the type the rule states. A call of one that states text, or none,
-    ; gives the text, as a part matching characters does. Where the rule states another type, a
-    ; call whose value its arm gives is made that type from its text, by `record-source-text`,
-    ; or for an optional type what it holds, which the call then gives as the optional; any other
-    ; gives none. Within a rule called so, every such call gives its text. A local rule given
-    ; arguments or types, a pattern given as an argument, a rule a module declares that gives
-    ; another type than text, and items that are not characters have no shape here. Under a helper
-    ; that observes literal words, the rule is typed under the helper, which makes nothing for it,
-    ; so a call within it still gives its text.
+    ; A call of a rule under a helper that gives the text it matched: the rule is typed with no
+    ; helper, a local rule as giving its text whatever type it states, and the call has the type the
+    ; rule states. A call of one that states text, or none, gives the text, as a part matching
+    ; characters does. Where the rule states another type, a call whose value its arm gives is made
+    ; that type from its text, by `record-source-text`, or for an optional type what it holds, which
+    ; the call then gives as the optional; any other gives none. Within a rule called so, every such
+    ; call gives its text. A local rule given arguments or types, a pattern given as an argument, a
+    ; rule a module declares that gives another type than text, and items that are not characters
+    ; have no shape here. Under a helper that observes literal words, the rule is typed under the
+    ; helper, which makes nothing for it, so a call within it still gives its text.
     (if (or (not (call text-items)) (and (!= rule 0) (or (!= (. params count) 0) (!= (. args count) 0))))
       (call decline id)
       (return invalid-type)
@@ -5747,9 +5707,9 @@
   )
   (fn-do _ value-position Bool
     (param id SyntaxId)
-    ; Whether the value of a part of the grammar being typed is what its arm gives, as the
-    ; reference requires it of the part: the arm's pattern, the last part of a sequence that is,
-    ; and the pattern of an action that reads it as `it`.
+    ; Whether the value of a part of the grammar being typed is what its arm gives: the arm's
+    ; pattern, the last part of a sequence that is, and the pattern of an action that reads it as
+    ; `it`.
     (let arms (list SyntaxId))
     (call stream-arms (. rule-arming capture-root) arms)
     (for (in arm arms)
@@ -5784,10 +5744,10 @@
     (param source AST)
     (param target SyntaxId)
     ; Whether the collectors a call maps are ones the rule it calls and the pattern calling it
-    ; accumulate, as the reference checks them where it compiles the call: no name of the rule's
-    ; is mapped twice and no name of the caller's receives twice, each name of the rule's is one
-    ; its own pattern accumulates, and each of the caller's one the pattern calling it does. Each
-    ; name of the rule's is the caller's where none is written. TypeScript's error where not.
+    ; accumulate: no name of the rule's is mapped twice and no name of the caller's receives twice,
+    ; each name of the rule's is one its own pattern accumulates, and each of the caller's one the
+    ; pattern calling it does. Each name of the rule's is the caller's where none is written. An
+    ; error where not.
     (let callees (list String))
     (let callers (list String))
     (let sites (list SyntaxId))
@@ -5880,13 +5840,12 @@
     (param rule SyntaxId)
     (param name Atom)
     (param mappings (of RowRange SyntaxId))
-    ; A call of a rule given collectors, as the reference compiles one: the rule, a local one or
-    ; one a module declares, is typed as where it is called plainly, and each name of the rule's
-    ; that a collector is given for adds to the list the caller's name keeps, which for a local
-    ; rule must be a list of what the rule's name accumulates; the emitter checks one a module
-    ; declares. The call gives the text it matched, as the reference's call gives no value of its
-    ; own. One over items that are not characters, or given a name of the caller's not yet typed,
-    ; has no shape here.
+    ; A call of a rule given collectors: the rule, a local one or one a module declares, is typed as
+    ; where it is called plainly, and each name of the rule's that a collector is given for adds to
+    ; the list the caller's name keeps, which for a local rule must be a list of what the rule's
+    ; name accumulates; the emitter checks one a module declares. The call gives the text it
+    ; matched, as it gives no value of its own. One over items that are not characters, or given a
+    ; name of the caller's not yet typed, has no shape here.
     (if (not (call text-items))
       (call decline id)
       (return invalid-type)
@@ -6075,10 +6034,10 @@
   (fn-do _ type-node-type TypeId
     (param id SyntaxId)
     (param written SyntaxId)
-    ; A type named as a part of a grammar, as the reference types it: a call of the type's
-    ; constructor that takes the stream, which gives what the constructor gives where it passes;
-    ; for a number, a call of the rule `num` or `dec` given the type that reads one, where a rule
-    ; of that name takes the stream; else a test of one item for the type, which gives the item.
+    ; A type named as a part of a grammar: a call of the type's constructor that takes the stream,
+    ; which gives what the constructor gives where it passes; for a number, a call of the rule `num`
+    ; or `dec` given the type that reads one, where a rule of that name takes the stream; else a
+    ; test of one item for the type, which gives the item.
     (let known (call (. facts node-type) instance id))
     (if (!= known no-type)
       (return known)
@@ -6112,11 +6071,11 @@
     (param id SyntaxId)
     (param class TypeId)
     ; A call of the constructor of a type that takes the stream, as a `TokenStream` of its items,
-    ; with the type of the items as its type parameter, as the reference dispatches it. It gives
-    ; what the constructor gives where it passes, as the rule the constructor is: no type where
-    ; the type has no such constructor. A constructor that is no rule, or that gives what it
-    ; captured, has no shape here. A pattern whose buffer is `encoded` calls the constructor typed
-    ; again for that buffer, as `encoded-callee` says.
+    ; with the type of the items as its type parameter. It gives what the constructor gives where it
+    ; passes, as the rule the constructor is: no type where the type has no such constructor. A
+    ; constructor that is no rule, or that gives what it captured, has no shape here. A pattern
+    ; whose buffer is `encoded` calls the constructor typed again for that buffer, as
+    ; `encoded-callee` says.
     (let stream (call class-over (. types token-stream-decl) (. stream-view item)))
     (let params-start (. scratch types mark))
     (call (. scratch types push) (. stream-view item))
@@ -6179,8 +6138,7 @@
     (param name Atom)
     (param class TypeId)
     ; Whether the function of a name given the stream, with the type of its items and a type as its
-    ; type parameters, is a rule, as the reference looks for the rule that reads a number of that
-    ; type.
+    ; type parameters, is a rule.
     (let params-start (. scratch types mark))
     (call (. scratch types push) (. stream-view item))
     (call (. scratch types push) class)
@@ -6213,14 +6171,14 @@
     (param id SyntaxId)
     (param written SyntaxId)
     (param class TypeId)
-    ; A test of one item for a type, as the reference tests it: the item's type must relate to the
-    ; type, as it is reported where not, and the test passes where the item is of it. It gives the
-    ; item as the type. An item of the type itself is tested here, and one of a class the type
-    ; derives from or of a union that has the type as a case, which is tested as the type named as
-    ; a pattern tests a value, by what `plan-type-pattern` records at the type written. An item that is a number of another type is
-    ; never of it, as the reference compares the two types alone, so the test never passes.
-    ; The reference first tells the stream the pattern stands at the item, as it does before it
-    ; calls a function that reads the type, and finds none.
+    ; A test of one item for a type: the item's type must relate to the type, as it is reported
+    ; where not, and the test passes where the item is of it. It gives the item as the type. An item
+    ; of the type itself is tested here, and one of a class the type derives from or of a union that
+    ; has the type as a case, which is tested as the type named as a pattern tests a value, by what
+    ; `plan-type-pattern` records at the type written. An item that is a number of another type is
+    ; never of it, as the two types alone are compared, so the test never passes. The stream is
+    ; first told the pattern stands at the item, as it is before a call of a function that reads the
+    ; type.
     (let relation (call (. relations compare) (. stream-view item) class false false null module))
     (if (not (call relation-legal relation))
       (call (. frame diagnose)
@@ -6279,24 +6237,21 @@
     (param params (of RowRange SyntaxId))
     (param args (of RowRange SyntaxId))
     (param named TypeId (= no-type))
-    ; A call of a rule a module declares, as the reference matches it: a call of the function of
-    ; that name given the stream as its first argument, as a `TokenStream` of its items, before
-    ; the arguments written, and the type of the stream's items as its first type parameter,
-    ; before the types written. It gives what the rule gives where the rule passes. Where no
-    ; function of the name takes them, the call is reported as the reference reports it, unless
-    ; an argument has no type, as a pattern given as an argument has none here. A type `named`
-    ; stands for the types written. A function that
-    ; is no rule, a rule that belongs to a type, and one that calls itself without stating its
-    ; type have no shape here, but where the call reads no type yet the rule reports that it
-    ; cannot be typed, as the reference does. Under a helper, the rule runs as `helped-callee`
-    ; says, and a function that is no rule has no shape. A rule given a pattern there runs typed
-    ; for the helper, which it gives each pattern it calls: a pattern written as the argument,
-    ; typed for the helper too; any other has no shape. The names of the pattern its arguments
-    ; read are made before the call as `materialize-arguments` says. A rule typed again for the
-    ; helper runs in place of the rule as it is, whose body this call then leaves untyped, as the
-    ; reference compiles only the one the pattern calls. A pattern whose buffer is `encoded` calls the
-    ; rule, or the function that is no rule, typed again for that buffer, as `encoded-callee` says,
-    ; in place of the one as it is.
+    ; A call of a rule a module declares: a call of the function of that name given the stream as
+    ; its first argument, as a `TokenStream` of its items, before the arguments written, and the
+    ; type of the stream's items as its first type parameter, before the types written. It gives
+    ; what the rule gives where the rule passes. Where no function of the name takes them, the call
+    ; is reported, unless an argument has no type, as a pattern given as an argument has none here.
+    ; A type `named` stands for the types written. A function that is no rule, a rule that belongs
+    ; to a type, and one that calls itself without stating its type have no shape here, but where
+    ; the call reads no type yet the rule reports that it cannot be typed. Under a helper, the rule
+    ; runs as `helped-callee` says, and a function that is no rule has no shape. A rule given a
+    ; pattern there runs typed for the helper, which it gives each pattern it calls: a pattern
+    ; written as the argument, typed for the helper too; any other has no shape. The names of the
+    ; pattern its arguments read are made before the call as `materialize-arguments` says. A rule
+    ; typed again for the helper runs in place of the rule as it is, whose body this call then
+    ; leaves untyped. A pattern whose buffer is `encoded` calls the rule, or the function that is no
+    ; rule, typed again for that buffer, as `encoded-callee` says, in place of the one as it is.
     (if (or slot-named (== (. stream-view item) no-type) (== (. stream-view type) no-type))
       (call decline id)
       (return invalid-type)
@@ -6471,11 +6426,11 @@
     (param restores (list SlotId))
     (param restored (list TypeId))
     ; Plans how the helper makes the names of the pattern that the arguments of a call of a rule
-    ; read, as the reference makes them before the call where one selects a materializer: each
-    ; wanted as what it holds, in the order the arguments first read them, made as
-    ; `materialize-capture` says. A call that makes one makes its pattern one that makes a value
-    ; through the helper. A pattern written as an argument reads none. A name read only for its
-    ; length has no shape here. Keeps the slots it retypes, and their types before.
+    ; read, made before the call where one selects a materializer: each wanted as what it holds, in
+    ; the order the arguments first read them, made as `materialize-capture` says. A call that makes
+    ; one makes its pattern one that makes a value through the helper. A pattern written as an
+    ; argument reads none. A name read only for its length has no shape here. Keeps the slots it
+    ; retypes, and their types before.
     (let seen (list SlotId))
     (let arm (call top-arm id))
     (= action-selects false)
@@ -6520,20 +6475,20 @@
     (param callee InstanceId)
     (param patterned Bool)
     ; The instance a call of a rule a module declares runs under the helper of the pattern calling
-    ; it, as the reference compiles the call: the rule typed again for the helper where its own
-    ; pattern makes a value through it or needs it to roll back, which the call then gives it, and
-    ; the rule as it is elsewhere where not. The pattern calling such a rule uses the helper too,
-    ; and needs it to roll back where the rule does. A call of the rule from its own pattern,
-    ; typed for the helper, has no shape here. A rule given its own helper as an argument runs
-    ; under that, and where it needs it to roll back, so does the pattern calling it; where that
-    ; is not yet known and the helper in force cannot roll back, the call has no shape here. A
-    ; rule given patterns typed for the helper is always typed for it, and one given its own
-    ; helper has no shape then. A rule that holds a rollback mark gives it to the pattern calling
-    ; it, which then holds one too; one given its own helper that holds one gives it so only
-    ; where the pattern calling it keeps marks of the same type, and has no shape here elsewhere.
-    ; Under a helper that observes literal words, a rule is typed for the helper first, and runs
-    ; under it where its pattern does (`observes-literals`); a rule given its own helper runs under
-    ; that only where not, and a call of the rule from its own pattern runs it under the helper.
+    ; it: the rule typed again for the helper where its own pattern makes a value through it or
+    ; needs it to roll back, which the call then gives it, and the rule as it is elsewhere where
+    ; not. The pattern calling such a rule uses the helper too, and needs it to roll back where the
+    ; rule does. A call of the rule from its own pattern, typed for the helper, has no shape here. A
+    ; rule given its own helper as an argument runs under that, and where it needs it to roll back,
+    ; so does the pattern calling it; where that is not yet known and the helper in force cannot
+    ; roll back, the call has no shape here. A rule given patterns typed for the helper is always
+    ; typed for it, and one given its own helper has no shape then. A rule that holds a rollback
+    ; mark gives it to the pattern calling it, which then holds one too; one given its own helper
+    ; that holds one gives it so only where the pattern calling it keeps marks of the same type, and
+    ; has no shape here elsewhere. Under a helper that observes literal words, a rule is typed for
+    ; the helper first, and runs under it where its pattern does (`observes-literals`); a rule given
+    ; its own helper runs under that only where not, and a call of the rule from its own pattern
+    ; runs it under the helper.
     (let observed (!= (. (!! (. helping helper)) observer) no-type))
     (if (and (!= (call ambient-position types instances callee) (. U32 max)) (not observed))
       (return (call ambient-callee id callee patterned))
@@ -6694,12 +6649,12 @@
     (param id SyntaxId)
     (param callee InstanceId)
     (param result TypeId)
-    ; A call of a function given the stream that is no rule, as the reference calls it: the stream
-    ; is told the pattern stands at the cursor before, and asked for its view after, which says
-    ; where the function left it and how far it read. It gives what the function gives, which
-    ; the call holds where the function answers an optional, and the result of a `CaptureResult`
-    ; where it answers one. A function that raises errors has no shape here, and a rule declared
-    ; over items whose body is not only `~` arms, which is called so, is an error that says so.
+    ; A call of a function given the stream that is no rule: the stream is told the pattern stands
+    ; at the cursor before, and asked for its view after, which says where the function left it and
+    ; how far it read. It gives what the function gives, which the call holds where the function
+    ; answers an optional, and the result of a `CaptureResult` where it answers one. A function that
+    ; raises errors has no shape here, and a rule declared over items whose body is not only `~`
+    ; arms, which is called so, is an error that says so.
     (if (!= (. ([] (. instances signatures) callee) errors count) 0)
       (if (call declared-rule callee)
         (let named
@@ -6773,8 +6728,8 @@
   )
   (fn-do _ record-commit Bool
     (param id SyntaxId)
-    ; Records at a part of a grammar the stream's `pattern-commit` of the cursor where the
-    ; part begins, which the reference makes there before it calls a function that is no rule.
+    ; Records at a part of a grammar the stream's `pattern-commit` of the cursor where the part
+    ; begins, which is made there before a function that is no rule is called.
     (return (!= (. (call (. calls protocol-call) (. stream-view type) (call (. program store-atom) "pattern-commit") id (. types index-type) false (. types index-type) (:role (. CallRole role-commit))) answer) invalid-type))
   )
   (fn-do + rule-of SyntaxId
@@ -6801,14 +6756,14 @@
     (param id SyntaxId)
     (param rule SyntaxId)
     (param result TypeId)
-    ; Records what the reference does at a call of a local rule beside a match made from the
-    ; rule's own arms. It calls a function it makes of the rule as it calls a function given the
-    ; stream: the stream is told the pattern stands at the cursor before, and asked for its view
-    ; after. That function runs the rule on the stream's view and commits where it ended, by the
-    ; calls a match on the stream records, which are kept at the rule's pattern; the stream, its
-    ; buffer, and the optional `CaptureResult` the function answers are kept with the rule. A
-    ; rule another rule calls back, one called under a helper, and one called on another stream
-    ; than it was first, have no shape here.
+    ; Records what is done at a call of a local rule beside a match made from the rule's own arms.
+    ; It calls a function made of the rule as it calls a function given the stream: the stream is
+    ; told the pattern stands at the cursor before, and asked for its view after. That function runs
+    ; the rule on the stream's view and commits where it ended, by the calls a match on the stream
+    ; records, which are kept at the rule's pattern; the stream, its buffer, and the optional
+    ; `CaptureResult` the function answers are kept with the rule. A rule another rule calls back,
+    ; one called under a helper, and one called on another stream than it was first, have no shape
+    ; here.
     (let matched SyntaxId 0)
     (match? ([] (. tree nodes) rule)
       (case (call .node-declare declaration)
@@ -6892,16 +6847,15 @@
   (fn-do _ coded-rule-type TypeId
     (param id SyntaxId)
     (param rule SyntaxId)
-    ; A call of a local rule whose body is code, as the reference calls the function it makes of
-    ; it: the stream is told the pattern stands at the cursor before, the code runs, each pattern
-    ; in it on the stream from where the stream stands, and the stream is asked for its view
-    ; after, which says where the code left it and how far it read. The reference's function
-    ; holds the names the code reads; here the code runs where the rule is called, where they
-    ; are. The code is typed where the rule is first called, for the stream it is called on, and
-    ; must give an optional `CaptureResult` of the stream's items, as a pattern in it does, whose
-    ; result the call gives; code that gives anything else, or that calls the rule, is reported
-    ; as the reference reports it. A rule that states a type or is marked to roll back, and one
-    ; called on another stream or under a helper, have no shape here.
+    ; A call of a local rule whose body is code: the stream is told the pattern stands at the cursor
+    ; before, the code runs, each pattern in it on the stream from where the stream stands, and the
+    ; stream is asked for its view after, which says where the code left it and how far it read. The
+    ; code runs where the rule is called, where the names it reads are. The code is typed where the
+    ; rule is first called, for the stream it is called on, and must give an optional
+    ; `CaptureResult` of the stream's items, as a pattern in it does, whose result the call gives;
+    ; code that gives anything else, or that calls the rule, is reported. A rule that states a type
+    ; or is marked to roll back, and one called on another stream or under a helper, have no shape
+    ; here.
     (let left SyntaxId 0)
     (let code SyntaxId 0)
     (let marked false)
@@ -7116,19 +7070,18 @@
   (fn-do _ rule-type TypeId
     (param rule SyntaxId)
     ; What a local rule gives, typed where it is first called: its arms are typed as a pattern of
-    ; their own whose names are its own, which reads the stream from where it is called, and
-    ; joined, then converted to the type its declaration states. The reference runs the rule in
-    ; the function that calls it, where the rule reads that function's locals and the names its
-    ; match captured. A rule that calls itself, directly or through other local rules, gives at
-    ; those calls the type its declaration states, and each rule on the way is one the reference
-    ; runs as a function of its own, which answers the optional of what the rule gives; one that
-    ; states no type is an error at the rule. Nor has a rule called under another helper than it was
-    ; typed under, whose values that helper made. One typed for a call that gives its text states
-    ; that it gives text. A rule beside a rule's pattern that is marked to roll back, or whose
-    ; pattern has an arm that is, asks the helper for a mark before each of its actions, as the
-    ; reference does a rule it compiles on its own. One beside a match's pattern that is marked
-    ; so gives the mark to each of its arms. Its arms give their values whether or not the call it
-    ; is first typed at reads what it gives: a later call may.
+    ; their own whose names are its own, which reads the stream from where it is called, and joined,
+    ; then converted to the type its declaration states. The rule runs in the function that calls
+    ; it, where it reads that function's locals and the names its match captured. A rule that calls
+    ; itself, directly or through other local rules, gives at those calls the type its declaration
+    ; states, and each rule on the way runs as a function of its own, which answers the optional of
+    ; what the rule gives; one that states no type is an error at the rule. Nor has a rule called
+    ; under another helper than it was typed under, whose values that helper made. One typed for a
+    ; call that gives its text states that it gives text. A rule beside a rule's pattern that is
+    ; marked to roll back, or whose pattern has an arm that is, asks the helper for a mark before
+    ; each of its actions. One beside a match's pattern that is marked so gives the mark to each of
+    ; its arms. Its arms give their values whether or not the call it is first typed at reads what
+    ; it gives: a later call may.
     (let left SyntaxId 0)
     (let matched SyntaxId 0)
     (let marked false)
@@ -7254,10 +7207,9 @@
     (param id SyntaxId)
     (param repeated Bool)
     ; Whether a bound of a count has a shape here, and the error at the bound where it has not: a
-    ; number written, or an integer computed as the match runs. The reference reads the most again
-    ; before each time it takes the part, so a bound it reads more than once must give the same
-    ; each time without doing anything, as `steady` says. A bound is typed once, however often the
-    ; part is.
+    ; number written, or an integer computed as the match runs. The most is read again before each
+    ; time the part is taken, so a bound read more than once must give the same each time without
+    ; doing anything, as `steady` says. A bound is typed once, however often the part is.
     (if (call (. tree count-bound) id)
       (return true)
     )

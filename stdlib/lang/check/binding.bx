@@ -108,7 +108,7 @@
 )
 
 (type + LazyPolicy (is U8)
-  ; Where a lazy local takes its value, as the reference's planner settles it from the uses.
+  ; Where a lazy local takes its value, settled from its uses.
   ; - `lazy-inline`: its one read evaluates the value, each time the read runs. One declared in
   ;   a loop is not read in a loop of its turn or in a nested function.
   ; - `lazy-first-read`: a local declared in a loop and read more than once is evaluated by the
@@ -117,10 +117,9 @@
   ;   comes first, which a flag cleared where the function starts remembers. An assignment
   ;   stores its value and sets the flag, so the value declared is not evaluated after it.
   ;   One declared in a loop is evaluated once a turn: its flag is cleared again where the
-  ;   block that declares it starts, as TypeScript clears it, since a read may come before
-  ;   the line that declares it. A local read tracked, one whose value reads something tracked
-  ;   outside a loop, and one referred to, whose address a read of the local evaluates and
-  ;   takes, are kept so too, as the reference keeps them behind a flag.
+  ;   block that declares it starts, since a read may come before the line that declares it. A
+  ;   local read tracked, one whose value reads something tracked outside a loop, and one
+  ;   referred to, whose address a read of the local evaluates and takes, are kept so too.
   ; - `lazy-shared`: nested functions capture the local. Its value and its flag live in the
   ;   environment of the function that declares it, and whichever function reads it first
   ;   evaluates it there, once for the environment. An assignment stores and sets the flag.
@@ -872,7 +871,7 @@
   )
   (fn-expr + lazy-flagged Bool
     (param slot SlotId)
-    ; Whether the reference keeps a lazy local behind a flag, as its binding settled.
+    ; Whether a lazy local is kept behind a flag, as its binding settled.
     (and (!= (. ([] slots slot) use) (. U32 max)) (. ([] lazy-uses (. ([] slots slot) use)) flagged))
   )
   (fn-expr + lazy-policy LazyPolicy
@@ -893,8 +892,8 @@
   (fn-do + value-tracks Bool
     (param tree AST)
     (param group SyntaxId)
-    ; Whether the value a declaration writes reads something tracked, which the reference
-    ; evaluates once, behind a flag (`tracking-initializer`).
+    ; Whether the value a declaration writes reads something tracked, which is evaluated once,
+    ; behind a flag (`tracking-initializer`).
     (match? ([] (. tree nodes) group)
       (case (call .node-declare declaration)
         (if (== (. declaration right) 0)
@@ -1001,8 +1000,8 @@
   (fn-do + set-getter _
     (param slot SlotId)
     (param declaration SyntaxId)
-    ; Makes a local one the reference reads as a getter, which evaluates the value the
-    ; declaration gives it again at each read.
+    ; Makes a local one read as a getter, which evaluates the value the declaration gives it again
+    ; at each read.
     (= (. ([] slots slot) getter) declaration)
   )
   (fn-do _ link-namesakes _
@@ -1161,12 +1160,12 @@
   (fn-do _ flagged-of Bool
     (param tree AST)
     (param slot SlotId)
-    ; Whether the reference's planner keeps a lazy local behind a flag, where each read evaluates the
-    ; whole declaration (`FullMemoFlag`), and neither puts its value at its one read nor stores it at
-    ; the first of reads that each run once in a straight line. One declared in a loop and read once
-    ; where nothing repeats it, or read only in a straight line, is not; one read under a branch, in
-    ; the value of a lazy local, where something repeats it, or tracked, is, and so is one declared
-    ; with others, referred to or assigned, and one whose value reads something tracked.
+    ; Whether a lazy local is kept behind a flag, where each read evaluates the whole declaration,
+    ; and neither puts its value at its one read nor stores it at the first of reads that each run
+    ; once in a straight line. One declared in a loop and read once where nothing repeats it, or
+    ; read only in a straight line, is not; one read under a branch, in the value of a lazy local,
+    ; where something repeats it, or tracked, is, and so is one declared with others, referred to or
+    ; assigned, and one whose value reads something tracked.
     (let row ([] slots slot))
     (if (or (!= (. row kind) .slot-lazy) (== (. row group) 0) (== (. row use) (. U32 max)))
       (return true)
@@ -1280,12 +1279,11 @@
     (param tree AST)
     (param row Slot)
     (param use LazyUse)
-    ; Whether a lazy local that nested functions capture is one an environment can hold: no
-    ; pattern declares it and nothing refers to it. One declared in a loop is held by the
-    ; environment of the loop's turn, so each turn evaluates its own. The subscriber of a loop on a
-    ; stream that reads it is one of those functions, as the reference's closure is, and so are the
-    ; functions of a state machine, whose reads the reference evaluates once for the function that
-    ; writes the machine, whichever comes first.
+    ; Whether a lazy local that nested functions capture is one an environment can hold: no pattern
+    ; declares it and nothing refers to it. One declared in a loop is held by the environment of the
+    ; loop's turn, so each turn evaluates its own. The subscriber of a loop on a stream that reads
+    ; it is one of those functions, and so are the functions of a state machine, whose reads are
+    ; evaluated once for the function that writes the machine, whichever comes first.
     (let plain false)
     (match? ([] (. tree nodes) (. row group))
       (case (call .node-declare declaration)
@@ -1491,10 +1489,9 @@
 (fn-expr + returns-own Bool
   (param tree AST)
   (param body SyntaxId)
-  ; Whether the body of a constructor returns a value and leaves on every way through it, as the
-  ; reference finds as it compiles the body: the constructor then constructs what it returns and
-  ; makes nothing of its class. One that may run past its end makes an object of its class first,
-  ; which it gives where the body ends.
+  ; Whether the body of a constructor returns a value and leaves on every way through it: the
+  ; constructor then constructs what it returns and makes nothing of its class. One that may run
+  ; past its end makes an object of its class first, which it gives where the body ends.
   (and (call returns-value tree body) (call leaves tree body))
 )
 

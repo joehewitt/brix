@@ -254,12 +254,12 @@
     (param id SyntaxId)
     (param pattern SyntaxId)
     (param want Want (= (call Want)))
-    ; The type a match's arms give, joined, each arm checked against the subject. A match written
-    ; as a statement is one for its own arms alone, and runs them as steps, so a match standing as
-    ; a step in one of them is a statement too. Arms of conditions alone with no else,
-    ; where a type is expected that is no optional, give an optional of it, as the reference's do,
-    ; which whatever expects it converts. An integer an arm gives written with no suffix takes the
-    ; type expected, or with none expected, the type of the first arm that gives one written with one.
+    ; The type a match's arms give, joined, each arm checked against the subject. A match written as
+    ; a statement is one for its own arms alone, and runs them as steps, so a match standing as a
+    ; step in one of them is a statement too. Arms of conditions alone with no else, where a type is
+    ; expected that is no optional, give an optional of it, which whatever expects it converts. An
+    ; integer an arm gives written with no suffix takes the type expected, or with none expected,
+    ; the type of the first arm that gives one written with one.
     (let expected arms-expected)
     (= arms-expected no-type)
     (let subject (. matching subject))
@@ -570,8 +570,7 @@
   (fn-do _ merge-arms _
     (param first Size)
     ; After a match statement, a local every arm that falls through leaves holding the same value
-    ; holds it: the arms agree, as the reference's flow facts merge them. Only an arm's own
-    ; statements count.
+    ; holds it: the arms agree. Only an arm's own statements count.
     (let lead (. Size max))
     (for (in arm (..< first (. arm-bodies length)))
       (if (and (== lead (. Size max)) (not (call (. narrowing exits) ([] arm-bodies arm))))
@@ -734,11 +733,11 @@
     (param subject TypeId)
     ; Types the arms of a match, each alternative of an `or` in turn, and says whether one is the
     ; arm of what is left. An arm written `|?` with no body gives what its condition tested, forced,
-    ; which the reference evaluates again: where the flow knows that by no key, the force takes the
-    ; type the test gave, so what the condition calls is recorded once. An arm whose value is a case
-    ; named by its symbol alone, where a type is expected of the match, gives the case of that type
-    ; where it can (`armed-symbol`). The body of an arm that runs as markup content (`content-arms`)
-    ; gives the element its lines, and the match nothing.
+    ; which is evaluated again: where the flow knows that by no key, the force takes the type the
+    ; test gave, so what the condition calls is recorded once. An arm whose value is a case named by
+    ; its symbol alone, where a type is expected of the match, gives the case of that type where it
+    ; can (`armed-symbol`). The body of an arm that runs as markup content (`content-arms`) gives
+    ; the element its lines, and the match nothing.
     (if (== id 0)
       (return false)
     )
@@ -936,8 +935,7 @@
   )
   (fn-expr _ is-conditional Bool
     (param pattern SyntaxId)
-    ; Whether arms may match nothing, as the reference asks it of a match written on one line: its
-    ; last arm has a pattern.
+    ; Whether arms may match nothing: the last arm has a pattern.
     (match ([] (. tree nodes) pattern)
       (case (call .node-type-or row)
         (call is-conditional (. row right))
@@ -1267,8 +1265,8 @@
   (fn-expr _ name-read SyntaxId
     (param pattern SyntaxId)
     ; The pattern that reads a name from its subject in the pattern of an arm, or none. Where a
-    ; match has several arms the reference asks of each whether it could match, and of such a
-    ; pattern it has no answer: it looks for a type of that name.
+    ; match has several arms each is asked whether it could match, and of such a pattern there is no
+    ; answer: a type of that name is looked for.
     (case? (== pattern 0)
       0
     )
@@ -1492,10 +1490,9 @@
     (param subject TypeId)
     (param named TypeId)
     (param kind Specificity)
-    ; Records at a type named as a pattern what it does to the subject it is given, as the
-    ; reference matches it: an optional as what it holds, and a union whole where it converts
-    ; whole, else by each of its cases that converts. `named` is the type where the pattern's
-    ; own syntax leaves some of it to the subject.
+    ; Records at a type named as a pattern what it does to the subject it is given: an optional as
+    ; what it holds, and a union whole where it converts whole, else by each of its cases that
+    ; converts. `named` is the type where the pattern's own syntax leaves some of it to the subject.
     (if (or (== subject no-type) (== subject invalid-type))
       (return)
     )
@@ -1581,7 +1578,7 @@
   (fn-expr _ held-subject TypeId
     (param subject TypeId)
     ; What fields in parentheses are matched against: what an optional holds, which is tested for
-    ; first, as TypeScript matches any pattern, or else the subject.
+    ; first, as for any pattern, or else the subject.
     (if-expr plain-subject subject (call (. types optional-inner) subject))
     (where
       (lazy plain-subject (or (== subject no-type) (== subject invalid-type) (not (call (. types is-optional) subject))))
@@ -1702,9 +1699,9 @@
     (param pattern SyntaxId)
     (param subject TypeId)
     (param inside Bool (= false))
-    ; Whether a pattern could match a subject of this type at all. The reference compiles no arm
-    ; whose pattern cannot, and a match none of whose arms can is an error. `inside` says the
-    ; pattern is a field of one that takes a tuple apart.
+    ; Whether a pattern could match a subject of this type at all. No arm whose pattern cannot is
+    ; compiled, and a match none of whose arms can is an error. `inside` says the pattern is a field
+    ; of one that takes a tuple apart.
     (if (or (== pattern 0) (== subject no-type) (== subject invalid-type))
       (return true)
     )
@@ -1857,11 +1854,11 @@
     (param name Atom)
     (param subject TypeId)
     (param inside Bool)
-    ; Whether a pattern that names a case could match a subject: one that is a union with a case
-    ; of that name, an optional of one, or a row. The reference compiles the arm of no other,
-    ; and where the pattern names no type and no type it could mean has a case or a value of
-    ; the name, it reports that. As a field of a tuple the pattern keeps its arm also where the
-    ; type it means is the field's, or what a case of the field holds: it matches nothing there.
+    ; Whether a pattern that names a case could match a subject: one that is a union with a case of
+    ; that name, an optional of one, or a row. The arm of no other is compiled, and where the
+    ; pattern names no type and no type it could mean has a case or a value of the name, that is
+    ; reported. As a field of a tuple the pattern keeps its arm also where the type it means is the
+    ; field's, or what a case of the field holds: it matches nothing there.
     (let given (if-expr (call (. types is-optional) subject) (call (. types optional-inner) subject) subject))
     (let kind (call (. types intrinsic-of) given))
     (if (or (== kind .table-row) (== kind .immutable-table-row) (call names-case given name))
@@ -1906,12 +1903,11 @@
     (param name Atom)
     ; What a case holds that a refinement of the machine of a property of a class adds, where the
     ; machine's union is a type and the case is of a name, as the refinement's own union holds it:
-    ; `Void` for nothing, or its values. Refinements typed so far are found, and else those of the property the
-    ; subject reads for the class of the object it reads it from (`case-owner-of`), or of the
-    ; machine's property for the class the function, or one it is written in, is typed for
-    ; (`enclosing-self`), as the reference finds them, and
-    ; the refinement being typed as it is written (`writing-payload`). No type where none adds the
-    ; case.
+    ; `Void` for nothing, or its values. Refinements typed so far are found, and else those of the
+    ; property the subject reads for the class of the object it reads it from (`case-owner-of`), or
+    ; of the machine's property for the class the function, or one it is written in, is typed for
+    ; (`enclosing-self`), and the refinement being typed as it is written (`writing-payload`). No
+    ; type where none adds the case.
     (let root (call refined-root union))
     (let found (if-expr root (call refining-payload root name) no-type))
     (if (!= found no-type)
@@ -1992,9 +1988,8 @@
   )
   (fn-do _ case-owner-of TypeId
     (param subject SyntaxId)
-    ; The class of the object a subject reads a property from, as the reference finds the object a
-    ; state machine's union is read from: the type of the object written before the property's
-    ; name, or none.
+    ; The class of the object a subject reads a property from: the type of the object written before
+    ; the property's name, or none.
     (if (== subject 0)
       (return no-type)
     )
@@ -2054,8 +2049,8 @@
     (param name Atom)
     (param subject TypeId)
     ; Whether a pattern that names a case names a value of a whole number type instead, written
-    ; alone or with that type. It is an error the reference reports at the pattern, wherever the
-    ; pattern is, so the arm is kept for it.
+    ; alone or with that type. It is an error reported at the pattern, wherever the pattern is, so
+    ; the arm is kept for it.
     (if (or (not (. ([] (. types completions) subject) has-enums)) (not (call is-integer-kind (call (. types intrinsic-of) subject))))
       (return false)
     )
@@ -2234,11 +2229,10 @@
   )
   (fn-do _ sequence-case TypeId
     (param subject TypeId)
-    ; The type whose items a list pattern reads, as the reference finds it: of an optional what it
-    ; holds, and of a union the case that has items to give. A text has none, nor has a type that
-    ; is no `Indexable`: no type then, and the pattern can not match. Where more than one case
-    ; of a union has items the reference matches each, which has no shape here: the type that
-    ; is none.
+    ; The type whose items a list pattern reads: of an optional what it holds, and of a union the
+    ; case that has items to give. A text has none, nor has a type that is no `Indexable`: no type
+    ; then, and the pattern can not match. A union more than one case of which has items has no
+    ; shape here: the type that is none.
     (if (or (== subject no-type) (== subject invalid-type))
       (return subject)
     )
@@ -2279,11 +2273,11 @@
   )
   (fn-do + check-text-pattern Bool
     (param pattern SyntaxId)
-    ; A pattern of texts matched against a `String`, as the reference lowers one: the length is
-    ; read and tested, then `starts-with` the texts before the rest and `ends-with` those after,
-    ; each a call recorded at the pattern. A name given a text is bound to that text, and a rest
-    ; with a name to what lies between, each a `String`. One with no rest or with several, or with
-    ; a text that is not ASCII, whose length the reference counts in units of its own, is declined.
+    ; A pattern of texts matched against a `String`: the length is read and tested, then
+    ; `starts-with` the texts before the rest and `ends-with` those after, each a call recorded at
+    ; the pattern. A name given a text is bound to that text, and a rest with a name to what lies
+    ; between, each a `String`. One with no rest or with several, or with a text that is not ASCII,
+    ; is declined.
     (let parts (list SyntaxId))
     (call (. tree text-parts) pattern parts)
     (if (== (. parts length) 0)
@@ -2369,16 +2363,15 @@
     (param pattern SyntaxId)
     (param patterns (of RowRange SyntaxId))
     (param whole TypeId)
-    ; A list pattern reads the length of its subject, each item by its index and a rest that has
-    ; a name by a range, as the reference lowers it: the items take the type of an item and the
-    ; rest what the range gives. The subject is what an optional holds and the case of a union
-    ; that is a list, by the conversions recorded at the pattern as for a type named. The length
-    ; is read by the getter recorded at the pattern, or is the field of an array a constant fact
-    ; names. Of a table, a span of one or a view of a field's column, which the constant says,
-    ; TypeScript answers the length and the rows or the items itself, which may raise the panics of
-    ; a table, and makes a rest with a name the span or the view a range gives. The read of an item is the
-    ; first call at its pattern; a rest with a name has the construction of its range and then
-    ; the read.
+    ; A list pattern reads the length of its subject, each item by its index and a rest that has a
+    ; name by a range: the items take the type of an item and the rest what the range gives. The
+    ; subject is what an optional holds and the case of a union that is a list, by the conversions
+    ; recorded at the pattern as for a type named. The length is read by the getter recorded at the
+    ; pattern, or is the field of an array a constant fact names. Of a table, a span of one or a
+    ; view of a field's column, which the constant says, the compiler answers the length and the
+    ; rows or the items itself, which may raise the panics of a table, and makes a rest with a name
+    ; the span or the view a range gives. The read of an item is the first call at its pattern; a
+    ; rest with a name has the construction of its range and then the read.
     (let subject (call sequence-case whole))
     (if (and (== subject invalid-type) (!= whole invalid-type))
       (call decline pattern)
@@ -2490,9 +2483,9 @@
   (fn-do _ plan-map-rest _
     (param site SyntaxId)
     (param subject TypeId)
-    ; What a rest of a map pattern with a name calls, as the reference lowers it: an empty map of
-    ; the subject's type is made, each key matched is stored there with what it holds, and the
-    ; rest is the subject less that map.
+    ; What a rest of a map pattern with a name calls: an empty map of the subject's type is made,
+    ; each key matched is stored there with what it holds, and the rest is the subject less that
+    ; map.
     (let map (call (. types ancestor-of) subject (. types map-decl)))
     (if (== map no-type)
       (return)
@@ -2566,8 +2559,9 @@
   )
   (fn-do _ reads-row Bool
     (param syntax SyntaxId)
-    ; Whether a subject is the row `t[i]` reads of a table, a span or a selection, which TypeScript
-    ; makes a cursor of whose storage it checked there, or a name a loop gives such a row by.
+    ; Whether a subject is the row `t[i]` reads of a table, a span or a selection, which the
+    ; compiler makes a cursor of whose storage it checked there, or a name a loop gives such a row
+    ; by.
     (match? ([] (. tree nodes) syntax)
       (case .node-identifier
         (let resolution (call (. bindings resolution-of) (. frame binding) syntax))

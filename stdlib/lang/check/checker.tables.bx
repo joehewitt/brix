@@ -70,8 +70,7 @@
     (param receiver TypeId)
     (param name Atom)
     ; Whether a row of a table reads a name as a field of its row, or of the case its row holds,
-    ; where the row's own member of the name is private, as TypeScript reads one past a member it
-    ; may not use.
+    ; where the row's own member of the name is private.
     (case? (and (!= kind .table-row) (!= kind .immutable-table-row))
       false
     )
@@ -122,9 +121,9 @@
     (param id SyntaxId)
     (param op TableOp)
     (param slot U32 (= 0))
-    ; A node the compiler answers for a table or a view of one, as TypeScript intercepts it before
-    ; any method, which may raise the panics of a table: the operation, and the place in the row's
-    ; layout of the field it reads or writes.
+    ; A node the compiler answers for a table or a view of one before any method, which may raise
+    ; the panics of a table: the operation, and the place in the row's layout of the field it reads
+    ; or writes.
     (call (. facts set-table) instance id op slot 0)
     (call (. instances mark-may-panic) instance)
   )
@@ -133,7 +132,7 @@
     (param builder TypeId)
     (param name String)
     (param count Size)
-    ; A member of an arena's builder that TypeScript answers where it is called, which may raise
+    ; A member of an arena's builder that the compiler answers where it is called, which may raise
     ; the panics of its growth: `append` of an item and `reserve`. The constant tells whether the
     ; arena traces the builder's items.
     (let item (call (. types builder-item) builder))
@@ -150,8 +149,8 @@
   )
   (fn-do + note-span-range _
     ; The range the constructor of an index span is given is made forward where the constructor
-    ; runs, as TypeScript makes it: the call is recorded at no node of the constructor, which may
-    ; raise the panics of a range that does not fit.
+    ; runs: the call is recorded at no node of the constructor, which may raise the panics of a
+    ; range that does not fit.
     (let range (call (. instances argument-type) instance 1))
     (let shapes (. scratch call-arguments mark))
     (let given (. scratch types mark))
@@ -179,10 +178,10 @@
     (param key-syntax SyntaxId)
     (param key TypeId)
     (param result TypeId)
-    ; Plans an index of a table or of a view of one that TypeScript answers itself: a row of a
-    ; table or of a span at a single index, an item of a field's column, the span or the view of
-    ; the items a range spans, the rows indices select, and an index or a row of an index span or
-    ; a selection, or the span a range of one spans. A range is made forward by the calls recorded
+    ; Plans an index of a table or of a view of one that the compiler answers itself: a row of a
+    ; table or of a span at a single index, an item of a field's column, the span or the view of the
+    ; items a range spans, the rows indices select, and an index or a row of an index span or a
+    ; selection, or the span a range of one spans. A range is made forward by the calls recorded
     ; here. False where those calls cannot be made.
     (let kind (call (. types intrinsic-of) receiver))
     (let tabled

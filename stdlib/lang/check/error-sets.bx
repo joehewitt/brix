@@ -504,10 +504,9 @@
   (fn-do _ report-rules _
     (param instance InstanceId)
     (param mark ScratchMark)
-    ; The reference makes functions of a local rule beside a match that calls itself before it
-    ; knows what the function the rule is written in raises. So where that function states no
-    ; errors, one that leaves the rule's arms, or the arms of a local rule they call, is
-    ; reported as the reference reports it: at the first call of a rule in the rule's arms.
+    ; For a local rule beside a match that calls itself, where the function the rule is written in
+    ; states no errors, an error that leaves the rule's arms, or the arms of a local rule they call,
+    ; is reported at the first call of a rule in the rule's arms.
     (let row ([] (. instances rows) instance))
     (let tree (. ([] (. program modules) (. row module)) tree))
     (let scratch (. types scratch))
@@ -637,8 +636,8 @@
     (param stated (of RowRange TypeId))
     (param mark ScratchMark)
     ; Reports each error above the mark that leaves an instance and that no error it states takes.
-    ; One takes an error that converts to it, as the reference compares them: a class below it, or
-    ; one above it that a cast may find to be it, which panics where it is not, so the instance may.
+    ; One takes an error that converts to it: a class below it, or one above it that a cast may find
+    ; to be it, which panics where it is not, so the instance may.
     (for (in position (..< mark (. expanded length)))
       (let error (. ([] expanded position) type))
       (if (== error invalid-type)
@@ -727,10 +726,9 @@
   (param error TypeId)
   (param declared (list ErrorTransform))
   (param tried (list U32))
-  ; The transformers an error leaving a function is tried with, as TypeScript tries them: those
-  ; whose source takes it, nearest first and then in the order declared, up to the first that
-  ; tests no chain of earlier errors, which takes it whatever came before. Their places among
-  ; `declared` are added to `tried`.
+  ; The transformers an error leaving a function is tried with: those whose source takes it, nearest
+  ; first and then in the order declared, up to the first that tests no chain of earlier errors,
+  ; which takes it whatever came before. Their places among `declared` are added to `tried`.
   (let ranks (list RelationRank))
   (for (in index (..< 0 (. declared length)))
     (let rank (call caught-rank relations error (. ([] declared index) source)))

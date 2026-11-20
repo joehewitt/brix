@@ -110,14 +110,13 @@
     (param id SyntaxId)
     (param items (list SyntaxId))
     (param store MachineStore)
-    ; The machine a property's machine refines, as the reference merges them: that of the property
-    ; of the same name of the base of the class, through the instance that types the base's value
-    ; for the class that declares it, as the class the machine is typed for holds it, which every
-    ; class below shares, where the base has one; no instance where it has none, or the machine
-    ; is no property's. A
-    ; property of that name that holds no machine is the reference's error, as is a refinement that
-    ; changes what the reference forbids (`refines-shaped`). One a class's markup writes refines that
-    ; of the markup of a class above (`inherited-content-machine`).
+    ; The machine a property's machine refines: that of the property of the same name of the base of
+    ; the class, through the instance that types the base's value for the class that declares it, as
+    ; the class the machine is typed for holds it, which every class below shares, where the base
+    ; has one; no instance where it has none, or the machine is no property's. A property of that
+    ; name that holds no machine is an error, as is a refinement that changes more than it may
+    ; (`refines-shaped`). One a class's markup writes refines that of the markup of a class above
+    ; (`inherited-content-machine`).
     (if (== store .store-content)
       (return (call inherited-content-machine id items))
     )
@@ -192,10 +191,10 @@
     (param items (list SyntaxId))
     ; The machine a machine written as a line of a class's markup refines, as a property's machine
     ; refines its base's: the first machine of the markup of a class above, from the nearest up,
-    ; that has a case at its root of a name one of this machine's cases at its root has, through
-    ; the function that fills the object with that class's markup, which the function this machine
-    ; is written in runs; no instance where none has. A refinement that changes what the reference
-    ; forbids is its error (`refines-shaped`).
+    ; that has a case at its root of a name one of this machine's cases at its root has, through the
+    ; function that fills the object with that class's markup, which the function this machine is
+    ; written in runs; no instance where none has. A refinement that changes more than it may is an
+    ; error (`refines-shaped`).
     (let roots (list Atom))
     (for (in item items)
       (if (is ([] (. tree nodes) item) .node-state-case)
@@ -311,10 +310,10 @@
     (param parent U32)
     (param names (list Atom))
     (param parents (list U32))
-    ; Whether a refinement's body changes only what the reference lets it, under the case of the
-    ; inherited machine at a place: each case it names again keeps that case's trigger and what it
-    ; holds, and each case it adds is written under a case, with a name the inherited machine does
-    ; not use. Anything but a case written at the root has no shape here yet.
+    ; Whether a refinement's body changes only what it may, under the case of the inherited machine
+    ; at a place: each case it names again keeps that case's trigger and what it holds, and each
+    ; case it adds is written under a case, with a name the inherited machine does not use. Anything
+    ; but a case written at the root has no shape here yet.
     (for (in item items)
       (if (not (is ([] (. tree nodes) item) .node-state-case))
         (if (== parent (. U32 max))
@@ -395,12 +394,12 @@
     (param id SyntaxId)
     (param items (list SyntaxId))
     (param store MachineStore)
-    ; Whether a machine is one the reference builds: no case is written twice, each fallback
-    ; follows a group of transitions, each case's rows but its lazies come before its cases and
-    ; transitions (`statements-lead`), no decision made on entry enters a case again
-    ; (`entries-settle`), and one a local, a global or a property names starts in a case. Each is
-    ; the reference's error. A fallback that names values, and a case of a machine of a class's
-    ; markup whose name the class declares otherwise, have no shape here yet.
+    ; Whether a machine is one built here: no case is written twice, each fallback follows a group
+    ; of transitions, each case's rows but its lazies come before its cases and transitions
+    ; (`statements-lead`), no decision made on entry enters a case again (`entries-settle`), and one
+    ; a local, a global or a property names starts in a case. Each is an error. A fallback that
+    ; names values, and a case of a machine of a class's markup whose name the class declares
+    ; otherwise, have no shape here yet.
     (let redefined (call (. tree redefined-case) items))
     (if (!= redefined 0)
       (let name (!! (call (. tree state-name) redefined)))
@@ -451,8 +450,8 @@
   (fn-do _ entries-settle Bool
     (param items (list SyntaxId))
     ; Whether the decisions made where a machine's cases are entered, with no trigger, never enter a
-    ; case again, as the reference checks them from its first case and from each case written in
-    ; it. Where one does, it is the reference's error at the decision.
+    ; case again, checked from its first case and from each case written in it. Where one does, it
+    ; is an error at the decision.
     (let roots (list SyntaxId))
     (let initial (call entered-case 0 items))
     (if (!= initial 0)
@@ -778,10 +777,9 @@
   )
   (fn-expr _ fixed-payload TypeId
     (param position U32)
-    ; What a case holds where that is known before anything is typed: nothing where nothing names
-    ; it with values; `U8` where the source of its payload gives none (`gives-nothing`), as the
-    ; reference falls back to. Otherwise no type, until its source is typed (`settle-payload`), with
-    ; or without a trigger.
+    ; What a case holds where that is known before anything is typed: nothing where nothing names it
+    ; with values; `U8` where the source of its payload gives none (`gives-nothing`). Otherwise no
+    ; type, until its source is typed (`settle-payload`), with or without a trigger.
     (case? (not source)
       (. types void-type)
     )
@@ -796,11 +794,11 @@
     )
   )
   (fn-do _ foresee-activations Bool
-    ; Settles what the activation of each case sees before the machine's parts are typed, and
-    ; again where no case or continuation waiting is known, as the reference infers it apart from
-    ; where anything fires: what each case holds, from the source of its payload that nothing has
-    ; typed, and each name it keeps, from each transition that enters it, each transition typed on
-    ; trial (`foresee-in`), until nothing more settles. Whether anything is settled so.
+    ; Settles what the activation of each case sees before the machine's parts are typed, and again
+    ; where no case or continuation waiting is known, inferred apart from where anything fires: what
+    ; each case holds, from the source of its payload that nothing has typed, and each name it
+    ; keeps, from each transition that enters it, each transition typed on trial (`foresee-in`),
+    ; until nothing more settles. Whether anything is settled so.
     (let sources (list SyntaxId))
     (let unsettled false)
     (for (in position (..< 0 (. machining cases length)))
@@ -1010,10 +1008,10 @@
     (param parent SyntaxId)
     (param item SyntaxId)
     (param starts Bool)
-    ; A named machine written in a case of the machine being typed, part of its function, as the
-    ; reference builds it: typed as a machine is, while what is known of the machine around it is
-    ; put aside, and recorded with that machine and the case. Its parts start with the machine
-    ; around it where the case does. It is the reference's error that it has no first case.
+    ; A named machine written in a case of the machine being typed, part of its function: typed as a
+    ; machine is, while what is known of the machine around it is put aside, and recorded with that
+    ; machine and the case. Its parts start with the machine around it where the case does. It is an
+    ; error that it has no first case.
     (let machine (call (. tree nested-machine) item))
     (let row (call (. bindings machine-slots) module machine))
     (if (not row)
@@ -1066,10 +1064,10 @@
     (param mark ScratchMark)
     (param starts Bool)
     ; What leaves a part of a machine since a mark. A handler gives each error that leaves it to the
-    ; global `unhandled-error` (see `hands-off`), typed once for the machine, as the reference's
-    ; handlers do; the errors of a part only a handler runs then leave nothing, and those of a part
-    ; that runs as the machine starts leave its function too. A call there whose callee's errors are
-    ; not yet known lets them out all the same, to where the handler gives them.
+    ; global `unhandled-error` (see `hands-off`), typed once for the machine; the errors of a part
+    ; only a handler runs then leave nothing, and those of a part that runs as the machine starts
+    ; leave its function too. A call there whose callee's errors are not yet known lets them out all
+    ; the same, to where the handler gives them.
     (if (== (. scratch outgoing mark) mark)
       (return)
     )
@@ -1103,10 +1101,9 @@
     (param node SyntaxId)
     (param slots (list SlotId))
     (param given (list TypeId))
-    ; The names a case's or a continuation's activation sees, as the reference binds them, each
-    ; added to `slots` with its type added to `given`: a name among what it gives takes the part of
-    ; what the case holds in its place, where that is known, and a name the case keeps what it
-    ; keeps.
+    ; The names a case's or a continuation's activation sees, each added to `slots` with its type
+    ; added to `given`: a name among what it gives takes the part of what the case holds in its
+    ; place, where that is known, and a name the case keeps what it keeps.
     (let position (call (. tree case-position) (. machining cases) (!! (call (. tree state-name) node))))
     (if (== position null)
       (return)
@@ -1234,7 +1231,7 @@
   (fn-do _ initial-given Bool
     (param initial SyntaxId)
     ; Whether each name a machine's first case is given, where it is entered, names a value: one
-    ; that names none is a payload nothing gives, the reference's error at the name.
+    ; that names none is a payload nothing gives, an error at the name.
     (for (in target ([] (. tree children) (call (. tree state-targets) initial)))
       (let resolution (call (. bindings resolution-of) (. frame binding) target))
       (let unresolved (and (== (. resolution kind) .resolve-unresolved) (== (. resolution slot) no-slot)))
@@ -1271,15 +1268,14 @@
   (fn-do _ type-group _
     (param owner SyntaxId)
     (param head SyntaxId)
-    ; A group of event transitions where its owner subscribes it, as the reference makes it: its
-    ; stream is made a `Broadcastable`, recorded at its first transition's trigger, and the
-    ; machine's `Subscriber` of its item is given to the broadcaster's `subscribe` and
-    ; `unsubscribe`, whose errors are given to the global `unhandled-error` (`hands-off-raising`),
-    ; each call kept with the group. What a call of the
-    ; subscriber answers is kept for its type. A stream that is neither is the reference's error
-    ; at the transition. One on an event of an object is typed so too (`type-event-group`), and one
-    ; on a stream that is iterable and implements no `Broadcastable` itself, though it may convert
-    ; to one, as `type-iterated-group` says, as the reference tries them in that order.
+    ; A group of event transitions where its owner subscribes it: its stream is made a
+    ; `Broadcastable`, recorded at its first transition's trigger, and the machine's `Subscriber` of
+    ; its item is given to the broadcaster's `subscribe` and `unsubscribe`, whose errors are given
+    ; to the global `unhandled-error` (`hands-off-raising`), each call kept with the group. What a
+    ; call of the subscriber answers is kept for its type. A stream that is neither is an error at
+    ; the transition. One on an event of an object is typed so too (`type-event-group`), and one on
+    ; a stream that is iterable and implements no `Broadcastable` itself, though it may convert to
+    ; one, as `type-iterated-group` says, tried in that order.
     (let trigger (call (. tree state-trigger) head))
     (let written (call (. tree group-stream) head))
     (if (== (call (. tree trigger-kind) trigger) (. StateTriggerKind state-trigger-whenever))
@@ -1453,9 +1449,9 @@
   (fn-do _ machine-enqueue InstanceId
     (param item TypeId)
     (param subscriber TypeId)
-    ; The event runtime's `event-machine-enqueue` of an item, which the reference gives a group's
-    ; activation, an item and its broadcaster, to run the activation once no event is being
-    ; published and no other transition runs; or none.
+    ; The event runtime's `event-machine-enqueue` of an item, which is given a group's activation,
+    ; an item and its broadcaster, to run the activation once no event is being published and no
+    ; other transition runs; or none.
     (let broadcaster (call (. types well-known-type-of) "core/stream" "Broadcastable" item))
     (if (or (== broadcaster invalid-type) (== (. types event-endpoint-decl module) 0))
       (return no-instance)
@@ -1472,9 +1468,9 @@
   )
   (fn-do + iterates-as-source Bool
     (param container TypeId)
-    ; Whether the reference finds the items of the stream of a group of a machine's event
-    ; transitions by iterating it: a generator, or a value `supported` as an `Iterable`, an
-    ; `Indexable` or a `Stream`.
+    ; Whether the items of the stream of a group of a machine's event transitions are found by
+    ; iterating it: a generator, or a value `supported` as an `Iterable`, an `Indexable` or a
+    ; `Stream`.
     (if (call same-decl (call class-ref types container) (. types generator-decl))
       (return true)
     )
@@ -1491,10 +1487,10 @@
     (param trigger SyntaxId)
     (param written SyntaxId)
     (param given TypeId)
-    ; A group of event transitions on a stream that is only iterable, as the reference makes it
-    ; where its owner subscribes it: the container is read at once, by its protocol planned at the
-    ; trigger, which has the slots of a loop, and each item is given to the group's handler with
-    ; the container. The reference's loop there does not poll.
+    ; A group of event transitions on a stream that is only iterable, made where its owner
+    ; subscribes it: the container is read at once, by its protocol planned at the trigger, which
+    ; has the slots of a loop, and each item is given to the group's handler with the container. The
+    ; loop there does not poll.
     (let iterated (call iteration-container given written))
     (let item (call loop-item-type iterated trigger))
     (if (or (== item invalid-type) (== item no-type))
@@ -1539,16 +1535,15 @@
     (param written SyntaxId)
     (param event NamedEvent)
     (param stream TypeId)
-    ; A group on an event of an object, as the reference subscribes it: the endpoint the event
-    ; runtime keeps for the object's event is the group's `Broadcastable`, and the machine keeps a
-    ; port of the event runtime for the group, which queues each item that arrives on the event
-    ; runtime's machine queue and runs the machine's subscriber with it. The port is made where
-    ; the group is first subscribed, and attached to the endpoint and detached from it where its
-    ; owner enters and exits. A group the event runtime runs from the table of a class instead
-    ; (`lowers-group`) needs `event-register-lowered`, and its port is made where the machine
-    ; starts and given what the table runs it with. One at the address of a keyed event takes the
-    ; endpoint there, which the receiver claims, and is never run from the table, as the
-    ; reference's `keyed-address-required` decides.
+    ; A group on an event of an object: the endpoint the event runtime keeps for the object's event
+    ; is the group's `Broadcastable`, and the machine keeps a port of the event runtime for the
+    ; group, which queues each item that arrives on the event runtime's machine queue and runs the
+    ; machine's subscriber with it. The port is made where the group is first subscribed, and
+    ; attached to the endpoint and detached from it where its owner enters and exits. A group the
+    ; event runtime runs from the table of a class instead (`lowers-group`) needs
+    ; `event-register-lowered`, and its port is made where the machine starts and given what the
+    ; table runs it with. One at the address of a keyed event takes the endpoint there, which the
+    ; receiver claims, and is never run from the table.
     (let keyed (!= (. event address) 0))
     (if (or (and (!= (. event key) no-type) (not keyed)) (== stream invalid-type) (== stream no-type))
       (call decline head)
@@ -1702,11 +1697,10 @@
     (param written SyntaxId)
     (param event NamedEvent)
     ; Whether the event runtime runs a group of a machine's event transitions from the table of the
-    ; class whose object it is written for, as the reference plans it: a group at the root of a
-    ; machine a property of the class holds, or of one written in the class's content, as
-    ; `lowers-for` decides. A group of a case of the same machine on the event is planned first, as
-    ; the reference compiles the cases a transition enters before the machine's root, and is no such
-    ; group, which leaves the root's group to the sidecar path the reference then takes.
+    ; class whose object it is written for: a group at the root of a machine a property of the class
+    ; holds, or of one written in the class's content, as `lowers-for` decides. A group of a case of
+    ; the same machine on the event is planned first, and is no such group, which leaves the root's
+    ; group to the sidecar path.
     (let stored (or (== (. machining store) .store-member) (== (. machining store) .store-content)))
     (if (or (not stored) (!= owner 0) (== (. frame self-type) no-type))
       (return false)
@@ -1725,9 +1719,8 @@
     ; Whether the event runtime runs a group at the root of a machine, written in a module on a
     ; stream, from the table of a class: one on an event of the object itself, its name alone or
     ; read from `this`. Where a section of the class or of one above it hears the event too, or a
-    ; constructor of one of them subscribes to it, the reference subscribes the group itself. Where
-    ; a group of another of their machines is on it, the reference's choice turns on the order it
-    ; compiles them in, and the group has no shape here (null).
+    ; constructor of one of them subscribes to it, the machine subscribes the group itself. Where a
+    ; group of another of their machines is on it, the group has no shape here (null).
     (let found (call own-event receiver source written))
     (if (or (not found) (!= (. found owner) (. event owner)) (!= (. found name) (. event name)))
       (return false)
@@ -1887,10 +1880,10 @@
   (fn-do _ type-targets _
     (param transition SyntaxId)
     ; What a transition gives the case it enters, typed where it fires. The source of a case's
-    ; payload settles what the case holds where nothing did before (`fixed-payload`), and each
-    ; name the case keeps takes what it reads there, which every transition that enters the case
-    ; where the name is in reach must agree on, as the reference unifies them. A transition into a
-    ; case that names what it holds gives one value for each name (`gives-names`).
+    ; payload settles what the case holds where nothing did before (`fixed-payload`), and each name
+    ; the case keeps takes what it reads there, which every transition that enters the case where
+    ; the name is in reach must agree on. A transition into a case that names what it holds gives
+    ; one value for each name (`gives-names`).
     (for (in target ([] (. tree children) (call (. tree state-targets) transition)))
       (do
         (inline (call infer target))
@@ -2009,10 +2002,10 @@
     (param position U32)
     (param given (list TypeId))
     ; Joins what the source of a case's payload gives with what each other source that gives values
-    ; gives in its place, as the reference joins them: what one typed already gives, or what one
-    ; gives typed on trial apart from where it fires (`source-given`). One whose values are not
-    ; known so, that gives another number of them, or whose values do not join, is left out, and
-    ; its values are converted to what the case holds where it fires.
+    ; gives in its place: what one typed already gives, or what one gives typed on trial apart from
+    ; where it fires (`source-given`). One whose values are not known so, that gives another number
+    ; of them, or whose values do not join, is left out, and its values are converted to what the
+    ; case holds where it fires.
     (for (in type given)
       (if (or (== type no-type) (== type invalid-type))
         (return)
@@ -2103,8 +2096,8 @@
   (fn-do _ join-payload TypeId
     (param held TypeId)
     (param given TypeId)
-    ; The type two values a case is given in one place join to, as the reference joins inferred
-    ; types: an optional of the other where one is `null`, or what they unify to, or invalid.
+    ; The type two values a case is given in one place join to: an optional of the other where one
+    ; is `null`, or what they unify to, or invalid.
     (if (== held given)
       (return held)
     )
@@ -2119,9 +2112,9 @@
     (param id SyntaxId)
     (param row MachineSlots)
     ; The union a machine's value is, private to it: a case for each case it names, in the order it
-    ; names them, holding what that case holds. It is named, as the reference names it, for the
-    ; local, the global or the property that names the machine, and numbered among the machines of
-    ; the module, and told apart by that number, which an edit that moves the machine's lines keeps.
+    ; names them, holding what that case holds. It is named for the local, the global or the
+    ; property that names the machine, and numbered among the machines of the module, and told apart
+    ; by that number, which an edit that moves the machine's lines keeps.
     (let name "StateMachine")
     (let property (call machine-property id))
     (if (!= (. row bound) no-slot)
@@ -2268,10 +2261,9 @@
     (param targets (list TypeId))
     ; What a transition of a machine, written among a body's items, sees and gives, typed on trial
     ; apart from where it fires (`trial-checker`) with the names its activation sees holding the
-    ; types given, as the reference infers what a case holds and the names it keeps: the type of
-    ; each slot wanted once its trigger's pattern has matched (`foresee-transition`), added to
-    ; `found`, and of each of its targets, added to `targets`. None of either where the part that
-    ; gives them reports anything.
+    ; types given: the type of each slot wanted once its trigger's pattern has matched
+    ; (`foresee-transition`), added to `found`, and of each of its targets, added to `targets`. None
+    ; of either where the part that gives them reports anything.
     (let checker (call trial-checker transition))
     (for (in offset (..< 0 (. slots length)))
       (if (and (!= ([] given offset) no-type) (!= ([] given offset) invalid-type))
@@ -2302,8 +2294,8 @@
 
 (fn-do _ state-type-name String
   (param name Atom)
-  ; A name as the reference writes it in a type's: each part between hyphens with its first
-  ; letter made upper case, joined.
+  ; A name as it is written in a type's: each part between hyphens with its first letter made upper
+  ; case, joined.
   (let text "")
   (for (in part (call (. name text split) "-"))
     (if (!= (. part length) 0)

@@ -31,8 +31,8 @@
 
 (type + RowCapture (is Tuple)
   ; What a name a pattern binds to the case of a row of a table of unions stands for: the row's
-  ; type, the number of the case, and whether TypeScript checked the row's storage where the
-  ; pattern read it, as its cursor holds.
+  ; type, the number of the case, and whether the row's storage was checked where the pattern read
+  ; it, as its cursor holds.
   (blank)
   (prop + row TypeId)
   (prop + case-index U32)
@@ -562,11 +562,10 @@
   (fn-do _ note-described _
     (param id SyntaxId)
     (param name Atom)
-    ; Plans a C call that allocates, resizes or copies the storage of an array the collector
-    ; owns, with the type of the array's items. So too a call of an arena's own that reserves
-    ; or copies storage for items of a type the arena traces, as TypeScript reserves and copies
-    ; the storage of an `ArrayBuilder` an arena backs: the type is the parameter the function
-    ; names `Value` or `Item`.
+    ; Plans a C call that allocates, resizes or copies the storage of an array the collector owns,
+    ; with the type of the array's items. So too a call of an arena's own that reserves or copies
+    ; storage for items of a type the arena traces: the type is the parameter the function names
+    ; `Value` or `Item`.
     (let item no-type)
     (if (or (== name (!! (. types allocate-buffer-atom))) (== name (!! (. types resize-buffer-atom))) slice-copy)
       (= item (call collected-item (. frame self-type)))
@@ -1384,9 +1383,9 @@
     (param name Atom)
     (param read SyntaxId (= 0))
     ; A method read as a value binds its receiver: no arguments yet, so every overload that still
-    ; wants some is a candidate. Read at a node, it binds as the reference does each parameter
-    ; from the first that is written with a default, to the default evaluated there; a method
-    ; that wants an argument before its last such parameter is not supported.
+    ; wants some is a candidate. Read at a node, it binds each parameter from the first that is
+    ; written with a default, to the default evaluated there; a method that wants an argument before
+    ; its last such parameter is not supported.
     (let site (call open-site))
     (call (. ranking begin) (. site shapes) (. site types))
     (let hit (call (. ranking dispatch-method) receiver name))
@@ -1577,10 +1576,9 @@
     (param closure TypeId)
     (param position Size)
     (param arguments Arguments)
-    ; The type a nested function is typed for at an argument written before any tail: the type
-    ; its parameter states, which the argument converts to at the call as TypeScript converts
-    ; it, or the argument's own where the parameter states none, or states a union or a type
-    ; with variables.
+    ; The type a nested function is typed for at an argument written before any tail: the type its
+    ; parameter states, which the argument converts to at the call, or the argument's own where the
+    ; parameter states none, or states a union or a type with variables.
     (let given ([] (. arguments types) position))
     (let plain (call closure-signature closure))
     (if (>= position (. plain args length))
@@ -1618,11 +1616,11 @@
     (param callee TypeId)
     (param arguments Arguments)
     (param tail U32)
-    ; A call of a nested function whose last parameter is a variadic tail, which TypeScript packs as a
-    ; function's call packs its tail: the arguments from the tail on are made a list of the item the
-    ; tail declares, or where it declares none of the union of the distinct types they give, in order,
-    ; each converted to the item. The nested function is typed for the arguments before the tail and the
-    ; list.
+    ; A call of a nested function whose last parameter is a variadic tail, packed as a function's
+    ; call packs its tail: the arguments from the tail on are made a list of the item the tail
+    ; declares, or where it declares none of the union of the distinct types they give, in order,
+    ; each converted to the item. The nested function is typed for the arguments before the tail and
+    ; the list.
     (for (in shape (. arguments shapes))
       (if (or (. shape name) (. shape is-optional))
         (call (. frame diagnose) id .not-supported)
@@ -1898,9 +1896,8 @@
     (param module ModuleId)
     (param decl DeclId)
     (param count Size)
-    ; Whether a function a binding calls as a value of a function type is given every parameter,
-    ; as the reference requires: a default is no part of the call, and only a variadic tail
-    ; takes any number.
+    ; Whether a function a binding calls as a value of a function type is given every parameter: a
+    ; default is no part of the call, and only a variadic tail takes any number.
     (match? ([] (. ([] (. program modules) module) decls) decl)
       (case (call .decl-function fn)
         (return (or (!= (. fn variadic-index) (. U32 max)) (== (as (. fn args count) Size) count)))
@@ -2055,11 +2052,11 @@
     (param hit Hit)
     (param position Size)
     (param expected TypeId)
-    ; The property a constructor the compiler generates for a tuple or struct with type
-    ; parameters fills from an argument, where the property holds a value of a function type
-    ; and is declared with a type that names one of the parameters. The reference gives such
-    ; an argument the function type with no name, and makes the property's type of it where
-    ; the property is declared. No property for any other argument.
+    ; The property a constructor the compiler generates for a tuple or struct with type parameters
+    ; fills from an argument, where the property holds a value of a function type and is declared
+    ; with a type that names one of the parameters. Such an argument is given the function type with
+    ; no name, and the property's type is made of it where the property is declared. No property for
+    ; any other argument.
     (match? ([] (. ([] (. program modules) (. hit module)) decls) (. hit decl))
       (case (call .decl-function fn)
         (let params (call (. types class-type-args) (. hit module) (. fn owner)))
@@ -2121,10 +2118,10 @@
     (param expected TypeId)
     (param callee InstanceId)
     (param property DeclId)
-    ; Converts an argument of a generated constructor to a property that `recast-property`
-    ; names, as the reference does: to the function type with no name, then to the property's
-    ; type by the function made for the two, which is placed where the property is declared,
-    ; and then to the optional that holds it. An optional given has no shape here.
+    ; Converts an argument of a generated constructor to a property that `recast-property` names: to
+    ; the function type with no name, then to the property's type by the function made for the two,
+    ; which is placed where the property is declared, and then to the optional that holds it. An
+    ; optional given has no shape here.
     (let named (call (. types optional-inner) expected))
     (let plain (call function-row types named))
     (let kind (. ([] (. types completions) given) intrinsic))
@@ -2375,10 +2372,10 @@
     (param expected TypeId)
     (param name Atom)
     (param explicit Bool (= false))
-    ; Whether a case named by its symbol alone, where it is cast to the type expected of it, stays of
-    ; no one type as the reference keeps it: of the type its name alone gives, cast to a type without
-    ; the case that it converts to, other than by a method of its own, as an object of a class
-    ; becomes text. An explicit cast keeps it though it does not convert.
+    ; Whether a case named by its symbol alone, where it is cast to the type expected of it, stays
+    ; of no one type: of the type its name alone gives, cast to a type without the case that it
+    ; converts to, other than by a method of its own, as an object of a class becomes text. An
+    ; explicit cast keeps it though it does not convert.
     (case? (or (not (is ([] (. frame tree nodes) site) .node-symbol)) (== owner invalid-type) (== owner no-type))
       false
     )
@@ -2411,8 +2408,7 @@
     (param site SyntaxId)
     (param name Atom)
     ; Notes a case named by its symbol alone that nothing settles, to report once the instance is
-    ; typed (`report-unsettled-cases`): the reference reports one only after it has compiled
-    ; everything else.
+    ; typed (`report-unsettled-cases`).
     (+= unsettled-sites site)
     (+= unsettled-names name)
   )
@@ -2434,8 +2430,7 @@
   )
   (fn-do + report-unsettled-cases _
     ; Reports each case noted by `settle-later` that several types have, in the order noted, and
-    ; each that no type the module can name has and nothing settled (`leave-unfound`), as the
-    ; reference reports one only after it has compiled everything else.
+    ; each that no type the module can name has and nothing settled (`leave-unfound`).
     (for (in position (..< 0 (. unsettled-sites length)))
       (call ambiguous-case ([] unsettled-sites position) ([] unsettled-names position))
     )
@@ -2522,9 +2517,9 @@
     (param missing-site SyntaxId (= 0))
     (param bound Bool (= false))
     (param explicit Bool (= false))
-    ; A call of a type. Where the call is of a binding, a constructor given fewer arguments than
-    ; it declares is partial, so its defaults do not fill them, as TypeScript dispatches a binding.
-    ; With `explicit`, the type parameters of the arguments are the constructor's own.
+    ; A call of a type. Where the call is of a binding, a constructor given fewer arguments than it
+    ; declares is partial, so its defaults do not fill them. With `explicit`, the type parameters of
+    ; the arguments are the constructor's own.
     (call (. types complete) receiver)
     (call (. ranking begin) (. arguments shapes) (. arguments types))
     (= (. ranking bound-call) bound)
@@ -2822,8 +2817,8 @@
     (param module ModuleId)
     (param name Atom)
     (param syntax SyntaxId)
-    ; A getter a module declares, which the reference's lowering reads of its own accord at a
-    ; node: typed, and recorded there as a call.
+    ; A getter a module declares, which the compiler reads of its own accord at a node: typed, and
+    ; recorded there as a call.
     (let decls (. ([] (. program modules) module) decls))
     (for (in position (..< 0 (. decls length)))
       (match? ([] decls position)
@@ -3150,16 +3145,16 @@
     (param named (? Atom) (= null))
     (param restricted Bool (= true))
     (param role CallRole (= .role-answer))
-    ; A method the compiler calls on a value without a call in the source: the iteration
-    ; protocol of a loop's container, the protocol of a stream a pattern runs on, a method of a
-    ; helper a pattern is given, or the one a markup loop region is given its container again by.
-    ; Its instance and the witnesses of its implementors follow. Its errors panic the loop, but
-    ; those of a call that `propagates`, which the reference makes as any call, leave the function
-    ; with it, as a loop's read of a generator that raises does. A call that `links` is kept among
-    ; those of its node. The first argument is given by the name `named` where there is one. Gives
-    ; the call recorded and what it answers: the invalid type where there is no such method or what it
-    ; answers is not known yet. One not `restricted` is typed as declared, outside the restrictions
-    ; of the code that calls it, as it is recorded only for what it answers.
+    ; A method the compiler calls on a value without a call in the source: the iteration protocol of
+    ; a loop's container, the protocol of a stream a pattern runs on, a method of a helper a pattern
+    ; is given, or the one a markup loop region is given its container again by. Its instance and
+    ; the witnesses of its implementors follow. Its errors panic the loop, but those of a call that
+    ; `propagates` leave the function with it, as a loop's read of a generator that raises does. A
+    ; call that `links` is kept among those of its node. The first argument is given by the name
+    ; `named` where there is one. Gives the call recorded and what it answers: the invalid type
+    ; where there is no such method or what it answers is not known yet. One not `restricted` is
+    ; typed as declared, outside the restrictions of the code that calls it, as it is recorded only
+    ; for what it answers.
     (let fact no-fact)
     (let opened (call open-site))
     (let count U32)
@@ -3253,13 +3248,12 @@
     (param name Atom)
     (param site SyntaxId)
     (param argument TypeId)
-    ; A method a markup element takes a line of its body with, which no call in the source
-    ; writes: the one of the name that the value is an argument of, but one that would take what
-    ; an optional holds, which the reference passes over. Its errors leave the function with the
-    ; call, as those of a call written do. Gives the call recorded, kept apart from the calls of the
-    ; line, and the type the method takes; no type where the element has no such method. What the
-    ; method answers is no type where it answers nothing, and the invalid type where that is not
-    ; known yet.
+    ; A method a markup element takes a line of its body with, which no call in the source writes:
+    ; the one of the name that the value is an argument of, but one that would take what an optional
+    ; holds, which is passed over. Its errors leave the function with the call, as those of a call
+    ; written do. Gives the call recorded, kept apart from the calls of the line, and the type the
+    ; method takes; no type where the element has no such method. What the method answers is no type
+    ; where it answers nothing, and the invalid type where that is not known yet.
     (let fact no-fact)
     (let answer no-type)
     (let opened (call open-site))
@@ -3495,8 +3489,8 @@
     (param name Atom)
     (param syntax SyntaxId (= 0))
     (param role CallRole (= .role-answer))
-    ; A getter the reference's loop lowering reads on a container: a cursor iterable's initial
-    ; state, whose type the stepping call takes.
+    ; A getter a loop reads on a container: a cursor iterable's initial state, whose type the
+    ; stepping call takes.
     (let site (call open-site))
     (call (. ranking begin) (. site shapes) (. site types))
     (let hit (call (. ranking dispatch-getter) receiver name))
@@ -3685,11 +3679,11 @@
     (param container TypeId)
     (param key TypeId)
     (param item TypeId)
-    ; An index of an index assigned, where what `[]=` answers for the item is planned to be
-    ; stored: the answer is assigned to the inner index in turn, through the `[]=` of the object
-    ; the inner index reads from, as TypeScript does. The function is recorded at the inner
-    ; index. It is asked with the key as the inner index has it and the item as answered, and
-    ; no conversion is recorded for either: emission refuses where one would be needed.
+    ; An index of an index assigned, where what `[]=` answers for the item is planned to be stored:
+    ; the answer is assigned to the inner index in turn, through the `[]=` of the object the inner
+    ; index reads from. The function is recorded at the inner index. It is asked with the key as the
+    ; inner index has it and the item as answered, and no conversion is recorded for either:
+    ; emission refuses where one would be needed.
     (if (!= (call (. facts plan-of) (. frame instance) id) .plan-store-answer)
       (return)
     )
@@ -3754,10 +3748,10 @@
     (param receiver TypeId)
     (param hit (? Hit))
     (param capture (? RowCapture) (= null))
-    ; A member called on a name that stands for the case of a row runs on the row, as TypeScript's
-    ; `table-row-extension` runs it: one of the case itself on the case's cells, an instance of
-    ; its own, and one of a base every case shares on the row itself, an extension's member of
-    ; that base among them though it runs on the case elsewhere.
+    ; A member called on a name that stands for the case of a row runs on the row: one of the case
+    ; itself on the case's cells, an instance of its own, and one of a base every case shares on the
+    ; row itself, an extension's member of that base among them though it runs on the case
+    ; elsewhere.
     (if (or (not hit) (not capture) (call (. ranking ambiguity)))
       (return hit)
     )
@@ -3918,8 +3912,7 @@
     (param module ModuleId)
     (param decl DeclId)
     ; The interface that declares a function called on a receiver, among the receiver and the
-    ; interfaces it is derived from, as the reference fills the function's slot in that interface's
-    ; part of a table. The receiver where the function belongs to no interface found.
+    ; interfaces it is derived from. The receiver where the function belongs to no interface found.
     (let owner DeclId 0)
     (match? ([] (. ([] (. program modules) module) decls) decl)
       (case (call .decl-function fn)
@@ -3988,9 +3981,9 @@
     (param missing-site SyntaxId (= 0))
     (param receiver TypeId (= no-type))
     (param piped SyntaxId (= 0))
-    ; A call of a function that a property the receiver delegates to answers keeps, with the
-    ; call, the properties read from the receiver to what the function takes. A call that may take a
-    ; function whose parameters write a type that names nothing stops there, as TypeScript's does.
+    ; A call of a function that a property the receiver delegates to answers keeps, with the call,
+    ; the properties read from the receiver to what the function takes. A call that may take a
+    ; function whose parameters write a type that names nothing stops there.
     (let owner delegator)
     (= delegator no-type)
     (if (!= (. ranking missing-site) 0)
@@ -4259,7 +4252,7 @@
   )
   (fn-expr _ answers-table-index Bool
     ; Whether the call is an index of a table or of a view of one by an integer, or an assignment
-    ; through one, which TypeScript answers itself without choosing a function.
+    ; through one, which the compiler answers itself without choosing a function.
     (case? (or (!= (. ranking request) .request-method) (not name) (== (. ranking shape-count) 0))
       false
     )
@@ -4397,17 +4390,17 @@
     ; Turns the winning candidate into the callee instance and records what the call site learned:
     ; the pair relation per argument, literal fits, conversions, enum symbols, the list a variadic
     ; tail is made into, and default conversions. An integer written with no suffix that a parameter
-    ; holds takes the parameter's type, and needs no conversion. Where an argument of the tail has a name or a
-    ; bullet `•?`, what it gives the list before its conversion is kept at the argument: the
-    ; tuple of its name and its value, or what it holds where it is present. A tail with a bullet
-    ; `•?` appends each argument to the list, by a call recorded at the argument. A list of one
-    ; bullet piped into the call at `piped` is converted for a reason of its own, apart from the
+    ; holds takes the parameter's type, and needs no conversion. Where an argument of the tail has a
+    ; name or a bullet `•?`, what it gives the list before its conversion is kept at the argument:
+    ; the tuple of its name and its value, or what it holds where it is present. A tail with a
+    ; bullet `•?` appends each argument to the list, by a call recorded at the argument. A list of
+    ; one bullet piped into the call at `piped` is converted for a reason of its own, apart from the
     ; pipe's value, which is kept at the same node: the first argument written at the pipe. A case
-    ; named by its symbol alone is a case of the parameter's type where that type has it, as the
-    ; reference casts it there, whatever type the call was ranked with; one that several types have,
-    ; cast to a parameter type without it, is of none of them (`keeps-symbol`). What is known of
-    ; properties ends at the call, unless the compiler answers it in place (`answered-in-place`) or
-    ; that is left to the caller (`deferred`).
+    ; named by its symbol alone is a case of the parameter's type where that type has it, whatever
+    ; type the call was ranked with; one that several types have, cast to a parameter type without
+    ; it, is of none of them (`keeps-symbol`). What is known of properties ends at the call, unless
+    ; the compiler answers it in place (`answered-in-place`) or that is left to the caller
+    ; (`deferred`).
     (call prove-casts hit syntax)
     (call note-case-owners hit syntax)
     (let empty U32 (. ArgumentFill fill-empty))
@@ -4688,9 +4681,9 @@
     (param syntax SyntaxId)
     (param list TypeId)
     ; Records what a list written is made with: the constructor that makes the empty list, the
-    ; function that reserves room for its items, and the one that answers where the array the
-    ; list keeps them in holds them. A call's variadic tail is such a list, recorded at the call.
-    ; The list is made in the zone it is written in, as TypeScript makes it.
+    ; function that reserves room for its items, and the one that answers where the array the list
+    ; keeps them in holds them. A call's variadic tail is such a list, recorded at the call. The
+    ; list is made in the zone it is written in.
     (if (or (== list invalid-type) (== list no-type))
       (return)
     )
@@ -4768,11 +4761,11 @@
     (param key TypeId)
     (param first FactId)
     (param read TypeId)
-    ; TypeScript reads an item of an array of numbers by an index, or a field of numbers of an item
-    ; of an array of structs, where the array's storage holds it, when the index is less than the
-    ; array's size, and calls the function that answers for an index the array does not hold
-    ; anywhere else. Where `first` is the call of `[]` recorded at the index, of ReadableArray's
-    ; own on an array, and `read` the type of the number read, the call then names that function.
+    ; An item of an array of numbers is read by an index, or a field of numbers of an item of an
+    ; array of structs, where the array's storage holds it, when the index is less than the array's
+    ; size, and the function that answers for an index the array does not hold is called anywhere
+    ; else. Where `first` is the call of `[]` recorded at the index, of ReadableArray's own on an
+    ; array, and `read` the type of the number read, the call then names that function.
     (if (>= first (. facts calls length))
       (return)
     )
@@ -4806,8 +4799,8 @@
     (param callee InstanceId)
     (param read TypeId)
     ; Whether `[]` is ReadableArray's own of an index, called on an array, for a read of a number
-    ; TypeScript reads where it lies: a number, a truth or a character of 1, 8, 16, 32 or 64 bits,
-    ; or a C pointer to what is itself a pointer.
+    ; read where it lies: a number, a truth or a character of 1, 8, 16, 32 or 64 bits, or a C
+    ; pointer to what is itself a pointer.
     (if (or (== callee no-instance) (!= (. ([] (. instances signatures) callee) args count) 1) not-indexed)
       (return false)
     )
@@ -5069,8 +5062,8 @@
   (fn-do _ redefaulted U32
     (param hit Hit)
     ; The parameters a call of a constructor of a class above the one it makes gives no value for,
-    ; with a default, named as a property the class it makes writes a default of its own for, as
-    ; the reference's `redefaultedArgNames` finds them: a bit for each, among the first 32.
+    ; with a default, named as a property the class it makes writes a default of its own for: a bit
+    ; for each, among the first 32.
     (let owner-module ([] (. program modules) (. hit module)))
     (let mask 0u32)
     (match? ([] (. owner-module decls) (. hit decl))
@@ -5108,7 +5101,7 @@
     (param owner DeclId)
     ; Whether a class, or one above it and below the class that declares a constructor, writes its
     ; own default for the property of a name: a property it declares of the name with a value, or a
-    ; value its root `<This` gives it, as the reference's `redefaultsProperty` finds one.
+    ; value its root `<This` gives it.
     (let current receiver)
     (while (!= current no-type)
       (let ref (call class-ref types current))

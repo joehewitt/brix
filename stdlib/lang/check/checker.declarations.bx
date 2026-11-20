@@ -69,9 +69,8 @@
 (fn-do _ redeclares-class Bool
   (param classes (of Map ClassName Bool))
   (param class ClassDecl)
-  ; Whether a class has the name and the number of type parameters of one its module declares
-  ; before it, which `classes` holds, and holds from now on. The reference takes the later of
-  ; the two wherever the name is written, which is not modeled.
+  ; Whether a class has the name and the number of type parameters of one its module declares before
+  ; it, which `classes` holds, and holds from now on.
   (let key (call ClassName (. class name) (. class type-args count)))
   (if (?? ([] classes key) false)
     (return true)
@@ -109,11 +108,10 @@
   )
   (fn-do + initialize-class _
     (param decl DeclId)
-    ; What a type declares is checked once, where the reference checks it: when the type is first
-    ; used, by the checker of its module's statements where they use it and otherwise after the
-    ; program is typed (`check-used-classes`). A type nothing uses is not checked. Its base and
-    ; associated types come first, then its properties, getters and events in the order it declares
-    ; them.
+    ; What a type declares is checked once: when the type is first used, by the checker of its
+    ; module's statements where they use it and otherwise after the program is typed
+    ; (`check-used-classes`). A type nothing uses is not checked. Its base and associated types come
+    ; first, then its properties, getters and events in the order it declares them.
     (let key (. (call DeclRef module decl) key))
     (if (!= ([] (. types checked-classes) key) null)
       (return)
@@ -426,12 +424,12 @@
   )
   (fn-do + check-top-level _
     (param id SyntaxId)
-    ; Checks what a module declares, then its statements. A declaration the module holds no row
-    ; for is one no pass models, so it is declined where it is written: no program that holds one
-    ; is taken for understood. One that is a member of a class waits for the class to be used, but
-    ; a section with nothing written in it is the reference's error, and so are a section that
-    ; follows the class's content (`follows-content`) and a member that takes a name the class took
-    ; before (`declare-members`). A local the statements declare again is settled as a block's is
+    ; Checks what a module declares, then its statements. A declaration the module holds no row for
+    ; is one no pass models, so it is declined where it is written: no program that holds one is
+    ; taken for understood. One that is a member of a class waits for the class to be used, but a
+    ; section with nothing written in it is an error, and so are a section that follows the class's
+    ; content (`follows-content`) and a member that takes a name the class took before
+    ; (`declare-members`). A local the statements declare again is settled as a block's is
     ; (`settle-redeclared`).
     (let decls (. ([] (. program modules) module) decls))
     (let previous (. facts initializer))
@@ -628,8 +626,8 @@
   )
   (fn-do _ note-main-end _
     (param id SyntaxId)
-    ; The program's main calls `end-main` of core where its statements end, before its cleanups run,
-    ; as the reference does. The call is recorded at the main's node.
+    ; The program's main calls `end-main` of core where its statements end, before its cleanups run.
+    ; The call is recorded at the main's node.
     (let found (call (. program module-by-name) "core/task"))
     (if (not found)
       (call decline id)
@@ -655,11 +653,10 @@
   )
   (fn-do _ declare-members _
     (param declared (of RowRange DeclId))
-    ; Checks each member of a class or a facet against those it declares before, as the reference
-    ; does as it declares the class, whether or not the class is used: a property or a getter takes a name for
-    ; a property, which a property or a getter of that name redefines, and an event or an associated
-    ; type takes a name for a member, which nothing may take again. A setter takes the name for a
-    ; property where nothing took it.
+    ; Checks each member of a class or a facet against those it declares before, whether or not the
+    ; class is used: a property or a getter takes a name for a property, which a property or a
+    ; getter of that name redefines, and an event or an associated type takes a name for a member,
+    ; which nothing may take again. A setter takes the name for a property where nothing took it.
     (let owner ([] (. program modules) module))
     (let properties (list Atom))
     (let members (list Atom))
@@ -766,12 +763,12 @@
   (fn-do _ check-default-cycles _
     (param decl DeclId)
     (param class ClassDecl)
-    ; A stored property's value cannot depend on itself through the values of the properties
-    ; beside it. The values are followed once: a property is not reached yet, being followed, or
-    ; done, and a value that reads one being followed closes a circle. Only then is the first
-    ; property declared that is on a circle looked for, to be reported: as one that initializes
-    ; after the class's markup where a value on the circle reads an element the markup names. A
-    ; state machine is no such value: its cases run on the object, as the reference compiles them.
+    ; A stored property's value cannot depend on itself through the values of the properties beside
+    ; it. The values are followed once: a property is not reached yet, being followed, or done, and
+    ; a value that reads one being followed closes a circle. Only then is the first property
+    ; declared that is on a circle looked for, to be reported: as one that initializes after the
+    ; class's markup where a value on the circle reads an element the markup names. A state machine
+    ; is no such value: its cases run on the object.
     (let owner ([] (. program modules) module))
     (let count (. class members count))
     (let values ([] SyntaxId count))
@@ -878,8 +875,8 @@
     (param class ClassDecl)
     (param values (list SyntaxId))
     (param start U32)
-    ; Whether a value on a circle, or one it reads, reads an element the markup of the class
-    ; names, so that the reference puts the circle off until the markup has run.
+    ; Whether a value on a circle, or one it reads, reads an element the markup of the class names,
+    ; so that the circle is put off until the markup has run.
     (let mark (. scratch types mark))
     (let owner (call (. types class-pattern-with-args) module decl mark))
     (call (. scratch types rewind) mark)
@@ -2045,11 +2042,11 @@
   (fn-do _ check-return-mode _
     (param decl DeclId)
     (param returns SyntaxId)
-    ; A function that is not `do` is one expression, which the reference checks as it declares the
-    ; function, whether or not anything calls it: its body returns nowhere explicitly, and outside
-    ; a `do` block it declares nothing immediately, loops nowhere and yields nothing, apart from
-    ; in the functions, tasks and deferred blocks written in it. One written to give `Void` gives
-    ; nothing. Closures are checked where they are typed (`require-do`).
+    ; A function that is not `do` is one expression, which is checked as the function is declared,
+    ; whether or not anything calls it: its body returns nowhere explicitly, and outside a `do`
+    ; block it declares nothing immediately, loops nowhere and yields nothing, apart from in the
+    ; functions, tasks and deferred blocks written in it. One written to give `Void` gives nothing.
+    ; Closures are checked where they are typed (`require-do`).
     (let described (call describe program module decl))
     (if (or (not described) (not (call checks-at-declaration described)))
       (return)
