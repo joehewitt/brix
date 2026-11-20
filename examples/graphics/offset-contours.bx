@@ -1,8 +1,10 @@
 ; Contour lines from path offsets. Three hills are merged into one coastline with
 ; `union`, and an `OffsetPlan` of it is offset again and again: outward into rings
 ; of water, inward into tiers of land that part into separate peaks as they climb.
-; Drag a hill to reshape the island, set the spacing between contours, and raise
-; the sea to drown the lowlands and split the island at its saddles.
+; Drag a hill to reshape the island, or into a ring around a lagoon, whose water
+; deepens toward its middle. Pick the join that turns each contour's corners, set
+; the spacing between contours, and raise the sea to drown the lowlands and split
+; the island at its saddles.
 (import /graphics/boolean)
 (import /graphics/canvas)
 (import /graphics/color)
@@ -24,6 +26,17 @@
 (prop _ land-ramp (list RGBA) (= (in (call RGBA each) (list "#6da665" "#a9c672" "#e6d48c" "#c8955a" "#94705a" "#f2eee8"))))
 (prop _ water-rings _ (= 7))
 (prop _ highest-tier _ (= 80))
+(prop _ sharpest-miter Length (= 4))
+(prop _ joins (list (tuple String JoinType))
+  (=
+    (list
+      (tuple "Round" .round-join-type)
+      (tuple "Bevel" .bevel-join-type)
+      (tuple "Miter" .miter-join-type)
+      (tuple "Square" .square-join-type)
+    )
+  )
+)
 
 (main
   (<> App
@@ -39,14 +52,24 @@
 (type + ContourPanel (is Box)
   (prop + spacing F64 (= 12))
   (prop + tide F64 (= 0))
+  (prop + join JoinType (= .round-join-type))
   (content
     (<> This (• flex-col)
       (<> ContourMap (• flex 1) (• bg sea)
         (= spacing #spacing)
         (= tide #tide)
+        (= join #join)
       )
       (<> Box (• flex-row) (• items-center) (• p 12)
         (= gap 12)
+        (<> (of SegmentedControl JoinType)
+          (<-> selected join)
+          (for (in (tuple title kind) joins)
+            (<> (of Segment JoinType) (text: title)
+              (= value kind)
+            )
+          )
+        )
         (<> Label (text: "Spacing"))
         (<> Slider (• w 160)
           (= minimum 5)
@@ -90,6 +113,7 @@
 (type + ContourMap (is Box)
   (prop + spacing F64 (= 12))
   (prop + tide F64 (= 0))
+  (prop + join JoinType (= .round-join-type))
   (prop + hills (list Hill)
     (=
       (call List
@@ -106,7 +130,7 @@
     (= overflow-x (. ScrollOverflow clip))
     (= overflow-y (. ScrollOverflow clip))
   )
-  (depends invalidate-paint spacing tide hills)
+  (depends invalidate-paint spacing tide hills join)
   (subscribe-for (on event pointer-down)
     (= grabbed (call nearest-hill (. event point)))
     (call follow (. event point))
@@ -147,17 +171,17 @@
     (let coast (call coastline hills area unit))
     (return-if (if (not coast)))
     (blank)
-    (let plans (call plans-of coast))
+    (let plan (call offset-plan coast))
     (do-use (. canvas saved-state)
       (for (in ring (..< 0 water-rings))
         (let depth (- water-rings ring))
         (let fill (call ramp water-ramp (/ (- depth 1) (- water-rings 1.0))))
-        (call paint-level canvas (call offsets plans (- (* depth spacing) tide)) fill water-line 2px)
+        (call paint-level canvas (call offset-plan-path plan (- (* depth spacing) tide) join sharpest-miter) fill water-line 2px)
       )
-      (call paint-level canvas (call offsets plans (- tide)) (call ramp land-ramp (/ tide (* unit 0.16))) coast-ink 3.5px)
+      (call paint-level canvas (call offset-plan-path plan (- tide) join sharpest-miter) (call ramp land-ramp (/ tide (* unit 0.16))) coast-ink 3.5px)
       (for (in tier (..< (+ (as (call floor (/ tide spacing)) Int) 1) highest-tier))
-        (let level (call offsets plans (* tier (- spacing))))
-        (if (not (. level length))
+        (let level (call offset-plan-path plan (* tier (- spacing)) join sharpest-miter))
+        (if (not (. level count))
           (break)
         )
         (let fill (call ramp land-ramp (/ (* tier spacing) (* unit 0.16))))
@@ -179,41 +203,21 @@
   (return coast)
 )
 
-(fn-expr + plans-of (list OffsetPlan)
-  (param coast Path)
-  (in (call offset-plan each) (. coast paths))
-)
-
-(fn-do + offsets (list Path)
-  (param plans (list OffsetPlan))
-  (param distance Length)
-  (let paths (list Path))
-  (for (in plan plans)
-    (let path (call offset-plan-path plan distance .round-join-type))
-    (if (. path count)
-      (+= paths path)
-    )
-  )
-  (return paths)
-)
-
 (fn-do + paint-level _
   (param canvas Canvas)
-  (param paths (list Path))
+  (param path Path)
   (param fill RGBA)
   (param line RGBA)
   (param weight Length)
+  (return-if (if (not (. path count))))
+  (blank)
   (= (. canvas fill-color) null)
   (= (. canvas stroke-color) line)
   (= (. canvas stroke-width) weight)
-  (for (in path paths)
-    (call (. path outline) canvas)
-  )
+  (call (. path outline) canvas)
   (= (. canvas stroke-color) null)
   (= (. canvas fill-color) fill)
-  (for (in path paths)
-    (call (. path outline) canvas)
-  )
+  (call (. path outline) canvas)
 )
 
 (fn-expr + ramp RGBA
