@@ -272,37 +272,55 @@ def offer_path(options, home):
     directory = os.path.join(home, 'bin')
     if directory in [os.path.realpath(part) for part in os.environ.get('PATH', '').split(':') if part]:
         return
-    startup, line = shell_startup(directory)
-    if not startup:
+    startups = shell_startups(directory)
+    if not startups:
         say('Add %s to PATH to run brix' % directory)
         return
-    if os.path.isfile(startup):
-        with open(startup) as file:
-            if line in file.read().splitlines():
-                return
+    missing = [(startup, line) for startup, line in startups if not has_line(startup, line)]
+    if not missing:
+        return
+    names = ' and '.join(shown(startup) for startup, line in missing)
     wanted = options.modify_path
     if wanted is None:
-        wanted = ask_yes('Add %s to PATH in %s?' % (shown(directory), shown(startup)), True, options.yes)
+        wanted = ask_yes('Add %s to PATH in %s?' % (shown(directory), names), True, options.yes)
     if not wanted:
         say('Add %s to PATH to run brix' % directory)
         return
-    os.makedirs(os.path.dirname(startup), exist_ok=True)
-    with open(startup, 'a') as file:
-        file.write('\n%s\n' % line)
-    say('Added to %s:\n    %s\nOpen a new terminal to use it' % (shown(startup), line))
+    for startup, line in missing:
+        os.makedirs(os.path.dirname(startup), exist_ok=True)
+        with open(startup, 'a') as file:
+            file.write('\n%s\n' % line)
+    lines = sorted(set(line for startup, line in missing))
+    say('Added to %s:\n%s\nOpen a new terminal to use it' % (names, '\n'.join('    ' + line for line in lines)))
 
 
-def shell_startup(directory):
+def shell_startups(directory):
     shell = os.path.basename(os.environ.get('SHELL', ''))
     shown_directory = directory.replace(os.path.expanduser('~'), '$HOME', 1)
+    line = 'export PATH="%s:$PATH"' % shown_directory
+    login = (login_profile(), line)
     if shell == 'zsh':
-        return os.path.expanduser('~/.zshrc'), 'export PATH="%s:$PATH"' % shown_directory
+        return [(os.path.expanduser('~/.zshenv'), line), login]
     if shell == 'bash':
-        startup = '~/.bash_profile' if os.uname().sysname == 'Darwin' else '~/.bashrc'
-        return os.path.expanduser(startup), 'export PATH="%s:$PATH"' % shown_directory
+        return [(os.path.expanduser('~/.bashrc'), line), login]
     if shell == 'fish':
-        return os.path.expanduser('~/.config/fish/conf.d/brix.fish'), 'fish_add_path %s' % directory
-    return None, None
+        return [(os.path.expanduser('~/.config/fish/conf.d/brix.fish'), 'fish_add_path %s' % directory), login]
+    return []
+
+
+def login_profile():
+    for name in ('~/.bash_profile', '~/.bash_login', '~/.profile'):
+        path = os.path.expanduser(name)
+        if os.path.isfile(path):
+            return path
+    return os.path.expanduser('~/.profile')
+
+
+def has_line(startup, line):
+    if not os.path.isfile(startup):
+        return False
+    with open(startup) as file:
+        return line in file.read().splitlines()
 
 
 def ask_yes(question, default, assume):
