@@ -1,12 +1,16 @@
 ; ChatGPT in the terminal. Type a message and press Enter, and the reply streams in as Markdown.
-; It needs an OpenAI API key in OPENAI_API_KEY, and reads the model from OPENAI_MODEL. To try it
-; without a key, start chatgpt-mock-server in this folder, then set MOCK_CHATGPT_BASE_URL to
-; http://localhost:8787/v1 and MOCK_CHATGPT_API_KEY to any text.
+; It talks to OpenAI with the key in OPENAI_API_KEY, the model in OPENAI_MODEL, and the address
+; in OPENAI_BASE_URL, if set. With no key it talks to a mock of the API instead, served inside this
+; program: under a fake network the mock listens at api.openai.com and the client connects there
+; as it would for real, with no port opened and nothing sent. The mock's log goes to a quiet fake
+; console, so the tasks that serve it print nothing over the chat, while the chat draws as usual.
+(import ./chatgpt-mock)
 (import /ai)
 (import /ai/openai/completions)
+(import /net/fake-network)
+(import /net/network)
 (import /net/url)
 (import /os/env)
-(import /os/exit)
 (import /os/file)
 (import /tui)
 (import /tui/colors)
@@ -14,20 +18,32 @@
 (blank)
 
 (main
-  (let api-key (?? (call setting "OPENAI_API_KEY") (call setting "MOCK_CHATGPT_API_KEY")))
-  (if (not api-key)
-    (<- stderr (str (call missing-api-key-message) "\n"))
-    (call exit 1)
+  (let model (?? (call setting "OPENAI_MODEL") "gpt-6.1-sol"))
+  (let api-key (call setting "OPENAI_API_KEY"))
+  (if api-key
+    (call chat (call OpenAICompletions api-key (call base-url)) model model)
+    (else
+      (do-with network (call FakeNetwork)
+        (let server (call mock-chatgpt-server "api.openai.com" 443))
+        (do-with console (call QuietConsole)
+          (call (. server start))
+        )
+        (call chat (call OpenAICompletions "mock-key") model (str model ", from the mock: OPENAI_API_KEY is not set"))
+      )
+    )
   )
-  (blank)
-  (let model (?? (call setting "OPENAI_MODEL") (call setting "MOCK_CHATGPT_MODEL") "gpt-6.1-sol"))
-  (blank)
-  (<> App
+)
+
+(fn-do + chat _
+  (param client AIProvider)
+  (param model String)
+  (param status String)
+  (<> App (id: app)
     (<> Window (id: win) (• flex-col)
       (<> Box (• flex-row) (• flex 1)
         (<> Box (• flex 1))
         (<> ChatShell
-          (= client (call chat-client api-key))
+          (= client client)
           (= model model)
         )
         (<> Box (• flex 1))
@@ -42,9 +58,29 @@
         (= action (=> () :do (call (. win close))))
       )
       (<> StatusBar
-        (= message model)
+        (= message status)
       )
     )
+  )
+  (call (. app run))
+)
+
+(type + QuietConsole
+  (prop _ sink File)
+  (fn-do + This _ (?! Error)
+    (= sink (call File "/dev/null" (. FileFlags read-write-mode)))
+  )
+  (fn-do + print _
+    (param text String)
+  )
+  (fn-do + standard-input File
+    (return sink)
+  )
+  (fn-do + standard-output File
+    (return sink)
+  )
+  (fn-do + standard-error File
+    (return sink)
   )
 )
 
@@ -340,23 +376,10 @@
   )
 )
 
-(fn-expr + missing-api-key-message _
-  (paragraph
-    "chatgpt needs an OpenAI API key, and OPENAI_API_KEY is not set."
-    "Set it to your key and run chatgpt again:"
-    ""
-    "    export OPENAI_API_KEY=sk-..."
-    ""
-    "To try it without a key, start chatgpt-mock-server, then set MOCK_CHATGPT_BASE_URL"
-    "to http://localhost:8787/v1 and MOCK_CHATGPT_API_KEY to any text."
-  )
-)
-
-(fn-expr + chat-client OpenAICompletions
-  (param api-key String)
-  (call OpenAICompletions api-key (if-expr base-url (call URL base-url) openai-api-base))
+(fn-expr + base-url URL
+  (if-expr address (call URL address) openai-api-base)
   (where
-    (lazy base-url (?? (call setting "OPENAI_BASE_URL") (call setting "MOCK_CHATGPT_BASE_URL")))
+    (lazy address (call setting "OPENAI_BASE_URL"))
   )
 )
 

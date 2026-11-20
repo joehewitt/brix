@@ -49,8 +49,9 @@ ships. Unlike the core tests, they show how complete programs are written.
   for what they show and what they do, as `patterns/tuples-fizzbuzz.bx` is. `classics` holds
   familiar programs, such as `lisp-interpreter.bx`, `game-of-life.bx` and `text-adventure.bx`.
 - [`examples/net`](../examples/net): an HTTP client and server, a WebSocket chat server for
-  browsers with a client that joins it, and an MCP server. `chatgpt-mock-server.bx` stands in for
-  the OpenAI API that `chatgpt.bx` talks to.
+  browsers with a client that joins it, and an MCP server. `chatgpt.bx` talks to OpenAI, or, with
+  no key, to the stand-in for its API in `chatgpt-mock.bx`, served inside the program under a fake
+  network. `chatgpt-mock-server.bx` serves the same stand-in on a port.
 - [`examples/tui`](../examples/tui): terminal programs, from the small `order.bx`, `timer.bx` and
   `todo.bx` to `chromatic`, a pixel animation studio, `pulse`, a system dashboard, and
   `githistory`, a Git history browser with a commit graph, diffs and live updates, plus one program
