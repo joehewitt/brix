@@ -13,6 +13,7 @@
 (blank)
 (prop _ precise-zoom-rate _ (= 0.01))
 (prop _ line-zoom-rate _ (= 0.15))
+(prop _ wheel-line _ (= 40.0))
 (prop _ click-slop _ (= 4.0))
 (prop _ longest-step _ (= 0.1))
 (prop _ band-count _ (= (* (call usable-core-count) 3)))
@@ -50,8 +51,15 @@
   (content
     (<> This
       (for (on event scroll)
-        (let rate (if-expr (. event is-precise) precise-zoom-rate line-zoom-rate))
-        (call (. camera zoom-by) (call exp (* (- (. event delta-y)) rate)) (. event point))
+        (let modifiers (. event modifiers))
+        (if (or (. modifiers command) (. modifiers control) (. modifiers option))
+          (let rate (if-expr (. event is-precise) precise-zoom-rate line-zoom-rate))
+          (call (. camera zoom-by) (call exp (* (- (. event delta-y)) rate)) (. event point))
+          (else
+            (let line (if-expr (. event is-precise) 1.0 wheel-line))
+            (call (. camera pan) (call Point (* (- (. event delta-x)) line) (* (- (. event delta-y)) line)))
+          )
+        )
         (call (. event cancel))
       )
       (for (on event magnify)
