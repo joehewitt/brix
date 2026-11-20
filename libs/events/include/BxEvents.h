@@ -65,6 +65,7 @@ extern "C" BRIX_WITHOUT_GC bool brixRequestProcessTermination(int exitCode);
 extern "C" BRIX_WITHOUT_GC bool brixProcessTerminationRequested();
 extern "C" BRIX_WITHOUT_GC int brixGetProcessExitCode();
 extern "C" BRIX_WITHOUT_GC void brixRequestTerminationOnSignals();
+extern "C" BRIX_WITHOUT_GC bool brixPowerIsLimited();
 extern "C" BRIX_WITHOUT_BLOCKING bool brixRunMainTaskQueueHost(
     BxMainTaskQueueHostRunFunc run,
     BxMainTaskQueueHostWakeFunc wake,

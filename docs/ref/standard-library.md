@@ -181,7 +181,8 @@ Files, processes and the environment. There is no `/os` module; import each one.
   effect), `/os/fake-process` (`FakeProcess`, a fake for `process` that runs a Brix script for each
   program started under it), `/os/pty`,
   `/os/signal`, `/os/memory-pressure` (`memory-pressure`, which sends a warning or critical level
-  when macOS or iOS runs short of memory), `/os/tty`, `/os/shared-memory`, `/os/message-channel`,
+  when macOS or iOS runs short of memory), `/os/power` (`is-on-battery`, true while a Mac runs on
+  a battery or another limited power source), `/os/tty`, `/os/shared-memory`, `/os/message-channel`,
   `/os/outbox` and `/os/mach-port`.
 - **Terminals:** `/os/terminal` gathers a terminal emulator, a shell session in a pseudo-terminal,
   and terminal paths.
