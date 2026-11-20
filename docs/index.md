@@ -63,7 +63,7 @@ ships. Unlike the core tests, they show how complete programs are written.
   reduce motion switch. `quakes` is a live earthquake map that loads the USGS feed and pans and
   zooms under glass panels, and `pattern-designer` edits repeating patterns with undo, files and
   SVG export. `terminal` runs your shell in tabs and windows, with menus and key shortcuts.
-  `control-field` zooms from ten animated control cards out to half a million on an endless canvas,
+  `control-field` zooms from one animated control card out to half a million on an endless canvas,
   simulating every card on worker threads and drawing them as quad batches.
 - [`examples/games`](../examples/games): three macOS games, `resonance`, `prism-break` and
   `clatter-hill`, a marble run with sound.
