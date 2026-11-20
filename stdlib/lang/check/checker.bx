@@ -4983,8 +4983,9 @@
   )
   (fn-do _ type-written-defaults _
     ; Types, as the function is checked, each default written as a constant (`written-constant`),
-    ; which is evaluated as the function's module starts whether or not a call takes it. Any other
-    ; default is typed where a call first takes it (`type-default`).
+    ; whether or not a call takes it. Of those, one that runs code and that the tables take for a
+    ; constant (`ProgramTables.is-constant-default`) is evaluated as the function's module starts.
+    ; Any other default is typed where a call first takes it (`type-default`).
     (let owner-module ([] (. program modules) module))
     (match? ([] (. owner-module decls) (. frame decl))
       (case (call .decl-function fn)
@@ -8476,9 +8477,9 @@
     ; be converted to the type of the function's items once that is known. The items have the type
     ; the yields unify to in the order they are written: each with the type the relation before it
     ; converted to, so that of two tuples or two lists neither of which is the wider, the first
-    ; stays. Nothing is unified where the function declares its items. The order of the blocks is
-    ; the order written only outside loops: a fold that gives another type the other way round is
-    ; noted, with whether any yield is in a loop. The yields of a list of feeds are kept
+    ; stays. Nothing is unified where the function declares its items. A fold that gives another
+    ; type the other way round is noted, with whether any yield is in a loop: where one is, the
+    ; function has no shape (`Instances.set-generator`). The yields of a list of feeds are kept
     ; until the list is typed, and folded in the order of its blocks, which visit each branch's
     ; failing successor first: a feed that tests before it yields, a `**` by its loop and a `*?` by
     ; its test, yields after everything the feeds after it yield. A yield written as a number with
