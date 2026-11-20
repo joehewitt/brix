@@ -1743,6 +1743,75 @@ tells heads
 tells tails
 ```
 
+### A setter of an interface, called through a value of the interface, stores into the property the class's delegate holds, for each instance of a generic interface delegated to a property of its own.
+
+```brix
+(main
+  (let holder (call Holder))
+  (let titled Titled holder)
+  (= (. titled label) "renamed")
+  (print (. titled label))
+  (print (. holder label))
+  (let labeled (as holder (of Labeled String)))
+  (= (. labeled value) "seven")
+  (print (. labeled value))
+  (let counted (as holder (of Labeled Int)))
+  (= (. counted value) 8)
+  (print (. counted value))
+)
+
+(type + Titled (is Interface)
+  (fn-expr + label String :get)
+  (fn-do + label _ :set
+    (param value String)
+  )
+)
+
+(type + (of Labeled Item) (is Interface)
+  (fn-expr + value Item :get)
+  (fn-do + value _ :set
+    (param value Item)
+  )
+)
+
+(type + Holder
+  (delegate Titled)
+  (prop _ box Box)
+  (delegate (of Labeled Int))
+  (prop _ numbers (of Cell Int))
+  (delegate (of Labeled String))
+  (prop _ texts (of Cell String))
+  (fn-do + This _
+    (= box (call Box "numbers"))
+    (= numbers (call (of Cell Int) 7))
+    (= texts (call (of Cell String) "six"))
+  )
+)
+
+(type + Box
+  (implements Titled)
+  (prop + label String)
+  (fn-do + This _
+    (param label _)
+  )
+)
+
+(type + (of Cell Item)
+  (implements (of Labeled Item))
+  (prop + value Item)
+  (fn-do + This _
+    (param value _)
+  )
+)
+```
+
+```output
+renamed
+renamed
+seven
+8
+```
+
 ### Self-referential generic interface conformance (Node as TreeHost'Node) compiles without recursing infinitely during type creation, and constrained generic entry points dispatch the host's concretely typed hook statically.
 
 ```brix

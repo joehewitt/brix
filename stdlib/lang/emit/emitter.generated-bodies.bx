@@ -686,11 +686,11 @@
     ; The function a slot of a witness table holds for a getter or a setter that a class
     ; answers with a property it stores: it reads the property of the object the interface
     ; value holds, or stores its argument there. A getter a tuple or a struct answers with a
-    ; field reads it where the value was boxed. A getter a property the class delegates to
-    ; answers reads the properties the type pass named to reach it first. A property that holds
-    ; what the optional a getter answers holds is wrapped in it. A property of any other type
-    ; than the getter answers or the setter is given has no shape here, no setter
-    ; of a value that is no object has, and nor has a setter or a lazy property reached so.
+    ; field reads it where the value was boxed. A getter or a setter a property the class
+    ; delegates to answers reads the properties the type pass named to reach it first. A property
+    ; that holds what the optional a getter answers holds is wrapped in it. A property of any
+    ; other type than the getter answers or the setter is given has no shape here, no setter
+    ; of a value that is no object has, and nor has a lazy property reached so.
     (let theirs ([] (. instances signatures) (. row proto)))
     (let place (. row property))
     (if (or (> (. theirs args count) 1) (!= (. theirs errors count) 0) (>= place (. types properties length)))
@@ -698,7 +698,7 @@
       (return)
     )
     (let lent (!= (. row through count) 0))
-    (if (and lent (or (== (. theirs args count) 1) (!= (. ([] (. types properties) place) storage-kind) .storage-eager)))
+    (if (and lent (!= (. ([] (. types properties) place) storage-kind) .storage-eager))
       (call refuse-class (. row value))
       (return)
     )
@@ -715,7 +715,8 @@
       (if (!= (. theirs returns) (. types void-type))
         (call refuse-class (. row value))
       )
-      (call store-held object 0 (. row value) place (call make-operand .operand-argument 1) given 0)
+      (let holder (call read-through 0 (call Typed object (. row value)) (. row through)))
+      (call store-held (. holder operand) 0 (. holder type) place (call make-operand .operand-argument 1) given 0)
       (call return-nothing)
       (return)
     )
