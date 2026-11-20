@@ -569,7 +569,7 @@ Exception: Dollars cannot be cast to Seconds; there is no conversion between the
 
 | Module | Units |
 | --- | --- |
-| `/time/duration` | `ns`, `µs`, `ms`, `s` or `seconds`, `minutes`, `hours`, `days`, `weeks`, `months` (31 days), `years` (365 days), `decades`, `centuries` and `milleniums`, on the base `Duration`. |
+| `/time/duration` | `ns`, `µs`, `ms`, `s` or `seconds`, `minutes`, `hours`, `days` and `weeks`, on the base `Duration`, and the calendar spans `months`, `years`, `decades`, `centuries` and `milleniums`, whole numbers of months in a family of their own. |
 | `/time/flicks` | `flicks`, joined to the durations. |
 | `/time/datetime` | `second`, `minute` and `hour`, [positions](#positions) in a minute, an hour and a day, and `am` and `pm`, whose literals are a `Time`: `3pm`. |
 | `/math` | `rad`, and `°` or `deg`. `π` is in radians. |
@@ -590,5 +590,11 @@ Exception: Dollars cannot be cast to Seconds; there is no conversion between the
   converts: `Hour` gives 0 to 23, so `(as 0.75%% Hour)`{.brix} is `18hour`.
 - **Durations** have methods: `(call (. 0.25s wait))`{.brix} waits, and `interval` makes a timer.
   Timeouts, waits and timers in the standard library take durations.
+- **Calendar spans.** Months and years differ in length, so `months` and `years` are no durations:
+  `(+ 1weeks 1months)` is an error. A `Date` or `DateTime` plus `months` or `years` is the same day
+  that many months later, or the last day of a month too short for it, so January 31 plus `1months`
+  is February 28, or 29 in a leap year. A duration's `approximate-months` and
+  `approximate-years` give its length in months and years of average length, whole, for
+  displays such as "3mo ago": `(. 90days approximate-months)`{.brix} is `2months`.
 - **Styles** use durations for motion, as in `200ms`, and percentages for keyframe stops and
   sizes. See Styles.

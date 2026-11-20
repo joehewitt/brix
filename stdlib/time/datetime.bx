@@ -174,6 +174,18 @@
   (fn-expr + (infix this > (param other CSeconds)) _
     (> since-epoch other)
   )
+  (fn-expr + (infix this + (param span Months)) DateTime
+    (call This second minute hour (. shifted day) (. shifted month) (. shifted year) zone)
+    (where
+      (lazy shifted (call shift-months (call Date day year) (as span Int)))
+    )
+  )
+  (fn-expr + (infix this - (param span Months)) DateTime
+    (call This second minute hour (. shifted day) (. shifted month) (. shifted year) zone)
+    (where
+      (lazy shifted (call shift-months (call Date day year) (- 0 (as span Int))))
+    )
+  )
   (fn-expr + (infix this - (param other DateTime)) _
     (call TimeDelta this other)
   )
@@ -450,6 +462,12 @@
   (fn-expr + (infix this + (param time Time)) _
     (call DateTime this time)
   )
+  (fn-expr + (infix this + (param span Months)) Date
+    (call shift-months this (as span Int))
+  )
+  (fn-expr + (infix this - (param span Months)) Date
+    (call shift-months this (- 0 (as span Int)))
+  )
 )
 
 (type + Time (is Tuple)
@@ -571,6 +589,16 @@
       (lazy end (. later since-epoch))
     )
   )
+)
+
+(fn-do _ shift-months Date
+  (param date Date)
+  (param count Int)
+  (let total (+ (* (as (. date year) Int) 12) (. date month number) count))
+  (let target-year (as (/ total 12) Year))
+  (let target-month (call (. target-year month) (% total 12)))
+  (let target-day (call min (+ (as (. date day number) Int) 1) (as (. target-month days) Int)))
+  (return (call (. (call (. target-month day) target-day) year) target-year))
 )
 
 (fn-expr _ wrap-clock F64

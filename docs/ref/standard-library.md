@@ -87,11 +87,12 @@ compiler, sets a larger one.
 Durations, dates, clocks and timers. `/time` gathers every module except `/time/timer` and
 `/time/fake-clock`.
 
-- `/time/duration`: `Duration`, the units from `ns` to `milleniums`, `wait` and `timeout`.
+- `/time/duration`: `Duration`, the units from `ns` to `weeks`, `wait` and `timeout`, and the
+  calendar spans from `months` to `milleniums`.
 - `/time/clock`: `ClockTime`, `measure`, and the `clock` effect, whose doors every read of the clock
   and every timed wait go through; see Functions.
 - `/time/datetime`: `DateTime`, `Date`, `Time`, `Month`, `now` and `today`, and the positions
-  `Hour`, `Minute` and `Second`.
+  `Hour`, `Minute` and `Second`. A `Date` or `DateTime` plus `months` is the same day months later.
 - `/time/zone`: `TimeZone`, `utc` and `local`.
 - `/time/timestamp`: reading and writing ISO 8601, RFC 2822 and RFC 3339 timestamps.
 - `/time/deadline`: `Deadline`.

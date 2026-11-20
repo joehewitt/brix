@@ -973,6 +973,35 @@ false
 false
 ```
 
+### Function values made from one generic function for two types are not equal, though their code is alike.
+
+```brix
+(main
+  (let a Halver (call (of half Apples) ...))
+  (let b Halver (call (of half Pears) ...))
+  (let c Halver (call (of half Apples) ...))
+  (print (== a b))
+  (print (== a c))
+  (print (call b 3))
+)
+
+(type-line + Apples (alias apples) (is F64))
+(type-line + Pears (alias pears) (is F64))
+
+(type + Halver (is (fn-type F64 (param amount F64))))
+
+(fn-expr + (of half Num) Num
+  (param amount Num)
+  (/ amount 2)
+)
+```
+
+```output
+false
+true
+1.5
+```
+
 ### An optional property of a function type given a function, a closure and nothing, and called where it holds one.
 
 ```brix

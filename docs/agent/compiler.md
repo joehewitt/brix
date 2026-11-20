@@ -32,10 +32,16 @@ that `.release.json` pins (`toolchain/compiler.py`).
    construct emission has no shape for is a `Refusal`, and refuses the whole program.
 6. **Emission round.** `EmissionWorker`s take functions heaviest first (`WorkQueue`). Each
    emits IR, inlines (`IRInliner`), lowers to MIR (`IRToMIR`) and runs the backend's
-   `FunctionPipeline`, all in its own arenas. A build daemon's round has two passes so it can
-   reuse functions.
-7. **Merge.** Literals are named in function order, through prefix sums over each function's
-   count. GC descriptors are sorted into one table.
+   `FunctionPipeline`, all in its own arenas. The round has two passes. The first emits every
+   function. One whose stack-trace name another shares waits with the shape of its IR
+   (`IRDigester.shape`), and `Folding.settle` folds those that lower to the same code into the
+   one whose symbol comes first, unless code holds a symbol of theirs as a value. The second
+   lowers the rest of them, and a build daemon's reuses functions there.
+7. **Merge.** `reached` points each relocation and constant-table label that names a folded
+   function at the one kept (`Folding.forwards`) as it walks them, so IR and records never name
+   the fold. Literals are named in
+   function order, through prefix sums over each function's count. GC descriptors are sorted into
+   one table.
 8. **Object and link.** `MachOWriter` writes the object. Then `Program.release-trees` and
    `Session.release-typing` free the trees and the typing state, and `link-executable` links.
 

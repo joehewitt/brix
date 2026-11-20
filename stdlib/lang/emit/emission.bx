@@ -1,5 +1,6 @@
 (import ./emission-memory)
 (import ./emitter)
+(import ./folding)
 (import ./inliner)
 (import ./ir-to-mir)
 (import ./layouts)
@@ -118,6 +119,9 @@
     (= count function-count)
   )
   (let arena (use (call Arena)))
+  (probe-group + emit.round.plan)
+  (let folding (call Folding tables count arena))
+  (probe-group - emit.round.plan)
   (let records (call (of (. arena allocate) CompactFunction) function-count))
   (let literals (call (of (. arena allocate) KeptLiterals) function-count))
   (let refusals (call (of (. arena allocate) Refusal) function-count))
@@ -127,7 +131,11 @@
   (let round-started (call clock))
   (probe-group + compiler.phase.emission)
   (probe emit.gc-objects (let gc-objects-before (call C:brixGCAllocatedObjectCount)))
-  (let queue (call WorkQueue tables))
+  (let positions (list U32))
+  (for (in position (..< 0 function-count))
+    (+= positions position)
+  )
+  (let queue (call WorkQueue tables positions))
   (let verdicts
     (call InlineVerdicts
       (block
@@ -184,6 +192,8 @@
           (arg (only-if (call (. cache store-for) index) (if (and cache (not (. options dumps-ir))))))
           (arg reusing)
           (arg (only-if (call (. memory store-for) index) (if memory)))
+          (arg folding)
+          (arg (as index U32))
         )
       )
     )
@@ -211,6 +221,13 @@
     (call (. group add) task)
   )
   (call (. group wait))
+  (probe-group + emit.round.fold)
+  (if (!= (. workers length) 0)
+    (call (. folding settle) (. ([] workers 0) ir-digester))
+  )
+  (probe-count emit.round.folded (. folding folded))
+  (probe-group - emit.round.fold)
+  (let rest (call WorkQueue tables (. folding kept)))
   (if reusing
     (let digesters (list IRDigester))
     (for (in worker workers)
@@ -219,20 +236,22 @@
     (probe-group + emit.round.index)
     (call (. reusing index) digesters function-count (. tables layouts count))
     (probe-group - emit.round.index)
-    (probe-group + emit.round.second)
-    (for (in worker workers)
-      (let task
-        (do-new (worker: pool)
-          (call (. worker decide-all))
-          (on-failure failed
-            (call (. group keep) failed)
-          )
+  )
+  (probe-group + emit.round.second)
+  (for (in worker workers)
+    (let task
+      (do-new (worker: pool)
+        (call (. worker decide-all) rest)
+        (on-failure failed
+          (call (. group keep) failed)
         )
       )
-      (call (. group add) task)
     )
-    (call (. group wait))
-    (probe-group - emit.round.second)
+    (call (. group add) task)
+  )
+  (call (. group wait))
+  (probe-group - emit.round.second)
+  (if reusing
     (let mismatches (list String))
     (for (in worker workers)
       (+= (. (!! memory) verified) (as (. worker verified) U64))
@@ -284,7 +303,14 @@
   (blank)
   (let merge-started (call clock))
   (probe-group + compiler.phase.merge)
-  (let ordered (call reached (. tables bundle) records (call symbol-order (. tables bundle) records function-count)))
+  (let held (list U32))
+  (for (in position (..< 0 function-count))
+    (if (not (call (. folding is-folded) position))
+      (+= held position)
+    )
+  )
+  (let forwarding (call Forwarding (. folding forwards) (. folding forward-limit)))
+  (let ordered (call reached (. tables bundle) records function-count forwarding (call symbol-order (. tables bundle) records held)))
   (for (in position ordered)
     (probe-count compiler.mir.functions (. ([] counts position) functions))
     (probe-count compiler.mir.blocks (. ([] counts position) blocks))
@@ -402,15 +428,16 @@
 )
 
 (type _ WorkQueue
-  ; The functions of a round, handed to workers heaviest first.
+  ; Functions of a round, handed to workers heaviest first.
   (blank)
   (prop _ lock Mutex)
   (prop _ positions (list U32))
   (prop _ cursor Size)
   (fn-do + This _
     (param tables ProgramTables)
+    (param chosen (list U32))
     (let keys (list U64))
-    (for (in position (..< 0 (. tables functions length)))
+    (for (in position chosen)
       (let weight U64 (. ([] (. tables functions) position) weight))
       (+= keys (/or/ (/lshift/ weight 32) (as position U64)))
     )
@@ -435,10 +462,11 @@
 
 (type _ EmissionWorker
   ; One worker of the round: it emits a function's IR, builds its MIR, runs the backend's
-  ; pipeline over it and keeps the record, all in its own arenas. With an emission memory the
-  ; round takes two passes. The first emits and digests every function; one whose entry may be
-  ; reused waits for the second, which reuses it or emits it again, once every function's IR is
-  ; digested.
+  ; pipeline over it and keeps the record, all in its own arenas. The round takes two passes. The
+  ; first emits every function and notes what its code holds of other functions (`Folding`). A
+  ; candidate to fold waits for the second pass, which lowers it unless it was folded, once every
+  ; function's IR is met. With an emission memory the first pass digests every function too, and
+  ; one whose entry may be reused waits for the second, which reuses it or emits it again.
   (blank)
   (prop + pipeline FunctionPipeline)
   (prop + lowering IRToMIR)
@@ -468,6 +496,8 @@
   (prop _ round (? ReuseRound))
   (prop _ reuses (? ReuseStore))
   (prop _ verifies Bool)
+  (prop _ folding Folding)
+  (prop _ lane U32)
   (prop _ deferred (list U32))
   (prop _ deferred-places (list U32))
   (prop _ mapped-strings IdList)
@@ -496,6 +526,8 @@
     (param store (? RecordStore))
     (param round (? ReuseRound))
     (param reuses (? ReuseStore))
+    (param folding Folding)
+    (param lane U32)
     (lazy pipeline (call FunctionPipeline (. tables bundle)))
     (lazy emitter (call Emitter tables program instances facts types bindings (. pipeline function arena)))
     (lazy lowering (call IRToMIR tables (. pipeline builder) (. pipeline results)))
@@ -539,10 +571,19 @@
     )
   )
   (fn-do + decide-all _
-    ; The second pass: each function that waited is reused, or emitted again where something it was
-    ; made from changed. Then the entries the worker kept name what they consulted by key.
+    (param rest WorkQueue)
+    ; The second pass: each function that waited to be reused is reused, or emitted again where
+    ; something it was made from changed, and each candidate to fold that was not folded is lowered.
+    ; Then the entries the worker kept name what they consulted by key.
     (for (in index (..< 0 (. deferred length)))
       (call decide ([] deferred index) ([] deferred-places index))
+    )
+    (while true
+      (let position (call (. rest take)))
+      (if (== position no-job)
+        (break)
+      )
+      (call lower-kept position)
     )
     (if reuses
       (let shared (!! round))
@@ -590,6 +631,8 @@
     (if (not (call emitted position))
       (return)
     )
+    (call (. folding note-escapes) (. emitter ir) lane)
+    (let reusable no-place)
     (if reusing
       (let shared reusing)
       (probe-group + emit.round.ir-digest)
@@ -601,13 +644,38 @@
       (if (!= place no-place)
         (let entry (call (. shared memory entry) place))
         (if (and (call same-digest (. entry ir) made) (call same-digest (. entry context) (. shared context)))
-          (+= deferred position)
-          (+= deferred-places place)
-          (return)
+          (= reusable place)
         )
       )
     )
+    (if (call (. folding is-candidate) position)
+      (let refs ([] (. folding refs) lane))
+      (let start (as (. refs length) U32))
+      (probe-group + emit.round.shape)
+      (let shape (call (. ir-digester shape) (. emitter ir) (. emitter bridged) (. folding owners) refs))
+      (probe-group - emit.round.shape)
+      (call (. folding defer) position lane shape start reusable)
+      (return)
+    )
+    (if (!= reusable no-place)
+      (+= deferred position)
+      (+= deferred-places reusable)
+      (return)
+    )
     (call lower-emitted position)
+  )
+  (fn-do _ lower-kept _
+    (param position U32)
+    ; Lowers a candidate to fold that the round kept, or reuses it where its entry allows.
+    (let place ([] (. folding places) position))
+    (if (!= place no-place)
+      (call decide position place)
+      (return)
+    )
+    (call begin position)
+    (if (call emitted position)
+      (call lower-emitted position)
+    )
   )
   (fn-do _ decide _
     (param position U32)
@@ -1216,14 +1284,19 @@
 (fn-do _ symbol-order (list U32)
   (param bundle Bundle)
   (param records (of CPointer CompactFunction))
-  (param count U32)
-  ; The functions in the order of their symbols, which the object holds them in: an order that
-  ; does not depend on the order the program tables declared them in, nor typing reached them.
+  (param held (list U32))
+  ; The functions held, in the order of their symbols, which the object holds them in: an order
+  ; that does not depend on the order the program tables declared them in, nor typing reached
+  ; them.
   (let names (list String))
-  (for (in position (..< 0 count))
+  (for (in position held)
     (+= names (call (. bundle text) (. ([] records position) symbol)))
   )
-  (return (call name-order names))
+  (let order (list U32))
+  (for (in index (call name-order names))
+    (+= order ([] held index))
+  )
+  (return order)
 )
 
 (fn-do _ order-data _
@@ -1295,10 +1368,14 @@
 (fn-do _ reached (list U32)
   (param bundle Bundle)
   (param records (of CPointer CompactFunction))
+  (param count U32)
+  (param forwarding Forwarding)
   (param ordered (list U32))
   ; The functions the object holds, in their order: those named outside it, those a constant
   ; table names, and those the code of one held names in turn. A function whose every call was
-  ; inlined is not held, as the reference's optimizer drops it.
+  ; inlined is not held, as the reference's optimizer drops it. Each label of a constant table and
+  ; each relocation of a held function's code that names a folded function is pointed at the
+  ; function it was folded into as it is met.
   (let owners ([] U32 (. bundle string-count)))
   (for (in position ordered)
     (let symbol (. ([] records position) symbol))
@@ -1306,7 +1383,7 @@
       (= ([] owners symbol) (+ position 1))
     )
   )
-  (let kept ([] Bool (. ordered length)))
+  (let kept ([] Bool count))
   (let pending (list U32))
   (for (in position ordered)
     (let record ([] records position))
@@ -1315,9 +1392,18 @@
       (+= pending position)
     )
   )
-  (for (in item (. bundle constant-items))
-    (if (and (== (. item kind) .label-constant) (< (. item name) (. bundle string-count)))
-      (let owner ([] owners (. item name)))
+  (for (in index (..< 0 (. bundle constant-items length)))
+    (let item ([] (. bundle constant-items) index))
+    (if (!= (. item kind) .label-constant)
+      (continue)
+    )
+    (let name (. item name))
+    (if (call (. forwarding is-folded) name)
+      (= name (call (. forwarding target) name))
+      (= ([] (. bundle constant-items) index) (call ConstantItem .label-constant 0 name))
+    )
+    (if (< name (. bundle string-count))
+      (let owner ([] owners name))
       (if (and (!= owner 0) (not ([] kept (- owner 1))))
         (= ([] kept (- owner 1)) true)
         (+= pending (- owner 1))
@@ -1329,7 +1415,12 @@
     (let record ([] records ([] pending next)))
     (+= next 1)
     (for (in index (..< 0 (. record relocation-count)))
-      (let symbol (. ([] (. record relocations) index) symbol))
+      (let relocation ([] (. record relocations) index))
+      (let symbol (. relocation symbol))
+      (if (call (. forwarding is-folded) symbol)
+        (= symbol (call (. forwarding target) symbol))
+        (= ([] (. record relocations) index) (call Relocation (. relocation offset) symbol (. relocation kind)))
+      )
       (if (< symbol (. bundle string-count))
         (let owner ([] owners symbol))
         (if (and (!= owner 0) (not ([] kept (- owner 1))))
@@ -1349,6 +1440,22 @@
     )
   )
   (return held)
+)
+
+(type _ Forwarding (is Tuple)
+  ; The symbols of folded functions, each with the symbol of the function it was folded into, plus
+  ; one (`Folding.forwards`); none below `limit` where nothing was folded.
+  (blank)
+  (prop + targets (of CPointer U32))
+  (prop + limit U32)
+  (fn-expr + is-folded Bool
+    (param symbol StringId)
+    (and (< symbol limit) (!= ([] targets symbol) 0))
+  )
+  (fn-expr + target StringId
+    (param symbol StringId)
+    (- ([] targets symbol) 1)
+  )
 )
 
 (fn-expr _ refusal-line String

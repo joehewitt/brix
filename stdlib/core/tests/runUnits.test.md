@@ -2597,3 +2597,40 @@ Exception: Operator "+" is not defined for Celsius and Celsius
       (print (as (+ 20°c 5°c) UnitString))
                  ^^^^^^^^^^^^
 ```
+
+### Calendar months and years are a family of their own, counted in whole months, and a duration gives its length in average months and years only when asked.
+
+```brix
+(import /time/duration)
+
+(main
+  (print (as 1years Months UnitString))
+  (print (as 2decades Years UnitString))
+  (print (as (. 90days approximate-months) UnitString))
+  (print (as (. 400days approximate-years) UnitString))
+)
+```
+
+```output
+12months
+20years
+2months
+1years
+```
+
+### Adding a calendar month to a duration is rejected.
+
+```brix compile-error
+(import /time/duration)
+
+(main
+  (print (as (+ 1weeks 1months) UnitString))
+)
+```
+
+```output
+Exception: Expected Weeks here, but this is Months, and there is no conversion between them
+<no file:5>
+      (print (as (+ 1weeks 1months) UnitString))
+                           ^^^^^^^
+```
