@@ -2085,3 +2085,152 @@ Exception: No unit is declared as Seconds times Seconds; declare one with an equ
       (*= wait 2s)
                ^^
 ```
+
+### Raising a unit to a whole number gives the unit an equality declares as that power of it, converted to its scale, and a square root gives the unit whose square it is.
+
+```brix
+(import /math)
+(import /time/duration)
+(import /units)
+
+(main
+  (print (as (%% 3meters 2) UnitString))
+  (print (as (%% 3km 2) UnitString))
+  (print (as (%% 500ms -1) UnitString))
+  (print (as (%% 2meters 1) UnitString))
+  (print (as (%% 2meters 0) UnitString))
+  (print (as (call sqrt 9sqm) UnitString))
+  (print (as (call sqrt 4000000sqm) UnitString))
+)
+
+(type-line + SquareMeters (alias sqm) (is F64))
+(type-line + Hertz (alias hz) (is F64))
+(unit + 1sqm (* 1meters 1meters))
+(unit + 1hz (/ 1 1s))
+```
+
+```output
+9sqm
+9000000sqm
+2hz
+2meters
+1f
+3meters
+2000meters
+```
+
+### A pure number raised to any power or rooted keeps its unit, worked out by its value as a number.
+
+```brix
+(import /math)
+(import /units)
+
+(main
+  (let power 2)
+  (let share 50%)
+  (%%= share 2)
+  (print (as (%% 50% 2) UnitString))
+  (print (as (%% 50% power) UnitString))
+  (print (as (call sqrt 25%) UnitString))
+  (print (as share UnitString))
+)
+```
+
+```output
+25%
+25%
+50%
+25%
+```
+
+### Raising a unit to a whole number is rejected where no unit is declared as that power of it.
+
+```brix compile-error
+(import /units)
+
+(main
+  (print (as (%% 3meters 3) UnitString))
+)
+```
+
+```output
+Exception: No unit is declared as Meters times Meters times Meters; declare one with an equality, or raise a plain number
+<no file:5>
+      (print (as (%% 3meters 3) UnitString))
+                 ^^^^^^^^^^^^^^
+```
+
+### A unit is raised only to a whole number written in place, as the number decides the unit.
+
+```brix compile-error
+(import /units)
+
+(main
+  (let power 2)
+  (print (as (%% 3meters power) UnitString))
+)
+```
+
+```output
+Exception: A unit is raised only to a whole number written in place, as in "(%% 3meters 2)", which decides the unit it gives; make it a plain number to raise it to another power
+<no file:6>
+      (print (as (%% 3meters power) UnitString))
+                             ^^^^^
+```
+
+### A unit is raised only to a number with no unit.
+
+```brix compile-error
+(import /time/duration)
+(import /units)
+
+(main
+  (print (as (%% 3meters 2s) UnitString))
+)
+```
+
+```output
+Exception: A unit is raised to a plain number, which has no unit
+<no file:6>
+      (print (as (%% 3meters 2s) UnitString))
+                             ^^
+```
+
+### The square root of a unit is rejected where no unit times itself is it.
+
+```brix compile-error
+(import /math)
+(import /time/duration)
+
+(main
+  (print (as (call sqrt 9s) UnitString))
+)
+```
+
+```output
+Exception: No unit times itself is Seconds, so its square root has no unit; take the root of a plain number
+<no file:6>
+      (print (as (call sqrt 9s) UnitString))
+                 ^^^^^^^^^^^^^^
+```
+
+### An assigning `%%` rejects a power that its place's unit cannot hold.
+
+```brix compile-error
+(import /units)
+
+(main
+  (let length 3meters)
+  (%%= length 2)
+)
+
+(type-line + SquareMeters (alias sqm) (is F64))
+(unit + 1sqm (* 1meters 1meters))
+```
+
+```output
+Exception: Expected Meters here, but this is SquareMeters, and there is no conversion between them
+<no file:6>
+      (%%= length 2)
+      ^^^^^^^^^^^^^^
+```

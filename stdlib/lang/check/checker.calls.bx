@@ -78,6 +78,16 @@
     (= (. frame surround) caught)
     (return type)
   )
+  (fn-do _ named-call TypeId
+    (param id SyntaxId)
+    (param name Atom)
+    (param arguments Arguments)
+    (let answered (call (. calls function-call) id name arguments))
+    (if (and (!= answered invalid-type) (== (call (. facts plan-of) instance id) .plan-f64-sqrt))
+      (return (call root-unit id ([] (. arguments types) 0) answered))
+    )
+    (return answered)
+  )
   (fn-do _ is-method Bool
     (param owner ModuleId)
     (param decl DeclId)
@@ -509,7 +519,7 @@
           )
           (return (call Found invalid-type))
         )
-        (let answered (call (. calls function-call) id name arguments))
+        (let answered (call named-call id name arguments))
         (if (and (!= answered invalid-type) (call is-method (. resolution module) (. resolution decl)))
           (call plan-builder id (. frame self-type) (. name text) (. arguments types length))
         )
@@ -587,7 +597,7 @@
         (if bound
           (return (call Found (call (. calls construction-on) id bound arguments true callable)))
         )
-        (return (call Found (call (. calls function-call) id name arguments)))
+        (return (call Found (call named-call id name arguments)))
       )
       (default
         (let target (call infer callable))

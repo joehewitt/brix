@@ -594,7 +594,7 @@
       )
       (+= pending (. value operand))
     )
-    (let type (call (. facts node-type) (. unit reading) id))
+    (let type (. ([] (. instances signatures) callee) returns))
     (let layout (call layout-of type id))
     (if (!= layout f64-layout)
       (call refuse .refused-type id)
@@ -615,14 +615,12 @@
         (= op .float-max)
       )
     )
-    (return
-      (call Typed
-        (block
-          (arg (call make-operand .operand-value (call append .op-float-math id (call Span start count) op layout)))
-          (arg type)
-        )
-      )
+    (let answer (call Typed (call make-operand .operand-value (call append .op-float-math id (call Span start count) op layout)) type))
+    (let result (call convert id .reason-result answer))
+    (if (!= (. result type) (call (. facts node-type) (. unit reading) id))
+      (call refuse .refused-conversion id)
     )
+    (return result)
   )
   (fn-do + emit-index-call Typed
     (param id SyntaxId)

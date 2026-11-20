@@ -267,6 +267,7 @@ true
   `/tui/primitives`, `(* 3tx 0.5)` is the plain number `1.5`.
 - **Generic functions** keep the unit of what they are given. A function that takes a plain number
   type, such as `abs` from `/math`, takes the value in its own unit and gives a plain number.
+  `sqrt` is the exception; see [Powers and roots](#powers-and-roots).
 
 ### Pure numbers
 
@@ -365,6 +366,54 @@ dividing those units gives.
 - **Assignment.** `(*= place value)` and `(/= place value)` keep the place's unit, so one that
   gives another is an error: `Dividing Meters by Seconds gives Mps, which a place of Meters cannot
   hold`.
+
+### Powers and roots
+
+Raising a unit to a whole number multiplies it by itself, and `sqrt` from `/math` undoes that.
+
+```brix
+(import /math)
+(import /units)
+
+(main
+  (print (as (%% 3meters 2) UnitString))
+  (print (as (%% 3km 2) UnitString))
+  (print (as (call sqrt 9sqm) UnitString))
+  (print (as (%% 50% 2) UnitString))
+  (print (as (call sqrt 25%) UnitString))
+)
+
+(type-line + SquareMeters (alias sqm) (is F64))
+(unit + 1sqm (* 1meters 1meters))
+```
+
+```output
+9sqm
+9000000sqm
+3meters
+25%
+50%
+```
+
+- **Powers.** `(%% a n)` is `a` multiplied by itself `n` times, so it gives the unit declared as
+  that power, converted to its scale, as a [product](#products-and-quotients) does. A power of 0
+  gives a plain number, and a negative power the unit declared as one per it: with `hz` declared as
+  one per second, `(%% 500ms -1)` is `2hz`.
+- **The exponent** is a whole number written in place, with no unit, as it decides the unit:
+  `(%% 3meters power)` is an error. Make the base a plain number to raise it to another power.
+- **No declared unit.** A power that no unit is declared as is an error: `(%% 3meters 3)` is `No
+  unit is declared as Meters times Meters times Meters; declare one with an equality, or raise a
+  plain number`.
+- **Square roots.** `(call sqrt value)` gives the unit whose square the value's unit is: `(call
+  sqrt 9sqm)`{.brix} is `3meters`. Where no unit times itself is it, the root is an error: `(call
+  sqrt 9s)` is `No unit times itself is Seconds, so its square root has no unit; take the root of
+  a plain number`.
+- **Pure numbers** are raised to any power and rooted by their value as a number, and keep their
+  unit: `(%% 50% 2)`{.brix} is `25%`.
+- **Units on their own,** such as `px`, keep their unit through `%%`, and `sqrt` gives a plain
+  number for them.
+- **Assignment.** `(%%= place n)` keeps the place's unit, so a power in another unit is an error.
+- **Integers.** A power or a root in a unit stored as an integer is a plain number.
 
 ## Conversions
 
