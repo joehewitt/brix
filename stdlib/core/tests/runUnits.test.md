@@ -2282,3 +2282,197 @@ Exception: Expected Meters here, but this is SquareMeters, and there is no conve
       (%%= length 2)
       ^^^^^^^^^^^^^^
 ```
+
+### A number type's own arithmetic operators answer it in place of the builtin ones, a number written with no unit converts to the operator's parameter, and an operator it does not declare stays builtin.
+
+```brix
+(main
+  (print (as (+ 23hr 2hrs) UnitString))
+  (print (as (+ 23hr 2) UnitString))
+  (print (as (- 1hr 3hr) UnitString))
+  (print (as (- 1hr 3hrs) UnitString))
+  (print (as (* 2 3hr) UnitString))
+)
+
+(type-line + Hrs (alias hrs) (is F64))
+(type + Hr (alias hr) (is UInt)
+  (fn-expr + (infix this + (param amount Hrs)) Hr
+    (as (call wrap (+ (as this F64) (as amount F64))) Hr)
+  )
+  (fn-expr + (infix this - (param amount Hrs)) Hr
+    (as (call wrap (- (as this F64) (as amount F64))) Hr)
+  )
+  (fn-expr + (infix this - (param other Hr)) Hrs
+    (as (- (as this F64) (as other F64)) Hrs)
+  )
+)
+
+(fn-expr _ wrap F64
+  (param hours F64)
+  (% (+ (% hours 24.0) 24.0) 24.0)
+)
+```
+
+```output
+1hr
+1hr
+-2hrs
+22hr
+6hr
+```
+
+### A number type's own `+` or `*` answers with its operands the other way around when the number type is on the right alone.
+
+```brix
+(main
+  (print (as (+ 2 23hr) UnitString))
+  (print (as (+ 2hrs 23hr) UnitString))
+)
+
+(type-line + Hrs (alias hrs) (is F64))
+(type + Hr (alias hr) (is UInt)
+  (fn-expr + (infix this + (param amount Hrs)) Hr
+    (as (% (+ (as this F64) (as amount F64)) 24.0) Hr)
+  )
+)
+```
+
+```output
+1hr
+1hr
+```
+
+### An assigning operator answers by the number type's own operator.
+
+```brix
+(main
+  (let h 22hr)
+  (+= h 3hrs)
+  (print (as h UnitString))
+  (-= h 2hrs)
+  (print (as h UnitString))
+)
+
+(type-line + Hrs (alias hrs) (is F64))
+(type + Hr (alias hr) (is UInt)
+  (fn-expr + (infix this + (param amount Hrs)) Hr
+    (as (call wrap (+ (as this F64) (as amount F64))) Hr)
+  )
+  (fn-expr + (infix this - (param amount Hrs)) Hr
+    (as (call wrap (- (as this F64) (as amount F64))) Hr)
+  )
+)
+
+(fn-expr _ wrap F64
+  (param hours F64)
+  (% (+ (% hours 24.0) 24.0) 24.0)
+)
+```
+
+```output
+1hr
+23hr
+```
+
+### A number type that declares an operator rejects operands its own operator does not take.
+
+```brix compile-error
+(main
+  (print (as (+ 23hr 2hr) UnitString))
+)
+
+(type-line + Hrs (alias hrs) (is F64))
+(type + Hr (alias hr) (is UInt)
+  (fn-expr + (infix this + (param amount Hrs)) Hr
+    (as (% (+ (as this F64) (as amount F64)) 24.0) Hr)
+  )
+)
+```
+
+```output
+Exception: Operator "+" is not defined for Hr and Hr
+<no file:3>
+      (print (as (+ 23hr 2hr) UnitString))
+                 ^^^^^^^^^^^^
+```
+
+### A number type's own `-` does not answer with the number type on the right alone.
+
+```brix compile-error
+(main
+  (print (as (- 5 3hr) UnitString))
+)
+
+(type-line + Hrs (alias hrs) (is F64))
+(type + Hr (alias hr) (is UInt)
+  (fn-expr + (infix this - (param other Hr)) Hrs
+    (as (- (as this F64) (as other F64)) Hrs)
+  )
+)
+```
+
+```output
+Exception: Operator "-" is not defined for I64 and Hr
+<no file:3>
+      (print (as (- 5 3hr) UnitString))
+                 ^^^^^^^^^
+```
+
+### An assigning operator rejects operands the place's number type's own operator does not take.
+
+```brix compile-error
+(main
+  (let h 22hr)
+  (+= h 2hr)
+  (print (as h UnitString))
+)
+
+(type-line + Hrs (alias hrs) (is F64))
+(type + Hr (alias hr) (is UInt)
+  (fn-expr + (infix this + (param amount Hrs)) Hr
+    (as (% (+ (as this F64) (as amount F64)) 24.0) Hr)
+  )
+)
+```
+
+```output
+Exception: Operator "+=" is not defined for Hr and Hr
+<no file:4>
+      (+= h 2hr)
+      ^^^^^^^^^^
+```
+
+### A number type's declared conversion is used in place of a cast of its number, with `as` and on its own.
+
+```brix
+(import /units)
+
+(main
+  (print (as (as 100cel Fahr) UnitString))
+  (print (call show 100cel))
+  (print (as (as 0.75%% Hr) UnitString))
+)
+
+(type + Cel (alias cel) (is F64)
+  (fn-to-expr + Fahr
+    (as (+ (/ (* (as this F64) 9.0) 5.0) 32.0) Fahr)
+  )
+)
+(type-line + Fahr (alias fahr) (is F64))
+(type + Hr (alias hr) (is UInt)
+  (fn-from-expr + (: ratio Ratio)
+    (as (* (as ratio F64) 24.0) Hr)
+  )
+)
+
+(fn-expr _ show String
+  (param f Fahr)
+  (as f UnitString)
+)
+```
+
+```output
+212fahr
+212fahr
+18hr
+```
