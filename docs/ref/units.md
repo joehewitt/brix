@@ -167,10 +167,13 @@ true
   type of the language; write each side in a unit the program declares`. Neither side can be zero:
   `A unit cannot be declared as zero of another, which no number of it would convert from; write a
   number other than zero`.
-- **Agreeing.** Two equalities between the same two units must state the same ratio: `Equalities
-  between Bar and Foo disagree: one makes 1 Bar 2 Foo, another 3 Foo; keep one of them`. Only
-  equalities between the same pair are checked. One that disagrees with a path through other
-  units is not reported, and is not used, so keep every path between two units in agreement.
+- **Agreeing.** Every path between two units must give the same ratio. An equality that
+  disagrees with the declarations before it is an error at the equality, whether they relate the
+  same two units, `Equalities between Bar and Foo disagree: one makes 1 Bar 2 Foo, another 3 Foo;
+  keep one of them`, or relate them through others, `Equalities between Baz and Bar disagree: this
+  one makes 1 Baz 1 Bar, but through Foo they make 1 Baz 0.5 Bar; keep every path between two
+  units in agreement`. Units declared from one number type of the program's own each equal one of
+  it, and so equal one another.
 - **Across modules.** `/time/flicks` declares `(unit + 705600000flicks 1seconds)`{.brix}, so flicks
   convert to and from every duration.
 - **Only ratios.** An equality states a ratio. Units with an offset between them, such as degrees
@@ -266,7 +269,9 @@ waits 45seconds
   wanted: in a declaration, an argument, a return or an assignment. `as` and calling the type, as
   in `(call Milliseconds 2.5s)`{.brix}, convert the same way.
 - **Ratios** multiply along the declarations as exact fractions, so `(as 2880minutes Days)`{.brix}
-  is exactly `2days`. A ratio written as a decimal, such as `25.4mm`, is a float like any other.
+  is exactly `2days`. A ratio written as a decimal of up to 15 digits, such as `25.4mm`, is exact
+  too, so `(as 1ft M)`{.brix} is `0.3048m` through inches. A ratio that arithmetic gives, such as
+  `(/ 1 3whole)`{.brix}, is a float like any other.
 - **Integers.** A unit stored as an integer drops the fraction, toward zero.
 - **Plain numbers to units.** A plain number given for a unit is taken in that unit:
   `(call describe 45)`{.brix} waits `45seconds`. A number literal becomes any unit. A number that is

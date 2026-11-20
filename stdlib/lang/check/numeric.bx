@@ -1,5 +1,6 @@
 (import ./type-store)
 (import ./types)
+(import ./unit-families)
 (import /lang/ast/ast-queries)
 (import /lang/ast/program)
 
@@ -144,7 +145,7 @@
     (if-expr (. ([] (. types completions) lhs) has-equalities) lhs no-type)
   )
   (default
-    (if-expr (call has-equality-to types rhs lhs 0) lhs no-type)
+    (if-expr (call (. types unit-families same-family) rhs lhs) lhs no-type)
   )
 )
 
@@ -152,24 +153,6 @@
   (param types Types)
   (param id TypeId)
   (and (call is-numeric types id) (== (call (. types type-row) (call (. types intrinsic-of) id)) id))
-)
-
-(fn-do + has-equality-to Bool
-  (param types Types)
-  (param source TypeId)
-  (param target TypeId)
-  (param depth U32)
-  (if (or (> depth 8) (not (. ([] (. types completions) source) has-equalities)))
-    (return false)
-  )
-  (for (in equality (. types equalities))
-    (if (== (. equality from) source)
-      (if (or (== (. equality to) target) (call has-equality-to types (. equality to) target (+ depth 1)))
-        (return true)
-      )
-    )
-  )
-  (return false)
 )
 
 (fn-do + is-unit-class Bool

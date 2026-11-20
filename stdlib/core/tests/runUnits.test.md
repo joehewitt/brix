@@ -647,6 +647,55 @@ bar 1
 2.5
 ```
 
+### A ratio written as a decimal stays exact through a chain of units.
+
+```brix
+(main
+  (print (as 1ft M UnitString))
+  (print (as 10ft M UnitString))
+)
+
+(blank)
+(type-line + Mm (alias mm) (is F64))
+(type-line + Cm (alias cm) (is 10mm))
+(type-line + M (alias m) (is 100cm))
+(type-line + Inches (alias inches) (is F64))
+(type-line + Feet (alias ft) (is 12inches))
+(unit + 1inches 25.4mm)
+```
+
+```output
+0.3048m
+3.048m
+```
+
+### A unit converts to any unit its declarations reach, however long the chain, in arithmetic as in a cast.
+
+```brix
+(main
+  (print (as 1q10 Q0 UnitString))
+  (print (as (+ 1q0 1q10) UnitString))
+)
+
+(blank)
+(type-line + Q0 (alias q0) (is F64))
+(type-line + Q1 (alias q1) (is 2q0))
+(type-line + Q2 (alias q2) (is 2q1))
+(type-line + Q3 (alias q3) (is 2q2))
+(type-line + Q4 (alias q4) (is 2q3))
+(type-line + Q5 (alias q5) (is 2q4))
+(type-line + Q6 (alias q6) (is 2q5))
+(type-line + Q7 (alias q7) (is 2q6))
+(type-line + Q8 (alias q8) (is 2q7))
+(type-line + Q9 (alias q9) (is 2q8))
+(type-line + Q10 (alias q10) (is 2q9))
+```
+
+```output
+1024q0
+1025q0
+```
+
 ### Subtracting, dividing or multiplying across units converts the right side to the unit of the left.
 
 ```brix
@@ -960,6 +1009,55 @@ Exception: Equalities between Bar and Foo disagree: one makes 1 Bar 2 Foo, anoth
 <no file:8>
     (unit + 1bar 3foo)
     ^^^^^^^^^^^^^^^^^^
+```
+
+### An equality that disagrees with a path through other units is rejected.
+
+```brix compile-error
+(main
+  (print (as 1baz Bar UnitString))
+)
+
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is 2foo))
+(type-line + Baz (alias baz) (is F64))
+(unit + 1baz 1foo)
+(unit + 1baz 1bar)
+```
+
+```output
+Exception: Equalities between Baz and Bar disagree: this one makes 1 Baz 1 Bar, but through Foo they make 1 Baz 0.5 Bar; keep every path between two units in agreement
+<no file:10>
+    (unit + 1baz 1bar)
+    ^^^^^^^^^^^^^^^^^^
+```
+
+### Units declared from one number type of a module's own are one another, so equalities that give them different ratios elsewhere are rejected where the module is imported.
+
+```brix compile-error
+(import ./lib/clock)
+
+(main
+  (print (as (+ 8hours 30minutes) UnitString))
+)
+```
+
+```brix file=lib/clock/clock.bx
+(type-line + Seconds (alias seconds) (is F64))
+(type-line + Minutes (alias minutes) (is 60seconds))
+(type-line + Hours (alias hours) (is 60minutes))
+(type-line + Reading (is U64))
+(type-line + Minute (alias minute) (is Reading))
+(type-line + Hour (alias hour) (is Reading))
+(unit + 1hour 1hours)
+(unit + 1minute 1minutes)
+```
+
+```output
+Exception: Equalities between Minute and Minutes disagree: this one makes 1 Minute 1 Minutes, but through Reading, Hour and Hours they make 1 Minute 60 Minutes; keep every path between two units in agreement
+<lib/clock/clock.bx:8>
+    (unit + 1minute 1minutes)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
 ```
 
 ### An equality that adds a number with no unit to one in a unit is rejected, as it is no ratio.
