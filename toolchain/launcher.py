@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
-import base64
-import calendar
-import configparser
 import contextlib
 import fcntl
 import hashlib
-import hmac
 import json
 import lzma
 import os
@@ -14,7 +10,6 @@ import shutil
 import stat
 import sys
 import tarfile
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -27,20 +22,13 @@ FILE_PATTERN = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]*')
 PART_OVERRIDES = ('BRIXPATH', 'BRIX_BUILD_PATH')
 CHUNK_SIZE = 1 << 20
 RELEASES_SITE = 'https://brix-lang.com'
-RELEASES_BUCKET = 'joehewitt-brix-releases'
-RELEASES_REGION = 'us-west-2'
 RELEASES_PREFIX = 'releases'
 KITS_PREFIX = RELEASES_PREFIX + '/deps'
 RELEASES_MIRROR = os.environ.get('BRIX_RELEASES_MIRROR') or None
 HOSTS = {('Darwin', 'arm64'): 'arm64-apple-macos', ('Linux', 'aarch64'): 'aarch64-linux-gnu'}
-AWS_PROFILE = 'brix'
-SIGN_IN = 'aws sso login --profile %s' % AWS_PROFILE
-TOKEN_REFRESH_WINDOW = 300
 HTTP_TIMEOUT = 120
-TIME_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
 
 checked_files = None
-aws_session = None
 
 
 class LaunchError(Exception):
@@ -51,10 +39,6 @@ class DownloadError(LaunchError):
     def __init__(self, message, status=None):
         LaunchError.__init__(self, message)
         self.status = status
-
-
-class S3Error(DownloadError):
-    pass
 
 
 def main(arguments):
@@ -520,11 +504,6 @@ def site_download(key, path=None):
         return saved_response(response, path)
 
 
-def s3_download(key, path=None):
-    with s3_request('GET', key) as response:
-        return saved_response(response, path)
-
-
 def saved_response(response, path):
     digest = hashlib.sha256()
     size = 0
@@ -539,191 +518,6 @@ def saved_response(response, path):
         if output:
             output.close()
     return digest.hexdigest(), size
-
-
-def s3_read(key):
-    with s3_request('GET', key) as response:
-        return response.read(), response.headers.get('ETag')
-
-
-def s3_head(key, headers=None):
-    try:
-        with s3_request('HEAD', key, headers=headers) as response:
-            return {name.lower(): value for name, value in response.headers.items()}
-    except S3Error as error:
-        if error.status == 404:
-            return None
-        raise
-
-
-def s3_put(key, body, content_type, headers=None):
-    headers = dict(headers or {})
-    headers['content-type'] = content_type
-    headers['x-amz-checksum-sha256'] = base64.b64encode(hashlib.sha256(body).digest()).decode()
-    with s3_request('PUT', key, body, headers):
-        pass
-
-
-def s3_request(method, key, body=b'', headers=None):
-    host = '%s.s3.%s.amazonaws.com' % (RELEASES_BUCKET, RELEASES_REGION)
-    path = '/' + urllib.parse.quote(key, safe='/-_.~')
-    headers = dict(headers or {})
-    headers['host'] = host
-    credentials = aws_credentials()
-    if credentials:
-        sign(method, path, headers, hashlib.sha256(body).hexdigest(), credentials)
-    request = urllib.request.Request(
-        'https://%s%s' % (host, path),
-        data=body if method == 'PUT' else None,
-        headers=headers,
-        method=method,
-    )
-    try:
-        return urllib.request.urlopen(request, timeout=HTTP_TIMEOUT)
-    except urllib.error.HTTPError as error:
-        raise S3Error(s3_error_message(method, key, error, credentials), error.code)
-    except urllib.error.URLError as error:
-        raise S3Error('Cannot reach S3 for %s: %s' % (key, error.reason))
-
-
-def s3_error_message(method, key, error, credentials):
-    if error.code == 403 and not credentials:
-        return ('%s needs AWS credentials: add a "%s" profile to ~/.aws/config and run %s'
-                % (key, AWS_PROFILE, SIGN_IN))
-    body = error.read().decode('utf-8', 'replace') if method != 'HEAD' else ''
-    code = body.split('<Code>', 1)[1].split('</Code>', 1)[0] if '<Code>' in body else error.reason
-    return '%s s3://%s/%s failed: %d %s' % (method, RELEASES_BUCKET, key, error.code, code)
-
-
-def sign(method, path, headers, payload, credentials):
-    stamp = time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())
-    day = stamp[:8]
-    headers['x-amz-date'] = stamp
-    headers['x-amz-content-sha256'] = payload
-    if credentials.get('token'):
-        headers['x-amz-security-token'] = credentials['token']
-    values = {name.lower(): ' '.join(str(value).split()) for name, value in headers.items()}
-    names = sorted(values)
-    signed = ';'.join(names)
-    canonical = '\n'.join([method, path, '', ''.join('%s:%s\n' % (name, values[name]) for name in names), signed, payload])
-    scope = '%s/%s/s3/aws4_request' % (day, RELEASES_REGION)
-    text = '\n'.join(['AWS4-HMAC-SHA256', stamp, scope, hashlib.sha256(canonical.encode()).hexdigest()])
-    key = ('AWS4' + credentials['secret']).encode()
-    for part in (day, RELEASES_REGION, 's3', 'aws4_request'):
-        key = hmac.new(key, part.encode(), hashlib.sha256).digest()
-    signature = hmac.new(key, text.encode(), hashlib.sha256).hexdigest()
-    headers['authorization'] = 'AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s' % (
-        credentials['key'], scope, signed, signature)
-
-
-def aws_credentials():
-    global aws_session
-    if aws_session is None:
-        aws_session = profile_credentials() or {}
-    return aws_session or None
-
-
-def profile_credentials():
-    config = read_ini(os.environ.get('AWS_CONFIG_FILE') or '~/.aws/config')
-    shared = read_ini(os.environ.get('AWS_SHARED_CREDENTIALS_FILE') or '~/.aws/credentials')
-    profile = {}
-    if config.has_section('profile ' + AWS_PROFILE):
-        profile.update(config.items('profile ' + AWS_PROFILE))
-    if shared.has_section(AWS_PROFILE):
-        profile.update(shared.items(AWS_PROFILE))
-    if not profile:
-        return None
-    if profile.get('aws_access_key_id') and profile.get('aws_secret_access_key'):
-        return {
-            'key': profile['aws_access_key_id'],
-            'secret': profile['aws_secret_access_key'],
-            'token': profile.get('aws_session_token'),
-        }
-    if profile.get('sso_session'):
-        return sso_credentials(profile, config)
-    raise LaunchError('The "%s" AWS profile has neither access keys nor an sso_session' % AWS_PROFILE)
-
-
-def read_ini(path):
-    parser = configparser.RawConfigParser()
-    parser.read(os.path.expanduser(path))
-    return parser
-
-
-def sso_credentials(profile, config):
-    section = 'sso-session ' + profile['sso_session']
-    if not config.has_section(section) or not config.has_option(section, 'sso_region'):
-        raise LaunchError('The AWS config has no [%s] with an sso_region' % section)
-    region = config.get(section, 'sso_region')
-    token = sso_token(profile['sso_session'], region)
-    query = urllib.parse.urlencode({'account_id': profile['sso_account_id'], 'role_name': profile['sso_role_name']})
-    request = urllib.request.Request(
-        'https://portal.sso.%s.amazonaws.com/federation/credentials?%s' % (region, query),
-        headers={'x-amz-sso_bearer_token': token},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT) as response:
-            role = json.load(response)['roleCredentials']
-    except urllib.error.HTTPError as error:
-        if error.code in (401, 403):
-            raise LaunchError('The AWS sign-in has expired; run %s' % SIGN_IN)
-        raise LaunchError('Getting credentials for the %s role failed: %d' % (profile['sso_role_name'], error.code))
-    except urllib.error.URLError as error:
-        raise LaunchError('Cannot reach the AWS sign-in service: %s' % error.reason)
-    return {'key': role['accessKeyId'], 'secret': role['secretAccessKey'], 'token': role['sessionToken']}
-
-
-def sso_token(session, region):
-    path = os.path.join(os.path.expanduser('~/.aws/sso/cache'), hashlib.sha1(session.encode()).hexdigest() + '.json')
-    try:
-        with open(path) as file:
-            token = json.load(file)
-    except (OSError, ValueError):
-        raise LaunchError('Not signed in to AWS; run %s' % SIGN_IN)
-    now = time.time()
-    if parse_time(token.get('expiresAt', '')) - now > TOKEN_REFRESH_WINDOW:
-        return token['accessToken']
-    if not all(token.get(name) for name in ('refreshToken', 'clientId', 'clientSecret')) or \
-            parse_time(token.get('registrationExpiresAt', '')) <= now:
-        raise LaunchError('The AWS sign-in has expired; run %s' % SIGN_IN)
-    body = json.dumps({
-        'clientId': token['clientId'],
-        'clientSecret': token['clientSecret'],
-        'grantType': 'refresh_token',
-        'refreshToken': token['refreshToken'],
-    }).encode()
-    request = urllib.request.Request(
-        'https://oidc.%s.amazonaws.com/token' % region,
-        data=body,
-        headers={'content-type': 'application/json'},
-        method='POST',
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT) as response:
-            refreshed = json.load(response)
-    except urllib.error.HTTPError:
-        raise LaunchError('The AWS sign-in has expired; run %s' % SIGN_IN)
-    except urllib.error.URLError as error:
-        raise LaunchError('Cannot reach the AWS sign-in service: %s' % error.reason)
-    token['accessToken'] = refreshed['accessToken']
-    token['expiresAt'] = time.strftime(TIME_FORMAT, time.gmtime(now + refreshed['expiresIn']))
-    if refreshed.get('refreshToken'):
-        token['refreshToken'] = refreshed['refreshToken']
-    temporary = '%s.%d' % (path, os.getpid())
-    with open(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as file:
-        json.dump(token, file)
-    os.replace(temporary, path)
-    return token['accessToken']
-
-
-def parse_time(text):
-    text = text.replace('UTC', 'Z').replace('+00:00', 'Z')
-    if '.' in text:
-        text = text.split('.', 1)[0] + 'Z'
-    try:
-        return calendar.timegm(time.strptime(text, TIME_FORMAT))
-    except ValueError:
-        return 0
 
 
 if __name__ == '__main__':
