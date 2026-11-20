@@ -1857,3 +1857,105 @@ Exception: cannot reach a door of 'e1' under 'without outside': run (without out
 5, 5
 6, 7
 ```
+
+### A subscriber a class section makes reaches what was bound where the object was made
+
+```brix
+(main
+  (let outside (call Source))
+  (let early (call Observer outside))
+  (let inside (call Source))
+  (do-with world (call Stub 5)
+    (let late (call Observer inside))
+    (call (. outside emit) 1)
+  )
+  (call (. inside emit) 2)
+)
+
+(type + Source
+  (event + changed Int)
+  (fn-do + emit _
+    (param value Int)
+    (<- changed value)
+  )
+)
+
+(type + Observer
+  (prop + source Source)
+  (fn-do + This _
+    (param source _)
+  )
+  (subscribe-for (on value (. source changed))
+    (print (+ value (call roll)))
+  )
+)
+
+(effect + world)
+
+(fn-do + roll Int (door world)
+  (return 10)
+)
+
+(type + Stub
+  (prop + base Int)
+  (fn-do + This _
+    (param base Int)
+  )
+  (fn-do + roll Int
+    (return base)
+  )
+)
+```
+
+```output
+11
+7
+```
+
+### A task started under a binding keeps it for a door it reaches through a function value
+
+```brix
+(prop + hooks (list (fn-type Int)))
+(blank)
+
+(main
+  (+= hooks doubled)
+  (let outside (do-new (call run-hooks)))
+  (call (. outside wait))
+  (do-with world (call Stub 5)
+    (let inside (do-new (call run-hooks)))
+    (call (. inside wait))
+  )
+)
+
+(fn-do + run-hooks _
+  (for (in hook hooks)
+    (print (call hook))
+  )
+)
+
+(fn-do + doubled Int
+  (return (* 2 (call roll)))
+)
+
+(effect + world)
+
+(fn-do + roll Int (door world)
+  (return 10)
+)
+
+(type + Stub
+  (prop + base Int)
+  (fn-do + This _
+    (param base Int)
+  )
+  (fn-do + roll Int
+    (return base)
+  )
+)
+```
+
+```output
+20
+10
+```

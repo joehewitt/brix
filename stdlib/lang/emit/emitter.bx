@@ -2842,6 +2842,11 @@
     (call raise-text declared (str (call paths-name row) " reached a door of '" name "' while '" name "' is banned"))
     (call (. ir start-block) next)
   )
+  (fn-do _ is-effect-row Bool
+    (param row U32)
+    (let kept ([] (. tables storage) row))
+    (return (!= (call (. program effects index-of) (. kept module) (. kept decl)) null))
+  )
   (fn-do _ is-refused-row Bool
     (param row U32)
     (let kept ([] (. tables storage) row))
@@ -2868,10 +2873,10 @@
     )
     (return mark)
   )
-  (fn-do _ inherit-refusals _
+  (fn-do _ inherit-effects _
     (param declared SyntaxId)
     (for (in row (call (. tables stack-holds) (. unit instance)))
-      (if (and (!= row no-storage) (call is-refused-row row))
+      (if (and (!= row no-storage) (call is-effect-row row))
         (let kept ([] (. tables storage) row))
         (call copy (call stack-slot kept declared) (call stack-state row declared) (. kept layout) (. ([] (. tables layouts rows) (. kept layout)) is-managed) declared)
       )
@@ -3169,13 +3174,17 @@
     ; Where the state of a global `do with` binds is read: in a spawned task's body, the capture
     ; it was given; in a lambda or a comprehension, the place that holds it in the environment it
     ; was given, as it was where it was made, which the steps of one that yields reach through the
-    ; link of their own, and so in the body of a loop on a stream for an effect's slot; and
-    ; anywhere else the slot of the task running.
+    ; link of their own, and so in the body of a loop on a stream for an effect's slot, or for an
+    ; effect it holds nothing of, the slot of the task running; and anywhere else the slot of the
+    ; task running.
     (let kept ([] (. tables storage) row))
     (if (call is-closure-body)
       (let place (call made-place row))
       (if (!= place no-place)
         (return (call made-state place site))
+      )
+      (if (call is-effect-row row)
+        (return (call stack-slot kept site))
       )
       (call refuse .refused-expression site)
       (return (call make-operand .operand-void 0))
@@ -5555,10 +5564,10 @@
     ; the object being made, where the layout holds it, since every function written there reads
     ; it then, and nothing else; one that holds nothing is given none. The function that tests a
     ; `whenever` clause again is given one so too, which holds the `count` locals from `slot` on
-    ; that the clause keeps. A function that captures anything else, or holds the state of a
-    ; global `do with` binds, has no shape there.
+    ; that the clause keeps, and the state of each global `do with` binds that it holds, as the
+    ; function that makes it reads it. A function that captures anything else has no shape there.
     (let layout ([] (. tables environments) (. unit reading)))
-    (if (or (== layout unbuilt-environment) (call (. tables holds-stacks) (. unit reading)))
+    (if (== layout unbuilt-environment)
       (call refuse .refused-expression id)
       (return no-local)
     )
@@ -5567,6 +5576,7 @@
     (let home ([] (. tables instance-scopes) (. unit reading)))
     (let alone false)
     (let captures 0u32)
+    (let holds (list Size))
     (for (in offset (..< 0 (. row nested count)))
       (let nested ([] (. bindings nested) (+ (. row nested start) offset)))
       (if (!= (. nested syntax) id)
@@ -5574,6 +5584,11 @@
       )
       (= alone true)
       (= captures (. nested captures count))
+      (for (in position (..< 0 (. tables place-owners length)))
+        (if (and (== ([] (. tables place-owners) position) (. unit reading)) (== ([] (. tables place-decls) position) (. nested decl)))
+          (+= holds position)
+        )
+      )
       (for (in index (..< 0 (. nested captures count)))
         (let captured (. ([] (. bindings captures) (+ (. nested captures start) index)) slot))
         (if (!= ([] (. tables slot-homes) captured) home)
@@ -5597,7 +5612,7 @@
         )
       )
     )
-    (let bare (and (== captures 0) (== (. selves length) 0)))
+    (let bare (and (== captures 0) (== (. selves length) 0) (== (. holds length) 0)))
     (if (or (not alone) (and (== layout no-layout) (not bare)))
       (call refuse .refused-expression id)
       (return no-local)
@@ -5619,6 +5634,10 @@
         (return no-local)
       )
       (call store (call load-local local id) (. field offset) (. unit self) true id)
+    )
+    (for (in position holds)
+      (let field (call (. tables layouts field) layout ([] (. tables place-children) position)))
+      (call capture-stack (call load-local local id) field ([] (. tables place-rows) position) id)
     )
     (return local)
   )

@@ -1050,11 +1050,14 @@ gives:
 - **How a binding runs.** A binding compiles no copy of the code under it. In a program that binds
   an effect anywhere, each of its doors reads at each call the fake the running task has bound, and
   calls that fake's method, or runs its body where none is bound. A task started under a binding
-  keeps it, and so do a closure and a loop on a stream written under it; one written outside a
-  binding reaches what was bound where it was made. Other code written under a binding to run
-  later, such as a markup region's arm, reads what is bound where it runs. A named function made a
-  value holds nothing: a function given as a callback under a binding reaches the fake while the
-  binding is open and the real doors once it ends. In a program that never binds an effect, a call
+  keeps it, whatever it reaches, so an app whose event loop starts under a binding sees its fakes
+  in each handler. A closure, a list of feeds and a loop on a stream written under a binding keep
+  it for the doors they reach; one written outside a binding reaches what was bound where it was
+  made, as does a subscriber a class writes, from where its object was made. Other code written
+  under a binding to run later, such as a markup region's arm or a section of a class the event
+  runtime runs, reads what is bound where it runs. A named function made a value holds nothing: a
+  function given as a callback under a binding reaches the fake while the binding is open and the
+  real doors once it ends. In a program that never binds an effect, a call
   of one of its doors costs what a call of the door's body does. A program can bind fakes of at
   most 254 classes to one effect.
 - **Names.** An effect's name is seen as the file's other names are: a public effect from the files

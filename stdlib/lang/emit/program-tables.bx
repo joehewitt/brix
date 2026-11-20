@@ -778,7 +778,9 @@
   (fn-do + stack-holds (list U32)
     (param instance InstanceId)
     ; The storage of each global `do with` binds whose state a nested function holds, in the
-    ; order the type pass recorded them; none where one is not kept.
+    ; order the type pass recorded them; none where one is not kept. A spawned task's body also
+    ; holds the slot of each effect the program binds or bans, which it keeps from where it was
+    ; spawned whatever it reaches.
     (let rows (list U32))
     (for (in hold (. facts stack-holds))
       (if (and (== (. hold instance) instance) (!= (call global-kind (. hold module) (. hold decl)) .global-constant))
@@ -786,13 +788,11 @@
         (+= rows (if-expr (== (call global-kind (. hold module) (. hold decl)) .global-stack) row no-storage))
       )
     )
-    (if (and (!= refused-effects 0) (call is-task-body instance))
+    (if (call is-task-body instance)
       (for (in effect (..< 0u32 (as (. program effects count) U32)))
-        (if (call is-refused (as ([] (. program effects modules) effect) ModuleId) (as ([] (. program effects decls) effect) DeclId))
-          (let row (call storage-of (as ([] (. program effects modules) effect) ModuleId) (as ([] (. program effects decls) effect) DeclId)))
-          (if (and (!= row no-storage) (== (call (. rows find) row) null))
-            (+= rows row)
-          )
+        (let row (call storage-of (as ([] (. program effects modules) effect) ModuleId) (as ([] (. program effects decls) effect) DeclId)))
+        (if (and (!= row no-storage) (== (call (. rows find) row) null))
+          (+= rows row)
         )
       )
     )
