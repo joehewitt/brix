@@ -12554,6 +12554,57 @@ static uint8_t matrixShape(const double* matrix) {
         : 0;
 }
 
+enum : uint32_t { RequireKinds = 1, RequirePathSet = 2 };
+
+static bool itemKindUniform(const BxGuiMetalDisplayItem& item, uint32_t& bits) {
+    if (item.kind == 6) {
+        return false;
+    }
+    if (item.kind == 3 || item.kind == 8 || item.kind == 13) {
+        if (item.kind != 3) {
+            bits |= RequirePathSet;
+        }
+        return false;
+    }
+    if (item.kind == 2 && !(item.flags & 2u)) {
+        bits &= ~RequireKinds;
+        return false;
+    }
+    if (item.kind != 0 && item.kind != 1 && item.kind != 2 && item.kind != 4 && item.kind != 7 &&
+            item.kind != 9 && item.kind != 10 && item.kind != 11 && item.kind != 12 && item.kind != 14) {
+        bits &= ~RequireKinds;
+        return false;
+    }
+    return !(item.kind == 4 || item.kind == 9 || item.kind == 10 || item.kind == 11 || item.kind == 12);
+}
+
+extern "C" uint32_t brixGuiMetalItemRequirements(
+    const void* scalarItemBytes,
+    uint64_t count,
+    const uint32_t* itemStates,
+    uint64_t stateCount,
+    uint8_t* requirements
+) {
+    const BxGuiMetalDisplayItem* items = static_cast<const BxGuiMetalDisplayItem*>(scalarItemBytes);
+    uint64_t total = itemStates ? std::max<uint64_t>(stateCount, 1) : 1;
+    if (!requirements || (!items && count)) {
+        return 0;
+    }
+    memset(requirements, 0, static_cast<size_t>(total));
+    uint32_t bits = RequireKinds;
+    for (uint64_t index = 0; index < count; ++index) {
+        uint32_t state = total > 1 ? itemStates[index] : 0;
+        if (state >= total) {
+            bits &= ~RequireKinds;
+            continue;
+        }
+        if (itemKindUniform(items[index], bits)) {
+            requirements[state] = 1;
+        }
+    }
+    return bits;
+}
+
 static bool itemsDrawable(
     MetalRenderer* renderer,
     const BxGuiMetalDisplayItem* items,
@@ -12561,7 +12612,9 @@ static bool itemsDrawable(
     const BxGuiMetalState* states,
     uint64_t stateCount,
     const uint32_t* itemStates,
-    const ChunkPathSet* pathSet
+    const ChunkPathSet* pathSet,
+    const uint8_t* requirements,
+    uint32_t requirementBits
 ) {
     uint64_t total = states && itemStates ? std::max<uint64_t>(stateCount, 1) : 1;
     std::vector<double>& matrices = renderer->stateMatrices;
@@ -12596,33 +12649,28 @@ static bool itemsDrawable(
         }
         shapes[index] = matrixShape(full);
     }
+    if (requirements) {
+        if (!(requirementBits & RequireKinds) || ((requirementBits & RequirePathSet) && !pathSet)) {
+            return false;
+        }
+        for (uint64_t index = 0; index < total; ++index) {
+            if (requirements[index] && !(shapes[index] & StateShapeUniform)) {
+                return false;
+            }
+        }
+        return true;
+    }
     for (uint64_t index = 0; index < count; ++index) {
-        const BxGuiMetalDisplayItem& item = items[index];
         uint32_t state = total > 1 ? itemStates[index] : 0;
         if (state >= total) {
             return false;
         }
-        uint8_t shape = shapes[state];
-        if (item.kind == 6) {
-            continue;
-        }
-        if (item.kind == 3 || item.kind == 8 || item.kind == 13) {
-            if (item.kind != 3 && !pathSet) {
-                return false;
-            }
-            continue;
-        }
-        if (item.kind == 2 && !(item.flags & 2u)) {
+        uint32_t bits = RequireKinds;
+        bool uniform = itemKindUniform(items[index], bits);
+        if (!(bits & RequireKinds) || ((bits & RequirePathSet) && !pathSet)) {
             return false;
         }
-        if (item.kind != 0 && item.kind != 1 && item.kind != 2 && item.kind != 4 && item.kind != 7 &&
-                item.kind != 9 && item.kind != 10 && item.kind != 11 && item.kind != 12 && item.kind != 14) {
-            return false;
-        }
-        if (item.kind == 4 || item.kind == 9 || item.kind == 10 || item.kind == 11 || item.kind == 12) {
-            continue;
-        }
-        if (!(shape & StateShapeUniform)) {
+        if (uniform && !(shapes[state] & StateShapeUniform)) {
             return false;
         }
     }
@@ -12753,7 +12801,11 @@ extern "C" bool brixGuiMetalPacketAppendItems(
     uint64_t imageCount,
     int64_t pathSet,
     const void* quadBytes,
-    uint64_t quadCount
+    uint64_t quadCount,
+    const uint32_t* order,
+    uint64_t orderCount,
+    const uint8_t* requirements,
+    uint32_t requirementBits
 ) {
     MetalRenderer* renderer = static_cast<MetalRenderer*>(pointer);
     const QuadOp* quads = static_cast<const QuadOp*>(quadBytes);
@@ -12772,14 +12824,31 @@ extern "C" bool brixGuiMetalPacketAppendItems(
             renderer->chunkPaths[pathSlot].serial == pathSerial
         ? &renderer->chunkPaths[pathSlot]
         : nullptr;
-    if (!itemsDrawable(renderer, items, count, states, stateCount, itemStates, chunkPathSet)) {
+    if (order && !requirements) {
+        return false;
+    }
+    if (!itemsDrawable(
+        renderer,
+        items,
+        count,
+        states,
+        stateCount,
+        itemStates,
+        chunkPathSet,
+        requirements,
+        requirementBits
+    )) {
         return false;
     }
     bool hasStates = states && itemStates && stateCount > 1;
-    uint32_t pathSpan = 0;
     renderer->stateStack.clear();
     renderer->stateMaskIds.clear();
-    for (uint64_t index = 0; index < count; ++index) {
+    uint64_t visible = order ? orderCount : count;
+    for (uint64_t position = 0; position < visible; ++position) {
+        uint64_t index = order ? order[position] : position;
+        if (index >= count) {
+            continue;
+        }
         const BxGuiMetalDisplayItem& item = items[index];
         if (hasStates) {
             syncItemState(renderer, states, itemStates[index], chunkPathSet, pathSlot);
@@ -12946,7 +13015,7 @@ extern "C" bool brixGuiMetalPacketAppendItems(
             PathOp op = {};
             op.slot = pathSlot;
             op.serial = pathSerial;
-            op.span = pathSpan++;
+            op.span = item.data3;
             if ((item.flags & 1u) && clips && item.aux < clipCount) {
                 const BxGuiMetalRect& clip = clips[item.aux];
                 op.contentMask[0] = static_cast<float>(clip.x);
