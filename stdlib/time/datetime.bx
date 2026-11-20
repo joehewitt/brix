@@ -224,6 +224,15 @@
   (fn-to-expr + Ratio
     (* scale this)
   )
+  (fn-expr + (infix this + (param amount Seconds)) Second
+    (as (call wrap-clock (+ (as this F64) (as amount F64)) 60.0) Second)
+  )
+  (fn-expr + (infix this - (param amount Seconds)) Second
+    (as (call wrap-clock (- (as this F64) (as amount F64)) 60.0) Second)
+  )
+  (fn-expr + (infix this - (param other Second)) Seconds
+    (as (- (as this F64) (as other F64)) Seconds)
+  )
 )
 
 (type + Minute (alias minute) (is UInt)
@@ -235,6 +244,15 @@
   (fn-to-expr + Ratio
     (* scale this)
   )
+  (fn-expr + (infix this + (param amount Minutes)) Minute
+    (as (call wrap-clock (+ (as this F64) (as amount F64)) 60.0) Minute)
+  )
+  (fn-expr + (infix this - (param amount Minutes)) Minute
+    (as (call wrap-clock (- (as this F64) (as amount F64)) 60.0) Minute)
+  )
+  (fn-expr + (infix this - (param other Minute)) Minutes
+    (as (- (as this F64) (as other F64)) Minutes)
+  )
 )
 
 (type + Hour (alias hour) (is UInt)
@@ -245,6 +263,15 @@
   )
   (fn-to-expr + Ratio
     (* scale this)
+  )
+  (fn-expr + (infix this + (param amount Hours)) Hour
+    (as (call wrap-clock (+ (as this F64) (as amount F64)) 24.0) Hour)
+  )
+  (fn-expr + (infix this - (param amount Hours)) Hour
+    (as (call wrap-clock (- (as this F64) (as amount F64)) 24.0) Hour)
+  )
+  (fn-expr + (infix this - (param other Hour)) Hours
+    (as (- (as this F64) (as other F64)) Hours)
   )
 )
 
@@ -458,7 +485,7 @@
         )
       )
     )
-    (lazy m (* (call Scale 0 0.59) minute60))
+    (lazy m (as (* (call Scale 0 0.59) minute60) Minute))
   )
   (fn-to-expr + Hour
     hour
@@ -546,6 +573,8 @@
   )
 )
 
-(unit + 1hour 1hours)
-(unit + 1minute 1minutes)
-(unit + 1second 1seconds)
+(fn-expr _ wrap-clock F64
+  (param value F64)
+  (param period F64)
+  (% (+ (% value period) period) period)
+)
