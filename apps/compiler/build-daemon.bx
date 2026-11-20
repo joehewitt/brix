@@ -76,6 +76,7 @@
   )
   (fn-do + serve Int
     (= is-serving true)
+    (probe-group + compiler.daemon.serve (text: "serving"))
     (do-new (worker: analyzer)
       (inline (call analyze))
     )
@@ -105,11 +106,16 @@
     (for (in stream streams)
       (call (. stream close))
     )
+    (probe-group - compiler.daemon.serve (text: "served"))
     (return 0)
   )
   (fn-do _ build BuildRecord
     (param arguments (list String))
     (let key (call (. "\n" join) arguments))
+    (probe-group + compiler.daemon.request (text: "request " (call (. " " join) arguments)))
+    (finally
+      (probe-group - compiler.daemon.request (text: "answered " (call (. " " join) arguments)))
+    )
     (let joined (? BuildJob) null)
     (while true
       (let waiter (call (of Semaphore Void)))
@@ -272,10 +278,12 @@
     )
     (let finished-job ([] finished key))
     (if (and finished-job (call is-current (!! (. finished-job record))))
+      (probe-log compiler.daemon.hit (text: "hit " (call (. " " join) arguments) " number " (?. (. finished-job record) number)))
       (call settle key)
       (return (call BuildTicket finished-job true))
     )
     (let job (call job-for key arguments))
+    (probe-log compiler.daemon.miss (text: "miss " (call (. " " join) arguments)))
     (+= (. job waiters) waiter)
     (return (call BuildTicket job false))
   )
@@ -286,6 +294,7 @@
     (let last latest)
     (let wanted (if-expr last (+ watching (call (of Map String (of List String)) (tuple (call (. "\n" join) last) last))) watching))
     (for (in (tuple key arguments) wanted (when (or (not ([] finished key)) (not (call is-current (!! (. (!! ([] finished key)) record)))))))
+      (probe-log compiler.daemon.speculate (text: "speculating " (call (. " " join) arguments)))
       (call job-for key arguments)
     )
   )
@@ -299,6 +308,7 @@
     (return-if active (if (and active (== (. active key) key) (== (. active generation) generation))))
     (blank)
     (let job (call BuildJob key arguments))
+    (probe-log compiler.daemon.queue (text: "queued " (call (. " " join) arguments) " after " (. queued length) " queued, building " (!= active null)))
     (+= queued job)
     (if (not is-working)
       (= is-working true)
@@ -317,7 +327,9 @@
         (case .rest
           (let action rest)
           (if action
+            (probe-group + compiler.daemon.rest)
             (catch (call action))
+            (probe-group - compiler.daemon.rest)
           )
         )
         (case .idle
@@ -328,7 +340,9 @@
   )
   (fn-do _ run _
     (param job BuildJob)
+    (probe-group + compiler.daemon.build (text: "building " (call (. " " join) (. job arguments))))
     (let result (call runner (. job arguments)))
+    (probe-group - compiler.daemon.build (text: "built " (call (. " " join) (. job arguments)) " status " (. result status)))
     (let inputs (call (. modules take-inputs)))
     (let product (. result product))
     (+= completed 1)
@@ -348,6 +362,7 @@
     (call keep-digests record)
     (<- sightings (call present-paths inputs))
     (if (not (call still-matches record))
+      (probe-log compiler.daemon.stale (text: "stale " (call (. " " join) (. job arguments)) " number " (. record number)))
       (call speculate)
     )
   )
@@ -388,6 +403,7 @@
     (param job BuildJob)
     (param record BuildRecord)
     (use lock)
+    (probe-log compiler.daemon.finish (text: "finished " (call (. " " join) (. job arguments)) " number " (. record number) " for " (. job waiters length) " waiting"))
     (= (. job record) record)
     (= ([] finished (. job key)) job)
     (= running null)
@@ -504,6 +520,7 @@
     (let path (as (. event path) String))
     (return-if (if (and (not (. event must-rescan)) (not (call source-stem path)))))
     (blank)
+    (probe-count compiler.daemon.events)
     (if (. event must-rescan)
       (call advance)
       (= must-rescan true)
@@ -530,6 +547,7 @@
   (fn-do _ flush _
     (return-if (if is-ending))
     (blank)
+    (probe-log compiler.daemon.changes (text: "changed " (. changes length) " sources, rescan " must-rescan))
     (for (in (tuple path _) changes)
       (let params
         (call (of Map String JSON)
