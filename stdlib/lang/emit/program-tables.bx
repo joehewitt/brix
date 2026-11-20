@@ -2472,7 +2472,7 @@
     )
     (for (in instance (. instances ordered))
       (let row ([] (. instances rows) instance))
-      (let root (call is-root-unit instance))
+      (let root (call is-root-unit instance (!= ([] lazy-units instance) 0)))
       (let apart (or (!= ([] lazy-units instance) 0) (call is-rule-unit instance) root))
       (if (or (== (. row binding) no-binding) (and (!= (. row initializer) 0) (not apart)))
         (continue)
@@ -2525,15 +2525,17 @@
   )
   (fn-do _ is-root-unit Bool
     (param instance InstanceId)
-    ; Whether an instance types a line of a root `<This` for a receiver, whose closures read the
-    ; object from the environment the value is given where the constructor evaluates it.
+    (param lazy-unit Bool)
+    ; Whether an instance types a line of a root `<This` or the value of a stored property for a
+    ; receiver, whose closures read the object from the environment the value is given where the
+    ; constructor evaluates it.
     (let row ([] (. instances rows) instance))
     (if (or (== (. row initializer) 0) (== (. row self-type) no-type))
       (return false)
     )
     (match? ([] (. ([] (. program modules) (. row module)) decls) (. row initializer))
       (case (call .decl-property property)
-        (return (. property defaults-root))
+        (return (or (. property defaults-root) (not lazy-unit)))
       )
     )
     (return false)

@@ -3470,6 +3470,28 @@ Exception: Default of part never finishes: Part.owner builds Owner, and Owner.pa
       ^^^^^^^^^^^^^^^^^^
 ```
 
+### A comprehension in a property's value reads another property of the object for each item, also where the value is worked out again.
+
+```brix
+(type + Holder
+  (prop + items (list Int) (= (list 1 2 3)))
+  (prop + scale Int (= 2))
+  (prop + scaled _ (= (call List (in (* each scale) #items))))
+)
+
+(main
+  (let holder (call Holder))
+  (print (. holder scaled))
+  (= (. holder items) (list 5))
+  (print (. holder scaled))
+)
+```
+
+```output
+2, 4, 6
+10
+```
+
 ### A property's value can pipe a stream through a function
 
 ```brix

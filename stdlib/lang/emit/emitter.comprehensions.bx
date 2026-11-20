@@ -160,12 +160,12 @@
     ; `converts`, converted as the type pass recorded for it as an argument. One written in
     ; the value a class writes for a property is typed by the instance that types that value,
     ; and given no environment, where that instance makes none: it captures nothing. Where it
-    ; makes one it has no shape. One written in the value of a lazy local nested functions
-    ; capture, evaluated by a function written in the one that declares it (`read-shared`), is
-    ; given the environment that holds the local, which is the one in force where it is written.
-    ; One a constructor makes has no shape where `emit-closure` gives a nested function none: while
-    ; the properties are given their values, where nested functions read the receiver, and after,
-    ; where the properties read a lazy local nested functions capture.
+    ; makes one it is given the one made for the value (`hold-unit`). One written in the value of
+    ; a lazy local nested functions capture, evaluated by a function written in the one that
+    ; declares it (`read-shared`), is given the environment that holds the local, which is the one
+    ; in force where it is written. One a constructor makes has no shape where `emit-closure` gives
+    ; a nested function none: while the properties are given their values, where nested functions
+    ; read the receiver, and after, where the properties read a lazy local nested functions capture.
     (let nothing (call make-operand .operand-void 0))
     (let callee no-instance)
     (let propagates false)
@@ -179,7 +179,8 @@
     )
     (let count U32 (if-expr (!= given-site 0) 1 0))
     (let outside (!= (. unit reading) (. unit instance)))
-    (let held (and outside (!= ([] (. tables environments) (. unit reading)) no-layout)))
+    (let held (and outside unheld (!= ([] (. tables environments) (. unit reading)) no-layout)))
+    (lazy unheld (!= (. unit reading) (. filling held-unit)))
     (let shared (call shared-slot))
     (let receiving (and (. filling storing) (not outside) (call shares-receiver)))
     (let doubled (and (not (. filling storing)) (not outside) (call fills-share) (call shares-lazy)))
@@ -610,7 +611,8 @@
       (call refuse .refused-expression id)
       (return (call Typed nothing no-type))
     )
-    (lazy holds-environment (and outside (!= ([] (. tables environments) (. unit reading)) no-layout)))
+    (lazy holds-environment (and outside unheld (!= ([] (. tables environments) (. unit reading)) no-layout)))
+    (lazy unheld (!= (. unit reading) (. filling held-unit)))
     (lazy receiving (and (. filling storing) (not outside) (call shares-receiver)))
     (let call ([] (. facts calls) fact))
     (let callee (. call callee))
@@ -805,9 +807,13 @@
     ; The environment a nested function of the instance whose facts are read is given where it is
     ; written: the one in force, or where a function written in that instance evaluates the value
     ; of a lazy local it declares, the one that holds the local, which is in force where the value
-    ; is written (`shared-slot`). One made there by an instance with no environment is given none.
+    ; is written (`shared-slot`), or where the value of a property is evaluated, the one made for
+    ; it (`hold-unit`). One made there by an instance with no environment is given none.
     (if (== (. unit reading) (. unit instance))
       (return (call written-environment id))
+    )
+    (if (== (. unit reading) (. filling held-unit))
+      (return (call load-local (. filling held-environment) id))
     )
     (let shared (call shared-slot))
     (if (== shared no-slot)
