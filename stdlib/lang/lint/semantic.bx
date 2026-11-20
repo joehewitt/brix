@@ -14,6 +14,7 @@
 (import /lang/ast/row-range)
 (import /lang/check/facts)
 (import /lang/check/instances)
+(import /lang/check/lint-traces)
 (import /lang/check/parallel-typing)
 (import /lang/check/session)
 (import /lang/check/type-store)
@@ -242,7 +243,7 @@
     )
     (let program (use (as built Program)))
     (let session (use (call Session program)))
-    (= (. session facts traces-lint) true)
+    (= (. session lint traces) true)
     (call type-program session)
     (let text (call FactsText session))
     (let failing false)
@@ -315,7 +316,7 @@
       (+= scanned false)
     )
     (let declares (map U64 SyntaxId))
-    (for (in fact (. session facts declared-values))
+    (for (in fact (. session lint declared-values))
       (let row ([] (. session instances rows) (. fact instance)))
       (let module ([] (. program modules) (. row module)))
       (let gathered ([] facts (. module path)))
@@ -533,7 +534,7 @@
     ; The payloads of events with effects written in targets, in the order the reference compiles
     ; the instances (`compile-ranks`), each with its effects in the order it met them.
     (let program (. session program))
-    (let effects (. session facts payload-effects))
+    (let effects (. session lint payload-effects))
     (let keys (list U64))
     (for (in position (..< 0 (. effects length)))
       (let rank U64 ([] ranks (. ([] effects position) instance)))
@@ -584,7 +585,7 @@
     ; take as cases of more than one type, in the order the reference compiles the instances
     ; (`compile-ranks`), each with the names of those types in order.
     (let program (. session program))
-    (let owners (. session facts case-owners))
+    (let owners (. session lint case-owners))
     (let keys (list U64))
     (for (in position (..< 0 (. owners length)))
       (let rank U64 ([] ranks (. ([] owners position) instance)))
@@ -664,7 +665,7 @@
     ; The casts of the instances written in targets to the type their place already takes the value
     ; as, in the order the reference compiles the instances (`compile-ranks`).
     (let program (. session program))
-    (let casts (. session facts context-casts))
+    (let casts (. session lint context-casts))
     (let keys (list U64))
     (for (in position (..< 0 (. casts length)))
       (let rank U64 ([] ranks (. ([] casts position) instance)))

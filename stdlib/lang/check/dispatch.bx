@@ -1,6 +1,7 @@
 (import ./constructors)
 (import ./conversions)
 (import ./facts)
+(import ./lint-traces)
 (import ./frame)
 (import ./instances)
 (import ./ranking-cache)
@@ -131,6 +132,7 @@
   (prop _ symbol-choices (list U32))
   (prop _ symbol-attempts U32)
   (prop _ facts Facts)
+  (prop _ lint LintTraces)
   (prop _ symbol-accepted (list TypeId))
   (prop _ symbol-accepted-fills (list U32))
   (prop _ consulted Bool)
@@ -142,6 +144,7 @@
     (lazy program (. session program))
     (lazy scratch (. session scratch))
     (lazy facts (. session facts))
+    (lazy lint (. session lint))
   )
   (fn-do + rebind _
     (param module ModuleId)
@@ -563,7 +566,7 @@
     ; Notes, for each argument that is a case named by its symbol alone, the types it may be a case
     ; of that a candidate's parameters take, optional or not, as the reference notes them for each
     ; candidate the arguments fit as it ranks the call with the type a symbol alone names.
-    (if (or (not (. facts traces-lint)) (!= symbol-attempts 0))
+    (if (or (not (. lint traces)) (!= symbol-attempts 0))
       (return)
     )
     (for (in position (..< 0 (. fills length)))

@@ -4,6 +4,7 @@
 (import ./dispatch)
 (import ./error-sets)
 (import ./facts)
+(import ./lint-traces)
 (import ./frame)
 (import ./instances)
 (import ./numeric)
@@ -115,6 +116,7 @@
   (prop _ instances Instances)
   (prop _ relations Relations)
   (prop _ facts Facts)
+  (prop _ lint LintTraces)
   (prop _ program Program)
   (prop _ scratch TypingScratch)
   (prop _ records-pairs _ (= true))
@@ -126,6 +128,7 @@
     (lazy scratch (. frame scratch))
     (lazy instances (. frame instances))
     (lazy facts (. frame facts))
+    (lazy lint (. frame session lint))
     (lazy program (. frame program))
     (lazy ranking (call Ranking (. frame session) (. frame module)))
   )
@@ -4032,7 +4035,7 @@
     ; type parameters, or to one the call binds a parameter to, is kept, since it may choose the
     ; function. A call given a function is not ranked again, since ranking types the function for
     ; what each candidate passes it.
-    (if (or (not (. facts traces-lint)) (!= (call (. ranking ambiguity)) null) (call answers-table-index))
+    (if (or (not (. lint traces)) (!= (call (. ranking ambiguity)) null) (call answers-table-index))
       (return)
     )
     (for (in position (..< 0 (. ranking shape-count)))
@@ -4073,7 +4076,7 @@
     (param syntax (of ImmutableArray SyntaxId ArenaBacking))
     ; Records the types candidates took each argument that is a case named by its symbol alone as a
     ; case of, where they took it as one of more than one (`CaseOwnerFact`).
-    (if (not (. facts traces-lint))
+    (if (not (. lint traces))
       (return)
     )
     (let noted (list CaseOwnerNote))
@@ -4091,7 +4094,7 @@
             )
           )
         )
-        (call (. facts case-owners append) fact)
+        (call (. lint case-owners append) fact)
       )
     )
   )
@@ -4146,7 +4149,7 @@
     (call (. scratch types rewind) mark)
     (if same
       (let fact (call ContextCastFact (. frame instance) cast .cast-argument target))
-      (call (. facts context-casts append) fact)
+      (call (. lint context-casts append) fact)
     )
   )
   (fn-do + note-context-cast _
@@ -4158,7 +4161,7 @@
     ; (`ContextCastFact`). An argument cast from another type to one written with the type
     ; parameters is not, since it may choose what is called, nor a cast whose value is not of the
     ; type written, as a cast to a stream keeps what it casts.
-    (if (or (not (. facts traces-lint)) (== expected no-type) (== expected invalid-type))
+    (if (or (not (. lint traces)) (== expected no-type) (== expected invalid-type))
       (return)
     )
     (let written value)
@@ -4183,7 +4186,7 @@
         )
         (if (call (. conversions fits-unasked) (. row lhs) expected)
           (let fact (call ContextCastFact (. frame instance) written kind expected))
-          (call (. facts context-casts append) fact)
+          (call (. lint context-casts append) fact)
         )
       )
     )
@@ -4222,19 +4225,19 @@
     (param kind ContextCastKind)
     (let suffixed (call (. conversions suffix-type) literal))
     (if (and (!= suffixed no-type) (== suffixed expected) (call (. conversions unsuffixed-fits) literal expected))
-      (call (. facts context-casts append) (call ContextCastFact (. frame instance) literal kind expected))
+      (call (. lint context-casts append) (call ContextCastFact (. frame instance) literal kind expected))
     )
   )
   (fn-do + note-operand-suffix _
     (param operand SyntaxId)
     (param other SyntaxId)
     (param beside TypeId)
-    (if (or (not (. facts traces-lint)) (call written-number other))
+    (if (or (not (. lint traces)) (call written-number other))
       (return)
     )
     (let suffixed (call (. conversions suffix-type) operand))
     (if (and (!= suffixed no-type) (== (call (. conversions unsuffixed-beside) operand beside) suffixed))
-      (call (. facts context-casts append) (call ContextCastFact (. frame instance) operand .cast-operand suffixed))
+      (call (. lint context-casts append) (call ContextCastFact (. frame instance) operand .cast-operand suffixed))
     )
   )
   (fn-do _ written-number Bool
