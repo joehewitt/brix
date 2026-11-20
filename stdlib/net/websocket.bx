@@ -57,8 +57,8 @@
   (prop _ outgoing _ (= (call (of SyncBufferedChannel Frame))))
   (blank)
   (prop _ unread WebSocketBudget)
-  (delegate (of Iterable ReadableData))
-  (prop _ binary-incoming (of WebSocketInbox Frame))
+  (delegate (of Iterable (of ReadableData Byte)))
+  (prop _ binary-incoming (of WebSocketInbox (of ReadableData Byte)))
   (delegate (of Iterable String))
   (prop _ text-incoming (of WebSocketInbox String))
   (fn-do + This _ (?! Error)
@@ -169,7 +169,7 @@
   )
   (fn-do _ open-inboxes _
     (= unread (call WebSocketBudget limit))
-    (= binary-incoming (call (of WebSocketInbox Frame) unread))
+    (= binary-incoming (call (of WebSocketInbox (of ReadableData Byte)) unread))
     (= text-incoming (call (of WebSocketInbox String) unread))
   )
   (fn-do _ send-frame _
@@ -291,7 +291,7 @@
       (else
         (return-if (. WebSocketClose policy-violation) (if (not (call (. unread claim) size))))
         (blank)
-        (call (. binary-incoming push) message size)
+        (call (. binary-incoming push) (call (of DataStream Byte) (. message payload)) size)
       )
     )
     (return null)
@@ -494,9 +494,6 @@
       )
     )
     (lazy status (call (of Array Byte) (list (as (/zrshift/ (as code U16) 8) Byte) (as (as code U16) Byte))))
-  )
-  (fn-to-expr + (of ReadableData Byte)
-    (call DataStream payload)
   )
   (fn-expr + close-code WebSocketClose :get
     (match payload
