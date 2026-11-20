@@ -242,12 +242,17 @@
     )
     (call (. scratch rankings keep) row)
   )
+  (fn-expr _ whole-unit-literal Bool
+    (param shape CallArgument)
+    (param param TypeId)
+    (and (!= (. shape unit-literal) 0) (!= conversions null) (call (. conversions fitting-literal) (. shape unit-literal) param))
+  )
   (fn-do _ rememberable Bool
     ; Whether what ranking chooses for this call is told by what the call gives alone: no argument
     ; is a case named by its symbol alone or an integer written with no suffix, and no type given
     ; holds a variable or a closure.
     (for (in shape calls)
-      (return-if false (if (or (. shape symbol) (!= (. shape literal) 0))))
+      (return-if false (if (or (. shape symbol) (!= (. shape literal) 0) (!= (. shape unit-literal) 0))))
     )
     (return-if false (if (or (not (call plain-type request-receiver)) (not (call plain-type row-case)))))
     (blank)
@@ -3550,8 +3555,9 @@
                 )
               )
               (let literal
-                (scope (and has-literal (!= conversions null) (call (. conversions fitting-literal) (. shape literal) param))
+                (scope (or (and has-literal fits-literal) (call whole-unit-literal shape param))
                   (lazy has-literal (!= (. shape literal) 0))
+                  (lazy fits-literal (and (!= conversions null) (call (. conversions fitting-literal) (. shape literal) param)))
                 )
               )
               (let requested
@@ -3581,7 +3587,7 @@
             (return false)
           )
           (let specificity (if-expr (< position (. specs length)) ([] specs position) 0u32))
-          (let written (and (!= (. shape literal) 0) (!= conversions null) (call (. conversions fitting-literal) (. shape literal) param)))
+          (let written (or (and (!= (. shape literal) 0) (!= conversions null) (call (. conversions fitting-literal) (. shape literal) param)) (call whole-unit-literal shape param)))
           (if (and (not (call meets-specificity relation specificity)) (not written))
             (return false)
           )

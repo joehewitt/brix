@@ -514,6 +514,28 @@
   )
 )
 
+(fn-expr _ drops-fraction Bool
+  (param types Types)
+  (param source TypeId)
+  (param target TypeId)
+  (param ratio UnitRatio)
+  (and (call is-integer-type to-type) (or (not (call is-integer-type from-type)) (not (call ratio-is-whole ratio))))
+  (where
+    (lazy from-type (. ([] (. types completions) source) intrinsic))
+    (lazy to-type (. ([] (. types completions) target) intrinsic))
+  )
+)
+
+(fn-expr + unit-drops-fraction Bool
+  (param types Types)
+  (param source TypeId)
+  (param target TypeId)
+  (and (not (. ratio is-none)) (call drops-fraction types source target ratio))
+  (where
+    (lazy ratio (call (. types unit-families ratio-between) source target))
+  )
+)
+
 (fn-expr _ is-integer-type Bool
   (param type IntrinsicKind)
   (and (call intrinsic-is-numeric type) (not (call intrinsic-is-float type)) (!= type .number))
@@ -1048,6 +1070,12 @@
         (case= .relation-wrap-cast
           (call wraps-implicit relation texts)
         )
+        (case= .relation-equal
+          (not (call loses-fraction relation))
+        )
+        (case= .relation-common-equality
+          (not (call loses-fraction relation))
+        )
         (case= .relation-fromverter
           (and (or has-converter enumless) (call fields-implicit (. relation from) (. relation to) texts))
           (lazy has-converter (!= (. relation converter-module) (. U32 max)))
@@ -1229,6 +1257,23 @@
     (where
       (lazy cases (call (. types cases-of) (. relation to)))
       (lazy held (. ([] cases (. relation case-index)) type))
+    )
+  )
+  (fn-expr + loses-fraction Bool
+    (param relation Relation)
+    (match kind
+      (case= .relation-equal
+        (call drops-fraction types (. relation from) (. relation to) (. relation ratio))
+      )
+      (case= .relation-common-equality
+        (call drops-fraction types (. relation via) (. relation to) (. relation ratio))
+      )
+      (default
+        false
+      )
+    )
+    (where
+      (lazy kind (. relation kind))
     )
   )
   (fn-expr + implicitly Relation

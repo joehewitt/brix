@@ -11,6 +11,7 @@
 (import ./type-text)
 (import ./types)
 (import ./typing-scratch)
+(import ./unit-families)
 (import /lang/ast/ast)
 (import /lang/ast/ast-children)
 (import /lang/ast/ast-nodes)
@@ -111,8 +112,9 @@
       )
     )
     (let asked
-      (scope (or requested (== reason .reason-operator) (call fitting-literal value-syntax fitted) lowers)
+      (scope (or requested operates (call fitting-literal value-syntax fitted) lowers)
         (lazy requested (or cast (== reason .reason-explicit) (== reason .reason-print)))
+        (lazy operates (and (== reason .reason-operator) (not (call (. relations loses-fraction) relation))))
         (lazy lowers (call lowers-facet relation reason))
       )
     )
@@ -120,7 +122,7 @@
       (if (call misfits-literal value-syntax target)
         (call check-literal-fit value-syntax target)
         (else
-          (call report-illegal syntax relation source target)
+          (call report-illegal (if-expr (== reason .reason-operator) value-syntax syntax) relation source target)
         )
       )
       (return invalid-type)
@@ -149,6 +151,16 @@
     )
     (let open (or (. ([] (. types completions) target) has-variables) (call (. relations holds-alternatives) target)))
     (return (if-expr (or chooses open) (. relation to) target))
+  )
+  (fn-do _ whole-in-unit Bool
+    (param syntax SyntaxId)
+    (param amount F64)
+    (param target TypeId)
+    (let given (call (. facts node-type) (. frame instance) syntax))
+    (if (not (call unit-drops-fraction types given target))
+      (return false)
+    )
+    (return (call scales-whole amount (call (. types unit-families ratio-between) given target)))
   )
   (fn-expr _ lowers-facet Bool
     (param relation Relation)
@@ -297,6 +309,9 @@
     )
     (case? (or (== (. relation kind) .relation-down-cast) interface-down (== (. relation kind) .relation-unwrap-cast))
       .unasked-narrowing
+    )
+    (case? (call (. relations loses-fraction) relation)
+      .unasked-fraction
     )
     (default
       .unasked-conversion
@@ -1795,6 +1810,21 @@
     )
     (return null)
   )
+  (fn-do + unit-literal-of SyntaxId
+    (param syntax SyntaxId)
+    (match? ([] (. frame tree nodes) syntax)
+      (case (call .node-argument argument)
+        (return (call unit-literal-of (. argument expr)))
+      )
+      (case (call .node-integer-syntax row)
+        (return (if-expr (and (. row unit) (or (== unsuffixed 0) (!= syntax unsuffixed))) syntax 0))
+      )
+      (case (call .node-float-syntax row)
+        (return (if-expr (and (. row unit) (or (== unsuffixed 0) (!= syntax unsuffixed))) syntax 0))
+      )
+    )
+    (return 0)
+  )
   (fn-do + literal-of SyntaxId
     (param syntax SyntaxId)
     ; An argument that is a number written with no suffix or a constant a C header defines, a list
@@ -1896,7 +1926,9 @@
       )
       (case (call .node-integer-syntax row)
         (return
-          (scope (and (or (not (. row unit)) (and (!= unsuffixed 0) (== syntax unsuffixed))) (call integer-fits parsed held))
+          (scope (or written whole)
+            (lazy written (and (or (not (. row unit)) (and (!= unsuffixed 0) (== syntax unsuffixed))) (call integer-fits parsed held)))
+            (lazy whole (and (not (. parsed overflow)) (call whole-in-unit syntax (as (. parsed value) F64) held)))
             (lazy parsed (call parse-integer-literal (. row value)))
           )
         )
@@ -1910,7 +1942,9 @@
       )
       (case (call .node-float-syntax row)
         (return
-          (scope (and (or (not (. row unit)) (and (!= unsuffixed 0) (== syntax unsuffixed))) float-fits)
+          (scope (or written whole)
+            (lazy written (and (or (not (. row unit)) (and (!= unsuffixed 0) (== syntax unsuffixed))) float-fits))
+            (lazy whole (call whole-in-unit syntax (as (. row value) F64) held))
             (lazy float-fits (call float-literal-fits types (. row value) held))
           )
         )

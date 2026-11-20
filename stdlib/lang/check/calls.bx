@@ -3480,7 +3480,7 @@
     ; module finds it, which every other asking of the module finds too. An argument written as an
     ; integer with no suffix may be taken as any type that holds it, so what is found for it is
     ; found for that argument alone.
-    (let literal (!= (call (. conversions literal-of) arg-syntax) 0))
+    (let literal (or (!= (call (. conversions literal-of) arg-syntax) 0) (!= (call (. conversions unit-literal-of) arg-syntax) 0)))
     (let query (call OperatorQuery (. ranking caller) receiver name arg second))
     (let known (if-expr literal null ([] (. scratch operators) query)))
     (if (!= known null)
@@ -4882,7 +4882,8 @@
     (param syntax SyntaxId)
     (param name (? Atom) (= null))
     (let literal (if-expr (!= syntax 0) (call (. conversions literal-of) syntax) 0))
-    (call (. scratch call-arguments push) (call CallArgument name false false false false null literal))
+    (let unit-literal (if-expr (!= syntax 0) (call (. conversions unit-literal-of) syntax) 0))
+    (call (. scratch call-arguments push) (call CallArgument name false false false false null literal null unit-literal))
     (call (. scratch types push) type)
     (call (. scratch syntax push) syntax)
   )

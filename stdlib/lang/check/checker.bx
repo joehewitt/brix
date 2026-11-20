@@ -13037,7 +13037,7 @@
     (param name (? Atom))
     (param optional Bool)
     (param expr SyntaxId)
-    (call CallArgument name optional false false false symbol (call (. conversions literal-of) expr) other)
+    (call CallArgument name optional false false false symbol (call (. conversions literal-of) expr) other (call (. conversions unit-literal-of) expr))
     (where
       (lazy chosen (call symbol-choice expr))
       (lazy symbol (if-expr (!= chosen 0) (call (. tree symbol-of) chosen) (call (. tree argument-symbol) expr)))
@@ -18689,6 +18689,9 @@
             (call promote-operand right rhs-value machine)
           )
           (else-if (and (call intrinsic-is-float (. ([] (. types completions) rhs-value) intrinsic)) narrower)
+            (call (. conversions convert) left left lhs-value rhs-value .reason-operand)
+          )
+          (else-if (and (call unit-drops-fraction types rhs-value lhs-value) (not (call unit-drops-fraction types lhs-value rhs-value)))
             (call (. conversions convert) left left lhs-value rhs-value .reason-operand)
           )
           (else

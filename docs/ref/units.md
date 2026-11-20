@@ -78,7 +78,7 @@ that family.
   (let price 250cents)
   (print (as price Dollars UnitString))
   (print (as 3dollars Cents UnitString))
-  (print (as (+ 1dollars 250cents) UnitString))
+  (print (as (+ 1dollars 300cents) UnitString))
   (print (as (+ 250cents 1dollars) UnitString))
   (print (call (. 3dollars label)))
 )
@@ -96,7 +96,7 @@ that family.
 ```output
 2dollars
 300cents
-3dollars
+4dollars
 350cents
 3 dollars
 ```
@@ -113,7 +113,8 @@ that family.
   imported unit or another unit of its module already has: `"c" already names Char; give C a suffix
   of its own`.
 - **Storage.** A unit is stored as the number type its chain of declarations starts from. A unit
-  stored as an integer drops the fraction when it converts, toward zero: `250cents` is `2dollars`.
+  stored as an integer holds whole numbers, so `(as price Dollars)`{.brix} drops the fraction,
+  toward zero, and `250cents` becomes `2dollars` only when asked; see [Integers](#conversions).
 - **Family base.** A unit declared from a number type of the program's own, as `Cents` is from
   `Money`, equals one of it. The methods of the base type belong to every unit of the family, and
   run on the value in its own unit, so `(call (. 3dollars label))`{.brix} reads 3. Inside them,
@@ -224,8 +225,10 @@ true
 - **Plain numbers.** A plain number on the right is taken in the left's unit:
   `(+ 90s 30)`{.brix} is `120seconds`. A plain number on the left keeps the unit only for `*`; with
   the other operators the result is a plain number.
-- **Comparisons** convert the same way, so `(< 500ms 1s)`{.brix} is true. Comparing units of two
-  families that no equality joins is an error; see [Conversions](#conversions).
+- **Comparisons** convert the same way, so `(< 500ms 1s)`{.brix} is true, but compare in the
+  right's unit where the left's is stored as an integer and would drop the right's fraction:
+  `(< 3dollars 350cents)`{.brix} is true. Comparing units of two families that no equality joins is
+  an error; see [Conversions](#conversions).
 - **Assignment.** `(+= total 30s)`{.brix} converts the value to the unit of `total`.
 - **Units on their own.** A unit that no declaration relates to another, such as `px`, is in no
   family. Arithmetic on it gives a plain number, which becomes the unit again when it is stored as
@@ -266,13 +269,35 @@ waits 45seconds
 ```
 
 - **Within a family**, a unit converts to another on its own wherever a value of the other is
-  wanted: in a declaration, an argument, a return or an assignment. `as` and calling the type, as
+  wanted: in a declaration, an argument, a return, an assignment or an operand, unless it would
+  drop a fraction. `as` and calling the type, as
   in `(call Milliseconds 2.5s)`{.brix}, convert the same way.
 - **Ratios** multiply along the declarations as exact fractions, so `(as 2880minutes Days)`{.brix}
   is exactly `2days`. A ratio written as a decimal of up to 15 digits, such as `25.4mm`, is exact
   too, so `(as 1ft M)`{.brix} is `0.3048m` through inches. A ratio that arithmetic gives, such as
   `(/ 1 3whole)`{.brix}, is a float like any other.
-- **Integers.** A unit stored as an integer drops the fraction, toward zero.
+- **Integers.** A unit converts on its own to a unit stored as an integer only where no fraction
+  can be lost: from a unit stored as an integer by a whole ratio, as dollars become cents, or as a
+  literal whose amount comes out whole, as `300cents` becomes `3dollars`. Elsewhere it takes `as`,
+  which drops the fraction, toward zero: `(as 250cents Dollars)`{.brix} is `2dollars`.
+
+```brix compile-error
+(main
+  (let total Dollars 1dollars)
+  (print (+ total 250cents))
+)
+
+(type-line + Cents (alias cents) (is I64))
+(type-line + Dollars (alias dollars) (is 100cents))
+```
+
+```output
+Exception: Expected Dollars here, but this is Cents, which becomes Dollars only when asked, since Dollars holds whole numbers and drops any fraction; write "(as 250cents Dollars)"
+<no file:4>
+      (print (+ total 250cents))
+                      ^^^^^^^^
+```
+
 - **Plain numbers to units.** A plain number given for a unit is taken in that unit:
   `(call describe 45)`{.brix} waits `45seconds`. A number literal becomes any unit. A number that is
   not a literal converts as numbers do: a `Float` becomes a unit stored as an `F64`, but an `Int`

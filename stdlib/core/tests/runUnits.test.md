@@ -307,7 +307,7 @@ Exception: Foo cannot be cast to Bar; there is no conversion between them
   (print (/ 10foo 4foo))
   (print (as 5km M))
   (print (as 1500m Km))
-  (print (as (+ 2km 500m) UnitString))
+  (print (as (+ 2km 3000m) UnitString))
   (print (as (+ 500m 2km) UnitString))
   (print (< 3km 5km))
   (print (< 3km 500m))
@@ -342,7 +342,7 @@ Exception: Foo cannot be cast to Bar; there is no conversion between them
 2.5
 5000
 1
-2km
+5km
 2500m
 true
 false
@@ -408,9 +408,9 @@ Exception: Invalid constant expression
   (print (as (+ 2bar 1foo 2bar) UnitString))
   (print (as (+ 1foo 2bar) Bar))
   (print (- 3foo (+ 1foo 2bar)))
-  (print (+ 5km 500m 1km))
-  (print (as (+ 5km 500m 1km) M))
-  (print (< (+ 2km 500m) 3km))
+  (print (+ 5km 2000m 1km))
+  (print (as (+ 5km 2000m 1km) M))
+  (print (< (+ 500m 2km) 3km))
 )
 
 (type + Foo (alias foo) (is F64))
@@ -430,8 +430,8 @@ true
 6bar
 4
 1
-6
-6000
+8
+8000
 true
 ```
 
@@ -1095,4 +1095,240 @@ Exception: An equality relates two units by a ratio alone, so a number with no u
 <no file:8>
     (unit + 1bar (+ 2foo 5))
                          ^
+```
+
+### A unit stored as a whole number takes another on its own only where no fraction is lost, and `as` drops the fraction toward zero.
+
+```brix
+(main
+  (let c Cents 2dollars)
+  (print (as c UnitString))
+  (print (as (+ 250cents 1dollars) UnitString))
+  (let total Cents 1cents)
+  (+= total 1dollars)
+  (print (as total UnitString))
+  (let d Dollars 300cents)
+  (print (as d UnitString))
+  (print (as (as 250cents Dollars) UnitString))
+  (print (as (as -250cents Dollars) UnitString))
+  (let h Hour 120minutes)
+  (print (as h UnitString))
+  (let n Hour -120minutes)
+  (print (as n UnitString))
+)
+
+(type-line + Cents (alias cents) (is I64))
+(type-line + Dollars (alias dollars) (is 100cents))
+(type-line + Minutes (alias minutes) (is F64))
+(type-line + Hour (alias hour) (is I64))
+(unit + 1hour 60minutes)
+```
+
+```output
+200cents
+350cents
+101cents
+3dollars
+2dollars
+-2dollars
+2hour
+-2hour
+```
+
+### A literal whose amount comes out whole is taken by a parameter or an operator in a unit stored as whole numbers, and a generic function keeps the literal's own unit.
+
+```brix
+(main
+  (print (call wait 120minutes))
+  (print (call wait -60minutes))
+  (print (as (call same 90minutes) UnitString))
+  (let m Minutes 30minutes)
+  (print (as (call same m) UnitString))
+  (let start (call Stamp 5hour))
+  (print (as (. (- start 120minutes) at) UnitString))
+  (print (as (. (- start 1hour) at) UnitString))
+)
+
+(type-line + Minutes (alias minutes) (is F64))
+(type-line + Hour (alias hour) (is I64))
+(unit + 1hour 60minutes)
+
+(type + Stamp (is Tuple)
+  (prop + at Hour)
+  (fn-expr + (infix this - (param other Hour)) _
+    (call Stamp (- at other))
+  )
+)
+
+(fn-expr + wait String
+  (param h Hour)
+  (as h UnitString)
+)
+
+(fn-expr + same T
+  (param x ''T)
+  x
+)
+```
+
+```output
+2hour
+-1hour
+90minutes
+30minutes
+3hour
+4hour
+```
+
+### A literal whose amount is no whole number is rejected by a parameter in a unit stored as whole numbers, though the same call took a whole one.
+
+```brix compile-error
+(main
+  (print (call wait 120minutes))
+  (print (call wait 90minutes))
+)
+
+(type-line + Minutes (alias minutes) (is F64))
+(type-line + Hour (alias hour) (is I64))
+(unit + 1hour 60minutes)
+
+(fn-expr + wait String
+  (param h Hour)
+  (as h UnitString)
+)
+```
+
+```output
+Exception: No function "wait" accepts (Minutes); it is declared as "wait(h Hour)"
+<no file:4>
+      (print (call wait 90minutes))
+             ^^^^^^^^^^^^^^^^^^^^^
+```
+
+### A comparison whose left unit would drop the right's fraction compares in the right's unit.
+
+```brix
+(main
+  (print (< 3dollars 350cents))
+  (print (== 1dollars 150cents))
+  (print (> 350cents 3dollars))
+  (print (== 1dollars 100cents))
+  (print (< 1hour 90minutes))
+)
+
+(type-line + Cents (alias cents) (is I64))
+(type-line + Dollars (alias dollars) (is 100cents))
+(type-line + Minutes (alias minutes) (is F64))
+(type-line + Hour (alias hour) (is I64))
+(unit + 1hour 60minutes)
+```
+
+```output
+true
+false
+true
+true
+true
+```
+
+### A literal whose amount is no whole number of a unit stored as one is rejected unasked.
+
+```brix compile-error
+(main
+  (let d Dollars 250cents)
+  (print d)
+)
+
+(type-line + Cents (alias cents) (is I64))
+(type-line + Dollars (alias dollars) (is 100cents))
+```
+
+```output
+Exception: Expected Dollars here, but this is Cents, which becomes Dollars only when asked, since Dollars holds whole numbers and drops any fraction; write "(as 250cents Dollars)"
+<no file:3>
+      (let d Dollars 250cents)
+             ^^^^^^^
+```
+
+### The right operand of arithmetic is rejected where the left's unit would drop its fraction.
+
+```brix compile-error
+(main
+  (print (+ 1dollars 250cents))
+)
+
+(type-line + Cents (alias cents) (is I64))
+(type-line + Dollars (alias dollars) (is 100cents))
+```
+
+```output
+Exception: Expected Dollars here, but this is Cents, which becomes Dollars only when asked, since Dollars holds whole numbers and drops any fraction; write "(as 250cents Dollars)"
+<no file:3>
+      (print (+ 1dollars 250cents))
+                         ^^^^^^^^
+```
+
+### An assigning operator rejects a value whose fraction the unit of its place would drop.
+
+```brix compile-error
+(main
+  (let total Dollars 1dollars)
+  (let change Cents 250cents)
+  (+= total change)
+  (print total)
+)
+
+(type-line + Cents (alias cents) (is I64))
+(type-line + Dollars (alias dollars) (is 100cents))
+```
+
+```output
+Exception: Expected Dollars here, but this is Cents, which becomes Dollars only when asked, since Dollars holds whole numbers and drops any fraction; write "(as change Dollars)"
+<no file:5>
+      (+= total change)
+                ^^^^^^
+```
+
+### A unit stored as a float is rejected unasked where a unit stored as a whole number is wanted.
+
+```brix compile-error
+(main
+  (let wait Minutes 90minutes)
+  (let h Hour wait)
+  (print h)
+)
+
+(type-line + Minutes (alias minutes) (is F64))
+(type-line + Hour (alias hour) (is I64))
+(unit + 1hour 60minutes)
+```
+
+```output
+Exception: Expected Hour here, but this is Minutes, which becomes Hour only when asked, since Hour holds whole numbers and drops any fraction; write "(as wait Hour)"
+<no file:4>
+      (let h Hour wait)
+             ^^^^
+```
+
+### A return whose fraction the declared unit would drop is rejected.
+
+```brix compile-error
+(main
+  (print (call back 250cents))
+)
+
+(type-line + Cents (alias cents) (is I64))
+(type-line + Dollars (alias dollars) (is 100cents))
+
+(fn-expr + back Dollars
+  (param amount Cents)
+  amount
+)
+```
+
+```output
+Exception: Expected Dollars here, but this is Cents, which becomes Dollars only when asked, since Dollars holds whole numbers and drops any fraction; write "(as amount Dollars)"
+<no file:11>
+      amount
+      ^^^^^^
 ```
