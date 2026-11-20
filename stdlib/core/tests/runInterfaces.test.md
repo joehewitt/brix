@@ -1609,6 +1609,50 @@ hello [Interface __source__:Proto]
 rex
 ```
 
+### A class that delegates two instances of one generic interface answers each through the property it names for that instance.
+
+```brix
+(main
+  (let holder (call Holder))
+  (for (in number (as holder (of Iterable Int)))
+    (print number)
+  )
+  (for (in text holder)
+    (print text)
+  )
+)
+
+(type + Holder
+  (delegate (of Iterable Int))
+  (prop _ numbers (of Box Int))
+  (delegate (of Iterable String))
+  (prop _ texts (of Box String))
+  (fn-do + This _
+    (= numbers (call (of Box Int) 7))
+    (= texts (call (of Box String) "seven"))
+  )
+)
+
+(type + (of Box Item)
+  (implements (of Iterable Item))
+  (prop _ item (? Item))
+  (fn-do + This _
+    (param first Item)
+    (= item first)
+  )
+  (fn-do + (prefix <- this) (? Item)
+    (let taken item)
+    (= item null)
+    (return taken)
+  )
+)
+```
+
+```output
+7
+seven
+```
+
 ### Self-referential generic interface conformance (Node as TreeHost'Node) compiles without recursing infinitely during type creation, and constrained generic entry points dispatch the host's concretely typed hook statically.
 
 ```brix
