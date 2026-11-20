@@ -2468,13 +2468,15 @@ enterConcurrentMark() {
     }
 }
 
-static void
+static bool
 enterMarkTermination() {
     std::lock_guard<std::recursive_mutex> lock(gCollectorMutex);
-    if (gPhase == kPhaseConcurrentMark) {
-        gPhase = kPhaseMarkTermination;
-        publishPhase(gPhase);
+    if (gPhase != kPhaseConcurrentMark) {
+        return false;
     }
+    gPhase = kPhaseMarkTermination;
+    publishPhase(gPhase);
+    return true;
 }
 
 static bool
@@ -2813,12 +2815,16 @@ finishConcurrentMark() {
     brixGCRuntimeRecordPauseTaskWait(
         brixGCHandshakeTasksWaited(),
         static_cast<size_t>(brixGCHandshakeSlowestTaskNanos()));
+    if (!enterMarkTermination()) {
+        brixGCHandshakeEnd();
+        brixGCRuntimeHandshakeEnd();
+        return;
+    }
     gTerminationConfirmCount.fetch_add(1, std::memory_order_relaxed);
     gTerminationConfirmTaskCount.fetch_add(
         brixGCHandshakeTasksWaited(),
         std::memory_order_relaxed);
 
-    enterMarkTermination();
     // Every non-owner task acknowledged only after flushing wbBuf/ycache state, then continued
     // independently. A marker that owned a batch when the request became visible may finish
     // that bounded batch before it reaches its poll. Keep the handshake closed until its
