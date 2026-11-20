@@ -22,6 +22,7 @@
   (= cases (call (. cases then) "Fake Clock Cancels" cancel-tests))
   (= cases (call (. cases then) "Fake Clock Freeze" freeze-tests))
   (= cases (call (. cases then) "Fake Clock Handle Waits" handle-tests))
+  (= cases (call (. cases then) "Fake Clock Nested Tasks" nested-tests))
   (return cases)
 )
 
@@ -208,6 +209,34 @@
     (call (. readable wait))
     (call (. t expect) "a handle that becomes ready ends the wait" (list "timed out" "ready") heard)
     (call (. t expect) "a wait that ends on its handle leaves fake time alone" (+ start 1) (. (call clock) s))
+  )
+  (return t)
+)
+
+(fn-do + nested-tests TestCase
+  (param t TestCase)
+  (let fake (call FakeClock))
+  (let heard (list String))
+  (let signal (call process-pipe))
+  (do-with clock fake
+    (let outer
+      (do-new
+        (let inner
+          (do-new
+            (call wait-until-readable (. signal reader fd) null)
+            (call (. 5s wait))
+            (+= heard (str "rang at " (- (. (call clock) s) start)))
+          )
+        )
+        (call (. inner wait))
+      )
+    )
+    (call (. signal writer write) "x")
+    (call (. fake advance) 4s)
+    (call (. t expect) "a nested task's wait does not end before its time" 0 (. heard length))
+    (call (. fake advance) 1s)
+    (call (. t expect) "a nested task woken by a ready handle begins its wait before time moves" (list "rang at 5") heard)
+    (call (. outer close))
   )
   (return t)
 )
