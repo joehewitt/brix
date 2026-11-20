@@ -107,6 +107,7 @@ that family.
 | `(type-line + Kilograms (alias kg) (is 1000g))`{.brix} | A unit equal to 1000 of another. It derives from that unit's type and joins its family. |
 | `(type-line + Cents (alias cents) (is Money))`{.brix} | A unit of the family whose base type is `Money`. |
 | `(unit + 1inches 25.4mm)`{.brix} | An equality between two units, which joins their families. |
+| `(unit + 100pc 1)`{.brix} | An equality between a unit and plain numbers, which makes it a pure number. |
 
 - **Aliases.** A unit's type may have several aliases, and each is a unit. The last is the one
   `UnitString` prints. A suffix names one unit, so a unit cannot take one that a number type, an
@@ -160,21 +161,27 @@ true
 ```
 
 - **Sides.** Each side is a constant: a number with a unit, or numbers joined by arithmetic and
-  bitwise operators, as in `(unit + 1third (/ 1 3whole))`{.brix}. Each side has one unit.
-- **Errors.** An equality must be public: `Equalities must be public`. A side with no unit is
-  `Ambiguous units`, a side with two is `Conflicting units`, and a side that is not a constant is
-  `Invalid constant expression`. A side's unit must be declared, `Unit "zz" not found`, and must not
-  be a number type's suffix: `An equality relates units a program declares, and F64 is a number
-  type of the language; write each side in a unit the program declares`. Neither side can be zero:
-  `A unit cannot be declared as zero of another, which no number of it would convert from; write a
-  number other than zero`.
+  bitwise operators, as in `(unit + 1third (/ 1 3whole))`{.brix}. Each side has one unit, or one
+  side has none, which makes the other's unit a pure number.
+- **Pure numbers.** An equality with a plain number on one side, as in `(unit + 100pc 1)`{.brix},
+  puts the unit in the family of plain numbers: it is a ratio, such as a percentage, and it scales
+  what it multiplies or divides; see [Pure numbers](#pure-numbers).
+- **Errors.** An equality must be public: `Equalities must be public`. An equality with no unit on
+  either side is `Ambiguous units`, a side with two is `Conflicting units`, and a side that is not a
+  constant is `Invalid constant expression`. A side's unit must be declared, `Unit "zz" not found`,
+  and must not be a number type's suffix: `An equality relates units a program declares, and F64 is
+  a number type of the language; write each side in a unit the program declares`. Neither side can
+  be zero: `A unit cannot be declared as zero of another, which no number of it would convert from;
+  write a number other than zero`, and the plain number of a pure one cannot either: `A unit cannot
+  be declared as zero, which no number of it would convert from; write a number other than zero`.
 - **Agreeing.** Every path between two units must give the same ratio. An equality that
   disagrees with the declarations before it is an error at the equality, whether they relate the
   same two units, `Equalities between Bar and Foo disagree: one makes 1 Bar 2 Foo, another 3 Foo;
   keep one of them`, or relate them through others, `Equalities between Baz and Bar disagree: this
   one makes 1 Baz 1 Bar, but through Foo they make 1 Baz 0.5 Bar; keep every path between two
-  units in agreement`. Units declared from one number type of the program's own each equal one of
-  it, and so equal one another.
+  units in agreement`. Plain numbers are one end of such a path: `Equalities between Share and plain
+  numbers disagree: one makes 1 Share 0.01, another 0.1; keep one of them`. Units declared from one
+  number type of the program's own each equal one of it, and so equal one another.
 - **Across modules.** `/time/flicks` declares `(unit + 705600000flicks 1seconds)`{.brix}, so flicks
   convert to and from every duration.
 - **Only ratios.** An equality states a ratio. Units with an offset between them, such as degrees
@@ -227,7 +234,7 @@ true
 - **Two families.** `+`, `-` and `%` between units of two families that no equality joins are
   errors, as comparisons are: with `/units` and `/time/duration`, `(+ 100meters 20s)` is `Expected
   Meters here, but this is Seconds, and there is no conversion between them`. `*` and `/` between
-  them give a plain number.
+  them give a plain number, unless one is a [pure number](#pure-numbers).
 - **Plain numbers.** A plain number on either side of `+`, `-` and `%` is taken in the other's
   unit: `(+ 90s 30)`{.brix} is `120seconds`, and `(- 100 1s)`{.brix} is `99seconds`. Multiplying a
   unit by a plain number on either side, or dividing it by one, keeps the unit, while a plain number
@@ -243,6 +250,51 @@ true
   arithmetic stays in integers, so with `/tui/primitives`, `(* 3tx 0.5)` is the plain number `1.5`.
 - **Generic functions** keep the unit of what they are given. A function that takes a plain number
   type, such as `abs` from `/math`, takes the value in its own unit and gives a plain number.
+
+### Pure numbers
+
+A unit that an equality relates to plain numbers is a pure number. Multiplying or dividing by one
+scales by its value as a number.
+
+```brix
+(main
+  (print (as (* 50pc 200px) UnitString))
+  (print (as (* 200px 50pc) UnitString))
+  (print (as (/ 200px 50pc) UnitString))
+  (print (as (* 50pc 50pc) UnitString))
+  (print (as (/ 50pc 25pc) UnitString))
+  (print (as (* 50pc 2) UnitString))
+  (print (as (+ 50pc 1) UnitString))
+)
+
+(type-line + Share (alias pc) (is F64))
+(type-line + Pixels (alias px) (is F64))
+(unit + 100pc 1)
+```
+
+```output
+100px
+100px
+400px
+25pc
+2f
+100pc
+51pc
+```
+
+- **Scaling.** A pure number on either side of `*` scales the other operand, which keeps its unit:
+  `(* 50pc 200px)`{.brix} is `100px`. Dividing a unit by a pure number scales it the other way, and
+  a plain number divided by one is a plain number: `(/ 1 50pc)` is `2`. A pure number divided by a
+  unit of another family is a plain number.
+- **Quotients.** Two pure numbers divide as any two units of one family do, to a plain number:
+  `(/ 50pc 25pc)`{.brix} is `2`.
+- **Plain numbers** are taken as written, as for any unit: `(* 50pc 2)`{.brix} is `100pc`, `(+ 50pc
+  1)`{.brix} is `51pc`, and `(as 0.25 Share)` is `0.25pc`. Write `(* q 100pc)` for the share that a
+  plain ratio `q` is.
+- **Assignment.** `(*= width 50pc)` and `(/= width 50pc)` scale `width` and keep its unit, and
+  `/=` divides a plain number as `/` does.
+- **Integers.** Scaling a unit stored as an integer by a pure number gives a plain number, and an
+  assigning multiply or divide into one is rejected.
 
 ## Conversions
 

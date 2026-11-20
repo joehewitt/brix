@@ -164,14 +164,14 @@ Exception: Equalities must be public
 (type-line + Foo (alias foo) (is F64))
 (type-line + Bar (alias bar) (is I32))
 (blank)
-(unit + 1.0bar (/ 1 3))
+(unit + 1 (/ 1 3))
 ```
 
 ```output
 Exception: Ambiguous units
 <no file:5>
-    (unit + 1.0bar (/ 1 3))
-    ^^^^^^^^^^^^^^^^^^^^^^^
+    (unit + 1 (/ 1 3))
+    ^^^^^^^^^^^^^^^^^^
 ```
 
 ```brix crash
@@ -1508,3 +1508,181 @@ Exception: Expected Em here, but this is Tk, and there is no conversion between 
 20s
 ```
 
+### An equality between a unit and a plain number makes the unit a pure number, which scales what it multiplies or divides by its value as a number.
+
+```brix
+(main
+  (print (as (* 50pc 50pc) UnitString))
+  (print (as (* 50pc 200px) UnitString))
+  (print (as (* 200px 50pc) UnitString))
+  (print (as (/ 200px 50pc) UnitString))
+  (print (as (/ 50pc 25pc) UnitString))
+  (print (as (/ 1 50pc) UnitString))
+  (print (as (* 2pt 50pc) UnitString))
+)
+
+(type-line + Share (alias pc) (is F64))
+(type-line + Part (alias pt) (is F64))
+(type-line + Pixels (alias px) (is F64))
+(unit + 100pc 1)
+(unit + 1pt 1)
+```
+
+```output
+25pc
+100px
+100px
+400px
+2f
+2f
+1pt
+```
+
+### A pure number keeps its unit through a plain number, which is taken as written, and becomes a plain number by its value in its own unit.
+
+```brix
+(main
+  (let q (/ 1.0 2.0))
+  (print (as (* 100pc q) UnitString))
+  (print (as (* 50pc 2) UnitString))
+  (print (as (+ 50pc 1) UnitString))
+  (print (as (as 0.25 Share) UnitString))
+  (let f F64 (* 2.0 50pc))
+  (print f)
+)
+
+(type-line + Share (alias pc) (is F64))
+(unit + 100pc 1)
+```
+
+```output
+50pc
+100pc
+51pc
+0.25pc
+100
+```
+
+### An assigning multiply or divide by a pure number scales the place's value.
+
+```brix
+(main
+  (let width Pixels 200px)
+  (*= width 50pc)
+  (print (as width UnitString))
+  (/= width 25pc)
+  (print (as width UnitString))
+  (let share Share 50pc)
+  (*= share 50pc)
+  (print (as share UnitString))
+  (let plain F64 1.0)
+  (/= plain 50pc)
+  (print plain)
+)
+
+(type-line + Share (alias pc) (is F64))
+(type-line + Pixels (alias px) (is F64))
+(unit + 100pc 1)
+```
+
+```output
+100px
+400px
+25pc
+2
+```
+
+### A pure number scaling a unit stored as an integer gives a plain number.
+
+```brix
+(main
+  (print (as (* 10ct 50pc) UnitString))
+  (print (as (* 50pc 10ct) UnitString))
+)
+
+(type-line + Share (alias pc) (is F64))
+(type-line + Count (alias ct) (is I64))
+(unit + 100pc 1)
+```
+
+```output
+5f
+5f
+```
+
+### An assigning multiply by a pure number into a unit stored as an integer is rejected.
+
+```brix compile-error
+(main
+  (let count Count 10ct)
+  (*= count 50pc)
+)
+
+(type-line + Share (alias pc) (is F64))
+(type-line + Count (alias ct) (is I64))
+(unit + 100pc 1)
+```
+
+```output
+Exception: Expected Count here, but this is F64, which becomes Count only when asked; write "(as (*= count 50pc) Count)"
+<no file:4>
+      (*= count 50pc)
+      ^^^^^^^^^^^^^^^
+```
+
+### Equalities that give a pure number two values are rejected.
+
+```brix compile-error
+(main
+  (print (as 1pc UnitString))
+)
+
+(type-line + Share (alias pc) (is F64))
+(unit + 100pc 1)
+(unit + 10pc 1)
+```
+
+```output
+Exception: Equalities between Share and plain numbers disagree: one makes 1 Share 0.01, another 0.1; keep one of them
+<no file:8>
+    (unit + 10pc 1)
+    ^^^^^^^^^^^^^^^
+```
+
+### An equality that makes a unit a pure number apart from a path through another is rejected.
+
+```brix compile-error
+(main
+  (print (as 1pt UnitString))
+)
+
+(type-line + Share (alias pc) (is F64))
+(type-line + Part (alias pt) (is 0.1pc))
+(unit + 100pc 1)
+(unit + 1pt 1)
+```
+
+```output
+Exception: Equalities between Part and plain numbers disagree: this one makes 1 Part 1, but through Share they make 1 Part 0.001; keep every path between two units in agreement
+<no file:9>
+    (unit + 1pt 1)
+    ^^^^^^^^^^^^^^
+```
+
+### A unit declared as zero of a plain number is rejected.
+
+```brix compile-error
+(main
+  (print (as 1pc UnitString))
+)
+
+(type-line + Share (alias pc) (is F64))
+(unit + 1pc 0)
+```
+
+```output
+Exception: A unit cannot be declared as zero, which no number of it would convert from; write a number other than zero
+<no file:7>
+    (unit + 1pc 0)
+                ^
+```
