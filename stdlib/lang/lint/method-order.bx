@@ -245,8 +245,7 @@
   (fn-do + classes-named (list DeclaredClass)
     (param name String)
     ; The classes a name finds from this module: its own, and the public ones of the modules it
-    ; imports and those they export. A module that exports nothing counts again each time an import
-    ; reaches it.
+    ; imports and those they export, each module once.
     (let found (list DeclaredClass))
     (let visited (map Int Bool))
     (call collect name true visited found)
@@ -260,13 +259,9 @@
     (if ([] visited id)
       (return)
     )
-    (let is-marked false)
+    (= ([] visited id) true)
     (for (in imported imports)
       (if (or is-access (. imported is-export))
-        (if (not is-marked)
-          (= ([] visited id) true)
-          (= is-marked true)
-        )
         (call (. imported module collect) name false visited found)
       )
     )

@@ -52,43 +52,6 @@
   (return (call FormatLine .format-divider glyph (. trimmed length) mixed))
 )
 
-(fn-do + js-trim String
-  (param text String)
-  ; Text without the whitespace that JavaScript trims from both ends.
-  (let start Index 0)
-  (let end (. text length))
-  (while (and (< start end) (call is-js-space ([] text start)))
-    (+= start 1)
-  )
-  (while (and (> end start) (call is-js-space ([] text (- end 1))))
-    (-= end 1)
-  )
-  (if (and (== start 0) (== end (. text length)))
-    (return text)
-  )
-  (return (if-expr (> end start) ([] text (..< start end)) ""))
-)
-
-(fn-expr + is-js-space Bool
-  (param char Char)
-  ; Whether JavaScript counts a character as whitespace.
-  (case? (or (== code 32) (and (>= code 9) (<= code 13)))
-    true
-  )
-  (case? (< code 160)
-    false
-  )
-  (case? (or (== code 160) (== code 5760) (and (>= code 8192) (<= code 8202)))
-    true
-  )
-  (default
-    (or (== code 8232) (== code 8233) (== code 8239) (== code 8287) (== code 12288) (== code 65279))
-  )
-  (where
-    (lazy code (as char U32))
-  )
-)
-
 (fn-expr + is-ascii-letter Bool
   (param char Char)
   (or (and (>= char 'a') (<= char 'z')) (and (>= char 'A') (<= char 'Z')))
@@ -398,16 +361,16 @@
 
 (fn-do + is-tests-path Bool
   (param path String)
-  ; Whether a path has a `tests` folder in it, found by its separators.
+  ; Whether a path has a `tests` folder in it.
   (let start Index 0)
   (while true
     (let found (call (. path find) "tests" start))
     (if (not found)
       (return false)
     )
-    (let at-start (or (== found 0) (== ([] path (- found 1)) '/') (== ([] path (- found 1)) (char "\\"))))
+    (let at-start (or (== found 0) (== ([] path (- found 1)) '/')))
     (let following (+ found 5))
-    (if (and at-start (< following (. path length)) (or (== ([] path following) '/') (== ([] path following) (char "\\"))))
+    (if (and at-start (< following (. path length)) (== ([] path following) '/'))
       (return true)
     )
     (= start (+ found 1))
@@ -472,7 +435,7 @@
     name
   )
   (where
-    (lazy words (list String) (call (. (call js-trim header) split) " "))
+    (lazy words (list String) (call (. (call (. header trim)) split) " "))
   )
 )
 
