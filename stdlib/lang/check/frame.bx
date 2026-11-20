@@ -190,11 +190,13 @@
 
 (type + MemberState (is Struct)
   ; What a frame knows of properties at a place: whether anything is known, and whether it
-  ; may differ from what the reference knows there, and the first narrowing that may hold.
+  ; may differ from what the reference knows there, the first narrowing that may hold, and the
+  ; stores taken as running nothing that ran on the way there (`live-stores`).
   (blank)
   (prop + narrowed Bool)
   (prop + unsure Bool)
   (prop + floor ScratchMark)
+  (prop + stores U64)
 )
 
 (type + Surround (is Tuple)
@@ -241,6 +243,8 @@
   (prop _ members-floor ScratchMark (= 0))
   (prop _ members-doubted Bool)
   (prop + member-reads U32)
+  (prop _ live-stores U64)
+  (prop _ relied-stores U64)
   (prop _ members-calls Size (= 0))
   (prop _ members-conversions Size (= 0))
   (prop + narrowed-members (list NarrowingKey))
@@ -302,6 +306,8 @@
     (= members-floor 0)
     (= members-doubted false)
     (= member-reads 0)
+    (= live-stores 0)
+    (= relied-stores 0)
     (call (. narrowed-members clear))
     (call (. member-declared clear))
     (call (. kept-members clear))
@@ -789,7 +795,7 @@
     (= members-conversions (. facts conversions length))
   )
   (fn-expr + save-members MemberState
-    (call MemberState members-narrowed is-unsure members-floor)
+    (call MemberState members-narrowed is-unsure members-floor live-stores)
   )
   (fn-do + restore-members _
     (param state MemberState)
@@ -797,6 +803,7 @@
     ; nothing the branch did reaches what follows.
     (= members-narrowed (. state narrowed))
     (= members-floor (. state floor))
+    (= live-stores (/or/ live-stores (. state stores)))
     (call settle-members (. state unsure))
   )
   (fn-do + merge-members _
@@ -808,7 +815,36 @@
     (if (> (. other floor) members-floor)
       (= members-floor (. other floor))
     )
+    (= live-stores (/or/ live-stores (. other stores)))
     (call settle-members unsure)
+  )
+  (fn-do + restore-stores _
+    (param state MemberState)
+    ; The stores taken as running nothing that ran on the way to a place are those again, before
+    ; a branch beside one typed from there, or after a branch from there that leaves.
+    (= live-stores (. state stores))
+  )
+  (fn-do + note-unsure-store _
+    (param index U32)
+    ; A store taken as running nothing ran here, the `index`th of the instance. What follows on
+    ; the way from it may read what the flow knew of a property before it; a branch beside it does
+    ; not (`restore-stores`).
+    (if (< index 64)
+      (= live-stores (/or/ live-stores (/lshift/ 1u64 (as index U64))))
+    )
+  )
+  (fn-expr + relies-on-store Bool
+    (param index U32)
+    (param reads U32)
+    ; Whether a read that found what the flow knew of a property ran on the way from the
+    ; `index`th store taken as running nothing, where `reads` reads were counted when it ran. Past
+    ; the 64th store, any read counted since it is taken to.
+    (case? (< index 64)
+      (!= (/and/ relied-stores (/lshift/ 1u64 (as index U64))) 0)
+    )
+    (default
+      (> member-reads reads)
+    )
   )
   (fn-expr + narrowed-slot TypeId
     (param slot SlotId)
@@ -831,6 +867,7 @@
     (let narrowed (call held-member key))
     (if (!= narrowed no-type)
       (+= member-reads 1)
+      (= relied-stores (/or/ relied-stores live-stores))
     )
     (return narrowed)
   )

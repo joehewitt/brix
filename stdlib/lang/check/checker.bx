@@ -1082,7 +1082,7 @@
     ; of a property the flow knew to hold a value tests the property again should the store run
     ; actions (`note-forced`).
     (for (in position (..< 0 (. unsure-stores length)))
-      (if (> (. frame member-reads) ([] unsure-reads position))
+      (if (call (. frame relies-on-store) (as position U32) ([] unsure-reads position))
         (call (. panics rely-on-store) ([] unsure-stores position))
       )
     )
@@ -8759,12 +8759,14 @@
     (let next-mark (. scratch narrowings mark))
     (let body-known (call (. frame save-members)))
     (call (. frame restore-members) known)
+    (call (. frame restore-stores) known)
     (call (. narrowing narrow-condition) condition false)
     (call check-statement next)
     (let body-exits (and (not dead) (call (. narrowing exits) body)))
     (let next-exits (and (!= next 0) (call (. narrowing exits) next)))
     (if (and next-exits (not body-exits))
       (call (. frame restore-members) body-known)
+      (call (. frame restore-stores) body-known)
       (else-if (not body-exits)
         (call (. frame merge-members) body-known)
       )
