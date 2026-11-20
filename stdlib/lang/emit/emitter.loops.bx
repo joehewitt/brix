@@ -48,12 +48,11 @@
     (param id SyntaxId)
     (param condition SyntaxId)
     (param body SyntaxId)
-    ; A loop that runs its body for as long as its condition tests as true. Each pass polls
-    ; before the test. The loop is one to leave or to go on with from its condition on: written
-    ; with a pattern, its body runs in the arm of the match that is the condition. A turn
-    ; whose locals nested functions capture has an environment of its own. A condition that
-    ; opens a cleanup, reading a lazy local whose value is a `use`, has no shape: TypeScript
-    ; runs that cleanup where the body ends, and not at all where the condition first fails.
+    ; A loop that runs its body for as long as its condition tests as true. Each pass polls before
+    ; the test. The loop is one to leave or to go on with from its condition on: written with a
+    ; pattern, its body runs in the arm of the match that is the condition. A turn whose locals
+    ; nested functions capture has an environment of its own. A condition that opens a cleanup,
+    ; reading a lazy local whose value is a `use`, has no shape.
     (let nothing (call make-operand .operand-void 0))
     (let head (call (. ir reserve-block)))
     (let inside (call (. ir reserve-block)))
@@ -159,10 +158,10 @@
     (param loop SyntaxId)
     (param container SyntaxId)
     (param slot SlotId)
-    ; Begins a loop over a table or a span of one, as TypeScript begins it: the container is
-    ; evaluated, once, and its rows found, checked where the table grows; the first row is kept,
-    ; and the count of rows. An index span is kept, and its length. Answers the container's type.
-    ; The loop of a comprehension reads the container it was given from the slot after its item.
+    ; Begins a loop over a table or a span of one: the container is evaluated, once, and its rows
+    ; found, checked where the table grows; the first row is kept, and the count of rows. An index
+    ; span is kept, and its length. Answers the container's type. The loop of a comprehension reads
+    ; the container it was given from the slot after its item.
     (let table
       (match loop
         (case= given-loop
@@ -229,12 +228,11 @@
     (param selection Operand)
     (param type TypeId)
     (param slot SlotId)
-    ; Begins a loop over a selection of a table's rows, as TypeScript's loop over rows begins it:
-    ; the indices are resolved, then the table's columns and length found, checked where it
-    ; grows. The selection is kept as a finished table of those columns and that length, read
-    ; with no metadata, and, where the indices are not resolved again on each pass, with the
-    ; indices where they lie; then the count of indices. A loop TypeScript leaves to the
-    ; selection's own iteration is refused.
+    ; Begins a loop over a selection of a table's rows: the indices are resolved, then the table's
+    ; columns and length found, checked where it grows. The selection is kept as a finished table of
+    ; those columns and that length, read with no metadata, and, where the indices are not resolved
+    ; again on each pass, with the indices where they lie; then the count of indices. A loop left to
+    ; the selection's own iteration is refused.
     (let reads (call (. facts selection-reads-of) (. unit reading) loop))
     (if (== reads .reads-by-selection)
       (call refuse .refused-statement loop)
@@ -372,9 +370,9 @@
   )
   (fn-expr _ reads-place Bool
     (param loop SyntaxId)
-    ; Whether a loop reads its container where it is kept at each item, as the type pass
-    ; planned it: in a function that yields the loop keeps the container, as the reference's
-    ; does there, and so does the loop of a comprehension, which is given it.
+    ; Whether a loop reads its container where it is kept at each item, as the type pass planned it:
+    ; in a function that yields the loop keeps the container, and so does the loop of a
+    ; comprehension, which is given it.
     (and (not stepping) (!= loop given-loop) (call is-place-loop-plan (call (. facts plan-of) (. unit reading) loop)))
   )
   (fn-do _ container-of Typed
@@ -488,22 +486,22 @@
     (param clause SyntaxId)
     (param body SyntaxId)
     (param kept Bool (= false))
-    ; A loop over the container of each of its headers, by the protocol the type pass planned
-    ; for each: by its indexes, by a cursor, or as a stream. A spread of
-    ; a container is such a loop of one header, whose container the feed keeps already (`kept`).
-    ; 1. Every container is evaluated, in the order written, and then each is begun. From there
-    ;    on, telling the streams among them that the loop has ended is a cleanup: it runs
-    ;    however the loop is left, as the body of a `do finally` written there would.
-    ; 2. A turn reads an item of each header in order. The head of a header polls and reads,
-    ;    and a container with no more ends the loop. The header takes the item and tests its
-    ;    clause; an item that does not match, or a `when` that fails, reads that header again.
-    ; 3. The body runs. `continue` goes to the first head, as the end of the body does. The
-    ;    body of a comprehension's loop is an expression, and is yielded, and a feed has no
-    ;    body and yields the item.
+    ; A loop over the container of each of its headers, by the protocol the type pass planned for
+    ; each: by its indexes, by a cursor, or as a stream. A spread of a container is such a loop of
+    ; one header, whose container the feed keeps already (`kept`).
+    ; 1. Every container is evaluated, in the order written, and then each is begun. From there on,
+    ;    telling the streams among them that the loop has ended is a cleanup: it runs however the
+    ;    loop is left, as the body of a `do finally` written there would.
+    ; 2. A turn reads an item of each header in order. The head of a header polls and reads, and a
+    ;    container with no more ends the loop. The header takes the item and tests its clause; an
+    ;    item that does not match, or a `when` that fails, reads that header again.
+    ; 3. The body runs. `continue` goes to the first head, as the end of the body does. The body of
+    ;    a comprehension's loop is an expression, and is yielded, and a feed has no body and yields
+    ;    the item.
     ; In a cleanup being run, a check made in the loop lands where the cleanup ends, as in the rest
-    ; of it, leaving its streams unended, as TypeScript's does (`end-in-cleanup`). A header that
-    ; subscribes, the loop of a comprehension whose first header writes a pattern that is no match,
-    ; and a stream read where the collector never looks have no shape.
+    ; of it, leaving its streams unended (`end-in-cleanup`). A header that subscribes, the loop of a
+    ; comprehension whose first header writes a pattern that is no match, and a stream read where
+    ; the collector never looks have no shape.
     (let chain (list SyntaxId))
     (let containers (list SyntaxId))
     (let clauses (list SyntaxId))
@@ -747,15 +745,14 @@
     (param slot SlotId)
     (param type TypeId)
     (param done IRBlockId)
-    ; Reads the next item of a header of a loop, where its head has polled, and leaves to
-    ; `done` where its container has no more. By its indexes: the count of items read is tested
-    ; against the length and moves on, and the item at the index it had is read by the
-    ; container's `[]`. By a cursor: the container's function takes the state and gives the
-    ; next with an item, or with none. As a stream: the container gives an item, or nothing,
-    ; which is converted as the type pass said where a property the container delegates to gives
-    ; it. As a grammar: the pattern matches once more on the stream kept for it.
-    ; The calls are made at `place`, the loop's first header, where TypeScript makes the reads of
-    ; every header.
+    ; Reads the next item of a header of a loop, where its head has polled, and leaves to `done`
+    ; where its container has no more. By its indexes: the count of items read is tested against the
+    ; length and moves on, and the item at the index it had is read by the container's `[]`. By a
+    ; cursor: the container's function takes the state and gives the next with an item, or with
+    ; none. As a stream: the container gives an item, or nothing, which is converted as the type
+    ; pass said where a property the container delegates to gives it. As a grammar: the pattern
+    ; matches once more on the stream kept for it.
+    ; The calls of every header are made at `place`, the loop's first header.
     (let nothing (call make-operand .operand-void 0))
     (let plan (call (. facts plan-of) (. unit reading) loop))
     (if (== plan .plan-table-loop)
@@ -857,14 +854,14 @@
     (param slot SlotId)
     (param type TypeId)
     (param done IRBlockId)
-    ; One pass of a loop whose header is a grammar, as the reference makes it: the stream
-    ; kept for the loop is asked whether it has more, and the loop ends where it has not; it
-    ; gives its view, and the pattern is matched from where the view starts, as a rule's arms
-    ; are, without reading the rest, asking the stream for more input where a part reads past
-    ; the end of its buffer. Where it passes, the stream commits where it ended, and the item is
-    ; what it gives; where it fails, the stream commits where it started, and the loop ends.
-    ; Where it passed without moving the stream on, it panics, as a pipe does. The names it
-    ; captures stay bound for the body.
+    ; One pass of a loop whose header is a grammar: the stream kept for the loop is asked whether it
+    ; has more, and the loop ends where it has not; it gives its view, and the pattern is matched
+    ; from where the view starts, as a rule's arms are, without reading the rest, asking the stream
+    ; for more input where a part reads past the end of its buffer. Where it passes, the stream
+    ; commits where it ended, and the item is what it gives; where it fails, the stream commits
+    ; where it started, and the loop ends.
+    ; Where it passed without moving the stream on, it panics, as a pipe does. The names it captures
+    ; stay bound for the body.
     (let nothing (call make-operand .operand-void 0))
     (let pattern (call (. tree step-pattern) loop))
     (let result (if-expr (!= pattern 0) (call (. facts node-type) (. unit reading) pattern) no-type))

@@ -65,11 +65,10 @@
   (fn-do _ clear-checks _
     ; Gives each property of the object being made that a value may first read on some of its paths
     ; alone the flag that says whether it has its first value, cleared here before the first of
-    ; them, as the reference keeps one where such a read gives the property its value: so may a
-    ; value given on some paths alone, which a flagged property's is. Where a read or its own turn
-    ; finds the flag clear, the property is given its value (`check-property`). One whose value runs
-    ; in a live action of its own has the trackers of the action made here, as the reference makes
-    ; them, for whichever path gives it its value.
+    ; them, where such a read gives the property its value: so may a value given on some paths
+    ; alone, which a flagged property's is. Where a read or its own turn finds the flag clear, the
+    ; property is given its value (`check-property`). One whose value runs in a live action of its
+    ; own has the trackers of the action made here, for whichever path gives it its value.
     (= filling (= (. filling checks) (call (of (. storage allocate) U32) (+ (. filling count) 1))))
     (= filling (= (. filling trackers) (call (of (. storage allocate) U32) (+ (. filling count) 1))))
     (for (in position (..< 0 (. filling count)))
@@ -563,17 +562,16 @@
     (param rhs SyntaxId)
     ; An assignment to a field. A struct's field is stored in place: at its address inside the
     ; local, or inside the field, that holds the struct, or inside the receiver when no object is
-    ; written. A tuple's field is stored only by its own constructor, which is making it: any
-    ; other assignment gives a new tuple, which a statement drops. A property of an object is
-    ; assigned in its own way. A store into a struct that an object holds has no shape yet when
-    ; it writes a managed pointer. The value is evaluated before the object, as TypeScript does. An assigning operator whose answer
+    ; written. A tuple's field is stored only by its own constructor, which is making it: any other
+    ; assignment gives a new tuple, which a statement drops. A property of an object is assigned in
+    ; its own way. A store into a struct that an object holds has no shape yet when it writes a
+    ; managed pointer. The value is evaluated before the object. An assigning operator whose answer
     ; the type pass planned to be stored stores it as any value, and has no shape in a tuple's
     ; field. A value named alone that a getter answers has no shape here unless it is an object. A
     ; struct that lies in storage, as `places-item` finds it, is stored where it lies, a managed
-    ; pointer through the write barrier, as TypeScript stores once it has inlined what reads it;
-    ; any other struct an index answered by a function gave has no shape here, since TypeScript
-    ; stores into a copy of it. A field of the case of a row a name stands for is written in its
-    ; cell, and so is one named alone in a member that runs on the case.
+    ; pointer through the write barrier; any other struct an index answered by a function gave has
+    ; no shape here. A field of the case of a row a name stands for is written in its cell, and so
+    ; is one named alone in a member that runs on the case.
     (let cursor (if-expr (!= object 0) (call case-cursor-of object) this-cursor))
     (if (!= cursor (. U32 max))
       (let named (call (. tree member-name) lhs))
@@ -708,14 +706,14 @@
     (param rhs SyntaxId)
     (param owner TypeId)
     (param received Bool (= false))
-    ; An assignment to a property of an object: of the value written before the property's
-    ; name, or of the receiver when none is, or where the name alone is `received`, of the markup
-    ; element `received-object` finds. A setter is called with the value. A stored
-    ; property is stored at its place in the object: a managed pointer through the write
-    ; barrier, and a struct by a copy. A lazy property is stored the same way and marked as
-    ; having its value, which is then never evaluated. The value is evaluated before the object,
-    ; as TypeScript does. An assigning operator reads the property first and then stores it, so
-    ; its object is read twice. A tracked property runs the actions that read it where the store changed it.
+    ; An assignment to a property of an object: of the value written before the property's name, or
+    ; of the receiver when none is, or where the name alone is `received`, of the markup element
+    ; `received-object` finds. A setter is called with the value. A stored property is stored at its
+    ; place in the object: a managed pointer through the write barrier, and a struct by a copy. A
+    ; lazy property is stored the same way and marked as having its value, which is then never
+    ; evaluated. The value is evaluated before the object. An assigning operator reads the property
+    ; first and then stores it, so its object is read twice. A tracked property runs the actions
+    ; that read it where the store changed it.
     (let name (call (. tree member-name) lhs))
     (let setter (call own-call lhs))
     (if (and (!= setter no-fact) (== (. ([] (. facts calls) setter) form) .call-setter) (== op .eq-op))
@@ -908,9 +906,8 @@
     ; An assigning operator on a property, of an object or of a module, that a getter and a setter
     ; answer: the getter reads the value, the machine operation of numbers, the join of text or the
     ; function that answers the operator makes the new value of it and the value written, and the
-    ; setter stores that, as the reference does. The reference evaluates the object for the read and
-    ; again for the store, so only an object that names storage has a shape here, read once before
-    ; the value for both calls.
+    ; setter stores that. Only an object that names storage has a shape here, read once before the
+    ; value for both calls.
     (let read (call call-at lhs .call-getter))
     (let store (call call-at lhs .call-store-setter))
     (let increment (call increment-base op))
@@ -1152,18 +1149,17 @@
     (param op Operator)
     (param lhs SyntaxId)
     (param rhs SyntaxId)
-    ; What an assignment gives as a value. An assigning operator that a function answers gives
-    ; what the function answers; where the type pass planned the answer to be stored it is stored
-    ; first, and the value is the one stored, when storing it changed its type in no way. An
-    ; assignment that stores into the place it names gives the value stored, as a copy when it
-    ; is a struct, or the value as it was before the store converted it: whichever is of the
-    ; type the type pass gave the assignment.
-    ; An assignment to a tuple's field gives a new tuple: its fields are those of
-    ; the old one, but for the one assigned, which an assigning operator gives from the field's
-    ; value. An extension adds a field, and a truncation keeps
-    ; the first. The old tuple is evaluated after the value assigned, as TypeScript evaluates it,
-    ; and that value is kept apart from what evaluating it may change. A live statement has no
-    ; shape here as a value.
+    ; What an assignment gives as a value. An assigning operator that a function answers gives what
+    ; the function answers; where the type pass planned the answer to be stored it is stored first,
+    ; and the value is the one stored, when storing it changed its type in no way. An assignment
+    ; that stores into the place it names gives the value stored, as a copy when it is a struct, or
+    ; the value as it was before the store converted it: whichever is of the type the type pass gave
+    ; the assignment.
+    ; An assignment to a tuple's field gives a new tuple: its fields are those of the old one, but
+    ; for the one assigned, which an assigning operator gives from the field's value. An extension
+    ; adds a field, and a truncation keeps the first. The old tuple is evaluated after the value
+    ; assigned, and that value is kept apart from what evaluating it may change. A live statement
+    ; has no shape here as a value.
     (let nothing (call make-operand .operand-void 0))
     (let type (call (. facts node-type) (. unit reading) id))
     (let plan (call (. facts plan-of) (. unit reading) id))
@@ -1567,8 +1563,8 @@
     (param field LayoutField)
     (param property TypeProperty)
     (param syntax SyntaxId)
-    ; Stores in a property of the object being made what the reference holds there before its
-    ; first value: no bits set, but for the empty text wherever a text is held.
+    ; Stores in a property of the object being made what is held there before its first value: no
+    ; bits set, but for the empty text wherever a text is held.
     (let value
       (match (. property type)
         (case= (. types string-type)
@@ -1865,13 +1861,12 @@
     (param lhs SyntaxId)
     (param rhs SyntaxId)
     (param wanted Bool)
-    ; An assignment whose value is written after `?`. The value is evaluated first. Where the
-    ; flow knows it to hold a value, it is assigned as any value is. Otherwise it is an optional,
-    ; tested once: where it holds a value, what it holds is assigned, and where it holds nothing
-    ; the place is read and nothing is stored, as TypeScript does. The assignment then gives
-    ; what the place holds: `wanted` says its value is used. Only a place that names storage has
-    ; a shape here, and none that is a link of an optional chain. Nor has a name alone that holds
-    ; an optional, tested so: TypeScript takes it to hold a value afterwards, whatever was stored.
+    ; An assignment whose value is written after `?`. The value is evaluated first. Where the flow
+    ; knows it to hold a value, it is assigned as any value is. Otherwise it is an optional, tested
+    ; once: where it holds a value, what it holds is assigned, and where it holds nothing the place
+    ; is read and nothing is stored. The assignment then gives what the place holds: `wanted` says
+    ; its value is used. Only a place that names storage has a shape here, and none that is a link
+    ; of an optional chain. Nor has a name alone that holds an optional, tested so.
     (let nothing (call make-operand .operand-void 0))
     (let written 0u32)
     (match? ([] (. tree nodes) rhs)
@@ -1956,12 +1951,11 @@
     (param op Operator)
     (param lhs SyntaxId)
     (param rhs SyntaxId)
-    ; An assignment to a place that is a link of an optional chain. The value is evaluated,
-    ; whatever the chain holds, and then the chain up to the place, in TypeScript's order for `=`,
-    ; which an assigning operator, whose place TypeScript reads first, follows here too. Where each
-    ; optional it tests holds a value, the value is converted and stored as it is in a place
-    ; written with no chain, by an assigning operator what it gives for the place and the value,
-    ; and where one holds nothing, nothing is stored.
+    ; An assignment to a place that is a link of an optional chain. The value is evaluated, whatever
+    ; the chain holds, and then the chain up to the place, for `=` and an assigning operator alike.
+    ; Where each optional it tests holds a value, the value is converted and stored as it is in a
+    ; place written with no chain, by an assigning operator what it gives for the place and the
+    ; value, and where one holds nothing, nothing is stored.
     (let object (call receiver-of lhs))
     (if (== object 0)
       (call refuse .refused-statement id)
@@ -2027,11 +2021,11 @@
     (param index SyntaxId)
     (param rhs SyntaxId)
     ; Stores a value at the item an index names past a pointer, with no check. The value is
-    ; evaluated first, then the pointer and the index, as TypeScript does, and then it takes
-    ; the conversion recorded for the store. A managed pointer is stored through the write
-    ; barrier, and a struct by a copy. An assigning operator of the machine reads the item, then
-    ; evaluates the value and combines the two, and the pointer and the index are evaluated again
-    ; for the store, as TypeScript does; the assignment holds the operator's plan and conversion.
+    ; evaluated first, then the pointer and the index, and then it takes the conversion recorded for
+    ; the store. A managed pointer is stored through the write barrier, and a struct by a copy. An
+    ; assigning operator of the machine reads the item, then evaluates the value and combines the
+    ; two, and the pointer and the index are evaluated again for the store; the assignment holds the
+    ; operator's plan and conversion.
     (let given (call Typed (call make-operand .operand-void 0) no-type))
     (let increment (call increment-base op))
     (let site lhs)
@@ -2190,10 +2184,10 @@
     (param source-type TypeId)
     (param object SyntaxId)
     (param index SyntaxId)
-    ; A view of the same kind copied into the rows or the items a range spans of a view: both
-    ; views must not be stale, and the range the same size as the source. The source is copied to
-    ; a buffer of its own first, so that the two may overlap, which the runtime allocates as
-    ; TypeScript has it allocate one, with no poll around it.
+    ; A view of the same kind copied into the rows or the items a range spans of a view: both views
+    ; must not be stale, and the range the same size as the source. The source is copied to a buffer
+    ; of its own first, so that the two may overlap, which the runtime allocates with no poll around
+    ; it.
     (let emitted (call emit-expression object))
     (let target (call apart emitted object (not (call is-inert index))))
     (let held (. emitted type))
@@ -2445,12 +2439,12 @@
     (param index SyntaxId)
     (param rhs SyntaxId)
     ; An index assigned through the function that answers `[]=`, which stores the value: the
-    ; function is called on the object with the key and the value. The value is evaluated
-    ; first, then the object, then the key, as TypeScript does, and each takes the conversion
-    ; recorded for it. The value of the assignment is what the function answers, or when it answers
-    ; nothing, the value written, as given or as stored. Where the type pass planned the answer to be stored, it
-    ; is stored where the object was read from, which then only names storage; an object that is
-    ; itself an index has it stored through that index.
+    ; function is called on the object with the key and the value. The value is evaluated first,
+    ; then the object, then the key, and each takes the conversion recorded for it. The value of the
+    ; assignment is what the function answers, or when it answers nothing, the value written, as
+    ; given or as stored. Where the type pass planned the answer to be stored, it is stored where
+    ; the object was read from, which then only names storage; an object that is itself an index has
+    ; it stored through that index.
     (let callee (. fact callee))
     (if (or (== callee no-instance) (. fact is-partial) (not (call is-callable callee)))
       (call refuse .refused-statement site)
@@ -2548,9 +2542,8 @@
     ; An index given a value an assigning operator makes from the one it holds: the function that
     ; answers `[]` reads the item, the machine operation of numbers, or the function that answers
     ; the operator the assignment applies, makes the new value of it and the value written, and the
-    ; function that answers `[]=` stores that, as the reference does.
-    ; The reference evaluates the object and the key for the read and again for the store, so only
-    ; an object that names storage has a shape here, read once, and only where `[]=` stores in
+    ; function that answers `[]=` stores that.
+    ; Only an object that names storage has a shape here, read once, and only where `[]=` stores in
     ; place: on an object, or on a value it does not answer anew. A key that changes nothing is read
     ; once too; another is evaluated again for the store where it can be.
     (let read (call operator-in-role site .role-item))
@@ -2664,9 +2657,8 @@
     (param index SyntaxId)
     (param rhs SyntaxId)
     ; An assigning operator on an item that a function of its own name answers, where the item holds
-    ; no struct or tuple: the item is read by the function that answers `[]`, the value is evaluated,
-    ; and the function is called on the item with it, as the reference compiles it for an object.
-    ; Nothing is stored.
+    ; no struct or tuple: the item is read by the function that answers `[]`, the value is
+    ; evaluated, and the function is called on the item with it. Nothing is stored.
     (let read (call operator-in-role site .role-item))
     (let answer (call operator-in-role site .role-answer))
     (if (or (== answer no-fact) (== read no-fact))
@@ -2681,8 +2673,8 @@
   )
   (fn-do _ is-repeatable Bool
     (param id SyntaxId)
-    ; Whether an operand can be emitted again where the reference evaluates it again: a literal, a
-    ; name, or a read, a call, a cast or an operation of such operands, none of which makes a function.
+    ; Whether an operand can be emitted again: a literal, a name, or a read, a call, a cast or an
+    ; operation of such operands, none of which makes a function.
     (match? ([] (. tree nodes) id)
       (case (call .node-argument named)
         (return (call is-repeatable (. named expr)))
@@ -2745,17 +2737,17 @@
     (param held SyntaxId)
     (param index SyntaxId)
     (param rhs SyntaxId)
-    ; An index of an index assigned, where the inner index gives a struct or a number and the
-    ; type pass planned what `[]=` answers for it to be stored. In TypeScript's order:
-    ; 1. The value is evaluated, and then the object the inner index reads from and its key,
-    ;    once each. A struct among them is copied, since the calls that follow may change the
-    ;    storage it was read from.
-    ; 2. The item is read with the inner index's own function, or as TypeScript reads an item of
-    ;    an array of numbers, where the type pass planned it so.
+    ; An index of an index assigned, where the inner index gives a struct or a number and the type
+    ; pass planned what `[]=` answers for it to be stored.
+    ; 1. The value is evaluated, and then the object the inner index reads from and its key, once
+    ;    each. A struct among them is copied, since the calls that follow may change the storage it
+    ;    was read from.
+    ; 2. The item is read with the inner index's own function, or as an item of an array of numbers
+    ;    is read, where the type pass planned it so.
     ; 3. The key is evaluated, and `[]=` is called on the item.
     ; 4. What it answers is stored with the `[]=` of the object, under the same key.
-    ; The value of the assignment is the value written. An object held by value whose `[]=`
-    ; answers one of its own type would have that stored in turn, which has no shape yet.
+    ; The value of the assignment is the value written. An object held by value whose `[]=` answers
+    ; one of its own type would have that stored in turn, which has no shape yet.
     (let callee (. fact callee))
     (let owner (. ([] (. instances rows) callee) self-type))
     (let reads (call own-call held))

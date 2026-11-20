@@ -574,24 +574,21 @@
     (param slot SlotId)
     (param id SyntaxId)
     (param type TypeId)
-    ; The value of a lazy local that nested functions capture. Its environment holds it, and
-    ; after it the byte that says whether it has its value, which arrives cleared with the
-    ; environment. Whichever read runs first, in the function that declares the local or in one
-    ; written in it, evaluates the value there and sets the byte. The value is typed by the
-    ; instance that declares the local, so a nested function reads that instance's facts while
-    ; it evaluates it; one that returns nothing is evaluated for what it does, and a closable one is
-    ; claimed as `claim-lazy` says. What the flow knows
-    ; in the value holds wherever it is evaluated, unless the type pass found a read where a local
-    ; the value reads is known otherwise than at the first.
-    ; TypeScript gives a constructor two of each lazy local, one read while the properties are
-    ; given their values and one its body reads, where one environment here holds one. So a
-    ; constructor whose properties read such a local, or make a nested function, has no shape
+    ; The value of a lazy local that nested functions capture. Its environment holds it, and after
+    ; it the byte that says whether it has its value, which arrives cleared with the environment.
+    ; Whichever read runs first, in the function that declares the local or in one written in it,
+    ; evaluates the value there and sets the byte. The value is typed by the instance that declares
+    ; the local, so a nested function reads that instance's facts while it evaluates it; one that
+    ; returns nothing is evaluated for what it does, and a closable one is claimed as `claim-lazy`
+    ; says. What the flow knows in the value holds wherever it is evaluated, unless the type pass
+    ; found a read where a local the value reads is known otherwise than at the first.
+    ; A constructor whose properties read such a local, or make a nested function, has no shape
     ; where its body reads one too. The value of a live declaration is evaluated in a live action
-    ; whose trackers note what it reads, and the action is then made with the function that runs
-    ; the declaration again, as `own-declared` makes it; one evaluated by a
-    ; function written in the one that declares it, or in a turn of a loop that keeps an
-    ; environment, has no shape here. The function that runs a statement of that one again reads
-    ; it as it is: each read there is plain, so the statement's first run gave it its value.
+    ; whose trackers note what it reads, and the action is then made with the function that runs the
+    ; declaration again, as `own-declared` makes it; one evaluated by a function written in the one
+    ; that declares it, or in a turn of a loop that keeps an environment, has no shape here. The
+    ; function that runs a statement of that one again reads it as it is: each read there is plain,
+    ; so the statement's first run gave it its value.
     (let nothing (call make-operand .operand-void 0))
     (let field (call find-captured slot id))
     (let owner home-owner)
@@ -874,12 +871,11 @@
     (param offset U32)
     (param id SyntaxId)
     (param type TypeId)
-    ; The value of a lazy local read while a constructor gives the properties their first
-    ; values: whichever such read runs first evaluates it, into a cell of its own, and sets its
-    ; flag. The body's reads evaluate the value again, as the binding's policy says. A tracked
-    ; read of one tracks nothing, since nothing stores to it. A local that a nested function reads
-    ; has no shape here, nor has one declared together with others: TypeScript evaluates their
-    ; value once for them all.
+    ; The value of a lazy local read while a constructor gives the properties their first values:
+    ; whichever such read runs first evaluates it, into a cell of its own, and sets its flag. The
+    ; body's reads evaluate the value again, as the binding's policy says. A tracked read of one
+    ; tracks nothing, since nothing stores to it. A local that a nested function reads has no shape
+    ; here, nor has one declared together with others.
     (let nothing (call make-operand .operand-void 0))
     (let flag ([] (. unit fill-flags) offset))
     (if (or (== flag no-local) (!= (/and/ (. ([] (. bindings slots) slot) flags) (. SlotFlag slot-captured)) 0))

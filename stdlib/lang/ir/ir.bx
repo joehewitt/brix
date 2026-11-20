@@ -242,9 +242,8 @@
   ; One function's IR: append-only tables in the arena of the worker emitting it, reset for each
   ; function. `order` lists the blocks as they started, `arguments` holds the layout of each
   ; argument, `locals` the cells of its frame, and `returns` the layout of the value the function
-  ; returns. `signals` says the function writes the panic signal on every return. `made-calls`
-  ; lists the rows after which TypeScript calls a function it generates, where this IR makes in
-  ; place what that function makes.
+  ; returns. `signals` says the function writes the panic signal on every return. `made-calls` lists
+  ; the rows after which this IR makes in place what a generated function makes.
   (blank)
   (prop + function FunctionId (= no-function))
   (prop + instructions (of Table IRInstruction))
@@ -297,7 +296,7 @@
     (= depended (call IdMap))
   )
   (fn-do + note-made-call _
-    ; Notes that TypeScript calls a function it generates after the last row so far.
+    ; Notes that what a generated function makes is made in place after the last row so far.
     (if (!= (. instructions length) 0)
       (= made-calls (call (. made-calls appended) arena (as (- (. instructions length) 1) U32)))
     )
@@ -320,7 +319,7 @@
     (param dominator IRBlockId)
     (param target IRBlockId)
     ; Whether every way the blocks started so far lead from the function's first block to a block
-    ; passes through another, as TypeScript asks of its own blocks. A block dominates itself.
+    ; passes through another. A block dominates itself.
     (or (== dominator target) (and (call reaches target no-block) (not (call reaches target dominator))))
   )
   (fn-do _ reaches Bool

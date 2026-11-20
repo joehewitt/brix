@@ -326,11 +326,10 @@
     (param plan OperatorPlan)
     ; A call the compiler answers itself through the collector: the payload an object holds in a
     ; lane, an object of the payload's class or nothing where the lane holds none, or a payload
-    ; published in the lane, which answers the payload the lane then holds. The allocation buffer
-    ; is published first. Each argument takes the conversion recorded for it. An optional that
-    ; holds its flag apart holds a value where the address the collector gives is not null. The
-    ; collector's function is called as TypeScript calls it, with no poll around it and no panic
-    ; read after it.
+    ; published in the lane, which answers the payload the lane then holds. The allocation buffer is
+    ; published first. Each argument takes the conversion recorded for it. An optional that holds
+    ; its flag apart holds a value where the address the collector gives is not null. The
+    ; collector's function is called with no poll around it and no panic read after it.
     (let nothing (call make-operand .operand-void 0))
     (let count U32 (if-expr (== plan .plan-side-payload) 2 3))
     (if (or (== callee no-instance) (!= (. ([] (. instances signatures) callee) args count) count))
@@ -671,8 +670,8 @@
     (param receiver Operand)
     (param key Operand)
     (param key-layout LayoutId)
-    ; A character of a string read by an integer index, as TypeScript reads one: an ASCII string's
-    ; byte where the index is inside it, and what the function gives anywhere else.
+    ; A character of a string read by an integer index: an ASCII string's byte where the index is
+    ; inside it, and what the function gives anywhere else.
     (let returned (. ([] (. instances signatures) callee) returns))
     (let layout (call layout-of returned id))
     (if (not (call is-integer layout))
@@ -730,11 +729,10 @@
     (param list-type TypeId)
     (param piped SyntaxId)
     ; The variadic tail of a call: the arguments written from `first` on, which `given` holds from
-    ; `start + first` on, each converted to the item of the list the call is given, as TypeScript
-    ; converts them once every other argument is, and then a list made of them as a list written
-    ; is made. An argument with a name is first made the tuple of its name and its value. A
-    ; tail with a bullet `•?` is made by appending. A tail that takes a value piped into the call
-    ; has no shape yet.
+    ; `start + first` on, each converted to the item of the list the call is given, once every other
+    ; argument is, and then a list made of them as a list written is made. An argument with a name
+    ; is first made the tuple of its name and its value. A tail with a bullet `•?` is made by
+    ; appending. A tail that takes a value piped into the call has no shape yet.
     (let nothing (call make-operand .operand-void 0))
     (if (or (< first lead) (and (!= piped 0) (< first count)))
       (call refuse .refused-expression id)
@@ -771,12 +769,11 @@
     (param tail (of RowRange SyntaxId))
     (param start Size)
     (param list-type TypeId)
-    ; A variadic tail with a bullet `•?`, made as TypeScript makes it: the empty list is made, and
-    ; each argument of the tail, which `given` holds from `start` on, is converted to the list's
-    ; item and appended to it by the call recorded at the argument. One with the bullet is
-    ; appended only where it is present, as what it holds: an optional where it holds a value,
-    ; and the tuple of a key and an optional value where the value holds one. Any other with
-    ; the bullet has no shape yet.
+    ; A variadic tail with a bullet `•?`: the empty list is made, and each argument of the tail,
+    ; which `given` holds from `start` on, is converted to the list's item and appended to it by the
+    ; call recorded at the argument. One with the bullet is appended only where it is present, as
+    ; what it holds: an optional where it holds a value, and the tuple of a key and an optional
+    ; value where the value holds one. Any other with the bullet has no shape yet.
     (let nothing (call make-operand .operand-void 0))
     (let makes no-fact)
     (let fact (call (. facts first-call) (. unit reading) id))
@@ -939,9 +936,9 @@
   (fn-do + emit-argument-value Operand
     (param id SyntaxId)
     (param row ASTArgument)
-    ; An argument written where a value is wanted, as the reference compiles one: the tuple of its
-    ; name and its value where it has a name, and with a bullet `•?` that tuple as an optional where
-    ; the value tests as true and nothing where it does not; its value where it has no name.
+    ; An argument written where a value is wanted: the tuple of its name and its value where it has
+    ; a name, and with a bullet `•?` that tuple as an optional where the value tests as true and
+    ; nothing where it does not; its value where it has no name.
     (let nothing (call make-operand .operand-void 0))
     (let value (call emit-expression (. row expr)))
     (if (not (. row name))
@@ -1425,9 +1422,8 @@
     (param id SyntaxId)
     (param object SyntaxId)
     (param callee InstanceId)
-    ; The row a call passes where it is written on a name that stands for the case of a row, as
-    ; TypeScript passes the cursor's row: a member of the case takes the row of its own type, and
-    ; one of a shared base the row it runs on.
+    ; The row a call passes where it is written on a name that stands for the case of a row: a
+    ; member of the case takes the row of its own type, and one of a shared base the row it runs on.
     (let held ([] case-cursors (call cursor-at object)))
     (let row ([] (. instances rows) callee))
     (let wanted (if-expr (!= (. row row-receiver) no-type) (. row row-receiver) (. row self-type)))
@@ -1447,7 +1443,7 @@
     (param id SyntaxId)
     (param cursor U32)
     ; The columns a call passes after its arguments to a member of a case that runs on a row whose
-    ; storage TypeScript checked where the case was read.
+    ; storage was checked where the case was read.
     (return (. (call case-place id ([] case-cursors cursor)) columns))
   )
   (fn-do _ callee-type TypeId
@@ -1798,10 +1794,10 @@
     (param written (of RowRange SyntaxId))
     (param args (of RowRange TypeId))
     (param returns TypeId)
-    ; A call of a value of a C function's type: of the address it holds, given an argument for
-    ; each place the type declares, converted to what the type declares for it, evaluated in the
-    ; order written. What runs is not known here, so the call is checked for a panic as the
-    ; reference checks a call of any value, and the function there gives the signal.
+    ; A call of a value of a C function's type: of the address it holds, given an argument for each
+    ; place the type declares, converted to what the type declares for it, evaluated in the order
+    ; written. What runs is not known here, so the call is checked for a panic as a call of any
+    ; value is, and the function there gives the signal.
     (let nothing (call make-operand .operand-void 0))
     (let fact (call own-call id))
     (let fills (if-expr (!= fact no-fact) (. ([] (. facts calls) fact) fills) (call (of RowRange ArgumentFill))))
@@ -2039,14 +2035,14 @@
     (param answers TypeId)
     (param bound SyntaxId (= 0))
     (param leading SyntaxId (= 0))
-    ; A tuple or struct made by its fields. A call of a binding evaluates the binding first, and
-    ; its arguments come before those written, as does the `leading` value a call is given before
-    ; them. The arguments are evaluated in the order they are written, and then each takes the
-    ; conversion recorded for it: one the binding holds, that recorded at the call for its type and
-    ; that of the field it fills. Each field is given the argument the type pass matched to it, or
-    ; its first value when the call leaves it out.
+    ; A tuple or struct made by its fields. A call of a binding evaluates the binding first, and its
+    ; arguments come before those written, as does the `leading` value a call is given before them.
+    ; The arguments are evaluated in the order they are written, and then each takes the conversion
+    ; recorded for it: one the binding holds, that recorded at the call for its type and that of the
+    ; field it fills. Each field is given the argument the type pass matched to it, or its first
+    ; value when the call leaves it out.
     ; What is made has the node's type, or `answers` for a call that no node writes. It is made in
-    ; place, where TypeScript calls the constructor it generates, as the IR notes.
+    ; place, as the IR notes.
     (let nothing (call make-operand .operand-void 0))
     (let type (. ([] (. instances rows) (. fact callee)) self-type))
     (let layout (call layout-of type id))

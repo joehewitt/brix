@@ -692,13 +692,12 @@
 
 
 (type _ CaseCursor (is Tuple)
-  ; A name a pattern bound to the case of a row of a table of unions: the row, its type, the
-  ; place of the union's table layout and the case. The name reads and writes the row's cells;
-  ; used as a value, the case is gathered from them. Once gathered, TypeScript reads the name
-  ; from the newest of what it gathered that dominates, though the cells change, and elsewhere
-  ; from the cells, gathering it again as a value (`gathered-at`). A row the subject `t[i]` read is `checked`:
-  ; TypeScript checked its storage there, and the name reads and writes the columns found then,
-  ; with no metadata.
+  ; A name a pattern bound to the case of a row of a table of unions: the row, its type, the place
+  ; of the union's table layout and the case. The name reads and writes the row's cells; used as a
+  ; value, the case is gathered from them. Once gathered, the name is read from the newest of what
+  ; was gathered that dominates, though the cells change, and elsewhere from the cells, gathering it
+  ; again as a value (`gathered-at`). A row the subject `t[i]` read is `checked`: its storage was
+  ; checked there, and the name reads and writes the columns found then, with no metadata.
   (blank)
   (prop + row Operand)
   (prop + type TypeId)
@@ -747,9 +746,8 @@
 )
 
 (type _ TableCursor (is Tuple)
-  ; A row of a table read at `t[i]` and not yet made a value, as TypeScript's cursor is: the
-  ; columns, found and checked, the index, checked against the length, and the metadata of the
-  ; table.
+  ; A row of a table read at `t[i]` and not yet made a value: the columns, found and checked, the
+  ; index, checked against the length, and the metadata of the table.
   (blank)
   (prop + columns Operand)
   (prop + index Operand)
@@ -765,8 +763,8 @@
 )
 
 (type _ TableSource (is Tuple)
-  ; The rows of a table or of a span of one, as TypeScript reads them: the columns, found and
-  ; checked, the first of the rows, how many there are, and the metadata.
+  ; The rows of a table or of a span of one: the columns, found and checked, the first of the rows,
+  ; how many there are, and the metadata.
   (blank)
   (prop + columns Operand)
   (prop + offset Operand)
@@ -879,9 +877,9 @@
     (param id FunctionId)
     ; Builds a function's IR. A member that runs on a row's case, reading its cells with no check,
     ; is built again as a bridge to the member's instance on the case where it may move the row's
-    ; storage before it reads the row again, as TypeScript builds its
-    ; `table-row-receiver-bridge`. One with no such instance is refused there, and so is one
-    ; whose code does not decide it, unless nothing would show which it is built as.
+    ; storage before it reads the row again (`table-row-receiver-bridge`). One with no such instance
+    ; is refused there, and so is one whose code does not decide it, unless nothing would show which
+    ; it is built as.
     (= bridged false)
     (let built (call build id))
     (if (or is-refused (== (. built row-columns) (. U32 max)))
@@ -1136,95 +1134,94 @@
 )
 
 (type _ FunctionEmitter
-  ; Builds one function's IR from its syntax and the facts the type pass recorded for its instance, or
-  ; from the program tables for a function with a generated body. It decides nothing: a construct it
-  ; has no shape for is recorded as a refusal and ends the function. `unit` says whose code is
-  ; emitted and where its locals are (`Unit`). A value emitted
-  ; comes with its type (`Typed`), which every use checks against the type it needs, so a
-  ; conversion nothing applied refuses the function. `held-chain` is the value written after the `?`
-  ; of the statement being emitted, which runs only where an optional holds a value: such a value
-  ; has no shape under any statement that does not name it here. `pins`
-  ; are the expressions whose values were evaluated before the code that reads them: the receiver of a
-  ; link of an optional chain, the value of an assignment made only where an optional holds one, the
-  ; subject a pattern compares, the object a place is stored back into. `budget` is
-  ; the cell that counts the passes of the function's loops down to their next poll, when the function
-  ; polls, and `probe-countdown` the one that counts the polls down to their next look in on the
-  ; probes, where they look. `loops` are the loops whose bodies are being emitted, innermost last, each with
-  ; its item, which is a value. `open-cleanups` are the cleanups open, oldest first, each with how
-  ; many were open where the block that opened it began, which `scoping` keeps for the block being
-  ; emitted (`Scoping`). `use-head` is the block the entry goes on to in a function that has a `use`, emitted
-  ; last, which clears
-  ; `use-flags` and goes on to `use-body`. `cleanup-raised` is the cell of the flag that says a
-  ; cleanup run on a way out no panic made has raised one, and `landings` counts the checks emitted,
-  ; so that a cleanup with none is known. `line-shift` is how many lines below where it is written an
-  ; instruction of the function is located, and `lowered` the feed whose own instructions are
-  ; located one line further down. `placing` says an instruction whose source is in a module other
-  ; than the function's is located in that module's file, as none is otherwise. `lazy-open` are the
-  ; lazy locals whose values are being evaluated. `lent-lazies` are the lazy locals declared inside
-  ; the value of one a function written in the one declaring them evaluates (`open-lent-lazies`).
-  ; `shared-depth` counts the values of lazy locals that more than one read may evaluate
-  ; where the type pass found a read that knows a local the value reads otherwise than the first: such
-  ; a value is typed where it is first read, under what the flow knows there, so nothing in it that
-  ; was settled by the flow has a shape, but what a test the value itself made settled
-  ; (`is-inside-read`), which holds wherever the value is evaluated. `sharing` counts those a function written in the one that
-  ; declares them is evaluating (`read-shared`). `ready-lazies` are the flags of the lazy locals kept
-  ; behind one, and `shared-ready` the lazy locals nested functions capture, each with the block where
-  ; an evaluation of it emitted in the function has ended (`evaluated-before`). `home-owner` is the instance `find-captured` found to declare the slot it was asked for, and
-  ; `home-layout` the layout of the environment that holds it there. `in-zone` is whether the code
-  ; being emitted runs where the collector never sees it: the body of a function marked so, until it
-  ; raises. `zone-answer` says, of the value the last call that raises errors answered where that zone
-  ; has to do with it, what its path does to the zone: 1 nothing, 2 enters it, 3 leaves it; an error
+  ; Builds one function's IR from its syntax and the facts the type pass recorded for its instance,
+  ; or from the program tables for a function with a generated body. It decides nothing: a construct
+  ; it has no shape for is recorded as a refusal and ends the function. `unit` says whose code is
+  ; emitted and where its locals are (`Unit`). A value emitted comes with its type (`Typed`), which
+  ; every use checks against the type it needs, so a conversion nothing applied refuses the
+  ; function. `held-chain` is the value written after the `?` of the statement being emitted, which
+  ; runs only where an optional holds a value: such a value has no shape under any statement that
+  ; does not name it here. `pins` are the expressions whose values were evaluated before the code
+  ; that reads them: the receiver of a link of an optional chain, the value of an assignment made
+  ; only where an optional holds one, the subject a pattern compares, the object a place is stored
+  ; back into. `budget` is the cell that counts the passes of the function's loops down to their
+  ; next poll, when the function polls, and `probe-countdown` the one that counts the polls down to
+  ; their next look in on the probes, where they look. `loops` are the loops whose bodies are being
+  ; emitted, innermost last, each with its item, which is a value. `open-cleanups` are the cleanups
+  ; open, oldest first, each with how many were open where the block that opened it began, which
+  ; `scoping` keeps for the block being emitted (`Scoping`). `use-head` is the block the entry goes
+  ; on to in a function that has a `use`, emitted last, which clears `use-flags` and goes on to
+  ; `use-body`. `cleanup-raised` is the cell of the flag that says a cleanup run on a way out no
+  ; panic made has raised one, and `landings` counts the checks emitted, so that a cleanup with none
+  ; is known. `line-shift` is how many lines below where it is written an instruction of the
+  ; function is located, and `lowered` the feed whose own instructions are located one line further
+  ; down. `placing` says an instruction whose source is in a module other than the function's is
+  ; located in that module's file, as none is otherwise. `lazy-open` are the lazy locals whose
+  ; values are being evaluated. `lent-lazies` are the lazy locals declared inside the value of one a
+  ; function written in the one declaring them evaluates (`open-lent-lazies`). `shared-depth` counts
+  ; the values of lazy locals that more than one read may evaluate where the type pass found a read
+  ; that knows a local the value reads otherwise than the first: such a value is typed where it is
+  ; first read, under what the flow knows there, so nothing in it that was settled by the flow has a
+  ; shape, but what a test the value itself made settled (`is-inside-read`), which holds wherever
+  ; the value is evaluated. `sharing` counts those a function written in the one that declares them
+  ; is evaluating (`read-shared`). `ready-lazies` are the flags of the lazy locals kept behind one,
+  ; and `shared-ready` the lazy locals nested functions capture, each with the block where an
+  ; evaluation of it emitted in the function has ended (`evaluated-before`). `home-owner` is the
+  ; instance `find-captured` found to declare the slot it was asked for, and `home-layout` the
+  ; layout of the environment that holds it there. `in-zone` is whether the code being emitted runs
+  ; where the collector never sees it: the body of a function marked so, until it raises.
+  ; `zone-answer` says, of the value the last call that raises errors answered where that zone has
+  ; to do with it, what its path does to the zone: 1 nothing, 2 enters it, 3 leaves it; an error
   ; comes back outside it. It is 0 where the zone has nothing to do with the call, and whoever takes
   ; the value apart clears it. `block-effects` is what the `do` blocks around the code being emitted
   ; keep it from (`effects-here`). `given-loop` is the loop of a comprehension, in the function
   ; generated for it: that function is given the loop's container where it is called, and yields the
-  ; body of the loop for each item. `subscribing` is the `for` block of a loop on a stream, or a comprehension on
-  ; one, in the function generated for it, which is given an item and the stream. `given-pipe` is a
-  ; stream piped through a pattern, in the function generated for it, which is given the stream's
-  ; value and yields what each match gives. `poll-landings` counts the checks of `landings` that a
-  ; loop's poll made. `feeds` is the first feed of a list, in the function generated for it, which
-  ; yields what each feed gives. `piped` is the pipe whose right side the function being emitted was
-  ; generated for: it is given the item, or the value piped, after the environment it was written in.
-  ; `piped-site` is where the type pass keeps what converts a list of feeds or a pipe that is piped
-  ; forward into a call, until that call reads it. `open-turns` are the loops whose turn is being
-  ; emitted and has an environment of its own, innermost last. `turn` and `turn-place` are those of
-  ; the one `find-captured` found a slot in, when it is one of these. `rebindings` are the cells a
-  ; machine's names were bound to anew while the expansion of an exit or an entry that binds them is
-  ; emitted, innermost last, each with the local it held before.
-  ; `through` is the place of the address of that slot in the capture of the
-  ; body of a `do without gc` block, when the capture refers to it. `builds` says the function returns
-  ; its receiver, and `initializes` that the function is a constructor run on an object another made.
-  ; `filling` is the properties a constructor gives their first values (`Filling`), and `making` the
-  ; tuple or struct whose fields are given theirs (`Making`), whose `made` says which fields have
-  ; theirs, as `filled` does for properties. `live-actions` holds the
-  ; trackers of the live actions open where code is emitted, innermost last, and
-  ; `rerunning` says the statement a live action runs again is being emitted in the function that runs
-  ; it. `place-trackers` are the properties whose values a constructor gave in a live action of their
-  ; own, each with its trackers, made where the constructor begins for a value a read may give on some
-  ; paths alone (`filling.trackers`); `attribute-trackers` the attributes of markup elements being made
-  ; whose values were given so, and `argument-trackers` the same of their arguments given by position.
-  ; `branch-trackers` are the trackers of each markup branch or loop region being made, kept until the
-  ; element has taken it.
+  ; body of the loop for each item. `subscribing` is the `for` block of a loop on a stream, or a
+  ; comprehension on one, in the function generated for it, which is given an item and the stream.
+  ; `given-pipe` is a stream piped through a pattern, in the function generated for it, which is
+  ; given the stream's value and yields what each match gives. `poll-landings` counts the checks of
+  ; `landings` that a loop's poll made. `feeds` is the first feed of a list, in the function
+  ; generated for it, which yields what each feed gives. `piped` is the pipe whose right side the
+  ; function being emitted was generated for: it is given the item, or the value piped, after the
+  ; environment it was written in. `piped-site` is where the type pass keeps what converts a list of
+  ; feeds or a pipe that is piped forward into a call, until that call reads it. `open-turns` are
+  ; the loops whose turn is being emitted and has an environment of its own, innermost last. `turn`
+  ; and `turn-place` are those of the one `find-captured` found a slot in, when it is one of these.
+  ; `rebindings` are the cells a machine's names were bound to anew while the expansion of an exit
+  ; or an entry that binds them is emitted, innermost last, each with the local it held before.
+  ; `through` is the place of the address of that slot in the capture of the body of a `do without
+  ; gc` block, when the capture refers to it. `builds` says the function returns its receiver, and
+  ; `initializes` that the function is a constructor run on an object another made. `filling` is the
+  ; properties a constructor gives their first values (`Filling`), and `making` the tuple or struct
+  ; whose fields are given theirs (`Making`), whose `made` says which fields have theirs, as
+  ; `filled` does for properties. `live-actions` holds the trackers of the live actions open where
+  ; code is emitted, innermost last, and `rerunning` says the statement a live action runs again is
+  ; being emitted in the function that runs it. `place-trackers` are the properties whose values a
+  ; constructor gave in a live action of their own, each with its trackers, made where the
+  ; constructor begins for a value a read may give on some paths alone (`filling.trackers`);
+  ; `attribute-trackers` the attributes of markup elements being made whose values were given so,
+  ; and `argument-trackers` the same of their arguments given by position. `branch-trackers` are the
+  ; trackers of each markup branch or loop region being made, kept until the element has taken it.
   ; `task-leaving` is where a return in the body of a spawned task goes, to end the task.
   ; `task-failing` is where each landing pad of a task body goes when the task has handlers, and
   ; `task-handlers` are those handlers; `handling-failure` holds while they are emitted.
-  ; `styling` is what the style rules applied at a site keep (`Styling`), and `rule-givens` the values
-  ; given to the style rules written on the element `valued` names, as evaluated. `rule-names` are the names a style rule
-  ; applied where code is emitted takes its values by. `around-values` are the values the style rules
-  ; written on markup elements gave, for the rules written in them to read, and `taken-values` those
-  ; this function was given (`take-values`). `style-order` is the order the next declaration of a rule
-  ; applied at a site takes. `style-conditions` are the conditions made at the site where code is
-  ; emitted. `site-self`, `site-self-type`, `site-has-self` and `site-deferred` are the receiver where
-  ; the markup element
+  ; `styling` is what the style rules applied at a site keep (`Styling`), and `rule-givens` the
+  ; values given to the style rules written on the element `valued` names, as evaluated.
+  ; `rule-names` are the names a style rule applied where code is emitted takes its values by.
+  ; `around-values` are the values the style rules written on markup elements gave, for the rules
+  ; written in them to read, and `taken-values` those this function was given (`take-values`).
+  ; `style-order` is the order the next declaration of a rule applied at a site takes.
+  ; `style-conditions` are the conditions made at the site where code is emitted. `site-self`,
+  ; `site-self-type`, `site-has-self` and `site-deferred` are the receiver where the markup element
   ; whose rules are applied is written, which a condition written on it reads. `site-gates` are the
-  ; gates of the site. `state-cells` are the state
-  ; cells of `scope-cells` made where code is emitted. `bridged` says the function is built as the
-  ; bridge TypeScript makes for a member that runs on a row's case, and `row-columns` is the argument
-  ; that member takes the row's columns in. `this-cursor` is the case of a row such a member's
-  ; receiver stands for. `dispatch-row` is the row the function made for a member a union forwards
-  ; takes, while its cases are called, of the type `dispatch-type`, and `dispatch-columns` the columns
-  ; found where its storage was checked; no type where it takes none. `made-rows` are the rows `t[i]`
-  ; made values. `matching` is the pattern being emitted (`Match`).
+  ; gates of the site. `state-cells` are the state cells of `scope-cells` made where code is
+  ; emitted. `bridged` says the function is built as the bridge for a member that runs on a row's
+  ; case, and `row-columns` is the argument that member takes the row's columns in. `this-cursor` is
+  ; the case of a row such a member's receiver stands for. `dispatch-row` is the row the function
+  ; made for a member a union forwards takes, while its cases are called, of the type
+  ; `dispatch-type`, and `dispatch-columns` the columns found where its storage was checked; no type
+  ; where it takes none. `made-rows` are the rows `t[i]` made values. `matching` is the pattern
+  ; being emitted (`Match`).
   (blank)
   (prop + ir IRFunction)
   (prop + refusal Refusal)
@@ -2179,10 +2176,9 @@
   (fn-do _ check-property _ (?! Refused)
     (param position U32)
     (param syntax SyntaxId)
-    ; Gives a property of the object being made its first value where its flag says it has none,
-    ; and sets the flag, as the reference evaluates a property a read on some paths alone gives its
-    ; value. A value run in a live action of its own notes what it reads in the trackers made for it
-    ; where the constructor began; one with none has no shape here.
+    ; Gives a property of the object being made its first value where its flag says it has none, and
+    ; sets the flag. A value run in a live action of its own notes what it reads in the trackers
+    ; made for it where the constructor began; one with none has no shape here.
     (let flag ([] (. filling checks) position))
     (let unit-id (call (. tables value-unit) (+ (. filling start) position)))
     (let live (and (!= unit-id no-instance) (. ([] (. instances rows) unit-id) is-live)))
@@ -2959,12 +2955,11 @@
   (fn-do _ read-stack Typed
     (param id SyntaxId)
     (param row U32)
-    ; A read of a global `do with` binds: the value of a binding of it open around the read in
-    ; the function, or else the value its state holds, which raises a panic where it is not
-    ; bound. That state is what a spawned task's body captured, or else the slot of the task
-    ; running. A cleanup a landing pad runs is emitted once for all the checks that land there,
-    ; where TypeScript reads what is bound where the panic was made, so a read in one is refused
-    ; where a `do with` after the cleanup binds the global.
+    ; A read of a global `do with` binds: the value of a binding of it open around the read in the
+    ; function, or else the value its state holds, which raises a panic where it is not bound. That
+    ; state is what a spawned task's body captured, or else the slot of the task running. A cleanup
+    ; a landing pad runs is emitted once for all the checks that land there, so a read in one is
+    ; refused where a `do with` after the cleanup binds the global.
     (let nothing (call make-operand .operand-void 0))
     (let kept ([] (. tables storage) row))
     (if (or (!= (. unit reading) (. unit instance)) (and (!= (. scoping unwinding-from) 0) (call binds-after row (. scoping unwinding-from))))
@@ -3115,18 +3110,17 @@
   )
   (fn-do _ emit-statement _ (?! Refused)
     (param id SyntaxId)
-    ; One statement. An expression written as a statement is evaluated, and its value dropped: one that
-    ; is no call and whose value is an error has no shape here. A probe is compiled only where probes
-    ; are asked for (`emit-probe-statement`): elsewhere it emits nothing, and nothing of it is
-    ; evaluated. A lazy
-    ; local emits nothing where it is declared: its value is evaluated where it is read. Nor does a
-    ; local of a row of a markup loop region read as a getter. A block written for a feature of the
-    ; compiler the program does not use emits nothing: the type pass typed none of it. Nor does the body
-    ; of a branch written with a pattern, whose statements run in the arm of its condition. A match of a
-    ; subject is run for what its arms do, as the reference compiles one written as a statement. A line
-    ; of a markup element's body that the element takes is given to it. A statement that follows one
-    ; that left a call crossing the zone the collector never sees unsettled has no shape. A line of a
-    ; class's markup that declares a property stores its value there as an assignment does
+    ; One statement. An expression written as a statement is evaluated, and its value dropped: one
+    ; that is no call and whose value is an error has no shape here. A probe is compiled only where
+    ; probes are asked for (`emit-probe-statement`): elsewhere it emits nothing, and nothing of it
+    ; is evaluated. A lazy local emits nothing where it is declared: its value is evaluated where it
+    ; is read. Nor does a local of a row of a markup loop region read as a getter. A block written
+    ; for a feature of the compiler the program does not use emits nothing: the type pass typed none
+    ; of it. Nor does the body of a branch written with a pattern, whose statements run in the arm
+    ; of its condition. A match of a subject is run for what its arms do. A line of a markup
+    ; element's body that the element takes is given to it. A statement that follows one that left a
+    ; call crossing the zone the collector never sees unsettled has no shape. A line of a class's
+    ; markup that declares a property stores its value there as an assignment does
     ; (`content-property`).
     (if (!= zone-answer 0)
       (call refuse .refused-statement id)
@@ -3333,14 +3327,13 @@
     (param id SyntaxId)
     (param selected TypeId)
     (param keeps LocalId (= no-local))
-    ; The index of the arm of a markup branch region to select, as the reference's
-    ; `markupIfConditionArm` chooses it: that of the first arm whose condition holds, the
-    ; conditions tested in turn, or else that of the first arm with no condition, or none. An arm
-    ; written with a pattern holds where its subject matches it, tested binding nothing, as the
-    ; reference's `markupIfActiveArm` tests it; an arm so chosen is selected again whatever arm the
-    ; region holds, which `keeps` says where it is given: false for such an arm, else true. That of
-    ; a match region is `emit-pattern-index`'s. That of a slot outlet that is a region is its one
-    ; arm's, once the name its parameter gives is read, as the reference's `selectArm` reads it.
+    ; The index of the arm of a markup branch region to select: that of the first arm whose
+    ; condition holds, the conditions tested in turn, or else that of the first arm with no
+    ; condition, or none. An arm written with a pattern holds where its subject matches it, tested
+    ; binding nothing; an arm so chosen is selected again whatever arm the region holds, which
+    ; `keeps` says where it is given: false for such an arm, else true. That of a match region is
+    ; `emit-pattern-index`'s. That of a slot outlet that is a region is its one arm's, once the name
+    ; its parameter gives is read.
     (let nothing (call make-operand .operand-void 0))
     (let layout (call layout-of selected id))
     (if (or (call is-null-form selected) (not (call (. tables layouts is-struct) layout)))
@@ -3474,10 +3467,9 @@
     (param held Operand)
     (param inner LayoutField)
     (param flag LayoutField)
-    ; Stores in `held` the index of the arm of a markup match region to select, as the reference's
-    ; `markupMatchActiveArm` chooses it: the subject is read once, a struct copied, and each arm's
-    ; pattern tested against it in turn, binding nothing; that of the first that matches, or none.
-    ; The arms after one that always matches are not tested.
+    ; Stores in `held` the index of the arm of a markup match region to select: the subject is read
+    ; once, a struct copied, and each arm's pattern tested against it in turn, binding nothing; that
+    ; of the first that matches, or none. The arms after one that always matches are not tested.
     (let subject SyntaxId 0)
     (match? ([] (. tree nodes) id)
       (case (call .node-match-expression row)
@@ -3521,11 +3513,11 @@
   (fn-do _ emit-resource _
     (param declared SyntaxId)
     (param id SyntaxId)
-    ; The function the action of a markup loop region runs, given the environment the region was
-    ; made in: the container is read again with the trackers of the action noting what it reads,
-    ; the members of the region's host read by their names alone, and given to the region, read
-    ; from where it was kept, by the markup runtime's replacer the type pass recorded at the `for`,
-    ; as the reference's `collection-source` function does.
+    ; The function the action of a markup loop region runs, `collection-source`, given the
+    ; environment the region was made in: the container is read again with the trackers of the
+    ; action noting what it reads, the members of the region's host read by their names alone, and
+    ; given to the region, read from where it was kept, by the markup runtime's replacer the type
+    ; pass recorded at the `for`.
     (let live (. instances live))
     (let region (call (. facts loop-region-of) (. ([] (. instances rows) (. unit instance)) enclosing) id))
     (let slot (call channel-slot id))
@@ -3569,8 +3561,7 @@
     (param name Atom)
     ; A name the row of a keyed markup loop region gives its item by: the row's argument, the
     ; `MarkupRowItem` that holds the item, is read, the read of its `item` noted in the trackers of
-    ; the live action open where one is, and its `item` read, as the reference's
-    ; `readMarkupRowItem` does.
+    ; the live action open where one is, and its `item` read.
     (let held (call (. facts row-item-of) (. unit reading) id))
     (if (not (call (. tables is-class) held))
       (call refuse .refused-expression id)
@@ -3586,13 +3577,13 @@
   (fn-do _ emit-reselect _
     (param declared SyntaxId)
     (param id SyntaxId)
-    ; The function the action of a markup branch region runs, given the environment the region was
-    ; made in: the index of the arm to select is read again with the trackers of the action noting
-    ; what the conditions read, the members of the region's host read by their names alone, and
-    ; where the region does not keep that arm, the actions the region owns are closed and the
-    ; markup runtime selects it, as the reference's `markup-branch` function does. That of a match
-    ; region selects the arm whatever arm the region holds, as does that of a branch region for an
-    ; arm written with a pattern (`emit-arm-index`).
+    ; The function the action of a markup branch region runs, `markup-branch`, given the
+    ; environment the region was made in: the index of the arm to select is read again with the
+    ; trackers of the action noting what the conditions read, the members of the region's host read
+    ; by their names alone, and where the region does not keep that arm, the actions the region owns
+    ; are closed and the markup runtime selects it. That of a match region selects the arm whatever
+    ; arm the region holds, as does that of a branch region for an arm written with a pattern
+    ; (`emit-arm-index`).
     (let live (. instances live))
     (let region (call (. facts branch-region-of) (. ([] (. instances rows) (. unit instance)) enclosing) id))
     (let slot (call channel-slot id))
@@ -3651,9 +3642,9 @@
     (param body SyntaxId)
     ; The function that builds an arm of a markup branch region: the arm's body runs as content of
     ; the region it is given, under the batch in force where the region is written, where the type
-    ; pass found one, read from where it was kept; the region is put under it first, twice, as the
-    ; reference's builder and then its `compileContents` each do. That of an arm of a match region
-    ; runs its body only where its pattern matches the subject (`match-subject`).
+    ; pass found one, read from where it was kept; the region is put under it first, twice. That of
+    ; an arm of a match region runs its body only where its pattern matches the subject
+    ; (`match-subject`).
     (let parent (call make-operand .operand-argument 1))
     (let type (call (. instances argument-type) (. unit instance) 0))
     (let batch (call make-operand .operand-void 0))
@@ -3702,8 +3693,7 @@
     ; with a pattern, is one of again, where a member of the region's host read by its name alone is
     ; read from the host kept where the region was made, copies a struct, and matches the arm's
     ; pattern against it, going to `failed` where it does not match, binding `it` and the names the
-    ; pattern declares, as the reference's `markupCompileMatchedArm` does. False where the arm can
-    ; never match, or once refused.
+    ; pattern declares. False where the arm can never match, or once refused.
     (if (== (call (. facts plan-of) (. unit reading) arm) .plan-never)
       (return false)
     )
@@ -3971,10 +3961,10 @@
     (param id SyntaxId)
     (param pattern SyntaxId)
     (param value SyntaxId)
-    ; A declaration written with a pattern where a name or a type goes: the value is matched
-    ; against the pattern, the names the pattern declares are locals that hold what it captured,
-    ; and where it does not match the declaration panics. A pattern that the reference lets
-    ; fail and go on from, its names unset, has no shape here.
+    ; A declaration written with a pattern where a name or a type goes: the value is matched against
+    ; the pattern, the names the pattern declares are locals that hold what it captured, and where
+    ; it does not match the declaration panics. A pattern that lets the declaration fail and go on,
+    ; its names unset, has no shape here.
     (if (== value 0)
       (call refuse .refused-statement id)
       (return)
@@ -4088,17 +4078,17 @@
     (param owner TypeId)
     (param declares Bool)
     (param item Bool (= false))
-    ; Takes a tuple apart: each of its first fields into a local, a new one or one that exists,
-    ; or into a global that exists. The local has the field's own type, or the type written for
-    ; it where the type pass recorded the field's conversion there, or the type of a local that
-    ; exists, which the type pass recorded the field's conversion to at its name; the global has
-    ; the field's own type. A field written as `_` goes nowhere, and one written as a tuple of names is taken
-    ; apart in turn. A lazy local,
-    ; whose value is evaluated wherever a read comes first, keeps the cell it was first given.
-    ; A local an environment holds is stored there. `item` says the tuple is the item of a
-    ; loop, and the names those its pattern writes. A table or a span of one is taken apart, as
-    ; TypeScript takes it, into a view of each field's column of the type of its local, one name
-    ; after another; one written as `_` still has the table checked.
+    ; Takes a tuple apart: each of its first fields into a local, a new one or one that exists, or
+    ; into a global that exists. The local has the field's own type, or the type written for it
+    ; where the type pass recorded the field's conversion there, or the type of a local that exists,
+    ; which the type pass recorded the field's conversion to at its name; the global has the field's
+    ; own type. A field written as `_` goes nowhere, and one written as a tuple of names is taken
+    ; apart in turn. A lazy local, whose value is evaluated wherever a read comes first, keeps the
+    ; cell it was first given.
+    ; A local an environment holds is stored there. `item` says the tuple is the item of a loop, and
+    ; the names those its pattern writes. A table or a span of one is taken apart into a view of
+    ; each field's column of the type of its local, one name after another; one written as `_` still
+    ; has the table checked.
     (let layout (call layout-of owner id))
     (let tabled (call is-row-source (call intrinsic owner)))
     (if (and (not tabled) (or (not (call (. tables layouts is-struct) layout)) too-few-fields))
@@ -4194,14 +4184,13 @@
     (param name SyntaxId)
     (param annotation SyntaxId)
     (param value SyntaxId)
-    ; Gives a local its cell and stores its first value there: the value written, converted to
-    ; the type written for the local, or the value its type has when none is written. A local
-    ; that holds nothing has no cell, and its value is evaluated for what it does. A local that
-    ; holds a struct holds a copy of the one it is given. A tuple written in parentheses where
-    ; the type goes is a pattern to TypeScript, which converts nothing and names what the pattern
-    ; names, so a value of any other type has no rule here. A local that nested functions
-    ; capture is stored in the environment that holds it. One some read tracks tells no read of
-    ; its first value.
+    ; Gives a local its cell and stores its first value there: the value written, converted to the
+    ; type written for the local, or the value its type has when none is written. A local that holds
+    ; nothing has no cell, and its value is evaluated for what it does. A local that holds a struct
+    ; holds a copy of the one it is given. A tuple written in parentheses where the type goes is a
+    ; pattern, which converts nothing and names what the pattern names, so a value of any other type
+    ; has no rule here. A local that nested functions capture is stored in the environment that
+    ; holds it. One some read tracks tells no read of its first value.
     (let slot (call local-slot name id true false true))
     (let offset (call slot-offset slot id))
     (let type (call (. facts slot-type) (. unit instance) offset))
@@ -4298,8 +4287,7 @@
     (param layout LayoutId)
     (param id SyntaxId)
     ; The first case of a union, holding the value a local of the case's type has with nothing
-    ; written, as the reference's `defaultValue` of a union gives it; a case that holds nothing
-    ; has nothing set.
+    ; written; a case that holds nothing has nothing set.
     (if (== (. ([] (. tables layouts rows) layout) cases count) 0)
       (call refuse .refused-statement id)
       (return (call Typed (call make-operand .operand-void 0) no-type))
@@ -4486,9 +4474,9 @@
   )
   (fn-do _ places-item Bool
     (param id SyntaxId)
-    ; Whether a struct a store goes into is one that lies in storage, as TypeScript finds it once
-    ; it has inlined what reads it: an item past a pointer, what an index answers by a function
-    ; written `@inline` as an expression, or a struct stored in either.
+    ; Whether a struct a store goes into is one that lies in storage once what reads it is inlined:
+    ; an item past a pointer, what an index answers by a function written `@inline` as an
+    ; expression, or a struct stored in either.
     (match? ([] (. tree nodes) id)
       (case (call .node-get-expression row)
         (let owner (call (. facts node-type) (. unit reading) (. row object)))
@@ -4554,7 +4542,7 @@
   (fn-do _ inlined-answer SyntaxId
     (param callee InstanceId)
     ; The body of a member written `@inline` as an expression, which a store into what it answers
-    ; runs where the store is, as TypeScript inlines it: 0 for any other function.
+    ; runs where the store is: 0 for any other function.
     (let row ([] (. instances rows) callee))
     (match? ([] (. ([] (. program modules) (. row module)) decls) (. row decl))
       (case (call .decl-function fn)
@@ -4576,8 +4564,8 @@
   (fn-do _ inlined-static-answer SyntaxId
     (param callee InstanceId)
     ; The body of a function with no receiver, a static one or one declared alone, written `@inline`
-    ; as an expression, which a store into what it answers runs where the store is, as TypeScript
-    ; inlines it: 0 for any other function.
+    ; as an expression, which a store into what it answers runs where the store is: 0 for any other
+    ; function.
     (if (== callee no-instance)
       (return 0)
     )
@@ -4600,7 +4588,7 @@
   )
   (fn-do _ is-inline Bool
     (param callee InstanceId)
-    ; Whether a function is written `@inline`, which TypeScript runs where it is called.
+    ; Whether a function is written `@inline`, to run where it is called.
     (let row ([] (. instances rows) callee))
     (match? ([] (. ([] (. program modules) (. row module)) decls) (. row decl))
       (case (call .decl-function fn)
@@ -4616,8 +4604,8 @@
   (fn-expr _ answers-copy Bool
     (param id SyntaxId)
     ; Whether a call gives what a function answers in memory of the call's own, which nothing else
-    ; names, as TypeScript's does where it calls the function: one it calls by itself, not through a
-    ; witness table, that is not written `@inline`.
+    ; names: a call of the function by itself, not through a witness table, that is not written
+    ; `@inline`.
     (case? (== fact no-fact)
       false
     )
@@ -4639,12 +4627,12 @@
     (param object SyntaxId)
     (param index SyntaxId)
     ; Where the struct an index answers lies, for a store into a field of it, where the function
-    ; that answers it is a member written `@inline` as an expression. The receiver and
-    ; the key are evaluated as for the call, each with its conversion, and then the function's body
-    ; runs here as TypeScript inlines it, with its own locals for the run and the key in its
-    ; argument's: its answer is where the storage it names lies. A function that raises, keeps an
-    ; environment, takes a struct, or runs in another zone has no shape here, and nor has one run
-    ; where a value is pinned, since its syntax is of its own module.
+    ; that answers it is a member written `@inline` as an expression. The receiver and the key are
+    ; evaluated as for the call, each with its conversion, and then the function's body runs here,
+    ; with its own locals for the run and the key in its argument's: its answer is where the storage
+    ; it names lies. A function that raises, keeps an environment, takes a struct, or runs in
+    ; another zone has no shape here, and nor has one run where a value is pinned, since its syntax
+    ; is of its own module.
     (let nothing (call make-operand .operand-void 0))
     (let callee (. fact callee))
     (if (or (== callee no-instance) (. fact is-partial) (not (call is-callable callee)) out-of-order)
@@ -4693,8 +4681,8 @@
     ; Where the struct a call answers lies, in an inlined body, where the function is one with no
     ; receiver written `@inline` as an expression, as `GCBacking.load` is. The arguments are
     ; evaluated in the order written, each with its conversion, and then the function's body runs
-    ; here as TypeScript inlines it. A function that raises, keeps an environment, takes a struct or
-    ; runs in another zone has no shape here, and nor has one run where a value is pinned.
+    ; here. A function that raises, keeps an environment, takes a struct or runs in another zone has
+    ; no shape here, and nor has one run where a value is pinned.
     (let nothing (call make-operand .operand-void 0))
     (let callee (. fact callee))
     (let count (as (. written count) U32))
@@ -4760,9 +4748,9 @@
     (param layouts (list LayoutId))
     (param site SyntaxId)
     ; Runs the body of a function written `@inline` as an expression where a store into what it
-    ; answers is, as TypeScript inlines it, with its own locals for the run, the receiver where it
-    ; `receives` one, and each argument in its parameter's cell, and answers where the storage its
-    ; answer names lies. Its syntax is of its own module.
+    ; answers is, with its own locals for the run, the receiver where it `receives` one, and each
+    ; argument in its parameter's cell, and answers where the storage its answer names lies. Its
+    ; syntax is of its own module.
     (let own-unit unit)
     (let run (call enter-unit callee))
     (= unit (= (. unit source-module) (. ([] (. instances rows) callee) module)))
@@ -4821,8 +4809,7 @@
     ; pointer, a stored field of the receiver, what an index answers by a function this runs where
     ; it is called in turn, what a function with no receiver this runs where it is called answers,
     ; or for a match with no subject, the place each arm's answer gives. What `answers-copy` says a
-    ; call gives lies where the call left it, which nothing else names, as TypeScript's store
-    ; through it goes nowhere else.
+    ; call gives lies where the call left it, which nothing else names.
     (let nothing (call make-operand .operand-void 0))
     (match? ([] (. tree nodes) id)
       (case (call .node-index-expression row)
@@ -4959,12 +4946,12 @@
     (param id SyntaxId)
     (param used EventUse)
     (param operands (of RowRange SyntaxId))
-    ; A write to an event, as the reference publishes one: the object is evaluated, and where the
-    ; event is live, the event runtime says whether anything listens to it on the object; only
-    ; then is the payload made and published. A keyed event is asked at its address, the key the
-    ; index gives, for the generation of the receiver there, which none is where nothing listens,
-    ; and published at the address with it. One that bubbles is published with the object made
-    ; the `EventNode` its parents are walked from.
+    ; A write to an event: the object is evaluated, and where the event is live, the event runtime
+    ; says whether anything listens to it on the object; only then is the payload made and
+    ; published. A keyed event is asked at its address, the key the index gives, for the generation
+    ; of the receiver there, which none is where nothing listens, and published at the address with
+    ; it. One that bubbles is published with the object made the `EventNode` its parents are walked
+    ; from.
     (let nothing (call make-operand .operand-void 0))
     (let owner (call event-owner (. used reference) (. used owner)))
     (let number (call (. tables event-number) (. used owner) (. used name)))
@@ -5040,11 +5027,10 @@
     (param id SyntaxId)
     (param used EventUse)
     (param operands (of RowRange SyntaxId))
-    ; `rekey` or `release` of the address of a keyed event, as the reference makes them: the
-    ; object and the key are evaluated, then for `rekey` the new key, converted to the event's
-    ; key type, and the event runtime gives the address the receiver claimed there the new key,
-    ; whose errors leave the function with the call, or under `catch` are what the call gives, or
-    ; gives it up.
+    ; `rekey` or `release` of the address of a keyed event: the object and the key are evaluated,
+    ; then for `rekey` the new key, converted to the event's key type, and the event runtime gives
+    ; the address the receiver claimed there the new key, whose errors leave the function with the
+    ; call, or under `catch` are what the call gives, or gives it up.
     (let nothing (call make-operand .operand-void 0))
     (let owner (call event-owner (. used reference) (. used owner)))
     (let number (call (. tables event-number) (. used owner) (. used name)))
@@ -5087,10 +5073,10 @@
     (param id SyntaxId)
     (param used EventUse)
     (param operands (of RowRange SyntaxId))
-    ; A write of a `RoutedEvent`, as the reference publishes one: the object is evaluated, and
-    ; where the event is live the payload is made and the event runtime publishes it along its
-    ; route of owners, from the object on, whatever listens; one that bubbles is given the object
-    ; made the `EventNode` its parents are walked from, where the payload has no route of its own.
+    ; A write of a `RoutedEvent`: the object is evaluated, and where the event is live the payload
+    ; is made and the event runtime publishes it along its route of owners, from the object on,
+    ; whatever listens; one that bubbles is given the object made the `EventNode` its parents are
+    ; walked from, where the payload has no route of its own.
     (let nothing (call make-operand .operand-void 0))
     (let owner (call event-owner (. used reference) (. used owner)))
     (let number (call (. tables event-number) (. used owner) (. used name)))
@@ -5147,11 +5133,10 @@
     (param used EventUse)
     (param owner Operand)
     (param number U32)
-    ; The endpoint at the address of a keyed event, as the reference claims it for the receiver:
-    ; the event runtime's `first` gives it for the object, the event's number, the key and the
-    ; receiver's identity, and its errors leave the function at `site`; then a live action of the
-    ; receiver holds a `ClosableTracker` of it, made as `claim` says, which closes it with the
-    ; receiver.
+    ; The endpoint at the address of a keyed event, claimed for the receiver: the event runtime's
+    ; `first` gives it for the object, the event's number, the key and the receiver's identity, and
+    ; its errors leave the function at `site`; then a live action of the receiver holds a
+    ; `ClosableTracker` of it, made as `claim` says, which closes it with the receiver.
     (let nothing (call make-operand .operand-void 0))
     (let key (call emit-key (. used address)))
     (let key-type (. key type))
@@ -5669,8 +5654,8 @@
   )
   (fn-do _ set-up-batch-probes _
     ; Declares the probes of a batch where the case the batch is run from starts, the one
-    ; `BRIXTEST_BATCH_START_INDEX` names, as the reference does: every case after it writes to the
-    ; record of probes that case opened.
+    ; `BRIXTEST_BATCH_START_INDEX` names: every case after it writes to the record of probes that
+    ; case opened.
     (let first (call call-runtime .runtime-batch-start-index 0 (. pending length) i32-layout))
     (let setting (call (. ir reserve-block)))
     (let passed (call (. ir reserve-block)))
@@ -5914,17 +5899,16 @@
     (param second-given TypeId (= no-type))
     (param third (? Operand) (= null))
     (param third-given TypeId (= no-type))
-    ; A call the type pass recorded at a loop for its container, at a pattern for its subject, or for a
-    ; helper a pattern is given, which no call in the source writes: of a function declared for the
-    ; container's type or for a class it is derived from, with the container as it is and up to three
-    ; arguments, each of the type the function takes or of another that is held the same. A call that
-    ; would convert any has no shape here. A function some class declares again is chosen by the class
-    ; of the object, as a call written in source is. An error the function raises is a panic at the
-    ; loop, with the error's text as its message, but where the type pass says the call's errors leave
-    ; the function with it, as a loop's read of a generator that raises does. A loop's call is
-    ; `watched`, checked for a panic even where no other call of the function is: the reference notices
-    ; a panic raised under a loop's read as the loop ends. A function a property the container
-    ; delegates to answers is called with what the property holds.
+    ; A call the type pass recorded at a loop for its container, at a pattern for its subject, or
+    ; for a helper a pattern is given, which no call in the source writes: of a function declared
+    ; for the container's type or for a class it is derived from, with the container as it is and up
+    ; to three arguments, each of the type the function takes or of another that is held the same. A
+    ; call that would convert any has no shape here. A function some class declares again is chosen
+    ; by the class of the object, as a call written in source is. An error the function raises is a
+    ; panic at the loop, with the error's text as its message, but where the type pass says the
+    ; call's errors leave the function with it, as a loop's read of a generator that raises does. A
+    ; loop's call is `watched`, checked for a panic even where no other call of the function is. A
+    ; function a property the container delegates to answers is called with what the property holds.
     (let nothing (call make-operand .operand-void 0))
     (if (or (== fact no-fact) (== (. ([] (. facts calls) fact) callee) no-instance) uncallable)
       (call refuse .refused-statement site)
@@ -6502,10 +6486,10 @@
   (fn-do _ emit-probe _
     (param id SyntaxId)
     (param row ASTProbe)
-    ; A log or an event whose probe compiles writes its record through the calls of the probes module
-    ; the type pass recorded at it (`emit-probe-record`). The object it is written of, where it has one,
-    ; and each value written in it are evaluated first, in order, then each value is cast, so that a
-    ; probe a value runs writes its own record before this one starts, as the reference compiles them.
+    ; A log or an event whose probe compiles writes its record through the calls of the probes
+    ; module the type pass recorded at it (`emit-probe-record`). The object it is written of, where
+    ; it has one, and each value written in it are evaluated first, in order, then each value is
+    ; cast, so that a probe a value runs writes its own record before this one starts.
     (let number (call (. tables probe-number) (. unit reading) id))
     (if (== number 0)
       (call refuse .refused-probe id)
@@ -6790,12 +6774,12 @@
     )
   )
   (fn-do _ emit-probe-setup _
-    ; The function the task main runs once the probes module has started, as the reference's
-    ; `probesetup`: it opens the record of probes, makes room for the counters, numbered up to the last,
-    ; and for the metrics of the profile, declares the key of each log and group and each class a value
-    ; of a probe has, numbered after the probe data types, then each metric of the profile, then each
-    ; probe the program compiles with the probe data type of each value it writes, and says the
-    ; declarations are done.
+    ; The function the task main runs once the probes module has started, `probesetup`: it opens the
+    ; record of probes, makes room for the counters, numbered up to the last, and for the metrics of
+    ; the profile, declares the key of each log and group and each class a value of a probe has,
+    ; numbered after the probe data types, then each metric of the profile, then each probe the
+    ; program compiles with the probe data type of each value it writes, and says the declarations
+    ; are done.
     (let runtime (. instances probe-runtime))
     (call call-probe-function (. runtime begin) 0 (. pending length))
     (let mark (. pending length))
@@ -6825,8 +6809,8 @@
     (call return-nothing)
   )
   (fn-do _ emit-probe-teardown _
-    ; The function that closes the record of probes, as the reference's `probeteardown`: it counts what
-    ; the collector did under the counters that compile for it, then closes the record.
+    ; The function that closes the record of probes, `probeteardown`: it counts what the collector
+    ; did under the counters that compile for it, then closes the record.
     (let runtime (. instances probe-runtime))
     (let counts (. tables collector-counts))
     (if (or (!= ([] counts 0) 0) (!= ([] counts 1) 0) (!= ([] counts 2) 0))
@@ -6963,7 +6947,7 @@
     (param mark Size)
     ; A call of a function of the probes module that compiled probes make, or the functions that
     ; declare, flush and close them: an error that leaves it is reported as one no caller handles,
-    ; and what follows runs, as the reference hands it off.
+    ; and what follows runs.
     (if (== callee no-instance)
       (call refuse .refused-probe site)
       (call drop-pending mark)
@@ -7035,16 +7019,16 @@
     (param error Operand)
     (param type TypeId)
     (param id SyntaxId)
-    ; Leaves the function with an error in place of its value. The error is given the place of
-    ; the node where it has no source of its own, then its stack trace. Where the type pass
-    ; planned transformers for it there, each is tried in turn, and the first whose chain of
-    ; earlier errors matches raises its exception in the error's place. An error raised in a
-    ; cleanup leaves as TypeScript's does: in place of what was leaving, a value, another error or
-    ; a panic, which stays set aside. One raised by a lazy local's value that a nested function
-    ; evaluates leaves the nested function, whose writer lets it out with the call. One raised in
-    ; a constructor run on an object made elsewhere, or in the zone the collector never looks in,
-    ; which an error leaves before it is raised, has no shape here, and neither has one a lazy
-    ; local's value raises toward transformers, nor one a transformer the type pass marked may take.
+    ; Leaves the function with an error in place of its value. The error is given the place of the
+    ; node where it has no source of its own, then its stack trace. Where the type pass planned
+    ; transformers for it there, each is tried in turn, and the first whose chain of earlier errors
+    ; matches raises its exception in the error's place. An error raised in a cleanup leaves in
+    ; place of what was leaving: a value, another error or a panic, which stays set aside. One
+    ; raised by a lazy local's value that a nested function evaluates leaves the nested function,
+    ; whose writer lets it out with the call. One raised in a constructor run on an object made
+    ; elsewhere, or in the zone the collector never looks in, which an error leaves before it is
+    ; raised, has no shape here, and neither has one a lazy local's value raises toward
+    ; transformers, nor one a transformer the type pass marked may take.
     (let report (. instances report))
     (let object ([] (. tables layouts objects) (. types panic-type)))
     (let is-ready (and (!= object no-layout) (!= (. report source-slot) (. U32 max)) (!= (. report trace-slot) (. U32 max))))
@@ -7198,24 +7182,21 @@
     (param error Operand)
     (param type TypeId)
     (param id SyntaxId)
-    ; Leaves the function with an error that has its place and its trace. The cleanups open
-    ; run, and the function returns the error as a case of what it returns. The main of a module
-    ; has no caller to return it to, and reports it, as the body of a spawned task does, which
-    ; then terminates as TypeScript's does, and so does the function that gives a module's
-    ; globals their values: TypeScript runs nothing after it. The function that evaluates a lazy
-    ; global reports it and returns, leaving the global being evaluated, as TypeScript leaves it
-    ; where a program goes on after an unhandled error. What follows is never run. A
-    ; constructor that raises leaves what it was making behind. A function the event runtime
-    ; calls for a section of a class, and the function that fills an object with the markup of
-    ; its class, the handler of a state machine's group of event transitions, the function that
-    ; stops a machine as its object closes, and the function a
-    ; live action runs a rule of a class, a live statement or the value of a property again with,
-    ; give the error to the global `unhandled-error` and return nothing, as the reference's live
-    ; action does with the error such a function gives it. An error of a class above every error
-    ; the function raises leaves, once the cleanups open have run, as the case of the most derived
-    ; class below it that it is of (`leave-narrowed`). An error a cleanup raises runs only the
-    ; cleanups open around that one, after the holds on cancellation the cleanup took, and one
-    ; raised in a stream loop of a cleanup has no shape.
+    ; Leaves the function with an error that has its place and its trace. The cleanups open run, and
+    ; the function returns the error as a case of what it returns. The main of a module has no
+    ; caller to return it to, and reports it, as the body of a spawned task does, which then
+    ; terminates, and so does the function that gives a module's globals their values. The function
+    ; that evaluates a lazy global reports it and returns, leaving the global being evaluated. What
+    ; follows is never run. A constructor that raises leaves what it was making behind. A function
+    ; the event runtime calls for a section of a class, and the function that fills an object with
+    ; the markup of its class, the handler of a state machine's group of event transitions, the
+    ; function that stops a machine as its object closes, and the function a live action runs a rule
+    ; of a class, a live statement or the value of a property again with, give the error to the
+    ; global `unhandled-error` and return nothing. An error of a class above every error the
+    ; function raises leaves, once the cleanups open have run, as the case of the most derived class
+    ; below it that it is of (`leave-narrowed`). An error a cleanup raises runs only the cleanups
+    ; open around that one, after the holds on cancellation the cleanup took, and one raised in a
+    ; stream loop of a cleanup has no shape.
     (let open (if-expr (. scoping cleaning) (. scoping cleaning-open) (. open-cleanups length)))
     (if (and (. scoping cleaning) (!= (. open-cleanups length) (. scoping cleaning-top)))
       (if (not (call leave-held (. scoping cleaning-top) id))
@@ -7283,11 +7264,11 @@
     (param error Operand)
     (param type TypeId)
     (param id SyntaxId)
-    ; Leaves with an error of a class above every error the function raises as the case of the
-    ; most derived class below it that it is of, as the reference converts it: the cases of
-    ; classes below it are tested in turn, those of the classes derived furthest first, so that
-    ; one of a class derived from another's is tested before it. An error of none of them is a
-    ; panic, as the cast to the class of the last tested is.
+    ; Leaves with an error of a class above every error the function raises as the case of the most
+    ; derived class below it that it is of: the cases of classes below it are tested in turn, those
+    ; of the classes derived furthest first, so that one of a class derived from another's is tested
+    ; before it. An error of none of them is a panic, as the cast to the class of the last tested
+    ; is.
     (let deepest 0u32)
     (let last (. U32 max))
     (for (in index (..< 1 (. ([] (. tables layouts rows) (. ir returns)) cases count)))
@@ -7387,12 +7368,11 @@
     (param error Operand)
     (param type TypeId)
     (param id SyntaxId)
-    ; Gives an error to the global `unhandled-error` of core, as the reference hands off one that
-    ; leaves a function it calls for a section of a class, or one that fills an object with the
-    ; markup of its class: the global is read, evaluated first
-    ; where it has no value yet, and the function it holds is called with the error as an
-    ; `Error`, which it is held as already, and checked for a panic as the call of any function
-    ; value is.
+    ; Gives an error to the global `unhandled-error` of core, such as one that leaves a function the
+    ; event runtime calls for a section of a class, or one that fills an object with the markup of
+    ; its class: the global is read, evaluated first where it has no value yet, and the function it
+    ; holds is called with the error as an `Error`, which it is held as already, and checked for a
+    ; panic as the call of any function value is.
     (let global (. facts unhandled-error))
     (let derived
       (scope (and (call (. tables is-class) type) is-error)
@@ -7502,9 +7482,9 @@
     (param result Operand)
     (param hands Bool (= false))
     (param prints Bool (= false))
-    ; The value of a call that returned a `type` that holds its value or one of its errors, whose
-    ; error the reference reports, as one no caller handles, or with `hands` gives to the global
-    ; `unhandled-error` (`hand-off`), and then goes on. One reported that `prints` goes on too.
+    ; The value of a call that returned a `type` that holds its value or one of its errors: its
+    ; error is reported, as one no caller handles, or with `hands` given to the global
+    ; `unhandled-error` (`hand-off`), and what follows runs. One reported that `prints` goes on too.
     (let nothing (call make-operand .operand-void 0))
     (let layout (call layout-of type id))
     (if (not (call (. tables layouts is-union) layout))
@@ -7802,19 +7782,18 @@
   )
   (fn-do _ emit-body _
     ; The body of an instance: one the compiler generates, or one written in source. That of a
-    ; function of an interface run for a value of a type that is none is given its receiver as
-    ; the interface, as the type pass typed it. The function generated for a comprehension is
-    ; a nested function whose body is the comprehension's loop; the one for a list of feeds
-    ; yields what the feeds give; and the one for the right side of a pipe gives the value
-    ; written there, or runs it for nothing where the pipe only taps. A function written
-    ; with no body gives what the type it returns makes with nothing written. A class's `close`
-    ; closes the live actions the object owns where its body ends; one that returns early, or is
-    ; written as a value, has no shape where the program makes live actions. The function that
-    ; runs a live statement again is given the environment it was written in, as a closure is.
-    ; A method that yields and is typed again for a class's table with the errors a base's
-    ; generator carries has no shape where it is called as first typed too: the reference's method
-    ; carries the errors of whichever it compiles first. A door a fake answers under a `do with`
-    ; calls the fake's method (`emit-forwarder`).
+    ; function of an interface run for a value of a type that is none is given its receiver as the
+    ; interface, as the type pass typed it. The function generated for a comprehension is a nested
+    ; function whose body is the comprehension's loop; the one for a list of feeds yields what the
+    ; feeds give; and the one for the right side of a pipe gives the value written there, or runs it
+    ; for nothing where the pipe only taps. A function written with no body gives what the type it
+    ; returns makes with nothing written. A class's `close` closes the live actions the object owns
+    ; where its body ends; one that returns early, or is written as a value, has no shape where the
+    ; program makes live actions. The function that runs a live statement again is given the
+    ; environment it was written in, as a closure is.
+    ; A method that yields and is typed again for a class's table with the errors a base's generator
+    ; carries has no shape where it is called as first typed too. A door a fake answers under a `do
+    ; with` calls the fake's method (`emit-forwarder`).
     (let row ([] (. instances rows) (. unit instance)))
     (for (in forward (. facts swap-forwards))
       (if (== (. forward instance) (. unit instance))
@@ -8540,12 +8519,11 @@
   (fn-do _ bind-row-receiver _
     (param declared SyntaxId)
     (param columns-at U32)
-    ; The receiver of a member that runs on the case of a row, as TypeScript's
-    ; `table-row-extension` makes it: the row is taken first, and the receiver is the case's
-    ; cells, read through the columns taken last where TypeScript checked the row's storage where
-    ; the case was read, and else through the row, checked again where its table grows. The
-    ; receiver is no value of its own: each use goes through the cells, and as a value it is
-    ; gathered from them.
+    ; The receiver of a member that runs on the case of a row: the row is taken first, and the
+    ; receiver is the case's cells, read through the columns taken last where the row's storage was
+    ; checked where the case was read, and else through the row, checked again where its table
+    ; grows. The receiver is no value of its own: each use goes through the cells, and as a value it
+    ; is gathered from them.
     (let held ([] (. instances rows) (. unit instance)))
     (let union (call (. tables unions of) (call table-row-type (. held row-receiver))))
     (let layout (call layout-of (. held row-receiver) declared))
@@ -8589,9 +8567,9 @@
   (fn-do _ bridge-row-receiver _
     (param declared SyntaxId)
     (param columns-at U32)
-    ; The body TypeScript builds for a member that runs on a row's case where the member may move
-    ; the row's storage: it gathers the case from the row's cells and runs the member's instance
-    ; on the case with the arguments it was given.
+    ; The body built for a member that runs on a row's case where the member may move the row's
+    ; storage: it gathers the case from the row's cells and runs the member's instance on the case
+    ; with the arguments it was given.
     (let held ([] (. instances rows) (. unit instance)))
     (let union (call (. tables unions of) (call table-row-type (. held row-receiver))))
     (let layout (call layout-of (. held row-receiver) declared))
@@ -8848,22 +8826,20 @@
     (param declared SyntaxId)
     (param body SyntaxId)
     (param plain Bool)
-    ; The body of a function that yields, which the generator it made runs a step at a time. It
-    ; is given the environment the function made where it was called, and answers an optional
-    ; of an item: the one the next yield gives, or nothing once the body has finished.
-    ; 1. Each call reads the receiver from the environment, and then goes to where the step
-    ;    kept there says: the start of the body, or what follows the yield that left last.
-    ; 2. The body is emitted once, in order, as a block: the cleanups it opens run where it
-    ;    ends. There, and wherever it returns but at a yield, it keeps the step that says it has
-    ;    finished.
+    ; The body of a function that yields, which the generator it made runs a step at a time. It is
+    ; given the environment the function made where it was called, and answers an optional of an
+    ; item: the one the next yield gives, or nothing once the body has finished.
+    ; 1. Each call reads the receiver from the environment, and then goes to where the step kept
+    ;    there says: the start of the body, or what follows the yield that left last.
+    ; 2. The body is emitted once, in order, as a block: the cleanups it opens run where it ends.
+    ;    There, and wherever it returns but at a yield, it keeps the step that says it has finished.
     ; 3. The dispatch is emitted last, when the steps are known.
-    ; A step of a generator that raises answers its optional or an error, as a function that
-    ; raises does, and has finished where an error leaves it.
-    ; A body written as an expression has no shape yet. Neither
-    ; has the loop of a comprehension or a list of feeds that checks anything but a loop's
-    ; own poll for a panic, where functions of several instances share its name: TypeScript
-    ; numbers the names in a stack trace in the order it compiles in. A stack trace through
-    ; such a function is the one TypeScript prints with no inlining, which runs it as it is.
+    ; A step of a generator that raises answers its optional or an error, as a function that raises
+    ; does, and has finished where an error leaves it.
+    ; A body written as an expression has no shape yet. Neither has the loop of a comprehension or a
+    ; list of feeds that checks anything but a loop's own poll for a panic, where functions of
+    ; several instances share its name. A stack trace through such a function is the one printed
+    ; with no inlining.
     (let row ([] (. instances rows) (. unit instance)))
     (let layout ([] (. tables environments) (. unit instance)))
     (if (or (not plain) (== (. row yields) no-type) (== layout no-layout) (== layout unbuilt-environment))
@@ -9226,9 +9202,9 @@
   (fn-do _ return-results _
     (param result TypeId)
     (param declared SyntaxId)
-    ; Makes the function one that raises errors: it returns a union whose first case is its
-    ; value and whose others are the errors raised in its place, which the type pass made. A
-    ; value that is itself an error is held in the first case too, as the reference holds it.
+    ; Makes the function one that raises errors: it returns a union whose first case is its value
+    ; and whose others are the errors raised in its place, which the type pass made. A value that is
+    ; itself an error is held in the first case too.
     (let held (. ir returns))
     (if (== result no-type)
       (call refuse .refused-function declared)
@@ -9455,8 +9431,8 @@
   (fn-do _ return-lent _
     (param failed Bool)
     (param site SyntaxId)
-    ; Gives each collector a caller lent back what its list holds, cut back first to what it held
-    ; as the function began where the rule failed, as the reference rewinds a borrowed collector.
+    ; Gives each collector a caller lent back what its list holds, cut back first to what it held as
+    ; the function began where the rule failed.
     (for (in held lent)
       (if failed
         (call rewind-level (. held level) (. held mark) site)
@@ -9657,20 +9633,18 @@
     (param defaulted Bool (= false))
     ; Returns a value converted to the type the function returns, as the type pass recorded where
     ; the value is written, or at the return itself for a type it inferred from the returns. A
-    ; return of `null` gives the optional the function returns, holding nothing. With `absent`
-    ; the return is one that happens only where its value is there: an optional that holds
-    ; nothing goes on at `absent`, and one that holds a value returns what it holds. The
-    ; cleanups open run after the value is made and converted, so a panic its conversion raises
-    ; runs them as one raised anywhere in the block does. A value that may be an error returns
-    ; the error in its place where it holds one. A return written in a cleanup has no shape. A function
-    ; that yields has finished where it returns: the value written is evaluated and given to
-    ; no one. `defaulted` is a return written with no value and no condition. A panic the
-    ; conversion of a returned match raises is raised at the grammar the match runs. A
-    ; `close` that closes what the object owns closes it as it returns, after the cleanups and
-    ; after the value it returns is made, as the reference closes it before each return. In the
-    ; body of a rule of a class, one with no value leaves only the body, after the cleanups opened
-    ; in it, as it leaves the callback of the reference's live action. In the body of a spawned
-    ; task, one with no value ends the task after the cleanups.
+    ; return of `null` gives the optional the function returns, holding nothing. With `absent` the
+    ; return is one that happens only where its value is there: an optional that holds nothing goes
+    ; on at `absent`, and one that holds a value returns what it holds. The cleanups open run after
+    ; the value is made and converted, so a panic its conversion raises runs them as one raised
+    ; anywhere in the block does. A value that may be an error returns the error in its place where
+    ; it holds one. A return written in a cleanup has no shape. A function that yields has finished
+    ; where it returns: the value written is evaluated and given to no one. `defaulted` is a return
+    ; written with no value and no condition. A panic the conversion of a returned match raises is
+    ; raised at the grammar the match runs. A `close` that closes what the object owns closes it as
+    ; it returns, after the cleanups and after the value it returns is made. In the body of a rule
+    ; of a class, one with no value leaves only the body, after the cleanups opened in it. In the
+    ; body of a spawned task, one with no value ends the task after the cleanups.
     (if (and (. unit running-rule) (!= (. scoping rule-leaving) no-block) (== expr 0) (not (. scoping cleaning)) (not (call closes-actions)))
       (call run-cleanups (. scoping rule-cleanups) (. open-cleanups length))
       (call jump (. scoping rule-leaving))
@@ -9792,10 +9766,10 @@
     (param site SyntaxId)
     (param defaulted Bool (= false))
     ; The return of a function where it gives no value: nothing, or false for a `Bool`, or an
-    ; optional that holds nothing, or the object a constructor has made. A return written with
-    ; no value and no condition gives the zero of a number or a C pointer, the empty text, or a
-    ; tuple or struct with no bits set but its texts, as TypeScript gives a type's default; an
-    ; object is made by a constructor there, which has no shape here.
+    ; optional that holds nothing, or the object a constructor has made. A return written with no
+    ; value and no condition gives the zero of a number or a C pointer, the empty text, or a tuple
+    ; or struct with no bits set but its texts; an object, which a constructor would make, has no
+    ; shape here.
     (if builds
       (call return-value (. unit self) site)
       (return)
@@ -9962,8 +9936,8 @@
   )
   (fn-do _ class-site SyntaxId
     (param type TypeId)
-    ; Where a class is declared, which is where the reference places what the constructor it
-    ; generates for the class calls, or none.
+    ; Where a class is declared, which is where what the constructor generated for the class calls
+    ; is placed, or none.
     (let ref (call class-ref types type))
     (match? ([] (. ([] (. program modules) (. ref module)) decls) (. ref decl))
       (case (call .decl-class class)
@@ -9976,17 +9950,17 @@
     (param declared SyntaxId)
     (param body SyntaxId)
     ; A constructor written in source.
-    ; 1. Its environment is made, where nested functions capture what it declares, and the
-    ;    arguments go into their cells.
+    ; 1. Its environment is made, where nested functions capture what it declares, and the arguments
+    ;    go into their cells.
     ; 2. The object of a class is allocated, and is the receiver from here on, shared with the
-    ;    nested functions that read it. A tuple or struct is made in memory of the frame
-    ;    instead, which is the receiver and is returned by a copy.
+    ;    nested functions that read it. A tuple or struct is made in memory of the frame instead,
+    ;    which is the receiver and is returned by a copy.
     ; 3. Each stored property takes its first value, in the order the properties are declared.
     ; 4. The body runs. A return with no value leaves with what was made, and one with a value
-    ;    leaves with that, as the reference returns it, and what was made is given to no one.
-    ; A constructor that returns a value of its own makes nothing and has no receiver: its
-    ; arguments go into their cells and its body runs, as a function's does. One that raises
-    ; errors returns what it made as the value of what a function that raises returns.
+    ;    leaves with that, and what was made is given to no one.
+    ; A constructor that returns a value of its own makes nothing and has no receiver: its arguments
+    ; go into their cells and its body runs, as a function's does. One that raises errors returns
+    ; what it made as the value of what a function that raises returns.
     (let type (. ([] (. instances rows) (. unit instance)) self-type))
     (let signature ([] (. instances signatures) (. unit instance)))
     (for (in position (..< 0 (. signature args count)))
@@ -10148,9 +10122,8 @@
     (param data Operand)
     (param site SyntaxId)
     ; Gives the object that owns what is made here a live action with the trackers given and a
-    ; callback that calls a function with the data given, and answers it: the owner is the
-    ; innermost markup element being built, or else the object `self` names, as the reference
-    ; gives it.
+    ; callback that calls a function with the data given, and answers it: the owner is the innermost
+    ; markup element being built, or else the object `self` names.
     (if (and (== (. content-hosts length) 0) (not (. unit has-self)))
       (call refuse .refused-function site)
       (return (call make-operand .operand-void 0))
@@ -10197,9 +10170,9 @@
   (fn-do _ read-unmade Typed
     (param id SyntaxId)
     (param name Atom)
-    ; The name of a markup element of a class's markup read in a closure the markup makes before
-    ; the element is made: the receiver's property of the name, as the reference reads it, which
-    ; panics where the closure runs before the element is made.
+    ; The name of a markup element of a class's markup read in a closure the markup makes before the
+    ; element is made: the receiver's property of the name, which panics where the closure runs
+    ; before the element is made.
     (if (not (. unit has-self))
       (call refuse .refused-expression id)
       (return (call Typed (call make-operand .operand-void 0) no-type))
@@ -10292,11 +10265,11 @@
   (fn-do _ emit-stream Typed
     (param id SyntaxId)
     (param expr SyntaxId)
-    ; A stream of a value as it changes, as the reference makes it: the value is evaluated while a
-    ; live action of its own is open, whose trackers note what it reads; the channel the type pass
-    ; found is made, given the value by `<-write`, and kept in the local no name reaches declared at
-    ; the stream; then the action is made with those trackers and a callback that writes the value
-    ; again through the function written for it, given the environment in force here.
+    ; A stream of a value as it changes: the value is evaluated while a live action of its own is
+    ; open, whose trackers note what it reads; the channel the type pass found is made, given the
+    ; value by `<-write`, and kept in the local no name reaches declared at the stream; then the
+    ; action is made with those trackers and a callback that writes the value again through the
+    ; function written for it, given the environment in force here.
     (let nothing (call make-operand .operand-void 0))
     (let row (call (. tables live-statement-of) (. unit reading) id))
     (let code
@@ -10370,9 +10343,9 @@
     (param host Operand)
     (param type TypeId)
     (param missed IRBlockId)
-    ; The object a markup host holds, as an object of a class, as the reference reads it for a
-    ; query of the markup: where the object, by its own table, is of the class or of one derived
-    ; from it, and else it leaves to `missed`.
+    ; The object a markup host holds, as an object of a class, read for a query of the markup: where
+    ; the object, by its own table, is of the class or of one derived from it, and else it leaves to
+    ; `missed`.
     (let object (call load host 0 managed-layout site))
     (let passed (call (. ir reserve-block)))
     (call class-branch site object type passed missed)
@@ -10537,11 +10510,10 @@
   )
   (fn-do _ emit-event-handler _
     ; The function the event runtime calls for a section of a class that it runs from the table of
-    ; the class, given the object and what was published, as the reference compiles it: the body of
-    ; the section's subscriber, given the environment the section would make for the object, as
-    ; the constructor would subscribe it (see `open-handler`). It returns nothing: an error its
-    ; subscriber lets out is given to the global `unhandled-error` where it leaves (see
-    ; `hand-off`).
+    ; the class, given the object and what was published: the body of the section's subscriber,
+    ; given the environment the section would make for the object, as the constructor would
+    ; subscribe it (see `open-handler`). It returns nothing: an error its subscriber lets out is
+    ; given to the global `unhandled-error` where it leaves (see `hand-off`).
     (let handler ([] (. tables event-handlers) (. function place)))
     (if (or (== (. unit instance) no-instance) unhandled-raise)
       (call refuse .refused-function (. handler syntax))
@@ -10568,9 +10540,8 @@
     (= unit (= (. unit has-self) false))
   )
   (fn-do _ init-site SyntaxId
-    ; Where the reference places the call of a module's main from its init: at the constructor of
-    ; the class whose sections it puts last in the event runtime's tables at the head of the init,
-    ; or nowhere.
+    ; Where the call of a module's main from its init is placed: at the constructor of the class
+    ; whose sections are put last in the event runtime's tables at the head of the init, or nowhere.
     (let making (call (. tables init-constructor) (. function module)))
     (if (or (== making no-instance) (!= (. ([] (. instances rows) making) module) (. function module)))
       (return 0)
@@ -10784,8 +10755,7 @@
     (param site SyntaxId)
     ; Whether two stored values differ in their bits: a float by its bits, not its value, a
     ; reference by what it points at, a struct by each of its fields, and a union by the case it
-    ; holds and, where both hold one case, by that case's value, as the reference compares the
-    ; value whole.
+    ; holds and, where both hold one case, by that case's value.
     (if (not (call (. tables layouts is-struct) layout))
       (return
         (call compare
@@ -10914,11 +10884,11 @@
   )
   (fn-do _ close-owned _
     (param site SyntaxId)
-    ; Closes each live action the receiver owns, taking it off the list the receiver keeps in lane 1,
-    ; and then clears the lane, as the reference's `close` does as it leaves; then closes the
-    ; receiver's events, where its class has any, or where `stop-owned` stopped its machines; then
-    ; cancels the tasks the receiver owns, where the program spawns any an object owns, without
-    ; waiting for them or yielding to them. A task that closes its own owner is not cancelled.
+    ; Closes each live action the receiver owns, taking it off the list the receiver keeps in lane
+    ; 1, and then clears the lane; then closes the receiver's events, where its class has any, or
+    ; where `stop-owned` stopped its machines; then cancels the tasks the receiver owns, where the
+    ; program spawns any an object owns, without waiting for them or yielding to them. A task that
+    ; closes its own owner is not cancelled.
     (if (!= (. instances live has-actions) no-instance)
       (call close-actions site (. unit self))
     )
@@ -11166,10 +11136,9 @@
     (return (call load-global kept id))
   )
   (fn-do _ emit-statics _
-    ; The function that makes what a module keeps of its types as it starts, before its globals
-    ; have their values, as TypeScript's statics: the values of its enums that an emitted
-    ; function reads, in the order they are declared, then the defaults of its parameters that
-    ; run code and are kept, once each.
+    ; The function that makes what a module keeps of its types as it starts, before its globals have
+    ; their values: the values of its enums that an emitted function reads, in the order they are
+    ; declared, then the defaults of its parameters that run code and are kept, once each.
     (let module (. function module))
     (let owner ([] (. program modules) module))
     (= unit (= (. unit source-module) module))
@@ -11215,11 +11184,10 @@
     (call return-value (. value operand) (. kept syntax))
   )
   (fn-do _ emit-stream-action _
-    ; The function the reference runs an action of a grammar in, which a panic in it
-    ; shows. It is given what the arm binds that the action reads, in the order the type pass
-    ; recorded them: `location`, `it` and the names the match captures. It binds each, runs the
-    ; action and answers its value, or in an instance that raises errors its value or one of
-    ; them, as `return-results` says.
+    ; The function an action of a grammar runs in, which a panic in it shows. It is given what the
+    ; arm binds that the action reads, in the order the type pass recorded them: `location`, `it`
+    ; and the names the match captures. It binds each, runs the action and answers its value, or in
+    ; an instance that raises errors its value or one of them, as `return-results` says.
     (let row ([] (. facts outlined) (. function place)))
     (let body SyntaxId 0)
     (match? ([] (. tree nodes) (. row arm))
@@ -11256,18 +11224,17 @@
     (call drop-bound named)
   )
   (fn-do _ emit-pattern-helper _
-    ; The function the reference makes of a pattern given to a rule where it is written,
+    ; The function made of a pattern given to a rule where it is written,
     ; `static-inline-match-direct`: it takes what the function of a rule takes but the arguments
     ; written, matches the pattern from the cursor as a rule's arms are matched, and returns an
     ; optional of what the pattern gives, which holds nothing where it did not match. One written
-    ; under a helper takes the helper as a rule typed for it does, and runs under it; under one
-    ; that can roll back, it gives the rollback mark it holds as a rule does. Last it takes the
-    ; data the value it is passed as holds: the address of what the names the type pass kept
-    ; for it held where the pattern was passed, which it binds each name to, and reads the
-    ; arguments of the rule it is written in from where it runs a local rule of that rule. One
-    ; that runs a local rule of a rule that raises errors as a function returns its answer or one
-    ; of them, as `return-results` says, and the rule it is given to lets an error pass to the
-    ; rule that wrote it.
+    ; under a helper takes the helper as a rule typed for it does, and runs under it; under one that
+    ; can roll back, it gives the rollback mark it holds as a rule does. Last it takes the data the
+    ; value it is passed as holds: the address of what the names the type pass kept for it held
+    ; where the pattern was passed, which it binds each name to, and reads the arguments of the rule
+    ; it is written in from where it runs a local rule of that rule. One that runs a local rule of a
+    ; rule that raises errors as a function returns its answer or one of them, as `return-results`
+    ; says, and the rule it is given to lets an error pass to the rule that wrote it.
     (let row ([] (. facts pattern-arguments) (. function place)))
     (let pattern SyntaxId 0)
     (match? ([] (. tree nodes) (. row syntax))
@@ -11336,12 +11303,11 @@
     (call drop-bound named)
   )
   (fn-do _ emit-pattern-cast _
-    ; The function the reference passes for a pattern given to a rule that is a call of a rule a
-    ; module declares written alone, `Casting`: it takes what the rule's function takes and runs
-    ; it, at the call, as the reference's cast of that function to the type the parameter takes
-    ; does. One written under a helper takes the helper, which it gives a rule typed for it; under
-    ; one that can roll back, it gives the rollback mark the rule gives, or none where the rule
-    ; gives none. Last it takes the data the value it is passed as holds, which is none.
+    ; The function passed for a pattern given to a rule that is a call of a rule a module declares
+    ; written alone, `Casting`: it takes what the rule's function takes and runs it, at the call.
+    ; One written under a helper takes the helper, which it gives a rule typed for it; under one
+    ; that can roll back, it gives the rollback mark the rule gives, or none where the rule gives
+    ; none. Last it takes the data the value it is passed as holds, which is none.
     (let row ([] (. facts pattern-arguments) (. function place)))
     (let signature ([] (. instances signatures) (. row rule)))
     (let site (. row syntax))
@@ -11617,13 +11583,12 @@
   (fn-do _ action-call Typed
     (param arm SyntaxId)
     (param result TypeId)
-    ; The call of the function the reference runs an action of a grammar in, made where the
-    ; arm runs and given what the arm binds that the action reads; its value is converted as the
-    ; arm's would be. The call is checked, which the type pass must have said of the caller too.
-    ; An arm emitted again, as one of a local rule called twice is, calls the one function, where
-    ; the reference makes another: a frame of it differs by its number alone. In an instance that
-    ; raises errors the function answers its value or one of them, and an error leaves the
-    ; function with the call.
+    ; The call of the function an action of a grammar runs in, made where the arm runs and given
+    ; what the arm binds that the action reads; its value is converted as the arm's would be. The
+    ; call is checked, which the type pass must have said of the caller too.
+    ; An arm emitted again, as one of a local rule called twice is, calls the one function. In an
+    ; instance that raises errors the function answers its value or one of them, and an error leaves
+    ; the function with the call.
     (let nothing (call make-operand .operand-void 0))
     (let helper (call (. tables stream-action-of) (. unit reading) arm))
     (if (or (== helper no-function) (and (not (. function may-panic)) (not in-landing)))
@@ -11698,13 +11663,12 @@
   (fn-do _ global-value Typed
     (param kept GlobalStorage)
     (param property PropertyDecl)
-    ; The first value of a global: the one written, converted to the global's type as the type
-    ; pass recorded for the declaration, or with none written the value its type has: the empty
-    ; text, an object the type pass constructs at the declaration, an optional with no value, or
-    ; a named tuple or struct: what the constructor the type pass chose at the declaration makes,
-    ; or with no such call its fields with their first values, where it declares no constructor.
-    ; A constructor that takes arguments has no shape here: TypeScript gives it none of the
-    ; defaults they declare.
+    ; The first value of a global: the one written, converted to the global's type as the type pass
+    ; recorded for the declaration, or with none written the value its type has: the empty text, an
+    ; object the type pass constructs at the declaration, an optional with no value, or a named
+    ; tuple or struct: what the constructor the type pass chose at the declaration makes, or with no
+    ; such call its fields with their first values, where it declares no constructor.
+    ; A constructor that takes arguments has no shape here.
     (if (== (. property value) 0)
       (if (call (. types is-optional) (. kept type))
         (return (call absent-argument (. property syntax) (. kept type)))
@@ -11930,7 +11894,7 @@
     (param declared SyntaxId)
     ; A new object of a class, with its class table and its id written. The function returns it.
     ; An `ArrayTokenStream` is carved from the task's parse region where an allocation scope of it
-    ; is open, as TypeScript carves one, and else comes from the collector.
+    ; is open, and else comes from the collector.
     (let nothing (call make-operand .operand-void 0))
     (let object no-layout)
     (let table no-string)
@@ -12043,10 +12007,10 @@
   )
   (fn-do _ answers-itself Bool
     (param callee InstanceId)
-    ; Whether a member of a table, or of a view of one, is one TypeScript answers itself where it
-    ; is called: every one but `copy` and `fill`, and none of a row, whose getters run as any
-    ; other. The type pass plans each call of one, so a call left to its body, which only the
-    ; slot of an interface's table runs, has no shape.
+    ; Whether a member of a table, or of a view of one, is one the compiler answers itself where it
+    ; is called: every one but `copy` and `fill`, and none of a row, whose getters run as any other.
+    ; The type pass plans each call of one, so a call left to its body, which only the slot of an
+    ; interface's table runs, has no shape.
     (let row ([] (. instances rows) callee))
     (let owner (if-expr (!= (. row self-type) no-type) (call intrinsic (. row self-type)) (. IntrinsicKind none)))
     (if (or (== owner .table-row) (== owner .immutable-table-row))
@@ -12067,8 +12031,8 @@
   (fn-do _ class-site SyntaxId
     (param module ModuleId)
     (param owner DeclId)
-    ; Where a class is declared, which is where TypeScript places the code of a function it
-    ; generates for the class.
+    ; Where a class is declared, which is where the code of a function generated for the class is
+    ; placed.
     (match? ([] (. ([] (. program modules) module) decls) owner)
       (case (call .decl-class class)
         (return (. class syntax))
@@ -12145,7 +12109,7 @@
   (fn-expr _ is-aggregate Bool
     (param type TypeId)
     ; Whether a type's values are fields held in place: a tuple, a struct, an `ArrayBuilder`, or a
-    ; table or a view of one, which TypeScript holds as the library's tuple.
+    ; table or a view of one, which is held as the library's tuple.
     (call intrinsic-is-tuple-like (call intrinsic type))
   )
   (fn-expr _ is-text Bool
@@ -12154,8 +12118,8 @@
   )
   (fn-expr _ is-zeroed Bool
     (param type TypeId)
-    ; Whether the constructor of a type with no arguments makes its zero: a number, or a C
-    ; pointer, which TypeScript holds as a number.
+    ; Whether the constructor of a type with no arguments makes its zero: a number, or a C pointer,
+    ; which is held as a number.
     (or (call is-numeric-type type) (== (call intrinsic type) .cpointer))
   )
   (fn-expr _ is-numeric-type Bool
@@ -12643,11 +12607,11 @@
   )
   (fn-do _ emit-chained Typed
     (param id SyntaxId)
-    ; A link of an optional chain, with the links before it. Where an optional the chain tests
-    ; holds nothing no link after it is made, and the chain gives an optional that holds
-    ; nothing. Where each holds a value, what the last link gives is held by the optional the
-    ; node has, unless it is an optional already. A link that gives nothing gives an optional
-    ; that holds nothing, as TypeScript does, so the chain then says nothing of whether it ran.
+    ; A link of an optional chain, with the links before it. Where an optional the chain tests holds
+    ; nothing no link after it is made, and the chain gives an optional that holds nothing. Where
+    ; each holds a value, what the last link gives is held by the optional the node has, unless it
+    ; is an optional already. A link that gives nothing gives an optional that holds nothing, so the
+    ; chain then says nothing of whether it ran.
     (let nothing (call make-operand .operand-void 0))
     (if (call is-unmade id)
       (return (call emit-unmade id))
@@ -12716,12 +12680,11 @@
     (param id SyntaxId)
     (param object SyntaxId)
     (param skipped IRBlockId)
-    ; The value a link of an optional chain is made of. A link written after `?` tests the
-    ; optional before it, which is evaluated once, and is made of what that holds. A link
-    ; written with no `?` after another link is made of what that link gives by itself, with no
-    ; optional between the two, as TypeScript unrolls a chain: one that gives nothing, or an
-    ; optional, has no shape here. A tracked read's object that is a member named alone is
-    ; tracked before it is tested, as `emit-tracked-get` says.
+    ; The value a link of an optional chain is made of. A link written after `?` tests the optional
+    ; before it, which is evaluated once, and is made of what that holds. A link written with no `?`
+    ; after another link is made of what that link gives by itself, with no optional between the
+    ; two: one that gives nothing, or an optional, has no shape here. A tracked read's object that
+    ; is a member named alone is tracked before it is tested, as `emit-tracked-get` says.
     (let nothing (call make-operand .operand-void 0))
     (if (== object 0)
       (call refuse .refused-expression id)
@@ -13644,8 +13607,8 @@
     (param row ConversionFact)
     (param value Typed)
     (param raised SyntaxId (= 0))
-    ; Applies one conversion the type pass recorded to a value of the type it converts from, as the
-    ; reference converts it; an unwrap that fails is reported at `raised` where one is given.
+    ; Applies one conversion the type pass recorded to a value of the type it converts from; an
+    ; unwrap that fails is reported at `raised` where one is given.
     (if (!= (. row from) (. value type))
       (call refuse .refused-conversion site)
       (return value)
@@ -14454,10 +14417,10 @@
     (param id SyntaxId)
     (param object SyntaxId)
     (param plan OperatorPlan)
-    ; `name` or `type` of a union: the name of the case it holds, or the key of that case's
-    ; type. The number of the case is compared with each case's in turn, and the text is the
-    ; empty one where it is none of them, as TypeScript's chain ends. A case with no name has
-    ; the empty text for its name, and a case that holds no value has the type of its number.
+    ; `name` or `type` of a union: the name of the case it holds, or the key of that case's type.
+    ; The number of the case is compared with each case's in turn, and the text is the empty one
+    ; where it is none of them. A case with no name has the empty text for its name, and a case that
+    ; holds no value has the type of its number.
     (let nothing (call make-operand .operand-void 0))
     (let held (call emit-whole object))
     (let union (. held type))
@@ -14497,10 +14460,10 @@
   (fn-do _ emit-case-value Typed
     (param id SyntaxId)
     (param object SyntaxId)
-    ; A union read by the name of one of its cases, whose number the type pass recorded: what
-    ; the union holds where it holds that case, and where it holds another the value a local of
-    ; the case's type has with nothing written for it, as TypeScript gives: for one made by a
-    ; constructor, the construction the type pass recorded at the node.
+    ; A union read by the name of one of its cases, whose number the type pass recorded: what the
+    ; union holds where it holds that case, and where it holds another the value a local of the
+    ; case's type has with nothing written for it: for one made by a constructor, the construction
+    ; the type pass recorded at the node.
     (let nothing (call make-operand .operand-void 0))
     (let type (call (. facts node-type) (. unit reading) id))
     (let index (call (. facts case-of) (. unit reading) id))
@@ -14564,14 +14527,12 @@
     (param operands (of RowRange SyntaxId))
     (param name (? Atom) (= null))
     ; A member of a union that each case answers with its own, as the type pass planned it.
-    ; 1. The union is evaluated, and then the arguments written, once each, in their order. A
-    ;    row of a table of unions is gathered as the case it holds where the member is made in
-    ;    place: TypeScript reads the case's cells where the member is stable, and gathers them
-    ;    where it is not.
-    ; 2. Where a case may panic or let errors out, the function made for the member, TypeScript's
-    ;    `union-dispatch-N`, is called with them. Errors it answers with leave the function the
-    ;    call is in. Such a member with no function made for it has no shape. Any other is made
-    ;    in place, as `dispatch-cases` makes it.
+    ; 1. The union is evaluated, and then the arguments written, once each, in their order. A row of
+    ;    a table of unions is gathered as the case it holds where the member is made in place.
+    ; 2. Where a case may panic or let errors out, the function made for the member,
+    ;    `union-dispatch-N`, is called with them. Errors it answers with leave the function the call
+    ;    is in. Such a member with no function made for it has no shape. Any other is made in place,
+    ;    as `dispatch-cases` makes it.
     (let nothing (call make-operand .operand-void 0))
     (let type (call (. facts node-type) (. unit reading) id))
     (if (call (. tables forward-unbuilt) (. unit reading) id)
@@ -14813,11 +14774,10 @@
     (param id SyntaxId)
     (param operands (of RowRange SyntaxId))
     (param fields Bool)
-    ; A case of a union named at a node, as the type pass planned it: with the value it is
-    ; called with, with a tuple or struct made of the fields it is called with, or named alone
-    ; with the number a case with no value of its own holds. One called with a value or fields is
-    ; made in place, where TypeScript calls the constructor it generates for the case, as the IR
-    ; notes.
+    ; A case of a union named at a node, as the type pass planned it: with the value it is called
+    ; with, with a tuple or struct made of the fields it is called with, or named alone with the
+    ; number a case with no value of its own holds. One called with a value or fields is made in
+    ; place, as the IR notes.
     (let nothing (call make-operand .operand-void 0))
     (let type (call (. facts node-type) (. unit reading) id))
     (let index (call (. facts case-of) (. unit reading) id))
@@ -15308,11 +15268,11 @@
   (fn-do _ emit-force Typed
     (param id SyntaxId)
     (param operand SyntaxId)
-    ; `a!`: what an optional holds, or a panic where it holds nothing. An operand the type pass
-    ; had narrowed already is what it holds, and nothing is tested: the force fact says so where
-    ; the operand is read as the optional it is stored as. One the fact does not call narrowed,
-    ; though the operand was typed narrowed where a lazy local's value was first typed, is read as
-    ; stored (`stored-read`) and tested, as the reference does at a read that types the value again.
+    ; `a!`: what an optional holds, or a panic where it holds nothing. An operand the type pass had
+    ; narrowed already is what it holds, and nothing is tested: the force fact says so where the
+    ; operand is read as the optional it is stored as. One the fact does not call narrowed, though
+    ; the operand was typed narrowed where a lazy local's value was first typed, is read as stored
+    ; (`stored-read`) and tested.
     (let fact (call (. facts first-force) (. unit reading) id))
     (let outer stored-read)
     (= stored-read (if-expr (and (!= fact no-fact) (not (. ([] (. facts forces) fact) is-narrowed))) operand 0))
@@ -15973,11 +15933,10 @@
     (param id SyntaxId)
     (param name Atom)
     ; A property of the object being made, read by the value its class writes for another. A
-    ; property with no value yet is given its own first, which is the order TypeScript evaluates
-    ; them in. One read where its value may come on some paths alone, under a condition or in a
-    ; value so given, is given it where its flag says it has none (`check-property`), as the
-    ; reference gives it. A lazy property is evaluated by its function, which reads the object: it
-    ; is read only when every property its value reads has its own.
+    ; property with no value yet is given its own first. One read where its value may come on some
+    ; paths alone, under a condition or in a value so given, is given it where its flag says it has
+    ; none (`check-property`). A lazy property is evaluated by its function, which reads the object:
+    ; it is read only when every property its value reads has its own.
     (let nothing (call make-operand .operand-void 0))
     (let found (call property-of (. filling type) name))
     (if (not found)
@@ -16022,9 +15981,9 @@
   (fn-expr _ reads-unmade Bool
     (param id SyntaxId)
     (param name Atom)
-    ; Whether a name the constructor reads while it gives the properties their first values, as
-    ; in the value of a `..` it writes for one, is a stored property of the object being made,
-    ; which gets its own value first where it has none (`read-filled`), as TypeScript reads it.
+    ; Whether a name the constructor reads while it gives the properties their first values, as in
+    ; the value of a `..` it writes for one, is a stored property of the object being made, which
+    ; gets its own value first where it has none (`read-filled`).
     (case? (or (not (. filling storing)) (== (. filling count) 0) (!= (. unit reading) (. unit instance)) (!= (call (. facts plan-of) (. unit reading) id) .plan-none))
       false
     )
@@ -16242,8 +16201,7 @@
   (fn-do _ evaluated-before Bool
     (param flag LocalId)
     ; Whether an evaluation of a lazy local kept behind a flag, emitted in the function, ended in a
-    ; block every way here passes, so that the flag is set here and a read evaluates nothing, as the
-    ; reference skips a read whose block one of its evaluations dominates.
+    ; block every way here passes, so that the flag is set here and a read evaluates nothing.
     (for (in position (..< 0 (. ready-lazies length)))
       (if (and (== (. ([] ready-lazies position) flag) flag) (call (. ir dominates) (. ([] ready-lazies position) block) (. ir current)))
         (return true)
@@ -17311,8 +17269,8 @@
     (param id SyntaxId)
     (param lhs SyntaxId)
     (param rhs SyntaxId)
-    ; A value of an interface compared with one of a type that is none: both are evaluated, and
-    ; it panics with the reference's text, which names the right one's type.
+    ; A value of an interface compared with one of a type that is none: both are evaluated, and it
+    ; panics with a text that names the right one's type.
     (let nothing (call make-operand .operand-void 0))
     (call emit-expression lhs)
     (let emitted (call emit-expression rhs))
@@ -17325,12 +17283,11 @@
     (param id SyntaxId)
     (param left Operand)
     (param right Operand)
-    ; Compares two values of interfaces as the reference does. Where the types their witness
-    ; tables describe differ, the getter recorded next at the node says whether a tracker is
-    ; comparing for a change: the answer is then false, and otherwise the panic `Unsupported
-    ; interface equality: concrete types differ`. Where they agree, the function the left
-    ; value's table holds for equality is given both, and answers; a panic it raises is the
-    ; caller's.
+    ; Compares two values of interfaces. Where the types their witness tables describe differ, the
+    ; getter recorded next at the node says whether a tracker is comparing for a change: the answer
+    ; is then false, and otherwise the panic `Unsupported interface equality: concrete types
+    ; differ`. Where they agree, the function the left value's table holds for equality is given
+    ; both, and answers; a panic it raises is the caller's.
     (let nothing (call make-operand .operand-void 0))
     (if (== field-call no-fact)
       (call refuse .refused-expression id)
@@ -17581,9 +17538,9 @@
     (param b Operand)
     (param type TypeId)
     (param differ IRBlockId)
-    ; Compares two optionals of one type, as the reference does, and leaves to `differ` where one
-    ; holds a value and the other none, or both hold values that are not equal, compared as a pair
-    ; of parts is with the right one first, as the reference compares what two optionals hold.
+    ; Compares two optionals of one type, and leaves to `differ` where one holds a value and the
+    ; other none, or both hold values that are not equal, compared as a pair of parts is with the
+    ; right one first.
     (let holds (call present id (call Typed a type)))
     (let other (call present id (call Typed b type)))
     (let same (call (. ir reserve-block)))
@@ -17817,10 +17774,10 @@
     (param array Operand)
     (param held TypeId)
     (param type TypeId)
-    ; The rows or the fields of an array: its storage as bytes, the bytes of an item, its size,
-    ; and the owner the runtime makes for the storage, which the runtime marks stale when the
-    ; storage goes away or is replaced. The runtime's function is called as TypeScript calls it,
-    ; with no poll around it and no panic read after it.
+    ; The rows or the fields of an array: its storage as bytes, the bytes of an item, its size, and
+    ; the owner the runtime makes for the storage, which the runtime marks stale when the storage
+    ; goes away or is replaced. The runtime's function is called with no poll around it and no panic
+    ; read after it.
     (let nothing (call make-operand .operand-void 0))
     (let layout (call layout-of held id))
     (let item-layout (call layout-of (call viewed-item type) id))
@@ -18165,10 +18122,10 @@
     (param old-type TypeId)
     (param next Operand)
     (param next-type TypeId)
-    ; Tells the runtime that the storage of an array is replaced by another's, before the other
-    ; is stored: the views of the old storage are marked stale where it is not the new storage, or
-    ; where the new one is smaller. The runtime's function is called as TypeScript calls it, with
-    ; no poll around it and no panic read after it.
+    ; Tells the runtime that the storage of an array is replaced by another's, before the other is
+    ; stored: the views of the old storage are marked stale where it is not the new storage, or
+    ; where the new one is smaller. The runtime's function is called with no poll around it and no
+    ; panic read after it.
     (let old-layout (call layout-of old-type id))
     (let next-layout (call layout-of next-type id))
     (let item-layout (call layout-of (call viewed-item next-type) id))
@@ -18642,10 +18599,10 @@
     (param id SyntaxId)
     (param operand SyntaxId)
     ; `-=` of an item: the function that answers `-=[]` is called on the object with the key, the
-    ; object evaluated first and then the key, as TypeScript does, each with the conversion
-    ; recorded for it. The value is what the function answers, or the object where it answers
-    ; nothing. Where the type pass planned the answer to be stored, it is stored where the object
-    ; was read from, which then only names storage.
+    ; object evaluated first and then the key, each with the conversion recorded for it. The value
+    ; is what the function answers, or the object where it answers nothing. Where the type pass
+    ; planned the answer to be stored, it is stored where the object was read from, which then only
+    ; names storage.
     (let nothing (call make-operand .operand-void 0))
     (let object SyntaxId 0)
     (let index SyntaxId 0)
@@ -18931,18 +18888,18 @@
     (param failed IRBlockId)
     (param entered LocalId (= no-local))
     (param unread Bool (= false))
-    ; One arm of a grammar, tried from a cursor. An arm with no pattern reads nothing and
-    ; always passes. An arm that runs an expression binds `it` to the text its pattern matched, or
-    ; to what a rule its pattern calls gave, where the expression reads it, or to the span of what
-    ; it matched where the type pass kept `it` as one, and `location` to where
-    ; its pattern began and ended, or with no pattern to where it is tried; one that only matches
-    ; gives that text or that value. An action the reference runs in a function of its own, where
-    ; a call may panic, has no shape here. One the type pass found asks for a rollback mark asks
-    ; for it before its expression runs. Where it passes, the arms hold the rollback mark they held
-    ; before it, where `entered` kept one. Where functions the expression makes read `it` or a
-    ; name the pattern captures, its value is kept in the environment too, as the arm begins
-    ; (`keep-arm-captures`). Where the input must be read whole, an arm whose pattern leaves some
-    ; unread fails as its pattern does. Whether the arm reaches the join.
+    ; One arm of a grammar, tried from a cursor. An arm with no pattern reads nothing and always
+    ; passes. An arm that runs an expression binds `it` to the text its pattern matched, or to what
+    ; a rule its pattern calls gave, where the expression reads it, or to the span of what it
+    ; matched where the type pass kept `it` as one, and `location` to where its pattern began and
+    ; ended, or with no pattern to where it is tried; one that only matches gives that text or that
+    ; value. An action run in a function of its own, where a call may panic, has no shape here. One
+    ; the type pass found asks for a rollback mark asks for it before its expression runs. Where it
+    ; passes, the arms hold the rollback mark they held before it, where `entered` kept one. Where
+    ; functions the expression makes read `it` or a name the pattern captures, its value is kept in
+    ; the environment too, as the arm begins (`keep-arm-captures`). Where the input must be read
+    ; whole, an arm whose pattern leaves some unread fails as its pattern does. Whether the arm
+    ; reaches the join.
     (match? ([] (. tree nodes) id)
       (case .node-stream-panic
         (call emit-stream-raise run id failed)
@@ -19052,25 +19009,24 @@
     (param id SyntaxId)
     (param cursor Operand)
     (param failed IRBlockId)
-    ; A call of a local rule, run where it is called, as the reference runs one: its arms are
-    ; tried in turn from the cursor, as the arms of a match are but with no need to read the
-    ; whole input, and the first that passes gives the call what it gave and where it ended.
+    ; A call of a local rule, run where it is called: its arms are tried in turn from the cursor, as
+    ; the arms of a match are but with no need to read the whole input, and the first that passes
+    ; gives the call what it gave and where it ended.
     ; Where none passes, the call fails. The names the rule captures have their places while its
     ; arms are emitted. It keeps the farthest cursor a part of it failed at from the cursor it is
-    ; called at, as the reference's call of it does, and the pattern then counts that as its own.
+    ; called at, and the pattern then counts that as its own.
     ; A rule a module declares is called, but for one `inlined-rule` finds, which runs where it is
-    ; called as `inline-rule-call` says; so is a function given the stream that is no rule,
-    ; as `boundary-call` says, and a local rule the tables made a function of; one whose body is
-    ; code runs it as `coded-call` says; one beside a match that calls itself runs where it is
-    ; called, and a call of it from its own arms is as `adapter-call` says;
-    ; one that calls itself and has none is refused. A call given collectors gives no value: one
-    ; that runs the rule where it is called runs it with the lists the caller keeps for its names
-    ; in place of the rule's own, cut back to what they held where the rule fails, and one of a
-    ; function calls the function made for those collectors. Nor does one the type pass planned to
-    ; give the text it matched. One run where it is called begins holding no rollback mark, as
-    ; `enter-marks` says, and gives back the one it holds where it fails. Under a helper that
-    ; observes literal words, it tells it of them only where `observes-literals` says its pattern
-    ; holds any.
+    ; called as `inline-rule-call` says; so is a function given the stream that is no rule, as
+    ; `boundary-call` says, and a local rule the tables made a function of; one whose body is code
+    ; runs it as `coded-call` says; one beside a match that calls itself runs where it is called,
+    ; and a call of it from its own arms is as `adapter-call` says; one that calls itself and has
+    ; none is refused. A call given collectors gives no value: one that runs the rule where it is
+    ; called runs it with the lists the caller keeps for its names in place of the rule's own, cut
+    ; back to what they held where the rule fails, and one of a function calls the function made for
+    ; those collectors. Nor does one the type pass planned to give the text it matched. One run
+    ; where it is called begins holding no rollback mark, as `enter-marks` says, and gives back the
+    ; one it holds where it fails. Under a helper that observes literal words, it tells it of them
+    ; only where `observes-literals` says its pattern holds any.
     (let pattern (call rule-pattern id))
     (let result (call (. facts node-type) (. unit reading) id))
     (if (or (== result no-type) (== result invalid-type))
@@ -19228,8 +19184,8 @@
   )
   (fn-do _ stop-inlining _
     (param rule SyntaxId)
-    ; Ends the running of a local rule where it is called, as the reference ends it: the rule is
-    ; no longer one being run, however many runs of it this one is inside.
+    ; Ends the running of a local rule where it is called: the rule is no longer one being run,
+    ; however many runs of it this one is inside.
     (let kept 0)
     (for (in position (..< 0 (. inlining length)))
       (if (!= ([] inlining position) rule)
@@ -20132,16 +20088,16 @@
     (param id SyntaxId)
     (param object SyntaxId)
     (param name Atom)
-    ; A name read from a value: a constant the type pass worked out, the address a pointer
-    ; holds, a stored field the type pass named by its place, what the getter it recorded at the
-    ; node answers, a field of a tuple or struct, or a stored property of an object. A union
-    ; answers some names by itself, and others with the member each of its cases has. A field
-    ; of the case of a row a name stands for is read from its cell, and a field of numbers of an
-    ; item of an array an index reads as TypeScript reads one, which has no shape in a link of an
-    ; optional chain. An event named on a value is made a `Broadcastable`. The flag of a domain a
-    ; `MarkupBatchFlush` reports is its bit of the domains the flush left pending. `path` of a
-    ; value of a state machine's union lists its active cases (`emit-machine-path`), and `unit` of
-    ; a number is the name its type is written with, read after the number is.
+    ; A name read from a value: a constant the type pass worked out, the address a pointer holds, a
+    ; stored field the type pass named by its place, what the getter it recorded at the node
+    ; answers, a field of a tuple or struct, or a stored property of an object. A union answers some
+    ; names by itself, and others with the member each of its cases has. A field of the case of a
+    ; row a name stands for is read from its cell, and a field of numbers of an item of an array an
+    ; index reads as `emit-array-item` reads one, which has no shape in a link of an optional chain.
+    ; An event named on a value is made a `Broadcastable`. The flag of a domain a `MarkupBatchFlush`
+    ; reports is its bit of the domains the flush left pending. `path` of a value of a state
+    ; machine's union lists its active cases (`emit-machine-path`), and `unit` of a number is the
+    ; name its type is written with, read after the number is.
     (if (== (call (. facts plan-of) (. unit reading) id) .plan-machine-path)
       (return (call emit-machine-path id object))
     )
@@ -20480,11 +20436,10 @@
     (param reader SyntaxId (= 0))
     (param name (? Atom) (= null))
     ; An item of an array of numbers read by an index, or the field `name` of numbers that the node
-    ; `reader` reads of an item of an array of structs, as TypeScript reads one: where the index is
-    ; less than the array's size, from where the array's storage holds the item, and anywhere else
-    ; from what the function recorded at the index gives, which answers for an index the array
-    ; does not hold. The array is evaluated before the index, and each takes the conversion
-    ; recorded for it.
+    ; `reader` reads of an item of an array of structs: where the index is less than the array's
+    ; size, from where the array's storage holds the item, and anywhere else from what the function
+    ; recorded at the index gives, which answers for an index the array does not hold. The array is
+    ; evaluated before the index, and each takes the conversion recorded for it.
     (let nothing (call make-operand .operand-void 0))
     (let fact (call own-call id))
     (if (or (== fact no-fact) (and (!= reader 0) (not name)))
@@ -20519,9 +20474,9 @@
     (param key-type TypeId)
     (param reader SyntaxId (= 0))
     (param name (? Atom) (= null))
-    ; An item of an array an index reads as TypeScript reads it, once the array and the index are
-    ; evaluated: from the array's storage where the index is less than its size, and anywhere else
-    ; from what `callee` answers for them.
+    ; An item of an array an index reads, once the array and the index are evaluated: from the
+    ; array's storage where the index is less than its size, and anywhere else from what `callee`
+    ; answers for them.
     (let nothing (call make-operand .operand-void 0))
     (if (or (!= receiver-type (. ([] (. instances rows) callee) self-type)) key-differs)
       (call refuse .refused-conversion id)
@@ -20655,9 +20610,9 @@
   (fn-do _ emit-list Typed
     (param id SyntaxId)
     (param written (of RowRange SyntaxId))
-    ; A list written, made as TypeScript makes one: the items are evaluated in the order they are
-    ; written, a struct among several copied, since what follows may change the storage it was
-    ; read from, and the list is made of them.
+    ; A list written: the items are evaluated in the order they are written, a struct among several
+    ; copied, since what follows may change the storage it was read from, and the list is made of
+    ; them.
     (let nothing (call make-operand .operand-void 0))
     (let list-type (call (. facts node-type) (. unit reading) id))
     (let count U32 (. written count))
@@ -21054,21 +21009,20 @@
   (fn-do _ emit-closure Typed
     (param id SyntaxId)
     (param given TypeId (= no-type))
-    ; A nested function written as a value: the environment in force where it is written,
-    ; which its body reads the locals it captures from. That is the function's own
-    ; environment, or else the one the function was given, or nothing where it has neither.
-    ; One written in the body of a constructor whose properties read a captured lazy local, or
-    ; made a nested function, has no shape where the constructor declares such a local: see
-    ; `read-shared`. Nor has one made while a constructor gives the properties their values,
-    ; where a nested function reads the receiver: TypeScript gives it a copy of what each
-    ; property was given, which a later change of the property does not reach. One that is the
-    ; value of a lazy local nested functions capture, made by a function written in the one that
-    ; declares the local, as `read-shared` evaluates it there, is the environment that holds
-    ; the local, which is the one in force where it is written; any other made by a function it
-    ; is not written in has no shape, but where the one it is written in keeps no environment, as
-    ; the value of a property is: it is given none. One written in the value of a property that
-    ; reads the object, such as a line of a root `<This`, is given the environment made for the value
-    ; (`hold-unit`). One the type pass made of no written function is `given` its type.
+    ; A nested function written as a value: the environment in force where it is written, which its
+    ; body reads the locals it captures from. That is the function's own environment, or else the
+    ; one the function was given, or nothing where it has neither.
+    ; One written in the body of a constructor whose properties read a captured lazy local, or made
+    ; a nested function, has no shape where the constructor declares such a local: see
+    ; `read-shared`. Nor has one made while a constructor gives the properties their values, where a
+    ; nested function reads the receiver. One that is the value of a lazy local nested functions
+    ; capture, made by a function written in the one that declares the local, as `read-shared`
+    ; evaluates it there, is the environment that holds the local, which is the one in force where
+    ; it is written; any other made by a function it is not written in has no shape, but where the
+    ; one it is written in keeps no environment, as the value of a property is: it is given none.
+    ; One written in the value of a property that reads the object, such as a line of a root
+    ; `<This`, is given the environment made for the value (`hold-unit`). One the type pass made of
+    ; no written function is `given` its type.
     (let type (if-expr (!= given no-type) given (call (. facts node-type) (. unit reading) id)))
     (let outside (!= (. unit reading) (. unit instance)))
     (let held (and outside (== (. unit reading) (. filling held-unit))))
@@ -21115,8 +21069,8 @@
     (param written Operand)
     ; Where a lambda, a comprehension, a list of feeds or the right side of a pipe is made, the
     ; function writes into its own environment the state of each global `do with` binds that it
-    ; holds, which one made again in the same run writes over, as TypeScript keeps it. One made in
-    ; a loop whose turn has an environment, where TypeScript keeps the state, has no shape for it.
+    ; holds, which one made again in the same run writes over. One made in a loop whose turn has an
+    ; environment has no shape for it.
     (if (not (call (. tables holds-stacks) (. unit instance)))
       (return)
     )
@@ -21341,17 +21295,16 @@
     ; function, which its body is given first, and a binding of a class's name runs the constructor
     ; written for the class, as the type pass says the binding calls it. An argument a binding holds
     ; is given as it is, and one of the adapter's own and the answer are converted as the type pass
-    ; recorded for the function called. The call is made where the value was first made, the place
-    ; a stack trace names, or the line below it where the type pass noted that for a closure; for
-    ; one made in several places a stack trace names no place.
+    ; recorded for the function called. The call is made where the value was first made, the place a
+    ; stack trace names, or the line below it where the type pass noted that for a closure; for one
+    ; made in several places a stack trace names no place.
     ; A binding's runs as a callback, which code the collector does not see may call: it enters
     ; managed code first and leaves it after the call, and where the call panics. A C function a
-    ; binding names is called as it is, with no marks around the call. A C function type's takes
-    ; no data, so its binding holds nothing, and TypeScript places its call where the type is
-    ; declared.
-    ; A type that carries errors returns its value or one of them: an error what runs gives
-    ; leaves the function made as one raised at the call would, and is one the type carries,
-    ; as the type pass requires.
+    ; binding names is called as it is, with no marks around the call. A C function type's takes no
+    ; data, so its binding holds nothing, and its call is placed where the type is declared.
+    ; A type that carries errors returns its value or one of them: an error what runs gives leaves
+    ; the function made as one raised at the call would, and is one the type carries, as the type
+    ; pass requires.
     (let row ([] (. tables adapters) (. function place)))
     (if (== (. row runs) no-instance)
       (call emit-cast row)
@@ -21518,9 +21471,9 @@
   )
   (fn-do _ c-type-site SyntaxId
     (param type TypeId)
-    ; Where a C function type is declared, which is where the reference places the call of a
-    ; function made a value of it: the syntax of the class first declared as the type, with the
-    ; module that holds it the one read. None where the type is written where it is used.
+    ; Where a C function type is declared, which is where the call of a function made a value of it
+    ; is placed: the syntax of the class first declared as the type, with the module that holds it
+    ; the one read. None where the type is written where it is used.
     (let declared (call (. types c-function-decl) type))
     (if (not declared)
       (return 0)
@@ -21854,12 +21807,12 @@
   (fn-do _ emit-range Typed
     (param id SyntaxId)
     (param range ASTRangeExpression)
-    ; A range written as a value: the tuple of its start, its end, the step written or else
-    ; one, and whether it runs through its end, made by its fields as the construction the type
-    ; pass recorded says. The step of one and the truth of `..` are the literal's own, as
-    ; TypeScript gives them, not the defaults `Range` declares. Each number is converted to the
-    ; range's item as recorded, and so is the step of one where the item is no number. A range
-    ; with a side left open, or of a type that declares a constructor, has no shape here.
+    ; A range written as a value: the tuple of its start, its end, the step written or else one, and
+    ; whether it runs through its end, made by its fields as the construction the type pass recorded
+    ; says. The step of one and the truth of `..` are the literal's own, not the defaults `Range`
+    ; declares. Each number is converted to the range's item as recorded, and so is the step of one
+    ; where the item is no number. A range with a side left open, or of a type that declares a
+    ; constructor, has no shape here.
     (let nothing (call make-operand .operand-void 0))
     (let fact (call own-call id))
     (let type (call (. facts node-type) (. unit reading) id))
@@ -21967,9 +21920,9 @@
     (param id SyntaxId)
     (param name Atom)
     ; A field of the tuple or struct being made, read by the value its type writes for another.
-    ; A field with no value yet is given its own first, which is the order TypeScript evaluates
-    ; them in. One first read under a condition would have its value on one path alone, so only
-    ; a value the type pass found to evaluate every part of itself may read one.
+    ; A field with no value yet is given its own first. One first read under a condition would have
+    ; its value on one path alone, so only a value the type pass found to evaluate every part of
+    ; itself may read one.
     (let nothing (call make-operand .operand-void 0))
     (let found (call property-of (. making type) name))
     (let range (. ([] (. types completions) (. making type)) properties))
@@ -22862,12 +22815,11 @@
     (param site SyntaxId)
     ; Before the body of a spawned task, a lambda or a comprehension calls a function that reads
     ; globals `do with` binds outside its bindings of them, each slot no binding around the call
-    ; holds is kept, and set to the state the body holds, as TypeScript does, and so for an effect's
-    ; slot in the body of a loop on a stream. The local each is
-    ; kept in, or none. A spawned task's slot is its own, so it stays set after the call, for a
-    ; generator the call made to read when it runs. As a read of one, a call in a cleanup a landing pad runs is refused where a
-    ; `do with` after the cleanup binds it. A nested function called holds what it captured, and is
-    ; given nothing, as TypeScript gives a closure nothing.
+    ; holds is kept, and set to the state the body holds, and so for an effect's slot in the body of
+    ; a loop on a stream. The local each is kept in, or none. A spawned task's slot is its own, so
+    ; it stays set after the call, for a generator the call made to read when it runs. As a read of
+    ; one, a call in a cleanup a landing pad runs is refused where a `do with` after the cleanup
+    ; binds it. A nested function called holds what it captured, and is given nothing.
     (let saved (list LocalId))
     (if (and (!= (. function kind) .task-body) (not (call is-closure-body)) (not (. unit received)))
       (return saved)
@@ -22930,15 +22882,14 @@
     (param syntax SyntaxId)
     (param mark Size)
     (param watched Bool (= false))
-    ; A call of a function of an interface through a value of it, the first of the pending
-    ; arguments from `mark` on: of what the value's witness table holds in the function's slot
-    ; of the interface's section, given the value and the arguments. What runs is not known
-    ; here, so the call is checked for a panic, which the type pass must have said of the
-    ; caller too. A function that raises errors answers with its value or one of them, to a
-    ; caller that takes that. A call of a function the type pass says no call checks is not
-    ; checked: a panic raised under it stays the task's, and what follows the call runs, as
-    ; in the reference. A `watched` call is checked all the same. A call in the zone the
-    ; collector never sees stays in it, as TypeScript's does, since what runs is not known.
+    ; A call of a function of an interface through a value of it, the first of the pending arguments
+    ; from `mark` on: of what the value's witness table holds in the function's slot of the
+    ; interface's section, given the value and the arguments. What runs is not known here, so the
+    ; call is checked for a panic, which the type pass must have said of the caller too. A function
+    ; that raises errors answers with its value or one of them, to a caller that takes that. A call
+    ; of a function the type pass says no call checks is not checked: a panic raised under it stays
+    ; the task's, and what follows the call runs. A `watched` call is checked all the same. A call
+    ; in the zone the collector never sees stays in it, since what runs is not known.
     (let nothing (call make-operand .operand-void 0))
     (let signature ([] (. instances signatures) callee))
     (let raising (!= (. signature errors count) 0))
@@ -22962,11 +22913,11 @@
     (return (call Typed result returned))
   )
   (fn-do _ emit-view _
-    ; A function of an interface as a value of a type that is none runs it: it sees the value
-    ; as the interface, and calls the function that holds the body with that and its
-    ; arguments. It is a frame of its own in a stack trace, placed where the function is
-    ; declared, as TypeScript's is. One that raises errors returns what the function that holds
-    ; the body gave it, the value or one of the errors, which is held the same.
+    ; A function of an interface as a value of a type that is none runs it: it sees the value as the
+    ; interface, and calls the function that holds the body with that and its arguments. It is a
+    ; frame of its own in a stack trace, placed where the function is declared. One that raises
+    ; errors returns what the function that holds the body gave it, the value or one of the errors,
+    ; which is held the same.
     (let row ([] (. instances rows) (. unit instance)))
     (let signature ([] (. instances signatures) (. unit instance)))
     (let declared (- (+ (. row subtree start) (. row subtree count)) 1))
@@ -23010,17 +22961,15 @@
     )
   )
   (fn-do _ emit-class-adapter _
-    ; The function a class's table holds in the slot of a base's method for an override that
-    ; answers another type, as TypeScript's `(class-adapter)`. It takes what the base's method
-    ; takes, the object first, and calls the override with them as they are, at its
-    ; declaration, the place a stack trace names. What the override answers is converted to
-    ; what the base's answers, as the type pass recorded at that declaration, and is the value
-    ; with no error where the base's raises errors and the override raises none. Where the
-    ; override answers nothing, it answers what a return written with no value gives, the
-    ; default of the base's type, as the reference does. An override that raises errors the
-    ; base's answers otherwise, or that takes an argument as another type, has no shape here. A
-    ; property a class stores in place of a getter or a setter is read or stored as
-    ; `emit-class-accessor` says.
+    ; The function a class's table holds in the slot of a base's method for an override that answers
+    ; another type, `(class-adapter)`. It takes what the base's method takes, the object first, and
+    ; calls the override with them as they are, at its declaration, the place a stack trace names.
+    ; What the override answers is converted to what the base's answers, as the type pass recorded
+    ; at that declaration, and is the value with no error where the base's raises errors and the
+    ; override raises none. Where the override answers nothing, it answers what a return written
+    ; with no value gives, the default of the base's type. An override that raises errors the base's
+    ; answers otherwise, or that takes an argument as another type, has no shape here. A property a
+    ; class stores in place of a getter or a setter is read or stored as `emit-class-accessor` says.
     (let row ([] (. tables class-adapters) (. function place)))
     (if (== (. row override) no-instance)
       (call emit-class-accessor row)
@@ -23497,9 +23446,8 @@
     (param kind ReturnKind)
     ; A return with the zero of the type the function returns: no bits set, or the empty text.
     ; A panic returns a struct from memory of the function's frame with no bits set, so that an
-    ; optional a caller reads after a panic it does not check holds nothing, as in the
-    ; reference; a return that only closes a block returns none. A function that yields has
-    ; finished where it returns so.
+    ; optional a caller reads after a panic it does not check holds nothing; a return that only
+    ; closes a block returns none. A function that yields has finished where it returns so.
     (if stepping
       (call keep-step finished-step 0)
     )

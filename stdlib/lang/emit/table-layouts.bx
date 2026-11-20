@@ -43,10 +43,10 @@
 )
 
 (type + UnionLayout (is Struct)
-  ; How a table keeps rows of a union, as TypeScript lays it out: the tag in column 0, then a
-  ; column for each field every case shares, the inline bytes of each row, and the handle of
-  ; the bytes each row keeps outside it, in a buffer the directory's last slot holds. `columns`
-  ; is how many slots the directory has; `commons` are the shared fields of the first case.
+  ; How a table keeps rows of a union: the tag in column 0, then a column for each field every case
+  ; shares, the inline bytes of each row, and the handle of the bytes each row keeps outside it, in
+  ; a buffer the directory's last slot holds. `columns` is how many slots the directory has;
+  ; `commons` are the shared fields of the first case.
   (blank)
   (prop + union TypeId)
   (prop + controlled Bool)
@@ -116,8 +116,8 @@
   )
   (fn-do _ lay-out _
     (param union TypeId)
-    ; Lays out a union's rows as TypeScript's `createTableUnionLayout` does. A union one of whose
-    ; cases has no layout yet is left out, and a table of it has no shape.
+    ; Lays out a union's rows. A union one of whose cases has no layout yet is left out, and a table
+    ; of it has no shape.
     (let held (call (. types cases-of) union))
     (if (== (. held length) 0)
       (return)
@@ -433,12 +433,11 @@
   )
   (fn-do _ pack _
     (param stride U32)
-    ; Chooses the fields kept inline within a budget, as TypeScript's `tableUnionPackCase` does:
-    ; every set is tried, each field left out before it is taken in; a set is kept where it fits
-    ; and the budget is a multiple of its alignment, and the one kept leaves the fewest bytes
-    ; outside, then the fewest fields, then has the earliest fields first. A set whose first fields
-    ; already leave more outside than the one kept is not tried further, as no set it grows into is
-    ; kept.
+    ; Chooses the fields kept inline within a budget: every set is tried, each field left out before
+    ; it is taken in; a set is kept where it fits and the budget is a multiple of its alignment, and
+    ; the one kept leaves the fewest bytes outside, then the fewest fields, then has the earliest
+    ; fields first. A set whose first fields already leave more outside than the one kept is not
+    ; tried further, as no set it grows into is kept.
     (= budget stride)
     (= found false)
     (call (. best clear))
@@ -542,7 +541,7 @@
   (fn-do _ region Region
     (param sizes (list U32))
     (param alignments (list U32))
-    ; Lays out fields in turn, as TypeScript's `tableUnionRegionLayout` does.
+    ; Lays out fields in turn.
     (let offsets (list U32))
     (let offset U32)
     (let alignment U32 1)

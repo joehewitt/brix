@@ -8,9 +8,9 @@
 (import /lang/ir/ir)
 
 (type + Stability (is U32)
-  ; What code may do to the storage of a row of a table of unions, as TypeScript judges it from
-  ; the code: `stable` where nothing in it may move the storage, `unstable` where something
-  ; may, and `unsure` where what decides it is not read here.
+  ; What code may do to the storage of a row of a table of unions, judged from the code: `stable`
+  ; where nothing in it may move the storage, `unstable` where something may, and `unsure` where
+  ; what decides it is not read here.
   (blank)
   (variant stable (= 0))
   (variant unstable (= 1))
@@ -18,8 +18,8 @@
 )
 
 (type + CallJudgment (is Tuple)
-  ; What a call may do to storage. A call of a function TypeScript judges by the function's own
-  ; code names the function as `callee`, and is `unsure` until that code is read.
+  ; What a call may do to storage. A call of a function judged by the function's own code names the
+  ; function as `callee`, and is `unsure` until that code is read.
   (blank)
   (prop + stability Stability)
   (prop + callee FunctionId (= no-function))
@@ -47,9 +47,9 @@
   (param ir IRFunction)
   (param watched (list U32))
   ; Where a function reads its receiver, which is the arguments `watched` and any value made from
-  ; them: the value of a row that reads one, and a frame or a local's memory that such a row
-  ; writes or that a call reading one is given. A local holds no receiver, as TypeScript's
-  ; variables hold none: a value read from one is its own.
+  ; them: the value of a row that reads one, and a frame or a local's memory that such a row writes
+  ; or that a call reading one is given. A local holds no receiver: a value read from one is its
+  ; own.
   (let count (. ir instructions length))
   (let roots (call frame-roots ir))
   (let made (list Bool))
@@ -154,12 +154,11 @@
   (param watched (list U32))
   (param judged (list U32))
   (param verdicts (list Stability))
-  ; Whether a function may move its receiver's storage before it reads the receiver again, as
-  ; TypeScript's `tableUnionCaseReceiverIsStable` judges it. A write into the receiver, a frame,
-  ; a local's memory or the function's result moves nothing. A call does, unless it is of one
-  ; of the runtime's functions that allocate or poll, the check for a terminating task, or a
-  ; function whose code was judged so: `verdicts` holds what each function of `judged` was
-  ; judged to do. So does a call TypeScript makes of a function it generates.
+  ; Whether a function may move its receiver's storage before it reads the receiver again. A write
+  ; into the receiver, a frame, a local's memory or the function's result moves nothing. A call
+  ; does, unless it is of one of the runtime's functions that allocate or poll, the check for a
+  ; terminating task, or a function whose code was judged so: `verdicts` holds what each function of
+  ; `judged` was judged to do. So does each row `made-calls` lists.
   (for (in position (..< 0 (. ir made-calls length)))
     (if ([] (. reads ahead) ([] (. ir made-calls) position))
       (return .unstable)
@@ -204,10 +203,9 @@
   (param tables ProgramTables)
   (param instances Instances)
   (param program Program)
-  ; What a function's own code may do to storage, as TypeScript's
-  ; `tableUnionCaseFunctionStorageStable` reads it: any write outside the function's frame, its
-  ; locals' memory and its result moves storage, and so does any call that may, among them one
-  ; TypeScript makes of a function it generates.
+  ; What a function's own code may do to storage: any write outside the function's frame, its
+  ; locals' memory and its result moves storage, and so does any call that may, and each row
+  ; `made-calls` lists.
   (let callees (list U32))
   (if (!= (. ir made-calls length) 0)
     (return (call CalleeScan .unstable callees))
@@ -338,11 +336,11 @@
   (param program Program)
   (param row IRInstruction)
   (param top Bool)
-  ; What a call may do to storage. TypeScript lets a call of a function of the runtime that
-  ; allocates or polls run, and from the function judged itself the check for a terminating
-  ; task. A call of any other function of the runtime, of C, of a value or of one of its own
-  ; generated functions may move storage, and so may one of a function written with `do`, of a
-  ; generator or of a closure. Any other function is judged by its own code.
+  ; What a call may do to storage. A call of a function of the runtime that allocates or polls is
+  ; let run, and from the function judged itself the check for a terminating task. A call of any
+  ; other function of the runtime, of C, of a value or of a function the compiler generates may move
+  ; storage, and so may one of a function written with `do`, of a generator or of a closure. Any
+  ; other function is judged by its own code.
   (let callee (call operand-payload ([] (. ir operands) (. row operands start))))
   (let kind (as (/and/ (. row aux) callee-kind-mask) CalleeKind))
   (if (== kind .callee-runtime)
@@ -394,8 +392,8 @@
 (fn-do _ is-steady Bool
   (param tables ProgramTables)
   (param symbol U32)
-  ; Whether a function of the runtime is one TypeScript lets run between two reads of a
-  ; receiver: one that allocates, a safepoint, or the one that finds the running task.
+  ; Whether a function of the runtime is one let run between two reads of a receiver: one that
+  ; allocates, a safepoint, or the one that finds the running task.
   (for (in position (..< 0 (. runtime-function-names length)))
     (if (== ([] (. tables runtime-symbols) position) symbol)
       (let name ([] runtime-function-names position))

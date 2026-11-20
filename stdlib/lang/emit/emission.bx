@@ -1073,9 +1073,9 @@
   (param types Types)
   (param bindings Bindings)
   ; Finds the functions that run where the collector never sees it and reach no safepoint in a
-  ; bounded time, as the reference elides the zone around calls of them. Each that cannot panic
-  ; is emitted once, and is one where it has no loop, does not yield, and calls only C functions
-  ; with no step out of the zone around them and functions so found, settled from the leaves up.
+  ; bounded time, the zone around calls of which is elided. Each that cannot panic is emitted once,
+  ; and is one where it has no loop, does not yield, and calls only C functions with no step out of
+  ; the zone around them and functions so found, settled from the leaves up.
   (let storage (use (call Arena)))
   (let emitter (use (call Emitter tables program instances facts types bindings storage)))
   (let count (. tables functions length))
@@ -1371,11 +1371,10 @@
   (param count U32)
   (param forwarding Forwarding)
   (param ordered (list U32))
-  ; The functions the object holds, in their order: those named outside it, those a constant
-  ; table names, and those the code of one held names in turn. A function whose every call was
-  ; inlined is not held, as the reference's optimizer drops it. Each label of a constant table and
-  ; each relocation of a held function's code that names a folded function is pointed at the
-  ; function it was folded into as it is met.
+  ; The functions the object holds, in their order: those named outside it, those a constant table
+  ; names, and those the code of one held names in turn. A function whose every call was inlined is
+  ; not held. Each label of a constant table and each relocation of a held function's code that
+  ; names a folded function is pointed at the function it was folded into as it is met.
   (let owners ([] U32 (. bundle string-count)))
   (for (in position ordered)
     (let symbol (. ([] records position) symbol))

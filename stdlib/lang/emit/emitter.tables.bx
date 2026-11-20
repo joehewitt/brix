@@ -34,8 +34,8 @@
 (import /stream/sort)
 
 (type _ GrowRegion (is Tuple)
-  ; A region of a growing table's storage: the slot of the directory it fills, the bytes a row
-  ; takes in it and their alignment, and the name TypeScript's panics give it.
+  ; A region of a growing table's storage: the slot of the directory it fills, the bytes a row takes
+  ; in it and their alignment, and the name panics give it.
   (blank)
   (prop + column U32)
   (prop + stride U32)
@@ -135,10 +135,10 @@
   (fn-do + emit-table-constructor _
     (param declared SyntaxId)
     (param kind DeclKind)
-    ; A table's constructor the compiler generates, as TypeScript generates it: one of a size
-    ; makes storage for that many rows, each zero, and one of a size and a filler then fills each
-    ; row in turn with what the filler answers for its index, scattering it into the columns. One
-    ; of an arena, and of a capacity, makes a table that grows in the arena.
+    ; A table's constructor the compiler generates: one of a size makes storage for that many rows,
+    ; each zero, and one of a size and a filler then fills each row in turn with what the filler
+    ; answers for its index, scattering it into the columns. One of an arena, and of a capacity,
+    ; makes a table that grows in the arena.
     (if (call is-index-span-constructor-kind kind)
       (call emit-span-constructor declared kind)
       (return)
@@ -194,9 +194,9 @@
     (param layout LayoutId)
     (param row TypeId)
     (param row-layout LayoutId)
-    ; A table of union rows, made as TypeScript makes it: one that does not grow has its columns,
-    ; then each row set to the first case's first value, or filled in turn with what the filler
-    ; answers; one that grows is made as a table of structs is, with a column for each region.
+    ; A table of union rows: one that does not grow has its columns, then each row set to the first
+    ; case's first value, or filled in turn with what the filler answers; one that grows is made as
+    ; a table of structs is, with a column for each region.
     (let place (call (. tables unions of) row))
     (if (== place (. U32 max))
       (call refuse .refused-function declared)
@@ -230,9 +230,9 @@
     (param site SyntaxId)
     (param place U32)
     (param size Operand)
-    ; The storage of a table of union rows that does not grow, as TypeScript makes it: the rows
-    ; are checked to keep their outside bytes within what a handle reaches, then a directory, the
-    ; tags, a column for each shared field, the inline bytes, the handles and the outside bytes.
+    ; The storage of a table of union rows that does not grow: the rows are checked to keep their
+    ; outside bytes within what a handle reaches, then a directory, the tags, a column for each
+    ; shared field, the inline bytes, the handles and the outside bytes.
     (let union ([] (. tables unions layouts) place))
     (if (!= (. union external-stride) 0)
       (let most (call integer .machine-u64 (/ 4294967295 (as (. union external-stride) U64))))
@@ -291,8 +291,7 @@
     (param place U32)
     (param columns Operand)
     (param size Operand)
-    ; Sets each row of a new table of unions, from the first, to the first case's first value, as
-    ; TypeScript sets them to the union's default.
+    ; Sets each row of a new table of unions, from the first, to the first case's first value.
     (let first (. ([] (call (. types cases-of) (. ([] (. tables unions layouts) place) union)) 0) type))
     (let first-layout (call layout-of first site))
     (if (call (. tables writes-constructor) first)
@@ -383,13 +382,12 @@
     (param meta TableMeta)
     (param checked Bool)
     (param replacing Bool)
-    ; Stores a row of one case in a table of unions, as TypeScript scatters it: the row's handle
-    ; first, where the table keeps one, then each field of the case in the order it declares them,
-    ; and the tag last. `checked` says the table's metadata is given: where the table grows, the
-    ; handle is to the row's outside bytes in its spill, the columns are read again from its header,
-    ; and the fields are stored plainly. `replacing` says the row is one the table holds already,
-    ; which keeps its handle when the case has no outside bytes, and keeps the bytes its handle
-    ; leads to when it has.
+    ; Stores a row of one case in a table of unions: the row's handle first, where the table keeps
+    ; one, then each field of the case in the order it declares them, and the tag last. `checked`
+    ; says the table's metadata is given: where the table grows, the handle is to the row's outside
+    ; bytes in its spill, the columns are read again from its header, and the fields are stored
+    ; plainly. `replacing` says the row is one the table holds already, which keeps its handle when
+    ; the case has no outside bytes, and keeps the bytes its handle leads to when it has.
     (let union ([] (. tables unions layouts) place))
     (let held ([] (. tables unions cases) (+ (. union cases start) case-index)))
     (let case-layout (call layout-of (. held type) site))
@@ -558,10 +556,10 @@
     (param used Operand)
     (param capacity Operand)
     (param needed Operand)
-    ; Grows the spill of a table of unions, as TypeScript's generated growth does: the capacity
-    ; doubles as a table's of one-byte rows does, to at least 64 bytes and within what a U32
-    ; handle reaches; the bytes are reserved in the arena and those used copied over, and the
-    ; directory's slot of the outside bytes and the header are given the new spill.
+    ; Grows the spill of a table of unions: the capacity doubles as a table's of one-byte rows does,
+    ; to at least 64 bytes and within what a U32 handle reaches; the bytes are reserved in the arena
+    ; and those used copied over, and the directory's slot of the outside bytes and the header are
+    ; given the new spill.
     (let text "Table union spill exceeds the U32 handle limit")
     (let chosen (call next-capacity site capacity needed 8 "Table capacity overflow"))
     (let least (call integer .machine-u64 64))
@@ -614,8 +612,7 @@
     (param site SyntaxId)
     (param columns Operand)
     (param meta TableMeta)
-    ; A table's columns read again from its header where it grows, as TypeScript reads them after
-    ; a store that may grow it.
+    ; A table's columns read again from its header where it grows, after a store that may grow it.
     (let growing (call (. ir reserve-block)))
     (let fixed (call (. ir reserve-block)))
     (let joined (call (. ir reserve-block)))
@@ -673,8 +670,8 @@
     (param place U32)
     (param columns Operand)
     (param index Operand)
-    ; A row of a table of unions read as the union, as TypeScript gathers it: the case the tag
-    ; names, built from its fields; a tag that names no case gives the first case's first value.
+    ; A row of a table of unions read as the union: the case the tag names, built from its fields; a
+    ; tag that names no case gives the first case's first value.
     (let union ([] (. tables unions layouts) place))
     (let union-layout (call layout-of (. union union) site))
     (let made (call frame union-layout))
@@ -734,8 +731,8 @@
   (fn-do _ emit-span-constructor _
     (param declared SyntaxId)
     (param kind DeclKind)
-    ; The constructor the compiler generates of an index span, as TypeScript generates it: the
-    ; span of the whole of its source, or of the range it is given, made forward.
+    ; The constructor the compiler generates of an index span: the span of the whole of its source,
+    ; or of the range it is given, made forward.
     (let type (. ([] (. instances rows) (. unit instance)) self-type))
     (let layout (call layout-of type declared))
     (let signature ([] (. instances signatures) (. unit instance)))
@@ -781,12 +778,11 @@
     (param source-type TypeId)
     (param range Operand)
     (param range-type TypeId)
-    ; An index span made of its source, as TypeScript makes one: of an array, where its items lie,
-    ; from the first the range spans, or the first, for as many as the range spans, or the array
-    ; holds; of an arena's builder, the identity of the builder's storage in place of where the
-    ; items lie, with its mutation generation and its arena's owner, incarnation and generation,
-    ; which say whether the span can still be read. A range is made forward where the
-    ; constructor runs.
+    ; An index span made of its source: of an array, where its items lie, from the first the range
+    ; spans, or the first, for as many as the range spans, or the array holds; of an arena's
+    ; builder, the identity of the builder's storage in place of where the items lie, with its
+    ; mutation generation and its arena's owner, incarnation and generation, which say whether the
+    ; span can still be read. A range is made forward where the constructor runs.
     (let item (call viewed-item type))
     (let item-layout (call layout-of item site))
     (let source-layout (call layout-of source-type site))
@@ -838,9 +834,9 @@
     (param site SyntaxId)
     (param builder Operand)
     (param layout LayoutId)
-    ; What an index span reads of an arena's builder, as TypeScript reads it: the builder holds
-    ; the header its copies share, which is the identity of its storage and holds the storage, its
-    ; capacity, the size and the mutation generation; the builder's context is its arena.
+    ; What an index span reads of an arena's builder: the builder holds the header its copies share,
+    ; which is the identity of its storage and holds the storage, its capacity, the size and the
+    ; mutation generation; the builder's context is its arena.
     (let identity (call word-at site builder layout 0))
     (let held (call num-cast site identity u64-layout pointer-layout))
     (let size (call load held 16 u64-layout site))
@@ -888,9 +884,9 @@
     (param length Operand)
     (param name String)
     (param unit Bool)
-    ; The indices a range made forward spans of a view `name` names, of `length` items, as
-    ; TypeScript checks them: the range steps by one, which a range whose step is `unit` does, and
-    ; starts and ends inside the length, its end not before its start.
+    ; The indices a range made forward spans of a view `name` names, of `length` items: the range
+    ; steps by one, which a range whose step is `unit` does, and starts and ends inside the length,
+    ; its end not before its start.
     (let layout (call layout-of forward-type site))
     (let start (call range-index site forward forward-type layout "start"))
     (let end (call range-index site forward forward-type layout "end"))
@@ -923,10 +919,10 @@
     (param site SyntaxId)
     (param span Operand)
     (param layout LayoutId)
-    ; Where the indices an index span reads lie, as TypeScript finds them: an array's, where the
-    ; span holds them; a builder's, once the span is checked to read it still, as its storage
-    ; holds them now. The arena must not be reset, nor rewound past the storage, and the builder
-    ; neither changed nor shrunk past the span since the span was made.
+    ; Where the indices an index span reads lie: an array's, where the span holds them; a builder's,
+    ; once the span is checked to read it still, as its storage holds them now. The arena must not
+    ; be reset, nor rewound past the storage, and the builder neither changed nor shrunk past the
+    ; span since the span was made.
     (let source (call word-at site span layout 0))
     (let identity (call word-at site span layout 1))
     (let offset (call word-at site span layout 2))
@@ -1061,8 +1057,8 @@
     (param position Operand)
     (param item TypeId)
     (param item-layout LayoutId)
-    ; The index of a table's row a selection reads at a position, as TypeScript reads it: one of
-    ; a signed type below zero is out of bounds.
+    ; The index of a table's row a selection reads at a position: one of a signed type below zero is
+    ; out of bounds.
     (let value (call span-item site resolved position item-layout))
     (if (call is-signed-item item)
       (call fail-if
@@ -1112,11 +1108,11 @@
     (param row TypeId)
     (param row-layout LayoutId)
     (param needed Operand)
-    ; The body of the constructor of a table that grows in an arena, as TypeScript writes it: the
-    ; header is reserved in the arena, zeroed, then the directory of its columns, one slot for each
-    ; column; the arena's generation is read, the header given the directory, and room reserved for
-    ; the rows the capacity asks for. The table holds the directory, a size of zero, the header,
-    ; and the arena's owner, incarnation and generation.
+    ; The body of the constructor of a table that grows in an arena: the header is reserved in the
+    ; arena, zeroed, then the directory of its columns, one slot for each column; the arena's
+    ; generation is read, the header given the directory, and room reserved for the rows the
+    ; capacity asks for. The table holds the directory, a size of zero, the header, and the arena's
+    ; owner, incarnation and generation.
     (let arena-type (call (. instances argument-type) (. unit instance) 0))
     (let arena (call make-operand .operand-argument 0))
     (let arena-layout (call layout-of arena-type site))
@@ -1199,8 +1195,8 @@
     (param bytes Operand)
     (param alignment U64)
     (param zeroed Bool)
-    ; Reserves bytes in an arena, zeroed or not, as TypeScript reserves a table's storage: the
-    ; address reserved, or null where the arena is gone or out of room.
+    ; Reserves bytes in an arena, zeroed or not, for a table's storage: the address reserved, or
+    ; null where the arena is gone or out of room.
     (let mark (. pending length))
     (+= pending owner)
     (+= pending incarnation)
@@ -1241,11 +1237,10 @@
     (param meta TableMeta)
     (param current Operand)
     (param needed Operand)
-    ; Grows a table's storage in its arena, as TypeScript's generated growth does: the capacity
-    ; is chosen, each region reserved again in turn with its rows copied over, then a new
-    ; directory reserved and given each region, and the slot of a union's outside bytes as it
-    ; was; the header is given the directory and the capacity. What was reserved before stays in
-    ; the arena.
+    ; Grows a table's storage in its arena: the capacity is chosen, each region reserved again in
+    ; turn with its rows copied over, then a new directory reserved and given each region, and the
+    ; slot of a union's outside bytes as it was; the header is given the directory and the capacity.
+    ; What was reserved before stays in the arena.
     (let regions (call grow-regions site row row-layout))
     (let width U64)
     (for (in region regions)
@@ -1325,9 +1320,8 @@
     (param site SyntaxId)
     (param row TypeId)
     (param row-layout LayoutId)
-    ; The regions of a growing table's storage, as TypeScript lists them: a column for each field
-    ; of a struct row; for a union row the tag, each shared field, the inline bytes and the
-    ; handles of the outside bytes.
+    ; The regions of a growing table's storage: a column for each field of a struct row; for a union
+    ; row the tag, each shared field, the inline bytes and the handles of the outside bytes.
     (let regions (list GrowRegion))
     (let place (if-expr (== (call (. types intrinsic-of) row) .union) (call (. tables unions of) row) (. U32 max)))
     (if (== place (. U32 max))
@@ -1387,8 +1381,8 @@
   (fn-do _ region-name String
     (param row TypeId)
     (param position U32)
-    ; The name of a field of a row at its place in the row's layout, as TypeScript names the
-    ; region of a table's storage that holds its column.
+    ; The name of a field of a row at its place in the row's layout, which names the region of a
+    ; table's storage that holds its column.
     (for (in property (call (. types properties-of) row))
       (if (== (. property slot) position)
         (return (. property name text))
@@ -1412,9 +1406,9 @@
     (param needed Operand)
     (param first U64)
     (param overflow String)
-    ; The capacity a table or an arena's builder grows to, as TypeScript chooses it: from none, the
-    ; first capacity; under 1024, twice as many; and else half as many again, with the panic of an
-    ; overflow. It is never less than is needed.
+    ; The capacity a table or an arena's builder grows to: from none, the first capacity; under
+    ; 1024, twice as many; and else half as many again, with the panic of an overflow. It is never
+    ; less than is needed.
     (let most (call integer .machine-u64 (. U64 max)))
     (let empty (call (. ir reserve-block)))
     (let held (call (. ir reserve-block)))
@@ -1481,8 +1475,8 @@
     (param target Operand)
     (param source Operand)
     (param count Operand)
-    ; Copies bytes from one place to another, as TypeScript copies a table's rows when it grows: a
-    ; word at a time while a whole word is left, then a byte at a time.
+    ; Copies bytes from one place to another: a word at a time while a whole word is left, then a
+    ; byte at a time.
     (let cursor (call (. ir add-local) u64-layout))
     (call store-local cursor (call integer .machine-u64 0) site)
     (call copy-by site target source count cursor 8 u64-layout)
@@ -1537,9 +1531,9 @@
     (param site SyntaxId)
     (param row-layout LayoutId)
     (param size Operand)
-    ; The storage of a table that does not grow, as TypeScript makes it: a directory with a
-    ; pointer to each field's column, and a buffer for each column. Where every field has the
-    ; same type, which holds nothing the collector follows, the columns are parts of one buffer.
+    ; The storage of a table that does not grow: a directory with a pointer to each field's column,
+    ; and a buffer for each column. Where every field has the same type, which holds nothing the
+    ; collector follows, the columns are parts of one buffer.
     (let fields (. ([] (. tables layouts rows) row-layout) fields))
     (let count (. fields count))
     (let directory (call table-buffer site managed-layout (call integer .machine-u64 count)))
@@ -1597,9 +1591,8 @@
     (param site SyntaxId)
     (param item LayoutId)
     (param count Operand)
-    ; A buffer of a table's storage, as TypeScript allocates one: from the task's parse region
-    ; where one is active, and else from the collector, with what describes its items where they
-    ; hold pointers it follows.
+    ; A buffer of a table's storage: from the task's parse region where one is active, and else from
+    ; the collector, with what describes its items where they hold pointers it follows.
     (let row ([] (. tables layouts rows) item))
     (if (and (. row is-managed) (== (. row buffer) no-string))
       (call refuse .refused-type site)
@@ -1913,11 +1906,11 @@
     (param meta TableMeta)
     (param context String)
     (param checks-shrink Bool)
-    ; Checks that a table that grows can still be read, as TypeScript checks it: the arena has
-    ; not been reset since, the table is not sealed, and it has not shrunk since the view was made.
-    ; The runtime moves the generation of an arena's slot on at each reset and release and each
-    ; time the slot is taken again, so the slot holds the generation a table was made under only
-    ; while that arena lives unreset.
+    ; Checks that a table that grows can still be read: the arena has not been reset since, the
+    ; table is not sealed, and it has not shrunk since the view was made. The runtime moves the
+    ; generation of an arena's slot on at each reset and release and each time the slot is taken
+    ; again, so the slot holds the generation a table was made under only while that arena lives
+    ; unreset.
     (let current
       (call load
         (block
@@ -1997,9 +1990,9 @@
     (param id SyntaxId)
     (param object SyntaxId)
     (param key SyntaxId)
-    ; `t[i]` of a table or of a span of one, as TypeScript reads it: the table, then the index,
-    ; converted to one; the columns are found, and the index is checked against the length and
-    ; moved on by the span's offset.
+    ; `t[i]` of a table or of a span of one: the table, then the index, converted to one; the
+    ; columns are found, and the index is checked against the length and moved on by the span's
+    ; offset.
     (let none (call make-operand .operand-void 0))
     (let empty (call TableCursor none none (call TableMeta none none none none none)))
     (let proven (call proven-table id))
@@ -2034,8 +2027,8 @@
     (param held Operand)
     (param type TypeId)
     (param layout LayoutId)
-    ; How many rows a table or a span of one holds, as TypeScript counts them: checked where the
-    ; table grows, and held by a finished table and its spans.
+    ; How many rows a table or a span of one holds: checked where the table grows, and held by a
+    ; finished table and its spans.
     (let kind (call intrinsic type))
     (let length (call make-operand .operand-void 0))
     (if (== kind .table)
@@ -2253,9 +2246,9 @@
     (param id SyntaxId)
     (param object SyntaxId)
     (param key SyntaxId)
-    ; The rows of a table indices select at `t[ids]`, as TypeScript selects them: the table, then
-    ; the indices; a table that grows is checked, and the selection holds the table and an index
-    ; span: the one given, or one made of the array or of the arena's builder given.
+    ; The rows of a table indices select at `t[ids]`: the table, then the indices; a table that
+    ; grows is checked, and the selection holds the table and an index span: the one given, or one
+    ; made of the array or of the arena's builder given.
     (let none (call make-operand .operand-void 0))
     (let table (call emit-expression object))
     (let type (. table type))
@@ -2300,10 +2293,9 @@
     (param id SyntaxId)
     (param object SyntaxId)
     (param key SyntaxId)
-    ; An index of an index span read at `s[i]`, or a row of a selection, as TypeScript reads it:
-    ; the value, then the position, converted to one, which is checked against the length. The
-    ; span is resolved and the index read there; a selection then reads its table's row at that
-    ; index as `t[i]` reads it.
+    ; An index of an index span read at `s[i]`, or a row of a selection: the value, then the
+    ; position, converted to one, which is checked against the length. The span is resolved and the
+    ; index read there; a selection then reads its table's row at that index as `t[i]` reads it.
     (let none (call make-operand .operand-void 0))
     (let held (call emit-expression object))
     (let type (. held type))
@@ -2371,9 +2363,9 @@
     (param type TypeId)
     (param layout LayoutId)
     (param position Operand)
-    ; The row of a table a selection reads at a position, as TypeScript reads it: the position is
-    ; checked against the selection's length, the indices resolved and the index read there, and
-    ; the table's row at that index found as `t[i]` finds it.
+    ; The row of a table a selection reads at a position: the position is checked against the
+    ; selection's length, the indices resolved and the index read there, and the table's row at that
+    ; index found as `t[i]` finds it.
     (let none (call make-operand .operand-void 0))
     (let empty (call TableCursor none none (call TableMeta none none none none none)))
     (let table-type (call field-type type 0))
@@ -2408,9 +2400,9 @@
     (param id SyntaxId)
     (param object SyntaxId)
     (param key SyntaxId)
-    ; The indices a range spans of an index span at `s[a .. < b]`, or of a selection, as TypeScript
-    ; spans them: the range is made forward and checked against the span's length, and the span
-    ; made again from the range's start, of its length.
+    ; The indices a range spans of an index span at `s[a .. < b]`, or of a selection: the range is
+    ; made forward and checked against the span's length, and the span made again from the range's
+    ; start, of its length.
     (let none (call make-operand .operand-void 0))
     (let held (call emit-expression object))
     (let type (. held type))
@@ -2499,11 +2491,10 @@
     (param id SyntaxId)
     (param object SyntaxId)
     (param key SyntaxId)
-    ; The rows a range spans of a table made a span at `t[a .. < b]`, as TypeScript makes it: the
-    ; columns, left out where the table grows, the start of the range made forward, its length,
-    ; and the table's metadata; and the items a range spans of a view of a field's column, a view
-    ; of them. The range must step by one and lie within the table or view it indexes. A finished
-    ; table's span holds no metadata.
+    ; The rows a range spans of a table made a span at `t[a .. < b]`: the columns, left out where
+    ; the table grows, the start of the range made forward, its length, and the table's metadata;
+    ; and the items a range spans of a view of a field's column, a view of them. The range must step
+    ; by one and lie within the table or view it indexes. A finished table's span holds no metadata.
     (let none (call make-operand .operand-void 0))
     (let held (call emit-expression object))
     (let type (. held type))
@@ -2585,8 +2576,8 @@
     (param object SyntaxId)
     (param span TypeId)
     (param span-layout LayoutId)
-    ; The rows a range spans of a finished table or of a span of one, as TypeScript makes their
-    ; span: the columns, the range's start moved on by the span's offset, and its length.
+    ; The rows a range spans of a finished table or of a span of one: the columns, the range's start
+    ; moved on by the span's offset, and its length.
     (let source (call table-source id held type layout))
     (let bounds (call range-bounds id range held type object (. source length) (call source-name (call intrinsic type))))
     (let made (call frame span-layout))
@@ -2617,10 +2608,10 @@
     (param range TableRange)
     (param object SyntaxId)
     (param span-layout LayoutId)
-    ; The items a range spans of a view of a field's column, as TypeScript makes their view: its
-    ; data moved on to the range's start, left out where the table grows, the range's length, and
-    ; the view's table, column and offset, moved on to the start, with its metadata. That of a
-    ; finished table's view is its data moved on and the range's length.
+    ; The items a range spans of a view of a field's column: its data moved on to the range's start,
+    ; left out where the table grows, the range's length, and the view's table, column and offset,
+    ; moved on to the start, with its metadata. That of a finished table's view is its data moved on
+    ; and the range's length.
     (let none (call make-operand .operand-void 0))
     (let item-layout (call layout-of (call viewed-item type) id))
     (if (== (call intrinsic type) .immutable-table-column)
@@ -2846,9 +2837,9 @@
     (param id SyntaxId)
     (param object SyntaxId)
     (param key SyntaxId)
-    ; An item of a view of a field's column read at `f[i]`, as TypeScript reads it: the view, then
-    ; the index, converted to one; the data is found, and the index checked against the view's
-    ; length. A view of a finished table holds its data itself.
+    ; An item of a view of a field's column read at `f[i]`: the view, then the index, converted to
+    ; one; the data is found, and the index checked against the view's length. A view of a finished
+    ; table holds its data itself.
     (let none (call make-operand .operand-void 0))
     (let column (call emit-expression object))
     (let type (. column type))
@@ -2906,10 +2897,10 @@
     (param object SyntaxId)
     (param key SyntaxId)
     (param rhs SyntaxId)
-    ; `f[i] = v` of a view of a field's column, as TypeScript stores it: the value is read, then the
-    ; view and the index, converted to one; the data is found, the index checked against the view's
-    ; length, and the value, converted to the item's type, stored; where the table grows its
-    ; mutation generation is then counted on.
+    ; `f[i] = v` of a view of a field's column: the value is read, then the view and the index,
+    ; converted to one; the data is found, the index checked against the view's length, and the
+    ; value, converted to the item's type, stored; where the table grows its mutation generation is
+    ; then counted on.
     (if (!= (call table-op id) (. TableOp table-item-store))
       (call refuse .refused-statement id)
       (return)
@@ -2958,8 +2949,8 @@
     (param id SyntaxId)
     (param lhs SyntaxId)
     (param rhs SyntaxId)
-    ; Views of fields' columns added, as TypeScript adds them: the tuple of the views each side is
-    ; or holds, the left side's first.
+    ; Views of fields' columns added: the tuple of the views each side is or holds, the left side's
+    ; first.
     (let none (call make-operand .operand-void 0))
     (let emitted (call emit-expression lhs))
     (let left (call apart emitted lhs (not (call is-inert rhs))))
@@ -2999,10 +2990,10 @@
     (param value Operand)
     (param from TypeId)
     (param to TypeId)
-    ; The tuple of views of fields' columns cast to a span of the rows they make, as TypeScript
-    ; casts it: no view may be of a table that grows, whose storage the span could not follow, the
-    ; views' lengths must agree, and a directory is made of where each view's items start; the span
-    ; starts at its first row, is as long as the first view, and is of a table that does not grow.
+    ; The tuple of views of fields' columns cast to a span of the rows they make: no view may be of
+    ; a table that grows, whose storage the span could not follow, the views' lengths must agree,
+    ; and a directory is made of where each view's items start; the span starts at its first row, is
+    ; as long as the first view, and is of a table that does not grow.
     (let layout (call layout-of from site))
     (let span-layout (call layout-of to site))
     (let count (. ([] (. tables layouts rows) layout) fields count))
@@ -3051,14 +3042,13 @@
     (param object SyntaxId)
     (param key SyntaxId)
     (param rhs SyntaxId)
-    ; `t[a .. < b] = s` of a table, of a span of one or of a view of a field's column, as
-    ; TypeScript copies it: the source is read, then the target and the range; the rows of the
-    ; target are found, then those of the source, and the range is made forward and checked
-    ; against the target's length, and the source must hold at least as many rows as it spans;
-    ; each column of the source is copied from its first row into the target's from the range's
-    ; start, as many rows as the range spans; where the target's table grows
-    ; its mutation generation is then counted on. Rows of unions are copied one at a time, from
-    ; the last where the source shares the target's columns and starts below it.
+    ; `t[a .. < b] = s` of a table, of a span of one or of a view of a field's column: the source is
+    ; read, then the target and the range; the rows of the target are found, then those of the
+    ; source, and the range is made forward and checked against the target's length, and the source
+    ; must hold at least as many rows as it spans; each column of the source is copied from its
+    ; first row into the target's from the range's start, as many rows as the range spans; where the
+    ; target's table grows its mutation generation is then counted on. Rows of unions are copied one
+    ; at a time, from the last where the source shares the target's columns and starts below it.
     (let emitted (call emit-expression rhs))
     (let given (call apart emitted rhs (or (not (call is-inert object)) (not (call is-inert key)))))
     (let given-type (. emitted type))
@@ -3131,10 +3121,10 @@
     (param count Operand)
     (param meta TableMeta)
     (param replacing Bool)
-    ; Copies rows of a table of unions into another, one at a time, as TypeScript copies them:
-    ; from the last where both are kept in the same columns and the target starts after the
-    ; source, and from the first otherwise. `meta` is the target's, and `replacing` says the
-    ; target's rows are ones it holds already, as `scatter-union-case` takes it.
+    ; Copies rows of a table of unions into another, one at a time: from the last where both are
+    ; kept in the same columns and the target starts after the source, and from the first otherwise.
+    ; `meta` is the target's, and `replacing` says the target's rows are ones it holds already, as
+    ; `scatter-union-case` takes it.
     (let same
       (call compare
         (block
@@ -3212,10 +3202,9 @@
     (param source Operand)
     (param meta TableMeta)
     (param replacing Bool)
-    ; Copies a row of a table of unions into another, as TypeScript copies it: a row copied onto
-    ; itself is left; otherwise the case the source's tag names is read field by field and
-    ; stored as `scatter-union-case` stores it with the target's metadata, and a tag that names no
-    ; case copies nothing.
+    ; Copies a row of a table of unions into another: a row copied onto itself is left; otherwise
+    ; the case the source's tag names is read field by field and stored as `scatter-union-case`
+    ; stores it with the target's metadata, and a tag that names no case copies nothing.
     (let same
       (call compare
         (block
@@ -3257,10 +3246,10 @@
     (param object SyntaxId)
     (param source Operand)
     (param source-layout LayoutId)
-    ; The items of a view of a field's column copied into those a range spans of another, as
-    ; TypeScript copies them: the target's data is found, the range made forward and checked
-    ; against the target's length, and the source's data found; the source must hold at least as
-    ; many items as the range spans, and as many are copied.
+    ; The items of a view of a field's column copied into those a range spans of another: the
+    ; target's data is found, the range made forward and checked against the target's length, and
+    ; the source's data found; the source must hold at least as many items as the range spans, and
+    ; as many are copied.
     (let item-layout (call layout-of (call viewed-item type) id))
     (let meta (call column-meta id column layout))
     (let data (call column-data id column layout meta item-layout))
@@ -3432,8 +3421,9 @@
     (param id SyntaxId)
     (param held Operand)
     (param type TypeId)
-    ; A name of a table, or of a view of one, that TypeScript answers itself: the view of a field's
-    ; column, how many rows or items there are, or where the items of a field's column start.
+    ; A name of a table, or of a view of one, that the compiler answers itself: the view of a
+    ; field's column, how many rows or items there are, or where the items of a field's column
+    ; start.
     (let none (call make-operand .operand-void 0))
     (let op (call table-op id))
     (let kind (call intrinsic type))
@@ -3492,8 +3482,8 @@
     (param held Operand)
     (param type TypeId)
     (param layout LayoutId)
-    ; `t.layout`, as TypeScript answers it: the text of how a table keeps its rows, that of a table
-    ; that grows where it grows in an arena, and else that of one that does not.
+    ; `t.layout`: the text of how a table keeps its rows, that of a table that grows where it grows
+    ; in an arena, and else that of one that does not.
     (let none (call make-operand .operand-void 0))
     (let row (call table-row-type type))
     (let row-layout (call layout-of row id))
@@ -3577,9 +3567,8 @@
     (param site SyntaxId)
     (param table Operand)
     (param layout LayoutId)
-    ; `t.mark`, as TypeScript answers it: the table is checked to grow, and the mark holds its
-    ; header, its arena's owner, incarnation and generation, and the header's length, mutation
-    ; generation and use of its spill.
+    ; `t.mark`: the table is checked to grow, and the mark holds its header, its arena's owner,
+    ; incarnation and generation, and the header's length, mutation generation and use of its spill.
     (let type (call (. facts node-type) (. unit reading) site))
     (let mark-layout (call layout-of type site))
     (let meta (call require-growable site table layout "mark"))
@@ -3618,9 +3607,9 @@
     (param table Operand)
     (param layout LayoutId)
     (param operation String)
-    ; Checks that a table grows before an operation only such a table has, as TypeScript checks
-    ; it: it has a header, its arena has not been reset since it was made, and it is not sealed.
-    ; Answers the table's metadata, with no shrink generation.
+    ; Checks that a table grows before an operation only such a table has: it has a header, its
+    ; arena has not been reset since it was made, and it is not sealed. Answers the table's
+    ; metadata, with no shrink generation.
     (let header (call part table layout 2 site))
     (call fail-if
       (block
@@ -3679,11 +3668,11 @@
     (param id SyntaxId)
     (param object SyntaxId)
     (param written (of RowRange SyntaxId))
-    ; A member of a table that TypeScript answers where it is called: the table is evaluated, then
-    ; the arguments in the order they are written, each converted to its parameter's type, and
-    ; then the operation runs. A table finished from a local or an argument is the empty table
-    ; there after, and so is one finished from a stored field of an object, which the object holds
-    ; where it was read, as TypeScript stores the empty table through the address it read.
+    ; A member of a table that the compiler answers where it is called: the table is evaluated, then
+    ; the arguments in the order they are written, each converted to its parameter's type, and then
+    ; the operation runs. A table finished from a local or an argument is the empty table there
+    ; after, and so is one finished from a stored field of an object, which the object holds where
+    ; it was read.
     (let nothing (call make-operand .operand-void 0))
     (let fact (call own-call id))
     (if (== fact no-fact)
@@ -3856,12 +3845,12 @@
     (param object SyntaxId)
     (param written (of RowRange SyntaxId))
     (param appends Bool)
-    ; A member of an arena's builder that TypeScript answers where it is called, on a builder
+    ; A member of an arena's builder that the compiler answers where it is called, on a builder
     ; written or on the receiver of the member that calls it: the builder is evaluated, then its
-    ; argument, converted to its parameter's type. `append` checks the size can
-    ; grow, makes room for one more item and stores it after the last; `reserve` makes room for as
-    ; many items as it is given. Each then writes the storage, its capacity and the size in the
-    ; builder's header, where every copy of the builder reads them.
+    ; argument, converted to its parameter's type. `append` checks the size can grow, makes room for
+    ; one more item and stores it after the last; `reserve` makes room for as many items as it is
+    ; given. Each then writes the storage, its capacity and the size in the builder's header, where
+    ; every copy of the builder reads them.
     (let nothing (call make-operand .operand-void 0))
     (let fact (call own-call id))
     (let traces (call (. facts traces-of) (. unit reading) id))
@@ -3973,10 +3962,9 @@
     (param current BuilderItems)
     (param needed Operand)
     ; The storage of items kept in an arena, of its owner and incarnation, and its capacity, grown
-    ; where fewer items fit than are needed, as TypeScript grows a builder's: the capacity is
-    ; chosen, the bytes it takes reserved in the arena, zeroed and aligned to 16, and the items
-    ; held copied over, with what describes them where the arena traces them. What was reserved
-    ; before stays in the arena.
+    ; where fewer items fit than are needed: the capacity is chosen, the bytes it takes reserved in
+    ; the arena, zeroed and aligned to 16, and the items held copied over, with what describes them
+    ; where the arena traces them. What was reserved before stays in the arena.
     (let width (as (. ([] (. tables layouts rows) item) size) U64))
     (if (and traced (== (. ([] (. tables layouts rows) item) buffer) no-string))
       (call refuse .refused-type site)
@@ -4044,17 +4032,15 @@
     (param held Operand)
     (param items BuilderItems)
     (param size Operand)
-    ; Writes the storage of an arena's builder, its capacity and its size in its header, as
-    ; TypeScript writes them.
+    ; Writes the storage of an arena's builder, its capacity and its size in its header.
     (call store held 0 (. items storage) false site)
     (call store held 8 (. items capacity) false site)
     (call store held 16 size false site)
   )
   (fn-do _ finished-slot SlotId
     (param object SyntaxId)
-    ; The local or the argument a table is finished from, which TypeScript sets to the empty table
-    ; after: one a name reads. None for a table a call makes, which TypeScript sets nowhere; any
-    ; other place is refused.
+    ; The local or the argument a table is finished from, which is set to the empty table after: one
+    ; a name reads. None for a table a call makes, which is set nowhere; any other place is refused.
     (match? ([] (. tree nodes) object)
       (case .node-call-expression
         (return no-slot)
@@ -4129,10 +4115,10 @@
     (param row-layout LayoutId)
     (param value Operand)
     (param known U32 (= (. U32 max)))
-    ; `t.append(row)`, as TypeScript answers it: the table is checked to grow, room is made for one
-    ; more row, and the row is scattered into the columns at the end, plainly; the length is
-    ; counted on, and the answer is the row's index. A union known to hold one case, as
-    ; `wraps-case` finds it, is scattered as that case with no other tested.
+    ; `t.append(row)`: the table is checked to grow, room is made for one more row, and the row is
+    ; scattered into the columns at the end, plainly; the length is counted on, and the answer is
+    ; the row's index. A union known to hold one case, as `wraps-case` finds it, is scattered as
+    ; that case with no other tested.
     (let meta (call require-growable site table layout "append"))
     (let length (call header-word site (. meta header) 1))
     (call fail-if
@@ -4205,8 +4191,8 @@
     (param row-layout LayoutId)
     (param rows Operand)
     (param rows-type TypeId)
-    ; `t.extend(rows)`, as TypeScript answers it: each row of the array is appended in turn, each
-    ; with every check of `append`.
+    ; `t.extend(rows)`: each row of the array is appended in turn, each with every check of
+    ; `append`.
     (let array-layout (call layout-of rows-type site))
     (let data (call word-at site rows array-layout 0))
     (let size (call word-at site rows array-layout 1))
@@ -4241,8 +4227,8 @@
     (param table Operand)
     (param layout LayoutId)
     (param requested Operand)
-    ; `t.truncate(n)`, as TypeScript answers it: the table is checked to grow and to hold at least
-    ; as many rows; where it holds more, its views and marks are made stale and the length set.
+    ; `t.truncate(n)`: the table is checked to grow and to hold at least as many rows; where it
+    ; holds more, its views and marks are made stale and the length set.
     (let meta (call require-growable site table layout "truncate"))
     (let length (call header-word site (. meta header) 1))
     (call fail-if
@@ -4269,10 +4255,10 @@
     (param row TypeId)
     (param row-layout LayoutId)
     (param source Operand)
-    ; `t.copy-from(s)`, as TypeScript answers it: the table is checked to grow, and unless it is
-    ; the source itself, its views and marks are made stale and it is emptied; the source's
-    ; columns and length are read, checked where it grows, room made for its rows, and each
-    ; field's column copied over; the length is then the source's.
+    ; `t.copy-from(s)`: the table is checked to grow, and unless it is the source itself, its views
+    ; and marks are made stale and it is emptied; the source's columns and length are read, checked
+    ; where it grows, room made for its rows, and each field's column copied over; the length is
+    ; then the source's.
     (let meta (call require-growable site table layout "copy-from"))
     (let other (call part source layout 2 site))
     (let copying (call (. ir reserve-block)))
@@ -4319,9 +4305,8 @@
     (param site SyntaxId)
     (param table Operand)
     (param layout LayoutId)
-    ; `t.finish()`, as TypeScript answers it: the table is checked to grow, its columns and length
-    ; read, and its header sealed; the answer is the finished table of those columns and that
-    ; length.
+    ; `t.finish()`: the table is checked to grow, its columns and length read, and its header
+    ; sealed; the answer is the finished table of those columns and that length.
     (let type (call (. facts node-type) (. unit reading) site))
     (let finished-layout (call layout-of type site))
     (if (!= (call intrinsic type) .immutable-table)
@@ -4341,8 +4326,8 @@
     (param site SyntaxId)
     (param table Operand)
     (param layout LayoutId)
-    ; `t.view()`, as TypeScript answers it: the table is checked to grow, and the answer is the
-    ; finished table of its columns and its length now, which the table goes on growing apart from.
+    ; `t.view()`: the table is checked to grow, and the answer is the finished table of its columns
+    ; and its length now, which the table goes on growing apart from.
     (let type (call (. facts node-type) (. unit reading) site))
     (let viewed-layout (call layout-of type site))
     (if (!= (call intrinsic type) .immutable-table)
@@ -4361,10 +4346,9 @@
     (param layout LayoutId)
     (param mark Operand)
     (param mark-type TypeId)
-    ; `t.rewind(m)`, as TypeScript answers it: the table is checked to grow, and the mark to be of
-    ; this table, its arena and generation, with no row written since and no more rows than it
-    ; has now; the length and the use of the spill are then the mark's, and the shrink generation
-    ; is counted on.
+    ; `t.rewind(m)`: the table is checked to grow, and the mark to be of this table, its arena and
+    ; generation, with no row written since and no more rows than it has now; the length and the use
+    ; of the spill are then the mark's, and the shrink generation is counted on.
     (let mark-layout (call layout-of mark-type site))
     (let meta (call require-growable site table layout "rewind"))
     (let stale "Table mark is stale or belongs to another table")
@@ -4426,9 +4410,9 @@
     (param arena-type TypeId)
     (param mark Operand)
     (param mark-type TypeId)
-    ; `t.storage-checkpoint(arena, mark)`, as TypeScript answers it: the table is checked to grow,
-    ; to be held by the arena, and the mark to be the arena's mark now; the checkpoint holds the
-    ; table's identity, the mark, the arena's active bytes, and each word of the header.
+    ; `t.storage-checkpoint(arena, mark)`: the table is checked to grow, to be held by the arena,
+    ; and the mark to be the arena's mark now; the checkpoint holds the table's identity, the mark,
+    ; the arena's active bytes, and each word of the header.
     (let type (call (. facts node-type) (. unit reading) site))
     (let made-layout (call layout-of type site))
     (let arena-layout (call layout-of arena-type site))
@@ -4484,11 +4468,11 @@
     (param arena-type TypeId)
     (param mark-type TypeId)
     (param restores Bool)
-    ; `t.validate-storage-restore(c, arena, mark)` and `t.restore-storage(…)`, as TypeScript answers
-    ; them: the table is checked to grow, and the checkpoint to be of this table, its arena and
-    ; generation, at the arena's mark, with no row written since, the arena's active bytes not
-    ; fewer (or, to restore, the same), and no more rows than the table has now. Restoring then
-    ; gives the header each word the checkpoint holds, with its generations counted on.
+    ; `t.validate-storage-restore(c, arena, mark)` and `t.restore-storage(…)`: the table is checked
+    ; to grow, and the checkpoint to be of this table, its arena and generation, at the arena's
+    ; mark, with no row written since, the arena's active bytes not fewer (or, to restore, the
+    ; same), and no more rows than the table has now. Restoring then gives the header each word the
+    ; checkpoint holds, with its generations counted on.
     (let checkpoint-layout (call layout-of checkpoint-type site))
     (let arena-layout (call layout-of arena-type site))
     (let mark-layout (call layout-of mark-type site))
@@ -4658,11 +4642,11 @@
     (param layout LayoutId)
     (param slot U32)
     (param view TypeId)
-    ; A view of a field's column of a table or of a span of one, as TypeScript makes one: where
-    ; the column's data is from the first row, left out where the table grows, how many rows there
-    ; are, and what says whether the table can still be read, with the table's columns, the
-    ; field's place among them and the first row. That of a finished table is where its data is
-    ; and how many rows there are. A shared field of a table of unions is viewed in its own column.
+    ; A view of a field's column of a table or of a span of one: where the column's data is from the
+    ; first row, left out where the table grows, how many rows there are, and what says whether the
+    ; table can still be read, with the table's columns, the field's place among them and the first
+    ; row. That of a finished table is where its data is and how many rows there are. A shared field
+    ; of a table of unions is viewed in its own column.
     (let none (call make-operand .operand-void 0))
     (let row (call table-row-type type))
     (let view-layout (call layout-of view id))
@@ -4910,10 +4894,10 @@
     (param lhs SyntaxId)
     (param object SyntaxId)
     (param rhs SyntaxId)
-    ; A field of a row written in its column, as TypeScript writes it: the value is read, then the
-    ; row, and the value, converted to the field's type, is stored; where the table grows the
-    ; table is then checked and its mutation generation counted on. An assigning operator reads
-    ; the field through the row first, and the row is read again for the store.
+    ; A field of a row written in its column: the value is read, then the row, and the value,
+    ; converted to the field's type, is stored; where the table grows the table is then checked and
+    ; its mutation generation counted on. An assigning operator reads the field through the row
+    ; first, and the row is read again for the store.
     (if (!= (call table-op lhs) (. TableOp table-field))
       (call refuse .refused-statement id)
       (return (call Assignment))
@@ -5020,10 +5004,10 @@
     (param object SyntaxId)
     (param key SyntaxId)
     (param rhs SyntaxId)
-    ; `t[i] = v` of a table or of a span of one, as TypeScript stores it: the row is read, then the
-    ; table and the index, converted to one; the columns are found, the index checked against the
-    ; length, and the row, converted to the table's, has each field stored in its column; where the
-    ; table grows its mutation generation is then counted on.
+    ; `t[i] = v` of a table or of a span of one: the row is read, then the table and the index,
+    ; converted to one; the columns are found, the index checked against the length, and the row,
+    ; converted to the table's, has each field stored in its column; where the table grows its
+    ; mutation generation is then counted on.
     (if (!= (call table-op id) (. TableOp table-store))
       (call refuse .refused-statement id)
       (return)
@@ -5110,8 +5094,8 @@
     (param rhs SyntaxId)
     (param given Operand)
     (param given-type TypeId)
-    ; `t[i] = r` of a table of unions where `r` is a row of one: TypeScript copies the row's cells
-    ; rather than gathering it, then counts on the target's mutation generation.
+    ; `t[i] = r` of a table of unions where `r` is a row of one: the row's cells are copied rather
+    ; than gathered, then the target's mutation generation is counted on.
     (let union (call (. tables unions of) row))
     (if (== union (. U32 max))
       (call refuse .refused-statement id)
@@ -5195,8 +5179,8 @@
     (param value Operand)
     (param from TypeId)
     (param to TypeId)
-    ; A row of a table of unions made the base its cases share, as TypeScript builds it: each of
-    ; the base's fields read from the column the cases share for it.
+    ; A row of a table of unions made the base its cases share: each of the base's fields read from
+    ; the column the cases share for it.
     (let row (call table-row-type from))
     (let first (. ([] (call (. types cases-of) row) 0) type))
     (let layout (call layout-of to site))

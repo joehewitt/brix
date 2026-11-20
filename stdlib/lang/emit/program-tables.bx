@@ -629,10 +629,10 @@
   )
   (fn-expr + holds-environment Bool
     (param scope ScopeId)
-    ; Whether a run of the function of a scope makes an environment: for the locals it declares
-    ; that nested functions capture, or for the link alone where a nested function written in
-    ; it captures a local from further out. Each run of such a function is then told apart by
-    ; the functions it writes, as the reference tells them apart.
+    ; Whether a run of the function of a scope makes an environment: for the locals it declares that
+    ; nested functions capture, or for the link alone where a nested function written in it captures
+    ; a local from further out. Each run of such a function is then told apart by the functions it
+    ; writes.
     (or (!= ([] scope-captures scope) 0) (!= ([] scope-links scope) 0))
   )
   (fn-expr + is-turn-scope Bool
@@ -674,12 +674,12 @@
   (fn-expr + copies Bool
     (param instance InstanceId)
     (param slot SlotId)
-    ; Whether the body of a spawned task copies a name it captures where it is spawned. As
-    ; TypeScript's, it copies what the function that spawns it declares, where the value of a
-    ; lazy local is evaluated, and its receiver, and shares any other name with the functions
-    ; around it through the link its capture holds, a lazy local too, and a state machine's
-    ; projection, which it reads as the machine is when the body reads it. It copies the flags of a
-    ; machine the function keeps in a local, as it copies the local.
+    ; Whether the body of a spawned task copies a name it captures where it is spawned. It copies
+    ; what the function that spawns it declares, where the value of a lazy local is evaluated, and
+    ; its receiver, and shares any other name with the functions around it through the link its
+    ; capture holds, a lazy local too, and a state machine's projection, which it reads as the
+    ; machine is when the body reads it. It copies the flags of a machine the function keeps in a
+    ; local, as it copies the local.
     (case? (and (== (. ([] (. bindings slots) slot) kind) .slot-machine) (!= (. ([] (. bindings slots) slot) name text) "(active)"))
       false
     )
@@ -1603,8 +1603,8 @@
   (fn-expr + is-called-default Bool
     (param instance InstanceId)
     (param syntax SyntaxId)
-    ; Whether a call that leaves a parameter out evaluates its default there, by a function of
-    ; the default's own, as TypeScript does for a default that runs code and is no constant.
+    ; Whether a call that leaves a parameter out evaluates its default there, by a function of the
+    ; default's own: for a default that runs code and is no constant.
     (and (call default-runs-code instance syntax) (not (call is-constant-default instance (. owner tree) syntax)))
     (where
       (lazy owner ([] (. program modules) (. ([] (. instances rows) instance) module)))
@@ -1702,7 +1702,7 @@
     (param instance InstanceId)
     (param syntax SyntaxId)
     ; The key a metric of the profile is declared under: the one its probe is written with, or for a
-    ; grammar the counter the reference names for its results.
+    ; grammar the counter named for its results.
     (match? ([] (. ([] (. program modules) (. ([] (. instances rows) instance) module)) tree nodes) syntax)
       (case (call .node-probe-counter row)
         (return (. row key text))
@@ -1896,10 +1896,9 @@
   )
   (fn-do + fills-apart Bool
     (param instance InstanceId)
-    ; Whether a constructor runs its body in a function of its own, as the reference shares the body
-    ; among the styles the constructor is made for: one that fills its object with its class's
-    ; markup and raises no error. Its own function calls that one, then fills the object, so a
-    ; panic in the body shows both.
+    ; Whether a constructor runs its body in a function of its own: one that fills its object with
+    ; its class's markup and raises no error. Its own function calls that one, then fills the
+    ; object, so a panic in the body shows both.
     (if (or (== (call (. facts filler-of) instance) no-fact) (!= (. ([] (. instances signatures) instance) errors count) 0))
       (return false)
     )
@@ -2584,12 +2583,12 @@
   (fn-do _ mark-copies _
     (param bound Binding)
     (param shared (of CPointer U8))
-    ; Marks the slots of a binding that only the bodies of spawned tasks and of `do without gc` blocks
-    ; capture, as a local, an argument, the item of a loop or the receiver. Every nested function
-    ; between a reference and the declaration records what it captures, so the outermost task copies the
-    ; slot where it is spawned and the tasks inside it share that copy through their links, as the
-    ; reference does; any other capture shares the slot. A binding where a lazy local is captured shares
-    ; all it captures, since what the value reads is reached from wherever it is first read.
+    ; Marks the slots of a binding that only the bodies of spawned tasks and of `do without gc`
+    ; blocks capture, as a local, an argument, the item of a loop or the receiver. Every nested
+    ; function between a reference and the declaration records what it captures, so the outermost
+    ; task copies the slot where it is spawned and the tasks inside it share that copy through their
+    ; links; any other capture shares the slot. A binding where a lazy local is captured shares all
+    ; it captures, since what the value reads is reached from wherever it is first read.
     (for (in offset (..< 0 (. bound slots count)))
       (let row ([] (. bindings slots) (+ (. bound slots start) offset)))
       (if (and (== (. row kind) .slot-lazy) (!= (/and/ (. row flags) (. SlotFlag slot-captured)) 0))
@@ -4048,17 +4047,15 @@
   )
   (fn-do _ fill-witnesses Bool
     (param kinds (of CPointer U32))
-    ; Brings what the witness tables hold into the emitted set, and says whether there was
-    ; anything new to bring: the table of each class the program constructs that is derived
-    ; from one converted, and for each table and each prototype of its interface or of one
-    ; that is derived from, the function the type pass found for the type. A prototype the
-    ; type pass found none for has no shape. The interface's own function fills the slot as it
-    ; is, but in the section of an interface the table's own is derived from, where a function
-    ; runs it as the type does: the frames the reference's stack traces have. A pair of a table
-    ; and a prototype is settled the first time it is met, so each pass meets only the pairs
-    ; that a table or a prototype added since the last one makes, in the order a pass over all
-    ; of them would, and of those only the pairs where the prototype is of a section of the
-    ; table.
+    ; Brings what the witness tables hold into the emitted set, and says whether there was anything
+    ; new to bring: the table of each class the program constructs that is derived from one
+    ; converted, and for each table and each prototype of its interface or of one that is derived
+    ; from, the function the type pass found for the type. A prototype the type pass found none for
+    ; has no shape. The interface's own function fills the slot as it is, but in the section of an
+    ; interface the table's own is derived from, where a function runs it as the type does. A pair
+    ; of a table and a prototype is settled the first time it is met, so each pass meets only the
+    ; pairs that a table or a prototype added since the last one makes, in the order a pass over all
+    ; of them would, and of those only the pairs where the prototype is of a section of the table.
     (if (and tables-filled (== filled-prototypes (. prototypes length)) (== filled-classes class-count))
       (return false)
     )
@@ -4588,12 +4585,11 @@
   )
   (fn-do _ declare-projection-remaps _
     ; A constant table of bytes for each style-sheet projection that gives a union's cases new
-    ; numbers, as the reference's `styleProjectionRemapValue` lays one down: the number of the
-    ; property's case for each of the slot's. The tables are numbered, and the runtime registers each
-    ; by its number, in the order of what first names them: the declarations of markup elements by
-    ; the stable keys of their instances and their sites, then the lines of style rules by the
-    ; applications that bind their slots (`application-order`) and their sites, so that the numbers
-    ; are the same in any typing order.
+    ; numbers: the number of the property's case for each of the slot's. The tables are numbered,
+    ; and the runtime registers each by its number, in the order of what first names them: the
+    ; declarations of markup elements by the stable keys of their instances and their sites, then
+    ; the lines of style rules by the applications that bind their slots (`application-order`) and
+    ; their sites, so that the numbers are the same in any typing order.
     (for (in _ (..< 0 (. facts style-projections length)))
       (+= remap-symbols no-string)
       (+= remap-numbers (. U32 max))
@@ -4711,9 +4707,9 @@
   (fn-do _ same-plan Bool
     (param left ForwardFact)
     (param right ForwardFact)
-    ; Whether two members a union forwards are one to TypeScript: the same member of the same
-    ; union, given arguments, or a setter a value, of the same types, by the same calls of its
-    ; cases, giving the same type.
+    ; Whether two members a union forwards are one: the same member of the same union, given
+    ; arguments, or a setter a value, of the same types, by the same calls of its cases, giving the
+    ; same type.
     (if (or (!= (. left value) (. right value)) (!= (call union-of left) (call union-of right)) names-differ)
       (return false)
     )
@@ -5014,7 +5010,7 @@
     (param decl DeclId)
     (param enclosing InstanceId)
     ; Where a closure is written, as `decl-place` says, but for the function that runs a live
-    ; declaration again, which the reference writes where the declaration's value is first read.
+    ; declaration again, which is written where the declaration's value is first read.
     (match? ([] (. ([] (. program modules) module) decls) decl)
       (case (call .decl-function fn)
         (if (== (. fn kind) .live-decl)
@@ -5122,10 +5118,10 @@
     (/xor/ (call pair-key decl enclosing) (/lshift/ (as module Size) 56))
   )
   (fn-do _ declare-stream-actions _
-    ; Declares the function the reference runs an action of a grammar in, for each such
-    ; action of an emitted instance that may panic, which the function shows. It is named
-    ; `stream-action`, and `number-made` numbers it. One the type pass is not sure the reference
-    ; runs so is refused. They are declared in the order of their instances' ranks.
+    ; Declares the function an action of a grammar runs in, for each such action of an emitted
+    ; instance that may panic, which the function shows. It is named `stream-action`, and
+    ; `number-made` numbers it. One the type pass is not sure runs so is refused. They are declared
+    ; in the order of their instances' ranks.
     (let keys (list U64))
     (for (in row (. facts outlined))
       (+= keys (call rank-key (. row instance) (. row arm)))
@@ -5150,19 +5146,18 @@
   )
   (fn-do _ declare-machine-handlers _
     ; Declares, for each group of event transitions of an emitted state machine, the functions its
-    ; subscriber runs, as the reference makes them: the handler, `state-transition`, which
-    ; `number-made` numbers; the cast of it to the subscriber, named after it with `Casting`; and
-    ; the function the subscriber's value calls, `StateTransitionActivation`, which runs the cast
-    ; while the activation that subscribed is current. A group on a stream that is no event has the
-    ; function its broadcaster is given instead, `StateTransitionDeferral`, which gives the
-    ; activation to the event runtime's queue. Each is given the machine's environment through the
-    ; record of its activation, laid out once: the environment, whether the activation is current,
-    ; and whether it subscribed. A group on a stream that is only iterable, whose items the handler
-    ; is given directly, has the handler alone. A machine merged with others, one that refines
-    ; another or that another refines, has its part, the function the others call
-    ; (`emit-machine-part`). One a class's property holds has the function that stops it, which
-    ; the object's `close` runs (`stops-at-close`). The machines are taken in the order of their
-    ; instances' ranks.
+    ; subscriber runs: the handler, `state-transition`, which `number-made` numbers; the cast of it
+    ; to the subscriber, named after it with `Casting`; and the function the subscriber's value
+    ; calls, `StateTransitionActivation`, which runs the cast while the activation that subscribed
+    ; is current. A group on a stream that is no event has the function its broadcaster is given
+    ; instead, `StateTransitionDeferral`, which gives the activation to the event runtime's queue.
+    ; Each is given the machine's environment through the record of its activation, laid out once:
+    ; the environment, whether the activation is current, and whether it subscribed. A group on a
+    ; stream that is only iterable, whose items the handler is given directly, has the handler
+    ; alone. A machine merged with others, one that refines another or that another refines, has its
+    ; part, the function the others call (`emit-machine-part`). One a class's property holds has the
+    ; function that stops it, which the object's `close` runs (`stops-at-close`). The machines are
+    ; taken in the order of their instances' ranks.
     (let keys (list U64))
     (for (in machine (. facts machines))
       (+= keys (call rank-key (. machine instance) (. machine syntax)))
@@ -5219,15 +5214,15 @@
     )
   )
   (fn-do _ declare-pattern-arguments _
-    ; Declares the function a pattern given to a rule is passed as, for each such pattern an
-    ; emitted instance writes: one made of the pattern where it is written, which the reference
-    ; names `static-inline-match-direct`; and, for a call of a rule written alone, one that runs
-    ; the rule's function, which the reference names after it with `Casting`. `number-made`
-    ; numbers both. Each writes the panic signal, as the rule it is passed to calls it through the value
-    ; it holds and checks every such call. One made of a pattern that is given what names hold
-    ; reads them from memory laid out here, which the function it is written in fills where it
-    ; passes the pattern; one that runs a local rule of a rule may panic where the rule may. They
-    ; are declared in the order of their instances' ranks, then of where the patterns are written.
+    ; Declares the function a pattern given to a rule is passed as, for each such pattern an emitted
+    ; instance writes: one made of the pattern where it is written, named
+    ; `static-inline-match-direct`; and, for a call of a rule written alone, one that runs the
+    ; rule's function, named after it with `Casting`. `number-made` numbers both. Each writes the
+    ; panic signal, as the rule it is passed to calls it through the value it holds and checks every
+    ; such call. One made of a pattern that is given what names hold reads them from memory laid out
+    ; here, which the function it is written in fills where it passes the pattern; one that runs a
+    ; local rule of a rule may panic where the rule may. They are declared in the order of their
+    ; instances' ranks, then of where the patterns are written.
     (let keys (list U64))
     (for (in row (. facts pattern-arguments))
       (+= keys (call rank-key (. row instance) (. row syntax)))
@@ -5255,11 +5250,10 @@
     )
   )
   (fn-do _ declare-growths _
-    ; Declares the functions that grow the storage of a table in its arena, as the reference
-    ; keeps growth out of the functions that append, in `cold-storage-rows` and
-    ; `cold-storage-spill`: for each type of row a table holds, one that grows its rows, and for
-    ; a union that keeps bytes outside its rows, one that grows those. Neither panics: each
-    ; answers the message of what failed, or nothing.
+    ; Declares the functions that grow the storage of a table in its arena, keeping growth out of
+    ; the functions that append, in `cold-storage-rows` and `cold-storage-spill`: for each type of
+    ; row a table holds, one that grows its rows, and for a union that keeps bytes outside its rows,
+    ; one that grows those. Neither panics: each answers the message of what failed, or nothing.
     (for (in id (. types ranked))
       (let row (call table-row types id))
       (if (or (== row no-type) (!= ([] growth-rows (* (as row Size) 2)) null) (== ([] (. layouts values) row) no-layout))
@@ -5306,15 +5300,15 @@
   )
   (fn-do _ declare-lazy-rules _
     ; Declares the function a local rule of a rule a module declares runs in: one for each local
-    ; rule that calls itself, one for each that `shared-lazy-rules` finds too large to copy where
-    ; it is called, and, where the rule raises errors, one for each local rule it calls. Any other
-    ; runs where it is called, as one does where the rule may panic, whose stack trace then shows
-    ; the rule. A local rule beside a match that calls itself
-    ; runs where a pattern calls it too, as the reference's does, and has two functions for the
-    ; calls its own arms make: one given the stream, which a call from its arms calls, and the
-    ; one its arms run in, which that one calls on the stream's view. It has them only where it
-    ; reads nothing they could not hold, as `reads-own` says, and is refused where it is called
-    ; otherwise. Those beside a match are declared in the order of their instances' ranks.
+    ; rule that calls itself, one for each that `shared-lazy-rules` finds too large to copy where it
+    ; is called, and, where the rule raises errors, one for each local rule it calls. Any other runs
+    ; where it is called, as one does where the rule may panic, whose stack trace then shows the
+    ; rule. A local rule beside a match that calls itself runs where a pattern calls it too, and has
+    ; two functions for the calls its own arms make: one given the stream, which a call from its
+    ; arms calls, and the one its arms run in, which that one calls on the stream's view. It has
+    ; them only where it reads nothing they could not hold, as `reads-own` says, and is refused
+    ; where it is called otherwise. Those beside a match are declared in the order of their
+    ; instances' ranks.
     (for (in owner (. instances ordered))
       (if (== ([] instance-functions owner) no-function)
         (continue)
@@ -5551,12 +5545,12 @@
     (return rules)
   )
   (fn-do _ declare-mapped-rules _
-    ; Declares a function of a rule for each set of collectors calls of it give it, as the
-    ; reference compiles one for each: of a rule a module declares, and of a local rule of one
-    ; that runs as a function of its own. Notes each such local rule a call given no collectors
-    ; reads the value of: any but one the type pass planned to give the text it matched. A rule a
-    ; module declares that a call the type pass planned so runs has a function with no collectors,
-    ; which makes no text of what its arms matched.
+    ; Declares a function of a rule for each set of collectors calls of it give it: of a rule a
+    ; module declares, and of a local rule of one that runs as a function of its own. Notes each
+    ; such local rule a call given no collectors reads the value of: any but one the type pass
+    ; planned to give the text it matched. A rule a module declares that a call the type pass
+    ; planned so runs has a function with no collectors, which makes no text of what its arms
+    ; matched.
     (for (in caller (. instances ordered))
       (if (== ([] instance-functions caller) no-function)
         (continue)
@@ -5749,7 +5743,7 @@
   (fn-do _ name-function _
     (param id FunctionId)
     ; Names a function: its symbol, made from a key no other function has, which names the instance
-    ; it runs by its stable key, and the name a stack trace shows, as the reference names it.
+    ; it runs by its stable key, and the name a stack trace shows.
     (let function ([] functions id))
     (let module-name (. ([] (. program modules) (. function module)) name))
     (let key "main")
@@ -6345,9 +6339,9 @@
   )
   (fn-do _ declare-live-adapter _
     (param target FunctionId)
-    ; The function a live action calls to run a function again, through the callback the
-    ; action holds, as the reference casts the function to the callback's type: it follows the
-    ; function it calls, and is given the data the callback holds.
+    ; The function a live action calls to run a function again, through the callback the action
+    ; holds, casting the function to the callback's type: it follows the function it calls, and is
+    ; given the data the callback holds.
     (let id FunctionId (as (. functions length) FunctionId))
     (call (. functions append) (call unnamed-function .live-adapter no-instance (. ([] functions target) module) 4))
     (= (. ([] functions id) place) target)
@@ -6584,15 +6578,15 @@
   )
   (fn-do _ keep-reached-styles _
     (param kinds (of CPointer U32))
-    ; Keeps the styles a function the program reaches uses, as the reference registers only those
-    ; of the code it compiles: each is placed at the first place such a function uses it, a
-    ; constructor's declaration before any other, and they are numbered again in the source order
-    ; of those places (`style-before`), before those no such function uses, which are not
-    ; registered. So are the style sheets, those no such function uses after the others, by the keys
-    ; of their types (`sheet-order`), so that a sheet's number is the same in any typing order
-    ; (`sheet-number`). An instance compiled into the frame of one the program reaches, as a
-    ; property's first value is, counts as reached. A style rule's declarations are written where the rule is applied, so the
-    ; instance that types a rule counts as reached where one that applies it is.
+    ; Keeps the styles a function the program reaches uses: each is placed at the first place such a
+    ; function uses it, a constructor's declaration before any other, and they are numbered again in
+    ; the source order of those places (`style-before`), before those no such function uses, which
+    ; are not registered. So are the style sheets, those no such function uses after the others, by
+    ; the keys of their types (`sheet-order`), so that a sheet's number is the same in any typing
+    ; order (`sheet-number`). An instance compiled into the frame of one the program reaches, as a
+    ; property's first value is, counts as reached. A style rule's declarations are written where
+    ; the rule is applied, so the instance that types a rule counts as reached where one that
+    ; applies it is.
     (= carried (call (of (. arena allocate) Byte) (+ (. instances length) 1)))
     (for (in position (..< 0 (. instances length)))
       (= ([] carried position) (if-expr (!= ([] kinds position) (. Reach none)) 1 0))
@@ -7286,9 +7280,9 @@
     ; A function for each rule an element applies `shared`, once for each class of object and rule
     ; and the rules it comes to apply there, which the style sheets the element sees may choose,
     ; which declares what the rule declares for the object it is given, in the module of the rule,
-    ; named as the reference's `style-rule` functions are. Each such application by an instance the
-    ; program carries (`keep-reached-styles`) calls it (`rule-function-of`). The applications are
-    ; taken in the order `application-order` gives them.
+    ; named `style-rule`. Each such application by an instance the program carries
+    ; (`keep-reached-styles`) calls it (`rule-function-of`). The applications are taken in the order
+    ; `application-order` gives them.
     (let shared (list U32))
     (for (in index (..< 0 (. facts style-applications length)))
       (let application ([] (. facts style-applications) index))
@@ -7442,9 +7436,9 @@
     (return true)
   )
   (fn-do _ declare-static-values _
-    ; A function for each row of `style-static-values`, which evaluates the value once for the
-    ; style runtime and gives its bits, in the module that writes it, named as the reference's
-    ; `style-static-value` functions are numbered and declared in source order.
+    ; A function for each row of `style-static-values`, which evaluates the value once for the style
+    ; runtime and gives its bits, in the module that writes it, named `style-static-value`, numbered
+    ; and declared in source order.
     (let rows (list U32))
     (for (in index (..< 0 (. facts style-static-values length)))
       (+= rows (as index U32))
@@ -7540,13 +7534,12 @@
     (return (. Comparison equal))
   )
   (fn-do _ declare-style-registrations _
-    ; The functions that register the styles the program uses, as the reference makes them: one
-    ; for each style, in the order the styles are numbered, made in the style's module and named
-    ; `style-register-impl`, numbered from the second. Its code is placed at the declaration of the
-    ; constructor that first used the style, which a stack trace names the file of. The init of
-    ; the style's module calls it. So for each style sheet registered, named
-    ; `style-sheet-register-impl` and placed at the declaration that first took the value of one of
-    ; its slots.
+    ; The functions that register the styles the program uses: one for each style, in the order the
+    ; styles are numbered, made in the style's module and named `style-register-impl`, numbered from
+    ; the second. Its code is placed at the declaration of the constructor that first used the
+    ; style, which a stack trace names the file of. The init of the style's module calls it. So for
+    ; each style sheet registered, named `style-sheet-register-impl` and placed at the declaration
+    ; that first took the value of one of its slots.
     (for (in index (..< 0 (. style-uses length)))
       (let use ([] style-uses index))
       (if (not (. use registered))
@@ -7707,14 +7700,13 @@
     (= ([] keys (+ (* index 2) 1)) declared)
   )
   (fn-do _ declare-event-handlers _
-    ; The functions for the sections that classes the program constructs run from their tables, as
-    ; the reference makes them: one for each section, whichever classes run it, named for the class
-    ; that writes it and the event and numbered from the second so named; one for each class, which
-    ; says whether an object is of it; and one for each module of such a class, which puts them in
-    ; the event runtime's tables as the module starts. A section on an event that is not live has
-    ; none. They are taken by the rank of the first constructor of each class, and a class's in the
-    ; order they were planned, base first, so the order is the same however the classes were typed
-    ; (`lowered-order`).
+    ; The functions for the sections that classes the program constructs run from their tables: one
+    ; for each section, whichever classes run it, named for the class that writes it and the event
+    ; and numbered from the second so named; one for each class, which says whether an object is of
+    ; it; and one for each module of such a class, which puts them in the event runtime's tables as
+    ; the module starts. A section on an event that is not live has none. They are taken by the rank
+    ; of the first constructor of each class, and a class's in the order they were planned, base
+    ; first, so the order is the same however the classes were typed (`lowered-order`).
     (let keys (list U64))
     (for (in index (..< 0 (. facts lowered-handlers length)))
       (+= lowered-functions no-function)
@@ -7815,11 +7807,11 @@
   )
   (fn-do _ declare-machine-descriptors _
     ; Declares, for each group of a state machine's event transitions that the event runtime runs
-    ; from the table of a class the program constructs, as the reference makes them: the function
-    ; the table runs, given the object and what was published, which gives the group's activation
-    ; to the event runtime's queue where the object holds one; and the functions that say whether
-    ; an object is of the class and that put them in the event runtime's tables as the module of the
-    ; class starts. A group on an event that is not live has none.
+    ; from the table of a class the program constructs: the function the table runs, given the
+    ; object and what was published, which gives the group's activation to the event runtime's queue
+    ; where the object holds one; and the functions that say whether an object is of the class and
+    ; that put them in the event runtime's tables as the module of the class starts. A group on an
+    ; event that is not live has none.
     ; Machines are taken by the rank of the instance each is written in, so the order is the same
     ; however they were typed.
     (let keys (list U64))
@@ -8448,15 +8440,14 @@
     (param decl DeclId)
     (param property PropertyDecl)
     (param kind GlobalKind)
-    ; Gives a global each task, or each thread, holds its own of a place in the memory of every
-    ; task or thread, and a function that stores its first value there: the value written, or
-    ; with none the first value of its type, which for a named tuple or struct is made from its
-    ; fields. One `do with` binds has a slot in the memory of every task, `{bound, value}`, and a
-    ; function only where a value is written, which binds it. Only one a function uses is kept,
-    ; as TypeScript makes the value of one where it first compiles a use; one the type pass
+    ; Gives a global each task, or each thread, holds its own of a place in the memory of every task
+    ; or thread, and a function that stores its first value there: the value written, or with none
+    ; the first value of its type, which for a named tuple or struct is made from its fields. One
+    ; `do with` binds has a slot in the memory of every task, `{bound, value}`, and a function only
+    ; where a value is written, which binds it. Only one a function uses is kept; one the type pass
     ; typed, whose value lets no error out, and that the collector can describe where it holds
-    ; managed pointers. A panic while the first value of one each thread holds is made is
-    ; reported by `threadinit`, which ends the process. Its unit is kept as its `owner`.
+    ; managed pointers. A panic while the first value of one each thread holds is made is reported
+    ; by `threadinit`, which ends the process. Its unit is kept as its `owner`.
     (let place (+ ([] storage-starts module) decl))
     (if (== ([] local-firsts place) (. U32 max))
       (return)
@@ -8719,9 +8710,8 @@
     (param instance InstanceId)
     (param source AST)
     (param syntax SyntaxId)
-    ; Whether a default is a constant as TypeScript tells one: a number, a text, a symbol, a truth,
-    ; null, an operator on one of those, or a value of an enum or a case of a union named on its
-    ; type.
+    ; Whether a default is a constant: a number, a text, a symbol, a truth, null, an operator on one
+    ; of those, or a value of an enum or a case of a union named on its type.
     (match? ([] (. source nodes) syntax)
       (case .node-integer-syntax
         (return true)
@@ -9007,15 +8997,14 @@
   )
   (fn-do _ settle-events _
     (param kinds (of CPointer U32))
-    ; Settles which events are live, as the reference does, and numbers them in the order they are
-    ; first used, the uses taken in the order `use-order` gives them rather than the one typing
-    ; reached them in. An event is live where an emitted function makes it a `Broadcastable`, or
-    ; where one publishes to it and one subscribes to it. The subscriber of a loop on an event counts
-    ; for neither until that event is live. An event that is not live is never touched: a write
-    ; to it, and a loop on it, evaluate only the object. The first publish an emitted function writes
-    ; is where the counts of events are declared, and those it writes to an event that is not live, or
-    ; that a function not active writes, are counted as erased, as the reference counts the sites it
-    ; erases.
+    ; Settles which events are live, and numbers them in the order they are first used, the uses
+    ; taken in the order `use-order` gives them rather than the one typing reached them in. An event
+    ; is live where an emitted function makes it a `Broadcastable`, or where one publishes to it and
+    ; one subscribes to it. The subscriber of a loop on an event counts for neither until that event
+    ; is live. An event that is not live is never touched: a write to it, and a loop on it, evaluate
+    ; only the object. The first publish an emitted function writes is where the counts of events
+    ; are declared, and those it writes to an event that is not live, or that a function not active
+    ; writes, are counted as erased.
     (let count (. instances length))
     (let active (call (of (. arena allocate) Byte) (+ count 1)))
     (for (in position (..< 0 count))
@@ -9271,10 +9260,9 @@
     ; after the head of its record and before the flush, after the group a record of a group opens
     ; or closes. A counter is numbered where its key is first written, then the counts the compiler
     ; keeps of what events do, and of what the collector did, where they compile, after every other.
-    ; A metric of the profile is numbered apart, among `profile-metrics`. The class of each
-    ; value of a class or an array is kept as it is first found, as the reference declares one for
-    ; every value it casts for a probe, and so are the keys of the logs and the groups the emitted
-    ; instances write, whether or not their probes compile.
+    ; A metric of the profile is numbered apart, among `profile-metrics`. The class of each value of
+    ; a class or an array is kept as it is first found, and so are the keys of the logs and the
+    ; groups the emitted instances write, whether or not their probes compile.
     (if (not (call compiles-probes))
       (return)
     )
@@ -9383,8 +9371,8 @@
   (fn-do _ declare-event-counts _
     (param counters (of Map String U32))
     ; Numbers the counts the compiler keeps of what events do, where their metrics compile and the
-    ; program publishes an event or queues a machine's handler, as the reference declares them all where
-    ; it first does one. A key a counter written in the source has keeps the number it has.
+    ; program publishes an event or queues a machine's handler: all of them, where it first does
+    ; one. A key a counter written in the source has keeps the number it has.
     (if (or (not (call (. program probes compiles-metrics) "event")) (not (call counts-events)))
       (return)
     )
@@ -11891,9 +11879,9 @@
   )
   (fn-do _ instance-display String
     (param instance InstanceId)
-    ; The name a stack trace prints for an instance's function, as the TypeScript compiler
-    ; spells it: the module, the owner when there is one, and the function's own name; the
-    ; function that fills an object with the markup of a class is `content`, numbered.
+    ; The name a stack trace prints for an instance's function: the module, the owner when there is
+    ; one, and the function's own name; the function that fills an object with the markup of a class
+    ; is `content`, numbered.
     (let row ([] (. instances rows) instance))
     (let owner-module ([] (. program modules) (. row module)))
     (let prefix (. owner-module name))
@@ -12026,10 +12014,9 @@
     (return null)
   )
   (fn-do _ number-converters _
-    ; Numbers the converters that share a name as TypeScript claims their names when it declares
-    ; them: module by module in the order it declares them, and in each in the order they are
-    ; written. A name claimed already takes the next number after the last that name took that no
-    ; name has.
+    ; Numbers the converters that share a name as their names are claimed: module by module in the
+    ; order the program declares them, and in each in the order they are written. A name claimed
+    ; already takes the next number after the last that name took that no name has.
     (let next (map String U32))
     (let claimed (map String Bool))
     (for (in module (. program declare-order))
@@ -12055,7 +12042,7 @@
   (fn-do _ type-name String
     (param tree AST)
     (param syntax SyntaxId)
-    ; A type as TypeScript's `getTypeName` writes it in the name of a converter.
+    ; A type as it is written in the name of a converter.
     (if (== syntax 0)
       (return "")
     )
@@ -12409,9 +12396,9 @@
 
 (type + EventCount (is U32)
   ; A count the compiler keeps of what events do, under the counter `event-counts` numbers at its
-  ; place, as the reference keeps one wherever an event is published, made a stream or handled by a
-  ; machine: the compiler adds to the publishes, the publish sites never reached, the publishes
-  ; nothing listens to and the payloads made, and the event runtime's own counters to the rest.
+  ; place, kept wherever an event is published, made a stream or handled by a machine: the compiler
+  ; adds to the publishes, the publish sites never reached, the publishes nothing listens to and the
+  ; payloads made, and the event runtime's own counters to the rest.
   (blank)
   (variant publish-attempts (= 0))
   (variant publish-sites-erased (= 1))
@@ -12431,27 +12418,26 @@
 
 (type + EmittedFunction (is Struct)
   ; A function the object holds. `name` is its key text, `symbol` the linker's name for it, and
-  ; `display` the name a stack trace prints. `calls` are the functions a generated body calls,
-  ; in order. `may-panic` says a call of it has a landing pad, and `carries` that it is made as
-  ; one that may return a panic although it raises none, because a class table holds it or it
-  ; suspends. `polls` says its body has a loop that polls, or a rule it runs first does: it
-  ; returns the panic a poll can raise, and no call of it has a landing pad for that.
-  ; `unplaced` says a stack trace through it may not be the reference's, by more than a number
-  ; in a name: one that may panic is refused. `placeless` says a stack trace names no place for
-  ; its code. `site-module` is the module whose file a stack trace names for its code, where that
-  ; is not the module it is made in.
-  ; The function of a lazy property has no instance: `type` is the class that writes the
-  ; property's value and `place` the property's place among all properties. The functions
-  ; that give a module's globals their values have none either, and `place` is the storage of
-  ; the global a lazy one's function evaluates. The function of a default a call evaluates has
-  ; the default's storage as its `place`. The function that grows a table's storage has none:
-  ; `type` is the type of the table's rows, and `place` is 0 for the rows and 1 for the outside
-  ; bytes of a union's. `bridge-display` is the name a stack trace prints for
-  ; the function of a member that runs on a row's case where it is built as a bridge to the
-  ; member's instance on the case. One made for a row of style facts that typing fills in the
-  ; order it reaches instances, a value written once, a gate, a state cell, a slot forward, an
-  ; author or a shared rule, is named by its `number`, its place among those of its kind in an
-  ; order that does not depend on that one.
+  ; `display` the name a stack trace prints. `calls` are the functions a generated body calls, in
+  ; order. `may-panic` says a call of it has a landing pad, and `carries` that it is made as one
+  ; that may return a panic although it raises none, because a class table holds it or it suspends.
+  ; `polls` says its body has a loop that polls, or a rule it runs first does: it returns the panic
+  ; a poll can raise, and no call of it has a landing pad for that.
+  ; `unplaced` says a stack trace through it may not be right, by more than a number in a name: one
+  ; that may panic is refused. `placeless` says a stack trace names no place for its code.
+  ; `site-module` is the module whose file a stack trace names for its code, where that is not the
+  ; module it is made in.
+  ; The function of a lazy property has no instance: `type` is the class that writes the property's
+  ; value and `place` the property's place among all properties. The functions that give a module's
+  ; globals their values have none either, and `place` is the storage of the global a lazy one's
+  ; function evaluates. The function of a default a call evaluates has the default's storage as its
+  ; `place`. The function that grows a table's storage has none: `type` is the type of the table's
+  ; rows, and `place` is 0 for the rows and 1 for the outside bytes of a union's. `bridge-display`
+  ; is the name a stack trace prints for the function of a member that runs on a row's case where it
+  ; is built as a bridge to the member's instance on the case. One made for a row of style facts
+  ; that typing fills in the order it reaches instances, a value written once, a gate, a state cell,
+  ; a slot forward, an author or a shared rule, is named by its `number`, its place among those of
+  ; its kind in an order that does not depend on that one.
   (blank)
   (prop + kind FunctionKind)
   (prop + instance InstanceId)
@@ -12484,13 +12470,12 @@
 )
 
 (type + RuleMapping (is Struct)
-  ; A set of collectors calls of a rule give it, for which the reference compiles a function of
-  ; the rule of its own: the instance whose rule or local rule it is, the local rule's
-  ; declaration or none for the rule a module declares, the rule's names the collectors are
-  ; given for in the order written, joined by commas, and the function made for them. No call
-  ; that runs such a function reads what the rule gives, so it makes no text of what its arms
-  ; matched. Calls of a rule a module declares that give no collectors and read nothing it gives
-  ; have one too, whose names are none.
+  ; A set of collectors calls of a rule give it, for which a function of the rule of its own is
+  ; made: the instance whose rule or local rule it is, the local rule's declaration or none for the
+  ; rule a module declares, the rule's names the collectors are given for in the order written,
+  ; joined by commas, and the function made for them. No call that runs such a function reads what
+  ; the rule gives, so it makes no text of what its arms matched. Calls of a rule a module declares
+  ; that give no collectors and read nothing it gives have one too, whose names are none.
   (blank)
   (prop + instance InstanceId)
   (prop + rule SyntaxId)

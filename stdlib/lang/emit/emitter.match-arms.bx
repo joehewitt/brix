@@ -1536,10 +1536,9 @@
   )
   (fn-do _ gathered-at U32
     (param cursor U32)
-    ; Where among `case-gathers` the newest gather of the case a name stands for that dominates
-    ; the block being emitted is, or `U32.max` where none does. In the body of a loop with a
-    ; header only one made in the same block does, as TypeScript, which joins the blocks of such a
-    ; loop to the function only once its body is emitted, finds no other to dominate there.
+    ; Where among `case-gathers` the newest gather of the case a name stands for that dominates the
+    ; block being emitted is, or `U32.max` where none does. In the body of a loop with a header only
+    ; one made in the same block does.
     (let headed (call in-headed-loop))
     (let position (. case-gathers length))
     (while (!= position 0)
@@ -1605,8 +1604,8 @@
     (param row Operand)
     (param type TypeId)
     ; Where the row a pattern tests is read: the columns and the index the subject `t[i]` of the
-    ; match found and checked, as TypeScript reads its cursor, and else those of the row's value,
-    ; its table checked again where it grows.
+    ; match found and checked, and else those of the row's value, its table checked again where it
+    ; grows.
     (if (and (. matching checks-row) (== row (. matching checked-row)) (!= (. matching checked-made) (. U32 max)))
       (let cursor (. ([] made-rows (. matching checked-made)) cursor))
       (return (call TableCursor (. cursor columns) (. cursor index) (call no-meta)))
@@ -1672,11 +1671,11 @@
     (param cursor U32)
     (param field UnionField)
     (param rhs SyntaxId)
-    ; A field of the case of a row a name stands for written in its cell, as TypeScript writes it:
-    ; the value is read, converted to the field's type and stored; where the table grows the
-    ; table is checked first and its mutation generation counted on after, unless the row's
-    ; storage was checked where the case was read. An assigning operator reads the field through
-    ; the row first. A row of a finished table is not written.
+    ; A field of the case of a row a name stands for written in its cell: the value is read,
+    ; converted to the field's type and stored; where the table grows the table is checked first and
+    ; its mutation generation counted on after, unless the row's storage was checked where the case
+    ; was read. An assigning operator reads the field through the row first. A row of a finished
+    ; table is not written.
     (if (!= (call intrinsic (. ([] case-cursors cursor) type)) .table-row)
       (call refuse .refused-statement id)
       (return (call Assignment))
@@ -1936,13 +1935,13 @@
     (param value Typed)
     (param failed IRBlockId)
     ; Converts a value as a type named as a pattern records, where the value passes the test the
-    ; conversion's kind makes: a union holds the case, an object is of the class. A value that
-    ; fails it does not match. A union matches text only where it holds the case the type pass
-    ; picked for text, though cast to text it gives the text of any case. A case that holds text
-    ; gives its text as it is, and any other case is cast to text. A value of an
-    ; interface is of the type it holds. TypeScript never matches a value that is no object cast
-    ; up. A value already of the type asked for passes as it is, but an object tested for its
-    ; class alone, which may be of a class derived from the one it is known by.
+    ; conversion's kind makes: a union holds the case, an object is of the class. A value that fails
+    ; it does not match. A union matches text only where it holds the case the type pass picked for
+    ; text, though cast to text it gives the text of any case. A case that holds text gives its text
+    ; as it is, and any other case is cast to text. A value of an interface is of the type it holds.
+    ; A value that is no object cast up has no shape here. A value already of the type asked for
+    ; passes as it is, but an object tested for its class alone, which may be of a class derived
+    ; from the one it is known by.
     (if (!= (. row from) (. value type))
       (call refuse .refused-conversion pattern)
       (return value)
@@ -2075,14 +2074,14 @@
     (param inner SyntaxId)
     (param value Typed)
     (param failed IRBlockId)
-    ; A pattern that names a case of a union, by the number the type pass recorded. An optional
-    ; is tested for a value first. With a pattern written for what the case holds, that is
-    ; matched and what it passes is passed; with none, the union is, but where `is` tests a state
-    ; machine it is the case's flag that is tested, as the reference tests it, unless the tag is
-    ; (`tests-tag`), and where it tests a value of a machine's union read from elsewhere, the tag of
-    ; the case or of one written in it (`pass-within`). One pattern in parentheses for a case that holds no tuple is the pattern
-    ; of what the case holds. A case its subject is no union of matches nothing. A case a refinement
-    ; of the machine adds is tested as `refined-case` reads it, and matches nothing where no object
+    ; A pattern that names a case of a union, by the number the type pass recorded. An optional is
+    ; tested for a value first. With a pattern written for what the case holds, that is matched and
+    ; what it passes is passed; with none, the union is, but where `is` tests a state machine it is
+    ; the case's flag that is tested, unless the tag is (`tests-tag`), and where it tests a value of
+    ; a machine's union read from elsewhere, the tag of the case or of one written in it
+    ; (`pass-within`). One pattern in parentheses for a case that holds no tuple is the pattern of
+    ; what the case holds. A case its subject is no union of matches nothing. A case a refinement of
+    ; the machine adds is tested as `refined-case` reads it, and matches nothing where no object
     ; reaches the test (`unreached-refined`).
     (let nothing (call make-operand .operand-void 0))
     (if (or (== (call (. facts plan-of) (. unit reading) pattern) .plan-never) (call unreached-refined (. matching case-subject) pattern))
@@ -2165,14 +2164,13 @@
     (param lhs SyntaxId)
     (param pattern SyntaxId)
     (param machine MachineFact)
-    ; Whether the case a pattern names of a state machine a property of a class holds is active,
-    ; as the reference tests it: the object's flag of the case, read from the object written before
-    ; the property's name, which is evaluated once, or from the object a name alone is read from
-    ; (`self-owner`), where a name written tracked is tracked as it is read. Any other value of the
-    ; machine's union has no shape here. A case a refinement of the machine adds is tested as
-    ; `refined-case` reads it, from any object written before the property's name, and is not
-    ; active where no object reaches the test (`unreached-refined`), though the object is evaluated
-    ; all the same.
+    ; Whether the case a pattern names of a state machine a property of a class holds is active: the
+    ; object's flag of the case, read from the object written before the property's name, which is
+    ; evaluated once, or from the object a name alone is read from (`self-owner`), where a name
+    ; written tracked is tracked as it is read. Any other value of the machine's union has no shape
+    ; here. A case a refinement of the machine adds is tested as `refined-case` reads it, from any
+    ; object written before the property's name, and is not active where no object reaches the test
+    ; (`unreached-refined`), though the object is evaluated all the same.
     (let nothing (call make-operand .operand-void 0))
     (if (== (call (. facts plan-of) (. unit reading) pattern) .plan-refined-case)
       (if (call unreached-refined lhs pattern true)
@@ -2256,13 +2254,13 @@
     (param evaluates Bool)
     ; Reads, for a pattern that names a case a refinement of the machine of a property of a class
     ; adds, whether the case is active, into `refined-flag`, and what it holds, into
-    ; `refined-payload`, and answers its type, as the reference reads them: from the object the
-    ; property is read from, a local or the one a name alone is read from, or any expression written
-    ; before the property's name where it is evaluated only here (`evaluates`), by the composite of
-    ; the object's class, the object's flag of the case and what the object keeps for the piece that
-    ; writes it, where it holds anything and that `reads` it, else `Void`. An object of a class whose
-    ; composite has none of it is not in the case. A class the object is written as that no
-    ; composite with the case is of, nor any class below it, has no shape here.
+    ; `refined-payload`, and answers its type: from the object the property is read from, a local or
+    ; the one a name alone is read from, or any expression written before the property's name where
+    ; it is evaluated only here (`evaluates`), by the composite of the object's class, the object's
+    ; flag of the case and what the object keeps for the piece that writes it, where it holds
+    ; anything and that `reads` it, else `Void`. An object of a class whose composite has none of it
+    ; is not in the case. A class the object is written as that no composite with the case is of,
+    ; nor any class below it, has no shape here.
     (= refined-flag no-local)
     (= refined-payload no-local)
     (let name (call (. tree pattern-case-name) pattern))
@@ -2439,8 +2437,7 @@
   )
   (fn-expr _ tests-tag Bool
     ; Whether a case test of a state machine a property of a class holds compares the tag of its
-    ; union, as the reference compiles it before it declares the machine's flags: in the first
-    ; value of a property, and in the function that evaluates it again.
+    ; union: in the first value of a property, and in the function that evaluates it again.
     (or (== (. function kind) .property-updater) (and (!= (. filling count) 0) (!= (. unit reading) (. unit instance))))
   )
   (fn-do _ match-row-case Typed
@@ -2554,10 +2551,10 @@
     (param fields (of RowRange SyntaxId))
     (param value Typed)
     (param layout LayoutId)
-    ; A pattern of several in parentheses matched against a table or a span of one, which it
-    ; takes apart as TypeScript does: each field is a view of its column, of the type the name
-    ; written for it holds, and the name is bound to it. One written as `_` still has the table
-    ; checked. Any other pattern of a column has no shape here. The pattern passes the table.
+    ; A pattern of several in parentheses matched against a table or a span of one, which it takes
+    ; apart: each field is a view of its column, of the type the name written for it holds, and the
+    ; name is bound to it. One written as `_` still has the table checked. Any other pattern of a
+    ; column has no shape here. The pattern passes the table.
     (let owner (. value type))
     (let binding (. ([] (. instances rows) (. unit reading)) binding))
     (for (in position (..< 0 (. fields count)))
@@ -2723,15 +2720,14 @@
     (param items (of RowRange SyntaxId))
     (param value Typed)
     (param failed IRBlockId)
-    ; A pattern of a list, as the type pass planned it. The subject is first what an optional
-    ; holds, or the case of a union the pattern has conversions for. Its length is read once
-    ; and tested: as many items as the pattern writes, or no fewer where it writes a rest. Each
-    ; item before the rest is then read at its place and matched, each after the rest at its
-    ; place from the end, and last a rest with a name is read by the range of what lies
-    ; between, unless the pattern only tests. The rows of a table or a span of one, and the items
-    ; of a view of a field's column, are counted and read as TypeScript answers `t.length` and
-    ; `t[i]`, and a rest of them with a name is the span or the view `t[a .. < b]` gives. The
-    ; pattern passes the subject.
+    ; A pattern of a list, as the type pass planned it. The subject is first what an optional holds,
+    ; or the case of a union the pattern has conversions for. Its length is read once and tested: as
+    ; many items as the pattern writes, or no fewer where it writes a rest. Each item before the
+    ; rest is then read at its place and matched, each after the rest at its place from the end, and
+    ; last a rest with a name is read by the range of what lies between, unless the pattern only
+    ; tests. The rows of a table or a span of one, and the items of a view of a field's column, are
+    ; counted and read as `t.length` and `t[i]` count and read them, and a rest of them with a name
+    ; is the span or the view `t[a .. < b]` gives. The pattern passes the subject.
     (let nothing (call make-operand .operand-void 0))
     (let subject value)
     (if (or (call (. types is-optional) (. subject type)) (== (call intrinsic (. subject type)) .union))
@@ -2854,7 +2850,7 @@
     (param pattern SyntaxId)
     (param type TypeId)
     ; Whether the type pass planned a pattern of a list to read the rows of a table or a span of
-    ; one, or the items of a view of a field's column, as TypeScript answers them.
+    ; one, or the items of a view of a field's column.
     (and (call (. facts reads-rows) (. unit reading) pattern) viewed)
     (where
       (lazy kind (call intrinsic type))
@@ -2867,7 +2863,7 @@
     (param type TypeId)
     (param layout LayoutId)
     ; How many rows a table or a span of one holds, or how many items a view of a field's column
-    ; does, as TypeScript counts them.
+    ; does.
     (if (call is-row-source (call intrinsic type))
       (return (call rows-length id held type layout))
     )

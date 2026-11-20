@@ -63,8 +63,8 @@
 )
 
 (type _ ArmGroup (is Tuple)
-  ; Alternatives of a choice that may start with the same items, as the reference groups them:
-  ; their places, in order, and the ranges of the items any of them may start with.
+  ; Alternatives of a choice that may start with the same items: their places, in order, and the
+  ; ranges of the items any of them may start with.
   (blank)
   (prop + arms (list U32))
   (prop + ranges (list ItemRange))
@@ -172,22 +172,21 @@
     (param matched SyntaxId)
     (param helper SyntaxId)
     (param is-statement Bool)
-    ; A grammar run on the value a match is on, as the reference runs one. The value is read into
-    ; the stream the type pass chose for it, whose `pattern-view` gives the buffer, where the pattern
-    ; starts and how many items the buffer holds, through the calls the type pass recorded at the
-    ; pattern, in order. The arms are tried in turn from the start, and the first that passes gives the
-    ; match its value: no arm after it is tried. An arm passes only where its pattern read the whole
-    ; input, but on a stream the match is given, which it reads only as far as an arm matches. Such a
-    ; stream, and one made of the value that pulls its items as they are needed, may give more input as
-    ; it is read: each part that reads past the end of its buffer asks it for more and goes on with what
+    ; A grammar run on the value a match is on. The value is read into the stream the type pass
+    ; chose for it, whose `pattern-view` gives the buffer, where the pattern starts and how many
+    ; items the buffer holds, through the calls the type pass recorded at the pattern, in order. The
+    ; arms are tried in turn from the start, and the first that passes gives the match its value: no
+    ; arm after it is tried. An arm passes only where its pattern read the whole input, but on a
+    ; stream the match is given, which it reads only as far as an arm matches. Such a stream, and
+    ; one made of the value that pulls its items as they are needed, may give more input as it is
+    ; read: each part that reads past the end of its buffer asks it for more and goes on with what
     ; it gives. The stream then commits where the pattern ended, or where it started, and how far it
     ; read. A match whose last arm can fail is optional, and holds nothing where no arm passed. One
-    ; whose last arm raises panics. The match `if` or `while` tests a pattern with gives what its arm
-    ; gives, and false where no arm passed. Each name the pattern captures has its place while the arms
-    ; are emitted. A helper the type pass planned is kept for the values it makes. A match on a String
-    ; or an array makes its stream inside an allocation scope of the task's parse region, as
-    ; TypeScript routes that stream, and gives the region back to where it stood once the match
-    ; ends.
+    ; whose last arm raises panics. The match `if` or `while` tests a pattern with gives what its
+    ; arm gives, and false where no arm passed. Each name the pattern captures has its place while
+    ; the arms are emitted. A helper the type pass planned is kept for the values it makes. A match
+    ; on a String or an array makes its stream inside an allocation scope of the task's parse
+    ; region, and gives the region back to where it stood once the match ends.
     (let nothing (call make-operand .operand-void 0))
     (let type (call (. facts node-type) (. unit reading) matched))
     (let pattern SyntaxId 0)
@@ -409,18 +408,17 @@
     (param commits FactId)
     (param failure IRBlockId)
     (param keeps Bool)
-    ; The arms of a grammar tried on the view of a stream, from where it starts, as the
-    ; reference tries them: where the input must be read `whole`, an arm passes only where it
-    ; read the whole of it. A stream that may give more input is asked for it where a part reads
-    ; past the end of its buffer, and the part goes on from there. Where an arm passes, the stream
-    ; commits where it ended and how far the pattern read, and what the arm gives is given, with
-    ; `attempt-end` left the local that keeps where it ended; where none does, the stream commits
-    ; where the pattern started, and goes on to `failure`. How far the pattern read is kept no
-    ; farther than the end of the input, as `settle-extent` says. The names the pattern captures
-    ; are bound while the arms are emitted, and after them where the pattern `keeps` them. A
-    ; pattern the type pass found holds a rollback mark gives back the one it holds where it
-    ; fails, as the reference does; the marks of a pattern it runs in are set aside while it is
-    ; emitted.
+    ; The arms of a grammar tried on the view of a stream, from where it starts: where the input
+    ; must be read `whole`, an arm passes only where it read the whole of it. A stream that may give
+    ; more input is asked for it where a part reads past the end of its buffer, and the part goes on
+    ; from there. Where an arm passes, the stream commits where it ended and how far the pattern
+    ; read, and what the arm gives is given, with `attempt-end` left the local that keeps where it
+    ; ended; where none does, the stream commits where the pattern started, and goes on to
+    ; `failure`. How far the pattern read is kept no farther than the end of the input, as
+    ; `settle-extent` says. The names the pattern captures are bound while the arms are emitted, and
+    ; after them where the pattern `keeps` them. A pattern the type pass found holds a rollback mark
+    ; gives back the one it holds where it fails; the marks of a pattern it runs in are set aside
+    ; while it is emitted.
     (let nothing (call make-operand .operand-void 0))
     (let arm-layout (call layout-of result site))
     (let own-streaming streaming)
@@ -848,7 +846,7 @@
     (param run StreamRun)
     (param site SyntaxId)
     ; Keeps how far a pattern on a stream that may give more input read no farther than the end of
-    ; the input, where it read past it, as the reference does once the stream gives no more.
+    ; the input, where it read past it, once the stream gives no more.
     (if (== (. run kept-length) no-local)
       (return)
     )
@@ -1137,20 +1135,19 @@
     (param id SyntaxId)
     (param cursor Operand)
     (param failed IRBlockId)
-    ; A part of a grammar that runs nothing, tried from a cursor: where it passes, what is
-    ; emitted next goes on from the cursor where it ended; where it fails it goes to `failed`.
-    ; Alternatives are tried in turn from the cursor, and the first that passes is kept. A
-    ; repeat takes its part as often as it passes, up to its most, and passes where it took it at
-    ; least its least; one with no most stops where its part passed without moving on. An
-    ; optional part passes either way. A lookahead passes or fails as its part does, or the other
-    ; way, and leaves the cursor where it was. A name captured holds what its part matched. A
-    ; call of a rule gives what the rule gave, which a sequence it ends, a name captured over it
-    ; and an optional part around it give too, and a test of one item gives the item, as does a
-    ; `.` the type pass typed as the item; no other part gives a value. A part that fails
-    ; keeps where it began as a cursor a part failed at, as the reference's do, a choice too,
-    ; since it may skip every alternative; sequences keep none of their own, as what fails in
-    ; them began past where they did. Under a helper that observes literal words, a part that fails
-    ; tells it so, as `observed-failure` says.
+    ; A part of a grammar that runs nothing, tried from a cursor: where it passes, what is emitted
+    ; next goes on from the cursor where it ended; where it fails it goes to `failed`. Alternatives
+    ; are tried in turn from the cursor, and the first that passes is kept. A repeat takes its part
+    ; as often as it passes, up to its most, and passes where it took it at least its least; one
+    ; with no most stops where its part passed without moving on. An optional part passes either
+    ; way. A lookahead passes or fails as its part does, or the other way, and leaves the cursor
+    ; where it was. A name captured holds what its part matched. A call of a rule gives what the
+    ; rule gave, which a sequence it ends, a name captured over it and an optional part around it
+    ; give too, and a test of one item gives the item, as does a `.` the type pass typed as the
+    ; item; no other part gives a value. A part that fails keeps where it began as a cursor a part
+    ; failed at, a choice too, since it may skip every alternative; sequences keep none of their
+    ; own, as what fails in them began past where they did. Under a helper that observes literal
+    ; words, a part that fails tells it so, as `observed-failure` says.
     (return (call emit-stream-node run id cursor (call observed-failure id cursor failed)))
   )
   (fn-do + emit-stream-node StreamPart
@@ -1158,9 +1155,8 @@
     (param id SyntaxId)
     (param cursor Operand)
     (param failed IRBlockId)
-    ; A part of a grammar tried from a cursor, as `emit-stream-part` says, which goes to
-    ; `failed` where it fails with nothing more told to the helper. A sequence in a sequence is
-    ; one with it, as the reference takes it.
+    ; A part of a grammar tried from a cursor, as `emit-stream-part` says, which goes to `failed`
+    ; where it fails with nothing more told to the helper. A sequence in a sequence is one with it.
     (match? ([] (. tree nodes) id)
       (case (call .node-stream-string row)
         (return (call bare-part (call stream-literal run id (. row text) cursor failed)))
@@ -1330,10 +1326,10 @@
     (param cursor Operand)
     (param failed IRBlockId)
     ; Where a part tried from a cursor goes where it fails, under a helper that observes the literal
-    ; words a pattern matches: a block that tells the helper to forget the words it was told of
-    ; that end past the cursor, then goes to `failed`, as the reference does where any part of its
-    ; own fails but an arm that raises. The items a repeat scans, and alternatives the reference
-    ; tests as one item, are no parts of their own there. What is emitted next goes on past it.
+    ; words a pattern matches: a block that tells the helper to forget the words it was told of that
+    ; end past the cursor, then goes to `failed`, where any part of its own fails but an arm that
+    ; raises. The items a repeat scans, and alternatives tested as one item, are no parts of their
+    ; own there. What is emitted next goes on past it.
     (if (or (== (. streaming observer-row) (. U32 max)) scanning (. streaming classing) (not (call (. tree observes) id)))
       (return failed)
     )
@@ -1348,8 +1344,8 @@
   )
   (fn-do + lowered-part SyntaxId
     (param id SyntaxId)
-    ; The part the reference takes for a part of a pattern: the one that a part that only declares
-    ; lazy locals is around.
+    ; The part taken for a part of a pattern: the one that a part that only declares lazy locals is
+    ; around.
     (match? ([] (. tree nodes) id)
       (case (call .node-stream-transform row)
         (if (and (!= (. row pattern) 0) (call (. tree lazies-only) (. row right)))
@@ -1382,10 +1378,10 @@
     (param text String)
     (param cursor Operand)
     ; Tells the helper that observes literal words of each word of lowercase letters in a text the
-    ; pattern matched from a cursor, by where it starts and ends in the input, as the reference finds
-    ; them: a letter, then letters and hyphens, where no letter is uppercase. The items a repeat
-    ; scans, and alternatives the reference tests as one item, are no literals there. Where the
-    ; buffer is UTF-8, where a word lies counts the bytes of the characters before it.
+    ; pattern matched from a cursor, by where it starts and ends in the input, found so: a letter,
+    ; then letters and hyphens, where no letter is uppercase. The items a repeat scans, and
+    ; alternatives tested as one item, are no literals there. Where the buffer is UTF-8, where a
+    ; word lies counts the bytes of the characters before it.
     (if (or (== (. streaming observer-row) (. U32 max)) scanning (. streaming classing))
       (return)
     )
@@ -1845,16 +1841,13 @@
     (param result TypeId)
     (param cursor Operand)
     (param failed IRBlockId)
-    ; A call of a local rule beside a match from the rule's own arms, as the reference makes it:
-    ; of the function it makes of the rule, as it calls a function given the stream. The stream
-    ; is told the pattern stands at the cursor, the function is given the stream, and the pattern
-    ; takes what it answered as `boundary-answer` says; an error it raises leaves the function
-    ; with the call. The reference makes the function at the
-    ; first such call, inside the run of the rule the call is in, and with it forgets that the
-    ; rule is being run: a later call from the arms of that run runs the rule where it is called
-    ; once more. So the first call here, outside the rule's own function, ends that run's hold on
-    ; the rule; one made while another rule is being run, or in a function made of a rule or an
-    ; action, is refused, since what the reference forgets there is not followed.
+    ; A call of a local rule beside a match from the rule's own arms: of the function made of the
+    ; rule, as a function given the stream is called. The stream is told the pattern stands at the
+    ; cursor, the function is given the stream, and the pattern takes what it answered as
+    ; `boundary-answer` says; an error it raises leaves the function with the call. The first such
+    ; call, outside the rule's own function, ends the hold on the rule of the run the call is in: a
+    ; later call from the arms of that run runs the rule where it is called once more. One made
+    ; while another rule is being run, or in a function made of a rule or an action, is refused.
     (let commit (call (. facts call-in-role) (. unit reading) id .role-commit))
     (let viewed (call (. facts call-in-role) (. unit reading) id .role-view))
     (let place (call (. facts local-rule-of) (. unit reading) rule))
@@ -1936,13 +1929,12 @@
   )
   (fn-do + emit-rule-adapter _
     (param rule SyntaxId)
-    ; The function a call of a local rule beside a match from the rule's own arms calls, as the
-    ; reference makes one of the rule: given the stream, it runs the rule's own function on the
-    ; stream's view as `attempt-arms` runs a pattern on a stream a match is given, and answers an
-    ; optional `CaptureResult` of the items the rule read and what it gave, which holds nothing
-    ; where the rule failed. Its call of the rule's function is written where the rule is named.
-    ; In an instance that raises errors it answers that or one of them, as the rule's function
-    ; does.
+    ; The function a call of a local rule beside a match from the rule's own arms calls, made of the
+    ; rule: given the stream, it runs the rule's own function on the stream's view as `attempt-arms`
+    ; runs a pattern on a stream a match is given, and answers an optional `CaptureResult` of the
+    ; items the rule read and what it gave, which holds nothing where the rule failed. Its call of
+    ; the rule's function is written where the rule is named.
+    ; In an instance that raises errors it answers that or one of them, as the rule's function does.
     (let nothing (call make-operand .operand-void 0))
     (let matched SyntaxId 0)
     (let named SyntaxId 0)
@@ -2060,12 +2052,11 @@
     (param result TypeId)
     (param cursor Operand)
     (param failed IRBlockId)
-    ; A call of a local rule whose body is code, as the reference calls the function it makes of
-    ; it between the parts of a pattern: the stream is told the pattern stands at the cursor, then
-    ; the code runs, each pattern in it on the stream from where the stream stands, and the
-    ; pattern takes what it gave as `boundary-answer` says. The reference's function holds the
-    ; names the code reads; here the code runs where it is called, where they are. A rule whose
-    ; code calls it is refused.
+    ; A call of a local rule whose body is code, between the parts of a pattern: the stream is told
+    ; the pattern stands at the cursor, then the code runs, each pattern in it on the stream from
+    ; where the stream stands, and the pattern takes what it gave as `boundary-answer` says. The
+    ; code runs where it is called, where the names it reads are. A rule whose code calls it is
+    ; refused.
     (let commit (call (. facts call-in-role) (. unit reading) id .role-commit))
     (let viewed (call (. facts call-in-role) (. unit reading) id .role-view))
     (if (or (== commit no-fact) (== viewed no-fact) (not (call holds-only id (list commit viewed))) coded-already)
@@ -2101,14 +2092,13 @@
     (param result TypeId)
     (param cursor Operand)
     (param failed IRBlockId)
-    ; A call of a function given the stream that is no rule, as the reference makes one between
-    ; the parts of a pattern: the stream is told the pattern stands at the cursor, then the
-    ; function is given the stream, converted as the type pass recorded, and the arguments
-    ; written, and reads from the stream itself. The stream's view, asked for after, says where
-    ; the function left it and how far it read, which the pattern counts as its own. Where the
-    ; function gave a value the call gives it, as `boundary-answer` says, and goes on where the
-    ; stream stands; where it gave none, the call fails. The rest of the attempt reads the buffer
-    ; it read before, as the reference's does.
+    ; A call of a function given the stream that is no rule, between the parts of a pattern: the
+    ; stream is told the pattern stands at the cursor, then the function is given the stream,
+    ; converted as the type pass recorded, and the arguments written, and reads from the stream
+    ; itself. The stream's view, asked for after, says where the function left it and how far it
+    ; read, which the pattern counts as its own. Where the function gave a value the call gives it,
+    ; as `boundary-answer` says, and goes on where the stream stands; where it gave none, the call
+    ; fails. The rest of the attempt reads the buffer it read before.
     (let nothing (call make-operand .operand-void 0))
     (let fact (call (. facts answer-call) (. unit reading) id .role-answer))
     (let commit (call (. facts call-in-role) (. unit reading) id .role-commit))
@@ -2687,9 +2677,8 @@
     (param id SyntaxId)
     (param slot SlotId)
     (param name SyntaxId)
-    ; Keeps the list a name that accumulates adds to, empty as the pattern starts, as the
-    ; reference's collector starts, or the list of the caller's a call given a collector for the
-    ; name `borrows`.
+    ; Keeps the list a name that accumulates adds to, empty as the pattern starts, or the list of
+    ; the caller's a call given a collector for the name `borrows`.
     (let type (call (. facts node-type) (. unit reading) name))
     (let text (. (!! (call (. tree identifier-name) name)) text))
     (for (in borrow borrows)
@@ -2954,13 +2943,13 @@
     (param pattern SyntaxId)
     (param cursor Operand)
     (param failed IRBlockId)
-    ; A part a name captures: where it passes, the name holds the text from the cursor to where
-    ; it ended, or what a rule the part calls gave, held as an optional where the name is one. A
-    ; name that captures an optional part holds nothing where the part's operand fails. A part
-    ; the type pass recorded to make its text through the helper makes it where it passes, as
-    ; `make-eager` says. A name another alternative of the arm captures as what a rule gave keeps
-    ; its text in the same place, made where the part passes, as the reference makes it where the
-    ; alternatives join; under a helper, or where the two are not one type, it is refused.
+    ; A part a name captures: where it passes, the name holds the text from the cursor to where it
+    ; ended, or what a rule the part calls gave, held as an optional where the name is one. A name
+    ; that captures an optional part holds nothing where the part's operand fails. A part the type
+    ; pass recorded to make its text through the helper makes it where it passes, as `make-eager`
+    ; says. A name another alternative of the arm captures as what a rule gave keeps its text in the
+    ; same place, made where the part passes; under a helper, or where the two are not one type, it
+    ; is refused.
     (let held (call captured-at (call captured-slot name)))
     (if (== held (. U32 max))
       (call refuse .refused-expression id)
@@ -3048,9 +3037,8 @@
     (param part SyntaxId)
     (param begun Operand)
     (param ending Operand)
-    ; Makes what the type pass recorded a part a name captures makes of the text it matched
-    ; where it passes, by a capture materializer of the helper, as the reference makes it there.
-    ; Nothing reads what it makes.
+    ; Makes what the type pass recorded a part a name captures makes of the text it matched where it
+    ; passes, by a capture materializer of the helper. Nothing reads what it makes.
     (let eager (call material-at part .material-eager))
     (if (!= eager (. U32 max))
       (call material-capture run part eager begun ending)
@@ -3154,9 +3142,8 @@
   (fn-do + rewind-levels _
     (param marks (list LevelMark))
     (param site SyntaxId)
-    ; Cuts each list back to the count it held where a part began, as the reference's collector
-    ; is rewound: an item past it that holds what the collector traces is first set to what its
-    ; type holds with nothing written.
+    ; Cuts each list back to the count it held where a part began: an item past it that holds what
+    ; the collector traces is first set to what its type holds with nothing written.
     (for (in held marks)
       (call rewind-level ([] capture-levels (. held level)) (. held mark) site)
     )
@@ -3212,8 +3199,8 @@
     (param level CaptureLevel)
     (param layout LayoutId)
     (param site SyntaxId)
-    ; What an item of a list holds with nothing written, as the reference's default value of its
-    ; type: the empty text for a text, and no bits set but for the texts in a struct.
+    ; What an item of a list holds with nothing written: the empty text for a text, and no bits set
+    ; but for the texts in a struct.
     (if (call (. tables layouts is-struct) layout)
       (return (call null-value (. level item) layout site))
     )
@@ -3224,8 +3211,8 @@
   )
   (fn-do + no-mark Typed
     (param site SyntaxId)
-    ; A rollback mark that holds none: zero for one held as an integer, as the reference keeps one,
-    ; and else the optional that holds nothing.
+    ; A rollback mark that holds none: zero for one held as an integer, and else the optional that
+    ; holds nothing.
     (let row ([] (. facts rollback-bodies) (. streaming rollback-row)))
     (let layout (call layout-of (. row kept) site))
     (if (== (. row kept) (. row held))
@@ -3256,7 +3243,7 @@
   (fn-do + ensure-mark _
     (param site SyntaxId)
     ; Asks the helper for a rollback mark before an action runs, where the part being emitted holds
-    ; none yet, as the reference asks for one: the earliest it holds is kept.
+    ; none yet: the earliest it holds is kept.
     (if (== (. streaming rollback-mark) no-local)
       (call refuse .refused-expression site)
       (return)
@@ -3293,10 +3280,9 @@
   )
   (fn-do + enter-marks LocalId
     (param site SyntaxId)
-    ; Sets aside the rollback mark a part holds as a part of it begins, which begins with none, as the
-    ; reference begins each arm of a choice, an optional's operand, each pass of a repeat, a
-    ; lookahead's operand and a local rule run where it is called. None where the pattern holds no
-    ; mark.
+    ; Sets aside the rollback mark a part holds as a part of it begins, which begins with none: each
+    ; arm of a choice, an optional's operand, each pass of a repeat, a lookahead's operand and a
+    ; local rule run where it is called. None where the pattern holds no mark.
     (if (== (. streaming rollback-mark) no-local)
       (return no-local)
     )
@@ -3855,16 +3841,16 @@
     (param cursor Operand)
     (param failed IRBlockId)
     (param defers Bool (= false))
-    ; Lookaheads that each test one item and the part after them that reads one, tried from a
-    ; cursor as one test of the item there. Each reads as far as the item, there or not, as the
-    ; reference's do, and keeps the cursor as one a part failed at where it fails. A negative
-    ; lookahead keeps it where it passes too, since its part failed. The test passes where an item
-    ; lies at the cursor that each positive lookahead's part passes on, no negative one's does, and
-    ; the last part passes on, and gives the item where the last is a `.` the type pass typed as it.
-    ; One that `defers`, as a `deferred-part` does, keeps how far it read only where it fails, and
-    ; the cursor a negative lookahead's part failed at not where it passes. Where the buffer is
-    ; UTF-8 the tests are of the byte a character starts with, the item a `.` gives is the
-    ; character, decoded, and the test passes past its bytes.
+    ; Lookaheads that each test one item and the part after them that reads one, tried from a cursor
+    ; as one test of the item there. Each reads as far as the item, there or not, and keeps the
+    ; cursor as one a part failed at where it fails. A negative lookahead keeps it where it passes
+    ; too, since its part failed. The test passes where an item lies at the cursor that each
+    ; positive lookahead's part passes on, no negative one's does, and the last part passes on, and
+    ; gives the item where the last is a `.` the type pass typed as it. One that `defers`, as a
+    ; `deferred-part` does, keeps how far it read only where it fails, and the cursor a negative
+    ; lookahead's part failed at not where it passes. Where the buffer is UTF-8 the tests are of the
+    ; byte a character starts with, the item a `.` gives is the character, decoded, and the test
+    ; passes past its bytes.
     (let last ([] parts (- (+ start count) 1)))
     (let next (call stream-advance run last cursor 1))
     (if (not defers)
@@ -4123,9 +4109,9 @@
     (param cursor Operand)
     (param failed IRBlockId)
     ; One item a pattern compares with a value of a type like the items' that it evaluates as it
-    ; runs, first, as the reference does: the part gives the value where they are equal, and reads
-    ; as far as the item, there or not. Where the buffer is UTF-8 the item is the character there,
-    ; decoded, and the part passes past its bytes.
+    ; runs, first: the part gives the value where they are equal, and reads as far as the item,
+    ; there or not. Where the buffer is UTF-8 the item is the character there, decoded, and the part
+    ; passes past its bytes.
     (let missed (call failure-of run id cursor failed))
     (let expected (call emit-expression value))
     (let type (. expected type))
@@ -4198,14 +4184,13 @@
     (param failed IRBlockId)
     ; A type named as a part of a pattern: a call of the rule the type pass recorded at it, which is
     ; the type's constructor that takes the stream or the rule that reads a number of the type, or
-    ; of a function that reads the number and is no rule, as `boundary-call` says; or else a test
-    ; of one item for the type, which gives the item: an item of a class the type derives from, or
-    ; of a union that has the type as a case, is read as the items are, tested as the type named as
-    ; a pattern tests a value, and given as the type. An item that is
-    ; a number of another type is never of it, and fails once it is there. Before the test the
-    ; stream is told the pattern stands at the item, as the reference tells it before it looks for
-    ; such a function. The test reads as far as the item, there or not. Where the buffer is UTF-8
-    ; the item is the character there, decoded, and the test passes past its bytes.
+    ; of a function that reads the number and is no rule, as `boundary-call` says; or else a test of
+    ; one item for the type, which gives the item: an item of a class the type derives from, or of a
+    ; union that has the type as a case, is read as the items are, tested as the type named as a
+    ; pattern tests a value, and given as the type. An item that is a number of another type is
+    ; never of it, and fails once it is there. Before the test the stream is told the pattern stands
+    ; at the item. The test reads as far as the item, there or not. Where the buffer is UTF-8 the
+    ; item is the character there, decoded, and the test passes past its bytes.
     (let type (call (. facts node-type) (. unit reading) id))
     (if (or (== type no-type) (== type invalid-type))
       (call refuse .refused-type id)
@@ -4312,9 +4297,9 @@
     (param id SyntaxId)
     (param cursor Operand)
     (param failed IRBlockId)
-    ; Alternatives tried from a cursor as the reference tries them: the first that passes is
-    ; kept, and where all fail the choice does. A choice gives no value, but one the type pass
-    ; planned to give what its alternatives give, which gives what the one that passed gave.
+    ; Alternatives tried from a cursor: the first that passes is kept, and where all fail the choice
+    ; does. A choice gives no value, but one the type pass planned to give what its alternatives
+    ; give, which gives what the one that passed gave.
     (let nothing (call make-operand .operand-void 0))
     (let arms (list SyntaxId))
     (call choice-arms tree id arms)
@@ -4349,17 +4334,16 @@
     (param cursor Operand)
     (param failed IRBlockId)
     (param way ArmWay)
-    ; The alternatives of a choice, tried from a cursor as the reference tries them. Alternatives
-    ; that are each one item it tests as one, each in turn. Otherwise, where every one must read
-    ; an item and it knows which each may start with, it sorts them into groups by those items
-    ; and, where there is more than one, tries only the group the item at the cursor starts;
-    ; where no group does, or no item lies there, the choice fails. Else each is tried in turn,
-    ; but one that must read an item and starts with items it knows is skipped where none of those
-    ; lies at the cursor. Whether any reaches the join. The lists names accumulate in the
-    ; alternatives are cut back before each alternative tried after the first, and where all fail.
-    ; Each alternative begins holding no rollback mark, and gives back the one it holds where it
-    ; fails; the choice holds the one it held before where it held one, and else the one the
-    ; alternative that passed holds.
+    ; The alternatives of a choice, tried from a cursor. Alternatives that are each one item are
+    ; tested as one, each in turn. Otherwise, where every one must read an item and which each may
+    ; start with is known, they are sorted into groups by those items and, where there is more than
+    ; one, only the group the item at the cursor starts is tried; where no group does, or no item
+    ; lies there, the choice fails. Else each is tried in turn, but one that must read an item and
+    ; starts with known items is skipped where none of those lies at the cursor. Whether any reaches
+    ; the join. The lists names accumulate in the alternatives are cut back before each alternative
+    ; tried after the first, and where all fail. Each alternative begins holding no rollback mark,
+    ; and gives back the one it holds where it fails; the choice holds the one it held before where
+    ; it held one, and else the one the alternative that passed holds.
     (let marks (call mark-levels id))
     (let entered (call enter-marks id))
     (let lost (if-expr (== entered no-local) failed (call (. ir reserve-block))))
@@ -4443,10 +4427,9 @@
     (param way ArmWay)
     (param marks (list LevelMark))
     (param entered LocalId)
-    ; Alternatives tried in turn from a cursor, those the reference guards skipped where no item
-    ; lies at the cursor or the one there is not one they may start with. What the alternatives
-    ; may start with is kept from `start`, or not at all with `U32.max`. Whether any reaches the
-    ; join.
+    ; Alternatives tried in turn from a cursor, those that are guarded skipped where no item lies at
+    ; the cursor or the one there is not one they may start with. What the alternatives may start
+    ; with is kept from `start`, or not at all with `U32.max`. Whether any reaches the join.
     (let guarded false)
     (if (!= start (. U32 max))
       (for (in position (..< 0 (. arms length)))
@@ -4568,10 +4551,10 @@
     (param outside IRBlockId)
     (param decodes Bool (= false))
     ; Goes on to `inside` where an item lies in one of some ranges, tested in turn, and else to
-    ; `outside`. An item that is no number lies in a range only where the range holds every item,
-    ; as the reference tests it; any other range has no shape for it. Where the buffer is UTF-8 and
-    ; the item is the byte a character starts with, not the character it `decodes`, a range that
-    ; holds every character past ASCII holds every such byte past it.
+    ; `outside`. An item that is no number lies in a range only where the range holds every item;
+    ; any other range has no shape for it. Where the buffer is UTF-8 and the item is the byte a
+    ; character starts with, not the character it `decodes`, a range that holds every character past
+    ; ASCII holds every such byte past it.
     (if (not (call is-integer (. run item-layout)))
       (if (and (== (. ranges length) 1) (== (. ([] ranges 0) first) 0) (== (. ([] ranges 0) last) any-item))
         (call jump inside)
@@ -4612,10 +4595,10 @@
     (param from U32)
     (param to U32)
     (param cursor Operand)
-    ; Counts the alternatives of a choice from `from` up to `to` as skipped, as the reference
-    ; does: as read from the cursor at least one item on, and as far as the farthest of them
-    ; probes where that lies inside the input, or else to its end. Where the buffer is UTF-8 the
-    ; probe counts characters, as `advance-chars` reads them.
+    ; Counts the alternatives of a choice from `from` up to `to` as skipped: as read from the cursor
+    ; at least one item on, and as far as the farthest of them probes where that lies inside the
+    ; input, or else to its end. Where the buffer is UTF-8 the probe counts characters, as
+    ; `advance-chars` reads them.
     (if (>= from to)
       (return)
     )
@@ -4651,10 +4634,10 @@
   (fn-do _ dispatch-groups (list ArmGroup)
     (param start U32)
     (param count U32)
-    ; The groups the reference sorts the alternatives of a choice into by the items they may start
-    ; with, where every one must read an item and it knows which: two that may start with the same
-    ; item share a group, and the groups are in the order of their first alternatives. None where
-    ; it sorts them into fewer than two.
+    ; The groups the alternatives of a choice are sorted into by the items they may start with,
+    ; where every one must read an item and which is known: two that may start with the same item
+    ; share a group, and the groups are in the order of their first alternatives. None where they
+    ; fall into fewer than two.
     (let groups (list ArmGroup))
     (for (in position (..< 0 count))
       (let first ([] plan-firsts (+ start position)))
@@ -4709,9 +4692,9 @@
   )
   (fn-do + plan-choices _
     (param root SyntaxId)
-    ; Judges, as the reference does before it emits a pattern, which items each part of the
-    ; pattern rooted at `root` may start with, and keeps for each choice of the pattern what each
-    ; of its alternatives may start with.
+    ; Judges, before a pattern is emitted, which items each part of the pattern rooted at `root` may
+    ; start with, and keeps for each choice of the pattern what each of its alternatives may start
+    ; with.
     (call (. firsts plan-choices) (. unit source-module) (. unit reading) root)
   )
   (fn-expr _ plan-start U32
@@ -4731,21 +4714,21 @@
     (param scans Bool)
     (param least-at SyntaxId (= 0))
     (param most-at SyntaxId (= 0))
-    ; A part taken as often as it passes from a cursor, at most `most` times, which has no bound
-    ; at `U64.max`. Unbounded, it stops where the part passed without moving on, which one that
+    ; A part taken as often as it passes from a cursor, at most `most` times, which has no bound at
+    ; `U64.max`. Unbounded, it stops where the part passed without moving on, which one that
     ; `advances` never does: it stops only where a try of it fails, which reads farther and fails
-    ; farther than any try before it, so that the part is its `deferred-part`. It passes where
-    ; it took the part at least `least` times, with the cursor where the last one ended. A bound
-    ; computed as the match runs is read as a Size: `most-at` before the part is first taken,
-    ; and `least-at` after it is taken for the last time, as the reference reads them. Each name
-    ; the part captures has a list, empty as the repeat starts, which each pass that passes adds
-    ; what it captured to. A repeat the type pass planned to give the values of its part keeps
-    ; them in a list the same way, which it gives where it passes. One the reference `scans` tests
-    ; each item, and keeps no cursor its part failed at. The lists names accumulate in the part
-    ; are cut back where a pass fails to what they held as it began, and where the repeat fails
-    ; to what they held as it began. Each pass begins holding no rollback mark, and gives back the
-    ; one it holds where it fails; the repeat keeps the earliest its passes that passed held, which
-    ; it gives back where it fails, and holds where it passes where it held none before.
+    ; farther than any try before it, so that the part is its `deferred-part`. It passes where it
+    ; took the part at least `least` times, with the cursor where the last one ended. A bound
+    ; computed as the match runs is read as a Size: `most-at` before the part is first taken, and
+    ; `least-at` after it is taken for the last time. Each name the part captures has a list, empty
+    ; as the repeat starts, which each pass that passes adds what it captured to. A repeat the type
+    ; pass planned to give the values of its part keeps them in a list the same way, which it gives
+    ; where it passes. One that `scans` tests each item, and keeps no cursor its part failed at. The
+    ; lists names accumulate in the part are cut back where a pass fails to what they held as it
+    ; began, and where the repeat fails to what they held as it began. Each pass begins holding no
+    ; rollback mark, and gives back the one it holds where it fails; the repeat keeps the earliest
+    ; its passes that passed held, which it gives back where it fails, and holds where it passes
+    ; where it held none before.
     (let entered (call mark-levels operand))
     (let saved (call enter-marks id))
     (let gathered no-local)
@@ -5069,10 +5052,9 @@
     (param level CaptureLevel)
     (param element Typed)
     (param site SyntaxId)
-    ; Adds an item to a list, as the reference's collector adds one: where its items
-    ; are full, they grow, in the arena of the context of a collector backed by one as the
-    ; reference grows an arena's builder, and else by the call the type pass recorded; the item is
-    ; stored after the last, through the write barrier where it is managed, and the size counts it.
+    ; Adds an item to a list: where its items are full, they grow, in the arena of the context of a
+    ; collector backed by one, and else by the call the type pass recorded; the item is stored after
+    ; the last, through the write barrier where it is managed, and the size counts it.
     (if (!= (. element type) (. level item))
       (call refuse .refused-expression site)
       (return)
@@ -5142,9 +5124,8 @@
     (param item-layout LayoutId)
     (param size Operand)
     (param site SyntaxId)
-    ; Makes room for one more item after the `size` a list holds in the arena its context names,
-    ; as the reference grows an arena's builder: the items are described to the arena where they
-    ; hold pointers the collector follows.
+    ; Makes room for one more item after the `size` a list holds in the arena its context names: the
+    ; items are described to the arena where they hold pointers the collector follows.
     (let items-layout (. ([] (. ir locals) (. level items)) layout))
     (let context-layout
       (scope (if-expr (!= (. level context) no-local) local-layout void-layout)
@@ -5202,8 +5183,8 @@
   (fn-do _ start-level _
     (param level CaptureLevel)
     (param site SyntaxId)
-    ; Empties a list as the reference makes a collector: no items, none counted, and, where its
-    ; backing is not the collector's, the context the helper gives for it, read each time.
+    ; Empties a list: no items, none counted, and, where its backing is not the collector's, the
+    ; context the helper gives for it, read each time.
     (call zero (call load-local (. level items) site) (. ([] (. ir locals) (. level items)) layout))
     (call store-local (. level size) (call integer .machine-u64 0) site)
     (if (== (. level context) no-local)

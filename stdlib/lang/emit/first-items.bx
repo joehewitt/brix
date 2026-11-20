@@ -90,11 +90,10 @@
 )
 
 (type + FirstItems (is Tuple)
-  ; What the reference knows of the items a part of a grammar may start with, as it
-  ; judges which alternatives of a choice to skip: whether it knows them, whether the part may
-  ; pass where it reads none, and the ranges they lie in, in order and apart; and how far past
-  ; where the part is tried it counts the part as read where it is skipped, `no-probe` where it
-  ; does not know.
+  ; What is known of the items a part of a grammar may start with, to judge which alternatives of a
+  ; choice to skip: whether they are known, whether the part may pass where it reads none, and the
+  ; ranges they lie in, in order and apart; and how far past where the part is tried it counts as
+  ; read where it is skipped, `no-probe` where that is not known.
   (blank)
   (prop + known Bool)
   (prop + nullable Bool)
@@ -104,8 +103,8 @@
 
 (fn-expr + guards Bool
   (param first FirstItems)
-  ; Whether the reference skips an alternative that starts so where the item at the cursor is
-  ; not one it may start with: where it knows them, there are some, and it must read one.
+  ; Whether an alternative that starts so is skipped where the item at the cursor is not one it may
+  ; start with: where they are known, there are some, and it must read one.
   (and (. first known) (not (. first nullable)) (!= (. first ranges length) 0))
 )
 
@@ -146,8 +145,8 @@
 
 (type + FirstItemTable
   ; What the pattern of each rule may start with for each instance that reads it, where it was
-  ; judged with no cut, which the reference shares among all the patterns it emits.
-  ; `ProgramTables` fills it before any walk, and nothing changes it after.
+  ; judged with no cut, shared among all the patterns emitted. `ProgramTables` fills it before any
+  ; walk, and nothing changes it after.
   (blank)
   (prop _ heads (of Map U64 U32))
   (prop _ kept (list RuleFirst))
@@ -191,13 +190,13 @@
 )
 
 (type + FirstItemJudge
-  ; Judges which items the parts of a grammar may start with, as the reference does before it
-  ; emits a pattern (`plan-choices`), and keeps for each choice met what each of its alternatives
-  ; may start with (`plan-firsts`, found through `plan-start`). It keeps the calls of rules it
-  ; judged since the pattern it plans began, each with the instance that reads it (`first-calls`,
-  ; `found-firsts`), those it is judging (`first-resolving`), and the stacks the choices among them grow and give back, all emptied as
-  ; each walk begins (`empty`). What the pattern of a rule starts with where it was judged with no
-  ; cut it reads from `table`, and, where it `keeps`, adds to it (`judge-rule`).
+  ; Judges which items the parts of a grammar may start with, before a pattern is emitted
+  ; (`plan-choices`), and keeps for each choice met what each of its alternatives may start with
+  ; (`plan-firsts`, found through `plan-start`). It keeps the calls of rules it judged since the
+  ; pattern it plans began, each with the instance that reads it (`first-calls`, `found-firsts`),
+  ; those it is judging (`first-resolving`), and the stacks the choices among them grow and give
+  ; back, all emptied as each walk begins (`empty`). What the pattern of a rule starts with where it
+  ; was judged with no cut it reads from `table`, and, where it `keeps`, adds to it (`judge-rule`).
   (blank)
   (prop + plan-firsts (list FirstItems))
   (prop _ choice-plans (of Map U64 U32))
@@ -243,10 +242,10 @@
     (param module ModuleId)
     (param owner InstanceId)
     (param root SyntaxId)
-    ; Judges, as the reference does before it emits a pattern, which items each part of the
-    ; pattern rooted at `root` in `module` may start with, read for `owner`, reading the patterns
-    ; of the rules it calls as far as they reach, and keeps for each choice of the pattern what
-    ; each of its alternatives may start with.
+    ; Judges, before a pattern is emitted, which items each part of the pattern rooted at `root` in
+    ; `module` may start with, read for `owner`, reading the patterns of the rules it calls as far
+    ; as they reach, and keeps for each choice of the pattern what each of its alternatives may
+    ; start with.
     (if (!= (. found-firsts length) 0)
       (call (. found-firsts clear))
     )
@@ -277,17 +276,16 @@
     (param owner InstanceId)
     (param id SyntaxId)
     (param planning Bool)
-    ; What the reference knows of the items a part of a grammar may start with, as it
-    ; lowers the part and judges it. Text starts with its first character and probes its length;
-    ; a range, any item, or a repeat that scans for one, starts with what it matches and probes
-    ; one item. A sequence starts as its parts do up to the first that must read an item, and
-    ; probes as that one does. Alternatives start as any of theirs does and probe the farthest,
-    ; where each probe is known. A repeat or an optional part starts and probes as its part does,
-    ; and may read none where it may pass none; a lookahead may read none, starts with what is not
-    ; known, and probes as its part does. A call starts and probes as the pattern of the rule it
-    ; calls does. A test of an item, of its type, or of a value matched, starts with what is not
-    ; known and probes what is not known. With `planning`, keeps what the alternatives of each
-    ; choice met may start with.
+    ; What is known of the items a part of a grammar may start with. Text starts with its first
+    ; character and probes its length; a range, any item, or a repeat that scans for one, starts
+    ; with what it matches and probes one item. A sequence starts as its parts do up to the first
+    ; that must read an item, and probes as that one does. Alternatives start as any of theirs does
+    ; and probe the farthest, where each probe is known. A repeat or an optional part starts and
+    ; probes as its part does, and may read none where it may pass none; a lookahead may read none,
+    ; starts with what is not known, and probes as its part does. A call starts and probes as the
+    ; pattern of the rule it calls does. A test of an item, of its type, or of a value matched,
+    ; starts with what is not known and probes what is not known. With `planning`, keeps what the
+    ; alternatives of each choice met may start with.
     (let syntax (. ([] (. program modules) module) tree))
     (let none no-ranges)
     (match? ([] (. syntax nodes) id)
@@ -374,10 +372,10 @@
     (param owner InstanceId)
     (param id SyntaxId)
     (param planning Bool)
-    ; What the reference knows of the items a choice may start with, from what each of its
-    ; alternatives may; with `planning`, keeps that of each. The alternatives, what each starts
-    ; with, and the ranges they start with joined so far are kept on stacks that the choices among
-    ; them grow and give back as they are judged.
+    ; What is known of the items a choice may start with, from what each of its alternatives may;
+    ; with `planning`, keeps that of each. The alternatives, what each starts with, and the ranges
+    ; they start with joined so far are kept on stacks that the choices among them grow and give
+    ; back as they are judged.
     (let arms (. choice-arm-stack length))
     (call choice-arms (. ([] (. program modules) module) tree) id choice-arm-stack)
     (let end (. choice-arm-stack length))
@@ -463,7 +461,7 @@
   (fn-do _ scanned-ranges (list ItemRange)
     (param syntax AST)
     (param id SyntaxId)
-    ; The ranges of the items a part the reference scans for may match, in order and apart.
+    ; The ranges of the items a part scanned for may match, in order and apart.
     (let none no-ranges)
     (match? ([] (. syntax nodes) id)
       (case (call .node-stream-string row)
@@ -489,13 +487,12 @@
     (param module ModuleId)
     (param owner InstanceId)
     (param id SyntaxId)
-    ; What the reference knows of the items a call of a rule may start with: what the pattern of
-    ; the rule does, judged once for each call met and instance that reads it, from where the
-    ; pattern is emitted. A call met again for the same instance while its rule is being judged
-    ; starts with what is not known, as one whose rule is not found does, and cuts the judging of
-    ; the calls around it. A rule `table` holds is read from
-    ; it, as the reference shares it among all patterns; one judged here with no cut is added to it
-    ; where the judge `keeps`.
+    ; What is known of the items a call of a rule may start with: what the pattern of the rule does,
+    ; judged once for each call met and instance that reads it, from where the pattern is emitted. A
+    ; call met again for the same instance while its rule is being judged starts with what is not
+    ; known, as one whose rule is not found does, and cuts the judging of the calls around it. A
+    ; rule `table` holds is read from it, shared among all patterns; one judged here with no cut is
+    ; added to it where the judge `keeps`.
     (let key (call plan-key module id))
     (let kept (?? ([] first-calls key) (. U32 max)))
     (if (and (< (as kept Size) (. found-firsts length)) (== (. ([] found-firsts kept) key) key) (== (. ([] found-firsts kept) owner) owner))
@@ -547,10 +544,9 @@
     (param module ModuleId)
     (param owner InstanceId)
     (param id SyntaxId)
-    ; The pattern of the rule a call names, as the reference finds it, with the module that
-    ; declares it and the instance that reads it: a local rule's, as the binder resolved the call,
-    ; or that of a rule a module declares, as the type pass resolved it. No pattern where neither
-    ; is found.
+    ; The pattern of the rule a call names, with the module that declares it and the instance that
+    ; reads it: a local rule's, as the binder resolved the call, or that of a rule a module
+    ; declares, as the type pass resolved it. No pattern where neither is found.
     (let syntax (. ([] (. program modules) module) tree))
     (if (== owner no-instance)
       (return (call RuleTarget module owner 0))
