@@ -1686,3 +1686,35 @@ Exception: A unit cannot be declared as zero, which no number of it would conver
     (unit + 1pc 0)
                 ^
 ```
+
+### Ratios and percentages from `/units` are pure numbers.
+
+```brix
+(import /units)
+
+(main
+  (print (as (* 50% 50%) UnitString))
+  (print (as (* 50% 200px) UnitString))
+  (print (as (* 200px 50%) UnitString))
+  (print (as (/ 50% 25%) UnitString))
+  (print (as (* 25% 2%%) UnitString))
+  (print (as (/ 1 50%) UnitString))
+  (print (as (+ 50% 1) UnitString))
+  (print (as (as 0.25 Percent) UnitString))
+  (print (as (as 25% Ratio) UnitString))
+)
+
+(type-line + Pixels (alias px) (is F64))
+```
+
+```output
+25%
+100px
+100px
+2f
+50%
+2f
+51%
+0.25%
+0.25%%
+```

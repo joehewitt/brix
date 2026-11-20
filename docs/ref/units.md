@@ -402,7 +402,9 @@ Exception: Dollars cannot be cast to Seconds; there is no conversion between the
 
 - **Ratios.** `%%` is a `Ratio`, in which `1%%` is the whole, and `%` is a `Percent`, in which
   `100%` is the whole: `(as 25% Ratio)`{.brix} is `0.25%%`. Write a fraction with its leading
-  zero: `0.75%%` is three quarters, and `75%%` is seventy-five wholes.
+  zero: `0.75%%` is three quarters, and `75%%` is seventy-five wholes. Both are
+  [pure numbers](#pure-numbers), as `(unit + 1%% 1)`{.brix} declares, so `(* 50% 200px)` is `100px`
+  and `(* 50% 50%)`{.brix} is `25%`.
 - **Scales.** A type that implements `Scalable` gives a range, a `Scale`, onto which a ratio
   converts: `Hour` gives 0 to 23, so `(as 0.75%% Hour)`{.brix} is `18hour`.
 - **Durations** have methods: `(call (. 0.25s wait))`{.brix} waits, and `interval` makes a timer.
