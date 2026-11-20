@@ -468,9 +468,9 @@ another is the amount between them.
   convert into one another, and the amounts `kelvins` and `rankines`, one family in which
   `9rankines` is `5kelvins`. A difference of Celsius or Kelvin temperatures is in `kelvins`, and
   one of Fahrenheit temperatures in `rankines`.
-- **Casts.** A position has no equality, so `as` between it and an amount casts its number:
-  `(as 120minutes Hour)`{.brix} is `120hour`. Add the amount to the start of the scale instead:
-  `(+ 0hour 120minutes)`{.brix} is `2hour`.
+- **Casts.** A position has no equality, so it becomes an amount, or an amount a position, only
+  when asked, and `as` casts its number: `(as 120minutes Hour)`{.brix} is `120hour`. Add the amount
+  to the start of the scale instead: `(+ 0hour 120minutes)`{.brix} is `2hour`.
 - **Inside its own operators** and conversions, a number type works on its plain number, as in
   `(as this F64)`{.brix}, since an operator or a conversion of its own would call itself.
 
@@ -543,6 +543,8 @@ Exception: Expected Dollars here, but this is Cents, which becomes Dollars only 
 - **Units to plain numbers.** A unit becomes a plain number by its value in its own unit, without
   converting: `(as 1500ms Int)`{.brix} is 1500. It does so on its own where the number type holds
   every value of the unit's storage, and with `as` otherwise.
+- **Units on their own,** such as `px`, become another unit only when asked, and `as` casts the
+  number: `(let width Meters 2px)` is an error, and `(as 2px Meters)`{.brix} is `2meters`.
 - **Other families.** Units of two families that no equality joins do not convert:
 
 ```brix compile-error

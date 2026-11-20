@@ -2476,3 +2476,124 @@ Exception: Operator "+=" is not defined for Hr and Hr
 212fahr
 18hr
 ```
+
+### A type's own operator answers with a number type on the right, though the number type declares that operator too.
+
+```brix
+(main
+  (let v (call Vec 1.0 2.0))
+  (print (. (* v 3hr) y))
+)
+
+(type + Vec (is (tuple (: x Float) (: y Float)))
+  (fn-expr + (infix this * (param h Hr)) Vec
+    (call Vec (* x (as h F64)) (* y (as h F64)))
+  )
+)
+(type + Hr (alias hr) (is UInt)
+  (fn-expr + (infix this * (param factor F64)) Hr
+    (as (* (as this F64) factor) Hr)
+  )
+)
+```
+
+```output
+6
+```
+
+### A unit with no equality becomes another unit only when asked, and `as` casts its number.
+
+```brix
+(main
+  (print (as (as 2foo Bar) UnitString))
+)
+
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is F64))
+```
+
+```output
+2bar
+```
+
+### A unit with no equality given where another unit is wanted is rejected.
+
+```brix compile-error
+(main
+  (let b Bar 2foo)
+  (print (as b UnitString))
+)
+
+(type-line + Foo (alias foo) (is F64))
+(type-line + Bar (alias bar) (is F64))
+```
+
+```output
+Exception: Expected Bar here, but this is Foo, which becomes Bar only when asked; write "(as 2foo Bar)"
+<no file:3>
+      (let b Bar 2foo)
+             ^^^
+```
+
+### Hours, minutes and seconds of `/time/datetime` are positions, which wrap when an amount is added and give a signed amount when subtracted.
+
+```brix
+(import /time/datetime)
+(import /time/duration)
+(import /units)
+
+(main
+  (print (as (+ 23hour 2hours) UnitString))
+  (print (as (- 1hour 3hour) UnitString))
+  (print (as (+ 59minute 1hours) UnitString))
+  (print (as (- 10second 15seconds) UnitString))
+  (print (as 0.75%% Hour UnitString))
+)
+```
+
+```output
+1hour
+-2hours
+59minute
+55second
+18hour
+```
+
+### Temperatures of `/units/temperature` are positions, which convert into one another and give amounts in kelvins or rankines when subtracted.
+
+```brix
+(import /units/temperature)
+
+(main
+  (print (as (as 100°c Fahrenheit) UnitString))
+  (print (as (+ 20°c 9rankines) UnitString))
+  (print (as (- 70°f 50°f) UnitString))
+  (print (as (- 70°f 20°c) UnitString))
+  (print (< 25°c 70°f))
+)
+```
+
+```output
+212°f
+25°c
+20rankines
+2rankines
+false
+```
+
+### Adding two positions stored as floats is rejected.
+
+```brix compile-error
+(import /units/temperature)
+
+(main
+  (print (as (+ 20°c 5°c) UnitString))
+)
+```
+
+```output
+Exception: Operator "+" is not defined for Celsius and Celsius
+<no file:5>
+      (print (as (+ 20°c 5°c) UnitString))
+                 ^^^^^^^^^^^^
+```
