@@ -1869,6 +1869,100 @@ after
 done
 ```
 
+### A loop over a stream in a cleanup ends the stream where its body panics, before the panic leaves the cleanup, and the loops around it end theirs; a panic the stream's end raises takes its place.
+
+```brix
+(main
+  (do-new
+    (finally
+      (for (in item (call items))
+        (print (str "item " item))
+        (throw (call Panic "in loop") (if (== item 2)))
+      )
+      (print "after loop")
+    )
+    (print "body")
+    (throw (call Panic "body broke"))
+    (on-failure failure
+      (print (str "failed: " (. failure message)))
+    )
+  )
+  (do-new
+    (finally
+      (for (in item (call breaking))
+        (print (str "item " item))
+        (throw (call Panic "in loop") (if (== item 2)))
+      )
+    )
+    (print "second body")
+    (on-failure failure
+      (print (str "second failed: " (. failure message)))
+    )
+  )
+  (do-new
+    (finally
+      (for (in a (call numbers "outer"))
+        (for (in b (call numbers "inner"))
+          (print (str "pair " a " " b))
+          (throw (call Panic "in inner") (if (== b 2)))
+        )
+      )
+    )
+    (print "third body")
+    (on-failure failure
+      (print (str "third failed: " (. failure message)))
+    )
+  )
+)
+
+(fn-do _ numbers (stream Int)
+  (param tag String)
+  (finally
+    (print (str "end " tag))
+  )
+  (yield 1)
+  (yield 2)
+)
+
+(fn-do _ items (stream Int)
+  (finally
+    (print "items ended")
+  )
+  (yield 1)
+  (yield 2)
+  (yield 3)
+)
+
+(fn-do _ breaking (stream Int)
+  (finally
+    (print "breaking ended")
+    (throw (call Panic "in end"))
+  )
+  (yield 1)
+  (yield 2)
+  (yield 3)
+)
+```
+
+```output
+body
+item 1
+item 2
+items ended
+failed: in loop
+second body
+item 1
+item 2
+breaking ended
+second failed: in end
+third body
+pair 1 1
+pair 1 2
+end inner
+end outer
+third failed: in inner
+```
+
 ### A value returned through a use or a do finally is converted to the type the function returns before the cleanups run.
 
 ```brix

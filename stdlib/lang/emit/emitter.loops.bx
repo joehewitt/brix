@@ -498,8 +498,9 @@
     ; 3. The body runs. `continue` goes to the first head, as the end of the body does. The body of
     ;    a comprehension's loop is an expression, and is yielded, and a feed has no body and yields
     ;    the item.
-    ; In a cleanup being run, a check made in the loop lands where the cleanup ends, as in the rest
-    ; of it, leaving its streams unended (`end-in-cleanup`). A header that subscribes, the loop of a
+    ; In a cleanup being run, a check made in the loop lands on a pad of its own, which ends its
+    ; streams with the panic set aside and goes on to where the cleanup ends, where a check made in
+    ; the rest of it lands (`end-in-cleanup`). A header that subscribes, the loop of a
     ; comprehension whose first header writes a pattern that is no match, and a stream read where
     ; the collector never looks have no shape.
     (let chain (list SyntaxId))
@@ -567,13 +568,16 @@
     (lazy value-made (or (== (call operand-kind made) .operand-value) (== (call operand-kind made) .operand-argument)))
     (let mark (. open-cleanups length))
     (let own-scoping scoping)
+    (let pad no-block)
     (if streams
       (= scoping (= (. scoping block-base) mark))
       (call open-cleanup first (call UseCell no-local no-local no-type))
       (if (. scoping cleaning)
-        (= landing caught)
+        (= pad (call (. ir reserve-block)))
+        (= landing pad)
       )
     )
+    (let checks landings)
     (let root (call (. ir reserve-block)))
     (let done (call (. ir reserve-block)))
     (let turns (. open-turns length))
@@ -628,6 +632,14 @@
     (call jump root)
     (call (. ir start-block) done)
     (if (and streams (. scoping cleaning))
+      (if (!= landings checks)
+        (let onward (call (. ir reserve-block)))
+        (call jump onward)
+        (call (. ir start-block) pad)
+        (call run-cleanups mark (. open-cleanups length) true)
+        (call jump caught)
+        (call (. ir start-block) onward)
+      )
       (call end-in-cleanup mark caught)
       (else-if streams
         (call close-cleanups mark)
@@ -641,9 +653,9 @@
   (fn-do + end-in-cleanup _
     (param mark Size)
     (param caught IRBlockId)
-    ; Where a loop that reads a stream in a cleanup being run ends: its own cleanups run, newest
-    ; first, and a check made in one lands where the cleanup around ends, as one made in the loop
-    ; does. They are open no longer.
+    ; Where a loop that reads a stream, or a `do without cancel` block, in a cleanup being run ends:
+    ; its own cleanups run, newest first, and a check made in one lands where the cleanup around
+    ; ends. They are open no longer.
     (while (> (. open-cleanups length) mark)
       (= landing caught)
       (call run-cleanup
