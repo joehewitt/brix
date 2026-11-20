@@ -5894,7 +5894,6 @@
     (param type TypeId)
     (param argument Operand)
     (param given TypeId (= no-type))
-    (param watched Bool (= true))
     (param second (? Operand) (= null))
     (param second-given TypeId (= no-type))
     (param third (? Operand) (= null))
@@ -5907,7 +5906,6 @@
     ; by the class of the object, as a call written in source is. An error the function raises is a
     ; panic at the loop, with the error's text as its message, but where the type pass says the
     ; call's errors leave the function with it, as a loop's read of a generator that raises does. A
-    ; loop's call is `watched`, checked for a panic even where no other call of the function is. A
     ; function a property the container delegates to answers is called with what the property holds.
     (let nothing (call make-operand .operand-void 0))
     (if (or (== fact no-fact) (== (. ([] (. facts calls) fact) callee) no-instance) uncallable)
@@ -5976,7 +5974,7 @@
     (if (and (call (. tables is-class) holder) (call (. tables is-overridden) callee))
       (= answer (call call-method callee site mark))
       (else
-        (= answer (call call-instance callee site mark false watched))
+        (= answer (call call-instance callee site mark false))
         (= called (call last-call start))
       )
     )
@@ -8321,7 +8319,7 @@
     (let slots (. ([] (. instances rows) callee) slots count))
     (let carried (. ([] (. instances rows) callee) carried))
     (if (and (== slots 0) (== carried 0))
-      (call call-protocol declared call (. unit self) type (call make-operand .operand-void 0) no-type false)
+      (call call-protocol declared call (. unit self) type (call make-operand .operand-void 0) no-type)
       (return)
     )
     (let above (. ([] (. instances rows) callee) self-type))
@@ -8391,7 +8389,7 @@
     )
     (let callee (. ([] (. facts calls) call) callee))
     (if (and (== (. ([] (. instances rows) callee) slots count) 0) (== carried 0) (== (. ([] (. instances rows) callee) carried) 0))
-      (call call-protocol declared call made type (call make-operand .operand-void 0) no-type false)
+      (call call-protocol declared call made type (call make-operand .operand-void 0) no-type)
       (return)
     )
     (if (or (not (call is-callable callee)) other-arity (!= (. ([] (. instances rows) callee) carried) carried) other-self)
@@ -10300,7 +10298,7 @@
       (call refuse .refused-conversion id)
     )
     (do
-      (inline (call call-protocol id write (. channel operand) type (. value operand) held false))
+      (inline (call call-protocol id write (. channel operand) type (. value operand) held))
     )
     (call keep-captured slot (. channel operand) type id)
     (do
@@ -22708,13 +22706,11 @@
     (param syntax SyntaxId)
     (param mark Size)
     (param restores Bool (= false))
-    (param watched Bool (= false))
     (param variant FunctionId (= no-function))
     (param held TypeId (= no-type))
     ; A call of an emitted instance with the pending arguments from `mark` on, or with
     ; `restores` of the initializer of a constructor, which returns nothing. One that may panic
-    ; is checked, unless the call is made while a panic is already being handled, or the type
-    ; pass says no call of the instance is checked and the call is not `watched`. A call between
+    ; is checked, unless the call is made while a panic is already being handled. A call between
     ; code the collector never sees and a function it does, or the other way, crosses the zone
     ; before the call and crosses back after it, unless the callee is one that reaches no safepoint
     ; there, which runs where it is called. A callee that returns a panic has stepped out
@@ -22725,7 +22721,7 @@
     ; `variant` where one is given, as is its function for a pattern that may raise errors, which
     ; answers with `held`.
     (if (and (not restores) (call (. tables is-prototype) callee))
-      (return (call call-slot callee syntax mark watched))
+      (return (call call-slot callee syntax mark))
     )
     (let rules calls-rule)
     (= calls-rule false)
@@ -22769,7 +22765,7 @@
       (= flags (/or/ flags may-panic-dependency))
     )
     (call (. ir depend) .callee-function target-id flags)
-    (let checked (and (. target may-panic) (not in-landing) (or watched (not (. ([] (. instances rows) callee) quiet)))))
+    (let checked (and (. target may-panic) (not in-landing)))
     (let symbol (call make-operand .operand-symbol (. target symbol)))
     (let saved (call prepare-stacks callee syntax))
     (let enters (and (call is-free callee) (or in-zone (not (call (. tables is-bounded) callee)))))
@@ -22877,25 +22873,21 @@
     (param callee InstanceId)
     (param syntax SyntaxId)
     (param mark Size)
-    (param watched Bool (= false))
     ; A call of a function of an interface through a value of it, the first of the pending arguments
     ; from `mark` on: of what the value's witness table holds in the function's slot of the
     ; interface's section, given the value and the arguments. What runs is not known here, so the
     ; call is checked for a panic, which the type pass must have said of the caller too. A function
     ; that raises errors answers with its value or one of them, to a caller that takes that. A call
-    ; of a function the type pass says no call checks is not checked: a panic raised under it stays
-    ; the task's, and what follows the call runs. A `watched` call is checked all the same. A call
     ; in the zone the collector never sees stays in it, since what runs is not known.
     (let nothing (call make-operand .operand-void 0))
     (let signature ([] (. instances signatures) callee))
     (let raising (!= (. signature errors count) 0))
     (let raw takes-result)
-    (let checked (or watched (not (. ([] (. instances rows) callee) quiet))))
     (= takes-result false)
     (if (or (>= mark (. pending length)) (and raising (or (not raw) in-zone)) uncaught-panic)
       (call refuse .refused-expression syntax)
     )
-    (lazy uncaught-panic (and checked (not (. function may-panic)) (not in-landing)))
+    (lazy uncaught-panic (and (not (. function may-panic)) (not in-landing)))
     (let returned (if-expr raising (. signature result) (. signature returns)))
     (let returns (call layout-of returned syntax))
     (if (== (. function kind) .task-body)
@@ -22905,7 +22897,7 @@
     (let table (call load ([] pending mark) (. (call (. tables layouts field) layout 1) offset) pointer-layout syntax))
     (let place (* (+ witness-header-slots ([] (. tables slots) callee)) table-slot-size))
     (let method (call load table place pointer-layout syntax))
-    (let result (call call method syntax mark .callee-value returns (and checked (not in-landing))))
+    (let result (call call method syntax mark .callee-value returns (not in-landing)))
     (return (call Typed result returned))
   )
   (fn-do _ emit-view _

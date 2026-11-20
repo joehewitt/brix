@@ -1375,3 +1375,41 @@ Stack trace:
   1  __source__:init.__source__.statics no file:8:42
   2  __source__:brix.main no file
 ```
+
+### A panic raised by a Readable's read through the interface reaches the caller.
+
+```brix crash
+(main
+  (call pull (call Boom))
+  (print "end")
+)
+
+(type + Boom (implements (of Readable Int))
+  (prop + count Int)
+  (fn-do + (prefix <- this) (? Int)
+    (throw (call Panic "boom") (if (== count 0)))
+    (return count)
+  )
+)
+
+(fn-do _ pull _
+  (param source (of Readable Int))
+  (let got (<- source))
+  (print "after pull")
+)
+```
+
+```stderr
+Unhandled panic: boom
+<no file:10>
+
+Task 1
+
+Stack trace:
+  0  __source__:Boom:<-read no file:10:5
+  1  __source__:<-read(wrapped) no file:9:3
+  2  __source__:pull no file:17:12
+  3  __source__:main no file:3:3
+  4  __source__:init.__source__ no file
+  5  __source__:brix.main no file
+```
