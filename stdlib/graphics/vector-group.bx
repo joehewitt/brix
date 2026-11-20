@@ -143,11 +143,10 @@
   )
 )
 
-(type + VectorGroup
+(type + VectorGroup (is VectorElement)
   (implements VectorNode)
   (implements GraphicContainer)
   (implements MarkupRootElement)
-  (implements (of MarkupParent VectorNode))
   (using VectorPaintStyle)
   (using VectorCompositeStyle)
   (prop + id Size (= (call next-graphic-node-id)))
@@ -576,14 +575,17 @@
   (fn-do + markup-batch-did-flush _
     (param flush MarkupBatchFlush)
   )
+  (fn-expr + markup-make-region (? VectorElement)
+    (call VectorRegion)
+  )
   (fn-do + markup-attach-child _
-    (param child VectorNode)
-    (param anchor (? VectorNode))
-    (call attach-item child anchor)
+    (param child VectorElement)
+    (param anchor (? VectorElement))
+    (call attach-item (call vector-node-of child) (only-if (call vector-node-of anchor) (if anchor)))
   )
   (fn-do + markup-detach-child _
-    (param child VectorNode)
-    (call detach-item child)
+    (param child VectorElement)
+    (call detach-item (call vector-node-of child))
   )
   (fn-expr + graphic-container-parent (? GraphicContainer) :get
     vector-parent-node
@@ -1009,6 +1011,28 @@
       (= cursor (. group vector-parent-node))
     )
     (return false)
+  )
+)
+
+(type + VectorRegion (is VectorGroup)
+  (fn-expr + markup-is-transparent-region _ :get
+    true
+  )
+  (fn-do + close _
+    (call markup-close-region this)
+    (call (. super close))
+  )
+)
+
+(fn-expr _ vector-node-of VectorNode
+  (param element VectorElement)
+  (match element
+    (case (: graphic GraphicNode)
+      graphic
+    )
+    (default
+      (as element VectorGroup)
+    )
   )
 )
 
