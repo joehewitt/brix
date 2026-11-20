@@ -69,3 +69,21 @@ The recorder captures both packed supported items and raw CoreGraphics commands.
 path, oval, transform, or another non-item operation, its chunk is marked opaque and replay
 interprets the captured commands. Opaque replay never calls `Box.paint`, `paint-self`, or any other
 managed paint callback.
+
+## Item culling
+
+Chunk bounds come from per-state ink unions: a recording adds each item's ink to its state's
+`local-ink`, or to the side table's `root-ink` for state 0, and `refresh-bounds` maps one union per
+state through the state's matrix. A transform-only change refreshes bounds without touching items.
+
+`frame-metal` clamps damage to the surface, except when the scene has filter or backdrop content,
+whose sampling reaches outside the damage. A chunk of `display-cull-minimum` or more items without
+mask or blur layers builds a `DisplayCullIndex` on its second encode after a recording, when the
+damage does not cover its bounds. The index keeps one grid for items under the content transform,
+in content space, and one for the rest, so pan and zoom query it without rebuilding. Each frame
+selects the items whose ink touches the damage and hands the renderer their indices in paint order;
+when the grids estimate that half or more of the items are in view, the chunk draws everything.
+Drawability is checked from per-state requirements computed with the index, so it never depends on
+which items are visible.
+
+Code that edits a recorded chunk's items in place must set its `cull-index` to null.
